@@ -246,4 +246,8 @@ gradle-app.setting
 # Java heap dump
 *.hprof
 
+src/main/resources/application.properties
+src/main/resources/application.yaml
+src/main/resources/application.yml
+
 # End of https://www.toptal.com/developers/gitignore/api/java,intellij,macos,windows,visualstudiocode,gradle
