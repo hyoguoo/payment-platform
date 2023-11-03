@@ -10,7 +10,7 @@ import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 
-import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +20,12 @@ public class OrderService {
     private final ProductService productService;
     private final UserService userService;
     private final OrderInfoRepository orderInfoRepository;
+
+    public List<OrderFindResponse> findOrderList() {
+        return orderInfoRepository.findAll().stream()
+                .map(OrderFindResponse::new)
+                .toList();
+    }
 
     @Transactional
     public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {

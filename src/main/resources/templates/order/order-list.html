@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-KyZXEAg3QhqLMpG8r+8fhAXLRk2vvoC2f3B09zVXn8CA5QIVfZOJ3BCsw2P0p/We" crossorigin="anonymous">
+
+    <title>Order</title>
+</head>
+<body class="container-fluid">
+<h1>Order Program</h1>
+<h2>Order List</h2>
+
+<table class="table table-hover table-striped">
+    <thead>
+    <tr>
+        <th scope="col">Order Id</th>
+        <th scope="col">Amount</th>
+        <th scope="col">Approved At</th>
+        <th scope="col">Status</th>
+        <th scope="col">Product Name</th>
+        <th scope="col">User Name</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="order: ${orders}">
+        <td>
+            <a th:href="'/order/'+${order.id}" th:text="${order.orderId}"
+               style="text-decoration:none; color: inherit;"></a>
+        </td>
+        <td th:text="${order.amount}"></td>
+        <td th:text="${order.approvedAt}"></td>
+        <td th:text="${order.status}"></td>
+        <td th:text="${order.productName}"></td>
+        <td th:text="${order.userName}"></td>
+    </tr>
+    </tbody>
+</table>
+</body>
+</html>
