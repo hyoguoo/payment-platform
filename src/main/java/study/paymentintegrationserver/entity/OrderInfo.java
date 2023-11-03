@@ -3,11 +3,13 @@ package study.paymentintegrationserver.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import study.paymentintegrationserver.domain.TossPayments;
 
 import java.math.BigDecimal;
 
+@Getter
 @Entity
 @Builder
 @Table(name = "order_info")

@@ -1,11 +1,14 @@
 package study.paymentintegrationserver.dto.order;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import study.paymentintegrationserver.entity.OrderInfo;
 
 @Getter
-@RequiredArgsConstructor
 public class OrderCreateResponse {
 
     private final String orderId;
+
+    public OrderCreateResponse(OrderInfo orderInfo) {
+        this.orderId = orderInfo.getOrderId();
+    }
 }

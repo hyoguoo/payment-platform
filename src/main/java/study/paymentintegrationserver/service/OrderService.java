@@ -25,21 +25,22 @@ public class OrderService {
     public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {
         OrderProduct orderProduct = orderCreateRequest.getOrderProduct();
 
-        orderInfoRepository.save(
+        OrderInfo createdOrder = orderInfoRepository.save(
                 orderCreateRequest.toEntity(
                         userService.getById(orderCreateRequest.getUserId()),
                         productService.getById(orderProduct.getProductId())
                 ));
 
-        return new OrderCreateResponse(orderCreateRequest.getOrderId());
+        return new OrderCreateResponse(createdOrder);
     }
 
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfo(orderConfirmRequest.getOrderId());
         TossPayments tossPayments = paymentService.confirmPayment(orderConfirmRequest);
-        orderInfo.confirmOrder(tossPayments);
-        return new OrderConfirmResponse(tossPayments.getOrderId(), BigDecimal.valueOf(tossPayments.getTotalAmount()));
+
+        OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(tossPayments);
+        return new OrderConfirmResponse(confirmedOrderInfo);
     }
 
     private OrderInfo getOrderInfo(String orderId) {
