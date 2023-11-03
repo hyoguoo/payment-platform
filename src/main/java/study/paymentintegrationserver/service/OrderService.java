@@ -21,6 +21,15 @@ public class OrderService {
     private final UserService userService;
     private final OrderInfoRepository orderInfoRepository;
 
+    public OrderFindDetailResponse getPaymentInfo(Long orderId) {
+        OrderInfo orderInfo = this.orderInfoRepository.findById(orderId)
+                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+
+        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId());
+
+        return new OrderFindDetailResponse(orderInfo, paymentInfo);
+    }
+
     public List<OrderFindResponse> findOrderList() {
         return orderInfoRepository.findAll().stream()
                 .map(OrderFindResponse::new)
