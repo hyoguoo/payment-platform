@@ -1,7 +1,9 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 
+@Getter
 @Entity
 @Table(name = "user")
 public class User extends BaseTime {

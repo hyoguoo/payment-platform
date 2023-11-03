@@ -1,9 +1,11 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 
+@Getter
 @Entity
 @Table(name = "product")
 public class Product extends BaseTime {
