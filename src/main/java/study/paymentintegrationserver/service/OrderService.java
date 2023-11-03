@@ -2,6 +2,7 @@ package study.paymentintegrationserver.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.domain.TossPayments;
 import study.paymentintegrationserver.dto.order.*;
 import study.paymentintegrationserver.entity.OrderInfo;
@@ -20,6 +21,7 @@ public class OrderService {
     private final UserService userService;
     private final OrderInfoRepository orderInfoRepository;
 
+    @Transactional
     public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {
         OrderProduct orderProduct = orderCreateRequest.getOrderProduct();
 
@@ -32,6 +34,7 @@ public class OrderService {
         return new OrderCreateResponse(orderCreateRequest.getOrderId());
     }
 
+    @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfo(orderConfirmRequest.getOrderId());
         TossPayments tossPayments = paymentService.confirmPayment(orderConfirmRequest);
