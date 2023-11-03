@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class OrderCreateRequest {
 
+    private final Long userId;
     private final String orderId;
     private final BigDecimal amount;
+    private final OrderProduct orderProduct;
 }
