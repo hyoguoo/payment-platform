@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Toss Payments API 응답 객체
+ * <a href="https://docs.tosspayments.com/reference">Toss Payments API 응답 객체(Version 2022-11-16)</a>
  */
 @Getter
 @NoArgsConstructor
