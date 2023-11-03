@@ -61,7 +61,10 @@ public class OrderService {
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
 
-        OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(tossPayments);
+        OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(
+                paymentService.confirmPayment(orderConfirmRequest),
+                orderConfirmRequest
+        );
         productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
 
         return new OrderConfirmResponse(confirmedOrderInfo);

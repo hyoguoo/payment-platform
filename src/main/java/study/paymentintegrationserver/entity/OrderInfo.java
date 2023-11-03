@@ -63,7 +63,9 @@ public class OrderInfo extends BaseTime {
     @Column(name = "last_transaction_key")
     private String lastTransactionKey;
 
-    public OrderInfo confirmOrder(TossPayments paymentInfo) {
+    public OrderInfo confirmOrder(TossPayments paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+        this.validateOrderInfo(paymentInfo, orderConfirmRequest);
+
         this.approvedAt = paymentInfo.getApprovedAt();
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
