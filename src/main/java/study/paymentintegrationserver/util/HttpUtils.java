@@ -15,7 +15,7 @@ public final class HttpUtils {
         throw new AssertionError();
     }
 
-    public static <T> T requestPostWithBasicAuthorization(String url, String authorization, T body, Class<T> responseType) {
+    public static <T, E> E requestPostWithBasicAuthorization(String url, String authorization, T body, Class<E> responseType) {
         HttpEntity<T> request = generateBasicAuthorizationHttpEntity(authorization, body);
         return new RestTemplate().postForObject(url, request, responseType);
     }
