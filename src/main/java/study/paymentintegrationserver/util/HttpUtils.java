@@ -1,9 +1,7 @@
 package study.paymentintegrationserver.util;
 
 
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 
 public final class HttpUtils {
@@ -16,12 +14,16 @@ public final class HttpUtils {
     }
 
     public static <T, E> E requestPostWithBasicAuthorization(String url, String authorization, T body, Class<E> responseType) {
-        HttpEntity<T> request = generateBasicAuthorizationHttpEntity(authorization, body);
-        return new RestTemplate().postForObject(url, request, responseType);
+        HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
+        HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
+
+        ResponseEntity<E> response = new RestTemplate().exchange(url, HttpMethod.POST, httpEntity, responseType);
+
+        return response.getBody();
     }
 
-    private static <T> HttpEntity<T> generateBasicAuthorizationHttpEntity(String authorization, T body) {
-        return new HttpEntity<>(body, generateBasicAuthorizationHttpHeaders(authorization));
+    private static <T> HttpEntity<T> createHttpEntity(HttpHeaders httpHeaders, T body) {
+        return new HttpEntity<>(body, httpHeaders);
     }
 
     private static HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization) {
