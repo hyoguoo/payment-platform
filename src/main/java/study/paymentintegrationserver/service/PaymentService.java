@@ -8,6 +8,8 @@ import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.util.EncodeUtils;
 import study.paymentintegrationserver.util.HttpUtils;
 
+import java.util.Optional;
+
 @Service
 public class PaymentService {
 
@@ -16,7 +18,7 @@ public class PaymentService {
     @Value("${spring.myapp.toss-payments.api-url}")
     private String tossApiUrl;
 
-    public TossPayments getPaymentInfoByOrderId(String orderId) {
+    public Optional<TossPayments> getPaymentInfoByOrderId(String orderId) {
         return HttpUtils.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 EncodeUtils.encodeBase64(secretKey + ":"),

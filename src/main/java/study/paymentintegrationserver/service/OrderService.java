@@ -11,6 +11,7 @@ import study.paymentintegrationserver.exception.OrderInfoException;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -25,9 +26,12 @@ public class OrderService {
         OrderInfo orderInfo = this.orderInfoRepository.findById(orderId)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
 
-        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId());
+        Optional<TossPayments> paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId());
 
-        return new OrderFindDetailResponse(orderInfo, paymentInfo);
+        OrderFindDetailResponse orderFindDetailResponse = new OrderFindDetailResponse(orderInfo);
+        paymentInfo.ifPresent(orderFindDetailResponse::addTossPayments);
+
+        return orderFindDetailResponse;
     }
 
     public List<OrderFindResponse> findOrderList() {

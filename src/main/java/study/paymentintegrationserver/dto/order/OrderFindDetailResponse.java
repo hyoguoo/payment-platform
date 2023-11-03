@@ -19,11 +19,11 @@ public class OrderFindDetailResponse {
     private final String status;
     private final String productName;
     private final String userName;
-    private final String lastTransactionKey;
-    private final String method;
-    private final List<TossPayments.Cancel> cancels;
+    private String lastTransactionKey;
+    private String method;
+    private List<TossPayments.Cancel> cancels;
 
-    public OrderFindDetailResponse(OrderInfo orderInfo, TossPayments tossPayments) {
+    public OrderFindDetailResponse(OrderInfo orderInfo) {
         this.id = orderInfo.getId();
         this.orderId = orderInfo.getOrderId();
         this.amount = orderInfo.getTotalAmount();
@@ -33,8 +33,12 @@ public class OrderFindDetailResponse {
         this.status = orderInfo.getStatus();
         this.productName = orderInfo.getProduct().getName();
         this.userName = orderInfo.getUser().getUsername();
+    }
+
+    public OrderFindDetailResponse addTossPayments(TossPayments tossPayments) {
         this.lastTransactionKey = tossPayments.getLastTransactionKey();
         this.method = tossPayments.getMethod();
         this.cancels = tossPayments.getCancels();
+        return this;
     }
 }

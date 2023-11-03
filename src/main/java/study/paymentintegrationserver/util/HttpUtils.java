@@ -2,7 +2,10 @@ package study.paymentintegrationserver.util;
 
 
 import org.springframework.http.*;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Optional;
 
 public final class HttpUtils {
 
@@ -13,13 +16,19 @@ public final class HttpUtils {
         throw new AssertionError();
     }
 
-    public static <T> T requestGetWithBasicAuthorization(String url, String authorization, Class<T> responseType) {
+    public static <T> Optional<T> requestGetWithBasicAuthorization(String url, String authorization, Class<T> responseType) {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<Object> httpEntity = new HttpEntity<>(httpHeaders);
 
-        ResponseEntity<T> response = new RestTemplate().exchange(url, HttpMethod.GET, httpEntity, responseType);
+        try {
+            ResponseEntity<T> response = new RestTemplate().exchange(url, HttpMethod.GET, httpEntity, responseType);
 
-        return response.getBody();
+            return Optional.ofNullable(response.getBody());
+        } catch (HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        } catch (HttpClientErrorException e) {
+            throw new HttpClientErrorException(e.getStatusCode(), e.getMessage());
+        }
     }
 
     public static <T, E> E requestPostWithBasicAuthorization(String url, String authorization, T body, Class<E> responseType) {
