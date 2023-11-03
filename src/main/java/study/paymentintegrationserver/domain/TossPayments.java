@@ -49,7 +49,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class Cancel {
+    public static class Cancel {
         private double cancelAmount;
         private String cancelReason;
         private double taxFreeAmount;
@@ -64,7 +64,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class MobilePhone {
+    public static class MobilePhone {
         private String customerMobilePhone;
         private String settlementStatus;
 
@@ -73,7 +73,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class GiftCertificate {
+    public static class GiftCertificate {
         private String approveNo;
         private String settlementStatus;
     }
@@ -81,7 +81,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class Transfer {
+    public static class Transfer {
         private String bankCode;
         private String settlementStatus;
     }
@@ -90,7 +90,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class Receipt {
+    public static class Receipt {
         private String url;
     }
 
@@ -98,14 +98,14 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class Checkout {
+    public static class Checkout {
         private String url;
     }
 
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class EasyPay {
+    public static class EasyPay {
         private String provider;
         private double amount;
         private double discountAmount;
@@ -114,7 +114,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class Failure {
+    public static class Failure {
         private String code;
         private String message;
     }
@@ -122,7 +122,7 @@ public final class TossPayments {
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
-    static class CashReceipt {
+    public static class CashReceipt {
         private String type;
         private String receiptKey;
         private String issueNumber;
