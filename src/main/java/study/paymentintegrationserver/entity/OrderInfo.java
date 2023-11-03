@@ -1,11 +1,17 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
 @Entity
+@Builder
 @Table(name = "order_info")
+@NoArgsConstructor
+@AllArgsConstructor
 public class OrderInfo extends BaseTime {
 
     @Id
@@ -27,10 +33,10 @@ public class OrderInfo extends BaseTime {
     @Column(name = "payment_key")
     private String paymentKey;
 
-    @Column(name = "order_name", nullable = false)
+    @Column(name = "order_name")
     private String orderName;
 
-    @Column(name = "method", nullable = false)
+    @Column(name = "method")
     private String method;
 
     @Column(name = "quantity", nullable = false)
@@ -39,15 +45,16 @@ public class OrderInfo extends BaseTime {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
+    @Builder.Default
     @Column(name = "status", nullable = false)
-    private String status;
+    private String status = "READY";
 
-    @Column(name = "requested_at", nullable = false)
+    @Column(name = "requested_at")
     private String requestedAt;
 
     @Column(name = "approved_at")
     private String approvedAt;
 
-    @Column(name = "last_transaction_key", nullable = false)
+    @Column(name = "last_transaction_key")
     private String lastTransactionKey;
 }
