@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
+import study.paymentintegrationserver.domain.TossPayments;
 
 import java.math.BigDecimal;
 
@@ -57,4 +58,16 @@ public class OrderInfo extends BaseTime {
 
     @Column(name = "last_transaction_key")
     private String lastTransactionKey;
+
+    public OrderInfo confirmOrder(TossPayments paymentInfo) {
+        this.approvedAt = paymentInfo.getApprovedAt();
+        this.lastTransactionKey = paymentInfo.getLastTransactionKey();
+        this.orderName = paymentInfo.getOrderName();
+        this.paymentKey = paymentInfo.getPaymentKey();
+        this.requestedAt = paymentInfo.getRequestedAt();
+        this.status = paymentInfo.getStatus();
+        this.method = paymentInfo.getMethod();
+
+        return this;
+    }
 }

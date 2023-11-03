@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import study.paymentintegrationserver.domain.TossPayments;
 import study.paymentintegrationserver.dto.order.*;
+import study.paymentintegrationserver.entity.OrderInfo;
+import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
+import study.paymentintegrationserver.exception.OrderInfoException;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 
 import java.math.BigDecimal;
@@ -30,7 +33,14 @@ public class OrderService {
     }
 
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
+        OrderInfo orderInfo = this.getOrderInfo(orderConfirmRequest.getOrderId());
         TossPayments tossPayments = paymentService.confirmPayment(orderConfirmRequest);
+        orderInfo.confirmOrder(tossPayments);
         return new OrderConfirmResponse(tossPayments.getOrderId(), BigDecimal.valueOf(tossPayments.getTotalAmount()));
+    }
+
+    private OrderInfo getOrderInfo(String orderId) {
+        return orderInfoRepository.findByOrderId(orderId)
+                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }
 }
