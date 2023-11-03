@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class OrderCreateRequest {
 
+    private static final String ORDER_CREATE_STATUS = "READY";
+
     private final Long userId;
     private final String orderId;
     private final BigDecimal amount;
@@ -24,6 +26,7 @@ public class OrderCreateRequest {
                 .orderId(this.orderId)
                 .quantity(this.orderProduct.getQuantity())
                 .totalAmount(this.amount)
-                .build();
+                .status(ORDER_CREATE_STATUS)
+                .build(amount, this.orderProduct.getQuantity());
     }
 }
