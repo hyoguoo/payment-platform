@@ -5,11 +5,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import study.paymentintegrationserver.domain.TossPayments;
+import study.paymentintegrationserver.dto.payment.PaymentCofirmResponse;
 import study.paymentintegrationserver.dto.payment.PaymentConfirmRequest;
 import study.paymentintegrationserver.dto.payment.PaymentCreateRequest;
 import study.paymentintegrationserver.dto.payment.PaymentCreateResponse;
 import study.paymentintegrationserver.util.EncodeUtils;
 import study.paymentintegrationserver.util.HttpUtils;
+
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/v1/payments")
@@ -27,12 +31,13 @@ public class PaymentController {
     }
 
     @PostMapping("/confirm")
-    public Object getPaymentPage(@RequestBody PaymentConfirmRequest paymentConfirmRequest) {
-        // TODO: 반환 타입을 PaymentConfirmResponse로 변경
-        return HttpUtils.requestPostWithBasicAuthorization(
+    public PaymentCofirmResponse getPaymentPage(@RequestBody PaymentConfirmRequest paymentConfirmRequest) {
+        TossPayments tossPayments = HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
                 paymentConfirmRequest,
-                Object.class);
+                TossPayments.class);
+
+        return new PaymentCofirmResponse(tossPayments.getOrderId(), BigDecimal.valueOf(tossPayments.getTotalAmount()));
     }
 }
