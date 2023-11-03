@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import study.paymentintegrationserver.domain.TossPayments;
+import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 
@@ -72,6 +73,34 @@ public class OrderInfo extends BaseTime {
         this.method = paymentInfo.getMethod();
 
         return this;
+    }
+
+    public void validateOrderInfo(TossPayments paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+        if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_ORDER_ID);
+        }
+
+        if (!this.user.getId().equals(orderConfirmRequest.getUserId())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_USER_ID);
+        }
+
+        if (!paymentInfo.getPaymentKey().equals(orderConfirmRequest.getPaymentKey())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_PAYMENT_KEY);
+        }
+
+        if (!compareAmounts(paymentInfo, orderConfirmRequest)) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
+        }
+    }
+
+    private boolean compareAmounts(TossPayments paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+        BigDecimal paymentInfoTotalAmount = BigDecimal.valueOf(paymentInfo.getTotalAmount());
+        BigDecimal orderConfirmRequestAmount = orderConfirmRequest.getAmount();
+        BigDecimal orderInfoAmount = this.product.getPrice().multiply(BigDecimal.valueOf(this.quantity));
+
+        return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
+               orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
+               orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
     }
 
     // Builder Pattern 사용 시 자동으로 실행되는 클래스

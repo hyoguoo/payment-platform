@@ -56,7 +56,10 @@ public class OrderService {
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfo(orderConfirmRequest.getOrderId());
-        TossPayments tossPayments = paymentService.confirmPayment(orderConfirmRequest);
+        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId())
+                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+
+        orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
 
         OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(tossPayments);
         productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
