@@ -16,6 +16,13 @@ public class PaymentService {
     @Value("${spring.myapp.toss-payments.api-url}")
     private String tossApiUrl;
 
+    public TossPayments getPaymentInfoByOrderId(String orderId) {
+        return HttpUtils.requestGetWithBasicAuthorization(
+                tossApiUrl + "/orders/" + orderId,
+                EncodeUtils.encodeBase64(secretKey + ":"),
+                TossPayments.class);
+    }
+
     public TossPayments confirmPayment(@RequestBody OrderConfirmRequest orderConfirmRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",

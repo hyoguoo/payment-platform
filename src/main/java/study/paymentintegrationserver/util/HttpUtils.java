@@ -13,6 +13,15 @@ public final class HttpUtils {
         throw new AssertionError();
     }
 
+    public static <T> T requestGetWithBasicAuthorization(String url, String authorization, Class<T> responseType) {
+        HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
+        HttpEntity<Object> httpEntity = new HttpEntity<>(httpHeaders);
+
+        ResponseEntity<T> response = new RestTemplate().exchange(url, HttpMethod.GET, httpEntity, responseType);
+
+        return response.getBody();
+    }
+
     public static <T, E> E requestPostWithBasicAuthorization(String url, String authorization, T body, Class<E> responseType) {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
