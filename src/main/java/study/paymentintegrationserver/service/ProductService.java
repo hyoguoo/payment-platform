@@ -18,4 +18,9 @@ public class ProductService {
                 .findById(id)
                 .orElseThrow(() -> ProductException.of(ProductErrorMessage.NOT_FOUND));
     }
+
+    public Product reduceStock(Long productId, Integer reduceStock) {
+        return getById(productId)
+                .reduceStock(reduceStock);
+    }
 }

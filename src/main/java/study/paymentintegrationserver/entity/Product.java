@@ -2,6 +2,8 @@ package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import study.paymentintegrationserver.exception.ProductErrorMessage;
+import study.paymentintegrationserver.exception.ProductException;
 
 import java.math.BigDecimal;
 
@@ -26,4 +28,14 @@ public class Product extends BaseTime {
 
     @Column(name = "stock", nullable = false)
     private Integer stock;
+
+    public Product reduceStock(Integer reduceStock) {
+        if (this.stock < reduceStock) {
+            throw ProductException.of(ProductErrorMessage.NOT_ENOUGH_STOCK);
+        }
+
+        this.stock -= reduceStock;
+
+        return this;
+    }
 }

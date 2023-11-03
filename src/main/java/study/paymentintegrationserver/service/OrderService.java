@@ -59,6 +59,8 @@ public class OrderService {
         TossPayments tossPayments = paymentService.confirmPayment(orderConfirmRequest);
 
         OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(tossPayments);
+        productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
+
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
 
