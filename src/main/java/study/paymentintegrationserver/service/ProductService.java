@@ -23,4 +23,9 @@ public class ProductService {
         return getById(productId)
                 .reduceStock(reduceStock);
     }
+
+    public Product increaseStock(Long productId, Integer increaseStock) {
+        return getById(productId)
+                .increaseStock(increaseStock);
+    }
 }
