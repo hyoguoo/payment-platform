@@ -65,8 +65,7 @@ public class OrderService {
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
-        TossPayments paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId())
-                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
 

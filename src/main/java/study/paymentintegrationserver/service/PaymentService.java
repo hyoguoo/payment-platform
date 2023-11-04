@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 import study.paymentintegrationserver.domain.TossPayments;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.exception.PaymentErrorMessage;
+import study.paymentintegrationserver.exception.PaymentException;
 import study.paymentintegrationserver.util.EncodeUtils;
 import study.paymentintegrationserver.util.HttpUtils;
 
@@ -17,6 +19,14 @@ public class PaymentService {
     private String secretKey;
     @Value("${spring.myapp.toss-payments.api-url}")
     private String tossApiUrl;
+
+    public TossPayments getPaymentInfoByOrderId(String orderId) {
+        return HttpUtils.requestGetWithBasicAuthorization(
+                        tossApiUrl + "/orders/" + orderId,
+                        EncodeUtils.encodeBase64(secretKey + ":"),
+                        TossPayments.class)
+                .orElseThrow(() -> PaymentException.of(PaymentErrorMessage.NOT_FOUND));
+    }
 
     public Optional<TossPayments> findPaymentInfoByOrderId(String orderId) {
         return HttpUtils.requestGetWithBasicAuthorization(
