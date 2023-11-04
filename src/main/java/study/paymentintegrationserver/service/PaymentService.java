@@ -3,7 +3,7 @@ package study.paymentintegrationserver.service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import study.paymentintegrationserver.domain.TossPayments;
-import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.exception.PaymentErrorMessage;
 import study.paymentintegrationserver.exception.PaymentException;
 import study.paymentintegrationserver.util.EncodeUtils;
@@ -34,11 +34,11 @@ public class PaymentService {
                 TossPayments.class);
     }
 
-    public TossPayments confirmPayment(OrderConfirmRequest orderConfirmRequest) {
+    public TossPayments confirmPayment(TossConfirmRequest tossConfirmRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
-                orderConfirmRequest,
+                tossConfirmRequest,
                 TossPayments.class);
     }
 }

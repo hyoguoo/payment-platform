@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.domain.TossPayments;
 import study.paymentintegrationserver.dto.order.*;
+import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
@@ -70,7 +71,7 @@ public class OrderService {
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
 
         OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(
-                paymentService.confirmPayment(orderConfirmRequest),
+                paymentService.confirmPayment(TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)),
                 orderConfirmRequest
         );
         productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
