@@ -1,5 +1,6 @@
 package study.paymentintegrationserver.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,12 +20,12 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/create")
-    public OrderCreateResponse createOrder(@RequestBody OrderCreateRequest orderCreateRequest) {
+    public OrderCreateResponse createOrder(@RequestBody @Valid OrderCreateRequest orderCreateRequest) {
         return orderService.createOrder(orderCreateRequest);
     }
 
     @PostMapping("/confirm")
-    public OrderConfirmResponse confirmOrder(@RequestBody OrderConfirmRequest orderConfirmRequest) {
+    public OrderConfirmResponse confirmOrder(@RequestBody @Valid OrderConfirmRequest orderConfirmRequest) {
         return orderService.confirmOrder(orderConfirmRequest);
     }
 }

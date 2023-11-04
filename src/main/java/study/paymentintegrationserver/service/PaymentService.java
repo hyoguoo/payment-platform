@@ -1,7 +1,9 @@
 package study.paymentintegrationserver.service;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
@@ -13,6 +15,7 @@ import study.paymentintegrationserver.util.HttpUtils;
 import java.util.Optional;
 
 @Service
+@Validated
 public class PaymentService {
 
     @Value("${spring.myapp.toss-payments.secret-key}")
@@ -35,7 +38,7 @@ public class PaymentService {
                 TossPaymentResponse.class);
     }
 
-    public TossPaymentResponse confirmPayment(TossConfirmRequest tossConfirmRequest) {
+    public TossPaymentResponse confirmPayment(@Valid TossConfirmRequest tossConfirmRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
@@ -43,7 +46,7 @@ public class PaymentService {
                 TossPaymentResponse.class);
     }
 
-    public TossPaymentResponse cancelPayment(String paymentKey, TossCancelRequest tossCancelRequest) {
+    public TossPaymentResponse cancelPayment(String paymentKey, @Valid TossCancelRequest tossCancelRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/" + paymentKey + "/cancel",
                 EncodeUtils.encodeBase64(secretKey + ":"),

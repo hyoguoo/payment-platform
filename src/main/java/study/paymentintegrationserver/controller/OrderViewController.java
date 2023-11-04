@@ -1,5 +1,6 @@
 package study.paymentintegrationserver.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -30,7 +31,7 @@ public class OrderViewController {
     }
 
     @PostMapping("/cancel")
-    public String cancelOrder(@ModelAttribute OrderCancelRequest orderCancelRequest) {
+    public String cancelOrder(@ModelAttribute @Valid OrderCancelRequest orderCancelRequest) {
         OrderCancelResponse orderCancelResponse = orderService.cancelOrder(orderCancelRequest);
 
         return "redirect:/order/" + orderCancelResponse.getId();

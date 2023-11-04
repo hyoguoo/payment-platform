@@ -1,5 +1,7 @@
 package study.paymentintegrationserver.dto.order;
 
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import study.paymentintegrationserver.entity.OrderInfo;
@@ -14,8 +16,13 @@ public class OrderCreateRequest {
 
     private static final String ORDER_CREATE_STATUS = "READY";
 
+    @NotNull(message = "userId must not be null")
+    @DecimalMin(value = "0", message = "userId must be positive")
     private final Long userId;
+    @NotNull(message = "amount must not be null")
+    @DecimalMin(value = "0", message = "amount must be positive")
     private final BigDecimal amount;
+    @NotNull(message = "orderProduct must not be null")
     private final OrderProduct orderProduct;
 
     public OrderInfo toEntity(User user, Product product, String orderId) {
