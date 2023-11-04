@@ -10,14 +10,12 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class TossConfirmRequest {
 
-    private final Long userId;
     private final String orderId;
     private final BigDecimal amount;
     private final String paymentKey;
 
     public static TossConfirmRequest createByOrderConfirmRequest(OrderConfirmRequest orderConfirmRequest) {
         return new TossConfirmRequest(
-                orderConfirmRequest.getUserId(),
                 orderConfirmRequest.getOrderId(),
                 orderConfirmRequest.getAmount(),
                 orderConfirmRequest.getPaymentKey()
