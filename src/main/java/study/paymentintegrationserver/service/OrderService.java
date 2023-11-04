@@ -27,11 +27,11 @@ public class OrderService {
         return ORDER_ID_PREFIX + System.currentTimeMillis();
     }
 
-    public OrderFindDetailResponse getPaymentInfo(Long orderId) {
-        OrderInfo orderInfo = this.orderInfoRepository.findById(orderId)
-                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+    @Transactional
+    public OrderFindDetailResponse getOrderDetailsByIdAndUpdatePaymentInfo(Long id) {
+        OrderInfo orderInfo = getOrderInfoById(id);
 
-        Optional<TossPayments> paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId());
+        Optional<TossPayments> paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId());
 
         OrderFindDetailResponse orderFindDetailResponse = new OrderFindDetailResponse(orderInfo);
         paymentInfo.ifPresent(orderFindDetailResponse::addTossPayments);
@@ -61,8 +61,8 @@ public class OrderService {
 
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = this.getOrderInfo(orderConfirmRequest.getOrderId());
-        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderInfo.getOrderId())
+        OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
+        TossPayments paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId())
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -76,7 +76,12 @@ public class OrderService {
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
 
-    private OrderInfo getOrderInfo(String orderId) {
+    private OrderInfo getOrderInfoById(Long id) {
+        return this.orderInfoRepository.findById(id)
+                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+    }
+
+    private OrderInfo getOrderInfoByOrderId(String orderId) {
         return orderInfoRepository.findByOrderId(orderId)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }

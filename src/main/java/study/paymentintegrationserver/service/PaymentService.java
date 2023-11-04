@@ -18,7 +18,7 @@ public class PaymentService {
     @Value("${spring.myapp.toss-payments.api-url}")
     private String tossApiUrl;
 
-    public Optional<TossPayments> getPaymentInfoByOrderId(String orderId) {
+    public Optional<TossPayments> findPaymentInfoByOrderId(String orderId) {
         return HttpUtils.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 EncodeUtils.encodeBase64(secretKey + ":"),
