@@ -2,7 +2,6 @@ package study.paymentintegrationserver.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestBody;
 import study.paymentintegrationserver.domain.TossPayments;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.exception.PaymentErrorMessage;
@@ -35,7 +34,7 @@ public class PaymentService {
                 TossPayments.class);
     }
 
-    public TossPayments confirmPayment(@RequestBody OrderConfirmRequest orderConfirmRequest) {
+    public TossPayments confirmPayment(OrderConfirmRequest orderConfirmRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
