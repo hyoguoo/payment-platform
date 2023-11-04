@@ -66,6 +66,18 @@ public class OrderInfo extends BaseTime {
     public OrderInfo confirmOrder(TossPayments paymentInfo, OrderConfirmRequest orderConfirmRequest) {
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
 
+        updateOrderPaymentInfo(paymentInfo);
+
+        return this;
+    }
+
+    public OrderInfo updatePaymentInfo(TossPayments paymentInfo) {
+        updateOrderPaymentInfo(paymentInfo);
+
+        return this;
+    }
+
+    private void updateOrderPaymentInfo(TossPayments paymentInfo) {
         this.approvedAt = paymentInfo.getApprovedAt();
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
@@ -73,8 +85,6 @@ public class OrderInfo extends BaseTime {
         this.requestedAt = paymentInfo.getRequestedAt();
         this.status = paymentInfo.getStatus();
         this.method = paymentInfo.getMethod();
-
-        return this;
     }
 
     public void validateOrderInfo(TossPayments paymentInfo, OrderConfirmRequest orderConfirmRequest) {

@@ -34,7 +34,10 @@ public class OrderService {
         Optional<TossPayments> paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId());
 
         OrderFindDetailResponse orderFindDetailResponse = new OrderFindDetailResponse(orderInfo);
-        paymentInfo.ifPresent(orderFindDetailResponse::addTossPayments);
+        paymentInfo.ifPresent(payments -> {
+            orderFindDetailResponse.addTossPayments(payments);
+            orderInfo.updatePaymentInfo(payments);
+        });
 
         return orderFindDetailResponse;
     }

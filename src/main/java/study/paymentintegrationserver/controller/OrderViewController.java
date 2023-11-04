@@ -17,7 +17,7 @@ public class OrderViewController {
 
     @GetMapping("/{id}")
     public String findOrder(@PathVariable("id") Long id, Model model) {
-        model.addAttribute("order", orderService.getPaymentInfo(id));
+        model.addAttribute("order", orderService.getOrderDetailsByIdAndUpdatePaymentInfo(id));
 
         return "order/order-detail";
     }
