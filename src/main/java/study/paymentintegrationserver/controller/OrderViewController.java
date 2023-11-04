@@ -3,9 +3,9 @@ package study.paymentintegrationserver.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
+import study.paymentintegrationserver.dto.order.OrderCancelRequest;
+import study.paymentintegrationserver.dto.order.OrderCancelResponse;
 import study.paymentintegrationserver.service.OrderService;
 
 @Controller
@@ -27,5 +27,12 @@ public class OrderViewController {
         model.addAttribute("orders", orderService.findOrderList());
 
         return "order/order-list";
+    }
+
+    @PostMapping("/cancel")
+    public String cancelOrder(@ModelAttribute OrderCancelRequest orderCancelRequest) {
+        OrderCancelResponse orderCancelResponse = orderService.cancelOrder(orderCancelRequest);
+
+        return "redirect:/order/" + orderCancelResponse.getId();
     }
 }

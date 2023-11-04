@@ -3,9 +3,10 @@ package study.paymentintegrationserver.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.dto.order.*;
+import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
@@ -77,6 +78,20 @@ public class OrderService {
         productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
 
         return new OrderConfirmResponse(confirmedOrderInfo);
+    }
+
+    @Transactional
+    public OrderCancelResponse cancelOrder(OrderCancelRequest orderCancelRequest) {
+        OrderInfo orderInfo = this.getOrderInfoByOrderId(orderCancelRequest.getOrderId());
+
+        orderInfo.cancelOrder(paymentService.cancelPayment(
+                orderInfo.getPaymentKey(),
+                TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
+        ));
+
+        productService.increaseStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
+
+        return new OrderCancelResponse(orderInfo);
     }
 
     private OrderInfo getOrderInfoById(Long id) {

@@ -71,6 +71,12 @@ public class OrderInfo extends BaseTime {
         return this;
     }
 
+    public OrderInfo cancelOrder(TossPaymentResponse paymentInfo) {
+        updateOrderPaymentInfo(paymentInfo);
+
+        return this;
+    }
+
     public OrderInfo updatePaymentInfo(TossPaymentResponse paymentInfo) {
         updateOrderPaymentInfo(paymentInfo);
 
