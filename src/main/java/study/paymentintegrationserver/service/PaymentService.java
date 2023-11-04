@@ -2,7 +2,7 @@ package study.paymentintegrationserver.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import study.paymentintegrationserver.domain.TossPayments;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.exception.PaymentErrorMessage;
 import study.paymentintegrationserver.exception.PaymentException;
@@ -19,26 +19,26 @@ public class PaymentService {
     @Value("${spring.myapp.toss-payments.api-url}")
     private String tossApiUrl;
 
-    public TossPayments getPaymentInfoByOrderId(String orderId) {
+    public TossPaymentResponse getPaymentInfoByOrderId(String orderId) {
         return HttpUtils.requestGetWithBasicAuthorization(
                         tossApiUrl + "/orders/" + orderId,
                         EncodeUtils.encodeBase64(secretKey + ":"),
-                        TossPayments.class)
+                        TossPaymentResponse.class)
                 .orElseThrow(() -> PaymentException.of(PaymentErrorMessage.NOT_FOUND));
     }
 
-    public Optional<TossPayments> findPaymentInfoByOrderId(String orderId) {
+    public Optional<TossPaymentResponse> findPaymentInfoByOrderId(String orderId) {
         return HttpUtils.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 EncodeUtils.encodeBase64(secretKey + ":"),
-                TossPayments.class);
+                TossPaymentResponse.class);
     }
 
-    public TossPayments confirmPayment(TossConfirmRequest tossConfirmRequest) {
+    public TossPaymentResponse confirmPayment(TossConfirmRequest tossConfirmRequest) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
                 tossConfirmRequest,
-                TossPayments.class);
+                TossPaymentResponse.class);
     }
 }

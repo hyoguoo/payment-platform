@@ -1,7 +1,7 @@
 package study.paymentintegrationserver.dto.order;
 
 import lombok.Getter;
-import study.paymentintegrationserver.domain.TossPayments;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 
 import java.math.BigDecimal;
@@ -21,7 +21,7 @@ public class OrderFindDetailResponse {
     private final String userName;
     private String lastTransactionKey;
     private String method;
-    private List<TossPayments.Cancel> cancels;
+    private List<TossPaymentResponse.Cancel> cancels;
 
     public OrderFindDetailResponse(OrderInfo orderInfo) {
         this.id = orderInfo.getId();
@@ -35,10 +35,10 @@ public class OrderFindDetailResponse {
         this.userName = orderInfo.getUser().getUsername();
     }
 
-    public OrderFindDetailResponse addTossPayments(TossPayments tossPayments) {
-        this.lastTransactionKey = tossPayments.getLastTransactionKey();
-        this.method = tossPayments.getMethod();
-        this.cancels = tossPayments.getCancels();
+    public OrderFindDetailResponse addTossPayments(TossPaymentResponse tossPaymentResponse) {
+        this.lastTransactionKey = tossPaymentResponse.getLastTransactionKey();
+        this.method = tossPaymentResponse.getMethod();
+        this.cancels = tossPaymentResponse.getCancels();
         return this;
     }
 }

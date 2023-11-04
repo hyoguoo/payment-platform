@@ -3,7 +3,7 @@ package study.paymentintegrationserver.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import study.paymentintegrationserver.domain.TossPayments;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.dto.order.*;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.entity.OrderInfo;
@@ -32,7 +32,7 @@ public class OrderService {
     public OrderFindDetailResponse getOrderDetailsByIdAndUpdatePaymentInfo(Long id) {
         OrderInfo orderInfo = getOrderInfoById(id);
 
-        Optional<TossPayments> paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId());
+        Optional<TossPaymentResponse> paymentInfo = paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId());
 
         OrderFindDetailResponse orderFindDetailResponse = new OrderFindDetailResponse(orderInfo);
         paymentInfo.ifPresent(payments -> {
@@ -66,7 +66,7 @@ public class OrderService {
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
-        TossPayments paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
+        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
 

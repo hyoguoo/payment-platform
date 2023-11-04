@@ -1,4 +1,4 @@
-package study.paymentintegrationserver.domain;
+package study.paymentintegrationserver.dto.toss;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -12,7 +12,7 @@ import java.util.List;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public final class TossPayments {
+public final class TossPaymentResponse {
 
     private String version;
     private String paymentKey;
