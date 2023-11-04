@@ -2,8 +2,9 @@ package study.paymentintegrationserver.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
+import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.exception.PaymentErrorMessage;
 import study.paymentintegrationserver.exception.PaymentException;
 import study.paymentintegrationserver.util.EncodeUtils;
@@ -39,6 +40,14 @@ public class PaymentService {
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
                 tossConfirmRequest,
+                TossPaymentResponse.class);
+    }
+
+    public TossPaymentResponse cancelPayment(String paymentKey, TossCancelRequest tossCancelRequest) {
+        return HttpUtils.requestPostWithBasicAuthorization(
+                tossApiUrl + "/" + paymentKey + "/cancel",
+                EncodeUtils.encodeBase64(secretKey + ":"),
+                tossCancelRequest,
                 TossPaymentResponse.class);
     }
 }
