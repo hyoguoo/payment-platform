@@ -17,10 +17,15 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class OrderService {
 
+    private static final String ORDER_ID_PREFIX = "ORDER-";
     private final PaymentService paymentService;
     private final ProductService productService;
     private final UserService userService;
     private final OrderInfoRepository orderInfoRepository;
+
+    private static String generateOrderId() {
+        return ORDER_ID_PREFIX + System.currentTimeMillis();
+    }
 
     public OrderFindDetailResponse getPaymentInfo(Long orderId) {
         OrderInfo orderInfo = this.orderInfoRepository.findById(orderId)
@@ -47,7 +52,8 @@ public class OrderService {
         OrderInfo createdOrder = orderInfoRepository.save(
                 orderCreateRequest.toEntity(
                         userService.getById(orderCreateRequest.getUserId()),
-                        productService.getById(orderProduct.getProductId())
+                        productService.getById(orderProduct.getProductId()),
+                        generateOrderId()
                 ));
 
         return new OrderCreateResponse(createdOrder);
