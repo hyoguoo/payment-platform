@@ -1,7 +1,10 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
@@ -15,8 +18,10 @@ import java.time.LocalDateTime;
 @Builder
 @Table(name = "order_info")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class OrderInfo extends BaseTime {
+
+    private static final String ORDER_ID_PREFIX = "ORDER-";
+    private static final String ORDER_CREATE_STATUS = "READY";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -31,8 +36,9 @@ public class OrderInfo extends BaseTime {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    @Builder.Default
     @Column(name = "order_id", nullable = false)
-    private String orderId;
+    private String orderId = generateOrderId();
 
     @Column(name = "payment_key")
     private String paymentKey;
@@ -49,8 +55,9 @@ public class OrderInfo extends BaseTime {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
+    @Builder.Default
     @Column(name = "status", nullable = false)
-    private String status;
+    private String status = ORDER_CREATE_STATUS;
 
     @Column(name = "requested_at")
     private LocalDateTime requestedAt;
@@ -60,6 +67,38 @@ public class OrderInfo extends BaseTime {
 
     @Column(name = "last_transaction_key")
     private String lastTransactionKey;
+
+    @SuppressWarnings("java:S107")
+    protected OrderInfo(Long id, User user, Product product, String orderId, String paymentKey, String orderName, String method, Integer quantity, BigDecimal totalAmount, String status, LocalDateTime requestedAt, LocalDateTime approvedAt, String lastTransactionKey) {
+        this.id = id;
+        this.user = user;
+        this.product = product;
+        this.orderId = orderId;
+        this.paymentKey = paymentKey;
+        this.orderName = orderName;
+        this.method = method;
+        this.quantity = quantity;
+        this.totalAmount = totalAmount;
+        this.status = status;
+        this.requestedAt = requestedAt;
+        this.approvedAt = approvedAt;
+        this.lastTransactionKey = lastTransactionKey;
+
+        this.validateProductInfo(totalAmount, quantity);
+    }
+
+    private static String generateOrderId() {
+        return ORDER_ID_PREFIX + System.currentTimeMillis();
+    }
+
+    private void validateProductInfo(BigDecimal totalAmount, Integer quantity) {
+        this.product.validateStock(quantity);
+
+        BigDecimal totalPrice = this.product.getPrice().multiply(BigDecimal.valueOf(quantity));
+        if (totalAmount.compareTo(totalPrice) != 0) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
+        }
+    }
 
     public OrderInfo confirmOrder(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -117,45 +156,5 @@ public class OrderInfo extends BaseTime {
         return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
                orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
-    }
-
-    // Builder Pattern 사용 시 자동으로 실행되는 클래스
-    @SuppressWarnings("unused")
-    public static class OrderInfoBuilder {
-
-        private static final String ORDER_ID_PREFIX = "ORDER-";
-
-        private static String generateOrderId() {
-            return ORDER_ID_PREFIX + System.currentTimeMillis();
-        }
-
-        private void validateProductInfo(BigDecimal totalAmount, Integer quantity) {
-            this.product.validateStock(quantity);
-
-            BigDecimal totalPrice = this.product.getPrice().multiply(BigDecimal.valueOf(quantity));
-            if (totalAmount.compareTo(totalPrice) != 0) {
-                throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
-            }
-        }
-
-        public OrderInfo build(BigDecimal totalAmount, Integer quantity) {
-            this.validateProductInfo(totalAmount, quantity);
-
-            return new OrderInfo(
-                    this.id,
-                    this.user,
-                    this.product,
-                    generateOrderId(),
-                    this.paymentKey,
-                    this.orderName,
-                    this.method,
-                    this.quantity,
-                    this.totalAmount,
-                    this.status,
-                    this.requestedAt,
-                    this.approvedAt,
-                    this.lastTransactionKey
-            );
-        }
     }
 }

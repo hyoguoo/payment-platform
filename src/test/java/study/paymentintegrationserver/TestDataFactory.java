@@ -33,6 +33,6 @@ public class TestDataFactory {
                 .totalAmount(totalAmount)
                 .quantity(quantity)
                 .status("Test Generated Status")
-                .build(totalAmount, quantity);
+                .build();
     }
 }
