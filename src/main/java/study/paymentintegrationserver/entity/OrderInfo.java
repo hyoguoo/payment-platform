@@ -1,12 +1,9 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
+import lombok.*;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 
@@ -16,8 +13,8 @@ import java.math.BigDecimal;
 @Entity
 @Builder
 @Table(name = "order_info")
-@NoArgsConstructor
-@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class OrderInfo extends BaseTime {
 
     @Id
