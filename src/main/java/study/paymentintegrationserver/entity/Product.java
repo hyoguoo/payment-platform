@@ -33,6 +33,9 @@ public class Product extends BaseTime {
     private Integer stock;
 
     public Product reduceStock(Integer reduceStock) {
+        if (reduceStock < 0) {
+            throw ProductException.of(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
+        }
         if (this.stock < reduceStock) {
             throw ProductException.of(ProductErrorMessage.NOT_ENOUGH_STOCK);
         }
@@ -43,6 +46,9 @@ public class Product extends BaseTime {
     }
 
     public Product increaseStock(Integer increaseStock) {
+        if (increaseStock < 0) {
+            throw ProductException.of(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
+        }
         this.stock += increaseStock;
 
         return this;
