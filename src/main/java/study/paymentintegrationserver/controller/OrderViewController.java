@@ -2,12 +2,16 @@ package study.paymentintegrationserver.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 import study.paymentintegrationserver.dto.order.OrderCancelResponse;
 import study.paymentintegrationserver.service.OrderService;
+
+import static org.springframework.data.domain.Sort.Direction.DESC;
 
 @Controller
 @RequestMapping("/order")
@@ -24,8 +28,9 @@ public class OrderViewController {
     }
 
     @GetMapping()
-    public String findAllOrders(Model model) {
-        model.addAttribute("orders", orderService.findOrderList());
+    public String findAllOrders(Model model,
+                                @PageableDefault(size = 20, sort = "id", direction = DESC) Pageable pageable) {
+        model.addAttribute("orders", orderService.findOrderList(pageable));
 
         return "order/order-list";
     }

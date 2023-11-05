@@ -1,6 +1,8 @@
 package study.paymentintegrationserver.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.dto.order.*;
@@ -12,7 +14,6 @@ import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -44,10 +45,9 @@ public class OrderService {
         return orderFindDetailResponse;
     }
 
-    public List<OrderFindResponse> findOrderList() {
-        return orderInfoRepository.findAll().stream()
-                .map(OrderFindResponse::new)
-                .toList();
+    public Page<OrderFindResponse> findOrderList(Pageable pageable) {
+        return orderInfoRepository.findAll(pageable)
+                .map(OrderFindResponse::new);
     }
 
     @Transactional
