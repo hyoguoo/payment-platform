@@ -1,9 +1,7 @@
 package study.paymentintegrationserver.entity;
 
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import study.paymentintegrationserver.exception.ProductErrorMessage;
 import study.paymentintegrationserver.exception.ProductException;
 
@@ -11,8 +9,10 @@ import java.math.BigDecimal;
 
 @Getter
 @Entity
+@Builder
 @Table(name = "product")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product extends BaseTime {
 
     @Id
