@@ -25,11 +25,10 @@ public class OrderCreateRequest {
     @NotNull(message = "orderProduct must not be null")
     private final OrderProduct orderProduct;
 
-    public OrderInfo toEntity(User user, Product product, String orderId) {
+    public OrderInfo toEntity(User user, Product product) {
         return OrderInfo.builder()
                 .user(user)
                 .product(product)
-                .orderId(orderId)
                 .quantity(this.orderProduct.getQuantity())
                 .totalAmount(this.amount)
                 .status(ORDER_CREATE_STATUS)

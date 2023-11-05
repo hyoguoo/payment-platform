@@ -121,6 +121,13 @@ public class OrderInfo extends BaseTime {
     // Builder Pattern 사용 시 자동으로 실행되는 클래스
     @SuppressWarnings("unused")
     public static class OrderInfoBuilder {
+
+        private static final String ORDER_ID_PREFIX = "ORDER-";
+
+        private static String generateOrderId() {
+            return ORDER_ID_PREFIX + System.currentTimeMillis();
+        }
+
         private void validateProductInfo(BigDecimal totalAmount, Integer quantity) {
             this.product.validateStock(quantity);
 
@@ -137,7 +144,7 @@ public class OrderInfo extends BaseTime {
                     this.id,
                     this.user,
                     this.product,
-                    this.orderId,
+                    generateOrderId(),
                     this.paymentKey,
                     this.orderName,
                     this.method,
