@@ -5,6 +5,7 @@ import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -14,8 +15,8 @@ public class OrderFindDetailResponse {
     private final String orderId;
     private final BigDecimal amount;
     private final String paymentKey;
-    private final String requestedAt;
-    private final String approvedAt;
+    private final LocalDateTime requestedAt;
+    private final LocalDateTime approvedAt;
     private final String status;
     private final String productName;
     private final String userName;

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -13,6 +14,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public final class TossPaymentResponse {
+
+    // 2023-01-01T00:00:00+09:00 Pattern
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     private String version;
     private String paymentKey;

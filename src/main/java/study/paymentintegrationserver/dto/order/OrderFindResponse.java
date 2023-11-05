@@ -4,6 +4,7 @@ import lombok.Getter;
 import study.paymentintegrationserver.entity.OrderInfo;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Getter
 public class OrderFindResponse {
@@ -12,8 +13,8 @@ public class OrderFindResponse {
     private final String orderId;
     private final BigDecimal amount;
     private final String paymentKey;
-    private final String requestedAt;
-    private final String approvedAt;
+    private final LocalDateTime requestedAt;
+    private final LocalDateTime approvedAt;
     private final String status;
     private final String productName;
     private final String userName;

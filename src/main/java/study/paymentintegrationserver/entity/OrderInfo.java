@@ -8,6 +8,7 @@ import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Getter
 @Entity
@@ -52,10 +53,10 @@ public class OrderInfo extends BaseTime {
     private String status;
 
     @Column(name = "requested_at")
-    private String requestedAt;
+    private LocalDateTime requestedAt;
 
     @Column(name = "approved_at")
-    private String approvedAt;
+    private LocalDateTime approvedAt;
 
     @Column(name = "last_transaction_key")
     private String lastTransactionKey;
@@ -81,11 +82,11 @@ public class OrderInfo extends BaseTime {
     }
 
     private void updateOrderPaymentInfo(TossPaymentResponse paymentInfo) {
-        this.approvedAt = paymentInfo.getApprovedAt();
+        this.approvedAt = LocalDateTime.parse(paymentInfo.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
         this.paymentKey = paymentInfo.getPaymentKey();
-        this.requestedAt = paymentInfo.getRequestedAt();
+        this.requestedAt = LocalDateTime.parse(paymentInfo.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
         this.status = paymentInfo.getStatus();
         this.method = paymentInfo.getMethod();
     }
