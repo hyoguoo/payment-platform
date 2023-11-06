@@ -21,7 +21,6 @@ import java.time.LocalDateTime;
 public class OrderInfo extends BaseTime {
 
     private static final String ORDER_ID_PREFIX = "ORDER-";
-    private static final String ORDER_CREATE_STATUS = "READY";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,7 +56,7 @@ public class OrderInfo extends BaseTime {
 
     @Builder.Default
     @Column(name = "status", nullable = false)
-    private String status = ORDER_CREATE_STATUS;
+    private String status = OrderStatus.READY.getStatusName();
 
     @Column(name = "requested_at")
     private LocalDateTime requestedAt;
@@ -101,6 +100,10 @@ public class OrderInfo extends BaseTime {
     }
 
     public OrderInfo confirmOrder(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+        if (!paymentInfo.getStatus().equals(OrderStatus.DONE.getStatusName())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_DONE_PAYMENT);
+        }
+
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
 
         updateOrderPaymentInfo(paymentInfo);
@@ -109,6 +112,14 @@ public class OrderInfo extends BaseTime {
     }
 
     public OrderInfo cancelOrder(TossPaymentResponse paymentInfo) {
+        if (!this.paymentKey.equals(paymentInfo.getPaymentKey())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_PAYMENT_KEY);
+        }
+
+        if (!paymentInfo.getStatus().equals(OrderStatus.CANCELED.getStatusName())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_CANCELED_PAYMENT);
+        }
+
         updateOrderPaymentInfo(paymentInfo);
 
         return this;
@@ -156,5 +167,16 @@ public class OrderInfo extends BaseTime {
         return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
                orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
+    }
+
+    @Getter
+    enum OrderStatus {
+        READY("READY"), CANCELED("CANCELED"), DONE("DONE");
+
+        private final String statusName;
+
+        OrderStatus(String statusName) {
+            this.statusName = statusName;
+        }
     }
 }
