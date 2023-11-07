@@ -24,10 +24,7 @@ public class PaymentService {
     private String tossApiUrl;
 
     public TossPaymentResponse getPaymentInfoByOrderId(String orderId) {
-        return HttpUtils.requestGetWithBasicAuthorization(
-                        tossApiUrl + "/orders/" + orderId,
-                        EncodeUtils.encodeBase64(secretKey + ":"),
-                        TossPaymentResponse.class)
+        return findPaymentInfoByOrderId(orderId)
                 .orElseThrow(() -> PaymentException.of(PaymentErrorMessage.NOT_FOUND));
     }
 
