@@ -14,12 +14,12 @@ public class OrderFindDetailResponse {
     private final Long id;
     private final String orderId;
     private final BigDecimal amount;
-    private final String paymentKey;
-    private final LocalDateTime requestedAt;
-    private final LocalDateTime approvedAt;
     private final String status;
     private final String productName;
     private final String userName;
+    private LocalDateTime requestedAt;
+    private LocalDateTime approvedAt;
+    private String paymentKey;
     private String lastTransactionKey;
     private String method;
     private List<TossPaymentResponse.Cancel> cancels;
@@ -37,9 +37,13 @@ public class OrderFindDetailResponse {
     }
 
     public OrderFindDetailResponse addTossPayments(TossPaymentResponse tossPaymentResponse) {
+        this.requestedAt = LocalDateTime.parse(tossPaymentResponse.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+        this.approvedAt = LocalDateTime.parse(tossPaymentResponse.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+        this.paymentKey = tossPaymentResponse.getPaymentKey();
         this.lastTransactionKey = tossPaymentResponse.getLastTransactionKey();
         this.method = tossPaymentResponse.getMethod();
         this.cancels = tossPaymentResponse.getCancels();
+
         return this;
     }
 }
