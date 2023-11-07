@@ -113,7 +113,7 @@ class OrderInfoTest {
     void confirmOrderWithSuccessPayment(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
         // Given
         when(this.product.getPrice()).thenReturn(productPrice);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, totalAmount, quantity);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, totalAmount, quantity);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
@@ -134,7 +134,7 @@ class OrderInfoTest {
     void confirmOrderWithInvalidTotalAmount(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
         // Given
         when(this.product.getPrice()).thenReturn(productPrice);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, productPrice.multiply(BigDecimal.valueOf(quantity)), quantity);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, productPrice.multiply(BigDecimal.valueOf(quantity)), quantity);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
@@ -152,7 +152,7 @@ class OrderInfoTest {
     void confirmOrderWithFailPayment() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
@@ -171,7 +171,7 @@ class OrderInfoTest {
     void confirmOrderWithInvalidPaymentKey() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
         final String tossPaymentKey = "payment_key";
@@ -191,7 +191,7 @@ class OrderInfoTest {
     void confirmOrderWithInvalidUserId() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
         final Long invalidUserId = userId + 1;
@@ -210,7 +210,7 @@ class OrderInfoTest {
     void confirmOrderWithInvalidOrderId() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final String invalidOrderId = orderId + "invalid";
         final Long userId = user.getId();
@@ -229,7 +229,7 @@ class OrderInfoTest {
     void cancelOrderWithSuccessPayment() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 
         TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
@@ -251,7 +251,7 @@ class OrderInfoTest {
     void cancelOrderWithInvalidPaymentKey() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final String paymentKey1 = "payment_key";
         final String paymentKey2 = "not_equals_payment_key";
@@ -273,7 +273,7 @@ class OrderInfoTest {
     void cancelOrderWithFailPayment() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 
         TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
@@ -293,7 +293,7 @@ class OrderInfoTest {
     void updatePaymentInfoWithSuccessPayment() {
         // Given
         when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 
         TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);

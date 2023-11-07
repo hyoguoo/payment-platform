@@ -72,7 +72,7 @@ class OrderControllerTest {
         final Integer quantity = 1;
         String clientRequestPaymentKey = "test_payment_key";
 
-        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(user, product, product.getPrice(), quantity);
+        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, product, product.getPrice(), quantity);
         orderInfoRepository.save(orderInfo);
         OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderInfo.getOrderId(), orderInfo.getTotalAmount(), clientRequestPaymentKey);
 

@@ -32,9 +32,9 @@ public class TestDataFactory {
                 .build();
     }
 
-    public static OrderInfo generateOrderInfoWithTotalAmountAndQuantity(User user, Product product, BigDecimal totalAmount, Integer quantity) {
+    public static OrderInfo generateOrderInfoWithTotalAmountAndQuantity(Long id, User user, Product product, BigDecimal totalAmount, Integer quantity) {
         return OrderInfo.builder()
-                .id(1L)
+                .id(id)
                 .user(user)
                 .product(product)
                 .orderName("Test Generated Order Name")

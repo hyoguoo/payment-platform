@@ -64,6 +64,7 @@ class OrderServiceTest {
         // Given
         final Long orderId = 1L;
         OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
                 DEFAULT_USER,
                 DEFAULT_PRODUCT,
                 DEFAULT_TOTAL_AMOUNT,
@@ -93,11 +94,11 @@ class OrderServiceTest {
     void findOrderList(Integer page, Integer size, Long expectedSize) {
         // Given
         List<OrderInfo> orderInfoList = List.of(
-                generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
-                generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
-                generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
-                generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
-                generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY)
+                generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
+                generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
+                generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
+                generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
+                generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY)
         );
         when(orderInfoRepository.findAll(PageRequest.of(page, size)))
                 .thenReturn(new PageImpl<>(orderInfoList));
@@ -118,7 +119,7 @@ class OrderServiceTest {
 
         when(userService.getById(any())).thenReturn(DEFAULT_USER);
         when(productService.getById(any())).thenReturn(DEFAULT_PRODUCT);
-        when(orderInfoRepository.save(any())).thenReturn(generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY));
+        when(orderInfoRepository.save(any())).thenReturn(generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY));
 
         // When
         OrderCreateResponse result = orderService.createOrder(orderCreateRequest);
@@ -131,7 +132,7 @@ class OrderServiceTest {
     @DisplayName("주문 승인 요청 시 주문 정보를 조회하고, 결제 정보를 조회하여 주문 정보를 업데이트하고, 상품 재고를 차감 메서드를 호출합니다.")
     void testConfirmOrder() {
         // Given
-        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(DEFAULT_USER.getId(), orderInfo.getOrderId(), DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
 
         when(orderInfoRepository.findByOrderId(orderConfirmRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
@@ -155,7 +156,7 @@ class OrderServiceTest {
     @DisplayName("주문 취소 요청 시 주문 정보를 조회하고, 결제 정보를 조회하여 주문 정보를 업데이트하고, 상품 재고를 증가 메서드를 호출합니다.")
     void testCancelOrder() {
         // Given
-        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         OrderCancelRequest orderCancelRequest = generateOrderCancelRequest(orderInfo.getOrderId());
 
         OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(DEFAULT_USER.getId(), orderInfo.getOrderId(), DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
