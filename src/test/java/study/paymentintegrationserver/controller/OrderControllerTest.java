@@ -21,6 +21,8 @@ import study.paymentintegrationserver.repository.ProductRepository;
 import study.paymentintegrationserver.repository.UserRepository;
 import study.paymentintegrationserver.service.PaymentService;
 
+import java.math.BigDecimal;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -45,8 +47,8 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
-        user = userRepository.findById(1L).orElseThrow();
-        product = productRepository.findById(1L).orElseThrow();
+        user = userRepository.save(generateUser());
+        product = productRepository.save(generateProductWithPriceAndStock(BigDecimal.valueOf(10000), 10));
         MockitoAnnotations.openMocks(this);
     }
 

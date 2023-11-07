@@ -1,5 +1,6 @@
 package study.paymentintegrationserver.controller;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -56,6 +57,13 @@ class OrderConcurrentTest {
         productRepository.deleteAll();
         userRepository.deleteAll();
         MockitoAnnotations.openMocks(this);
+    }
+
+    @AfterEach
+    void tearDown() {
+        orderInfoRepository.deleteAll();
+        productRepository.deleteAll();
+        userRepository.deleteAll();
     }
 
     @CsvSource({
