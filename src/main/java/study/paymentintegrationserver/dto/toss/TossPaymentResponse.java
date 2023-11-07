@@ -1,6 +1,7 @@
 package study.paymentintegrationserver.dto.toss;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -11,6 +12,7 @@ import java.util.List;
  * <a href="https://docs.tosspayments.com/reference">Toss Payments API 응답 객체(Version 2022-11-16)</a>
  */
 @Getter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public final class TossPaymentResponse {
