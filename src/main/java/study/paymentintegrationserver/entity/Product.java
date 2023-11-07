@@ -55,6 +55,10 @@ public class Product extends BaseTime {
     }
 
     public void validateStock(Integer quantity) {
+        if (quantity < 0) {
+            throw ProductException.of(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
+        }
+
         if (this.stock < quantity) {
             throw ProductException.of(ProductErrorMessage.NOT_ENOUGH_STOCK);
         }

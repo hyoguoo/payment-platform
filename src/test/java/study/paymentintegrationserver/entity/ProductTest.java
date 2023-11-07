@@ -101,6 +101,22 @@ class ProductTest {
 
     @ParameterizedTest
     @CsvSource({
+            "-1",
+            "-10"
+    })
+    @DisplayName("재고 검증 시 검증할 재고가 음수면 예외가 발생한다.")
+    void validateStockNegative(Integer validateStockAmount) {
+        // Given
+        Product product = generateProductWithPriceAndStock(BigDecimal.valueOf(10000), 10);
+
+        // When, Then
+        assertThatThrownBy(() -> product.validateStock(validateStockAmount))
+                .isInstanceOf(ProductException.class)
+                .hasMessageContaining(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
             "10, 15",
             "20, 21"
     })
