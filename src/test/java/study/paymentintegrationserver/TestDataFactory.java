@@ -13,6 +13,7 @@ public class TestDataFactory {
 
     public static Product generateProductWithPriceAndStock(BigDecimal price, Integer stock) {
         return Product.builder()
+                .id(1L)
                 .name("Test Generated Product")
                 .price(price)
                 .description("Test Generated Product Description")
@@ -22,6 +23,7 @@ public class TestDataFactory {
 
     public static User generateUser() {
         return User.builder()
+                .id(1L)
                 .username("Test Generated User")
                 .email("test@test.com")
                 .build();
@@ -29,6 +31,7 @@ public class TestDataFactory {
 
     public static OrderInfo generateOrderInfoWithTotalAmountAndQuantity(User user, Product product, BigDecimal totalAmount, Integer quantity) {
         return OrderInfo.builder()
+                .id(1L)
                 .user(user)
                 .product(product)
                 .orderName("Test Generated Order Name")
