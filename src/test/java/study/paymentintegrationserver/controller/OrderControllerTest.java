@@ -7,6 +7,7 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.TestDataFactory;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.order.OrderConfirmResponse;
@@ -50,6 +51,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @Transactional
     @DisplayName("주문 생성 요청을 보내면 주문 생성 후 Order ID를 반환합니다.")
     void createOrder() {
         // Given
@@ -66,6 +68,7 @@ class OrderControllerTest {
     }
 
     @Test
+    @Transactional
     @DisplayName("주문 승인 요청을 보내면 주문 상태를 승인으로 변경합니다.")
     void approveOrder() {
         // Given
