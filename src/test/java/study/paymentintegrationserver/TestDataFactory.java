@@ -1,5 +1,6 @@
 package study.paymentintegrationserver;
 
+import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
@@ -49,6 +50,10 @@ public class TestDataFactory {
                 amount,
                 paymentKey
         );
+    }
+
+    public static OrderCancelRequest generateOrderCancelRequest(String orderId) {
+        return new OrderCancelRequest(orderId, "cancel reason");
     }
 
     public static TossPaymentResponse generateDonePaymentResponse(String paymentKey, String orderId, String orderName, BigDecimal totalAmount) {
