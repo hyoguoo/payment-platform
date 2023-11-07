@@ -132,11 +132,13 @@ public class OrderInfo extends BaseTime {
     }
 
     private void updateOrderPaymentInfo(TossPaymentResponse paymentInfo) {
-        this.approvedAt = LocalDateTime.parse(paymentInfo.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+        this.requestedAt = paymentInfo.getRequestedAt() == null ? null :
+                LocalDateTime.parse(paymentInfo.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+        this.approvedAt = paymentInfo.getApprovedAt() == null ? null :
+                LocalDateTime.parse(paymentInfo.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
         this.paymentKey = paymentInfo.getPaymentKey();
-        this.requestedAt = LocalDateTime.parse(paymentInfo.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
         this.status = paymentInfo.getStatus();
         this.method = paymentInfo.getMethod();
     }
