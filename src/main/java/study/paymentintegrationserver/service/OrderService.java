@@ -54,7 +54,7 @@ public class OrderService {
 
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
+        OrderInfo orderInfo = this.getOrderInfoByOrderPessimisticLock(orderConfirmRequest.getOrderId());
         TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -89,6 +89,11 @@ public class OrderService {
 
     private OrderInfo getOrderInfoByOrderId(String orderId) {
         return orderInfoRepository.findByOrderId(orderId)
+                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
+    }
+
+    private OrderInfo getOrderInfoByOrderPessimisticLock(String orderId) {
+        return orderInfoRepository.findByOrderIdPessimisticLock(orderId)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }
 }
