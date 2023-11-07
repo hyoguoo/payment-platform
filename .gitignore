@@ -250,4 +250,8 @@ src/main/resources/application.properties
 src/main/resources/application.yaml
 src/main/resources/application.yml
 
+src/test/resources/application.properties
+src/test/resources/application.yaml
+src/test/resources/application.yml
+
 # End of https://www.toptal.com/developers/gitignore/api/java,intellij,macos,windows,visualstudiocode,gradle
