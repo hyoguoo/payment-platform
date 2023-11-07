@@ -2,6 +2,8 @@ package study.paymentintegrationserver;
 
 import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.dto.order.OrderCreateRequest;
+import study.paymentintegrationserver.dto.order.OrderProduct;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.entity.Product;
@@ -41,6 +43,14 @@ public class TestDataFactory {
                 .quantity(quantity)
                 .status("Test Generated Status")
                 .build();
+    }
+
+    public static OrderCreateRequest generateOrderCreateRequest(User user, Product product, Integer quantity) {
+        return new OrderCreateRequest(
+                user.getId(),
+                product.getPrice().multiply(BigDecimal.valueOf(quantity)),
+                new OrderProduct(product.getId(), quantity)
+        );
     }
 
     public static OrderConfirmRequest generateOrderConfirmRequest(Long userId, String orderId, BigDecimal amount, String paymentKey) {

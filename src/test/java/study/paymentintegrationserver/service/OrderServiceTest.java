@@ -114,7 +114,7 @@ class OrderServiceTest {
     @DisplayName("주문 생성 시 주문 정보를 생성하고 ID를 반환합니다.")
     void testCreateOrder() {
         // Given
-        OrderCreateRequest orderCreateRequest = new OrderCreateRequest(generateUser().getId(), DEFAULT_TOTAL_AMOUNT, new OrderProduct(DEFAULT_PRODUCT.getId(), DEFAULT_QUANTITY));
+        OrderCreateRequest orderCreateRequest = generateOrderCreateRequest(DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_QUANTITY);
 
         when(userService.getById(any())).thenReturn(DEFAULT_USER);
         when(productService.getById(any())).thenReturn(DEFAULT_PRODUCT);
