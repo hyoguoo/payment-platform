@@ -42,7 +42,7 @@ public class TestDataFactory {
                 .build();
     }
 
-    public static OrderConfirmRequest generateRandomOrderConfirmRequest(Long userId, String orderId, BigDecimal amount, String paymentKey) {
+    public static OrderConfirmRequest generateOrderConfirmRequest(Long userId, String orderId, BigDecimal amount, String paymentKey) {
         return new OrderConfirmRequest(
                 userId,
                 orderId,
