@@ -55,6 +55,7 @@ public class OrderService {
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoByOrderPessimisticLock(orderConfirmRequest.getOrderId());
+        productService.reduceStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
         TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
 
         orderInfo.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -63,7 +64,6 @@ public class OrderService {
                 paymentService.confirmPayment(TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)),
                 orderConfirmRequest
         );
-        productService.reduceStock(confirmedOrderInfo.getProduct().getId(), confirmedOrderInfo.getQuantity());
 
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
