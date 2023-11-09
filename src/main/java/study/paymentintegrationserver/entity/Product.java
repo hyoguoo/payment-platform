@@ -32,6 +32,10 @@ public class Product extends BaseTime {
     @Column(name = "stock", nullable = false)
     private Integer stock;
 
+    @Version
+    @Builder.Default
+    private Long version = 0L;
+
     public Product reduceStock(Integer reduceStock) {
         if (reduceStock < 0) {
             throw ProductException.of(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);

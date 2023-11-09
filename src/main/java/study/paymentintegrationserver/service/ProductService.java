@@ -24,6 +24,12 @@ public class ProductService {
                 .reduceStock(reduceStock);
     }
 
+    public Product reduceStockOptimistic(Long productId, Integer reduceStock) {
+        return productRepository
+                .findByIdOptimistic(productId)
+                .reduceStock(reduceStock);
+    }
+
     public Product increaseStock(Long productId, Integer increaseStock) {
         return getById(productId)
                 .increaseStock(increaseStock);
