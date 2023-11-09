@@ -111,6 +111,14 @@ public class OrderInfo extends BaseTime {
         return this;
     }
 
+    public void validateInProgressOrder(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+        if (!paymentInfo.getStatus().equals(OrderStatus.IN_PROGRESS.getStatusName())) {
+            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_IN_PROGRESS_ORDER);
+        }
+
+        this.validateOrderInfo(paymentInfo, orderConfirmRequest);
+    }
+
     public OrderInfo cancelOrder(TossPaymentResponse paymentInfo) {
         if (!this.paymentKey.equals(paymentInfo.getPaymentKey())) {
             throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_PAYMENT_KEY);
@@ -143,7 +151,7 @@ public class OrderInfo extends BaseTime {
         this.method = paymentInfo.getMethod();
     }
 
-    public void validateOrderInfo(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+    private void validateOrderInfo(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
         if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
             throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_ORDER_ID);
         }
@@ -173,7 +181,7 @@ public class OrderInfo extends BaseTime {
 
     @Getter
     enum OrderStatus {
-        READY("READY"), CANCELED("CANCELED"), DONE("DONE");
+        READY("READY"), CANCELED("CANCELED"), DONE("DONE"), IN_PROGRESS("IN_PROGRESS");
 
         private final String statusName;
 
