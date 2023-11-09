@@ -47,9 +47,9 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
+        orderInfoRepository.deleteAll();
         userRepository.deleteAll();
         productRepository.deleteAll();
-        orderInfoRepository.deleteAll();
         user = userRepository.save(generateUser());
         product = productRepository.save(generateProductWithPriceAndStock(BigDecimal.valueOf(10000), 10));
         MockitoAnnotations.openMocks(this);
