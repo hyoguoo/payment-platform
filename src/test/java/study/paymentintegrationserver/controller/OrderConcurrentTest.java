@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.entity.Product;
@@ -30,9 +31,11 @@ import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static study.paymentintegrationserver.TestDataFactory.*;
 
+// TODO: mock 방식이 아닌 실제 mock server를 띄워서 테스트하는 방식으로 변경
 @SpringBootTest
 class OrderConcurrentTest {
 
@@ -87,12 +90,15 @@ class OrderConcurrentTest {
                 // Generate Request
                 OrderInfo orderInfo = savedOrderList.get(orderIndex);
                 String clientRequestPaymentKey = "test_payment_key";
-                TossPaymentResponse tossPaymentResponse = generateDonePaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount());
+                TossPaymentResponse inProgressTossPaymentResponse = generateInProgressPaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount());
+                TossPaymentResponse doneTossPaymentResponse = generateDonePaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount());
                 OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderInfo.getOrderId(), orderInfo.getTotalAmount(), clientRequestPaymentKey);
 
                 // Mocking Payment Service
-                when(paymentService.getPaymentInfoByOrderId(any())).thenReturn(tossPaymentResponse);
-                when(paymentService.confirmPayment(any())).thenReturn(tossPaymentResponse);
+                synchronized (this) {
+                    when(paymentService.getPaymentInfoByOrderId(anyString())).thenReturn(inProgressTossPaymentResponse);
+                    when(paymentService.confirmPayment(any(TossConfirmRequest.class))).thenReturn(doneTossPaymentResponse);
+                }
 
                 // Execute
                 orderController.confirmOrder(orderConfirmRequest);
