@@ -83,7 +83,7 @@ class OrderControllerTest {
 
         // When
         when(paymentService.getPaymentInfoByOrderId(any()))
-                .thenReturn(generateDonePaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount()));
+                .thenReturn(generateInProgressPaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount()));
         when(paymentService.confirmPayment(any()))
                 .thenReturn(generateDonePaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount()));
         OrderConfirmResponse confirmedOrderResponse = orderController.confirmOrder(orderConfirmRequest);

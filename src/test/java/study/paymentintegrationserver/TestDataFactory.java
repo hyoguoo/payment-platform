@@ -66,6 +66,29 @@ public class TestDataFactory {
         return new OrderCancelRequest(orderId, "cancel reason");
     }
 
+    public static TossPaymentResponse generateInProgressPaymentResponse(String paymentKey, String orderId, String orderName, BigDecimal totalAmount) {
+        return TossPaymentResponse.builder()
+                .version("2022-11-16")
+                .paymentKey(paymentKey)
+                .type("NORMAL")
+                .orderId(orderId)
+                .orderName(orderName)
+                .currency("KRW")
+                .method("카드")
+                .totalAmount(totalAmount.longValue())
+                .balanceAmount(totalAmount.longValue())
+                .status("IN_PROGRESS")
+                .requestedAt("2023-11-07T00:03:16+09:00")
+                .approvedAt("2023-11-07T00:03:39+09:00")
+                .lastTransactionKey("testogu59fri8fgjrikf")
+                .suppliedAmount(totalAmount.multiply(BigDecimal.valueOf(0.9)).longValue())
+                .vat(totalAmount.multiply(BigDecimal.valueOf(0.1)).longValue())
+                .receipt(new TossPaymentResponse.Receipt("https://dashboard.tosspayments.com/receipt/test"))
+                .checkout(new TossPaymentResponse.Checkout("https://api.tosspayments.com/v1/payments/test"))
+                .country("KR")
+                .build();
+    }
+
     public static TossPaymentResponse generateDonePaymentResponse(String paymentKey, String orderId, String orderName, BigDecimal totalAmount) {
         return TossPaymentResponse.builder()
                 .version("2022-11-16")

@@ -137,7 +137,7 @@ class OrderServiceTest {
 
         when(orderInfoRepository.findByOrderIdPessimisticLock(orderConfirmRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
         when(paymentService.getPaymentInfoByOrderId(any()))
-                .thenReturn(generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT));
+                .thenReturn(generateInProgressPaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT));
         when(paymentService.confirmPayment(any()))
                 .thenReturn(generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT));
         when(orderInfoRepository.save(any())).thenReturn(orderInfo);
