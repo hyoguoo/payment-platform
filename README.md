@@ -7,7 +7,10 @@
 - 결제 진행에 사용되는 도메인은 간단하게 하거나 생략
 - 그 외에 테스트 코드 작성을 통한 코드 신뢰성 보장 및 락을 통한 데이터 정합성 보장을 목표
 
-[//]: # (결제 플로우 이미지 추가)
+<br>
+<img width="70%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/1f608526-49f7-4c67-80dd-4841d5491c26">
+<br>
+<br>
 
 자세한 내용은 [토스 페이먼츠를 통한 결제 연동 시스템 구현 포스팅](https://hyoguoo.gitbook.io/tech-log/payment_system_with_toss) 참고
 
@@ -21,7 +24,7 @@ Java 17 / Spring 6.0.13 / Spring Boot 3.1.5 / MySQL 8.0.33
 - Product
 - OrderInfo
 
-[//]: # (ERD 이미지 추가)
+<img width="50%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/0d99d27e-3392-48d0-82cf-27f27b7bd6bf">
 
 ## 기능 목록
 
@@ -37,6 +40,6 @@ Java 17 / Spring 6.0.13 / Spring Boot 3.1.5 / MySQL 8.0.33
 
 - 비관적 락을 통한 데이터 정합성 보장
 
-[//]: # (비관적 락을 통한 데이터 정합성 보장 이미지 추가)
+<img width="70%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/870e9eeb-3ca2-4a96-9ffe-0253fc6201b6">
 
 - [N+1 문제 해결](https://hyoguoo.gitbook.io/tech-log/jpa_n+1)
