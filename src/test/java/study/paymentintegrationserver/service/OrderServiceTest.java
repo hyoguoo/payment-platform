@@ -71,7 +71,7 @@ class OrderServiceTest {
                 DEFAULT_QUANTITY
         );
 
-        when(orderInfoRepository.findById(orderId)).thenReturn(Optional.of(orderInfo));
+        when(orderInfoRepository.findByIdWithProductAndUser(orderId)).thenReturn(Optional.of(orderInfo));
         when(paymentService.findPaymentInfoByOrderId(orderInfo.getOrderId()))
                 .thenReturn(Optional.of(generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, DEFAULT_ORDER_ID, DEFAULT_ORDER_NAME, BigDecimal.TEN)));
 
@@ -100,7 +100,7 @@ class OrderServiceTest {
                 generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
                 generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY)
         );
-        when(orderInfoRepository.findAll(PageRequest.of(page, size)))
+        when(orderInfoRepository.findAllWithProductAndUser(PageRequest.of(page, size)))
                 .thenReturn(new PageImpl<>(orderInfoList));
 
         // When
@@ -161,7 +161,7 @@ class OrderServiceTest {
 
         OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(DEFAULT_USER.getId(), orderInfo.getOrderId(), DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
         orderInfo.confirmOrder(generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT), orderConfirmRequest);
-        when(orderInfoRepository.findByOrderId(orderCancelRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
+        when(orderInfoRepository.findByOrderIdWithProductAndUser(orderCancelRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
         when(paymentService.cancelPayment(any(), any())).thenReturn(generateCancelPaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT));
         when(orderInfoRepository.save(any())).thenReturn(orderInfo);
 

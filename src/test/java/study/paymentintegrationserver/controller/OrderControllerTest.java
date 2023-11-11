@@ -67,7 +67,7 @@ class OrderControllerTest {
         OrderCreateResponse createdOrderResponse = orderController.createOrder(orderCreateRequest);
 
         // Then
-        OrderInfo createdOrder = orderInfoRepository.findByOrderId(createdOrderResponse.getOrderId()).orElseThrow();
+        OrderInfo createdOrder = orderInfoRepository.findByOrderIdWithProductAndUser(createdOrderResponse.getOrderId()).orElseThrow();
         assertThat(createdOrderResponse.getOrderId()).isNotNull();
         assertThat(createdOrderResponse.getOrderId()).isEqualTo(createdOrder.getOrderId());
     }
@@ -94,7 +94,7 @@ class OrderControllerTest {
         // Then
         assertThat(confirmedOrderResponse.getOrderId()).isEqualTo(orderInfo.getOrderId());
         assertThat(confirmedOrderResponse.getAmount()).isEqualTo(orderInfo.getTotalAmount());
-        OrderInfo confirmedOrder = orderInfoRepository.findByOrderId(confirmedOrderResponse.getOrderId()).orElseThrow();
+        OrderInfo confirmedOrder = orderInfoRepository.findByOrderIdWithProductAndUser(confirmedOrderResponse.getOrderId()).orElseThrow();
         assertThat(confirmedOrder.getStatus()).isEqualTo("DONE");
         assertThat(confirmedOrder.getPaymentKey()).isEqualTo(clientRequestPaymentKey);
     }

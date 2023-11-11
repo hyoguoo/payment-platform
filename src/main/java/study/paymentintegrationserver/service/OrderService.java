@@ -35,7 +35,7 @@ public class OrderService {
     }
 
     public Page<OrderFindResponse> findOrderList(Pageable pageable) {
-        return orderInfoRepository.findAll(pageable)
+        return orderInfoRepository.findAllWithProductAndUser(pageable)
                 .map(OrderFindResponse::new);
     }
 
@@ -83,12 +83,12 @@ public class OrderService {
     }
 
     private OrderInfo getOrderInfoById(Long id) {
-        return this.orderInfoRepository.findById(id)
+        return this.orderInfoRepository.findByIdWithProductAndUser(id)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }
 
     private OrderInfo getOrderInfoByOrderId(String orderId) {
-        return orderInfoRepository.findByOrderId(orderId)
+        return orderInfoRepository.findByOrderIdWithProductAndUser(orderId)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }
 
