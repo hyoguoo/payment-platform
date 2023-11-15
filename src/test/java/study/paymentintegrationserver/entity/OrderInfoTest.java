@@ -1,6 +1,5 @@
 package study.paymentintegrationserver.entity;
 
-import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,9 +40,9 @@ class OrderInfoTest {
 
     static Stream<Arguments> validTotalAmountProvider() {
         return Stream.of(
-                Arguments.of(BigDecimal.valueOf(10000), 1, BigDecimal.valueOf(10000)),
-                Arguments.of(BigDecimal.valueOf(10000), 2, BigDecimal.valueOf(20000)),
-                Arguments.of(BigDecimal.valueOf(10000), 3, BigDecimal.valueOf(30000))
+                Arguments.of(1, BigDecimal.valueOf(10000)),
+                Arguments.of(2, BigDecimal.valueOf(20000)),
+                Arguments.of(3, BigDecimal.valueOf(30000))
         );
     }
 
@@ -66,9 +65,9 @@ class OrderInfoTest {
     @MethodSource("validTotalAmountProvider")
     @ParameterizedTest
     @DisplayName("주문 클래스 생성 시 주문 정보를 생성합니다.")
-    void givenValidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
+    void givenValidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(Integer quantity, BigDecimal totalAmount) {
         // Given
-        when(this.product.getPrice()).thenReturn(productPrice);
+        when(this.product.calculateTotalPrice(quantity)).thenReturn(totalAmount);
 
         // When
         OrderInfo orderInfo = OrderInfo.builder()
@@ -90,29 +89,20 @@ class OrderInfoTest {
     @DisplayName("주문 클래스 생성 시 주문 금액이 다를 경우 예외를 발생시킵니다.")
     void givenInvalidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
         // Given
-        when(this.product.getPrice()).thenReturn(productPrice);
+        when(this.product.calculateTotalPrice(quantity)).thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
 
         // When, Then
-        assertThatThrownBy(createOrderInfo(quantity, totalAmount))
+        assertThatThrownBy(() -> generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, totalAmount, quantity))
                 .isInstanceOf(OrderInfoException.class)
                 .hasMessageContaining(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT.getMessage());
-    }
-
-    private ThrowableAssert.ThrowingCallable createOrderInfo(Integer quantity, BigDecimal totalAmount) {
-        return () -> OrderInfo.builder()
-                .user(user)
-                .product(product)
-                .quantity(quantity)
-                .totalAmount(totalAmount)
-                .build();
     }
 
     @MethodSource("validTotalAmountProvider")
     @ParameterizedTest
     @DisplayName("주문이 승인 요청 시 주문 정보를 갱신되며 DONE 상태로 변경합니다.")
-    void confirmOrderWithSuccessPayment(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
+    void confirmOrderWithSuccessPayment(Integer quantity, BigDecimal totalAmount) {
         // Given
-        when(this.product.getPrice()).thenReturn(productPrice);
+        when(this.product.calculateTotalPrice(quantity)).thenReturn(totalAmount);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, totalAmount, quantity);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
@@ -133,7 +123,7 @@ class OrderInfoTest {
     @DisplayName("주문 승인 요청 시 주문 금액이 다를 경우 예외를 발생시킵니다.")
     void confirmOrderWithInvalidTotalAmount(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
         // Given
-        when(this.product.getPrice()).thenReturn(productPrice);
+        when(this.product.calculateTotalPrice(quantity)).thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, productPrice.multiply(BigDecimal.valueOf(quantity)), quantity);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
@@ -151,7 +141,7 @@ class OrderInfoTest {
     @DisplayName("주문이 승인 요청 시 PaymentResponse가 DONE 아닌 경우 예외를 발생시킵니다.")
     void confirmOrderWithFailPayment() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
@@ -170,7 +160,7 @@ class OrderInfoTest {
     @DisplayName("주문 승인 요청 시 paymentKey가 다를 경우 예외를 발생시킵니다.")
     void confirmOrderWithInvalidPaymentKey() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
@@ -190,7 +180,7 @@ class OrderInfoTest {
     @DisplayName("주문 승인 요청 시 user ID가 다를 경우 예외를 발생시킵니다.")
     void confirmOrderWithInvalidUserId() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
@@ -209,7 +199,7 @@ class OrderInfoTest {
     @DisplayName("주문 승인 요청 시 order ID가 다를 경우 예외를 발생시킵니다.")
     void confirmOrderWithInvalidOrderId() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final String invalidOrderId = orderId + "invalid";
@@ -228,7 +218,7 @@ class OrderInfoTest {
     @DisplayName("주문이 취소 요청 시 주문 정보를 갱신되며 CANCELED 상태로 변경합니다.")
     void cancelOrderWithSuccessPayment() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 
@@ -250,7 +240,7 @@ class OrderInfoTest {
     @DisplayName("주문 취소 요청 시 paymentKey가 다를 경우 예외를 발생시킵니다.")
     void cancelOrderWithInvalidPaymentKey() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
         final String paymentKey1 = "payment_key";
@@ -272,7 +262,7 @@ class OrderInfoTest {
     @DisplayName("주문 취소 요청 시 CANCLED 상태가 아닌 경우 예외를 발생시킵니다.")
     void cancelOrderWithFailPayment() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 
@@ -292,7 +282,7 @@ class OrderInfoTest {
     @DisplayName("주문 정보 갱신 시 갱신 된 주문 정보를 갱신합니다.")
     void updatePaymentInfoWithSuccessPayment() {
         // Given
-        when(this.product.getPrice()).thenReturn(DEFAULT_PRODUCT_PRICE);
+        when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
         orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         final String orderId = orderInfo.getOrderId();
 

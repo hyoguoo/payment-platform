@@ -93,7 +93,7 @@ public class OrderInfo extends BaseTime {
     private void validateProductInfo(BigDecimal totalAmount, Integer quantity) {
         this.product.validateStock(quantity);
 
-        BigDecimal totalPrice = this.product.getPrice().multiply(BigDecimal.valueOf(quantity));
+        BigDecimal totalPrice = this.product.calculateTotalPrice(quantity);
         if (totalAmount.compareTo(totalPrice) != 0) {
             throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
         }
@@ -172,7 +172,7 @@ public class OrderInfo extends BaseTime {
     private boolean compareAmounts(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
         BigDecimal paymentInfoTotalAmount = BigDecimal.valueOf(paymentInfo.getTotalAmount());
         BigDecimal orderConfirmRequestAmount = orderConfirmRequest.getAmount();
-        BigDecimal orderInfoAmount = this.product.getPrice().multiply(BigDecimal.valueOf(this.quantity));
+        BigDecimal orderInfoAmount = this.product.calculateTotalPrice(this.quantity);
 
         return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&

@@ -48,7 +48,7 @@ public class TestDataFactory {
     public static OrderCreateRequest generateOrderCreateRequest(User user, Product product, Integer quantity) {
         return new OrderCreateRequest(
                 user.getId(),
-                product.getPrice().multiply(BigDecimal.valueOf(quantity)),
+                product.calculateTotalPrice(quantity),
                 new OrderProduct(product.getId(), quantity)
         );
     }

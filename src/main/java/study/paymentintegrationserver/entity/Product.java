@@ -36,6 +36,10 @@ public class Product extends BaseTime {
     @Builder.Default
     private Long version = 0L;
 
+    public BigDecimal calculateTotalPrice(Integer quantity) {
+        return this.price.multiply(BigDecimal.valueOf(quantity));
+    }
+
     public Product reduceStock(Integer reduceStock) {
         if (reduceStock < 0) {
             throw ProductException.of(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);

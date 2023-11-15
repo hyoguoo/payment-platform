@@ -131,4 +131,21 @@ class ProductTest {
                 .isInstanceOf(ProductException.class)
                 .hasMessageContaining(ProductErrorMessage.NOT_ENOUGH_STOCK.getMessage());
     }
+
+    @ParameterizedTest
+    @CsvSource({
+            "10, 5, 50",
+            "20, 10, 200"
+    })
+    @DisplayName("총 가격을 계산한다.")
+    void calculateTotalPrice(Integer quantity, Integer price, Integer expectedTotalPrice) {
+        // Given
+        Product product = generateProductWithPriceAndStock(BigDecimal.valueOf(price), 10);
+
+        // When
+        BigDecimal totalPrice = product.calculateTotalPrice(quantity);
+
+        // Then
+        assertThat(totalPrice).isEqualTo(BigDecimal.valueOf(expectedTotalPrice));
+    }
 }
