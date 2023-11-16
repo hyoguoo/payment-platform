@@ -8,17 +8,13 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.entity.Product;
 import study.paymentintegrationserver.entity.User;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 import study.paymentintegrationserver.repository.ProductRepository;
 import study.paymentintegrationserver.repository.UserRepository;
-import study.paymentintegrationserver.service.PaymentService;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -30,12 +26,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 import static study.paymentintegrationserver.TestDataFactory.*;
 
-// TODO: mock 방식이 아닌 실제 mock server를 띄워서 테스트하는 방식으로 변경
 @SpringBootTest
 class OrderConcurrentTest {
 
@@ -47,8 +39,6 @@ class OrderConcurrentTest {
     private UserRepository userRepository;
     @Autowired
     private ProductRepository productRepository;
-    @MockBean
-    private PaymentService paymentService;
 
     private User user;
     private Product product;
@@ -90,15 +80,7 @@ class OrderConcurrentTest {
                 // Generate Request
                 OrderInfo orderInfo = savedOrderList.get(orderIndex);
                 String clientRequestPaymentKey = "test_payment_key";
-                TossPaymentResponse inProgressTossPaymentResponse = generateInProgressPaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount());
-                TossPaymentResponse doneTossPaymentResponse = generateDonePaymentResponse(clientRequestPaymentKey, orderInfo.getOrderId(), orderInfo.getOrderName(), orderInfo.getTotalAmount());
                 OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderInfo.getOrderId(), orderInfo.getTotalAmount(), clientRequestPaymentKey);
-
-                // Mocking Payment Service
-                synchronized (this) {
-                    when(paymentService.getPaymentInfoByOrderId(anyString())).thenReturn(inProgressTossPaymentResponse);
-                    when(paymentService.confirmPayment(any(TossConfirmRequest.class))).thenReturn(doneTossPaymentResponse);
-                }
 
                 // Execute
                 orderController.confirmOrder(orderConfirmRequest);
