@@ -35,11 +35,13 @@ public class OrderService {
         return new OrderFindDetailResponse(orderInfo);
     }
 
+    @Transactional(readOnly = true)
     public Page<OrderFindResponse> findOrderList(Pageable pageable) {
         return orderInfoRepository.findAllWithProductAndUser(pageable)
                 .map(OrderFindResponse::new);
     }
 
+    @Transactional(readOnly = true)
     public Slice<OrderFindResponse> findOrderListWithCursor(Pageable pageable, Long cursor) {
         Slice<OrderInfo> allWithProductAndUserWithCursor = orderInfoRepository.findAllWithProductAndUserWithCursor(pageable, cursor);
         return allWithProductAndUserWithCursor
@@ -54,7 +56,8 @@ public class OrderService {
                 orderCreateRequest.toEntity(
                         userService.getById(orderCreateRequest.getUserId()),
                         productService.getById(orderProduct.getProductId())
-                ));
+                )
+        );
 
         return new OrderCreateResponse(createdOrder);
     }
