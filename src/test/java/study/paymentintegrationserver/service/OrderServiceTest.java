@@ -8,9 +8,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import study.paymentintegrationserver.dto.order.*;
 import study.paymentintegrationserver.entity.OrderInfo;
 import study.paymentintegrationserver.entity.Product;
@@ -100,11 +100,11 @@ class OrderServiceTest {
                 generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY),
                 generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY)
         );
-        when(orderInfoRepository.findAllWithProductAndUser(PageRequest.of(page, size)))
+        when(orderInfoRepository.findAllWithProductAndUser(PageRequest.of(page, size, Sort.by("id").descending())))
                 .thenReturn(new PageImpl<>(orderInfoList));
 
         // When
-        OrderListResponse result = orderService.findOrderList(PageRequest.of(page, size));
+        OrderListResponse result = orderService.findOrderList(page, size);
 
         // Then
         assertThat(result).isNotNull();

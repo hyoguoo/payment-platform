@@ -1,8 +1,10 @@
 package study.paymentintegrationserver.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.dto.order.*;
@@ -35,8 +37,8 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public OrderListResponse findOrderList(Pageable pageable) {
-        return new OrderListResponse(orderInfoRepository.findAllWithProductAndUser(pageable));
+    public OrderListResponse findOrderList(int page, int size) {
+        return new OrderListResponse(orderInfoRepository.findAllWithProductAndUser(PageRequest.of(page, size, Sort.by("id").descending())));
     }
 
     @Transactional(readOnly = true)
