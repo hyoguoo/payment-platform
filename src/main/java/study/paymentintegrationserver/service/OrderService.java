@@ -1,7 +1,6 @@
 package study.paymentintegrationserver.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
@@ -36,9 +35,8 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public Page<OrderFindResponse> findOrderList(Pageable pageable) {
-        return orderInfoRepository.findAllWithProductAndUser(pageable)
-                .map(OrderFindResponse::new);
+    public OrderListResponse findOrderList(Pageable pageable) {
+        return new OrderListResponse(orderInfoRepository.findAllWithProductAndUser(pageable));
     }
 
     @Transactional(readOnly = true)

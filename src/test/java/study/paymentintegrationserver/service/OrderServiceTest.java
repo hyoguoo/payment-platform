@@ -104,7 +104,7 @@ class OrderServiceTest {
                 .thenReturn(new PageImpl<>(orderInfoList));
 
         // When
-        Page<OrderFindResponse> result = orderService.findOrderList(PageRequest.of(page, size));
+        OrderListResponse result = orderService.findOrderList(PageRequest.of(page, size));
 
         // Then
         assertThat(result).isNotNull();
