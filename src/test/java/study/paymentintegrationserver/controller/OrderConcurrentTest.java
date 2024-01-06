@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
@@ -49,7 +48,6 @@ class OrderConcurrentTest {
         orderInfoRepository.deleteAll();
         productRepository.deleteAll();
         userRepository.deleteAll();
-        MockitoAnnotations.openMocks(this);
     }
 
     @AfterEach
