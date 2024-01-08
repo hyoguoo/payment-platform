@@ -16,6 +16,8 @@
 
 [Client Repository](https://github.com/hyoguoo/payment-widget-client)
 
+[Mock Server Repository](https://github.com/hyoguoo/toss-mock-server)
+
 ## 기술 스택
 
 Java 17 / Spring 6.0.13 / Spring Boot 3.1.5 / MySQL 8.0.33
@@ -45,3 +47,4 @@ Java 17 / Spring 6.0.13 / Spring Boot 3.1.5 / MySQL 8.0.33
 <img width="70%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/870e9eeb-3ca2-4a96-9ffe-0253fc6201b6">
 
 - [N+1 문제 해결](https://hyoguoo.gitbook.io/tech-log/jpa_n+1)
+- [멀티 스레드 테스트와 @Transactional](https://hyoguoo.gitbook.io/tech-log/multi_thread_test)
