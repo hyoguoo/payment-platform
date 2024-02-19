@@ -113,7 +113,8 @@ public class OrderService {
                 TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
         ));
 
-        productService.increaseStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
+        productService.increaseStockWithCommit(orderInfo.getProduct().getId(),
+                orderInfo.getQuantity());
 
         return new OrderCancelResponse(orderInfo);
     }

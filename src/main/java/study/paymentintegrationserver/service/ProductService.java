@@ -39,8 +39,9 @@ public class ProductService {
                 .reduceStock(reduceStock);
     }
 
-    public Product increaseStock(Long productId, Integer increaseStock) {
-        return getById(productId)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Product increaseStockWithCommit(Long productId, Integer increaseStock) {
+        return getByIdPessimistic(productId)
                 .increaseStock(increaseStock);
     }
 }

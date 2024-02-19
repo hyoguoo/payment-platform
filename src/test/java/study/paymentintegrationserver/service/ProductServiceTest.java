@@ -122,10 +122,10 @@ class ProductServiceTest {
         Long productId = 1L;
 
         Product product = generateProductWithPriceAndStock(BigDecimal.valueOf(1000), initialStock);
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdPessimistic(productId)).thenReturn(Optional.of(product));
 
         // When
-        Product result = productService.increaseStock(productId, increaseStock);
+        Product result = productService.increaseStockWithCommit(productId, increaseStock);
 
         // Then
         assertThat(product.getId()).isEqualTo(result.getId());

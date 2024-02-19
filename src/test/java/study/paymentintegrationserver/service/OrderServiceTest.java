@@ -172,6 +172,6 @@ class OrderServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(orderInfo.getId());
         verify(paymentService, times(1)).cancelPayment(any(), any());
-        verify(productService, times(1)).increaseStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
+        verify(productService, times(1)).increaseStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
     }
 }
