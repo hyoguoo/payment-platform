@@ -6,7 +6,16 @@ import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import study.paymentintegrationserver.dto.order.*;
+import study.paymentintegrationserver.dto.order.OrderCancelRequest;
+import study.paymentintegrationserver.dto.order.OrderCancelResponse;
+import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
+import study.paymentintegrationserver.dto.order.OrderConfirmResponse;
+import study.paymentintegrationserver.dto.order.OrderCreateRequest;
+import study.paymentintegrationserver.dto.order.OrderCreateResponse;
+import study.paymentintegrationserver.dto.order.OrderFindDetailResponse;
+import study.paymentintegrationserver.dto.order.OrderFindResponse;
+import study.paymentintegrationserver.dto.order.OrderListResponse;
+import study.paymentintegrationserver.dto.order.OrderProduct;
 import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
@@ -37,7 +46,11 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public OrderListResponse findOrderList(int page, int size) {
-        return new OrderListResponse(orderInfoRepository.findAllWithProductAndUser(PageRequest.of(page, size, Sort.by("id").descending())));
+        return new OrderListResponse(
+                orderInfoRepository.findAllWithProductAndUser(
+                        PageRequest.of(page, size, Sort.by("id").descending())
+                )
+        );
     }
 
     @Transactional(readOnly = true)
@@ -68,9 +81,14 @@ public class OrderService {
 
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
-        productService.reduceStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
+        productService.reduceStockWithCommit(
+                orderInfo.getProduct().getId(),
+                orderInfo.getQuantity()
+        );
 
-        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
+        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(
+                orderConfirmRequest.getOrderId()
+        );
         orderInfo.validateInProgressOrder(paymentInfo, orderConfirmRequest);
         TossPaymentResponse confirmPaymentResponse = paymentService.confirmPayment(
                 TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)

@@ -12,7 +12,9 @@ public class TossCancelRequest {
     @NotNull(message = "cancelReason must not be null")
     private final String cancelReason;
 
-    public static TossCancelRequest createByOrderCancelRequest(OrderCancelRequest orderCancelRequest) {
+    public static TossCancelRequest createByOrderCancelRequest(
+            OrderCancelRequest orderCancelRequest
+    ) {
         return new TossCancelRequest(
                 orderCancelRequest.getCancelReason()
         );

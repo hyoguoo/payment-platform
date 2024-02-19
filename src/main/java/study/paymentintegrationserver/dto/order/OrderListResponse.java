@@ -1,10 +1,9 @@
 package study.paymentintegrationserver.dto.order;
 
+import java.util.List;
 import lombok.Getter;
 import org.springframework.data.domain.Page;
 import study.paymentintegrationserver.entity.OrderInfo;
-
-import java.util.List;
 
 @Getter
 public class OrderListResponse {

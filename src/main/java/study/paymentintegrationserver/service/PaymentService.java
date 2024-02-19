@@ -1,6 +1,7 @@
 package study.paymentintegrationserver.service;
 
 import jakarta.validation.Valid;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
@@ -11,8 +12,6 @@ import study.paymentintegrationserver.exception.PaymentErrorMessage;
 import study.paymentintegrationserver.exception.PaymentException;
 import study.paymentintegrationserver.util.EncodeUtils;
 import study.paymentintegrationserver.util.HttpUtils;
-
-import java.util.Optional;
 
 @Service
 @Validated
@@ -43,7 +42,10 @@ public class PaymentService {
                 TossPaymentResponse.class);
     }
 
-    public TossPaymentResponse cancelPayment(String paymentKey, @Valid TossCancelRequest tossCancelRequest) {
+    public TossPaymentResponse cancelPayment(
+            String paymentKey,
+            @Valid TossCancelRequest tossCancelRequest
+    ) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/" + paymentKey + "/cancel",
                 EncodeUtils.encodeBase64(secretKey + ":"),

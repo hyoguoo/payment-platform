@@ -1,16 +1,15 @@
 package study.paymentintegrationserver.entity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static study.paymentintegrationserver.TestDataFactory.generateProductWithPriceAndStock;
+
+import java.math.BigDecimal;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import study.paymentintegrationserver.exception.ProductErrorMessage;
 import study.paymentintegrationserver.exception.ProductException;
-
-import java.math.BigDecimal;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-import static study.paymentintegrationserver.TestDataFactory.generateProductWithPriceAndStock;
 
 class ProductTest {
 
@@ -79,10 +78,14 @@ class ProductTest {
         // When, Then
         assertThatThrownBy(() -> product.increaseStock(increaseStockAmount))
                 .isInstanceOf(ProductException.class)
-                .hasMessageContaining(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage());
+                .hasMessageContaining(
+                        ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage()
+                );
         assertThatThrownBy(() -> product.reduceStock(increaseStockAmount))
                 .isInstanceOf(ProductException.class)
-                .hasMessageContaining(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage());
+                .hasMessageContaining(
+                        ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage()
+                );
     }
 
     @ParameterizedTest
@@ -112,7 +115,9 @@ class ProductTest {
         // When, Then
         assertThatThrownBy(() -> product.validateStock(validateStockAmount))
                 .isInstanceOf(ProductException.class)
-                .hasMessageContaining(ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage());
+                .hasMessageContaining(
+                        ProductErrorMessage.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK.getMessage()
+                );
     }
 
     @ParameterizedTest

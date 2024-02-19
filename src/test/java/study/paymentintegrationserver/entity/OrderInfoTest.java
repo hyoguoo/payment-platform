@@ -1,5 +1,16 @@
 package study.paymentintegrationserver.entity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static study.paymentintegrationserver.TestDataFactory.generateCancelPaymentResponse;
+import static study.paymentintegrationserver.TestDataFactory.generateDonePaymentResponse;
+import static study.paymentintegrationserver.TestDataFactory.generateOrderConfirmRequest;
+import static study.paymentintegrationserver.TestDataFactory.generateOrderInfoWithTotalAmountAndQuantity;
+
+import java.math.BigDecimal;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,15 +24,6 @@ import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
 
-import java.math.BigDecimal;
-import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static study.paymentintegrationserver.TestDataFactory.*;
-
 
 class OrderInfoTest {
 
@@ -29,7 +31,8 @@ class OrderInfoTest {
     private final static String DEFAULT_ORDER_NAME = "order_name";
     private final static BigDecimal DEFAULT_PRODUCT_PRICE = BigDecimal.valueOf(10000);
     private final static Integer DEFAULT_QUANTITY = 1;
-    private final static BigDecimal DEFAULT_TOTAL_AMOUNT = DEFAULT_PRODUCT_PRICE.multiply(BigDecimal.valueOf(DEFAULT_QUANTITY));
+    private final static BigDecimal DEFAULT_TOTAL_AMOUNT =
+            DEFAULT_PRODUCT_PRICE.multiply(BigDecimal.valueOf(DEFAULT_QUANTITY));
 
     @Mock
     private User user;
@@ -65,7 +68,10 @@ class OrderInfoTest {
     @MethodSource("validTotalAmountProvider")
     @ParameterizedTest
     @DisplayName("주문 클래스 생성 시 주문 정보를 생성합니다.")
-    void givenValidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(Integer quantity, BigDecimal totalAmount) {
+    void givenValidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(
+            Integer quantity,
+            BigDecimal totalAmount
+    ) {
         // Given
         when(this.product.calculateTotalPrice(quantity)).thenReturn(totalAmount);
 
@@ -87,12 +93,23 @@ class OrderInfoTest {
     @MethodSource("invalidTotalAmountProvider")
     @ParameterizedTest
     @DisplayName("주문 클래스 생성 시 주문 금액이 다를 경우 예외를 발생시킵니다.")
-    void givenInvalidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
+    void givenInvalidOrderCreateRequest_whenCreateOrderInfo_thenOrderInfoIsCreated(
+            BigDecimal productPrice,
+            Integer quantity,
+            BigDecimal totalAmount
+    ) {
         // Given
-        when(this.product.calculateTotalPrice(quantity)).thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
+        when(this.product.calculateTotalPrice(quantity))
+                .thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
 
         // When, Then
-        assertThatThrownBy(() -> generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, totalAmount, quantity))
+        assertThatThrownBy(() ->
+                generateOrderInfoWithTotalAmountAndQuantity(1L,
+                        user,
+                        this.product,
+                        totalAmount,
+                        quantity
+                ))
                 .isInstanceOf(OrderInfoException.class)
                 .hasMessageContaining(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT.getMessage());
     }
@@ -103,33 +120,68 @@ class OrderInfoTest {
     void confirmOrderWithSuccessPayment(Integer quantity, BigDecimal totalAmount) {
         // Given
         when(this.product.calculateTotalPrice(quantity)).thenReturn(totalAmount);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, totalAmount, quantity);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                totalAmount,
+                quantity
+        );
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
-        TossPaymentResponse paymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, totalAmount);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(userId, orderId, totalAmount, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse paymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                totalAmount
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                userId,
+                orderId,
+                totalAmount,
+                DEFAULT_PAYMENT_KEY
+        );
 
         // When
         OrderInfo updatedOrderInfo = orderInfo.confirmOrder(paymentInfo, orderConfirmRequest);
 
         // Then
         assertThat(updatedOrderInfo).isEqualTo(orderInfo);
-        assertThat(updatedOrderInfo.getStatus()).isEqualTo(OrderInfo.OrderStatus.DONE.getStatusName());
+        assertThat(updatedOrderInfo.getStatus())
+                .isEqualTo(OrderInfo.OrderStatus.DONE.getStatusName());
     }
 
     @MethodSource("invalidTotalAmountProvider")
     @ParameterizedTest
     @DisplayName("주문 승인 요청 시 주문 금액이 다를 경우 예외를 발생시킵니다.")
-    void confirmOrderWithInvalidTotalAmount(BigDecimal productPrice, Integer quantity, BigDecimal totalAmount) {
+    void confirmOrderWithInvalidTotalAmount(BigDecimal productPrice, Integer quantity,
+            BigDecimal totalAmount) {
         // Given
-        when(this.product.calculateTotalPrice(quantity)).thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, productPrice.multiply(BigDecimal.valueOf(quantity)), quantity);
+        when(this.product.calculateTotalPrice(quantity))
+                .thenReturn(productPrice.multiply(BigDecimal.valueOf(quantity)));
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                productPrice.multiply(BigDecimal.valueOf(quantity)),
+                quantity
+        );
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
-        TossPaymentResponse paymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, totalAmount);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(userId, orderId, totalAmount, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse paymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                totalAmount
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                userId,
+                orderId,
+                totalAmount,
+                DEFAULT_PAYMENT_KEY
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.confirmOrder(paymentInfo, orderConfirmRequest))
@@ -142,12 +194,28 @@ class OrderInfoTest {
     void confirmOrderWithFailPayment() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
 
-        TossPaymentResponse paymentInfo = generateCancelPaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(userId, orderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse paymentInfo = generateCancelPaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                userId,
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.confirmOrder(paymentInfo, orderConfirmRequest))
@@ -161,14 +229,30 @@ class OrderInfoTest {
     void confirmOrderWithInvalidPaymentKey() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
         final String tossPaymentKey = "payment_key";
         final String orderPaymentKey = "not_equals_payment_key";
 
-        TossPaymentResponse paymentInfo = generateDonePaymentResponse(tossPaymentKey, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(userId, orderId, DEFAULT_TOTAL_AMOUNT, orderPaymentKey);
+        TossPaymentResponse paymentInfo = generateDonePaymentResponse(
+                tossPaymentKey,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                userId,
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                orderPaymentKey
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.confirmOrder(paymentInfo, orderConfirmRequest))
@@ -181,13 +265,29 @@ class OrderInfoTest {
     void confirmOrderWithInvalidUserId() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
         final Long userId = user.getId();
         final Long invalidUserId = userId + 1;
 
-        TossPaymentResponse paymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(invalidUserId, orderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse paymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                invalidUserId,
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.confirmOrder(paymentInfo, orderConfirmRequest))
@@ -200,13 +300,29 @@ class OrderInfoTest {
     void confirmOrderWithInvalidOrderId() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
         final String invalidOrderId = orderId + "invalid";
         final Long userId = user.getId();
 
-        TossPaymentResponse paymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(userId, invalidOrderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse paymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                userId,
+                invalidOrderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.confirmOrder(paymentInfo, orderConfirmRequest))
@@ -219,21 +335,43 @@ class OrderInfoTest {
     void cancelOrderWithSuccessPayment() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
 
-        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                user.getId(),
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
         orderInfo.confirmOrder(donePaymentInfo, orderConfirmRequest);
 
-        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
+        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
 
         // When
         OrderInfo updatedOrderInfo = orderInfo.cancelOrder(cancelPaymentInfo);
 
         // Then
         assertThat(updatedOrderInfo).isEqualTo(orderInfo);
-        assertThat(updatedOrderInfo.getStatus()).isEqualTo(OrderInfo.OrderStatus.CANCELED.getStatusName());
+        assertThat(updatedOrderInfo.getStatus())
+                .isEqualTo(OrderInfo.OrderStatus.CANCELED.getStatusName());
     }
 
     @Test
@@ -241,16 +379,37 @@ class OrderInfoTest {
     void cancelOrderWithInvalidPaymentKey() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
         final String paymentKey1 = "payment_key";
         final String paymentKey2 = "not_equals_payment_key";
 
-        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(paymentKey1, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderId, DEFAULT_TOTAL_AMOUNT, paymentKey1);
+        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(
+                paymentKey1,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                user.getId(),
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                paymentKey1
+        );
         orderInfo.confirmOrder(donePaymentInfo, orderConfirmRequest);
 
-        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(paymentKey2, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
+        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(
+                paymentKey2,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.cancelOrder(cancelPaymentInfo))
@@ -263,14 +422,35 @@ class OrderInfoTest {
     void cancelOrderWithFailPayment() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
 
-        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                user.getId(),
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
         orderInfo.confirmOrder(donePaymentInfo, orderConfirmRequest);
 
-        TossPaymentResponse cancelPaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
+        TossPaymentResponse cancelPaymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
 
         // When, Then
         assertThatThrownBy(() -> orderInfo.cancelOrder(cancelPaymentInfo))
@@ -283,20 +463,42 @@ class OrderInfoTest {
     void updatePaymentInfoWithSuccessPayment() {
         // Given
         when(this.product.calculateTotalPrice(DEFAULT_QUANTITY)).thenReturn(DEFAULT_TOTAL_AMOUNT);
-        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, user, this.product, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
+        orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                1L,
+                user,
+                this.product,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_QUANTITY
+        );
         final String orderId = orderInfo.getOrderId();
 
-        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
-        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderId, DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
+        TossPaymentResponse donePaymentInfo = generateDonePaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
+        OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                user.getId(),
+                orderId,
+                DEFAULT_TOTAL_AMOUNT,
+                DEFAULT_PAYMENT_KEY
+        );
         orderInfo.confirmOrder(donePaymentInfo, orderConfirmRequest);
 
-        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(DEFAULT_PAYMENT_KEY, orderId, DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT);
+        TossPaymentResponse cancelPaymentInfo = generateCancelPaymentResponse(
+                DEFAULT_PAYMENT_KEY,
+                orderId,
+                DEFAULT_ORDER_NAME,
+                DEFAULT_TOTAL_AMOUNT
+        );
 
         // When
         OrderInfo updatedOrderInfo = orderInfo.updatePaymentInfo(cancelPaymentInfo);
 
         // Then
         assertThat(updatedOrderInfo).isEqualTo(orderInfo);
-        assertThat(updatedOrderInfo.getStatus()).isEqualTo(OrderInfo.OrderStatus.CANCELED.getStatusName());
+        assertThat(updatedOrderInfo.getStatus())
+                .isEqualTo(OrderInfo.OrderStatus.CANCELED.getStatusName());
     }
 }

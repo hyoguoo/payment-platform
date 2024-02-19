@@ -1,6 +1,16 @@
 package study.paymentintegrationserver.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -9,9 +19,6 @@ import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
 import study.paymentintegrationserver.exception.OrderInfoException;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Getter
 @Entity
@@ -68,7 +75,10 @@ public class OrderInfo extends BaseTime {
     private String lastTransactionKey;
 
     @SuppressWarnings("java:S107")
-    protected OrderInfo(Long id, User user, Product product, String orderId, String paymentKey, String orderName, String method, Integer quantity, BigDecimal totalAmount, String status, LocalDateTime requestedAt, LocalDateTime approvedAt, String lastTransactionKey) {
+    protected OrderInfo(Long id, User user, Product product, String orderId, String paymentKey,
+            String orderName, String method, Integer quantity, BigDecimal totalAmount,
+            String status, LocalDateTime requestedAt, LocalDateTime approvedAt,
+            String lastTransactionKey) {
         this.id = id;
         this.user = user;
         this.product = product;
@@ -99,7 +109,10 @@ public class OrderInfo extends BaseTime {
         }
     }
 
-    public OrderInfo confirmOrder(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+    public OrderInfo confirmOrder(
+            TossPaymentResponse paymentInfo,
+            OrderConfirmRequest orderConfirmRequest
+    ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.DONE.getStatusName())) {
             throw OrderInfoException.of(OrderInfoErrorMessage.NOT_DONE_PAYMENT);
         }
@@ -111,7 +124,10 @@ public class OrderInfo extends BaseTime {
         return this;
     }
 
-    public void validateInProgressOrder(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+    public void validateInProgressOrder(
+            TossPaymentResponse paymentInfo,
+            OrderConfirmRequest orderConfirmRequest
+    ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.IN_PROGRESS.getStatusName())) {
             throw OrderInfoException.of(OrderInfoErrorMessage.NOT_IN_PROGRESS_ORDER);
         }
@@ -141,9 +157,15 @@ public class OrderInfo extends BaseTime {
 
     private void updateOrderPaymentInfo(TossPaymentResponse paymentInfo) {
         this.requestedAt = paymentInfo.getRequestedAt() == null ? null :
-                LocalDateTime.parse(paymentInfo.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+                LocalDateTime.parse(
+                        paymentInfo.getRequestedAt(),
+                        TossPaymentResponse.DATE_TIME_FORMATTER
+                );
         this.approvedAt = paymentInfo.getApprovedAt() == null ? null :
-                LocalDateTime.parse(paymentInfo.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+                LocalDateTime.parse(
+                        paymentInfo.getApprovedAt(),
+                        TossPaymentResponse.DATE_TIME_FORMATTER
+                );
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
         this.paymentKey = paymentInfo.getPaymentKey();
@@ -151,7 +173,10 @@ public class OrderInfo extends BaseTime {
         this.method = paymentInfo.getMethod();
     }
 
-    private void validateOrderInfo(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+    private void validateOrderInfo(
+            TossPaymentResponse paymentInfo,
+            OrderConfirmRequest orderConfirmRequest
+    ) {
         if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
             throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_ORDER_ID);
         }
@@ -169,14 +194,17 @@ public class OrderInfo extends BaseTime {
         }
     }
 
-    private boolean compareAmounts(TossPaymentResponse paymentInfo, OrderConfirmRequest orderConfirmRequest) {
+    private boolean compareAmounts(
+            TossPaymentResponse paymentInfo,
+            OrderConfirmRequest orderConfirmRequest
+    ) {
         BigDecimal paymentInfoTotalAmount = BigDecimal.valueOf(paymentInfo.getTotalAmount());
         BigDecimal orderConfirmRequestAmount = orderConfirmRequest.getAmount();
         BigDecimal orderInfoAmount = this.product.calculateTotalPrice(this.quantity);
 
         return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
-               orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
-               orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
+                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
+                orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
     }
 
     @Getter

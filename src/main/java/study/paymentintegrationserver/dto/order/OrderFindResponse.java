@@ -1,10 +1,9 @@
 package study.paymentintegrationserver.dto.order;
 
-import lombok.Getter;
-import study.paymentintegrationserver.entity.OrderInfo;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import lombok.Getter;
+import study.paymentintegrationserver.entity.OrderInfo;
 
 @Getter
 public class OrderFindResponse {

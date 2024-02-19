@@ -1,11 +1,14 @@
 package study.paymentintegrationserver.util;
 
 
-import org.springframework.http.*;
+import java.util.Optional;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.Optional;
 
 public final class HttpUtils {
 
@@ -16,12 +19,21 @@ public final class HttpUtils {
         throw new AssertionError();
     }
 
-    public static <T> Optional<T> requestGetWithBasicAuthorization(String url, String authorization, Class<T> responseType) {
+    public static <T> Optional<T> requestGetWithBasicAuthorization(
+            String url,
+            String authorization,
+            Class<T> responseType
+    ) {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<Object> httpEntity = new HttpEntity<>(httpHeaders);
 
         try {
-            ResponseEntity<T> response = new RestTemplate().exchange(url, HttpMethod.GET, httpEntity, responseType);
+            ResponseEntity<T> response = new RestTemplate().exchange(
+                    url,
+                    HttpMethod.GET,
+                    httpEntity,
+                    responseType
+            );
 
             return Optional.ofNullable(response.getBody());
         } catch (HttpClientErrorException.NotFound e) {
@@ -31,11 +43,20 @@ public final class HttpUtils {
         }
     }
 
-    public static <T, E> E requestPostWithBasicAuthorization(String url, String authorization, T body, Class<E> responseType) {
+    public static <T, E> E requestPostWithBasicAuthorization(
+            String url,
+            String authorization,
+            T body, Class<E> responseType
+    ) {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
 
-        ResponseEntity<E> response = new RestTemplate().exchange(url, HttpMethod.POST, httpEntity, responseType);
+        ResponseEntity<E> response = new RestTemplate().exchange(
+                url,
+                HttpMethod.POST,
+                httpEntity,
+                responseType
+        );
 
         return response.getBody();
     }

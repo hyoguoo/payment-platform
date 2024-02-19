@@ -1,12 +1,11 @@
 package study.paymentintegrationserver.dto.order;
 
-import lombok.Getter;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
-import study.paymentintegrationserver.entity.OrderInfo;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Getter;
+import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
+import study.paymentintegrationserver.entity.OrderInfo;
 
 @Getter
 public class OrderFindDetailResponse {
@@ -37,8 +36,14 @@ public class OrderFindDetailResponse {
     }
 
     public OrderFindDetailResponse addTossPayments(TossPaymentResponse tossPaymentResponse) {
-        this.requestedAt = LocalDateTime.parse(tossPaymentResponse.getRequestedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
-        this.approvedAt = LocalDateTime.parse(tossPaymentResponse.getApprovedAt(), TossPaymentResponse.DATE_TIME_FORMATTER);
+        this.requestedAt = LocalDateTime.parse(
+                tossPaymentResponse.getRequestedAt(),
+                TossPaymentResponse.DATE_TIME_FORMATTER
+        );
+        this.approvedAt = LocalDateTime.parse(
+                tossPaymentResponse.getApprovedAt(),
+                TossPaymentResponse.DATE_TIME_FORMATTER
+        );
         this.paymentKey = tossPaymentResponse.getPaymentKey();
         this.lastTransactionKey = tossPaymentResponse.getLastTransactionKey();
         this.method = tossPaymentResponse.getMethod();

@@ -1,9 +1,8 @@
 package study.paymentintegrationserver.dto.order;
 
+import java.math.BigDecimal;
 import lombok.Getter;
 import study.paymentintegrationserver.entity.OrderInfo;
-
-import java.math.BigDecimal;
 
 @Getter
 public class OrderConfirmResponse {

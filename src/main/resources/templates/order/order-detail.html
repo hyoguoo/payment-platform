@@ -1,58 +1,60 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet"
-          integrity="sha384-KyZXEAg3QhqLMpG8r+8fhAXLRk2vvoC2f3B09zVXn8CA5QIVfZOJ3BCsw2P0p/We" crossorigin="anonymous">
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-KyZXEAg3QhqLMpG8r+8fhAXLRk2vvoC2f3B09zVXn8CA5QIVfZOJ3BCsw2P0p/We"
+        crossorigin="anonymous">
 
-    <title>Order Detail</title>
+  <title>Order Detail</title>
 </head>
 <body class="container-fluid">
 <h1>Order Detail</h1>
 
 <div class="card">
-    <div class="card-body">
-        <h5 class="card-title">Order Details</h5>
-        <p class="card-text">ID: [[${order.id}]]</p>
-        <p class="card-text">Order ID: [[${order.orderId}]]</p>
-        <p class="card-text">Amount: [[${order.amount}]]</p>
-        <p class="card-text">Payment Key: [[${order.paymentKey}]]</p>
-        <p class="card-text">Requested At: [[${order.requestedAt}]]</p>
-        <p class="card-text">Approved At: [[${order.approvedAt}]]</p>
-        <p class="card-text">Status: [[${order.status}]]</p>
-        <p class="card-text">Product Name: [[${order.productName}]]</p>
-        <p class="card-text">User Name: [[${order.userName}]]</p>
-        <p class="card-text">Last Transaction Key: [[${order.lastTransactionKey}]]</p>
-        <p class="card-text">Method: [[${order.method}]]</p>
-    </div>
+  <div class="card-body">
+    <h5 class="card-title">Order Details</h5>
+    <p class="card-text">ID: [[${order.id}]]</p>
+    <p class="card-text">Order ID: [[${order.orderId}]]</p>
+    <p class="card-text">Amount: [[${order.amount}]]</p>
+    <p class="card-text">Payment Key: [[${order.paymentKey}]]</p>
+    <p class="card-text">Requested At: [[${order.requestedAt}]]</p>
+    <p class="card-text">Approved At: [[${order.approvedAt}]]</p>
+    <p class="card-text">Status: [[${order.status}]]</p>
+    <p class="card-text">Product Name: [[${order.productName}]]</p>
+    <p class="card-text">User Name: [[${order.userName}]]</p>
+    <p class="card-text">Last Transaction Key: [[${order.lastTransactionKey}]]</p>
+    <p class="card-text">Method: [[${order.method}]]</p>
+  </div>
 </div>
 
 <form th:action="@{/order/cancel(id=${order.id})}" method="post">
-    <div class="form-group">
-        <input type="hidden" id="orderId" name="orderId" th:value="${order.orderId}"/>
-    </div>
-    <div class="form-group">
-        <label for="cancelReason">Cancel Reason:</label>
-        <input type="text" id="cancelReason" name="cancelReason" class="form-control" required/>
-    </div>
-    <button type="submit" class="btn btn-danger">Cancel Order</button>
+  <div class="form-group">
+    <input type="hidden" id="orderId" name="orderId" th:value="${order.orderId}"/>
+  </div>
+  <div class="form-group">
+    <label for="cancelReason">Cancel Reason:</label>
+    <input type="text" id="cancelReason" name="cancelReason" class="form-control" required/>
+  </div>
+  <button type="submit" class="btn btn-danger">Cancel Order</button>
 </form>
 
 <div class="mt-2">
-    <h5>Cancels</h5>
-    <ul>
-        <li th:each="cancel: ${order.cancels}">
-            <p>Cancel Amount: [[${cancel.cancelAmount}]]</p>
-            <p>Cancel Reason: [[${cancel.cancelReason}]]</p>
-            <p>Tax Free Amount: [[${cancel.taxFreeAmount}]]</p>
-            <p>Tax Exemption Amount: [[${cancel.taxExemptionAmount}]]</p>
-            <p>Refundable Amount: [[${cancel.refundableAmount}]]</p>
-            <p>Easy Pay Discount Amount: [[${cancel.easyPayDiscountAmount}]]</p>
-            <p>Canceled At: [[${cancel.canceledAt}]]</p>
-            <p>Transaction Key: [[${cancel.transactionKey}]]</p>
-            <p>Receipt Key: [[${cancel.receiptKey}]]</p>
-        </li>
-    </ul>
+  <h5>Cancels</h5>
+  <ul>
+    <li th:each="cancel: ${order.cancels}">
+      <p>Cancel Amount: [[${cancel.cancelAmount}]]</p>
+      <p>Cancel Reason: [[${cancel.cancelReason}]]</p>
+      <p>Tax Free Amount: [[${cancel.taxFreeAmount}]]</p>
+      <p>Tax Exemption Amount: [[${cancel.taxExemptionAmount}]]</p>
+      <p>Refundable Amount: [[${cancel.refundableAmount}]]</p>
+      <p>Easy Pay Discount Amount: [[${cancel.easyPayDiscountAmount}]]</p>
+      <p>Canceled At: [[${cancel.canceledAt}]]</p>
+      <p>Transaction Key: [[${cancel.transactionKey}]]</p>
+      <p>Receipt Key: [[${cancel.receiptKey}]]</p>
+    </li>
+  </ul>
 </div>
 
 <a th:href="@{/order}" class="btn btn-primary mt-2">Back to Order List</a>

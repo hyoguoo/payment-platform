@@ -1,15 +1,15 @@
 package study.paymentintegrationserver.dto.toss;
 
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-
 /**
- * <a href="https://docs.tosspayments.com/reference">Toss Payments API 응답 객체(Version 2022-11-16)</a>
+ * <a href="https://docs.tosspayments.com/reference">Toss Payments API 응답 객체(Version
+ * 2022-11-16)</a>
  */
 @Getter
 @Builder
@@ -18,7 +18,8 @@ import java.util.List;
 public final class TossPaymentResponse {
 
     // 2023-01-01T00:00:00+09:00 Pattern
-    public static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+    public static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     private String version;
     private String paymentKey;
@@ -56,6 +57,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Cancel {
+
         private double cancelAmount;
         private String cancelReason;
         private double taxFreeAmount;
@@ -71,6 +73,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MobilePhone {
+
         private String customerMobilePhone;
         private String settlementStatus;
 
@@ -80,6 +83,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class GiftCertificate {
+
         private String approveNo;
         private String settlementStatus;
     }
@@ -88,6 +92,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Transfer {
+
         private String bankCode;
         private String settlementStatus;
     }
@@ -97,6 +102,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Receipt {
+
         private String url;
     }
 
@@ -105,6 +111,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Checkout {
+
         private String url;
     }
 
@@ -112,6 +119,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class EasyPay {
+
         private String provider;
         private double amount;
         private double discountAmount;
@@ -121,6 +129,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Failure {
+
         private String code;
         private String message;
     }
@@ -129,6 +138,7 @@ public final class TossPaymentResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CashReceipt {
+
         private String type;
         private String receiptKey;
         private String issueNumber;
