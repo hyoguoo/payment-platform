@@ -135,7 +135,7 @@ class OrderServiceTest {
         OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(1L, DEFAULT_USER, DEFAULT_PRODUCT, DEFAULT_TOTAL_AMOUNT, DEFAULT_QUANTITY);
         OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(DEFAULT_USER.getId(), orderInfo.getOrderId(), DEFAULT_TOTAL_AMOUNT, DEFAULT_PAYMENT_KEY);
 
-        when(orderInfoRepository.findByOrderIdPessimisticLock(orderConfirmRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
+        when(orderInfoRepository.findByOrderIdWithProductAndUser(orderConfirmRequest.getOrderId())).thenReturn(Optional.of(orderInfo));
         when(paymentService.getPaymentInfoByOrderId(any()))
                 .thenReturn(generateInProgressPaymentResponse(DEFAULT_PAYMENT_KEY, orderInfo.getOrderId(), DEFAULT_ORDER_NAME, DEFAULT_TOTAL_AMOUNT));
         when(paymentService.confirmPayment(any()))
@@ -149,7 +149,7 @@ class OrderServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getOrderId()).isEqualTo(orderInfo.getOrderId());
         verify(paymentService, times(1)).confirmPayment(any());
-        verify(productService, times(1)).reduceStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
+        verify(productService, times(1)).reduceStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
     }
 
     @Test

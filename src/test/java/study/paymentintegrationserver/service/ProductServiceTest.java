@@ -79,10 +79,10 @@ class ProductServiceTest {
 
         Product product = generateProductWithPriceAndStock(BigDecimal.valueOf(1000), initialStock);
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdPessimistic(productId)).thenReturn(Optional.of(product));
 
         // When
-        Product result = productService.reduceStock(productId, reduceStock);
+        Product result = productService.reduceStockWithCommit(productId, reduceStock);
 
         // Assert
         assertThat(product.getId()).isEqualTo(result.getId());
@@ -102,11 +102,11 @@ class ProductServiceTest {
 
         Product product = generateProductWithPriceAndStock(BigDecimal.valueOf(1000), initialStock);
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdPessimistic(productId)).thenReturn(Optional.of(product));
 
         // When, Then
         assertThatExceptionOfType(ProductException.class)
-                .isThrownBy(() -> productService.reduceStock(productId, reduceStock))
+                .isThrownBy(() -> productService.reduceStockWithCommit(productId, reduceStock))
                 .withMessageContaining(ProductErrorMessage.NOT_ENOUGH_STOCK.getMessage());
     }
 

@@ -66,18 +66,22 @@ public class OrderService {
         return new OrderCreateResponse(createdOrder);
     }
 
-    @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = this.getOrderInfoByOrderPessimisticLock(orderConfirmRequest.getOrderId());
-        productService.reduceStock(orderInfo.getProduct().getId(), orderInfo.getQuantity());
-        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
+        OrderInfo orderInfo = this.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
+        productService.reduceStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
 
+        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(orderConfirmRequest.getOrderId());
         orderInfo.validateInProgressOrder(paymentInfo, orderConfirmRequest);
+        TossPaymentResponse confirmPaymentResponse = paymentService.confirmPayment(
+                TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)
+        );
+        // TODO: API 요청 부분에서 실패 시 차감 된 재고 롤백 로직 추가
 
         OrderInfo confirmedOrderInfo = orderInfo.confirmOrder(
-                paymentService.confirmPayment(TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)),
+                confirmPaymentResponse,
                 orderConfirmRequest
         );
+        orderInfoRepository.save(confirmedOrderInfo); // TODO: 별도의 @Transactional 메서드로 분리
 
         return new OrderConfirmResponse(confirmedOrderInfo);
     }

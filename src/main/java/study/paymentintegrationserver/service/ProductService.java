@@ -2,6 +2,8 @@ package study.paymentintegrationserver.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import study.paymentintegrationserver.entity.Product;
 import study.paymentintegrationserver.exception.ProductErrorMessage;
 import study.paymentintegrationserver.exception.ProductException;
@@ -19,8 +21,15 @@ public class ProductService {
                 .orElseThrow(() -> ProductException.of(ProductErrorMessage.NOT_FOUND));
     }
 
-    public Product reduceStock(Long productId, Integer reduceStock) {
-        return getById(productId)
+    private Product getByIdPessimistic(Long id) {
+        return productRepository
+                .findByIdPessimistic(id)
+                .orElseThrow(() -> ProductException.of(ProductErrorMessage.NOT_FOUND));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Product reduceStockWithCommit(Long productId, Integer reduceStock) {
+        return getByIdPessimistic(productId)
                 .reduceStock(reduceStock);
     }
 
