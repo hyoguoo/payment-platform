@@ -27,7 +27,9 @@
 
   <img width="70%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/434f4486-c199-4c2a-bc93-98751a2751ae">
 
-그 외 [N+1 문제 해결](https://hyoguoo.gitbook.io/tech-log/jpa_n+1)을 통한 성능 개선 진행
+그 외 [N+1 문제 해결](https://hyoguoo.gitbook.io/tech-log/jpa_n+1)
+및 [Cursor 기반 페이징](https://hyoguoo.gitbook.io/tech-log/cursor_based_paging_in_spring_data_jpa) 적용을 통한
+성능 개선 진행
 
 <br>
 
