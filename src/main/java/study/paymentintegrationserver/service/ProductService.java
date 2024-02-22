@@ -33,12 +33,6 @@ public class ProductService {
                 .reduceStock(reduceStock);
     }
 
-    public Product reduceStockOptimistic(Long productId, Integer reduceStock) {
-        return productRepository
-                .findByIdOptimistic(productId)
-                .reduceStock(reduceStock);
-    }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Product increaseStockWithCommit(Long productId, Integer increaseStock) {
         return getByIdPessimistic(productId)

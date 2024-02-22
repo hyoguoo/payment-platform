@@ -9,10 +9,6 @@ import study.paymentintegrationserver.entity.Product;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    @Lock(LockModeType.OPTIMISTIC)
-    @Query("select p from Product p where p.id = :productId")
-    Product findByIdOptimistic(Long productId);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.id = :id")
     Optional<Product> findByIdPessimistic(Long id);

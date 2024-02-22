@@ -68,9 +68,4 @@ public class OrderService {
         return orderInfoRepository.findByOrderIdWithProductAndUser(orderId)
                 .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
     }
-
-    private OrderInfo getOrderInfoByOrderPessimisticLock(String orderId) {
-        return orderInfoRepository.findByOrderIdPessimisticLock(orderId)
-                .orElseThrow(() -> OrderInfoException.of(OrderInfoErrorMessage.NOT_FOUND));
-    }
 }
