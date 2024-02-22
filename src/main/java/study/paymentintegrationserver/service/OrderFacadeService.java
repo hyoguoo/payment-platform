@@ -47,15 +47,9 @@ public class OrderFacadeService {
                 orderInfo.getQuantity()
         );
 
-        TossPaymentResponse confirmPaymentResponse = this.confirmPaymentWithStockRollback(
+        OrderInfo confirmedOrderInfo = this.confirmPaymentAndOrderInfoWithStockRollback(
                 orderConfirmRequest,
                 orderInfo
-        );
-
-        OrderInfo confirmedOrderInfo = orderService.confirmOrderInfo(
-                orderInfo.getId(),
-                orderConfirmRequest,
-                confirmPaymentResponse
         );
 
         return new OrderConfirmResponse(confirmedOrderInfo);
@@ -74,13 +68,19 @@ public class OrderFacadeService {
     }
 
 
-    private TossPaymentResponse confirmPaymentWithStockRollback(
+    private OrderInfo confirmPaymentAndOrderInfoWithStockRollback(
             OrderConfirmRequest orderConfirmRequest,
             OrderInfo orderInfo
     ) {
         try {
-            return paymentService.confirmPayment(
+            TossPaymentResponse confirmPaymentResponse = paymentService.confirmPayment(
                     TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)
+            );
+
+            return orderService.confirmOrderInfo(
+                    orderInfo.getId(),
+                    orderConfirmRequest,
+                    confirmPaymentResponse
             );
         } catch (Exception e) {
             productService.increaseStockWithCommit(
