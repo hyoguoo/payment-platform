@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 import study.paymentintegrationserver.dto.order.OrderCancelResponse;
+import study.paymentintegrationserver.service.OrderFacadeService;
 import study.paymentintegrationserver.service.OrderService;
 
 @Controller
@@ -20,10 +21,11 @@ import study.paymentintegrationserver.service.OrderService;
 public class OrderViewController {
 
     private final OrderService orderService;
+    private final OrderFacadeService orderFacadeService;
 
     @GetMapping("/{id}")
     public String findOrder(@PathVariable("id") Long id, Model model) {
-        model.addAttribute("order", orderService.getOrderDetailsByIdAndUpdatePaymentInfo(id));
+        model.addAttribute("order", orderFacadeService.getOrderDetailsByIdAndUpdatePaymentInfo(id));
 
         return "order/order-detail";
     }
@@ -40,7 +42,9 @@ public class OrderViewController {
 
     @PostMapping("/cancel")
     public String cancelOrder(@ModelAttribute @Valid OrderCancelRequest orderCancelRequest) {
-        OrderCancelResponse orderCancelResponse = orderService.cancelOrder(orderCancelRequest);
+        OrderCancelResponse orderCancelResponse = orderFacadeService.cancelOrder(
+                orderCancelRequest
+        );
 
         return "redirect:/order/" + orderCancelResponse.getId();
     }

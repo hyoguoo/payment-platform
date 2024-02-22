@@ -14,6 +14,7 @@ import study.paymentintegrationserver.dto.order.OrderConfirmResponse;
 import study.paymentintegrationserver.dto.order.OrderCreateRequest;
 import study.paymentintegrationserver.dto.order.OrderCreateResponse;
 import study.paymentintegrationserver.dto.order.OrderFindResponse;
+import study.paymentintegrationserver.service.OrderFacadeService;
 import study.paymentintegrationserver.service.OrderService;
 
 @RestController
@@ -22,6 +23,7 @@ import study.paymentintegrationserver.service.OrderService;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderFacadeService orderFacadeService;
 
     @GetMapping
     public Slice<OrderFindResponse> findOrderListWithCursor(
@@ -35,13 +37,13 @@ public class OrderController {
     public OrderCreateResponse createOrder(
             @RequestBody @Valid OrderCreateRequest orderCreateRequest
     ) {
-        return orderService.createOrder(orderCreateRequest);
+        return orderFacadeService.createOrder(orderCreateRequest);
     }
 
     @PostMapping("/confirm")
     public OrderConfirmResponse confirmOrder(
             @RequestBody @Valid OrderConfirmRequest orderConfirmRequest
     ) {
-        return orderService.confirmOrder(orderConfirmRequest);
+        return orderFacadeService.confirmOrder(orderConfirmRequest);
     }
 }
