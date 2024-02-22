@@ -32,6 +32,7 @@ import study.paymentintegrationserver.repository.UserRepository;
 @SpringBootTest
 class OrderConcurrentTest {
 
+    private final static int THREAD_SIZE = 32;
     @Autowired
     private OrderController orderController;
     @Autowired
@@ -100,7 +101,7 @@ class OrderConcurrentTest {
             } catch (Exception e) {
                 failCount.incrementAndGet();
             }
-        }, orderCount, 32);
+        }, orderCount, THREAD_SIZE);
 
         Product updatedProduct = productRepository.findById(product.getId()).orElseThrow();
 
