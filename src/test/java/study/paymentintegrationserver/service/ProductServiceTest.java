@@ -1,5 +1,13 @@
 package study.paymentintegrationserver.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
+import static org.mockito.Mockito.when;
+import static study.paymentintegrationserver.TestDataFactory.generateProductWithPriceAndStock;
+
+import java.math.BigDecimal;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,15 +20,6 @@ import study.paymentintegrationserver.entity.Product;
 import study.paymentintegrationserver.exception.ProductErrorMessage;
 import study.paymentintegrationserver.exception.ProductException;
 import study.paymentintegrationserver.repository.ProductRepository;
-
-import java.math.BigDecimal;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatExceptionOfType;
-import static org.mockito.Mockito.when;
-import static study.paymentintegrationserver.TestDataFactory.generateProductWithPriceAndStock;
 
 
 class ProductServiceTest {

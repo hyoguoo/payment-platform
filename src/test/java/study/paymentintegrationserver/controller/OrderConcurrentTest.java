@@ -1,5 +1,19 @@
 package study.paymentintegrationserver.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static study.paymentintegrationserver.TestDataFactory.generateOrderConfirmRequest;
+import static study.paymentintegrationserver.TestDataFactory.generateOrderInfoWithTotalAmountAndQuantity;
+import static study.paymentintegrationserver.TestDataFactory.generateProductWithPriceAndStock;
+import static study.paymentintegrationserver.TestDataFactory.generateUser;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,18 +28,6 @@ import study.paymentintegrationserver.entity.User;
 import study.paymentintegrationserver.repository.OrderInfoRepository;
 import study.paymentintegrationserver.repository.ProductRepository;
 import study.paymentintegrationserver.repository.UserRepository;
-
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static study.paymentintegrationserver.TestDataFactory.*;
 
 @SpringBootTest
 class OrderConcurrentTest {
@@ -65,8 +67,15 @@ class OrderConcurrentTest {
     })
     @ParameterizedTest
     @DisplayName("동시에 승인 요청을 보내면 재고만큼 승인되고 나머지는 실패한다.")
-    void approveOrderWithMultipleRequests(int stock, int orderCount, int expectedSuccess, int expectedFail, int expectedStock) {
-        product = productRepository.save(generateProductWithPriceAndStock(BigDecimal.valueOf(1000), stock));
+    void approveOrderWithMultipleRequests(
+            int stock,
+            int orderCount,
+            int expectedSuccess,
+            int expectedFail,
+            int expectedStock
+    ) {
+        product = productRepository.save(
+                generateProductWithPriceAndStock(BigDecimal.valueOf(1000), stock));
         user = userRepository.save(generateUser());
         savedOrderList = getSavedOrderList(orderCount);
 
@@ -78,7 +87,12 @@ class OrderConcurrentTest {
                 // Generate Request
                 OrderInfo orderInfo = savedOrderList.get(orderIndex);
                 String clientRequestPaymentKey = "test_payment_key";
-                OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(user.getId(), orderInfo.getOrderId(), orderInfo.getTotalAmount(), clientRequestPaymentKey);
+                OrderConfirmRequest orderConfirmRequest = generateOrderConfirmRequest(
+                        user.getId(),
+                        orderInfo.getOrderId(),
+                        orderInfo.getTotalAmount(),
+                        clientRequestPaymentKey
+                );
 
                 // Execute
                 orderController.confirmOrder(orderConfirmRequest);
@@ -99,14 +113,24 @@ class OrderConcurrentTest {
         List<OrderInfo> orderInfoList = new ArrayList<>();
         for (long i = 1; i <= orderCount; i++) {
             final Integer quantity = 1;
-            OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(i, user, product, product.getPrice(), quantity);
+            OrderInfo orderInfo = generateOrderInfoWithTotalAmountAndQuantity(
+                    i,
+                    user,
+                    product,
+                    product.getPrice(),
+                    quantity
+            );
             OrderInfo savedOrder = orderInfoRepository.save(orderInfo);
             orderInfoList.add(savedOrder);
         }
         return orderInfoList;
     }
 
-    private void executeConcurrentActions(Consumer<Integer> action, int repeatCount, int threadSize) {
+    private void executeConcurrentActions(
+            Consumer<Integer> action,
+            int repeatCount,
+            int threadSize
+    ) {
         AtomicInteger atomicInteger = new AtomicInteger();
         CountDownLatch countDownLatch = new CountDownLatch(repeatCount);
         ExecutorService executorService = Executors.newFixedThreadPool(threadSize);
