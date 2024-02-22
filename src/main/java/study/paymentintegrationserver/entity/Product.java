@@ -6,7 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -40,10 +39,6 @@ public class Product extends BaseTime {
 
     @Column(name = "stock", nullable = false)
     private Integer stock;
-
-    @Version
-    @Builder.Default
-    private Long version = 0L;
 
     public BigDecimal calculateTotalPrice(Integer quantity) {
         return this.price.multiply(BigDecimal.valueOf(quantity));
