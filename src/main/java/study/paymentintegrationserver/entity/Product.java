@@ -8,7 +8,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,10 +16,8 @@ import study.paymentintegrationserver.exception.ProductException;
 
 @Getter
 @Entity
-@Builder
 @Table(name = "product")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product extends BaseTime {
 
     @Id
@@ -39,6 +36,14 @@ public class Product extends BaseTime {
 
     @Column(name = "stock", nullable = false)
     private Integer stock;
+
+    @Builder
+    public Product(String name, BigDecimal price, String description, Integer stock) {
+        this.name = name;
+        this.price = price;
+        this.description = description;
+        this.stock = stock;
+    }
 
     public BigDecimal calculateTotalPrice(Integer quantity) {
         return this.price.multiply(BigDecimal.valueOf(quantity));

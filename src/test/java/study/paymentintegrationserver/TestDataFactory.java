@@ -2,6 +2,7 @@ package study.paymentintegrationserver;
 
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.test.util.ReflectionTestUtils;
 import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.order.OrderCreateRequest;
@@ -14,21 +15,27 @@ import study.paymentintegrationserver.entity.User;
 public class TestDataFactory {
 
     public static Product generateProductWithPriceAndStock(BigDecimal price, Integer stock) {
-        return Product.builder()
-                .id(1L)
+        Product product = Product.builder()
                 .name("Test Generated Product")
                 .price(price)
                 .description("Test Generated Product Description")
                 .stock(stock)
                 .build();
+
+        ReflectionTestUtils.setField(product, "id", 1L);
+
+        return product;
     }
 
     public static User generateUser() {
-        return User.builder()
-                .id(1L)
+        User user = User.builder()
                 .username("Test Generated User")
                 .email("test@test.com")
                 .build();
+
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        return user;
     }
 
     public static OrderInfo generateOrderInfoWithTotalAmountAndQuantity(
@@ -38,16 +45,19 @@ public class TestDataFactory {
             BigDecimal totalAmount,
             Integer quantity
     ) {
-        return OrderInfo.builder()
-                .id(id)
+        OrderInfo orderInfo = OrderInfo.builder()
                 .user(user)
                 .product(product)
-                .orderName("Test Generated Order Name")
-                .method("Test Generated Method")
                 .totalAmount(totalAmount)
                 .quantity(quantity)
-                .status("Test Generated Status")
                 .build();
+
+        ReflectionTestUtils.setField(orderInfo, "id", id);
+        ReflectionTestUtils.setField(orderInfo, "orderName", "Test Generated Order Name");
+        ReflectionTestUtils.setField(orderInfo, "method", "Test Generated Method");
+        ReflectionTestUtils.setField(orderInfo, "status", "Test Generated Status");
+
+        return orderInfo;
     }
 
     public static OrderCreateRequest generateOrderCreateRequest(
