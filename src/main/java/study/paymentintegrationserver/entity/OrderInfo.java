@@ -71,7 +71,6 @@ public class OrderInfo extends BaseTime {
     @Column(name = "last_transaction_key")
     private String lastTransactionKey;
 
-    @SuppressWarnings("java:S107")
     @Builder
     protected OrderInfo(User user, Product product, Integer quantity, BigDecimal totalAmount) {
         this.user = user;
