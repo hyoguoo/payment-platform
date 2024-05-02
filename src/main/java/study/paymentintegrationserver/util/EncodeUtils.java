@@ -2,7 +2,7 @@ package study.paymentintegrationserver.util;
 
 import java.util.Base64;
 
-public class EncodeUtils {
+public final class EncodeUtils {
 
     private EncodeUtils() {
         throw new AssertionError();
