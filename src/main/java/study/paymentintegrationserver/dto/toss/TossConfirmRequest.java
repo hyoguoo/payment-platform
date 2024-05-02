@@ -1,6 +1,5 @@
 package study.paymentintegrationserver.dto.toss;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import lombok.Getter;
@@ -11,12 +10,13 @@ import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 @RequiredArgsConstructor
 public class TossConfirmRequest {
 
-    @NotNull(message = "orderId must not be null")
+    @NotNull
     private final String orderId;
-    @NotNull(message = "amount must not be null")
-    @DecimalMin(value = "0", message = "amount must be positive")
+
+    @NotNull
     private final BigDecimal amount;
-    @NotNull(message = "paymentKey must not be null")
+
+    @NotNull
     private final String paymentKey;
 
     public static TossConfirmRequest createByOrderConfirmRequest(

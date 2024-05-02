@@ -1,6 +1,5 @@
 package study.paymentintegrationserver.dto.order;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -9,9 +8,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrderProduct {
 
-    @NotNull(message = "productId must not be null")
+    @NotNull
     private final Long productId;
-    @NotNull(message = "quantity must not be null")
-    @DecimalMin(value = "0", message = "quantity must be positive")
+
+    @NotNull
     private final Integer quantity;
 }

@@ -8,8 +8,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrderCancelRequest {
 
-    @NotNull(message = "orderId must not be null")
+    @NotNull
     private final String orderId;
-    @NotNull(message = "cancelReason must not be null")
+
+    @NotNull
     private final String cancelReason;
 }

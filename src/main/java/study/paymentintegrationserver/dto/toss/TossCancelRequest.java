@@ -9,7 +9,7 @@ import study.paymentintegrationserver.dto.order.OrderCancelRequest;
 @RequiredArgsConstructor
 public class TossCancelRequest {
 
-    @NotNull(message = "cancelReason must not be null")
+    @NotNull
     private final String cancelReason;
 
     public static TossCancelRequest createByOrderCancelRequest(
