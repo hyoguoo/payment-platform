@@ -62,5 +62,5 @@
 
 ## Other Repositories
 
-- [Client Repository](https://github.com/hyoguoo/payment-widget-client)
+- [Client Repository](https://github.com/hyoguoo/payment-client)
 - [Mock Server Repository](https://github.com/hyoguoo/toss-mock-server)
