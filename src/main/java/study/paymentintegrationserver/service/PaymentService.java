@@ -31,7 +31,8 @@ public class PaymentService {
         return HttpUtils.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 EncodeUtils.encodeBase64(secretKey + ":"),
-                TossPaymentResponse.class);
+                TossPaymentResponse.class
+        );
     }
 
     public TossPaymentResponse confirmPayment(@Valid TossConfirmRequest tossConfirmRequest) {
@@ -39,7 +40,8 @@ public class PaymentService {
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
                 tossConfirmRequest,
-                TossPaymentResponse.class);
+                TossPaymentResponse.class
+        );
     }
 
     public TossPaymentResponse cancelPayment(
@@ -50,6 +52,7 @@ public class PaymentService {
                 tossApiUrl + "/" + paymentKey + "/cancel",
                 EncodeUtils.encodeBase64(secretKey + ":"),
                 tossCancelRequest,
-                TossPaymentResponse.class);
+                TossPaymentResponse.class
+        );
     }
 }

@@ -46,7 +46,8 @@ public final class HttpUtils {
     public static <T, E> E requestPostWithBasicAuthorization(
             String url,
             String authorization,
-            T body, Class<E> responseType
+            T body,
+            Class<E> responseType
     ) {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);

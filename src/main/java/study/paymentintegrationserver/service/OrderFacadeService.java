@@ -96,13 +96,17 @@ public class OrderFacadeService {
     public OrderCancelResponse cancelOrder(OrderCancelRequest orderCancelRequest) {
         OrderInfo orderInfo = orderService.getOrderInfoByOrderId(orderCancelRequest.getOrderId());
 
-        orderInfo.cancelOrder(paymentService.cancelPayment(
-                orderInfo.getPaymentKey(),
-                TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
-        ));
+        orderInfo.cancelOrder(
+                paymentService.cancelPayment(
+                        orderInfo.getPaymentKey(),
+                        TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
+                )
+        );
 
-        productService.increaseStockWithCommit(orderInfo.getProduct().getId(),
-                orderInfo.getQuantity());
+        productService.increaseStockWithCommit(
+                orderInfo.getProduct().getId(),
+                orderInfo.getQuantity()
+        );
 
         return new OrderCancelResponse(orderInfo);
     }
