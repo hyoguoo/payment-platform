@@ -15,6 +15,7 @@ import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 import study.paymentintegrationserver.entity.OrderInfo;
+import study.paymentintegrationserver.util.UUIDUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -74,7 +75,8 @@ public class OrderFacadeService {
     ) {
         try {
             TossPaymentResponse confirmPaymentResponse = paymentService.confirmPayment(
-                    TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest)
+                    TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest),
+                    UUIDUtils.generateUUID()
             );
 
             return orderService.confirmOrderInfo(
@@ -99,6 +101,7 @@ public class OrderFacadeService {
         orderInfo.cancelOrder(
                 paymentService.cancelPayment(
                         orderInfo.getPaymentKey(),
+                        UUIDUtils.generateUUID(),
                         TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
                 )
         );

@@ -35,10 +35,14 @@ public class PaymentService {
         );
     }
 
-    public TossPaymentResponse confirmPayment(@Valid TossConfirmRequest tossConfirmRequest) {
+    public TossPaymentResponse confirmPayment(
+            @Valid TossConfirmRequest tossConfirmRequest,
+            String idempotencyKey
+    ) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 EncodeUtils.encodeBase64(secretKey + ":"),
+                idempotencyKey,
                 tossConfirmRequest,
                 TossPaymentResponse.class
         );
@@ -46,11 +50,13 @@ public class PaymentService {
 
     public TossPaymentResponse cancelPayment(
             String paymentKey,
+            String idempotencyKey,
             @Valid TossCancelRequest tossCancelRequest
     ) {
         return HttpUtils.requestPostWithBasicAuthorization(
                 tossApiUrl + "/" + paymentKey + "/cancel",
                 EncodeUtils.encodeBase64(secretKey + ":"),
+                idempotencyKey,
                 tossCancelRequest,
                 TossPaymentResponse.class
         );

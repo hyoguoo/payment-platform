@@ -12,6 +12,7 @@ import org.springframework.web.client.RestTemplate;
 
 public final class HttpUtils {
 
+    public static final String IDEMPOTENCY_KEY_HEADER_NAME = "Idempotency-Key";
     private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
     private static final String BASIC_AUTHORIZATION_TYPE = "Basic ";
 
@@ -46,10 +47,14 @@ public final class HttpUtils {
     public static <T, E> E requestPostWithBasicAuthorization(
             String url,
             String authorization,
+            String idempotencyKey,
             T body,
             Class<E> responseType
     ) {
-        HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
+        HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(
+                authorization,
+                idempotencyKey
+        );
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
 
         ResponseEntity<E> response = new RestTemplate().exchange(
@@ -69,6 +74,16 @@ public final class HttpUtils {
     private static HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.add(AUTHORIZATION_HEADER_NAME, BASIC_AUTHORIZATION_TYPE + authorization);
+        httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+        return httpHeaders;
+    }
+
+    private static HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization,
+            String idempotencyKey) {
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.add(AUTHORIZATION_HEADER_NAME, BASIC_AUTHORIZATION_TYPE + authorization);
+        httpHeaders.add(IDEMPOTENCY_KEY_HEADER_NAME, idempotencyKey);
         httpHeaders.setContentType(MediaType.APPLICATION_JSON);
 
         return httpHeaders;

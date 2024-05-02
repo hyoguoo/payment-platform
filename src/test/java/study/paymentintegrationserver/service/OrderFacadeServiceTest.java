@@ -166,7 +166,7 @@ class OrderFacadeServiceTest {
                                 DEFAULT_TOTAL_AMOUNT
                         )
                 );
-        when(paymentService.confirmPayment(any()))
+        when(paymentService.confirmPayment(any(), any()))
                 .thenReturn(
                         generateDonePaymentResponse(
                                 DEFAULT_PAYMENT_KEY,
@@ -187,7 +187,7 @@ class OrderFacadeServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getOrderId()).isEqualTo(orderInfo.getOrderId());
         verify(paymentService, times(1))
-                .confirmPayment(any());
+                .confirmPayment(any(), any());
         verify(productService, times(1))
                 .reduceStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
     }
@@ -222,7 +222,7 @@ class OrderFacadeServiceTest {
         );
         when(orderService.getOrderInfoByOrderId(orderCancelRequest.getOrderId()))
                 .thenReturn(orderInfo);
-        when(paymentService.cancelPayment(any(), any()))
+        when(paymentService.cancelPayment(any(), any(), any()))
                 .thenReturn(
                         generateCancelPaymentResponse(
                                 DEFAULT_PAYMENT_KEY,
@@ -240,7 +240,7 @@ class OrderFacadeServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(orderInfo.getId());
         verify(paymentService, times(1))
-                .cancelPayment(any(), any());
+                .cancelPayment(any(), any(),any());
         verify(productService, times(1))
                 .increaseStockWithCommit(orderInfo.getProduct().getId(), orderInfo.getQuantity());
     }
