@@ -1,18 +1,21 @@
 package com.hyoguoo.paymentplatform.order.domain;
 
+import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.domain.enums.OrderStatus;
 import com.hyoguoo.paymentplatform.order.exception.OrderStatusException;
 import com.hyoguoo.paymentplatform.order.exception.OrderValidException;
 import com.hyoguoo.paymentplatform.order.exception.common.OrderErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 
 @Getter
 @Builder(builderMethodName = "allArgsBuilder")
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class OrderInfo {
 
     private static final String ORDER_ID_PREFIX = "ORDER-";
@@ -31,7 +34,7 @@ public class OrderInfo {
     private LocalDateTime approvedAt;
     private String lastTransactionKey;
 
-    @Builder
+    @Builder(builderMethodName = "createBuilder")
     protected OrderInfo(Long userId, Long productId, Integer quantity, BigDecimal totalAmount) {
         this.userId = userId;
         this.productId = productId;
@@ -60,7 +63,7 @@ public class OrderInfo {
     }
 
     public OrderInfo confirmOrder(
-            TossPaymentResponse paymentInfo,
+            TossPaymentInfo paymentInfo,
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.DONE.getStatusName())) {
@@ -75,7 +78,7 @@ public class OrderInfo {
     }
 
     public void validateInProgressOrder(
-            TossPaymentResponse paymentInfo,
+            TossPaymentInfo paymentInfo,
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.IN_PROGRESS.getStatusName())) {
@@ -85,7 +88,7 @@ public class OrderInfo {
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
     }
 
-    public OrderInfo cancelOrder(TossPaymentResponse paymentInfo) {
+    public OrderInfo cancelOrder(TossPaymentInfo paymentInfo) {
         if (!this.paymentKey.equals(paymentInfo.getPaymentKey())) {
             throw OrderValidException.of(OrderErrorCode.INVALID_PAYMENT_KEY);
         }
@@ -99,22 +102,22 @@ public class OrderInfo {
         return this;
     }
 
-    public OrderInfo updatePaymentInfo(TossPaymentResponse paymentInfo) {
+    public OrderInfo updatePaymentInfo(TossPaymentInfo paymentInfo) {
         updateOrderPaymentInfo(paymentInfo);
 
         return this;
     }
 
-    private void updateOrderPaymentInfo(TossPaymentResponse paymentInfo) {
+    private void updateOrderPaymentInfo(TossPaymentInfo paymentInfo) {
         this.requestedAt = paymentInfo.getRequestedAt() == null ? null :
                 LocalDateTime.parse(
                         paymentInfo.getRequestedAt(),
-                        TossPaymentResponse.DATE_TIME_FORMATTER
+                        TossPaymentInfo.DATE_TIME_FORMATTER
                 );
         this.approvedAt = paymentInfo.getApprovedAt() == null ? null :
                 LocalDateTime.parse(
                         paymentInfo.getApprovedAt(),
-                        TossPaymentResponse.DATE_TIME_FORMATTER
+                        TossPaymentInfo.DATE_TIME_FORMATTER
                 );
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
@@ -124,7 +127,7 @@ public class OrderInfo {
     }
 
     private void validateOrderInfo(
-            TossPaymentResponse paymentInfo,
+            TossPaymentInfo paymentInfo,
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
@@ -146,7 +149,7 @@ public class OrderInfo {
     }
 
     private boolean compareAmounts(
-            TossPaymentResponse paymentInfo,
+            TossPaymentInfo paymentInfo,
             OrderConfirmRequest orderConfirmRequest
     ) {
         // TODO: this.product는 불가능하므로 대신 product dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경

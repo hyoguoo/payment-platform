@@ -1,5 +1,12 @@
-package study.paymentintegrationserver.service;
+package com.hyoguoo.paymentplatform.order.service;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
+import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
+import com.hyoguoo.paymentplatform.order.service.port.PaymentHandler;
+import com.hyoguoo.paymentplatform.order.service.port.ProductProvider;
+import com.hyoguoo.paymentplatform.order.service.port.UserProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,32 +17,30 @@ import study.paymentintegrationserver.dto.order.OrderConfirmResponse;
 import study.paymentintegrationserver.dto.order.OrderCreateRequest;
 import study.paymentintegrationserver.dto.order.OrderCreateResponse;
 import study.paymentintegrationserver.dto.order.OrderFindDetailResponse;
+import study.paymentintegrationserver.dto.order.OrderListResponse;
 import study.paymentintegrationserver.dto.order.OrderProduct;
 import study.paymentintegrationserver.dto.toss.TossCancelRequest;
 import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
-import study.paymentintegrationserver.entity.OrderInfo;
-import study.paymentintegrationserver.util.UUIDUtils;
 
 @Service
 @RequiredArgsConstructor
-public class OrderFacadeService {
+public class OrderServiceImpl implements OrderService {
 
-    private final PaymentService paymentService;
-    private final ProductService productService;
-    private final UserService userService;
-    private final OrderService orderService;
+    private final UUIDProvider uuidProvider;
+    private final PaymentHandler paymentHandler;
+    private final ProductProvider productProvider;
+    private final UserProvider userProvider;
+    private final OrderUseCase orderUseCase;
 
     @Transactional
     public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {
         OrderProduct orderProduct = orderCreateRequest.getOrderProduct();
 
-        OrderInfo createdOrder = orderService.saveOrderInfo(
-                orderCreateRequest.toEntity(
-                        userService.getById(orderCreateRequest.getUserId()),
-                        productService.getById(orderProduct.getProductId())
-                )
+        OrderInfo orderInfo = orderCreateRequest.toEntity(
+                userProvider.getUserInfoById(orderCreateRequest.getUserId()),
+                productProvider.getProductInfoById(orderProduct.getProductId())
         );
+        OrderInfo createdOrder = orderUseCase.saveOrUpdate(orderInfo);
 
         return new OrderCreateResponse(createdOrder);
     }
@@ -43,8 +48,8 @@ public class OrderFacadeService {
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmRequest);
 
-        productService.reduceStockWithCommit(
-                orderInfo.getProduct().getId(),
+        productProvider.reduceStockWithCommit(
+                orderInfo.getProductId(),
                 orderInfo.getQuantity()
         );
 
@@ -57,9 +62,9 @@ public class OrderFacadeService {
     }
 
     private OrderInfo getOrderInfoInProgressStatus(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = orderService.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
+        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
 
-        TossPaymentResponse paymentInfo = paymentService.getPaymentInfoByOrderId(
+        TossPaymentInfo paymentInfo = paymentHandler.getPaymentInfoByOrderId(
                 orderConfirmRequest.getOrderId()
         );
 
@@ -74,19 +79,19 @@ public class OrderFacadeService {
             OrderInfo orderInfo
     ) {
         try {
-            TossPaymentResponse confirmPaymentResponse = paymentService.confirmPayment(
+            TossPaymentInfo confirmPaymentResponse = paymentHandler.confirmPayment(
                     TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest),
-                    UUIDUtils.generateUUID()
+                    uuidProvider.generateUUID()
             );
 
-            return orderService.confirmOrderInfo(
+            return orderUseCase.confirmOrderInfo(
                     orderInfo.getId(),
                     orderConfirmRequest,
                     confirmPaymentResponse
             );
         } catch (Exception e) {
-            productService.increaseStockWithCommit(
-                    orderInfo.getProduct().getId(),
+            productProvider.increaseStockWithCommit(
+                    orderInfo.getProductId(),
                     orderInfo.getQuantity()
             );
 
@@ -94,20 +99,26 @@ public class OrderFacadeService {
         }
     }
 
+    @Override
+    public OrderListResponse findOrderList(int page, int size) {
+        // TODO: Implement this method
+        return null;
+    }
+
     @Transactional
     public OrderCancelResponse cancelOrder(OrderCancelRequest orderCancelRequest) {
-        OrderInfo orderInfo = orderService.getOrderInfoByOrderId(orderCancelRequest.getOrderId());
+        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderCancelRequest.getOrderId());
 
         orderInfo.cancelOrder(
-                paymentService.cancelPayment(
+                paymentHandler.cancelPayment(
                         orderInfo.getPaymentKey(),
-                        UUIDUtils.generateUUID(),
+                        uuidProvider.generateUUID(),
                         TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
                 )
         );
 
-        productService.increaseStockWithCommit(
-                orderInfo.getProduct().getId(),
+        productProvider.increaseStockWithCommit(
+                orderInfo.getProductId(),
                 orderInfo.getQuantity()
         );
 
@@ -116,9 +127,9 @@ public class OrderFacadeService {
 
     @Transactional
     public OrderFindDetailResponse getOrderDetailsByIdAndUpdatePaymentInfo(Long id) {
-        OrderInfo orderInfo = orderService.getOrderInfoById(id);
+        OrderInfo orderInfo = orderUseCase.getOrderInfoById(id);
 
-        paymentService
+        paymentHandler
                 .findPaymentInfoByOrderId(orderInfo.getOrderId())
                 .ifPresent(orderInfo::updatePaymentInfo);
 
