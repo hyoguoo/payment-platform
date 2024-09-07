@@ -36,7 +36,7 @@ public class OrderServiceImpl implements OrderService {
     public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {
         OrderProduct orderProduct = orderCreateRequest.getOrderProduct();
 
-        OrderInfo orderInfo = orderCreateRequest.toEntity(
+        OrderInfo orderInfo = orderCreateRequest.toDomain(
                 userProvider.getUserInfoById(orderCreateRequest.getUserId()),
                 productProvider.getProductInfoById(orderProduct.getProductId())
         );
