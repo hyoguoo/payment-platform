@@ -1,26 +1,20 @@
-package study.paymentintegrationserver.util;
+package com.hyoguoo.paymentplatform.core.infrastructure;
 
-
-import java.util.Optional;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-public final class HttpUtils {
+@Component
+public class HttpOperator {
 
     public static final String IDEMPOTENCY_KEY_HEADER_NAME = "Idempotency-Key";
     private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
     private static final String BASIC_AUTHORIZATION_TYPE = "Basic ";
 
-    private HttpUtils() {
-        throw new AssertionError();
-    }
-
-    public static <T> Optional<T> requestGetWithBasicAuthorization(
+    public <T> T requestGetWithBasicAuthorization(
             String url,
             String authorization,
             Class<T> responseType
@@ -28,23 +22,17 @@ public final class HttpUtils {
         HttpHeaders httpHeaders = generateBasicAuthorizationHttpHeaders(authorization);
         HttpEntity<Object> httpEntity = new HttpEntity<>(httpHeaders);
 
-        try {
-            ResponseEntity<T> response = new RestTemplate().exchange(
-                    url,
-                    HttpMethod.GET,
-                    httpEntity,
-                    responseType
-            );
-
-            return Optional.ofNullable(response.getBody());
-        } catch (HttpClientErrorException.NotFound e) {
-            return Optional.empty();
-        } catch (HttpClientErrorException e) {
-            throw new HttpClientErrorException(e.getStatusCode(), e.getMessage());
-        }
+        return new RestTemplate()
+                .exchange(
+                        url,
+                        HttpMethod.GET,
+                        httpEntity,
+                        responseType
+                )
+                .getBody();
     }
 
-    public static <T, E> E requestPostWithBasicAuthorization(
+    public <T, E> E requestPostWithBasicAuthorization(
             String url,
             String authorization,
             String idempotencyKey,
@@ -57,21 +45,21 @@ public final class HttpUtils {
         );
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
 
-        ResponseEntity<E> response = new RestTemplate().exchange(
-                url,
-                HttpMethod.POST,
-                httpEntity,
-                responseType
-        );
-
-        return response.getBody();
+        return new RestTemplate()
+                .exchange(
+                        url,
+                        HttpMethod.POST,
+                        httpEntity,
+                        responseType
+                )
+                .getBody();
     }
 
-    private static <T> HttpEntity<T> createHttpEntity(HttpHeaders httpHeaders, T body) {
+    private <T> HttpEntity<T> createHttpEntity(HttpHeaders httpHeaders, T body) {
         return new HttpEntity<>(body, httpHeaders);
     }
 
-    private static HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization) {
+    private HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.add(AUTHORIZATION_HEADER_NAME, BASIC_AUTHORIZATION_TYPE + authorization);
         httpHeaders.setContentType(MediaType.APPLICATION_JSON);
@@ -79,8 +67,10 @@ public final class HttpUtils {
         return httpHeaders;
     }
 
-    private static HttpHeaders generateBasicAuthorizationHttpHeaders(String authorization,
-            String idempotencyKey) {
+    private static HttpHeaders generateBasicAuthorizationHttpHeaders(
+            String authorization,
+            String idempotencyKey
+    ) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.add(AUTHORIZATION_HEADER_NAME, BASIC_AUTHORIZATION_TYPE + authorization);
         httpHeaders.add(IDEMPOTENCY_KEY_HEADER_NAME, idempotencyKey);
