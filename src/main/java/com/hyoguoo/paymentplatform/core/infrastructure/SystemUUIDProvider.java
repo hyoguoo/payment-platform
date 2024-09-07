@@ -1,8 +1,8 @@
-package com.hyoguoo.paymentplatform.core.service.port;
+package com.hyoguoo.paymentplatform.core.infrastructure;
 
+import com.hyoguoo.paymentplatform.core.service.port.UUIDProvider;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
-import com.hyoguoo.paymentplatform.core.infrastructure.UUIDProvider;
 
 @Component
 public class SystemUUIDProvider implements UUIDProvider {
