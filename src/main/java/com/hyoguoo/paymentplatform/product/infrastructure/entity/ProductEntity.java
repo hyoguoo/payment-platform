@@ -42,12 +42,13 @@ public class ProductEntity extends BaseEntity {
     private Integer stock;
 
 
-    public static ProductEntity from(String name, BigDecimal price, String description, Integer stock) {
+    public static ProductEntity from(Product product) {
         return ProductEntity.builder()
-                .name(name)
-                .price(price)
-                .description(description)
-                .stock(stock)
+                .id(product.getId())
+                .name(product.getName())
+                .price(product.getPrice())
+                .description(product.getDescription())
+                .stock(product.getStock())
                 .build();
     }
 

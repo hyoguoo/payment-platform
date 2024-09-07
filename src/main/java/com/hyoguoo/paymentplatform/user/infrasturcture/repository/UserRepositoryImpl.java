@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.user.infrasturcture.repository;
 
 import com.hyoguoo.paymentplatform.user.domain.User;
+import com.hyoguoo.paymentplatform.user.infrasturcture.entity.UserEntity;
 import com.hyoguoo.paymentplatform.user.service.port.UserRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -14,11 +15,13 @@ public class UserRepositoryImpl implements UserRepository {
 
     @Override
     public Optional<User> findById(Long id) {
-        return jpaUserRepository.findById(id);
+        return jpaUserRepository
+                .findById(id)
+                .map(UserEntity::toDomain);
     }
 
     @Override
     public User saveOrUpdate(User user) {
-        return jpaUserRepository.save(user);
+        return jpaUserRepository.save(UserEntity.from(user)).toDomain();
     }
 }

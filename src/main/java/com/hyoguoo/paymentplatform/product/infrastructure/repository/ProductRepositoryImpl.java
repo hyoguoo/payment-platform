@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.product.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.product.domain.Product;
+import com.hyoguoo.paymentplatform.product.infrastructure.entity.ProductEntity;
 import com.hyoguoo.paymentplatform.product.service.port.ProductRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -14,16 +15,20 @@ public class ProductRepositoryImpl implements ProductRepository {
 
     @Override
     public Optional<Product> findById(Long id) {
-        return jpaProductRepository.findById(id);
+        return jpaProductRepository
+                .findById(id)
+                .map(ProductEntity::toDomain);
     }
 
     @Override
     public Optional<Product> findByIdPessimistic(Long id) {
-        return jpaProductRepository.findByIdPessimistic(id);
+        return jpaProductRepository
+                .findByIdPessimistic(id)
+                .map(ProductEntity::toDomain);
     }
 
     @Override
     public Product saveOrUpdate(Product product) {
-        return jpaProductRepository.save(product);
+        return jpaProductRepository.save(ProductEntity.from(product)).toDomain();
     }
 }
