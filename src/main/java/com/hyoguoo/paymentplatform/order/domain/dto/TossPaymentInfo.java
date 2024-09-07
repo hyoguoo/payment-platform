@@ -24,12 +24,8 @@ public class TossPaymentInfo {
     private final String requestedAt;
     private final String approvedAt;
     private final String lastTransactionKey;
-    private final List<Cancel> cancels;
 
     public static TossPaymentInfo of(TossPaymentResponse tossPaymentResponse) {
-        List<Cancel> cancelList = tossPaymentResponse.getCancels().stream()
-                .map(Cancel::of)
-                .toList();
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderName(tossPaymentResponse.getOrderName())
@@ -39,23 +35,6 @@ public class TossPaymentInfo {
                 .requestedAt(tossPaymentResponse.getRequestedAt())
                 .approvedAt(tossPaymentResponse.getApprovedAt())
                 .lastTransactionKey(tossPaymentResponse.getLastTransactionKey())
-                .cancels(cancelList)
                 .build();
-    }
-
-    @Getter
-    @Builder
-    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-    public static class Cancel {
-
-        private final double cancelAmount;
-        private final String cancelReason;
-
-        public static Cancel of(TossPaymentResponse.Cancel cancel) {
-            return Cancel.builder()
-                    .cancelAmount(cancel.getCancelAmount())
-                    .cancelReason(cancel.getCancelReason())
-                    .build();
-        }
     }
 }
