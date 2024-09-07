@@ -1,10 +1,10 @@
-package com.hyoguoo.paymentplatform.order.service;
+package com.hyoguoo.paymentplatform.order.application;
 
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.exception.OrderFoundException;
 import com.hyoguoo.paymentplatform.order.exception.common.OrderErrorCode;
-import com.hyoguoo.paymentplatform.order.service.port.OrderInfoRepository;
+import com.hyoguoo.paymentplatform.order.application.port.OrderInfoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;

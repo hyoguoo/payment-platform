@@ -1,10 +1,10 @@
-package com.hyoguoo.paymentplatform.product.service;
+package com.hyoguoo.paymentplatform.product.application;
 
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.exception.ProductFoundException;
 import com.hyoguoo.paymentplatform.product.exception.common.ProductErrorCode;
 import com.hyoguoo.paymentplatform.product.presentation.port.ProductService;
-import com.hyoguoo.paymentplatform.product.service.port.ProductRepository;
+import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

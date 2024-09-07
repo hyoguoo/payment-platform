@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.order.infrastucture.internal;
 
 import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.order.service.port.ProductProvider;
+import com.hyoguoo.paymentplatform.order.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.product.presentation.port.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.order.infrastucture.repostitory;
 
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import com.hyoguoo.paymentplatform.order.infrastucture.entity.OrderInfoEntity;
-import com.hyoguoo.paymentplatform.order.service.port.OrderInfoRepository;
+import com.hyoguoo.paymentplatform.order.application.port.OrderInfoRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

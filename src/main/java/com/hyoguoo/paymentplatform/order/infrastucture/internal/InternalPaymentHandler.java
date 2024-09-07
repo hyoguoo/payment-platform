@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.order.infrastucture.internal;
 
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.order.service.port.PaymentHandler;
+import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;

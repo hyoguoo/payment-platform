@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.product.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.infrastructure.entity.ProductEntity;
-import com.hyoguoo.paymentplatform.product.service.port.ProductRepository;
+import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;

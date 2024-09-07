@@ -1,10 +1,10 @@
-package com.hyoguoo.paymentplatform.user.service;
+package com.hyoguoo.paymentplatform.user.application;
 
 import com.hyoguoo.paymentplatform.user.domain.User;
 import com.hyoguoo.paymentplatform.user.exception.UserFoundException;
 import com.hyoguoo.paymentplatform.user.exception.common.UserErrorCode;
 import com.hyoguoo.paymentplatform.user.presentation.port.UserService;
-import com.hyoguoo.paymentplatform.user.service.port.UserRepository;
+import com.hyoguoo.paymentplatform.user.application.port.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

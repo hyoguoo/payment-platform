@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.user.service.port;
+package com.hyoguoo.paymentplatform.user.application.port;
 
 import com.hyoguoo.paymentplatform.user.domain.User;
 import java.util.Optional;

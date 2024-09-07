@@ -1,12 +1,12 @@
-package com.hyoguoo.paymentplatform.order.service;
+package com.hyoguoo.paymentplatform.order.application;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
-import com.hyoguoo.paymentplatform.order.service.port.PaymentHandler;
-import com.hyoguoo.paymentplatform.order.service.port.ProductProvider;
-import com.hyoguoo.paymentplatform.order.service.port.UserProvider;
+import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
+import com.hyoguoo.paymentplatform.order.application.port.ProductProvider;
+import com.hyoguoo.paymentplatform.order.application.port.UserProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.order.service.port;
+package com.hyoguoo.paymentplatform.order.application.port;
 
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import java.util.Optional;

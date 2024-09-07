@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.user.infrasturcture.repository;
 
 import com.hyoguoo.paymentplatform.user.domain.User;
 import com.hyoguoo.paymentplatform.user.infrasturcture.entity.UserEntity;
-import com.hyoguoo.paymentplatform.user.service.port.UserRepository;
+import com.hyoguoo.paymentplatform.user.application.port.UserRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
