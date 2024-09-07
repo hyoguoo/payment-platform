@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.infrastructure;
+package com.hyoguoo.paymentplatform.core.common.util;
 
 import java.util.Base64;
 import org.springframework.stereotype.Component;

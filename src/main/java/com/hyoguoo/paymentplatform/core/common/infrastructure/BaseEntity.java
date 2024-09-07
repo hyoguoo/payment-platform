@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.infrastructure;
+package com.hyoguoo.paymentplatform.core.common.infrastructure;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;

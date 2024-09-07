@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.exception;
+package com.hyoguoo.paymentplatform.core.common.exception;
 
 public interface ErrorCode {
 

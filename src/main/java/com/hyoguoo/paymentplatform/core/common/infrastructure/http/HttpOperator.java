@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.infrastructure;
+package com.hyoguoo.paymentplatform.core.common.infrastructure.http;
 
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;

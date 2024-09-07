@@ -1,9 +1,9 @@
-package com.hyoguoo.paymentplatform.core.exception;
+package com.hyoguoo.paymentplatform.core.common.exception;
 
 
-import static com.hyoguoo.paymentplatform.core.exception.GlobalErrorCode.HEADER_NOT_FOUND;
-import static com.hyoguoo.paymentplatform.core.exception.GlobalErrorCode.INTERNAL_SERVER_ERROR;
-import static com.hyoguoo.paymentplatform.core.exception.GlobalErrorCode.INVALID_INPUT_VALUE;
+import static com.hyoguoo.paymentplatform.core.common.exception.GlobalErrorCode.HEADER_NOT_FOUND;
+import static com.hyoguoo.paymentplatform.core.common.exception.GlobalErrorCode.INTERNAL_SERVER_ERROR;
+import static com.hyoguoo.paymentplatform.core.common.exception.GlobalErrorCode.INVALID_INPUT_VALUE;
 
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;

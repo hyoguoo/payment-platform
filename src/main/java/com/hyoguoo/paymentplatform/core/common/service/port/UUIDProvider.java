@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.service.port;
+package com.hyoguoo.paymentplatform.core.common.service.port;
 
 public interface UUIDProvider {
 

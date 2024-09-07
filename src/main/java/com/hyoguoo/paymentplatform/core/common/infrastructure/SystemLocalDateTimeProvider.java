@@ -1,6 +1,6 @@
-package com.hyoguoo.paymentplatform.core.infrastructure;
+package com.hyoguoo.paymentplatform.core.common.infrastructure;
 
-import com.hyoguoo.paymentplatform.core.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Component;
 
