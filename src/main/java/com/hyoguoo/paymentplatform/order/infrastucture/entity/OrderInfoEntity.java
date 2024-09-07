@@ -102,6 +102,6 @@ public class OrderInfoEntity extends BaseEntity {
                 .requestedAt(this.requestedAt)
                 .approvedAt(this.approvedAt)
                 .lastTransactionKey(this.lastTransactionKey)
-                .build();
+                .allArgsBuild();
     }
 }
