@@ -45,6 +45,7 @@ public class OrderServiceImpl implements OrderService {
         return new OrderCreateResponse(createdOrder);
     }
 
+    @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
         OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmRequest);
 
@@ -57,6 +58,8 @@ public class OrderServiceImpl implements OrderService {
                 orderConfirmRequest,
                 orderInfo
         );
+
+        orderUseCase.saveOrUpdate(confirmedOrderInfo);
 
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
