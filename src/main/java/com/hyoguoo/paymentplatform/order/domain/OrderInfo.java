@@ -1,85 +1,45 @@
-package study.paymentintegrationserver.entity;
+package com.hyoguoo.paymentplatform.order.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import com.hyoguoo.paymentplatform.order.domain.enums.OrderStatus;
+import com.hyoguoo.paymentplatform.order.exception.OrderStatusException;
+import com.hyoguoo.paymentplatform.order.exception.OrderValidException;
+import com.hyoguoo.paymentplatform.order.exception.common.OrderErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
-import study.paymentintegrationserver.exception.OrderInfoErrorMessage;
-import study.paymentintegrationserver.exception.OrderInfoException;
 
 @Getter
-@Entity
-@Table(name = "order_info")
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class OrderInfo extends BaseTime {
+@Builder(builderMethodName = "allArgsBuilder")
+public class OrderInfo {
 
     private static final String ORDER_ID_PREFIX = "ORDER-";
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
     private Long id;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
-
-    @Column(name = "order_id", nullable = false)
+    private Long userId;
+    private Long productId;
     private String orderId;
-
-    @Column(name = "payment_key")
     private String paymentKey;
-
-    @Column(name = "order_name")
     private String orderName;
-
-    @Column(name = "method")
     private String method;
-
-    @Column(name = "quantity", nullable = false)
     private Integer quantity;
-
-    @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
-
-    @Column(name = "status", nullable = false)
-    private String status;
-
-    @Column(name = "requested_at")
+    private OrderStatus orderStatus;
     private LocalDateTime requestedAt;
-
-    @Column(name = "approved_at")
     private LocalDateTime approvedAt;
-
-    @Column(name = "last_transaction_key")
     private String lastTransactionKey;
 
     @Builder
-    protected OrderInfo(User user, Product product, Integer quantity, BigDecimal totalAmount) {
-        this.user = user;
-        this.product = product;
+    protected OrderInfo(Long userId, Long productId, Integer quantity, BigDecimal totalAmount) {
+        this.userId = userId;
+        this.productId = productId;
         this.quantity = quantity;
         this.totalAmount = totalAmount;
 
         this.orderId = generateOrderId();
-        this.status = OrderStatus.READY.getStatusName();
+        this.orderStatus = OrderStatus.READY;
 
         this.validateProductInfo(totalAmount, quantity);
     }
@@ -89,11 +49,13 @@ public class OrderInfo extends BaseTime {
     }
 
     private void validateProductInfo(BigDecimal totalAmount, Integer quantity) {
-        this.product.validateStock(quantity);
+        // TODO: this.product는 불가능하므로 대신 product dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경
+//        this.product.validateStock(quantity);
 
-        BigDecimal totalPrice = this.product.calculateTotalPrice(quantity);
-        if (totalAmount.compareTo(totalPrice) != 0) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
+//        BigDecimal totalPrice = this.product.calculateTotalPrice(quantity);
+//        if (totalAmount.compareTo(totalPrice) != 0) {
+        if (false) {
+            throw OrderValidException.of(OrderErrorCode.INVALID_TOTAL_AMOUNT);
         }
     }
 
@@ -102,7 +64,7 @@ public class OrderInfo extends BaseTime {
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.DONE.getStatusName())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_DONE_PAYMENT);
+            throw OrderStatusException.of(OrderErrorCode.NOT_DONE_PAYMENT);
         }
 
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -117,7 +79,7 @@ public class OrderInfo extends BaseTime {
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.IN_PROGRESS.getStatusName())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_IN_PROGRESS_ORDER);
+            throw OrderStatusException.of(OrderErrorCode.NOT_IN_PROGRESS_ORDER);
         }
 
         this.validateOrderInfo(paymentInfo, orderConfirmRequest);
@@ -125,11 +87,11 @@ public class OrderInfo extends BaseTime {
 
     public OrderInfo cancelOrder(TossPaymentResponse paymentInfo) {
         if (!this.paymentKey.equals(paymentInfo.getPaymentKey())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_PAYMENT_KEY);
+            throw OrderValidException.of(OrderErrorCode.INVALID_PAYMENT_KEY);
         }
 
         if (!paymentInfo.getStatus().equals(OrderStatus.CANCELED.getStatusName())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.NOT_CANCELED_PAYMENT);
+            throw OrderStatusException.of(OrderErrorCode.NOT_CANCELED_PAYMENT);
         }
 
         updateOrderPaymentInfo(paymentInfo);
@@ -157,7 +119,7 @@ public class OrderInfo extends BaseTime {
         this.lastTransactionKey = paymentInfo.getLastTransactionKey();
         this.orderName = paymentInfo.getOrderName();
         this.paymentKey = paymentInfo.getPaymentKey();
-        this.status = paymentInfo.getStatus();
+        this.orderStatus = OrderStatus.of(paymentInfo.getStatus());
         this.method = paymentInfo.getMethod();
     }
 
@@ -166,19 +128,20 @@ public class OrderInfo extends BaseTime {
             OrderConfirmRequest orderConfirmRequest
     ) {
         if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_ORDER_ID);
+            throw OrderValidException.of(OrderErrorCode.INVALID_ORDER_ID);
         }
 
-        if (!this.user.getId().equals(orderConfirmRequest.getUserId())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_USER_ID);
-        }
+        // TODO: this.user는 불가능하므로 대신 user dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경
+//        if (!this.user.getId().equals(orderConfirmRequest.getUserId())) {
+//            throw OrderValidException.of(OrderErrorCode.INVALID_USER_ID);
+//        }
 
         if (!paymentInfo.getPaymentKey().equals(orderConfirmRequest.getPaymentKey())) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_PAYMENT_KEY);
+            throw OrderValidException.of(OrderErrorCode.INVALID_PAYMENT_KEY);
         }
 
         if (!compareAmounts(paymentInfo, orderConfirmRequest)) {
-            throw OrderInfoException.of(OrderInfoErrorMessage.INVALID_TOTAL_AMOUNT);
+            throw OrderValidException.of(OrderErrorCode.INVALID_TOTAL_AMOUNT);
         }
     }
 
@@ -186,23 +149,14 @@ public class OrderInfo extends BaseTime {
             TossPaymentResponse paymentInfo,
             OrderConfirmRequest orderConfirmRequest
     ) {
+        // TODO: this.product는 불가능하므로 대신 product dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경
         BigDecimal paymentInfoTotalAmount = BigDecimal.valueOf(paymentInfo.getTotalAmount());
         BigDecimal orderConfirmRequestAmount = orderConfirmRequest.getAmount();
-        BigDecimal orderInfoAmount = this.product.calculateTotalPrice(this.quantity);
+//        BigDecimal orderInfoAmount = this.product.calculateTotalPrice(this.quantity);
 
-        return orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
-                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0 &&
-                orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
-    }
-
-    @Getter
-    enum OrderStatus {
-        READY("READY"), CANCELED("CANCELED"), DONE("DONE"), IN_PROGRESS("IN_PROGRESS");
-
-        private final String statusName;
-
-        OrderStatus(String statusName) {
-            this.statusName = statusName;
-        }
+        return orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0;
+//        return orderConfirmRequestAmount.compareTo(paymentInfoTotalAmount) == 0 &&
+//                orderInfoAmount.compareTo(paymentInfoTotalAmount) == 0 &&
+//                orderInfoAmount.compareTo(orderConfirmRequestAmount) == 0;
     }
 }
