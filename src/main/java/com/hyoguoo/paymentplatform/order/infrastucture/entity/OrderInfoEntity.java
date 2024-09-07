@@ -71,6 +71,7 @@ public class OrderInfoEntity extends BaseEntity {
 
     public static OrderInfoEntity from(OrderInfo orderInfo) {
         return OrderInfoEntity.builder()
+                .id(orderInfo.getId())
                 .userId(orderInfo.getUserId())
                 .productId(orderInfo.getProductId())
                 .orderId(orderInfo.getOrderId())
@@ -88,6 +89,7 @@ public class OrderInfoEntity extends BaseEntity {
 
     public OrderInfo toDomain() {
         return OrderInfo.allArgsBuilder()
+                .id(this.id)
                 .userId(this.userId)
                 .productId(this.productId)
                 .orderId(this.orderId)
