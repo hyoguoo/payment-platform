@@ -14,7 +14,7 @@ import lombok.Getter;
 import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 
 @Getter
-@Builder(builderMethodName = "allArgsBuilder")
+@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class OrderInfo {
 
@@ -34,7 +34,7 @@ public class OrderInfo {
     private LocalDateTime approvedAt;
     private String lastTransactionKey;
 
-    @Builder(builderMethodName = "createBuilder")
+    @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     protected OrderInfo(Long userId, Long productId, Integer quantity, BigDecimal totalAmount) {
         this.userId = userId;
         this.productId = productId;
