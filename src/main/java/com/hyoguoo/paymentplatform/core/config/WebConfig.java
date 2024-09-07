@@ -1,4 +1,4 @@
-package study.paymentintegrationserver.config;
+package com.hyoguoo.paymentplatform.core.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
