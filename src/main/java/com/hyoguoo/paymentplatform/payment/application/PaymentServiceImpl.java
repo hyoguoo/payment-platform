@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
-import jakarta.validation.Valid;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,7 +52,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public TossPaymentResponse confirmPayment(
-            @Valid TossConfirmRequest tossConfirmRequest,
+            TossConfirmRequest tossConfirmRequest,
             String idempotencyKey
     ) {
         return httpOperator.requestPostWithBasicAuthorization(
@@ -69,7 +68,7 @@ public class PaymentServiceImpl implements PaymentService {
     public TossPaymentResponse cancelPayment(
             String paymentKey,
             String idempotencyKey,
-            @Valid TossCancelRequest tossCancelRequest
+            TossCancelRequest tossCancelRequest
     ) {
         return httpOperator.requestPostWithBasicAuthorization(
                 tossApiUrl + "/" + paymentKey + "/cancel",
