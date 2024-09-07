@@ -17,6 +17,7 @@ public class Product {
 
     @Builder
     public Product(Long id, String name, BigDecimal price, String description, Integer stock) {
+        this.id = id;
         this.name = name;
         this.price = price;
         this.description = description;
