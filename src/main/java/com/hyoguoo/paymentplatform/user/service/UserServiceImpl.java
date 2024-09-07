@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.user.service;
 
 import com.hyoguoo.paymentplatform.user.domain.User;
-import com.hyoguoo.paymentplatform.user.exception.UsertFoundException;
+import com.hyoguoo.paymentplatform.user.exception.UserFoundException;
 import com.hyoguoo.paymentplatform.user.exception.common.UserErrorCode;
 import com.hyoguoo.paymentplatform.user.presentation.port.UserService;
 import com.hyoguoo.paymentplatform.user.service.port.UserRepository;
@@ -18,6 +18,6 @@ public class UserServiceImpl implements UserService {
     public User getById(Long id) {
         return userRepository
                 .findById(id)
-                .orElseThrow(() -> UsertFoundException.of(UserErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> UserFoundException.of(UserErrorCode.USER_NOT_FOUND));
     }
 }
