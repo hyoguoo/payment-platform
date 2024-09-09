@@ -2,7 +2,9 @@ package com.hyoguoo.paymentplatform.order.application;
 
 import com.hyoguoo.paymentplatform.order.application.dto.request.OrderConfirmInfo;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.order.exception.OrderFoundException;
 import com.hyoguoo.paymentplatform.order.exception.common.OrderErrorCode;
 import com.hyoguoo.paymentplatform.order.application.port.OrderInfoRepository;
@@ -32,12 +34,16 @@ public class OrderUseCase {
     public OrderInfo confirmOrderInfo(
             Long id,
             OrderConfirmInfo orderConfirmInfo,
-            TossPaymentInfo tossPaymentInfo
+            TossPaymentInfo tossPaymentInfo,
+            UserInfo userInfo,
+            ProductInfo productInfo
     ) {
         return this.getOrderInfoById(id)
                 .confirmOrder(
                         tossPaymentInfo,
-                        orderConfirmInfo
+                        orderConfirmInfo,
+                        userInfo,
+                        productInfo
                 );
     }
 

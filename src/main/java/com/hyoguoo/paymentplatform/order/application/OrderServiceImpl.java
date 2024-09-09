@@ -16,7 +16,9 @@ import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
 import com.hyoguoo.paymentplatform.order.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.order.application.port.UserProvider;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -47,7 +49,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Transactional
     public OrderConfirmResponse confirmOrder(OrderConfirmInfo orderConfirmInfo) {
-        OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmInfo);
+        UserInfo userInfo = userProvider.getUserInfoById(orderConfirmInfo.getUserId());
+        OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmInfo, userInfo);
 
         productProvider.reduceStockWithCommit(
                 orderInfo.getProductId(),
@@ -56,7 +59,9 @@ public class OrderServiceImpl implements OrderService {
 
         OrderInfo confirmedOrderInfo = this.confirmPaymentAndOrderInfoWithStockRollback(
                 orderConfirmInfo,
-                orderInfo
+                orderInfo,
+                userInfo,
+                productProvider.getProductInfoById(orderInfo.getProductId())
         );
 
         orderUseCase.saveOrUpdate(confirmedOrderInfo);
@@ -64,14 +69,18 @@ public class OrderServiceImpl implements OrderService {
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
 
-    private OrderInfo getOrderInfoInProgressStatus(OrderConfirmInfo orderConfirmInfo) {
+    private OrderInfo getOrderInfoInProgressStatus(
+            OrderConfirmInfo orderConfirmInfo,
+            UserInfo userInfo
+    ) {
         OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderConfirmInfo.getOrderId());
+        ProductInfo productInfo = productProvider.getProductInfoById(orderInfo.getProductId());
 
         TossPaymentInfo paymentInfo = paymentHandler.getPaymentInfoByOrderId(
                 orderConfirmInfo.getOrderId()
         );
 
-        orderInfo.validateInProgressOrder(paymentInfo, orderConfirmInfo);
+        orderInfo.validateInProgressOrder(paymentInfo, orderConfirmInfo, userInfo, productInfo);
 
         return orderInfo;
     }
@@ -79,7 +88,9 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderInfo confirmPaymentAndOrderInfoWithStockRollback(
             OrderConfirmInfo orderConfirmInfo,
-            OrderInfo orderInfo
+            OrderInfo orderInfo,
+            UserInfo userInfo,
+            ProductInfo productInfo
     ) {
         try {
             TossConfirmInfo tossConfirmInfo = TossConfirmInfo.builder()
@@ -96,7 +107,9 @@ public class OrderServiceImpl implements OrderService {
             return orderUseCase.confirmOrderInfo(
                     orderInfo.getId(),
                     orderConfirmInfo,
-                    confirmPaymentResponse
+                    confirmPaymentResponse,
+                    userInfo,
+                    productInfo
             );
         } catch (Exception e) {
             productProvider.increaseStockWithCommit(

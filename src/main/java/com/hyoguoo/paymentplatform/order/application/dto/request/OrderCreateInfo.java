@@ -20,8 +20,8 @@ public class OrderCreateInfo {
 
     public OrderInfo toDomain(UserInfo userInfo, ProductInfo productInfo) {
         return OrderInfo.requiredBuilder()
-                .userId(userInfo.getId())
-                .productId(productInfo.getId())
+                .userInfo(userInfo)
+                .productInfo(productInfo)
                 .quantity(this.orderProduct.getQuantity())
                 .totalAmount(this.amount)
                 .requiredBuild();
