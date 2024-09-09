@@ -1,45 +1,34 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
-import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelRequest;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.client.HttpClientErrorException;
-import study.paymentintegrationserver.dto.toss.TossCancelRequest;
-import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 
 @Service
-@Validated
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
-    private final HttpOperator httpOperator;
-    private final EncodeUtils encodeUtils;
-    @Value("${spring.myapp.toss-payments.secret-key}")
-    private String secretKey;
-    @Value("${spring.myapp.toss-payments.api-url}")
-    private String tossApiUrl;
+    private final TossOperator tossOperator;
 
     @Override
-    public TossPaymentResponse getPaymentInfoByOrderId(String orderId) {
-        return findPaymentInfoByOrderId(orderId)
+    public TossPaymentDetails getPaymentInfoByOrderId(String orderId) {
+        return this.findPaymentInfoByOrderId(orderId)
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.USER_NOT_FOUND));
     }
 
     @Override
-    public Optional<TossPaymentResponse> findPaymentInfoByOrderId(String orderId) {
+    public Optional<TossPaymentDetails> findPaymentInfoByOrderId(String orderId) {
         try {
-            TossPaymentResponse tossPaymentResponse = httpOperator.requestGetWithBasicAuthorization(
-                    tossApiUrl + "/orders/" + orderId,
-                    encodeUtils.encodeBase64(secretKey + ":"),
-                    TossPaymentResponse.class
+            TossPaymentDetails tossPaymentResponse = tossOperator.findPaymentInfoByOrderId(
+                    orderId
             );
 
             return Optional.ofNullable(tossPaymentResponse);
@@ -51,31 +40,18 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public TossPaymentResponse confirmPayment(
-            TossConfirmRequest tossConfirmRequest,
-            String idempotencyKey
-    ) {
-        return httpOperator.requestPostWithBasicAuthorization(
-                tossApiUrl + "/confirm",
-                encodeUtils.encodeBase64(secretKey + ":"),
-                idempotencyKey,
-                tossConfirmRequest,
-                TossPaymentResponse.class
-        );
+    public TossPaymentDetails confirmPayment(TossConfirmRequest tossConfirmRequest, String idempotencyKey) {
+        return tossOperator.confirmPayment(tossConfirmRequest, idempotencyKey);
     }
 
     @Override
-    public TossPaymentResponse cancelPayment(
-            String paymentKey,
-            String idempotencyKey,
-            TossCancelRequest tossCancelRequest
+    public TossPaymentDetails cancelPayment(
+            TossCancelRequest tossCancelRequest,
+            String idempotencyKey
     ) {
-        return httpOperator.requestPostWithBasicAuthorization(
-                tossApiUrl + "/" + paymentKey + "/cancel",
-                encodeUtils.encodeBase64(secretKey + ":"),
-                idempotencyKey,
+        return tossOperator.cancelPayment(
                 tossCancelRequest,
-                TossPaymentResponse.class
+                idempotencyKey
         );
     }
 }
