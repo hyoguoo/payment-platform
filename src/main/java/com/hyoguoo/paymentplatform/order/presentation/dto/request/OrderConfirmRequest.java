@@ -1,6 +1,5 @@
-package study.paymentintegrationserver.dto.order;
+package com.hyoguoo.paymentplatform.order.presentation.dto.request;
 
-import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -9,15 +8,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrderConfirmRequest {
 
-    @NotNull
     private final Long userId;
-
-    @NotNull
     private final String orderId;
-
-    @NotNull
     private final BigDecimal amount;
-
-    @NotNull
     private final String paymentKey;
 }
