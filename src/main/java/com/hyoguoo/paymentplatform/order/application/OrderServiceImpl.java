@@ -1,26 +1,26 @@
 package com.hyoguoo.paymentplatform.order.application;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
-import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
-import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderCancelInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderConfirmInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderCreateInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.TossCancelInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderCancelResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderConfirmResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderCreateResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderFindDetailResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderListResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.vo.OrderProduct;
 import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
 import com.hyoguoo.paymentplatform.order.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.order.application.port.UserProvider;
+import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
+import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import study.paymentintegrationserver.dto.order.OrderCancelRequest;
-import study.paymentintegrationserver.dto.order.OrderCancelResponse;
-import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
-import study.paymentintegrationserver.dto.order.OrderConfirmResponse;
-import study.paymentintegrationserver.dto.order.OrderCreateRequest;
-import study.paymentintegrationserver.dto.order.OrderCreateResponse;
-import study.paymentintegrationserver.dto.order.OrderFindDetailResponse;
-import study.paymentintegrationserver.dto.order.OrderListResponse;
-import study.paymentintegrationserver.dto.order.OrderProduct;
-import study.paymentintegrationserver.dto.toss.TossCancelRequest;
-import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -33,11 +33,11 @@ public class OrderServiceImpl implements OrderService {
     private final OrderUseCase orderUseCase;
 
     @Transactional
-    public OrderCreateResponse createOrder(OrderCreateRequest orderCreateRequest) {
-        OrderProduct orderProduct = orderCreateRequest.getOrderProduct();
+    public OrderCreateResponse createOrder(OrderCreateInfo orderCreateInfo) {
+        OrderProduct orderProduct = orderCreateInfo.getOrderProduct();
 
-        OrderInfo orderInfo = orderCreateRequest.toDomain(
-                userProvider.getUserInfoById(orderCreateRequest.getUserId()),
+        OrderInfo orderInfo = orderCreateInfo.toDomain(
+                userProvider.getUserInfoById(orderCreateInfo.getUserId()),
                 productProvider.getProductInfoById(orderProduct.getProductId())
         );
         OrderInfo createdOrder = orderUseCase.saveOrUpdate(orderInfo);
@@ -46,8 +46,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Transactional
-    public OrderConfirmResponse confirmOrder(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmRequest);
+    public OrderConfirmResponse confirmOrder(OrderConfirmInfo orderConfirmInfo) {
+        OrderInfo orderInfo = this.getOrderInfoInProgressStatus(orderConfirmInfo);
 
         productProvider.reduceStockWithCommit(
                 orderInfo.getProductId(),
@@ -55,7 +55,7 @@ public class OrderServiceImpl implements OrderService {
         );
 
         OrderInfo confirmedOrderInfo = this.confirmPaymentAndOrderInfoWithStockRollback(
-                orderConfirmRequest,
+                orderConfirmInfo,
                 orderInfo
         );
 
@@ -64,32 +64,38 @@ public class OrderServiceImpl implements OrderService {
         return new OrderConfirmResponse(confirmedOrderInfo);
     }
 
-    private OrderInfo getOrderInfoInProgressStatus(OrderConfirmRequest orderConfirmRequest) {
-        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderConfirmRequest.getOrderId());
+    private OrderInfo getOrderInfoInProgressStatus(OrderConfirmInfo orderConfirmInfo) {
+        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderConfirmInfo.getOrderId());
 
         TossPaymentInfo paymentInfo = paymentHandler.getPaymentInfoByOrderId(
-                orderConfirmRequest.getOrderId()
+                orderConfirmInfo.getOrderId()
         );
 
-        orderInfo.validateInProgressOrder(paymentInfo, orderConfirmRequest);
+        orderInfo.validateInProgressOrder(paymentInfo, orderConfirmInfo);
 
         return orderInfo;
     }
 
 
     private OrderInfo confirmPaymentAndOrderInfoWithStockRollback(
-            OrderConfirmRequest orderConfirmRequest,
+            OrderConfirmInfo orderConfirmInfo,
             OrderInfo orderInfo
     ) {
         try {
+            TossConfirmInfo tossConfirmInfo = TossConfirmInfo.builder()
+                    .orderId(orderConfirmInfo.getOrderId())
+                    .amount(orderConfirmInfo.getAmount())
+                    .paymentKey(orderConfirmInfo.getPaymentKey())
+                    .idempotencyKey(uuidProvider.generateUUID())
+                    .build();
+
             TossPaymentInfo confirmPaymentResponse = paymentHandler.confirmPayment(
-                    TossConfirmRequest.createByOrderConfirmRequest(orderConfirmRequest),
-                    uuidProvider.generateUUID()
+                    tossConfirmInfo
             );
 
             return orderUseCase.confirmOrderInfo(
                     orderInfo.getId(),
-                    orderConfirmRequest,
+                    orderConfirmInfo,
                     confirmPaymentResponse
             );
         } catch (Exception e) {
@@ -104,20 +110,21 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderListResponse findOrderList(int page, int size) {
-        // TODO: Implement this method
-        return null;
+        return orderUseCase.findOrderList(page, size);
     }
 
     @Transactional
-    public OrderCancelResponse cancelOrder(OrderCancelRequest orderCancelRequest) {
-        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderCancelRequest.getOrderId());
+    public OrderCancelResponse cancelOrder(OrderCancelInfo orderCancelInfo) {
+        OrderInfo orderInfo = orderUseCase.getOrderInfoByOrderId(orderCancelInfo.getOrderId());
+
+        TossCancelInfo tossCancelInfo = TossCancelInfo.builder()
+                .cancelReason(orderCancelInfo.getCancelReason())
+                .paymentKey(orderInfo.getPaymentKey())
+                .idempotencyKey(uuidProvider.generateUUID())
+                .build();
 
         orderInfo.cancelOrder(
-                paymentHandler.cancelPayment(
-                        orderInfo.getPaymentKey(),
-                        uuidProvider.generateUUID(),
-                        TossCancelRequest.createByOrderCancelRequest(orderCancelRequest)
-                )
+                paymentHandler.cancelPayment(tossCancelInfo)
         );
 
         productProvider.increaseStockWithCommit(

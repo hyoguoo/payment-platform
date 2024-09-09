@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.order.presentation;
 
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderCancelInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderCancelResponse;
+import com.hyoguoo.paymentplatform.order.presentation.dto.request.OrderCancelRequest;
 import com.hyoguoo.paymentplatform.order.presentation.port.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,8 +13,6 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import study.paymentintegrationserver.dto.order.OrderCancelRequest;
-import study.paymentintegrationserver.dto.order.OrderCancelResponse;
 
 @Controller
 @RequiredArgsConstructor
@@ -38,9 +39,11 @@ public class OrderViewController {
 
     @PostMapping("/order/cancel")
     public String cancelOrder(@ModelAttribute @Valid OrderCancelRequest orderCancelRequest) {
-        OrderCancelResponse orderCancelResponse = orderService.cancelOrder(
+        OrderCancelInfo orderCancelInfo = OrderPresentationMapper.toOrderCancelInfo(
                 orderCancelRequest
         );
+
+        OrderCancelResponse orderCancelResponse = orderService.cancelOrder(orderCancelInfo);
 
         return "redirect:/order/" + orderCancelResponse.getId();
     }

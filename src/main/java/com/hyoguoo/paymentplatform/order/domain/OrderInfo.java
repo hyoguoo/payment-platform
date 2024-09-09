@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.order.domain;
 
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderConfirmInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.domain.enums.OrderStatus;
 import com.hyoguoo.paymentplatform.order.exception.OrderStatusException;
@@ -11,7 +12,6 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
 
 @Getter
 @Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
@@ -64,13 +64,13 @@ public class OrderInfo {
 
     public OrderInfo confirmOrder(
             TossPaymentInfo paymentInfo,
-            OrderConfirmRequest orderConfirmRequest
+            OrderConfirmInfo orderConfirmInfo
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.DONE.getStatusName())) {
             throw OrderStatusException.of(OrderErrorCode.NOT_DONE_PAYMENT);
         }
 
-        this.validateOrderInfo(paymentInfo, orderConfirmRequest);
+        this.validateOrderInfo(paymentInfo, orderConfirmInfo);
 
         updateOrderPaymentInfo(paymentInfo);
 
@@ -79,13 +79,13 @@ public class OrderInfo {
 
     public void validateInProgressOrder(
             TossPaymentInfo paymentInfo,
-            OrderConfirmRequest orderConfirmRequest
+            OrderConfirmInfo orderConfirmInfo
     ) {
         if (!paymentInfo.getStatus().equals(OrderStatus.IN_PROGRESS.getStatusName())) {
             throw OrderStatusException.of(OrderErrorCode.NOT_IN_PROGRESS_ORDER);
         }
 
-        this.validateOrderInfo(paymentInfo, orderConfirmRequest);
+        this.validateOrderInfo(paymentInfo, orderConfirmInfo);
     }
 
     public OrderInfo cancelOrder(TossPaymentInfo paymentInfo) {
@@ -128,29 +128,29 @@ public class OrderInfo {
 
     private void validateOrderInfo(
             TossPaymentInfo paymentInfo,
-            OrderConfirmRequest orderConfirmRequest
+            OrderConfirmInfo orderConfirmInfo
     ) {
-        if (!this.orderId.equals(orderConfirmRequest.getOrderId())) {
+        if (!this.orderId.equals(orderConfirmInfo.getOrderId())) {
             throw OrderValidException.of(OrderErrorCode.INVALID_ORDER_ID);
         }
 
         // TODO: this.user는 불가능하므로 대신 user dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경
-//        if (!this.user.getId().equals(orderConfirmRequest.getUserId())) {
+//        if (!this.user.getId().equals(orderConfirmInfo.getUserId())) {
 //            throw OrderValidException.of(OrderErrorCode.INVALID_USER_ID);
 //        }
 
-        if (!paymentInfo.getPaymentKey().equals(orderConfirmRequest.getPaymentKey())) {
+        if (!paymentInfo.getPaymentKey().equals(orderConfirmInfo.getPaymentKey())) {
             throw OrderValidException.of(OrderErrorCode.INVALID_PAYMENT_KEY);
         }
 
-        if (!compareAmounts(paymentInfo, orderConfirmRequest)) {
+        if (!compareAmounts(paymentInfo, orderConfirmInfo)) {
             throw OrderValidException.of(OrderErrorCode.INVALID_TOTAL_AMOUNT);
         }
     }
 
     private boolean compareAmounts(
             TossPaymentInfo paymentInfo,
-            OrderConfirmRequest orderConfirmRequest
+            OrderConfirmInfo orderConfirmRequest
     ) {
         // TODO: this.product는 불가능하므로 대신 product dto 받아와서 유효성 검증, order가 주체적으로 수행하도록 변경
         BigDecimal paymentInfoTotalAmount = BigDecimal.valueOf(paymentInfo.getTotalAmount());

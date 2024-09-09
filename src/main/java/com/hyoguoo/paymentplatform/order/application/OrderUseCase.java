@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.order.application;
 
+import com.hyoguoo.paymentplatform.order.application.dto.request.OrderConfirmInfo;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.exception.OrderFoundException;
@@ -10,8 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import study.paymentintegrationserver.dto.order.OrderConfirmRequest;
-import study.paymentintegrationserver.dto.order.OrderListResponse;
+import com.hyoguoo.paymentplatform.order.application.dto.response.OrderListResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -31,13 +31,13 @@ public class OrderUseCase {
     @Transactional
     public OrderInfo confirmOrderInfo(
             Long id,
-            OrderConfirmRequest orderConfirmRequest,
+            OrderConfirmInfo orderConfirmInfo,
             TossPaymentInfo tossPaymentInfo
     ) {
         return this.getOrderInfoById(id)
                 .confirmOrder(
                         tossPaymentInfo,
-                        orderConfirmRequest
+                        orderConfirmInfo
                 );
     }
 
