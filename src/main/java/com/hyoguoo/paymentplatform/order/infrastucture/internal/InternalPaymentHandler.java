@@ -1,53 +1,49 @@
 package com.hyoguoo.paymentplatform.order.infrastucture.internal;
 
-import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.TossCancelInfo;
+import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo;
 import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
-import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
+import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.order.infrastucture.OrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.payment.presentation.PaymentInternalReceiver;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.TossDetailsClientResponse;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import study.paymentintegrationserver.dto.toss.TossCancelRequest;
-import study.paymentintegrationserver.dto.toss.TossConfirmRequest;
-import study.paymentintegrationserver.dto.toss.TossPaymentResponse;
 
 @Component
 @RequiredArgsConstructor
 public class InternalPaymentHandler implements PaymentHandler {
 
-    private final PaymentService paymentService;
+    private final PaymentInternalReceiver paymentInternalReceiver;
 
     @Override
     public TossPaymentInfo getPaymentInfoByOrderId(String orderId) {
-        TossPaymentResponse paymentInfoByOrderId = paymentService.getPaymentInfoByOrderId(orderId);
-
-        return TossPaymentInfo.of(paymentInfoByOrderId);
+        return OrderInfrastructureMapper.toTossPaymentInfo(
+                paymentInternalReceiver.getPaymentInfoByOrderId(orderId)
+        );
     }
 
     @Override
     public Optional<TossPaymentInfo> findPaymentInfoByOrderId(String orderId) {
-        Optional<TossPaymentResponse> paymentInfoByOrderId = paymentService.findPaymentInfoByOrderId(orderId);
-
-        return paymentInfoByOrderId.map(TossPaymentInfo::of);
+        return paymentInternalReceiver
+                .findPaymentInfoByOrderId(orderId)
+                .map(OrderInfrastructureMapper::toTossPaymentInfo);
     }
 
     @Override
-    public TossPaymentInfo confirmPayment(
-            TossConfirmRequest tossConfirmRequest,
-            String idempotencyKey
-    ) {
-        TossPaymentResponse paymentResponse = paymentService.confirmPayment(tossConfirmRequest, idempotencyKey);
+    public TossPaymentInfo confirmPayment(TossConfirmInfo tossConfirmInfo) {
+        TossDetailsClientResponse tossPaymentDetails = paymentInternalReceiver.confirmPayment(
+                OrderInfrastructureMapper.toTossConfirmRequest(tossConfirmInfo)
+        );
 
-        return TossPaymentInfo.of(paymentResponse);
+        return OrderInfrastructureMapper.toTossPaymentInfo(tossPaymentDetails);
     }
 
     @Override
-    public TossPaymentInfo cancelPayment(
-            String paymentKey,
-            String idempotencyKey,
-            TossCancelRequest tossCancelRequest
-    ) {
-        TossPaymentResponse paymentResponse = paymentService.cancelPayment(paymentKey, idempotencyKey, tossCancelRequest);
-
-        return TossPaymentInfo.of(paymentResponse);
+    public TossPaymentInfo cancelPayment(TossCancelInfo tossCancelInfo) {
+        return OrderInfrastructureMapper.toTossPaymentInfo(
+                paymentInternalReceiver.cancelPayment(OrderInfrastructureMapper.toTossCancelRequest(tossCancelInfo))
+        );
     }
 }
