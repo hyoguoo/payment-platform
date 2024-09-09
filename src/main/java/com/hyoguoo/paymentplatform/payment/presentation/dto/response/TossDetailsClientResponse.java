@@ -1,15 +1,14 @@
-package com.hyoguoo.paymentplatform.order.domain.dto;
+package com.hyoguoo.paymentplatform.payment.presentation.dto.response;
 
 import java.time.format.DateTimeFormatter;
-import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 @Getter
+@RequiredArgsConstructor
 @Builder
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-public class TossPaymentInfo {
+public class TossDetailsClientResponse {
 
     public static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");

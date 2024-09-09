@@ -1,4 +1,4 @@
-package study.paymentintegrationserver.dto.toss;
+package com.hyoguoo.paymentplatform.payment.infrasturcture.dto.response;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
