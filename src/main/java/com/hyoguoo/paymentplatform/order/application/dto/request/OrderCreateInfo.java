@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.order.application.dto.request;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.order.presentation.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.order.application.dto.vo.OrderProduct;
 import java.math.BigDecimal;
 import lombok.Builder;
 import lombok.Getter;

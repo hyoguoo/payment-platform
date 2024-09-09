@@ -1,7 +1,7 @@
-package study.paymentintegrationserver.dto.order;
+package com.hyoguoo.paymentplatform.order.application.dto.response;
 
+import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import lombok.Getter;
-import study.paymentintegrationserver.entity.OrderInfo;
 
 @Getter
 public class OrderCreateResponse {

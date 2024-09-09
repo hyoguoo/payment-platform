@@ -1,9 +1,9 @@
-package study.paymentintegrationserver.dto.order;
+package com.hyoguoo.paymentplatform.order.application.dto.response;
 
+import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
 import java.util.List;
 import lombok.Getter;
 import org.springframework.data.domain.Page;
-import study.paymentintegrationserver.entity.OrderInfo;
 
 @Getter
 public class OrderListResponse {

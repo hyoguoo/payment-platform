@@ -1,6 +1,5 @@
-package study.paymentintegrationserver.dto.order;
+package com.hyoguoo.paymentplatform.order.application.dto.vo;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -8,9 +7,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrderProduct {
 
-    @NotNull
     private final Long productId;
-
-    @NotNull
     private final Integer quantity;
 }
