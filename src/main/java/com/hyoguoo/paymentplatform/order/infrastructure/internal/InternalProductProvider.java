@@ -1,8 +1,8 @@
-package com.hyoguoo.paymentplatform.order.infrastucture.internal;
+package com.hyoguoo.paymentplatform.order.infrastructure.internal;
 
 import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.order.application.port.ProductProvider;
-import com.hyoguoo.paymentplatform.order.infrastucture.OrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.order.infrastructure.OrderInfrastructureMapper;
 import com.hyoguoo.paymentplatform.product.presentation.ProductInternalReceiver;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoClientResponse;
 import lombok.RequiredArgsConstructor;

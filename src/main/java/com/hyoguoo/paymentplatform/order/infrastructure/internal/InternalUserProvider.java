@@ -1,8 +1,8 @@
-package com.hyoguoo.paymentplatform.order.infrastucture.internal;
+package com.hyoguoo.paymentplatform.order.infrastructure.internal;
 
 import com.hyoguoo.paymentplatform.order.application.port.UserProvider;
 import com.hyoguoo.paymentplatform.order.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.order.infrastucture.OrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.order.infrastructure.OrderInfrastructureMapper;
 import com.hyoguoo.paymentplatform.user.presentation.UserInternalReceiver;
 import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoClientResponse;
 import lombok.RequiredArgsConstructor;

@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrasturcture.api;
+package com.hyoguoo.paymentplatform.payment.infrastructure.api;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
@@ -6,8 +6,8 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelReq
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.payment.application.port.TossOperator;
-import com.hyoguoo.paymentplatform.payment.infrasturcture.PaymentInfrastructureMapper;
-import com.hyoguoo.paymentplatform.payment.infrasturcture.dto.response.TossPaymentResponse;
+import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
+import com.hyoguoo.paymentplatform.payment.infrastructure.dto.response.TossPaymentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;

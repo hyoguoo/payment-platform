@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrasturcture.dto.response;
+package com.hyoguoo.paymentplatform.payment.infrastructure.dto.response;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;

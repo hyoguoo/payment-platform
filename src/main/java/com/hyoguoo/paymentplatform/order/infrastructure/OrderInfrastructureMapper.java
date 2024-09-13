@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.order.infrastucture;
+package com.hyoguoo.paymentplatform.order.infrastructure;
 
 import com.hyoguoo.paymentplatform.order.application.dto.request.TossCancelInfo;
 import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo;

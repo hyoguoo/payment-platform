@@ -1,7 +1,7 @@
-package com.hyoguoo.paymentplatform.order.infrastucture.repostitory;
+package com.hyoguoo.paymentplatform.order.infrastructure.repostitory;
 
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;
-import com.hyoguoo.paymentplatform.order.infrastucture.entity.OrderInfoEntity;
+import com.hyoguoo.paymentplatform.order.infrastructure.entity.OrderInfoEntity;
 import com.hyoguoo.paymentplatform.order.application.port.OrderInfoRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;

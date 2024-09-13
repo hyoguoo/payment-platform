@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.user.infrasturcture.entity;
+package com.hyoguoo.paymentplatform.user.infrastructure.entity;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.user.domain.User;

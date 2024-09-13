@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.order.infrastucture.entity;
+package com.hyoguoo.paymentplatform.order.infrastructure.entity;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.order.domain.OrderInfo;

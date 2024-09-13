@@ -1,7 +1,7 @@
-package com.hyoguoo.paymentplatform.payment.infrasturcture;
+package com.hyoguoo.paymentplatform.payment.infrastructure;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.response.TossPaymentDetails;
-import com.hyoguoo.paymentplatform.payment.infrasturcture.dto.response.TossPaymentResponse;
+import com.hyoguoo.paymentplatform.payment.infrastructure.dto.response.TossPaymentResponse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 

@@ -1,6 +1,6 @@
-package com.hyoguoo.paymentplatform.user.infrasturcture.repository;
+package com.hyoguoo.paymentplatform.user.infrastructure.repository;
 
-import com.hyoguoo.paymentplatform.user.infrasturcture.entity.UserEntity;
+import com.hyoguoo.paymentplatform.user.infrastructure.entity.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface JpaUserRepository extends JpaRepository<UserEntity, Long> {

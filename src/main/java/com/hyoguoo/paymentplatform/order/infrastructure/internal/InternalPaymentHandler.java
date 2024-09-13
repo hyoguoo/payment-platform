@@ -1,10 +1,10 @@
-package com.hyoguoo.paymentplatform.order.infrastucture.internal;
+package com.hyoguoo.paymentplatform.order.infrastructure.internal;
 
 import com.hyoguoo.paymentplatform.order.application.dto.request.TossCancelInfo;
 import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo;
 import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.order.infrastucture.OrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.order.infrastructure.OrderInfrastructureMapper;
 import com.hyoguoo.paymentplatform.payment.presentation.PaymentInternalReceiver;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.TossDetailsClientResponse;
 import java.util.Optional;
