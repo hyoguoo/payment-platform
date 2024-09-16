@@ -20,6 +20,7 @@ public class PaymentPresentationMapper {
     public static CheckoutResponse toCheckoutResponse(CheckoutResult result) {
         return CheckoutResponse.builder()
                 .orderId(result.getOrderId())
+                .totalAmount(result.getTotalAmount())
                 .build();
     }
 }

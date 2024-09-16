@@ -13,6 +13,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
+import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,15 +39,24 @@ public class PaymentServiceImpl implements PaymentService {
                 userInfo,
                 productInfoList
         );
-        savePaymentOrderList(
+        List<PaymentOrder> paymentOrders = savePaymentOrderList(
                 savedPaymentEvent,
                 checkoutCommand.getOrderedProductList(),
                 productInfoList
         );
 
+        BigDecimal totalAmount = calculateTotalAmount(paymentOrders);
+
         return CheckoutResult.builder()
                 .orderId(savedPaymentEvent.getOrderId())
+                .totalAmount(totalAmount)
                 .build();
+    }
+
+    private static BigDecimal calculateTotalAmount(List<PaymentOrder> paymentOrders) {
+        return paymentOrders.stream()
+                .map(PaymentOrder::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private List<ProductInfo> getProductInfoList(CheckoutCommand checkoutCommand) {
@@ -69,19 +79,21 @@ public class PaymentServiceImpl implements PaymentService {
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    private void savePaymentOrderList(
+    private List<PaymentOrder> savePaymentOrderList(
             PaymentEvent savedPaymentEvent,
             List<OrderedProduct> orderedProductList,
             List<ProductInfo> productInfoList
     ) {
-        productInfoList.forEach(productInfo -> {
-            OrderedProduct matchedOrderedProduct = findMatchingOrderedProduct(
-                    orderedProductList,
-                    productInfo
-            );
+        return productInfoList.stream()
+                .map(productInfo -> {
+                    OrderedProduct matchedOrderedProduct = findMatchingOrderedProduct(
+                            orderedProductList,
+                            productInfo
+                    );
 
-            savePaymentOrder(savedPaymentEvent, productInfo, matchedOrderedProduct);
-        });
+                    return savePaymentOrder(savedPaymentEvent, productInfo, matchedOrderedProduct);
+                })
+                .toList();
     }
 
     private OrderedProduct findMatchingOrderedProduct(
@@ -95,7 +107,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow();
     }
 
-    private void savePaymentOrder(
+    private PaymentOrder savePaymentOrder(
             PaymentEvent savedPaymentEvent,
             ProductInfo productInfo,
             OrderedProduct matchedOrderedProduct
@@ -106,6 +118,6 @@ public class PaymentServiceImpl implements PaymentService {
                 .productInfo(productInfo)
                 .requiredBuild();
 
-        paymentOrderRepository.saveOrUpdate(paymentOrder);
+        return paymentOrderRepository.saveOrUpdate(paymentOrder);
     }
 }
