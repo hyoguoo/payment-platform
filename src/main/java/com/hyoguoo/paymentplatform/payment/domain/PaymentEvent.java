@@ -1,12 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,15 +29,15 @@ public class PaymentEvent {
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     protected PaymentEvent(
             UserInfo userInfo,
-            ProductInfo productInfo,
-            CheckoutCommand checkoutCommand,
+            List<ProductInfo> productInfoList,
+            BigDecimal totalAmount,
             LocalDateTime now
     ) {
         this.buyerId = userInfo.getId();
-        this.sellerId = productInfo.getSellerId();
-        this.totalAmount = checkoutCommand.getAmount();
+        this.sellerId = productInfoList.getFirst().getSellerId();
+        this.totalAmount = totalAmount;
 
-        this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderedProduct());
+        this.orderName = generateOrderName(productInfoList);
         this.orderId = generateOrderId(now);
         this.isPaymentDone = false;
     }
@@ -47,7 +46,9 @@ public class PaymentEvent {
         return "ORDER-" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
     }
 
-    private static String generateOrderName(ProductInfo productInfo, OrderedProduct orderedProduct) {
-        return productInfo.getName() + " " + orderedProduct.getQuantity() + "개";
+    private static String generateOrderName(
+            List<ProductInfo> productInfoList
+    ) {
+        return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
     }
 }

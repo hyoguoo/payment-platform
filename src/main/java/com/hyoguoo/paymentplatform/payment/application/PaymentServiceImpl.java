@@ -13,6 +13,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
+import java.math.BigDecimal;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,46 +31,85 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public CheckoutResult checkout(CheckoutCommand request) {
-        UserInfo userInfoById = userProvider.getUserInfoById(request.getUserId());
-        ProductInfo productInfoById = productProvider.getProductInfoById(
-                request.getOrderedProduct().getProductId()
-        );
+    public CheckoutResult checkout(CheckoutCommand checkoutCommand) {
+        UserInfo userInfo = userProvider.getUserInfoById(checkoutCommand.getUserId());
+        List<ProductInfo> productInfoList = getProductInfoList(checkoutCommand);
 
-        PaymentEvent savedPaymentEvent = savePaymentEvent(request, userInfoById, productInfoById);
-        savePaymentOrder(savedPaymentEvent, request.getOrderedProduct(), productInfoById);
+        PaymentEvent savedPaymentEvent = savePaymentEvent(
+                checkoutCommand.getAmount(),
+                userInfo,
+                productInfoList
+        );
+        savePaymentOrderList(
+                savedPaymentEvent,
+                checkoutCommand.getOrderedProductList(),
+                productInfoList
+        );
 
         return CheckoutResult.builder()
                 .orderId(savedPaymentEvent.getOrderId())
                 .build();
     }
 
+    private List<ProductInfo> getProductInfoList(CheckoutCommand checkoutCommand) {
+        return checkoutCommand.getOrderedProductList().stream()
+                .map(orderedProduct ->
+                        productProvider.getProductInfoById(orderedProduct.getProductId()))
+                .toList();
+    }
+
     private PaymentEvent savePaymentEvent(
-            CheckoutCommand request,
-            UserInfo userInfoById,
-            ProductInfo productInfoById
+            BigDecimal totalAmount,
+            UserInfo userInfo,
+            List<ProductInfo> productInfoList
     ) {
         PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfoById)
-                .productInfo(productInfoById)
-                .checkoutCommand(request)
+                .userInfo(userInfo)
+                .productInfoList(productInfoList)
+                .totalAmount(totalAmount)
                 .now(localDateTimeProvider.now())
                 .requiredBuild();
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    private PaymentOrder savePaymentOrder(
+    private void savePaymentOrderList(
             PaymentEvent savedPaymentEvent,
-            OrderedProduct orderedProduct,
+            List<OrderedProduct> orderedProductList,
+            List<ProductInfo> productInfoList
+    ) {
+        productInfoList.forEach(productInfo -> {
+            OrderedProduct matchedOrderedProduct = findMatchingOrderedProduct(
+                    orderedProductList,
+                    productInfo
+            );
+
+            savePaymentOrder(savedPaymentEvent, productInfo, matchedOrderedProduct);
+        });
+    }
+
+    private OrderedProduct findMatchingOrderedProduct(
+            List<OrderedProduct> orderedProductList,
             ProductInfo productInfo
+    ) {
+        return orderedProductList.stream()
+                .filter(orderedProduct ->
+                        orderedProduct.getProductId().equals(productInfo.getId()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private void savePaymentOrder(
+            PaymentEvent savedPaymentEvent,
+            ProductInfo productInfo,
+            OrderedProduct matchedOrderedProduct
     ) {
         PaymentOrder paymentOrder = PaymentOrder.requiredBuilder()
                 .paymentEvent(savedPaymentEvent)
-                .orderedProduct(orderedProduct)
+                .orderedProduct(matchedOrderedProduct)
                 .productInfo(productInfo)
                 .requiredBuild();
 
-        return paymentOrderRepository.saveOrUpdate(paymentOrder);
+        paymentOrderRepository.saveOrUpdate(paymentOrder);
     }
 }
