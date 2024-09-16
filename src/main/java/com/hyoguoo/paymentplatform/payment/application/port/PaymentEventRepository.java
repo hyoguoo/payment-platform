@@ -7,5 +7,7 @@ public interface PaymentEventRepository {
 
     Optional<PaymentEvent> findById(Long id);
 
+    Optional<PaymentEvent> findByOrderId(String orderId);
+
     PaymentEvent saveOrUpdate(PaymentEvent paymentEvent);
 }

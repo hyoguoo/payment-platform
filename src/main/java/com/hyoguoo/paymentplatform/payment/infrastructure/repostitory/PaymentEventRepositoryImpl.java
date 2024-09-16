@@ -21,6 +21,13 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     }
 
     @Override
+    public Optional<PaymentEvent> findByOrderId(String orderId) {
+        return jpaPaymentEventRepository
+                .findByOrderId(orderId)
+                .map(PaymentEventEntity::toDomain);
+    }
+
+    @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
         return jpaPaymentEventRepository.save(PaymentEventEntity.from(paymentEvent)).toDomain();
     }
