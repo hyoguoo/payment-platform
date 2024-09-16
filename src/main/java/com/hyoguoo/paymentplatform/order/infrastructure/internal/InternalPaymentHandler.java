@@ -5,8 +5,8 @@ import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo
 import com.hyoguoo.paymentplatform.order.application.port.PaymentHandler;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.infrastructure.OrderInfrastructureMapper;
-import com.hyoguoo.paymentplatform.payment.presentation.PaymentInternalReceiver;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.TossDetailsClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -15,25 +15,25 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class InternalPaymentHandler implements PaymentHandler {
 
-    private final PaymentInternalReceiver paymentInternalReceiver;
+    private final PaymentGatewayInternalReceiver paymentGatewayInternalReceiver;
 
     @Override
     public TossPaymentInfo getPaymentInfoByOrderId(String orderId) {
         return OrderInfrastructureMapper.toTossPaymentInfo(
-                paymentInternalReceiver.getPaymentInfoByOrderId(orderId)
+                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
         );
     }
 
     @Override
     public Optional<TossPaymentInfo> findPaymentInfoByOrderId(String orderId) {
-        return paymentInternalReceiver
+        return paymentGatewayInternalReceiver
                 .findPaymentInfoByOrderId(orderId)
                 .map(OrderInfrastructureMapper::toTossPaymentInfo);
     }
 
     @Override
     public TossPaymentInfo confirmPayment(TossConfirmInfo tossConfirmInfo) {
-        TossDetailsClientResponse tossPaymentDetails = paymentInternalReceiver.confirmPayment(
+        TossDetailsClientResponse tossPaymentDetails = paymentGatewayInternalReceiver.confirmPayment(
                 OrderInfrastructureMapper.toTossConfirmRequest(tossConfirmInfo)
         );
 
@@ -43,7 +43,7 @@ public class InternalPaymentHandler implements PaymentHandler {
     @Override
     public TossPaymentInfo cancelPayment(TossCancelInfo tossCancelInfo) {
         return OrderInfrastructureMapper.toTossPaymentInfo(
-                paymentInternalReceiver.cancelPayment(OrderInfrastructureMapper.toTossCancelRequest(tossCancelInfo))
+                paymentGatewayInternalReceiver.cancelPayment(OrderInfrastructureMapper.toTossCancelRequest(tossCancelInfo))
         );
     }
 }

@@ -5,9 +5,9 @@ import com.hyoguoo.paymentplatform.order.application.dto.request.TossConfirmInfo
 import com.hyoguoo.paymentplatform.order.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.order.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.request.TossCancelClientRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.request.TossConfirmClientRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.TossDetailsClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelClientRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmClientRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoClientResponse;
 import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoClientResponse;
 import lombok.AccessLevel;
