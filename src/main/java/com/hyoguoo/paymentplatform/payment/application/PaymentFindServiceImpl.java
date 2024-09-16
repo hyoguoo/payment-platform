@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentFindService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;

@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.repostitory;
+package com.hyoguoo.paymentplatform.payment.application.port;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.List;
