@@ -25,6 +25,7 @@ public class PaymentOrder {
     private PaymentOrderStatus status;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
+    @SuppressWarnings("unused")
     protected PaymentOrder(
             PaymentEvent paymentEvent,
             OrderedProduct orderedProduct,

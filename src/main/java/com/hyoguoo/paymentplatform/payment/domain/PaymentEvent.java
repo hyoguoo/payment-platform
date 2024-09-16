@@ -28,6 +28,7 @@ public class PaymentEvent {
     private LocalDateTime approvedAt;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
+    @SuppressWarnings("unused")
     protected PaymentEvent(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
