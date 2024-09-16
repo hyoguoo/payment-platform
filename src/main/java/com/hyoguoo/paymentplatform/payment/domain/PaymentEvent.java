@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.math.BigDecimal;
@@ -38,7 +38,7 @@ public class PaymentEvent {
         this.sellerId = productInfo.getSellerId();
         this.totalAmount = checkoutCommand.getAmount();
 
-        this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderProduct());
+        this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderedProduct());
         this.orderId = generateOrderId(now);
         this.isPaymentDone = false;
     }
@@ -47,7 +47,7 @@ public class PaymentEvent {
         return "ORDER-" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
     }
 
-    private static String generateOrderName(ProductInfo productInfo, OrderProduct orderProduct) {
-        return productInfo.getName() + " " + orderProduct.getQuantity() + "개";
+    private static String generateOrderName(ProductInfo productInfo, OrderedProduct orderedProduct) {
+        return productInfo.getName() + " " + orderedProduct.getQuantity() + "개";
     }
 }

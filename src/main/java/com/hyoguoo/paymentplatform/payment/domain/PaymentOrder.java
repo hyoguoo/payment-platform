@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
@@ -27,26 +27,26 @@ public class PaymentOrder {
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     protected PaymentOrder(
             PaymentEvent paymentEvent,
-            OrderProduct orderProduct,
+            OrderedProduct orderedProduct,
             ProductInfo productInfo
     ) {
         this.paymentEventId = paymentEvent.getId();
         this.orderId = paymentEvent.getOrderId();
-        this.productId = orderProduct.getProductId();
-        this.quantity = orderProduct.getQuantity();
-        this.totalAmount = productInfo.getPrice().multiply(BigDecimal.valueOf(orderProduct.getQuantity()));
+        this.productId = orderedProduct.getProductId();
+        this.quantity = orderedProduct.getQuantity();
+        this.totalAmount = productInfo.getPrice().multiply(BigDecimal.valueOf(orderedProduct.getQuantity()));
 
         this.status = PaymentOrderStatus.NOT_STARTED;
 
-        validateTotalAmount(productInfo, orderProduct);
+        validateTotalAmount(productInfo, orderedProduct);
     }
 
     private void validateTotalAmount(
             ProductInfo productInfo,
-            OrderProduct orderProduct
+            OrderedProduct orderedProduct
     ) {
         BigDecimal calculatedAmount = productInfo.getPrice()
-                .multiply(BigDecimal.valueOf(orderProduct.getQuantity()));
+                .multiply(BigDecimal.valueOf(orderedProduct.getQuantity()));
 
         if (calculatedAmount.compareTo(this.totalAmount) != 0) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);

@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
@@ -32,11 +32,11 @@ public class PaymentServiceImpl implements PaymentService {
     public CheckoutResult checkout(CheckoutCommand request) {
         UserInfo userInfoById = userProvider.getUserInfoById(request.getUserId());
         ProductInfo productInfoById = productProvider.getProductInfoById(
-                request.getOrderProduct().getProductId()
+                request.getOrderedProduct().getProductId()
         );
 
         PaymentEvent savedPaymentEvent = savePaymentEvent(request, userInfoById, productInfoById);
-        savePaymentOrder(savedPaymentEvent, request.getOrderProduct(), productInfoById);
+        savePaymentOrder(savedPaymentEvent, request.getOrderedProduct(), productInfoById);
 
         return CheckoutResult.builder()
                 .orderId(savedPaymentEvent.getOrderId())
@@ -60,12 +60,12 @@ public class PaymentServiceImpl implements PaymentService {
 
     private PaymentOrder savePaymentOrder(
             PaymentEvent savedPaymentEvent,
-            OrderProduct orderProduct,
+            OrderedProduct orderedProduct,
             ProductInfo productInfo
     ) {
         PaymentOrder paymentOrder = PaymentOrder.requiredBuilder()
                 .paymentEvent(savedPaymentEvent)
-                .orderProduct(orderProduct)
+                .orderedProduct(orderedProduct)
                 .productInfo(productInfo)
                 .requiredBuild();
 

@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.dto.request;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import java.math.BigDecimal;
 import lombok.Builder;
 import lombok.Getter;
@@ -11,5 +11,5 @@ public class CheckoutCommand {
 
     private final Long userId;
     private final BigDecimal amount;
-    private final OrderProduct orderProduct;
+    private final OrderedProduct orderedProduct;
 }
