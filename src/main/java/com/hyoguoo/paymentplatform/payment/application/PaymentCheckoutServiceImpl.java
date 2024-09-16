@@ -12,7 +12,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
-import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class PaymentServiceImpl implements PaymentService {
+public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
 
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentOrderRepository paymentOrderRepository;

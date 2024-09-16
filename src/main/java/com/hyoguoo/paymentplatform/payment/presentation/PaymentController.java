@@ -6,7 +6,7 @@ import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequ
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentConfirmResponse;
-import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class PaymentController {
 
-    private final PaymentService paymentService;
+    private final PaymentCheckoutService paymentCheckoutService;
 
     @PostMapping("/api/v1/payments/checkout")
     public CheckoutResponse checkout(
@@ -25,7 +25,7 @@ public class PaymentController {
         CheckoutCommand checkoutCommand = PaymentPresentationMapper.toCheckoutCommand(
                 checkoutRequest
         );
-        CheckoutResult checkoutResult = paymentService.checkout(checkoutCommand);
+        CheckoutResult checkoutResult = paymentCheckoutService.checkout(checkoutCommand);
 
         return PaymentPresentationMapper.toCheckoutResponse(checkoutResult);
     }
