@@ -4,8 +4,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutComma
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -43,11 +41,6 @@ public class PaymentEvent {
         this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderProduct());
         this.orderId = generateOrderId(now);
         this.isPaymentDone = false;
-
-        validateTotalAmount(
-                productInfo,
-                checkoutCommand.getOrderProduct()
-        );
     }
 
     private static String generateOrderId(LocalDateTime now) {
@@ -56,17 +49,5 @@ public class PaymentEvent {
 
     private static String generateOrderName(ProductInfo productInfo, OrderProduct orderProduct) {
         return productInfo.getName() + " " + orderProduct.getQuantity() + "개";
-    }
-
-    private void validateTotalAmount(
-            ProductInfo productInfo,
-            OrderProduct orderProduct
-    ) {
-        BigDecimal calculatedAmount = productInfo.getPrice()
-                .multiply(BigDecimal.valueOf(orderProduct.getQuantity()));
-
-        if (calculatedAmount.compareTo(this.totalAmount) != 0) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
-        }
     }
 }
