@@ -22,12 +22,12 @@ public class InternalProductProvider implements ProductProvider {
     }
 
     @Override
-    public void reduceStockWithCommit(Long productId, Integer quantity) {
-        productInternalReceiver.reduceStockWithCommit(productId, quantity);
+    public boolean reduceStockWithCommit(Long productId, Integer quantity) {
+        return productInternalReceiver.reduceStockWithCommit(productId, quantity);
     }
 
     @Override
-    public void increaseStockWithCommit(Long productId, Integer quantity) {
-        productInternalReceiver.increaseStockWithCommit(productId, quantity);
+    public boolean increaseStockWithCommit(Long productId, Integer quantity) {
+        return productInternalReceiver.increaseStockWithCommit(productId, quantity);
     }
 }

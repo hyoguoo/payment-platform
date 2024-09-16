@@ -6,7 +6,7 @@ public interface ProductService {
 
     Product getById(Long id);
 
-    Product reduceStockWithCommit(Long productId, Integer reduceStock);
+    boolean reduceStockWithCommit(Long productId, Integer reduceStock);
 
-    Product increaseStockWithCommit(Long productId, Integer increaseStock);
+    boolean increaseStockWithCommit(Long productId, Integer increaseStock);
 }

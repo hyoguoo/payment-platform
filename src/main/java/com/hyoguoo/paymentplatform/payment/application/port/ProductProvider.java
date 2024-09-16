@@ -6,7 +6,7 @@ public interface ProductProvider {
 
     ProductInfo getProductInfoById(Long productId);
 
-    void reduceStockWithCommit(Long productId, Integer quantity);
+    boolean reduceStockWithCommit(Long productId, Integer quantity);
 
-    void increaseStockWithCommit(Long productId, Integer quantity);
+    boolean increaseStockWithCommit(Long productId, Integer quantity);
 }

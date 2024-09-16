@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.product.presentation.port.ProductService;
 import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,15 +23,21 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Product reduceStockWithCommit(Long productId, Integer reduceStock) {
-        return getByIdPessimistic(productId)
-                .decrementStock(reduceStock);
+    @Transactional
+    public boolean reduceStockWithCommit(Long productId, Integer reduceStock) {
+        Product product = getByIdPessimistic(productId);
+        boolean result = product.decrementStock(reduceStock);
+        productRepository.saveOrUpdate(product);
+        return result;
     }
 
     @Override
-    public Product increaseStockWithCommit(Long productId, Integer increaseStock) {
-        return getByIdPessimistic(productId)
-                .incrementStock(increaseStock);
+    @Transactional
+    public boolean increaseStockWithCommit(Long productId, Integer increaseStock) {
+        Product product = getByIdPessimistic(productId);
+        boolean result = product.incrementStock(increaseStock);
+        productRepository.saveOrUpdate(product);
+        return result;
     }
 
     private Product getByIdPessimistic(Long id) {
