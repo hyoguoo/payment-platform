@@ -1,10 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderCancelInfo;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.OrderCancelResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderCancelResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.OrderCancelRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
-import jakarta.validation.Valid;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderDetailResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderListResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -18,11 +17,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RequiredArgsConstructor
 public class PaymentViewController {
 
-    private final PaymentService paymentService;
-
     @GetMapping("/payment/{id}")
     public String findOrder(@PathVariable("id") Long id, Model model) {
-        model.addAttribute("order", paymentService.getOrderDetailsByIdAndUpdatePaymentInfo(id));
+        OrderDetailResponse orderDetailResponse = OrderDetailResponse.builder().build();
+        model.addAttribute("order", orderDetailResponse);
 
         return "order/order-detail";
     }
@@ -32,18 +30,15 @@ public class PaymentViewController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        model.addAttribute("orders", paymentService.findOrderList(page, size));
+        OrderListResponse orderListResponse = OrderListResponse.builder().build();
+        model.addAttribute("orders", orderListResponse);
 
         return "order/order-list";
     }
 
     @PostMapping("/payment/cancel")
-    public String cancelOrder(@ModelAttribute @Valid OrderCancelRequest orderCancelRequest) {
-        OrderCancelInfo orderCancelInfo = PaymentPresentationMapper.toOrderCancelInfo(
-                orderCancelRequest
-        );
-
-        OrderCancelResponse orderCancelResponse = paymentService.cancelOrder(orderCancelInfo);
+    public String cancelOrder(@ModelAttribute OrderCancelRequest orderCancelRequest) {
+        OrderCancelResponse orderCancelResponse = OrderCancelResponse.builder().build();
 
         return "redirect:/order/" + orderCancelResponse.getId();
     }
