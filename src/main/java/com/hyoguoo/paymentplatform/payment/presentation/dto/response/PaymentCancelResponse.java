@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class OrderCancelResponse {
+public class PaymentCancelResponse {
 
     private final Long id;
 }

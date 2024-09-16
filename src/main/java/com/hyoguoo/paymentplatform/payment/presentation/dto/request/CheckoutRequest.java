@@ -1,15 +1,15 @@
 package com.hyoguoo.paymentplatform.payment.presentation.dto.request;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
 import java.math.BigDecimal;
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
-public class OrderConfirmRequest {
+@Builder
+public class CheckoutRequest {
 
     private final Long userId;
-    private final String orderId;
     private final BigDecimal amount;
-    private final String paymentKey;
+    private final OrderProduct orderProduct;
 }

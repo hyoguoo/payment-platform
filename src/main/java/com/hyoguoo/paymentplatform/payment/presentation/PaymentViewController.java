@@ -1,9 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderCancelResponse;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.request.OrderCancelRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderDetailResponse;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderListResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentCancelResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentCancelRequest;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentDetailResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentListResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -18,28 +18,28 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class PaymentViewController {
 
     @GetMapping("/payment/{id}")
-    public String findOrder(@PathVariable("id") Long id, Model model) {
-        OrderDetailResponse orderDetailResponse = OrderDetailResponse.builder().build();
-        model.addAttribute("order", orderDetailResponse);
+    public String findDetails(@PathVariable("id") Long id, Model model) {
+        PaymentDetailResponse paymentDetailResponse = PaymentDetailResponse.builder().build();
+        model.addAttribute("order", paymentDetailResponse);
 
         return "order/order-detail";
     }
 
     @GetMapping("/payment")
-    public String findAllOrders(Model model,
+    public String findAll(Model model,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        OrderListResponse orderListResponse = OrderListResponse.builder().build();
-        model.addAttribute("orders", orderListResponse);
+        PaymentListResponse paymentListResponse = PaymentListResponse.builder().build();
+        model.addAttribute("orders", paymentListResponse);
 
         return "order/order-list";
     }
 
     @PostMapping("/payment/cancel")
-    public String cancelOrder(@ModelAttribute OrderCancelRequest orderCancelRequest) {
-        OrderCancelResponse orderCancelResponse = OrderCancelResponse.builder().build();
+    public String cancel(@ModelAttribute PaymentCancelRequest paymentCancelRequest) {
+        PaymentCancelResponse paymentCancelResponse = PaymentCancelResponse.builder().build();
 
-        return "redirect:/order/" + orderCancelResponse.getId();
+        return "redirect:/order/" + paymentCancelResponse.getId();
     }
 }

@@ -6,9 +6,9 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class OrderListResponse {
+public class PaymentListResponse {
 
-    private final List<OrderFindResponse> content;
+    private final List<PaymentResponse> content;
     private final int totalPages;
     private final long totalElements;
     private final int number;

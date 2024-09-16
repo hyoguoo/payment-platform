@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class OrderCreateResponse {
+public class CheckoutResponse {
 
     private final String orderId;
 }

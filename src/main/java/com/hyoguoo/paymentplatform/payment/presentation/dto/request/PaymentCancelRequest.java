@@ -1,11 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.presentation.dto.request;
 
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
-public class OrderCancelRequest {
+@Builder
+public class PaymentCancelRequest {
 
     private final String orderId;
     private final String cancelReason;

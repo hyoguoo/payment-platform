@@ -8,7 +8,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class OrderFindResponse {
+public class PaymentResponse {
 
     private final Long id;
     private final String orderId;

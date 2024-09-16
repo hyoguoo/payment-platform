@@ -1,9 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
-import com.hyoguoo.paymentplatform.payment.presentation.dto.request.OrderConfirmRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.request.OrderCreateRequest;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderConfirmResponse;
-import com.hyoguoo.paymentplatform.payment.presentation.dto.response.OrderCreateResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentConfirmResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,17 +13,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class PaymentController {
 
-    @PostMapping("/api/v1/payments/create")
-    public OrderCreateResponse createOrder(
-            @RequestBody OrderCreateRequest orderCreateRequest
+    @PostMapping("/api/v1/payments/checkout")
+    public CheckoutResponse checkout(
+            @RequestBody CheckoutRequest checkoutRequest
     ) {
-        return OrderCreateResponse.builder().build();
+        return CheckoutResponse.builder().build();
     }
 
     @PostMapping("/api/v1/payments/confirm")
-    public OrderConfirmResponse confirmOrder(
-            @RequestBody OrderConfirmRequest orderConfirmRequest
+    public PaymentConfirmResponse confirm(
+            @RequestBody PaymentConfirmRequest paymentConfirmRequest
     ) {
-        return OrderConfirmResponse.builder().build();
+        return PaymentConfirmResponse.builder().build();
     }
 }

@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.internal;
 
 import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentOrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
 import com.hyoguoo.paymentplatform.user.presentation.UserInternalReceiver;
 import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoClientResponse;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +20,6 @@ public class InternalUserProvider implements UserProvider {
                 userId
         );
 
-        return PaymentOrderInfrastructureMapper.toUserInfo(userInfoClientResponse);
+        return PaymentInfrastructureMapper.toUserInfo(userInfoClientResponse);
     }
 }

@@ -6,7 +6,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class OrderConfirmResponse {
+public class PaymentConfirmResponse {
 
     private final String orderId;
     private final BigDecimal amount;
