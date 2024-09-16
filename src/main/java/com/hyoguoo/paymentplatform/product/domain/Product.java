@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 @Getter
+@Builder
 public class Product {
 
     private Long id;
@@ -14,50 +15,28 @@ public class Product {
     private BigDecimal price;
     private String description;
     private Integer stock;
+    private Long sellerId;
 
-    @Builder
-    public Product(Long id, String name, BigDecimal price, String description, Integer stock) {
-        this.id = id;
-        this.name = name;
-        this.price = price;
-        this.description = description;
-        this.stock = stock;
-    }
-
-    public BigDecimal calculateTotalPrice(Integer quantity) {
-        return this.price.multiply(BigDecimal.valueOf(quantity));
-    }
-
-    public Product decrementStock(int amount) {
+    public boolean decrementStock(int amount) {
         if (amount < 0) {
             throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
         }
         if (this.stock < amount) {
-            throw ProductStockException.of(ProductErrorCode.NOT_ENOUGH_STOCK);
+            return false;
         }
 
         this.stock -= amount;
 
-        return this;
+        return true;
     }
 
-    public Product incrementStock(int amount) {
+    public boolean incrementStock(int amount) {
         if (amount < 0) {
             throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
         }
         this.stock += amount;
 
-        return this;
-    }
-
-    public void validateStockAvailability(int quantity) {
-        if (quantity < 0) {
-            throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
-        }
-
-        if (this.stock < quantity) {
-            throw ProductStockException.of(ProductErrorCode.NOT_ENOUGH_STOCK);
-        }
+        return true;
     }
 }
 
