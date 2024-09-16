@@ -1,10 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.application.dto.vo;
 
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 
 @Getter
-@RequiredArgsConstructor
+@Builder
 public class OrderProduct {
 
     private final Long productId;
