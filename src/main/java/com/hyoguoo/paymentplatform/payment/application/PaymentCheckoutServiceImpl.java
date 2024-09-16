@@ -11,7 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import java.math.BigDecimal;
 import java.util.List;
