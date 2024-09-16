@@ -51,6 +51,7 @@ public class PaymentEventEntity extends BaseEntity {
 
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()
+                .id(paymentEvent.getId())
                 .buyerId(paymentEvent.getBuyerId())
                 .sellerId(paymentEvent.getSellerId())
                 .orderName(paymentEvent.getOrderName())

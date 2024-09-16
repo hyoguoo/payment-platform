@@ -52,6 +52,7 @@ public class PaymentOrderEntity extends BaseEntity {
 
     public static PaymentOrderEntity from(PaymentOrder paymentOrder) {
         return PaymentOrderEntity.builder()
+                .id(paymentOrder.getId())
                 .paymentEventId(paymentOrder.getPaymentEventId())
                 .orderId(paymentOrder.getOrderId())
                 .productId(paymentOrder.getProductId())
@@ -63,6 +64,7 @@ public class PaymentOrderEntity extends BaseEntity {
 
     public PaymentOrder toDomain() {
         return PaymentOrder.allArgsBuilder()
+                .id(id)
                 .paymentEventId(paymentEventId)
                 .orderId(orderId)
                 .productId(productId)
