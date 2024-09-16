@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum PaymentGatewayErrorCode implements ErrorCode {
 
-    USER_NOT_FOUND("E02001", "존재하지 않는 사용자입니다."),
+    TOSS_PAYMENT_INFO_NOT_FOUND("E02001", "존재하지 않는 토스 결제 정보입니다."),
     ;
 
     private final String code;

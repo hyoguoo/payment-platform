@@ -21,7 +21,7 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
     @Override
     public TossPaymentResult getPaymentResultByOrderId(String orderId) {
         return this.findPaymentResultByOrderId(orderId)
-                .orElseThrow(() -> PaymentGatewayFoundException.of(PaymentGatewayErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> PaymentGatewayFoundException.of(PaymentGatewayErrorCode.TOSS_PAYMENT_INFO_NOT_FOUND));
     }
 
     @Override
