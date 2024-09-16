@@ -1,0 +1,25 @@
+package com.hyoguoo.paymentplatform.payment.infrastructure.internal;
+
+import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
+import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentOrderInfrastructureMapper;
+import com.hyoguoo.paymentplatform.user.presentation.UserInternalReceiver;
+import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoClientResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+public class InternalUserProvider implements UserProvider {
+
+    private final UserInternalReceiver userInternalReceiver;
+
+    @Override
+    public UserInfo getUserInfoById(Long userId) {
+        UserInfoClientResponse userInfoClientResponse = userInternalReceiver.getUserInfoById(
+                userId
+        );
+
+        return PaymentOrderInfrastructureMapper.toUserInfo(userInfoClientResponse);
+    }
+}
