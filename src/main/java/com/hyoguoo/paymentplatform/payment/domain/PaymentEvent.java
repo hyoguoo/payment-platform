@@ -25,6 +25,7 @@ public class PaymentEvent {
     private String orderName;
     private String orderId;
     private String paymentKey;
+    private BigDecimal totalAmount;
     private Boolean isPaymentDone;
     private LocalDateTime approvedAt;
 
@@ -37,6 +38,7 @@ public class PaymentEvent {
     ) {
         this.buyerId = userInfo.getId();
         this.sellerId = productInfo.getSellerId();
+        this.totalAmount = checkoutCommand.getAmount();
 
         this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderProduct());
         this.orderId = generateOrderId(now);
@@ -44,8 +46,7 @@ public class PaymentEvent {
 
         validateTotalAmount(
                 productInfo,
-                checkoutCommand.getOrderProduct(),
-                checkoutCommand.getAmount()
+                checkoutCommand.getOrderProduct()
         );
     }
 
@@ -57,15 +58,14 @@ public class PaymentEvent {
         return productInfo.getName() + " " + orderProduct.getQuantity() + "개";
     }
 
-    private static void validateTotalAmount(
+    private void validateTotalAmount(
             ProductInfo productInfo,
-            OrderProduct orderProduct,
-            BigDecimal totalAmount
+            OrderProduct orderProduct
     ) {
         BigDecimal calculatedAmount = productInfo.getPrice()
                 .multiply(BigDecimal.valueOf(orderProduct.getQuantity()));
 
-        if (calculatedAmount.compareTo(totalAmount) != 0) {
+        if (calculatedAmount.compareTo(this.totalAmount) != 0) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
         }
     }
