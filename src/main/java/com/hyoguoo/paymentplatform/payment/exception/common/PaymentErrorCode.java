@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum PaymentErrorCode implements ErrorCode {
 
+    PAYMENT_EVENT_NOT_FOUND("E03001", "존재하지 않는 결제 이벤트입니다."),
     ORDER_NOT_FOUND("E03001", "존재하지 않는 주문입니다."),
     INVALID_TOTAL_AMOUNT("E03002", "유효하지 않은 총 주문 금액입니다."),
     INVALID_ORDER_ID("E03003", "유효하지 않은 주문 ID입니다."),
