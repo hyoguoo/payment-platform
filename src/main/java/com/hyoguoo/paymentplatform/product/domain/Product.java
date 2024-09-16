@@ -24,10 +24,6 @@ public class Product {
         this.stock = stock;
     }
 
-    public BigDecimal calculateTotalPrice(Integer quantity) {
-        return this.price.multiply(BigDecimal.valueOf(quantity));
-    }
-
     public Product decrementStock(int amount) {
         if (amount < 0) {
             throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
@@ -48,16 +44,6 @@ public class Product {
         this.stock += amount;
 
         return this;
-    }
-
-    public void validateStockAvailability(int quantity) {
-        if (quantity < 0) {
-            throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
-        }
-
-        if (this.stock < quantity) {
-            throw ProductStockException.of(ProductErrorCode.NOT_ENOUGH_STOCK);
-        }
     }
 }
 
