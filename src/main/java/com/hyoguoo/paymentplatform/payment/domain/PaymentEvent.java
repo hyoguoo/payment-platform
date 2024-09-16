@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -22,7 +21,6 @@ public class PaymentEvent {
     private String orderName;
     private String orderId;
     private String paymentKey;
-    private BigDecimal totalAmount;
     private Boolean isPaymentDone;
     private LocalDateTime approvedAt;
 
@@ -30,12 +28,10 @@ public class PaymentEvent {
     protected PaymentEvent(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
-            BigDecimal totalAmount,
             LocalDateTime now
     ) {
         this.buyerId = userInfo.getId();
         this.sellerId = productInfoList.getFirst().getSellerId();
-        this.totalAmount = totalAmount;
 
         this.orderName = generateOrderName(productInfoList);
         this.orderId = generateOrderId(now);

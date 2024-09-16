@@ -13,7 +13,6 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentService;
-import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,7 +35,6 @@ public class PaymentServiceImpl implements PaymentService {
         List<ProductInfo> productInfoList = getProductInfoList(checkoutCommand);
 
         PaymentEvent savedPaymentEvent = savePaymentEvent(
-                checkoutCommand.getAmount(),
                 userInfo,
                 productInfoList
         );
@@ -59,14 +57,12 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private PaymentEvent savePaymentEvent(
-            BigDecimal totalAmount,
             UserInfo userInfo,
             List<ProductInfo> productInfoList
     ) {
         PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
                 .userInfo(userInfo)
                 .productInfoList(productInfoList)
-                .totalAmount(totalAmount)
                 .now(localDateTimeProvider.now())
                 .requiredBuild();
 

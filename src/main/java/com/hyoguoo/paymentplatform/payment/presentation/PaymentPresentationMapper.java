@@ -13,7 +13,6 @@ public class PaymentPresentationMapper {
     public static CheckoutCommand toCheckoutCommand(CheckoutRequest request) {
         return CheckoutCommand.builder()
                 .userId(request.getUserId())
-                .amount(request.getAmount())
                 .orderedProductList(request.getOrderedProductList())
                 .build();
     }

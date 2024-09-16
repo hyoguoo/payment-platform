@@ -44,9 +44,6 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "payment_key")
     private String paymentKey;
 
-    @Column(name = "total_amount", nullable = false)
-    private BigDecimal totalAmount;
-
     @Column(name = "is_payment_done", nullable = false)
     private Boolean isPaymentDone;
 
@@ -60,7 +57,6 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(paymentEvent.getOrderName())
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
-                .totalAmount(paymentEvent.getTotalAmount())
                 .isPaymentDone(paymentEvent.getIsPaymentDone())
                 .approvedAt(paymentEvent.getApprovedAt())
                 .build();
@@ -74,7 +70,6 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(orderName)
                 .orderId(orderId)
                 .paymentKey(paymentKey)
-                .totalAmount(totalAmount)
                 .isPaymentDone(isPaymentDone)
                 .approvedAt(approvedAt)
                 .allArgsBuild();
