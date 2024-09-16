@@ -58,6 +58,7 @@ public class PaymentInfrastructureMapper {
                 .name(productInfoResponse.getName())
                 .price(productInfoResponse.getPrice())
                 .stock(productInfoResponse.getStock())
+                .sellerId(productInfoResponse.getSellerId())
                 .build();
     }
 

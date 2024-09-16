@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 @Getter
+@Builder
 public class Product {
 
     private Long id;
@@ -14,15 +15,7 @@ public class Product {
     private BigDecimal price;
     private String description;
     private Integer stock;
-
-    @Builder
-    public Product(Long id, String name, BigDecimal price, String description, Integer stock) {
-        this.id = id;
-        this.name = name;
-        this.price = price;
-        this.description = description;
-        this.stock = stock;
-    }
+    private Long sellerId;
 
     public Product decrementStock(int amount) {
         if (amount < 0) {

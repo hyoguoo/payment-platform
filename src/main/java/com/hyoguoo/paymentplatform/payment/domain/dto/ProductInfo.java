@@ -12,4 +12,5 @@ public class ProductInfo {
     private final String name;
     private final BigDecimal price;
     private final Integer stock;
+    private final Long sellerId;
 }

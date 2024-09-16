@@ -41,6 +41,8 @@ public class ProductEntity extends BaseEntity {
     @Column(name = "stock", nullable = false)
     private Integer stock;
 
+    @Column(name = "seller_id", nullable = false)
+    private Long sellerId;
 
     public static ProductEntity from(Product product) {
         return ProductEntity.builder()
@@ -49,6 +51,7 @@ public class ProductEntity extends BaseEntity {
                 .price(product.getPrice())
                 .description(product.getDescription())
                 .stock(product.getStock())
+                .sellerId(product.getSellerId())
                 .build();
     }
 
@@ -59,6 +62,7 @@ public class ProductEntity extends BaseEntity {
                 .price(price)
                 .description(description)
                 .stock(stock)
+                .sellerId(sellerId)
                 .build();
     }
 }

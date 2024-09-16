@@ -14,6 +14,7 @@ public class ProductPresentationMapper {
                 .name(product.getName())
                 .price(product.getPrice())
                 .stock(product.getStock())
+                .sellerId(product.getSellerId())
                 .build();
     }
 }
