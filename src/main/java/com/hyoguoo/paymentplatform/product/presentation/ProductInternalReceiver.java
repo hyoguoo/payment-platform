@@ -18,11 +18,11 @@ public class ProductInternalReceiver {
         return ProductPresentationMapper.toProductInfoResponse(product);
     }
 
-    public void reduceStockWithCommit(Long productId, Integer quantity) {
-        productService.reduceStockWithCommit(productId, quantity);
+    public boolean reduceStockWithCommit(Long productId, Integer quantity) {
+        return productService.reduceStockWithCommit(productId, quantity);
     }
 
-    public void increaseStockWithCommit(Long productId, Integer quantity) {
-        productService.increaseStockWithCommit(productId, quantity);
+    public boolean increaseStockWithCommit(Long productId, Integer quantity) {
+        return productService.increaseStockWithCommit(productId, quantity);
     }
 }
