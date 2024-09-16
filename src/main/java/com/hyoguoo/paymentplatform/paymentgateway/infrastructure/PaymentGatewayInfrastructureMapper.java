@@ -1,7 +1,11 @@
 package com.hyoguoo.paymentplatform.paymentgateway.infrastructure;
 
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -9,28 +13,38 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentGatewayInfrastructureMapper {
 
-    public static TossPaymentResult toTossPaymentResult(TossPaymentApiResponse tossPaymentResponse) {
-        LocalDateTime requestedAt = tossPaymentResponse.getRequestedAt() == null
-                ? null
-                : LocalDateTime.parse(
-                        tossPaymentResponse.getRequestedAt(),
-                        TossPaymentApiResponse.DATE_TIME_FORMATTER
-                );
+    public static TossPaymentInfo toTossPaymentInfo(
+            TossPaymentApiResponse tossPaymentResponse
+    ) {
         LocalDateTime approvedAt = tossPaymentResponse.getApprovedAt() == null
                 ? null
                 : LocalDateTime.parse(
                         tossPaymentResponse.getApprovedAt(),
                         TossPaymentApiResponse.DATE_TIME_FORMATTER
                 );
-        return TossPaymentResult.builder()
-                .paymentKey(tossPaymentResponse.getPaymentKey())
+
+        TossPaymentStatus status = TossPaymentStatus.of(tossPaymentResponse.getStatus());
+
+        TossPaymentFailure paymentFailure = tossPaymentResponse.getFailure() != null
+                ? TossPaymentFailure.builder()
+                .errorCode(tossPaymentResponse.getFailure().getCode())
+                .errorMessage(tossPaymentResponse.getFailure().getMessage())
+                .build()
+                : null;
+
+        TossPaymentDetails paymentDetails = TossPaymentDetails.builder()
                 .orderName(tossPaymentResponse.getOrderName())
-                .method(tossPaymentResponse.getMethod())
-                .totalAmount(tossPaymentResponse.getTotalAmount())
-                .status(tossPaymentResponse.getStatus())
-                .requestedAt(requestedAt)
+                .totalAmount(BigDecimal.valueOf(tossPaymentResponse.getTotalAmount()))
+                .status(status)
                 .approvedAt(approvedAt)
-                .lastTransactionKey(tossPaymentResponse.getLastTransactionKey())
+                .rawData(tossPaymentResponse.toString())
+                .build();
+
+        return TossPaymentInfo.builder()
+                .paymentKey(tossPaymentResponse.getPaymentKey())
+                .orderId(tossPaymentResponse.getOrderId())
+                .paymentDetails(paymentDetails)
+                .paymentFailure(paymentFailure)
                 .build();
     }
 }

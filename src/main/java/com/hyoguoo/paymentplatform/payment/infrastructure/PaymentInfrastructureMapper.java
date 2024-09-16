@@ -5,6 +5,9 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGa
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
@@ -19,15 +22,23 @@ public class PaymentInfrastructureMapper {
     public static TossPaymentInfo toTossPaymentInfo(
             TossPaymentResponse tossPaymentResponse
     ) {
+        TossPaymentDetails paymentDetails = TossPaymentDetails.builder()
+                .totalAmount(tossPaymentResponse.getPaymentDetails().getTotalAmount())
+                .status(TossPaymentStatus.of(tossPaymentResponse.getPaymentDetails().getStatus().getValue()))
+                .approvedAt(tossPaymentResponse.getPaymentDetails().getApprovedAt())
+                .rawData(tossPaymentResponse.getPaymentDetails().getRawData())
+                .build();
+
+        TossPaymentFailure paymentFailure = TossPaymentFailure.builder()
+                .errorCode(tossPaymentResponse.getPaymentFailure().getErrorCode())
+                .errorMessage(tossPaymentResponse.getPaymentFailure().getErrorMessage())
+                .build();
+
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
-                .orderName(tossPaymentResponse.getOrderName())
-                .method(tossPaymentResponse.getMethod())
-                .totalAmount(tossPaymentResponse.getTotalAmount())
-                .status(tossPaymentResponse.getStatus())
-                .requestedAt(tossPaymentResponse.getRequestedAt())
-                .approvedAt(tossPaymentResponse.getApprovedAt())
-                .lastTransactionKey(tossPaymentResponse.getLastTransactionKey())
+                .orderId(tossPaymentResponse.getOrderId())
+                .paymentDetails(paymentDetails)
+                .paymentFailure(paymentFailure)
                 .build();
     }
 

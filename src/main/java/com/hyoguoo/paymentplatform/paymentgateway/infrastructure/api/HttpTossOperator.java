@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
@@ -24,18 +24,18 @@ public class HttpTossOperator implements TossOperator {
     private String tossApiUrl;
 
     @Override
-    public TossPaymentResult findPaymentInfoByOrderId(String orderId) {
+    public TossPaymentInfo findPaymentInfoByOrderId(String orderId) {
         TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 encodeUtils.encodeBase64(secretKey + ":"),
                 TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
     }
 
     @Override
-    public TossPaymentResult confirmPayment(
+    public TossPaymentInfo confirmPayment(
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey
     ) {
@@ -47,11 +47,11 @@ public class HttpTossOperator implements TossOperator {
                 TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
     }
 
     @Override
-    public TossPaymentResult cancelPayment(
+    public TossPaymentInfo cancelPayment(
             TossCancelCommand tossCancelCommand,
             String idempotencyKey
     ) {
@@ -63,6 +63,6 @@ public class HttpTossOperator implements TossOperator {
                 TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
     }
 }

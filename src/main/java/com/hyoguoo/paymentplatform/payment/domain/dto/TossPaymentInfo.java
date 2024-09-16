@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.domain.dto;
 
-import java.time.LocalDateTime;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -9,11 +10,7 @@ import lombok.Getter;
 public class TossPaymentInfo {
 
     private final String paymentKey;
-    private final String orderName;
-    private final String method;
-    private final double totalAmount;
-    private final String status;
-    private final LocalDateTime requestedAt;
-    private final LocalDateTime approvedAt;
-    private final String lastTransactionKey;
+    private final String orderId;
+    private final TossPaymentDetails paymentDetails;
+    private final TossPaymentFailure paymentFailure;
 }

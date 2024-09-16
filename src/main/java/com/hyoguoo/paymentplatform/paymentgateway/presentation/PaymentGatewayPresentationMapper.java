@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.paymentgateway.presentation;
 
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
@@ -13,17 +13,13 @@ import lombok.NoArgsConstructor;
 public class PaymentGatewayPresentationMapper {
 
     public static TossPaymentResponse toTossDetailsResponse(
-            TossPaymentResult tossPaymentResult
+            TossPaymentInfo tossPaymentInfo
     ) {
         return TossPaymentResponse.builder()
-                .paymentKey(tossPaymentResult.getPaymentKey())
-                .orderName(tossPaymentResult.getOrderName())
-                .method(tossPaymentResult.getMethod())
-                .totalAmount(tossPaymentResult.getTotalAmount())
-                .status(tossPaymentResult.getStatus())
-                .requestedAt(tossPaymentResult.getRequestedAt())
-                .approvedAt(tossPaymentResult.getApprovedAt())
-                .lastTransactionKey(tossPaymentResult.getLastTransactionKey())
+                .paymentKey(tossPaymentInfo.getPaymentKey())
+                .orderId(tossPaymentInfo.getOrderId())
+                .paymentDetails(tossPaymentInfo.getPaymentDetails())
+                .paymentFailure(tossPaymentInfo.getPaymentFailure())
                 .build();
     }
 

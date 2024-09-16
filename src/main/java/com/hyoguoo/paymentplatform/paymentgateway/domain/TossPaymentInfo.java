@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response;
+package com.hyoguoo.paymentplatform.paymentgateway.domain;
 
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;
@@ -7,7 +7,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TossPaymentResponse {
+public class TossPaymentInfo {
 
     private final String paymentKey;
     private final String orderId;

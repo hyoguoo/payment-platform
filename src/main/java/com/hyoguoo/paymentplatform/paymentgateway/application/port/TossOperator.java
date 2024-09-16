@@ -2,15 +2,15 @@ package com.hyoguoo.paymentplatform.paymentgateway.application.port;
 
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 
 public interface TossOperator {
 
-    TossPaymentResult findPaymentInfoByOrderId(String orderId);
+    TossPaymentInfo findPaymentInfoByOrderId(String orderId);
 
-    TossPaymentResult confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey);
+    TossPaymentInfo confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey);
 
-    TossPaymentResult cancelPayment(
+    TossPaymentInfo cancelPayment(
             TossCancelCommand tossCancelCommand,
             String idempotencyKey
     );
