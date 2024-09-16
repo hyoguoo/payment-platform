@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.domain;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -28,18 +27,14 @@ public class PaymentEvent {
     protected PaymentEvent(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
-            LocalDateTime now
+            String orderId
     ) {
         this.buyerId = userInfo.getId();
         this.sellerId = productInfoList.getFirst().getSellerId();
 
         this.orderName = generateOrderName(productInfoList);
-        this.orderId = generateOrderId(now);
+        this.orderId = orderId;
         this.isPaymentDone = false;
-    }
-
-    private static String generateOrderId(LocalDateTime now) {
-        return "ORDER-" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
     }
 
     private static String generateOrderName(

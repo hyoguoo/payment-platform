@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
@@ -27,7 +27,7 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
     private final PaymentOrderRepository paymentOrderRepository;
     private final UserProvider userProvider;
     private final ProductProvider productProvider;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final UUIDProvider uuidProvider;
 
     @Override
     @Transactional
@@ -53,7 +53,7 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
                 .build();
     }
 
-    private static BigDecimal calculateTotalAmount(List<PaymentOrder> paymentOrders) {
+    private BigDecimal calculateTotalAmount(List<PaymentOrder> paymentOrders) {
         return paymentOrders.stream()
                 .map(PaymentOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -73,7 +73,7 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
         PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
                 .userInfo(userInfo)
                 .productInfoList(productInfoList)
-                .now(localDateTimeProvider.now())
+                .orderId(uuidProvider.generateUUID())
                 .requiredBuild();
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);
