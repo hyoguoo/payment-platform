@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.internal;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelInfo;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmInfo;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandler;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
@@ -36,18 +36,18 @@ public class InternalPaymentGatewayHandler implements PaymentGatewayHandler {
     }
 
     @Override
-    public TossPaymentInfo confirmPayment(TossConfirmInfo tossConfirmInfo) {
+    public TossPaymentInfo confirmPayment(TossConfirmGatewayCommand tossConfirmGatewayCommand) {
         TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.confirmPayment(
-                PaymentInfrastructureMapper.toTossConfirmRequest(tossConfirmInfo)
+                PaymentInfrastructureMapper.toTossConfirmRequest(tossConfirmGatewayCommand)
         );
 
         return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
     }
 
     @Override
-    public TossPaymentInfo cancelPayment(TossCancelInfo tossCancelInfo) {
+    public TossPaymentInfo cancelPayment(TossCancelGatewayCommand tossCancelGatewayCommand) {
         TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.cancelPayment(
-                PaymentInfrastructureMapper.toTossCancelRequest(tossCancelInfo)
+                PaymentInfrastructureMapper.toTossCancelRequest(tossCancelGatewayCommand)
         );
 
         return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);

@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelInfo;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmInfo;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
@@ -31,22 +31,24 @@ public class PaymentInfrastructureMapper {
                 .build();
     }
 
-    public static TossConfirmRequest toTossConfirmRequest(TossConfirmInfo tossConfirmInfo) {
+    public static TossConfirmRequest toTossConfirmRequest(
+            TossConfirmGatewayCommand tossConfirmGatewayCommand
+    ) {
         return TossConfirmRequest.builder()
-                .orderId(tossConfirmInfo.getOrderId())
-                .amount(tossConfirmInfo.getAmount())
-                .paymentKey(tossConfirmInfo.getPaymentKey())
-                .idempotencyKey(tossConfirmInfo.getIdempotencyKey())
+                .orderId(tossConfirmGatewayCommand.getOrderId())
+                .amount(tossConfirmGatewayCommand.getAmount())
+                .paymentKey(tossConfirmGatewayCommand.getPaymentKey())
+                .idempotencyKey(tossConfirmGatewayCommand.getIdempotencyKey())
                 .build();
     }
 
     public static TossCancelRequest toTossCancelRequest(
-            TossCancelInfo tossConfirmInfo
+            TossCancelGatewayCommand tossCancelGatewayCommand
     ) {
         return TossCancelRequest.builder()
-                .cancelReason(tossConfirmInfo.getCancelReason())
-                .paymentKey(tossConfirmInfo.getPaymentKey())
-                .idempotencyKey(tossConfirmInfo.getIdempotencyKey())
+                .cancelReason(tossCancelGatewayCommand.getCancelReason())
+                .paymentKey(tossCancelGatewayCommand.getPaymentKey())
+                .idempotencyKey(tossCancelGatewayCommand.getIdempotencyKey())
                 .build();
     }
 

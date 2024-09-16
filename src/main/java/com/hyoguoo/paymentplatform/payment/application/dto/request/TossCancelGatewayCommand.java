@@ -1,15 +1,13 @@
 package com.hyoguoo.paymentplatform.payment.application.dto.request;
 
-import java.math.BigDecimal;
 import lombok.Builder;
 import lombok.Getter;
 
 @Getter
 @Builder
-public class TossConfirmInfo {
+public class TossCancelGatewayCommand {
 
-    private final String orderId;
-    private final BigDecimal amount;
+    private final String cancelReason;
     private final String paymentKey;
     private final String idempotencyKey;
 }

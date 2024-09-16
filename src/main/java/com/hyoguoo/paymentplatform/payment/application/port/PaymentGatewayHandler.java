@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.port;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelInfo;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmInfo;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import java.util.Optional;
 
@@ -11,7 +11,7 @@ public interface PaymentGatewayHandler {
 
     Optional<TossPaymentInfo> findPaymentInfoByOrderId(String orderId);
 
-    TossPaymentInfo confirmPayment(TossConfirmInfo tossConfirmInfo);
+    TossPaymentInfo confirmPayment(TossConfirmGatewayCommand tossConfirmGatewayCommand);
 
-    TossPaymentInfo cancelPayment(TossCancelInfo tossCancelRequest);
+    TossPaymentInfo cancelPayment(TossCancelGatewayCommand tossCancelGatewayCommand);
 }
