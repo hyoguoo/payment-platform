@@ -1,7 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.AccessLevel;
@@ -41,5 +45,30 @@ public class PaymentEvent {
             List<ProductInfo> productInfoList
     ) {
         return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
+    }
+
+    public void execute(String paymentKey) {
+        if (Boolean.TRUE.equals(this.isPaymentDone)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
+        }
+        this.paymentKey = paymentKey;
+    }
+
+    public void validate(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
+        if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
+        }
+
+        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey())) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
+        }
+    }
+
+    public void fail() {
+        this.isPaymentDone = false;
+    }
+
+    public void paymentDone() {
+        this.isPaymentDone = true;
     }
 }
