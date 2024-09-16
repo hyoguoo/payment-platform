@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.paymentgateway.application.dto.response;
+package com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response;
 
 import java.time.LocalDateTime;
 import lombok.Builder;
@@ -6,7 +6,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TossPaymentDetails {
+public class TossPaymentResponse {
 
     private final String paymentKey;
     private final String orderName;

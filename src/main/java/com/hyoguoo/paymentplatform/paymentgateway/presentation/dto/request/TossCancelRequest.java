@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TossCancelClientRequest {
+public class TossCancelRequest {
 
     private final String paymentKey;
     private final String cancelReason;

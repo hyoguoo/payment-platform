@@ -6,7 +6,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandle
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -19,31 +19,37 @@ public class InternalPaymentGatewayHandler implements PaymentGatewayHandler {
 
     @Override
     public TossPaymentInfo getPaymentInfoByOrderId(String orderId) {
-        return PaymentInfrastructureMapper.toTossPaymentInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
+        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.getPaymentInfoByOrderId(
+                orderId
         );
+
+        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
     }
 
     @Override
     public Optional<TossPaymentInfo> findPaymentInfoByOrderId(String orderId) {
-        return paymentGatewayInternalReceiver
-                .findPaymentInfoByOrderId(orderId)
+        Optional<TossPaymentResponse> tossPaymentResponse = paymentGatewayInternalReceiver
+                .findPaymentInfoByOrderId(orderId);
+
+        return tossPaymentResponse
                 .map(PaymentInfrastructureMapper::toTossPaymentInfo);
     }
 
     @Override
     public TossPaymentInfo confirmPayment(TossConfirmInfo tossConfirmInfo) {
-        TossDetailsClientResponse tossPaymentDetails = paymentGatewayInternalReceiver.confirmPayment(
+        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.confirmPayment(
                 PaymentInfrastructureMapper.toTossConfirmRequest(tossConfirmInfo)
         );
 
-        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentDetails);
+        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
     }
 
     @Override
     public TossPaymentInfo cancelPayment(TossCancelInfo tossCancelInfo) {
-        return PaymentInfrastructureMapper.toTossPaymentInfo(
-                paymentGatewayInternalReceiver.cancelPayment(PaymentInfrastructureMapper.toTossCancelRequest(tossCancelInfo))
+        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.cancelPayment(
+                PaymentInfrastructureMapper.toTossCancelRequest(tossCancelInfo)
         );
+
+        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
     }
 }

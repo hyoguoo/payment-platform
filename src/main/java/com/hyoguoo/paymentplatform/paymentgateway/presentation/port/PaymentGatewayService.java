@@ -1,20 +1,20 @@
 package com.hyoguoo.paymentplatform.paymentgateway.presentation.port;
 
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
 import java.util.Optional;
 
 public interface PaymentGatewayService {
 
-    TossPaymentDetails getPaymentInfoByOrderId(String orderId);
+    TossPaymentResult getPaymentResultByOrderId(String orderId);
 
-    Optional<TossPaymentDetails> findPaymentInfoByOrderId(String orderId);
+    Optional<TossPaymentResult> findPaymentResultByOrderId(String orderId);
 
-    TossPaymentDetails confirmPayment(TossConfirmRequest tossConfirmRequest, String idempotencyKey);
+    TossPaymentResult confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey);
 
-    TossPaymentDetails cancelPayment(
-            TossCancelRequest tossCancelRequest,
+    TossPaymentResult cancelPayment(
+            TossCancelCommand tossCancelCommand,
             String idempotencyKey
     );
 }

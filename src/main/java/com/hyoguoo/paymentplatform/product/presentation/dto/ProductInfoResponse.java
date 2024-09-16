@@ -6,7 +6,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class ProductInfoClientResponse {
+public class ProductInfoResponse {
 
     private final Long id;
     private final String name;

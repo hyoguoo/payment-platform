@@ -5,11 +5,11 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmIn
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
-import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoClientResponse;
-import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
+import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoResponse;
+import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoResponse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -17,22 +17,22 @@ import lombok.NoArgsConstructor;
 public class PaymentInfrastructureMapper {
 
     public static TossPaymentInfo toTossPaymentInfo(
-            TossDetailsClientResponse tossDetailsClientResponse
+            TossPaymentResponse tossPaymentResponse
     ) {
         return TossPaymentInfo.builder()
-                .paymentKey(tossDetailsClientResponse.getPaymentKey())
-                .orderName(tossDetailsClientResponse.getOrderName())
-                .method(tossDetailsClientResponse.getMethod())
-                .totalAmount(tossDetailsClientResponse.getTotalAmount())
-                .status(tossDetailsClientResponse.getStatus())
-                .requestedAt(tossDetailsClientResponse.getRequestedAt())
-                .approvedAt(tossDetailsClientResponse.getApprovedAt())
-                .lastTransactionKey(tossDetailsClientResponse.getLastTransactionKey())
+                .paymentKey(tossPaymentResponse.getPaymentKey())
+                .orderName(tossPaymentResponse.getOrderName())
+                .method(tossPaymentResponse.getMethod())
+                .totalAmount(tossPaymentResponse.getTotalAmount())
+                .status(tossPaymentResponse.getStatus())
+                .requestedAt(tossPaymentResponse.getRequestedAt())
+                .approvedAt(tossPaymentResponse.getApprovedAt())
+                .lastTransactionKey(tossPaymentResponse.getLastTransactionKey())
                 .build();
     }
 
-    public static TossConfirmClientRequest toTossConfirmRequest(TossConfirmInfo tossConfirmInfo) {
-        return TossConfirmClientRequest.builder()
+    public static TossConfirmRequest toTossConfirmRequest(TossConfirmInfo tossConfirmInfo) {
+        return TossConfirmRequest.builder()
                 .orderId(tossConfirmInfo.getOrderId())
                 .amount(tossConfirmInfo.getAmount())
                 .paymentKey(tossConfirmInfo.getPaymentKey())
@@ -40,28 +40,28 @@ public class PaymentInfrastructureMapper {
                 .build();
     }
 
-    public static TossCancelClientRequest toTossCancelRequest(
+    public static TossCancelRequest toTossCancelRequest(
             TossCancelInfo tossConfirmInfo
     ) {
-        return TossCancelClientRequest.builder()
+        return TossCancelRequest.builder()
                 .cancelReason(tossConfirmInfo.getCancelReason())
                 .paymentKey(tossConfirmInfo.getPaymentKey())
                 .idempotencyKey(tossConfirmInfo.getIdempotencyKey())
                 .build();
     }
 
-    public static ProductInfo toProductInfo(ProductInfoClientResponse productInfoClientResponse) {
+    public static ProductInfo toProductInfo(ProductInfoResponse productInfoResponse) {
         return ProductInfo.builder()
-                .id(productInfoClientResponse.getId())
-                .name(productInfoClientResponse.getName())
-                .price(productInfoClientResponse.getPrice())
-                .stock(productInfoClientResponse.getStock())
+                .id(productInfoResponse.getId())
+                .name(productInfoResponse.getName())
+                .price(productInfoResponse.getPrice())
+                .stock(productInfoResponse.getStock())
                 .build();
     }
 
-    public static UserInfo toUserInfo(UserInfoClientResponse userInfoClientResponse) {
+    public static UserInfo toUserInfo(UserInfoResponse userInfoResponse) {
         return UserInfo.builder()
-                .id(userInfoClientResponse.getId())
+                .id(userInfoResponse.getId())
                 .build();
     }
 }

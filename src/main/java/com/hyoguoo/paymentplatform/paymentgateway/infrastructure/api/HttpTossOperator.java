@@ -2,12 +2,12 @@ package com.hyoguoo.paymentplatform.paymentgateway.infrastructure.api;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
-import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,45 +24,45 @@ public class HttpTossOperator implements TossOperator {
     private String tossApiUrl;
 
     @Override
-    public TossPaymentDetails findPaymentInfoByOrderId(String orderId) {
-        TossPaymentResponse tossPaymentResponse = httpOperator.requestGetWithBasicAuthorization(
+    public TossPaymentResult findPaymentInfoByOrderId(String orderId) {
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestGetWithBasicAuthorization(
                 tossApiUrl + "/orders/" + orderId,
                 encodeUtils.encodeBase64(secretKey + ":"),
-                TossPaymentResponse.class
+                TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toPaymentDetails(tossPaymentResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
     }
 
     @Override
-    public TossPaymentDetails confirmPayment(
-            TossConfirmRequest tossConfirmRequest,
+    public TossPaymentResult confirmPayment(
+            TossConfirmCommand tossConfirmCommand,
             String idempotencyKey
     ) {
-        TossPaymentResponse tossPaymentResponse = httpOperator.requestPostWithBasicAuthorization(
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPostWithBasicAuthorization(
                 tossApiUrl + "/confirm",
                 encodeUtils.encodeBase64(secretKey + ":"),
                 idempotencyKey,
-                tossConfirmRequest,
-                TossPaymentResponse.class
+                tossConfirmCommand,
+                TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toPaymentDetails(tossPaymentResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
     }
 
     @Override
-    public TossPaymentDetails cancelPayment(
-            TossCancelRequest tossCancelRequest,
+    public TossPaymentResult cancelPayment(
+            TossCancelCommand tossCancelCommand,
             String idempotencyKey
     ) {
-        TossPaymentResponse tossPaymentResponse = httpOperator.requestPostWithBasicAuthorization(
-                tossApiUrl + "/" + tossCancelRequest.getPaymentKey() + "/cancel",
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPostWithBasicAuthorization(
+                tossApiUrl + "/" + tossCancelCommand.getPaymentKey() + "/cancel",
                 encodeUtils.encodeBase64(secretKey + ":"),
                 idempotencyKey,
-                tossCancelRequest,
-                TossPaymentResponse.class
+                tossCancelCommand,
+                TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toPaymentDetails(tossPaymentResponse);
+        return PaymentGatewayInfrastructureMapper.toTossPaymentResult(tossPaymentApiResponse);
     }
 }

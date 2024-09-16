@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class UserInfoClientResponse {
+public class UserInfoResponse {
 
     private final Long id;
 }

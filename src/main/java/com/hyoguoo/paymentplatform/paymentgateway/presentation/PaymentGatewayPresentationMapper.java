@@ -1,48 +1,48 @@
 package com.hyoguoo.paymentplatform.paymentgateway.presentation;
 
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentDetails;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentGatewayPresentationMapper {
 
-    public static TossDetailsClientResponse toTossDetailsClientResponse(
-            TossPaymentDetails tossPaymentDetails
+    public static TossPaymentResponse toTossDetailsResponse(
+            TossPaymentResult tossPaymentResult
     ) {
-        return TossDetailsClientResponse.builder()
-                .paymentKey(tossPaymentDetails.getPaymentKey())
-                .orderName(tossPaymentDetails.getOrderName())
-                .method(tossPaymentDetails.getMethod())
-                .totalAmount(tossPaymentDetails.getTotalAmount())
-                .status(tossPaymentDetails.getStatus())
-                .requestedAt(tossPaymentDetails.getRequestedAt())
-                .approvedAt(tossPaymentDetails.getApprovedAt())
-                .lastTransactionKey(tossPaymentDetails.getLastTransactionKey())
+        return TossPaymentResponse.builder()
+                .paymentKey(tossPaymentResult.getPaymentKey())
+                .orderName(tossPaymentResult.getOrderName())
+                .method(tossPaymentResult.getMethod())
+                .totalAmount(tossPaymentResult.getTotalAmount())
+                .status(tossPaymentResult.getStatus())
+                .requestedAt(tossPaymentResult.getRequestedAt())
+                .approvedAt(tossPaymentResult.getApprovedAt())
+                .lastTransactionKey(tossPaymentResult.getLastTransactionKey())
                 .build();
     }
 
-    public static TossConfirmRequest toTossConfirmRequest(
-            TossConfirmClientRequest tossConfirmClientRequest
+    public static TossConfirmCommand toTossConfirmCommand(
+            TossConfirmRequest tossConfirmRequest
     ) {
-        return TossConfirmRequest.builder()
-                .orderId(tossConfirmClientRequest.getOrderId())
-                .amount(tossConfirmClientRequest.getAmount())
-                .paymentKey(tossConfirmClientRequest.getPaymentKey())
+        return TossConfirmCommand.builder()
+                .orderId(tossConfirmRequest.getOrderId())
+                .amount(tossConfirmRequest.getAmount())
+                .paymentKey(tossConfirmRequest.getPaymentKey())
                 .build();
     }
 
-    public static TossCancelRequest toTossCancelRequest(
-            TossCancelClientRequest tossCancelClientRequest
+    public static TossCancelCommand toTossCancelCommand(
+            TossCancelRequest tossCancelRequest
     ) {
-        return TossCancelRequest.builder()
-                .cancelReason(tossCancelClientRequest.getCancelReason())
-                .paymentKey(tossCancelClientRequest.getPaymentKey())
+        return TossCancelCommand.builder()
+                .cancelReason(tossCancelRequest.getCancelReason())
+                .paymentKey(tossCancelRequest.getPaymentKey())
                 .build();
     }
 }

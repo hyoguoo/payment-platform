@@ -1,9 +1,9 @@
 package com.hyoguoo.paymentplatform.paymentgateway.presentation;
 
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentDetails;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmClientRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossDetailsClientResponse;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
+import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.port.PaymentGatewayService;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -15,35 +15,35 @@ public class PaymentGatewayInternalReceiver {
 
     private final PaymentGatewayService paymentGatewayService;
 
-    public TossDetailsClientResponse getPaymentInfoByOrderId(String orderId) {
-        TossPaymentDetails paymentInfoByOrderId = paymentGatewayService.getPaymentInfoByOrderId(orderId);
-        return PaymentGatewayPresentationMapper.toTossDetailsClientResponse(paymentInfoByOrderId);
+    public TossPaymentResponse getPaymentInfoByOrderId(String orderId) {
+        TossPaymentResult paymentInfoByOrderId = paymentGatewayService.getPaymentResultByOrderId(orderId);
+        return PaymentGatewayPresentationMapper.toTossDetailsResponse(paymentInfoByOrderId);
     }
 
-    public Optional<TossDetailsClientResponse> findPaymentInfoByOrderId(String orderId) {
-        Optional<TossPaymentDetails> paymentInfoByOrderId = paymentGatewayService.findPaymentInfoByOrderId(
+    public Optional<TossPaymentResponse> findPaymentInfoByOrderId(String orderId) {
+        Optional<TossPaymentResult> paymentInfoByOrderId = paymentGatewayService.findPaymentResultByOrderId(
                 orderId
         );
-        return paymentInfoByOrderId.map(PaymentGatewayPresentationMapper::toTossDetailsClientResponse);
+        return paymentInfoByOrderId.map(PaymentGatewayPresentationMapper::toTossDetailsResponse);
     }
 
-    public TossDetailsClientResponse confirmPayment(
-            TossConfirmClientRequest tossConfirmClientRequest
+    public TossPaymentResponse confirmPayment(
+            TossConfirmRequest tossConfirmRequest
     ) {
-        TossPaymentDetails tossPaymentDetails = paymentGatewayService.confirmPayment(
-                PaymentGatewayPresentationMapper.toTossConfirmRequest(tossConfirmClientRequest),
-                tossConfirmClientRequest.getIdempotencyKey()
+        TossPaymentResult tossPaymentResult = paymentGatewayService.confirmPayment(
+                PaymentGatewayPresentationMapper.toTossConfirmCommand(tossConfirmRequest),
+                tossConfirmRequest.getIdempotencyKey()
         );
-        return PaymentGatewayPresentationMapper.toTossDetailsClientResponse(tossPaymentDetails);
+        return PaymentGatewayPresentationMapper.toTossDetailsResponse(tossPaymentResult);
     }
 
-    public TossDetailsClientResponse cancelPayment(
-            TossCancelClientRequest tossCancelClientRequest
+    public TossPaymentResponse cancelPayment(
+            TossCancelRequest tossCancelRequest
     ) {
-        TossPaymentDetails tossPaymentDetails = paymentGatewayService.cancelPayment(
-                PaymentGatewayPresentationMapper.toTossCancelRequest(tossCancelClientRequest),
-                tossCancelClientRequest.getIdempotencyKey()
+        TossPaymentResult tossPaymentResult = paymentGatewayService.cancelPayment(
+                PaymentGatewayPresentationMapper.toTossCancelCommand(tossCancelRequest),
+                tossCancelRequest.getIdempotencyKey()
         );
-        return PaymentGatewayPresentationMapper.toTossDetailsClientResponse(tossPaymentDetails);
+        return PaymentGatewayPresentationMapper.toTossDetailsResponse(tossPaymentResult);
     }
 }

@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public final class TossPaymentResponse {
+public final class TossPaymentApiResponse {
 
     // 2023-01-01T00:00:00+09:00 Pattern
     public static final DateTimeFormatter DATE_TIME_FORMATTER =

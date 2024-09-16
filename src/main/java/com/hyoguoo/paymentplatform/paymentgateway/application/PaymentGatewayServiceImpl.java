@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.paymentgateway.application;
 
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmRequest;
-import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.dto.response.TossPaymentResult;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayFoundException;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.common.PaymentGatewayErrorCode;
@@ -19,15 +19,15 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
     private final TossOperator tossOperator;
 
     @Override
-    public TossPaymentDetails getPaymentInfoByOrderId(String orderId) {
-        return this.findPaymentInfoByOrderId(orderId)
+    public TossPaymentResult getPaymentResultByOrderId(String orderId) {
+        return this.findPaymentResultByOrderId(orderId)
                 .orElseThrow(() -> PaymentGatewayFoundException.of(PaymentGatewayErrorCode.USER_NOT_FOUND));
     }
 
     @Override
-    public Optional<TossPaymentDetails> findPaymentInfoByOrderId(String orderId) {
+    public Optional<TossPaymentResult> findPaymentResultByOrderId(String orderId) {
         try {
-            TossPaymentDetails tossPaymentResponse = tossOperator.findPaymentInfoByOrderId(
+            TossPaymentResult tossPaymentResponse = tossOperator.findPaymentInfoByOrderId(
                     orderId
             );
 
@@ -40,17 +40,17 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
     }
 
     @Override
-    public TossPaymentDetails confirmPayment(TossConfirmRequest tossConfirmRequest, String idempotencyKey) {
-        return tossOperator.confirmPayment(tossConfirmRequest, idempotencyKey);
+    public TossPaymentResult confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey) {
+        return tossOperator.confirmPayment(tossConfirmCommand, idempotencyKey);
     }
 
     @Override
-    public TossPaymentDetails cancelPayment(
-            TossCancelRequest tossCancelRequest,
+    public TossPaymentResult cancelPayment(
+            TossCancelCommand tossCancelCommand,
             String idempotencyKey
     ) {
         return tossOperator.cancelPayment(
-                tossCancelRequest,
+                tossCancelCommand,
                 idempotencyKey
         );
     }

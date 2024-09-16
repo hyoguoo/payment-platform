@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request;
+package com.hyoguoo.paymentplatform.paymentgateway.application.dto.request;
 
 import java.math.BigDecimal;
 import lombok.Builder;
@@ -6,10 +6,9 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TossConfirmClientRequest {
+public class TossConfirmCommand {
 
     private final String orderId;
     private final BigDecimal amount;
     private final String paymentKey;
-    private final String idempotencyKey;
 }
