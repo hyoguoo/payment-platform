@@ -5,5 +5,5 @@ import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResu
 
 public interface PaymentService {
 
-    CheckoutResult checkOut(CheckoutCommand request);
+    CheckoutResult checkout(CheckoutCommand request);
 }

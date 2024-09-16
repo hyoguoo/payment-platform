@@ -1,6 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,4 +27,46 @@ public class PaymentEvent {
     private String paymentKey;
     private Boolean isPaymentDone;
     private LocalDateTime approvedAt;
+
+    @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
+    protected PaymentEvent(
+            UserInfo userInfo,
+            ProductInfo productInfo,
+            CheckoutCommand checkoutCommand,
+            LocalDateTime now
+    ) {
+        this.buyerId = userInfo.getId();
+        this.sellerId = productInfo.getSellerId();
+
+        this.orderName = generateOrderName(productInfo, checkoutCommand.getOrderProduct());
+        this.orderId = generateOrderId(now);
+        this.isPaymentDone = false;
+
+        validateTotalAmount(
+                productInfo,
+                checkoutCommand.getOrderProduct(),
+                checkoutCommand.getAmount()
+        );
+    }
+
+    private static String generateOrderId(LocalDateTime now) {
+        return "ORDER-" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+    }
+
+    private static String generateOrderName(ProductInfo productInfo, OrderProduct orderProduct) {
+        return productInfo.getName() + " " + orderProduct.getQuantity() + "개";
+    }
+
+    private static void validateTotalAmount(
+            ProductInfo productInfo,
+            OrderProduct orderProduct,
+            BigDecimal totalAmount
+    ) {
+        BigDecimal calculatedAmount = productInfo.getPrice()
+                .multiply(BigDecimal.valueOf(orderProduct.getQuantity()));
+
+        if (calculatedAmount.compareTo(totalAmount) != 0) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
+    }
 }
