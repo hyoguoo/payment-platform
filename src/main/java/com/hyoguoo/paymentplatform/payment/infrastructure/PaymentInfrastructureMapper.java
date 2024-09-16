@@ -22,17 +22,23 @@ public class PaymentInfrastructureMapper {
     public static TossPaymentInfo toTossPaymentInfo(
             TossPaymentResponse tossPaymentResponse
     ) {
-        TossPaymentDetails paymentDetails = TossPaymentDetails.builder()
+        TossPaymentDetails paymentDetails = tossPaymentResponse.getPaymentDetails() != null
+                ? TossPaymentDetails.builder()
                 .totalAmount(tossPaymentResponse.getPaymentDetails().getTotalAmount())
-                .status(TossPaymentStatus.of(tossPaymentResponse.getPaymentDetails().getStatus().getValue()))
+                .status(TossPaymentStatus.of(
+                        tossPaymentResponse.getPaymentDetails().getStatus().getValue())
+                )
                 .approvedAt(tossPaymentResponse.getPaymentDetails().getApprovedAt())
                 .rawData(tossPaymentResponse.getPaymentDetails().getRawData())
-                .build();
+                .build()
+                : null;
 
-        TossPaymentFailure paymentFailure = TossPaymentFailure.builder()
+        TossPaymentFailure paymentFailure = tossPaymentResponse.getPaymentFailure() != null
+                ? TossPaymentFailure.builder()
                 .errorCode(tossPaymentResponse.getPaymentFailure().getErrorCode())
                 .errorMessage(tossPaymentResponse.getPaymentFailure().getErrorMessage())
-                .build();
+                .build()
+                : null;
 
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
