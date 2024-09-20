@@ -29,25 +29,54 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
-        // ========= 주문 실행 시작 =========
+        PaymentEvent paymentEvent = executePayment(paymentConfirmCommand);
+
+        validatePaymentEvent(paymentConfirmCommand, paymentEvent);
+
+        handleProductStockReduction(paymentEvent);
+
+        TossPaymentInfo tossConfirmInfo = confirmPaymentWithGateway(paymentConfirmCommand);
+
+        PaymentEvent completedPayment = completePayment(paymentEvent, tossConfirmInfo);
+
+        return PaymentConfirmResult.builder()
+                .amount(completedPayment.getTotalAmount())
+                .orderId(completedPayment.getOrderId())
+                .build();
+    }
+
+    private PaymentEvent executePayment(PaymentConfirmCommand paymentConfirmCommand) {
         PaymentEvent paymentEvent = getPaymentEventByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
-        List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
 
         paymentEvent.execute(paymentConfirmCommand.getPaymentKey());
         paymentEventRepository.saveOrUpdate(paymentEvent);
-        // ========= 주문 실행 종료 =========
 
-        // ========= 검증 시작 =========
+        return paymentEvent;
+    }
+
+    private PaymentEvent getPaymentEventByOrderId(String orderId) {
+        return paymentEventRepository
+                .findByOrderId(orderId)
+                .orElseThrow(
+                        () -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND)
+                );
+    }
+
+    private void validatePaymentEvent(
+            PaymentConfirmCommand paymentConfirmCommand,
+            PaymentEvent paymentEvent
+    ) {
         TossPaymentInfo tossPaymentInfo = paymentGatewayHandler.getPaymentInfoByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
 
         paymentEvent.validate(paymentConfirmCommand, tossPaymentInfo);
-        // ========= 검증 종료 =========
+    }
 
-        // ========= 재고 감소 시작 =========
+    private void handleProductStockReduction(PaymentEvent paymentEvent) {
+        List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
         if (!reduceStockPaymentOrderListProduct(paymentOrderList)) {
             paymentEvent.fail();
             paymentOrderList.forEach(paymentOrder -> {
@@ -55,29 +84,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentOrderRepository.saveOrUpdate(paymentOrder);
             });
         }
-        // ========= 재고 감소 종료 =========
-
-        // ========= 결제 승인 시작 =========
-        TossConfirmGatewayCommand tossConfirmGatewayCommand = TossConfirmGatewayCommand.builder()
-                .orderId(paymentConfirmCommand.getOrderId())
-                .paymentKey(paymentConfirmCommand.getPaymentKey())
-                .amount(paymentConfirmCommand.getAmount())
-                .idempotencyKey(paymentConfirmCommand.getOrderId())
-                .build();
-        TossPaymentInfo tossConfirmInfo = paymentGatewayHandler.confirmPayment(
-                tossConfirmGatewayCommand
-        );
-        // ========= 결제 승인 종료 =========
-
-        // ========= 주문 확정 상태 변경 시작 =========
-        paymentEvent.paymentDone(tossPaymentInfo.getPaymentDetails().getApprovedAt());
-        paymentEventRepository.saveOrUpdate(paymentEvent);
-        // ========= 주문 확정 상태 변경 종료 =========
-
-        return PaymentConfirmResult.builder()
-                .amount(tossConfirmInfo.getPaymentDetails().getTotalAmount())
-                .orderId(tossConfirmInfo.getOrderId())
-                .build();
     }
 
     private boolean reduceStockPaymentOrderListProduct(List<PaymentOrder> paymentOrderList) {
@@ -111,11 +117,24 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         return true;
     }
 
-    private PaymentEvent getPaymentEventByOrderId(String orderId) {
-        return paymentEventRepository
-                .findByOrderId(orderId)
-                .orElseThrow(
-                        () -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND)
-                );
+    private TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
+        TossConfirmGatewayCommand tossConfirmGatewayCommand = TossConfirmGatewayCommand.builder()
+                .orderId(paymentConfirmCommand.getOrderId())
+                .paymentKey(paymentConfirmCommand.getPaymentKey())
+                .amount(paymentConfirmCommand.getAmount())
+                .idempotencyKey(paymentConfirmCommand.getOrderId())
+                .build();
+
+        return paymentGatewayHandler.confirmPayment(
+                tossConfirmGatewayCommand
+        );
+    }
+
+    private PaymentEvent completePayment(
+            PaymentEvent paymentEvent,
+            TossPaymentInfo tossConfirmInfo
+    ) {
+        paymentEvent.paymentDone(tossConfirmInfo.getPaymentDetails().getApprovedAt());
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 }
