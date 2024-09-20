@@ -79,10 +79,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
         if (!reduceStockPaymentOrderListProduct(paymentOrderList)) {
             paymentEvent.fail();
-            paymentOrderList.forEach(paymentOrder -> {
-                paymentOrder.fail();
-                paymentOrderRepository.saveOrUpdate(paymentOrder);
-            });
+            paymentEventRepository.saveOrUpdate(paymentEvent);
         }
     }
 

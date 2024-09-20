@@ -75,6 +75,7 @@ public class PaymentEvent {
 
     public void fail() {
         this.isPaymentDone = false;
+        this.paymentOrderList.forEach(PaymentOrder::fail);
     }
 
     public void paymentDone(LocalDateTime approvedAt) {
