@@ -11,10 +11,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -29,12 +27,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private final PaymentGatewayHandler paymentGatewayHandler;
     private final ProductProvider productProvider;
 
-    private static BigDecimal calculateTotalAmount(List<PaymentOrder> paymentOrderList) {
-        return paymentOrderList.stream()
-                .map(PaymentOrder::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
         // ========= 주문 실행 시작 =========
@@ -45,8 +37,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
         paymentEvent.execute(paymentConfirmCommand.getPaymentKey());
         paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        changeExecutingStatus(paymentOrderList);
         // ========= 주문 실행 종료 =========
 
         // ========= 검증 시작 =========
@@ -56,11 +46,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
         paymentEvent.validate(paymentConfirmCommand, tossPaymentInfo);
-        BigDecimal totalAmount = calculateTotalAmount(paymentOrderList);
-
-        if (paymentConfirmCommand.getAmount().compareTo(totalAmount) != 0) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
-        }
         // ========= 검증 종료 =========
 
         // ========= 재고 감소 시작 =========
@@ -88,8 +73,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         // ========= 주문 확정 상태 변경 시작 =========
         paymentEvent.paymentDone(tossPaymentInfo.getPaymentDetails().getApprovedAt());
         paymentEventRepository.saveOrUpdate(paymentEvent);
-        paymentOrderList.forEach(PaymentOrder::paymentDone);
-        paymentOrderRepository.saveAll(paymentOrderList);
         // ========= 주문 확정 상태 변경 종료 =========
 
         return PaymentConfirmResult.builder()
@@ -127,11 +110,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         }
 
         return true;
-    }
-
-    private void changeExecutingStatus(List<PaymentOrder> paymentOrderList) {
-        paymentOrderList.forEach(PaymentOrder::execute);
-        paymentOrderRepository.saveAll(paymentOrderList);
     }
 
     private PaymentEvent getPaymentEventByOrderId(String orderId) {

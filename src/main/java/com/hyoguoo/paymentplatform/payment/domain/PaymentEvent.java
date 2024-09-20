@@ -55,6 +55,7 @@ public class PaymentEvent {
         if (Boolean.TRUE.equals(this.isPaymentDone)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
+        paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
     }
 
@@ -66,6 +67,10 @@ public class PaymentEvent {
         if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
+
+        if (paymentConfirmCommand.getAmount().compareTo(this.getTotalAmount()) != 0) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
     }
 
     public void fail() {
@@ -75,6 +80,7 @@ public class PaymentEvent {
     public void paymentDone(LocalDateTime approvedAt) {
         this.approvedAt = approvedAt;
         this.isPaymentDone = true;
+        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
     }
 
     public BigDecimal getTotalAmount() {

@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEnt
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,7 +52,12 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
+        List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
+        Stream<PaymentOrderEntity> paymentOrderEntityStream = paymentOrderList.stream()
+                .map(paymentOrder ->
+                        jpaPaymentOrderRepository.save(PaymentOrderEntity.from(paymentOrder))
+                );
         return jpaPaymentEventRepository.save(PaymentEventEntity.from(paymentEvent))
-                .toDomain(paymentEvent.getPaymentOrderList());
+                .toDomain(paymentOrderEntityStream.map(PaymentOrderEntity::toDomain).toList());
     }
 }
