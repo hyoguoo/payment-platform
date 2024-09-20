@@ -27,16 +27,6 @@ public class PaymentOrderRepositoryImpl implements PaymentOrderRepository {
     }
 
     @Override
-    public List<PaymentOrder> findByPaymentEventId(Long paymentEventId) {
-        List<PaymentOrderEntity> paymentOrderEntityList = jpaPaymentOrderRepository.findByPaymentEventId(
-                paymentEventId);
-
-        return paymentOrderEntityList.stream()
-                .map(PaymentOrderEntity::toDomain)
-                .toList();
-    }
-
-    @Override
     public void saveAll(List<PaymentOrder> paymentOrderList) {
         List<PaymentOrderEntity> paymentOrderEntityList = paymentOrderList.stream()
                 .map(PaymentOrderEntity::from)

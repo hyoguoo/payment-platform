@@ -41,9 +41,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         PaymentEvent paymentEvent = getPaymentEventByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
-        List<PaymentOrder> paymentOrderList = getPaymentOrderListByPaymentEventId(
-                paymentEvent.getId()
-        );
+        List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
 
         paymentEvent.execute(paymentConfirmCommand.getPaymentKey());
         paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -142,9 +140,5 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 .orElseThrow(
                         () -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND)
                 );
-    }
-
-    private List<PaymentOrder> getPaymentOrderListByPaymentEventId(Long paymentEventId) {
-        return paymentOrderRepository.findByPaymentEventId(paymentEventId);
     }
 }

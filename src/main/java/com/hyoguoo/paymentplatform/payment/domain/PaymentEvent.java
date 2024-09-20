@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -26,6 +27,7 @@ public class PaymentEvent {
     private String paymentKey;
     private Boolean isPaymentDone;
     private LocalDateTime approvedAt;
+    private List<PaymentOrder> paymentOrderList = new ArrayList<>();
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     @SuppressWarnings("unused")

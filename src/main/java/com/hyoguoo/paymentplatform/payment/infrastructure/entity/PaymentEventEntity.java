@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.entity;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -9,6 +10,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -62,7 +66,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .build();
     }
 
-    public PaymentEvent toDomain() {
+    public PaymentEvent toDomain(List<PaymentOrder> paymentOrderList) {
         return PaymentEvent.allArgsBuilder()
                 .id(id)
                 .buyerId(buyerId)
@@ -72,6 +76,10 @@ public class PaymentEventEntity extends BaseEntity {
                 .paymentKey(paymentKey)
                 .isPaymentDone(isPaymentDone)
                 .approvedAt(approvedAt)
+                .paymentOrderList(
+                        Optional.ofNullable(paymentOrderList)
+                                .orElse(Collections.emptyList())
+                )
                 .allArgsBuild();
     }
 }
