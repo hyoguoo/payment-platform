@@ -5,15 +5,14 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutComma
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
-import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -39,24 +38,16 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
                 userInfo,
                 productInfoList
         );
-        List<PaymentOrder> paymentOrders = savePaymentOrderList(
+        savePaymentOrderList(
                 savedPaymentEvent,
                 checkoutCommand.getOrderedProductList(),
                 productInfoList
         );
 
-        BigDecimal totalAmount = calculateTotalAmount(paymentOrders);
-
         return CheckoutResult.builder()
                 .orderId(savedPaymentEvent.getOrderId())
-                .totalAmount(totalAmount)
+                .totalAmount(savedPaymentEvent.getTotalAmount())
                 .build();
-    }
-
-    private BigDecimal calculateTotalAmount(List<PaymentOrder> paymentOrders) {
-        return paymentOrders.stream()
-                .map(PaymentOrder::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private List<ProductInfo> getProductInfoList(CheckoutCommand checkoutCommand) {

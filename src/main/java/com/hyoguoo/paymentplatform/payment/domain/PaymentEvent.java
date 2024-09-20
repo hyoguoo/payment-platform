@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,5 +75,11 @@ public class PaymentEvent {
     public void paymentDone(LocalDateTime approvedAt) {
         this.approvedAt = approvedAt;
         this.isPaymentDone = true;
+    }
+
+    public BigDecimal getTotalAmount() {
+        return paymentOrderList.stream()
+                .map(PaymentOrder::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }
