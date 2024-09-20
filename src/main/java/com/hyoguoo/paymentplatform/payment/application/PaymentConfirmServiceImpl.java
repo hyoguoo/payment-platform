@@ -43,7 +43,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         TossPaymentInfo tossPaymentInfo = paymentGatewayHandler.getPaymentInfoByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
-        paymentEventRepository.saveOrUpdate(paymentEvent);
 
         paymentEvent.validate(paymentConfirmCommand, tossPaymentInfo);
         // ========= 검증 종료 =========
