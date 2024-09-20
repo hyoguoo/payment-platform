@@ -32,7 +32,9 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
     @Transactional
     public CheckoutResult checkout(CheckoutCommand checkoutCommand) {
         UserInfo userInfo = userProvider.getUserInfoById(checkoutCommand.getUserId());
-        List<ProductInfo> productInfoList = getProductInfoList(checkoutCommand);
+        List<ProductInfo> productInfoList = getProductInfoList(
+                checkoutCommand.getOrderedProductList()
+        );
 
         PaymentEvent savedPaymentEvent = savePaymentEvent(
                 userInfo,
@@ -50,8 +52,8 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
                 .build();
     }
 
-    private List<ProductInfo> getProductInfoList(CheckoutCommand checkoutCommand) {
-        return checkoutCommand.getOrderedProductList().stream()
+    private List<ProductInfo> getProductInfoList(List<OrderedProduct> orderedProductList) {
+        return orderedProductList.stream()
                 .map(orderedProduct ->
                         productProvider.getProductInfoById(orderedProduct.getProductId()))
                 .toList();
