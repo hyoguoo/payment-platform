@@ -69,7 +69,8 @@ public class PaymentEvent {
         this.isPaymentDone = false;
     }
 
-    public void paymentDone() {
+    public void paymentDone(LocalDateTime approvedAt) {
+        this.approvedAt = approvedAt;
         this.isPaymentDone = true;
     }
 }

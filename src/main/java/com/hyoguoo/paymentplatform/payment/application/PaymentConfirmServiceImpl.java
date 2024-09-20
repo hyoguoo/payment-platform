@@ -88,7 +88,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         // ========= 결제 승인 종료 =========
 
         // ========= 주문 확정 상태 변경 시작 =========
-        paymentEvent.paymentDone();
+        paymentEvent.paymentDone(tossPaymentInfo.getPaymentDetails().getApprovedAt());
         paymentEventRepository.saveOrUpdate(paymentEvent);
         paymentOrderList.forEach(PaymentOrder::paymentDone);
         paymentOrderRepository.saveAll(paymentOrderList);
