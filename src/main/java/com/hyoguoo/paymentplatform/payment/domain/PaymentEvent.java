@@ -89,4 +89,9 @@ public class PaymentEvent {
                 .map(PaymentOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
+
+    public void unknown() {
+        this.isPaymentDone = false;
+        this.paymentOrderList.forEach(PaymentOrder::unknown);
+    }
 }

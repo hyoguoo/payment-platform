@@ -57,4 +57,8 @@ public class PaymentOrder {
     public void paymentDone() {
         this.status = PaymentOrderStatus.SUCCESS;
     }
+
+    public void unknown() {
+        this.status = PaymentOrderStatus.UNKNOWN;
+    }
 }
