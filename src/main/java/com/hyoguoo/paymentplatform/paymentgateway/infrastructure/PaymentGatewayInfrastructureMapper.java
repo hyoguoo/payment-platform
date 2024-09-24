@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentGatewayInfrastructureMapper {
 
-    public static TossPaymentInfo toTossPaymentInfo(
+    public static TossPaymentInfo toSuccessTossPaymentInfo(
             TossPaymentApiResponse tossPaymentResponse
     ) {
         LocalDateTime approvedAt = tossPaymentResponse.getApprovedAt() == null
@@ -52,7 +52,7 @@ public class PaymentGatewayInfrastructureMapper {
                 .build();
     }
 
-    public static TossPaymentInfo toTossPaymentInfo(TossPaymentApiFailResponse tossPaymentApiFailResponse) {
+    public static TossPaymentInfo toFailureTossPaymentInfo(TossPaymentApiFailResponse tossPaymentApiFailResponse) {
         TossPaymentErrorCode tossPaymentErrorCode = TossPaymentErrorCode.of(tossPaymentApiFailResponse.getCode());
         PaymentConfirmResult paymentConfirmResult = PaymentConfirmResult.of(tossPaymentErrorCode);
         TossPaymentFailure paymentFailure = TossPaymentFailure.builder()

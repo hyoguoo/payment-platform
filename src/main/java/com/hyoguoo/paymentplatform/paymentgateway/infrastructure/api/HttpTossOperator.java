@@ -36,7 +36,7 @@ public class HttpTossOperator implements TossOperator {
                 TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
+        return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
     }
 
     @Override
@@ -53,11 +53,11 @@ public class HttpTossOperator implements TossOperator {
                     TossPaymentApiResponse.class
             );
 
-            return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
+            return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
         } catch (Exception e) {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
                     e.getMessage());
-            return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiFailResponse);
+            return PaymentGatewayInfrastructureMapper.toFailureTossPaymentInfo(tossPaymentApiFailResponse);
         }
     }
 
@@ -74,7 +74,7 @@ public class HttpTossOperator implements TossOperator {
                 TossPaymentApiResponse.class
         );
 
-        return PaymentGatewayInfrastructureMapper.toTossPaymentInfo(tossPaymentApiResponse);
+        return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
     }
 
     // TODO: 파싱 방법 개선 필요
