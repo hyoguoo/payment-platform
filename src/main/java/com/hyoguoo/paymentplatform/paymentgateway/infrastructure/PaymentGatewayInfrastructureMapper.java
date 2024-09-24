@@ -43,6 +43,7 @@ public class PaymentGatewayInfrastructureMapper {
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderId(tossPaymentResponse.getOrderId())
+                .paymentConfirmResult(PaymentConfirmResult.SUCCESS)
                 .paymentDetails(paymentDetails)
                 .paymentFailure(paymentFailure)
                 .build();
