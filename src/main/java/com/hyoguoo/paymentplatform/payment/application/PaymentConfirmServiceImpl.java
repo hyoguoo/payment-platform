@@ -50,11 +50,11 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .amount(completedPayment.getTotalAmount())
                     .orderId(completedPayment.getOrderId())
                     .build();
-        } catch (NonRetryableException e) {
-            handleNonRetryableFailure(paymentEvent);
-            throw new RuntimeException(e);
         } catch (RetryableException e) {
             handleRetryableFailure(paymentEvent);
+            throw new RuntimeException(e);
+        } catch (RuntimeException | NonRetryableException e) {
+            handleNonRetryableFailure(paymentEvent);
             throw new RuntimeException(e);
         }
     }
