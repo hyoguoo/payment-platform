@@ -10,11 +10,9 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.exception.NonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.RetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import java.util.ArrayList;
@@ -47,12 +45,15 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .amount(completedPayment.getTotalAmount())
                     .orderId(completedPayment.getOrderId())
                     .build();
-        } catch (RetryableException e) {
+        } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(paymentEvent);
             throw new RuntimeException(e);
-        } catch (RuntimeException | NonRetryableException e) {
+        } catch (PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(paymentEvent);
             throw new RuntimeException(e);
+        } catch (RuntimeException e) {
+            handleNonRetryableFailure(paymentEvent);
+            throw e;
         }
     }
 
@@ -130,7 +131,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     }
 
     private TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
-            throws RetryableException, NonRetryableException {
+            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
         TossConfirmGatewayCommand tossConfirmGatewayCommand = TossConfirmGatewayCommand.builder()
                 .orderId(paymentConfirmCommand.getOrderId())
                 .paymentKey(paymentConfirmCommand.getPaymentKey())
