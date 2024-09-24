@@ -53,11 +53,15 @@ public class HttpTossOperator implements TossOperator {
                     TossPaymentApiResponse.class
             );
 
-            return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
+            return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(
+                    tossPaymentApiResponse);
         } catch (Exception e) {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
-                    e.getMessage());
-            return PaymentGatewayInfrastructureMapper.toFailureTossPaymentInfo(tossPaymentApiFailResponse);
+                    e.getMessage()
+            );
+            return PaymentGatewayInfrastructureMapper.toFailureTossPaymentInfo(
+                    tossPaymentApiFailResponse
+            );
         }
     }
 
