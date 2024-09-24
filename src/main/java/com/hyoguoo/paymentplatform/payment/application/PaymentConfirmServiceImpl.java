@@ -10,7 +10,12 @@ import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.payment.exception.NonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.RetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import java.util.ArrayList;
@@ -18,6 +23,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+//TODO: 결제 검증 시 Toss Payment 결제 상태 검사 추가
 @Service
 @RequiredArgsConstructor
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
@@ -31,18 +37,26 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
         PaymentEvent paymentEvent = executePayment(paymentConfirmCommand);
 
-        validatePaymentEvent(paymentConfirmCommand, paymentEvent);
-
         handleProductStockReduction(paymentEvent);
 
-        TossPaymentInfo tossConfirmInfo = confirmPaymentWithGateway(paymentConfirmCommand);
+        try {
+            validatePaymentEvent(paymentConfirmCommand, paymentEvent);
 
-        PaymentEvent completedPayment = completePayment(paymentEvent, tossConfirmInfo);
+            TossPaymentInfo tossConfirmInfo = confirmPaymentWithGateway(paymentConfirmCommand);
 
-        return PaymentConfirmResult.builder()
-                .amount(completedPayment.getTotalAmount())
-                .orderId(completedPayment.getOrderId())
-                .build();
+            PaymentEvent completedPayment = completePayment(paymentEvent, tossConfirmInfo);
+
+            return PaymentConfirmResult.builder()
+                    .amount(completedPayment.getTotalAmount())
+                    .orderId(completedPayment.getOrderId())
+                    .build();
+        } catch (NonRetryableException e) {
+            handleNonRetryableFailure(paymentEvent);
+            throw new RuntimeException(e);
+        } catch (RetryableException e) {
+            handleRetryableFailure(paymentEvent);
+            throw new RuntimeException(e);
+        }
     }
 
     private PaymentEvent executePayment(PaymentConfirmCommand paymentConfirmCommand) {
@@ -78,9 +92,13 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private void handleProductStockReduction(PaymentEvent paymentEvent) {
         List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
         if (!reduceStockPaymentOrderListProduct(paymentOrderList)) {
-            paymentEvent.fail();
-            paymentEventRepository.saveOrUpdate(paymentEvent);
+            failPayment(paymentEvent);
         }
+    }
+
+    private void failPayment(PaymentEvent paymentEvent) {
+        paymentEvent.fail();
+        paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     private boolean reduceStockPaymentOrderListProduct(List<PaymentOrder> paymentOrderList) {
@@ -114,7 +132,8 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         return true;
     }
 
-    private TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
+    private TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
+            throws RetryableException, NonRetryableException {
         TossConfirmGatewayCommand tossConfirmGatewayCommand = TossConfirmGatewayCommand.builder()
                 .orderId(paymentConfirmCommand.getOrderId())
                 .paymentKey(paymentConfirmCommand.getPaymentKey())
@@ -122,9 +141,20 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 .idempotencyKey(paymentConfirmCommand.getOrderId())
                 .build();
 
-        return paymentGatewayHandler.confirmPayment(
+        TossPaymentInfo tossPaymentInfo = paymentGatewayHandler.confirmPayment(
                 tossConfirmGatewayCommand
         );
+
+        PaymentConfirmResultStatus paymentConfirmResultStatus = tossPaymentInfo.getPaymentConfirmResultStatus();
+        if (paymentConfirmResultStatus == PaymentConfirmResultStatus.SUCCESS) {
+            return tossPaymentInfo;
+        } else if (paymentConfirmResultStatus == PaymentConfirmResultStatus.RETRYABLE_FAILURE) {
+            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        } else if (paymentConfirmResultStatus == PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE) {
+            throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        } else {
+            throw new IllegalArgumentException();
+        }
     }
 
     private PaymentEvent completePayment(
@@ -133,5 +163,15 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     ) {
         paymentEvent.paymentDone(tossConfirmInfo.getPaymentDetails().getApprovedAt());
         return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
+    private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
+        failPayment(paymentEvent);
+    }
+
+
+    private void handleRetryableFailure(PaymentEvent paymentEvent) {
+        paymentEvent.unknown(); // unknown 처리시 비동기로 재시도하게 됨
+        paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 }
