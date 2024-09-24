@@ -7,6 +7,6 @@ import lombok.Getter;
 @Builder
 public class TossPaymentFailure {
 
-    private final String errorCode;
-    private final String errorMessage;
+    private final String code;
+    private final String message;
 }

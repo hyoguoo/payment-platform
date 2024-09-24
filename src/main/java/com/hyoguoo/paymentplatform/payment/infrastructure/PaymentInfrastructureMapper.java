@@ -35,8 +35,8 @@ public class PaymentInfrastructureMapper {
 
         TossPaymentFailure paymentFailure = tossPaymentResponse.getPaymentFailure() != null
                 ? TossPaymentFailure.builder()
-                .errorCode(tossPaymentResponse.getPaymentFailure().getErrorCode())
-                .errorMessage(tossPaymentResponse.getPaymentFailure().getErrorMessage())
+                .code(tossPaymentResponse.getPaymentFailure().getCode())
+                .message(tossPaymentResponse.getPaymentFailure().getMessage())
                 .build()
                 : null;
 
