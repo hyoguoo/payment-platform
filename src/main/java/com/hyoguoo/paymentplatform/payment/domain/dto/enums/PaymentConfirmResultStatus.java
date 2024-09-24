@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum PaymentConfirmResult {
+public enum PaymentConfirmResultStatus {
     SUCCESS("SUCCESS"),
     RETRYABLE_FAILURE("RETRYABLE_FAILURE"),
     NON_RETRYABLE_FAILURE("NON_RETRYABLE_FAILURE"),
@@ -14,9 +14,9 @@ public enum PaymentConfirmResult {
 
     private final String value;
 
-    public static PaymentConfirmResult of(String value) {
-        return Arrays.stream(PaymentConfirmResult.values())
-                .filter(paymentConfirmResult -> paymentConfirmResult.getValue().equals(value))
+    public static PaymentConfirmResultStatus of(String value) {
+        return Arrays.stream(PaymentConfirmResultStatus.values())
+                .filter(paymentConfirmResultStatus -> paymentConfirmResultStatus.getValue().equals(value))
                 .findFirst()
                 .orElseThrow();
     }

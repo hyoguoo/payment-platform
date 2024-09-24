@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.paymentgateway.infrastructure;
 
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentDetails;
@@ -39,21 +39,21 @@ public class PaymentGatewayInfrastructureMapper {
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderId(tossPaymentResponse.getOrderId())
-                .paymentConfirmResult(PaymentConfirmResult.SUCCESS)
+                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(paymentDetails)
                 .build();
     }
 
     public static TossPaymentInfo toFailureTossPaymentInfo(TossPaymentApiFailResponse tossPaymentApiFailResponse) {
         TossPaymentErrorCode tossPaymentErrorCode = TossPaymentErrorCode.of(tossPaymentApiFailResponse.getCode());
-        PaymentConfirmResult paymentConfirmResult = PaymentConfirmResult.of(tossPaymentErrorCode);
+        PaymentConfirmResultStatus paymentConfirmResultStatus = PaymentConfirmResultStatus.of(tossPaymentErrorCode);
         TossPaymentFailure paymentFailure = TossPaymentFailure.builder()
                 .code(tossPaymentApiFailResponse.getCode())
                 .message(tossPaymentApiFailResponse.getMessage())
                 .build();
 
         return TossPaymentInfo.builder()
-                .paymentConfirmResult(paymentConfirmResult)
+                .paymentConfirmResultStatus(paymentConfirmResultStatus)
                 .paymentFailure(paymentFailure)
                 .build();
     }

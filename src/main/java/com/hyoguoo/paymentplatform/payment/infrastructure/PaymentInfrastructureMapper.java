@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGa
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure;
@@ -41,14 +41,14 @@ public class PaymentInfrastructureMapper {
                 .build()
                 : null;
 
-        PaymentConfirmResult paymentConfirmResult = PaymentConfirmResult.of(
-                tossPaymentResponse.getPaymentConfirmResult().getValue()
+        PaymentConfirmResultStatus paymentConfirmResultStatus = PaymentConfirmResultStatus.of(
+                tossPaymentResponse.getPaymentConfirmResultStatus().getValue()
         );
 
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderId(tossPaymentResponse.getOrderId())
-                .paymentConfirmResult(paymentConfirmResult)
+                .paymentConfirmResultStatus(paymentConfirmResultStatus)
                 .paymentDetails(paymentDetails)
                 .paymentFailure(paymentFailure)
                 .build();
