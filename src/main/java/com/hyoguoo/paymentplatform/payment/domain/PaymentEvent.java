@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
@@ -64,12 +65,22 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }
 
-        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey())) {
+        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey()) ||
+                !paymentConfirmCommand.getPaymentKey().equals(this.paymentKey)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
 
         if (paymentConfirmCommand.getAmount().compareTo(this.getTotalAmount()) != 0) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
+
+        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS) {
+            throw PaymentValidException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
+        }
+
+        if (!this.orderId.equals(paymentInfo.getOrderId()) ||
+                !this.orderId.equals(paymentConfirmCommand.getOrderId())) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
     }
 
