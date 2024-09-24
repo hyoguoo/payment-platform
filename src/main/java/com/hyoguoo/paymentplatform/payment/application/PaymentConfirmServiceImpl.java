@@ -167,8 +167,17 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
         failPayment(paymentEvent);
+        increaseStockPaymentOrderListProduct(paymentEvent.getPaymentOrderList());
     }
 
+    private void increaseStockPaymentOrderListProduct(List<PaymentOrder> paymentOrderList) {
+        paymentOrderList.forEach(paymentOrder ->
+                productProvider.increaseStockWithCommit(
+                        paymentOrder.getProductId(),
+                        paymentOrder.getQuantity()
+                )
+        );
+    }
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {
         paymentEvent.unknown(); // unknown 처리시 비동기로 재시도하게 됨
