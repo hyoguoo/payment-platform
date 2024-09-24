@@ -11,6 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -47,10 +48,10 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .build();
         } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(paymentEvent);
-            throw new RuntimeException(e);
+            throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         } catch (PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(paymentEvent);
-            throw new RuntimeException(e);
+            throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         } catch (RuntimeException e) {
             handleNonRetryableFailure(paymentEvent);
             throw e;
