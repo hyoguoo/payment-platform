@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGa
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandler;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -23,13 +22,11 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-//TODO: 결제 검증 시 Toss Payment 결제 상태 검사 추가
 @Service
 @RequiredArgsConstructor
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private final PaymentEventRepository paymentEventRepository;
-    private final PaymentOrderRepository paymentOrderRepository;
     private final PaymentGatewayHandler paymentGatewayHandler;
     private final ProductProvider productProvider;
 
@@ -146,15 +143,16 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         );
 
         PaymentConfirmResultStatus paymentConfirmResultStatus = tossPaymentInfo.getPaymentConfirmResultStatus();
-        if (paymentConfirmResultStatus == PaymentConfirmResultStatus.SUCCESS) {
-            return tossPaymentInfo;
-        } else if (paymentConfirmResultStatus == PaymentConfirmResultStatus.RETRYABLE_FAILURE) {
-            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
-        } else if (paymentConfirmResultStatus == PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE) {
-            throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
-        } else {
-            throw new IllegalArgumentException();
-        }
+
+        return switch (paymentConfirmResultStatus) {
+            case PaymentConfirmResultStatus.SUCCESS -> tossPaymentInfo;
+            case PaymentConfirmResultStatus.RETRYABLE_FAILURE ->
+                    throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->
+                    throw PaymentTossNonRetryableException.of(
+                            PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR
+                    );
+        };
     }
 
     private PaymentEvent completePayment(
@@ -180,7 +178,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     }
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {
-        paymentEvent.unknown(); // unknown 처리시 비동기로 재시도하게 됨
+        paymentEvent.unknown();
         paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 }
