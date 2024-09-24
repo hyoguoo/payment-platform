@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
@@ -27,7 +28,7 @@ public class PaymentEvent {
     private String orderName;
     private String orderId;
     private String paymentKey;
-    private Boolean isPaymentDone;
+    private PaymentEventStatus status;
     private LocalDateTime approvedAt;
     private List<PaymentOrder> paymentOrderList = new ArrayList<>();
 
@@ -43,7 +44,7 @@ public class PaymentEvent {
 
         this.orderName = generateOrderName(productInfoList);
         this.orderId = orderId;
-        this.isPaymentDone = false;
+        this.status = PaymentEventStatus.READY;
     }
 
     private static String generateOrderName(
@@ -53,11 +54,12 @@ public class PaymentEvent {
     }
 
     public void execute(String paymentKey) {
-        if (Boolean.TRUE.equals(this.isPaymentDone)) {
+        if (this.status != PaymentEventStatus.READY) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
         paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
+        this.status = PaymentEventStatus.IN_PROGRESS;
     }
 
     public void validate(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
@@ -84,25 +86,25 @@ public class PaymentEvent {
         }
     }
 
-    public void fail() {
-        this.isPaymentDone = false;
-        this.paymentOrderList.forEach(PaymentOrder::fail);
-    }
-
-    public void paymentDone(LocalDateTime approvedAt) {
-        this.approvedAt = approvedAt;
-        this.isPaymentDone = true;
-        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
-    }
-
     public BigDecimal getTotalAmount() {
         return paymentOrderList.stream()
                 .map(PaymentOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    public void done(LocalDateTime approvedAt) {
+        this.approvedAt = approvedAt;
+        this.status = PaymentEventStatus.DONE;
+        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
+    }
+
+    public void fail() {
+        this.status = PaymentEventStatus.FAILED;
+        this.paymentOrderList.forEach(PaymentOrder::fail);
+    }
+
     public void unknown() {
-        this.isPaymentDone = false;
+        this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
 }

@@ -3,8 +3,11 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.entity;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -47,8 +50,9 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "payment_key")
     private String paymentKey;
 
-    @Column(name = "is_payment_done", nullable = false)
-    private Boolean isPaymentDone;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private PaymentEventStatus status;
 
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
@@ -61,7 +65,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(paymentEvent.getOrderName())
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
-                .isPaymentDone(paymentEvent.getIsPaymentDone())
+                .status(paymentEvent.getStatus())
                 .approvedAt(paymentEvent.getApprovedAt())
                 .build();
     }
@@ -74,7 +78,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(orderName)
                 .orderId(orderId)
                 .paymentKey(paymentKey)
-                .isPaymentDone(isPaymentDone)
+                .status(status)
                 .approvedAt(approvedAt)
                 .paymentOrderList(
                         Optional.ofNullable(paymentOrderList)

@@ -161,7 +161,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
             PaymentEvent paymentEvent,
             TossPaymentInfo tossConfirmInfo
     ) {
-        paymentEvent.paymentDone(tossConfirmInfo.getPaymentDetails().getApprovedAt());
+        paymentEvent.done(tossConfirmInfo.getPaymentDetails().getApprovedAt());
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
