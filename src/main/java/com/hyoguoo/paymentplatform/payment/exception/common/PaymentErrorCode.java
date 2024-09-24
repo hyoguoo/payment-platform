@@ -17,7 +17,9 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_PAYMENT_KEY("E03005", "유효하지 않은 결제 키입니다."),
     NOT_CANCELED_PAYMENT("E03006", "취소되지 않은 결제입니다."),
     NOT_DONE_PAYMENT("E03007", "완료되지 않은 결제입니다."),
-    NOT_IN_PROGRESS_ORDER("E03008", "진행 중인 주문이 아닙니다.")
+    NOT_IN_PROGRESS_ORDER("E03008", "진행 중인 주문이 아닙니다."),
+    TOSS_RETRYABLE_ERROR("EO3009", "Toss 결제에서 재시도 가능한 오류가 발생했습니다."),
+    TOSS_NON_RETRYABLE_ERROR("E03010", "Toss 결제에서 재시도 불가능한 오류가 발생했습니다."),
     ;
 
     private final String code;
