@@ -28,13 +28,6 @@ public class PaymentGatewayInfrastructureMapper {
 
         TossPaymentStatus status = TossPaymentStatus.of(tossPaymentResponse.getStatus());
 
-        TossPaymentFailure paymentFailure = tossPaymentResponse.getFailure() != null
-                ? TossPaymentFailure.builder()
-                .code(tossPaymentResponse.getFailure().getCode())
-                .message(tossPaymentResponse.getFailure().getMessage())
-                .build()
-                : null;
-
         TossPaymentDetails paymentDetails = TossPaymentDetails.builder()
                 .orderName(tossPaymentResponse.getOrderName())
                 .totalAmount(BigDecimal.valueOf(tossPaymentResponse.getTotalAmount()))
@@ -48,7 +41,6 @@ public class PaymentGatewayInfrastructureMapper {
                 .orderId(tossPaymentResponse.getOrderId())
                 .paymentConfirmResult(PaymentConfirmResult.SUCCESS)
                 .paymentDetails(paymentDetails)
-                .paymentFailure(paymentFailure)
                 .build();
     }
 
