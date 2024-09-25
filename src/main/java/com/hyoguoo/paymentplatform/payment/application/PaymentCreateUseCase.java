@@ -20,7 +20,7 @@ public class PaymentCreateUseCase {
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
 
-    public PaymentEvent saveNewPaymentEvent(
+    public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
             List<ProductInfo> productInfoList
@@ -66,8 +66,11 @@ public class PaymentCreateUseCase {
                             productInfo
                     );
 
-                    return createPaymentOrder(savedPaymentEvent, productInfo,
-                            matchedOrderedProduct);
+                    return createPaymentOrder(
+                            savedPaymentEvent,
+                            productInfo,
+                            matchedOrderedProduct
+                    );
                 })
                 .toList();
         return paymentOrderRepository.saveAll(paymentOrderList);

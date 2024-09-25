@@ -24,7 +24,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public boolean reduceStockWithCommit(Long productId, Integer reduceStock) {
+    public boolean decreaseStockWithCommit(Long productId, Integer reduceStock) {
         Product product = getByIdPessimistic(productId);
         boolean result = product.decrementStock(reduceStock);
         productRepository.saveOrUpdate(product);

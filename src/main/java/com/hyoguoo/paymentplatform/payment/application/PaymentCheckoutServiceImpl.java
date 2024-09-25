@@ -15,19 +15,19 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
 
-    private final UserUseCase userUseCase;
-    private final StockReductionUseCase stockReductionUseCase;
+    private final OrderedUserUseCase orderedUserUseCase;
+    private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCreateUseCase paymentCreateUseCase;
 
     @Override
     @Transactional
     public CheckoutResult checkout(CheckoutCommand checkoutCommand) {
-        UserInfo userInfo = userUseCase.getUserInfoById(checkoutCommand.getUserId());
-        List<ProductInfo> productInfoList = stockReductionUseCase.getProductInfoList(
+        UserInfo userInfo = orderedUserUseCase.getUserInfoById(checkoutCommand.getUserId());
+        List<ProductInfo> productInfoList = orderedProductUseCase.getProductInfoList(
                 checkoutCommand.getOrderedProductList()
         );
 
-        PaymentEvent paymentEvent = paymentCreateUseCase.saveNewPaymentEvent(
+        PaymentEvent paymentEvent = paymentCreateUseCase.createNewPaymentEvent(
                 userInfo,
                 checkoutCommand.getOrderedProductList(),
                 productInfoList

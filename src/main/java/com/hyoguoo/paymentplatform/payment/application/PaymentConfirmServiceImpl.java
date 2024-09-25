@@ -16,16 +16,16 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
-    private final StockReductionUseCase stockReductionUseCase;
-    private final PaymentEventUseCase paymentEventUseCase;
+    private final OrderedProductUseCase orderedProductUseCase;
+    private final PaymentProcessorUseCase paymentProcessorUseCase;
 
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
-        PaymentEvent paymentEvent = paymentEventUseCase.findAndExecutePayment(
+        PaymentEvent paymentEvent = paymentProcessorUseCase.findAndExecutePayment(
                 paymentConfirmCommand
         );
 
-        stockReductionUseCase.reduceStock(paymentEvent.getPaymentOrderList());
+        orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
 
         try {
             PaymentEvent completedPayment = processPayment(paymentEvent, paymentConfirmCommand);
@@ -49,25 +49,25 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private PaymentEvent processPayment(
             PaymentEvent paymentEvent, PaymentConfirmCommand paymentConfirmCommand
     ) throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        paymentEventUseCase.validatePayment(paymentEvent, paymentConfirmCommand);
+        paymentProcessorUseCase.validatePayment(paymentEvent, paymentConfirmCommand);
 
-        TossPaymentInfo tossConfirmInfo = paymentEventUseCase.confirmPaymentWithGateway(
+        TossPaymentInfo tossConfirmInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 
-        return paymentEventUseCase.markPaymentAsDone(paymentEvent,
+        return paymentProcessorUseCase.markPaymentAsDone(paymentEvent,
                 tossConfirmInfo.getPaymentDetails().getApprovedAt()
         );
     }
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
-        PaymentEvent failedPaymentEvent = paymentEventUseCase.markPaymentAsFail(paymentEvent);
-        stockReductionUseCase.increaseStockPaymentOrderListProduct(
+        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+        orderedProductUseCase.increaseStockForOrders(
                 failedPaymentEvent.getPaymentOrderList()
         );
     }
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {
-        paymentEventUseCase.markPaymentAsUnknown(paymentEvent);
+        paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent);
     }
 }

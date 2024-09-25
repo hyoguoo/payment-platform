@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
-public class PaymentEventUseCase {
+public class PaymentProcessorUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayHandler paymentGatewayHandler;

@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
-public class UserUseCase {
+public class OrderedUserUseCase {
 
     private final UserProvider userProvider;
 

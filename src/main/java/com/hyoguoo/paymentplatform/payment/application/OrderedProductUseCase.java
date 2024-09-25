@@ -12,16 +12,16 @@ import org.springframework.stereotype.Service;
 // TODO: 차감 / 증감이 하나의 트랜잭션에서 수행되도록 변경, 현재 에러 발생 시 논리적 오류 발생
 @Service
 @RequiredArgsConstructor
-public class StockReductionUseCase {
+public class OrderedProductUseCase {
 
     private final ProductProvider productProvider;
 
-    public void reduceStock(List<PaymentOrder> paymentOrderList) {
+    public void decreaseStockForOrders(List<PaymentOrder> paymentOrderList) {
         List<PaymentOrder> successfulOrders = new ArrayList<>();
 
         boolean allSuccess = true;
         for (PaymentOrder paymentOrder : paymentOrderList) {
-            boolean success = productProvider.reduceStockWithCommit(
+            boolean success = productProvider.decreaseStockWithCommit(
                     paymentOrder.getProductId(),
                     paymentOrder.getQuantity()
             );
@@ -45,7 +45,7 @@ public class StockReductionUseCase {
 
     }
 
-    public void increaseStockPaymentOrderListProduct(List<PaymentOrder> paymentOrderList) {
+    public void increaseStockForOrders(List<PaymentOrder> paymentOrderList) {
         paymentOrderList.forEach(paymentOrder ->
                 productProvider.increaseStockWithCommit(
                         paymentOrder.getProductId(),
