@@ -30,7 +30,7 @@ public class PaymentEvent {
     private String paymentKey;
     private PaymentEventStatus status;
     private LocalDateTime approvedAt;
-    private List<PaymentOrder> paymentOrderList = new ArrayList<>();
+    private List<PaymentOrder> paymentOrderList;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     @SuppressWarnings("unused")
@@ -45,6 +45,7 @@ public class PaymentEvent {
         this.orderName = generateOrderName(productInfoList);
         this.orderId = orderId;
         this.status = PaymentEventStatus.READY;
+        this.paymentOrderList = new ArrayList<>();
     }
 
     private static String generateOrderName(
