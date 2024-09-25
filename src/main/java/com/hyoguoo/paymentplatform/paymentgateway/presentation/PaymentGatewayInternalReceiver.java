@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossC
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.port.PaymentGatewayService;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,15 +15,10 @@ public class PaymentGatewayInternalReceiver {
     private final PaymentGatewayService paymentGatewayService;
 
     public TossPaymentResponse getPaymentInfoByOrderId(String orderId) {
-        TossPaymentInfo paymentInfoByOrderId = paymentGatewayService.getPaymentResultByOrderId(orderId);
-        return PaymentGatewayPresentationMapper.toTossDetailsResponse(paymentInfoByOrderId);
-    }
-
-    public Optional<TossPaymentResponse> findPaymentInfoByOrderId(String orderId) {
-        Optional<TossPaymentInfo> paymentInfoByOrderId = paymentGatewayService.findPaymentResultByOrderId(
+        TossPaymentInfo paymentInfoByOrderId = paymentGatewayService.getPaymentResultByOrderId(
                 orderId
         );
-        return paymentInfoByOrderId.map(PaymentGatewayPresentationMapper::toTossDetailsResponse);
+        return PaymentGatewayPresentationMapper.toTossDetailsResponse(paymentInfoByOrderId);
     }
 
     public TossPaymentResponse confirmPayment(

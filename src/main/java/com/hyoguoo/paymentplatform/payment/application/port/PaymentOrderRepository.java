@@ -10,7 +10,5 @@ public interface PaymentOrderRepository {
 
     PaymentOrder saveOrUpdate(PaymentOrder paymentOrder);
 
-    List<PaymentOrder> findByPaymentEventId(Long paymentEventId);
-
-    void saveAll(List<PaymentOrder> paymentOrderList);
+    List<PaymentOrder> saveAll(List<PaymentOrder> paymentOrderList);
 }

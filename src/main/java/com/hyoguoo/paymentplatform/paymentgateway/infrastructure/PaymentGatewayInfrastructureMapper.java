@@ -1,9 +1,12 @@
 package com.hyoguoo.paymentplatform.paymentgateway.infrastructure;
 
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
+import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,7 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentGatewayInfrastructureMapper {
 
-    public static TossPaymentInfo toTossPaymentInfo(
+    public static TossPaymentInfo toSuccessTossPaymentInfo(
             TossPaymentApiResponse tossPaymentResponse
     ) {
         LocalDateTime approvedAt = tossPaymentResponse.getApprovedAt() == null
@@ -24,13 +27,6 @@ public class PaymentGatewayInfrastructureMapper {
                 );
 
         TossPaymentStatus status = TossPaymentStatus.of(tossPaymentResponse.getStatus());
-
-        TossPaymentFailure paymentFailure = tossPaymentResponse.getFailure() != null
-                ? TossPaymentFailure.builder()
-                .errorCode(tossPaymentResponse.getFailure().getCode())
-                .errorMessage(tossPaymentResponse.getFailure().getMessage())
-                .build()
-                : null;
 
         TossPaymentDetails paymentDetails = TossPaymentDetails.builder()
                 .orderName(tossPaymentResponse.getOrderName())
@@ -43,7 +39,21 @@ public class PaymentGatewayInfrastructureMapper {
         return TossPaymentInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderId(tossPaymentResponse.getOrderId())
+                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(paymentDetails)
+                .build();
+    }
+
+    public static TossPaymentInfo toFailureTossPaymentInfo(TossPaymentApiFailResponse tossPaymentApiFailResponse) {
+        TossPaymentErrorCode tossPaymentErrorCode = TossPaymentErrorCode.of(tossPaymentApiFailResponse.getCode());
+        PaymentConfirmResultStatus paymentConfirmResultStatus = PaymentConfirmResultStatus.of(tossPaymentErrorCode);
+        TossPaymentFailure paymentFailure = TossPaymentFailure.builder()
+                .code(tossPaymentApiFailResponse.getCode())
+                .message(tossPaymentApiFailResponse.getMessage())
+                .build();
+
+        return TossPaymentInfo.builder()
+                .paymentConfirmResultStatus(paymentConfirmResultStatus)
                 .paymentFailure(paymentFailure)
                 .build();
     }

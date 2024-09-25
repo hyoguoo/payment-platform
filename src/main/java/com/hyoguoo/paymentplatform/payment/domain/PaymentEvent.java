@@ -4,9 +4,13 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -24,8 +28,9 @@ public class PaymentEvent {
     private String orderName;
     private String orderId;
     private String paymentKey;
-    private Boolean isPaymentDone;
+    private PaymentEventStatus status;
     private LocalDateTime approvedAt;
+    private List<PaymentOrder> paymentOrderList;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     @SuppressWarnings("unused")
@@ -39,7 +44,8 @@ public class PaymentEvent {
 
         this.orderName = generateOrderName(productInfoList);
         this.orderId = orderId;
-        this.isPaymentDone = false;
+        this.status = PaymentEventStatus.READY;
+        this.paymentOrderList = new ArrayList<>();
     }
 
     private static String generateOrderName(
@@ -49,10 +55,12 @@ public class PaymentEvent {
     }
 
     public void execute(String paymentKey) {
-        if (Boolean.TRUE.equals(this.isPaymentDone)) {
+        if (this.status != PaymentEventStatus.READY) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
+        paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
+        this.status = PaymentEventStatus.IN_PROGRESS;
     }
 
     public void validate(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
@@ -60,16 +68,48 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }
 
-        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey())) {
+        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey()) ||
+                !paymentConfirmCommand.getPaymentKey().equals(this.paymentKey)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
+        }
+
+        if (paymentConfirmCommand.getAmount().compareTo(this.getTotalAmount()) != 0) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
+
+        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS) {
+            throw PaymentValidException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
+        }
+
+        if (!this.orderId.equals(paymentInfo.getOrderId()) ||
+                !this.orderId.equals(paymentConfirmCommand.getOrderId())) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
     }
 
-    public void fail() {
-        this.isPaymentDone = false;
+    public BigDecimal getTotalAmount() {
+        return paymentOrderList.stream()
+                .map(PaymentOrder::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public void paymentDone() {
-        this.isPaymentDone = true;
+    public void done(LocalDateTime approvedAt) {
+        this.approvedAt = approvedAt;
+        this.status = PaymentEventStatus.DONE;
+        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
+    }
+
+    public void fail() {
+        this.status = PaymentEventStatus.FAILED;
+        this.paymentOrderList.forEach(PaymentOrder::fail);
+    }
+
+    public void unknown() {
+        this.status = PaymentEventStatus.UNKNOWN;
+        this.paymentOrderList.forEach(PaymentOrder::unknown);
+    }
+
+    public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
+        this.paymentOrderList.addAll(newPaymentOrderList);
     }
 }

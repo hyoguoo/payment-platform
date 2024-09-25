@@ -18,6 +18,7 @@ public class PaymentGatewayPresentationMapper {
         return TossPaymentResponse.builder()
                 .paymentKey(tossPaymentInfo.getPaymentKey())
                 .orderId(tossPaymentInfo.getOrderId())
+                .paymentConfirmResultStatus(tossPaymentInfo.getPaymentConfirmResultStatus())
                 .paymentDetails(tossPaymentInfo.getPaymentDetails())
                 .paymentFailure(tossPaymentInfo.getPaymentFailure())
                 .build();

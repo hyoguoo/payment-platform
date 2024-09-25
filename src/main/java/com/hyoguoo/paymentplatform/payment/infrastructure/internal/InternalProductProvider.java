@@ -22,8 +22,8 @@ public class InternalProductProvider implements ProductProvider {
     }
 
     @Override
-    public boolean reduceStockWithCommit(Long productId, Integer quantity) {
-        return productInternalReceiver.reduceStockWithCommit(productId, quantity);
+    public boolean decreaseStockWithCommit(Long productId, Integer quantity) {
+        return productInternalReceiver.decreaseStockWithCommit(productId, quantity);
     }
 
     @Override
