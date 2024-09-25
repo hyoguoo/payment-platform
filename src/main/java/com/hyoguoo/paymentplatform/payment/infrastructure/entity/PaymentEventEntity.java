@@ -13,6 +13,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -81,8 +82,8 @@ public class PaymentEventEntity extends BaseEntity {
                 .status(status)
                 .approvedAt(approvedAt)
                 .paymentOrderList(
-                        Optional.ofNullable(paymentOrderList)
-                                .orElse(Collections.emptyList())
+                        new ArrayList<>(Optional.ofNullable(paymentOrderList)
+                                .orElse(Collections.emptyList()))
                 )
                 .allArgsBuild();
     }
