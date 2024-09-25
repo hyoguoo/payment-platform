@@ -1,7 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -50,5 +52,12 @@ public class StockReductionUseCase {
                         paymentOrder.getQuantity()
                 )
         );
+    }
+
+    public List<ProductInfo> getProductInfoList(List<OrderedProduct> orderedProductList) {
+        return orderedProductList.stream()
+                .map(orderedProduct ->
+                        productProvider.getProductInfoById(orderedProduct.getProductId()))
+                .toList();
     }
 }

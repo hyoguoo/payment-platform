@@ -108,4 +108,8 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
+
+    public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
+        this.paymentOrderList.addAll(newPaymentOrderList);
+    }
 }

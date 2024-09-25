@@ -10,5 +10,5 @@ public interface PaymentOrderRepository {
 
     PaymentOrder saveOrUpdate(PaymentOrder paymentOrder);
 
-    void saveAll(List<PaymentOrder> paymentOrderList);
+    List<PaymentOrder> saveAll(List<PaymentOrder> paymentOrderList);
 }

@@ -1,0 +1,98 @@
+package com.hyoguoo.paymentplatform.payment.application;
+
+import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class PaymentCreateUseCase {
+
+    private final PaymentEventRepository paymentEventRepository;
+    private final PaymentOrderRepository paymentOrderRepository;
+    private final UUIDProvider uuidProvider;
+
+    public PaymentEvent saveNewPaymentEvent(
+            UserInfo userInfo,
+            List<OrderedProduct> orderedProductList,
+            List<ProductInfo> productInfoList
+    ) {
+        PaymentEvent savedPaymentEvent = saveNewPaymentEvent(
+                userInfo,
+                productInfoList
+        );
+
+        List<PaymentOrder> paymentOrderList = saveNewPaymentOrderList(
+                savedPaymentEvent,
+                orderedProductList,
+                productInfoList
+        );
+
+        savedPaymentEvent.addPaymentOrderList(paymentOrderList);
+
+        return savedPaymentEvent;
+    }
+
+    private PaymentEvent saveNewPaymentEvent(
+            UserInfo userInfo,
+            List<ProductInfo> productInfoList
+    ) {
+        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
+                .userInfo(userInfo)
+                .productInfoList(productInfoList)
+                .orderId(uuidProvider.generateUUID())
+                .requiredBuild();
+
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
+    private List<PaymentOrder> saveNewPaymentOrderList(
+            PaymentEvent savedPaymentEvent,
+            List<OrderedProduct> orderedProductList,
+            List<ProductInfo> productInfoList
+    ) {
+        List<PaymentOrder> paymentOrderList = productInfoList.stream()
+                .map(productInfo -> {
+                    OrderedProduct matchedOrderedProduct = findMatchingOrderedProduct(
+                            orderedProductList,
+                            productInfo
+                    );
+
+                    return createPaymentOrder(savedPaymentEvent, productInfo,
+                            matchedOrderedProduct);
+                })
+                .toList();
+        return paymentOrderRepository.saveAll(paymentOrderList);
+    }
+
+    private OrderedProduct findMatchingOrderedProduct(
+            List<OrderedProduct> orderedProductList,
+            ProductInfo productInfo
+    ) {
+        return orderedProductList.stream()
+                .filter(orderedProduct ->
+                        orderedProduct.getProductId().equals(productInfo.getId()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private PaymentOrder createPaymentOrder(
+            PaymentEvent savedPaymentEvent,
+            ProductInfo productInfo,
+            OrderedProduct matchedOrderedProduct
+    ) {
+        return PaymentOrder.requiredBuilder()
+                .paymentEvent(savedPaymentEvent)
+                .orderedProduct(matchedOrderedProduct)
+                .productInfo(productInfo)
+                .requiredBuild();
+    }
+}

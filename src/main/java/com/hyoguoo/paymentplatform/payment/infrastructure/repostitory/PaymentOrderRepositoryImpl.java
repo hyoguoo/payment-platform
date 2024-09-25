@@ -27,10 +27,13 @@ public class PaymentOrderRepositoryImpl implements PaymentOrderRepository {
     }
 
     @Override
-    public void saveAll(List<PaymentOrder> paymentOrderList) {
+    public List<PaymentOrder> saveAll(List<PaymentOrder> paymentOrderList) {
         List<PaymentOrderEntity> paymentOrderEntityList = paymentOrderList.stream()
                 .map(PaymentOrderEntity::from)
                 .toList();
-        jpaPaymentOrderRepository.saveAll(paymentOrderEntityList);
+        return jpaPaymentOrderRepository.saveAll(paymentOrderEntityList)
+                .stream()
+                .map(PaymentOrderEntity::toDomain)
+                .toList();
     }
 }
