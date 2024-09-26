@@ -1,12 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.application.port;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import java.util.List;
 
 public interface ProductProvider {
 
     ProductInfo getProductInfoById(Long productId);
 
-    boolean decreaseStockWithCommit(Long productId, Integer quantity);
+    void decreaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList);
 
-    boolean increaseStockWithCommit(Long productId, Integer quantity);
+    void increaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList);
 }

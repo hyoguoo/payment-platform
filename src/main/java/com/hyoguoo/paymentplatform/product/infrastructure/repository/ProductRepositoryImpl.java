@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.product.infrastructure.repository;
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.infrastructure.entity.ProductEntity;
 import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -30,5 +31,13 @@ public class ProductRepositoryImpl implements ProductRepository {
     @Override
     public Product saveOrUpdate(Product product) {
         return jpaProductRepository.save(ProductEntity.from(product)).toDomain();
+    }
+
+    @Override
+    public void saveAll(List<Product> productList) {
+        List<ProductEntity> productEntityList = productList.stream()
+                .map(ProductEntity::from)
+                .toList();
+        jpaProductRepository.saveAll(productEntityList);
     }
 }

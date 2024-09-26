@@ -57,16 +57,15 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentConfirmCommand
         );
 
-        return paymentProcessorUseCase.markPaymentAsDone(paymentEvent,
+        return paymentProcessorUseCase.markPaymentAsDone(
+                paymentEvent,
                 tossConfirmInfo.getPaymentDetails().getApprovedAt()
         );
     }
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
         PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
-        orderedProductUseCase.increaseStockForOrders(
-                failedPaymentEvent.getPaymentOrderList()
-        );
+        orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
     }
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {

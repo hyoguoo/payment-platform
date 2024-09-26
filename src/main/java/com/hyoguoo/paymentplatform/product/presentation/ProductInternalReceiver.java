@@ -1,8 +1,11 @@
 package com.hyoguoo.paymentplatform.product.presentation;
 
+import com.hyoguoo.paymentplatform.product.application.dto.ProductStockCommand;
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoResponse;
+import com.hyoguoo.paymentplatform.product.presentation.dto.ProductStockRequest;
 import com.hyoguoo.paymentplatform.product.presentation.port.ProductService;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,11 +21,19 @@ public class ProductInternalReceiver {
         return ProductPresentationMapper.toProductInfoResponse(product);
     }
 
-    public boolean decreaseStockWithCommit(Long productId, Integer quantity) {
-        return productService.decreaseStockWithCommit(productId, quantity);
+    public void decreaseStockForOrders(List<ProductStockRequest> productStockRequestList) {
+        List<ProductStockCommand> productStockCommandList = productStockRequestList.stream()
+                .map(ProductPresentationMapper::toProductStockCommand)
+                .toList();
+
+        productService.decreaseStockForOrders(productStockCommandList);
     }
 
-    public boolean increaseStockWithCommit(Long productId, Integer quantity) {
-        return productService.increaseStockWithCommit(productId, quantity);
+    public void increaseStockForOrders(List<ProductStockRequest> productStockRequestList) {
+        List<ProductStockCommand> productStockCommandList = productStockRequestList.stream()
+                .map(ProductPresentationMapper::toProductStockCommand)
+                .toList();
+
+        productService.increaseStockForOrders(productStockCommandList);
     }
 }
