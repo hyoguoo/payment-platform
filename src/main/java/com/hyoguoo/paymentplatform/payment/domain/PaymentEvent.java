@@ -55,7 +55,9 @@ public class PaymentEvent {
     }
 
     public void execute(String paymentKey) {
-        if (this.status != PaymentEventStatus.READY) {
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
         paymentOrderList.forEach(PaymentOrder::execute);
@@ -77,7 +79,8 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
         }
 
-        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS) {
+        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
+                paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
             throw PaymentValidException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
         }
 
@@ -94,17 +97,30 @@ public class PaymentEvent {
     }
 
     public void done(LocalDateTime approvedAt) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.DONE &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+        }
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
     public void fail() {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
+        }
         this.status = PaymentEventStatus.FAILED;
         this.paymentOrderList.forEach(PaymentOrder::fail);
     }
 
     public void unknown() {
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+        }
         this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
