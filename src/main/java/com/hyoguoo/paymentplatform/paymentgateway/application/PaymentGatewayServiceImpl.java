@@ -4,6 +4,10 @@ import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCa
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.port.PaymentGatewayService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,7 +28,11 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey
     ) {
-        return tossOperator.confirmPayment(tossConfirmCommand, idempotencyKey);
+        try {
+            return tossOperator.confirmPayment(tossConfirmCommand, idempotencyKey);
+        } catch (PaymentGatewayApiException e) {
+            return handlePaymentGateApiException(e);
+        }
     }
 
     @Override
@@ -36,5 +44,21 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
                 tossCancelCommand,
                 idempotencyKey
         );
+    }
+
+    private TossPaymentInfo handlePaymentGateApiException(PaymentGatewayApiException e) {
+        TossPaymentErrorCode tossPaymentErrorCode = TossPaymentErrorCode.of(e.getCode());
+        PaymentConfirmResultStatus paymentConfirmResultStatus = PaymentConfirmResultStatus.of(
+                tossPaymentErrorCode
+        );
+        TossPaymentFailure paymentFailure = TossPaymentFailure.builder()
+                .code(tossPaymentErrorCode.name())
+                .message(tossPaymentErrorCode.getDescription())
+                .build();
+
+        return TossPaymentInfo.builder()
+                .paymentConfirmResultStatus(paymentConfirmResultStatus)
+                .paymentFailure(paymentFailure)
+                .build();
     }
 }

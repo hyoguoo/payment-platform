@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCa
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
@@ -43,7 +44,7 @@ public class HttpTossOperator implements TossOperator {
     public TossPaymentInfo confirmPayment(
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey
-    ) {
+    ) throws PaymentGatewayApiException {
         try {
             TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPostWithBasicAuthorization(
                     tossApiUrl + "/confirm",
@@ -59,8 +60,10 @@ public class HttpTossOperator implements TossOperator {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
                     e.getMessage()
             );
-            return PaymentGatewayInfrastructureMapper.toFailureTossPaymentInfo(
-                    tossPaymentApiFailResponse
+
+            throw PaymentGatewayApiException.of(
+                    tossPaymentApiFailResponse.getCode(),
+                    tossPaymentApiFailResponse.getMessage()
             );
         }
     }
