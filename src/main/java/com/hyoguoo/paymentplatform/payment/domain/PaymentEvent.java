@@ -66,7 +66,7 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.IN_PROGRESS;
     }
 
-    public void validate(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
+    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
         if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }

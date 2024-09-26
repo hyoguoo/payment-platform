@@ -52,7 +52,7 @@ public class PaymentProcessorUseCase {
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    public void validatePayment(
+    public void validateCompletionStatus(
             PaymentEvent paymentEvent,
             PaymentConfirmCommand paymentConfirmCommand
     ) {
@@ -60,7 +60,7 @@ public class PaymentProcessorUseCase {
                 paymentConfirmCommand.getOrderId()
         );
 
-        paymentEvent.validate(paymentConfirmCommand, tossPaymentInfo);
+        paymentEvent.validateCompletionStatus(paymentConfirmCommand, tossPaymentInfo);
     }
 
     public TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
