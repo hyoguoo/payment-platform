@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
@@ -13,6 +14,7 @@ import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossC
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoResponse;
+import com.hyoguoo.paymentplatform.product.presentation.dto.ProductStockRequest;
 import com.hyoguoo.paymentplatform.user.presentation.dto.UserInfoResponse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -88,6 +90,13 @@ public class PaymentInfrastructureMapper {
     public static UserInfo toUserInfo(UserInfoResponse userInfoResponse) {
         return UserInfo.builder()
                 .id(userInfoResponse.getId())
+                .build();
+    }
+
+    public static ProductStockRequest toProductStockRequest(OrderedProductStockCommand orderedProductStockCommand) {
+        return ProductStockRequest.builder()
+                .productId(orderedProductStockCommand.getProductId())
+                .stock(orderedProductStockCommand.getStock())
                 .build();
     }
 }

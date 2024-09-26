@@ -1,10 +1,12 @@
 package com.hyoguoo.paymentplatform.product.application;
 
+import com.hyoguoo.paymentplatform.product.application.dto.ProductStockCommand;
+import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.exception.ProductFoundException;
 import com.hyoguoo.paymentplatform.product.exception.common.ProductErrorCode;
 import com.hyoguoo.paymentplatform.product.presentation.port.ProductService;
-import com.hyoguoo.paymentplatform.product.application.port.ProductRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,20 +26,30 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public boolean decreaseStockWithCommit(Long productId, Integer reduceStock) {
-        Product product = getByIdPessimistic(productId);
-        boolean result = product.decrementStock(reduceStock);
-        productRepository.saveOrUpdate(product);
-        return result;
+    public void decreaseStockForOrders(List<ProductStockCommand> productStockCommandList) {
+        List<Product> productList = productStockCommandList.stream().map(productStockCommand -> {
+                    Product product = getByIdPessimistic(productStockCommand.getProductId());
+                    product.decrementStock(productStockCommand.getStock());
+
+                    return product;
+                })
+                .toList();
+
+        productRepository.saveAll(productList);
     }
 
     @Override
     @Transactional
-    public boolean increaseStockWithCommit(Long productId, Integer increaseStock) {
-        Product product = getByIdPessimistic(productId);
-        boolean result = product.incrementStock(increaseStock);
-        productRepository.saveOrUpdate(product);
-        return result;
+    public void increaseStockForOrders(List<ProductStockCommand> productStockCommandList) {
+        List<Product> productList = productStockCommandList.stream().map(productStockCommand -> {
+                    Product product = getByIdPessimistic(productStockCommand.getProductId());
+                    product.incrementStock(productStockCommand.getStock());
+
+                    return product;
+                })
+                .toList();
+
+        productRepository.saveAll(productList);
     }
 
     private Product getByIdPessimistic(Long id) {

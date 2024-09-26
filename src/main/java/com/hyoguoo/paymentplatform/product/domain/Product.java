@@ -17,26 +17,22 @@ public class Product {
     private Integer stock;
     private Long sellerId;
 
-    public boolean decrementStock(int amount) {
+    public void decrementStock(int amount) {
         if (amount < 0) {
             throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
         }
         if (this.stock < amount) {
-            return false;
+            throw ProductStockException.of(ProductErrorCode.NOT_ENOUGH_STOCK);
         }
 
         this.stock -= amount;
-
-        return true;
     }
 
-    public boolean incrementStock(int amount) {
+    public void incrementStock(int amount) {
         if (amount < 0) {
             throw ProductStockException.of(ProductErrorCode.NOT_NEGATIVE_NUMBER_TO_CALCULATE_STOCK);
         }
         this.stock += amount;
-
-        return true;
     }
 }
 

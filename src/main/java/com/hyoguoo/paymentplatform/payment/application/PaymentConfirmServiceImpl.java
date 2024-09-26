@@ -2,6 +2,8 @@ package com.hyoguoo.paymentplatform.payment.application;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
@@ -55,16 +57,15 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentConfirmCommand
         );
 
-        return paymentProcessorUseCase.markPaymentAsDone(paymentEvent,
+        return paymentProcessorUseCase.markPaymentAsDone(
+                paymentEvent,
                 tossConfirmInfo.getPaymentDetails().getApprovedAt()
         );
     }
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
         PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
-        orderedProductUseCase.increaseStockForOrders(
-                failedPaymentEvent.getPaymentOrderList()
-        );
+        orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
     }
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {

@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application;
+package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;

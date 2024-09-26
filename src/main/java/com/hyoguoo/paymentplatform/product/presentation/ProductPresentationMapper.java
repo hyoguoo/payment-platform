@@ -1,7 +1,9 @@
 package com.hyoguoo.paymentplatform.product.presentation;
 
+import com.hyoguoo.paymentplatform.product.application.dto.ProductStockCommand;
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ProductInfoResponse;
+import com.hyoguoo.paymentplatform.product.presentation.dto.ProductStockRequest;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -15,6 +17,13 @@ public class ProductPresentationMapper {
                 .price(product.getPrice())
                 .stock(product.getStock())
                 .sellerId(product.getSellerId())
+                .build();
+    }
+
+    public static ProductStockCommand toProductStockCommand(ProductStockRequest productStockRequest) {
+        return ProductStockCommand.builder()
+                .productId(productStockRequest.getProductId())
+                .stock(productStockRequest.getStock())
                 .build();
     }
 }

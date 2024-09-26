@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.product.application.port;
 
 import com.hyoguoo.paymentplatform.product.domain.Product;
+import java.util.List;
 import java.util.Optional;
 
 public interface ProductRepository {
@@ -10,4 +11,6 @@ public interface ProductRepository {
     Optional<Product> findByIdPessimistic(Long id);
 
     Product saveOrUpdate(Product product);
+
+    void saveAll(List<Product> productList);
 }
