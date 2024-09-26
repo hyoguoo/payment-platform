@@ -58,7 +58,7 @@ public class PaymentOrder {
         this.status = PaymentOrderStatus.FAIL;
     }
 
-    public void paymentDone() {
+    public void success() {
         if (this.status != PaymentOrderStatus.EXECUTING &&
                 this.status != PaymentOrderStatus.UNKNOWN) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);

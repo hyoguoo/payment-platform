@@ -96,7 +96,7 @@ public class PaymentEvent {
     public void done(LocalDateTime approvedAt) {
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
-        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
+        this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
     public void fail() {
