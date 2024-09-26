@@ -56,13 +56,13 @@ public class ProductEntity extends BaseEntity {
     }
 
     public Product toDomain() {
-        return Product.builder()
+        return Product.allArgsBuilder()
                 .id(id)
                 .name(name)
                 .price(price)
                 .description(description)
                 .stock(stock)
                 .sellerId(sellerId)
-                .build();
+                .allArgsBuild();
     }
 }

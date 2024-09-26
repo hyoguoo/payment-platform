@@ -41,10 +41,10 @@ public class UserEntity extends BaseEntity {
     }
 
     public User toDomain() {
-        return User.builder()
+        return User.allArgsBuilder()
                 .id(id)
                 .username(username)
                 .email(email)
-                .build();
+                .allArgsBuild();
     }
 }
