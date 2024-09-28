@@ -230,3 +230,4 @@ scripts/**/.env
 
 # Secrets
 src/**/application*.yaml
+src/**/application*.yml
