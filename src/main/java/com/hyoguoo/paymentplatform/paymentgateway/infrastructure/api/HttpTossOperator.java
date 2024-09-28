@@ -9,6 +9,7 @@ import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCo
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
@@ -17,7 +18,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 
 @Component
 @RequiredArgsConstructor
@@ -67,6 +70,22 @@ public class HttpTossOperator implements TossOperator {
             );
 
             return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+
+                throw PaymentGatewayApiException.of(
+                        TossPaymentErrorCode.UNAUTHORIZED_KEY.name(),
+                        TossPaymentErrorCode.UNAUTHORIZED_KEY.getDescription()
+                );
+            }
+            TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
+                    e.getMessage()
+            );
+
+            throw PaymentGatewayApiException.of(
+                    tossPaymentApiFailResponse.getCode(),
+                    tossPaymentApiFailResponse.getMessage()
+            );
         } catch (Exception e) {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
                     e.getMessage()
