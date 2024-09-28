@@ -76,6 +76,65 @@ class PaymentConfirmConcurrentTest extends IntegrationTest {
             int expectedStock
     ) {
         // given
+        int minDelayMills = 30;
+        int maxDelayMills = 50;
+
+        initData(stock, orderCount);
+        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", minDelayMills, maxDelayMills);
+
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger failCount = new AtomicInteger();
+
+        // when
+        executeConcurrentActions(orderIndex -> {
+            try {
+                PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
+                        .userId(1L)
+                        .orderId(TEST_ORDER_ID + orderIndex)
+                        .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
+                        .paymentKey(TEST_PAYMENT_KEY)
+                        .build();
+
+                MvcResult mvcResult = mockMvc.perform(
+                        post("/api/v1/payments/confirm")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(confirmRequest))
+                ).andReturn();
+                if (mvcResult.getResponse().getStatus() == 200) {
+                    successCount.incrementAndGet();
+                } else {
+                    failCount.incrementAndGet();
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, orderCount);
+
+        // then
+        Product updatedProduct = jpaProductRepository.findById(1L).orElseThrow().toDomain();
+        assertThat(successCount.get()).isEqualTo(expectedSuccess);
+        assertThat(failCount.get()).isEqualTo(expectedFail);
+        assertThat(updatedProduct.getStock()).isEqualTo(expectedStock);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "500, 1000",
+            "1000, 3000",
+            "3000, 7000",
+    })
+    @DisplayName("멀티스레드로 Payment Confirm 요청 시 결제 승인 처리와 상태가 동시성에 맞게 처리된다.")
+    void confirmPayment_withTimeout(
+            int minDelayMills,
+            int maxDelayMills
+    ) {
+        // given
+        int stock = 100;
+        int orderCount = 100;
+        int expectedSuccess = 100;
+        int expectedFail = 0;
+        int expectedStock = 0;
+
         initData(stock, orderCount);
         ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", minDelayMills, maxDelayMills);
 
