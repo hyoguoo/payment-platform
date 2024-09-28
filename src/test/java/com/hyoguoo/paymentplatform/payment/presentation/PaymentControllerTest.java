@@ -198,6 +198,15 @@ class PaymentControllerTest extends IntegrationTest {
         jdbcTemplate.update(paymentEventInsertSql, 1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
         jdbcTemplate.update(paymentOrderInsertSql, 1L, 1L, TEST_ORDER_ID, 1L, 1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(paymentOrderInsertSql, 2L, 1L, TEST_ORDER_ID, 2L, 2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+
+        String updateProductStockSql = """
+                UPDATE product
+                SET stock = ?
+                WHERE id = ?
+                """;
+
+        jdbcTemplate.update(updateProductStockSql, 1, 1L);
+        jdbcTemplate.update(updateProductStockSql, 2, 2L);
     }
 
     @TestConfiguration
