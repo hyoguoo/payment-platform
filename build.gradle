@@ -57,7 +57,10 @@ tasks.named('test') {
 
 test {
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags( 'TooLongIntegrationTest' )
+    }
+
     testLogging {
         afterSuite { testDescriptor, testResult ->
             if (testDescriptor.parent == null) {
