@@ -61,8 +61,8 @@ class PaymentControllerTest extends IntegrationTest {
         objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
         objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
         objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
-        jpaPaymentEventRepository.deleteAll();
-        jpaPaymentOrderRepository.deleteAll();
+        jpaPaymentEventRepository.deleteAllInBatch();
+        jpaPaymentOrderRepository.deleteAllInBatch();
     }
 
     @Test
