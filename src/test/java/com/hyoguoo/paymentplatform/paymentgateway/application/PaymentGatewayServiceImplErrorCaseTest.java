@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.paymentgateway.application;
 
+import com.hyoguoo.paymentplatform.IntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.SystemUUIDProvider;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
@@ -15,13 +16,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.util.ReflectionTestUtils;
 
-@SpringBootTest
-class PaymentGatewayServiceImplErrorCaseTest {
+class PaymentGatewayServiceImplErrorCaseTest extends IntegrationTest {
 
     @Autowired
     private PaymentGatewayService paymentGatewayService;
