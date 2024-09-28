@@ -135,7 +135,7 @@ public class HttpTossOperator implements TossOperator {
     }
 
     private String extractJsonPart(String errorResponse) {
-        Pattern pattern = Pattern.compile("\\{.*\\}");
+        Pattern pattern = Pattern.compile("\\{.*}");
         Matcher matcher = pattern.matcher(errorResponse);
 
         if (matcher.find()) {
