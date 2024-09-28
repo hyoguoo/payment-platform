@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.paymentgateway.application;
 import com.hyoguoo.paymentplatform.IntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.SystemUUIDProvider;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
-import com.hyoguoo.paymentplatform.core.common.util.EncodeUtils;
 import com.hyoguoo.paymentplatform.mock.AdditionalHeaderHttpOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
@@ -68,11 +67,6 @@ class PaymentGatewayServiceImplErrorCaseTest extends IntegrationTest {
         @Bean
         public HttpOperator httpOperator() {
             return new AdditionalHeaderHttpOperator();
-        }
-
-        @Bean
-        public EncodeUtils encodeUtils() {
-            return new EncodeUtils();
         }
     }
 }
