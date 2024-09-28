@@ -132,7 +132,7 @@ class PaymentControllerTest extends IntegrationTest {
         initAndSavePayment();
 
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(2L)
+                .userId(1L)
                 .orderId(TEST_ORDER_ID)
                 .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
                 .paymentKey(TEST_PAYMENT_KEY)
