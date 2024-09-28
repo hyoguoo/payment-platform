@@ -31,6 +31,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -47,6 +48,8 @@ class PaymentConfirmConcurrentTest extends IntegrationTest {
     private JpaPaymentOrderRepository jpaPaymentOrderRepository;
     @Autowired
     private JpaProductRepository jpaProductRepository;
+    @Autowired
+    private HttpOperator httpOperator;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -74,6 +77,8 @@ class PaymentConfirmConcurrentTest extends IntegrationTest {
     ) {
         // given
         initData(stock, orderCount);
+        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", minDelayMills, maxDelayMills);
+
         AtomicInteger successCount = new AtomicInteger();
         AtomicInteger failCount = new AtomicInteger();
 

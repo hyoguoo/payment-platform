@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.To
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse.Checkout;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse.Receipt;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class FakeTossSuccessHttpOperator implements HttpOperator {
 
@@ -13,9 +14,29 @@ public class FakeTossSuccessHttpOperator implements HttpOperator {
     public static final double TEST_TOTAL_AMOUNT_2 = 60000.0;
     public static final String TEST_ORDER_ID = "55996af6-e5b5-47e5-ac3c-44508ee6fd6b";
 
-    @Override
+    private int minDelayMillis;
+    private int maxDelayMillis;
 
+    @SuppressWarnings("unused")
+    public void setDelayRange(int minDelayMillis, int maxDelayMillis) {
+        this.minDelayMillis = minDelayMillis;
+        this.maxDelayMillis = maxDelayMillis;
+    }
+
+    @SuppressWarnings("java:S2925")
+    private void simulateNetworkDelay() {
+        long delay = minDelayMillis + (long) (Math.random() * (maxDelayMillis - minDelayMillis));
+        try {
+            TimeUnit.MILLISECONDS.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
     public <T> T requestGet(String url, Map<String, String> httpHeaderMap, Class<T> responseType) {
+        simulateNetworkDelay();
+
         TossPaymentApiResponse tossPaymentApiResponse = TossPaymentApiResponse.builder()
                 .version("2022-11-16")
                 .paymentKey(TEST_PAYMENT_KEY)
@@ -45,6 +66,8 @@ public class FakeTossSuccessHttpOperator implements HttpOperator {
 
     @Override
     public <T, E> E requestPost(String url, Map<String, String> httpHeaderMap, T body, Class<E> responseType) {
+        simulateNetworkDelay();
+
         TossPaymentApiResponse tossPaymentApiResponse = TossPaymentApiResponse.builder()
                 .version("2022-11-16")
                 .paymentKey(TEST_PAYMENT_KEY)
