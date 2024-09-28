@@ -51,7 +51,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private PaymentEvent processPayment(
             PaymentEvent paymentEvent, PaymentConfirmCommand paymentConfirmCommand
     ) throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        paymentProcessorUseCase.validatePayment(paymentEvent, paymentConfirmCommand);
+        paymentProcessorUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
 
         TossPaymentInfo tossConfirmInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand

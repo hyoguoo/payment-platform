@@ -7,7 +7,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 @Getter
-@Builder
+@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
 public class Product {
 
     private Long id;

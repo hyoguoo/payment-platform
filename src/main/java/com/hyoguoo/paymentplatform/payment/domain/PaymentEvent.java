@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
@@ -55,15 +56,17 @@ public class PaymentEvent {
     }
 
     public void execute(String paymentKey) {
-        if (this.status != PaymentEventStatus.READY) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
         paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
         this.status = PaymentEventStatus.IN_PROGRESS;
     }
 
-    public void validate(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
+    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
         if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }
@@ -77,13 +80,14 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
         }
 
-        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS) {
-            throw PaymentValidException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
-        }
-
         if (!this.orderId.equals(paymentInfo.getOrderId()) ||
                 !this.orderId.equals(paymentConfirmCommand.getOrderId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
+        }
+
+        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
+                paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
+            throw PaymentStatusException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
         }
     }
 
@@ -94,17 +98,30 @@ public class PaymentEvent {
     }
 
     public void done(LocalDateTime approvedAt) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.DONE &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+        }
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
-        this.paymentOrderList.forEach(PaymentOrder::paymentDone);
+        this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
     public void fail() {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
+        }
         this.status = PaymentEventStatus.FAILED;
         this.paymentOrderList.forEach(PaymentOrder::fail);
     }
 
     public void unknown() {
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+        }
         this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }

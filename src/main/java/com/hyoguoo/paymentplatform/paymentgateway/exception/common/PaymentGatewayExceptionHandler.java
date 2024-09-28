@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.paymentgateway.exception.common;
 
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
-import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayFoundException;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class PaymentGatewayExceptionHandler {
 
-    @ExceptionHandler(PaymentGatewayFoundException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentGatewayFoundException e) {
+    @ExceptionHandler(PaymentGatewayApiException.class)
+    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentGatewayApiException e) {
         log.warn(e.getMessage());
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
