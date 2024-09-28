@@ -80,8 +80,7 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
         }
 
-        if (!this.orderId.equals(paymentInfo.getOrderId()) ||
-                !this.orderId.equals(paymentConfirmCommand.getOrderId())) {
+        if (!this.orderId.equals(paymentConfirmCommand.getOrderId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
 

@@ -9,19 +9,26 @@ import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCo
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 
 @Component
 @RequiredArgsConstructor
 public class HttpTossOperator implements TossOperator {
 
+    public static final String IDEMPOTENCY_KEY_HEADER_NAME = "Idempotency-Key";
+    private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
+    private static final String BASIC_AUTHORIZATION_TYPE = "Basic ";
     private final HttpOperator httpOperator;
     private final EncodeUtils encodeUtils;
     @Value("${spring.myapp.toss-payments.secret-key}")
@@ -31,9 +38,13 @@ public class HttpTossOperator implements TossOperator {
 
     @Override
     public TossPaymentInfo findPaymentInfoByOrderId(String orderId) {
-        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestGetWithBasicAuthorization(
+        Map<String, String> httpHeaderMap = Map.of(
+                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
+        );
+
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestGet(
                 tossApiUrl + "/orders/" + orderId,
-                encodeUtils.encodeBase64(secretKey + ":"),
+                httpHeaderMap,
                 TossPaymentApiResponse.class
         );
 
@@ -46,16 +57,35 @@ public class HttpTossOperator implements TossOperator {
             String idempotencyKey
     ) throws PaymentGatewayApiException {
         try {
-            TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPostWithBasicAuthorization(
+            Map<String, String> httpHeaderMap = Map.of(
+                    AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue(),
+                    IDEMPOTENCY_KEY_HEADER_NAME, idempotencyKey
+            );
+
+            TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPost(
                     tossApiUrl + "/confirm",
-                    encodeUtils.encodeBase64(secretKey + ":"),
-                    idempotencyKey,
+                    httpHeaderMap,
                     tossConfirmCommand,
                     TossPaymentApiResponse.class
             );
 
-            return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(
-                    tossPaymentApiResponse);
+            return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+
+                throw PaymentGatewayApiException.of(
+                        TossPaymentErrorCode.UNAUTHORIZED_KEY.name(),
+                        TossPaymentErrorCode.UNAUTHORIZED_KEY.getDescription()
+                );
+            }
+            TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
+                    e.getMessage()
+            );
+
+            throw PaymentGatewayApiException.of(
+                    tossPaymentApiFailResponse.getCode(),
+                    tossPaymentApiFailResponse.getMessage()
+            );
         } catch (Exception e) {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
                     e.getMessage()
@@ -73,15 +103,23 @@ public class HttpTossOperator implements TossOperator {
             TossCancelCommand tossCancelCommand,
             String idempotencyKey
     ) {
-        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPostWithBasicAuthorization(
+        Map<String, String> httpHeaderMap = Map.of(
+                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue(),
+                IDEMPOTENCY_KEY_HEADER_NAME, idempotencyKey
+        );
+
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestPost(
                 tossApiUrl + "/" + tossCancelCommand.getPaymentKey() + "/cancel",
-                encodeUtils.encodeBase64(secretKey + ":"),
-                idempotencyKey,
+                httpHeaderMap,
                 tossCancelCommand,
                 TossPaymentApiResponse.class
         );
 
         return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
+    }
+
+    private String generateBasicAuthHeaderValue() {
+        return BASIC_AUTHORIZATION_TYPE + encodeUtils.encodeBase64(secretKey + ":");
     }
 
     // TODO: 파싱 방법 개선 필요
@@ -97,7 +135,7 @@ public class HttpTossOperator implements TossOperator {
     }
 
     private String extractJsonPart(String errorResponse) {
-        Pattern pattern = Pattern.compile("\\{.*\\}");
+        Pattern pattern = Pattern.compile("\\{.*}");
         Matcher matcher = pattern.matcher(errorResponse);
 
         if (matcher.find()) {

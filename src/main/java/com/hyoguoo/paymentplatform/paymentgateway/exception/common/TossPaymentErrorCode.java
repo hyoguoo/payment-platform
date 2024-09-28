@@ -73,16 +73,12 @@ public enum TossPaymentErrorCode {
     public boolean isRetryableError() {
         return switch (this) {
             case PROVIDER_ERROR, FAILED_PAYMENT_INTERNAL_SYSTEM_PROCESSING,
-                 FAILED_INTERNAL_SYSTEM_PROCESSING, UNKNOWN_PAYMENT_ERROR -> true;
+                 FAILED_INTERNAL_SYSTEM_PROCESSING, UNKNOWN_PAYMENT_ERROR, UNKNOWN -> true;
             default -> false;
         };
     }
 
     public boolean isFailure() {
         return !isSuccess() && !isRetryableError();
-    }
-
-    public boolean isUnknown() {
-        return this == UNKNOWN;
     }
 }
