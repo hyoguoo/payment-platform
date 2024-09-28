@@ -4,9 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperatorI
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
-import org.springframework.stereotype.Component;
 
-@Component
 public class AdditionalHeaderHttpOperator extends HttpOperatorImpl {
 
     private final Map<String, String> additionalHeaders;
