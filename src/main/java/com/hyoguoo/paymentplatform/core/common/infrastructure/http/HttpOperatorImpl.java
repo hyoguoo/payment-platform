@@ -51,7 +51,7 @@ public class HttpOperatorImpl implements HttpOperator {
                 .getBody();
     }
 
-    private HttpHeaders generateHttpHeaders(Map<String, String> httpHeaders) {
+    protected HttpHeaders generateHttpHeaders(Map<String, String> httpHeaders) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAll(httpHeaders);
