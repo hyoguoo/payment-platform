@@ -30,6 +30,8 @@ import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequ
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentConfirmResponse;
+import com.hyoguoo.paymentplatform.product.domain.Product;
+import com.hyoguoo.paymentplatform.product.infrastructure.repository.JpaProductRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +43,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -53,6 +56,10 @@ class PaymentControllerTest extends IntegrationTest {
     private JpaPaymentEventRepository jpaPaymentEventRepository;
     @Autowired
     private JpaPaymentOrderRepository jpaPaymentOrderRepository;
+    @Autowired
+    private JpaProductRepository jpaProductRepository;
+    @Autowired
+    private HttpOperator httpOperator;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -126,10 +133,41 @@ class PaymentControllerTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("Payment Confirm 요청 시 결제가 승인되고 상태가 DONE / SUCCESS로 변경된다.")
+    @DisplayName("Payment Confirm 요청이 성공하면 결제가 승인되고 DONE / SUCCESS 상태로 변경되면서 재고가 감소한다.")
     void confirmPayment_Success() throws Exception {
         // given
-        initAndSavePayment();
+        final int PRODUCT_1_STOCK = 1;
+        final int PRODUCT_2_STOCK = 2;
+        final int ORDERED_QUANTITY_1 = 1;
+        final int ORDERED_QUANTITY_2 = 2;
+        String paymentEventInsertSql = """
+                INSERT INTO payment_event
+                    (id, buyer_id, seller_id, order_name, order_id, payment_key, status, approved_at, created_at, updated_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """;
+
+        String paymentOrderInsertSql = """
+                INSERT INTO payment_order
+                    (id, payment_event_id, order_id, product_id, quantity, status, amount, created_at, updated_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """;
+
+        jdbcTemplate.update(paymentEventInsertSql, 1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+        jdbcTemplate.update(paymentOrderInsertSql, 1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED",
+                TEST_TOTAL_AMOUNT_1);
+        jdbcTemplate.update(paymentOrderInsertSql, 2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED",
+                TEST_TOTAL_AMOUNT_2);
+
+        String updateProductStockSql = """
+                UPDATE product
+                SET stock = ?
+                WHERE id = ?
+                """;
+
+        jdbcTemplate.update(updateProductStockSql, PRODUCT_1_STOCK, 1L);
+        jdbcTemplate.update(updateProductStockSql, PRODUCT_2_STOCK, 2L);
 
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
                 .userId(1L)
@@ -137,6 +175,11 @@ class PaymentControllerTest extends IntegrationTest {
                 .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
                 .paymentKey(TEST_PAYMENT_KEY)
                 .build();
+
+        ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
+
+        Product initProduct1 = jpaProductRepository.findById(1L).orElseThrow().toDomain();
+        Product initProduct2 = jpaProductRepository.findById(2L).orElseThrow().toDomain();
 
         // when
         ResultActions perform = mockMvc.perform(
@@ -156,6 +199,9 @@ class PaymentControllerTest extends IntegrationTest {
                 .map(PaymentOrderEntity::toDomain)
                 .toList();
         updatedPaymentEvent.addPaymentOrderList(updatedPaymentOrderList);
+
+        Product afterProduct1 = jpaProductRepository.findById(1L).orElseThrow().toDomain();
+        Product afterProduct2 = jpaProductRepository.findById(2L).orElseThrow().toDomain();
 
         perform.andExpect(status().isOk())
                 .andExpect(result -> {
@@ -178,6 +224,11 @@ class PaymentControllerTest extends IntegrationTest {
 
         assertThat(updatedPaymentOrderList)
                 .allMatch(order -> order.getStatus() == PaymentOrderStatus.SUCCESS);
+
+        assertThat(afterProduct1.getStock())
+                .isEqualTo(initProduct1.getStock() - ORDERED_QUANTITY_1);
+        assertThat(afterProduct2.getStock())
+                .isEqualTo(initProduct2.getStock() - ORDERED_QUANTITY_2);
     }
 
     private void initAndSavePayment() {
