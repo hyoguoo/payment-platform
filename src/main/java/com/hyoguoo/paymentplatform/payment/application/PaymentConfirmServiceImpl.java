@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUse
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -27,9 +28,8 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentConfirmCommand
         );
 
-        orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
-
         try {
+            orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
             PaymentEvent completedPayment = processPayment(paymentEvent, paymentConfirmCommand);
 
             return PaymentConfirmResult.builder()
@@ -42,9 +42,9 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         } catch (PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(paymentEvent);
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
-        } catch (RuntimeException e) {
-            handleNonRetryableFailure(paymentEvent);
-            throw e;
+        } catch (PaymentOrderedProductStockException e) {
+            handleStockFailure(paymentEvent);
+            throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         }
     }
 
@@ -61,6 +61,10 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentEvent,
                 tossConfirmInfo.getPaymentDetails().getApprovedAt()
         );
+    }
+
+    private void handleStockFailure(PaymentEvent paymentEvent) {
+        paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
     }
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
