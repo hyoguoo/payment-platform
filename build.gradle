@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.3.3'
     id 'io.spring.dependency-management' version '1.1.6'
+    id 'jacoco'
 }
 
 group = 'com.hyoguoo'
@@ -58,7 +59,7 @@ tasks.named('test') {
 test {
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
     useJUnitPlatform {
-        excludeTags( 'TooLongIntegrationTest' )
+        excludeTags('TooLongIntegrationTest')
     }
 
     testLogging {
@@ -66,6 +67,63 @@ test {
             if (testDescriptor.parent == null) {
                 println "Results: ${testResult.resultType} (${testResult.testCount} tests, ${testResult.successfulTestCount} successes, ${testResult.failedTestCount} failures, ${testResult.skippedTestCount} skipped)"
             }
+        }
+    }
+
+    finalizedBy jacocoTestReport
+}
+
+jacoco {
+    toolVersion = '0.8.11'
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
+
+        html.outputLocation = layout.buildDirectory.dir('jacocoReports/html')
+        xml.outputLocation = layout.buildDirectory.file('jacocoReports/jacoco.xml')
+    }
+
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(
+                    dir: it,
+                    exclude: [
+                            "*.Q*",
+                            '**/dto/**',
+                            '**/exception/**',
+                            '**/infrastructure/**',
+                            '**/presentation/**',
+                            '**/enums/**',
+                            '**/core/**',
+                            '**/PaymentPlatformApplication.class'
+                    ]
+            )
+        }))
+    }
+
+    finalizedBy jacocoTestCoverageVerification
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            element = 'CLASS'
+
+            excludes = [
+                    "*.Q*",
+                    "**/exception/**",
+                    "**/dto/**",
+                    "**/infrastructure/**",
+                    "**/presentation/**",
+                    "**/enums/**",
+                    "**/core/**",
+                    "**.PaymentPlatformApplication.class"
+            ]
         }
     }
 }
