@@ -56,6 +56,30 @@ public class FakeTossHttpOperator implements HttpOperator {
         }
     }
 
+    private void throwError() {
+        TossPaymentApiFailResponse failResponse = TossPaymentApiFailResponse.builder()
+                .code(code)
+                .message(message)
+                .build();
+
+        try {
+            String jsonResponse = objectMapper.writeValueAsString(failResponse);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.CONTENT_TYPE, "application/json");
+
+            ResponseEntity<String> responseEntity = new ResponseEntity<>(
+                    jsonResponse,
+                    headers,
+                    HttpStatus.BAD_REQUEST
+            );
+
+            throw new RuntimeException("Error: " + responseEntity);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON 직렬화 오류", e);
+        }
+    }
+
     @Override
     public <T> T requestGet(String url, Map<String, String> httpHeaderMap, Class<T> responseType) {
         simulateNetworkDelay();
@@ -92,27 +116,7 @@ public class FakeTossHttpOperator implements HttpOperator {
         simulateNetworkDelay();
 
         if (isErrorInPostRequest) {
-            TossPaymentApiFailResponse failResponse = TossPaymentApiFailResponse.builder()
-                    .code(code)
-                    .message(message)
-                    .build();
-
-            try {
-                String jsonResponse = objectMapper.writeValueAsString(failResponse);
-
-                HttpHeaders headers = new HttpHeaders();
-                headers.set(HttpHeaders.CONTENT_TYPE, "application/json");
-
-                ResponseEntity<String> responseEntity = new ResponseEntity<>(
-                        jsonResponse,
-                        headers,
-                        HttpStatus.BAD_REQUEST
-                );
-
-                throw new RuntimeException("Error: " + responseEntity);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException("JSON 직렬화 오류", e);
-            }
+            throwError();
         }
 
         TossPaymentApiResponse tossPaymentApiResponse = TossPaymentApiResponse.builder()
