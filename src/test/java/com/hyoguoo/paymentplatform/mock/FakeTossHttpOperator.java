@@ -13,7 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-public class FakeTossSuccessHttpOperator implements HttpOperator {
+public class FakeTossHttpOperator implements HttpOperator {
 
     public static final String TEST_PAYMENT_KEY = "tviva20240929050058zeWv3";
     public static final double TEST_TOTAL_AMOUNT_1 = 150000.0;

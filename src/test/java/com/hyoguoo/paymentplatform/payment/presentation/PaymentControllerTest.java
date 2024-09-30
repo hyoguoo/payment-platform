@@ -1,10 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
 
-import static com.hyoguoo.paymentplatform.mock.FakeTossSuccessHttpOperator.TEST_ORDER_ID;
-import static com.hyoguoo.paymentplatform.mock.FakeTossSuccessHttpOperator.TEST_PAYMENT_KEY;
-import static com.hyoguoo.paymentplatform.mock.FakeTossSuccessHttpOperator.TEST_TOTAL_AMOUNT_1;
-import static com.hyoguoo.paymentplatform.mock.FakeTossSuccessHttpOperator.TEST_TOTAL_AMOUNT_2;
+import static com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator.TEST_ORDER_ID;
+import static com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator.TEST_PAYMENT_KEY;
+import static com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator.TEST_TOTAL_AMOUNT_1;
+import static com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator.TEST_TOTAL_AMOUNT_2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,7 +17,7 @@ import com.hyoguoo.paymentplatform.core.response.BasicResponse;
 import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;
-import com.hyoguoo.paymentplatform.mock.FakeTossSuccessHttpOperator;
+import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -392,7 +392,7 @@ class PaymentControllerTest extends IntegrationTest {
 
         @Bean
         public HttpOperator httpOperator() {
-            return new FakeTossSuccessHttpOperator();
+            return new FakeTossHttpOperator();
         }
     }
 }
