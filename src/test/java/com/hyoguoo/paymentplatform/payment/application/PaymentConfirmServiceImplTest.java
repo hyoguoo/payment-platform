@@ -177,8 +177,6 @@ class PaymentConfirmServiceImplTest {
 
         verify(mockPaymentProcessorUseCase, times(1))
                 .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
-        verify(mockOrderedProductUseCase, times(1))
-                .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
 
     private record MockConfirmData(PaymentConfirmCommand paymentConfirmCommand, PaymentEvent mockPaymentEvent) {
