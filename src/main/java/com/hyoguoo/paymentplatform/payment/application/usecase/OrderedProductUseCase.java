@@ -5,6 +5,8 @@ import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,11 +19,15 @@ public class OrderedProductUseCase {
 
     public void decreaseStockForOrders(
             List<PaymentOrder> paymentOrderList
-    ) {
+    ) throws PaymentOrderedProductStockException {
         List<OrderedProductStockCommand> orderedProductStockCommandList = getOrderedProductStockCommands(
                 paymentOrderList
         );
-        productProvider.decreaseStockForOrders(orderedProductStockCommandList);
+        try {
+            productProvider.decreaseStockForOrders(orderedProductStockCommandList);
+        } catch (Exception e) {
+            throw PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
+        }
     }
 
     public void increaseStockForOrders(

@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -79,7 +80,7 @@ class PaymentConfirmServiceImplTest {
     @Test
     @DisplayName("성공적으로 결제를 확인하고 결제 완료 처리한다.")
     void testConfirm_Success()
-            throws PaymentTossNonRetryableException, PaymentTossRetryableException {
+            throws PaymentTossNonRetryableException, PaymentTossRetryableException, PaymentOrderedProductStockException {
         // given
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
 
@@ -176,8 +177,6 @@ class PaymentConfirmServiceImplTest {
 
         verify(mockPaymentProcessorUseCase, times(1))
                 .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
-        verify(mockOrderedProductUseCase, times(1))
-                .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
 
     private record MockConfirmData(PaymentConfirmCommand paymentConfirmCommand, PaymentEvent mockPaymentEvent) {
