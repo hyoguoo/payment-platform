@@ -140,7 +140,7 @@ public class HttpTossOperator implements TossOperator {
 
             return objectMapper.readValue(jsonPart, TossPaymentApiFailResponse.class);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to parse error response: " + errorResponse);
+            throw new IllegalArgumentException("Failed to parse error response: " + errorResponse);
         }
     }
 
