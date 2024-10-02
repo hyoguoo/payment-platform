@@ -87,6 +87,8 @@ class PaymentControllerTest extends IntegrationTest {
         objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
         objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
         objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
+        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", 0, 0);
+        ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
         jpaPaymentEventRepository.deleteAllInBatch();
         jpaPaymentOrderRepository.deleteAllInBatch();
     }
@@ -167,8 +169,6 @@ class PaymentControllerTest extends IntegrationTest {
                 .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
                 .paymentKey(TEST_PAYMENT_KEY)
                 .build();
-
-        ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
 
         // when
         ResultActions perform = mockMvc.perform(
