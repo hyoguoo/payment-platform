@@ -13,6 +13,7 @@ import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentEr
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.PaymentGatewayInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
+import java.net.SocketTimeoutException;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 @Component
 @RequiredArgsConstructor
@@ -86,6 +88,14 @@ public class HttpTossOperator implements TossOperator {
                     tossPaymentApiFailResponse.getCode(),
                     tossPaymentApiFailResponse.getMessage()
             );
+        } catch (ResourceAccessException e) {
+            if (e.getCause() instanceof SocketTimeoutException) {
+                throw PaymentGatewayApiException.of(
+                        TossPaymentErrorCode.NETWORK_ERROR.name(),
+                        TossPaymentErrorCode.NETWORK_ERROR.getDescription()
+                );
+            }
+            throw e;
         } catch (Exception e) {
             TossPaymentApiFailResponse tossPaymentApiFailResponse = parseErrorResponse(
                     e.getMessage()
@@ -130,7 +140,7 @@ public class HttpTossOperator implements TossOperator {
 
             return objectMapper.readValue(jsonPart, TossPaymentApiFailResponse.class);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to parse error response: " + errorResponse);
+            throw new IllegalArgumentException("Failed to parse error response: " + errorResponse);
         }
     }
 

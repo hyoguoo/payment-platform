@@ -54,7 +54,8 @@ public enum TossPaymentErrorCode {
     FAILED_PAYMENT_INTERNAL_SYSTEM_PROCESSING(500, "결제가 완료되지 않았어요. 다시 시도해주세요."),
     FAILED_INTERNAL_SYSTEM_PROCESSING(500, "내부 시스템 처리 작업이 실패했습니다. 잠시 후 다시 시도해주세요."),
     UNKNOWN_PAYMENT_ERROR(500, "결제에 실패했어요. 같은 문제가 반복된다면 은행이나 카드사로 문의해주세요."),
-    UNKNOWN(500, "알 수 없는 에러입니다.");
+    UNKNOWN(500, "알 수 없는 에러입니다."),
+    NETWORK_ERROR(500, "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
 
     private final int httpStatusCode;
     private final String description;
@@ -73,7 +74,7 @@ public enum TossPaymentErrorCode {
     public boolean isRetryableError() {
         return switch (this) {
             case PROVIDER_ERROR, FAILED_PAYMENT_INTERNAL_SYSTEM_PROCESSING,
-                 FAILED_INTERNAL_SYSTEM_PROCESSING, UNKNOWN_PAYMENT_ERROR, UNKNOWN -> true;
+                 FAILED_INTERNAL_SYSTEM_PROCESSING, UNKNOWN_PAYMENT_ERROR, UNKNOWN, NETWORK_ERROR -> true;
             default -> false;
         };
     }

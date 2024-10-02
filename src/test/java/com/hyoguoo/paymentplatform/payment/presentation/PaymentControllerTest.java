@@ -40,6 +40,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
@@ -81,12 +82,16 @@ class PaymentControllerTest extends IntegrationTest {
     private HttpOperator httpOperator;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
+    private int readTimeoutMillisLimit;
 
     @BeforeEach
     void setUp() {
         objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
         objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
         objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
+        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", 0, 0);
+        ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
         jpaPaymentEventRepository.deleteAllInBatch();
         jpaPaymentOrderRepository.deleteAllInBatch();
     }
@@ -167,8 +172,6 @@ class PaymentControllerTest extends IntegrationTest {
                 .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
                 .paymentKey(TEST_PAYMENT_KEY)
                 .build();
-
-        ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
 
         // when
         ResultActions perform = mockMvc.perform(
@@ -371,6 +374,62 @@ class PaymentControllerTest extends IntegrationTest {
 
         assertThat(afterProduct1.getStock()).isEqualTo(INIT_PRODUCT_1_STOCK);
         assertThat(afterProduct2.getStock()).isEqualTo(INIT_PRODUCT_2_STOCK);
+    }
+
+    @Test
+    @DisplayName("Payment Confirm 요청 중 Read Timeout 발생하면 결제는 실패하고 UNKNOWN / UNKNOWN 상태로 변경되면서 재고는 감소된 상태로 유지된다.")
+    void confirmPayment_Failure_NetworkReadTimeout() throws Exception {
+        // given
+        final int INIT_PRODUCT_1_STOCK = 1;
+        final int INIT_PRODUCT_2_STOCK = 2;
+        final int ORDERED_QUANTITY_1 = 1;
+        final int ORDERED_QUANTITY_2 = 2;
+
+        jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
+        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
+
+        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
+                .userId(1L)
+                .orderId(TEST_ORDER_ID)
+                .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
+                .paymentKey(TEST_PAYMENT_KEY)
+                .build();
+
+        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange",
+                readTimeoutMillisLimit + 1000, readTimeoutMillisLimit + 2000
+        );
+
+        // when
+        ResultActions perform = mockMvc.perform(
+                post("/api/v1/payments/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(confirmRequest))
+        );
+
+        // then
+        PaymentEvent updatedPaymentEvent = getPaymentEvent();
+
+        perform.andExpect(status().isBadRequest());
+
+        assertThat(updatedPaymentEvent.getPaymentKey()).isEqualTo(TEST_PAYMENT_KEY);
+        assertThat(updatedPaymentEvent.getApprovedAt()).isNull();
+        assertThat(updatedPaymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
+
+        assertThat(updatedPaymentEvent.getPaymentOrderList())
+                .allMatch(order -> order.getStatus() == PaymentOrderStatus.UNKNOWN);
+
+        Product afterProduct1 = jpaProductRepository.findById(1L).orElseThrow().toDomain();
+        Product afterProduct2 = jpaProductRepository.findById(2L).orElseThrow().toDomain();
+        assertThat(afterProduct1.getStock())
+                .isEqualTo(INIT_PRODUCT_1_STOCK - ORDERED_QUANTITY_1);
+        assertThat(afterProduct2.getStock())
+                .isEqualTo(INIT_PRODUCT_2_STOCK - ORDERED_QUANTITY_2);
     }
 
     private PaymentEvent getPaymentEvent() {

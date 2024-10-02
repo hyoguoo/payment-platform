@@ -7,11 +7,14 @@ import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.To
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse.Checkout;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.TossPaymentApiResponse.Receipt;
+import java.net.SocketTimeoutException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.ResourceAccessException;
 
 public class FakeTossHttpOperator implements HttpOperator {
 
@@ -21,6 +24,9 @@ public class FakeTossHttpOperator implements HttpOperator {
     public static final String TEST_ORDER_ID = "55996af6-e5b5-47e5-ac3c-44508ee6fd6b";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
+    private int readTimeoutMillisLimit;
 
     private int minDelayMillis;
     private int maxDelayMillis;
@@ -114,6 +120,11 @@ public class FakeTossHttpOperator implements HttpOperator {
     @Override
     public <T, E> E requestPost(String url, Map<String, String> httpHeaderMap, T body, Class<E> responseType) {
         simulateNetworkDelay();
+
+        if (minDelayMillis > readTimeoutMillisLimit) {
+            SocketTimeoutException socketTimeoutException = new SocketTimeoutException("Read timed out");
+            throw new ResourceAccessException("I/O error on POST request for \"URL\": Read timed out", socketTimeoutException);
+        }
 
         if (isErrorInPostRequest) {
             throwError();
