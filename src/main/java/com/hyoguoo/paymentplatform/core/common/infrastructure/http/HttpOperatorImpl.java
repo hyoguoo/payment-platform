@@ -1,15 +1,22 @@
 package com.hyoguoo.paymentplatform.core.common.infrastructure.http;
 
+import java.time.Duration;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 @Component
 public class HttpOperatorImpl implements HttpOperator {
+
+    @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
+    private long readTimeoutMillis;
 
     @Override
     public <T> T requestGet(
@@ -41,7 +48,7 @@ public class HttpOperatorImpl implements HttpOperator {
         httpHeaders.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
 
-        return new RestTemplate()
+        return new RestTemplate(getClientHttpRequestFactory())
                 .exchange(
                         url,
                         HttpMethod.POST,
@@ -49,6 +56,13 @@ public class HttpOperatorImpl implements HttpOperator {
                         responseType
                 )
                 .getBody();
+    }
+
+    private ClientHttpRequestFactory getClientHttpRequestFactory() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setReadTimeout(Duration.ofMillis(readTimeoutMillis));
+
+        return factory;
     }
 
     protected HttpHeaders generateHttpHeaders(Map<String, String> httpHeaders) {
