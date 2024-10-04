@@ -49,6 +49,7 @@ class PaymentEventTest {
                 .orderId("order123")
                 .paymentKey("validPaymentKey")
                 .status(PaymentEventStatus.IN_PROGRESS)
+                .retryCount(0)
                 .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
                 .allArgsBuild();
     }
@@ -482,5 +483,34 @@ class PaymentEventTest {
 
         // then
         assertThat(totalAmount).isEqualTo(new BigDecimal(expectedTotal));
+    }
+
+    @Test
+    @DisplayName("Unknown 상태인 이벤트의 재시도 횟수를 증가시킨다.")
+    void increaseRetryCount() {
+        // given
+        PaymentEvent paymentEvent = defaultPaymentEvent();
+        paymentEvent.unknown();
+
+        // when
+        paymentEvent.increaseRetryCount();
+
+        // then
+        assertThat(paymentEvent.getRetryCount()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "DONE", "FAILED", "CANCELED"})
+    @DisplayName("Unknown 상태가 아닌 이벤트의 재시도 횟수를 증가시킬 수 없다.")
+    void increaseRetryCount_InvalidStatus(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+                paymentEventStatus,
+                PaymentOrderStatus.EXECUTING
+        );
+
+        // when & then
+        assertThatThrownBy(paymentEvent::increaseRetryCount)
+                .isInstanceOf(PaymentStatusException.class);
     }
 }

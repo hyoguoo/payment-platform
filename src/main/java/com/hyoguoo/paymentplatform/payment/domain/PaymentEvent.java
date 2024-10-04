@@ -132,4 +132,11 @@ public class PaymentEvent {
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }
+
+    public void increaseRetryCount() {
+        if (this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
+        }
+        retryCount++;
+    }
 }
