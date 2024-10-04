@@ -3,6 +3,8 @@ package com.hyoguoo.paymentplatform.mock;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,6 +53,18 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         }
 
         return paymentEvent;
+    }
+
+    @Override
+    public List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before) {
+        List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
+                .filter(event ->
+                        (event.getStatus() == PaymentEventStatus.IN_PROGRESS && event.getExecutedAt().isBefore(before))
+                                || event.getStatus() == PaymentEventStatus.UNKNOWN)
+                .toList();
+        paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
+
+        return paymentEventList;
     }
 
     public void savePaymentOrders(Long paymentEventId, List<PaymentOrder> paymentOrders) {
