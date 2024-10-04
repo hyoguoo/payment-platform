@@ -61,6 +61,9 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
 
+    @Column(name = "retry_count")
+    private Integer retryCount;
+
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()
                 .id(paymentEvent.getId())
@@ -72,6 +75,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .status(paymentEvent.getStatus())
                 .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
+                .retryCount(paymentEvent.getRetryCount())
                 .build();
     }
 
@@ -86,6 +90,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .status(status)
                 .executedAt(executedAt)
                 .approvedAt(approvedAt)
+                .retryCount(retryCount)
                 .paymentOrderList(
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)
                                 .orElse(Collections.emptyList()))

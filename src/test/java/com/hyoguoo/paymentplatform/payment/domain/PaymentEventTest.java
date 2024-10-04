@@ -96,6 +96,8 @@ class PaymentEventTest {
         String paymentKey = "validPaymentKey";
         PaymentEventStatus status = PaymentEventStatus.IN_PROGRESS;
         LocalDateTime approvedAt = LocalDateTime.now();
+        LocalDateTime executedAt = LocalDateTime.now();
+        Integer retryCount = 1;
         List<PaymentOrder> paymentOrderList = List.of(
                 PaymentOrder.allArgsBuilder()
                         .id(1L)
@@ -122,6 +124,8 @@ class PaymentEventTest {
                 .paymentKey(paymentKey)
                 .status(status)
                 .approvedAt(approvedAt)
+                .executedAt(executedAt)
+                .retryCount(retryCount)
                 .paymentOrderList(paymentOrderList)
                 .allArgsBuild();
 
@@ -135,13 +139,15 @@ class PaymentEventTest {
                         PaymentEvent::getPaymentKey,
                         PaymentEvent::getStatus,
                         PaymentEvent::getApprovedAt,
+                        PaymentEvent::getExecutedAt,
+                        PaymentEvent::getRetryCount,
                         PaymentEvent::getPaymentOrderList)
-                .containsExactly(id, buyerId, sellerId, orderName, orderId,
-                        paymentKey, status, approvedAt, paymentOrderList);
+                .containsExactly(id, buyerId, sellerId, orderName, orderId, paymentKey,
+                        status, approvedAt, executedAt, retryCount, paymentOrderList);
     }
 
     @Test
-    @DisplayName("required Builder를 사용하여 객체를 생성 시 올바른 OrderName과 READY 상태로 생성한다.")
+    @DisplayName("required Builder를 사용하여 객체를 생성 시 올바른 상태로 생성된다.")
     void testRequiredConstructor() {
         // given
         UserInfo userInfo = UserInfo.builder()
@@ -182,6 +188,7 @@ class PaymentEventTest {
         assertThat(paymentEvent.getPaymentOrderList()).isEmpty();
         assertThat(paymentEvent.getPaymentKey()).isNull();
         assertThat(paymentEvent.getExecutedAt()).isNull();
+        assertThat(paymentEvent.getRetryCount()).isZero();
     }
 
     @ParameterizedTest

@@ -32,6 +32,7 @@ public class PaymentEvent {
     private PaymentEventStatus status;
     private LocalDateTime executedAt;
     private LocalDateTime approvedAt;
+    private Integer retryCount;
     private List<PaymentOrder> paymentOrderList;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
@@ -47,6 +48,7 @@ public class PaymentEvent {
         this.orderName = generateOrderName(productInfoList);
         this.orderId = orderId;
         this.status = PaymentEventStatus.READY;
+        this.retryCount = 0;
         this.paymentOrderList = new ArrayList<>();
     }
 
