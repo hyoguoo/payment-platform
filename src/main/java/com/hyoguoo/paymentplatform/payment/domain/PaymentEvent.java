@@ -137,7 +137,8 @@ public class PaymentEvent {
     }
 
     public void increaseRetryCount() {
-        if (this.status != PaymentEventStatus.UNKNOWN) {
+        if (this.status != PaymentEventStatus.UNKNOWN &&
+                this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
         }
         retryCount++;

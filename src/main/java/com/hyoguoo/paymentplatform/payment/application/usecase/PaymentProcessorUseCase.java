@@ -81,8 +81,7 @@ public class PaymentProcessorUseCase {
     }
 
     @Transactional
-    public void markAsUnknownAndIncreaseRetryCount(PaymentEvent paymentEvent) {
-        paymentEvent.unknown();
+    public void increaseRetryCount(PaymentEvent paymentEvent) {
         paymentEvent.increaseRetryCount();
         paymentEventRepository.saveOrUpdate(paymentEvent);
     }

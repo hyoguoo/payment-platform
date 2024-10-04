@@ -540,12 +540,15 @@ class PaymentEventTest {
         assertThat(totalAmount).isEqualTo(new BigDecimal(expectedTotal));
     }
 
-    @Test
-    @DisplayName("Unknown 상태인 이벤트의 재시도 횟수를 증가시킨다.")
-    void increaseRetryCount() {
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"UNKNOWN", "IN_PROGRESS"})
+    @DisplayName("Unknown 혹은 In Progress 상태의 이벤트의 재시도 횟수를 증가시킬 수 있다.")
+    void increaseRetryCount(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEvent();
-        paymentEvent.unknown();
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus,
+                PaymentOrderStatus.EXECUTING
+        );
 
         // when
         paymentEvent.increaseRetryCount();
@@ -555,7 +558,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "DONE", "FAILED", "CANCELED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "DONE", "FAILED", "CANCELED"})
     @DisplayName("Unknown 상태가 아닌 이벤트의 재시도 횟수를 증가시킬 수 없다.")
     void increaseRetryCount_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
