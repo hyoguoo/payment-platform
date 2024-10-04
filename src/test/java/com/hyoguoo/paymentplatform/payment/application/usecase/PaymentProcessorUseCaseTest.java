@@ -7,6 +7,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -29,14 +31,17 @@ class PaymentProcessorUseCaseTest {
     private PaymentProcessorUseCase paymentProcessorUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayHandler mockPaymentGatewayHandler;
+    private LocalDateTimeProvider testLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayHandler = Mockito.mock(PaymentGatewayHandler.class);
+        testLocalDateTimeProvider = new TestLocalDateTimeProvider();
         paymentProcessorUseCase = new PaymentProcessorUseCase(
                 mockPaymentEventRepository,
-                mockPaymentGatewayHandler
+                mockPaymentGatewayHandler,
+                testLocalDateTimeProvider
         );
     }
 
@@ -60,7 +65,7 @@ class PaymentProcessorUseCaseTest {
         PaymentEvent result = paymentProcessorUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey);
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 

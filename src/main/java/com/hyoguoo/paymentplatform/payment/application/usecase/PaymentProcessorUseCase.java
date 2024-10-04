@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -20,9 +21,10 @@ public class PaymentProcessorUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayHandler paymentGatewayHandler;
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
-        paymentEvent.execute(paymentKey);
+        paymentEvent.execute(paymentKey, localDateTimeProvider.now());
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
