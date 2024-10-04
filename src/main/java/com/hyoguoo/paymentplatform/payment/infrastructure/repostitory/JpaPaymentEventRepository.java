@@ -12,6 +12,6 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
 
-    @Query("SELECT pe FROM PaymentEventEntity pe WHERE (pe.status = 'IN_PROGRESS' AND pe.executedAt < :before) OR pe.status = 'UNKNOWN'")
-    List<PaymentEventEntity> findByInProgressWithTimeConstraintOrUnknown(@Param("before") LocalDateTime before);
+    @Query("SELECT pe FROM PaymentEventEntity pe WHERE ((pe.status = 'IN_PROGRESS' AND pe.executedAt < :before) OR pe.status = 'UNKNOWN') AND pe.retryCount < :retryableLimit")
+    List<PaymentEventEntity> findByInProgressWithTimeConstraintOrUnknown(@Param("before") LocalDateTime before, int retryableLimit);
 }

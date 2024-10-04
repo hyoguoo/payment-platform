@@ -63,9 +63,9 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before) {
+    public List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before, int retryableLimit) {
         return jpaPaymentEventRepository
-                .findByInProgressWithTimeConstraintOrUnknown(before)
+                .findByInProgressWithTimeConstraintOrUnknown(before, retryableLimit)
                 .stream()
                 .map(paymentEventEntity -> {
                     List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(

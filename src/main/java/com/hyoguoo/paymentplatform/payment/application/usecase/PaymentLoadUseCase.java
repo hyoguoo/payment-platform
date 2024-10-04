@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 public class PaymentLoadUseCase {
 
     public static final int RETRYABLE_MINUTES_FOR_IN_PROGRESS = 5;
+    public static final int RETRYABLE_LIMIT = 5;
     private final PaymentEventRepository paymentEventRepository;
     private final LocalDateTimeProvider localDateTimeProvider;
 
@@ -28,6 +29,6 @@ public class PaymentLoadUseCase {
 
     public List<PaymentEvent> getRetryablePaymentEvents() {
         LocalDateTime before = localDateTimeProvider.now().minusMinutes(RETRYABLE_MINUTES_FOR_IN_PROGRESS);
-        return paymentEventRepository.findDelayedInProgressOrUnknownEvents(before);
+        return paymentEventRepository.findDelayedInProgressOrUnknownEvents(before, RETRYABLE_LIMIT);
     }
 }

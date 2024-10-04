@@ -56,11 +56,17 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before) {
+    public List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before, int retryableLimit) {
         List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
-                .filter(event ->
-                        (event.getStatus() == PaymentEventStatus.IN_PROGRESS && event.getExecutedAt().isBefore(before))
-                                || event.getStatus() == PaymentEventStatus.UNKNOWN)
+                .filter(
+                        event ->
+                                event.getRetryCount() < retryableLimit &&
+                                        (
+                                                event.getStatus() == PaymentEventStatus.UNKNOWN ||
+                                                        (event.getStatus() == PaymentEventStatus.IN_PROGRESS
+                                                                && event.getExecutedAt().isBefore(before))
+                                        )
+                )
                 .toList();
         paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
 
