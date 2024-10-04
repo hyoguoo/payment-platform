@@ -182,19 +182,22 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
-    @DisplayName("특정 상태에서 성공적으로 execute 상태로 변경한다.")
+    @DisplayName("특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경하고, 실행 시간을 설정한다.")
     void execute_Success(PaymentEventStatus paymentEventStatus) {
         // given
+        LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
 
         // when
-        paymentEvent.execute("validPaymentKey");
+        paymentEvent.execute("validPaymentKey", executedAt);
 
         // then
+        assertThat(paymentEvent.getPaymentKey()).isEqualTo("validPaymentKey");
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+        assertThat(paymentEvent.getExecutedAt()).isEqualTo(executedAt);
     }
 
     @ParameterizedTest
@@ -202,13 +205,14 @@ class PaymentEventTest {
     @DisplayName("in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
+        LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey"))
+        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", executedAt))
                 .isInstanceOf(PaymentStatusException.class);
     }
 

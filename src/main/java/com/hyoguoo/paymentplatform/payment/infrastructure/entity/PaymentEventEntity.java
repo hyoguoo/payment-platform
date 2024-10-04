@@ -55,6 +55,9 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "status", nullable = false)
     private PaymentEventStatus status;
 
+    @Column(name = "executed_at")
+    private LocalDateTime executedAt;
+
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
 
@@ -67,6 +70,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
                 .status(paymentEvent.getStatus())
+                .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
                 .build();
     }
@@ -80,6 +84,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderId(orderId)
                 .paymentKey(paymentKey)
                 .status(status)
+                .executedAt(executedAt)
                 .approvedAt(approvedAt)
                 .paymentOrderList(
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)

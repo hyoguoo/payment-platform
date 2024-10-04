@@ -30,6 +30,7 @@ public class PaymentEvent {
     private String orderId;
     private String paymentKey;
     private PaymentEventStatus status;
+    private LocalDateTime executedAt;
     private LocalDateTime approvedAt;
     private List<PaymentOrder> paymentOrderList;
 
@@ -55,7 +56,7 @@ public class PaymentEvent {
         return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
     }
 
-    public void execute(String paymentKey) {
+    public void execute(String paymentKey, LocalDateTime executedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -64,6 +65,7 @@ public class PaymentEvent {
         paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
         this.status = PaymentEventStatus.IN_PROGRESS;
+        this.executedAt = executedAt;
     }
 
     public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
