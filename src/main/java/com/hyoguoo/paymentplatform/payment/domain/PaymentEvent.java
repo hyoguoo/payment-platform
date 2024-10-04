@@ -23,6 +23,9 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentEvent {
 
+    public static final int RETRYABLE_MINUTES_FOR_IN_PROGRESS = 5;
+    public static final int RETRYABLE_LIMIT = 5;
+
     private Long id;
     private Long buyerId;
     private Long sellerId;

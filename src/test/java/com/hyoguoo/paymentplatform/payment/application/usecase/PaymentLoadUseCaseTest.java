@@ -31,43 +31,43 @@ class PaymentLoadUseCaseTest {
                 // IN_PROGRESS면서 시간이 지나지 않은 경우 + retryCount 미만
                 Arguments.of(
                         PaymentEventStatus.IN_PROGRESS,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT - 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
+                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         false
                 ),
                 // IN_PROGRESS면서 시간이 지난 경우 + retryCount 미만
                 Arguments.of(
                         PaymentEventStatus.IN_PROGRESS,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT - 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
+                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
                 ),
                 // UNKNOWN면서 시간이 지나지 않은 경우 + retryCount 미만
                 Arguments.of(
                         PaymentEventStatus.UNKNOWN,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT - 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
+                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
                 ),
                 // UNKNOWN면서 시간이 지난 경우 + retryCount 미만
                 Arguments.of(
                         PaymentEventStatus.UNKNOWN,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT - 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
+                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
                 ),
                 // IN_PROGRESS면서 시간이 지난 경우 + retryCount 초과
                 Arguments.of(
                         PaymentEventStatus.IN_PROGRESS,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT + 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
+                        PaymentEvent.RETRYABLE_LIMIT + 1,
                         false
                 ),
                 // UNKNOWN면서 시간이 지난 경우 + retryCount 초과
                 Arguments.of(
                         PaymentEventStatus.UNKNOWN,
-                        PaymentLoadUseCase.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentLoadUseCase.RETRYABLE_LIMIT + 1,
+                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
+                        PaymentEvent.RETRYABLE_LIMIT + 1,
                         false
                 )
         );
