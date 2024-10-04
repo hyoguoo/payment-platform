@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -34,6 +35,7 @@ class PaymentConfirmServiceImplTest {
     private PaymentConfirmServiceImpl paymentConfirmService;
     private OrderedProductUseCase mockOrderedProductUseCase;
     private PaymentProcessorUseCase mockPaymentProcessorUseCase;
+    private PaymentLoadUseCase mockPaymentLoadUseCase;
 
     private static MockConfirmData getDefaultMockConfirmData() {
         PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
@@ -70,8 +72,9 @@ class PaymentConfirmServiceImplTest {
     void setUp() {
         mockOrderedProductUseCase = Mockito.mock(OrderedProductUseCase.class);
         mockPaymentProcessorUseCase = Mockito.mock(PaymentProcessorUseCase.class);
+        mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         paymentConfirmService = new PaymentConfirmServiceImpl(
-                mockOrderedProductUseCase, mockPaymentProcessorUseCase
+                mockPaymentLoadUseCase, mockOrderedProductUseCase, mockPaymentProcessorUseCase
         );
 
         Mockito.clearInvocations(mockOrderedProductUseCase, mockPaymentProcessorUseCase);
@@ -93,7 +96,9 @@ class PaymentConfirmServiceImplTest {
                 .build();
 
         // when
-        when(mockPaymentProcessorUseCase.findAndExecutePayment(any(PaymentConfirmCommand.class)))
+        when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any(String.class)))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+        when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .thenReturn(mockTossPaymentInfo);
@@ -116,7 +121,9 @@ class PaymentConfirmServiceImplTest {
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
 
         // when
-        when(mockPaymentProcessorUseCase.findAndExecutePayment(any(PaymentConfirmCommand.class)))
+        when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any(String.class)))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+        when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .thenThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
@@ -137,7 +144,9 @@ class PaymentConfirmServiceImplTest {
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
 
         // when
-        when(mockPaymentProcessorUseCase.findAndExecutePayment(any(PaymentConfirmCommand.class)))
+        when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any(String.class)))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+        when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
@@ -163,7 +172,9 @@ class PaymentConfirmServiceImplTest {
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
 
         // when
-        when(mockPaymentProcessorUseCase.findAndExecutePayment(any(PaymentConfirmCommand.class)))
+        when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any(String.class)))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+        when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
                 .thenReturn(mockConfirmData.mockPaymentEvent());

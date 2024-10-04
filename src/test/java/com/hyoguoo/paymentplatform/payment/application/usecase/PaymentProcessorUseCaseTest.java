@@ -14,7 +14,6 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandle
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.math.BigDecimal;
@@ -42,8 +41,8 @@ class PaymentProcessorUseCaseTest {
     }
 
     @Test
-    @DisplayName("PaymentEvent를 조회하고 실행 메서드를 호출한다.")
-    void testFindAndExecutePayment_Success() {
+    @DisplayName("결제 시작을 호출하고 성공적으로 처리된 PaymentEvent를 반환한다.")
+    void testExecutePayment_Success() {
         // given
         String paymentKey = "paymentKey";
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
@@ -58,27 +57,11 @@ class PaymentProcessorUseCaseTest {
                 .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.findAndExecutePayment(paymentConfirmCommand);
+        PaymentEvent result = paymentProcessorUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
         verify(paymentEvent, times(1)).execute(paymentKey);
         assertThat(result).isEqualTo(paymentEvent);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 PaymentEvent를 조회할 때 예외를 던진다.")
-    void testFindAndExecutePayment_NotFound() {
-        // given
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .build();
-
-        // when & then
-        when(mockPaymentEventRepository.findByOrderId(paymentConfirmCommand.getOrderId()))
-                .thenReturn(Optional.empty());
-        assertThatThrownBy(() ->
-                paymentProcessorUseCase.findAndExecutePayment(paymentConfirmCommand))
-                .isInstanceOf(PaymentFoundException.class);
     }
 
     @Test
