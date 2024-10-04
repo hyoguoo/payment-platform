@@ -178,11 +178,15 @@ class PaymentEventTest {
         // then
         assertThat(paymentEvent.getOrderName()).isEqualTo("Product 1 포함 2건");
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
+        assertThat(paymentEvent.getApprovedAt()).isNull();
+        assertThat(paymentEvent.getPaymentOrderList()).isEmpty();
+        assertThat(paymentEvent.getPaymentKey()).isNull();
+        assertThat(paymentEvent.getExecutedAt()).isNull();
     }
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
-    @DisplayName("특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경하고, 실행 시간을 설정한다.")
+    @DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경하고, 실행 시간을 설정한다.")
     void execute_Success(PaymentEventStatus paymentEventStatus) {
         // given
         LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
@@ -202,7 +206,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
-    @DisplayName("in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
+    @DisplayName("결제 시작 시  in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
@@ -218,7 +222,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "UNKNOWN"})
-    @DisplayName("특정 상태에서 성공적으로 done 상태로 변경한다.")
+    @DisplayName("결제 완료 시 특정 상태에서 성공적으로 done 상태로 변경한다.")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
@@ -236,7 +240,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED"})
-    @DisplayName("done 상태로 변경 불가한 상태에서는 예외를 던진다.")
+    @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
@@ -253,7 +257,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "UNKNOWN"})
-    @DisplayName("특정 상태에서 성공적으로 fail 상태로 변경한다.")
+    @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
@@ -270,7 +274,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "DONE", "CANCELED"})
-    @DisplayName("fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
+    @DisplayName("결제 실패 시 fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
@@ -285,7 +289,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
-    @DisplayName("특정 상태에서 성공적으로 unknown 상태로 변경한다.")
+    @DisplayName("알 수 없는 결과 처리 시 특정 상태에서 성공적으로 unknown 상태로 변경한다.")
     void unknown_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
@@ -302,7 +306,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
-    @DisplayName("unknown 상태로 변경 불가한 상태에서는 예외를 던진다.")
+    @DisplayName("알 수 없는 결과 처리 시 unknown 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void unknown_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
