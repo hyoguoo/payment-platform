@@ -17,12 +17,15 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Stream;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class PaymentEventTest {
 
@@ -54,7 +57,23 @@ class PaymentEventTest {
                 .allArgsBuild();
     }
 
-    private PaymentEvent defaultPaymentEventWithStatus(
+    static Stream<Arguments> provideExecutedAtAndExpectedResult() {
+        return Stream.of(
+                Arguments.of(PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1, false),
+                Arguments.of(PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1, true)
+        );
+    }
+
+    static Stream<Arguments> provideRetryCountAndExpectedResult() {
+        return Stream.of(
+                Arguments.of(0, true),  // 재시도 횟수 0이면 재시도 가능
+                Arguments.of(PaymentEvent.RETRYABLE_LIMIT - 1, true),  // 제한보다 하나 작은 경우 재시도 가능
+                Arguments.of(PaymentEvent.RETRYABLE_LIMIT, false),  // 제한값에 도달한 경우 재시도 불가능
+                Arguments.of(PaymentEvent.RETRYABLE_LIMIT + 1, false)  // 제한값을 넘은 경우 재시도 불가능
+        );
+    }
+
+    private PaymentEvent defaultExecutedPaymentEventWithStatus(
             PaymentEventStatus paymentEventStatus,
             PaymentOrderStatus paymentOrderStatus
     ) {
@@ -80,6 +99,42 @@ class PaymentEventTest {
                 .orderId("order123")
                 .paymentKey("validPaymentKey")
                 .status(paymentEventStatus)
+                .retryCount(0)
+                .approvedAt(LocalDateTime.of(2021, 1, 1, 0, 0, 0))
+                .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
+                .allArgsBuild();
+    }
+
+    private PaymentEvent defaultRetryPaymentEventWithStatus(
+            PaymentEventStatus paymentEventStatus,
+            PaymentOrderStatus paymentOrderStatus,
+            int retryCount,
+            LocalDateTime executedAt
+    ) {
+        PaymentOrder paymentOrder1 = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .paymentEventId(1L)
+                .quantity(1)
+                .totalAmount(new BigDecimal(5000))
+                .status(paymentOrderStatus)
+                .allArgsBuild();
+
+        PaymentOrder paymentOrder2 = PaymentOrder.allArgsBuilder()
+                .id(2L)
+                .quantity(1)
+                .totalAmount(new BigDecimal(10000))
+                .status(paymentOrderStatus)
+                .allArgsBuild();
+
+        return PaymentEvent.allArgsBuilder()
+                .buyerId(1L)
+                .sellerId(2L)
+                .orderName("테스트 주문")
+                .orderId("order123")
+                .paymentKey("validPaymentKey")
+                .status(paymentEventStatus)
+                .retryCount(retryCount)
+                .executedAt(executedAt)
                 .approvedAt(LocalDateTime.of(2021, 1, 1, 0, 0, 0))
                 .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
                 .allArgsBuild();
@@ -198,7 +253,7 @@ class PaymentEventTest {
     void execute_Success(PaymentEventStatus paymentEventStatus) {
         // given
         LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
@@ -218,7 +273,7 @@ class PaymentEventTest {
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
@@ -233,7 +288,7 @@ class PaymentEventTest {
     @DisplayName("결제 완료 시 특정 상태에서 성공적으로 done 상태로 변경한다.")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -251,7 +306,7 @@ class PaymentEventTest {
     @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -268,7 +323,7 @@ class PaymentEventTest {
     @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -285,7 +340,7 @@ class PaymentEventTest {
     @DisplayName("결제 실패 시 fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -300,7 +355,7 @@ class PaymentEventTest {
     @DisplayName("알 수 없는 결과 처리 시 특정 상태에서 성공적으로 unknown 상태로 변경한다.")
     void unknown_Success(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
@@ -317,7 +372,7 @@ class PaymentEventTest {
     @DisplayName("알 수 없는 결과 처리 시 unknown 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void unknown_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -504,7 +559,7 @@ class PaymentEventTest {
     @DisplayName("Unknown 상태가 아닌 이벤트의 재시도 횟수를 증가시킬 수 없다.")
     void increaseRetryCount_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
-        PaymentEvent paymentEvent = defaultPaymentEventWithStatus(
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
@@ -512,5 +567,71 @@ class PaymentEventTest {
         // when & then
         assertThatThrownBy(paymentEvent::increaseRetryCount)
                 .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideExecutedAtAndExpectedResult")
+    @DisplayName("IN_PROGRESS 상태에서 실행 시간이 주어진 조건에 맞는 경우 재시도가 가능하다.")
+    void isRetryableInProgress(long executedAtOffsetMinutes, boolean expectedResult) {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime executedAt = now.minusMinutes(executedAtOffsetMinutes);
+
+        PaymentEvent paymentEvent = defaultRetryPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS,
+                PaymentOrderStatus.EXECUTING,
+                0,
+                executedAt
+        );
+
+        // when
+        boolean result = paymentEvent.isRetryable(now);
+
+        // then
+        assertThat(result).isEqualTo(expectedResult); // 기대 결과와 비교
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideRetryCountAndExpectedResult")
+    @DisplayName("IN_PROGRESS 상태에서 재시도 횟수에 따라 재시도가 가능하다.")
+    void isRetryableInProgress_RetryCount(int retryCount, boolean expectedResult) {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime executedAt = now.minusMinutes(PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1);
+
+        PaymentEvent paymentEvent = defaultRetryPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS,
+                PaymentOrderStatus.EXECUTING,
+                retryCount, // 파라미터로 받은 재시도 횟수 설정
+                executedAt
+        );
+
+        // when
+        boolean result = paymentEvent.isRetryable(now);
+
+        // then
+        assertThat(result).isEqualTo(expectedResult); // 기대 결과와 비교
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideRetryCountAndExpectedResult")
+    @DisplayName("UNKNOWN 상태에서 재시도 횟수에 따라 재시도가 가능하다.")
+    void isRetryableUnknown_RetryCount(int retryCount, boolean expectedResult) {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime executedAt = now.minusMinutes(PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1);
+
+        PaymentEvent paymentEvent = defaultRetryPaymentEventWithStatus(
+                PaymentEventStatus.UNKNOWN,
+                PaymentOrderStatus.EXECUTING,
+                retryCount,
+                executedAt
+        );
+
+        // when
+        boolean result = paymentEvent.isRetryable(now);
+
+        // then
+        assertThat(result).isEqualTo(expectedResult);
     }
 }

@@ -142,4 +142,18 @@ public class PaymentEvent {
         }
         retryCount++;
     }
+
+    public boolean isRetryable(LocalDateTime now) {
+        return (isRetryableInProgress(now) || this.status == PaymentEventStatus.UNKNOWN) &&
+                canAttemptRetryCount();
+    }
+
+    private boolean isRetryableInProgress(LocalDateTime now) {
+        return this.executedAt.plusMinutes(RETRYABLE_MINUTES_FOR_IN_PROGRESS).isBefore(now)
+                && this.status == PaymentEventStatus.IN_PROGRESS;
+    }
+
+    private boolean canAttemptRetryCount() {
+        return this.retryCount < RETRYABLE_LIMIT;
+    }
 }
