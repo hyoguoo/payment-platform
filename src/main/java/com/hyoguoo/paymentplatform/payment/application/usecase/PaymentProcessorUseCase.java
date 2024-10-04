@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -77,5 +78,12 @@ public class PaymentProcessorUseCase {
                     PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR
             );
         };
+    }
+
+    @Transactional
+    public void markAsUnknownAndIncreaseRetryCount(PaymentEvent paymentEvent) {
+        paymentEvent.unknown();
+        paymentEvent.increaseRetryCount();
+        paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 }

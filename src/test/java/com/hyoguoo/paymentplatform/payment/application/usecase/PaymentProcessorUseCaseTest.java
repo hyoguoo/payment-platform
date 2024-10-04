@@ -207,4 +207,20 @@ class PaymentProcessorUseCaseTest {
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
     }
+
+    @Test
+    @DisplayName("결제 상태를 알 수 UNKNOWN 상태로 변경하고 PaymentEvent의 재시도 횟수를 증가시킨다.")
+    void testMarkAsUnknownAndIncreaseRetryCount() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+
+        // when
+        when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
+                .thenReturn(paymentEvent);
+        paymentProcessorUseCase.markAsUnknownAndIncreaseRetryCount(paymentEvent);
+
+        // then
+        verify(paymentEvent, times(1)).unknown();
+        verify(paymentEvent, times(1)).increaseRetryCount();
+    }
 }
