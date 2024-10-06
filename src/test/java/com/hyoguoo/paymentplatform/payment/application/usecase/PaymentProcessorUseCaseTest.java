@@ -7,6 +7,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -14,7 +16,6 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandle
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.math.BigDecimal;
@@ -30,20 +31,23 @@ class PaymentProcessorUseCaseTest {
     private PaymentProcessorUseCase paymentProcessorUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayHandler mockPaymentGatewayHandler;
+    private LocalDateTimeProvider testLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayHandler = Mockito.mock(PaymentGatewayHandler.class);
+        testLocalDateTimeProvider = new TestLocalDateTimeProvider();
         paymentProcessorUseCase = new PaymentProcessorUseCase(
                 mockPaymentEventRepository,
-                mockPaymentGatewayHandler
+                mockPaymentGatewayHandler,
+                testLocalDateTimeProvider
         );
     }
 
     @Test
-    @DisplayName("PaymentEvent를 조회하고 실행 메서드를 호출한다.")
-    void testFindAndExecutePayment_Success() {
+    @DisplayName("결제 시작을 호출하고 성공적으로 처리된 PaymentEvent를 반환한다.")
+    void testExecutePayment_Success() {
         // given
         String paymentKey = "paymentKey";
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
@@ -58,27 +62,11 @@ class PaymentProcessorUseCaseTest {
                 .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.findAndExecutePayment(paymentConfirmCommand);
+        PaymentEvent result = paymentProcessorUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey);
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 PaymentEvent를 조회할 때 예외를 던진다.")
-    void testFindAndExecutePayment_NotFound() {
-        // given
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .build();
-
-        // when & then
-        when(mockPaymentEventRepository.findByOrderId(paymentConfirmCommand.getOrderId()))
-                .thenReturn(Optional.empty());
-        assertThatThrownBy(() ->
-                paymentProcessorUseCase.findAndExecutePayment(paymentConfirmCommand))
-                .isInstanceOf(PaymentFoundException.class);
     }
 
     @Test
@@ -218,5 +206,20 @@ class PaymentProcessorUseCaseTest {
         assertThatThrownBy(
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("결제 상태를 알 수 UNKNOWN 상태로 변경하고 PaymentEvent의 재시도 횟수를 증가시킨다.")
+    void testIncreaseRetryCount() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+
+        // when
+        when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
+                .thenReturn(paymentEvent);
+        paymentProcessorUseCase.increaseRetryCount(paymentEvent);
+
+        // then
+        verify(paymentEvent, times(1)).increaseRetryCount();
     }
 }

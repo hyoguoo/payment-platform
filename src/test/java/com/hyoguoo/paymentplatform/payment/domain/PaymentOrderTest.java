@@ -184,7 +184,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING", "UNKNOWN"})
     @DisplayName("특정 상태에서 성공적으로 unknown 상태로 변경한다.")
     void unknown_Success(PaymentOrderStatus initialStatus) {
         // given

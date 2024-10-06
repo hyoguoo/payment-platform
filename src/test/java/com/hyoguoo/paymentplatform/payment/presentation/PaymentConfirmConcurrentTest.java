@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.IntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repostitory.JpaPaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
@@ -178,7 +180,7 @@ class PaymentConfirmConcurrentTest extends IntegrationTest {
     private void initData(int stock, int orderCount) {
         StringBuilder paymentEventInsertSql = new StringBuilder("""
                 INSERT INTO payment_event
-                    (id, buyer_id, seller_id, order_name, order_id, payment_key, status, approved_at, created_at, updated_at)
+                    (id, buyer_id, seller_id, order_name, order_id, payment_key, status, approved_at, executed_at, retry_count, created_at, updated_at)
                 VALUES
                 """);
 
@@ -192,18 +194,18 @@ class PaymentConfirmConcurrentTest extends IntegrationTest {
             String orderId = TEST_ORDER_ID + i;
 
             paymentEventInsertSql.append(String.format(
-                    "(%d, %d, %d, '%s', '%s', %s, '%s', %s, NOW(), NOW()), ",
-                    i, 1L, 2L, "Ogu T 포함 2건", orderId, "NULL", "READY", "NULL"
+                    "(%d, %d, %d, '%s', '%s', %s, '%s', %s, %s, %d, NOW(), NOW()), ",
+                    i, 1L, 2L, "Ogu T 포함 2건", orderId, "NULL", PaymentEventStatus.READY.name(), "NULL", "NULL", 0
             ));
 
             paymentOrderInsertSql.append(String.format(
                     "(%d, %d, '%s', %d, %d, '%s', %f, NOW(), NOW()), ",
-                    i * 2 - 1, i, orderId, 1L, 1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1
+                    i * 2 - 1, i, orderId, 1L, 1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1
             ));
 
             paymentOrderInsertSql.append(String.format(
                     "(%d, %d, '%s', %d, %d, '%s', %f, NOW(), NOW()), ",
-                    i * 2, i, orderId, 2L, 2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2
+                    i * 2, i, orderId, 2L, 2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2
             ));
         }
 

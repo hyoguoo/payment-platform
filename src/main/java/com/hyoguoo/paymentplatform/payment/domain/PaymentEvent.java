@@ -23,6 +23,9 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentEvent {
 
+    public static final int RETRYABLE_MINUTES_FOR_IN_PROGRESS = 5;
+    public static final int RETRYABLE_LIMIT = 5;
+
     private Long id;
     private Long buyerId;
     private Long sellerId;
@@ -30,7 +33,9 @@ public class PaymentEvent {
     private String orderId;
     private String paymentKey;
     private PaymentEventStatus status;
+    private LocalDateTime executedAt;
     private LocalDateTime approvedAt;
+    private Integer retryCount;
     private List<PaymentOrder> paymentOrderList;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
@@ -46,6 +51,7 @@ public class PaymentEvent {
         this.orderName = generateOrderName(productInfoList);
         this.orderId = orderId;
         this.status = PaymentEventStatus.READY;
+        this.retryCount = 0;
         this.paymentOrderList = new ArrayList<>();
     }
 
@@ -55,7 +61,7 @@ public class PaymentEvent {
         return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
     }
 
-    public void execute(String paymentKey) {
+    public void execute(String paymentKey, LocalDateTime executedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -64,6 +70,7 @@ public class PaymentEvent {
         paymentOrderList.forEach(PaymentOrder::execute);
         this.paymentKey = paymentKey;
         this.status = PaymentEventStatus.IN_PROGRESS;
+        this.executedAt = executedAt;
     }
 
     public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
@@ -118,8 +125,9 @@ public class PaymentEvent {
 
     public void unknown() {
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
         }
         this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
@@ -127,5 +135,27 @@ public class PaymentEvent {
 
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
+    }
+
+    public void increaseRetryCount() {
+        if (this.status != PaymentEventStatus.UNKNOWN &&
+                this.status != PaymentEventStatus.IN_PROGRESS) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
+        }
+        retryCount++;
+    }
+
+    public boolean isRetryable(LocalDateTime now) {
+        return (isRetryableInProgress(now) || this.status == PaymentEventStatus.UNKNOWN) &&
+                canAttemptRetryCount();
+    }
+
+    private boolean isRetryableInProgress(LocalDateTime now) {
+        return this.executedAt.plusMinutes(RETRYABLE_MINUTES_FOR_IN_PROGRESS).isBefore(now)
+                && this.status == PaymentEventStatus.IN_PROGRESS;
+    }
+
+    private boolean canAttemptRetryCount() {
+        return this.retryCount < RETRYABLE_LIMIT;
     }
 }

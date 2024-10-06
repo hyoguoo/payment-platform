@@ -55,8 +55,14 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "status", nullable = false)
     private PaymentEventStatus status;
 
+    @Column(name = "executed_at")
+    private LocalDateTime executedAt;
+
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
+
+    @Column(name = "retry_count")
+    private Integer retryCount;
 
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()
@@ -67,7 +73,9 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
                 .status(paymentEvent.getStatus())
+                .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
+                .retryCount(paymentEvent.getRetryCount())
                 .build();
     }
 
@@ -80,7 +88,9 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderId(orderId)
                 .paymentKey(paymentKey)
                 .status(status)
+                .executedAt(executedAt)
                 .approvedAt(approvedAt)
+                .retryCount(retryCount)
                 .paymentOrderList(
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)
                                 .orElse(Collections.emptyList()))

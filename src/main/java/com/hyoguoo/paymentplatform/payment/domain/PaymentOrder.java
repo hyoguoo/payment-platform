@@ -68,8 +68,9 @@ public class PaymentOrder {
 
     public void unknown() {
         if (this.status != PaymentOrderStatus.NOT_STARTED &&
-                this.status != PaymentOrderStatus.EXECUTING) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+                this.status != PaymentOrderStatus.EXECUTING &&
+                this.status != PaymentOrderStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
         }
         this.status = PaymentOrderStatus.UNKNOWN;
     }

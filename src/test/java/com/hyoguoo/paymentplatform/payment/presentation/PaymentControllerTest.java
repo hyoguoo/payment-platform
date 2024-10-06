@@ -53,9 +53,9 @@ class PaymentControllerTest extends IntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event
-                (id, buyer_id, seller_id, order_name, order_id, payment_key, status, approved_at, created_at, updated_at)
+                (id, buyer_id, seller_id, order_name, order_id, payment_key, status, approved_at, executed_at, retry_count, created_at, updated_at)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             """;
     private static final String PAYMENT_ORDER_INSERT_SQL = """
             INSERT INTO payment_order
@@ -158,11 +158,11 @@ class PaymentControllerTest extends IntegrationTest {
         final int ORDERED_QUANTITY_2 = 2;
 
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
 
@@ -224,11 +224,11 @@ class PaymentControllerTest extends IntegrationTest {
         final int ORDERED_QUANTITY_2 = 3;
 
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
 
@@ -274,11 +274,11 @@ class PaymentControllerTest extends IntegrationTest {
         final int ORDERED_QUANTITY_2 = 2;
 
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
 
@@ -331,11 +331,11 @@ class PaymentControllerTest extends IntegrationTest {
         final int ORDERED_QUANTITY_2 = 2;
 
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
 
@@ -386,11 +386,11 @@ class PaymentControllerTest extends IntegrationTest {
         final int ORDERED_QUANTITY_2 = 2;
 
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, "READY", null);
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, "NOT_STARTED", TEST_TOTAL_AMOUNT_1);
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_1);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, "NOT_STARTED", TEST_TOTAL_AMOUNT_2);
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(), TEST_TOTAL_AMOUNT_2);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
         jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
 
