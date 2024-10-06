@@ -13,5 +13,5 @@ public interface PaymentEventRepository {
 
     PaymentEvent saveOrUpdate(PaymentEvent paymentEvent);
 
-    List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before, int retryableLimit);
+    List<PaymentEvent> findDelayedInProgressOrUnknownEvents(LocalDateTime before);
 }

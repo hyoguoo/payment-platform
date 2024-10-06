@@ -27,6 +27,6 @@ public class PaymentLoadUseCase {
 
     public List<PaymentEvent> getRetryablePaymentEvents() {
         LocalDateTime now = localDateTimeProvider.now().minusMinutes(PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS);
-        return paymentEventRepository.findDelayedInProgressOrUnknownEvents(now, PaymentEvent.RETRYABLE_LIMIT);
+        return paymentEventRepository.findDelayedInProgressOrUnknownEvents(now);
     }
 }

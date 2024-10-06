@@ -28,47 +28,29 @@ class PaymentLoadUseCaseTest {
 
     static Stream<Arguments> provideRetryablePaymentEvents() {
         return Stream.of(
-                // IN_PROGRESS면서 시간이 지나지 않은 경우 + retryCount 미만
+                // IN_PROGRESS면서 시간이 지나지 않은 경우
                 Arguments.of(
                         PaymentEventStatus.IN_PROGRESS,
                         PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
-                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         false
                 ),
-                // IN_PROGRESS면서 시간이 지난 경우 + retryCount 미만
+                // IN_PROGRESS면서 시간이 지난 경우
                 Arguments.of(
                         PaymentEventStatus.IN_PROGRESS,
                         PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
                 ),
-                // UNKNOWN면서 시간이 지나지 않은 경우 + retryCount 미만
+                // UNKNOWN면서 시간이 지나지 않은 경우
                 Arguments.of(
                         PaymentEventStatus.UNKNOWN,
                         PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS - 1,
-                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
                 ),
-                // UNKNOWN면서 시간이 지난 경우 + retryCount 미만
+                // UNKNOWN면서 시간이 지난 경우
                 Arguments.of(
                         PaymentEventStatus.UNKNOWN,
                         PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentEvent.RETRYABLE_LIMIT - 1,
                         true
-                ),
-                // IN_PROGRESS면서 시간이 지난 경우 + retryCount 초과
-                Arguments.of(
-                        PaymentEventStatus.IN_PROGRESS,
-                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentEvent.RETRYABLE_LIMIT + 1,
-                        false
-                ),
-                // UNKNOWN면서 시간이 지난 경우 + retryCount 초과
-                Arguments.of(
-                        PaymentEventStatus.UNKNOWN,
-                        PaymentEvent.RETRYABLE_MINUTES_FOR_IN_PROGRESS + 1,
-                        PaymentEvent.RETRYABLE_LIMIT + 1,
-                        false
                 )
         );
     }
@@ -112,8 +94,8 @@ class PaymentLoadUseCaseTest {
 
     @ParameterizedTest
     @MethodSource("provideRetryablePaymentEvents")
-    @DisplayName("결제 재시도 이벤트 조회 시 IN_PROGRESS 된지 설정된 시간 이후 혹은 UNKNOWN 상태인 이벤트를 조회한다.")
-    void testGetRetryablePaymentEvents_Success(PaymentEventStatus status, int offsetMinutes, int retryCount, boolean isRetryable) {
+    @DisplayName("결제 재시도 이벤트 조회 시 특정 시간 이후의 IN_PROGRESS 혹은 UNKNOWN 상태인 이벤트를 조회한다.")
+    void testGetRetryablePaymentEvents_Success(PaymentEventStatus status, int offsetMinutes, boolean isRetryable) {
         // given
         LocalDateTime now = LocalDateTime.of(2021, 1, 1, 0, 0);
         ReflectionTestUtils.invokeMethod(testLocalDateTimeProvider, "setFixedDateTime", now);
@@ -123,7 +105,7 @@ class PaymentLoadUseCaseTest {
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
                 .status(status)
                 .executedAt(executedAt)
-                .retryCount(retryCount)
+                .retryCount(0)
                 .paymentOrderList(new ArrayList<>())
                 .allArgsBuild();
 
