@@ -351,7 +351,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
     @DisplayName("알 수 없는 결과 처리 시 특정 상태에서 성공적으로 unknown 상태로 변경한다.")
     void unknown_Success(PaymentEventStatus paymentEventStatus) {
         // given

@@ -125,8 +125,9 @@ public class PaymentEvent {
 
     public void unknown() {
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.UNKNOWN) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
         }
         this.status = PaymentEventStatus.UNKNOWN;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
