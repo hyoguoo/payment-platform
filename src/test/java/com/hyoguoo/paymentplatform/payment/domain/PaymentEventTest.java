@@ -626,7 +626,7 @@ class PaymentEventTest {
 
         PaymentEvent paymentEvent = defaultRetryPaymentEventWithStatus(
                 PaymentEventStatus.UNKNOWN,
-                PaymentOrderStatus.EXECUTING,
+                PaymentOrderStatus.UNKNOWN,
                 retryCount,
                 executedAt
         );
