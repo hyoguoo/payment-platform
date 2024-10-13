@@ -138,7 +138,7 @@ class PaymentConfirmServiceImplTest {
     }
 
     @Test
-    @DisplayName("재시도 불가능한 결제 오류 발생 시 예외를 던지고 재고를 복구한다.")
+    @DisplayName("재시도 불가능한 결제 오류 발생 시 결제를 실패 처리하고 재고를 복구한다.")
     void testConfirm_NonRetryableFailure() throws Exception {
         // given
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
@@ -188,6 +188,8 @@ class PaymentConfirmServiceImplTest {
 
         verify(mockPaymentProcessorUseCase, times(1))
                 .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
+        verify(mockOrderedProductUseCase, times(1))
+                .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
 
     private record MockConfirmData(PaymentConfirmCommand paymentConfirmCommand, PaymentEvent mockPaymentEvent) {

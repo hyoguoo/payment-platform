@@ -36,15 +36,18 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
         try {
             orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
+        } catch (PaymentOrderedProductStockException e) {
+            handleStockFailure(paymentEvent);
+            throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
+        }
+
+        try {
             PaymentEvent completedPayment = processPayment(paymentEvent, paymentConfirmCommand);
 
             return PaymentConfirmResult.builder()
                     .amount(completedPayment.getTotalAmount())
                     .orderId(completedPayment.getOrderId())
                     .build();
-        } catch (PaymentOrderedProductStockException e) {
-            handleStockFailure(paymentEvent);
-            throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(paymentEvent);
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
@@ -87,5 +90,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private void handleUnknownException(PaymentEvent paymentEvent) {
         paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+        orderedProductUseCase.increaseStockForOrders(paymentEvent.getPaymentOrderList());
     }
 }
