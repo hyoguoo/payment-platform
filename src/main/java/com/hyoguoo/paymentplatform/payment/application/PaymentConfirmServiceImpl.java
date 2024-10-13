@@ -87,5 +87,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private void handleUnknownException(PaymentEvent paymentEvent) {
         paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+        orderedProductUseCase.increaseStockForOrders(paymentEvent.getPaymentOrderList());
     }
 }
