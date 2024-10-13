@@ -74,9 +74,8 @@ public class PaymentProcessorUseCase {
             case PaymentConfirmResultStatus.SUCCESS -> tossPaymentInfo;
             case PaymentConfirmResultStatus.RETRYABLE_FAILURE ->
                     throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
-            case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE -> throw PaymentTossNonRetryableException.of(
-                    PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR
-            );
+            case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->
+                    throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         };
     }
 
