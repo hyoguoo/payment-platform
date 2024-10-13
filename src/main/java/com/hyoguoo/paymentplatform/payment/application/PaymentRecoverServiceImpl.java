@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentRetryableValidateException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -33,7 +34,7 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
     private void processRetryablePaymentEvent(PaymentEvent retryablePaymentEvent) {
         try {
             if (!retryablePaymentEvent.isRetryable(localDateTimeProvider.now())) {
-                throw PaymentTossNonRetryableException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
+                throw PaymentRetryableValidateException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
             }
             paymentProcessorUseCase.increaseRetryCount(retryablePaymentEvent);
             PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
@@ -49,7 +50,8 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                     retryablePaymentEvent,
                     tossPaymentInfo.getPaymentDetails().getApprovedAt()
             );
-        } catch (PaymentTossNonRetryableException e) {
+        } catch (PaymentRetryableValidateException
+                 | PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(retryablePaymentEvent);
         } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(retryablePaymentEvent);

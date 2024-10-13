@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.exception.common;
 
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentRetryableValidateException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
@@ -82,6 +83,18 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentTossConfirmException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossConfirmException e) {
+        log.warn(e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(
+                                e.getCode(),
+                                e.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(PaymentRetryableValidateException.class)
+    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentRetryableValidateException e) {
         log.warn(e.getMessage());
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
