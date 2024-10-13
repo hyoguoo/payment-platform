@@ -42,15 +42,15 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .amount(completedPayment.getTotalAmount())
                     .orderId(completedPayment.getOrderId())
                     .build();
+        } catch (PaymentOrderedProductStockException e) {
+            handleStockFailure(paymentEvent);
+            throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(paymentEvent);
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         } catch (PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(paymentEvent);
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
-        } catch (PaymentOrderedProductStockException e) {
-            handleStockFailure(paymentEvent);
-            throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         } catch (Exception e) {
             handleUnknownException(paymentEvent);
             throw e;
