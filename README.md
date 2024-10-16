@@ -37,7 +37,7 @@
 - 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화: 외부 API 요청을 트랜잭션 범위 밖으로 분리하고, 트랜잭션 범위를 최소화하여 성능을 최적화 -
   [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
 
-  <img width="80%" alt="image" src="https://github.com/hyoguoo/payment-integration-server/assets/113650170/2e872ca5-ab0d-4417-9567-448bb0b60adf">
+  <img width="80%" alt="image" src="https://github.com/user-attachments/assets/f91cbdf5-1026-4e76-9c32-1f8164fa6882">
 
 <br>
 
