@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProduc
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import java.util.List;
 
-public interface ProductProvider {
+public interface ProductPort {
 
     ProductInfo getProductInfoById(Long productId);
 

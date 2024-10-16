@@ -12,7 +12,7 @@ import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandler;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
@@ -30,17 +30,17 @@ class PaymentProcessorUseCaseTest {
 
     private PaymentProcessorUseCase paymentProcessorUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
-    private PaymentGatewayHandler mockPaymentGatewayHandler;
+    private PaymentGatewayPort mockPaymentGatewayPort;
     private LocalDateTimeProvider testLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
-        mockPaymentGatewayHandler = Mockito.mock(PaymentGatewayHandler.class);
+        mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
         paymentProcessorUseCase = new PaymentProcessorUseCase(
                 mockPaymentEventRepository,
-                mockPaymentGatewayHandler,
+                mockPaymentGatewayPort,
                 testLocalDateTimeProvider
         );
     }
@@ -129,7 +129,7 @@ class PaymentProcessorUseCaseTest {
         TossPaymentInfo tossPaymentInfo = Mockito.mock(TossPaymentInfo.class);
 
         // when
-        when(mockPaymentGatewayHandler.getPaymentInfoByOrderId(paymentConfirmCommand.getOrderId()))
+        when(mockPaymentGatewayPort.getPaymentInfoByOrderId(paymentConfirmCommand.getOrderId()))
                 .thenReturn(tossPaymentInfo);
         paymentProcessorUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
 
@@ -153,7 +153,7 @@ class PaymentProcessorUseCaseTest {
                 .build();
 
         // when
-        when(mockPaymentGatewayHandler.confirmPayment(any(TossConfirmGatewayCommand.class)))
+        when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         TossPaymentInfo result = paymentProcessorUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
@@ -179,7 +179,7 @@ class PaymentProcessorUseCaseTest {
                 .build();
 
         // when & then
-        when(mockPaymentGatewayHandler.confirmPayment(any(TossConfirmGatewayCommand.class)))
+        when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
@@ -201,7 +201,7 @@ class PaymentProcessorUseCaseTest {
                 .build();
 
         // when & then
-        when(mockPaymentGatewayHandler.confirmPayment(any(TossConfirmGatewayCommand.class)))
+        when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))

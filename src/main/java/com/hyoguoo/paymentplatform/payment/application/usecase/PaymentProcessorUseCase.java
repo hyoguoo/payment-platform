@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandler;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentProcessorUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
-    private final PaymentGatewayHandler paymentGatewayHandler;
+    private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
 
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
@@ -48,7 +48,7 @@ public class PaymentProcessorUseCase {
             PaymentEvent paymentEvent,
             PaymentConfirmCommand paymentConfirmCommand
     ) {
-        TossPaymentInfo tossPaymentInfo = paymentGatewayHandler.getPaymentInfoByOrderId(
+        TossPaymentInfo tossPaymentInfo = paymentGatewayPort.getPaymentInfoByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
 
@@ -64,7 +64,7 @@ public class PaymentProcessorUseCase {
                 .idempotencyKey(paymentConfirmCommand.getOrderId())
                 .build();
 
-        TossPaymentInfo tossPaymentInfo = paymentGatewayHandler.confirmPayment(
+        TossPaymentInfo tossPaymentInfo = paymentGatewayPort.confirmPayment(
                 tossConfirmGatewayCommand
         );
 

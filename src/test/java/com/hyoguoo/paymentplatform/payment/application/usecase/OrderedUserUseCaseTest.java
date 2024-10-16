@@ -5,7 +5,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.payment.application.port.UserProvider;
+import com.hyoguoo.paymentplatform.payment.application.port.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,12 +15,12 @@ import org.mockito.Mockito;
 class OrderedUserUseCaseTest {
 
     private OrderedUserUseCase orderedUserUseCase;
-    private UserProvider mockUserProvider;
+    private UserPort mockUserPort;
 
     @BeforeEach
     void setUp() {
-        mockUserProvider = Mockito.mock(UserProvider.class);
-        orderedUserUseCase = new OrderedUserUseCase(mockUserProvider);
+        mockUserPort = Mockito.mock(UserPort.class);
+        orderedUserUseCase = new OrderedUserUseCase(mockUserPort);
     }
 
     @Test
@@ -33,11 +33,11 @@ class OrderedUserUseCaseTest {
                 .build();
 
         // when
-        when(mockUserProvider.getUserInfoById(userId)).thenReturn(expectedUserInfo);
+        when(mockUserPort.getUserInfoById(userId)).thenReturn(expectedUserInfo);
         UserInfo actualUserInfo = orderedUserUseCase.getUserInfoById(userId);
 
         // then
         assertThat(actualUserInfo).isEqualTo(expectedUserInfo);
-        verify(mockUserProvider, times(1)).getUserInfoById(userId);
+        verify(mockUserPort, times(1)).getUserInfoById(userId);
     }
 }

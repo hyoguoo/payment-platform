@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGat
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 
-public interface PaymentGatewayHandler {
+public interface PaymentGatewayPort {
 
     TossPaymentInfo getPaymentInfoByOrderId(String orderId);
 

@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
-import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
+import com.hyoguoo.paymentplatform.payment.application.port.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class OrderedProductUseCase {
 
-    private final ProductProvider productProvider;
+    private final ProductPort productPort;
 
     public void decreaseStockForOrders(
             List<PaymentOrder> paymentOrderList
@@ -24,7 +24,7 @@ public class OrderedProductUseCase {
                 paymentOrderList
         );
         try {
-            productProvider.decreaseStockForOrders(orderedProductStockCommandList);
+            productPort.decreaseStockForOrders(orderedProductStockCommandList);
         } catch (Exception e) {
             throw PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         }
@@ -36,7 +36,7 @@ public class OrderedProductUseCase {
         List<OrderedProductStockCommand> orderedProductStockCommandList = getOrderedProductStockCommands(
                 paymentOrderList
         );
-        productProvider.increaseStockForOrders(orderedProductStockCommandList);
+        productPort.increaseStockForOrders(orderedProductStockCommandList);
     }
 
     private List<OrderedProductStockCommand> getOrderedProductStockCommands(
@@ -53,7 +53,7 @@ public class OrderedProductUseCase {
     public List<ProductInfo> getProductInfoList(List<OrderedProduct> orderedProductList) {
         return orderedProductList.stream()
                 .map(orderedProduct ->
-                        productProvider.getProductInfoById(orderedProduct.getProductId()))
+                        productPort.getProductInfoById(orderedProduct.getProductId()))
                 .toList();
     }
 }

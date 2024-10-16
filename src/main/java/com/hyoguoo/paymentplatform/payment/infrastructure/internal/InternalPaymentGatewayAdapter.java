@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.internal;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayHandler;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class InternalPaymentGatewayHandler implements PaymentGatewayHandler {
+public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
 
     private final PaymentGatewayInternalReceiver paymentGatewayInternalReceiver;
 

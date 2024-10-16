@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
-import com.hyoguoo.paymentplatform.payment.application.port.ProductProvider;
+import com.hyoguoo.paymentplatform.payment.application.port.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
@@ -20,12 +20,12 @@ import org.mockito.Mockito;
 class OrderedProductUseCaseTest {
 
     private OrderedProductUseCase orderedProductUseCase;
-    private ProductProvider mockProductProvider;
+    private ProductPort mockProductPort;
 
     @BeforeEach
     void setUp() {
-        mockProductProvider = Mockito.mock(ProductProvider.class);
-        orderedProductUseCase = new OrderedProductUseCase(mockProductProvider);
+        mockProductPort = Mockito.mock(ProductPort.class);
+        orderedProductUseCase = new OrderedProductUseCase(mockProductPort);
     }
 
     @Test
@@ -41,7 +41,7 @@ class OrderedProductUseCaseTest {
         orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
 
         // then
-        verify(mockProductProvider, times(1)).decreaseStockForOrders(Mockito.anyList());
+        verify(mockProductPort, times(1)).decreaseStockForOrders(Mockito.anyList());
     }
 
     @Test
@@ -57,7 +57,7 @@ class OrderedProductUseCaseTest {
         orderedProductUseCase.increaseStockForOrders(paymentOrderList);
 
         // then
-        verify(mockProductProvider, times(1)).increaseStockForOrders(Mockito.anyList());
+        verify(mockProductPort, times(1)).increaseStockForOrders(Mockito.anyList());
     }
 
     @Test
@@ -87,8 +87,8 @@ class OrderedProductUseCaseTest {
 
 
         // when
-        when(mockProductProvider.getProductInfoById(1L)).thenReturn(productInfo1);
-        when(mockProductProvider.getProductInfoById(2L)).thenReturn(productInfo2);
+        when(mockProductPort.getProductInfoById(1L)).thenReturn(productInfo1);
+        when(mockProductPort.getProductInfoById(2L)).thenReturn(productInfo2);
         List<ProductInfo> productInfoList = orderedProductUseCase.getProductInfoList(
                 orderedProductList
         );
@@ -98,7 +98,7 @@ class OrderedProductUseCaseTest {
         assertThat(productInfoList.get(0).getName()).isEqualTo("Product 1");
         assertThat(productInfoList.get(1).getName()).isEqualTo("Product 2");
 
-        verify(mockProductProvider, times(1)).getProductInfoById(1L);
-        verify(mockProductProvider, times(1)).getProductInfoById(2L);
+        verify(mockProductPort, times(1)).getProductInfoById(1L);
+        verify(mockProductPort, times(1)).getProductInfoById(2L);
     }
 }
