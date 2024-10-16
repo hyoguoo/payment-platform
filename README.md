@@ -27,12 +27,12 @@
 - 재시도 가능한 에러 처리 및 복구 로직 적용: API 지연 / 서버 중단 / 외부 서비스 에러 등 상황에서 발생하는 결제 오류를 복구할 수 있는 상태 관리 및 재시도 로직 적용 -
   [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.gitbook.io/tech-log/posts/payment-status-with-retry)
 
-  <img width="70%" alt="image" src="">
+  <img width="70%" alt="image" src="https://github.com/user-attachments/assets/970b33de-eac9-4f9c-85f7-ac22a5a769e8">
 
 - 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증: 결제 승인 과정 중 발생할 수 있는 다양한 시나리오 및 예외 상황을 테스트할 수 있도록 외부 의존성을 제어한 테스트 환경을 구축 -
   [외부 의존성 제어를 통한 결제 프로세스 다양한 시나리오 검증](https://hyoguoo.gitbook.io/tech-log/posts/payment-system-test)
 
-  <img width="70%" alt="image" src="">
+  <img width="70%" alt="image" src="https://github.com/user-attachments/assets/3bb72ac9-b8ae-4629-b799-6546a7ee9640">
 
 - 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화: 외부 API 요청을 트랜잭션 범위 밖으로 분리하고, 트랜잭션 범위를 최소화하여 성능을 최적화 -
   [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
@@ -66,7 +66,7 @@
 - 테스트 용이성: 각 계층에서 의존성 역전을 적용하여, 이를 통해 테스트 더블을 쉽게 사용할 수 있도록 설계
 - 도메인 간 결합 최소화: 도메인 간 협력은 인터페이스와 Receiver 구현체를 통해 결합도를 낮추어, 도메인의 독립성을 유지
 
-<img width="70%" alt="image" src="">
+<img width="70%" alt="image" src="https://github.com/user-attachments/assets/b5c16562-f6a1-4886-93cc-3274b2f35ded">
 
 ```text
 ├── application                     // 애플리케이션 레이어: 비즈니스 로직을 처리하는 계층
