@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
@@ -14,8 +17,10 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentRecoverService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentRecoverServiceImpl implements PaymentRecoverService {
@@ -28,11 +33,19 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
     @Override
     public void recoverRetryablePayment() {
         List<PaymentEvent> retryablePaymentEvents = paymentLoadUseCase.getRetryablePaymentEvents();
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVER_RETRYABLE_START, () ->
+                String.format("Retry Event Count=%s", retryablePaymentEvents.size()));
         retryablePaymentEvents.forEach(this::processRetryablePaymentEvent);
     }
 
     private void processRetryablePaymentEvent(PaymentEvent retryablePaymentEvent) {
         try {
+
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RETRY_START,
+                    () -> String.format("orderId=%s retryCount=%s, status=%s",
+                            retryablePaymentEvent.getOrderId(),
+                            retryablePaymentEvent.getRetryCount(),
+                            retryablePaymentEvent.getStatus()));
             if (!retryablePaymentEvent.isRetryable(localDateTimeProvider.now())) {
                 throw PaymentRetryableValidateException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
             }
@@ -46,10 +59,18 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
             TossPaymentInfo tossPaymentInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
                     paymentConfirmCommand
             );
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_SUCCESS_WITH_RETRY,
+                    () -> String.format("orderId=%s approvedAt=%s",
+                            retryablePaymentEvent.getOrderId(),
+                            tossPaymentInfo.getPaymentDetails().getApprovedAt()));
             paymentProcessorUseCase.markPaymentAsDone(
                     retryablePaymentEvent,
                     tossPaymentInfo.getPaymentDetails().getApprovedAt()
             );
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_DONE,
+                    () -> String.format("orderId=%s approvedAt=%s",
+                            retryablePaymentEvent.getOrderId(),
+                            tossPaymentInfo.getPaymentDetails().getApprovedAt()));
         } catch (PaymentRetryableValidateException
                  | PaymentTossNonRetryableException e) {
             handleNonRetryableFailure(retryablePaymentEvent);
@@ -60,10 +81,18 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
 
     private void handleRetryableFailure(PaymentEvent paymentEvent) {
         paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent);
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
+                () -> String.format("orderId=%s", paymentEvent.getOrderId()));
     }
 
     private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
         PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+        LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
+                () -> String.format("orderId=%s", paymentEvent.getOrderId()));
         orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
+                () -> String.format("products=%s by orderId=%s",
+                        LogFmt.toJson(failedPaymentEvent.getPaymentOrderList()),
+                        failedPaymentEvent.getOrderId()));
     }
 }
