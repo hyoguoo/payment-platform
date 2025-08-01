@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.paymentgateway.exception.common;
 
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +20,7 @@ public class PaymentGatewayExceptionHandler {
 
     @ExceptionHandler(PaymentGatewayApiException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentGatewayApiException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT_GATEWAY, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(

@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.exception.common;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentRetryableValidateException;
@@ -23,7 +26,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentFoundException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentFoundException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(
@@ -35,7 +38,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentStatusException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentStatusException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
@@ -47,7 +50,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentValidException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentValidException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
@@ -59,7 +62,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentTossNonRetryableException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossNonRetryableException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
@@ -71,7 +74,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentTossRetryableException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossRetryableException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
@@ -83,7 +86,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentTossConfirmException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossConfirmException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
@@ -95,7 +98,7 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentRetryableValidateException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentRetryableValidateException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(

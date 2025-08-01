@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.user.exception.common;
 
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.user.exception.UserFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +20,7 @@ public class UserExceptionHandler {
 
     @ExceptionHandler(UserFoundException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(UserFoundException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.USER, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(
