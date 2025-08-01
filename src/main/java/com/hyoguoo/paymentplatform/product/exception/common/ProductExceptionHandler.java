@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.product.exception.common;
 
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.product.exception.ProductStockException;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +20,7 @@ public class ProductExceptionHandler {
 
     @ExceptionHandler(ProductStockException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(ProductStockException e) {
-        log.warn(e.getMessage());
+        LogFmt.warn(log, LogDomain.PRODUCT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of(
