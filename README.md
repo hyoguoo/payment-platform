@@ -31,7 +31,7 @@
 - 상태 기반 전환 모델을 정의하고, 재시도 가능한 오류에 대해 자동 복구 흐름 적용
 - 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.gitbook.io/tech-log/posts/payment-status-with-retry)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/15482698-3e39-4e00-b860-3a679b64e01f">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
 
 ### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
 
@@ -39,7 +39,7 @@
 - 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
 - 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/807ccd80-c700-4798-9704-370f2e742dba">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
 
 ### 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증
 
