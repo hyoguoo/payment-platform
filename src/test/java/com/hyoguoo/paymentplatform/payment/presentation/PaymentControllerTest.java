@@ -253,7 +253,7 @@ class PaymentControllerTest extends IntegrationTest {
 
         perform.andExpect(status().isBadRequest());
 
-        assertThat(updatedPaymentEvent.getPaymentKey()).isEqualTo(TEST_PAYMENT_KEY);
+        assertThat(updatedPaymentEvent.getPaymentKey()).isNull();
         assertThat(updatedPaymentEvent.getApprovedAt()).isNull();
         assertThat(updatedPaymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
 

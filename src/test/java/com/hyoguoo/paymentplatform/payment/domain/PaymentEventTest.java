@@ -336,7 +336,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "DONE", "CANCELED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "CANCELED"})
     @DisplayName("결제 실패 시 fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given

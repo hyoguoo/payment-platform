@@ -18,6 +18,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -157,6 +158,31 @@ class PaymentConfirmServiceImplTest {
         PaymentConfirmCommand mockPaymentConfirmCommand = mockConfirmData.paymentConfirmCommand();
         assertThatThrownBy(() -> paymentConfirmService.confirm(mockPaymentConfirmCommand))
                 .isInstanceOf(PaymentTossConfirmException.class);
+
+        verify(mockPaymentProcessorUseCase, times(1))
+                .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
+        verify(mockOrderedProductUseCase, times(1))
+                .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
+    }
+
+    @Test
+    @DisplayName("이미 처리된 결제에 대한 상태 예외가 발생하면 결제를 실패 처리하고 재고를 복구한다.")
+    void testConfirm_AlreadyProcessedStatusException() {
+        // given
+        MockConfirmData mockConfirmData = getDefaultMockConfirmData();
+
+        // when
+        when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any(String.class)))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+        when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
+                .thenThrow(PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE));
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
+                .thenReturn(mockConfirmData.mockPaymentEvent());
+
+        // then
+        PaymentConfirmCommand mockPaymentConfirmCommand = mockConfirmData.paymentConfirmCommand();
+        assertThatThrownBy(() -> paymentConfirmService.confirm(mockPaymentConfirmCommand))
+                .isInstanceOf(PaymentStatusException.class);
 
         verify(mockPaymentProcessorUseCase, times(1))
                 .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
