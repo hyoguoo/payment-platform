@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorU
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -49,6 +50,9 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .amount(completedPayment.getTotalAmount())
                     .orderId(completedPayment.getOrderId())
                     .build();
+        } catch (PaymentStatusException e) {
+            handleNonRetryableFailure(paymentEvent);
+            throw e;
         } catch (PaymentTossRetryableException e) {
             handleRetryableFailure(paymentEvent);
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
