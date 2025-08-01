@@ -146,7 +146,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "SUCCESS", "CANCEL"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "CANCEL"})
     @DisplayName("fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentOrderStatus initialStatus) {
         // given

@@ -115,7 +115,8 @@ public class PaymentEvent {
     }
 
     public void fail() {
-        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
