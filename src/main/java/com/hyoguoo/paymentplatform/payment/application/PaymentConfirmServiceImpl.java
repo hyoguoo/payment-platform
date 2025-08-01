@@ -29,10 +29,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(
                 paymentConfirmCommand.getOrderId()
         );
-        paymentProcessorUseCase.executePayment(
-                paymentEvent,
-                paymentConfirmCommand.getPaymentKey()
-        );
 
         try {
             orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
@@ -42,7 +38,12 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         }
 
         try {
-            PaymentEvent completedPayment = processPayment(paymentEvent, paymentConfirmCommand);
+            PaymentEvent inProgressPaymentEvent = paymentProcessorUseCase.executePayment(
+                    paymentEvent,
+                    paymentConfirmCommand.getPaymentKey()
+            );
+
+            PaymentEvent completedPayment = processPayment(inProgressPaymentEvent, paymentConfirmCommand);
 
             return PaymentConfirmResult.builder()
                     .amount(completedPayment.getTotalAmount())
