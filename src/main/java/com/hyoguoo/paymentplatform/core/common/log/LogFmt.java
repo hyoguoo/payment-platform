@@ -12,8 +12,8 @@ import org.slf4j.Logger;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class LogFmt {
 
-    private static final String FORMAT_WITH_MESSAGE = "[%s] | %s | %s";
-    private static final String FORMAT_NO_MESSAGE = "[%s] | %s";
+    private static final String INFO_LOG_FORMAT = "[{}] | {} | {}";
+    private static final String INFO_LOG_FORMAT_NO_MESSAGE = "[{}] | {}";
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -29,47 +29,40 @@ public class LogFmt {
         }
     }
 
-    private static String format(LogDomain logDomain, EventType event) {
-        return String.format(FORMAT_NO_MESSAGE, logDomain.name(), event.name());
-    }
-
-    private static String format(LogDomain logDomain, EventType event, String message) {
-        return String.format(FORMAT_WITH_MESSAGE, logDomain.name(), event.name(), message);
-    }
 
     public static void info(Logger logger, LogDomain logDomain, EventType event) {
         if (logger.isInfoEnabled()) {
-            logger.info(format(logDomain, event));
+            logger.info(INFO_LOG_FORMAT_NO_MESSAGE, logDomain.name(), event.name());
         }
     }
 
     public static void info(Logger logger, LogDomain logDomain, EventType event, Supplier<String> messageSupplier) {
         if (logger.isInfoEnabled()) {
-            logger.info(format(logDomain, event, messageSupplier.get()));
+            logger.info(INFO_LOG_FORMAT, logDomain.name(), event.name(), messageSupplier.get());
         }
     }
 
     public static void warn(Logger logger, LogDomain logDomain, EventType event) {
         if (logger.isWarnEnabled()) {
-            logger.warn(format(logDomain, event));
+            logger.warn(INFO_LOG_FORMAT_NO_MESSAGE, logDomain.name(), event.name());
         }
     }
 
     public static void warn(Logger logger, LogDomain logDomain, EventType event, Supplier<String> messageSupplier) {
         if (logger.isWarnEnabled()) {
-            logger.warn(format(logDomain, event, messageSupplier.get()));
+            logger.warn(INFO_LOG_FORMAT, logDomain.name(), event.name(), messageSupplier.get());
         }
     }
 
     public static void error(Logger logger, LogDomain logDomain, EventType event) {
         if (logger.isErrorEnabled()) {
-            logger.error(format(logDomain, event));
+            logger.error(INFO_LOG_FORMAT_NO_MESSAGE, logDomain.name(), event.name());
         }
     }
 
     public static void error(Logger logger, LogDomain logDomain, EventType event, Supplier<String> messageSupplier) {
         if (logger.isErrorEnabled()) {
-            logger.error(format(logDomain, event, messageSupplier.get()));
+            logger.error(INFO_LOG_FORMAT, logDomain.name(), event.name(), messageSupplier.get());
         }
     }
 }

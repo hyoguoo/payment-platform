@@ -11,4 +11,9 @@ public class SystemUUIDProvider implements UUIDProvider {
     public String generateUUID() {
         return UUID.randomUUID().toString();
     }
+
+    @Override
+    public String generateShortUUID() {
+        return this.generateUUID().substring(0, 8);
+    }
 }
