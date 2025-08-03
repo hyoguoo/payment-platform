@@ -33,6 +33,14 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
 
+### 결제 흐름 추적을 위한 로그 체계 설계
+
+- 승인 지연, 재시도 등 여러 단계를 거치는 복잡한 흐름에서 요청 단위 로그만으로는 전체 흐름 파악이 어려움
+- traceId 및 orderId 기반 로그 구조를 설계해 전체 결제 흐름을 추적 가능하도록 개선하고, 로그 성능 저하 방지와 구조화된 로깅 설계 적용
+- 링크: [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/6640d3ff-9257-4a51-b072-ee7a7edc20d8">
+
 ### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
 
 - 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
@@ -57,6 +65,7 @@
 - Spring 6.1.12
 - Spring Boot 3.3.3
 - MySQL 8.0.33
+- Junit 5
 
 <br>
 
@@ -79,31 +88,39 @@
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/26cb69e5-6c89-479e-8181-4dd6a13c5eb5">
 
 ```text
-├── application                     // 애플리케이션 레이어: 비즈니스 로직을 처리하는 계층
+├── application
 │   ├── PaymentConfirmServiceImpl.java
-│   ├── dto
 │   ├── port
 │   │   ├── PaymentEventRepository.java
 │   │   └── ProductPort.java
-│   └── usecase                     // 유즈케이스: 애플리케이션의 특정 비즈니스 흐름을 처리하는 단위 로직
+│   └── usecase
 │       └── PaymentProcessorUseCase.java
-├── domain                          // 도메인 레이어: 핵심 비즈니스 로직 및 엔터티 정의
+├── domain
 │   └── PaymentEvent.java
-├── exception
-├── infrastructure                  // 인프라스트럭처 레이어: 실제 데이터베이스나 외부 시스템과 상호작용하는 구현체를 포함
-│   ├── entity                      // 엔터티: DB와 매핑되는 데이터베이스 테이블을 나타내는 클래스
+├── infrastructure
+│   ├── entity
 │   │   └── PaymentEventEntity.java
-│   ├── internal                    // 내부 서비스 구현: 서버 내부 도메인과 상호작용하는 실제 구현체들
-│   │   └── InternalProductPort.java
-│   └── repostitory                 // 리포지토리: 데이터베이스 접근 계층 구현체
+│   ├── internal
+│   │   └── InternalProductAdapter.java
+│   └── repostitory
 │       ├── JpaPaymentEventRepository.java 
 │       └── PaymentEventRepositoryImpl.java
-└── presentation                    // 프레젠테이션 레이어: 외부 요청을 처리하고 응답을 반환하는 계층
-    ├── PaymentController.java
-    ├── dto
-    └── port
-        └── PaymentConfirmService.java
+└── presentation
+    └── PaymentController.java
 ```
+
+|        영역        | 설명                                                                   |
+|:----------------:|:---------------------------------------------------------------------|
+|  `application`   | 주요 비즈니스 로직을 구현하는 계층                                                  |
+|  `ServiceImpl`   | 유즈케이스 단위를 조합하거나 흐름에 따라 실행 순서를 제어하는 서비스 구현체로, 유즈케이스를 오케스트레이션하여 서비스 제공 |
+|      `port`      | 도메인 외부와의 의존성을 인터페이스로 추상화한 계층                                         |
+|    `usecase`     | 하나의 기능 단위를 책임지는 유즈케이스 로직을 정의하여, 도메인 로직을 조합하고 실행                      |
+|     `domain`     | 핵심 비즈니스 규칙과 엔터티를 정의하며, 외부 기술에 독립적인 순수한 로직을 수행                        |
+| `infrastructure` | 실제 외부 시스템 또는 DB와 연동 계층                                               |
+|     `entity`     | 데이터베이스 테이블과 매핑되는 JPA 엔터티 클래스                                         |
+|    `internal`    | 외부 도메인과의 협력이 필요한 경우, 해당 요청을 전달하고 실행하는 계층 (예: 결제 도메인에서 상품 정보 조회)      |
+|   `repository`   | 영속성 처리 로직을 담당하는 실제 JPA Repository 구현체                                |
+|  `presentation`  | 외부 요청을 처리하고 응답을 반환하는 컨트롤러 계층                                         |
 
 ## Other Repositories
 
