@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 
 class PaymentCreateUseCaseTest {
 
@@ -28,17 +29,20 @@ class PaymentCreateUseCaseTest {
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentOrderRepository mockPaymentOrderRepository;
     private UUIDProvider mockUUIDProvider;
+    private ApplicationEventPublisher mockApplicationEventPublisher;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentOrderRepository = Mockito.mock(PaymentOrderRepository.class);
         mockUUIDProvider = Mockito.mock(UUIDProvider.class);
+        mockApplicationEventPublisher = Mockito.mock(ApplicationEventPublisher.class);
 
         paymentCreateUseCase = new PaymentCreateUseCase(
                 mockPaymentEventRepository,
                 mockPaymentOrderRepository,
-                mockUUIDProvider
+                mockUUIDProvider,
+                mockApplicationEventPublisher
         );
     }
 

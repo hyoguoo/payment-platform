@@ -8,9 +8,13 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.event.PaymentCreatedEvent;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,7 +23,9 @@ public class PaymentCreateUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
+    private final ApplicationEventPublisher eventPublisher;
 
+    @Transactional
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
@@ -37,6 +43,8 @@ public class PaymentCreateUseCase {
         );
 
         savedPaymentEvent.addPaymentOrderList(paymentOrderList);
+
+        publishPaymentCreatedEvent(savedPaymentEvent);
 
         return savedPaymentEvent;
     }
@@ -97,5 +105,17 @@ public class PaymentCreateUseCase {
                 .orderedProduct(matchedOrderedProduct)
                 .productInfo(productInfo)
                 .requiredBuild();
+    }
+
+    private void publishPaymentCreatedEvent(PaymentEvent paymentEvent) {
+        eventPublisher.publishEvent(
+                PaymentCreatedEvent.of(
+                        paymentEvent.getId(),
+                        paymentEvent.getOrderId(),
+                        paymentEvent.getStatus(),
+                        "Payment event created for order: " + paymentEvent.getOrderName(),
+                        LocalDateTime.now()
+                )
+        );
     }
 }

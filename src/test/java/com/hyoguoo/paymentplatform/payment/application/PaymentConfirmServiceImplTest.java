@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -135,7 +136,7 @@ class PaymentConfirmServiceImplTest {
                 .isInstanceOf(PaymentTossConfirmException.class);
 
         verify(mockPaymentProcessorUseCase, times(1))
-                .markPaymentAsUnknown(mockConfirmData.mockPaymentEvent());
+                .markPaymentAsUnknown(eq(mockConfirmData.mockPaymentEvent()), any(String.class));
     }
 
     @Test
@@ -149,7 +150,7 @@ class PaymentConfirmServiceImplTest {
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
-        when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .thenThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR));
@@ -160,7 +161,7 @@ class PaymentConfirmServiceImplTest {
                 .isInstanceOf(PaymentTossConfirmException.class);
 
         verify(mockPaymentProcessorUseCase, times(1))
-                .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
+                .markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class));
         verify(mockOrderedProductUseCase, times(1))
                 .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
@@ -176,7 +177,7 @@ class PaymentConfirmServiceImplTest {
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenThrow(PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE));
-        when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
 
         // then
@@ -185,7 +186,7 @@ class PaymentConfirmServiceImplTest {
                 .isInstanceOf(PaymentStatusException.class);
 
         verify(mockPaymentProcessorUseCase, times(1))
-                .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
+                .markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class));
         verify(mockOrderedProductUseCase, times(1))
                 .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
@@ -202,7 +203,7 @@ class PaymentConfirmServiceImplTest {
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
-        when(mockPaymentProcessorUseCase.markPaymentAsFail(mockConfirmData.mockPaymentEvent()))
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .thenThrow(new RuntimeException("Unexpected error"));
@@ -213,7 +214,7 @@ class PaymentConfirmServiceImplTest {
                 .isInstanceOf(RuntimeException.class);
 
         verify(mockPaymentProcessorUseCase, times(1))
-                .markPaymentAsFail(mockConfirmData.mockPaymentEvent());
+                .markPaymentAsFail(eq(mockConfirmData.mockPaymentEvent()), any(String.class));
         verify(mockOrderedProductUseCase, times(1))
                 .increaseStockForOrders(mockConfirmData.mockPaymentEvent().getPaymentOrderList());
     }
