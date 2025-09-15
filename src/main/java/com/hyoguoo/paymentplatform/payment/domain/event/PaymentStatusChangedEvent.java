@@ -6,7 +6,7 @@ import lombok.Getter;
 
 @Getter
 public class PaymentStatusChangedEvent extends PaymentHistoryEvent {
-    
+
     public PaymentStatusChangedEvent(
             Long paymentEventId,
             String orderId,
@@ -17,7 +17,25 @@ public class PaymentStatusChangedEvent extends PaymentHistoryEvent {
     ) {
         super(paymentEventId, orderId, previousStatus, currentStatus, reason, occurredAt);
     }
-    
+
+    public static PaymentStatusChangedEvent of(
+            Long paymentEventId,
+            String orderId,
+            PaymentEventStatus previousStatus,
+            PaymentEventStatus currentStatus,
+            String reason,
+            LocalDateTime occurredAt
+    ) {
+        return new PaymentStatusChangedEvent(
+                paymentEventId,
+                orderId,
+                previousStatus,
+                currentStatus,
+                reason,
+                occurredAt
+        );
+    }
+
     @Override
     public PaymentHistoryEventType getEventType() {
         return PaymentHistoryEventType.STATUS_CHANGE;
