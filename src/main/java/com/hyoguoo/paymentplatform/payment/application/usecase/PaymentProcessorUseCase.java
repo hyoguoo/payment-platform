@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
+import com.hyoguoo.paymentplatform.payment.application.aspect.Reason;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -42,21 +43,21 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "failed")
-    public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, String failureReason) {
+    public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
         paymentEvent.fail();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
     @PublishPaymentHistory(action = "marked as unknown")
-    public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, String reason) {
+    public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
         paymentEvent.unknown();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
     @PublishPaymentHistory(action = "retry attempted")
-    public void increaseRetryCount(PaymentEvent paymentEvent, String retryReason) {
+    public void increaseRetryCount(PaymentEvent paymentEvent, @Reason String retryReason) {
         paymentEvent.increaseRetryCount();
         paymentEventRepository.saveOrUpdate(paymentEvent);
     }
