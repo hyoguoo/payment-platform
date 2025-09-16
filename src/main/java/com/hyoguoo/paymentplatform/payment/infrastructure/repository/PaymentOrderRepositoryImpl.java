@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.repostitory;
+package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;

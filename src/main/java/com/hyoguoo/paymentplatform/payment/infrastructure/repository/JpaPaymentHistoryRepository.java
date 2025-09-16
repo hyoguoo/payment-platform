@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.repostitory;
+package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentHistoryEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
