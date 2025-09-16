@@ -6,10 +6,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
@@ -21,7 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationEventPublisher;
 
 class PaymentCreateUseCaseTest {
 
@@ -29,20 +30,23 @@ class PaymentCreateUseCaseTest {
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentOrderRepository mockPaymentOrderRepository;
     private UUIDProvider mockUUIDProvider;
-    private ApplicationEventPublisher mockApplicationEventPublisher;
+    private LocalDateTimeProvider mockLocalDateTimeProvider;
+    private PaymentEventPublisher mockPaymentEventPublisher;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentOrderRepository = Mockito.mock(PaymentOrderRepository.class);
         mockUUIDProvider = Mockito.mock(UUIDProvider.class);
-        mockApplicationEventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
+        mockPaymentEventPublisher = Mockito.mock(PaymentEventPublisher.class);
 
         paymentCreateUseCase = new PaymentCreateUseCase(
                 mockPaymentEventRepository,
                 mockPaymentOrderRepository,
                 mockUUIDProvider,
-                mockApplicationEventPublisher
+                mockLocalDateTimeProvider,
+                mockPaymentEventPublisher
         );
     }
 

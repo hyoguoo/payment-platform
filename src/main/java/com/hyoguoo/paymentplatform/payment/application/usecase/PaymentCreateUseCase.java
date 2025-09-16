@@ -1,18 +1,17 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentCreatedEvent;
-import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +22,8 @@ public class PaymentCreateUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
-    private final ApplicationEventPublisher eventPublisher;
+    private final LocalDateTimeProvider localDateTimeProvider;
+    private final PaymentEventPublisher paymentEventPublisher;
 
     @Transactional
     public PaymentEvent createNewPaymentEvent(
@@ -108,14 +108,10 @@ public class PaymentCreateUseCase {
     }
 
     private void publishPaymentCreatedEvent(PaymentEvent paymentEvent) {
-        eventPublisher.publishEvent(
-                PaymentCreatedEvent.of(
-                        paymentEvent.getId(),
-                        paymentEvent.getOrderId(),
-                        paymentEvent.getStatus(),
-                        "Payment event created for order: " + paymentEvent.getOrderName(),
-                        LocalDateTime.now()
-                )
+        paymentEventPublisher.publishPaymentCreated(
+                paymentEvent,
+                "Payment event created for order: " + paymentEvent.getOrderName(),
+                localDateTimeProvider.now()
         );
     }
 }

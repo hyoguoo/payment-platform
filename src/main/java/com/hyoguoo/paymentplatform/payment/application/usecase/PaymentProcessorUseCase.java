@@ -5,19 +5,16 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
+import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentCreatedEvent;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentRetryAttemptedEvent;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentStatusChangedEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +25,7 @@ public class PaymentProcessorUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
-    private final ApplicationEventPublisher eventPublisher;
+    private final PaymentEventPublisher paymentEventPublisher;
 
     @Transactional
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
@@ -38,11 +35,11 @@ public class PaymentProcessorUseCase {
         paymentEvent.execute(paymentKey, executedAt);
         PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        publishPaymentEvent(
+        paymentEventPublisher.publishStatusChange(
                 savedEvent,
                 previousStatus,
-                "execution started",
-                "payment key: " + paymentKey
+                "Payment execution started with payment key: " + paymentKey,
+                executedAt
         );
 
         return savedEvent;
@@ -51,14 +48,16 @@ public class PaymentProcessorUseCase {
     @Transactional
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
         PaymentEventStatus previousStatus = paymentEvent.getStatus();
+        LocalDateTime occurredAt = localDateTimeProvider.now();
 
         paymentEvent.done(approvedAt);
         PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        publishStatusChangedEvent(
+        paymentEventPublisher.publishStatusChange(
                 savedEvent,
                 previousStatus,
-                "Payment successfully completed at " + approvedAt
+                "Payment successfully completed at " + approvedAt,
+                occurredAt
         );
 
         return savedEvent;
@@ -67,14 +66,16 @@ public class PaymentProcessorUseCase {
     @Transactional
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, String failureReason) {
         PaymentEventStatus previousStatus = paymentEvent.getStatus();
+        LocalDateTime occurredAt = localDateTimeProvider.now();
 
         paymentEvent.fail();
         PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        publishStatusChangedEvent(
+        paymentEventPublisher.publishStatusChange(
                 savedEvent,
                 previousStatus,
-                failureReason
+                failureReason,
+                occurredAt
         );
 
         return savedEvent;
@@ -83,14 +84,16 @@ public class PaymentProcessorUseCase {
     @Transactional
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, String reason) {
         PaymentEventStatus previousStatus = paymentEvent.getStatus();
+        LocalDateTime occurredAt = localDateTimeProvider.now();
 
         paymentEvent.unknown();
         PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        publishStatusChangedEvent(
+        paymentEventPublisher.publishStatusChange(
                 savedEvent,
                 previousStatus,
-                reason
+                reason,
+                occurredAt
         );
 
         return savedEvent;
@@ -99,14 +102,16 @@ public class PaymentProcessorUseCase {
     @Transactional
     public void increaseRetryCount(PaymentEvent paymentEvent, String retryReason) {
         PaymentEventStatus previousStatus = paymentEvent.getStatus();
+        LocalDateTime occurredAt = localDateTimeProvider.now();
 
         paymentEvent.increaseRetryCount();
         PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        publishRetryAttemptedEvent(
+        paymentEventPublisher.publishRetryAttempt(
                 savedEvent,
                 previousStatus,
-                retryReason
+                retryReason,
+                occurredAt
         );
     }
 
@@ -143,85 +148,5 @@ public class PaymentProcessorUseCase {
             case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->
                     throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         };
-    }
-
-    /**
-     * 통합된 이벤트 발행 메서드 - 모든 상태 변경 이벤트를 처리
-     */
-    private void publishPaymentEvent(PaymentEvent savedEvent,
-                                    PaymentEventStatus previousStatus,
-                                    String action,
-                                    String details) {
-        String reason = generateEventReason(action, details, savedEvent);
-        
-        // 재시도인 경우와 일반 상태 변경을 구분
-        if (isRetryEvent(savedEvent, previousStatus)) {
-            publishRetryAttemptedEvent(savedEvent, previousStatus, reason);
-        } else if (previousStatus == null) {
-            // 최초 생성 이벤트
-            publishPaymentCreatedEvent(savedEvent, reason);
-        } else {
-            // 일반 상태 변경 이벤트
-            publishStatusChangedEvent(savedEvent, previousStatus, reason);
-        }
-    }
-    
-    private boolean isRetryEvent(PaymentEvent event, PaymentEventStatus previousStatus) {
-        return event.getRetryCount() > 0 && 
-               previousStatus == event.getStatus();
-    }
-    
-    private String generateEventReason(String action, String details, PaymentEvent event) {
-        if (details != null) {
-            return String.format("Payment %s: %s", action, details);
-        }
-        return String.format("Payment %s for order: %s", action, event.getOrderName());
-    }
-    
-    private void publishPaymentCreatedEvent(PaymentEvent savedEvent, String reason) {
-        eventPublisher.publishEvent(
-                PaymentCreatedEvent.of(
-                        savedEvent.getId(),
-                        savedEvent.getOrderId(),
-                        savedEvent.getStatus(),
-                        reason,
-                        LocalDateTime.now()
-                )
-        );
-    }
-    
-    private void publishStatusChangedEvent(
-            PaymentEvent savedEvent,
-            PaymentEventStatus previousStatus,
-            String reason
-    ) {
-        eventPublisher.publishEvent(
-                PaymentStatusChangedEvent.of(
-                        savedEvent.getId(),
-                        savedEvent.getOrderId(),
-                        previousStatus,
-                        savedEvent.getStatus(),
-                        reason,
-                        LocalDateTime.now()
-                )
-        );
-    }
-
-    private void publishRetryAttemptedEvent(
-            PaymentEvent savedEvent,
-            PaymentEventStatus previousStatus,
-            String reason
-    ) {
-        eventPublisher.publishEvent(
-                PaymentRetryAttemptedEvent.of(
-                        savedEvent.getId(),
-                        savedEvent.getOrderId(),
-                        previousStatus,
-                        savedEvent.getStatus(),
-                        reason,
-                        savedEvent.getRetryCount(),
-                        LocalDateTime.now()
-                )
-        );
     }
 }
