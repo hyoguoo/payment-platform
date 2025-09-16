@@ -91,15 +91,16 @@ class PaymentProcessorUseCaseTest {
     void testMarkPaymentAsFail() {
         // given
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String failureReason = "";
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, "");
+        PaymentEvent result = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
-        verify(paymentEvent, times(1)).fail();
-        assertThat(result.getId()).isEqualTo(paymentEvent.getId());
+        verify(paymentEvent, times(1)).fail(failureReason);
+        assertThat(result).isEqualTo(paymentEvent);
     }
 
     @Test
@@ -107,16 +108,16 @@ class PaymentProcessorUseCaseTest {
     void testMarkPaymentAsUnknown() {
         // given
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String reason = "";  // 빈 문자열로 테스트
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, "");
+        PaymentEvent result = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, reason);
 
         // then
-        verify(paymentEvent, times(1)).unknown();
-        assertThat(result.getId()).isEqualTo(paymentEvent.getId());
-
+        verify(paymentEvent, times(1)).unknown(reason);
+        assertThat(result).isEqualTo(paymentEvent);
     }
 
     @Test

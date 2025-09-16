@@ -44,14 +44,14 @@ public class PaymentProcessorUseCase {
     @Transactional
     @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
-        paymentEvent.fail();
+        paymentEvent.fail(failureReason);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
-        paymentEvent.unknown();
+        paymentEvent.unknown(reason);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 

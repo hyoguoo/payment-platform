@@ -329,7 +329,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.fail();
+        paymentEvent.fail("test failure reason");
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
@@ -346,7 +346,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(paymentEvent::fail)
+        assertThatThrownBy(() -> paymentEvent.fail("test failure reason"))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -361,7 +361,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.unknown();
+        paymentEvent.unknown("test unknown reason");
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
@@ -378,7 +378,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(paymentEvent::unknown)
+        assertThatThrownBy(() -> paymentEvent.unknown("test unknown reason"))
                 .isInstanceOf(PaymentStatusException.class);
     }
 

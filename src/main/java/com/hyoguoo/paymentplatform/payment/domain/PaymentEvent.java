@@ -36,6 +36,7 @@ public class PaymentEvent {
     private LocalDateTime executedAt;
     private LocalDateTime approvedAt;
     private Integer retryCount;
+    private String statusReason;
     private List<PaymentOrder> paymentOrderList;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
@@ -114,23 +115,25 @@ public class PaymentEvent {
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
-    public void fail() {
+    public void fail(String failureReason) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentEventStatus.FAILED;
+        this.statusReason = failureReason;
         this.paymentOrderList.forEach(PaymentOrder::fail);
     }
 
-    public void unknown() {
+    public void unknown(String reason) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
         }
         this.status = PaymentEventStatus.UNKNOWN;
+        this.statusReason = reason;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
 
