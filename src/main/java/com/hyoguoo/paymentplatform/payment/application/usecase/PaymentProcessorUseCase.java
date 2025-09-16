@@ -27,7 +27,7 @@ public class PaymentProcessorUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
-    @PublishPaymentHistory(action = "execution started")
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
         LocalDateTime executedAt = localDateTimeProvider.now();
         paymentEvent.execute(paymentKey, executedAt);
@@ -35,31 +35,31 @@ public class PaymentProcessorUseCase {
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "completed")
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
         paymentEvent.done(approvedAt);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "failed")
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
         paymentEvent.fail();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "marked as unknown")
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
         paymentEvent.unknown();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "retry attempted")
-    public void increaseRetryCount(PaymentEvent paymentEvent, @Reason String retryReason) {
+    @PublishPaymentHistory(action = "retry")
+    public PaymentEvent increaseRetryCount(PaymentEvent paymentEvent) {
         paymentEvent.increaseRetryCount();
-        paymentEventRepository.saveOrUpdate(paymentEvent);
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     public void validateCompletionStatus(
