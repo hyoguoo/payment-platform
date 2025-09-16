@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentHistoryEvent;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentRetryAttemptedEvent;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
