@@ -50,13 +50,7 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                 throw PaymentRetryableValidateException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
             }
 
-            String retryReason = String.format("Retry attempt #%d - Previous status: %s",
-                    retryablePaymentEvent.getRetryCount() + 1,
-                    retryablePaymentEvent.getStatus());
-            paymentProcessorUseCase.increaseRetryCount(
-                    retryablePaymentEvent,
-                    retryReason
-            );
+            paymentProcessorUseCase.increaseRetryCount(retryablePaymentEvent);
 
             PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
                     .userId(retryablePaymentEvent.getBuyerId())

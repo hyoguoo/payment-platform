@@ -218,7 +218,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        paymentProcessorUseCase.increaseRetryCount(paymentEvent, "");
+        paymentProcessorUseCase.increaseRetryCount(paymentEvent);
 
         // then
         verify(paymentEvent, times(1)).increaseRetryCount();
