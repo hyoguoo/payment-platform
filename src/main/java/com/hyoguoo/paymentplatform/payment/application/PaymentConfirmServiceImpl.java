@@ -48,7 +48,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         } catch (PaymentOrderedProductStockException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
                     () -> String.format("orderId=%s", paymentEvent.getOrderId()));
-            handleStockFailure(paymentEvent);
+            handleStockFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         }
 
@@ -73,23 +73,23 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                     .build();
         } catch (PaymentStatusException e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_ERROR,
-                    () -> String.format("orderId=%s", paymentEvent.getOrderId()));
-            handleNonRetryableFailure(paymentEvent);
+                    () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
+            handleNonRetryableFailure(paymentEvent, e.getMessage());
             throw e;
         } catch (PaymentTossRetryableException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_TOSS_RETRYABLE_ERROR,
-                    () -> String.format("orderId=%s", paymentEvent.getOrderId()));
-            handleRetryableFailure(paymentEvent);
+                    () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
+            handleRetryableFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         } catch (PaymentTossNonRetryableException e) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_TOSS_NON_RETRYABLE_ERROR,
-                    () -> String.format("orderId=%s", paymentEvent.getOrderId()));
-            handleNonRetryableFailure(paymentEvent);
+                    () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
+            handleNonRetryableFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         } catch (Exception e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_UNKNOWN_ERROR,
-                    () -> String.format("orderId=%s | 알 수 없는 오류 발생", paymentEvent.getOrderId()));
-            handleUnknownException(paymentEvent);
+                    () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
+            handleUnknownException(paymentEvent, e.getMessage());
             throw e;
         }
     }
@@ -124,16 +124,16 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         return donePaymentEvent;
     }
 
-    private void handleStockFailure(PaymentEvent paymentEvent) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+    private void handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
+        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s", failedPaymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
     }
 
-    private void handleNonRetryableFailure(PaymentEvent paymentEvent) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+    private void handleNonRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
+        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
         LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s", paymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
 
         orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
         LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
@@ -142,16 +142,17 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                         failedPaymentEvent.getOrderId()));
     }
 
-    private void handleRetryableFailure(PaymentEvent paymentEvent) {
-        paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent);
+    private void handleRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
+        paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
-                () -> String.format("orderId=%s", paymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
     }
 
-    private void handleUnknownException(PaymentEvent paymentEvent) {
-        paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+    private void handleUnknownException(PaymentEvent paymentEvent, String failureMessage) {
+        String message = failureMessage != null ? failureMessage : "Unknown error occurred";
+        paymentProcessorUseCase.markPaymentAsFail(paymentEvent, message);
         LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s", paymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), message));
 
         orderedProductUseCase.increaseStockForOrders(paymentEvent.getPaymentOrderList());
         LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,

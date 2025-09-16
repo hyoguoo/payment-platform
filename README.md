@@ -102,7 +102,7 @@
 │   │   └── PaymentEventEntity.java
 │   ├── internal
 │   │   └── InternalProductAdapter.java
-│   └── repostitory
+│   └── repository
 │       ├── JpaPaymentEventRepository.java 
 │       └── PaymentEventRepositoryImpl.java
 └── presentation

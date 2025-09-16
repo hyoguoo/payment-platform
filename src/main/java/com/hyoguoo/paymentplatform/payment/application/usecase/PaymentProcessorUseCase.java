@@ -1,6 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
+import com.hyoguoo.paymentplatform.payment.application.aspect.Reason;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -24,23 +26,39 @@ public class PaymentProcessorUseCase {
     private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
 
+    @Transactional
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
-        paymentEvent.execute(paymentKey, localDateTimeProvider.now());
+        LocalDateTime executedAt = localDateTimeProvider.now();
+        paymentEvent.execute(paymentKey, executedAt);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
+    @Transactional
+    @PublishPaymentHistory(action = "changed")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
         paymentEvent.done(approvedAt);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent) {
-        paymentEvent.fail();
+    @Transactional
+    @PublishPaymentHistory(action = "changed")
+    public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
+        paymentEvent.fail(failureReason);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent) {
-        paymentEvent.unknown();
+    @Transactional
+    @PublishPaymentHistory(action = "changed")
+    public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
+        paymentEvent.unknown(reason);
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
+    @Transactional
+    @PublishPaymentHistory(action = "retry")
+    public PaymentEvent increaseRetryCount(PaymentEvent paymentEvent) {
+        paymentEvent.increaseRetryCount();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
@@ -77,11 +95,5 @@ public class PaymentProcessorUseCase {
             case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->
                     throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         };
-    }
-
-    @Transactional
-    public void increaseRetryCount(PaymentEvent paymentEvent) {
-        paymentEvent.increaseRetryCount();
-        paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 }

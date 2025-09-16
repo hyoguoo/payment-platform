@@ -7,7 +7,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
@@ -31,7 +30,7 @@ class PaymentProcessorUseCaseTest {
     private PaymentProcessorUseCase paymentProcessorUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayPort mockPaymentGatewayPort;
-    private LocalDateTimeProvider testLocalDateTimeProvider;
+    private TestLocalDateTimeProvider testLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
@@ -84,6 +83,7 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1)).done(approvedAt);
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
+
     }
 
     @Test
@@ -91,15 +91,16 @@ class PaymentProcessorUseCaseTest {
     void testMarkPaymentAsFail() {
         // given
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String failureReason = "";
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsFail(paymentEvent);
+        PaymentEvent result = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
-        verify(paymentEvent, times(1)).fail();
-        assertThat(result.getId()).isEqualTo(paymentEvent.getId());
+        verify(paymentEvent, times(1)).fail(failureReason);
+        assertThat(result).isEqualTo(paymentEvent);
     }
 
     @Test
@@ -107,15 +108,16 @@ class PaymentProcessorUseCaseTest {
     void testMarkPaymentAsUnknown() {
         // given
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String reason = "";  // 빈 문자열로 테스트
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent);
+        PaymentEvent result = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, reason);
 
         // then
-        verify(paymentEvent, times(1)).unknown();
-        assertThat(result.getId()).isEqualTo(paymentEvent.getId());
+        verify(paymentEvent, times(1)).unknown(reason);
+        assertThat(result).isEqualTo(paymentEvent);
     }
 
     @Test

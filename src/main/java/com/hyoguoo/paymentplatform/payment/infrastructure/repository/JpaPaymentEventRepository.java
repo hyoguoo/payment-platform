@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.repostitory;
+package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import java.time.LocalDateTime;

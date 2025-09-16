@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
+import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
@@ -11,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +22,8 @@ public class PaymentCreateUseCase {
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
 
+    @Transactional
+    @PublishPaymentHistory(action = "created")
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
