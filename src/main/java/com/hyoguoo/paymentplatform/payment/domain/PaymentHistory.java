@@ -20,7 +20,6 @@ public class PaymentHistory {
     private PaymentEventStatus previousStatus;
     private PaymentEventStatus currentStatus;
     private String reason;
-    private Integer retryCount;
     private LocalDateTime changeStatusAt;
 
     public static PaymentHistory from(PaymentHistoryEvent event) {
@@ -30,14 +29,7 @@ public class PaymentHistory {
                 .previousStatus(event.getPreviousStatus())
                 .currentStatus(event.getCurrentStatus())
                 .reason(event.getReason())
-                .retryCount(extractRetryCount(event))
                 .changeStatusAt(event.getOccurredAt())
                 .build();
-    }
-
-    private static Integer extractRetryCount(PaymentHistoryEvent event) {
-        return event instanceof PaymentRetryAttemptedEvent retryEvent 
-                ? retryEvent.getRetryCount() 
-                : null;
     }
 }

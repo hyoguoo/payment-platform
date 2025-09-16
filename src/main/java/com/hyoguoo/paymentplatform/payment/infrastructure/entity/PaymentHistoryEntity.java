@@ -48,9 +48,6 @@ public class PaymentHistoryEntity extends BaseEntity {
     @Column(name = "reason", columnDefinition = "TEXT")
     private String reason;
 
-    @Column(name = "retry_count")
-    private Integer retryCount;
-
     @Column(name = "change_status_at", nullable = false)
     private LocalDateTime changeStatusAt;
 
@@ -62,7 +59,6 @@ public class PaymentHistoryEntity extends BaseEntity {
                 .previousStatus(paymentHistory.getPreviousStatus())
                 .currentStatus(paymentHistory.getCurrentStatus())
                 .reason(paymentHistory.getReason())
-                .retryCount(paymentHistory.getRetryCount())
                 .changeStatusAt(paymentHistory.getChangeStatusAt())
                 .build();
     }
@@ -75,7 +71,6 @@ public class PaymentHistoryEntity extends BaseEntity {
                 .previousStatus(previousStatus)
                 .currentStatus(currentStatus)
                 .reason(reason)
-                .retryCount(retryCount)
                 .changeStatusAt(changeStatusAt)
                 .build();
     }

@@ -61,7 +61,6 @@ public class PaymentEventPublisher {
                         previousStatus,
                         paymentEvent.getStatus(),
                         reason,
-                        paymentEvent.getRetryCount(),
                         occurredAt
                 )
         );

@@ -7,19 +7,15 @@ import lombok.Getter;
 @Getter
 public class PaymentRetryAttemptedEvent extends PaymentHistoryEvent {
 
-    private final Integer retryCount;
-
     public PaymentRetryAttemptedEvent(
             Long paymentEventId,
             String orderId,
             PaymentEventStatus previousStatus,
             PaymentEventStatus currentStatus,
             String reason,
-            Integer retryCount,
             LocalDateTime occurredAt
     ) {
         super(paymentEventId, orderId, previousStatus, currentStatus, reason, occurredAt);
-        this.retryCount = retryCount;
     }
 
     public static PaymentRetryAttemptedEvent of(
@@ -28,7 +24,6 @@ public class PaymentRetryAttemptedEvent extends PaymentHistoryEvent {
             PaymentEventStatus previousStatus,
             PaymentEventStatus currentStatus,
             String reason,
-            Integer retryCount,
             LocalDateTime occurredAt
     ) {
         return new PaymentRetryAttemptedEvent(
@@ -37,7 +32,6 @@ public class PaymentRetryAttemptedEvent extends PaymentHistoryEvent {
                 previousStatus,
                 currentStatus,
                 reason,
-                retryCount,
                 occurredAt
         );
     }
