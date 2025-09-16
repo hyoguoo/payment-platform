@@ -50,28 +50,28 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                 throw PaymentRetryableValidateException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
             }
 
-            paymentProcessorUseCase.increaseRetryCount(retryablePaymentEvent);
+            PaymentEvent increasedRetryCountEvent = paymentProcessorUseCase.increaseRetryCount(retryablePaymentEvent);
 
             PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                    .userId(retryablePaymentEvent.getBuyerId())
-                    .orderId(retryablePaymentEvent.getOrderId())
-                    .amount(retryablePaymentEvent.getTotalAmount())
-                    .paymentKey(retryablePaymentEvent.getPaymentKey())
+                    .userId(increasedRetryCountEvent.getBuyerId())
+                    .orderId(increasedRetryCountEvent.getOrderId())
+                    .amount(increasedRetryCountEvent.getTotalAmount())
+                    .paymentKey(increasedRetryCountEvent.getPaymentKey())
                     .build();
             TossPaymentInfo tossPaymentInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
                     paymentConfirmCommand
             );
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_SUCCESS_WITH_RETRY,
                     () -> String.format("orderId=%s approvedAt=%s",
-                            retryablePaymentEvent.getOrderId(),
+                            increasedRetryCountEvent.getOrderId(),
                             tossPaymentInfo.getPaymentDetails().getApprovedAt()));
             paymentProcessorUseCase.markPaymentAsDone(
-                    retryablePaymentEvent,
+                    increasedRetryCountEvent,
                     tossPaymentInfo.getPaymentDetails().getApprovedAt()
             );
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_DONE,
                     () -> String.format("orderId=%s approvedAt=%s",
-                            retryablePaymentEvent.getOrderId(),
+                            increasedRetryCountEvent.getOrderId(),
                             tossPaymentInfo.getPaymentDetails().getApprovedAt()));
         } catch (PaymentRetryableValidateException
                  | PaymentTossNonRetryableException e) {
