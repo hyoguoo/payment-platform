@@ -62,6 +62,7 @@ class PaymentRecoverServiceImplTest {
         when(mockPaymentLoadUseCase.getRetryablePaymentEvents()).thenReturn(paymentEvents);
         when(mockLocalDateTimeProvider.now()).thenReturn(LocalDateTime.now());
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(true);
+        when(mockPaymentProcessorUseCase.increaseRetryCount(any(PaymentEvent.class))).thenReturn(mockPaymentEvent);
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any())).thenReturn(mockTossPaymentInfo);
 
         // when
@@ -106,6 +107,7 @@ class PaymentRecoverServiceImplTest {
         when(mockPaymentLoadUseCase.getRetryablePaymentEvents()).thenReturn(paymentEvents);
         when(mockLocalDateTimeProvider.now()).thenReturn(LocalDateTime.now());
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(true);
+        when(mockPaymentProcessorUseCase.increaseRetryCount(any(PaymentEvent.class))).thenReturn(mockPaymentEvent);
         doThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR))
                 .when(mockPaymentProcessorUseCase).confirmPaymentWithGateway(any());
 
