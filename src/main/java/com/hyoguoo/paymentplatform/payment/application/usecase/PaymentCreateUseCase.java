@@ -1,11 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
+import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
-import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
@@ -22,10 +21,9 @@ public class PaymentCreateUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
-    private final LocalDateTimeProvider localDateTimeProvider;
-    private final PaymentEventPublisher paymentEventPublisher;
 
     @Transactional
+    @PublishPaymentHistory(action = "created")
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
@@ -43,8 +41,6 @@ public class PaymentCreateUseCase {
         );
 
         savedPaymentEvent.addPaymentOrderList(paymentOrderList);
-
-        publishPaymentCreatedEvent(savedPaymentEvent);
 
         return savedPaymentEvent;
     }
@@ -105,13 +101,5 @@ public class PaymentCreateUseCase {
                 .orderedProduct(matchedOrderedProduct)
                 .productInfo(productInfo)
                 .requiredBuild();
-    }
-
-    private void publishPaymentCreatedEvent(PaymentEvent paymentEvent) {
-        paymentEventPublisher.publishPaymentCreated(
-                paymentEvent,
-                "Payment event created for order: " + paymentEvent.getOrderName(),
-                localDateTimeProvider.now()
-        );
     }
 }

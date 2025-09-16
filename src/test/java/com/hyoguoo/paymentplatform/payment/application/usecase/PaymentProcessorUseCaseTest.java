@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,7 +12,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
-import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
@@ -33,19 +31,16 @@ class PaymentProcessorUseCaseTest {
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayPort mockPaymentGatewayPort;
     private TestLocalDateTimeProvider testLocalDateTimeProvider;
-    private PaymentEventPublisher mockEventPublisher;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
-        mockEventPublisher = Mockito.mock(PaymentEventPublisher.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
         paymentProcessorUseCase = new PaymentProcessorUseCase(
                 mockPaymentEventRepository,
                 mockPaymentGatewayPort,
-                testLocalDateTimeProvider,
-                mockEventPublisher
+                testLocalDateTimeProvider
         );
     }
 
@@ -71,7 +66,6 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
-        verify(mockEventPublisher, times(1)).publishStatusChange(any(), any(), any(), any());
     }
 
     @Test
@@ -89,7 +83,7 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1)).done(approvedAt);
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
-        verify(mockEventPublisher, times(1)).publishStatusChange(any(), any(), any(), any());
+
     }
 
     @Test
@@ -106,7 +100,6 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1)).fail();
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
-        verify(mockEventPublisher, times(1)).publishStatusChange(any(), any(), any(), any());
     }
 
     @Test
@@ -123,7 +116,7 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1)).unknown();
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
-        verify(mockEventPublisher, times(1)).publishStatusChange(any(), any(), any(), any());
+
     }
 
     @Test
@@ -144,8 +137,6 @@ class PaymentProcessorUseCaseTest {
         // then
         verify(paymentEvent, times(1))
                 .validateCompletionStatus(paymentConfirmCommand, tossPaymentInfo);
-        verify(mockEventPublisher, never()).publishStatusChange(any(), any(), any(), any());
-        verify(mockEventPublisher, never()).publishRetryAttempt(any(), any(), any(), any());
     }
 
     @Test
@@ -172,8 +163,6 @@ class PaymentProcessorUseCaseTest {
         // then
         assertThat(result.getPaymentConfirmResultStatus())
                 .isEqualTo(PaymentConfirmResultStatus.SUCCESS);
-        verify(mockEventPublisher, never()).publishStatusChange(any(), any(), any(), any());
-        verify(mockEventPublisher, never()).publishRetryAttempt(any(), any(), any(), any());
     }
 
     @Test
@@ -196,8 +185,6 @@ class PaymentProcessorUseCaseTest {
         assertThatThrownBy(
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossRetryableException.class);
-        verify(mockEventPublisher, never()).publishStatusChange(any(), any(), any(), any());
-        verify(mockEventPublisher, never()).publishRetryAttempt(any(), any(), any(), any());
     }
 
     @Test
@@ -220,8 +207,6 @@ class PaymentProcessorUseCaseTest {
         assertThatThrownBy(
                 () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
-        verify(mockEventPublisher, never()).publishStatusChange(any(), any(), any(), any());
-        verify(mockEventPublisher, never()).publishRetryAttempt(any(), any(), any(), any());
     }
 
     @Test
@@ -237,6 +222,5 @@ class PaymentProcessorUseCaseTest {
 
         // then
         verify(paymentEvent, times(1)).increaseRetryCount();
-        verify(mockEventPublisher, times(1)).publishRetryAttempt(any(), any(), any(), any());
     }
 }

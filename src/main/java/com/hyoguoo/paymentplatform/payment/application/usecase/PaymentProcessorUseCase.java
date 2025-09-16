@@ -1,15 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
-import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -25,94 +24,41 @@ public class PaymentProcessorUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
-    private final PaymentEventPublisher paymentEventPublisher;
 
     @Transactional
+    @PublishPaymentHistory(action = "execution started")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
-        PaymentEventStatus previousStatus = paymentEvent.getStatus();
         LocalDateTime executedAt = localDateTimeProvider.now();
-
         paymentEvent.execute(paymentKey, executedAt);
-        PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        paymentEventPublisher.publishStatusChange(
-                savedEvent,
-                previousStatus,
-                "Payment execution started with payment key: " + paymentKey,
-                executedAt
-        );
-
-        return savedEvent;
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
+    @PublishPaymentHistory(action = "completed")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
-        PaymentEventStatus previousStatus = paymentEvent.getStatus();
-        LocalDateTime occurredAt = localDateTimeProvider.now();
-
         paymentEvent.done(approvedAt);
-        PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        paymentEventPublisher.publishStatusChange(
-                savedEvent,
-                previousStatus,
-                "Payment successfully completed at " + approvedAt,
-                occurredAt
-        );
-
-        return savedEvent;
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
+    @PublishPaymentHistory(action = "failed")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, String failureReason) {
-        PaymentEventStatus previousStatus = paymentEvent.getStatus();
-        LocalDateTime occurredAt = localDateTimeProvider.now();
-
         paymentEvent.fail();
-        PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        paymentEventPublisher.publishStatusChange(
-                savedEvent,
-                previousStatus,
-                failureReason,
-                occurredAt
-        );
-
-        return savedEvent;
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
+    @PublishPaymentHistory(action = "marked as unknown")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, String reason) {
-        PaymentEventStatus previousStatus = paymentEvent.getStatus();
-        LocalDateTime occurredAt = localDateTimeProvider.now();
-
         paymentEvent.unknown();
-        PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        paymentEventPublisher.publishStatusChange(
-                savedEvent,
-                previousStatus,
-                reason,
-                occurredAt
-        );
-
-        return savedEvent;
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
+    @PublishPaymentHistory(action = "retry attempted")
     public void increaseRetryCount(PaymentEvent paymentEvent, String retryReason) {
-        PaymentEventStatus previousStatus = paymentEvent.getStatus();
-        LocalDateTime occurredAt = localDateTimeProvider.now();
-
         paymentEvent.increaseRetryCount();
-        PaymentEvent savedEvent = paymentEventRepository.saveOrUpdate(paymentEvent);
-
-        paymentEventPublisher.publishRetryAttempt(
-                savedEvent,
-                previousStatus,
-                retryReason,
-                occurredAt
-        );
+        paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     public void validateCompletionStatus(
