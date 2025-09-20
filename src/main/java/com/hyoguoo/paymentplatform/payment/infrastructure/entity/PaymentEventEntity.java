@@ -100,6 +100,7 @@ public class PaymentEventEntity extends BaseEntity {
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)
                                 .orElse(Collections.emptyList()))
                 )
+                .createdAt(getCreatedAt())
                 .allArgsBuild();
     }
 }
