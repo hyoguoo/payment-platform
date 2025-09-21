@@ -582,17 +582,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  // Form validation - trim whitespace and remove empty parameters
-  function validateSearchForm(form) {
-    const orderIdInput = form.querySelector('#orderIdFilter');
-    if (orderIdInput && orderIdInput.value) {
-      orderIdInput.value = orderIdInput.value.trim();
-      if (!orderIdInput.value || orderIdInput.value === '') {
-        orderIdInput.removeAttribute('name');
-      }
-    }
-    return true;
-  }
 
   // Load saved theme
   document.addEventListener('DOMContentLoaded', function () {
