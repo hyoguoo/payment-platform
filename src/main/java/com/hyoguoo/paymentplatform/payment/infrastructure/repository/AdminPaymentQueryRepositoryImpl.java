@@ -1,5 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.core.common.dto.PageResponse;
+import com.hyoguoo.paymentplatform.core.common.dto.PageSpec;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventSearchQuery;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentHistorySearchQuery;
 import com.hyoguoo.paymentplatform.payment.application.port.AdminPaymentQueryRepository;
@@ -23,7 +25,10 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Sort.Direction;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
@@ -36,8 +41,31 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
     private static final QPaymentHistoryEntity paymentHistory = QPaymentHistoryEntity.paymentHistoryEntity;
     private final JPAQueryFactory queryFactory;
 
+    private static PageRequest toPageable(PageSpec pageSpec) {
+        return PageRequest.of(
+                pageSpec.getZeroBasedPage(),
+                pageSpec.getSize(),
+                Sort.by(Direction.fromString(pageSpec.getSortDirection().toString()), pageSpec.getSortBy())
+        );
+    }
+
+    private static <T> PageResponse<T> toPageResponse(Page<T> page) {
+        return PageResponse.<T>builder()
+                .content(page.getContent())
+                .currentPage(page.getNumber() + 1)
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .pageSize(page.getSize())
+                .hasNext(page.hasNext())
+                .hasPrevious(page.hasPrevious())
+                .isFirst(page.isFirst())
+                .isLast(page.isLast())
+                .build();
+    }
+
     @Override
-    public Page<PaymentEvent> searchPaymentEvents(PaymentEventSearchQuery searchQuery, Pageable pageable) {
+    public PageResponse<PaymentEvent> searchPaymentEvents(PaymentEventSearchQuery searchQuery, PageSpec pageSpec) {
+        Pageable pageable = toPageable(pageSpec);
         BooleanExpression predicate = orderIdContains(searchQuery.getOrderId());
         JPAQuery<PaymentEventEntity> query = queryFactory
                 .selectFrom(paymentEvent)
@@ -54,11 +82,15 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
                 .map(entity -> entity.toDomain(List.of()))
                 .toList();
 
-        return new PageImpl<>(content, pageable, total);
+        Page<PaymentEvent> page = new PageImpl<>(content, pageable, total);
+
+        return toPageResponse(page);
     }
 
     @Override
-    public Page<PaymentHistory> searchPaymentHistories(PaymentHistorySearchQuery searchQuery, Pageable pageable) {
+    public PageResponse<PaymentHistory> searchPaymentHistories(PaymentHistorySearchQuery searchQuery,
+            PageSpec pageSpec) {
+        Pageable pageable = toPageable(pageSpec);
         BooleanExpression predicate = historyOrderIdContains(searchQuery.getOrderId());
         JPAQuery<PaymentHistoryEntity> query = queryFactory
                 .selectFrom(paymentHistory)
@@ -75,7 +107,9 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
                 .map(PaymentHistoryEntity::toDomain)
                 .toList();
 
-        return new PageImpl<>(content, pageable, total);
+        Page<PaymentHistory> page = new PageImpl<>(content, pageable, total);
+
+        return toPageResponse(page);
     }
 
     @Override
