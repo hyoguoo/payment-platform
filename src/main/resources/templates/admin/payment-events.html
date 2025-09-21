@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Events - Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <style>
+    /* Dark mode variables */
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-card: #ffffff;
+      --text-primary: #212529;
+      --text-secondary: #6c757d;
+      --text-muted: #adb5bd;
+      --border-color: #dee2e6;
+      --table-header-bg: #495057;
+      --table-header-text: #ffffff;
+      --hover-bg: #f8f9fa;
+      --navbar-bg: #2c3e50;
+      --primary-color: #4a90e2;
+      --success-color: #27ae60;
+      --danger-color: #e74c3c;
+      --warning-color: #f39c12;
+      --table-row-bg: #ffffff;
+      --table-row-hover: #f8f9fa;
+      --table-border: #dee2e6;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #1a1d23;
+      --bg-secondary: #22262e;
+      --bg-card: #2c3139;
+      --text-primary: #e9ecef;
+      --text-secondary: #adb5bd;
+      --text-muted: #6c757d;
+      --border-color: #495057;
+      --table-header-bg: #343a40;
+      --table-header-text: #ffffff;
+      --hover-bg: #343a40;
+      --navbar-bg: #1a1d23;
+      --primary-color: #5a9fd4;
+      --success-color: #2ecc71;
+      --danger-color: #e74c3c;
+      --warning-color: #f39c12;
+      --table-row-bg: #2c3139;
+      --table-row-hover: #343a40;
+      --table-border: #495057;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      transition: background-color 0.3s, color 0.3s;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+    }
+
+    .status-badge {
+      padding: 0.35rem 0.65rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+    }
+
+    .status-ready {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .status-in-progress {
+      background-color: #0d6efd;
+      color: white;
+    }
+
+    .status-success {
+      background-color: #198754;
+      color: white;
+    }
+
+    .status-fail, .status-failed {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    .status-canceled {
+      background-color: #fd7e14;
+      color: white;
+    }
+
+    .status-partial-canceled {
+      background-color: #ffc107;
+      color: #000;
+    }
+
+    .status-unknown {
+      background-color: #6f42c1;
+      color: white;
+    }
+
+    .status-done {
+      background-color: #20c997;
+      color: white;
+    }
+
+    .status-initial {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .detail-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s;
+    }
+
+    .detail-card .card-header {
+      background-color: var(--table-header-bg);
+      color: var(--table-header-text);
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.875rem 1.25rem;
+      border: none;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .detail-card .card-header i {
+      margin-right: 0.5rem;
+    }
+
+    .text-secondary-custom {
+      color: var(--text-secondary) !important;
+    }
+
+    .table {
+      color: var(--text-primary);
+      background-color: var(--table-row-bg);
+      margin-bottom: 0;
+    }
+
+    .table thead th {
+      background-color: var(--table-header-bg);
+      color: var(--table-header-text);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.875rem;
+      border: none;
+      white-space: nowrap;
+    }
+
+    .table tbody tr {
+      background-color: var(--table-row-bg);
+      border-bottom: 1px solid var(--table-border);
+    }
+
+    .table tbody tr:hover {
+      background-color: var(--table-row-hover);
+    }
+
+    .table tbody td {
+      background-color: transparent;
+      border: none;
+      padding: 0.875rem;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .stat-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      height: 100%;
+      transition: all 0.2s;
+    }
+
+    .stat-card:hover {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+      transform: translateY(-1px);
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-color);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .navbar {
+      background-color: var(--navbar-bg) !important;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 0.75rem 0;
+    }
+
+    .navbar-brand {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .navbar-nav .nav-link {
+      font-weight: 500;
+      margin-left: 1rem;
+    }
+
+    .filter-section {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .filter-section .form-select,
+    .filter-section .form-control {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      border-color: var(--border-color);
+    }
+
+    .filter-section .form-select:focus,
+    .filter-section .form-control:focus {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 0.2rem rgba(74, 144, 226, 0.25);
+    }
+
+    /* Placeholder color for dark mode */
+    .filter-section .form-control::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.7;
+    }
+
+    [data-theme="dark"] .filter-section .form-control::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+
+    .btn-professional {
+      font-weight: 500;
+      padding: 0.5rem 1.25rem;
+      border-radius: 4px;
+      transition: all 0.2s;
+      text-transform: none;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-primary-professional {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: white;
+    }
+
+    .btn-primary-professional:hover {
+      background-color: #3a7bc8;
+      border-color: #3a7bc8;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(74, 144, 226, 0.3);
+    }
+
+    .pagination {
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .page-link {
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border-color);
+      font-weight: 500;
+    }
+
+    .page-link:hover {
+      background-color: var(--hover-bg);
+      color: var(--primary-color);
+      border-color: var(--border-color);
+    }
+
+    .page-item.active .page-link {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: white;
+    }
+
+    .page-item.disabled .page-link {
+      background-color: var(--bg-secondary);
+      color: var(--text-muted);
+      border-color: var(--border-color);
+    }
+
+    .theme-toggle {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 1000;
+    }
+
+    .theme-toggle button {
+      background-color: var(--bg-card);
+      border: 2px solid var(--border-color);
+      color: var(--text-primary);
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      font-size: 1.25rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .theme-toggle button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    a {
+      color: var(--primary-color);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    a:hover {
+      color: var(--primary-color);
+      opacity: 0.8;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    /* Make table more responsive */
+    .table-responsive {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .table {
+      min-width: 1200px;
+    }
+
+    /* Optimize column widths */
+    .table th, .table td {
+      white-space: nowrap;
+    }
+
+    @media (max-width: 768px) {
+      .filter-section .row > div {
+        margin-bottom: 1rem;
+      }
+
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .page-header > div:first-child {
+        margin-bottom: 1rem;
+      }
+
+      .stat-card {
+        margin-bottom: 1rem;
+      }
+
+      .table {
+        font-size: 0.875rem;
+      }
+
+      .table thead th,
+      .table tbody td {
+        padding: 0.5rem;
+      }
+
+      .status-badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.4rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<!-- Professional Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/admin/payments/events">
+      <i class="bi bi-credit-card-2-front"></i> Payment Admin
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item">
+          <a class="nav-link active" href="/admin/payments/events">
+            <i class="bi bi-calendar-event"></i> Events
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin/payments/history">
+            <i class="bi bi-clock-history"></i> History
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid my-4">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h3 class="mb-0">Payment Events</h3>
+      <p class="text-secondary-custom mb-0">Manage and monitor payment transactions</p>
+    </div>
+    <div>
+      <button class="btn btn-primary-professional btn-professional" onclick="location.reload()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Total Count Display -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <span class="text-secondary-custom">Total Events: </span>
+      <strong th:text="${events != null ? events.totalElements : 0}">0</strong>
+    </div>
+  </div>
+
+  <!-- Filter Section -->
+  <div class="filter-section">
+    <form method="get" action="/admin/payments/events" onsubmit="return validateSearchForm(this)">
+      <div class="row">
+        <div class="col-md-6">
+          <label for="orderIdFilter" class="form-label">Order ID Search</label>
+          <input type="text" class="form-control" id="orderIdFilter" name="orderId"
+                 th:value="${param.orderId}" placeholder="Enter Order ID to search">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">&nbsp;</label>
+          <div>
+            <button type="submit" class="btn btn-primary-professional btn-professional w-100">
+              <i class="bi bi-search"></i> Search
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Events Table -->
+  <div class="card detail-card">
+    <div class="card-header">
+      <i class="bi bi-list-ul"></i> Payment Events List
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+          <tr>
+            <th>ID</th>
+            <th>Order ID</th>
+            <th>Order Name</th>
+            <th>Buyer ID</th>
+            <th>Seller ID</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Retry</th>
+            <th>Created At</th>
+            <th>Actions</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:if="${events != null and events.content != null and !#lists.isEmpty(events.content)}"
+              th:each="event : ${events.content}">
+            <td><code>#<span th:text="${event.id}">-</span></code></td>
+            <td th:text="${event.orderId}">-</td>
+            <td th:text="${event.orderName}">-</td>
+            <td th:text="${event.buyerId}">-</td>
+            <td th:text="${event.sellerId}">-</td>
+            <td th:text="${'₩' + #numbers.formatDecimal(event.totalAmount, 0, 'COMMA', 0, 'POINT')}">₩0</td>
+            <td>
+              <span class="status-badge"
+                    th:classappend="${'status-' + #strings.toLowerCase(#strings.replace(event.status.toString(), '_', '-'))}"
+                    th:text="${event.status}">-</span>
+            </td>
+            <td th:text="${event.retryCount}">0</td>
+            <td th:text="${#temporals.format(event.createdAt, 'yyyy-MM-dd HH:mm')}">-</td>
+            <td>
+              <a th:href="@{/admin/payments/events/{id}(id=${event.id})}"
+                 class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-eye"></i> View
+              </a>
+            </td>
+          </tr>
+          <tr th:if="${events == null or events.content == null or #lists.isEmpty(events.content)}">
+            <td colspan="10" class="text-center text-secondary-custom py-4">
+              No payment events found
+            </td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <nav th:if="${events != null and events.totalPages > 1}">
+    <ul class="pagination justify-content-center">
+      <li class="page-item" th:classappend="${events.currentPage == 1} ? 'disabled'">
+        <a class="page-link"
+           th:href="@{/admin/payments/events(page=${events.currentPage - 1}, size=${events.pageSize}, orderId=${param.orderId})}"
+           tabindex="-1">Previous</a>
+      </li>
+
+      <li th:each="pageNum : ${#numbers.sequence(1, events.totalPages)}"
+          class="page-item"
+          th:classappend="${pageNum == events.currentPage} ? 'active'">
+        <a class="page-link"
+           th:href="@{/admin/payments/events(page=${pageNum}, size=${events.pageSize}, orderId=${param.orderId})}"
+           th:text="${pageNum}">1</a>
+      </li>
+
+      <li class="page-item" th:classappend="${events.currentPage == events.totalPages} ? 'disabled'">
+        <a class="page-link"
+           th:href="@{/admin/payments/events(page=${events.currentPage + 1}, size=${events.pageSize}, orderId=${param.orderId})}">Next</a>
+      </li>
+    </ul>
+  </nav>
+</div>
+
+<!-- Dark Mode Toggle -->
+<div class="theme-toggle">
+  <button onclick="toggleTheme()" id="theme-button" aria-label="Toggle dark mode">
+    <i class="bi bi-moon-fill"></i>
+  </button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Form validation - trim whitespace and remove empty parameters
+  function validateSearchForm(form) {
+    const orderIdInput = form.querySelector('#orderIdFilter');
+    if (orderIdInput && orderIdInput.value) {
+      orderIdInput.value = orderIdInput.value.trim();
+      if (!orderIdInput.value || orderIdInput.value === '') {
+        orderIdInput.removeAttribute('name');
+      }
+    }
+    return true;
+  }
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+
+  // Load saved theme
+  document.addEventListener('DOMContentLoaded', function () {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    const button = document.getElementById('theme-button');
+
+    if (savedTheme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      button.innerHTML = '<i class="bi bi-sun-fill"></i>';
+    }
+  });
+
+  // Dark mode toggle
+  function toggleTheme() {
+    const html = document.documentElement;
+    const button = document.getElementById('theme-button');
+
+    if (html.getAttribute('data-theme') === 'dark') {
+      html.setAttribute('data-theme', 'light');
+      button.innerHTML = '<i class="bi bi-moon-fill"></i>';
+      localStorage.setItem('theme', 'light');
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      button.innerHTML = '<i class="bi bi-sun-fill"></i>';
+      localStorage.setItem('theme', 'dark');
+    }
+  }
+</script>
+</body>
+</html>

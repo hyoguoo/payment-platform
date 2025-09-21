@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Event Detail - Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <style>
+    /* Dark mode variables */
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-card: #ffffff;
+      --text-primary: #212529;
+      --text-secondary: #6c757d;
+      --text-muted: #adb5bd;
+      --border-color: #dee2e6;
+      --table-header-bg: #495057;
+      --table-header-text: #ffffff;
+      --hover-bg: #f8f9fa;
+      --navbar-bg: #2c3e50;
+      --primary-color: #4a90e2;
+      --success-color: #27ae60;
+      --danger-color: #e74c3c;
+      --warning-color: #f39c12;
+      --table-row-bg: #ffffff;
+      --table-row-hover: #f8f9fa;
+      --table-border: #dee2e6;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #1a1d23;
+      --bg-secondary: #22262e;
+      --bg-card: #2c3139;
+      --text-primary: #e9ecef;
+      --text-secondary: #adb5bd;
+      --text-muted: #6c757d;
+      --border-color: #495057;
+      --table-header-bg: #343a40;
+      --table-header-text: #ffffff;
+      --hover-bg: #343a40;
+      --navbar-bg: #1a1d23;
+      --primary-color: #5a9fd4;
+      --success-color: #2ecc71;
+      --danger-color: #e74c3c;
+      --warning-color: #f39c12;
+      --table-row-bg: #2c3139;
+      --table-row-hover: #343a40;
+      --table-border: #495057;
+    }
+
+    /* Base styles */
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      transition: background-color 0.3s, color 0.3s;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+    }
+
+    /* Status Badge Styles */
+    .status-badge {
+      padding: 0.35rem 0.65rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+    }
+
+    .status-ready {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .status-in-progress {
+      background-color: #0d6efd;
+      color: white;
+    }
+
+    .status-success {
+      background-color: #198754;
+      color: white;
+    }
+
+    .status-fail,
+    .status-failed {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    .status-canceled {
+      background-color: #fd7e14;
+      color: white;
+    }
+
+    .status-partial-canceled {
+      background-color: #ffc107;
+      color: #000;
+    }
+
+    .status-unknown {
+      background-color: #6f42c1;
+      color: white;
+    }
+
+    .status-done {
+      background-color: #20c997;
+      color: white;
+    }
+
+    .status-not-started {
+      background-color: #6c757d;
+      color: white;
+    }
+
+    .status-executing {
+      background-color: #17a2b8;
+      color: white;
+    }
+
+    /* Card Design */
+    .detail-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s;
+    }
+
+    .detail-card .card-header {
+      background-color: var(--table-header-bg);
+      color: var(--table-header-text);
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.875rem 1.25rem;
+      border: none;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .detail-card .card-header i {
+      margin-right: 0.5rem;
+    }
+
+    /* Info Row Styles */
+    .info-row {
+      padding: 0.875rem 0;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.25rem;
+    }
+
+    .info-value {
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    /* Custom text-secondary class for better dark mode support */
+    .text-secondary-custom {
+      color: var(--text-secondary) !important;
+    }
+
+    /* Table Design */
+    .table {
+      color: var(--text-primary);
+      background-color: var(--table-row-bg);
+      margin-bottom: 0;
+    }
+
+    .table thead th {
+      background-color: var(--table-header-bg);
+      color: var(--table-header-text);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.875rem;
+      border: none;
+      white-space: nowrap;
+    }
+
+    .table tbody tr {
+      background-color: var(--table-row-bg);
+      border-bottom: 1px solid var(--table-border);
+    }
+
+    .table tbody tr:hover {
+      background-color: var(--table-row-hover);
+    }
+
+    .table tbody td {
+      background-color: transparent;
+      border: none;
+      padding: 0.875rem;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    /* Stat Cards - Metrics Display */
+    .stat-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      height: 100%;
+      transition: all 0.2s;
+    }
+
+    .stat-card:hover {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+      transform: translateY(-1px);
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-color);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    /* Navbar */
+    .navbar {
+      background-color: var(--navbar-bg) !important;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 0.75rem 0;
+    }
+
+    .navbar-brand {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .navbar-nav .nav-link {
+      font-weight: 500;
+      margin-left: 1rem;
+    }
+
+    /* Sort Controls */
+    .sort-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .sort-btn {
+      background: none;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .sort-btn:hover {
+      background-color: var(--hover-bg);
+      color: var(--text-primary);
+    }
+
+    .sort-btn.active {
+      background-color: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+    }
+
+    /* Breadcrumb */
+    .breadcrumb {
+      background: transparent;
+      padding: 0;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .breadcrumb-item a {
+      color: var(--primary-color);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .breadcrumb-item a:hover {
+      text-decoration: underline;
+    }
+
+    /* Action Section */
+    .action-section {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 1.5rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    /* Buttons */
+    .btn-professional {
+      padding: 0.5rem 1.25rem;
+      font-weight: 500;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      border: 1px solid;
+    }
+
+    .btn-danger-professional {
+      background-color: var(--danger-color);
+      border-color: var(--danger-color);
+      color: white;
+    }
+
+    .btn-danger-professional:hover:not(:disabled) {
+      background-color: #c0392b;
+      border-color: #c0392b;
+      transform: translateY(-1px);
+    }
+
+    .btn-warning-professional {
+      background-color: var(--warning-color);
+      border-color: var(--warning-color);
+      color: white;
+    }
+
+    .btn-warning-professional:hover:not(:disabled) {
+      background-color: #e67e22;
+      border-color: #e67e22;
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Dark mode toggle */
+    .theme-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+    }
+
+    .theme-toggle button {
+      width: 45px;
+      height: 45px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .theme-toggle button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Page Header */
+    .page-header {
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    /* Time column fix */
+    .time-column {
+      min-width: 180px;
+      white-space: nowrap;
+    }
+
+    /* Sort indicator */
+    .sort-indicator {
+      font-size: 0.7rem;
+      margin-left: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+<!-- Navigation -->
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/admin/payments/events">
+      <i class="bi bi-credit-card-2-back"></i> Payment Admin System
+    </a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/admin/payments/events">
+        <i class="bi bi-list-ul"></i> Events
+      </a>
+      <a class="nav-link" href="/admin/payments/history">
+        <i class="bi bi-clock-history"></i> History
+      </a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid mt-4">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/admin/payments/events">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="/admin/payments/events">Payment Events</a></li>
+    </ol>
+  </nav>
+
+  <!-- Page Header -->
+  <div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+      <h3 class="mb-0">Payment Event Detail</h3>
+      <p class="text-secondary-custom mb-0">Event ID: #<span th:text="${event.id}">-</span></p>
+    </div>
+    <div>
+                <span class="status-badge"
+                      th:classappend="${'status-' + #strings.toLowerCase(#strings.replace(event.status.toString(), '_', '-'))}"
+                      th:text="${event.status}">-</span>
+    </div>
+  </div>
+
+  <!-- Metrics Dashboard -->
+  <div class="row mb-4">
+    <div class="col-lg-3 col-md-6 mb-3">
+      <div class="stat-card">
+        <div class="stat-number" th:text="${'₩' + #numbers.formatDecimal(event.totalAmount, 0, 'COMMA', 0, 'POINT')}">
+          ₩0
+        </div>
+        <div class="stat-label">Total Amount</div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+      <div class="stat-card">
+        <div class="stat-number" th:text="${orders != null ? orders.size() : 0}">0</div>
+        <div class="stat-label">Total Orders</div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+      <div class="stat-card">
+        <div class="stat-number" th:text="${histories != null ? histories.size() : 0}">0</div>
+        <div class="stat-label">Status Changes</div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+      <div class="stat-card">
+        <div class="stat-number" th:text="${event.retryCount}">0</div>
+        <div class="stat-label">Retry Attempts</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction Information -->
+  <div class="card detail-card">
+    <div class="card-header">
+      <i class="bi bi-info-circle-fill"></i> Transaction Information
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-6">
+          <div class="info-row">
+            <div class="info-label">Order ID</div>
+            <div class="info-value" th:text="${event.orderId}">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Payment Key</div>
+            <div class="info-value">
+              <code th:text="${event.paymentKey ?: 'Not Generated'}">-</code>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Order Name</div>
+            <div class="info-value" th:text="${event.orderName}">-</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="info-row">
+            <div class="info-label">Buyer ID</div>
+            <div class="info-value" th:text="${event.buyerId}">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Seller ID</div>
+            <div class="info-value" th:text="${event.sellerId}">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Status Reason</div>
+            <div class="info-value">
+                                <span th:text="${event.statusReason ?: 'None'}"
+                                      th:class="${event.statusReason != null and !#strings.isEmpty(event.statusReason) ? 'text-danger' : 'text-secondary-custom'}">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timestamp Information -->
+  <div class="card detail-card">
+    <div class="card-header">
+      <i class="bi bi-calendar-check-fill"></i> Timestamp Information
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-4">
+          <div class="info-row">
+            <div class="info-label">Created At</div>
+            <div class="info-value"
+                 th:text="${event.createdAt != null ? #temporals.format(event.createdAt, 'yyyy-MM-dd HH:mm:ss') : 'N/A'}">
+              -
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="info-row">
+            <div class="info-label">Executed At</div>
+            <div class="info-value"
+                 th:text="${event.executedAt != null ? #temporals.format(event.executedAt, 'yyyy-MM-dd HH:mm:ss') : '-'}">
+              -
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="info-row">
+            <div class="info-label">Approved At</div>
+            <div class="info-value"
+                 th:text="${event.approvedAt != null ? #temporals.format(event.approvedAt, 'yyyy-MM-dd HH:mm:ss') : '-'}">
+              -
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Orders -->
+  <div class="card detail-card">
+    <div class="card-header">
+      <i class="bi bi-cart-check-fill"></i> Payment Orders
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+          <tr>
+            <th>Order ID</th>
+            <th>Product ID</th>
+            <th>Quantity</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:if="${orders != null}" th:each="order : ${orders}">
+            <td><code>#<span th:text="${order.id}">-</span></code></td>
+            <td th:text="${order.productId}">-</td>
+            <td th:text="${order.quantity}">-</td>
+            <td th:text="${'₩' + #numbers.formatDecimal(order.totalAmount, 0, 'COMMA', 0, 'POINT')}">₩0</td>
+            <td>
+                                    <span class="status-badge"
+                                          th:classappend="${'status-' + #strings.toLowerCase(#strings.replace(order.status.toString(), '_', '-'))}"
+                                          th:text="${order.status}">-</span>
+            </td>
+          </tr>
+          <tr th:if="${orders == null || orders.empty}">
+            <td colspan="5" class="text-center text-secondary-custom py-3">No payment orders found</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Change History with Sort -->
+  <div class="card detail-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <i class="bi bi-clock-history"></i> Status Change History
+      </div>
+      <div class="sort-controls">
+        <button class="sort-btn active" id="sortDesc" onclick="sortHistory('desc')">
+          <i class="bi bi-sort-down"></i> Newest First
+        </button>
+        <button class="sort-btn" id="sortAsc" onclick="sortHistory('asc')">
+          <i class="bi bi-sort-up"></i> Oldest First
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table" id="historyTable">
+          <thead>
+          <tr>
+            <th class="time-column">Timestamp</th>
+            <th>Previous Status</th>
+            <th style="width: 40px;"></th>
+            <th>Current Status</th>
+            <th>Reason</th>
+          </tr>
+          </thead>
+          <tbody id="historyTableBody">
+          <tr th:if="${histories != null}" th:each="hist : ${histories}"
+              th:data-timestamp="${hist.changeStatusAt}">
+            <td class="time-column">
+              <span th:text="${#temporals.format(hist.changeStatusAt, 'yyyy-MM-dd HH:mm:ss')}">-</span>
+            </td>
+            <td>
+                                    <span class="status-badge" th:if="${hist.previousStatus}"
+                                          th:classappend="${'status-' + #strings.toLowerCase(#strings.replace(hist.previousStatus.toString(), '_', '-'))}"
+                                          th:text="${hist.previousStatus}">-</span>
+              <span class="text-secondary-custom" th:unless="${hist.previousStatus}">Initial</span>
+            </td>
+            <td class="text-center">→</td>
+            <td>
+                                    <span class="status-badge"
+                                          th:classappend="${'status-' + #strings.toLowerCase(#strings.replace(hist.currentStatus.toString(), '_', '-'))}"
+                                          th:text="${hist.currentStatus}">-</span>
+            </td>
+            <td>
+              <small th:text="${hist.reason ?: '-'}" class="text-secondary-custom">-</small>
+            </td>
+          </tr>
+          <tr th:if="${histories == null || histories.empty}">
+            <td colspan="5" class="text-center text-secondary-custom py-3">No status changes recorded</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dark Mode Toggle -->
+  <div class="theme-toggle">
+    <button onclick="toggleTheme()" id="theme-button" aria-label="Toggle dark mode">
+      <i class="bi bi-moon-fill"></i>
+    </button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // History sorting
+    function sortHistory(order) {
+      const table = document.getElementById('historyTableBody');
+      const rows = Array.from(table.querySelectorAll('tr[data-timestamp]'));
+
+      // Update button states
+      document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+      if (order === 'asc') {
+        document.getElementById('sortAsc').classList.add('active');
+      } else {
+        document.getElementById('sortDesc').classList.add('active');
+      }
+
+      // Sort rows
+      rows.sort((a, b) => {
+        const dateA = new Date(a.dataset.timestamp);
+        const dateB = new Date(b.dataset.timestamp);
+        return order === 'asc' ? dateA - dateB : dateB - dateA;
+      });
+
+      // Re-append sorted rows
+      rows.forEach(row => table.appendChild(row));
+    }
+
+    // Dark mode toggle
+    function toggleTheme() {
+      const html = document.documentElement;
+      const button = document.getElementById('theme-button');
+
+      if (html.getAttribute('data-theme') === 'dark') {
+        html.setAttribute('data-theme', 'light');
+        button.innerHTML = '<i class="bi bi-moon-fill"></i>';
+        localStorage.setItem('theme', 'light');
+      } else {
+        html.setAttribute('data-theme', 'dark');
+        button.innerHTML = '<i class="bi bi-sun-fill"></i>';
+        localStorage.setItem('theme', 'dark');
+      }
+    }
+
+    // Load saved theme
+    document.addEventListener('DOMContentLoaded', function () {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const button = document.getElementById('theme-button');
+
+      if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        button.innerHTML = '<i class="bi bi-sun-fill"></i>';
+      }
+    });
+  </script>
+</body>
+</html>

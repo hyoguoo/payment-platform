@@ -38,6 +38,7 @@ public class PaymentEvent {
     private Integer retryCount;
     private String statusReason;
     private List<PaymentOrder> paymentOrderList;
+    private LocalDateTime createdAt;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     @SuppressWarnings("unused")
