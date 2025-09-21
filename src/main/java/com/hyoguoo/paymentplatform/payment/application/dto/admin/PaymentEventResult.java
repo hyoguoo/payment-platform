@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.dto.admin;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Builder;
@@ -25,7 +26,7 @@ public class PaymentEventResult {
     private final List<PaymentOrderResult> paymentOrderList;
     private final LocalDateTime createdAt;
     private final Boolean isPaymentDone;
-    private final Long totalAmount;
+    private final BigDecimal totalAmount;
 
     public static PaymentEventResult from(PaymentEvent paymentEvent) {
         List<PaymentOrderResult> orderResponses = paymentEvent.getPaymentOrderList() != null
@@ -33,10 +34,6 @@ public class PaymentEventResult {
                 .map(PaymentOrderResult::from)
                 .toList()
                 : List.of();
-
-        Long totalAmount = orderResponses.stream()
-                .mapToLong(order -> order.getAmount() != null ? order.getAmount() : 0L)
-                .sum();
 
         return PaymentEventResult.builder()
                 .id(paymentEvent.getId())
@@ -53,7 +50,7 @@ public class PaymentEventResult {
                 .paymentOrderList(orderResponses)
                 .createdAt(paymentEvent.getCreatedAt())
                 .isPaymentDone(paymentEvent.getStatus() == PaymentEventStatus.DONE)
-                .totalAmount(totalAmount)
+                .totalAmount(paymentEvent.getTotalAmount())
                 .build();
     }
 }
