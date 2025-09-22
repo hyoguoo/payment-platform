@@ -33,13 +33,13 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
 
-### 결제 흐름 추적을 위한 로그 체계 설계
+### 결제 흐름 추적을 위한 모니터링 체계 구축
 
-- 승인 지연, 재시도 등 여러 단계를 거치는 복잡한 흐름에서 요청 단위 로그만으로는 전체 흐름 파악이 어려움
-- traceId 및 orderId 기반 로그 구조를 설계해 전체 결제 흐름을 추적 가능하도록 개선하고, 로그 성능 저하 방지와 구조화된 로깅 설계 적용
-- 링크: [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance)
+- 승인 지연, 재시도 등 여러 단계를 거치는 복잡한 흐름에서 요청 단위 로그만으로는 전체 흐름 파악과 이슈 대응이 어려움
+- 구조화된 로깅(traceId/orderId 기반)과 AOP 기반 결제 정보 변동 저장, Admin 페이지를 통해 결제 흐름의 가시성 확보
+- 링크: [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance) / [결제 이력 추적 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-history-with-aop)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/6640d3ff-9257-4a51-b072-ee7a7edc20d8">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
 
 ### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
 
