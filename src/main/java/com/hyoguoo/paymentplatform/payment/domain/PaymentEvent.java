@@ -113,6 +113,7 @@ public class PaymentEvent {
         }
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
+        this.statusReason = null;
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
