@@ -8,6 +8,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -28,8 +29,8 @@ public class PaymentHistoryAspect {
     @Around("@annotation(publishHistory)")
     public Object publishHistoryEvent(ProceedingJoinPoint joinPoint, PublishPaymentHistory publishHistory)
             throws Throwable {
-        PaymentEvent beforeEvent = findPaymentEvent(joinPoint.getArgs());
-        PaymentEventStatus beforeStatus = beforeEvent != null ? beforeEvent.getStatus() : null;
+        Optional<PaymentEvent> beforeEventOpt = findPaymentEvent(joinPoint.getArgs());
+        PaymentEventStatus beforeStatus = beforeEventOpt.map(PaymentEvent::getStatus).orElse(null);
 
         String reason = findReasonParameter(joinPoint);
 
@@ -45,12 +46,11 @@ public class PaymentHistoryAspect {
         }
     }
 
-    private PaymentEvent findPaymentEvent(Object[] args) {
+    private Optional<PaymentEvent> findPaymentEvent(Object[] args) {
         return Arrays.stream(args)
                 .filter(PaymentEvent.class::isInstance)
                 .map(PaymentEvent.class::cast)
-                .findFirst()
-                .orElse(null);
+                .findFirst();
     }
 
     private String findReasonParameter(ProceedingJoinPoint joinPoint) {
