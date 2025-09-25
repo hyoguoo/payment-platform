@@ -491,7 +491,7 @@
           <thead>
           <tr>
             <th>ID</th>
-            <th>Event ID</th>
+            <th>Order ID</th>
             <th>Previous Status</th>
             <th style="width: 40px;"></th>
             <th>Current Status</th>
@@ -505,7 +505,7 @@
             <td><code>#<span th:text="${history.id}">-</span></code></td>
             <td>
               <a th:href="@{/admin/payments/events/{id}(id=${history.paymentEventId})}"
-                 th:text="${history.paymentEventId}">-</a>
+                 th:text="${history.orderId}">-</a>
             </td>
             <td>
               <span class="status-badge" th:if="${history.previousStatus}"
