@@ -75,4 +75,11 @@ public class PaymentOrder {
         }
         this.status = PaymentOrderStatus.UNKNOWN;
     }
+
+    public void expire() {
+        if (this.status != PaymentOrderStatus.NOT_STARTED) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE);
+        }
+        this.status = PaymentOrderStatus.EXPIRED;
+    }
 }

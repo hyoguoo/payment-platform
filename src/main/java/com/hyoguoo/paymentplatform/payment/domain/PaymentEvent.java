@@ -139,6 +139,15 @@ public class PaymentEvent {
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
 
+    public void expire() {
+        if (this.status != PaymentEventStatus.READY) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE);
+        }
+        this.status = PaymentEventStatus.EXPIRED;
+        this.statusReason = null;
+        this.paymentOrderList.forEach(PaymentOrder::expire);
+    }
+
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }
