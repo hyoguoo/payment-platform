@@ -14,4 +14,7 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
 
     @Query("SELECT pe FROM PaymentEventEntity pe WHERE ((pe.status = 'IN_PROGRESS' AND pe.executedAt < :before) OR pe.status = 'UNKNOWN')")
     List<PaymentEventEntity> findByInProgressWithTimeConstraintOrUnknown(@Param("before") LocalDateTime before);
+
+    @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'READY' AND pe.createdAt < :before")
+    List<PaymentEventEntity> findReadyPaymentsOlderThan(@Param("before") LocalDateTime before);
 }

@@ -78,4 +78,21 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 })
                 .toList();
     }
+
+    @Override
+    public List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before) {
+        return jpaPaymentEventRepository
+                .findReadyPaymentsOlderThan(before)
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
+    }
 }
