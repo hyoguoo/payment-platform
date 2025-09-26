@@ -62,6 +62,13 @@ public class PaymentProcessorUseCase {
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
+    @Transactional
+    @PublishPaymentHistory(action = "changed")
+    public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
+        paymentEvent.expire();
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
     public void validateCompletionStatus(
             PaymentEvent paymentEvent,
             PaymentConfirmCommand paymentConfirmCommand
