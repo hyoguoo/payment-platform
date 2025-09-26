@@ -70,6 +70,20 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         return paymentEventList;
     }
 
+    @Override
+    public List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before) {
+        List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
+                .filter(event ->
+                        event.getStatus() == PaymentEventStatus.READY &&
+                        event.getCreatedAt() != null &&
+                        event.getCreatedAt().isBefore(before)
+                )
+                .toList();
+        paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
+
+        return paymentEventList;
+    }
+
     public void savePaymentOrders(Long paymentEventId, List<PaymentOrder> paymentOrders) {
         paymentOrderDatabase.put(paymentEventId, assignIdsToPaymentOrders(paymentOrders));
     }

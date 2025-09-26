@@ -637,4 +637,38 @@ class PaymentEventTest {
         // then
         assertThat(result).isEqualTo(expectedResult);
     }
+
+    @Test
+    @DisplayName("READY 상태의 PaymentEvent를 EXPIRED 상태로 변경할 수 있다.")
+    void expire_Success() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.READY,
+                PaymentOrderStatus.NOT_STARTED
+        );
+
+        // when
+        paymentEvent.expire();
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.EXPIRED);
+        paymentEvent.getPaymentOrderList().forEach(order ->
+                assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.EXPIRED)
+        );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "UNKNOWN"})
+    @DisplayName("READY 상태가 아닌 PaymentEvent는 EXPIRED 상태로 변경할 수 없다.")
+    void expire_InvalidStatus_ThrowsException(PaymentEventStatus invalidStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                invalidStatus,
+                PaymentOrderStatus.EXECUTING
+        );
+
+        // when & then
+        assertThatThrownBy(paymentEvent::expire)
+                .isInstanceOf(PaymentStatusException.class);
+    }
 }
