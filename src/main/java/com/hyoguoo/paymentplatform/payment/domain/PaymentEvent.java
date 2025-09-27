@@ -23,6 +23,7 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentEvent {
 
+    public static final int EXPIRATION_MINUTES = 30;
     public static final int RETRYABLE_MINUTES_FOR_IN_PROGRESS = 5;
     public static final int RETRYABLE_LIMIT = 5;
 
@@ -113,6 +114,7 @@ public class PaymentEvent {
         }
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
+        this.statusReason = null;
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
@@ -136,6 +138,15 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.UNKNOWN;
         this.statusReason = reason;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
+    }
+
+    public void expire() {
+        if (this.status != PaymentEventStatus.READY) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE);
+        }
+        this.status = PaymentEventStatus.EXPIRED;
+        this.statusReason = null;
+        this.paymentOrderList.forEach(PaymentOrder::expire);
     }
 
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {

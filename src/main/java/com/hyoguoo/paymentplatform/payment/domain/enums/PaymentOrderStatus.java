@@ -13,6 +13,7 @@ public enum PaymentOrderStatus {
     SUCCESS("SUCCESS"),
     FAIL("FAIL"),
     CANCEL("CANCEL"),
+    EXPIRED("EXPIRED"),
     UNKNOWN("UNKNOWN"),
     ;
 
