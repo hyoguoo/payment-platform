@@ -18,58 +18,73 @@ repositories {
     mavenCentral()
 }
 
-dependencies {
-    // Spring Boot
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-aop'
+ext {
+    set('testcontainersVersion', '1.19.8')
+    set('springdocVersion', '2.5.0')
+    set('logstashEncoderVersion', '7.4')
+    set('querydslVersion', '5.0.0')
+}
 
-    // Thymeleaf
+dependencies {
+    // Spring Boot Core
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Development Tools
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    // Template Engine
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
-    // Validation
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // API Documentation
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
 
-    // Swagger
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
+    // Database
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // QueryDSL
+    implementation "com.querydsl:querydsl-jpa:${querydslVersion}:jakarta"
+    annotationProcessor "com.querydsl:querydsl-apt:${querydslVersion}:jakarta"
+    annotationProcessor "jakarta.annotation:jakarta.annotation-api"
+    annotationProcessor "jakarta.persistence:jakarta.persistence-api"
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
-    // Test
+    // Monitoring
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
+
+    // Test Dependencies
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // MySql
-    runtimeOnly 'com.mysql:mysql-connector-j'
-
-    // Spring Data JPA
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-
-    // QueryDSL
-    implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
-    annotationProcessor "com.querydsl:querydsl-apt:${dependencyManagement.importedProperties['querydsl.version']}:jakarta"
-    annotationProcessor "jakarta.annotation:jakarta.annotation-api"
-    annotationProcessor "jakarta.persistence:jakarta.persistence-api"
-
-    // logstash
-    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    testImplementation "org.testcontainers:testcontainers:${testcontainersVersion}"
+    testImplementation "org.testcontainers:mysql:${testcontainersVersion}"
+    testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
 }
 
-tasks.named('test') {
-    useJUnitPlatform()
-}
-
+// Test Configuration
 test {
+    useJUnitPlatform()
+
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
-    useJUnitPlatform {
-        excludeTags('TooLongIntegrationTest')
-    }
 
     testLogging {
-        afterSuite { testDescriptor, testResult ->
-            if (testDescriptor.parent == null) {
-                println "Results: ${testResult.resultType} (${testResult.testCount} tests, ${testResult.successfulTestCount} successes, ${testResult.failedTestCount} failures, ${testResult.skippedTestCount} skipped)"
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showStandardStreams = false
+
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nTest Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
             }
         }
     }
@@ -77,38 +92,33 @@ test {
     finalizedBy jacocoTestReport
 }
 
+// JaCoCo Configuration
 jacoco {
     toolVersion = '0.8.11'
 }
 
 jacocoTestReport {
     dependsOn test
+
     reports {
         html.required = true
         xml.required = true
         csv.required = false
-
-        html.outputLocation = layout.buildDirectory.dir('jacocoReports/html')
-        xml.outputLocation = layout.buildDirectory.file('jacocoReports/jacoco.xml')
     }
 
-    afterEvaluate {
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(
-                    dir: it,
-                    exclude: [
-                            "*.Q*",
-                            '**/dto/**',
-                            '**/exception/**',
-                            '**/infrastructure/**',
-                            '**/presentation/**',
-                            '**/enums/**',
-                            '**/core/**',
-                            '**/PaymentPlatformApplication.class'
-                    ]
-            )
-        }))
-    }
+    classDirectories.setFrom(
+            files(classDirectories.files.collect {
+                fileTree(dir: it, excludes: [
+                        '**/Q*',
+                        '**/dto/**',
+                        '**/entity/**',
+                        '**/exception/**',
+                        '**/infrastructure/**',
+                        '**/enums/**',
+                        '**/PaymentPlatformApplication.class'
+                ])
+            })
+    )
 
     finalizedBy jacocoTestCoverageVerification
 }
@@ -119,14 +129,13 @@ jacocoTestCoverageVerification {
             element = 'CLASS'
 
             excludes = [
-                    "*.Q*",
-                    "**/exception/**",
-                    "**/dto/**",
-                    "**/infrastructure/**",
-                    "**/presentation/**",
-                    "**/enums/**",
-                    "**/core/**",
-                    "**.PaymentPlatformApplication.class"
+                    '*.Q*',
+                    '**/dto/**',
+                    '**/entity/**',
+                    '**/exception/**',
+                    '**/infrastructure/**',
+                    '**/enums/**',
+                    '**/PaymentPlatformApplication'
             ]
         }
     }
