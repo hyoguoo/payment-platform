@@ -55,7 +55,7 @@ services:
       - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - /var/log/app:/var/log/app:ro
     ports:
-      - "5050:5050"  # 통일: 호스트 5050 → 컨테이너 5050
+      - "5050:5050"
       - "5051:5051/udp"
       - "9600:9600"
     environment:
