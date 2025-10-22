@@ -1,0 +1,78 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: jdbc:mysql://mysql:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:payment123}
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 15
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
+
+  myapp:
+    toss-payments:
+      api-url: https://api.tosspayments.com/v1/payments
+      secret-key: ${TOSS_SECRET_KEY}
+      http:
+        read-timeout-millis: 30000
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+
+scheduler:
+  enabled: true
+  payment-status-sync:
+    enabled: true
+    fixed-rate: 3600000
+
+springdoc:
+  swagger-ui:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: payment-platform
+      environment: docker
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 25
+    accept-count: 100

@@ -1,0 +1,44 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+
+    # datasource: Testcontainers
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+
+  myapp:
+    toss-payments:
+      api-url: https://api.tosspayments.com/v1/payments
+      secret-key: ${TOSS_TEST_SECRET_KEY}
+      http:
+        read-timeout-millis: 5000
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.testcontainers: INFO
+
+scheduler:
+  enabled: false
+  payment-status-sync:
+    enabled: false
+
+springdoc:
+  swagger-ui:
+    enabled: false
