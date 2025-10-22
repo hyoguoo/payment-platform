@@ -1,0 +1,187 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: payment-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment-platform
+      MYSQL_USER: ${MYSQL_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-payment123}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - payment-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+    container_name: payment-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - cluster.name=payment-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - payment-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Logstash
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.9
+    container_name: payment-logstash
+    volumes:
+      - ./logstash/pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - /var/log/app:/var/log/app:ro
+    ports:
+      - "5050:5050"  # 통일: 호스트 5050 → 컨테이너 5050
+      - "5051:5051/udp"
+      - "9600:9600"
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - payment-network
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9600" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.9
+    container_name: payment-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    networks:
+      - payment-network
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5601/api/status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: payment-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - payment-network
+    depends_on:
+      - app
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/ready" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: payment-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - payment-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Spring Boot Application
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: payment-app
+    env_file:
+      - .env.secret
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - DB_USERNAME=${MYSQL_USER:-payment}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-payment123}
+      - TOSS_SECRET_KEY=${TOSS_SECRET_KEY}
+      - JAVA_OPTS=-Xms512m -Xmx1024m
+    volumes:
+      - /var/log/app:/var/log/app
+    ports:
+      - "8080:8080"
+    networks:
+      - payment-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+networks:
+  payment-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
+  es-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

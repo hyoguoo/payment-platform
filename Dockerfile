@@ -34,7 +34,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # Expose port
 EXPOSE 8080
 
-# JVM options for production
+# JVM options
 ENV JAVA_OPTS="-Xms512m -Xmx2048m \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=100 \
