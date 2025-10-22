@@ -122,6 +122,63 @@
 |   `repository`   | 영속성 처리 로직을 담당하는 실제 JPA Repository 구현체                                |
 |  `presentation`  | 외부 요청을 처리하고 응답을 반환하는 컨트롤러 계층                                         |
 
+<br>
+
+## ▶️ Quick Start
+
+### 서비스 구성
+
+|  포트  |      서비스      |    설명     |
+|:----:|:-------------:|:---------:|
+| 8080 |  Spring App   | 애플리케이션 서버 |
+| 3306 |     MySQL     |  데이터베이스   |
+| 9200 | Elasticsearch |  로그 저장소   |
+| 5050 |   Logstash    |   로그 수집   |
+| 5601 |    Kibana     |  로그 시각화   |
+| 9090 |  Prometheus   |  메트릭 수집   |
+| 3000 |    Grafana    |  메트릭 시각화  |
+
+#### 시크릿 설정
+
+민감한 정보는 `.env.secret` 파일로 분리 관리됩니다.
+
+```bash
+cd docker/compose
+cp .env.secret.example .env.secret
+# TOSS_SECRET_KEY 입력
+```
+
+### 실행 방법
+
+#### 애플리케이션 실행
+
+```bash
+./scripts/run.sh
+```
+
+실행 후 다음 서비스에 접속할 수 있습니다:
+
+- **Application**: http://localhost:8080
+- **Kibana**: http://localhost:5601
+- **Grafana**: http://localhost:3000 (admin/admin123!)
+- **Prometheus**: http://localhost:9090
+
+### 테스트 실행
+
+#### 시크릿 설정
+
+```bash
+cp .env.secret.example .env.secret
+# TOSS_TEST_SECRET_KEY 입력
+```
+
+#### 테스트 실행
+
+```bash
+./scripts/run-test.sh
+```
+<br>
+
 ## Other Repositories
 
 - [Client Repository](https://github.com/hyoguoo/payment-client)
