@@ -1,0 +1,53 @@
+# Build outputs
+build/
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+docker/*/data/
+
+# Test coverage
+.jacoco/
+*.exec
+
+# Generated files
+**/Q*.java
+generated/
+generated-sources/
+
+# Environment
+.env
+.env.local
+
+# Documentation artifacts (주석만 제공, 실제 md는 읽을 수 있도록)
+# docs/build/
+# site/
+
+# Dependencies
+node_modules/

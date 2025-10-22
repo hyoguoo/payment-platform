@@ -1,0 +1,42 @@
+{
+  "name": "Payment Platform",
+  "description": "토스페이먼츠 연동 결제 시스템 - 데이터 정합성 검증, 상태 기반 복구, 모니터링 체계를 갖춘 백엔드 프로젝트",
+  "project_type": "spring-boot",
+  "technology_stack": [
+    "Java 21",
+    "Spring Boot 3.3.3",
+    "MySQL 8.0",
+    "Docker",
+    "JUnit 5",
+    "QueryDSL",
+    "Logback",
+    "Prometheus",
+    "Grafana"
+  ],
+  "architecture": "port-adapter (hexagonal)",
+  "key_directories": {
+    "application": "비즈니스 로직 계층 (ServiceImpl, UseCase, Port)",
+    "domain": "도메인 모델 및 핵심 규칙",
+    "infrastructure": "외부 시스템 연동 (DB, 외부 API)",
+    "presentation": "컨트롤러 및 요청 처리"
+  },
+  "coding_conventions": {
+    "package_structure": "domain-driven with port-adapter pattern",
+    "dependency_rule": "외부 의존성은 Port 인터페이스로 추상화",
+    "naming": {
+      "service": "*ServiceImpl for orchestration, *UseCase for single responsibility",
+      "repository": "JPA*Repository for interface, *RepositoryImpl for implementation",
+      "port": "*Port for external dependencies"
+    }
+  },
+  "testing_strategy": {
+    "integration_tests": "Testcontainers 기반 MySQL 통합 테스트",
+    "unit_tests": "외부 의존성은 Fake 객체로 대체",
+    "coverage": "JaCoCo를 통한 커버리지 측정 (DTO/Entity/Infrastructure 제외)"
+  },
+  "documentation": [
+    "https://hyoguoo.gitbook.io/tech-log/posts/payment-system-with-toss",
+    "https://hyoguoo.gitbook.io/tech-log/posts/payment-status-with-retry",
+    "https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope"
+  ]
+}

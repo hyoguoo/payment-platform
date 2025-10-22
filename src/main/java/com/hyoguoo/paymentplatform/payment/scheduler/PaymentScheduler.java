@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationServi
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentRecoverService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,16 +13,23 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PaymentScheduler {
 
-    private static final int FIXED_RATE = 1000 * 60 * 5;
     private final PaymentRecoverService paymentRecoverService;
     private final PaymentExpirationService paymentExpirationService;
 
-    @Scheduled(fixedRate = FIXED_RATE)
+    @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
+    @ConditionalOnProperty(
+            name = "scheduler.payment-status-sync.enabled",
+            havingValue = "true"
+    )
     public void recoverRetryablePayment() {
         paymentRecoverService.recoverRetryablePayment();
     }
 
-    @Scheduled(fixedRate = FIXED_RATE)
+    @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
+    @ConditionalOnProperty(
+            name = "scheduler.payment-status-sync.enabled",
+            havingValue = "true"
+    )
     public void expireOldReadyPayments() {
         paymentExpirationService.expireOldReadyPayments();
     }

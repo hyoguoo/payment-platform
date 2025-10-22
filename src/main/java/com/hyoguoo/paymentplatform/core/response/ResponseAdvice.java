@@ -36,9 +36,15 @@ public class ResponseAdvice implements ResponseBodyAdvice<Object> {
         if (body instanceof ErrorResponse errorResponse) {
             return ResponseUtil.error(errorResponse);
         }
+
+        if (request != null && request.getURI().getPath().startsWith("/actuator")) {
+            return body;
+        }
+
         if (request != null && request.getURI().getPath().contains(apiDocsPath)) {
             return body;
         }
+
         return ResponseUtil.success(body);
     }
 }
