@@ -229,7 +229,11 @@ DduDuStyle.xml
 scripts/**/.env
 
 # Secrets
-src/**/application*.yaml
-src/**/application*.yml
+*.env.secret
+**/.env.secret
 
 out/
+
+# Claude
+.claude/chats/
+.claude/projects.json
