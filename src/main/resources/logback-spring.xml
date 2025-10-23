@@ -1,7 +1,7 @@
 <configuration>
-  <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+  <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [traceId:%X{traceId:-N/A}] %-5level %logger{36} - %msg%n"/>
   <property name="LOG_PATTERN_COLOR"
-    value="%d{HH:mm:ss.SSS} [%thread] %highlight(%-5level) %cyan(%logger{36}) - %msg%n"/>
+    value="%d{HH:mm:ss.SSS} [%thread] [%magenta(traceId:%X{traceId:-N/A})] %highlight(%-5level) %cyan(%logger{36}) - %msg%n"/>
 
   <!-- Spring Properties -->
   <springProperty scope="context" name="springAppName" source="spring.application.name"/>
@@ -24,20 +24,23 @@
       <destination>logstash:5050</destination>
       <encoder class="net.logstash.logback.encoder.LogstashEncoder">
         <customFields>{"application":"${springAppName:-payment-platform}","environment":"docker"}</customFields>
+        <!-- Include all MDC fields (traceId, orderId, paymentKey, userId, etc.) -->
+        <includeMdc>true</includeMdc>
       </encoder>
       <keepAliveDuration>5 minutes</keepAliveDuration>
       <reconnectionDelay>10 seconds</reconnectionDelay>
     </appender>
 
-    <!-- File Appender -->
+    <!-- File Appender (JSON format for Logstash) -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
       <file>/var/log/app/payment-platform.log</file>
       <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
         <fileNamePattern>/var/log/app/payment-platform.%d{yyyy-MM-dd}.log</fileNamePattern>
         <maxHistory>30</maxHistory>
       </rollingPolicy>
-      <encoder>
-        <pattern>${LOG_PATTERN}</pattern>
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <customFields>{"application":"${springAppName:-payment-platform}","environment":"docker"}</customFields>
+        <includeMdc>true</includeMdc>
       </encoder>
     </appender>
   </springProfile>
