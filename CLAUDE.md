@@ -50,12 +50,23 @@ docker-compose logs -f <service-name>
 
 ### Environment Setup
 
+Two separate `.env.secret` files are required:
+
 ```bash
-# Create secret files (required before running)
-cp .env.secret.example .env.secret  # Root directory
+# 1. Root .env.secret (for tests)
+cp .env.secret.example .env.secret
+# Edit and add: TOSS_TEST_SECRET_KEY=test_sk_xxxxx
+
+# 2. Docker Compose .env.secret (for running services)
 cd docker/compose && cp .env.secret.example .env.secret
-# Edit .env.secret and add TOSS_SECRET_KEY
+# Edit and add: TOSS_SECRET_KEY=your_actual_toss_key
 ```
+
+**Important:** You must edit `/docker/compose/.env.secret` and replace `your_toss_secret_key_here` with your actual Toss Payments API key before running Docker Compose.
+
+**File purposes:**
+- `/.env.secret`: Test environment (loaded via `spring.config.import`)
+- `/docker/compose/.env.secret`: Docker environment (loaded via `env_file` in docker-compose.yml)
 
 ## Architecture
 
