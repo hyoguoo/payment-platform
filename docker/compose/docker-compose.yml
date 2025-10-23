@@ -150,7 +150,6 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - DB_USERNAME=${MYSQL_USER:-payment}
       - DB_PASSWORD=${MYSQL_PASSWORD:-payment123}
-      - TOSS_SECRET_KEY=${TOSS_SECRET_KEY}
       - JAVA_OPTS=-Xms512m -Xmx1024m
     volumes:
       - /var/log/app:/var/log/app
