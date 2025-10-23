@@ -1,5 +1,5 @@
 ---
-description: Port-Adapter 패턴 준수 여부와 아키텍처 품질을 검토합니다
+description: Review Port-Adapter pattern compliance and architecture quality
 ---
 
 Review the project architecture with focus on:

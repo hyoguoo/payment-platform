@@ -1,7 +1,8 @@
 {
   "name": "Payment Platform",
-  "description": "토스페이먼츠 연동 결제 시스템 - 데이터 정합성 검증, 상태 기반 복구, 모니터링 체계를 갖춘 백엔드 프로젝트",
+  "description": "Payment system integrating with Toss Payments - implementing data integrity validation, state-based recovery, and comprehensive monitoring",
   "project_type": "spring-boot",
+  "documentation_file": "CLAUDE.md",
   "technology_stack": [
     "Java 21",
     "Spring Boot 3.3.3",
@@ -9,34 +10,56 @@
     "Docker",
     "JUnit 5",
     "QueryDSL",
+    "Testcontainers",
     "Logback",
     "Prometheus",
     "Grafana"
   ],
   "architecture": "port-adapter (hexagonal)",
+  "core_concepts": {
+    "payment_states": ["READY", "IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "UNKNOWN"],
+    "cross_validation": "Cross-validation between client, server, and PG responses",
+    "retry_mechanism": "State-based auto-recovery with max 5 retry attempts",
+    "transaction_scope": "External API calls outside transaction boundary with compensating transactions",
+    "monitoring": "Structured logging (traceId/orderId) with AOP-based history tracking"
+  },
   "key_directories": {
-    "application": "비즈니스 로직 계층 (ServiceImpl, UseCase, Port)",
-    "domain": "도메인 모델 및 핵심 규칙",
-    "infrastructure": "외부 시스템 연동 (DB, 외부 API)",
-    "presentation": "컨트롤러 및 요청 처리"
+    "application": "Business logic layer (ServiceImpl, UseCase, Port)",
+    "domain": "Domain models and core rules (pure Java, framework-independent)",
+    "infrastructure": "External system integration (repository, internal adapter)",
+    "presentation": "Controllers and InternalReceiver (cross-domain collaboration)"
   },
   "coding_conventions": {
     "package_structure": "domain-driven with port-adapter pattern",
-    "dependency_rule": "외부 의존성은 Port 인터페이스로 추상화",
+    "dependency_rule": "Presentation → Application → Domain ← Infrastructure (implements Ports)",
     "naming": {
-      "service": "*ServiceImpl for orchestration, *UseCase for single responsibility",
-      "repository": "JPA*Repository for interface, *RepositoryImpl for implementation",
-      "port": "*Port for external dependencies"
-    }
+      "service": "*ServiceImpl (orchestrates use cases)",
+      "usecase": "*UseCase (single responsibility)",
+      "port": "*Port (external dependency abstraction)",
+      "repository": "*Repository (interface), *RepositoryImpl (implementation)",
+      "internal": "Internal*Adapter (implements Port), *InternalReceiver (receives cross-domain calls)"
+    },
+    "transaction": "External API calls outside transaction scope, with compensating transactions when needed"
   },
   "testing_strategy": {
-    "integration_tests": "Testcontainers 기반 MySQL 통합 테스트",
-    "unit_tests": "외부 의존성은 Fake 객체로 대체",
-    "coverage": "JaCoCo를 통한 커버리지 측정 (DTO/Entity/Infrastructure 제외)"
+    "integration_tests": "Extend BaseIntegrationTest (Testcontainers MySQL)",
+    "unit_tests": "Use Fake objects (src/test/java/.../mock/)",
+    "coverage": "JaCoCo (excludes: Q*, dto, entity, exception, infrastructure, enums)"
+  },
+  "development": {
+    "test": "./gradlew test (includes JaCoCo coverage)",
+    "build": "./gradlew clean bootJar",
+    "run": "./scripts/run.sh (starts full stack)",
+    "clean": "cd docker/compose && docker-compose down -v",
+    "env_setup": "Create .env.secret file and set TOSS_SECRET_KEY"
   },
   "documentation": [
+    "CLAUDE.md (comprehensive project guide)",
     "https://hyoguoo.gitbook.io/tech-log/posts/payment-system-with-toss",
     "https://hyoguoo.gitbook.io/tech-log/posts/payment-status-with-retry",
-    "https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope"
+    "https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope",
+    "https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance",
+    "https://hyoguoo.gitbook.io/tech-log/posts/payment-history-with-aop",
+    "https://hyoguoo.gitbook.io/tech-log/posts/payment-system-test"
   ]
 }
