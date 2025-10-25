@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.hyoguoo.paymentplatform.mock.FakeTossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossCancelCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
+import com.hyoguoo.paymentplatform.paymentgateway.application.usecase.TossApiCallUseCase;
+import com.hyoguoo.paymentplatform.paymentgateway.application.usecase.TossApiFailureUseCase;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
 import java.math.BigDecimal;
@@ -51,7 +53,13 @@ class PaymentGatewayServiceImplTest {
     @BeforeEach
     void setUp() {
         fakeTossOperator = new FakeTossOperator();
-        paymentGatewayService = new PaymentGatewayServiceImpl(fakeTossOperator);
+        TossApiCallUseCase tossApiCallUseCase = new TossApiCallUseCase(fakeTossOperator);
+        TossApiFailureUseCase tossApiFailureUseCase = new TossApiFailureUseCase();
+        paymentGatewayService = new PaymentGatewayServiceImpl(
+                fakeTossOperator,
+                tossApiCallUseCase,
+                tossApiFailureUseCase
+        );
     }
 
     @Test
