@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -29,6 +30,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentProcessorUseCase paymentProcessorUseCase;
+    private final PaymentFailureUseCase paymentFailureUseCase;
 
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
@@ -48,7 +50,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         } catch (PaymentOrderedProductStockException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
                     () -> String.format("orderId=%s", paymentEvent.getOrderId()));
-            handleStockFailure(paymentEvent, e.getMessage());
+            paymentFailureUseCase.handleStockFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
         }
 
@@ -74,22 +76,22 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         } catch (PaymentStatusException e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_ERROR,
                     () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
-            handleNonRetryableFailure(paymentEvent, e.getMessage());
+            paymentFailureUseCase.handleNonRetryableFailure(paymentEvent, e.getMessage());
             throw e;
         } catch (PaymentTossRetryableException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_TOSS_RETRYABLE_ERROR,
                     () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
-            handleRetryableFailure(paymentEvent, e.getMessage());
+            paymentFailureUseCase.handleRetryableFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         } catch (PaymentTossNonRetryableException e) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_TOSS_NON_RETRYABLE_ERROR,
                     () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
-            handleNonRetryableFailure(paymentEvent, e.getMessage());
+            paymentFailureUseCase.handleNonRetryableFailure(paymentEvent, e.getMessage());
             throw PaymentTossConfirmException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         } catch (Exception e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_UNKNOWN_ERROR,
                     () -> String.format("orderId=%s error=%s", paymentEvent.getOrderId(), e.getMessage()));
-            handleUnknownException(paymentEvent, e.getMessage());
+            paymentFailureUseCase.handleUnknownFailure(paymentEvent, e.getMessage());
             throw e;
         }
     }
@@ -122,42 +124,5 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                         donePaymentEvent.getApprovedAt()));
 
         return donePaymentEvent;
-    }
-
-    private void handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
-        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
-    }
-
-    private void handleNonRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
-
-        orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
-        LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
-                () -> String.format("products=%s by orderId=%s",
-                        LogFmt.toJson(failedPaymentEvent.getPaymentOrderList()),
-                        failedPaymentEvent.getOrderId()));
-    }
-
-    private void handleRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
-        LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
-    }
-
-    private void handleUnknownException(PaymentEvent paymentEvent, String failureMessage) {
-        String message = failureMessage != null ? failureMessage : "Unknown error occurred";
-        paymentProcessorUseCase.markPaymentAsFail(paymentEvent, message);
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), message));
-
-        orderedProductUseCase.increaseStockForOrders(paymentEvent.getPaymentOrderList());
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
-                () -> String.format("products=%s by orderId=%s",
-                        LogFmt.toJson(paymentEvent.getPaymentOrderList()),
-                        paymentEvent.getOrderId()));
     }
 }

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -75,8 +76,14 @@ class PaymentConfirmServiceImplTest {
         mockOrderedProductUseCase = Mockito.mock(OrderedProductUseCase.class);
         mockPaymentProcessorUseCase = Mockito.mock(PaymentProcessorUseCase.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
+
+        // Use real PaymentFailureUseCase with mocked dependencies
+        PaymentFailureUseCase paymentFailureUseCase = new PaymentFailureUseCase(
+                mockPaymentProcessorUseCase, mockOrderedProductUseCase
+        );
+
         paymentConfirmService = new PaymentConfirmServiceImpl(
-                mockPaymentLoadUseCase, mockOrderedProductUseCase, mockPaymentProcessorUseCase
+                mockPaymentLoadUseCase, mockOrderedProductUseCase, mockPaymentProcessorUseCase, paymentFailureUseCase
         );
 
         Mockito.clearInvocations(mockOrderedProductUseCase, mockPaymentProcessorUseCase);
