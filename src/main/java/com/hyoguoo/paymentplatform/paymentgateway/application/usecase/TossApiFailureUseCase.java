@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.paymentgateway.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.ErrorCode;
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.TossApiMetric;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.ErrorCode;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.TossApiMetric;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentFailure;

@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHist
 import com.hyoguoo.paymentplatform.payment.application.aspect.Reason;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;

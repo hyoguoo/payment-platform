@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.metrics.annotation;
+package com.hyoguoo.paymentplatform.core.common.metrics.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

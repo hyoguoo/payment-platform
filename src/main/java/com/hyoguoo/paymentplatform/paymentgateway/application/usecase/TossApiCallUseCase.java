@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.paymentgateway.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.TossApiMetric;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.TossApiMetric;
 import com.hyoguoo.paymentplatform.paymentgateway.application.dto.request.TossConfirmCommand;
 import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;

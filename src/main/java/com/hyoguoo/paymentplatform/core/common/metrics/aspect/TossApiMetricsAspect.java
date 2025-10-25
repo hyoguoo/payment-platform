@@ -1,8 +1,8 @@
-package com.hyoguoo.paymentplatform.payment.application.metrics.aspect;
+package com.hyoguoo.paymentplatform.core.common.metrics.aspect;
 
-import com.hyoguoo.paymentplatform.payment.application.metrics.TossApiMetrics;
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.ErrorCode;
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.TossApiMetric;
+import com.hyoguoo.paymentplatform.core.common.metrics.TossApiMetrics;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.ErrorCode;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.TossApiMetric;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
 import java.lang.reflect.Parameter;
 import lombok.RequiredArgsConstructor;

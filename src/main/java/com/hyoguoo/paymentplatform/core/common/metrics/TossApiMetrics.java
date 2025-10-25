@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.metrics;
+package com.hyoguoo.paymentplatform.core.common.metrics;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;

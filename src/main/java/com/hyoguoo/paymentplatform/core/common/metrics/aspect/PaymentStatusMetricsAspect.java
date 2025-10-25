@@ -1,7 +1,7 @@
-package com.hyoguoo.paymentplatform.payment.application.metrics.aspect;
+package com.hyoguoo.paymentplatform.core.common.metrics.aspect;
 
-import com.hyoguoo.paymentplatform.payment.application.metrics.PaymentStatusMetrics;
-import com.hyoguoo.paymentplatform.payment.application.metrics.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.core.common.metrics.PaymentStatusMetrics;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
