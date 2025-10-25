@@ -155,9 +155,7 @@ cp .env.secret.example .env.secret # docker/compose 디렉토리
 ./scripts/run.sh
 ```
 
-실행 후 다음 서비스에 접속할 수 있습니다:
-
-- **Application**: http://localhost:8080
+- **Application**: http://localhost:8080/admin/payments/events
 - **Kibana**: http://localhost:5601
 - **Grafana**: http://localhost:3000 (admin/admin123!)
 - **Prometheus**: http://localhost:9090
