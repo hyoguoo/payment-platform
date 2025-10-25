@@ -2,8 +2,15 @@ spring:
   config:
     activate:
       on-profile: test
+    import: optional:file:.env.secret[.properties]
 
-    # datasource: Testcontainers
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -13,6 +20,7 @@ spring:
       hibernate:
         format_sql: true
     defer-datasource-initialization: true
+    generate-ddl: true
 
   sql:
     init:

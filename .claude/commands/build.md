@@ -1,5 +1,5 @@
 ---
-description: 프로젝트를 빌드하여 실행 가능한 JAR 파일을 생성합니다
+description: Build executable JAR file
 ---
 
 Build the project without running tests:

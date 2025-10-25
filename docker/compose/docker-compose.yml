@@ -79,6 +79,8 @@ services:
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       ELASTICSEARCH_URL: http://elasticsearch:9200
+    volumes:
+      - ./kibana/saved_objects:/usr/share/kibana/saved_objects:ro
     networks:
       - payment-network
     depends_on:
@@ -88,6 +90,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  # Kibana Initializer
+  kibana-init:
+    image: curlimages/curl:latest
+    container_name: payment-kibana-init
+    volumes:
+      - ./kibana/saved_objects:/usr/share/kibana/saved_objects:ro
+      - ./kibana/init-kibana.sh:/init-kibana.sh:ro
+    command: sh /init-kibana.sh
+    networks:
+      - payment-network
+    depends_on:
+      kibana:
+        condition: service_healthy
+    restart: on-failure
 
   # Prometheus
   prometheus:
@@ -150,7 +167,6 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - DB_USERNAME=${MYSQL_USER:-payment}
       - DB_PASSWORD=${MYSQL_PASSWORD:-payment123}
-      - TOSS_SECRET_KEY=${TOSS_SECRET_KEY}
       - JAVA_OPTS=-Xms512m -Xmx1024m
     volumes:
       - /var/log/app:/var/log/app

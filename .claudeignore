@@ -41,9 +41,11 @@ docker/*/data/
 generated/
 generated-sources/
 
-# Environment
+# Environment (보안 관련 파일)
 .env
 .env.local
+.env.secret
+**/.env.secret
 
 # Documentation artifacts (주석만 제공, 실제 md는 읽을 수 있도록)
 # docs/build/

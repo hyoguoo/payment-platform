@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHist
 import com.hyoguoo.paymentplatform.payment.application.aspect.Reason;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
+import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -28,6 +29,7 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
+    @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = "confirm")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
         LocalDateTime executedAt = localDateTimeProvider.now();
         paymentEvent.execute(paymentKey, executedAt);
@@ -36,6 +38,7 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
+    @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
         paymentEvent.done(approvedAt);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -43,6 +46,7 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
+    @PaymentStatusChange(toStatus = "FAILED", trigger = "auto")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
         paymentEvent.fail(failureReason);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -50,6 +54,7 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
+    @PaymentStatusChange(toStatus = "UNKNOWN", trigger = "auto")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
         paymentEvent.unknown(reason);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -64,6 +69,7 @@ public class PaymentProcessorUseCase {
 
     @Transactional
     @PublishPaymentHistory(action = "changed")
+    @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
         paymentEvent.expire();
         return paymentEventRepository.saveOrUpdate(paymentEvent);

@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.times;
@@ -9,9 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentRecoveryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
@@ -29,20 +29,21 @@ class PaymentRecoverServiceImplTest {
 
     private PaymentRecoverServiceImpl paymentRecoverService;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
-    private OrderedProductUseCase mockOrderedProductUseCase;
     private PaymentProcessorUseCase mockPaymentProcessorUseCase;
+    private PaymentRecoveryUseCase mockPaymentRecoveryUseCase;
     private LocalDateTimeProvider mockLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
-        mockOrderedProductUseCase = Mockito.mock(OrderedProductUseCase.class);
         mockPaymentProcessorUseCase = Mockito.mock(PaymentProcessorUseCase.class);
         mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
+        mockPaymentRecoveryUseCase = Mockito.mock(PaymentRecoveryUseCase.class);
+
         paymentRecoverService = new PaymentRecoverServiceImpl(
                 mockPaymentLoadUseCase,
-                mockOrderedProductUseCase,
                 mockPaymentProcessorUseCase,
+                mockPaymentRecoveryUseCase,
                 mockLocalDateTimeProvider
         );
     }
@@ -52,6 +53,7 @@ class PaymentRecoverServiceImplTest {
     void testRecoverRetryablePayment_Success() throws PaymentTossNonRetryableException, PaymentTossRetryableException {
         // given
         PaymentEvent mockPaymentEvent = Mockito.mock(PaymentEvent.class);
+        PaymentEvent mockDonePaymentEvent = Mockito.mock(PaymentEvent.class);
         List<PaymentEvent> paymentEvents = List.of(mockPaymentEvent);
 
         TossPaymentInfo mockTossPaymentInfo = Mockito.mock(TossPaymentInfo.class);
@@ -64,6 +66,8 @@ class PaymentRecoverServiceImplTest {
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(true);
         when(mockPaymentProcessorUseCase.increaseRetryCount(any(PaymentEvent.class))).thenReturn(mockPaymentEvent);
         when(mockPaymentProcessorUseCase.confirmPaymentWithGateway(any())).thenReturn(mockTossPaymentInfo);
+        when(mockPaymentProcessorUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+                .thenReturn(mockDonePaymentEvent);
 
         // when
         paymentRecoverService.recoverRetryablePayment();
@@ -72,10 +76,12 @@ class PaymentRecoverServiceImplTest {
         verify(mockPaymentProcessorUseCase, times(1)).increaseRetryCount(any(PaymentEvent.class));
         verify(mockPaymentEvent, times(1)).isRetryable(any(LocalDateTime.class));
         verify(mockPaymentProcessorUseCase, times(1)).markPaymentAsDone(eq(mockPaymentEvent), any(LocalDateTime.class));
+        verify(mockPaymentRecoveryUseCase, times(1))
+                .markRecoverySuccess(eq(mockPaymentEvent), eq(mockDonePaymentEvent));
     }
 
     @Test
-    @DisplayName("재시도 불가능한 결제를 시도하면 결제 상태를 FAIL로 변경하고, 재고를 복구한다.")
+    @DisplayName("재시도 불가 시 복구 실패(NON_RETRYABLE_ERROR)로 기록한다.")
     void testRecoverRetryablePayment_ValidNonRetryableFailure() {
         // given
         PaymentEvent mockPaymentEvent = Mockito.mock(PaymentEvent.class);
@@ -85,7 +91,8 @@ class PaymentRecoverServiceImplTest {
         when(mockPaymentLoadUseCase.getRetryablePaymentEvents()).thenReturn(paymentEvents);
         when(mockLocalDateTimeProvider.now()).thenReturn(LocalDateTime.now());
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(false);
-        when(mockPaymentProcessorUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class))).thenReturn(failedPaymentEvent);
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class))).thenReturn(
+                failedPaymentEvent);
 
         // when
         paymentRecoverService.recoverRetryablePayment();
@@ -93,12 +100,12 @@ class PaymentRecoverServiceImplTest {
         // then
         verify(mockPaymentProcessorUseCase, times(0)).increaseRetryCount(any(PaymentEvent.class));
         verify(mockPaymentEvent, times(1)).isRetryable(any(LocalDateTime.class));
-        verify(mockPaymentProcessorUseCase, times(1)).markPaymentAsFail(any(PaymentEvent.class), any(String.class));
-        verify(mockOrderedProductUseCase, times(1)).increaseStockForOrders(anyList());
+        verify(mockPaymentRecoveryUseCase, times(1))
+                .markRecoveryFailure(eq(mockPaymentEvent), eq("NON_RETRYABLE_ERROR"), anyString());
     }
 
     @Test
-    @DisplayName("재시도 가능한 결제 실패 중 다시 재시도 가능 예외가 발생하면 결제 상태를 UNKNOWN으로 변경하고, 재시도 횟수를 증가시킨다.")
+    @DisplayName("재시도 가능 예외 시 복구 재시도 실패(RETRYABLE_ERROR)로 기록하고 재시도 횟수를 증가한다.")
     void testRecoverRetryablePayment_RetryableFailure()
             throws PaymentTossNonRetryableException, PaymentTossRetryableException {
         // given
@@ -118,10 +125,12 @@ class PaymentRecoverServiceImplTest {
         verify(mockPaymentProcessorUseCase, times(1)).increaseRetryCount(any(PaymentEvent.class));
         verify(mockPaymentEvent, times(1)).isRetryable(any(LocalDateTime.class));
         verify(mockPaymentProcessorUseCase, times(1)).increaseRetryCount(any(PaymentEvent.class));
+        verify(mockPaymentRecoveryUseCase, times(1))
+                .markRecoveryRetryableFailure(eq(mockPaymentEvent), eq("RETRYABLE_ERROR"), anyString());
     }
 
     @Test
-    @DisplayName("재시도 가능한 결제 실패 중 다시 재시도 불가능 예외가 발생하면 결제 상태를 Fail로 변경하고, 재고를 복구한다.")
+    @DisplayName("게이트웨이 비재시도 예외 시 복구 실패(NON_RETRYABLE_ERROR)로 기록한다.")
     void testRecoverRetryablePayment_NonRetryableFailure()
             throws PaymentTossNonRetryableException, PaymentTossRetryableException {
         // given
@@ -131,9 +140,11 @@ class PaymentRecoverServiceImplTest {
         when(mockPaymentLoadUseCase.getRetryablePaymentEvents()).thenReturn(paymentEvents);
         when(mockLocalDateTimeProvider.now()).thenReturn(LocalDateTime.now());
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(true);
+        when(mockPaymentProcessorUseCase.increaseRetryCount(any(PaymentEvent.class))).thenReturn(mockPaymentEvent);
         doThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR))
                 .when(mockPaymentProcessorUseCase).confirmPaymentWithGateway(any());
-        when(mockPaymentProcessorUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class))).thenReturn(failedPaymentEvent);
+        when(mockPaymentProcessorUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class))).thenReturn(
+                failedPaymentEvent);
 
         // when
         paymentRecoverService.recoverRetryablePayment();
@@ -141,7 +152,7 @@ class PaymentRecoverServiceImplTest {
         // then
         verify(mockPaymentProcessorUseCase, times(1)).increaseRetryCount(any(PaymentEvent.class));
         verify(mockPaymentEvent, times(1)).isRetryable(any(LocalDateTime.class));
-        verify(mockPaymentProcessorUseCase, times(1)).markPaymentAsFail(any(PaymentEvent.class), any(String.class));
-        verify(mockOrderedProductUseCase, times(1)).increaseStockForOrders(anyList());
+        verify(mockPaymentRecoveryUseCase, times(1))
+                .markRecoveryFailure(eq(mockPaymentEvent), eq("NON_RETRYABLE_ERROR"), anyString());
     }
 }

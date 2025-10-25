@@ -1,5 +1,5 @@
 ---
-description: 빌드 산출물과 Docker 환경을 정리합니다
+description: Clean build artifacts and Docker environment
 ---
 
 Clean the project and Docker environments:
@@ -9,14 +9,18 @@ Clean the project and Docker environments:
 ./gradlew clean
 ```
 
-2. Stop and remove Docker containers (local):
+2. Stop and remove Docker containers (from compose directory):
 ```bash
-cd docker/local && docker-compose down -v
+cd docker/compose && docker-compose down -v
 ```
 
-3. Stop and remove Docker containers (full-stack):
+3. Verify cleanup:
 ```bash
-cd docker/full-stack && docker-compose down -v
+docker ps -a | grep payment
 ```
 
-After cleaning, confirm all resources are removed and provide status summary.
+After cleaning:
+- Confirm Gradle build directory is removed
+- Confirm all Docker containers are stopped and removed
+- Report remaining Docker volumes if any
+- Provide status summary

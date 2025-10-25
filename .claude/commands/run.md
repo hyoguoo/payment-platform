@@ -1,5 +1,5 @@
 ---
-description: 애플리케이션을 Docker Compose로 실행합니다 (모든 서비스 포함)
+description: Start application with Docker Compose (all services)
 ---
 
 Execute the run script to start all services:

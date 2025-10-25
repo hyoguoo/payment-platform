@@ -1,0 +1,82 @@
+groups:
+  - name: payment_aggregations
+    interval: 30s
+    rules:
+      # Payment Success Rate
+      - record: job:payment:success_rate:5m
+        expr: |
+          100 * sum(rate(payment_success_total[5m]))
+          /
+          (sum(rate(payment_success_total[5m])) + sum(rate(payment_failure_total[5m])))
+
+      # Payment TPS by type
+      - record: job:payment:tps:confirm_success
+        expr: sum(rate(payment_success_total[1m]))
+
+      - record: job:payment:tps:confirm_failure
+        expr: sum(rate(payment_failure_total[1m]))
+
+      # Payment Duration Percentiles (pre-calculated for performance)
+      - record: job:payment:confirm_duration:p50
+        expr: histogram_quantile(0.50, sum(rate(payment_confirm_duration_bucket[5m])) by (le))
+
+      - record: job:payment:confirm_duration:p95
+        expr: histogram_quantile(0.95, sum(rate(payment_confirm_duration_bucket[5m])) by (le))
+
+      - record: job:payment:confirm_duration:p99
+        expr: histogram_quantile(0.99, sum(rate(payment_confirm_duration_bucket[5m])) by (le))
+
+  - name: toss_api_aggregations
+    interval: 30s
+    rules:
+      # Toss API Success Rate (using toss_api_call_total with status tag)
+      - record: job:toss_api:success_rate:5m
+        expr: |
+          100 * sum(rate(toss_api_call_total{status="success"}[5m]))
+          /
+          sum(rate(toss_api_call_total[5m]))
+
+      # Toss API Response Time Percentiles
+      - record: job:toss_api:duration:p50_by_operation
+        expr: histogram_quantile(0.50, sum(rate(toss_api_call_duration_bucket[5m])) by (le, operation))
+
+      - record: job:toss_api:duration:p95_by_operation
+        expr: histogram_quantile(0.95, sum(rate(toss_api_call_duration_bucket[5m])) by (le, operation))
+
+      - record: job:toss_api:duration:p99_by_operation
+        expr: histogram_quantile(0.99, sum(rate(toss_api_call_duration_bucket[5m])) by (le, operation))
+
+      # Toss API Error Rates (using toss_api_call_total with status and error_type tags)
+      - record: job:toss_api:error_rate:by_type
+        expr: sum(rate(toss_api_call_total{status="failure"}[5m])) by (operation, error_type)
+
+  - name: scheduler_aggregations
+    interval: 30s
+    rules:
+      # Auto Recovery Success Rate (using recovery.success.total and recovery.failure.total)
+      - record: job:scheduler:recovery_success_rate:5m
+        expr: |
+          100 * sum(rate(recovery_success_total[5m]))
+          /
+          (sum(rate(recovery_success_total[5m])) + sum(rate(recovery_failure_total[5m])))
+
+  - name: integration_aggregations
+    interval: 30s
+    rules:
+      # Stock Integration Failures (only failure metric is implemented)
+      - record: job:integration:stock_failure_rate:5m
+        expr: sum(rate(stock_integration_failure_total[5m])) by (reason)
+
+  - name: business_kpis
+    interval: 1m
+    rules:
+      # Total Successful Payments (1h rolling window)
+      - record: job:business:successful_payments:1h
+        expr: sum(increase(payment_success_total[1h]))
+
+      # Payment Method Distribution (percentage)
+      - record: job:business:payment_method_distribution
+        expr: |
+          sum by(method) (rate(payment_success_total[5m]))
+          /
+          ignoring(method) group_left sum(rate(payment_success_total[5m])) * 100

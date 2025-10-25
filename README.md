@@ -140,11 +140,10 @@
 
 #### 시크릿 설정
 
-민감한 정보는 `.env.secret` 파일로 분리 관리됩니다.
-
 ```bash
+cp .env.secret.example .env.secret # 루트 디렉토리
 cd docker/compose
-cp .env.secret.example .env.secret
+cp .env.secret.example .env.secret # docker/compose 디렉토리
 # TOSS_SECRET_KEY 입력
 ```
 
@@ -156,27 +155,11 @@ cp .env.secret.example .env.secret
 ./scripts/run.sh
 ```
 
-실행 후 다음 서비스에 접속할 수 있습니다:
-
-- **Application**: http://localhost:8080
+- **Application**: http://localhost:8080/admin/payments/events
 - **Kibana**: http://localhost:5601
 - **Grafana**: http://localhost:3000 (admin/admin123!)
 - **Prometheus**: http://localhost:9090
 
-### 테스트 실행
-
-#### 시크릿 설정
-
-```bash
-cp .env.secret.example .env.secret
-# TOSS_TEST_SECRET_KEY 입력
-```
-
-#### 테스트 실행
-
-```bash
-./scripts/run-test.sh
-```
 <br>
 
 ## Other Repositories

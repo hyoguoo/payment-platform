@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,8 +76,8 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
                 .filter(event ->
                         event.getStatus() == PaymentEventStatus.READY &&
-                        event.getCreatedAt() != null &&
-                        event.getCreatedAt().isBefore(before)
+                                event.getCreatedAt() != null &&
+                                event.getCreatedAt().isBefore(before)
                 )
                 .toList();
         paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
@@ -101,5 +102,30 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     public List<PaymentOrder> findPaymentOrdersByPaymentEventId(Long paymentEventId) {
         return paymentOrderDatabase.getOrDefault(paymentEventId, Collections.emptyList());
+    }
+
+    @Override
+    public Map<PaymentEventStatus, Long> countByStatus() {
+        Map<PaymentEventStatus, Long> statusCounts = new EnumMap<>(PaymentEventStatus.class);
+        for (PaymentEvent event : paymentEventDatabase.values()) {
+            statusCounts.merge(event.getStatus(), 1L, Long::sum);
+        }
+        return statusCounts;
+    }
+
+    @Override
+    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before) {
+        return paymentEventDatabase.values().stream()
+                .filter(event -> event.getStatus() == status &&
+                        event.getExecutedAt() != null &&
+                        event.getExecutedAt().isBefore(before))
+                .count();
+    }
+
+    @Override
+    public long countByRetryCountGreaterThanEqual(int retryCount) {
+        return paymentEventDatabase.values().stream()
+                .filter(event -> event.getRetryCount() >= retryCount)
+                .count();
     }
 }
