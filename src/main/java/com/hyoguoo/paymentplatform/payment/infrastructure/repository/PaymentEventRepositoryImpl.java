@@ -3,10 +3,13 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -94,5 +97,32 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                     return paymentEventEntity.toDomain(paymentOrderList);
                 })
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<PaymentEventStatus, Long> countByStatus() {
+        List<Object[]> results = jpaPaymentEventRepository.countByStatusGrouped();
+        Map<PaymentEventStatus, Long> statusCounts = new EnumMap<>(PaymentEventStatus.class);
+
+        for (Object[] result : results) {
+            PaymentEventStatus status = (PaymentEventStatus) result[0];
+            Long count = (Long) result[1];
+            statusCounts.put(status, count);
+        }
+
+        return statusCounts;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before) {
+        return jpaPaymentEventRepository.countByStatusAndExecutedAtBefore(status, before);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByRetryCountGreaterThanEqual(int retryCount) {
+        return jpaPaymentEventRepository.countByRetryCountGreaterThanEqual(retryCount);
     }
 }
