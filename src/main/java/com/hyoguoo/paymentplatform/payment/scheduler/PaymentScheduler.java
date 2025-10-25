@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
+import com.hyoguoo.paymentplatform.payment.application.metrics.SchedulerMetrics;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentRecoverService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ public class PaymentScheduler {
 
     private final PaymentRecoverService paymentRecoverService;
     private final PaymentExpirationService paymentExpirationService;
+    private final SchedulerMetrics schedulerMetrics;
 
     @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
     @ConditionalOnProperty(
@@ -22,7 +24,14 @@ public class PaymentScheduler {
             havingValue = "true"
     )
     public void recoverRetryablePayment() {
-        paymentRecoverService.recoverRetryablePayment();
+        schedulerMetrics.recordExecution("recovery", "started");
+        try {
+            paymentRecoverService.recoverRetryablePayment();
+            schedulerMetrics.recordExecution("recovery", "completed");
+        } catch (Exception e) {
+            schedulerMetrics.recordExecution("recovery", "error");
+            throw e;
+        }
     }
 
     @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
@@ -31,6 +40,13 @@ public class PaymentScheduler {
             havingValue = "true"
     )
     public void expireOldReadyPayments() {
-        paymentExpirationService.expireOldReadyPayments();
+        schedulerMetrics.recordExecution("expiration", "started");
+        try {
+            paymentExpirationService.expireOldReadyPayments();
+            schedulerMetrics.recordExecution("expiration", "completed");
+        } catch (Exception e) {
+            schedulerMetrics.recordExecution("expiration", "error");
+            throw e;
+        }
     }
 }
