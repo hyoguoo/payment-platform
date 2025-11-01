@@ -24,6 +24,9 @@ public enum PaymentErrorCode implements ErrorCode {
     RETRYABLE_VALIDATION_ERROR("E03015", "재시도 불가능한 상태입니다."),
     INVALID_STATUS_TO_UNKNOWN("E03016", "결제를 알 수 없는 상태로 변경할 수 없습니다."),
     INVALID_STATUS_TO_EXPIRE("E03017", "결제를 만료 상태로 변경할 수 없습니다."),
+    INVALID_STATUS_TO_COMPLETE("E03018", "작업을 완료할 수 없는 상태입니다."),
+    INVENTORY_JOB_NOT_FOUND("E03019", "존재하지 않는 재고 작업입니다."),
+    PAYMENT_PROCESS_NOT_FOUND("E03020", "존재하지 않는 결제 프로세스입니다."),
     ;
 
     private final String code;
