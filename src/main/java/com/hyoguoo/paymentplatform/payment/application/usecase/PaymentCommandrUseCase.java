@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class PaymentProcessorUseCase {
+public class PaymentCommandrUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;

@@ -18,7 +18,7 @@ public class PaymentTransactionCoordinator {
 
     private final PaymentProcessUseCase paymentProcessUseCase;
     private final OrderedProductUseCase orderedProductUseCase;
-    private final PaymentProcessorUseCase paymentProcessorUseCase;
+    private final PaymentCommandrUseCase paymentCommandrUseCase;
 
     @Transactional
     public PaymentProcess executeStockDecreaseWithJobCreation(String orderId, List<PaymentOrder> paymentOrderList)
@@ -36,7 +36,7 @@ public class PaymentTransactionCoordinator {
     ) {
         paymentProcessUseCase.completeJob(orderId);
 
-        return paymentProcessorUseCase.markPaymentAsDone(paymentEvent, approvedAt);
+        return paymentCommandrUseCase.markPaymentAsDone(paymentEvent, approvedAt);
     }
 
     @Transactional
@@ -52,6 +52,6 @@ public class PaymentTransactionCoordinator {
 
         orderedProductUseCase.increaseStockForOrders(paymentOrderList);
 
-        return paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureReason);
+        return paymentCommandrUseCase.markPaymentAsFail(paymentEvent, failureReason);
     }
 }

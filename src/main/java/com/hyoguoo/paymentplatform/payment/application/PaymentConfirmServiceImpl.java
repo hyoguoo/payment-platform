@@ -7,7 +7,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandrUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
@@ -29,7 +29,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentTransactionCoordinator transactionCoordinator;
-    private final PaymentProcessorUseCase paymentProcessorUseCase;
+    private final PaymentCommandrUseCase paymentCommandrUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
 
     @Override
@@ -58,7 +58,7 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         }
 
         try {
-            PaymentEvent inProgressPaymentEvent = paymentProcessorUseCase.executePayment(
+            PaymentEvent inProgressPaymentEvent = paymentCommandrUseCase.executePayment(
                     paymentEvent,
                     paymentConfirmCommand.getPaymentKey()
             );
@@ -102,12 +102,12 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private PaymentEvent processPayment(
             PaymentEvent paymentEvent, PaymentConfirmCommand paymentConfirmCommand
     ) throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        paymentProcessorUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
+        paymentCommandrUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_REQUEST_START,
                 () -> String.format("orderId=%s", paymentConfirmCommand.getOrderId()));
 
-        TossPaymentInfo tossConfirmInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
+        TossPaymentInfo tossConfirmInfo = paymentCommandrUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 

@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandrUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
 import java.util.List;
@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentExpirationServiceImpl implements PaymentExpirationService {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
-    private final PaymentProcessorUseCase paymentProcessorUseCase;
+    private final PaymentCommandrUseCase paymentCommandrUseCase;
 
     @Override
     @Transactional
@@ -32,7 +32,7 @@ public class PaymentExpirationServiceImpl implements PaymentExpirationService {
     }
 
     private void expirePaymentEvent(PaymentEvent paymentEvent) {
-        PaymentEvent expiredPaymentEvent = paymentProcessorUseCase.expirePayment(paymentEvent);
+        PaymentEvent expiredPaymentEvent = paymentCommandrUseCase.expirePayment(paymentEvent);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_EXPIRED, () ->
                 String.format("Payment expired - orderId=%s, paymentEventId=%d",
                         expiredPaymentEvent.getOrderId(), expiredPaymentEvent.getId()));

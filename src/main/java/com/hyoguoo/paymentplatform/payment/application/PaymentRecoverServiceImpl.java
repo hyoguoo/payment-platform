@@ -6,7 +6,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandrUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentRecoveryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 public class PaymentRecoverServiceImpl implements PaymentRecoverService {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
-    private final PaymentProcessorUseCase paymentProcessorUseCase;
+    private final PaymentCommandrUseCase paymentCommandrUseCase;
     private final PaymentRecoveryUseCase paymentRecoveryUseCase;
     private final LocalDateTimeProvider localDateTimeProvider;
 
@@ -49,7 +49,7 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                 throw PaymentRetryableValidateException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR);
             }
 
-            PaymentEvent increasedRetryCountEvent = paymentProcessorUseCase.increaseRetryCount(retryablePaymentEvent);
+            PaymentEvent increasedRetryCountEvent = paymentCommandrUseCase.increaseRetryCount(retryablePaymentEvent);
 
             PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
                     .userId(increasedRetryCountEvent.getBuyerId())
@@ -58,7 +58,7 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                     .paymentKey(increasedRetryCountEvent.getPaymentKey())
                     .build();
 
-            TossPaymentInfo tossPaymentInfo = paymentProcessorUseCase.confirmPaymentWithGateway(
+            TossPaymentInfo tossPaymentInfo = paymentCommandrUseCase.confirmPaymentWithGateway(
                     paymentConfirmCommand
             );
 
@@ -67,7 +67,7 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                             increasedRetryCountEvent.getOrderId(),
                             tossPaymentInfo.getPaymentDetails().getApprovedAt()));
 
-            PaymentEvent donePaymentEvent = paymentProcessorUseCase.markPaymentAsDone(
+            PaymentEvent donePaymentEvent = paymentCommandrUseCase.markPaymentAsDone(
                     increasedRetryCountEvent,
                     tossPaymentInfo.getPaymentDetails().getApprovedAt()
             );
