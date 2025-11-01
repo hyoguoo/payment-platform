@@ -38,4 +38,20 @@ public class PaymentTransactionCoordinator {
 
         return paymentProcessorUseCase.markPaymentAsDone(paymentEvent, approvedAt);
     }
+
+    @Transactional
+    public PaymentEvent executePaymentFailureCompensation(
+            String orderId,
+            PaymentEvent paymentEvent,
+            List<PaymentOrder> paymentOrderList,
+            String failureReason
+    ) {
+        if (paymentProcessUseCase.existsByOrderId(orderId)) {
+            paymentProcessUseCase.failJob(orderId, failureReason);
+        }
+
+        orderedProductUseCase.increaseStockForOrders(paymentOrderList);
+
+        return paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureReason);
+    }
 }

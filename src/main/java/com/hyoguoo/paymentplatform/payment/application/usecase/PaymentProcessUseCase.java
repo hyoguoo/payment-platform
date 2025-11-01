@@ -60,4 +60,8 @@ public class PaymentProcessUseCase {
         return paymentProcessRepository.findByOrderId(orderId)
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_PROCESS_NOT_FOUND));
     }
+
+    public boolean existsByOrderId(String orderId) {
+        return paymentProcessRepository.existsByOrderId(orderId);
+    }
 }
