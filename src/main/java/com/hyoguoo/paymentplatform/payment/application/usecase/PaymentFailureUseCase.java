@@ -13,31 +13,30 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PaymentFailureUseCase {
 
-    private final PaymentProcessorUseCase paymentProcessorUseCase;
-    private final OrderedProductUseCase orderedProductUseCase;
+    private final PaymentCommandrUseCase paymentCommandrUseCase;
+    private final PaymentTransactionCoordinator transactionCoordinator;
 
     public PaymentEvent handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
+        PaymentEvent failedPaymentEvent = paymentCommandrUseCase.markPaymentAsFail(paymentEvent, failureMessage);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
                 () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
         return failedPaymentEvent;
     }
 
     public PaymentEvent handleNonRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureMessage);
+        PaymentEvent failedPaymentEvent = transactionCoordinator.executePaymentFailureCompensation(
+                paymentEvent.getOrderId(),
+                paymentEvent,
+                paymentEvent.getPaymentOrderList(),
+                failureMessage
+        );
         LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
-
-        orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
-        LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
-                () -> String.format("products=%s by orderId=%s",
-                        LogFmt.toJson(failedPaymentEvent.getPaymentOrderList()),
-                        failedPaymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
         return failedPaymentEvent;
     }
 
     public PaymentEvent handleRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent unknownPaymentEvent = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
+        PaymentEvent unknownPaymentEvent = paymentCommandrUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
                 () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
         return unknownPaymentEvent;
@@ -45,15 +44,14 @@ public class PaymentFailureUseCase {
 
     public PaymentEvent handleUnknownFailure(PaymentEvent paymentEvent, String failureMessage) {
         String message = failureMessage != null ? failureMessage : "Unknown error occurred";
-        PaymentEvent failedPaymentEvent = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, message);
+        PaymentEvent failedPaymentEvent = transactionCoordinator.executePaymentFailureCompensation(
+                paymentEvent.getOrderId(),
+                paymentEvent,
+                paymentEvent.getPaymentOrderList(),
+                message
+        );
         LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), message));
-
-        orderedProductUseCase.increaseStockForOrders(failedPaymentEvent.getPaymentOrderList());
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_INCREASE_REQUEST,
-                () -> String.format("products=%s by orderId=%s",
-                        LogFmt.toJson(failedPaymentEvent.getPaymentOrderList()),
-                        failedPaymentEvent.getOrderId()));
+                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), message));
         return failedPaymentEvent;
     }
 }
