@@ -5,10 +5,10 @@ import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
-import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
-    private final OrderedProductUseCase orderedProductUseCase;
+    private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentProcessorUseCase paymentProcessorUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
 
@@ -44,7 +44,10 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         );
 
         try {
-            orderedProductUseCase.decreaseStockForOrders(paymentEvent.getPaymentOrderList());
+            transactionCoordinator.executeStockDecreaseWithJobCreation(
+                    paymentEvent.getOrderId(),
+                    paymentEvent.getPaymentOrderList()
+            );
             LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_SUCESS,
                     () -> String.format("orderId=%s", paymentEvent.getOrderId()));
         } catch (PaymentOrderedProductStockException e) {
@@ -113,7 +116,8 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                         tossConfirmInfo.getOrderId(),
                         tossConfirmInfo.getPaymentConfirmResultStatus()));
 
-        PaymentEvent donePaymentEvent = paymentProcessorUseCase.markPaymentAsDone(
+        PaymentEvent donePaymentEvent = transactionCoordinator.executePaymentSuccessCompletion(
+                paymentEvent.getOrderId(),
                 paymentEvent,
                 tossConfirmInfo.getPaymentDetails().getApprovedAt()
         );
