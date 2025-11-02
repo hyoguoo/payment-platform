@@ -47,7 +47,7 @@
 - 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
 - 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.gitbook.io/tech-log/posts/payment-compensation-transaction)
 
-<img width="80%" alt="image" src="">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
 
 ### 결제 흐름 추적을 위한 모니터링 체계 구축
 
