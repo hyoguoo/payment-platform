@@ -237,3 +237,6 @@ out/
 # Claude
 .claude/chats/
 .claude/projects.json
+
+.serena
+bin

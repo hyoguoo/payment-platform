@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentProcessorUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandrUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -25,15 +25,15 @@ class PaymentExpirationServiceImplTest {
 
     private PaymentExpirationService paymentExpirationService;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
-    private PaymentProcessorUseCase mockPaymentProcessorUseCase;
+    private PaymentCommandrUseCase mockPaymentCommandrUseCase;
 
     @BeforeEach
     void setUp() {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
-        mockPaymentProcessorUseCase = Mockito.mock(PaymentProcessorUseCase.class);
+        mockPaymentCommandrUseCase = Mockito.mock(PaymentCommandrUseCase.class);
         paymentExpirationService = new PaymentExpirationServiceImpl(
                 mockPaymentLoadUseCase,
-                mockPaymentProcessorUseCase
+                mockPaymentCommandrUseCase
         );
     }
 
@@ -82,14 +82,14 @@ class PaymentExpirationServiceImplTest {
         List<PaymentEvent> readyPayments = List.of(mockReadyPayment);
 
         when(mockPaymentLoadUseCase.getReadyPaymentsOlder()).thenReturn(readyPayments);
-        when(mockPaymentProcessorUseCase.expirePayment(mockReadyPayment)).thenReturn(mockExpiredPayment);
+        when(mockPaymentCommandrUseCase.expirePayment(mockReadyPayment)).thenReturn(mockExpiredPayment);
 
         // when
         paymentExpirationService.expireOldReadyPayments();
 
         // then
         verify(mockPaymentLoadUseCase, times(1)).getReadyPaymentsOlder();
-        verify(mockPaymentProcessorUseCase, times(1)).expirePayment(mockReadyPayment);
+        verify(mockPaymentCommandrUseCase, times(1)).expirePayment(mockReadyPayment);
     }
 
     @Test
@@ -104,7 +104,7 @@ class PaymentExpirationServiceImplTest {
 
         // then
         verify(mockPaymentLoadUseCase, times(1)).getReadyPaymentsOlder();
-        verify(mockPaymentProcessorUseCase, times(0)).expirePayment(any(PaymentEvent.class));
+        verify(mockPaymentCommandrUseCase, times(0)).expirePayment(any(PaymentEvent.class));
     }
 
     @Test
@@ -171,7 +171,7 @@ class PaymentExpirationServiceImplTest {
         when(mockPaymentLoadUseCase.getReadyPaymentsOlder()).thenReturn(readyPayments);
 
         for (int i = 0; i < readyPayments.size(); i++) {
-            when(mockPaymentProcessorUseCase.expirePayment(readyPayments.get(i)))
+            when(mockPaymentCommandrUseCase.expirePayment(readyPayments.get(i)))
                     .thenReturn(expiredPayments.get(i));
         }
 
@@ -180,9 +180,9 @@ class PaymentExpirationServiceImplTest {
 
         // then
         verify(mockPaymentLoadUseCase, times(1)).getReadyPaymentsOlder();
-        verify(mockPaymentProcessorUseCase, times(3)).expirePayment(any(PaymentEvent.class));
+        verify(mockPaymentCommandrUseCase, times(3)).expirePayment(any(PaymentEvent.class));
         for (PaymentEvent payment : readyPayments) {
-            verify(mockPaymentProcessorUseCase, times(1)).expirePayment(payment);
+            verify(mockPaymentCommandrUseCase, times(1)).expirePayment(payment);
         }
     }
 }

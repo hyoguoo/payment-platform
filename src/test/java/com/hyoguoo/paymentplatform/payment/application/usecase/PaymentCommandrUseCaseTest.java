@@ -25,9 +25,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-class PaymentProcessorUseCaseTest {
+class PaymentCommandrUseCaseTest {
 
-    private PaymentProcessorUseCase paymentProcessorUseCase;
+    private PaymentCommandrUseCase paymentCommandrUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayPort mockPaymentGatewayPort;
     private TestLocalDateTimeProvider testLocalDateTimeProvider;
@@ -37,7 +37,7 @@ class PaymentProcessorUseCaseTest {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
-        paymentProcessorUseCase = new PaymentProcessorUseCase(
+        paymentCommandrUseCase = new PaymentCommandrUseCase(
                 mockPaymentEventRepository,
                 mockPaymentGatewayPort,
                 testLocalDateTimeProvider
@@ -61,7 +61,7 @@ class PaymentProcessorUseCaseTest {
                 .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
+        PaymentEvent result = paymentCommandrUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
         verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
@@ -78,7 +78,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsDone(paymentEvent, approvedAt);
+        PaymentEvent result = paymentCommandrUseCase.markPaymentAsDone(paymentEvent, approvedAt);
 
         // then
         verify(paymentEvent, times(1)).done(approvedAt);
@@ -96,7 +96,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsFail(paymentEvent, failureReason);
+        PaymentEvent result = paymentCommandrUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
         verify(paymentEvent, times(1)).fail(failureReason);
@@ -113,7 +113,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentProcessorUseCase.markPaymentAsUnknown(paymentEvent, reason);
+        PaymentEvent result = paymentCommandrUseCase.markPaymentAsUnknown(paymentEvent, reason);
 
         // then
         verify(paymentEvent, times(1)).unknown(reason);
@@ -133,7 +133,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentGatewayPort.getPaymentInfoByOrderId(paymentConfirmCommand.getOrderId()))
                 .thenReturn(tossPaymentInfo);
-        paymentProcessorUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
+        paymentCommandrUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
 
         // then
         verify(paymentEvent, times(1))
@@ -157,7 +157,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
-        TossPaymentInfo result = paymentProcessorUseCase.confirmPaymentWithGateway(
+        TossPaymentInfo result = paymentCommandrUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 
@@ -184,7 +184,7 @@ class PaymentProcessorUseCaseTest {
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
-                () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
+                () -> paymentCommandrUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossRetryableException.class);
     }
 
@@ -206,7 +206,7 @@ class PaymentProcessorUseCaseTest {
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
-                () -> paymentProcessorUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
+                () -> paymentCommandrUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
     }
 
@@ -219,7 +219,7 @@ class PaymentProcessorUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        paymentProcessorUseCase.increaseRetryCount(paymentEvent);
+        paymentCommandrUseCase.increaseRetryCount(paymentEvent);
 
         // then
         verify(paymentEvent, times(1)).increaseRetryCount();

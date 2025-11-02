@@ -49,4 +49,20 @@ public class PaymentScheduler {
             throw e;
         }
     }
+
+    @Scheduled(fixedDelayString = "${scheduler.payment-recovery.interval-ms:60000}")
+    @ConditionalOnProperty(
+            name = "scheduler.payment-recovery.enabled",
+            havingValue = "true"
+    )
+    public void recoverStuckPayments() {
+        schedulerMetrics.recordExecution("stuck-payment-recovery", "started");
+        try {
+            paymentRecoverService.recoverStuckPayments();
+            schedulerMetrics.recordExecution("stuck-payment-recovery", "completed");
+        } catch (Exception e) {
+            schedulerMetrics.recordExecution("stuck-payment-recovery", "error");
+            throw e;
+        }
+    }
 }

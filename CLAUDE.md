@@ -68,6 +68,22 @@ cd docker/compose && cp .env.secret.example .env.secret
 - `/.env.secret`: Test environment (loaded via `spring.config.import`)
 - `/docker/compose/.env.secret`: Docker environment (loaded via `env_file` in docker-compose.yml)
 
+## Development Workflow
+
+Follow this required workflow when implementing tasks:
+
+1.  **Review Specifications:** Always refer to `TECHSPEC.md` to understand the technical requirements before starting implementation.
+2.  **Follow the Plan:** Use `PLAN.md` as the authoritative source for the implementation sequence.
+    * After completing a task, mark it as **checked** in `PLAN.md`.
+    * Always begin work on the next **unchecked** task listed in `PLAN.md`.
+3.  **Test-First Development:**
+    * Write tests (unit or integration) *before* writing the implementation code.
+    * Implement the **minimum amount of code** necessary to pass the newly written tests. Avoid making overly large or unrelated changes.
+4.  **Atomic Commits:**
+    * Commit your work after a single, discrete unit of functionality or task is complete.
+5.  **Update Documentation:**
+    * Upon task completion, if the changes necessitate updates to guidance or specification files (e.g., CLAUDE.md, TECHSPEC.md), update those files accordingly.
+
 ## Architecture
 
 ### Port-Adapter Pattern (Hexagonal Architecture)
