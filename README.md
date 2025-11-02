@@ -25,6 +25,14 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
 
+### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
+
+- 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
+- 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
+- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
+
 ### 재시도 가능한 에러 처리 및 복구 로직 적용
 
 - API 지연, 서버 중단 등 외부 오류 발생 시 결제가 실패로 종료되어 복구할 수 없는 문제가 존재
@@ -33,6 +41,14 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
 
+### 보상 트랜잭션 실패 케이스 대응 및 최종 일관성 확보
+
+- 재고를 복구하는 보상 트랜잭션 처리 중 DB 데드락, 서버 다운 등으로 실패 시(이중 장애), 유령 재고 문제가 발생하는 엣지 케이스 존재
+- 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
+- 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.gitbook.io/tech-log/posts/payment-compensation-transaction)
+
+<img width="80%" alt="image" src="">
+
 ### 결제 흐름 추적을 위한 모니터링 체계 구축
 
 - 승인 지연, 재시도 등 여러 단계를 거치는 복잡한 흐름에서 요청 단위 로그만으로는 전체 흐름 파악과 이슈 대응이 어려움
@@ -40,14 +56,6 @@
 - 링크: [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance) / [결제 이력 추적 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-history-with-aop)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
-
-### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
-
-- 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
-- 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
-- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
-
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
 
 ### 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증
 
