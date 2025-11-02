@@ -20,7 +20,7 @@ public class PaymentTransactionCoordinator {
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandrUseCase paymentCommandrUseCase;
 
-    @Transactional
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentProcess executeStockDecreaseWithJobCreation(String orderId, List<PaymentOrder> paymentOrderList)
             throws PaymentOrderedProductStockException {
         orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
