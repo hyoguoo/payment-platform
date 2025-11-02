@@ -38,6 +38,15 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
         retryablePaymentEvents.forEach(this::processRetryablePaymentEvent);
     }
 
+    @Override
+    public void recoverStuckPayments() {
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_START,
+                () -> "Starting stuck payment recovery process");
+        paymentRecoveryUseCase.recoverStuckPayments();
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_END,
+                () -> "Finished stuck payment recovery process");
+    }
+
     private void processRetryablePaymentEvent(PaymentEvent retryablePaymentEvent) {
         try {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RETRY_START,
