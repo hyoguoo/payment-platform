@@ -45,6 +45,9 @@ scheduler:
   payment-status-sync:
     enabled: true
     fixed-rate: 3600000
+  payment-recovery:
+    enabled: true
+    interval-ms: 60000
 
 springdoc:
   swagger-ui:
