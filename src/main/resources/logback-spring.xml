@@ -30,19 +30,6 @@
       <keepAliveDuration>5 minutes</keepAliveDuration>
       <reconnectionDelay>10 seconds</reconnectionDelay>
     </appender>
-
-    <!-- File Appender (JSON format for Logstash) -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-      <file>/var/log/app/payment-platform.log</file>
-      <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-        <fileNamePattern>/var/log/app/payment-platform.%d{yyyy-MM-dd}.log</fileNamePattern>
-        <maxHistory>30</maxHistory>
-      </rollingPolicy>
-      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-        <customFields>{"application":"${springAppName:-payment-platform}","environment":"docker"}</customFields>
-        <includeMdc>true</includeMdc>
-      </encoder>
-    </appender>
   </springProfile>
 
   <!-- Root Logger Configuration -->
@@ -58,7 +45,6 @@
   <springProfile name="docker">
     <root level="INFO">
       <appender-ref ref="CONSOLE"/>
-      <appender-ref ref="FILE"/>
       <appender-ref ref="LOGSTASH"/>
     </root>
     <logger name="com.hyoguoo.paymentplatform" level="INFO"/>
