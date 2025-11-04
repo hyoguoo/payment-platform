@@ -13,11 +13,11 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PaymentFailureUseCase {
 
-    private final PaymentCommandrUseCase paymentCommandrUseCase;
+    private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentTransactionCoordinator transactionCoordinator;
 
     public PaymentEvent handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentCommandrUseCase.markPaymentAsFail(paymentEvent, failureMessage);
+        PaymentEvent failedPaymentEvent = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureMessage);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
                 () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
         return failedPaymentEvent;
@@ -36,7 +36,7 @@ public class PaymentFailureUseCase {
     }
 
     public PaymentEvent handleRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent unknownPaymentEvent = paymentCommandrUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
+        PaymentEvent unknownPaymentEvent = paymentCommandUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
                 () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
         return unknownPaymentEvent;
