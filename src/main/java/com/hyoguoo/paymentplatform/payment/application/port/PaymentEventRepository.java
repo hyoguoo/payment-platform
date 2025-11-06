@@ -24,4 +24,11 @@ public interface PaymentEventRepository {
     long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
+
+    Map<PaymentEventStatus, Map<String, Long>> countByStatusAndAgeBuckets(
+            LocalDateTime fiveMinutesAgo,
+            LocalDateTime thirtyMinutesAgo
+    );
+
+    long countNearExpiration(LocalDateTime expirationThreshold);
 }

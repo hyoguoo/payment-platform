@@ -27,4 +27,26 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
             @Param("before") LocalDateTime before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
+
+    @Query("SELECT pe.status, " +
+            "CASE " +
+            "WHEN pe.lastStatusChangedAt >= :fiveMinutesAgo THEN 'recent' " +
+            "WHEN pe.lastStatusChangedAt >= :thirtyMinutesAgo AND pe.lastStatusChangedAt < :fiveMinutesAgo THEN 'medium' " +
+            "ELSE 'old' " +
+            "END, " +
+            "COUNT(pe) " +
+            "FROM PaymentEventEntity pe " +
+            "GROUP BY pe.status, " +
+            "CASE " +
+            "WHEN pe.lastStatusChangedAt >= :fiveMinutesAgo THEN 'recent' " +
+            "WHEN pe.lastStatusChangedAt >= :thirtyMinutesAgo AND pe.lastStatusChangedAt < :fiveMinutesAgo THEN 'medium' " +
+            "ELSE 'old' " +
+            "END")
+    List<Object[]> countByStatusAndAgeBucketsGrouped(
+            @Param("fiveMinutesAgo") LocalDateTime fiveMinutesAgo,
+            @Param("thirtyMinutesAgo") LocalDateTime thirtyMinutesAgo
+    );
+
+    @Query("SELECT COUNT(pe) FROM PaymentEventEntity pe WHERE pe.status = 'READY' AND pe.createdAt < :expirationThreshold")
+    long countNearExpiration(@Param("expirationThreshold") LocalDateTime expirationThreshold);
 }
