@@ -67,6 +67,9 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "status_reason")
     private String statusReason;
 
+    @Column(name = "last_status_changed_at")
+    private LocalDateTime lastStatusChangedAt;
+
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()
                 .id(paymentEvent.getId())
@@ -80,6 +83,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .approvedAt(paymentEvent.getApprovedAt())
                 .retryCount(paymentEvent.getRetryCount())
                 .statusReason(paymentEvent.getStatusReason())
+                .lastStatusChangedAt(paymentEvent.getLastStatusChangedAt())
                 .build();
     }
 
@@ -101,6 +105,7 @@ public class PaymentEventEntity extends BaseEntity {
                                 .orElse(Collections.emptyList()))
                 )
                 .createdAt(getCreatedAt())
+                .lastStatusChangedAt(lastStatusChangedAt)
                 .allArgsBuild();
     }
 }

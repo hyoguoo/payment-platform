@@ -64,7 +64,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(), testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -81,7 +81,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
 
         // then
-        verify(paymentEvent, times(1)).done(approvedAt);
+        verify(paymentEvent, times(1)).done(approvedAt, testLocalDateTimeProvider.now());
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
 
     }
@@ -99,7 +99,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
-        verify(paymentEvent, times(1)).fail(failureReason);
+        verify(paymentEvent, times(1)).fail(failureReason, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -116,7 +116,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.markPaymentAsUnknown(paymentEvent, reason);
 
         // then
-        verify(paymentEvent, times(1)).unknown(reason);
+        verify(paymentEvent, times(1)).unknown(reason, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 

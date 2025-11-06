@@ -15,6 +15,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Stream;
@@ -235,6 +236,7 @@ class PaymentEventTest {
                 .userInfo(userInfo)
                 .productInfoList(productInfoList)
                 .orderId(orderId)
+                .lastStatusChangedAt(LocalDateTime.now())
                 .requiredBuild();
 
         // then
@@ -259,7 +261,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.execute("validPaymentKey", executedAt);
+        paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now());
 
         // then
         assertThat(paymentEvent.getPaymentKey()).isEqualTo("validPaymentKey");
@@ -279,7 +281,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", executedAt))
+        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -295,7 +297,7 @@ class PaymentEventTest {
 
         LocalDateTime approvedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
         // when
-        paymentEvent.done(approvedAt);
+        paymentEvent.done(approvedAt, LocalDateTime.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
@@ -314,7 +316,7 @@ class PaymentEventTest {
         LocalDateTime approvedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.done(approvedAt))
+        assertThatThrownBy(() -> paymentEvent.done(approvedAt, LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -329,7 +331,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.fail("test failure reason");
+        paymentEvent.fail("test failure reason", LocalDateTime.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
@@ -346,7 +348,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.fail("test failure reason"))
+        assertThatThrownBy(() -> paymentEvent.fail("test failure reason", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -361,7 +363,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.unknown("test unknown reason");
+        paymentEvent.unknown("test unknown reason", LocalDateTime.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
@@ -378,7 +380,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.unknown("test unknown reason"))
+        assertThatThrownBy(() -> paymentEvent.unknown("test unknown reason", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -648,7 +650,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.expire();
+        paymentEvent.expire(LocalDateTime.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.EXPIRED);
@@ -668,7 +670,136 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(paymentEvent::expire)
+        assertThatThrownBy(() -> paymentEvent.expire(LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @Test
+    @DisplayName("requiredBuilder로 생성 시 lastStatusChangedAt 필드가 초기화된다.")
+    void lastStatusChangedAt_InitializedOnCreation() {
+        // given
+        UserInfo userInfo = UserInfo.builder().id(1L).build();
+        ProductInfo productInfo = ProductInfo.builder()
+                .id(1L)
+                .name("Product 1")
+                .price(new BigDecimal("5000"))
+                .stock(100)
+                .sellerId(2L)
+                .build();
+        LocalDateTime creationTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+
+        // when
+        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
+                .userInfo(userInfo)
+                .productInfoList(List.of(productInfo))
+                .orderId("order123")
+                .lastStatusChangedAt(creationTime)
+                .requiredBuild();
+
+        // then
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(creationTime);
+    }
+
+    @Test
+    @DisplayName("상태 변경 시 lastStatusChangedAt 필드가 업데이트된다.")
+    void lastStatusChangedAt_UpdatedOnStatusChange() {
+        // given
+        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 5, 0);
+
+        PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
+                .buyerId(1L)
+                .sellerId(2L)
+                .orderName("테스트 주문")
+                .orderId("order123")
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .lastStatusChangedAt(initialTime)
+                .paymentOrderList(List.of())
+                .allArgsBuild();
+
+        // when
+        paymentEvent.execute("validPaymentKey", statusChangeTime, statusChangeTime);
+
+        // then
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(statusChangeTime);
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("상태 변경 간의 Duration을 계산할 수 있다.")
+    void lastStatusChangedAt_DurationCalculation() {
+        // given
+        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 5, 30);
+
+        PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
+                .buyerId(1L)
+                .sellerId(2L)
+                .orderName("테스트 주문")
+                .orderId("order123")
+                .status(PaymentEventStatus.IN_PROGRESS)
+                .retryCount(0)
+                .lastStatusChangedAt(initialTime)
+                .paymentOrderList(List.of())
+                .allArgsBuild();
+
+        // when
+        Duration duration = Duration.between(paymentEvent.getLastStatusChangedAt(), statusChangeTime);
+
+        // then
+        assertThat(duration.toMinutes()).isEqualTo(5);
+        assertThat(duration.getSeconds()).isEqualTo(330); // 5분 30초
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "UNKNOWN", "EXPIRED"})
+    @DisplayName("각 상태 변경 메서드 호출 시 lastStatusChangedAt이 업데이트된다.")
+    void lastStatusChangedAt_UpdatedOnEachStatusChange(PaymentEventStatus targetStatus) {
+        // given
+        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 10, 0);
+
+        PaymentEventStatus initialStatus = switch (targetStatus) {
+            case DONE, FAILED, UNKNOWN -> PaymentEventStatus.IN_PROGRESS;
+            case EXPIRED -> PaymentEventStatus.READY;
+            default -> PaymentEventStatus.READY;
+        };
+
+        PaymentOrderStatus paymentOrderStatus = switch (targetStatus) {
+            case DONE, FAILED, UNKNOWN -> PaymentOrderStatus.EXECUTING;
+            case EXPIRED -> PaymentOrderStatus.NOT_STARTED;
+            default -> PaymentOrderStatus.NOT_STARTED;
+        };
+
+        PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .quantity(1)
+                .totalAmount(new BigDecimal("5000"))
+                .status(paymentOrderStatus)
+                .allArgsBuild();
+
+        PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
+                .buyerId(1L)
+                .sellerId(2L)
+                .orderName("테스트 주문")
+                .orderId("order123")
+                .status(initialStatus)
+                .retryCount(0)
+                .lastStatusChangedAt(initialTime)
+                .paymentOrderList(List.of(paymentOrder))
+                .allArgsBuild();
+
+        // when
+        switch (targetStatus) {
+            case DONE -> paymentEvent.done(statusChangeTime, statusChangeTime);
+            case FAILED -> paymentEvent.fail("test reason", statusChangeTime);
+            case UNKNOWN -> paymentEvent.unknown("test reason", statusChangeTime);
+            case EXPIRED -> paymentEvent.expire(statusChangeTime);
+        }
+
+        // then
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(statusChangeTime);
+        assertThat(paymentEvent.getStatus()).isEqualTo(targetStatus);
     }
 }
