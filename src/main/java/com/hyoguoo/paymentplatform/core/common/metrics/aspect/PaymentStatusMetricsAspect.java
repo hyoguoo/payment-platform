@@ -52,7 +52,6 @@ public class PaymentStatusMetricsAspect {
                 fromStatus,
                 toStatus,
                 trigger,
-                true,
                 duration
         );
 

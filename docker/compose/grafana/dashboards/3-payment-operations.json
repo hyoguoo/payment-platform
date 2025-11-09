@@ -1028,7 +1028,7 @@
           },
           "editorMode": "code",
           "expr": "rate(payment_transition_total[5m])",
-          "legendFormat": "{{from_status}} → {{to_status}} ({{result}})",
+          "legendFormat": "{{from_status}} → {{to_status}} ({{trigger}})",
           "range": true,
           "refId": "A"
         }
@@ -1093,97 +1093,6 @@
         }
       ],
       "title": "최근 1시간 전환 분포 (Last 1h Transition Distribution)",
-      "type": "piechart"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            }
-          },
-          "mappings": []
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "success"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "failure"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 48
-      },
-      "id": 13,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ]
-        },
-        "pieType": "pie",
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "pluginVersion": "9.5.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "sum by(result) (increase(payment_transition_total[1h]))",
-          "legendFormat": "{{result}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "최근 1시간 성공/실패 비율 (Last 1h Success/Failure Rate)",
       "type": "piechart"
     }
   ],

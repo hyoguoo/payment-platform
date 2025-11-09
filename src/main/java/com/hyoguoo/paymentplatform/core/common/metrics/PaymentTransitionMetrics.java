@@ -24,11 +24,9 @@ public class PaymentTransitionMetrics {
             String fromStatus,
             String toStatus,
             String trigger,
-            boolean success,
             Duration duration
     ) {
-        String result = success ? "success" : "failure";
-        String counterKey = String.format("%s:%s:%s:%s", fromStatus, toStatus, trigger, result);
+        String counterKey = String.format("%s:%s:%s", fromStatus, toStatus, trigger);
 
         Counter counter = transitionCounters.computeIfAbsent(counterKey, key ->
                 Counter.builder("payment_transition_total")
@@ -36,13 +34,11 @@ public class PaymentTransitionMetrics {
                         .tag("from_status", fromStatus)
                         .tag("to_status", toStatus)
                         .tag("trigger", trigger)
-                        .tag("result", result)
                         .register(meterRegistry)
         );
         counter.increment();
 
-        // Record transition duration (only for successful transitions)
-        if (success && duration != null) {
+        if (duration != null) {
             String timerKey = String.format("%s:%s", fromStatus, toStatus);
             Timer timer = transitionTimers.computeIfAbsent(timerKey, key ->
                     Timer.builder("payment_transition_duration_seconds")
@@ -54,7 +50,7 @@ public class PaymentTransitionMetrics {
             timer.record(duration);
         }
 
-        log.debug("Recorded payment transition: {} -> {} (trigger: {}, result: {}, duration: {})",
-                fromStatus, toStatus, trigger, result, duration);
+        log.debug("Recorded payment transition: {} -> {} (trigger: {}, duration: {})",
+                fromStatus, toStatus, trigger, duration);
     }
 }
