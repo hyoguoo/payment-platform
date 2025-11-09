@@ -17,7 +17,7 @@ COPY src ./src
 RUN gradle clean build -x test --no-daemon
 
 # Runtime stage
-FROM openjdk:21-slim
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
