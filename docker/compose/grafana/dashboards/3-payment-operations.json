@@ -655,13 +655,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(toss_api_call_total[5m])",
+          "expr": "rate(toss_api_call_total[$__rate_interval])",
           "legendFormat": "{{operation}} ({{status}})",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Toss API 호출 비율 (5분 평균) - API Call Rate (5m avg)",
+      "title": "Toss API 호출 비율 - API Call Rate",
       "type": "timeseries"
     },
     {
@@ -862,13 +862,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by(status) (increase(toss_api_call_total[1h]))",
+          "expr": "sum by(status) (increase(toss_api_call_total[$__rate_interval]))",
           "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "최근 1시간 Toss API 성공/실패 비율 (Last 1h API Success/Failure Rate)",
+      "title": "Toss API 성공/실패 비율 (선택된 기간) - API Success/Failure Rate",
       "type": "piechart"
     },
     {
@@ -921,13 +921,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by(operation) (increase(toss_api_call_total[1h]))",
+          "expr": "sum by(operation) (increase(toss_api_call_total[$__rate_interval]))",
           "legendFormat": "{{operation}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "최근 1시간 작업별 호출 분포 (Last 1h Calls by Operation)",
+      "title": "작업별 호출 분포 (선택된 기간) - Calls by Operation",
       "type": "piechart"
     },
     {
@@ -1027,13 +1027,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(payment_transition_total[5m])",
+          "expr": "rate(payment_transition_total[$__rate_interval])",
           "legendFormat": "{{from_status}} → {{to_status}} ({{trigger}})",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "상태 전환 비율 (5분 평균) - Transition Rate (5m avg)",
+      "title": "상태 전환 비율 - Transition Rate",
       "type": "timeseries"
     },
     {
@@ -1086,13 +1086,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by(to_status) (increase(payment_transition_total[1h]))",
+          "expr": "sum by(to_status) (increase(payment_transition_total[$__rate_interval]))",
           "legendFormat": "→ {{to_status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "최근 1시간 전환 분포 (Last 1h Transition Distribution)",
+      "title": "전환 분포 (선택된 기간) - Transition Distribution",
       "type": "piechart"
     }
   ],
