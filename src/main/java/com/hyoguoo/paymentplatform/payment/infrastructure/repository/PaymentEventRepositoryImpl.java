@@ -8,7 +8,6 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEnt
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import java.time.LocalDateTime;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -125,37 +124,5 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     @Transactional(readOnly = true)
     public long countByRetryCountGreaterThanEqual(int retryCount) {
         return jpaPaymentEventRepository.countByRetryCountGreaterThanEqual(retryCount);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Map<PaymentEventStatus, Map<String, Long>> countByStatusAndAgeBuckets(
-            LocalDateTime fiveMinutesAgo,
-            LocalDateTime thirtyMinutesAgo
-    ) {
-        List<Object[]> results = jpaPaymentEventRepository.countByStatusAndAgeBucketsGrouped(
-                fiveMinutesAgo,
-                thirtyMinutesAgo
-        );
-
-        Map<PaymentEventStatus, Map<String, Long>> statusAgeBuckets = new EnumMap<>(PaymentEventStatus.class);
-
-        for (Object[] result : results) {
-            PaymentEventStatus status = (PaymentEventStatus) result[0];
-            String ageBucket = (String) result[1];
-            Long count = (Long) result[2];
-
-            statusAgeBuckets
-                    .computeIfAbsent(status, k -> new HashMap<>())
-                    .put(ageBucket, count);
-        }
-
-        return statusAgeBuckets;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public long countNearExpiration(LocalDateTime expirationThreshold) {
-        return jpaPaymentEventRepository.countNearExpiration(expirationThreshold);
     }
 }
