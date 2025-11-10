@@ -49,13 +49,14 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
 
-### 결제 흐름 추적을 위한 모니터링 체계 구축
+### 결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현
 
-- 승인 지연, 재시도 등 여러 단계를 거치는 복잡한 흐름에서 요청 단위 로그만으로는 전체 흐름 파악과 이슈 대응이 어려움
-- 구조화된 로깅(traceId/orderId 기반)과 AOP 기반 결제 정보 변동 저장, Admin 페이지를 통해 결제 흐름의 가시성 확보
-- 링크: [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance) / [결제 이력 추적 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-history-with-aop)
+- 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
+- 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
+- 링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
 
 ### 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증
 
