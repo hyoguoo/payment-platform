@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class PaymentCommandrUseCase {
+public class PaymentCommandUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;
@@ -31,8 +31,8 @@ public class PaymentCommandrUseCase {
     @PublishPaymentHistory(action = "changed")
     @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = "confirm")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
-        LocalDateTime executedAt = localDateTimeProvider.now();
-        paymentEvent.execute(paymentKey, executedAt);
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.execute(paymentKey, now, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
@@ -40,7 +40,8 @@ public class PaymentCommandrUseCase {
     @PublishPaymentHistory(action = "changed")
     @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
-        paymentEvent.done(approvedAt);
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.done(approvedAt, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
@@ -48,7 +49,8 @@ public class PaymentCommandrUseCase {
     @PublishPaymentHistory(action = "changed")
     @PaymentStatusChange(toStatus = "FAILED", trigger = "auto")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
-        paymentEvent.fail(failureReason);
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.fail(failureReason, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
@@ -56,7 +58,8 @@ public class PaymentCommandrUseCase {
     @PublishPaymentHistory(action = "changed")
     @PaymentStatusChange(toStatus = "UNKNOWN", trigger = "auto")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
-        paymentEvent.unknown(reason);
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.unknown(reason, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
@@ -71,7 +74,8 @@ public class PaymentCommandrUseCase {
     @PublishPaymentHistory(action = "changed")
     @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
-        paymentEvent.expire();
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.expire(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 

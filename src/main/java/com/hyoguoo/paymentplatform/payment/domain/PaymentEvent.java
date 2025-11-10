@@ -40,13 +40,15 @@ public class PaymentEvent {
     private String statusReason;
     private List<PaymentOrder> paymentOrderList;
     private LocalDateTime createdAt;
+    private LocalDateTime lastStatusChangedAt;
 
     @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
     @SuppressWarnings("unused")
     protected PaymentEvent(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
-            String orderId
+            String orderId,
+            LocalDateTime lastStatusChangedAt
     ) {
         this.buyerId = userInfo.getId();
         this.sellerId = productInfoList.getFirst().getSellerId();
@@ -56,6 +58,7 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.READY;
         this.retryCount = 0;
         this.paymentOrderList = new ArrayList<>();
+        this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
     private static String generateOrderName(
@@ -64,7 +67,7 @@ public class PaymentEvent {
         return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
     }
 
-    public void execute(String paymentKey, LocalDateTime executedAt) {
+    public void execute(String paymentKey, LocalDateTime executedAt, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -74,6 +77,7 @@ public class PaymentEvent {
         this.paymentKey = paymentKey;
         this.status = PaymentEventStatus.IN_PROGRESS;
         this.executedAt = executedAt;
+        this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
     public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
@@ -106,7 +110,7 @@ public class PaymentEvent {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public void done(LocalDateTime approvedAt) {
+    public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.DONE &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -115,10 +119,11 @@ public class PaymentEvent {
         this.approvedAt = approvedAt;
         this.status = PaymentEventStatus.DONE;
         this.statusReason = null;
+        this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
-    public void fail(String failureReason) {
+    public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -126,10 +131,11 @@ public class PaymentEvent {
         }
         this.status = PaymentEventStatus.FAILED;
         this.statusReason = failureReason;
+        this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::fail);
     }
 
-    public void unknown(String reason) {
+    public void unknown(String reason, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.UNKNOWN) {
@@ -137,15 +143,17 @@ public class PaymentEvent {
         }
         this.status = PaymentEventStatus.UNKNOWN;
         this.statusReason = reason;
+        this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
 
-    public void expire() {
+    public void expire(LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE);
         }
         this.status = PaymentEventStatus.EXPIRED;
         this.statusReason = null;
+        this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::expire);
     }
 

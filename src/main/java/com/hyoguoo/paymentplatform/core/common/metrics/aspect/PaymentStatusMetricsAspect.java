@@ -1,8 +1,11 @@
 package com.hyoguoo.paymentplatform.core.common.metrics.aspect;
 
-import com.hyoguoo.paymentplatform.core.common.metrics.PaymentStatusMetrics;
+import com.hyoguoo.paymentplatform.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -16,35 +19,40 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PaymentStatusMetricsAspect {
 
-    private final PaymentStatusMetrics paymentStatusMetrics;
+    private final PaymentTransitionMetrics paymentTransitionMetrics;
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     @Around("@annotation(paymentStatusChange)")
     public Object recordStatusChange(
             ProceedingJoinPoint joinPoint,
             PaymentStatusChange paymentStatusChange
     ) throws Throwable {
-        // Get original PaymentEvent from method arguments
         PaymentEvent originalEvent = extractPaymentEvent(joinPoint);
         String fromStatus = originalEvent != null ? originalEvent.getStatus().name() : "UNKNOWN";
+        LocalDateTime lastStatusChangedAt = originalEvent != null ? originalEvent.getLastStatusChangedAt() : null;
 
-        // Execute the method
         Object result = joinPoint.proceed();
 
-        // Get result PaymentEvent
-        PaymentEvent resultEvent = (result instanceof PaymentEvent) ? (PaymentEvent) result : null;
+        PaymentEvent resultEvent = (result instanceof PaymentEvent paymentEvent) ? paymentEvent : null;
         String toStatus = resultEvent != null ? resultEvent.getStatus().name() : paymentStatusChange.toStatus();
 
-        // Determine trigger
         String trigger = paymentStatusChange.trigger();
         if ("auto".equals(trigger)) {
             trigger = detectTriggerFromCallStack();
         }
 
-        // Record metric
-        paymentStatusMetrics.recordStatusChange(
+        Duration duration = null;
+        if (lastStatusChangedAt != null) {
+            LocalDateTime now = localDateTimeProvider.now();
+            duration = Duration.between(lastStatusChangedAt, now);
+        }
+
+        // Record transition metric with duration
+        paymentTransitionMetrics.recordTransition(
                 fromStatus,
                 toStatus,
-                trigger
+                trigger,
+                duration
         );
 
         return result;
@@ -53,8 +61,8 @@ public class PaymentStatusMetricsAspect {
     private PaymentEvent extractPaymentEvent(ProceedingJoinPoint joinPoint) {
         Object[] args = joinPoint.getArgs();
         for (Object arg : args) {
-            if (arg instanceof PaymentEvent) {
-                return (PaymentEvent) arg;
+            if (arg instanceof PaymentEvent paymentevent) {
+                return paymentevent;
             }
         }
         return null;

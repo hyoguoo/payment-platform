@@ -27,3 +27,13 @@ springdoc:
     disabled: true
 
 spring.profiles.default: local
+
+metrics:
+  payment:
+    state:
+      polling-interval-seconds: 10
+    health:
+      polling-interval-seconds: 10
+      thresholds:
+        stuck-in-progress-minutes: 5
+        max-retry-count: 5

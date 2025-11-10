@@ -25,9 +25,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-class PaymentCommandrUseCaseTest {
+class PaymentCommandUseCaseTest {
 
-    private PaymentCommandrUseCase paymentCommandrUseCase;
+    private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayPort mockPaymentGatewayPort;
     private TestLocalDateTimeProvider testLocalDateTimeProvider;
@@ -37,7 +37,7 @@ class PaymentCommandrUseCaseTest {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
-        paymentCommandrUseCase = new PaymentCommandrUseCase(
+        paymentCommandUseCase = new PaymentCommandUseCase(
                 mockPaymentEventRepository,
                 mockPaymentGatewayPort,
                 testLocalDateTimeProvider
@@ -61,10 +61,10 @@ class PaymentCommandrUseCaseTest {
                 .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandrUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
+        PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(), testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -78,10 +78,10 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandrUseCase.markPaymentAsDone(paymentEvent, approvedAt);
+        PaymentEvent result = paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
 
         // then
-        verify(paymentEvent, times(1)).done(approvedAt);
+        verify(paymentEvent, times(1)).done(approvedAt, testLocalDateTimeProvider.now());
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
 
     }
@@ -96,10 +96,10 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandrUseCase.markPaymentAsFail(paymentEvent, failureReason);
+        PaymentEvent result = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
-        verify(paymentEvent, times(1)).fail(failureReason);
+        verify(paymentEvent, times(1)).fail(failureReason, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -113,10 +113,10 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandrUseCase.markPaymentAsUnknown(paymentEvent, reason);
+        PaymentEvent result = paymentCommandUseCase.markPaymentAsUnknown(paymentEvent, reason);
 
         // then
-        verify(paymentEvent, times(1)).unknown(reason);
+        verify(paymentEvent, times(1)).unknown(reason, testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -133,7 +133,7 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentGatewayPort.getPaymentInfoByOrderId(paymentConfirmCommand.getOrderId()))
                 .thenReturn(tossPaymentInfo);
-        paymentCommandrUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
+        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
 
         // then
         verify(paymentEvent, times(1))
@@ -157,7 +157,7 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
-        TossPaymentInfo result = paymentCommandrUseCase.confirmPaymentWithGateway(
+        TossPaymentInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 
@@ -184,7 +184,7 @@ class PaymentCommandrUseCaseTest {
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
-                () -> paymentCommandrUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
+                () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossRetryableException.class);
     }
 
@@ -206,7 +206,7 @@ class PaymentCommandrUseCaseTest {
         when(mockPaymentGatewayPort.confirmPayment(any(TossConfirmGatewayCommand.class)))
                 .thenReturn(tossPaymentInfo);
         assertThatThrownBy(
-                () -> paymentCommandrUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
+                () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
     }
 
@@ -219,7 +219,7 @@ class PaymentCommandrUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        paymentCommandrUseCase.increaseRetryCount(paymentEvent);
+        paymentCommandUseCase.increaseRetryCount(paymentEvent);
 
         // then
         verify(paymentEvent, times(1)).increaseRetryCount();

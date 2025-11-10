@@ -26,7 +26,7 @@ print_warning "Cleaning up existing containers..."
 docker-compose down -v 2>/dev/null
 
 print_warning "Building application..."
-docker-compose build app
+docker-compose build --no-cache app
 
 print_warning "Starting all services..."
 docker-compose up -d

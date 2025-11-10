@@ -38,7 +38,7 @@ public class TossApiMetricsAspect {
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
 
-            handleFailure(tossApiMetric, duration, e);
+            handleFailure(tossApiMetric, duration);
 
             throw e;
         }
@@ -51,8 +51,7 @@ public class TossApiMetricsAspect {
             case SUCCESS:
                 tossApiMetrics.recordTossApiCall(operation, duration, true);
                 break;
-            case RETRYABLE_FAILURE:
-            case NON_RETRYABLE_FAILURE:
+            case RETRYABLE_FAILURE, NON_RETRYABLE_FAILURE:
                 TossPaymentErrorCode errorCode = extractErrorCode(joinPoint);
                 if (errorCode != null) {
                     tossApiMetrics.recordTossApiCall(operation, duration, false, errorCode.name());
@@ -61,15 +60,14 @@ public class TossApiMetricsAspect {
         }
     }
 
-    private void handleFailure(TossApiMetric tossApiMetric, long duration, Exception e) {
+    private void handleFailure(TossApiMetric tossApiMetric, long duration) {
         String operation = tossApiMetric.operation();
 
         switch (tossApiMetric.value()) {
             case SUCCESS:
                 tossApiMetrics.recordTossApiCall(operation, duration, false);
                 break;
-            case RETRYABLE_FAILURE:
-            case NON_RETRYABLE_FAILURE:
+            case RETRYABLE_FAILURE, NON_RETRYABLE_FAILURE:
                 break;
         }
     }

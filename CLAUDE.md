@@ -170,6 +170,22 @@ This ensures loose coupling and domain independence.
 **Monitoring & Logging**
 - Structured logging with `LogFmt`, `LogDomain`, `EventType`
 - Prometheus metrics exposed at `/actuator/prometheus`
+- **Four-Domain Metrics Architecture**:
+  - **Transition Metrics** (`PaymentTransitionMetrics`): Tracks payment status transitions with duration and success/failure rates
+    - Lazy registration pattern (registered on first use via AOP)
+    - Metrics: `payment_transition_total`, `payment_transition_duration_seconds`, `payment_transition_window_total`
+  - **State Metrics** (`PaymentStateMetrics`): Current state gauge metrics with age bucket analysis
+    - Eager registration with scheduled polling (10s production, 1s test)
+    - Metrics: `payment_state_current`, `payment_state_by_age`
+  - **Health Metrics** (`PaymentHealthMetrics`): Health condition monitoring
+    - Eager registration with scheduled polling (10s production, 1s test)
+    - Metrics: `payment_health_stuck_in_progress`, `payment_health_unknown_status`, `payment_health_max_retry_reached`, `payment_health_near_expiration`
+  - **Toss API Metrics** (`TossApiMetrics`): Toss Payments API call monitoring
+    - Records API calls with operation, status, and error types
+    - Metrics: `toss_api_call_total`, `toss_api_call_duration_seconds` (with P50/P95/P99 percentiles)
+- **Grafana Dashboards** (auto-provisioned at startup):
+  - `1-system-infrastructure.json`: System-level infrastructure monitoring
+  - `3-payment-operations.json`: Comprehensive operational monitoring with payment states, health alerts, and Toss API metrics
 - Logstash encoder for ELK stack integration
 
 ## Testing Strategy

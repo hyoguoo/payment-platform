@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
-import com.hyoguoo.paymentplatform.core.common.metrics.SchedulerMetrics;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentRecoverService;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,6 @@ public class PaymentScheduler {
 
     private final PaymentRecoverService paymentRecoverService;
     private final PaymentExpirationService paymentExpirationService;
-    private final SchedulerMetrics schedulerMetrics;
 
     @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
     @ConditionalOnProperty(
@@ -24,14 +22,7 @@ public class PaymentScheduler {
             havingValue = "true"
     )
     public void recoverRetryablePayment() {
-        schedulerMetrics.recordExecution("recovery", "started");
-        try {
-            paymentRecoverService.recoverRetryablePayment();
-            schedulerMetrics.recordExecution("recovery", "completed");
-        } catch (Exception e) {
-            schedulerMetrics.recordExecution("recovery", "error");
-            throw e;
-        }
+        paymentRecoverService.recoverRetryablePayment();
     }
 
     @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
@@ -40,14 +31,7 @@ public class PaymentScheduler {
             havingValue = "true"
     )
     public void expireOldReadyPayments() {
-        schedulerMetrics.recordExecution("expiration", "started");
-        try {
-            paymentExpirationService.expireOldReadyPayments();
-            schedulerMetrics.recordExecution("expiration", "completed");
-        } catch (Exception e) {
-            schedulerMetrics.recordExecution("expiration", "error");
-            throw e;
-        }
+        paymentExpirationService.expireOldReadyPayments();
     }
 
     @Scheduled(fixedDelayString = "${scheduler.payment-recovery.interval-ms:60000}")
@@ -56,13 +40,6 @@ public class PaymentScheduler {
             havingValue = "true"
     )
     public void recoverStuckPayments() {
-        schedulerMetrics.recordExecution("stuck-payment-recovery", "started");
-        try {
-            paymentRecoverService.recoverStuckPayments();
-            schedulerMetrics.recordExecution("stuck-payment-recovery", "completed");
-        } catch (Exception e) {
-            schedulerMetrics.recordExecution("stuck-payment-recovery", "error");
-            throw e;
-        }
+        paymentRecoverService.recoverStuckPayments();
     }
 }

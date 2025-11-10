@@ -6,6 +6,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -28,17 +29,20 @@ class PaymentCreateUseCaseTest {
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentOrderRepository mockPaymentOrderRepository;
     private UUIDProvider mockUUIDProvider;
+    private LocalDateTimeProvider mockLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentOrderRepository = Mockito.mock(PaymentOrderRepository.class);
         mockUUIDProvider = Mockito.mock(UUIDProvider.class);
+        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
 
         paymentCreateUseCase = new PaymentCreateUseCase(
                 mockPaymentEventRepository,
                 mockPaymentOrderRepository,
-                mockUUIDProvider
+                mockUUIDProvider,
+                mockLocalDateTimeProvider
         );
     }
 

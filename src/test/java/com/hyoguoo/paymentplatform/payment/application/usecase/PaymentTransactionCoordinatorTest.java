@@ -41,7 +41,7 @@ class PaymentTransactionCoordinatorTest {
     private OrderedProductUseCase orderedProductUseCase;
 
     @Mock
-    private PaymentCommandrUseCase paymentCommandrUseCase;
+    private PaymentCommandUseCase paymentCommandUseCase;
 
     @Mock
     private com.hyoguoo.paymentplatform.payment.application.port.PaymentProcessRepository paymentProcessRepository;
@@ -131,7 +131,7 @@ class PaymentTransactionCoordinatorTest {
 
             given(paymentProcessUseCase.completeJob(orderId))
                     .willReturn(completedProcess);
-            given(paymentCommandrUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
                     .willReturn(donePaymentEvent);
 
             // when
@@ -142,7 +142,7 @@ class PaymentTransactionCoordinatorTest {
 
             then(paymentProcessUseCase).should(times(1))
                     .completeJob(orderId);
-            then(paymentCommandrUseCase).should(times(1))
+            then(paymentCommandUseCase).should(times(1))
                     .markPaymentAsDone(paymentEvent, approvedAt);
         }
     }
@@ -174,7 +174,7 @@ class PaymentTransactionCoordinatorTest {
                     .willReturn(true);
             given(paymentProcessUseCase.failJob(orderId, failureReason))
                     .willReturn(failedProcess);
-            given(paymentCommandrUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
                     .willReturn(failedPaymentEvent);
 
             // when
@@ -194,7 +194,7 @@ class PaymentTransactionCoordinatorTest {
                     .failJob(orderId, failureReason);
             then(orderedProductUseCase).should(times(1))
                     .increaseStockForOrders(paymentOrderList);
-            then(paymentCommandrUseCase).should(times(1))
+            then(paymentCommandUseCase).should(times(1))
                     .markPaymentAsFail(paymentEvent, failureReason);
         }
 
@@ -219,7 +219,7 @@ class PaymentTransactionCoordinatorTest {
                     .willReturn(true);
             given(paymentProcessUseCase.failJob(anyString(), anyString()))
                     .willReturn(failedProcess);
-            given(paymentCommandrUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
                     .willReturn(failedPaymentEvent);
 
             // when
@@ -234,12 +234,12 @@ class PaymentTransactionCoordinatorTest {
             var inOrder = org.mockito.Mockito.inOrder(
                     paymentProcessUseCase,
                     orderedProductUseCase,
-                    paymentCommandrUseCase
+                    paymentCommandUseCase
             );
             inOrder.verify(paymentProcessUseCase).existsByOrderId(orderId);
             inOrder.verify(paymentProcessUseCase).failJob(orderId, failureReason);
             inOrder.verify(orderedProductUseCase).increaseStockForOrders(paymentOrderList);
-            inOrder.verify(paymentCommandrUseCase).markPaymentAsFail(paymentEvent, failureReason);
+            inOrder.verify(paymentCommandUseCase).markPaymentAsFail(paymentEvent, failureReason);
         }
     }
 
