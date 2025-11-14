@@ -23,6 +23,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
+    private static final String STATUS_SUCCESS = "SUCCESS";
+    private static final String STATUS_DONE = "DONE";
+    private static final String STATUS_FAILED = "FAILED";
+    private static final String STATUS_FAILURE = "FAILURE";
+    private static final String STATUS_ABORTED = "ABORTED";
+    private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
+    private static final String STATUS_PENDING = "PENDING";
+    private static final String STATUS_CANCELED = "CANCELED";
+    private static final String STATUS_EXPIRED = "EXPIRED";
+    private static final String STATUS_WAITING_FOR_DEPOSIT = "WAITING_FOR_DEPOSIT";
+    private static final String STATUS_PARTIAL_CANCELED = "PARTIAL_CANCELED";
+    private static final String STATUS_READY = "READY";
+    private static final String STATUS_UNKNOWN = "UNKNOWN";
+
+    private static final String ERROR_PROVIDER_ERROR = "PROVIDER_ERROR";
+    private static final String ERROR_FAILED_PAYMENT_INTERNAL = "FAILED_PAYMENT_INTERNAL_SYSTEM_PROCESSING";
+    private static final String ERROR_FAILED_INTERNAL = "FAILED_INTERNAL_SYSTEM_PROCESSING";
+    private static final String ERROR_UNKNOWN_PAYMENT = "UNKNOWN_PAYMENT_ERROR";
+    private static final String ERROR_NETWORK = "NETWORK_ERROR";
+    private static final String ERROR_PAY_PROCESS_ABORTED = "PAY_PROCESS_ABORTED";
+    private static final String ERROR_TIMEOUT_PREFIX = "TIMEOUT";
+
     private final PaymentGatewayInternalReceiver paymentGatewayInternalReceiver;
 
     @Override
@@ -78,17 +100,8 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
             TossPaymentInfo tossPaymentInfo,
             PaymentConfirmRequest request
     ) {
-        PaymentConfirmResultStatus status = mapToPaymentConfirmResultStatus(
-                tossPaymentInfo.getPaymentConfirmResultStatus().name()
-        );
-
-        PaymentFailureInfo failure = tossPaymentInfo.getPaymentFailure() != null
-                ? new PaymentFailureInfo(
-                        tossPaymentInfo.getPaymentFailure().getCode(),
-                        tossPaymentInfo.getPaymentFailure().getMessage(),
-                        isRetryable(tossPaymentInfo.getPaymentFailure().getCode())
-                )
-                : null;
+        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
+        PaymentConfirmResultStatus status = determineConfirmResultStatus(tossPaymentInfo, failure);
 
         return new PaymentConfirmResult(
                 status,
@@ -102,6 +115,34 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         );
     }
 
+    private PaymentFailureInfo createPaymentFailureInfo(TossPaymentInfo tossPaymentInfo) {
+        if (tossPaymentInfo.getPaymentFailure() == null) {
+            return null;
+        }
+        return new PaymentFailureInfo(
+                tossPaymentInfo.getPaymentFailure().getCode(),
+                tossPaymentInfo.getPaymentFailure().getMessage(),
+                isRetryable(tossPaymentInfo.getPaymentFailure().getCode())
+        );
+    }
+
+    private PaymentConfirmResultStatus determineConfirmResultStatus(
+            TossPaymentInfo tossPaymentInfo,
+            PaymentFailureInfo failure
+    ) {
+        String tossStatus = tossPaymentInfo.getPaymentConfirmResultStatus().name();
+
+        if (STATUS_SUCCESS.equals(tossStatus) || STATUS_DONE.equals(tossStatus)) {
+            return PaymentConfirmResultStatus.SUCCESS;
+        }
+
+        if (failure != null && failure.isRetryable()) {
+            return PaymentConfirmResultStatus.RETRYABLE_FAILURE;
+        }
+
+        return PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE;
+    }
+
     private PaymentCancelResult convertToPaymentCancelResult(
             TossPaymentInfo tossPaymentInfo,
             PaymentCancelRequest request
@@ -110,13 +151,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
                 tossPaymentInfo.getPaymentConfirmResultStatus().name()
         );
 
-        PaymentFailureInfo failure = tossPaymentInfo.getPaymentFailure() != null
-                ? new PaymentFailureInfo(
-                        tossPaymentInfo.getPaymentFailure().getCode(),
-                        tossPaymentInfo.getPaymentFailure().getMessage(),
-                        isRetryable(tossPaymentInfo.getPaymentFailure().getCode())
-                )
-                : null;
+        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
 
         return new PaymentCancelResult(
                 status,
@@ -133,16 +168,10 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         PaymentStatus status = mapToPaymentStatus(
                 tossPaymentInfo.getPaymentDetails() != null
                         ? tossPaymentInfo.getPaymentDetails().getStatus().name()
-                        : "UNKNOWN"
+                        : STATUS_UNKNOWN
         );
 
-        PaymentFailureInfo failure = tossPaymentInfo.getPaymentFailure() != null
-                ? new PaymentFailureInfo(
-                        tossPaymentInfo.getPaymentFailure().getCode(),
-                        tossPaymentInfo.getPaymentFailure().getMessage(),
-                        isRetryable(tossPaymentInfo.getPaymentFailure().getCode())
-                )
-                : null;
+        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
 
         return new PaymentStatusResult(
                 tossPaymentInfo.getPaymentKey(),
@@ -158,43 +187,41 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         );
     }
 
-    private PaymentConfirmResultStatus mapToPaymentConfirmResultStatus(String tossStatus) {
-        return switch (tossStatus) {
-            case "DONE", "SUCCESS" -> PaymentConfirmResultStatus.SUCCESS;
-            case "FAILED", "FAILURE", "ABORTED" -> PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE;
-            case "IN_PROGRESS", "PENDING" -> PaymentConfirmResultStatus.RETRYABLE_FAILURE;
-            default -> PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE;
-        };
-    }
-
     private PaymentCancelResultStatus mapToPaymentCancelResultStatus(String tossStatus) {
         return switch (tossStatus) {
-            case "DONE", "SUCCESS", "CANCELED" -> PaymentCancelResultStatus.SUCCESS;
-            case "FAILED", "FAILURE" -> PaymentCancelResultStatus.FAILURE;
+            case STATUS_DONE, STATUS_SUCCESS, STATUS_CANCELED -> PaymentCancelResultStatus.SUCCESS;
+            case STATUS_FAILED, STATUS_FAILURE -> PaymentCancelResultStatus.FAILURE;
             default -> PaymentCancelResultStatus.FAILURE;
         };
     }
 
     private PaymentStatus mapToPaymentStatus(String tossStatus) {
         return switch (tossStatus) {
-            case "DONE", "SUCCESS" -> PaymentStatus.DONE;
-            case "FAILED", "FAILURE", "ABORTED" -> PaymentStatus.ABORTED;
-            case "IN_PROGRESS", "PENDING" -> PaymentStatus.IN_PROGRESS;
-            case "CANCELED" -> PaymentStatus.CANCELED;
-            case "EXPIRED" -> PaymentStatus.EXPIRED;
-            case "WAITING_FOR_DEPOSIT" -> PaymentStatus.WAITING_FOR_DEPOSIT;
-            case "PARTIAL_CANCELED" -> PaymentStatus.PARTIAL_CANCELED;
-            case "READY" -> PaymentStatus.READY;
+            case STATUS_DONE, STATUS_SUCCESS -> PaymentStatus.DONE;
+            case STATUS_FAILED, STATUS_FAILURE, STATUS_ABORTED -> PaymentStatus.ABORTED;
+            case STATUS_IN_PROGRESS, STATUS_PENDING -> PaymentStatus.IN_PROGRESS;
+            case STATUS_CANCELED -> PaymentStatus.CANCELED;
+            case STATUS_EXPIRED -> PaymentStatus.EXPIRED;
+            case STATUS_WAITING_FOR_DEPOSIT -> PaymentStatus.WAITING_FOR_DEPOSIT;
+            case STATUS_PARTIAL_CANCELED -> PaymentStatus.PARTIAL_CANCELED;
+            case STATUS_READY -> PaymentStatus.READY;
             default -> PaymentStatus.UNKNOWN;
         };
     }
 
     private boolean isRetryable(String errorCode) {
-        return errorCode != null && (
-                errorCode.startsWith("TIMEOUT") ||
-                errorCode.startsWith("NETWORK") ||
-                errorCode.equals("PAY_PROCESS_ABORTED")
-        );
+        if (errorCode == null) {
+            return false;
+        }
+
+        return errorCode.equals(ERROR_PROVIDER_ERROR) ||
+                errorCode.equals(ERROR_FAILED_PAYMENT_INTERNAL) ||
+                errorCode.equals(ERROR_FAILED_INTERNAL) ||
+                errorCode.equals(ERROR_UNKNOWN_PAYMENT) ||
+                errorCode.equals(STATUS_UNKNOWN) ||
+                errorCode.equals(ERROR_NETWORK) ||
+                errorCode.startsWith(ERROR_TIMEOUT_PREFIX) ||
+                errorCode.equals(ERROR_PAY_PROCESS_ABORTED);
     }
 
     private String generateIdempotencyKey(String baseKey) {
