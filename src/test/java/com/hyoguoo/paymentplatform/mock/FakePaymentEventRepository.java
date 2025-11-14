@@ -128,39 +128,4 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
                 .filter(event -> event.getRetryCount() >= retryCount)
                 .count();
     }
-
-    @Override
-    public Map<PaymentEventStatus, Map<String, Long>> countByStatusAndAgeBuckets(
-            LocalDateTime fiveMinutesAgo,
-            LocalDateTime thirtyMinutesAgo
-    ) {
-        Map<PaymentEventStatus, Map<String, Long>> result = new EnumMap<>(PaymentEventStatus.class);
-
-        for (PaymentEvent event : paymentEventDatabase.values()) {
-            String ageBucket;
-            if (event.getLastStatusChangedAt().isAfter(fiveMinutesAgo) ||
-                    event.getLastStatusChangedAt().isEqual(fiveMinutesAgo)) {
-                ageBucket = "recent";
-            } else if (event.getLastStatusChangedAt().isAfter(thirtyMinutesAgo) ||
-                    event.getLastStatusChangedAt().isEqual(thirtyMinutesAgo)) {
-                ageBucket = "medium";
-            } else {
-                ageBucket = "old";
-            }
-
-            result.computeIfAbsent(event.getStatus(), k -> new HashMap<>())
-                    .merge(ageBucket, 1L, Long::sum);
-        }
-
-        return result;
-    }
-
-    @Override
-    public long countNearExpiration(LocalDateTime expirationThreshold) {
-        return paymentEventDatabase.values().stream()
-                .filter(event -> event.getStatus() == PaymentEventStatus.READY &&
-                        event.getCreatedAt() != null &&
-                        event.getCreatedAt().isBefore(expirationThreshold))
-                .count();
-    }
 }
