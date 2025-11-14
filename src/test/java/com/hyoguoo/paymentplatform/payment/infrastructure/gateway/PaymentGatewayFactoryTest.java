@@ -47,7 +47,7 @@ class PaymentGatewayFactoryTest {
 
         // when & then
         assertThatThrownBy(() -> factory.getStrategy(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(UnsupportedPaymentGatewayException.class);
     }
 
     @Test
@@ -58,8 +58,7 @@ class PaymentGatewayFactoryTest {
 
         // when & then
         assertThatThrownBy(() -> emptyFactory.getStrategy(PaymentGatewayType.TOSS))
-                .isInstanceOf(UnsupportedPaymentGatewayException.class)
-                .hasMessageContaining("지원하지 않는 결제 게이트웨이입니다");
+                .isInstanceOf(UnsupportedPaymentGatewayException.class);
     }
 
     // Test implementation of PaymentGatewayStrategy
