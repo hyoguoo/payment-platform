@@ -90,7 +90,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     @Override
     public PaymentStatusResult getStatus(String paymentKey) {
         TossPaymentInfo tossPaymentInfo = PaymentInfrastructureMapper.toTossPaymentInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(paymentKey)
+                paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
         );
 
         return convertToPaymentStatusResult(tossPaymentInfo);

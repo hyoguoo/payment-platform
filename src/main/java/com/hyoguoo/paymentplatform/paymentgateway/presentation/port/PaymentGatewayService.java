@@ -8,6 +8,8 @@ public interface PaymentGatewayService {
 
     TossPaymentInfo getPaymentResultByOrderId(String orderId);
 
+    TossPaymentInfo getPaymentResultByPaymentKey(String paymentKey);
+
     TossPaymentInfo confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey);
 
     TossPaymentInfo cancelPayment(

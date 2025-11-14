@@ -41,6 +41,23 @@ public class FakeTossOperator implements TossOperator {
     }
 
     @Override
+    public TossPaymentInfo findPaymentInfoByPaymentKey(String paymentKey) {
+        return TossPaymentInfo.builder()
+                .paymentKey(paymentKey)
+                .orderId("validOrderId")
+                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
+                .paymentDetails(TossPaymentDetails.builder()
+                        .orderName("Test Order")
+                        .totalAmount(new BigDecimal("10000"))
+                        .status(TossPaymentStatus.DONE)
+                        .approvedAt(LocalDateTime.now())
+                        .rawData("Raw payment data")
+                        .build())
+                .paymentFailure(null)
+                .build();
+    }
+
+    @Override
     public TossPaymentInfo confirmPayment(
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey

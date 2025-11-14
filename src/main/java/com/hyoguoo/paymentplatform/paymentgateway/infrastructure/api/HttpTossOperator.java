@@ -54,6 +54,21 @@ public class HttpTossOperator implements TossOperator {
     }
 
     @Override
+    public TossPaymentInfo findPaymentInfoByPaymentKey(String paymentKey) {
+        Map<String, String> httpHeaderMap = Map.of(
+                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
+        );
+
+        TossPaymentApiResponse tossPaymentApiResponse = httpOperator.requestGet(
+                tossApiUrl + "/" + paymentKey,
+                httpHeaderMap,
+                TossPaymentApiResponse.class
+        );
+
+        return PaymentGatewayInfrastructureMapper.toSuccessTossPaymentInfo(tossPaymentApiResponse);
+    }
+
+    @Override
     public TossPaymentInfo confirmPayment(
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey
