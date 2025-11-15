@@ -232,12 +232,12 @@ class PaymentEventTest {
         String orderId = "order123";
 
         // when
-        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfo)
-                .productInfoList(productInfoList)
-                .orderId(orderId)
-                .lastStatusChangedAt(LocalDateTime.now())
-                .requiredBuild();
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                productInfoList,
+                orderId,
+                LocalDateTime.now()
+        );
 
         // then
         assertThat(paymentEvent.getOrderName()).isEqualTo("Product 1 포함 2건");
@@ -689,12 +689,12 @@ class PaymentEventTest {
         LocalDateTime creationTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
 
         // when
-        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfo)
-                .productInfoList(List.of(productInfo))
-                .orderId("order123")
-                .lastStatusChangedAt(creationTime)
-                .requiredBuild();
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                List.of(productInfo),
+                "order123",
+                creationTime
+        );
 
         // then
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(creationTime);

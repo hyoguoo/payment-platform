@@ -42,23 +42,22 @@ public class PaymentEvent {
     private LocalDateTime createdAt;
     private LocalDateTime lastStatusChangedAt;
 
-    @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
-    @SuppressWarnings("unused")
-    protected PaymentEvent(
+    public static PaymentEvent create(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
             String orderId,
             LocalDateTime lastStatusChangedAt
     ) {
-        this.buyerId = userInfo.getId();
-        this.sellerId = productInfoList.getFirst().getSellerId();
-
-        this.orderName = generateOrderName(productInfoList);
-        this.orderId = orderId;
-        this.status = PaymentEventStatus.READY;
-        this.retryCount = 0;
-        this.paymentOrderList = new ArrayList<>();
-        this.lastStatusChangedAt = lastStatusChangedAt;
+        return PaymentEvent.allArgsBuilder()
+                .buyerId(userInfo.getId())
+                .sellerId(productInfoList.getFirst().getSellerId())
+                .orderName(generateOrderName(productInfoList))
+                .orderId(orderId)
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .paymentOrderList(new ArrayList<>())
+                .lastStatusChangedAt(lastStatusChangedAt)
+                .allArgsBuild();
     }
 
     private static String generateOrderName(

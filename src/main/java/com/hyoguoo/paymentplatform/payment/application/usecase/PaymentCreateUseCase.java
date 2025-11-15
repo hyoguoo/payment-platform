@@ -51,12 +51,12 @@ public class PaymentCreateUseCase {
             UserInfo userInfo,
             List<ProductInfo> productInfoList
     ) {
-        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfo)
-                .productInfoList(productInfoList)
-                .orderId(uuidProvider.generateUUID())
-                .lastStatusChangedAt(localDateTimeProvider.now())
-                .requiredBuild();
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                productInfoList,
+                uuidProvider.generateUUID(),
+                localDateTimeProvider.now()
+        );
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -99,10 +99,10 @@ public class PaymentCreateUseCase {
             ProductInfo productInfo,
             OrderedProduct matchedOrderedProduct
     ) {
-        return PaymentOrder.requiredBuilder()
-                .paymentEvent(savedPaymentEvent)
-                .orderedProduct(matchedOrderedProduct)
-                .productInfo(productInfo)
-                .requiredBuild();
+        return PaymentOrder.create(
+                savedPaymentEvent,
+                matchedOrderedProduct,
+                productInfo
+        );
     }
 }
