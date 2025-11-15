@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
-import com.hyoguoo.paymentplatform.payment.application.aspect.Reason;
+import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -27,7 +27,7 @@ public class PaymentCommandUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
-    @PublishPaymentHistory(action = "changed")
+    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = "confirm")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
         LocalDateTime now = localDateTimeProvider.now();
@@ -36,7 +36,7 @@ public class PaymentCommandUseCase {
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "changed")
+    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, LocalDateTime approvedAt) {
         LocalDateTime now = localDateTimeProvider.now();
@@ -45,7 +45,7 @@ public class PaymentCommandUseCase {
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "changed")
+    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "FAILED", trigger = "auto")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
         LocalDateTime now = localDateTimeProvider.now();
@@ -54,7 +54,7 @@ public class PaymentCommandUseCase {
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "changed")
+    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "UNKNOWN", trigger = "auto")
     public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
         LocalDateTime now = localDateTimeProvider.now();
@@ -63,14 +63,14 @@ public class PaymentCommandUseCase {
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "retry")
+    @PublishDomainEvent(action = "retry")
     public PaymentEvent increaseRetryCount(PaymentEvent paymentEvent) {
         paymentEvent.increaseRetryCount();
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
     @Transactional
-    @PublishPaymentHistory(action = "changed")
+    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
         LocalDateTime now = localDateTimeProvider.now();

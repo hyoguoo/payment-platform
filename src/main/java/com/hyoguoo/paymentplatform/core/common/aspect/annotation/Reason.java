@@ -1,13 +1,12 @@
-package com.hyoguoo.paymentplatform.payment.application.aspect;
+package com.hyoguoo.paymentplatform.core.common.aspect.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target(ElementType.METHOD)
+@Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface PublishPaymentHistory {
+public @interface Reason {
 
-    String action() default "";
 }

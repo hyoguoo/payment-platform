@@ -1,5 +1,7 @@
-package com.hyoguoo.paymentplatform.payment.application.aspect;
+package com.hyoguoo.paymentplatform.core.common.aspect;
 
+import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -21,13 +23,13 @@ import org.springframework.stereotype.Component;
 @Aspect
 @Component
 @RequiredArgsConstructor
-public class PaymentHistoryAspect {
+public class DomainEventLoggingAspect {
 
     private final PaymentEventPublisher paymentEventPublisher;
     private final LocalDateTimeProvider localDateTimeProvider;
 
-    @Around("@annotation(publishHistory)")
-    public Object publishHistoryEvent(ProceedingJoinPoint joinPoint, PublishPaymentHistory publishHistory)
+    @Around("@annotation(publishEvent)")
+    public Object publishHistoryEvent(ProceedingJoinPoint joinPoint, PublishDomainEvent publishEvent)
             throws Throwable {
         Optional<PaymentEvent> beforeEventOpt = findPaymentEvent(joinPoint.getArgs());
         PaymentEventStatus beforeStatus = beforeEventOpt.map(PaymentEvent::getStatus).orElse(null);
@@ -37,7 +39,7 @@ public class PaymentHistoryAspect {
         try {
             Object result = joinPoint.proceed();
 
-            processResultAndPublishEvent(beforeStatus, result, reason, publishHistory);
+            processResultAndPublishEvent(beforeStatus, result, reason, publishEvent);
 
             return result;
         } catch (Exception e) {
@@ -74,14 +76,14 @@ public class PaymentHistoryAspect {
             PaymentEventStatus beforeStatus,
             Object result,
             String reason,
-            PublishPaymentHistory publishHistory
+            PublishDomainEvent publishEvent
     ) {
         LocalDateTime occurredAt = localDateTimeProvider.now();
         if (!(result instanceof PaymentEvent afterEvent)) {
             return;
         }
 
-        switch (publishHistory.action()) {
+        switch (publishEvent.action()) {
             case "created" -> {
                 String createdReason = "New payment created";
                 paymentEventPublisher.publishPaymentCreated(afterEvent, createdReason, occurredAt);
@@ -94,7 +96,7 @@ public class PaymentHistoryAspect {
                 String changeReason = reason != null ? reason : "Payment is in progress successfully.";
                 paymentEventPublisher.publishStatusChange(afterEvent, beforeStatus, changeReason, occurredAt);
             }
-            default -> log.warn("Unknown action '{}' in @PublishPaymentHistory annotation.", publishHistory.action());
+            default -> log.warn("Unknown action '{}' in @PublishDomainEvent annotation.", publishEvent.action());
         }
     }
 }

@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
-import com.hyoguoo.paymentplatform.payment.application.aspect.PublishPaymentHistory;
+import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
@@ -25,7 +25,7 @@ public class PaymentCreateUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
-    @PublishPaymentHistory(action = "created")
+    @PublishDomainEvent(action = "created")
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
