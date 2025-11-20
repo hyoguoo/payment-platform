@@ -17,8 +17,8 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
@@ -106,9 +106,9 @@ class PaymentConfirmServiceImplTest {
         // given
         MockConfirmData mockConfirmData = getDefaultMockConfirmData();
 
-        TossPaymentInfo mockTossPaymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo mockPaymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentDetails(
-                        TossPaymentDetails.builder()
+                        PaymentDetails.builder()
                                 .approvedAt(LocalDateTime.now())
                                 .build()
                 )
@@ -122,7 +122,7 @@ class PaymentConfirmServiceImplTest {
         when(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), any(String.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
         when(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
-                .thenReturn(mockTossPaymentInfo);
+                .thenReturn(mockPaymentGatewayInfo);
         when(mockTransactionCoordinator.executePaymentSuccessCompletion(any(String.class), any(PaymentEvent.class), any(LocalDateTime.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
 

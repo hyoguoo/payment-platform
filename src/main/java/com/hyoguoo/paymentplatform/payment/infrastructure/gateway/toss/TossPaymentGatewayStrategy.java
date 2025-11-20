@@ -8,7 +8,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
@@ -61,13 +61,13 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
                 .idempotencyKey(generateIdempotencyKey(request.orderId()))
                 .build();
 
-        TossPaymentInfo tossPaymentInfo = PaymentInfrastructureMapper.toTossPaymentInfo(
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                 paymentGatewayInternalReceiver.confirmPayment(
                         PaymentInfrastructureMapper.toTossConfirmRequest(tossCommand)
                 )
         );
 
-        return convertToPaymentConfirmResult(tossPaymentInfo, request);
+        return convertToPaymentConfirmResult(paymentGatewayInfo, request);
     }
 
     @Override
@@ -78,59 +78,59 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
                 .idempotencyKey(generateIdempotencyKey(request.paymentKey()))
                 .build();
 
-        TossPaymentInfo tossPaymentInfo = PaymentInfrastructureMapper.toTossPaymentInfo(
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                 paymentGatewayInternalReceiver.cancelPayment(
                         PaymentInfrastructureMapper.toTossCancelRequest(tossCommand)
                 )
         );
 
-        return convertToPaymentCancelResult(tossPaymentInfo, request);
+        return convertToPaymentCancelResult(paymentGatewayInfo, request);
     }
 
     @Override
     public PaymentStatusResult getStatus(String paymentKey) {
-        TossPaymentInfo tossPaymentInfo = PaymentInfrastructureMapper.toTossPaymentInfo(
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                 paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
         );
 
-        return convertToPaymentStatusResult(tossPaymentInfo);
+        return convertToPaymentStatusResult(paymentGatewayInfo);
     }
 
     private PaymentConfirmResult convertToPaymentConfirmResult(
-            TossPaymentInfo tossPaymentInfo,
+            PaymentGatewayInfo paymentGatewayInfo,
             PaymentConfirmRequest request
     ) {
-        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
-        PaymentConfirmResultStatus status = determineConfirmResultStatus(tossPaymentInfo, failure);
+        PaymentFailureInfo failure = createPaymentFailureInfo(paymentGatewayInfo);
+        PaymentConfirmResultStatus status = determineConfirmResultStatus(paymentGatewayInfo, failure);
 
         return new PaymentConfirmResult(
                 status,
-                tossPaymentInfo.getPaymentKey(),
+                paymentGatewayInfo.getPaymentKey(),
                 request.orderId(),
                 request.amount(),
-                tossPaymentInfo.getPaymentDetails() != null
-                        ? tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                paymentGatewayInfo.getPaymentDetails() != null
+                        ? paymentGatewayInfo.getPaymentDetails().getApprovedAt()
                         : null,
                 failure
         );
     }
 
-    private PaymentFailureInfo createPaymentFailureInfo(TossPaymentInfo tossPaymentInfo) {
-        if (tossPaymentInfo.getPaymentFailure() == null) {
+    private PaymentFailureInfo createPaymentFailureInfo(PaymentGatewayInfo paymentGatewayInfo) {
+        if (paymentGatewayInfo.getPaymentFailure() == null) {
             return null;
         }
         return new PaymentFailureInfo(
-                tossPaymentInfo.getPaymentFailure().getCode(),
-                tossPaymentInfo.getPaymentFailure().getMessage(),
-                isRetryable(tossPaymentInfo.getPaymentFailure().getCode())
+                paymentGatewayInfo.getPaymentFailure().getCode(),
+                paymentGatewayInfo.getPaymentFailure().getMessage(),
+                isRetryable(paymentGatewayInfo.getPaymentFailure().getCode())
         );
     }
 
     private PaymentConfirmResultStatus determineConfirmResultStatus(
-            TossPaymentInfo tossPaymentInfo,
+            PaymentGatewayInfo paymentGatewayInfo,
             PaymentFailureInfo failure
     ) {
-        String tossStatus = tossPaymentInfo.getPaymentConfirmResultStatus().name();
+        String tossStatus = paymentGatewayInfo.getPaymentConfirmResultStatus().name();
 
         if (STATUS_SUCCESS.equals(tossStatus) || STATUS_DONE.equals(tossStatus)) {
             return PaymentConfirmResultStatus.SUCCESS;
@@ -144,44 +144,44 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     }
 
     private PaymentCancelResult convertToPaymentCancelResult(
-            TossPaymentInfo tossPaymentInfo,
+            PaymentGatewayInfo paymentGatewayInfo,
             PaymentCancelRequest request
     ) {
         PaymentCancelResultStatus status = mapToPaymentCancelResultStatus(
-                tossPaymentInfo.getPaymentConfirmResultStatus().name()
+                paymentGatewayInfo.getPaymentConfirmResultStatus().name()
         );
 
-        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
+        PaymentFailureInfo failure = createPaymentFailureInfo(paymentGatewayInfo);
 
         return new PaymentCancelResult(
                 status,
-                tossPaymentInfo.getPaymentKey(),
-                tossPaymentInfo.getPaymentDetails() != null
-                        ? tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                paymentGatewayInfo.getPaymentKey(),
+                paymentGatewayInfo.getPaymentDetails() != null
+                        ? paymentGatewayInfo.getPaymentDetails().getApprovedAt()
                         : null,
                 request.amount(),
                 failure
         );
     }
 
-    private PaymentStatusResult convertToPaymentStatusResult(TossPaymentInfo tossPaymentInfo) {
+    private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {
         PaymentStatus status = mapToPaymentStatus(
-                tossPaymentInfo.getPaymentDetails() != null
-                        ? tossPaymentInfo.getPaymentDetails().getStatus().name()
+                paymentGatewayInfo.getPaymentDetails() != null
+                        ? paymentGatewayInfo.getPaymentDetails().getStatus().name()
                         : STATUS_UNKNOWN
         );
 
-        PaymentFailureInfo failure = createPaymentFailureInfo(tossPaymentInfo);
+        PaymentFailureInfo failure = createPaymentFailureInfo(paymentGatewayInfo);
 
         return new PaymentStatusResult(
-                tossPaymentInfo.getPaymentKey(),
-                tossPaymentInfo.getOrderId(),
+                paymentGatewayInfo.getPaymentKey(),
+                paymentGatewayInfo.getOrderId(),
                 status,
-                tossPaymentInfo.getPaymentDetails() != null
-                        ? tossPaymentInfo.getPaymentDetails().getTotalAmount()
+                paymentGatewayInfo.getPaymentDetails() != null
+                        ? paymentGatewayInfo.getPaymentDetails().getTotalAmount()
                         : null,
-                tossPaymentInfo.getPaymentDetails() != null
-                        ? tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                paymentGatewayInfo.getPaymentDetails() != null
+                        ? paymentGatewayInfo.getPaymentDetails().getApprovedAt()
                         : null,
                 failure
         );

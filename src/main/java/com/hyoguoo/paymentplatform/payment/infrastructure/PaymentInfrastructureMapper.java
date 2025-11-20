@@ -4,12 +4,12 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProduc
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossConfirmRequest;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
@@ -22,11 +22,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentInfrastructureMapper {
 
-    public static TossPaymentInfo toTossPaymentInfo(
+    public static PaymentGatewayInfo toPaymentGatewayInfo(
             TossPaymentResponse tossPaymentResponse
     ) {
-        TossPaymentDetails paymentDetails = tossPaymentResponse.getPaymentDetails() != null
-                ? TossPaymentDetails.builder()
+        PaymentDetails paymentDetails = tossPaymentResponse.getPaymentDetails() != null
+                ? PaymentDetails.builder()
                 .totalAmount(tossPaymentResponse.getPaymentDetails().getTotalAmount())
                 .status(TossPaymentStatus.of(
                         tossPaymentResponse.getPaymentDetails().getStatus().getValue())
@@ -36,8 +36,8 @@ public class PaymentInfrastructureMapper {
                 .build()
                 : null;
 
-        TossPaymentFailure paymentFailure = tossPaymentResponse.getPaymentFailure() != null
-                ? TossPaymentFailure.builder()
+        PaymentFailure paymentFailure = tossPaymentResponse.getPaymentFailure() != null
+                ? PaymentFailure.builder()
                 .code(tossPaymentResponse.getPaymentFailure().getCode())
                 .message(tossPaymentResponse.getPaymentFailure().getMessage())
                 .build()
@@ -47,7 +47,7 @@ public class PaymentInfrastructureMapper {
                 tossPaymentResponse.getPaymentConfirmResultStatus().getValue()
         );
 
-        return TossPaymentInfo.builder()
+        return PaymentGatewayInfo.builder()
                 .paymentKey(tossPaymentResponse.getPaymentKey())
                 .orderId(tossPaymentResponse.getOrderId())
                 .paymentConfirmResultStatus(paymentConfirmResultStatus)

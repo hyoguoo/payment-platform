@@ -8,7 +8,7 @@ import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusC
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -85,8 +85,7 @@ public class PaymentCommandUseCase {
         com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult statusResult =
                 paymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey());
 
-        // PaymentStatusResult를 TossPaymentInfo로 변환 (임시)
-        TossPaymentInfo tossPaymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentKey(statusResult.paymentKey())
                 .orderId(statusResult.orderId())
                 .paymentConfirmResultStatus(
@@ -97,7 +96,7 @@ public class PaymentCommandUseCase {
                                         PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE)
                 )
                 .paymentDetails(
-                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails.builder()
+                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails.builder()
                                 .totalAmount(statusResult.amount())
                                 .status(convertToTossPaymentStatus(statusResult.status()))
                                 .approvedAt(statusResult.approvedAt())
@@ -105,17 +104,17 @@ public class PaymentCommandUseCase {
                 )
                 .paymentFailure(
                         statusResult.failure() != null ?
-                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure.builder()
+                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure.builder()
                                         .code(statusResult.failure().code())
                                         .message(statusResult.failure().message())
                                         .build() : null
                 )
                 .build();
 
-        paymentEvent.validateCompletionStatus(paymentConfirmCommand, tossPaymentInfo);
+        paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentGatewayInfo);
     }
 
-    public TossPaymentInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
+    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
             throws PaymentTossRetryableException, PaymentTossNonRetryableException {
         com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest request =
                 new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest(
@@ -127,13 +126,12 @@ public class PaymentCommandUseCase {
         com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult result =
                 paymentGatewayPort.confirm(request);
 
-        // PaymentConfirmResult를 TossPaymentInfo로 변환 (임시)
-        TossPaymentInfo tossPaymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentKey(result.paymentKey())
                 .orderId(request.orderId())
                 .paymentConfirmResultStatus(result.status())
                 .paymentDetails(
-                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails.builder()
+                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails.builder()
                                 .totalAmount(result.amount())
                                 .status(com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.DONE)
                                 .approvedAt(result.approvedAt())
@@ -141,17 +139,17 @@ public class PaymentCommandUseCase {
                 )
                 .paymentFailure(
                         result.failure() != null ?
-                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentFailure.builder()
+                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure.builder()
                                         .code(result.failure().code())
                                         .message(result.failure().message())
                                         .build() : null
                 )
                 .build();
 
-        PaymentConfirmResultStatus paymentConfirmResultStatus = tossPaymentInfo.getPaymentConfirmResultStatus();
+        PaymentConfirmResultStatus paymentConfirmResultStatus = paymentGatewayInfo.getPaymentConfirmResultStatus();
 
         return switch (paymentConfirmResultStatus) {
-            case PaymentConfirmResultStatus.SUCCESS -> tossPaymentInfo;
+            case PaymentConfirmResultStatus.SUCCESS -> paymentGatewayInfo;
             case PaymentConfirmResultStatus.RETRYABLE_FAILURE ->
                     throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
             case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->

@@ -12,7 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -146,7 +146,7 @@ class PaymentCommandUseCaseTest {
 
         // then
         verify(paymentEvent, times(1))
-                .validateCompletionStatus(any(PaymentConfirmCommand.class), any(TossPaymentInfo.class));
+                .validateCompletionStatus(any(PaymentConfirmCommand.class), any(PaymentGatewayInfo.class));
     }
 
     @Test
@@ -172,7 +172,7 @@ class PaymentCommandUseCaseTest {
         // when
         when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
-        TossPaymentInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
+        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 

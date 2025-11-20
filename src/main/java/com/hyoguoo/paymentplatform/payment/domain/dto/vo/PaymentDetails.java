@@ -8,7 +8,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TossPaymentDetails {
+public class PaymentDetails {
 
     private final String orderName;
     private final BigDecimal totalAmount;

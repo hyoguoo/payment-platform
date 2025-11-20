@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -79,12 +79,12 @@ public class PaymentEvent {
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
-    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
+    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, PaymentGatewayInfo paymentGatewayInfo) {
         if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }
 
-        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey()) ||
+        if (!paymentConfirmCommand.getPaymentKey().equals(paymentGatewayInfo.getPaymentKey()) ||
                 !paymentConfirmCommand.getPaymentKey().equals(this.paymentKey)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
@@ -97,8 +97,8 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
 
-        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
-                paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
+        if (paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
+                paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
             throw PaymentStatusException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
         }
     }
