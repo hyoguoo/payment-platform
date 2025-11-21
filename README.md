@@ -93,6 +93,7 @@
 
 - 테스트 용이성: 각 계층에서 의존성 역전을 적용하여, 이를 통해 테스트 더블을 쉽게 사용할 수 있도록 설계
 - 도메인 독립성: 도메인 간 협력은 인터페이스와 Receiver 구현체를 통해 결합도를 낮추어, 도메인의 독립성을 유지
+- PG 독립성: 전략 패턴을 통해 PG사 구현체를 추상화하여, 새로운 PG사 추가 시 최소한의 변경만으로 확장 가능
 
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/26cb69e5-6c89-479e-8181-4dd6a13c5eb5">
 
@@ -101,18 +102,28 @@
 │   ├── PaymentConfirmServiceImpl.java
 │   ├── port
 │   │   ├── PaymentEventRepository.java
+│   │   ├── PaymentGatewayPort.java (PG 독립 인터페이스)
 │   │   └── ProductPort.java
 │   └── usecase
 │       └── PaymentProcessorUseCase.java
 ├── domain
-│   └── PaymentEvent.java
+│   ├── PaymentEvent.java
+│   └── dto (범용 PG 모델)
+│       ├── PaymentConfirmRequest.java
+│       └── PaymentConfirmResult.java
 ├── infrastructure
 │   ├── entity
 │   │   └── PaymentEventEntity.java
+│   ├── gateway (PG 추상화 레이어)
+│   │   ├── PaymentGatewayAdapter.java (Port 구현체)
+│   │   ├── PaymentGatewayFactory.java (전략 선택)
+│   │   ├── PaymentGatewayStrategy.java (전략 인터페이스)
+│   │   └── toss
+│   │       └── TossPaymentGatewayStrategy.java (Toss 구현체)
 │   ├── internal
 │   │   └── InternalProductAdapter.java
 │   └── repository
-│       ├── JpaPaymentEventRepository.java 
+│       ├── JpaPaymentEventRepository.java
 │       └── PaymentEventRepositoryImpl.java
 └── presentation
     └── PaymentController.java
