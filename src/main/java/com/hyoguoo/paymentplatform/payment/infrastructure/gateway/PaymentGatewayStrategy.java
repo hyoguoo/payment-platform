@@ -15,4 +15,6 @@ public interface PaymentGatewayStrategy {
     PaymentCancelResult cancel(PaymentCancelRequest request);
 
     PaymentStatusResult getStatus(String paymentKey);
+
+    PaymentStatusResult getStatusByOrderId(String orderId);
 }

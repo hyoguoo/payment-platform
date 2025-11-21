@@ -83,5 +83,10 @@ class PaymentGatewayFactoryTest {
         public PaymentStatusResult getStatus(String paymentKey) {
             return null;
         }
+
+        @Override
+        public PaymentStatusResult getStatusByOrderId(String orderId) {
+            return null;
+        }
     }
 }

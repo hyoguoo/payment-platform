@@ -26,6 +26,12 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     }
 
     @Override
+    public PaymentStatusResult getStatusByOrderId(String orderId) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.getStatusByOrderId(orderId);
+    }
+
+    @Override
     public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
         PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
         return strategy.confirm(request);

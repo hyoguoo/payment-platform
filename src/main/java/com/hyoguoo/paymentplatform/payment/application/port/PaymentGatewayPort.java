@@ -10,6 +10,8 @@ public interface PaymentGatewayPort {
 
     PaymentStatusResult getStatus(String paymentKey);
 
+    PaymentStatusResult getStatusByOrderId(String orderId);
+
     PaymentConfirmResult confirm(PaymentConfirmRequest request);
 
     PaymentCancelResult cancel(PaymentCancelRequest request);

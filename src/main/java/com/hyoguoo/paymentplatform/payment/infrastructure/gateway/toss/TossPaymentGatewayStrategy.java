@@ -96,6 +96,15 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         return convertToPaymentStatusResult(paymentGatewayInfo);
     }
 
+    @Override
+    public PaymentStatusResult getStatusByOrderId(String orderId) {
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
+                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
+        );
+
+        return convertToPaymentStatusResult(paymentGatewayInfo);
+    }
+
     private PaymentConfirmResult convertToPaymentConfirmResult(
             PaymentGatewayInfo paymentGatewayInfo,
             PaymentConfirmRequest request
