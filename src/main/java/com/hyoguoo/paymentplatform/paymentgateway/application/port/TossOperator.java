@@ -9,6 +9,8 @@ public interface TossOperator {
 
     TossPaymentInfo findPaymentInfoByOrderId(String orderId);
 
+    TossPaymentInfo findPaymentInfoByPaymentKey(String paymentKey);
+
     TossPaymentInfo confirmPayment(TossConfirmCommand tossConfirmCommand, String idempotencyKey)
             throws PaymentGatewayApiException;
 

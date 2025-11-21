@@ -4,12 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
@@ -232,12 +232,12 @@ class PaymentEventTest {
         String orderId = "order123";
 
         // when
-        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfo)
-                .productInfoList(productInfoList)
-                .orderId(orderId)
-                .lastStatusChangedAt(LocalDateTime.now())
-                .requiredBuild();
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                productInfoList,
+                orderId,
+                LocalDateTime.now()
+        );
 
         // then
         assertThat(paymentEvent.getOrderName()).isEqualTo("Product 1 포함 2건");
@@ -397,12 +397,12 @@ class PaymentEventTest {
                 .amount(new BigDecimal(15000))
                 .build();
 
-        TossPaymentInfo paymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentKey("validPaymentKey")
                 .orderId("order123")
                 .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(
-                        TossPaymentDetails.builder()
+                        PaymentDetails.builder()
                                 .orderName("테스트 주문")
                                 .totalAmount(new BigDecimal(15000))
                                 .status(TossPaymentStatus.IN_PROGRESS)
@@ -412,7 +412,7 @@ class PaymentEventTest {
                 .build();
 
         // when & then
-        paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentInfo);
+        paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentGatewayInfo);
     }
 
     @ParameterizedTest
@@ -439,11 +439,11 @@ class PaymentEventTest {
                 .amount(new BigDecimal(amount))
                 .build();
 
-        TossPaymentInfo paymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentKey("validPaymentKey")
                 .orderId("order123")
                 .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
-                .paymentDetails(TossPaymentDetails.builder()
+                .paymentDetails(PaymentDetails.builder()
                         .orderName("테스트 주문")
                         .totalAmount(new BigDecimal(15000))
                         .status(TossPaymentStatus.IN_PROGRESS)
@@ -454,7 +454,7 @@ class PaymentEventTest {
 
         // when & then
         assertThatThrownBy(
-                () -> paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentInfo))
+                () -> paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentGatewayInfo))
                 .isInstanceOf(PaymentValidException.class);
     }
 
@@ -474,12 +474,12 @@ class PaymentEventTest {
                 .amount(new BigDecimal(15000))
                 .build();
 
-        TossPaymentInfo paymentInfo = TossPaymentInfo.builder()
+        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
                 .paymentKey("validPaymentKey")
                 .orderId("order123")
                 .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(
-                        TossPaymentDetails.builder()
+                        PaymentDetails.builder()
                                 .orderName("테스트 주문")
                                 .totalAmount(new BigDecimal(15000))
                                 .status(tossPaymentStatus)
@@ -490,7 +490,7 @@ class PaymentEventTest {
 
         // when & then
         assertThatThrownBy(
-                () -> paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentInfo))
+                () -> paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentGatewayInfo))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -689,12 +689,12 @@ class PaymentEventTest {
         LocalDateTime creationTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
 
         // when
-        PaymentEvent paymentEvent = PaymentEvent.requiredBuilder()
-                .userInfo(userInfo)
-                .productInfoList(List.of(productInfo))
-                .orderId("order123")
-                .lastStatusChangedAt(creationTime)
-                .requiredBuild();
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                List.of(productInfo),
+                "order123",
+                creationTime
+        );
 
         // then
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(creationTime);

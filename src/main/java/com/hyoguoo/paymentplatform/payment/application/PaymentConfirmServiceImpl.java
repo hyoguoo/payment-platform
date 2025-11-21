@@ -10,7 +10,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
@@ -107,19 +107,19 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_REQUEST_START,
                 () -> String.format("orderId=%s", paymentConfirmCommand.getOrderId()));
 
-        TossPaymentInfo tossConfirmInfo = paymentCommandUseCase.confirmPaymentWithGateway(
+        PaymentGatewayInfo paymentGatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
         );
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_REQUEST_END,
                 () -> String.format("orderId=%s status=%s",
-                        tossConfirmInfo.getOrderId(),
-                        tossConfirmInfo.getPaymentConfirmResultStatus()));
+                        paymentGatewayInfo.getOrderId(),
+                        paymentGatewayInfo.getPaymentConfirmResultStatus()));
 
         PaymentEvent donePaymentEvent = transactionCoordinator.executePaymentSuccessCompletion(
                 paymentEvent.getOrderId(),
                 paymentEvent,
-                tossConfirmInfo.getPaymentDetails().getApprovedAt()
+                paymentGatewayInfo.getPaymentDetails().getApprovedAt()
         );
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_DONE,

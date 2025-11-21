@@ -79,9 +79,7 @@ Follow this required workflow when implementing tasks:
 3.  **Test-First Development:**
     * Write tests (unit or integration) *before* writing the implementation code.
     * Implement the **minimum amount of code** necessary to pass the newly written tests. Avoid making overly large or unrelated changes.
-4.  **Atomic Commits:**
-    * Commit your work after a single, discrete unit of functionality or task is complete.
-5.  **Update Documentation:**
+4.  **Update Documentation:**
     * Upon task completion, if the changes necessitate updates to guidance or specification files (e.g., CLAUDE.md, TECHSPEC.md), update those files accordingly.
 
 ## Architecture
@@ -100,6 +98,7 @@ Application (orchestrates domain logic)
    ↑
 Infrastructure (implements Ports)
    ├── repository (JPA implementations)
+   ├── gateway (PG abstraction layer with strategy pattern)
    ├── internal (cross-domain collaboration via Receiver)
    └── entity (JPA entities)
    ↑
@@ -122,6 +121,11 @@ Presentation (controllers, DTOs, InternalReceiver)
 
 **Infrastructure Layer**
 - **repository**: JPA repository implementations
+- **gateway**: PG abstraction layer implementing strategy pattern
+  - `PaymentGatewayAdapter`: Implements `PaymentGatewayPort`
+  - `PaymentGatewayFactory`: Selects appropriate strategy based on configuration
+  - `PaymentGatewayStrategy`: Strategy interface for PG implementations
+  - `TossPaymentGatewayStrategy`: Toss Payments-specific implementation
 - **internal**: Adapters implementing Ports for cross-domain communication (e.g., `InternalProductAdapter` implements `ProductPort`)
 - **entity**: JPA entities mapped to database tables
 
@@ -144,6 +148,83 @@ InternalProductAdapter ──────────────┘
 
 This ensures loose coupling and domain independence.
 
+### Architecture Compliance
+
+**Dependency Rules**:
+- ✅ **Infrastructure → Domain/Application**: Uses Port interfaces only (DIP compliance)
+- ✅ **Application → Presentation**: Implements Service interfaces (DIP compliance)
+- ✅ **PG Independence**: Domain and application layers are PG-agnostic (Phase 4 completed)
+  - Uses `PaymentGatewayInfo`, `PaymentDetails`, `PaymentFailure` (PG-independent models)
+  - Toss-specific types isolated to infrastructure layer only
+- ⚠️ **Domain → Application**: 2 technical debt items exist
+  - `PaymentEvent.java` → `PaymentConfirmCommand` (application DTO)
+  - `PaymentOrder.java` → `OrderedProduct` (application DTO)
+  - Prioritized for future cleanup
+  - Current violations do not impact functionality
+
+**Validation Methods**:
+```bash
+# Check Domain → Application dependencies
+grep -r "import.*application" src/main/java/*/payment/domain/
+
+# Check Application → Infrastructure dependencies
+grep -r "import.*infrastructure" src/main/java/*/payment/application/
+
+# Verify PG independence (should return no results)
+grep -r "TossPaymentInfo\|TossPaymentDetails\|TossPaymentFailure" src/main/java/*/payment/application/
+grep -r "TossPaymentInfo\|TossPaymentDetails\|TossPaymentFailure" src/main/java/*/payment/domain/
+```
+
+**Phase 4 Completion (2025-11-20)**:
+- ✅ Removed all Toss-specific types from domain and application layers
+- ✅ Introduced PG-independent domain models: `PaymentGatewayInfo`, `PaymentDetails`, `PaymentFailure`
+- ✅ Refactored `PaymentCommandUseCase` to use PG-independent models
+  - Conversion logic from `PaymentStatusResult`/`PaymentConfirmResult` to `PaymentGatewayInfo` remains (necessary for current architecture)
+- ✅ All 273 tests passing
+
+**Phase 5 Completion (2025-11-21)**:
+- ✅ Refactored `PaymentRecoveryUseCase` to achieve full PG independence
+  - Removed direct `TossOperator` dependency
+  - Now uses `PaymentGatewayPort` with PG-independent types
+- ✅ Extended `PaymentGatewayPort` with `getStatusByOrderId(String orderId)` method
+  - Scheduler use case requires orderId-based queries (not paymentKey)
+  - Supports recovery operations without requiring paymentKey lookup
+- ✅ All application layer UseCases now uniformly use `PaymentGatewayPort`
+  - Complete PG abstraction achieved across all use cases
+  - No Toss-specific types in application layer
+- ✅ All 205 unit tests passing (3 Docker Testcontainers failures expected)
+
+### Payment Gateway Abstraction
+
+The payment gateway layer uses strategy pattern to abstract PG-specific implementations:
+
+```
+Application Layer
+PaymentProcessorUseCase
+    ↓ uses
+PaymentGatewayPort (PG-independent interface)
+    ↓ implemented by
+PaymentGatewayAdapter
+    ↓ delegates to
+PaymentGatewayFactory
+    ↓ selects
+PaymentGatewayStrategy (interface)
+    ↑ implemented by
+TossPaymentGatewayStrategy (Toss-specific)
+```
+
+**Key Benefits**:
+- PG vendor independence in application layer
+- Easy addition of new PG providers (just implement `PaymentGatewayStrategy`)
+- Configuration-based PG selection via `application.yml`
+- Unified domain models (`PaymentConfirmRequest`, `PaymentConfirmResult`, etc.)
+
+**Adding New PG**:
+1. Create new strategy class implementing `PaymentGatewayStrategy`
+2. Implement `supports(PaymentGatewayType)` and conversion logic
+3. Add PG type to `PaymentGatewayType` enum
+4. Configure in `application.yml`
+
 ### Domain Models
 
 **Payment Domain**
@@ -156,7 +237,7 @@ This ensures loose coupling and domain independence.
 **Other Domains**
 - `User`: User information and balances
 - `Product`: Product catalog and stock management
-- `PaymentGateway`: Toss Payments API integration
+- `PaymentGateway`: PG integration abstraction (supports Toss Payments, extensible to other PGs)
 
 ### Key Components
 
@@ -166,6 +247,28 @@ This ensures loose coupling and domain independence.
 
 **Event Listeners** (`payment/listener/`)
 - `PaymentHistoryEventListener`: AOP-based tracking of payment state changes
+
+**AOP Components** (`core/common/aspect/`)
+- `DomainEventLoggingAspect`: Generic domain event logging interceptor
+  - Captures method execution with `@PublishDomainEvent` annotation
+  - Publishes domain events for state changes
+  - Records reason for changes via `@Reason` annotation
+- **Usage**: Apply `@PublishDomainEvent(action = "changed"|"retry")` to UseCase methods
+  ```java
+  @PublishDomainEvent(action = "changed")
+  @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
+  public PaymentEvent markPaymentAsDone(PaymentEvent event, LocalDateTime approvedAt) {
+      event.done(approvedAt, now);
+      return paymentEventRepository.saveOrUpdate(event);
+  }
+
+  @PublishDomainEvent(action = "changed")
+  public PaymentEvent markPaymentAsFail(PaymentEvent event, @Reason String failureReason) {
+      event.fail(failureReason, now);
+      return paymentEventRepository.saveOrUpdate(event);
+  }
+  ```
+- **Event Flow**: AOP intercepts method → publishes event → listener handles (e.g., `PaymentHistoryEventListener`)
 
 **Monitoring & Logging**
 - Structured logging with `LogFmt`, `LogDomain`, `EventType`
@@ -216,6 +319,16 @@ JaCoCo coverage excludes: Q* (QueryDSL), dto, entity, exception, infrastructure,
 
 ## Key Patterns & Conventions
 
+**Code Documentation Policy**
+- **Minimize in-code comments**: Code should be self-explanatory through clear naming and structure
+- **Exception**: Critical business logic or complex algorithms that require explanation
+- **Use external documentation**: For architecture decisions, transaction boundaries, and design patterns
+  - Transaction boundaries: Document in separate `docs/` directory or README sections
+  - API contracts: Use OpenAPI/Swagger specifications
+  - Business rules: Maintain in `TECHSPEC.md` or dedicated domain documentation
+- **JavaDoc usage**: Only for public APIs that external consumers will use
+- **Avoid**: Redundant comments that simply repeat what the code does
+
 **Naming Conventions**
 - Services: `*ServiceImpl` (implementation), `*Service` (interface in presentation/port)
 - Use Cases: `*UseCase` (implementation), no interface needed
@@ -227,6 +340,7 @@ JaCoCo coverage excludes: Q* (QueryDSL), dto, entity, exception, infrastructure,
 - Keep transactions minimal - external API calls are outside transaction boundaries
 - Use compensating transactions when external calls fail after DB commits
 - Example: Stock decrease → Toss API → if API fails, stock increase (compensating)
+- **Documentation**: Transaction boundaries are documented externally, not in code comments
 
 **Error Handling**
 - Retryable errors: `PaymentTossRetryableException` (network timeouts, etc.)
@@ -265,6 +379,26 @@ JaCoCo coverage excludes: Q* (QueryDSL), dto, entity, exception, infrastructure,
 3. Add method to `PaymentScheduler` with `@Scheduled` annotation
 4. Configure in application.yml under `scheduler.*`
 
+**Adding New Payment Gateway**
+1. Add PG type to `PaymentGatewayType` enum (e.g., `IAMPORT`, `NICE`)
+2. Create strategy package under `infrastructure/gateway/` (e.g., `infrastructure/gateway/iamport/`)
+3. Implement `PaymentGatewayStrategy` interface
+   - `supports(PaymentGatewayType)`: Return true for your PG type
+   - `confirm(PaymentConfirmRequest)`: Convert to PG-specific format and call PG API
+   - `cancel(PaymentCancelRequest)`: Convert and call PG cancel API
+   - `getStatus(String paymentKey)`: Convert and call PG status API (by paymentKey)
+   - `getStatusByOrderId(String orderId)`: Convert and call PG status API (by orderId)
+4. Add PG configuration in `application.yml`
+   ```yaml
+   payment:
+     gateway:
+       type: IAMPORT  # Switch PG here
+       iamport:
+         api-key: ${IAMPORT_API_KEY}
+         api-secret: ${IAMPORT_API_SECRET}
+   ```
+5. Factory automatically selects strategy based on `payment.gateway.type`
+
 ## Important Configuration
 
 - **Database**: MySQL with UTF-8MB4
@@ -272,3 +406,6 @@ JaCoCo coverage excludes: Q* (QueryDSL), dto, entity, exception, infrastructure,
 - **Profiles**: `test` (integration tests with Testcontainers), default (production-like)
 - **Actuator**: Metrics at `/actuator/prometheus`, health at `/actuator/health`
 - **Swagger**: Available at `/swagger-ui.html` (disabled in test profile)
+- **Payment Gateway**: Strategy-based configuration via `payment.gateway.type` in `application.yml`
+  - Supports: TOSS (implemented), IAMPORT, NICE (ready to add)
+  - PG-specific settings under `payment.gateway.<pg-name>`

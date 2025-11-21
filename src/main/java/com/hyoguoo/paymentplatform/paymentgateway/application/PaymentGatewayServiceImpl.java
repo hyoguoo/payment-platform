@@ -31,6 +31,11 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
     }
 
     @Override
+    public TossPaymentInfo getPaymentResultByPaymentKey(String paymentKey) {
+        return tossOperator.findPaymentInfoByPaymentKey(paymentKey);
+    }
+
+    @Override
     public TossPaymentInfo confirmPayment(
             TossConfirmCommand tossConfirmCommand,
             String idempotencyKey

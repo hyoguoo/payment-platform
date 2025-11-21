@@ -1,12 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.internal;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossCancelGatewayCommand;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.TossConfirmGatewayCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
-import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.TossPaymentResponse;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayFactory;
+import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayProperties;
+import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -14,32 +16,30 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
 
-    private final PaymentGatewayInternalReceiver paymentGatewayInternalReceiver;
+    private final PaymentGatewayFactory factory;
+    private final PaymentGatewayProperties properties;
 
     @Override
-    public TossPaymentInfo getPaymentInfoByOrderId(String orderId) {
-        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.getPaymentInfoByOrderId(
-                orderId
-        );
-
-        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
+    public PaymentStatusResult getStatus(String paymentKey) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.getStatus(paymentKey);
     }
 
     @Override
-    public TossPaymentInfo confirmPayment(TossConfirmGatewayCommand tossConfirmGatewayCommand) {
-        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.confirmPayment(
-                PaymentInfrastructureMapper.toTossConfirmRequest(tossConfirmGatewayCommand)
-        );
-
-        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
+    public PaymentStatusResult getStatusByOrderId(String orderId) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.getStatusByOrderId(orderId);
     }
 
     @Override
-    public TossPaymentInfo cancelPayment(TossCancelGatewayCommand tossCancelGatewayCommand) {
-        TossPaymentResponse tossPaymentResponse = paymentGatewayInternalReceiver.cancelPayment(
-                PaymentInfrastructureMapper.toTossCancelRequest(tossCancelGatewayCommand)
-        );
+    public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.confirm(request);
+    }
 
-        return PaymentInfrastructureMapper.toTossPaymentInfo(tossPaymentResponse);
+    @Override
+    public PaymentCancelResult cancel(PaymentCancelRequest request) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.cancel(request);
     }
 }

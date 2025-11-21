@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -42,23 +42,22 @@ public class PaymentEvent {
     private LocalDateTime createdAt;
     private LocalDateTime lastStatusChangedAt;
 
-    @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
-    @SuppressWarnings("unused")
-    protected PaymentEvent(
+    public static PaymentEvent create(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
             String orderId,
             LocalDateTime lastStatusChangedAt
     ) {
-        this.buyerId = userInfo.getId();
-        this.sellerId = productInfoList.getFirst().getSellerId();
-
-        this.orderName = generateOrderName(productInfoList);
-        this.orderId = orderId;
-        this.status = PaymentEventStatus.READY;
-        this.retryCount = 0;
-        this.paymentOrderList = new ArrayList<>();
-        this.lastStatusChangedAt = lastStatusChangedAt;
+        return PaymentEvent.allArgsBuilder()
+                .buyerId(userInfo.getId())
+                .sellerId(productInfoList.getFirst().getSellerId())
+                .orderName(generateOrderName(productInfoList))
+                .orderId(orderId)
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .paymentOrderList(new ArrayList<>())
+                .lastStatusChangedAt(lastStatusChangedAt)
+                .allArgsBuild();
     }
 
     private static String generateOrderName(
@@ -80,12 +79,12 @@ public class PaymentEvent {
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
-    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, TossPaymentInfo paymentInfo) {
+    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, PaymentGatewayInfo paymentGatewayInfo) {
         if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }
 
-        if (!paymentConfirmCommand.getPaymentKey().equals(paymentInfo.getPaymentKey()) ||
+        if (!paymentConfirmCommand.getPaymentKey().equals(paymentGatewayInfo.getPaymentKey()) ||
                 !paymentConfirmCommand.getPaymentKey().equals(this.paymentKey)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
@@ -98,8 +97,8 @@ public class PaymentEvent {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
 
-        if (paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
-                paymentInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
+        if (paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
+                paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
             throw PaymentStatusException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
         }
     }

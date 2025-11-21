@@ -3,11 +3,11 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
-import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ public class PaymentRecoveryUseCase {
     private final PaymentProcessUseCase paymentProcessUseCase;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentTransactionCoordinator transactionCoordinator;
-    private final TossOperator tossOperator;
+    private final PaymentGatewayPort paymentGatewayPort;
 
     public PaymentEvent markRecoverySuccess(
             PaymentEvent originalEvent,
@@ -89,16 +89,16 @@ public class PaymentRecoveryUseCase {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SINGLE_START,
                 () -> String.format("Starting recovery for orderId=%s", orderId));
 
-        TossPaymentInfo tossPaymentInfo = tossOperator.findPaymentInfoByOrderId(orderId);
+        PaymentStatusResult statusResult = paymentGatewayPort.getStatusByOrderId(orderId);
         PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
-        TossPaymentStatus tossStatus = tossPaymentInfo.getPaymentDetails().getStatus();
+        PaymentStatus paymentStatus = statusResult.status();
 
-        if (tossStatus == TossPaymentStatus.DONE) {
+        if (paymentStatus == PaymentStatus.DONE) {
             transactionCoordinator.executePaymentSuccessCompletion(
                     orderId,
                     paymentEvent,
-                    tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                    statusResult.approvedAt()
             );
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SUCCESS_COMPLETION,
                     () -> String.format("Recovered orderId=%s as SUCCESS", orderId));
@@ -107,11 +107,11 @@ public class PaymentRecoveryUseCase {
                     orderId,
                     paymentEvent,
                     paymentEvent.getPaymentOrderList(),
-                    tossStatus.getValue()
+                    paymentStatus.getValue()
             );
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_FAILURE_COMPENSATION,
                     () -> String.format("Recovered orderId=%s as FAILURE (status=%s)",
-                            orderId, tossStatus.getValue()));
+                            orderId, paymentStatus.getValue()));
         }
     }
 }

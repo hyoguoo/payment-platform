@@ -9,7 +9,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentRecoveryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentRetryableValidateException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
@@ -67,18 +67,18 @@ public class PaymentRecoverServiceImpl implements PaymentRecoverService {
                     .paymentKey(increasedRetryCountEvent.getPaymentKey())
                     .build();
 
-            TossPaymentInfo tossPaymentInfo = paymentCommandUseCase.confirmPaymentWithGateway(
+            PaymentGatewayInfo paymentGatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(
                     paymentConfirmCommand
             );
 
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_SUCCESS_WITH_RETRY,
                     () -> String.format("orderId=%s approvedAt=%s",
                             increasedRetryCountEvent.getOrderId(),
-                            tossPaymentInfo.getPaymentDetails().getApprovedAt()));
+                            paymentGatewayInfo.getPaymentDetails().getApprovedAt()));
 
             PaymentEvent donePaymentEvent = paymentCommandUseCase.markPaymentAsDone(
                     increasedRetryCountEvent,
-                    tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                    paymentGatewayInfo.getPaymentDetails().getApprovedAt()
             );
 
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_DONE,

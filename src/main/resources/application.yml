@@ -28,6 +28,15 @@ springdoc:
 
 spring.profiles.default: local
 
+payment:
+  gateway:
+    type: TOSS
+    toss:
+      base-url: https://api.tosspayments.com
+      secret-key: ${TOSS_SECRET_KEY:}
+      connect-timeout: 3000
+      read-timeout: 10000
+
 metrics:
   payment:
     state:

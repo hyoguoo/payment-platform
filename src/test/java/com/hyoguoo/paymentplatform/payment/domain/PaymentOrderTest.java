@@ -94,11 +94,11 @@ class PaymentOrderTest {
                 .build();
 
         // when
-        PaymentOrder paymentOrder = PaymentOrder.requiredBuilder()
-                .paymentEvent(paymentEvent)
-                .orderedProduct(orderedProduct)
-                .productInfo(productInfo)
-                .requiredBuild();
+        PaymentOrder paymentOrder = PaymentOrder.create(
+                paymentEvent,
+                orderedProduct,
+                productInfo
+        );
 
         // then
         assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.NOT_STARTED);

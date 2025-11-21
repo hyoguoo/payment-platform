@@ -21,6 +21,13 @@ public class PaymentGatewayInternalReceiver {
         return PaymentGatewayPresentationMapper.toTossDetailsResponse(paymentInfoByOrderId);
     }
 
+    public TossPaymentResponse getPaymentInfoByPaymentKey(String paymentKey) {
+        TossPaymentInfo paymentInfoByPaymentKey = paymentGatewayService.getPaymentResultByPaymentKey(
+                paymentKey
+        );
+        return PaymentGatewayPresentationMapper.toTossDetailsResponse(paymentInfoByPaymentKey);
+    }
+
     public TossPaymentResponse confirmPayment(
             TossConfirmRequest tossConfirmRequest
     ) {

@@ -24,21 +24,22 @@ public class PaymentOrder {
     private BigDecimal totalAmount;
     private PaymentOrderStatus status;
 
-    @Builder(builderMethodName = "requiredBuilder", buildMethodName = "requiredBuild")
-    @SuppressWarnings("unused")
-    protected PaymentOrder(
+    public static PaymentOrder create(
             PaymentEvent paymentEvent,
             OrderedProduct orderedProduct,
             ProductInfo productInfo
     ) {
-        this.paymentEventId = paymentEvent.getId();
-        this.orderId = paymentEvent.getOrderId();
-        this.productId = orderedProduct.getProductId();
-        this.quantity = orderedProduct.getQuantity();
-        this.totalAmount = productInfo.getPrice()
+        BigDecimal totalAmount = productInfo.getPrice()
                 .multiply(BigDecimal.valueOf(orderedProduct.getQuantity()));
 
-        this.status = PaymentOrderStatus.NOT_STARTED;
+        return PaymentOrder.allArgsBuilder()
+                .paymentEventId(paymentEvent.getId())
+                .orderId(paymentEvent.getOrderId())
+                .productId(orderedProduct.getProductId())
+                .quantity(orderedProduct.getQuantity())
+                .totalAmount(totalAmount)
+                .status(PaymentOrderStatus.NOT_STARTED)
+                .allArgsBuild();
     }
 
     public void execute() {

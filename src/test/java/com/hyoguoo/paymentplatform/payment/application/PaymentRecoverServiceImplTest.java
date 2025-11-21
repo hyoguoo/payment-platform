@@ -13,8 +13,8 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentRecoveryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.TossPaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -56,16 +56,16 @@ class PaymentRecoverServiceImplTest {
         PaymentEvent mockDonePaymentEvent = Mockito.mock(PaymentEvent.class);
         List<PaymentEvent> paymentEvents = List.of(mockPaymentEvent);
 
-        TossPaymentInfo mockTossPaymentInfo = Mockito.mock(TossPaymentInfo.class);
-        TossPaymentDetails mockTossPaymentDetails = Mockito.mock(TossPaymentDetails.class);
-        when(mockTossPaymentInfo.getPaymentDetails()).thenReturn(mockTossPaymentDetails);
-        when(mockTossPaymentDetails.getApprovedAt()).thenReturn(LocalDateTime.now());
+        PaymentGatewayInfo mockPaymentGatewayInfo = Mockito.mock(PaymentGatewayInfo.class);
+        PaymentDetails mockPaymentDetails = Mockito.mock(PaymentDetails.class);
+        when(mockPaymentGatewayInfo.getPaymentDetails()).thenReturn(mockPaymentDetails);
+        when(mockPaymentDetails.getApprovedAt()).thenReturn(LocalDateTime.now());
 
         when(mockPaymentLoadUseCase.getRetryablePaymentEvents()).thenReturn(paymentEvents);
         when(mockLocalDateTimeProvider.now()).thenReturn(LocalDateTime.now());
         when(mockPaymentEvent.isRetryable(any(LocalDateTime.class))).thenReturn(true);
         when(mockPaymentCommandUseCase.increaseRetryCount(any(PaymentEvent.class))).thenReturn(mockPaymentEvent);
-        when(mockPaymentCommandUseCase.confirmPaymentWithGateway(any())).thenReturn(mockTossPaymentInfo);
+        when(mockPaymentCommandUseCase.confirmPaymentWithGateway(any())).thenReturn(mockPaymentGatewayInfo);
         when(mockPaymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
                 .thenReturn(mockDonePaymentEvent);
 

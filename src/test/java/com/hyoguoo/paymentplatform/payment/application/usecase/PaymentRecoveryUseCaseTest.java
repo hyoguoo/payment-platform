@@ -7,17 +7,15 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentProcessStatus;
-import com.hyoguoo.paymentplatform.paymentgateway.application.port.TossOperator;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.TossPaymentInfo;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.TossPaymentStatus;
-import com.hyoguoo.paymentplatform.paymentgateway.domain.vo.TossPaymentDetails;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,7 +39,7 @@ class PaymentRecoveryUseCaseTest {
     private PaymentTransactionCoordinator transactionCoordinator;
 
     @Mock
-    private TossOperator tossOperator;
+    private PaymentGatewayPort paymentGatewayPort;
 
     @InjectMocks
     private PaymentRecoveryUseCase paymentRecoveryUseCase;
@@ -56,7 +54,7 @@ class PaymentRecoveryUseCaseTest {
         paymentRecoveryUseCase.recoverStuckPayments();
 
         // then
-        verify(tossOperator, never()).findPaymentInfoByOrderId(anyString());
+        verify(paymentGatewayPort, never()).getStatusByOrderId(anyString());
         verify(transactionCoordinator, never()).executePaymentSuccessCompletion(
                 anyString(), any(), any()
         );
@@ -69,10 +67,10 @@ class PaymentRecoveryUseCaseTest {
         String orderId = "order123";
         PaymentProcess processingJob = createPaymentProcess(orderId);
         PaymentEvent paymentEvent = createPaymentEvent(orderId);
-        TossPaymentInfo tossPaymentInfo = createTossPaymentInfo(TossPaymentStatus.DONE);
+        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.DONE);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
-        when(tossOperator.findPaymentInfoByOrderId(orderId)).thenReturn(tossPaymentInfo);
+        when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).thenReturn(paymentEvent);
 
         // when
@@ -82,7 +80,7 @@ class PaymentRecoveryUseCaseTest {
         verify(transactionCoordinator, times(1)).executePaymentSuccessCompletion(
                 orderId,
                 paymentEvent,
-                tossPaymentInfo.getPaymentDetails().getApprovedAt()
+                statusResult.approvedAt()
         );
         verify(transactionCoordinator, never()).executePaymentFailureCompensation(
                 anyString(), any(), any(), anyString()
@@ -96,10 +94,10 @@ class PaymentRecoveryUseCaseTest {
         String orderId = "order123";
         PaymentProcess processingJob = createPaymentProcess(orderId);
         PaymentEvent paymentEvent = createPaymentEvent(orderId);
-        TossPaymentInfo tossPaymentInfo = createTossPaymentInfo(TossPaymentStatus.CANCELED);
+        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.CANCELED);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
-        when(tossOperator.findPaymentInfoByOrderId(orderId)).thenReturn(tossPaymentInfo);
+        when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).thenReturn(paymentEvent);
 
         // when
@@ -124,10 +122,10 @@ class PaymentRecoveryUseCaseTest {
         String orderId = "order123";
         PaymentProcess processingJob = createPaymentProcess(orderId);
         PaymentEvent paymentEvent = createPaymentEvent(orderId);
-        TossPaymentInfo tossPaymentInfo = createTossPaymentInfo(TossPaymentStatus.ABORTED);
+        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.ABORTED);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
-        when(tossOperator.findPaymentInfoByOrderId(orderId)).thenReturn(tossPaymentInfo);
+        when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).thenReturn(paymentEvent);
 
         // when
@@ -154,12 +152,12 @@ class PaymentRecoveryUseCaseTest {
         PaymentEvent event1 = createPaymentEvent(orderId1);
         PaymentEvent event2 = createPaymentEvent(orderId2);
 
-        TossPaymentInfo info1 = createTossPaymentInfo(TossPaymentStatus.DONE);
-        TossPaymentInfo info2 = createTossPaymentInfo(TossPaymentStatus.CANCELED);
+        PaymentStatusResult statusResult1 = createPaymentStatusResult(PaymentStatus.DONE);
+        PaymentStatusResult statusResult2 = createPaymentStatusResult(PaymentStatus.CANCELED);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(job1, job2));
-        when(tossOperator.findPaymentInfoByOrderId(orderId1)).thenReturn(info1);
-        when(tossOperator.findPaymentInfoByOrderId(orderId2)).thenReturn(info2);
+        when(paymentGatewayPort.getStatusByOrderId(orderId1)).thenReturn(statusResult1);
+        when(paymentGatewayPort.getStatusByOrderId(orderId2)).thenReturn(statusResult2);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId1)).thenReturn(event1);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId2)).thenReturn(event2);
 
@@ -168,7 +166,7 @@ class PaymentRecoveryUseCaseTest {
 
         // then
         verify(transactionCoordinator, times(1)).executePaymentSuccessCompletion(
-                orderId1, event1, info1.getPaymentDetails().getApprovedAt()
+                orderId1, event1, statusResult1.approvedAt()
         );
         verify(transactionCoordinator, times(1)).executePaymentFailureCompensation(
                 orderId2, event2, event2.getPaymentOrderList(), "CANCELED"
@@ -185,12 +183,12 @@ class PaymentRecoveryUseCaseTest {
         PaymentProcess job2 = createPaymentProcess(orderId2);
 
         PaymentEvent event2 = createPaymentEvent(orderId2);
-        TossPaymentInfo info2 = createTossPaymentInfo(TossPaymentStatus.DONE);
+        PaymentStatusResult statusResult2 = createPaymentStatusResult(PaymentStatus.DONE);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(job1, job2));
-        when(tossOperator.findPaymentInfoByOrderId(orderId1))
-                .thenThrow(new RuntimeException("Toss API error"));
-        when(tossOperator.findPaymentInfoByOrderId(orderId2)).thenReturn(info2);
+        when(paymentGatewayPort.getStatusByOrderId(orderId1))
+                .thenThrow(new RuntimeException("PG API error"));
+        when(paymentGatewayPort.getStatusByOrderId(orderId2)).thenReturn(statusResult2);
         when(paymentLoadUseCase.getPaymentEventByOrderId(orderId2)).thenReturn(event2);
 
         // when
@@ -198,7 +196,7 @@ class PaymentRecoveryUseCaseTest {
 
         // then
         verify(transactionCoordinator, times(1)).executePaymentSuccessCompletion(
-                orderId2, event2, info2.getPaymentDetails().getApprovedAt()
+                orderId2, event2, statusResult2.approvedAt()
         );
     }
 
@@ -229,18 +227,14 @@ class PaymentRecoveryUseCaseTest {
                 .allArgsBuild();
     }
 
-    private TossPaymentInfo createTossPaymentInfo(TossPaymentStatus status) {
-        return TossPaymentInfo.builder()
-                .paymentKey("test_key")
-                .orderId("order123")
-                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
-                .paymentDetails(TossPaymentDetails.builder()
-                        .orderName("Test Order")
-                        .totalAmount(BigDecimal.valueOf(10000))
-                        .status(status)
-                        .approvedAt(LocalDateTime.now())
-                        .rawData("{}")
-                        .build())
-                .build();
+    private PaymentStatusResult createPaymentStatusResult(PaymentStatus status) {
+        return new PaymentStatusResult(
+                "test_key",
+                "order123",
+                status,
+                BigDecimal.valueOf(10000),
+                LocalDateTime.now(),
+                null
+        );
     }
 }
