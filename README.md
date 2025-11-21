@@ -58,6 +58,14 @@
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
 
+### 전략 패턴을 통한 PG 독립성 확보 및 확장 가능한 구조
+
+- Application 계층은 특정 PG 구현체에 의존하지 않아 PG 독립성을 확보
+- 전략 패턴을 통해 PG사 구현체를 추상화하여 새로운 PG 추가 시 최소한의 변경으로 확장 가능
+- 링크: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.gitbook.io/tech-log/posts/payment-gateway-strategy-pattern)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/cd031502-6de3-442d-8d58-872e39d22253">
+
 ### 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증
 
 - 외부 API에 의존하는 구조로 인해 다양한 예외 상황에 대한 테스트가 어려움 존재
