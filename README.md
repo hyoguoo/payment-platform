@@ -21,7 +21,7 @@
 
 - 클라이언트가 주문 생성부터 승인까지 처리하는 방식르로, 중간 값 조작 같은 위변조 가능성 존재
 - 서버 주도의 흐름으로 전환하고, 클라이언트·서버·PG 응답값을 교차 검증하여 불일치 시 결제를 거부하도록 설계
-- 링크: [토스 페이먼츠를 통한 결제 연동 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-system-with-toss)
+- 링크: [토스 페이먼츠를 통한 결제 연동 시스템 구현](https://hyoguoo.github.io/blog/payment-system-with-toss/)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
 
@@ -29,7 +29,7 @@
 
 - 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
 - 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
-- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.gitbook.io/tech-log/posts/minimize-transaction-scope)
+- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.github.io/blog/minimize-transaction-scope)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
 
@@ -37,7 +37,7 @@
 
 - API 지연, 서버 중단 등 외부 오류 발생 시 결제가 실패로 종료되어 복구할 수 없는 문제가 존재
 - 상태 기반 전환 모델을 정의하고, 재시도 가능한 오류에 대해 자동 복구 흐름 적용
-- 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.gitbook.io/tech-log/posts/payment-status-with-retry)
+- 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.github.io/blog/payment-status-with-retry)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
 
@@ -45,7 +45,7 @@
 
 - 재고를 복구하는 보상 트랜잭션 처리 중 DB 데드락, 서버 다운 등으로 실패 시(이중 장애), 유령 재고 문제가 발생하는 엣지 케이스 존재
 - 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
-- 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.gitbook.io/tech-log/posts/payment-compensation-transaction)
+- 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.github.io/blog/payment-compensation-transaction)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
 
@@ -53,7 +53,7 @@
 
 - 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
 - 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
-- 링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.gitbook.io/tech-log/posts/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.gitbook.io/tech-log/posts/log-structure-and-performance)
+- 링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
@@ -62,7 +62,7 @@
 
 - Application 계층은 특정 PG 구현체에 의존하지 않아 PG 독립성을 확보
 - 전략 패턴을 통해 PG사 구현체를 추상화하여 새로운 PG 추가 시 최소한의 변경으로 확장 가능
-- 링크: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.gitbook.io/tech-log/posts/payment-gateway-strategy-pattern)
+- 링크: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.github.io/blog/payment-gateway-strategy-pattern)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/cd031502-6de3-442d-8d58-872e39d22253">
 
@@ -70,7 +70,7 @@
 
 - 외부 API에 의존하는 구조로 인해 다양한 예외 상황에 대한 테스트가 어려움 존재
 - Fake 객체 기반의 테스트 환경을 구성하여 승인 실패, 지연, 중복 요청 등 다양한 시나리오를 유연하게 검증
-- 링크: [외부 의존성 제어를 통한 결제 프로세스 다양한 시나리오 검증](https://hyoguoo.gitbook.io/tech-log/posts/payment-system-test)
+- 링크: [외부 의존성 제어를 통한 결제 프로세스 다양한 시나리오 검증](https://hyoguoo.github.io/blog/payment-system-test)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/3bb72ac9-b8ae-4629-b799-6546a7ee9640">
 
