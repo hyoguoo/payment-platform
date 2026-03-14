@@ -17,7 +17,6 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,14 +24,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PaymentConfirmServiceImpl implements PaymentConfirmService {
+public class PaymentConfirmServiceImpl {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
 
-    @Override
     public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_START,
                 () -> String.format("orderId=%s paymentKey=%s",
