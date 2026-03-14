@@ -4,10 +4,14 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutComma
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentConfirmResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentStatusApiResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentStatusResponse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -46,5 +50,21 @@ public class PaymentPresentationMapper {
                 .orderId(result.getOrderId())
                 .amount(result.getAmount())
                 .build();
+    }
+
+    public static PaymentStatusApiResponse toPaymentStatusApiResponse(PaymentEvent event) {
+        return PaymentStatusApiResponse.builder()
+                .orderId(event.getOrderId())
+                .status(mapToPaymentStatusResponse(event.getStatus()))
+                .approvedAt(event.getApprovedAt())
+                .build();
+    }
+
+    private static PaymentStatusResponse mapToPaymentStatusResponse(PaymentEventStatus status) {
+        return switch (status) {
+            case DONE -> PaymentStatusResponse.DONE;
+            case FAILED -> PaymentStatusResponse.FAILED;
+            default -> PaymentStatusResponse.PROCESSING;
+        };
     }
 }
