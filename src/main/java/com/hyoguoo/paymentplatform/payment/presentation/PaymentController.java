@@ -30,7 +30,7 @@ public class PaymentController {
     private final PaymentLoadUseCase paymentLoadUseCase;
 
     @PostMapping("/api/v1/payments/checkout")
-    public CheckoutResponse checkout(
+    public ResponseEntity<CheckoutResponse> checkout(
             @RequestBody CheckoutRequest checkoutRequest
     ) {
         CheckoutCommand checkoutCommand = PaymentPresentationMapper.toCheckoutCommand(
@@ -38,7 +38,7 @@ public class PaymentController {
         );
         CheckoutResult checkoutResult = paymentCheckoutService.checkout(checkoutCommand);
 
-        return PaymentPresentationMapper.toCheckoutResponse(checkoutResult);
+        return ResponseEntity.ok(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
     }
 
     @PostMapping("/api/v1/payments/confirm")
