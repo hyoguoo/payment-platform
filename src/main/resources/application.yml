@@ -2,6 +2,10 @@ spring:
   application:
     name: payment-platform
 
+  payment:
+    # 활성 어댑터: sync | outbox | kafka
+    async-strategy: sync
+
   jpa:
     open-in-view: false
     properties:

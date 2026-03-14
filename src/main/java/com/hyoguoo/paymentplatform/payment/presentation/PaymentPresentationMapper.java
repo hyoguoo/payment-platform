@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.presentation;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -40,11 +40,11 @@ public class PaymentPresentationMapper {
     }
 
     public static PaymentConfirmResponse toPaymentConfirmResponse(
-            PaymentConfirmResult paymentConfirmResult
+            PaymentConfirmAsyncResult result
     ) {
         return PaymentConfirmResponse.builder()
-                .orderId(paymentConfirmResult.getOrderId())
-                .amount(paymentConfirmResult.getAmount())
+                .orderId(result.getOrderId())
+                .amount(result.getAmount())
                 .build();
     }
 }

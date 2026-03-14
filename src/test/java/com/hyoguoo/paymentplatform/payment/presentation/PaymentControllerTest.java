@@ -446,6 +446,44 @@ class PaymentControllerTest extends IntegrationTest {
                 .isEqualTo(INIT_PRODUCT_2_STOCK - ORDERED_QUANTITY_2);
     }
 
+    @Test
+    @DisplayName("SyncConfirmAdapter 활성 상태에서 confirm() 요청 성공 시 ResponseType.SYNC_200에 해당하는 HTTP 200을 반환한다. (PORT-02)")
+    void confirmPayment_SyncAdapter_Returns200() throws Exception {
+        // given
+        final int INIT_PRODUCT_1_STOCK = 1;
+        final int INIT_PRODUCT_2_STOCK = 2;
+        final int ORDERED_QUANTITY_1 = 1;
+        final int ORDERED_QUANTITY_2 = 2;
+
+        jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
+                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
+        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
+                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(),
+                TEST_TOTAL_AMOUNT_1);
+        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
+                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(),
+                TEST_TOTAL_AMOUNT_2);
+        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
+        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
+
+        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
+                .userId(1L)
+                .orderId(TEST_ORDER_ID)
+                .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
+                .paymentKey(TEST_PAYMENT_KEY)
+                .build();
+
+        // when
+        ResultActions perform = mockMvc.perform(
+                post("/api/v1/payments/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(confirmRequest))
+        );
+
+        // then — SyncConfirmAdapter가 ResponseType.SYNC_200을 반환하므로 HTTP 200이어야 한다
+        perform.andExpect(status().isOk());
+    }
+
     private PaymentEvent getPaymentEvent() {
         PaymentEvent updatedPaymentEvent = jpaPaymentEventRepository
                 .findAll()
