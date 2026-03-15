@@ -313,6 +313,45 @@ class PaymentTransactionCoordinatorTest {
         }
     }
 
+    @Nested
+    @DisplayName("executeStockDecreaseOnly() 메서드 테스트")
+    class ExecuteStockDecreaseOnlyTest {
+
+        @Test
+        @DisplayName("orderedProductUseCase.decreaseStockForOrders()를 1회 호출한다")
+        void executeStockDecreaseOnly_CallsDecreaseStockForOrders_Once() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            List<PaymentOrder> paymentOrderList = List.of(
+                    createPaymentOrder(1L, 2)
+            );
+
+            // when
+            coordinator.executeStockDecreaseOnly(orderId, paymentOrderList);
+
+            // then
+            then(orderedProductUseCase).should(times(1))
+                    .decreaseStockForOrders(paymentOrderList);
+        }
+
+        @Test
+        @DisplayName("paymentOutboxUseCase.createPendingRecord()를 호출하지 않는다 (Outbox 생성 없음)")
+        void executeStockDecreaseOnly_DoesNotCallCreatePendingRecord() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            List<PaymentOrder> paymentOrderList = List.of(
+                    createPaymentOrder(1L, 2)
+            );
+
+            // when
+            coordinator.executeStockDecreaseOnly(orderId, paymentOrderList);
+
+            // then
+            then(paymentOutboxUseCase).should(times(0))
+                    .createPendingRecord(anyString());
+        }
+    }
+
     private PaymentOrder createPaymentOrder(Long productId, int quantity) {
         return PaymentOrder.allArgsBuilder()
                 .id(1L)

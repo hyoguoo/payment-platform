@@ -23,6 +23,15 @@ public class PaymentTransactionCoordinator {
     private final PaymentOutboxUseCase paymentOutboxUseCase;
 
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
+    public void executeStockDecreaseOnly(
+            String orderId,
+            List<PaymentOrder> paymentOrderList
+    ) throws PaymentOrderedProductStockException {
+        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
+        // Kafka 어댑터 전용: Outbox 레코드 생성 없이 재고 감소만 수행
+    }
+
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentOutbox executeStockDecreaseWithOutboxCreation(
             String orderId,
             List<PaymentOrder> paymentOrderList
