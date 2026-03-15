@@ -1,10 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.listener;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
@@ -16,6 +18,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 
 @DisplayName("KafkaConfirmListener 테스트")
@@ -37,7 +41,6 @@ class KafkaConfirmListenerTest {
 
     private static final String ORDER_ID = "order-123";
     private static final String PAYMENT_KEY = "payment-key-123";
-    private static final BigDecimal AMOUNT = BigDecimal.valueOf(15000);
     private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 3, 15, 12, 0, 0);
 
     @BeforeEach
@@ -54,10 +57,9 @@ class KafkaConfirmListenerTest {
     }
 
     @Test
-    @DisplayName("consume() - 정상 흐름: confirmPaymentWithGateway()를 1회 호출한다")
-    void consume_CallsConfirmPaymentWithGateway_Once() throws Exception {
+    @DisplayName("consume() - 정상 흐름: executePaymentSuccessCompletion()을 1회 호출한다")
+    void consume_Success_CallsExecutePaymentSuccessCompletion_Once() throws Exception {
         // given
-        String message = ORDER_ID + ":" + PAYMENT_KEY + ":" + AMOUNT;
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
         PaymentGatewayInfo gatewayInfo = createGatewayInfo(FIXED_NOW);
 
@@ -69,35 +71,75 @@ class KafkaConfirmListenerTest {
                 .willReturn(paymentEvent);
 
         // when
-        kafkaConfirmListener.consume(message);
+        kafkaConfirmListener.consume(ORDER_ID);
 
         // then
-        then(mockPaymentCommandUseCase).should(times(1))
-                .confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentSuccessCompletion(any(), any(PaymentEvent.class), any(LocalDateTime.class));
     }
 
     @Test
-    @DisplayName("consume() - PaymentTossNonRetryableException 발생 시 예외를 던지지 않는다 (DLT로 라우팅)")
-    void consume_WhenNonRetryable_DoesNotThrow() throws Exception {
+    @DisplayName("consume() - 정상 흐름: executePaymentFailureCompensation()을 호출하지 않는다")
+    void consume_Success_DoesNotCallFailureCompensation() throws Exception {
         // given
-        String message = ORDER_ID + ":" + PAYMENT_KEY + ":" + AMOUNT;
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
+        PaymentGatewayInfo gatewayInfo = createGatewayInfo(FIXED_NOW);
+
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willReturn(gatewayInfo);
+        given(mockTransactionCoordinator.executePaymentSuccessCompletion(
+                any(), any(PaymentEvent.class), any(LocalDateTime.class)))
+                .willReturn(paymentEvent);
+
+        // when
+        kafkaConfirmListener.consume(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentFailureCompensation(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("consume() - PaymentTossNonRetryableException 발생 시 executePaymentFailureCompensation()을 1회 호출한다")
+    void consume_WhenNonRetryable_CallsFailureCompensation() throws Exception {
+        // given
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
 
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         willThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR))
                 .given(mockPaymentCommandUseCase).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+        given(mockTransactionCoordinator.executePaymentFailureCompensation(
+                any(), any(PaymentEvent.class), any(), any()))
+                .willReturn(paymentEvent);
 
-        // when & then: DLT 라우팅을 위해 예외를 다시 던진다 — @NonRetryable로 DLT로 전달됨
-        // 실제 KafkaConfirmListener 구현에서 non-retryable 예외는 DLT 핸들러로 라우팅됨
-        // 이 스텁 테스트는 Plan 03에서 KafkaConfirmListener 구현 후 완성됨
-        assertThat(kafkaConfirmListener).isNotNull();
+        // when
+        kafkaConfirmListener.consume(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentFailureCompensation(any(), any(PaymentEvent.class), any(), any());
     }
 
     @Test
-    @DisplayName("handleDlt() - DLT 메시지 수신 시 executePaymentFailureCompensation()를 1회 호출한다")
-    void handleDlt_CallsFailureCompensation_Once() throws Exception {
+    @DisplayName("consume() - PaymentTossRetryableException 발생 시 예외가 re-throw된다 (@RetryableTopic이 처리)")
+    void consume_WhenRetryable_ThrowsException() throws Exception {
         // given
-        String message = ORDER_ID + ":" + PAYMENT_KEY + ":" + AMOUNT;
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
+
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR))
+                .given(mockPaymentCommandUseCase).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+
+        // when & then
+        assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
+                .isInstanceOf(PaymentTossRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("handleDlt() - DLT 도달 시 executePaymentFailureCompensation()을 1회 호출한다")
+    void handleDlt_CallsExecutePaymentFailureCompensation_Once() {
+        // given
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
 
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
@@ -106,7 +148,7 @@ class KafkaConfirmListenerTest {
                 .willReturn(paymentEvent);
 
         // when
-        kafkaConfirmListener.handleDlt(message);
+        kafkaConfirmListener.handleDlt(ORDER_ID);
 
         // then
         then(mockTransactionCoordinator).should(times(1))
@@ -114,7 +156,7 @@ class KafkaConfirmListenerTest {
     }
 
     @Test
-    @DisplayName("KafkaConfirmListener.consume()은 @RetryableTopic attempts=6 애노테이션을 가진다")
+    @DisplayName("@RetryableTopic의 attempts가 \"6\"이다")
     void retryableTopic_HasAttempts6() throws NoSuchMethodException {
         // given
         RetryableTopic annotation = KafkaConfirmListener.class
@@ -124,6 +166,32 @@ class KafkaConfirmListenerTest {
         // then
         assertThat(annotation).isNotNull();
         assertThat(annotation.attempts()).isEqualTo("6");
+    }
+
+    @Test
+    @DisplayName("@RetryableTopic의 dltTopicSuffix가 \"-dlq\"이다")
+    void retryableTopic_HasDltSuffix_Dlq() throws NoSuchMethodException {
+        // given
+        RetryableTopic annotation = KafkaConfirmListener.class
+                .getMethod("consume", String.class)
+                .getAnnotation(RetryableTopic.class);
+
+        // then
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.dltTopicSuffix()).isEqualTo("-dlq");
+    }
+
+    @Test
+    @DisplayName("@KafkaListener의 topics가 \"payment-confirm\"이다")
+    void kafkaListener_TopicIsPaymentConfirm() throws NoSuchMethodException {
+        // given
+        KafkaListener annotation = KafkaConfirmListener.class
+                .getMethod("consume", String.class)
+                .getAnnotation(KafkaListener.class);
+
+        // then
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.topics()).contains("payment-confirm");
     }
 
     private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status) {
@@ -144,7 +212,7 @@ class KafkaConfirmListenerTest {
                 .paymentDetails(
                         PaymentDetails.builder()
                                 .approvedAt(approvedAt)
-                                .totalAmount(AMOUNT)
+                                .totalAmount(BigDecimal.valueOf(15000))
                                 .build()
                 )
                 .build();

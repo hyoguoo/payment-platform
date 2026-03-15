@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 )
 public class KafkaConfirmAdapter implements PaymentConfirmService {
 
-    private static final String TOPIC = "payment-confirm-requests";
+    private static final String TOPIC = "payment-confirm";
 
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;

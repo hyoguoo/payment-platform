@@ -113,7 +113,7 @@ class KafkaConfirmAdapterTest {
         }
 
         @Test
-        @DisplayName("confirm() 호출 시 kafkaTemplate.send()를 payment-confirm-requests 토픽에 orderId로 1회 호출한다")
+        @DisplayName("confirm() 호출 시 kafkaTemplate.send()를 payment-confirm 토픽에 orderId로 1회 호출한다")
         void confirm_CallsKafkaTemplateSend_Once() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
@@ -136,7 +136,7 @@ class KafkaConfirmAdapterTest {
 
             // then
             then(mockKafkaTemplate).should(times(1))
-                    .send(eq("payment-confirm-requests"), eq(orderId), eq(orderId));
+                    .send(eq("payment-confirm"), eq(orderId), eq(orderId));
         }
 
         @Test
