@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
@@ -19,6 +20,16 @@ public class PaymentTransactionCoordinator {
     private final PaymentProcessUseCase paymentProcessUseCase;
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
+    private final PaymentOutboxUseCase paymentOutboxUseCase;
+
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
+    public PaymentOutbox executeStockDecreaseWithOutboxCreation(
+            String orderId,
+            List<PaymentOrder> paymentOrderList
+    ) throws PaymentOrderedProductStockException {
+        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
+        return paymentOutboxUseCase.createPendingRecord(orderId);
+    }
 
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentProcess executeStockDecreaseWithJobCreation(String orderId, List<PaymentOrder> paymentOrderList)

@@ -44,7 +44,7 @@ public class PaymentController {
     @PostMapping("/api/v1/payments/confirm")
     public ResponseEntity<PaymentConfirmResponse> confirm(
             @RequestBody PaymentConfirmRequest paymentConfirmRequest
-    ) {
+    ) throws com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException {
         PaymentConfirmCommand paymentConfirmCommand = PaymentPresentationMapper.toPaymentConfirmCommand(
                 paymentConfirmRequest
         );

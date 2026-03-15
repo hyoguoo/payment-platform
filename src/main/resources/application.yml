@@ -41,6 +41,13 @@ payment:
       connect-timeout: 3000
       read-timeout: 10000
 
+scheduler:
+  outbox-worker:
+    fixed-delay-ms: 1000
+    batch-size: 10
+    parallel-enabled: false
+    in-flight-timeout-minutes: 5
+
 metrics:
   payment:
     state:

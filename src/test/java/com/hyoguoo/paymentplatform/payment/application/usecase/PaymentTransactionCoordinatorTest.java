@@ -11,8 +11,10 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentProcessStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -45,6 +47,9 @@ class PaymentTransactionCoordinatorTest {
 
     @Mock
     private com.hyoguoo.paymentplatform.payment.application.port.PaymentProcessRepository paymentProcessRepository;
+
+    @Mock
+    private PaymentOutboxUseCase paymentOutboxUseCase;
 
     @Nested
     @DisplayName("Step 1: 재고 차감 및 작업 생성 테스트")
@@ -240,6 +245,71 @@ class PaymentTransactionCoordinatorTest {
             inOrder.verify(paymentProcessUseCase).failJob(orderId, failureReason);
             inOrder.verify(orderedProductUseCase).increaseStockForOrders(paymentOrderList);
             inOrder.verify(paymentCommandUseCase).markPaymentAsFail(paymentEvent, failureReason);
+        }
+    }
+
+    @Nested
+    @DisplayName("Outbox 생성: 재고 차감 및 Outbox 레코드 생성 테스트 (Plan 02 verify에서 실행)")
+    class ExecuteStockDecreaseWithOutboxCreationTest {
+
+        @Test
+        @DisplayName("재고 차감과 Outbox PENDING 레코드 생성을 성공적으로 수행한다")
+        void executeSuccessfully() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            List<PaymentOrder> paymentOrderList = List.of(
+                    createPaymentOrder(1L, 2)
+            );
+            PaymentOutbox expectedOutbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L)
+                    .orderId(orderId)
+                    .status(PaymentOutboxStatus.PENDING)
+                    .retryCount(0)
+                    .build();
+
+            org.mockito.BDDMockito.given(paymentOutboxUseCase.createPendingRecord(orderId))
+                    .willReturn(expectedOutbox);
+
+            // when
+            PaymentOutbox result = coordinator.executeStockDecreaseWithOutboxCreation(
+                    orderId,
+                    paymentOrderList
+            );
+
+            // then
+            assertThat(result.getOrderId()).isEqualTo(orderId);
+            assertThat(result.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+
+            then(orderedProductUseCase).should(times(1))
+                    .decreaseStockForOrders(paymentOrderList);
+            then(paymentOutboxUseCase).should(times(1))
+                    .createPendingRecord(orderId);
+        }
+
+        @Test
+        @DisplayName("재고 부족 시 createPendingRecord()가 호출되지 않는다")
+        void throwExceptionWhenStockNotEnough() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            List<PaymentOrder> paymentOrderList = List.of(
+                    createPaymentOrder(1L, 100)
+            );
+
+            org.mockito.BDDMockito.willThrow(PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
+                    .given(orderedProductUseCase)
+                    .decreaseStockForOrders(anyList());
+
+            // when & then
+            assertThatThrownBy(() -> coordinator.executeStockDecreaseWithOutboxCreation(
+                    orderId,
+                    paymentOrderList
+            ))
+                    .isInstanceOf(PaymentOrderedProductStockException.class);
+
+            then(orderedProductUseCase).should(times(1))
+                    .decreaseStockForOrders(paymentOrderList);
+            then(paymentOutboxUseCase).should(times(0))
+                    .createPendingRecord(anyString());
         }
     }
 
