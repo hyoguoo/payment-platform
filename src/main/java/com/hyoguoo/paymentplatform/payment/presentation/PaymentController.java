@@ -5,7 +5,9 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -13,6 +15,7 @@ import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentConf
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentStatusApiResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,6 +31,7 @@ public class PaymentController {
     private final PaymentCheckoutService paymentCheckoutService;
     private final PaymentConfirmService paymentConfirmService;
     private final PaymentLoadUseCase paymentLoadUseCase;
+    private final PaymentOutboxUseCase paymentOutboxUseCase;
 
     @PostMapping("/api/v1/payments/checkout")
     public ResponseEntity<CheckoutResponse> checkout(
@@ -60,6 +64,12 @@ public class PaymentController {
     @GetMapping("/api/v1/payments/{orderId}/status")
     public ResponseEntity<PaymentStatusApiResponse> getPaymentStatus(
             @PathVariable String orderId) {
+        Optional<PaymentOutboxStatus> outboxStatus = paymentOutboxUseCase.findActiveOutboxStatus(orderId);
+        if (outboxStatus.isPresent()) {
+            return ResponseEntity.ok(
+                    PaymentPresentationMapper.toPaymentStatusApiResponseFromOutbox(orderId, outboxStatus.get())
+            );
+        }
         PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
         return ResponseEntity.ok(PaymentPresentationMapper.toPaymentStatusApiResponse(paymentEvent));
     }

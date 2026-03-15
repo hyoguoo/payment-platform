@@ -12,17 +12,20 @@ import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +50,9 @@ class PaymentControllerMvcTest {
 
     @MockBean
     private PaymentLoadUseCase paymentLoadUseCase;
+
+    @MockBean
+    private PaymentOutboxUseCase paymentOutboxUseCase;
 
     @MockBean
     private UUIDProvider uuidProvider;
@@ -94,6 +100,8 @@ class PaymentControllerMvcTest {
                 .paymentOrderList(new ArrayList<>())
                 .allArgsBuild();
 
+        when(paymentOutboxUseCase.findActiveOutboxStatus("order-done"))
+                .thenReturn(Optional.empty());
         when(paymentLoadUseCase.getPaymentEventByOrderId("order-done"))
                 .thenReturn(doneEvent);
 
@@ -120,6 +128,8 @@ class PaymentControllerMvcTest {
                 .paymentOrderList(new ArrayList<>())
                 .allArgsBuild();
 
+        when(paymentOutboxUseCase.findActiveOutboxStatus("order-ready"))
+                .thenReturn(Optional.empty());
         when(paymentLoadUseCase.getPaymentEventByOrderId("order-ready"))
                 .thenReturn(readyEvent);
 
@@ -135,11 +145,43 @@ class PaymentControllerMvcTest {
     @DisplayName("존재하지 않는 orderId로 Status 조회 시 404 Not Found를 반환한다. (STATUS-01)")
     void getPaymentStatus_NotFound() throws Exception {
         // given
+        when(paymentOutboxUseCase.findActiveOutboxStatus("non-existent"))
+                .thenReturn(Optional.empty());
         when(paymentLoadUseCase.getPaymentEventByOrderId("non-existent"))
                 .thenThrow(PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
         // when / then
         mockMvc.perform(get("/api/v1/payments/{orderId}/status", "non-existent"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Outbox에 PENDING 레코드가 있으면 status=PENDING을 반환한다. (OUTBOX-01)")
+    void getPaymentStatus_OutboxPending_ReturnsPending() throws Exception {
+        // given
+        when(paymentOutboxUseCase.findActiveOutboxStatus("order-pending"))
+                .thenReturn(Optional.of(PaymentOutboxStatus.PENDING));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/payments/{orderId}/status", "order-pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value("order-pending"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.approvedAt").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Outbox에 IN_FLIGHT 레코드가 있으면 status=PROCESSING을 반환한다. (OUTBOX-01)")
+    void getPaymentStatus_OutboxInFlight_ReturnsProcessing() throws Exception {
+        // given
+        when(paymentOutboxUseCase.findActiveOutboxStatus("order-in-flight"))
+                .thenReturn(Optional.of(PaymentOutboxStatus.IN_FLIGHT));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/payments/{orderId}/status", "order-in-flight"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value("order-in-flight"))
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"))
+                .andExpect(jsonPath("$.data.approvedAt").doesNotExist());
     }
 }

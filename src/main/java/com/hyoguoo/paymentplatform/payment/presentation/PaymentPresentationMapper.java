@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResu
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -60,10 +61,28 @@ public class PaymentPresentationMapper {
                 .build();
     }
 
+    public static PaymentStatusApiResponse toPaymentStatusApiResponseFromOutbox(
+            String orderId, PaymentOutboxStatus outboxStatus) {
+        return PaymentStatusApiResponse.builder()
+                .orderId(orderId)
+                .status(mapOutboxStatusToPaymentStatusResponse(outboxStatus))
+                .approvedAt(null)
+                .build();
+    }
+
     private static PaymentStatusResponse mapToPaymentStatusResponse(PaymentEventStatus status) {
         return switch (status) {
             case DONE -> PaymentStatusResponse.DONE;
             case FAILED -> PaymentStatusResponse.FAILED;
+            default -> PaymentStatusResponse.PROCESSING;
+        };
+    }
+
+    private static PaymentStatusResponse mapOutboxStatusToPaymentStatusResponse(
+            PaymentOutboxStatus status) {
+        return switch (status) {
+            case PENDING -> PaymentStatusResponse.PENDING;
+            case IN_FLIGHT -> PaymentStatusResponse.PROCESSING;
             default -> PaymentStatusResponse.PROCESSING;
         };
     }
