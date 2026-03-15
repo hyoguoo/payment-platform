@@ -75,6 +75,10 @@ test {
 
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
 
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
+
     testLogging {
         events "passed", "skipped", "failed"
         exceptionFormat "full"
