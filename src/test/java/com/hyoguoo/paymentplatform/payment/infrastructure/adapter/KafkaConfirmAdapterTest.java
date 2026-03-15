@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
@@ -75,7 +76,6 @@ class KafkaConfirmAdapterTest {
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(anyString(), anyList())).willReturn(null);
 
             // when
             kafkaConfirmAdapter.confirm(command);
@@ -86,7 +86,7 @@ class KafkaConfirmAdapterTest {
         }
 
         @Test
-        @DisplayName("confirm() 호출 시 transactionCoordinator.executeStockDecreaseWithJobCreation()를 1회 호출한다")
+        @DisplayName("confirm() 호출 시 transactionCoordinator.executeStockDecreaseOnly()를 1회 호출한다")
         void confirm_CallsExecuteStockDecreaseOnly_Once() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
@@ -103,14 +103,40 @@ class KafkaConfirmAdapterTest {
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(anyString(), anyList())).willReturn(null);
 
             // when
             kafkaConfirmAdapter.confirm(command);
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executeStockDecreaseWithJobCreation(orderId, paymentEvent.getPaymentOrderList());
+                    .executeStockDecreaseOnly(orderId, paymentEvent.getPaymentOrderList());
+        }
+
+        @Test
+        @DisplayName("confirm() 호출 시 kafkaTemplate.send()를 payment-confirm-requests 토픽에 orderId로 1회 호출한다")
+        void confirm_CallsKafkaTemplateSend_Once() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            String paymentKey = "payment-key-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .orderId(orderId)
+                    .paymentKey(paymentKey)
+                    .amount(amount)
+                    .build();
+
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+
+            // when
+            kafkaConfirmAdapter.confirm(command);
+
+            // then
+            then(mockKafkaTemplate).should(times(1))
+                    .send(eq("payment-confirm-requests"), eq(orderId), eq(orderId));
         }
 
         @Test
@@ -131,7 +157,6 @@ class KafkaConfirmAdapterTest {
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(anyString(), anyList())).willReturn(null);
 
             // when
             PaymentConfirmAsyncResult result = kafkaConfirmAdapter.confirm(command);
