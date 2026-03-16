@@ -233,6 +233,7 @@ scripts/**/.env
 **/.env.secret
 
 out/
+!src/**/out/
 
 # Claude
 .claude/chats/
