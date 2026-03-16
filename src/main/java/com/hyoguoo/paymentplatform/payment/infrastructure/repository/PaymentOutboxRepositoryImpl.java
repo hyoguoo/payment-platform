@@ -46,8 +46,4 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
                 .toList();
     }
 
-    @Override
-    public boolean existsByOrderId(String orderId) {
-        return jpaPaymentOutboxRepository.existsByOrderId(orderId);
-    }
 }

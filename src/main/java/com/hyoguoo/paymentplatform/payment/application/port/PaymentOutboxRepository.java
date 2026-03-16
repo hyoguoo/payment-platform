@@ -15,5 +15,4 @@ public interface PaymentOutboxRepository {
 
     List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before);
 
-    boolean existsByOrderId(String orderId);
 }

@@ -13,8 +13,6 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
 
     Optional<PaymentOutboxEntity> findByOrderId(String orderId);
 
-    boolean existsByOrderId(String orderId);
-
     @Query("SELECT e FROM PaymentOutboxEntity e WHERE e.status = 'PENDING' ORDER BY e.createdAt ASC")
     List<PaymentOutboxEntity> findPendingBatch(Pageable pageable);
 
