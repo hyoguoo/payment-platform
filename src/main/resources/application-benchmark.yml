@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: benchmark
+
+  payment:
+    async-strategy: sync   # 기본값: 각 전략 측정 시 변경 후 재기동
+
+  datasource:
+    hikari:
+      maximum-pool-size: 30   # 200 VU 부하 대응 (기본값 10보다 높임)
+
+  sql:
+    init:
+      data-locations: classpath:data.sql, classpath:data-benchmark.sql
+
+  myapp:
+    toss-payments:
+      http:
+        read-timeout-millis: 30000   # FakeTossHttpOperator @Value 바인딩용
