@@ -25,7 +25,7 @@ export function setup() {
       { headers: { 'Content-Type': 'application/json' } }
     );
     if (res.status === 200) {
-      orderIds.push(JSON.parse(res.body).orderId);
+      orderIds.push(JSON.parse(res.body).data.orderId);
     }
   }
   return { orderIds };
@@ -46,8 +46,8 @@ export function pollStatus(orderId) {
     const res = http.get(`${BASE_URL}/api/v1/payments/${orderId}/status`);
     if (res.status === 200) {
       const body = JSON.parse(res.body);
-      if (body.status === 'DONE' || body.status === 'FAILED') {
-        return body.status;
+      if (body.data.status === 'DONE' || body.data.status === 'FAILED') {
+        return body.data.status;
       }
     }
   }
