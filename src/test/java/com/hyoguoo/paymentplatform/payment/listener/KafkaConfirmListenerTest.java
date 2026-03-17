@@ -177,6 +177,8 @@ class KafkaConfirmListenerTest {
         assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
                 .isInstanceOf(PaymentValidException.class);
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentFailureCompensation(any(), any(), any(), any());
     }
 
     @Test
@@ -194,6 +196,8 @@ class KafkaConfirmListenerTest {
         assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
                 .isInstanceOf(PaymentStatusException.class);
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentFailureCompensation(any(), any(), any(), any());
     }
 
     @Test
@@ -252,6 +256,19 @@ class KafkaConfirmListenerTest {
         // then
         assertThat(annotation).isNotNull();
         assertThat(annotation.topics()).contains("payment-confirm");
+    }
+
+    @Test
+    @DisplayName("@RetryableTopic의 include에 PaymentTossRetryableException만 포함된다")
+    void retryableTopic_IncludesOnlyPaymentTossRetryableException() throws NoSuchMethodException {
+        // given
+        RetryableTopic annotation = KafkaConfirmListener.class
+                .getMethod("consume", String.class)
+                .getAnnotation(RetryableTopic.class);
+
+        // then
+        assertThat(annotation.include()).containsExactly(PaymentTossRetryableException.class);
+        assertThat(annotation.exclude()).isEmpty();
     }
 
     private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status) {

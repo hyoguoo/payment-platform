@@ -7,7 +7,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -30,7 +29,6 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
 
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
-    private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
     private final PaymentFailureUseCase paymentFailureUseCase;
 
@@ -40,21 +38,9 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
         PaymentEvent paymentEvent =
                 paymentLoadUseCase.getPaymentEventByOrderId(command.getOrderId());
 
-        // PaymentEvent READY → IN_PROGRESS 전환 + paymentKey 기록
-        // 컨슈머가 나중에 paymentEvent.getPaymentKey()를 조회하기 위해 반드시 선행 호출
-        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, command.getPaymentKey());
-
-        // 재고 감소 (트랜잭션 내, Outbox 레코드 생성 없음)
-        try {
-            transactionCoordinator.executeStockDecreaseOnly(
-                    command.getOrderId(), paymentEvent.getPaymentOrderList()
-            );
-        } catch (PaymentOrderedProductStockException e) {
-            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
-                    () -> String.format("orderId=%s", command.getOrderId()));
-            paymentFailureUseCase.handleStockFailure(inProgressEvent, e.getMessage());
-            throw e;
-        }
+        // executePayment(READY→IN_PROGRESS) + 재고 감소를 단일 트랜잭션으로 처리
+        // → TX1/TX2 분리로 인한 서버 크래시 시 재고 미감소 상태 결제 확인 방지
+        PaymentEvent inProgressEvent = executePaymentAndStockDecrease(paymentEvent, command);
 
         // Kafka 발행 — 트랜잭션 커밋 이후 호출로 소비자 타이밍 레이스 방지
         // TOPIC 상수는 KafkaConfirmPublisher에만 위치 (application 레이어에 Kafka 관심사 누수 방지)
@@ -63,8 +49,6 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
         } catch (Exception e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
                     () -> "kafka-publish-failed");
-            // paymentEvent.getPaymentOrderList()와 inProgressEvent.getPaymentOrderList()은 동일 참조
-            // executePayment()는 paymentOrderList를 변경하지 않음
             transactionCoordinator.executePaymentFailureCompensation(
                     command.getOrderId(), inProgressEvent, paymentEvent.getPaymentOrderList(), e.getMessage()
             );
@@ -76,5 +60,19 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
                 .orderId(command.getOrderId())
                 .amount(command.getAmount())
                 .build();
+    }
+
+    private PaymentEvent executePaymentAndStockDecrease(PaymentEvent paymentEvent, PaymentConfirmCommand command)
+            throws PaymentOrderedProductStockException {
+        try {
+            return transactionCoordinator.executePaymentAndStockDecrease(
+                    paymentEvent, command.getPaymentKey(), paymentEvent.getPaymentOrderList()
+            );
+        } catch (PaymentOrderedProductStockException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
+                    () -> String.format("orderId=%s", command.getOrderId()));
+            paymentFailureUseCase.handleStockFailure(paymentEvent, e.getMessage());
+            throw e;
+        }
     }
 }

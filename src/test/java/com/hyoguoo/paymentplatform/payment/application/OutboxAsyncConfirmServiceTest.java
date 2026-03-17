@@ -13,12 +13,10 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -38,20 +36,17 @@ class OutboxAsyncConfirmServiceTest {
 
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
-    private PaymentCommandUseCase mockPaymentCommandUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
 
     @BeforeEach
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
-        mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
-                mockPaymentCommandUseCase,
                 mockPaymentFailureUseCase
         );
     }
@@ -61,8 +56,8 @@ class OutboxAsyncConfirmServiceTest {
     class ConfirmTest {
 
         @Test
-        @DisplayName("confirm() 호출 시 transactionCoordinator.executeStockDecreaseWithOutboxCreation()를 1회 호출한다")
-        void confirm_CallsExecuteStockDecreaseWithOutboxCreation_Once() throws PaymentOrderedProductStockException {
+        @DisplayName("confirm() 호출 시 transactionCoordinator.executePaymentAndStockDecreaseWithOutbox()를 1회 호출한다")
+        void confirm_CallsExecutePaymentAndStockDecreaseWithOutbox_Once() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             String paymentKey = "payment-key-123";
@@ -75,18 +70,20 @@ class OutboxAsyncConfirmServiceTest {
 
             PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-            PaymentOutbox outbox = PaymentOutbox.createPending(orderId);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithOutboxCreation(anyString(), anyList())).willReturn(outbox);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
 
             // when
             outboxAsyncConfirmService.confirm(command);
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executeStockDecreaseWithOutboxCreation(orderId, paymentEvent.getPaymentOrderList());
+                    .executePaymentAndStockDecreaseWithOutbox(
+                            paymentEvent, paymentKey, orderId, paymentEvent.getPaymentOrderList()
+                    );
         }
 
         @Test
@@ -104,11 +101,11 @@ class OutboxAsyncConfirmServiceTest {
 
             PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-            PaymentOutbox outbox = PaymentOutbox.createPending(orderId);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithOutboxCreation(anyString(), anyList())).willReturn(outbox);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
 
             // when
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
@@ -129,20 +126,19 @@ class OutboxAsyncConfirmServiceTest {
                     .build();
 
             PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
-            given(mockTransactionCoordinator.executeStockDecreaseWithOutboxCreation(anyString(), anyList()))
-                    .willThrow(PaymentOrderedProductStockException.of(
-                            PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willThrow(PaymentOrderedProductStockException.of(
+                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
 
             // when & then
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentOrderedProductStockException.class);
 
             then(mockPaymentFailureUseCase).should(times(1))
-                    .handleStockFailure(eq(inProgressEvent), anyString());
+                    .handleStockFailure(eq(paymentEvent), anyString());
         }
 
         @Test

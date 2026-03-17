@@ -15,7 +15,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -41,7 +40,6 @@ class KafkaAsyncConfirmServiceTest {
 
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
-    private PaymentCommandUseCase mockPaymentCommandUseCase;
     private FakePaymentConfirmPublisher fakeConfirmPublisher;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
 
@@ -49,14 +47,12 @@ class KafkaAsyncConfirmServiceTest {
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
-        mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         fakeConfirmPublisher = new FakePaymentConfirmPublisher();
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
 
         kafkaAsyncConfirmService = new KafkaAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
-                mockPaymentCommandUseCase,
                 fakeConfirmPublisher,
                 mockPaymentFailureUseCase
         );
@@ -83,7 +79,9 @@ class KafkaAsyncConfirmServiceTest {
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecrease(
+                    any(PaymentEvent.class), anyString(), anyList()
+            )).willReturn(inProgressEvent);
 
             // when
             kafkaAsyncConfirmService.confirm(command);
@@ -94,8 +92,8 @@ class KafkaAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("confirm() 호출 시 transactionCoordinator.executeStockDecreaseOnly()를 1회 호출한다")
-        void confirm_CallsExecuteStockDecreaseOnly_Once() throws PaymentOrderedProductStockException {
+        @DisplayName("confirm() 호출 시 transactionCoordinator.executePaymentAndStockDecrease()를 1회 호출한다")
+        void confirm_CallsExecutePaymentAndStockDecrease_Once() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             String paymentKey = "payment-key-123";
@@ -110,14 +108,16 @@ class KafkaAsyncConfirmServiceTest {
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecrease(
+                    any(PaymentEvent.class), anyString(), anyList()
+            )).willReturn(inProgressEvent);
 
             // when
             kafkaAsyncConfirmService.confirm(command);
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executeStockDecreaseOnly(orderId, paymentEvent.getPaymentOrderList());
+                    .executePaymentAndStockDecrease(paymentEvent, paymentKey, paymentEvent.getPaymentOrderList());
         }
 
         @Test
@@ -137,7 +137,9 @@ class KafkaAsyncConfirmServiceTest {
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecrease(
+                    any(PaymentEvent.class), anyString(), anyList()
+            )).willReturn(inProgressEvent);
 
             // when
             PaymentConfirmAsyncResult result = kafkaAsyncConfirmService.confirm(command);
@@ -154,21 +156,19 @@ class KafkaAsyncConfirmServiceTest {
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
                     .orderId(orderId).paymentKey("key").amount(BigDecimal.valueOf(10000)).build();
             PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
             willThrow(PaymentOrderedProductStockException.of(
                             PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
                     .given(mockTransactionCoordinator)
-                    .executeStockDecreaseOnly(anyString(), anyList());
+                    .executePaymentAndStockDecrease(any(PaymentEvent.class), anyString(), anyList());
 
             // when & then
             assertThatThrownBy(() -> kafkaAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentOrderedProductStockException.class);
 
             then(mockPaymentFailureUseCase).should(times(1))
-                    .handleStockFailure(eq(inProgressEvent), anyString());
+                    .handleStockFailure(eq(paymentEvent), anyString());
             assertThat(fakeConfirmPublisher.getPublishedOrderIds()).isEmpty();
         }
 
@@ -189,13 +189,14 @@ class KafkaAsyncConfirmServiceTest {
             KafkaAsyncConfirmService serviceWithFailingPublisher = new KafkaAsyncConfirmService(
                     mockTransactionCoordinator,
                     mockPaymentLoadUseCase,
-                    mockPaymentCommandUseCase,
                     failingPublisher,
                     mockPaymentFailureUseCase
             );
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecrease(
+                    any(PaymentEvent.class), anyString(), anyList()
+            )).willReturn(inProgressEvent);
             given(mockTransactionCoordinator.executePaymentFailureCompensation(
                     anyString(), any(PaymentEvent.class), any(), anyString())).willReturn(inProgressEvent);
 

@@ -272,106 +272,155 @@ class PaymentTransactionCoordinatorTest {
     }
 
     @Nested
-    @DisplayName("Outbox 생성: 재고 차감 및 Outbox 레코드 생성 테스트 (Plan 02 verify에서 실행)")
-    class ExecuteStockDecreaseWithOutboxCreationTest {
+    @DisplayName("Outbox 전략: executePayment + 재고 차감 + Outbox 생성 원자적 실행 테스트")
+    class ExecutePaymentAndStockDecreaseWithOutboxTest {
 
         @Test
-        @DisplayName("재고 차감과 Outbox PENDING 레코드 생성을 성공적으로 수행한다")
+        @DisplayName("executePayment, 재고 차감, Outbox PENDING 생성을 모두 수행하고 IN_PROGRESS 이벤트를 반환한다")
         void executeSuccessfully() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
-            List<PaymentOrder> paymentOrderList = List.of(
-                    createPaymentOrder(1L, 2)
-            );
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox expectedOutbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L)
-                    .orderId(orderId)
-                    .status(PaymentOutboxStatus.PENDING)
-                    .retryCount(0)
-                    .build();
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).build();
 
-            org.mockito.BDDMockito.given(paymentOutboxUseCase.createPendingRecord(orderId))
-                    .willReturn(expectedOutbox);
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
+            given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(expectedOutbox);
 
             // when
-            PaymentOutbox result = coordinator.executeStockDecreaseWithOutboxCreation(
-                    orderId,
-                    paymentOrderList
-            );
+            PaymentEvent result = coordinator.executePaymentAndStockDecreaseWithOutbox(
+                    readyEvent, paymentKey, orderId, paymentOrderList);
 
             // then
-            assertThat(result.getOrderId()).isEqualTo(orderId);
-            assertThat(result.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
-
-            then(orderedProductUseCase).should(times(1))
-                    .decreaseStockForOrders(paymentOrderList);
-            then(paymentOutboxUseCase).should(times(1))
-                    .createPendingRecord(orderId);
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
+            then(orderedProductUseCase).should(times(1)).decreaseStockForOrders(paymentOrderList);
+            then(paymentOutboxUseCase).should(times(1)).createPendingRecord(orderId);
         }
 
         @Test
-        @DisplayName("재고 부족 시 createPendingRecord()가 호출되지 않는다")
+        @DisplayName("재고 부족 시 예외가 발생하고 createPendingRecord()가 호출되지 않는다")
         void throwExceptionWhenStockNotEnough() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
-            List<PaymentOrder> paymentOrderList = List.of(
-                    createPaymentOrder(1L, 100)
-            );
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 100));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
-            org.mockito.BDDMockito.willThrow(PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
-                    .given(orderedProductUseCase)
-                    .decreaseStockForOrders(anyList());
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
+            org.mockito.BDDMockito.willThrow(PaymentOrderedProductStockException.of(
+                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
+                    .given(orderedProductUseCase).decreaseStockForOrders(anyList());
 
             // when & then
-            assertThatThrownBy(() -> coordinator.executeStockDecreaseWithOutboxCreation(
-                    orderId,
-                    paymentOrderList
-            ))
+            assertThatThrownBy(() -> coordinator.executePaymentAndStockDecreaseWithOutbox(
+                    readyEvent, paymentKey, orderId, paymentOrderList))
                     .isInstanceOf(PaymentOrderedProductStockException.class);
 
-            then(orderedProductUseCase).should(times(1))
-                    .decreaseStockForOrders(paymentOrderList);
-            then(paymentOutboxUseCase).should(times(0))
-                    .createPendingRecord(anyString());
+            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
+            then(paymentOutboxUseCase).should(times(0)).createPendingRecord(anyString());
+        }
+
+        @Test
+        @DisplayName("executePayment → 재고 차감 → createPendingRecord 순서로 실행된다")
+        void executesInCorrectOrder() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).build();
+
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
+            given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(outbox);
+
+            // when
+            coordinator.executePaymentAndStockDecreaseWithOutbox(
+                    readyEvent, paymentKey, orderId, paymentOrderList);
+
+            // then
+            var inOrder = org.mockito.Mockito.inOrder(
+                    paymentCommandUseCase, orderedProductUseCase, paymentOutboxUseCase);
+            inOrder.verify(paymentCommandUseCase).executePayment(readyEvent, paymentKey);
+            inOrder.verify(orderedProductUseCase).decreaseStockForOrders(paymentOrderList);
+            inOrder.verify(paymentOutboxUseCase).createPendingRecord(orderId);
         }
     }
 
     @Nested
-    @DisplayName("executeStockDecreaseOnly() 메서드 테스트")
-    class ExecuteStockDecreaseOnlyTest {
+    @DisplayName("Kafka 전략: executePayment + 재고 차감 원자적 실행 테스트")
+    class ExecutePaymentAndStockDecreaseTest {
 
         @Test
-        @DisplayName("orderedProductUseCase.decreaseStockForOrders()를 1회 호출한다")
-        void executeStockDecreaseOnly_CallsDecreaseStockForOrders_Once() throws PaymentOrderedProductStockException {
+        @DisplayName("executePayment와 재고 차감을 수행하고 IN_PROGRESS 이벤트를 반환한다")
+        void executeSuccessfully() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
-            List<PaymentOrder> paymentOrderList = List.of(
-                    createPaymentOrder(1L, 2)
-            );
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
 
             // when
-            coordinator.executeStockDecreaseOnly(orderId, paymentOrderList);
+            PaymentEvent result = coordinator.executePaymentAndStockDecrease(
+                    readyEvent, paymentKey, paymentOrderList);
 
             // then
-            then(orderedProductUseCase).should(times(1))
-                    .decreaseStockForOrders(paymentOrderList);
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
+            then(orderedProductUseCase).should(times(1)).decreaseStockForOrders(paymentOrderList);
         }
 
         @Test
-        @DisplayName("paymentOutboxUseCase.createPendingRecord()를 호출하지 않는다 (Outbox 생성 없음)")
-        void executeStockDecreaseOnly_DoesNotCallCreatePendingRecord() throws PaymentOrderedProductStockException {
+        @DisplayName("재고 부족 시 예외가 발생하고 createPendingRecord()를 호출하지 않는다")
+        void throwExceptionWhenStockNotEnough() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
-            List<PaymentOrder> paymentOrderList = List.of(
-                    createPaymentOrder(1L, 2)
-            );
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 100));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
+            org.mockito.BDDMockito.willThrow(PaymentOrderedProductStockException.of(
+                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
+                    .given(orderedProductUseCase).decreaseStockForOrders(anyList());
+
+            // when & then
+            assertThatThrownBy(() -> coordinator.executePaymentAndStockDecrease(
+                    readyEvent, paymentKey, paymentOrderList))
+                    .isInstanceOf(PaymentOrderedProductStockException.class);
+
+            then(paymentOutboxUseCase).should(times(0)).createPendingRecord(anyString());
+        }
+
+        @Test
+        @DisplayName("executePayment → 재고 차감 순서로 실행된다")
+        void executesInCorrectOrder() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            String paymentKey = "payment-key-123";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
 
             // when
-            coordinator.executeStockDecreaseOnly(orderId, paymentOrderList);
+            coordinator.executePaymentAndStockDecrease(readyEvent, paymentKey, paymentOrderList);
 
             // then
-            then(paymentOutboxUseCase).should(times(0))
-                    .createPendingRecord(anyString());
+            var inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, orderedProductUseCase);
+            inOrder.verify(paymentCommandUseCase).executePayment(readyEvent, paymentKey);
+            inOrder.verify(orderedProductUseCase).decreaseStockForOrders(paymentOrderList);
         }
     }
 
