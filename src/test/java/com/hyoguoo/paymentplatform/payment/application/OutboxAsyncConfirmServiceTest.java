@@ -21,6 +21,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.Collections;
 import org.junit.jupiter.api.BeforeEach;
@@ -134,7 +135,7 @@ class OutboxAsyncConfirmServiceTest {
             given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
             given(mockTransactionCoordinator.executeStockDecreaseWithOutboxCreation(anyString(), anyList()))
                     .willThrow(PaymentOrderedProductStockException.of(
-                            com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
+                            PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
 
             // when & then
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))

@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
@@ -44,6 +47,8 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
                     command.getOrderId(), paymentEvent.getPaymentOrderList()
             );
         } catch (PaymentOrderedProductStockException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
+                    () -> String.format("orderId=%s", command.getOrderId()));
             paymentFailureUseCase.handleStockFailure(inProgressEvent, e.getMessage());
             throw e;
         }
