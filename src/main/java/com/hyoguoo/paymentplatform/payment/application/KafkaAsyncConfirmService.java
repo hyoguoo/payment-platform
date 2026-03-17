@@ -1,10 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -28,6 +32,7 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
+    private final PaymentFailureUseCase paymentFailureUseCase;
 
     @Override
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
@@ -37,16 +42,32 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
 
         // PaymentEvent READY → IN_PROGRESS 전환 + paymentKey 기록
         // 컨슈머가 나중에 paymentEvent.getPaymentKey()를 조회하기 위해 반드시 선행 호출
-        paymentCommandUseCase.executePayment(paymentEvent, command.getPaymentKey());
+        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, command.getPaymentKey());
 
         // 재고 감소 (트랜잭션 내, Outbox 레코드 생성 없음)
-        transactionCoordinator.executeStockDecreaseOnly(
-                command.getOrderId(), paymentEvent.getPaymentOrderList()
-        );
+        try {
+            transactionCoordinator.executeStockDecreaseOnly(
+                    command.getOrderId(), paymentEvent.getPaymentOrderList()
+            );
+        } catch (PaymentOrderedProductStockException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
+                    () -> String.format("orderId=%s", command.getOrderId()));
+            paymentFailureUseCase.handleStockFailure(inProgressEvent, e.getMessage());
+            throw e;
+        }
 
         // Kafka 발행 — 트랜잭션 커밋 이후 호출로 소비자 타이밍 레이스 방지
         // TOPIC 상수는 KafkaConfirmPublisher에만 위치 (application 레이어에 Kafka 관심사 누수 방지)
-        confirmPublisher.publish(command.getOrderId());
+        try {
+            confirmPublisher.publish(command.getOrderId());
+        } catch (Exception e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
+                    () -> String.format("orderId=%s kafka-publish-failed error=%s", command.getOrderId(), e.getMessage()));
+            transactionCoordinator.executePaymentFailureCompensation(
+                    command.getOrderId(), inProgressEvent, paymentEvent.getPaymentOrderList(), e.getMessage()
+            );
+            throw e;
+        }
 
         return PaymentConfirmAsyncResult.builder()
                 .responseType(ResponseType.ASYNC_202)
