@@ -54,7 +54,9 @@ public class PaymentTransactionCoordinator {
             PaymentEvent paymentEvent,
             LocalDateTime approvedAt
     ) {
-        paymentProcessUseCase.completeJob(orderId);
+        if (paymentProcessUseCase.existsByOrderId(orderId)) {
+            paymentProcessUseCase.completeJob(orderId);
+        }
 
         return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
     }

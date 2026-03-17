@@ -134,6 +134,7 @@ class PaymentTransactionCoordinatorTest {
                     .allArgsBuild();
             PaymentEvent donePaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.DONE);
 
+            given(paymentProcessUseCase.existsByOrderId(orderId)).willReturn(true);
             given(paymentProcessUseCase.completeJob(orderId))
                     .willReturn(completedProcess);
             given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
@@ -149,6 +150,28 @@ class PaymentTransactionCoordinatorTest {
                     .completeJob(orderId);
             then(paymentCommandUseCase).should(times(1))
                     .markPaymentAsDone(paymentEvent, approvedAt);
+        }
+
+        @Test
+        @DisplayName("PaymentProcess가 없을 때(Async 전략) completeJob()을 호출하지 않는다")
+        void executeSuccessCompletion_WhenNoPaymentProcess_DoesNotCallCompleteJob() {
+            // given
+            String orderId = "order-async";
+            LocalDateTime approvedAt = LocalDateTime.now();
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentEvent donePaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.DONE);
+
+            given(paymentProcessUseCase.existsByOrderId(orderId)).willReturn(false);
+            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+                    .willReturn(donePaymentEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+            then(paymentProcessUseCase).should(times(0)).completeJob(anyString());
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsDone(paymentEvent, approvedAt);
         }
     }
 
