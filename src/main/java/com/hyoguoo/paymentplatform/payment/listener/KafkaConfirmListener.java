@@ -51,6 +51,7 @@ public class KafkaConfirmListener {
                 .build();
 
         try {
+            paymentCommandUseCase.validateCompletionStatus(paymentEvent, command);
             PaymentGatewayInfo gatewayInfo =
                     paymentCommandUseCase.confirmPaymentWithGateway(command);
 

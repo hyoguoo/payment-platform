@@ -17,8 +17,10 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -134,6 +136,64 @@ class KafkaConfirmListenerTest {
         // when & then
         assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
                 .isInstanceOf(PaymentTossRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("consume() - 정상 흐름: validateCompletionStatus()가 confirmPaymentWithGateway() 전에 호출된다")
+    void consume_Success_CallsValidateBeforeGateway() throws Exception {
+        // given
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
+        PaymentGatewayInfo gatewayInfo = createGatewayInfo(FIXED_NOW);
+
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willReturn(gatewayInfo);
+        given(mockTransactionCoordinator.executePaymentSuccessCompletion(
+                any(), any(PaymentEvent.class), any(LocalDateTime.class)))
+                .willReturn(paymentEvent);
+
+        // when
+        kafkaConfirmListener.consume(ORDER_ID);
+
+        // then
+        var inOrder = Mockito.inOrder(mockPaymentCommandUseCase);
+        inOrder.verify(mockPaymentCommandUseCase).validateCompletionStatus(
+                any(PaymentEvent.class), any(PaymentConfirmCommand.class));
+        inOrder.verify(mockPaymentCommandUseCase).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+    }
+
+    @Test
+    @DisplayName("consume() - validateCompletionStatus() PaymentValidException 발생 시 confirmPaymentWithGateway()를 호출하지 않고 예외가 전파된다")
+    void consume_WhenValidateThrowsPaymentValidException_DoesNotCallGateway() throws Exception {
+        // given
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
+
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        willThrow(PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT))
+                .given(mockPaymentCommandUseCase)
+                .validateCompletionStatus(any(PaymentEvent.class), any(PaymentConfirmCommand.class));
+
+        // when & then
+        assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
+                .isInstanceOf(PaymentValidException.class);
+        then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
+    }
+
+    @Test
+    @DisplayName("consume() - validateCompletionStatus() PaymentStatusException 발생 시 confirmPaymentWithGateway()를 호출하지 않고 예외가 전파된다")
+    void consume_WhenValidateThrowsPaymentStatusException_DoesNotCallGateway() throws Exception {
+        // given
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID, PaymentEventStatus.IN_PROGRESS);
+
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        willThrow(PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_COMPLETE))
+                .given(mockPaymentCommandUseCase)
+                .validateCompletionStatus(any(PaymentEvent.class), any(PaymentConfirmCommand.class));
+
+        // when & then
+        assertThatThrownBy(() -> kafkaConfirmListener.consume(ORDER_ID))
+                .isInstanceOf(PaymentStatusException.class);
+        then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
     }
 
     @Test
