@@ -18,6 +18,9 @@ spring:
     toss-payments:
       http:
         read-timeout-millis: 30000   # FakeTossHttpOperator @Value 바인딩용
+      fake:
+        min-delay-millis: 100        # Toss API 네트워크 딜레이 시뮬레이션 (최소)
+        max-delay-millis: 300        # Toss API 네트워크 딜레이 시뮬레이션 (최대)
 
 scheduler:
   enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리
