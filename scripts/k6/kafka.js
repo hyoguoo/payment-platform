@@ -1,9 +1,7 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { Trend } from 'k6/metrics';
-import { setup, BASE_URL, BENCHMARK_STAGES, FAKE_PAYMENT_KEY, getOrderIndex, pollStatus } from './helpers.js';
-
-export { setup };
+import { checkout, BASE_URL, BENCHMARK_STAGES, FAKE_PAYMENT_KEY, pollStatus } from './helpers.js';
 
 const e2eLatency = new Trend('e2e_latency_ms', true);
 
@@ -12,10 +10,10 @@ export const options = {
 };
 
 // Kafka 전략: POST /confirm → 202 Accepted → 폴링 → DONE
-export default function (data) {
+export default function () {
   const start = Date.now();
-  const idx = getOrderIndex(data.orderIds.length);
-  const orderId = data.orderIds[idx];
+  const orderId = checkout();
+  if (!orderId) return;
 
   const confirmRes = http.post(
     `${BASE_URL}/api/v1/payments/confirm`,
