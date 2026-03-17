@@ -186,7 +186,7 @@ class KafkaAsyncConfirmServiceTest {
             PaymentConfirmPublisherPort failingPublisher = orderId2 -> {
                 throw new RuntimeException("Kafka unavailable");
             };
-            kafkaAsyncConfirmService = new KafkaAsyncConfirmService(
+            KafkaAsyncConfirmService serviceWithFailingPublisher = new KafkaAsyncConfirmService(
                     mockTransactionCoordinator,
                     mockPaymentLoadUseCase,
                     mockPaymentCommandUseCase,
@@ -200,7 +200,7 @@ class KafkaAsyncConfirmServiceTest {
                     anyString(), any(PaymentEvent.class), any(), anyString())).willReturn(inProgressEvent);
 
             // when & then
-            assertThatThrownBy(() -> kafkaAsyncConfirmService.confirm(command))
+            assertThatThrownBy(() -> serviceWithFailingPublisher.confirm(command))
                     .isInstanceOf(RuntimeException.class);
 
             then(mockTransactionCoordinator).should(times(1))

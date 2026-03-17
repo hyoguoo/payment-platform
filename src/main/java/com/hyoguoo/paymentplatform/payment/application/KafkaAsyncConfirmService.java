@@ -61,8 +61,10 @@ public class KafkaAsyncConfirmService implements PaymentConfirmService {
         try {
             confirmPublisher.publish(command.getOrderId());
         } catch (Exception e) {
-            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
-                    () -> String.format("orderId=%s kafka-publish-failed error=%s", command.getOrderId(), e.getMessage()));
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
+                    () -> "kafka-publish-failed");
+            // paymentEvent.getPaymentOrderList()와 inProgressEvent.getPaymentOrderList()은 동일 참조
+            // executePayment()는 paymentOrderList를 변경하지 않음
             transactionCoordinator.executePaymentFailureCompensation(
                     command.getOrderId(), inProgressEvent, paymentEvent.getPaymentOrderList(), e.getMessage()
             );
