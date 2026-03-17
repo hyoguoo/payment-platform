@@ -24,10 +24,14 @@ run_strategy() {
   fi
   read -p "준비됐으면 Enter 키를 누르세요 (Ctrl+C로 중단)..."
 
+  mkdir -p "${SCRIPT_DIR}/results"
+
   docker run --rm \
     -v "${SCRIPT_DIR}:/scripts" \
     -e BASE_URL="${BASE_URL}" \
-    grafana/k6 run "/scripts/${script}"
+    grafana/k6 run \
+      --summary-export="/scripts/results/${strategy}.json" \
+      "/scripts/${script}"
 
   print_info "$strategy 전략 측정 완료."
 }

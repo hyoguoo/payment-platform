@@ -18,3 +18,6 @@ spring:
     toss-payments:
       http:
         read-timeout-millis: 30000   # FakeTossHttpOperator @Value 바인딩용
+
+scheduler:
+  enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리
