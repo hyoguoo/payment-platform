@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
@@ -190,7 +191,7 @@ class OutboxWorkerTest {
                 .willReturn(List.of(pendingOutbox));
         given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
-        org.mockito.BDDMockito.willThrow(PaymentValidException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR))
+        willThrow(PaymentValidException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR))
                 .given(mockPaymentCommandUseCase)
                 .validateCompletionStatus(any(PaymentEvent.class), any(PaymentConfirmCommand.class));
         given(mockTransactionCoordinator.executePaymentFailureCompensation(
