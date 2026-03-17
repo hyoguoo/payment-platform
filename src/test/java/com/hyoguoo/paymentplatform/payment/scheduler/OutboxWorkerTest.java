@@ -19,8 +19,10 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -178,6 +180,31 @@ class OutboxWorkerTest {
     }
 
     @Test
+    @DisplayName("process - validateCompletionStatus 실패: confirmPaymentWithGateway()를 호출하지 않고 markFailed()를 호출한다")
+    void process_validateCompletionStatusFails_callsMarkFailedAndNotGateway() throws Exception {
+        // given
+        PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(pendingOutbox));
+        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        org.mockito.BDDMockito.willThrow(PaymentValidException.of(PaymentErrorCode.RETRYABLE_VALIDATION_ERROR))
+                .given(mockPaymentCommandUseCase)
+                .validateCompletionStatus(any(PaymentEvent.class), any(PaymentConfirmCommand.class));
+        given(mockTransactionCoordinator.executePaymentFailureCompensation(
+                anyString(), any(PaymentEvent.class), any(), anyString())).willReturn(paymentEvent);
+
+        // when
+        outboxWorker.process();
+
+        // then
+        then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
+        then(mockPaymentOutboxUseCase).should(times(1)).markFailed(ORDER_ID);
+    }
+
+    @Test
     @DisplayName("process - 정상 흐름: confirmPaymentWithGateway() 전에 validateCompletionStatus()를 호출한다")
     void process_pendingRecord_callsValidateCompletionStatusBeforeGateway() throws Exception {
         // given
@@ -199,7 +226,7 @@ class OutboxWorkerTest {
         outboxWorker.process();
 
         // then
-        var inOrder = org.mockito.Mockito.inOrder(mockPaymentCommandUseCase);
+        var inOrder = Mockito.inOrder(mockPaymentCommandUseCase);
         inOrder.verify(mockPaymentCommandUseCase).validateCompletionStatus(
                 any(PaymentEvent.class), any(PaymentConfirmCommand.class));
         inOrder.verify(mockPaymentCommandUseCase).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
