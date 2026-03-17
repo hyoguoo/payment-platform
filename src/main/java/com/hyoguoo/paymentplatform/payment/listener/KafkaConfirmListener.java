@@ -33,7 +33,6 @@ public class KafkaConfirmListener {
             backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 30000),
             dltTopicSuffix = "-dlq",
             include = {PaymentTossRetryableException.class},
-            exclude = {PaymentTossNonRetryableException.class},
             autoCreateTopics = "true"
     )
     @KafkaListener(
