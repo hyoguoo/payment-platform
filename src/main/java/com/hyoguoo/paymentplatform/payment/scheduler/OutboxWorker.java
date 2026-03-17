@@ -86,6 +86,7 @@ public class OutboxWorker {
                     .paymentKey(paymentEvent.getPaymentKey())
                     .amount(paymentEvent.getTotalAmount())
                     .build();
+            paymentCommandUseCase.validateCompletionStatus(paymentEvent, command);
             PaymentGatewayInfo gatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(command);
 
             // Step 4-A: 성공 처리 (별도 트랜잭션)

@@ -178,6 +178,34 @@ class OutboxWorkerTest {
     }
 
     @Test
+    @DisplayName("process - 정상 흐름: confirmPaymentWithGateway() 전에 validateCompletionStatus()를 호출한다")
+    void process_pendingRecord_callsValidateCompletionStatusBeforeGateway() throws Exception {
+        // given
+        PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayInfo gatewayInfo = createGatewayInfo(FIXED_NOW);
+
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(pendingOutbox));
+        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willReturn(gatewayInfo);
+        given(mockTransactionCoordinator.executePaymentSuccessCompletion(
+                anyString(), any(PaymentEvent.class), any(LocalDateTime.class)))
+                .willReturn(paymentEvent);
+
+        // when
+        outboxWorker.process();
+
+        // then
+        var inOrder = org.mockito.Mockito.inOrder(mockPaymentCommandUseCase);
+        inOrder.verify(mockPaymentCommandUseCase).validateCompletionStatus(
+                any(PaymentEvent.class), any(PaymentConfirmCommand.class));
+        inOrder.verify(mockPaymentCommandUseCase).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+    }
+
+    @Test
     @DisplayName("process - IN_FLIGHT 타임아웃 복구: process() 시작 시 recoverTimedOutInFlightRecords() 1회 호출")
     void process_alwaysCallsRecoverTimedOutInFlightRecords() throws Exception {
         // given
