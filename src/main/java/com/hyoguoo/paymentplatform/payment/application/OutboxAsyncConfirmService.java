@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -26,6 +27,7 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
+    private final PaymentFailureUseCase paymentFailureUseCase;
 
     @Override
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
@@ -35,11 +37,16 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
 
         // PaymentEvent READY → IN_PROGRESS 전환 + paymentKey 기록
         // 워커가 나중에 paymentEvent.getPaymentKey()를 조회하기 위해 반드시 선행 호출
-        paymentCommandUseCase.executePayment(paymentEvent, command.getPaymentKey());
+        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, command.getPaymentKey());
 
-        transactionCoordinator.executeStockDecreaseWithOutboxCreation(
-                command.getOrderId(), paymentEvent.getPaymentOrderList()
-        );
+        try {
+            transactionCoordinator.executeStockDecreaseWithOutboxCreation(
+                    command.getOrderId(), paymentEvent.getPaymentOrderList()
+            );
+        } catch (PaymentOrderedProductStockException e) {
+            paymentFailureUseCase.handleStockFailure(inProgressEvent, e.getMessage());
+            throw e;
+        }
 
         return PaymentConfirmAsyncResult.builder()
                 .responseType(ResponseType.ASYNC_202)

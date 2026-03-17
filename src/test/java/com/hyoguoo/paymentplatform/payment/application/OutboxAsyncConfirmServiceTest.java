@@ -1,9 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
@@ -12,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -35,17 +38,20 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentCommandUseCase mockPaymentCommandUseCase;
+    private PaymentFailureUseCase mockPaymentFailureUseCase;
 
     @BeforeEach
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
-                mockPaymentCommandUseCase
+                mockPaymentCommandUseCase,
+                mockPaymentFailureUseCase
         );
     }
 
@@ -108,6 +114,34 @@ class OutboxAsyncConfirmServiceTest {
 
             // then
             assertThat(result.getResponseType()).isEqualTo(ResponseType.ASYNC_202);
+        }
+
+        @Test
+        @DisplayName("재고 부족 시 PaymentFailureUseCase.handleStockFailure()를 호출하고 예외를 전파한다")
+        void confirm_WhenStockInsufficient_CallsHandleStockFailure() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(BigDecimal.valueOf(10000))
+                    .build();
+
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentCommandUseCase.executePayment(any(PaymentEvent.class), anyString())).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.executeStockDecreaseWithOutboxCreation(anyString(), anyList()))
+                    .willThrow(PaymentOrderedProductStockException.of(
+                            com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isInstanceOf(PaymentOrderedProductStockException.class);
+
+            then(mockPaymentFailureUseCase).should(times(1))
+                    .handleStockFailure(eq(inProgressEvent), anyString());
         }
 
         @Test
