@@ -4,9 +4,8 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutComma
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult.StatusType;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -53,37 +52,20 @@ public class PaymentPresentationMapper {
                 .build();
     }
 
-    public static PaymentStatusApiResponse toPaymentStatusApiResponse(PaymentEvent event) {
+    public static PaymentStatusApiResponse toPaymentStatusApiResponse(PaymentStatusResult result) {
         return PaymentStatusApiResponse.builder()
-                .orderId(event.getOrderId())
-                .status(mapToPaymentStatusResponse(event.getStatus()))
-                .approvedAt(event.getApprovedAt())
+                .orderId(result.getOrderId())
+                .status(mapStatusType(result.getStatus()))
+                .approvedAt(result.getApprovedAt())
                 .build();
     }
 
-    public static PaymentStatusApiResponse toPaymentStatusApiResponseFromOutbox(
-            String orderId, PaymentOutboxStatus outboxStatus) {
-        return PaymentStatusApiResponse.builder()
-                .orderId(orderId)
-                .status(mapOutboxStatusToPaymentStatusResponse(outboxStatus))
-                .approvedAt(null)
-                .build();
-    }
-
-    private static PaymentStatusResponse mapToPaymentStatusResponse(PaymentEventStatus status) {
-        return switch (status) {
+    private static PaymentStatusResponse mapStatusType(StatusType statusType) {
+        return switch (statusType) {
+            case PENDING -> PaymentStatusResponse.PENDING;
+            case PROCESSING -> PaymentStatusResponse.PROCESSING;
             case DONE -> PaymentStatusResponse.DONE;
             case FAILED -> PaymentStatusResponse.FAILED;
-            default -> PaymentStatusResponse.PROCESSING;
-        };
-    }
-
-    private static PaymentStatusResponse mapOutboxStatusToPaymentStatusResponse(
-            PaymentOutboxStatus status) {
-        return switch (status) {
-            case PENDING -> PaymentStatusResponse.PENDING;
-            case IN_FLIGHT -> PaymentStatusResponse.PROCESSING;
-            default -> PaymentStatusResponse.PROCESSING;
         };
     }
 }
