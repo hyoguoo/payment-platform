@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.usecase;
+ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
@@ -10,6 +10,8 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -89,7 +91,7 @@ public class PaymentCommandUseCase {
                 .paymentKey(statusResult.paymentKey())
                 .orderId(statusResult.orderId())
                 .paymentConfirmResultStatus(
-                        statusResult.status() == com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus.DONE ?
+                        statusResult.status() == PaymentStatus.DONE ?
                                 PaymentConfirmResultStatus.SUCCESS :
                                 (statusResult.failure() != null && statusResult.failure().isRetryable() ?
                                         PaymentConfirmResultStatus.RETRYABLE_FAILURE :
@@ -157,19 +159,17 @@ public class PaymentCommandUseCase {
         };
     }
 
-    private com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus convertToTossPaymentStatus(
-            com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus status
-    ) {
+    private TossPaymentStatus convertToTossPaymentStatus(PaymentStatus status) {
         return switch (status) {
-            case DONE -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.DONE;
-            case IN_PROGRESS -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.IN_PROGRESS;
-            case WAITING_FOR_DEPOSIT -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.WAITING_FOR_DEPOSIT;
-            case CANCELED -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.CANCELED;
-            case PARTIAL_CANCELED -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.PARTIAL_CANCELED;
-            case ABORTED -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.ABORTED;
-            case EXPIRED -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.EXPIRED;
-            case READY -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.READY;
-            default -> com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.READY; // UNKNOWN -> READY로 매핑
+            case DONE -> TossPaymentStatus.DONE;
+            case IN_PROGRESS -> TossPaymentStatus.IN_PROGRESS;
+            case WAITING_FOR_DEPOSIT -> TossPaymentStatus.WAITING_FOR_DEPOSIT;
+            case CANCELED -> TossPaymentStatus.CANCELED;
+            case PARTIAL_CANCELED -> TossPaymentStatus.PARTIAL_CANCELED;
+            case ABORTED -> TossPaymentStatus.ABORTED;
+            case EXPIRED -> TossPaymentStatus.EXPIRED;
+            case READY -> TossPaymentStatus.READY;
+            default -> TossPaymentStatus.READY; // UNKNOWN -> READY로 매핑
         };
     }
 }

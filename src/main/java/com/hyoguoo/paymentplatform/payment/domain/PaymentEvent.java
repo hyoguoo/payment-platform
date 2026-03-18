@@ -79,7 +79,8 @@ public class PaymentEvent {
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
-    public void validateCompletionStatus(PaymentConfirmCommand paymentConfirmCommand, PaymentGatewayInfo paymentGatewayInfo) {
+    public void validateCompletionStatus(
+            PaymentConfirmCommand paymentConfirmCommand, PaymentGatewayInfo paymentGatewayInfo) {
         if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
         }

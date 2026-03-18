@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!--
+        Lombok @Getter / @Builder on List/array fields generates getters and builders
+        that SpotBugs flags as EI_EXPOSE_REP / EI_EXPOSE_REP2.
+        These are well-known false positives in Lombok-based Spring projects.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- 비의미적 패키지 제외 (JaCoCo / Checkstyle 제외 목록과 동일) -->
+    <Match>
+        <Or>
+            <Package name="~.*\.infrastructure.*"/>
+            <Package name="~.*\.presentation.*"/>
+            <Package name="~.*\.publisher.*"/>
+            <Package name="~.*\.mock.*"/>
+            <Package name="~.*\.aspect.*"/>
+            <Package name="~.*\.metrics.*"/>
+            <Package name="~.*\.log.*"/>
+            <Package name="~.*\.filter.*"/>
+            <Package name="~.*\.util.*"/>
+            <Package name="~.*\.config.*"/>
+            <Package name="~.*\.response.*"/>
+            <Package name="~.*\.dto.*"/>
+            <Package name="~.*\.entity.*"/>
+            <Package name="~.*\.enums.*"/>
+            <Package name="~.*\.event.*"/>
+            <Package name="~.*\.exception.*"/>
+        </Or>
+    </Match>
+
+</FindBugsFilter>
