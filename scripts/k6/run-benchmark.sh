@@ -13,6 +13,18 @@ echo "     ./gradlew bootRun --args='--spring.profiles.active=benchmark'"
 echo "  3. MySQL이 실행 중이어야 합니다 (docker/compose)"
 echo ""
 
+DB_CONTAINER="${DB_CONTAINER:-payment-mysql}"
+DB_USER="${MYSQL_USER:-payment}"
+DB_PASSWORD="${MYSQL_PASSWORD:-payment123}"
+DB_NAME="payment-platform"
+STOCK_RESET_SQL="UPDATE product SET stock = 5000 WHERE id = 1; UPDATE product SET stock = 5000 WHERE id = 2;"
+
+reset_stock() {
+  print_info "재고 초기화 중 (stock=5000)..."
+  docker exec "${DB_CONTAINER}" mysql -u"${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${STOCK_RESET_SQL}"
+  print_info "재고 초기화 완료."
+}
+
 run_strategy() {
   local strategy=$1
   local script=$2
@@ -23,6 +35,8 @@ run_strategy() {
     print_warning "Kafka 전략은 docker/compose/docker-compose.yml 의 Kafka 서비스도 실행 중이어야 합니다."
   fi
   read -p "준비됐으면 Enter 키를 누르세요 (Ctrl+C로 중단)..."
+
+  reset_stock
 
   mkdir -p "${SCRIPT_DIR}/results"
 

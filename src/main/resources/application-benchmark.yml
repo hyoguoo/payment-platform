@@ -10,10 +10,6 @@ spring:
     hikari:
       maximum-pool-size: 30   # 200 VU 부하 대응 (기본값 10보다 높임)
 
-  sql:
-    init:
-      data-locations: classpath:data.sql, classpath:data-benchmark.sql
-
   myapp:
     toss-payments:
       http:
