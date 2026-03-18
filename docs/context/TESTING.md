@@ -1,0 +1,482 @@
+# Testing Patterns
+
+**Analysis Date:** 2026-03-18
+
+## Test Framework
+
+**Runner:**
+- JUnit 5 (Jupiter) via `org.springframework.boot:spring-boot-starter-test`
+- Config: `build.gradle` — `useJUnitPlatform { excludeTags 'integration' }`
+
+**Assertion Library:**
+- AssertJ (`org.assertj.core.api.Assertions`)
+- Mockito BDD style (`org.mockito.BDDMockito`)
+
+**Run Commands:**
+```bash
+./gradlew test          # Unit + integration-tagged tests EXCLUDED
+./gradlew test -PrunIntegration  # Not wired; run integration tests individually
+```
+
+## Test File Organization
+
+**Location:** Co-located with source modules under `src/test/java/com/hyoguoo/paymentplatform/`
+
+**Structure mirrors main:**
+```
+src/test/java/com/hyoguoo/paymentplatform/
+├── core/test/                         # Base test classes
+│   ├── BaseIntegrationTest.java
+│   └── BaseKafkaIntegrationTest.java
+├── mock/                              # Fake / test-double implementations
+│   ├── FakePaymentEventRepository.java
+│   ├── FakeProductRepository.java
+│   ├── FakeUserRepository.java
+│   ├── FakeTossOperator.java
+│   └── AdditionalHeaderHttpOperator.java
+├── mixin/                             # Jackson MixIns for deserialization in tests
+│   ├── BasicResponseMixin.java
+│   ├── CheckoutResponseMixin.java
+│   └── PaymentConfirmResponseMixin.java
+├── IntegrationTest.java               # Project-specific integration base
+├── payment/
+│   ├── domain/                        # Pure domain entity tests
+│   ├── application/                   # Use-case / service unit tests
+│   │   └── usecase/
+│   ├── presentation/                  # Controller tests
+│   ├── scheduler/                     # Scheduler unit tests
+│   ├── listener/                      # Kafka listener tests
+│   └── infrastructure/                # Infrastructure unit tests
+├── paymentgateway/application/
+├── product/
+└── user/
+```
+
+**Naming:**
+- Unit/service tests: `{ClassName}Test.java`
+- MVC tests: `{Controller}MvcTest.java`
+- Integration tests: `{ClassName}IntegrationTest.java`
+
+## Test Hierarchy
+
+### BaseIntegrationTest
+File: `src/test/java/com/hyoguoo/paymentplatform/core/test/BaseIntegrationTest.java`
+
+```java
+@SpringBootTest
+@ActiveProfiles("test")
+@Testcontainers
+@Tag("integration")
+public abstract class BaseIntegrationTest {
+
+    @Container
+    protected static final MySQLContainer<?> MYSQL_CONTAINER = new MySQLContainer<>("mysql:8.0")
+            .withDatabaseName("payment-test")
+            .withUsername("test")
+            .withPassword("test")
+            .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci");
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", MYSQL_CONTAINER::getJdbcUrl);
+        // ...
+        registry.add("scheduler.enabled", () -> "true");
+    }
+}
+```
+
+### BaseKafkaIntegrationTest
+File: `src/test/java/com/hyoguoo/paymentplatform/core/test/BaseKafkaIntegrationTest.java`
+
+Extends the MySQL container setup and adds a KraftMode Kafka container:
+
+```java
+@SpringBootTest
+@ActiveProfiles("test")
+@Testcontainers
+@Tag("integration")
+public abstract class BaseKafkaIntegrationTest {
+
+    @Container
+    protected static final MySQLContainer<?> MYSQL_CONTAINER = ...;
+
+    @Container
+    protected static final KafkaContainer KAFKA_CONTAINER =
+            new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.4.0"))
+                    .withKraft();
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        // MySQL + Kafka bootstrap-servers
+        registry.add("spring.payment.async-strategy", () -> "kafka");
+        registry.add("scheduler.enabled", () -> "true");
+    }
+}
+```
+
+### IntegrationTest (project base)
+File: `src/test/java/com/hyoguoo/paymentplatform/IntegrationTest.java`
+
+```java
+@AutoConfigureMockMvc
+@Sql(scripts = "/data-test.sql")
+public abstract class IntegrationTest extends BaseIntegrationTest {
+    // adds MockMvc auto-config and seed data
+}
+```
+
+Integration test classes that use the full HTTP stack (e.g., `PaymentControllerTest`) extend `IntegrationTest`.
+Kafka integration tests (e.g., `KafkaConfirmListenerIntegrationTest`) extend `BaseKafkaIntegrationTest` directly and add `@Sql` themselves.
+
+## @Tag("integration") Exclusion Pattern
+
+**All integration tests** are tagged `@Tag("integration")` via the base class annotations.
+
+`build.gradle` excludes this tag from the default `./gradlew test` task:
+```groovy
+test {
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
+}
+```
+
+**`KafkaConfirmListenerIntegrationTest`** is additionally excluded because it requires Docker Desktop with a compatible API version. The test file: `src/test/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListenerIntegrationTest.java`. Tag exclusion via the `@Tag("integration")` inherited from `BaseKafkaIntegrationTest` covers it.
+
+## Test Strategy: Fake vs Mock
+
+**Use Fake (in-memory implementation) when:**
+- Testing a full service chain that needs a functioning repository
+- The collaborator has meaningful state that affects test outcomes
+- Avoiding Spring context startup overhead for use-case tests
+
+**Use Mockito Mock when:**
+- Verifying interaction counts or argument values with `verify()` / `then().should()`
+- Stubbing return values for a dependency that doesn't need state
+- Testing a single unit in isolation where the collaborator logic is irrelevant
+
+### Fake repository pattern
+```java
+// src/test/java/com/hyoguoo/paymentplatform/mock/FakePaymentEventRepository.java
+public class FakePaymentEventRepository implements PaymentEventRepository {
+    private final Map<Long, PaymentEvent> paymentEventDatabase = new HashMap<>();
+    private Long autoGeneratedEventId = 1L;
+
+    @Override
+    public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
+        if (paymentEvent.getId() == null) {
+            ReflectionTestUtils.setField(paymentEvent, "id", autoGeneratedEventId++);
+        }
+        paymentEventDatabase.put(paymentEvent.getId(), paymentEvent);
+        return paymentEvent;
+    }
+    // full interface implementation with in-memory logic
+}
+```
+
+### Fake operator pattern (in src/main — benchmark profile)
+`FakeTossHttpOperator` implements `HttpOperator` and is placed in `src/main/java/com/hyoguoo/paymentplatform/mock/FakeTossHttpOperator.java` (not `src/test`) to make it available to the benchmark Spring profile.
+
+It exposes control methods called via `ReflectionTestUtils.invokeMethod` in tests:
+```java
+// In test setUp or within a test:
+ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", 0, 0);
+ReflectionTestUtils.invokeMethod(httpOperator, "addErrorInPostRequest",
+        TossPaymentErrorCode.PROVIDER_ERROR.name(), TossPaymentErrorCode.PROVIDER_ERROR.getDescription());
+ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
+```
+
+Registered in integration tests via `@TestConfiguration`:
+```java
+@TestConfiguration
+static class TestConfig {
+    @Bean
+    public HttpOperator httpOperator() {
+        return new FakeTossHttpOperator();
+    }
+}
+```
+
+## Manual Mock Instantiation Pattern
+
+Most use-case tests instantiate mocks manually in `@BeforeEach` rather than using `@ExtendWith(MockitoExtension.class)`. This is the dominant pattern for service/use-case tests:
+
+```java
+class PaymentCreateUseCaseTest {
+
+    private PaymentCreateUseCase paymentCreateUseCase;
+    private PaymentEventRepository mockPaymentEventRepository;
+    private UUIDProvider mockUUIDProvider;
+
+    @BeforeEach
+    void setUp() {
+        mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
+        mockUUIDProvider = Mockito.mock(UUIDProvider.class);
+
+        paymentCreateUseCase = new PaymentCreateUseCase(
+                mockPaymentEventRepository,
+                mockPaymentOrderRepository,
+                mockUUIDProvider,
+                mockLocalDateTimeProvider
+        );
+    }
+}
+```
+
+**Exception:** `PaymentTransactionCoordinatorTest` uses `@ExtendWith(MockitoExtension.class)` with `@InjectMocks` / `@Mock`:
+```java
+@ExtendWith(MockitoExtension.class)
+class PaymentTransactionCoordinatorTest {
+    @InjectMocks
+    private PaymentTransactionCoordinator coordinator;
+    @Mock
+    private PaymentProcessUseCase paymentProcessUseCase;
+}
+```
+
+## @WebMvcTest Pattern
+
+Used for controller-layer-only tests without full Spring context.
+File: `src/test/java/com/hyoguoo/paymentplatform/payment/presentation/PaymentControllerMvcTest.java`
+
+```java
+@WebMvcTest(PaymentController.class)
+class PaymentControllerMvcTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private PaymentConfirmService paymentConfirmService;
+
+    @MockBean
+    private PaymentStatusService paymentStatusService;
+
+    @MockBean
+    private UUIDProvider uuidProvider;
+
+    @Test
+    @DisplayName("ResponseType.SYNC_200 일 때 confirm()은 HTTP 200을 반환한다. (PORT-02)")
+    void confirmPayment_SyncAdapter_Returns200() throws Exception {
+        // given
+        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
+                .thenReturn(PaymentConfirmAsyncResult.builder()
+                        .responseType(ResponseType.SYNC_200)
+                        .orderId("order-1")
+                        .build());
+
+        // when / then
+        mockMvc.perform(post("/api/v1/payments/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(confirmRequest)))
+                .andExpect(status().isOk());
+    }
+}
+```
+
+`@WebMvcTest` uses `@MockBean` for service dependencies (unlike use-case tests which use `Mockito.mock()`).
+Response JSON is verified with `jsonPath`:
+```java
+.andExpect(jsonPath("$.data.orderId").value("order-done"))
+.andExpect(jsonPath("$.data.status").value("DONE"))
+.andExpect(jsonPath("$.data.approvedAt").isNotEmpty());
+```
+
+## Mockito BDD Style
+
+The newer tests (e.g., `KafkaAsyncConfirmServiceTest`, `OutboxAsyncConfirmServiceTest`, `PaymentTransactionCoordinatorTest`) use BDD-style Mockito:
+
+```java
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+
+// given
+given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+
+// exception stubbing
+willThrow(PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
+        .given(mockTransactionCoordinator)
+        .executePaymentAndStockDecrease(any(PaymentEvent.class), anyString(), anyList());
+
+// then — verify interactions
+then(mockPaymentFailureUseCase).should(times(1))
+        .handleStockFailure(eq(paymentEvent), anyString());
+```
+
+Older tests (e.g., `PaymentConfirmServiceImplTest`, `PaymentCreateUseCaseTest`) use classic Mockito:
+```java
+when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any())).thenReturn(mockPaymentEvent);
+verify(mockPaymentCommandUseCase, times(1)).markPaymentAsUnknown(eq(...), any());
+```
+
+Both styles are present. Prefer BDD (`given` / `then`) for new tests.
+
+## Domain Entity Test Pattern
+
+Domain tests use `@ParameterizedTest @EnumSource` to exhaustively cover valid AND invalid state transitions.
+
+```java
+@ParameterizedTest
+@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
+@DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경한다.")
+void execute_Success(PaymentEventStatus paymentEventStatus) {
+    // given
+    PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+            paymentEventStatus, PaymentOrderStatus.NOT_STARTED);
+
+    // when
+    paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now());
+
+    // then
+    assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+}
+
+@ParameterizedTest
+@EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
+@DisplayName("결제 시작 시 변경 불가한 상태에서는 예외를 던진다.")
+void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
+    // when & then
+    assertThatThrownBy(() -> paymentEvent.execute(...))
+            .isInstanceOf(PaymentStatusException.class);
+}
+```
+
+Also used: `@CsvSource` for multi-parameter validation cases:
+```java
+@ParameterizedTest
+@CsvSource({
+    "2, validPaymentKey, 15000, order123, INVALID_USER_ID",
+    "1, invalidPaymentKey, 15000, order123, INVALID_PAYMENT_KEY",
+})
+void validate_InvalidCases(Long userId, String paymentKey, int amount, String orderId) { ... }
+```
+
+And `@MethodSource` for complex argument sets:
+```java
+static Stream<Arguments> provideRetryCountAndExpectedResult() {
+    return Stream.of(
+            Arguments.of(0, true),
+            Arguments.of(PaymentEvent.RETRYABLE_LIMIT, false)
+    );
+}
+
+@ParameterizedTest
+@MethodSource("provideRetryCountAndExpectedResult")
+void isRetryableInProgress_RetryCount(int retryCount, boolean expectedResult) { ... }
+```
+
+## @Nested Test Organization
+
+Used in `KafkaAsyncConfirmServiceTest` and `OutboxAsyncConfirmServiceTest` to group related scenarios:
+
+```java
+@DisplayName("KafkaAsyncConfirmService 테스트")
+class KafkaAsyncConfirmServiceTest {
+
+    @Nested
+    @DisplayName("confirm() 메서드 테스트")
+    class ConfirmTest {
+
+        @Test
+        @DisplayName("confirm() 호출 시 confirmPublisher.publish(orderId)를 1회 호출한다")
+        void confirm_CallsConfirmPublisher_Once() { ... }
+    }
+}
+```
+
+Use `@Nested` when a single class has multiple distinct method groups to test.
+
+## Annotation Presence Tests
+
+`@ConditionalOnProperty` activation is verified by inspecting the annotation directly:
+
+```java
+@Test
+@DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=true)가 선언되어 있다.")
+void testConditionalOnProperty() {
+    ConditionalOnProperty annotation =
+            PaymentConfirmServiceImpl.class.getAnnotation(ConditionalOnProperty.class);
+
+    assertThat(annotation).isNotNull();
+    assertThat(annotation.havingValue()).isEqualTo("sync");
+    assertThat(annotation.matchIfMissing()).isTrue();
+}
+```
+
+## Testcontainers Setup
+
+**MySQL** (`mysql:8.0`) used in both `BaseIntegrationTest` and `BaseKafkaIntegrationTest`.
+**Kafka** (`confluentinc/cp-kafka:7.4.0`, KraftMode via `.withKraft()`) used in `BaseKafkaIntegrationTest`.
+
+Container lifecycle: static `@Container` fields — shared across all tests in a class. `@DynamicPropertySource` injects the container URLs at Spring context startup.
+
+Seed data: `src/test/resources/data-test.sql` inserts test users and products via `@Sql(scripts = "/data-test.sql")` on `IntegrationTest`.
+
+Active profile: `test` (`src/test/resources/application-test.yml`). Key settings:
+- `spring.jpa.hibernate.ddl-auto: create-drop` — schema recreated per test run
+- `scheduler.enabled: false` (overridden to `true` by `@DynamicPropertySource` in base classes)
+- `spring.payment.async-strategy` not set by default (Sync adapter activates via `matchIfMissing=true`)
+
+## Async Assertions (Awaitility)
+
+Used in Kafka integration tests to poll for eventual consistency:
+
+```java
+await()
+    .atMost(30, TimeUnit.SECONDS)
+    .pollInterval(500, TimeUnit.MILLISECONDS)
+    .until(() -> paymentLoadUseCase.getPaymentEventByOrderId(TEST_ORDER_ID)
+            .getStatus() == PaymentEventStatus.DONE);
+```
+
+File: `src/test/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListenerIntegrationTest.java`
+
+## JaCoCo Configuration
+
+Configured in `build.gradle`:
+
+```groovy
+jacoco { toolVersion = '0.8.11' }
+
+jacocoTestReport {
+    reports { html.required = true; xml.required = true }
+
+    classDirectories.setFrom(files(classDirectories.files.collect {
+        fileTree(dir: it, excludes: [
+            '**/Q*',           // QueryDSL generated
+            '**/dto/**',
+            '**/entity/**',
+            '**/exception/**',
+            '**/infrastructure/**',
+            '**/enums/**',
+            '**/PaymentPlatformApplication.class'
+        ])
+    }))
+}
+```
+
+Same exclusion list applies to `jacocoTestCoverageVerification`. No numeric line/branch coverage threshold is configured (rule block exists but has no `limit` entries).
+
+Coverage report generated at: `build/reports/jacoco/test/html/index.html`
+
+## Jackson MixIn Pattern
+
+Concrete DTO classes use constructor-based deserialization which Jackson cannot handle without hints. Test MixIns are in `src/test/java/com/hyoguoo/paymentplatform/mixin/` and registered in `@BeforeEach`:
+
+```java
+@BeforeEach
+void setUp() {
+    objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
+    objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
+    objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
+}
+```
+
+## TestLocalDateTimeProvider
+
+A test double for `LocalDateTimeProvider` at `src/test/java/com/hyoguoo/paymentplatform/mock/TestLocalDateTimeProvider.java` — allows pinning `LocalDateTime.now()` in domain tests.
+
+---
+
+*Testing analysis: 2026-03-18*

@@ -19,6 +19,31 @@ public class PaymentTransactionCoordinator {
     private final PaymentProcessUseCase paymentProcessUseCase;
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
+    private final PaymentOutboxUseCase paymentOutboxUseCase;
+
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
+    public PaymentEvent executePaymentAndStockDecreaseWithOutbox(
+            PaymentEvent paymentEvent,
+            String paymentKey,
+            String orderId,
+            List<PaymentOrder> paymentOrderList
+    ) throws PaymentOrderedProductStockException {
+        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
+        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
+        paymentOutboxUseCase.createPendingRecord(orderId);
+        return inProgressEvent;
+    }
+
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
+    public PaymentEvent executePaymentAndStockDecrease(
+            PaymentEvent paymentEvent,
+            String paymentKey,
+            List<PaymentOrder> paymentOrderList
+    ) throws PaymentOrderedProductStockException {
+        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
+        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
+        return inProgressEvent;
+    }
 
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentProcess executeStockDecreaseWithJobCreation(String orderId, List<PaymentOrder> paymentOrderList)
@@ -34,7 +59,9 @@ public class PaymentTransactionCoordinator {
             PaymentEvent paymentEvent,
             LocalDateTime approvedAt
     ) {
-        paymentProcessUseCase.completeJob(orderId);
+        if (paymentProcessUseCase.existsByOrderId(orderId)) {
+            paymentProcessUseCase.completeJob(orderId);
+        }
 
         return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
     }

@@ -4,6 +4,8 @@ import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -20,11 +22,17 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(
+        name = "spring.payment.async-strategy",
+        havingValue = "sync",
+        matchIfMissing = true
+)
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
     private final PaymentLoadUseCase paymentLoadUseCase;
@@ -33,7 +41,18 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private final PaymentFailureUseCase paymentFailureUseCase;
 
     @Override
-    public PaymentConfirmResult confirm(PaymentConfirmCommand paymentConfirmCommand) {
+    public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand paymentConfirmCommand)
+            throws PaymentOrderedProductStockException {
+        PaymentConfirmResult result = doConfirm(paymentConfirmCommand);
+
+        return PaymentConfirmAsyncResult.builder()
+                .responseType(ResponseType.SYNC_200)
+                .orderId(result.getOrderId())
+                .amount(result.getAmount())
+                .build();
+    }
+
+    private PaymentConfirmResult doConfirm(PaymentConfirmCommand paymentConfirmCommand) {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_START,
                 () -> String.format("orderId=%s paymentKey=%s",
                         paymentConfirmCommand.getOrderId(),

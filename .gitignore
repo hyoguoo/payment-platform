@@ -229,10 +229,12 @@ DduDuStyle.xml
 scripts/**/.env
 
 # Secrets
+.env
 *.env.secret
 **/.env.secret
 
 out/
+!src/**/out/
 
 # Claude
 .claude/chats/

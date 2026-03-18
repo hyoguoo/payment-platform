@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run tests
+        run: ./gradlew test jacocoTestReport
+
+      - name: Upload JaCoCo HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: build/reports/jacoco/test/html/
+          retention-days: 14
+
+      - name: JaCoCo PR coverage comment
+        if: github.event_name == 'pull_request'
+        uses: Madrapps/jacoco-report@v1.7.2
+        with:
+          paths: build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          update-comment: true
+
+  lint:
+    name: Lint (Checkstyle + SpotBugs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+
+      - name: Run Checkstyle
+        id: checkstyle
+        run: ./gradlew checkstyleMain checkstyleTest
+        continue-on-error: true
+
+      - name: Run SpotBugs
+        id: spotbugs
+        run: ./gradlew spotbugsMain
+        continue-on-error: true
+
+      - name: Reviewdog — Checkstyle
+        if: always() && github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reviewdog -f=checkstyle -name="Checkstyle" \
+            -reporter=github-pr-review -fail-on-error=true \
+            < build/reports/checkstyle/main.xml
+          reviewdog -f=checkstyle -name="Checkstyle (test)" \
+            -reporter=github-pr-review -fail-on-error=true \
+            < build/reports/checkstyle/test.xml
+
+      - name: Reviewdog — SpotBugs
+        if: always() && github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/spotbugs-to-rdjsonl.py build/reports/spotbugs/main.xml \
+            | reviewdog -f=rdjsonl -name="SpotBugs" \
+              -reporter=github-pr-review -fail-on-error=true
+
+      - name: Lint summary comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const script = require('./.github/scripts/lint-summary.js');
+            await script({ github, context });
+
+      - name: Fail on violations (push)
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          if [ "${{ steps.checkstyle.outcome }}" != "success" ] || \
+             [ "${{ steps.spotbugs.outcome }}" != "success" ]; then
+            echo "Lint violations found."
+            exit 1
+          fi

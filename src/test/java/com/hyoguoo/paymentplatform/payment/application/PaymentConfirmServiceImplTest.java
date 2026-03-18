@@ -9,7 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 class PaymentConfirmServiceImplTest {
 
@@ -100,7 +102,19 @@ class PaymentConfirmServiceImplTest {
     }
 
     @Test
-    @DisplayName("성공적으로 결제를 확인하고 결제 완료 처리한다.")
+    @DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=true)가 선언되어 있다.")
+    void testConditionalOnProperty() {
+        ConditionalOnProperty annotation =
+                PaymentConfirmServiceImpl.class.getAnnotation(ConditionalOnProperty.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.havingValue()).isEqualTo("sync");
+        assertThat(annotation.matchIfMissing()).isTrue();
+        assertThat(annotation.name()).contains("spring.payment.async-strategy");
+    }
+
+    @Test
+    @DisplayName("성공적으로 결제를 확인하고 PaymentConfirmAsyncResult(SYNC_200)를 반환한다.")
     void testConfirm_Success()
             throws PaymentTossNonRetryableException, PaymentTossRetryableException, PaymentOrderedProductStockException {
         // given
@@ -126,9 +140,10 @@ class PaymentConfirmServiceImplTest {
         when(mockTransactionCoordinator.executePaymentSuccessCompletion(any(String.class), any(PaymentEvent.class), any(LocalDateTime.class)))
                 .thenReturn(mockConfirmData.mockPaymentEvent());
 
-        PaymentConfirmResult result = paymentConfirmService.confirm(mockConfirmData.paymentConfirmCommand());
+        PaymentConfirmAsyncResult result = paymentConfirmService.confirm(mockConfirmData.paymentConfirmCommand());
 
         // then
+        assertThat(result.getResponseType()).isEqualTo(ResponseType.SYNC_200);
         assertThat(result.getOrderId()).isEqualTo(mockConfirmData.mockPaymentEvent().getOrderId());
         assertThat(result.getAmount()).isEqualTo(mockConfirmData.mockPaymentEvent().getTotalAmount());
         verify(mockTransactionCoordinator, times(1))

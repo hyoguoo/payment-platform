@@ -2,6 +2,24 @@ spring:
   application:
     name: payment-platform
 
+  payment:
+    # 활성 어댑터: sync | outbox | kafka
+    async-strategy: sync
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: payment-confirm-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+    listener:
+      ack-mode: RECORD
+
   jpa:
     open-in-view: false
     properties:
@@ -36,6 +54,13 @@ payment:
       secret-key: ${TOSS_SECRET_KEY:}
       connect-timeout: 3000
       read-timeout: 10000
+
+scheduler:
+  outbox-worker:
+    fixed-delay-ms: 1000
+    batch-size: 10
+    parallel-enabled: false
+    in-flight-timeout-minutes: 5
 
 metrics:
   payment:

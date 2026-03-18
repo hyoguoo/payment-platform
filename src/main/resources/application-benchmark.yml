@@ -1,0 +1,22 @@
+spring:
+  config:
+    activate:
+      on-profile: benchmark
+
+  payment:
+    async-strategy: sync   # 기본값: 각 전략 측정 시 변경 후 재기동
+
+  datasource:
+    hikari:
+      maximum-pool-size: 30   # 200 VU 부하 대응 (기본값 10보다 높임)
+
+  myapp:
+    toss-payments:
+      http:
+        read-timeout-millis: 30000   # FakeTossHttpOperator @Value 바인딩용
+      fake:
+        min-delay-millis: 100        # Toss API 네트워크 딜레이 시뮬레이션 (최소)
+        max-delay-millis: 300        # Toss API 네트워크 딜레이 시뮬레이션 (최대)
+
+scheduler:
+  enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리

@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.0//EN"
+        "https://checkstyle.org/dtds/suppressions_1_0.dtd">
+<suppressions>
+    <!-- Data carriers -->
+    <suppress files="[\\/]dto[\\/]" checks=".*"/>
+    <suppress files="[\\/]entity[\\/]" checks=".*"/>
+    <suppress files="[\\/]enums[\\/]" checks=".*"/>
+    <suppress files="[\\/]event[\\/]" checks=".*"/>
+    <suppress files="[\\/]exception[\\/]" checks=".*"/>
+
+    <!-- Infrastructure / adapters -->
+    <suppress files="[\\/]infrastructure[\\/]" checks=".*"/>
+    <suppress files="[\\/]presentation[\\/]" checks=".*"/>
+    <suppress files="[\\/]publisher[\\/]" checks=".*"/>
+    <suppress files="[\\/]mock[\\/]" checks=".*"/>
+
+    <!-- Cross-cutting concerns -->
+    <suppress files="[\\/]aspect[\\/]" checks=".*"/>
+    <suppress files="[\\/]metrics[\\/]" checks=".*"/>
+    <suppress files="[\\/]log[\\/]" checks=".*"/>
+    <suppress files="[\\/]filter[\\/]" checks=".*"/>
+    <suppress files="[\\/]util[\\/]" checks=".*"/>
+
+    <!-- Spring config & response wrappers -->
+    <suppress files="[\\/]config[\\/]" checks=".*"/>
+    <suppress files="[\\/]response[\\/]" checks=".*"/>
+
+    <!-- 테스트 코드: underscore·한국어 메서드명, 긴 Mockito 체이닝 허용 -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="MethodName"/>
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="LineLength"/>
+</suppressions>
