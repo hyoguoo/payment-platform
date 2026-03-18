@@ -69,6 +69,6 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .inFlightAt(inFlightAt)
                 .createdAt(getCreatedAt())
                 .updatedAt(getUpdatedAt())
-                .build();
+                .allArgsBuild();
     }
 }

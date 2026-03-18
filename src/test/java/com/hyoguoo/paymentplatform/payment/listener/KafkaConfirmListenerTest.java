@@ -220,6 +220,19 @@ class KafkaConfirmListenerTest {
     }
 
     @Test
+    @DisplayName("handleDlt() - getPaymentEventByOrderId() 예외 발생 시 executePaymentFailureCompensation()을 호출하지 않고 예외가 전파되지 않는다")
+    void handleDlt_WhenGetPaymentEventThrows_DoesNotCallCompensationAndDoesNotPropagate() {
+        // given
+        willThrow(new RuntimeException("not found"))
+                .given(mockPaymentLoadUseCase).getPaymentEventByOrderId(ORDER_ID);
+
+        // when & then (예외가 전파되지 않아야 한다)
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> kafkaConfirmListener.handleDlt(ORDER_ID));
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentFailureCompensation(any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("@RetryableTopic의 attempts가 \"6\"이다")
     void retryableTopic_HasAttempts6() throws NoSuchMethodException {
         // given

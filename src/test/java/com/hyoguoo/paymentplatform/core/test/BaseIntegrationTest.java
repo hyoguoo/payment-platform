@@ -30,6 +30,5 @@ public abstract class BaseIntegrationTest {
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
 
         registry.add("scheduler.enabled", () -> "true");
-        registry.add("scheduler.payment-status-sync.enabled", () -> "false");
     }
 }

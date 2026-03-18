@@ -10,7 +10,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 @Getter
-@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "build")
+@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentOutbox {
 
@@ -29,7 +29,7 @@ public class PaymentOutbox {
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.PENDING)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
     }
 
     public void toInFlight(LocalDateTime inFlightAt) {
@@ -41,10 +41,16 @@ public class PaymentOutbox {
     }
 
     public void toDone() {
+        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_DONE);
+        }
         this.status = PaymentOutboxStatus.DONE;
     }
 
     public void toFailed() {
+        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAILED);
+        }
         this.status = PaymentOutboxStatus.FAILED;
     }
 

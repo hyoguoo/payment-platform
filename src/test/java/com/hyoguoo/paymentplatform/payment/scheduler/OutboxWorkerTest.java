@@ -234,6 +234,27 @@ class OutboxWorkerTest {
     }
 
     @Test
+    @DisplayName("process - getPaymentEventByOrderId() 예외 발생 시 incrementRetryOrFail()를 호출하고 예외가 전파되지 않는다")
+    void process_getPaymentEventThrows_callsIncrementRetryOrFail() throws Exception {
+        // given
+        PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(pendingOutbox));
+        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        willThrow(new RuntimeException("event not found"))
+                .given(mockPaymentLoadUseCase).getPaymentEventByOrderId(ORDER_ID);
+
+        // when (예외가 전파되지 않아야 한다)
+        outboxWorker.process();
+
+        // then
+        then(mockPaymentOutboxUseCase).should(times(1))
+                .incrementRetryOrFail(ORDER_ID, pendingOutbox);
+        then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
+    }
+
+    @Test
     @DisplayName("process - IN_FLIGHT 타임아웃 복구: process() 시작 시 recoverTimedOutInFlightRecords() 1회 호출")
     void process_alwaysCallsRecoverTimedOutInFlightRecords() throws Exception {
         // given
@@ -253,7 +274,7 @@ class OutboxWorkerTest {
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.PENDING)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
     }
 
     private PaymentEvent createPaymentEvent(String orderId) {

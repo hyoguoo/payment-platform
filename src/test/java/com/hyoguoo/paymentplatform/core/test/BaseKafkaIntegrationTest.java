@@ -38,6 +38,5 @@ public abstract class BaseKafkaIntegrationTest {
         registry.add("spring.kafka.bootstrap-servers", KAFKA_CONTAINER::getBootstrapServers);
         registry.add("spring.payment.async-strategy", () -> "kafka");
         registry.add("scheduler.enabled", () -> "true");
-        registry.add("scheduler.payment-status-sync.enabled", () -> "false");
     }
 }

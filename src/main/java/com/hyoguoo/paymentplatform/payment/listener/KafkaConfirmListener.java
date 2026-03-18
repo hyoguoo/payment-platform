@@ -76,11 +76,15 @@ public class KafkaConfirmListener {
     public void handleDlt(String orderId) {
         LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                 () -> "DLT reached for orderId=" + orderId);
-        PaymentEvent paymentEvent =
-                paymentLoadUseCase.getPaymentEventByOrderId(orderId);
-        transactionCoordinator.executePaymentFailureCompensation(
-                orderId, paymentEvent, paymentEvent.getPaymentOrderList(),
-                "kafka-dlt-exhausted"
-        );
+        try {
+            PaymentEvent paymentEvent =
+                    paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+            transactionCoordinator.executePaymentFailureCompensation(
+                    orderId, paymentEvent, paymentEvent.getPaymentOrderList(),
+                    "kafka-dlt-exhausted"
+            );
+        } catch (Exception e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+        }
     }
 }

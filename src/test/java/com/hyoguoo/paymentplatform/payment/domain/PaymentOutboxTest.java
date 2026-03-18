@@ -82,7 +82,7 @@ class PaymentOutboxTest {
                     .orderId("order-1")
                     .status(PaymentOutboxStatus.PENDING)
                     .retryCount(4)
-                    .build();
+                    .allArgsBuild();
 
             // when & then
             assertThat(outbox.isRetryable()).isTrue();
@@ -96,7 +96,7 @@ class PaymentOutboxTest {
                     .orderId("order-1")
                     .status(PaymentOutboxStatus.PENDING)
                     .retryCount(5)
-                    .build();
+                    .allArgsBuild();
 
             // when & then
             assertThat(outbox.isRetryable()).isFalse();
@@ -127,11 +127,12 @@ class PaymentOutboxTest {
     @DisplayName("DONE/FAILED 상태 전이 테스트")
     class TerminalStateTest {
 
-        @Test
-        @DisplayName("toDone() 호출 후 status=DONE이 된다")
-        void toDone() {
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"IN_FLIGHT"})
+        @DisplayName("IN_FLIGHT 상태에서 toDone() 호출 시 status=DONE이 된다")
+        void toDone_Success(PaymentOutboxStatus initialStatus) {
             // given
-            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
 
             // when
             outbox.toDone();
@@ -140,17 +141,42 @@ class PaymentOutboxTest {
             assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.DONE);
         }
 
-        @Test
-        @DisplayName("toFailed() 호출 후 status=FAILED가 된다")
-        void toFailed() {
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
+        @DisplayName("IN_FLIGHT이 아닌 상태에서 toDone() 호출 시 PaymentStatusException이 발생한다")
+        void toDone_InvalidState(PaymentOutboxStatus initialStatus) {
             // given
-            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+
+            // when & then
+            assertThatThrownBy(outbox::toDone)
+                    .isInstanceOf(PaymentStatusException.class);
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"IN_FLIGHT"})
+        @DisplayName("IN_FLIGHT 상태에서 toFailed() 호출 시 status=FAILED가 된다")
+        void toFailed_Success(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
 
             // when
             outbox.toFailed();
 
             // then
             assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
+        @DisplayName("IN_FLIGHT이 아닌 상태에서 toFailed() 호출 시 PaymentStatusException이 발생한다")
+        void toFailed_InvalidState(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+
+            // when & then
+            assertThatThrownBy(outbox::toFailed)
+                    .isInstanceOf(PaymentStatusException.class);
         }
     }
 
@@ -159,6 +185,6 @@ class PaymentOutboxTest {
                 .orderId("order-1")
                 .status(status)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
     }
 }

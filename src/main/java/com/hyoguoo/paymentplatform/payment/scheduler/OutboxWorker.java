@@ -76,9 +76,10 @@ public class OutboxWorker {
         }
 
         String orderId = outbox.getOrderId();
-        PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
-        // paymentKey는 OutboxConfirmAdapter에서 이미 executePayment()로 기록됨
-        // 워커에서 executePayment() 재호출 불필요 — paymentEvent.getPaymentKey()로 직접 조회
+        PaymentEvent paymentEvent = loadPaymentEvent(orderId, outbox);
+        if (paymentEvent == null) {
+            return;
+        }
 
         try {
             // Step 3: Toss API 호출 (트랜잭션 밖)
@@ -114,6 +115,16 @@ public class OutboxWorker {
             // Step 4-D: 재시도 가능 — retryCount 증가 또는 FAILED
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+        }
+    }
+
+    private PaymentEvent loadPaymentEvent(String orderId, PaymentOutbox outbox) {
+        try {
+            return paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+        } catch (Exception e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+            paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            return null;
         }
     }
 }

@@ -285,7 +285,7 @@ class PaymentTransactionCoordinatorTest {
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox expectedOutbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).build();
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).allArgsBuild();
 
             given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
             given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(expectedOutbox);
@@ -335,7 +335,7 @@ class PaymentTransactionCoordinatorTest {
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).build();
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).allArgsBuild();
 
             given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
             given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(outbox);

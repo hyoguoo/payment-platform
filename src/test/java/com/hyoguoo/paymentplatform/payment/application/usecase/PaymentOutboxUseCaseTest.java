@@ -81,7 +81,7 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
                 .inFlightAt(FIXED_NOW)
-                .build();
+                .allArgsBuild();
 
         // when
         boolean result = paymentOutboxUseCase.claimToInFlight(inFlightOutbox);
@@ -100,7 +100,7 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.DONE)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(doneOutbox));
 
         // when
@@ -120,7 +120,7 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
                 .inFlightAt(FIXED_NOW)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(inFlightOutbox);
 
@@ -141,7 +141,7 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.FAILED)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(failedOutbox));
 
         // when
@@ -160,7 +160,7 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(3)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(retryableOutbox));
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(retryableOutbox);
 
@@ -182,7 +182,7 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(5)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(exhaustedOutbox));
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(exhaustedOutbox);
 
@@ -204,14 +204,14 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(1)
                 .inFlightAt(FIXED_NOW.minusMinutes(10))
-                .build();
+                .allArgsBuild();
         PaymentOutbox outbox2 = PaymentOutbox.allArgsBuilder()
                 .id(2L)
                 .orderId("order-002")
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(2)
                 .inFlightAt(FIXED_NOW.minusMinutes(10))
-                .build();
+                .allArgsBuild();
 
         given(mockPaymentOutboxRepository.findTimedOutInFlight(any(LocalDateTime.class)))
                 .willReturn(List.of(outbox1, outbox2));
@@ -252,7 +252,7 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.DONE)
                 .retryCount(0)
-                .build();
+                .allArgsBuild();
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(doneOutbox));
 
         // when
