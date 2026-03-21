@@ -22,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -87,14 +89,15 @@ class PaymentRecoveryUseCaseTest {
         );
     }
 
-    @Test
-    @DisplayName("Toss에서 CANCELED 상태이면 보상 트랜잭션을 실행한다")
-    void recoverStuckPayments_TossStatusCanceled_ExecutesCompensation() {
+    @ParameterizedTest(name = "Toss 상태={0}")
+    @EnumSource(value = PaymentStatus.class, names = {"READY", "ABORTED", "EXPIRED", "CANCELED", "PARTIAL_CANCELED"})
+    @DisplayName("Toss에서 확정 실패 상태이면 보상 트랜잭션을 실행한다")
+    void recoverStuckPayments_TossStatusTerminalFailure_ExecutesCompensation(PaymentStatus status) {
         // given
         String orderId = "order123";
         PaymentProcess processingJob = createPaymentProcess(orderId);
         PaymentEvent paymentEvent = createPaymentEvent(orderId);
-        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.CANCELED);
+        PaymentStatusResult statusResult = createPaymentStatusResult(status);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
         when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
@@ -108,7 +111,7 @@ class PaymentRecoveryUseCaseTest {
                 orderId,
                 paymentEvent,
                 paymentEvent.getPaymentOrderList(),
-                "CANCELED"
+                status.getValue()
         );
         verify(transactionCoordinator, never()).executePaymentSuccessCompletion(
                 anyString(), any(), any()
@@ -116,28 +119,54 @@ class PaymentRecoveryUseCaseTest {
     }
 
     @Test
-    @DisplayName("Toss에서 ABORTED 상태이면 보상 트랜잭션을 실행한다")
-    void recoverStuckPayments_TossStatusAborted_ExecutesCompensation() {
+    @DisplayName("Toss에서 WAITING_FOR_DEPOSIT 상태이면 잡만 완료 처리하고 보상 트랜잭션은 실행하지 않는다")
+    void recoverStuckPayments_TossStatusWaitingForDeposit_CompletesJobOnly() {
         // given
         String orderId = "order123";
         PaymentProcess processingJob = createPaymentProcess(orderId);
-        PaymentEvent paymentEvent = createPaymentEvent(orderId);
-        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.ABORTED);
+        PaymentStatusResult statusResult = createPaymentStatusResult(PaymentStatus.WAITING_FOR_DEPOSIT);
 
         when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
         when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
-        when(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).thenReturn(paymentEvent);
 
         // when
         paymentRecoveryUseCase.recoverStuckPayments();
 
         // then
-        verify(transactionCoordinator, times(1)).executePaymentFailureCompensation(
-                orderId,
-                paymentEvent,
-                paymentEvent.getPaymentOrderList(),
-                "ABORTED"
+        verify(paymentProcessUseCase, times(1)).completeJob(orderId);
+        verify(transactionCoordinator, never()).executePaymentSuccessCompletion(
+                anyString(), any(), any()
         );
+        verify(transactionCoordinator, never()).executePaymentFailureCompensation(
+                anyString(), any(), any(), anyString()
+        );
+        verify(paymentLoadUseCase, never()).getPaymentEventByOrderId(anyString());
+    }
+
+    @ParameterizedTest(name = "Toss 상태={0}")
+    @EnumSource(value = PaymentStatus.class, names = {"IN_PROGRESS", "UNKNOWN"})
+    @DisplayName("Toss에서 미확정 상태이면 아무것도 하지 않는다")
+    void recoverStuckPayments_TossStatusIndeterminate_DoesNothing(PaymentStatus status) {
+        // given
+        String orderId = "order123";
+        PaymentProcess processingJob = createPaymentProcess(orderId);
+        PaymentStatusResult statusResult = createPaymentStatusResult(status);
+
+        when(paymentProcessUseCase.findAllProcessingJobs()).thenReturn(List.of(processingJob));
+        when(paymentGatewayPort.getStatusByOrderId(orderId)).thenReturn(statusResult);
+
+        // when
+        paymentRecoveryUseCase.recoverStuckPayments();
+
+        // then
+        verify(transactionCoordinator, never()).executePaymentSuccessCompletion(
+                anyString(), any(), any()
+        );
+        verify(transactionCoordinator, never()).executePaymentFailureCompensation(
+                anyString(), any(), any(), anyString()
+        );
+        verify(paymentProcessUseCase, never()).completeJob(anyString());
+        verify(paymentLoadUseCase, never()).getPaymentEventByOrderId(anyString());
     }
 
     @Test
