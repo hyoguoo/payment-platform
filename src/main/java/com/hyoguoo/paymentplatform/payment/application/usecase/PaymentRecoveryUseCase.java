@@ -90,28 +90,46 @@ public class PaymentRecoveryUseCase {
                 () -> String.format("Starting recovery for orderId=%s", orderId));
 
         PaymentStatusResult statusResult = paymentGatewayPort.getStatusByOrderId(orderId);
-        PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
-
         PaymentStatus paymentStatus = statusResult.status();
 
-        if (paymentStatus == PaymentStatus.DONE) {
-            transactionCoordinator.executePaymentSuccessCompletion(
-                    orderId,
-                    paymentEvent,
-                    statusResult.approvedAt()
-            );
-            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SUCCESS_COMPLETION,
-                    () -> String.format("Recovered orderId=%s as SUCCESS", orderId));
-        } else {
-            transactionCoordinator.executePaymentFailureCompensation(
-                    orderId,
-                    paymentEvent,
-                    paymentEvent.getPaymentOrderList(),
-                    paymentStatus.getValue()
-            );
-            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_FAILURE_COMPENSATION,
-                    () -> String.format("Recovered orderId=%s as FAILURE (status=%s)",
+        switch (paymentStatus) {
+            // 다른 스케줄러가 처리하는 미확정 상태 — 이 복구 스케줄러는 개입하지 않는다
+            case IN_PROGRESS, UNKNOWN -> LogFmt.info(log, LogDomain.PAYMENT,
+                    EventType.PAYMENT_RECOVERY_SKIPPED,
+                    () -> String.format("Skipping recovery for orderId=%s status=%s",
                             orderId, paymentStatus.getValue()));
+
+            // 가상계좌 입금 대기 중 — 재고는 이미 차감됐고 입금 webhook이 완료 처리를 담당하므로
+            // 잡만 완료 처리하여 이후 스케줄 조회 대상에서 제외한다
+            case WAITING_FOR_DEPOSIT -> {
+                paymentProcessUseCase.completeJob(orderId);
+                LogFmt.info(log, LogDomain.PAYMENT,
+                        EventType.PAYMENT_RECOVERY_WAITING_DEPOSIT_JOB_COMPLETE,
+                        () -> String.format("Completed job for orderId=%s (waiting for deposit)", orderId));
+            }
+
+            // 결제 성공 확정
+            case DONE -> {
+                PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+                transactionCoordinator.executePaymentSuccessCompletion(
+                        orderId, paymentEvent, statusResult.approvedAt()
+                );
+                LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SUCCESS_COMPLETION,
+                        () -> String.format("Recovered orderId=%s as SUCCESS", orderId));
+            }
+
+            // 확정 실패 상태 — 재고를 복구하고 결제를 실패 처리한다
+            // READY: PaymentProcess가 PROCESSING인데 Toss가 READY라면 confirm이 시작되기 전에
+            //        잡이 생성된 이상 상태이므로, 재고가 이미 차감됐을 수 있어 보상 처리한다
+            case READY, CANCELED, PARTIAL_CANCELED, ABORTED, EXPIRED -> {
+                PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+                transactionCoordinator.executePaymentFailureCompensation(
+                        orderId, paymentEvent, paymentEvent.getPaymentOrderList(), paymentStatus.getValue()
+                );
+                LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_FAILURE_COMPENSATION,
+                        () -> String.format("Recovered orderId=%s as FAILURE (status=%s)",
+                                orderId, paymentStatus.getValue()));
+            }
         }
     }
 }
