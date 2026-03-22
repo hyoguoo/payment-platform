@@ -28,7 +28,7 @@
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: Caffeine 의존성 추가
 - [x] Task 2: `IdempotencyStore` outbound port 정의
-- [ ] Task 3: `IdempotencyKeyHasher` body hash 유틸 구현
+- [x] Task 3: `IdempotencyKeyHasher` body hash 유틸 구현
 - [ ] Task 4: `FakeIdempotencyStore` 테스트 더블 구현
 - [ ] Task 5: `IdempotencyStoreImpl` Caffeine 구현체
 - [ ] Task 6: `CheckoutCommand` / `CheckoutResult` / 프레젠테이션 레이어 변경
@@ -97,7 +97,7 @@
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성) 실제로 어떻게 구현했는지, 계획과 달라진 점, 주요 결정 사항
+> `IdempotencyKeyHasher` Spring `@Component` 구현. productId 기준 정렬 후 `userId:10x2,20x1` 형태 문자열을 SHA-256 → HexFormat으로 변환. Java 17+ `HexFormat.of()` 사용.
 
 ---
 
