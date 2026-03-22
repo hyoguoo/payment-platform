@@ -20,7 +20,6 @@ import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentStatusApiResponseMixin;
-import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -47,8 +46,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -575,12 +572,4 @@ class PaymentControllerTest extends IntegrationTest {
         return updatedPaymentEvent;
     }
 
-    @TestConfiguration
-    static class TestConfig {
-
-        @Bean
-        public HttpOperator httpOperator() {
-            return new FakeTossHttpOperator();
-        }
-    }
 }
