@@ -25,7 +25,7 @@ TOCTOU 경쟁 조건을 제거한다.
 - [x] Task 3: `FakeIdempotencyStore` 업데이트
 - [x] Task 4: `IdempotencyStoreImpl` Caffeine 재구현
 - [x] Task 5: `PaymentCheckoutServiceImpl` 수정
-- [ ] Task 6: Checkout 멱등성 E2E 통합 테스트
+- [x] Task 6: Checkout 멱등성 E2E 통합 테스트
 
 ---
 
@@ -199,7 +199,7 @@ public CheckoutResult checkout(CheckoutCommand checkoutCommand) {
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> `IntegrationTest` 확장, `FakeTossHttpOperator` 주입. 동시 N개 요청/순차 중복/다른 키 독립 생성 3개 시나리오 작성. 통합 테스트는 `@Tag("integration")`으로 기본 `test` 태스크에서 제외됨 (프로젝트 공통 규칙).
 
 ---
 

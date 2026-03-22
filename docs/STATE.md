@@ -4,8 +4,8 @@
 
 ## 활성 작업
 - **주제**: CHECKOUT-IDEMPOTENCY-CONCURRENCY-FIX
-- **단계**: execute
-- **활성 태스크**: Task 6
+- **단계**: verify
+- **활성 태스크**: (완료)
 
 ## 단계 진행
 - [x] discuss
