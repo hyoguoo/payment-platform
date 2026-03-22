@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
@@ -14,7 +15,6 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,20 +38,23 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
                 () -> String.format("userId=%s", checkoutCommand.getUserId()));
 
         String idempotencyKey = resolveIdempotencyKey(checkoutCommand);
-        Optional<CheckoutResult> cached = idempotencyStore.getIfPresent(idempotencyKey);
-        if (cached.isPresent()) {
-            return CheckoutResult.builder()
-                    .orderId(cached.get().getOrderId())
-                    .totalAmount(cached.get().getTotalAmount())
-                    .isDuplicate(true)
-                    .build();
-        }
+        IdempotencyResult<CheckoutResult> idempotencyResult = idempotencyStore.getOrCreate(
+                idempotencyKey,
+                () -> createCheckoutResult(checkoutCommand)
+        );
 
+        return CheckoutResult.builder()
+                .orderId(idempotencyResult.getValue().getOrderId())
+                .totalAmount(idempotencyResult.getValue().getTotalAmount())
+                .isDuplicate(idempotencyResult.isDuplicate())
+                .build();
+    }
+
+    private CheckoutResult createCheckoutResult(CheckoutCommand checkoutCommand) {
         UserInfo userInfo = orderedUserUseCase.getUserInfoById(checkoutCommand.getUserId());
         List<ProductInfo> productInfoList = orderedProductUseCase.getProductInfoList(
                 checkoutCommand.getOrderedProductList()
         );
-
         PaymentEvent paymentEvent = paymentCreateUseCase.createNewPaymentEvent(
                 userInfo,
                 checkoutCommand.getOrderedProductList(),
@@ -63,15 +66,11 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
                         paymentEvent.getOrderId(),
                         paymentEvent.getTotalAmount()));
 
-        CheckoutResult result = CheckoutResult.builder()
+        return CheckoutResult.builder()
                 .orderId(paymentEvent.getOrderId())
                 .totalAmount(paymentEvent.getTotalAmount())
                 .isDuplicate(false)
                 .build();
-
-        idempotencyStore.put(idempotencyKey, result);
-
-        return result;
     }
 
     private String resolveIdempotencyKey(CheckoutCommand command) {

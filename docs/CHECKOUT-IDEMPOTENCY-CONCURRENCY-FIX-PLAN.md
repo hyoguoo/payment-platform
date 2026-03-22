@@ -24,7 +24,7 @@ TOCTOU 경쟁 조건을 제거한다.
 - [x] Task 2: `IdempotencyStore` 포트 재설계
 - [x] Task 3: `FakeIdempotencyStore` 업데이트
 - [x] Task 4: `IdempotencyStoreImpl` Caffeine 재구현
-- [ ] Task 5: `PaymentCheckoutServiceImpl` 수정
+- [x] Task 5: `PaymentCheckoutServiceImpl` 수정
 - [ ] Task 6: Checkout 멱등성 E2E 통합 테스트
 
 ---
@@ -174,7 +174,7 @@ public CheckoutResult checkout(CheckoutCommand checkoutCommand) {
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> `getIfPresent + put` → `getOrCreate` 단일 호출로 교체. 결제 이벤트 생성 로직을 `createCheckoutResult` private 메서드로 추출해 supplier에 전달.
 
 ---
 
