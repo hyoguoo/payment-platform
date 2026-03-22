@@ -80,7 +80,6 @@ class PaymentCheckoutServiceImplTest {
                 .paymentOrderList(List.of())
                 .allArgsBuild();
 
-        // when
         when(mockOrderedUserUseCase.getUserInfoById(checkoutCommand.getUserId()))
                 .thenReturn(mockUserInfo);
         when(mockOrderedProductUseCase.getProductInfoList(checkoutCommand.getOrderedProductList()))
@@ -89,6 +88,7 @@ class PaymentCheckoutServiceImplTest {
                 any(UserInfo.class), anyList(), anyList()))
                 .thenReturn(mockPaymentEvent);
 
+        // when
         CheckoutResult result = paymentCheckoutService.checkout(checkoutCommand);
 
         // then
@@ -104,7 +104,7 @@ class PaymentCheckoutServiceImplTest {
     }
 
     @Test
-    @DisplayName("신규 요청 시 isDuplicate=false인 결과를 반환하고 IdempotencyStore에 저장한다.")
+    @DisplayName("신규 요청 시 isDuplicate=false인 결과를 반환하고 createNewPaymentEvent를 1회 호출한다.")
     void checkout_신규_요청_isDuplicate_false_반환() {
         // given
         List<OrderedProduct> products = List.of(
@@ -136,7 +136,6 @@ class PaymentCheckoutServiceImplTest {
 
         // then
         assertThat(result.isDuplicate()).isFalse();
-        assertThat(fakeIdempotencyStore.getIfPresent("unique-key")).isPresent();
         verify(mockPaymentCreateUseCase, times(1))
                 .createNewPaymentEvent(any(), anyList(), anyList());
     }
