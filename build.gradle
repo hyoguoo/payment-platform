@@ -58,6 +58,9 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
+    // Cache
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+
     // Monitoring
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
