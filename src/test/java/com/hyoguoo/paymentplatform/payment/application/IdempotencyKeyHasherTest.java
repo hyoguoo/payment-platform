@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.common.util;
+package com.hyoguoo.paymentplatform.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

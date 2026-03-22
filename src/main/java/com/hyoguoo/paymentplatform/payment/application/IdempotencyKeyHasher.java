@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.common.util;
+package com.hyoguoo.paymentplatform.payment.application;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import java.nio.charset.StandardCharsets;

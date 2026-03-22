@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.core.common.util.IdempotencyKeyHasher;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
