@@ -11,7 +11,7 @@
 
 ## 활성 작업
 - **주제**: <주제>
-- **단계**: discuss | plan | execute | verify | done
+- **단계**: discuss | plan | execute | review | verify | done
 - **활성 태스크**: Task N: <이름>  ← execute 단계에서만 기재
 - **이슈**: #<번호>  ← discuss 완료 후 기재
 - **브랜치**: #<번호>  ← discuss 완료 후 기재
@@ -24,6 +24,7 @@
 - [x] discuss
 - [ ] plan
 - [ ] execute
+- [ ] review
 - [ ] verify
 ```
 
@@ -49,6 +50,7 @@
 - [x] discuss
 - [x] plan
 - [x] execute
+- [x] review
 - [x] verify
 ```
 
@@ -64,7 +66,7 @@
 
 **Date:** YYYY-MM-DD
 **Topic:** <작업 주제>
-**Stage:** discuss | plan | execute | verify
+**Stage:** discuss | plan | execute | review | verify
 **Active Task:** Task N: <이름>  ← execute 단계에서만
 
 ## 완료된 작업

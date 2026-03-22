@@ -7,8 +7,6 @@ description: >
   thorough, structured review across architecture, conventions, tests, and payment-specific risks.
 ---
 
-Run `git diff HEAD` to get all uncommitted changes, then perform a structured code review.
-
 ## Architecture
 
 This project uses **Hexagonal Architecture**. The allowed dependency direction is:

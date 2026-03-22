@@ -1,7 +1,7 @@
 ---
 name: workflow
 description: >
-  payment-platform의 discuss → plan → execute → verify 워크플로우 오케스트레이터.
+  payment-platform의 discuss → plan → execute → review → verify 워크플로우 오케스트레이터.
   docs/<TOPIC>-PLAN.md 파일이 존재하거나, 사용자가 "plan 작성", "execute 시작",
   "워크플로우로", "다음 단계", "세션 재개", "이어서 진행", "어디까지 했지" 등을 말할 때
   반드시 이 스킬을 사용한다. 단순 질문, 빠른 수정, 일회성 코드 변경에는 사용하지 않는다.
@@ -28,6 +28,7 @@ description: >
 | discuss | `workflow-discuss` |
 | plan | `workflow-plan` |
 | execute | `workflow-execute` |
+| review | `workflow-review` |
 | verify | `workflow-verify` |
 
 사용자가 특정 단계를 명시하면 해당 스킬로 바로 진행한다.
@@ -51,6 +52,7 @@ description: >
 | TDD GREEN | 구현 코드 + 테스트 | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |
 | tdd=false 태스크 완료 | 구현 코드 + PLAN.md(체크박스) + STATE.md | `feat:` or `chore:` |
+| Review 피드백 수정 | 수정된 파일들 | `refactor:` |
 | 세션 중단 | .continue-here.md + 현재 산출물 | 해당 타입 |
 | 전체 작업 완료 | 최종 STATE.md | `docs:` |
 
