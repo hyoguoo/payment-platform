@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,14 +32,19 @@ public class PaymentController {
 
     @PostMapping("/api/v1/payments/checkout")
     public ResponseEntity<CheckoutResponse> checkout(
-            @RequestBody CheckoutRequest checkoutRequest
+            @RequestBody CheckoutRequest checkoutRequest,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         CheckoutCommand checkoutCommand = PaymentPresentationMapper.toCheckoutCommand(
-                checkoutRequest
+                checkoutRequest, idempotencyKey
         );
         CheckoutResult checkoutResult = paymentCheckoutService.checkout(checkoutCommand);
 
-        return ResponseEntity.ok(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
+        if (checkoutResult.isDuplicate()) {
+            return ResponseEntity.ok(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
+        }
+
+        return ResponseEntity.status(201).body(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
     }
 
     @PostMapping("/api/v1/payments/confirm")

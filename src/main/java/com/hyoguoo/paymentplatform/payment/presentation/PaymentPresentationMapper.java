@@ -18,10 +18,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentPresentationMapper {
 
-    public static CheckoutCommand toCheckoutCommand(CheckoutRequest request) {
+    public static CheckoutCommand toCheckoutCommand(CheckoutRequest request, String idempotencyKey) {
         return CheckoutCommand.builder()
                 .userId(request.getUserId())
                 .orderedProductList(request.getOrderedProductList())
+                .idempotencyKey(idempotencyKey)
                 .build();
     }
 
