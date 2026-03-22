@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.paymentgateway.application;
 
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.SystemUUIDProvider;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.mock.AdditionalHeaderHttpOperator;
@@ -20,7 +20,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.util.ReflectionTestUtils;
 
-class PaymentGatewayServiceImplErrorCaseTest extends IntegrationTest {
+class PaymentGatewayServiceImplErrorCaseTest extends BaseIntegrationTest {
 
     @Autowired
     private PaymentGatewayService paymentGatewayService;

@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.response.BasicResponse;
@@ -36,7 +36,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
-class PaymentSchedulerTest extends IntegrationTest {
+class PaymentSchedulerTest extends BaseIntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event

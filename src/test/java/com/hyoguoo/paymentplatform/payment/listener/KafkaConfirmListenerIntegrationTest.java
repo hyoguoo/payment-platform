@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.listener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import com.hyoguoo.paymentplatform.core.test.BaseKafkaIntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.KafkaIntegrationTest;
 import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -18,11 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.test.context.jdbc.Sql;
-
 @DisplayName("KafkaConfirmListener 통합 테스트")
-@Sql(scripts = "/data-test.sql")
-class KafkaConfirmListenerIntegrationTest extends BaseKafkaIntegrationTest {
+class KafkaConfirmListenerIntegrationTest extends KafkaIntegrationTest {
 
     private static final String TEST_ORDER_ID = FakeTossHttpOperator.TEST_ORDER_ID;
     private static final String TEST_PAYMENT_KEY = FakeTossHttpOperator.TEST_PAYMENT_KEY;

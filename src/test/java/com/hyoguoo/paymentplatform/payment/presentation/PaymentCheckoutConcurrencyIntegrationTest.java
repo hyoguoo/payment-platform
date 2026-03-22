@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
@@ -24,7 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @DisplayName("Checkout 멱등성 동시성 통합 테스트")
-class PaymentCheckoutConcurrencyIntegrationTest extends IntegrationTest {
+class PaymentCheckoutConcurrencyIntegrationTest extends BaseIntegrationTest {
 
     private static final int THREAD_COUNT = 5;
     private static final long TEST_USER_ID = 1L;

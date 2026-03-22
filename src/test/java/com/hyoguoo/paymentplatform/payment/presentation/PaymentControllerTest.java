@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.response.BasicResponse;
 import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
@@ -52,7 +52,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-class PaymentControllerTest extends IntegrationTest {
+class PaymentControllerTest extends BaseIntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event

@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import org.junit.jupiter.api.Tag;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -12,10 +13,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.jdbc.Sql;
 import org.testcontainers.containers.MySQLContainer;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@AutoConfigureMockMvc
+@Sql(scripts = "/data-test.sql")
 @Tag("integration")
 @Import(BaseIntegrationTest.BaseTestConfig.class)
 public abstract class BaseIntegrationTest {
@@ -38,7 +42,6 @@ public abstract class BaseIntegrationTest {
         registry.add("spring.datasource.username", MYSQL_CONTAINER::getUsername);
         registry.add("spring.datasource.password", MYSQL_CONTAINER::getPassword);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
-
         registry.add("scheduler.enabled", () -> "true");
     }
 
