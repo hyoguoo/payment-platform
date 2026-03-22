@@ -22,7 +22,7 @@ TOCTOU 경쟁 조건을 제거한다.
 
 - [x] Task 1: `IdempotencyResult<T>` 값 객체 추가
 - [x] Task 2: `IdempotencyStore` 포트 재설계
-- [ ] Task 3: `FakeIdempotencyStore` 업데이트
+- [x] Task 3: `FakeIdempotencyStore` 업데이트
 - [ ] Task 4: `IdempotencyStoreImpl` Caffeine 재구현
 - [ ] Task 5: `PaymentCheckoutServiceImpl` 수정
 - [ ] Task 6: Checkout 멱등성 E2E 통합 테스트
@@ -103,7 +103,7 @@ public IdempotencyResult<CheckoutResult> getOrCreate(String key, Supplier<Checko
 - 기존 테스트 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `HashMap` → `ConcurrentHashMap`, `computeIfAbsent`로 원자적 `getOrCreate` 구현. `created` 플래그로 hit/miss 구분.
 
 ---
 

@@ -1,22 +1,22 @@
 package com.hyoguoo.paymentplatform.mock;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 public class FakeIdempotencyStore implements IdempotencyStore {
 
-    private final Map<String, CheckoutResult> store = new HashMap<>();
+    private final ConcurrentHashMap<String, CheckoutResult> store = new ConcurrentHashMap<>();
 
     @Override
-    public Optional<CheckoutResult> getIfPresent(String key) {
-        return Optional.ofNullable(store.get(key));
-    }
-
-    @Override
-    public void put(String key, CheckoutResult result) {
-        store.put(key, result);
+    public IdempotencyResult<CheckoutResult> getOrCreate(String key, Supplier<CheckoutResult> creator) {
+        boolean[] created = {false};
+        CheckoutResult result = store.computeIfAbsent(key, k -> {
+            created[0] = true;
+            return creator.get();
+        });
+        return created[0] ? IdempotencyResult.miss(result) : IdempotencyResult.hit(result);
     }
 }
