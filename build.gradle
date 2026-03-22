@@ -21,7 +21,7 @@ repositories {
 }
 
 ext {
-    set('testcontainersVersion', '1.19.8')
+    set('testcontainersVersion', '1.20.4')
     set('springdocVersion', '2.5.0')
     set('logstashEncoderVersion', '7.4')
     set('querydslVersion', '5.0.0')
@@ -69,9 +69,19 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation "org.springframework.boot:spring-boot-testcontainers"
-    testImplementation "org.testcontainers:mysql:${testcontainersVersion}"
-    testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
-    testImplementation "org.testcontainers:kafka:${testcontainersVersion}"
+    testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+    testImplementation "org.testcontainers:mysql"
+    testImplementation "org.testcontainers:junit-jupiter"
+    testImplementation "org.testcontainers:kafka"
+}
+
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == 'org.testcontainers') {
+            details.useVersion testcontainersVersion
+            details.because 'Override Spring Boot BOM strict constraint to use newer Testcontainers with Docker Desktop 4.65+ support'
+        }
+    }
 }
 
 // Test Configuration
@@ -102,6 +112,32 @@ test {
 
     finalizedBy jacocoTestReport
 }
+
+task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nIntegration Test Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
+            }
+        }
+    }
+}
+
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
 
 // JaCoCo Configuration
 jacoco {

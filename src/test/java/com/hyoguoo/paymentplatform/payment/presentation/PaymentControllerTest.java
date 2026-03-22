@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.IntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.response.BasicResponse;
@@ -94,6 +95,7 @@ class PaymentControllerTest extends IntegrationTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper.registerModule(new JavaTimeModule());
         objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
         objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
         objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
@@ -136,7 +138,7 @@ class PaymentControllerTest extends IntegrationTest {
                 .map(PaymentOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        perform.andExpect(status().isOk())
+        perform.andExpect(status().isCreated())
                 .andExpect(result -> {
                     String responseContent = result.getResponse().getContentAsString();
 
