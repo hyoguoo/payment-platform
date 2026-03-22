@@ -32,7 +32,7 @@
 - [x] Task 4: `FakeIdempotencyStore` 테스트 더블 구현
 - [x] Task 5: `IdempotencyStoreImpl` Caffeine 구현체
 - [x] Task 6: `CheckoutCommand` / `CheckoutResult` / 프레젠테이션 레이어 변경
-- [ ] Task 7: `PaymentCheckoutServiceImpl` 중복 판정 로직 추가
+- [x] Task 7: `PaymentCheckoutServiceImpl` 중복 판정 로직 추가
 
 ---
 
@@ -180,4 +180,4 @@
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성) 실제로 어떻게 구현했는지, 계획과 달라진 점, 주요 결정 사항
+> `IdempotencyStore`, `IdempotencyKeyHasher` 의존성 추가. `resolveIdempotencyKey` private 메서드로 키 파생 로직 분리. 캐시 hit 시 즉시 `isDuplicate=true` 반환, miss 시 결제 이벤트 생성 후 저장.
