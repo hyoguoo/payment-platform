@@ -6,16 +6,21 @@ import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResu
 import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class IdempotencyStoreImpl implements IdempotencyStore {
 
-    private final Cache<String, CheckoutResult> cache;
+    private final IdempotencyProperties idempotencyProperties;
+    private Cache<String, CheckoutResult> cache;
 
-    public IdempotencyStoreImpl() {
+    @jakarta.annotation.PostConstruct
+    void init() {
         this.cache = Caffeine.newBuilder()
-                .expireAfterWrite(10, TimeUnit.SECONDS)
+                .maximumSize(idempotencyProperties.getMaximumSize())
+                .expireAfterWrite(idempotencyProperties.getExpireAfterWriteSeconds(), TimeUnit.SECONDS)
                 .build();
     }
 

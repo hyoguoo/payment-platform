@@ -53,7 +53,7 @@ class PaymentCheckoutServiceImplTest {
 
     @Test
     @DisplayName("결제 요청 시 사용자의 정보와 상품 정보를 조회하여 결제 이벤트를 성공적으로 생성한다.")
-    void testCheckout_Success() {
+    void checkout_성공_결제이벤트_생성() {
         // given
         CheckoutCommand checkoutCommand = CheckoutCommand.builder()
                 .userId(1L)
@@ -105,7 +105,7 @@ class PaymentCheckoutServiceImplTest {
 
     @Test
     @DisplayName("신규 요청 시 isDuplicate=false인 결과를 반환하고 IdempotencyStore에 저장한다.")
-    void testCheckout_신규_요청_201_신규_결과_반환() {
+    void checkout_신규_요청_isDuplicate_false_반환() {
         // given
         List<OrderedProduct> products = List.of(
                 OrderedProduct.builder().productId(10L).quantity(1).build()
@@ -143,7 +143,7 @@ class PaymentCheckoutServiceImplTest {
 
     @Test
     @DisplayName("동일 키로 두 번 요청 시 두 번째는 isDuplicate=true를 반환하고 paymentCreateUseCase는 1번만 호출된다.")
-    void testCheckout_중복_요청_200_기존_결과_반환() {
+    void checkout_중복_요청_isDuplicate_true_반환() {
         // given
         List<OrderedProduct> products = List.of(
                 OrderedProduct.builder().productId(10L).quantity(1).build()
@@ -181,7 +181,7 @@ class PaymentCheckoutServiceImplTest {
 
     @Test
     @DisplayName("Idempotency-Key 헤더가 없으면 IdempotencyKeyHasher를 호출하여 body hash를 파생한다.")
-    void testCheckout_헤더_없으면_body_hash_파생() {
+    void checkout_헤더_없으면_hasher_호출하여_키_파생() {
         // given
         List<OrderedProduct> products = List.of(
                 OrderedProduct.builder().productId(10L).quantity(1).build()

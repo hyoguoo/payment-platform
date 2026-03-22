@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutServ
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentStatusService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,7 +45,7 @@ public class PaymentController {
             return ResponseEntity.ok(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
         }
 
-        return ResponseEntity.status(201).body(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentPresentationMapper.toCheckoutResponse(checkoutResult));
     }
 
     @PostMapping("/api/v1/payments/confirm")
