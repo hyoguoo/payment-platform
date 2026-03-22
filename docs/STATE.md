@@ -9,7 +9,7 @@
 ## 최근 완료
 - **주제**: CHECKOUT-IDEMPOTENCY
 - **완료일**: 2026-03-22
-- **아카이브**: docs/archive/CHECKOUT-IDEMPOTENCY-PLAN.md, docs/archive/CHECKOUT-IDEMPOTENCY-CONTEXT.md
+- **아카이브**: docs/archive/checkout-idempotency/
 
 ## 단계 진행
 - [x] discuss

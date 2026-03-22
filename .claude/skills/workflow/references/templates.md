@@ -43,7 +43,7 @@
 ## 최근 완료
 - **주제**: <방금 완료한 주제>
 - **완료일**: YYYY-MM-DD
-- **아카이브**: docs/archive/<TOPIC>-PLAN.md, docs/archive/<TOPIC>-CONTEXT.md
+- **아카이브**: docs/archive/<topic-kebab>/
 
 ## 단계 진행
 - [x] discuss
