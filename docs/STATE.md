@@ -5,7 +5,7 @@
 ## 활성 작업
 - **주제**: CHECKOUT-IDEMPOTENCY-CONCURRENCY-FIX
 - **단계**: execute
-- **활성 태스크**: Task 1
+- **활성 태스크**: Task 2
 
 ## 단계 진행
 - [x] discuss

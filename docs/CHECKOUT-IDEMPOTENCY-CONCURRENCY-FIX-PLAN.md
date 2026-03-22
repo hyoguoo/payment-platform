@@ -20,7 +20,7 @@ TOCTOU 경쟁 조건을 제거한다.
 
 ## 진행 상황
 
-- [ ] Task 1: `IdempotencyResult<T>` 값 객체 추가
+- [x] Task 1: `IdempotencyResult<T>` 값 객체 추가
 - [ ] Task 2: `IdempotencyStore` 포트 재설계
 - [ ] Task 3: `FakeIdempotencyStore` 업데이트
 - [ ] Task 4: `IdempotencyStoreImpl` Caffeine 재구현
@@ -53,7 +53,7 @@ public class IdempotencyResult<T> {
 - 컴파일 오류 없음
 
 **완료 결과**
-> (완료 후 작성)
+> `payment/application/dto/IdempotencyResult.java` 생성. `hit()`/`miss()` 정적 팩토리로 캐시 히트 여부를 표현.
 
 ---
 
