@@ -1,11 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.application.port;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import java.util.Optional;
+import java.util.function.Supplier;
 
 public interface IdempotencyStore {
 
-    Optional<CheckoutResult> getIfPresent(String key);
-
-    void put(String key, CheckoutResult result);
+    IdempotencyResult<CheckoutResult> getOrCreate(String key, Supplier<CheckoutResult> creator);
 }

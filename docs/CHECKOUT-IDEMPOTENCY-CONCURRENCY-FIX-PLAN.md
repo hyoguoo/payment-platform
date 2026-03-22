@@ -21,7 +21,7 @@ TOCTOU 경쟁 조건을 제거한다.
 ## 진행 상황
 
 - [x] Task 1: `IdempotencyResult<T>` 값 객체 추가
-- [ ] Task 2: `IdempotencyStore` 포트 재설계
+- [x] Task 2: `IdempotencyStore` 포트 재설계
 - [ ] Task 3: `FakeIdempotencyStore` 업데이트
 - [ ] Task 4: `IdempotencyStoreImpl` Caffeine 재구현
 - [ ] Task 5: `PaymentCheckoutServiceImpl` 수정
@@ -74,7 +74,7 @@ public interface IdempotencyStore {
 - 컴파일 오류 없음 (구현체들이 아직 컴파일 오류 상태여도 무방 — 다음 태스크에서 해결)
 
 **완료 결과**
-> (완료 후 작성)
+> `getIfPresent + put` 제거, `getOrCreate(key, supplier)` 단일 메서드로 교체. 반환 타입 `IdempotencyResult<CheckoutResult>`.
 
 ---
 
