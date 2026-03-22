@@ -45,12 +45,12 @@ description: >
 
 | 시점 | 포함 파일 | 커밋 타입 |
 |------|----------|----------|
-| Discuss 완료 | topics 문서 + STATE.md(plan으로 갱신) | `docs:` |
-| Plan 완료 | PLAN.md + STATE.md(execute로 갱신, 이슈/브랜치 기록) | `docs:` |
+| Discuss 완료 | topics 문서 + STATE.md(plan으로 갱신, 이슈/브랜치 기록) | `docs:` (feature 브랜치) |
+| Plan 완료 | PLAN.md + STATE.md(execute/Task 1로 갱신) | `docs:` (feature 브랜치) |
 | TDD RED | 실패 테스트 파일만 | `test:` |
 | TDD GREEN | 구현 코드 + 테스트 | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |
-| tdd=false 태스크 완료 | 구현 코드 | `feat:` or `chore:` |
+| tdd=false 태스크 완료 | 구현 코드 + PLAN.md(체크박스) + STATE.md | `feat:` or `chore:` |
 | 세션 중단 | .continue-here.md + 현재 산출물 | 해당 타입 |
 | 전체 작업 완료 | 최종 STATE.md | `docs:` |
 

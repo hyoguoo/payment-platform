@@ -52,28 +52,12 @@ Plan의 목적은 discuss에서 결정된 설계를 "바로 코딩할 수 있는
 
 ---
 
-## GitHub 이슈 생성 및 브랜치 전환
-
-PLAN.md가 완성되면 이슈를 생성하고 작업 브랜치로 전환한다.
-이슈 제목/본문 작성 컨벤션은 `issue-commit-pr` 스킬을 따른다.
-단, 이 시점은 코드 변경 전이므로 git diff 대신 설계 문서(docs/topics/<TOPIC>.md)와 PLAN.md를 기반으로 이슈 내용을 작성한다.
-
-이슈 생성: `mcp__github__issue_write` 사용 (`gh` CLI 불가)
-브랜치 생성: `git checkout -b "#<이슈-번호>"` (`#`이 shell 주석으로 해석되지 않도록 따옴표 필수)
-
-생성된 이슈 번호를 STATE.md에 기록한다 (형식은 `workflow/references/templates.md` 참조).
-
-이후 execute의 모든 커밋은 이 브랜치 위에서 이루어진다.
-
----
-
 ## 완료 기준
 
-- [ ] `docs/<TOPIC>-PLAN.md` 작성
+- [ ] `docs/<TOPIC>-PLAN.md` 작성 (진행 상황 체크박스 포함)
 - [ ] 모든 태스크에 명확한 완료 기준 존재
 - [ ] 태스크 간 의존성 순서 올바름
-- [ ] GitHub 이슈 생성 + 브랜치 `#<번호>` 전환
-- [ ] PLAN.md + STATE.md를 하나의 `docs:` 커밋으로 묶기 (브랜치 위에서, topics 문서는 discuss 커밋에 포함됨)
-- [ ] STATE.md 단계를 `execute`, 활성 태스크를 `Task 1`, 이슈 번호 기록
+- [ ] PLAN.md + STATE.md를 하나의 `docs:` 커밋으로 묶기 (feature 브랜치 위에서, discuss 커밋에서 이미 브랜치 생성됨)
+- [ ] STATE.md 단계를 `execute`, 활성 태스크를 `Task 1`로 갱신
 
-완료 후: "plan 완료. 이슈 #<번호> 생성, 브랜치 #<번호>로 전환했습니다. execute 단계로 넘어가겠습니다." 라고 알린다.
+완료 후: "plan 완료. execute 단계로 넘어가겠습니다." 라고 알린다.

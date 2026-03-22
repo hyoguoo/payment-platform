@@ -13,8 +13,8 @@
 - **주제**: <주제>
 - **단계**: discuss | plan | execute | verify | done
 - **활성 태스크**: Task N: <이름>  ← execute 단계에서만 기재
-- **이슈**: #<번호>  ← plan 완료 후 기재
-- **브랜치**: #<번호>  ← plan 완료 후 기재
+- **이슈**: #<번호>  ← discuss 완료 후 기재
+- **브랜치**: #<번호>  ← discuss 완료 후 기재
 
 ## 파일 링크
 - 설계: docs/topics/<TOPIC>.md
