@@ -8,6 +8,6 @@
 
 - **주제**: CHECKOUT-IDEMPOTENCY
 - **단계**: execute
-- **활성 태스크**: Task 2
+- **활성 태스크**: Task 3
 - **이슈**: #49
 - **브랜치**: #49

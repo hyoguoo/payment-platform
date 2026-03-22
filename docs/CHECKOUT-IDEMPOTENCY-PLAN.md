@@ -27,7 +27,7 @@
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: Caffeine 의존성 추가
-- [ ] Task 2: `IdempotencyStore` outbound port 정의
+- [x] Task 2: `IdempotencyStore` outbound port 정의
 - [ ] Task 3: `IdempotencyKeyHasher` body hash 유틸 구현
 - [ ] Task 4: `FakeIdempotencyStore` 테스트 더블 구현
 - [ ] Task 5: `IdempotencyStoreImpl` Caffeine 구현체
@@ -71,7 +71,7 @@
 - 기존 테스트 통과
 
 **완료 결과**
-> (완료 후 작성) 실제로 어떻게 구현했는지, 계획과 달라진 점, 주요 결정 사항
+> `payment/application/port/IdempotencyStore.java` 인터페이스 생성. `getIfPresent(String key)`, `put(String key, CheckoutResult result)` 두 메서드 정의.
 
 ---
 
