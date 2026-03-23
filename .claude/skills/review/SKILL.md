@@ -1,130 +1,160 @@
 ---
 name: review
 description: >
-  Perform a structured code review on uncommitted changes in this payment-platform project.
-  Trigger this skill whenever the user asks to "review", "리뷰", "코드 리뷰", or "check my changes".
-  Even if the request seems casual ("looks good?", "뭐 문제 없어?"), use this skill to run a
-  thorough, structured review across architecture, conventions, tests, and payment-specific risks.
+  payment-platform 프로젝트의 변경 사항을 구조적으로 코드 리뷰한다.
+  "리뷰", "코드 리뷰", "review", "check my changes", "뭐 문제 없어?", "looks good?" 등
+  변경 사항 검토를 요청할 때 반드시 이 스킬을 사용한다.
+  캐주얼한 요청이더라도 아키텍처, 컨벤션, 테스트, 결제 도메인 리스크를 망라한 구조적 리뷰를 실행한다.
 ---
 
-Run `git diff HEAD` to get all uncommitted changes, then perform a structured code review.
+# 코드 리뷰
 
-## Architecture
+payment-platform 프로젝트의 변경 사항을 아키텍처 규칙, 컨벤션, 테스트 전략, 결제 도메인 리스크 관점에서 구조적으로 검토한다.
 
-This project uses **Hexagonal Architecture**. The allowed dependency direction is:
+## 리뷰 준비
+
+`git diff HEAD`와 `git status`로 변경 파일을 파악한 뒤 각 파일을 읽어 내용을 확인한다. 리뷰 대상을 이해하지 않은 채 체크리스트만 적용하지 않는다.
+
+---
+
+## 아키텍처
+
+이 프로젝트는 **포트-어댑터 아키텍처**를 사용한다. 허용되는 의존 방향:
 
 ```
 Presentation → Application → Domain ← Infrastructure
 ```
 
-Check for:
-- **Layer violations** — Infrastructure classes imported in Domain; Domain importing Application; Presentation calling use cases directly instead of through port interfaces
-- **Port placement** — Ports (interfaces) live in `application/port/` or `presentation/port/`. Implementations live in `infrastructure/` or `application/`
-- **Cross-module imports** — Modules (`payment`, `paymentgateway`, `product`, `user`) must communicate only through port interfaces or internal HTTP receivers (`*InternalReceiver`), never by direct import of another module's implementation classes
+**확인 항목:**
+- **레이어 침범** — Infrastructure 클래스가 Domain에 임포트되거나, Domain이 Application을 임포트하거나, Presentation이 포트 인터페이스를 거치지 않고 유스케이스를 직접 호출하는 경우
+- **포트 위치** — 포트(인터페이스)는 `application/port/` 또는 `presentation/port/`에 위치해야 하며, 구현체는 `infrastructure/` 또는 `application/`에 위치
+- **모듈 간 직접 임포트** — `payment`, `paymentgateway`, `product`, `user` 모듈은 포트 인터페이스 또는 `*InternalReceiver`를 통해서만 통신해야 하며, 다른 모듈의 구현 클래스를 직접 임포트하면 안 됨
 
-## Conventions
+---
+
+## 컨벤션
 
 ### Lombok
-- **Use** `@RequiredArgsConstructor` on service/use-case classes for constructor injection
-- **Never use** `@Data` on domain entities — use `@Getter` only; mutation goes through domain methods
-- Domain entities need `@AllArgsConstructor(access = AccessLevel.PRIVATE)` + `@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")` so construction is forced through the `create()` static factory
-- Utility/helper classes (stateless) use `@NoArgsConstructor(access = AccessLevel.PRIVATE)`
+- 서비스/유스케이스 클래스의 생성자 주입에는 `@RequiredArgsConstructor` 사용
+- 도메인 엔티티에 `@Data` 사용 금지 — `@Getter`만 사용하고, 상태 변경은 도메인 메서드로
+- 도메인 엔티티는 `@AllArgsConstructor(access = AccessLevel.PRIVATE)` + `@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")`로 `create()` 정적 팩토리를 통해서만 생성
+- 상태 없는 유틸리티/헬퍼 클래스는 `@NoArgsConstructor(access = AccessLevel.PRIVATE)`
 
-### Naming
-- Static factory methods: `create()` or `of()` — not constructors
-- Exceptions created via static factory: `PaymentStatusException.of(PaymentErrorCode.XYZ)` — never `new PaymentStatusException(...)`
-- Test mock variables prefixed with `mock`: `mockPaymentEventRepository`
-- Constants in `UPPER_SNAKE_CASE`
+### 네이밍
+- 정적 팩토리 메서드: `create()` 또는 `of()` — 생성자 직접 호출 금지
+- 예외 생성: `PaymentStatusException.of(PaymentErrorCode.XYZ)` — `new` 사용 금지
+- 테스트 모의 변수명: `mock` 접두사 (예: `mockPaymentEventRepository`)
+- 상수: `UPPER_SNAKE_CASE`
 
-### Exception handling
-- No bare `catch (Exception e)` unless it is the final catch-all in a confirm/compensation flow and explicitly routed to `handleUnknownFailure`
-- Domain objects validate state and throw typed domain exceptions; service layer does not swallow them
+### 예외 처리
+- `catch (Exception e)` 나체 사용 금지 — confirm/compensation 흐름의 최종 catch-all에서 명시적으로 `handleUnknownFailure`로 라우팅하는 경우만 허용
+- 도메인 객체는 상태 검증 후 타입화된 도메인 예외를 던지고, 서비스 레이어는 그것을 삼키지 않음
 
-### Return values
-- Methods must not return `null` — use `Optional` or throw a typed exception (`orElseThrow()` pattern)
+### 반환값
+- `null` 반환 금지 — `Optional`을 사용하거나 타입화된 예외를 던짐 (`orElseThrow()` 패턴)
 
-### Logging
-- Always use `LogFmt` helper — **never** raw `log.info("...")` string interpolation
-- Pattern: `LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);`
-- Wrap log calls in level checks: `if (logger.isInfoEnabled()) { ... }` to avoid unnecessary string construction
+### 로깅
+- `LogFmt` 헬퍼를 항상 사용 — 원시 `log.info("...")` 문자열 보간 금지
+- 패턴: `LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);`
+- 불필요한 문자열 생성을 막기 위해 레벨 체크로 래핑: `if (logger.isInfoEnabled()) { ... }`
 
-## Tests
+---
 
-### Which test style for which layer
+## 테스트
 
-| Layer | Style | Rule |
-|---|---|---|
-| Domain | Pure Java, no mocks | Test all state transitions with `@ParameterizedTest @EnumSource` |
-| Application / UseCase | Mockito mocks in `@BeforeEach` (no `@MockBean`) | Use real collaborators where possible; mock only ports |
-| Integration | Testcontainers MySQL + MockMvc | Use `FakeX` implementations for external ports (Toss, product, user) |
+### 레이어별 테스트 스타일
 
-### Fake vs Mock policy
-- Port interfaces (repositories, external gateways) get **Fake implementations** in `src/test/.../mock/` (e.g., `FakePaymentEventRepository`, `FakeTossOperator`)
-- Mockito is acceptable for service-layer unit tests where constructing a Fake would require significant setup
-- Never introduce `@MockBean` for repository interfaces — it bypasses the Fake strategy and is slower
+| 레이어 | 스타일 | 규칙 |
+| --- | --- | --- |
+| Domain | 순수 Java, 모의 없음 | `@ParameterizedTest @EnumSource`로 모든 상태 전환 커버 |
+| Application / UseCase | `@BeforeEach`에 Mockito 모의 (`@MockBean` 사용 금지) | 가능하면 실제 협력자 사용, 포트만 모의 |
+| Integration | Testcontainers MySQL + MockMvc | 외부 포트(Toss, product, user)는 `FakeX` 구현체 사용 |
 
-### Naming
-- Class: `{ClassUnderTest}Test`
-- Method: `{methodName}_{scenario}` (e.g., `execute_Success`, `confirm_InvalidPaymentKey_ThrowsException`) **or** Korean display name via `@DisplayName`
-- Both styles are valid; do not mix them in the same class
+### Fake vs Mock 정책
+- 포트 인터페이스(레포지토리, 외부 게이트웨이)는 `src/test/.../mock/`에 **Fake 구현체** 사용 (예: `FakePaymentEventRepository`, `FakeTossOperator`)
+- Fake 구성에 과도한 셋업이 필요한 서비스 레이어 단위 테스트에는 Mockito 허용
+- 레포지토리 인터페이스에 `@MockBean` 사용 금지 — Fake 전략을 우회하고 더 느림
 
-### Coverage
-- Every new public method on a domain entity needs a corresponding test covering valid and invalid state transitions
-- New use-case branches must have at least one unit test
+### Testcontainers 패턴
+- 통합 테스트는 Singleton Container 패턴을 사용해 컨텍스트 간 컨테이너를 공유 (`withReuse(true)`)
+- Spring Context를 불필요하게 분리하지 않도록 `@TestConfiguration`보다 `ReflectionTestUtils`를 우선 사용
 
-## Risks (payment-specific)
+### 테스트 네이밍
+- 클래스: `{테스트대상클래스}Test`
+- 메서드: `{메서드명}_{시나리오}` (예: `execute_Success`, `confirm_InvalidPaymentKey_ThrowsException`) **또는** `@DisplayName` 한국어
+- 두 스타일 모두 유효하나 같은 클래스에서 혼용 금지
 
-1. **Compensation idempotency** — `increaseStockForOrders` and `decreaseStockForOrders` must be guarded against double execution. Check for existence validation before state mutation in compensation paths.
+### 커버리지
+- 도메인 엔티티의 새 public 메서드는 유효/무효 상태 전환을 모두 커버하는 테스트 필요
+- 새 유스케이스 분기는 최소 하나의 단위 테스트 필요
 
-2. **Race conditions** — `executeStockDecreaseWithJobCreation` uses pessimistic locking, but `executePayment` (READY → IN_PROGRESS) is a separate transaction. Any new code that adds a step between these two transactions increases the window for a race.
+---
 
-3. **PII / secret in logs** — `paymentKey` and `orderId` must not appear in plain log messages. Verify new log statements do not expose these. Rely on `MaskingPatternLayout` only as a safety net — do not log sensitive fields intentionally.
+## 결제 도메인 리스크
 
-4. **State machine violations** — PaymentEvent transitions must follow:
-   ```
-   READY → IN_PROGRESS → DONE
-                 ↓
-              FAILED
-                 ↓
-              UNKNOWN → (retry) → IN_PROGRESS
-   READY → EXPIRED
-   ```
-   Any new transition must be validated in the domain entity method and covered by `@ParameterizedTest @EnumSource`.
+결제 코드는 일반 CRUD보다 실패 비용이 크다. 아래 항목은 특히 꼼꼼히 확인한다.
 
-5. **`existsByOrderId` guard** — Idempotent write operations (e.g., creating a payment event) must check for an existing record before inserting to avoid duplicates.
+**1. 보상 트랜잭션 멱등성**
+`increaseStockForOrders`와 `decreaseStockForOrders`는 이중 실행을 방어해야 한다. 보상 경로의 상태 변이 전에 존재 여부 검증이 있는지 확인한다.
 
-6. **`ALREADY_PROCESSED_PAYMENT` shortcut** — Code that shortcuts on this Toss error code should verify the local DB state matches Toss's state, not just accept it as success blindly.
+**2. 레이스 컨디션**
+`executeStockDecreaseWithJobCreation`은 비관적 락을 사용하지만, `executePayment` (READY → IN_PROGRESS)는 별도 트랜잭션이다. 이 두 트랜잭션 사이에 단계를 추가하는 코드는 레이스 윈도우를 넓힌다.
+멱등성 체크가 필요한 곳에서는 `Cache.get(key, loader)` 패턴처럼 원자적 연산을 사용해야 한다 — `getIfPresent` + `put` 분리 패턴은 TOCTOU 취약점이 된다.
 
-7. **Broad `Exception` catch** — New catch-all blocks must explicitly route to `handleUnknownFailure`, not silently swallow errors. Flag any broad catch that does something other than that.
+**3. PII/시크릿 로그 노출**
+`paymentKey`와 `orderId`는 평문 로그 메시지에 포함되면 안 된다. 새 로그 구문이 이 필드를 노출하지 않는지 확인한다. `MaskingPatternLayout`은 안전망이지 의도적 로깅을 허용하는 수단이 아니다.
 
-## Output Format
+**4. 상태 머신 위반**
+PaymentEvent 전환은 반드시 아래 규칙을 따라야 한다:
+```
+READY → IN_PROGRESS → DONE
+              ↓
+           FAILED
+              ↓
+           UNKNOWN → (재시도) → IN_PROGRESS
+READY → EXPIRED
+```
+새 전환은 도메인 엔티티 메서드에서 검증되고 `@ParameterizedTest @EnumSource`로 커버되어야 한다.
 
-For each finding:
+**5. `existsByOrderId` 가드**
+결제 이벤트 생성처럼 멱등성이 필요한 쓰기 작업은 INSERT 전에 기존 레코드 존재 여부를 확인해야 한다.
+
+**6. `ALREADY_PROCESSED_PAYMENT` 처리**
+이 Toss 에러 코드를 성공으로 처리하는 코드는 로컬 DB 상태가 Toss 상태와 일치하는지 검증해야 한다 — 맹목적으로 성공 처리하면 안 된다.
+
+**7. 광범위한 `Exception` catch**
+새 catch-all 블록은 반드시 `handleUnknownFailure`로 명시적 라우팅이 있어야 한다. 에러를 조용히 삼키는 broad catch는 즉시 플래그.
+
+---
+
+## 출력 형식
+
+각 발견 항목은 아래 형식으로 작성한다 (설명은 한국어로):
 
 ```
-[CRITICAL] path/to/File.java:42 — One-sentence description
-  Why: Brief explanation of impact
-  Fix: Concrete suggestion
+[CRITICAL] path/to/File.java:42 — 한 문장 설명
+  이유: 영향에 대한 간략한 설명
+  수정: 구체적인 수정 방향
 
-[WARNING] path/to/File.java:15 — One-sentence description
-  Why: ...
-  Fix: ...
+[WARNING] path/to/File.java:15 — 한 문장 설명
+  이유: ...
+  수정: ...
 
-[INFO] path/to/File.java:8 — Observation (no action required)
+[INFO] path/to/File.java:8 — 관찰 사항 (조치 불필요)
 ```
 
-## Severity Definitions
+## 심각도 기준
 
-- **CRITICAL** — Will break functionality, violates architecture contract, or creates data corruption / security risk
-- **WARNING** — Degrades quality, deviates from conventions, or introduces tech debt
-- **INFO** — Style note or observation for awareness; no action required
+- **CRITICAL** — 기능을 깨뜨리거나, 아키텍처 계약을 위반하거나, 데이터 손상/보안 리스크를 만드는 문제
+- **WARNING** — 품질을 저하시키거나, 컨벤션에서 벗어나거나, 기술 부채를 만드는 문제
+- **INFO** — 스타일 메모 또는 인지를 위한 관찰 사항; 조치 불필요
 
-## Closing Summary
+## 마무리 요약
 
-End with:
+리뷰 끝에 반드시 아래를 추가한다:
 
 ```
 ---
-Summary: X CRITICAL, Y WARNING, Z INFO
-Verdict: PASS (0 critical) | FAIL (N critical issues must be resolved)
+요약: CRITICAL N건, WARNING N건, INFO N건
+판정: PASS (CRITICAL 0건) | FAIL (CRITICAL N건 — 머지 전 반드시 수정)
 ```

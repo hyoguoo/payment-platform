@@ -11,4 +11,5 @@ public class CheckoutCommand {
 
     private final Long userId;
     private final List<OrderedProduct> orderedProductList;
+    private final String idempotencyKey;
 }

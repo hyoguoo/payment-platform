@@ -10,3 +10,4 @@
 | 폴더 | 작업 내용 | 기간 |
 |------|---------|------|
 | `async-payment-migration/` | 비동기 결제 처리 마이그레이션 (Sync / Outbox / Kafka 전략 구현) | 2026-03-14 ~ 2026-03-18 |
+| `checkout-idempotency/` | Checkout 멱등성 구현 (Caffeine 캐시 기반 중복 요청 감지, 201/200 분기) | 2026-03-22 |

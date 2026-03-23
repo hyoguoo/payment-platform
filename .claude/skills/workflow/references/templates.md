@@ -11,10 +11,10 @@
 
 ## 활성 작업
 - **주제**: <주제>
-- **단계**: discuss | plan | execute | verify | done
+- **단계**: discuss | plan | execute | review | verify | done
 - **활성 태스크**: Task N: <이름>  ← execute 단계에서만 기재
-- **이슈**: #<번호>  ← plan 완료 후 기재
-- **브랜치**: #<번호>  ← plan 완료 후 기재
+- **이슈**: #<번호>  ← discuss 완료 후 기재
+- **브랜치**: #<번호>  ← discuss 완료 후 기재
 
 ## 파일 링크
 - 설계: docs/topics/<TOPIC>.md
@@ -23,7 +23,9 @@
 ## 단계 진행
 - [x] discuss
 - [ ] plan
+- [ ] plan-review
 - [ ] execute
+- [ ] review
 - [ ] verify
 ```
 
@@ -43,12 +45,13 @@
 ## 최근 완료
 - **주제**: <방금 완료한 주제>
 - **완료일**: YYYY-MM-DD
-- **아카이브**: docs/archive/<TOPIC>-PLAN.md, docs/archive/<TOPIC>-CONTEXT.md
+- **아카이브**: docs/archive/<topic-kebab>/
 
 ## 단계 진행
 - [x] discuss
 - [x] plan
 - [x] execute
+- [x] review
 - [x] verify
 ```
 
@@ -64,7 +67,7 @@
 
 **Date:** YYYY-MM-DD
 **Topic:** <작업 주제>
-**Stage:** discuss | plan | execute | verify
+**Stage:** discuss | plan | execute | review | verify
 **Active Task:** Task N: <이름>  ← execute 단계에서만
 
 ## 완료된 작업

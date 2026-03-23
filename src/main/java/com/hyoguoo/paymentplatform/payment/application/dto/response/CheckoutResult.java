@@ -10,4 +10,5 @@ public class CheckoutResult {
 
     private final String orderId;
     private final BigDecimal totalAmount;
+    private final boolean isDuplicate;
 }

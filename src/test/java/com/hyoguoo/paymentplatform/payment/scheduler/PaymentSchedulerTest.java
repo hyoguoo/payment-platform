@@ -3,15 +3,13 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.response.BasicResponse;
 import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;
-import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
-import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -35,12 +33,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
-class PaymentSchedulerTest extends IntegrationTest {
+class PaymentSchedulerTest extends BaseIntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event
@@ -469,17 +465,4 @@ class PaymentSchedulerTest extends IntegrationTest {
         );
     }
 
-    @TestConfiguration
-    static class TestConfig {
-
-        @Bean
-        public HttpOperator httpOperator() {
-            return new FakeTossHttpOperator();
-        }
-
-        @Bean
-        public LocalDateTimeProvider localDateTimeProvider() {
-            return new TestLocalDateTimeProvider();
-        }
-    }
 }

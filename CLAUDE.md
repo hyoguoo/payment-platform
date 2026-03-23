@@ -8,7 +8,7 @@ Async payment migration project: migrate the synchronous Toss Payments confirm f
 
 ## Workflow
 
-작업은 **discuss → plan → execute → verify** 4단계로 진행한다.
+작업은 **discuss → plan → plan-review → execute → review → verify** 6단계로 진행한다.
 
 **활성화 조건**: `docs/<TOPIC>-PLAN.md` 파일이 존재할 때만 이 워크플로우를 따른다.
 단순 질문이나 빠른 수정은 일반 요청으로 처리한다.
@@ -48,7 +48,9 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 
 ## Skills
 
-- `.claude/skills/workflow/SKILL.md` — discuss → plan → execute → verify 워크플로우 실행 가이드
+- `.claude/skills/workflow/SKILL.md` — discuss → plan → plan-review → execute → review → verify 워크플로우 실행 가이드
+- `.claude/skills/plan-review/SKILL.md` — 계획/설계 검수 (임의 파일·터미널 내용·인라인 등 유연하게 호출)
+- `.claude/skills/workflow-plan-review/SKILL.md` — 워크플로우 plan-review 단계 (PLAN.md 자동 로드 + STATE.md 처리)
 - `.claude/skills/review/SKILL.md` — 코드 리뷰 체크리스트
 
 ---

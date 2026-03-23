@@ -12,14 +12,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.IntegrationTest;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.response.BasicResponse;
 import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentStatusApiResponseMixin;
-import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -46,15 +46,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-class PaymentControllerTest extends IntegrationTest {
+class PaymentControllerTest extends BaseIntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event
@@ -94,6 +92,7 @@ class PaymentControllerTest extends IntegrationTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper.registerModule(new JavaTimeModule());
         objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
         objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
         objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
@@ -136,7 +135,7 @@ class PaymentControllerTest extends IntegrationTest {
                 .map(PaymentOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        perform.andExpect(status().isOk())
+        perform.andExpect(status().isCreated())
                 .andExpect(result -> {
                     String responseContent = result.getResponse().getContentAsString();
 
@@ -573,12 +572,4 @@ class PaymentControllerTest extends IntegrationTest {
         return updatedPaymentEvent;
     }
 
-    @TestConfiguration
-    static class TestConfig {
-
-        @Bean
-        public HttpOperator httpOperator() {
-            return new FakeTossHttpOperator();
-        }
-    }
 }

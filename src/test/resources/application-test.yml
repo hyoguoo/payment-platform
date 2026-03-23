@@ -3,6 +3,8 @@ spring:
     activate:
       on-profile: test
     import: optional:file:.env.secret[.properties]
+  main:
+    allow-bean-definition-overriding: true
 
   datasource:
     hikari:
