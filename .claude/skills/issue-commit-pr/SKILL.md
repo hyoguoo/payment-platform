@@ -1,56 +1,63 @@
 ---
 name: issue-commit-pr
-description: Runs the full GitHub workflow — create issue, create branch, commit, push, and open PR. Use this skill whenever the user asks to "create an issue and PR", "commit and open a PR", "push this work to GitHub", or any similar request that covers the end-to-end flow from current changes to a pull request.
+description: >
+  이슈 생성 → 브랜치 → 커밋 → 푸시 → PR 오픈까지 GitHub 전체 워크플로우를 실행한다.
+  "이슈랑 PR 만들어줘", "커밋하고 PR 올려줘", "GitHub에 올려줘" 등 현재 변경 사항을 PR로 만드는
+  흐름을 요청할 때 반드시 이 스킬을 사용한다.
 ---
 
-# Issue → Commit → PR Workflow
+# Issue → Commit → PR 워크플로우
 
-Handles the full flow from analyzing current changes to opening a GitHub pull request.
+현재 변경 사항을 분석해서 GitHub PR을 여는 전체 흐름을 처리한다.
 
-> **Language rule**: All issue titles/bodies, commit messages, and PR descriptions must be written in Korean. Code, branch names, and type prefixes stay in English.
+> **언어 규칙**: 이슈 제목/본문, 커밋 메시지, PR 설명은 모두 한국어로 작성한다. 코드, 브랜치명, 타입 prefix는 영문을 유지한다.
+>
+> **어체 규칙**: 모든 한국어 문장은 명사형 종결 또는 `~다` 어체로 작성한다. `~습니다`, `~합니다`, `~됩니다` 같은 경어체는 절대 사용하지 않는다.
+> - ❌ `동시성 문제를 해결했습니다.` / `멱등성을 보장합니다.`
+> - ✅ `동시성 문제를 해결했다.` / `멱등성을 보장한다.` / `TOCTOU 버그 수정`
 
-## Step 1 — Analyze Changes
+## Step 1 — 변경 사항 분석
 
-Run `git diff` (staged + unstaged) and `git status` to understand what changed and why. Use this analysis as the basis for all written content below.
+`git diff`(staged + unstaged)와 `git status`를 실행해서 무엇이 왜 바뀌었는지 파악한다. 이 분석을 아래 모든 작성 내용의 근거로 삼는다.
 
-## Step 2 — Create GitHub Issue
+## Step 2 — GitHub 이슈 생성
 
-Use `mcp__github__issue_write` (not `gh` CLI — it may not be authenticated).
+`mcp__github__issue_write`를 사용한다 (`gh` CLI 사용 금지 — 인증이 안 되어 있을 수 있다).
 
-**Title format**: `<type>: <one-line summary in Korean>`
-Example: `feat: PaymentRecoveryUseCase 모든 상태 처리 추가`
+**제목 형식**: `<type>: <한 줄 요약>`
+예시: `feat: PaymentRecoveryUseCase 모든 상태 처리 추가`
 
-**Body structure**:
+**본문 구조**:
 ```
 ## 배경
-Why this change was needed; what problem existed before.
+이 변경이 왜 필요했는지, 이전에 어떤 문제가 있었는지.
 
 ## 변경 내용
 ### `ChangedFile/ClassName`
-- What changed and how, as bullet points
+- 무엇이 어떻게 바뀌었는지, 불릿 포인트로
 ```
 
-Infer `owner`/`repo` from `git remote -v` or context.
+`owner`/`repo`는 `git remote -v` 또는 컨텍스트에서 추론한다.
 
-## Step 3 — Create Branch
+## Step 3 — 브랜치 생성
 
 ```bash
 git checkout -b "#<issue-number>"
 ```
 
-Branch name must be exactly `#<number>` (e.g., `#47`).
+브랜치명은 정확히 `#<번호>` 형식이어야 한다 (예: `#47`).
 
-## Step 4 — Stage Files
+## Step 4 — 파일 스테이징
 
-Stage files by name explicitly. Never use `git add -A` or `git add .` — unintended files (`.env`, build artifacts) may be included.
+파일을 이름으로 명시적으로 스테이징한다. `git add -A`나 `git add .`는 절대 사용하지 않는다 — `.env`, 빌드 아티팩트 등 의도하지 않은 파일이 포함될 수 있다.
 
-## Step 5 — Commit
+## Step 5 — 커밋
 
 ```bash
 git commit -m "$(cat <<'EOF'
-<type>: <one-line summary in Korean>
+<type>: <한 줄 요약>
 
-<detailed description in Korean>
+<상세 설명>
 
 Closes #<issue-number>
 
@@ -59,43 +66,69 @@ EOF
 )"
 ```
 
-**Commit message rules**:
-- Type prefix in English: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
-- Body in Korean
-- Implementation code and test code go in the same commit
+**커밋 메시지 규칙**:
+- 타입 prefix는 영문: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+- 본문은 한국어
+- 구현 코드와 테스트 코드는 같은 커밋에 포함
 
-## Step 6 — Push Branch
+## Step 6 — 브랜치 푸시
 
 ```bash
 git push -u origin "#<issue-number>"
 ```
 
-## Step 7 — Create PR
+## Step 7 — PR 생성 또는 업데이트
 
-Use `mcp__github__create_pull_request` (not `gh` CLI).
+`mcp__github__create_pull_request`를 사용한다 (`gh` CLI 사용 금지 — 인증이 안 되어 있을 수 있다).
+이 브랜치에 이미 PR이 존재하면 `mcp__github__update_pull_request`를 사용한다.
 
 - `head`: `#<issue-number>`
 - `base`: `main`
-- Title: same as the commit message first line
+- Title: 커밋 메시지 첫 번째 줄과 동일
 
-**PR body structure**:
+**PR 본문 구조**:
 ```markdown
 ## 관련 이슈
 Closes #<issue-number>
 
 ## 개요
-Why this change was needed and what problem it solves. One short paragraph in Korean.
+이 변경이 왜 필요했는지, 어떤 문제를 해결하는지. 한 단락으로 간결하게.
 
 ## 구현 내용
 ### `ChangedFile/ClassName`
-- What changed and how, as bullet points in Korean
+- 무엇이 어떻게 바뀌었는지, 불릿 포인트로
 
 ## 테스트
-- What was tested and how, as bullet points in Korean
+- 무엇을 어떻게 테스트했는지, 불릿 포인트로
 ```
 
-Omit sections that don't apply (e.g., no `## 테스트` if there are no test changes). Add `## 주요 버그 수정` if bug fixes are included.
+**구조 규칙**:
+- 섹션 헤더는 반드시 한국어로 — `## Summary`, `## 1.` 같은 영문·번호 형식 금지
+- 불필요한 섹션은 생략 (테스트 변경 없으면 `## 테스트` 제거)
+- 버그 수정이 포함되면 `## 주요 버그 수정` 추가
+- 푸터(Generated with 등) 절대 추가하지 않음
 
-## Notes
+**PR 업데이트 시 히스토리 보존**:
+PR을 업데이트할 때는 기존 본문을 통째로 교체하지 않는다. PR 본문은 작업의 전체 히스토리를 담는 문서다 — 초기 설계 결정, 중간에 발견한 문제와 그 해결 과정, 새로 추가된 파일 모두가 맥락이 된다.
+- **보존해야 할 것**: 기존 `## 구현 내용`의 파일 목록과 설명, 설계 배경 및 의사결정 이유, 이전 구현 단계에서 발견한 버그/개선 사항
+- **새로 추가할 것**: 이번에 변경·추가된 내용을 기존 섹션 아래에 누적 작성, 새로 발견된 이슈가 있으면 `## 주요 버그 수정` 등 새 섹션으로 추가
+- **판단 기준**: "이 PR을 처음 보는 리뷰어가 이 내용만 읽고 전체 변경 흐름을 이해할 수 있는가?" — 그렇지 않다면 히스토리가 지워진 것이다
 
-- If README or docs contain temporary TODO notes, ask the user whether to include them before committing.
+### 시각 보조 자료 (이슈/PR 본문 공통)
+
+복잡한 개념을 텍스트만으로 설명하기 어렵다면 mermaid나 테이블을 활용한다. 의무가 아니라 판단의 문제 — 간단한 변경에는 넣지 않는다.
+
+**mermaid가 효과적인 경우**:
+- 시퀀스 다이어그램: 동시성, 레이스 컨디션, API 호출 흐름처럼 시간 순서가 중요한 로직
+- 플로우차트: 분기 조건이 여러 개인 처리 흐름
+- 클래스/컴포넌트 다이어그램: Before/After 구조 변화가 한눈에 보여야 할 때
+
+**테이블이 효과적인 경우**:
+- 여러 항목의 속성을 비교할 때 (Before/After, 전략별 비교)
+- 테스트 시나리오 목록처럼 반복 구조가 명확할 때
+
+충분히 명확하면 넣지 않는다.
+
+## 참고
+
+- README나 docs에 임시 TODO 메모가 있으면, 커밋에 포함할지 사용자에게 확인한다.
