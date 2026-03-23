@@ -1,7 +1,7 @@
 ---
 name: workflow
 description: >
-  payment-platform의 discuss → plan → execute → review → verify 워크플로우 오케스트레이터.
+  payment-platform의 discuss → plan → plan-review → execute → review → verify 워크플로우 오케스트레이터.
   docs/<TOPIC>-PLAN.md 파일이 존재하거나, 사용자가 "plan 작성", "execute 시작",
   "워크플로우로", "다음 단계", "세션 재개", "이어서 진행", "어디까지 했지" 등을 말할 때
   반드시 이 스킬을 사용한다. 단순 질문, 빠른 수정, 일회성 코드 변경에는 사용하지 않는다.
@@ -27,6 +27,7 @@ description: >
 | idle | `workflow-discuss` (새 작업 시작) |
 | discuss | `workflow-discuss` |
 | plan | `workflow-plan` |
+| plan-review | `workflow-plan-review` |
 | execute | `workflow-execute` |
 | review | `workflow-review` |
 | verify | `workflow-verify` |
@@ -47,7 +48,8 @@ description: >
 | 시점 | 포함 파일 | 커밋 타입 |
 |------|----------|----------|
 | Discuss 완료 | topics 문서 + STATE.md(plan으로 갱신, 이슈/브랜치 기록) | `docs:` (feature 브랜치) |
-| Plan 완료 | PLAN.md + STATE.md(execute/Task 1로 갱신) | `docs:` (feature 브랜치) |
+| Plan 완료 | PLAN.md + STATE.md(plan-review로 갱신) | `docs:` (feature 브랜치) |
+| Plan Review 통과 | STATE.md(execute/Task 1로 갱신) | `docs:` (feature 브랜치) |
 | TDD RED | 실패 테스트 파일만 | `test:` |
 | TDD GREEN | 구현 코드 + 테스트 | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |

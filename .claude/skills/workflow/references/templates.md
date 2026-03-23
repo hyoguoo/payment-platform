@@ -23,6 +23,7 @@
 ## 단계 진행
 - [x] discuss
 - [ ] plan
+- [ ] plan-review
 - [ ] execute
 - [ ] review
 - [ ] verify

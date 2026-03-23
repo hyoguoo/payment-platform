@@ -58,6 +58,6 @@ Plan의 목적은 discuss에서 결정된 설계를 "바로 코딩할 수 있는
 - [ ] 모든 태스크에 명확한 완료 기준 존재
 - [ ] 태스크 간 의존성 순서 올바름
 - [ ] PLAN.md + STATE.md를 하나의 `docs:` 커밋으로 묶기 (feature 브랜치 위에서, discuss 커밋에서 이미 브랜치 생성됨)
-- [ ] STATE.md 단계를 `execute`, 활성 태스크를 `Task 1`로 갱신
+- [ ] STATE.md 단계를 `plan-review`로 갱신 (활성 태스크 없음)
 
-완료 후: "plan 완료. execute 단계로 넘어가겠습니다." 라고 알린다.
+완료 후: "plan 완료. plan-review 단계로 넘어가겠습니다." 라고 알리고 `workflow-plan-review` 스킬로 즉시 진행한다.
