@@ -25,6 +25,27 @@
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
 
+### Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결
+
+- UI 중복 클릭, 네트워크 재시도 등으로 `PaymentEvent`가 복수 생성되어 DB에 유효하지 않은 주문이 누적되는 문제 존재
+- 초기 `getIfPresent + put` 구현에서 코드 리뷰 중 TOCTOU 경쟁 조건 발견, `getOrCreate` 단일 원자적 메서드로 포트 계약 재설계
+- 링크: [Checkout API 멱등성 보장 — Caffeine 캐시와 TOCTOU 경쟁 조건 해결](https://hyoguoo.github.io/blog/checkout-idempotency)
+
+```mermaid
+sequenceDiagram
+    participant A as Thread A
+    participant B as Thread B
+    participant Cache as Caffeine Cache
+    A ->> Cache: get("key", loader)
+    Cache -->> A: (lock acquired, loader 실행 중)
+    A ->> A: create() → PaymentEvent#1
+    B ->> Cache: get("key", loader)
+    Cache -->> B: (동일 키 → lock wait)
+    A ->> Cache: 결과 저장 후 lock 해제
+    Cache -->> B: hit → PaymentEvent#1 반환 (loader 미실행)
+    Note over Cache: ✅ 중복 생성 없음
+```
+
 ### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
 
 - 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
@@ -53,7 +74,8 @@
 
 - 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
 - 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
-- 링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
+-
+링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
