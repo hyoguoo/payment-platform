@@ -53,3 +53,5 @@ generated-sources/
 
 # Dependencies
 node_modules/
+
+.archive
