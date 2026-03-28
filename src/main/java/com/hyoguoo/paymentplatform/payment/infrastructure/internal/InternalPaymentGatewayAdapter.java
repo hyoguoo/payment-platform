@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayFactory;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayProperties;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
@@ -18,18 +17,6 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
 
     private final PaymentGatewayFactory factory;
     private final PaymentGatewayProperties properties;
-
-    @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatus(paymentKey);
-    }
-
-    @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatusByOrderId(orderId);
-    }
 
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmRequest request) {

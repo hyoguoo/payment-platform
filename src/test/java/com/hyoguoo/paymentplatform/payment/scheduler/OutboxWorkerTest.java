@@ -103,7 +103,6 @@ class OutboxWorkerTest {
         then(mockPaymentCommandUseCase).should(times(1)).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class), any(PaymentOutbox.class));
-        then(mockPaymentOutboxUseCase).should(times(0)).markDone(any());
     }
 
     @Test
@@ -122,7 +121,6 @@ class OutboxWorkerTest {
         // then
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
         then(mockTransactionCoordinator).should(never()).executePaymentSuccessCompletion(any(), any(), any());
-        then(mockPaymentOutboxUseCase).should(never()).markDone(anyString());
     }
 
     @Test
@@ -147,7 +145,6 @@ class OutboxWorkerTest {
                 .incrementRetryOrFail(ORDER_ID, pendingOutbox);
         then(mockTransactionCoordinator).should(never())
                 .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
-        then(mockPaymentOutboxUseCase).should(never()).markFailed(anyString());
     }
 
     @Test
@@ -170,7 +167,6 @@ class OutboxWorkerTest {
         // then
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(), any(PaymentOutbox.class));
-        then(mockPaymentOutboxUseCase).should(times(0)).markFailed(any());
         then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 

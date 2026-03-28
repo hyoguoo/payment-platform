@@ -7,7 +7,6 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.exception.UnsupportedPaymentGatewayException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,16 +75,6 @@ class PaymentGatewayFactoryTest {
 
         @Override
         public PaymentCancelResult cancel(PaymentCancelRequest request) {
-            return null;
-        }
-
-        @Override
-        public PaymentStatusResult getStatus(String paymentKey) {
-            return null;
-        }
-
-        @Override
-        public PaymentStatusResult getStatusByOrderId(String orderId) {
             return null;
         }
     }

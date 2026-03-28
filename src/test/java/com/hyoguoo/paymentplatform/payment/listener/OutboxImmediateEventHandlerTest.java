@@ -108,7 +108,6 @@ class OutboxImmediateEventHandlerTest {
             // then
             then(mockTransactionCoordinator).should(times(1))
                     .executePaymentSuccessCompletionWithOutbox(eq(paymentEvent), any(LocalDateTime.class), eq(outbox));
-            then(mockPaymentOutboxUseCase).should(times(0)).markDone(any());
         }
     }
 
@@ -160,7 +159,6 @@ class OutboxImmediateEventHandlerTest {
             // then
             then(mockTransactionCoordinator).should(times(1))
                     .executePaymentFailureCompensationWithOutbox(eq(paymentEvent), anyList(), anyString(), eq(outbox));
-            then(mockPaymentOutboxUseCase).should(times(0)).markFailed(any());
         }
 
         @Test

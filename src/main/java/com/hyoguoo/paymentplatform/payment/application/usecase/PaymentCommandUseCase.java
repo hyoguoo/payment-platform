@@ -10,8 +10,6 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -65,55 +63,12 @@ public class PaymentCommandUseCase {
     }
 
     @Transactional
-    @PublishDomainEvent(action = "retry")
-    public PaymentEvent increaseRetryCount(PaymentEvent paymentEvent) {
-        paymentEvent.increaseRetryCount();
-        return paymentEventRepository.saveOrUpdate(paymentEvent);
-    }
-
-    @Transactional
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
         LocalDateTime now = localDateTimeProvider.now();
         paymentEvent.expire(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
-    }
-
-    public void validateCompletionStatus(
-            PaymentEvent paymentEvent,
-            PaymentConfirmCommand paymentConfirmCommand
-    ) {
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult statusResult =
-                paymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey());
-
-        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
-                .paymentKey(statusResult.paymentKey())
-                .orderId(statusResult.orderId())
-                .paymentConfirmResultStatus(
-                        statusResult.status() == PaymentStatus.DONE ?
-                                PaymentConfirmResultStatus.SUCCESS :
-                                (statusResult.failure() != null && statusResult.failure().isRetryable() ?
-                                        PaymentConfirmResultStatus.RETRYABLE_FAILURE :
-                                        PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE)
-                )
-                .paymentDetails(
-                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails.builder()
-                                .totalAmount(statusResult.amount())
-                                .status(convertToTossPaymentStatus(statusResult.status()))
-                                .approvedAt(statusResult.approvedAt())
-                                .build()
-                )
-                .paymentFailure(
-                        statusResult.failure() != null ?
-                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure.builder()
-                                        .code(statusResult.failure().code())
-                                        .message(statusResult.failure().message())
-                                        .build() : null
-                )
-                .build();
-
-        paymentEvent.validateCompletionStatus(paymentConfirmCommand, paymentGatewayInfo);
     }
 
     public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
@@ -159,17 +114,4 @@ public class PaymentCommandUseCase {
         };
     }
 
-    private TossPaymentStatus convertToTossPaymentStatus(PaymentStatus status) {
-        return switch (status) {
-            case DONE -> TossPaymentStatus.DONE;
-            case IN_PROGRESS -> TossPaymentStatus.IN_PROGRESS;
-            case WAITING_FOR_DEPOSIT -> TossPaymentStatus.WAITING_FOR_DEPOSIT;
-            case CANCELED -> TossPaymentStatus.CANCELED;
-            case PARTIAL_CANCELED -> TossPaymentStatus.PARTIAL_CANCELED;
-            case ABORTED -> TossPaymentStatus.ABORTED;
-            case EXPIRED -> TossPaymentStatus.EXPIRED;
-            case READY -> TossPaymentStatus.READY;
-            default -> TossPaymentStatus.READY; // UNKNOWN -> READY로 매핑
-        };
-    }
 }

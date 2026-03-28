@@ -44,19 +44,7 @@ public class PaymentOutboxUseCase {
     }
 
     @Transactional
-    public void markDone(String orderId) {
-        PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
-                .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
-                        PaymentErrorCode.PAYMENT_OUTBOX_NOT_FOUND));
-        if (outbox.getStatus() == PaymentOutboxStatus.DONE) {
-            return;
-        }
-        outbox.toDone();
-        paymentOutboxRepository.save(outbox);
-    }
-
-    @Transactional
-    public void markFailed(String orderId) {
+    private void markFailed(String orderId) {
         PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
                 .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
                         PaymentErrorCode.PAYMENT_OUTBOX_NOT_FOUND));

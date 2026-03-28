@@ -92,66 +92,6 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("markDone - 멱등: 이미 DONE 상태이면 save() 호출하지 않는다")
-    void markDone_alreadyDone_doesNotCallSave() {
-        // given
-        PaymentOutbox doneOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.DONE)
-                .retryCount(0)
-                .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(doneOutbox));
-
-        // when
-        paymentOutboxUseCase.markDone(ORDER_ID);
-
-        // then
-        then(mockPaymentOutboxRepository).should(never()).save(any());
-    }
-
-    @Test
-    @DisplayName("markDone - 정상: IN_FLIGHT 상태이면 toDone() 후 save() 1회 호출")
-    void markDone_inFlight_callsToDoneAndSave() {
-        // given
-        PaymentOutbox inFlightOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.IN_FLIGHT)
-                .retryCount(0)
-                .inFlightAt(FIXED_NOW)
-                .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(inFlightOutbox);
-
-        // when
-        paymentOutboxUseCase.markDone(ORDER_ID);
-
-        // then
-        then(mockPaymentOutboxRepository).should(times(1)).save(inFlightOutbox);
-        assertThat(inFlightOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.DONE);
-    }
-
-    @Test
-    @DisplayName("markFailed - 멱등: 이미 FAILED 상태이면 save() 호출하지 않는다")
-    void markFailed_alreadyFailed_doesNotCallSave() {
-        // given
-        PaymentOutbox failedOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.FAILED)
-                .retryCount(0)
-                .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(failedOutbox));
-
-        // when
-        paymentOutboxUseCase.markFailed(ORDER_ID);
-
-        // then
-        then(mockPaymentOutboxRepository).should(never()).save(any());
-    }
-
-    @Test
     @DisplayName("incrementRetryOrFail - retryable: retryCount=3이면 incrementRetryCount() 후 save() 호출")
     void incrementRetryOrFail_retryable_incrementsAndSaves() {
         // given

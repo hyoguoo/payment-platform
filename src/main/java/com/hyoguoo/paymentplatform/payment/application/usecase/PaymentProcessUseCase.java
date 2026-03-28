@@ -3,11 +3,9 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentProcessRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentProcessStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,11 +47,6 @@ public class PaymentProcessUseCase {
         LocalDateTime failedAt = localDateTimeProvider.now();
         paymentProcess.fail(failedAt, failureReason);
         return paymentProcessRepository.save(paymentProcess);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PaymentProcess> findAllProcessingJobs() {
-        return paymentProcessRepository.findAllByStatus(PaymentProcessStatus.PROCESSING);
     }
 
     private PaymentProcess getPaymentProcessByOrderId(String orderId) {
