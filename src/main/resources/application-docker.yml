@@ -26,9 +26,6 @@ spring:
       mode: always
       continue-on-error: true
 
-  kafka:
-    bootstrap-servers: kafka:9092
-
   myapp:
     toss-payments:
       api-url: https://api.tosspayments.com/v1/payments

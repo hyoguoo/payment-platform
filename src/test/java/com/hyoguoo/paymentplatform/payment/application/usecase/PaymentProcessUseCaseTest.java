@@ -45,7 +45,6 @@ class PaymentProcessUseCaseTest {
         void createProcessingJob() {
             // given
             String orderId = "order-123";
-            PaymentProcess expectedJob = PaymentProcess.createProcessing(orderId);
             PaymentProcess savedJob = PaymentProcess.allArgsBuilder()
                     .id(1L)
                     .orderId(orderId)

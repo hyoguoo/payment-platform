@@ -43,7 +43,7 @@ public class OutboxWorker {
     @Value("${scheduler.outbox-worker.in-flight-timeout-minutes:5}")
     private int inFlightTimeoutMinutes;
 
-    @Scheduled(fixedDelayString = "${scheduler.outbox-worker.fixed-delay-ms:1000}")
+    @Scheduled(fixedDelayString = "${scheduler.outbox-worker.fixed-delay-ms:5000}")
     public void process() {
         // Step 0: IN_FLIGHT 타임아웃 복구
         paymentOutboxUseCase.recoverTimedOutInFlightRecords(inFlightTimeoutMinutes);

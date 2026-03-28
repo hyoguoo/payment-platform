@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -29,8 +31,10 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
+    private final PaymentConfirmPublisherPort confirmPublisher;
 
     @Override
+    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
             throws PaymentOrderedProductStockException {
         PaymentEvent paymentEvent =
@@ -49,6 +53,8 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
             paymentFailureUseCase.handleStockFailure(paymentEvent, e.getMessage());
             throw e;
         }
+
+        confirmPublisher.publish(command.getOrderId());
 
         return PaymentConfirmAsyncResult.builder()
                 .responseType(ResponseType.ASYNC_202)

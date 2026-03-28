@@ -15,8 +15,11 @@ spring:
       http:
         read-timeout-millis: 30000   # FakeTossHttpOperator @Value 바인딩용
       fake:
-        min-delay-millis: 100        # Toss API 네트워크 딜레이 시뮬레이션 (최소)
-        max-delay-millis: 300        # Toss API 네트워크 딜레이 시뮬레이션 (최대)
+        min-delay-millis: ${TOSS_MIN_DELAY_MILLIS}   # 기본값: docker/compose/.env
+        max-delay-millis: ${TOSS_MAX_DELAY_MILLIS}   # 기본값: docker/compose/.env
 
 scheduler:
   enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리
+  outbox-worker:
+    batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE}       # 기본값: docker/compose/.env
+    parallel-enabled: ${SCHEDULER_OUTBOX_WORKER_PARALLEL_ENABLED}  # 기본값: docker/compose/.env

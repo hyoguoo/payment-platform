@@ -796,6 +796,7 @@ class PaymentEventTest {
             case FAILED -> paymentEvent.fail("test reason", statusChangeTime);
             case UNKNOWN -> paymentEvent.unknown("test reason", statusChangeTime);
             case EXPIRED -> paymentEvent.expire(statusChangeTime);
+            default -> throw new AssertionError("Unexpected status: " + targetStatus);
         }
 
         // then

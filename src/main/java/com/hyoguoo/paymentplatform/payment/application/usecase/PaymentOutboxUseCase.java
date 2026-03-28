@@ -86,6 +86,10 @@ public class PaymentOutboxUseCase {
         return paymentOutboxRepository.findPendingBatch(batchSize);
     }
 
+    public Optional<PaymentOutbox> findByOrderId(String orderId) {
+        return paymentOutboxRepository.findByOrderId(orderId);
+    }
+
     public Optional<PaymentOutboxStatus> findActiveOutboxStatus(String orderId) {
         return paymentOutboxRepository.findByOrderId(orderId)
                 .filter(outbox -> outbox.getStatus() == PaymentOutboxStatus.PENDING
