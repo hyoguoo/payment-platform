@@ -26,12 +26,14 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -260,6 +262,111 @@ class PaymentConfirmServiceImplTest {
                         eq(mockConfirmData.mockPaymentEvent()),
                         any(List.class),
                         any(String.class));
+    }
+
+    @Nested
+    @DisplayName("validateLocalPaymentRequest 로컬 검증 테스트")
+    class ValidateLocalPaymentRequestTest {
+
+        private PaymentEvent validPaymentEvent;
+
+        @BeforeEach
+        void setUpValidPaymentEvent() {
+            PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                    .id(1L)
+                    .paymentEventId(1L)
+                    .orderId("order123")
+                    .productId(1L)
+                    .quantity(1)
+                    .totalAmount(new BigDecimal("10000"))
+                    .allArgsBuild();
+
+            validPaymentEvent = PaymentEvent.allArgsBuilder()
+                    .id(1L)
+                    .buyerId(1L)
+                    .sellerId(2L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .status(PaymentEventStatus.IN_PROGRESS)
+                    .paymentOrderList(List.of(paymentOrder))
+                    .allArgsBuild();
+
+            when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any())).thenReturn(validPaymentEvent);
+            try {
+                when(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(any(), any()))
+                        .thenReturn(PaymentProcess.createProcessing("order123"));
+            } catch (PaymentOrderedProductStockException e) {
+                throw new RuntimeException(e);
+            }
+            when(mockPaymentCommandUseCase.executePayment(any(), any())).thenReturn(validPaymentEvent);
+        }
+
+        @Test
+        @DisplayName("buyerId 불일치 시 PaymentValidException을 던진다")
+        void buyerId_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(999L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("amount 불일치 시 PaymentValidException을 던진다")
+        void amount_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("99999"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("orderId 불일치 시 PaymentValidException을 던진다")
+        void orderId_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("wrong-order")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            when(mockPaymentLoadUseCase.getPaymentEventByOrderId("wrong-order"))
+                    .thenReturn(validPaymentEvent);
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("paymentKey 불일치 시 PaymentValidException을 던진다")
+        void paymentKey_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("order123")
+                    .paymentKey("wrong-key")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
     }
 
     private record MockConfirmData(PaymentConfirmCommand paymentConfirmCommand, PaymentEvent mockPaymentEvent) {

@@ -18,11 +18,14 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUse
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -211,12 +214,83 @@ class OutboxAsyncConfirmServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("LVAL 로컬 금액 검증 테스트")
+    class LvalValidationTest {
+
+        @Test
+        @DisplayName("금액 일치 시 정상 플로우를 진행한다")
+        void 금액_일치_시_정상_플로우를_진행한다() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
+
+            // when & then
+            outboxAsyncConfirmService.confirm(command);
+
+            then(mockTransactionCoordinator).should(times(1))
+                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
+        }
+
+        @Test
+        @DisplayName("금액 불일치 시 PaymentValidException을 던진다")
+        void 금액_불일치_시_PaymentValidException을_던진다() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            BigDecimal eventAmount = BigDecimal.valueOf(15000);
+            BigDecimal commandAmount = BigDecimal.valueOf(9999);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(commandAmount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, eventAmount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+
+            then(mockTransactionCoordinator).should(times(0))
+                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
+        }
+    }
+
     private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status) {
         return PaymentEvent.allArgsBuilder()
                 .id(1L)
                 .orderId(orderId)
                 .status(status)
                 .paymentOrderList(Collections.emptyList())
+                .allArgsBuild();
+    }
+
+    private PaymentEvent createPaymentEventWithAmount(String orderId, PaymentEventStatus status, BigDecimal amount) {
+        PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .productId(1L)
+                .quantity(1)
+                .totalAmount(amount)
+                .allArgsBuild();
+        return PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .status(status)
+                .paymentOrderList(List.of(paymentOrder))
                 .allArgsBuild();
     }
 }
