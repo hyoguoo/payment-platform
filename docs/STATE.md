@@ -3,8 +3,10 @@
 > 최종 수정: 2026-03-28
 
 ## 활성 작업
-- **주제**: 없음
-- **단계**: idle
+- **주제**: ASYNC-PAYMENT-CLEANUP
+- **단계**: plan
+- **이슈**: #51, #52, #53
+- **브랜치**: #51
 
 ## 최근 완료
 - **주제**: K6-BENCHMARK-REDESIGN
@@ -13,8 +15,8 @@
 
 ## 단계 진행
 - [x] discuss
-- [x] plan
-- [x] plan-review
-- [x] execute
-- [x] review
-- [x] verify
+- [ ] plan
+- [ ] plan-review
+- [ ] execute
+- [ ] review
+- [ ] verify
