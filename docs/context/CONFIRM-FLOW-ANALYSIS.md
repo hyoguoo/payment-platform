@@ -1,6 +1,6 @@
 # PaymentConfirmService 구현체 비즈니스 로직 분석
 
-> 최종 수정: 2026-03-18
+> 최종 수정: 2026-03-28
 
 ---
 
@@ -77,9 +77,13 @@
 
 ---
 
-## 2. Outbox 플로우 (`OutboxAsyncConfirmService` + `OutboxWorker`)
+## 2. Outbox 플로우 (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`)
 
 > `spring.payment.async-strategy=outbox`
+>
+> **즉시 처리(ImmediateDispatch) + 폴백(OutboxWorker) 이중 구조**
+> - 정상 경로: confirm() 트랜잭션 커밋 직후 Spring ApplicationEvent 발동 → OutboxImmediateEventHandler가 비동기로 즉시 처리
+> - 폴백 경로: 서버 크래시 등 즉시 처리가 누락된 경우 OutboxWorker(fixedDelay 5s)가 PENDING 레코드를 배치로 처리
 
 ### 2-1. confirm() — HTTP 요청 처리
 
@@ -87,11 +91,13 @@
 [Controller] POST /confirm
       │
       ▼
+      @Transactional(rollbackFor=PaymentOrderedProductStockException)
+      │
 ① getPaymentEventByOrderId(orderId)
       │  PaymentEvent 조회 (상태: READY 예상)
       ▼
 ② executePaymentAndStockDecreaseWithOutbox(paymentEvent, paymentKey, orderId, paymentOrderList)
-      │  단일 트랜잭션 (rollbackFor=PaymentOrderedProductStockException)
+      │  단일 트랜잭션 내 (rollbackFor=PaymentOrderedProductStockException)
       │  ┌─ executePayment()             — PaymentEvent: READY → IN_PROGRESS, paymentKey 기록
       │  ├─ decreaseStockForOrders()     — 재고 감소
       │  └─ createPendingRecord(orderId) — PaymentOutbox: PENDING 생성
@@ -102,50 +108,49 @@
       │         └─ markPaymentAsFail()   → PaymentEvent: FAILED
       │         └─ rethrow PaymentOrderedProductStockException (4xx)
       ▼
+③ confirmPublisher.publish(orderId)  [OutboxImmediatePublisher]
+      │  Spring ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)
+      │  트랜잭션 커밋 이후 @TransactionalEventListener(AFTER_COMMIT)가 발동
+      │  (TX 내에서 이벤트 큐잉 → 커밋 후 비동기 처리)
+      ▼
 [Controller] 202 Accepted  (ResponseType.ASYNC_202)
-      (이후 처리는 OutboxWorker가 비동기로 담당)
+      (이후 처리는 OutboxImmediateEventHandler가 비동기로 담당)
 ```
 
-### 2-2. OutboxWorker.processRecord() — 백그라운드 처리
+### 2-2. OutboxImmediateEventHandler.handle() — 즉시 비동기 처리
 
 ```
-[@Scheduled fixedDelay — 기본 1000ms]
+[@Async @TransactionalEventListener(AFTER_COMMIT)]
+커밋 직후 별도 스레드에서 실행
       │
       ▼
-Step 0: recoverTimedOutInFlightRecords(inFlightTimeoutMinutes)
-      │  IN_FLIGHT 상태 레코드 중 inFlightAt 기준 N분(기본 5분) 초과 시
-      │  → PaymentOutbox: IN_FLIGHT → PENDING (워커 비정상 종료 복구)
+① findByOrderId(orderId) — PaymentOutbox 조회
+      │  [없음] → return (다른 워커가 이미 처리했거나 비정상 상태)
       ▼
-Step 1: findPendingBatch(batchSize)
-      │  PaymentOutbox: PENDING 배치 조회 (기본 10건)
-      │  parallel 모드 시 가상 스레드(Java 21)로 병렬 처리
-      │
-      │  [배치 없음] → return (다음 사이클 대기)
-      ▼
-Step 2: claimToInFlight(outbox)
+② claimToInFlight(outbox)
       │  PaymentOutbox: PENDING → IN_FLIGHT, inFlightAt 기록
-      │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 다중 워커 인스턴스 중복 처리 방지
+      │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 중복 처리 방지
       │
-      │  [클레임 실패 — 다른 워커가 먼저 처리] → return
+      │  [클레임 실패] → return
       ▼
-Step 3: getPaymentEventByOrderId(orderId)
-      │  paymentKey는 confirm() 단계에서 executePayment()로 이미 기록됨
+③ loadPaymentEvent(orderId, outbox)
+      │  paymentKey는 confirm()의 executePayment()로 이미 기록됨
       │
-      │  [조회 실패] → incrementRetryOrFail(orderId, outbox)
+      │  [조회 실패] → incrementRetryOrFail(orderId, outbox) → return
       ▼
-Step 4: validateCompletionStatus(paymentEvent, command)
+④ validateCompletionStatus(paymentEvent, command)
       │  금액(amount) 일치 검증, paymentKey 일치 검증
       │
-      │  [실패] PaymentValidException / PaymentStatusException (검증 불일치)
-      │    └─ executePaymentFailureCompensation()
+      │  [실패] PaymentValidException / PaymentStatusException
+      │    → executePaymentFailureCompensation()
       │         ├─ existsByOrderId() → false → failJob() 스킵
       │         ├─ increaseStockForOrders()   — 재고 복원
       │         └─ markPaymentAsFail()        — PaymentEvent: FAILED
-      │    └─ markFailed(orderId)             — PaymentOutbox: FAILED
+      │    → markFailed(orderId)              — PaymentOutbox: FAILED
       │    (재시도 없음 — 데이터 정합성 오류)
       ▼
-Step 5: confirmPaymentWithGateway(command)
-      │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
+⑤ confirmPaymentWithGateway(command)
+      │  Toss API: POST /v1/payments/confirm 호출
       │
       │  [실패] PaymentTossNonRetryableException (Toss 비재시도 오류)
       │    └─ executePaymentFailureCompensation()
@@ -156,12 +161,65 @@ Step 5: confirmPaymentWithGateway(command)
       │
       │  [실패] PaymentTossRetryableException (Toss 일시 오류)
       │    └─ incrementRetryOrFail(orderId, outbox)
-      │         ├─ retryCount < 5 → retryCount++ → PaymentOutbox: PENDING (다음 사이클 재처리)
+      │         ├─ retryCount < 5 → retryCount++ → PaymentOutbox: PENDING (OutboxWorker 재처리 대상)
       │         └─ retryCount >= 5 → PaymentOutbox: FAILED (재시도 한도 초과)
       ▼
-Step 6: executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt)
+⑥ executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt)
       │  단일 트랜잭션
       │  ├─ existsByOrderId() → false → completeJob() 스킵 (PaymentProcess 미존재)
+      │  └─ markPaymentAsDone()  — PaymentEvent: DONE
+      ▼
+⑦ markDone(orderId)
+      │  PaymentOutbox: IN_FLIGHT → DONE
+      ▼
+[종료]
+```
+
+### 2-3. OutboxWorker.process() — 폴백 스케줄러
+
+```
+[@Scheduled fixedDelay — 기본 5000ms]
+주 역할: 즉시 처리(OutboxImmediateEventHandler)가 누락한 레코드 재처리
+      │
+      ▼
+Step 0: recoverTimedOutInFlightRecords(inFlightTimeoutMinutes)
+      │  IN_FLIGHT 상태 레코드 중 inFlightAt 기준 N분(기본 5분) 초과 시
+      │  → PaymentOutbox: IN_FLIGHT → PENDING (워커 비정상 종료 복구)
+      ▼
+Step 1: findPendingBatch(batchSize)
+      │  PaymentOutbox: PENDING 상태 배치 조회 (기본 50건)
+      │  정상 환경에서는 즉시 처리로 PENDING이 없어 바로 return
+      │  parallel 모드 시 가상 스레드(Java 21)로 병렬 처리
+      │
+      │  [배치 없음] → return (다음 사이클 대기)
+      ▼
+Step 2: claimToInFlight(outbox)
+      │  PaymentOutbox: PENDING → IN_FLIGHT, inFlightAt 기록
+      │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 다중 워커/핸들러 중복 처리 방지
+      │
+      │  [클레임 실패] → return
+      ▼
+Step 3: getPaymentEventByOrderId(orderId)
+      │  [조회 실패] → incrementRetryOrFail(orderId, outbox)
+      ▼
+Step 4: validateCompletionStatus(paymentEvent, command)
+      │  [실패] PaymentValidException / PaymentStatusException
+      │    → executePaymentFailureCompensation() + markFailed()
+      │    (재시도 없음 — 데이터 정합성 오류)
+      ▼
+Step 5: confirmPaymentWithGateway(command)
+      │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
+      │
+      │  [실패] PaymentTossNonRetryableException
+      │    → executePaymentFailureCompensation() + markFailed()
+      │
+      │  [실패] PaymentTossRetryableException
+      │    → incrementRetryOrFail(orderId, outbox)
+      │         ├─ retryCount < 5 → PENDING 복귀
+      │         └─ retryCount >= 5 → FAILED 확정
+      ▼
+Step 6: executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt)
+      │  ├─ existsByOrderId() → false → completeJob() 스킵
       │  └─ markPaymentAsDone()  — PaymentEvent: DONE
       ▼
 Step 7: markDone(orderId)
@@ -172,108 +230,9 @@ Step 7: markDone(orderId)
 
 ---
 
-## 3. Kafka 플로우 (`KafkaAsyncConfirmService` + `KafkaConfirmListener`)
+## 3. 공유 메커니즘
 
-> `spring.payment.async-strategy=kafka`
-
-### 3-1. confirm() — HTTP 요청 처리
-
-```
-[Controller] POST /confirm
-      │
-      ▼
-① getPaymentEventByOrderId(orderId)
-      │  PaymentEvent 조회 (상태: READY 예상)
-      ▼
-② executePaymentAndStockDecrease(paymentEvent, paymentKey, paymentOrderList)
-      │  단일 트랜잭션 (rollbackFor=PaymentOrderedProductStockException)
-      │  ┌─ executePayment()         — PaymentEvent: READY → IN_PROGRESS, paymentKey 기록
-      │  └─ decreaseStockForOrders() — 재고 감소
-      │  (PaymentOutbox 없음, PaymentProcess 없음)
-      │
-      │  [실패] PaymentOrderedProductStockException (재고 부족)
-      │    → 트랜잭션 롤백 (PaymentEvent READY로 복원)
-      │    └─ handleStockFailure(paymentEvent, message)
-      │         └─ markPaymentAsFail()   → PaymentEvent: FAILED
-      │         └─ rethrow PaymentOrderedProductStockException (4xx)
-      ▼
-③ confirmPublisher.publish(orderId)
-      │  Kafka topic 'payment-confirm'에 orderId 발행
-      │  재고 감소 트랜잭션 커밋 이후 호출
-      │  (커밋 전 발행 시 컨슈머가 IN_PROGRESS 미조회 가능 — 타이밍 레이스 방지)
-      │
-      │  [실패] Exception (Kafka 발행 실패)
-      │    └─ executePaymentFailureCompensation(orderId, inProgressEvent, paymentOrderList, message)
-      │         ├─ existsByOrderId() → false → failJob() 스킵
-      │         ├─ increaseStockForOrders()   — 재고 복원
-      │         └─ markPaymentAsFail()        — PaymentEvent: FAILED
-      │    └─ rethrow Exception (5xx)
-      ▼
-[Controller] 202 Accepted  (ResponseType.ASYNC_202)
-      (이후 처리는 KafkaConfirmListener가 비동기로 담당)
-```
-
-### 3-2. KafkaConfirmListener.consume() — Kafka 컨슈머
-
-```
-[Kafka topic: 'payment-confirm' / groupId: payment-confirm-group]
-      │
-      @RetryableTopic 설정:
-        - attempts: 6회 (최초 1회 + 재시도 5회)
-        - backoff: 1초 시작, 2배 증가, 최대 30초
-        - include: PaymentTossRetryableException 만 자동 재시도
-        - DLT topic: 'payment-confirm-dlq'
-        - autoCreateTopics: true
-      │
-      ▼
-① getPaymentEventByOrderId(orderId)
-      │  paymentKey는 confirm() 단계에서 executePayment()로 이미 기록됨
-      ▼
-② validateCompletionStatus(paymentEvent, command)
-      │  금액(amount) 일치 검증, paymentKey 일치 검증
-      │
-      │  [실패] PaymentValidException / PaymentStatusException (검증 불일치)
-      │    → @RetryableTopic include 목록에 없는 예외 → 재시도 없이 즉시 DLT 전송
-      │    → @DltHandler: executePaymentFailureCompensation()
-      │         ├─ existsByOrderId() → false → failJob() 스킵
-      │         ├─ increaseStockForOrders()   — 재고 복원
-      │         └─ markPaymentAsFail()        — PaymentEvent: FAILED
-      ▼
-③ confirmPaymentWithGateway(command)
-      │  Toss API: POST /v1/payments/confirm 호출
-      │
-      │  [실패] PaymentTossNonRetryableException (Toss 비재시도 오류)
-      │    └─ executePaymentFailureCompensation(orderId, paymentEvent, paymentOrderList, message)
-      │         ├─ existsByOrderId() → false → failJob() 스킵
-      │         ├─ increaseStockForOrders()   — 재고 복원
-      │         └─ markPaymentAsFail()        — PaymentEvent: FAILED
-      │    (재시도 없이 종료)
-      │
-      │  [실패] PaymentTossRetryableException (Toss 일시 오류)
-      │    └─ rethrow → @RetryableTopic이 캐치 → 재시도 토픽으로 재발행
-      │         시도 1: 1초 후 / 시도 2: 2초 후 / 시도 3: 4초 후
-      │         시도 4: 8초 후 / 시도 5: 16초 후 / 시도 6 실패 → DLT 전송
-      │
-      │  [DLT 도달 — 재시도 6회 모두 실패]
-      │    @DltHandler:
-      │    └─ executePaymentFailureCompensation("kafka-dlt-exhausted")
-      │         ├─ existsByOrderId() → false → failJob() 스킵
-      │         ├─ increaseStockForOrders()   — 재고 복원
-      │         └─ markPaymentAsFail()        — PaymentEvent: FAILED
-      ▼
-④ executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt)
-      │  단일 트랜잭션
-      │  ├─ existsByOrderId() → false → completeJob() 스킵 (PaymentProcess 미존재)
-      │  └─ markPaymentAsDone()  — PaymentEvent: DONE
-      ▼
-[종료]
-```
-
----
-
-## 4. 공유 메커니즘
-
-### 4-1. executePaymentFailureCompensation (공통 보상 트랜잭션)
+### 3-1. executePaymentFailureCompensation (공통 보상 트랜잭션)
 
 > `PaymentTransactionCoordinator.executePaymentFailureCompensation(orderId, paymentEvent, paymentOrderList, failureReason)`
 
@@ -283,7 +242,7 @@ Step 7: markDone(orderId)
 ① existsByOrderId(orderId)?
       ├─ true  (Sync 전략 — PaymentProcess 존재)
       │    └─ failJob(orderId, reason)  → PaymentProcess: FAILED
-      └─ false (Outbox / Kafka 전략 — PaymentProcess 미존재)
+      └─ false (Outbox 전략 — PaymentProcess 미존재)
            └─ failJob() 스킵
 
 ② increaseStockForOrders(paymentOrderList)  — 재고 복원
@@ -293,12 +252,11 @@ Step 7: markDone(orderId)
 
 **호출 지점:**
 - Sync: `handleNonRetryableFailure()`, `handleUnknownFailure()` (PaymentFailureUseCase)
-- Outbox/Kafka confirm(): Kafka 발행 실패 시 (KafkaAsyncConfirmService)
+- OutboxImmediateEventHandler: 검증 실패, 비재시도 오류 시
 - OutboxWorker: 검증 실패, 비재시도 오류 시
-- KafkaConfirmListener: 비재시도 오류, DLT 도달 시
 - recoverRetryablePayment: 비재시도 오류, 미지 예외 시
 
-### 4-2. handleStockFailure (재고 부족 전용)
+### 3-2. handleStockFailure (재고 부족 전용)
 
 > `PaymentFailureUseCase.handleStockFailure(paymentEvent, failureMessage)`
 
@@ -308,7 +266,7 @@ markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
 (increaseStockForOrders() 미호출)
 ```
 
-### 4-3. executePaymentSuccessCompletion (성공 완료 — 전략 공통)
+### 3-3. executePaymentSuccessCompletion (성공 완료 — 전략 공통)
 
 > `PaymentTransactionCoordinator.executePaymentSuccessCompletion(orderId, paymentEvent, approvedAt)`
 
@@ -317,21 +275,22 @@ markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
 
 ① existsByOrderId(orderId)?
       ├─ true  (Sync 전략) → completeJob(orderId)  — PaymentProcess: COMPLETED
-      └─ false (Outbox / Kafka 전략) → completeJob() 스킵
+      └─ false (Outbox 전략) → completeJob() 스킵
 
 ② markPaymentAsDone(paymentEvent, approvedAt)  → PaymentEvent: DONE
 ```
 
 ---
 
-## 5. 복구 스케줄러 (`PaymentScheduler`)
+## 4. 복구 스케줄러 (`PaymentScheduler`)
 
-### 5-1. recoverStuckPayments()
+### 4-1. recoverStuckPayments()
 
 > 활성화: `scheduler.payment-recovery.enabled=true`
 > 주기: `scheduler.payment-recovery.interval-ms` (기본 1분, fixedDelay)
 
 **목적**: PaymentProcess: PROCESSING인데 PaymentEvent가 미완료인 건을 Toss 상태 조회 API로 확인 후 처리.
+(Sync 전략 전용 — Outbox는 PaymentProcess를 생성하지 않음)
 
 ```
 ① findAllProcessingJobs()  — PaymentProcess.status = PROCESSING 전수 조회
@@ -351,7 +310,7 @@ markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
                 └─ markPaymentAsFail()                           — PaymentEvent: FAILED
 ```
 
-### 5-2. recoverRetryablePayment()
+### 4-2. recoverRetryablePayment()
 
 > 활성화: `scheduler.payment-status-sync.enabled=true`
 > 주기: `scheduler.payment-status-sync.fixed-rate` (기본 5분, fixedRate)
@@ -388,25 +347,24 @@ markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
                 └─ PaymentTossNonRetryableException / Unknown / 조건 불충족
                      └─ executePaymentFailureCompensation()
                           ├─ existsByOrderId() → true(Sync) → failJob()
-                          │               → false(Outbox/Kafka) → 스킵
+                          │               → false(Outbox) → 스킵
                           ├─ increaseStockForOrders()  — 재고 복원
                           └─ markPaymentAsFail()       — PaymentEvent: FAILED
 ```
 
 ---
 
-## 6. 전략 비교 요약
+## 5. 전략 비교 요약
 
-| 항목 | Sync | Outbox | Kafka |
-|------|------|--------|-------|
-| `spring.payment.async-strategy` | `sync` (기본값) | `outbox` | `kafka` |
-| HTTP 응답 | 200 OK | 202 Accepted | 202 Accepted |
-| 재고 감소 시점 | confirm() — Toss 호출 전 | confirm() — Outbox 생성과 같은 TX | confirm() — Kafka 발행 전 |
-| PaymentProcess 생성 | O (PROCESSING) | X | X |
-| PaymentOutbox 생성 | X | O (PENDING) | X |
-| Toss API 호출 시점 | confirm() 내부 (동기) | OutboxWorker 스케줄러 (비동기) | KafkaConfirmListener (비동기) |
-| Toss API 재시도 전략 | 없음 (UNKNOWN 처리) | OutboxWorker retryCount (최대 5회) | RetryableTopic (최대 6회, exponential backoff) |
-| PaymentEvent 최종 상태 | DONE / FAILED / UNKNOWN | DONE / FAILED | DONE / FAILED |
-| 재고 실패 핸들링 | handleStockFailure() → FAILED | handleStockFailure() → FAILED | handleStockFailure() → FAILED |
-| Kafka 발행 실패 보상 | 해당 없음 | 해당 없음 | executePaymentFailureCompensation() |
-| DLT 처리 | 해당 없음 | 해당 없음 | @DltHandler → 보상 트랜잭션 |
+| 항목 | Sync | Outbox |
+|------|------|--------|
+| `spring.payment.async-strategy` | `sync` (기본값) | `outbox` |
+| HTTP 응답 | 200 OK | 202 Accepted |
+| 재고 감소 시점 | confirm() — Toss 호출 전 | confirm() — Outbox 생성과 같은 TX |
+| PaymentProcess 생성 | O (PROCESSING) | X |
+| PaymentOutbox 생성 | X | O (PENDING) |
+| Toss API 호출 시점 | confirm() 내부 (동기) | OutboxImmediateEventHandler (비동기, AFTER_COMMIT) |
+| 폴백 처리 | 없음 | OutboxWorker (fixedDelay 5s, 배치 50) |
+| Toss API 재시도 전략 | 없음 (UNKNOWN 처리) | incrementRetryOrFail (최대 5회) |
+| PaymentEvent 최종 상태 | DONE / FAILED / UNKNOWN | DONE / FAILED |
+| 재고 실패 핸들링 | handleStockFailure() → FAILED | handleStockFailure() → FAILED |

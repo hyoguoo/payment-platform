@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-03-28
 
 ## Pattern Overview
 
@@ -9,7 +9,7 @@
 **Key Characteristics:**
 - Four bounded contexts: `payment`, `paymentgateway`, `product`, `user` — each has its own `domain → application → infrastructure → presentation` layer stack
 - Ports are Java interfaces defined in `application/port/` (outbound) and `presentation/port/` (inbound); all infrastructure implements those interfaces
-- The three async confirm strategies are swapped at startup via `@ConditionalOnProperty(name = "spring.payment.async-strategy")`
+- The two async confirm strategies are swapped at startup via `@ConditionalOnProperty(name = "spring.payment.async-strategy")`
 - Cross-context calls never share a repository; they go through `presentation/port` interfaces of the target context, consumed by `infrastructure/internal/` adapters in the calling context
 
 ---
@@ -27,7 +27,7 @@
 - Purpose: Orchestrates domain objects; owns all port interfaces; contains all three async strategy service beans
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/application/`
 - Inbound ports (interfaces in `presentation/port/`, implemented here):
-  - `PaymentConfirmService` — implemented by ONE of: `PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`, `KafkaAsyncConfirmService`
+  - `PaymentConfirmService` — implemented by ONE of: `PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`
   - `PaymentStatusService` — implemented by `PaymentStatusServiceImpl` (always active)
   - `PaymentCheckoutService` — implemented by `PaymentCheckoutServiceImpl`
   - `AdminPaymentService` — implemented by `AdminPaymentServiceImpl`
@@ -35,7 +35,7 @@
   - `PaymentEventRepository`, `PaymentOrderRepository`, `PaymentOutboxRepository`, `PaymentProcessRepository`, `PaymentHistoryRepository`
   - `PaymentGatewayPort` — confirm/cancel/status calls to Toss
   - `ProductPort`, `UserPort` — cross-context calls
-  - `application/port/out/PaymentConfirmPublisherPort` — Kafka publish abstraction
+  - `application/port/out/PaymentConfirmPublisherPort` — Outbox 즉시 처리 이벤트 발행 추상화
 - Fine-grained use-case services (internal, not exposed as ports):
   - `PaymentCommandUseCase` — all status-changing operations; owns `@PublishDomainEvent` and `@PaymentStatusChange` annotations
   - `PaymentLoadUseCase` — read operations
@@ -56,7 +56,7 @@
   - Port implementations: `repository/PaymentEventRepositoryImpl`, `PaymentOutboxRepositoryImpl`, `PaymentProcessRepositoryImpl`, etc.
   - Gateway strategy: `gateway/PaymentGatewayStrategy` (interface), `PaymentGatewayFactory`, `PaymentGatewayProperties`, `PaymentGatewayType`; concrete: `gateway/toss/TossPaymentGatewayStrategy`
   - Cross-context adapters: `internal/InternalPaymentGatewayAdapter` implements `PaymentGatewayPort`, `InternalProductAdapter` implements `ProductPort`, `InternalUserAdapter` implements `UserPort`
-  - Kafka publisher: `kafka/KafkaConfirmPublisher` implements `PaymentConfirmPublisherPort`
+  - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
   - Mapper: `PaymentInfrastructureMapper`
 - Depends on: `application/port`, `paymentgateway/presentation/port`, `product/presentation/port`, `user/presentation/port`
 
@@ -71,16 +71,16 @@
 - Purpose: Background scheduled jobs
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
 - Contains:
-  - `OutboxWorker` — `@Scheduled(fixedDelayString)` every 1s; processes `PaymentOutbox` PENDING → IN_FLIGHT → DONE/FAILED; supports parallel mode via Java 21 virtual threads
+  - `OutboxWorker` — `@Scheduled(fixedDelayString)` every 5s (기본값); **폴백 역할** — `OutboxImmediateEventHandler`가 처리하지 못한 PENDING 레코드를 배치(기본 50건)로 재처리; supports parallel mode via Java 21 virtual threads
   - `PaymentScheduler` — `@ConditionalOnProperty`-guarded recovery + expiration jobs
 - Port interfaces: `scheduler/port/PaymentExpirationService`, `PaymentRecoverService`
 - Depends on: `application` use-case services directly
 
 **Listener (`payment/listener`):**
-- Purpose: Kafka consumer (kafka strategy only) and Spring event listener
+- Purpose: Outbox 즉시 처리 핸들러 및 Spring 이벤트 리스너
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
 - Contains:
-  - `KafkaConfirmListener` — `@RetryableTopic(attempts=6, backoff=exponential, include=PaymentTossRetryableException)` on `payment-confirm`; `@DltHandler` on `payment-confirm-dlq`
+  - `OutboxImmediateEventHandler` — `@Async @TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 별도 스레드에서 PaymentOutbox 레코드를 즉시 처리 (outbox 전략 전용)
   - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
 - Port interfaces: `listener/port/PaymentHistoryService`
 - Depends on: `application` use-case services directly
@@ -89,12 +89,11 @@
 
 ## Async Strategy Selection
 
-All three strategy implementations live in `src/main/java/com/hyoguoo/paymentplatform/payment/application/` and implement the same inbound port `presentation/port/PaymentConfirmService`.
+두 가지 전략 구현체가 `src/main/java/com/hyoguoo/paymentplatform/payment/application/`에 위치하며, 동일한 인바운드 포트 `presentation/port/PaymentConfirmService`를 구현한다.
 
 ```
 spring.payment.async-strategy=sync    → PaymentConfirmServiceImpl   (matchIfMissing=true, default)
 spring.payment.async-strategy=outbox  → OutboxAsyncConfirmService
-spring.payment.async-strategy=kafka   → KafkaAsyncConfirmService
 ```
 
 `PaymentController` is strategy-unaware. It reads `PaymentConfirmAsyncResult.responseType`:
@@ -117,43 +116,31 @@ PaymentController.confirm()
   ← ResponseEntity.ok(200)
 ```
 
-**Outbox strategy (`OutboxAsyncConfirmService`):**
+**Outbox strategy (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`):**
 ```
 PaymentController.confirm()
-  → OutboxAsyncConfirmService.confirm()
+  → OutboxAsyncConfirmService.confirm()  [@Transactional]
       1. executePaymentAndStockDecreaseWithOutbox()
          [single TX: READY→IN_PROGRESS + stock-- + PaymentOutbox(PENDING) created atomically]
+      2. PaymentConfirmPublisherPort.publish(orderId)
+         [OutboxImmediatePublisher: ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)]
+         [이벤트는 TX 커밋 후 AFTER_COMMIT 단계에서 발동]
   ← ResponseEntity.accepted(202)
 
-OutboxWorker.process()  [@Scheduled every 1s]
-  Step 0: recoverTimedOutInFlightRecords()      [IN_FLIGHT timeout → reset to PENDING]
-  Step 1: findPendingBatch(batchSize=10)
-  Step 2: claimToInFlight()                     [REQUIRES_NEW TX, immediately committed]
+OutboxImmediateEventHandler.handle(event)  [@Async @TransactionalEventListener(AFTER_COMMIT)]
+  — 정상 경로: 커밋 직후 별도 스레드에서 즉시 처리
+  Step 1: findByOrderId() + claimToInFlight()   [REQUIRES_NEW TX, immediately committed]
+  Step 2: loadPaymentEvent()
   Step 3: validateCompletionStatus() + confirmPaymentWithGateway()  [no TX, Toss API]
   Step 4A (success): executePaymentSuccessCompletion() + markDone()
   Step 4B (non-retryable): executePaymentFailureCompensation() + markFailed()
   Step 4C (retryable): incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
-```
 
-**Kafka strategy (`KafkaAsyncConfirmService`):**
-```
-PaymentController.confirm()
-  → KafkaAsyncConfirmService.confirm()
-      1. executePaymentAndStockDecrease()
-         [single TX: READY→IN_PROGRESS + stock-- atomically]
-      2. PaymentConfirmPublisherPort.publish(orderId)
-         [KafkaTemplate.send("payment-confirm", orderId, orderId)]
-  ← ResponseEntity.accepted(202)
-
-KafkaConfirmListener.consume(orderId)
-  [@RetryableTopic: 6 attempts, 1s→2s→4s→…→30s backoff, PaymentTossRetryableException only]
-      1. validateCompletionStatus() + confirmPaymentWithGateway()  [no TX, Toss API]
-      2. executePaymentSuccessCompletion()   [TX: IN_PROGRESS→DONE]
-      on PaymentTossNonRetryableException: executePaymentFailureCompensation()
-
-KafkaConfirmListener.handleDlt(orderId)
-  [@DltHandler on "payment-confirm-dlq"]
-      executePaymentFailureCompensation()   [stock++, FAILED]
+OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
+  — 폴백 경로: 즉시 처리가 누락된 PENDING 레코드만 배치로 재처리
+  Step 0: recoverTimedOutInFlightRecords()      [IN_FLIGHT timeout → reset to PENDING]
+  Step 1: findPendingBatch(batchSize=50)
+  (이하 OutboxImmediateEventHandler와 동일한 처리 로직)
 ```
 
 ---
@@ -166,10 +153,10 @@ KafkaConfirmListener.handleDlt(orderId)
 - Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentAndStockDecrease`, `executeStockDecreaseWithJobCreation`, `executePaymentSuccessCompletion`, `executePaymentFailureCompensation`
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
 
-**PaymentConfirmPublisherPort — Kafka isolation:**
+**PaymentConfirmPublisherPort — Outbox 즉시 처리 이벤트 추상화:**
 - Interface in `application/port/out/PaymentConfirmPublisherPort` with single method `publish(String orderId)`
-- Keeps `KafkaTemplate` and topic name (`payment-confirm`) confined to `infrastructure/kafka/KafkaConfirmPublisher`
-- Application layer has no knowledge of Kafka topics or serialisation
+- `OutboxImmediatePublisher` (infrastructure 계층)가 `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)`로 구현
+- Application 계층은 Spring 이벤트 발행 세부 구현을 알지 못함
 
 **PaymentOutbox vs PaymentProcess — separate domain concepts:**
 - `PaymentOutbox` (`domain/PaymentOutbox.java`) — dedicated outbox record for the outbox strategy; lifecycle: `PENDING → IN_FLIGHT → DONE/FAILED`; retry limit = 5
@@ -197,7 +184,7 @@ KafkaConfirmListener.handleDlt(orderId)
 ## Error Handling
 
 **Strategy:** Exception type encodes retryability
-- `PaymentTossRetryableException` — triggers `@RetryableTopic` backoff (Kafka); OutboxWorker calls `incrementRetryOrFail`
+- `PaymentTossRetryableException` — OutboxImmediateEventHandler/OutboxWorker calls `incrementRetryOrFail` (최대 5회)
 - `PaymentTossNonRetryableException` — immediate `executePaymentFailureCompensation` (stock restored, FAILED)
 - `PaymentOrderedProductStockException` — stock exhausted; payment marked FAILED, no compensation (stock was never decremented)
 - `PaymentStatusException` / `PaymentValidException` — domain guard violations; handler returns 4xx
@@ -219,4 +206,4 @@ KafkaConfirmListener.handleDlt(orderId)
 
 ---
 
-*Architecture analysis: 2026-03-18*
+*Architecture analysis: 2026-03-28*
