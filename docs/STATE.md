@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: ASYNC-PAYMENT-CLEANUP
-- **단계**: plan
+- **단계**: plan-review
 - **이슈**: #51, #52, #53
 - **브랜치**: #51
 
@@ -15,7 +15,7 @@
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
