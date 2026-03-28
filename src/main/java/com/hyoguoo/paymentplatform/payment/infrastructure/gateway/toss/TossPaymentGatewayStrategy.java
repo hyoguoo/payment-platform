@@ -234,6 +234,6 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     }
 
     private String generateIdempotencyKey(String baseKey) {
-        return baseKey + "_" + System.currentTimeMillis();
+        return baseKey;
     }
 }

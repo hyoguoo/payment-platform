@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: ASYNC-PAYMENT-CLEANUP
-- **단계**: execute / Task 1
+- **단계**: execute / Task 2
 - **이슈**: #51, #52, #53
 - **브랜치**: #51
 
