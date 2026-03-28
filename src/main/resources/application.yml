@@ -8,7 +8,7 @@ spring:
 
   payment:
     # 활성 어댑터: sync | outbox
-    async-strategy: sync
+    async-strategy: outbox
 
   jpa:
     open-in-view: false

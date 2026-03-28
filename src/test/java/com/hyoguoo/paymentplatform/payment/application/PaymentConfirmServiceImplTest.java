@@ -104,14 +104,14 @@ class PaymentConfirmServiceImplTest {
     }
 
     @Test
-    @DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=true)가 선언되어 있다.")
+    @DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=false)가 선언되어 있다.")
     void testConditionalOnProperty() {
         ConditionalOnProperty annotation =
                 PaymentConfirmServiceImpl.class.getAnnotation(ConditionalOnProperty.class);
 
         assertThat(annotation).isNotNull();
         assertThat(annotation.havingValue()).isEqualTo("sync");
-        assertThat(annotation.matchIfMissing()).isTrue();
+        assertThat(annotation.matchIfMissing()).isFalse();
         assertThat(annotation.name()).contains("spring.payment.async-strategy");
     }
 

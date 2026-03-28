@@ -32,7 +32,7 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(
         name = "spring.payment.async-strategy",
         havingValue = "sync",
-        matchIfMissing = true
+        matchIfMissing = false
 )
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 

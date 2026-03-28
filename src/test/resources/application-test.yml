@@ -6,6 +6,9 @@ spring:
   main:
     allow-bean-definition-overriding: true
 
+  payment:
+    async-strategy: sync
+
   datasource:
     hikari:
       maximum-pool-size: 10
