@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
@@ -51,6 +52,30 @@ public class PaymentTransactionCoordinator {
         orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
 
         return paymentProcessUseCase.createProcessingJob(orderId);
+    }
+
+    @Transactional
+    public PaymentEvent executePaymentSuccessCompletionWithOutbox(
+            PaymentEvent paymentEvent,
+            LocalDateTime approvedAt,
+            PaymentOutbox outbox
+    ) {
+        outbox.toDone();
+        paymentOutboxUseCase.save(outbox);
+        return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
+    }
+
+    @Transactional
+    public PaymentEvent executePaymentFailureCompensationWithOutbox(
+            PaymentEvent paymentEvent,
+            List<PaymentOrder> paymentOrderList,
+            String failureReason,
+            PaymentOutbox outbox
+    ) {
+        outbox.toFailed();
+        paymentOutboxUseCase.save(outbox);
+        orderedProductUseCase.increaseStockForOrders(paymentOrderList);
+        return paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
     }
 
     @Transactional

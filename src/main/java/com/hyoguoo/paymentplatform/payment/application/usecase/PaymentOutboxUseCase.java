@@ -22,6 +22,11 @@ public class PaymentOutboxUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
+    public void save(PaymentOutbox outbox) {
+        paymentOutboxRepository.save(outbox);
+    }
+
+    @Transactional
     public PaymentOutbox createPendingRecord(String orderId) {
         PaymentOutbox outbox = PaymentOutbox.createPending(orderId);
         return paymentOutboxRepository.save(outbox);
