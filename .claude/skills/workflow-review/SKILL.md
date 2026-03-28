@@ -65,11 +65,20 @@ git commit -m "refactor: 코드 리뷰 피드백 반영 — <요약>"
 
 ---
 
-## Step 5 — verify 전환
+## Step 5 — verify 대기
 
-STATE.md를 갱신하고 `workflow-verify` 스킬을 실행한다:
+STATE.md를 갱신하고 사용자에게 verify 준비 완료를 알린다. **verify는 자동으로 시작하지 않는다.**
+
 ```markdown
 - **단계**: verify
 - [x] review
 - [ ] verify
+```
+
+사용자에게 다음과 같이 안내한다:
+```
+## Review 완료
+
+코드 리뷰가 끝났습니다. 준비가 되면 "verify 시작"이라고 말씀해 주세요.
+verify 단계에서는 전체 테스트 실행 → context 문서 갱신 → 아카이브 → PR 생성을 진행합니다.
 ```
