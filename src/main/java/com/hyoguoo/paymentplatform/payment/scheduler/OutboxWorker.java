@@ -11,10 +11,8 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -89,30 +87,20 @@ public class OutboxWorker {
                     .paymentKey(paymentEvent.getPaymentKey())
                     .amount(paymentEvent.getTotalAmount())
                     .build();
-            paymentCommandUseCase.validateCompletionStatus(paymentEvent, command);
             PaymentGatewayInfo gatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(command);
 
             // Step 4-A: 성공 처리 (별도 트랜잭션)
-            transactionCoordinator.executePaymentSuccessCompletion(
-                    orderId, paymentEvent, gatewayInfo.getPaymentDetails().getApprovedAt());
-            paymentOutboxUseCase.markDone(orderId);
-
-        } catch (PaymentValidException | PaymentStatusException e) {
-            // Step 4-B: 검증 실패 — 보상 트랜잭션 + FAILED (재시도 불가)
-            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            transactionCoordinator.executePaymentFailureCompensation(
-                    orderId, paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage());
-            paymentOutboxUseCase.markFailed(orderId);
+            transactionCoordinator.executePaymentSuccessCompletionWithOutbox(
+                    paymentEvent, gatewayInfo.getPaymentDetails().getApprovedAt(), outbox);
 
         } catch (PaymentTossNonRetryableException e) {
-            // Step 4-C: 비재시도 실패 — 보상 트랜잭션 + FAILED
+            // Step 4-B: 비재시도 실패 — 보상 트랜잭션
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            transactionCoordinator.executePaymentFailureCompensation(
-                    orderId, paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage());
-            paymentOutboxUseCase.markFailed(orderId);
+            transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                    paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
 
         } catch (PaymentTossRetryableException e) {
-            // Step 4-D: 재시도 가능 — retryCount 증가 또는 FAILED
+            // Step 4-C: 재시도 가능 — retryCount 증가 또는 FAILED
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
         }

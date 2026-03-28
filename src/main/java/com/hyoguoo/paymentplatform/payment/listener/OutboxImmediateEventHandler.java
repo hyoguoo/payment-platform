@@ -13,10 +13,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import java.util.Optional;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -64,18 +62,15 @@ public class OutboxImmediateEventHandler {
                 .build();
 
         try {
-            paymentCommandUseCase.validateCompletionStatus(paymentEvent, command);
             PaymentGatewayInfo gatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(command);
 
-            transactionCoordinator.executePaymentSuccessCompletion(
-                    orderId, paymentEvent, gatewayInfo.getPaymentDetails().getApprovedAt());
-            paymentOutboxUseCase.markDone(orderId);
+            transactionCoordinator.executePaymentSuccessCompletionWithOutbox(
+                    paymentEvent, gatewayInfo.getPaymentDetails().getApprovedAt(), outbox);
 
-        } catch (PaymentValidException | PaymentStatusException | PaymentTossNonRetryableException e) {
+        } catch (PaymentTossNonRetryableException e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            transactionCoordinator.executePaymentFailureCompensation(
-                    orderId, paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage());
-            paymentOutboxUseCase.markFailed(orderId);
+            transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                    paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
 
         } catch (PaymentTossRetryableException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
