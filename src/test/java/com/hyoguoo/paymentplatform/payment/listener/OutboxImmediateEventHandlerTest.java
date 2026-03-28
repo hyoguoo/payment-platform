@@ -88,8 +88,8 @@ class OutboxImmediateEventHandlerTest {
         }
 
         @Test
-        @DisplayName("성공 시 executePaymentSuccessCompletion과 markDone을 호출한다")
-        void handle_성공_executePaymentSuccessCompletion_및_markDone_호출한다() throws Exception {
+        @DisplayName("성공 시 executePaymentSuccessCompletionWithOutbox를 호출하고 markDone은 호출하지 않는다")
+        void handle_성공_executePaymentSuccessCompletionWithOutbox_호출한다() throws Exception {
             // given
             String orderId = "order-123";
             PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
@@ -107,8 +107,8 @@ class OutboxImmediateEventHandlerTest {
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executePaymentSuccessCompletion(eq(orderId), eq(paymentEvent), any(LocalDateTime.class));
-            then(mockPaymentOutboxUseCase).should(times(1)).markDone(orderId);
+                    .executePaymentSuccessCompletionWithOutbox(eq(paymentEvent), any(LocalDateTime.class), eq(outbox));
+            then(mockPaymentOutboxUseCase).should(times(0)).markDone(any());
         }
     }
 
@@ -136,12 +136,12 @@ class OutboxImmediateEventHandlerTest {
 
             // then
             then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
-            then(mockTransactionCoordinator).should(times(0)).executePaymentFailureCompensation(any(), any(), any(), any());
+            then(mockTransactionCoordinator).should(times(0)).executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("non-retryable 실패 시 executePaymentFailureCompensation과 markFailed를 호출한다")
-        void handle_nonRetryable_실패_시_executePaymentFailureCompensation_및_markFailed_호출한다() throws Exception {
+        @DisplayName("non-retryable 실패 시 executePaymentFailureCompensationWithOutbox를 호출하고 markFailed는 호출하지 않는다")
+        void handle_nonRetryable_실패_시_executePaymentFailureCompensationWithOutbox_호출한다() throws Exception {
             // given
             String orderId = "order-123";
             PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
@@ -159,32 +159,8 @@ class OutboxImmediateEventHandlerTest {
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executePaymentFailureCompensation(eq(orderId), eq(paymentEvent), anyList(), anyString());
-            then(mockPaymentOutboxUseCase).should(times(1)).markFailed(orderId);
-        }
-
-        @Test
-        @DisplayName("validation 실패 시 executePaymentFailureCompensation과 markFailed를 호출한다")
-        void handle_validation_실패_시_executePaymentFailureCompensation_및_markFailed_호출한다() throws Exception {
-            // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
-
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            Mockito.doThrow(PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT))
-                    .when(mockPaymentCommandUseCase).validateCompletionStatus(any(), any());
-
-            // when
-            handler.handle(event);
-
-            // then
-            then(mockTransactionCoordinator).should(times(1))
-                    .executePaymentFailureCompensation(eq(orderId), eq(paymentEvent), anyList(), anyString());
-            then(mockPaymentOutboxUseCase).should(times(1)).markFailed(orderId);
+                    .executePaymentFailureCompensationWithOutbox(eq(paymentEvent), anyList(), anyString(), eq(outbox));
+            then(mockPaymentOutboxUseCase).should(times(0)).markFailed(any());
         }
 
         @Test
