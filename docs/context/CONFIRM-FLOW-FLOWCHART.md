@@ -2,7 +2,7 @@
 
 > 기준: 실제 코드 (`PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`,
 > `OutboxImmediateEventHandler`, `OutboxWorker`, `PaymentTransactionCoordinator`)
-> 최종 수정: 2026-03-28
+> 최종 수정: 2026-03-29
 
 ---
 
@@ -42,8 +42,8 @@
 |------|------|-----------|
 | `PENDING` | 처리 대기 중. OutboxWorker가 배치로 조회할 대상 | `createPendingRecord()` 또는 재시도 후 `incrementRetryCount()` 시 |
 | `IN_FLIGHT` | 핸들러/워커가 처리를 시작함. 타임아웃 복구 대상 | `claimToInFlight()` 호출 시 (REQUIRES_NEW 트랜잭션, 즉시 커밋) |
-| `DONE` | Toss confirm 성공, 처리 완료 | `markDone()` 호출 시 |
-| `FAILED` | 재시도 한도 초과 또는 비재시도 오류. 더 이상 처리 안 함 | `markFailed()` 또는 `incrementRetryOrFail()` 한도 초과 시 |
+| `DONE` | Toss confirm 성공, 처리 완료 | `executePaymentSuccessCompletionWithOutbox()` 내 `outbox.toDone()` 시 |
+| `FAILED` | 재시도 한도 초과 또는 비재시도 오류. 더 이상 처리 안 함 | `executePaymentFailureCompensationWithOutbox()` 내 `outbox.toFailed()` 또는 `incrementRetryOrFail()` 한도 초과 시 |
 
 > **IN_FLIGHT 타임아웃**: `inFlightTimeoutMinutes`(기본 5분) 초과 시 `PENDING`으로 되돌려
 > 워커 재시도 기회를 확보한다. 워커/핸들러 비정상 종료 시 데드락 방지 목적.
@@ -54,29 +54,31 @@
 
 ## 1. Sync (`PaymentConfirmServiceImpl`)
 
-> `spring.payment.async-strategy=sync` (기본값)
+> `spring.payment.async-strategy=sync` (`matchIfMissing=false`, 기본값: `outbox`)
 
 ```mermaid
 flowchart TD
     A([Controller\nPOST /confirm]) --> B
 
     B["① getPaymentEventByOrderId(orderId)\n⎿ PaymentEvent 조회 (상태: READY 예상)"]
-    B --> C
+    B --> LVAL
 
-    C["② executeStockDecreaseWithJobCreation()\n⎿ decreaseStockForOrders()  — 재고 감소\n⎿ createProcessingJob()     — PaymentProcess: PROCESSING 생성\n※ 단일 트랜잭션, rollbackFor=StockException"]
+    LVAL["② validateLocalPaymentRequest()\n⎿ buyerId / amount / orderId / paymentKey 로컬 검증"]
+    LVAL -->|"PaymentValidException\n불일치 → 즉시 throw (TX 진입 전)"| Z_FAIL([4xx throw])
+    LVAL --> C
+
+    C["③ executeStockDecreaseWithJobCreation()\n⎿ decreaseStockForOrders()  — 재고 감소\n⎿ createProcessingJob()     — PaymentProcess: PROCESSING 생성\n※ 단일 트랜잭션, rollbackFor=StockException"]
     C -->|"PaymentOrderedProductStockException\n(재고 부족)"| C_FAIL
     C_FAIL["handleStockFailure()\n⎿ markPaymentAsFail()  → PaymentEvent: FAILED"]
-    C_FAIL --> Z_FAIL([4xx throw])
+    C_FAIL --> Z_FAIL
 
     C --> D
-    D["③ executePayment(paymentEvent, paymentKey)\n⎿ PaymentEvent: READY → IN_PROGRESS\n⎿ paymentKey DB 기록"]
+    D["④ executePayment(paymentEvent, paymentKey)\n⎿ PaymentEvent: READY → IN_PROGRESS\n⎿ paymentKey DB 기록"]
     D -->|PaymentStatusException\n상태 전환 불가| D_FAIL
     D_FAIL["handleNonRetryableFailure()\n⎿ executePaymentFailureCompensation()\n  ├─ existsByOrderId() → true → failJob()  — PaymentProcess: FAILED\n  ├─ increaseStockForOrders()             — 재고 복원\n  └─ markPaymentAsFail()                 — PaymentEvent: FAILED"]
     D_FAIL --> Z_FAIL
 
-    D --> E
-    E["④ validateCompletionStatus(paymentEvent, command)\n⎿ 금액(amount) 일치 검증\n⎿ paymentKey 일치 검증"]
-    E --> F
+    D --> F
 
     F["⑤ confirmPaymentWithGateway(command)\n⎿ Toss API: POST /v1/payments/confirm 호출"]
     F -->|PaymentTossRetryableException\nToss 일시 오류| F_R
@@ -96,7 +98,7 @@ flowchart TD
 
 ## 2. Outbox (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`)
 
-> `spring.payment.async-strategy=outbox`
+> `spring.payment.async-strategy=outbox` (기본값)
 >
 > **즉시 처리 + 폴백 이중 구조**:
 > - 정상 경로: confirm() 커밋 후 Spring ApplicationEvent → `OutboxImmediateEventHandler` 즉시 비동기 처리
@@ -109,15 +111,19 @@ flowchart TD
     A([Controller\nPOST /confirm]) --> B
 
     B["① getPaymentEventByOrderId(orderId)\n⎿ PaymentEvent 조회 (상태: READY 예상)"]
-    B --> C
+    B --> LVAL
 
-    C["② executePaymentAndStockDecreaseWithOutbox()\n⎿ executePayment()             — PaymentEvent: READY → IN_PROGRESS, paymentKey 기록\n⎿ decreaseStockForOrders()     — 재고 감소\n⎿ createPendingRecord(orderId) — PaymentOutbox: PENDING 생성\n※ 단일 트랜잭션(@Transactional), rollbackFor=StockException\n※ PaymentProcess 생성 없음"]
+    LVAL["② LVAL: command.amount == paymentEvent.totalAmount 검증\n※ TX 진입 전 로컬 금액 위변조 감지"]
+    LVAL -->|PaymentValidException| Z_FAIL([4xx throw])
+    LVAL --> C
+
+    C["③ executePaymentAndStockDecreaseWithOutbox()\n⎿ executePayment()             — PaymentEvent: READY → IN_PROGRESS, paymentKey 기록\n⎿ decreaseStockForOrders()     — 재고 감소\n⎿ createPendingRecord(orderId) — PaymentOutbox: PENDING 생성\n※ 단일 트랜잭션(@Transactional), rollbackFor=StockException\n※ PaymentProcess 생성 없음"]
     C -->|PaymentOrderedProductStockException\n재고 부족| C_FAIL
     C_FAIL["트랜잭션 롤백 (PaymentEvent READY 복원, Outbox 롤백)\nhandleStockFailure()\n⎿ markPaymentAsFail()  → PaymentEvent: FAILED\n⎿ (PaymentOutbox는 롤백되어 생성 안 됨)"]
-    C_FAIL --> Z_FAIL([4xx throw])
+    C_FAIL --> Z_FAIL
 
     C --> P
-    P["③ confirmPublisher.publish(orderId)\n⎿ OutboxImmediatePublisher\n⎿ ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)\n⎿ 트랜잭션 커밋 후 AFTER_COMMIT 이벤트 큐잉"]
+    P["④ confirmPublisher.publish(orderId)\n⎿ OutboxImmediatePublisher\n⎿ ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)\n⎿ 트랜잭션 커밋 후 AFTER_COMMIT 이벤트 큐잉"]
     P --> H([202 Accepted\n이후 처리는 OutboxImmediateEventHandler가 담당])
 ```
 
@@ -135,22 +141,15 @@ flowchart TD
     C -->|"클레임 실패 (이미 IN_FLIGHT)"| SKIP
     C --> G
 
-    G["③ loadPaymentEvent(orderId)\n⎿ paymentKey는 confirm() executePayment()로 이미 기록됨"]
+    G["③ getPaymentEventByOrderId(orderId)\n⎿ paymentKey는 confirm() executePayment()로 이미 기록됨"]
     G -->|조회 실패| G_FAIL
     G_FAIL["incrementRetryOrFail(orderId, outbox)\n→ retryCount 증가 또는 FAILED 확정"]
     G_FAIL --> Z_END([종료])
-    G --> V
+    G --> F
 
-    V["④ validateCompletionStatus()\n⎿ 금액(amount) 일치 검증\n⎿ paymentKey 일치 검증"]
-    V -->|"PaymentValidException\nPaymentStatusException\n(금액/키 불일치)"| V_FAIL
-    V_FAIL["보상 + 즉시 FAILED\n⎿ executePaymentFailureCompensation()\n  ├─ existsByOrderId() → false → failJob() 스킵\n  ├─ increaseStockForOrders() — 재고 복원\n  └─ markPaymentAsFail()      — PaymentEvent: FAILED\n⎿ markFailed()              — PaymentOutbox: FAILED\n※ 재시도 없음 (데이터 정합성 오류)"]
-    V_FAIL --> Z_END
-
-    V --> F
-
-    F["⑤ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
+    F["④ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
     F -->|PaymentTossNonRetryableException\nToss 비재시도 오류| F_NR
-    F_NR["보상 + FAILED\n⎿ executePaymentFailureCompensation()\n  ├─ existsByOrderId() → false → failJob() 스킵\n  ├─ increaseStockForOrders() — 재고 복원\n  └─ markPaymentAsFail()      — PaymentEvent: FAILED\n⎿ markFailed()              — PaymentOutbox: FAILED"]
+    F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED\n※ 단일 트랜잭션"]
     F_NR --> Z_END
 
     F -->|PaymentTossRetryableException\nToss 일시 오류| F_R
@@ -159,10 +158,8 @@ flowchart TD
     F_R -->|"No (retryCount >= 5)\n한도 초과 → FAILED 확정"| Z_END
 
     F --> E
-    E["⑥ executePaymentSuccessCompletion()\n⎿ existsByOrderId() → false\n  → completeJob() 스킵 (PaymentProcess 없음)\n⎿ markPaymentAsDone()  — PaymentEvent: DONE"]
-    E --> D2
-    D2["⑦ markDone()\n⎿ PaymentOutbox: IN_FLIGHT → DONE"]
-    D2 --> Z_OK([종료])
+    E["⑤ executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
+    E --> Z_OK([종료])
 ```
 
 ### 2-3. OutboxWorker.process() — 폴백 스케줄러
@@ -186,18 +183,11 @@ flowchart TD
     G -->|조회 실패| G_FAIL
     G_FAIL["incrementRetryOrFail(orderId, outbox)"]
     G_FAIL --> Z_END([종료])
-    G --> V
+    G --> F
 
-    V["Step 4: validateCompletionStatus()"]
-    V -->|"PaymentValidException\nPaymentStatusException"| V_FAIL
-    V_FAIL["executePaymentFailureCompensation() + markFailed()\n※ 재시도 없음"]
-    V_FAIL --> Z_END
-
-    V --> F
-
-    F["Step 5: confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
+    F["Step 4: confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
     F -->|PaymentTossNonRetryableException| F_NR
-    F_NR["executePaymentFailureCompensation() + markFailed()"]
+    F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED"]
     F_NR --> Z_END
 
     F -->|PaymentTossRetryableException| F_R
@@ -206,146 +196,47 @@ flowchart TD
     F_R -->|"No → FAILED 확정"| Z_END
 
     F --> E
-    E["Step 6: executePaymentSuccessCompletion()\n⎿ existsByOrderId() → false\n  → completeJob() 스킵\n⎿ markPaymentAsDone()  — PaymentEvent: DONE"]
-    E --> D2
-    D2["Step 7: markDone()\n⎿ PaymentOutbox: IN_FLIGHT → DONE"]
-    D2 --> Z_OK([종료])
+    E["Step 5: executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
+    E --> Z_OK([종료])
 ```
 
 ---
 
-## 3. 복구 스케줄러 (`PaymentScheduler`)
+## 3. 전략 비교
 
-### 3-1. recoverStuckPayments() — PaymentProcess 기반 복구 (Sync 전용)
-
-> 활성화: `scheduler.payment-recovery.enabled=true`
-> 주기: `scheduler.payment-recovery.interval-ms` (기본 **1분**, fixedDelay)
->
-> **목적**: 재고는 감소했고 PaymentProcess는 PROCESSING이지만, PaymentEvent가 완료/실패로 전환되지 않은 건 복구.
-> Toss에 `/v1/payments/{orderId}` **상태 조회** API(confirm 재호출 아님)로 실제 결과를 확인한 뒤 처리.
-
-```mermaid
-flowchart TD
-    S(["@Scheduled fixedDelay\n기본 1분\nscheduler.payment-recovery.enabled=true"]) --> A
-
-    A["findAllProcessingJobs()\n⎿ PaymentProcess.status = PROCESSING 전체 조회\n⎿ 페이징 없음 — 전수 조회"]
-    A -->|"결과 없음"| SKIP([return])
-    A --> LOOP
-
-    LOOP["각 PaymentProcess 순회"]
-    LOOP --> B
-
-    B["getStatusByOrderId(orderId)\n⎿ Toss API: GET /v1/payments/{orderId}\n⎿ confirm 재호출이 아닌 단순 상태 조회\n⎿ 반환: PaymentStatusResult(status, approvedAt)"]
-    B --> C
-
-    C["getPaymentEventByOrderId(orderId)\n⎿ PaymentEvent 조회"]
-    C --> D
-
-    D{"Toss 조회 결과\npaymentStatus == DONE?"}
-
-    D -->|Yes\nToss에서 승인 완료| E
-    E["executePaymentSuccessCompletion()\n⎿ existsByOrderId() → true (Sync)\n⎿ completeJob()       — PaymentProcess: COMPLETED\n⎿ markPaymentAsDone() — PaymentEvent: DONE"]
-    E --> NEXT([다음 건 처리])
-
-    D -->|No\nToss에서 미승인/실패| F
-    F["executePaymentFailureCompensation()\n⎿ existsByOrderId() → true (Sync)\n⎿ failJob()               — PaymentProcess: FAILED\n⎿ increaseStockForOrders() — 재고 복원\n⎿ markPaymentAsFail()      — PaymentEvent: FAILED"]
-    F --> NEXT
-```
-
----
-
-### 3-2. recoverRetryablePayment() — PaymentEvent 기반 재시도 (전략 무관)
-
-> 활성화: `scheduler.payment-status-sync.enabled=true`
-> 주기: `scheduler.payment-status-sync.fixed-rate` (기본 **5분**, fixedRate)
->
-> **목적**: Toss API 일시 오류로 `UNKNOWN` 상태가 된 결제, 또는 `IN_PROGRESS` 상태로 5분 이상 응답이 없는 결제를
-> Toss confirm API를 **재호출**해 완료/실패로 전환.
->
-> **재시도 조건 (`isRetryable(now)`)**:
-> - `(status == IN_PROGRESS AND executedAt < now - 5분)` OR `status == UNKNOWN`
-> - AND `retryCount < 5` (PaymentEvent.RETRYABLE_LIMIT)
-
-```mermaid
-flowchart TD
-    S(["@Scheduled fixedRate\n기본 5분\nscheduler.payment-status-sync.enabled=true"]) --> A
-
-    A["getRetryablePaymentEvents()\n⎿ DB 쿼리: status=IN_PROGRESS AND executedAt < now-5분\n⎿ 또는 status=UNKNOWN\n⎿ 반환: List[PaymentEvent]"]
-    A -->|"결과 없음"| SKIP([return])
-    A --> LOOP
-
-    LOOP["각 PaymentEvent 순회\n(processRetryablePaymentEvent)"]
-    LOOP --> V
-
-    V{"isRetryable(now) 재검증\n⎿ 상태·시간·retryCount\n  재확인 (DB 조회 이후\n  상태가 바뀔 수 있음)"}
-    V -->|false\n조건 불충족| NR_COMMON
-
-    V -->|true| R
-    R["increaseRetryCount()\n⎿ PaymentEvent.retryCount++\n⎿ DB 저장 (상태 변경 없음)"]
-    R --> F
-
-    F["confirmPaymentWithGateway(command)\n⎿ Toss API: POST /v1/payments/confirm 재호출\n⎿ paymentKey는 PaymentEvent에서 조회\n⎿ (executePayment 재호출 없음)"]
-
-    F -->|성공| F_OK
-    F_OK["markPaymentAsDone()\n⎿ PaymentEvent: IN_PROGRESS/UNKNOWN → DONE\n⎿ approvedAt 기록\n※ completeJob() 미호출\n  → PaymentProcess: PROCESSING 유지\n  → recoverStuckPayments가 후속 처리"]
-    F_OK --> SUCCESS(["markRecoverySuccess()\n로그만 기록\n다음 건 처리"])
-
-    F -->|PaymentTossRetryableException\nToss 일시 오류| F_R
-    F_R["markRecoveryRetryableFailure()\n⎿ handleRetryableFailure()\n⎿ markPaymentAsUnknown() — PaymentEvent: UNKNOWN\n⎿ 다음 스케줄 주기에 재시도 대상이 됨"]
-    F_R --> NEXT([다음 건 처리])
-
-    F -->|"PaymentTossNonRetryableException\nPaymentRetryableValidateException\nUnknown Exception"| NR_COMMON
-
-    NR_COMMON["markRecoveryFailure()\n⎿ handleNonRetryableFailure()\n⎿ executePaymentFailureCompensation()\n  ├─ existsByOrderId() → true(Sync)  → failJob()  — PaymentProcess: FAILED\n  ├─ existsByOrderId() → false(Outbox) → failJob() 스킵\n  ├─ increaseStockForOrders()  — 재고 복원\n  └─ markPaymentAsFail()       — PaymentEvent: FAILED"]
-    NR_COMMON --> NEXT
-```
-
-> **recoverStuckPayments와의 관계**
->
-> Sync 전략에서 `recoverRetryablePayment`가 성공하면 PaymentEvent는 DONE이 되지만
-> `completeJob()`을 호출하지 않아 PaymentProcess는 PROCESSING으로 남는다.
-> 이후 `recoverStuckPayments`가 Toss 상태 조회 → DONE 확인 →
-> `executePaymentSuccessCompletion()` 호출 → `completeJob()` 실행으로 최종 정리된다.
-
----
-
-## 4. 전략 비교
-
-### 4-1. HTTP 응답 / 처리 흐름
+### 3-1. HTTP 응답 / 처리 흐름
 
 ```mermaid
 flowchart LR
     subgraph Sync["Sync (동기)"]
         direction TB
-        S1["재고 감소\n+ PaymentProcess: PROCESSING"] --> S2["Toss API 호출"]
-        S2 --> S3["PaymentProcess: COMPLETED\nPaymentEvent: DONE"]
-        S3 --> S4([200 OK])
+        S1["로컬 검증\n(validateLocalPaymentRequest)"] --> S2["재고 감소\n+ PaymentProcess: PROCESSING"]
+        S2 --> S3["Toss API 호출"]
+        S3 --> S4["PaymentProcess: COMPLETED\nPaymentEvent: DONE"]
+        S4 --> S5([200 OK])
     end
 
     subgraph Outbox["Outbox (비동기 — 즉시처리 + 폴백)"]
         direction TB
-        O1["재고 감소\n+ PaymentOutbox: PENDING\n(executePayment 포함 단일 TX)"] --> O2([202 Accepted])
-        O2 -.->|"OutboxImmediateEventHandler\n(AFTER_COMMIT, Async)"| O3["validateCompletionStatus\n→ Toss API 호출"]
-        O2 -.->|"OutboxWorker (폴백)\n(fixedDelay 5s)"| O3
-        O3 --> O4["PaymentEvent: DONE\nPaymentOutbox: DONE"]
+        O1["LVAL 금액 검증"] --> O2["재고 감소\n+ PaymentOutbox: PENDING\n(executePayment 포함 단일 TX)"]
+        O2 --> O3([202 Accepted])
+        O3 -.->|"OutboxImmediateEventHandler\n(AFTER_COMMIT, Async)"| O4["Toss API 호출"]
+        O3 -.->|"OutboxWorker (폴백)\n(fixedDelay 5s)"| O4
+        O4 --> O5["PaymentEvent: DONE\nPaymentOutbox: DONE"]
     end
 ```
 
-### 4-2. 실패 보상 공통 패턴 (`executePaymentFailureCompensation`)
+### 3-2. Outbox 보상 패턴 (`executePaymentFailureCompensationWithOutbox`)
 
 ```mermaid
 flowchart TD
-    A["executePaymentFailureCompensation(orderId, ...)"] --> B
-    B{"existsByOrderId(orderId)?"}
-    B -->|true\nSync 전략| C["failJob()\n→ PaymentProcess: FAILED"]
-    B -->|false\nOutbox 전략| D["failJob() 스킵"]
-    C --> E
-    D --> E
-    E["increaseStockForOrders()\n→ 재고 복원"]
-    E --> F["markPaymentAsFail()\n→ PaymentEvent: FAILED"]
+    A["executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)"] --> B
+    B["outbox.toFailed() + paymentOutboxUseCase.save()\n→ PaymentOutbox: FAILED"]
+    B --> C["increaseStockForOrders()\n→ 재고 복원"]
+    C --> D["markPaymentAsFail()\n→ PaymentEvent: FAILED"]
 ```
 
-### 4-3. 전략별 상태 엔티티 사용 요약
+### 3-3. 전략별 상태 엔티티 사용 요약
 
 | 엔티티 | Sync | Outbox |
 |------|------|--------|
