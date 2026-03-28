@@ -58,3 +58,11 @@ scrape_configs:
       - targets: [ 'logstash:9600' ]
         labels:
           service: 'logstash'
+
+  # cAdvisor — 컨테이너 리소스 메트릭
+  - job_name: 'cadvisor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: [ 'cadvisor:8080' ]
+        labels:
+          service: 'cadvisor'

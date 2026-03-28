@@ -244,3 +244,6 @@ out/
 bin
 
 .archive
+
+# k6 benchmark results
+scripts/k6/results/
