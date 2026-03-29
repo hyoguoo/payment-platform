@@ -146,7 +146,7 @@ class OutboxImmediateEventHandlerTest {
     class FailureScenario {
 
         @Test
-        @DisplayName("retryable 실패 시 incrementRetryOrFail을 호출한다")
+        @DisplayName("retryable 실패 시 재시도 가능하면 incrementRetryOrFail을 호출하고 보상 트랜잭션은 호출하지 않는다")
         void handle_retryable_실패_시_incrementRetryOrFail_호출한다() throws Exception {
             // given
             String orderId = "order-123";
@@ -159,6 +159,7 @@ class OutboxImmediateEventHandlerTest {
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any()))
                     .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+            given(mockPaymentOutboxUseCase.incrementRetryOrFail(orderId, outbox)).willReturn(false);
 
             // when
             handler.handle(event);
@@ -167,6 +168,31 @@ class OutboxImmediateEventHandlerTest {
             then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
             then(mockTransactionCoordinator).should(times(0))
                     .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("retryable 실패 소진 시 executePaymentFailureCompensationWithOutbox를 호출한다")
+        void handle_retryable_실패_소진_시_executePaymentFailureCompensationWithOutbox_호출한다() throws Exception {
+            // given
+            String orderId = "order-123";
+            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
+            PaymentOutbox outbox = createOutbox(orderId);
+            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+
+            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
+            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any()))
+                    .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+            given(mockPaymentOutboxUseCase.incrementRetryOrFail(orderId, outbox)).willReturn(true);
+
+            // when
+            handler.handle(event);
+
+            // then
+            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
+            then(mockTransactionCoordinator).should(times(1))
+                    .executePaymentFailureCompensationWithOutbox(eq(paymentEvent), anyList(), anyString(), eq(outbox));
         }
 
         @Test

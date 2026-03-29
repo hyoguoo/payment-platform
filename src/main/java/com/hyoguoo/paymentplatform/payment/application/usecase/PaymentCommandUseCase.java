@@ -1,15 +1,20 @@
- package com.hyoguoo.paymentplatform.payment.application.usecase;
+package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -73,14 +78,14 @@ public class PaymentCommandUseCase {
 
     public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
             throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest request =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest(
+        PaymentConfirmRequest request =
+                new PaymentConfirmRequest(
                         paymentConfirmCommand.getOrderId(),
                         paymentConfirmCommand.getPaymentKey(),
                         paymentConfirmCommand.getAmount()
                 );
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult result =
+        PaymentConfirmResult result =
                 paymentGatewayPort.confirm(request);
 
         PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
@@ -88,18 +93,18 @@ public class PaymentCommandUseCase {
                 .orderId(request.orderId())
                 .paymentConfirmResultStatus(result.status())
                 .paymentDetails(
-                        com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails.builder()
+                        PaymentDetails.builder()
                                 .totalAmount(result.amount())
-                                .status(com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus.DONE)
+                                .status(TossPaymentStatus.DONE)
                                 .approvedAt(result.approvedAt())
                                 .build()
                 )
                 .paymentFailure(
                         result.failure() != null ?
-                                com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure.builder()
-                                        .code(result.failure().code())
-                                        .message(result.failure().message())
-                                        .build() : null
+                                PaymentFailure.builder()
+                                .code(result.failure().code())
+                                .message(result.failure().message())
+                                .build() : null
                 )
                 .build();
 

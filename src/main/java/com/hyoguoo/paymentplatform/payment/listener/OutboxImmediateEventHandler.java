@@ -74,10 +74,18 @@ public class OutboxImmediateEventHandler {
 
         } catch (PaymentTossRetryableException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            boolean exhausted = paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            if (exhausted) {
+                transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                        paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
+            }
         } catch (Exception e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            boolean exhausted = paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            if (exhausted) {
+                transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                        paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
+            }
         }
     }
 

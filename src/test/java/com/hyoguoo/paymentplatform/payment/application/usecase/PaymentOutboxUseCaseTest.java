@@ -105,17 +105,18 @@ class PaymentOutboxUseCaseTest {
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(retryableOutbox);
 
         // when
-        paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, retryableOutbox);
+        boolean result = paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, retryableOutbox);
 
         // then
+        assertThat(result).isFalse();
         assertThat(retryableOutbox.getRetryCount()).isEqualTo(4);
         assertThat(retryableOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         then(mockPaymentOutboxRepository).should(times(1)).save(retryableOutbox);
     }
 
     @Test
-    @DisplayName("incrementRetryOrFail - limit exceeded: retryCount=5이면 markFailed() 호출")
-    void incrementRetryOrFail_limitExceeded_callsMarkFailed() {
+    @DisplayName("incrementRetryOrFail - limit exceeded: retryCount=5이면 true 반환하고 save() 호출하지 않는다")
+    void incrementRetryOrFail_limitExceeded_returnsTrueWithoutSave() {
         // given
         PaymentOutbox exhaustedOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -123,15 +124,13 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(5)
                 .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(exhaustedOutbox));
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(exhaustedOutbox);
 
         // when
-        paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, exhaustedOutbox);
+        boolean result = paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, exhaustedOutbox);
 
         // then
-        assertThat(exhaustedOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
-        then(mockPaymentOutboxRepository).should(times(1)).save(exhaustedOutbox);
+        assertThat(result).isTrue();
+        then(mockPaymentOutboxRepository).should(never()).save(any());
     }
 
     @Test

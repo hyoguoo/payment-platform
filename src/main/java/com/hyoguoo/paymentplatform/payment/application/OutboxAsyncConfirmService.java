@@ -12,8 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,12 +41,12 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
         PaymentEvent paymentEvent =
                 paymentLoadUseCase.getPaymentEventByOrderId(command.getOrderId());
 
-        if (!paymentEvent.getBuyerId().equals(command.getUserId())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
-        }
-        if (command.getAmount().compareTo(paymentEvent.getTotalAmount()) != 0) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
-        }
+        paymentEvent.validateConfirmRequest(
+                command.getUserId(),
+                command.getAmount(),
+                command.getOrderId(),
+                command.getPaymentKey()
+        );
 
         // executePayment(READY→IN_PROGRESS) + 재고 감소 + Outbox 생성을 단일 트랜잭션으로 처리
         // → TX1/TX2 분리로 인한 서버 크래시 시 재고 미감소 상태 결제 확인 방지

@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxReposit
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -43,25 +42,14 @@ public class PaymentOutboxUseCase {
         }
     }
 
-    private void markFailed(String orderId) {
-        PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
-                .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
-                        PaymentErrorCode.PAYMENT_OUTBOX_NOT_FOUND));
-        if (outbox.getStatus() == PaymentOutboxStatus.FAILED) {
-            return;
-        }
-        outbox.toFailed();
-        paymentOutboxRepository.save(outbox);
-    }
-
     @Transactional
-    public void incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
+    public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
         if (currentOutbox.isRetryable()) {
             currentOutbox.incrementRetryCount();
             paymentOutboxRepository.save(currentOutbox);
-        } else {
-            markFailed(orderId);
+            return false;
         }
+        return true;
     }
 
     @Transactional

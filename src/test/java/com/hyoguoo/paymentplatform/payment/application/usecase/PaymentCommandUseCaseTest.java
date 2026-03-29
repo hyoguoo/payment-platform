@@ -14,6 +14,9 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
@@ -65,7 +68,8 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(), testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(),
+                testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -131,8 +135,8 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.SUCCESS,
                         "paymentKey",
                         "order123",
@@ -142,7 +146,8 @@ class PaymentCommandUseCaseTest {
                 );
 
         // when
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
@@ -163,18 +168,20 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.RETRYABLE_FAILURE,
                         "paymentKey",
                         "order123",
                         new BigDecimal(10000),
                         LocalDateTime.now(),
-                        new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo("ERROR", "Retryable error", true)
+                        new PaymentFailureInfo("ERROR",
+                                "Retryable error", true)
                 );
 
         // when & then
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         assertThatThrownBy(
                 () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
@@ -191,18 +198,20 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE,
                         "paymentKey",
                         "order123",
                         new BigDecimal(10000),
                         LocalDateTime.now(),
-                        new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo("ERROR", "Non-retryable error", false)
+                        new PaymentFailureInfo("ERROR",
+                                "Non-retryable error", false)
                 );
 
         // when & then
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         assertThatThrownBy(
                 () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
@@ -224,5 +233,4 @@ class PaymentCommandUseCaseTest {
         then(paymentEvent).should(times(1)).expire(testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
-
 }

@@ -100,9 +100,13 @@ public class OutboxWorker {
                     paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
 
         } catch (PaymentTossRetryableException e) {
-            // Step 4-C: 재시도 가능 — retryCount 증가 또는 FAILED
+            // Step 4-C: 재시도 가능 — retryCount 증가 또는 소진 시 보상 트랜잭션
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-            paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            boolean exhausted = paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+            if (exhausted) {
+                transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                        paymentEvent, paymentEvent.getPaymentOrderList(), e.getMessage(), outbox);
+            }
         }
     }
 

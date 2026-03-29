@@ -123,7 +123,7 @@ class OutboxWorkerTest {
     }
 
     @Test
-    @DisplayName("process - PaymentTossRetryableException: incrementRetryOrFail() 호출, executePaymentFailureCompensationWithOutbox() 호출 안 함")
+    @DisplayName("process - PaymentTossRetryableException 재시도 가능: incrementRetryOrFail() 호출, executePaymentFailureCompensationWithOutbox() 호출 안 함")
     void process_retryableException_callsIncrementRetryOrFail() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
@@ -135,6 +135,7 @@ class OutboxWorkerTest {
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, pendingOutbox)).willReturn(false);
 
         // when
         outboxWorker.process();
@@ -144,6 +145,31 @@ class OutboxWorkerTest {
                 .incrementRetryOrFail(ORDER_ID, pendingOutbox);
         then(mockTransactionCoordinator).should(never())
                 .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("process - PaymentTossRetryableException 소진: executePaymentFailureCompensationWithOutbox() 호출")
+    void process_retryableException_exhausted_callsCompensationWithOutbox() throws Exception {
+        // given
+        PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(pendingOutbox));
+        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, pendingOutbox)).willReturn(true);
+
+        // when
+        outboxWorker.process();
+
+        // then
+        then(mockPaymentOutboxUseCase).should(times(1))
+                .incrementRetryOrFail(ORDER_ID, pendingOutbox);
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(), any(PaymentOutbox.class));
     }
 
     @Test

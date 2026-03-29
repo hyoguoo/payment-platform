@@ -18,8 +18,8 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +63,12 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
                 paymentConfirmCommand.getOrderId()
         );
 
-        validateLocalPaymentRequest(paymentEvent, paymentConfirmCommand);
+        paymentEvent.validateConfirmRequest(
+                paymentConfirmCommand.getUserId(),
+                paymentConfirmCommand.getAmount(),
+                paymentConfirmCommand.getOrderId(),
+                paymentConfirmCommand.getPaymentKey()
+        );
 
         try {
             transactionCoordinator.executeStockDecreaseWithJobCreation(
@@ -150,19 +155,5 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         return donePaymentEvent;
     }
 
-    private void validateLocalPaymentRequest(PaymentEvent paymentEvent, PaymentConfirmCommand command) {
-        if (!paymentEvent.getBuyerId().equals(command.getUserId())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
-        }
-        if (command.getAmount().compareTo(paymentEvent.getTotalAmount()) != 0) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
-        }
-        if (!paymentEvent.getOrderId().equals(command.getOrderId())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
-        }
-        if (paymentEvent.getPaymentKey() != null
-                && !paymentEvent.getPaymentKey().equals(command.getPaymentKey())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
-        }
-    }
+
 }

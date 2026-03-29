@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -534,5 +535,50 @@ class PaymentEventTest {
         // then
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(statusChangeTime);
         assertThat(paymentEvent.getStatus()).isEqualTo(targetStatus);
+    }
+
+    @Test
+    @DisplayName("validateConfirmRequest - 유효한 요청: 예외가 발생하지 않는다")
+    void validateConfirmRequest_valid_noException() {
+        PaymentEvent paymentEvent = defaultPaymentEvent();
+        // totalAmount = 5000 + 10000 = 15000
+        paymentEvent.validateConfirmRequest(1L, new BigDecimal("15000"), "order123", "validPaymentKey");
+    }
+
+    @Test
+    @DisplayName("validateConfirmRequest - paymentKey null: 예외가 발생하지 않는다")
+    void validateConfirmRequest_nullPaymentKey_noException() {
+        PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
+                .buyerId(1L)
+                .orderId("order123")
+                .paymentKey(null)
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .paymentOrderList(List.of(
+                        PaymentOrder.allArgsBuilder()
+                                .quantity(1)
+                                .totalAmount(new BigDecimal("15000"))
+                                .status(PaymentOrderStatus.NOT_STARTED)
+                                .allArgsBuild()))
+                .allArgsBuild();
+
+        paymentEvent.validateConfirmRequest(1L, new BigDecimal("15000"), "order123", "anyKey");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2,     15000, order123, validPaymentKey",  // 잘못된 userId
+            "1,     99999, order123, validPaymentKey",  // 잘못된 amount
+            "1,     15000, wrongId,  validPaymentKey",  // 잘못된 orderId
+            "1,     15000, order123, wrongKey",         // 잘못된 paymentKey
+    })
+    @DisplayName("validateConfirmRequest - 유효하지 않은 요청: PaymentValidException 발생")
+    void validateConfirmRequest_invalid_throwsException(
+            long userId, String amount, String orderId, String paymentKey) {
+        PaymentEvent paymentEvent = defaultPaymentEvent();
+
+        assertThatThrownBy(() ->
+                paymentEvent.validateConfirmRequest(userId, new BigDecimal(amount), orderId, paymentKey))
+                .isInstanceOf(PaymentValidException.class);
     }
 }

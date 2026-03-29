@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -125,6 +126,21 @@ public class PaymentEvent {
         this.statusReason = null;
         this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::expire);
+    }
+
+    public void validateConfirmRequest(Long userId, BigDecimal amount, String orderId, String paymentKey) {
+        if (!this.buyerId.equals(userId)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
+        }
+        if (amount.compareTo(getTotalAmount()) != 0) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
+        if (!this.orderId.equals(orderId)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
+        }
+        if (this.paymentKey != null && !this.paymentKey.equals(paymentKey)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
+        }
     }
 
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
