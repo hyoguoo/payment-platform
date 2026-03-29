@@ -38,6 +38,7 @@ Async payment migration project: migrate the synchronous Toss Payments confirm f
 - [`docs/context/STACK.md`](docs/context/STACK.md) — technology stack, dependencies
 - [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — async confirm flow analysis (Sync / Outbox / Kafka)
 - [`docs/context/CONFIRM-FLOW-FLOWCHART.md`](docs/context/CONFIRM-FLOW-FLOWCHART.md) — confirm flow mermaid diagrams
+- [`docs/context/TODOS.md`](docs/context/TODOS.md) — 향후 정리 예정 작업 목록 (discuss idle 시 참고)
 
 ### 작업 중 설계 문서 (docs/topics/) — 작업 단위 생명주기
 
