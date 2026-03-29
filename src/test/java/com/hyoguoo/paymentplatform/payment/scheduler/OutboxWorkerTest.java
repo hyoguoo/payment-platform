@@ -23,7 +23,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,14 +37,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 @DisplayName("OutboxWorker 테스트")
 class OutboxWorkerTest {
 
+    private static final String ORDER_ID = "order-123";
+    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 3, 15, 12, 0, 0);
     private PaymentOutboxUseCase mockPaymentOutboxUseCase;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentCommandUseCase mockPaymentCommandUseCase;
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private OutboxWorker outboxWorker;
-
-    private static final String ORDER_ID = "order-123";
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 3, 15, 12, 0, 0);
 
     @BeforeEach
     void setUp() {
@@ -102,7 +100,8 @@ class OutboxWorkerTest {
         then(mockPaymentOutboxUseCase).should(times(1)).claimToInFlight(pendingOutbox);
         then(mockPaymentCommandUseCase).should(times(1)).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
         then(mockTransactionCoordinator).should(times(1))
-                .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class), any(PaymentOutbox.class));
+                .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class),
+                        any(PaymentOutbox.class));
     }
 
     @Test
@@ -166,7 +165,8 @@ class OutboxWorkerTest {
 
         // then
         then(mockTransactionCoordinator).should(times(1))
-                .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(), any(PaymentOutbox.class));
+                .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(),
+                        any(PaymentOutbox.class));
         then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 

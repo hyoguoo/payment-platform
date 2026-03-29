@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.listener;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -18,14 +17,13 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -62,6 +60,37 @@ class OutboxImmediateEventHandlerTest {
         );
     }
 
+    private PaymentOutbox createOutbox(String orderId) {
+        return PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .status(PaymentOutboxStatus.PENDING)
+                .retryCount(0)
+                .allArgsBuild();
+    }
+
+    private PaymentEvent createPaymentEvent(String orderId) {
+        return PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .status(PaymentEventStatus.IN_PROGRESS)
+                .paymentOrderList(Collections.emptyList())
+                .allArgsBuild();
+    }
+
+    private PaymentGatewayInfo createGatewayInfo() {
+        return PaymentGatewayInfo.builder()
+                .paymentKey("payment-key-123")
+                .orderId("order-123")
+                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
+                .paymentDetails(PaymentDetails.builder()
+                        .totalAmount(BigDecimal.valueOf(15000))
+                        .status(TossPaymentStatus.DONE)
+                        .approvedAt(LocalDateTime.now())
+                        .build())
+                .build();
+    }
+
     @Nested
     @DisplayName("handle() 성공 시나리오")
     class SuccessScenario {
@@ -84,7 +113,8 @@ class OutboxImmediateEventHandlerTest {
             handler.handle(event);
 
             // then
-            then(mockPaymentCommandUseCase).should(times(1)).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
+            then(mockPaymentCommandUseCase).should(times(1))
+                    .confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
         }
 
         @Test
@@ -135,7 +165,8 @@ class OutboxImmediateEventHandlerTest {
 
             // then
             then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
-            then(mockTransactionCoordinator).should(times(0)).executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
+            then(mockTransactionCoordinator).should(times(0))
+                    .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
         }
 
         @Test
@@ -217,36 +248,5 @@ class OutboxImmediateEventHandlerTest {
             then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
             then(mockPaymentCommandUseCase).should(times(0)).confirmPaymentWithGateway(any());
         }
-    }
-
-    private PaymentOutbox createOutbox(String orderId) {
-        return PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(orderId)
-                .status(PaymentOutboxStatus.PENDING)
-                .retryCount(0)
-                .allArgsBuild();
-    }
-
-    private PaymentEvent createPaymentEvent(String orderId) {
-        return PaymentEvent.allArgsBuilder()
-                .id(1L)
-                .orderId(orderId)
-                .status(PaymentEventStatus.IN_PROGRESS)
-                .paymentOrderList(Collections.emptyList())
-                .allArgsBuild();
-    }
-
-    private PaymentGatewayInfo createGatewayInfo() {
-        return PaymentGatewayInfo.builder()
-                .paymentKey("payment-key-123")
-                .orderId("order-123")
-                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
-                .paymentDetails(PaymentDetails.builder()
-                        .totalAmount(BigDecimal.valueOf(15000))
-                        .status(TossPaymentStatus.DONE)
-                        .approvedAt(LocalDateTime.now())
-                        .build())
-                .build();
     }
 }
