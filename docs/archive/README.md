@@ -16,3 +16,4 @@
 | `k6-benchmark-methodology-fix/` | k6 측정 방법론 수정 — e2e_idle 별도 run 분리, TIMEOUT 명시 집계, confirm_requests Counter, sync 부하 상향 | 2026-03-27 |
 | `outbox-immediate-dispatch/` | Outbox 즉시 처리 — TX 커밋 후 @Async+@TransactionalEventListener로 Toss API 즉시 호출, OutboxWorker recovery 전용 전환 | 2026-03-28 |
 | `k6-benchmark-redesign/` | k6 벤치마크 재설계 — idle 제거, e2e_completion_ms 메트릭 통일, 부하 단계 100→200→400 통일 | 2026-03-28 |
+| `async-payment-cleanup/` | 비동기 결제 클린업 — Kafka 전략 제거, Sync/Outbox 이중 전략 정리, 불필요 UseCase·RecoverService 제거 | 2026-03-29 |

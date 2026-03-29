@@ -27,7 +27,6 @@
 - Spring Boot 3.3.3 — application framework
 - Spring Web MVC — REST controllers (`spring-boot-starter-web`)
 - Spring Data JPA — ORM layer (`spring-boot-starter-data-jpa`)
-- Spring Kafka — Kafka producer/consumer (`spring-kafka`)
 - Spring Validation — bean validation (`spring-boot-starter-validation`)
 - Spring AOP — cross-cutting aspects (`spring-boot-starter-aop`)
 - Spring Actuator — health/metrics endpoints (`spring-boot-starter-actuator`)
@@ -41,7 +40,6 @@
 ## Key Dependencies
 
 **Critical:**
-- `spring-kafka` — Kafka strategy: `KafkaConfirmPublisher`, `KafkaConfirmListener`
 - `spring-boot-starter-data-jpa` — all repository adapters
 - `com.mysql:mysql-connector-j` (runtime) — MySQL 8.0 driver
 - `org.projectlombok:lombok` — `@Getter`, `@Builder`, `@RequiredArgsConstructor`, `@Slf4j` throughout
@@ -56,9 +54,8 @@
 **Testing:**
 - `spring-boot-starter-test` — JUnit 5, Mockito, AssertJ
 - `spring-boot-testcontainers` — testcontainers Spring integration
-- `org.testcontainers:mysql:1.19.8` — MySQL container for integration tests
-- `org.testcontainers:junit-jupiter:1.19.8` — JUnit Jupiter extension
-- `org.testcontainers:kafka:1.19.8` — Kafka container for integration tests
+- `org.testcontainers:mysql:1.20.4` — MySQL container for integration tests
+- `org.testcontainers:junit-jupiter:1.20.4` — JUnit Jupiter extension
 - `org.junit.platform:junit-platform-launcher` (testRuntime)
 
 **Development:**
@@ -77,14 +74,11 @@
 **Key Config Properties:**
 
 ```yaml
-spring.payment.async-strategy: sync | outbox | kafka   # strategy switch
+spring.payment.async-strategy: sync | outbox   # strategy switch (default: outbox)
 payment.gateway.type: TOSS
 payment.gateway.toss.base-url: https://api.tosspayments.com
 payment.gateway.toss.connect-timeout: 3000
 payment.gateway.toss.read-timeout: 10000
-spring.kafka.bootstrap-servers: localhost:9092          # docker: kafka:9092
-spring.kafka.consumer.group-id: payment-confirm-group
-spring.kafka.listener.ack-mode: RECORD
 scheduler.enabled: true                                  # gates SchedulerConfig
 scheduler.outbox-worker.fixed-delay-ms: 1000
 scheduler.outbox-worker.batch-size: 10

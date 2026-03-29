@@ -43,7 +43,7 @@
   - `PaymentProcessUseCase` — process-job lifecycle (sync strategy)
   - `PaymentFailureUseCase` — failure routing logic
   - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions shared across strategies
-  - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentRecoveryUseCase`, `PaymentCreateUseCase`
+  - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
 - Depends on: `domain`, `core/common`
 - Used by: `presentation`, `scheduler`, `listener`
 
@@ -72,8 +72,8 @@
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
 - Contains:
   - `OutboxWorker` — `@Scheduled(fixedDelayString)` every 5s (기본값); **폴백 역할** — `OutboxImmediateEventHandler`가 처리하지 못한 PENDING 레코드를 배치(기본 50건)로 재처리; supports parallel mode via Java 21 virtual threads
-  - `PaymentScheduler` — `@ConditionalOnProperty`-guarded recovery + expiration jobs
-- Port interfaces: `scheduler/port/PaymentExpirationService`, `PaymentRecoverService`
+  - `PaymentScheduler` — 만료 스케줄러; `@Scheduled(fixedRateString)` 기본 5분마다 READY 상태 오래된 결제를 만료 처리
+- Port interfaces: `scheduler/port/PaymentExpirationService`
 - Depends on: `application` use-case services directly
 
 **Listener (`payment/listener`):**
@@ -148,7 +148,7 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 ## Key Design Decisions
 
 **PaymentTransactionCoordinator — shared transactional boundary:**
-- A plain `@Service` (no interface) shared by all three strategies, `OutboxWorker`, and `KafkaConfirmListener`
+- A plain `@Service` (no interface) shared by both strategies, `OutboxWorker`, and `OutboxImmediateEventHandler`
 - Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
 - Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentAndStockDecrease`, `executeStockDecreaseWithJobCreation`, `executePaymentSuccessCompletion`, `executePaymentFailureCompensation`
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
@@ -161,7 +161,7 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 **PaymentOutbox vs PaymentProcess — separate domain concepts:**
 - `PaymentOutbox` (`domain/PaymentOutbox.java`) — dedicated outbox record for the outbox strategy; lifecycle: `PENDING → IN_FLIGHT → DONE/FAILED`; retry limit = 5
 - `PaymentProcess` (`domain/PaymentProcess.java`) — tracks the in-flight gateway call for the sync strategy; created atomically with stock decrease; completed/failed via `executePaymentSuccessCompletion`/`executePaymentFailureCompensation`
-- These are separate DB tables; `PaymentRecoverServiceImpl` queries target only `PaymentEvent`, not `PaymentOutbox`
+- These are separate DB tables; the two domain concepts serve different strategies and are never mixed
 
 **Cross-Context Communication pattern:**
 - `payment` calls `paymentgateway` via `InternalPaymentGatewayAdapter` → `PaymentGatewayInternalReceiver` (a `@RestController` used as an internal Java facade, not an HTTP endpoint from outside)
