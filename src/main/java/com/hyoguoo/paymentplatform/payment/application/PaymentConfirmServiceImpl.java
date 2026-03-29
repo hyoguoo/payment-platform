@@ -160,7 +160,8 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
         if (!paymentEvent.getOrderId().equals(command.getOrderId())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
         }
-        if (!paymentEvent.getPaymentKey().equals(command.getPaymentKey())) {
+        if (paymentEvent.getPaymentKey() != null
+                && !paymentEvent.getPaymentKey().equals(command.getPaymentKey())) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
     }

@@ -70,6 +70,7 @@ class OutboxAsyncConfirmServiceTest {
             String paymentKey = "payment-key-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey(paymentKey)
                     .amount(amount)
@@ -101,6 +102,7 @@ class OutboxAsyncConfirmServiceTest {
             String paymentKey = "payment-key-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey(paymentKey)
                     .amount(amount)
@@ -128,6 +130,7 @@ class OutboxAsyncConfirmServiceTest {
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(10000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey("payment-key")
                     .amount(amount)
@@ -156,6 +159,7 @@ class OutboxAsyncConfirmServiceTest {
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey("payment-key")
                     .amount(amount)
@@ -183,6 +187,7 @@ class OutboxAsyncConfirmServiceTest {
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(10000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey("payment-key")
                     .amount(amount)
@@ -218,6 +223,35 @@ class OutboxAsyncConfirmServiceTest {
     }
 
     @Nested
+    @DisplayName("LVAL 로컬 사용자 검증 테스트")
+    class LvalUserValidationTest {
+
+        @Test
+        @DisplayName("userId 불일치 시 PaymentValidException을 던진다")
+        void userId_불일치_시_PaymentValidException을_던진다() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(999L)
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+
+            then(mockTransactionCoordinator).should(times(0))
+                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
+        }
+    }
+
+    @Nested
     @DisplayName("LVAL 로컬 금액 검증 테스트")
     class LvalValidationTest {
 
@@ -228,6 +262,7 @@ class OutboxAsyncConfirmServiceTest {
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey("payment-key")
                     .amount(amount)
@@ -255,6 +290,7 @@ class OutboxAsyncConfirmServiceTest {
             BigDecimal eventAmount = BigDecimal.valueOf(15000);
             BigDecimal commandAmount = BigDecimal.valueOf(9999);
             PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
                     .orderId(orderId)
                     .paymentKey("payment-key")
                     .amount(commandAmount)
@@ -275,6 +311,7 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status) {
         return PaymentEvent.allArgsBuilder()
                 .id(1L)
+                .buyerId(1L)
                 .orderId(orderId)
                 .status(status)
                 .paymentOrderList(Collections.emptyList())
@@ -291,6 +328,7 @@ class OutboxAsyncConfirmServiceTest {
                 .allArgsBuild();
         return PaymentEvent.allArgsBuilder()
                 .id(1L)
+                .buyerId(1L)
                 .orderId(orderId)
                 .status(status)
                 .paymentOrderList(List.of(paymentOrder))

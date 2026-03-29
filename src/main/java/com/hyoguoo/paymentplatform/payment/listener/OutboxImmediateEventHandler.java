@@ -75,6 +75,9 @@ public class OutboxImmediateEventHandler {
         } catch (PaymentTossRetryableException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
+        } catch (Exception e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+            paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
         }
     }
 

@@ -42,6 +42,9 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
         PaymentEvent paymentEvent =
                 paymentLoadUseCase.getPaymentEventByOrderId(command.getOrderId());
 
+        if (!paymentEvent.getBuyerId().equals(command.getUserId())) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
+        }
         if (command.getAmount().compareTo(paymentEvent.getTotalAmount()) != 0) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
         }

@@ -43,7 +43,6 @@ public class PaymentOutboxUseCase {
         }
     }
 
-    @Transactional
     private void markFailed(String orderId) {
         PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
                 .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
