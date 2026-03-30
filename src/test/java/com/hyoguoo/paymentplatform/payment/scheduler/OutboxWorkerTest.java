@@ -28,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -79,16 +80,17 @@ class OutboxWorkerTest {
     }
 
     @Test
-    @DisplayName("process - 정상 흐름: PENDING 레코드 → claimToInFlight → confirmPaymentWithGateway → executePaymentSuccessCompletionWithOutbox 순서로 호출, markDone 미호출")
+    @DisplayName("process - 정상 흐름: PENDING 레코드 → claimToInFlight → confirmPaymentWithGateway → executePaymentSuccessCompletionWithOutbox 순서로 호출")
     void process_pendingRecord_executesFullSuccessFlow() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
         PaymentGatewayInfo gatewayInfo = createGatewayInfo(FIXED_NOW);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(gatewayInfo);
@@ -97,7 +99,7 @@ class OutboxWorkerTest {
         outboxWorker.process();
 
         // then
-        then(mockPaymentOutboxUseCase).should(times(1)).claimToInFlight(pendingOutbox);
+        then(mockPaymentOutboxUseCase).should(times(1)).claimToInFlight(ORDER_ID);
         then(mockPaymentCommandUseCase).should(times(1)).confirmPaymentWithGateway(any(PaymentConfirmCommand.class));
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class),
@@ -105,14 +107,14 @@ class OutboxWorkerTest {
     }
 
     @Test
-    @DisplayName("process - claimToInFlight false 반환: Toss API를 호출하지 않는다")
-    void process_claimToInFlightReturnsFalse_doesNotCallTossApi() throws Exception {
+    @DisplayName("process - claimToInFlight empty 반환: Toss API를 호출하지 않는다")
+    void process_claimToInFlightReturnsEmpty_doesNotCallTossApi() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(false);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.empty());
 
         // when
         outboxWorker.process();
@@ -127,22 +129,23 @@ class OutboxWorkerTest {
     void process_retryableException_callsIncrementRetryOrFail() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
-        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, pendingOutbox)).willReturn(false);
+        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(false);
 
         // when
         outboxWorker.process();
 
         // then
         then(mockPaymentOutboxUseCase).should(times(1))
-                .incrementRetryOrFail(ORDER_ID, pendingOutbox);
+                .incrementRetryOrFail(ORDER_ID, inFlightOutbox);
         then(mockTransactionCoordinator).should(never())
                 .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
     }
@@ -152,22 +155,23 @@ class OutboxWorkerTest {
     void process_retryableException_exhausted_callsCompensationWithOutbox() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
-        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(true);
 
         // when
         outboxWorker.process();
 
         // then
         then(mockPaymentOutboxUseCase).should(times(1))
-                .incrementRetryOrFail(ORDER_ID, pendingOutbox);
+                .incrementRetryOrFail(ORDER_ID, inFlightOutbox);
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(), any(PaymentOutbox.class));
     }
@@ -177,11 +181,12 @@ class OutboxWorkerTest {
     void process_nonRetryableException_callsCompensationWithOutbox() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR));
@@ -201,10 +206,11 @@ class OutboxWorkerTest {
     void process_getPaymentEventThrows_callsIncrementRetryOrFail() throws Exception {
         // given
         PaymentOutbox pendingOutbox = createPendingOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
 
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(List.of(pendingOutbox));
-        given(mockPaymentOutboxUseCase.claimToInFlight(pendingOutbox)).willReturn(true);
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         willThrow(new RuntimeException("event not found"))
                 .given(mockPaymentLoadUseCase).getPaymentEventByOrderId(ORDER_ID);
 
@@ -213,7 +219,7 @@ class OutboxWorkerTest {
 
         // then
         then(mockPaymentOutboxUseCase).should(times(1))
-                .incrementRetryOrFail(ORDER_ID, pendingOutbox);
+                .incrementRetryOrFail(ORDER_ID, inFlightOutbox);
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
     }
 
@@ -236,6 +242,15 @@ class OutboxWorkerTest {
                 .id(1L)
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.PENDING)
+                .retryCount(0)
+                .allArgsBuild();
+    }
+
+    private PaymentOutbox createInFlightOutbox(String orderId) {
+        return PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
                 .allArgsBuild();
     }

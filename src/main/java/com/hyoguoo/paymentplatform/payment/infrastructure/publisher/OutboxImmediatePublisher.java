@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.publisher;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
+import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,7 +16,7 @@ public class OutboxImmediatePublisher implements PaymentConfirmPublisherPort {
     private final ApplicationEventPublisher applicationEventPublisher;
 
     @Override
-    public void publish(String orderId) {
-        applicationEventPublisher.publishEvent(PaymentConfirmEvent.of(orderId));
+    public void publish(String orderId, Long userId, BigDecimal amount, String paymentKey) {
+        applicationEventPublisher.publishEvent(PaymentConfirmEvent.of(orderId, userId, amount, paymentKey));
     }
 }

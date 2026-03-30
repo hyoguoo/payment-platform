@@ -4,7 +4,6 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -32,14 +31,12 @@ public class PaymentOutboxUseCase {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public boolean claimToInFlight(PaymentOutbox outbox) {
-        try {
-            outbox.toInFlight(localDateTimeProvider.now());
-            paymentOutboxRepository.save(outbox);
-            return true;
-        } catch (PaymentStatusException e) {
-            return false;
+    public Optional<PaymentOutbox> claimToInFlight(String orderId) {
+        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, localDateTimeProvider.now());
+        if (!claimed) {
+            return Optional.empty();
         }
+        return paymentOutboxRepository.findByOrderId(orderId);
     }
 
     @Transactional

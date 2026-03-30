@@ -177,7 +177,7 @@ class OutboxAsyncConfirmServiceTest {
             outboxAsyncConfirmService.confirm(command);
 
             // then
-            then(mockConfirmPublisher).should(times(1)).publish(orderId);
+            then(mockConfirmPublisher).should(times(1)).publish(eq(orderId), any(), any(), anyString());
         }
 
         @Test
@@ -205,7 +205,7 @@ class OutboxAsyncConfirmServiceTest {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentOrderedProductStockException.class);
 
-            then(mockConfirmPublisher).should(times(0)).publish(anyString());
+            then(mockConfirmPublisher).should(times(0)).publish(any(), any(), any(), any());
         }
 
         @Test

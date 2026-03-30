@@ -38,6 +38,11 @@ import org.mockito.Mockito;
 @DisplayName("OutboxImmediateEventHandler 테스트")
 class OutboxImmediateEventHandlerTest {
 
+    private static final String ORDER_ID = "order-123";
+    private static final Long USER_ID = 1L;
+    private static final BigDecimal AMOUNT = BigDecimal.valueOf(15000);
+    private static final String PAYMENT_KEY = "payment-key-123";
+
     private OutboxImmediateEventHandler handler;
 
     private PaymentOutboxUseCase mockPaymentOutboxUseCase;
@@ -60,11 +65,15 @@ class OutboxImmediateEventHandlerTest {
         );
     }
 
+    private PaymentConfirmEvent createEvent(String orderId) {
+        return PaymentConfirmEvent.of(orderId, USER_ID, AMOUNT, PAYMENT_KEY);
+    }
+
     private PaymentOutbox createOutbox(String orderId) {
         return PaymentOutbox.allArgsBuilder()
                 .id(1L)
                 .orderId(orderId)
-                .status(PaymentOutboxStatus.PENDING)
+                .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
                 .allArgsBuild();
     }
@@ -80,11 +89,11 @@ class OutboxImmediateEventHandlerTest {
 
     private PaymentGatewayInfo createGatewayInfo() {
         return PaymentGatewayInfo.builder()
-                .paymentKey("payment-key-123")
-                .orderId("order-123")
+                .paymentKey(PAYMENT_KEY)
+                .orderId(ORDER_ID)
                 .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(PaymentDetails.builder()
-                        .totalAmount(BigDecimal.valueOf(15000))
+                        .totalAmount(AMOUNT)
                         .status(TossPaymentStatus.DONE)
                         .approvedAt(LocalDateTime.now())
                         .build())
@@ -99,14 +108,12 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("성공 시 claimToInFlight 후 confirmPaymentWithGateway를 호출한다")
         void handle_성공_claimToInFlight_후_confirmPaymentWithGateway_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
+            PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any())).willReturn(createGatewayInfo());
 
             // when
@@ -121,15 +128,13 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("성공 시 executePaymentSuccessCompletionWithOutbox를 호출하고 markDone은 호출하지 않는다")
         void handle_성공_executePaymentSuccessCompletionWithOutbox_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
+            PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
             PaymentGatewayInfo gatewayInfo = createGatewayInfo();
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any())).willReturn(gatewayInfo);
 
             // when
@@ -149,23 +154,21 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("retryable 실패 시 재시도 가능하면 incrementRetryOrFail을 호출하고 보상 트랜잭션은 호출하지 않는다")
         void handle_retryable_실패_시_incrementRetryOrFail_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
+            PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any()))
                     .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
-            given(mockPaymentOutboxUseCase.incrementRetryOrFail(orderId, outbox)).willReturn(false);
+            given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, outbox)).willReturn(false);
 
             // when
             handler.handle(event);
 
             // then
-            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
+            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, outbox);
             then(mockTransactionCoordinator).should(times(0))
                     .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
         }
@@ -174,23 +177,21 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("retryable 실패 소진 시 executePaymentFailureCompensationWithOutbox를 호출한다")
         void handle_retryable_실패_소진_시_executePaymentFailureCompensationWithOutbox_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
+            PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any()))
                     .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
-            given(mockPaymentOutboxUseCase.incrementRetryOrFail(orderId, outbox)).willReturn(true);
+            given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, outbox)).willReturn(true);
 
             // when
             handler.handle(event);
 
             // then
-            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
+            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, outbox);
             then(mockTransactionCoordinator).should(times(1))
                     .executePaymentFailureCompensationWithOutbox(eq(paymentEvent), anyList(), anyString(), eq(outbox));
         }
@@ -199,14 +200,12 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("non-retryable 실패 시 executePaymentFailureCompensationWithOutbox를 호출하고 markFailed는 호출하지 않는다")
         void handle_nonRetryable_실패_시_executePaymentFailureCompensationWithOutbox_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-            PaymentEvent paymentEvent = createPaymentEvent(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
+            PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
             given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any()))
                     .willThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR));
 
@@ -219,32 +218,12 @@ class OutboxImmediateEventHandlerTest {
         }
 
         @Test
-        @DisplayName("outbox 미존재 시 이후 로직을 처리하지 않는다")
-        void handle_outbox_미존재_시_아무것도_처리하지_않는다() throws Exception {
+        @DisplayName("claimToInFlight 실패(empty 반환) 시 이후 로직을 건너뛴다")
+        void handle_claimToInFlightReturnsEmpty_skipsProcessing() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.empty());
-
-            // when
-            handler.handle(event);
-
-            // then
-            then(mockPaymentOutboxUseCase).should(times(0)).claimToInFlight(any());
-            then(mockPaymentLoadUseCase).should(times(0)).getPaymentEventByOrderId(anyString());
-        }
-
-        @Test
-        @DisplayName("claimToInFlight 실패 시 이후 로직을 건너뛴다")
-        void handle_claimToInFlight_실패_시_이후_로직을_건너뛴다() throws Exception {
-            // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
-
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(false);
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.empty());
 
             // when
             handler.handle(event);
@@ -258,20 +237,18 @@ class OutboxImmediateEventHandlerTest {
         @DisplayName("paymentEvent 로드 실패 시 incrementRetryOrFail을 호출한다")
         void handle_paymentEvent_로드_실패_시_incrementRetryOrFail_호출한다() throws Exception {
             // given
-            String orderId = "order-123";
-            PaymentConfirmEvent event = PaymentConfirmEvent.of(orderId);
-            PaymentOutbox outbox = createOutbox(orderId);
+            PaymentConfirmEvent event = createEvent(ORDER_ID);
+            PaymentOutbox outbox = createOutbox(ORDER_ID);
 
-            given(mockPaymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(outbox));
-            given(mockPaymentOutboxUseCase.claimToInFlight(outbox)).willReturn(true);
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId))
+            given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(outbox));
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID))
                     .willThrow(new RuntimeException("DB error"));
 
             // when
             handler.handle(event);
 
             // then
-            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(orderId, outbox);
+            then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, outbox);
             then(mockPaymentCommandUseCase).should(times(0)).confirmPaymentWithGateway(any());
         }
     }

@@ -15,4 +15,6 @@ public interface PaymentOutboxRepository {
 
     List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before);
 
+    boolean claimToInFlight(String orderId, LocalDateTime inFlightAt);
+
 }

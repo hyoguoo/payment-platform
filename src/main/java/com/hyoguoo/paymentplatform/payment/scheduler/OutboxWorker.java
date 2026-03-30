@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import lombok.RequiredArgsConstructor;
@@ -66,12 +67,13 @@ public class OutboxWorker {
         }
     }
 
-    private void processRecord(PaymentOutbox outbox) {
-        // Step 2: PENDING → IN_FLIGHT (REQUIRES_NEW 트랜잭션, 즉시 커밋)
-        boolean claimed = paymentOutboxUseCase.claimToInFlight(outbox);
-        if (!claimed) {
+    private void processRecord(PaymentOutbox outboxFromBatch) {
+        // Step 2: atomic UPDATE WHERE status='PENDING' → IN_FLIGHT
+        Optional<PaymentOutbox> outboxOpt = paymentOutboxUseCase.claimToInFlight(outboxFromBatch.getOrderId());
+        if (outboxOpt.isEmpty()) {
             return;
         }
+        PaymentOutbox outbox = outboxOpt.orElseThrow();
 
         String orderId = outbox.getOrderId();
         PaymentEvent paymentEvent = loadPaymentEvent(orderId, outbox);

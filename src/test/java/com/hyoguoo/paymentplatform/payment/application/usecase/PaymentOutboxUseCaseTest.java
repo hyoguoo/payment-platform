@@ -57,23 +57,8 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("claimToInFlight - 성공: PENDING 레코드를 IN_FLIGHT으로 전환 후 save() 호출하고 true 반환")
-    void claimToInFlight_pendingRecord_savesAndReturnsTrue() {
-        // given
-        PaymentOutbox pendingOutbox = PaymentOutbox.createPending(ORDER_ID);
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(pendingOutbox);
-
-        // when
-        boolean result = paymentOutboxUseCase.claimToInFlight(pendingOutbox);
-
-        // then
-        assertThat(result).isTrue();
-        then(mockPaymentOutboxRepository).should(times(1)).save(pendingOutbox);
-    }
-
-    @Test
-    @DisplayName("claimToInFlight - 이미 IN_FLIGHT: save() 호출하지 않고 false 반환")
-    void claimToInFlight_alreadyInFlight_returnsFalseWithoutSave() {
+    @DisplayName("claimToInFlight - 성공: atomic UPDATE 후 IN_FLIGHT 상태 outbox 반환")
+    void claimToInFlight_success_returnsInFlightOutbox() {
         // given
         PaymentOutbox inFlightOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -82,13 +67,31 @@ class PaymentOutboxUseCaseTest {
                 .retryCount(0)
                 .inFlightAt(FIXED_NOW)
                 .allArgsBuild();
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(true);
+        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
 
         // when
-        boolean result = paymentOutboxUseCase.claimToInFlight(inFlightOutbox);
+        Optional<PaymentOutbox> result = paymentOutboxUseCase.claimToInFlight(ORDER_ID);
 
         // then
-        assertThat(result).isFalse();
-        then(mockPaymentOutboxRepository).should(never()).save(any());
+        assertThat(result).isPresent();
+        assertThat(result.get().getStatus()).isEqualTo(PaymentOutboxStatus.IN_FLIGHT);
+        then(mockPaymentOutboxRepository).should(times(1)).claimToInFlight(ORDER_ID, FIXED_NOW);
+        then(mockPaymentOutboxRepository).should(times(1)).findByOrderId(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("claimToInFlight - 이미 처리됨: UPDATE 0건 시 Optional.empty() 반환, findByOrderId 미호출")
+    void claimToInFlight_alreadyClaimed_returnsEmpty() {
+        // given
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(false);
+
+        // when
+        Optional<PaymentOutbox> result = paymentOutboxUseCase.claimToInFlight(ORDER_ID);
+
+        // then
+        assertThat(result).isEmpty();
+        then(mockPaymentOutboxRepository).should(never()).findByOrderId(any());
     }
 
     @Test

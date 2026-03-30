@@ -62,7 +62,12 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
             throw e;
         }
 
-        confirmPublisher.publish(command.getOrderId());
+        confirmPublisher.publish(
+                command.getOrderId(),
+                paymentEvent.getBuyerId(),
+                paymentEvent.getTotalAmount(),
+                command.getPaymentKey()
+        );
 
         return PaymentConfirmAsyncResult.builder()
                 .responseType(ResponseType.ASYNC_202)

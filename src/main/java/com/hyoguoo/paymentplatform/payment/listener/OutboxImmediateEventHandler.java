@@ -11,10 +11,10 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import java.util.Optional;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -37,29 +37,24 @@ public class OutboxImmediateEventHandler {
     public void handle(PaymentConfirmEvent event) {
         String orderId = event.getOrderId();
 
-        Optional<PaymentOutbox> outboxOpt = paymentOutboxUseCase.findByOrderId(orderId);
+        PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                .userId(event.getUserId())
+                .orderId(orderId)
+                .paymentKey(event.getPaymentKey())
+                .amount(event.getAmount())
+                .build();
+
+        Optional<PaymentOutbox> outboxOpt = paymentOutboxUseCase.claimToInFlight(orderId);
         if (outboxOpt.isEmpty()) {
             return;
         }
-        PaymentOutbox outbox = outboxOpt.get();
-
-        boolean claimed = paymentOutboxUseCase.claimToInFlight(outbox);
-        if (!claimed) {
-            return;
-        }
+        PaymentOutbox outbox = outboxOpt.orElseThrow();
 
         Optional<PaymentEvent> paymentEventOpt = loadPaymentEvent(orderId, outbox);
         if (paymentEventOpt.isEmpty()) {
             return;
         }
-        PaymentEvent paymentEvent = paymentEventOpt.get();
-
-        PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                .userId(paymentEvent.getBuyerId())
-                .orderId(orderId)
-                .paymentKey(paymentEvent.getPaymentKey())
-                .amount(paymentEvent.getTotalAmount())
-                .build();
+        PaymentEvent paymentEvent = paymentEventOpt.orElseThrow();
 
         try {
             PaymentGatewayInfo gatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(command);
