@@ -17,11 +17,11 @@ export const COUNTER_E2E_TIMEOUT = 'e2e_timeout_count';    // pollStatus TIMEOUT
 // ramping-arrival-rate executor용 공통 옵션 상수 (sync/outbox 공유)
 export const RAMPING_ARRIVAL_RATE_STAGES = [
   { target: 100, duration: '20s' },
-  { target: 200, duration: '20s' },
-  { target: 400, duration: '20s' },
+  { target: 300, duration: '20s' },
+  { target: 600, duration: '20s' },
 ];
-export const PRE_ALLOCATED_VUS = 50;
-export const MAX_VUS = 400;
+export const PRE_ALLOCATED_VUS = 200;
+export const MAX_VUS = 1500;
 
 // checkout() — 매 iteration마다 새 orderId 생성 (orderId 재사용으로 인한 DUPLICATE KEY 원천 차단)
 // Idempotency-Key: VU번호+iteration번호 조합으로 고유키 생성 → 서버 멱등 캐시 우회
