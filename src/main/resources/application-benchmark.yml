@@ -3,8 +3,12 @@ spring:
     activate:
       on-profile: benchmark
 
+  threads:
+    virtual:
+      enabled: ${VIRTUAL_THREADS_ENABLED:false}
+
   payment:
-    async-strategy: sync   # 기본값: 각 전략 측정 시 변경 후 재기동
+    async-strategy: ${ASYNC_STRATEGY:sync}
 
   datasource:
     hikari:
@@ -22,4 +26,4 @@ scheduler:
   enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리
   outbox-worker:
     batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE}       # 기본값: docker/compose/.env
-    parallel-enabled: ${SCHEDULER_OUTBOX_WORKER_PARALLEL_ENABLED}  # 기본값: docker/compose/.env
+    parallel-enabled: ${VIRTUAL_THREADS_ENABLED:false}  # 기본값: docker/compose/.env

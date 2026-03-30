@@ -27,12 +27,13 @@ reset_data() {
 
 switch_strategy() {
   local strategy=$1
-  local outbox_parallel=$2
+  local virtual_threads=$2
   local toss_min_delay=$3
   local toss_max_delay=$4
   print_info "전략 전환 중: ${strategy} (Toss 딜레이: ${toss_min_delay}~${toss_max_delay}ms)"
+  BENCHMARK_PROFILE=",benchmark" \
   ASYNC_STRATEGY="${strategy}" \
-  OUTBOX_PARALLEL="${outbox_parallel}" \
+  VIRTUAL_THREADS="${virtual_threads}" \
   TOSS_MIN_DELAY_MILLIS="${toss_min_delay}" \
   TOSS_MAX_DELAY_MILLIS="${toss_max_delay}" \
     docker compose -f "${COMPOSE_FILE}" up -d --no-deps app
@@ -80,12 +81,12 @@ run_sync() {
 
 run_outbox() {
   local testid=$1
-  local outbox_parallel=$2
+  local virtual_threads=$2
   local toss_min=$3
   local toss_max=$4
   echo ""
   print_section "--- ${testid} 측정 ---"
-  switch_strategy "outbox" "${outbox_parallel}" "${toss_min}" "${toss_max}"
+  switch_strategy "outbox" "${virtual_threads}" "${toss_min}" "${toss_max}"
   reset_data
   run_k6 "outbox.js" "${testid}"
   print_info "${testid} 완료."
