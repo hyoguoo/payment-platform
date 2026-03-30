@@ -11,13 +11,16 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 public class AsyncConfig {
 
-    @Value("${outbox.immediate-handler.concurrency-limit:-1}")
+    @Value("${spring.threads.virtual.enabled:false}")
+    private boolean virtualThreadsEnabled;
+
+    @Value("${outbox.immediate-handler.concurrency-limit:10}")
     private int concurrencyLimit;
 
-    @Bean
-    public TaskExecutor taskExecutor() {
+    @Bean("immediateHandlerExecutor")
+    public TaskExecutor immediateHandlerExecutor() {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("outbox-immediate-");
-        executor.setVirtualThreads(true);
+        executor.setVirtualThreads(virtualThreadsEnabled);
         executor.setConcurrencyLimit(concurrencyLimit);
         return executor;
     }

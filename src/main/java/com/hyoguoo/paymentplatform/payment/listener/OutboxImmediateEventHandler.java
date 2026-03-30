@@ -32,7 +32,7 @@ public class OutboxImmediateEventHandler {
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentTransactionCoordinator transactionCoordinator;
 
-    @Async
+    @Async("immediateHandlerExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(PaymentConfirmEvent event) {
         String orderId = event.getOrderId();
