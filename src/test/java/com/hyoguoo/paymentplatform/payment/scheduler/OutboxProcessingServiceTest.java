@@ -60,7 +60,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - 정상 흐름: claimToInFlight → confirmPaymentWithGateway → executePaymentSuccessCompletionWithOutbox 순서로 호출")
-    void process_정상흐름_성공_완료까지_호출() {
+    void process_정상흐름_성공_완료까지_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
@@ -84,7 +84,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - claimToInFlight empty 반환: Toss API를 호출하지 않는다")
-    void process_claimToInFlight_empty_Toss미호출() {
+    void process_claimToInFlight_empty_Toss미호출() throws Exception {
         // given
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.empty());
 
@@ -98,7 +98,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - PaymentTossRetryableException 재시도 가능: incrementRetryOrFail() 호출, 보상 트랜잭션 미호출")
-    void process_retryable예외_incrementRetryOrFail_호출() {
+    void process_retryable예외_incrementRetryOrFail_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
@@ -120,7 +120,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - PaymentTossRetryableException 소진: executePaymentFailureCompensationWithOutbox() 호출")
-    void process_retryable예외_소진_executePaymentFailureCompensationWithOutbox_호출() {
+    void process_retryable예외_소진_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
@@ -143,7 +143,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - PaymentTossNonRetryableException: executePaymentFailureCompensationWithOutbox() 호출, incrementRetryOrFail 미호출")
-    void process_nonRetryable예외_executePaymentFailureCompensationWithOutbox_호출() {
+    void process_nonRetryable예외_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
@@ -165,7 +165,7 @@ class OutboxProcessingServiceTest {
 
     @Test
     @DisplayName("process - getPaymentEventByOrderId() 예외 발생 시 incrementRetryOrFail() 호출")
-    void process_paymentEvent_로드실패_incrementRetryOrFail_호출() {
+    void process_paymentEvent_로드실패_incrementRetryOrFail_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
 
