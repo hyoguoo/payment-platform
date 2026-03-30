@@ -8,7 +8,6 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentStatusService;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,13 +20,9 @@ public class PaymentStatusServiceImpl implements PaymentStatusService {
 
     @Override
     public PaymentStatusResult getPaymentStatus(String orderId) {
-        Optional<PaymentOutboxStatus> outboxStatus = paymentOutboxUseCase.findActiveOutboxStatus(orderId);
-        if (outboxStatus.isPresent()) {
-            return buildFromOutbox(orderId, outboxStatus.get());
-        }
-
-        PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
-        return buildFromEvent(paymentEvent);
+        return paymentOutboxUseCase.findActiveOutboxStatus(orderId)
+                .map(status -> buildFromOutbox(orderId, status))
+                .orElseGet(() -> buildFromEvent(paymentLoadUseCase.getPaymentEventByOrderId(orderId)));
     }
 
     private PaymentStatusResult buildFromOutbox(String orderId, PaymentOutboxStatus outboxStatus) {
