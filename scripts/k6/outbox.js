@@ -42,9 +42,9 @@ export const handleSummary = makeSummaryHandler(__ENV.CASE_NAME || 'outbox');
 // measureE2e — checkout → POST /confirm → pollStatus → e2eCompletion 기록
 // TIMEOUT 발생 시 e2eTimeoutCount 증가 + check fail 처리
 function measureE2e(checkLabel) {
-  const start = Date.now();
   const orderId = checkout();
   if (!orderId) return;
+  const start = Date.now();
 
   const confirmRes = http.post(
     `${BASE_URL}/api/v1/payments/confirm`,

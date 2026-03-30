@@ -6,7 +6,7 @@ export const BASE_URL = __ENV.BASE_URL || 'http://host.docker.internal:8080';
 
 // e2e Trend 메트릭 이름 상수 (sync/outbox 공통 — confirm 요청 ~ 결제 완료까지)
 export const TREND_E2E_COMPLETION = 'e2e_completion_ms';
-export const POLL_INTERVAL_S = 0.5;  // sleep()는 초 단위 — 500ms
+export const POLL_INTERVAL_S = 0.1;  // sleep()는 초 단위 — 100ms
 export const POLL_TIMEOUT_MS = 30000; // 30초
 export const FAKE_PAYMENT_KEY = 'tviva20240929050058zeWv3';
 

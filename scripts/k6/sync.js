@@ -58,9 +58,9 @@ export function throughputScenario() {
 
 // e2eUnderLoadScenario — checkout → POST /confirm → e2eLatency (동기이므로 응답이 곧 완료)
 export function e2eUnderLoadScenario() {
-  const start = Date.now();
   const orderId = checkout();
   if (!orderId) return;
+  const start = Date.now();
 
   const res = http.post(
     `${BASE_URL}/api/v1/payments/confirm`,
