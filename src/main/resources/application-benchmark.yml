@@ -23,8 +23,9 @@ spring:
         max-delay-millis: ${TOSS_MAX_DELAY_MILLIS}   # 기본값: docker/compose/.env
 
 outbox:
-  immediate-handler:
-    concurrency-limit: ${IMMEDIATE_CONCURRENCY_LIMIT:-1}   # -1: 제한 없음 (기본), N: 동시 실행 상한
+  channel:
+    worker-count: ${WORKER_COUNT:200}         # OutboxImmediateWorker 스레드 수
+    capacity: ${CHANNEL_CAPACITY:2000}         # PaymentConfirmChannel 큐 용량
 
 scheduler:
   enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리

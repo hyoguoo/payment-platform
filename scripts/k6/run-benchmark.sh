@@ -30,14 +30,16 @@ switch_strategy() {
   local virtual_threads=$2
   local toss_min_delay=$3
   local toss_max_delay=$4
-  local concurrency_limit="${5:--1}"
-  print_info "전략 전환 중: ${strategy} (Toss 딜레이: ${toss_min_delay}~${toss_max_delay}ms, concurrency: ${concurrency_limit})"
+  local worker_count="${5:-200}"
+  local channel_capacity="${6:-2000}"
+  print_info "전략 전환 중: ${strategy} (Toss 딜레이: ${toss_min_delay}~${toss_max_delay}ms, worker: ${worker_count}, capacity: ${channel_capacity})"
   BENCHMARK_PROFILE=",benchmark" \
   ASYNC_STRATEGY="${strategy}" \
   VIRTUAL_THREADS="${virtual_threads}" \
   TOSS_MIN_DELAY_MILLIS="${toss_min_delay}" \
   TOSS_MAX_DELAY_MILLIS="${toss_max_delay}" \
-  IMMEDIATE_CONCURRENCY_LIMIT="${concurrency_limit}" \
+  WORKER_COUNT="${worker_count}" \
+  CHANNEL_CAPACITY="${channel_capacity}" \
     docker compose -f "${COMPOSE_FILE}" up -d --no-deps app
 
   print_info "앱 헬스체크 대기 중..."
@@ -86,10 +88,10 @@ run_outbox() {
   local virtual_threads=$2
   local toss_min=$3
   local toss_max=$4
-  local concurrency="${5:--1}"
+  local worker_count="${5:-200}"
   echo ""
   print_section "--- ${testid} 측정 ---"
-  switch_strategy "outbox" "${virtual_threads}" "${toss_min}" "${toss_max}" "${concurrency}"
+  switch_strategy "outbox" "${virtual_threads}" "${toss_min}" "${toss_max}" "${worker_count}"
   reset_data
   run_k6 "outbox.js" "${testid}"
   print_info "${testid} 완료."
