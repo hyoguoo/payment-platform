@@ -10,13 +10,17 @@ import {
   pollStatus,
   makeSummaryHandler,
   TREND_E2E_COMPLETION,
+  TREND_CONFIRM_LATENCY,
+  TREND_CHECKOUT_LATENCY,
   RAMPING_ARRIVAL_RATE_STAGES,
   SCENARIO_DURATION_S,
   COUNTER_CONFIRM_REQUESTS,
   COUNTER_E2E_TIMEOUT,
 } from './helpers.js';
 
-const e2eCompletion = new Trend(TREND_E2E_COMPLETION, true);
+const e2eCompletion   = new Trend(TREND_E2E_COMPLETION, true);
+const confirmLatency  = new Trend(TREND_CONFIRM_LATENCY, true);
+const checkoutLatency = new Trend(TREND_CHECKOUT_LATENCY, true);
 const confirmRequests = new Counter(COUNTER_CONFIRM_REQUESTS);
 const e2eTimeoutCount = new Counter(COUNTER_E2E_TIMEOUT);
 
@@ -43,9 +47,12 @@ export const options = {
 export const handleSummary = makeSummaryHandler(__ENV.CASE_NAME || 'outbox');
 
 export function throughputScenario() {
+  const checkoutStart = Date.now();
   const orderId = checkout();
+  checkoutLatency.add(Date.now() - checkoutStart);
   if (!orderId) return;
 
+  const confirmStart = Date.now();
   const confirmRes = http.post(
     `${BASE_URL}/api/v1/payments/confirm`,
     JSON.stringify({
@@ -56,6 +63,7 @@ export function throughputScenario() {
     }),
     { headers: { 'Content-Type': 'application/json' } }
   );
+  confirmLatency.add(Date.now() - confirmStart);
 
   confirmRequests.add(1);
   check(confirmRes, { 'confirm accepted (202)': (r) => r.status === 202 });

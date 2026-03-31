@@ -5,7 +5,9 @@ import { sleep } from 'k6';
 export const BASE_URL = __ENV.BASE_URL || 'http://host.docker.internal:8080';
 
 // 메트릭 이름 상수
-export const TREND_E2E_COMPLETION = 'e2e_completion_ms';  // confirm 요청 ~ 결제 완료까지
+export const TREND_E2E_COMPLETION   = 'e2e_completion_ms';  // confirm 요청 ~ 결제 완료까지
+export const TREND_CONFIRM_LATENCY  = 'confirm_ms';          // confirm API 단독 응답 시간
+export const TREND_CHECKOUT_LATENCY = 'checkout_ms';         // checkout API 단독 응답 시간
 export const COUNTER_CONFIRM_REQUESTS = 'confirm_requests';
 export const COUNTER_E2E_TIMEOUT = 'e2e_timeout_count';
 
@@ -14,17 +16,18 @@ export const POLL_INTERVAL_S = 0.1;   // 100ms
 export const POLL_TIMEOUT_MS = 30000; // 30s
 
 // 부하 단계 — 고/저지연 동일 적용
-// Tomcat PT max=200, 고지연 avg=1.15s 기준 포화점: 200/1.15 ≈ 174 req/s
-// 400 req/s는 sync 포화점의 2.3배 → sync 붕괴, async 안정 구간이 뚜렷하게 나타남
+// Tomcat PT max=200, 고지연 avg=2.75s 기준 포화점: 200/2.75 ≈ 73 req/s
+// 100 req/s는 포화점(73)을 크게 넘는 수준 → sync 심한 포화, async는 안정
+// DB ops: 100 req/s × ~6 ops ≈ 600 ops/s → Docker MySQL 안전 범위
 export const RAMPING_ARRIVAL_RATE_STAGES = [
-  { target: 100, duration: '20s' },  // warm-up (둘 다 안정)
-  { target: 400, duration: '30s' },  // sync 임계점 돌파
-  { target: 400, duration: '90s' },  // steady-state (차이 극명)
+  { target: 20,  duration: '20s' },  // warm-up (둘 다 안정)
+  { target: 100, duration: '30s' },  // sync 임계점 크게 돌파
+  { target: 100, duration: '90s' },  // steady-state
 ];
 export const SCENARIO_DURATION_S = 140; // 위 stages 합산 (20+30+90)
 
-export const PRE_ALLOCATED_VUS = 200;
-export const MAX_VUS = 1500;
+export const PRE_ALLOCATED_VUS = 150;
+export const MAX_VUS = 600;
 
 // checkout() — 매 iteration마다 새 orderId 생성
 export function checkout() {

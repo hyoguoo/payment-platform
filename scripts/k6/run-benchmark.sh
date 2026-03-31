@@ -22,9 +22,9 @@ echo "  ★ Tomcat: 항상 PT (spring.threads.virtual.enabled=false)"
 echo "  ★ Async Worker: 항상 VT (outbox.channel.virtual-threads=true)"
 echo ""
 echo "  부하 단계 (고/저지연 동일):"
-echo "    warm-up  0→100 req/s (20s)"
-echo "    ramp     100→400 req/s (30s)   ← sync 포화점(~174) 돌파"
-echo "    steady   400 req/s (90s)       ← 차이 극명 구간"
+echo "    warm-up  0→20 req/s (20s)"
+echo "    ramp     20→100 req/s (30s)   ← sync 포화점(~73) 크게 초과"
+echo "    steady   100 req/s (90s)      ← 차이 극명 구간"
 echo ""
 
 reset_data() {
@@ -115,8 +115,8 @@ run_outbox() {
 
 # ── 1. 고지연 (800~1500ms) — 핵심 비교 ──
 print_section "=== 1. 고지연 환경 (800~1500ms) ==="
-run_sync  "sync-high"   "800" "1500"
-run_outbox "outbox-high" "800" "1500"
+run_sync  "sync-high"   "2000" "3500"
+run_outbox "outbox-high" "2000" "3500"
 
 # ── 2. 저지연 (100~300ms) — 참조 비교 ──
 print_section "=== 2. 저지연 환경 (100~300ms) ==="
@@ -136,6 +136,6 @@ echo "  3. 대시보드 ID 입력: 19665 → Load → Prometheus 데이터소스
 echo ""
 print_info "기대 결과 (고지연 기준):"
 echo "  항목              sync-high        outbox-high"
-echo "  HTTP TPS:         ~150-170         ~400"
-echo "  HTTP p95:         5000ms+          < 5ms"
-echo "  E2E p95:          5000ms+          ~1500ms (Toss 처리 시간)"
+echo "  Confirm TPS:      ~70 이하         ~100"
+echo "  Confirm med:      2000ms+          < 10ms    ← 핵심 지표"
+echo "  E2E p95:          2000ms+          < 8000ms (Toss 처리 시간)"
