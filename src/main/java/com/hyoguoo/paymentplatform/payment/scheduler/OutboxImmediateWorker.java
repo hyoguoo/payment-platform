@@ -38,7 +38,8 @@ public class OutboxImmediateWorker implements SmartLifecycle {
             worker.start();
         }
         LogFmt.info(log, LogDomain.PAYMENT, EventType.APP_STARTUP,
-                () -> "OutboxImmediateWorker started: workerCount=" + workerCount + ", virtualThreads=" + virtualThreads);
+                () -> "OutboxImmediateWorker started: workerCount=" + workerCount
+                        + ", virtualThreads=" + virtualThreads);
     }
 
     @Override
