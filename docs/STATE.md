@@ -3,12 +3,9 @@
 > 최종 수정: 2026-03-31
 
 ## 활성 작업
-- **주제**: ASYNC-CHANNEL
-- **단계**: verify
-- **이슈**: #54
-- **브랜치**: #54
+없음
 
 ## 최근 완료
-- **주제**: ASYNC-PAYMENT-CLEANUP
-- **완료일**: 2026-03-29
-- **아카이브**: docs/archive/async-payment-cleanup/
+- **주제**: ASYNC-CHANNEL
+- **완료일**: 2026-03-31
+- **아카이브**: docs/archive/async-channel/

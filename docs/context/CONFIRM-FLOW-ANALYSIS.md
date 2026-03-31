@@ -1,6 +1,6 @@
 # PaymentConfirmService 구현체 비즈니스 로직 분석
 
-> 최종 수정: 2026-03-29
+> 최종 수정: 2026-03-31
 
 ---
 
@@ -77,13 +77,13 @@
 
 ---
 
-## 2. Outbox 플로우 (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`)
+## 2. Outbox 플로우 (`OutboxAsyncConfirmService` + `PaymentConfirmChannel` + `OutboxImmediateWorker` + `OutboxWorker`)
 
 > `spring.payment.async-strategy=outbox` (기본값)
 >
-> **즉시 처리(ImmediateDispatch) + 폴백(OutboxWorker) 이중 구조**
-> - 정상 경로: confirm() 트랜잭션 커밋 직후 Spring ApplicationEvent 발동 → OutboxImmediateEventHandler가 비동기로 즉시 처리
-> - 폴백 경로: 서버 크래시 등 즉시 처리가 누락된 경우 OutboxWorker(fixedDelay 5s)가 PENDING 레코드를 배치로 처리
+> **채널 기반 비동기 처리 + 폴백(OutboxWorker) 이중 구조**
+> - 정상 경로: confirm() 커밋 후 `OutboxImmediateEventHandler`가 `channel.offer(orderId)` → `OutboxImmediateWorker` VT/PT 워커가 `channel.take()` → `OutboxProcessingService.process()` 처리
+> - 폴백 경로: 큐 오버플로우 또는 서버 크래시 시 `OutboxWorker(fixedDelay 2s)`가 PENDING 레코드 배치 처리 → `OutboxProcessingService.process()` 위임
 
 ### 2-1. confirm() — HTTP 요청 처리
 
@@ -120,29 +120,60 @@
       (이후 처리는 OutboxImmediateEventHandler가 비동기로 담당)
 ```
 
-### 2-2. OutboxImmediateEventHandler.handle() — 즉시 비동기 처리
+### 2-2. OutboxImmediateEventHandler.handle() — 채널 적재 (비블로킹)
 
 ```
-[@Async @TransactionalEventListener(AFTER_COMMIT)]
-커밋 직후 별도 스레드에서 실행
+[@TransactionalEventListener(AFTER_COMMIT)]
+TX 커밋 직후 HTTP 요청 스레드에서 실행 (블로킹 없음)
       │
       ▼
-① findByOrderId(orderId) — PaymentOutbox 조회
-      │  [없음] → return (다른 워커가 이미 처리했거나 비정상 상태)
+channel.offer(orderId)
+      ├─ true:  LinkedBlockingQueue에 적재 완료
+      │         → OutboxImmediateWorker 워커가 비동기 처리
+      │
+      └─ false: 큐 가득 참 (capacity 초과)
+                → warn 로그 기록
+                → OutboxWorker(polling)가 폴백 처리
+[종료 — HTTP 스레드 즉시 반환]
+```
+
+### 2-3. OutboxImmediateWorker.workerLoop() — 채널 소비 (VT/PT 워커)
+
+```
+[SmartLifecycle — 앱 시작 시 workerCount개(기본 200) 워커 스레드 생성]
+각 워커 스레드가 독립적으로 루프 실행
+
+workerLoop():
+      │
       ▼
-② claimToInFlight(outbox)
-      │  PaymentOutbox: PENDING → IN_FLIGHT, inFlightAt 기록
+channel.take()  [blocking wait — 큐에 항목이 올 때까지 대기]
+      │
+      ▼
+OutboxProcessingService.process(orderId)
+      [아래 2-4 참조]
+      │
+      └─ loop 반복 (InterruptedException → 루프 종료)
+```
+
+### 2-4. OutboxProcessingService.process() — 공유 처리 로직
+
+```
+[OutboxImmediateWorker 및 OutboxWorker 양쪽에서 호출]
+      │
+      ▼
+① claimToInFlight(orderId)
+      │  atomic UPDATE WHERE status='PENDING' → IN_FLIGHT
       │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 중복 처리 방지
       │
-      │  [클레임 실패] → return
+      │  [클레임 실패 — Optional.empty()] → return
       ▼
-③ getPaymentEventByOrderId(orderId)
+② loadPaymentEvent(orderId)
       │  paymentKey는 confirm()의 executePayment()로 이미 기록됨
       │
       │  [조회 실패] → incrementRetryOrFail(orderId, outbox) → return
       ▼
-④ confirmPaymentWithGateway(command)
-      │  Toss API: POST /v1/payments/confirm 호출
+③ confirmPaymentWithGateway(command)
+      │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
       │
       │  [실패] PaymentTossNonRetryableException (Toss 비재시도 오류)
       │    └─ executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)
@@ -152,10 +183,10 @@
       │
       │  [실패] PaymentTossRetryableException (Toss 일시 오류)
       │    └─ incrementRetryOrFail(orderId, outbox)
-      │         ├─ retryCount < 5 → retryCount++ → PaymentOutbox: PENDING (OutboxWorker 재처리 대상)
-      │         └─ retryCount >= 5 → PaymentOutbox: FAILED (재시도 한도 초과)
+      │         ├─ retryCount < 5 → retryCount++ → PaymentOutbox: PENDING (다음 처리 대상)
+      │         └─ retryCount >= 5 → FAILED 확정 (executePaymentFailureCompensationWithOutbox)
       ▼
-⑤ executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
+④ executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
       │  단일 트랜잭션
       │  ├─ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE
       │  └─ markPaymentAsDone()       — PaymentEvent: DONE
@@ -163,11 +194,11 @@
 [종료]
 ```
 
-### 2-3. OutboxWorker.process() — 폴백 스케줄러
+### 2-5. OutboxWorker.process() — 폴백 스케줄러
 
 ```
-[@Scheduled fixedDelay — 기본 5000ms]
-주 역할: 즉시 처리(OutboxImmediateEventHandler)가 누락한 레코드 재처리
+[@Scheduled fixedDelay — 기본 2000ms]
+주 역할: 큐 오버플로우 / 서버 재시작으로 누락된 PENDING 레코드 재처리
       │
       ▼
 Step 0: recoverTimedOutInFlightRecords(inFlightTimeoutMinutes)
@@ -176,38 +207,14 @@ Step 0: recoverTimedOutInFlightRecords(inFlightTimeoutMinutes)
       ▼
 Step 1: findPendingBatch(batchSize)
       │  PaymentOutbox: PENDING 상태 배치 조회 (기본 50건)
-      │  정상 환경에서는 즉시 처리로 PENDING이 없어 바로 return
+      │  정상 환경에서는 채널 처리로 PENDING이 없어 바로 return
       │  parallel 모드 시 가상 스레드(Java 21)로 병렬 처리
       │
       │  [배치 없음] → return (다음 사이클 대기)
       ▼
-Step 2: claimToInFlight(outbox)
-      │  PaymentOutbox: PENDING → IN_FLIGHT, inFlightAt 기록
-      │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 다중 워커/핸들러 중복 처리 방지
-      │
-      │  [클레임 실패] → return
-      ▼
-Step 3: getPaymentEventByOrderId(orderId)
-      │  [조회 실패] → incrementRetryOrFail(orderId, outbox)
-      ▼
-Step 4: confirmPaymentWithGateway(command)
-      │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
-      │
-      │  [실패] PaymentTossNonRetryableException
-      │    → executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)
-      │         ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
-      │         ├─ increaseStockForOrders()    — 재고 복원
-      │         └─ markPaymentAsFail()         — PaymentEvent: FAILED
-      │
-      │  [실패] PaymentTossRetryableException
-      │    → incrementRetryOrFail(orderId, outbox)
-      │         ├─ retryCount < 5 → PENDING 복귀
-      │         └─ retryCount >= 5 → FAILED 확정
-      ▼
-Step 5: executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
-      │  단일 트랜잭션
-      │  ├─ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE
-      │  └─ markPaymentAsDone()       — PaymentEvent: DONE
+per record:
+      OutboxProcessingService.process(outbox.getOrderId())
+      [처리 로직은 2-4와 동일]
       ▼
 [종료]
 ```
@@ -228,7 +235,7 @@ Step 5: executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outb
 ③ markPaymentAsDone(paymentEvent, approvedAt)  → PaymentEvent: DONE
 ```
 
-**호출 지점:** OutboxImmediateEventHandler, OutboxWorker (Toss confirm 성공 후)
+**호출 지점:** OutboxProcessingService (Toss confirm 성공 후)
 
 ### 3-2. executePaymentFailureCompensationWithOutbox (Outbox 실패 보상)
 
@@ -243,7 +250,7 @@ Step 5: executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outb
 ④ markPaymentAsFail(paymentEvent, reason)    — PaymentEvent: FAILED
 ```
 
-**호출 지점:** OutboxImmediateEventHandler, OutboxWorker (비재시도 오류 발생 시)
+**호출 지점:** OutboxProcessingService (비재시도 오류 발생 시)
 
 ### 3-3. executePaymentFailureCompensation (Sync 보상 트랜잭션)
 
@@ -301,8 +308,9 @@ markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
 | 재고 감소 시점 | confirm() — Toss 호출 전 | confirm() — Outbox 생성과 같은 TX |
 | PaymentProcess 생성 | O (PROCESSING) | X |
 | PaymentOutbox 생성 | X | O (PENDING) |
-| Toss API 호출 시점 | confirm() 내부 (동기) | OutboxImmediateEventHandler (비동기, AFTER_COMMIT) |
-| 폴백 처리 | 없음 | OutboxWorker (fixedDelay 5s, 배치 50) |
+| Toss API 호출 시점 | confirm() 내부 (동기) | OutboxProcessingService (OutboxImmediateWorker VT/PT 워커, AFTER_COMMIT 채널 적재) |
+| 폴백 처리 | 없음 | OutboxWorker (fixedDelay 2s, 배치 50) + OutboxProcessingService 위임 |
 | Toss API 재시도 전략 | 없음 (UNKNOWN 처리) | incrementRetryOrFail (최대 5회) |
 | PaymentEvent 최종 상태 | DONE / FAILED / UNKNOWN | DONE / FAILED |
 | 재고 실패 핸들링 | handleStockFailure() → FAILED | handleStockFailure() → FAILED |
+| 즉시 처리 메커니즘 | 해당 없음 | PaymentConfirmChannel + OutboxImmediateWorker (SmartLifecycle, VT/PT 선택) |

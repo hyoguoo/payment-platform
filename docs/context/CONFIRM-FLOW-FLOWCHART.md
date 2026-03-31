@@ -1,8 +1,9 @@
 # Confirm Flow Flowchart
 
 > 기준: 실제 코드 (`PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`,
-> `OutboxImmediateEventHandler`, `OutboxWorker`, `PaymentTransactionCoordinator`)
-> 최종 수정: 2026-03-29
+> `OutboxImmediateEventHandler`, `OutboxImmediateWorker`, `OutboxProcessingService`,
+> `OutboxWorker`, `PaymentTransactionCoordinator`)
+> 최종 수정: 2026-03-31
 
 ---
 
@@ -96,13 +97,13 @@ flowchart TD
 
 ---
 
-## 2. Outbox (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`)
+## 2. Outbox (`OutboxAsyncConfirmService` + `PaymentConfirmChannel` + `OutboxImmediateWorker` + `OutboxWorker`)
 
 > `spring.payment.async-strategy=outbox` (기본값)
 >
-> **즉시 처리 + 폴백 이중 구조**:
-> - 정상 경로: confirm() 커밋 후 Spring ApplicationEvent → `OutboxImmediateEventHandler` 즉시 비동기 처리
-> - 폴백 경로: `OutboxWorker` (fixedDelay 5s) 가 놓친 PENDING 레코드를 배치로 재처리
+> **채널 기반 비동기 처리 + 폴백 이중 구조**:
+> - 정상 경로: confirm() 커밋 후 `OutboxImmediateEventHandler`가 `channel.offer()` → `OutboxImmediateWorker` VT/PT 워커가 `channel.take()` → `OutboxProcessingService.process()`
+> - 폴백 경로: 큐 오버플로우 시 `OutboxWorker` (fixedDelay 2s) 가 PENDING 레코드를 배치로 재처리 → `OutboxProcessingService.process()` 위임
 
 ### 2-1. confirm() — HTTP 요청 처리 (동기 구간)
 
@@ -127,77 +128,82 @@ flowchart TD
     P --> H([202 Accepted\n이후 처리는 OutboxImmediateEventHandler가 담당])
 ```
 
-### 2-2. OutboxImmediateEventHandler.handle() — 즉시 비동기 처리
+### 2-2. OutboxImmediateEventHandler.handle() — 채널 적재 (비블로킹)
 
 ```mermaid
 flowchart TD
-    EV(["@Async @TransactionalEventListener(AFTER_COMMIT)\n커밋 직후 별도 스레드에서 실행"]) --> O
+    EV(["@TransactionalEventListener(AFTER_COMMIT)\nTX 커밋 직후 HTTP 요청 스레드에서 실행"]) --> OFF
 
-    O["① findByOrderId(orderId)\n⎿ PaymentOutbox 조회"]
-    O -->|없음| SKIP([return])
-    O --> C
+    OFF{"channel.offer(orderId)\n⎿ LinkedBlockingQueue non-blocking"}
+    OFF -->|"true (적재 성공)"| OK([return\n→ OutboxImmediateWorker가 비동기 처리])
+    OFF -->|"false (큐 가득 참)"| WARN["warn 로그 기록\n— PaymentConfirmChannel 오버플로우\n— OutboxWorker(polling)가 폴백 처리"]
+    WARN --> END([return])
+```
 
-    C["② claimToInFlight(outbox)\n⎿ PaymentOutbox: PENDING → IN_FLIGHT\n⎿ inFlightAt 기록\n⎿ REQUIRES_NEW 트랜잭션 (즉시 커밋)\n  — 중복 처리 방지"]
-    C -->|"클레임 실패 (이미 IN_FLIGHT)"| SKIP
+### 2-3. OutboxImmediateWorker.workerLoop() — 채널 소비 (VT/PT 워커)
+
+```mermaid
+flowchart TD
+    SL(["SmartLifecycle.start()\n앱 시작 시 workerCount개(기본 200)\nVT 또는 PT 워커 스레드 생성"]) --> LOOP
+
+    LOOP["workerLoop() — 각 워커 독립 실행"]
+    LOOP --> TAKE
+
+    TAKE["channel.take()\n⎿ 큐에 항목이 올 때까지 blocking wait"]
+    TAKE --> PROC
+
+    PROC["OutboxProcessingService.process(orderId)\n⎿ claimToInFlight → Toss API → success/retry/failure\n⎿ (아래 2-4 다이어그램 참조)"]
+    PROC --> LOOP
+
+    TAKE -->|InterruptedException| STOP([루프 종료\n→ SmartLifecycle.stop()])
+```
+
+### 2-4. OutboxProcessingService.process() — 공유 처리 로직
+
+```mermaid
+flowchart TD
+    ENTRY(["OutboxImmediateWorker 또는 OutboxWorker에서 호출"]) --> C
+
+    C["① claimToInFlight(orderId)\n⎿ atomic UPDATE WHERE status='PENDING' → IN_FLIGHT\n⎿ REQUIRES_NEW 트랜잭션 (즉시 커밋)\n  — 중복 처리 방지"]
+    C -->|"Optional.empty() (클레임 실패)"| SKIP([return])
     C --> G
 
-    G["③ getPaymentEventByOrderId(orderId)\n⎿ paymentKey는 confirm() executePayment()로 이미 기록됨"]
+    G["② loadPaymentEvent(orderId)\n⎿ paymentKey는 confirm() executePayment()로 이미 기록됨"]
     G -->|조회 실패| G_FAIL
     G_FAIL["incrementRetryOrFail(orderId, outbox)\n→ retryCount 증가 또는 FAILED 확정"]
     G_FAIL --> Z_END([종료])
     G --> F
 
-    F["④ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
+    F["③ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출 (TX 밖)"]
     F -->|PaymentTossNonRetryableException\nToss 비재시도 오류| F_NR
     F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED\n※ 단일 트랜잭션"]
     F_NR --> Z_END
 
     F -->|PaymentTossRetryableException\nToss 일시 오류| F_R
     F_R{"incrementRetryOrFail()\n⎿ retryCount < 5?"}
-    F_R -->|"Yes (재시도 가능)\nretryCount++ → PENDING 복귀"| RETRY(["OutboxWorker가 재처리"])
-    F_R -->|"No (retryCount >= 5)\n한도 초과 → FAILED 확정"| Z_END
+    F_R -->|"Yes → PENDING 복귀"| RETRY(["다음 처리 사이클에서 재처리"])
+    F_R -->|"No (한도 초과) → FAILED 확정"| Z_END
 
     F --> E
-    E["⑤ executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
+    E["④ executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
     E --> Z_OK([종료])
 ```
 
-### 2-3. OutboxWorker.process() — 폴백 스케줄러
+### 2-5. OutboxWorker.process() — 폴백 스케줄러
 
 ```mermaid
 flowchart TD
-    S(["@Scheduled fixedDelay\n기본 5000ms 간격\n주 역할: 즉시 처리 누락 레코드 재처리"]) --> R
+    S(["@Scheduled fixedDelay\n기본 2000ms 간격\n주 역할: 큐 오버플로우 / 재시작 누락 레코드 재처리"]) --> R
 
-    R["Step 0: recoverTimedOutInFlightRecords()\n⎿ IN_FLIGHT 상태인 레코드 중\n  inFlightAt 기준 N분(기본 5분) 초과 시\n  → PaymentOutbox: IN_FLIGHT → PENDING\n  (핸들러/워커 비정상 종료 복구용)"]
+    R["Step 0: recoverTimedOutInFlightRecords()\n⎿ IN_FLIGHT 상태인 레코드 중\n  inFlightAt 기준 N분(기본 5분) 초과 시\n  → PaymentOutbox: IN_FLIGHT → PENDING\n  (워커 비정상 종료 복구용)"]
     R --> P
 
-    P["Step 1: findPendingBatch(batchSize)\n⎿ PaymentOutbox: PENDING 상태 배치 조회\n⎿ batchSize 기본 50건\n⎿ 정상 환경에서는 즉시 처리로 PENDING 없음 → 바로 return\n⎿ parallel 모드 시 가상 스레드로 병렬 처리"]
+    P["Step 1: findPendingBatch(batchSize)\n⎿ PaymentOutbox: PENDING 상태 배치 조회 (기본 50건)\n⎿ 정상 환경에서는 채널 처리로 PENDING 없음 → 바로 return\n⎿ parallel 모드 시 VT 병렬 처리"]
     P -->|배치 없음| SKIP([return])
-    P --> C
+    P --> PROC
 
-    C["Step 2: claimToInFlight(outbox)\n⎿ PaymentOutbox: PENDING → IN_FLIGHT\n⎿ REQUIRES_NEW 트랜잭션 (즉시 커밋)\n  — 핸들러/다중 워커 중복 처리 방지"]
-    C -->|"클레임 실패"| SKIP
-    C --> G
-
-    G["Step 3: getPaymentEventByOrderId()"]
-    G -->|조회 실패| G_FAIL
-    G_FAIL["incrementRetryOrFail(orderId, outbox)"]
-    G_FAIL --> Z_END([종료])
-    G --> F
-
-    F["Step 4: confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출"]
-    F -->|PaymentTossNonRetryableException| F_NR
-    F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED"]
-    F_NR --> Z_END
-
-    F -->|PaymentTossRetryableException| F_R
-    F_R{"incrementRetryOrFail()\n⎿ retryCount < 5?"}
-    F_R -->|"Yes → PENDING 복귀"| RETRY(["다음 워커 사이클에서 재처리"])
-    F_R -->|"No → FAILED 확정"| Z_END
-
-    F --> E
-    E["Step 5: executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
-    E --> Z_OK([종료])
+    PROC["per record:\nOutboxProcessingService.process(outbox.getOrderId())\n⎿ (처리 로직은 2-4 다이어그램과 동일)"]
+    PROC --> Z_END([종료])
 ```
 
 ---
@@ -216,12 +222,12 @@ flowchart LR
         S4 --> S5([200 OK])
     end
 
-    subgraph Outbox["Outbox (비동기 — 즉시처리 + 폴백)"]
+    subgraph Outbox["Outbox (비동기 — 채널 + 폴백)"]
         direction TB
         O1["LVAL 금액 검증"] --> O2["재고 감소\n+ PaymentOutbox: PENDING\n(executePayment 포함 단일 TX)"]
         O2 --> O3([202 Accepted])
-        O3 -.->|"OutboxImmediateEventHandler\n(AFTER_COMMIT, Async)"| O4["Toss API 호출"]
-        O3 -.->|"OutboxWorker (폴백)\n(fixedDelay 5s)"| O4
+        O3 -.->|"OutboxImmediateEventHandler\n(AFTER_COMMIT) → channel.offer\n→ OutboxImmediateWorker (VT/PT)"| O4["Toss API 호출\n(OutboxProcessingService)"]
+        O3 -.->|"OutboxWorker (폴백)\n(fixedDelay 2s)"| O4
         O4 --> O5["PaymentEvent: DONE\nPaymentOutbox: DONE"]
     end
 ```

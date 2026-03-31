@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-03-31
 
 ## Languages
 
@@ -24,7 +24,7 @@
 ## Frameworks
 
 **Core:**
-- Spring Boot 3.3.3 — application framework
+- Spring Boot 3.4.4 — application framework
 - Spring Web MVC — REST controllers (`spring-boot-starter-web`)
 - Spring Data JPA — ORM layer (`spring-boot-starter-data-jpa`)
 - Spring Validation — bean validation (`spring-boot-starter-validation`)
@@ -33,7 +33,7 @@
 - Thymeleaf — admin UI templates (`spring-boot-starter-thymeleaf`)
 
 **Build Plugins:**
-- `org.springframework.boot` 3.3.3
+- `org.springframework.boot` 3.4.4
 - `io.spring.dependency-management` 1.1.6
 - `jacoco` — coverage reports (toolVersion `0.8.11`)
 
@@ -69,7 +69,7 @@
 |------|---------|---------|
 | `src/main/resources/application.yml` | default (`local`) | base config, Kafka, JPA, payment gateway, scheduler, metrics |
 | `src/main/resources/application-docker.yml` | `docker` | MySQL datasource, logging levels, Kafka `kafka:9092`, scheduler, Actuator |
-| `src/main/resources/application-benchmark.yml` | `benchmark` | HikariCP pool-30, FakeToss delays, outbox scheduler enabled |
+| `src/main/resources/application-benchmark.yml` | `benchmark` | HikariCP pool-50, FakeToss delays, Tomcat PT 고정, outbox channel + scheduler 설정 |
 
 **Key Config Properties:**
 
@@ -80,10 +80,13 @@ payment.gateway.toss.base-url: https://api.tosspayments.com
 payment.gateway.toss.connect-timeout: 3000
 payment.gateway.toss.read-timeout: 10000
 scheduler.enabled: true                                  # gates SchedulerConfig
-scheduler.outbox-worker.fixed-delay-ms: 1000
-scheduler.outbox-worker.batch-size: 10
-scheduler.outbox-worker.parallel-enabled: false
+scheduler.outbox-worker.fixed-delay-ms: 5000
+scheduler.outbox-worker.batch-size: 50
+scheduler.outbox-worker.parallel-enabled: true
 scheduler.outbox-worker.in-flight-timeout-minutes: 5
+outbox.channel.worker-count: 200                         # OutboxImmediateWorker 스레드 수
+outbox.channel.virtual-threads: true                     # true=VT, false=PT (Tomcat과 독립)
+outbox.channel.capacity: 2000                            # LinkedBlockingQueue 용량
 spring.myapp.toss-payments.http.read-timeout-millis: 30000
 spring.myapp.toss-payments.fake.min-delay-millis: 100   # benchmark only
 spring.myapp.toss-payments.fake.max-delay-millis: 300   # benchmark only
@@ -121,4 +124,4 @@ spring.myapp.toss-payments.fake.max-delay-millis: 300   # benchmark only
 
 ---
 
-*Stack analysis: 2026-03-18*
+*Stack analysis: 2026-03-31*

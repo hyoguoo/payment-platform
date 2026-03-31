@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-03-28
+**Analysis Date:** 2026-03-31
 
 ## Pattern Overview
 
@@ -9,7 +9,7 @@
 **Key Characteristics:**
 - Four bounded contexts: `payment`, `paymentgateway`, `product`, `user` — each has its own `domain → application → infrastructure → presentation` layer stack
 - Ports are Java interfaces defined in `application/port/` (outbound) and `presentation/port/` (inbound); all infrastructure implements those interfaces
-- The two async confirm strategies are swapped at startup via `@ConditionalOnProperty(name = "spring.payment.async-strategy")`
+- Two async confirm strategies are swapped at startup via `@ConditionalOnProperty(name = "spring.payment.async-strategy")`
 - Cross-context calls never share a repository; they go through `presentation/port` interfaces of the target context, consumed by `infrastructure/internal/` adapters in the calling context
 
 ---
@@ -24,7 +24,7 @@
 - Used by: `application` use-case services
 
 **Application (`payment/application`):**
-- Purpose: Orchestrates domain objects; owns all port interfaces; contains all three async strategy service beans
+- Purpose: Orchestrates domain objects; owns all port interfaces; contains async strategy service beans
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/application/`
 - Inbound ports (interfaces in `presentation/port/`, implemented here):
   - `PaymentConfirmService` — implemented by ONE of: `PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`
@@ -42,7 +42,7 @@
   - `PaymentOutboxUseCase` — outbox lifecycle
   - `PaymentProcessUseCase` — process-job lifecycle (sync strategy)
   - `PaymentFailureUseCase` — failure routing logic
-  - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions shared across strategies
+  - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions shared across strategies; also owns `claimToInFlight` delegation pattern
   - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
 - Depends on: `domain`, `core/common`
 - Used by: `presentation`, `scheduler`, `listener`
@@ -68,22 +68,24 @@
 - Depends on: application layer via port interfaces only
 
 **Scheduler (`payment/scheduler`):**
-- Purpose: Background scheduled jobs
+- Purpose: Background scheduled jobs and lifecycle-managed async workers
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
 - Contains:
-  - `OutboxWorker` — `@Scheduled(fixedDelayString)` every 5s (기본값); **폴백 역할** — `OutboxImmediateEventHandler`가 처리하지 못한 PENDING 레코드를 배치(기본 50건)로 재처리; supports parallel mode via Java 21 virtual threads
+  - `OutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 200개)의 VT/PT 워커 스레드를 생성해 `PaymentConfirmChannel`에서 `take()`로 orderId를 꺼내 처리; VT/PT는 `outbox.channel.virtual-threads`로 제어
+  - `OutboxProcessingService` — `OutboxImmediateWorker`와 `OutboxWorker` 양쪽이 공유하는 단일 처리 서비스; `claimToInFlight → Toss API → success/retry/failure` 로직을 캡슐화
+  - `OutboxWorker` — `@Scheduled(fixedDelayString)` 폴백 전용; `PaymentConfirmChannel` 오버플로우 시 누락된 PENDING 레코드를 배치로 처리; 내부적으로 `OutboxProcessingService.process()` 위임
   - `PaymentScheduler` — 만료 스케줄러; `@Scheduled(fixedRateString)` 기본 5분마다 READY 상태 오래된 결제를 만료 처리
 - Port interfaces: `scheduler/port/PaymentExpirationService`
-- Depends on: `application` use-case services directly
+- Depends on: `application` use-case services directly, `core/channel/PaymentConfirmChannel`
 
 **Listener (`payment/listener`):**
 - Purpose: Outbox 즉시 처리 핸들러 및 Spring 이벤트 리스너
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
 - Contains:
-  - `OutboxImmediateEventHandler` — `@Async @TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 별도 스레드에서 PaymentOutbox 레코드를 즉시 처리 (outbox 전략 전용)
+  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 `PaymentConfirmChannel.offer(orderId)`를 호출해 큐에 적재; 큐 가득 찬 경우 warn 로그 — OutboxWorker(polling)가 처리 (outbox 전략 전용)
   - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
 - Port interfaces: `listener/port/PaymentHistoryService`
-- Depends on: `application` use-case services directly
+- Depends on: `core/channel/PaymentConfirmChannel`
 
 ---
 
@@ -116,7 +118,7 @@ PaymentController.confirm()
   ← ResponseEntity.ok(200)
 ```
 
-**Outbox strategy (`OutboxAsyncConfirmService` + `OutboxImmediateEventHandler` + `OutboxWorker`):**
+**Outbox strategy (`OutboxAsyncConfirmService` + `PaymentConfirmChannel` + `OutboxImmediateWorker` + `OutboxWorker`):**
 ```
 PaymentController.confirm()
   → OutboxAsyncConfirmService.confirm()  [@Transactional]
@@ -127,20 +129,29 @@ PaymentController.confirm()
          [이벤트는 TX 커밋 후 AFTER_COMMIT 단계에서 발동]
   ← ResponseEntity.accepted(202)
 
-OutboxImmediateEventHandler.handle(event)  [@Async @TransactionalEventListener(AFTER_COMMIT)]
-  — 정상 경로: 커밋 직후 별도 스레드에서 즉시 처리
-  Step 1: findByOrderId() + claimToInFlight()   [REQUIRES_NEW TX, immediately committed]
-  Step 2: loadPaymentEvent()
-  Step 3: validateCompletionStatus() + confirmPaymentWithGateway()  [no TX, Toss API]
-  Step 4A (success): executePaymentSuccessCompletion() + markDone()
-  Step 4B (non-retryable): executePaymentFailureCompensation() + markFailed()
-  Step 4C (retryable): incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
+OutboxImmediateEventHandler.handle(event)  [@TransactionalEventListener(AFTER_COMMIT)]
+  — TX 커밋 직후 HTTP 요청 스레드에서 실행 (비블로킹 — channel.offer만 호출)
+  channel.offer(orderId)
+    → true:  LinkedBlockingQueue에 적재 완료 — OutboxImmediateWorker가 비동기 처리
+    → false: 큐 가득 참 (warn 로그) — OutboxWorker(polling)가 폴백 처리
 
-OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
-  — 폴백 경로: 즉시 처리가 누락된 PENDING 레코드만 배치로 재처리
-  Step 0: recoverTimedOutInFlightRecords()      [IN_FLIGHT timeout → reset to PENDING]
-  Step 1: findPendingBatch(batchSize=50)
-  (이하 OutboxImmediateEventHandler와 동일한 처리 로직)
+OutboxImmediateWorker  [SmartLifecycle — 앱 시작 시 N개 VT/PT 워커 스레드 생성]
+  — 정상 경로: channel.take()로 blocking wait → 꺼내는 즉시 처리
+  workerLoop() { channel.take() → OutboxProcessingService.process(orderId) }
+
+OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유]
+  Step 1: claimToInFlight(orderId)    [atomic UPDATE PENDING→IN_FLIGHT, REQUIRES_NEW TX]
+  Step 2: loadPaymentEvent(orderId)   [실패 시 incrementRetryOrFail → return]
+  Step 3: confirmPaymentWithGateway() [no TX, Toss API]
+  Step 4A (success):       executePaymentSuccessCompletionWithOutbox()
+  Step 4B (non-retryable): executePaymentFailureCompensationWithOutbox()
+  Step 4C (retryable):     incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
+
+OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
+  — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
+  Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → reset to PENDING]
+  Step 1: findPendingBatch(batchSize)       [기본 50건]
+  per record: OutboxProcessingService.process(outbox.getOrderId())
 ```
 
 ---
@@ -152,6 +163,12 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 - Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
 - Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentAndStockDecrease`, `executeStockDecreaseWithJobCreation`, `executePaymentSuccessCompletion`, `executePaymentFailureCompensation`
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
+
+**PaymentConfirmChannel — HTTP 스레드와 Worker 스레드 디커플링:**
+- `core/channel/PaymentConfirmChannel` — `LinkedBlockingQueue<String>` 래퍼; `offer(orderId)`(non-blocking), `take()`(blocking) 제공
+- `OutboxImmediateEventHandler`가 TX 커밋 후 `offer()`로 큐에 적재 → HTTP 스레드 즉시 해방
+- `OutboxImmediateWorker`의 VT/PT 워커들이 `take()`로 blocking wait → Toss API 호출
+- 큐 용량은 `outbox.channel.capacity`(기본 2000)로 제어; 오버플로우 시 OutboxWorker 폴백
 
 **PaymentConfirmPublisherPort — Outbox 즉시 처리 이벤트 추상화:**
 - Interface in `application/port/out/PaymentConfirmPublisherPort` with single method `publish(String orderId)`
@@ -206,4 +223,4 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 
 ---
 
-*Architecture analysis: 2026-03-28*
+*Architecture analysis: 2026-03-31*

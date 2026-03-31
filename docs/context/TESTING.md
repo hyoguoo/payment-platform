@@ -1,6 +1,6 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-03-31
 
 ## Test Framework
 
@@ -44,7 +44,11 @@ src/test/java/com/hyoguoo/paymentplatform/
 │   │   └── usecase/
 │   ├── presentation/                  # Controller tests
 │   ├── scheduler/                     # Scheduler unit tests
-│   ├── listener/                      # Event listener tests (OutboxImmediateEventHandler)
+│   │   ├── OutboxImmediateWorkerTest.java    # SmartLifecycle + VT/PT 워커 생명주기 테스트
+│   │   ├── OutboxProcessingServiceTest.java  # process() 성공/실패/재시도 시나리오
+│   │   └── OutboxWorkerTest.java             # 폴백 배치 처리 + 타임아웃 복구
+│   ├── listener/                      # Event listener tests
+│   │   └── OutboxImmediateEventHandlerTest.java  # channel.offer 위임 + 오버플로우 경고
 │   └── infrastructure/                # Infrastructure unit tests
 ├── paymentgateway/application/
 ├── product/
@@ -189,6 +193,17 @@ class PaymentCreateUseCaseTest {
     }
 }
 ```
+
+**Awaitility 비동기 검증 패턴** (`OutboxImmediateWorkerTest`):
+```java
+import static org.awaitility.Awaitility.await;
+
+// 워커 스레드가 비동기로 process()를 호출하는 것을 검증
+await().atMost(2, TimeUnit.SECONDS)
+        .untilAsserted(() ->
+                verify(mockOutboxProcessingService, times(1)).process(orderId));
+```
+`spring-boot-starter-test`에 Awaitility가 포함되어 별도 의존성 추가 불필요.
 
 **Exception:** `PaymentTransactionCoordinatorTest` uses `@ExtendWith(MockitoExtension.class)` with `@InjectMocks` / `@Mock`:
 ```java
@@ -431,4 +446,4 @@ A test double for `LocalDateTimeProvider` at `src/test/java/com/hyoguoo/paymentp
 
 ---
 
-*Testing analysis: 2026-03-18*
+*Testing analysis: 2026-03-31*
