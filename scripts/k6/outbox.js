@@ -11,6 +11,7 @@ import {
   makeSummaryHandler,
   TREND_E2E_COMPLETION,
   RAMPING_ARRIVAL_RATE_STAGES,
+  SCENARIO_DURATION_S,
   COUNTER_CONFIRM_REQUESTS,
   COUNTER_E2E_TIMEOUT,
 } from './helpers.js';
@@ -21,6 +22,7 @@ const e2eTimeoutCount = new Counter(COUNTER_E2E_TIMEOUT);
 
 export const options = {
   scenarios: {
+    // TPS 측정: HTTP 202 응답률 (채널 큐 write 완료 시점)
     throughput: {
       executor: 'ramping-arrival-rate',
       stages: RAMPING_ARRIVAL_RATE_STAGES,
@@ -28,10 +30,11 @@ export const options = {
       maxVUs: MAX_VUS,
       exec: 'throughputScenario',
     },
+    // E2E 지연 측정: confirm 요청 ~ DONE 상태 확인까지 (실제 결제 완료 시간)
     e2e_under_load: {
       executor: 'constant-vus',
-      vus: 5,
-      duration: '60s',
+      vus: 10,
+      duration: `${SCENARIO_DURATION_S}s`,
       exec: 'e2eUnderLoadScenario',
     },
   },
@@ -39,9 +42,27 @@ export const options = {
 
 export const handleSummary = makeSummaryHandler(__ENV.CASE_NAME || 'outbox');
 
-// measureE2e — checkout → POST /confirm → pollStatus → e2eCompletion 기록
-// TIMEOUT 발생 시 e2eTimeoutCount 증가 + check fail 처리
-function measureE2e(checkLabel) {
+export function throughputScenario() {
+  const orderId = checkout();
+  if (!orderId) return;
+
+  const confirmRes = http.post(
+    `${BASE_URL}/api/v1/payments/confirm`,
+    JSON.stringify({
+      userId: 1,
+      orderId: orderId,
+      amount: 50000,
+      paymentKey: FAKE_PAYMENT_KEY,
+    }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+
+  confirmRequests.add(1);
+  check(confirmRes, { 'confirm accepted (202)': (r) => r.status === 202 });
+}
+
+// confirm → DONE 폴링까지 측정 — 부하 중 사용자 관점 결제 완료 시간
+export function e2eUnderLoadScenario() {
   const orderId = checkout();
   if (!orderId) return;
   const start = Date.now();
@@ -62,34 +83,9 @@ function measureE2e(checkLabel) {
     e2eCompletion.add(Date.now() - start);
     if (finalStatus === 'TIMEOUT') {
       e2eTimeoutCount.add(1);
-      check(finalStatus, { [checkLabel]: () => false });
+      check(finalStatus, { 'completed under load (DONE)': () => false });
     } else {
-      check(finalStatus, { [checkLabel]: (s) => s === 'DONE' });
+      check(finalStatus, { 'completed under load (DONE)': (s) => s === 'DONE' });
     }
   }
-}
-
-// throughputScenario — checkout → POST /confirm → 202 check (폴링 없음)
-export function throughputScenario() {
-  const orderId = checkout();
-  if (!orderId) return;
-
-  const confirmRes = http.post(
-    `${BASE_URL}/api/v1/payments/confirm`,
-    JSON.stringify({
-      userId: 1,
-      orderId: orderId,
-      amount: 50000,
-      paymentKey: FAKE_PAYMENT_KEY,
-    }),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
-
-  confirmRequests.add(1);
-  check(confirmRes, { 'confirm accepted (202)': (r) => r.status === 202 });
-}
-
-// e2eUnderLoadScenario — 부하 중 e2e latency 측정
-export function e2eUnderLoadScenario() {
-  measureE2e('completed under load (DONE)');
 }

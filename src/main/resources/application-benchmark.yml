@@ -5,14 +5,14 @@ spring:
 
   threads:
     virtual:
-      enabled: ${VIRTUAL_THREADS_ENABLED:false}
+      enabled: false   # Tomcat은 PT 고정 — 비동기 처리(Worker)에만 VT 적용
 
   payment:
     async-strategy: ${ASYNC_STRATEGY:sync}
 
   datasource:
     hikari:
-      maximum-pool-size: 30   # 200 VU 부하 대응 (기본값 10보다 높임)
+      maximum-pool-size: 50   # Worker 200개 × 평균 DB 점유율 ~5% + Tomcat 여유분
 
   myapp:
     toss-payments:
@@ -24,12 +24,13 @@ spring:
 
 outbox:
   channel:
-    virtual-threads: ${VIRTUAL_THREADS_ENABLED:false}
-    worker-count: ${WORKER_COUNT:200}         # OutboxImmediateWorker 스레드 수
-    capacity: ${CHANNEL_CAPACITY:2000}         # PaymentConfirmChannel 큐 용량
+    virtual-threads: ${CHANNEL_VIRTUAL_THREADS:true}   # Worker VT 여부 (Tomcat과 독립)
+    worker-count: ${WORKER_COUNT:200}
+    capacity: ${CHANNEL_CAPACITY:2000}
 
 scheduler:
-  enabled: true   # OutboxWorker 활성화 — Outbox 전략 벤치마크 시 PENDING 레코드 처리
+  enabled: true
   outbox-worker:
-    batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE}       # 기본값: docker/compose/.env
-    parallel-enabled: ${VIRTUAL_THREADS_ENABLED:false}  # 기본값: docker/compose/.env
+    fixed-delay-ms: 2000                             # 폴링 주기 2초
+    batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE}
+    parallel-enabled: ${SCHEDULER_PARALLEL_ENABLED:true}   # OutboxWorker 폴백 병렬 처리 여부
