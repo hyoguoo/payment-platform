@@ -24,6 +24,7 @@ spring:
 
 outbox:
   channel:
+    virtual-threads: ${VIRTUAL_THREADS_ENABLED:false}
     worker-count: ${WORKER_COUNT:200}         # OutboxImmediateWorker 스레드 수
     capacity: ${CHANNEL_CAPACITY:2000}         # PaymentConfirmChannel 큐 용량
 

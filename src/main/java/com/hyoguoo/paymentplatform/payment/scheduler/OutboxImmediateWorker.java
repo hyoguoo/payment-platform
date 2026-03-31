@@ -1,10 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
 import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
@@ -18,11 +20,9 @@ public class OutboxImmediateWorker implements SmartLifecycle {
     private final PaymentConfirmChannel channel;
     private final OutboxProcessingService outboxProcessingService;
 
-    @Setter
     @Value("${outbox.channel.worker-count:200}")
     private int workerCount;
 
-    @Setter
     @Value("${outbox.channel.virtual-threads:true}")
     private boolean virtualThreads;
 
@@ -37,7 +37,8 @@ public class OutboxImmediateWorker implements SmartLifecycle {
             workers.add(worker);
             worker.start();
         }
-        log.info("OutboxImmediateWorker started: workerCount={}, virtualThreads={}", workerCount, virtualThreads);
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.APP_STARTUP,
+                () -> "OutboxImmediateWorker started: workerCount=" + workerCount + ", virtualThreads=" + virtualThreads);
     }
 
     @Override
@@ -58,7 +59,8 @@ public class OutboxImmediateWorker implements SmartLifecycle {
         });
         workers.clear();
         callback.run();
-        log.info("OutboxImmediateWorker stopped");
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.APP_STARTUP,
+                () -> "OutboxImmediateWorker stopped");
     }
 
     @Override
@@ -81,7 +83,7 @@ public class OutboxImmediateWorker implements SmartLifecycle {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
-                log.warn("OutboxImmediateWorker: 처리 중 예외 발생 (Worker 유지)", e);
+                LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             }
         }
     }

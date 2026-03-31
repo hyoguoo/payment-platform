@@ -23,7 +23,7 @@ public class OutboxImmediateEventHandler {
         boolean offered = channel.offer(event.getOrderId());
         if (!offered) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
-                    () -> "PaymentConfirmChannel 오버플로우: orderId=" + event.getOrderId());
+                    () -> "PaymentConfirmChannel 오버플로우 발생 — OutboxWorker(polling)가 처리 예정");
         }
     }
 }

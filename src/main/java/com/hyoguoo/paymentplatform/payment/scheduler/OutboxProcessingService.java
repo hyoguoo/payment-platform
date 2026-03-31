@@ -36,10 +36,11 @@ public class OutboxProcessingService {
         }
         PaymentOutbox outbox = outboxOpt.orElseThrow();
 
-        PaymentEvent paymentEvent = loadPaymentEvent(orderId, outbox);
-        if (paymentEvent == null) {
+        Optional<PaymentEvent> paymentEventOpt = loadPaymentEvent(orderId, outbox);
+        if (paymentEventOpt.isEmpty()) {
             return;
         }
+        PaymentEvent paymentEvent = paymentEventOpt.orElseThrow();
 
         try {
             // Step 2: Toss API 호출 (트랜잭션 밖)
@@ -72,13 +73,14 @@ public class OutboxProcessingService {
         }
     }
 
-    private PaymentEvent loadPaymentEvent(String orderId, PaymentOutbox outbox) {
+    private Optional<PaymentEvent> loadPaymentEvent(String orderId, PaymentOutbox outbox) {
         try {
-            return paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+            return Optional.of(paymentLoadUseCase.getPaymentEventByOrderId(orderId));
         } catch (Exception e) {
+            // intentionally broad — any load failure retries via outbox mechanism
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
-            return null;
+            return Optional.empty();
         }
     }
 }

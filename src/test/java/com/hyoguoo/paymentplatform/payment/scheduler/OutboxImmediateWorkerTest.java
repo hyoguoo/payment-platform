@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @DisplayName("OutboxImmediateWorker 테스트")
 class OutboxImmediateWorkerTest {
@@ -21,8 +22,8 @@ class OutboxImmediateWorkerTest {
         PaymentConfirmChannel channel = new PaymentConfirmChannel(1);
         OutboxProcessingService mockService = Mockito.mock(OutboxProcessingService.class);
         OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        worker.setWorkerCount(1);
-        worker.setVirtualThreads(true);
+        ReflectionTestUtils.setField(worker, "workerCount", 1);
+        ReflectionTestUtils.setField(worker, "virtualThreads", true);
 
         // when
         worker.start();
@@ -38,13 +39,13 @@ class OutboxImmediateWorkerTest {
 
     @Test
     @DisplayName("stop 호출 후 Worker가 중단된다")
-    void stop_호출후_Worker가중단된다() throws InterruptedException {
+    void stop_호출후_Worker가중단된다() {
         // given
         PaymentConfirmChannel channel = new PaymentConfirmChannel(10);
         OutboxProcessingService mockService = Mockito.mock(OutboxProcessingService.class);
         OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        worker.setWorkerCount(2);
-        worker.setVirtualThreads(true);
+        ReflectionTestUtils.setField(worker, "workerCount", 2);
+        ReflectionTestUtils.setField(worker, "virtualThreads", true);
 
         AtomicBoolean callbackInvoked = new AtomicBoolean(false);
 
@@ -67,8 +68,8 @@ class OutboxImmediateWorkerTest {
                 .when(mockService).process(Mockito.anyString());
 
         OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        worker.setWorkerCount(1);
-        worker.setVirtualThreads(true);
+        ReflectionTestUtils.setField(worker, "workerCount", 1);
+        ReflectionTestUtils.setField(worker, "virtualThreads", true);
 
         // when
         worker.start();
