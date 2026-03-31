@@ -14,7 +14,9 @@
 - JVM flags (Docker): G1GC, MaxGCPauseMillis=100, ParallelRefProcEnabled
 
 **Build Image:**
-- `gradle:8.10-jdk21` (multi-stage Dockerfile)
+- 호스트에서 `./gradlew clean build -x test` 실행 후 빌드된 JAR를 Docker COPY로 복사 (single-stage Dockerfile)
+- 이유: Docker 내부 Gradle 빌드는 Mac VM I/O로 인해 2~3분 소요; 호스트 빌드는 40초 이내
+- `scripts/run.sh`에 호스트 빌드 → docker image build 순서가 통합되어 있음
 
 **Package Manager:**
 - Gradle 8.10 (wrapper)
@@ -69,7 +71,7 @@
 |------|---------|---------|
 | `src/main/resources/application.yml` | default (`local`) | base config, Kafka, JPA, payment gateway, scheduler, metrics |
 | `src/main/resources/application-docker.yml` | `docker` | MySQL datasource, logging levels, Kafka `kafka:9092`, scheduler, Actuator |
-| `src/main/resources/application-benchmark.yml` | `benchmark` | HikariCP pool-50, FakeToss delays, Tomcat PT 고정, outbox channel + scheduler 설정 |
+| `src/main/resources/application-benchmark.yml` | `benchmark` | HikariCP pool-150, FakeToss delays, Tomcat PT 고정, outbox channel(capacity 5000) + scheduler 설정 |
 
 **Key Config Properties:**
 
@@ -84,9 +86,9 @@ scheduler.outbox-worker.fixed-delay-ms: 5000
 scheduler.outbox-worker.batch-size: 50
 scheduler.outbox-worker.parallel-enabled: true
 scheduler.outbox-worker.in-flight-timeout-minutes: 5
-outbox.channel.worker-count: 200                         # OutboxImmediateWorker 스레드 수
+outbox.channel.worker-count: 300                         # benchmark: 100 req/s 처리를 위한 워커 수
 outbox.channel.virtual-threads: true                     # true=VT, false=PT (Tomcat과 독립)
-outbox.channel.capacity: 2000                            # LinkedBlockingQueue 용량
+outbox.channel.capacity: 5000                            # LinkedBlockingQueue 용량 (benchmark 환경)
 spring.myapp.toss-payments.http.read-timeout-millis: 30000
 spring.myapp.toss-payments.fake.min-delay-millis: 100   # benchmark only
 spring.myapp.toss-payments.fake.max-delay-millis: 300   # benchmark only
@@ -107,7 +109,7 @@ spring.myapp.toss-payments.fake.max-delay-millis: 300   # benchmark only
 |---------|-----------|-------|
 | `local` (default) | `spring.profiles.default: local` | base profile, no datasource config |
 | `docker` | `SPRING_PROFILES_ACTIVE=docker` | MySQL datasource, Logstash, Prometheus |
-| `benchmark` | `SPRING_PROFILES_ACTIVE=docker,benchmark` | docker-compose app service; activates `BenchmarkConfig` (FakeTossHttpOperator), HikariCP pool-30 |
+| `benchmark` | `SPRING_PROFILES_ACTIVE=docker,benchmark` | docker-compose app service; activates `BenchmarkConfig` (FakeTossHttpOperator), HikariCP pool-150 |
 | `test` | test classes | Testcontainers, debug logging |
 
 ## Platform Requirements
@@ -116,6 +118,8 @@ spring.myapp.toss-payments.fake.max-delay-millis: 300   # benchmark only
 - Java 21 SDK
 - Gradle 8.10 (wrapper provided)
 - Docker + Docker Compose (for MySQL/Kafka/ELK infra)
+- **Apple Silicon (M1/M2/M3)**: `docker-compose.yml`의 MySQL 서비스에 `platform: linux/arm64` 명시 필수 — 미설정 시 QEMU 에뮬레이션으로 I/O 성능 5배 이상 저하
+- **Mac Docker I/O 한계**: Docker Desktop VirtioFS 레이어로 인해 ~100 req/s(DB ops ~600/s)가 로컬 벤치마크 유효 상한선; 이를 초과하면 아키텍처가 아닌 VM I/O 한계를 측정하게 됨
 
 **Production:**
 - Docker image: `eclipse-temurin:21-jre-jammy`
