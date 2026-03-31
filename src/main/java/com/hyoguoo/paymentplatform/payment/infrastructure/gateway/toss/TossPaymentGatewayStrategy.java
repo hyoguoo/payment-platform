@@ -7,8 +7,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
@@ -28,9 +28,9 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private static final String STATUS_FAILED = "FAILED";
     private static final String STATUS_FAILURE = "FAILURE";
     private static final String STATUS_ABORTED = "ABORTED";
+    private static final String STATUS_CANCELED = "CANCELED";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_PENDING = "PENDING";
-    private static final String STATUS_CANCELED = "CANCELED";
     private static final String STATUS_EXPIRED = "EXPIRED";
     private static final String STATUS_WAITING_FOR_DEPOSIT = "WAITING_FOR_DEPOSIT";
     private static final String STATUS_PARTIAL_CANCELED = "PARTIAL_CANCELED";
@@ -85,24 +85,6 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         );
 
         return convertToPaymentCancelResult(paymentGatewayInfo, request);
-    }
-
-    @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
-        );
-
-        return convertToPaymentStatusResult(paymentGatewayInfo);
-    }
-
-    @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId) {
-        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
-        );
-
-        return convertToPaymentStatusResult(paymentGatewayInfo);
     }
 
     private PaymentConfirmResult convertToPaymentConfirmResult(
@@ -173,6 +155,49 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         );
     }
 
+    private PaymentCancelResultStatus mapToPaymentCancelResultStatus(String tossStatus) {
+        return switch (tossStatus) {
+            case STATUS_DONE, STATUS_SUCCESS, STATUS_CANCELED -> PaymentCancelResultStatus.SUCCESS;
+            case STATUS_FAILED, STATUS_FAILURE -> PaymentCancelResultStatus.FAILURE;
+            default -> PaymentCancelResultStatus.FAILURE;
+        };
+    }
+
+    private boolean isRetryable(String errorCode) {
+        if (errorCode == null) {
+            return false;
+        }
+
+        return errorCode.equals(ERROR_PROVIDER_ERROR) ||
+                errorCode.equals(ERROR_FAILED_PAYMENT_INTERNAL) ||
+                errorCode.equals(ERROR_FAILED_INTERNAL) ||
+                errorCode.equals(ERROR_UNKNOWN_PAYMENT) ||
+                errorCode.equals(STATUS_UNKNOWN) ||
+                errorCode.equals(ERROR_NETWORK) ||
+                errorCode.startsWith(ERROR_TIMEOUT_PREFIX) ||
+                errorCode.equals(ERROR_PAY_PROCESS_ABORTED);
+    }
+
+    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
+    @Override
+    public PaymentStatusResult getStatus(String paymentKey) {
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
+                paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
+        );
+
+        return convertToPaymentStatusResult(paymentGatewayInfo);
+    }
+
+    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
+    @Override
+    public PaymentStatusResult getStatusByOrderId(String orderId) {
+        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
+                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
+        );
+
+        return convertToPaymentStatusResult(paymentGatewayInfo);
+    }
+
     private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {
         PaymentStatus status = mapToPaymentStatus(
                 paymentGatewayInfo.getPaymentDetails() != null
@@ -196,14 +221,6 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         );
     }
 
-    private PaymentCancelResultStatus mapToPaymentCancelResultStatus(String tossStatus) {
-        return switch (tossStatus) {
-            case STATUS_DONE, STATUS_SUCCESS, STATUS_CANCELED -> PaymentCancelResultStatus.SUCCESS;
-            case STATUS_FAILED, STATUS_FAILURE -> PaymentCancelResultStatus.FAILURE;
-            default -> PaymentCancelResultStatus.FAILURE;
-        };
-    }
-
     private PaymentStatus mapToPaymentStatus(String tossStatus) {
         return switch (tossStatus) {
             case STATUS_DONE, STATUS_SUCCESS -> PaymentStatus.DONE;
@@ -218,22 +235,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         };
     }
 
-    private boolean isRetryable(String errorCode) {
-        if (errorCode == null) {
-            return false;
-        }
-
-        return errorCode.equals(ERROR_PROVIDER_ERROR) ||
-                errorCode.equals(ERROR_FAILED_PAYMENT_INTERNAL) ||
-                errorCode.equals(ERROR_FAILED_INTERNAL) ||
-                errorCode.equals(ERROR_UNKNOWN_PAYMENT) ||
-                errorCode.equals(STATUS_UNKNOWN) ||
-                errorCode.equals(ERROR_NETWORK) ||
-                errorCode.startsWith(ERROR_TIMEOUT_PREFIX) ||
-                errorCode.equals(ERROR_PAY_PROCESS_ABORTED);
-    }
-
     private String generateIdempotencyKey(String baseKey) {
-        return baseKey + "_" + System.currentTimeMillis();
+        return baseKey;
     }
 }

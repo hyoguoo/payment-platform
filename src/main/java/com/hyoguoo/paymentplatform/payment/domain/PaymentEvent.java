@@ -1,10 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
@@ -24,7 +21,6 @@ import lombok.Getter;
 public class PaymentEvent {
 
     public static final int EXPIRATION_MINUTES = 30;
-    public static final int RETRYABLE_MINUTES_FOR_IN_PROGRESS = 5;
     public static final int RETRYABLE_LIMIT = 5;
 
     private Long id;
@@ -77,31 +73,6 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.IN_PROGRESS;
         this.executedAt = executedAt;
         this.lastStatusChangedAt = lastStatusChangedAt;
-    }
-
-    public void validateCompletionStatus(
-            PaymentConfirmCommand paymentConfirmCommand, PaymentGatewayInfo paymentGatewayInfo) {
-        if (!this.buyerId.equals(paymentConfirmCommand.getUserId())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
-        }
-
-        if (!paymentConfirmCommand.getPaymentKey().equals(paymentGatewayInfo.getPaymentKey()) ||
-                !paymentConfirmCommand.getPaymentKey().equals(this.paymentKey)) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
-        }
-
-        if (paymentConfirmCommand.getAmount().compareTo(this.getTotalAmount()) != 0) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
-        }
-
-        if (!this.orderId.equals(paymentConfirmCommand.getOrderId())) {
-            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
-        }
-
-        if (paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.IN_PROGRESS &&
-                paymentGatewayInfo.getPaymentDetails().getStatus() != TossPaymentStatus.DONE) {
-            throw PaymentStatusException.of(PaymentErrorCode.NOT_IN_PROGRESS_ORDER);
-        }
     }
 
     public BigDecimal getTotalAmount() {
@@ -157,29 +128,23 @@ public class PaymentEvent {
         this.paymentOrderList.forEach(PaymentOrder::expire);
     }
 
+    public void validateConfirmRequest(Long userId, BigDecimal amount, String orderId, String paymentKey) {
+        if (!this.buyerId.equals(userId)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_USER_ID);
+        }
+        if (amount.compareTo(getTotalAmount()) != 0) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_TOTAL_AMOUNT);
+        }
+        if (!this.orderId.equals(orderId)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_ORDER_ID);
+        }
+        if (this.paymentKey != null && !this.paymentKey.equals(paymentKey)) {
+            throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
+        }
+    }
+
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }
 
-    public void increaseRetryCount() {
-        if (this.status != PaymentEventStatus.UNKNOWN &&
-                this.status != PaymentEventStatus.IN_PROGRESS) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
-        }
-        retryCount++;
-    }
-
-    public boolean isRetryable(LocalDateTime now) {
-        return (isRetryableInProgress(now) || this.status == PaymentEventStatus.UNKNOWN) &&
-                canAttemptRetryCount();
-    }
-
-    private boolean isRetryableInProgress(LocalDateTime now) {
-        return this.executedAt.plusMinutes(RETRYABLE_MINUTES_FOR_IN_PROGRESS).isBefore(now)
-                && this.status == PaymentEventStatus.IN_PROGRESS;
-    }
-
-    private boolean canAttemptRetryCount() {
-        return this.retryCount < RETRYABLE_LIMIT;
-    }
 }

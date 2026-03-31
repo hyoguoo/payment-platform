@@ -8,11 +8,13 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 
 public interface PaymentGatewayPort {
 
-    PaymentStatusResult getStatus(String paymentKey);
-
-    PaymentStatusResult getStatusByOrderId(String orderId);
-
     PaymentConfirmResult confirm(PaymentConfirmRequest request);
 
     PaymentCancelResult cancel(PaymentCancelRequest request);
+
+    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
+    PaymentStatusResult getStatus(String paymentKey);
+
+    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
+    PaymentStatusResult getStatusByOrderId(String orderId);
 }

@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOutboxEntity;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,6 +45,12 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
                 .stream()
                 .map(PaymentOutboxEntity::toDomain)
                 .toList();
+    }
+
+    @Override
+    public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
+        return jpaPaymentOutboxRepository.claimToInFlight(
+                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING) > 0;
     }
 
 }

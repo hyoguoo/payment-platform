@@ -19,6 +19,7 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,7 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(
         name = "spring.payment.async-strategy",
         havingValue = "sync",
-        matchIfMissing = true
+        matchIfMissing = false
 )
 public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
@@ -60,6 +61,13 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
         PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(
                 paymentConfirmCommand.getOrderId()
+        );
+
+        paymentEvent.validateConfirmRequest(
+                paymentConfirmCommand.getUserId(),
+                paymentConfirmCommand.getAmount(),
+                paymentConfirmCommand.getOrderId(),
+                paymentConfirmCommand.getPaymentKey()
         );
 
         try {
@@ -121,8 +129,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
     private PaymentEvent processPayment(
             PaymentEvent paymentEvent, PaymentConfirmCommand paymentConfirmCommand
     ) throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
-
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_REQUEST_START,
                 () -> String.format("orderId=%s", paymentConfirmCommand.getOrderId()));
 
@@ -148,4 +154,6 @@ public class PaymentConfirmServiceImpl implements PaymentConfirmService {
 
         return donePaymentEvent;
     }
+
+
 }

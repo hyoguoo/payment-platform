@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!--
+        Mockito BDD verification pattern: then(mock).should(never()).method()
+        SpotBugs incorrectly flags the method call's return value as ignored.
+        This is intentional — the call is part of Mockito's verification proxy chain.
+    -->
+    <Match>
+        <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
+        <Class name="~.*Test"/>
+    </Match>
+
+    <!--
+        Concurrency integration tests use catch(Exception ignored) inside Executor lambdas
+        to tolerate expected thread-level failures (e.g., idempotency conflicts).
+        The test asserts correctness via counters / DB state after all threads complete.
+    -->
+    <Match>
+        <Bug pattern="DE_MIGHT_IGNORE"/>
+        <Class name="~.*ConcurrencyIntegrationTest"/>
+    </Match>
+
+</FindBugsFilter>

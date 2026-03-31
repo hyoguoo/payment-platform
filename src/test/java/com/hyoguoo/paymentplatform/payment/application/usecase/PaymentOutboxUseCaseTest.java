@@ -57,23 +57,8 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("claimToInFlight - 성공: PENDING 레코드를 IN_FLIGHT으로 전환 후 save() 호출하고 true 반환")
-    void claimToInFlight_pendingRecord_savesAndReturnsTrue() {
-        // given
-        PaymentOutbox pendingOutbox = PaymentOutbox.createPending(ORDER_ID);
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(pendingOutbox);
-
-        // when
-        boolean result = paymentOutboxUseCase.claimToInFlight(pendingOutbox);
-
-        // then
-        assertThat(result).isTrue();
-        then(mockPaymentOutboxRepository).should(times(1)).save(pendingOutbox);
-    }
-
-    @Test
-    @DisplayName("claimToInFlight - 이미 IN_FLIGHT: save() 호출하지 않고 false 반환")
-    void claimToInFlight_alreadyInFlight_returnsFalseWithoutSave() {
+    @DisplayName("claimToInFlight - 성공: atomic UPDATE 후 IN_FLIGHT 상태 outbox 반환")
+    void claimToInFlight_success_returnsInFlightOutbox() {
         // given
         PaymentOutbox inFlightOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -82,73 +67,31 @@ class PaymentOutboxUseCaseTest {
                 .retryCount(0)
                 .inFlightAt(FIXED_NOW)
                 .allArgsBuild();
-
-        // when
-        boolean result = paymentOutboxUseCase.claimToInFlight(inFlightOutbox);
-
-        // then
-        assertThat(result).isFalse();
-        then(mockPaymentOutboxRepository).should(never()).save(any());
-    }
-
-    @Test
-    @DisplayName("markDone - 멱등: 이미 DONE 상태이면 save() 호출하지 않는다")
-    void markDone_alreadyDone_doesNotCallSave() {
-        // given
-        PaymentOutbox doneOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.DONE)
-                .retryCount(0)
-                .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(doneOutbox));
-
-        // when
-        paymentOutboxUseCase.markDone(ORDER_ID);
-
-        // then
-        then(mockPaymentOutboxRepository).should(never()).save(any());
-    }
-
-    @Test
-    @DisplayName("markDone - 정상: IN_FLIGHT 상태이면 toDone() 후 save() 1회 호출")
-    void markDone_inFlight_callsToDoneAndSave() {
-        // given
-        PaymentOutbox inFlightOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.IN_FLIGHT)
-                .retryCount(0)
-                .inFlightAt(FIXED_NOW)
-                .allArgsBuild();
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(true);
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(inFlightOutbox);
 
         // when
-        paymentOutboxUseCase.markDone(ORDER_ID);
+        Optional<PaymentOutbox> result = paymentOutboxUseCase.claimToInFlight(ORDER_ID);
 
         // then
-        then(mockPaymentOutboxRepository).should(times(1)).save(inFlightOutbox);
-        assertThat(inFlightOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.DONE);
+        assertThat(result).isPresent();
+        assertThat(result.get().getStatus()).isEqualTo(PaymentOutboxStatus.IN_FLIGHT);
+        then(mockPaymentOutboxRepository).should(times(1)).claimToInFlight(ORDER_ID, FIXED_NOW);
+        then(mockPaymentOutboxRepository).should(times(1)).findByOrderId(ORDER_ID);
     }
 
     @Test
-    @DisplayName("markFailed - 멱등: 이미 FAILED 상태이면 save() 호출하지 않는다")
-    void markFailed_alreadyFailed_doesNotCallSave() {
+    @DisplayName("claimToInFlight - 이미 처리됨: UPDATE 0건 시 Optional.empty() 반환, findByOrderId 미호출")
+    void claimToInFlight_alreadyClaimed_returnsEmpty() {
         // given
-        PaymentOutbox failedOutbox = PaymentOutbox.allArgsBuilder()
-                .id(1L)
-                .orderId(ORDER_ID)
-                .status(PaymentOutboxStatus.FAILED)
-                .retryCount(0)
-                .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(failedOutbox));
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(false);
 
         // when
-        paymentOutboxUseCase.markFailed(ORDER_ID);
+        Optional<PaymentOutbox> result = paymentOutboxUseCase.claimToInFlight(ORDER_ID);
 
         // then
-        then(mockPaymentOutboxRepository).should(never()).save(any());
+        assertThat(result).isEmpty();
+        then(mockPaymentOutboxRepository).should(never()).findByOrderId(any());
     }
 
     @Test
@@ -165,17 +108,18 @@ class PaymentOutboxUseCaseTest {
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(retryableOutbox);
 
         // when
-        paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, retryableOutbox);
+        boolean result = paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, retryableOutbox);
 
         // then
+        assertThat(result).isFalse();
         assertThat(retryableOutbox.getRetryCount()).isEqualTo(4);
         assertThat(retryableOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         then(mockPaymentOutboxRepository).should(times(1)).save(retryableOutbox);
     }
 
     @Test
-    @DisplayName("incrementRetryOrFail - limit exceeded: retryCount=5이면 markFailed() 호출")
-    void incrementRetryOrFail_limitExceeded_callsMarkFailed() {
+    @DisplayName("incrementRetryOrFail - limit exceeded: retryCount=5이면 true 반환하고 save() 호출하지 않는다")
+    void incrementRetryOrFail_limitExceeded_returnsTrueWithoutSave() {
         // given
         PaymentOutbox exhaustedOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -183,15 +127,13 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(5)
                 .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(exhaustedOutbox));
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(exhaustedOutbox);
 
         // when
-        paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, exhaustedOutbox);
+        boolean result = paymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, exhaustedOutbox);
 
         // then
-        assertThat(exhaustedOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
-        then(mockPaymentOutboxRepository).should(times(1)).save(exhaustedOutbox);
+        assertThat(result).isTrue();
+        then(mockPaymentOutboxRepository).should(never()).save(any());
     }
 
     @Test

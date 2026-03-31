@@ -64,4 +64,6 @@ public enum EventType {
     PRODUCT_STOCK_DECREASE_REQUEST,
 
     EXCEPTION,
+
+    APP_STARTUP,
 }

@@ -1,15 +1,77 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { checkout, BASE_URL, BENCHMARK_STAGES, FAKE_PAYMENT_KEY } from './helpers.js';
+import { Trend, Counter } from 'k6/metrics';
+import {
+  checkout,
+  BASE_URL,
+  PRE_ALLOCATED_VUS,
+  MAX_VUS,
+  FAKE_PAYMENT_KEY,
+  makeSummaryHandler,
+  TREND_E2E_COMPLETION,
+  TREND_CONFIRM_LATENCY,
+  TREND_CHECKOUT_LATENCY,
+  RAMPING_ARRIVAL_RATE_STAGES,
+  SCENARIO_DURATION_S,
+  COUNTER_CONFIRM_REQUESTS,
+} from './helpers.js';
+
+const e2eCompletion   = new Trend(TREND_E2E_COMPLETION, true);
+const confirmLatency  = new Trend(TREND_CONFIRM_LATENCY, true);
+const checkoutLatency = new Trend(TREND_CHECKOUT_LATENCY, true);
+const confirmRequests = new Counter(COUNTER_CONFIRM_REQUESTS);
 
 export const options = {
-  stages: BENCHMARK_STAGES,
+  scenarios: {
+    // TPS 측정: ramping-arrival-rate로 부하 단계적 상승
+    throughput: {
+      executor: 'ramping-arrival-rate',
+      stages: RAMPING_ARRIVAL_RATE_STAGES,
+      preAllocatedVUs: PRE_ALLOCATED_VUS,
+      maxVUs: MAX_VUS,
+      exec: 'throughputScenario',
+    },
+    // E2E 지연 측정: 부하 중 실제 사용자 관점의 결제 완료 시간
+    // sync는 HTTP 응답 자체가 E2E 완료 시점
+    e2e_under_load: {
+      executor: 'constant-vus',
+      vus: 10,
+      duration: `${SCENARIO_DURATION_S}s`,
+      exec: 'e2eUnderLoadScenario',
+    },
+  },
 };
 
-// Sync 전략: POST /confirm → 200 OK 기대
-export default function () {
+export const handleSummary = makeSummaryHandler(__ENV.CASE_NAME || 'sync');
+
+export function throughputScenario() {
+  const checkoutStart = Date.now();
+  const orderId = checkout();
+  checkoutLatency.add(Date.now() - checkoutStart);
+  if (!orderId) return;
+
+  const confirmStart = Date.now();
+  const res = http.post(
+    `${BASE_URL}/api/v1/payments/confirm`,
+    JSON.stringify({
+      userId: 1,
+      orderId: orderId,
+      amount: 50000,
+      paymentKey: FAKE_PAYMENT_KEY,
+    }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  confirmLatency.add(Date.now() - confirmStart);
+
+  confirmRequests.add(1);
+  check(res, { 'status is 200': (r) => r.status === 200 });
+}
+
+// sync는 HTTP 응답 = 결제 완료이므로 응답 시간 자체가 E2E latency
+export function e2eUnderLoadScenario() {
   const orderId = checkout();
   if (!orderId) return;
+  const start = Date.now();
 
   const res = http.post(
     `${BASE_URL}/api/v1/payments/confirm`,
@@ -22,7 +84,7 @@ export default function () {
     { headers: { 'Content-Type': 'application/json' } }
   );
 
-  check(res, {
-    'status is 200': (r) => r.status === 200,
-  });
+  confirmRequests.add(1);
+  e2eCompletion.add(Date.now() - start);
+  check(res, { 'completed (200)': (r) => r.status === 200 });
 }

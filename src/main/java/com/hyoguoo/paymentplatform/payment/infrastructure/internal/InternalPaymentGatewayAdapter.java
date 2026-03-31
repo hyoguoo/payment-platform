@@ -20,18 +20,6 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     private final PaymentGatewayProperties properties;
 
     @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatus(paymentKey);
-    }
-
-    @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatusByOrderId(orderId);
-    }
-
-    @Override
     public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
         PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
         return strategy.confirm(request);
@@ -41,5 +29,17 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     public PaymentCancelResult cancel(PaymentCancelRequest request) {
         PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
         return strategy.cancel(request);
+    }
+
+    @Override
+    public PaymentStatusResult getStatus(String paymentKey) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.getStatus(paymentKey);
+    }
+
+    @Override
+    public PaymentStatusResult getStatusByOrderId(String orderId) {
+        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        return strategy.getStatusByOrderId(orderId);
     }
 }

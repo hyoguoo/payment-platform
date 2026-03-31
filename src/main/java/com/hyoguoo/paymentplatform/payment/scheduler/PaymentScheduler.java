@@ -1,10 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
 import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
-import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentRecoverService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,33 +11,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PaymentScheduler {
 
-    private final PaymentRecoverService paymentRecoverService;
     private final PaymentExpirationService paymentExpirationService;
 
     @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
-    @ConditionalOnProperty(
-            name = "scheduler.payment-status-sync.enabled",
-            havingValue = "true"
-    )
-    public void recoverRetryablePayment() {
-        paymentRecoverService.recoverRetryablePayment();
-    }
-
-    @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
-    @ConditionalOnProperty(
-            name = "scheduler.payment-status-sync.enabled",
-            havingValue = "true"
-    )
     public void expireOldReadyPayments() {
         paymentExpirationService.expireOldReadyPayments();
-    }
-
-    @Scheduled(fixedDelayString = "${scheduler.payment-recovery.interval-ms:60000}")
-    @ConditionalOnProperty(
-            name = "scheduler.payment-recovery.enabled",
-            havingValue = "true"
-    )
-    public void recoverStuckPayments() {
-        paymentRecoverService.recoverStuckPayments();
     }
 }

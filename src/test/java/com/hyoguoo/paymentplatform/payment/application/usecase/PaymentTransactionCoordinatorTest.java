@@ -424,6 +424,110 @@ class PaymentTransactionCoordinatorTest {
         }
     }
 
+    @Nested
+    @DisplayName("Outbox 전략: 결제 성공 완료 처리 (WithOutbox) 테스트")
+    class ExecutePaymentSuccessCompletionWithOutboxTest {
+
+        @Test
+        @DisplayName("성공 시 PaymentEvent DONE 및 outbox toDone 저장")
+        void 성공_시_PaymentEvent_DONE_및_outbox_toDone_저장() {
+            // given
+            String orderId = "order-123";
+            LocalDateTime approvedAt = LocalDateTime.now();
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent donePaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.DONE);
+
+            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+                    .willReturn(donePaymentEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentSuccessCompletionWithOutbox(
+                    paymentEvent, approvedAt, outbox);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+            then(paymentOutboxUseCase).should(times(1)).save(outbox);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsDone(paymentEvent, approvedAt);
+        }
+
+        @Test
+        @DisplayName("completeJob을 절대 호출하지 않는다")
+        void completeJob_절대_호출하지_않는다() {
+            // given
+            String orderId = "order-123";
+            LocalDateTime approvedAt = LocalDateTime.now();
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent donePaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.DONE);
+
+            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+                    .willReturn(donePaymentEvent);
+
+            // when
+            coordinator.executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox);
+
+            // then
+            then(paymentProcessUseCase).should(times(0)).completeJob(anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("Outbox 전략: 결제 실패 보상 처리 (WithOutbox) 테스트")
+    class ExecutePaymentFailureCompensationWithOutboxTest {
+
+        @Test
+        @DisplayName("성공 시 재고복원, PaymentEvent FAILED, outbox toFailed 저장")
+        void 성공_시_재고복원_PaymentEvent_FAILED_outbox_toFailed_저장() {
+            // given
+            String orderId = "order-123";
+            String failureReason = "결제 실패";
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent failedPaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.FAILED);
+
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+                    .willReturn(failedPaymentEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentFailureCompensationWithOutbox(
+                    paymentEvent, paymentOrderList, failureReason, outbox);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+            then(paymentOutboxUseCase).should(times(1)).save(outbox);
+            then(orderedProductUseCase).should(times(1)).increaseStockForOrders(paymentOrderList);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(paymentEvent, failureReason);
+        }
+
+        @Test
+        @DisplayName("failJob을 절대 호출하지 않는다")
+        void failJob_절대_호출하지_않는다() {
+            // given
+            String orderId = "order-123";
+            String failureReason = "결제 실패";
+            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent failedPaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.FAILED);
+
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+                    .willReturn(failedPaymentEvent);
+
+            // when
+            coordinator.executePaymentFailureCompensationWithOutbox(
+                    paymentEvent, paymentOrderList, failureReason, outbox);
+
+            // then
+            then(paymentProcessUseCase).should(times(0)).failJob(anyString(), anyString());
+        }
+    }
+
     private PaymentOrder createPaymentOrder(Long productId, int quantity) {
         return PaymentOrder.allArgsBuilder()
                 .id(1L)

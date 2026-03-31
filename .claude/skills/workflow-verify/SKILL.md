@@ -2,16 +2,18 @@
 name: workflow-verify
 description: >
   payment-platform 워크플로우의 verify 단계를 실행한다.
-  execute 완료 후 "verify 시작", "테스트 확인", "검증", "최종 확인", "작업 마무리",
-  "아카이브", "정리하고 마무리" 등을 말할 때 이 스킬을 사용한다.
-  전체 테스트 통과 확인 → 문서 아카이브 → 최종 커밋으로 작업을 완전히 닫는 것이 목적이다.
+  review 완료 후 사용자가 명시적으로 "verify 시작", "테스트 확인", "검증", "최종 확인",
+  "작업 마무리", "아카이브", "정리하고 마무리" 등을 요청할 때만 이 스킬을 사용한다.
+  review 완료 후 자동으로 실행하지 않는다. 반드시 사용자의 명시적 요청을 기다린다.
+  전체 테스트 통과 확인 → context 문서 갱신 → 문서 아카이브 → 최종 커밋으로 작업을 완전히 닫는 것이 목적이다.
 ---
 
 # Verify 단계 가이드
 
-Verify의 목적은 두 가지다.
+Verify의 목적은 세 가지다.
 1. 구현이 전체 테스트 스위트를 깨뜨리지 않았는지 확인한다.
-2. 작업 관련 문서를 아카이브하고 최종 커밋으로 작업을 깔끔하게 닫는다.
+2. 브랜치 변경사항을 반영해 `docs/context/` 영구 문서를 최신 상태로 유지한다.
+3. 작업 관련 문서를 아카이브하고 최종 커밋으로 작업을 깔끔하게 닫는다.
 
 ---
 
@@ -41,7 +43,17 @@ git stash pop
 
 ---
 
-## Step 2 — 문서 아카이브
+## Step 2 — docs/context/ 갱신
+
+`context-update` 스킬을 실행한다.
+
+이 단계에서는 브랜치 diff를 이미 파악한 상태이므로, `git diff main...HEAD --stat` 결과를
+시작점으로 제공해 점검 범위를 좁힌다. `context-update` 스킬의 "workflow-verify 단계에서
+호출된 경우" 경로를 따른다.
+
+---
+
+## Step 3 — 문서 아카이브
 
 아카이브 대상:
 - `docs/<TOPIC>-PLAN.md` → `docs/archive/<topic-kebab>/`
@@ -63,20 +75,20 @@ git mv docs/topics/<TOPIC>.md docs/archive/<topic-kebab>/<TOPIC>-CONTEXT.md
 
 ---
 
-## Step 3 — STATE.md 갱신
+## Step 4 — STATE.md 갱신
 
 `workflow/references/templates.md`의 "verify 완료 후 형식"으로 갱신한다.
 `.continue-here.md`가 존재하면 삭제한다.
 
 ---
 
-## Step 4 — 최종 커밋
+## Step 5 — 최종 커밋
 
-`git mv`로 이미 staged 상태이므로 STATE.md만 추가 stage한다.
+`git mv`로 이미 staged 상태이므로 STATE.md와 갱신된 context 문서를 추가 stage한다.
 `.continue-here.md`를 삭제했다면 함께 stage한다.
 
 ```bash
-git add docs/STATE.md
+git add docs/STATE.md docs/context/
 # .continue-here.md를 삭제한 경우
 git add docs/.continue-here.md
 git commit -m "docs: <주제> 작업 완료 및 문서 아카이브"
@@ -84,7 +96,7 @@ git commit -m "docs: <주제> 작업 완료 및 문서 아카이브"
 
 ---
 
-## Step 5 — Push 및 PR 생성
+## Step 6 — Push 및 PR 생성
 
 STATE.md에서 이슈 번호와 브랜치 이름을 확인한 뒤 push한다.
 

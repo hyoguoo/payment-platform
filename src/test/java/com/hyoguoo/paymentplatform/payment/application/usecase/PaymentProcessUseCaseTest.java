@@ -45,7 +45,6 @@ class PaymentProcessUseCaseTest {
         void createProcessingJob() {
             // given
             String orderId = "order-123";
-            PaymentProcess expectedJob = PaymentProcess.createProcessing(orderId);
             PaymentProcess savedJob = PaymentProcess.allArgsBuilder()
                     .id(1L)
                     .orderId(orderId)
@@ -232,38 +231,4 @@ class PaymentProcessUseCaseTest {
         }
     }
 
-    @Nested
-    @DisplayName("PROCESSING 상태 작업 조회 테스트")
-    class FindAllProcessingJobsTest {
-
-        @Test
-        @DisplayName("PROCESSING 상태의 모든 작업을 조회한다")
-        void findAllProcessingJobs() {
-            // given
-            PaymentProcess job1 = PaymentProcess.allArgsBuilder()
-                    .id(1L)
-                    .orderId("order-1")
-                    .status(PaymentProcessStatus.PROCESSING)
-                    .allArgsBuild();
-            PaymentProcess job2 = PaymentProcess.allArgsBuilder()
-                    .id(2L)
-                    .orderId("order-2")
-                    .status(PaymentProcessStatus.PROCESSING)
-                    .allArgsBuild();
-
-            given(inventoryJobRepository.findAllByStatus(PaymentProcessStatus.PROCESSING))
-                    .willReturn(java.util.List.of(job1, job2));
-
-            // when
-            var result = inventoryJobUseCase.findAllProcessingJobs();
-
-            // then
-            assertThat(result).hasSize(2);
-            assertThat(result).extracting(PaymentProcess::getStatus)
-                    .containsOnly(PaymentProcessStatus.PROCESSING);
-
-            then(inventoryJobRepository).should(times(1))
-                    .findAllByStatus(PaymentProcessStatus.PROCESSING);
-        }
-    }
 }

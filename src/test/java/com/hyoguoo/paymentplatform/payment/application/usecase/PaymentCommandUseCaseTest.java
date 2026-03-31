@@ -14,11 +14,11 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.math.BigDecimal;
@@ -68,7 +68,8 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(), testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(),
+                testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -125,36 +126,6 @@ class PaymentCommandUseCaseTest {
     }
 
     @Test
-    @DisplayName("결제 상태 확인 시 정보를 조회하고 PaymentEvent의 상태를 확인 메서드를 호출한다.")
-    void testValidateCompletionStatus_Success() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .build();
-
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult statusResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult(
-                        "paymentKey",
-                        "order123",
-                        com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus.DONE,
-                        new BigDecimal(10000),
-                        LocalDateTime.now(),
-                        null
-                );
-
-        // when
-        when(mockPaymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey()))
-                .thenReturn(statusResult);
-        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
-
-        // then
-        verify(paymentEvent, times(1))
-                .validateCompletionStatus(any(PaymentConfirmCommand.class), any(PaymentGatewayInfo.class));
-    }
-
-    @Test
     @DisplayName("Toss 결제 승인 성공 시 성공 결과와 함께 결제 정보를 반환한다.")
     void testConfirmPaymentWithGateway_Success() throws Exception {
         // given
@@ -164,8 +135,8 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.SUCCESS,
                         "paymentKey",
                         "order123",
@@ -175,7 +146,8 @@ class PaymentCommandUseCaseTest {
                 );
 
         // when
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
                 paymentConfirmCommand
@@ -196,18 +168,20 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.RETRYABLE_FAILURE,
                         "paymentKey",
                         "order123",
                         new BigDecimal(10000),
                         LocalDateTime.now(),
-                        new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo("ERROR", "Retryable error", true)
+                        new PaymentFailureInfo("ERROR",
+                                "Retryable error", true)
                 );
 
         // when & then
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         assertThatThrownBy(
                 () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
@@ -224,37 +198,24 @@ class PaymentCommandUseCaseTest {
                 .amount(new BigDecimal(10000))
                 .build();
 
-        com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult confirmResult =
-                new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult(
+        PaymentConfirmResult confirmResult =
+                new PaymentConfirmResult(
                         PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE,
                         "paymentKey",
                         "order123",
                         new BigDecimal(10000),
                         LocalDateTime.now(),
-                        new com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo("ERROR", "Non-retryable error", false)
+                        new PaymentFailureInfo("ERROR",
+                                "Non-retryable error", false)
                 );
 
         // when & then
-        when(mockPaymentGatewayPort.confirm(any(com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest.class)))
+        when(mockPaymentGatewayPort.confirm(
+                any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
         assertThatThrownBy(
                 () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
                 .isInstanceOf(PaymentTossNonRetryableException.class);
-    }
-
-    @Test
-    @DisplayName("결제 상태를 알 수 UNKNOWN 상태로 변경하고 PaymentEvent의 재시도 횟수를 증가시킨다.")
-    void testIncreaseRetryCount() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-
-        // when
-        when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
-                .thenReturn(paymentEvent);
-        paymentCommandUseCase.increaseRetryCount(paymentEvent);
-
-        // then
-        verify(paymentEvent, times(1)).increaseRetryCount();
     }
 
     @Test
@@ -271,98 +232,5 @@ class PaymentCommandUseCaseTest {
         // then
         then(paymentEvent).should(times(1)).expire(testLocalDateTimeProvider.now());
         assertThat(result).isEqualTo(paymentEvent);
-    }
-
-    @Test
-    @DisplayName("결제 상태 확인 시 재시도 가능한 실패인 경우 RETRYABLE_FAILURE로 PaymentGatewayInfo를 구성한다.")
-    void testValidateCompletionStatus_RetryableFailure() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .build();
-        PaymentStatusResult statusResult = new PaymentStatusResult(
-                "paymentKey",
-                "order123",
-                PaymentStatus.IN_PROGRESS,
-                new BigDecimal(10000),
-                null,
-                new PaymentFailureInfo("PROVIDER_ERROR", "일시적 오류", true)
-        );
-        given(mockPaymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey()))
-                .willReturn(statusResult);
-
-        // when
-        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
-
-        // then
-        then(paymentEvent).should(times(1))
-                .validateCompletionStatus(
-                        any(PaymentConfirmCommand.class),
-                        any(PaymentGatewayInfo.class)
-                );
-    }
-
-    @Test
-    @DisplayName("결제 상태 확인 시 재시도 불가능한 실패인 경우 NON_RETRYABLE_FAILURE로 PaymentGatewayInfo를 구성한다.")
-    void testValidateCompletionStatus_NonRetryableFailure() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .build();
-        PaymentStatusResult statusResult = new PaymentStatusResult(
-                "paymentKey",
-                "order123",
-                PaymentStatus.IN_PROGRESS,
-                new BigDecimal(10000),
-                null,
-                new PaymentFailureInfo("INVALID_REQUEST", "잘못된 요청", false)
-        );
-        given(mockPaymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey()))
-                .willReturn(statusResult);
-
-        // when
-        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
-
-        // then
-        then(paymentEvent).should(times(1))
-                .validateCompletionStatus(
-                        any(PaymentConfirmCommand.class),
-                        any(PaymentGatewayInfo.class)
-                );
-    }
-
-    @Test
-    @DisplayName("결제 상태 확인 시 failure가 null이고 DONE이 아닌 경우 NON_RETRYABLE_FAILURE로 PaymentGatewayInfo를 구성한다.")
-    void testValidateCompletionStatus_NullFailureNonDone() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .build();
-        PaymentStatusResult statusResult = new PaymentStatusResult(
-                "paymentKey",
-                "order123",
-                PaymentStatus.IN_PROGRESS,
-                new BigDecimal(10000),
-                null,
-                null
-        );
-        given(mockPaymentGatewayPort.getStatus(paymentConfirmCommand.getPaymentKey()))
-                .willReturn(statusResult);
-
-        // when
-        paymentCommandUseCase.validateCompletionStatus(paymentEvent, paymentConfirmCommand);
-
-        // then
-        then(paymentEvent).should(times(1))
-                .validateCompletionStatus(
-                        any(PaymentConfirmCommand.class),
-                        any(PaymentGatewayInfo.class)
-                );
     }
 }

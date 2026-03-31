@@ -65,18 +65,12 @@ _Sync_ (`PaymentConfirmServiceImpl`, `@ConditionalOnProperty(havingValue = "sync
 5. `PaymentEvent` IN_PROGRESS → DONE (`executePaymentSuccessCompletion`)
 6. Return `200 OK` with `PaymentConfirmAsyncResult(SYNC_200)`
 
-_Kafka_ (`KafkaAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "kafka")`):
-1. `POST /api/v1/payments/confirm` received
-2. READY → IN_PROGRESS + stock decrease in single TX (`executePaymentAndStockDecrease`)
-3. Publish `orderId` to Kafka topic `payment-confirm` (`KafkaConfirmPublisher`)
-4. Return `202 Accepted` with `PaymentConfirmAsyncResult(ASYNC_202)`
-5. `KafkaConfirmListener.consume(orderId)` calls Toss API and completes payment
-
 _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "outbox")`):
 1. `POST /api/v1/payments/confirm` received
 2. READY → IN_PROGRESS + stock decrease + `PaymentOutbox(PENDING)` in single TX (`executePaymentAndStockDecreaseWithOutbox`)
 3. Return `202 Accepted` with `PaymentConfirmAsyncResult(ASYNC_202)`
-4. `OutboxWorker` scheduler polls, calls Toss API, marks DONE/FAILED
+4. `OutboxImmediateEventHandler` (AFTER_COMMIT, @Async) calls Toss API and marks DONE/FAILED
+5. **폴백**: `OutboxWorker` (5s fixedDelay)가 즉시 처리 누락된 PENDING 레코드 재처리
 
 **Benchmark mode** (`benchmark` profile, `BenchmarkConfig`):
 - `FakeTossHttpOperator` replaces `HttpOperatorImpl` as `@Primary` `HttpOperator` bean
@@ -201,8 +195,6 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "ou
 | Service | Image | Port | Notes |
 |---------|-------|------|-------|
 | `mysql` | `mysql:8.0` | 3306 | database `payment-platform` |
-| `kafka` | `apache/kafka:latest` | 9092 | KRaft mode (no ZooKeeper); 3 partitions, replication-factor 1 |
-| `kafka-ui` | `ghcr.io/kafbat/kafka-ui:latest` | 8081 | cluster name `payment-local` |
 | `elasticsearch` | `docker.elastic.co/elasticsearch/elasticsearch:7.17.9` | 9200 | single-node, no security |
 | `logstash` | `docker.elastic.co/logstash/logstash:7.17.9` | 5050 (TCP), 5051 (UDP) | receives JSON from logback |
 | `kibana` | `docker.elastic.co/kibana/kibana:7.17.9` | 5601 | dashboard |
@@ -210,35 +202,6 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "ou
 | `prometheus` | `prom/prometheus:latest` | 9090 | scrapes `/actuator/prometheus` |
 | `grafana` | `grafana/grafana:latest` | 3000 | dashboards provisioned via bind-mounts |
 | `app` | Dockerfile | 8080 | Spring Boot app, profiles `docker,benchmark` |
-
-## Kafka Configuration
-
-**Topic:** `payment-confirm`
-- Auto-created by Kafka (`KAFKA_AUTO_CREATE_TOPICS_ENABLE: true`, 3 partitions)
-- Producer: key = `orderId`, value = `orderId` (plain String)
-- Consumer group: `payment-confirm-group` (config `spring.kafka.consumer.group-id`)
-- Serializers: `StringSerializer` / `StringDeserializer`
-- Ack mode: `RECORD`
-- Auto-commit: disabled (`enable-auto-commit: false`)
-
-**Retry / DLT** (`KafkaConfirmListener`):
-```java
-@RetryableTopic(
-    attempts = "6",
-    backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 30000),
-    dltTopicSuffix = "-dlq",
-    include = {PaymentTossRetryableException.class},
-    autoCreateTopics = "true"
-)
-```
-- Retry topics auto-created with `-dlt` suffix for non-retryable and `-dlq` suffix for DLT
-- Only `PaymentTossRetryableException` triggers retry; `PaymentTossNonRetryableException` goes straight to compensation
-- DLT handler `handleDlt(orderId)` calls `executePaymentFailureCompensation` with reason `"kafka-dlt-exhausted"`
-
-**Key Files:**
-- Publisher: `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/kafka/KafkaConfirmPublisher.java`
-- Listener: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListener.java`
-- Publisher port: `src/main/java/com/hyoguoo/paymentplatform/payment/application/port/out/PaymentConfirmPublisherPort.java`
 
 ## Webhooks & Callbacks
 

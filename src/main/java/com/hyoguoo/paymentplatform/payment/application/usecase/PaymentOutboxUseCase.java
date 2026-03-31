@@ -4,8 +4,6 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -22,54 +20,33 @@ public class PaymentOutboxUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
+    public void save(PaymentOutbox outbox) {
+        paymentOutboxRepository.save(outbox);
+    }
+
+    @Transactional
     public PaymentOutbox createPendingRecord(String orderId) {
         PaymentOutbox outbox = PaymentOutbox.createPending(orderId);
         return paymentOutboxRepository.save(outbox);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public boolean claimToInFlight(PaymentOutbox outbox) {
-        try {
-            outbox.toInFlight(localDateTimeProvider.now());
-            paymentOutboxRepository.save(outbox);
-            return true;
-        } catch (PaymentStatusException e) {
-            return false;
+    public Optional<PaymentOutbox> claimToInFlight(String orderId) {
+        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, localDateTimeProvider.now());
+        if (!claimed) {
+            return Optional.empty();
         }
+        return paymentOutboxRepository.findByOrderId(orderId);
     }
 
     @Transactional
-    public void markDone(String orderId) {
-        PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
-                .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
-                        PaymentErrorCode.PAYMENT_OUTBOX_NOT_FOUND));
-        if (outbox.getStatus() == PaymentOutboxStatus.DONE) {
-            return;
-        }
-        outbox.toDone();
-        paymentOutboxRepository.save(outbox);
-    }
-
-    @Transactional
-    public void markFailed(String orderId) {
-        PaymentOutbox outbox = paymentOutboxRepository.findByOrderId(orderId)
-                .orElseThrow(() -> com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException.of(
-                        PaymentErrorCode.PAYMENT_OUTBOX_NOT_FOUND));
-        if (outbox.getStatus() == PaymentOutboxStatus.FAILED) {
-            return;
-        }
-        outbox.toFailed();
-        paymentOutboxRepository.save(outbox);
-    }
-
-    @Transactional
-    public void incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
+    public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
         if (currentOutbox.isRetryable()) {
             currentOutbox.incrementRetryCount();
             paymentOutboxRepository.save(currentOutbox);
-        } else {
-            markFailed(orderId);
+            return false;
         }
+        return true;
     }
 
     @Transactional
@@ -84,6 +61,10 @@ public class PaymentOutboxUseCase {
 
     public List<PaymentOutbox> findPendingBatch(int batchSize) {
         return paymentOutboxRepository.findPendingBatch(batchSize);
+    }
+
+    public Optional<PaymentOutbox> findByOrderId(String orderId) {
+        return paymentOutboxRepository.findByOrderId(orderId);
     }
 
     public Optional<PaymentOutboxStatus> findActiveOutboxStatus(String orderId) {

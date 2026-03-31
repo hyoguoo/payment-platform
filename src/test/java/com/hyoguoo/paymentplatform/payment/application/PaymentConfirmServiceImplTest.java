@@ -26,12 +26,14 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -102,14 +104,14 @@ class PaymentConfirmServiceImplTest {
     }
 
     @Test
-    @DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=true)가 선언되어 있다.")
+    @DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=false)가 선언되어 있다.")
     void testConditionalOnProperty() {
         ConditionalOnProperty annotation =
                 PaymentConfirmServiceImpl.class.getAnnotation(ConditionalOnProperty.class);
 
         assertThat(annotation).isNotNull();
         assertThat(annotation.havingValue()).isEqualTo("sync");
-        assertThat(annotation.matchIfMissing()).isTrue();
+        assertThat(annotation.matchIfMissing()).isFalse();
         assertThat(annotation.name()).contains("spring.payment.async-strategy");
     }
 
@@ -260,6 +262,165 @@ class PaymentConfirmServiceImplTest {
                         eq(mockConfirmData.mockPaymentEvent()),
                         any(List.class),
                         any(String.class));
+    }
+
+    @Nested
+    @DisplayName("validateLocalPaymentRequest 로컬 검증 테스트")
+    class ValidateLocalPaymentRequestTest {
+
+        private PaymentEvent validPaymentEvent;
+
+        @BeforeEach
+        void setUpValidPaymentEvent() {
+            PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                    .id(1L)
+                    .paymentEventId(1L)
+                    .orderId("order123")
+                    .productId(1L)
+                    .quantity(1)
+                    .totalAmount(new BigDecimal("10000"))
+                    .allArgsBuild();
+
+            validPaymentEvent = PaymentEvent.allArgsBuilder()
+                    .id(1L)
+                    .buyerId(1L)
+                    .sellerId(2L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .status(PaymentEventStatus.IN_PROGRESS)
+                    .paymentOrderList(List.of(paymentOrder))
+                    .allArgsBuild();
+
+            when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any())).thenReturn(validPaymentEvent);
+            try {
+                when(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(any(), any()))
+                        .thenReturn(PaymentProcess.createProcessing("order123"));
+            } catch (PaymentOrderedProductStockException e) {
+                throw new RuntimeException(e);
+            }
+            when(mockPaymentCommandUseCase.executePayment(any(), any())).thenReturn(validPaymentEvent);
+        }
+
+        @Test
+        @DisplayName("buyerId 불일치 시 PaymentValidException을 던진다")
+        void buyerId_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(999L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("amount 불일치 시 PaymentValidException을 던진다")
+        void amount_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("order123")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("99999"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("orderId 불일치 시 PaymentValidException을 던진다")
+        void orderId_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("wrong-order")
+                    .paymentKey("paymentKey")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            when(mockPaymentLoadUseCase.getPaymentEventByOrderId("wrong-order"))
+                    .thenReturn(validPaymentEvent);
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("paymentKey 불일치 시 PaymentValidException을 던진다")
+        void paymentKey_불일치_시_PaymentValidException을_던진다() {
+            // given
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("order123")
+                    .paymentKey("wrong-key")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            // when & then
+            assertThatThrownBy(() -> paymentConfirmService.confirm(command))
+                    .isInstanceOf(PaymentValidException.class);
+        }
+
+        @Test
+        @DisplayName("paymentEvent.paymentKey가 null(READY 최초 confirm)이면 paymentKey 검증을 건너뛴다")
+        void paymentKey_null이면_검증을_건너뛴다()
+                throws PaymentTossNonRetryableException, PaymentTossRetryableException,
+                PaymentOrderedProductStockException {
+            // given — READY 상태, paymentKey가 저장되지 않은 최초 confirm
+            PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                    .id(1L)
+                    .paymentEventId(1L)
+                    .orderId("order123")
+                    .productId(1L)
+                    .quantity(1)
+                    .totalAmount(new BigDecimal("10000"))
+                    .allArgsBuild();
+
+            PaymentEvent readyEvent = PaymentEvent.allArgsBuilder()
+                    .id(1L)
+                    .buyerId(1L)
+                    .sellerId(2L)
+                    .orderId("order123")
+                    .paymentKey(null)
+                    .status(PaymentEventStatus.READY)
+                    .paymentOrderList(List.of(paymentOrder))
+                    .allArgsBuild();
+
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId("order123")
+                    .paymentKey("toss-generated-key")
+                    .amount(new BigDecimal("10000"))
+                    .build();
+
+            PaymentGatewayInfo mockPaymentGatewayInfo = PaymentGatewayInfo.builder()
+                    .paymentDetails(
+                            com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails.builder()
+                                    .approvedAt(LocalDateTime.now())
+                                    .build()
+                    )
+                    .build();
+
+            when(mockPaymentLoadUseCase.getPaymentEventByOrderId("order123")).thenReturn(readyEvent);
+            when(mockTransactionCoordinator.executeStockDecreaseWithJobCreation(any(), any()))
+                    .thenReturn(PaymentProcess.createProcessing("order123"));
+            when(mockPaymentCommandUseCase.executePayment(any(), any())).thenReturn(readyEvent);
+            when(mockPaymentCommandUseCase.confirmPaymentWithGateway(any())).thenReturn(mockPaymentGatewayInfo);
+            when(mockTransactionCoordinator.executePaymentSuccessCompletion(any(), any(), any()))
+                    .thenReturn(readyEvent);
+
+            // when & then — NPE 없이 정상 실행
+            org.assertj.core.api.Assertions.assertThatCode(
+                    () -> paymentConfirmService.confirm(command)
+            ).doesNotThrowAnyException();
+        }
     }
 
     private record MockConfirmData(PaymentConfirmCommand paymentConfirmCommand, PaymentEvent mockPaymentEvent) {

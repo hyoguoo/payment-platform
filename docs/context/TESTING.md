@@ -1,6 +1,6 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-03-31
 
 ## Test Framework
 
@@ -26,8 +26,7 @@
 ```
 src/test/java/com/hyoguoo/paymentplatform/
 ├── core/test/                         # Base test classes
-│   ├── BaseIntegrationTest.java
-│   └── BaseKafkaIntegrationTest.java
+│   └── BaseIntegrationTest.java
 ├── mock/                              # Fake / test-double implementations
 │   ├── FakePaymentEventRepository.java
 │   ├── FakeProductRepository.java
@@ -45,7 +44,11 @@ src/test/java/com/hyoguoo/paymentplatform/
 │   │   └── usecase/
 │   ├── presentation/                  # Controller tests
 │   ├── scheduler/                     # Scheduler unit tests
-│   ├── listener/                      # Kafka listener tests
+│   │   ├── OutboxImmediateWorkerTest.java    # SmartLifecycle + VT/PT 워커 생명주기 테스트
+│   │   ├── OutboxProcessingServiceTest.java  # process() 성공/실패/재시도 시나리오
+│   │   └── OutboxWorkerTest.java             # 폴백 배치 처리 + 타임아웃 복구
+│   ├── listener/                      # Event listener tests
+│   │   └── OutboxImmediateEventHandlerTest.java  # channel.offer 위임 + 오버플로우 경고
 │   └── infrastructure/                # Infrastructure unit tests
 ├── paymentgateway/application/
 ├── product/
@@ -85,35 +88,6 @@ public abstract class BaseIntegrationTest {
 }
 ```
 
-### BaseKafkaIntegrationTest
-File: `src/test/java/com/hyoguoo/paymentplatform/core/test/BaseKafkaIntegrationTest.java`
-
-Extends the MySQL container setup and adds a KraftMode Kafka container:
-
-```java
-@SpringBootTest
-@ActiveProfiles("test")
-@Testcontainers
-@Tag("integration")
-public abstract class BaseKafkaIntegrationTest {
-
-    @Container
-    protected static final MySQLContainer<?> MYSQL_CONTAINER = ...;
-
-    @Container
-    protected static final KafkaContainer KAFKA_CONTAINER =
-            new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.4.0"))
-                    .withKraft();
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        // MySQL + Kafka bootstrap-servers
-        registry.add("spring.payment.async-strategy", () -> "kafka");
-        registry.add("scheduler.enabled", () -> "true");
-    }
-}
-```
-
 ### IntegrationTest (project base)
 File: `src/test/java/com/hyoguoo/paymentplatform/IntegrationTest.java`
 
@@ -126,7 +100,6 @@ public abstract class IntegrationTest extends BaseIntegrationTest {
 ```
 
 Integration test classes that use the full HTTP stack (e.g., `PaymentControllerTest`) extend `IntegrationTest`.
-Kafka integration tests (e.g., `KafkaConfirmListenerIntegrationTest`) extend `BaseKafkaIntegrationTest` directly and add `@Sql` themselves.
 
 ## @Tag("integration") Exclusion Pattern
 
@@ -140,8 +113,6 @@ test {
     }
 }
 ```
-
-**`KafkaConfirmListenerIntegrationTest`** is additionally excluded because it requires Docker Desktop with a compatible API version. The test file: `src/test/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListenerIntegrationTest.java`. Tag exclusion via the `@Tag("integration")` inherited from `BaseKafkaIntegrationTest` covers it.
 
 ## Test Strategy: Fake vs Mock
 
@@ -223,6 +194,17 @@ class PaymentCreateUseCaseTest {
 }
 ```
 
+**Awaitility 비동기 검증 패턴** (`OutboxImmediateWorkerTest`):
+```java
+import static org.awaitility.Awaitility.await;
+
+// 워커 스레드가 비동기로 process()를 호출하는 것을 검증
+await().atMost(2, TimeUnit.SECONDS)
+        .untilAsserted(() ->
+                verify(mockOutboxProcessingService, times(1)).process(orderId));
+```
+`spring-boot-starter-test`에 Awaitility가 포함되어 별도 의존성 추가 불필요.
+
 **Exception:** `PaymentTransactionCoordinatorTest` uses `@ExtendWith(MockitoExtension.class)` with `@InjectMocks` / `@Mock`:
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -284,7 +266,7 @@ Response JSON is verified with `jsonPath`:
 
 ## Mockito BDD Style
 
-The newer tests (e.g., `KafkaAsyncConfirmServiceTest`, `OutboxAsyncConfirmServiceTest`, `PaymentTransactionCoordinatorTest`) use BDD-style Mockito:
+The newer tests (e.g., `OutboxAsyncConfirmServiceTest`, `PaymentTransactionCoordinatorTest`) use BDD-style Mockito:
 
 ```java
 import static org.mockito.BDDMockito.given;
@@ -368,11 +350,11 @@ void isRetryableInProgress_RetryCount(int retryCount, boolean expectedResult) { 
 
 ## @Nested Test Organization
 
-Used in `KafkaAsyncConfirmServiceTest` and `OutboxAsyncConfirmServiceTest` to group related scenarios:
+Used in `OutboxAsyncConfirmServiceTest` and `OutboxImmediateEventHandlerTest` to group related scenarios:
 
 ```java
-@DisplayName("KafkaAsyncConfirmService 테스트")
-class KafkaAsyncConfirmServiceTest {
+@DisplayName("OutboxAsyncConfirmService 테스트")
+class OutboxAsyncConfirmServiceTest {
 
     @Nested
     @DisplayName("confirm() 메서드 테스트")
@@ -393,21 +375,20 @@ Use `@Nested` when a single class has multiple distinct method groups to test.
 
 ```java
 @Test
-@DisplayName("@ConditionalOnProperty(havingValue=sync, matchIfMissing=true)가 선언되어 있다.")
+@DisplayName("OutboxAsyncConfirmService는 @ConditionalOnProperty(havingValue=outbox, matchIfMissing=false)를 가진다")
 void testConditionalOnProperty() {
     ConditionalOnProperty annotation =
-            PaymentConfirmServiceImpl.class.getAnnotation(ConditionalOnProperty.class);
+            OutboxAsyncConfirmService.class.getAnnotation(ConditionalOnProperty.class);
 
     assertThat(annotation).isNotNull();
-    assertThat(annotation.havingValue()).isEqualTo("sync");
-    assertThat(annotation.matchIfMissing()).isTrue();
+    assertThat(annotation.havingValue()).isEqualTo("outbox");
+    assertThat(annotation.matchIfMissing()).isFalse();
 }
 ```
 
 ## Testcontainers Setup
 
-**MySQL** (`mysql:8.0`) used in both `BaseIntegrationTest` and `BaseKafkaIntegrationTest`.
-**Kafka** (`confluentinc/cp-kafka:7.4.0`, KraftMode via `.withKraft()`) used in `BaseKafkaIntegrationTest`.
+**MySQL** (`mysql:8.0`) used in `BaseIntegrationTest`.
 
 Container lifecycle: static `@Container` fields — shared across all tests in a class. `@DynamicPropertySource` injects the container URLs at Spring context startup.
 
@@ -417,20 +398,6 @@ Active profile: `test` (`src/test/resources/application-test.yml`). Key settings
 - `spring.jpa.hibernate.ddl-auto: create-drop` — schema recreated per test run
 - `scheduler.enabled: false` (overridden to `true` by `@DynamicPropertySource` in base classes)
 - `spring.payment.async-strategy` not set by default (Sync adapter activates via `matchIfMissing=true`)
-
-## Async Assertions (Awaitility)
-
-Used in Kafka integration tests to poll for eventual consistency:
-
-```java
-await()
-    .atMost(30, TimeUnit.SECONDS)
-    .pollInterval(500, TimeUnit.MILLISECONDS)
-    .until(() -> paymentLoadUseCase.getPaymentEventByOrderId(TEST_ORDER_ID)
-            .getStatus() == PaymentEventStatus.DONE);
-```
-
-File: `src/test/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListenerIntegrationTest.java`
 
 ## JaCoCo Configuration
 
@@ -479,4 +446,4 @@ A test double for `LocalDateTimeProvider` at `src/test/java/com/hyoguoo/paymentp
 
 ---
 
-*Testing analysis: 2026-03-18*
+*Testing analysis: 2026-03-31*
