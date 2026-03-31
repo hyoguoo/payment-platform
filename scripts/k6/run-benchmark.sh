@@ -23,7 +23,7 @@ echo "  ★ Async Worker: 항상 VT (outbox.channel.virtual-threads=true)"
 echo ""
 echo "  부하 단계 (고/저지연 동일):"
 echo "    warm-up  0→20 req/s (20s)"
-echo "    ramp     20→100 req/s (30s)   ← sync 포화점(~73) 크게 초과"
+echo "    ramp     20→100 req/s (30s)   ← sync 포화점(~72) 초과 시작"
 echo "    steady   100 req/s (90s)      ← 차이 극명 구간"
 echo ""
 
@@ -113,8 +113,8 @@ run_outbox() {
 #   HTTP p95는 여전히 async가 우수하지만 E2E는 유사
 # =============================================================
 
-# ── 1. 고지연 (800~1500ms) — 핵심 비교 ──
-print_section "=== 1. 고지연 환경 (800~1500ms) ==="
+# ── 1. 고지연 (2000~3500ms) — 핵심 비교 ──
+print_section "=== 1. 고지연 환경 (2000~3500ms) ==="
 run_sync  "sync-high"   "2000" "3500"
 run_outbox "outbox-high" "2000" "3500"
 
@@ -137,5 +137,5 @@ echo ""
 print_info "기대 결과 (고지연 기준):"
 echo "  항목              sync-high        outbox-high"
 echo "  Confirm TPS:      ~70 이하         ~100"
-echo "  Confirm med:      2000ms+          < 10ms    ← 핵심 지표"
+echo "  Confirm med:      2000ms+          < 20ms    ← 핵심 지표"
 echo "  E2E p95:          2000ms+          < 8000ms (Toss 처리 시간)"

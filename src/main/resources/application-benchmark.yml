@@ -12,7 +12,7 @@ spring:
 
   datasource:
     hikari:
-      maximum-pool-size: 50   # Worker 200개 × 평균 DB 점유율 ~5% + Tomcat 여유분
+      maximum-pool-size: 150   # Safe for Mac I/O limits
 
   myapp:
     toss-payments:
@@ -26,7 +26,7 @@ outbox:
   channel:
     virtual-threads: ${CHANNEL_VIRTUAL_THREADS:true}   # Worker VT 여부 (Tomcat과 독립)
     worker-count: ${WORKER_COUNT:300}
-    capacity: ${CHANNEL_CAPACITY:2000}
+    capacity: ${CHANNEL_CAPACITY:5000}
 
 scheduler:
   enabled: true

@@ -25,7 +25,10 @@ fi
 print_warning "Cleaning up existing containers..."
 docker-compose down -v 2>/dev/null
 
-print_warning "Building application..."
+print_warning "Building application on host (for speed)..."
+./gradlew clean build -x test -x integrationTest --no-daemon
+
+print_warning "Building docker image..."
 docker-compose build --no-cache app
 
 print_warning "Starting all services..."

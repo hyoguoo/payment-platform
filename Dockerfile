@@ -1,23 +1,4 @@
-# Multi-stage build for Spring Boot application
-FROM gradle:8.10-jdk21 AS builder
-
-WORKDIR /app
-
-# Copy gradle files
-COPY build.gradle settings.gradle ./
-COPY gradle ./gradle
-COPY config ./config
-
-# Download dependencies
-RUN gradle dependencies --no-daemon
-
-# Copy source code
-COPY src ./src
-
-# Build application
-RUN gradle clean build -x test --no-daemon
-
-# Runtime stage
+# Simplified Dockerfile for fast host-built JAR deployment
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
@@ -25,8 +6,8 @@ WORKDIR /app
 # Create log directory
 RUN mkdir -p /var/log/app
 
-# Copy JAR from builder
-COPY --from=builder /app/build/libs/*.jar app.jar
+# Copy JAR from host (pre-built via ./gradlew build)
+COPY build/libs/*.jar app.jar
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

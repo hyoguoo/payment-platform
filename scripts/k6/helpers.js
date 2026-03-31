@@ -16,18 +16,18 @@ export const POLL_INTERVAL_S = 0.1;   // 100ms
 export const POLL_TIMEOUT_MS = 30000; // 30s
 
 // 부하 단계 — 고/저지연 동일 적용
-// Tomcat PT max=200, 고지연 avg=2.75s 기준 포화점: 200/2.75 ≈ 73 req/s
-// 100 req/s는 포화점(73)을 크게 넘는 수준 → sync 심한 포화, async는 안정
+// Tomcat PT max=200, 고지연 avg=2.75s 기준 포화점: 200/2.75 ≈ 72 req/s
+// 100 req/s는 포화점(72)을 상당히 초과 → sync 심한 포화, async는 안정
 // DB ops: 100 req/s × ~6 ops ≈ 600 ops/s → Docker MySQL 안전 범위
 export const RAMPING_ARRIVAL_RATE_STAGES = [
-  { target: 20,  duration: '20s' },  // warm-up (둘 다 안정)
-  { target: 100, duration: '30s' },  // sync 임계점 크게 돌파
+  { target: 20,  duration: '20s' },  // warm-up
+  { target: 100, duration: '30s' },  // sync 임계점 초과 가속
   { target: 100, duration: '90s' },  // steady-state
 ];
-export const SCENARIO_DURATION_S = 140; // 위 stages 합산 (20+30+90)
+export const SCENARIO_DURATION_S = 140;
 
-export const PRE_ALLOCATED_VUS = 150;
-export const MAX_VUS = 600;
+export const PRE_ALLOCATED_VUS = 200;
+export const MAX_VUS = 1000;
 
 // checkout() — 매 iteration마다 새 orderId 생성
 export function checkout() {

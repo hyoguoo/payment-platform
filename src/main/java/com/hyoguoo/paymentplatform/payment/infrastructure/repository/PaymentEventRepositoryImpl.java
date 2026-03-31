@@ -11,7 +11,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,13 +55,17 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
-        List<PaymentOrder> paymentOrderList = paymentEvent.getPaymentOrderList();
-        Stream<PaymentOrderEntity> paymentOrderEntityStream = paymentOrderList.stream()
-                .map(paymentOrder ->
-                        jpaPaymentOrderRepository.save(PaymentOrderEntity.from(paymentOrder))
-                );
-        return jpaPaymentEventRepository.save(PaymentEventEntity.from(paymentEvent))
-                .toDomain(paymentOrderEntityStream.map(PaymentOrderEntity::toDomain).toList());
+        List<PaymentOrderEntity> savedOrderEntities = paymentEvent.getPaymentOrderList().stream()
+                .map(order -> jpaPaymentOrderRepository.save(PaymentOrderEntity.from(order)))
+                .toList();
+
+        PaymentEventEntity savedEventEntity = jpaPaymentEventRepository.save(PaymentEventEntity.from(paymentEvent));
+
+        return savedEventEntity.toDomain(
+                savedOrderEntities.stream()
+                        .map(PaymentOrderEntity::toDomain)
+                        .toList()
+        );
     }
 
     @Override
