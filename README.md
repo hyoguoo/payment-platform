@@ -70,6 +70,64 @@ sequenceDiagram
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
 
+### 비동기 결제 확인 플로우 — Outbox 채널 기반 비동기 아키텍처 전환 및 벤치마크
+
+- 동기(Sync) 전략에서 Toss API 지연이 HTTP 스레드를 직접 블로킹해 고부하 시 TPS 급락·스레드 고갈 문제가 발생
+- `LinkedBlockingQueue` + `SmartLifecycle` VT 워커 구조(채널 기반)로 네트워크 지연 병목을 해결하고, Outbox를 기본 전략으로 전환
+- 링크: [비동기 결제 처리 아키텍처 전환](https://hyoguoo.github.io/blog/async-payment-flow)
+
+```mermaid
+flowchart TD
+    Client(["클라이언트"])
+
+    subgraph Sync["Sync 전략 (spring.payment.async-strategy=sync)"]
+        S1["confirm() 호출"]
+        S2["TX: 재고 감소 + PaymentProcess 생성"]
+        S3["TX: READY → IN_PROGRESS"]
+        S4["Toss API 동기 호출\n⏳ 100ms ~ 3,500ms 블로킹"]
+        S5["TX: DONE 처리"]
+        S6(["200 OK"])
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+
+    subgraph Outbox["Async 전략 (spring.payment.async-strategy=outbox, 기본값)"]
+        O1["confirm() 호출"]
+        O2["단일 TX: IN_PROGRESS + 재고 감소 + PaymentOutbox(PENDING)"]
+        O3(["202 Accepted ← HTTP 스레드 즉시 해방"])
+        O4["AFTER_COMMIT 이벤트 발행"]
+        O5["channel.offer(orderId)\n비블로킹"]
+
+        subgraph Workers["OutboxImmediateWorker"]
+            W1["channel.take()\nblocking wait"]
+            W2["claimToInFlight\nREQUIRES_NEW TX"]
+            W3["Toss API 호출\n(HTTP 스레드와 분리)"]
+            W4["TX: PaymentEvent DONE\nPaymentOutbox DONE"]
+        end
+
+        OFB["OutboxWorker\n폴링 폴백 (fixedDelay 2s)\n큐 오버플로우 / 서버 재시작 복구"]
+        O1 --> O2 --> O3
+        O2 --> O4 --> O5
+        O5 -->|" offer() true "| W1
+        O5 -->|" offer() false\n큐 가득 참 "| OFB
+        W1 --> W2 --> W3 --> W4
+    end
+
+    Client --> S1
+    Client --> O1
+```
+
+#### k6 `ramping-arrival-rate` 부하 테스트 결과 (Round 7 기준):
+
+|     네트워크 지연 환경     |    전략     |       TPS       | Confirm 응답 (med) | E2E Latency (med) |      요청 유실       |
+|:------------------:|:---------:|:---------------:|:----------------:|:-----------------:|:----------------:|
+| **고지연** (2.0~3.5s) |   Sync    |      39.8       |     9,075ms      |      5,313ms      |      4,757       |
+| **고지연** (2.0~3.5s) | **Async** | **63.4 (+59%)** |    **153ms**     |    **3,304ms**    | **1,772 (-63%)** |
+| **저지연** (0.1~0.3s) | **Sync**  |    **82.2**     |     1,646ms      |     **259ms**     |    **1,764**     |
+| **저지연** (0.1~0.3s) |   Async   |      74.3       |     1,091ms      |       320ms       |      2,171       |
+
+- 고지연 환경에서 Outbox가 TPS 59% 우위, 요청 유실 63% 감소
+- 응답 속도 뿐만 아니라 **고부하·고지연 상황에서의 장애 회복력(Resilience) 확보**
+
 ### 결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현
 
 - 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
@@ -101,10 +159,10 @@ sequenceDiagram
 ### 🛠 사용 기술 스택
 
 - Java 21
-- Spring 6.1.12
-- Spring Boot 3.3.3
+- Spring Boot 3.4.4
 - MySQL 8.0.33
-- Junit 5
+- JUnit 5
+- k6 (부하 테스트)
 
 <br>
 
