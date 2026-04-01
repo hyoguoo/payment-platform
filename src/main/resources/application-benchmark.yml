@@ -12,7 +12,7 @@ spring:
 
   datasource:
     hikari:
-      maximum-pool-size: 150   # Safe for Mac I/O limits
+      maximum-pool-size: 30   # Sweet spot for 100 req/s load on local Mac
 
   myapp:
     toss-payments:
@@ -32,5 +32,5 @@ scheduler:
   enabled: true
   outbox-worker:
     fixed-delay-ms: 2000                             # 폴링 주기 2초
-    batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE}
+    batch-size: ${SCHEDULER_OUTBOX_WORKER_BATCH_SIZE:100}
     parallel-enabled: ${SCHEDULER_PARALLEL_ENABLED:true}   # OutboxWorker 폴백 병렬 처리 여부

@@ -17,64 +17,11 @@
 
 결제 핵심 로직 및 연동 과정 중 발생할 수 있는 문제점을 파악하고 해결하는 것을 목표로 하였습니다.
 
-### 결제 데이터 검증을 통한 데이터 정합성 보장
-
-- 클라이언트가 주문 생성부터 승인까지 처리하는 방식르로, 중간 값 조작 같은 위변조 가능성 존재
-- 서버 주도의 흐름으로 전환하고, 클라이언트·서버·PG 응답값을 교차 검증하여 불일치 시 결제를 거부하도록 설계
-- 링크: [토스 페이먼츠를 통한 결제 연동 시스템 구현](https://hyoguoo.github.io/blog/payment-system-with-toss/)
-
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
-
-### Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결
-
-- UI 중복 클릭, 네트워크 재시도 등으로 `PaymentEvent`가 복수 생성되어 DB에 유효하지 않은 주문이 누적되는 문제 존재
-- 초기 `getIfPresent + put` 구현에서 코드 리뷰 중 TOCTOU 경쟁 조건 발견, `getOrCreate` 단일 원자적 메서드로 포트 계약 재설계
-- 링크: [Checkout API 멱등성 보장 — Caffeine 캐시와 TOCTOU 경쟁 조건 해결](https://hyoguoo.github.io/blog/checkout-idempotency)
-
-```mermaid
-sequenceDiagram
-    participant A as Thread A
-    participant B as Thread B
-    participant Cache as Caffeine Cache
-    A ->> Cache: get("key", loader)
-    Cache -->> A: (lock acquired, loader 실행 중)
-    A ->> A: create() → PaymentEvent#1
-    B ->> Cache: get("key", loader)
-    Cache -->> B: (동일 키 → lock wait)
-    A ->> Cache: 결과 저장 후 lock 해제
-    Cache -->> B: hit → PaymentEvent#1 반환 (loader 미실행)
-    Note over Cache: ✅ 중복 생성 없음
-```
-
-### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
-
-- 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
-- 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
-- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.github.io/blog/minimize-transaction-scope)
-
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
-
-### 재시도 가능한 에러 처리 및 복구 로직 적용
-
-- API 지연, 서버 중단 등 외부 오류 발생 시 결제가 실패로 종료되어 복구할 수 없는 문제가 존재
-- 상태 기반 전환 모델을 정의하고, 재시도 가능한 오류에 대해 자동 복구 흐름 적용
-- 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.github.io/blog/payment-status-with-retry)
-
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
-
-### 보상 트랜잭션 실패 케이스 대응 및 최종 일관성 확보
-
-- 재고를 복구하는 보상 트랜잭션 처리 중 DB 데드락, 서버 다운 등으로 실패 시(이중 장애), 유령 재고 문제가 발생하는 엣지 케이스 존재
-- 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
-- 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.github.io/blog/payment-compensation-transaction)
-
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
-
 ### 비동기 결제 확인 플로우 — Outbox 채널 기반 비동기 아키텍처 전환 및 벤치마크
 
 - 동기(Sync) 전략에서 Toss API 지연이 HTTP 스레드를 직접 블로킹해 고부하 시 TPS 급락·스레드 고갈 문제가 발생
-- `LinkedBlockingQueue` + `SmartLifecycle` VT 워커 구조(채널 기반)로 네트워크 지연 병목을 해결하고, Outbox를 기본 전략으로 전환
-- 링크: [비동기 결제 처리 아키텍처 전환](https://hyoguoo.github.io/blog/async-payment-flow)
+- `LinkedBlockingQueue` + VT 워커 구조(채널 기반)로 PG 요청을 비동기로 처리하여 네트워크 지연 병목 해결
+- 링크: [비동기 결제 처리 플로우 구현 — Outbox 패턴부터 LinkedBlockingQueue Worker까지](https://hyoguoo.github.io/blog/async-payment-flow)
 
 ```mermaid
 flowchart TD
@@ -116,27 +63,47 @@ flowchart TD
     Client --> O1
 ```
 
-#### k6 `ramping-arrival-rate` 부하 테스트 결과 (Round 7 기준):
+#### k6 부하 테스트 결과 (Round 9 — 최종):
 
-|     네트워크 지연 환경     |    전략     |       TPS       | Confirm 응답 (med) | E2E Latency (med) |      요청 유실       |
-|:------------------:|:---------:|:---------------:|:----------------:|:-----------------:|:----------------:|
-| **고지연** (2.0~3.5s) |   Sync    |      39.8       |     9,075ms      |      5,313ms      |      4,757       |
-| **고지연** (2.0~3.5s) | **Async** | **63.4 (+59%)** |    **153ms**     |    **3,304ms**    | **1,772 (-63%)** |
-| **저지연** (0.1~0.3s) | **Sync**  |    **82.2**     |     1,646ms      |     **259ms**     |    **1,764**     |
-| **저지연** (0.1~0.3s) |   Async   |      74.3       |     1,091ms      |       320ms       |      2,171       |
+|     네트워크 지연 환경     |    전략     |       TPS       | Confirm 응답 (med) | E2E Latency (med) |     요청 유실     |
+|:------------------:|:---------:|:---------------:|:----------------:|:-----------------:|:-------------:|
+| **고지연** (2.0~3.5s) |   Sync    |      54.1       |     6,157ms      |      3,190ms      |     1,945     |
+| **고지연** (2.0~3.5s) | **Async** | **79.8 (+47%)** |    **5.3ms**     |    **2,820ms**    | **0 (-100%)** |
+| **저지연** (0.1~0.3s) | **Sync**  |      106.4      |      210ms       |       211ms       |       0       |
+| **저지연** (0.1~0.3s) |   Async   |      93.5       |      6.3ms       |       305ms       |       0       |
 
-- 고지연 환경에서 Outbox가 TPS 59% 우위, 요청 유실 63% 감소
-- 응답 속도 뿐만 아니라 **고부하·고지연 상황에서의 장애 회복력(Resilience) 확보**
+- 고지연 환경에서 Outbox 전략이 TPS 47% 상승, 요청 유실 100% 감소 기록
+- **이상적 자원 할당(Sweet Spot)**: 무작정 커넥션 풀을 늘리기보다 시스템 한계에 맞는 최적의 수치(HikariCP 30 등)를 도출하여 안정성과 성능의 균형 확보
+- 상세 보고서: [BENCHMARK-REPORT.md](https://github.com/hyoguoo/payment-platform/wiki/Benchmark-Report)
 
-### 결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현
+### Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결
 
-- 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
-- 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
--
-링크: [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
+- UI 중복 클릭, 네트워크 재시도 등으로 `PaymentEvent`가 복수 생성되어 DB에 유효하지 않은 주문이 누적되는 문제 존재
+- 초기 `getIfPresent + put` 구현에서 코드 리뷰 중 TOCTOU 경쟁 조건 발견, `getOrCreate` 단일 원자적 메서드로 포트 계약 재설계
+- 링크: [Checkout API 멱등성 보장 — Caffeine 캐시와 TOCTOU 경쟁 조건 해결](https://hyoguoo.github.io/blog/checkout-idempotency)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
+```mermaid
+sequenceDiagram
+    participant A as Thread A
+    participant B as Thread B
+    participant Cache as Caffeine Cache
+    A ->> Cache: get("key", loader)
+    Cache -->> A: (lock acquired, loader 실행 중)
+    A ->> A: create() → PaymentEvent#1
+    B ->> Cache: get("key", loader)
+    Cache -->> B: (동일 키 → lock wait)
+    A ->> Cache: 결과 저장 후 lock 해제
+    Cache -->> B: hit → PaymentEvent#1 반환 (loader 미실행)
+    Note over Cache: ✅ 중복 생성 없음
+```
+
+### 보상 트랜잭션 실패 케이스 대응 및 최종 일관성 확보
+
+- 재고를 복구하는 보상 트랜잭션 처리 중 DB 데드락, 서버 다운 등으로 실패 시(이중 장애), 유령 재고 문제가 발생하는 엣지 케이스 존재
+- 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
+- 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.github.io/blog/payment-compensation-transaction)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
 
 ### 전략 패턴을 통한 PG 독립성 확보 및 확장 가능한 구조
 
@@ -145,6 +112,40 @@ flowchart TD
 - 링크: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.github.io/blog/payment-gateway-strategy-pattern)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/cd031502-6de3-442d-8d58-872e39d22253">
+
+### 결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현
+
+- 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
+- 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
+- 링크:
+  [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
+
+### 재시도 가능한 에러 처리 및 복구 로직 적용
+
+- API 지연, 서버 중단 등 외부 오류 발생 시 결제가 실패로 종료되어 복구할 수 없는 문제가 존재
+- 상태 기반 전환 모델을 정의하고, 재시도 가능한 오류에 대해 자동 복구 흐름 적용
+- 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.github.io/blog/payment-status-with-retry)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
+
+### 결제 데이터 검증을 통한 데이터 정합성 보장
+
+- 클라이언트가 주문 생성부터 승인까지 처리하는 방식르로, 중간 값 조작 같은 위변조 가능성 존재
+- 서버 주도의 흐름으로 전환하고, 클라이언트·서버·PG 응답값을 교차 검증하여 불일치 시 결제를 거부하도록 설계
+- 링크: [토스 페이먼츠를 통한 결제 연동 시스템 구현](https://hyoguoo.github.io/blog/payment-system-with-toss/)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
+
+### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
+
+- 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
+- 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
+- 링크: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.github.io/blog/minimize-transaction-scope)
+
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
 
 ### 외부 의존성을 제어한 테스트 환경에서의 시나리오 검증
 
