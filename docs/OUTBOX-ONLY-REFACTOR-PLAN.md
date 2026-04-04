@@ -50,6 +50,8 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `payment/presentation/PaymentController.java` — `SYNC_200` 분기 제거, 항상 202 반환으로 단순화
 - `src/test/.../PaymentConfirmServiceImplTest.java` 삭제
 - `src/test/.../PaymentConfirmAsyncResultTest.java` — SYNC_200 관련 테스트 제거
+- `src/test/.../OutboxAsyncConfirmServiceTest.java` — `@ConditionalOnProperty` 어노테이션 검증 테스트 제거
+- `src/test/.../PaymentControllerMvcTest.java` — `confirmPayment_SyncAdapter_Returns200()` 제거, 202 단일 흐름으로 갱신
 
 **완료 기준**
 - 컴파일 오류 없음
@@ -93,6 +95,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `src/test/.../PaymentProcessUseCaseTest.java`
 
 `PaymentTransactionCoordinator`에서 `PaymentProcessUseCase` 필드 및 생성자 파라미터 제거.
+`PaymentTransactionCoordinatorTest` — `@Mock PaymentProcessUseCase` 필드 및 관련 선언 제거.
 
 **완료 기준**
 - 컴파일 오류 없음
@@ -121,6 +124,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `PaymentFailureUseCase.handleUnknownFailure()` 삭제
 - `PaymentCommandUseCase.markPaymentAsUnknown()` 삭제
 - `PaymentEventTest` — `unknown()` 관련 기존 테스트 제거, 추가된 예외 테스트 포함
+- `PaymentEventTest` — `execute_Success`, `done_Success`, `fail_Success` 등의 `@EnumSource` 목록에서 `UNKNOWN` 제거
 
 **완료 기준**
 - 추가한 예외 테스트 3개 통과
@@ -177,8 +181,9 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 `OutboxAsyncConfirmServiceTest`:
 - `confirm_채널_여유_있을_때_queueNearFull_false` — `remainingCapacity()` 충분 → result.isQueueNearFull() == false
 - `confirm_채널_임계값_이하일_때_queueNearFull_true` — `remainingCapacity()` 10% 이하 → result.isQueueNearFull() == true
+- 기존 테스트의 `setUp()`에 `PaymentConfirmChannel` mock 추가 (`Mockito.mock(PaymentConfirmChannel.class)`)
 
-`PaymentControllerMvcTest` (또는 `PaymentControllerTest`):
+`PaymentControllerMvcTest`:
 - `confirm_queueNearFull_false_시_202_정상_응답`
 - `confirm_queueNearFull_true_시_202_지연_메시지_포함`
 
