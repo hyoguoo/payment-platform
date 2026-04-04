@@ -52,8 +52,8 @@ class PaymentControllerMvcTest {
     private UUIDProvider uuidProvider;
 
     @Test
-    @DisplayName("ResponseType.SYNC_200 일 때 confirm()은 HTTP 200을 반환한다. (PORT-02)")
-    void confirmPayment_SyncAdapter_Returns200() throws Exception {
+    @DisplayName("confirm() 성공 시 HTTP 202 Accepted를 반환한다. (PORT-02)")
+    void confirmPayment_Returns202() throws Exception {
         // given
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
                 .userId(1L)
@@ -64,7 +64,7 @@ class PaymentControllerMvcTest {
 
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.SYNC_200)
+                        .responseType(ResponseType.ASYNC_202)
                         .orderId("order-1")
                         .amount(BigDecimal.valueOf(1000))
                         .build());
@@ -73,7 +73,7 @@ class PaymentControllerMvcTest {
         mockMvc.perform(post("/api/v1/payments/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
     }
 
     @Test

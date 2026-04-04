@@ -86,6 +86,8 @@ export function e2eUnderLoadScenario() {
     { headers: { 'Content-Type': 'application/json' } }
   );
 
+  check(confirmRes, { 'confirm accepted (202)': (r) => r.status === 202 });
+
   if (confirmRes.status === 202) {
     const finalStatus = pollStatus(orderId);
     e2eCompletion.add(Date.now() - start);

@@ -9,20 +9,6 @@ import org.junit.jupiter.api.Test;
 class PaymentConfirmAsyncResultTest {
 
     @Test
-    @DisplayName("SYNC_200 ResponseType으로 빌드 시 responseType이 SYNC_200이다")
-    void build_WithSync200_HasSync200ResponseType() {
-        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .responseType(PaymentConfirmAsyncResult.ResponseType.SYNC_200)
-                .orderId("order-001")
-                .amount(new BigDecimal("15000"))
-                .build();
-
-        assertThat(result.getResponseType()).isEqualTo(PaymentConfirmAsyncResult.ResponseType.SYNC_200);
-        assertThat(result.getOrderId()).isEqualTo("order-001");
-        assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("15000"));
-    }
-
-    @Test
     @DisplayName("ASYNC_202 ResponseType으로 빌드 시 responseType이 ASYNC_202이다")
     void build_WithAsync202_HasAsync202ResponseType() {
         PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
@@ -40,7 +26,7 @@ class PaymentConfirmAsyncResultTest {
     @DisplayName("amount 필드는 null을 허용한다")
     void build_WithNullAmount_IsAllowed() {
         PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .responseType(PaymentConfirmAsyncResult.ResponseType.SYNC_200)
+                .responseType(PaymentConfirmAsyncResult.ResponseType.ASYNC_202)
                 .orderId("order-003")
                 .amount(null)
                 .build();
@@ -49,13 +35,23 @@ class PaymentConfirmAsyncResultTest {
     }
 
     @Test
-    @DisplayName("ResponseType enum은 SYNC_200과 ASYNC_202 두 값을 갖는다")
-    void responseType_HasTwoValues() {
+    @DisplayName("ResponseType enum은 ASYNC_202 값만 갖는다")
+    void responseType_HasOnlyAsync202() {
         PaymentConfirmAsyncResult.ResponseType[] values = PaymentConfirmAsyncResult.ResponseType.values();
 
-        assertThat(values).containsExactlyInAnyOrder(
-                PaymentConfirmAsyncResult.ResponseType.SYNC_200,
-                PaymentConfirmAsyncResult.ResponseType.ASYNC_202
-        );
+        assertThat(values).containsExactly(PaymentConfirmAsyncResult.ResponseType.ASYNC_202);
+    }
+
+    @Test
+    @DisplayName("orderId와 amount가 정상적으로 빌드된다")
+    void build_WithOrderIdAndAmount_FieldsAreSet() {
+        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
+                .responseType(PaymentConfirmAsyncResult.ResponseType.ASYNC_202)
+                .orderId("order-001")
+                .amount(new BigDecimal("15000"))
+                .build();
+
+        assertThat(result.getOrderId()).isEqualTo("order-001");
+        assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("15000"));
     }
 }

@@ -27,7 +27,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 ## 진행 상황
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
-- [ ] Task 1: PaymentConfirmServiceImpl 제거 + Outbox 단일화
+- [x] Task 1: PaymentConfirmServiceImpl 제거 + Outbox 단일화
 - [ ] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
 - [ ] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
 - [ ] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
@@ -58,7 +58,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> PaymentConfirmServiceImpl 삭제, OutboxAsyncConfirmService의 @ConditionalOnProperty 제거, ResponseType.SYNC_200 제거, PaymentController를 항상 202 반환으로 단순화. HttpStatus import를 checkout() 메서드에서 여전히 사용 중이라 유지.
 
 ---
 

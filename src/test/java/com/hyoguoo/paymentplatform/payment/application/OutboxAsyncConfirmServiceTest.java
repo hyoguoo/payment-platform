@@ -31,7 +31,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @DisplayName("OutboxAsyncConfirmService 테스트")
 class OutboxAsyncConfirmServiceTest {
@@ -208,18 +207,6 @@ class OutboxAsyncConfirmServiceTest {
             then(mockConfirmPublisher).should(times(0)).publish(any(), any(), any(), any());
         }
 
-        @Test
-        @DisplayName("OutboxAsyncConfirmService는 @ConditionalOnProperty(havingValue=outbox, matchIfMissing=false)를 가진다")
-        void outboxAsyncConfirmService_HasConditionalOnPropertyAnnotation() {
-            // given
-            ConditionalOnProperty annotation = OutboxAsyncConfirmService.class.getAnnotation(ConditionalOnProperty.class);
-
-            // then
-            assertThat(annotation).isNotNull();
-            assertThat(annotation.name()).contains("spring.payment.async-strategy");
-            assertThat(annotation.havingValue()).isEqualTo("outbox");
-            assertThat(annotation.matchIfMissing()).isFalse();
-        }
     }
 
     @Nested

@@ -9,7 +9,6 @@ import lombok.Getter;
 public class PaymentConfirmAsyncResult {
 
     public enum ResponseType {
-        SYNC_200,
         ASYNC_202
     }
 
