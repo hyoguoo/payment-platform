@@ -76,7 +76,6 @@
 **Key Config Properties:**
 
 ```yaml
-spring.payment.async-strategy: sync | outbox   # strategy switch (default: outbox)
 payment.gateway.type: TOSS
 payment.gateway.toss.base-url: https://api.tosspayments.com
 payment.gateway.toss.connect-timeout: 3000

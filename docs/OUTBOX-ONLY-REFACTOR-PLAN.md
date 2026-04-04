@@ -31,7 +31,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - [x] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
 - [x] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
 - [x] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
-- [ ] Task 5: 설정 프로퍼티 및 문서 정리
+- [x] Task 5: 설정 프로퍼티 및 문서 정리
 - [ ] Task 6: RestTemplate → WebClient
 - [ ] Task 7: offer 실패 시 사용자 시그널
 - [ ] Task 8: Grafana 관측 지표 추가
@@ -150,7 +150,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - 문서에서 Sync 전략 잔재 제거 확인
 
 **완료 결과**
-> (완료 후 작성)
+> application.yml, application-benchmark.yml에서 spring.payment.async-strategy 프로퍼티 제거. ARCHITECTURE.md를 Outbox 단일 전략 기준으로 전면 재작성. CONFIRM-FLOW-ANALYSIS.md에서 Sync 플로우 섹션 삭제, Outbox 플로우만 유지. STACK.md에서 async-strategy 설정 항목 제거.
 
 ---
 

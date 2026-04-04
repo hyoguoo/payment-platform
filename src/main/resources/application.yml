@@ -6,10 +6,6 @@ spring:
     virtual:
       enabled: true
 
-  payment:
-    # 활성 어댑터: sync | outbox
-    async-strategy: outbox
-
   jpa:
     open-in-view: false
     properties:
