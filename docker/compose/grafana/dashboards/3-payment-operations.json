@@ -332,71 +332,6 @@
                 "value": null
               },
               {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 6,
-        "y": 10
-      },
-      "id": 6,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "textMode": "value_and_name"
-      },
-      "pluginVersion": "9.5.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "payment_health_unknown_status",
-          "legendFormat": "Unknown Status",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "알 수 없는 상태 (Unknown Status)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
                 "color": "orange",
                 "value": 1
               }
@@ -531,17 +466,6 @@
           "legendFormat": "Stuck in Progress",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "payment_health_unknown_status",
-          "legendFormat": "Unknown Status",
-          "range": true,
-          "refId": "B"
         },
         {
           "datasource": {

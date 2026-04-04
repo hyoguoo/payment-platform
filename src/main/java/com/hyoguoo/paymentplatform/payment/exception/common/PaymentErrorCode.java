@@ -25,7 +25,6 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_STATUS_TO_EXPIRE("E03017", "결제를 만료 상태로 변경할 수 없습니다."),
     INVALID_STATUS_TO_COMPLETE("E03018", "작업을 완료할 수 없는 상태입니다."),
     INVENTORY_JOB_NOT_FOUND("E03019", "존재하지 않는 재고 작업입니다."),
-    PAYMENT_PROCESS_NOT_FOUND("E03020", "존재하지 않는 결제 프로세스입니다."),
     UNSUPPORTED_PAYMENT_GATEWAY("E03021", "지원하지 않는 결제 게이트웨이입니다."),
     INVALID_STATUS_TO_IN_FLIGHT("E03022", "IN_FLIGHT 상태로 변경할 수 없는 상태입니다."),
     PAYMENT_OUTBOX_NOT_FOUND("E03023", "존재하지 않는 Outbox 레코드입니다."),

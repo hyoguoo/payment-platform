@@ -35,7 +35,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - [x] Task 6: RestTemplate → WebClient
 - [x] Task 7: offer 실패 시 사용자 시그널
 - [x] Task 8: Grafana 관측 지표 추가
-- [ ] Task 9: 코드 클렌징
+- [x] Task 9: 코드 클렌징
 
 ---
 
@@ -247,4 +247,4 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> EventType에서 미사용 열거값 5개 제거 (PAYMENT_CONFIRM_UNKNOWN_ERROR, PAYMENT_PROCESS_CREATED/COMPLETED/FAILED/NOT_FOUND). PaymentErrorCode.PAYMENT_PROCESS_NOT_FOUND 제거. Grafana 3-payment-operations.json에서 UNKNOWN 상태 패널 제거 및 헬스 메트릭 추이 패널에서 payment_health_unknown_status 타겟 제거.
