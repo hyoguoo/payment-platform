@@ -34,7 +34,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - [x] Task 5: 설정 프로퍼티 및 문서 정리
 - [x] Task 6: RestTemplate → WebClient
 - [x] Task 7: offer 실패 시 사용자 시그널
-- [ ] Task 8: Grafana 관측 지표 추가
+- [x] Task 8: Grafana 관측 지표 추가
 - [ ] Task 9: 코드 클렌징
 
 ---
@@ -231,7 +231,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> PaymentConfirmChannel에 MeterRegistry 주입 및 @PostConstruct에서 payment_confirm_channel_queue_size / payment_confirm_channel_remaining_capacity Gauge 등록. 1-system-infrastructure.json에 Tomcat 활성/최대 스레드 패널 2개 추가. 3-payment-operations.json에 채널 큐 크기/잔여 용량 패널 2개 추가. OutboxImmediateWorkerTest에서 PaymentConfirmChannel 생성자 인수 추가(SimpleMeterRegistry) — Deviation Rule 1 자동 수정.
 
 ---
 
