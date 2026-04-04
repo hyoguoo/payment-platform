@@ -14,23 +14,10 @@ import org.springframework.stereotype.Component;
 public class PaymentFailureUseCase {
 
     private final PaymentCommandUseCase paymentCommandUseCase;
-    private final PaymentTransactionCoordinator transactionCoordinator;
 
     public PaymentEvent handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
         PaymentEvent failedPaymentEvent = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureMessage);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
-        return failedPaymentEvent;
-    }
-
-    public PaymentEvent handleNonRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = transactionCoordinator.executePaymentFailureCompensation(
-                paymentEvent.getOrderId(),
-                paymentEvent,
-                paymentEvent.getPaymentOrderList(),
-                failureMessage
-        );
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
                 () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
         return failedPaymentEvent;
     }
@@ -40,18 +27,5 @@ public class PaymentFailureUseCase {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
                 () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
         return unknownPaymentEvent;
-    }
-
-    public PaymentEvent handleUnknownFailure(PaymentEvent paymentEvent, String failureMessage) {
-        String message = failureMessage != null ? failureMessage : "Unknown error occurred";
-        PaymentEvent failedPaymentEvent = transactionCoordinator.executePaymentFailureCompensation(
-                paymentEvent.getOrderId(),
-                paymentEvent,
-                paymentEvent.getPaymentOrderList(),
-                message
-        );
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
-                () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), message));
-        return failedPaymentEvent;
     }
 }

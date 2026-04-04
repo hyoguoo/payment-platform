@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentProcess;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,25 +34,6 @@ public class PaymentTransactionCoordinator {
         return inProgressEvent;
     }
 
-    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
-    public PaymentEvent executePaymentAndStockDecrease(
-            PaymentEvent paymentEvent,
-            String paymentKey,
-            List<PaymentOrder> paymentOrderList
-    ) throws PaymentOrderedProductStockException {
-        PaymentEvent inProgressEvent = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
-        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
-        return inProgressEvent;
-    }
-
-    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
-    public PaymentProcess executeStockDecreaseWithJobCreation(String orderId, List<PaymentOrder> paymentOrderList)
-            throws PaymentOrderedProductStockException {
-        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
-
-        return paymentProcessUseCase.createProcessingJob(orderId);
-    }
-
     @Transactional
     public PaymentEvent executePaymentSuccessCompletionWithOutbox(
             PaymentEvent paymentEvent,
@@ -78,32 +58,4 @@ public class PaymentTransactionCoordinator {
         return paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
     }
 
-    @Transactional
-    public PaymentEvent executePaymentSuccessCompletion(
-            String orderId,
-            PaymentEvent paymentEvent,
-            LocalDateTime approvedAt
-    ) {
-        if (paymentProcessUseCase.existsByOrderId(orderId)) {
-            paymentProcessUseCase.completeJob(orderId);
-        }
-
-        return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
-    }
-
-    @Transactional
-    public PaymentEvent executePaymentFailureCompensation(
-            String orderId,
-            PaymentEvent paymentEvent,
-            List<PaymentOrder> paymentOrderList,
-            String failureReason
-    ) {
-        if (paymentProcessUseCase.existsByOrderId(orderId)) {
-            paymentProcessUseCase.failJob(orderId, failureReason);
-        }
-
-        orderedProductUseCase.increaseStockForOrders(paymentOrderList);
-
-        return paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
-    }
 }

@@ -28,7 +28,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: PaymentConfirmServiceImpl 제거 + Outbox 단일화
-- [ ] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
+- [x] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
 - [ ] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
 - [ ] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
 - [ ] Task 5: 설정 프로퍼티 및 문서 정리
@@ -77,7 +77,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> PaymentTransactionCoordinator에서 Sync 전용 메서드 4개 제거. PaymentConfirmServiceImpl 삭제(Task 1)로 호출처 없어진 handleNonRetryableFailure, handleUnknownFailure도 함께 제거(컴파일 오류 자동 수정). PaymentFailureUseCase에서 transactionCoordinator 의존성 제거. OutboxProcessingServiceTest의 executePaymentSuccessCompletion 검증 라인도 제거.
 
 ---
 
