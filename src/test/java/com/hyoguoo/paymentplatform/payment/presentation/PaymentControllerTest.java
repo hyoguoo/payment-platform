@@ -28,7 +28,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
-import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentProcessRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -82,8 +81,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
     @Autowired
     private JpaProductRepository jpaProductRepository;
     @Autowired
-    private JpaPaymentProcessRepository jpaPaymentProcessRepository;
-    @Autowired
     private HttpOperator httpOperator;
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -101,7 +98,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
         ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
         jpaPaymentEventRepository.deleteAllInBatch();
         jpaPaymentOrderRepository.deleteAllInBatch();
-        jpaPaymentProcessRepository.deleteAllInBatch();
     }
 
     @Test

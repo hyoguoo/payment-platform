@@ -29,7 +29,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: PaymentConfirmServiceImpl 제거 + Outbox 단일화
 - [x] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
-- [ ] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
+- [x] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
 - [ ] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
 - [ ] Task 5: 설정 프로퍼티 및 문서 정리
 - [ ] Task 6: RestTemplate → WebClient
@@ -102,7 +102,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> PaymentProcess 관련 7개 파일 삭제(도메인, enum, 포트, 유스케이스, 엔티티, JPA리포지토리, 구현체). PaymentTransactionCoordinator에서 PaymentProcessUseCase 필드 제거. 테스트에서 @Mock PaymentProcessUseCase 및 관련 verify 제거. PaymentControllerTest에서 JpaPaymentProcessRepository 주입 및 deleteAllInBatch() 제거.
 
 ---
 

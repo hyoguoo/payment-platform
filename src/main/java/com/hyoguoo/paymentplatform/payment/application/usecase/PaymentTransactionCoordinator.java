@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PaymentTransactionCoordinator {
 
-    private final PaymentProcessUseCase paymentProcessUseCase;
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentOutboxUseCase paymentOutboxUseCase;
