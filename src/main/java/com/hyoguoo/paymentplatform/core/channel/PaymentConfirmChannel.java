@@ -20,4 +20,8 @@ public class PaymentConfirmChannel {
     public String take() throws InterruptedException {
         return queue.take();
     }
+
+    public int remainingCapacity() {
+        return queue.remainingCapacity();
+    }
 }

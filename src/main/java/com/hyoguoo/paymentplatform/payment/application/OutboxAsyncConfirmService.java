@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
@@ -12,10 +13,10 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCas
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
-
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,10 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
+    private final PaymentConfirmChannel confirmChannel;
+
+    @Value("${outbox.channel.capacity:2000}")
+    private int capacity;
 
     @Override
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
@@ -64,10 +69,13 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
                 command.getPaymentKey()
         );
 
+        boolean queueNearFull = confirmChannel.remainingCapacity() <= (int) (capacity * 0.1);
+
         return PaymentConfirmAsyncResult.builder()
                 .responseType(ResponseType.ASYNC_202)
                 .orderId(command.getOrderId())
                 .amount(command.getAmount())
+                .queueNearFull(queueNearFull)
                 .build();
     }
 }
