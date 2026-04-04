@@ -4,10 +4,11 @@
 
 ## 활성 작업
 - **주제**: OUTBOX-ONLY-REFACTOR
-- **단계**: plan
+- **단계**: plan-review
 - **이슈**: #56
 - **브랜치**: #56
 - **문서**: docs/topics/OUTBOX-ONLY-REFACTOR.md
+- **플랜**: docs/OUTBOX-ONLY-REFACTOR-PLAN.md
 
 ## 최근 완료
 - **주제**: ASYNC-CHANNEL
@@ -16,7 +17,7 @@
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
