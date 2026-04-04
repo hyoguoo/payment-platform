@@ -30,7 +30,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - [x] Task 1: PaymentConfirmServiceImpl 제거 + Outbox 단일화
 - [x] Task 2: PaymentTransactionCoordinator Sync 전용 메서드 제거
 - [x] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
-- [ ] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
+- [x] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
 - [ ] Task 5: 설정 프로퍼티 및 문서 정리
 - [ ] Task 6: RestTemplate → WebClient
 - [ ] Task 7: offer 실패 시 사용자 시그널
@@ -131,7 +131,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> PaymentEvent.execute/done/fail에서 UNKNOWN 소스 상태 제거, PaymentEvent.unknown() 삭제, PaymentEventStatus.UNKNOWN 삭제. Deviation Rule 1 자동 수정: PaymentOrder.unknown()/PaymentOrderStatus.UNKNOWN, PaymentFailureUseCase.handleRetryableFailure(), PaymentCommandUseCase.markPaymentAsUnknown(), PaymentHealthMetrics unknown_status 게이지, PaymentControllerTest의 RetryableError/NetworkReadTimeout/SyncAdapter 테스트, PaymentOrderTest unknown 테스트, PaymentCommandUseCaseTest testMarkPaymentAsUnknown, EventType.PAYMENT_STATUS_TO_UNKNOWN, PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN 모두 제거.
 
 ---
 

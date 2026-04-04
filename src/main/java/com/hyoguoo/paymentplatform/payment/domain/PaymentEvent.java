@@ -64,8 +64,7 @@ public class PaymentEvent {
 
     public void execute(String paymentKey, LocalDateTime executedAt, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.UNKNOWN) {
+                this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
         paymentOrderList.forEach(PaymentOrder::execute);
@@ -83,8 +82,7 @@ public class PaymentEvent {
 
     public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.DONE &&
-                this.status != PaymentEventStatus.UNKNOWN) {
+                this.status != PaymentEventStatus.DONE) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
         }
         this.approvedAt = approvedAt;
@@ -96,26 +94,13 @@ public class PaymentEvent {
 
     public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.UNKNOWN) {
+                this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentEventStatus.FAILED;
         this.statusReason = failureReason;
         this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::fail);
-    }
-
-    public void unknown(String reason, LocalDateTime lastStatusChangedAt) {
-        if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.UNKNOWN) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
-        }
-        this.status = PaymentEventStatus.UNKNOWN;
-        this.statusReason = reason;
-        this.lastStatusChangedAt = lastStatusChangedAt;
-        this.paymentOrderList.forEach(PaymentOrder::unknown);
     }
 
     public void expire(LocalDateTime lastStatusChangedAt) {

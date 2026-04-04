@@ -60,15 +60,6 @@ public class PaymentCommandUseCase {
 
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "UNKNOWN", trigger = "auto")
-    public PaymentEvent markPaymentAsUnknown(PaymentEvent paymentEvent, @Reason String reason) {
-        LocalDateTime now = localDateTimeProvider.now();
-        paymentEvent.unknown(reason, now);
-        return paymentEventRepository.saveOrUpdate(paymentEvent);
-    }
-
-    @Transactional
-    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
         LocalDateTime now = localDateTimeProvider.now();

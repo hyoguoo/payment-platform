@@ -191,7 +191,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
     @DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경하고, 실행 시간을 설정한다.")
     void execute_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -208,48 +208,6 @@ class PaymentEventTest {
         assertThat(paymentEvent.getPaymentKey()).isEqualTo("validPaymentKey");
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
         assertThat(paymentEvent.getExecutedAt()).isEqualTo(executedAt);
-    }
-
-    @Test
-    @DisplayName("execute() — UNKNOWN 상태에서 호출 시 InvalidStatus 예외를 던진다.")
-    void execute_UNKNOWN_상태에서_호출_시_InvalidStatus_예외() {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.UNKNOWN,
-                PaymentOrderStatus.NOT_STARTED
-        );
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", LocalDateTime.now(), LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @Test
-    @DisplayName("done() — UNKNOWN 상태에서 호출 시 InvalidStatus 예외를 던진다.")
-    void done_UNKNOWN_상태에서_호출_시_InvalidStatus_예외() {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.UNKNOWN,
-                PaymentOrderStatus.EXECUTING
-        );
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.done(LocalDateTime.now(), LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @Test
-    @DisplayName("fail() — UNKNOWN 상태에서 호출 시 InvalidStatus 예외를 던진다.")
-    void fail_UNKNOWN_상태에서_호출_시_InvalidStatus_예외() {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.UNKNOWN,
-                PaymentOrderStatus.EXECUTING
-        );
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.fail("reason", LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
     }
 
     @ParameterizedTest
@@ -269,7 +227,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "UNKNOWN"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE"})
     @DisplayName("결제 완료 시 특정 상태에서 성공적으로 done 상태로 변경한다.")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -304,7 +262,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "UNKNOWN"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS"})
     @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -332,38 +290,6 @@ class PaymentEventTest {
 
         // when & then
         assertThatThrownBy(() -> paymentEvent.fail("test failure reason", LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
-    @DisplayName("알 수 없는 결과 처리 시 특정 상태에서 성공적으로 unknown 상태로 변경한다.")
-    void unknown_Success(PaymentEventStatus paymentEventStatus) {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                paymentEventStatus,
-                PaymentOrderStatus.NOT_STARTED
-        );
-
-        // when
-        paymentEvent.unknown("test unknown reason", LocalDateTime.now());
-
-        // then
-        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
-    @DisplayName("알 수 없는 결과 처리 시 unknown 상태로 변경 불가한 상태에서는 예외를 던진다.")
-    void unknown_InvalidStatus(PaymentEventStatus paymentEventStatus) {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                paymentEventStatus,
-                PaymentOrderStatus.EXECUTING
-        );
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.unknown("test unknown reason", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -435,7 +361,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "UNKNOWN"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED"})
     @DisplayName("READY 상태가 아닌 PaymentEvent는 EXPIRED 상태로 변경할 수 없다.")
     void expire_InvalidStatus_ThrowsException(PaymentEventStatus invalidStatus) {
         // given
@@ -528,7 +454,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "UNKNOWN", "EXPIRED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "EXPIRED"})
     @DisplayName("각 상태 변경 메서드 호출 시 lastStatusChangedAt이 업데이트된다.")
     void lastStatusChangedAt_UpdatedOnEachStatusChange(PaymentEventStatus targetStatus) {
         // given
@@ -536,13 +462,13 @@ class PaymentEventTest {
         LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 10, 0);
 
         PaymentEventStatus initialStatus = switch (targetStatus) {
-            case DONE, FAILED, UNKNOWN -> PaymentEventStatus.IN_PROGRESS;
+            case DONE, FAILED -> PaymentEventStatus.IN_PROGRESS;
             case EXPIRED -> PaymentEventStatus.READY;
             default -> PaymentEventStatus.READY;
         };
 
         PaymentOrderStatus paymentOrderStatus = switch (targetStatus) {
-            case DONE, FAILED, UNKNOWN -> PaymentOrderStatus.EXECUTING;
+            case DONE, FAILED -> PaymentOrderStatus.EXECUTING;
             case EXPIRED -> PaymentOrderStatus.NOT_STARTED;
             default -> PaymentOrderStatus.NOT_STARTED;
         };
@@ -569,7 +495,6 @@ class PaymentEventTest {
         switch (targetStatus) {
             case DONE -> paymentEvent.done(statusChangeTime, statusChangeTime);
             case FAILED -> paymentEvent.fail("test reason", statusChangeTime);
-            case UNKNOWN -> paymentEvent.unknown("test reason", statusChangeTime);
             case EXPIRED -> paymentEvent.expire(statusChangeTime);
             default -> throw new AssertionError("Unexpected status: " + targetStatus);
         }

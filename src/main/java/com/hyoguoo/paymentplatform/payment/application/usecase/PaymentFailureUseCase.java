@@ -22,10 +22,4 @@ public class PaymentFailureUseCase {
         return failedPaymentEvent;
     }
 
-    public PaymentEvent handleRetryableFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent unknownPaymentEvent = paymentCommandUseCase.markPaymentAsUnknown(paymentEvent, failureMessage);
-        LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_UNKNOWN,
-                () -> String.format("orderId=%s reason=%s", paymentEvent.getOrderId(), failureMessage));
-        return unknownPaymentEvent;
-    }
 }

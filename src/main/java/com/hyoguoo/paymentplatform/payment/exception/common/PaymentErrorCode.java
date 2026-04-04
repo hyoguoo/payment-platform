@@ -22,7 +22,6 @@ public enum PaymentErrorCode implements ErrorCode {
     ORDERED_PRODUCT_STOCK_NOT_ENOUGH("E03013", "주문한 상품 중 재고가 부족합니다."),
     INVALID_STATUS_TO_RETRY("E03014", "결제 재시도할 수 없는 상태입니다."),
     RETRYABLE_VALIDATION_ERROR("E03015", "재시도 불가능한 상태입니다."),
-    INVALID_STATUS_TO_UNKNOWN("E03016", "결제를 알 수 없는 상태로 변경할 수 없습니다."),
     INVALID_STATUS_TO_EXPIRE("E03017", "결제를 만료 상태로 변경할 수 없습니다."),
     INVALID_STATUS_TO_COMPLETE("E03018", "작업을 완료할 수 없는 상태입니다."),
     INVENTORY_JOB_NOT_FOUND("E03019", "존재하지 않는 재고 작업입니다."),

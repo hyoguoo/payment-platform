@@ -15,7 +15,6 @@ public enum PaymentEventStatus {
     CANCELED("CANCELED"),
     PARTIAL_CANCELED("PARTIAL_CANCELED"),
     EXPIRED("EXPIRED"),
-    UNKNOWN("UNKNOWN"),
     ;
 
     private final String value;

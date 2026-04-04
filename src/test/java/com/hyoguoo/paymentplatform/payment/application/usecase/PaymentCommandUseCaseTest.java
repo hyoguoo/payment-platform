@@ -109,23 +109,6 @@ class PaymentCommandUseCaseTest {
     }
 
     @Test
-    @DisplayName("결제 상태를 알 수 없음으로 처리하고 PaymentEvent를 반환한다.")
-    void testMarkPaymentAsUnknown() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        String reason = "";  // 빈 문자열로 테스트
-
-        // when
-        when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
-                .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandUseCase.markPaymentAsUnknown(paymentEvent, reason);
-
-        // then
-        verify(paymentEvent, times(1)).unknown(reason, testLocalDateTimeProvider.now());
-        assertThat(result).isEqualTo(paymentEvent);
-    }
-
-    @Test
     @DisplayName("Toss 결제 승인 성공 시 성공 결과와 함께 결제 정보를 반환한다.")
     void testConfirmPaymentWithGateway_Success() throws Exception {
         // given
