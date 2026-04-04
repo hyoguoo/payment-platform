@@ -10,6 +10,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
@@ -23,6 +24,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
@@ -41,6 +43,7 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
     private PaymentConfirmPublisherPort mockConfirmPublisher;
+    private PaymentConfirmChannel mockChannel;
 
     @BeforeEach
     void setUp() {
@@ -48,12 +51,14 @@ class OutboxAsyncConfirmServiceTest {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
         mockConfirmPublisher = Mockito.mock(PaymentConfirmPublisherPort.class);
+        mockChannel = Mockito.mock(PaymentConfirmChannel.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
-                mockConfirmPublisher
+                mockConfirmPublisher,
+                mockChannel
         );
     }
 
@@ -177,6 +182,68 @@ class OutboxAsyncConfirmServiceTest {
 
             // then
             then(mockConfirmPublisher).should(times(1)).publish(eq(orderId), any(), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("채널 잔여 용량이 충분할 때 queueNearFull=false를 반환한다")
+        void confirm_채널_여유_있을_때_queueNearFull_false() throws PaymentOrderedProductStockException {
+            // given
+            int capacity = 2000;
+            ReflectionTestUtils.setField(outboxAsyncConfirmService, "capacity", capacity);
+            given(mockChannel.remainingCapacity()).willReturn(1000);
+
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
+
+            // when
+            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
+
+            // then
+            assertThat(result.isQueueNearFull()).isFalse();
+        }
+
+        @Test
+        @DisplayName("채널 잔여 용량이 10% 이하일 때 queueNearFull=true를 반환한다")
+        void confirm_채널_임계값_이하일_때_queueNearFull_true() throws PaymentOrderedProductStockException {
+            // given
+            int capacity = 2000;
+            ReflectionTestUtils.setField(outboxAsyncConfirmService, "capacity", capacity);
+            given(mockChannel.remainingCapacity()).willReturn(100); // 10% 이하
+
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
+
+            // when
+            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
+
+            // then
+            assertThat(result.isQueueNearFull()).isTrue();
         }
 
         @Test
