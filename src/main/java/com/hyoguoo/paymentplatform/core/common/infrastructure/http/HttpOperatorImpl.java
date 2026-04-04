@@ -1,16 +1,12 @@
 package com.hyoguoo.paymentplatform.core.common.infrastructure.http;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Component
 public class HttpOperatorImpl implements HttpOperator {
@@ -18,23 +14,21 @@ public class HttpOperatorImpl implements HttpOperator {
     @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
     private long readTimeoutMillis;
 
+    private final WebClient webClient = WebClient.builder().build();
+
     @Override
     public <T> T requestGet(
             String url,
             Map<String, String> httpHeaderMap,
             Class<T> responseType
     ) {
-        HttpHeaders headers = generateHttpHeaders(httpHeaderMap);
-        HttpEntity<Object> httpEntity = new HttpEntity<>(headers);
-
-        return new RestTemplate()
-                .exchange(
-                        url,
-                        HttpMethod.GET,
-                        httpEntity,
-                        responseType
-                )
-                .getBody();
+        Map<String, String> mergedHeaders = mergeHeaders(httpHeaderMap);
+        return webClient.get()
+                .uri(url)
+                .headers(headers -> headers.setAll(mergedHeaders))
+                .retrieve()
+                .bodyToMono(responseType)
+                .block(Duration.ofMillis(readTimeoutMillis));
     }
 
     @Override
@@ -44,36 +38,24 @@ public class HttpOperatorImpl implements HttpOperator {
             T body,
             Class<E> responseType
     ) {
-        HttpHeaders httpHeaders = generateHttpHeaders(httpHeaderMap);
-        httpHeaders.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<T> httpEntity = createHttpEntity(httpHeaders, body);
-
-        return new RestTemplate(getClientHttpRequestFactory())
-                .exchange(
-                        url,
-                        HttpMethod.POST,
-                        httpEntity,
-                        responseType
-                )
-                .getBody();
+        Map<String, String> mergedHeaders = mergeHeaders(httpHeaderMap);
+        return webClient.post()
+                .uri(url)
+                .headers(headers -> headers.setAll(mergedHeaders))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(responseType)
+                .block(Duration.ofMillis(readTimeoutMillis));
     }
 
-    private ClientHttpRequestFactory getClientHttpRequestFactory() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setReadTimeout(Duration.ofMillis(readTimeoutMillis));
-
-        return factory;
+    protected Map<String, String> getAdditionalHeaders() {
+        return Map.of();
     }
 
-    protected HttpHeaders generateHttpHeaders(Map<String, String> httpHeaders) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setAll(httpHeaders);
-
-        return headers;
-    }
-
-    private <T> HttpEntity<T> createHttpEntity(HttpHeaders httpHeaders, T body) {
-        return new HttpEntity<>(body, httpHeaders);
+    private Map<String, String> mergeHeaders(Map<String, String> httpHeaderMap) {
+        Map<String, String> merged = new HashMap<>(httpHeaderMap);
+        merged.putAll(getAdditionalHeaders());
+        return merged;
     }
 }

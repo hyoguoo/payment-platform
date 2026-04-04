@@ -32,7 +32,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - [x] Task 3: PaymentProcess 도메인 + 인프라 전체 제거
 - [x] Task 4: UNKNOWN 상태 + PaymentFailureUseCase Sync 메서드 제거
 - [x] Task 5: 설정 프로퍼티 및 문서 정리
-- [ ] Task 6: RestTemplate → WebClient
+- [x] Task 6: RestTemplate → WebClient
 - [ ] Task 7: offer 실패 시 사용자 시그널
 - [ ] Task 8: Grafana 관측 지표 추가
 - [ ] Task 9: 코드 클렌징
@@ -171,7 +171,7 @@ Sync 전략과 관련 코드를 완전히 제거하고, HTTP 클라이언트 현
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> build.gradle에 spring-boot-starter-webflux 추가. HttpOperatorImpl을 RestTemplate에서 WebClient.block()으로 교체. getAdditionalHeaders() protected 훅 추가로 AdditionalHeaderHttpOperator 호환성 유지. generateHttpHeaders/createHttpEntity/getClientHttpRequestFactory 헬퍼 메서드 제거.
 
 ---
 

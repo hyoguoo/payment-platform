@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.mock;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperatorImpl;
 import java.util.HashMap;
 import java.util.Map;
-import org.springframework.http.HttpHeaders;
 
 public class AdditionalHeaderHttpOperator extends HttpOperatorImpl {
 
@@ -19,11 +18,8 @@ public class AdditionalHeaderHttpOperator extends HttpOperatorImpl {
         additionalHeaders.put(key, value);
     }
 
-    // 헤더 추가를 위한 메서드
     @Override
-    protected HttpHeaders generateHttpHeaders(Map<String, String> httpHeaders) {
-        HttpHeaders headers = super.generateHttpHeaders(httpHeaders);
-        headers.setAll(additionalHeaders);
-        return headers;
+    protected Map<String, String> getAdditionalHeaders() {
+        return additionalHeaders;
     }
 }
