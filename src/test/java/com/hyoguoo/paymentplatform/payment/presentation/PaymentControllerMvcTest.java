@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult.StatusType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
@@ -64,7 +63,7 @@ class PaymentControllerMvcTest {
 
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.ASYNC_202)
+
                         .orderId("order-1")
                         .amount(BigDecimal.valueOf(1000))
                         .build());
@@ -89,7 +88,7 @@ class PaymentControllerMvcTest {
 
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.ASYNC_202)
+
                         .orderId("order-1")
                         .amount(BigDecimal.valueOf(1000))
                         .queueNearFull(false)
@@ -116,7 +115,7 @@ class PaymentControllerMvcTest {
 
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.ASYNC_202)
+
                         .orderId("order-1")
                         .amount(BigDecimal.valueOf(1000))
                         .queueNearFull(true)

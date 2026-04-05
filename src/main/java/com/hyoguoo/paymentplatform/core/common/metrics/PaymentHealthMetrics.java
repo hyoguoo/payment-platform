@@ -56,13 +56,11 @@ public class PaymentHealthMetrics {
     public void updateHealthGauges() {
         LocalDateTime now = localDateTimeProvider.now();
 
-        // Stuck in progress
         LocalDateTime stuckThreshold = now.minusMinutes(stuckInProgressMinutes);
         long stuckInProgress = paymentEventRepository
                 .countByStatusAndExecutedAtBefore(PaymentEventStatus.IN_PROGRESS, stuckThreshold);
         healthGauges.get("stuck_in_progress").set(stuckInProgress);
 
-        // Max retry reached
         long maxRetryReached = paymentEventRepository
                 .countByRetryCountGreaterThanEqual(maxRetryCount);
         healthGauges.get("max_retry_reached").set(maxRetryReached);

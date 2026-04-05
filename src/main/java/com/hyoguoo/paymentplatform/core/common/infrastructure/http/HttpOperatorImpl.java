@@ -71,8 +71,12 @@ public class HttpOperatorImpl implements HttpOperator {
     }
 
     private Map<String, String> mergeHeaders(Map<String, String> httpHeaderMap) {
+        Map<String, String> additional = getAdditionalHeaders();
+        if (additional.isEmpty()) {
+            return httpHeaderMap;
+        }
         Map<String, String> merged = new HashMap<>(httpHeaderMap);
-        merged.putAll(getAdditionalHeaders());
+        merged.putAll(additional);
         return merged;
     }
 }

@@ -8,11 +8,6 @@ import lombok.Getter;
 @Builder
 public class PaymentConfirmAsyncResult {
 
-    public enum ResponseType {
-        ASYNC_202
-    }
-
-    private final ResponseType responseType;
     private final String orderId;
     private final BigDecimal amount;
     private final boolean queueNearFull;

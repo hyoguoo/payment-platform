@@ -10,8 +10,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class PaymentConfirmChannel {
 
+    private static final double NEAR_FULL_THRESHOLD = 0.1;
+
     private final LinkedBlockingQueue<String> queue;
     private final MeterRegistry meterRegistry;
+    private final int capacity;
 
     public PaymentConfirmChannel(
             @Value("${outbox.channel.capacity:2000}") int capacity,
@@ -19,6 +22,7 @@ public class PaymentConfirmChannel {
     ) {
         this.queue = new LinkedBlockingQueue<>(capacity);
         this.meterRegistry = meterRegistry;
+        this.capacity = capacity;
     }
 
     @PostConstruct
@@ -39,7 +43,7 @@ public class PaymentConfirmChannel {
         return queue.take();
     }
 
-    public int remainingCapacity() {
-        return queue.remainingCapacity();
+    public boolean isNearFull() {
+        return queue.remainingCapacity() <= (int) (capacity * NEAR_FULL_THRESHOLD);
     }
 }

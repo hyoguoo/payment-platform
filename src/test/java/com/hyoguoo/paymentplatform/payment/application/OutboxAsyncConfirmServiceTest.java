@@ -13,7 +13,6 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -57,8 +56,7 @@ class OutboxAsyncConfirmServiceTest {
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
                 mockConfirmPublisher,
-                mockChannel,
-                2000
+                mockChannel
         );
     }
 
@@ -99,8 +97,8 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("confirm() 결과의 responseType은 ASYNC_202다")
-        void confirm_Returns_Async202() throws PaymentOrderedProductStockException {
+        @DisplayName("confirm() 성공 시 orderId와 amount를 반환한다")
+        void confirm_Returns_OrderIdAndAmount() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             String paymentKey = "payment-key-123";
@@ -124,7 +122,8 @@ class OutboxAsyncConfirmServiceTest {
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
 
             // then
-            assertThat(result.getResponseType()).isEqualTo(ResponseType.ASYNC_202);
+            assertThat(result.getOrderId()).isEqualTo(orderId);
+            assertThat(result.getAmount()).isEqualByComparingTo(amount);
         }
 
         @Test
@@ -185,10 +184,10 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("채널 잔여 용량이 충분할 때 queueNearFull=false를 반환한다")
+        @DisplayName("채널 여유 있을 때 queueNearFull=false를 반환한다")
         void confirm_채널_여유_있을_때_queueNearFull_false() throws PaymentOrderedProductStockException {
             // given
-            given(mockChannel.remainingCapacity()).willReturn(1000);
+            given(mockChannel.isNearFull()).willReturn(false);
 
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
@@ -214,10 +213,10 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("채널 잔여 용량이 10% 이하일 때 queueNearFull=true를 반환한다")
+        @DisplayName("채널이 거의 찼을 때 queueNearFull=true를 반환한다")
         void confirm_채널_임계값_이하일_때_queueNearFull_true() throws PaymentOrderedProductStockException {
             // given
-            given(mockChannel.remainingCapacity()).willReturn(100); // 10% 이하 (capacity=2000 기준 10%=200)
+            given(mockChannel.isNearFull()).willReturn(true);
 
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
