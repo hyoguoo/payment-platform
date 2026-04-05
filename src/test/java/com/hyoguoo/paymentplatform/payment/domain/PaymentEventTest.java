@@ -211,7 +211,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("결제 시작 시  in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
@@ -245,7 +245,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
@@ -262,7 +262,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
     @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -279,7 +279,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "CANCELED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("결제 실패 시 fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
@@ -361,7 +361,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("READY 상태가 아닌 PaymentEvent는 EXPIRED 상태로 변경할 수 없다.")
     void expire_InvalidStatus_ThrowsException(PaymentEventStatus invalidStatus) {
         // given
