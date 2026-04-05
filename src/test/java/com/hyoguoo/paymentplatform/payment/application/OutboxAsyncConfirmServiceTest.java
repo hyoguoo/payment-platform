@@ -24,7 +24,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
@@ -58,7 +57,8 @@ class OutboxAsyncConfirmServiceTest {
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
                 mockConfirmPublisher,
-                mockChannel
+                mockChannel,
+                2000
         );
     }
 
@@ -188,8 +188,6 @@ class OutboxAsyncConfirmServiceTest {
         @DisplayName("채널 잔여 용량이 충분할 때 queueNearFull=false를 반환한다")
         void confirm_채널_여유_있을_때_queueNearFull_false() throws PaymentOrderedProductStockException {
             // given
-            int capacity = 2000;
-            ReflectionTestUtils.setField(outboxAsyncConfirmService, "capacity", capacity);
             given(mockChannel.remainingCapacity()).willReturn(1000);
 
             String orderId = "order-123";
@@ -219,9 +217,7 @@ class OutboxAsyncConfirmServiceTest {
         @DisplayName("채널 잔여 용량이 10% 이하일 때 queueNearFull=true를 반환한다")
         void confirm_채널_임계값_이하일_때_queueNearFull_true() throws PaymentOrderedProductStockException {
             // given
-            int capacity = 2000;
-            ReflectionTestUtils.setField(outboxAsyncConfirmService, "capacity", capacity);
-            given(mockChannel.remainingCapacity()).willReturn(100); // 10% 이하
+            given(mockChannel.remainingCapacity()).willReturn(100); // 10% 이하 (capacity=2000 기준 10%=200)
 
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);

@@ -14,7 +14,6 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OutboxAsyncConfirmService implements PaymentConfirmService {
 
     private final PaymentTransactionCoordinator transactionCoordinator;
@@ -30,9 +28,23 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentFailureUseCase paymentFailureUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
     private final PaymentConfirmChannel confirmChannel;
+    private final int capacity;
 
-    @Value("${outbox.channel.capacity:2000}")
-    private int capacity;
+    public OutboxAsyncConfirmService(
+            PaymentTransactionCoordinator transactionCoordinator,
+            PaymentLoadUseCase paymentLoadUseCase,
+            PaymentFailureUseCase paymentFailureUseCase,
+            PaymentConfirmPublisherPort confirmPublisher,
+            PaymentConfirmChannel confirmChannel,
+            @Value("${outbox.channel.capacity:2000}") int capacity
+    ) {
+        this.transactionCoordinator = transactionCoordinator;
+        this.paymentLoadUseCase = paymentLoadUseCase;
+        this.paymentFailureUseCase = paymentFailureUseCase;
+        this.confirmPublisher = confirmPublisher;
+        this.confirmChannel = confirmChannel;
+        this.capacity = capacity;
+    }
 
     @Override
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
