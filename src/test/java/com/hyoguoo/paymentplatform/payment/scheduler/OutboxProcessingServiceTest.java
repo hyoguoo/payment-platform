@@ -93,7 +93,6 @@ class OutboxProcessingServiceTest {
 
         // then
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
-        then(mockTransactionCoordinator).should(never()).executePaymentSuccessCompletion(any(), any(), any());
     }
 
     @Test

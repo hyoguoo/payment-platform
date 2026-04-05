@@ -9,39 +9,22 @@ import org.junit.jupiter.api.Test;
 class PaymentConfirmAsyncResultTest {
 
     @Test
-    @DisplayName("SYNC_200 ResponseType으로 빌드 시 responseType이 SYNC_200이다")
-    void build_WithSync200_HasSync200ResponseType() {
+    @DisplayName("orderId와 amount가 정상적으로 빌드된다")
+    void build_WithOrderIdAndAmount_FieldsAreSet() {
         PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .responseType(PaymentConfirmAsyncResult.ResponseType.SYNC_200)
                 .orderId("order-001")
                 .amount(new BigDecimal("15000"))
                 .build();
 
-        assertThat(result.getResponseType()).isEqualTo(PaymentConfirmAsyncResult.ResponseType.SYNC_200);
         assertThat(result.getOrderId()).isEqualTo("order-001");
         assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("15000"));
-    }
-
-    @Test
-    @DisplayName("ASYNC_202 ResponseType으로 빌드 시 responseType이 ASYNC_202이다")
-    void build_WithAsync202_HasAsync202ResponseType() {
-        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .responseType(PaymentConfirmAsyncResult.ResponseType.ASYNC_202)
-                .orderId("order-002")
-                .amount(null)
-                .build();
-
-        assertThat(result.getResponseType()).isEqualTo(PaymentConfirmAsyncResult.ResponseType.ASYNC_202);
-        assertThat(result.getOrderId()).isEqualTo("order-002");
-        assertThat(result.getAmount()).isNull();
     }
 
     @Test
     @DisplayName("amount 필드는 null을 허용한다")
     void build_WithNullAmount_IsAllowed() {
         PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .responseType(PaymentConfirmAsyncResult.ResponseType.SYNC_200)
-                .orderId("order-003")
+                .orderId("order-002")
                 .amount(null)
                 .build();
 
@@ -49,13 +32,25 @@ class PaymentConfirmAsyncResultTest {
     }
 
     @Test
-    @DisplayName("ResponseType enum은 SYNC_200과 ASYNC_202 두 값을 갖는다")
-    void responseType_HasTwoValues() {
-        PaymentConfirmAsyncResult.ResponseType[] values = PaymentConfirmAsyncResult.ResponseType.values();
+    @DisplayName("queueNearFull 기본값은 false다")
+    void build_Default_QueueNearFullIsFalse() {
+        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
+                .orderId("order-003")
+                .amount(BigDecimal.valueOf(10000))
+                .build();
 
-        assertThat(values).containsExactlyInAnyOrder(
-                PaymentConfirmAsyncResult.ResponseType.SYNC_200,
-                PaymentConfirmAsyncResult.ResponseType.ASYNC_202
-        );
+        assertThat(result.isQueueNearFull()).isFalse();
+    }
+
+    @Test
+    @DisplayName("queueNearFull=true로 빌드 시 isQueueNearFull()이 true다")
+    void build_WithQueueNearFull_IsTrue() {
+        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
+                .orderId("order-004")
+                .amount(BigDecimal.valueOf(10000))
+                .queueNearFull(true)
+                .build();
+
+        assertThat(result.isQueueNearFull()).isTrue();
     }
 }

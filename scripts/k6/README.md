@@ -17,14 +17,14 @@ Sync / Outbox / Outbox-Parallel 세 전략을 저지연(100~300ms) · 고지연(
 
 ## 측정 케이스
 
-| 케이스 | 전략 | Toss 딜레이 |
-|--------|------|------------|
-| `sync-low` | sync | 100~300ms |
-| `sync-high` | sync | 800~1500ms |
-| `outbox-low` | outbox (sequential) | 100~300ms |
-| `outbox-parallel-low` | outbox (parallel) | 100~300ms |
-| `outbox-high` | outbox (sequential) | 800~1500ms |
-| `outbox-parallel-high` | outbox (parallel) | 800~1500ms |
+| 케이스 | 전략 | Toss 딜레이 | VT / Parallel |
+|--------|------|------------|---------------|
+| `sync-low` | sync | 100~300ms | - |
+| `sync-high` | sync | 2000~3500ms | - |
+| `outbox-low` | outbox (sequential) | 100~300ms | false / false |
+| `outbox-parallel-low` | outbox (parallel) | 100~300ms | true / true |
+| `outbox-high` | outbox (sequential) | 2000~3500ms | false / false |
+| `outbox-parallel-high` | outbox (parallel) | 2000~3500ms | true / true |
 
 ---
 

@@ -52,6 +52,7 @@
 - `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0` — Swagger UI at `/swagger-ui.html`, JSON at `/api-docs/json`
 - `io.micrometer:micrometer-registry-prometheus` — Prometheus metrics export
 - `net.logstash.logback:logstash-logback-encoder:7.4` — structured JSON logging to Logstash (docker profile)
+- `spring-boot-starter-webflux` — `HttpOperatorImpl`의 `WebClient` HTTP 클라이언트 사용 (Toss API 호출)
 
 **Testing:**
 - `spring-boot-starter-test` — JUnit 5, Mockito, AssertJ
@@ -76,11 +77,12 @@
 **Key Config Properties:**
 
 ```yaml
-spring.payment.async-strategy: sync | outbox   # strategy switch (default: outbox)
 payment.gateway.type: TOSS
 payment.gateway.toss.base-url: https://api.tosspayments.com
 payment.gateway.toss.connect-timeout: 3000
 payment.gateway.toss.read-timeout: 10000
+payment.idempotency.maximum-size: 10000      # in-memory idempotency store 최대 크기
+payment.idempotency.expire-after-write-seconds: 10  # 만료 시간
 scheduler.enabled: true                                  # gates SchedulerConfig
 scheduler.outbox-worker.fixed-delay-ms: 5000
 scheduler.outbox-worker.batch-size: 50

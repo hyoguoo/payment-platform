@@ -36,7 +36,6 @@ public class PaymentHealthMetrics {
                 stuckInProgressMinutes, maxRetryCount);
 
         registerHealthGauge("stuck_in_progress", "Count of payments stuck in IN_PROGRESS status");
-        registerHealthGauge("unknown_status", "Count of payments in UNKNOWN status");
         registerHealthGauge("max_retry_reached", "Count of payments that reached max retry count");
 
         log.info("PaymentHealthMetrics initialization complete");
@@ -57,23 +56,16 @@ public class PaymentHealthMetrics {
     public void updateHealthGauges() {
         LocalDateTime now = localDateTimeProvider.now();
 
-        // Stuck in progress
         LocalDateTime stuckThreshold = now.minusMinutes(stuckInProgressMinutes);
         long stuckInProgress = paymentEventRepository
                 .countByStatusAndExecutedAtBefore(PaymentEventStatus.IN_PROGRESS, stuckThreshold);
         healthGauges.get("stuck_in_progress").set(stuckInProgress);
 
-        // Unknown status
-        long unknownStatus = paymentEventRepository.countByStatus()
-                .getOrDefault(PaymentEventStatus.UNKNOWN, 0L);
-        healthGauges.get("unknown_status").set(unknownStatus);
-
-        // Max retry reached
         long maxRetryReached = paymentEventRepository
                 .countByRetryCountGreaterThanEqual(maxRetryCount);
         healthGauges.get("max_retry_reached").set(maxRetryReached);
 
-        log.debug("Health gauges updated - stuckInProgress={}, unknownStatus={}, maxRetryReached={}",
-                stuckInProgress, unknownStatus, maxRetryReached);
+        log.debug("Health gauges updated - stuckInProgress={}, maxRetryReached={}",
+                stuckInProgress, maxRetryReached);
     }
 }

@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult.StatusType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
@@ -52,8 +51,8 @@ class PaymentControllerMvcTest {
     private UUIDProvider uuidProvider;
 
     @Test
-    @DisplayName("ResponseType.SYNC_200 일 때 confirm()은 HTTP 200을 반환한다. (PORT-02)")
-    void confirmPayment_SyncAdapter_Returns200() throws Exception {
+    @DisplayName("confirm() 성공 시 HTTP 202 Accepted를 반환한다. (PORT-02)")
+    void confirmPayment_Returns202() throws Exception {
         // given
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
                 .userId(1L)
@@ -64,7 +63,7 @@ class PaymentControllerMvcTest {
 
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.SYNC_200)
+
                         .orderId("order-1")
                         .amount(BigDecimal.valueOf(1000))
                         .build());
@@ -73,7 +72,61 @@ class PaymentControllerMvcTest {
         mockMvc.perform(post("/api/v1/payments/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    @DisplayName("queueNearFull=false 시 202 응답 body에 processingDelayed=false가 포함된다")
+    void confirm_queueNearFull_false_시_202_정상_응답() throws Exception {
+        // given
+        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
+                .userId(1L)
+                .orderId("order-1")
+                .amount(BigDecimal.valueOf(1000))
+                .paymentKey("payment-key-1")
+                .build();
+
+        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
+                .thenReturn(PaymentConfirmAsyncResult.builder()
+
+                        .orderId("order-1")
+                        .amount(BigDecimal.valueOf(1000))
+                        .queueNearFull(false)
+                        .build());
+
+        // when / then
+        mockMvc.perform(post("/api/v1/payments/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(confirmRequest)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.processingDelayed").value(false));
+    }
+
+    @Test
+    @DisplayName("queueNearFull=true 시 202 응답 body에 processingDelayed=true가 포함된다")
+    void confirm_queueNearFull_true_시_202_지연_시그널_포함() throws Exception {
+        // given
+        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
+                .userId(1L)
+                .orderId("order-1")
+                .amount(BigDecimal.valueOf(1000))
+                .paymentKey("payment-key-1")
+                .build();
+
+        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
+                .thenReturn(PaymentConfirmAsyncResult.builder()
+
+                        .orderId("order-1")
+                        .amount(BigDecimal.valueOf(1000))
+                        .queueNearFull(true)
+                        .build());
+
+        // when / then
+        mockMvc.perform(post("/api/v1/payments/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(confirmRequest)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.processingDelayed").value(true));
     }
 
     @Test

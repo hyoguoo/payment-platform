@@ -1,38 +1,33 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
-
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(
-        name = "spring.payment.async-strategy",
-        havingValue = "outbox"
-)
 public class OutboxAsyncConfirmService implements PaymentConfirmService {
 
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
+    private final PaymentConfirmChannel confirmChannel;
 
     @Override
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
@@ -70,9 +65,9 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
         );
 
         return PaymentConfirmAsyncResult.builder()
-                .responseType(ResponseType.ASYNC_202)
                 .orderId(command.getOrderId())
                 .amount(command.getAmount())
+                .queueNearFull(confirmChannel.isNearFull())
                 .build();
     }
 }

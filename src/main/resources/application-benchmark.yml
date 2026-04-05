@@ -7,9 +7,6 @@ spring:
     virtual:
       enabled: false   # Tomcat은 PT 고정 — 비동기 처리(Worker)에만 VT 적용
 
-  payment:
-    async-strategy: ${ASYNC_STRATEGY:sync}
-
   datasource:
     hikari:
       maximum-pool-size: 30   # Sweet spot for 100 req/s load on local Mac

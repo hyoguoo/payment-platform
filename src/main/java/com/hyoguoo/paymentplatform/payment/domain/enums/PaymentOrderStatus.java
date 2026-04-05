@@ -14,7 +14,6 @@ public enum PaymentOrderStatus {
     FAIL("FAIL"),
     CANCEL("CANCEL"),
     EXPIRED("EXPIRED"),
-    UNKNOWN("UNKNOWN"),
     ;
 
     private final String value;

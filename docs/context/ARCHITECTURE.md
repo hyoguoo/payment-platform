@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-03-31
+**Analysis Date:** 2026-04-04
 
 ## Pattern Overview
 
@@ -9,7 +9,7 @@
 **Key Characteristics:**
 - Four bounded contexts: `payment`, `paymentgateway`, `product`, `user` — each has its own `domain → application → infrastructure → presentation` layer stack
 - Ports are Java interfaces defined in `application/port/` (outbound) and `presentation/port/` (inbound); all infrastructure implements those interfaces
-- Two async confirm strategies are swapped at startup via `@ConditionalOnProperty(name = "spring.payment.async-strategy")`
+- Outbox 단일 전략: `OutboxAsyncConfirmService`가 유일한 `PaymentConfirmService` 구현체 (전략 선택 불필요)
 - Cross-context calls never share a repository; they go through `presentation/port` interfaces of the target context, consumed by `infrastructure/internal/` adapters in the calling context
 
 ---
@@ -19,31 +19,35 @@
 **Domain (`payment/domain`):**
 - Purpose: Pure business logic, zero Spring dependencies
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/domain/`
-- Contains: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox`, `PaymentHistory`, `PaymentProcess` aggregates; status enums in `domain/enums/`; cross-context DTOs in `domain/dto/` and `domain/dto/vo/`; Spring `ApplicationEvent` subtypes in `domain/event/`
+- Contains: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox`, `PaymentHistory` aggregates; status enums in `domain/enums/`; cross-context DTOs in `domain/dto/` and `domain/dto/vo/`; Spring `ApplicationEvent` subtypes in `domain/event/`
 - Depends on: nothing outside `domain`
 - Used by: `application` use-case services
 
 **Application (`payment/application`):**
-- Purpose: Orchestrates domain objects; owns all port interfaces; contains async strategy service beans
+- Purpose: Orchestrates domain objects; owns all port interfaces; contains the confirm service bean
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/application/`
 - Inbound ports (interfaces in `presentation/port/`, implemented here):
-  - `PaymentConfirmService` — implemented by ONE of: `PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`
+  - `PaymentConfirmService` — implemented by `OutboxAsyncConfirmService` (only implementation)
   - `PaymentStatusService` — implemented by `PaymentStatusServiceImpl` (always active)
   - `PaymentCheckoutService` — implemented by `PaymentCheckoutServiceImpl`
   - `AdminPaymentService` — implemented by `AdminPaymentServiceImpl`
 - Outbound ports (interfaces in `application/port/`, implemented in `infrastructure`):
-  - `PaymentEventRepository`, `PaymentOrderRepository`, `PaymentOutboxRepository`, `PaymentProcessRepository`, `PaymentHistoryRepository`
+  - `PaymentEventRepository`, `PaymentOrderRepository`, `PaymentOutboxRepository`, `PaymentHistoryRepository`
   - `PaymentGatewayPort` — confirm/cancel/status calls to Toss
   - `ProductPort`, `UserPort` — cross-context calls
   - `application/port/out/PaymentConfirmPublisherPort` — Outbox 즉시 처리 이벤트 발행 추상화
+  - `IdempotencyStore` — 멱등성 키 저장소 (port at `application/port/IdempotencyStore.java`)
 - Fine-grained use-case services (internal, not exposed as ports):
   - `PaymentCommandUseCase` — all status-changing operations; owns `@PublishDomainEvent` and `@PaymentStatusChange` annotations
   - `PaymentLoadUseCase` — read operations
   - `PaymentOutboxUseCase` — outbox lifecycle
-  - `PaymentProcessUseCase` — process-job lifecycle (sync strategy)
   - `PaymentFailureUseCase` — failure routing logic
-  - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions shared across strategies; also owns `claimToInFlight` delegation pattern
+  - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions; owns `claimToInFlight` delegation pattern
   - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
+  - `PaymentHistoryUseCase` — payment history 저장/조회
+  - `AdminPaymentLoadUseCase` — admin 쿼리 전용 use-case
+- Utilities (application layer, not ports/use-cases):
+  - `IdempotencyKeyHasher` — 멱등성 키 해시 유틸
 - Depends on: `domain`, `core/common`
 - Used by: `presentation`, `scheduler`, `listener`
 
@@ -51,12 +55,13 @@
 - Purpose: JPA entities, Spring Data, gateway adapters, Kafka publisher
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/`
 - Contains:
-  - JPA entities: `entity/PaymentEventEntity`, `PaymentOrderEntity`, `PaymentOutboxEntity`, `PaymentHistoryEntity`, `PaymentProcessEntity`
-  - Spring Data interfaces: `repository/JpaPaymentEventRepository`, `JpaPaymentOrderRepository`, `JpaPaymentOutboxRepository`, `JpaPaymentProcessRepository`, `JpaPaymentHistoryRepository`
-  - Port implementations: `repository/PaymentEventRepositoryImpl`, `PaymentOutboxRepositoryImpl`, `PaymentProcessRepositoryImpl`, etc.
+  - JPA entities: `entity/PaymentEventEntity`, `PaymentOrderEntity`, `PaymentOutboxEntity`, `PaymentHistoryEntity`
+  - Spring Data interfaces: `repository/JpaPaymentEventRepository`, `JpaPaymentOrderRepository`, `JpaPaymentOutboxRepository`, `JpaPaymentHistoryRepository`
+  - Port implementations: `repository/PaymentEventRepositoryImpl`, `PaymentOutboxRepositoryImpl`, etc.
   - Gateway strategy: `gateway/PaymentGatewayStrategy` (interface), `PaymentGatewayFactory`, `PaymentGatewayProperties`, `PaymentGatewayType`; concrete: `gateway/toss/TossPaymentGatewayStrategy`
   - Cross-context adapters: `internal/InternalPaymentGatewayAdapter` implements `PaymentGatewayPort`, `InternalProductAdapter` implements `ProductPort`, `InternalUserAdapter` implements `UserPort`
   - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
+  - Idempotency: `idempotency/IdempotencyStoreImpl` implements `IdempotencyStore`, `IdempotencyProperties`
   - Mapper: `PaymentInfrastructureMapper`
 - Depends on: `application/port`, `paymentgateway/presentation/port`, `product/presentation/port`, `user/presentation/port`
 
@@ -65,6 +70,7 @@
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/presentation/`
 - Contains: `PaymentController`, `PaymentAdminController`, `PaymentPresentationMapper`; request/response DTOs in `presentation/dto/`
 - Inbound port interfaces: `presentation/port/PaymentConfirmService`, `PaymentCheckoutService`, `PaymentStatusService`, `AdminPaymentService`
+- `PaymentController.confirm()` always returns `ResponseEntity.accepted(202)`
 - Depends on: application layer via port interfaces only
 
 **Scheduler (`payment/scheduler`):**
@@ -82,43 +88,15 @@
 - Purpose: Outbox 즉시 처리 핸들러 및 Spring 이벤트 리스너
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
 - Contains:
-  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 `PaymentConfirmChannel.offer(orderId)`를 호출해 큐에 적재; 큐 가득 찬 경우 warn 로그 — OutboxWorker(polling)가 처리 (outbox 전략 전용)
+  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 `PaymentConfirmChannel.offer(orderId)`를 호출해 큐에 적재; 큐 가득 찬 경우 warn 로그 — OutboxWorker(polling)가 처리
   - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
 - Port interfaces: `listener/port/PaymentHistoryService`
 - Depends on: `core/channel/PaymentConfirmChannel`
 
 ---
 
-## Async Strategy Selection
+## Confirm Flow (Outbox 단일 전략)
 
-두 가지 전략 구현체가 `src/main/java/com/hyoguoo/paymentplatform/payment/application/`에 위치하며, 동일한 인바운드 포트 `presentation/port/PaymentConfirmService`를 구현한다.
-
-```
-spring.payment.async-strategy=sync    → PaymentConfirmServiceImpl   (matchIfMissing=true, default)
-spring.payment.async-strategy=outbox  → OutboxAsyncConfirmService
-```
-
-`PaymentController` is strategy-unaware. It reads `PaymentConfirmAsyncResult.responseType`:
-- `ResponseType.SYNC_200` → `ResponseEntity.ok(200)`
-- `ResponseType.ASYNC_202` → `ResponseEntity.accepted(202)`
-
----
-
-## Data Flow Per Strategy
-
-**Sync strategy (`PaymentConfirmServiceImpl`):**
-```
-PaymentController.confirm()
-  → PaymentConfirmServiceImpl.confirm()
-      1. executeStockDecreaseWithJobCreation()  [TX: stock-- + PaymentProcess(PROCESSING) created]
-      2. executePayment()                       [TX: READY→IN_PROGRESS saved]
-      3. validateCompletionStatus()             [no TX: Toss status check]
-      4. confirmPaymentWithGateway()            [no TX: Toss /confirm API call]
-      5. executePaymentSuccessCompletion()      [TX: IN_PROGRESS→DONE + PaymentProcess completed]
-  ← ResponseEntity.ok(200)
-```
-
-**Outbox strategy (`OutboxAsyncConfirmService` + `PaymentConfirmChannel` + `OutboxImmediateWorker` + `OutboxWorker`):**
 ```
 PaymentController.confirm()
   → OutboxAsyncConfirmService.confirm()  [@Transactional]
@@ -147,7 +125,7 @@ OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유]
   Step 4B (non-retryable): executePaymentFailureCompensationWithOutbox()
   Step 4C (retryable):     incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
 
-OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
+OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
   — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
   Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → reset to PENDING]
   Step 1: findPendingBatch(batchSize)       [기본 50건]
@@ -159,9 +137,9 @@ OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
 ## Key Design Decisions
 
 **PaymentTransactionCoordinator — shared transactional boundary:**
-- A plain `@Service` (no interface) shared by both strategies, `OutboxWorker`, and `OutboxImmediateEventHandler`
+- A plain `@Service` (no interface) shared by `OutboxAsyncConfirmService`, `OutboxWorker`, and `OutboxImmediateWorker`
 - Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
-- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentAndStockDecrease`, `executeStockDecreaseWithJobCreation`, `executePaymentSuccessCompletion`, `executePaymentFailureCompensation`
+- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox`
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
 
 **PaymentConfirmChannel — HTTP 스레드와 Worker 스레드 디커플링:**
@@ -174,11 +152,6 @@ OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
 - Interface in `application/port/out/PaymentConfirmPublisherPort` with single method `publish(String orderId)`
 - `OutboxImmediatePublisher` (infrastructure 계층)가 `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)`로 구현
 - Application 계층은 Spring 이벤트 발행 세부 구현을 알지 못함
-
-**PaymentOutbox vs PaymentProcess — separate domain concepts:**
-- `PaymentOutbox` (`domain/PaymentOutbox.java`) — dedicated outbox record for the outbox strategy; lifecycle: `PENDING → IN_FLIGHT → DONE/FAILED`; retry limit = 5
-- `PaymentProcess` (`domain/PaymentProcess.java`) — tracks the in-flight gateway call for the sync strategy; created atomically with stock decrease; completed/failed via `executePaymentSuccessCompletion`/`executePaymentFailureCompensation`
-- These are separate DB tables; the two domain concepts serve different strategies and are never mixed
 
 **Cross-Context Communication pattern:**
 - `payment` calls `paymentgateway` via `InternalPaymentGatewayAdapter` → `PaymentGatewayInternalReceiver` (a `@RestController` used as an internal Java facade, not an HTTP endpoint from outside)
@@ -201,12 +174,12 @@ OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
 ## Error Handling
 
 **Strategy:** Exception type encodes retryability
-- `PaymentTossRetryableException` — OutboxImmediateEventHandler/OutboxWorker calls `incrementRetryOrFail` (최대 5회)
-- `PaymentTossNonRetryableException` — immediate `executePaymentFailureCompensation` (stock restored, FAILED)
+- `PaymentTossRetryableException` — OutboxImmediateWorker/OutboxWorker calls `incrementRetryOrFail` (최대 5회)
+- `PaymentTossNonRetryableException` — immediate `executePaymentFailureCompensationWithOutbox` (stock restored, FAILED)
 - `PaymentOrderedProductStockException` — stock exhausted; payment marked FAILED, no compensation (stock was never decremented)
 - `PaymentStatusException` / `PaymentValidException` — domain guard violations; handler returns 4xx
 
-**Compensation flow:** `executePaymentFailureCompensation` atomically increments stock (`increaseStockForOrders`), fails `PaymentProcess` if present, and marks `PaymentEvent` as FAILED.
+**Compensation flow:** `executePaymentFailureCompensationWithOutbox` atomically increments stock (`increaseStockForOrders`) and marks `PaymentEvent` as FAILED.
 
 **Exception handlers:**
 - `src/main/java/com/hyoguoo/paymentplatform/payment/exception/common/PaymentExceptionHandler.java`
@@ -217,10 +190,10 @@ OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
 ## Cross-Cutting Concerns
 
 **Logging:** `LogFmt` (`core/common/log/LogFmt.java`) produces structured `key=value` lines; `MaskingPatternLayout` masks sensitive values in logback
-**Validation:** Domain object guard clauses (`PaymentEvent.execute()`, `done()`, `fail()`, `unknown()`, `expire()`)
+**Validation:** Domain object guard clauses (`PaymentEvent.execute()`, `done()`, `fail()`, `expire()`)
 **Transaction boundary:** All multi-step DB operations go through `PaymentTransactionCoordinator`
 **Metrics:** `PaymentStateMetrics`, `PaymentHealthMetrics`, `PaymentTransitionMetrics`, `TossApiMetrics` in `core/common/metrics/`
 
 ---
 
-*Architecture analysis: 2026-03-31*
+*Architecture analysis: 2026-04-04*

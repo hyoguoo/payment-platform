@@ -28,7 +28,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
-import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentProcessRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -82,8 +81,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
     @Autowired
     private JpaProductRepository jpaProductRepository;
     @Autowired
-    private JpaPaymentProcessRepository jpaPaymentProcessRepository;
-    @Autowired
     private HttpOperator httpOperator;
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -101,7 +98,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
         ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
         jpaPaymentEventRepository.deleteAllInBatch();
         jpaPaymentOrderRepository.deleteAllInBatch();
-        jpaPaymentProcessRepository.deleteAllInBatch();
     }
 
     @Test
@@ -277,65 +273,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("Payment Confirm 요청 중 재시도 가능 오류가 발생하면 결제는 실패하고 UNKNOWN / UNKNOWN 상태로 변경되면서 재고는 감소된 상태로 유지된다.")
-    void confirmPayment_Failure_RetryableError() throws Exception {
-        // given
-        final int INIT_PRODUCT_1_STOCK = 1;
-        final int INIT_PRODUCT_2_STOCK = 2;
-        final int ORDERED_QUANTITY_1 = 1;
-        final int ORDERED_QUANTITY_2 = 2;
-
-        jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_1);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_2);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
-
-        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(1L)
-                .orderId(TEST_ORDER_ID)
-                .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
-                .paymentKey(TEST_PAYMENT_KEY)
-                .build();
-
-        ReflectionTestUtils.invokeMethod(httpOperator, "addErrorInPostRequest",
-                TossPaymentErrorCode.PROVIDER_ERROR.name(),
-                TossPaymentErrorCode.PROVIDER_ERROR.getDescription()
-        );
-
-        // when
-        ResultActions perform = mockMvc.perform(
-                post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest))
-        );
-
-        // then
-        PaymentEvent updatedPaymentEvent = getPaymentEvent();
-
-        perform.andExpect(status().isBadRequest());
-
-        assertThat(updatedPaymentEvent.getPaymentKey()).isEqualTo(TEST_PAYMENT_KEY);
-        assertThat(updatedPaymentEvent.getApprovedAt()).isNull();
-        assertThat(updatedPaymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
-
-        assertThat(updatedPaymentEvent.getPaymentOrderList())
-                .allMatch(order -> order.getStatus() == PaymentOrderStatus.UNKNOWN);
-
-        Product afterProduct1 = jpaProductRepository.findById(1L).orElseThrow().toDomain();
-        Product afterProduct2 = jpaProductRepository.findById(2L).orElseThrow().toDomain();
-        assertThat(afterProduct1.getStock())
-                .isEqualTo(INIT_PRODUCT_1_STOCK - ORDERED_QUANTITY_1);
-        assertThat(afterProduct2.getStock())
-                .isEqualTo(INIT_PRODUCT_2_STOCK - ORDERED_QUANTITY_2);
-    }
-
-    @Test
     @DisplayName("Payment Confirm 요청 중 재시도 불가능 오류가 발생하면 결제는 실패하고 FAILED / FAIL 상태로 변경되면서 재고는 다시 복구된다.")
     void confirmPayment_Failure_NonRetryableError() throws Exception {
         // given
@@ -390,102 +327,6 @@ class PaymentControllerTest extends BaseIntegrationTest {
 
         assertThat(afterProduct1.getStock()).isEqualTo(INIT_PRODUCT_1_STOCK);
         assertThat(afterProduct2.getStock()).isEqualTo(INIT_PRODUCT_2_STOCK);
-    }
-
-    @Test
-    @DisplayName("Payment Confirm 요청 중 Read Timeout 발생하면 결제는 실패하고 UNKNOWN / UNKNOWN 상태로 변경되면서 재고는 감소된 상태로 유지된다.")
-    void confirmPayment_Failure_NetworkReadTimeout() throws Exception {
-        // given
-        final int INIT_PRODUCT_1_STOCK = 1;
-        final int INIT_PRODUCT_2_STOCK = 2;
-        final int ORDERED_QUANTITY_1 = 1;
-        final int ORDERED_QUANTITY_2 = 2;
-
-        jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_1);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_2);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
-
-        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(1L)
-                .orderId(TEST_ORDER_ID)
-                .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
-                .paymentKey(TEST_PAYMENT_KEY)
-                .build();
-
-        ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange",
-                readTimeoutMillisLimit + 1000, readTimeoutMillisLimit + 2000
-        );
-
-        // when
-        ResultActions perform = mockMvc.perform(
-                post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest))
-        );
-
-        // then
-        PaymentEvent updatedPaymentEvent = getPaymentEvent();
-
-        perform.andExpect(status().isBadRequest());
-
-        assertThat(updatedPaymentEvent.getPaymentKey()).isEqualTo(TEST_PAYMENT_KEY);
-        assertThat(updatedPaymentEvent.getApprovedAt()).isNull();
-        assertThat(updatedPaymentEvent.getStatus()).isEqualTo(PaymentEventStatus.UNKNOWN);
-
-        assertThat(updatedPaymentEvent.getPaymentOrderList())
-                .allMatch(order -> order.getStatus() == PaymentOrderStatus.UNKNOWN);
-
-        Product afterProduct1 = jpaProductRepository.findById(1L).orElseThrow().toDomain();
-        Product afterProduct2 = jpaProductRepository.findById(2L).orElseThrow().toDomain();
-        assertThat(afterProduct1.getStock())
-                .isEqualTo(INIT_PRODUCT_1_STOCK - ORDERED_QUANTITY_1);
-        assertThat(afterProduct2.getStock())
-                .isEqualTo(INIT_PRODUCT_2_STOCK - ORDERED_QUANTITY_2);
-    }
-
-    @Test
-    @DisplayName("SyncConfirmAdapter 활성 상태에서 confirm() 요청 성공 시 ResponseType.SYNC_200에 해당하는 HTTP 200을 반환한다. (PORT-02)")
-    void confirmPayment_SyncAdapter_Returns200() throws Exception {
-        // given
-        final int INIT_PRODUCT_1_STOCK = 1;
-        final int INIT_PRODUCT_2_STOCK = 2;
-        final int ORDERED_QUANTITY_1 = 1;
-        final int ORDERED_QUANTITY_2 = 2;
-
-        jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
-                1L, 1L, 2L, "Ogu T 포함 2건", TEST_ORDER_ID, null, PaymentEventStatus.READY.name(), null, null, 0);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                1L, 1L, TEST_ORDER_ID, 1L, ORDERED_QUANTITY_1, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_1);
-        jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
-                2L, 1L, TEST_ORDER_ID, 2L, ORDERED_QUANTITY_2, PaymentOrderStatus.NOT_STARTED.name(),
-                TEST_TOTAL_AMOUNT_2);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_1_STOCK, 1L);
-        jdbcTemplate.update(UPDATE_PRODUCT_STOCK_SQL, INIT_PRODUCT_2_STOCK, 2L);
-
-        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(1L)
-                .orderId(TEST_ORDER_ID)
-                .amount(BigDecimal.valueOf(TEST_TOTAL_AMOUNT_1 + TEST_TOTAL_AMOUNT_2))
-                .paymentKey(TEST_PAYMENT_KEY)
-                .build();
-
-        // when
-        ResultActions perform = mockMvc.perform(
-                post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest))
-        );
-
-        // then — SyncConfirmAdapter가 ResponseType.SYNC_200을 반환하므로 HTTP 200이어야 한다
-        perform.andExpect(status().isOk());
     }
 
     @Test

@@ -259,8 +259,10 @@ public PaymentEvent getPaymentEventByOrderId(String orderId) { ... }
 **Explicit rollback for checked exceptions:**
 ```java
 @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
-public PaymentProcess executeStockDecreaseWithJobCreation(
-        String orderId, List<PaymentOrder> paymentOrderList) { ... }
+public PaymentEvent executePaymentAndStockDecreaseWithOutbox(
+        PaymentEvent paymentEvent, String paymentKey,
+        String orderId, List<PaymentOrder> paymentOrderList)
+        throws PaymentOrderedProductStockException { ... }
 ```
 
 **New transaction for independent outbox operations:**

@@ -10,9 +10,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult.ResponseType;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -31,7 +31,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @DisplayName("OutboxAsyncConfirmService 테스트")
 class OutboxAsyncConfirmServiceTest {
@@ -42,6 +41,7 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
     private PaymentConfirmPublisherPort mockConfirmPublisher;
+    private PaymentConfirmChannel mockChannel;
 
     @BeforeEach
     void setUp() {
@@ -49,12 +49,14 @@ class OutboxAsyncConfirmServiceTest {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
         mockConfirmPublisher = Mockito.mock(PaymentConfirmPublisherPort.class);
+        mockChannel = Mockito.mock(PaymentConfirmChannel.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
-                mockConfirmPublisher
+                mockConfirmPublisher,
+                mockChannel
         );
     }
 
@@ -95,8 +97,8 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("confirm() 결과의 responseType은 ASYNC_202다")
-        void confirm_Returns_Async202() throws PaymentOrderedProductStockException {
+        @DisplayName("confirm() 성공 시 orderId와 amount를 반환한다")
+        void confirm_Returns_OrderIdAndAmount() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             String paymentKey = "payment-key-123";
@@ -120,7 +122,8 @@ class OutboxAsyncConfirmServiceTest {
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
 
             // then
-            assertThat(result.getResponseType()).isEqualTo(ResponseType.ASYNC_202);
+            assertThat(result.getOrderId()).isEqualTo(orderId);
+            assertThat(result.getAmount()).isEqualByComparingTo(amount);
         }
 
         @Test
@@ -181,6 +184,64 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
+        @DisplayName("채널 여유 있을 때 queueNearFull=false를 반환한다")
+        void confirm_채널_여유_있을_때_queueNearFull_false() throws PaymentOrderedProductStockException {
+            // given
+            given(mockChannel.isNearFull()).willReturn(false);
+
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
+
+            // when
+            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
+
+            // then
+            assertThat(result.isQueueNearFull()).isFalse();
+        }
+
+        @Test
+        @DisplayName("채널이 거의 찼을 때 queueNearFull=true를 반환한다")
+        void confirm_채널_임계값_이하일_때_queueNearFull_true() throws PaymentOrderedProductStockException {
+            // given
+            given(mockChannel.isNearFull()).willReturn(true);
+
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
+                    .userId(1L)
+                    .orderId(orderId)
+                    .paymentKey("payment-key")
+                    .amount(amount)
+                    .build();
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
+                    any(PaymentEvent.class), anyString(), anyString(), anyList()
+            )).willReturn(inProgressEvent);
+
+            // when
+            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
+
+            // then
+            assertThat(result.isQueueNearFull()).isTrue();
+        }
+
+        @Test
         @DisplayName("재고 부족 시 confirmPublisher.publish()를 호출하지 않는다")
         void confirm_재고부족_시_publish_호출하지_않는다() throws PaymentOrderedProductStockException {
             // given
@@ -208,18 +269,6 @@ class OutboxAsyncConfirmServiceTest {
             then(mockConfirmPublisher).should(times(0)).publish(any(), any(), any(), any());
         }
 
-        @Test
-        @DisplayName("OutboxAsyncConfirmService는 @ConditionalOnProperty(havingValue=outbox, matchIfMissing=false)를 가진다")
-        void outboxAsyncConfirmService_HasConditionalOnPropertyAnnotation() {
-            // given
-            ConditionalOnProperty annotation = OutboxAsyncConfirmService.class.getAnnotation(ConditionalOnProperty.class);
-
-            // then
-            assertThat(annotation).isNotNull();
-            assertThat(annotation.name()).contains("spring.payment.async-strategy");
-            assertThat(annotation.havingValue()).isEqualTo("outbox");
-            assertThat(annotation.matchIfMissing()).isFalse();
-        }
     }
 
     @Nested

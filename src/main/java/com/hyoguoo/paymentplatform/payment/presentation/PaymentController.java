@@ -57,11 +57,7 @@ public class PaymentController {
         );
         PaymentConfirmAsyncResult result = paymentConfirmService.confirm(paymentConfirmCommand);
 
-        if (result.getResponseType() == PaymentConfirmAsyncResult.ResponseType.ASYNC_202) {
-            return ResponseEntity.accepted().body(PaymentPresentationMapper.toPaymentConfirmResponse(result));
-        }
-
-        return ResponseEntity.ok(PaymentPresentationMapper.toPaymentConfirmResponse(result));
+        return ResponseEntity.accepted().body(PaymentPresentationMapper.toPaymentConfirmResponse(result));
     }
 
     @GetMapping("/api/v1/payments/{orderId}/status")

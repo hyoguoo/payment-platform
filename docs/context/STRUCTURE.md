@@ -1,6 +1,6 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-04-05
 
 ## Directory Layout
 
@@ -28,15 +28,13 @@ payment-platform/
 │   ├── mock/                                    # FakeTossHttpOperator, BenchmarkConfig (@Profile("benchmark"))
 │   ├── payment/                                 # Primary bounded context
 │   │   ├── application/
-│   │   │   ├── PaymentConfirmServiceImpl.java   # strategy: sync (default)
-│   │   │   ├── OutboxAsyncConfirmService.java   # strategy: outbox
-│   │   │   ├── KafkaAsyncConfirmService.java    # strategy: kafka
+│   │   │   ├── OutboxAsyncConfirmService.java   # confirm service implementation (outbox 전략)
+│   │   │   ├── IdempotencyKeyHasher.java        # idempotency key hashing helper
 │   │   │   ├── PaymentStatusServiceImpl.java    # always active
 │   │   │   ├── PaymentCheckoutServiceImpl.java
 │   │   │   ├── AdminPaymentServiceImpl.java
 │   │   │   ├── PaymentExpirationServiceImpl.java
 │   │   │   ├── PaymentHistoryServiceImpl.java
-│   │   │   ├── PaymentRecoverServiceImpl.java
 │   │   │   ├── dto/
 │   │   │   │   ├── admin/                       # PaymentEventResult, PaymentHistoryResult, PaymentOrderResult, search queries
 │   │   │   │   ├── request/                     # CheckoutCommand, PaymentConfirmCommand, TossConfirmGatewayCommand, etc.
@@ -47,13 +45,11 @@ payment-platform/
 │   │   │   │   ├── PaymentGatewayPort.java
 │   │   │   │   ├── PaymentOrderRepository.java
 │   │   │   │   ├── PaymentOutboxRepository.java
-│   │   │   │   ├── PaymentProcessRepository.java
 │   │   │   │   ├── PaymentHistoryRepository.java
+│   │   │   │   ├── IdempotencyStore.java        # idempotency 저장소 포트
 │   │   │   │   ├── ProductPort.java
 │   │   │   │   ├── UserPort.java
 │   │   │   │   └── AdminPaymentQueryRepository.java
-│   │   │   │   └── out/
-│   │   │   │       └── PaymentConfirmPublisherPort.java   # Kafka publish abstraction
 │   │   │   ├── publisher/
 │   │   │   │   └── PaymentEventPublisher.java   # Spring ApplicationEventPublisher wrapper
 │   │   │   └── usecase/                         # internal application services (not ports)
@@ -61,22 +57,21 @@ payment-platform/
 │   │   │       ├── PaymentCommandUseCase.java   # status-change operations
 │   │   │       ├── PaymentLoadUseCase.java
 │   │   │       ├── PaymentOutboxUseCase.java
-│   │   │       ├── PaymentProcessUseCase.java
+│   │   │       ├── PaymentHistoryUseCase.java
+│   │   │       ├── AdminPaymentLoadUseCase.java
 │   │   │       ├── PaymentFailureUseCase.java
 │   │   │       ├── PaymentCreateUseCase.java
 │   │   │       ├── OrderedProductUseCase.java
-│   │   │       ├── OrderedUserUseCase.java
-│   │   │       └── PaymentRecoveryUseCase.java
+│   │   │       └── OrderedUserUseCase.java
 │   │   ├── domain/
 │   │   │   ├── PaymentEvent.java                # primary aggregate
 │   │   │   ├── PaymentOrder.java
 │   │   │   ├── PaymentOutbox.java               # outbox strategy domain object
-│   │   │   ├── PaymentProcess.java              # sync strategy job tracker
 │   │   │   ├── PaymentHistory.java
 │   │   │   ├── dto/                             # cross-layer DTOs (records)
 │   │   │   │   ├── enums/                       # PaymentStatus, TossPaymentStatus, PaymentConfirmResultStatus, etc.
 │   │   │   │   └── vo/                          # PaymentDetails, PaymentFailure
-│   │   │   ├── enums/                           # PaymentEventStatus, PaymentOrderStatus, PaymentOutboxStatus, PaymentProcessStatus
+│   │   │   ├── enums/                           # PaymentEventStatus, PaymentOrderStatus, PaymentOutboxStatus
 │   │   │   └── event/                           # PaymentCreatedEvent, PaymentStatusChangedEvent, PaymentRetryAttemptedEvent, PaymentHistoryEvent
 │   │   ├── exception/
 │   │   │   ├── PaymentStatusException.java
@@ -102,26 +97,27 @@ payment-platform/
 │   │   │   │   ├── PaymentGatewayType.java
 │   │   │   │   └── toss/
 │   │   │   │       └── TossPaymentGatewayStrategy.java
+│   │   │   ├── idempotency/
+│   │   │   │   ├── IdempotencyStoreImpl.java    # implements IdempotencyStore
+│   │   │   │   └── IdempotencyProperties.java   # idempotency 설정 프로퍼티
 │   │   │   ├── internal/                        # cross-context adapters
 │   │   │   │   ├── InternalPaymentGatewayAdapter.java  # implements PaymentGatewayPort
 │   │   │   │   ├── InternalProductAdapter.java         # implements ProductPort
 │   │   │   │   └── InternalUserAdapter.java            # implements UserPort
-│   │   │   ├── kafka/
-│   │   │   │   └── KafkaConfirmPublisher.java   # implements PaymentConfirmPublisherPort
+│   │   │   ├── publisher/
+│   │   │   │   └── OutboxImmediatePublisher.java  # outbox 즉시 발행 구현체
 │   │   │   └── repository/
 │   │   │       ├── JpaPaymentEventRepository.java
 │   │   │       ├── JpaPaymentOrderRepository.java
 │   │   │       ├── JpaPaymentOutboxRepository.java
-│   │   │       ├── JpaPaymentProcessRepository.java
 │   │   │       ├── JpaPaymentHistoryRepository.java
 │   │   │       ├── PaymentEventRepositoryImpl.java
 │   │   │       ├── PaymentOutboxRepositoryImpl.java
-│   │   │       ├── PaymentProcessRepositoryImpl.java
 │   │   │       ├── PaymentHistoryRepositoryImpl.java
 │   │   │       ├── PaymentOrderRepositoryImpl.java
 │   │   │       └── AdminPaymentQueryRepositoryImpl.java
 │   │   ├── listener/
-│   │   │   ├── KafkaConfirmListener.java        # @RetryableTopic consumer
+│   │   │   ├── OutboxImmediateEventHandler.java # @TransactionalEventListener(AFTER_COMMIT) — channel.offer 호출
 │   │   │   ├── PaymentHistoryEventListener.java # Spring ApplicationEvent handler
 │   │   │   └── port/
 │   │   │       └── PaymentHistoryService.java
@@ -133,16 +129,17 @@ payment-platform/
 │   │   │   │   ├── request/                     # CheckoutRequest, PaymentConfirmRequest, PaymentCancelRequest
 │   │   │   │   └── response/                    # PaymentConfirmResponse, PaymentStatusResponse, PaymentStatusApiResponse, etc.
 │   │   │   └── port/                            # inbound port interfaces
-│   │   │       ├── PaymentConfirmService.java   # implemented by one of the three strategy beans
+│   │   │       ├── PaymentConfirmService.java   # implemented by OutboxAsyncConfirmService
 │   │   │       ├── PaymentStatusService.java    # implemented by PaymentStatusServiceImpl
 │   │   │       ├── PaymentCheckoutService.java
 │   │   │       └── AdminPaymentService.java
 │   │   └── scheduler/
-│   │       ├── OutboxWorker.java                # @Scheduled outbox processor
-│   │       ├── PaymentScheduler.java            # @Scheduled recovery + expiration
+│   │       ├── OutboxImmediateWorker.java       # SmartLifecycle — VT/PT 워커 스레드; channel.take()
+│   │       ├── OutboxProcessingService.java     # ImmediateWorker/OutboxWorker 공유 처리 로직
+│   │       ├── OutboxWorker.java                # @Scheduled 폴백 outbox processor
+│   │       ├── PaymentScheduler.java            # @Scheduled expiration
 │   │       └── port/
-│   │           ├── PaymentExpirationService.java
-│   │           └── PaymentRecoverService.java
+│   │           └── PaymentExpirationService.java
 │   ├── paymentgateway/                          # Toss Payments gateway context
 │   │   ├── application/
 │   │   │   ├── PaymentGatewayServiceImpl.java
@@ -207,7 +204,7 @@ payment-platform/
 │           └── port/
 │               └── UserService.java
 ├── src/main/resources/
-│   ├── application.yml                          # default config (strategy=sync, kafka, JPA settings)
+│   ├── application.yml                          # default config (outbox 전략, JPA settings)
 │   ├── application-benchmark.yml               # benchmark profile overrides
 │   ├── application-docker.yml                  # docker profile overrides
 │   ├── data.sql                                # seed data
@@ -216,17 +213,18 @@ payment-platform/
 └── src/test/java/com/hyoguoo/paymentplatform/
     ├── core/test/                               # shared test utilities
     ├── mixin/                                   # Jackson mixin helpers
-    ├── mock/                                    # test fakes (FakePaymentEventRepository, etc.)
+    ├── mock/                                    # test fakes (FakePaymentEventRepository, FakeIdempotencyStore, etc.)
     └── payment/
         ├── application/                         # unit tests for application services
         │   ├── dto/response/                    # DTO unit tests
+        │   ├── IdempotencyKeyHasherTest.java    # IdempotencyKeyHasher 단위 테스트
         │   └── usecase/                         # use-case unit tests
         ├── domain/                              # domain entity unit tests
         ├── infrastructure/
         │   ├── gateway/                         # TossPaymentGatewayStrategy tests
-        │   └── kafka/                           # KafkaConfirmPublisher tests
-        ├── listener/                            # KafkaConfirmListener tests
-        ├── presentation/                        # PaymentController slice tests
+        │   └── publisher/                       # OutboxImmediatePublisher tests
+        ├── listener/                            # PaymentHistoryEventListener tests
+        ├── presentation/                        # PaymentController slice tests (extends BaseIntegrationTest)
         └── scheduler/                           # OutboxWorker tests
 ```
 
@@ -235,8 +233,8 @@ payment-platform/
 ## Directory Purposes
 
 **`payment/application/`:**
-- All application-level service beans live here, including the three strategy implementations
-- Use-case sub-services are in `usecase/`; port interfaces in `port/` and `port/out/`
+- All application-level service beans live here, including the confirm service implementation (outbox 단일 전략)
+- Use-case sub-services are in `usecase/`; port interfaces in `port/`
 
 **`payment/application/usecase/`:**
 - Internal collaborators, not exposed as ports
@@ -246,12 +244,16 @@ payment-platform/
 - Adapters that cross context boundaries by calling into another context's `presentation/port` interface
 - No HTTP wire calls — direct Spring bean method calls
 
-**`payment/infrastructure/kafka/`:**
-- Contains only `KafkaConfirmPublisher`; topic constant `payment-confirm` lives here, not in application layer
+**`payment/infrastructure/idempotency/`:**
+- `IdempotencyStoreImpl` implements the `IdempotencyStore` port using Redis or in-memory store
+- `IdempotencyProperties` holds related configuration properties
+
+**`payment/infrastructure/publisher/`:**
+- `OutboxImmediatePublisher` implements outbox 즉시 발행 로직 (outbox 레코드 생성 후 즉시 처리)
 
 **`payment/listener/`:**
-- Kafka consumer (`KafkaConfirmListener`) and Spring event listener (`PaymentHistoryEventListener`)
-- These are infrastructure-adjacent but placed in their own package due to their cross-cutting driver role
+- Spring event listener (`PaymentHistoryEventListener`) for domain event handling
+- Infrastructure-adjacent but placed in its own package due to its cross-cutting driver role
 
 **`mock/`:**
 - `@Profile("benchmark")` only; activates `FakeTossHttpOperator` so k6 tests run without real Toss API
@@ -266,23 +268,14 @@ payment-platform/
 **Entry Point:**
 - `src/main/java/com/hyoguoo/paymentplatform/PaymentPlatformApplication.java`
 
-**Strategy Configuration:**
-- `src/main/resources/application.yml` — `spring.payment.async-strategy: sync` (default)
-
-**Three Confirm Strategy Implementations:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentConfirmServiceImpl.java`
+**Confirm Service Implementation (단일 전략):**
 - `src/main/java/com/hyoguoo/paymentplatform/payment/application/OutboxAsyncConfirmService.java`
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/KafkaAsyncConfirmService.java`
 
 **Shared Transaction Coordinator:**
 - `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
 
-**Kafka Publisher Port and Impl:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/port/out/PaymentConfirmPublisherPort.java`
-- `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/kafka/KafkaConfirmPublisher.java`
-
-**Kafka Consumer:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/listener/KafkaConfirmListener.java`
+**Publisher Port and Impl:**
+- `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/publisher/OutboxImmediatePublisher.java`
 
 **Outbox Worker:**
 - `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxWorker.java`
@@ -303,9 +296,9 @@ payment-platform/
 **Files:**
 - Domain aggregates: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox` (PascalCase, no suffix)
 - Use-case services: `PaymentCommandUseCase`, `PaymentLoadUseCase` (suffix `UseCase`)
-- Strategy services: `PaymentConfirmServiceImpl`, `OutboxAsyncConfirmService`, `KafkaAsyncConfirmService`
+- Confirm service: `OutboxAsyncConfirmService` (단일 전략)
 - Port interfaces: `PaymentEventRepository`, `PaymentGatewayPort`, `PaymentConfirmService` (no `I` prefix)
-- Infrastructure implementations: `PaymentEventRepositoryImpl`, `KafkaConfirmPublisher`, `InternalPaymentGatewayAdapter`
+- Infrastructure implementations: `PaymentEventRepositoryImpl`, `OutboxImmediatePublisher`, `InternalPaymentGatewayAdapter`
 - JPA Spring Data: `JpaPaymentEventRepository`, `JpaPaymentOrderRepository` (prefix `Jpa`)
 - JPA entity classes: `PaymentEventEntity`, `PaymentOrderEntity` (suffix `Entity`)
 - Mapper utilities: `PaymentInfrastructureMapper`, `PaymentPresentationMapper` (suffix `Mapper`)
@@ -315,20 +308,13 @@ payment-platform/
 **Packages:**
 - `presentation/port/` — inbound port interfaces (consumed by controllers / schedulers / listeners)
 - `application/port/` — outbound port interfaces (implemented by infrastructure)
-- `application/port/out/` — outbound ports that are clearly secondary adapters (e.g., `PaymentConfirmPublisherPort`)
+- `infrastructure/idempotency/` — idempotency 저장소 구현체 및 설정
 - `application/usecase/` — internal application services not directly injected by outside callers
 - `infrastructure/internal/` — cross-context Java adapters
 
 ---
 
 ## Where to Add New Code
-
-**New async confirm strategy:**
-1. Create `src/main/java/com/hyoguoo/paymentplatform/payment/application/MyAsyncConfirmService.java`
-2. Annotate with `@ConditionalOnProperty(name = "spring.payment.async-strategy", havingValue = "myvalue")`
-3. Implement `PaymentConfirmService` (`presentation/port/PaymentConfirmService`)
-4. Return `PaymentConfirmAsyncResult` with the appropriate `ResponseType`
-5. Add `spring.payment.async-strategy: myvalue` to the target profile yml
 
 **New outbound port (e.g., new external service):**
 1. Interface → `src/main/java/com/hyoguoo/paymentplatform/payment/application/port/NewServicePort.java`
@@ -372,4 +358,4 @@ payment-platform/
 
 ---
 
-*Structure analysis: 2026-03-18*
+*Structure analysis: 2026-04-05*

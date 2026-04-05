@@ -11,7 +11,7 @@
 - **Issue:** The benchmark results tables in `.planning/BENCHMARK.md` lines 36-53 contain only `-` for every metric across all three strategies and all VU levels (50 / 100 / 200 VU).
 - **Files:** `.planning/BENCHMARK.md:34-54`
 - **Impact:** The primary project goal — measuring TPS and latency differences between Sync / DB Outbox / Kafka strategies — has not been executed. No quantitative basis exists for choosing a strategy.
-- **Fix approach:** Run `./scripts/k6/run-benchmark.sh` with each strategy (restart server with the appropriate `spring.payment.async-strategy` value) and fill in the table. The `application-benchmark.yml` already has `scheduler.enabled=true` (line 22), so the OutboxWorker will be active during the Outbox benchmark.
+- **Fix approach:** Run `./scripts/k6/run-benchmark.sh` and fill in the table. The `application-benchmark.yml` already has `scheduler.enabled=true` (line 22), so the OutboxWorker will be active during the Outbox benchmark.
 
 ---
 
@@ -29,11 +29,10 @@
 
 ### PaymentScheduler only runs expiration — no recovery under any profile
 
-- **Issue:** `PaymentScheduler` now has only `expireOldReadyPayments()`. `PaymentRecoverServiceImpl` and `PaymentRecoverService` port were deleted in ASYNC-PAYMENT-CLEANUP(2026-03-29). Recovery of stuck PROCESSING/UNKNOWN payments no longer runs.
+- **Issue:** `PaymentScheduler` now has only `expireOldReadyPayments()`. `PaymentRecoverServiceImpl` and `PaymentRecoverService` port were deleted in ASYNC-PAYMENT-CLEANUP(2026-03-29). Recovery of stuck IN_PROGRESS payments no longer runs.
 - **Files:**
   `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/PaymentScheduler.java`
-- **Impact:** In the Sync strategy, server crashes between TX1(stock decrease) and TX2(executePayment) leave `PaymentEvent` stuck in READY with stock already decreased. Previously `recoverStuckPayments()` handled this; now no recovery runs.
-- **Related:** See `docs/context/TODOS.md` — PaymentProcess 삭제 시 이 concern도 함께 정리된다.
+- **Impact:** ASYNC-PAYMENT-CLEANUP(2026-03-29) 이후 stuck IN_PROGRESS 상태를 복구하는 메커니즘이 없다. Outbox 전략은 `OutboxWorker`가 IN_FLIGHT 타임아웃을 처리하지만, PaymentEvent IN_PROGRESS 상태 복구는 현재 미구현이다.
 
 ---
 
@@ -48,15 +47,6 @@
   `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxWorker.java:49`
 - **Impact:** Toss Payments uses idempotency keys based on `orderId`; re-confirming a completed payment will return a non-retryable error, triggering `executePaymentFailureCompensation` and rolling back stock decreases for a successfully paid order.
 - **Fix approach:** Before resetting to PENDING, call `paymentGatewayPort.getStatus(orderId)` to check whether the payment is already DONE; if so, run `executePaymentSuccessCompletion` instead of requeueing.
-
-### Sync strategy separates stock decrease and executePayment across two transactions — 복구 불가
-
-- **Issue:** `PaymentConfirmServiceImpl.doConfirm()` calls `executeStockDecreaseWithJobCreation` (TX1, creates `PaymentProcess`) and then `executePayment` (TX2) in sequence. 서버 크래시 시 TX1 커밋 후 TX2 전이라면 재고는 감소했지만 `PaymentEvent`는 READY 상태로 남는다.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentConfirmServiceImpl.java`
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
-- **Impact:** ⚠️ ASYNC-PAYMENT-CLEANUP에서 `PaymentRecoverServiceImpl`이 삭제됐다. 이제 stuck READY+재고감소 상태를 복구하는 메커니즘이 없다. Outbox 전략은 단일 TX(executePaymentAndStockDecreaseWithOutbox)이므로 이 문제가 없다.
-- **Fix approach:** PaymentProcess 삭제(TODOS.md 참조) 시 Sync 전략 TX 구조도 Outbox처럼 단일 TX로 통합하거나, 복구 스케줄러를 재도입해야 한다.
 
 ### executePaymentFailureCompensation always increases stock regardless of prior state
 
@@ -90,25 +80,18 @@
 - **Impact:** `IllegalArgumentException` is not a `PaymentTossNonRetryableException` or `PaymentTossRetryableException`. `OutboxImmediateEventHandler` / `OutboxWorker`에서 분류되지 않은 예외는 retryable/non-retryable 분기를 통과하지 못해 Outbox 레코드가 IN_FLIGHT 상태로 타임아웃까지 방치된다.
 - **Fix approach:** Catch `IllegalArgumentException` in `parseErrorResponse` and rethrow as `PaymentTossNonRetryableException`, or switch to direct `ObjectMapper.readValue(rawBody, TossPaymentApiFailResponse.class)` with explicit error handling.
 
-### UNKNOWN PaymentStatus silently maps to READY in convertToTossPaymentStatus
-
-- **Issue:** `PaymentCommandUseCase.convertToTossPaymentStatus()` default arm maps `UNKNOWN` (and any future unmatched status values) to `TossPaymentStatus.READY` with a comment `// UNKNOWN -> READY로 매핑` (line 172).
-- **Files:** `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentCommandUseCase.java:172`
-- **Impact:** If `validateCompletionStatus` is called on a PaymentEvent in UNKNOWN status, the gateway info will report `TossPaymentStatus.READY`, and the check at `PaymentEvent.validateCompletionStatus()` (lines 100-103 of `PaymentEvent.java`) will throw `NOT_IN_PROGRESS_ORDER` (non-retryable). This converts an UNKNOWN-status payment intended for retry into a permanent failure.
-- **Fix approach:** Add an explicit `case UNKNOWN ->` arm returning a sentinel value, and handle it in the caller instead of falling through the default.
-
 ---
 
 ## PaymentStatusServiceImpl Coverage
 
-### EXPIRED and UNKNOWN events return PROCESSING from the status endpoint
+### EXPIRED events return PROCESSING from the status endpoint
 
-- **Issue:** `PaymentStatusServiceImpl.mapEventStatus()` maps all non-DONE, non-FAILED statuses (including EXPIRED and UNKNOWN) to `StatusType.PROCESSING` via the `default` arm.
+- **Issue:** `PaymentStatusServiceImpl.mapEventStatus()` maps all non-DONE, non-FAILED statuses (including EXPIRED) to `StatusType.PROCESSING` via the `default` arm.
 - **Files:**
   `src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java:53-58`
   `src/main/java/com/hyoguoo/paymentplatform/payment/application/dto/response/PaymentStatusResult.java:11-16`
 - **Impact:** A client polling an expired payment receives `status=PROCESSING` indefinitely rather than a terminal state. This causes the k6 benchmark polling loop (which waits for DONE or FAILED) to time out for expired orders, inflating the error rate metric.
-- **Fix approach:** Add `EXPIRED` and `UNKNOWN` to `StatusType` and map them explicitly in `mapEventStatus()`. Alternatively, map `EXPIRED` to `FAILED` as a terminal state to avoid client-visible API changes.
+- **Fix approach:** Add `EXPIRED` to `StatusType` and map it explicitly in `mapEventStatus()`. Alternatively, map `EXPIRED` to `FAILED` as a terminal state to avoid client-visible API changes.
 
 ### Status endpoint throws 404 for unknown orderId with no test coverage
 
@@ -121,4 +104,4 @@
 
 ---
 
-*Concerns audit: 2026-03-18*
+*Concerns audit: 2026-03-18 (updated 2026-04-05)*

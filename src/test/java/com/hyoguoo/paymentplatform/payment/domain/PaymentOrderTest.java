@@ -106,7 +106,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING", "UNKNOWN"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING"})
     @DisplayName("특정 상태에서 성공적으로 execute 상태로 변경한다.")
     void execute_Success(PaymentOrderStatus initialStatus) {
         // given
@@ -120,7 +120,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "FAIL", "CANCEL"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "FAIL", "CANCEL", "EXPIRED"})
     @DisplayName("execute 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void execute_InvalidStatus(PaymentOrderStatus initialStatus) {
         // given
@@ -132,7 +132,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"EXECUTING", "UNKNOWN"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING"})
     @DisplayName("특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentOrderStatus initialStatus) {
         // given
@@ -146,7 +146,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "CANCEL"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "FAIL", "CANCEL", "EXPIRED"})
     @DisplayName("fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void fail_InvalidStatus(PaymentOrderStatus initialStatus) {
         // given
@@ -158,7 +158,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"EXECUTING", "UNKNOWN"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"EXECUTING"})
     @DisplayName("특정 상태에서 성공적으로 success 상태로 변경한다.")
     void success_Success(PaymentOrderStatus initialStatus) {
         // given
@@ -172,7 +172,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "FAIL", "CANCEL"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "SUCCESS", "FAIL", "CANCEL", "EXPIRED"})
     @DisplayName("success 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void success_InvalidStatus(PaymentOrderStatus initialStatus) {
         // given
@@ -180,32 +180,6 @@ class PaymentOrderTest {
 
         // when & then
         assertThatThrownBy(paymentOrder::success)
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "EXECUTING", "UNKNOWN"})
-    @DisplayName("특정 상태에서 성공적으로 unknown 상태로 변경한다.")
-    void unknown_Success(PaymentOrderStatus initialStatus) {
-        // given
-        PaymentOrder paymentOrder = getDefaultPaymentOrderWithStatus(initialStatus);
-
-        // when
-        paymentOrder.unknown();
-
-        // then
-        assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.UNKNOWN);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"SUCCESS", "FAIL", "CANCEL"})
-    @DisplayName("unknown 상태로 변경 불가한 상태에서는 예외를 던진다.")
-    void unknown_InvalidStatus(PaymentOrderStatus initialStatus) {
-        // given
-        PaymentOrder paymentOrder = getDefaultPaymentOrderWithStatus(initialStatus);
-
-        // when & then
-        assertThatThrownBy(paymentOrder::unknown)
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -223,8 +197,7 @@ class PaymentOrderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentOrderStatus.class, names = {"EXECUTING", "SUCCESS", "FAIL", "CANCEL", "EXPIRED",
-            "UNKNOWN"})
+    @EnumSource(value = PaymentOrderStatus.class, names = {"EXECUTING", "SUCCESS", "FAIL", "CANCEL", "EXPIRED"})
     @DisplayName("NOT_STARTED가 아닌 상태에서 expire로 변경 시 예외를 던진다.")
     void expire_InvalidStatus(PaymentOrderStatus initialStatus) {
         // given

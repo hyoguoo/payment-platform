@@ -44,8 +44,7 @@ public class PaymentOrder {
 
     public void execute() {
         if (this.status != PaymentOrderStatus.NOT_STARTED &&
-                this.status != PaymentOrderStatus.EXECUTING &&
-                this.status != PaymentOrderStatus.UNKNOWN) {
+                this.status != PaymentOrderStatus.EXECUTING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
         }
         this.status = PaymentOrderStatus.EXECUTING;
@@ -53,28 +52,17 @@ public class PaymentOrder {
 
     public void fail() {
         if (this.status != PaymentOrderStatus.NOT_STARTED &&
-                this.status != PaymentOrderStatus.EXECUTING &&
-                this.status != PaymentOrderStatus.UNKNOWN) {
+                this.status != PaymentOrderStatus.EXECUTING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentOrderStatus.FAIL;
     }
 
     public void success() {
-        if (this.status != PaymentOrderStatus.EXECUTING &&
-                this.status != PaymentOrderStatus.UNKNOWN) {
+        if (this.status != PaymentOrderStatus.EXECUTING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
         }
         this.status = PaymentOrderStatus.SUCCESS;
-    }
-
-    public void unknown() {
-        if (this.status != PaymentOrderStatus.NOT_STARTED &&
-                this.status != PaymentOrderStatus.EXECUTING &&
-                this.status != PaymentOrderStatus.UNKNOWN) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_UNKNOWN);
-        }
-        this.status = PaymentOrderStatus.UNKNOWN;
     }
 
     public void expire() {
