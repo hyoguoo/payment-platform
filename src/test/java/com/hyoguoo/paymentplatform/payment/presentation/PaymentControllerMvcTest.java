@@ -77,7 +77,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("queueNearFull=false 시 202 응답 body에 message가 없다")
+    @DisplayName("queueNearFull=false 시 202 응답 body에 processingDelayed=false가 포함된다")
     void confirm_queueNearFull_false_시_202_정상_응답() throws Exception {
         // given
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
@@ -100,12 +100,12 @@ class PaymentControllerMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(confirmRequest)))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.message").doesNotExist());
+                .andExpect(jsonPath("$.data.processingDelayed").value(false));
     }
 
     @Test
-    @DisplayName("queueNearFull=true 시 202 응답 body에 지연 안내 message가 포함된다")
-    void confirm_queueNearFull_true_시_202_지연_메시지_포함() throws Exception {
+    @DisplayName("queueNearFull=true 시 202 응답 body에 processingDelayed=true가 포함된다")
+    void confirm_queueNearFull_true_시_202_지연_시그널_포함() throws Exception {
         // given
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
                 .userId(1L)
@@ -127,7 +127,7 @@ class PaymentControllerMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(confirmRequest)))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.message").isNotEmpty());
+                .andExpect(jsonPath("$.data.processingDelayed").value(true));
     }
 
     @Test

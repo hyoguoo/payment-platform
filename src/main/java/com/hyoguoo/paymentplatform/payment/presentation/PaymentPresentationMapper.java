@@ -47,13 +47,10 @@ public class PaymentPresentationMapper {
     public static PaymentConfirmResponse toPaymentConfirmResponse(
             PaymentConfirmAsyncResult result
     ) {
-        String message = result.isQueueNearFull()
-                ? "결제 요청이 정상적으로 접수되었습니다. 현재 처리 대기 중인 요청이 많아 결과 확인이 지연될 수 있습니다."
-                : null;
         return PaymentConfirmResponse.builder()
                 .orderId(result.getOrderId())
                 .amount(result.getAmount())
-                .message(message)
+                .processingDelayed(result.isQueueNearFull())
                 .build();
     }
 
