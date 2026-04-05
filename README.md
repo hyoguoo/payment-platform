@@ -1,15 +1,15 @@
 # Payments Platform
 
 이 프로젝트는 토스페이먼츠를 통해 결제 연동을 처리하고, 다양한 결제 시나리오에서 발생할 수 있는 문제들을 해결하기 위한 시스템을 구축하는 것을 목표로 합니다.  
-외부 PG 연동 시 발생할 수 있는 오류와 위변조 시도를 방지하고, 상태 기반 복구 모델을 통해 복원력 있는 결제 흐름을 구현한 백엔드 시스템입니다.
+위변조 방지, 멱등성 보장, 비동기 결제 처리, 자동 복구 등 실결제 환경에서 발생하는 다양한 문제를 직접 설계하고 구현하는 것을 목표로 합니다.
 
 <br>
 
 ## 🚀 주요 해결 과제
 
-- 정합성 오류 및 위변조 요청 방지를 위한 교차 검증 체계 설계: 결제 요청 및 승인 과정에서 악의적인 사용자에 의한 데이터 불일치를 방지하기 위해 결제 데이터 검증
-- 일시적 실패에 대응 가능한 상태 기반 결제 복구 모델 설계: API 지연 / 서버 중단 / 외부 서비스 에러 등 예외 상황에 대응하기 위한 복구 로직을 추가하여 안정적인 결제 처리 환경을 구축
-- 트랜잭션 범위 최소화로 네트워크 지연 환경 대응 및 응답 시간 최적화: 외부 API 요청을 트랜잭션 범위에서 분리하여 트랜잭션 경합을 줄여 성능 최적화
+- **동기 → 비동기 아키텍처 전환 및 성능 측정**: Toss API 지연이 HTTP 스레드를 직접 블로킹하는 동기 구조에서 비동기 + Outbox 채널 전략으로 전환
+- **정합성 오류 및 위변조 요청 방지**: 클라이언트·서버·PG 응답값을 교차 검증하고 Checkout 멱등성(Caffeine 캐시 + TOCTOU 해결)을 보장하여 중복 주문 및 금액 위변조를 차단
+- **재시도 가능 실패에 대한 자동 복구 및 최종 일관성 확보**: 재시도 한계(5회) 기반 복구 루프, 보상 트랜잭션 자동 재시도로 외부 장애 시에도 재고·결제 상태의 일관성 유지
 
 <br>
 
@@ -25,33 +25,40 @@
 
 ```mermaid
 flowchart TD
-    Client(["클라이언트"])
+%% 클래스 정의 (가독성 및 역할 구분)
+    classDef client fill: #FFFFFF, stroke: #333, color: #000
+    classDef process fill: #E1F5FF, stroke: #0078D4, color: #000
+    classDef tx fill: #FFF2CC, stroke: #D79B00, color: #000
+    classDef worker fill: #E8F5E9, stroke: #2E7D32, color: #000
+    classDef fallback fill: #FADAD8, stroke: #B85450, color: #000
+    classDef response fill: #F5F5F5, stroke: #333, color: #000
+    Client(["클라이언트"]):::client
 
     subgraph Sync["Sync 전략 (spring.payment.async-strategy=sync)"]
-        S1["confirm() 호출"]
-        S2["TX: 재고 감소 + PaymentProcess 생성"]
-        S3["TX: READY → IN_PROGRESS"]
-        S4["Toss API 동기 호출\n⏳ 100ms ~ 3,500ms 블로킹"]
-        S5["TX: DONE 처리"]
-        S6(["200 OK"])
+        S1["confirm() 호출"]:::process
+        S2["TX: 재고 감소 + PaymentProcess 생성"]:::tx
+        S3["TX: READY → IN_PROGRESS"]:::tx
+        S4["Toss API 동기 호출\n⏳ 100ms ~ 3,500ms 블로킹"]:::process
+        S5["TX: DONE 처리"]:::tx
+        S6(["200 OK"]):::response
         S1 --> S2 --> S3 --> S4 --> S5 --> S6
     end
 
-    subgraph Outbox["Async 전략 (spring.payment.async-strategy=outbox, 기본값)"]
-        O1["confirm() 호출"]
-        O2["단일 TX: IN_PROGRESS + 재고 감소 + PaymentOutbox(PENDING)"]
-        O3(["202 Accepted ← HTTP 스레드 즉시 해방"])
-        O4["AFTER_COMMIT 이벤트 발행"]
-        O5["channel.offer(orderId)\n비블로킹"]
+    subgraph Outbox["Async 전략 (outbox, 기본값)"]
+        O1["confirm() 호출"]:::process
+        O2["단일 TX: IN_PROGRESS + 재고 감소\n+ PaymentOutbox(PENDING)"]:::tx
+        O3(["202 Accepted\n← HTTP 스레드 즉시 해방"]):::response
+        O4["AFTER_COMMIT 이벤트 발행"]:::process
+        O5["channel.offer(orderId)\n비블로킹"]:::process
 
-        subgraph Workers["OutboxImmediateWorker"]
-            W1["channel.take()\nblocking wait"]
-            W2["claimToInFlight\nREQUIRES_NEW TX"]
-            W3["Toss API 호출\n(HTTP 스레드와 분리)"]
-            W4["TX: PaymentEvent DONE\nPaymentOutbox DONE"]
+        subgraph Workers["OutboxImmediateWorker (고성능/실시간)"]
+            W1["channel.take()\nblocking wait"]:::worker
+            W2["claimToInFlight\nREQUIRES_NEW TX"]:::tx
+            W3["Toss API 호출\n(HTTP 스레드와 분리)"]:::worker
+            W4["TX: PaymentEvent DONE\nPaymentOutbox DONE"]:::tx
         end
 
-        OFB["OutboxWorker\n폴링 폴백 (fixedDelay 2s)\n큐 오버플로우 / 서버 재시작 복구"]
+        OFB["OutboxWorker\n폴링 폴백 (fixedDelay 2s)\n큐 오버플로우 / 서버 재시작 복구"]:::fallback
         O1 --> O2 --> O3
         O2 --> O4 --> O5
         O5 -->|" offer() true "| W1
@@ -61,6 +68,8 @@ flowchart TD
 
     Client --> S1
     Client --> O1
+%% 스타일 보정 (연결선 가독성)
+    linkStyle 7,12,13 stroke: #333, stroke-width: 2px, color: #000
 ```
 
 #### k6 부하 테스트 결과 (Round 9 — 최종):
@@ -103,7 +112,49 @@ sequenceDiagram
 - 작업 테이블을 도입하여, PROCESSING 상태의 작업을 재조회하고 PG사 상태를 재검증하여, 실패가 확정된 건의 보상 트랜잭션(재고 복구)을 자동 재시도
 - 링크: [보상 트랜잭션 실패 상황 극복 가능한 결제 플로우 설계](https://hyoguoo.github.io/blog/payment-compensation-transaction)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/78363906-249b-457d-b997-8120c7ec9ec4">
+```mermaid
+graph TD
+%% 클래스 정의 (가독성 및 테마 대응)
+    classDef standard fill: #F5F5F5, stroke: #333, color: #000
+    classDef process fill: #E1F5FF, stroke: #0078D4, color: #000
+    classDef decision fill: #FFF2CC, stroke: #D79B00, color: #000
+    classDef success fill: #E8F5E9, stroke: #2E7D32, color: #000
+    classDef fail fill: #F8CECC, stroke: #B85450, color: #000
+
+    subgraph sg1 ["1단계: 작업 생성 및 재고 차감 (Transaction 1)"]
+        A["요청 시작"]:::standard --> B{"Tx START"}:::decision
+        B --> C["1. payment_process 테이블에<br/>'PROCESSING' 상태로 작업(Job) INSERT"]:::process
+        C --> D["2. stock 테이블 재고 차감"]:::process
+        D --> E{"Tx COMMIT"}:::decision
+    end
+
+    E -- " 성공 " --> F["2단계: 외부 PG사 결제 처리"]:::standard
+    F --> G{결제 성공?}:::decision
+
+    subgraph sg3 ["3단계: 작업 완료 (Transaction 2)"]
+        G -- " Yes " --> H_Success["Tx START"]:::decision
+        H_Success --> I_Success["payment_process 상태 'COMPLETED'로 UPDATE"]:::success
+        I_Success --> J_Success["orders 테이블 상태 '결제 완료'로 변경"]:::success
+        J_Success --> K_Success["Tx COMMIT"]:::decision
+        K_Success --> L_End["종료"]:::standard
+        G -- " No " --> H_Fail["Tx START"]:::decision
+        H_Fail --> I_Fail["payment_process 상태 'FAILED'로 UPDATE"]:::fail
+        I_Fail --> J_Fail["[보상 트랜잭션]<br/>차감했던 재고 복구"]:::fail
+        J_Fail --> K_Fail["Tx COMMIT"]:::decision
+        K_Fail --> L_End
+    end
+
+    subgraph sg_recovery ["장애 복구 로직"]
+        Z["복구 로직 시작"]:::standard --> Y["payment_process 테이블에서<br/>'PROCESSING' 상태인 작업 조회"]:::process
+        Y --> X{"PG사에 실제 결제 성공 여부 조회 or 승인 요청"}:::decision
+    %% 복구 로직 연동
+        X -- " 결제 성공 상태 " --> H_Success
+        X -- " 결제 실패 상태 " --> H_Fail
+    end
+
+%% 스타일 보정 (연결선 텍스트 강조)
+    linkStyle 4,14,15 stroke: #333, stroke-width: 2px, color: #000
+```
 
 ### 전략 패턴을 통한 PG 독립성 확보 및 확장 가능한 구조
 
@@ -111,7 +162,44 @@ sequenceDiagram
 - 전략 패턴을 통해 PG사 구현체를 추상화하여 새로운 PG 추가 시 최소한의 변경으로 확장 가능
 - 링크: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.github.io/blog/payment-gateway-strategy-pattern)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/cd031502-6de3-442d-8d58-872e39d22253">
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        Service[PaymentConfirmServiceImpl]
+        UseCase[PaymentProcessorUseCase]
+        Port[PaymentGatewayPort<br/>Interface]
+    end
+
+    subgraph "Infrastructure Layer"
+        Adapter[PaymentGatewayAdapter<br/>Port 구현체]
+        Factory[PaymentGatewayFactory<br/>전략 선택]
+        Strategy[PaymentGatewayStrategy<br/>Interface]
+
+        subgraph "Strategy Implementations"
+            Toss[TossPaymentGatewayStrategy]
+            Future[Other PG Strategy<br/>... 확장 가능]
+        end
+    end
+
+    subgraph "External Systems"
+        TossAPI[Toss Payments API]
+    end
+
+    Service -->|사용| UseCase
+    UseCase -->|의존| Port
+    Port -.->|구현| Adapter
+    Adapter -->|위임| Factory
+    Factory -->|선택| Strategy
+    Strategy -.->|구현| Toss
+    Strategy -.->|확장 가능| Future
+    Toss -->|호출| TossAPI
+    style Port fill: #e1f5ff, color: #000
+    style Strategy fill: #e1f5ff, color: #000
+    style Adapter fill: #fff4e1, color: #000
+    style Factory fill: #fff4e1, color: #000
+    style Toss fill: #e8f5e9, color: #000
+    style Future fill: #f5f5f5, stroke-dasharray: 5 5, color: #000
+```
 
 ### 결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현
 
@@ -129,7 +217,42 @@ sequenceDiagram
 - 상태 기반 전환 모델을 정의하고, 재시도 가능한 오류에 대해 자동 복구 흐름 적용
 - 링크: [결제 상태 전환 관리와 재시도 로직을 통한 결제 복구 시스템 구축](https://hyoguoo.github.io/blog/payment-status-with-retry)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/dc7f28b7-5f9e-4d0e-90c6-d355da6d1216">
+```mermaid
+flowchart TD
+%% 노드 정의
+    START([복구 로직 시작])
+    DB[(DB)]
+    FETCH[재시도 가능 결제 조회]
+    CHECK_COUNT{재시도 횟수 검증}
+    INC_COUNT[재시도 횟수 증가]
+    REQUEST[결제 승인 요청]
+    CHECK_SUCCESS{성공 여부}
+    CHECK_RETRY{재시도 가능 여부}
+    DONE[Done 처리]:::green
+    FAILED[Failed 처리]:::red
+    UNKNOWN[Unknown 처리]:::yellow
+%% 흐름 연결
+    START --> FETCH
+    DB -. " 일정 시간 지난 IN_PROGRESS\nUNKNOWN 상태 조회 " .-> FETCH
+    FETCH --> CHECK_COUNT
+    CHECK_COUNT -- " No " --> FAILED
+    CHECK_COUNT -- " Yes " --> INC_COUNT
+    INC_COUNT --> REQUEST
+    REQUEST --> CHECK_SUCCESS
+    CHECK_SUCCESS -- " Yes " --> DONE
+    CHECK_SUCCESS -- " No " --> CHECK_RETRY
+    CHECK_RETRY -- " No " --> FAILED
+    CHECK_RETRY -- " Yes " --> UNKNOWN
+    UNKNOWN --> DB
+%% 스타일 정의 (모든 상태 노드에 color:#000 적용)
+    classDef green fill: #D5E8D4, stroke: #82B366, color: #000
+    classDef red fill: #F8CECC, stroke: #B85450, color: #000
+    classDef yellow fill: #FFF2CC, stroke: #D6B656, color: #000
+    style DB fill: #F5F5F5, stroke: #666, color: #000
+    style CHECK_COUNT fill: #FFE6CC, stroke: #D79B00, color: #000
+    style CHECK_SUCCESS fill: #FFE6CC, stroke: #D79B00, color: #000
+    style CHECK_RETRY fill: #FFE6CC, stroke: #D79B00, color: #000
+```
 
 ### 결제 데이터 검증을 통한 데이터 정합성 보장
 
@@ -137,7 +260,29 @@ sequenceDiagram
 - 서버 주도의 흐름으로 전환하고, 클라이언트·서버·PG 응답값을 교차 검증하여 불일치 시 결제를 거부하도록 설계
 - 링크: [토스 페이먼츠를 통한 결제 연동 시스템 구현](https://hyoguoo.github.io/blog/payment-system-with-toss/)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/53355caa-456f-4dbd-b56e-5c08fc4251ff">
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+    participant T as PG
+    Note over C, T: 결제 시퀀스 흐름
+    C ->> S: 주문 번호 생성 요청
+    S ->> S: 구매 요청 검증 및 DB 저장
+    S -->> C: 주문 번호 반환
+    C ->> T: 결제 요청
+    T ->> T: 카드사 결제 인증
+    T -->> C: 성공 리다이렉트
+    C ->> S: 결제 승인 요청
+    S ->> T: 결제 정보 조회
+    T -->> S: 결제 정보 반환
+    S ->> S: 결제 / 주문 정보 양방향 검증
+    S ->> T: 결제 승인
+    T -->> S: 승인 성공 반환
+    S ->> S: DB 업데이트
+    S -->> C: 성공 내역 반환
+    C ->> C: 결제완료
+```
 
 ### 트랜잭션 범위 최소화를 통한 성능 및 응답 시간 최적화
 
