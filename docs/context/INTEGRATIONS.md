@@ -1,6 +1,6 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-04-05
 
 ## APIs & External Services
 
@@ -9,7 +9,7 @@
 - API version: `2022-11-16`
 - SDK/Client: `HttpTossOperator` implements `TossOperator` port
   - Implementation: `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/api/HttpTossOperator.java`
-  - HTTP client: Spring `RestTemplate` via `HttpOperatorImpl` (`src/main/java/com/hyoguoo/paymentplatform/core/common/infrastructure/http/HttpOperatorImpl.java`)
+  - HTTP client: Spring `WebClient` (WebFlux) via `HttpOperatorImpl` (`src/main/java/com/hyoguoo/paymentplatform/core/common/infrastructure/http/HttpOperatorImpl.java`)
 - Auth: HTTP Basic Auth with Base64-encoded `${TOSS_SECRET_KEY}:` — config key `spring.myapp.toss-payments.secret-key` (docker) or `payment.gateway.toss.secret-key` (PaymentGatewayProperties)
 - Timeouts: connect 3000ms, read 10000ms (default); read 30000ms (docker/benchmark)
 
@@ -55,17 +55,9 @@
 { "code": "string", "message": "string" }
 ```
 
-**Confirm Flow (per strategy):**
+**Confirm Flow:**
 
-_Sync_ (`PaymentConfirmServiceImpl`, `@ConditionalOnProperty(havingValue = "sync")`):
-1. `POST /api/v1/payments/confirm` received
-2. Stock decrease (`executeStockDecreaseWithJobCreation`)
-3. `PaymentEvent` READY → IN_PROGRESS (`executePayment`)
-4. Call Toss confirm API
-5. `PaymentEvent` IN_PROGRESS → DONE (`executePaymentSuccessCompletion`)
-6. Return `200 OK` with `PaymentConfirmAsyncResult(SYNC_200)`
-
-_Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "outbox")`):
+_Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 1. `POST /api/v1/payments/confirm` received
 2. READY → IN_PROGRESS + stock decrease + `PaymentOutbox(PENDING)` in single TX (`executePaymentAndStockDecreaseWithOutbox`)
 3. Return `202 Accepted` with `PaymentConfirmAsyncResult(ASYNC_202)`
@@ -122,14 +114,6 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "ou
 - `in_flight_at` DATETIME
 - `created_at`, `updated_at`
 - Index: `idx_payment_outbox_status_created` on `(status, created_at)`
-
-`payment_process` — maps to `PaymentProcessEntity` (sync strategy job tracking):
-- `id` BIGINT PK
-- `order_id` VARCHAR(100) NOT NULL UNIQUE
-- `status` ENUM(`PROCESSING`, `COMPLETED`, `FAILED`) NOT NULL VARCHAR(20)
-- `completed_at`, `failed_at` DATETIME
-- `failure_reason` VARCHAR(500)
-- `created_at`, `updated_at`
 
 `payment_history` — maps to `PaymentHistoryEntity` (audit trail):
 - `id` BIGINT PK
@@ -188,7 +172,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "ou
 - Active profiles on app service: `SPRING_PROFILES_ACTIVE=docker,benchmark`
 
 **CI Pipeline:**
-- Not detected (no GitHub Actions, Jenkinsfile, or equivalent)
+- GitHub Actions (`.github/workflows/ci.yml`): push/PR to `main` → JUnit 테스트 + JaCoCo 커버리지 리포트 → reviewdog로 PR 어노테이션
 
 **Docker Compose Services:**
 
@@ -224,4 +208,4 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@ConditionalOnProperty(havingValue = "ou
 
 ---
 
-*Integration audit: 2026-03-18*
+*Integration audit: 2026-04-05 (updated 2026-04-05)*

@@ -32,16 +32,17 @@ src/test/java/com/hyoguoo/paymentplatform/
 │   ├── FakeProductRepository.java
 │   ├── FakeUserRepository.java
 │   ├── FakeTossOperator.java
+│   ├── FakeIdempotencyStore.java
 │   └── AdditionalHeaderHttpOperator.java
 ├── mixin/                             # Jackson MixIns for deserialization in tests
 │   ├── BasicResponseMixin.java
 │   ├── CheckoutResponseMixin.java
 │   └── PaymentConfirmResponseMixin.java
-├── IntegrationTest.java               # Project-specific integration base
 ├── payment/
 │   ├── domain/                        # Pure domain entity tests
 │   ├── application/                   # Use-case / service unit tests
-│   │   └── usecase/
+│   │   ├── usecase/
+│   │   └── IdempotencyKeyHasherTest.java
 │   ├── presentation/                  # Controller tests
 │   ├── scheduler/                     # Scheduler unit tests
 │   │   ├── OutboxImmediateWorkerTest.java    # SmartLifecycle + VT/PT 워커 생명주기 테스트
@@ -50,6 +51,8 @@ src/test/java/com/hyoguoo/paymentplatform/
 │   ├── listener/                      # Event listener tests
 │   │   └── OutboxImmediateEventHandlerTest.java  # channel.offer 위임 + 오버플로우 경고
 │   └── infrastructure/                # Infrastructure unit tests
+│       └── publisher/
+│           └── OutboxImmediatePublisherTest.java
 ├── paymentgateway/application/
 ├── product/
 └── user/
@@ -87,19 +90,6 @@ public abstract class BaseIntegrationTest {
     }
 }
 ```
-
-### IntegrationTest (project base)
-File: `src/test/java/com/hyoguoo/paymentplatform/IntegrationTest.java`
-
-```java
-@AutoConfigureMockMvc
-@Sql(scripts = "/data-test.sql")
-public abstract class IntegrationTest extends BaseIntegrationTest {
-    // adds MockMvc auto-config and seed data
-}
-```
-
-Integration test classes that use the full HTTP stack (e.g., `PaymentControllerTest`) extend `IntegrationTest`.
 
 ## @Tag("integration") Exclusion Pattern
 
@@ -211,8 +201,6 @@ await().atMost(2, TimeUnit.SECONDS)
 class PaymentTransactionCoordinatorTest {
     @InjectMocks
     private PaymentTransactionCoordinator coordinator;
-    @Mock
-    private PaymentProcessUseCase paymentProcessUseCase;
 }
 ```
 
@@ -238,12 +226,11 @@ class PaymentControllerMvcTest {
     private UUIDProvider uuidProvider;
 
     @Test
-    @DisplayName("ResponseType.SYNC_200 일 때 confirm()은 HTTP 200을 반환한다. (PORT-02)")
-    void confirmPayment_SyncAdapter_Returns200() throws Exception {
+    @DisplayName("confirm() 호출 시 202 Accepted를 반환한다.")
+    void confirm_Returns202() throws Exception {
         // given
         when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
                 .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .responseType(ResponseType.SYNC_200)
                         .orderId("order-1")
                         .build());
 
@@ -251,7 +238,7 @@ class PaymentControllerMvcTest {
         mockMvc.perform(post("/api/v1/payments/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
     }
 }
 ```
@@ -286,10 +273,10 @@ then(mockPaymentFailureUseCase).should(times(1))
         .handleStockFailure(eq(paymentEvent), anyString());
 ```
 
-Older tests (e.g., `PaymentConfirmServiceImplTest`, `PaymentCreateUseCaseTest`) use classic Mockito:
+Older tests (e.g., `PaymentCreateUseCaseTest`) use classic Mockito:
 ```java
 when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any())).thenReturn(mockPaymentEvent);
-verify(mockPaymentCommandUseCase, times(1)).markPaymentAsUnknown(eq(...), any());
+verify(mockPaymentCommandUseCase, times(1)).markPaymentAsFail(eq(...), any());
 ```
 
 Both styles are present. Prefer BDD (`given` / `then`) for new tests.
@@ -300,7 +287,7 @@ Domain tests use `@ParameterizedTest @EnumSource` to exhaustively cover valid AN
 
 ```java
 @ParameterizedTest
-@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "UNKNOWN"})
+@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
 @DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경한다.")
 void execute_Success(PaymentEventStatus paymentEventStatus) {
     // given
@@ -315,7 +302,7 @@ void execute_Success(PaymentEventStatus paymentEventStatus) {
 }
 
 @ParameterizedTest
-@EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED"})
+@EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
 @DisplayName("결제 시작 시 변경 불가한 상태에서는 예외를 던진다.")
 void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
     // when & then
@@ -369,35 +356,17 @@ class OutboxAsyncConfirmServiceTest {
 
 Use `@Nested` when a single class has multiple distinct method groups to test.
 
-## Annotation Presence Tests
-
-`@ConditionalOnProperty` activation is verified by inspecting the annotation directly:
-
-```java
-@Test
-@DisplayName("OutboxAsyncConfirmService는 @ConditionalOnProperty(havingValue=outbox, matchIfMissing=false)를 가진다")
-void testConditionalOnProperty() {
-    ConditionalOnProperty annotation =
-            OutboxAsyncConfirmService.class.getAnnotation(ConditionalOnProperty.class);
-
-    assertThat(annotation).isNotNull();
-    assertThat(annotation.havingValue()).isEqualTo("outbox");
-    assertThat(annotation.matchIfMissing()).isFalse();
-}
-```
-
 ## Testcontainers Setup
 
 **MySQL** (`mysql:8.0`) used in `BaseIntegrationTest`.
 
 Container lifecycle: static `@Container` fields — shared across all tests in a class. `@DynamicPropertySource` injects the container URLs at Spring context startup.
 
-Seed data: `src/test/resources/data-test.sql` inserts test users and products via `@Sql(scripts = "/data-test.sql")` on `IntegrationTest`.
+Seed data: `src/test/resources/data-test.sql` inserts test users and products via `@Sql(scripts = "/data-test.sql")` on `BaseIntegrationTest` subclasses.
 
 Active profile: `test` (`src/test/resources/application-test.yml`). Key settings:
 - `spring.jpa.hibernate.ddl-auto: create-drop` — schema recreated per test run
 - `scheduler.enabled: false` (overridden to `true` by `@DynamicPropertySource` in base classes)
-- `spring.payment.async-strategy` not set by default (Sync adapter activates via `matchIfMissing=true`)
 
 ## JaCoCo Configuration
 

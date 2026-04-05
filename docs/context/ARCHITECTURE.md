@@ -36,6 +36,7 @@
   - `PaymentGatewayPort` — confirm/cancel/status calls to Toss
   - `ProductPort`, `UserPort` — cross-context calls
   - `application/port/out/PaymentConfirmPublisherPort` — Outbox 즉시 처리 이벤트 발행 추상화
+  - `IdempotencyStore` — 멱등성 키 저장소 (port at `application/port/IdempotencyStore.java`)
 - Fine-grained use-case services (internal, not exposed as ports):
   - `PaymentCommandUseCase` — all status-changing operations; owns `@PublishDomainEvent` and `@PaymentStatusChange` annotations
   - `PaymentLoadUseCase` — read operations
@@ -43,6 +44,10 @@
   - `PaymentFailureUseCase` — failure routing logic
   - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions; owns `claimToInFlight` delegation pattern
   - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
+  - `PaymentHistoryUseCase` — payment history 저장/조회
+  - `AdminPaymentLoadUseCase` — admin 쿼리 전용 use-case
+- Utilities (application layer, not ports/use-cases):
+  - `IdempotencyKeyHasher` — 멱등성 키 해시 유틸
 - Depends on: `domain`, `core/common`
 - Used by: `presentation`, `scheduler`, `listener`
 
@@ -56,6 +61,7 @@
   - Gateway strategy: `gateway/PaymentGatewayStrategy` (interface), `PaymentGatewayFactory`, `PaymentGatewayProperties`, `PaymentGatewayType`; concrete: `gateway/toss/TossPaymentGatewayStrategy`
   - Cross-context adapters: `internal/InternalPaymentGatewayAdapter` implements `PaymentGatewayPort`, `InternalProductAdapter` implements `ProductPort`, `InternalUserAdapter` implements `UserPort`
   - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
+  - Idempotency: `idempotency/IdempotencyStoreImpl` implements `IdempotencyStore`, `IdempotencyProperties`
   - Mapper: `PaymentInfrastructureMapper`
 - Depends on: `application/port`, `paymentgateway/presentation/port`, `product/presentation/port`, `user/presentation/port`
 
@@ -119,7 +125,7 @@ OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유]
   Step 4B (non-retryable): executePaymentFailureCompensationWithOutbox()
   Step 4C (retryable):     incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
 
-OutboxWorker.process()  [@Scheduled every 2s — 폴백 전용]
+OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
   — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
   Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → reset to PENDING]
   Step 1: findPendingBatch(batchSize)       [기본 50건]
