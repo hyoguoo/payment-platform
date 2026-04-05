@@ -91,7 +91,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - `order_name` VARCHAR NOT NULL
 - `order_id` VARCHAR NOT NULL
 - `payment_key` VARCHAR (nullable until confirm)
-- `status` ENUM(`READY`, `IN_PROGRESS`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`, `UNKNOWN`) NOT NULL
+- `status` ENUM(`READY`, `IN_PROGRESS`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`) NOT NULL
 - `executed_at`, `approved_at`, `last_status_changed_at` DATETIME
 - `retry_count` INT
 - `status_reason` VARCHAR
@@ -104,7 +104,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - `product_id` BIGINT NOT NULL
 - `quantity` INT NOT NULL
 - `amount` DECIMAL NOT NULL
-- `status` ENUM(`NOT_STARTED`, `EXECUTING`, `SUCCESS`, `FAILURE`) NOT NULL
+- `status` ENUM(`NOT_STARTED`, `EXECUTING`, `SUCCESS`, `FAIL`, `CANCEL`, `EXPIRED`) NOT NULL
 
 `payment_outbox` — maps to `PaymentOutboxEntity` (Outbox strategy):
 - `id` BIGINT PK
