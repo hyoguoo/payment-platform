@@ -1,12 +1,16 @@
 package com.hyoguoo.paymentplatform.core.common.infrastructure.http;
 
+import io.netty.channel.ChannelOption;
+import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
 @Component
 public class HttpOperatorImpl implements HttpOperator {
@@ -14,7 +18,20 @@ public class HttpOperatorImpl implements HttpOperator {
     @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
     private long readTimeoutMillis;
 
-    private final WebClient webClient = WebClient.builder().build();
+    @Value("${spring.gateway.toss.connect-timeout:3000}")
+    private int connectTimeoutMillis;
+
+    private WebClient webClient;
+
+    @PostConstruct
+    public void init() {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMillis)
+                .responseTimeout(Duration.ofMillis(readTimeoutMillis));
+        this.webClient = WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
+    }
 
     @Override
     public <T> T requestGet(
@@ -28,7 +45,7 @@ public class HttpOperatorImpl implements HttpOperator {
                 .headers(headers -> headers.setAll(mergedHeaders))
                 .retrieve()
                 .bodyToMono(responseType)
-                .block(Duration.ofMillis(readTimeoutMillis));
+                .block();
     }
 
     @Override
@@ -46,7 +63,7 @@ public class HttpOperatorImpl implements HttpOperator {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(responseType)
-                .block(Duration.ofMillis(readTimeoutMillis));
+                .block();
     }
 
     protected Map<String, String> getAdditionalHeaders() {
