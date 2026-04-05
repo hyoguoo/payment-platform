@@ -206,9 +206,8 @@ graph TB
 - 승인 지연, 재시도 등 복잡한 결제 흐름 추적의 어려움 및 실시간 성능/이상 징후를 파악할 핵심 지표 부재
 - 구조화된 로깅 적용 / 결제 정보 변동 저장 및 어드민 페이지 구현 / 커스텀 메트릭 수집을 통한 핵심 지표 모니터링 체계 구축
 - 링크:
-  [결제 이력 추적 및 모니터링 시스템 구현](https://hyoguoo.github.io/blog/payment-history-and-metrics) / [Logger 성능 저하 방지와 구조화된 로깅 설계](https://hyoguoo.github.io/blog/log-structure-and-performance)
 
-<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0cbabcf6-7164-4d09-a969-ab5ad604c678">
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/92aee152-fa7a-4570-b1d7-ad3191e9a121">
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/0bf123ea-0b32-4a89-8368-34734e40c8b6">
 
 ### 재시도 가능한 에러 처리 및 복구 로직 적용
