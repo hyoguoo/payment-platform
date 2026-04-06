@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: CLIENT-INTEGRATION
-- **단계**: plan
+- **단계**: plan-review
 - **이슈**: #58
 - **브랜치**: #58
 
@@ -15,7 +15,7 @@
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
