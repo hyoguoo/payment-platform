@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: CLIENT-INTEGRATION
-- **단계**: review
+- **단계**: verify
 - **활성 태스크**: -
 - **이슈**: #58
 - **브랜치**: #58
@@ -19,5 +19,5 @@
 - [x] plan
 - [x] plan-review
 - [x] execute
-- [ ] review
+- [x] review
 - [ ] verify
