@@ -19,3 +19,4 @@
 | `async-payment-cleanup/` | 비동기 결제 클린업 — Kafka 전략 제거, Sync/Outbox 이중 전략 정리, 불필요 UseCase·RecoverService 제거 | 2026-03-29 |
 | `async-channel/` | 비동기 채널 — LinkedBlockingQueue + OutboxImmediateWorker(VT/PT)로 HTTP 스레드 블로킹 완전 제거, OutboxProcessingService 공유 처리 로직 추출 | 2026-03-31 |
 | `outbox-only-refactor/` | Outbox 단일화 리팩토링 — Sync 전략·PaymentProcess 도메인 제거, UNKNOWN 상태 전면 삭제, RestTemplate→WebClient 전환, Grafana 관측 지표 추가 | 2026-04-06 |
+| `client-integration/` | 클라이언트 통합 — 정적 결제 UI(checkout/success/fail) 추가, Thymeleaf 어드민 페이지 리팩토링, Docker 환경변수 및 run.sh 개선 | 2026-04-06 |
