@@ -180,7 +180,7 @@ services:
     env_file:
       - .env.secret
     environment:
-      - SPRING_PROFILES_ACTIVE=docker${BENCHMARK_PROFILE}
+      - SPRING_PROFILES_ACTIVE=docker${BENCHMARK_PROFILE:-}
       - DB_USERNAME=${MYSQL_USER:-payment}
       - DB_PASSWORD=${MYSQL_PASSWORD:-payment123}
       - JAVA_OPTS=-Xms512m -Xmx1024m
