@@ -5,7 +5,7 @@
 /* Theme tokens */
 :root {
   --bg-primary: #ffffff;
-  --bg-secondary: #eef4fc;
+  --bg-secondary: #e8f3ff;
   --bg-card: #ffffff;
   --text-primary: #191f28;
   --text-secondary: #4e5968;
@@ -152,9 +152,7 @@ body {
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.825rem;
   padding: 0.75rem 1.25rem;
   display: flex;
   align-items: center;
@@ -179,11 +177,9 @@ body {
 }
 
 .filter-section .form-label {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--primary-color);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--text-secondary);
   margin-bottom: 0.4rem;
 }
 
@@ -228,9 +224,7 @@ body {
   background-color: var(--table-header-bg);
   color: var(--table-header-text);
   font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.8rem;
   padding: 0.75rem 1rem;
   border: none;
   white-space: nowrap;
@@ -322,8 +316,7 @@ body {
 .btn-primary-professional:hover {
   background-color: var(--primary-hover);
   color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(49, 130, 246, 0.3);
+  box-shadow: 0 2px 8px rgba(49, 130, 246, 0.25);
 }
 
 /* =====================
@@ -341,8 +334,7 @@ body {
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 8%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 8%);
 }
 
 .stat-number {
@@ -355,10 +347,8 @@ body {
 
 .stat-label {
   color: var(--text-muted);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 /* =====================
@@ -375,10 +365,8 @@ body {
 
 .info-label {
   font-weight: 600;
-  color: var(--primary-color);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
   margin-bottom: 0.25rem;
 }
 
@@ -519,4 +507,31 @@ code {
 
 [data-theme="dark"] code {
   background-color: rgba(69, 147, 252, 0.12);
+}
+
+/* =====================
+   Theme toggle — navbar variant
+   ===================== */
+.theme-toggle-nav {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.theme-toggle-nav:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
 }

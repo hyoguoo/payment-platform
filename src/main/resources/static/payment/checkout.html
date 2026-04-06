@@ -2,35 +2,29 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="https://static.toss.im/icons/png/4x/icon-toss-logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" type="text/css" href="/style.css" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <script src="/theme.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>결제하기</title>
     <script src="https://js.tosspayments.com/v1/payment"></script>
   </head>
   <body>
     <div class="wrapper">
-      <div class="box_section" style="padding: 40px 30px 50px 30px; margin-top: 30px; margin-bottom: 50px">
-        <h1>결제하기</h1>
+      <div class="box_section" style="padding: 40px 30px 50px; text-align: left;">
+        <h1 class="page-title">결제하기</h1>
 
-        <!-- 결제수단 선택 -->
-        <div style="margin-bottom: 20px">
-          <label>
-            <input type="radio" name="paymentMethod" value="card" onchange="onMethodChange(this.value)" checked /> 카드
-          </label>
-          &nbsp;&nbsp;
-          <label>
-            <input type="radio" name="paymentMethod" value="easypay" onchange="onMethodChange(this.value)" /> 간편결제
-          </label>
-          &nbsp;&nbsp;
-          <label>
-            <input type="radio" name="paymentMethod" value="tossPayments" onchange="onMethodChange(this.value)" /> 토스페이
-          </label>
+        <!-- 결제수단 -->
+        <div class="form-group">
+          <h3 class="section-label">결제수단</h3>
+          <div class="radio-group">
+            <label><input type="radio" name="paymentMethod" value="card" onchange="onMethodChange(this.value)" checked /> 카드</label>
+            <label><input type="radio" name="paymentMethod" value="easypay" onchange="onMethodChange(this.value)" /> 간편결제</label>
+            <label><input type="radio" name="paymentMethod" value="tossPayments" onchange="onMethodChange(this.value)" /> 토스페이</label>
+          </div>
         </div>
 
-        <!-- 카드사 선택 -->
-        <div id="card-options" style="margin-bottom: 20px">
+        <div id="card-options" class="form-group">
           <select id="cardCompany">
             <option value="">카드사 선택 (선택사항)</option>
             <option value="KOREA_DEVELOPMENT_BANK">KDB산업은행</option>
@@ -48,8 +42,7 @@
           </select>
         </div>
 
-        <!-- 간편결제사 선택 -->
-        <div id="easypay-options" style="display: none; margin-bottom: 20px">
+        <div id="easypay-options" class="form-group" style="display: none;">
           <select id="easyPayProvider">
             <option value="">간편결제 선택</option>
             <option value="TOSSPAY">토스페이</option>
@@ -63,23 +56,26 @@
         </div>
 
         <!-- 구매자 정보 -->
-        <div style="margin-bottom: 20px; text-align: left">
-          <div style="margin-bottom: 10px">
-            <label>이름 (선택): <input type="text" id="customerName" placeholder="홍길동" style="margin-left: 8px" /></label>
+        <div class="form-group">
+          <h3 class="section-label">구매자 정보</h3>
+          <div class="form-field">
+            <label>이름 (선택): <input type="text" id="customerName" placeholder="홍길동" /></label>
           </div>
-          <div>
-            <label>이메일 (선택): <input type="email" id="customerEmail" placeholder="example@email.com" style="margin-left: 8px" /></label>
+          <div class="form-field">
+            <label>이메일 (선택): <input type="email" id="customerEmail" placeholder="example@email.com" /></label>
           </div>
         </div>
 
-        <!-- 결제내역 -->
-        <div class="p-grid typography--p" style="margin-top: 20px">
-          <div class="p-grid-col text--left"><b>주문금액</b></div>
-          <div class="p-grid-col text--right">210,000원</div>
+        <!-- 주문 요약 -->
+        <div class="form-group">
+          <h3 class="section-label">주문 요약</h3>
+          <div class="p-grid typography--p">
+            <div class="p-grid-col text--left"><b>주문금액</b></div>
+            <div class="p-grid-col text--right">210,000원</div>
+          </div>
         </div>
 
-        <!-- 결제하기 버튼 -->
-        <button class="button" style="margin-top: 30px" onclick="requestPayment()">결제하기</button>
+        <button class="button" style="margin-top: 8px; width: 100%;" onclick="requestPayment()">결제하기</button>
       </div>
     </div>
 

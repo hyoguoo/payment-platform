@@ -31,8 +31,6 @@ body {
   color: #333d4b;
   align-items: center;
   text-align: center;
-  overflow-x: auto; /* Add this property for horizontal scrolling */
-  white-space: nowrap; /* Prevent text wrapping */
 }
 :root {
   --inverseGrey50: #202027;
@@ -565,4 +563,303 @@ textarea {
 .p-grid-col5 {
   flex: 0 0 41.66667%;
   max-width: 41.66667%;
+}
+
+/* =====================
+   Form
+   ===================== */
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.form-group + .form-group {
+  margin-top: 0;
+}
+
+.form-field {
+  margin-bottom: 10px;
+}
+
+.form-field:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label,
+.form-field label {
+  font-size: 14px;
+  color: #4e5968;
+}
+
+.form-group select,
+.form-group input[type="text"],
+.form-group input[type="email"] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1px solid #d1d6db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #333d4b;
+  background-color: #fff;
+}
+
+.radio-group {
+  display: flex;
+  gap: 20px;
+  text-align: left;
+}
+
+.radio-group label {
+  font-size: 14px;
+  color: #4e5968;
+  cursor: pointer;
+}
+
+/* =====================
+   Status / Notice
+   ===================== */
+.notice {
+  font-size: 14px;
+  color: #6b7684;
+  margin-bottom: 20px;
+}
+
+.notice--error {
+  color: #e52222;
+  margin-top: 20px;
+}
+
+/* =====================
+   Link grid (index page)
+   ===================== */
+.link-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.link-group h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b95a1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 10px;
+}
+
+.link-item {
+  display: block;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #e8edf2;
+  text-decoration: none;
+  color: #333d4b;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.link-item:hover {
+  background-color: #f2f4f6;
+  border-color: #c9d1d9;
+}
+
+.link-item .desc {
+  display: block;
+  font-size: 12px;
+  color: #8b95a1;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.link-item.external::after {
+  content: " ↗";
+  font-size: 11px;
+  color: #8b95a1;
+}
+
+/* =====================
+   Theme tokens
+   ===================== */
+:root {
+  --pp-page-bg: #e8f3ff;
+  --pp-card-bg: #ffffff;
+  --pp-card-border: transparent;
+  --pp-card-shadow: 0 2px 4px rgb(0 0 0 / 4%), 0 8px 24px rgb(0 0 0 / 7%);
+  --pp-text-primary: #191f28;
+  --pp-text-body: #333d4b;
+  --pp-text-muted: #8b95a1;
+  --pp-border: #e5e8eb;
+  --pp-border-hover: #b0b8c1;
+  --pp-input-bg: #ffffff;
+  --pp-input-border: #d1d6db;
+  --pp-hover-bg: #f2f4f6;
+  --pp-notice-color: #6b7684;
+  --pp-accent: #3182f6;
+  --pp-accent-bg: rgba(49, 130, 246, 0.07);
+}
+
+[data-theme="dark"] {
+  --pp-page-bg: #0f1117;
+  --pp-card-bg: #1c2030;
+  --pp-card-border: #2a2f45;
+  --pp-card-shadow: 0 2px 4px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 40%);
+  --pp-text-primary: #e8eaed;
+  --pp-text-body: #c3c3c6;
+  --pp-text-muted: #62626d;
+  --pp-border: #2a2f45;
+  --pp-border-hover: #4d4d59;
+  --pp-input-bg: #252b3d;
+  --pp-input-border: #363d55;
+  --pp-hover-bg: #252b3d;
+  --pp-notice-color: #9e9ea4;
+  --pp-accent: #4593fc;
+  --pp-accent-bg: rgba(69, 147, 252, 0.1);
+}
+
+/* =====================
+   Base overrides (theme-aware)
+   ===================== */
+body {
+  background-color: var(--pp-page-bg);
+  color: var(--pp-text-body);
+  transition: background-color 0.25s, color 0.25s;
+}
+
+.box_section {
+  background-color: var(--pp-card-bg);
+  border: 1px solid var(--pp-card-border);
+  box-shadow: var(--pp-card-shadow);
+  border-radius: 12px;
+  color: var(--pp-text-body);
+  transition: background-color 0.25s, border-color 0.25s;
+}
+
+h1,
+h2 {
+  color: var(--pp-text-primary);
+  transition: color 0.25s;
+}
+
+b {
+  color: var(--pp-text-body);
+}
+
+/* =====================
+   Page title & section label
+   ===================== */
+.page-title {
+  margin: 0 0 24px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--pp-text-primary);
+  letter-spacing: -0.3px;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pp-text-muted);
+  margin: 0 0 10px;
+}
+
+/* =====================
+   Form (theme-aware)
+   ===================== */
+.form-group select,
+.form-group input[type="text"],
+.form-group input[type="email"] {
+  border-color: var(--pp-input-border);
+  background-color: var(--pp-input-bg);
+  color: var(--pp-text-primary);
+  transition: border-color 0.15s, background-color 0.25s;
+}
+
+.form-group select:focus,
+.form-group input[type="text"]:focus,
+.form-group input[type="email"]:focus {
+  outline: none;
+  border-color: #3182f6;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.15);
+}
+
+.form-group label,
+.form-field label,
+.radio-group label {
+  color: var(--pp-text-body);
+}
+
+/* =====================
+   Link grid (theme-aware)
+   ===================== */
+.link-group h3 {
+  color: var(--pp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.link-item {
+  border-color: var(--pp-border);
+  color: var(--pp-text-body);
+  background-color: var(--pp-card-bg);
+  border-left-width: 3px;
+  border-left-color: transparent;
+  transition: background-color 0.15s, border-color 0.15s, padding-left 0.15s;
+}
+
+.link-item:hover {
+  background-color: var(--pp-accent-bg);
+  border-color: var(--pp-border);
+  border-left-color: var(--pp-accent);
+  padding-left: 13px;
+}
+
+.link-item .desc {
+  color: var(--pp-text-muted);
+}
+
+.link-item.external::after {
+  color: var(--pp-text-muted);
+}
+
+/* =====================
+   Notice (theme-aware)
+   ===================== */
+.notice {
+  color: var(--pp-notice-color);
+}
+
+/* =====================
+   Theme toggle button
+   ===================== */
+.theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--pp-border);
+  background-color: var(--pp-card-bg);
+  color: var(--pp-text-body);
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  z-index: 100;
+  line-height: 1;
+  padding: 0;
+}
+
+.theme-toggle:hover {
+  background-color: var(--pp-hover-bg);
+  border-color: var(--pp-border-hover);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
 }
