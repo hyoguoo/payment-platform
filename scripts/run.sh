@@ -1,7 +1,9 @@
 #!/bin/bash
+set -e
 
 # 공통 함수 로드
-source "$(dirname "$0")/common.sh"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/common.sh"
 
 print_info "🚀 Starting Payment Platform"
 echo "================================================"
@@ -9,10 +11,8 @@ echo "================================================"
 # Docker 체크
 check_docker
 
-cd docker/compose
-
 # .env.secret 파일 확인
-if [ ! -f .env.secret ]; then
+if [ ! -f "$PROJECT_ROOT/docker/compose/.env.secret" ]; then
     print_error "❌ .env.secret 파일이 없습니다!"
     echo ""
     echo "다음 명령어를 실행하여 .env.secret 파일을 생성하세요:"
@@ -23,16 +23,16 @@ if [ ! -f .env.secret ]; then
 fi
 
 print_warning "Cleaning up existing containers..."
-docker-compose down -v 2>/dev/null
+docker-compose -f "$PROJECT_ROOT/docker/compose/docker-compose.yml" down -v 2>/dev/null || true
 
 print_warning "Building application on host (for speed)..."
-./gradlew clean build -x test -x integrationTest --no-daemon
+"$PROJECT_ROOT/gradlew" -p "$PROJECT_ROOT" clean build -x test -x integrationTest --no-daemon
 
 print_warning "Building docker image..."
-docker-compose build --no-cache app
+docker-compose -f "$PROJECT_ROOT/docker/compose/docker-compose.yml" build --no-cache app
 
 print_warning "Starting all services..."
-docker-compose up -d
+docker-compose -f "$PROJECT_ROOT/docker/compose/docker-compose.yml" up -d
 
 print_section "Waiting for services (30 seconds)..."
 sleep 30
@@ -51,5 +51,3 @@ done
 # URL 및 명령어 출력
 print_service_urls
 print_log_commands
-
-cd ../..

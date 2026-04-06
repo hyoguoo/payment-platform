@@ -4,13 +4,11 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPu
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
 import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.payment.async-strategy", havingValue = "outbox")
 public class OutboxImmediatePublisher implements PaymentConfirmPublisherPort {
 
     private final ApplicationEventPublisher applicationEventPublisher;
