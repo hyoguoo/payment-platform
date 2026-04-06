@@ -16,14 +16,16 @@
   - `src/main/resources/static/payment/success.html` (신규)
   - `src/main/resources/static/payment/fail.html` (신규)
 
-### API 응답 구조 (data 래퍼 없음)
+### API 응답 구조 (`data` 래퍼 있음)
 
+모든 응답은 `BasicResponse<T>` 래퍼로 감싸진다.
 ```
-POST /api/v1/payments/checkout   → { orderId, totalAmount }
-POST /api/v1/payments/confirm    → { orderId, amount, processingDelayed }
-GET  /api/v1/payments/{id}/status → { orderId, status, approvedAt }
+POST /api/v1/payments/checkout   → { data: { orderId, totalAmount } }
+POST /api/v1/payments/confirm    → { data: { orderId, amount, processingDelayed } }
+GET  /api/v1/payments/{id}/status → { data: { orderId, status, approvedAt } }
   status: PENDING | PROCESSING | DONE | FAILED
 ```
+JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 
 ---
 
@@ -76,7 +78,7 @@ GET  /api/v1/payments/{id}/status → { orderId, status, approvedAt }
        ]
      }
      ```
-   - 응답에서 `json.orderId` 획득 (`data` 래퍼 없음)
+   - 응답에서 `json.data.orderId` 획득 (`BasicResponse<T>` 래퍼)
    - `TossPayments(CLIENT_KEY).requestPayment(paymentMethod, { ... })`
      - `successUrl`: `http://localhost:8080/payment/success.html`
      - `failUrl`: `http://localhost:8080/payment/fail.html`
@@ -110,9 +112,10 @@ GET  /api/v1/payments/{id}/status → { orderId, status, approvedAt }
    - `processingDelayed: true` 이면 "다소 시간이 걸릴 수 있습니다" 안내 표시
    - `GET /api/v1/payments/{orderId}/status` 폴링 시작
      - 1초 간격, 최대 30회 (`setInterval` + 카운터)
-     - `DONE` → 성공 화면 표시 (orderId, amount, approvedAt)
-     - `FAILED` → 실패 메시지 표시
-     - 30회 초과 → "처리 시간이 초과됐습니다. 잠시 후 다시 확인해 주세요." 안내
+     - `json.data.status` 값으로 분기
+     - `DONE` → `clearInterval` 후 성공 화면 표시 (`json.data.orderId`, `json.data.approvedAt`)
+     - `FAILED` → `clearInterval` 후 실패 메시지 표시
+     - 30회 초과 → `clearInterval` 후 "처리 시간이 초과됐습니다. 잠시 후 다시 확인해 주세요." 안내
 
 **완료 기준**
 - 결제 완료 후 success.html 도달 시 confirm 호출 → 폴링 → DONE 결과 표시 확인
