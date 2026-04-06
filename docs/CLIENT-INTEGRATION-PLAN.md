@@ -32,10 +32,10 @@ JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 ## 진행 상황
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
-- [ ] Task 1: style.css 추가
-- [ ] Task 2: checkout.html 작성
-- [ ] Task 3: success.html 작성
-- [ ] Task 4: fail.html 작성
+- [x] Task 1: style.css 추가
+- [x] Task 2: checkout.html 작성
+- [x] Task 3: success.html 작성
+- [x] Task 4: fail.html 작성
 
 ---
 
@@ -52,7 +52,7 @@ JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 - `http://localhost:8080/style.css` 접근 시 CSS 반환
 
 **완료 결과**
-> (완료 후 작성)
+> 레퍼런스 파일을 그대로 복사. Toss 디자인 시스템 CSS 변수, 체크박스/라디오 스타일, 그리드, 타이포그래피 등 포함.
 
 ---
 
@@ -91,7 +91,7 @@ JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 - 결제수단 선택 → 결제하기 → Toss 결제창 정상 호출
 
 **완료 결과**
-> (완료 후 작성)
+> Toss SDK v1(`/v1/payment`) 사용. card/easypay/tossPayments 라디오 선택 + 세부 옵션(카드사/간편결제사) 드롭다운. POST /api/v1/payments/checkout → orderId 획득 후 TossPayments(CLIENT_KEY).requestPayment() 호출.
 
 ---
 
@@ -122,7 +122,7 @@ JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 - confirm 오류 시 fail.html로 정상 리다이렉트
 
 **완료 결과**
-> (완료 후 작성)
+> URL 파라미터에서 paymentKey/orderId/amount 파싱 → POST /api/v1/payments/confirm → 202 성공 시 1초 간격 최대 30회 폴링. processingDelayed=true 이면 안내 문구 표시. DONE 시 결과 표시, FAILED 시 오류 표시, 30회 초과 시 타임아웃 안내.
 
 ---
 
@@ -141,7 +141,7 @@ JS 접근: `json.data.orderId`, `json.data.status`, `json.data.approvedAt`
 - "다시 시도" 버튼 클릭 시 checkout.html로 이동
 
 **완료 결과**
-> (완료 후 작성)
+> URL 파라미터에서 code/message 파싱 후 화면 표시. "다시 시도" 버튼 클릭 시 checkout.html로 이동.
 
 ---
 

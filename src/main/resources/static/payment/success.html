@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="https://static.toss.im/icons/png/4x/icon-toss-logo.png" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>결제 완료</title>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="box_section" style="width: 600px">
+        <img width="100px" src="https://static.toss.im/illusts/check-blue-spot-ending-frame.png" />
+        <h2 id="status-title">결제 처리 중...</h2>
+
+        <div id="delayed-notice" style="display: none; color: #6b7684; margin-bottom: 20px">
+          처리에 다소 시간이 걸릴 수 있습니다. 잠시만 기다려 주세요.
+        </div>
+
+        <div id="result-section" style="display: none">
+          <div class="p-grid typography--p" style="margin-top: 30px">
+            <div class="p-grid-col text--left"><b>주문번호</b></div>
+            <div class="p-grid-col text--right" id="result-orderId"></div>
+          </div>
+          <div class="p-grid typography--p" style="margin-top: 10px">
+            <div class="p-grid-col text--left"><b>승인시각</b></div>
+            <div class="p-grid-col text--right" id="result-approvedAt"></div>
+          </div>
+        </div>
+
+        <div id="error-section" style="display: none; color: #e52222; margin-top: 20px">
+          <p id="error-message"></p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentKey = urlParams.get("paymentKey");
+      const orderId = urlParams.get("orderId");
+      const amount = urlParams.get("amount");
+
+      async function confirmPayment() {
+        const response = await fetch("/api/v1/payments/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: 1, orderId, amount, paymentKey }),
+        });
+
+        const json = await response.json();
+
+        if (!response.ok) {
+          const code = json.code || "UNKNOWN";
+          const message = json.message || "결제 확인 중 오류가 발생했습니다.";
+          window.location.href = `/payment/fail.html?code=${encodeURIComponent(code)}&message=${encodeURIComponent(message)}`;
+          return;
+        }
+
+        if (json.data.processingDelayed) {
+          document.getElementById("delayed-notice").style.display = "block";
+        }
+
+        pollStatus(orderId);
+      }
+
+      function pollStatus(orderId) {
+        let count = 0;
+        const maxCount = 30;
+
+        const interval = setInterval(async () => {
+          count++;
+
+          if (count > maxCount) {
+            clearInterval(interval);
+            document.getElementById("status-title").textContent = "처리 시간이 초과됐습니다.";
+            document.getElementById("error-section").style.display = "block";
+            document.getElementById("error-message").textContent = "처리 시간이 초과됐습니다. 잠시 후 다시 확인해 주세요.";
+            return;
+          }
+
+          const res = await fetch(`/api/v1/payments/${orderId}/status`);
+          const json = await res.json();
+          const status = json.data.status;
+
+          if (status === "DONE") {
+            clearInterval(interval);
+            document.getElementById("status-title").textContent = "결제를 완료했어요";
+            document.getElementById("result-orderId").textContent = json.data.orderId;
+            document.getElementById("result-approvedAt").textContent = json.data.approvedAt || "-";
+            document.getElementById("result-section").style.display = "block";
+            document.getElementById("delayed-notice").style.display = "none";
+          } else if (status === "FAILED") {
+            clearInterval(interval);
+            document.getElementById("status-title").textContent = "결제에 실패했습니다.";
+            document.getElementById("error-section").style.display = "block";
+            document.getElementById("error-message").textContent = "결제 처리에 실패했습니다.";
+          }
+        }, 1000);
+      }
+
+      confirmPayment();
+    </script>
+  </body>
+</html>
