@@ -216,13 +216,13 @@ class PaymentControllerMvcTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private PaymentConfirmService paymentConfirmService;
 
-    @MockBean
+    @MockitoBean
     private PaymentStatusService paymentStatusService;
 
-    @MockBean
+    @MockitoBean
     private UUIDProvider uuidProvider;
 
     @Test
@@ -243,7 +243,7 @@ class PaymentControllerMvcTest {
 }
 ```
 
-`@WebMvcTest` uses `@MockBean` for service dependencies (unlike use-case tests which use `Mockito.mock()`).
+`@WebMvcTest` uses `@MockitoBean` (Spring Boot 3.4+ 권장) for service dependencies (unlike use-case tests which use `Mockito.mock()`).
 Response JSON is verified with `jsonPath`:
 ```java
 .andExpect(jsonPath("$.data.orderId").value("order-done"))

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <script src="/theme.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>결제 실패</title>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="box_section">
+        <img width="100px" src="https://static.toss.im/lotties/error-spot-no-loop-space-apng.png" />
+        <h2>결제를 실패했어요</h2>
+
+        <div class="p-grid typography--p" style="margin-top: 50px">
+          <div class="p-grid-col text--left"><b>에러메시지</b></div>
+          <div class="p-grid-col text--right" id="message"></div>
+        </div>
+        <div class="p-grid typography--p" style="margin-top: 10px">
+          <div class="p-grid-col text--left"><b>에러코드</b></div>
+          <div class="p-grid-col text--right" id="code"></div>
+        </div>
+
+        <div class="p-grid" style="margin-top: 30px">
+          <button class="button" onclick="location.href='/payment/checkout.html'">다시 시도</button>
+          <button class="button2" onclick="location.href='/'">메인으로</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      document.getElementById("code").textContent = urlParams.get("code") || "-";
+      document.getElementById("message").textContent = urlParams.get("message") || "-";
+    </script>
+  </body>
+</html>

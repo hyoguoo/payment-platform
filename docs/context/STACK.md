@@ -21,7 +21,7 @@
 **Package Manager:**
 - Gradle 8.10 (wrapper)
 - `settings.gradle`: rootProject.name = `payment-platform`
-- `build.gradle`: group `com.hyoguoo`, version `2.0.0-SNAPSHOT`
+- `build.gradle`: group `com.hyoguoo`, version `3.0.0`
 
 ## Frameworks
 

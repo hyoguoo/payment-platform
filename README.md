@@ -265,7 +265,13 @@ cp .env.secret.example .env.secret # docker/compose 디렉토리
 ./scripts/run.sh
 ```
 
-- **Application**: http://localhost:8080/admin/payments/events
-- **Kibana**: http://localhost:5601
-- **Grafana**: http://localhost:3000 (admin/admin123!)
-- **Prometheus**: http://localhost:9090
+실행 후 http://localhost:8080 에서 전체 페이지를 탐색할 수 있습니다.
+
+| URL                                          | 설명                                     |
+|:---------------------------------------------|:---------------------------------------|
+| http://localhost:8080                        | 홈 — 결제 흐름 · 어드민 · 모니터링 링크 모음           |
+| http://localhost:8080/payment/checkout.html  | 결제하기 — 토스페이먼츠 결제창 호출                   |
+| http://localhost:8080/admin/payments/events  | 결제 이벤트 목록 조회 / 검색                      |
+| http://localhost:8080/admin/payments/history | 결제 히스토리 — 상태 변경 이력 조회                  |
+| http://localhost:5601                        | Kibana — 로그 시각화                        |
+| http://localhost:3000                        | Grafana — 메트릭 대시보드 (admin / admin123!) |

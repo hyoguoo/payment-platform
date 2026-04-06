@@ -7,9 +7,9 @@
 - **단계**: idle
 
 ## 최근 완료
-- **주제**: OUTBOX-ONLY-REFACTOR
+- **주제**: CLIENT-INTEGRATION
 - **완료일**: 2026-04-06
-- **아카이브**: docs/archive/outbox-only-refactor/
+- **아카이브**: docs/archive/client-integration/
 
 ## 단계 진행
 - [x] discuss

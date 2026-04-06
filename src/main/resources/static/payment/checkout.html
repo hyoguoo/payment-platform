@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <script src="/theme.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>결제하기</title>
+    <script src="https://js.tosspayments.com/v1/payment"></script>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="box_section" style="padding: 40px 30px 50px; text-align: left;">
+        <h1 class="page-title">결제하기</h1>
+
+        <!-- 결제수단 -->
+        <div class="form-group">
+          <h3 class="section-label">결제수단</h3>
+          <div class="radio-group">
+            <label><input type="radio" name="paymentMethod" value="card" onchange="onMethodChange(this.value)" checked /> 카드</label>
+            <label><input type="radio" name="paymentMethod" value="easypay" onchange="onMethodChange(this.value)" /> 간편결제</label>
+            <label><input type="radio" name="paymentMethod" value="tossPayments" onchange="onMethodChange(this.value)" /> 토스페이</label>
+          </div>
+        </div>
+
+        <div id="card-options" class="form-group">
+          <select id="cardCompany">
+            <option value="">카드사 선택 (선택사항)</option>
+            <option value="KOREA_DEVELOPMENT_BANK">KDB산업은행</option>
+            <option value="KOOKMIN">KB국민</option>
+            <option value="SINHYUP">신협</option>
+            <option value="NONGHYUP_CARD">NH농협</option>
+            <option value="SAMSUNG">삼성</option>
+            <option value="SHINHAN">신한</option>
+            <option value="WOORI">우리</option>
+            <option value="HANA">하나</option>
+            <option value="HYUNDAI">현대</option>
+            <option value="LOTTE">롯데</option>
+            <option value="BC">BC</option>
+            <option value="CITI">씨티</option>
+          </select>
+        </div>
+
+        <div id="easypay-options" class="form-group" style="display: none;">
+          <select id="easyPayProvider">
+            <option value="">간편결제 선택</option>
+            <option value="TOSSPAY">토스페이</option>
+            <option value="KAKAOPAY">카카오페이</option>
+            <option value="NAVERPAY">네이버페이</option>
+            <option value="LPAY">L페이</option>
+            <option value="SSGPAY">SSG페이</option>
+            <option value="PAYCO">페이코</option>
+            <option value="APPLEPAY">애플페이</option>
+          </select>
+        </div>
+
+        <!-- 구매자 정보 -->
+        <div class="form-group">
+          <h3 class="section-label">구매자 정보</h3>
+          <div class="form-field">
+            <label>이름 (선택): <input type="text" id="customerName" placeholder="홍길동" /></label>
+          </div>
+          <div class="form-field">
+            <label>이메일 (선택): <input type="email" id="customerEmail" placeholder="example@email.com" /></label>
+          </div>
+        </div>
+
+        <!-- 주문 요약 -->
+        <div class="form-group">
+          <h3 class="section-label">주문 요약</h3>
+          <div class="p-grid typography--p">
+            <div class="p-grid-col text--left"><b>주문금액</b></div>
+            <div class="p-grid-col text--right">210,000원</div>
+          </div>
+        </div>
+
+        <button class="button" style="margin-top: 8px; width: 100%;" onclick="requestPayment()">결제하기</button>
+      </div>
+    </div>
+
+    <script>
+      // TODO: 실제 배포 시 서버 엔드포인트(/api/v1/payments/client-key)에서 동적으로 주입
+      const CLIENT_KEY = "test_ck_EP59LybZ8Bwd6KDgXvlJ36GYo7pR";
+      const tossPayments = TossPayments(CLIENT_KEY);
+      let selectedMethod = "card";
+
+      function onMethodChange(method) {
+        selectedMethod = method;
+        document.getElementById("card-options").style.display = method === "card" ? "block" : "none";
+        document.getElementById("easypay-options").style.display = method === "easypay" ? "block" : "none";
+      }
+
+      async function requestPayment() {
+        // 1. 서버에서 orderId, totalAmount 가져오기
+        const checkoutResponse = await fetch("/api/v1/payments/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // TODO: 벤치마크 목적의 고정값 — 실제 사용 시 사용자 입력 또는 세션에서 주입
+          body: JSON.stringify({
+            userId: 1,
+            orderedProductList: [
+              { productId: 1, quantity: 3 },
+              { productId: 2, quantity: 2 },
+            ],
+          }),
+        });
+
+        if (!checkoutResponse.ok) {
+          alert("주문 생성에 실패했습니다.");
+          return;
+        }
+
+        const checkoutJson = await checkoutResponse.json();
+        const orderId = checkoutJson.data.orderId;
+        const amount = checkoutJson.data.totalAmount;
+
+        const customerName = document.getElementById("customerName").value || undefined;
+        const customerEmail = document.getElementById("customerEmail").value || undefined;
+
+        // 2. Toss 결제창 호출
+        const paymentOptions = {
+          amount,
+          orderId,
+          orderName: "샘플 상품 외 1건",
+          customerName,
+          customerEmail,
+          successUrl: `${window.location.origin}/payment/success.html`,
+          failUrl: `${window.location.origin}/payment/fail.html`,
+          flowMode: selectedMethod === "tossPayments" ? "DEFAULT" : "DIRECT",
+        };
+
+        if (selectedMethod === "card") {
+          const cardCompany = document.getElementById("cardCompany").value || undefined;
+          if (cardCompany) paymentOptions.cardCompany = cardCompany;
+          await tossPayments.requestPayment("카드", paymentOptions);
+        } else if (selectedMethod === "easypay") {
+          const easyPay = document.getElementById("easyPayProvider").value || undefined;
+          if (easyPay) paymentOptions.easyPay = easyPay;
+          await tossPayments.requestPayment("간편결제", paymentOptions);
+        } else {
+          await tossPayments.requestPayment("토스페이", paymentOptions);
+        }
+      }
+    </script>
+  </body>
+</html>

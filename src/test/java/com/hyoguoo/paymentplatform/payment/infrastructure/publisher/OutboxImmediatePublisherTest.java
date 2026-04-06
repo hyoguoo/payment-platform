@@ -12,7 +12,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
 
 @DisplayName("OutboxImmediatePublisher 테스트")
@@ -57,18 +56,5 @@ class OutboxImmediatePublisherTest {
         assertThat(event.getUserId()).isEqualTo(userId);
         assertThat(event.getAmount()).isEqualByComparingTo(amount);
         assertThat(event.getPaymentKey()).isEqualTo(paymentKey);
-    }
-
-    @Test
-    @DisplayName("OutboxImmediatePublisher는 @ConditionalOnProperty(havingValue=outbox)를 가진다")
-    void outboxImmediatePublisher_ConditionalOnProperty_outbox_선언되어_있다() {
-        // given
-        ConditionalOnProperty annotation =
-                OutboxImmediatePublisher.class.getAnnotation(ConditionalOnProperty.class);
-
-        // then
-        assertThat(annotation).isNotNull();
-        assertThat(annotation.name()).contains("spring.payment.async-strategy");
-        assertThat(annotation.havingValue()).isEqualTo("outbox");
     }
 }

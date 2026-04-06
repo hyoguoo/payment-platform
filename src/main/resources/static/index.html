@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <script src="/theme.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Platform</title>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="box_section" style="padding: 40px 30px 50px; text-align: left;">
+        <h1 class="page-title">Payment Platform</h1>
+
+        <div class="link-grid">
+          <div class="link-group">
+            <h3>결제 흐름</h3>
+            <a class="link-item" href="/payment/checkout.html">
+              결제하기
+              <span class="desc">토스페이먼츠 결제창 호출</span>
+            </a>
+          </div>
+
+          <div class="link-group">
+            <h3>어드민</h3>
+            <a class="link-item" href="/admin/payments/events">
+              결제 이벤트 목록
+              <span class="desc">PaymentEvent 전체 조회 / 검색</span>
+            </a>
+            <a class="link-item" href="/admin/payments/history">
+              결제 히스토리
+              <span class="desc">상태 변경 이력 조회</span>
+            </a>
+          </div>
+
+          <div class="link-group">
+            <h3>모니터링</h3>
+            <a class="link-item external" href="http://localhost:3000" target="_blank">
+              Grafana
+              <span class="desc">대시보드 (admin / admin123)</span>
+            </a>
+            <a class="link-item external" href="http://localhost:5601" target="_blank">
+              Kibana
+              <span class="desc">로그 시각화 (ELK)</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

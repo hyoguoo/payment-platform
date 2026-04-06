@@ -64,7 +64,6 @@ print_service_urls() {
     echo ""
     print_section "=== Service URLs ==="
     echo "Application:     http://localhost:8080"
-    echo "API Documentation: http://localhost:8080/doc.html"
     
     # 추가 서비스가 있는 경우
     if docker ps | grep -q payment-elasticsearch; then
