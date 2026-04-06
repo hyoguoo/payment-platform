@@ -1,0 +1,35 @@
+{
+  "parser": "@babel/eslint-parser",
+  "env": {
+    "browser": true
+  },
+  "settings": {
+    "import/resolver": {
+      "node": {
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx"
+        ]
+      }
+    }
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "class-methods-use-this": "off",
+    "import/prefer-default-export": "off"
+  },
+  "parserOptions": {
+    "requireConfigFile": false,
+    "babelOptions": {
+      "presets": [
+        "@babel/preset-react"
+      ]
+    }
+  },
+  "extends": [
+    "airbnb-base",
+    "prettier"
+  ]
+}

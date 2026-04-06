@@ -3,8 +3,10 @@
 > 최종 수정: 2026-04-06
 
 ## 활성 작업
-- **주제**: 없음
-- **단계**: idle
+- **주제**: CLIENT-INTEGRATION
+- **단계**: plan
+- **이슈**: #58
+- **브랜치**: #58
 
 ## 최근 완료
 - **주제**: OUTBOX-ONLY-REFACTOR
@@ -13,8 +15,8 @@
 
 ## 단계 진행
 - [x] discuss
-- [x] plan
-- [x] plan-review
-- [x] execute
-- [x] review
-- [x] verify
+- [ ] plan
+- [ ] plan-review
+- [ ] execute
+- [ ] review
+- [ ] verify

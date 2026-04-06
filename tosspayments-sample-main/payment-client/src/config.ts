@@ -1,0 +1,11 @@
+export const ORDER_NAME = '테스트 결제';
+export const CLIENT_KEY = 'test_ck_EP59LybZ8Bwd6KDgXvlJ36GYo7pR';
+export const PRODUCT_A_PRICE = 50000;
+export const PRODUCT_A_ID = 1;
+export const PRODUCT_A_QUANTITY = 3;
+export const PRODUCT_B_PRICE = 30000;
+export const PRODUCT_B_ID = 2;
+export const PRODUCT_B_QUANTITY = 2;
+export const ORDER_AMOUNT = PRODUCT_A_PRICE * PRODUCT_A_QUANTITY + PRODUCT_B_PRICE * PRODUCT_B_QUANTITY;
+export const USER_ID = 1;
+export const API_URL = 'http://localhost:8080/api/v1/payments';
