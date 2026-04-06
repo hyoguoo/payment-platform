@@ -84,6 +84,7 @@
     </div>
 
     <script>
+      // TODO: 실제 배포 시 서버 엔드포인트(/api/v1/payments/client-key)에서 동적으로 주입
       const CLIENT_KEY = "test_ck_EP59LybZ8Bwd6KDgXvlJ36GYo7pR";
       const tossPayments = TossPayments(CLIENT_KEY);
       let selectedMethod = "card";
@@ -99,6 +100,7 @@
         const checkoutResponse = await fetch("/api/v1/payments/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // TODO: 벤치마크 목적의 고정값 — 실제 사용 시 사용자 입력 또는 세션에서 주입
           body: JSON.stringify({
             userId: 1,
             orderedProductList: [
@@ -127,8 +129,8 @@
           orderName: "샘플 상품 외 1건",
           customerName,
           customerEmail,
-          successUrl: "http://localhost:8080/payment/success.html",
-          failUrl: "http://localhost:8080/payment/fail.html",
+          successUrl: `${window.location.origin}/payment/success.html`,
+          failUrl: `${window.location.origin}/payment/fail.html`,
           flowMode: selectedMethod === "tossPayments" ? "DEFAULT" : "DIRECT",
         };
 

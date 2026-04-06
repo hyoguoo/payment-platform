@@ -45,6 +45,7 @@
         const response = await fetch("/api/v1/payments/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // TODO: 벤치마크 목적의 고정값 — 실제 사용 시 세션/쿠키에서 userId 주입
           body: JSON.stringify({ userId: 1, orderId, amount, paymentKey }),
         });
 
