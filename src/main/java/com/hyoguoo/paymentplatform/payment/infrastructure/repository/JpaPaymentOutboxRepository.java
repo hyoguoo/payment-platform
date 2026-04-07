@@ -15,16 +15,17 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
 
     Optional<PaymentOutboxEntity> findByOrderId(String orderId);
 
-    @Query("SELECT e FROM PaymentOutboxEntity e WHERE e.status = 'PENDING' ORDER BY e.createdAt ASC")
-    List<PaymentOutboxEntity> findPendingBatch(Pageable pageable);
+    @Query("SELECT e FROM PaymentOutboxEntity e WHERE e.status = 'PENDING' AND (e.nextRetryAt IS NULL OR e.nextRetryAt <= :now) ORDER BY e.createdAt ASC")
+    List<PaymentOutboxEntity> findPendingBatch(@Param("now") LocalDateTime now, Pageable pageable);
 
     @Query("SELECT e FROM PaymentOutboxEntity e WHERE e.status = 'IN_FLIGHT' AND e.inFlightAt < :before")
     List<PaymentOutboxEntity> findTimedOutInFlight(@Param("before") LocalDateTime before);
 
     @Modifying(clearAutomatically = true)
-    @Query("UPDATE PaymentOutboxEntity e SET e.status = :toStatus, e.inFlightAt = :inFlightAt WHERE e.orderId = :orderId AND e.status = :fromStatus")
+    @Query("UPDATE PaymentOutboxEntity e SET e.status = :toStatus, e.inFlightAt = :inFlightAt WHERE e.orderId = :orderId AND e.status = :fromStatus AND (e.nextRetryAt IS NULL OR e.nextRetryAt <= :now)")
     int claimToInFlight(@Param("orderId") String orderId,
                         @Param("inFlightAt") LocalDateTime inFlightAt,
                         @Param("toStatus") PaymentOutboxStatus toStatus,
-                        @Param("fromStatus") PaymentOutboxStatus fromStatus);
+                        @Param("fromStatus") PaymentOutboxStatus fromStatus,
+                        @Param("now") LocalDateTime now);
 }

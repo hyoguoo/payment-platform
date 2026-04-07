@@ -32,8 +32,9 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     @Override
     public List<PaymentOutbox> findPendingBatch(int limit) {
+        LocalDateTime now = LocalDateTime.now();
         return jpaPaymentOutboxRepository
-                .findPendingBatch(PageRequest.of(0, limit, Sort.unsorted()))
+                .findPendingBatch(now, PageRequest.of(0, limit, Sort.unsorted()))
                 .stream()
                 .map(PaymentOutboxEntity::toDomain)
                 .toList();
@@ -50,7 +51,7 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     @Override
     public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
         return jpaPaymentOutboxRepository.claimToInFlight(
-                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING) > 0;
+                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING, inFlightAt) > 0;
     }
 
 }

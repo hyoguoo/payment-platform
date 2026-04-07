@@ -32,7 +32,7 @@
 - [x] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
 - [x] Task 5: RetryPolicyProperties + application.yml 업데이트
 - [x] Task 6: PaymentOutboxEntity + DB 마이그레이션
-- [ ] Task 7: Repository 쿼리 업데이트
+- [x] Task 7: Repository 쿼리 업데이트
 - [ ] Task 8: PaymentCommandUseCase 개선
 - [ ] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
 - [ ] Task 10: PaymentOutboxUseCase 개선
@@ -207,7 +207,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `findPendingBatch`: `nextRetryAt IS NULL OR nextRetryAt <= now` 조건 추가. `claimToInFlight`: 동일 조건 추가. `PaymentOutboxRepositoryImpl` 에서 `now` 파라미터 전달. Deviation: 쿼리 시그니처 변경으로 `PaymentOutboxRepositoryImpl` 동시 수정. 247개 테스트 통과.
 
 ---
 
