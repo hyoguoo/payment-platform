@@ -72,39 +72,6 @@ class PaymentOutboxTest {
     }
 
     @Nested
-    @DisplayName("재시도 가능 여부 테스트")
-    class IsRetryableTest {
-
-        @Test
-        @DisplayName("retryCount가 4이면 isRetryable()은 true를 반환한다 (RETRYABLE_LIMIT=5)")
-        void isRetryable_RetryCount4() {
-            // given
-            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
-                    .orderId("order-1")
-                    .status(PaymentOutboxStatus.PENDING)
-                    .retryCount(4)
-                    .allArgsBuild();
-
-            // when & then
-            assertThat(outbox.isRetryable()).isTrue();
-        }
-
-        @Test
-        @DisplayName("retryCount가 5이면 isRetryable()은 false를 반환한다 (RETRYABLE_LIMIT=5)")
-        void isRetryable_RetryCount5() {
-            // given
-            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
-                    .orderId("order-1")
-                    .status(PaymentOutboxStatus.PENDING)
-                    .retryCount(5)
-                    .allArgsBuild();
-
-            // when & then
-            assertThat(outbox.isRetryable()).isFalse();
-        }
-    }
-
-    @Nested
     @DisplayName("재시도 카운트 증가 테스트")
     class IncrementRetryCountTest {
 

@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
-import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -52,10 +51,6 @@ public class PaymentOutbox {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAILED);
         }
         this.status = PaymentOutboxStatus.FAILED;
-    }
-
-    public boolean isRetryable() {
-        return this.retryCount < 5;
     }
 
     public void incrementRetryCount() {

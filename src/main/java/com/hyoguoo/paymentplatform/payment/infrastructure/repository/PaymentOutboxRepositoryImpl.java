@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Repository;
 public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     private final JpaPaymentOutboxRepository jpaPaymentOutboxRepository;
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     @Override
     public PaymentOutbox save(PaymentOutbox paymentOutbox) {
@@ -32,7 +34,7 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     @Override
     public List<PaymentOutbox> findPendingBatch(int limit) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = localDateTimeProvider.now();
         return jpaPaymentOutboxRepository
                 .findPendingBatch(now, PageRequest.of(0, limit, Sort.unsorted()))
                 .stream()

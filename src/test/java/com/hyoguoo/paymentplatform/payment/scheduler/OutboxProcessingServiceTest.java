@@ -8,6 +8,8 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -15,10 +17,12 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseC
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
+import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.math.BigDecimal;
@@ -40,6 +44,8 @@ class OutboxProcessingServiceTest {
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentCommandUseCase mockPaymentCommandUseCase;
     private PaymentTransactionCoordinator mockTransactionCoordinator;
+    private RetryPolicyProperties retryPolicyProperties;
+    private LocalDateTimeProvider mockLocalDateTimeProvider;
     private OutboxProcessingService outboxProcessingService;
 
     @BeforeEach
@@ -48,12 +54,21 @@ class OutboxProcessingServiceTest {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
+        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
+        retryPolicyProperties = new RetryPolicyProperties();
+        retryPolicyProperties.setMaxAttempts(5);
+        retryPolicyProperties.setBackoffType(BackoffType.FIXED);
+        retryPolicyProperties.setBaseDelayMs(5000L);
+        retryPolicyProperties.setMaxDelayMs(60000L);
+        given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
 
         outboxProcessingService = new OutboxProcessingService(
                 mockPaymentOutboxUseCase,
                 mockPaymentLoadUseCase,
                 mockPaymentCommandUseCase,
-                mockTransactionCoordinator
+                mockTransactionCoordinator,
+                retryPolicyProperties,
+                mockLocalDateTimeProvider
         );
     }
 
@@ -95,10 +110,10 @@ class OutboxProcessingServiceTest {
     }
 
     @Test
-    @DisplayName("process - RETRYABLE_FAILURE 재시도 가능: incrementRetryOrFail() 호출, 보상 트랜잭션 미호출")
-    void process_retryable결과_incrementRetryOrFail_호출() throws Exception {
+    @DisplayName("process - RETRYABLE_FAILURE 미소진(retryCount=0): executePaymentRetryWithOutbox() 호출, 보상 트랜잭션 미호출")
+    void process_retryable결과_미소진_executePaymentRetryWithOutbox_호출() throws Exception {
         // given
-        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID); // retryCount=0, maxAttempts=5 → 미소진
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
         PaymentGatewayInfo retryableGatewayInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
 
@@ -106,39 +121,42 @@ class OutboxProcessingServiceTest {
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(retryableGatewayInfo);
-        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(false);
 
         // when
         outboxProcessingService.process(ORDER_ID);
 
         // then
-        then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, inFlightOutbox);
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentRetryWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class),
+                        any(RetryPolicy.class), any(LocalDateTime.class));
         then(mockTransactionCoordinator).should(never())
                 .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
+        then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 
     @Test
-    @DisplayName("process - RETRYABLE_FAILURE 소진: executePaymentFailureCompensationWithOutbox() 호출")
+    @DisplayName("process - RETRYABLE_FAILURE 소진(retryCount=5): executePaymentFailureCompensationWithOutbox() 호출")
     void process_retryable결과_소진_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
         // given
-        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
+        PaymentOutbox exhaustedOutbox = createExhaustedOutbox(ORDER_ID); // retryCount=5, maxAttempts=5 → 소진
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
         PaymentGatewayInfo retryableGatewayInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
 
-        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(exhaustedOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(retryableGatewayInfo);
-        given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(true);
 
         // when
         outboxProcessingService.process(ORDER_ID);
 
         // then
-        then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, inFlightOutbox);
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(),
                         any(PaymentOutbox.class));
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentRetryWithOutbox(any(), any(), any(), any());
+        then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 
     @Test
@@ -188,6 +206,15 @@ class OutboxProcessingServiceTest {
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
+                .allArgsBuild();
+    }
+
+    private PaymentOutbox createExhaustedOutbox(String orderId) {
+        return PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .status(PaymentOutboxStatus.IN_FLIGHT)
+                .retryCount(5) // maxAttempts=5 이므로 소진 상태
                 .allArgsBuild();
     }
 
