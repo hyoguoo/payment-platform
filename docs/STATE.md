@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: PAYMENT-RETRY-STATE
-- **단계**: plan-review
+- **단계**: execute / Task 1
 - **이슈**: #60
 - **브랜치**: `#60`
 
@@ -16,7 +16,7 @@
 ## 단계 진행
 - [x] discuss
 - [x] plan
-- [ ] plan-review
+- [x] plan-review
 - [ ] execute
 - [ ] review
 - [ ] verify
