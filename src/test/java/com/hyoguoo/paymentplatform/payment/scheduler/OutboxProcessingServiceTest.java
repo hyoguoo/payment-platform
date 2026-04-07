@@ -214,7 +214,7 @@ class OutboxProcessingServiceTest {
                 .id(1L)
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
-                .retryCount(5) // maxAttempts=5 이므로 소진 상태
+                .retryCount(retryPolicyProperties.getMaxAttempts())
                 .allArgsBuild();
     }
 
