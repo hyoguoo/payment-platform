@@ -1,8 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +20,7 @@ public class PaymentOutboxUseCase {
 
     private final PaymentOutboxRepository paymentOutboxRepository;
     private final LocalDateTimeProvider localDateTimeProvider;
+    private final RetryPolicyProperties retryPolicyProperties;
 
     @Transactional
     public void save(PaymentOutbox outbox) {
@@ -41,8 +44,9 @@ public class PaymentOutboxUseCase {
 
     @Transactional
     public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
-        if (currentOutbox.isRetryable()) {
-            currentOutbox.incrementRetryCount();
+        RetryPolicy policy = buildRetryPolicy();
+        if (!policy.isExhausted(currentOutbox.getRetryCount())) {
+            currentOutbox.incrementRetryCount(policy, localDateTimeProvider.now());
             paymentOutboxRepository.save(currentOutbox);
             return false;
         }
@@ -51,12 +55,23 @@ public class PaymentOutboxUseCase {
 
     @Transactional
     public void recoverTimedOutInFlightRecords(int timeoutMinutes) {
-        LocalDateTime cutoff = localDateTimeProvider.now().minusMinutes(timeoutMinutes);
+        RetryPolicy policy = buildRetryPolicy();
+        LocalDateTime now = localDateTimeProvider.now();
+        LocalDateTime cutoff = now.minusMinutes(timeoutMinutes);
         List<PaymentOutbox> timedOut = paymentOutboxRepository.findTimedOutInFlight(cutoff);
         for (PaymentOutbox outbox : timedOut) {
-            outbox.incrementRetryCount();
+            outbox.incrementRetryCount(policy, now);
             paymentOutboxRepository.save(outbox);
         }
+    }
+
+    private RetryPolicy buildRetryPolicy() {
+        return new RetryPolicy(
+                retryPolicyProperties.getMaxAttempts(),
+                retryPolicyProperties.getBackoffType(),
+                retryPolicyProperties.getBaseDelayMs(),
+                retryPolicyProperties.getMaxDelayMs()
+        );
     }
 
     public List<PaymentOutbox> findPendingBatch(int batchSize) {

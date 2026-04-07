@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: PAYMENT-RETRY-STATE
-- **단계**: execute / Task 10
+- **단계**: execute / Task 11
 - **이슈**: #60
 - **브랜치**: `#60`
 

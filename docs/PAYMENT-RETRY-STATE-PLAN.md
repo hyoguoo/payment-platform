@@ -35,7 +35,7 @@
 - [x] Task 7: Repository 쿼리 업데이트
 - [x] Task 8: PaymentCommandUseCase 개선
 - [x] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
-- [ ] Task 10: PaymentOutboxUseCase 개선
+- [x] Task 10: PaymentOutboxUseCase 개선
 - [ ] Task 11: OutboxProcessingService 개선
 - [ ] Task 12: 불필요한 예외 클래스 제거
 
@@ -281,7 +281,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `RetryPolicyProperties` 주입, `buildRetryPolicy()` private 헬퍼 추가. `incrementRetryOrFail`: `policy.isExhausted()` 사용, `outbox.incrementRetryCount(policy, now)` 호출로 nextRetryAt 설정. `recoverTimedOutInFlightRecords`: 동일하게 policy-based incrementRetryCount 사용. Deviation: coordinator 호출 대신 직접 처리(순환 의존성 회피). 249개 테스트 통과.
 
 ---
 
