@@ -33,7 +33,7 @@
 - [x] Task 5: RetryPolicyProperties + application.yml 업데이트
 - [x] Task 6: PaymentOutboxEntity + DB 마이그레이션
 - [x] Task 7: Repository 쿼리 업데이트
-- [ ] Task 8: PaymentCommandUseCase 개선
+- [x] Task 8: PaymentCommandUseCase 개선
 - [ ] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
 - [ ] Task 10: PaymentOutboxUseCase 개선
 - [ ] Task 11: OutboxProcessingService 개선
@@ -233,7 +233,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `markPaymentAsRetrying()` 신규 추가 (@PaymentStatusChange RETRYING). `confirmPaymentWithGateway()` 예외 변환 switch 제거 → PaymentGatewayInfo 직접 반환. Deviation: 예외 제거로 인한 OutboxProcessingService 컴파일 오류 → Task 11 result-based dispatch 선적용. OutboxProcessingServiceTest도 willThrow → willReturn(PaymentGatewayInfo) 방식으로 전환. 248개 테스트 통과.
 
 ---
 

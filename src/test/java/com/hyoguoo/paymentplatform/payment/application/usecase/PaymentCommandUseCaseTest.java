@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -19,7 +18,6 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,8 +57,6 @@ class PaymentCommandUseCaseTest {
                 .build();
 
         // when
-        when(mockPaymentEventRepository.findByOrderId(paymentConfirmCommand.getOrderId()))
-                .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());

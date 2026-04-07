@@ -16,12 +16,11 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
+import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -96,16 +95,17 @@ class OutboxProcessingServiceTest {
     }
 
     @Test
-    @DisplayName("process - PaymentTossRetryableException 재시도 가능: incrementRetryOrFail() 호출, 보상 트랜잭션 미호출")
-    void process_retryable예외_incrementRetryOrFail_호출() throws Exception {
+    @DisplayName("process - RETRYABLE_FAILURE 재시도 가능: incrementRetryOrFail() 호출, 보상 트랜잭션 미호출")
+    void process_retryable결과_incrementRetryOrFail_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayInfo retryableGatewayInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
-                .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+                .willReturn(retryableGatewayInfo);
         given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(false);
 
         // when
@@ -118,16 +118,17 @@ class OutboxProcessingServiceTest {
     }
 
     @Test
-    @DisplayName("process - PaymentTossRetryableException 소진: executePaymentFailureCompensationWithOutbox() 호출")
-    void process_retryable예외_소진_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
+    @DisplayName("process - RETRYABLE_FAILURE 소진: executePaymentFailureCompensationWithOutbox() 호출")
+    void process_retryable결과_소진_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayInfo retryableGatewayInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
-                .willThrow(PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR));
+                .willReturn(retryableGatewayInfo);
         given(mockPaymentOutboxUseCase.incrementRetryOrFail(ORDER_ID, inFlightOutbox)).willReturn(true);
 
         // when
@@ -141,16 +142,17 @@ class OutboxProcessingServiceTest {
     }
 
     @Test
-    @DisplayName("process - PaymentTossNonRetryableException: executePaymentFailureCompensationWithOutbox() 호출, incrementRetryOrFail 미호출")
-    void process_nonRetryable예외_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
+    @DisplayName("process - NON_RETRYABLE_FAILURE: executePaymentFailureCompensationWithOutbox() 호출, incrementRetryOrFail 미호출")
+    void process_nonRetryable결과_executePaymentFailureCompensationWithOutbox_호출() throws Exception {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID);
         PaymentEvent paymentEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayInfo nonRetryableGatewayInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
-                .willThrow(PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR));
+                .willReturn(nonRetryableGatewayInfo);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -204,10 +206,25 @@ class OutboxProcessingServiceTest {
         return PaymentGatewayInfo.builder()
                 .paymentKey("payment-key-123")
                 .orderId(ORDER_ID)
+                .paymentConfirmResultStatus(PaymentConfirmResultStatus.SUCCESS)
                 .paymentDetails(
                         PaymentDetails.builder()
                                 .approvedAt(approvedAt)
                                 .totalAmount(BigDecimal.valueOf(10000))
+                                .build()
+                )
+                .build();
+    }
+
+    private PaymentGatewayInfo createFailureGatewayInfo(PaymentConfirmResultStatus status) {
+        return PaymentGatewayInfo.builder()
+                .paymentKey("payment-key-123")
+                .orderId(ORDER_ID)
+                .paymentConfirmResultStatus(status)
+                .paymentFailure(
+                        PaymentFailure.builder()
+                                .code("FAILURE_CODE")
+                                .message("failure reason")
                                 .build()
                 )
                 .build();
