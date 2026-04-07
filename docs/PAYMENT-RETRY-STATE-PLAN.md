@@ -30,7 +30,7 @@
 - [x] Task 2: RetryPolicy 도메인 레코드
 - [x] Task 3: PaymentEvent 상태 전환 개선
 - [x] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
-- [ ] Task 5: RetryPolicyProperties + application.yml 업데이트
+- [x] Task 5: RetryPolicyProperties + application.yml 업데이트
 - [ ] Task 6: PaymentOutboxEntity + DB 마이그레이션
 - [ ] Task 7: Repository 쿼리 업데이트
 - [ ] Task 8: PaymentCommandUseCase 개선
@@ -161,7 +161,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `payment/application/config/RetryPolicyProperties.java` 신규 (application 계층). `application.yml`에 `payment.retry.*` 섹션 추가. 247개 테스트 통과.
 
 ---
 

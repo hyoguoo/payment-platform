@@ -32,6 +32,11 @@ springdoc:
 spring.profiles.default: local
 
 payment:
+  retry:
+    max-attempts: 5
+    backoff-type: FIXED
+    base-delay-ms: 5000
+    max-delay-ms: 60000
   idempotency:
     maximum-size: 10000
     expire-after-write-seconds: 10
