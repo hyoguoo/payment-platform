@@ -8,8 +8,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,6 +26,7 @@ class PaymentOutboxUseCaseTest {
 
     private PaymentOutboxRepository mockPaymentOutboxRepository;
     private LocalDateTimeProvider mockLocalDateTimeProvider;
+    private RetryPolicyProperties retryPolicyProperties;
     private PaymentOutboxUseCase paymentOutboxUseCase;
 
     private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 3, 15, 12, 0, 0);
@@ -33,9 +36,15 @@ class PaymentOutboxUseCaseTest {
     void setUp() {
         mockPaymentOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
         mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
+        retryPolicyProperties = new RetryPolicyProperties();
+        retryPolicyProperties.setMaxAttempts(5);
+        retryPolicyProperties.setBackoffType(BackoffType.FIXED);
+        retryPolicyProperties.setBaseDelayMs(5000L);
+        retryPolicyProperties.setMaxDelayMs(60000L);
         paymentOutboxUseCase = new PaymentOutboxUseCase(
                 mockPaymentOutboxRepository,
-                mockLocalDateTimeProvider
+                mockLocalDateTimeProvider,
+                retryPolicyProperties
         );
         given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
     }
@@ -95,8 +104,8 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("incrementRetryOrFail - retryable: retryCount=3이면 incrementRetryCount() 후 save() 호출")
-    void incrementRetryOrFail_retryable_incrementsAndSaves() {
+    @DisplayName("incrementRetryOrFail - RetryPolicy 미소진: retryCount=3, maxAttempts=5이면 incrementRetryCount(policy) 후 save() 호출, nextRetryAt 설정")
+    void incrementRetryOrFail_미소진_RetryPolicy_기반_incrementRetryCount_및_nextRetryAt_설정() {
         // given
         PaymentOutbox retryableOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -104,7 +113,6 @@ class PaymentOutboxUseCaseTest {
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(3)
                 .allArgsBuild();
-        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(retryableOutbox));
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(retryableOutbox);
 
         // when
@@ -114,12 +122,13 @@ class PaymentOutboxUseCaseTest {
         assertThat(result).isFalse();
         assertThat(retryableOutbox.getRetryCount()).isEqualTo(4);
         assertThat(retryableOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+        assertThat(retryableOutbox.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
         then(mockPaymentOutboxRepository).should(times(1)).save(retryableOutbox);
     }
 
     @Test
-    @DisplayName("incrementRetryOrFail - limit exceeded: retryCount=5이면 true 반환하고 save() 호출하지 않는다")
-    void incrementRetryOrFail_limitExceeded_returnsTrueWithoutSave() {
+    @DisplayName("incrementRetryOrFail - RetryPolicy 소진: retryCount=5, maxAttempts=5이면 true 반환하고 save() 호출하지 않는다")
+    void incrementRetryOrFail_소진_RetryPolicy_기반_true_반환() {
         // given
         PaymentOutbox exhaustedOutbox = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -137,8 +146,8 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("recoverTimedOutInFlightRecords: findTimedOutInFlight() 결과 각각 incrementRetryCount() + save() 호출")
-    void recoverTimedOutInFlightRecords_callsIncrementAndSaveForEach() {
+    @DisplayName("recoverTimedOutInFlightRecords: findTimedOutInFlight() 결과 각각 RetryPolicy 기반 incrementRetryCount(policy, now) + save() 호출")
+    void recoverTimedOutInFlightRecords_RetryPolicy_기반_incrementRetryCount_전달() {
         // given
         PaymentOutbox outbox1 = PaymentOutbox.allArgsBuilder()
                 .id(1L)
@@ -165,8 +174,10 @@ class PaymentOutboxUseCaseTest {
         // then
         assertThat(outbox1.getRetryCount()).isEqualTo(2);
         assertThat(outbox1.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+        assertThat(outbox1.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
         assertThat(outbox2.getRetryCount()).isEqualTo(3);
         assertThat(outbox2.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+        assertThat(outbox2.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
         then(mockPaymentOutboxRepository).should(times(2)).save(any(PaymentOutbox.class));
     }
 
