@@ -10,6 +10,7 @@ public enum PaymentEventStatus {
 
     READY("READY"),
     IN_PROGRESS("IN_PROGRESS"),
+    RETRYING("RETRYING"),
     DONE("DONE"),
     FAILED("FAILED"),
     CANCELED("CANCELED"),

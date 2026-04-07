@@ -26,7 +26,7 @@
 ## 진행 상황
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
-- [ ] Task 1: BackoffType 열거형 + PaymentEventStatus.RETRYING 추가
+- [x] Task 1: BackoffType 열거형 + PaymentEventStatus.RETRYING 추가
 - [ ] Task 2: RetryPolicy 도메인 레코드
 - [ ] Task 3: PaymentEvent 상태 전환 개선
 - [ ] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
@@ -54,7 +54,7 @@
 - 기존 테스트 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `BackoffType.java` 신규, `PaymentEventStatus`에 `RETRYING` 추가. 기존 226개 테스트 전체 통과.
 
 ---
 
