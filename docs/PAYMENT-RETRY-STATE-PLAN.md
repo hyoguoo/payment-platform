@@ -31,7 +31,7 @@
 - [x] Task 3: PaymentEvent 상태 전환 개선
 - [x] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
 - [x] Task 5: RetryPolicyProperties + application.yml 업데이트
-- [ ] Task 6: PaymentOutboxEntity + DB 마이그레이션
+- [x] Task 6: PaymentOutboxEntity + DB 마이그레이션
 - [ ] Task 7: Repository 쿼리 업데이트
 - [ ] Task 8: PaymentCommandUseCase 개선
 - [ ] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
@@ -186,7 +186,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `next_retry_at` 컬럼 추가 (nullable), 인덱스 `idx_payment_outbox_status_created` → `idx_payment_outbox_status_retry_created (status, next_retry_at, created_at)`. `from()`/`toDomain()` 변환 메서드에 nextRetryAt 포함. ddl-auto:update 사용으로 별도 마이그레이션 스크립트 불필요. 247개 테스트 통과.
 
 ---
 
