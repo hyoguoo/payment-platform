@@ -36,11 +36,7 @@ class PaymentOutboxUseCaseTest {
     void setUp() {
         mockPaymentOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
         mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
-        retryPolicyProperties = new RetryPolicyProperties();
-        retryPolicyProperties.setMaxAttempts(5);
-        retryPolicyProperties.setBackoffType(BackoffType.FIXED);
-        retryPolicyProperties.setBaseDelayMs(5000L);
-        retryPolicyProperties.setMaxDelayMs(60000L);
+        retryPolicyProperties = new RetryPolicyProperties(5, BackoffType.FIXED, 5000L, 60000L);
         paymentOutboxUseCase = new PaymentOutboxUseCase(
                 mockPaymentOutboxRepository,
                 mockLocalDateTimeProvider,

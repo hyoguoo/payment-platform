@@ -55,11 +55,7 @@ class OutboxProcessingServiceTest {
         mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
-        retryPolicyProperties = new RetryPolicyProperties();
-        retryPolicyProperties.setMaxAttempts(5);
-        retryPolicyProperties.setBackoffType(BackoffType.FIXED);
-        retryPolicyProperties.setBaseDelayMs(5000L);
-        retryPolicyProperties.setMaxDelayMs(60000L);
+        retryPolicyProperties = new RetryPolicyProperties(5, BackoffType.FIXED, 5000L, 60000L);
         given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
 
         outboxProcessingService = new OutboxProcessingService(
