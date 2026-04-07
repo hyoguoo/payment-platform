@@ -20,3 +20,4 @@
 | `async-channel/` | 비동기 채널 — LinkedBlockingQueue + OutboxImmediateWorker(VT/PT)로 HTTP 스레드 블로킹 완전 제거, OutboxProcessingService 공유 처리 로직 추출 | 2026-03-31 |
 | `outbox-only-refactor/` | Outbox 단일화 리팩토링 — Sync 전략·PaymentProcess 도메인 제거, UNKNOWN 상태 전면 삭제, RestTemplate→WebClient 전환, Grafana 관측 지표 추가 | 2026-04-06 |
 | `client-integration/` | 클라이언트 통합 — 정적 결제 UI(checkout/success/fail) 추가, Thymeleaf 어드민 페이지 리팩토링, Docker 환경변수 및 run.sh 개선 | 2026-04-06 |
+| `payment-retry-state/` | 재시도 정교화 — RetryPolicy(FIXED/EXPONENTIAL 백오프), RETRYING 상태 도입, 예외 기반 분기 → PaymentConfirmResultStatus enum 전환, nextRetryAt DB 기록 | 2026-04-07 |

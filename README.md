@@ -8,7 +8,7 @@
 
 - **동기 → 비동기 아키텍처 전환 및 성능 측정**: Toss API 지연이 HTTP 스레드를 직접 블로킹하는 동기 구조에서 비동기 + Outbox 채널 전략으로 전환
 - **정합성 오류 및 위변조 요청 방지**: 클라이언트·서버·PG 응답값을 교차 검증하고 Checkout 멱등성(Caffeine 캐시 + TOCTOU 해결)을 보장하여 중복 주문 및 금액 위변조를 차단
-- **재시도 가능 실패에 대한 자동 복구 및 최종 일관성 확보**: 재시도 한계(5회) 기반 복구 루프, 보상 트랜잭션 자동 재시도로 외부 장애 시에도 재고·결제 상태의 일관성 유지
+- **재시도 가능 실패에 대한 자동 복구 및 최종 일관성 확보**: `RetryPolicy` 백오프·`nextRetryAt` 스케줄링으로 명확히 정의하고, 외부 장애 시에도 재고·결제 상태의 일관성 유지
 
 <br>
 
@@ -20,7 +20,7 @@
 | Phase 2 | 결합도 해소 및 자가 복구력    | [트랜잭션 범위 최소화](https://github.com/hyoguoo/payment-platform/wiki/tx-scope) · [상태 기반 복구 모델 및 재시도 로직](https://github.com/hyoguoo/payment-platform/wiki/retry-recovery)                                                                        |
 | Phase 3 | 운영 가시성 및 안정성       | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics) |
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
-| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 Outbox & 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox)                                                                                                                                            |
+| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 Outbox & 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [결제 상태 관리 — 도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                    |
 |   ETC   | 설계 유연성             | [전략 패턴 기반 PG 독립성 확보](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                        |
 
 <br>
@@ -96,6 +96,27 @@ flowchart TD
 - 고지연 환경에서 Outbox 전략이 TPS 47% 상승, 요청 유실 100% 감소 기록
 - **이상적 자원 할당(Sweet Spot)**: 무작정 커넥션 풀을 늘리기보다 시스템 한계에 맞는 최적의 수치(HikariCP 30 등)를 도출하여 안정성과 성능의 균형 확보
 - 상세 보고서: [Benchmark-Report](https://github.com/hyoguoo/payment-platform/wiki/Benchmark-Report)
+
+### [결제 상태 관리 — 도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)
+
+- Toss 오류 코드를 재시도 가능/불가능으로 분류하고, 재시도 가능한 경우 백오프 대기 후 자동 재처리 — 서버가 재시작되더라도 DB에 기록된 대기 시간을 기준으로 재시도
+- 결제가 재시도 대기 중임을 `RETRYING` 상태로 명시하여, 운영 모니터링에서 "처리 중인 결제"와 "장애로 재시도 중인 결제" 구분
+
+```mermaid
+stateDiagram-v2
+    [*] --> READY: checkout 완료
+    READY --> IN_PROGRESS: executePayment()\npaymentKey 기록
+    READY --> FAILED: 재고 부족\n(handleStockFailure)
+    READY --> EXPIRED: expire()\n만료 스케줄러
+    IN_PROGRESS --> DONE: markPaymentAsDone()
+    IN_PROGRESS --> RETRYING: markPaymentAsRetrying()\n(Retryable 오류)
+    IN_PROGRESS --> FAILED: markPaymentAsFail()\n(Non-Retryable 오류 또는 재고 부족)
+    RETRYING --> DONE: markPaymentAsDone()\n(재시도 성공)
+    RETRYING --> RETRYING: markPaymentAsRetrying()\n(재시도 또 실패)
+    RETRYING --> FAILED: markPaymentAsFail()\n(재시도 한도 초과)
+    DONE --> CANCELED: cancel()
+    DONE --> PARTIAL_CANCELED: partialCancel()
+```
 
 ### [Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결](https://github.com/hyoguoo/payment-platform/wiki/idempotency)
 
