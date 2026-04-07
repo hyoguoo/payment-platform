@@ -36,8 +36,8 @@
 - [x] Task 8: PaymentCommandUseCase 개선
 - [x] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
 - [x] Task 10: PaymentOutboxUseCase 개선
-- [ ] Task 11: OutboxProcessingService 개선
-- [ ] Task 12: 불필요한 예외 클래스 제거
+- [x] Task 11: OutboxProcessingService 개선
+- [x] Task 12: 불필요한 예외 클래스 제거
 
 ---
 
@@ -308,7 +308,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> Task 8 Deviation으로 선완료. try-catch 제거, PaymentConfirmResultStatus switch 분기 적용, OutboxProcessingServiceTest willThrow → willReturn(PaymentGatewayInfo) 전환 완료.
 
 ---
 
@@ -324,4 +324,4 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `PaymentTossRetryableException.java`, `PaymentTossNonRetryableException.java` 삭제. `PaymentExceptionHandler`에서 두 핸들러 메서드 및 import 제거. 249개 테스트 통과.

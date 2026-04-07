@@ -8,8 +8,6 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossConfirmException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -50,30 +48,6 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentValidException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentValidException e) {
-        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(
-                                e.getCode(),
-                                e.getMessage()
-                        )
-                );
-    }
-
-    @ExceptionHandler(PaymentTossNonRetryableException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossNonRetryableException e) {
-        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(
-                                e.getCode(),
-                                e.getMessage()
-                        )
-                );
-    }
-
-    @ExceptionHandler(PaymentTossRetryableException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentTossRetryableException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
