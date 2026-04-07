@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -42,6 +43,18 @@ public class PaymentTransactionCoordinator {
         outbox.toDone();
         paymentOutboxUseCase.save(outbox);
         return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
+    }
+
+    @Transactional
+    public PaymentEvent executePaymentRetryWithOutbox(
+            PaymentEvent paymentEvent,
+            PaymentOutbox outbox,
+            RetryPolicy policy,
+            LocalDateTime now
+    ) {
+        outbox.incrementRetryCount(policy, now);
+        paymentOutboxUseCase.save(outbox);
+        return paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
     }
 
     @Transactional

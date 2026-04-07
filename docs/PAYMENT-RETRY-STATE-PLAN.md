@@ -34,7 +34,7 @@
 - [x] Task 6: PaymentOutboxEntity + DB 마이그레이션
 - [x] Task 7: Repository 쿼리 업데이트
 - [x] Task 8: PaymentCommandUseCase 개선
-- [ ] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
+- [x] Task 9: PaymentTransactionCoordinator — executePaymentRetryWithOutbox 추가
 - [ ] Task 10: PaymentOutboxUseCase 개선
 - [ ] Task 11: OutboxProcessingService 개선
 - [ ] Task 12: 불필요한 예외 클래스 제거
@@ -254,7 +254,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `executePaymentRetryWithOutbox(PaymentEvent, PaymentOutbox, RetryPolicy, LocalDateTime)` 신규 추가. `outbox.incrementRetryCount(policy, now)` → outbox 저장 → `markPaymentAsRetrying(paymentEvent)`. 249개 테스트 통과.
 
 ---
 
