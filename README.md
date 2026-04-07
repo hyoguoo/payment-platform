@@ -20,7 +20,7 @@
 | Phase 2 | 결합도 해소 및 자가 복구력    | [트랜잭션 범위 최소화](https://github.com/hyoguoo/payment-platform/wiki/tx-scope) · [상태 기반 복구 모델 및 재시도 로직](https://github.com/hyoguoo/payment-platform/wiki/retry-recovery)                                                                        |
 | Phase 3 | 운영 가시성 및 안정성       | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics) |
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
-| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 Outbox & 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [결제 상태 관리 — 도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                    |
+| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                        |
 |   ETC   | 설계 유연성             | [전략 패턴 기반 PG 독립성 확보](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                        |
 
 <br>
@@ -103,19 +103,27 @@ flowchart TD
 - 결제가 재시도 대기 중임을 `RETRYING` 상태로 명시하여, 운영 모니터링에서 "처리 중인 결제"와 "장애로 재시도 중인 결제" 구분
 
 ```mermaid
-stateDiagram-v2
-    [*] --> READY: checkout 완료
-    READY --> IN_PROGRESS: executePayment()\npaymentKey 기록
-    READY --> FAILED: 재고 부족\n(handleStockFailure)
-    READY --> EXPIRED: expire()\n만료 스케줄러
-    IN_PROGRESS --> DONE: markPaymentAsDone()
-    IN_PROGRESS --> RETRYING: markPaymentAsRetrying()\n(Retryable 오류)
-    IN_PROGRESS --> FAILED: markPaymentAsFail()\n(Non-Retryable 오류 또는 재고 부족)
-    RETRYING --> DONE: markPaymentAsDone()\n(재시도 성공)
-    RETRYING --> RETRYING: markPaymentAsRetrying()\n(재시도 또 실패)
-    RETRYING --> FAILED: markPaymentAsFail()\n(재시도 한도 초과)
-    DONE --> CANCELED: cancel()
-    DONE --> PARTIAL_CANCELED: partialCancel()
+flowchart TD
+    classDef success fill: #D5F5E3, color: #0E6251, stroke: #28B463
+    classDef retryable fill: #FEF5E7, color: #7E5109, stroke: #F39C12
+    classDef nonretryable fill: #FADBD8, color: #7B241C, stroke: #E74C3C
+    classDef action fill: #EBF5FB, color: #21618C, stroke: #3498DB
+    CONFIRM["Toss API 승인 요청"]
+    CONFIRM -->|" 성공 응답 수신 "| SUCCESS["성공 완료 상태"]
+    CONFIRM -->|" 오류 코드 수신 "| CLASSIFY{"재시도 가능 여부 확인"}
+    CONFIRM -->|" 네트워크 타임아웃 또는 연결 실패 "| RETRYABLE["재시도 가능 실패 상태"]
+    CLASSIFY -->|" 일시적 장애 "| RETRYABLE
+    CLASSIFY -->|" 영구적 실패 "| NON_RETRYABLE["영구 실패 상태"]
+    SUCCESS --> S1["결제 성공 완료 처리 (Outbox 및 Event 상태 DONE으로 변경)"]
+    NON_RETRYABLE --> NR1["결제 실패 보상 처리 (재고 복구 및 FAILED로 변경)"]
+    RETRYABLE --> RETRY_CHECK{"재시도 한도 초과 확인"}
+    RETRY_CHECK -->|" 한도 내 (재시도 진행) "| RETRY["결제 재시도 예약 (백오프 적용 및 RETRYING으로 변경)"]
+    RETRY_CHECK -->|" 한도 초과 "| NR1
+    RETRY -->|" 재시도 시점 도달 시 "| CONFIRM
+    class SUCCESS success
+    class RETRYABLE retryable
+    class NON_RETRYABLE nonretryable
+    class S1,NR1,RETRY action
 ```
 
 ### [Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결](https://github.com/hyoguoo/payment-platform/wiki/idempotency)
