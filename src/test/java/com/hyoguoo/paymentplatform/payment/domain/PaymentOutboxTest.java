@@ -151,7 +151,7 @@ class PaymentOutboxTest {
                     .orderId("order-1")
                     .status(PaymentOutboxStatus.IN_FLIGHT)
                     .retryCount(2)
-                    .build();
+                    .allArgsBuild();
             RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
             LocalDateTime now = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
 
@@ -159,8 +159,8 @@ class PaymentOutboxTest {
             outbox.incrementRetryCount(policy, now);
 
             // then
-            // retryCount=2에서 호출, 증가 후 retryCount=3, nextDelay = 1000 * 2^2 = 4000ms
-            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(4));
+            // retryCount=2에서 호출, 증가 후 retryCount=3, nextDelay = 1000 * 2^3 = 8000ms
+            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(8));
         }
 
         @Test

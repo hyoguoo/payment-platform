@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -14,12 +15,11 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentOutbox {
 
-    public static final int RETRYABLE_LIMIT = 5;
-
     private Long id;
     private String orderId;
     private PaymentOutboxStatus status;
     private int retryCount;
+    private LocalDateTime nextRetryAt;
     private LocalDateTime inFlightAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -55,11 +55,17 @@ public class PaymentOutbox {
     }
 
     public boolean isRetryable() {
-        return this.retryCount < RETRYABLE_LIMIT;
+        return this.retryCount < 5;
     }
 
     public void incrementRetryCount() {
         this.retryCount++;
         this.status = PaymentOutboxStatus.PENDING;
+    }
+
+    public void incrementRetryCount(RetryPolicy policy, LocalDateTime now) {
+        this.retryCount++;
+        this.status = PaymentOutboxStatus.PENDING;
+        this.nextRetryAt = now.plus(policy.nextDelay(this.retryCount));
     }
 }

@@ -29,7 +29,7 @@
 - [x] Task 1: BackoffType 열거형 + PaymentEventStatus.RETRYING 추가
 - [x] Task 2: RetryPolicy 도메인 레코드
 - [x] Task 3: PaymentEvent 상태 전환 개선
-- [ ] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
+- [x] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
 - [ ] Task 5: RetryPolicyProperties + application.yml 업데이트
 - [ ] Task 6: PaymentOutboxEntity + DB 마이그레이션
 - [ ] Task 7: Repository 쿼리 업데이트
@@ -134,7 +134,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `nextRetryAt` 필드 추가, `incrementRetryCount(RetryPolicy, LocalDateTime)` 오버로드 추가. RETRYABLE_LIMIT 제거 (isRetryable()은 inline `5` 유지 - Task 10에서 제거 예정). 기존 no-args 메서드는 기존 호출자 유지를 위해 보존. 247개 테스트 통과.
 
 ---
 
