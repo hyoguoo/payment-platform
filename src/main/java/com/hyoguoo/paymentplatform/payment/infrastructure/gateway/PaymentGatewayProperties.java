@@ -1,25 +1,42 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.gateway;
 
 import lombok.Getter;
-import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @Getter
-@Setter
-@Component
 @ConfigurationProperties(prefix = "payment.gateway")
 public class PaymentGatewayProperties {
 
-    private PaymentGatewayType type = PaymentGatewayType.TOSS;
-    private Toss toss = new Toss();
+    private final PaymentGatewayType type;
+    private final Toss toss;
+
+    public PaymentGatewayProperties(
+            @DefaultValue("TOSS") PaymentGatewayType type,
+            Toss toss
+    ) {
+        this.type = type;
+        this.toss = toss;
+    }
 
     @Getter
-    @Setter
     public static class Toss {
-        private String baseUrl = "https://api.tosspayments.com";
-        private String secretKey;
-        private int connectTimeout = 3000;
-        private int readTimeout = 10000;
+
+        private final String baseUrl;
+        private final String secretKey;
+        private final int connectTimeout;
+        private final int readTimeout;
+
+        public Toss(
+                @DefaultValue("https://api.tosspayments.com") String baseUrl,
+                String secretKey,
+                @DefaultValue("3000") int connectTimeout,
+                @DefaultValue("10000") int readTimeout
+        ) {
+            this.baseUrl = baseUrl;
+            this.secretKey = secretKey;
+            this.connectTimeout = connectTimeout;
+            this.readTimeout = readTimeout;
+        }
     }
 }

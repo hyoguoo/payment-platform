@@ -19,7 +19,7 @@
 **Domain (`payment/domain`):**
 - Purpose: Pure business logic, zero Spring dependencies
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/domain/`
-- Contains: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox`, `PaymentHistory` aggregates; status enums in `domain/enums/`; cross-context DTOs in `domain/dto/` and `domain/dto/vo/`; Spring `ApplicationEvent` subtypes in `domain/event/`
+- Contains: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox`, `PaymentHistory` aggregates; `RetryPolicy` record (maxAttempts, backoffType, baseDelayMs, maxDelayMs); status enums in `domain/enums/` including `BackoffType` (FIXED/EXPONENTIAL); cross-context DTOs in `domain/dto/` and `domain/dto/vo/`; Spring `ApplicationEvent` subtypes in `domain/event/`
 - Depends on: nothing outside `domain`
 - Used by: `application` use-case services
 
@@ -46,6 +46,8 @@
   - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
   - `PaymentHistoryUseCase` — payment history 저장/조회
   - `AdminPaymentLoadUseCase` — admin 쿼리 전용 use-case
+- Config (application layer):
+  - `RetryPolicyProperties` — `@ConfigurationProperties(prefix = "payment.retry")`; `toRetryPolicy()` converts to `RetryPolicy` domain record; defaults: maxAttempts=5, backoffType=FIXED, baseDelayMs=5000, maxDelayMs=60000
 - Utilities (application layer, not ports/use-cases):
   - `IdempotencyKeyHasher` — 멱등성 키 해시 유틸
 - Depends on: `domain`, `core/common`
@@ -123,7 +125,8 @@ OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유]
   Step 3: confirmPaymentWithGateway() [no TX, Toss API]
   Step 4A (success):       executePaymentSuccessCompletionWithOutbox()
   Step 4B (non-retryable): executePaymentFailureCompensationWithOutbox()
-  Step 4C (retryable):     incrementRetryOrFail()   [retry up to RETRYABLE_LIMIT=5]
+  Step 4C (retryable):     executePaymentRetryWithOutbox() if retryCount < maxAttempts → PaymentEvent: RETRYING, PaymentOutbox: PENDING (nextRetryAt set)
+                           executePaymentFailureCompensationWithOutbox() if exhausted
 
 OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
   — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
@@ -139,7 +142,7 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 **PaymentTransactionCoordinator — shared transactional boundary:**
 - A plain `@Service` (no interface) shared by `OutboxAsyncConfirmService`, `OutboxWorker`, and `OutboxImmediateWorker`
 - Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
-- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox`
+- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox`, `executePaymentRetryWithOutbox`
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
 
 **PaymentConfirmChannel — HTTP 스레드와 Worker 스레드 디커플링:**
@@ -173,16 +176,18 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 
 ## Error Handling
 
-**Strategy:** Exception type encodes retryability
-- `PaymentTossRetryableException` — OutboxImmediateWorker/OutboxWorker calls `incrementRetryOrFail` (최대 5회)
-- `PaymentTossNonRetryableException` — immediate `executePaymentFailureCompensationWithOutbox` (stock restored, FAILED)
+**Strategy:** `PaymentConfirmResultStatus` enum encodes retryability (returned by `confirmPaymentWithGateway`)
+- `SUCCESS` — `executePaymentSuccessCompletionWithOutbox` (DONE)
+- `RETRYABLE_FAILURE` — if retryCount < maxAttempts: `executePaymentRetryWithOutbox` → PaymentEvent: RETRYING, PaymentOutbox: PENDING with backoff delay (`nextRetryAt`); if exhausted: `executePaymentFailureCompensationWithOutbox`
+- `NON_RETRYABLE_FAILURE` — immediate `executePaymentFailureCompensationWithOutbox` (stock restored, FAILED)
 - `PaymentOrderedProductStockException` — stock exhausted; payment marked FAILED, no compensation (stock was never decremented)
 - `PaymentStatusException` / `PaymentValidException` — domain guard violations; handler returns 4xx
+
+**Retry backoff:** Configured via `RetryPolicyProperties` (`payment.retry.*`); `RetryPolicy.nextDelay(retryCount)` computes FIXED or EXPONENTIAL delay; `PaymentOutbox.nextRetryAt` stores scheduled time; `OutboxWorker` queries `WHERE status='PENDING' AND next_retry_at <= now`.
 
 **Compensation flow:** `executePaymentFailureCompensationWithOutbox` atomically increments stock (`increaseStockForOrders`) and marks `PaymentEvent` as FAILED.
 
 **Exception handlers:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/exception/common/PaymentExceptionHandler.java`
 - `src/main/java/com/hyoguoo/paymentplatform/core/common/exception/GlobalExceptionHandler.java`
 
 ---

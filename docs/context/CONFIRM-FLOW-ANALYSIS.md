@@ -101,17 +101,23 @@ OutboxProcessingService.process(orderId)
       ▼
 ③ confirmPaymentWithGateway(command)
       │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
+      │  결과는 PaymentConfirmResultStatus enum (예외가 아닌 값 반환)으로 분기
       │
-      │  [실패] PaymentTossNonRetryableException (Toss 비재시도 오류)
+      │  [NON_RETRYABLE_FAILURE]
       │    └─ executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)
       │         ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
       │         ├─ increaseStockForOrders()    — 재고 복원
       │         └─ markPaymentAsFail()         — PaymentEvent: FAILED
       │
-      │  [실패] PaymentTossRetryableException (Toss 일시 오류)
-      │    └─ incrementRetryOrFail(orderId, outbox)
-      │         ├─ retryCount < 5 → retryCount++ → PaymentOutbox: PENDING (다음 처리 대상)
-      │         └─ retryCount >= 5 → FAILED 확정 (executePaymentFailureCompensationWithOutbox)
+      │  [RETRYABLE_FAILURE]
+      │    └─ policy = retryPolicyProperties.toRetryPolicy()
+      │         ├─ retryCount < maxAttempts
+      │         │    └─ executePaymentRetryWithOutbox(paymentEvent, outbox, policy, now)
+      │         │         ├─ outbox.incrementRetryCount(policy, now)
+      │         │         │    — retryCount++, status=PENDING, nextRetryAt=now+backoff
+      │         │         ├─ paymentOutboxUseCase.save(outbox)
+      │         │         └─ markPaymentAsRetrying()  — PaymentEvent: RETRYING
+      │         └─ retryCount >= maxAttempts → FAILED 확정 (executePaymentFailureCompensationWithOutbox)
       ▼
 ④ executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
       │  단일 트랜잭션
@@ -179,7 +185,26 @@ per record:
 
 **호출 지점:** OutboxProcessingService (비재시도 오류 발생 시)
 
-### 2-3. handleStockFailure (재고 부족 전용)
+### 2-3. executePaymentRetryWithOutbox (재시도 전환)
+
+> `PaymentTransactionCoordinator.executePaymentRetryWithOutbox(paymentEvent, outbox, policy, now)`
+
+```
+단일 @Transactional
+
+① outbox.incrementRetryCount(policy, now)
+   — retryCount++, status=PENDING, nextRetryAt=now+policy.nextDelay(retryCount)
+② paymentOutboxUseCase.save(outbox)   — PaymentOutbox: IN_FLIGHT → PENDING (nextRetryAt 설정)
+③ markPaymentAsRetrying(paymentEvent) — PaymentEvent: IN_PROGRESS 또는 RETRYING → RETRYING
+```
+
+**호출 지점:** OutboxProcessingService (RETRYABLE_FAILURE, 재시도 한도 미도달 시)
+
+**백오프 전략 (`BackoffType`):**
+- `FIXED`: 매회 `baseDelayMs`만큼 대기
+- `EXPONENTIAL`: `min(baseDelayMs * 2^retryCount, maxDelayMs)` — 지수 증가, 상한 있음
+
+### 2-4. handleStockFailure (재고 부족 전용)
 
 > `PaymentFailureUseCase.handleStockFailure(paymentEvent, failureMessage)`
 

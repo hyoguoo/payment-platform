@@ -91,7 +91,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - `order_name` VARCHAR NOT NULL
 - `order_id` VARCHAR NOT NULL
 - `payment_key` VARCHAR (nullable until confirm)
-- `status` ENUM(`READY`, `IN_PROGRESS`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`) NOT NULL
+- `status` ENUM(`READY`, `IN_PROGRESS`, `RETRYING`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`) NOT NULL
 - `executed_at`, `approved_at`, `last_status_changed_at` DATETIME
 - `retry_count` INT
 - `status_reason` VARCHAR
@@ -111,6 +111,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - `order_id` VARCHAR(100) NOT NULL UNIQUE
 - `status` ENUM(`PENDING`, `IN_FLIGHT`, `DONE`, `FAILED`) NOT NULL VARCHAR(20)
 - `retry_count` INT NOT NULL
+- `next_retry_at` DATETIME (nullable; set on RETRYABLE_FAILURE to schedule next processing time)
 - `in_flight_at` DATETIME
 - `created_at`, `updated_at`
 - Index: `idx_payment_outbox_status_created` on `(status, created_at)`

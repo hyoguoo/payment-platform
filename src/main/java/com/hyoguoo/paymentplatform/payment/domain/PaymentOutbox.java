@@ -14,12 +14,11 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentOutbox {
 
-    public static final int RETRYABLE_LIMIT = 5;
-
     private Long id;
     private String orderId;
     private PaymentOutboxStatus status;
     private int retryCount;
+    private LocalDateTime nextRetryAt;
     private LocalDateTime inFlightAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -54,12 +53,9 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.FAILED;
     }
 
-    public boolean isRetryable() {
-        return this.retryCount < RETRYABLE_LIMIT;
-    }
-
-    public void incrementRetryCount() {
+    public void incrementRetryCount(RetryPolicy policy, LocalDateTime now) {
         this.retryCount++;
         this.status = PaymentOutboxStatus.PENDING;
+        this.nextRetryAt = now.plus(policy.nextDelay(this.retryCount));
     }
 }

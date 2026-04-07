@@ -211,7 +211,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "RETRYING"})
     @DisplayName("결제 시작 시  in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
@@ -227,7 +227,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE"})
     @DisplayName("결제 완료 시 특정 상태에서 성공적으로 done 상태로 변경한다.")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -246,7 +246,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다.")
+    @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다. (RETRYING은 허용)")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -262,7 +262,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
     @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -361,7 +361,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("READY 상태가 아닌 PaymentEvent는 EXPIRED 상태로 변경할 수 없다.")
     void expire_InvalidStatus_ThrowsException(PaymentEventStatus invalidStatus) {
         // given
@@ -530,6 +530,49 @@ class PaymentEventTest {
                 .allArgsBuild();
 
         paymentEvent.validateConfirmRequest(1L, new BigDecimal("15000"), "order123", "anyKey");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
+    @DisplayName("재시도 전환 시 IN_PROGRESS/RETRYING 상태에서 RETRYING 상태로 변경된다.")
+    void toRetrying_성공(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+
+        // when
+        paymentEvent.toRetrying(LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @DisplayName("재시도 전환 시 허용되지 않는 상태에서는 예외를 던진다.")
+    void toRetrying_실패(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.toRetrying(LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @Test
+    @DisplayName("재시도 전환 시 retryCount가 1 증가한다.")
+    void toRetrying_호출_시_retryCount_증가() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS, PaymentOrderStatus.EXECUTING);
+        int initialRetryCount = paymentEvent.getRetryCount();
+
+        // when
+        paymentEvent.toRetrying(LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getRetryCount()).isEqualTo(initialRetryCount + 1);
     }
 
     @ParameterizedTest

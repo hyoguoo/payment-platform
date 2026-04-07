@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -19,11 +18,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,8 +57,6 @@ class PaymentCommandUseCaseTest {
                 .build();
 
         // when
-        when(mockPaymentEventRepository.findByOrderId(paymentConfirmCommand.getOrderId()))
-                .thenReturn(Optional.of(paymentEvent));
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
@@ -142,7 +136,7 @@ class PaymentCommandUseCaseTest {
     }
 
     @Test
-    @DisplayName("Toss 결제 승인 중 재시도 가능한 실패 시 재시도 가능 예외를 던진다.")
+    @DisplayName("Toss 결제 승인 중 재시도 가능한 실패 시 RETRYABLE_FAILURE 상태의 결과를 반환한다.")
     void testConfirmPaymentWithGateway_RetryableFailure() {
         // given
         PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
@@ -162,17 +156,18 @@ class PaymentCommandUseCaseTest {
                                 "Retryable error", true)
                 );
 
-        // when & then
-        when(mockPaymentGatewayPort.confirm(
-                any(PaymentConfirmRequest.class)))
+        // when
+        when(mockPaymentGatewayPort.confirm(any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
-        assertThatThrownBy(
-                () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
-                .isInstanceOf(PaymentTossRetryableException.class);
+        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand);
+
+        // then
+        assertThat(result.getPaymentConfirmResultStatus())
+                .isEqualTo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
     }
 
     @Test
-    @DisplayName("Toss 결제 승인 중 재시도 불가능한 실패 시 재시도 불가능 예외를 던진다.")
+    @DisplayName("Toss 결제 승인 중 재시도 불가능한 실패 시 NON_RETRYABLE_FAILURE 상태의 결과를 반환한다.")
     void testConfirmPaymentWithGateway_NonRetryableFailure() {
         // given
         PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
@@ -192,13 +187,30 @@ class PaymentCommandUseCaseTest {
                                 "Non-retryable error", false)
                 );
 
-        // when & then
-        when(mockPaymentGatewayPort.confirm(
-                any(PaymentConfirmRequest.class)))
+        // when
+        when(mockPaymentGatewayPort.confirm(any(PaymentConfirmRequest.class)))
                 .thenReturn(confirmResult);
-        assertThatThrownBy(
-                () -> paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand))
-                .isInstanceOf(PaymentTossNonRetryableException.class);
+        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand);
+
+        // then
+        assertThat(result.getPaymentConfirmResultStatus())
+                .isEqualTo(PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE);
+    }
+
+    @Test
+    @DisplayName("markPaymentAsRetrying 호출 시 PaymentEvent.toRetrying()을 호출하고 저장한다.")
+    void markPaymentAsRetrying_PaymentEvent_toRetrying_호출_및_저장() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        given(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
+                .willReturn(paymentEvent);
+
+        // when
+        paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
+
+        // then
+        then(paymentEvent).should(times(1)).toRetrying(testLocalDateTimeProvider.now());
+        then(mockPaymentEventRepository).should(times(1)).saveOrUpdate(paymentEvent);
     }
 
     @Test

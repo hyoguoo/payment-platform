@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "payment_outbox",
         indexes = {
-                @Index(name = "idx_payment_outbox_status_created", columnList = "status, created_at")
+                @Index(name = "idx_payment_outbox_status_retry_created", columnList = "status, next_retry_at, created_at")
         }
 )
 @Builder
@@ -47,6 +47,9 @@ public class PaymentOutboxEntity extends BaseEntity {
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
+    @Column(name = "next_retry_at")
+    private LocalDateTime nextRetryAt;
+
     @Column(name = "in_flight_at")
     private LocalDateTime inFlightAt;
 
@@ -56,6 +59,7 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .orderId(paymentOutbox.getOrderId())
                 .status(paymentOutbox.getStatus())
                 .retryCount(paymentOutbox.getRetryCount())
+                .nextRetryAt(paymentOutbox.getNextRetryAt())
                 .inFlightAt(paymentOutbox.getInFlightAt())
                 .build();
     }
@@ -66,6 +70,7 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .orderId(orderId)
                 .status(status)
                 .retryCount(retryCount)
+                .nextRetryAt(nextRetryAt)
                 .inFlightAt(inFlightAt)
                 .createdAt(getCreatedAt())
                 .updatedAt(getUpdatedAt())

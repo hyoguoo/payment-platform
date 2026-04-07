@@ -15,11 +15,12 @@
 |------|------|-----------|
 | `READY` | 결제 초기 생성 상태. 아직 처리 시작 전 | 결제 주문 생성 시 |
 | `IN_PROGRESS` | Toss API confirm 요청을 위해 진입. paymentKey 기록 완료 | `executePayment()` 호출 시 |
+| `RETRYING` | Toss API 일시 오류로 재시도 대기 중. PaymentOutbox는 nextRetryAt이 설정된 PENDING | `markPaymentAsRetrying()` 호출 시 |
 | `DONE` | Toss API confirm 성공, 결제 완료 | `markPaymentAsDone()` 호출 시 |
-| `FAILED` | 재고 부족 / Toss 비재시도 오류 / 보상 완료 후 최종 실패 | `markPaymentAsFail()` 호출 시 |
+| `FAILED` | 재고 부족 / Toss 비재시도 오류 / 재시도 한도 초과 후 최종 실패 | `markPaymentAsFail()` 호출 시 |
 
-> **핵심**: `IN_PROGRESS` 상태에서 실패하면 반드시 `FAILED`로 전환해야 한다.
-> 그렇지 않으면 PaymentEvent가 `IN_PROGRESS`에 고착되어 재시도도, 정상 조회도 불가능해진다.
+> **핵심**: `IN_PROGRESS` 또는 `RETRYING` 상태에서 실패하면 반드시 `FAILED`로 전환해야 한다.
+> 그렇지 않으면 PaymentEvent가 해당 상태에 고착되어 재시도도, 정상 조회도 불가능해진다.
 
 ---
 
@@ -30,12 +31,13 @@
 | `PENDING` | 처리 대기 중. OutboxWorker가 배치로 조회할 대상 | `createPendingRecord()` 또는 재시도 후 `incrementRetryCount()` 시 |
 | `IN_FLIGHT` | 핸들러/워커가 처리를 시작함. 타임아웃 복구 대상 | `claimToInFlight()` 호출 시 (REQUIRES_NEW 트랜잭션, 즉시 커밋) |
 | `DONE` | Toss confirm 성공, 처리 완료 | `executePaymentSuccessCompletionWithOutbox()` 내 `outbox.toDone()` 시 |
-| `FAILED` | 재시도 한도 초과 또는 비재시도 오류. 더 이상 처리 안 함 | `executePaymentFailureCompensationWithOutbox()` 내 `outbox.toFailed()` 또는 `incrementRetryOrFail()` 한도 초과 시 |
+| `FAILED` | 재시도 한도 초과 또는 비재시도 오류. 더 이상 처리 안 함 | `executePaymentFailureCompensationWithOutbox()` 내 `outbox.toFailed()` 시 |
 
 > **IN_FLIGHT 타임아웃**: `inFlightTimeoutMinutes`(기본 5분) 초과 시 `PENDING`으로 되돌려
 > 워커 재시도 기회를 확보한다. 워커/핸들러 비정상 종료 시 데드락 방지 목적.
 >
-> **재시도 한도**: `RETRYABLE_LIMIT = 5`. `retryCount >= 5`이면 `PENDING`으로 돌리지 않고 `FAILED` 확정.
+> **재시도 한도**: `payment.retry.max-attempts`(기본 5). `retryCount >= maxAttempts`이면 `PENDING`으로 돌리지 않고 `FAILED` 확정.
+> 재시도 대기 시간은 `nextRetryAt` 필드로 제어 (FIXED 또는 EXPONENTIAL 백오프).
 
 ---
 
@@ -114,15 +116,15 @@ flowchart TD
     G_FAIL --> Z_END([종료])
     G --> F
 
-    F["③ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출 (TX 밖)"]
-    F -->|PaymentTossNonRetryableException\nToss 비재시도 오류| F_NR
+    F["③ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출 (TX 밖)\n⎿ 결과: PaymentConfirmResultStatus enum"]
+    F -->|NON_RETRYABLE_FAILURE| F_NR
     F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED\n※ 단일 트랜잭션"]
     F_NR --> Z_END
 
-    F -->|PaymentTossRetryableException\nToss 일시 오류| F_R
-    F_R{"incrementRetryOrFail()\n⎿ retryCount < 5?"}
-    F_R -->|"Yes → PENDING 복귀"| RETRY(["다음 처리 사이클에서 재처리"])
-    F_R -->|"No (한도 초과) → FAILED 확정"| Z_END
+    F -->|RETRYABLE_FAILURE| F_R
+    F_R{"retryCount < maxAttempts?"}
+    F_R -->|"Yes → executePaymentRetryWithOutbox()\n⎿ outbox.incrementRetryCount(policy, now)\n  — PENDING + nextRetryAt 설정\n⎿ markPaymentAsRetrying()\n  — PaymentEvent: RETRYING"| RETRY(["다음 처리 사이클에서 재처리\n(nextRetryAt 도달 후)"])
+    F_R -->|"No (한도 초과) → executePaymentFailureCompensationWithOutbox()"| Z_END
 
     F --> E
     E["④ executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
@@ -178,10 +180,10 @@ flowchart TD
 
 | 엔티티 | Outbox |
 |------|--------|
-| `PaymentEvent` | READY → IN_PROGRESS → DONE/FAILED |
-| `PaymentOutbox` | PENDING → IN_FLIGHT → DONE/FAILED |
+| `PaymentEvent` | READY → IN_PROGRESS → RETRYING(재시도 중) → DONE/FAILED |
+| `PaymentOutbox` | PENDING → IN_FLIGHT → DONE/FAILED (재시도 시 IN_FLIGHT → PENDING + nextRetryAt) |
 | HTTP 응답 | 202 Accepted |
-| Toss API 재시도 | incrementRetryOrFail 최대 5회 |
+| Toss API 재시도 | executePaymentRetryWithOutbox; backoff(FIXED/EXPONENTIAL); 한도(payment.retry.max-attempts, 기본 5) |
 | 재고 + executePayment TX | 단일 TX (Outbox 포함) |
 | 즉시 처리 메커니즘 | OutboxImmediateEventHandler (AFTER_COMMIT) |
-| 폴백 메커니즘 | OutboxWorker (fixedDelay 5s, 배치 50) |
+| 폴백 메커니즘 | OutboxWorker (fixedDelay 5s, 배치 50; nextRetryAt 기준 필터링) |

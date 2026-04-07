@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Repository;
 public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     private final JpaPaymentOutboxRepository jpaPaymentOutboxRepository;
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     @Override
     public PaymentOutbox save(PaymentOutbox paymentOutbox) {
@@ -32,8 +34,9 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     @Override
     public List<PaymentOutbox> findPendingBatch(int limit) {
+        LocalDateTime now = localDateTimeProvider.now();
         return jpaPaymentOutboxRepository
-                .findPendingBatch(PageRequest.of(0, limit, Sort.unsorted()))
+                .findPendingBatch(now, PageRequest.of(0, limit, Sort.unsorted()))
                 .stream()
                 .map(PaymentOutboxEntity::toDomain)
                 .toList();
@@ -50,7 +53,7 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     @Override
     public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
         return jpaPaymentOutboxRepository.claimToInFlight(
-                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING) > 0;
+                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING, inFlightAt) > 0;
     }
 
 }
