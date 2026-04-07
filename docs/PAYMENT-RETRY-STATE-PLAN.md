@@ -28,7 +28,7 @@
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: BackoffType 열거형 + PaymentEventStatus.RETRYING 추가
 - [x] Task 2: RetryPolicy 도메인 레코드
-- [ ] Task 3: PaymentEvent 상태 전환 개선
+- [x] Task 3: PaymentEvent 상태 전환 개선
 - [ ] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
 - [ ] Task 5: RetryPolicyProperties + application.yml 업데이트
 - [ ] Task 6: PaymentOutboxEntity + DB 마이그레이션
@@ -108,7 +108,7 @@
 - `./gradlew test` 통과
 
 **완료 결과**
-> (완료 후 작성)
+> `toRetrying()` 추가 (IN_PROGRESS|RETRYING guard, retryCount++, status=RETRYING). `done()` guard에 RETRYING 추가, `fail()` guard에 RETRYING 추가. `RETRYABLE_LIMIT` 상수 제거. 기존 @EnumSource도 RETRYING 포함으로 갱신. 244개 테스트 통과.
 
 ---
 

@@ -21,7 +21,6 @@ import lombok.Getter;
 public class PaymentEvent {
 
     public static final int EXPIRATION_MINUTES = 30;
-    public static final int RETRYABLE_LIMIT = 5;
 
     private Long id;
     private Long buyerId;
@@ -80,8 +79,19 @@ public class PaymentEvent {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    public void toRetrying(LocalDateTime lastStatusChangedAt) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.RETRYING) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
+        }
+        this.retryCount++;
+        this.status = PaymentEventStatus.RETRYING;
+        this.lastStatusChangedAt = lastStatusChangedAt;
+    }
+
     public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.RETRYING &&
                 this.status != PaymentEventStatus.DONE) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
         }
@@ -94,7 +104,8 @@ public class PaymentEvent {
 
     public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS) {
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.RETRYING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentEventStatus.FAILED;
