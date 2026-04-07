@@ -88,13 +88,12 @@
 ### Task 3: PaymentEvent 상태 전환 개선 [tdd=true]
 
 **테스트 (RED)**
-- `PaymentEventTest` 신규/확장
-  - `toRetrying_IN_PROGRESS_상태에서_RETRYING으로_전환`
-  - `toRetrying_RETRYING_상태에서_RETRYING으로_전환`
-  - `toRetrying_READY_상태에서_예외_발생`
+- `PaymentEventTest` 신규/확장 — `@ParameterizedTest @EnumSource` 패턴으로 유효/무효 상태 전체 커버
+  - `toRetrying_성공` — `@EnumSource(names={"IN_PROGRESS","RETRYING"})` 상태에서 RETRYING 전환 확인
+  - `toRetrying_실패` — `@EnumSource(names={"READY","DONE","FAILED","CANCELED","PARTIAL_CANCELED","EXPIRED"})` 에서 예외 발생 확인
   - `toRetrying_호출_시_retryCount_증가`
-  - `done_RETRYING_상태에서_DONE으로_전환` (guard 확장)
-  - `fail_RETRYING_상태에서_FAILED로_전환` (guard 확장)
+  - `done_RETRYING_포함_성공` — `@EnumSource(names={"IN_PROGRESS","RETRYING","DONE"})` 에서 DONE 전환 확인 (guard 확장)
+  - `fail_RETRYING_포함_성공` — `@EnumSource(names={"READY","IN_PROGRESS","RETRYING"})` 에서 FAILED 전환 확인 (guard 확장)
 
 **구현 (GREEN)**
 - `PaymentEvent.java`
@@ -142,9 +141,10 @@
 ### Task 5: RetryPolicyProperties + application.yml 업데이트 [tdd=false]
 
 **구현**
-- `payment/infrastructure/config/RetryPolicyProperties.java` 신규
+- `payment/application/config/RetryPolicyProperties.java` 신규
   - `@ConfigurationProperties("payment.retry")`
   - 필드: `maxAttempts`, `backoffType` (BackoffType), `baseDelayMs`, `maxDelayMs`
+  - application 계층에 배치 — `PaymentOutboxUseCase`가 infra에 의존하는 역방향 의존성 방지
 - `application.yml` — 아래 섹션 추가:
   ```yaml
   payment:
