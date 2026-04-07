@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
@@ -76,14 +77,15 @@ class PaymentOutboxTest {
     class IncrementRetryCountTest {
 
         @Test
-        @DisplayName("incrementRetryCount() 호출 시 retryCount+1, status=PENDING으로 복귀한다")
+        @DisplayName("incrementRetryCount(policy, now) 호출 시 retryCount+1, status=PENDING으로 복귀한다")
         void incrementRetryCount() {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.FAILED);
             int initialRetryCount = outbox.getRetryCount();
+            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
 
             // when
-            outbox.incrementRetryCount();
+            outbox.incrementRetryCount(policy, LocalDateTime.now());
 
             // then
             assertThat(outbox.getRetryCount()).isEqualTo(initialRetryCount + 1);

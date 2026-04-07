@@ -1,16 +1,21 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.idempotency;
 
 import lombok.Getter;
-import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @Getter
-@Setter
-@Component
 @ConfigurationProperties(prefix = "payment.idempotency")
 public class IdempotencyProperties {
 
-    private long maximumSize = 10_000;
-    private long expireAfterWriteSeconds = 10;
+    private final long maximumSize;
+    private final long expireAfterWriteSeconds;
+
+    public IdempotencyProperties(
+            @DefaultValue("10000") long maximumSize,
+            @DefaultValue("10") long expireAfterWriteSeconds
+    ) {
+        this.maximumSize = maximumSize;
+        this.expireAfterWriteSeconds = expireAfterWriteSeconds;
+    }
 }

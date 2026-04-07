@@ -77,7 +77,7 @@ public class OutboxProcessingService {
                 String reason = gatewayInfo.getPaymentFailure() != null
                         ? gatewayInfo.getPaymentFailure().getMessage() : "RETRYABLE_FAILURE";
                 LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, () -> reason);
-                RetryPolicy policy = buildRetryPolicy();
+                RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
                 LocalDateTime now = localDateTimeProvider.now();
                 if (policy.isExhausted(outbox.getRetryCount())) {
                     transactionCoordinator.executePaymentFailureCompensationWithOutbox(
@@ -89,14 +89,6 @@ public class OutboxProcessingService {
         }
     }
 
-    private RetryPolicy buildRetryPolicy() {
-        return new RetryPolicy(
-                retryPolicyProperties.getMaxAttempts(),
-                retryPolicyProperties.getBackoffType(),
-                retryPolicyProperties.getBaseDelayMs(),
-                retryPolicyProperties.getMaxDelayMs()
-        );
-    }
 
     private Optional<PaymentEvent> loadPaymentEvent(String orderId, PaymentOutbox outbox) {
         try {

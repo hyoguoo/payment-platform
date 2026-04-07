@@ -44,7 +44,7 @@ public class PaymentOutboxUseCase {
 
     @Transactional
     public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
-        RetryPolicy policy = buildRetryPolicy();
+        RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
         if (!policy.isExhausted(currentOutbox.getRetryCount())) {
             currentOutbox.incrementRetryCount(policy, localDateTimeProvider.now());
             paymentOutboxRepository.save(currentOutbox);
@@ -55,7 +55,7 @@ public class PaymentOutboxUseCase {
 
     @Transactional
     public void recoverTimedOutInFlightRecords(int timeoutMinutes) {
-        RetryPolicy policy = buildRetryPolicy();
+        RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
         LocalDateTime now = localDateTimeProvider.now();
         LocalDateTime cutoff = now.minusMinutes(timeoutMinutes);
         List<PaymentOutbox> timedOut = paymentOutboxRepository.findTimedOutInFlight(cutoff);
@@ -63,15 +63,6 @@ public class PaymentOutboxUseCase {
             outbox.incrementRetryCount(policy, now);
             paymentOutboxRepository.save(outbox);
         }
-    }
-
-    private RetryPolicy buildRetryPolicy() {
-        return new RetryPolicy(
-                retryPolicyProperties.getMaxAttempts(),
-                retryPolicyProperties.getBackoffType(),
-                retryPolicyProperties.getBaseDelayMs(),
-                retryPolicyProperties.getMaxDelayMs()
-        );
     }
 
     public List<PaymentOutbox> findPendingBatch(int batchSize) {

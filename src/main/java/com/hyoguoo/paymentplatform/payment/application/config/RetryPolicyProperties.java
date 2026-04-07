@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.config;
 
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import lombok.Getter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -24,5 +25,9 @@ public class RetryPolicyProperties {
         this.backoffType = backoffType;
         this.baseDelayMs = baseDelayMs;
         this.maxDelayMs = maxDelayMs;
+    }
+
+    public RetryPolicy toRetryPolicy() {
+        return new RetryPolicy(maxAttempts, backoffType, baseDelayMs, maxDelayMs);
     }
 }

@@ -53,11 +53,6 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.FAILED;
     }
 
-    public void incrementRetryCount() {
-        this.retryCount++;
-        this.status = PaymentOutboxStatus.PENDING;
-    }
-
     public void incrementRetryCount(RetryPolicy policy, LocalDateTime now) {
         this.retryCount++;
         this.status = PaymentOutboxStatus.PENDING;
