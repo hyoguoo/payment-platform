@@ -11,13 +11,9 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -67,8 +63,16 @@ public class PaymentCommandUseCase {
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
-    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
-            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
+    @Transactional
+    @PublishDomainEvent(action = "changed")
+    @PaymentStatusChange(toStatus = "RETRYING", trigger = "auto")
+    public PaymentEvent markPaymentAsRetrying(PaymentEvent paymentEvent) {
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.toRetrying(now);
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
+    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
         PaymentConfirmRequest request =
                 new PaymentConfirmRequest(
                         paymentConfirmCommand.getOrderId(),
@@ -76,10 +80,9 @@ public class PaymentCommandUseCase {
                         paymentConfirmCommand.getAmount()
                 );
 
-        PaymentConfirmResult result =
-                paymentGatewayPort.confirm(request);
+        PaymentConfirmResult result = paymentGatewayPort.confirm(request);
 
-        PaymentGatewayInfo paymentGatewayInfo = PaymentGatewayInfo.builder()
+        return PaymentGatewayInfo.builder()
                 .paymentKey(result.paymentKey())
                 .orderId(request.orderId())
                 .paymentConfirmResultStatus(result.status())
@@ -98,16 +101,6 @@ public class PaymentCommandUseCase {
                                 .build() : null
                 )
                 .build();
-
-        PaymentConfirmResultStatus paymentConfirmResultStatus = paymentGatewayInfo.getPaymentConfirmResultStatus();
-
-        return switch (paymentConfirmResultStatus) {
-            case PaymentConfirmResultStatus.SUCCESS -> paymentGatewayInfo;
-            case PaymentConfirmResultStatus.RETRYABLE_FAILURE ->
-                    throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
-            case PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE ->
-                    throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
-        };
     }
 
 }
