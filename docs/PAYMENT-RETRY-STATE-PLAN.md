@@ -27,7 +27,7 @@
 
 <!-- execute 단계에서 각 태스크 완료 시 체크 -->
 - [x] Task 1: BackoffType 열거형 + PaymentEventStatus.RETRYING 추가
-- [ ] Task 2: RetryPolicy 도메인 레코드
+- [x] Task 2: RetryPolicy 도메인 레코드
 - [ ] Task 3: PaymentEvent 상태 전환 개선
 - [ ] Task 4: PaymentOutbox nextRetryAt + incrementRetryCount 개선
 - [ ] Task 5: RetryPolicyProperties + application.yml 업데이트
@@ -81,7 +81,7 @@
 - `./gradlew test` 회귀 없음
 
 **완료 결과**
-> (완료 후 작성)
+> `RetryPolicy` record 구현. `isExhausted`는 `retryCount >= maxAttempts`, `nextDelay`는 FIXED/EXPONENTIAL switch. EXPONENTIAL은 `baseDelayMs * 2^retryCount`를 maxDelayMs로 capping. 231개 테스트 통과.
 
 ---
 
