@@ -12,6 +12,8 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
+import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
@@ -182,6 +184,34 @@ class PaymentTransactionCoordinatorTest {
             then(paymentOutboxUseCase).should(times(1)).save(outbox);
             then(orderedProductUseCase).should(times(1)).increaseStockForOrders(paymentOrderList);
             then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(paymentEvent, failureReason);
+        }
+    }
+
+    @Nested
+    @DisplayName("Outbox 전략: 재시도 처리 (executePaymentRetryWithOutbox) 테스트")
+    class ExecutePaymentRetryWithOutboxTest {
+
+        @Test
+        @DisplayName("Outbox를 PENDING으로 복원하고 PaymentEvent를 RETRYING으로 전환한다")
+        void executePaymentRetryWithOutbox_Outbox_PENDING_복원_및_PaymentEvent_RETRYING_전환() {
+            // given
+            String orderId = "order-123";
+            LocalDateTime now = LocalDateTime.of(2026, 4, 7, 12, 0, 0);
+            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent retryingEvent = createPaymentEvent(orderId, PaymentEventStatus.RETRYING);
+
+            given(paymentCommandUseCase.markPaymentAsRetrying(inProgressEvent)).willReturn(retryingEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentRetryWithOutbox(inProgressEvent, outbox, policy, now);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
+            then(paymentOutboxUseCase).should(times(1)).save(outbox);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsRetrying(inProgressEvent);
         }
     }
 
