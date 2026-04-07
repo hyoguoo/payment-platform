@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-06
+> 최종 수정: 2026-04-07
 
 ## 활성 작업
 - **주제**: PAYMENT-RETRY-STATE
-- **단계**: plan
+- **단계**: plan-review
 - **이슈**: #60
 - **브랜치**: `#60`
 
@@ -15,7 +15,7 @@
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
