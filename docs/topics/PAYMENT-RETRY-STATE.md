@@ -333,9 +333,227 @@ PaymentGatewayPort.confirm() → PaymentConfirmResult(RETRYABLE_FAILURE)
 
 ---
 
+---
+
+## 엣지 케이스 전체 라이프사이클
+
+### 케이스 1 — 서버 장애: Outbox PENDING 상태에서 멈춤
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S1 as Server (장애)
+    participant DB as Database
+    participant S2 as Server (재시작)
+    participant Toss
+
+    C->>S1: POST /confirm
+    S1->>DB: [TX] IN_PROGRESS + stock-- + Outbox(PENDING)
+    S1->>C: 202 Accepted
+    S1--xS1: 💥 서버 장애 (channel.offer 전 또는 직후)
+
+    Note over DB: PaymentEvent=IN_PROGRESS<br/>Outbox=PENDING
+
+    S2->>DB: OutboxWorker 폴링 (5s)
+    DB-->>S2: PENDING 레코드 조회
+    S2->>DB: claimToInFlight → IN_FLIGHT
+    S2->>Toss: POST /confirm (Idempotency-Key=orderId)
+    Toss-->>S2: 200 OK (approvedAt 포함)
+    S2->>DB: [TX] Outbox→DONE, PaymentEvent→DONE ✅
+```
+
+> 채널 오퍼 전 장애면 ImmediateWorker 경로가 누락되지만, OutboxWorker 폴링이 PENDING을 그대로 처리한다.
+
+---
+
+### 케이스 2 — 서버 장애: Outbox IN_FLIGHT에서 멈춤 (Toss 요청 미전송)
+
+```mermaid
+sequenceDiagram
+    participant S1 as Server (장애)
+    participant DB as Database
+    participant S2 as Server (재시작)
+    participant Toss
+
+    S1->>DB: claimToInFlight → IN_FLIGHT (inFlightAt=T)
+    S1--xS1: 💥 서버 장애 (Toss API 호출 전)
+
+    Note over DB: PaymentEvent=IN_PROGRESS<br/>Outbox=IN_FLIGHT<br/>Toss: 요청 미수신
+
+    loop OutboxWorker 폴링 (5s마다)
+        S2->>DB: recoverTimedOutInFlightRecords(5분)
+        DB-->>S2: inFlightAt < T+5분 → 조건 미충족, 스킵
+    end
+
+    Note over DB: T+5분 경과
+
+    S2->>DB: recoverTimedOutInFlightRecords
+    DB-->>S2: IN_FLIGHT 타임아웃 레코드
+    S2->>DB: retryCount++ / nextRetryAt 설정 / PENDING 복원
+
+    S2->>DB: claimToInFlight → IN_FLIGHT
+    S2->>Toss: POST /confirm (Idempotency-Key=orderId)
+    Toss-->>S2: 200 OK (정상 승인)
+    S2->>DB: [TX] Outbox→DONE, PaymentEvent→DONE ✅
+```
+
+> ⚠️ 현재 `in-flight-timeout-minutes=5`로 최대 5분 지연 발생. 개선 방안은 백로그(`docs/context/TODOS.md`) 참고.
+
+---
+
+### 케이스 3 — 서버 장애: Outbox IN_FLIGHT에서 멈춤 (Toss 이미 승인 완료)
+
+```mermaid
+sequenceDiagram
+    participant S1 as Server (장애)
+    participant DB as Database
+    participant S2 as Server (재시작)
+    participant Toss
+
+    S1->>Toss: POST /confirm (Idempotency-Key=orderId)
+    Toss-->>S1: 200 OK (승인 완료)
+    S1--xS1: 💥 서버 장애 (DB 커밋 전)
+
+    Note over DB: PaymentEvent=IN_PROGRESS<br/>Outbox=IN_FLIGHT<br/>Toss: 승인 완료 상태
+
+    Note over S2: 5분 후 IN_FLIGHT 타임아웃 복구
+
+    S2->>DB: PENDING 복원 (retryCount++)
+    S2->>DB: claimToInFlight → IN_FLIGHT
+    S2->>Toss: POST /confirm (Idempotency-Key=orderId, 동일 키)
+    Note over Toss: 멱등키 TTL=15일<br/>캐시된 원본 응답 반환
+    Toss-->>S2: 200 OK (approvedAt 포함, 동일 응답) ✅
+    S2->>DB: [TX] Outbox→DONE, PaymentEvent→DONE ✅
+```
+
+> Toss 멱등성 키 TTL이 **15일**이므로 정상 운영 범위 내에서 재시도는 항상 원본 응답을 받는다.
+> 출처: [멱등키 | 토스페이먼츠 개발자센터](https://docs.tosspayments.com/guides/using-api/idempotency-key)
+
+---
+
+### 케이스 4 — Retryable 에러 발생 (정상 서버)
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant DB as Database
+    participant Toss
+
+    W->>DB: claimToInFlight → IN_FLIGHT
+    W->>Toss: POST /confirm
+    Toss-->>W: 실패 응답 (PROVIDER_ERROR 등 retryable)
+
+    W->>DB: [TX] retryCount++ / nextRetryAt=now+backoff(n) / PENDING
+    W->>DB: PaymentEvent → RETRYING (retryCount 반영)
+
+    Note over DB: Outbox=PENDING (nextRetryAt 이후 처리 가능)<br/>PaymentEvent=RETRYING
+
+    loop OutboxWorker 폴링
+        W->>DB: findPendingBatch WHERE nextRetryAt <= NOW()
+        alt nextRetryAt 미도달
+            DB-->>W: 조회 안 됨 → 스킵
+        else nextRetryAt 도달
+            DB-->>W: PENDING 레코드
+            W->>DB: claimToInFlight → IN_FLIGHT
+            W->>Toss: POST /confirm (재시도)
+            alt 성공
+                Toss-->>W: 200 OK
+                W->>DB: Outbox→DONE, PaymentEvent→DONE ✅
+            else retryable 실패
+                Toss-->>W: retryable 에러
+                W->>DB: retryCount++ / nextRetryAt 갱신 / PENDING
+            end
+        end
+    end
+```
+
+---
+
+### 케이스 5 — Retryable 에러 한계치(maxAttempts) 도달
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant DB as Database
+    participant Toss
+
+    Note over DB: retryCount = maxAttempts (예: 5)
+
+    W->>DB: claimToInFlight → IN_FLIGHT
+    W->>Toss: POST /confirm
+    Toss-->>W: retryable 에러
+
+    W->>W: isExhausted(retryCount=5) = true
+    W->>DB: [보상 TX]
+    W->>DB: Outbox: IN_FLIGHT → FAILED
+    W->>DB: 재고 복원 (increaseStockForOrders)
+    W->>DB: PaymentEvent: RETRYING → FAILED (statusReason 저장) ✅
+```
+
+---
+
+### 케이스 6 — SocketTimeout (네트워크 타임아웃)
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant DB as Database
+    participant Toss
+
+    W->>DB: claimToInFlight → IN_FLIGHT
+    W->>Toss: POST /confirm (read-timeout=10s)
+    Note over Toss: 응답 없음 (10초 경과)
+    Toss--xW: SocketTimeoutException
+    Note over W: ResourceAccessException(SocketTimeoutException)<br/>→ NETWORK_ERROR → RETRYABLE_FAILURE
+
+    W->>DB: retryCount++ / nextRetryAt=now+backoff / PENDING
+    W->>DB: PaymentEvent → RETRYING
+
+    Note over W: 이후 케이스 4와 동일 흐름
+
+    Note over Toss: Toss가 실제 처리했을 수도, 안 했을 수도 있음<br/>재시도 시 멱등키(TTL=15일)로 안전하게 처리됨 ✅
+```
+
+---
+
+### 케이스 7 — Non-Retryable 에러 (즉시 실패)
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant DB as Database
+    participant Toss
+
+    W->>DB: claimToInFlight → IN_FLIGHT
+    W->>Toss: POST /confirm
+    Toss-->>W: 실패 응답 (INVALID_CARD_NUMBER 등 non-retryable)
+
+    W->>DB: [보상 TX 즉시 실행]
+    W->>DB: Outbox: IN_FLIGHT → FAILED
+    W->>DB: 재고 복원 (increaseStockForOrders)
+    W->>DB: PaymentEvent: IN_PROGRESS → FAILED (statusReason 저장) ✅
+```
+
+---
+
+### 엣지 케이스 요약표
+
+| 케이스 | PaymentEvent 최종 상태 | Outbox 최종 상태 | 처리 경로 | 비고 |
+|--------|----------------------|----------------|----------|------|
+| 서버 장애 (PENDING) | DONE 또는 FAILED | DONE 또는 FAILED | OutboxWorker 폴링 재처리 | ✅ |
+| 서버 장애 (IN_FLIGHT, 미전송) | DONE 또는 FAILED | DONE 또는 FAILED | 5분 후 timeout → 재처리 | ⚠️ 최대 5분 지연, 백로그 등록 |
+| 서버 장애 (IN_FLIGHT, Toss 승인 완료) | DONE | DONE | timeout → 재시도 → 멱등키 200 OK | ✅ TTL 15일 |
+| Retryable 에러 (한계 미달) | RETRYING | PENDING→IN_FLIGHT 반복 | nextRetryAt Backoff 후 재시도 | ✅ |
+| Retryable 에러 (한계 소진) | FAILED | FAILED | 보상 TX (재고 복원) | ✅ |
+| SocketTimeout | RETRYING→DONE/FAILED | DONE/FAILED | NETWORK_ERROR → retryable 경로 | ✅ |
+| Non-Retryable 에러 | FAILED | FAILED | 즉시 보상 TX | ✅ |
+
+---
+
 ## 제외 범위
 
 - **Dead Letter Queue / 수동 재처리**: 자동 재시도 전략에만 집중
 - **재시도 알림 / 모니터링 대시보드**: 기존 메트릭 AOP 그대로 활용
 - **클라이언트 응답에 RETRYING 노출 여부**: `PaymentStatusService` 응답 스펙 변경은 별도 논의
 - **`recoverTimedOutInFlightRecords`의 즉시 보상**: timeout 경로는 "한 번 더 시도 허용" 의미를 유지하여 단순함 보존
+- **IN_FLIGHT 즉시 복구 (Graceful Shutdown + timeout 단축)**: `docs/context/TODOS.md` 백로그 등록
