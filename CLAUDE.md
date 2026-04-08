@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-Async payment migration project: migrate the synchronous Toss Payments confirm flow to an async architecture using three interchangeable strategies (Sync / DB Outbox / Kafka), switchable via Spring Bean configuration. Goal is to measure TPS and latency differences with k6 benchmarks.
+Payment platform based on a hexagonal architecture. The confirm flow runs asynchronously end-to-end; TPS/latency is measured via k6 benchmarks.
 
 ---
 
@@ -36,7 +36,7 @@ Async payment migration project: migrate the synchronous Toss Payments confirm f
 - [`docs/context/TESTING.md`](docs/context/TESTING.md) — test strategy (Fake vs Mock), JaCoCo, test patterns
 - [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss Payments integration, domain entities, confirm flow
 - [`docs/context/STACK.md`](docs/context/STACK.md) — technology stack, dependencies
-- [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — async confirm flow analysis (Sync / Outbox / Kafka)
+- [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — async confirm flow analysis
 - [`docs/context/CONFIRM-FLOW-FLOWCHART.md`](docs/context/CONFIRM-FLOW-FLOWCHART.md) — confirm flow mermaid diagrams
 - [`docs/context/TODOS.md`](docs/context/TODOS.md) — 향후 정리 예정 작업 목록 (discuss idle 시 참고)
 
@@ -49,16 +49,20 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 
 ## Skills
 
-- `.claude/skills/workflow/SKILL.md` — discuss → plan → plan-review → execute → review → verify 워크플로우 실행 가이드
-- `.claude/skills/plan-review/SKILL.md` — 계획/설계 검수 (임의 파일·터미널 내용·인라인 등 유연하게 호출)
-- `.claude/skills/workflow-plan-review/SKILL.md` — 워크플로우 plan-review 단계 (PLAN.md 자동 로드 + STATE.md 처리)
-- `.claude/skills/review/SKILL.md` — 코드 리뷰 체크리스트
+워크플로우 각 단계는 얇은 오케스트레이터 + 공용 프로토콜/페르소나/체크리스트 구조로 구성된다.
 
----
+- `.claude/skills/workflow/SKILL.md` — 6단계 워크플로우 상위 가이드
+- `.claude/skills/workflow-{discuss,plan,plan-review,execute,review,verify}/` — 각 단계 오케스트레이터
+- `.claude/skills/review/`, `.claude/skills/plan-review/` — 단독 호출용 (1라운드)
+- `.claude/skills/_shared/checklists/` — 단계별 판정 체크리스트 (discuss/plan/code/verify-ready.md)
+- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 (discuss/plan/code/verify/qa/unstuck/commit/vc-round.md)
+- `.claude/skills/_shared/personas/` — 8개 페르소나 (interviewer/architect/planner/critic/domain-expert/implementer/verifier/pr-manager)
 
 ## Commit Style
 
-- **언어**: 커밋 메시지 본문은 한글로 작성한다. (타입 prefix는 영문 유지: `feat:`, `fix:`, `docs:` 등)
-- **문서 산출물**: plan 단계 완료 시 산출물(context 문서, PLAN.md 등)을 하나의 커밋으로 묶는다. 모든 작업 완료 후 최종 문서 상태를 독립 커밋으로 한 번 더 남긴다.
-- **코드 변경**: 논리적으로 독립된 단위로 커밋을 나눈다. 테스트 코드는 구현 코드와 같은 커밋에 포함한다.
-- **TDD 커밋**: RED(`test:`) → GREEN(`feat:`) → REFACTOR(`refactor:`) 각각 별도 커밋.
+세부 규칙은 `.claude/skills/_shared/protocols/commit-round.md` 참고. 요약:
+- 영문 type prefix + 한글 본문
+- amend 금지, 명시 staging, hook 우회 금지
+- TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
+- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋
+- STATE.md 단독 커밋 금지
