@@ -65,15 +65,15 @@ description: >
 
 | 시점 | 포함 파일 | 커밋 타입 |
 |------|----------|----------|
-| Discuss 완료 | topics 문서 + STATE.md(plan으로 갱신, 이슈/브랜치 기록) | `docs:` (feature 브랜치) |
-| Plan 완료 | PLAN.md + STATE.md(plan-review로 갱신) | `docs:` (feature 브랜치) |
-| Plan Review 통과 | STATE.md(execute/Task 1로 갱신) | `docs:` (feature 브랜치) |
+| Discuss 완료 | topics 문서 + 라운드 문서 + STATE.md(plan으로) | `docs:` |
+| Plan 완료 | PLAN.md + 라운드 문서 + STATE.md(plan-review로) | `docs:` |
+| Plan Review 통과 | STATE.md(execute/Task 1로) — 이전 docs 커밋에 포함 | — |
 | TDD RED | 실패 테스트 파일만 | `test:` |
-| TDD GREEN | 구현 코드 + 테스트 | `feat:` |
+| TDD GREEN | 구현 코드 + 테스트 + PLAN.md(체크박스) + STATE.md | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |
-| tdd=false 태스크 완료 | 구현 코드 + PLAN.md(체크박스) + STATE.md | `feat:` or `chore:` |
+| tdd=false 태스크 완료 | 구현 + PLAN.md + STATE.md | `feat:` or `chore:` |
 | Review 피드백 수정 | 수정된 파일들 | `refactor:` |
-| 세션 중단 | .continue-here.md + 현재 산출물 | 해당 타입 |
-| 전체 작업 완료 | 최종 STATE.md | `docs:` |
+| 세션 중단 | .continue-here.md + 현재 산출물 | `wip:` 등 |
+| 전체 작업 완료 | context 갱신 + 아카이브 + STATE.md | `docs:` |
 
-커밋 메시지 본문은 한글, type prefix는 영문 유지.
+세부 규칙은 `_shared/protocols/commit-round.md` 참조. PR/브랜치/이슈는 `vc-round.md` 참조.
