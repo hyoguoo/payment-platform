@@ -7,57 +7,47 @@ description: >
   태스크로 분해하는 것이 목적이다.
 ---
 
-# Plan 단계 가이드
+# Plan 단계 오케스트레이터
 
-Plan의 목적은 discuss에서 결정된 설계를 "바로 코딩할 수 있는 순서 있는 태스크 목록"으로 만드는 것이다.
-좋은 Plan은 각 태스크가 독립적으로 커밋 가능하고, 완료 기준이 명확하다.
-
----
-
-## 시작 시 — 컨텍스트 로드
-
-1. `docs/topics/<TOPIC>.md` — 결정 사항과 설계 옵션 파악
-2. `docs/STATE.md` — 현재 단계 확인
-3. 관련 소스 파일 — 기존 패턴과 연동 지점 파악 (ARCHITECTURE.md의 레이어 규칙 적용)
+`plan-round` 프로토콜을 실행하는 얇은 오케스트레이터.
 
 ---
 
-## 태스크 분해 원칙
+## 컨텍스트 로드
 
-**한 태스크 = 한 커밋**
-태스크가 너무 크면 나눈다. 하나의 태스크는 30분~2시간 내에 완료할 수 있어야 한다.
-
-**의존성 순서**
-포트 인터페이스 → 도메인 로직 → 애플리케이션 서비스 → 인프라 구현 → 컨트롤러 순으로 배치한다.
-테스트에서 사용할 Fake 구현이 필요하면 실제 구현 이전 태스크로 배치한다.
-
-**TDD 여부 결정**
-
-| 상황 | tdd |
-|------|-----|
-| 비즈니스 로직, 상태 전환, 엣지 케이스 있는 use case | `true` |
-| Domain entity 메서드 | `true` |
-| 단순 CRUD use case, 조회만 하는 서비스 | `true` (권장) |
-| 포트 인터페이스 정의 (interface만) | `false` |
-| 설정 클래스 (@Configuration) | `false` |
-| 상수, 열거형 | `false` |
-| Fake 구현체 (테스트 전용 클래스) | `false` |
+- `docs/topics/<TOPIC>.md` (discuss 산출물)
+- `docs/rounds/<topic>/discuss-*.md` (리스크 이력)
+- `docs/context/ARCHITECTURE.md`, `TESTING.md`
+- STATE.md
 
 ---
 
-## PLAN.md 작성
+## 프로토콜 실행
 
-`references/plan-template.md`의 형식을 사용한다.
-태스크 품질 체크 항목도 해당 파일에 있다.
+`.claude/skills/_shared/protocols/plan-round.md`의 Flow 수행.
+
+1. **Planner**(`_shared/personas/planner.md`)
+   - `docs/<TOPIC>-PLAN.md` 초안
+   - 각 태스크: `tdd` + `domain_risk` 플래그
+   - layer 의존 순서
+
+2. **Architect**(`_shared/personas/architect.md`)
+   - 초안에 인라인 주석 개입 (별도 라운드 문서 없음)
+
+3. **Critic**(`_shared/personas/critic.md`)
+   - `plan-ready.md` 체크리스트 판정 → `plan-critic-<N>.md`
+
+4. **Domain Expert**(`_shared/personas/domain-expert.md`)
+   - discuss에서 식별된 domain risk가 전부 태스크로 매핑되었는지 확인
+   - `plan-domain-<N>.md`
+
+5. 둘 다 pass → 완료. Round 2 fail 시 `unstuck-round.md`의 simplifier 주입.
 
 ---
 
-## 완료 기준
+## 완료 시 후처리
 
-- [ ] `docs/<TOPIC>-PLAN.md` 작성 (진행 상황 체크박스 포함)
-- [ ] 모든 태스크에 명확한 완료 기준 존재
-- [ ] 태스크 간 의존성 순서 올바름
-- [ ] PLAN.md + STATE.md를 하나의 `docs:` 커밋으로 묶기 (feature 브랜치 위에서, discuss 커밋에서 이미 브랜치 생성됨)
-- [ ] STATE.md 단계를 `plan-review`로 갱신 (활성 태스크 없음)
+- [ ] PLAN.md + STATE.md를 `docs:` 단일 커밋 (`commit-round.md` 준수)
+- [ ] STATE.md stage → `plan-review`
 
-완료 후: "plan 완료. plan-review 단계로 넘어가겠습니다." 라고 알리고 `workflow-plan-review` 스킬로 즉시 진행한다.
+알림: "plan 완료. plan-review 단계로 넘어갑니다." → `workflow-plan-review` 즉시 진행.
