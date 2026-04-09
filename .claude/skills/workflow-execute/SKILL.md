@@ -22,7 +22,20 @@ description: >
 
 ## 태스크 루프
 
+**모든 페르소나는 서브에이전트로만 실행.** 메인 스레드에서 TDD 사이클/테스트 실행/판정 금지.
+
 각 태스크에 대해 `.claude/skills/_shared/protocols/code-round.md` 수행:
+
+- **Step 1 Implementer dispatch (단일)**: `Agent(subagent_type="implementer", prompt="Task <id> 실행. tdd=<bool>, domain_risk=<bool>")` — 태스크당 1회
+- **Step 2 Verifier dispatch**: `Agent(subagent_type="verifier", prompt="./gradlew test")`
+- **Step 3 판정 dispatch**:
+  - `domain_risk=true`: **병렬 단일 메시지**로 critic + domain-expert 동시 호출
+    ```
+    Agent(subagent_type="critic",        output=code-<task>-critic-N.md)
+    Agent(subagent_type="domain-expert", output=code-<task>-domain-N.md)
+    ```
+  - `domain_risk=false`: critic만 호출
+- 메인 스레드는 서브에이전트 JSON `decision`만 읽는다.
 
 1. **Implementer**(`_shared/personas/implementer.md`)
    - `tdd=true`: RED → GREEN → REFACTOR
@@ -49,8 +62,8 @@ description: >
 ---
 
 ## Deviation Rules
-- Rule 1 (자동 수정): 컴파일 오류, 깨진 import, 명백한 버그 → 커밋 메시지에 기재
-- Rule 2 (중단 후 확인): DB 스키마 변경, 레이어 경계 위반, build.gradle 변경
+- Rule 1 (자동 수정): 컴파일 오류, 깨진 import, 명백한 버그는 **Implementer 서브에이전트 내부**에서 직접 수정하고 커밋 메시지에 기재. 메인 오케스트레이터가 가로채 수정 금지 (별도 Agent dispatch도 불필요 — 동일 Implementer 세션 안에서 처리).
+- Rule 2 (중단 후 확인): DB 스키마 변경, 레이어 경계 위반, build.gradle 변경 시 Implementer는 즉시 중단하고 오케스트레이터에 보고. 오케스트레이터는 사용자에게 확인받은 뒤 재dispatch.
 
 ## Analysis Paralysis Guard
 Read/Grep/Glob 5회 연속 + 코드 0줄 → 멈추고 "지금 정보로 작성" vs "블로킹 보고" 선택.

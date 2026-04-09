@@ -3,6 +3,12 @@
 verify 단계의 최종 점검 절차. 전체 테스트 → context 문서 갱신 → 아카이브 →
 STATE 종결 → PR 생성까지 결정론적으로 처리한다.
 
+## Execution mechanism (필수)
+- **모든 페르소나는 서브에이전트로만 실행한다.** 메인 스레드에서 테스트 실행 + 체크리스트 판정 + PR 작성을 직접 하면 격리가 깨진다.
+- **호출**: `Agent` + `subagent_type: "verifier" | "critic" | "pr-manager"`.
+- **순서**: Verifier → (context 갱신/아카이브는 오케스트레이터 책임) → Critic → PR Manager.
+- **판정 수용**: Critic JSON `decision`만 기계적으로 읽는다.
+
 ## Participants
 - **Verifier** (Haiku) — 전체 `./gradlew test` 실행
 - **Critic** (Opus) — `verify-ready.md` 체크리스트 판정

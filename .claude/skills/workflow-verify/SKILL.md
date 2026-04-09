@@ -15,9 +15,28 @@ description: >
 
 ---
 
+## 책임 경계
+
+verify 단계는 "판정·실행"과 "결정론적 파일 조작"이 섞여 있어 두 책임을 명확히 분리한다.
+
+| 책임 | 수행 주체 | 대상 |
+|---|---|---|
+| 테스트 실행 | **Verifier 서브에이전트** | `./gradlew test` |
+| 체크리스트 판정 | **Critic 서브에이전트** | `verify-ready.md` Gate 섹션 |
+| PR 생성/갱신 | **PR Manager 서브에이전트** | `vc-round.md` |
+| context 문서 갱신 | **오케스트레이터** (context-update 스킬) | `docs/context/*.md` |
+| `git mv` 아카이브 | **오케스트레이터** | `docs/archive/<topic>/` |
+| STATE.md 종결 편집 | **오케스트레이터** | `docs/STATE.md` |
+| 최종 `docs:` 커밋 | **오케스트레이터** | 위 세 가지 묶음 |
+
+**메인은 판정·테스트·PR 본문 작성을 절대 대행하지 않는다.** 파일 이동·커밋은 창의성이 없는 결정론적 작업이라 페르소나화 이득이 없어 오케스트레이터가 직접 수행한다.
+
+Gate는 `verify-ready.md`의 **Gate checklist 섹션만** 판정한다.
+
 ## 실행 순서
 
-### Step 1 — Verifier (`_shared/personas/verifier.md`)
+### Step 1 — Verifier dispatch
+`Agent(subagent_type="verifier", prompt="./gradlew test")` — JSON 결과만 받는다.
 `./gradlew test` 전체 실행.
 
 **실패 처리**:
@@ -41,8 +60,8 @@ git mv docs/topics/<TOPIC>.md docs/archive/<topic-kebab>/<TOPIC>-CONTEXT.md
 ### Step 4 — STATE.md 종결
 stage → `done`. `.continue-here.md` 존재 시 삭제.
 
-### Step 5 — Critic (`_shared/personas/critic.md`)
-`verify-ready.md` 체크리스트 1회 판정 → `docs/rounds/<topic>/verify-critic-1.md`.
+### Step 5 — Critic dispatch
+`Agent(subagent_type="critic", prompt="verify-ready.md Gate checklist만 판정. 출력: docs/rounds/<topic>/verify-critic-1.md")`
 `decision != pass` → 실패 항목 수정 후 Step 1 재시도.
 
 ### Step 6 — 최종 커밋
@@ -52,11 +71,9 @@ git add docs/STATE.md docs/context/ docs/archive/
 git commit -m "docs: <주제> 작업 완료 및 문서 아카이브"
 ```
 
-### Step 7 — PR Manager (`_shared/personas/pr-manager.md`)
-`vc-round.md` Step 3/4 수행.
-- push: `git push -u origin "#<이슈-번호>"` (따옴표 필수)
-- PR 생성: `mcp__github__create_pull_request`
-- 본문은 이번 작업 전체 기반 (diff 아님)
+### Step 7 — PR Manager dispatch
+`Agent(subagent_type="pr-manager", prompt="vc-round.md Step 3/4 수행. 이슈 #N, 브랜치 #N.")`
+PR Manager가 push + PR 생성/갱신을 수행한다. 메인 스레드에서 gh 명령 직접 실행 금지.
 
 ---
 

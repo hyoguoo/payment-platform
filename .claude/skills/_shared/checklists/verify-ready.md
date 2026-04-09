@@ -1,9 +1,13 @@
 # verify-ready 체크리스트
 
-verify 단계 종료 조건. 모든 항목이 **yes**여야 작업을 idle 상태로 종결할 수 있다.
-Verifier / PR Manager 페르소나가 이 체크리스트를 판정 기준으로 사용한다.
+verify 단계 종료 조건. 두 개의 섹션으로 분리된다:
+
+- **Gate checklist** — Verifier(결정론) + Critic이 판정한다.
+- **Post-phase checklist** — `workflow-verify` 오케스트레이터가 pass 이후 순차 실행한다. 페르소나 판정 대상이 아님.
 
 ---
+
+# Gate checklist (Verifier + Critic 판정)
 
 ## test & build (결정론적 백본)
 
@@ -23,6 +27,12 @@ Verifier / PR Manager 페르소나가 이 체크리스트를 판정 기준으로
 
 - [ ] `docs/context/` 중 영향받는 문서가 갱신됨 (ARCHITECTURE / CONVENTIONS / TESTING / INTEGRATIONS 등 해당되는 것)
 - [ ] `docs/context/TODOS.md`에 신규 기록이 필요한 경우 반영됨
+
+---
+
+# Post-phase checklist (오케스트레이터 실행, 판정 제외)
+
+아래는 Gate pass 이후 `workflow-verify`가 실행한다. PR Manager는 git/PR 섹션만 책임진다.
 
 ## archival (아카이빙)
 

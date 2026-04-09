@@ -15,43 +15,53 @@ description: >
 
 ## Step 1 — 페르소나 리뷰 (1 라운드)
 
-`git diff main...HEAD`를 대상으로:
+**서브에이전트로만 실행.** 메인 스레드에서 diff를 읽고 findings를 직접 작성 금지.
 
-- **Critic**(`_shared/personas/critic.md`) — 아키텍처/컨벤션/테스트 관점
-- **Domain Expert**(`_shared/personas/domain-expert.md`) — 결제 도메인 리스크
+`git diff main...HEAD`를 대상으로 **단일 메시지에서 병렬 dispatch**:
+```
+Agent(subagent_type="critic",        prompt="review 단계 1라운드. 대상: git diff main...HEAD. 출력: docs/rounds/<topic>/review-critic-1.md")
+Agent(subagent_type="domain-expert", prompt="review 단계 1라운드. 대상: git diff main...HEAD. 출력: docs/rounds/<topic>/review-domain-1.md")
+```
+둘 다 1회만 호출 (토론 없음).
 
-둘 다 1회만 호출 (토론 없음). 출력:
-- `docs/rounds/<topic>/review-critic-1.md`
-- `docs/rounds/<topic>/review-domain-1.md`
-
-체크리스트는 `review` 스킬의 항목과 `code-ready.md`의 도메인 섹션을 함께 본다.
+체크리스트는 `code-ready.md`의 Gate 섹션 + 도메인 섹션을 재사용한다. (review 단계는 "execute 완료 직후 diff 전체를 다시 본다"가 목적이므로 code-round와 동일한 기준이 적합하고, 별도 `review-ready.md`를 두지 않는다. 만약 review 고유 항목이 생기면 그때 분리한다.)
 
 ---
 
 ## Step 2 — 항목 처리
 
-findings의 `severity`별 대응:
+**메인 스레드의 역할은 "사용자에게 어떤 finding을 고칠지 확인받는 것"까지다. 실제 코드 수정·커밋은 전부 `implementer` 서브에이전트로 위임한다.** 메인이 직접 Edit/Write/Bash로 수정·커밋하면 TDD·commit-round 규칙을 흉내 내야 하므로 격리가 깨진다.
+
+findings의 `severity`별로 사용자에게 확인:
 
 **critical** — 항목마다 개별 확인:
 ```
 1. [critical] PaymentEvent.java:34 — ...  suggestion: ...
    → 수정하시겠습니까? (y/n/skip)
 ```
-- `y`: TDD 대상이면 test → impl 순
-- `n`: `// REVIEW: intentionally skipped — <이유>` 주석
+- `y`: 수정 대상 목록에 추가
+- `n`: Implementer에게 `// REVIEW: intentionally skipped — <이유>` 주석만 넣도록 요청
 - `skip`: 다음
 
 **major** — 목록 일괄 표시 후 번호 선택 (`예: 1 3 / all / skip`)
 
-**minor** — 목록만 표시, 요청 시 수정
+**minor** — 목록만 표시, 요청 시 수정 대상에 추가
+
+선택이 끝나면 **Implementer dispatch** (여러 건을 묶어 1회):
+```
+Agent(subagent_type="implementer",
+      prompt="review finding 수정. 대상: <선택 findings 목록 + 파일:라인 + suggestion>.
+              수정은 관련 태스크의 tdd 여부 따름. commit-round.md 준수.
+              커밋 메시지: refactor: 코드 리뷰 피드백 반영 — <요약>")
+```
 
 ---
 
 ## Step 3 — 추가 요청
-"추가로 수정하고 싶은 부분이 있으신가요?" 묻고, 있으면 구현·재확인.
+"추가로 수정하고 싶은 부분이 있으신가요?" 묻고, 있으면 동일하게 Implementer dispatch로 위임.
 
-## Step 4 — 커밋 및 재리뷰
-수정 있었으면 `refactor: 코드 리뷰 피드백 반영 — <요약>` 커밋 후 Step 1 재실행.
+## Step 4 — 재리뷰
+Implementer 완료 후 Step 1을 재실행 (critic/domain-expert 병렬 dispatch).
 새 critical 없으면 Step 5.
 
 ## Step 5 — verify 대기

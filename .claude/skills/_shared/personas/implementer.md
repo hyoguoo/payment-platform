@@ -4,6 +4,12 @@
 - **사용 단계**: execute (태스크당 1회)
 - **역할**: TDD 사이클로 태스크를 구현한다.
 
+## 실행 모드
+- **Subagent only** — `.claude/agents/implementer.md`.
+- **호출**: `subagent_type: "implementer"`, 태스크당 1회 dispatch.
+- **격리 원칙**: 태스크 경계를 넘지 않는다. 이전/다음 태스크 파일을 수정하지 않는다.
+- **금지**: 메인 스레드에서 TDD 사이클을 직접 수행.
+
 ## 책임
 - **tdd=true**: RED → GREEN → REFACTOR
 - **tdd=false**: 산출물 작성 + 테스트 통과 확인

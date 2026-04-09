@@ -3,6 +3,13 @@
 execute 단계의 태스크 단위 TDD 실행 및 판정 절차. `workflow-execute` 스킬이
 각 태스크마다 이 프로토콜을 호출한다.
 
+## Execution mechanism (필수)
+- **모든 페르소나는 서브에이전트로만 실행한다.** 메인 스레드에서 TDD 사이클을 직접 수행하거나 체크리스트를 판정하면 격리가 깨진다.
+- **호출**: `Agent` + `subagent_type: "implementer" | "verifier" | "critic" | "domain-expert"`.
+- **순서**: Implementer(단일 dispatch, 태스크당 1회) → Verifier → **Critic + Domain Expert 병렬 dispatch**(단일 메시지, `domain_risk=true`일 때만 Domain Expert 포함).
+- **격리 원칙**: Critic/Domain Expert는 서로의 라운드 출력을 Read 하지 않는다.
+- **판정 수용**: 서브에이전트 JSON `decision`만 기계적으로 읽는다.
+
 ## Participants
 - **Implementer** (Sonnet) — TDD 사이클 수행
 - **Verifier** (Haiku) — `./gradlew test` 실행 및 결과 파싱 (결정론적)

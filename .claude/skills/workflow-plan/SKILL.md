@@ -26,21 +26,17 @@ description: >
 
 `.claude/skills/_shared/protocols/plan-round.md`의 Flow 수행.
 
-1. **Planner**(`_shared/personas/planner.md`)
-   - `docs/<TOPIC>-PLAN.md` 초안
-   - 각 태스크: `tdd` + `domain_risk` 플래그
-   - layer 의존 순서
+**모든 페르소나는 서브에이전트로만 실행.** 메인 스레드에서 판정/분해 금지.
 
-2. **Architect**(`_shared/personas/architect.md`)
-   - 초안에 인라인 주석 개입 (별도 라운드 문서 없음)
-
-3. **Critic**(`_shared/personas/critic.md`)
-   - `plan-ready.md` 체크리스트 판정 → `plan-critic-<N>.md`
-
-4. **Domain Expert**(`_shared/personas/domain-expert.md`)
-   - discuss에서 식별된 domain risk가 전부 태스크로 매핑되었는지 확인
-   - `plan-domain-<N>.md`
-
+1. **Planner dispatch**: `Agent(subagent_type="planner", prompt="<topic> PLAN 초안 작성. 입력: docs/topics/<TOPIC>.md")`
+2. **Architect dispatch**: `Agent(subagent_type="architect", prompt="PLAN 초안 layer/module 검토")` (순차 — Planner 초안 의존)
+3. **판정 dispatch (병렬, 단일 메시지)**:
+   ```
+   Agent(subagent_type="critic",        prompt="...", output=plan-critic-N.md)
+   Agent(subagent_type="domain-expert", prompt="...", output=plan-domain-N.md)
+   ```
+   - 판정 대상: `plan-ready.md`의 **Gate checklist 섹션만**. Post-phase 섹션은 제외.
+4. 서브에이전트 JSON `decision`만 기계적으로 읽는다.
 5. 둘 다 pass → 완료. Round 2 fail 시 `unstuck-round.md`의 simplifier 주입.
 
 ---

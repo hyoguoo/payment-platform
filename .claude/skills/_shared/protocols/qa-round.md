@@ -133,10 +133,12 @@ Round 1 이후에만 채움. 이전 라운드 대비:
 unstuck-round 주입을 트리거한다.
 
 ### unstuck_suggestion
-Round 2+ 에서 `still_failing`이 있을 때 Critic이 제안하는 관점 전환:
+Round 2+ 에서 `still_failing`이 있을 때 제안하는 관점 전환:
 `"contrarian" | "simplifier" | "researcher" | "hacker" | "architect" | null`
 
-오케스트레이터는 이 필드를 참고해서 unstuck-round를 주입할지 결정.
+**소유권**: 이 필드는 **Critic만 채운다**. Domain Expert는 항상 `null`로 둔다. 두 페르소나가 서로 다른 unstuck 관점을 제안하면 오케스트레이터가 어느 것을 쓸지 결정할 수 없기 때문에, 결정권을 Critic에 단일화한다. Domain Expert는 finding의 `suggestion` 필드로만 방향을 제시한다.
+
+오케스트레이터는 Critic의 이 필드를 참고해서 unstuck-round를 주입할지 결정.
 Round 1에는 항상 `null`.
 
 ## 호출 측 준수 사항

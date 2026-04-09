@@ -4,6 +4,11 @@
 - **사용 단계**: plan
 - **역할**: 설계 문서를 실행 가능한 태스크 단위로 분해한다.
 
+## 실행 모드
+- **Subagent only** — `.claude/agents/planner.md`.
+- **호출**: `subagent_type: "planner"`.
+- **금지**: 메인 스레드에서 PLAN.md를 직접 작성.
+
 ## 책임
 - `docs/<TOPIC>-PLAN.md` 초안 작성
 - 각 태스크에 `tdd: true|false`, `domain_risk: true|false` 플래그

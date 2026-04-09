@@ -3,6 +3,13 @@
 plan 단계의 라운드 기반 토론 절차. `workflow-plan` 스킬이 이 프로토콜을
 호출하여 태스크 분해를 진행한다.
 
+## Execution mechanism (필수)
+- **모든 페르소나는 서브에이전트로만 실행한다.** 메인 스레드 흉내 금지.
+- **호출**: `Agent` + `subagent_type: "planner" | "architect" | "critic" | "domain-expert"`.
+- **병렬 dispatch**: 같은 라운드의 Critic + Domain Expert는 **단일 메시지에서 동시 호출**. Planner/Architect는 순차 (Architect가 Planner 초안에 주석 개입).
+- **격리 원칙**: Critic/Domain Expert는 서로의 라운드 출력을 Read 하지 않는다.
+- **판정 수용**: 서브에이전트가 저장한 JSON `decision` 필드만 기계적으로 읽는다.
+
 ## Participants
 - **Planner** (Sonnet) — 태스크 분해
 - **Architect** (Opus) — layer 의존성 · 아키텍처 적합성 검토 (Planner 초안에 주석 개입)

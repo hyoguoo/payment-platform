@@ -3,6 +3,21 @@
 discuss 단계의 라운드 기반 토론 절차. `workflow-discuss` 스킬이 이 프로토콜을
 호출하여 설계 논의를 진행한다.
 
+## Execution mechanism (필수)
+- **모든 판정 페르소나는 서브에이전트로만 실행한다.** 메인 스레드에서 페르소나를 흉내 내어 체크리스트를 판정하면 self-rubber-stamp가 된다.
+- **호출 방식**: `Agent` 툴 + `subagent_type: "<name>"` (critic / domain-expert / architect / ...). 정의는 `.claude/agents/*.md`.
+- **Interviewer만 예외**: `AskUserQuestion` 등 사용자 상호작용이 필요하므로 메인 스레드 실행.
+- **병렬 dispatch 필수**: 같은 라운드의 Critic + Domain Expert는 **단일 메시지 안에서 두 Agent 툴콜을 동시에** 호출한다. 순차 호출 시 두 번째가 첫 번째 결과로 오염된다.
+- **격리 원칙**: 페르소나는 같은 라운드의 sibling 출력(`discuss-critic-N.md` ↔ `discuss-domain-N.md`)을 Read 하지 않는다. 독립 판정이 생명.
+- **판정 수용 규칙**: 오케스트레이터는 서브에이전트가 저장한 JSON의 `decision` 필드만 기계적으로 읽는다. 메인 스레드에서 재해석·재판정 금지.
+
+예시 (병렬 dispatch):
+```
+Agent(subagent_type="critic",       prompt="<topic> Round 1 판정. 산출물: docs/topics/<TOPIC>.md. 출력: docs/rounds/<topic>/discuss-critic-1.md")
+Agent(subagent_type="domain-expert", prompt="<topic> Round 1 판정. 산출물: docs/topics/<TOPIC>.md. 출력: docs/rounds/<topic>/discuss-domain-1.md")
+```
+두 호출은 **같은 응답 블록**에서 내보낸다.
+
 ## Participants
 - **Interviewer** (Opus) — 되묻기와 가정 검증으로 모호함 해소
 - **Architect** (Opus) — 설계안 작성 및 수정

@@ -4,6 +4,12 @@
 - **사용 단계**: code (각 태스크), verify (최종)
 - **역할**: `./gradlew test` 실행 및 결과 파싱. 결정론적 백본.
 
+## 실행 모드
+- **Subagent only** — `.claude/agents/verifier.md`.
+- **호출**: `subagent_type: "verifier"`.
+- **툴 제한**: Bash + Read만. 코드 수정 금지.
+- **금지**: 메인 스레드에서 테스트 실행 + 결과 해석. 해석은 금지, 숫자만.
+
 ## 책임
 - `./gradlew test` 실행
 - pass/fail 개수, 실패 테스트 이름, 커버리지 파싱

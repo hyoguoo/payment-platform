@@ -33,16 +33,19 @@ description: >
    - 3-Path Routing + Dialectic Rhythm Guard
    - 출력: `docs/rounds/<topic>/discuss-interview-0.md`
 
-2. **Round 1..3 — Architect → Critic → Domain Expert**
-   페르소나: `_shared/personas/architect.md`, `critic.md`, `domain-expert.md`
-   - Architect가 `docs/topics/<TOPIC>.md` 작성/수정
-   - Critic이 `discuss-ready.md` 체크리스트로 판정 → `discuss-critic-<N>.md`
-   - Domain Expert가 도메인 리스크 판정 → `discuss-domain-<N>.md`
-   - 둘 다 `decision: pass` → 다음 단계
-   - Round 2 fail 시 `unstuck-round.md`의 contrarian 관점 주입
+2. **Round 1..3 — Architect → (Critic ∥ Domain Expert)**
+   - **Architect dispatch**: `Agent(subagent_type="architect", prompt="<topic> Round N, 이전 라운드 findings: ...")` → `docs/topics/<TOPIC>.md` 작성/수정
+   - **판정 dispatch (병렬, 단일 메시지)**:
+     ```
+     Agent(subagent_type="critic",        prompt="...", output=discuss-critic-N.md)
+     Agent(subagent_type="domain-expert", prompt="...", output=discuss-domain-N.md)
+     ```
+     두 호출은 같은 응답 블록에서 내보낸다. 순차 호출 금지 (교차 오염).
+   - **격리**: 메인 스레드에서 체크리스트를 직접 판정하지 않는다. 서브에이전트의 JSON `decision` 필드만 읽는다.
+   - **Gate 판정 대상**: `discuss-ready.md`의 **Gate checklist 섹션만**. Post-phase 섹션(issue/branch/STATE)은 페르소나가 판정하지 않는다.
+   - 둘 다 `decision: pass` → 후처리로
+   - Round 2 fail 시 `unstuck-round.md` contrarian 관점 주입
    - Round 3 소진 시 사용자 에스컬레이션
-
-판정은 `qa-round.md` JSON 스키마의 `decision` 필드만 기계적으로 읽는다.
 
 ---
 

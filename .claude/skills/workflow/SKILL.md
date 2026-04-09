@@ -9,6 +9,19 @@ description: >
 
 # Workflow 오케스트레이터
 
+## 핵심 원칙 — 서브에이전트 + 페르소나 격리 (Non-negotiable)
+
+이 워크플로우의 품질은 **판정 페르소나가 서브에이전트로 격리 실행**되는 것에 전적으로 의존한다.
+
+1. **모든 판정·구현 페르소나는 `Agent` 툴로만 실행**한다. 정의는 `.claude/agents/*.md`, 호출은 `subagent_type: "<name>"`. 메인 스레드에서 페르소나를 흉내 내어 체크리스트를 판정하거나 TDD를 수행하면 self-rubber-stamp가 된다.
+2. **Interviewer만 예외** — 사용자 실시간 상호작용(AskUserQuestion)이 필요하므로 메인 스레드 실행.
+3. **병렬 dispatch 필수** — 같은 라운드의 Critic + Domain Expert는 **단일 메시지에서 동시 호출**. 순차 호출 시 두 번째가 첫 번째 결과로 오염된다.
+4. **격리 원칙** — 페르소나는 같은 라운드의 sibling 출력 파일을 Read 하지 않는다.
+5. **판정 수용** — 오케스트레이터는 서브에이전트가 저장한 JSON의 `decision` 필드만 기계적으로 읽는다. 재해석·재판정 금지.
+6. **Gate vs Post-phase 분리** — `*-ready.md` 체크리스트는 두 섹션으로 나뉜다. 페르소나는 **Gate 섹션만** 판정한다. Post-phase(이슈/브랜치/아카이브/PR/STATE 종결)는 오케스트레이터 책임.
+
+---
+
 ## 세션 시작 프로토콜
 
 1. `docs/.continue-here.md` 존재 여부 확인 → 있으면 읽고 내용을 사용자에게 요약한 뒤 파일 삭제
