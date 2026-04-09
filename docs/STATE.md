@@ -1,10 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-07
+> 최종 수정: 2026-04-09
 
 ## 활성 작업
-- **주제**: 없음
-- **단계**: idle
+- **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
+- **이슈**: #64
+- **브랜치**: #64
+- **단계**: plan
 
 ## 최근 완료
 - **주제**: PAYMENT-RETRY-STATE
@@ -13,8 +15,8 @@
 
 ## 단계 진행
 - [x] discuss
-- [x] plan
-- [x] plan-review
-- [x] execute
-- [x] review
-- [x] verify
+- [ ] plan
+- [ ] plan-review
+- [ ] execute
+- [ ] review
+- [ ] verify
