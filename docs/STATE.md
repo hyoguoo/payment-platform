@@ -6,7 +6,7 @@
 - **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
 - **이슈**: #64
 - **브랜치**: #64
-- **단계**: plan
+- **단계**: plan-review
 
 ## 최근 완료
 - **주제**: PAYMENT-RETRY-STATE
@@ -15,7 +15,7 @@
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
