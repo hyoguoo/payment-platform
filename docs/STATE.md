@@ -6,8 +6,7 @@
 - **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
 - **이슈**: #64
 - **브랜치**: #64
-- **단계**: execute
-- **활성 태스크**: Task 1
+- **단계**: plan (재진입 — 대안 C 기반 재작성)
 
 ## 최근 완료
 - **주제**: PAYMENT-RETRY-STATE
@@ -15,9 +14,9 @@
 - **아카이브**: docs/archive/payment-retry-state/
 
 ## 단계 진행
-- [x] discuss
-- [x] plan
-- [x] plan-review
+- [x] discuss (1차 완료, 재진입 중)
+- [x] plan (1차 완료, 대안 C로 재작성 예정)
+- [x] plan-review (1차 완료, 재작성 후 재실행 예정)
 - [ ] execute
 - [ ] review
 - [ ] verify
