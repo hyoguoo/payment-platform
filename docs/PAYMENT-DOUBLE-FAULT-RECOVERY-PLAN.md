@@ -496,9 +496,14 @@ toRetrying_TerminalSource_Throws(PaymentEventStatus)
 ```
 
 **완료 조건**
-- [ ] READY → RETRYING 전이 허용
-- [ ] 종결 source → 예외 유지
-- [ ] `./gradlew test` 통과
+- [x] READY → RETRYING 전이 허용
+- [x] 종결 source → 예외 유지
+- [x] `./gradlew test` 통과
+
+**완료 결과**
+- `PaymentEvent.toRetrying()` 허용 source에 `READY` 추가 (IN_PROGRESS/RETRYING/READY → RETRYING)
+- 종결 6종(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) PaymentStatusException 유지
+- 303개 테스트 전체 통과
 
 ---
 
