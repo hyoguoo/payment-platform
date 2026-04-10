@@ -657,9 +657,15 @@ process_ClaimFails_Returns()
 - `PaymentEventEntity.java` — status 필드 확인 완료 주석
 
 **완료 조건**
-- [ ] `QUARANTINED` 상태 DB 저장/조회 정상 동작 확인
-- [ ] 기존 status 값 영향 없음
-- [ ] `./gradlew test` 통과
+- [x] `QUARANTINED` 상태 DB 저장/조회 정상 동작 확인
+- [x] 기존 status 값 영향 없음
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentEventEntity.status` 필드는 `@Enumerated(EnumType.STRING)` + VARCHAR 컬럼으로 매핑 — CHECK constraint 없음
+- Flyway 미사용 (`ddl-auto: create-drop` 테스트 / `ddl-auto: update` 운영), 별도 마이그레이션 파일 불필요
+- `PaymentEventStatus.QUARANTINED`는 Task 1에서 이미 도메인 enum에 추가됨 — JPA가 자동 수용
+- 별도 신규 파일 없음, 311개 테스트 전체 통과
 
 ---
 
