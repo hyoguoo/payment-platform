@@ -58,6 +58,17 @@ public class PaymentTransactionCoordinator {
     }
 
     @Transactional
+    public PaymentEvent executePaymentQuarantineWithOutbox(
+            PaymentEvent paymentEvent,
+            PaymentOutbox outbox,
+            String reason
+    ) {
+        outbox.toFailed();
+        paymentOutboxUseCase.save(outbox);
+        return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+    }
+
+    @Transactional
     public PaymentEvent executePaymentFailureCompensationWithOutbox(
             PaymentEvent paymentEvent,
             List<PaymentOrder> paymentOrderList,

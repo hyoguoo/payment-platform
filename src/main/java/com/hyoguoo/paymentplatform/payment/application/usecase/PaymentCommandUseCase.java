@@ -72,6 +72,15 @@ public class PaymentCommandUseCase {
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
+    @Transactional
+    @PublishDomainEvent(action = "changed")
+    @PaymentStatusChange(toStatus = "QUARANTINED", trigger = "auto")
+    public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.quarantine(reason, now);
+        return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
     public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
         PaymentConfirmRequest request =
                 new PaymentConfirmRequest(

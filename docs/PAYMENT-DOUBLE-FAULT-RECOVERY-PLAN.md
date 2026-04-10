@@ -404,9 +404,14 @@ executePaymentQuarantineWithOutbox_DoesNotRestoreStock()
 ```
 
 **완료 조건**
-- [ ] `executePaymentQuarantineWithOutbox` 단일 `@Transactional` 내 실행
-- [ ] 재고 복구 호출 없음 검증
-- [ ] `./gradlew test` 통과
+- [x] `executePaymentQuarantineWithOutbox` 단일 `@Transactional` 내 실행
+- [x] 재고 복구 호출 없음 검증
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentCommandUseCase.markPaymentAsQuarantined(PaymentEvent, String)` 추가: `quarantine(reason, now)` 도메인 메서드 위임, `@Transactional` + `@PublishDomainEvent` + `@PaymentStatusChange(toStatus="QUARANTINED")` 적용
+- `PaymentTransactionCoordinator.executePaymentQuarantineWithOutbox(PaymentEvent, PaymentOutbox, String)` 추가: `outbox.toFailed()` → `paymentOutboxUseCase.save()` → `markPaymentAsQuarantined()` 순 단일 TX, 재고 복구 없음
+- 전체 293개 테스트 통과
 
 ---
 
