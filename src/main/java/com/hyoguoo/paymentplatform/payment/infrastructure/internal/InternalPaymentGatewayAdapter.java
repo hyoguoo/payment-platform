@@ -6,6 +6,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayFactory;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayProperties;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
@@ -38,7 +40,8 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     }
 
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId) {
+    public PaymentStatusResult getStatusByOrderId(String orderId)
+            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
         PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
         return strategy.getStatusByOrderId(orderId);
     }

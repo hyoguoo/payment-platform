@@ -530,10 +530,17 @@ Toss API 응답 → `PaymentStatusResult` 매핑 시 `PaymentStatus.of()` 예외
 - `PaymentGatewayPort.java` — 주석 갱신
 
 **완료 조건**
-- [ ] `getStatusByOrderId` 미사용 주석 제거
-- [ ] 타임아웃/5xx → `PaymentTossRetryableException`, 404 → `PaymentTossNonRetryableException` 분류 확인
-- [ ] 매핑 실패 → `PaymentGatewayStatusUnmappedException` 전파 경로 확인
-- [ ] `./gradlew test` 통과
+- [x] `getStatusByOrderId` 미사용 주석 제거
+- [x] 타임아웃/5xx → `PaymentTossRetryableException`, 404 → `PaymentTossNonRetryableException` 분류 확인
+- [x] 매핑 실패 → `PaymentGatewayStatusUnmappedException` 전파 경로 확인
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentGatewayPort.getStatusByOrderId`: 주석 "미사용" → "복구 사이클 경로", `throws PaymentTossRetryableException, PaymentTossNonRetryableException` 선언 추가
+- `PaymentGatewayStrategy.getStatusByOrderId`: 동일 주석/throws 갱신
+- `InternalPaymentGatewayAdapter.getStatusByOrderId`: throws 전파 추가
+- `TossPaymentGatewayStrategy.getStatusByOrderId`: WebClientResponseException(404 → NonRetryable, 5xx → Retryable, 그 외 → NonRetryable), WebClientRequestException(타임아웃 포함 → Retryable) 예외 분류 구현. 매핑 실패(알 수 없는 status값)는 `PaymentStatus.of()` → `PaymentGatewayStatusUnmappedException`이 try 블록 외부로 전파됨.
+- 303개 테스트 전체 통과
 
 ---
 
