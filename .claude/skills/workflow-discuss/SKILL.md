@@ -32,9 +32,9 @@ description: >
 3. **이번 discuss에서 결정하려는 것** — 불릿 3~5개
 4. **열린 질문 / 가정** — 불릿 (사용자가 즉석에서 정정할 수 있도록)
 
-**출력 방식**: 브리핑 전체를 `docs/.briefing-<TOPIC>-pre.md` 임시 파일로 Write한다. Mermaid가 IDE/GitHub 프리뷰에서 렌더링되도록. 채팅 메시지에는 "브리핑을 `docs/.briefing-<TOPIC>-pre.md`에 작성했습니다. 확인 후 진행/정정 알려주세요." 한 줄만.
+**출력 방식**: `docs/topics/<TOPIC>.md` 상단에 `## 사전 브리핑` 섹션으로 직접 작성한다 (topic.md가 아직 없으면 새로 생성). Mermaid가 IDE/GitHub 프리뷰에서 렌더링됨. 채팅 메시지에는 "사전 브리핑을 `docs/topics/<TOPIC>.md` 상단에 작성했습니다. 확인 후 진행/정정 알려주세요." 한 줄만.
 
-사용자 승인("ok"/"진행" 등) 또는 정정 반영 후 Round 0 진입. 승인 직후 메인 스레드가 해당 파일을 **삭제**(`rm`)한다. 사용자가 수동 삭제했으면 skip.
+사용자 승인("ok"/"진행" 등) 또는 정정 반영 후 Round 0 진입.
 
 목적: 사용자가 서브에이전트 라운드에 들어가기 전에 **방향 정정 기회**를 갖게 한다.
 
@@ -75,9 +75,9 @@ description: >
 3. **핵심 결정 ID 목록** — topic.md §4의 키 결정만 불릿
 4. **알려진 트레이드오프 / 후속 작업** — 불릿
 
-**출력 방식**: `docs/.briefing-<TOPIC>-post.md` 임시 파일로 Write. 채팅에는 경로 한 줄만.
+**출력 방식**: `docs/topics/<TOPIC>.md` 상단에 `## 요약 브리핑` 섹션으로 직접 작성한다. 사전 브리핑 섹션이 있으면 그 아래에, 없으면 맨 위에 둔다. 채팅에는 "요약 브리핑을 `docs/topics/<TOPIC>.md`에 추가했습니다. 확인 후 진행/정정 알려주세요." 한 줄만.
 
-사용자 확인 후에만 후처리 체크리스트 실행 + 해당 파일 삭제. 수정 요청 시 discuss 재진입 또는 해당 섹션만 재판정.
+사용자 확인 후에만 후처리 체크리스트 실행. 수정 요청 시 discuss 재진입 또는 해당 섹션만 재판정.
 
 ---
 
@@ -87,6 +87,6 @@ description: >
 - [ ] GitHub 이슈 생성 (`mcp__github__issue_write`)
 - [ ] 브랜치 생성: `git checkout -b "#<이슈-번호>"`
 - [ ] STATE.md stage → `plan`, 이슈 번호·브랜치 기록
-- [ ] `docs:` 단일 커밋 (topic.md + STATE.md + 라운드 문서) — `commit-round.md` 준수
+- [ ] `docs:` 단일 커밋 (topic.md(브리핑 포함) + STATE.md + 라운드 문서) — `commit-round.md` 준수
 
 알림: "discuss 완료. 이슈 #<번호>, 브랜치 #<번호>. plan 단계로 넘어갑니다."
