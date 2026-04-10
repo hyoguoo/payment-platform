@@ -21,21 +21,39 @@ verify 단계에서 호출한다.
 ### Step 3 — PR 생성 (verify 단계)
 - 조건: `verify-ready.md` 전 항목 yes AND 로컬 `./gradlew test` pass
 - `gh pr create --base main --head <branch>` 사용
-- 제목: `<type>: <한글 요약>` (70자 이내)
-- 본문 템플릿:
+- 제목: `<type>: <TOPIC> — <한글 요약>` (70자 이내)
+- Labels: 변경 유형에 맞게 (`enhancement`, `refactor`, `documentation` 등)
+- Assignees: 작업자
+- 본문 템플릿 (한글 헤더, 서사형):
   ```
-  ## Summary
-  - <1~3 bullet>
-
-  ## Changes
-  - <주요 파일/모듈>
-
-  ## Test plan
-  - [ ] ./gradlew test
-  - [ ] <추가 검증>
-
+  ## 관련 이슈
   Closes #<issue-number>
+
+  ## 개요
+
+  <서사형 설명: 어떤 문제가 있었고, 왜 이 변경이 필요하며, 어떻게 해소하는지.
+  bullet 나열이 아닌 문단으로 작성한다.>
+
+  ## 구현 내용
+
+  ### <영역 1 — 예: 도메인>
+  - 변경 내용 상세
+
+  ### <영역 2 — 예: Application>
+  - 변경 내용 상세
+
+  ## 상태 머신 / 플로우 (해당 시)
+
+  ```mermaid
+  <상태 전이 또는 흐름 다이어그램>
   ```
+
+  ## 테스트
+  - <서술형: 어떤 테스트가 어떤 케이스를 커버하는지 설명>
+  ```
+
+- **금지**: 파일 경로를 추측하지 않는다. 실제 `git diff --stat` 출력을 기반으로만 작성.
+- **금지**: 영문 헤더(Summary, Changes, Test plan) 사용 금지. 한글 헤더 사용.
 
 ### Step 4 — PR 갱신
 - 리뷰 피드백 대응은 **새 커밋** + `git push`
