@@ -439,13 +439,12 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(notFound);
+        // main call → ATTEMPT_CONFIRM(notFound), FCG call → retryable → quarantine
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID))
+                .willThrow(notFound)
+                .willThrow(fcgRetryable);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(retryableGatewayInfo);
-        // FCG: retryable 예외
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID))
-                .willThrow(notFound)   // main call → ATTEMPT_CONFIRM
-                .willThrow(fcgRetryable); // FCG call → unmappable → quarantine
 
         // when
         outboxProcessingService.process(ORDER_ID);

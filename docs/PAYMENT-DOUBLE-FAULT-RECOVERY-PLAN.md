@@ -618,10 +618,22 @@ process_ClaimFails_Returns()
 ```
 
 **완료 조건**
-- [ ] 기존 테스트(재시도 소진→보상, NON_RETRYABLE 즉시 보상, IN_FLIGHT 타임아웃 복구) 회귀 없음
-- [ ] 16개 케이스 방어선 메서드 커버
-- [ ] FCG 경로: retryCount 미증가, getStatusByOrderId 2회 호출 검증
-- [ ] `./gradlew test` 통과
+- [x] 기존 테스트(재시도 소진→보상, NON_RETRYABLE 즉시 보상, IN_FLIGHT 타임아웃 복구) 회귀 없음
+- [x] 16개 케이스 방어선 메서드 커버
+- [x] FCG 경로: retryCount 미증가, getStatusByOrderId 2회 호출 검증
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentCommandUseCase.getPaymentStatusByOrderId(String orderId)` 위임 메서드 추가: `paymentGatewayPort.getStatusByOrderId(orderId)` 단순 위임, 예외 변환 없음 (`throws PaymentTossRetryableException, PaymentTossNonRetryableException`)
+- `OutboxProcessingService.process()` 전면 재작성:
+  - `claimToInFlight` → empty: return
+  - `loadPaymentEvent` 실패: `incrementRetryOrFail` → return
+  - 로컬 종결 상태 → `REJECT_REENTRY`: `outbox.toDone()` + `save()` → return
+  - `getPaymentStatusByOrderId` 선행 조회 → `RecoveryDecision.from()/fromException()` 수립
+  - `applyDecision()` switch: COMPLETE_SUCCESS/FAILURE/ATTEMPT_CONFIRM/RETRY_LATER/QUARANTINE/GUARD_MISSING_APPROVED_AT/REJECT_REENTRY
+- D7 FCG(Final Confirmation Gate): RETRY_LATER(이번 retry 후 소진) 또는 QUARANTINE 시 getStatus 1회 재호출(retryCount 미증가), COMPLETE_SUCCESS/FAILURE → 해당 TX, 그 외 → quarantine
+- `StatusResolution` 내부 레코드 도입: snapshot(approvedAt 포함)과 decision을 함께 전달하여 try 블록 외부 변수 재할당 없이 checked 예외 처리
+- 14개 테스트 추가(기존 5개 교체 포함), 전체 311개 테스트 통과
 
 ---
 
