@@ -591,4 +591,34 @@ class PaymentEventTest {
                 paymentEvent.validateConfirmRequest(userId, new BigDecimal(amount), orderId, paymentKey))
                 .isInstanceOf(PaymentValidException.class);
     }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @DisplayName("격리 전환 시 READY/IN_PROGRESS/RETRYING 상태에서 QUARANTINED 상태로 변경되고 statusReason이 설정된다.")
+    void quarantine_Success(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+        String reason = "한도 소진 후 판단 불가";
+
+        // when
+        paymentEvent.quarantine(reason, LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("격리 전환 시 허용되지 않는 상태에서는 PaymentStatusException을 던진다.")
+    void quarantine_InvalidStatus(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class);
+    }
 }
