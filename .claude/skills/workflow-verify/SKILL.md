@@ -57,6 +57,31 @@ git mv docs/topics/<TOPIC>.md docs/archive/<topic-kebab>/<TOPIC>-CONTEXT.md
 ```
 `docs/archive/README.md` 테이블 행 추가.
 
+### Step 3.5 — 완료 브리핑 생성
+`docs/archive/<topic-kebab>/COMPLETION-BRIEFING.md` 작성. 다음 구조를 따른다:
+```
+## 작업 요약
+<1~2문장: 무엇을 왜 했는지>
+
+## 핵심 결정
+<CONTEXT.md의 D1~D12 중 가장 중요한 3~5개만 발췌. 번호 + 한 줄 요약>
+
+## 상태 머신
+<Mermaid stateDiagram-v2 — 변경 전후가 아닌 최종 상태만>
+
+## 복구/처리 플로우
+<Mermaid flowchart — 핵심 분기 경로만, 세부 생략>
+
+## 수치
+| 항목 | 값 |
+|------|---|
+| 태스크 | N개 |
+| 테스트 | N개 통과 |
+| 커밋 | N개 |
+| 코드 리뷰 findings | critical N / major N / minor N |
+```
+**원칙**: CONTEXT.md와 PLAN.md를 다시 읽지 않고도 이 파일만으로 "무엇을, 왜, 어떻게" 파악 가능해야 한다.
+
 ### Step 4 — STATE.md 종결
 stage → `done`. `.continue-here.md` 존재 시 삭제.
 
