@@ -357,10 +357,18 @@ fromException_NonRetryableException_AttemptConfirm()
 ```
 
 **완료 조건**
-- [ ] `RecoveryDecision.from()` 전 분기 구현
-- [ ] `REJECT_REENTRY` / `COMPLETE_SUCCESS` / `COMPLETE_FAILURE` / `ATTEMPT_CONFIRM` / `RETRY_LATER` / `QUARANTINE` / `GUARD_MISSING_APPROVED_AT` 모두 테스트 커버
-- [ ] Spring 의존 없음 (순수 Java)
-- [ ] `./gradlew test` 통과
+- [x] `RecoveryDecision.from()` 전 분기 구현
+- [x] `REJECT_REENTRY` / `COMPLETE_SUCCESS` / `COMPLETE_FAILURE` / `ATTEMPT_CONFIRM` / `RETRY_LATER` / `QUARANTINE` / `GUARD_MISSING_APPROVED_AT` 모두 테스트 커버
+- [x] Spring 의존 없음 (순수 Java)
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `RecoveryDecision` record 신규: `from()` / `fromException()` 정적 팩토리 구현
+  - `from()`: 로컬 종결 → REJECT_REENTRY, PG DONE+approvedAt → COMPLETE_SUCCESS, PG DONE+null → GUARD_MISSING_APPROVED_AT, PG 종결 실패 → COMPLETE_FAILURE(PG_TERMINAL_FAIL), PG 진행 중 → RETRY_LATER/QUARANTINE(PG_IN_PROGRESS)
+  - `fromException()`: PaymentTossNonRetryableException → ATTEMPT_CONFIRM, PaymentGatewayStatusUnmappedException → RETRY_LATER/QUARANTINE(UNMAPPED), PaymentTossRetryableException → RETRY_LATER/QUARANTINE(GATEWAY_STATUS_UNKNOWN)
+- `RecoveryReason` enum 신규: 7개 사유 정의
+- `PaymentTossRetryableException` / `PaymentTossNonRetryableException` checked 예외 신규
+- 전체 291개 테스트 통과
 
 ---
 
