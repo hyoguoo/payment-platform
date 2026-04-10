@@ -16,6 +16,7 @@ public enum PaymentEventStatus {
     CANCELED("CANCELED"),
     PARTIAL_CANCELED("PARTIAL_CANCELED"),
     EXPIRED("EXPIRED"),
+    QUARANTINED("QUARANTINED"),
     ;
 
     private final String value;

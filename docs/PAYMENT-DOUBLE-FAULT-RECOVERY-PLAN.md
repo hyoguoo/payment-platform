@@ -158,10 +158,12 @@ quarantine_InvalidStatus(PaymentEventStatus)
 ```
 
 **완료 조건**
-- [ ] `PaymentEventStatus.QUARANTINED` enum 값 존재
-- [ ] `quarantine()` 비허용 source에서 `PaymentStatusException` throw
-- [ ] `quarantine()` 허용 source에서 status/statusReason 정상 전이
-- [ ] `./gradlew test` 통과
+- [x] `PaymentEventStatus.QUARANTINED` enum 값 존재
+- [x] `quarantine()` 비허용 source에서 `PaymentStatusException` throw
+- [x] `quarantine()` 허용 source에서 status/statusReason 정상 전이
+- [x] `./gradlew test` 통과
+
+**완료 결과**: 256개 테스트 전체 pass. `QUARANTINED` enum 추가, `quarantine()` 메서드 추가(허용: READY/IN_PROGRESS/RETRYING, 그 외 PaymentStatusException), `INVALID_STATUS_TO_QUARANTINE` 에러코드 추가.
 
 ---
 

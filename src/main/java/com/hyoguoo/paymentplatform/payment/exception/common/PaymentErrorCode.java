@@ -30,6 +30,7 @@ public enum PaymentErrorCode implements ErrorCode {
     PAYMENT_OUTBOX_NOT_FOUND("E03023", "존재하지 않는 Outbox 레코드입니다."),
     INVALID_STATUS_TO_DONE("E03024", "DONE 상태로 변경할 수 없는 상태입니다."),
     INVALID_STATUS_TO_FAILED("E03025", "FAILED 상태로 변경할 수 없는 상태입니다."),
+    INVALID_STATUS_TO_QUARANTINE("E03026", "QUARANTINED 상태로 변경할 수 없는 상태입니다."),
     ;
 
     private final String code;

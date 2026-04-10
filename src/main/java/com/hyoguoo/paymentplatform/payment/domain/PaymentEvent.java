@@ -139,6 +139,17 @@ public class PaymentEvent {
         }
     }
 
+    public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.RETRYING) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE);
+        }
+        this.status = PaymentEventStatus.QUARANTINED;
+        this.statusReason = reason;
+        this.lastStatusChangedAt = lastStatusChangedAt;
+    }
+
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }
