@@ -22,40 +22,20 @@ description: >
 
 ## 태스크 루프
 
-**모든 페르소나는 서브에이전트로만 실행.** 메인 스레드에서 TDD 사이클/테스트 실행/판정 금지.
+**Implementer만 서브에이전트로 실행.** 메인 스레드에서 TDD 사이클/테스트 실행 금지.
 
-각 태스크에 대해 `.claude/skills/_shared/protocols/code-round.md` 수행:
+각 태스크에 대해:
 
-- **Step 1 Implementer dispatch (단일)**: `Agent(subagent_type="implementer", prompt="Task <id> 실행. tdd=<bool>, domain_risk=<bool>")` — 태스크당 1회
-- **Step 2 Verifier dispatch**: `Agent(subagent_type="verifier", prompt="./gradlew test")`
-- **Step 3 판정 dispatch**:
-  - `domain_risk=true`: **병렬 단일 메시지**로 critic + domain-expert 동시 호출
-    ```
-    Agent(subagent_type="critic",        output=code-<task>-critic-N.md)
-    Agent(subagent_type="domain-expert", output=code-<task>-domain-N.md)
-    ```
-  - `domain_risk=false`: critic만 호출
-- 메인 스레드는 서브에이전트 JSON `decision`만 읽는다.
+- **Implementer dispatch (단일)**: `Agent(subagent_type="implementer", prompt="Task <id> 실행. tdd=<bool>")` — 태스크당 1회
+- Implementer가 내부에서 `./gradlew test` 직접 실행 (별도 Verifier dispatch 없음)
+- 메인 스레드는 Implementer 결과(테스트 통과 여부, 커밋 해시)만 확인
 
 1. **Implementer**(`_shared/personas/implementer.md`)
-   - `tdd=true`: RED → GREEN → REFACTOR
-   - `tdd=false`: 단일 산출물 + 테스트 확인
+   - `tdd=true`: RED → GREEN → REFACTOR + `./gradlew test` 통과 확인
+   - `tdd=false`: 단일 산출물 + `./gradlew test` 통과 확인
    - PLAN.md 체크박스 + 완료 결과 + STATE.md 갱신 → GREEN 커밋에 포함
 
-2. **Verifier**(`_shared/personas/verifier.md`)
-   - `./gradlew test` 실행, 결과 파싱 (결정론적)
-   - fail 시 Implementer에게 피드백
-
-3. **Critic**(`_shared/personas/critic.md`)
-   - `code-ready.md` 체크리스트 판정
-   - 출력: `docs/rounds/<topic>/code-<task-id>-critic-<N>.md`
-
-4. **Domain Expert**(`_shared/personas/domain-expert.md`) — **조건부**
-   - 해당 태스크 `domain_risk=true`일 때만 호출
-   - 출력: `docs/rounds/<topic>/code-<task-id>-domain-<N>.md`
-
-5. Round 2 fail 시 `unstuck-round.md`의 researcher 관점 주입
-6. Round 3 소진 시 사용자 에스컬레이션
+2. **판정은 review 단계에서 일괄 실행** — execute 중 Critic/Domain Expert 호출 없음
 
 커밋 규칙은 `commit-round.md` 준수 (amend 금지, 명시 staging, 한글 본문).
 
