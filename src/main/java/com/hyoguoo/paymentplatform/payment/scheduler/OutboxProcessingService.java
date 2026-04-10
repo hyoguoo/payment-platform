@@ -283,6 +283,11 @@ public class OutboxProcessingService {
     /**
      * REJECT_REENTRY: outbox가 IN_FLIGHT 상태이므로 toDone()으로 멱등 종결.
      * PG 조회 없이 outbox만 종결 처리.
+     * <p>
+     * DE-4 참고: outbox.toDone() + save()는 @Transactional 경계 밖에서 수행된다.
+     * 동시성 위험은 claimToInFlight의 원자적 선점으로 이미 배제되었으므로 의도적 설계다.
+     * 별도 TX 없이 단순 save()로 처리해도 안전하다.
+     * </p>
      */
     private void rejectReentry(PaymentOutbox outbox) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,

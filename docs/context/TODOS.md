@@ -5,6 +5,22 @@
 
 ---
 
+## loadPaymentEvent catch(Exception e) 범위 축소 검토
+
+**배경:**
+`OutboxProcessingService.loadPaymentEvent()`의 `catch (Exception e)` 범위가 넓다.
+현재는 어떤 예외든 outbox retry 메커니즘으로 처리하는 것이 의도(주석: `intentionally broad`)이므로 기능 문제는 없다.
+그러나 예상치 못한 예외(프로그래밍 오류 등)도 삼켜서 silent retry로 이어질 수 있다.
+
+**제안 개선 방향:**
+- DataAccessException 등 특정 예외 타입만 catch하고, 그 외는 재throw
+- 또는 이 broad catch를 유지하되 로그 수준을 명확히 하고 알람 체계와 연동
+
+**관련 파일:**
+- `payment/scheduler/OutboxProcessingService.java` — `loadPaymentEvent` 메서드
+
+---
+
 ## IN_FLIGHT 고아 레코드 즉시 복구
 
 **배경:**

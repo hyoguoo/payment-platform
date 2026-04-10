@@ -86,9 +86,19 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
 
     /**
      * 예외 경로: PG 상태 조회 또는 확인 중 발생한 예외로 복구 결정을 내린다.
+     * <p>
+     * 호출 계약: exception은 반드시 아래 세 타입 중 하나여야 한다.
+     * OutboxProcessingService의 catch 블록이 이 계약을 강제한다.
+     * <ul>
+     *   <li>{@link PaymentTossNonRetryableException} — PG에 결제 기록이 없음(getStatus 실패).
+     *       retryCount와 무관하게 confirm을 시도하는 것이 정당함(PG 미기록 상태이므로 새 결제 시도 안전).</li>
+     *   <li>{@link PaymentTossRetryableException} — PG 일시 오류, 재시도 여지 있음.</li>
+     *   <li>{@link PaymentGatewayStatusUnmappedException} — PG 응답 상태가 매핑 불가.</li>
+     * </ul>
+     * </p>
      *
      * @param event      로컬 결제 이벤트
-     * @param exception  발생한 예외
+     * @param exception  발생한 예외 (위 세 타입 중 하나)
      * @param retryCount 현재 재시도 횟수
      * @param maxRetries 최대 재시도 허용 횟수
      */
@@ -99,6 +109,8 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
             int maxRetries
     ) {
         if (exception instanceof PaymentTossNonRetryableException) {
+            // PG에 결제 기록 없음 → retryCount 무관 ATTEMPT_CONFIRM
+            // (NonRetryable = PG 미기록 상태, 재시도해도 중복 결제 아님)
             return new RecoveryDecision(Type.ATTEMPT_CONFIRM, null);
         }
 
