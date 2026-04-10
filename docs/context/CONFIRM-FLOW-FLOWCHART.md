@@ -103,7 +103,7 @@ flowchart TD
     PROC["OutboxProcessingService.process(orderId)\n⎿ claimToInFlight → Toss API → success/retry/failure\n⎿ (아래 1-4 다이어그램 참조)"]
     PROC --> LOOP
 
-    TAKE -->|InterruptedException| STOP([루프 종료\n→ SmartLifecycle.stop()])
+    TAKE -->|InterruptedException| STOP([루프 종료\n→ SmartLifecycle.stop])
 ```
 
 ### 1-4. OutboxProcessingService.process() — 복구 사이클 (공유 처리 로직)
@@ -186,15 +186,55 @@ flowchart LR
     end
 ```
 
-### 3-2. Outbox 보상 패턴 (`executePaymentFailureCompensationWithOutbox`)
+### 3-2. Outbox 보상 패턴 (`executePaymentFailureCompensationWithOutbox`) — D12 가드
+
+> **D12 가드**란?
+> 결제 실패 보상 시 재고를 중복 복구하는 것을 막는 안전장치.
+> 여러 워커가 동시에 같은 건을 실패 처리하거나, 이미 성공(DONE) 처리된 건에
+> 뒤늦게 실패 보상이 호출되는 경우 재고가 두 번 늘어나는 것을 방지한다.
+>
+> **핵심**: 메서드 파라미터의 오래된 스냅샷이 아니라,
+> 트랜잭션 안에서 DB를 **재조회**하여 현재 시점의 진짜 상태를 확인한다.
+
+둘 중 하나라도 "이미 끝난 건"의 신호이므로, 두 조건을 AND로 묶어
+**아직 아무도 손대지 않은 건임이 확실할 때만** 재고를 복구한다.
+
+**가드 통과 조건** (두 가지 모두 충족해야 재고 복구 실행):
+
+| 조건 | 확인 대상 | 의미 |
+|------|-----------|------|
+| `outbox.status == IN_FLIGHT` | PaymentOutbox | 아직 다른 경로가 이 건을 종결하지 않았음 |
+| `event.status`가 비종결 | PaymentEvent | READY / IN_PROGRESS / RETRYING 중 하나 |
 
 ```mermaid
 flowchart TD
-    A["executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)"] --> B
-    B["outbox.toFailed() + paymentOutboxUseCase.save()\n→ PaymentOutbox: FAILED"]
-    B --> C["increaseStockForOrders()\n→ 재고 복원"]
-    C --> D["markPaymentAsFail()\n→ PaymentEvent: FAILED"]
+    START["executePaymentFailureCompensationWithOutbox(orderId, orderList, reason)"]
+
+    START --> RELOAD["① TX 내 DB 재조회\noutbox = findByOrderId(orderId)\nevent = getPaymentEventByOrderId(orderId)"]
+
+    RELOAD --> CHK_OB{"② outbox.status\n== IN_FLIGHT?"}
+
+    CHK_OB -->|"아니오 (DONE/FAILED)"| SKIP["재고 복구 건너뜀\n⚠️ warn 로그"]
+    CHK_OB -->|예| CHK_EV{"③ event.status\n비종결?\n(READY / IN_PROGRESS / RETRYING)"}
+
+    CHK_EV -->|"아니오 (DONE/FAILED/QUARANTINED)"| SKIP
+    CHK_EV -->|예| RESTORE["④ increaseStockForOrders()\n✅ 재고 복구 실행"]
+
+    RESTORE --> FAIL_OB["⑤ outbox.toFailed() + save()\n→ PaymentOutbox: FAILED"]
+    SKIP --> CHK_OB2{"outbox가\nIN_FLIGHT였나?"}
+    CHK_OB2 -->|예| FAIL_OB
+    CHK_OB2 -->|아니오| MARK
+    FAIL_OB --> MARK["⑥ markPaymentAsFail(event, reason)\n→ PaymentEvent: FAILED\n(이미 종결이면 no-op)"]
+    MARK --> FIN([종료])
 ```
+
+**시나리오 예시:**
+
+| 시나리오 | outbox 상태 | event 상태 | 재고 복구? | 설명 |
+|----------|-------------|------------|------------|------|
+| 정상 실패 | IN_FLIGHT | IN_PROGRESS | O | 가드 통과, 재고 복구 후 FAILED 전이 |
+| 이미 성공 처리됨 | DONE | DONE | X | 다른 워커가 먼저 성공 처리 → 재고 복구 불필요 |
+| 이미 실패 처리됨 | FAILED | FAILED | X | 중복 실패 보상 방지 |
 
 ### 3-3. 전략별 상태 엔티티 사용 요약
 

@@ -137,7 +137,7 @@ stateDiagram-v2
 - **D9** — 기존 `claimToInFlight` 유지, 가능하면 DB 원자 연산 강화
 - **D10** — `PaymentEvent.done()` 가드: 승인 시각 null이면 전이 거부
 - **D11** — 계층 배치 (도메인 `RecoveryDecision`, application coordinator, 포트 재사용)
-- **D12** *(R2 신규)* — 재고 복구 재진입 방지 가드: `outbox.status==IN_FLIGHT && event 비종결`일 때만 재고 복구 실행
+- **D12** *(R2 신규)* — 재고 복구 재진입 방지 가드: `outbox.status==IN_FLIGHT && event 비종결`일 때만 재고 복구 실행. 둘 중 하나라도 "이미 끝난 건"의 신호이므로, AND로 묶어 아직 아무도 손대지 않은 건임이 확실할 때만 재고를 복구한다
 - Micrometer `payment_quarantined_total{reason}` 카운터 in-scope
 
 ## 4. 알려진 트레이드오프 / 후속 작업
