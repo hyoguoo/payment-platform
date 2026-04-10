@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -21,10 +22,13 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,6 +48,9 @@ class PaymentTransactionCoordinatorTest {
 
     @Mock
     private PaymentOutboxUseCase paymentOutboxUseCase;
+
+    @Mock
+    private PaymentLoadUseCase paymentLoadUseCase;
 
     @Nested
     @DisplayName("Outbox 전략: executePayment + 재고 차감 + Outbox 생성 원자적 실행 테스트")
@@ -161,29 +168,81 @@ class PaymentTransactionCoordinatorTest {
     class ExecutePaymentFailureCompensationWithOutboxTest {
 
         @Test
-        @DisplayName("성공 시 재고복원, PaymentEvent FAILED, outbox toFailed 저장")
-        void 성공_시_재고복원_PaymentEvent_FAILED_outbox_toFailed_저장() {
+        @DisplayName("outbox=IN_FLIGHT AND event=비종결(RETRYING) 재조회 시 재고 복원 + FAILED 전환")
+        void executePaymentFailureCompensation_OutboxInFlight_EventNonTerminal_RestoresStock() {
             // given
             String orderId = "order-123";
             String failureReason = "결제 실패";
-            PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
-            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+            PaymentOutbox freshOutbox = PaymentOutbox.allArgsBuilder()
                     .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent freshEvent = createPaymentEvent(orderId, PaymentEventStatus.RETRYING);
             PaymentEvent failedPaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.FAILED);
 
+            given(paymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(freshOutbox));
+            given(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(freshEvent);
             given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
                     .willReturn(failedPaymentEvent);
 
             // when
             PaymentEvent result = coordinator.executePaymentFailureCompensationWithOutbox(
-                    paymentEvent, paymentOrderList, failureReason, outbox);
+                    orderId, paymentOrderList, failureReason);
 
             // then
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
-            then(paymentOutboxUseCase).should(times(1)).save(outbox);
             then(orderedProductUseCase).should(times(1)).increaseStockForOrders(paymentOrderList);
-            then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(paymentEvent, failureReason);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(freshEvent, failureReason);
+        }
+
+        @Test
+        @DisplayName("outbox=FAILED 재조회 시 재고 복원 건너뜀, markPaymentAsFail 호출")
+        void executePaymentFailureCompensation_OutboxAlreadyFailed_SkipsStock() {
+            // given
+            String orderId = "order-123";
+            String failureReason = "결제 실패";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentOutbox freshOutbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.FAILED).retryCount(0).allArgsBuild();
+            PaymentEvent freshEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentEvent failedPaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.FAILED);
+
+            given(paymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(freshOutbox));
+            given(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(freshEvent);
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+                    .willReturn(failedPaymentEvent);
+
+            // when
+            coordinator.executePaymentFailureCompensationWithOutbox(
+                    orderId, paymentOrderList, failureReason);
+
+            // then
+            then(orderedProductUseCase).should(never()).increaseStockForOrders(anyList());
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(freshEvent, failureReason);
+        }
+
+        @ParameterizedTest
+        @EnumSource(names = {"DONE", "FAILED", "QUARANTINED"})
+        @DisplayName("outbox=IN_FLIGHT이지만 event=종결 상태 재조회 시 재고 복원 건너뜀")
+        void executePaymentFailureCompensation_EventAlreadyTerminal_SkipsStock(PaymentEventStatus terminalStatus) {
+            // given
+            String orderId = "order-123";
+            String failureReason = "결제 실패";
+            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            PaymentOutbox freshOutbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent freshEvent = createPaymentEvent(orderId, terminalStatus);
+
+            given(paymentOutboxUseCase.findByOrderId(orderId)).willReturn(Optional.of(freshOutbox));
+            given(paymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(freshEvent);
+            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
+                    .willReturn(freshEvent);
+
+            // when
+            coordinator.executePaymentFailureCompensationWithOutbox(
+                    orderId, paymentOrderList, failureReason);
+
+            // then
+            then(orderedProductUseCase).should(never()).increaseStockForOrders(anyList());
         }
     }
 
