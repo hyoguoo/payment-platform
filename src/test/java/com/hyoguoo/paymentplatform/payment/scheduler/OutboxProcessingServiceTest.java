@@ -126,7 +126,7 @@ class OutboxProcessingServiceTest {
                 .executePaymentRetryWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class),
                         any(RetryPolicy.class), any(LocalDateTime.class));
         then(mockTransactionCoordinator).should(never())
-                .executePaymentFailureCompensationWithOutbox(any(), any(), any(), any());
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
         then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 
@@ -148,8 +148,7 @@ class OutboxProcessingServiceTest {
 
         // then
         then(mockTransactionCoordinator).should(times(1))
-                .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(),
-                        any(PaymentOutbox.class));
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
         then(mockTransactionCoordinator).should(never())
                 .executePaymentRetryWithOutbox(any(), any(), any(), any());
         then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
@@ -173,8 +172,7 @@ class OutboxProcessingServiceTest {
 
         // then
         then(mockTransactionCoordinator).should(times(1))
-                .executePaymentFailureCompensationWithOutbox(any(PaymentEvent.class), any(), anyString(),
-                        any(PaymentOutbox.class));
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
         then(mockPaymentOutboxUseCase).should(never()).incrementRetryOrFail(any(), any());
     }
 

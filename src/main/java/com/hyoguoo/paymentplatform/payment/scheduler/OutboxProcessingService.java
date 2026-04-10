@@ -64,16 +64,16 @@ public class OutboxProcessingService {
                             paymentEvent, gatewayInfo.getPaymentDetails().getApprovedAt(), outbox);
 
             case NON_RETRYABLE_FAILURE -> {
-                // Step 3-B: 비재시도 실패 — 보상 트랜잭션
+                // Step 3-B: 비재시도 실패 — D12 가드 포함 보상 트랜잭션
                 String reason = gatewayInfo.getPaymentFailure() != null
                         ? gatewayInfo.getPaymentFailure().getMessage() : "NON_RETRYABLE_FAILURE";
                 LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, () -> reason);
                 transactionCoordinator.executePaymentFailureCompensationWithOutbox(
-                        paymentEvent, paymentEvent.getPaymentOrderList(), reason, outbox);
+                        orderId, paymentEvent.getPaymentOrderList(), reason);
             }
 
             case RETRYABLE_FAILURE -> {
-                // Step 3-C: 재시도 가능 — 소진 여부에 따라 RETRYING 전환 또는 보상 트랜잭션
+                // Step 3-C: 재시도 가능 — 소진 여부에 따라 RETRYING 전환 또는 D12 가드 포함 보상 트랜잭션
                 String reason = gatewayInfo.getPaymentFailure() != null
                         ? gatewayInfo.getPaymentFailure().getMessage() : "RETRYABLE_FAILURE";
                 LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, () -> reason);
@@ -81,7 +81,7 @@ public class OutboxProcessingService {
                 LocalDateTime now = localDateTimeProvider.now();
                 if (policy.isExhausted(outbox.getRetryCount())) {
                     transactionCoordinator.executePaymentFailureCompensationWithOutbox(
-                            paymentEvent, paymentEvent.getPaymentOrderList(), reason, outbox);
+                            orderId, paymentEvent.getPaymentOrderList(), reason);
                 } else {
                     transactionCoordinator.executePaymentRetryWithOutbox(paymentEvent, outbox, policy, now);
                 }

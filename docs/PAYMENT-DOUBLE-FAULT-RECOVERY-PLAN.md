@@ -453,10 +453,18 @@ executePaymentFailureCompensation_EventAlreadyTerminal_SkipsStock(PaymentEventSt
 ```
 
 **완료 조건**
-- [ ] TX 내 재조회 방식으로 가드 구현
-- [ ] 이중 재고 복구 경로 차단 테스트 통과
-- [ ] 기존 보상 정상 경로 회귀 없음
-- [ ] `./gradlew test` 통과
+- [x] TX 내 재조회 방식으로 가드 구현
+- [x] 이중 재고 복구 경로 차단 테스트 통과
+- [x] 기존 보상 정상 경로 회귀 없음
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentTransactionCoordinator`에 `PaymentLoadUseCase` 의존 추가 (생성자 파라미터 4개로 확장)
+- `executePaymentFailureCompensationWithOutbox` 시그니처 변경: `(PaymentEvent, List, String, PaymentOutbox)` → `(String orderId, List, String failureReason)` — TX 내 재조회 기반으로 전환
+- D12 가드: `outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}` 양쪽 참일 때만 `increaseStockForOrders` 호출. outbox가 FAILED면 `toFailed()` 호출도 건너뜀(이미 종결)
+- `OutboxProcessingService` 호출 사이트 2곳 새 시그니처로 변경
+- `OutboxProcessingServiceTest` 검증 구문 새 시그니처로 수정
+- 전체 297개 테스트 통과
 
 ---
 
