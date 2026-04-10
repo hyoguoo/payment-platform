@@ -90,6 +90,9 @@ public class PaymentEvent {
     }
 
     public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
+        if (approvedAt == null) {
+            throw PaymentStatusException.of(PaymentErrorCode.MISSING_APPROVED_AT);
+        }
         if (this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING &&
                 this.status != PaymentEventStatus.DONE) {
@@ -103,6 +106,9 @@ public class PaymentEvent {
     }
 
     public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
+        if (isTerminalStatus()) {
+            return;
+        }
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING) {
@@ -112,6 +118,15 @@ public class PaymentEvent {
         this.statusReason = failureReason;
         this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::fail);
+    }
+
+    private boolean isTerminalStatus() {
+        return this.status == PaymentEventStatus.FAILED
+                || this.status == PaymentEventStatus.DONE
+                || this.status == PaymentEventStatus.CANCELED
+                || this.status == PaymentEventStatus.PARTIAL_CANCELED
+                || this.status == PaymentEventStatus.EXPIRED
+                || this.status == PaymentEventStatus.QUARANTINED;
     }
 
     public void expire(LocalDateTime lastStatusChangedAt) {

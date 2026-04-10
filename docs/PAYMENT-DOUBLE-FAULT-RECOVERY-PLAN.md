@@ -206,10 +206,16 @@ fail_ValidSource_Success(PaymentEventStatus)
 ```
 
 **완료 조건**
-- [ ] `done(null, ...)` 호출 시 `PaymentStatusException` throw
-- [ ] `fail()` 종결 source에서 no-op (예외 없음, status 불변)
-- [ ] 기존 `done()`/`fail()` 정상 경로 회귀 없음
-- [ ] `./gradlew test` 통과
+- [x] `done(null, ...)` 호출 시 `PaymentStatusException` throw
+- [x] `fail()` 종결 source에서 no-op (예외 없음, status 불변)
+- [x] 기존 `done()`/`fail()` 정상 경로 회귀 없음
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentEvent.done()`: approvedAt null 가드를 상태 검사 이전에 배치 — null 시 MISSING_APPROVED_AT(E03027) 코드로 PaymentStatusException throw
+- `PaymentEvent.fail()`: `isTerminalStatus()` private 메서드로 종결 상태 판별 후 early return (no-op) — FAILED/DONE/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED 대상
+- `PaymentErrorCode.MISSING_APPROVED_AT` 에러코드 추가
+- 전체 264개 테스트 통과
 
 ---
 
