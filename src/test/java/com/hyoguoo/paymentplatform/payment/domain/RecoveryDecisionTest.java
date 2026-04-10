@@ -91,18 +91,52 @@ class RecoveryDecisionTest {
     }
 
     // -------------------------------------------------------------------------
-    // from() — PG DONE + approvedAt null → GUARD_MISSING_APPROVED_AT
+    // from() — PG DONE + approvedAt null → GUARD_MISSING_APPROVED_AT (미소진)
     // -------------------------------------------------------------------------
 
-    @DisplayName("PG DONE이지만 approvedAt이 null이면 GUARD_MISSING_APPROVED_AT를 반환한다")
+    @DisplayName("PG DONE이지만 approvedAt이 null이고 한도 미소진이면 GUARD_MISSING_APPROVED_AT를 반환한다")
     @Test
-    void from_PgDoneWithNullApprovedAt_GuardMissingApprovedAt() {
+    void from_PgDoneWithNullApprovedAt_UnderLimit_GuardMissingApprovedAt() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
         PaymentStatusResult result = buildResult(PaymentStatus.DONE, null);
 
         RecoveryDecision decision = RecoveryDecision.from(event, result, 0, MAX_RETRIES);
 
         assertThat(decision.type()).isEqualTo(RecoveryDecision.Type.GUARD_MISSING_APPROVED_AT);
+    }
+
+    // -------------------------------------------------------------------------
+    // from() — PG DONE + approvedAt null + 한도 소진 → QUARANTINE
+    // -------------------------------------------------------------------------
+
+    @DisplayName("PG DONE이지만 approvedAt이 null이고 한도 소진이면 QUARANTINE과 GUARD_MISSING_APPROVED_AT reason을 반환한다")
+    @Test
+    void from_PgDoneWithNullApprovedAt_AtLimit_Quarantine() {
+        PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+        PaymentStatusResult result = buildResult(PaymentStatus.DONE, null);
+
+        RecoveryDecision decision = RecoveryDecision.from(event, result, RETRY_COUNT_AT_LIMIT, MAX_RETRIES);
+
+        assertThat(decision.type()).isEqualTo(RecoveryDecision.Type.QUARANTINE);
+        assertThat(decision.reason()).isEqualTo(RecoveryReason.GUARD_MISSING_APPROVED_AT);
+    }
+
+    // -------------------------------------------------------------------------
+    // isTerminal() — 종결/비종결 상태 분류
+    // -------------------------------------------------------------------------
+
+    @DisplayName("종결 상태이면 isTerminal()이 true를 반환한다")
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    void paymentEventStatus_Terminal_IsTerminalTrue(PaymentEventStatus terminalStatus) {
+        assertThat(terminalStatus.isTerminal()).isTrue();
+    }
+
+    @DisplayName("비종결 상태이면 isTerminal()이 false를 반환한다")
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    void paymentEventStatus_NonTerminal_IsTerminalFalse(PaymentEventStatus nonTerminalStatus) {
+        assertThat(nonTerminalStatus.isTerminal()).isFalse();
     }
 
     // -------------------------------------------------------------------------

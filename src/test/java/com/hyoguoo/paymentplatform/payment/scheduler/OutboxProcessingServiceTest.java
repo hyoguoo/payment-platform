@@ -456,6 +456,61 @@ class OutboxProcessingServiceTest {
                 .executePaymentRetryWithOutbox(any(), any(), any(), any());
     }
 
+    // ─── GUARD_MISSING_APPROVED_AT 경로 ──────────────────────────────────
+
+    @Test
+    @DisplayName("process - PG DONE + approvedAt null + 미소진: executePaymentRetryWithOutbox 1회 호출")
+    void process_GuardMissingApprovedAt_UnderLimit_Retries() throws Exception {
+        // given: retryCount=0, maxAttempts=3 → 미소진
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+        // PG DONE 이지만 approvedAt null
+        PaymentStatusResult doneNullAt = createStatusResult(PaymentStatus.DONE, null);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(doneNullAt);
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then: retry 호출, quarantine 미호출
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentRetryWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class),
+                        any(RetryPolicy.class), any(LocalDateTime.class));
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentQuarantineWithOutbox(any(), any(), anyString());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentSuccessCompletionWithOutbox(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("process - PG DONE + approvedAt null + 소진(retryCount=N-1) → FCG → quarantine")
+    void process_GuardMissingApprovedAt_Exhausted_FcgQuarantines() throws Exception {
+        // given: retryCount = MAX_ATTEMPTS-1 = 2 → 이번 retry 후 소진 판정
+        int exhaustingRetryCount = MAX_ATTEMPTS - 1;
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+        // 두 번 모두 PG DONE + approvedAt null (FCG도 동일)
+        PaymentStatusResult doneNullAt = createStatusResult(PaymentStatus.DONE, null);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(doneNullAt);
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then: getStatus 2회 (main + FCG), quarantine 1회
+        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(ORDER_ID);
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentQuarantineWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class), anyString());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentRetryWithOutbox(any(), any(), any(), any());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentSuccessCompletionWithOutbox(any(), any(), any());
+    }
+
     // ─── 헬퍼 메서드 ──────────────────────────────────────────────────────
 
     private PaymentOutbox createInFlightOutbox(String orderId, int retryCount) {
