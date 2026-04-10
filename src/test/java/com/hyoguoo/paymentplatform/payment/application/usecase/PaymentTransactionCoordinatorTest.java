@@ -215,6 +215,57 @@ class PaymentTransactionCoordinatorTest {
         }
     }
 
+    @Nested
+    @DisplayName("Outbox 전략: 격리 처리 (executePaymentQuarantineWithOutbox) 테스트")
+    class ExecutePaymentQuarantineWithOutboxTest {
+
+        @Test
+        @DisplayName("outbox를 FAILED로, PaymentEvent를 QUARANTINED로 전환하고 재고 복구를 호출하지 않는다")
+        void executePaymentQuarantineWithOutbox_MarksEventQuarantinedAndOutboxFailed() {
+            // given
+            String orderId = "order-123";
+            String reason = "GATEWAY_STATUS_UNKNOWN";
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
+
+            given(paymentCommandUseCase.markPaymentAsQuarantined(inProgressEvent, reason))
+                    .willReturn(quarantinedEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+            assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
+            then(paymentOutboxUseCase).should(times(1)).save(outbox);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
+            then(orderedProductUseCase).should(org.mockito.Mockito.never()).increaseStockForOrders(any());
+        }
+
+        @Test
+        @DisplayName("격리 처리 시 재고 복구(increaseStockForOrders)를 호출하지 않는다")
+        void executePaymentQuarantineWithOutbox_DoesNotRestoreStock() {
+            // given
+            String orderId = "order-456";
+            String reason = "GATEWAY_STATUS_UNKNOWN";
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(2L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
+
+            given(paymentCommandUseCase.markPaymentAsQuarantined(inProgressEvent, reason))
+                    .willReturn(quarantinedEvent);
+
+            // when
+            coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
+
+            // then
+            then(orderedProductUseCase).should(org.mockito.Mockito.never()).increaseStockForOrders(any());
+        }
+    }
+
     private PaymentOrder createPaymentOrder(Long productId, int quantity) {
         return PaymentOrder.allArgsBuilder()
                 .id(1L)
