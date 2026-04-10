@@ -21,3 +21,4 @@
 | `outbox-only-refactor/` | Outbox 단일화 리팩토링 — Sync 전략·PaymentProcess 도메인 제거, UNKNOWN 상태 전면 삭제, RestTemplate→WebClient 전환, Grafana 관측 지표 추가 | 2026-04-06 |
 | `client-integration/` | 클라이언트 통합 — 정적 결제 UI(checkout/success/fail) 추가, Thymeleaf 어드민 페이지 리팩토링, Docker 환경변수 및 run.sh 개선 | 2026-04-06 |
 | `payment-retry-state/` | 재시도 정교화 — RetryPolicy(FIXED/EXPONENTIAL 백오프), RETRYING 상태 도입, 예외 기반 분기 → PaymentConfirmResultStatus enum 전환, nextRetryAt DB 기록 | 2026-04-07 |
+| `payment-double-fault-recovery/` | 이중장애 복구 — RecoveryDecision 값 객체, PG getStatus 선행 조회 복구 사이클, FCG(Final Confirmation Gate), QUARANTINED 상태, D12 재고 가드, isTerminal() SSOT | 2026-04-10 |

@@ -3,7 +3,7 @@
 > 기준: 실제 코드 (`OutboxAsyncConfirmService`,
 > `OutboxImmediateEventHandler`, `OutboxImmediateWorker`, `OutboxProcessingService`,
 > `OutboxWorker`, `PaymentTransactionCoordinator`)
-> 최종 수정: 2026-04-05
+> 최종 수정: 2026-04-10
 
 ---
 
@@ -13,14 +13,20 @@
 
 | 상태 | 의미 | 전환 시점 |
 |------|------|-----------|
+| 상태 | 의미 | 전환 시점 |
+|------|------|-----------|
 | `READY` | 결제 초기 생성 상태. 아직 처리 시작 전 | 결제 주문 생성 시 |
 | `IN_PROGRESS` | Toss API confirm 요청을 위해 진입. paymentKey 기록 완료 | `executePayment()` 호출 시 |
-| `RETRYING` | Toss API 일시 오류로 재시도 대기 중. PaymentOutbox는 nextRetryAt이 설정된 PENDING | `markPaymentAsRetrying()` 호출 시 |
-| `DONE` | Toss API confirm 성공, 결제 완료 | `markPaymentAsDone()` 호출 시 |
-| `FAILED` | 재고 부족 / Toss 비재시도 오류 / 재시도 한도 초과 후 최종 실패 | `markPaymentAsFail()` 호출 시 |
+| `RETRYING` | 복구 사이클에서 재시도 대기 중. PaymentOutbox는 nextRetryAt이 설정된 PENDING | `markPaymentAsRetrying()` 호출 시 |
+| `DONE` | PG 결제 완료 확인 (approvedAt 존재) | `markPaymentAsDone()` 호출 시 |
+| `FAILED` | 재고 부족 / PG 종결 실패 / 비재시도 오류 후 최종 실패 | `markPaymentAsFail()` 호출 시 (종결 상태 no-op) |
+| `CANCELED` | PG에서 취소됨 | PG 상태 CANCELED 확인 시 |
+| `PARTIAL_CANCELED` | PG에서 부분 취소됨 | PG 상태 PARTIAL_CANCELED 확인 시 |
+| `EXPIRED` | 만료 스케줄러에 의해 만료 처리 | `expirePayment()` 호출 시 |
+| `QUARANTINED` | 복구 사이클에서 판단 불가 → 격리. 수동 확인 필요 | `markPaymentAsQuarantined()` 호출 시 |
 
-> **핵심**: `IN_PROGRESS` 또는 `RETRYING` 상태에서 실패하면 반드시 `FAILED`로 전환해야 한다.
-> 그렇지 않으면 PaymentEvent가 해당 상태에 고착되어 재시도도, 정상 조회도 불가능해진다.
+> **종결 판별**: `PaymentEventStatus.isTerminal()` — DONE, FAILED, CANCELED, PARTIAL_CANCELED, EXPIRED, QUARANTINED이 종결 상태.
+> `IN_PROGRESS` 또는 `RETRYING` 상태에서 실패하면 `FAILED` 또는 `QUARANTINED`로 전환해야 한다.
 
 ---
 
@@ -100,35 +106,49 @@ flowchart TD
     TAKE -->|InterruptedException| STOP([루프 종료\n→ SmartLifecycle.stop()])
 ```
 
-### 1-4. OutboxProcessingService.process() — 공유 처리 로직
+### 1-4. OutboxProcessingService.process() — 복구 사이클 (공유 처리 로직)
 
 ```mermaid
 flowchart TD
     ENTRY(["OutboxImmediateWorker 또는 OutboxWorker에서 호출"]) --> C
 
-    C["① claimToInFlight(orderId)\n⎿ atomic UPDATE WHERE status='PENDING' → IN_FLIGHT\n⎿ REQUIRES_NEW 트랜잭션 (즉시 커밋)\n  — 중복 처리 방지"]
-    C -->|"Optional.empty() (클레임 실패)"| SKIP([return])
+    C["① claimToInFlight(orderId)\n⎿ atomic UPDATE PENDING → IN_FLIGHT\n⎿ REQUIRES_NEW TX (즉시 커밋)"]
+    C -->|"Optional.empty()"| SKIP([return])
     C --> G
 
-    G["② loadPaymentEvent(orderId)\n⎿ paymentKey는 confirm() executePayment()로 이미 기록됨"]
-    G -->|조회 실패| G_FAIL
-    G_FAIL["incrementRetryOrFail(orderId, outbox)\n→ retryCount 증가 또는 FAILED 확정"]
-    G_FAIL --> Z_END([종료])
-    G --> F
+    G["② loadPaymentEvent(orderId)"]
+    G -->|조회 실패| G_FAIL["incrementRetryOrFail → return"]
+    G --> TERM
 
-    F["③ confirmPaymentWithGateway()\n⎿ Toss API: POST /v1/payments/confirm 호출 (TX 밖)\n⎿ 결과: PaymentConfirmResultStatus enum"]
-    F -->|NON_RETRYABLE_FAILURE| F_NR
-    F_NR["executePaymentFailureCompensationWithOutbox()\n⎿ outbox.toFailed() + save()  — PaymentOutbox: FAILED\n⎿ increaseStockForOrders()    — 재고 복원\n⎿ markPaymentAsFail()         — PaymentEvent: FAILED\n※ 단일 트랜잭션"]
-    F_NR --> Z_END
+    TERM{"③ isTerminal()?"}
+    TERM -->|Yes| REJECT["rejectReentry(outbox)\n⎿ outbox.toDone() + save"]
+    REJECT --> Z_END([종료])
+    TERM -->|No| GS
 
-    F -->|RETRYABLE_FAILURE| F_R
-    F_R{"retryCount < maxAttempts?"}
-    F_R -->|"Yes → executePaymentRetryWithOutbox()\n⎿ outbox.incrementRetryCount(policy, now)\n  — PENDING + nextRetryAt 설정\n⎿ markPaymentAsRetrying()\n  — PaymentEvent: RETRYING"| RETRY(["다음 처리 사이클에서 재처리\n(nextRetryAt 도달 후)"])
-    F_R -->|"No (한도 초과) → executePaymentFailureCompensationWithOutbox()"| Z_END
+    GS["④ getPaymentStatusByOrderId(orderId)\n⎿ PG 상태 선행 조회 (TX 밖)\n⎿ RecoveryDecision 수립"]
+    GS --> SW
 
-    F --> E
-    E["④ executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE\n⎿ markPaymentAsDone()       — PaymentEvent: DONE\n※ 단일 트랜잭션"]
-    E --> Z_OK([종료])
+    SW{"⑤ RecoveryDecision.Type?"}
+    SW -->|COMPLETE_SUCCESS| SUC["executePaymentSuccessCompletionWithOutbox()\n⎿ outbox.toDone() → DONE\n⎿ markPaymentAsDone() → DONE"]
+    SW -->|COMPLETE_FAILURE| FAIL["executePaymentFailureCompensationWithOutbox()\n⎿ D12 가드 (TX 내 재조회)\n⎿ 재고 복구 + FAILED"]
+    SW -->|ATTEMPT_CONFIRM| AC["confirmPaymentWithGateway()\n⎿ SUCCESS → success completion\n⎿ NON_RETRYABLE → failure compensation\n⎿ RETRYABLE → 미소진: retry / 소진: FCG"]
+    SW -->|"RETRY_LATER\nGUARD_MISSING_APPROVED_AT"| RD{"소진?"}
+    RD -->|미소진| RETRY["executePaymentRetryWithOutbox()\n⎿ RETRYING + PENDING(nextRetryAt)"]
+    RD -->|소진| FCG
+    SW -->|QUARANTINE| FCG
+
+    FCG["⑥ FCG(Final Confirmation Gate)\n⎿ freshEvent = DB 재조회 (stale 방지)\n⎿ getStatus 1회 재호출 (retryCount=0, maxRetries=1)"]
+    FCG -->|COMPLETE_SUCCESS| FCG_SUC["executePaymentSuccessCompletionWithOutbox(freshEvent)"]
+    FCG -->|COMPLETE_FAILURE| FCG_FAIL["executePaymentFailureCompensationWithOutbox()"]
+    FCG -->|그 외| FCG_Q["executePaymentQuarantineWithOutbox()\n⎿ outbox.toFailed()\n⎿ markPaymentAsQuarantined() → QUARANTINED"]
+
+    SUC --> Z_END
+    FAIL --> Z_END
+    RETRY --> Z_END
+    FCG_SUC --> Z_END
+    FCG_FAIL --> Z_END
+    FCG_Q --> Z_END
+    G_FAIL --> Z_END
 ```
 
 ### 1-5. OutboxWorker.process() — 폴백 스케줄러
@@ -180,7 +200,7 @@ flowchart TD
 
 | 엔티티 | Outbox |
 |------|--------|
-| `PaymentEvent` | READY → IN_PROGRESS → RETRYING(재시도 중) → DONE/FAILED |
+| `PaymentEvent` | READY → IN_PROGRESS → RETRYING(재시도 중) → DONE/FAILED/QUARANTINED |
 | `PaymentOutbox` | PENDING → IN_FLIGHT → DONE/FAILED (재시도 시 IN_FLIGHT → PENDING + nextRetryAt) |
 | HTTP 응답 | 202 Accepted |
 | Toss API 재시도 | executePaymentRetryWithOutbox; backoff(FIXED/EXPONENTIAL); 한도(payment.retry.max-attempts, 기본 5) |

@@ -3,21 +3,17 @@
 > 최종 수정: 2026-04-10
 
 ## 활성 작업
-- **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
-- **이슈**: #64
-- **브랜치**: #64
-- **단계**: review
-- **활성 태스크**: 완료 (Task 11 — Micrometer 카운터 추가)
+없음
 
 ## 최근 완료
-- **주제**: PAYMENT-RETRY-STATE
-- **완료일**: 2026-04-07
-- **아카이브**: docs/archive/payment-retry-state/
+- **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
+- **완료일**: 2026-04-10
+- **아카이브**: docs/archive/payment-double-fault-recovery/
 
 ## 단계 진행
 - [x] discuss
 - [x] plan
 - [x] plan-review
 - [x] execute
-- [ ] review
-- [ ] verify
+- [x] review
+- [x] verify
