@@ -52,5 +52,5 @@ plan 단계 종료 조건. 두 개의 섹션으로 분리된다:
 
 # Post-phase checklist (오케스트레이터 실행, 판정 제외)
 
-- [ ] STATE.md stage → `execute`, 활성 태스크 = Task 1
+- [ ] STATE.md stage → `plan-review`
 - [ ] PLAN.md + STATE.md + 라운드 문서를 단일 `docs:` 커밋으로 기록

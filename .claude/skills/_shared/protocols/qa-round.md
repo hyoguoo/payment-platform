@@ -26,8 +26,8 @@ Markdown 본문은 인간 가독성, JSON 블록은 오케스트레이터 파싱
 
 ```json
 {
-  "stage": "discuss | plan | code | verify",
-  "persona": "critic | domain-expert",
+  "stage": "discuss | plan | plan-review | code | verify",
+  "persona": "critic | domain-expert | plan-reviewer",
   "round": 1,
   "task_id": null,
 

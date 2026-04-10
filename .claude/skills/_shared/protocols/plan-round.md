@@ -61,4 +61,4 @@ Domain Expert 조건부 호출 여부를 결정하는 신호로 사용된다.
 - discuss에서 식별된 domain risk 전부 태스크로 매핑됨
 
 ## State Transition
-pass 시 `STATE.md` stage → `execute`, 활성 태스크 = Task 1
+pass 시 `STATE.md` stage → `plan-review`

@@ -91,7 +91,7 @@ description: >
 |------|----------|----------|
 | Discuss 완료 | topics 문서 + 라운드 문서 + STATE.md(plan으로) | `docs:` |
 | Plan 완료 | PLAN.md + 라운드 문서 + STATE.md(plan-review로) | `docs:` |
-| Plan Review 통과 | STATE.md(execute/Task 1로) — 이전 docs 커밋에 포함 | — |
+| Plan Review 통과 | 라운드 문서 + STATE.md(execute/Task 1로) | `docs:` |
 | TDD RED | 실패 테스트 파일만 | `test:` |
 | TDD GREEN | 구현 코드 + 테스트 + PLAN.md(체크박스) + STATE.md | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |
