@@ -58,19 +58,36 @@ git mv docs/topics/<TOPIC>.md docs/archive/<topic-kebab>/<TOPIC>-CONTEXT.md
 `docs/archive/README.md` 테이블 행 추가.
 
 ### Step 3.5 — 완료 브리핑 생성
-`docs/archive/<topic-kebab>/COMPLETION-BRIEFING.md` 작성. 다음 구조를 따른다:
+`docs/archive/<topic-kebab>/COMPLETION-BRIEFING.md` 작성.
+
+**목표**: 이 파일 하나만 읽으면 CONTEXT.md, PLAN.md, 코드를 다시 볼 필요 없이 "무엇을, 왜, 어떻게, 결과가 어땠는지" 완전히 파악 가능해야 한다.
+
+**필수 섹션**:
 ```
 ## 작업 요약
-<1~2문장: 무엇을 왜 했는지>
+무엇이 문제였고, 왜 이 작업이 필요했으며, 어떻게 해결했는지를 서사형으로 설명한다.
+bullet이 아닌 문단으로 작성. 배경 → 문제 → 접근 방식 → 결과 순서.
 
-## 핵심 결정
-<CONTEXT.md의 D1~D12 중 가장 중요한 3~5개만 발췌. 번호 + 한 줄 요약>
+## 핵심 설계 결정
+CONTEXT.md의 주요 결정 사항을 발췌. 각 결정마다:
+- 결정 내용 (무엇을)
+- 근거 (왜 이 선택을)
+- 대안과 기각 이유 (왜 다른 건 안 되는지)
 
-## 상태 머신
-<Mermaid stateDiagram-v2 — 변경 전후가 아닌 최종 상태만>
+## 변경 범위
+영역별(도메인, Application, Infrastructure 등)로 무엇이 추가/변경/제거됐는지 상세 설명.
+새로 생긴 클래스, 변경된 메서드 시그니처, 제거된 코드의 의도를 포함한다.
 
-## 복구/처리 플로우
-<Mermaid flowchart — 핵심 분기 경로만, 세부 생략>
+## 다이어그램
+작업 성격에 맞는 Mermaid 다이어그램을 포함한다. 예시:
+- 상태 전이가 변경된 경우: stateDiagram-v2
+- 처리 흐름이 변경된 경우: flowchart
+- 시퀀스가 중요한 경우: sequenceDiagram
+해당 없으면 생략 가능. 복수 다이어그램도 가능.
+
+## 코드 리뷰 요약
+review 단계에서 나온 findings와 처리 결과를 요약한다.
+어떤 문제가 지적됐고, 어떻게 해소했는지.
 
 ## 수치
 | 항목 | 값 |
@@ -80,7 +97,6 @@ git mv docs/topics/<TOPIC>.md docs/archive/<topic-kebab>/<TOPIC>-CONTEXT.md
 | 커밋 | N개 |
 | 코드 리뷰 findings | critical N / major N / minor N |
 ```
-**원칙**: CONTEXT.md와 PLAN.md를 다시 읽지 않고도 이 파일만으로 "무엇을, 왜, 어떻게" 파악 가능해야 한다.
 
 ### Step 4 — STATE.md 종결
 stage → `done`. `.continue-here.md` 존재 시 삭제.
