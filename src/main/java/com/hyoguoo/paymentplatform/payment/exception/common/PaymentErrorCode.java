@@ -31,6 +31,7 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_STATUS_TO_DONE("E03024", "DONE 상태로 변경할 수 없는 상태입니다."),
     INVALID_STATUS_TO_FAILED("E03025", "FAILED 상태로 변경할 수 없는 상태입니다."),
     INVALID_STATUS_TO_QUARANTINE("E03026", "QUARANTINED 상태로 변경할 수 없는 상태입니다."),
+    MISSING_APPROVED_AT("E03027", "승인 시각(approvedAt)이 누락되어 완료 처리할 수 없습니다."),
     ;
 
     private final String code;
