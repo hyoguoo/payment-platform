@@ -255,10 +255,16 @@ of_KnownValues_ReturnsCorrectStatus(String, PaymentStatus)
 ```
 
 **완료 조건**
-- [ ] `PaymentStatus.UNKNOWN` enum 값 미존재
-- [ ] 알 수 없는 값 → `PaymentGatewayStatusUnmappedException` throw
-- [ ] 기존 mapper 컴파일 에러 없음
-- [ ] `./gradlew test` 통과
+- [x] `PaymentStatus.UNKNOWN` enum 값 미존재
+- [x] 알 수 없는 값 → `PaymentGatewayStatusUnmappedException` throw
+- [x] 기존 mapper 컴파일 에러 없음
+- [x] `./gradlew test` 통과
+
+**완료 결과** (2026-04-10)
+- `PaymentStatus.UNKNOWN` 제거, `of()` fallback `orElse(UNKNOWN)` → `orElseThrow(PaymentGatewayStatusUnmappedException::of)` 로 교체
+- `PaymentGatewayStatusUnmappedException` 신규 unchecked 예외 추가 (`UNMAPPED_GATEWAY_STATUS` E03028)
+- `TossPaymentGatewayStrategy.mapToPaymentStatus()` default 분기를 `PaymentStatus.of(tossStatus)` 위임으로 교체 — 알 수 없는 Toss 상태는 예외로 전파
+- 전체 272개 테스트 통과
 
 ---
 

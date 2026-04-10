@@ -231,7 +231,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
             case STATUS_WAITING_FOR_DEPOSIT -> PaymentStatus.WAITING_FOR_DEPOSIT;
             case STATUS_PARTIAL_CANCELED -> PaymentStatus.PARTIAL_CANCELED;
             case STATUS_READY -> PaymentStatus.READY;
-            default -> PaymentStatus.UNKNOWN;
+            default -> PaymentStatus.of(tossStatus);
         };
     }
 

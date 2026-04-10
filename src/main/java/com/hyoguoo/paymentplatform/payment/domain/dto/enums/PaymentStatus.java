@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.domain.dto.enums;
 
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
 import java.util.Arrays;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,6 @@ public enum PaymentStatus {
     PARTIAL_CANCELED("PARTIAL_CANCELED"),
     ABORTED("ABORTED"),
     EXPIRED("EXPIRED"),
-    UNKNOWN("UNKNOWN"),
     ;
 
     private final String value;
@@ -24,6 +24,6 @@ public enum PaymentStatus {
         return Arrays.stream(PaymentStatus.values())
                 .filter(status -> status.getValue().equals(value))
                 .findFirst()
-                .orElse(UNKNOWN);
+                .orElseThrow(() -> PaymentGatewayStatusUnmappedException.of(value));
     }
 }
