@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
@@ -29,6 +30,7 @@ public class PaymentCommandUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
+    private final PaymentQuarantineMetrics paymentQuarantineMetrics;
 
     @Transactional
     @PublishDomainEvent(action = "changed")
@@ -81,7 +83,9 @@ public class PaymentCommandUseCase {
     public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
         LocalDateTime now = localDateTimeProvider.now();
         paymentEvent.quarantine(reason, now);
-        return paymentEventRepository.saveOrUpdate(paymentEvent);
+        PaymentEvent saved = paymentEventRepository.saveOrUpdate(paymentEvent);
+        paymentQuarantineMetrics.recordQuarantine(reason);
+        return saved;
     }
 
     /**
