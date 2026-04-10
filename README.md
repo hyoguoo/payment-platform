@@ -8,7 +8,7 @@
 
 - **동기 → 비동기 아키텍처 전환 및 성능 측정**: Toss API 지연이 HTTP 스레드를 직접 블로킹하는 동기 구조에서 비동기 + Outbox 채널 전략으로 전환
 - **정합성 오류 및 위변조 요청 방지**: 클라이언트·서버·PG 응답값을 교차 검증하고 Checkout 멱등성(Caffeine 캐시 + TOCTOU 해결)을 보장하여 중복 주문 및 금액 위변조를 차단
-- **재시도 가능 실패에 대한 자동 복구 및 최종 일관성 확보**: `RetryPolicy` 백오프·`nextRetryAt` 스케줄링으로 명확히 정의하고, 외부 장애 시에도 재고·결제 상태의 일관성 유지
+- **장애 내성 복구 체계 설계**: `RecoveryDecision` 값 객체로 복구 결정을 집중하고, 스케줄링·재고 복구 가드·격리 전 최종 확인으로 외부 장애 시에도 재고·결제 상태의 일관성 유지
 
 <br>
 
@@ -20,7 +20,7 @@
 | Phase 2 | 결합도 해소 및 자가 복구력    | [트랜잭션 범위 최소화](https://github.com/hyoguoo/payment-platform/wiki/tx-scope) · [상태 기반 복구 모델 및 재시도 로직](https://github.com/hyoguoo/payment-platform/wiki/retry-recovery)                                                                        |
 | Phase 3 | 운영 가시성 및 안정성       | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics) |
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
-| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                        |
+| Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                       |
 |   ETC   | 설계 유연성             | [전략 패턴 기반 PG 독립성 확보](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                        |
 
 <br>
@@ -70,7 +70,7 @@ flowchart TD
             W4["TX: PaymentEvent DONE\nPaymentOutbox DONE"]:::tx
         end
 
-        OFB["OutboxWorker\n폴링 폴백 (fixedDelay 2s)\n큐 오버플로우 / 서버 재시작 복구"]:::fallback
+        OFB["OutboxWorker\n폴링 폴백\n큐 오버플로우 / 서버 재시작 복구"]:::fallback
         O1 --> O2 --> O3
         O2 --> O4 --> O5
         O5 -->|" offer() true "| W1
@@ -97,33 +97,36 @@ flowchart TD
 - **이상적 자원 할당(Sweet Spot)**: 무작정 커넥션 풀을 늘리기보다 시스템 한계에 맞는 최적의 수치(HikariCP 30 등)를 도출하여 안정성과 성능의 균형 확보
 - 상세 보고서: [Benchmark-Report](https://github.com/hyoguoo/payment-platform/wiki/Benchmark-Report)
 
-### [결제 상태 관리 — 도메인 상태 머신과 백오프 기반 재시도](https://github.com/hyoguoo/payment-platform/wiki/state-management)
+### [결제 상태 관리 — 도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)
 
-- Toss 오류 코드를 재시도 가능/불가능으로 분류하고, 재시도 가능한 경우 백오프 대기 후 자동 재처리 — 서버가 재시작되더라도 DB에 기록된 대기 시간을 기준으로 재시도
-- 결제가 재시도 대기 중임을 `RETRYING` 상태로 명시하여, 운영 모니터링에서 "처리 중인 결제"와 "장애로 재시도 중인 결제" 구분
+- PG 상태 조회 후 `RecoveryDecision` 객체가 종결/재시도/격리 결정
+- 결제 재시도 한도 소진 시 격리 전 최종 확인(getStatus 1회 재호출)으로 성공 건의 오격리 방지, `QUARANTINED` 상태로 관리자 개입 유도
+- 보상 트랜잭션 실행 전 이중 조건 가드(Outbox IN_FLIGHT + Event 비종결)로 동시성 경합 시 재고 이중 복원 차단
+- 포스팅: [결제 복구 상태 전이 설계](https://hyoguoo.github.io/blog/payment-recovery-state-design)
 
 ```mermaid
 flowchart TD
     classDef success fill: #D5F5E3, color: #0E6251, stroke: #28B463
     classDef retryable fill: #FEF5E7, color: #7E5109, stroke: #F39C12
-    classDef nonretryable fill: #FADBD8, color: #7B241C, stroke: #E74C3C
+    classDef failure fill: #FADBD8, color: #7B241C, stroke: #E74C3C
     classDef action fill: #EBF5FB, color: #21618C, stroke: #3498DB
-    CONFIRM["Toss API 승인 요청"]
-    CONFIRM -->|" 성공 응답 수신 "| SUCCESS["성공 완료 상태"]
-    CONFIRM -->|" 오류 코드 수신 "| CLASSIFY{"재시도 가능 여부 확인"}
-    CONFIRM -->|" 네트워크 타임아웃 또는 연결 실패 "| RETRYABLE["재시도 가능 실패 상태"]
-    CLASSIFY -->|" 일시적 장애 "| RETRYABLE
-    CLASSIFY -->|" 영구적 실패 "| NON_RETRYABLE["영구 실패 상태"]
-    SUCCESS --> S1["결제 성공 완료 처리 (Outbox 및 Event 상태 DONE으로 변경)"]
-    NON_RETRYABLE --> NR1["결제 실패 보상 처리 (재고 복구 및 FAILED로 변경)"]
-    RETRYABLE --> RETRY_CHECK{"재시도 한도 초과 확인"}
-    RETRY_CHECK -->|" 한도 내 (재시도 진행) "| RETRY["결제 재시도 예약 (백오프 적용 및 RETRYING으로 변경)"]
-    RETRY_CHECK -->|" 한도 초과 "| NR1
-    RETRY -->|" 재시도 시점 도달 시 "| CONFIRM
-    class SUCCESS success
-    class RETRYABLE retryable
-    class NON_RETRYABLE nonretryable
-    class S1,NR1,RETRY action
+    classDef quarantine fill: #F3E5F5, color: #4A148C, stroke: #7B1FA2
+    classDef check fill: #FEF9E7, color: #7D6608, stroke: #F1C40F
+    classDef skip fill: #F5F5F5, color: #616161, stroke: #9E9E9E
+    CL["claimToInFlight\n원자 선점"]:::action
+    CL -->|" 선점 성공 "| GS["PG 상태 선행 조회\ngetStatusByOrderId"]:::action
+    CL -->|" 선점 실패 "| SKIP["다른 Worker 처리 중\n→ 포기"]:::skip
+    GS -->|" DONE "| SUCCESS["COMPLETE_SUCCESS"]:::success
+    GS -->|" PG 종결 실패 "| FAILURE["COMPLETE_FAILURE"]:::failure
+    GS -->|" PG 기록 없음 "| CONFIRM["ATTEMPT_CONFIRM\nPG 승인 요청"]:::action
+    GS -->|" 일시 오류 + 한도 미소진 "| RETRY["RETRY_LATER\n백오프 대기"]:::retryable
+    GS -->|" 한도 소진 "| FINAL["격리 전 최종 확인\ngetStatus 1회 재호출"]:::action
+    FINAL -->|" DONE "| SUCCESS
+    FINAL -->|" PG 종결 실패 "| FAILURE
+    FINAL -->|" 판단 불가 "| QU["QUARANTINE\n관리자 개입 대기"]:::quarantine
+    FAILURE --> GUARD{"재고 복구 가드\nOutbox IN_FLIGHT?\nEvent 비종결?"}:::check
+    GUARD -->|" 조건 충족 "| COMP["재고 복원 + FAILED"]:::failure
+    GUARD -->|" 조건 미충족 "| GSKIP["재고 복원 skip"]:::skip
 ```
 
 ### [Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결](https://github.com/hyoguoo/payment-platform/wiki/idempotency)
