@@ -5,6 +5,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 
 public interface PaymentGatewayPort {
 
@@ -15,6 +17,7 @@ public interface PaymentGatewayPort {
     // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
     PaymentStatusResult getStatus(String paymentKey);
 
-    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
-    PaymentStatusResult getStatusByOrderId(String orderId);
+    // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
+    PaymentStatusResult getStatusByOrderId(String orderId)
+            throws PaymentTossRetryableException, PaymentTossNonRetryableException;
 }

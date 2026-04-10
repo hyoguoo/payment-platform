@@ -1,6 +1,6 @@
 # PaymentConfirmService 구현체 비즈니스 로직 분석
 
-> 최종 수정: 2026-04-04
+> 최종 수정: 2026-04-10
 
 ---
 
@@ -82,7 +82,7 @@ OutboxProcessingService.process(orderId)
       └─ loop 반복 (InterruptedException → 루프 종료)
 ```
 
-### 1-4. OutboxProcessingService.process() — 공유 처리 로직
+### 1-4. OutboxProcessingService.process() — 복구 사이클 (공유 처리 로직)
 
 ```
 [OutboxImmediateWorker 및 OutboxWorker 양쪽에서 호출]
@@ -95,36 +95,60 @@ OutboxProcessingService.process(orderId)
       │  [클레임 실패 — Optional.empty()] → return
       ▼
 ② loadPaymentEvent(orderId)
-      │  paymentKey는 confirm()의 executePayment()로 이미 기록됨
       │
       │  [조회 실패] → incrementRetryOrFail(orderId, outbox) → return
       ▼
-③ confirmPaymentWithGateway(command)
-      │  Toss API: POST /v1/payments/confirm 호출 (트랜잭션 밖)
-      │  결과는 PaymentConfirmResultStatus enum (예외가 아닌 값 반환)으로 분기
+③ 로컬 종결 재진입 차단
+      │  paymentEvent.getStatus().isTerminal() → true일 때
+      │  rejectReentry(outbox) — outbox.toDone() + save (PG 조회 불필요)
       │
-      │  [NON_RETRYABLE_FAILURE]
-      │    └─ executePaymentFailureCompensationWithOutbox(paymentEvent, orderList, reason, outbox)
+      │  [종결 상태] → return
+      ▼
+④ getPaymentStatusByOrderId(orderId)  [PG 상태 선행 조회, TX 밖]
+      │  → RecoveryDecision.from(event, result, retryCount, maxRetries) 수립
+      │  예외 시 → RecoveryDecision.fromException(event, exception, retryCount, maxRetries)
+      ▼
+⑤ applyDecision — RecoveryDecision.Type에 따라 분기
+      │
+      ├─ COMPLETE_SUCCESS
+      │    → executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
+      │         ├─ outbox.toDone() + save()  — PaymentOutbox: DONE
+      │         └─ markPaymentAsDone()       — PaymentEvent: DONE
+      │
+      ├─ COMPLETE_FAILURE
+      │    → executePaymentFailureCompensationWithOutbox(orderId, orderList, reason)
+      │         ├─ D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구
       │         ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
-      │         ├─ increaseStockForOrders()    — 재고 복원
       │         └─ markPaymentAsFail()         — PaymentEvent: FAILED
       │
-      │  [RETRYABLE_FAILURE]
-      │    └─ policy = retryPolicyProperties.toRetryPolicy()
-      │         ├─ retryCount < maxAttempts
-      │         │    └─ executePaymentRetryWithOutbox(paymentEvent, outbox, policy, now)
-      │         │         ├─ outbox.incrementRetryCount(policy, now)
-      │         │         │    — retryCount++, status=PENDING, nextRetryAt=now+backoff
-      │         │         ├─ paymentOutboxUseCase.save(outbox)
-      │         │         └─ markPaymentAsRetrying()  — PaymentEvent: RETRYING
-      │         └─ retryCount >= maxAttempts → FAILED 확정 (executePaymentFailureCompensationWithOutbox)
-      ▼
-④ executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
-      │  단일 트랜잭션
-      │  ├─ outbox.toDone() + save()  — PaymentOutbox: IN_FLIGHT → DONE
-      │  └─ markPaymentAsDone()       — PaymentEvent: DONE
-      ▼
-[종료]
+      ├─ ATTEMPT_CONFIRM
+      │    → confirmPaymentWithGateway(command)  [Toss API confirm 호출]
+      │         ├─ SUCCESS → executePaymentSuccessCompletionWithOutbox()
+      │         ├─ NON_RETRYABLE_FAILURE → executePaymentFailureCompensationWithOutbox()
+      │         └─ RETRYABLE_FAILURE → 미소진: retry / 소진: FCG
+      │
+      ├─ RETRY_LATER
+      │    → 미소진: executePaymentRetryWithOutbox() — RETRYING + PENDING(nextRetryAt)
+      │    → 소진: FCG(Final Confirmation Gate)
+      │
+      ├─ GUARD_MISSING_APPROVED_AT (PG DONE + approvedAt null)
+      │    → 미소진: executePaymentRetryWithOutbox() — 다음 틱 재시도
+      │    → 소진: FCG
+      │
+      ├─ QUARANTINE (retryCount >= maxRetries)
+      │    → FCG
+      │
+      └─ REJECT_REENTRY → rejectReentry(outbox)
+
+⑥ FCG(Final Confirmation Gate) — 소진 시 최종 getStatus 1회 재호출
+      │  getPaymentStatusByOrderId(orderId)  [retryCount=0, maxRetries=1로 고정]
+      │  freshPaymentEvent = DB 재조회 (stale 방지)
+      │
+      ├─ COMPLETE_SUCCESS → executePaymentSuccessCompletionWithOutbox(freshEvent, approvedAt, outbox)
+      ├─ COMPLETE_FAILURE → executePaymentFailureCompensationWithOutbox(orderId, orderList, reason)
+      └─ 그 외 → executePaymentQuarantineWithOutbox(freshEvent, outbox, reason)
+               ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
+               └─ markPaymentAsQuarantined()  — PaymentEvent: QUARANTINED
 ```
 
 ### 1-5. OutboxWorker.process() — 폴백 스케줄러
@@ -170,20 +194,23 @@ per record:
 
 **호출 지점:** OutboxProcessingService (Toss confirm 성공 후)
 
-### 2-2. executePaymentFailureCompensationWithOutbox (Outbox 실패 보상)
+### 2-2. executePaymentFailureCompensationWithOutbox (Outbox 실패 보상 — D12 가드)
 
-> `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox(paymentEvent, paymentOrderList, failureReason, outbox)`
+> `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox(orderId, paymentOrderList, failureReason)`
 
 ```
 단일 @Transactional
 
-① outbox.toFailed()
-② paymentOutboxUseCase.save(outbox)          — PaymentOutbox: IN_FLIGHT → FAILED
-③ increaseStockForOrders(paymentOrderList)   — 재고 복원
-④ markPaymentAsFail(paymentEvent, reason)    — PaymentEvent: FAILED
+① freshOutbox = findByOrderId(orderId)       — TX 내 outbox 재조회
+② freshEvent = getPaymentEventByOrderId(orderId) — TX 내 event 재조회
+③ D12 가드 판정: outboxInFlight AND eventNonTerminal
+   ├─ 충족 → increaseStockForOrders(paymentOrderList) — 재고 복원
+   └─ 미충족 → 재고 복구 건너뜀 (warn 로그)
+④ outboxInFlight → freshOutbox.toFailed() + save() — PaymentOutbox: FAILED
+⑤ markPaymentAsFail(freshEvent, reason)    — PaymentEvent: FAILED (종결 no-op)
 ```
 
-**호출 지점:** OutboxProcessingService (비재시도 오류 발생 시)
+**호출 지점:** OutboxProcessingService (COMPLETE_FAILURE, ATTEMPT_CONFIRM NON_RETRYABLE 등)
 
 ### 2-3. executePaymentRetryWithOutbox (재시도 전환)
 
@@ -198,13 +225,28 @@ per record:
 ③ markPaymentAsRetrying(paymentEvent) — PaymentEvent: IN_PROGRESS 또는 RETRYING → RETRYING
 ```
 
-**호출 지점:** OutboxProcessingService (RETRYABLE_FAILURE, 재시도 한도 미도달 시)
+**호출 지점:** OutboxProcessingService (RETRY_LATER/GUARD_MISSING_APPROVED_AT 미소진, ATTEMPT_CONFIRM RETRYABLE 미소진)
 
 **백오프 전략 (`BackoffType`):**
 - `FIXED`: 매회 `baseDelayMs`만큼 대기
 - `EXPONENTIAL`: `min(baseDelayMs * 2^retryCount, maxDelayMs)` — 지수 증가, 상한 있음
 
-### 2-4. handleStockFailure (재고 부족 전용)
+### 2-4. executePaymentQuarantineWithOutbox (격리 전이)
+
+> `PaymentTransactionCoordinator.executePaymentQuarantineWithOutbox(paymentEvent, outbox, reason)`
+
+```
+단일 @Transactional
+
+① outbox.toFailed()
+② paymentOutboxUseCase.save(outbox)             — PaymentOutbox: IN_FLIGHT → FAILED
+③ markPaymentAsQuarantined(paymentEvent, reason) — PaymentEvent: QUARANTINED
+   └─ PaymentQuarantineMetrics.recordQuarantine(reason) — Micrometer 카운터 증가
+```
+
+**호출 지점:** OutboxProcessingService FCG default 분기 (판단 불가 시 격리)
+
+### 2-5. handleStockFailure (재고 부족 전용)
 
 > `PaymentFailureUseCase.handleStockFailure(paymentEvent, failureMessage)`
 

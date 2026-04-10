@@ -9,6 +9,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -245,6 +246,50 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE"})
+    @DisplayName("done() 호출 시 approvedAt non-null이면 status가 DONE이 되고 approvedAt이 저장된다.")
+    void done_WithApprovedAt_Success(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus,
+                PaymentOrderStatus.EXECUTING
+        );
+        LocalDateTime approvedAt = LocalDateTime.of(2024, 6, 1, 12, 0, 0);
+
+        // when
+        paymentEvent.done(approvedAt, LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+        assertThat(paymentEvent.getApprovedAt()).isEqualTo(approvedAt);
+    }
+
+    @Test
+    @DisplayName("done() 호출 시 approvedAt이 null이면 MISSING_APPROVED_AT 코드로 PaymentStatusException을 던진다.")
+    void done_NullApprovedAt_ThrowsPaymentStatusException() {
+        // given — 허용 source(IN_PROGRESS/RETRYING/DONE) 중 IN_PROGRESS 대표 사용
+        // DONE source + null approvedAt 조합은 allArgsBuilder로만 생성 가능한 시나리오이므로
+        // domain invariant 검증 목적으로 세 가지 source 모두 확인
+        for (PaymentEventStatus source : List.of(
+                PaymentEventStatus.IN_PROGRESS,
+                PaymentEventStatus.RETRYING,
+                PaymentEventStatus.DONE)) {
+            PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                    source,
+                    PaymentOrderStatus.EXECUTING
+            );
+
+            // when & then
+            assertThatThrownBy(() -> paymentEvent.done(null, LocalDateTime.now()))
+                    .isInstanceOf(PaymentStatusException.class)
+                    .satisfies(ex -> {
+                        PaymentStatusException statusEx = (PaymentStatusException) ex;
+                        assertThat(statusEx.getCode()).isEqualTo(PaymentErrorCode.MISSING_APPROVED_AT.getCode());
+                    });
+        }
+    }
+
+    @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다. (RETRYING은 허용)")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
@@ -259,6 +304,25 @@ class PaymentEventTest {
         // when & then
         assertThatThrownBy(() -> paymentEvent.done(approvedAt, LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @DisplayName("결제 실패 시 비종결 상태에서 성공적으로 FAILED 상태로 변경하고 statusReason이 저장된다.")
+    void fail_ValidSource_Success(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus,
+                PaymentOrderStatus.EXECUTING
+        );
+        String reason = "test failure reason";
+
+        // when
+        paymentEvent.fail(reason, LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
     }
 
     @ParameterizedTest
@@ -279,18 +343,19 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("결제 실패 시 fail 상태로 변경 불가한 상태에서는 예외를 던진다.")
-    void fail_InvalidStatus(PaymentEventStatus paymentEventStatus) {
+    @EnumSource(value = PaymentEventStatus.class, names = {"FAILED", "DONE", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("종결 상태에서 fail() 호출 시 no-op — status 변경 없음, 예외 없음.")
+    void fail_AlreadyTerminalStatus_NoOp(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
+        PaymentEventStatus statusBefore = paymentEvent.getStatus();
 
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.fail("test failure reason", LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
+        // when & then — 예외 없이 완료되어야 하며 status가 변경되지 않아야 한다
+        paymentEvent.fail("attempt to fail terminal", LocalDateTime.now());
+        assertThat(paymentEvent.getStatus()).isEqualTo(statusBefore);
     }
 
     @ParameterizedTest
@@ -548,9 +613,37 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("재시도 전환 시 허용되지 않는 상태에서는 예외를 던진다.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @DisplayName("재시도 전환 시 허용되지 않는 상태(QUARANTINED 제외 종결 상태)에서는 예외를 던진다.")
     void toRetrying_실패(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.toRetrying(LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @Test
+    @DisplayName("READY 상태에서 toRetrying() 호출 시 RETRYING으로 전환되고 retryCount가 1이 된다.")
+    void toRetrying_FromReady_Success() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.READY, PaymentOrderStatus.NOT_STARTED);
+
+        // when
+        paymentEvent.toRetrying(LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
+        assertThat(paymentEvent.getRetryCount()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("종결 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)에서 toRetrying() 호출 시 PaymentStatusException을 던진다.")
+    void toRetrying_TerminalSource_Throws(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
@@ -590,5 +683,35 @@ class PaymentEventTest {
         assertThatThrownBy(() ->
                 paymentEvent.validateConfirmRequest(userId, new BigDecimal(amount), orderId, paymentKey))
                 .isInstanceOf(PaymentValidException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @DisplayName("격리 전환 시 READY/IN_PROGRESS/RETRYING 상태에서 QUARANTINED 상태로 변경되고 statusReason이 설정된다.")
+    void quarantine_Success(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+        String reason = "한도 소진 후 판단 불가";
+
+        // when
+        paymentEvent.quarantine(reason, LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("격리 전환 시 허용되지 않는 상태에서는 PaymentStatusException을 던진다.")
+    void quarantine_InvalidStatus(PaymentEventStatus paymentEventStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                paymentEventStatus, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class);
     }
 }

@@ -80,7 +80,8 @@ public class PaymentEvent {
     }
 
     public void toRetrying(LocalDateTime lastStatusChangedAt) {
-        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
         }
@@ -90,6 +91,9 @@ public class PaymentEvent {
     }
 
     public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
+        if (approvedAt == null) {
+            throw PaymentStatusException.of(PaymentErrorCode.MISSING_APPROVED_AT);
+        }
         if (this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING &&
                 this.status != PaymentEventStatus.DONE) {
@@ -103,6 +107,9 @@ public class PaymentEvent {
     }
 
     public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
+        if (isTerminalStatus()) {
+            return;
+        }
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING) {
@@ -112,6 +119,15 @@ public class PaymentEvent {
         this.statusReason = failureReason;
         this.lastStatusChangedAt = lastStatusChangedAt;
         this.paymentOrderList.forEach(PaymentOrder::fail);
+    }
+
+    private boolean isTerminalStatus() {
+        return this.status == PaymentEventStatus.FAILED
+                || this.status == PaymentEventStatus.DONE
+                || this.status == PaymentEventStatus.CANCELED
+                || this.status == PaymentEventStatus.PARTIAL_CANCELED
+                || this.status == PaymentEventStatus.EXPIRED
+                || this.status == PaymentEventStatus.QUARANTINED;
     }
 
     public void expire(LocalDateTime lastStatusChangedAt) {
@@ -137,6 +153,17 @@ public class PaymentEvent {
         if (this.paymentKey != null && !this.paymentKey.equals(paymentKey)) {
             throw PaymentValidException.of(PaymentErrorCode.INVALID_PAYMENT_KEY);
         }
+    }
+
+    public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
+        if (this.status != PaymentEventStatus.READY &&
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.RETRYING) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE);
+        }
+        this.status = PaymentEventStatus.QUARANTINED;
+        this.statusReason = reason;
+        this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {

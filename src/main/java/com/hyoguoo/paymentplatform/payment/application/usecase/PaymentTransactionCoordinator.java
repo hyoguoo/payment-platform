@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,6 +21,7 @@ public class PaymentTransactionCoordinator {
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentOutboxUseCase paymentOutboxUseCase;
+    private final PaymentLoadUseCase paymentLoadUseCase;
 
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentEvent executePaymentAndStockDecreaseWithOutbox(
@@ -58,16 +60,48 @@ public class PaymentTransactionCoordinator {
     }
 
     @Transactional
-    public PaymentEvent executePaymentFailureCompensationWithOutbox(
+    public PaymentEvent executePaymentQuarantineWithOutbox(
             PaymentEvent paymentEvent,
-            List<PaymentOrder> paymentOrderList,
-            String failureReason,
-            PaymentOutbox outbox
+            PaymentOutbox outbox,
+            String reason
     ) {
         outbox.toFailed();
         paymentOutboxUseCase.save(outbox);
-        orderedProductUseCase.increaseStockForOrders(paymentOrderList);
-        return paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
+        return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
     }
 
+    /**
+     * D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구 수행.
+     * 조건: outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}
+     * 어느 하나라도 거짓이면 재고 복구를 건너뜀. markPaymentAsFail은 항상 호출되나, fail() no-op으로 이미 종결 시 상태 불변.
+     */
+    @Transactional
+    public PaymentEvent executePaymentFailureCompensationWithOutbox(
+            String orderId,
+            List<PaymentOrder> paymentOrderList,
+            String failureReason
+    ) {
+        PaymentOutbox freshOutbox = paymentOutboxUseCase.findByOrderId(orderId)
+                .orElseThrow(() -> new IllegalStateException("Outbox not found for orderId: " + orderId));
+        PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+
+        boolean outboxInFlight = freshOutbox.getStatus() == PaymentOutboxStatus.IN_FLIGHT;
+        boolean eventNonTerminal = !freshEvent.getStatus().isTerminal();
+
+        if (outboxInFlight && eventNonTerminal) {
+            orderedProductUseCase.increaseStockForOrders(paymentOrderList);
+        } else {
+            log.warn(
+                    "D12 guard: 재고 복구 건너뜀 orderId={} outboxStatus={} eventStatus={}",
+                    orderId, freshOutbox.getStatus(), freshEvent.getStatus()
+            );
+        }
+
+        if (outboxInFlight) {
+            freshOutbox.toFailed();
+            paymentOutboxUseCase.save(freshOutbox);
+        }
+
+        return paymentCommandUseCase.markPaymentAsFail(freshEvent, failureReason);
+    }
 }

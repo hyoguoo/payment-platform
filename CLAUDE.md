@@ -45,6 +45,15 @@ Payment platform based on a hexagonal architecture. The confirm flow runs asynch
 discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 - `docs/topics/<TOPIC>.md` — 현재 진행 중인 작업의 설계/결정 사항
 
+### 브리핑 파일 — 단계별 요약
+
+각 워크플로우 단계의 요약을 별도 브리핑 파일로 관리한다. 원본 문서와 같은 디렉토리에 `-BRIEFING` 접미사로 배치한다.
+
+- `docs/topics/<TOPIC>-BRIEFING.md` — discuss 사전/사후 브리핑
+- `docs/<TOPIC>-PLAN-BRIEFING.md` — plan 브리핑
+
+**컨텍스트 참조 순서**: 브리핑 파일을 먼저 읽어 전체 그림을 파악한 뒤, 세부 결정이나 구체적 구현 사항이 필요할 때 원본 파일을 참조한다.
+
 ---
 
 ## Skills

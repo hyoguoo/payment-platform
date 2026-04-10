@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.core.common.metrics.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
@@ -11,9 +12,12 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +30,7 @@ public class PaymentCommandUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentGatewayPort paymentGatewayPort;
     private final LocalDateTimeProvider localDateTimeProvider;
+    private final PaymentQuarantineMetrics paymentQuarantineMetrics;
 
     @Transactional
     @PublishDomainEvent(action = "changed")
@@ -70,6 +75,27 @@ public class PaymentCommandUseCase {
         LocalDateTime now = localDateTimeProvider.now();
         paymentEvent.toRetrying(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
+    }
+
+    @Transactional
+    @PublishDomainEvent(action = "changed")
+    @PaymentStatusChange(toStatus = "QUARANTINED", trigger = "auto")
+    public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
+        LocalDateTime now = localDateTimeProvider.now();
+        paymentEvent.quarantine(reason, now);
+        PaymentEvent saved = paymentEventRepository.saveOrUpdate(paymentEvent);
+        paymentQuarantineMetrics.recordQuarantine(reason);
+        return saved;
+    }
+
+    /**
+     * 복구 사이클용 getStatus 위임 메서드.
+     * scheduler(OutboxProcessingService)가 PaymentGatewayPort를 직접 주입하면 layer 위반이므로
+     * 이 use-case를 경유한다. 예외 변환 없이 그대로 전파한다.
+     */
+    public PaymentStatusResult getPaymentStatusByOrderId(String orderId)
+            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
+        return paymentGatewayPort.getStatusByOrderId(orderId);
     }
 
     public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {

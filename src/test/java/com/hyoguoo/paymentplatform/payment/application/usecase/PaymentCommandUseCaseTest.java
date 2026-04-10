@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.PaymentEventRepository;
@@ -31,16 +32,19 @@ class PaymentCommandUseCaseTest {
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentGatewayPort mockPaymentGatewayPort;
     private TestLocalDateTimeProvider testLocalDateTimeProvider;
+    private PaymentQuarantineMetrics mockPaymentQuarantineMetrics;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
+        mockPaymentQuarantineMetrics = Mockito.mock(PaymentQuarantineMetrics.class);
         paymentCommandUseCase = new PaymentCommandUseCase(
                 mockPaymentEventRepository,
                 mockPaymentGatewayPort,
-                testLocalDateTimeProvider
+                testLocalDateTimeProvider,
+                mockPaymentQuarantineMetrics
         );
     }
 
@@ -211,6 +215,23 @@ class PaymentCommandUseCaseTest {
         // then
         then(paymentEvent).should(times(1)).toRetrying(testLocalDateTimeProvider.now());
         then(mockPaymentEventRepository).should(times(1)).saveOrUpdate(paymentEvent);
+    }
+
+    @Test
+    @DisplayName("markPaymentAsQuarantined 호출 시 quarantine()을 호출하고 payment_quarantined_total 카운터를 기록한다.")
+    void markPaymentAsQuarantined_RecordsQuarantineMetric() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String reason = "GATEWAY_STATUS_UNKNOWN";
+        given(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
+                .willReturn(paymentEvent);
+
+        // when
+        paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+
+        // then
+        then(paymentEvent).should(times(1)).quarantine(reason, testLocalDateTimeProvider.now());
+        then(mockPaymentQuarantineMetrics).should(times(1)).recordQuarantine(reason);
     }
 
     @Test

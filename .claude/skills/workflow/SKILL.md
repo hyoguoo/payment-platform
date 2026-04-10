@@ -51,6 +51,17 @@ description: >
 
 ---
 
+## 사용자 브리핑 원칙 (Non-negotiable)
+
+서브에이전트 라운드를 돌리기 **전**과 모든 라운드가 pass한 **후**, 메인 스레드는 사용자에게 **도메인 용어 + Mermaid 플로우차트 포함 브리핑**을 제시한다. 목적: 사용자가 방향을 교정할 수 있는 게이트를 보장한다.
+
+- **사전 브리핑**: 현재 이해한 문제, as-is 플로우차트, 이번 단계에서 결정할 것, 열린 질문
+- **완료 브리핑**: 결정된 접근, to-be 플로우차트(as-is와 대비 가능하도록), 핵심 결정 ID, 트레이드오프
+
+각 단계 스킬(`workflow-discuss` 등)에 구체 템플릿이 있다. 메서드명/파일명 대신 도메인 용어를 쓴다.
+
+---
+
 ## 단계 완료 후 정지 원칙
 
 각 단계가 끝나면 **반드시 멈추고 사용자의 명시적 확인을 기다린다.** 다음 단계로 자동 진행하지 않는다.
@@ -80,7 +91,7 @@ description: >
 |------|----------|----------|
 | Discuss 완료 | topics 문서 + 라운드 문서 + STATE.md(plan으로) | `docs:` |
 | Plan 완료 | PLAN.md + 라운드 문서 + STATE.md(plan-review로) | `docs:` |
-| Plan Review 통과 | STATE.md(execute/Task 1로) — 이전 docs 커밋에 포함 | — |
+| Plan Review 통과 | 라운드 문서 + STATE.md(execute/Task 1로) | `docs:` |
 | TDD RED | 실패 테스트 파일만 | `test:` |
 | TDD GREEN | 구현 코드 + 테스트 + PLAN.md(체크박스) + STATE.md | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |

@@ -12,12 +12,18 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -188,14 +194,31 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         return convertToPaymentStatusResult(paymentGatewayInfo);
     }
 
-    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
+    // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId) {
-        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
-        );
+    public PaymentStatusResult getStatusByOrderId(String orderId)
+            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
+        try {
+            PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
+                    paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
+            );
+            return convertToPaymentStatusResult(paymentGatewayInfo);
+        } catch (WebClientResponseException e) {
+            return handleGetStatusResponseException(e);
+        } catch (WebClientRequestException e) {
+            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        }
+    }
 
-        return convertToPaymentStatusResult(paymentGatewayInfo);
+    private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
+            throws PaymentTossNonRetryableException, PaymentTossRetryableException {
+        if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+            throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        }
+        if (e.getStatusCode().is5xxServerError()) {
+            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        }
+        throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
     }
 
     private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {
@@ -231,7 +254,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
             case STATUS_WAITING_FOR_DEPOSIT -> PaymentStatus.WAITING_FOR_DEPOSIT;
             case STATUS_PARTIAL_CANCELED -> PaymentStatus.PARTIAL_CANCELED;
             case STATUS_READY -> PaymentStatus.READY;
-            default -> PaymentStatus.UNKNOWN;
+            default -> PaymentStatus.of(tossStatus);
         };
     }
 
