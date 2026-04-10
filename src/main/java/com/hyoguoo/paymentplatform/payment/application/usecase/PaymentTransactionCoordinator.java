@@ -4,12 +4,10 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,12 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PaymentTransactionCoordinator {
-
-    private static final Set<PaymentEventStatus> NON_TERMINAL_STATUSES = Set.of(
-            PaymentEventStatus.READY,
-            PaymentEventStatus.IN_PROGRESS,
-            PaymentEventStatus.RETRYING
-    );
 
     private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
@@ -94,7 +86,7 @@ public class PaymentTransactionCoordinator {
         PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
         boolean outboxInFlight = freshOutbox.getStatus() == PaymentOutboxStatus.IN_FLIGHT;
-        boolean eventNonTerminal = NON_TERMINAL_STATUSES.contains(freshEvent.getStatus());
+        boolean eventNonTerminal = !freshEvent.getStatus().isTerminal();
 
         if (outboxInFlight && eventNonTerminal) {
             orderedProductUseCase.increaseStockForOrders(paymentOrderList);

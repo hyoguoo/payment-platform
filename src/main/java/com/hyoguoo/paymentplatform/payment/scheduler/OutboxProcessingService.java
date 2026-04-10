@@ -17,13 +17,11 @@ import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
 import java.time.LocalDateTime;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,15 +30,6 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class OutboxProcessingService {
-
-    private static final Set<PaymentEventStatus> LOCAL_TERMINAL_STATUSES = Set.of(
-            PaymentEventStatus.DONE,
-            PaymentEventStatus.FAILED,
-            PaymentEventStatus.CANCELED,
-            PaymentEventStatus.PARTIAL_CANCELED,
-            PaymentEventStatus.EXPIRED,
-            PaymentEventStatus.QUARANTINED
-    );
 
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final PaymentLoadUseCase paymentLoadUseCase;
@@ -84,7 +73,7 @@ public class OutboxProcessingService {
         PaymentEvent paymentEvent = paymentEventOpt.orElseThrow();
 
         // Step 3: 로컬 종결 재진입 차단 (REJECT_REENTRY) — PG 조회 불필요, outbox만 멱등 종결
-        if (LOCAL_TERMINAL_STATUSES.contains(paymentEvent.getStatus())) {
+        if (paymentEvent.getStatus().isTerminal()) {
             rejectReentry(outbox);
             return;
         }
@@ -151,7 +140,7 @@ public class OutboxProcessingService {
             case RETRY_LATER -> {
                 // 이번 retry 후 소진되는가? → FCG, 아니면 retry
                 if (policy.isExhausted(outbox.getRetryCount() + 1)) {
-                    handleFinalConfirmationGate(orderId, paymentEvent, outbox);
+                    handleFinalConfirmationGate(orderId, outbox);
                 } else {
                     transactionCoordinator.executePaymentRetryWithOutbox(
                             paymentEvent, outbox, policy, localDateTimeProvider.now());
@@ -162,15 +151,19 @@ public class OutboxProcessingService {
                 // QUARANTINE: 이미 retryCount >= maxRetries → FCG로 최종 확인
                 String reason = decision.reason() != null ? decision.reason().name() : "EXHAUSTED";
                 LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, () -> reason);
-                handleFinalConfirmationGate(orderId, paymentEvent, outbox);
+                handleFinalConfirmationGate(orderId, outbox);
             }
 
             case GUARD_MISSING_APPROVED_AT -> {
-                // PG는 DONE이지만 approvedAt 없음 — 다음 틱 재시도
+                // PG는 DONE이지만 approvedAt 없음 — 소진이면 FCG, 아니면 다음 틱 재시도
                 LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                         () -> "GUARD_MISSING_APPROVED_AT orderId=" + orderId);
-                transactionCoordinator.executePaymentRetryWithOutbox(
-                        paymentEvent, outbox, policy, localDateTimeProvider.now());
+                if (policy.isExhausted(outbox.getRetryCount() + 1)) {
+                    handleFinalConfirmationGate(orderId, outbox);
+                } else {
+                    transactionCoordinator.executePaymentRetryWithOutbox(
+                            paymentEvent, outbox, policy, localDateTimeProvider.now());
+                }
             }
 
             case REJECT_REENTRY -> rejectReentry(outbox);
@@ -213,7 +206,7 @@ public class OutboxProcessingService {
                 LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, () -> reason);
                 // 이번 retry 후 소진이면 FCG
                 if (policy.isExhausted(outbox.getRetryCount() + 1)) {
-                    handleFinalConfirmationGate(orderId, paymentEvent, outbox);
+                    handleFinalConfirmationGate(orderId, outbox);
                 } else {
                     transactionCoordinator.executePaymentRetryWithOutbox(
                             paymentEvent, outbox, policy, localDateTimeProvider.now());
@@ -225,31 +218,38 @@ public class OutboxProcessingService {
     /**
      * D7 FCG(Final Confirmation Gate): retryCount 비증가 방식으로 getStatus 1회 재호출.
      * 결과: COMPLETE_SUCCESS → success, COMPLETE_FAILURE → failure, 그 외 → quarantine.
+     * <p>
+     * DE-1 대응: retry TX 이후 DB 상태가 변경됐을 수 있으므로, paymentEvent를 DB에서 fresh 재조회한다.
+     * process() 진입 시 로드한 stale 객체를 그대로 전달하면 JPA merge 시 잘못된 previousStatus가
+     * PaymentHistory에 기록될 수 있다.
+     * </p>
      */
     private void handleFinalConfirmationGate(
             String orderId,
-            PaymentEvent paymentEvent,
             PaymentOutbox outbox
     ) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                 () -> "FCG 발동 orderId=" + orderId + " retryCount=" + outbox.getRetryCount());
 
+        // FCG: DB에서 fresh paymentEvent 재조회 (stale 방지)
+        PaymentEvent freshPaymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+
         // FCG: retryCount를 0으로 고정하여 COMPLETE_*/RETRY_LATER 분기만 활성화
-        StatusResolution fcgResolution = resolveFcgStatusAndDecision(orderId, paymentEvent);
+        StatusResolution fcgResolution = resolveFcgStatusAndDecision(orderId, freshPaymentEvent);
 
         switch (fcgResolution.decision().type()) {
             case COMPLETE_SUCCESS -> {
                 LocalDateTime approvedAt = fcgResolution.approvedAt()
                         .orElseThrow(() -> new IllegalStateException(
                                 "FCG COMPLETE_SUCCESS requires non-null approvedAt, orderId=" + orderId));
-                transactionCoordinator.executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox);
+                transactionCoordinator.executePaymentSuccessCompletionWithOutbox(freshPaymentEvent, approvedAt, outbox);
             }
 
             case COMPLETE_FAILURE -> {
                 String reason = fcgResolution.decision().reason() != null
                         ? fcgResolution.decision().reason().name() : "PG_TERMINAL_FAIL";
                 transactionCoordinator.executePaymentFailureCompensationWithOutbox(
-                        orderId, paymentEvent.getPaymentOrderList(), reason);
+                        orderId, freshPaymentEvent.getPaymentOrderList(), reason);
             }
 
             default -> {
@@ -258,7 +258,7 @@ public class OutboxProcessingService {
                         ? fcgResolution.decision().reason().name() : "CONFIRM_EXHAUSTED";
                 LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                         () -> "FCG 판단불가 → 격리 orderId=" + orderId + " reason=" + reason);
-                transactionCoordinator.executePaymentQuarantineWithOutbox(paymentEvent, outbox, reason);
+                transactionCoordinator.executePaymentQuarantineWithOutbox(freshPaymentEvent, outbox, reason);
             }
         }
     }

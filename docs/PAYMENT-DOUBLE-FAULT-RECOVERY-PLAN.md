@@ -778,3 +778,40 @@ Task 11 (메트릭)
 - **태스크 총 개수**: 11
 - **domain_risk 태스크 개수**: 9 (Task 1, 2, 3, 4, 5, 6, 7, 8, 9) <!-- Round 2: Task 8 domain_risk false→true 상향 (Domain Expert minor 4) -->
 - **topic.md 결정 중 태스크로 매핑하지 못한 항목**: 없음 (D1~D12 전수 매핑 완료)
+
+---
+
+## 코드 리뷰 피드백 반영 (2026-04-10)
+
+### 수정 항목
+
+- [x] **F-01/DE-2**: `RecoveryDecision.from()` — PG DONE + approvedAt=null + 소진 시 `QUARANTINE(GUARD_MISSING_APPROVED_AT)` 반환
+  - `RecoveryReason.GUARD_MISSING_APPROVED_AT` 신규 추가
+  - `OutboxProcessingService.applyDecision()` GUARD_MISSING_APPROVED_AT 분기: 소진 시 FCG 위임, 미소진 시 retry (RETRY_LATER와 동일 패턴)
+  - `RecoveryDecisionTest`: 미소진/소진 분기 분리 테스트 + isTerminal() 테스트 추가
+  - `OutboxProcessingServiceTest`: GUARD_MISSING_APPROVED_AT 미소진→retry, 소진→FCG→quarantine 테스트 추가
+
+- [x] **F-02**: `PaymentEventStatus.isTerminal()` SSOT 도입
+  - `PaymentEventStatus` enum에 `isTerminal()` 인스턴스 메서드 추가
+  - `RecoveryDecision.LOCAL_TERMINAL_STATUSES` Set 제거 → `event.getStatus().isTerminal()` 사용
+  - `OutboxProcessingService.LOCAL_TERMINAL_STATUSES` Set 제거 → `paymentEvent.getStatus().isTerminal()` 사용
+  - `PaymentTransactionCoordinator.NON_TERMINAL_STATUSES` Set 제거 → `!freshEvent.getStatus().isTerminal()` 사용
+
+- [x] **DE-1**: FCG 진입 시 stale paymentEvent 재조회
+  - `handleFinalConfirmationGate` 시그니처에서 `paymentEvent` 파라미터 제거
+  - 메서드 내부에서 `paymentLoadUseCase.getPaymentEventByOrderId(orderId)` fresh 재조회 후 사용
+
+- [x] **F-04**: 미사용 `RecoveryReason` 값 제거
+  - `PG_NOT_FOUND`, `CONFIRM_RETRYABLE_FAILURE` 제거
+
+- [x] **F-03**: `catch(Exception e)` 의도 명시
+  - `loadPaymentEvent` 메서드의 catch 블록은 의도적(어떤 예외든 outbox retry 메커니즘으로 처리)
+  - 기존 주석(`// intentionally broad`) 유지
+
+- [x] **F-05**: NonRetryable ATTEMPT_CONFIRM 근거 주석 — Javadoc으로 보강 (REFACTOR 커밋에서 처리)
+- [x] **DE-3**: DE-1 수정으로 자동 해소
+- [x] **DE-4**: rejectReentry TX 경계 밖 의도 주석 — REFACTOR 커밋에서 처리
+- [x] **DE-5**: fromException 계약 Javadoc — REFACTOR 커밋에서 처리
+
+**완료 결과** (2026-04-10)
+- 전체 324개 테스트 통과

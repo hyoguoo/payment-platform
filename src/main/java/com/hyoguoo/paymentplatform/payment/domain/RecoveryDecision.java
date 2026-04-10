@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.payment.domain;
 
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.RecoveryReason;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
@@ -12,17 +11,11 @@ import java.util.Set;
 /**
  * 복구 사이클에서 내릴 결정을 표현하는 순수 도메인 값 객체.
  * Spring 의존 없음.
+ * <p>
+ * 종결 상태 판별은 {@link PaymentEventStatus#isTerminal()}을 SSOT로 사용한다.
+ * </p>
  */
 public record RecoveryDecision(Type type, RecoveryReason reason) {
-
-    private static final Set<PaymentEventStatus> LOCAL_TERMINAL_STATUSES = Set.of(
-            PaymentEventStatus.DONE,
-            PaymentEventStatus.FAILED,
-            PaymentEventStatus.CANCELED,
-            PaymentEventStatus.PARTIAL_CANCELED,
-            PaymentEventStatus.EXPIRED,
-            PaymentEventStatus.QUARANTINED
-    );
 
     private static final Set<PaymentStatus> PG_TERMINAL_FAIL_STATUSES = Set.of(
             PaymentStatus.CANCELED,
@@ -67,9 +60,13 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
         PaymentStatus pgStatus = result.status();
 
         if (pgStatus == PaymentStatus.DONE) {
-            return result.approvedAt() != null
-                    ? new RecoveryDecision(Type.COMPLETE_SUCCESS, null)
-                    : new RecoveryDecision(Type.GUARD_MISSING_APPROVED_AT, null);
+            if (result.approvedAt() != null) {
+                return new RecoveryDecision(Type.COMPLETE_SUCCESS, null);
+            }
+            // PG DONE이지만 approvedAt null — 한도 소진 시 격리, 미소진 시 다음 틱 재시도
+            return retryCount < maxRetries
+                    ? new RecoveryDecision(Type.GUARD_MISSING_APPROVED_AT, null)
+                    : new RecoveryDecision(Type.QUARANTINE, RecoveryReason.GUARD_MISSING_APPROVED_AT);
         }
 
         if (PG_TERMINAL_FAIL_STATUSES.contains(pgStatus)) {
@@ -113,7 +110,7 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
     }
 
     private static boolean isLocalTerminal(PaymentEvent event) {
-        return LOCAL_TERMINAL_STATUSES.contains(event.getStatus());
+        return event.getStatus().isTerminal();
     }
 
     private static RecoveryReason resolveExceptionReason(Exception exception) {
