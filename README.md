@@ -8,7 +8,7 @@
 
 - **동기 → 비동기 아키텍처 전환 및 성능 측정**: Toss API 지연이 HTTP 스레드를 직접 블로킹하는 동기 구조에서 비동기 + Outbox 채널 전략으로 전환
 - **정합성 오류 및 위변조 요청 방지**: 클라이언트·서버·PG 응답값을 교차 검증하고 Checkout 멱등성(Caffeine 캐시 + TOCTOU 해결)을 보장하여 중복 주문 및 금액 위변조를 차단
-- **장애 내성 복구 체계 설계**: `RecoveryDecision` 값 객체로 복구 결정을 집중하고, 스케줄링·재고 복구 가드·격리 전 최종 확인으로 외부 장애 시에도 재고·결제 상태의 일관성 유지
+- **장애 내성 복구 체계 설계**: 복구 판정 객체로 결정을 집중하고, 스케줄링·재고 복원 가드·격리 전 최종 확인으로 외부 장애 시에도 재고·결제 상태의 일관성 유지
 
 <br>
 
@@ -32,7 +32,7 @@
 ### [비동기 결제 확인 플로우 — Outbox 채널 기반 비동기 아키텍처 전환 및 벤치마크](https://github.com/hyoguoo/payment-platform/wiki/async-outbox)
 
 - 동기(Sync) 전략에서 Toss API 지연이 HTTP 스레드를 직접 블로킹해 고부하 시 TPS 급락·스레드 고갈 문제가 발생
-- `LinkedBlockingQueue` + VT 워커 구조(채널 기반)로 PG 요청을 비동기로 처리하여 네트워크 지연 병목 해결
+- 내부 큐 + 가상 스레드 워커 구조로 PG 요청을 비동기로 처리하여 네트워크 지연 병목 해결
 - 포스팅: [비동기 결제 처리 플로우 구현 — Outbox 패턴부터 LinkedBlockingQueue Worker까지](https://hyoguoo.github.io/blog/async-payment-flow)
 
 ```mermaid
@@ -46,35 +46,35 @@ flowchart TD
     classDef response fill: #F5F5F5, stroke: #333, color: #000
     Client(["클라이언트"]):::client
 
-    subgraph Sync["Sync 전략 (spring.payment.async-strategy=sync)"]
-        S1["confirm() 호출"]:::process
-        S2["TX: 재고 감소 + PaymentProcess 생성"]:::tx
-        S3["TX: READY → IN_PROGRESS"]:::tx
-        S4["Toss API 동기 호출\n⏳ 100ms ~ 3,500ms 블로킹"]:::process
-        S5["TX: DONE 처리"]:::tx
+    subgraph Sync["동기 전략"]
+        S1["결제 승인 요청"]:::process
+        S2["재고 차감 + 결제 기록 생성"]:::tx
+        S3["대기 → 진행 중"]:::tx
+        S4["PG 승인 요청 (동기)\n⏳ 100ms ~ 3,500ms 블로킹"]:::process
+        S5["결제 완료 처리"]:::tx
         S6(["200 OK"]):::response
         S1 --> S2 --> S3 --> S4 --> S5 --> S6
     end
 
-    subgraph Outbox["Async 전략 (outbox, 기본값)"]
-        O1["confirm() 호출"]:::process
-        O2["단일 TX: IN_PROGRESS + 재고 감소\n+ PaymentOutbox(PENDING)"]:::tx
+    subgraph Outbox["비동기 전략 (기본값)"]
+        O1["승인 요청"]:::process
+        O2["단일 TX: 상태 전환 + 재고 차감\n+ 처리 대기열 등록"]:::tx
         O3(["202 Accepted\n← HTTP 스레드 즉시 해방"]):::response
-        O4["AFTER_COMMIT 이벤트 발행"]:::process
-        O5["channel.offer(orderId)\n비블로킹"]:::process
+        O4["커밋 후 이벤트 발행"]:::process
+        O5["처리 큐에 등록\n(비블로킹)"]:::process
 
-        subgraph Workers["OutboxImmediateWorker (고성능/실시간)"]
-            W1["channel.take()\nblocking wait"]:::worker
-            W2["claimToInFlight\nREQUIRES_NEW TX"]:::tx
-            W3["Toss API 호출\n(HTTP 스레드와 분리)"]:::worker
-            W4["TX: PaymentEvent DONE\nPaymentOutbox DONE"]:::tx
+        subgraph Workers["실시간 워커"]
+            W1["큐에서 결제 건 수신\n(대기)"]:::worker
+            W2["처리 선점\n(원자적)"]:::tx
+            W3["PG 승인 요청\n(HTTP 스레드와 분리)"]:::worker
+            W4["결제 완료 +\n대기열 종결"]:::tx
         end
 
-        OFB["OutboxWorker\n폴링 폴백\n큐 오버플로우 / 서버 재시작 복구"]:::fallback
+        OFB["폴링 폴백\n큐 오버플로우 /\n서버 재시작 복구"]:::fallback
         O1 --> O2 --> O3
         O2 --> O4 --> O5
-        O5 -->|" offer() true "| W1
-        O5 -->|" offer() false\n큐 가득 참 "| OFB
+        O5 -->|" 등록 성공 "| W1
+        O5 -->|" 큐 가득 참 "| OFB
         W1 --> W2 --> W3 --> W4
     end
 
@@ -99,9 +99,9 @@ flowchart TD
 
 ### [결제 상태 관리 — 도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)
 
-- PG 상태 조회 후 `RecoveryDecision` 객체가 종결/재시도/격리 결정
-- 결제 재시도 한도 소진 시 격리 전 최종 확인(getStatus 1회 재호출)으로 성공 건의 오격리 방지, `QUARANTINED` 상태로 관리자 개입 유도
-- 보상 트랜잭션 실행 전 이중 조건 가드(Outbox IN_FLIGHT + Event 비종결)로 동시성 경합 시 재고 이중 복원 차단
+- PG 상태 조회 후 복구 판정 객체가 종결/재시도/격리를 결정
+- 재시도 한도 소진 시 격리 전 최종 확인(PG 상태 1회 재조회)으로 성공 건의 오격리 방지, 격리 상태로 관리자 개입 유도
+- 보상 트랜잭션 실행 전 이중 조건 가드(대기열 선점 중 + 결제 비종결)로 동시성 경합 시 재고 이중 복원 차단
 - 포스팅: [결제 복구 상태 전이 설계](https://hyoguoo.github.io/blog/payment-recovery-state-design)
 
 ```mermaid
@@ -113,26 +113,26 @@ flowchart TD
     classDef quarantine fill: #F3E5F5, color: #4A148C, stroke: #7B1FA2
     classDef check fill: #FEF9E7, color: #7D6608, stroke: #F1C40F
     classDef skip fill: #F5F5F5, color: #616161, stroke: #9E9E9E
-    CL["claimToInFlight\n원자 선점"]:::action
-    CL -->|" 선점 성공 "| GS["PG 상태 선행 조회\ngetStatusByOrderId"]:::action
-    CL -->|" 선점 실패 "| SKIP["다른 Worker 처리 중\n→ 포기"]:::skip
-    GS -->|" DONE "| SUCCESS["COMPLETE_SUCCESS"]:::success
-    GS -->|" PG 종결 실패 "| FAILURE["COMPLETE_FAILURE"]:::failure
-    GS -->|" PG 기록 없음 "| CONFIRM["ATTEMPT_CONFIRM\nPG 승인 요청"]:::action
-    GS -->|" 일시 오류 + 한도 미소진 "| RETRY["RETRY_LATER\n백오프 대기"]:::retryable
-    GS -->|" 한도 소진 "| FINAL["격리 전 최종 확인\ngetStatus 1회 재호출"]:::action
-    FINAL -->|" DONE "| SUCCESS
+    CL["처리 선점\n(원자적)"]:::action
+    CL -->|" 선점 성공 "| GS["PG 상태 조회"]:::action
+    CL -->|" 선점 실패 "| SKIP["다른 워커가 처리 중\n→ 포기"]:::skip
+    GS -->|" 승인 완료 "| SUCCESS["결제 성공 확정"]:::success
+    GS -->|" PG 종결 실패 "| FAILURE["결제 실패 확정"]:::failure
+    GS -->|" PG 기록 없음 "| CONFIRM["PG 승인 재시도"]:::action
+    GS -->|" 일시 오류 + 한도 미소진 "| RETRY["재시도 대기\n(백오프)"]:::retryable
+    GS -->|" 한도 소진 "| FINAL["격리 전 최종 확인\n(PG 상태 1회 재조회)"]:::action
+    FINAL -->|" 승인 완료 "| SUCCESS
     FINAL -->|" PG 종결 실패 "| FAILURE
-    FINAL -->|" 판단 불가 "| QU["QUARANTINE\n관리자 개입 대기"]:::quarantine
-    FAILURE --> GUARD{"재고 복구 가드\nOutbox IN_FLIGHT?\nEvent 비종결?"}:::check
-    GUARD -->|" 조건 충족 "| COMP["재고 복원 + FAILED"]:::failure
-    GUARD -->|" 조건 미충족 "| GSKIP["재고 복원 skip"]:::skip
+    FINAL -->|" 판단 불가 "| QU["격리\n관리자 개입 대기"]:::quarantine
+    FAILURE --> GUARD{"재고 복원 가드\n대기열 선점 중?\n결제 비종결?"}:::check
+    GUARD -->|" 조건 충족 "| COMP["재고 복원 후 실패 처리"]:::failure
+    GUARD -->|" 조건 미충족 "| GSKIP["재고 복원 생략"]:::skip
 ```
 
 ### [Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결](https://github.com/hyoguoo/payment-platform/wiki/idempotency)
 
-- UI 중복 클릭, 네트워크 재시도 등으로 `PaymentEvent`가 복수 생성되어 DB에 유효하지 않은 주문이 누적되는 문제 존재
-- 초기 `getIfPresent + put` 구현에서 코드 리뷰 중 TOCTOU 경쟁 조건 발견, `getOrCreate` 단일 원자적 메서드로 포트 계약 재설계
+- UI 중복 클릭, 네트워크 재시도 등으로 결제 건이 복수 생성되어 DB에 유효하지 않은 주문이 누적되는 문제 존재
+- 초기 조회 후 생성 방식에서 코드 리뷰 중 TOCTOU 경쟁 조건 발견, 단일 원자적 조회·생성 메서드로 포트 계약 재설계
 - 포스팅: [Checkout API 멱등성 보장 — Caffeine 캐시와 TOCTOU 경쟁 조건 해결](https://hyoguoo.github.io/blog/checkout-idempotency)
 
 ```mermaid
@@ -140,13 +140,13 @@ sequenceDiagram
     participant A as Thread A
     participant B as Thread B
     participant Cache as Caffeine Cache
-    A ->> Cache: get("key", loader)
-    Cache -->> A: (lock acquired, loader 실행 중)
-    A ->> A: create() → PaymentEvent#1
-    B ->> Cache: get("key", loader)
-    Cache -->> B: (동일 키 → lock wait)
-    A ->> Cache: 결과 저장 후 lock 해제
-    Cache -->> B: hit → PaymentEvent#1 반환 (loader 미실행)
+    A ->> Cache: 조회 요청 ("key")
+    Cache -->> A: (락 획득, 생성 로직 실행 중)
+    A ->> A: 결제 건#1 생성
+    B ->> Cache: 조회 요청 ("key")
+    Cache -->> B: (동일 키 → 락 대기)
+    A ->> Cache: 결과 저장 후 락 해제
+    Cache -->> B: 캐시 적중 → 결제 건#1 반환 (생성 로직 미실행)
     Note over Cache: ✅ 중복 생성 없음
 ```
 
@@ -159,19 +159,19 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "Application Layer"
-        Service[PaymentConfirmServiceImpl]
-        UseCase[PaymentProcessorUseCase]
-        Port[PaymentGatewayPort<br/>Interface]
+        Service[결제 확인 서비스]
+        UseCase[결제 처리 유스케이스]
+        Port[PG 연동 포트<br/>Interface]
     end
 
     subgraph "Infrastructure Layer"
-        Adapter[PaymentGatewayAdapter<br/>Port 구현체]
-        Factory[PaymentGatewayFactory<br/>전략 선택]
-        Strategy[PaymentGatewayStrategy<br/>Interface]
+        Adapter[PG 연동 어댑터<br/>포트 구현체]
+        Factory[PG 전략 선택기]
+        Strategy[PG 전략<br/>Interface]
 
         subgraph "Strategy Implementations"
-            Toss[TossPaymentGatewayStrategy]
-            Future[Other PG Strategy<br/>... 확장 가능]
+            Toss[Toss 전략]
+            Future[기타 PG 전략<br/>... 확장 가능]
         end
     end
 
