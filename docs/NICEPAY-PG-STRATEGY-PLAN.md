@@ -244,7 +244,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T8. `paymentgateway` 모듈 — `NicepayApiCallUseCase` 및 `NicepayGatewayInternalReceiver` — In-scope 4번
+### [x] T8. `paymentgateway` 모듈 — `NicepayApiCallUseCase` 및 `NicepayGatewayInternalReceiver` — In-scope 4번
 
 - **목적**: NicePay 전용 UseCase와 내부 수신기(InternalReceiver)를 추가하여 `payment` 모듈의 `NicepayPaymentGatewayStrategy`가 호출할 진입점을 만든다. R2 완화: 기존 `PaymentGatewayInternalReceiver`는 Toss 전용으로 유지.
 - **tdd**: false
@@ -257,6 +257,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/presentation/dto/response/NicepayPaymentResponse.java`
 - **완료 조건**: 컴파일 성공.
 - **의존**: T6, T7
+- **완료 결과**: `NicepayApiCallUseCase` (`NicepayOperator` 직접 위임), `NicepayGatewayInternalReceiver` (presentation → usecase 위임), `NicepayGatewayPresentationMapper`, request/response DTO 5종 작성 완료. 컴파일 성공.
 
 ---
 
