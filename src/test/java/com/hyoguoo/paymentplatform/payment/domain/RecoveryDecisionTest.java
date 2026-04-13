@@ -8,8 +8,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.RecoveryReason;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -196,7 +196,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_UnderLimit_RetryLater() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_UNDER, MAX_RETRIES);
 
@@ -212,7 +212,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_AtLimit_Quarantine() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_AT_LIMIT, MAX_RETRIES);
 
@@ -260,7 +260,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_NonRetryableException_AttemptConfirm() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception nonRetryableEx = PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        Exception nonRetryableEx = PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, nonRetryableEx, 0, MAX_RETRIES);
 

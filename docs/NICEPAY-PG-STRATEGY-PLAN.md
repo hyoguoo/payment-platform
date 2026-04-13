@@ -117,7 +117,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ## 태스크 목록
 
-### T1. 예외 클래스 범용화 (rename) — D4
+### [x] T1. 예외 클래스 범용화 (rename) — D4
 
 <!-- architect: PaymentTossConfirmException도 벤더 종속 예외이다. PaymentExceptionHandler가 이를 catch하고 있으므로 rename 범위에 포함해야 한다. PaymentGatewayConfirmException 등으로 함께 범용화할지 산출물 목록에 명시가 필요하다. -->
 - **목적**: `PaymentTossRetryableException` → `PaymentGatewayRetryableException`, `PaymentTossNonRetryableException` → `PaymentGatewayNonRetryableException`, `PaymentTossConfirmException` → `PaymentGatewayConfirmException`으로 rename하여 포트 인터페이스에서 벤더 종속 예외를 제거한다. In-scope 1번.
@@ -131,6 +131,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - 참조 전파: `PaymentGatewayPort`, `PaymentGatewayStrategy`, `TossPaymentGatewayStrategy`, `InternalPaymentGatewayAdapter`, `PaymentCommandUseCase`, `OutboxProcessingService`, `RecoveryDecision`, `PaymentExceptionHandler` — import 경로 일괄 변경
 - **완료 조건**: `./gradlew test` 전체 통과. `PaymentTossRetryableException`, `PaymentTossNonRetryableException`, `PaymentTossConfirmException` 참조가 코드베이스에 없음.
 - **의존**: 없음
+- **완료 결과**: `PaymentGatewayRetryableException`, `PaymentGatewayNonRetryableException`, `PaymentGatewayConfirmException` 신규 생성. 기존 Toss 명 예외 3개 삭제. 참조 파일 8개(포트, 전략, 어댑터, 유스케이스, 스케줄러, 도메인, 핸들러, 테스트) import 일괄 변경. 테스트 324개 전체 통과.
 
 ---
 

@@ -28,8 +28,8 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -210,8 +210,8 @@ class OutboxProcessingServiceTest {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossNonRetryableException notFound =
-                PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         PaymentGatewayInfo successInfo = createGatewayInfo(FIXED_NOW);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
@@ -239,8 +239,8 @@ class OutboxProcessingServiceTest {
         // given
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossNonRetryableException notFound =
-                PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         PaymentGatewayInfo retryableInfo = createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
@@ -270,8 +270,8 @@ class OutboxProcessingServiceTest {
         // given: retryCount=0, maxAttempts=3 → 미소진
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossRetryableException retryable =
-                PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        PaymentGatewayRetryableException retryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
@@ -295,8 +295,8 @@ class OutboxProcessingServiceTest {
         int exhaustingRetryCount = MAX_ATTEMPTS - 1;
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossRetryableException retryable =
-                PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        PaymentGatewayRetryableException retryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
@@ -322,8 +322,8 @@ class OutboxProcessingServiceTest {
         int exhaustingRetryCount = MAX_ATTEMPTS - 1;
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossRetryableException retryable =
-                PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        PaymentGatewayRetryableException retryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         PaymentStatusResult doneResult = createStatusResult(PaymentStatus.DONE, FIXED_NOW);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
@@ -403,8 +403,8 @@ class OutboxProcessingServiceTest {
         // given: PG_NOT_FOUND → ATTEMPT_CONFIRM → NON_RETRYABLE_FAILURE
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossNonRetryableException notFound =
-                PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         PaymentGatewayInfo nonRetryableGatewayInfo =
                 createFailureGatewayInfo(PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE);
 
@@ -430,12 +430,12 @@ class OutboxProcessingServiceTest {
         int exhaustingRetryCount = MAX_ATTEMPTS - 1;
         PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
         PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
-        PaymentTossNonRetryableException notFound =
-                PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
         PaymentGatewayInfo retryableGatewayInfo =
                 createFailureGatewayInfo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
-        PaymentTossRetryableException fcgRetryable =
-                PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        PaymentGatewayRetryableException fcgRetryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);

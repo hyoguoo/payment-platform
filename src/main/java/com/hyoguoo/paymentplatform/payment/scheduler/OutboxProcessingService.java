@@ -18,8 +18,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -101,7 +101,7 @@ public class OutboxProcessingService {
             PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(orderId);
             RecoveryDecision decision = RecoveryDecision.from(paymentEvent, snapshot, retryCount, maxRetries);
             return StatusResolution.ofResult(decision, snapshot);
-        } catch (PaymentTossRetryableException | PaymentTossNonRetryableException |
+        } catch (PaymentGatewayRetryableException | PaymentGatewayNonRetryableException |
                  PaymentGatewayStatusUnmappedException e) {
             RecoveryDecision decision = RecoveryDecision.fromException(paymentEvent, e, retryCount, maxRetries);
             return StatusResolution.ofException(decision);
@@ -273,7 +273,7 @@ public class OutboxProcessingService {
             PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(orderId);
             RecoveryDecision decision = RecoveryDecision.from(paymentEvent, snapshot, 0, 1);
             return StatusResolution.ofResult(decision, snapshot);
-        } catch (PaymentTossRetryableException | PaymentTossNonRetryableException |
+        } catch (PaymentGatewayRetryableException | PaymentGatewayNonRetryableException |
                  PaymentGatewayStatusUnmappedException e) {
             RecoveryDecision decision = RecoveryDecision.fromException(paymentEvent, e, 0, 1);
             return StatusResolution.ofException(decision);

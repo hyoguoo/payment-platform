@@ -16,8 +16,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -94,7 +94,7 @@ public class PaymentCommandUseCase {
      * 이 use-case를 경유한다. 예외 변환 없이 그대로 전파한다.
      */
     public PaymentStatusResult getPaymentStatusByOrderId(String orderId)
-            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         return paymentGatewayPort.getStatusByOrderId(orderId);
     }
 
