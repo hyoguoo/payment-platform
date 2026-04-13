@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.gateway;
 
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import lombok.Getter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;

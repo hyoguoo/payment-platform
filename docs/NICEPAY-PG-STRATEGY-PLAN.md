@@ -135,7 +135,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T2. `PaymentGatewayType` enum 위치 이동 및 `NICEPAY` 추가 — D5
+### [x] T2. `PaymentGatewayType` enum 위치 이동 및 `NICEPAY` 추가 — D5
 
 - **목적**: `PaymentGatewayType`을 `payment/infrastructure/gateway/` → `payment/domain/enums/`로 이동하고 `NICEPAY` 값을 추가한다. 도메인 엔티티가 이 enum을 참조할 수 있게 한다. In-scope 2번.
 - **tdd**: false
@@ -146,6 +146,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - 참조 전파: `PaymentGatewayStrategy`, `PaymentGatewayFactory`, `TossPaymentGatewayStrategy`, `InternalPaymentGatewayAdapter`, `PaymentGatewayProperties` — import 경로 변경
 - **완료 조건**: 컴파일 성공 + `./gradlew test` 통과. `infrastructure.gateway.PaymentGatewayType` 참조 없음.
 - **의존**: T1 (컴파일 순서상 깨끗한 상태에서 시작)
+- **완료 결과**: `payment/domain/enums/PaymentGatewayType.java` 신규 생성 (`TOSS`, `NICEPAY`). 기존 `infrastructure/gateway/PaymentGatewayType.java` 삭제. 참조 파일 6개(`PaymentGatewayStrategy`, `PaymentGatewayFactory`, `PaymentGatewayProperties`, `TossPaymentGatewayStrategy`, `UnsupportedPaymentGatewayException`, `PaymentGatewayFactoryTest`) import 경로 변경. 테스트 324개 전체 통과.
 
 ---
 

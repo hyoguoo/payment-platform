@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.exception;
 
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayType;
 import lombok.Getter;
 
 @Getter
