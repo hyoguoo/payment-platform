@@ -47,7 +47,7 @@ class NicepayPaymentGatewayStrategyTest {
 
     @Test
     @DisplayName("confirm: resultCode=0000이면 SUCCESS 상태와 approvedAt을 반환한다")
-    void confirm_Success_ReturnsDoneStatus() {
+    void confirm_Success_ReturnsDoneStatus() throws Exception {
         // given
         PaymentConfirmRequest request = new PaymentConfirmRequest(
                 "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY

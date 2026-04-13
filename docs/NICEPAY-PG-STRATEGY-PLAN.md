@@ -261,7 +261,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T9. `NicepayPaymentGatewayStrategy` 구현 — 정상 승인/취소/조회 — In-scope 5번
+### [x] T9. `NicepayPaymentGatewayStrategy` 구현 — 정상 승인/취소/조회 — In-scope 5번
 
 <!-- architect: 이 클래스는 payment/infrastructure/gateway/nicepay/ 패키지에 위치한다. TossPaymentGatewayStrategy가 payment/infrastructure/gateway/toss/에 있는 것과 대칭이므로 배치가 올바르다. NicepayGatewayInternalReceiver(paymentgateway/presentation)를 주입받아 호출하는 구조도 기존 Toss 패턴(PaymentGatewayInternalReceiver 주입)과 동일한 cross-context 패턴이다. -->
 <!-- architect: domain_risk가 false로 되어 있으나, 상태 매핑(paid->DONE, failed->ABORTED)은 돈 관련 로직이다. 잘못 매핑하면 복구 사이클에서 COMPLETE_FAILURE 대신 COMPLETE_SUCCESS를 타거나 그 반대가 된다. domain_risk: true로 상향해야 한다. -->
@@ -285,6 +285,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `cancel_Success_ReturnsCancelResult()` — 취소 정상 흐름
 - **완료 조건**: 위 테스트 통과 + `./gradlew test` 전체 통과.
 - **의존**: T5, T8
+- **완료 결과**: `NicepayPaymentGatewayStrategy` 구현 완료. supports/confirm/cancel/getStatus/getStatusByOrderId 전 메서드 구현. NicePay 상태 매핑(paid→DONE, failed→ABORTED 등), resultCode=0000 기반 성공 판정, paidAt 파싱(OffsetDateTime) 구현. 7개 테스트 포함 전체 333개 테스트 통과.
 
 ---
 
