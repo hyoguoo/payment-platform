@@ -98,7 +98,8 @@ public class OutboxProcessingService {
             int maxRetries
     ) {
         try {
-            PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(orderId);
+            PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(
+                    orderId, paymentEvent.getGatewayType());
             RecoveryDecision decision = RecoveryDecision.from(paymentEvent, snapshot, retryCount, maxRetries);
             return StatusResolution.ofResult(decision, snapshot);
         } catch (PaymentGatewayRetryableException | PaymentGatewayNonRetryableException |
@@ -270,7 +271,8 @@ public class OutboxProcessingService {
      */
     private StatusResolution resolveFcgStatusAndDecision(String orderId, PaymentEvent paymentEvent) {
         try {
-            PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(orderId);
+            PaymentStatusResult snapshot = paymentCommandUseCase.getPaymentStatusByOrderId(
+                    orderId, paymentEvent.getGatewayType());
             RecoveryDecision decision = RecoveryDecision.from(paymentEvent, snapshot, 0, 1);
             return StatusResolution.ofResult(decision, snapshot);
         } catch (PaymentGatewayRetryableException | PaymentGatewayNonRetryableException |

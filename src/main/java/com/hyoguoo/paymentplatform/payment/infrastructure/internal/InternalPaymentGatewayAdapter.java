@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayFactory;
@@ -34,15 +35,25 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     }
 
     @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatus(paymentKey);
+    public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+        PaymentGatewayType resolvedType = resolveGatewayType(gatewayType);
+        PaymentGatewayStrategy strategy = factory.getStrategy(resolvedType);
+        return strategy.getStatus(paymentKey, resolvedType);
     }
 
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId)
+    public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
-        return strategy.getStatusByOrderId(orderId);
+        PaymentGatewayType resolvedType = resolveGatewayType(gatewayType);
+        PaymentGatewayStrategy strategy = factory.getStrategy(resolvedType);
+        return strategy.getStatusByOrderId(orderId, resolvedType);
+    }
+
+    /**
+     * gatewayType이 null인 경우(T13 이전의 기존 레코드) properties 기본값으로 폴백한다.
+     * T13 DB 마이그레이션 완료 후 null 분기는 제거 예정.
+     */
+    private PaymentGatewayType resolveGatewayType(PaymentGatewayType gatewayType) {
+        return gatewayType != null ? gatewayType : properties.getType();
     }
 }

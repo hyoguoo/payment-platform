@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import java.time.LocalDateTime;
@@ -93,9 +94,9 @@ public class PaymentCommandUseCase {
      * scheduler(OutboxProcessingService)가 PaymentGatewayPort를 직접 주입하면 layer 위반이므로
      * 이 use-case를 경유한다. 예외 변환 없이 그대로 전파한다.
      */
-    public PaymentStatusResult getPaymentStatusByOrderId(String orderId)
+    public PaymentStatusResult getPaymentStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        return paymentGatewayPort.getStatusByOrderId(orderId);
+        return paymentGatewayPort.getStatusByOrderId(orderId, gatewayType);
     }
 
     public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {

@@ -188,7 +188,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T5. `PaymentGatewayPort` 시그니처 변경 — D6
+### [x] T5. `PaymentGatewayPort` 시그니처 변경 — D6
 
 <!-- architect: layer 의존 방향 주의. PaymentGatewayPort(application/port)는 도메인 타입만 참조할 수 있다. T2에서 PaymentGatewayType을 domain/enums/로 이동한 뒤에야 포트 시그니처에 이 enum을 쓸 수 있으므로 T2 의존은 올바르다. -->
 <!-- architect: PaymentGatewayStrategy(infrastructure)의 시그니처도 동시에 변경하는데, confirm()/cancel()의 전략 선택 변경은 T14에서 한다고 되어 있다. 이 태스크의 산출물에 "confirm()도 request.gatewayType()으로 변경"이 적혀 있는데, 그러면 T14와 산출물이 겹친다. T5에서는 getStatusByOrderId/getStatus 시그니처 변경에만 집중하고, confirm/cancel은 T14에 남겨 두어야 명확하다. -->
@@ -204,6 +204,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxProcessingService.java` — `resolveStatusAndDecision()`, `resolveFcgStatusAndDecision()`에서 `paymentEvent.getGatewayType()` 읽어 전달; catch 절 예외 타입을 T1에서 rename된 범용 예외로 변경
 - **완료 조건**: 컴파일 성공 + `./gradlew test` 전체 통과.
 - **의존**: T1, T2, T3, T4
+- **완료 결과**: `PaymentGatewayPort`, `PaymentGatewayStrategy`, `TossPaymentGatewayStrategy`의 `getStatus`/`getStatusByOrderId` 시그니처에 `PaymentGatewayType gatewayType` 파라미터 추가. `InternalPaymentGatewayAdapter`에서 파라미터 `gatewayType`으로 전략 선택하며, null일 경우 `properties.getType()` 폴백(T13 이전 기존 레코드 대응). `PaymentCommandUseCase.getPaymentStatusByOrderId`에 `gatewayType` 파라미터 추가. `OutboxProcessingService`의 `resolveStatusAndDecision`·`resolveFcgStatusAndDecision`에서 `paymentEvent.getGatewayType()` 읽어 전달. 테스트 326개 전체 통과.
 
 ---
 

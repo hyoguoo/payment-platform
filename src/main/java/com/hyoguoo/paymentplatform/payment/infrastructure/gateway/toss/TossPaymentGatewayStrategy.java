@@ -186,7 +186,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
     @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
+    public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
         PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                 paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
         );
@@ -196,7 +196,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId)
+    public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         try {
             PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(

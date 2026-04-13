@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -88,7 +89,7 @@ class OutboxProcessingServiceTest {
         outboxProcessingService.process(ORDER_ID);
 
         // then
-        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString());
+        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString(), any());
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
         then(mockTransactionCoordinator).should(never())
                 .executePaymentSuccessCompletionWithOutbox(any(), any(), any());
@@ -117,7 +118,7 @@ class OutboxProcessingServiceTest {
 
         // then
         then(mockPaymentOutboxUseCase).should(times(1)).incrementRetryOrFail(ORDER_ID, inFlightOutbox);
-        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString());
+        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString(), any());
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
     }
 
@@ -137,7 +138,7 @@ class OutboxProcessingServiceTest {
         outboxProcessingService.process(ORDER_ID);
 
         // then
-        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString());
+        then(mockPaymentCommandUseCase).should(never()).getPaymentStatusByOrderId(anyString(), any());
         then(mockPaymentCommandUseCase).should(never()).confirmPaymentWithGateway(any());
         then(mockTransactionCoordinator).should(never())
                 .executePaymentSuccessCompletionWithOutbox(any(), any(), any());
@@ -163,7 +164,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(doneResult);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willReturn(doneResult);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -188,7 +189,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(canceledResult);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willReturn(canceledResult);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -216,7 +217,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(notFound);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(notFound);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(successInfo);
 
@@ -245,7 +246,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(notFound);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(notFound);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(retryableInfo);
 
@@ -275,7 +276,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(retryable);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(retryable);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -301,13 +302,13 @@ class OutboxProcessingServiceTest {
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
         // main + FCG 모두 retryable 예외
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(retryable);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(retryable);
 
         // when
         outboxProcessingService.process(ORDER_ID);
 
         // then: getStatusByOrderId 2회 호출 (main 1회 + FCG 1회)
-        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(ORDER_ID);
+        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(eq(ORDER_ID), any());
         // quarantine
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentQuarantineWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class), anyString());
@@ -329,7 +330,7 @@ class OutboxProcessingServiceTest {
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
         // main: retryable, FCG: DONE
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID))
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
                 .willThrow(retryable)
                 .willReturn(doneResult);
 
@@ -337,7 +338,7 @@ class OutboxProcessingServiceTest {
         outboxProcessingService.process(ORDER_ID);
 
         // then: getStatusByOrderId 2회 (main + FCG)
-        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(ORDER_ID);
+        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(eq(ORDER_ID), any());
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class),
                         any(PaymentOutbox.class));
@@ -358,7 +359,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(unmapped);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(unmapped);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -383,7 +384,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(unmapped);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(unmapped);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -410,7 +411,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willThrow(notFound);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(notFound);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
                 .willReturn(nonRetryableGatewayInfo);
 
@@ -440,7 +441,7 @@ class OutboxProcessingServiceTest {
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
         // main call → ATTEMPT_CONFIRM(notFound), FCG call → retryable → quarantine
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID))
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
                 .willThrow(notFound)
                 .willThrow(fcgRetryable);
         given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
@@ -469,7 +470,7 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(doneNullAt);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willReturn(doneNullAt);
 
         // when
         outboxProcessingService.process(ORDER_ID);
@@ -496,13 +497,13 @@ class OutboxProcessingServiceTest {
 
         given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
-        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(ORDER_ID)).willReturn(doneNullAt);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willReturn(doneNullAt);
 
         // when
         outboxProcessingService.process(ORDER_ID);
 
         // then: getStatus 2회 (main + FCG), quarantine 1회
-        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(ORDER_ID);
+        then(mockPaymentCommandUseCase).should(times(2)).getPaymentStatusByOrderId(eq(ORDER_ID), any());
         then(mockTransactionCoordinator).should(times(1))
                 .executePaymentQuarantineWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class), anyString());
         then(mockTransactionCoordinator).should(never())
