@@ -225,6 +225,8 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/dto/response/NicepayPaymentApiFailResponse.java`
 - **완료 조건**: 컴파일 성공.
 - **의존**: 없음 (paymentgateway 모듈 독립 작업, T2와 병렬 가능)
+- **완료 결과**: `NicepayOperator` 인터페이스, `NicepayConfirmCommand`/`NicepayCancelCommand` DTO, `NicepayPaymentInfo` 도메인, `NicepayPaymentApiResponse`/`NicepayPaymentApiFailResponse` 인프라 DTO 작성 완료. 테스트 326개 전체 통과.
+- [x] T6 완료
 
 ---
 
