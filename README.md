@@ -22,6 +22,7 @@
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
 | Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                       |
 |   ETC   | 설계 유연성             | [전략 패턴 기반 PG 독립성 확보](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                        |
+|   ETC   | AI 기반 개발 워크플로우     | [서브에이전트 기반 6단계 워크플로우](https://github.com/hyoguoo/payment-platform/wiki/ai-workflow)                                                                                                                                                       |
 
 <br>
 
