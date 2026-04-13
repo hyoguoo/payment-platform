@@ -230,7 +230,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T7. `paymentgateway` 모듈 — `HttpNicepayOperator` 구현 — In-scope 4번
+### [x] T7. `paymentgateway` 모듈 — `HttpNicepayOperator` 구현 — In-scope 4번
 
 - **목적**: `NicepayOperator` 인터페이스를 WebClient 기반으로 구현한다. NicePay API 엔드포인트: 승인 `POST /v1/payments/{tid}`, 조회 `GET /v1/payments/{tid}`, orderId 조회 `GET /v1/payments/find/{orderId}`, 취소 `POST /v1/payments/{tid}/cancel`. 인증: `Basic Base64(clientKey:secretKey)`.
 - **tdd**: false
@@ -240,6 +240,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `src/main/resources/application.yml` — `spring.myapp.nicepay.client-key`, `nicepay.secret-key`, `nicepay.api-url` 프로퍼티 추가 (sandbox 기본값)
 - **완료 조건**: 컴파일 성공. 단위 테스트 없음(HTTP 클라이언트 통합은 수동 검증).
 - **의존**: T6
+- **완료 결과**: `HttpNicepayOperator` 구현 (`confirmPayment`, `getPaymentInfoByTid`, `getPaymentInfoByOrderId`, `cancelPayment`). 인증: `Basic Base64(clientKey:secretKey)` (Toss의 `Base64(secretKey:)` 와 다른 NicePay 방식). `application.yml`에 `spring.myapp.nicepay.*` 프로퍼티 추가 (sandbox 기본값 포함). 테스트 326개 전체 통과.
 
 ---
 
