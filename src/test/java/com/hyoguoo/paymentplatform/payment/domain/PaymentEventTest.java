@@ -179,7 +179,8 @@ class PaymentEventTest {
                 userInfo,
                 productInfoList,
                 orderId,
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                PaymentGatewayType.TOSS
         );
 
         // then
@@ -460,7 +461,8 @@ class PaymentEventTest {
                 userInfo,
                 List.of(productInfo),
                 "order123",
-                creationTime
+                creationTime,
+                PaymentGatewayType.TOSS
         );
 
         // then

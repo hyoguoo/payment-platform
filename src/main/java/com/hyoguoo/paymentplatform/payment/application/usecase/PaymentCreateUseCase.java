@@ -10,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -55,7 +56,8 @@ public class PaymentCreateUseCase {
                 userInfo,
                 productInfoList,
                 uuidProvider.generateUUID(),
-                localDateTimeProvider.now()
+                localDateTimeProvider.now(),
+                PaymentGatewayType.TOSS // TODO(T4): 요청 DTO에서 gatewayType을 받아 전달하도록 변경 예정
         );
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);

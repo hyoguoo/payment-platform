@@ -167,6 +167,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `create_WithGatewayType_SetsGatewayType()` — TOSS / NICEPAY enum을 `create()`에 전달하면 `getGatewayType()`이 해당 값을 반환한다 (`@ParameterizedTest @EnumSource(PaymentGatewayType.class)`)
 - **완료 조건**: `PaymentEvent.getGatewayType()` 가능. 기존 테스트 전체 통과. (`PaymentEventEntity` 변경은 T13에서 처리)
 - **의존**: T2
+- **완료 결과**: `PaymentEvent`에 `gatewayType: PaymentGatewayType` 필드 추가, `create()` 팩토리 메서드에 `gatewayType` 파라미터 추가. `PaymentCreateUseCase.saveNewPaymentEvent()`의 호출부에 `PaymentGatewayType.TOSS` 기본값 전달(T4에서 교체 예정). 테스트 326개 전체 통과.
 
 ---
 
