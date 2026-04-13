@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
@@ -713,5 +714,32 @@ class PaymentEventTest {
         // when & then
         assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(PaymentGatewayType.class)
+    @DisplayName("create() 호출 시 전달한 gatewayType이 getGatewayType()으로 반환된다.")
+    void create_WithGatewayType_SetsGatewayType(PaymentGatewayType gatewayType) {
+        // given
+        UserInfo userInfo = UserInfo.builder().id(1L).build();
+        ProductInfo productInfo = ProductInfo.builder()
+                .id(1L)
+                .name("Product 1")
+                .price(new BigDecimal("5000"))
+                .stock(100)
+                .sellerId(2L)
+                .build();
+
+        // when
+        PaymentEvent paymentEvent = PaymentEvent.create(
+                userInfo,
+                List.of(productInfo),
+                "order123",
+                LocalDateTime.now(),
+                gatewayType
+        );
+
+        // then
+        assertThat(paymentEvent.getGatewayType()).isEqualTo(gatewayType);
     }
 }
