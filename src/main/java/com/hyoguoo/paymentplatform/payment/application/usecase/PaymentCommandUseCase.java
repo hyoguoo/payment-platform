@@ -103,7 +103,8 @@ public class PaymentCommandUseCase {
                 new PaymentConfirmRequest(
                         paymentConfirmCommand.getOrderId(),
                         paymentConfirmCommand.getPaymentKey(),
-                        paymentConfirmCommand.getAmount()
+                        paymentConfirmCommand.getAmount(),
+                        paymentConfirmCommand.getGatewayType()
                 );
 
         PaymentConfirmResult result = paymentGatewayPort.confirm(request);

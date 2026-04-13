@@ -30,11 +30,13 @@ public class PaymentCreateUseCase {
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
-            List<ProductInfo> productInfoList
+            List<ProductInfo> productInfoList,
+            PaymentGatewayType gatewayType
     ) {
         PaymentEvent savedPaymentEvent = saveNewPaymentEvent(
                 userInfo,
-                productInfoList
+                productInfoList,
+                gatewayType
         );
 
         List<PaymentOrder> paymentOrderList = saveNewPaymentOrderList(
@@ -50,14 +52,15 @@ public class PaymentCreateUseCase {
 
     private PaymentEvent saveNewPaymentEvent(
             UserInfo userInfo,
-            List<ProductInfo> productInfoList
+            List<ProductInfo> productInfoList,
+            PaymentGatewayType gatewayType
     ) {
         PaymentEvent paymentEvent = PaymentEvent.create(
                 userInfo,
                 productInfoList,
                 uuidProvider.generateUUID(),
                 localDateTimeProvider.now(),
-                PaymentGatewayType.TOSS // TODO(T4): 요청 DTO에서 gatewayType을 받아 전달하도록 변경 예정
+                gatewayType
         );
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);

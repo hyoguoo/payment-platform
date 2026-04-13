@@ -23,6 +23,7 @@ public class PaymentPresentationMapper {
                 .userId(request.getUserId())
                 .orderedProductList(request.getOrderedProductList())
                 .idempotencyKey(idempotencyKey)
+                .gatewayType(request.getGatewayType())
                 .build();
     }
 
@@ -41,6 +42,7 @@ public class PaymentPresentationMapper {
                 .orderId(paymentConfirmRequest.getOrderId())
                 .paymentKey(paymentConfirmRequest.getPaymentKey())
                 .amount(paymentConfirmRequest.getAmount())
+                .gatewayType(paymentConfirmRequest.getGatewayType())
                 .build();
     }
 

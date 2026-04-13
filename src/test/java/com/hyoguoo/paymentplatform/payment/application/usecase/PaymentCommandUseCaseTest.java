@@ -19,6 +19,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +115,7 @@ class PaymentCommandUseCaseTest {
                 .orderId("order123")
                 .paymentKey("paymentKey")
                 .amount(new BigDecimal(10000))
+                .gatewayType(PaymentGatewayType.TOSS)
                 .build();
 
         PaymentConfirmResult confirmResult =
@@ -147,6 +149,7 @@ class PaymentCommandUseCaseTest {
                 .orderId("order123")
                 .paymentKey("paymentKey")
                 .amount(new BigDecimal(10000))
+                .gatewayType(PaymentGatewayType.TOSS)
                 .build();
 
         PaymentConfirmResult confirmResult =
@@ -178,6 +181,7 @@ class PaymentCommandUseCaseTest {
                 .orderId("order123")
                 .paymentKey("paymentKey")
                 .amount(new BigDecimal(10000))
+                .gatewayType(PaymentGatewayType.TOSS)
                 .build();
 
         PaymentConfirmResult confirmResult =

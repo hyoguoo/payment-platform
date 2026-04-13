@@ -15,6 +15,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -109,7 +110,8 @@ class PaymentCreateUseCaseTest {
         PaymentEvent result = paymentCreateUseCase.createNewPaymentEvent(
                 userInfo,
                 orderedProductList,
-                productInfoList
+                productInfoList,
+                PaymentGatewayType.TOSS
         );
 
         // then

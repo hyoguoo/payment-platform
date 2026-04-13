@@ -171,7 +171,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T4. 결제건별 PG 선택 — request DTO에 `gatewayType` 추가 — D5
+### [x] T4. 결제건별 PG 선택 — request DTO에 `gatewayType` 추가 — D5
 
 - **목적**: `PaymentConfirmRequest`(domain dto), `PaymentCancelRequest`(domain dto), `PaymentConfirmCommand`(application dto), `presentation/dto/request/PaymentConfirmRequest`(컨트롤러 입력 DTO)에 `gatewayType` 필드를 추가한다. DE2-1 minor finding(application DTO 전파)도 이 태스크에서 해결한다. In-scope 3번 나머지.
 - **tdd**: false
@@ -184,6 +184,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - 호출부 수정: `PaymentCommandUseCase.confirmPaymentWithGateway()` — command → request 변환 시 `gatewayType` 전달; `OutboxProcessingService.handleAttemptConfirm()` — `paymentEvent.getGatewayType()`을 `PaymentConfirmCommand`에 세팅; `PaymentPresentationMapper` / `OutboxAsyncConfirmService` — confirm request 조립 시 `gatewayType` 전달
 - **완료 조건**: 컴파일 성공 + 기존 Toss 흐름 테스트 통과 (기존 호출부에서 `TOSS` 명시). `./gradlew test` 통과.
 - **의존**: T2, T3
+- **완료 결과**: `PaymentConfirmRequest`(domain dto), `PaymentCancelRequest`(domain dto), `PaymentConfirmCommand`(application dto), `presentation/dto/request/PaymentConfirmRequest`에 `gatewayType: PaymentGatewayType` 필드 추가. `CheckoutCommand`, `CheckoutRequest`에도 `gatewayType` 추가하고 `PaymentCreateUseCase.createNewPaymentEvent()`로 전파 (T3 임시 하드코딩 제거). `PaymentCommandUseCase.confirmPaymentWithGateway()`, `PaymentPresentationMapper.toPaymentConfirmCommand()` 및 `toCheckoutCommand()` 호출부에 `gatewayType` 전달. 테스트 326개 전체 통과.
 
 ---
 

@@ -58,7 +58,8 @@ public class PaymentCheckoutServiceImpl implements PaymentCheckoutService {
         PaymentEvent paymentEvent = paymentCreateUseCase.createNewPaymentEvent(
                 userInfo,
                 checkoutCommand.getOrderedProductList(),
-                productInfoList
+                productInfoList,
+                checkoutCommand.getGatewayType()
         );
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CHECKOUT_END,
