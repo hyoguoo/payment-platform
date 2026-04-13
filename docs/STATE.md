@@ -7,11 +7,11 @@
 - **이슈**: #67
 - **브랜치**: #67
 - **설계 문서**: docs/topics/NICEPAY-PG-STRATEGY.md
-- **현재 단계**: plan
+- **현재 단계**: plan-review
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
