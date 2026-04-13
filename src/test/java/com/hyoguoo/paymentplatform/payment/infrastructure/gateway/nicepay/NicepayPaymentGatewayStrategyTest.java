@@ -1,9 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.gateway.nicepay;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
@@ -14,6 +17,9 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultS
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
+import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.NicepayGatewayInternalReceiver;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.response.NicepayPaymentResponse;
 import java.math.BigDecimal;
@@ -164,5 +170,101 @@ class NicepayPaymentGatewayStrategyTest {
         // then
         assertThat(result.status()).isEqualTo(PaymentCancelResultStatus.SUCCESS);
         assertThat(result.paymentKey()).isEqualTo("tid-001");
+    }
+
+    @Test
+    @DisplayName("confirm: 2201 에러 응답 시 보상 조회 API가 1회 호출된다")
+    void confirm_Error2201_CallsCompensationQuery() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("2201", "기승인존재"));
+        NicepayPaymentResponse statusResponse = NicepayPaymentResponse.builder()
+                .tid("tid-001")
+                .orderId("order-001")
+                .amount(BigDecimal.valueOf(10000))
+                .status("paid")
+                .resultCode("0000")
+                .resultMsg("정상 처리되었습니다.")
+                .paidAt("2026-04-13T12:00:00.000+0900")
+                .build();
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(statusResponse);
+
+        // when
+        strategy.confirm(request);
+
+        // then
+        verify(nicepayGatewayInternalReceiver, times(1)).getPaymentInfoByTid("tid-001");
+    }
+
+    @Test
+    @DisplayName("confirm: 2201 에러 후 조회 결과 status=paid + 금액 일치이면 SUCCESS를 반환한다")
+    void confirm_Error2201_PaidWithMatchingAmount_ReturnsSuccess() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("2201", "기승인존재"));
+        NicepayPaymentResponse statusResponse = NicepayPaymentResponse.builder()
+                .tid("tid-001")
+                .orderId("order-001")
+                .amount(BigDecimal.valueOf(10000))
+                .status("paid")
+                .resultCode("0000")
+                .resultMsg("정상 처리되었습니다.")
+                .paidAt("2026-04-13T12:00:00.000+0900")
+                .build();
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(statusResponse);
+
+        // when
+        PaymentConfirmResult result = strategy.confirm(request);
+
+        // then
+        assertThat(result.status()).isEqualTo(PaymentConfirmResultStatus.SUCCESS);
+    }
+
+    @Test
+    @DisplayName("confirm: 2201 에러 후 조회 결과 금액 불일치이면 PaymentGatewayNonRetryableException을 던진다")
+    void confirm_Error2201_PaidWithMismatchedAmount_ThrowsNonRetryable() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("2201", "기승인존재"));
+        NicepayPaymentResponse statusResponse = NicepayPaymentResponse.builder()
+                .tid("tid-001")
+                .orderId("order-001")
+                .amount(BigDecimal.valueOf(9999))
+                .status("paid")
+                .resultCode("0000")
+                .resultMsg("정상 처리되었습니다.")
+                .paidAt("2026-04-13T12:00:00.000+0900")
+                .build();
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(statusResponse);
+
+        // when & then
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PaymentGatewayNonRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("confirm: 2201 에러 후 보상 조회 자체 실패 시 PaymentGatewayRetryableException을 던진다")
+    void confirm_Error2201_GetStatusFails_ThrowsRetryable() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("2201", "기승인존재"));
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString()))
+                .willThrow(new RuntimeException("보상 조회 실패"));
+
+        // when & then
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PaymentGatewayRetryableException.class);
     }
 }
