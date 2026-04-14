@@ -31,6 +31,7 @@ public class NicepayReturnController {
                     + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
         }
 
+        // NOTE: paymentKey가 URL에 노출됨 — Toss와 동일 패턴, 향후 세션 기반 전달 고려
         return "redirect:/payment/success.html"
                 + "?paymentKey=" + URLEncoder.encode(tid != null ? tid : "", StandardCharsets.UTF_8)
                 + "&orderId=" + URLEncoder.encode(orderId != null ? orderId : "", StandardCharsets.UTF_8)

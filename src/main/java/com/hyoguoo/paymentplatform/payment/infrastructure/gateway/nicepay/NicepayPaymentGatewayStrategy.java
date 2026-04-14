@@ -24,11 +24,13 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
@@ -135,6 +137,7 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     public PaymentCancelResult cancel(PaymentCancelRequest request) {
         NicepayCancelRequest cancelRequest = NicepayCancelRequest.builder()
                 .tid(request.paymentKey())
+                .orderId(request.orderId())
                 .reason(request.cancelReason())
                 .build();
 
@@ -269,7 +272,8 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
             return OffsetDateTime.parse(paidAt, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"))
                     .toLocalDateTime();
         } catch (DateTimeParseException e) {
-            return null;
+            log.warn("NicePay paidAt 파싱 실패 — fallback LocalDateTime.now() 사용. paidAt={}", paidAt);
+            return LocalDateTime.now();
         }
     }
 

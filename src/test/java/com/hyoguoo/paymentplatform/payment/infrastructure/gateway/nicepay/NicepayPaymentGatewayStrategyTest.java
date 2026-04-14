@@ -153,7 +153,7 @@ class NicepayPaymentGatewayStrategyTest {
     void cancel_Success_ReturnsCancelResult() {
         // given
         PaymentCancelRequest request = new PaymentCancelRequest(
-                "tid-001", "단순 변심", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+                "tid-001", "order-001", "단순 변심", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
         );
         NicepayPaymentResponse response = NicepayPaymentResponse.builder()
                 .tid("tid-001")

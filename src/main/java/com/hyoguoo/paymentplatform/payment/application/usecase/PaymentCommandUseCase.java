@@ -13,7 +13,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentGatewayStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
@@ -118,7 +118,7 @@ public class PaymentCommandUseCase {
                 .paymentDetails(
                         PaymentDetails.builder()
                                 .totalAmount(result.amount())
-                                .status(TossPaymentStatus.DONE)
+                                .status(PaymentGatewayStatus.DONE)
                                 .approvedAt(result.approvedAt())
                                 .build()
                 )

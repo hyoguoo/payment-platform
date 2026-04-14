@@ -58,7 +58,7 @@ class TossPaymentGatewayStrategyTest {
     void generateIdempotencyKey_cancel_paymentKey를_그대로_반환한다() {
         // given
         String paymentKey = "payment-key-abc";
-        PaymentCancelRequest request = new PaymentCancelRequest(paymentKey, "취소 사유", BigDecimal.TEN, PaymentGatewayType.TOSS);
+        PaymentCancelRequest request = new PaymentCancelRequest(paymentKey, "order-123", "취소 사유", BigDecimal.TEN, PaymentGatewayType.TOSS);
         TossPaymentResponse mockResponse = TossPaymentResponse.builder()
                 .paymentKey(paymentKey)
                 .orderId("order-123")

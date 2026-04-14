@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 
 public record PaymentCancelRequest(
         String paymentKey,
+        String orderId,
         String cancelReason,
         BigDecimal amount,
         PaymentGatewayType gatewayType

@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum TossPaymentStatus {
+public enum PaymentGatewayStatus {
 
     DONE("DONE", "완료"),
     CANCELED("CANCELED","승인된 결제가 취소된 상태"),
@@ -21,8 +21,8 @@ public enum TossPaymentStatus {
     private final String value;
     private final String description;
 
-    public static TossPaymentStatus of(String value) {
-        return Arrays.stream(TossPaymentStatus.values())
+    public static PaymentGatewayStatus of(String value) {
+        return Arrays.stream(PaymentGatewayStatus.values())
                 .filter(status -> status.getValue().equals(value))
                 .findFirst()
                 .orElseThrow();
