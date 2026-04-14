@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.dto.admin;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +20,7 @@ public class PaymentEventResult {
     private final String orderId;
     private final String paymentKey;
     private final PaymentEventStatus status;
+    private final PaymentGatewayType gatewayType;
     private final LocalDateTime executedAt;
     private final LocalDateTime approvedAt;
     private final Integer retryCount;
@@ -43,6 +45,7 @@ public class PaymentEventResult {
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
                 .status(paymentEvent.getStatus())
+                .gatewayType(paymentEvent.getGatewayType())
                 .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
                 .retryCount(paymentEvent.getRetryCount())
