@@ -173,6 +173,7 @@ public class OutboxProcessingService {
 
     /**
      * ATTEMPT_CONFIRM: confirmPaymentWithGateway 호출 후 PaymentConfirmResultStatus로 2차 분기.
+     * RetryableException → RETRYABLE_FAILURE 경로, NonRetryableException → NON_RETRYABLE_FAILURE 경로로 처리한다.
      */
     private void handleAttemptConfirm(
             PaymentEvent paymentEvent,
@@ -186,7 +187,33 @@ public class OutboxProcessingService {
                 .paymentKey(paymentEvent.getPaymentKey())
                 .amount(paymentEvent.getTotalAmount())
                 .build();
-        PaymentGatewayInfo gatewayInfo = paymentCommandUseCase.confirmPaymentWithGateway(command);
+        try {
+            applyConfirmResult(
+                    paymentCommandUseCase.confirmPaymentWithGateway(command),
+                    paymentEvent, outbox, policy, orderId
+            );
+        } catch (PaymentGatewayRetryableException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+            if (policy.isExhausted(outbox.getRetryCount() + 1)) {
+                handleFinalConfirmationGate(orderId, outbox);
+            } else {
+                transactionCoordinator.executePaymentRetryWithOutbox(
+                        paymentEvent, outbox, policy, localDateTimeProvider.now());
+            }
+        } catch (PaymentGatewayNonRetryableException e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+            transactionCoordinator.executePaymentFailureCompensationWithOutbox(
+                    orderId, paymentEvent.getPaymentOrderList(), e.getMessage());
+        }
+    }
+
+    private void applyConfirmResult(
+            PaymentGatewayInfo gatewayInfo,
+            PaymentEvent paymentEvent,
+            PaymentOutbox outbox,
+            RetryPolicy policy,
+            String orderId
+    ) {
         PaymentConfirmResultStatus resultStatus = gatewayInfo.getPaymentConfirmResultStatus();
 
         switch (resultStatus) {

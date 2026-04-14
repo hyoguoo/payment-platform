@@ -99,7 +99,8 @@ public class PaymentCommandUseCase {
         return paymentGatewayPort.getStatusByOrderId(orderId, gatewayType);
     }
 
-    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
+    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         PaymentConfirmRequest request =
                 new PaymentConfirmRequest(
                         paymentConfirmCommand.getOrderId(),

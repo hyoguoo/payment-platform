@@ -33,6 +33,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     private static final String NICEPAY_RESULT_CODE_SUCCESS = "0000";
+    private static final String NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL = "2201";
 
     private static final String NICEPAY_STATUS_PAID = "paid";
     private static final String NICEPAY_STATUS_READY = "ready";
@@ -49,7 +50,8 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     }
 
     @Override
-    public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
+    public PaymentConfirmResult confirm(PaymentConfirmRequest request)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         NicepayConfirmRequest confirmRequest = NicepayConfirmRequest.builder()
                 .tid(request.paymentKey())
                 .amount(request.amount())
@@ -61,13 +63,50 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private PaymentConfirmResult executeConfirmPayment(
             NicepayConfirmRequest confirmRequest,
             PaymentConfirmRequest request
-    ) {
+    ) throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         try {
             NicepayPaymentResponse response = nicepayGatewayInternalReceiver.confirmPayment(confirmRequest);
             return convertToPaymentConfirmResult(response, request);
         } catch (PaymentGatewayApiException e) {
+            if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(e.getCode())) {
+                return handleDuplicateApprovalCompensation(request);
+            }
             throw new IllegalStateException("NicePay 승인 API 호출 실패: " + e.getMessage(), e);
         }
+    }
+
+    private PaymentConfirmResult handleDuplicateApprovalCompensation(PaymentConfirmRequest request)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
+        try {
+            NicepayPaymentResponse statusResponse =
+                    nicepayGatewayInternalReceiver.getPaymentInfoByTid(request.paymentKey());
+            return resolveCompensationResult(statusResponse, request);
+        } catch (PaymentGatewayNonRetryableException e) {
+            throw e;
+        } catch (Exception e) {
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        }
+    }
+
+    private PaymentConfirmResult resolveCompensationResult(
+            NicepayPaymentResponse statusResponse,
+            PaymentConfirmRequest request
+    ) throws PaymentGatewayNonRetryableException {
+        if (NICEPAY_STATUS_PAID.equals(statusResponse.getStatus())) {
+            if (request.amount().compareTo(statusResponse.getAmount()) != 0) {
+                throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+            }
+            LocalDateTime approvedAt = parseApprovedAt(statusResponse.getPaidAt());
+            return new PaymentConfirmResult(
+                    PaymentConfirmResultStatus.SUCCESS,
+                    statusResponse.getTid(),
+                    request.orderId(),
+                    request.amount(),
+                    approvedAt,
+                    null
+            );
+        }
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
     }
 
     @Override

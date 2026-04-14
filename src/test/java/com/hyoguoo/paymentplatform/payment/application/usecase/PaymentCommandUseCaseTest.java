@@ -143,7 +143,7 @@ class PaymentCommandUseCaseTest {
 
     @Test
     @DisplayName("Toss 결제 승인 중 재시도 가능한 실패 시 RETRYABLE_FAILURE 상태의 결과를 반환한다.")
-    void testConfirmPaymentWithGateway_RetryableFailure() {
+    void testConfirmPaymentWithGateway_RetryableFailure() throws Exception {
         // given
         PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
                 .orderId("order123")
@@ -175,7 +175,7 @@ class PaymentCommandUseCaseTest {
 
     @Test
     @DisplayName("Toss 결제 승인 중 재시도 불가능한 실패 시 NON_RETRYABLE_FAILURE 상태의 결과를 반환한다.")
-    void testConfirmPaymentWithGateway_NonRetryableFailure() {
+    void testConfirmPaymentWithGateway_NonRetryableFailure() throws Exception {
         // given
         PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
                 .orderId("order123")

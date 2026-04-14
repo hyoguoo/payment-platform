@@ -308,6 +308,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `confirm_Error2201_GetStatusFails_ThrowsRetryable()` — 보상 조회 자체 실패 → `PaymentGatewayRetryableException`
 - **완료 조건**: 위 테스트 통과 + `./gradlew test` 통과.
 - **의존**: T9
+- **완료 결과**: 2201 기승인존재 보상 로직 구현 완료. `handleDuplicateApprovalCompensation()` + `resolveCompensationResult()` 추출. 금액 불일치→NonRetryable, 조회 실패→Retryable. throws 전파: PaymentGatewayStrategy → PaymentGatewayPort → InternalPaymentGatewayAdapter → PaymentCommandUseCase → OutboxProcessingService(catch 처리). 4개 신규 테스트 포함 전체 337개 테스트 통과.
 
 ---
 

@@ -11,7 +11,8 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableExce
 
 public interface PaymentGatewayPort {
 
-    PaymentConfirmResult confirm(PaymentConfirmRequest request);
+    PaymentConfirmResult confirm(PaymentConfirmRequest request)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException;
 
     PaymentCancelResult cancel(PaymentCancelRequest request);
 

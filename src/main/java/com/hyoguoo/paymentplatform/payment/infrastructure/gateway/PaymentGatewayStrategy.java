@@ -13,7 +13,8 @@ public interface PaymentGatewayStrategy {
 
     boolean supports(PaymentGatewayType type);
 
-    PaymentConfirmResult confirm(PaymentConfirmRequest request);
+    PaymentConfirmResult confirm(PaymentConfirmRequest request)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException;
 
     PaymentCancelResult cancel(PaymentCancelRequest request);
 

@@ -23,7 +23,8 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     private final PaymentGatewayProperties properties;
 
     @Override
-    public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
+    public PaymentConfirmResult confirm(PaymentConfirmRequest request)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
         return strategy.confirm(request);
     }
