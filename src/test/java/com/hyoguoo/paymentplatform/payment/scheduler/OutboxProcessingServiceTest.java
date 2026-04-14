@@ -534,6 +534,162 @@ class OutboxProcessingServiceTest {
         assertThat(commandCaptor.getValue().getGatewayType()).isEqualTo(PaymentGatewayType.NICEPAY);
     }
 
+    // ─── handleAttemptConfirm 예외 경로 ─────────────────────────────────────
+
+    @Test
+    @DisplayName("process - 최초 시도 + confirmPaymentWithGateway RetryableException + 미소진: executePaymentRetryWithOutbox")
+    void process_FirstAttempt_ConfirmRetryableException_UnderLimit_Retries() throws Exception {
+        // given: retryCount=0 → 바로 confirm → RetryableException
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willThrow(PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR));
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentRetryWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class),
+                        any(RetryPolicy.class), any(LocalDateTime.class));
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("process - 최초 시도 + confirmPaymentWithGateway RetryableException + 소진: FCG → quarantine")
+    void process_FirstAttempt_ConfirmRetryableException_Exhausted_FcgQuarantines() throws Exception {
+        // given: retryCount=MAX_ATTEMPTS-1 → 재시도 경로에서 ATTEMPT_CONFIRM → confirm → RetryableException → 소진 → FCG
+        int exhaustingRetryCount = MAX_ATTEMPTS - 1;
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
+        PaymentGatewayRetryableException retryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        // main getStatus → notFound → ATTEMPT_CONFIRM, FCG getStatus → retryable → quarantine
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
+                .willThrow(notFound)
+                .willThrow(retryable);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willThrow(PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR));
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentQuarantineWithOutbox(any(PaymentEvent.class), any(PaymentOutbox.class), anyString());
+    }
+
+    @Test
+    @DisplayName("process - 최초 시도 + confirmPaymentWithGateway NonRetryableException: executePaymentFailureCompensationWithOutbox")
+    void process_FirstAttempt_ConfirmNonRetryableException_CompensatesFailure() throws Exception {
+        // given: retryCount=0 → 바로 confirm → NonRetryableException
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willThrow(PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR));
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentRetryWithOutbox(any(), any(), any(), any());
+    }
+
+    // ─── FCG COMPLETE_FAILURE 경로 ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("process - 소진 + FCG getStatus CANCELED: executePaymentFailureCompensationWithOutbox")
+    void process_Exhausted_FcgCanceled_CompensatesFailure() throws Exception {
+        // given: retryCount=MAX_ATTEMPTS-1, main getStatus → retryable → 소진 → FCG → CANCELED
+        int exhaustingRetryCount = MAX_ATTEMPTS - 1;
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, exhaustingRetryCount);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayRetryableException retryable =
+                PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
+        PaymentStatusResult canceledResult = createStatusResult(PaymentStatus.CANCELED, null);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        // main: retryable → 소진 → FCG: CANCELED
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
+                .willThrow(retryable)
+                .willReturn(canceledResult);
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentQuarantineWithOutbox(any(), any(), anyString());
+    }
+
+    // ─── NonRetryable 예외 경로 ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("process - getStatus NonRetryableException → ATTEMPT_CONFIRM → confirm 성공: executePaymentSuccessCompletionWithOutbox")
+    void process_NonRetryableException_AttemptConfirm_ThenSuccess() throws Exception {
+        // given: retryCount=1 (재시도 경로), getStatus NotFound → ATTEMPT_CONFIRM → confirm 성공
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 1);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+        PaymentGatewayInfo successInfo = createGatewayInfo(FIXED_NOW);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
+                .willThrow(PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR));
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willReturn(successInfo);
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then: NonRetryableException → ATTEMPT_CONFIRM, confirm 성공 → success
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentSuccessCompletionWithOutbox(any(PaymentEvent.class), any(LocalDateTime.class),
+                        any(PaymentOutbox.class));
+    }
+
+    @Test
+    @DisplayName("process - getStatus NonRetryableException → ATTEMPT_CONFIRM → confirm NonRetryableException: executePaymentFailureCompensationWithOutbox")
+    void process_NonRetryableException_AttemptConfirm_ThenNonRetryable_CompensatesFailure() throws Exception {
+        // given: retryCount=1 (재시도 경로), getStatus NotFound → ATTEMPT_CONFIRM → confirm NonRetryable
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 1);
+        PaymentEvent inProgressEvent = createPaymentEvent(ORDER_ID);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(inProgressEvent);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any()))
+                .willThrow(PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR));
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willThrow(PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR));
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then
+        then(mockTransactionCoordinator).should(times(1))
+                .executePaymentFailureCompensationWithOutbox(anyString(), any(), anyString());
+        then(mockTransactionCoordinator).should(never())
+                .executePaymentRetryWithOutbox(any(), any(), any(), any());
+    }
+
     // ─── 헬퍼 메서드 ──────────────────────────────────────────────────────
 
     private PaymentOutbox createInFlightOutbox(String orderId, int retryCount) {

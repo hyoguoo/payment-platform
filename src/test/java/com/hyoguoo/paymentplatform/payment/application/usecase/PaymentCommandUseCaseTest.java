@@ -18,7 +18,9 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
+import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -236,6 +238,27 @@ class PaymentCommandUseCaseTest {
         // then
         then(paymentEvent).should(times(1)).quarantine(reason, testLocalDateTimeProvider.now());
         then(mockPaymentQuarantineMetrics).should(times(1)).recordQuarantine(reason);
+    }
+
+    @Test
+    @DisplayName("getPaymentStatusByOrderId 호출 시 PaymentGatewayPort에 위임하고 결과를 반환한다.")
+    void getPaymentStatusByOrderId_DelegatesToPort() throws Exception {
+        // given
+        String orderId = "order-123";
+        PaymentGatewayType gatewayType = PaymentGatewayType.TOSS;
+        PaymentStatusResult expectedResult = new PaymentStatusResult(
+                "paymentKey", orderId, PaymentStatus.DONE,
+                BigDecimal.valueOf(10000), LocalDateTime.now(), null
+        );
+        given(mockPaymentGatewayPort.getStatusByOrderId(orderId, gatewayType))
+                .willReturn(expectedResult);
+
+        // when
+        PaymentStatusResult result = paymentCommandUseCase.getPaymentStatusByOrderId(orderId, gatewayType);
+
+        // then
+        assertThat(result).isEqualTo(expectedResult);
+        then(mockPaymentGatewayPort).should(times(1)).getStatusByOrderId(orderId, gatewayType);
     }
 
     @Test
