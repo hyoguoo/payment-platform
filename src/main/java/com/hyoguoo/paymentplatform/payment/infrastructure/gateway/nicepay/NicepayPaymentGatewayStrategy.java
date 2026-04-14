@@ -25,8 +25,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -34,6 +32,19 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     private static final String NICEPAY_RESULT_CODE_SUCCESS = "0000";
     private static final String NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL = "2201";
+
+    // 재시도 가능 에러 코드: 일시적 네트워크/서버 오류
+    private static final String NICEPAY_RETRYABLE_ERROR_2159 = "2159";
+    private static final String NICEPAY_RETRYABLE_ERROR_A246 = "A246";
+    private static final String NICEPAY_RETRYABLE_ERROR_A299 = "A299";
+
+    // 재시도 불가 에러 코드: 영구적 오류 (카드 한도/거절/유효기간 등)
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_3011 = "3011";
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_3012 = "3012";
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_3013 = "3013";
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_3014 = "3014";
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_2152 = "2152";
+    private static final String NICEPAY_NON_RETRYABLE_ERROR_2156 = "2156";
 
     private static final String NICEPAY_STATUS_PAID = "paid";
     private static final String NICEPAY_STATUS_READY = "ready";
@@ -71,8 +82,16 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
             if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(e.getCode())) {
                 return handleDuplicateApprovalCompensation(request);
             }
-            throw new IllegalStateException("NicePay 승인 API 호출 실패: " + e.getMessage(), e);
+            return classifyAndThrowConfirmException(e);
         }
+    }
+
+    private PaymentConfirmResult classifyAndThrowConfirmException(PaymentGatewayApiException e)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
+        if (isRetryableErrorCode(e.getCode())) {
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        }
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
     }
 
     private PaymentConfirmResult handleDuplicateApprovalCompensation(PaymentConfirmRequest request)
@@ -135,11 +154,17 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
         try {
             NicepayPaymentResponse response = nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(orderId);
             return convertToPaymentStatusResult(response);
-        } catch (WebClientResponseException e) {
-            return handleGetStatusResponseException(e);
-        } catch (WebClientRequestException e) {
+        } catch (PaymentGatewayApiException e) {
+            return classifyAndThrowStatusException(e);
+        }
+    }
+
+    private PaymentStatusResult classifyAndThrowStatusException(PaymentGatewayApiException e)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
+        if (isRetryableErrorCode(e.getCode())) {
             throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
         }
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
     }
 
     private PaymentConfirmResult convertToPaymentConfirmResult(
@@ -230,11 +255,9 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
         }
     }
 
-    private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
-            throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
-        if (e.getStatusCode().is5xxServerError()) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
-        }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+    private boolean isRetryableErrorCode(String errorCode) {
+        return NICEPAY_RETRYABLE_ERROR_2159.equals(errorCode)
+                || NICEPAY_RETRYABLE_ERROR_A246.equals(errorCode)
+                || NICEPAY_RETRYABLE_ERROR_A299.equals(errorCode);
     }
 }

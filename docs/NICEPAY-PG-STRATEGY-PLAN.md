@@ -312,7 +312,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T11. `NicepayPaymentGatewayStrategy` — 에러 코드 분류 (재시도/비재시도) — D3
+### [x] T11. `NicepayPaymentGatewayStrategy` — 에러 코드 분류 (재시도/비재시도) — D3
 
 <!-- architect: NicepayErrorCode를 paymentgateway/exception/common/에 두는데, 이것을 참조하는 NicepayPaymentGatewayStrategy는 payment/infrastructure/에 있다. payment 모듈이 paymentgateway 모듈의 예외 코드를 직접 참조하게 된다. 이는 기존 Toss 패턴에서 TossPaymentErrorCode가 paymentgateway 모듈에 있고, TossPaymentGatewayStrategy가 payment 모듈에서 직접 참조하지 않는 구조와 다르다. 기존 Toss 전략은 에러 코드를 문자열 상수로 직접 갖고 있다. NicePay도 동일하게 NicepayPaymentGatewayStrategy 내부에 에러 코드 상수를 두고, paymentgateway 모듈의 NicepayErrorCode는 paymentgateway 모듈 내부(NicepayApiCallUseCase 등)에서만 사용하도록 분리해야 한다. -->
 - **목적**: NicePay 에러 코드를 `PaymentGatewayRetryableException` / `PaymentGatewayNonRetryableException`으로 분류한다. 재시도 가능: 2159, A246, A299; 재시도 불가: 3011-3014, 2152, 2156. In-scope 5/6번.
@@ -333,6 +333,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `confirm_NonRetryableError_ThrowsNonRetryableException()`
 - **완료 조건**: 위 테스트 통과 + `./gradlew test` 통과.
 - **의존**: T10
+- **완료 결과**: `NicepayPaymentGatewayStrategy` 내부에 재시도 가능(2159/A246/A299) · 재시도 불가(3011/3012/3013/3014/2152/2156) 에러 코드 상수 9개 추가. `executeConfirmPayment()`의 `IllegalStateException` catch를 `classifyAndThrowConfirmException()` 메서드로 교체. `getStatusByOrderId()`의 `WebClientResponseException`/`WebClientRequestException` catch를 `PaymentGatewayApiException` 기반 `classifyAndThrowStatusException()`으로 교체. `isRetryableErrorCode()` 헬퍼 추가. `NicepayOperator`/`NicepayApiCallUseCase`/`NicepayGatewayInternalReceiver`의 `getPaymentInfoByOrderId()`에 `throws PaymentGatewayApiException` 전파. `HttpNicepayOperator.getPaymentInfoByOrderId()`에 HTTP 에러 처리 추가. 11개 신규 테스트(ParameterizedTest 포함) 전체 통과, 전체 348개 테스트 통과.
 
 ---
 

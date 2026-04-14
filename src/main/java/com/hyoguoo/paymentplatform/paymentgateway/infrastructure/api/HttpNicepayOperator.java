@@ -92,18 +92,34 @@ public class HttpNicepayOperator implements NicepayOperator {
     }
 
     @Override
-    public NicepayPaymentInfo getPaymentInfoByOrderId(String orderId) {
-        Map<String, String> httpHeaderMap = Map.of(
-                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
-        );
+    public NicepayPaymentInfo getPaymentInfoByOrderId(String orderId) throws PaymentGatewayApiException {
+        try {
+            Map<String, String> httpHeaderMap = Map.of(
+                    AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
+            );
 
-        NicepayPaymentApiResponse response = httpOperator.requestGet(
-                nicepayApiUrl + "/v1/payments/find/" + orderId,
-                httpHeaderMap,
-                NicepayPaymentApiResponse.class
-        );
+            NicepayPaymentApiResponse response = httpOperator.requestGet(
+                    nicepayApiUrl + "/v1/payments/find/" + orderId,
+                    httpHeaderMap,
+                    NicepayPaymentApiResponse.class
+            );
 
-        return toNicepayPaymentInfo(response);
+            return toNicepayPaymentInfo(response);
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw PaymentGatewayApiException.of(UNAUTHORIZED_CODE, UNAUTHORIZED_MESSAGE);
+            }
+            NicepayPaymentApiFailResponse failResponse = parseErrorResponse(e.getMessage());
+            throw PaymentGatewayApiException.of(
+                    failResponse.getResultCode(),
+                    failResponse.getResultMsg()
+            );
+        } catch (ResourceAccessException e) {
+            if (e.getCause() instanceof SocketTimeoutException) {
+                throw PaymentGatewayApiException.of(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
+            }
+            throw e;
+        }
     }
 
     @Override

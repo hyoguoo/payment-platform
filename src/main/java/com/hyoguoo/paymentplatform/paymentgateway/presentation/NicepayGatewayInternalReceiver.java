@@ -29,7 +29,8 @@ public class NicepayGatewayInternalReceiver {
         return NicepayGatewayPresentationMapper.toNicepayPaymentResponse(nicepayPaymentInfo);
     }
 
-    public NicepayPaymentResponse getPaymentInfoByOrderId(String orderId) {
+    public NicepayPaymentResponse getPaymentInfoByOrderId(String orderId)
+            throws PaymentGatewayApiException {
         NicepayPaymentInfo nicepayPaymentInfo = nicepayApiCallUseCase.getPaymentInfoByOrderId(
                 orderId
         );

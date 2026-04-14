@@ -24,7 +24,7 @@ public class NicepayApiCallUseCase {
         return nicepayOperator.getPaymentInfoByTid(tid);
     }
 
-    public NicepayPaymentInfo getPaymentInfoByOrderId(String orderId) {
+    public NicepayPaymentInfo getPaymentInfoByOrderId(String orderId) throws PaymentGatewayApiException {
         return nicepayOperator.getPaymentInfoByOrderId(orderId);
     }
 

@@ -12,7 +12,7 @@ public interface NicepayOperator {
 
     NicepayPaymentInfo getPaymentInfoByTid(String tid);
 
-    NicepayPaymentInfo getPaymentInfoByOrderId(String orderId);
+    NicepayPaymentInfo getPaymentInfoByOrderId(String orderId) throws PaymentGatewayApiException;
 
     NicepayPaymentInfo cancelPayment(NicepayCancelCommand nicepayCancelCommand);
 }
