@@ -21,8 +21,8 @@ spring:
 
   myapp:
     nicepay:
-      client-key: ${NICEPAY_CLIENT_KEY:S2_af2a1ef3b59d42eda4b1e57992f67c20}
-      secret-key: ${NICEPAY_SECRET_KEY:18d78a3b09e54948a19f0e2e5e4e4e25}
+      client-key: ${NICEPAY_CLIENT_KEY:}
+      secret-key: ${NICEPAY_SECRET_KEY:}
       api-url: ${NICEPAY_API_URL:https://sandbox-api.nicepay.co.kr}
 
 springdoc:

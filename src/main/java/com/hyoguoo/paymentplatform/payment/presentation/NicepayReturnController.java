@@ -20,12 +20,12 @@ public class NicepayReturnController {
             @RequestParam(value = "tid", required = false) String tid,
             @RequestParam(value = "orderId", required = false) String orderId,
             @RequestParam(value = "amount", required = false) BigDecimal amount,
-            @RequestParam(value = "resultCode", required = false) String resultCode,
-            @RequestParam(value = "resultMsg", required = false) String resultMsg
+            @RequestParam(value = "authResultCode", required = false) String authResultCode,
+            @RequestParam(value = "authResultMsg", required = false) String authResultMsg
     ) {
-        if (!"0000".equals(resultCode)) {
-            String code = resultCode != null ? resultCode : "NICEPAY_ERROR";
-            String message = resultMsg != null ? resultMsg : "결제 인증에 실패했습니다.";
+        if (!"0000".equals(authResultCode)) {
+            String code = authResultCode != null ? authResultCode : "NICEPAY_ERROR";
+            String message = authResultMsg != null ? authResultMsg : "결제 인증에 실패했습니다.";
             return "redirect:/payment/fail.html"
                     + "?code=" + URLEncoder.encode(code, StandardCharsets.UTF_8)
                     + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
