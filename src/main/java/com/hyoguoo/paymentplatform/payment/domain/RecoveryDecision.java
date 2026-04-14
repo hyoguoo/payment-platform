@@ -74,6 +74,11 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
         }
 
         if (PG_IN_PROGRESS_STATUSES.contains(pgStatus)) {
+            if (retryCount == 0) {
+                // 첫 시도에서 PG가 IN_PROGRESS → 서버 승인 API를 아직 호출하지 않은 상태.
+                // confirm을 시도해야 PG가 DONE으로 전이한다.
+                return new RecoveryDecision(Type.ATTEMPT_CONFIRM, null);
+            }
             return retryCount < maxRetries
                     ? new RecoveryDecision(Type.RETRY_LATER, RecoveryReason.PG_IN_PROGRESS)
                     : new RecoveryDecision(Type.QUARANTINE, RecoveryReason.PG_IN_PROGRESS);
