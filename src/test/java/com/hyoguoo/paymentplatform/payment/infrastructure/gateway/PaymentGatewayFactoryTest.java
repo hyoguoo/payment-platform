@@ -22,7 +22,8 @@ class PaymentGatewayFactoryTest {
     @BeforeEach
     void setUp() {
         List<PaymentGatewayStrategy> strategies = List.of(
-                new TestTossPaymentGatewayStrategy()
+                new TestTossPaymentGatewayStrategy(),
+                new TestNicepayPaymentGatewayStrategy()
         );
         factory = new PaymentGatewayFactory(strategies);
     }
@@ -39,6 +40,20 @@ class PaymentGatewayFactoryTest {
         // then
         assertThat(strategy).isInstanceOf(TestTossPaymentGatewayStrategy.class);
         assertThat(strategy.supports(PaymentGatewayType.TOSS)).isTrue();
+    }
+
+    @Test
+    @DisplayName("NICEPAY 타입 요청 시 NicepayPaymentGatewayStrategy 반환")
+    void getStrategy_NicepayType_ReturnsNicepayStrategy() {
+        // given
+        PaymentGatewayType type = PaymentGatewayType.NICEPAY;
+
+        // when
+        PaymentGatewayStrategy strategy = factory.getStrategy(type);
+
+        // then
+        assertThat(strategy).isInstanceOf(TestNicepayPaymentGatewayStrategy.class);
+        assertThat(strategy.supports(PaymentGatewayType.NICEPAY)).isTrue();
     }
 
     @Test
@@ -68,6 +83,34 @@ class PaymentGatewayFactoryTest {
         @Override
         public boolean supports(PaymentGatewayType type) {
             return type == PaymentGatewayType.TOSS;
+        }
+
+        @Override
+        public PaymentConfirmResult confirm(PaymentConfirmRequest request) {
+            return null;
+        }
+
+        @Override
+        public PaymentCancelResult cancel(PaymentCancelRequest request) {
+            return null;
+        }
+
+        @Override
+        public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+            return null;
+        }
+
+        @Override
+        public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType) {
+            return null;
+        }
+    }
+
+    static class TestNicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
+
+        @Override
+        public boolean supports(PaymentGatewayType type) {
+            return type == PaymentGatewayType.NICEPAY;
         }
 
         @Override

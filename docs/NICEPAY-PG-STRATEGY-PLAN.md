@@ -337,7 +337,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T12. `PaymentGatewayFactory` — NICEPAY 전략 등록 확인 테스트 — D5
+### [x] T12. `PaymentGatewayFactory` — NICEPAY 전략 등록 확인 테스트 — D5
 
 <!-- architect: 의존이 T11로 되어 있지만, Factory 테스트에 필요한 것은 NicepayPaymentGatewayStrategy 빈의 존재뿐이다. T9에서 이미 기본 구현이 완성되므로 T9 의존이면 충분하다. T10/T11(보상 로직, 에러 분류)은 Factory 테스트와 무관하다. 의존을 T9로 완화하면 T12를 T10/T11과 병렬로 실행 가능하다. -->
 - **목적**: `PaymentGatewayFactory.getStrategy(NICEPAY)`가 `NicepayPaymentGatewayStrategy`를 반환하고, 미지원 타입에 예외를 던지는 것을 테스트한다.
@@ -355,6 +355,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `getStrategy_UnsupportedType_ThrowsException()` — 미지원 타입 예외
 - **완료 조건**: 테스트 통과.
 - **의존**: T9 (Factory 테스트에 필요한 것은 NicepayPaymentGatewayStrategy 빈 존재뿐)
+- **완료 결과**: `PaymentGatewayFactoryTest`에 `TestNicepayPaymentGatewayStrategy` stub 추가. `getStrategy_NicepayType_ReturnsNicepayStrategy()` 테스트 메서드 추가. `setUp()`에서 두 전략(TOSS + NICEPAY) 등록. 4개 테스트 전체 통과.
 
 ---
 
