@@ -398,7 +398,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T15. `OutboxProcessingService` — `handleAttemptConfirm` gatewayType 전파 — DE2-1
+### [x] T15. `OutboxProcessingService` — `handleAttemptConfirm` gatewayType 전파 — DE2-1
 
 - **목적**: `handleAttemptConfirm()`에서 `PaymentConfirmCommand`를 조립할 때 `paymentEvent.getGatewayType()`을 세팅한다. DE2-1 minor finding 최종 완결. In-scope 9번.
 - **tdd**: true
@@ -414,6 +414,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `handleAttemptConfirm_PropagatesGatewayType_ToConfirmCommand()` — NICEPAY gatewayType을 가진 paymentEvent가 ATTEMPT_CONFIRM 결정을 받으면, `confirmPaymentWithGateway()` 호출 시 command에 `NICEPAY` gatewayType이 전달된다 (Mockito `ArgumentCaptor` 사용)
 - **완료 조건**: 테스트 통과 + `./gradlew test` 통과.
 - **의존**: T4, T14
+- **완료 결과**: `handleAttemptConfirm()`의 `PaymentConfirmCommand.builder()`에 `.gatewayType(paymentEvent.getGatewayType())` 추가. `OutboxProcessingServiceTest`에 `handleAttemptConfirm_PropagatesGatewayType_ToConfirmCommand` 추가 (ArgumentCaptor로 NICEPAY 전파 검증). 테스트 353개 전체 통과.
 
 ---
 

@@ -186,6 +186,7 @@ public class OutboxProcessingService {
                 .orderId(orderId)
                 .paymentKey(paymentEvent.getPaymentKey())
                 .amount(paymentEvent.getTotalAmount())
+                .gatewayType(paymentEvent.getGatewayType())
                 .build();
         try {
             applyConfirmResult(
