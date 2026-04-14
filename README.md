@@ -161,7 +161,6 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "Application Layer"
-        Service[결제 확인 서비스]
         UseCase[결제 처리 유스케이스]
         Port[PG 연동 포트<br/>Interface]
     end
@@ -182,7 +181,6 @@ graph TB
         NicepayAPI[NicePay API]
     end
 
-    Service -->|사용| UseCase
     UseCase -->|의존| Port
     Port -.->|구현| Adapter
     Adapter -->|위임| Factory
