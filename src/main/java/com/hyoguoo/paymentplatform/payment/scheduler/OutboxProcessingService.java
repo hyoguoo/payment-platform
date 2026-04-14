@@ -17,9 +17,9 @@ import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -37,25 +37,6 @@ public class OutboxProcessingService {
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final RetryPolicyProperties retryPolicyProperties;
     private final LocalDateTimeProvider localDateTimeProvider;
-
-    /**
-     * PG 상태 조회 결과와 결정을 함께 보관하는 내부 레코드.
-     * approvedAt을 RecoveryDecision 밖에서 전달하기 위해 사용한다.
-     */
-    private record StatusResolution(RecoveryDecision decision, Optional<PaymentStatusResult> snapshot) {
-
-        static StatusResolution ofResult(RecoveryDecision decision, PaymentStatusResult snapshot) {
-            return new StatusResolution(decision, Optional.of(snapshot));
-        }
-
-        static StatusResolution ofException(RecoveryDecision decision) {
-            return new StatusResolution(decision, Optional.empty());
-        }
-
-        Optional<LocalDateTime> approvedAt() {
-            return snapshot.map(PaymentStatusResult::approvedAt);
-        }
-    }
 
     public void process(String orderId) {
         // Step 1: atomic claim — 선점 실패 시 다른 워커가 처리 중이므로 포기
@@ -78,18 +59,24 @@ public class OutboxProcessingService {
             return;
         }
 
-        // Step 4: PG 상태 선행 조회 → RecoveryDecision 수립 → TX 위임
+        // Step 4: 최초 시도 vs 재시도 분기
         RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
         int retryCount = outbox.getRetryCount();
 
-        StatusResolution resolution = resolveStatusAndDecision(orderId, paymentEvent, retryCount, policy.maxAttempts());
-        applyDecision(resolution, paymentEvent, outbox, policy, orderId);
+        if (retryCount == 0) {
+            // 최초 시도 — confirm을 보낸 적 없으므로 PG 조회 불필요, 바로 승인 요청
+            handleAttemptConfirm(paymentEvent, outbox, policy, orderId);
+        } else {
+            // 재시도 — 이전 confirm이 PG에 도달했을 수 있으므로 선조회 후 결정
+            StatusResolution resolution = resolveStatusAndDecision(orderId, paymentEvent, retryCount,
+                    policy.maxAttempts());
+            applyDecision(resolution, paymentEvent, outbox, policy, orderId);
+        }
     }
 
     /**
-     * PG 상태 조회 후 RecoveryDecision을 수립한다.
-     * 예외 발생 시 fromException 분기를 사용하며, snapshot은 Optional.empty()로 반환한다.
-     * try 블록 외부 변수 재할당을 피하기 위해 private 메서드로 추출했다.
+     * PG 상태 조회 후 RecoveryDecision을 수립한다. 예외 발생 시 fromException 분기를 사용하며, snapshot은 Optional.empty()로 반환한다. try 블록 외부 변수
+     * 재할당을 피하기 위해 private 메서드로 추출했다.
      */
     private StatusResolution resolveStatusAndDecision(
             String orderId,
@@ -172,8 +159,8 @@ public class OutboxProcessingService {
     }
 
     /**
-     * ATTEMPT_CONFIRM: confirmPaymentWithGateway 호출 후 PaymentConfirmResultStatus로 2차 분기.
-     * RetryableException → RETRYABLE_FAILURE 경로, NonRetryableException → NON_RETRYABLE_FAILURE 경로로 처리한다.
+     * ATTEMPT_CONFIRM: confirmPaymentWithGateway 호출 후 PaymentConfirmResultStatus로 2차 분기. RetryableException →
+     * RETRYABLE_FAILURE 경로, NonRetryableException → NON_RETRYABLE_FAILURE 경로로 처리한다.
      */
     private void handleAttemptConfirm(
             PaymentEvent paymentEvent,
@@ -205,6 +192,11 @@ public class OutboxProcessingService {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             transactionCoordinator.executePaymentFailureCompensationWithOutbox(
                     orderId, paymentEvent.getPaymentOrderList(), e.getMessage());
+        } catch (Exception e) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
+                    () -> String.format("confirm uncaught orderId=%s exceptionType=%s message=%s",
+                            orderId, e.getClass().getSimpleName(), e.getMessage()));
+            throw e;
         }
     }
 
@@ -245,12 +237,11 @@ public class OutboxProcessingService {
     }
 
     /**
-     * D7 FCG(Final Confirmation Gate): retryCount 비증가 방식으로 getStatus 1회 재호출.
-     * 결과: COMPLETE_SUCCESS → success, COMPLETE_FAILURE → failure, 그 외 → quarantine.
+     * D7 FCG(Final Confirmation Gate): retryCount 비증가 방식으로 getStatus 1회 재호출. 결과: COMPLETE_SUCCESS → success,
+     * COMPLETE_FAILURE → failure, 그 외 → quarantine.
      * <p>
-     * DE-1 대응: retry TX 이후 DB 상태가 변경됐을 수 있으므로, paymentEvent를 DB에서 fresh 재조회한다.
-     * process() 진입 시 로드한 stale 객체를 그대로 전달하면 JPA merge 시 잘못된 previousStatus가
-     * PaymentHistory에 기록될 수 있다.
+     * DE-1 대응: retry TX 이후 DB 상태가 변경됐을 수 있으므로, paymentEvent를 DB에서 fresh 재조회한다. process() 진입 시 로드한 stale 객체를 그대로 전달하면
+     * JPA merge 시 잘못된 previousStatus가 PaymentHistory에 기록될 수 있다.
      * </p>
      */
     private void handleFinalConfirmationGate(
@@ -293,9 +284,8 @@ public class OutboxProcessingService {
     }
 
     /**
-     * FCG용 getStatus 재호출 — retryCount=0, maxRetries=1로 고정하여 소진 분기를 비활성화.
-     * COMPLETE_SUCCESS/FAILURE 판별만 목적이며, 결과가 RETRY_LATER이면 outer switch가 quarantine으로 처리한다.
-     * try 블록 외부 변수 재할당을 피하기 위해 private 메서드로 추출했다.
+     * FCG용 getStatus 재호출 — retryCount=0, maxRetries=1로 고정하여 소진 분기를 비활성화. COMPLETE_SUCCESS/FAILURE 판별만 목적이며, 결과가
+     * RETRY_LATER이면 outer switch가 quarantine으로 처리한다. try 블록 외부 변수 재할당을 피하기 위해 private 메서드로 추출했다.
      */
     private StatusResolution resolveFcgStatusAndDecision(String orderId, PaymentEvent paymentEvent) {
         try {
@@ -311,12 +301,10 @@ public class OutboxProcessingService {
     }
 
     /**
-     * REJECT_REENTRY: outbox가 IN_FLIGHT 상태이므로 toDone()으로 멱등 종결.
-     * PG 조회 없이 outbox만 종결 처리.
+     * REJECT_REENTRY: outbox가 IN_FLIGHT 상태이므로 toDone()으로 멱등 종결. PG 조회 없이 outbox만 종결 처리.
      * <p>
-     * DE-4 참고: outbox.toDone() + save()는 @Transactional 경계 밖에서 수행된다.
-     * 동시성 위험은 claimToInFlight의 원자적 선점으로 이미 배제되었으므로 의도적 설계다.
-     * 별도 TX 없이 단순 save()로 처리해도 안전하다.
+     * DE-4 참고: outbox.toDone() + save()는 @Transactional 경계 밖에서 수행된다. 동시성 위험은 claimToInFlight의 원자적 선점으로 이미 배제되었으므로 의도적
+     * 설계다. 별도 TX 없이 단순 save()로 처리해도 안전하다.
      * </p>
      */
     private void rejectReentry(PaymentOutbox outbox) {
@@ -334,6 +322,24 @@ public class OutboxProcessingService {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
             paymentOutboxUseCase.incrementRetryOrFail(orderId, outbox);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * PG 상태 조회 결과와 결정을 함께 보관하는 내부 레코드. approvedAt을 RecoveryDecision 밖에서 전달하기 위해 사용한다.
+     */
+    private record StatusResolution(RecoveryDecision decision, Optional<PaymentStatusResult> snapshot) {
+
+        static StatusResolution ofResult(RecoveryDecision decision, PaymentStatusResult snapshot) {
+            return new StatusResolution(decision, Optional.of(snapshot));
+        }
+
+        static StatusResolution ofException(RecoveryDecision decision) {
+            return new StatusResolution(decision, Optional.empty());
+        }
+
+        Optional<LocalDateTime> approvedAt() {
+            return snapshot.map(PaymentStatusResult::approvedAt);
         }
     }
 }

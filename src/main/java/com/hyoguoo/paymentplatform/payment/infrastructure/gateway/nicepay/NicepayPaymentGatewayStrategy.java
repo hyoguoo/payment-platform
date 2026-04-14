@@ -24,7 +24,10 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -156,7 +159,22 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
             return convertToPaymentStatusResult(response);
         } catch (PaymentGatewayApiException e) {
             return classifyAndThrowStatusException(e);
+        } catch (WebClientResponseException e) {
+            return handleGetStatusResponseException(e);
+        } catch (WebClientRequestException e) {
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
+    }
+
+    private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
+            throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
+        if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
+        }
+        if (e.getStatusCode().is5xxServerError()) {
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
+        }
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     private PaymentStatusResult classifyAndThrowStatusException(PaymentGatewayApiException e)

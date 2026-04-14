@@ -11,14 +11,13 @@ import com.hyoguoo.paymentplatform.paymentgateway.domain.NicepayPaymentInfo;
 import com.hyoguoo.paymentplatform.paymentgateway.exception.PaymentGatewayApiException;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.NicepayPaymentApiFailResponse;
 import com.hyoguoo.paymentplatform.paymentgateway.infrastructure.dto.response.NicepayPaymentApiResponse;
-import java.net.SocketTimeoutException;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -59,20 +58,17 @@ public class HttpNicepayOperator implements NicepayOperator {
             );
 
             return toNicepayPaymentInfo(response);
-        } catch (HttpClientErrorException e) {
+        } catch (WebClientResponseException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 throw PaymentGatewayApiException.of(UNAUTHORIZED_CODE, UNAUTHORIZED_MESSAGE);
             }
-            NicepayPaymentApiFailResponse failResponse = parseErrorResponse(e.getMessage());
+            NicepayPaymentApiFailResponse failResponse = parseErrorResponse(e.getResponseBodyAsString());
             throw PaymentGatewayApiException.of(
                     failResponse.getResultCode(),
                     failResponse.getResultMsg()
             );
-        } catch (ResourceAccessException e) {
-            if (e.getCause() instanceof SocketTimeoutException) {
-                throw PaymentGatewayApiException.of(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
-            }
-            throw e;
+        } catch (WebClientRequestException e) {
+            throw PaymentGatewayApiException.of(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
         }
     }
 
@@ -105,20 +101,17 @@ public class HttpNicepayOperator implements NicepayOperator {
             );
 
             return toNicepayPaymentInfo(response);
-        } catch (HttpClientErrorException e) {
+        } catch (WebClientResponseException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 throw PaymentGatewayApiException.of(UNAUTHORIZED_CODE, UNAUTHORIZED_MESSAGE);
             }
-            NicepayPaymentApiFailResponse failResponse = parseErrorResponse(e.getMessage());
+            NicepayPaymentApiFailResponse failResponse = parseErrorResponse(e.getResponseBodyAsString());
             throw PaymentGatewayApiException.of(
                     failResponse.getResultCode(),
                     failResponse.getResultMsg()
             );
-        } catch (ResourceAccessException e) {
-            if (e.getCause() instanceof SocketTimeoutException) {
-                throw PaymentGatewayApiException.of(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
-            }
-            throw e;
+        } catch (WebClientRequestException e) {
+            throw PaymentGatewayApiException.of(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
         }
     }
 
