@@ -96,12 +96,12 @@ class PaymentGatewayFactoryTest {
         }
 
         @Override
-        public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+        public PaymentStatusResult getStatus(String paymentKey) {
             return null;
         }
 
         @Override
-        public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType) {
+        public PaymentStatusResult getStatusByOrderId(String orderId) {
             return null;
         }
     }
@@ -124,12 +124,12 @@ class PaymentGatewayFactoryTest {
         }
 
         @Override
-        public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+        public PaymentStatusResult getStatus(String paymentKey) {
             return null;
         }
 
         @Override
-        public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType) {
+        public PaymentStatusResult getStatusByOrderId(String orderId) {
             return null;
         }
     }

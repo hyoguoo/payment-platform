@@ -196,7 +196,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_UnderLimit_RetryLater() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_UNDER, MAX_RETRIES);
 
@@ -212,7 +212,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_AtLimit_Quarantine() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_AT_LIMIT, MAX_RETRIES);
 
@@ -260,7 +260,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_NonRetryableException_AttemptConfirm() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception nonRetryableEx = PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        Exception nonRetryableEx = PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, nonRetryableEx, 0, MAX_RETRIES);
 

@@ -89,9 +89,9 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private PaymentConfirmResult classifyAndThrowConfirmException(PaymentGatewayApiException e)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         if (isRetryableErrorCode(e.getCode())) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     private PaymentConfirmResult handleDuplicateApprovalCompensation(PaymentConfirmRequest request)
@@ -102,8 +102,8 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
             return resolveCompensationResult(statusResponse, request);
         } catch (PaymentGatewayNonRetryableException e) {
             throw e;
-        } catch (Exception e) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        } catch (RuntimeException e) {
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
     }
 
@@ -113,7 +113,7 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     ) throws PaymentGatewayNonRetryableException {
         if (NICEPAY_STATUS_PAID.equals(statusResponse.getStatus())) {
             if (request.amount().compareTo(statusResponse.getAmount()) != 0) {
-                throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+                throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
             }
             LocalDateTime approvedAt = parseApprovedAt(statusResponse.getPaidAt());
             return new PaymentConfirmResult(
@@ -125,7 +125,7 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
                     null
             );
         }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     @Override
@@ -142,14 +142,14 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
     @Override
-    public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+    public PaymentStatusResult getStatus(String paymentKey) {
         NicepayPaymentResponse response = nicepayGatewayInternalReceiver.getPaymentInfoByTid(paymentKey);
         return convertToPaymentStatusResult(response);
     }
 
     // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
+    public PaymentStatusResult getStatusByOrderId(String orderId)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         try {
             NicepayPaymentResponse response = nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(orderId);
@@ -162,9 +162,9 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private PaymentStatusResult classifyAndThrowStatusException(PaymentGatewayApiException e)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         if (isRetryableErrorCode(e.getCode())) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     private PaymentConfirmResult convertToPaymentConfirmResult(

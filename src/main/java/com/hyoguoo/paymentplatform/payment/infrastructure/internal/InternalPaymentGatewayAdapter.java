@@ -39,7 +39,7 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
         PaymentGatewayType resolvedType = resolveGatewayType(gatewayType);
         PaymentGatewayStrategy strategy = factory.getStrategy(resolvedType);
-        return strategy.getStatus(paymentKey, resolvedType);
+        return strategy.getStatus(paymentKey);
     }
 
     @Override
@@ -47,7 +47,7 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         PaymentGatewayType resolvedType = resolveGatewayType(gatewayType);
         PaymentGatewayStrategy strategy = factory.getStrategy(resolvedType);
-        return strategy.getStatusByOrderId(orderId, resolvedType);
+        return strategy.getStatusByOrderId(orderId);
     }
 
     /**

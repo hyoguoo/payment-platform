@@ -100,13 +100,13 @@ class InternalPaymentGatewayAdapterTest {
         );
 
         when(factory.getStrategy(PaymentGatewayType.NICEPAY)).thenReturn(nicepayStrategy);
-        when(nicepayStrategy.getStatusByOrderId(orderId, PaymentGatewayType.NICEPAY))
+        when(nicepayStrategy.getStatusByOrderId(orderId))
                 .thenReturn(expectedResult);
 
         PaymentStatusResult result = adapter.getStatusByOrderId(orderId, PaymentGatewayType.NICEPAY);
 
         verify(factory).getStrategy(PaymentGatewayType.NICEPAY);
-        verify(nicepayStrategy).getStatusByOrderId(orderId, PaymentGatewayType.NICEPAY);
+        verify(nicepayStrategy).getStatusByOrderId(orderId);
         assertThat(result).isEqualTo(expectedResult);
     }
 }

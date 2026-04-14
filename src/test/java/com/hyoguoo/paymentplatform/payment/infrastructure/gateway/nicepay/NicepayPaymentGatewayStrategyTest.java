@@ -97,7 +97,7 @@ class NicepayPaymentGatewayStrategyTest {
         given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(response);
 
         // when
-        PaymentStatusResult result = strategy.getStatus("tid-001", PaymentGatewayType.NICEPAY);
+        PaymentStatusResult result = strategy.getStatus("tid-001");
 
         // then
         assertThat(result.status()).isEqualTo(PaymentStatus.DONE);
@@ -118,7 +118,7 @@ class NicepayPaymentGatewayStrategyTest {
         given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(response);
 
         // when
-        PaymentStatusResult result = strategy.getStatus("tid-001", PaymentGatewayType.NICEPAY);
+        PaymentStatusResult result = strategy.getStatus("tid-001");
 
         // then
         assertThat(result.status()).isEqualTo(PaymentStatus.ABORTED);
@@ -140,7 +140,7 @@ class NicepayPaymentGatewayStrategyTest {
         given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString())).willReturn(response);
 
         // when
-        PaymentStatusResult result = strategy.getStatusByOrderId("order-001", PaymentGatewayType.NICEPAY);
+        PaymentStatusResult result = strategy.getStatusByOrderId("order-001");
 
         // then
         assertThat(result.status()).isEqualTo(PaymentStatus.DONE);
@@ -279,7 +279,7 @@ class NicepayPaymentGatewayStrategyTest {
                 .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 가능 에러"));
 
         // when & then
-        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001", PaymentGatewayType.NICEPAY))
+        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001"))
                 .isInstanceOf(PaymentGatewayRetryableException.class);
     }
 
@@ -292,7 +292,7 @@ class NicepayPaymentGatewayStrategyTest {
                 .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 불가 에러"));
 
         // when & then
-        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001", PaymentGatewayType.NICEPAY))
+        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001"))
                 .isInstanceOf(PaymentGatewayNonRetryableException.class);
     }
 

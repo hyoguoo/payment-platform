@@ -186,7 +186,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
     @Override
-    public PaymentStatusResult getStatus(String paymentKey, PaymentGatewayType gatewayType) {
+    public PaymentStatusResult getStatus(String paymentKey) {
         PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                 paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
         );
@@ -196,7 +196,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
 
     // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
     @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
+    public PaymentStatusResult getStatusByOrderId(String orderId)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         try {
             PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
@@ -206,19 +206,19 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         } catch (WebClientResponseException e) {
             return handleGetStatusResponseException(e);
         } catch (WebClientRequestException e) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
     }
 
     private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
             throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
         if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
         }
         if (e.getStatusCode().is5xxServerError()) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {
