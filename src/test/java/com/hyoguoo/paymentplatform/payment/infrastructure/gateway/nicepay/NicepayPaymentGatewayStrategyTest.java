@@ -26,6 +26,8 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -266,5 +268,61 @@ class NicepayPaymentGatewayStrategyTest {
         // when & then
         assertThatThrownBy(() -> strategy.confirm(request))
                 .isInstanceOf(PaymentGatewayRetryableException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"2159", "A246", "A299"})
+    @DisplayName("getStatusByOrderId: 재시도 가능 에러 코드이면 PaymentGatewayRetryableException을 던진다")
+    void getStatusByOrderId_RetryableErrorCode_ThrowsRetryableException(String errorCode) throws Exception {
+        // given
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString()))
+                .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 가능 에러"));
+
+        // when & then
+        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001", PaymentGatewayType.NICEPAY))
+                .isInstanceOf(PaymentGatewayRetryableException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"3011", "3012", "3013", "3014", "2152", "2156"})
+    @DisplayName("getStatusByOrderId: 재시도 불가 에러 코드이면 PaymentGatewayNonRetryableException을 던진다")
+    void getStatusByOrderId_NonRetryableErrorCode_ThrowsNonRetryableException(String errorCode) throws Exception {
+        // given
+        given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString()))
+                .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 불가 에러"));
+
+        // when & then
+        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001", PaymentGatewayType.NICEPAY))
+                .isInstanceOf(PaymentGatewayNonRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("confirm: 재시도 가능 에러 코드이면 PaymentGatewayRetryableException을 던진다")
+    void confirm_RetryableError_ThrowsRetryableException() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("2159", "재시도 가능 에러"));
+
+        // when & then
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PaymentGatewayRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("confirm: 재시도 불가 에러 코드이면 PaymentGatewayNonRetryableException을 던진다")
+    void confirm_NonRetryableError_ThrowsNonRetryableException() throws Exception {
+        // given
+        PaymentConfirmRequest request = new PaymentConfirmRequest(
+                "order-001", "tid-001", BigDecimal.valueOf(10000), PaymentGatewayType.NICEPAY
+        );
+        given(nicepayGatewayInternalReceiver.confirmPayment(any()))
+                .willThrow(PaymentGatewayApiException.of("3011", "재시도 불가 에러"));
+
+        // when & then
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PaymentGatewayNonRetryableException.class);
     }
 }
