@@ -64,6 +64,31 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 4. `OutboxImmediateEventHandler` (AFTER_COMMIT, @Async) calls Toss API and marks DONE/FAILED
 5. **폴백**: `OutboxWorker` (5s fixedDelay)가 즉시 처리 누락된 PENDING 레코드 재처리
 
+---
+
+**Payment Gateway — NicePay:**
+- Base URL: `https://sandbox-api.nicepay.co.kr` (config key `payment.gateway.nicepay.base-url`)
+- SDK/Client: `HttpNicepayOperator` implements `NicepayOperator` port
+  - Implementation: `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/api/HttpNicepayOperator.java`
+  - HTTP client: Spring `WebClient` via `HttpOperatorImpl` (same as Toss)
+- Auth: HTTP Basic Auth with Base64-encoded `${NICEPAY_SECRET_KEY}:` — config key `payment.gateway.nicepay.secret-key`
+
+**NicePay API Endpoints:**
+
+| Operation | Method | Path | Notes |
+|-----------|--------|------|-------|
+| Confirm payment | POST | `{base-url}/v1/payments/{tid}` | tid = paymentKey (멱등성 키 역할) |
+| Cancel payment | POST | `{base-url}/v1/payments/{tid}/cancel` | |
+| Get payment by tid | GET | `{base-url}/v1/payments/{tid}` | |
+| Get payment by orderId | GET | `{base-url}/v1/payments/find/{orderId}` | |
+
+**NicePay 특수 에러 처리:**
+- `2201` (중복 승인): `handleDuplicateApprovalCompensation` — tid로 PG 재조회 → status==paid AND 금액 일치 검증 → SUCCESS
+- Retryable: `2159`, `A246`, `A299`
+- Non-retryable: `3011`~`3014`, `2152`, `2156`
+
+---
+
 **Benchmark mode** (`benchmark` profile, `BenchmarkConfig`):
 - `FakeTossHttpOperator` replaces `HttpOperatorImpl` as `@Primary` `HttpOperator` bean
 - Location: `src/main/java/com/hyoguoo/paymentplatform/mock/FakeTossHttpOperator.java`
@@ -92,6 +117,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - `order_id` VARCHAR NOT NULL
 - `payment_key` VARCHAR (nullable until confirm)
 - `status` ENUM(`READY`, `IN_PROGRESS`, `RETRYING`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`, `QUARANTINED`) NOT NULL
+- `gateway_type` VARCHAR(20) (TOSS/NICEPAY, nullable for legacy records — Flyway V1 migration)
 - `executed_at`, `approved_at`, `last_status_changed_at` DATETIME
 - `retry_count` INT
 - `status_reason` VARCHAR
@@ -194,12 +220,13 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 - None (no Toss webhook endpoints registered)
 
 **Outgoing:**
-- Toss Payments API calls only (confirm, cancel, status query)
+- Toss Payments / NicePay API calls (confirm, cancel, status query)
 
 ## Environment Configuration
 
 **Required env vars:**
 - `TOSS_SECRET_KEY` — Toss Payments secret key
+- `NICEPAY_SECRET_KEY` — NicePay secret key
 - `DB_USERNAME` — MySQL username (default `payment`)
 - `DB_PASSWORD` — MySQL password (default `payment123`)
 - `GRAFANA_USER` / `GRAFANA_PASSWORD` — Grafana admin credentials
@@ -209,4 +236,4 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 
 ---
 
-*Integration audit: 2026-04-05 (updated 2026-04-05)*
+*Integration audit: 2026-04-14*

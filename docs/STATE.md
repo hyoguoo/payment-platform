@@ -3,22 +3,9 @@
 > 최종 수정: 2026-04-14
 
 ## 활성 작업
-- **주제**: NICEPAY-PG-STRATEGY
-- **이슈**: #67
-- **브랜치**: #67
-- **설계 문서**: docs/topics/NICEPAY-PG-STRATEGY.md
-- **현재 단계**: review
-- **활성 태스크**: 없음 (T17 완료, 전체 태스크 완료)
-
-## 단계 진행
-- [x] discuss
-- [x] plan
-- [x] plan-review
-- [x] execute
-- [ ] review
-- [ ] verify
+없음
 
 ## 최근 완료
-- **주제**: PAYMENT-DOUBLE-FAULT-RECOVERY
-- **완료일**: 2026-04-10
-- **아카이브**: docs/archive/payment-double-fault-recovery/
+- **주제**: NICEPAY-PG-STRATEGY
+- **완료일**: 2026-04-14
+- **아카이브**: docs/archive/nicepay-pg-strategy/
