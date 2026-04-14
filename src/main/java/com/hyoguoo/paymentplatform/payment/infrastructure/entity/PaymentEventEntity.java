@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -52,6 +53,10 @@ public class PaymentEventEntity extends BaseEntity {
     private String paymentKey;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "gateway_type", nullable = false)
+    private PaymentGatewayType gatewayType;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private PaymentEventStatus status;
 
@@ -78,6 +83,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(paymentEvent.getOrderName())
                 .orderId(paymentEvent.getOrderId())
                 .paymentKey(paymentEvent.getPaymentKey())
+                .gatewayType(paymentEvent.getGatewayType())
                 .status(paymentEvent.getStatus())
                 .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
@@ -95,6 +101,7 @@ public class PaymentEventEntity extends BaseEntity {
                 .orderName(orderName)
                 .orderId(orderId)
                 .paymentKey(paymentKey)
+                .gatewayType(gatewayType)
                 .status(status)
                 .executedAt(executedAt)
                 .approvedAt(approvedAt)

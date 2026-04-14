@@ -371,6 +371,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `PaymentEventEntity.from()` / `toDomain()` 양방향 변환에 `gatewayType` 추가
 - **완료 조건**: 앱 기동 시 컬럼 생성 확인(docker 프로파일). 기존 데이터 default 'TOSS' 처리. T3 테스트 통과.
 - **의존**: T3
+- **완료 결과**: `PaymentEventEntity`에 `@Enumerated(EnumType.STRING) @Column(name = "gateway_type", nullable = false) PaymentGatewayType gatewayType` 필드 추가. `from()` / `toDomain()` 양방향 변환에 `gatewayType` 매핑 추가. 참고용 DDL 스크립트 `docs/migration/V1__add_gateway_type_to_payment_event.sql` 생성 (ddl-auto: update 방식이므로 Entity 어노테이션만으로 개발환경 처리). 테스트 349개 전체 통과.
 
 ---
 
