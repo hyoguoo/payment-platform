@@ -418,7 +418,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T16. Checkout UI — `checkout-nicepay.html` 신규 생성 — D2
+### [x] T16. Checkout UI — `checkout-nicepay.html` 신규 생성 — D2
 
 - **목적**: NicePay JS SDK(`AUTHNICE.requestPay`)를 사용하는 체크아웃 페이지를 만든다. returnUrl POST 응답에서 tid, orderId, amount를 파싱하여 기존 confirm API를 호출한다. In-scope 7번.
 - **tdd**: false
@@ -433,6 +433,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `src/main/resources/static/index.html` — NicePay 결제 링크 추가
 - **완료 조건**: 브라우저에서 NicePay 체크아웃 페이지 열림 확인 (정적 파일 제공).
 - **의존**: T14, T15
+- **완료 결과**: `checkout-nicepay.html` 신규 생성 (NicePay JS SDK `AUTHNICE.requestPay()` 호출, returnUrl = `/payment/nicepay-return`). `NicepayReturnController` 신규 생성 — form POST 수신 후 `tid→paymentKey`, `orderId`, `amount`, `gatewayType=NICEPAY`를 쿼리 파라미터로 `success.html`로 리다이렉트 (D1/D2 결정 반영). `success.html` — `gatewayType` URL 파라미터를 읽어 confirm API body에 포함 (기본값 `TOSS` 유지로 기존 Toss 흐름 호환). `index.html` — NicePay 결제 링크 추가. 테스트 353개 전체 통과.
 
 ---
 

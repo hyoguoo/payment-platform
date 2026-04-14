@@ -8,7 +8,7 @@
 - **브랜치**: #67
 - **설계 문서**: docs/topics/NICEPAY-PG-STRATEGY.md
 - **현재 단계**: execute
-- **활성 태스크**: T16
+- **활성 태스크**: T17
 
 ## 단계 진행
 - [x] discuss

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <script src="/theme.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>결제하기 (NicePay)</title>
+    <script src="https://pay.nicepay.co.kr/v1/js/"></script>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="box_section" style="padding: 40px 30px 50px; text-align: left;">
+        <h1 class="page-title">결제하기</h1>
+
+        <!-- 결제수단 -->
+        <div class="form-group">
+          <h3 class="section-label">결제수단</h3>
+          <div class="radio-group">
+            <label><input type="radio" name="paymentMethod" value="card" checked /> 카드</label>
+            <label><input type="radio" name="paymentMethod" value="bank" /> 가상계좌</label>
+          </div>
+        </div>
+
+        <!-- 구매자 정보 -->
+        <div class="form-group">
+          <h3 class="section-label">구매자 정보</h3>
+          <div class="form-field">
+            <label>이름 (선택): <input type="text" id="buyerName" placeholder="홍길동" /></label>
+          </div>
+          <div class="form-field">
+            <label>이메일 (선택): <input type="email" id="buyerEmail" placeholder="example@email.com" /></label>
+          </div>
+        </div>
+
+        <!-- 주문 요약 -->
+        <div class="form-group">
+          <h3 class="section-label">주문 요약</h3>
+          <div class="p-grid typography--p">
+            <div class="p-grid-col text--left"><b>주문금액</b></div>
+            <div class="p-grid-col text--right">210,000원</div>
+          </div>
+        </div>
+
+        <button class="button" style="margin-top: 8px; width: 100%;" onclick="requestPayment()">결제하기</button>
+      </div>
+    </div>
+
+    <script>
+      // TODO: 실제 배포 시 서버 엔드포인트(/api/v1/payments/client-key)에서 동적으로 주입
+      const CLIENT_KEY = "S2_test_NiceApiKey";
+
+      async function requestPayment() {
+        // 1. 서버에서 orderId, totalAmount 가져오기
+        const checkoutResponse = await fetch("/api/v1/payments/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // TODO: 벤치마크 목적의 고정값 — 실제 사용 시 사용자 입력 또는 세션에서 주입
+          body: JSON.stringify({
+            userId: 1,
+            orderedProductList: [
+              { productId: 1, quantity: 3 },
+              { productId: 2, quantity: 2 },
+            ],
+          }),
+        });
+
+        if (!checkoutResponse.ok) {
+          alert("주문 생성에 실패했습니다.");
+          return;
+        }
+
+        const checkoutJson = await checkoutResponse.json();
+        const orderId = checkoutJson.data.orderId;
+        const amount = checkoutJson.data.totalAmount;
+
+        const selectedMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+        const payMethod = selectedMethod === "card" ? "card" : "vbank";
+
+        // 2. NicePay 결제창 호출
+        AUTHNICE.requestPay({
+          clientId: CLIENT_KEY,
+          method: payMethod,
+          orderId: orderId,
+          amount: amount,
+          goodsName: "샘플 상품 외 1건",
+          buyerName: document.getElementById("buyerName").value || undefined,
+          buyerEmail: document.getElementById("buyerEmail").value || undefined,
+          returnUrl: `${window.location.origin}/payment/nicepay-return`,
+          fnError: function (result) {
+            alert("결제 오류: " + (result.msg || "알 수 없는 오류"));
+          },
+        });
+      }
+    </script>
+  </body>
+</html>

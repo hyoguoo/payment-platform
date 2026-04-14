@@ -42,13 +42,14 @@
       const paymentKey = urlParams.get("paymentKey");
       const orderId = urlParams.get("orderId");
       const amount = urlParams.get("amount");
+      const gatewayType = urlParams.get("gatewayType") || "TOSS";
 
       async function confirmPayment() {
         const response = await fetch("/api/v1/payments/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // TODO: 벤치마크 목적의 고정값 — 실제 사용 시 세션/쿠키에서 userId 주입
-          body: JSON.stringify({ userId: 1, orderId, amount, paymentKey }),
+          body: JSON.stringify({ userId: 1, orderId, amount, paymentKey, gatewayType }),
         });
 
         const json = await response.json();
