@@ -25,13 +25,13 @@ public class InternalPaymentGatewayAdapter implements PaymentGatewayPort {
     @Override
     public PaymentConfirmResult confirm(PaymentConfirmRequest request)
             throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        PaymentGatewayStrategy strategy = factory.getStrategy(request.gatewayType());
         return strategy.confirm(request);
     }
 
     @Override
     public PaymentCancelResult cancel(PaymentCancelRequest request) {
-        PaymentGatewayStrategy strategy = factory.getStrategy(properties.getType());
+        PaymentGatewayStrategy strategy = factory.getStrategy(request.gatewayType());
         return strategy.cancel(request);
     }
 

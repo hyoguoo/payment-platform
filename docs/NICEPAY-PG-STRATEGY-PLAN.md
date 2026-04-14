@@ -375,7 +375,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T14. `InternalPaymentGatewayAdapter` — 결제건별 전략 선택 전환 — D5/D6
+### [x] T14. `InternalPaymentGatewayAdapter` — 결제건별 전략 선택 전환 — D5/D6
 
 <!-- architect: 의존에 T12가 있지만, T14는 어댑터의 라우팅 로직 변경이므로 NicepayPaymentGatewayStrategy의 Factory 등록 테스트(T12)와 직접적 의존은 없다. T5(포트 시그니처 변경) + T9(NicepayPaymentGatewayStrategy 기본 구현 존재)면 충분하다. T11/T12 완료를 기다릴 필요가 없다. -->
 - **목적**: `confirm()`, `cancel()` 메서드에서 `properties.getType()` 대신 `request.gatewayType()`으로 전략을 선택한다. D5 결정: checkout 기본값은 `PaymentGatewayProperties.type` 유지, 결제건 실행 이후에는 request의 `gatewayType` 우선. In-scope 3번/9번.
@@ -394,6 +394,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `getStatusByOrderId_NicepayGatewayType_CallsNicepayStrategy()`
 - **완료 조건**: 위 테스트 통과 + `./gradlew test` 전체 통과.
 - **의존**: T5, T9 (confirm/cancel 라우팅 변경에 NicePay 전략 기본 구현이 필요)
+- **완료 결과**: `InternalPaymentGatewayAdapter.confirm()`, `cancel()`에서 `factory.getStrategy(properties.getType())` 대신 `factory.getStrategy(request.gatewayType())` 호출로 변경. `InternalPaymentGatewayAdapterTest` 신규 생성 (3개 테스트). 테스트 352개 전체 통과.
 
 ---
 
