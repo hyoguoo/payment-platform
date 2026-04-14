@@ -437,7 +437,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
 
 ---
 
-### T17. 회귀 검증 — Toss 기존 흐름 전체 통과 확인
+### [x] T17. 회귀 검증 — Toss 기존 흐름 전체 통과 확인
 
 - **목적**: D4(예외 rename), D5(gatewayType 추가), D6(포트 시그니처 변경)으로 인한 기존 Toss 흐름 회귀를 최종 확인한다. In-scope 1~9번 전체 통합 검증.
 - **tdd**: false
@@ -448,6 +448,7 @@ layer 의존 순서: domain → application → infrastructure → presentation/
   - `OutboxProcessingServiceTest`, `TossPaymentGatewayStrategyTest`, `PaymentGatewayFactoryTest` 모두 GREEN
   - AC 3번 (`PaymentGatewayType.TOSS` 흐름 동일), AC 4번 (포트 throws 절 벤더 종속 예외 없음), AC 5번 (enum 위치), AC 6번 (DB 컬럼) 체크리스트 확인
 - **의존**: T1~T16 전체
+- **완료 결과**: `./gradlew test --rerun-tasks` 353개 전체 통과. `OutboxProcessingService 테스트` 20개, `TossPaymentGatewayStrategyTest` 2개, `PaymentGatewayFactoryTest` 4개 모두 GREEN. AC 3(`PaymentGatewayPort`/`PaymentGatewayStrategy`에 Toss 종속 참조 없음), AC 4(포트 인터페이스에 `PaymentToss*Exception` 참조 없음), AC 5(`PaymentGatewayType.java` → `payment/domain/enums/`), AC 6(`PaymentEventEntity.gatewayType` 필드 존재) 전부 확인.
 
 ---
 
