@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -26,6 +27,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
@@ -39,6 +41,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 @DisplayName("OutboxProcessingService 테스트")
@@ -512,6 +515,35 @@ class OutboxProcessingServiceTest {
                 .executePaymentSuccessCompletionWithOutbox(any(), any(), any());
     }
 
+    // ─── ATTEMPT_CONFIRM gatewayType 전파 ────────────────────────────────
+
+    @Test
+    @DisplayName("handleAttemptConfirm - NICEPAY gatewayType이 PaymentConfirmCommand에 전파된다")
+    void handleAttemptConfirm_PropagatesGatewayType_ToConfirmCommand() throws Exception {
+        // given: PG_NOT_FOUND(NonRetryable) → ATTEMPT_CONFIRM, paymentEvent의 gatewayType=NICEPAY
+        PaymentOutbox inFlightOutbox = createInFlightOutbox(ORDER_ID, 0);
+        PaymentEvent nicepayEvent = createPaymentEventWithGatewayType(ORDER_ID, PaymentGatewayType.NICEPAY);
+        PaymentGatewayNonRetryableException notFound =
+                PaymentGatewayNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        PaymentGatewayInfo successInfo = createGatewayInfo(FIXED_NOW);
+
+        given(mockPaymentOutboxUseCase.claimToInFlight(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(nicepayEvent);
+        given(mockPaymentCommandUseCase.getPaymentStatusByOrderId(eq(ORDER_ID), any())).willThrow(notFound);
+        given(mockPaymentCommandUseCase.confirmPaymentWithGateway(any(PaymentConfirmCommand.class)))
+                .willReturn(successInfo);
+
+        // when
+        outboxProcessingService.process(ORDER_ID);
+
+        // then: confirmPaymentWithGateway에 전달된 command의 gatewayType이 NICEPAY여야 한다
+        ArgumentCaptor<PaymentConfirmCommand> commandCaptor =
+                ArgumentCaptor.forClass(PaymentConfirmCommand.class);
+        then(mockPaymentCommandUseCase).should(times(1))
+                .confirmPaymentWithGateway(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().getGatewayType()).isEqualTo(PaymentGatewayType.NICEPAY);
+    }
+
     // ─── 헬퍼 메서드 ──────────────────────────────────────────────────────
 
     private PaymentOutbox createInFlightOutbox(String orderId, int retryCount) {
@@ -534,6 +566,18 @@ class OutboxProcessingServiceTest {
                 .orderId(orderId)
                 .paymentKey("payment-key-123")
                 .status(status)
+                .paymentOrderList(Collections.emptyList())
+                .allArgsBuild();
+    }
+
+    private PaymentEvent createPaymentEventWithGatewayType(String orderId, PaymentGatewayType gatewayType) {
+        return PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .buyerId(1L)
+                .orderId(orderId)
+                .paymentKey("payment-key-123")
+                .status(PaymentEventStatus.IN_PROGRESS)
+                .gatewayType(gatewayType)
                 .paymentOrderList(Collections.emptyList())
                 .allArgsBuild();
     }
