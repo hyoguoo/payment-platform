@@ -21,7 +21,7 @@
 | Phase 3 | 운영 가시성 및 안정성       | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics) |
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
 | Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                       |
-|   ETC   | 설계 유연성             | [전략 패턴 기반 PG 독립성 확보](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                        |
+|   ETC   | 설계 유연성             | [전략 패턴 기반 멀티 PG 연동](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                         |
 |   ETC   | AI 기반 개발 워크플로우     | [서브에이전트 기반 6단계 워크플로우](https://github.com/hyoguoo/payment-platform/wiki/ai-workflow)                                                                                                                                                       |
 
 <br>
@@ -151,10 +151,11 @@ sequenceDiagram
     Note over Cache: ✅ 중복 생성 없음
 ```
 
-### [전략 패턴을 통한 PG 독립성 확보 및 확장 가능한 구조](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)
+### [전략 패턴 기반 멀티 PG 연동](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)
 
-- Application 계층은 특정 PG 구현체에 의존하지 않아 PG 독립성을 확보
-- 전략 패턴을 통해 PG사 구현체를 추상화하여 새로운 PG 추가 시 최소한의 변경으로 확장 가능
+- Application 계층은 `PaymentGatewayPort` 인터페이스에만 의존하여 PG 독립성을 확보
+- 전략 패턴으로 Toss/NicePay 두 PG사를 동시 지원하며, 결제건마다 `gatewayType`으로 올바른 PG를 라우팅
+- NicePay의 멱등성 키 부재를 중복 승인 에러(2201) 감지 + 조회 API 보상 패턴으로 해결
 - 포스팅: [전략 패턴을 통한 결제 게이트웨이 추상화 및 확장성 확보](https://hyoguoo.github.io/blog/payment-gateway-strategy-pattern)
 
 ```mermaid
@@ -172,12 +173,13 @@ graph TB
 
         subgraph "Strategy Implementations"
             Toss[Toss 전략]
-            Future[기타 PG 전략<br/>... 확장 가능]
+            Nicepay[NicePay 전략]
         end
     end
 
     subgraph "External Systems"
         TossAPI[Toss Payments API]
+        NicepayAPI[NicePay API]
     end
 
     Service -->|사용| UseCase
@@ -186,14 +188,15 @@ graph TB
     Adapter -->|위임| Factory
     Factory -->|선택| Strategy
     Strategy -.->|구현| Toss
-    Strategy -.->|확장 가능| Future
+    Strategy -.->|구현| Nicepay
     Toss -->|호출| TossAPI
+    Nicepay -->|호출| NicepayAPI
     style Port fill: #e1f5ff, color: #000
     style Strategy fill: #e1f5ff, color: #000
     style Adapter fill: #fff4e1, color: #000
     style Factory fill: #fff4e1, color: #000
     style Toss fill: #e8f5e9, color: #000
-    style Future fill: #f5f5f5, stroke-dasharray: 5 5, color: #000
+    style Nicepay fill: #e8f5e9, color: #000
 ```
 
 ### [결제 흐름 추적 및 핵심 지표 모니터링 시스템 구현](https://github.com/hyoguoo/payment-platform/wiki/metrics)
@@ -287,7 +290,7 @@ sequenceDiagram
 cp .env.secret.example .env.secret # 루트 디렉토리
 cd docker/compose
 cp .env.secret.example .env.secret # docker/compose 디렉토리
-# TOSS_SECRET_KEY 입력
+# TOSS_SECRET_KEY, NICEPAY_SECRET_KEY 입력
 ```
 
 ### 실행 방법
@@ -300,11 +303,12 @@ cp .env.secret.example .env.secret # docker/compose 디렉토리
 
 실행 후 http://localhost:8080 에서 전체 페이지를 탐색할 수 있습니다.
 
-| URL                                          | 설명                                     |
-|:---------------------------------------------|:---------------------------------------|
-| http://localhost:8080                        | 홈 — 결제 흐름 · 어드민 · 모니터링 링크 모음           |
-| http://localhost:8080/payment/checkout.html  | 결제하기 — 토스페이먼츠 결제창 호출                   |
-| http://localhost:8080/admin/payments/events  | 결제 이벤트 목록 조회 / 검색                      |
-| http://localhost:8080/admin/payments/history | 결제 히스토리 — 상태 변경 이력 조회                  |
-| http://localhost:5601                        | Kibana — 로그 시각화                        |
-| http://localhost:3000                        | Grafana — 메트릭 대시보드 (admin / admin123!) |
+| URL                                                 | 설명                                     |
+|:----------------------------------------------------|:---------------------------------------|
+| http://localhost:8080                               | 홈 — 결제 흐름 · 어드민 · 모니터링 링크 모음           |
+| http://localhost:8080/payment/checkout.html         | 결제하기 — 토스페이먼츠 결제창 호출                   |
+| http://localhost:8080/payment/checkout-nicepay.html | 결제하기 — 나이스페이먼츠 결제창 호출                  |
+| http://localhost:8080/admin/payments/events         | 결제 이벤트 목록 조회 / 검색                      |
+| http://localhost:8080/admin/payments/history        | 결제 히스토리 — 상태 변경 이력 조회                  |
+| http://localhost:5601                               | Kibana — 로그 시각화                        |
+| http://localhost:3000                               | Grafana — 메트릭 대시보드 (admin / admin123!) |

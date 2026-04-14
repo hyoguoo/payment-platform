@@ -82,6 +82,7 @@
             <th>ID</th>
             <th>Order ID</th>
             <th>Order Name</th>
+            <th>PG</th>
             <th>Amount</th>
             <th>Status</th>
             <th>Retry</th>
@@ -95,6 +96,11 @@
             <td><code>#<span th:text="${event.id}">-</span></code></td>
             <td th:text="${event.orderId}">-</td>
             <td th:text="${event.orderName}">-</td>
+            <td>
+              <span class="badge"
+                    th:classappend="${event.gatewayType != null and event.gatewayType.name() == 'TOSS'} ? 'bg-primary' : 'bg-success'"
+                    th:text="${event.gatewayType != null ? event.gatewayType.name() : '-'}">-</span>
+            </td>
             <td th:text="${'₩' + #numbers.formatDecimal(event.totalAmount, 0, 'COMMA', 0, 'POINT')}">₩0</td>
             <td>
               <span class="status-badge"
@@ -111,7 +117,7 @@
             </td>
           </tr>
           <tr th:if="${events == null or events.content == null or #lists.isEmpty(events.content)}">
-            <td colspan="8" class="text-center text-secondary-custom py-4">
+            <td colspan="9" class="text-center text-secondary-custom py-4">
               No payment events found
             </td>
           </tr>

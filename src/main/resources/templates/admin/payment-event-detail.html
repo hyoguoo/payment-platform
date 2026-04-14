@@ -100,6 +100,14 @@
             <div class="info-label">Order Name</div>
             <div class="info-value" th:text="${event.orderName}">-</div>
           </div>
+          <div class="info-row">
+            <div class="info-label">PG</div>
+            <div class="info-value">
+              <span class="badge"
+                    th:classappend="${event.gatewayType != null and event.gatewayType.name() == 'TOSS'} ? 'bg-primary' : 'bg-success'"
+                    th:text="${event.gatewayType != null ? event.gatewayType.name() : '-'}">-</span>
+            </div>
+          </div>
         </div>
         <div class="col-md-6">
           <div class="info-row">

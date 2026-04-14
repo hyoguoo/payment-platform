@@ -12,12 +12,12 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureMapper;
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
-import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -197,7 +197,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
     @Override
     public PaymentStatusResult getStatusByOrderId(String orderId)
-            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         try {
             PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
                     paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
@@ -206,19 +206,19 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
         } catch (WebClientResponseException e) {
             return handleGetStatusResponseException(e);
         } catch (WebClientRequestException e) {
-            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
     }
 
     private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
-            throws PaymentTossNonRetryableException, PaymentTossRetryableException {
+            throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
         if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-            throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
         }
         if (e.getStatusCode().is5xxServerError()) {
-            throw PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
         }
-        throw PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
     }
 
     private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {

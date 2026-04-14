@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.gateway;
 
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.UnsupportedPaymentGatewayException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;

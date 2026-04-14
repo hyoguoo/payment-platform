@@ -85,7 +85,7 @@ class PaymentCheckoutServiceImplTest {
         when(mockOrderedProductUseCase.getProductInfoList(checkoutCommand.getOrderedProductList()))
                 .thenReturn(List.of(mockProductInfo));
         when(mockPaymentCreateUseCase.createNewPaymentEvent(
-                any(UserInfo.class), anyList(), anyList()))
+                any(UserInfo.class), anyList(), anyList(), any()))
                 .thenReturn(mockPaymentEvent);
 
         // when
@@ -100,7 +100,7 @@ class PaymentCheckoutServiceImplTest {
         verify(mockOrderedProductUseCase, times(1))
                 .getProductInfoList(checkoutCommand.getOrderedProductList());
         verify(mockPaymentCreateUseCase, times(1))
-                .createNewPaymentEvent(any(UserInfo.class), anyList(), anyList());
+                .createNewPaymentEvent(any(UserInfo.class), anyList(), anyList(), any());
     }
 
     @Test
@@ -128,7 +128,7 @@ class PaymentCheckoutServiceImplTest {
         when(mockOrderedUserUseCase.getUserInfoById(1L)).thenReturn(mockUserInfo);
         when(mockOrderedProductUseCase.getProductInfoList(products))
                 .thenReturn(List.of(mockProductInfo));
-        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList()))
+        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList(), any()))
                 .thenReturn(mockPaymentEvent);
 
         // when
@@ -137,7 +137,7 @@ class PaymentCheckoutServiceImplTest {
         // then
         assertThat(result.isDuplicate()).isFalse();
         verify(mockPaymentCreateUseCase, times(1))
-                .createNewPaymentEvent(any(), anyList(), anyList());
+                .createNewPaymentEvent(any(), anyList(), anyList(), any());
     }
 
     @Test
@@ -165,7 +165,7 @@ class PaymentCheckoutServiceImplTest {
         when(mockOrderedUserUseCase.getUserInfoById(1L)).thenReturn(mockUserInfo);
         when(mockOrderedProductUseCase.getProductInfoList(products))
                 .thenReturn(List.of(mockProductInfo));
-        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList()))
+        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList(), any()))
                 .thenReturn(mockPaymentEvent);
 
         // when
@@ -175,7 +175,7 @@ class PaymentCheckoutServiceImplTest {
         // then
         assertThat(duplicateResult.isDuplicate()).isTrue();
         verify(mockPaymentCreateUseCase, times(1))
-                .createNewPaymentEvent(any(), anyList(), anyList());
+                .createNewPaymentEvent(any(), anyList(), anyList(), any());
     }
 
     @Test
@@ -203,7 +203,7 @@ class PaymentCheckoutServiceImplTest {
         when(mockOrderedUserUseCase.getUserInfoById(1L)).thenReturn(mockUserInfo);
         when(mockOrderedProductUseCase.getProductInfoList(products))
                 .thenReturn(List.of(mockProductInfo));
-        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList()))
+        when(mockPaymentCreateUseCase.createNewPaymentEvent(any(), anyList(), anyList(), any()))
                 .thenReturn(mockPaymentEvent);
         when(mockIdempotencyKeyHasher.hash(anyLong(), anyList())).thenReturn("derived-hash");
 

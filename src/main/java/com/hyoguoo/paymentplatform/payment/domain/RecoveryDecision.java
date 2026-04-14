@@ -4,8 +4,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.RecoveryReason;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import java.util.Set;
 
 /**
@@ -74,6 +74,11 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
         }
 
         if (PG_IN_PROGRESS_STATUSES.contains(pgStatus)) {
+            if (retryCount == 0) {
+                // 첫 시도에서 PG가 IN_PROGRESS → 서버 승인 API를 아직 호출하지 않은 상태.
+                // confirm을 시도해야 PG가 DONE으로 전이한다.
+                return new RecoveryDecision(Type.ATTEMPT_CONFIRM, null);
+            }
             return retryCount < maxRetries
                     ? new RecoveryDecision(Type.RETRY_LATER, RecoveryReason.PG_IN_PROGRESS)
                     : new RecoveryDecision(Type.QUARANTINE, RecoveryReason.PG_IN_PROGRESS);
@@ -90,9 +95,9 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
      * 호출 계약: exception은 반드시 아래 세 타입 중 하나여야 한다.
      * OutboxProcessingService의 catch 블록이 이 계약을 강제한다.
      * <ul>
-     *   <li>{@link PaymentTossNonRetryableException} — PG에 결제 기록이 없음(getStatus 실패).
+     *   <li>{@link PaymentGatewayNonRetryableException} — PG에 결제 기록이 없음(getStatus 실패).
      *       retryCount와 무관하게 confirm을 시도하는 것이 정당함(PG 미기록 상태이므로 새 결제 시도 안전).</li>
-     *   <li>{@link PaymentTossRetryableException} — PG 일시 오류, 재시도 여지 있음.</li>
+     *   <li>{@link PaymentGatewayRetryableException} — PG 일시 오류, 재시도 여지 있음.</li>
      *   <li>{@link PaymentGatewayStatusUnmappedException} — PG 응답 상태가 매핑 불가.</li>
      * </ul>
      * </p>
@@ -108,7 +113,7 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
             int retryCount,
             int maxRetries
     ) {
-        if (exception instanceof PaymentTossNonRetryableException) {
+        if (exception instanceof PaymentGatewayNonRetryableException) {
             // PG에 결제 기록 없음 → retryCount 무관 ATTEMPT_CONFIRM
             // (NonRetryable = PG 미기록 상태, 재시도해도 중복 결제 아님)
             return new RecoveryDecision(Type.ATTEMPT_CONFIRM, null);
@@ -129,7 +134,7 @@ public record RecoveryDecision(Type type, RecoveryReason reason) {
         if (exception instanceof PaymentGatewayStatusUnmappedException) {
             return RecoveryReason.UNMAPPED;
         }
-        if (exception instanceof PaymentTossRetryableException) {
+        if (exception instanceof PaymentGatewayRetryableException) {
             return RecoveryReason.GATEWAY_STATUS_UNKNOWN;
         }
         return RecoveryReason.GATEWAY_STATUS_UNKNOWN;

@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.domain;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -28,6 +29,7 @@ public class PaymentEvent {
     private String orderName;
     private String orderId;
     private String paymentKey;
+    private PaymentGatewayType gatewayType;
     private PaymentEventStatus status;
     private LocalDateTime executedAt;
     private LocalDateTime approvedAt;
@@ -41,13 +43,15 @@ public class PaymentEvent {
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
             String orderId,
-            LocalDateTime lastStatusChangedAt
+            LocalDateTime lastStatusChangedAt,
+            PaymentGatewayType gatewayType
     ) {
         return PaymentEvent.allArgsBuilder()
                 .buyerId(userInfo.getId())
                 .sellerId(productInfoList.getFirst().getSellerId())
                 .orderName(generateOrderName(productInfoList))
                 .orderId(orderId)
+                .gatewayType(gatewayType)
                 .status(PaymentEventStatus.READY)
                 .retryCount(0)
                 .paymentOrderList(new ArrayList<>())

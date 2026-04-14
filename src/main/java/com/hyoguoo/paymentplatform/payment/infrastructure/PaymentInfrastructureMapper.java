@@ -7,7 +7,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentGatewayStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
@@ -28,7 +28,7 @@ public class PaymentInfrastructureMapper {
         PaymentDetails paymentDetails = tossPaymentResponse.getPaymentDetails() != null
                 ? PaymentDetails.builder()
                 .totalAmount(tossPaymentResponse.getPaymentDetails().getTotalAmount())
-                .status(TossPaymentStatus.of(
+                .status(PaymentGatewayStatus.of(
                         tossPaymentResponse.getPaymentDetails().getStatus().getValue())
                 )
                 .approvedAt(tossPaymentResponse.getPaymentDetails().getApprovedAt())

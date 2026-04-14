@@ -8,8 +8,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.RecoveryReason;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayStatusUnmappedException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -157,6 +157,32 @@ class RecoveryDecisionTest {
     }
 
     // -------------------------------------------------------------------------
+    // from() — PG IN_PROGRESS + 첫 시도(retryCount=0) → ATTEMPT_CONFIRM
+    // -------------------------------------------------------------------------
+
+    @DisplayName("PG가 IN_PROGRESS이고 첫 시도(retryCount=0)이면 ATTEMPT_CONFIRM을 반환한다")
+    @Test
+    void from_PgInProgress_FirstAttempt_AttemptConfirm() {
+        PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+        PaymentStatusResult result = buildResult(PaymentStatus.IN_PROGRESS);
+
+        RecoveryDecision decision = RecoveryDecision.from(event, result, 0, MAX_RETRIES);
+
+        assertThat(decision.type()).isEqualTo(RecoveryDecision.Type.ATTEMPT_CONFIRM);
+    }
+
+    @DisplayName("PG가 WAITING_FOR_DEPOSIT이고 첫 시도(retryCount=0)이면 ATTEMPT_CONFIRM을 반환한다")
+    @Test
+    void from_PgWaitingForDeposit_FirstAttempt_AttemptConfirm() {
+        PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+        PaymentStatusResult result = buildResult(PaymentStatus.WAITING_FOR_DEPOSIT);
+
+        RecoveryDecision decision = RecoveryDecision.from(event, result, 0, MAX_RETRIES);
+
+        assertThat(decision.type()).isEqualTo(RecoveryDecision.Type.ATTEMPT_CONFIRM);
+    }
+
+    // -------------------------------------------------------------------------
     // from() — PG IN_PROGRESS + 한도 미소진 → RETRY_LATER
     // -------------------------------------------------------------------------
 
@@ -196,7 +222,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_UnderLimit_RetryLater() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_UNDER, MAX_RETRIES);
 
@@ -212,7 +238,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_RetryableException_AtLimit_Quarantine() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception retryableEx = PaymentTossRetryableException.of(PaymentErrorCode.TOSS_RETRYABLE_ERROR);
+        Exception retryableEx = PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, retryableEx, RETRY_COUNT_AT_LIMIT, MAX_RETRIES);
 
@@ -260,7 +286,7 @@ class RecoveryDecisionTest {
     @Test
     void fromException_NonRetryableException_AttemptConfirm() {
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
-        Exception nonRetryableEx = PaymentTossNonRetryableException.of(PaymentErrorCode.TOSS_NON_RETRYABLE_ERROR);
+        Exception nonRetryableEx = PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
 
         RecoveryDecision decision = RecoveryDecision.fromException(event, nonRetryableEx, 0, MAX_RETRIES);
 

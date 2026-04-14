@@ -13,11 +13,12 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.TossPaymentStatus;
+import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentGatewayStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentDetails;
 import com.hyoguoo.paymentplatform.payment.domain.dto.vo.PaymentFailure;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossNonRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentTossRetryableException;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -93,17 +94,19 @@ public class PaymentCommandUseCase {
      * scheduler(OutboxProcessingService)가 PaymentGatewayPort를 직접 주입하면 layer 위반이므로
      * 이 use-case를 경유한다. 예외 변환 없이 그대로 전파한다.
      */
-    public PaymentStatusResult getPaymentStatusByOrderId(String orderId)
-            throws PaymentTossRetryableException, PaymentTossNonRetryableException {
-        return paymentGatewayPort.getStatusByOrderId(orderId);
+    public PaymentStatusResult getPaymentStatusByOrderId(String orderId, PaymentGatewayType gatewayType)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
+        return paymentGatewayPort.getStatusByOrderId(orderId, gatewayType);
     }
 
-    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand) {
+    public PaymentGatewayInfo confirmPaymentWithGateway(PaymentConfirmCommand paymentConfirmCommand)
+            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
         PaymentConfirmRequest request =
                 new PaymentConfirmRequest(
                         paymentConfirmCommand.getOrderId(),
                         paymentConfirmCommand.getPaymentKey(),
-                        paymentConfirmCommand.getAmount()
+                        paymentConfirmCommand.getAmount(),
+                        paymentConfirmCommand.getGatewayType()
                 );
 
         PaymentConfirmResult result = paymentGatewayPort.confirm(request);
@@ -115,7 +118,7 @@ public class PaymentCommandUseCase {
                 .paymentDetails(
                         PaymentDetails.builder()
                                 .totalAmount(result.amount())
-                                .status(TossPaymentStatus.DONE)
+                                .status(PaymentGatewayStatus.DONE)
                                 .approvedAt(result.approvedAt())
                                 .build()
                 )

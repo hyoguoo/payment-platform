@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventResult;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.Builder;
@@ -17,6 +18,7 @@ public class PaymentEventResponse {
     private final String paymentKey;
     private final BigDecimal totalAmount;
     private final PaymentEventStatus status;
+    private final PaymentGatewayType gatewayType;
     private final String statusReason;
     private final Long buyerId;
     private final Long sellerId;
@@ -33,6 +35,7 @@ public class PaymentEventResponse {
                 .paymentKey(result.getPaymentKey())
                 .totalAmount(result.getTotalAmount())
                 .status(result.getStatus())
+                .gatewayType(result.getGatewayType())
                 .statusReason(result.getStatusReason())
                 .buyerId(result.getBuyerId())
                 .sellerId(result.getSellerId())

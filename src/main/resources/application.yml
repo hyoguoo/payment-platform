@@ -19,6 +19,12 @@ spring:
     ansi:
       enabled: always
 
+  myapp:
+    nicepay:
+      client-key: ${NICEPAY_CLIENT_KEY:}
+      secret-key: ${NICEPAY_SECRET_KEY:}
+      api-url: ${NICEPAY_API_URL:https://sandbox-api.nicepay.co.kr}
+
 springdoc:
   packages-to-scan: com.hyoguoo.paymentplatform
   default-produces-media-type: application/json

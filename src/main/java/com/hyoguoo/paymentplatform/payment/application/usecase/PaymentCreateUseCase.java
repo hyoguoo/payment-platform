@@ -10,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,11 +30,13 @@ public class PaymentCreateUseCase {
     public PaymentEvent createNewPaymentEvent(
             UserInfo userInfo,
             List<OrderedProduct> orderedProductList,
-            List<ProductInfo> productInfoList
+            List<ProductInfo> productInfoList,
+            PaymentGatewayType gatewayType
     ) {
         PaymentEvent savedPaymentEvent = saveNewPaymentEvent(
                 userInfo,
-                productInfoList
+                productInfoList,
+                gatewayType
         );
 
         List<PaymentOrder> paymentOrderList = saveNewPaymentOrderList(
@@ -49,13 +52,15 @@ public class PaymentCreateUseCase {
 
     private PaymentEvent saveNewPaymentEvent(
             UserInfo userInfo,
-            List<ProductInfo> productInfoList
+            List<ProductInfo> productInfoList,
+            PaymentGatewayType gatewayType
     ) {
         PaymentEvent paymentEvent = PaymentEvent.create(
                 userInfo,
                 productInfoList,
                 uuidProvider.generateUUID(),
-                localDateTimeProvider.now()
+                localDateTimeProvider.now(),
+                gatewayType
         );
 
         return paymentEventRepository.saveOrUpdate(paymentEvent);

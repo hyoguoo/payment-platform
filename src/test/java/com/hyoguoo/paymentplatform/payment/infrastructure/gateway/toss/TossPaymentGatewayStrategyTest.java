@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.then;
 
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.paymentgateway.domain.enums.PaymentConfirmResultStatus;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.dto.request.TossCancelRequest;
@@ -35,7 +36,7 @@ class TossPaymentGatewayStrategyTest {
     void generateIdempotencyKey_confirm_orderId를_그대로_반환한다() {
         // given
         String orderId = "order-123";
-        PaymentConfirmRequest request = new PaymentConfirmRequest(orderId, "payment-key", BigDecimal.TEN);
+        PaymentConfirmRequest request = new PaymentConfirmRequest(orderId, "payment-key", BigDecimal.TEN, PaymentGatewayType.TOSS);
         TossPaymentResponse mockResponse = TossPaymentResponse.builder()
                 .paymentKey("payment-key")
                 .orderId(orderId)
@@ -57,7 +58,7 @@ class TossPaymentGatewayStrategyTest {
     void generateIdempotencyKey_cancel_paymentKey를_그대로_반환한다() {
         // given
         String paymentKey = "payment-key-abc";
-        PaymentCancelRequest request = new PaymentCancelRequest(paymentKey, "취소 사유", BigDecimal.TEN);
+        PaymentCancelRequest request = new PaymentCancelRequest(paymentKey, "order-123", "취소 사유", BigDecimal.TEN, PaymentGatewayType.TOSS);
         TossPaymentResponse mockResponse = TossPaymentResponse.builder()
                 .paymentKey(paymentKey)
                 .orderId("order-123")
