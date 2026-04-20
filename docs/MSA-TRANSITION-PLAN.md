@@ -32,7 +32,7 @@
 - ✅ T0-03b Spring Cloud Gateway 서비스 모듈 신설
 - ✅ T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - ✅ T0-04 W3C Trace Context + LogFmt 공통 기반
-- T0-05 Toxiproxy 장애 주입 도구 구성
+- ✅ T0-05 Toxiproxy 장애 주입 도구 구성
 - T0-Gate Phase 0 인프라 smoke 검증
 
 **Phase 1 — 결제 코어 분리** (20개)
@@ -419,9 +419,17 @@ flowchart TB
 - **domain_risk**: false
 - **depends**: [T0-01]
 - **산출물**:
-  - `docker-compose.infra.yml` toxiproxy 서비스 추가
-  - `chaos/toxiproxy-config.json` — kafka-proxy, mysql-proxy 정의
-  - `chaos/README.md`
+  - [x] `docker-compose.infra.yml` toxiproxy 서비스 추가
+  - [x] `chaos/toxiproxy-config.json` — kafka-proxy, mysql-proxy, redis-payment-proxy 정의
+  - [x] `chaos/README.md`
+
+#### 완료 결과 (2026-04-21)
+
+- `docker-compose.infra.yml` — `toxiproxy` 서비스 추가. `ghcr.io/shopify/toxiproxy:2.9.0` 고정 태그. API 포트 `8474`, proxy 호스트 포트 `29093`(kafka-proxy), `23306`(mysql-proxy), `26380`(redis-payment-proxy). `chaos/toxiproxy-config.json` 볼륨 마운트. `payment-infra-network` 합류.
+- `chaos/toxiproxy-config.json` — proxy 3개 정의. kafka-proxy(`0.0.0.0:29092` → `kafka:9092`), mysql-proxy(`0.0.0.0:23306` → `mysql:3306`), redis-payment-proxy(`0.0.0.0:26380` → `redis-payment:6379`).
+- `chaos/README.md` — proxy 구성 테이블, 기동 명령, `curl /proxies` 확인, latency toxic 예시, Phase 4 T4-01 연동 안내, ADR-29 참조.
+- kafka-proxy 호스트 포트를 `29093`으로 설정: kafka 서비스가 PLAINTEXT_HOST 리스너로 `29092`를 선점하여 충돌 방지. 기존 서비스 upstream 포트 미변경.
+- 검증: `./gradlew test` 전체 통과 (infra-only 변경, 애플리케이션 코드 영향 없음).
 
 ---
 

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "kafka-proxy",
+    "listen": "0.0.0.0:29092",
+    "upstream": "kafka:9092",
+    "enabled": true
+  },
+  {
+    "name": "mysql-proxy",
+    "listen": "0.0.0.0:23306",
+    "upstream": "mysql:3306",
+    "enabled": true
+  },
+  {
+    "name": "redis-payment-proxy",
+    "listen": "0.0.0.0:26380",
+    "upstream": "redis-payment:6379",
+    "enabled": true
+  }
+]
