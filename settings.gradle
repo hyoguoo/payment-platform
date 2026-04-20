@@ -1,5 +1,6 @@
 rootProject.name = 'payment-platform'
 include 'payment-service'
-// Phase 0: gateway (T0-03b), eureka-server (T0-03c) 이어서 추가
+include 'gateway'
+// Phase 0: eureka-server (T0-03c) 이어서 추가
 // Phase 2.a: pg-service (T2a-*)
 // Phase 3: product-service, user-service (T3-*)

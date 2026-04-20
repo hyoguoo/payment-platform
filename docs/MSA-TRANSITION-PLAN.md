@@ -29,7 +29,7 @@
 - ✅ T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
 - ✅ T0-02 Idempotency 저장소 Caffeine → Redis 이관
 - ✅ T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
-- T0-03b Spring Cloud Gateway 서비스 모듈 신설
+- ✅ T0-03b Spring Cloud Gateway 서비스 모듈 신설
 - T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - T0-04 W3C Trace Context + LogFmt 공통 기반
 - T0-05 Toxiproxy 장애 주입 도구 구성
@@ -349,6 +349,16 @@ flowchart TB
   - `gateway/build.gradle` — `spring-cloud-starter-gateway`, `spring-cloud-starter-netflix-eureka-client`, MVC 미포함
   - `gateway/src/main/java/.../gateway/GatewayApplication.java`
   - `gateway/src/main/resources/application.yml` — 모놀리스 전체 fallback route, Eureka client 설정
+
+#### 완료 결과 (2026-04-21)
+
+- `settings.gradle` — `include 'gateway'` 추가
+- `gateway/build.gradle` — Spring Cloud Gateway + Eureka Client + Actuator + Prometheus. MVC/JPA 미포함(WebFlux/Netty only). Spring Cloud BOM 2024.0.0 (Spring Boot 3.4.4 호환)
+- `gateway/src/main/java/.../gateway/GatewayApplication.java` — `@EnableDiscoveryClient` 포함
+- `gateway/src/main/resources/application.yml` — port 8080, monolith fallback route(→ 8081), Eureka client, Actuator 엔드포인트
+- `payment-service/src/main/resources/application.yml` — `server.port: 8081` 추가 (Gateway 8080 충돌 회피)
+- `gateway/src/test/.../GatewayApplicationTests.java` — `RANDOM_PORT` + `eureka.client.enabled=false`로 context load 검증
+- 검증: `:gateway:compileJava` PASS / `:gateway:test` 1 PASS / `test` 전체 373 PASS / `:gateway:bootJar` PASS
 
 ### T0-03c — Eureka Server 서비스 모듈 신설
 
