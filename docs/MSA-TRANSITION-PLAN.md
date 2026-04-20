@@ -30,7 +30,7 @@
 - ✅ T0-02 Idempotency 저장소 Caffeine → Redis 이관
 - ✅ T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
 - ✅ T0-03b Spring Cloud Gateway 서비스 모듈 신설
-- T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
+- ✅ T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - T0-04 W3C Trace Context + LogFmt 공통 기반
 - T0-05 Toxiproxy 장애 주입 도구 구성
 - T0-Gate Phase 0 인프라 smoke 검증
@@ -373,6 +373,17 @@ flowchart TB
   - `eureka-server/src/main/java/.../eurekaserver/EurekaServerApplication.java` — `@EnableEurekaServer`
   - `eureka-server/src/main/resources/application.yml` — `server.port: 8761`, `eureka.client.register-with-eureka: false`, `eureka.client.fetch-registry: false`
   - `docker-compose.infra.yml` — 기존 `springcloud/eureka` 이미지 서비스 블록을 자체 모듈 기반으로 교체(`build:` 또는 Dockerfile 참조) + 컨테이너명·포트·healthcheck 유지
+
+#### 완료 결과 (2026-04-21)
+
+- `settings.gradle` — `include 'eureka-server'` 추가 (Phase 0: 주석 제거)
+- `eureka-server/build.gradle` — `spring-cloud-starter-netflix-eureka-server` + Actuator + logstash. Spring Cloud BOM 2024.0.0 (gateway와 동일)
+- `eureka-server/src/main/java/.../eurekaserver/EurekaServerApplication.java` — `@EnableEurekaServer` + `@SpringBootApplication`
+- `eureka-server/src/main/resources/application.yml` — `server.port: 8761`, `register-with-eureka: false`, `fetch-registry: false`, Actuator health/info
+- `eureka-server/src/test/.../EurekaServerApplicationTests.java` — `RANDOM_PORT` + `register-with-eureka=false` + `fetch-registry=false`로 context load 검증 (gateway 패턴 준용; `eureka.client.enabled=false`는 서버 내장 클라이언트를 비활성화하지 않아 부적합)
+- `eureka-server/Dockerfile` — `eclipse-temurin:21-jre` 기반, HEALTHCHECK `/actuator/health`
+- `docker-compose.infra.yml` — `springcloud/eureka` 이미지 → `build: context: ./eureka-server` 전환, `SPRING_PROFILES_ACTIVE: docker` 환경변수, 주석 "잠정 → 자체 모듈"로 갱신
+- 검증: `:eureka-server:compileJava` PASS / `:eureka-server:test` 1 PASS / `test` 전체 374 PASS (payment-service 372 + gateway 1 + eureka-server 1) / `:eureka-server:bootJar` PASS / docker-compose YAML 문법 유효
 
 ---
 

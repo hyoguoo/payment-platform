@@ -108,16 +108,17 @@ services:
       retries: 5
 
   # ───────────────────────────────────────────
-  # Eureka Discovery Server (잠정 — ADR-11)
+  # Eureka Discovery Server (자체 모듈 — ADR-11)
   # ───────────────────────────────────────────
   eureka:
-    image: springcloud/eureka
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
     container_name: payment-eureka
     ports:
       - "8761:8761"
     environment:
-      eureka.client.register-with-eureka: "false"
-      eureka.client.fetch-registry: "false"
+      SPRING_PROFILES_ACTIVE: docker
     networks:
       - payment-infra-network
     healthcheck:
