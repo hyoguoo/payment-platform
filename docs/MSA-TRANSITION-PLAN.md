@@ -39,7 +39,7 @@
 
 - T1-01 결제 서비스 모듈 경계 정리 (port 선언)
 - T1-02 결제 서비스 모듈 신설 + port 계층 구성
-- T1-03 Fake 구현체 신설 (application 계층 테스트용)
+- ✅ T1-03 Fake 구현체 신설 (application 계층 테스트용)
 - T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
 - T1-05 트랜잭션 경계 + 감사 원자성
 - T1-06 AOP 축 결제 서비스 복제 이관
@@ -535,6 +535,14 @@ flowchart TB
   - `payment-service/src/test/java/.../mock/FakeMessagePublisher.java`
   - `payment-service/src/test/java/.../mock/FakeStockCachePort.java` — decrement(음수 시 false), rollback, current, set
   - `payment-service/src/test/java/.../mock/FakeStockCommitEventPublisher.java` — 발행 이력 list
+
+**완료 결과 (2026-04-21)**
+
+- `FakeMessagePublisher`: `SentMessage` record 축적, `findByTopic` / `lastMessage` / `count` / `clear` 헬퍼, `failNext()` / `setFailure(Throwable)` / `setPermanentFailure(Throwable)` 실패 시뮬레이션 지원.
+- `FakeStockCachePort`: `ConcurrentHashMap<Long, Integer>` 기반, `decrement` 음수 시 false(차감 없음), `rollback` + qty, `current`(없으면 0), `set` 덮어쓰기, `getInternalMap()` / `clear()` 헬퍼.
+- `FakeStockCommitEventPublisher`: `StockCommittedRecord` list 축적, `publishedEvents` / `lastEvent` / `countFor` / `clear` 헬퍼, `failNext()` 실패 시뮬레이션.
+- 위치: `payment-service/src/test/java/com/hyoguoo/paymentplatform/payment/mock/`
+- 전체 테스트 372/372 PASS.
 
 ---
 
