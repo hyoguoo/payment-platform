@@ -2,7 +2,7 @@
 
 **토픽**: [MSA-TRANSITION](topics/MSA-TRANSITION.md)
 **날짜**: 2026-04-18
-**라운드**: 5 (plan-round 5 Planner 수정 — Redis 캐시 차감 + IdempotencyStore Redis 이관)
+**라운드**: 5 (plan-round 5 Planner 수정 — Redis 캐시 차감 + IdempotencyStore Redis 이관 + plan-review-1 minor 8건 보강)
 
 ---
 
@@ -265,12 +265,13 @@ flowchart LR
 ### Phase-0.1 — docker-compose 기반 인프라 정의
 
 - **제목**: Kafka + Redis 공유 + payment 전용 Redis + Config Server + Discovery 컨테이너 구성
-- **목적**: ADR-10(compose 토폴로지), ADR-11(Spring Cloud 매트릭스) — Kafka 브로커, 공유 Redis(Gateway/Admin 용), **payment-service 전용 Redis**(재고 캐시 차감 + 멱등성 저장소 전용), Config Server, Eureka(잠정) 컨테이너를 단일 `docker-compose.infra.yml`에 정의. 모놀리스는 기존 `docker-compose.yml`에서 기동 유지. Toxiproxy·Kafka·Redis가 모놀리스와 동일 Docker network에 합류하도록 `networks:` 블록 명시.
+- **목적**: ADR-10(compose 토폴로지), ADR-11(Spring Cloud 매트릭스), ADR-27(로컬 DX 프로필) — Kafka 브로커, 공유 Redis(Gateway/Admin 용), **payment-service 전용 Redis**(재고 캐시 차감 + 멱등성 저장소 전용), Config Server, Eureka(잠정) 컨테이너를 단일 `docker-compose.infra.yml`에 정의. 모놀리스는 기존 `docker-compose.yml`에서 기동 유지. Toxiproxy·Kafka·Redis가 모놀리스와 동일 Docker network에 합류하도록 `networks:` 블록 명시.
   - **payment 전용 Redis 설계**: 공유 Redis와 별개 컨테이너. `appendonly yes` + `appendfsync everysec` (AOF 지속성). keyspace: `stock:{productId}` (재고 캐시 차감) / `idem:{key}` (멱등성 저장소). 이 인스턴스는 product-service가 직접 SET하는 경로(Phase-3.1c)와 payment-service warmup 경로(Phase-1.12)의 공통 진입점.
 - **tdd**: false
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — 멀티모듈 구조 재설정. 루트 프로젝트에서 향후 5개 서비스 모듈(`gateway`, `payment-service`, `pg-service`, `product-service`, `user-service`)을 포함하도록 기본 구조 준비. 각 모듈은 해당 Phase에서 `include '<module>'`을 순차적으로 추가하며, Phase-0.1 시점에는 `rootProject.name = 'payment-platform'` 확정 + 모놀리스 현행 유지.
   - `docker-compose.infra.yml` — Kafka(+Zookeeper), 공유 Redis, **payment 전용 Redis**(컨테이너명: `redis-payment`, AOF 설정 포함), Eureka 서버 컨테이너, `networks:` 블록(모놀리스 공유 네트워크 정의 포함)
   - `docker-compose.observability.yml` — Prometheus, Grafana, Tempo, Loki 컨테이너
   - 토픽 이름 상수는 각 서비스의 `domain/messaging/` 값 객체로 관리(Spring 의존 없음). `@Configuration`(NewTopic 빈)은 Phase-1.1/2.1/3.1에서 각 서비스 `infrastructure/config/KafkaTopicConfig.java`로 복제 배치.
@@ -310,6 +311,7 @@ flowchart LR
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — `include 'gateway'` 추가
   - `gateway/` 신규 모듈 디렉터리
   - `gateway/src/main/java/.../gateway/GatewayApplication.java`
   - `gateway/src/main/resources/application.yml` — 모놀리스 전체 proxy route 정의 (`lb://monolith` 또는 직접 URL)
@@ -390,6 +392,7 @@ flowchart LR
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — `include 'payment-service'` 추가
   - `payment-service/build.gradle` — spring-boot-starter-web, virtual threads 설정, spring-kafka, spring-data-redis
   - `payment-service/src/main/java/.../payment/application/port/out/MessagePublisherPort.java` — `void publish(String topic, String eventId, Object payload)`
   - `payment-service/src/main/java/.../payment/application/port/out/PgStatusPort.java` — PG 상태 조회 포트 (ADR-21 선행). Phase 1 구현체: `infrastructure/adapter/internal/LocalPgStatusAdapter.java`(모놀리스 `paymentgateway` 내부 호출 래핑) — Phase 2에서 HTTP 어댑터로 스왑.
@@ -529,6 +532,7 @@ flowchart LR
   - `PgMaskedSuccessHandlerTest#handle_Nicepay_2201_VerifiesAmountBeforeDecision` — PG `getStatus` 재조회 + 금액 일치 검증 후 분기 (금액 불일치 → QUARANTINED, 일치+DONE → no-op)
   - `PgMaskedSuccessHandlerTest#handle_Toss_AlreadyProcessed_VerifiesAmountSymmetry` — Toss 경로에서도 PG `getStatus` + 금액 일치 검증 수행 (ADR-05 수락 기준 4번 대칭 보장)
   - `PgMaskedSuccessHandlerTest#handle_WhenPgStatusCallFails_ShouldQuarantine` — PG 재조회 자체 실패 → QUARANTINED
+  - `PgMaskedSuccessHandlerTest#handle_WhenQuarantined_ShouldNotRollbackStockCache` — 가면 응답으로 QUARANTINED 전이 시 FakeStockCachePort.rollback() 호출 없음 검증 (QUARANTINED 상태 Redis DECR 상태 유지 불변)
   - `TossPaymentGatewayStrategyWiringTest#confirm_WhenAlreadyProcessedPayment_ShouldInvokePgMaskedSuccessHandler` — Toss confirm 경로가 `ALREADY_PROCESSED_PAYMENT` 수신 시 `PgMaskedSuccessHandler.handle()` 1회 호출 검증 (wiring 검증)
 - **산출물**:
   - `payment-service/src/main/java/.../payment/application/usecase/PgMaskedSuccessHandler.java`
@@ -540,7 +544,7 @@ flowchart LR
 ### Phase-1.5b — StockCommitEventPublisher 구현 (재고 확정 이벤트 발행)
 
 - **제목**: payment.events.stock-committed Kafka 발행 어댑터 구현 (결제 확정 시 재고 차감 확정 이벤트)
-- **목적**: S-2(StockCommitEvent 발행 공백) — 결제가 DONE 상태로 확정될 때 `payment.events.stock-committed` 이벤트를 Kafka로 발행. product-service의 Phase-3.1c `StockCommitConsumer`가 이를 수신하여 product RDB UPDATE. `StockCommitEventPublisherPort`(Phase-1.1 선언) 구현체. 기존 outbox relay 흐름(Phase-1.6)과 연계 — DONE 전이 outbox 엔트리에 stock-committed 이벤트 포함 또는 별도 outbox 엔트리 방식. 토픽 명명 규약(Phase-2.3): `payment.events.stock-committed`.
+- **목적**: S-2(StockCommitEvent 발행 공백) — 결제가 DONE 상태로 확정될 때 `payment.events.stock-committed` 이벤트를 Kafka로 발행. product-service의 Phase-3.1c `StockCommitConsumer`가 이를 수신하여 product RDB UPDATE. `StockCommitEventPublisherPort`(Phase-1.1 선언) 구현체. 기존 outbox relay 흐름(Phase-1.6)과 연계 — DONE 전이 outbox 엔트리에 stock-committed 이벤트 포함 또는 별도 outbox 엔트리 방식. 토픽 명명 규약(Phase-2.3): `payment.events.stock-committed`. Phase 3 이전 구간에 발행된 `payment.events.stock-committed`는 Kafka offset 보존으로 Phase-3.1c 배포 시 replay 소비됨 — Phase 1~2 구간 product RDB는 Reconciler(Phase-1.9)가 ProductLookupPort 경유로 조회.
 - **tdd**: true
 - **domain_risk**: true
 - **크기**: ≤ 2h
@@ -619,6 +623,7 @@ flowchart LR
   - 발산 감지 시 **RDB를 진실**로 Redis `stock:{productId}` 재설정(SET). `payment.stock_cache.divergence_count` 카운터 +1.
   - QUARANTINED 결제 감지 시 해당 결제의 DECR 수량만큼 INCR 복원 (Reconciler 단독 책임, FCG 경로에서 즉시 복원 금지 — Phase-1.7 불변 준수).
   - TTL 기반 DECR 자동 복원: Redis key TTL 만료 후 재조회 시 miss → RDB 기준 재설정.
+  - Phase 1~2 구간 product 재고 조회는 ProductLookupPort(InternalProductAdapter 경유) 사용 — Phase 3(Phase-3.4 HTTP 어댑터 교체) 이후 자동으로 ProductHttpAdapter로 라우팅됨.
 - **tdd**: true
 - **domain_risk**: true
 - **크기**: ≤ 2h
@@ -649,7 +654,7 @@ flowchart LR
   - `gateway/src/main/resources/application.yml` 라우트 — monolith fallback route
   - 모놀리스 `payment/listener/OutboxImmediateEventHandler.java` — `@ConditionalOnProperty("payment.monolith.confirm.enabled", havingValue="true", matchIfMissing=false)` 추가 (Gateway 라우팅 전환 후 기본값=비활성화)
   - 모놀리스 `payment/presentation/PaymentController.java` confirm 엔드포인트 — `@ConditionalOnProperty` 동일 처리 또는 HTTP 501 응답 라우팅
-  - `chaos/scripts/migrate-pending-outbox.sh` — 모놀리스 DB `payment_outbox` PENDING 레코드를 결제 서비스 DB로 수동 이행하는 스크립트 (Phase-1.4c 방침 대응 산출물)
+  - `chaos/scripts/migrate-pending-outbox.sh` — 모놀리스 DB `payment_outbox` PENDING 레코드를 결제 서비스 DB로 수동 이행하는 스크립트 (Phase-1.4c 방침 대응 산출물). IN_FLIGHT 레코드는 모놀리스 timeout(약 5분) 후 PENDING으로 자동 복원되므로, 전환 전 5분 drain 대기 후 스크립트 실행 (완료 기준: 모놀리스 IN_FLIGHT 건수 0 확인 이후 실행).
 
 ---
 
@@ -677,7 +682,7 @@ flowchart LR
 ### Phase-1.12 — 재고 캐시 warmup (product.events.stock-snapshot 토픽 재생)
 
 - **제목**: payment-service 기동 시 Redis stock cache 초기화 — stock-snapshot 토픽 재생
-- **목적**: S-3(Reconciler 확장) + Phase-1.9 Reconciler 전제 — payment-service 기동(또는 Redis 재시작) 후 `stock:{productId}` 캐시가 비어 있을 때 product-service가 발행하는 `product.events.stock-snapshot` 토픽을 replay하여 Redis를 초기화. warmup 완료 전까지 결제 차감 요청은 차단(또는 RDB fallback). product-service의 snapshot 발행 훅은 Phase-3.1 산출물.
+- **목적**: S-3(Reconciler 확장) + Phase-1.9 Reconciler 전제 — payment-service 기동(또는 Redis 재시작) 후 `stock:{productId}` 캐시가 비어 있을 때 product-service가 발행하는 `product.events.stock-snapshot` 토픽을 replay하여 Redis를 초기화. warmup 완료 전까지 결제 차감 요청은 차단(또는 RDB fallback). product-service의 snapshot 발행 훅은 Phase-3.1 산출물. warmup 완료 선언 이후 첫 Reconciler 스캔(Phase-1.9 cron 주기)까지는 Redis 값이 stale할 수 있으며, 이 구간 결제는 Redis DECR 원자성에 의존 — product-service의 이후 SET으로 보정됨.
 - **tdd**: true
 - **domain_risk**: true
 - **크기**: ≤ 2h
@@ -686,6 +691,7 @@ flowchart LR
   - `StockCacheWarmupServiceTest#onApplicationReady_ShouldPopulateCacheFromSnapshotTopic` — ApplicationReadyEvent 수신 시 snapshot 토픽의 productId·qty 항목을 `StockCachePort`에 SET 검증 (FakeStockCachePort 사용)
   - `StockCacheWarmupServiceTest#warmup_WhenTopicEmpty_ShouldLeaveEmptyCacheAndLog` — snapshot 토픽 비어 있으면 캐시 미설정 + 경고 로그 검증
   - `StockCacheWarmupServiceTest#warmup_DuplicateSnapshot_ShouldUseLatestValue` — 동일 productId 스냅샷 복수 → 최신값으로 덮어쓰기 검증
+  - `StockCacheWarmupTest#warmup_AfterCompletion_ShouldAllowDecrementImmediately` — warmup 완료 선언 이후 StockCachePort.decrement() 호출 즉시 정상 동작 검증 (stale 값 기반이라도 DECR 원자성 보장)
 - **산출물**:
   - `payment-service/src/main/java/.../payment/infrastructure/cache/StockCacheWarmupService.java` — `ApplicationListener<ApplicationReadyEvent>` 구현. `StockCachePort.set(productId, qty)` 호출로 초기 재고값 주입. `infrastructure/cache/` 경로.
   - `payment-service/src/main/java/.../payment/application/port/out/StockCachePort.java`에 `set(productId, qty): void` 메서드 추가 (warmup 전용, 덮어쓰기)
@@ -711,6 +717,7 @@ flowchart LR
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — `include 'pg-service'` 추가
   - `pg-service/build.gradle` — spring-boot-starter-web, virtual threads, spring-kafka
   - `pg-service/src/main/java/.../pg/application/port/out/PgGatewayPort.java` — Toss/NicePay 원문 상태 조회 포트
   - `pg-service/src/main/java/.../pg/application/port/out/PgEventPublisherPort.java` — PG 결과 이벤트 발행 추상화 (Phase-2.3의 `PgEventPublisher`가 구현)
@@ -825,6 +832,7 @@ flowchart LR
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — `include 'product-service'` 추가
   - `product-service/build.gradle` — spring-boot-starter-web, virtual threads 설정, spring-kafka, spring-data-redis (§ 2-8 준수)
   - `product-service/src/main/java/.../product/domain/Product.java` — 상품 도메인 엔티티 이관
   - `product-service/src/main/java/.../product/domain/Stock.java` — 재고 도메인 엔티티 이관
@@ -850,6 +858,7 @@ flowchart LR
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
+  - `settings.gradle` — `include 'user-service'` 추가
   - `user-service/build.gradle` — spring-boot-starter-web, virtual threads(§ 2-8), spring-kafka
   - `user-service/src/main/java/.../user/domain/User.java` — 사용자 도메인 엔티티 이관
   - `user-service/src/main/java/.../user/application/port/out/UserRepository.java` — 사용자 조회 포트
@@ -1023,7 +1032,7 @@ flowchart LR
 ### Phase-5.1 — 메트릭 네이밍 규약 공통화 (횡단 작업) + Admin UI 처리 결정 (ADR-20, ADR-24)
 
 - **제목**: `<service>.<domain>.<event>` 메트릭 컨벤션 전 서비스 적용 + Admin UI 잔재 처리
-- **목적**: ADR-20(메트릭 네이밍 규약), ADR-24(Admin UI 서비스화 여부) — 결제·PG·상품·사용자 서비스 전체의 메트릭 이름·태그를 `payment.event.status_change`, `payment.quarantine.count`, `pg.api.toss.duration_seconds` 등 규약으로 일괄 정렬. 메트릭 클래스는 `infrastructure/metrics/`에 배치(application/usecase 아님). Admin UI는 ADR-24 결론(모놀리스 잔재 기본값)에 따라 처리. **관리자 데이터 접근 방침(M-4)**: Admin은 모놀리스 DB 직접 SELECT 경로를 폐기하고 Gateway 경유 HTTP 호출로 각 서비스 API 사용. 이행은 기본 모놀리스 잔류(ADR-24), 쓰기 경로는 각 서비스 API 위임.
+- **목적**: ADR-20(메트릭 네이밍 규약), ADR-24(Admin UI 서비스화 여부) — 결제·PG·상품·사용자 서비스 전체의 메트릭 이름·태그를 `payment.event.status_change`, `payment.quarantine.count`, `pg.api.toss.duration_seconds` 등 규약으로 일괄 정렬. 메트릭 클래스는 `infrastructure/metrics/`에 배치(application/usecase 아님). Admin UI는 ADR-24 결론(모놀리스 잔재 기본값)에 따라 처리. **관리자 데이터 접근 방침(M-4)**: Admin은 모놀리스 DB 직접 SELECT 경로를 폐기하고 Gateway 경유 HTTP 호출로 각 서비스 API 사용. 이행은 기본 모놀리스 잔류(ADR-24), 쓰기 경로는 각 서비스 API 위임. 모놀리스 DB의 완료된(DONE/FAILED/QUARANTINED) payment_event 레코드는 읽기 전용 아카이브 인스턴스로 보존(컨테이너 remove 금지) — Admin UI/조회 요구사항 발생 시 Phase-5.1에서 아카이브 조회 어댑터 추가 여부 결정.
 - **tdd**: false
 - **domain_risk**: false
 - **크기**: ≤ 2h
