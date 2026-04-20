@@ -750,6 +750,27 @@ flowchart TB
 | 19 | LogFmt · Masking 공통화 | `LogFmt` + `MaskingPatternLayout` 자산을 어떻게 공유할 것인가? | (a) 공통 Jar 라이브러리 추출 (b) 서비스별 복제 + 컨벤션 문서 (c) Sidecar(Fluent Bit)로 마스킹 이관 | 08 | **P1** |
 | 20 | 메트릭 네이밍 규약 + stock lock-in 감지 | `Payment*Metrics` 5종의 이름·태그 체계를 MSA에서 어떻게 통일할 것인가? Kafka publisher 지연에 따른 PENDING 장기 체류(= stock lock-in) 감지 지표는? | (a) `<service>.<domain>.<event>` 컨벤션 (b) OTel Semantic Conventions 준수 (c) 현행 유지 / **수락 기준(채택과 무관)**: `payment.outbox.pending_age_seconds`(histogram) 추가 — PENDING 레코드의 생성 시각 대비 체류 시간 분포 | 08 | **P1** |
 
+#### ADR-18 결론 — W3C Trace Context (T0-04, 2026-04-21 확정)
+
+- **채택**: (a) Micrometer Tracing(OTel bridge) + W3C `traceparent` 헤더 직접 파싱 병행.
+- **구현 방식**:
+  - **Gateway(WebFlux)**: `TraceContextPropagationFilter`(`WebFilter`, `Ordered.HIGHEST_PRECEDENCE`)가 유입 요청의 `traceparent` 헤더를 W3C 포맷(`00-<32hex>-<16hex>-<2hex>`)으로 검증 후 MDC에 `traceId`/`spanId` 주입. 포맷 불일치 또는 헤더 부재 시 Micrometer Tracing 자동 생성으로 위임. 업스트림 전달 시 헤더 보존.
+  - **payment-service(Servlet/MVC)**: `TraceIdExtractor`(순수 Java 유틸, static 메서드, Optional 반환) — Reactor/Servlet 의존 없음. Servlet 필터·인터셉터에서 `extractTraceId(header)`를 호출해 MDC 주입. `micrometer-tracing-bridge-otel` 의존성 추가로 Spring Boot observation 자동 구성이 W3C Trace Context를 natively 처리.
+  - **모듈 경계**: Gateway는 payment-service의 `TraceIdExtractor`를 직접 참조하지 않는다. Gateway는 자체 WebFlux 파이프라인 안에서 동일 파싱 로직을 인라인 구현.
+- **build.gradle 변경**:
+  - `gateway/build.gradle` — `micrometer-tracing-bridge-otel`, `opentelemetry-exporter-otlp` 추가 (버전 Spring Boot BOM 관리).
+  - `payment-service/build.gradle` — `micrometer-tracing-bridge-otel` 추가.
+
+#### ADR-19 결론 — LogFmt · Masking 공통화 방침 (T0-04, 2026-04-21 확정)
+
+- **채택**: **(b) 서비스별 복제(복제 방침)** — 공통 Jar 라이브러리 추출(a)은 채택하지 않는다.
+- **결정 근거**: 현재 `LogFmt`/`MaskingPatternLayout` 코드는 서비스 수가 적고(payment-service 한 곳), 공통 라이브러리화에 따른 버전 관리·배포 파이프라인 복잡도가 복제 비용보다 크다. 각 서비스가 `LogFmt`/`MaskingPatternLayout` 코드를 **자체 소유(복제 b)** 한다.
+- **이행 규칙**:
+  - Phase 2 pg-service 분리 시 해당 모듈로 `LogFmt`/`MaskingPatternLayout`을 복제한다.
+  - 복제 시 패키지 경로는 각 서비스 `core.common.log` 하위에 위치시키고, 내용 변경은 각 서비스 독립 커밋으로 관리한다.
+  - 공통화(a) 전환 판단 기준: 복제 서비스 수가 3개를 초과하거나 로직 변경이 동시 다발적으로 발생하여 중복 비용이 명백해질 때 재검토한다.
+- **현행 유지**: payment-service의 `core.common.log.LogFmt`, `core.common.log.MaskingPatternLayout`은 현 위치 그대로 유지. logback-spring.xml의 MDC 패턴(`%X{traceId:-N/A}`)도 그대로 유지(ADR-18 traceId 주입과 호환).
+
 ### 4-7. 이행 (ADR-21 ~ 24)
 
 | # | 제목 | 결정 질문 | 대안 | 선행 | 우선순위 |

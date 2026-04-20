@@ -47,6 +47,9 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
 
+    // W3C Trace Context (ADR-18): OTel bridge — Servlet 환경 MDC 주입. 버전은 Spring Boot BOM 관리
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+
     // Test Dependencies
     testImplementation "org.springframework.boot:spring-boot-testcontainers"
     testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")

@@ -13,6 +13,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation "net.logstash.logback:logstash-logback-encoder:7.4"
+
+    // W3C Trace Context (ADR-18): OTel bridge — 버전은 Spring Boot BOM 관리
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 }
 
 dependencyManagement {

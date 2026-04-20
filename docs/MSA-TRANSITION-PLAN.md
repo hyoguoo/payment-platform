@@ -31,7 +31,7 @@
 - ✅ T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
 - ✅ T0-03b Spring Cloud Gateway 서비스 모듈 신설
 - ✅ T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
-- T0-04 W3C Trace Context + LogFmt 공통 기반
+- ✅ T0-04 W3C Trace Context + LogFmt 공통 기반
 - T0-05 Toxiproxy 장애 주입 도구 구성
 - T0-Gate Phase 0 인프라 smoke 검증
 
@@ -398,6 +398,16 @@ flowchart TB
   - `gateway/src/main/java/.../gateway/filter/TraceContextPropagationFilter.java`
   - `core/common/tracing/TraceIdExtractor.java`
   - `docs/topics/MSA-TRANSITION.md` ADR-19 결론란에 복제(b) 확정 기록
+
+#### 완료 결과 (2026-04-21)
+
+- `gateway/src/main/java/com/hyoguoo/paymentplatform/gateway/filter/TraceContextPropagationFilter.java` — `WebFilter` + `Ordered.HIGHEST_PRECEDENCE`. W3C traceparent 정규식(`00-{32hex}-{16hex}-{2hex}`) 검증 후 MDC `traceId`/`spanId` 주입. 포맷 불일치·부재 시 Micrometer Tracing 자동 생성 위임. `doFinally`로 MDC 정리.
+- `payment-service/src/main/java/com/hyoguoo/paymentplatform/core/common/tracing/TraceIdExtractor.java` — 순수 Java 유틸(static, `@NoArgsConstructor(PRIVATE)`). `extractTraceId(header)` / `extractSpanId(header)` / `parse(header)` 메서드. Reactor/Servlet 의존 없음. `TraceComponents` record 포함(`isSampled()` 헬퍼). null 반환 없음 — Optional 사용.
+- `gateway/build.gradle` — `micrometer-tracing-bridge-otel`, `opentelemetry-exporter-otlp` 추가 (버전 Spring Boot BOM 관리).
+- `payment-service/build.gradle` — `micrometer-tracing-bridge-otel` 추가.
+- `docs/topics/MSA-TRANSITION.md` — ADR-18 결론(W3C Trace Context 구현 방식·모듈 경계·build.gradle 변경 요약)·ADR-19 결론(복제(b) 확정, Phase 2 pg-service 복제 이행 규칙, 공통화(a) 전환 기준) 추가.
+- 핵심 결정: Gateway 모듈은 payment-service의 TraceIdExtractor를 직접 참조하지 않음(모듈 경계). LogFmt/MaskingPatternLayout은 서비스별 자체 소유(복제 b) — 복제 서비스 3개 초과 시 공통화(a) 재검토.
+- 검증: `./gradlew test` 374 PASS (payment-service 372 + gateway 1 + eureka-server 1) — 기존 컨텍스트 로드 테스트 포함 전부 통과.
 
 ---
 
