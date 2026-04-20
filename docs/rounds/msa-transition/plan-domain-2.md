@@ -1,192 +1,164 @@
 # plan-domain-2
 
 **Topic**: MSA-TRANSITION
-**Round**: 2
+**Round**: 2 (D-1 해소 재판정)
 **Persona**: Domain Expert
 
 ## Reasoning
 
-Round 1에서 지적한 2 major + 2 minor는 **모두 반영**됐다. (1) Phase-1.5 산출물이 `PgMaskedSuccessHandler` 클래스에 더해 **`TossPaymentGatewayStrategy` ALREADY_PROCESSED_PAYMENT 포착 분기 + `TossPaymentErrorCode.isSuccess()` 반환값 수정 + `TossPaymentGatewayStrategyWiringTest`의 wiring 호출 검증**까지 포함하도록 확장됐고(PLAN.md:231-249), (2) Phase-4.1에 `stock-restore-duplicate.sh`·`fcg-pg-timeout.sh` 2종이 추가돼(PLAN.md:552-553) consumer dedupe · FCG 불변이 통합 수준 재시도 안전성 검증을 받는다. (3) Phase-1.11 histogram 수락 기준이 `kafka-latency.sh`에 연결돼 "p95 ≥ 10s Prometheus 쿼리로 관측"이 chaos 수락 기준으로 명시됐다(PLAN.md:548). (4) Phase-1.10이 "Gateway 라우팅 + 모놀리스 결제 경로 비활성화"로 재정의돼 `OutboxImmediateEventHandler`와 `PaymentController` confirm 엔드포인트에 `@ConditionalOnProperty` 기본=비활성화를 심는 산출물이 박혔다(PLAN.md:320-331). Round 2에 신설된 태스크(Phase-1.0 cross-context port 복제, Phase-1.4b AOP 복제, Phase-1.4c Flyway V1, Phase-2.1b PG AOP, Phase-3.3 `StockRestoreUseCase`/`EventDedupeStore` 분리)는 도메인 리스크 측면에서 **기존 원자성·멱등성·PG 가면 방어선을 약화시키지 않는다** — 오히려 소유권·TX 경계를 선명히 한다. Phase 1 기간 보상 경로 원칙(PLAN.md:114: "`stock.restore` 보상은 결제 서비스 내부 동기 호출 유지, 이벤트화는 Phase 3과 동시")도 명시돼 이행 구간 공백이 닫혔다. Toss 금액 검증 대칭은 Phase-1.5 테스트 `handle_Toss_AlreadyProcessed_VerifiesAmountSymmetry`(PLAN.md:243)로 수락되고 NicePay 2201 대칭도 동일 테스트 블록에 보존됐다. 다만 NicePay 측 `2201` 경로는 현 모놀리스 `NicepayPaymentGatewayStrategy.handleDuplicateApprovalCompensation`(src/main/java/.../nicepay/NicepayPaymentGatewayStrategy.java:102-134)가 **이미 구현되어 있다** — Phase-1.5의 산출물은 "이관 + 검증 테스트 대칭"으로 충분하며 신규 구현 리스크가 아니다. Round 1 findings가 모두 해소되고 남은 관찰 사항은 참고성 minor 수준이므로 **pass**.
+Round 1 단일 major(D-1: FAILED 경로 `stock.restore` 보상 publisher 태스크 부재 → 재고 영구 잠금)가 Round 2에서 **T3-04b 신설**로 해소됐다. PLAN:952-965에 태스크가 신규 추가됐고, `tdd=true`·`domain_risk=true`·depends=[T2d-01, T1-11c]·테스트 2건(`whenFailed_ShouldEnqueueStockRestoreCompensation` + `whenFailed_IdempotentWhenCalledTwice`)·산출물 2건(`FailureCompensationService.java` + `StockRestoreEventPayload.java`)·목적 문단에 "같은 TX 내 INSERT" + "UUID v4 랜덤 생성(ADR-16 수락 기준)" 명시. T3-05 depends에 T3-04b가 추가돼(PLAN:975) 발행↔소비 체인이 닫혔다. 커버리지 표 ADR-04/16(PLAN:1189, 1201, 1161, 1162)에도 T3-04b가 편입됐고, 반환 지표(PLAN:1228)에서 domain_risk=true 43건·Round 2 증가분 주석·변경 로그 D-1 행(PLAN:1248) 모두 일관. Round 1에서 pass했던 나머지 6개 리스크(중복 승인 2자 대조, pg DB 부재 경로, business inbox amount, 재시도 안전성, FCG 불변, 감사 원자성)는 T2a-05/T1-11 분해 이후에도 테스트 키워드·불변식 hook·태스크 문단이 그대로 유지돼 regress 없음 확인. 남은 관찰 사항은 "같은 TX 원자성 assert 테스트 부재"와 "eventUUID/eventUuid 표기 불일치" 2건의 minor로, 돈 경로를 막지 않는다. **판정: pass**.
 
 ## Domain risk checklist
 
-| 항목 | 판정 | 근거 |
+### D-1 해소 확인
+
+| 요구 사항 | 충족 | 근거 |
 |---|---|---|
-| Round 1 major #1 (Phase-1.5 Toss wiring 완결) 반영 | **pass** | PLAN.md:231-249 — 산출물 3건(Toss 전략 ALREADY_PROCESSED_PAYMENT 분기 + `TossPaymentErrorCode.isSuccess()` 수정 + wiring 테스트 `TossPaymentGatewayStrategyWiringTest#confirm_WhenAlreadyProcessedPayment_ShouldInvokePgMaskedSuccessHandler`) 전부 추가됨. 제안 3건 1:1 매핑. |
-| Round 1 major #2 (Phase-4.1 chaos 시나리오 확장) 반영 | **pass** | PLAN.md:552-553 — `stock-restore-duplicate.sh`(동일 UUID 2회 발행 + 재고 증가량 1회 검증)와 `fcg-pg-timeout.sh`(Toxiproxy PG getStatus timeout 주입 + PaymentEvent QUARANTINED 확인) 두 시나리오 신설. Phase-4.1 제목도 "6종 장애 주입"으로 갱신(PLAN.md:542). |
-| Round 1 minor #3 (Phase-1.11 histogram chaos 수락 기준) 반영 | **pass** | PLAN.md:548 — `kafka-latency.sh` 수락 기준에 "`payment.outbox.pending_age_seconds` histogram p95 ≥ 10s가 Prometheus 쿼리로 관측됨" 명시. 단위 테스트(PLAN.md:344)와 chaos 관측 연결 확보. |
-| Round 1 minor #4 (Phase-1.10 모놀리스 결제 경로 비활성화) 반영 | **pass** | PLAN.md:320-331 — Phase-1.10 제목·목적·산출물이 "Gateway 라우팅 + 모놀리스 결제 confirm 경로 비활성화"로 재정의. `OutboxImmediateEventHandler`에 `@ConditionalOnProperty("payment.monolith.confirm.enabled", havingValue="true", matchIfMissing=false)`, `PaymentController` confirm 엔드포인트 동일 처리 또는 501 응답 — 이중 발행 경로 차단. |
-| discuss risk(ADR-05/13/15/16/20) 태스크 매핑 | **pass** | PLAN.md:625-631 추적 테이블 7건 매핑 유지 + Round 2 신규 태스크(Phase-1.4b/1.4c/Phase-1.10)로 세분화. orphan 없음. `domain_risk=true` 14개(PLAN.md:638). |
-| 중복 방지 체크(existsByOrderId/eventUuid) 계획 | **pass** | Phase-3.3 `StockRestoreUseCaseTest#restore_DuplicateEventUuid_ShouldNoOp`·`StockRestoreUseCaseTest#restore_AfterDedupeTtlExpiry_ShouldReprocessOnce`·`restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe`(PLAN.md:491-493) + Phase-2.3 `consume_DuplicateCommand_ShouldDedupeByEventUuid`(PLAN.md:416). |
-| 재시도 안전성 검증 태스크 (단위 + 통합) | **pass** | 단위: Phase-1.6 `relay_IsIdempotent_WhenCalledTwice`(PLAN.md:264), Phase-1.7 `process_RetryExhausted_CallsFcgOnce`(PLAN.md:283), Phase-3.3 `restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe`(PLAN.md:493). 통합: Phase-4.1 `stock-restore-duplicate.sh`·`fcg-pg-timeout.sh`(PLAN.md:552-553). |
-| ADR-05 가면 응답 방어 Phase 1 필수 산출물 런타임 관철 | **pass** | Phase-1.5가 handler 생성뿐 아니라 Toss 전략 소스 수정·`isSuccess()` 반환값 변경까지 산출물에 명시 — 현 `TossPaymentErrorCode.java:70-72` 경로가 이번 phase에서 실제로 닫힘. `TossPaymentGatewayStrategyWiringTest`가 런타임 호출 경로까지 검증. |
-| ADR-05 Toss/NicePay 금액 검증 대칭 | **pass** | Phase-1.5 테스트 `handle_Toss_AlreadyProcessed_VerifiesAmountSymmetry`(PLAN.md:243) — Toss 경로에서도 PG `getStatus` + 금액 일치 검증 수행 요구. NicePay 기존 `handleDuplicateApprovalCompensation`(src/main/java/.../nicepay/NicepayPaymentGatewayStrategy.java:102-134)와 대칭. |
-| NicePay 전략 `2201` 경로 동일 유지 | **pass** | PLAN.md:242 `handle_Nicepay_2201_VerifiesAmountBeforeDecision` 테스트가 `PgMaskedSuccessHandler`에 대칭 배치 — 결제 서비스로 이관 후에도 기존 NicePay 로직이 PG 재조회 + 금액 일치 검증을 유지. Phase-2.1에서 `NicepayPaymentGatewayStrategy` 자체가 PG 서비스로 이관될 때(PLAN.md:374)도 로직 변경 요구 없음 — 이관만. |
-| ADR-16 보상 이벤트 consumer dedupe (UUID 키, 상품 서비스 소유) | **pass** | Phase-3.3 산출물이 `StockRestoreConsumer`·`JdbcEventDedupeStore`·`JpaEventDedupeRepository`·`V2__add_event_dedupe_table.sql`로 3분할(PLAN.md:495-499). consumer 얇음 검증 `consume_ShouldDelegateToStockRestoreUseCase`(PLAN.md:494). TTL = "Kafka consumer group offset retention + 1일" 정량화(PLAN.md:484). |
-| ADR-15 FCG 불변(timeout → QUARANTINED) 단위 + 통합 | **pass** | 단위: Phase-1.7 `process_WhenFcgPgCallTimesOut_ShouldQuarantine`·`process_WhenFcgPgReturns5xx_ShouldQuarantine`·`process_RetryExhausted_CallsFcgOnce`(PLAN.md:280-283). 통합: Phase-4.1 `fcg-pg-timeout.sh`(PLAN.md:553). |
-| ADR-13 감사 원자성(payment_history 결제 서비스 DB 잔류) | **pass** | Phase-1.4 `onPaymentStatusChange_InsertsHistoryBeforeCommit`(PLAN.md:196) + Phase-1.4b AOP 복제(PLAN.md:208-212) + Phase-1.4c Flyway V1(PLAN.md:223-225)로 3단 분해. BEFORE_COMMIT 원자성이 결제 서비스 내부 TX에 남음. |
-| Phase 1 이행 구간 `stock.restore` 보상 경로 공백 방지 | **pass** | PLAN.md:114 — "Phase 1 보상 경로 원칙: `stock.restore` 보상은 **결제 서비스 내부 동기 호출 유지**(`InternalProductAdapter` 방식 승계). 이벤트화는 Phase 3(상품 분리)과 동시에 진행한다. 이행 구간 이중 복원 방어선 공백 방지." discuss-domain-2 minor finding (iii) 반영. |
-| Strangler Fig 이중 발행 방지 | **pass** | Phase-1.10에서 모놀리스 `OutboxImmediateEventHandler` + `PaymentController` confirm 비활성화(PLAN.md:330-331). 게다가 Phase-1.4c(결제 서비스 독립 DB) 이후 모놀리스 DB의 `payment_*` 테이블 소유가 분리되므로 동일 outbox 레코드 이중 발행 경로는 Phase-1.10 비활성화와 함께 차단. ARCH R2 주석(PLAN.md:227)이 "초기 스냅샷 방침 미명시"를 지적 — Critic 영역이며 본 판정 미산입. |
-| Round 2 신규 태스크 도메인 안전성 | **pass** | Phase-1.0(InternalProductAdapter/InternalUserAdapter 경계) — 금액/재고 로직 불변, 단순 경계 슬라이스. Phase-1.4b(AOP 복제) — `@PublishDomainEvent`·`@PaymentStatusChange` no-op 방지, 감사 경로 유지. Phase-1.4c(Flyway V1) — 결제 서비스 DB 소유권 확립, `payment_history` 결제 서비스 DB 잔류(ADR-13) 실체화. Phase-2.1b(PG AOP 복제) — 메트릭 경로 복제, 결제 로직 변화 없음. Phase-3.3 3분할 — consumer 얇음 + usecase · dedupe store port 분리는 테스트성·TX 경계를 강화. 모두 도메인 리스크 증가 없음. |
-| 상태 전이 enum 소유권 | **pass** | Phase-1.3이 `PaymentEventStatus`·`PaymentOutbox` 상태 전이 테스트를 전 종결 상태(DONE/FAILED/CANCELED/EXPIRED)에 `@ParameterizedTest @EnumSource`로 커버(PLAN.md:177-181). container-per-service에서 결제 서비스 단일 소유. |
-| claim race · 재시도 한도 소진 | **pass** | Phase-1.7 `process_RetryExhausted_CallsFcgOnce`(PLAN.md:283) — FCG 1회만 호출. `claimToInFlight` REQUIRES_NEW는 기존 `OutboxProcessingService` 이관에 포함(PLAN.md:284). |
-| 금전 정확성 | **pass** | 금액 위변조 선검증은 결제 서비스 로컬 단계 유지(§ 2-2 그림). Phase-1.5가 Toss 경로에도 PG `getStatus` + 금액 일치 검증을 대칭 요구. |
-| PII 노출·저장 | **n/a** | 본 토픽 비목표(topic.md § 1-3). |
+| payment-service가 FAILED 전이 시 stock.restore 보상 이벤트를 payment-service outbox로 발행 | pass | PLAN:955 목적 문단 "payment_outbox에 topic=stock.events.restore, key=orderId, payload row를 같은 TX 내 INSERT" + PLAN:964 산출물 `FailureCompensationService.java` |
+| UUID 멱등 키 포함 (ADR-16) | pass | PLAN:955 "eventUUID는 UUID v4 랜덤 생성(ADR-16 수락 기준)" + PLAN:965 `StockRestoreEventPayload.java` 필드에 `eventUUID` 포함 + PLAN:962 `whenFailed_IdempotentWhenCalledTwice` — 동일 orderId 2회 → row 1건 |
+| tdd=true, domain_risk=true | pass | PLAN:956-957 |
+| 테스트 스펙 2건 (whenFailed_ShouldEnqueueStockRestoreCompensation + whenFailed_IdempotentWhenCalledTwice) | pass | PLAN:961-962 — Round 1 제안 테스트명과 1:1 일치 |
+| 산출물 FailureCompensationService.java + payload DTO | pass | PLAN:964-965 — `FailureCompensationService.java` + `StockRestoreEventPayload.java`(eventUUID, orderId, productId, qty) |
+| T3-05 depends에 T3-04b 추가 | pass | PLAN:975 `depends: [T3-03, T3-04b]` — 발행↔소비 선후 체인 성립 |
+
+### 기존 7개 리스크 regress 체크
+
+| 리스크 | Round 1 매핑 | Round 2 매핑 | 상태 |
+|---|---|---|---|
+| R1 중복 승인 2자 대조 (pg DB 존재) | T2b-05 | T2b-05 (PLAN:721-739 변경 없음) | no-regress |
+| R2 pg DB 부재 경로 amount 일치 검증 | T2b-05 | T2b-05 (PLAN:724 목적 문단 (2)절 유지 + PLAN:730-735 테스트 5건 유지) | no-regress |
+| R3 business inbox amount 컬럼 + 3경로 규약 | T2a-04 + T2b-04 | T2a-04 (PLAN:550-558) + T2b-04 (PLAN:702-717) — 스키마·테스트 4건·`AmountConverter` 산출물 유지 | no-regress |
+| R4 재시도 안전성 (available_at + DLQ + QUARANTINED) | T2b-01 + T2b-02 + T2a-05 | T2b-01 (PLAN:646-662) + T2b-02 (PLAN:666-680) + **T2a-05a/b/c 분해** (PLAN:562-606) — Publisher/Channel/Worker 3분할 후에도 `callVendor_WhenRetryableErrorAndAttemptNotExceeded_ShouldInsertRetryOutboxRow`·`retry_WhenAttemptExceeded_ShouldWriteDlqOutboxRow`·`dlq_consumer_WhenConsumerItself_ShouldBeDifferentBeanFromNormalConsumer`·`dlq_consumer_WhenAlreadyTerminal_ShouldBeNoOp` 4개 핵심 테스트 그대로. `outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce` 불변식 11 테스트가 T2a-05c(PLAN:603)에 이식됨 | no-regress |
+| R5 FCG 불변 (QUARANTINED on timeout, raw state) | T2b-03 + T1-13 + T4-01 | T2b-03 (PLAN:684-698) + T1-13 (PLAN:374-387) + T4-01 (PLAN:1040~) — 테스트 `fcg_WhenVendorTimesOut_ShouldQuarantine_NoRetry`·`process_WhenQuarantined_ShouldNotRollbackStockCacheImmediately` 유지 | no-regress |
+| R6 감사 원자성 (AOP + 같은 TX 리스너) | T1-05 + T1-06 + T1-07 | T1-05 (PLAN:205-218) + T1-06 (PLAN:222-233) + T1-07 (PLAN:237-246) — `PaymentHistoryEventListenerTest#onPaymentStatusChange_InsertsHistoryBeforeCommit` 유지 | no-regress |
+| R7 Strangler Fig 이중 발행 방지 | T1-18 | T1-18 (PLAN:465-474) — `@ConditionalOnProperty("payment.monolith.confirm.enabled")` + migrate-pending-outbox.sh 유지 | no-regress |
+
+### T1-11 분해(T1-11a/b/c) 후 Outbox 4구성 파이프라인 돈 경로 검증
+
+- T1-11a(PLAN:306-320) Publisher + RelayService → `KafkaMessagePublisher`가 `MessagePublisherPort.publish`의 유일 구현, Worker는 port 경유만 — KafkaTemplate 직접 호출 금지 명문화(PLAN:309)
+- T1-11b(PLAN:324-333) Channel + EventHandler → `LinkedBlockingQueue<Long> capacity=1024`, offer 실패 시 Polling fallback(이벤트 드롭 금지)
+- T1-11c(PLAN:337-350) ImmediateWorker + PollingWorker → `outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce` 불변식 11 테스트 보존
+- 분해 전후 돈 경로 불변(같은 TX Outbox INSERT → AFTER_COMMIT → Immediate/Polling 이중 소비 안전) 유지. Worker의 port 경유 강제는 오히려 "pg 이벤트와 payment 이벤트가 같은 KafkaTemplate을 공유해 크로스 토픽 오염"하는 risk를 차단한다.
+
+### T2a-05 분해(T2a-05a/b/c) 후 DLQ 전용 consumer 경로 검증
+
+- T2b-02 depends가 T2a-05c로 갱신(PLAN:672) — DLQ 전용 consumer가 Worker Lifecycle에 결속
+- `dlq_consumer_WhenAlreadyTerminal_ShouldBeNoOp`(PLAN:676) 보존 → DLQ 메시지 재전달 시 이미 QUARANTINED/FAILED/APPROVED면 no-op로 흡수(불변식 6c)
+- 재시도 → DLQ → QUARANTINED 전이 체인이 T2b-01 테스트 `retry_WhenAttemptExceeded_ShouldWriteDlqOutboxRow`(PLAN:659) + T2b-02 `dlq_consumer_WhenNormalMessage_ShouldQuarantine`(PLAN:675)로 양단 박제
+
+### 신규 돈 경로 리스크 탐지 (T3-04b 관련)
+
+1. **payload 필드 완결성**: `eventUUID·orderId·productId·qty` 4필드(PLAN:965) — 역차감에 필요한 최소 필드는 productId·qty, 멱등 dedupe 키는 eventUUID, 감사 상관키는 orderId. 모두 명시. consumer 측 T3-05 `StockRestoreUseCase#restore_DuplicateEventUuid_ShouldNoOp`이 eventUUID 키로 dedupe하고 재고 복원은 productId·qty로 수행하므로 필드 **의미 수준**에서 호환.
+2. **dedupe 키 표기 일관성**: T3-04b payload 필드명 `eventUUID`(PLAN:961, 965) vs T3-01 `EventDedupeStore` 계약 `boolean recordIfAbsent(String eventUuid, ...)`(PLAN:887) — 대소문자 불일치는 JSON payload → DTO deserialize 시점에 해소되므로 돈 경로 차단 아님. 단 plan 문서 일관성 측면 **minor** 관찰.
+3. **같은 TX INSERT 원자성 assert 부재**: 목적 문단(PLAN:955)은 "같은 TX 내 INSERT"를 명시하지만 테스트 메서드 2건(PLAN:961-962)은 (a) row 1건 INSERT와 (b) 중복 호출 시 row 1건만을 assert할 뿐, "FAILED 전이 TX가 롤백되면 outbox row도 함께 롤백"을 직접 assert하지 않는다. 호출지(T2d-01 `PaymentConfirmResultUseCase` 또는 T1-05 `PaymentTransactionCoordinator`)가 `@Transactional` 안에서 `FailureCompensationService`를 호출하는 한 Spring 기본 전파로 같은 TX에 편입되므로 돈 경로는 막힌다. 그러나 execute 단계에서 서비스 호출이 `REQUIRES_NEW` 또는 TX 밖에서 일어날 경우를 계약 테스트로 박제하지 않으면 후속 리팩터링에서 원자성이 깨질 수 있다 — **minor** (revise 블로커 아님, code 라운드에서 `enqueue_WhenCalledWithinFailedTransaction_ShouldRollbackWhenOuterTxRollsBack` 추가 권고).
 
 ## 도메인 관점 추가 검토
 
-### 1. Round 1 findings 반영 상태 — 4건 전부 해소
+### 1. D-1 해소 강도 평가
 
-- **major #1 (Phase-1.5 Toss wiring)**: Round 1 suggestion 3건이 1:1로 산출물에 박혔다.
-  - `TossPaymentGatewayStrategy.java` ALREADY_PROCESSED_PAYMENT 포착 분기 추가 (PLAN.md:248 — "NicePay `handleDuplicateApprovalCompensation` 대칭")
-  - `TossPaymentErrorCode.java` `isSuccess()` 반환값 수정 (PLAN.md:249 — "가면 응답을 success로 취급하지 않음")
-  - `TossPaymentGatewayStrategyWiringTest#confirm_WhenAlreadyProcessedPayment_ShouldInvokePgMaskedSuccessHandler` (PLAN.md:245 — "Toss confirm 경로가 `ALREADY_PROCESSED_PAYMENT` 수신 시 `PgMaskedSuccessHandler.handle()` 1회 호출 검증")
+Round 1에서 제안한 해소 방법(산출물 `PaymentFailureCompensationUseCase.java` + 테스트 2건)을 Planner가 **태스크 번호 T3-04b 독립 신설**로 반영. 클래스명은 `FailureCompensationService`로 조정됐으나 성격(application/service 계층, FAILED 전이 트리거, outbox row INSERT)은 동일. Round 1 제안 테스트명 `handleFailed_ShouldInsertStockRestoreOutboxRow_WithEventUuid` + `handleFailed_IdempotentWhenCalledTwice`와 Round 2 채택 테스트명 `whenFailed_ShouldEnqueueStockRestoreCompensation` + `whenFailed_IdempotentWhenCalledTwice`는 검증 의도(row INSERT + 멱등성) 동일. **재고 영구 잠금 리스크 해소 완료**.
 
-  현 소스(`src/main/java/com/hyoguoo/paymentplatform/paymentgateway/exception/common/TossPaymentErrorCode.java:70-72` `isSuccess` 반환 `true`)가 이번 phase에서 실제로 닫힘을 확인했다. `TossPaymentGatewayStrategy.determineConfirmResultStatus`(소스 라인 126-141)의 `STATUS_DONE → SUCCESS` 매핑 경로는 유지되지만, 이건 Toss가 합법적으로 `DONE`을 반환한 경우이며 가면 응답(`ALREADY_PROCESSED_PAYMENT`) 경로는 ErrorCode 분기로 들어온다. 분기 수정으로 가면 경로가 닫히면 ADR-05 수락 기준 1-4가 런타임에 관철된다. **수락**.
+### 2. Phase 1 이행 구간 보상 경로 일관성
 
-- **major #2 (Phase-4.1 chaos 확장)**: Round 1 suggestion 2건이 1:1로 산출물에 박혔다.
-  - `chaos/scenarios/stock-restore-duplicate.sh` — 동일 UUID 2회 발행 + 재고 증가 1회 확인 (PLAN.md:552)
-  - `chaos/scenarios/fcg-pg-timeout.sh` — PG getStatus timeout 주입 + PaymentEvent QUARANTINED 확인 (PLAN.md:553)
+PLAN:134 "Phase 1에서는 `stock.restore` 보상은 결제 서비스 내부 동기 호출 유지(`InternalProductAdapter` 승계). 이벤트화는 Phase 3과 동시"가 유지. T3-04b가 Phase 3에 위치(depends=[T2d-01, T1-11c])하여 이행 구간 공백이 닫혔다 — Phase 1/2 동안은 동기 호출, Phase 3 전환 시 이벤트 발행으로 전환. Round 1 D-1은 "이벤트화 전환 후 발행 측 누락" 지적이었고 T3-04b가 정확히 이 지점에 배치됐다.
 
-  Phase-4.1 제목이 "6종 장애 주입"으로 갱신됨. **수락**.
+### 3. Reconciler 백업 경로 확인 (T1-14)
 
-- **minor #3 (Phase-1.11 histogram chaos)**: `kafka-latency.sh` 수락 기준에 "histogram p95 ≥ 10s Prometheus 쿼리 관측" 명시(PLAN.md:548). 단위 기록과 chaos 관측이 연결됐다. **수락**.
+PLAN:403 `scan_WhenQuarantinedPaymentExists_ShouldRollbackDecrForEach` — QUARANTINED만 복원. FAILED는 T1-14 범위 밖이나, 이제 T3-04b가 FAILED 시 `stock.restore` 이벤트 발행을 보장하므로 Reconciler 백업 없이도 돈 경로가 닫힌다. 발행 실패(outbox row INSERT 성공 but Kafka publish 실패) 시에도 OutboxWorker/PollingWorker(T1-11c)가 `processed_at IS NULL AND available_at<=NOW()` row를 계속 재발행하므로 at-least-once 보장.
 
-- **minor #4 (모놀리스 결제 경로 비활성화)**: Phase-1.10 제목·목적·산출물이 재정의돼 `@ConditionalOnProperty("payment.monolith.confirm.enabled", havingValue="true", matchIfMissing=false)`로 기본 비활성화를 강제. Admin UI 경유 직접 호출 경로도 이 프로퍼티 하나로 차단. **수락**.
+### 4. ADR 커버리지 표 정합
 
-### 2. Round 2 신규 태스크(5건) 도메인 리스크 평가
+| ADR | Round 2 태스크 | 비고 |
+|---|---|---|
+| ADR-04 | T1-04, T1-11a/b/c, T2a-05a/b/c, T2a-06, T2d-01, T3-04b (PLAN:1189) | T3-04b 추가됨 |
+| ADR-16 | T0-02, T1-03, T3-03, T3-04, T3-04b, T3-05 (PLAN:1201) | T3-04b 추가됨 |
+| 추적 테이블 ADR-16 행 | "publisher: T3-04b, consumer: T3-05"(PLAN:1161) | 발행·소비 양단 명시 |
+| 추적 테이블 ADR-04 행 | "FAILED 보상 발행" + "T3-04b"(PLAN:1162) | 명시 추가 |
 
-다섯 건 모두 **도메인 리스크를 증가시키지 않는다**.
+### 5. 기존 `domain_risk=true` 라벨 변화
 
-- **Phase-1.0 (cross-context port 복제 + InternalAdapter 승계)**: 결제 서비스가 모놀리스 `product/`·`user/` 패키지를 직접 import하는 경계를 차단. Phase 1 기간에는 `InternalProductAdapter`가 모놀리스 내부 Java 호출을 래핑하므로 **금액 검증·재고 감소 로직이 전혀 변경되지 않는다**. Phase 3에서 HTTP 어댑터로 교체될 때 TX 경계가 분리되지만 이는 Phase-3.4 테스트와 Phase-4.1 `stock-restore-duplicate.sh`로 방어된다. 또 `paymentgateway` 경계 단절은 ARCH R2 주석(PLAN.md:132)에 지적되어 Architect 영역에서 처리 중 — 도메인 관점으로는 Phase 2에서 PG 서비스 분리 시 네트워크 홉이 생기므로 ADR-15 × ADR-21 상호 참조(topic.md:499-509)가 이 경계를 흡수한다.
-
-- **Phase-1.4b (AOP 축 복제)**: `@PublishDomainEvent`·`@PaymentStatusChange` 어노테이션이 결제 서비스 패키지로 복제되고 `DomainEventLoggingAspect`·`PaymentStatusMetricsAspect`도 복제. **감사 원자성은 `PaymentHistoryEventListener` BEFORE_COMMIT가 담당**하므로(topic.md:489 재해석 리스크) AOP 복제 자체는 원자성을 건드리지 않는다. 오히려 cross-service 공유 금지로 서비스별 소유권이 명확해진다. **도메인 리스크 증가 없음**.
-
-- **Phase-1.4c (Flyway V1)**: `payment_event`·`payment_order`·`payment_outbox`·`payment_history` 테이블 DDL을 결제 서비스 Flyway V1으로 실체화. ADR-13 "결제 서비스 DB 잔류"의 실체 산출물. 다만 ARCH R2 주석(PLAN.md:227)이 "모놀리스 DB → 결제 서비스 DB 데이터 이행 절차 또는 초기 스냅샷 방침" 미명시를 지적 — 도메인 관점에서 보면, 이행 방침이 **미종결 `IN_FLIGHT` 레코드를 수동 재처리 없이 빈 상태로 시작**하는 경우 결제 서비스가 기존 미종결 건을 복구하지 못할 가능성이 있다. 그러나 이 리스크는 Strangler Fig 기간 Gateway 라우팅 전환 타이밍과 함께 처리되며, Phase-1.10에서 모놀리스 confirm 경로 비활성화 타이밍에 미종결 잔여 건이 없도록 운영 전환 절차를 plan이 아닌 operational runbook에 둘 수 있다. **본 라운드에서는 데이터 이행 절차 부재가 도메인 리스크 관점에서 `critical`로 승격될 만큼의 근거가 부족**하며(Phase 1 완료 시점에 결제 서비스는 신규 트래픽만 처리하면 되므로), `minor` 수준 참고 사항으로 남긴다.
-
-- **Phase-2.1b (PG AOP 복제)**: `@TossApiMetric`·`TossApiMetricsAspect`의 PG 서비스 소유. 메트릭 경로만 복제. **도메인 리스크 증가 없음**.
-
-- **Phase-3.3 3분할 (`StockRestoreUseCase` + `EventDedupeStore` port 분리)**: consumer 얇음 원칙이 강화돼 dedupe 로직이 port 경계 뒤로 숨는다. 테스트는 `FakeEventDedupeStore`로 TTL 만료를 시뮬레이션 가능(PLAN.md:477). **도메인 리스크 감소** — 이전 모놀리식 consumer 구조보다 테스트성·재시도 안전성이 증가.
-
-### 3. NicePay 전략 대칭 확인
-
-plan-domain-1의 Phase-1.5에는 `handle_Nicepay_2201_VerifiesAmountBeforeDecision`(PLAN.md:242)이 보존됐다. 이 경로는 현 모놀리스 `NicepayPaymentGatewayStrategy.handleDuplicateApprovalCompensation`(src/main/java/.../nicepay/NicepayPaymentGatewayStrategy.java:102-134)를 결제 서비스로 이관하는 형태로, 기존 로직(`NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL` 캐치 → `getPaymentInfoByTid` 재조회 → `NICEPAY_STATUS_PAID` AND 금액 일치 → `SUCCESS`)이 그대로 유지된다. Phase-2.1에서 `NicepayPaymentGatewayStrategy`가 PG 서비스로 이관될 때(PLAN.md:374)도 변경 요구 없음. **Toss는 신규 구현, NicePay는 이관만** — 비대칭 구현 리스크 없음.
-
-### 4. Phase 1 `stock.restore` 보상 경로 공백 확인
-
-PLAN.md:114에 "Phase 1 보상 경로 원칙: `stock.restore` 보상은 결제 서비스 내부 동기 호출 유지(`InternalProductAdapter` 방식 승계). 이벤트화는 Phase 3(상품 분리)과 동시에 진행"이 명시됐다. 이는 discuss-domain-2의 minor finding (iii)(§ 7 행 #9 이행 구간 공백)에 정확히 대응한다. Phase-1.0 `InternalProductAdapter`가 모놀리스 내부 Java 호출을 래핑하므로 Phase 1 기간 보상은 **결제 서비스 로컬 TX + 모놀리스 상품 Java 호출**로 이뤄진다 — 이중 복원 경로가 열리지 않는다. Phase 3 이벤트화와 동시에 consumer dedupe가 활성화되므로 **이행 구간 공백이 존재하지 않는다**. **수락**.
-
-### 5. 참고 관찰 — 승격 없음 (minor 수준 메모)
-
-- Phase-1.4c Flyway V1에서 "모놀리스 DB → 결제 서비스 DB 데이터 이행 절차"가 plan에 명시되지 않음. ARCH R2 주석(PLAN.md:227)이 동일 지적. 도메인 관점에서는 미종결 `IN_FLIGHT` 레코드가 존재한다면 Phase 1 전환 시점에 운영 절차로 처리해야 하나, 이는 plan 수준이 아닌 operational runbook 수준으로 판단. 본 판정에 영향 없음.
-- Phase-2.3 PG 서비스 consumer의 `DUPLICATE_ATTEMPT` 매핑(PLAN.md:417)은 도메인 중립 enum 방향을 잘 따른다. NicePay `2201` → `DUPLICATE_ATTEMPT` 매핑 시 현 `handleDuplicateApprovalCompensation`의 "tid 재조회 + 금액 일치 검증" 책임이 PG 서비스 쪽에 남는지 결제 서비스 쪽에 남는지가 Phase-2.1 목적문(PLAN.md:362 — "application 서비스(`PgStatusServiceImpl`)에 귀속")으로 명시됨. **OK**.
-- Phase-1.5와 Phase-2.1의 PG 가면 방어 경계: Phase 1에는 결제 서비스 내부 `PgMaskedSuccessHandler`가 방어하고, Phase 2에서 PG 서비스 분리 시 `DUPLICATE_ATTEMPT` 매핑은 PG 서비스 application 계층으로 이동. 이 경계 이동에서 결제 서비스 `PgMaskedSuccessHandler`는 Phase 2 이후에도 "DB 재조회 + QUARANTINED" 방어를 유지해야 한다(`DUPLICATE_ATTEMPT` 이벤트 수신 → consumer 측에서 DB 재조회). Phase-2.3 테스트 `consume_WhenPgReturnsAlreadyProcessed_ShouldMapToDuplicateAttempt`(PLAN.md:417)가 매핑 자체는 검증하나, **결제 서비스 consumer의 후속 DB 재조회 + QUARANTINED 방어선**은 Phase-2.3 테스트에 별도로 드러나지 않는다. 다만 Phase-1.5의 `PgMaskedSuccessHandler`가 이미 `PgStatusPort` 경유로 PG 재조회 + 금액 일치 검증 경로를 가지므로, Phase 2 이후에도 동일 핸들러를 재사용하면 방어선이 유지된다. **OK** — plan 수준에서 지적할 공백 없음.
+Round 1 38건 → Round 2 43건(PLAN:1228). 증가분 5건은 T1-11a/b/c(Round 1 T1-11 분할 결과, +2) + T2a-05a/b/c(Round 1 T2a-05 분할 결과, +2) + T3-04b 신설(+1). 과도 라벨링 없음 — 분할된 태스크 모두 Outbox 파이프라인의 돈 경로 구성요소이며 T3-04b는 보상 발행 원자성 담당.
 
 ## Findings
 
-- **[n/a]** Round 1 major #1 (Phase-1.5 Toss wiring) — 반영 완료. Toss 전략 수정·`isSuccess()` 수정·wiring 테스트 3건 모두 산출물에 추가(PLAN.md:245-249).
-- **[n/a]** Round 1 major #2 (Phase-4.1 chaos 확장) — 반영 완료. `stock-restore-duplicate.sh`·`fcg-pg-timeout.sh` 2건 산출물에 추가(PLAN.md:552-553).
-- **[n/a]** Round 1 minor #3 (histogram chaos 수락 기준) — 반영 완료. `kafka-latency.sh`에 "p95 ≥ 10s Prometheus 쿼리 관측"(PLAN.md:548).
-- **[n/a]** Round 1 minor #4 (모놀리스 결제 경로 비활성화) — 반영 완료. `@ConditionalOnProperty` 기본=비활성화 산출물(PLAN.md:330-331).
-- **[n/a]** PII·보안은 본 토픽 비목표.
+- **[minor]** PLAN:961-962 T3-04b 테스트 메서드는 "row 1건 INSERT" + "멱등 1건"만 assert하고 "FAILED 전이 TX 롤백 시 outbox row도 롤백"(같은 TX 원자성)을 직접 assert하는 테스트가 없다. 목적 문단(PLAN:955)은 "같은 TX 내 INSERT"를 명시하므로 Spring 기본 TX 전파 하에서 돈 경로는 닫히나, 후속 리팩터링 방어를 위해 `enqueue_WhenOuterTransactionRollsBack_ShouldRollbackOutboxRow` 테스트 1건 추가 권장. **revise 블로커 아님**.
+
+- **[minor]** T3-04b payload 필드명 `eventUUID`(PLAN:961, 965)와 T3-01 EventDedupeStore 계약 파라미터 `eventUuid`(PLAN:887) 대소문자 불일치. JSON deserialize 경계에서 해소되나 plan 문서의 필드 표기 일관성을 위해 한쪽으로 정렬 권장. **revise 블로커 아님**.
+
+- **[n/a]** PII·보안은 본 토픽 비목표. Round 2 신규 태스크 T3-04b도 PII 처리 경계 변경 없음.
 
 ## JSON
+
 ```json
 {
+  "topic": "MSA-TRANSITION",
   "stage": "plan",
-  "persona": "domain-expert",
   "round": 2,
-  "task_id": null,
+  "persona": "domain-expert",
+  "artifact_ref": "docs/MSA-TRANSITION-PLAN.md",
+  "previous_round_ref": "docs/rounds/msa-transition/plan-domain-1.md",
   "decision": "pass",
-  "reason_summary": "Round 1 findings 2 major + 2 minor가 모두 Round 2 PLAN에 1:1로 반영됐다. Phase-1.5는 Toss 전략·ErrorCode 수정 + wiring 테스트까지 산출물에 포함, Phase-4.1은 stock-restore-duplicate.sh·fcg-pg-timeout.sh 2종 신규, Phase-1.11은 kafka-latency.sh 수락 기준에 histogram p95 관측 연결, Phase-1.10은 모놀리스 confirm 경로 @ConditionalOnProperty 비활성화를 명시. Phase 1 보상 경로 원칙(결제 서비스 내부 동기 호출 유지)도 PLAN.md:114에 phase gating으로 박혔고 Round 2 신규 태스크 5건(Phase-1.0/1.4b/1.4c/2.1b/3.3 3분할)은 도메인 리스크를 증가시키지 않는다.",
-  "checklist": {
-    "source": "_shared/checklists/plan-ready.md",
-    "items": [
-      {
-        "section": "domain risk",
-        "item": "discuss에서 식별된 domain risk가 각각 대응 태스크를 가짐",
-        "status": "yes",
-        "evidence": "docs/MSA-TRANSITION-PLAN.md:625-631 추적 테이블 7건 매핑. domain_risk=true 14개(PLAN.md:638)."
-      },
-      {
-        "section": "domain risk",
-        "item": "중복 방지 체크가 필요한 경로에 계획됨",
-        "status": "yes",
-        "evidence": "Phase-3.3 dedupe 테이블(JdbcEventDedupeStore/JpaEventDedupeRepository/V2 마이그레이션) + Phase-3.3 테스트 restore_DuplicateEventUuid_ShouldNoOp·restore_AfterDedupeTtlExpiry_ShouldReprocessOnce·restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe + Phase-2.3 consume_DuplicateCommand_ShouldDedupeByEventUuid"
-      },
-      {
-        "section": "domain risk",
-        "item": "재시도 안전성 검증 태스크 존재 (단위 + 통합)",
-        "status": "yes",
-        "evidence": "단위: Phase-1.6 relay_IsIdempotent_WhenCalledTwice, Phase-1.7 process_RetryExhausted_CallsFcgOnce, Phase-3.3 restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe. 통합: Phase-4.1 chaos/scenarios/stock-restore-duplicate.sh + fcg-pg-timeout.sh (PLAN.md:552-553)"
-      }
-    ],
-    "total": 3,
-    "passed": 3,
-    "failed": 0,
-    "not_applicable": 0
+  "d1_resolution": {
+    "status": "resolved",
+    "task_id": "T3-04b",
+    "task_line_range": "PLAN:952-965",
+    "evidence": {
+      "outbox_publisher_in_payment_service": "PLAN:955 — payment_outbox topic=stock.events.restore, key=orderId, same TX INSERT",
+      "uuid_idempotency_key": "PLAN:955 eventUUID v4 + PLAN:965 StockRestoreEventPayload.eventUUID field",
+      "tdd_true_and_domain_risk_true": "PLAN:956-957",
+      "two_required_tests": "PLAN:961 whenFailed_ShouldEnqueueStockRestoreCompensation + PLAN:962 whenFailed_IdempotentWhenCalledTwice",
+      "artifacts": "PLAN:964 FailureCompensationService.java + PLAN:965 StockRestoreEventPayload.java",
+      "t3_05_depends_updated": "PLAN:975 depends=[T3-03, T3-04b]"
+    }
   },
-  "scores": {
-    "traceability": 0.94,
-    "decomposition": 0.90,
-    "ordering": 0.88,
-    "specificity": 0.90,
-    "risk_coverage": 0.92,
-    "mean": 0.908
+  "regression_check": {
+    "R1_duplicate_approval_two_way": {"tasks": ["T2b-05"], "status": "no-regress"},
+    "R2_pg_db_absent_amount": {"tasks": ["T2b-05"], "status": "no-regress"},
+    "R3_business_inbox_amount": {"tasks": ["T2a-04", "T2b-04"], "status": "no-regress"},
+    "R4_retry_safety_after_t2a05_split": {"tasks": ["T2b-01", "T2b-02", "T2a-05a", "T2a-05b", "T2a-05c"], "status": "no-regress", "note": "T2a-05 3분할 후에도 DLQ 전용 consumer·terminal no-op·immediate/polling race 테스트 전부 보존"},
+    "R5_fcg_invariant": {"tasks": ["T2b-03", "T1-13", "T4-01"], "status": "no-regress"},
+    "R6_audit_atomicity": {"tasks": ["T1-05", "T1-06", "T1-07"], "status": "no-regress"},
+    "R7_strangler_dual_write": {"tasks": ["T1-18"], "status": "no-regress"}
   },
+  "t1_11_split_integrity": {
+    "status": "ok",
+    "note": "T1-11a Publisher+Relay / T1-11b Channel+EventHandler / T1-11c Immediate+PollingWorker 3분할. Worker의 MessagePublisherPort 경유 강제(PLAN:309, 340)로 KafkaTemplate 직접 호출 차단. 불변식 11 immediate/polling race 테스트 T1-11c에 이식됨(PLAN:347)"
+  },
+  "t2a_05_split_integrity": {
+    "status": "ok",
+    "note": "T2a-05a/b/c 3분할 후에도 T2b-02 depends=T2a-05c 유지(PLAN:672). DLQ consumer가 Worker Lifecycle에 결속. retry→DLQ→QUARANTINED 체인 T2b-01/T2b-02 테스트로 양단 박제"
+  },
+  "new_money_path_risks": [],
   "findings": [
     {
-      "severity": "n/a",
-      "checklist_item": "Round 1 major #1 — Phase-1.5 Toss wiring 완결",
-      "location": "docs/MSA-TRANSITION-PLAN.md:231-249 (Phase-1.5)",
-      "problem": "반영 완료.",
-      "evidence": "PLAN.md:248 (TossPaymentGatewayStrategy ALREADY_PROCESSED_PAYMENT 포착 분기 추가); PLAN.md:249 (TossPaymentErrorCode.isSuccess 반환값 수정); PLAN.md:245 (TossPaymentGatewayStrategyWiringTest#confirm_WhenAlreadyProcessedPayment_ShouldInvokePgMaskedSuccessHandler)",
-      "suggestion": "해당 없음 — Round 1 제안 3건 1:1 매핑 확인."
+      "severity": "minor",
+      "domain_risk": "T3-04b 같은 TX 원자성 계약 테스트 부재",
+      "section": "T3-04b (PLAN:952-965)",
+      "line": 961,
+      "description": "목적 문단은 '같은 TX 내 INSERT'를 명시하나 테스트 메서드 2건은 row 1건 INSERT + 멱등성만 assert. FAILED 전이 TX 롤백 시 outbox row도 롤백됨을 직접 assert하는 테스트 없음. Spring 기본 TX 전파로 돈 경로는 닫히나 후속 리팩터링 방어를 위해 enqueue_WhenOuterTransactionRollsBack_ShouldRollbackOutboxRow 1건 추가 권장. revise 블로커 아님."
+    },
+    {
+      "severity": "minor",
+      "domain_risk": "dedupe 키 표기 불일치 (eventUUID vs eventUuid)",
+      "section": "T3-04b payload(PLAN:961, 965) vs T3-01 EventDedupeStore 계약(PLAN:887)",
+      "line": 965,
+      "description": "T3-04b payload 필드 eventUUID와 T3-01 EventDedupeStore.recordIfAbsent(String eventUuid, ...) 파라미터 eventUuid 대소문자 불일치. JSON deserialize 경계에서 해소되므로 돈 경로 차단 아님. plan 문서 일관성 차원 minor."
     },
     {
       "severity": "n/a",
-      "checklist_item": "Round 1 major #2 — Phase-4.1 chaos 시나리오 확장",
-      "location": "docs/MSA-TRANSITION-PLAN.md:552-553 (Phase-4.1)",
-      "problem": "반영 완료.",
-      "evidence": "PLAN.md:552 (chaos/scenarios/stock-restore-duplicate.sh — 동일 UUID 2회 발행, 재고 증가 1회 확인); PLAN.md:553 (chaos/scenarios/fcg-pg-timeout.sh — Toxiproxy PG getStatus timeout, QUARANTINED 확인); Phase-4.1 제목도 '6종 장애 주입'으로 갱신(PLAN.md:542)",
-      "suggestion": "해당 없음."
-    },
-    {
-      "severity": "n/a",
-      "checklist_item": "Round 1 minor #3 — Phase-1.11 histogram chaos 수락 기준",
-      "location": "docs/MSA-TRANSITION-PLAN.md:548 (Phase-4.1 kafka-latency.sh)",
-      "problem": "반영 완료.",
-      "evidence": "PLAN.md:548 — 'payment.outbox.pending_age_seconds histogram p95 ≥ 10s가 Prometheus 쿼리로 관측됨' 수락 기준 명시",
-      "suggestion": "해당 없음."
-    },
-    {
-      "severity": "n/a",
-      "checklist_item": "Round 1 minor #4 — 모놀리스 결제 경로 비활성화",
-      "location": "docs/MSA-TRANSITION-PLAN.md:320-331 (Phase-1.10)",
-      "problem": "반영 완료.",
-      "evidence": "PLAN.md:330 (OutboxImmediateEventHandler에 @ConditionalOnProperty('payment.monolith.confirm.enabled', havingValue='true', matchIfMissing=false)); PLAN.md:331 (PaymentController confirm 엔드포인트 동일 처리 또는 HTTP 501 응답)",
-      "suggestion": "해당 없음."
-    },
-    {
-      "severity": "n/a",
-      "checklist_item": "PII·보안",
-      "location": "docs/topics/MSA-TRANSITION.md:141 (§ 1-3)",
-      "problem": "본 토픽 비목표",
-      "evidence": "§ 1-3에서 보안 범위 명시적 비목표 선언",
-      "suggestion": "해당 없음"
+      "domain_risk": "PII",
+      "section": "Round 2 전체",
+      "line": 0,
+      "description": "PII·보안은 본 토픽 비목표. Round 2 신규 태스크(T3-04b 포함)에 PII 처리 경계 변경 없음."
     }
   ],
-  "previous_round_ref": "docs/rounds/msa-transition/plan-domain-1.md",
-  "delta": {
-    "newly_passed": [
-      "Phase-1.5 PgMaskedSuccessHandler wiring — Toss 전략 분기·isSuccess 수정·wiring 테스트 3건 산출물 추가",
-      "Phase-4.1 chaos 시나리오 보상 이벤트 중복 주입·FCG PG timeout — 2건 시나리오 신설",
-      "Phase-1.11 pending_age_seconds histogram chaos 수락 기준 — kafka-latency.sh p95 임계값 관측 명시",
-      "Phase-1.10 모놀리스 결제 경로 비활성화 — @ConditionalOnProperty 기본=비활성화 산출물 추가"
-    ],
-    "newly_failed": [],
-    "still_failing": []
+  "counts": {
+    "critical": 0,
+    "major": 0,
+    "minor": 2,
+    "n/a": 1
   },
-  "unstuck_suggestion": null
+  "notes": "D-1 해소=T3-04b 신설로 확인(PLAN:952-965), 테스트·산출물·depends 모두 계약 만족 / R1 no-regress (T2b-05 불변) / R2 no-regress (T2b-05 불변) / R3 no-regress (T2a-04+T2b-04 불변) / R4 no-regress (T2a-05 3분할 후에도 retry→DLQ→QUARANTINED 체인 박제) / R5 no-regress (T2b-03+T1-13+T4-01 불변) / R6 no-regress (T1-05/06/07 불변) / R7 no-regress (T1-18 불변). 신규 돈 경로 리스크 0건. T3-04b payload 4필드(eventUUID·orderId·productId·qty) 모두 명시되어 T3-05 consumer 역차감·dedupe·상관키 요구 충족. 남은 minor 2건(같은 TX 원자성 테스트 부재, eventUUID/eventUuid 표기) 모두 돈 경로 차단 아님.",
+  "summary": "Round 1 major D-1(FAILED stock.restore 발행 누락) 해소 확인. T3-04b 태스크 신설로 payment-service outbox row INSERT·UUID 멱등·테스트 2건·산출물 2건·T3-05 depends 갱신 모두 계약 만족. 기존 7개 리스크 regress 0건. 돈 경로 7+1개 전부 태스크·테스트 수준 봉쇄. pass."
 }
 ```

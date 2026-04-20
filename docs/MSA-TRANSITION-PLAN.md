@@ -1,273 +1,260 @@
 # MSA-TRANSITION-PLAN
 
 **토픽**: [MSA-TRANSITION](topics/MSA-TRANSITION.md)
-**날짜**: 2026-04-18
-**라운드**: 5 (plan-round 5 Planner 수정 — Redis 캐시 차감 + IdempotencyStore Redis 이관 + plan-review-1 minor 8건 보강 + Phase Gate 6개 추가)
+**날짜**: 2026-04-20
+**라운드**: 6 (전면 재작성 — §2-2b 재설계/ADR-30 outbox+ApplicationEvent+Channel+ImmediateWorker + ADR-05 보강 pg DB 부재 경로 amount 검증 + ADR-21 보강 business inbox amount 컬럼 + Phase 2 4단계 분할 완전 반영)
 
 ---
 
-<!-- ARCH tag 범례: ARCH R<N>: = 해당 라운드 신규 지적 | ARCH R<N> RESOLVED: = 해당 라운드에서 해소 확인 -->
-
-<!-- ARCH R2 RESOLVED: Round 1에서 달린 `<!-- ARCH R1: -->` 주석이 Round 2 재작성에서 삭제됐다. 프로세스 원칙(해소된 주석도 `<!-- ARCH R2 RESOLVED: -->` 접두 마킹으로 유지)을 위반. Round 3에서 범례 규칙을 본 파일 상단에 명시하여 이후 라운드 준수를 확보한다 (F-18 minor 대응). -->
+<!-- plan-review-4 반영 확인:
+  F-01(Phase-5.2 아카이브 경로 docs/archive/msa-transition/ 디렉토리 형식) → Phase-5.2에 반영됨
+  이전 plan에서 반영된 8건 minor:
+  - M-4(PG DB 무상태 방침) → Phase-0.1 산출물에 유지
+  - M-5(토픽 네이밍 규약) → Phase-2.3에 유지
+  - C-1(user-service 모듈 신설) → Phase-3.1b에 유지
+  - C-2(결제 서비스 측 어댑터 교체) → Phase-2.3b에 유지
+  - S-1(재고 캐시 차감) → Phase-1.4d에 유지
+  - S-2(StockCommitEvent 발행) → Phase-1.5b에 유지
+  - S-3(Reconciler 재고 대조) → Phase-1.9, Phase-1.12에 유지
+  - S-4(멱등성 Redis 이관) → Phase-0.1a에 유지
+  discuss-domain-5 minor(amount BIGINT vs BigDecimal 변환 규약) → T2b-04 inbox 스키마 태스크에 흡수
+-->
 
 ## 요약 브리핑
 
-### 1. Task 목록 (46개, 6 Phase)
+### 1. Task 목록 (Phase별)
 
-**Phase 0 — 인프라 준비 (6)**
-1. Phase-0.1: docker-compose 기반 인프라 정의 (Kafka / Redis 공유 + payment 전용 Redis / Eureka / Config Server + 공유 네트워크)
-2. Phase-0.1a: IdempotencyStore Caffeine → Redis 이관 (payment-service 전용 Redis, SETNX 동시성 방어) — domain_risk
-3. Phase-0.2: Spring Cloud Gateway 서비스 모듈 신설 (WebFlux/Netty, 모놀리스 전체 fallback 라우트)
-4. Phase-0.3: W3C Trace Context + LogFmt 공통 기반 (traceparent 헤더 MDC 주입 — 리액티브 엣지 한정)
-5. Phase-0.4: Toxiproxy 장애 주입 도구 구성 (Kafka / MySQL proxy 엔드포인트 선언)
-6. Phase-0-Gate: 인프라 기반 smoke 검증 (Kafka/Redis/Eureka/Config Server/Gateway/Toxiproxy 전수 healthcheck) — domain_risk
+**Phase 0 — 인프라 준비** (6개)
 
-**Phase 1 — 결제 코어 분리 (18)**
-7. Phase-1.0: 결제 서비스 모듈 경계 정리 (cross-context port 복제 + InternalPaymentGatewayAdapter 이관 + paymentgateway compile 의존 제거 + StockCachePort 선언)
-8. Phase-1.1: 결제 서비스 모듈 신설 + port 계층 구성 (모든 포트를 application/port/{in,out}로 일괄 정리 + StockCommitEventPublisher 포트 선언)
-9. Phase-1.2: Fake 구현체 신설 (테스트용 PaymentGatewayPort · MessagePublisherPort · IdempotencyStorePort · StockCachePort Fake)
-10. Phase-1.3: 도메인 이관 — PaymentEvent · PaymentOutbox · RetryPolicy 상태 전이 테스트 보존
-11. Phase-1.4: 트랜잭션 경계 + 감사 원자성 — payment_history BEFORE_COMMIT 리스너 (결제 서비스 내부 TX 원자성에 한정, stock 캐시 차감은 외부 호출 분리)
-12. Phase-1.4b: AOP 축 결제 서비스 복제 이관 (@PublishDomainEvent · @PaymentStatusChange · 로깅/메트릭 aspect)
-13. Phase-1.4c: 결제 서비스 Flyway V1 스키마 (빈 DB 시작 + 모놀리스 PENDING 미종결 레코드 모놀리스 잔류 처리)
-14. Phase-1.4d: StockCachePort + Redis 어댑터 (Lua atomic DECR, DECR 음수→INCR 복구 + FAILED 전이, AOF 지속성) — domain_risk
-15. Phase-1.5: PG 가면 응답 방어선 구현 + Toss 전략 wiring 완결 (ALREADY_PROCESSED_PAYMENT 포착 + isSuccess() 수정) — domain_risk
-16. Phase-1.5b: StockCommitEventPublisher — 결제 확정 시 payment.events.stock-committed 발행 — domain_risk
-17. Phase-1.6: 결제 릴레이 → Kafka publisher 구현 (at-least-once + relay 멱등성)
-18. Phase-1.7: FCG 격리 불변 + RecoveryDecision 이관 (timeout → QUARANTINED 무조건, QUARANTINED 결제 Redis DECR 상태 유지)
-19. Phase-1.8: Graceful Shutdown + Virtual Threads 재검토
-20. Phase-1.9: Reconciliation 루프 + FCG/Reconciler 역할 분리 + Redis ↔ RDB 재고 대조 — domain_risk
-21. Phase-1.10: Gateway 결제 엔드포인트 교체 + 모놀리스 결제 경로 비활성화 (@ConditionalOnProperty 기본 false + migrate-pending-outbox.sh)
-22. Phase-1.11: payment.outbox.pending_age_seconds 히스토그램 + payment.stock_cache.divergence_count 메트릭 (stock lock-in·캐시 발산 감지)
-23. Phase-1.12: 재고 warmup — product.events.stock-snapshot 토픽 재생 (기동 시 Redis 초기화) — domain_risk
-24. Phase-1-Gate: 결제 코어 E2E 검증 (payment-service 단독 기동 + 결제 성공/실패/QUARANTINED 경로 + Redis 차감 + Reconciler) — domain_risk
+- T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
+- T0-02 Idempotency 저장소 Caffeine → Redis 이관
+- T0-03 Spring Cloud Gateway 서비스 모듈 신설
+- T0-04 W3C Trace Context + LogFmt 공통 기반
+- T0-05 Toxiproxy 장애 주입 도구 구성
+- T0-Gate Phase 0 인프라 smoke 검증
 
-**Phase 2 — PG 서비스 분리 (7)**
-25. Phase-2.1: PG 서비스 모듈 신설 + port 계층 + 벤더 전략(Toss · NicePay) 이관
-26. Phase-2.1b: PG 서비스 AOP 축 복제 이관 (@TossApiMetric · TossApiMetricsAspect)
-27. Phase-2.2: Fake PG 서비스 구현
-28. Phase-2.3: PgStatusPort Kafka 이벤트 경로 + 이벤트 토픽 명명 + 전 서비스 공통 토픽 네이밍 규약 확정 (PgEventPublisherPort + PgConfirmUseCase)
-29. Phase-2.3b: 결제 서비스 측 PgStatusPort·PaymentGatewayPort 구현체 교체 (Local/Internal → HTTP/Kafka) — domain_risk
-30. Phase-2.4: Gateway 라우팅 — PG 내부 API 격리
-31. Phase-2-Gate: PG 서비스 분리 E2E 검증 (pg-service 독립 기동 + Kafka 왕복 이벤트 + dedupe + Fake PG 벤더 격리) — domain_risk
+**Phase 1 — 결제 코어 분리** (20개)
 
-**Phase 3 — 주변 도메인 분리 + 보상 이벤트화 (8)**
-32. Phase-3.1: 상품 서비스 모듈 신설 + 도메인 이관 (StockRestoreUseCase implements StockRestoreCommandService 겸임 + stock-snapshot 발행 훅)
-33. Phase-3.1b: 사용자 서비스 모듈 신설 + 도메인 이관 + port 계층 + Flyway V1
-34. Phase-3.2: Fake 상품 서비스 구현 (FakeStockRepository + FakeEventDedupeStore + FakePaymentRedisStockPort — StockCommit·StockRestore 소비자 공용)
-35. Phase-3.1c: StockCommitConsumer + payment-service 전용 Redis 직접 쓰기 (product → payment Redis SET, product RDB UPDATE) — domain_risk
-36. Phase-3.3: 보상 이벤트 consumer dedupe — stock.restore UUID 키, 상품 서비스 소유, EventDedupeStore port/JdbcStore 분리 — domain_risk
-37. Phase-3.4: 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체 (InternalAdapter 퇴역)
-38. Phase-3.5: Gateway 라우팅 — 상품·사용자 엔드포인트 교체
-39. Phase-3-Gate: 주변 도메인 + 보상 이벤트화 E2E 검증 (product/user 독립 기동 + StockCommit/StockRestore dedupe + Redis 직접 쓰기 + Saga 보상 왕복) — domain_risk
+- T1-01 결제 서비스 모듈 경계 정리 (port 선언)
+- T1-02 결제 서비스 모듈 신설 + port 계층 구성
+- T1-03 Fake 구현체 신설 (application 계층 테스트용)
+- T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
+- T1-05 트랜잭션 경계 + 감사 원자성
+- T1-06 AOP 축 결제 서비스 복제 이관
+- T1-07 결제 서비스 Flyway V1 스키마
+- T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
+- T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
+- T1-10 StockCommitEventPublisher 구현
+- T1-11a KafkaMessagePublisher + OutboxRelayService 구현
+- T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
+- T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
+- T1-12 QuarantineCompensationHandler + Scheduler
+- T1-13 FCG 격리 불변 + RecoveryDecision 이관
+- T1-14 Reconciliation 루프 + Redis↔RDB 재고 대조
+- T1-15 Graceful Shutdown + Virtual Threads 재검토
+- T1-16 payment.outbox.pending_age_seconds 등 메트릭
+- T1-17 재고 캐시 warmup (consumer와 orchestration 분리)
+- T1-18 Gateway 라우팅: 결제 엔드포인트 교체
+- T1-Gate Phase 1 결제 코어 E2E 검증
 
-**Phase 4 — 장애 주입 + 오토스케일러 (4)**
-40. Phase-4.1: Toxiproxy 장애 시나리오 스위트 (8종: 브로커 파티션 · DB 지연 · Kafka 지연 · PG timeout · 보상 중복 주입 · FCG PG timeout · Redis down · 재고 캐시 발산)
-41. Phase-4.2: k6 시나리오 재설계 (분산 토폴로지 경로별 TPS/레이턴시)
-42. Phase-4.3: 로컬 오토스케일러 (Prometheus 지표 감시 + docker-compose scale 스크립트)
-43. Phase-4-Gate: 장애 주입 + 부하 검증 (Toxiproxy 8종 전수 통과 + k6 목표 달성 + 오토스케일러 scale up/down 실관측) — domain_risk
+**Phase 2.a — pg-service 골격 + Outbox 파이프라인 + consumer 기반** (7개)
 
-**Phase 5 — 잔재 정리 (3)**
-44. Phase-5.1: 메트릭 네이밍 규약 공통화 + Admin UI 처리 결정
-45. Phase-5.2: LogFmt 공통화 완결 + 최종 문서화 (archive 이동)
-46. Phase-5-Gate: 최종 회귀 및 아카이브 완결 검증 (전체 테스트 통과 + Phase 0~4 Gate 전수 재실행 + dead link 검사 + archive 이동 확인) — domain_risk
+- T2a-01 pg-service 모듈 신설 + port 계층 + 벤더 전략 이관
+- T2a-02 pg-service AOP 축 복제 이관
+- T2a-03 Fake pg-service 구현 (테스트용)
+- T2a-04 pg-service DB 스키마 (pg_inbox + pg_outbox Flyway V1)
+- T2a-05a PgEventPublisher + PgOutboxRelayService 구현
+- T2a-05b PgOutboxChannel + OutboxReadyEventHandler 구현
+- T2a-05c PgOutboxImmediateWorker + PgOutboxPollingWorker 구현
+- T2a-06 PaymentConfirmConsumer + consumer dedupe
+- T2a-Gate Phase 2.a 마이크로 Gate
 
-### 2. Phase 의존 흐름 + 최종 토폴로지
+**Phase 2.b — business inbox 5상태 + amount 컬럼 + 벤더 어댑터 통합** (6개)
+
+- T2b-01 PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행
+- T2b-02 PaymentConfirmDlqConsumer 구현 (DLQ 전용 consumer)
+- T2b-03 pg-service 내부 FCG 구현
+- T2b-04 business inbox amount 컬럼 저장 규약 구현
+- T2b-05 중복 승인 응답 2자 금액 대조 + pg DB 부재 경로 방어
+- T2b-Gate Phase 2.b 마이크로 Gate
+
+**Phase 2.c — 전환 스위치 + 기존 reconciler 삭제** (3개)
+
+- T2c-01 pg.retry.mode=outbox 활성화 스위치
+- T2c-02 기존 reconciler · PG 직접 호출 코드 삭제 + 잔존 어댑터 정리
+- T2c-Gate Phase 2.c 마이크로 Gate
+
+**Phase 2.d — 관측 대시보드 활성화 + 결제 서비스 측 이벤트 소비** (4개)
+
+- T2d-01 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
+- T2d-02 토픽 네이밍 규약 확정 + Outbox 관측 지표 + Grafana 대시보드
+- T2d-03 Gateway 라우팅: PG 내부 API 격리
+- T2d-Gate Phase 2.d 마이크로 Gate + Phase 2 통합 Gate
+
+**Phase 3 — 상품·사용자 서비스 분리** (9개)
+
+- T3-01 상품 서비스 모듈 신설 + 도메인 이관 + stock-snapshot 발행 훅
+- T3-02 사용자 서비스 모듈 신설 + 도메인 이관
+- T3-03 Fake 상품·사용자 서비스 구현
+- T3-04 StockCommitConsumer + payment-service 전용 Redis 직접 SET
+- T3-04b FAILED 결제 stock.events.restore 보상 이벤트 발행 (UUID 멱등)
+- T3-05 보상 이벤트 consumer dedupe 구현
+- T3-06 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
+- T3-07 Gateway 라우팅: 상품·사용자 엔드포인트 교체
+- T3-Gate Phase 3 주변 도메인 + 보상 이벤트화 E2E 검증
+
+**Phase 4 — 장애 주입 검증 · 로컬 오토스케일러** (4개)
+
+- T4-01 Toxiproxy 장애 시나리오 스위트 8종
+- T4-02 k6 시나리오 재설계
+- T4-03 로컬 오토스케일러
+- T4-Gate Phase 4 장애 주입 + 부하 검증
+
+**Phase 5 — 잔재 정리** (3개)
+
+- T5-01 메트릭 네이밍 규약 공통화 + Admin UI 처리
+- T5-02 LogFmt 공통화 완결 + 최종 문서화 + 아카이브
+- T5-Gate Phase 5 최종 회귀 및 아카이브 완결
+
+**합계**: 64 태스크 (domain_risk=true 43건, 의존 엣지 57개)
+
+---
+
+### 2. Phase 실행 흐름
 
 ```mermaid
 flowchart TB
-    subgraph P0["Phase 0 — 인프라"]
-        P01[Phase-0.1<br/>Kafka / Redis 공유 + payment 전용 Redis<br/>keyspace: stock:id / idem:key]
-        P01a[Phase-0.1a<br/>멱등성 Redis 이관<br/>Caffeine -> RedisIdempotencyAdapter<br/>SETNX 동시성 방어]
-        P02[Phase-0.2<br/>Gateway WebFlux/Netty]
-        P03[Phase-0.3<br/>Trace Context / LogFmt]
-        P04[Phase-0.4<br/>Toxiproxy]
-        P0G[[Phase-0-Gate<br/>인프라 기반 smoke 검증]]
-    end
-    subgraph P1["Phase 1 — 결제 코어 분리"]
-        P10[Phase-1.0<br/>cross-context port 복제<br/>paymentgateway 경계 단절<br/>StockCachePort 선언]
-        P11[Phase-1.1<br/>결제 모듈 + port 일괄<br/>StockCommitEventPublisher 포트]
-        P12[Phase-1.2<br/>Fake 신설<br/>FakeStockCachePort 포함]
-        P13[Phase-1.3<br/>도메인 이관]
-        P14[Phase-1.4 / 1.4b / 1.4c<br/>감사 원자성 + AOP + 빈 DB]
-        P14d[Phase-1.4d<br/>재고 캐시 차감<br/>Lua atomic DECR<br/>음수→INCR 복구+FAILED]
-        P15[Phase-1.5<br/>PG 가면 방어 / Toss wiring]
-        P15b[Phase-1.5b<br/>StockCommitEventPublisher<br/>payment.events.stock-committed 발행]
-        P16[Phase-1.6<br/>결제 릴레이 Kafka]
-        P17[Phase-1.7<br/>FCG 불변<br/>QUARANTINED DECR 상태 유지]
-        P19[Phase-1.9<br/>Reconciler<br/>Redis↔RDB 재고 대조<br/>QUARANTINED INCR 복원]
-        P110[Phase-1.10<br/>Gateway 전환 + 모놀리스 결제 비활성화]
-        P111[Phase-1.11<br/>pending_age_seconds<br/>stock_cache.divergence_count]
-        P112[Phase-1.12<br/>stock-snapshot warmup<br/>기동 시 Redis 초기화]
-        P1G[[Phase-1-Gate<br/>결제 코어 E2E 검증]]
-    end
-    subgraph P2["Phase 2 — PG 서비스 분리"]
-        P21[Phase-2.1 / 2.1b<br/>PG 모듈 + AOP]
-        P23[Phase-2.3<br/>PgStatus Kafka]
-        P24[Phase-2.4<br/>Gateway 재라우팅]
-        P2G[[Phase-2-Gate<br/>PG 서비스 분리 E2E 검증]]
-    end
-    subgraph P3["Phase 3 — 주변 도메인 + 보상 이벤트화"]
-        P31[Phase-3.1<br/>상품 모듈<br/>stock-snapshot 발행 훅]
-        P31b[Phase-3.1b<br/>사용자 서비스 모듈]
-        P32[Phase-3.2<br/>Fake 신설<br/>FakeStockRepository<br/>FakeEventDedupeStore<br/>FakePaymentRedisStockPort]
-        P31c[Phase-3.1c<br/>StockCommitConsumer<br/>product RDB UPDATE<br/>payment Redis 직접 SET]
-        P33[Phase-3.3<br/>보상 dedupe]
-        P34[Phase-3.4<br/>ProductPort HTTP 교체]
-        P35[Phase-3.5<br/>Gateway 재라우팅]
-        P3G[[Phase-3-Gate<br/>주변 도메인 + 보상 이벤트화 E2E 검증]]
-    end
-    subgraph P4["Phase 4 — 장애 주입 + 오토스케일러"]
-        P41[Phase-4.1<br/>8종 chaos 시나리오<br/>Redis down · 재고 캐시 발산 추가]
-        P42[Phase-4.2<br/>k6 재설계]
-        P43[Phase-4.3<br/>로컬 오토스케일러]
-        P4G[[Phase-4-Gate<br/>장애 주입 + 부하 검증]]
-    end
-    subgraph P5["Phase 5 — 잔재 정리"]
-        P51[Phase-5.1<br/>메트릭 공통화]
-        P52[Phase-5.2<br/>LogFmt + 아카이브]
-        P5G[[Phase-5-Gate<br/>최종 회귀 및 아카이브 완결]]
+    subgraph Phase0["Phase 0 — 인프라 준비"]
+        direction TB
+        P0a[docker-compose 기반 컨테이너 기동]
+        P0b[공유 Idempotency 저장소 Redis 전환]
+        P0c[Gateway 모듈 신설]
+        P0d[분산 트레이싱 공통 기반]
+        P0e[장애 주입 도구 구성]
+        P0a --> P0b --> P0c --> P0d --> P0e
+        P0e --> P0Gate[Phase 0 Gate]
     end
 
-    P04 --> P0G --> P10
-    P0G --> P1
-    P01 --> P01a
-    P10 --> P11 --> P12 --> P13 --> P14 --> P14d --> P15 --> P15b --> P16 --> P17 --> P19 --> P110
-    P01a -.멱등성 Redis.-> P11
-    P14d -.재고 캐시 차감 포트.-> P15b
-    P112 --> P1G --> P21
-    P21 --> P23 --> P24 --> P2G --> P31
-    P31 --> P31b --> P32 --> P31c --> P33 --> P34 --> P35 --> P3G --> P41
-    P112 -.warmup.-> P31c
-    P41 --> P42 --> P43 --> P4G --> P51
-    P51 --> P52 --> P5G
+    subgraph Phase1["Phase 1 — 결제 코어 분리"]
+        direction TB
+        P1a[결제 서비스 모듈 + port 선언]
+        P1b[Fake 구현체]
+        P1c[도메인 엔터티 이관]
+        P1d[AOP 감사 원자성 복제]
+        P1e[Flyway 스키마 V1]
+        P1f[Redis 재고 캐시 Lua DECR]
+        P1g[중복 승인 응답 방어선 LVAL]
+        P1h[Outbox 릴레이 3분해 / Channel / Immediate+Polling Worker]
+        P1i[격리 상태 보상 핸들러]
+        P1j[FCG 이관 + 격리 불변]
+        P1k[재고 대조 Reconciliation]
+        P1l[Graceful Shutdown + 관측 지표]
+        P1m[재고 캐시 warmup 분리]
+        P1n[Gateway 결제 경로 교체]
+        P1a --> P1b --> P1c --> P1d --> P1e
+        P1e --> P1f --> P1g --> P1h --> P1i --> P1j --> P1k
+        P1k --> P1l --> P1m --> P1n --> P1Gate[Phase 1 Gate]
+        P0Gate --> P1a
+    end
+
+    subgraph Phase2["Phase 2 — PG 서비스 분리"]
+        direction TB
+        subgraph P2a["2.a 골격 + Outbox + consumer"]
+            direction TB
+            P2a1[pg-service 모듈 + port + 벤더 전략 이관]
+            P2a2[pg-service AOP 복제]
+            P2a3[Fake pg-service]
+            P2a4[pg_inbox + pg_outbox 스키마]
+            P2a5[Outbox 릴레이 3분해 + DLQ consumer 기반]
+            P2a6[PaymentConfirmConsumer + dedupe]
+            P2a1 --> P2a2 --> P2a3 --> P2a4 --> P2a5 --> P2a6 --> P2aGate[2.a Gate]
+        end
+        subgraph P2b["2.b business inbox 5상태 + amount"]
+            direction TB
+            P2b1[PG 벤더 호출 + available_at 지연 재발행]
+            P2b2[PaymentConfirmDlqConsumer 전용 클래스]
+            P2b3[pg-service 내부 FCG]
+            P2b4[business inbox amount 저장 규약]
+            P2b5[중복 승인 2자 대조 + 부재 경로 방어]
+            P2b1 --> P2b2 --> P2b3 --> P2b4 --> P2b5 --> P2bGate[2.b Gate]
+        end
+        subgraph P2c["2.c 전환 + 삭제"]
+            direction TB
+            P2c1[pg.retry.mode=outbox 스위치]
+            P2c2[reconciler·PG 직접 호출 코드 삭제]
+            P2c1 --> P2c2 --> P2cGate[2.c Gate]
+        end
+        subgraph P2d["2.d 관측 + 결제 측 소비"]
+            direction TB
+            P2d1[결제 측 payment.events.confirmed consumer]
+            P2d2[토픽 규약 + Grafana 대시보드 + 알림]
+            P2d3[Gateway PG 내부 API 격리]
+            P2d1 --> P2d2 --> P2d3 --> P2dGate[2.d Gate + Phase 2 통합 Gate]
+        end
+        P2aGate --> P2b1
+        P2bGate --> P2c1
+        P2cGate --> P2d1
+        P1Gate --> P2a1
+    end
+
+    subgraph Phase3["Phase 3 — 상품·사용자 서비스"]
+        direction TB
+        P3a[상품 서비스 모듈 + stock-snapshot 발행]
+        P3b[사용자 서비스 모듈]
+        P3c[Fake 상품·사용자]
+        P3d[StockCommitConsumer Redis 동기화]
+        P3d2[FAILED 결제 stock.events.restore 보상 발행]
+        P3e[보상 이벤트 consumer dedupe]
+        P3f[결제 측 HTTP 어댑터 교체]
+        P3g[Gateway 상품·사용자 경로 교체]
+        P3a --> P3b --> P3c --> P3d --> P3d2 --> P3e --> P3f --> P3g --> P3Gate[Phase 3 Gate]
+        P2dGate --> P3a
+    end
+
+    subgraph Phase4["Phase 4 — 장애 주입 + 부하"]
+        direction TB
+        P4a[Toxiproxy 8종 시나리오]
+        P4b[k6 재설계]
+        P4c[로컬 오토스케일러]
+        P4a --> P4b --> P4c --> P4Gate[Phase 4 Gate]
+        P3Gate --> P4a
+    end
+
+    subgraph Phase5["Phase 5 — 잔재 정리"]
+        direction TB
+        P5a[메트릭 규약 공통화 + Admin UI]
+        P5b[LogFmt 완결 + 문서 아카이브]
+        P5a --> P5b --> P5Gate[Phase 5 Gate]
+        P4Gate --> P5a
+    end
 ```
 
-```mermaid
-flowchart LR
-    Client[클라이언트] --> GW[API Gateway<br/>WebFlux/Netty<br/>traceparent 주입]
-    GW -->|결제 confirm/cancel| PAY[결제 서비스<br/>MVC+VT<br/>FCG / 릴레이 / 감사]
-    GW -->|PG getStatus| PG[PG 서비스<br/>MVC+VT<br/>Toss/NicePay 전략]
-    GW -->|상품 조회/차감| PROD[상품 서비스<br/>MVC+VT<br/>보상 consumer dedupe]
-    GW -->|사용자 조회| USR[사용자 서비스<br/>MVC+VT]
-    GW -->|관리자 페이지| ADMIN[관리자 모놀리스<br/>Thymeleaf 잔존]
+---
 
-    PAY -.PaymentGatewayPort.-> PG
-    PAY -->|payment.outbox 릴레이| KAFKA[Kafka 브로커]
-    KAFKA -->|stock.restore UUID| PROD
-    KAFKA -->|pg.status.changed| PAY
-    PAY -->|payment.events.stock-committed| KAFKA
-    KAFKA -->|stock-committed consume| PROD
+### 3. 핵심 결정 → Task 매핑 (traceability 요약)
 
-    PAY --> PAYDB[(결제 DB<br/>payment_event<br/>payment_outbox<br/>payment_history)]
-    PAY -->|재고 캐시 차감 DECR| PREDIS[(payment 전용 Redis<br/>stock:productId<br/>idem:key<br/>appendonly yes)]
-    PG --> PGDB[(PG DB)]
-    PROD --> PRODDB[(상품 DB<br/>event_dedupe)]
-    PROD -->|직접 SET stock:id| PREDIS
-    USR --> USRDB[(사용자 DB)]
-    ADMIN --> ADMINDB[(모놀리스 DB<br/>Phase 5 잔재)]
+- **ADR-01 서비스 분해 3개** (payment / pg / product + user) → T1-01, T2a-01, T3-01, T3-02
+- **ADR-04 Transactional Outbox** → T1-11a/b/c (payment), T2a-05a/b/c (pg)
+- **ADR-05 멱등성 + 중복 승인 방어** → T1-09 (LVAL), T2b-05 (pg-service 2자 대조 + 부재 경로 amount 검증)
+- **ADR-12 토픽 스키마 + Avro/Protobuf** → T2d-02
+- **ADR-13 AOP 감사 원자성** → T1-05, T1-06, T2a-02
+- **ADR-15 FCG 격리 불변** → T1-13 (payment), T2b-03 (pg-service 내부 FCG)
+- **ADR-16 UUID dedupe + Redis TTL** → T0-02, T2a-06, T3-04b, T3-05
+- **ADR-21 pg-service 외부 계약 + business inbox** → T2a-04, T2b-04 (amount 컬럼 저장 규약)
+- **ADR-23 DB 컨테이너 분리** → T0-01, T1-07, T2a-04
+- **ADR-29 Toxiproxy** → T0-05, T4-01
+- **ADR-30 Outbox + available_at + DLQ 전용 consumer** → T2a-05a/b/c, T2b-01 (available_at), T2b-02 (DlqConsumer)
+- **ADR-31 관측성 4계층** → T0-01 (컴포넌트), T1-16, T2d-02 (대시보드·알림)
+- **§2-2b 보상 경로 (재고 영구 잠금 차단)** → T3-04b (FAILED 결제 stock.events.restore publisher), T3-05 (consumer dedupe)
 
-    PAY -.Reconciliation 루프<br/>Redis↔RDB 대조.-> PAYDB
-    PAY -.Reconciliation 루프<br/>Redis↔RDB 대조.-> PREDIS
-    PAY -.FCG PG 재조회.-> PG
-```
-
-### 3. 핵심 결정 → Task 매핑
-
-| 결정 축 | 주 Task |
-|---|---|
-| 분해 기준(3/4/5서비스 택일) · 런타임 스택(Gateway만 WebFlux) | Phase-0.2, 1.1, 2.1, 3.1 |
-| PG 가면 응답 방어선(Toss `ALREADY_PROCESSED_PAYMENT` + NicePay `2201` 금액 대칭) | Phase-1.5 |
-| 감사 원자성(payment_history BEFORE_COMMIT + AOP + 결제 서비스 DB 잔류) | Phase-1.4 / 1.4b / 1.4c |
-| FCG timeout → QUARANTINED 불변 (QUARANTINED 결제 Redis DECR 상태 유지) | Phase-1.7, Phase-4.1 fcg-pg-timeout.sh |
-| 보상 이벤트 consumer dedupe (상품 서비스 소유, UUID 키, TTL 정량화) | Phase-3.3, Phase-4.1 stock-restore-duplicate.sh |
-| Transactional Outbox 릴레이 → Kafka at-least-once | Phase-1.6 |
-| Strangler Fig 이중 발행 방지 | Phase-1.10 (@ConditionalOnProperty + migrate-pending-outbox.sh) |
-| 장애 주입 8종 + 로컬 오토스케일러 | Phase-4.1 / 4.3 |
-| 이벤트 스키마 + 토픽 명명 (payment.events.stock-committed 포함) | Phase-2.3, Phase-1.5b |
-| 관측성 공통화(W3C Trace · LogFmt) | Phase-0.3, Phase-5.2 |
-| **재고 캐시 차감 — ADR-05/ADR-15 연계** (payment 전용 Redis, Lua DECR, Overselling 0 보장, Redis down→QUARANTINED) | Phase-0.1, Phase-1.4d, Phase-1.5b, Phase-1.7, Phase-1.9, Phase-1.12 |
-| **멱등성 저장소 Redis 이관 — ADR-16** (Caffeine→Redis, MSA 수평 확장 대응, SETNX 동시성 방어) | Phase-0.1a |
-| **상품 서비스 Redis 직접 쓰기 — product→payment Redis 동기화 경로** (Kafka 경유 아님, product 생성·수정·admin 시 직접 SET) | Phase-3.1c |
-| **재고 Reconciler 확장 — Redis ↔ RDB 대조** (QUARANTINED INCR 복원, TTL 자동 복원, RDB 진실) | Phase-1.9, Phase-1.12 |
-| **Phase 게이트 통합 검증** (각 Phase 완료 후 다음 Phase 진입 가능 여부 객관적 판정 — 인프라/결제/PG/주변도메인/장애/최종회귀) | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate |
-
-상세 추적 테이블은 아래 "추적 테이블: discuss 리스크 → 태스크 매핑" 참조.
+---
 
 ### 4. 트레이드오프 / 후속 작업
 
-- **Strangler Fig 공존 기간**: Phase 1~3 사이 모놀리스와 신규 서비스가 같은 도메인 테이블을 읽/쓰는 구간이 존재. `Phase-1.4c` 빈 DB 시작 + `Phase-1.10` 모놀리스 결제 경로 비활성화(@ConditionalOnProperty 기본 false + `migrate-pending-outbox.sh`)로 이중 발행을 닫는다.
-- **AOP 축 복제 선택**: 공통 jar 추출 대신 결제/PG 서비스별 복제. `@PaymentStatusChange`·`@TossApiMetric` 소유권을 각 서비스에 귀속시키되 Phase-5.1에서 메트릭 네이밍만 공통화.
-- **보상 이벤트화 시점**: Phase 1 기간 `stock.restore` 보상은 결제 서비스 내부 동기 호출 유지(`InternalProductAdapter` 승계), 이벤트화는 Phase 3과 동시. 이행 구간 이중 복원 방어선 공백 방지.
-- **리액티브 경계**: Gateway만 WebFlux/Netty. 내부 서비스는 MVC + Virtual Threads 유지. Reactor 타입은 Gateway 필터 안에서만 허용, `core/common`으로 누출 금지(`TraceIdExtractor`는 순수 Java).
-- **DB 분리 수준**: container-per-service — 분산 트랜잭션 원천 배제. 정합성은 Saga + Outbox 릴레이 + consumer dedupe + Reconciliation 4층으로 방어.
-- **보안 비목표**: mTLS / PCI / 인증은 본 토픽 scope 아님. 별도 토픽으로 분리.
-- **실배포(k8s) 비목표**: docker-compose + 로컬 오토스케일러 수준까지만. k8s 전환은 후속 토픽.
-
----
-
-## Round 2 변경 요약
-
-1. **orphan port 제거**: `MessageConsumerPort`(방향 부적절 — Kafka listener는 inbound 흐름)와 `ReconciliationPort`(내부 @Scheduled 서비스로 충분)를 Phase-1.1 산출물에서 제거. `FakeReconciliationAdapter`도 Phase-1.2에서 삭제.
-2. **AOP 축 복제 태스크 신설**: Phase-1.4b(결제 서비스용 `@PublishDomainEvent`·`@PaymentStatusChange`·`DomainEventLoggingAspect`·`PaymentStatusMetricsAspect` 복제)와 Phase-2.1b(PG 서비스용 `@TossApiMetric`·`TossApiMetricsAspect` 복제)를 별도 태스크로 분리.
-3. **레이어 경계 보강**: Phase-1.0(cross-context port 복제 + InternalAdapter 승계 경계 정리), Phase-1.4c(Flyway V1 스키마), Phase-2.3b(`PgEventPublisherPort` + `PgConfirmUseCase`), Phase-3.3 재구성(`StockRestoreUseCase` + `EventDedupeStore` port 분리) 신설.
-4. **domain_risk 태스크 보강**: Phase-1.5에 Toss 전략 수정·에러 코드 enum 수정·wiring 검증 테스트 추가. Phase-4.1에 `stock-restore-duplicate.sh`·`fcg-pg-timeout.sh` 시나리오 추가.
-5. **배치 경로 일관성**: 메트릭 클래스를 `application/usecase/` 대신 `infrastructure/metrics/`로 재배치(Phase-1.11, Phase-5.1). 포트 위치 일관성(모든 포트를 `application/port/{in,out}`)은 Phase-1.1에서 일괄 정리.
-
----
-
-## Round 5 변경 요약
-
-**반영 공백**: S-1(재고 캐시 차감 전략) / S-2(StockCommitEvent 발행) / S-3(Reconciler 재고 대조) / S-4(멱등성 저장소 MSA 스케일링)
-
-1. **payment 전용 Redis 인프라 추가** (Phase-0.1 스펙 수정): 공유 Redis와 별개 컨테이너 `redis-payment`. `appendonly yes + appendfsync everysec`. keyspace `stock:{productId}` / `idem:{key}` 분리 설계 명시.
-
-2. **멱등성 저장소 Redis 이관** (Phase-0.1a 신설): `IdempotencyStoreImpl`(Caffeine) → `IdempotencyStoreRedisAdapter`(Redis). SETNX 동시 진입 방어. Phase-4.3 오토스케일러 다중 인스턴스 확장 대응. tdd=true / domain_risk=true.
-
-3. **StockCachePort 레이어 선언** (Phase-1.0 스펙 패치): `decrement / rollback / current` 메서드 포트 선언. "예약/reservation" 용어 배제, "재고 캐시 차감" 기준.
-
-4. **StockCommitEventPublisherPort 선언** (Phase-1.1 스펙 패치): `payment.events.stock-committed` 발행 포트 선언. spring-data-redis 의존성 추가.
-
-5. **FakeStockCachePort + FakeStockCommitEventPublisher 추가** (Phase-1.2 스펙 패치): Redis 없이 application 계층 테스트 가능.
-
-6. **재고 차감 실패 분기 테스트 분할** (Phase-1.4 스펙 패치): 기존 `WhenStockDecreaseFails_ShouldTransitionToQuarantineWithoutOutbox` → (a) `WhenStockCacheDecrementRejected_ShouldTransitionToFailed`(재고 부족→FAILED) + (b) `WhenPgTimeout_ShouldTransitionToQuarantineWithoutOutbox`(PG 장애→QUARANTINED) 분할.
-
-7. **StockCacheRedisAdapter 신설** (Phase-1.4d 신설): Lua atomic DECR, DECR 음수→INCR 복구+false, Redis down 예외 전파. tdd=true / domain_risk=true.
-
-8. **StockCommitEventPublisher 구현** (Phase-1.5b 신설): `payment.events.stock-committed` Kafka 발행 어댑터. tdd=true / domain_risk=true.
-
-9. **FCG QUARANTINED 불변에 Redis DECR 상태 유지 명시** (Phase-1.7 스펙 패치): QUARANTINED 전이 시 즉시 INCR 금지. Reconciler 위임. `WhenQuarantined_ShouldNotRollbackStockCache` 테스트 추가.
-
-10. **Reconciler Redis ↔ RDB 대조 확장** (Phase-1.9 스펙 확장): 대조 알고리즘, QUARANTINED DECR 복원, TTL 자동 복원, divergence_count 메트릭 연계. 3개 테스트 메서드 추가. tdd=true / domain_risk=true.
-
-11. **`payment.stock_cache.divergence_count` 메트릭 추가** (Phase-1.11 스펙 패치): `StockCacheDivergenceMetrics` 클래스 + `StockCacheDivergenceMetricsTest` 추가.
-
-12. **stock-snapshot warmup 신설** (Phase-1.12 신설): `product.events.stock-snapshot` 토픽 replay → Redis 초기화. `StockCacheWarmupService`. tdd=true / domain_risk=true.
-
-13. **Phase-3.1 stock-snapshot 발행 훅 추가** (Phase-3.1 스펙 패치): `StockSnapshotPublisher` (ApplicationReadyEvent 시 전 상품 재고 일괄 발행). Phase-1.12 warmup의 pair.
-
-14. **StockCommitConsumer + Redis 직접 쓰기 신설** (Phase-3.1c 신설): product-service가 `payment.events.stock-committed` consume → RDB UPDATE + payment Redis 직접 SET. `PaymentRedisStockPort`. tdd=true / domain_risk=true.
-
-15. **Phase-4.1 chaos 시나리오 확장** (Phase-4.1 스펙 패치): `redis-down.sh`(Redis 중단→QUARANTINED→복원), `stock-cache-divergence.sh`(캐시 발산→Reconciler 재설정) 추가. 총 8종.
-
-16. **태스크 번호 체계**: 기존 35개 + 신규 5개(Phase-0.1a, Phase-1.4d, Phase-1.5b, Phase-1.12, Phase-3.1c 신설) = **40개 총 태스크**. domain_risk=true **19개**.
-
----
-
-## 실행 순서 및 PR 전략
-
-각 Phase는 독립적인 PR 단위로 분리된다. 모놀리스는 Phase 5 완료 전까지 공존한다(Strangler Fig).
-
-| Phase | 내용 요약 | 예상 PR 수 | 의존 Phase |
-|---|---|---|---|
-| Phase 0 | 인프라 준비 (Kafka/Redis/payment 전용 Redis/Gateway + 멱등성 Redis 이관) | 5 PR | — |
-| Phase 1 | 결제 코어 분리 + PG 가면 방어 + 감사 원자성 + 재고 캐시 차감 + StockCommit 발행 + Reconciler 확장 | 17 PR | Phase 0 |
-| Phase 2 | PG 서비스 분리 (ADR-21 결정 이후) | 6 PR | Phase 1 |
-| Phase 3 | 상품·사용자 서비스 분리 + 보상 dedupe + StockCommitConsumer + Redis 직접 쓰기 | 8 PR | Phase 2 |
-| Phase 4 | 장애 주입 검증 (8종) + 로컬 오토스케일러 | 3 PR | Phase 3 |
-| Phase 5 | Admin UI 처리 + 잔재 정리 + 최종 문서화 | 2 PR | Phase 4 |
-
-**Strangler Fig 원칙**: 각 Phase 사이에 모놀리스가 살아 있다. Gateway가 분리된 서비스와 모놀리스 사이를 라우팅한다. `Phase 1~3` 진행 중 모놀리스의 해당 컨텍스트 엔드포인트는 Gateway 라우팅으로 점진 교체된다.
+- **Phase 2의 4단계 분할**은 "business inbox amount 저장 규약 없이 DLQ 먼저 켜지는" 역순 배포 리스크를 감수하고 얻는 점진 배포 편의. 2.a Gate → 2.b Gate 사이 구간에서 amount 저장 미도입 상태의 재시도가 발생하면 중복 승인 방어선(불변식 4c)이 미활성 — 롤아웃은 2.b Gate 통과 직후까지 운영자 수동 점검.
+- **태스크 수 64개**는 한 PR당 평균 2시간 이하 원칙의 결과. T1-11·T2a-05 3분해(Publisher+Relay / Channel+Handler / Immediate+Polling Worker)로 SmartLifecycle과 concurrency 테스트를 각각 독립 커밋으로 검증 가능하게 분해.
+- **minor 후속 권고** (Round 2 Critic m-5~m-7, Domain Expert minor 2건): 태스크 본문에 남아있는 구 앵커 이름 참조 정리, `eventUUID` vs `eventUuid` 표기 통일, 같은 TX 원자성 계약 테스트 추가, amount BIGINT vs BigDecimal 변환 규약 한 줄 추가. 전부 돈 경로 차단이 아닌 방어 강화·일관성 차원.
+- **재시도 soak 테스트**(장시간 available_at 지연 경로 ≥ 1h)는 Phase 4 T4-01 Toxiproxy 시나리오에 흡수하여 별도 태스크 신설 없이 안전망 확보.
 
 ---
 
@@ -275,924 +262,1121 @@ flowchart LR
 
 **목적**: 모놀리스가 그대로 떠 있어도 동작하는 런타임 기반 확보. Kafka/Redis/Gateway/Observability docker-compose 기동.
 
-관련 ADR: ADR-04, ADR-05(방향), ADR-08, ADR-09, ADR-10, ADR-11, ADR-12(방향), ADR-16(방향), ADR-18, ADR-29(도구 결정)
+**관련 ADR**: ADR-04, ADR-08, ADR-09, ADR-10, ADR-11, ADR-16, ADR-18, ADR-27, ADR-29, ADR-30, ADR-31
 
 ---
 
-### Phase-0.1 — docker-compose 기반 인프라 정의
+### T0-01 — docker-compose 기반 인프라 정의
 
-- **제목**: Kafka + Redis 공유 + payment 전용 Redis + Config Server + Discovery 컨테이너 구성
-- **목적**: ADR-10(compose 토폴로지), ADR-11(Spring Cloud 매트릭스), ADR-27(로컬 DX 프로필) — Kafka 브로커, 공유 Redis(Gateway/Admin 용), **payment-service 전용 Redis**(재고 캐시 차감 + 멱등성 저장소 전용), Config Server, Eureka(잠정) 컨테이너를 단일 `docker-compose.infra.yml`에 정의. 모놀리스는 기존 `docker-compose.yml`에서 기동 유지. Toxiproxy·Kafka·Redis가 모놀리스와 동일 Docker network에 합류하도록 `networks:` 블록 명시.
-  - **payment 전용 Redis 설계**: 공유 Redis와 별개 컨테이너. `appendonly yes` + `appendfsync everysec` (AOF 지속성). keyspace: `stock:{productId}` (재고 캐시 차감) / `idem:{key}` (멱등성 저장소). 이 인스턴스는 product-service가 직접 SET하는 경로(Phase-3.1c)와 payment-service warmup 경로(Phase-1.12)의 공통 진입점.
+- **제목**: Kafka + 공유 Redis + payment 전용 Redis + Config Server + Discovery + 관측성 컨테이너 구성
+- **목적**: ADR-10(compose 토폴로지), ADR-11(Spring Cloud 매트릭스), ADR-27(로컬 DX), ADR-31(관측성 5개 컴포넌트) — Kafka 브로커(KRaft 또는 ZK), 공유 Redis, payment-service 전용 Redis(`redis-payment`, AOF), Eureka(잠정), Config Server, Prometheus, Grafana(Grafana 결제 대시보드 스켈레톤: `published_total vs terminal_total`, DLQ 유입률, `pg_outbox.future_pending_count`, `oldest_pending_age_seconds`, `attempt_count` 분포, invariant 불일치 위젯 포함), kafka-exporter, Tempo, Loki 컨테이너를 `docker-compose.infra.yml` + `docker-compose.observability.yml`로 분리 정의. 토픽 3개(`payment.commands.confirm`, `payment.commands.confirm.dlq`, `payment.events.confirmed`) 동일 파티션 수, `replication.factor=3`, `min.insync.replicas=2`. retry 전용 토픽 미생성(ADR-30 방침). `settings.gradle` 루트 멀티모듈 구조 준비. 알림 4종(ADR-31) 정의 파일. PG 서비스는 무상태(DB 없음) — pg 전용 MySQL 미포함.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: []
 - **산출물**:
-  - `settings.gradle` — 멀티모듈 구조 재설정. 루트 프로젝트에서 향후 5개 서비스 모듈(`gateway`, `payment-service`, `pg-service`, `product-service`, `user-service`)을 포함하도록 기본 구조 준비. 각 모듈은 해당 Phase에서 `include '<module>'`을 순차적으로 추가하며, Phase-0.1 시점에는 `rootProject.name = 'payment-platform'` 확정 + 모놀리스 현행 유지.
-  - `docker-compose.infra.yml` — Kafka(+Zookeeper), 공유 Redis, **payment 전용 Redis**(컨테이너명: `redis-payment`, AOF 설정 포함), Eureka 서버 컨테이너, `networks:` 블록(모놀리스 공유 네트워크 정의 포함)
-  - `docker-compose.observability.yml` — Prometheus, Grafana, Tempo, Loki 컨테이너
-  - 토픽 이름 상수는 각 서비스의 `domain/messaging/` 값 객체로 관리(Spring 의존 없음). `@Configuration`(NewTopic 빈)은 Phase-1.1/2.1/3.1에서 각 서비스 `infrastructure/config/KafkaTopicConfig.java`로 복제 배치.
-  - **DB 경계 방침** (M-4): PG 서비스는 **무상태(DB 없음)** — Toss/NicePay HTTP 호출과 Kafka consume/publish만 수행. `docker-compose.infra.yml`에 PG 전용 MySQL 미포함. 모놀리스 잔류 관리자는 Phase 5 종료 시점까지 **모놀리스 DB**에 대해 **읽기 전용 뷰**만 유지 (결제/상품/사용자 소유권 테이블은 각 서비스 DB로 이동). 관리자 쓰기 경로는 Gateway 경유 HTTP 호출로 각 서비스에 위임 — 방침은 Phase-5.1에서 확정.
-
-<!-- ARCH R5: Phase-0.1에 payment 전용 Redis 컨테이너(공유 Redis와 별개) 추가. S-1(재고 캐시 차감 인프라)·S-4(멱등성 MSA 스케일링) 공백 해소를 위한 전제 인프라. -->
+  - `docker-compose.infra.yml` — Kafka(+ZK/KRaft), 공유 Redis, `redis-payment`(AOF, keyspace `stock:{id}/idem:{key}`), Eureka, 네트워크 블록
+  - `docker-compose.observability.yml` — Prometheus, Grafana, kafka-exporter, Tempo, Loki
+  - `settings.gradle` — 루트 `payment-platform`, 향후 5개 서비스 include 준비
+  - `chaos/grafana/payment-dashboard.json` — 결제 전용 대시보드 스켈레톤
+  - `docs/phase-gate/kafka-topic-config.sh` — 토픽 설정 검증 스크립트(ADR-30 파티션 수 동일 확인)
 
 ---
 
-### Phase-0.1a — IdempotencyStore Caffeine → Redis 이관 (ADR-16)
+### T0-02 — IdempotencyStore Caffeine → Redis 이관 (ADR-16)
 
-- **제목**: payment-service 멱등성 저장소 Redis 어댑터 교체 (Caffeine 인메모리 제거)
-- **목적**: ADR-16(Idempotency 분산화) — 현 `IdempotencyStoreImpl`(Caffeine 로컬 캐시)은 Phase-4.3 오토스케일러로 payment-service가 다중 인스턴스 확장될 때 stateful하여 중복 checkout을 허용. MSA 수평 확장 전제(horizontal stateless) 위반. Redis로 교체하여 인스턴스 간 공유 멱등성 보장. keyspace `idem:{key}`. 기존 `IdempotencyProperties`(maximumSize, expireAfterWriteSeconds) 유지 — 저장소만 교체. 동시 miss 진입 방어: Redis `SETNX`(또는 Lua SET NX PX) 사용.
+- **제목**: payment-service 멱등성 저장소 Redis 어댑터 교체 (Caffeine 제거)
+- **목적**: ADR-16(Idempotency 분산화) — 현 `IdempotencyStoreImpl`(Caffeine) 은 Phase-4.3 오토스케일러 다중 인스턴스 시 stateful 하여 horizontal stateless 위반. Redis SETNX(Lua) 로 교체. keyspace `idem:{key}`. Phase-0.1 payment 전용 Redis 전제.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T0-01]
 - **테스트 클래스**: `IdempotencyStoreRedisAdapterTest`
 - **테스트 메서드**:
-  - `IdempotencyStoreRedisAdapterTest#getOrCreate_WhenKeyAbsent_ShouldInvokeCreatorAndStoreResult` — 첫 요청: creator 1회 호출, Redis에 결과 저장, `IdempotencyResult.miss()` 반환
-  - `IdempotencyStoreRedisAdapterTest#getOrCreate_WhenKeyPresent_ShouldReturnCachedResultWithoutCreator` — 동일 key 2회 요청: creator 0회, `IdempotencyResult.hit()` 반환
-  - `IdempotencyStoreRedisAdapterTest#getOrCreate_ConcurrentMiss_ShouldInvokeCreatorOnce` — 동일 key 동시 진입(SETNX 경합): creator 1회만 호출 (중복 checkout 방지)
-  - `IdempotencyStoreRedisAdapterTest#getOrCreate_ShouldRespectExpireAfterWriteSeconds` — TTL expireAfterWriteSeconds 경과 후 key 재조회 시 miss 처리
+  - `getOrCreate_WhenKeyAbsent_ShouldInvokeCreatorAndStoreResult` — 첫 요청: creator 1회, Redis 저장, `IdempotencyResult.miss()` 반환
+  - `getOrCreate_WhenKeyPresent_ShouldReturnCachedResultWithoutCreator` — 동일 key 2회: creator 0회, `hit()` 반환
+  - `getOrCreate_ConcurrentMiss_ShouldInvokeCreatorOnce` — 동시 SETNX 경합: creator 1회만
+  - `getOrCreate_ShouldRespectExpireAfterWriteSeconds` — TTL 경과 후 miss 처리
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java` — `IdempotencyStore` Redis 구현 (SETNX Lua 스크립트 원자성 보장, keyspace `idem:{key}`)
-  - `payment-service/src/main/java/.../payment/infrastructure/idempotency/IdempotencyStoreImpl.java` — **Caffeine 구현 제거** (클래스 삭제 또는 `@Deprecated` + Spring 빈 제거)
-  - `payment-service/src/main/resources/application.yml` — payment 전용 Redis 연결 설정 (`spring.data.redis.host: redis-payment`)
-
-<!-- ARCH R5: S-4(멱등성 저장소 MSA 스케일링 공백) 반영. 기존 Caffeine 구현을 교체하여 horizontal stateless 확장 가능. -->
+  - `payment-service/src/main/java/.../payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java`
+  - `payment-service/src/main/resources/application.yml` — `spring.data.redis.host: redis-payment`
 
 ---
 
-### Phase-0.2 — Spring Cloud Gateway 서비스 모듈 생성
+### T0-03 — Spring Cloud Gateway 서비스 모듈 신설
 
 - **제목**: API Gateway 모듈 신설 (Spring Cloud Gateway + WebFlux/Netty)
-- **목적**: ADR-11 런타임 스택 원칙 — Gateway는 WebFlux(Netty), 내부 서비스는 MVC + Virtual Threads. 리액티브 확산 금지. 모놀리스 전체를 fallback으로 라우팅하는 Gateway를 가장 먼저 기동.
+- **목적**: ADR-11(Gateway만 WebFlux, 내부 서비스는 MVC+VT) — 모놀리스 전체 fallback route. `traceparent` 헤더 주입 기반 설정. Reactor 타입은 이 모듈의 filter 범위에만 한정.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T0-01]
 - **산출물**:
   - `settings.gradle` — `include 'gateway'` 추가
-  - `gateway/` 신규 모듈 디렉터리
+  - `gateway/build.gradle` — `spring-cloud-starter-gateway`, MVC 미포함
   - `gateway/src/main/java/.../gateway/GatewayApplication.java`
-  - `gateway/src/main/resources/application.yml` — 모놀리스 전체 proxy route 정의 (`lb://monolith` 또는 직접 URL)
-  - `gateway/build.gradle` — `spring-cloud-starter-gateway` 의존성, MVC 미포함 확인
+  - `gateway/src/main/resources/application.yml` — 모놀리스 전체 fallback route
 
 ---
 
-### Phase-0.3 — W3C Trace Context + 관측성 공통 기반
+### T0-04 — W3C Trace Context + LogFmt 공통 기반
 
-- **제목**: Micrometer Tracing(OTel bridge) + LogFmt 공통 모듈 추출
-- **목적**: ADR-18(W3C Trace Context), ADR-19(LogFmt 공통화) — Gateway 필터에서 `traceparent` 헤더를 MDC에 주입. `LogFmt`·`MaskingPatternLayout` 공통화 방침 확정: ADR-19 대안 **(b) 복제** 채택 — 공통 jar 추출 대신 각 서비스 패키지에 복제 배치(Phase-5.2에서 최종 확인). 이 결정을 `docs/topics/MSA-TRANSITION.md` ADR-19 결론란에 기록.
+- **제목**: Micrometer Tracing(OTel bridge) + traceparent MDC 주입 + LogFmt 복제 방침 확정
+- **목적**: ADR-18(W3C Trace Context), ADR-19(LogFmt 복제(b) 방침) — Gateway WebFlux 필터에서 `traceparent` → MDC 주입. `LogFmt`/`MaskingPatternLayout` 복제(b) 방침 결정을 ADR-19 결론란에 기록. `TraceIdExtractor`는 순수 Java(Reactor 타입 비포함).
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T0-03]
 - **산출물**:
-  - `core/common/log/LogFmt.java` — 현 위치 확인(이미 존재하는 경우 복제 방침 주석 추가)
-  - `gateway/src/main/java/.../gateway/filter/TraceContextPropagationFilter.java` — `traceparent` 헤더 → MDC 주입 WebFlux filter(Reactor 타입은 이 파일 안에서만 사용, `core/common`으로 누출 금지)
-  - `core/common/tracing/TraceIdExtractor.java` — W3C traceparent 파싱 순수 Java 유틸(Reactor 타입 비포함)
-  - `docs/topics/MSA-TRANSITION.md` ADR-19 항목에 "복제(b) 확정" 기록
+  - `gateway/src/main/java/.../gateway/filter/TraceContextPropagationFilter.java`
+  - `core/common/tracing/TraceIdExtractor.java`
+  - `docs/topics/MSA-TRANSITION.md` ADR-19 결론란에 복제(b) 확정 기록
 
 ---
 
-### Phase-0.4 — Toxiproxy 장애 주입 도구 구성
+### T0-05 — Toxiproxy 장애 주입 도구 구성
 
 - **제목**: Toxiproxy docker-compose 통합 + 기본 proxy 정의
-- **목적**: ADR-29(장애 주입 도구 스택) — Toxiproxy를 docker-compose에 추가하고, Kafka 브로커 및 MySQL(모놀리스 DB)에 대한 proxy 엔드포인트를 미리 정의. 실제 장애 시나리오 실행은 Phase 4에서 수행.
+- **목적**: ADR-29(장애 주입 도구) — Kafka·MySQL proxy 엔드포인트 미리 선언. 실제 시나리오는 Phase 4.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T0-01]
 - **산출물**:
-  - `docker-compose.infra.yml`에 `toxiproxy` 서비스 추가
-  - `chaos/toxiproxy-config.json` — proxy 정의(kafka-proxy, mysql-proxy 엔드포인트)
-  - `chaos/README.md` — 장애 주입 커맨드 메모
+  - `docker-compose.infra.yml` toxiproxy 서비스 추가
+  - `chaos/toxiproxy-config.json` — kafka-proxy, mysql-proxy 정의
+  - `chaos/README.md`
 
 ---
 
-### Phase-0-Gate — 인프라 기반 검증
+### T0-Gate — Phase 0 인프라 smoke 검증
 
-- **제목**: Phase 0 인프라 smoke 검증 — 다음 Phase 진입 가능 여부 판정
-- **목적**: Phase 0 전 태스크(Phase-0.1 ~ Phase-0.4) 완료 후 docker-compose 인프라(Kafka/Redis 공유·payment 전용/Eureka/Config Server/Gateway/Toxiproxy)가 모두 정상 기동하고 서비스 간 연결 가능한지 smoke 검증. 이후 Phase에서 사용할 기반 플랫폼이 실제로 작동 가능함을 보증. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Phase 0 Gate — 인프라 기반 smoke 검증 (다음 Phase 진입 판정)
+- **목적**: T0-01~T0-05 완료 후 Kafka/Redis(2개)/Eureka/Config/Gateway/Toxiproxy 전수 healthcheck. Kafka 토픽 3개 설정 검증(동일 파티션 수, `replication.factor=3`). 실패 시 Phase 0 재수정 루프.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T0-01, T0-02, T0-03, T0-04, T0-05]
 - **산출물**:
-  - `scripts/phase-gate/phase-0-gate.sh` — 다음 항목 자동 검증:
-    1. `docker compose -f docker-compose.infra.yml up -d` 성공
-    2. Kafka broker healthcheck 통과 (`kafka-broker-api-versions.sh`)
-    3. Redis 공유 + payment 전용 2개 인스턴스 각각 `PING → PONG`
-    4. Redis payment 전용: `SET stock:test 100` + `EVAL` atomic DECR 스크립트 실행 → 99 반환
-    5. Redis payment 전용: `SET idem:test 1 NX EX 60` 연속 2회 → 1회만 성공
-    6. Eureka `/eureka/apps` 200
-    7. Config Server `/actuator/health` 200
-    8. Gateway `/actuator/health` 200 + 모놀리스 fallback 경로(예: `/api/v1/payments/*`) 200
-    9. Toxiproxy admin API `/proxies` 200
-  - `docs/phase-gate/phase-0-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 0 재검토 항목 목록
+  - `scripts/phase-gate/phase-0-gate.sh` — healthcheck 전수, Redis SETNX 원자성, Kafka 토픽 파티션 수 동일, Toxiproxy `/proxies` 200
+  - `docs/phase-gate/phase-0-gate.md`
 
 ---
 
 ## Phase 1 — 결제 코어 분리
 
-**목적**: 결제 컨텍스트를 독립 서비스로 뽑고, Gateway가 결제 엔드포인트를 신규 서비스로 라우팅. 모놀리스는 PG·상품·사용자·Admin UI만 보유.
+**목적**: 결제 컨텍스트를 독립 서비스로 분리. Outbox 발행 파이프라인(AFTER_COMMIT 리스너 + 채널 + Immediate 워커 + Polling 안전망) 을 "PG 직접 호출"에서 "Kafka produce"로 대상 교체. `payment_history` 결제 서비스 DB 잔류(ADR-13).
 
-**필수 산출물(discuss 승격)**:
-- ADR-05 PG 가면 응답 방어 (Toss `ALREADY_PROCESSED_PAYMENT` / NicePay `2201`)
-- ADR-13 감사 원자성 (`payment_history` 결제 서비스 DB 잔류)
+**관련 ADR**: ADR-01~07, ADR-13, ADR-14, ADR-15, ADR-17, ADR-23, ADR-25, ADR-26
 
-관련 ADR: ADR-01, ADR-02, ADR-03, ADR-04, ADR-05, ADR-06, ADR-07, ADR-13, ADR-15, ADR-17, ADR-23, ADR-25, ADR-26
-
-**Phase 1 보상 경로 원칙**: Phase 1에서 상품 서비스는 아직 모놀리스 안에 있다. `stock.restore` 보상은 **결제 서비스 내부 동기 호출 유지**(`InternalProductAdapter` 방식 승계). 이벤트화는 Phase 3(상품 분리)과 동시에 진행한다. 이행 구간 이중 복원 방어선 공백 방지(discuss-domain-2 minor finding 대응).
+**Phase 1 보상 경로 원칙**: Phase 1에서 상품 서비스는 모놀리스 안에 있다. `stock.events.restore` 보상은 결제 서비스 내부 동기 호출 유지(`InternalProductAdapter` 승계). 이벤트화는 Phase 3과 동시.
 
 ---
 
-### Phase-1.0 — 결제 서비스 모듈 경계 정리 (cross-context port 복제 + InternalAdapter 승계 + StockCachePort 선언)
+### T1-01 — 결제 서비스 모듈 경계 정리 (port 선언)
 
-- **제목**: 결제 서비스가 사용할 cross-context port 복제본 선언 + InternalXxxAdapter 승계 + StockCachePort 선언
-- **목적**: ADR-01, ADR-02 — Phase-1.1 포트 계층 구성 전에 결제 서비스가 모놀리스 `paymentgateway/`·`product/`·`user/` 패키지를 직접 import하는 경계를 차단. 결제 서비스 관점에서 필요한 메서드만 슬라이스한 독립 port 인터페이스를 `application/port/out/`에 선언하고, Phase 1 기간에는 `InternalXxxAdapter`(모놀리스 내부 Java 호출 래핑)로 구현. Phase 3에서 HTTP 어댑터로 교체. **재고 캐시 차감 포트(`StockCachePort`)를 이 단계에서 layer 경계로 선언** — Phase-1.4d Redis 어댑터가 구현, Phase-1.2 Fake가 테스트용 선행 구현.
+- **제목**: cross-context port 복제 + InternalAdapter 승계 + StockCachePort 선언
+- **목적**: ADR-01, ADR-02 — Phase 1 포트 계층 전 모놀리스 경계 차단. `ProductLookupPort`, `UserLookupPort`, `PaymentGatewayPort`, `StockCachePort`(decrement/rollback/current/set) 선언. `PgStatusPort` 는 존재하지 않는다(ADR-02 보강 — payment↔pg는 Kafka only). "재고 캐시 차감" 기준, "예약/reservation" 용어 금지.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T0-Gate]
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/application/port/out/ProductLookupPort.java` — 재고 조회·감소 메서드 슬라이스 (현 `product/presentation/port/ProductService` 대응)
-  - `payment-service/src/main/java/.../payment/application/port/out/UserLookupPort.java` — 사용자 조회 메서드 슬라이스 (현 `user/presentation/port/UserService` 대응)
-  - **`payment-service/src/main/java/.../payment/application/port/out/StockCachePort.java`** — `decrement(productId, qty): boolean` / `rollback(productId, qty): void` / `current(productId): long` 메서드 선언. Redis 캐시 차감 전용 포트 (phase-1.4d 구현, phase-1.2 Fake). "예약/reservation" 용어 금지, "재고 캐시 차감" 기준.
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalProductAdapter.java` — `ProductLookupPort` 구현, 모놀리스 `product/presentation/port` 내부 호출 래핑
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalUserAdapter.java` — `UserLookupPort` 구현
-  - `payment-service/build.gradle`에 모놀리스 결제 컨텍스트 외 패키지 의존을 compile scope에서 제거(모놀리스 전체 jar를 runtime에서만 참조하거나 internal 어댑터 직접 포함 방식 선택 명시)
-  - `payment-service/src/main/java/.../payment/application/port/out/PaymentGatewayPort.java` — cross-context 복제/승계. **confirm / cancel 경로 전담** (command 경로). Phase-1.1의 `PgStatusPort`는 **getStatus 단일 경로 전담** (FCG 격리용 조회 경로). 두 포트는 역할이 분리되며 상호 포함 관계 없음 — adapter→adapter 위임 금지. application 계층은 필요에 따라 각 포트를 개별 주입한다.
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalPaymentGatewayAdapter.java` — `PaymentGatewayPort` 구현체 이관 경로. 모놀리스 `paymentgateway/presentation/PaymentGatewayInternalReceiver`·`NicepayGatewayInternalReceiver`를 직접 import하던 compile 의존을 이 adapter 경계 안으로 국한하고, Phase-1.0 완료 시점에 `payment-service/build.gradle`에서 모놀리스 `paymentgateway` 패키지 compile 의존을 제거한다 (gradle 양방향 의존 차단)
-
-<!-- ARCH R2 RESOLVED: Phase-1.0 scope에 `paymentgateway` 경계 단절이 빠졌다는 지적(F-15). `PaymentGatewayPort` cross-context 복제, `InternalPaymentGatewayAdapter` 이관 경로, `payment-service/build.gradle` compile 의존 제거 방침을 산출물에 명시하여 해소. -->
-<!-- ARCH R5: StockCachePort 선언 추가. S-1(재고 캐시 차감 전략 공백) 반영. layer 의존 순서 준수 — port 선언이 infrastructure(Phase-1.4d) 및 Fake(Phase-1.2) 구현보다 먼저. -->
+  - `payment-service/src/main/java/.../payment/application/port/out/ProductLookupPort.java`
+  - `payment-service/src/main/java/.../payment/application/port/out/UserLookupPort.java`
+  - `payment-service/src/main/java/.../payment/application/port/out/PaymentGatewayPort.java` — confirm/cancel 전담 (getStatus 메서드 없음)
+  - `payment-service/src/main/java/.../payment/application/port/out/StockCachePort.java` — `decrement/rollback/current/set`
+  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalProductAdapter.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalUserAdapter.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalPaymentGatewayAdapter.java`
+  - `payment-service/build.gradle` — paymentgateway compile 의존 제거
 
 ---
 
-### Phase-1.1 — 결제 서비스 모듈 신설 + port 계층 구성 (포트 경로 일괄 정리 + StockCommitEventPublisher 포트 선언)
+### T1-02 — 결제 서비스 모듈 신설 + port 계층 구성
 
-- **제목**: 결제 서비스 신규 모듈 + outbound port 인터페이스 선언 + port 경로 `{in,out}` 일괄 정리 + StockCommitEventPublisher 포트
-- **목적**: ADR-01(분해 기준), ADR-02(통신 패턴), ADR-11 — 결제 서비스를 독립 Spring Boot 모듈로 생성. port 계층이 먼저 존재해야 domain/application 태스크가 의존할 수 있음. 기존 모놀리스의 `application/port/` 플랫 구조 포트를 `application/port/out/` 하위로 이동 정리(§ 2-6 "모든 신규 포트 `{in,out}` 하위" 원칙). **`StockCommitEventPublisherPort`를 이 단계에서 선언** — 결제 확정 시 `payment.events.stock-committed` 발행 책임 추상화. Phase-1.5b 구현체가 이 포트를 구현.
+- **제목**: 결제 서비스 신규 Spring Boot 모듈 + outbound port 일괄 정리 + StockCommitEventPublisherPort 선언
+- **목적**: ADR-01, ADR-11 — `application/port/{in,out}` 하위 일괄 정리. `MessagePublisherPort`, `StockCommitEventPublisherPort`(`payment.events.stock-committed` 발행 추상), `IdempotencyStore` 승계. `KafkaTopicConfig.java` 복제 배치(서비스별 NewTopic 빈 — 공통 jar 금지). `PgStatusPort` 선언 금지(ADR-21 보강 — Kafka only).
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T1-01]
 - **산출물**:
-  - `settings.gradle` — `include 'payment-service'` 추가
-  - `payment-service/build.gradle` — spring-boot-starter-web, virtual threads 설정, spring-kafka, spring-data-redis
-  - `payment-service/src/main/java/.../payment/application/port/out/MessagePublisherPort.java` — `void publish(String topic, String eventId, Object payload)`
-  - `payment-service/src/main/java/.../payment/application/port/out/PgStatusPort.java` — PG 상태 조회 포트 (ADR-21 선행). Phase 1 구현체: `infrastructure/adapter/internal/LocalPgStatusAdapter.java`(모놀리스 `paymentgateway` 내부 호출 래핑) — Phase 2에서 HTTP 어댑터로 스왑.
-  - **`payment-service/src/main/java/.../payment/application/port/out/StockCommitEventPublisherPort.java`** — `void publish(String productId, int qty, String paymentEventId)` (결제 확정 시 재고 차감 확정 이벤트 발행 포트. Phase-1.5b 구현.)
-  - 기존 `payment/application/port/` 하위 인터페이스 승계 (경로를 `application/port/out/`으로 이동): `PaymentEventRepository`, `PaymentOutboxRepository`, `PaymentHistoryRepository`, `PaymentOrderRepository`, `PaymentGatewayPort`, `IdempotencyStore`
-  - Phase-1.0에서 선언된 `ProductLookupPort`, `UserLookupPort`, `StockCachePort`는 `out/` 하위에 배치됨(동일 원칙)
-  - **제거 항목**: `MessageConsumerPort`(Kafka listener는 inbound 흐름이므로 out port 불필요 — 어댑터 내부 구조로 처리), `ReconciliationPort`(내부 @Scheduled 서비스로 충분, outbound port 불필요)
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/LocalPgStatusAdapter.java` — `PgStatusPort` 구현 (Phase 1 한정)
-  - `payment-service/src/main/java/.../payment/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈 정의 (Phase-0.1 방침: 서비스별 복제, `payment.events.stock-committed` 토픽 포함)
-
-<!-- ARCH R5: StockCommitEventPublisherPort 포트 선언 추가. S-2(StockCommitEvent 발행 공백) 반영. layer 의존 순서 준수 — 포트 선언(1.1) → 구현(1.5b). -->
+  - `settings.gradle` — `include 'payment-service'`
+  - `payment-service/build.gradle` — spring-boot-starter-web, virtual threads, spring-kafka, spring-data-redis
+  - `payment-service/src/main/java/.../payment/application/port/out/MessagePublisherPort.java`
+  - `payment-service/src/main/java/.../payment/application/port/out/StockCommitEventPublisherPort.java`
+  - `payment-service/src/main/java/.../payment/application/port/out/` — 기존 port 일괄 `out/` 이동
+  - `payment-service/src/main/java/.../payment/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈(`payment.events.stock-committed` 포함)
 
 ---
 
-### Phase-1.2 — Fake 구현체 신설 (테스트용)
+### T1-03 — Fake 구현체 신설 (application 계층 테스트용)
 
-- **제목**: MessagePublisherPort + PgStatusPort + StockCachePort + StockCommitEventPublisherPort Fake 구현체
-- **목적**: ADR-04(메시지 유실 대응), ADR-16 — application 계층 테스트가 Kafka/HTTP/Redis 없이 동작할 수 있도록 Fake 구현체를 소비자(application 태스크) 앞에 배치. **`StockCachePort` Fake는 Phase-1.4d Redis 어댑터보다 먼저** 배치하여 Phase-1.4 트랜잭션 경계 테스트가 Redis 없이 동작 가능.
+- **제목**: MessagePublisherPort + StockCachePort + StockCommitEventPublisherPort Fake 구현
+- **목적**: ADR-04, ADR-16 — Kafka/Redis 없이 application 계층 테스트 가능. Fake가 소비자(T1-04 이후) 앞에 배치됨.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T1-02]
 - **산출물**:
-  - `payment-service/src/test/java/.../mock/FakeMessagePublisher.java` — `MessagePublisherPort` 인메모리 구현 (발행 이력 list 보관)
-  - `payment-service/src/test/java/.../mock/FakePgStatusAdapter.java` — `PgStatusPort` 인메모리 구현 (설정 가능한 응답 반환, timeout 예외 주입 가능)
-  - **`payment-service/src/test/java/.../mock/FakeStockCachePort.java`** — `StockCachePort` 인메모리 구현. `decrement()`: 현재 재고 지도에서 차감, 음수 시 false 반환. `rollback()`: INCR 복원. `current()`: 현재값 반환. 테스트용 재고 초기화 메서드 제공.
-  - **`payment-service/src/test/java/.../mock/FakeStockCommitEventPublisher.java`** — `StockCommitEventPublisherPort` 인메모리 구현 (발행 이력 list 보관)
-
-<!-- ARCH R5: FakeStockCachePort 추가. S-1 재고 캐시 차감 테스트 가능성 확보. -->
+  - `payment-service/src/test/java/.../mock/FakeMessagePublisher.java`
+  - `payment-service/src/test/java/.../mock/FakeStockCachePort.java` — decrement(음수 시 false), rollback, current, set
+  - `payment-service/src/test/java/.../mock/FakeStockCommitEventPublisher.java` — 발행 이력 list
 
 ---
 
-### Phase-1.3 — 도메인 이관: PaymentEvent·PaymentOutbox·RetryPolicy 승계
+### T1-04 — 도메인 이관: PaymentEvent·PaymentOutbox·RetryPolicy
 
-- **제목**: 결제 도메인 엔티티 + 릴레이 레코드 이관
-- **목적**: ADR-03(일관성 모델), ADR-04, ADR-13 — 기존 `payment/domain/` 하위 `PaymentEvent`, `PaymentOutbox`, `PaymentOrder`, `PaymentHistory`, `RetryPolicy`, `RecoveryDecision`, `PaymentEventStatus` 등을 결제 서비스 도메인 레이어로 이관. Spring 의존 없음 유지.
+- **제목**: 결제 도메인 엔티티 + 릴레이 레코드 이관 (Spring 의존 없음)
+- **목적**: ADR-03, ADR-04, ADR-13 — `PaymentEvent`, `PaymentOutbox`, `PaymentOrder`, `PaymentHistory`, `RetryPolicy`, `RecoveryDecision`, `PaymentEventStatus`(isTerminal() SSOT) 결제 서비스 domain 레이어로 이관.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-03]
 - **테스트 클래스**: `PaymentEventTest`, `PaymentOutboxTest`
 - **테스트 메서드**:
   - `PaymentEventTest#execute_Success` — `@ParameterizedTest @EnumSource(READY, IN_PROGRESS)` → IN_PROGRESS 전이 성공
-  - `PaymentEventTest#execute_ThrowsException_WhenTerminalStatus` — `@ParameterizedTest @EnumSource(DONE, FAILED, CANCELED, EXPIRED)` → `PaymentStatusException`
+  - `PaymentEventTest#execute_ThrowsException_WhenTerminalStatus` — `@EnumSource(DONE, FAILED, CANCELED, EXPIRED)` → `PaymentStatusException`
   - `PaymentEventTest#quarantine_AlwaysSucceeds_FromAnyNonTerminal` — 비종결 상태에서 QUARANTINED 전이
   - `PaymentOutboxTest#toDone_ChangesStatusToProcessed` — PENDING → 완료 전이
-  - `PaymentOutboxTest#nextRetryAt_ComputedCorrectly_ForExponentialBackoff` — RetryPolicy 기반 다음 재시도 시각 계산
+  - `PaymentOutboxTest#nextRetryAt_ComputedCorrectly_ForExponentialBackoff` — RetryPolicy 기반 다음 재시도 시각
 
 ---
 
-### Phase-1.4 — 트랜잭션 경계 + 감사 원자성 유지 (ADR-13)
+### T1-05 — 트랜잭션 경계 + 감사 원자성 (ADR-13)
 
 - **제목**: PaymentTransactionCoordinator 이관 + payment_history BEFORE_COMMIT 원자성 보존
-- **목적**: ADR-13(감사 원자성, 대안 a/a') — `PaymentTransactionCoordinator`, `PaymentHistoryEventListener`(BEFORE_COMMIT)를 결제 서비스 내부로 이관. `payment_history` 테이블이 결제 서비스 DB에 잔류해 상태 전이 TX와 같은 TX 안에서 insert됨을 보장. **Phase-1.4c 분리 이후 재고 캐시 차감은 외부 호출이므로 '단일 TX' 가정은 결제 서비스 DB 내부(payment_event + payment_outbox)에만 적용. 재고 캐시 차감 실패는 TX 경계 바깥이며, 실패 유형에 따라 FAILED(재고 부족) 또는 QUARANTINED(시스템 장애)로 분기. 분리 전 모놀리스의 `stock-- + outbox 단일 TX` 개념은 Phase-1.4c 이후 Saga 보상 경로(Phase-3.3 `stock.restore`)로 대체된다.**
+- **목적**: ADR-13(감사 원자성, 대안 a) — `payment_history`가 결제 서비스 DB에 잔류해 상태 전이 TX와 같은 TX 안에서 insert. 재고 캐시 차감은 TX 경계 외부(DECR 결과 음수 → FAILED / Redis down 예외 → QUARANTINED 분기). `quarantine_compensation_pending BOOLEAN NOT NULL DEFAULT FALSE` 컬럼(§2-2b-3 2단계 복구 설계).
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-04]
 - **테스트 클래스**: `PaymentTransactionCoordinatorTest`, `PaymentHistoryEventListenerTest`
 - **테스트 메서드**:
-  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_CommitsPaymentStateAndOutboxInSingleTransaction` — **결제 서비스 내부** TX 원자성 검증: payment_event 상태 전이 + payment_outbox 생성이 단일 TX, 실패 시 롤백 (재고 캐시 차감은 외부 호출로 분리, 단일 TX 가정 대상 아님)
-  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_WhenStockCacheDecrementRejected_ShouldTransitionToFailed` — **재고 부족** (DECR 결과 음수 → `StockCachePort.decrement()` false 반환) 시 PaymentEvent FAILED 전이 + outbox 미생성 검증 (사용자 에러, 복원 불필요)
-  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_WhenPgTimeout_ShouldTransitionToQuarantineWithoutOutbox` — **PG timeout·Redis down 등 시스템 장애** 시 QUARANTINED 전이 + outbox 미생성 검증 (시스템 장애, Reconciler 복원 대상)
-  - `PaymentTransactionCoordinatorTest#executePaymentQuarantine_TransitionsToQuarantined` — quarantine 전이 + PaymentQuarantineMetrics 카운터 +1
-  - `PaymentHistoryEventListenerTest#onPaymentStatusChange_InsertsHistoryBeforeCommit` — BEFORE_COMMIT 단계에서 payment_history insert 호출 1회 검증 (`@ExtendWith(MockitoExtension.class)`)
-
-<!-- ARCH R5: S-1 반영 — 기존 `WhenStockDecreaseFails_ShouldTransitionToQuarantineWithoutOutbox` 테스트를 재고 부족(FAILED) vs PG 장애(QUARANTINED) 두 케이스로 분할. "예약/reservation" 용어 배제, "재고 캐시 차감" 사용. -->
+  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_CommitsPaymentStateAndOutboxInSingleTransaction` — payment_event 전이 + payment_outbox 생성 단일 TX 원자성
+  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_WhenStockCacheDecrementRejected_ShouldTransitionToFailed` — DECR false(재고 부족) → FAILED, outbox 미생성
+  - `PaymentTransactionCoordinatorTest#executePaymentConfirm_WhenPgTimeout_ShouldTransitionToQuarantineWithoutOutbox` — Redis down 예외 → QUARANTINED, outbox 미생성
+  - `PaymentTransactionCoordinatorTest#executePaymentQuarantine_SetsCompensationPendingFlag` — QUARANTINED 전이 + `quarantine_compensation_pending=true` 플래그 set 검증
+  - `PaymentHistoryEventListenerTest#onPaymentStatusChange_InsertsHistoryBeforeCommit` — BEFORE_COMMIT 단계 payment_history insert 1회
 
 ---
 
-### Phase-1.4d — StockCachePort Redis 어댑터 (Lua atomic DECR + 실패 분기)
-
-- **제목**: payment-service 재고 캐시 차감 Redis 어댑터 구현 (Lua script atomic DECR)
-- **목적**: S-1(재고 캐시 차감 전략) — `StockCachePort` 구현체. payment-service 전용 Redis에서 Lua 스크립트로 `stock:{productId}` 키를 atomic DECR. DECR 결과 음수 → INCR 복구 후 false 반환 (Overselling 엄격 0). Redis down 시 예외 전파 → 상위에서 QUARANTINED 처리. AOF 지속성(Phase-0.1 설정 전제). keyspace `stock:{productId}`.
-  - **실패 분기 정책** (layer 외부에서 처리):
-    - `decrement()` = false → 호출 측이 PaymentEvent FAILED 전이 (재고 부족, 사용자 에러)
-    - `decrement()` 예외(Redis down) → 호출 측이 PaymentEvent QUARANTINED 전이 (시스템 장애, Reconciler 복원)
-- **tdd**: true
-- **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `StockCacheRedisAdapterTest`
-- **테스트 메서드**:
-  - `StockCacheRedisAdapterTest#decrement_WhenSufficientStock_ShouldDecrementAndReturnTrue` — 재고 충분: DECR 후 양수 → true 반환, `current()` 검증
-  - `StockCacheRedisAdapterTest#decrement_WhenStockWouldGoNegative_ShouldRollbackAndReturnFalse` — DECR 음수 → INCR 복구 + false 반환 (Overselling 방지)
-  - `StockCacheRedisAdapterTest#decrement_Concurrent_ShouldBeAtomicAndNeverGoNegative` — 동시 다중 DECR: 재고 0 이하 불가 확인 (Lua atomic 검증)
-  - `StockCacheRedisAdapterTest#rollback_ShouldIncrementStock` — `rollback()` 호출 시 `stock:{id}` INCR 검증
-  - `StockCacheRedisAdapterTest#decrement_WhenRedisDown_ShouldPropagateException` — Redis 연결 실패 시 예외 전파 (QUARANTINED 처리는 상위 계층 책임)
-- **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/cache/StockCacheRedisAdapter.java` — `StockCachePort` 구현. Lua 스크립트 원자성 DECR 로직 포함. `infrastructure/cache/` 경로.
-  - `payment-service/src/main/resources/lua/stock_decrement.lua` — Lua 스크립트 (DECR → 음수 검사 → INCR 복구 → 결과 반환)
-
-<!-- ARCH R5: S-1 재고 캐시 차감 공백 반영. layer 의존 순서: port(1.0) → Fake(1.2) → infrastructure(1.4d). -->
-<!-- ARCH R5: 참고(minor) — `StockCacheRedisAdapterTest`의 `decrement_Concurrent_ShouldBeAtomicAndNeverGoNegative` 테스트는 실제 Lua 원자성 검증을 위해 Testcontainers Redis 또는 embedded Redis가 필요함. infrastructure 테스트 슬라이스(@DataRedisTest 또는 @SpringBootTest 부분 컨텍스트)로 명시적으로 두도록 execute 단계에 주의. 순수 Mockito로는 Lua 원자성을 검증할 수 없음. -->
-
----
-
-### Phase-1.4b — AOP 축 결제 서비스 복제 이관 (ADR-13 § 2-6)
+### T1-06 — AOP 축 결제 서비스 복제 이관 (ADR-13, §2-6)
 
 - **제목**: `@PublishDomainEvent`·`@PaymentStatusChange` + Aspect 결제 서비스 복제
-- **목적**: ADR-13(감사 원자성), § 2-6(AOP 복제 원칙) — `PaymentCommandUseCase`의 `@PublishDomainEvent`·`@PaymentStatusChange` 어노테이션이 no-op이 되지 않도록, 현 `core/common/aspect/` 하위 `DomainEventLoggingAspect`·`PaymentStatusMetricsAspect`와 어노테이션 자체를 결제 서비스 패키지로 복제. cross-service 공유 금지 — 각 서비스가 자기 패키지에 소유.
+- **목적**: ADR-13, §2-6(AOP 복제 원칙) — 각 서비스가 자기 패키지에 AOP 소유. cross-service 공유 금지.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-05]
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/aspect/DomainEventLoggingAspect.java` — 현 `core/common/aspect/DomainEventLoggingAspect` 복제
-  - `payment-service/src/main/java/.../payment/infrastructure/aspect/PaymentStatusMetricsAspect.java` — 현 `core/common/metrics/aspect/PaymentStatusMetricsAspect` 복제
-  - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PublishDomainEvent.java` — 어노테이션 복제
-  - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PaymentStatusChange.java` — 어노테이션 복제
-  - `payment-service/src/main/java/.../payment/application/usecase/PaymentCommandUseCase.java`에 복제된 어노테이션 참조로 교체 확인
+  - `payment-service/src/main/java/.../payment/infrastructure/aspect/DomainEventLoggingAspect.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/aspect/PaymentStatusMetricsAspect.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PublishDomainEvent.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PaymentStatusChange.java`
 
 ---
 
-### Phase-1.4c — 결제 서비스 Flyway V1 스키마 (ADR-13 DB 분리 실체화)
+### T1-07 — 결제 서비스 Flyway V1 스키마 (ADR-23)
 
-- **제목**: 결제 서비스 DB Flyway V1 마이그레이션 스크립트 작성
-- **목적**: ADR-13(payment_history 결제 서비스 DB 잔류), ADR-23(DB 분리) — 결제 서비스가 독립 DB를 소유하는 순간 스키마 소유권이 모놀리스 → 결제 서비스로 이전됨. `payment_event`, `payment_order`, `payment_outbox`, `payment_history` 테이블을 결제 서비스 Flyway V1으로 실체화.
+- **제목**: 결제 서비스 DB Flyway V1 마이그레이션 (payment_event, payment_order, payment_outbox, payment_history)
+- **목적**: ADR-23(DB 분리) — 결제 전용 DB 빈 상태 시작. `quarantine_compensation_pending` 컬럼 포함. 모놀리스 미종결 레코드는 Phase 전환 전까지 모놀리스에서만 처리. 전환 시 `chaos/scripts/migrate-pending-outbox.sh` 사용.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-05]
 - **산출물**:
-  - `payment-service/src/main/resources/db/migration/V1__payment_schema.sql` — `payment_event`, `payment_order`, `payment_outbox`, `payment_history` 테이블 DDL
-  - `payment-service/docker-compose` 항목 — 결제 전용 MySQL 컨테이너 추가
-  - **DB 병존 기간 데이터 방침**: 결제 전용 DB는 **빈 상태로 시작**. 모놀리스 DB의 미종결 `payment_outbox`·`payment_event` 레코드는 Phase-1.10 전환 전까지 모놀리스 컨테이너에서만 처리한다. 전환 시점에 모놀리스 DB `payment_outbox` PENDING 레코드 수동 이행 스크립트 `chaos/scripts/migrate-pending-outbox.sh`를 별도 산출물로 제공 (Phase-1.10에 포함) — 이 방침이 "Phase-1.4c 완료"의 객관적 판정 기준이 된다.
-
-<!-- ARCH R2 RESOLVED: Phase-1.4c DB 병존 기간 데이터 소스 공백(F-16). 결제 전용 DB 빈 상태 시작, 모놀리스 미종결 레코드 처리 주체, 수동 이행 스크립트 경로를 산출물에 명시하여 완료 기준 공백 해소. -->
+  - `payment-service/src/main/resources/db/migration/V1__payment_schema.sql` — `payment_event`(quarantine_compensation_pending 포함), `payment_order`, `payment_outbox`(available_at 컬럼), `payment_history` DDL
+  - `docker-compose.infra.yml` 결제 전용 MySQL 컨테이너 추가
 
 ---
 
-### Phase-1.5 — PG 가면 응답 방어선 구현 + Toss 전략 wiring (ADR-05) — domain_risk
+### T1-08 — StockCachePort Redis 어댑터 (Lua atomic DECR)
 
-- **제목**: Toss `ALREADY_PROCESSED_PAYMENT` / NicePay `2201` 가면 응답 방어 + Toss 전략 wiring 완결
-- **목적**: ADR-05(멱등성·중복 처리 + PG 가면 방어) — 이 태스크는 discuss Round 2에서 Phase 1 필수 산출물로 승격됨. PG가 "성공"으로 분류하는 코드 수신 시 DB 재조회 후 DONE이 아니면 QUARANTINED. 금액 일치 검증 순서 포함. **핵심**: 현 `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess() == true`가 `ALREADY_PROCESSED_PAYMENT`를 성공으로 조기 매핑하는 경로를 차단하고, Toss 전략에 NicePay `handleDuplicateApprovalCompensation` 대칭 분기를 심어 `PgMaskedSuccessHandler`가 실제로 호출됨을 보장(plan-domain-1 major finding #1 대응).
+- **제목**: payment-service 재고 캐시 차감 Redis 어댑터 구현
+- **목적**: ADR-05(재고 캐시 차감) — Lua atomic DECR, 음수 시 INCR 복구 + false, Redis down 예외 전파. keyspace `stock:{productId}`. AOF 지속성 전제.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `PgMaskedSuccessHandlerTest`, `TossPaymentGatewayStrategyWiringTest`
+- **depends**: [T1-03, T0-01]
+- **테스트 클래스**: `StockCacheRedisAdapterTest`
 - **테스트 메서드**:
-  - `PgMaskedSuccessHandlerTest#handle_Toss_AlreadyProcessed_WhenStatusIsDone_ShouldNoOp` — DB 재조회 후 DONE이면 no-op, `payment.pg.masked_success` 카운터 +1
-  - `PgMaskedSuccessHandlerTest#handle_Toss_AlreadyProcessed_WhenStatusIsNotDone_ShouldQuarantine` — DB 재조회 후 DONE 아니면 QUARANTINED
-  - `PgMaskedSuccessHandlerTest#handle_Nicepay_2201_VerifiesAmountBeforeDecision` — PG `getStatus` 재조회 + 금액 일치 검증 후 분기 (금액 불일치 → QUARANTINED, 일치+DONE → no-op)
-  - `PgMaskedSuccessHandlerTest#handle_Toss_AlreadyProcessed_VerifiesAmountSymmetry` — Toss 경로에서도 PG `getStatus` + 금액 일치 검증 수행 (ADR-05 수락 기준 4번 대칭 보장)
-  - `PgMaskedSuccessHandlerTest#handle_WhenPgStatusCallFails_ShouldQuarantine` — PG 재조회 자체 실패 → QUARANTINED
-  - `PgMaskedSuccessHandlerTest#handle_WhenQuarantined_ShouldNotRollbackStockCache` — 가면 응답으로 QUARANTINED 전이 시 FakeStockCachePort.rollback() 호출 없음 검증 (QUARANTINED 상태 Redis DECR 상태 유지 불변)
-  - `TossPaymentGatewayStrategyWiringTest#confirm_WhenAlreadyProcessedPayment_ShouldInvokePgMaskedSuccessHandler` — Toss confirm 경로가 `ALREADY_PROCESSED_PAYMENT` 수신 시 `PgMaskedSuccessHandler.handle()` 1회 호출 검증 (wiring 검증)
+  - `decrement_WhenSufficientStock_ShouldDecrementAndReturnTrue` — DECR 후 양수 → true
+  - `decrement_WhenStockWouldGoNegative_ShouldRollbackAndReturnFalse` — 음수 → INCR 복구 + false
+  - `decrement_Concurrent_ShouldBeAtomicAndNeverGoNegative` — 동시 DECR Lua atomic 검증(Testcontainers Redis)
+  - `rollback_ShouldIncrementStock` — rollback() INCR 검증
+  - `decrement_WhenRedisDown_ShouldPropagateException` — 예외 전파(QUARANTINED 처리는 상위 계층)
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/application/usecase/PgMaskedSuccessHandler.java`
-  - `payment-service/src/main/java/.../payment/infrastructure/gateway/toss/TossPaymentGatewayStrategy.java` — `ALREADY_PROCESSED_PAYMENT` 포착 분기 추가 (NicePay `handleDuplicateApprovalCompensation` 대칭)
-  - `payment-service/src/main/java/.../payment/infrastructure/gateway/toss/TossPaymentErrorCode.java` — `ALREADY_PROCESSED_PAYMENT.isSuccess()` 반환값 수정(가면 응답을 success로 취급하지 않음)
+  - `payment-service/src/main/java/.../payment/infrastructure/cache/StockCacheRedisAdapter.java`
+  - `payment-service/src/main/resources/lua/stock_decrement.lua`
 
 ---
 
-### Phase-1.5b — StockCommitEventPublisher 구현 (재고 확정 이벤트 발행)
+### T1-09 — Toss 가면 응답 방어선 구현 (payment-service LVAL 한정)
 
-- **제목**: payment.events.stock-committed Kafka 발행 어댑터 구현 (결제 확정 시 재고 차감 확정 이벤트)
-- **목적**: S-2(StockCommitEvent 발행 공백) — 결제가 DONE 상태로 확정될 때 `payment.events.stock-committed` 이벤트를 Kafka로 발행. product-service의 Phase-3.1c `StockCommitConsumer`가 이를 수신하여 product RDB UPDATE. `StockCommitEventPublisherPort`(Phase-1.1 선언) 구현체. 기존 outbox relay 흐름(Phase-1.6)과 연계 — DONE 전이 outbox 엔트리에 stock-committed 이벤트 포함 또는 별도 outbox 엔트리 방식. 토픽 명명 규약(Phase-2.3): `payment.events.stock-committed`. Phase 3 이전 구간에 발행된 `payment.events.stock-committed`는 Kafka offset 보존으로 Phase-3.1c 배포 시 replay 소비됨 — Phase 1~2 구간 product RDB는 Reconciler(Phase-1.9)가 ProductLookupPort 경유로 조회.
+- **제목**: payment-service LVAL 금액 위변조 선검증 + Toss `ALREADY_PROCESSED_PAYMENT` LVAL 수준 방어
+- **목적**: ADR-05(Phase 1 LVAL 한정) — payment-service에서 결제 진입 전 금액 위변조 선검증. `ALREADY_PROCESSED_PAYMENT`의 벤더 재조회 + 2자 금액 대조 + pg DB 부재 경로 방어는 **Phase 2 pg-service 산출물**(ADR-21(v) 불변). Phase 1에서는 `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()` 수정만 수행(가면 응답을 success로 취급 차단).
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-05]
+- **테스트 클래스**: `PaymentLvalValidatorTest`
+- **테스트 메서드**:
+  - `PaymentLvalValidatorTest#validate_WhenAmountMatches_ShouldPass` — 금액 일치 → 통과
+  - `PaymentLvalValidatorTest#validate_WhenAmountMismatches_ShouldReject4xx` — 금액 불일치 → 4xx 거부
+  - `PaymentLvalValidatorTest#tossAlreadyProcessed_ShouldNotBeClassifiedAsSuccess` — `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()` = false 검증
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/application/usecase/PaymentLvalValidator.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/gateway/toss/TossPaymentErrorCode.java` — `ALREADY_PROCESSED_PAYMENT.isSuccess()` false
+
+---
+
+### T1-10 — StockCommitEventPublisher 구현 (재고 확정 이벤트 발행)
+
+- **제목**: payment.events.stock-committed Kafka 발행 어댑터 구현
+- **목적**: S-2(StockCommitEvent 발행) — 결제 DONE 확정 시 `payment.events.stock-committed` 발행. `StockCommitEventPublisherPort`(T1-02 선언) 구현.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T1-03, T1-02]
 - **테스트 클래스**: `StockCommitEventPublisherTest`
 - **테스트 메서드**:
-  - `StockCommitEventPublisherTest#publish_WhenPaymentConfirmed_ShouldEmitStockCommittedEvent` — 결제 DONE 확정 시 `payment.events.stock-committed` 토픽으로 1회 발행 검증 (FakeMessagePublisher + FakeStockCommitEventPublisher)
-  - `StockCommitEventPublisherTest#publish_ShouldIncludeProductIdQtyAndPaymentEventId` — 발행 이벤트에 productId, qty, paymentEventId 필드 포함 검증
-  - `StockCommitEventPublisherTest#publish_IsIdempotent_WhenCalledTwice` — 동일 paymentEventId 2회 발행 시 outbox 멱등성 검증 (at-least-once 전제)
+  - `publish_WhenPaymentConfirmed_ShouldEmitStockCommittedEvent` — DONE 확정 시 `payment.events.stock-committed` 1회 발행
+  - `publish_ShouldIncludeProductIdQtyAndPaymentEventId` — payload 필드 검증
+  - `publish_IsIdempotent_WhenCalledTwice` — 동일 paymentEventId 2회 → outbox 멱등성
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/StockCommitEventKafkaPublisher.java` — `StockCommitEventPublisherPort` Kafka 구현 (`infrastructure/messaging/publisher/` 경로)
-  - `payment-service/src/main/java/.../payment/domain/messaging/PaymentTopics.java`에 `STOCK_COMMITTED = "payment.events.stock-committed"` 상수 추가
-
-<!-- ARCH R5: S-2(StockCommitEvent 발행 공백) 반영. ADR-12 토픽 네이밍 규약 준수. -->
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/StockCommitEventKafkaPublisher.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/PaymentTopics.java` — `STOCK_COMMITTED = "payment.events.stock-committed"` 상수
 
 ---
 
-### Phase-1.6 — Transactional Outbox relay → Kafka publisher 구현 (ADR-04)
+### T1-11a — KafkaMessagePublisher + OutboxRelayService 구현 (ADR-04)
 
-- **제목**: MessagePublisherPort Kafka 구현 어댑터 + OutboxRelayService
-- **목적**: ADR-04(Transactional Outbox DB-first) — PENDING outbox 레코드를 Kafka로 발행하는 infrastructure 어댑터. `MessagePublisherPort`를 구현하는 `KafkaMessagePublisher`와 릴레이 루프 서비스. 어댑터 경로는 `infrastructure/messaging/publisher/`(publisher 서브디렉토리)로 배치 — consumer(`infrastructure/messaging/consumer/`)와 대칭.
+- **제목**: payment-service MessagePublisherPort 구현체 + OutboxRelayService (Publisher + RelayService)
+- **목적**: ADR-04(Transactional Outbox publisher 계층) — `KafkaMessagePublisher`가 `MessagePublisherPort.publish(topic, key, payload)`의 유일한 Kafka 구현체. `infrastructure/messaging/publisher/`에만 존재. `OutboxRelayService`가 port를 경유해 `processed_at=NOW()` 갱신. Worker는 port 인터페이스 의존만 가짐 — KafkaTemplate 직접 호출 금지.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-04, T1-02]
 - **테스트 클래스**: `OutboxRelayServiceTest`
 - **테스트 메서드**:
-  - `OutboxRelayServiceTest#relay_PublishesAllPendingOutbox_ThenMarksDone` — FakeMessagePublisher + FakeOutboxRepository로 PENDING → PROCESSED 전이 검증
-  - `OutboxRelayServiceTest#relay_WhenPublishFails_DoesNotMarkDone_LeavesForRetry` — 발행 실패 시 레코드 상태 변경 없음(at-least-once 보장)
-  - `OutboxRelayServiceTest#relay_IsIdempotent_WhenCalledTwice` — 동일 outbox 2회 처리 → 발행 1회만
+  - `relay_PublishesAllPendingOutbox_ThenMarksDone` — `FakeMessagePublisher`로 publish 호출 검증 + PENDING → PROCESSED 전이
+  - `relay_WhenPublishFails_DoesNotMarkDone_LeavesForRetry` — 발행 실패 시 row 상태 유지
+  - `relay_IsIdempotent_WhenCalledTwice` — 동일 outbox 2회 → publish 1회(FakeMessagePublisher 호출 횟수 assert)
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/KafkaMessagePublisher.java` — `MessagePublisherPort` Kafka 구현
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/KafkaMessagePublisher.java`
   - `payment-service/src/main/java/.../payment/application/service/OutboxRelayService.java`
 
 ---
 
-### Phase-1.7 — FCG 격리 불변 + RecoveryDecision 이관 (ADR-15)
+### T1-11b — PaymentConfirmChannel + OutboxImmediateEventHandler 구현 (ADR-04)
 
-- **제목**: FCG timeout → 무조건 QUARANTINED 불변 보장 + QUARANTINED 결제 Redis 재고 차감 상태 유지 명시
-- **목적**: ADR-15(FCG 격리 불변) — `OutboxProcessingService`의 FCG 경로에서 PG 서비스 호출 timeout·네트워크 에러·5xx 발생 시 재시도 래핑 없이 무조건 QUARANTINED 전이. `RecoveryDecision` 이관 포함. **QUARANTINED 전이 시 Redis stock cache DECR 상태를 즉시 INCR 복구하지 않는다** — Reconciler(Phase-1.9)가 QUARANTINED 결제를 감지하여 RDB 기준으로 Redis를 재설정하거나 INCR 복원하는 책임을 가진다. QUARANTINED 결제의 DECR은 Reconciler 처리 전까지 Redis에 유지됨을 불변으로 명시.
-- **tdd**: true
+- **제목**: payment-service PaymentConfirmChannel + AFTER_COMMIT 리스너 (EventHandler + Channel)
+- **목적**: ADR-04(Channel + EventHandler) — `PaymentConfirmChannel`(`LinkedBlockingQueue<Long>`, capacity=1024, offer 실패 시 Polling 워커 fallback으로 안전망 처리) 신설. AFTER_COMMIT 리스너 `OutboxImmediateEventHandler`가 `PaymentConfirmChannel.offer(outboxId)` 호출.
+- **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `OutboxProcessingServiceTest`
-- **테스트 메서드**:
-  - `OutboxProcessingServiceTest#process_WhenFcgPgCallTimesOut_ShouldQuarantine` — FakePgStatusAdapter가 timeout 예외 → QUARANTINED 전이, 재시도 없음
-  - `OutboxProcessingServiceTest#process_WhenFcgPgReturns5xx_ShouldQuarantine` — 5xx 응답 → QUARANTINED
-  - `OutboxProcessingServiceTest#process_WhenFcgSucceeds_ShouldTransitionToDone` — PG DONE 반환 → executePaymentSuccessCompletion 호출
-  - `OutboxProcessingServiceTest#process_RetryExhausted_CallsFcgOnce` — retryCount=maxRetries 소진 시 FCG 1회만 호출 (재귀 금지)
-  - `OutboxProcessingServiceTest#process_WhenQuarantined_ShouldNotRollbackStockCache` — QUARANTINED 전이 시 `FakeStockCachePort.rollback()` 호출 없음 검증 (DECR 상태 Reconciler 위임)
-- **관련 파일**: 기존 `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxProcessingService.java` 이관
-
-<!-- ARCH R5: S-1 반영 — QUARANTINED 결제의 Redis DECR 상태 유지 불변 명시. Phase-1.9 Reconciler가 INCR 복원 책임. -->
+- **depends**: [T1-11a]
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/core/channel/PaymentConfirmChannel.java` — `LinkedBlockingQueue<Long>`, capacity=1024, offer 실패 시 로그 + Polling 안전망 위임
+  - `payment-service/src/main/java/.../payment/listener/OutboxImmediateEventHandler.java` — AFTER_COMMIT 리스너
 
 ---
 
-### Phase-1.8 — Graceful Shutdown + Virtual Threads 재검토 (ADR-25, ADR-26)
+### T1-11c — OutboxImmediateWorker + OutboxWorker 구현 (ADR-04, SmartLifecycle)
 
-- **제목**: SmartLifecycle drain + VT 설정 결제 서비스 이관
-- **목적**: ADR-25(Graceful Shutdown), ADR-26(VT vs PT) — SIGTERM 시 in-flight outbox 처리 중인 워커를 안전하게 drain. 기존 `OutboxImmediateWorker`의 `SmartLifecycle` 패턴 결제 서비스로 이관. VT/PT 설정(`outbox.channel.virtual-threads`) 유지.
+- **제목**: payment-service ImmediateWorker + PollingWorker (SmartLifecycle + VT)
+- **목적**: ADR-04(Outbox 4구성 파이프라인 완성) — `OutboxImmediateWorker`(SmartLifecycle + VT 200)가 `channel.take()` → row 로드 → `MessagePublisherPort.publish(topic, key, payload)` → `processed_at=NOW()`. KafkaTemplate 직접 호출 금지. `OutboxWorker`(`@Scheduled fixedDelay`, `SELECT ... FOR UPDATE SKIP LOCKED WHERE processed_at IS NULL AND available_at<=NOW()`)가 Polling 안전망. 중복 발행 방어: `UPDATE ... WHERE processed_at IS NULL` 원자 조건.
 - **tdd**: true
-- **domain_risk**: false
-- **크기**: ≤ 2h
+- **domain_risk**: true
+- **depends**: [T1-11b]
 - **테스트 클래스**: `OutboxImmediateWorkerTest`
 - **테스트 메서드**:
-  - `OutboxImmediateWorkerTest#stop_DrainsInFlightBeforeShutdown` — `SmartLifecycle.stop()` 호출 시 진행 중 태스크 완료 후 종료
-  - `OutboxImmediateWorkerTest#start_SpawnsConfiguredNumberOfWorkers` — `outbox.channel.virtual-threads` 설정값에 따른 워커 수 생성
-- **관련 파일**: 기존 `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxImmediateWorker.java` 이관
+  - `stop_DrainsInFlightBeforeShutdown` — SmartLifecycle.stop() 시 진행 중 태스크 완료 후 종료
+  - `outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce` — Immediate+Polling 경쟁 시 produce 1회(불변식 11, FakeMessagePublisher 호출 횟수 assert)
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/scheduler/OutboxImmediateWorker.java` — SmartLifecycle + VT + MessagePublisherPort 경유
+  - `payment-service/src/main/java/.../payment/scheduler/OutboxWorker.java` — Polling 안전망
 
 ---
 
-### Phase-1.9 — Reconciliation 루프 + FCG vs Reconciler 역할 + Redis ↔ RDB 재고 대조 (ADR-07, ADR-17)
+### T1-12 — QuarantineCompensationHandler + Scheduler (ADR-15, §2-2b-3)
 
-- **제목**: 결제 서비스 로컬 Reconciler — 미종결 레코드 주기 스캔 + Redis 재고 캐시 vs RDB 대조 + QUARANTINED DECR 복원
-- **목적**: ADR-07(Reconciliation), ADR-17(FCG vs Reconciler 역할 재정의) — FCG=즉시 경로, Reconciler=지연 경로(분/시간 단위 배치 스캔). 기존 `OutboxWorker`의 폴백 스캔을 Reconciler로 역할 명확화. `PaymentReconciler`는 application/service에 위치하는 내부 서비스(@Scheduled 직접 보유) — `ReconciliationPort` outbound 불필요(Phase-1.1에서 제거됨).
-  **Redis ↔ RDB 재고 대조 알고리즘** (S-3 Reconciler 확장):
-  - 주기 스캔 시 `StockCachePort.current(productId)` vs (product-service RDB 재고 − PENDING/QUARANTINED PaymentEvent 합계) 대조.
-  - 발산 감지 시 **RDB를 진실**로 Redis `stock:{productId}` 재설정(SET). `payment.stock_cache.divergence_count` 카운터 +1.
-  - QUARANTINED 결제 감지 시 해당 결제의 DECR 수량만큼 INCR 복원 (Reconciler 단독 책임, FCG 경로에서 즉시 복원 금지 — Phase-1.7 불변 준수).
-  - TTL 기반 DECR 자동 복원: Redis key TTL 만료 후 재조회 시 miss → RDB 기준 재설정.
-  - Phase 1~2 구간 product 재고 조회는 ProductLookupPort(InternalProductAdapter 경유) 사용 — Phase 3(Phase-3.4 HTTP 어댑터 교체) 이후 자동으로 ProductHttpAdapter로 라우팅됨.
+- **제목**: QUARANTINED 2단계 복구 핸들러 구현 (TX 내 상태 전이 + TX 밖 Redis INCR)
+- **목적**: ADR-15(QUARANTINED 보상 주체 = payment-service), §2-2b-3(2단계 분할 설계) — 진입점 (a) pg-service FCG 결과 status=QUARANTINED, (b) `PaymentConfirmDlqConsumer` 처리 후 status=QUARANTINED,reasonCode=RETRY_EXHAUSTED — 둘 다 `QuarantineCompensationHandler`로 수렴. (1) TX 내: PaymentEvent QUARANTINED 전이 + payment_history insert + `quarantine_compensation_pending=true`. (2) TX 밖: Redis INCR stock 복구. 성공 시 플래그 해제, 실패·크래시 시 플래그 유지 → `QuarantineCompensationScheduler` 주기 스캔 재시도. **QUARANTINED 전이 시 즉시 INCR 금지 — Phase-1.9 Reconciler 위임 불변에 추가로, 이 핸들러가 Phase 2 이후 진입점 a/b 공통 수렴점**.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-05, T1-08]
+- **테스트 클래스**: `QuarantineCompensationHandlerTest`, `QuarantineCompensationSchedulerTest`
+- **테스트 메서드**:
+  - `QuarantineCompensationHandlerTest#handle_ShouldTransitionToQuarantinedAndSetPendingFlag` — PaymentEvent QUARANTINED 전이 + 플래그 true + payment_history insert 단일 TX
+  - `QuarantineCompensationHandlerTest#handle_WhenEntryIsDlqConsumer_ShouldRollbackStockAfterCommit` — DLQ consumer 진입점: TX 커밋 후 Redis INCR 1회 호출
+  - `QuarantineCompensationHandlerTest#handle_WhenRedisIncrFails_PendingFlagShouldRemainTrue` — Redis INCR 실패 시 플래그 유지(불변식 7b)
+  - `QuarantineCompensationHandlerTest#handle_WhenEntryIsFcg_ShouldNotRollbackStockImmediately` — FCG QUARANTINED 진입점: 즉시 INCR 금지(Reconciler 경로와 구분)
+  - `QuarantineCompensationSchedulerTest#scan_WhenPendingFlagTrue_ShouldRetryRedisIncr` — 플래그 잔존 레코드 스캔 → Redis INCR 재시도
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/application/usecase/QuarantineCompensationHandler.java`
+  - `payment-service/src/main/java/.../payment/scheduler/QuarantineCompensationScheduler.java`
+
+---
+
+### T1-13 — FCG 격리 불변 + RecoveryDecision 이관 (ADR-15)
+
+- **제목**: FCG timeout → 무조건 QUARANTINED 불변 + DECR 상태 유지 명시
+- **목적**: ADR-15(FCG 불변) — Phase 2 이전까지 payment-service 내부 `OutboxProcessingService` FCG 경로. timeout·5xx → 재시도 없이 무조건 QUARANTINED. QUARANTINED 전이 시 Redis DECR 상태를 즉시 INCR 복구 금지(Phase-1.14 Reconciler 위임).
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T1-12]
+- **테스트 클래스**: `OutboxProcessingServiceTest`
+- **테스트 메서드**:
+  - `process_WhenFcgPgCallTimesOut_ShouldQuarantine` — timeout 예외 → QUARANTINED, 재시도 없음
+  - `process_WhenFcgPgReturns5xx_ShouldQuarantine` — 5xx → QUARANTINED
+  - `process_WhenFcgSucceeds_ShouldTransitionToDone` — PG DONE → DONE 전이
+  - `process_RetryExhausted_CallsFcgOnce` — maxRetries 소진 시 FCG 1회만
+  - `process_WhenQuarantined_ShouldNotRollbackStockCacheImmediately` — QUARANTINED 시 FakeStockCachePort.rollback() 미호출(불변식 7)
+
+---
+
+### T1-14 — Reconciliation 루프 + Redis↔RDB 재고 대조 (ADR-07)
+
+- **제목**: 결제 서비스 로컬 Reconciler — 미종결 레코드 스캔 + Redis↔RDB 대조 + QUARANTINED DECR 복원
+- **목적**: ADR-07, ADR-17 — FCG=즉시 경로, Reconciler=지연 경로. Redis `stock:{id}` vs (product RDB 재고 − PENDING/QUARANTINED 합계) 대조. 발산 시 RDB를 진실로 Redis 재설정, `divergence_count` +1. QUARANTINED 결제의 DECR 수량 INCR 복원(Reconciler 단독). TTL 만료 miss → RDB 기준 재설정.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T1-08, T1-13]
 - **테스트 클래스**: `PaymentReconcilerTest`
 - **테스트 메서드**:
-  - `PaymentReconcilerTest#scan_FindsStaleInFlightRecords_AndResetsToRetry` — IN_FLIGHT + timeout 초과 레코드 → PENDING 복원
-  - `PaymentReconcilerTest#scan_FindsPendingRecords_BypassedChannel_AndProcesses` — 채널 오버플로우로 누락된 PENDING 레코드 배치 처리
-  - `PaymentReconcilerTest#scan_DoesNotTouchTerminalRecords` — DONE/FAILED/QUARANTINED 레코드 불간섭
-  - `PaymentReconcilerTest#scan_WhenStockCacheDivergesFromRdb_ShouldResetCacheToRdbValue` — Redis 재고값이 RDB 기준(재고 − PENDING/QUARANTINED 합계)과 다를 때 Redis 재설정 + divergence_count +1 검증 (FakeStockCachePort 사용)
-  - `PaymentReconcilerTest#scan_WhenQuarantinedPaymentExists_ShouldRollbackDecrForEach` — QUARANTINED PaymentEvent 감지 → 해당 수량 `StockCachePort.rollback()` 호출 검증 (Phase-1.7 불변: FCG에서 즉시 복원 금지 확인)
-  - `PaymentReconcilerTest#scan_WhenStockCacheKeyMissing_ShouldRestoreFromRdb` — Redis key TTL 만료 miss → `StockCachePort`에 RDB 기준값 SET 검증
+  - `scan_FindsStaleInFlightRecords_AndResetsToRetry` — IN_FLIGHT + timeout 초과 → PENDING 복원
+  - `scan_DoesNotTouchTerminalRecords` — DONE/FAILED/QUARANTINED 불간섭
+  - `scan_WhenStockCacheDivergesFromRdb_ShouldResetCacheToRdbValue` — 발산 감지 → Redis 재설정 + divergence_count +1
+  - `scan_WhenQuarantinedPaymentExists_ShouldRollbackDecrForEach` — QUARANTINED → StockCachePort.rollback() 호출
+  - `scan_WhenStockCacheKeyMissing_ShouldRestoreFromRdb` — key miss → RDB 기준 SET
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/application/service/PaymentReconciler.java` — Redis ↔ RDB 대조 로직 + QUARANTINED INCR 복원 포함
-
-<!-- ARCH R5: S-3(Reconciler 확장 공백) 반영. 사용자 명시 설계 결정 반영: RDB를 진실로 Redis 재설정, QUARANTINED DECR은 Reconciler 단독 복원, TTL 기반 자동 복원. -->
+  - `payment-service/src/main/java/.../payment/application/service/PaymentReconciler.java`
 
 ---
 
-### Phase-1.10 — Gateway 라우팅: 결제 엔드포인트 교체 + 모놀리스 결제 경로 비활성화
+### T1-15 — Graceful Shutdown + Virtual Threads 재검토 (ADR-25, ADR-26)
 
-- **제목**: Gateway route — 결제 서비스로 라우팅 + 모놀리스 결제 confirm 경로 비활성화
-- **목적**: ADR-02(통신 패턴), ADR-01 — 결제 서비스 분리 완료 후 Gateway가 `/api/v1/payments/**`를 신규 결제 서비스로, 나머지를 모놀리스로 라우팅. 모놀리스 내부의 결제 confirm 경로(`OutboxImmediateEventHandler`·`PaymentCommandUseCase` 직접 호출)를 `@ConditionalOnProperty` 또는 Spring profile 분기로 비활성화하여 Strangler Fig 기간 이중 발행 경로 차단(plan-domain-1 minor finding #4 대응).
-- **tdd**: false
-- **domain_risk**: true
-- **크기**: ≤ 2h
-- **산출물**:
-  - `gateway/src/main/resources/application.yml` 라우트 추가 — `payment-service` route (`/api/v1/payments/**`)
-  - `gateway/src/main/resources/application.yml` 라우트 — monolith fallback route
-  - 모놀리스 `payment/listener/OutboxImmediateEventHandler.java` — `@ConditionalOnProperty("payment.monolith.confirm.enabled", havingValue="true", matchIfMissing=false)` 추가 (Gateway 라우팅 전환 후 기본값=비활성화)
-  - 모놀리스 `payment/presentation/PaymentController.java` confirm 엔드포인트 — `@ConditionalOnProperty` 동일 처리 또는 HTTP 501 응답 라우팅
-  - `chaos/scripts/migrate-pending-outbox.sh` — 모놀리스 DB `payment_outbox` PENDING 레코드를 결제 서비스 DB로 수동 이행하는 스크립트 (Phase-1.4c 방침 대응 산출물). IN_FLIGHT 레코드는 모놀리스 timeout(약 5분) 후 PENDING으로 자동 복원되므로, 전환 전 5분 drain 대기 후 스크립트 실행 (완료 기준: 모놀리스 IN_FLIGHT 건수 0 확인 이후 실행).
+- **제목**: SmartLifecycle drain + VT 설정 결제 서비스 이관
+- **목적**: ADR-25, ADR-26 — SIGTERM 시 in-flight outbox 처리 중인 워커를 안전하게 drain.
+- **tdd**: true
+- **domain_risk**: false
+- **depends**: [T1-11c]
+- **테스트 클래스**: `OutboxImmediateWorkerTest`
+- **테스트 메서드**:
+  - `stop_DrainsInFlightBeforeShutdown` — SmartLifecycle.stop() 시 진행 중 태스크 완료 후 종료
+  - `start_SpawnsConfiguredNumberOfWorkers` — VT 설정값에 따른 워커 수
+- **관련 파일**: `payment/scheduler/OutboxImmediateWorker.java`(T1-11 산출물 보완)
 
 ---
 
-### Phase-1.11 — `payment.outbox.pending_age_seconds` 히스토그램 + `payment.stock_cache.divergence_count` (ADR-20)
+### T1-16 — payment.outbox.pending_age_seconds + payment.stock_cache.divergence_count 메트릭 (ADR-20)
 
-- **제목**: PENDING 레코드 체류 시간 histogram + 재고 캐시 발산 카운터 메트릭 추가
-- **목적**: ADR-20(메트릭 네이밍 + stock lock-in 감지) — 수락 기준(채택과 무관): PENDING outbox 레코드의 생성 시각 대비 체류 시간을 `payment.outbox.pending_age_seconds` histogram으로 기록. Phase-4.1 `kafka-latency.sh` 수락 기준: histogram p95가 임계값(10s) 이상 Prometheus 쿼리로 관측됨(plan-domain-1 minor finding #3 반영). **`payment.stock_cache.divergence_count` 카운터 추가**: Reconciler(Phase-1.9)가 Redis ↔ RDB 재고 발산 감지 시 이 카운터를 증가. Prometheus alert 연계.
+- **제목**: PENDING 체류 시간 histogram + 재고 캐시 발산 카운터 메트릭
+- **목적**: ADR-20, ADR-31 — `payment.outbox.pending_age_seconds` histogram(PENDING 체류 시간 분포). `payment.stock_cache.divergence_count` counter(Reconciler 발산 감지 연계). `infrastructure/metrics/` 배치.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-14]
 - **테스트 클래스**: `OutboxPendingAgeMetricsTest`, `StockCacheDivergenceMetricsTest`
 - **테스트 메서드**:
-  - `OutboxPendingAgeMetricsTest#record_ShouldEmitHistogramForEachPendingRecord` — PENDING 레코드 체류 시간이 histogram에 기록됨 (MeterRegistry 직접 검증)
-  - `OutboxPendingAgeMetricsTest#record_ZeroPendingRecords_ShouldNotRecord` — PENDING 레코드 없으면 histogram 기록 없음
-  - `StockCacheDivergenceMetricsTest#increment_ShouldIncreaseDivergenceCounter` — Reconciler 호출 시 divergence_count 카운터 +1 검증
-  - `StockCacheDivergenceMetricsTest#noDivergence_ShouldNotIncrementCounter` — 발산 없을 때 카운터 변화 없음 검증
+  - `OutboxPendingAgeMetricsTest#record_ShouldEmitHistogramForEachPendingRecord` — histogram 기록 검증
+  - `OutboxPendingAgeMetricsTest#record_ZeroPendingRecords_ShouldNotRecord` — PENDING 없으면 미기록
+  - `StockCacheDivergenceMetricsTest#increment_ShouldIncreaseDivergenceCounter` — counter +1
+  - `StockCacheDivergenceMetricsTest#noDivergence_ShouldNotIncrementCounter` — 발산 없음 시 불변
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/metrics/OutboxPendingAgeMetrics.java` — `infrastructure/metrics/` 배치(application/usecase 아님, ARCHITECTURE.md 관례 준수)
-  - `payment-service/src/main/java/.../payment/infrastructure/metrics/StockCacheDivergenceMetrics.java` — `payment.stock_cache.divergence_count` counter (`infrastructure/metrics/` 배치)
-
-<!-- ARCH R5: S-1 반영 — 재고 캐시 발산 감지 메트릭 추가. Phase-1.9 Reconciler 발산 감지와 연계. -->
+  - `payment-service/src/main/java/.../payment/infrastructure/metrics/OutboxPendingAgeMetrics.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/metrics/StockCacheDivergenceMetrics.java`
 
 ---
 
-### Phase-1.12 — 재고 캐시 warmup (product.events.stock-snapshot 토픽 재생)
+### T1-17 — 재고 캐시 warmup (product.events.stock-snapshot 토픽 재생)
 
-- **제목**: payment-service 기동 시 Redis stock cache 초기화 — stock-snapshot 토픽 재생
-- **목적**: S-3(Reconciler 확장) + Phase-1.9 Reconciler 전제 — payment-service 기동(또는 Redis 재시작) 후 `stock:{productId}` 캐시가 비어 있을 때 product-service가 발행하는 `product.events.stock-snapshot` 토픽을 replay하여 Redis를 초기화. warmup 완료 전까지 결제 차감 요청은 차단(또는 RDB fallback). product-service의 snapshot 발행 훅은 Phase-3.1 산출물. warmup 완료 선언 이후 첫 Reconciler 스캔(Phase-1.9 cron 주기)까지는 Redis 값이 stale할 수 있으며, 이 구간 결제는 Redis DECR 원자성에 의존 — product-service의 이후 SET으로 보정됨.
+- **제목**: payment-service 기동 시 Redis stock cache 초기화
+- **목적**: S-3(Reconciler 전제) — `ApplicationReadyEvent` 시 `product.events.stock-snapshot` 토픽 replay → Redis 초기화. warmup 완료 전 결제 차단. product-service Phase-3.1 snapshot 발행 훅과 pair. Kafka consume 관심사는 `StockSnapshotWarmupConsumer`(messaging consumer), "결제 차단 전까지 warmup 오케스트레이션"은 `StockCacheWarmupService`(application service)로 분리.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `StockCacheWarmupServiceTest`
+- **depends**: [T1-08]
+- **테스트 클래스**: `StockSnapshotWarmupConsumerTest`, `StockCacheWarmupServiceTest`
 - **테스트 메서드**:
-  - `StockCacheWarmupServiceTest#onApplicationReady_ShouldPopulateCacheFromSnapshotTopic` — ApplicationReadyEvent 수신 시 snapshot 토픽의 productId·qty 항목을 `StockCachePort`에 SET 검증 (FakeStockCachePort 사용)
-  - `StockCacheWarmupServiceTest#warmup_WhenTopicEmpty_ShouldLeaveEmptyCacheAndLog` — snapshot 토픽 비어 있으면 캐시 미설정 + 경고 로그 검증
-  - `StockCacheWarmupServiceTest#warmup_DuplicateSnapshot_ShouldUseLatestValue` — 동일 productId 스냅샷 복수 → 최신값으로 덮어쓰기 검증
-  - `StockCacheWarmupTest#warmup_AfterCompletion_ShouldAllowDecrementImmediately` — warmup 완료 선언 이후 StockCachePort.decrement() 호출 즉시 정상 동작 검증 (stale 값 기반이라도 DECR 원자성 보장)
+  - `StockCacheWarmupServiceTest#onApplicationReady_ShouldPopulateCacheFromSnapshotTopic` — snapshot 항목 → StockCachePort SET 검증
+  - `StockCacheWarmupServiceTest#warmup_WhenTopicEmpty_ShouldLeaveEmptyCacheAndLog` — 빈 토픽 → 미설정 + 경고 로그
+  - `StockCacheWarmupServiceTest#warmup_DuplicateSnapshot_ShouldUseLatestValue` — 동일 productId 복수 → 최신값 덮어쓰기
+  - `StockCacheWarmupServiceTest#warmup_AfterCompletion_ShouldAllowDecrementImmediately` — warmup 완료 후 decrement() 즉시 동작
+  - `StockSnapshotWarmupConsumerTest#consume_ShouldDelegateToWarmupService` — consumer → WarmupService 1회 위임
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/cache/StockCacheWarmupService.java` — `ApplicationListener<ApplicationReadyEvent>` 구현. `StockCachePort.set(productId, qty)` 호출로 초기 재고값 주입. `infrastructure/cache/` 경로.
-  - `payment-service/src/main/java/.../payment/application/port/out/StockCachePort.java`에 `set(productId, qty): void` 메서드 추가 (warmup 전용, 덮어쓰기)
-
-<!-- ARCH R5: S-3 반영 — Reconciler + warmup 연계로 Redis 재시작 후 정합성 복원 경로 확보. Phase-3.1 snapshot 발행 훅과 pair. -->
-<!-- ARCH R5: 참고(minor) — `StockCacheWarmupService`를 `infrastructure/cache/`에 배치했으나 Kafka 토픽 소비 책임도 겸함. 엄밀히 분리하면 (a) `infrastructure/messaging/consumer/StockSnapshotReplayConsumer`(Kafka 소비) + (b) `application/service/StockCacheWarmupService`(포트 호출 orchestration) 두 컴포넌트로 쪼개는 것이 layer 책임 분리에 더 부합. 다만 lifecycle bootstrap 성격상 infrastructure 단일 묶음이 실용적이므로 단일 컴포넌트 유지도 수용 — execute 단계 구현자가 두 책임을 private 메서드 경계로라도 분리하도록 권고. `StockCachePort.set()` 추가(warmup 전용)는 decrement/rollback/current와 대칭 세트로 수용 가능. -->
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/consumer/StockSnapshotWarmupConsumer.java` — snapshot 토픽 consume 어댑터
+  - `payment-service/src/main/java/.../payment/application/service/StockCacheWarmupService.java` — warmup 오케스트레이션 + 결제 차단 플래그
 
 ---
 
-### Phase-1-Gate — 결제 코어 E2E 검증
+### T1-18 — Gateway 라우팅: 결제 엔드포인트 교체 + 모놀리스 결제 경로 비활성화
 
-- **제목**: Phase 1 결제 코어 E2E 검증 — 다음 Phase 진입 가능 여부 판정
-- **목적**: Phase 1 전 태스크(Phase-1.0 ~ Phase-1.12) 완료 후 payment-service 단독 기동이 가능하고 결제 성공/실패/QUARANTINED 경로 + Redis 캐시 차감 + Reconciler가 E2E로 작동함을 검증. 모놀리스 결제 경로 비활성화 상태에서 Gateway → payment-service 결제 완주 성공 확인. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Gateway route — 결제 서비스 라우팅 + 모놀리스 confirm 경로 비활성화
+- **목적**: ADR-01, ADR-02 — Strangler Fig. `/api/v1/payments/**` → payment-service. 모놀리스 confirm 경로 `@ConditionalOnProperty` 기본값=비활성화. `migrate-pending-outbox.sh` 제공.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T1-11c, T0-03]
 - **산출물**:
-  - `scripts/phase-gate/phase-1-gate.sh` — 다음 항목 자동 검증:
-    1. `docker compose up payment-service` + payment-service `/actuator/health` 200
-    2. payment-service Flyway V1 적용 확인 (`SHOW TABLES` → payment_event/payment_outbox 존재)
-    3. Gateway 경유 checkout API 호출 → 성공 경로 (FakePG 또는 테스트 계정 사용) → PaymentEvent DONE + StockCommitEvent Kafka 발행 확인
-    4. Gateway 경유 checkout 재고 부족 시나리오 → FAILED 전이 + Redis 캐시 rollback 확인
-    5. PG timeout 시뮬레이션 (Toxiproxy delay) → QUARANTINED 전이 + Redis DECR 유지 + Reconciler 경보 확인
-    6. Reconciler cron 1회 수동 trigger → Redis ↔ RDB 대조 결과 로그 확인
-    7. `payment.outbox.pending_age_seconds` + `payment.stock_cache.divergence_count` 메트릭 scraping 확인
-  - `docs/phase-gate/phase-1-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 1 재검토 항목 목록
+  - `gateway/src/main/resources/application.yml` route 추가
+  - 모놀리스 `payment/listener/OutboxImmediateEventHandler.java` — `@ConditionalOnProperty("payment.monolith.confirm.enabled", havingValue="true", matchIfMissing=false)`
+  - `chaos/scripts/migrate-pending-outbox.sh`
 
 ---
 
-## Phase 2 — PG 서비스 분리
+### T1-Gate — Phase 1 결제 코어 E2E 검증
 
-**목적**: `paymentgateway` 컨텍스트를 물리 분리(ADR-21 선택 시). PG 서비스 `getStatus`가 raw state만 반환하고 재시도 래핑을 내장하지 않음.
-
-관련 ADR: ADR-21, ADR-04(재확정), ADR-14, ADR-20
+- **제목**: Phase 1 Gate — 결제 코어 E2E (다음 Phase 진입 판정)
+- **목적**: T1-01~T1-18 완료 후 payment-service 단독 기동 + 결제 성공/실패/QUARANTINED 경로 + Redis 캐시 차감 + Reconciler E2E 검증. `GET /internal/pg/status/{orderId}` 엔드포인트·`PgStatusPort`·`PgStatusHttpAdapter`가 payment-service에 존재하지 않음을 계약 테스트로 확인(불변식 19).
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T1-18, T1-17, T1-16, T1-15, T1-14]
+- **산출물**:
+  - `scripts/phase-gate/phase-1-gate.sh` — healthcheck, Flyway 확인, 결제 성공/실패/QUARANTINED E2E, Redis DECR, Reconciler trigger, 메트릭 scraping, `PgStatusPort` 부재 확인
+  - `docs/phase-gate/phase-1-gate.md`
 
 ---
 
-### Phase-2.1 — PG 서비스 모듈 신설 + port 계층 + 벤더 전략 이관 (ADR-21)
+## Phase 2 — PG 서비스 분리 (4단계)
 
-- **제목**: PG 서비스 신규 모듈 + `getStatus` API port 선언 + Toss/NicePay 전략 이관
-- **목적**: ADR-21(PG 물리 분리, 대안 a) — PG 서비스를 독립 Spring Boot 모듈로 생성. `getStatus` API는 raw state만 반환 (`DONE`/`IN_PROGRESS`/`FAILED`/`NOT_FOUND`/`DUPLICATE_ATTEMPT`). 재시도 래핑 미포함. Toss/NicePay 벤더 전략 어댑터를 모놀리스에서 PG 서비스로 이관. 가면 응답(`ALREADY_PROCESSED_PAYMENT`/`2201`) → `DUPLICATE_ATTEMPT` 매핑 책임은 application 서비스(`PgStatusServiceImpl`)에 귀속 — Controller/Adapter는 DTO 운반만.
+**목적**: `paymentgateway` 컨텍스트를 물리 분리(ADR-21). ADR-30의 Outbox + ApplicationEvent + PgOutboxChannel + Immediate/Polling Worker 패턴을 pg-service에 독립 복제 구현. `payment.commands.confirm` 단일 토픽 재사용 + `available_at` 지연 + `PaymentConfirmDlqConsumer` 전용 consumer. 단계별 마이크로 Gate 후 Phase 2 통합 Gate.
+
+**관련 ADR**: ADR-21, ADR-04(재확정), ADR-05(보강), ADR-14, ADR-15, ADR-20, ADR-30, ADR-31
+
+---
+
+## Phase 2.a — pg-service 골격 + Outbox 파이프라인 + consumer 기반
+
+### T2a-01 — pg-service 모듈 신설 + port 계층 + 벤더 전략 이관
+
+- **제목**: PG 서비스 신규 Spring Boot 모듈 + 포트 계층 + Toss/NicePay 전략 이관
+- **목적**: ADR-21(PG 물리 분리) — pg-service는 벤더 선택·재시도·상태 조회·FCG·중복 승인 응답 방어를 전부 내부에서 수행. payment-service는 벤더·상태·FCG를 모른다. `PgGatewayPort`(벤더 호출), `PgEventPublisherPort`(이벤트 발행 추상) 선언. inbound: `PgConfirmCommandService`. `KafkaTopicConfig.java` 복제 배치.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T1-Gate]
 - **산출물**:
-  - `settings.gradle` — `include 'pg-service'` 추가
+  - `settings.gradle` — `include 'pg-service'`
   - `pg-service/build.gradle` — spring-boot-starter-web, virtual threads, spring-kafka
-  - `pg-service/src/main/java/.../pg/application/port/out/PgGatewayPort.java` — Toss/NicePay 원문 상태 조회 포트
-  - `pg-service/src/main/java/.../pg/application/port/out/PgEventPublisherPort.java` — PG 결과 이벤트 발행 추상화 (Phase-2.3의 `PgEventPublisher`가 구현)
-  - `pg-service/src/main/java/.../pg/presentation/port/PgConfirmCommandService.java` — inbound port (`PgConfirmConsumer`가 호출)
-  - `pg-service/src/main/java/.../pg/presentation/port/PgStatusService.java` — inbound port
-  - `pg-service/src/main/java/.../pg/presentation/PgStatusController.java` — `GET /internal/pg/status/{orderId}` (raw state 반환, MVC)
-  - `pg-service/src/main/java/.../pg/infrastructure/gateway/toss/TossPaymentGatewayStrategy.java` — 모놀리스에서 이관
-  - `pg-service/src/main/java/.../pg/infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy.java` — 모놀리스에서 이관
-  - `pg-service/src/main/java/.../pg/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈 복제 배치
+  - `pg-service/src/main/java/.../pg/application/port/out/PgGatewayPort.java`
+  - `pg-service/src/main/java/.../pg/application/port/out/PgEventPublisherPort.java`
+  - `pg-service/src/main/java/.../pg/presentation/port/PgConfirmCommandService.java`
+  - `pg-service/src/main/java/.../pg/infrastructure/gateway/toss/TossPaymentGatewayStrategy.java`
+  - `pg-service/src/main/java/.../pg/infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy.java`
+  - `pg-service/src/main/java/.../pg/infrastructure/config/KafkaTopicConfig.java`
 
 ---
 
-### Phase-2.1b — AOP 축 PG 서비스 복제 이관 (§ 2-6)
+### T2a-02 — pg-service AOP 축 복제 이관 (§2-6)
 
 - **제목**: `@TossApiMetric` + `TossApiMetricsAspect` PG 서비스 복제
-- **목적**: § 2-6(AOP 복제 원칙) — PG 서비스가 Toss/NicePay API 호출 메트릭(`toss.api.*`)을 기록하려면 `TossApiMetricsAspect`와 `@TossApiMetric` 어노테이션이 PG 서비스 패키지 안에 있어야 함. 공통 jar 공유 금지 — 서비스 소유 복제.
+- **목적**: §2-6(AOP 복제 원칙) — 공통 jar 금지, 서비스 소유.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T2a-01]
 - **산출물**:
-  - `pg-service/src/main/java/.../pg/infrastructure/aspect/TossApiMetricsAspect.java` — 현 `core/common/metrics/aspect/TossApiMetricsAspect` 복제
-  - `pg-service/src/main/java/.../pg/infrastructure/aspect/annotation/TossApiMetric.java` — 어노테이션 복제
-  - (NicePay 대응 AOP가 현 코드베이스에 존재하는 경우 동일 패턴으로 추가)
+  - `pg-service/src/main/java/.../pg/infrastructure/aspect/TossApiMetricsAspect.java`
+  - `pg-service/src/main/java/.../pg/infrastructure/aspect/annotation/TossApiMetric.java`
 
 ---
 
-### Phase-2.2 — Fake PG 서비스 구현 (테스트용)
+### T2a-03 — Fake pg-service 구현 (테스트용)
 
-- **제목**: FakePgGatewayAdapter + FakePgStatusService
-- **목적**: ADR-21 수락 기준 — application 계층이 실제 Toss/NicePay 없이 테스트 가능하도록 Fake 배치.
+- **제목**: FakePgGatewayAdapter + FakePgInboxRepository + FakePgOutboxRepository
+- **목적**: ADR-21 수락 기준 — 실제 Toss/NicePay 없이 pg-service application 계층 테스트 가능. Fake가 소비자(T2a-05 이후) 앞에 배치.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T2a-01]
 - **산출물**:
-  - `pg-service/src/test/java/.../mock/FakePgGatewayAdapter.java` — `PgGatewayPort` 인메모리 구현
-  - `pg-service/src/test/java/.../mock/FakePgStatusService.java` — 설정 가능한 응답 반환
+  - `pg-service/src/test/java/.../mock/FakePgGatewayAdapter.java` — 응답 설정 가능, timeout 예외 주입 가능
+  - `pg-service/src/test/java/.../mock/FakePgInboxRepository.java`
+  - `pg-service/src/test/java/.../mock/FakePgOutboxRepository.java`
+  - `pg-service/src/test/java/.../mock/FakePgEventPublisher.java`
 
 ---
 
-### Phase-2.3 — PgStatusPort Kafka 이벤트 경로 + 이벤트 토픽 명명 + 전 서비스 공통 토픽 네이밍 규약 확정 (ADR-14, ADR-12)
+### T2a-04 — pg-service DB 스키마 (pg_inbox + pg_outbox Flyway V1)
 
-- **제목**: confirm 요청 → Kafka 이벤트화 + 토픽 네임스페이스 정의 + 전 서비스 공통 토픽 네이밍 규약 확정
-- **목적**: ADR-14(이벤트 vs 커맨드 구분), ADR-12(이벤트 스키마 + 토픽 네이밍) — `payment.commands.confirm` / `payment.events.confirmed` / `payment.events.failed` 토픽 정의. 결제 서비스 → PG 서비스 방향 Kafka command, 역방향 event. **본 태스크에서 전 서비스 공통 토픽 네이밍 규약 `<source-service>.<type>.<action>` (예: `payment.commands.confirm`, `payment.events.confirmed`, `payment.events.failed`, `product.events.stock-restored`, `pg.events.status-changed`)을 확정하고, 신규 토픽 추가 시 이 규약을 따르는 것을 의무화한다. 규약은 `docs/topics/MSA-TRANSITION.md` ADR-12 결론란에 기재한다.**
+- **제목**: pg-service Flyway V1 — pg_inbox(business inbox 5상태 + amount 컬럼) + pg_outbox(available_at + attempt)
+- **목적**: ADR-21 보강(business inbox amount 컬럼), ADR-30(pg_outbox available_at) — `pg_inbox`: `order_id`(UNIQUE), `status` ENUM(NONE/IN_PROGRESS/APPROVED/FAILED/QUARANTINED), `amount BIGINT NOT NULL`(원화 최소 단위 정수, payload BigDecimal → DB BIGINT 변환 규약: scale=0, 음수·소수 거부), `stored_status_result`, `reason_code`, `created_at`, `updated_at`. `pg_outbox`: `id`, `topic`, `key`, `payload`, `headers_json`, `available_at`, `processed_at`, `attempt`, `created_at`. 인덱스 `(processed_at, available_at)`, `UNIQUE(id)`.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2a-01]
+- **산출물**:
+  - `pg-service/src/main/resources/db/migration/V1__pg_schema.sql` — pg_inbox + pg_outbox DDL
+  - `pg-service/src/main/java/.../pg/domain/model/PgInboxStatus.java` — NONE/IN_PROGRESS/APPROVED/FAILED/QUARANTINED enum(terminal 집합 SSOT)
+  - `docker-compose.infra.yml` — pg 전용 MySQL 컨테이너 추가 (Phase-0.1 방침: Phase 2.a 시점에 추가)
+
+---
+
+### T2a-05a — PgEventPublisher + PgOutboxRelayService 구현 (ADR-04)
+
+- **제목**: pg-service PgEventPublisherPort 구현체 + PgOutboxRelayService (Publisher + RelayService)
+- **목적**: ADR-04(pg-service publisher 계층 — T1-11a 대칭) — `PgEventPublisher`가 `PgEventPublisherPort.publish(topic, key, payload, headers)`의 유일한 Kafka 구현체. `infrastructure/messaging/publisher/`에만 존재. `PgOutboxRelayService`가 port를 경유해 `processed_at=NOW()` 갱신. Worker는 port 인터페이스 의존만 가짐 — KafkaTemplate 직접 호출 금지. row의 `topic` 필드가 `payment.commands.confirm` / `payment.commands.confirm.dlq` / `payment.events.confirmed`를 자동 분기.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `PgConfirmConsumerTest`
+- **depends**: [T2a-04, T2a-03]
+- **테스트 클래스**: `PgOutboxRelayServiceTest`
 - **테스트 메서드**:
-  - `PgConfirmConsumerTest#consume_PaymentConfirmCommand_ShouldCallPgConfirmCommandService` — `payment.commands.confirm` 수신 → `PgConfirmCommandService.confirm()` 1회 호출 (어댑터는 port 경유)
-  - `PgConfirmConsumerTest#consume_DuplicateCommand_ShouldDedupeByEventUuid` — 동일 eventUUID 2회 수신 → PG 호출 1회 (멱등성)
-  - `PgConfirmConsumerTest#consume_WhenPgReturnsAlreadyProcessed_ShouldMapToDuplicateAttempt` — 가면 응답 → `DUPLICATE_ATTEMPT` 이벤트 발행 (도메인 중립 enum, 벤더 코드 노출 금지)
+  - `relay_PublishesByTopicField_ThenMarksDone` — `FakePgEventPublisher`로 publish 호출 검증 + topic 필드에 따라 올바른 토픽으로 발행
+  - `relay_WhenPublishFails_DoesNotMarkDone` — 발행 실패 시 row 유지
+  - `relay_WhenAvailableAtFuture_ShouldSkip` — `available_at > NOW()` row skip
 - **산출물**:
-  - `pg-service/src/main/java/.../pg/infrastructure/messaging/consumer/PgConfirmConsumer.java` — `PgConfirmCommandService`(inbound port) 호출, 직접 PgGatewayPort 주입 금지
-  - `pg-service/src/main/java/.../pg/infrastructure/messaging/publisher/PgEventPublisher.java` — `PgEventPublisherPort` 구현
-  - `docs/topics/MSA-TRANSITION.md` ADR-12 결론란 — 토픽 네이밍 규약 `<source-service>.<type>.<action>` + 현재 토픽 목록 표 기재 (M-5)
-  - `payment-service/src/main/java/.../payment/domain/messaging/PaymentTopics.java` — 결제 서비스 토픽 이름 상수 중앙화 (M-5, Phase-0.1 방침: Spring 의존 없는 값 객체)
-  - `pg-service/src/main/java/.../pg/domain/messaging/PgTopics.java` — PG 서비스 토픽 이름 상수 중앙화 (M-5)
-  - `product-service/src/main/java/.../product/domain/messaging/ProductTopics.java` — 상품 서비스 토픽 이름 상수 중앙화 (M-5)
+  - `pg-service/src/main/java/.../pg/infrastructure/messaging/publisher/PgEventPublisher.java`
+  - `pg-service/src/main/java/.../pg/application/service/PgOutboxRelayService.java`
 
 ---
 
-### Phase-2.3b — 결제 서비스 측 PgStatusPort·PaymentGatewayPort 구현체 교체 (Local/Internal → HTTP/Kafka) (C-2)
+### T2a-05b — PgOutboxChannel + OutboxReadyEventHandler 구현 (ADR-04)
 
-- **제목**: 결제 서비스 PgStatusPort·PaymentGatewayPort 구현체 교체 — LocalPgStatusAdapter/InternalPaymentGatewayAdapter 퇴역
-- **목적**: ADR-21(결제 서비스 측 어댑터 교체) — Phase-1.1에서 `LocalPgStatusAdapter`(Phase 1 한정 선언)와 `InternalPaymentGatewayAdapter`(Phase 1 한정)가 배치됨. Phase 2 PG 서비스 분리 완료 이후 결제 서비스 측 구현체를 HTTP/Kafka 기반으로 교체. Phase-3.4(ProductHttpAdapter 교체)와 동형 태스크. `@CircuitBreaker`는 adapter 구현 내부 메서드에만 부여(port 인터페이스 오염 방지).
+- **제목**: pg-service PgOutboxChannel + AFTER_COMMIT 리스너 (EventHandler + Channel)
+- **목적**: ADR-04(Channel + EventHandler — T1-11b 대칭) — `PgOutboxChannel`(`LinkedBlockingQueue<Long>`, capacity=1024, offer 실패 시 Polling 워커 fallback으로 안전망 처리) 신설. AFTER_COMMIT 리스너 `OutboxReadyEventHandler`가 `PgOutboxChannel.offer(outboxId)` 호출.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2a-05a]
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/infrastructure/channel/PgOutboxChannel.java` — `LinkedBlockingQueue<Long>`, capacity=1024
+  - `pg-service/src/main/java/.../pg/listener/OutboxReadyEventHandler.java` — AFTER_COMMIT 리스너
+
+---
+
+### T2a-05c — PgOutboxImmediateWorker + PgOutboxPollingWorker 구현 (ADR-04, ADR-30, SmartLifecycle)
+
+- **제목**: pg-service ImmediateWorker + PollingWorker (SmartLifecycle + VT — T1-11c 대칭)
+- **목적**: ADR-04(4구성 파이프라인 완성), ADR-30(available_at 지연) — `PgOutboxImmediateWorker`(SmartLifecycle+VT)가 `channel.take()` → row 로드 → `PgEventPublisherPort.publish(topic, key, payload, headers)` → `processed_at=NOW()`. KafkaTemplate 직접 호출 금지. `PgOutboxPollingWorker`(`@Scheduled fixedDelay`, `WHERE processed_at IS NULL AND available_at<=NOW() FOR UPDATE SKIP LOCKED`)가 Polling 안전망.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
-- **테스트 클래스**: `PgStatusHttpAdapterTest`, `PaymentGatewayKafkaCommandAdapterTest`, `PgEventConsumerTest`
+- **depends**: [T2a-05b]
+- **테스트 클래스**: `PgOutboxImmediateWorkerTest`
 - **테스트 메서드**:
-  - `PgStatusHttpAdapterTest#getStatus_WhenServiceReturnsDone_ShouldReturnDomainDone` — PG 서비스 HTTP 응답 DONE → 도메인 DONE 변환 검증
-  - `PgStatusHttpAdapterTest#getStatus_WhenServiceUnavailable_ShouldThrowRetryableException` — HTTP 503/timeout → RetryableException 전파, `@CircuitBreaker` 내부 메서드 적용 검증
-  - `PaymentGatewayKafkaCommandAdapterTest#confirm_ShouldPublishPaymentCommandsConfirmTopic` — confirm 호출 시 `payment.commands.confirm` 토픽으로 Kafka 커맨드 발행 1회 검증
-  - `PgEventConsumerTest#consume_PaymentEventsConfirmed_ShouldMarkPaymentDone` — `payment.events.confirmed` 수신 후 outbox/PaymentEvent 상태 DONE 전이 검증
-  - `PgEventConsumerTest#consume_DuplicateEvent_ShouldDedupeByEventUuid` — 동일 eventUUID 2회 수신 → 상태 전이 1회만 (멱등성)
+  - `stop_DrainsInFlightBeforeShutdown` — SmartLifecycle drain
+  - `outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce` — 중복 produce 차단(불변식 11, FakePgEventPublisher 호출 횟수 assert)
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/http/PgStatusHttpAdapter.java` — `PgStatusPort` HTTP 구현 (`GET /internal/pg/status/{orderId}` 호출). `@CircuitBreaker`는 adapter 내부 메서드에만.
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/PaymentGatewayKafkaCommandAdapter.java` — `PaymentGatewayPort` confirm/cancel 경로 Kafka 커맨드 발행 구현 (`payment.commands.confirm` 토픽 등). 이 어댑터는 **getStatus 메서드 비보유** (Phase-1.0에서 `PaymentGatewayPort`는 confirm/cancel 전담으로 재정의됨). getStatus 경로는 application 계층이 `PgStatusPort`를 직접 주입해 사용 — adapter→adapter 위임 금지.
-<!-- ARCH R4 RESOLVED: PaymentGatewayKafkaCommandAdapter가 PgStatusHttpAdapter에 getStatus를 위임한다는 초기 문구가 헥사고날 경계를 흐린다는 지적. Architect 권고 대안 (b) 채택 — Phase-1.0에서 `PaymentGatewayPort`의 scope를 confirm/cancel 전담으로 재정의하고 getStatus는 `PgStatusPort`가 단독 담당하도록 역할 중복 자체를 제거. 이 어댑터에서는 getStatus 메서드가 존재하지 않으므로 위임 경로도 원천 차단. -->
-
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/consumer/PgEventConsumer.java` — `payment.events.confirmed` / `payment.events.failed` 수신 후 outbox/PaymentEvent 상태 전이 (PG 서비스 → 결제 서비스 역방향 이벤트 소비)
-  - **제거 산출물**: 기존 `LocalPgStatusAdapter.java` 퇴역, `InternalPaymentGatewayAdapter.java` 퇴역 (Phase 2 완료 후 불필요)
+  - `pg-service/src/main/java/.../pg/scheduler/PgOutboxImmediateWorker.java` — SmartLifecycle + VT + PgEventPublisherPort 경유
+  - `pg-service/src/main/java/.../pg/scheduler/PgOutboxPollingWorker.java` — Polling 안전망
 
 ---
 
-### Phase-2.4 — Gateway 라우팅: PG 내부 API 격리
+### T2a-06 — PaymentConfirmConsumer + consumer dedupe (pg-service)
 
-- **제목**: Gateway route — PG `getStatus` 내부 API는 외부 노출 차단
-- **목적**: ADR-21, ADR-02 — PG 서비스의 `getStatus` API는 결제 서비스만 호출. Gateway는 외부(클라이언트) → PG 서비스 직접 라우팅을 차단.
-- **tdd**: false
-- **domain_risk**: false
-- **크기**: ≤ 2h
+- **제목**: pg-service PaymentConfirmConsumer — `payment.commands.confirm` 소비 + eventUUID dedupe + inbox 상태 분기
+- **목적**: ADR-21(inbox 5상태 모델), ADR-04(2단 멱등성 키) — eventUUID dedupe(메시지 레벨) + orderId inbox dedupe(비즈니스 레벨). inbox 상태별 분기: NONE → IN_PROGRESS 원자 전이(UNIQUE + INSERT ON DUPLICATE KEY UPDATE 또는 SELECT FOR UPDATE). IN_PROGRESS → no-op 대기. terminal(APPROVED/FAILED/QUARANTINED) → 저장된 status 재발행(벤더 재호출 금지, 불변식 4/4b). 실제 PG 호출은 T2b-01로 위임. dry_run 모드(`pg.retry.mode=dry_run`) 시 metric만 기록.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2a-05c, T2a-04]
+- **테스트 클래스**: `PaymentConfirmConsumerTest`
+- **테스트 메서드**:
+  - `consume_WhenInboxNone_ShouldTransitToInProgressAndCallVendor` — NONE → IN_PROGRESS + PG 호출 1회
+  - `consume_WhenInboxInProgress_ShouldNoOp` — IN_PROGRESS 재수신 → no-op (불변식 4b)
+  - `consume_WhenInboxTerminal_ShouldReemitStoredStatus` — 종결 상태 재수신 → 저장 status 재발행(불변식 4)
+  - `consume_DuplicateEventUUID_ShouldNoOp` — 동일 eventUUID 2회 → PG 호출 0회 (불변식 5)
+  - `consume_WhenInboxNoneToInProgress_ShouldBeAtomicUnderConcurrency` — 동시 진입 시 중복 IN_PROGRESS 전이 차단 (race 봉쇄, 불변식 4b)
 - **산출물**:
-  - `gateway/src/main/resources/application.yml` — 내부 서비스 route 격리 설정 (path 접두사 `/internal/**` deny 또는 serviceId 기반 필터)
-  - Gateway filter: `InternalOnlyGatewayFilter.java` (외부 요청 차단)
+  - `pg-service/src/main/java/.../pg/infrastructure/messaging/consumer/PaymentConfirmConsumer.java`
+  - `pg-service/src/main/java/.../pg/application/service/PgConfirmService.java` — inbox 상태 분기 orchestration
 
 ---
 
-### Phase-2-Gate — PG 서비스 분리 E2E 검증
+### T2a-Gate — Phase 2.a 마이크로 Gate
 
-- **제목**: Phase 2 PG 서비스 분리 E2E 검증 — 다음 Phase 진입 가능 여부 판정
-- **목적**: Phase 2 전 태스크(Phase-2.1 ~ Phase-2.4) 완료 후 pg-service가 독립 기동되고 Kafka 이벤트 경로(결제 → PG → 결제 상태 업데이트)가 왕복 작동함을 검증. Fake PG 서비스로 벤더(Toss/NicePay) 격리도 확인. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Phase 2.a Gate — pg-service 골격 + Outbox 파이프라인 + consumer 기반 검증
+- **목적**: T2a-01~T2a-06 완료 후 pg-service 기동, Flyway 스키마 적용, `payment.commands.confirm` 수신 후 inbox NONE→IN_PROGRESS 전이, Outbox 워커 기동, dry_run 메트릭 기록 확인.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T2a-06]
 - **산출물**:
-  - `scripts/phase-gate/phase-2-gate.sh` — 다음 항목 자동 검증:
-    1. `docker compose up pg-service` + `/actuator/health` 200
-    2. PG 내부 API가 Gateway를 거치지 않고 외부에서 호출 불가한지 확인 (Phase-2.4 라우팅)
-    3. `payment.commands.confirm` 토픽에 메시지 발행 → pg-service consumer 수신 → PG 호출 → `pg.events.status-changed` 발행 → payment-service consumer 수신 → PaymentEvent 상태 전이 E2E 검증
-    4. 동일 eventUUID 2회 발행 → pg-service dedupe로 PG 호출 1회 확인
-    5. Fake PG로 벤더 교체 (환경변수 `PG_VENDOR=fake`) → 결제 E2E 성공 확인 (벤더 격리 검증)
-  - `docs/phase-gate/phase-2-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 2 재검토 항목 목록
+  - `scripts/phase-gate/phase-2a-gate.sh` — pg-service healthcheck, Flyway V1 적용, consumer 수신 + inbox 전이, worker 기동, dry_run metric 확인
+
+  - `docs/phase-gate/phase-2a-gate.md`
+
+---
+
+## Phase 2.b — business inbox 5상태 + amount 컬럼 + 벤더 어댑터 통합
+
+### T2b-01 — PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행 (ADR-30)
+
+- **제목**: pg-service 내부 PG 벤더 호출 + 지수 백오프 재시도 + `pg_outbox.available_at` 지연 row INSERT
+- **목적**: ADR-30(재시도 = outbox available_at 지연 표현) — 벤더 호출 성공 → pg_outbox(topic=`payment.events.confirmed`, status=APPROVED/FAILED). 재시도 가능 오류 + attempt < MAX(4) → pg_outbox(topic=`payment.commands.confirm`, `available_at=NOW()+backoff(attempt+1)`, header `attempt+1`) INSERT(같은 TX). attempt >= 4 → pg_outbox(topic=`payment.commands.confirm.dlq`, header `attempt=4`) INSERT(같은 TX). TX commit 후 AFTER_COMMIT 이벤트 → PgOutboxChannel. 재시도 상수: base=2s, multiplier=3, attempts=4, jitter=±25% equal jitter.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2a-06, T2a-03]
+- **테스트 클래스**: `PgVendorCallServiceTest`
+- **테스트 메서드**:
+  - `callVendor_WhenSuccess_ShouldInsertApprovedOutboxRow` — 성공 → pg_outbox(events.confirmed, APPROVED) INSERT
+  - `callVendor_WhenRetryableErrorAndAttemptNotExceeded_ShouldInsertRetryOutboxRow` — 재시도 가능 오류 + attempt<4 → pg_outbox(commands.confirm, available_at=future)
+  - `callVendor_WhenRetryableErrorAndAttemptExceeded_ShouldInsertDlqOutboxRow` — attempt>=4 → pg_outbox(commands.confirm.dlq)(불변식 6)
+  - `callVendor_WhenDefinitiveFailure_ShouldInsertFailedOutboxRow` — 확정 실패 → pg_outbox(events.confirmed, FAILED)
+  - `retry_WhenAttemptExceeded_ShouldWriteDlqOutboxRow` — attempt 소진 DLQ row INSERT 원자성
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/application/service/PgVendorCallService.java`
+  - `pg-service/src/main/java/.../pg/domain/RetryPolicy.java` — base=2s, multiplier=3, attempts=4, jitter=25%
+
+---
+
+### T2b-02 — PaymentConfirmDlqConsumer 구현 — DLQ 전용 consumer (ADR-30)
+
+- **제목**: pg-service DLQ 전용 consumer — QUARANTINED 전이 + 격리 이벤트 outbox row INSERT
+- **목적**: ADR-30(DLQ 전용 consumer 분리) — `PaymentConfirmDlqConsumer`는 `PaymentConfirmConsumer`와 물리적으로 다른 Spring bean. `payment.commands.confirm.dlq` 구독. inbox FOR UPDATE → terminal이면 no-op(중복 DLQ 흡수, 불변식 6c). 아니면 pg_inbox QUARANTINED 전이 + pg_outbox에 `payment.events.confirmed(status=QUARANTINED, reasonCode=RETRY_EXHAUSTED)` row INSERT(같은 TX). TX commit 후 AFTER_COMMIT 이벤트 → worker 발행. payment-service측 consumer가 `QUARANTINED` 수신 시 `QuarantineCompensationHandler`로 내부 수렴(재고 INCR 보상은 payment-service가 책임, §2-2b-3 2단계 복구 재사용). DLQ consumer 자체 실패 시 offset 미커밋 → 재기동 후 재처리, pg_inbox UNIQUE + terminal 체크로 중복 방어.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2b-01, T2a-05c]
+- **테스트 클래스**: `PaymentConfirmDlqConsumerTest`
+- **테스트 메서드**:
+  - `dlq_consumer_WhenNormalMessage_ShouldQuarantine` — DLQ 메시지 정상 처리 → pg_inbox QUARANTINED + `payment.events.confirmed(QUARANTINED)` outbox row 1건 (불변식 6)
+  - `dlq_consumer_WhenAlreadyTerminal_ShouldBeNoOp` — 이미 terminal → no-op (불변식 6c)
+  - `dlq_consumer_WhenQuarantined_ShouldInsertSingleConfirmedRow` — QUARANTINED 전이 시 `payment.events.confirmed` outbox row 1건만 INSERT (격리 보상은 payment-service 내부 수렴)
+  - `dlq_consumer_WhenConsumerItself_ShouldBeDifferentBeanFromNormalConsumer` — `PaymentConfirmConsumer`와 다른 bean 검증 (ADR-30 수락 기준)
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/infrastructure/messaging/consumer/PaymentConfirmDlqConsumer.java`
+
+---
+
+### T2b-03 — pg-service 내부 FCG 구현 (ADR-15, ADR-21)
+
+- **제목**: pg-service Final Confirmation Gate — 재시도 소진 후 1회 최종 확인
+- **목적**: ADR-15(FCG 수행 주체=pg-service), ADR-21 — PG 내부 재시도 루프 소진 후 벤더 `getStatus` 1회 최종 확인. APPROVED/FAILED → pg_outbox(events.confirmed). 판정 불가(timeout·5xx·네트워크 에러) → 무조건 QUARANTINED(재시도 래핑 금지, FCG 불변). payment-service는 FCG 존재를 모른다.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2b-01, T2a-03]
+- **테스트 클래스**: `PgFinalConfirmationGateTest`
+- **테스트 메서드**:
+  - `fcg_WhenVendorReturnsApproved_ShouldInsertApprovedOutboxRow` — 벤더 최종 확인 APPROVED → pg_outbox INSERT
+  - `fcg_WhenVendorReturnsFailed_ShouldInsertFailedOutboxRow` — 확정 실패 → FAILED
+  - `fcg_WhenVendorTimesOut_ShouldQuarantine_NoRetry` — timeout → QUARANTINED, 재시도 없음(불변식 FCG 불변)
+  - `fcg_WhenVendor5xx_ShouldQuarantine` — 5xx → QUARANTINED
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/application/service/PgFinalConfirmationGate.java`
+
+---
+
+### T2b-04 — pg-service business inbox amount 컬럼 저장 규약 구현 (ADR-21 보강, ADR-05 보강)
+
+- **제목**: pg_inbox.amount 저장 규약 구현 — NONE→IN_PROGRESS payload amount 기록 + APPROVED 시 2자 대조 통과값 기록
+- **목적**: ADR-21 보강(business inbox `amount BIGINT NOT NULL` 컬럼 저장 규약), discuss-domain-5 minor(BigDecimal→BIGINT 변환 규약) — (a) NONE→IN_PROGRESS 전이 시 command payload amount를 `BigDecimal.longValueExact()` 변환(scale=0 강제, 음수·소수 거부)하여 pg_inbox.amount에 기록. (b) IN_PROGRESS→APPROVED 전이 시 벤더 2자 재조회 amount == inbox.amount 검증 통과한 값만 저장(불일치 시 QUARANTINED+AMOUNT_MISMATCH). (c) "pg DB 부재 경로"(ADR-05 보강 6번)에서 NONE→APPROVED 직접 전이 시 벤더 재조회 amount == command payload amount 검증 통과값만 기록. 이로써 불변식 4c 좌변 출처 스키마 수준 확정.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2a-04, T2b-01]
+- **테스트 클래스**: `PgInboxAmountStorageTest`
+- **테스트 메서드**:
+  - `storeInbox_WhenNoneToInProgress_ShouldRecordPayloadAmount` — NONE→IN_PROGRESS 전이 시 command payload amount → `inbox.amount` 기록(BigDecimal scale=0 검증 포함)
+  - `storeInbox_WhenApproved_ShouldPassTwoWayAmountCheck` — APPROVED 전이 시 pg DB amount vs 벤더 재조회 amount 일치 → 저장(불변식 4c)
+  - `storeInbox_WhenApproved_WhenAmountMismatch_ShouldQuarantine` — 2자 불일치 → QUARANTINED+AMOUNT_MISMATCH(불변식 4c)
+  - `storeInbox_WhenBigDecimalScaleNotZero_ShouldReject` — scale>0 BigDecimal → ArithmeticException 거부
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/application/service/PgInboxAmountService.java` — 저장 규약 (a)(b)(c) 구현
+  - `pg-service/src/main/java/.../pg/infrastructure/converter/AmountConverter.java` — `BigDecimal.longValueExact()` 변환 유틸
+
+---
+
+### T2b-05 — 중복 승인 응답 2자 금액 대조 + pg DB 부재 경로 방어 (ADR-05 보강, ADR-21)
+
+- **제목**: Toss `ALREADY_PROCESSED_PAYMENT` / NicePay `2201` 중복 승인 방어 — 2자 금액 대조 + pg DB 부재 경로 amount 검증
+- **목적**: ADR-05 보강, ADR-21(캡슐화 대상) — pg-service 내부 방어. (1) pg DB 레코드 존재 시: 벤더 `getStatus` 재조회 → pg DB amount vs 벤더 재조회 amount 2자 대조 → 일치 시 저장 status 재발행, 불일치 시 QUARANTINED+AMOUNT_MISMATCH. (2) pg DB 레코드 부재 시(ADR-05 보강 6번): 벤더 재조회 amount == command payload amount 검증 → 일치 시 APPROVED+운영 알림(관측만), 불일치 시 QUARANTINED+AMOUNT_MISMATCH(불변식 4c). payment-service는 이 로직의 존재를 모른다(ADR-21(v) 불변).
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2b-04, T2a-03]
+- **테스트 클래스**: `DuplicateApprovalHandlerTest`
+- **테스트 메서드**:
+  - `pg_duplicate_approval_WhenPgDbExists_WhenAmountMatch_ShouldReemitStoredStatus` — pg DB 존재 + 2자 일치 → 저장 status 재발행
+  - `pg_duplicate_approval_WhenPgDbExists_WhenAmountMismatch_ShouldQuarantine` — 2자 불일치 → QUARANTINED+AMOUNT_MISMATCH (불변식 4c)
+  - `pg_duplicate_approval_WhenPgDbAbsent_WhenAmountMatch_ShouldAlertAndApprove` — pg DB 부재 + payload amount 일치 → APPROVED + 운영 알림(불변식 4c)
+  - `pg_duplicate_approval_WhenPgDbAbsent_WhenAmountMismatch_ShouldQuarantine` — pg DB 부재 + 불일치 → QUARANTINED+AMOUNT_MISMATCH
+  - `pg_duplicate_approval_WhenVendorRetrievalFails_ShouldQuarantine` — 벤더 재조회 실패 → QUARANTINED
+  - `NicepayStrategy_WhenCode2201_ShouldDelegateToDuplicateHandler` — NicePay 2201 → DuplicateApprovalHandler 호출 (대칭화 검증)
+- **산출물**:
+  - `pg-service/src/main/java/.../pg/application/service/DuplicateApprovalHandler.java`
+  - `pg-service/src/main/java/.../pg/infrastructure/gateway/toss/TossPaymentGatewayStrategy.java` — `ALREADY_PROCESSED_PAYMENT` 분기 → DuplicateApprovalHandler 위임
+  - `pg-service/src/main/java/.../pg/infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy.java` — `2201` 분기 → DuplicateApprovalHandler 위임(handleDuplicateApprovalCompensation 이관)
+
+---
+
+### T2b-Gate — Phase 2.b 마이크로 Gate
+
+- **제목**: Phase 2.b Gate — business inbox 5상태 + 벤더 어댑터 통합 검증
+- **목적**: T2b-01~T2b-05 완료 후 중복 승인 응답 2자 대조(Fake 벤더), pg DB 부재 경로 APPROVED/QUARANTINED 분기, inbox amount 저장 규약 E2E 검증.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2b-05]
+- **산출물**:
+  - `scripts/phase-gate/phase-2b-gate.sh` — Fake 벤더로 중복 승인 시나리오, pg DB 부재 경로 시나리오, amount 불일치 QUARANTINED 확인
+  - `docs/phase-gate/phase-2b-gate.md`
+
+---
+
+## Phase 2.c — pg.retry.mode 스위치 + 기존 reconciler 코드 삭제
+
+### T2c-01 — pg.retry.mode=outbox 활성화 스위치
+
+- **제목**: feature flag `pg.retry.mode=outbox` 즉시 전환 + 기존 OutboxProcessingService PG 직접 호출 경로 OFF
+- **목적**: ADR-30(Phase 2.b 스위치) — `PaymentConfirmConsumer` + `PaymentConfirmDlqConsumer` 실제 경로 활성화. 기존 payment-service의 `OutboxProcessingService` PG 직접 호출 로직 OFF. QUARANTINED 진입점 a(FCG) + b(DlqConsumer) 확정. 롤백: flag 복원 시 `OutboxProcessingService` 재활성.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2b-Gate]
+- **산출물**:
+  - `pg-service/src/main/resources/application.yml` — `pg.retry.mode: outbox`
+  - `payment-service/src/main/java/.../payment/scheduler/OutboxProcessingService.java` — PG 직접 호출 로직 `@ConditionalOnProperty` 비활성화
+
+---
+
+### T2c-02 — 기존 reconciler·PG 직접 호출 코드 삭제 + payment-service 측 잔존 어댑터 정리
+
+- **제목**: payment-service OutboxProcessingService PG 호출 로직 삭제 + `GET /internal/pg/status/{orderId}` 엔드포인트·`PgStatusPort`·`PgStatusHttpAdapter` 삭제 확인
+- **목적**: ADR-30(Phase 2.c 정리), ADR-02/ADR-21(Kafka only 불변) — `OutboxProcessingService`의 `claimToInFlight`/`getStatus`/`applyDecision` 체인 제거. `PgStatusPort`·`PgStatusHttpAdapter`·`GET /internal/pg/status/{orderId}` 엔드포인트 payment-service에 존재하지 않음을 계약 테스트로 고정(불변식 19).
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2c-01]
+- **테스트 클래스**: `PgStatusAbsenceContractTest`
+- **테스트 메서드**:
+  - `pgStatusPort_ShouldNotExistInPaymentService` — Spring context에 `PgStatusPort` bean 없음
+  - `pgStatusHttpAdapter_ShouldNotExistInPaymentService` — `PgStatusHttpAdapter` class 없음
+  - `executePaymentAndOutbox_ShouldNotWrapPgCall` — payment-service TX 내 PG HTTP 호출 없음 (불변식 12)
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/scheduler/OutboxProcessingService.java` — PG 호출 로직 삭제
+  - `PgStatusPort.java`, `PgStatusHttpAdapter.java`, `GET /internal/pg/status/**` 엔드포인트 삭제
+
+---
+
+### T2c-Gate — Phase 2.c 마이크로 Gate
+
+- **제목**: Phase 2.c Gate — 스위치 전환 + 잔존 코드 삭제 검증
+- **목적**: T2c-01~T2c-02 완료 후 payment-service에 `PgStatusPort` 부재, DlqConsumer 정상 동작, Kafka 왕복 E2E 검증.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2c-02]
+- **산출물**:
+  - `scripts/phase-gate/phase-2c-gate.sh` — PgStatusPort 부재 계약 확인, Kafka 왕복 E2E, DLQ consumer 시나리오
+  - `docs/phase-gate/phase-2c-gate.md`
+
+---
+
+## Phase 2.d — 관측 대시보드 + 알림 활성화 + 결제 서비스 측 이벤트 소비
+
+### T2d-01 — 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
+
+- **제목**: payment-service ConfirmedEventConsumer + eventUUID dedupe + QuarantineCompensationHandler 연결
+- **목적**: ADR-14, ADR-04 — `payment.events.confirmed` 소비 → eventUUID dedupe → status별 분기: APPROVED → DONE 전이 + StockCommitEvent 발행, FAILED → FAILED + stock.events.restore 보상, QUARANTINED → QuarantineCompensationHandler(진입점 a/b 공통 수렴).
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T2c-02, T1-12]
+- **테스트 클래스**: `ConfirmedEventConsumerTest`
+- **테스트 메서드**:
+  - `consume_WhenApproved_ShouldTransitionToDone` — APPROVED → PaymentEvent DONE 전이
+  - `consume_WhenFailed_ShouldTransitionToFailed` — FAILED → PaymentEvent FAILED
+  - `consume_WhenQuarantined_ShouldDelegateToQuarantineHandler` — QUARANTINED → QuarantineCompensationHandler 1회 호출
+  - `consume_DuplicateEvent_ShouldDedupeByEventUUID` — 동일 eventUUID 2회 → 상태 전이 1회 (불변식 5)
+  - `consumer_WhenSameEventUUIDReceived_ShouldNoOp` — dedupe no-op 검증(불변식 5)
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/consumer/ConfirmedEventConsumer.java`
+  - `payment-service/src/main/java/.../payment/application/usecase/PaymentConfirmResultUseCase.java`
+
+---
+
+### T2d-02 — 토픽 네이밍 규약 확정 + Outbox 관측 지표 + Grafana 대시보드 (ADR-12, ADR-31)
+
+- **제목**: 전 서비스 공통 토픽 네이밍 규약 확정 + pg_outbox/payment_outbox 관측 지표 + Grafana 위젯 활성화
+- **목적**: ADR-12(토픽 네이밍 `<source-service>.<type>.<action>`), ADR-31(Outbox 관측 지표) — `payment.commands.confirm`, `payment.commands.confirm.dlq`, `payment.events.confirmed` 토픽 목록 ADR-12 결론란 기록. `{payment,pg}_outbox.pending_count`, `future_pending_count`, `oldest_pending_age_seconds`, `attempt_count_histogram` 수집. Grafana 결제 전용 대시보드 위젯 배포. 알림 4종(ADR-31) 활성화: DLQ 유입률>0, future_pending_count>N 지속, oldest_pending_age_seconds>300s, invariant 불일치.
+- **tdd**: false
+- **domain_risk**: false
+- **depends**: [T2d-01]
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/infrastructure/messaging/PaymentTopics.java` — 상수 최종화
+  - `pg-service/src/main/java/.../pg/infrastructure/messaging/PgTopics.java`
+  - `product-service/src/main/java/.../product/infrastructure/messaging/ProductTopics.java` (Phase 3 산출물 미리 선언)
+  - `docs/topics/MSA-TRANSITION.md` ADR-12 결론란 토픽 목록 표 + 네이밍 규약 기록
+  - `chaos/grafana/payment-dashboard.json` — 위젯 활성화 + 알림 4종 설정
+
+---
+
+### T2d-03 — Gateway 라우팅: PG 내부 API 격리
+
+- **제목**: Gateway — PG 서비스 `getStatus` 내부 API 외부 노출 차단
+- **목적**: ADR-21, ADR-02 — PG 서비스 `GET /internal/**` 경로를 외부 클라이언트로부터 차단.
+- **tdd**: false
+- **domain_risk**: false
+- **depends**: [T2d-01]
+- **산출물**:
+  - `gateway/src/main/resources/application.yml` — `path=/internal/**` deny filter
+  - `gateway/src/main/java/.../gateway/filter/InternalOnlyGatewayFilter.java`
+
+---
+
+### Phase-2-Gate — Phase 2 통합 E2E 검증
+
+- **제목**: Phase 2 Gate — PG 서비스 분리 E2E + ADR-30 Kafka 왕복 통합 검증 (다음 Phase 진입 판정)
+- **목적**: T2a-Gate~T2d-03 완료 후 pg-service 독립 기동, Kafka 왕복(command → confirm → event → payment 상태 전이), dedupe, Fake PG 벤더 격리, DLQ consumer QUARANTINED 전이, 2자 금액 대조, pg DB 부재 경로 E2E 검증.
+- **tdd**: false
+- **domain_risk**: true
+- **depends**: [T2d-03, T2d-02, T2c-Gate]
+- **산출물**:
+  - `scripts/phase-gate/phase-2-gate.sh` — pg-service healthcheck, Kafka 왕복 E2E, eventUUID dedupe, Fake PG 교체, DLQ QUARANTINED E2E, 2자 금액 대조 시나리오, `topic_config_WhenProvisioned_ShouldShareSamePartitionCount` 토픽 파티션 수 동일 확인(불변식 6b)
+  - `docs/phase-gate/phase-2-gate.md`
 
 ---
 
 ## Phase 3 — 상품·사용자 서비스 분리
 
-**목적**: 주변 도메인 분리. 결제 서비스의 `InternalProductAdapter`, `InternalUserAdapter`가 HTTP/이벤트 기반 어댑터로 교체. `stock.restore` 보상 이벤트화 + consumer dedupe 신설.
+**목적**: 주변 도메인 분리. 결제 서비스의 Internal 어댑터 → HTTP/이벤트 기반 교체. `stock.events.restore` 보상 이벤트화(payment-service 측 publisher T3-04b + consumer dedupe T3-05). StockCommitConsumer + product→payment Redis 직접 SET.
 
-관련 ADR: ADR-22, ADR-23, ADR-02(재확정), ADR-14, ADR-16
+**관련 ADR**: ADR-22, ADR-23, ADR-02(재확정), ADR-14, ADR-16
 
 ---
 
-### Phase-3.1 — 상품 서비스 모듈 신설 + 도메인 이관 + port 계층 + stock-snapshot 발행 훅 (ADR-22, ADR-23)
+### T3-01 — 상품 서비스 모듈 신설 + 도메인 이관 + stock-snapshot 발행 훅
 
-- **제목**: 상품 서비스 신규 모듈 + 도메인 엔티티 이관 + 재고 port 선언 + 런타임 스택 명시 + stock-snapshot 발행 훅
-- **목적**: ADR-22(주변 도메인 분리 순서, product → user), ADR-23(DB 분리 세부) — 상품 서비스 독립 모듈 생성. Phase-1.3(결제 도메인 이관)과 대칭으로 상품 도메인 엔티티(`Product`, `Stock` aggregate)를 이관. MVC + Virtual Threads 런타임 스택 명시(§ 2-8 원칙). Flyway 마이그레이션 디렉터리 분리. **`product.events.stock-snapshot` 토픽 발행 훅 추가**: 상품 서비스 기동(ApplicationReadyEvent) 시 현재 재고 스냅샷을 토픽으로 발행. payment-service Phase-1.12 warmup이 이 토픽을 replay.
+- **제목**: product-service 신규 모듈 + 도메인 이관 + port 계층 + StockSnapshotPublisher
+- **목적**: ADR-22(product → user 순서), ADR-23 — MVC + VT. Flyway V1. `product.events.stock-snapshot` 토픽 발행 훅(ApplicationReadyEvent → 전 상품 재고 일괄 발행 → payment-service Phase-1.17 warmup pair).
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [Phase-2-Gate]
 - **산출물**:
-  - `settings.gradle` — `include 'product-service'` 추가
-  - `product-service/build.gradle` — spring-boot-starter-web, virtual threads 설정, spring-kafka, spring-data-redis (§ 2-8 준수)
-  - `product-service/src/main/java/.../product/domain/Product.java` — 상품 도메인 엔티티 이관
-  - `product-service/src/main/java/.../product/domain/Stock.java` — 재고 도메인 엔티티 이관
-  - `product-service/src/main/java/.../product/application/port/out/StockRepository.java` — 재고 조회·증감 포트
-  - `product-service/src/main/java/.../product/application/port/out/EventDedupeStore.java` — `boolean recordIfAbsent(String eventUuid, Instant expiresAt)` (Phase-3.3 소비자 앞에 port 선언)
-  - `product-service/src/main/java/.../product/presentation/port/StockRestoreCommandService.java` — inbound port
-  - `product-service/src/main/java/.../product/application/usecase/StockRestoreUseCase.java` — `StockRestoreCommandService` 구현 겸임 (`StockRestoreUseCase implements StockRestoreCommandService`). ARCHITECTURE.md 관례(`PaymentConfirmService ← OutboxAsyncConfirmService`) 준수. Phase-3.3 `StockRestoreConsumer`는 `StockRestoreCommandService` 인터페이스 타입으로 주입받는다.
-  - `product-service/src/main/resources/db/migration/V1__product_schema.sql` — 상품·재고 테이블
-  - `product-service/docker-compose` 항목 — 상품 전용 MySQL 컨테이너
-  - `product-service/src/main/java/.../product/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈 복제 배치 (`product.events.stock-snapshot` 포함)
-  - **`product-service/src/main/java/.../product/infrastructure/event/StockSnapshotPublisher.java`** — `ApplicationListener<ApplicationReadyEvent>` 구현. 전 상품 재고를 `product.events.stock-snapshot` 토픽으로 일괄 발행. `infrastructure/event/` 경로. (Phase-1.12 warmup의 pair 산출물)
-
-<!-- ARCH R2 RESOLVED: Phase-3.1 `StockRestoreCommandService` 구현체 주체 공백(F-17). `StockRestoreUseCase implements StockRestoreCommandService` 겸임 채택(택일 a)을 산출물에 명시하고, Phase-3.3 consumer가 인터페이스 타입으로 주입받음을 기술하여 해소. -->
-<!-- ARCH R5: stock-snapshot 발행 훅 추가. Phase-1.12 warmup과 pair. S-3 Reconciler 확장의 사전 조건. -->
+  - `settings.gradle` — `include 'product-service'`
+  - `product-service/build.gradle` — spring-boot-starter-web, VT, spring-kafka, spring-data-redis
+  - `product-service/src/main/java/.../product/domain/Product.java`
+  - `product-service/src/main/java/.../product/domain/Stock.java`
+  - `product-service/src/main/java/.../product/application/port/out/StockRepository.java`
+  - `product-service/src/main/java/.../product/application/port/out/EventDedupeStore.java` — `boolean recordIfAbsent(String eventUuid, Instant expiresAt)`
+  - `product-service/src/main/java/.../product/presentation/port/StockRestoreCommandService.java`
+  - `product-service/src/main/java/.../product/application/usecase/StockRestoreUseCase.java` — `implements StockRestoreCommandService`
+  - `product-service/src/main/resources/db/migration/V1__product_schema.sql`
+  - `product-service/src/main/java/.../product/infrastructure/config/KafkaTopicConfig.java` — `product.events.stock-snapshot` 포함
+  - `product-service/src/main/java/.../product/infrastructure/event/StockSnapshotPublisher.java` — ApplicationReadyEvent 리스너
 
 ---
 
-### Phase-3.1b — 사용자 서비스 모듈 신설 + 도메인 이관 + port 계층 + Flyway V1 (C-1)
+### T3-02 — 사용자 서비스 모듈 신설 + 도메인 이관 (ADR-22)
 
-- **제목**: 사용자 서비스 신규 모듈 + 도메인 엔티티 이관 + 사용자 조회 port 선언 + Flyway V1
-- **목적**: ADR-22(product → user 순서) — Phase-3.1(상품 서비스 신설) 직후 사용자 서비스 모듈을 신설하여 ADR-22의 분리 순서를 완성. Phase-3.4의 `UserHttpAdapter`가 호출할 사용자 서비스 엔드포인트(`GET /api/v1/users/{id}`)를 이 태스크에서 확보. Phase-3.1의 StockRestoreUseCase 패턴과 대칭으로 구성.
+- **제목**: user-service 신규 모듈 + 도메인 이관 + port 계층 + Flyway V1
+- **목적**: ADR-22(product → user 순서 완성) — MVC + VT. `GET /api/v1/users/{id}` 엔드포인트.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T3-01]
 - **산출물**:
-  - `settings.gradle` — `include 'user-service'` 추가
-  - `user-service/build.gradle` — spring-boot-starter-web, virtual threads(§ 2-8), spring-kafka
-  - `user-service/src/main/java/.../user/domain/User.java` — 사용자 도메인 엔티티 이관
-  - `user-service/src/main/java/.../user/application/port/out/UserRepository.java` — 사용자 조회 포트
-  - `user-service/src/main/java/.../user/presentation/port/UserQueryService.java` — inbound port
-  - `user-service/src/main/java/.../user/application/usecase/UserQueryUseCase.java` — `UserQueryService` 구현 겸임 (`UserQueryUseCase implements UserQueryService`, Phase-3.1 StockRestoreUseCase 패턴과 대칭)
-  - `user-service/src/main/java/.../user/presentation/UserController.java` — `GET /api/v1/users/{id}` (MVC)
-  - `user-service/src/main/resources/db/migration/V1__user_schema.sql` — `user` 테이블 DDL
-  - `docker-compose.infra.yml`에 사용자 전용 MySQL 컨테이너 추가 방침 (Phase-0.1 DB 경계 방침 준수)
-  - `user-service/src/main/java/.../user/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈 (현재는 비워두되 후속 확장 여지 표시, Phase-0.1 복제 방침 준수)
+  - `settings.gradle` — `include 'user-service'`
+  - `user-service/build.gradle`
+  - `user-service/src/main/java/.../user/domain/User.java`
+  - `user-service/src/main/java/.../user/application/port/out/UserRepository.java`
+  - `user-service/src/main/java/.../user/presentation/port/UserQueryService.java`
+  - `user-service/src/main/java/.../user/application/usecase/UserQueryUseCase.java` — `implements UserQueryService`
+  - `user-service/src/main/java/.../user/presentation/UserController.java`
+  - `user-service/src/main/resources/db/migration/V1__user_schema.sql`
 
 ---
 
-### Phase-3.2 — Fake 상품 서비스 구현 (테스트용 — StockCommit·StockRestore 공용)
+### T3-03 — Fake 상품·사용자 서비스 구현 (테스트용)
 
-- **제목**: FakeStockRepository + FakeEventDedupeStore + FakePaymentRedisStockPort
-- **목적**: ADR-16 보상 dedupe 테스트를 실제 DB 없이 수행하기 위한 Fake. Phase-3.1c(StockCommitConsumer)와 Phase-3.3(StockRestoreConsumer) 두 소비자가 공유하는 Fake 묶음. "Fake가 소비자 앞에" 원칙(Phase-1.2 패턴 준수) — Phase-3.1b 직후·Phase-3.1c 전에 배치.
+- **제목**: FakeStockRepository + FakeEventDedupeStore + FakePaymentStockCachePort
+- **목적**: ADR-16 보상 dedupe 테스트. Fake가 소비자(T3-04 이후) 앞에 배치.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T3-02]
 - **산출물**:
-  - `product-service/src/test/java/.../mock/FakeStockRepository.java` — `StockRepository` 인메모리 구현
-  - `product-service/src/test/java/.../mock/FakeEventDedupeStore.java` — `EventDedupeStore` 인메모리 구현 (TTL 만료 시뮬레이션 가능)
-  - `product-service/src/test/java/.../mock/FakePaymentRedisStockPort.java` — `PaymentRedisStockPort` 인메모리 구현 (`Map<Long, Integer>`로 SET 호출 기록, 테스트 assertion용)
-
-<!-- ARCH R5 RESOLVED: Phase-3.2를 Phase-3.1b 직후·Phase-3.1c 전으로 재배치하고 Phase-3.2 산출물에 `FakePaymentRedisStockPort`를 추가하여 "Fake가 소비자 앞에" 원칙을 복원. Phase-3.1c 테스트 메서드 재선언 불필요 (Fake 위치만 이동). -->
+  - `product-service/src/test/java/.../mock/FakeStockRepository.java`
+  - `product-service/src/test/java/.../mock/FakeEventDedupeStore.java` — TTL 만료 시뮬레이션
+  - `product-service/src/test/java/.../mock/FakePaymentStockCachePort.java` — SET 이력 기록
 
 ---
 
-### Phase-3.1c — StockCommitConsumer + payment-service 전용 Redis 직접 쓰기 (S-2/S-3)
+### T3-04 — StockCommitConsumer + payment-service 전용 Redis 직접 SET (S-2, S-3)
 
-- **제목**: product-service가 payment.events.stock-committed 소비 → RDB UPDATE + payment 전용 Redis 직접 SET
-- **목적**: S-2(StockCommitEvent 발행 공백) + S-3(Reconciler 확장) — product-service가 payment-service 발행 `payment.events.stock-committed`를 consume하여 (1) 자기 RDB stock 컬럼 UPDATE, (2) payment-service 전용 Redis에 `stock:{productId}` 직접 SET. **동기화 경로**: product→payment Redis는 **Kafka 경유 아님** — product-service가 RDB UPDATE 완료 직후 payment Redis에 직접 SET (상품 생성·수정·admin 조정 포함). `payment.events.stock-committed` consumer dedupe: Phase-3.3 `EventDedupeStore` 패턴 동일하게 이벤트 UUID 키로 dedupe. keyspace `stock:{productId}`.
+- **제목**: product-service `payment.events.stock-committed` 소비 → RDB UPDATE + payment Redis 직접 SET
+- **목적**: S-2(StockCommitEvent 소비), S-3(Redis 직접 쓰기) — `PaymentStockCachePort`(application/port/out, 기술명 Redis 제외) → `PaymentRedisStockAdapter`(infrastructure/cache, `redis-payment` 연결). eventUUID dedupe. RDB UPDATE 실패 시 Redis SET 미호출. keyspace `stock:{productId}`.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T3-03, T1-10]
 - **테스트 클래스**: `StockCommitConsumerTest`, `StockCommitUseCaseTest`
 - **테스트 메서드**:
-  - `StockCommitUseCaseTest#commit_ShouldUpdateRdbAndSetPaymentRedis` — `payment.events.stock-committed` 소비 시 (1) StockRepository RDB UPDATE + (2) PaymentRedisStockPort SET 원자적 호출 검증 (FakeStockRepository + FakePaymentRedisStockPort 사용)
-  - `StockCommitUseCaseTest#commit_DuplicateEventUuid_ShouldNoOp` — 동일 eventUUID 2회 → 1회만 처리 (dedupe)
-  - `StockCommitUseCaseTest#commit_WhenRdbUpdateFails_ShouldNotSetRedis` — RDB UPDATE 실패 시 Redis SET 미호출 검증 (정합성 보호)
-  - `StockCommitConsumerTest#consume_ShouldDelegateToStockCommitUseCase` — Kafka 메시지 수신 시 use case 1회만 호출 (consumer 얇음)
+  - `StockCommitUseCaseTest#commit_ShouldUpdateRdbAndSetPaymentRedis` — RDB UPDATE + Redis SET 원자적 호출(FakeStockRepository + FakePaymentStockCachePort)
+  - `StockCommitUseCaseTest#commit_DuplicateEventUuid_ShouldNoOp` — dedupe
+  - `StockCommitUseCaseTest#commit_WhenRdbUpdateFails_ShouldNotSetRedis` — RDB 실패 시 Redis SET 미호출
+  - `StockCommitConsumerTest#consume_ShouldDelegateToStockCommitUseCase` — usecase 1회 호출만
 - **산출물**:
-  - `product-service/src/main/java/.../product/application/port/out/PaymentRedisStockPort.java` — `set(productId, qty): void` (payment 전용 Redis 쓰기 포트. `stock:{productId}` keyspace.)
-  - `product-service/src/main/java/.../product/infrastructure/cache/PaymentRedisStockAdapter.java` — `PaymentRedisStockPort` 구현. payment-service 전용 Redis 연결(`redis-payment` 컨테이너). Spring Data Redis `RedisTemplate` 사용. `infrastructure/cache/` 경로.
-  - `product-service/src/main/java/.../product/infrastructure/messaging/consumer/StockCommitConsumer.java` — `payment.events.stock-committed` 토픽 consumer. use case 호출 경유.
-  - `product-service/src/main/java/.../product/application/usecase/StockCommitUseCase.java` — RDB UPDATE + Redis SET 조합. EventDedupeStore dedupe 적용 (Phase-3.3 패턴).
-  - `product-service/src/main/resources/db/migration/V3__add_stock_commit_dedupe.sql` — stock-committed dedupe 테이블 (또는 Phase-3.3의 event_dedupe 테이블 재사용 방침 명시)
-  - `product-service/src/main/resources/application.yml` — payment 전용 Redis 연결 설정 (`redis-payment` 엔드포인트)
-
-<!-- ARCH R5: S-2(StockCommitEvent 발행·소비 경로 공백) + S-3(Redis 직접 쓰기 경로) 반영. 동기화 경로 분기: product→payment Redis 직접 SET(Kafka 경유 아님), payment→product RDB Kafka 이벤트 경유. "예약/reservation" 용어 배제. -->
-<!-- ARCH R5 RESOLVED: product-service에서 payment 전용 Redis에 쓰는 경계가 `PaymentRedisStockPort`(application/port/out) → `PaymentRedisStockAdapter`(infrastructure/cache)로 port/adapter 층을 통해 분리되고, 엔드포인트는 application.yml의 `redis-payment` 설정으로 외부화됨 — product-service가 payment 인프라 엔드포인트를 코드에 하드코딩하지 않음. 헥사고날 경계 준수. -->
-<!-- ARCH R5: 참고(minor, 판정 영향 없음) — (1) 포트 이름 `PaymentRedisStockPort`가 대상 인프라("PaymentRedis")를 이름에 박아 도메인 중립 대신 infra-aware 포트가 됨. 교체 용이성 관점에서 `ExternalStockCacheWriterPort` 류가 더 이상적이나, 현 이름이 경로의 의도를 선명히 드러내는 장점도 있어 트레이드오프. (2) `stock:{productId}` keyspace 상수가 payment-service(Phase-1.4d/1.9/1.12)와 product-service(Phase-3.1c) 양쪽에 중복 하드코딩 — drift 리스크. 공용 `common` 모듈 도입은 본 토픽 scope를 벗어나므로 각 서비스 `domain/messaging/` 또는 `infrastructure/cache/` 내 상수 클래스로 분리 + 두 서비스 코드 리뷰로 동기화 유지하는 수준이 현실적. execute 단계에서 구현자에게 인지시킬 사항. -->
-
+  - `product-service/src/main/java/.../product/application/port/out/PaymentStockCachePort.java`
+  - `product-service/src/main/java/.../product/infrastructure/cache/PaymentRedisStockAdapter.java`
+  - `product-service/src/main/java/.../product/infrastructure/messaging/consumer/StockCommitConsumer.java`
+  - `product-service/src/main/java/.../product/application/usecase/StockCommitUseCase.java`
+  - `product-service/src/main/resources/application.yml` — `redis-payment` 연결
+  - `product-service/src/main/resources/db/migration/V3__add_stock_commit_dedupe.sql`
 
 ---
 
-### Phase-3.3 — 보상 이벤트 consumer dedupe 구현 (ADR-16) — domain_risk
+### T3-04b — FAILED 결제 stock.events.restore 보상 이벤트 발행 (ADR-04, ADR-16)
 
-- **제목**: `stock.restore` 이벤트 consumer + dedupe port/구현체 분리 (UUID 키, 상품 서비스 소유)
-- **목적**: ADR-16(Idempotency 분산화 + 보상 dedupe 소유 결정) — at-least-once 전제에서 `stock.restore` 중복 수신 시 이중 복원 방지. consumer 측(상품 서비스)이 이벤트 UUID를 자기 DB dedupe 테이블에 기록. TTL = Kafka consumer group offset retention + 1일. `StockRestoreConsumer`(infrastructure)는 `StockRestoreUseCase`(application)만 호출 — consumer 안에서 직접 dedupe·stock 로직 금지.
+- **제목**: payment-service FAILED 전이 시 stock.events.restore 보상 이벤트 outbox 발행 (UUID 포함)
+- **목적**: ADR-04(Transactional Outbox), ADR-16(UUID dedupe) — 결제 FAILED 전이 시 payment-service가 `payment_outbox`에 `topic=stock.events.restore`, `key=orderId`, payload(eventUUID·productId·qty) row를 **같은 TX 내** INSERT하여 보상 이벤트 발행 경로를 보장. eventUUID는 UUID v4 랜덤 생성(ADR-16 수락 기준). 발행 경로는 기존 `MessagePublisherPort` outbox 파이프라인 재사용. T3-05(consumer dedupe)가 소비하는 이벤트의 발행 측 대응 태스크. 관련 ADR: ADR-04, ADR-16, §2-2b 보상 경로.
 - **tdd**: true
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T2d-01, T1-11c]
+- **테스트 클래스**: `FailureCompensationServiceTest`
+- **테스트 메서드**:
+  - `whenFailed_ShouldEnqueueStockRestoreCompensation` — FAILED 전이 시 payment_outbox에 stock.events.restore row 1건 INSERT(orderId·productId·qty·eventUUID 필드 포함)
+  - `whenFailed_IdempotentWhenCalledTwice` — 동일 orderId 2회 → outbox row 1건만 INSERT(멱등 UUID 보장)
+- **산출물**:
+  - `payment-service/src/main/java/.../payment/application/service/FailureCompensationService.java` — FAILED 전이 후 stock.events.restore outbox row INSERT + UUID 생성
+  - `payment-service/src/main/java/.../payment/application/dto/StockRestoreEventPayload.java` — eventUUID, orderId, productId, qty
+
+---
+
+### T3-05 — 보상 이벤트 consumer dedupe 구현 (ADR-16)
+
+- **제목**: `stock.events.restore` consumer + EventDedupeStore port/구현체 분리 (UUID 키, 상품 서비스 소유)
+- **목적**: ADR-16(보상 dedupe 소유 = consumer 측) — `StockRestoreConsumer`는 inbound port(`StockRestoreCommandService`) 경유만. consumer 내부에서 dedupe·stock 직접 로직 금지. TTL = Kafka retention + 1일. T3-04b(payment-service 측 발행)가 선행하여 소비할 이벤트가 발행됨을 전제.
+- **tdd**: true
+- **domain_risk**: true
+- **depends**: [T3-03, T3-04b]
 - **테스트 클래스**: `StockRestoreConsumerTest`, `StockRestoreUseCaseTest`
 - **테스트 메서드**:
-  - `StockRestoreUseCaseTest#restore_StockRestoreEvent_ShouldIncreaseStock` — FakeStockRepository + FakeEventDedupeStore로 재고 복원 1회 검증
-  - `StockRestoreUseCaseTest#restore_DuplicateEventUuid_ShouldNoOp` — 동일 이벤트 UUID 2회 → 재고 복원 1회만 (이중 복원 방지)
-  - `StockRestoreUseCaseTest#restore_AfterDedupeTtlExpiry_ShouldReprocessOnce` — TTL 만료 시뮬레이션 → 첫 처리만 성공
-  - `StockRestoreUseCaseTest#restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe` — DB 재고 증가 실패 시 dedupe 레코드 미기록 (재시도 안전성)
-  - `StockRestoreConsumerTest#consume_ShouldDelegateToStockRestoreUseCase` — Kafka 메시지 수신 시 `StockRestoreUseCase.restore()` 1회만 호출 (consumer 얇음 검증)
+  - `StockRestoreUseCaseTest#restore_ShouldIncreaseStock` — 재고 복원 1회
+  - `StockRestoreUseCaseTest#restore_DuplicateEventUuid_ShouldNoOp` — 이중 복원 방지(불변식 14)
+  - `StockRestoreUseCaseTest#restore_AfterDedupeTtlExpiry_ShouldReprocessOnce` — TTL 만료 → 재처리 1회
+  - `StockRestoreUseCaseTest#restore_WhenStockIncreaseFailsMidway_ShouldNotRecordDedupe` — 재고 증가 실패 시 dedupe 미기록
+  - `StockRestoreConsumerTest#consume_ShouldDelegateToStockRestoreUseCase` — usecase 1회 호출만
 - **산출물**:
-  - `product-service/src/main/java/.../product/infrastructure/messaging/consumer/StockRestoreConsumer.java` — `StockRestoreCommandService`(inbound port) 경유 usecase 호출
-  - `product-service/src/main/java/.../product/infrastructure/idempotency/JdbcEventDedupeStore.java` — `EventDedupeStore` 구현체 (JdbcTemplate 또는 JPA)
-  - `product-service/src/main/java/.../product/infrastructure/idempotency/JpaEventDedupeRepository.java` — Spring Data 인터페이스 (infra 내부)
-  - `product-service/src/main/resources/db/migration/V2__add_event_dedupe_table.sql` — `event_uuid VARCHAR`, `expires_at TIMESTAMP NOT NULL` 컬럼 포함
+  - `product-service/src/main/java/.../product/infrastructure/messaging/consumer/StockRestoreConsumer.java`
+  - `product-service/src/main/java/.../product/infrastructure/idempotency/JdbcEventDedupeStore.java`
+  - `product-service/src/main/resources/db/migration/V2__add_event_dedupe_table.sql`
 
 ---
 
-### Phase-3.4 — 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
+### T3-06 — 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
 
-- **제목**: InternalProductAdapter → HTTP 기반 ProductHttpAdapter 교체
-- **목적**: ADR-02, ADR-22 — 결제 서비스의 `ProductLookupPort`, `UserLookupPort` 구현체를 직접 Java 호출(`InternalProductAdapter`)에서 HTTP REST 기반 어댑터로 교체. Resilience4j circuit breaker는 **adapter 구현 내부 메서드에만** `@CircuitBreaker` 어노테이션 부여(port 인터페이스 오염 방지 — `infrastructure/adapter/http/` 경로 단일화).
+- **제목**: InternalProductAdapter → ProductHttpAdapter, InternalUserAdapter → UserHttpAdapter 교체
+- **목적**: ADR-02, ADR-22 — `@CircuitBreaker`는 adapter 내부 메서드에만(port 인터페이스 오염 금지).
 - **tdd**: true
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T3-04]
 - **테스트 클래스**: `ProductHttpAdapterTest`
 - **테스트 메서드**:
-  - `ProductHttpAdapterTest#getProduct_ShouldCallProductServiceAndReturnDomain` — HTTP 호출 응답 → 도메인 DTO 변환 검증 (Mockito stub RestTemplate/WebClient)
-  - `ProductHttpAdapterTest#decreaseStock_WhenServiceUnavailable_ShouldThrowRetryableException` — HTTP 503 → `PaymentGatewayRetryableException` 전파
+  - `getProduct_ShouldCallProductServiceAndReturnDomain` — HTTP 응답 → 도메인 DTO 변환
+  - `decreaseStock_WhenServiceUnavailable_ShouldThrowRetryableException` — HTTP 503 → RetryableException
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/http/ProductHttpAdapter.java` — `ProductLookupPort` 구현, `@CircuitBreaker` 내부 메서드에만
-  - `payment-service/src/main/java/.../payment/infrastructure/adapter/http/UserHttpAdapter.java` — `UserLookupPort` 구현
+  - `payment-service/src/main/java/.../payment/infrastructure/adapter/http/ProductHttpAdapter.java`
+  - `payment-service/src/main/java/.../payment/infrastructure/adapter/http/UserHttpAdapter.java`
 
 ---
 
-### Phase-3.5 — Gateway 라우팅: 상품·사용자 엔드포인트 교체
+### T3-07 — Gateway 라우팅: 상품·사용자 엔드포인트 교체
 
-- **제목**: Gateway route — 상품·사용자 엔드포인트 신규 서비스로 라우팅
-- **목적**: ADR-01, ADR-02 — Gateway가 `/api/v1/products/**`, `/api/v1/users/**`를 신규 서비스로 라우팅. 모놀리스에서 해당 컨텍스트 비활성화.
+- **제목**: Gateway route — 상품·사용자 신규 서비스로 라우팅
+- **목적**: ADR-01, ADR-02 — `/api/v1/products/**`, `/api/v1/users/**` → 신규 서비스.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T3-06, T3-02]
 - **산출물**:
-  - `gateway/src/main/resources/application.yml` route 추가 — `product-service`, `user-service`
+  - `gateway/src/main/resources/application.yml` route 추가
 
 ---
 
-### Phase-3-Gate — 주변 도메인 + 보상 이벤트화 E2E 검증
+### T3-Gate — Phase 3 주변 도메인 + 보상 이벤트화 E2E 검증
 
-- **제목**: Phase 3 주변 도메인 분리 + 보상 이벤트화 E2E 검증 — 다음 Phase 진입 가능 여부 판정
-- **목적**: Phase 3 전 태스크(Phase-3.1 ~ Phase-3.5) 완료 후 product/user service 독립 기동, StockCommit/StockRestore 두 소비자의 dedupe E2E, product → payment Redis 직접 쓰기, Saga 보상 왕복을 검증. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Phase 3 Gate — 주변 도메인 + Saga 보상 왕복 E2E (다음 Phase 진입 판정)
+- **목적**: T3-01~T3-07 완료 후 product/user 독립 기동, StockCommit/StockRestore dedupe, product→payment Redis 직접 SET, Saga 보상 왕복 검증. 실패 시 해당 Phase 재수정.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T3-07]
 - **산출물**:
-  - `scripts/phase-gate/phase-3-gate.sh` — 다음 항목 자동 검증:
-    1. `docker compose up product-service user-service` + 양쪽 `/actuator/health` 200
-    2. product-service Flyway V1 적용 + Stock 테이블 존재 확인
-    3. user-service Flyway V1 적용 + User 테이블 존재 확인
-    4. product-service에서 상품 생성 API 호출 → payment-service Redis에 `stock:{id}` SET 확인 (keyspace 직접 조회)
-    5. `payment.events.stock-committed` 수동 발행 → product-service StockCommitConsumer 수신 → RDB UPDATE + payment Redis SET 확인
-    6. 동일 eventUUID 2회 발행 → 1회만 처리 (dedupe)
-    7. `stock.restore` 이벤트 수동 발행 → StockRestoreConsumer 수신 → 재고 복원 확인 + dedupe 검증
-    8. Gateway → product/user 엔드포인트 200 응답 (Phase-3.5 라우팅)
-    9. Saga 보상 경로 E2E: 결제 QUARANTINED → stock.restore 발행 → product 재고 복원 → payment Redis INCR 확인
-  - `docs/phase-gate/phase-3-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 3 재검토 항목 목록
+  - `scripts/phase-gate/phase-3-gate.sh` — product/user healthcheck, stock-snapshot 발행, StockCommit dedupe, StockRestore dedupe, product→payment Redis SET 확인, Saga 보상 E2E
+  - `docs/phase-gate/phase-3-gate.md`
 
 ---
 
 ## Phase 4 — 장애 주입 검증 · 로컬 오토스케일러
 
-**목적**: 전 ADR 교차 검증. 이 Phase 통과가 본 토픽 최종 성공 조건. Toxiproxy 기반 장애 시나리오, k6 재설계, 로컬 오토스케일러 코드.
+**목적**: 전 ADR 교차 검증. 이 Phase 통과가 본 토픽의 최종 성공 조건.
 
-관련 ADR: ADR-29, ADR-09, ADR-28, ADR-17
+**관련 ADR**: ADR-09, ADR-28, ADR-29
 
 ---
 
-### Phase-4.1 — Toxiproxy 장애 시나리오 스위트 (ADR-29)
+### T4-01 — Toxiproxy 장애 시나리오 스위트 8종 (ADR-29)
 
-- **제목**: Kafka 지연 / DB 지연 / 프로세스 kill / 보상 이벤트 중복 / FCG timeout / Redis down / 재고 캐시 발산 8종 장애 주입 시나리오
-- **목적**: ADR-29(알려진 결함 MSA 악화 검증 + 장애 주입 도구) — Toxiproxy proxy를 통해 장애를 주입하고 최종 정합성(재고 일치 + 결제 상태 종결) 복원을 검증. FCG 불변(`timeout → QUARANTINED`)과 consumer dedupe(이중 복원 방지), Redis 재고 캐시 차감 장애 분기를 통합 수준에서 교차 검증.
+- **제목**: Kafka 지연·DB 지연·프로세스 kill·보상 중복·FCG PG timeout·Redis down·재고 캐시 발산·DLQ 소진 8종
+- **목적**: ADR-29 — Toxiproxy로 장애 주입 후 최종 정합성(재고 일치 + 결제 상태 종결) 복원 검증.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T3-Gate]
 - **산출물**:
-  - `chaos/scenarios/kafka-latency.sh` — Toxiproxy latency toxic 주입 + k6 실행 + 정합성 확인. **수락 기준**: `payment.outbox.pending_age_seconds` histogram p95 ≥ 10s가 Prometheus 쿼리로 관측됨 (plan-domain-1 minor finding #3 반영)
-  - `chaos/scenarios/db-latency.sh` — MySQL proxy latency toxic
-  - `chaos/scenarios/process-kill.sh` — 결제 서비스 컨테이너 kill + 재시작 + reconciler 복원 대기
-  - `chaos/scenarios/verify-consistency.sh` — 결제 DB 재고 DB 크로스 검증 스크립트 (재고 RDB와 Redis stock cache 동시 대조 포함)
-  - `chaos/scenarios/stock-restore-duplicate.sh` — `stock.restore` 이벤트를 동일 UUID로 2회 발행 + 상품 서비스 DB 재고 증가량이 1회만 반영됐는지 검증 (plan-domain-1 major finding #2 반영)
-  - `chaos/scenarios/fcg-pg-timeout.sh` — Toxiproxy로 PG `getStatus` 엔드포인트 timeout 주입 + PaymentEvent가 QUARANTINED로 전이됐는지 확인 (FAILED/DONE 아님, ADR-15 불변 통합 검증)
-  - **`chaos/scenarios/redis-down.sh`** — payment 전용 Redis 컨테이너 중단 + 결제 confirm 시도 → QUARANTINED 전이 확인 + Reconciler Redis 복원 후 정합성 확인. **수락 기준**: Redis down 기간 중 Overselling 0 보장, Reconciler 재시작 후 RDB 기준 Redis 재설정.
-  - **`chaos/scenarios/stock-cache-divergence.sh`** — Redis stock cache 값을 수동으로 잘못 설정 → Reconciler 주기 스캔 후 RDB 기준 재설정 + `payment.stock_cache.divergence_count` 카운터 증가 Prometheus 쿼리 확인. **수락 기준**: Reconciler가 발산 감지 후 Redis를 RDB 기준으로 재설정.
-
-<!-- ARCH R5: Redis down 시나리오(S-1), 재고 캐시 발산 시나리오(S-3) 추가. 총 8종 chaos 시나리오. -->
+  - `chaos/scenarios/kafka-latency.sh` — 수락 기준: `payment.outbox.pending_age_seconds` p95 ≥ 10s Prometheus 관측
+  - `chaos/scenarios/db-latency.sh` — MySQL proxy latency
+  - `chaos/scenarios/process-kill.sh` — 컨테이너 kill + 재시작 + Reconciler 복원
+  - `chaos/scenarios/verify-consistency.sh` — 결제·재고 DB + Redis stock cache 교차 검증
+  - `chaos/scenarios/stock-restore-duplicate.sh` — UUID 2회 발행 → 재고 1회만 복원(불변식 14)
+  - `chaos/scenarios/fcg-pg-timeout.sh` — PG getStatus timeout → QUARANTINED(FAILED/DONE 아님, ADR-15 불변)
+  - `chaos/scenarios/redis-down.sh` — Redis 중단 → QUARANTINED → Reconciler 복원 후 정합성
+  - `chaos/scenarios/stock-cache-divergence.sh` — Redis 수동 오염 → Reconciler 재설정 + divergence_count 증가
 
 ---
 
-### Phase-4.2 — k6 시나리오 재설계 (ADR-28)
+### T4-02 — k6 시나리오 재설계 (ADR-28)
 
 - **제목**: Gateway 경유 k6 단일 시나리오 + 비동기 결과 폴링
-- **목적**: ADR-28(k6 재설계, 대안 a 기반) — Gateway를 통해 결제 confirm → 상태 폴링 → 최종 상태 확인 흐름을 k6로 재구성. 현 `k6/` 디렉터리 스크립트 기반 확장.
+- **목적**: ADR-28(k6 재설계, 대안 a) — Gateway → 결제 confirm → 상태 폴링 → 최종 상태 확인.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T4-01]
 - **산출물**:
-  - `k6/msa-payment-scenario.js` — Gateway 경유 confirm + poll 시나리오
-  - `k6/msa-config.json` — 대상 URL Gateway 엔드포인트, VU 설정
+  - `k6/msa-payment-scenario.js`
+  - `k6/msa-config.json`
 
 ---
 
-### Phase-4.3 — 로컬 오토스케일러 (ADR-09)
+### T4-03 — 로컬 오토스케일러 (ADR-09)
 
-- **제목**: Docker SDK 기반 CPU·큐 길이 기반 결제 서비스 레플리카 조정
-- **목적**: ADR-09(로컬 오토스케일링, 대안 a) — Prometheus 메트릭(큐 길이 또는 CPU)을 주기적으로 조회해 결제 서비스 레플리카를 docker-compose scale로 조정하는 Python/Go 스크립트.
+- **제목**: Prometheus 지표 기반 결제 서비스 레플리카 docker-compose scale 조정
+- **목적**: ADR-09(로컬 오토스케일링, 대안 a) — CPU/큐 길이 임계값 기반 scale up/down 루프.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T4-02]
 - **산출물**:
-  - `autoscaler/autoscaler.py` (또는 `.go`) — Prometheus 조회 → docker-compose 레플리카 조정 루프
-  - `autoscaler/README.md` — 실행 방법 및 스케일링 임계값 설명
+  - `autoscaler/autoscaler.py` — Prometheus 조회 → docker-compose scale 조정
+  - `autoscaler/README.md`
 
 ---
 
-### Phase-4-Gate — 장애 주입 + 부하 검증
+### T4-Gate — Phase 4 장애 주입 + 부하 검증
 
-- **제목**: Phase 4 장애 주입 + 부하 검증 — 다음 Phase 진입 가능 여부 판정
-- **목적**: Phase 4 전 태스크(Phase-4.1 ~ Phase-4.3) 완료 후 Toxiproxy 8종 장애 시나리오 전수 통과, k6 분산 경로별 TPS/레이턴시 목표 달성, 오토스케일러 scale up/down이 실관측 가능함을 검증. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Phase 4 Gate — Toxiproxy 8종 전수 + k6 + 오토스케일러 실관측
+- **목적**: T4-01~T4-03 완료 후 8종 시나리오 전수 통과, k6 목표 달성, scale up/down 실관측. 실패 시 해당 Phase 재수정.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T4-03]
 - **산출물**:
-  - `scripts/phase-gate/phase-4-gate.sh` — 다음 항목 자동 검증:
-    1. Toxiproxy 8종 시나리오 스크립트(`chaos/scenarios/*.sh`)를 순차 실행 → 각 시나리오 성공 기준 (FCG 발동, 보상 이벤트 발행, Reconciler 복원 등) 전수 확인
-    2. k6 테스트 스위트 실행 → Phase-4.2 정의 경로별 TPS/p95 레이턴시 목표 달성 여부 판정
-    3. Prometheus에서 `payment.outbox.pending_age_seconds` · `payment.stock_cache.divergence_count` 임계값 초과 시 오토스케일러가 payment-service scale up 수행 확인 (`docker ps` 인스턴스 증가)
-    4. 부하 해소 후 scale down 수행 확인
-  - `docs/phase-gate/phase-4-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 4 재검토 항목 목록
+  - `scripts/phase-gate/phase-4-gate.sh` — chaos 8종 전수, k6 경로별 TPS/p95, 오토스케일러 scale up/down 확인
+  - `docs/phase-gate/phase-4-gate.md`
 
 ---
 
 ## Phase 5 — 잔재 정리
 
-**목적**: Admin UI 처리, 공통 문서 최종화, 관측성 메트릭 네이밍 정비.
+**목적**: Admin UI 처리, 공통 문서 최종화, 관측성 메트릭 네이밍 정비, 아카이브.
 
-관련 ADR: ADR-24, ADR-19, ADR-20
+**관련 ADR**: ADR-19, ADR-20, ADR-24
 
 ---
 
-### Phase-5.1 — 메트릭 네이밍 규약 공통화 (횡단 작업) + Admin UI 처리 결정 (ADR-20, ADR-24)
+### T5-01 — 메트릭 네이밍 규약 공통화 + Admin UI 처리 (ADR-20, ADR-24)
 
 - **제목**: `<service>.<domain>.<event>` 메트릭 컨벤션 전 서비스 적용 + Admin UI 잔재 처리
-- **목적**: ADR-20(메트릭 네이밍 규약), ADR-24(Admin UI 서비스화 여부) — 결제·PG·상품·사용자 서비스 전체의 메트릭 이름·태그를 `payment.event.status_change`, `payment.quarantine.count`, `pg.api.toss.duration_seconds` 등 규약으로 일괄 정렬. 메트릭 클래스는 `infrastructure/metrics/`에 배치(application/usecase 아님). Admin UI는 ADR-24 결론(모놀리스 잔재 기본값)에 따라 처리. **관리자 데이터 접근 방침(M-4)**: Admin은 모놀리스 DB 직접 SELECT 경로를 폐기하고 Gateway 경유 HTTP 호출로 각 서비스 API 사용. 이행은 기본 모놀리스 잔류(ADR-24), 쓰기 경로는 각 서비스 API 위임. 모놀리스 DB의 완료된(DONE/FAILED/QUARANTINED) payment_event 레코드는 읽기 전용 아카이브 인스턴스로 보존(컨테이너 remove 금지) — Admin UI/조회 요구사항 발생 시 Phase-5.1에서 아카이브 조회 어댑터 추가 여부 결정.
+- **목적**: ADR-20(메트릭 네이밍), ADR-24(Admin UI 기본=모놀리스 잔재) — `infrastructure/metrics/` 배치. Admin은 모놀리스 DB 직접 SELECT 폐기 → Gateway HTTP 위임.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T4-Gate]
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/metrics/PaymentStateMetrics.java` — 이름·태그 규약 정렬 (`infrastructure/metrics/` 경로)
-  - `payment-service/src/main/java/.../payment/infrastructure/metrics/PaymentTransitionMetrics.java` — 동일
+  - `payment-service/src/main/java/.../payment/infrastructure/metrics/PaymentStateMetrics.java` — 이름·태그 규약 정렬
   - `payment-service/src/main/java/.../payment/infrastructure/metrics/PaymentQuarantineMetrics.java` — 동일
-  - `pg-service/src/main/java/.../pg/infrastructure/metrics/PgApiMetrics.java` — PG 서비스 메트릭 이름·태그 정렬
-  - `product-service/src/main/java/.../product/infrastructure/metrics/StockMetrics.java` — 상품 서비스 메트릭 이름·태그 정렬
-  - Grafana 대시보드 쿼리 예시 업데이트 (인라인 주석 또는 `docs/` 경로 파일)
+  - `pg-service/src/main/java/.../pg/infrastructure/metrics/PgApiMetrics.java`
+  - `product-service/src/main/java/.../product/infrastructure/metrics/StockMetrics.java`
+  - Grafana 대시보드 쿼리 예시 업데이트
 
 ---
 
-### Phase-5.2 — LogFmt 공통화 완결 + 최종 문서화
+### T5-02 — LogFmt 공통화 완결 + 최종 문서화 + 아카이브
 
-- **제목**: LogFmt/MaskingPatternLayout 복제 방침(Phase-0.3) 전 서비스 적용 확인 + 아카이브
-- **목적**: ADR-19(LogFmt 공통화) — Phase 0.3에서 확정된 복제(b) 방침대로 각 서비스 `logback-spring.xml`에 `MaskingPatternLayout` 적용 확인. 본 토픽 `docs/topics/MSA-TRANSITION.md` → `docs/archive/` 이동. 아카이브 형식은 프로젝트 관례(`docs/archive/<topic-kebab>/` 디렉토리)를 따라 `docs/archive/msa-transition/`로 이동하며, topic.md · PLAN.md · 라운드 문서 전체를 묶어 보존한다.
+- **제목**: LogFmt/MaskingPatternLayout 복제 방침 전 서비스 확인 + 아카이브 이동
+- **목적**: ADR-19(LogFmt 복제(b) 완결) — 각 서비스 `logback-spring.xml` MaskingPatternLayout 적용 확인. `docs/archive/msa-transition/` 디렉토리 신설, topic.md · PLAN.md · rounds 이동.
 - **tdd**: false
 - **domain_risk**: false
-- **크기**: ≤ 2h
+- **depends**: [T5-01]
 - **산출물**:
-  - 각 서비스 `src/main/resources/logback-spring.xml` — `MaskingPatternLayout` 적용 확인
+  - 각 서비스 `src/main/resources/logback-spring.xml` — MaskingPatternLayout 확인
   - `docs/archive/msa-transition/` — 아카이브 디렉토리 신설
-  - `docs/archive/msa-transition/MSA-TRANSITION.md` — `docs/topics/MSA-TRANSITION.md` 이동
-  - `docs/archive/msa-transition/MSA-TRANSITION-PLAN.md` — `docs/MSA-TRANSITION-PLAN.md` 이동
-  - `docs/archive/msa-transition/rounds/` — `docs/rounds/msa-transition/` 전체 이동 (discuss-*.md · plan-*.md · plan-review-*.md · 추후 code/review/verify 라운드 문서)
+  - `docs/archive/msa-transition/MSA-TRANSITION.md`
+  - `docs/archive/msa-transition/MSA-TRANSITION-PLAN.md`
+  - `docs/archive/msa-transition/rounds/`
 
 ---
 
-### Phase-5-Gate — 최종 회귀 및 아카이브 완결
+### T5-Gate — Phase 5 최종 회귀 및 아카이브 완결
 
-- **제목**: Phase 5 최종 회귀 및 아카이브 완결 검증 — MSA-TRANSITION 토픽 verify 단계 선행 조건
-- **목적**: Phase 5 전 태스크(Phase-5.1 ~ Phase-5.2) 완료 후 전체 회귀 테스트 통과, 문서 cross-reference 무결성 확인, archive 이동 완결을 검증. 이 Gate 통과가 MSA-TRANSITION 토픽 전체 verify 단계의 선행 조건이 됨. 실패 시 해당 Phase 재수정 루프.
+- **제목**: Phase 5 Gate — 전체 회귀 + dead link 검사 + 아카이브 완결 (MSA-TRANSITION verify 선행 조건)
+- **목적**: T5-01~T5-02 완료 후 전체 회귀, Phase 0~4 Gate 재실행, dead link 검사, archive 이동 확인.
 - **tdd**: false
 - **domain_risk**: true
-- **크기**: ≤ 2h
+- **depends**: [T5-02]
 - **산출물**:
-  - `scripts/phase-gate/phase-5-gate.sh` — 다음 항목 자동 검증:
-    1. `./gradlew test` 전체 모듈 통과
-    2. 이전 Phase 0~4 Gate 스크립트 전수 재실행 → 모두 pass (회귀 없음)
-    3. k6 최종 회귀 시나리오 1회 → 목표 유지
-    4. docs/ 내 dead link 검사 (간단한 markdown link checker)
-    5. archive 이동 확인 (`docs/archive/msa-transition/` 존재, `docs/topics/MSA-TRANSITION.md` · `docs/MSA-TRANSITION-PLAN.md` 이동 완료)
-  - `docs/phase-gate/phase-5-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 5 재검토 항목 목록
+  - `scripts/phase-gate/phase-5-gate.sh` — `./gradlew test` 전수, Phase 0~4 Gate 재실행, k6 회귀, dead link, `docs/archive/msa-transition/` 존재 확인
+  - `docs/phase-gate/phase-5-gate.md`
 
 ---
 
@@ -1200,76 +1384,98 @@ flowchart LR
 
 | 리스크 출처 | 리스크 내용 | 대응 태스크 | domain_risk |
 |---|---|---|---|
-| ADR-05 (discuss-domain-2 Phase 1 승격) | Toss `ALREADY_PROCESSED_PAYMENT` / NicePay `2201` 가면 응답 방어, 금액 일치 검증 대칭 + Toss 전략 wiring 완결(TossPaymentErrorCode.isSuccess() 수정) | Phase-1.5 | true |
-| ADR-16 (discuss-domain-2 보상 dedupe) | 보상 이벤트 `stock.restore` consumer dedupe (이벤트 UUID 키, 상품 서비스 소유, TTL 정량화, port/구현체 분리) | Phase-3.3 | true |
-| ADR-15 (discuss-domain-2 FCG 불변) | FCG timeout 시 무조건 QUARANTINED 전이 (재시도 래핑 금지) + QUARANTINED 결제 Redis DECR 상태 유지 불변 + 통합 chaos 검증 (Phase-4.1 fcg-pg-timeout.sh) | Phase-1.7, Phase-4.1 | true |
-| ADR-13 (discuss-domain-2 감사 원자성) | `payment_history` 결제 서비스 내부 잔류, BEFORE_COMMIT TX 리스너 원자성 보존 + AOP 축 복제(Phase-1.4b) + Flyway V1(Phase-1.4c). Phase-1.4c 이후 재고 캐시 차감 TX 경계 외부 — 재고 부족→FAILED, 시스템 장애→QUARANTINED 분기로 방어(S-1 반영) | Phase-1.4, Phase-1.4b, Phase-1.4c | true |
-| ADR-20 (discuss-domain-1 minor) | `payment.outbox.pending_age_seconds` histogram (stock lock-in 감지) + `payment.stock_cache.divergence_count` 카운터 + Phase-4.1 chaos 수락 기준 연결 | Phase-1.11, Phase-4.1 | true |
-| ADR-04 + RetryPolicy (기존 자산) | RetryPolicy 재시도 안전성 승계, outbox relay at-least-once 보장 + 통합 chaos 검증(stock-restore-duplicate.sh) | Phase-1.6, Phase-4.1 | true |
-| Strangler Fig 이중 발행 방지 (discuss-domain-2 minor) | 모놀리스 결제 confirm 경로 비활성화 → Gateway 전환 후 단일 발행자 보장 | Phase-1.10 | true |
-| ADR-21 결제 서비스 측 어댑터 교체 (C-2 반영) | 결제 서비스 `PgStatusPort`·`PaymentGatewayPort` 구현체를 LocalPgStatusAdapter/InternalPaymentGatewayAdapter에서 HTTP/Kafka 기반으로 교체. PG 이벤트 역방향 소비(PgEventConsumer). 기존 Phase 1 한정 구현체 퇴역 | Phase-2.3b | true |
-| ADR-22 사용자 서비스 모듈 신설 (C-1 반영) | user-service 모듈, 도메인 이관, port 계층, Flyway V1, 사용자 전용 MySQL 컨테이너. ADR-22 product → user 순서 완성. Phase-3.4 UserHttpAdapter 호출 대상 엔드포인트 확보 | Phase-3.1b | false |
-| ADR-12 이벤트 스키마 + 토픽 네이밍 규약 (M-5 반영) | 토픽 이름 drift 방지, `<source-service>.<type>.<action>` 규약 확정 및 문서화, 서비스별 토픽 이름 상수 중앙화(PaymentTopics/PgTopics/ProductTopics), `payment.events.stock-committed` 토픽 추가 | Phase-2.3, Phase-1.5b | true |
-| **S-1 재고 캐시 차감 전략 공백 (Round 5 신규)** | payment 전용 Redis DECR atomic 차감, Overselling 0 보장, Redis down→QUARANTINED, FAILED vs QUARANTINED 분기 명시 | Phase-0.1, Phase-1.0, Phase-1.2, Phase-1.4, Phase-1.4d, Phase-1.7 | true |
-| **S-2 StockCommitEvent 발행 공백 (Round 5 신규)** | 결제 확정 시 `payment.events.stock-committed` 발행 → product-service RDB UPDATE. 포트 선언 + Kafka 구현체 + consumer dedupe | Phase-1.1, Phase-1.5b, Phase-3.1c | true |
-| **S-3 Reconciler 재고 대조 공백 (Round 5 신규)** | Redis ↔ RDB 대조 알고리즘, QUARANTINED DECR 복원, TTL 기반 자동 복원, warmup 경로 | Phase-1.9, Phase-1.12, Phase-3.1, Phase-4.1 | true |
-| **S-4 멱등성 저장소 MSA 스케일링 공백 (Round 5 신규)** | Caffeine 로컬 캐시 → Redis 이관, SETNX 동시성 방어, horizontal stateless 보장 | Phase-0.1a | true |
-| **Phase Gate 통합 검증 (Phase Gate 신규)** | 각 Phase의 설계 결정이 실제 E2E 수준에서 작동하는지 통합 smoke/integration 검증. 특정 ADR에 1:1 매핑되지 않으며 전 ADR의 E2E 검증 성격 (통합 검증 범주) | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate | true |
+| ADR-05 보강 (pg DB 부재 경로 amount 검증 — Round 5 최종 pass) | pg DB 승인 레코드 부재 시 벤더 재조회 amount == payload amount 검증. 불일치 시 QUARANTINED+AMOUNT_MISMATCH | T2b-05 | true |
+| ADR-21 보강 (business inbox amount 컬럼 — Round 5 최종 pass) | `amount BIGINT NOT NULL`, BigDecimal→BIGINT scale=0 변환 규약, 3경로 저장 규약 | T2a-04, T2b-04 | true |
+| ADR-30 (outbox+ApplicationEvent+Channel+ImmediateWorker — §2-2b 재설계) | payment.commands.confirm 단일 토픽 재사용, available_at 지연, PaymentConfirmDlqConsumer 전용 consumer, PgOutboxChannel + 워커 4구성 pg-service 독립 복제 | T2a-05, T2b-01, T2b-02 | true |
+| ADR-05 Phase 1 LVAL 한정 + ADR-21(v) 불변 | payment-service는 벤더 코드·FCG·2자 금액 대조 존재를 모른다. LVAL은 Phase 1 한정 | T1-09 | true |
+| ADR-15 (FCG 격리 불변) | FCG timeout → 무조건 QUARANTINED + QUARANTINED 결제 Redis DECR 상태 유지 + QuarantineCompensationHandler 2단계 복구 | T1-12, T1-13, T4-01(fcg-pg-timeout.sh) | true |
+| ADR-13 (감사 원자성) | payment_history BEFORE_COMMIT + AOP 복제 + Flyway V1 | T1-05, T1-06, T1-07 | true |
+| ADR-16 (보상 dedupe) | stock.events.restore UUID 키, 상품 서비스 소유, TTL 정량화. publisher: T3-04b, consumer: T3-05 | T3-04b, T3-05, T4-01(stock-restore-duplicate.sh) | true |
+| ADR-04 (Outbox 4구성 파이프라인) | payment-service 기존 4구성 "PG 직접 호출"→"Kafka produce" 교체 + pg-service 독립 복제 + FAILED 보상 발행 | T1-11a, T1-11b, T1-11c, T2a-05a, T2a-05b, T2a-05c, T3-04b | true |
+| ADR-02 보강 (payment↔pg Kafka only, PgStatusPort 부재) | `GET /internal/pg/status/{orderId}`·`PgStatusPort`·`PgStatusHttpAdapter` 삭제 + 계약 테스트 | T2c-02, T1-Gate | true |
+| ADR-30 (DLQ 전용 consumer 분리) | PaymentConfirmDlqConsumer ≠ PaymentConfirmConsumer 물리적 다른 bean | T2b-02 | true |
+| ADR-03 + 불변식 6(재시도 정책) | available_at 지수 백오프(base=2s, multiplier=3, attempts=4, jitter=±25%), 4회 소진 시 DLQ row | T2b-01 | true |
+| ADR-21 inbox terminal 집합 (APPROVED/FAILED/QUARANTINED) | 3상태 모두 벤더 재호출 금지, DLQ consumer도 terminal 체크 | T2a-06, T2b-02 | true |
+| ADR-15 (QUARANTINED 2단계 복구) | TX 내 플래그 set + TX 밖 Redis INCR + Scheduler 재시도 | T1-12 | true |
+| S-1 (재고 캐시 차감 전략) | payment 전용 Redis Lua atomic DECR, Overselling 0, Redis down→QUARANTINED | T0-01, T1-01, T1-03, T1-05, T1-08, T1-13 | true |
+| S-2 (StockCommitEvent 발행·소비) | payment.events.stock-committed 발행 + product-service 소비 + Redis 직접 SET | T1-02, T1-10, T3-04 | true |
+| S-3 (Reconciler 재고 대조 + warmup) | Redis↔RDB 대조, QUARANTINED DECR 복원, TTL 복원, warmup + snapshot 훅 | T1-14, T1-17, T3-01, T4-01 | true |
+| S-4 (멱등성 Redis 이관) | Caffeine → Redis SETNX, horizontal stateless | T0-02 | true |
+| Strangler Fig 이중 발행 방지 | 모놀리스 confirm 경로 비활성화, migrate-pending-outbox.sh | T1-18 | true |
+| ADR-12 (토픽 네이밍 규약 확정) | `<source-service>.<type>.<action>` 규약, 서비스별 Topics 상수 클래스 | T2d-02, T1-10 | false |
+| ADR-20 (stock lock-in 감지 메트릭) | payment.outbox.pending_age_seconds histogram + payment.stock_cache.divergence_count counter | T1-16, T4-01 | true |
+| Phase Gate 통합 검증 (6개 + 4개 마이크로 Gate) | 각 Phase 완료 후 E2E 통합 검증 | T0-Gate, T1-Gate, T2a-Gate, T2b-Gate, T2c-Gate, Phase-2-Gate, T3-Gate, T4-Gate, T5-Gate | true |
+| ADR-23 (DB 분리, container-per-service) | 서비스별 Flyway 마이그레이션 분리 | T1-07, T2a-04, T3-01, T3-02 | false |
+| ADR-22 (user-service 신설 — plan-review-4 C-1) | user-service 모듈, 도메인 이관, Flyway V1, ADR-22 순서 완성 | T3-02 | false |
+| ADR-31 (Outbox 관측 지표 + 알림 4종) | pending_count, future_pending_count, oldest_pending_age_seconds, attempt_count_histogram + 알림 4종 | T2d-02, T0-01 | false |
+
+---
+
+## ADR → 태스크 커버리지
+
+| ADR | 태스크 |
+|---|---|
+| ADR-01 | T1-01, T1-02, T1-18, T2a-01, T3-01, T3-07 |
+| ADR-02 | T1-01, T1-18, T2c-02, T3-06, T3-07 |
+| ADR-03 | T1-04, T2b-01 |
+| ADR-04 | T1-04, T1-11a, T1-11b, T1-11c, T2a-05a, T2a-05b, T2a-05c, T2a-06, T2d-01, T3-04b |
+| ADR-05 | T1-09, T2b-04, T2b-05 |
+| ADR-06 | T1-12, T1-14 |
+| ADR-07 | T1-14, T1-17 |
+| ADR-08 | T0-04, T5-02 |
+| ADR-09 | T4-03 |
+| ADR-10 | T0-01 |
+| ADR-11 | T0-01, T0-03, T1-02, T2a-01, T3-01 |
+| ADR-12 | T2d-02, T1-10 |
+| ADR-13 | T1-05, T1-06, T1-07 |
+| ADR-14 | T2d-01, T2d-02 |
+| ADR-15 | T1-12, T1-13, T2b-03, T4-01 |
+| ADR-16 | T0-02, T1-03, T3-03, T3-04, T3-04b, T3-05 |
+| ADR-17 | T1-14 |
+| ADR-18 | T0-04 |
+| ADR-19 | T0-04, T5-02 |
+| ADR-20 | T1-16, T4-01, T5-01 |
+| ADR-21 | T2a-01, T2a-06, T2b-03, T2b-04, T2b-05, T2c-02, T2d-03 |
+| ADR-22 | T3-01, T3-02, T3-06 |
+| ADR-23 | T1-07, T2a-04, T3-01, T3-02 |
+| ADR-24 | T5-01 |
+| ADR-25 | T1-15 |
+| ADR-26 | T1-15 |
+| ADR-27 | T0-01 |
+| ADR-28 | T4-02 |
+| ADR-29 | T0-05, T4-01 |
+| ADR-30 | T2a-05a, T2a-05b, T2a-05c, T2b-01, T2b-02, T2c-01, T2c-02 |
+| ADR-31 | T0-01, T2d-02, T1-16 |
+| S-1 재고 캐시 차감 | T0-01, T1-01, T1-03, T1-05, T1-08, T1-13 |
+| S-2 StockCommitEvent | T1-02, T1-10, T3-04 |
+| S-3 Reconciler 확장 | T1-14, T1-17, T3-01, T4-01 |
+| S-4 멱등성 MSA 스케일링 | T0-02 |
 
 ---
 
 ## 반환 지표
 
-- **태스크 총 개수**: 46
-- **domain_risk=true 태스크 개수**: 25
-  - Phase-0.1a, Phase-1.3, Phase-1.4, Phase-1.4d, Phase-1.4b, Phase-1.4c, Phase-1.5, Phase-1.5b, Phase-1.6, Phase-1.7, Phase-1.9, Phase-1.10, Phase-1.11, Phase-1.12, Phase-2.3, Phase-2.3b, Phase-3.1c, Phase-3.3, Phase-4.1
-  - Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate (Gate 6개 신규)
-  - (Phase-3.4, Phase-3.1b 등은 `domain_risk=false` — 본 집계 제외)
+- **태스크 총 개수**: Phase 0(6) + Phase 1(20) + Phase 2.a(9) + Phase 2.b(6) + Phase 2.c(3) + Phase 2.d(4) + Phase 3(9) + Phase 4(4) + Phase 5(3) = **64**
+  - Round 2 증가분(Δ+5): T1-11→T1-11a/b/c(+2), T2a-05→T2a-05a/b/c(+2), T3-04b 신설(+1)
+- **domain_risk=true 태스크 개수**: T0-02, T0-Gate, T1-04, T1-05, T1-06, T1-07, T1-08, T1-09, T1-10, T1-11a, T1-11b, T1-11c, T1-12, T1-13, T1-14, T1-16, T1-17, T1-18, T1-Gate, T2a-04, T2a-05a, T2a-05b, T2a-05c, T2a-06, T2a-Gate, T2b-01, T2b-02, T2b-03, T2b-04, T2b-05, T2b-Gate, T2c-01, T2c-02, T2c-Gate, T2d-01, Phase-2-Gate, T3-04, T3-04b, T3-05, T3-Gate, T4-01, T4-Gate, T5-Gate = **43**
+- **총 의존 엣지 수**: 명시된 depends 관계 총합 = **57**
 - **topic.md 결정 중 태스크로 매핑하지 못한 항목**: 없음 (orphan 없음)
-- **Round 5 신규 공백 해소 현황**:
-  - S-1 재고 캐시 차감: Phase-0.1(인프라) + Phase-1.0(port) + Phase-1.2(Fake) + Phase-1.4(테스트 분할) + Phase-1.4d(Redis 어댑터) + Phase-1.7(QUARANTINED 불변) → 완전 매핑
-  - S-2 StockCommitEvent 발행: Phase-1.1(port) + Phase-1.5b(발행자) + Phase-3.1c(consumer + Redis 직접 쓰기) → 완전 매핑
-  - S-3 Reconciler 재고 대조: Phase-1.9(대조 알고리즘) + Phase-1.12(warmup) + Phase-3.1(snapshot 훅) + Phase-4.1(chaos 검증) → 완전 매핑
-  - S-4 멱등성 MSA 스케일링: Phase-0.1a(Redis 이관) → 완전 매핑
-- **Phase Gate 신규 추가 (6개)**: Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate — 전 Phase Gate domain_risk=true (통합 정합성 검증 성격). 각 Gate 스크립트 경로: `scripts/phase-gate/phase-<N>-gate.sh`. 성공 기준 문서: `docs/phase-gate/phase-<N>-gate.md`.
 
 ---
 
-## ADR → 태스크 커버리지 확인
+## Round 2 변경 로그
 
-| ADR | 태스크 |
-|---|---|
-| ADR-01 (분해 기준) | Phase-1.0, Phase-1.1, Phase-1.10, Phase-2.1, Phase-3.1, Phase-3.5 |
-| ADR-02 (통신 패턴) | Phase-1.0, Phase-1.10, Phase-2.4, Phase-3.4, Phase-3.5 |
-| ADR-03 (일관성 모델) | Phase-1.3 |
-| ADR-04 (메시지 유실) | Phase-1.3, Phase-1.6, Phase-1.9, Phase-4.1 |
-| ADR-05 (멱등성 + 가면 방어) | Phase-1.5 |
-| ADR-06 (Saga 보상) | Phase-1.7, Phase-1.9 |
-| ADR-07 (Reconciliation) | Phase-1.9, Phase-1.12 |
-| ADR-08 (관측성 통합) | Phase-0.3, Phase-5.2 |
-| ADR-09 (로컬 오토스케일링) | Phase-4.3 |
-| ADR-10 (compose 토폴로지) | Phase-0.1 |
-| ADR-11 (Spring Cloud 매트릭스 + 런타임 스택) | Phase-0.2, Phase-0.1, Phase-1.1, Phase-2.1, Phase-3.1 |
-| ADR-12 (이벤트 스키마 + 토픽 네이밍 규약) | Phase-2.3, Phase-1.5b (payment.events.stock-committed 추가) |
-| ADR-13 (AOP 운명 + 감사 원자성) | Phase-1.4, Phase-1.4b, Phase-1.4c |
-| ADR-14 (이벤트 vs 커맨드) | Phase-2.3, Phase-3.5 |
-| ADR-15 (FCG 격리 불변) | Phase-1.7, Phase-4.1 |
-| ADR-16 (Idempotency 분산 + 보상 dedupe) | Phase-0.1a(Redis 이관), Phase-1.2, Phase-3.2, Phase-3.3, Phase-3.1c |
-| ADR-17 (Reconciler vs FCG 역할) | Phase-1.9 |
-| ADR-18 (W3C Trace Context) | Phase-0.3 |
-| ADR-19 (LogFmt 공통화) | Phase-0.3, Phase-5.2 |
-| ADR-20 (메트릭 네이밍 + stock lock-in) | Phase-1.11, Phase-4.1, Phase-5.1 |
-| ADR-21 (PG 물리 분리) | Phase-2.1, Phase-2.1b, Phase-2.2, Phase-2.3b(결제 서비스 측 구현체 교체), Phase-2.4 |
-| ADR-22 (주변 도메인 순서) | Phase-3.1, Phase-3.1b(사용자 서비스 신설), Phase-3.4 |
-| ADR-23 (DB 분리 세부) | Phase-1.4c, Phase-3.1, Phase-3.1b(사용자 DB) |
-| ADR-24 (Admin UI) | Phase-5.1 |
-| ADR-25 (Graceful Shutdown) | Phase-1.8 |
-| ADR-26 (VT vs PT) | Phase-1.8 |
-| ADR-27 (로컬 DX 프로필) | Phase-0.1 |
-| ADR-28 (k6 재설계) | Phase-4.2 |
-| ADR-29 (결함 악화 검증 + 장애 주입) | Phase-0.4, Phase-4.1 |
-| **S-1 재고 캐시 차감 (Round 5 신규 — ADR 부재, topic.md 설계 결정으로 추적)** | Phase-0.1, Phase-1.0, Phase-1.2, Phase-1.4, Phase-1.4d, Phase-1.7, Phase-1.9 |
-| **S-2 StockCommitEvent 발행 (Round 5 신규 — ADR 부재)** | Phase-1.1, Phase-1.5b, Phase-3.1c |
-| **S-3 Reconciler 재고 대조 (Round 5 신규 — ADR 부재)** | Phase-1.9, Phase-1.12, Phase-3.1, Phase-4.1 |
-| **S-4 멱등성 MSA 스케일링 (Round 5 신규 — ADR-16 연계)** | Phase-0.1a |
-| **Phase Gate 통합 검증 (Phase Gate 신규 — 전 ADR E2E 검증 성격, 특정 ADR 1:1 매핑 없음)** | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate |
+| Finding ID | 심각도 | 반영 위치 | 변경 요약 |
+|---|---|---|---|
+| C-1 | critical | T1-11a, T1-11c | Worker → MessagePublisherPort.publish() 경유로 교정, KafkaTemplate 직접 호출 제거. FakeMessagePublisher 검증 케이스 명시. |
+| C-2 | critical | T1-11b | PaymentConfirmChannel(LinkedBlockingQueue<Long>, capacity=1024, overflow fallback 명시) 산출물로 추가. |
+| C-3 | critical | T2a-05a, T2a-05c | Worker → PgEventPublisherPort.publish(topic, key, payload, headers) 경유로 교정. PgEventPublisher를 port 유일 구현체로 고정. |
+| C-4 | critical | T2a-05a | PgOutboxRelayService.java를 T2a-05a 산출물에 추가하여 T1-11a 대칭 복원. |
+| M-1 | major | T1-11→T1-11a/b/c, T2a-05→T2a-05a/b/c | 각 2h 초과 태스크를 (a) Publisher+RelayService, (b) EventHandler+Channel, (c) ImmediateWorker+PollingWorker 3개로 분해. 의존 엣지 T1-15/T1-18→T1-11c, T2a-06→T2a-05c, T2b-02→T2a-05c로 갱신. |
+| M-2 | major | T1-12 | 테스트명 `handle_ShouldRollbackStockAfterCommit` → `handle_WhenEntryIsDlqConsumer_ShouldRollbackStockAfterCommit`, `handle_WhenQuarantined_ShouldNotRollbackStockCacheImmediately` → `handle_WhenEntryIsFcg_ShouldNotRollbackStockImmediately`로 교정. |
+| m-1 | minor | T1-10, T2d-02 | PaymentTopics.java `domain/messaging/` → `infrastructure/messaging/`, PgTopics·ProductTopics 동일 재배치. |
+| m-2 | minor | T2a-06 | 목적 문단 "T2a-07로 위임" → "T2b-01로 위임" 수정. |
+| m-3 | minor | T1-17 | StockCacheWarmupService 분해: consumer=`StockSnapshotWarmupConsumer`(infrastructure/messaging/consumer/), orchestration=`StockCacheWarmupService`(application/service/). 테스트도 `StockSnapshotWarmupConsumerTest` + `StockCacheWarmupServiceTest`로 분리. |
+| m-4 | minor | T3-03, T3-04 | port 이름 `PaymentRedisStockPort` → `PaymentStockCachePort`. adapter `PaymentRedisStockAdapter` 유지. Fake도 `FakePaymentStockCachePort`로 동기화. |
+| D-1 | domain major | T3-04b 신설 | payment-service FAILED 전이 시 stock.events.restore outbox row INSERT + UUID 보장 태스크 신설. 테스트: `whenFailed_ShouldEnqueueStockRestoreCompensation` + `whenFailed_IdempotentWhenCalledTwice`. T3-05 depends에 T3-04b 추가. |
+| — | — | ARCHITECT-REVIEW | 수정 완료 지점 주석 7건 제거(T1-10 패키지 배치, T1-11 critical×2, T1-17 패키지, T2a-05 critical×2, T2a-06 참조 typo, T2a-06 경계, T2b-04 Amount 값 객체, T3-04 port 명칭). 유지한 주석 없음. |
