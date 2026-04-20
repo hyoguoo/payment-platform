@@ -28,7 +28,9 @@
 
 - ✅ T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
 - ✅ T0-02 Idempotency 저장소 Caffeine → Redis 이관
-- T0-03 Spring Cloud Gateway 서비스 모듈 신설
+- T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
+- T0-03b Spring Cloud Gateway 서비스 모듈 신설
+- T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - T0-04 W3C Trace Context + LogFmt 공통 기반
 - T0-05 Toxiproxy 장애 주입 도구 구성
 - T0-Gate Phase 0 인프라 smoke 검증
@@ -116,7 +118,7 @@
 - T5-02 LogFmt 공통화 완결 + 최종 문서화 + 아카이브
 - T5-Gate Phase 5 최종 회귀 및 아카이브 완결
 
-**합계**: 64 태스크 (domain_risk=true 43건, 의존 엣지 57개)
+**합계**: 66 태스크 (domain_risk=true 43건, 의존 엣지 59개). execute 도중 T0-03을 T0-03a/b/c 3분해(멀티모듈 전환 + Gateway + Eureka Server).
 
 ---
 
@@ -311,18 +313,47 @@ flowchart TB
 
 ---
 
-### T0-03 — Spring Cloud Gateway 서비스 모듈 신설
+### T0-03a — 루트 멀티모듈 전환
+
+- **제목**: 단일 모듈 루트를 subprojects 구조로 재구성 (기존 src → payment-service 이관)
+- **목적**: ADR-10 · 후속 Phase 2~3 서비스 분리 전제 — 기존 `src/main/**`를 `payment-service/src/main/**`으로 이관해 PLAN의 `payment-service/...`, `pg-service/...`, `product-service/...`, `user-service/...` 경로 가정과 정합. 루트 `build.gradle`을 subprojects 공통 블록(Java 21, Lombok, Checkstyle, SpotBugs, JaCoCo 기본 규약)으로 재구성하고, 기존 단일 모듈용 의존성은 `payment-service/build.gradle`로 이관. 빌드 회귀 없음.
+- **tdd**: false
+- **domain_risk**: false
+- **depends**: [T0-01]
+- **산출물**:
+  - `git mv src payment-service/src` (rename 추적 유지)
+  - `settings.gradle` — `include 'payment-service'` 추가, 루트 프로젝트명 `payment-platform` 유지
+  - `build.gradle` — 루트 parent 공통 설정(subprojects 블록, Java 21, Lombok, Checkstyle, SpotBugs, JaCoCo)
+  - `payment-service/build.gradle` — 기존 application 의존성(web, webflux, jpa, redis, caffeine, querydsl, prometheus, logstash, testcontainers)
+  - `Dockerfile` — `COPY src/` → `COPY payment-service/src/`, build 경로 `payment-service/build/libs/*.jar`
+  - `config/` — checkstyle/spotbugs 공유 디렉토리 유지, 경로 참조만 루트 기준으로 갱신
+
+### T0-03b — Spring Cloud Gateway 서비스 모듈 신설
 
 - **제목**: API Gateway 모듈 신설 (Spring Cloud Gateway + WebFlux/Netty)
 - **목적**: ADR-11(Gateway만 WebFlux, 내부 서비스는 MVC+VT) — 모놀리스 전체 fallback route. `traceparent` 헤더 주입 기반 설정. Reactor 타입은 이 모듈의 filter 범위에만 한정.
 - **tdd**: false
 - **domain_risk**: false
-- **depends**: [T0-01]
+- **depends**: [T0-03a]
 - **산출물**:
   - `settings.gradle` — `include 'gateway'` 추가
-  - `gateway/build.gradle` — `spring-cloud-starter-gateway`, MVC 미포함
+  - `gateway/build.gradle` — `spring-cloud-starter-gateway`, `spring-cloud-starter-netflix-eureka-client`, MVC 미포함
   - `gateway/src/main/java/.../gateway/GatewayApplication.java`
-  - `gateway/src/main/resources/application.yml` — 모놀리스 전체 fallback route
+  - `gateway/src/main/resources/application.yml` — 모놀리스 전체 fallback route, Eureka client 설정
+
+### T0-03c — Eureka Server 서비스 모듈 신설
+
+- **제목**: Service Discovery 자체 모듈 신설 (Spring Cloud Netflix Eureka Server) + docker-compose Eureka 컨테이너 교체
+- **목적**: ADR-11(잠정 채택 Eureka) — `springcloud/eureka` public image 대신 자체 Spring 모듈로 관리해 버전/설정 일관성 확보. `@EnableEurekaServer` 단독 application. `docker-compose.infra.yml` 기존 Eureka 서비스는 자체 모듈 빌드 결과(Jib 또는 Spring Boot plugin `bootBuildImage`) 기반으로 교체하거나 로컬에서는 `./gradlew :eureka-server:bootRun`으로 실행.
+- **tdd**: false
+- **domain_risk**: false
+- **depends**: [T0-03a]
+- **산출물**:
+  - `settings.gradle` — `include 'eureka-server'` 추가
+  - `eureka-server/build.gradle` — `spring-cloud-starter-netflix-eureka-server`
+  - `eureka-server/src/main/java/.../eurekaserver/EurekaServerApplication.java` — `@EnableEurekaServer`
+  - `eureka-server/src/main/resources/application.yml` — `server.port: 8761`, `eureka.client.register-with-eureka: false`, `eureka.client.fetch-registry: false`
+  - `docker-compose.infra.yml` — 기존 `springcloud/eureka` 이미지 서비스 블록을 자체 모듈 기반으로 교체(`build:` 또는 Dockerfile 참조) + 컨테이너명·포트·healthcheck 유지
 
 ---
 
@@ -332,7 +363,7 @@ flowchart TB
 - **목적**: ADR-18(W3C Trace Context), ADR-19(LogFmt 복제(b) 방침) — Gateway WebFlux 필터에서 `traceparent` → MDC 주입. `LogFmt`/`MaskingPatternLayout` 복제(b) 방침 결정을 ADR-19 결론란에 기록. `TraceIdExtractor`는 순수 Java(Reactor 타입 비포함).
 - **tdd**: false
 - **domain_risk**: false
-- **depends**: [T0-03]
+- **depends**: [T0-03b]
 - **산출물**:
   - `gateway/src/main/java/.../gateway/filter/TraceContextPropagationFilter.java`
   - `core/common/tracing/TraceIdExtractor.java`
