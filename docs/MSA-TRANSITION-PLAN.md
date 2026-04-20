@@ -465,7 +465,7 @@ flowchart TB
 
 ---
 
-### T1-01 — 결제 서비스 모듈 경계 정리 (port 선언)
+### T1-01 — 결제 서비스 모듈 경계 정리 (port 선언) ✅
 
 - **제목**: cross-context port 복제 + InternalAdapter 승계 + StockCachePort 선언
 - **목적**: ADR-01, ADR-02 — Phase 1 포트 계층 전 모놀리스 경계 차단. `ProductLookupPort`, `UserLookupPort`, `PaymentGatewayPort`, `StockCachePort`(decrement/rollback/current/set) 선언. `PgStatusPort` 는 존재하지 않는다(ADR-02 보강 — payment↔pg는 Kafka only). "재고 캐시 차감" 기준, "예약/reservation" 용어 금지.
@@ -481,6 +481,20 @@ flowchart TB
   - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalUserAdapter.java`
   - `payment-service/src/main/java/.../payment/infrastructure/adapter/internal/InternalPaymentGatewayAdapter.java`
   - `payment-service/build.gradle` — paymentgateway compile 의존 제거
+
+**완료 결과 (2026-04-21)**
+
+- 생성 파일 (7개):
+  - `payment/application/port/out/ProductLookupPort.java` — `getProductInfoById`, `decreaseStockForOrders`, `increaseStockForOrders`
+  - `payment/application/port/out/UserLookupPort.java` — `getUserInfoById`
+  - `payment/application/port/out/PaymentGatewayPort.java` — `confirm`, `cancel` (getStatus/getStatusByOrderId 없음, ADR-02 준수)
+  - `payment/application/port/out/StockCachePort.java` — `decrement(boolean)`, `rollback(void)`, `current(int)`, `set(void)`
+  - `payment/infrastructure/adapter/internal/InternalProductAdapter.java` — `ProductLookupPort` 구현, `ProductInternalReceiver` 위임, 빈 이름 `productLookupAdapter`
+  - `payment/infrastructure/adapter/internal/InternalUserAdapter.java` — `UserLookupPort` 구현, `UserInternalReceiver` 위임, 빈 이름 `userLookupAdapter`
+  - `payment/infrastructure/adapter/internal/InternalPaymentGatewayAdapter.java` — `PaymentGatewayPort(out)` 구현, `PaymentGatewayFactory` + `PaymentGatewayProperties` 위임, 빈 이름 `paymentGatewayLookupAdapter`
+- `payment-service/build.gradle` — paymentgateway 모듈 의존이 원래 없었으므로 no-op
+- 기존 UseCase/port 코드 변경 없음 (기존 `ProductPort`, `UserPort`, `payment.application.port.PaymentGatewayPort` 및 `infrastructure/internal/` 어댑터 유지)
+- 테스트: 372/372 PASS
 
 ---
 

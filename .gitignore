@@ -235,6 +235,7 @@ scripts/**/.env
 
 out/
 !src/**/out/
+!**/src/**/out/
 
 # Claude
 .claude/chats/
