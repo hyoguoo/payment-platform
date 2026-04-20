@@ -2,7 +2,7 @@
 
 **토픽**: [MSA-TRANSITION](topics/MSA-TRANSITION.md)
 **날짜**: 2026-04-18
-**라운드**: 5 (plan-round 5 Planner 수정 — Redis 캐시 차감 + IdempotencyStore Redis 이관 + plan-review-1 minor 8건 보강)
+**라운드**: 5 (plan-round 5 Planner 수정 — Redis 캐시 차감 + IdempotencyStore Redis 이관 + plan-review-1 minor 8건 보강 + Phase Gate 6개 추가)
 
 ---
 
@@ -12,59 +12,65 @@
 
 ## 요약 브리핑
 
-### 1. Task 목록 (40개, 6 Phase)
+### 1. Task 목록 (46개, 6 Phase)
 
-**Phase 0 — 인프라 준비 (5)**
+**Phase 0 — 인프라 준비 (6)**
 1. Phase-0.1: docker-compose 기반 인프라 정의 (Kafka / Redis 공유 + payment 전용 Redis / Eureka / Config Server + 공유 네트워크)
 2. Phase-0.1a: IdempotencyStore Caffeine → Redis 이관 (payment-service 전용 Redis, SETNX 동시성 방어) — domain_risk
 3. Phase-0.2: Spring Cloud Gateway 서비스 모듈 신설 (WebFlux/Netty, 모놀리스 전체 fallback 라우트)
 4. Phase-0.3: W3C Trace Context + LogFmt 공통 기반 (traceparent 헤더 MDC 주입 — 리액티브 엣지 한정)
 5. Phase-0.4: Toxiproxy 장애 주입 도구 구성 (Kafka / MySQL proxy 엔드포인트 선언)
+6. Phase-0-Gate: 인프라 기반 smoke 검증 (Kafka/Redis/Eureka/Config Server/Gateway/Toxiproxy 전수 healthcheck) — domain_risk
 
-**Phase 1 — 결제 코어 분리 (17)**
-6. Phase-1.0: 결제 서비스 모듈 경계 정리 (cross-context port 복제 + InternalPaymentGatewayAdapter 이관 + paymentgateway compile 의존 제거 + StockCachePort 선언)
-7. Phase-1.1: 결제 서비스 모듈 신설 + port 계층 구성 (모든 포트를 application/port/{in,out}로 일괄 정리 + StockCommitEventPublisher 포트 선언)
-8. Phase-1.2: Fake 구현체 신설 (테스트용 PaymentGatewayPort · MessagePublisherPort · IdempotencyStorePort · StockCachePort Fake)
-9. Phase-1.3: 도메인 이관 — PaymentEvent · PaymentOutbox · RetryPolicy 상태 전이 테스트 보존
-10. Phase-1.4: 트랜잭션 경계 + 감사 원자성 — payment_history BEFORE_COMMIT 리스너 (결제 서비스 내부 TX 원자성에 한정, stock 캐시 차감은 외부 호출 분리)
-11. Phase-1.4b: AOP 축 결제 서비스 복제 이관 (@PublishDomainEvent · @PaymentStatusChange · 로깅/메트릭 aspect)
-12. Phase-1.4c: 결제 서비스 Flyway V1 스키마 (빈 DB 시작 + 모놀리스 PENDING 미종결 레코드 모놀리스 잔류 처리)
-13. Phase-1.4d: StockCachePort + Redis 어댑터 (Lua atomic DECR, DECR 음수→INCR 복구 + FAILED 전이, AOF 지속성) — domain_risk
-14. Phase-1.5: PG 가면 응답 방어선 구현 + Toss 전략 wiring 완결 (ALREADY_PROCESSED_PAYMENT 포착 + isSuccess() 수정) — domain_risk
-15. Phase-1.5b: StockCommitEventPublisher — 결제 확정 시 payment.events.stock-committed 발행 — domain_risk
-16. Phase-1.6: 결제 릴레이 → Kafka publisher 구현 (at-least-once + relay 멱등성)
-17. Phase-1.7: FCG 격리 불변 + RecoveryDecision 이관 (timeout → QUARANTINED 무조건, QUARANTINED 결제 Redis DECR 상태 유지)
-18. Phase-1.8: Graceful Shutdown + Virtual Threads 재검토
-19. Phase-1.9: Reconciliation 루프 + FCG/Reconciler 역할 분리 + Redis ↔ RDB 재고 대조 — domain_risk
-20. Phase-1.10: Gateway 결제 엔드포인트 교체 + 모놀리스 결제 경로 비활성화 (@ConditionalOnProperty 기본 false + migrate-pending-outbox.sh)
-21. Phase-1.11: payment.outbox.pending_age_seconds 히스토그램 + payment.stock_cache.divergence_count 메트릭 (stock lock-in·캐시 발산 감지)
-22. Phase-1.12: 재고 warmup — product.events.stock-snapshot 토픽 재생 (기동 시 Redis 초기화) — domain_risk
+**Phase 1 — 결제 코어 분리 (18)**
+7. Phase-1.0: 결제 서비스 모듈 경계 정리 (cross-context port 복제 + InternalPaymentGatewayAdapter 이관 + paymentgateway compile 의존 제거 + StockCachePort 선언)
+8. Phase-1.1: 결제 서비스 모듈 신설 + port 계층 구성 (모든 포트를 application/port/{in,out}로 일괄 정리 + StockCommitEventPublisher 포트 선언)
+9. Phase-1.2: Fake 구현체 신설 (테스트용 PaymentGatewayPort · MessagePublisherPort · IdempotencyStorePort · StockCachePort Fake)
+10. Phase-1.3: 도메인 이관 — PaymentEvent · PaymentOutbox · RetryPolicy 상태 전이 테스트 보존
+11. Phase-1.4: 트랜잭션 경계 + 감사 원자성 — payment_history BEFORE_COMMIT 리스너 (결제 서비스 내부 TX 원자성에 한정, stock 캐시 차감은 외부 호출 분리)
+12. Phase-1.4b: AOP 축 결제 서비스 복제 이관 (@PublishDomainEvent · @PaymentStatusChange · 로깅/메트릭 aspect)
+13. Phase-1.4c: 결제 서비스 Flyway V1 스키마 (빈 DB 시작 + 모놀리스 PENDING 미종결 레코드 모놀리스 잔류 처리)
+14. Phase-1.4d: StockCachePort + Redis 어댑터 (Lua atomic DECR, DECR 음수→INCR 복구 + FAILED 전이, AOF 지속성) — domain_risk
+15. Phase-1.5: PG 가면 응답 방어선 구현 + Toss 전략 wiring 완결 (ALREADY_PROCESSED_PAYMENT 포착 + isSuccess() 수정) — domain_risk
+16. Phase-1.5b: StockCommitEventPublisher — 결제 확정 시 payment.events.stock-committed 발행 — domain_risk
+17. Phase-1.6: 결제 릴레이 → Kafka publisher 구현 (at-least-once + relay 멱등성)
+18. Phase-1.7: FCG 격리 불변 + RecoveryDecision 이관 (timeout → QUARANTINED 무조건, QUARANTINED 결제 Redis DECR 상태 유지)
+19. Phase-1.8: Graceful Shutdown + Virtual Threads 재검토
+20. Phase-1.9: Reconciliation 루프 + FCG/Reconciler 역할 분리 + Redis ↔ RDB 재고 대조 — domain_risk
+21. Phase-1.10: Gateway 결제 엔드포인트 교체 + 모놀리스 결제 경로 비활성화 (@ConditionalOnProperty 기본 false + migrate-pending-outbox.sh)
+22. Phase-1.11: payment.outbox.pending_age_seconds 히스토그램 + payment.stock_cache.divergence_count 메트릭 (stock lock-in·캐시 발산 감지)
+23. Phase-1.12: 재고 warmup — product.events.stock-snapshot 토픽 재생 (기동 시 Redis 초기화) — domain_risk
+24. Phase-1-Gate: 결제 코어 E2E 검증 (payment-service 단독 기동 + 결제 성공/실패/QUARANTINED 경로 + Redis 차감 + Reconciler) — domain_risk
 
-**Phase 2 — PG 서비스 분리 (6)**
-23. Phase-2.1: PG 서비스 모듈 신설 + port 계층 + 벤더 전략(Toss · NicePay) 이관
-24. Phase-2.1b: PG 서비스 AOP 축 복제 이관 (@TossApiMetric · TossApiMetricsAspect)
-25. Phase-2.2: Fake PG 서비스 구현
-26. Phase-2.3: PgStatusPort Kafka 이벤트 경로 + 이벤트 토픽 명명 + 전 서비스 공통 토픽 네이밍 규약 확정 (PgEventPublisherPort + PgConfirmUseCase)
-27. Phase-2.3b: 결제 서비스 측 PgStatusPort·PaymentGatewayPort 구현체 교체 (Local/Internal → HTTP/Kafka) — domain_risk
-28. Phase-2.4: Gateway 라우팅 — PG 내부 API 격리
+**Phase 2 — PG 서비스 분리 (7)**
+25. Phase-2.1: PG 서비스 모듈 신설 + port 계층 + 벤더 전략(Toss · NicePay) 이관
+26. Phase-2.1b: PG 서비스 AOP 축 복제 이관 (@TossApiMetric · TossApiMetricsAspect)
+27. Phase-2.2: Fake PG 서비스 구현
+28. Phase-2.3: PgStatusPort Kafka 이벤트 경로 + 이벤트 토픽 명명 + 전 서비스 공통 토픽 네이밍 규약 확정 (PgEventPublisherPort + PgConfirmUseCase)
+29. Phase-2.3b: 결제 서비스 측 PgStatusPort·PaymentGatewayPort 구현체 교체 (Local/Internal → HTTP/Kafka) — domain_risk
+30. Phase-2.4: Gateway 라우팅 — PG 내부 API 격리
+31. Phase-2-Gate: PG 서비스 분리 E2E 검증 (pg-service 독립 기동 + Kafka 왕복 이벤트 + dedupe + Fake PG 벤더 격리) — domain_risk
 
-**Phase 3 — 주변 도메인 분리 + 보상 이벤트화 (7)**
-29. Phase-3.1: 상품 서비스 모듈 신설 + 도메인 이관 (StockRestoreUseCase implements StockRestoreCommandService 겸임 + stock-snapshot 발행 훅)
-30. Phase-3.1b: 사용자 서비스 모듈 신설 + 도메인 이관 + port 계층 + Flyway V1
-31. Phase-3.2: Fake 상품 서비스 구현 (FakeStockRepository + FakeEventDedupeStore + FakePaymentRedisStockPort — StockCommit·StockRestore 소비자 공용)
-32. Phase-3.1c: StockCommitConsumer + payment-service 전용 Redis 직접 쓰기 (product → payment Redis SET, product RDB UPDATE) — domain_risk
-33. Phase-3.3: 보상 이벤트 consumer dedupe — stock.restore UUID 키, 상품 서비스 소유, EventDedupeStore port/JdbcStore 분리 — domain_risk
-34. Phase-3.4: 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체 (InternalAdapter 퇴역)
-35. Phase-3.5: Gateway 라우팅 — 상품·사용자 엔드포인트 교체
+**Phase 3 — 주변 도메인 분리 + 보상 이벤트화 (8)**
+32. Phase-3.1: 상품 서비스 모듈 신설 + 도메인 이관 (StockRestoreUseCase implements StockRestoreCommandService 겸임 + stock-snapshot 발행 훅)
+33. Phase-3.1b: 사용자 서비스 모듈 신설 + 도메인 이관 + port 계층 + Flyway V1
+34. Phase-3.2: Fake 상품 서비스 구현 (FakeStockRepository + FakeEventDedupeStore + FakePaymentRedisStockPort — StockCommit·StockRestore 소비자 공용)
+35. Phase-3.1c: StockCommitConsumer + payment-service 전용 Redis 직접 쓰기 (product → payment Redis SET, product RDB UPDATE) — domain_risk
+36. Phase-3.3: 보상 이벤트 consumer dedupe — stock.restore UUID 키, 상품 서비스 소유, EventDedupeStore port/JdbcStore 분리 — domain_risk
+37. Phase-3.4: 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체 (InternalAdapter 퇴역)
+38. Phase-3.5: Gateway 라우팅 — 상품·사용자 엔드포인트 교체
+39. Phase-3-Gate: 주변 도메인 + 보상 이벤트화 E2E 검증 (product/user 독립 기동 + StockCommit/StockRestore dedupe + Redis 직접 쓰기 + Saga 보상 왕복) — domain_risk
 
-**Phase 4 — 장애 주입 + 오토스케일러 (3)**
-36. Phase-4.1: Toxiproxy 장애 시나리오 스위트 (8종: 브로커 파티션 · DB 지연 · Kafka 지연 · PG timeout · 보상 중복 주입 · FCG PG timeout · Redis down · 재고 캐시 발산)
-37. Phase-4.2: k6 시나리오 재설계 (분산 토폴로지 경로별 TPS/레이턴시)
-38. Phase-4.3: 로컬 오토스케일러 (Prometheus 지표 감시 + docker-compose scale 스크립트)
+**Phase 4 — 장애 주입 + 오토스케일러 (4)**
+40. Phase-4.1: Toxiproxy 장애 시나리오 스위트 (8종: 브로커 파티션 · DB 지연 · Kafka 지연 · PG timeout · 보상 중복 주입 · FCG PG timeout · Redis down · 재고 캐시 발산)
+41. Phase-4.2: k6 시나리오 재설계 (분산 토폴로지 경로별 TPS/레이턴시)
+42. Phase-4.3: 로컬 오토스케일러 (Prometheus 지표 감시 + docker-compose scale 스크립트)
+43. Phase-4-Gate: 장애 주입 + 부하 검증 (Toxiproxy 8종 전수 통과 + k6 목표 달성 + 오토스케일러 scale up/down 실관측) — domain_risk
 
-**Phase 5 — 잔재 정리 (2)**
-39. Phase-5.1: 메트릭 네이밍 규약 공통화 + Admin UI 처리 결정
-40. Phase-5.2: LogFmt 공통화 완결 + 최종 문서화 (archive 이동)
+**Phase 5 — 잔재 정리 (3)**
+44. Phase-5.1: 메트릭 네이밍 규약 공통화 + Admin UI 처리 결정
+45. Phase-5.2: LogFmt 공통화 완결 + 최종 문서화 (archive 이동)
+46. Phase-5-Gate: 최종 회귀 및 아카이브 완결 검증 (전체 테스트 통과 + Phase 0~4 Gate 전수 재실행 + dead link 검사 + archive 이동 확인) — domain_risk
 
 ### 2. Phase 의존 흐름 + 최종 토폴로지
 
@@ -76,6 +82,7 @@ flowchart TB
         P02[Phase-0.2<br/>Gateway WebFlux/Netty]
         P03[Phase-0.3<br/>Trace Context / LogFmt]
         P04[Phase-0.4<br/>Toxiproxy]
+        P0G[[Phase-0-Gate<br/>인프라 기반 smoke 검증]]
     end
     subgraph P1["Phase 1 — 결제 코어 분리"]
         P10[Phase-1.0<br/>cross-context port 복제<br/>paymentgateway 경계 단절<br/>StockCachePort 선언]
@@ -92,11 +99,13 @@ flowchart TB
         P110[Phase-1.10<br/>Gateway 전환 + 모놀리스 결제 비활성화]
         P111[Phase-1.11<br/>pending_age_seconds<br/>stock_cache.divergence_count]
         P112[Phase-1.12<br/>stock-snapshot warmup<br/>기동 시 Redis 초기화]
+        P1G[[Phase-1-Gate<br/>결제 코어 E2E 검증]]
     end
     subgraph P2["Phase 2 — PG 서비스 분리"]
         P21[Phase-2.1 / 2.1b<br/>PG 모듈 + AOP]
         P23[Phase-2.3<br/>PgStatus Kafka]
         P24[Phase-2.4<br/>Gateway 재라우팅]
+        P2G[[Phase-2-Gate<br/>PG 서비스 분리 E2E 검증]]
     end
     subgraph P3["Phase 3 — 주변 도메인 + 보상 이벤트화"]
         P31[Phase-3.1<br/>상품 모듈<br/>stock-snapshot 발행 훅]
@@ -106,25 +115,32 @@ flowchart TB
         P33[Phase-3.3<br/>보상 dedupe]
         P34[Phase-3.4<br/>ProductPort HTTP 교체]
         P35[Phase-3.5<br/>Gateway 재라우팅]
+        P3G[[Phase-3-Gate<br/>주변 도메인 + 보상 이벤트화 E2E 검증]]
     end
     subgraph P4["Phase 4 — 장애 주입 + 오토스케일러"]
         P41[Phase-4.1<br/>8종 chaos 시나리오<br/>Redis down · 재고 캐시 발산 추가]
         P42[Phase-4.2<br/>k6 재설계]
         P43[Phase-4.3<br/>로컬 오토스케일러]
+        P4G[[Phase-4-Gate<br/>장애 주입 + 부하 검증]]
     end
     subgraph P5["Phase 5 — 잔재 정리"]
         P51[Phase-5.1<br/>메트릭 공통화]
         P52[Phase-5.2<br/>LogFmt + 아카이브]
+        P5G[[Phase-5-Gate<br/>최종 회귀 및 아카이브 완결]]
     end
 
-    P0 --> P1 --> P2 --> P3 --> P4 --> P5
+    P04 --> P0G --> P10
+    P0G --> P1
     P01 --> P01a
     P10 --> P11 --> P12 --> P13 --> P14 --> P14d --> P15 --> P15b --> P16 --> P17 --> P19 --> P110
     P01a -.멱등성 Redis.-> P11
     P14d -.재고 캐시 차감 포트.-> P15b
-    P21 --> P23 --> P24
-    P31 --> P31b --> P32 --> P31c --> P33 --> P34 --> P35
+    P112 --> P1G --> P21
+    P21 --> P23 --> P24 --> P2G --> P31
+    P31 --> P31b --> P32 --> P31c --> P33 --> P34 --> P35 --> P3G --> P41
     P112 -.warmup.-> P31c
+    P41 --> P42 --> P43 --> P4G --> P51
+    P51 --> P52 --> P5G
 ```
 
 ```mermaid
@@ -174,6 +190,7 @@ flowchart LR
 | **멱등성 저장소 Redis 이관 — ADR-16** (Caffeine→Redis, MSA 수평 확장 대응, SETNX 동시성 방어) | Phase-0.1a |
 | **상품 서비스 Redis 직접 쓰기 — product→payment Redis 동기화 경로** (Kafka 경유 아님, product 생성·수정·admin 시 직접 SET) | Phase-3.1c |
 | **재고 Reconciler 확장 — Redis ↔ RDB 대조** (QUARANTINED INCR 복원, TTL 자동 복원, RDB 진실) | Phase-1.9, Phase-1.12 |
+| **Phase 게이트 통합 검증** (각 Phase 완료 후 다음 Phase 진입 가능 여부 객관적 판정 — 인프라/결제/PG/주변도메인/장애/최종회귀) | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate |
 
 상세 추적 테이블은 아래 "추적 테이블: discuss 리스크 → 태스크 매핑" 참조.
 
@@ -345,6 +362,28 @@ flowchart LR
   - `docker-compose.infra.yml`에 `toxiproxy` 서비스 추가
   - `chaos/toxiproxy-config.json` — proxy 정의(kafka-proxy, mysql-proxy 엔드포인트)
   - `chaos/README.md` — 장애 주입 커맨드 메모
+
+---
+
+### Phase-0-Gate — 인프라 기반 검증
+
+- **제목**: Phase 0 인프라 smoke 검증 — 다음 Phase 진입 가능 여부 판정
+- **목적**: Phase 0 전 태스크(Phase-0.1 ~ Phase-0.4) 완료 후 docker-compose 인프라(Kafka/Redis 공유·payment 전용/Eureka/Config Server/Gateway/Toxiproxy)가 모두 정상 기동하고 서비스 간 연결 가능한지 smoke 검증. 이후 Phase에서 사용할 기반 플랫폼이 실제로 작동 가능함을 보증. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-0-gate.sh` — 다음 항목 자동 검증:
+    1. `docker compose -f docker-compose.infra.yml up -d` 성공
+    2. Kafka broker healthcheck 통과 (`kafka-broker-api-versions.sh`)
+    3. Redis 공유 + payment 전용 2개 인스턴스 각각 `PING → PONG`
+    4. Redis payment 전용: `SET stock:test 100` + `EVAL` atomic DECR 스크립트 실행 → 99 반환
+    5. Redis payment 전용: `SET idem:test 1 NX EX 60` 연속 2회 → 1회만 성공
+    6. Eureka `/eureka/apps` 200
+    7. Config Server `/actuator/health` 200
+    8. Gateway `/actuator/health` 200 + 모놀리스 fallback 경로(예: `/api/v1/payments/*`) 200
+    9. Toxiproxy admin API `/proxies` 200
+  - `docs/phase-gate/phase-0-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 0 재검토 항목 목록
 
 ---
 
@@ -701,6 +740,26 @@ flowchart LR
 
 ---
 
+### Phase-1-Gate — 결제 코어 E2E 검증
+
+- **제목**: Phase 1 결제 코어 E2E 검증 — 다음 Phase 진입 가능 여부 판정
+- **목적**: Phase 1 전 태스크(Phase-1.0 ~ Phase-1.12) 완료 후 payment-service 단독 기동이 가능하고 결제 성공/실패/QUARANTINED 경로 + Redis 캐시 차감 + Reconciler가 E2E로 작동함을 검증. 모놀리스 결제 경로 비활성화 상태에서 Gateway → payment-service 결제 완주 성공 확인. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-1-gate.sh` — 다음 항목 자동 검증:
+    1. `docker compose up payment-service` + payment-service `/actuator/health` 200
+    2. payment-service Flyway V1 적용 확인 (`SHOW TABLES` → payment_event/payment_outbox 존재)
+    3. Gateway 경유 checkout API 호출 → 성공 경로 (FakePG 또는 테스트 계정 사용) → PaymentEvent DONE + StockCommitEvent Kafka 발행 확인
+    4. Gateway 경유 checkout 재고 부족 시나리오 → FAILED 전이 + Redis 캐시 rollback 확인
+    5. PG timeout 시뮬레이션 (Toxiproxy delay) → QUARANTINED 전이 + Redis DECR 유지 + Reconciler 경보 확인
+    6. Reconciler cron 1회 수동 trigger → Redis ↔ RDB 대조 결과 로그 확인
+    7. `payment.outbox.pending_age_seconds` + `payment.stock_cache.divergence_count` 메트릭 scraping 확인
+  - `docs/phase-gate/phase-1-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 1 재검토 항목 목록
+
+---
+
 ## Phase 2 — PG 서비스 분리
 
 **목적**: `paymentgateway` 컨텍스트를 물리 분리(ADR-21 선택 시). PG 서비스 `getStatus`가 raw state만 반환하고 재시도 래핑을 내장하지 않음.
@@ -813,6 +872,24 @@ flowchart LR
 - **산출물**:
   - `gateway/src/main/resources/application.yml` — 내부 서비스 route 격리 설정 (path 접두사 `/internal/**` deny 또는 serviceId 기반 필터)
   - Gateway filter: `InternalOnlyGatewayFilter.java` (외부 요청 차단)
+
+---
+
+### Phase-2-Gate — PG 서비스 분리 E2E 검증
+
+- **제목**: Phase 2 PG 서비스 분리 E2E 검증 — 다음 Phase 진입 가능 여부 판정
+- **목적**: Phase 2 전 태스크(Phase-2.1 ~ Phase-2.4) 완료 후 pg-service가 독립 기동되고 Kafka 이벤트 경로(결제 → PG → 결제 상태 업데이트)가 왕복 작동함을 검증. Fake PG 서비스로 벤더(Toss/NicePay) 격리도 확인. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-2-gate.sh` — 다음 항목 자동 검증:
+    1. `docker compose up pg-service` + `/actuator/health` 200
+    2. PG 내부 API가 Gateway를 거치지 않고 외부에서 호출 불가한지 확인 (Phase-2.4 라우팅)
+    3. `payment.commands.confirm` 토픽에 메시지 발행 → pg-service consumer 수신 → PG 호출 → `pg.events.status-changed` 발행 → payment-service consumer 수신 → PaymentEvent 상태 전이 E2E 검증
+    4. 동일 eventUUID 2회 발행 → pg-service dedupe로 PG 호출 1회 확인
+    5. Fake PG로 벤더 교체 (환경변수 `PG_VENDOR=fake`) → 결제 E2E 성공 확인 (벤더 격리 검증)
+  - `docs/phase-gate/phase-2-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 2 재검토 항목 목록
 
 ---
 
@@ -966,6 +1043,28 @@ flowchart LR
 
 ---
 
+### Phase-3-Gate — 주변 도메인 + 보상 이벤트화 E2E 검증
+
+- **제목**: Phase 3 주변 도메인 분리 + 보상 이벤트화 E2E 검증 — 다음 Phase 진입 가능 여부 판정
+- **목적**: Phase 3 전 태스크(Phase-3.1 ~ Phase-3.5) 완료 후 product/user service 독립 기동, StockCommit/StockRestore 두 소비자의 dedupe E2E, product → payment Redis 직접 쓰기, Saga 보상 왕복을 검증. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-3-gate.sh` — 다음 항목 자동 검증:
+    1. `docker compose up product-service user-service` + 양쪽 `/actuator/health` 200
+    2. product-service Flyway V1 적용 + Stock 테이블 존재 확인
+    3. user-service Flyway V1 적용 + User 테이블 존재 확인
+    4. product-service에서 상품 생성 API 호출 → payment-service Redis에 `stock:{id}` SET 확인 (keyspace 직접 조회)
+    5. `payment.events.stock-committed` 수동 발행 → product-service StockCommitConsumer 수신 → RDB UPDATE + payment Redis SET 확인
+    6. 동일 eventUUID 2회 발행 → 1회만 처리 (dedupe)
+    7. `stock.restore` 이벤트 수동 발행 → StockRestoreConsumer 수신 → 재고 복원 확인 + dedupe 검증
+    8. Gateway → product/user 엔드포인트 200 응답 (Phase-3.5 라우팅)
+    9. Saga 보상 경로 E2E: 결제 QUARANTINED → stock.restore 발행 → product 재고 복원 → payment Redis INCR 확인
+  - `docs/phase-gate/phase-3-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 3 재검토 항목 목록
+
+---
+
 ## Phase 4 — 장애 주입 검증 · 로컬 오토스케일러
 
 **목적**: 전 ADR 교차 검증. 이 Phase 통과가 본 토픽 최종 성공 조건. Toxiproxy 기반 장애 시나리오, k6 재설계, 로컬 오토스케일러 코드.
@@ -1021,6 +1120,23 @@ flowchart LR
 
 ---
 
+### Phase-4-Gate — 장애 주입 + 부하 검증
+
+- **제목**: Phase 4 장애 주입 + 부하 검증 — 다음 Phase 진입 가능 여부 판정
+- **목적**: Phase 4 전 태스크(Phase-4.1 ~ Phase-4.3) 완료 후 Toxiproxy 8종 장애 시나리오 전수 통과, k6 분산 경로별 TPS/레이턴시 목표 달성, 오토스케일러 scale up/down이 실관측 가능함을 검증. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-4-gate.sh` — 다음 항목 자동 검증:
+    1. Toxiproxy 8종 시나리오 스크립트(`chaos/scenarios/*.sh`)를 순차 실행 → 각 시나리오 성공 기준 (FCG 발동, 보상 이벤트 발행, Reconciler 복원 등) 전수 확인
+    2. k6 테스트 스위트 실행 → Phase-4.2 정의 경로별 TPS/p95 레이턴시 목표 달성 여부 판정
+    3. Prometheus에서 `payment.outbox.pending_age_seconds` · `payment.stock_cache.divergence_count` 임계값 초과 시 오토스케일러가 payment-service scale up 수행 확인 (`docker ps` 인스턴스 증가)
+    4. 부하 해소 후 scale down 수행 확인
+  - `docs/phase-gate/phase-4-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 4 재검토 항목 목록
+
+---
+
 ## Phase 5 — 잔재 정리
 
 **목적**: Admin UI 처리, 공통 문서 최종화, 관측성 메트릭 네이밍 정비.
@@ -1049,13 +1165,34 @@ flowchart LR
 ### Phase-5.2 — LogFmt 공통화 완결 + 최종 문서화
 
 - **제목**: LogFmt/MaskingPatternLayout 복제 방침(Phase-0.3) 전 서비스 적용 확인 + 아카이브
-- **목적**: ADR-19(LogFmt 공통화) — Phase 0.3에서 확정된 복제(b) 방침대로 각 서비스 `logback-spring.xml`에 `MaskingPatternLayout` 적용 확인. 본 토픽 `docs/topics/MSA-TRANSITION.md` → `docs/archive/` 이동.
+- **목적**: ADR-19(LogFmt 공통화) — Phase 0.3에서 확정된 복제(b) 방침대로 각 서비스 `logback-spring.xml`에 `MaskingPatternLayout` 적용 확인. 본 토픽 `docs/topics/MSA-TRANSITION.md` → `docs/archive/` 이동. 아카이브 형식은 프로젝트 관례(`docs/archive/<topic-kebab>/` 디렉토리)를 따라 `docs/archive/msa-transition/`로 이동하며, topic.md · PLAN.md · 라운드 문서 전체를 묶어 보존한다.
 - **tdd**: false
 - **domain_risk**: false
 - **크기**: ≤ 2h
 - **산출물**:
   - 각 서비스 `src/main/resources/logback-spring.xml` — `MaskingPatternLayout` 적용 확인
-  - `docs/archive/MSA-TRANSITION.md` — 아카이브 이동
+  - `docs/archive/msa-transition/` — 아카이브 디렉토리 신설
+  - `docs/archive/msa-transition/MSA-TRANSITION.md` — `docs/topics/MSA-TRANSITION.md` 이동
+  - `docs/archive/msa-transition/MSA-TRANSITION-PLAN.md` — `docs/MSA-TRANSITION-PLAN.md` 이동
+  - `docs/archive/msa-transition/rounds/` — `docs/rounds/msa-transition/` 전체 이동 (discuss-*.md · plan-*.md · plan-review-*.md · 추후 code/review/verify 라운드 문서)
+
+---
+
+### Phase-5-Gate — 최종 회귀 및 아카이브 완결
+
+- **제목**: Phase 5 최종 회귀 및 아카이브 완결 검증 — MSA-TRANSITION 토픽 verify 단계 선행 조건
+- **목적**: Phase 5 전 태스크(Phase-5.1 ~ Phase-5.2) 완료 후 전체 회귀 테스트 통과, 문서 cross-reference 무결성 확인, archive 이동 완결을 검증. 이 Gate 통과가 MSA-TRANSITION 토픽 전체 verify 단계의 선행 조건이 됨. 실패 시 해당 Phase 재수정 루프.
+- **tdd**: false
+- **domain_risk**: true
+- **크기**: ≤ 2h
+- **산출물**:
+  - `scripts/phase-gate/phase-5-gate.sh` — 다음 항목 자동 검증:
+    1. `./gradlew test` 전체 모듈 통과
+    2. 이전 Phase 0~4 Gate 스크립트 전수 재실행 → 모두 pass (회귀 없음)
+    3. k6 최종 회귀 시나리오 1회 → 목표 유지
+    4. docs/ 내 dead link 검사 (간단한 markdown link checker)
+    5. archive 이동 확인 (`docs/archive/msa-transition/` 존재, `docs/topics/MSA-TRANSITION.md` · `docs/MSA-TRANSITION-PLAN.md` 이동 완료)
+  - `docs/phase-gate/phase-5-gate.md` — 성공 기준 · 실행 방법 · 실패 시 Phase 5 재검토 항목 목록
 
 ---
 
@@ -1077,14 +1214,16 @@ flowchart LR
 | **S-2 StockCommitEvent 발행 공백 (Round 5 신규)** | 결제 확정 시 `payment.events.stock-committed` 발행 → product-service RDB UPDATE. 포트 선언 + Kafka 구현체 + consumer dedupe | Phase-1.1, Phase-1.5b, Phase-3.1c | true |
 | **S-3 Reconciler 재고 대조 공백 (Round 5 신규)** | Redis ↔ RDB 대조 알고리즘, QUARANTINED DECR 복원, TTL 기반 자동 복원, warmup 경로 | Phase-1.9, Phase-1.12, Phase-3.1, Phase-4.1 | true |
 | **S-4 멱등성 저장소 MSA 스케일링 공백 (Round 5 신규)** | Caffeine 로컬 캐시 → Redis 이관, SETNX 동시성 방어, horizontal stateless 보장 | Phase-0.1a | true |
+| **Phase Gate 통합 검증 (Phase Gate 신규)** | 각 Phase의 설계 결정이 실제 E2E 수준에서 작동하는지 통합 smoke/integration 검증. 특정 ADR에 1:1 매핑되지 않으며 전 ADR의 E2E 검증 성격 (통합 검증 범주) | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate | true |
 
 ---
 
 ## 반환 지표
 
-- **태스크 총 개수**: 40
-- **domain_risk=true 태스크 개수**: 19
+- **태스크 총 개수**: 46
+- **domain_risk=true 태스크 개수**: 25
   - Phase-0.1a, Phase-1.3, Phase-1.4, Phase-1.4d, Phase-1.4b, Phase-1.4c, Phase-1.5, Phase-1.5b, Phase-1.6, Phase-1.7, Phase-1.9, Phase-1.10, Phase-1.11, Phase-1.12, Phase-2.3, Phase-2.3b, Phase-3.1c, Phase-3.3, Phase-4.1
+  - Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate (Gate 6개 신규)
   - (Phase-3.4, Phase-3.1b 등은 `domain_risk=false` — 본 집계 제외)
 - **topic.md 결정 중 태스크로 매핑하지 못한 항목**: 없음 (orphan 없음)
 - **Round 5 신규 공백 해소 현황**:
@@ -1092,6 +1231,7 @@ flowchart LR
   - S-2 StockCommitEvent 발행: Phase-1.1(port) + Phase-1.5b(발행자) + Phase-3.1c(consumer + Redis 직접 쓰기) → 완전 매핑
   - S-3 Reconciler 재고 대조: Phase-1.9(대조 알고리즘) + Phase-1.12(warmup) + Phase-3.1(snapshot 훅) + Phase-4.1(chaos 검증) → 완전 매핑
   - S-4 멱등성 MSA 스케일링: Phase-0.1a(Redis 이관) → 완전 매핑
+- **Phase Gate 신규 추가 (6개)**: Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate — 전 Phase Gate domain_risk=true (통합 정합성 검증 성격). 각 Gate 스크립트 경로: `scripts/phase-gate/phase-<N>-gate.sh`. 성공 기준 문서: `docs/phase-gate/phase-<N>-gate.md`.
 
 ---
 
@@ -1132,3 +1272,4 @@ flowchart LR
 | **S-2 StockCommitEvent 발행 (Round 5 신규 — ADR 부재)** | Phase-1.1, Phase-1.5b, Phase-3.1c |
 | **S-3 Reconciler 재고 대조 (Round 5 신규 — ADR 부재)** | Phase-1.9, Phase-1.12, Phase-3.1, Phase-4.1 |
 | **S-4 멱등성 MSA 스케일링 (Round 5 신규 — ADR-16 연계)** | Phase-0.1a |
+| **Phase Gate 통합 검증 (Phase Gate 신규 — 전 ADR E2E 검증 성격, 특정 ADR 1:1 매핑 없음)** | Phase-0-Gate, Phase-1-Gate, Phase-2-Gate, Phase-3-Gate, Phase-4-Gate, Phase-5-Gate |
