@@ -43,6 +43,9 @@ dependencies {
     // Redis (ADR-16: distributed idempotency store)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // Kafka (ADR-02, ADR-11: payment 도메인 이벤트 발행)
+    implementation 'org.springframework.kafka:spring-kafka'
+
     // Monitoring
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"

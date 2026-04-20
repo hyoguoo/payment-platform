@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.dto.PageResponse;
 import com.hyoguoo.paymentplatform.core.common.dto.PageSpec;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventSearchQuery;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentHistorySearchQuery;
-import com.hyoguoo.paymentplatform.payment.application.port.AdminPaymentQueryRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.AdminPaymentQueryRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentHistory;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;

@@ -4,7 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
+import com.hyoguoo.paymentplatform.payment.application.port.out.IdempotencyStore;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;

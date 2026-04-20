@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
+import com.hyoguoo.paymentplatform.payment.application.port.out.IdempotencyStore;
 import java.util.List;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;

@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentHistoryRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentHistoryRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentHistory;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentHistoryEvent;
 import lombok.RequiredArgsConstructor;

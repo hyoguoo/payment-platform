@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.port;
+package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentHistory;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;

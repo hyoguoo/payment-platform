@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.port;
+package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.core.common.dto.PageResponse;
 import com.hyoguoo.paymentplatform.core.common.dto.PageSpec;

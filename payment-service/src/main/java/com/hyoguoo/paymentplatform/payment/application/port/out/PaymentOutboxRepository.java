@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.port;
+package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import java.time.LocalDateTime;
@@ -16,5 +16,4 @@ public interface PaymentOutboxRepository {
     List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before);
 
     boolean claimToInFlight(String orderId, LocalDateTime inFlightAt);
-
 }

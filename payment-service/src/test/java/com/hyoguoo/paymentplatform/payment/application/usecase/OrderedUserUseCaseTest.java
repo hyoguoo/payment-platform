@@ -5,7 +5,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.payment.application.port.UserPort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

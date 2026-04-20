@@ -6,7 +6,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
+import com.hyoguoo.paymentplatform.payment.application.port.out.IdempotencyStore;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedUserUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCreateUseCase;

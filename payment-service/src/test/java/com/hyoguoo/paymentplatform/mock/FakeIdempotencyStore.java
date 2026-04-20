@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.mock;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.port.IdempotencyStore;
+import com.hyoguoo.paymentplatform.payment.application.port.out.IdempotencyStore;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 

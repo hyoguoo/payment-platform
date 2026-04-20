@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import java.util.List;

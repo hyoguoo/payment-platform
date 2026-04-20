@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.application.port.UserPort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

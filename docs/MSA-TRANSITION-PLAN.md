@@ -506,12 +506,21 @@ flowchart TB
 - **domain_risk**: false
 - **depends**: [T1-01]
 - **산출물**:
-  - `settings.gradle` — `include 'payment-service'`
-  - `payment-service/build.gradle` — spring-boot-starter-web, virtual threads, spring-kafka, spring-data-redis
-  - `payment-service/src/main/java/.../payment/application/port/out/MessagePublisherPort.java`
-  - `payment-service/src/main/java/.../payment/application/port/out/StockCommitEventPublisherPort.java`
-  - `payment-service/src/main/java/.../payment/application/port/out/` — 기존 port 일괄 `out/` 이동
-  - `payment-service/src/main/java/.../payment/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈(`payment.events.stock-committed` 포함)
+  - [x] `settings.gradle` — `include 'payment-service'` (T0-03a에서 이미 존재. no-op)
+  - [x] `payment-service/build.gradle` — `spring-kafka` 의존성 추가 (기존에 누락)
+  - [x] `payment-service/src/main/java/.../payment/application/port/out/MessagePublisherPort.java`
+  - [x] `payment-service/src/main/java/.../payment/application/port/out/StockCommitEventPublisherPort.java`
+  - [x] `payment-service/src/main/java/.../payment/application/port/out/` — 기존 port 8개 `out/` 이동 + import 전수 수정
+  - [x] `payment-service/src/main/java/.../payment/infrastructure/config/KafkaTopicConfig.java` — NewTopic 빈 4개 (`payment.events.stock-committed` 포함), `@ConditionalOnProperty` 테스트 가드
+
+**완료 결과 (2026-04-21)**
+- 신규 port 2개: `MessagePublisherPort`, `StockCommitEventPublisherPort` (`port/out/` 하위)
+- 기존 port 8개 `port/` → `port/out/` 이동: `UserPort`, `ProductPort`, `IdempotencyStore`, `PaymentHistoryRepository`, `PaymentEventRepository`, `PaymentOrderRepository`, `PaymentOutboxRepository`, `AdminPaymentQueryRepository`
+- import 수정 파일 수: 23개 (application UseCase 8, application Service 1, metrics 2, infrastructure repository 5, infrastructure idempotency 2, infrastructure internal adapter 2, test mock 2, test usecase 3)
+- 구 `PaymentGatewayPort` (`port/` 바로 아래, `getStatus`/`getStatusByOrderId` 포함): T2에서 제거 예정으로 유지
+- `build.gradle` — `spring-kafka` 추가 (기존에 누락됨)
+- `KafkaTopicConfig.java` — NewTopic 빈 4개 (파티션 3, 복제 1, create-topics.sh 일치), `@ConditionalOnProperty(spring.kafka.bootstrap-servers)` 가드
+- 테스트: 372/372 PASS
 
 ---
 
