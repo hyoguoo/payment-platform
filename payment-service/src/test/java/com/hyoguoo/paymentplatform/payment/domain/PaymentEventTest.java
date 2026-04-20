@@ -718,6 +718,39 @@ class PaymentEventTest {
                 .isInstanceOf(PaymentStatusException.class);
     }
 
+    // T1-04: 스펙 지정 테스트 메서드 (QUARANTINED non-terminal 설계 검증)
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "EXPIRED"})
+    @DisplayName("execute() 호출 시 종결 상태(DONE/FAILED/CANCELED/EXPIRED)에서 PaymentStatusException을 던진다.")
+    void execute_ThrowsException_WhenTerminalStatus(PaymentEventStatus terminalStatus) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                terminalStatus, PaymentOrderStatus.EXECUTING);
+        LocalDateTime executedAt = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.execute("key", executedAt, LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING", "QUARANTINED"})
+    @DisplayName("quarantine() 호출 시 비종결 상태(QUARANTINED 포함)에서 QUARANTINED 전이 성공한다.")
+    void quarantine_AlwaysSucceeds_FromAnyNonTerminal(PaymentEventStatus nonTerminalStatus) {
+        // given — QUARANTINED가 non-terminal이어야 이 테스트가 GREEN
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                nonTerminalStatus, PaymentOrderStatus.EXECUTING);
+        String reason = "복구 워커 보정 대기";
+
+        // when
+        paymentEvent.quarantine(reason, LocalDateTime.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
+    }
+
     @ParameterizedTest
     @EnumSource(PaymentGatewayType.class)
     @DisplayName("create() 호출 시 전달한 gatewayType이 getGatewayType()으로 반환된다.")

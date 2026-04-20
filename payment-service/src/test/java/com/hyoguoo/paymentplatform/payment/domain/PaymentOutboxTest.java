@@ -205,6 +205,50 @@ class PaymentOutboxTest {
         }
     }
 
+    // T1-04: 스펙 지정 테스트 메서드
+
+    @Nested
+    @DisplayName("T1-04 스펙 지정 전이 테스트")
+    class T1Spec04Test {
+
+        @Test
+        @DisplayName("toDone_ChangesStatusToProcessed: IN_FLIGHT 상태에서 toDone() 호출 시 status=DONE으로 변경된다.")
+        void toDone_ChangesStatusToProcessed() {
+            // given
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .orderId("order-spec-04")
+                    .status(PaymentOutboxStatus.IN_FLIGHT)
+                    .retryCount(0)
+                    .allArgsBuild();
+
+            // when
+            outbox.toDone();
+
+            // then
+            assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.DONE);
+        }
+
+        @Test
+        @DisplayName("nextRetryAt_ComputedCorrectly_ForExponentialBackoff: EXPONENTIAL 정책으로 nextRetryAt이 2^n * baseDelay로 계산된다.")
+        void nextRetryAt_ComputedCorrectly_ForExponentialBackoff() {
+            // given — retryCount=1에서 시작, 증가 후 retryCount=2 → delay = 1000 * 2^2 = 4000ms
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .orderId("order-spec-04-exp")
+                    .status(PaymentOutboxStatus.IN_FLIGHT)
+                    .retryCount(1)
+                    .allArgsBuild();
+            RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
+            LocalDateTime now = LocalDateTime.of(2024, 6, 1, 0, 0, 0);
+
+            // when
+            outbox.incrementRetryCount(policy, now);
+
+            // then — retryCount=2, nextDelay = 1000 * 2^2 = 4000ms = 4초
+            assertThat(outbox.getRetryCount()).isEqualTo(2);
+            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(4));
+        }
+    }
+
     private PaymentOutbox createOutboxWithStatus(PaymentOutboxStatus status) {
         return PaymentOutbox.allArgsBuilder()
                 .orderId("order-1")
