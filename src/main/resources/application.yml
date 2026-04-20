@@ -6,6 +6,11 @@ spring:
     virtual:
       enabled: true
 
+  data:
+    redis:
+      host: ${REDIS_PAYMENT_HOST:localhost}
+      port: ${REDIS_PAYMENT_PORT:6379}
+
   jpa:
     open-in-view: false
     properties:

@@ -27,7 +27,7 @@
 **Phase 0 — 인프라 준비** (6개)
 
 - ✅ T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
-- T0-02 Idempotency 저장소 Caffeine → Redis 이관
+- ✅ T0-02 Idempotency 저장소 Caffeine → Redis 이관
 - T0-03 Spring Cloud Gateway 서비스 모듈 신설
 - T0-04 W3C Trace Context + LogFmt 공통 기반
 - T0-05 Toxiproxy 장애 주입 도구 구성
@@ -301,6 +301,13 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java`
   - `payment-service/src/main/resources/application.yml` — `spring.data.redis.host: redis-payment`
+
+- **완료 결과** (2026-04-21):
+  - `src/main/java/.../payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java` 신설 (`@Primary`, Lua script 2단계 원자 연산)
+  - `src/main/resources/application.yml` — `spring.data.redis.host/port` 추가 (기본값 localhost)
+  - `build.gradle` — `spring-boot-starter-data-redis` 추가 (Caffeine 유지)
+  - `src/main/java/.../payment/application/dto/response/CheckoutResult.java` — `@JsonDeserialize/@JsonPOJOBuilder` 추가 (Jackson 역직렬화 지원)
+  - 테스트 4개 신설, 전체 372개 PASS
 
 ---
 
