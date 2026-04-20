@@ -77,8 +77,8 @@
 ```mermaid
 flowchart TB
     subgraph P0["Phase 0 — 인프라"]
-        P01[Phase-0.1<br/>Kafka / Redis 공유 + payment 전용 Redis<br/>keyspace: stock:{id} · idem:{key}]
-        P01a[Phase-0.1a<br/>멱등성 Redis 이관<br/>Caffeine → RedisIdempotencyAdapter<br/>SETNX 동시성 방어]
+        P01[Phase-0.1<br/>Kafka / Redis 공유 + payment 전용 Redis<br/>keyspace: stock:id / idem:key]
+        P01a[Phase-0.1a<br/>멱등성 Redis 이관<br/>Caffeine -> RedisIdempotencyAdapter<br/>SETNX 동시성 방어]
         P02[Phase-0.2<br/>Gateway WebFlux/Netty]
         P03[Phase-0.3<br/>Trace Context / LogFmt]
         P04[Phase-0.4<br/>Toxiproxy]
@@ -146,7 +146,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     Client[클라이언트] --> GW[API Gateway<br/>WebFlux/Netty<br/>traceparent 주입]
-    GW -->|결제 confirm/cancel| PAY[결제 서비스<br/>MVC+VT<br/>FCG · 릴레이 · 감사]
+    GW -->|결제 confirm/cancel| PAY[결제 서비스<br/>MVC+VT<br/>FCG / 릴레이 / 감사]
     GW -->|PG getStatus| PG[PG 서비스<br/>MVC+VT<br/>Toss/NicePay 전략]
     GW -->|상품 조회/차감| PROD[상품 서비스<br/>MVC+VT<br/>보상 consumer dedupe]
     GW -->|사용자 조회| USR[사용자 서비스<br/>MVC+VT]
@@ -160,10 +160,10 @@ flowchart LR
     KAFKA -->|stock-committed consume| PROD
 
     PAY --> PAYDB[(결제 DB<br/>payment_event<br/>payment_outbox<br/>payment_history)]
-    PAY -->|재고 캐시 차감 DECR| PREDIS[(payment 전용 Redis<br/>stock:{productId}<br/>idem:{key}<br/>appendonly yes)]
+    PAY -->|재고 캐시 차감 DECR| PREDIS[(payment 전용 Redis<br/>stock:productId<br/>idem:key<br/>appendonly yes)]
     PG --> PGDB[(PG DB)]
     PROD --> PRODDB[(상품 DB<br/>event_dedupe)]
-    PROD -->|직접 SET stock:{id}| PREDIS
+    PROD -->|직접 SET stock:id| PREDIS
     USR --> USRDB[(사용자 DB)]
     ADMIN --> ADMINDB[(모놀리스 DB<br/>Phase 5 잔재)]
 
