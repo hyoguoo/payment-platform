@@ -26,7 +26,7 @@
 
 **Phase 0 — 인프라 준비** (6개)
 
-- T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
+- ✅ T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
 - T0-02 Idempotency 저장소 Caffeine → Redis 이관
 - T0-03 Spring Cloud Gateway 서비스 모듈 신설
 - T0-04 W3C Trace Context + LogFmt 공통 기반
@@ -266,7 +266,10 @@ flowchart TB
 
 ---
 
-### T0-01 — docker-compose 기반 인프라 정의
+### T0-01 — docker-compose 기반 인프라 정의 ✅ 완료 (2026-04-21)
+
+<!-- done: 2026-04-21 -->
+**완료 결과**: docker-compose.infra.yml(Kafka KRaft·Redis·redis-payment AOF·Eureka·MySQL), docker-compose.observability.yml(Prometheus·Grafana·kafka-exporter·Tempo·Loki), settings.gradle 멀티모듈 플레이스홀더, chaos/grafana/payment-dashboard.json(6패널 스켈레톤), docs/phase-gate/kafka-topic-config.sh(ADR-30 파티션 동일성·retry 토픽 미존재 검증) 생성. `./gradlew test` 회귀 없음.
 
 - **제목**: Kafka + 공유 Redis + payment 전용 Redis + Config Server + Discovery + 관측성 컨테이너 구성
 - **목적**: ADR-10(compose 토폴로지), ADR-11(Spring Cloud 매트릭스), ADR-27(로컬 DX), ADR-31(관측성 5개 컴포넌트) — Kafka 브로커(KRaft 또는 ZK), 공유 Redis, payment-service 전용 Redis(`redis-payment`, AOF), Eureka(잠정), Config Server, Prometheus, Grafana(Grafana 결제 대시보드 스켈레톤: `published_total vs terminal_total`, DLQ 유입률, `pg_outbox.future_pending_count`, `oldest_pending_age_seconds`, `attempt_count` 분포, invariant 불일치 위젯 포함), kafka-exporter, Tempo, Loki 컨테이너를 `docker-compose.infra.yml` + `docker-compose.observability.yml`로 분리 정의. 토픽 3개(`payment.commands.confirm`, `payment.commands.confirm.dlq`, `payment.events.confirmed`) 동일 파티션 수, `replication.factor=3`, `min.insync.replicas=2`. retry 전용 토픽 미생성(ADR-30 방침). `settings.gradle` 루트 멀티모듈 구조 준비. 알림 4종(ADR-31) 정의 파일. PG 서비스는 무상태(DB 없음) — pg 전용 MySQL 미포함.

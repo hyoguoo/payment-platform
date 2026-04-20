@@ -1,0 +1,168 @@
+# MSA-TRANSITION Phase 0 — 인프라 컨테이너 정의
+# ADR-10(compose 토폴로지), ADR-27(로컬 DX)
+#
+# Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
+#   replication.factor=3
+#   min.insync.replicas=2
+# 현재 로컬 단일 브로커는 편의상 rf=1, 개발·통합테스트 전용.
+#
+# 토픽 3개 (동일 파티션 수 전제 — ADR-30):
+#   payment.commands.confirm
+#   payment.commands.confirm.dlq
+#   payment.events.confirmed
+# retry 전용 토픽 미생성 (ADR-30 방침 — retry는 DLQ 재처리로 대체)
+# 실제 토픽 생성은 T0-01b 스크립트에서 수행
+
+services:
+
+  # ───────────────────────────────────────────
+  # Kafka (KRaft 모드 — ZooKeeper 불필요)
+  # ───────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: payment-kafka
+    hostname: kafka
+    environment:
+      # KRaft 설정
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
+      # 브로커 설정
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1        # 로컬 단일 브로커용; 프로덕션=3
+      KAFKA_MIN_INSYNC_REPLICAS: 1               # 프로덕션=2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_NUM_PARTITIONS: 3
+      # JVM
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ───────────────────────────────────────────
+  # 공유 Redis — 범용 캐시 (stock:{id} 등)
+  # ───────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: payment-redis-shared
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-shared-data:/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # payment 전용 Redis — AOF 내구성 on
+  # keyspace:
+  #   stock:{productId}   — 재고 캐시 (Lua atomic DECR)
+  #   idem:{key}          — 멱등성 키 (SETNX + TTL)
+  # ───────────────────────────────────────────
+  redis-payment:
+    image: redis:7.2-alpine
+    container_name: payment-redis-payment
+    command:
+      - redis-server
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--save"
+      - "60 1"
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-payment-data:/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # Eureka Discovery Server (잠정 — ADR-11)
+  # ───────────────────────────────────────────
+  eureka:
+    image: springcloud/eureka
+    container_name: payment-eureka
+    ports:
+      - "8761:8761"
+    environment:
+      eureka.client.register-with-eureka: "false"
+      eureka.client.fetch-registry: "false"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ───────────────────────────────────────────
+  # MySQL (기존 모놀리스 payment-service 용)
+  # ───────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment-platform
+      MYSQL_USER: ${MYSQL_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-payment123}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+networks:
+  payment-infra-network:
+    driver: bridge
+    name: payment-infra-network
+
+volumes:
+  kafka-data:
+    driver: local
+  redis-shared-data:
+    driver: local
+  redis-payment-data:
+    driver: local
+  mysql-data:
+    driver: local

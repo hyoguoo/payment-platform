@@ -1,0 +1,147 @@
+# MSA-TRANSITION Phase 0 — 관측성 컨테이너 정의
+# ADR-31(관측성 5개 컴포넌트): Prometheus, Grafana, kafka-exporter, Tempo, Loki
+#
+# 사용법:
+#   docker compose -f docker-compose.infra.yml -f docker-compose.observability.yml up -d
+#
+# Grafana 기본 접속:
+#   URL:      http://localhost:3000
+#   ID/PW:    admin / admin123  (GF_SECURITY_ADMIN_* 환경변수로 변경 가능)
+
+services:
+
+  # ───────────────────────────────────────────
+  # Prometheus — 메트릭 수집
+  # ───────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: payment-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./chaos/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────
+  # Grafana — 대시보드 시각화
+  # ───────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: payment-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    volumes:
+      - ./chaos/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./chaos/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - payment-infra-network
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ───────────────────────────────────────────
+  # kafka-exporter — Kafka 메트릭 → Prometheus
+  # ───────────────────────────────────────────
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: payment-kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--web.listen-address=:9308"
+    ports:
+      - "9308:9308"
+    networks:
+      - payment-infra-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────
+  # Tempo — 분산 트레이싱 백엔드 (OTLP)
+  # ───────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.4.2
+    container_name: payment-tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./chaos/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"    # Tempo HTTP API
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3200/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────
+  # Loki — 로그 집계 백엔드
+  # ───────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.7
+    container_name: payment-loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./chaos/loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  tempo-data:
+    driver: local
+  loki-data:
+    driver: local

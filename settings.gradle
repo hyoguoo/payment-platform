@@ -1,1 +1,19 @@
 rootProject.name = 'payment-platform'
+
+// ── MSA-TRANSITION: 향후 include될 서비스 모듈 (Phase별 점진 활성화) ──
+// 현재는 루트 단일모듈로 운영. 각 Phase 진입 시 주석 해제.
+//
+// Phase 0 (T0-03):
+// include 'gateway'
+//
+// Phase 1 (T1-02):
+// include 'payment-service'
+//
+// Phase 2 (T2-01):
+// include 'pg-service'
+//
+// Phase 3 (T3-01):
+// include 'product-service'
+// include 'user-service'
+//
+// 주의: include 활성화 전 각 모듈의 build.gradle과 Application 클래스 준비 필요.
