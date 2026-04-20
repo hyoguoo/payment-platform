@@ -33,7 +33,7 @@
 - ✅ T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - ✅ T0-04 W3C Trace Context + LogFmt 공통 기반
 - ✅ T0-05 Toxiproxy 장애 주입 도구 구성
-- T0-Gate Phase 0 인프라 smoke 검증
+- ✅ T0-Gate Phase 0 인프라 smoke 검증
 
 **Phase 1 — 결제 코어 분리** (20개)
 
@@ -441,8 +441,17 @@ flowchart TB
 - **domain_risk**: true
 - **depends**: [T0-01, T0-02, T0-03, T0-04, T0-05]
 - **산출물**:
-  - `scripts/phase-gate/phase-0-gate.sh` — healthcheck 전수, Redis SETNX 원자성, Kafka 토픽 파티션 수 동일, Toxiproxy `/proxies` 200
-  - `docs/phase-gate/phase-0-gate.md`
+  - [x] `scripts/phase-gate/phase-0-gate.sh` — healthcheck 전수, Redis SETNX 원자성, Kafka 토픽 파티션 수 동일, Toxiproxy `/proxies` 200
+  - [x] `scripts/phase-gate/create-topics.sh` — Kafka 토픽 3개 멱등 생성 (T0-01b 역할)
+  - [x] `docs/phase-gate/phase-0-gate.md`
+
+#### 완료 결과 (2026-04-21)
+
+- `scripts/phase-gate/phase-0-gate.sh` — `set -euo pipefail`. 전제조건(docker/curl/jq) + 컨테이너 6개 running 확인 + Kafka 브로커 응답 + 토픽 3개 존재 + 파티션 수 동일(ADR-30) + 공유 Redis PING + 결제 Redis PING·AOF(appendonly=yes) + SETNX 원자성(SET NX 두 번 → OK/(nil)) + MySQL mysqladmin ping + Eureka /actuator/health UP + Toxiproxy /proxies 3개 키(kafka-proxy/mysql-proxy/redis-payment-proxy) 확인. macOS grep -P 미지원 이슈 → awk로 PartitionCount 파싱. 총 29개 체크.
+- `scripts/phase-gate/create-topics.sh` — payment.commands.confirm / payment.commands.confirm.dlq / payment.events.confirmed 토픽 생성(partitions=3, rf=1). 멱등(이미 존재하면 SKIP).
+- `docs/phase-gate/phase-0-gate.md` — 체크리스트 19항목, 실행 절차, FAIL 케이스별 원인·조치, 프로덕션 편차(rf=1→3, min.insync=1→2).
+- **gate 실행 결과**: PASS 29 / FAIL 0. `[GATE PASS] Phase 1 진입 가능.` (2026-04-21 확인)
+- `./gradlew test` BUILD SUCCESSFUL (17 tasks up-to-date) — 애플리케이션 코드 변경 없음, 회귀 없음.
 
 ---
 
