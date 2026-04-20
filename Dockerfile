@@ -6,8 +6,8 @@ WORKDIR /app
 # Create log directory
 RUN mkdir -p /var/log/app
 
-# Copy JAR from host (pre-built via ./gradlew build)
-COPY build/libs/*.jar app.jar
+# Copy JAR from host (pre-built via ./gradlew :payment-service:build)
+COPY payment-service/build/libs/*.jar app.jar
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

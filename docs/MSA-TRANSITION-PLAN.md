@@ -28,7 +28,7 @@
 
 - ✅ T0-01 docker-compose 기반 인프라 정의 (Kafka·Redis·Gateway·관측성)
 - ✅ T0-02 Idempotency 저장소 Caffeine → Redis 이관
-- T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
+- ✅ T0-03a 루트 멀티모듈 전환 (src → payment-service, subprojects 공통 블록)
 - T0-03b Spring Cloud Gateway 서비스 모듈 신설
 - T0-03c Eureka Server 서비스 모듈 신설 (자체 모듈 + compose 교체)
 - T0-04 W3C Trace Context + LogFmt 공통 기반
@@ -327,6 +327,15 @@ flowchart TB
   - `payment-service/build.gradle` — 기존 application 의존성(web, webflux, jpa, redis, caffeine, querydsl, prometheus, logstash, testcontainers)
   - `Dockerfile` — `COPY src/` → `COPY payment-service/src/`, build 경로 `payment-service/build/libs/*.jar`
   - `config/` — checkstyle/spotbugs 공유 디렉토리 유지, 경로 참조만 루트 기준으로 갱신
+
+- **완료 결과** (2026-04-21):
+  - `git mv src payment-service/src` — rename 추적 보존, 소스 코드 수정 없음
+  - `build.gradle` — 루트 parent 재구성 (subprojects 공통 블록: Java 21, Lombok, Checkstyle, SpotBugs, JaCoCo, Spring BOM)
+  - `payment-service/build.gradle` 신설 — application 의존성(web, webflux, jpa, redis, caffeine, querydsl, prometheus, logstash, testcontainers) + integrationTest/jacocoTestReport/spotbugs 태스크
+  - `settings.gradle` — `include 'payment-service'` 실제 include로 교체
+  - `Dockerfile` — COPY 경로 `payment-service/build/libs/*.jar` 갱신
+  - `.gitignore` — QueryDSL generated 경로 `/payment-service/src/main/generated/`로 갱신
+  - `./gradlew clean` / `:payment-service:compileJava` / `test` (372 PASS) / `:payment-service:bootJar` 전부 성공
 
 ### T0-03b — Spring Cloud Gateway 서비스 모듈 신설
 
