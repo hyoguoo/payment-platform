@@ -7,19 +7,38 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * PgOutboxRepository Fake — DB 없이 application 계층 테스트용.
  *
  * <p>Thread-safe: ConcurrentHashMap.
  * ADR-30: available_at 기반 지연 발행 조건을 인메모리에서 그대로 재현.
+ * id=null인 경우 auto-increment ID를 생성한다 (실제 DB auto-generated ID 모사).
  */
 public class FakePgOutboxRepository implements PgOutboxRepository {
 
     private final ConcurrentHashMap<Long, PgOutbox> store = new ConcurrentHashMap<>();
+    private final AtomicLong idSequence = new AtomicLong(1L);
 
     @Override
     public PgOutbox save(PgOutbox outbox) {
+        if (outbox.getId() == null) {
+            // id=null → auto-increment ID 부여 (DB auto-generated ID 모사)
+            long newId = idSequence.getAndIncrement();
+            PgOutbox withId = PgOutbox.of(
+                    newId,
+                    outbox.getTopic(),
+                    outbox.getKey(),
+                    outbox.getPayload(),
+                    outbox.getHeadersJson(),
+                    outbox.getAvailableAt(),
+                    outbox.getProcessedAt(),
+                    outbox.getAttempt(),
+                    outbox.getCreatedAt());
+            store.put(newId, withId);
+            return withId;
+        }
         store.put(outbox.getId(), outbox);
         return outbox;
     }
@@ -69,5 +88,6 @@ public class FakePgOutboxRepository implements PgOutboxRepository {
 
     public void reset() {
         store.clear();
+        idSequence.set(1L);
     }
 }

@@ -68,8 +68,11 @@
 - ✅ T2a-05a PgEventPublisher + PgOutboxRelayService 구현
 - ✅ T2a-05b PgOutboxChannel + OutboxReadyEventHandler 구현
 - ✅ T2a-05c PgOutboxImmediateWorker + PgOutboxPollingWorker 구현
-- T2a-06 PaymentConfirmConsumer + consumer dedupe
+- ✅ T2a-06 PaymentConfirmConsumer + consumer dedupe
 - T2a-Gate Phase 2.a 마이크로 Gate
+
+**완료 결과 — T2a-06** (2026-04-21):
+EventDedupeStore 포트(markSeen) + FakeEventDedupeStore(ConcurrentHashSet) 신설. PgInboxRepository에 transitNoneToInProgress(orderId, amount): boolean CAS 메서드 추가. FakePgInboxRepository에 putIfAbsent + compute 기반 원자 전이 구현. FakePgOutboxRepository에 id=null auto-increment 처리 추가. PgConfirmService(application/service): handle(PgConfirmCommand) — eventUUID dedupe(1단) → inbox 5상태 분기(2단): NONE→CAS 전이+PG 호출, IN_PROGRESS→no-op, terminal→stored_status_result pg_outbox 재발행(벤더 호출 금지). PaymentConfirmConsumer(infrastructure/messaging/consumer): @KafkaListener(payment.commands.confirm, pg-service) + @ConditionalOnProperty(spring.kafka.bootstrap-servers). PaymentConfirmConsumerTest 5케이스 전부 GREEN: TC1(NONE→PG 1회), TC2(IN_PROGRESS no-op), TC3(terminal 3종 재발행), TC4(eventUUID dedupe), TC5(동시성 8스레드→PG 1회). 전체 418/418 PASS(payment-service 395 + pg-service 23), 회귀 없음.
 
 **Phase 2.b — business inbox 5상태 + amount 컬럼 + 벤더 어댑터 통합** (6개)
 

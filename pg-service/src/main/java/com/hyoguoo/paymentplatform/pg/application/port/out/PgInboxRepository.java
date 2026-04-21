@@ -13,4 +13,18 @@ public interface PgInboxRepository {
     Optional<PgInbox> findByOrderId(String orderId);
 
     PgInbox save(PgInbox inbox);
+
+    /**
+     * NONE → IN_PROGRESS compare-and-set 원자 전이.
+     * ADR-04(2단 멱등성): 최초 소비 스레드만 true를 얻고 PG 호출로 진입한다.
+     * 이미 NONE이 아닌(즉, 이미 선점된) 경우 false를 반환한다.
+     *
+     * <p>실제 구현체(JPA): SELECT FOR UPDATE 또는 INSERT ON DUPLICATE KEY UPDATE.
+     * Fake 구현체: ConcurrentHashMap.putIfAbsent + computeIfPresent 기반 원자 전이.
+     *
+     * @param orderId orderId (UNIQUE)
+     * @param amount  원화 최소 단위 정수
+     * @return true — 전이 성공(이 스레드가 PG 호출 책임), false — 전이 실패(다른 스레드 선점)
+     */
+    boolean transitNoneToInProgress(String orderId, long amount);
 }

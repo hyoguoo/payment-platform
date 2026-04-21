@@ -2,10 +2,13 @@ package com.hyoguoo.paymentplatform.pg.mock;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * PgInboxRepository Fake — DB 없이 application 계층 테스트용.
@@ -26,6 +29,42 @@ public class FakePgInboxRepository implements PgInboxRepository {
     public PgInbox save(PgInbox inbox) {
         store.put(inbox.getOrderId(), inbox);
         return inbox;
+    }
+
+    /**
+     * NONE → IN_PROGRESS 원자 compare-and-set.
+     * ADR-04: 동시 진입 시 단 1 스레드만 true를 반환한다.
+     *
+     * <p>구현 방식:
+     * <ul>
+     *   <li>row가 없는 경우: putIfAbsent로 IN_PROGRESS row를 생성 — 성공(null 반환)이면 true.</li>
+     *   <li>row가 있는 경우: 현재 상태가 NONE인지 확인 후 compare-and-set 전이 시도.
+     *       NONE이 아니면 false 즉시 반환.</li>
+     * </ul>
+     */
+    @Override
+    public boolean transitNoneToInProgress(String orderId, long amount) {
+        Instant now = Instant.now();
+        PgInbox inProgress = PgInbox.of(
+                orderId, PgInboxStatus.IN_PROGRESS, amount,
+                null, null, now, now);
+
+        // row가 없는 경우 — putIfAbsent로 원자 생성
+        PgInbox existing = store.putIfAbsent(orderId, inProgress);
+        if (existing == null) {
+            return true; // 새 row 생성 성공
+        }
+
+        // row가 있는 경우 — NONE 상태인 경우만 IN_PROGRESS 전이 시도
+        AtomicBoolean transitioned = new AtomicBoolean(false);
+        store.compute(orderId, (key, current) -> {
+            if (current != null && current.getStatus() == PgInboxStatus.NONE) {
+                transitioned.set(true);
+                return inProgress;
+            }
+            return current; // 상태 유지 (전이 실패)
+        });
+        return transitioned.get();
     }
 
     // --- 검증 헬퍼 ---
