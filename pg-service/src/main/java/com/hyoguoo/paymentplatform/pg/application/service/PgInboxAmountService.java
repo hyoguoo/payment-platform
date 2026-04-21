@@ -81,7 +81,7 @@ public class PgInboxAmountService {
             return;
         }
 
-        if (inbox.getAmount() != vendorAmount) {
+        if (inbox.getAmount().longValue() != vendorAmount) {
             log.warn("PgInboxAmountService: 2자 금액 불일치 — QUARANTINED+AMOUNT_MISMATCH orderId={} inboxAmount={} vendorAmount={}",
                     orderId, inbox.getAmount(), vendorAmount);
             pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
