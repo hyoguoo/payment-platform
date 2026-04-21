@@ -22,6 +22,20 @@ spring:
             - Path=/api/v1/payments/**
           filters:
             - StripPrefix=0
+        # ADR-01, ADR-02: /api/v1/products/** → product-service (Eureka lb 경유)
+        - id: products-service-route
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+          filters:
+            - StripPrefix=0
+        # ADR-01, ADR-02: /api/v1/users/** → user-service (Eureka lb 경유)
+        - id: users-service-route
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - StripPrefix=0
         - id: monolith-fallback
           uri: http://localhost:8081
           predicates:
