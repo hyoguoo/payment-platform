@@ -7,8 +7,8 @@
 - **단계**: execute
 - **이슈**: #69
 - **브랜치**: `#69`
-- **활성 태스크**: T1-11a (KafkaMessagePublisher + OutboxRelayService — tdd=true, domain_risk=true)
-- **비고**: T1-10 완료(2026-04-21). StockCommitEventKafkaPublisher 신설(infrastructure/messaging/publisher). PaymentTopics 상수·StockCommittedEvent record 신설. 멱등성 정책(c) 호출자 책임. 395/395 PASS. T0-01·T0-02·T0-03a/b/c·T0-04·T0-05·T0-Gate·T1-03·T1-04·T1-05·T1-06·T1-07·T1-08·T1-09·T1-10 완료. PLAN 66 태스크 · domain_risk 43건 · 의존 엣지 59개.
+- **활성 태스크**: T1-11b (PaymentConfirmChannel + OutboxImmediateEventHandler — tdd=false, domain_risk=true)
+- **비고**: T1-11a 완료(2026-04-21). KafkaMessagePublisher 신설(infrastructure/messaging/publisher). OutboxRelayService 신설(application/service). PaymentConfirmCommandMessage record 신설. 398/398 PASS. T0-01·T0-02·T0-03a/b/c·T0-04·T0-05·T0-Gate·T1-03·T1-04·T1-05·T1-06·T1-07·T1-08·T1-09·T1-10·T1-11a 완료. PLAN 66 태스크 · domain_risk 43건 · 의존 엣지 59개.
 
 ## 최근 완료
 - **주제**: NICEPAY-PG-STRATEGY

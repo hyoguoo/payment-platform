@@ -47,7 +47,7 @@
 - ✅ T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
 - T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
 - T1-10 StockCommitEventPublisher 구현
-- T1-11a KafkaMessagePublisher + OutboxRelayService 구현
+- ✅ T1-11a KafkaMessagePublisher + OutboxRelayService 구현
 - T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
 - T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
 - T1-12 QuarantineCompensationHandler + Scheduler
@@ -754,6 +754,14 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/KafkaMessagePublisher.java`
   - `payment-service/src/main/java/.../payment/application/service/OutboxRelayService.java`
+
+**완료 결과 (2026-04-21)**
+- `KafkaMessagePublisher` 신설(infrastructure/messaging/publisher). `MessagePublisherPort.send(topic, key, payload)` 유일 Kafka 구현체. `@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")`.
+- `OutboxRelayService` 신설(application/service). `relay(orderId)`: claimToInFlight 원자 선점 → paymentEvent 조회 → `messagePublisherPort.send(COMMANDS_CONFIRM, orderId, PaymentConfirmCommandMessage)` → `outbox.toDone()` + save. 실패 시 예외 전파(상태 전이 방지).
+- `PaymentConfirmCommandMessage` record 신설(infrastructure/messaging/event). 필드: orderId, paymentKey, totalAmount, gatewayType, buyerId.
+- 멱등성: claimToInFlight 원자 선점으로 동일 orderId 중복 발행 방지.
+- 테스트 3종 GREEN: relay_PublishesAllPendingOutbox_ThenMarksDone, relay_WhenPublishFails_DoesNotMarkDone_LeavesForRetry, relay_IsIdempotent_WhenCalledTwice.
+- 398/398 PASS (기존 395 + 신규 3).
 
 ---
 
