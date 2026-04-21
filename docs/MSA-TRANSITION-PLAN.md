@@ -140,7 +140,7 @@ ADR-21, ADR-02 적용. InternalOnlyGatewayFilter(GlobalFilter, Ordered, order=HI
 
 **Phase 3 — 상품·사용자 서비스 분리** (9개)
 
-- T3-01 상품 서비스 모듈 신설 + 도메인 이관 + stock-snapshot 발행 훅
+- ✅ T3-01 상품 서비스 모듈 신설 + 도메인 이관 + stock-snapshot 발행 훅
 - T3-02 사용자 서비스 모듈 신설 + 도메인 이관
 - T3-03 Fake 상품·사용자 서비스 구현
 - T3-04 StockCommitConsumer + payment-service 전용 Redis 직접 SET
@@ -149,6 +149,9 @@ ADR-21, ADR-02 적용. InternalOnlyGatewayFilter(GlobalFilter, Ordered, order=HI
 - T3-06 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
 - T3-07 Gateway 라우팅: 상품·사용자 엔드포인트 교체
 - T3-Gate Phase 3 주변 도메인 + 보상 이벤트화 E2E 검증
+
+**완료 결과 — T3-01** (2026-04-21):
+settings.gradle에 `include 'product-service'` 추가. `product-service/build.gradle` 신설(spring-boot-starter-web/actuator/kafka/data-jpa/flyway-core/flyway-mysql/mysql-connector-j/data-redis + Lombok 공통 + spring-boot-starter-test). Product/Stock 도메인 이관(payment-service 원본 복사, 삭제는 T3-06 범위). 포트 계층: StockRepository(findAll/findByProductId/save), EventDedupeStore(recordIfAbsent+TTL — pg-service markSeen 방식과 의도적으로 다름). 인바운드 포트 StockRestoreCommandService + StockRestoreUseCase 스캐폴드(UnsupportedOperationException, T3-05에서 완성). Flyway V1__product_schema.sql: product/stock/product_event_dedupe 3테이블. ProductTopics(EVENTS_STOCK_SNAPSHOT="product.events.stock-snapshot") + KafkaTopicConfig(@ConditionalOnProperty) 신설. StockSnapshotPublisher(@EventListener(ApplicationReadyEvent.class), @ConditionalOnProperty — Kafka 미구성 테스트 회피): 앱 기동 시 StockRepository.findAll() → KafkaTemplate 일괄 발행. ProductServiceApplication(@SpringBootApplication, VT=application.yml). application.yml(port=8083, spring.threads.virtual.enabled=true, PRODUCT_DATASOURCE_URL 환경변수, KAFKA_BOOTSTRAP_SERVERS). ProductServiceApplicationTest 스모크 1케이스 GREEN(autoconfig exclude 6종 + @MockitoBean 2개). 전체 486/486 PASS(eureka 1+gateway 3+payment-service 386+pg-service 95+product-service 1), 회귀 없음.
 
 **Phase 4 — 장애 주입 검증 · 로컬 오토스케일러** (4개)
 
