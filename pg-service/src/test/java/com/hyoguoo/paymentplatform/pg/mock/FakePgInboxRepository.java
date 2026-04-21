@@ -67,6 +67,26 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return transitioned.get();
     }
 
+    @Override
+    public void transitToApproved(String orderId, String storedStatusResult) {
+        store.compute(orderId, (key, current) -> {
+            if (current == null) {
+                return null;
+            }
+            return current.withResult(PgInboxStatus.APPROVED, storedStatusResult, null);
+        });
+    }
+
+    @Override
+    public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+        store.compute(orderId, (key, current) -> {
+            if (current == null) {
+                return null;
+            }
+            return current.withResult(PgInboxStatus.FAILED, storedStatusResult, reasonCode);
+        });
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {

@@ -13,7 +13,9 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -51,7 +53,10 @@ class PaymentConfirmConsumerTest {
         outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
         dedupeStore = new FakeEventDedupeStore();
-        sut = new PgConfirmService(inboxRepository, outboxRepository, gatewayAdapter, dedupeStore);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
+        PgVendorCallService vendorCallService =
+                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, clock);
+        sut = new PgConfirmService(inboxRepository, outboxRepository, vendorCallService, dedupeStore, clock);
     }
 
     // -----------------------------------------------------------------------

@@ -27,4 +27,23 @@ public interface PgInboxRepository {
      * @return true — 전이 성공(이 스레드가 PG 호출 책임), false — 전이 실패(다른 스레드 선점)
      */
     boolean transitNoneToInProgress(String orderId, long amount);
+
+    /**
+     * IN_PROGRESS → APPROVED 전이. storedStatusResult 저장.
+     * ADR-21: 벤더 호출 성공 후 terminal 상태로 전이.
+     *
+     * @param orderId           orderId (UNIQUE)
+     * @param storedStatusResult 저장할 상태 결과 JSON
+     */
+    void transitToApproved(String orderId, String storedStatusResult);
+
+    /**
+     * IN_PROGRESS → FAILED 전이. storedStatusResult + reasonCode 저장.
+     * ADR-21: 벤더 호출 확정 실패 후 terminal 상태로 전이.
+     *
+     * @param orderId           orderId (UNIQUE)
+     * @param storedStatusResult 저장할 상태 결과 JSON
+     * @param reasonCode        실패 사유 코드
+     */
+    void transitToFailed(String orderId, String storedStatusResult, String reasonCode);
 }

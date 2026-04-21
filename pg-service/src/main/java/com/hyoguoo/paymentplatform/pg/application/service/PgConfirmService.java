@@ -2,17 +2,18 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
-import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,7 @@ import org.springframework.stereotype.Service;
  *   </li>
  * </ol>
  *
- * <p>실제 PG 벤더 호출 확장: T2b-01에서 구현. 현재는 {@link PgGatewayPort#confirm} 직접 호출.
+ * <p>실제 PG 벤더 호출: {@link PgVendorCallService}에 위임 (T2b-01 구현 완료).
  * dry_run 모드(pg.retry.mode=dry_run): T2c-01 이후 확장 예정.
  */
 @Slf4j
@@ -43,8 +44,9 @@ public class PgConfirmService implements PgConfirmCommandService {
 
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
-    private final PgGatewayPort pgGatewayPort;
+    private final PgVendorCallService pgVendorCallService;
     private final EventDedupeStore eventDedupeStore;
+    private final Clock clock;
 
     @Override
     public void handle(PgConfirmCommand command) {
@@ -82,7 +84,7 @@ public class PgConfirmService implements PgConfirmCommandService {
         }
 
         log.info("PgConfirmService: NONE→IN_PROGRESS 전이 성공 — PG 호출 시작 orderId={}", command.orderId());
-        callVendor(command);
+        callVendor(command, 1);
     }
 
     private void handleInProgress(String orderId) {
@@ -111,18 +113,15 @@ public class PgConfirmService implements PgConfirmCommandService {
                 inbox.getOrderId(), inbox.getStatus());
     }
 
-    private void callVendor(PgConfirmCommand command) {
-        // T2b-01에서 실제 재시도 루프 + available_at 지연 재발행으로 확장 예정.
-        // 현재는 PgGatewayPort.confirm() 직접 호출 (placeholder).
+    private void callVendor(PgConfirmCommand command, int attempt) {
         PgConfirmRequest request = new PgConfirmRequest(
                 command.orderId(),
                 command.paymentKey(),
                 command.amount(),
                 command.vendorType());
 
-        PgConfirmResult result = pgGatewayPort.confirm(request);
+        pgVendorCallService.callVendor(request, attempt, Instant.now(clock));
 
-        log.info("PgConfirmService: PG 호출 완료 orderId={} resultStatus={}",
-                command.orderId(), result.status());
+        log.info("PgConfirmService: PG 호출 위임 완료 orderId={}", command.orderId());
     }
 }

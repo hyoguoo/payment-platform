@@ -77,9 +77,12 @@
 **완료 결과 — T2a-06** (2026-04-21):
 EventDedupeStore 포트(markSeen) + FakeEventDedupeStore(ConcurrentHashSet) 신설. PgInboxRepository에 transitNoneToInProgress(orderId, amount): boolean CAS 메서드 추가. FakePgInboxRepository에 putIfAbsent + compute 기반 원자 전이 구현. FakePgOutboxRepository에 id=null auto-increment 처리 추가. PgConfirmService(application/service): handle(PgConfirmCommand) — eventUUID dedupe(1단) → inbox 5상태 분기(2단): NONE→CAS 전이+PG 호출, IN_PROGRESS→no-op, terminal→stored_status_result pg_outbox 재발행(벤더 호출 금지). PaymentConfirmConsumer(infrastructure/messaging/consumer): @KafkaListener(payment.commands.confirm, pg-service) + @ConditionalOnProperty(spring.kafka.bootstrap-servers). PaymentConfirmConsumerTest 5케이스 전부 GREEN: TC1(NONE→PG 1회), TC2(IN_PROGRESS no-op), TC3(terminal 3종 재발행), TC4(eventUUID dedupe), TC5(동시성 8스레드→PG 1회). 전체 418/418 PASS(payment-service 395 + pg-service 23), 회귀 없음.
 
+**완료 결과 — T2b-01** (2026-04-21):
+RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% equal, shouldRetry(attempt<4), computeBackoff(attempt, rng). PgInboxRepository 포트에 transitToApproved(orderId, storedStatusResult) + transitToFailed(orderId, storedStatusResult, reasonCode) 추가. FakePgInboxRepository 구현 확장. PgVendorCallService(application/service) 신설: callVendor(request, attempt, now) @Transactional — GatewayOutcome 캡슐화로 try-catch 외부 변수 재할당 없이 구현 → 성공(APPROVED outbox+inbox전이)/확정실패(FAILED outbox+inbox전이)/retryable+attempt<4(commands.confirm available_at=now+backoff nextAttempt header)/retryable+attempt>=4(commands.confirm.dlq attempt header). PgConfirmService.callVendor() placeholder → PgVendorCallService 위임으로 교체, Clock 주입 추가. PaymentConfirmConsumerTest setUp() 갱신(PgVendorCallService + Clock 주입). PgVendorCallServiceTest 5케이스 GREEN(TC1성공/TC2재시도/TC3DLQ/TC4확정실패/TC5DLQ원자성). RetryPolicyTest: shouldRetry 경계값 5케이스 + computeBackoff 범위 RepeatedTest(attempt=1/4 각 20회). 전체 464/464 PASS(payment-service 395 + pg-service 69), 회귀 없음.
+
 **Phase 2.b — business inbox 5상태 + amount 컬럼 + 벤더 어댑터 통합** (6개)
 
-- T2b-01 PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행
+- ✅ T2b-01 PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행
 - T2b-02 PaymentConfirmDlqConsumer 구현 (DLQ 전용 consumer)
 - T2b-03 pg-service 내부 FCG 구현
 - T2b-04 business inbox amount 컬럼 저장 규약 구현
