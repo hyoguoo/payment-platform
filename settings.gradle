@@ -4,4 +4,4 @@ include 'gateway'
 include 'eureka-server'
 include 'pg-service'
 include 'product-service'
-// Phase 3: user-service (T3-02)
+include 'user-service'
