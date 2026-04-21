@@ -123,23 +123,19 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     @Override
     public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
-        List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
+        return paymentEventDatabase.values().stream()
                 .filter(event ->
                         event.getStatus() == PaymentEventStatus.IN_PROGRESS &&
                                 event.getExecutedAt() != null &&
                                 event.getExecutedAt().isBefore(before)
                 )
                 .toList();
-        paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
-        return paymentEventList;
     }
 
     @Override
     public List<PaymentEvent> findAllByStatus(PaymentEventStatus status) {
-        List<PaymentEvent> paymentEventList = paymentEventDatabase.values().stream()
+        return paymentEventDatabase.values().stream()
                 .filter(event -> event.getStatus() == status)
                 .toList();
-        paymentEventList.forEach(event -> event.addPaymentOrderList(findPaymentOrdersByPaymentEventId(event.getId())));
-        return paymentEventList;
     }
 }

@@ -225,7 +225,7 @@ class PaymentReconcilerTest {
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(status)
                 .retryCount(0)
-                .paymentOrderList(List.of(order))
+                .paymentOrderList(new ArrayList<>(List.of(order)))
                 .quarantineCompensationPending(false)
                 .lastStatusChangedAt(FIXED_NOW)
                 .allArgsBuild();
@@ -250,7 +250,7 @@ class PaymentReconcilerTest {
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.QUARANTINED)
                 .retryCount(0)
-                .paymentOrderList(List.of(order))
+                .paymentOrderList(new ArrayList<>(List.of(order)))
                 .quarantineCompensationPending(compensationPending)
                 .lastStatusChangedAt(FIXED_NOW)
                 .allArgsBuild();
@@ -275,7 +275,7 @@ class PaymentReconcilerTest {
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.READY)
                 .retryCount(0)
-                .paymentOrderList(List.of(order))
+                .paymentOrderList(new ArrayList<>(List.of(order)))
                 .quarantineCompensationPending(false)
                 .lastStatusChangedAt(FIXED_NOW.minusHours(1))
                 .allArgsBuild();
