@@ -42,7 +42,7 @@
 - ✅ T1-03 Fake 구현체 신설 (application 계층 테스트용)
 - ✅ T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
 - ✅ T1-05 트랜잭션 경계 + 감사 원자성
-- T1-06 AOP 축 결제 서비스 복제 이관
+- ✅ T1-06 AOP 축 결제 서비스 복제 이관
 - T1-07 결제 서비스 Flyway V1 스키마
 - T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
 - T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
@@ -604,7 +604,7 @@ flowchart TB
 
 ---
 
-### T1-06 — AOP 축 결제 서비스 복제 이관 (ADR-13, §2-6)
+### T1-06 — AOP 축 결제 서비스 복제 이관 (ADR-13, §2-6) ✅
 
 - **제목**: `@PublishDomainEvent`·`@PaymentStatusChange` + Aspect 결제 서비스 복제
 - **목적**: ADR-13, §2-6(AOP 복제 원칙) — 각 서비스가 자기 패키지에 AOP 소유. cross-service 공유 금지.
@@ -616,6 +616,15 @@ flowchart TB
   - `payment-service/src/main/java/.../payment/infrastructure/aspect/PaymentStatusMetricsAspect.java`
   - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PublishDomainEvent.java`
   - `payment-service/src/main/java/.../payment/infrastructure/aspect/annotation/PaymentStatusChange.java`
+
+**완료 결과 (2026-04-21)**
+
+- 이관 파일 4개: `DomainEventLoggingAspect`, `PaymentStatusMetricsAspect`, `PublishDomainEvent`, `PaymentStatusChange` — `core/common/aspect|metrics` → `payment/infrastructure/aspect[/annotation]`로 `git mv` (히스토리 보존).
+- 참조 갱신 파일 2개: `PaymentCommandUseCase`, `PaymentCreateUseCase` — import 경로 `core.common.aspect.annotation` / `core.common.metrics.annotation` → `payment.infrastructure.aspect.annotation`으로 교체.
+- Pointcut 영향 없음: 두 Aspect 모두 `@annotation(...)` 기반 pointcut — 패키지 경로 결합 없음.
+- `core/common/aspect/annotation/Reason.java`는 이관 범위 밖(T1-06 4개 파일에 불포함). `DomainEventLoggingAspect`가 `core.common.aspect.annotation.Reason`을 import하는 형태로 유지(cross-service 공유 아님 — 동일 모놀리스 내 `core/common` 유틸 참조 허용).
+- `core/common/metrics/aspect/` 잔여 파일: `TossApiMetricsAspect`(이관 범위 밖, paymentgateway 관련), `core/common/metrics/annotation/` 잔여: `TossApiMetric`, `ErrorCode` — 모두 유지.
+- 384/384 PASS.
 
 ---
 

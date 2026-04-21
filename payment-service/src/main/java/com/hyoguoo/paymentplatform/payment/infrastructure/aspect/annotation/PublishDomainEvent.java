@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.core.common.metrics.annotation;
+package com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -7,9 +7,7 @@ import java.lang.annotation.Target;
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface PaymentStatusChange {
+public @interface PublishDomainEvent {
 
-    String toStatus();
-
-    String trigger();
+    String action() default "";
 }

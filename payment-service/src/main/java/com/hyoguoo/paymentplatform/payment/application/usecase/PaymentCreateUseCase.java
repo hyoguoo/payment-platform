@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.core.common.service.port.UUIDProvider;
-import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOrderRepository;

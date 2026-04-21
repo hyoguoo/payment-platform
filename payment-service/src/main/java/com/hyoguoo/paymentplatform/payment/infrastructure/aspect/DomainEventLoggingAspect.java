@@ -1,6 +1,6 @@
-package com.hyoguoo.paymentplatform.core.common.aspect;
+package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
-import com.hyoguoo.paymentplatform.core.common.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
