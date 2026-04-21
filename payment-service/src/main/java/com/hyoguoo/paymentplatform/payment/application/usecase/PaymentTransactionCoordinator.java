@@ -74,6 +74,8 @@ public class PaymentTransactionCoordinator {
      * D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구 수행.
      * 조건: outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}
      * 어느 하나라도 거짓이면 재고 복구를 건너뜀. markPaymentAsFail은 항상 호출되나, fail() no-op으로 이미 종결 시 상태 불변.
+     * QUARANTINED는 isCompensatableByFailureHandler()=false 이므로 재고 복구 건너뜀.
+     * QUARANTINED 이벤트의 재고 보상은 T1-12 QuarantineCompensationHandler가 전담한다.
      */
     @Transactional
     public PaymentEvent executePaymentFailureCompensationWithOutbox(
@@ -86,9 +88,9 @@ public class PaymentTransactionCoordinator {
         PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
         boolean outboxInFlight = freshOutbox.getStatus() == PaymentOutboxStatus.IN_FLIGHT;
-        boolean eventNonTerminal = !freshEvent.getStatus().isTerminal();
+        boolean eventCompensatable = freshEvent.getStatus().isCompensatableByFailureHandler();
 
-        if (outboxInFlight && eventNonTerminal) {
+        if (outboxInFlight && eventCompensatable) {
             orderedProductUseCase.increaseStockForOrders(paymentOrderList);
         } else {
             log.warn(

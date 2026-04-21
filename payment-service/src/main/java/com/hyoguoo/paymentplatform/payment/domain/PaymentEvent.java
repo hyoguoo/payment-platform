@@ -126,12 +126,7 @@ public class PaymentEvent {
     }
 
     private boolean isTerminalStatus() {
-        return this.status == PaymentEventStatus.FAILED
-                || this.status == PaymentEventStatus.DONE
-                || this.status == PaymentEventStatus.CANCELED
-                || this.status == PaymentEventStatus.PARTIAL_CANCELED
-                || this.status == PaymentEventStatus.EXPIRED
-                || this.status == PaymentEventStatus.QUARANTINED;
+        return this.status.isTerminal();
     }
 
     public void expire(LocalDateTime lastStatusChangedAt) {
@@ -160,9 +155,7 @@ public class PaymentEvent {
     }
 
     public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
-        if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.RETRYING) {
+        if (this.status.isTerminal()) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE);
         }
         this.status = PaymentEventStatus.QUARANTINED;

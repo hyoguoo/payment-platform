@@ -63,9 +63,9 @@ class RecoveryDecisionTest {
     // from() — 로컬 종결 상태 → REJECT_REENTRY
     // -------------------------------------------------------------------------
 
-    @DisplayName("로컬 종결 상태이면 REJECT_REENTRY를 반환한다")
+    @DisplayName("로컬 종결 상태이면 REJECT_REENTRY를 반환한다 (QUARANTINED는 non-terminal이므로 제외)")
     @ParameterizedTest
-    @EnumSource(names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @EnumSource(names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     void from_LocalTerminal_RejectsReentry(PaymentEventStatus terminalStatus) {
         PaymentEvent event = buildEvent(terminalStatus);
         PaymentStatusResult anyResult = buildResult(PaymentStatus.IN_PROGRESS);
@@ -125,16 +125,16 @@ class RecoveryDecisionTest {
     // isTerminal() — 종결/비종결 상태 분류
     // -------------------------------------------------------------------------
 
-    @DisplayName("종결 상태이면 isTerminal()이 true를 반환한다")
+    @DisplayName("종결 상태이면 isTerminal()이 true를 반환한다 (QUARANTINED는 non-terminal이므로 제외)")
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     void paymentEventStatus_Terminal_IsTerminalTrue(PaymentEventStatus terminalStatus) {
         assertThat(terminalStatus.isTerminal()).isTrue();
     }
 
-    @DisplayName("비종결 상태이면 isTerminal()이 false를 반환한다")
+    @DisplayName("비종결 상태이면 isTerminal()이 false를 반환한다 (QUARANTINED 포함)")
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING", "QUARANTINED"})
     void paymentEventStatus_NonTerminal_IsTerminalFalse(PaymentEventStatus nonTerminalStatus) {
         assertThat(nonTerminalStatus.isTerminal()).isFalse();
     }

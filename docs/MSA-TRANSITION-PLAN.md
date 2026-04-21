@@ -40,7 +40,7 @@
 - T1-01 결제 서비스 모듈 경계 정리 (port 선언)
 - T1-02 결제 서비스 모듈 신설 + port 계층 구성
 - ✅ T1-03 Fake 구현체 신설 (application 계층 테스트용)
-- T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
+- ✅ T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
 - T1-05 트랜잭션 경계 + 감사 원자성
 - T1-06 AOP 축 결제 서비스 복제 이관
 - T1-07 결제 서비스 Flyway V1 스키마
@@ -546,7 +546,7 @@ flowchart TB
 
 ---
 
-### T1-04 — 도메인 이관: PaymentEvent·PaymentOutbox·RetryPolicy
+### T1-04 — 도메인 이관: PaymentEvent·PaymentOutbox·RetryPolicy ✅
 
 - **제목**: 결제 도메인 엔티티 + 릴레이 레코드 이관 (Spring 의존 없음)
 - **목적**: ADR-03, ADR-04, ADR-13 — `PaymentEvent`, `PaymentOutbox`, `PaymentOrder`, `PaymentHistory`, `RetryPolicy`, `RecoveryDecision`, `PaymentEventStatus`(isTerminal() SSOT) 결제 서비스 domain 레이어로 이관.
@@ -560,6 +560,17 @@ flowchart TB
   - `PaymentEventTest#quarantine_AlwaysSucceeds_FromAnyNonTerminal` — 비종결 상태에서 QUARANTINED 전이
   - `PaymentOutboxTest#toDone_ChangesStatusToProcessed` — PENDING → 완료 전이
   - `PaymentOutboxTest#nextRetryAt_ComputedCorrectly_ForExponentialBackoff` — RetryPolicy 기반 다음 재시도 시각
+
+**완료 결과 (2026-04-21)**
+
+- `PaymentEventStatus.isTerminal()` SSOT 확립: DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED만 terminal. QUARANTINED는 후속 복구 워커가 보정/포기 결정하는 대기 상태이므로 non-terminal.
+- `PaymentEvent.isTerminalStatus()`: `status.isTerminal()` 위임으로 단순화(LOCAL_TERMINAL_STATUSES Set 제거).
+- `PaymentEvent.quarantine()`: `isTerminal()` 체크로 단순화 — terminal 상태에서는 QUARANTINED 전이 불허.
+- `PaymentEventStatus.isCompensatableByFailureHandler()` 신설: READY/IN_PROGRESS/RETRYING만 true. QUARANTINED는 T1-12 QuarantineCompensationHandler 전담이므로 false.
+- `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox`: `!isTerminal()` 대신 `isCompensatableByFailureHandler()` 사용 — 보상 경로 domain intent 명시(QUARANTINED 자동 스킵).
+- `PaymentEventTest`: `execute_ThrowsException_WhenTerminalStatus` EnumSource에서 QUARANTINED 제거(terminal 아님). `quarantine_BlockedWhenTerminal` EnumSource에서 QUARANTINED 제거.
+- `RecoveryDecisionTest`: 3개 테스트 EnumSource 조정 — QUARANTINED non-terminal 반영.
+- 전체 테스트 379/379 PASS.
 
 ---
 

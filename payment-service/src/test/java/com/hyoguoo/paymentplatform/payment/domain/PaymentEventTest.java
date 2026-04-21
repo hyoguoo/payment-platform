@@ -345,8 +345,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"FAILED", "DONE", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
-    @DisplayName("종결 상태에서 fail() 호출 시 no-op — status 변경 없음, 예외 없음.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"FAILED", "DONE", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @DisplayName("종결 상태에서 fail() 호출 시 no-op — status 변경 없음, 예외 없음. (QUARANTINED는 non-terminal이므로 제외)")
     void fail_AlreadyTerminalStatus_NoOp(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -706,8 +706,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
-    @DisplayName("격리 전환 시 허용되지 않는 상태에서는 PaymentStatusException을 던진다.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @DisplayName("격리 전환 시 허용되지 않는 상태(종결 상태)에서는 PaymentStatusException을 던진다. (QUARANTINED는 non-terminal이므로 제외)")
     void quarantine_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
