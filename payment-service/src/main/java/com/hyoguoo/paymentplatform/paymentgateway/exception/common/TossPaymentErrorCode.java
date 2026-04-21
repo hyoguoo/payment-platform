@@ -68,7 +68,9 @@ public enum TossPaymentErrorCode {
     }
 
     public boolean isSuccess() {
-        return this == ALREADY_PROCESSED_PAYMENT;
+        // ADR-05 Phase 1 LVAL: ALREADY_PROCESSED_PAYMENT는 가면 응답(벤더가 성공처럼 보이는 에러)이므로
+        // success로 취급하지 않는다. Phase 2(ADR-21(v))에서 pg-service가 벤더 재조회로 추가 방어.
+        return false;
     }
 
     public boolean isRetryableError() {

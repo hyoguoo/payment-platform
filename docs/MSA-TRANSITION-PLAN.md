@@ -685,7 +685,7 @@ flowchart TB
 
 ---
 
-### T1-09 — Toss 가면 응답 방어선 구현 (payment-service LVAL 한정)
+### T1-09 — Toss 가면 응답 방어선 구현 (payment-service LVAL 한정) ✅
 
 - **제목**: payment-service LVAL 금액 위변조 선검증 + Toss `ALREADY_PROCESSED_PAYMENT` LVAL 수준 방어
 - **목적**: ADR-05(Phase 1 LVAL 한정) — payment-service에서 결제 진입 전 금액 위변조 선검증. `ALREADY_PROCESSED_PAYMENT`의 벤더 재조회 + 2자 금액 대조 + pg DB 부재 경로 방어는 **Phase 2 pg-service 산출물**(ADR-21(v) 불변). Phase 1에서는 `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()` 수정만 수행(가면 응답을 success로 취급 차단).
@@ -694,12 +694,19 @@ flowchart TB
 - **depends**: [T1-05]
 - **테스트 클래스**: `PaymentLvalValidatorTest`
 - **테스트 메서드**:
-  - `PaymentLvalValidatorTest#validate_WhenAmountMatches_ShouldPass` — 금액 일치 → 통과
-  - `PaymentLvalValidatorTest#validate_WhenAmountMismatches_ShouldReject4xx` — 금액 불일치 → 4xx 거부
-  - `PaymentLvalValidatorTest#tossAlreadyProcessed_ShouldNotBeClassifiedAsSuccess` — `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()` = false 검증
+  - [x] `PaymentLvalValidatorTest#validate_WhenAmountMatches_ShouldPass` — 금액 일치 → 통과
+  - [x] `PaymentLvalValidatorTest#validate_WhenAmountMismatches_ShouldReject4xx` — 금액 불일치 → 4xx 거부
+  - [x] `PaymentLvalValidatorTest#tossAlreadyProcessed_ShouldNotBeClassifiedAsSuccess` — `TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()` = false 검증
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/application/usecase/PaymentLvalValidator.java`
-  - `payment-service/src/main/java/.../payment/infrastructure/gateway/toss/TossPaymentErrorCode.java` — `ALREADY_PROCESSED_PAYMENT.isSuccess()` false
+  - [x] `payment-service/src/main/java/.../payment/application/usecase/PaymentLvalValidator.java`
+  - [x] `payment-service/src/main/java/.../paymentgateway/exception/common/TossPaymentErrorCode.java` — `ALREADY_PROCESSED_PAYMENT.isSuccess()` false
+  - [x] `PaymentErrorCode.AMOUNT_MISMATCH("E03029", "결제 금액 위변조 감지")` 추가
+
+**완료 결과 (2026-04-21)**
+- `PaymentLvalValidator` 신설(application usecase). `validate(PaymentEvent, BigDecimal)` — 금액 불일치 시 `PaymentValidException(AMOUNT_MISMATCH)`.
+- `TossPaymentErrorCode.isSuccess()` = false 고정. `ALREADY_PROCESSED_PAYMENT`는 이후 `isFailure()=true`→`NON_RETRYABLE_FAILURE`로 분류됨(영향 경로: `PaymentConfirmResultStatus.of()`).
+- Phase 2 벤더 재조회/2자 대조는 pg-service(ADR-21(v)) 위임 유지.
+- 392/392 PASS (기존 389 + 신규 3).
 
 ---
 
