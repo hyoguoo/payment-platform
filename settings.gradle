@@ -2,5 +2,5 @@ rootProject.name = 'payment-platform'
 include 'payment-service'
 include 'gateway'
 include 'eureka-server'
-// Phase 2.a: pg-service (T2a-*)
+include 'pg-service'
 // Phase 3: product-service, user-service (T3-*)

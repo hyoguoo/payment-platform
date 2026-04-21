@@ -1,0 +1,36 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    // Spring Boot Core
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Kafka (ADR-30: payment.commands.confirm consumer + payment.events.confirmed publisher)
+    implementation 'org.springframework.kafka:spring-kafka'
+}
+
+spotbugsMain {
+    excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')
+    reports {
+        html {
+            required = true
+        }
+        xml {
+            required = true
+        }
+    }
+}
+
+spotbugsTest {
+    excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude-test.xml')
+    reports {
+        html {
+            required = true
+        }
+        xml {
+            required = true
+        }
+    }
+}
