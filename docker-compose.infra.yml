@@ -1,5 +1,6 @@
 # MSA-TRANSITION Phase 0 — 인프라 컨테이너 정의
 # ADR-10(compose 토폴로지), ADR-27(로컬 DX)
+# Phase 2.a T2a-04: pg-service 전용 MySQL 추가 (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
 #
 # Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
 #   replication.factor=3
@@ -180,6 +181,32 @@ services:
       start_period: 20s
 
   # ───────────────────────────────────────────
+  # MySQL — pg-service 전용 (Phase 2.a T2a-04)
+  # Phase 2.a T2a-04: pg-service 전용 DB (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
+  # ───────────────────────────────────────────
+  mysql-pg:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-pg
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PG_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: pg
+      MYSQL_USER: ${MYSQL_PG_USER:-pg}
+      MYSQL_PASSWORD: ${MYSQL_PG_PASSWORD:-payment123}
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-pg-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
   # Toxiproxy — 네트워크 장애 주입 (ADR-29)
   # API 포트: 8474 / proxy 포트: 29092(kafka), 23306(mysql), 26380(redis-payment)
   # 애플리케이션은 T4-01까지 직접 upstream을 가리킨다.
@@ -219,4 +246,6 @@ volumes:
   mysql-data:
     driver: local
   mysql-payment-data:
+    driver: local
+  mysql-pg-data:
     driver: local
