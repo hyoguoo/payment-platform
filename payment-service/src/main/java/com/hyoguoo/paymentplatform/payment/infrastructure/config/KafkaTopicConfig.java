@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
+import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +25,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic paymentCommandsConfirm() {
-        return TopicBuilder.name("payment.commands.confirm")
+        return TopicBuilder.name(PaymentTopics.COMMANDS_CONFIRM)
                 .partitions(PARTITIONS)
                 .replicas(REPLICAS)
                 .build();
@@ -32,7 +33,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic paymentCommandsConfirmDlq() {
-        return TopicBuilder.name("payment.commands.confirm.dlq")
+        return TopicBuilder.name(PaymentTopics.COMMANDS_CONFIRM_DLQ)
                 .partitions(PARTITIONS)
                 .replicas(REPLICAS)
                 .build();
@@ -40,7 +41,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic paymentEventsConfirmed() {
-        return TopicBuilder.name("payment.events.confirmed")
+        return TopicBuilder.name(PaymentTopics.EVENTS_CONFIRMED)
                 .partitions(PARTITIONS)
                 .replicas(REPLICAS)
                 .build();
@@ -48,7 +49,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic paymentEventsStockCommitted() {
-        return TopicBuilder.name("payment.events.stock-committed")
+        return TopicBuilder.name(PaymentTopics.EVENTS_STOCK_COMMITTED)
                 .partitions(PARTITIONS)
                 .replicas(REPLICAS)
                 .build();

@@ -710,7 +710,7 @@ flowchart TB
 
 ---
 
-### T1-10 — StockCommitEventPublisher 구현 (재고 확정 이벤트 발행)
+### T1-10 — StockCommitEventPublisher 구현 (재고 확정 이벤트 발행) ✅
 
 - **제목**: payment.events.stock-committed Kafka 발행 어댑터 구현
 - **목적**: S-2(StockCommitEvent 발행) — 결제 DONE 확정 시 `payment.events.stock-committed` 발행. `StockCommitEventPublisherPort`(T1-02 선언) 구현.
@@ -719,12 +719,23 @@ flowchart TB
 - **depends**: [T1-03, T1-02]
 - **테스트 클래스**: `StockCommitEventPublisherTest`
 - **테스트 메서드**:
-  - `publish_WhenPaymentConfirmed_ShouldEmitStockCommittedEvent` — DONE 확정 시 `payment.events.stock-committed` 1회 발행
-  - `publish_ShouldIncludeProductIdQtyAndPaymentEventId` — payload 필드 검증
-  - `publish_IsIdempotent_WhenCalledTwice` — 동일 paymentEventId 2회 → outbox 멱등성
+  - [x] `publish_WhenPaymentConfirmed_ShouldEmitStockCommittedEvent` — DONE 확정 시 `payment.events.stock-committed` 1회 발행
+  - [x] `publish_ShouldIncludeProductIdQtyAndPaymentEventId` — payload 필드 검증
+  - [x] `publish_IsIdempotent_WhenCalledTwice_CallerResponsibility` — 멱등성 정책(c) 호출자 책임 명시
 - **산출물**:
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/StockCommitEventKafkaPublisher.java`
-  - `payment-service/src/main/java/.../payment/infrastructure/messaging/PaymentTopics.java` — `STOCK_COMMITTED = "payment.events.stock-committed"` 상수
+  - [x] `payment-service/src/main/java/.../payment/infrastructure/messaging/publisher/StockCommitEventKafkaPublisher.java`
+  - [x] `payment-service/src/main/java/.../payment/infrastructure/messaging/PaymentTopics.java` — `EVENTS_STOCK_COMMITTED = "payment.events.stock-committed"` 상수
+  - [x] `payment-service/src/main/java/.../payment/infrastructure/messaging/event/StockCommittedEvent.java` — payload record
+  - [x] `KafkaTopicConfig.java` — string literal → `PaymentTopics` 상수 교체
+
+**완료 결과 (2026-04-21)**
+- `StockCommitEventKafkaPublisher` 신설(infrastructure/messaging/publisher). `publish(productId, qty, idempotencyKey)` → `MessagePublisherPort.send(EVENTS_STOCK_COMMITTED, productId.toString(), StockCommittedEvent)`.
+- `PaymentTopics` 상수 클래스 신설(infrastructure/messaging). `KafkaTopicConfig` string literal → 상수 교체.
+- `StockCommittedEvent` record 신설(infrastructure/messaging/event). 필드: productId, qty, idempotencyKey, occurredAt.
+- 멱등성 정책 (c) 채택: publisher는 단순 Kafka send 어댑터, 멱등성은 Coordinator(호출자) 책임.
+- 파티션 키: `productId.toString()` — 동일 상품 이벤트 순서 보장(ADR-12).
+- `@ConditionalOnBean(MessagePublisherPort.class)`: T1-11a 전까지 Kafka 미작동 허용(test profile에서 Spring context 안전).
+- 395/395 PASS (기존 392 + 신규 3).
 
 ---
 
