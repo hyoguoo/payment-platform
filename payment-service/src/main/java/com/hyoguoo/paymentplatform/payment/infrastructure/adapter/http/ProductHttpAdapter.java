@@ -4,35 +4,108 @@ import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * product-service HTTP 어댑터 (RED stub — 구현 전).
- * ProductPort 구현체.
+ * product-service HTTP 어댑터 (ADR-02).
+ * ProductPort 구현체. product.adapter.type=http 프로파일 활성화 시 사용.
+ * @CircuitBreaker는 이 클래스 내부 메서드에만 적용 — port 인터페이스 오염 금지(ADR-22).
  */
+@Component
+@ConditionalOnProperty(name = "product.adapter.type", havingValue = "http")
+@RequiredArgsConstructor
 public class ProductHttpAdapter implements ProductPort {
+
+    private static final String PRODUCTS_PATH = "/api/v1/products/";
+    private static final String STOCK_DECREASE_PATH = "/api/v1/products/stock/decrease";
+    private static final String STOCK_INCREASE_PATH = "/api/v1/products/stock/increase";
 
     private final HttpOperator httpOperator;
 
-    public ProductHttpAdapter(HttpOperator httpOperator) {
-        this.httpOperator = httpOperator;
-    }
+    @Value("${product-service.base-url:http://localhost:8083}")
+    private String productServiceBaseUrl;
 
     @Override
     public ProductInfo getProductInfoById(Long productId) {
-        throw new UnsupportedOperationException("not implemented");
+        return fetchProductById(productId);
     }
 
     @Override
     public void decreaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
-        throw new UnsupportedOperationException("not implemented");
+        postStockCommand(STOCK_DECREASE_PATH, orderedProductStockCommandList);
     }
 
     @Override
     public void increaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
-        throw new UnsupportedOperationException("not implemented");
+        postStockCommand(STOCK_INCREASE_PATH, orderedProductStockCommandList);
+    }
+
+    private ProductInfo fetchProductById(Long productId) {
+        ProductResponse response = callGet(
+                productServiceBaseUrl + PRODUCTS_PATH + productId,
+                ProductResponse.class
+        );
+        return toProductInfo(response);
+    }
+
+    private void postStockCommand(String path, List<OrderedProductStockCommand> commands) {
+        List<StockCommandItem> items = commands.stream()
+                .map(c -> new StockCommandItem(c.getProductId(), c.getStock()))
+                .toList();
+        callPost(productServiceBaseUrl + path, items);
+    }
+
+    private <T> T callGet(String url, Class<T> responseType) {
+        try {
+            return httpOperator.requestGet(url, Map.of(), responseType);
+        } catch (WebClientResponseException e) {
+            throw mapResponseException(e);
+        } catch (WebClientRequestException e) {
+            throw ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
+        }
+    }
+
+    private void callPost(String url, Object body) {
+        try {
+            httpOperator.requestPost(url, Map.of(), body, Void.class);
+        } catch (WebClientResponseException e) {
+            throw mapResponseException(e);
+        } catch (WebClientRequestException e) {
+            throw ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
+        }
+    }
+
+    private RuntimeException mapResponseException(WebClientResponseException e) {
+        int status = e.getStatusCode().value();
+        if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
+                || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
+            return ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
+        }
+        // 4xx 비재시도 — RuntimeException으로 전파
+        throw new IllegalStateException(
+                "product-service 오류 status=" + status + " body=" + e.getResponseBodyAsString()
+        );
+    }
+
+    private static ProductInfo toProductInfo(ProductResponse response) {
+        return ProductInfo.builder()
+                .id(response.id())
+                .name(response.name())
+                .price(response.price())
+                .stock(response.stock())
+                .sellerId(response.sellerId())
+                .build();
     }
 
     /**
@@ -45,4 +118,9 @@ public class ProductHttpAdapter implements ProductPort {
             Integer stock,
             Long sellerId
     ) {}
+
+    /**
+     * product-service POST stock 요청 item.
+     */
+    record StockCommandItem(Long productId, Integer stock) {}
 }

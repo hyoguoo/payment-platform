@@ -35,6 +35,8 @@ public enum PaymentErrorCode implements ErrorCode {
     UNMAPPED_GATEWAY_STATUS("E03028", "PG 응답에서 알 수 없는 결제 상태값이 수신되었습니다."),
     AMOUNT_MISMATCH("E03029", "결제 금액 위변조 감지"),
     INVALID_STATUS_TO_RESET("E03030", "READY 상태로 복원할 수 없는 상태입니다."),
+    PRODUCT_SERVICE_UNAVAILABLE("E03031", "product-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),
+    USER_SERVICE_UNAVAILABLE("E03032", "user-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),
     ;
 
     private final String code;
