@@ -49,9 +49,9 @@
 - T1-10 StockCommitEventPublisher 구현
 - ✅ T1-11a KafkaMessagePublisher + OutboxRelayService 구현
 - ✅ T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
-- T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
+- ✅ T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
 - ✅ T1-12 QuarantineCompensationHandler + Scheduler
-- T1-13 FCG 격리 불변 + RecoveryDecision 이관
+- ⊗ T1-13 FCG 격리 불변 + RecoveryDecision 이관 — **스킵**(T1-11c에서 OutboxProcessingService 삭제됨. FCG 로직은 pg-service로 이관되어 payment-service 내 검증 대상 부재. ADR-30에 따라 T2b-03에서 pg-service 내부 FCG 불변 재검증)
 - T1-14 Reconciliation 루프 + Redis↔RDB 재고 대조
 - T1-15 Graceful Shutdown + Virtual Threads 재검토
 - T1-16 payment.outbox.pending_age_seconds 등 메트릭
@@ -843,20 +843,21 @@ flowchart TB
 
 ---
 
-### T1-13 — FCG 격리 불변 + RecoveryDecision 이관 (ADR-15)
+### T1-13 — FCG 격리 불변 + RecoveryDecision 이관 (ADR-15) ⊗ SKIPPED
 
 - **제목**: FCG timeout → 무조건 QUARANTINED 불변 + DECR 상태 유지 명시
-- **목적**: ADR-15(FCG 불변) — Phase 2 이전까지 payment-service 내부 `OutboxProcessingService` FCG 경로. timeout·5xx → 재시도 없이 무조건 QUARANTINED. QUARANTINED 전이 시 Redis DECR 상태를 즉시 INCR 복구 금지(Phase-1.14 Reconciler 위임).
+- **목적**(원안): ADR-15(FCG 불변) — Phase 2 이전까지 payment-service 내부 `OutboxProcessingService` FCG 경로. timeout·5xx → 재시도 없이 무조건 QUARANTINED. QUARANTINED 전이 시 Redis DECR 상태를 즉시 INCR 복구 금지(Phase-1.14 Reconciler 위임).
 - **tdd**: true
 - **domain_risk**: true
 - **depends**: [T1-12]
-- **테스트 클래스**: `OutboxProcessingServiceTest`
-- **테스트 메서드**:
-  - `process_WhenFcgPgCallTimesOut_ShouldQuarantine` — timeout 예외 → QUARANTINED, 재시도 없음
-  - `process_WhenFcgPgReturns5xx_ShouldQuarantine` — 5xx → QUARANTINED
-  - `process_WhenFcgSucceeds_ShouldTransitionToDone` — PG DONE → DONE 전이
-  - `process_RetryExhausted_CallsFcgOnce` — maxRetries 소진 시 FCG 1회만
-  - `process_WhenQuarantined_ShouldNotRollbackStockCacheImmediately` — QUARANTINED 시 FakeStockCachePort.rollback() 미호출(불변식 7)
+
+#### 스킵 사유 (2026-04-21)
+
+T1-11c에서 `OutboxProcessingService.java` 및 `OutboxProcessingServiceTest.java`가 삭제되었다. 이 클래스의 FCG 경로가 T1-13의 검증 대상이었으나, ADR-30 / Round 2 C-1에 따라 FCG·RetryPolicy 로직은 **pg-service로 이관**되었다. 즉 payment-service 내부에는 더 이상 FCG 경로가 존재하지 않는다.
+
+FCG 격리 불변 검증은 **T2b-03** (pg-service 내부 FCG)에서 동등 케이스로 수행된다. 불변식 7(QUARANTINED 시 즉시 INCR 금지)은 **T1-12에서 이미 검증**되었다(QuarantineCompensationHandlerTest#handle_WhenEntryIsFcg_ShouldNotRollbackStockImmediately).
+
+따라서 본 태스크는 검증 대상 소실로 스킵한다. 후속 태스크(T1-14)의 `depends`에서 T1-13을 제거하고 T1-12만 남긴다.
 
 ---
 
@@ -866,7 +867,7 @@ flowchart TB
 - **목적**: ADR-07, ADR-17 — FCG=즉시 경로, Reconciler=지연 경로. Redis `stock:{id}` vs (product RDB 재고 − PENDING/QUARANTINED 합계) 대조. 발산 시 RDB를 진실로 Redis 재설정, `divergence_count` +1. QUARANTINED 결제의 DECR 수량 INCR 복원(Reconciler 단독). TTL 만료 miss → RDB 기준 재설정.
 - **tdd**: true
 - **domain_risk**: true
-- **depends**: [T1-08, T1-13]
+- **depends**: [T1-08, T1-12]  <!-- T1-13 skipped 2026-04-21; 불변식 7 검증은 T1-12로 대체 -->
 - **테스트 클래스**: `PaymentReconcilerTest`
 - **테스트 메서드**:
   - `scan_FindsStaleInFlightRecords_AndResetsToRetry` — IN_FLIGHT + timeout 초과 → PENDING 복원
