@@ -7,10 +7,12 @@ package com.hyoguoo.paymentplatform.product.presentation.port;
 public interface StockRestoreCommandService {
 
     /**
-     * orderId에 해당하는 주문의 재고를 복원한다.
+     * 지정 상품의 재고를 qty만큼 복원한다.
      *
      * @param orderId   주문 식별자
      * @param eventUuid 이벤트 UUID (dedupe용)
+     * @param productId 복원 대상 상품 ID
+     * @param qty       복원 수량
      */
-    void restore(String orderId, String eventUuid);
+    void restore(String orderId, String eventUuid, long productId, int qty);
 }

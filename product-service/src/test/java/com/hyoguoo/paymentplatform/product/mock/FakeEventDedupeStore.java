@@ -50,6 +50,19 @@ public class FakeEventDedupeStore implements EventDedupeStore {
         return recorded[0];
     }
 
+    /**
+     * eventUuid가 유효하게(TTL 미만료) 존재하는지 확인한다.
+     * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
+     */
+    @Override
+    public boolean existsValid(String eventUuid) {
+        Instant expiry = store.get(eventUuid);
+        if (expiry == null) {
+            return false;
+        }
+        return !expiry.isBefore(Instant.now(clock));
+    }
+
     // --- 검증 헬퍼 ---
 
     public boolean contains(String eventUuid) {

@@ -26,6 +26,10 @@ public final class ProductTopics {
      */
     public static final String PAYMENT_EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
 
-    // T3-04b에서 확장 예정:
-    // public static final String STOCK_EVENTS_RESTORE = "stock.events.restore";
+    /**
+     * payment-service T3-04b(FailureCompensationService)가 발행하는 재고 복원 보상 이벤트 토픽.
+     * product-service T3-05 StockRestoreConsumer가 구독.
+     * ADR-16: 보상 dedupe 소유 = consumer 측.
+     */
+    public static final String STOCK_EVENTS_RESTORE = "stock.events.restore";
 }
