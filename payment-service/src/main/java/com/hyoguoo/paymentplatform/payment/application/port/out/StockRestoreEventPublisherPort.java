@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.port.out;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.StockRestoreEventPayload;
 import java.util.List;
 
 /**
@@ -19,4 +20,12 @@ public interface StockRestoreEventPublisherPort {
      * @param productIds 복원할 상품 ID 목록
      */
     void publish(String orderId, List<Long> productIds);
+
+    /**
+     * 보상 이벤트 payload(UUID 포함)를 outbox에 발행한다.
+     * ADR-16: eventUUID 결정론적 생성으로 멱등성 보장 — 동일 UUID 재호출 시 no-op.
+     *
+     * @param payload 재고 복원 이벤트 payload (eventUUID·orderId·productId·qty)
+     */
+    void publishPayload(StockRestoreEventPayload payload);
 }
