@@ -111,4 +111,22 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     public long countByRetryCountGreaterThanEqual(int retryCount) {
         return jpaPaymentEventRepository.countByRetryCountGreaterThanEqual(retryCount);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentEvent> findByQuarantineCompensationPendingTrue() {
+        return jpaPaymentEventRepository
+                .findByQuarantineCompensationPendingTrue()
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
+    }
 }

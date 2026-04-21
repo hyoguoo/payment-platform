@@ -22,4 +22,6 @@ public interface PaymentEventRepository {
     long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
+
+    List<PaymentEvent> findByQuarantineCompensationPendingTrue();
 }

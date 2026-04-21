@@ -113,4 +113,11 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
                 .filter(event -> event.getRetryCount() >= retryCount)
                 .count();
     }
+
+    @Override
+    public List<PaymentEvent> findByQuarantineCompensationPendingTrue() {
+        return paymentEventDatabase.values().stream()
+                .filter(PaymentEvent::isQuarantineCompensationPending)
+                .toList();
+    }
 }

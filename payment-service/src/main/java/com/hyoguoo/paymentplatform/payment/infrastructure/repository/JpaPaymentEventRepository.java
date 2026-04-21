@@ -24,4 +24,6 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
             @Param("before") LocalDateTime before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
+
+    List<PaymentEventEntity> findByQuarantineCompensationPendingTrue();
 }
