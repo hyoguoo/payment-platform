@@ -11,7 +11,10 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.infrastructure.metrics.StockCacheDivergenceMetrics;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -32,6 +35,8 @@ class PaymentReconcilerTest {
     private FakePaymentEventRepository fakePaymentEventRepository;
     private FakeStockCachePort fakeStockCachePort;
     private FakeProductPort fakeProductPort;
+    private SimpleMeterRegistry meterRegistry;
+    private StockCacheDivergenceMetrics divergenceMetrics;
     private PaymentReconciler reconciler;
 
     @BeforeEach
@@ -39,11 +44,14 @@ class PaymentReconcilerTest {
         fakePaymentEventRepository = new FakePaymentEventRepository();
         fakeStockCachePort = new FakeStockCachePort();
         fakeProductPort = new FakeProductPort();
+        meterRegistry = new SimpleMeterRegistry();
+        divergenceMetrics = new StockCacheDivergenceMetrics(meterRegistry);
         reconciler = new PaymentReconciler(
                 fakePaymentEventRepository,
                 fakeStockCachePort,
                 fakeProductPort,
                 () -> FIXED_NOW,
+                divergenceMetrics,
                 IN_FLIGHT_TIMEOUT_SECONDS
         );
     }
@@ -120,7 +128,8 @@ class PaymentReconcilerTest {
         PaymentEvent readyEvent = buildReadyEvent("order-ready-001", productId, lockedQuantity);
         fakePaymentEventRepository.saveOrUpdate(readyEvent);
 
-        long divergenceBefore = reconciler.getDivergenceCount();
+        Counter counterBefore = meterRegistry.find(StockCacheDivergenceMetrics.METRIC_NAME).counter();
+        double divergenceBefore = counterBefore != null ? counterBefore.count() : 0.0;
 
         // when
         reconciler.scan();
@@ -129,7 +138,9 @@ class PaymentReconcilerTest {
         int expectedCacheValue = rdbStock - lockedQuantity;
         assertThat(fakeStockCachePort.current(productId)).isEqualTo(expectedCacheValue);
         // divergence_count +1
-        assertThat(reconciler.getDivergenceCount()).isEqualTo(divergenceBefore + 1);
+        Counter counter = meterRegistry.find(StockCacheDivergenceMetrics.METRIC_NAME).counter();
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(divergenceBefore + 1.0);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

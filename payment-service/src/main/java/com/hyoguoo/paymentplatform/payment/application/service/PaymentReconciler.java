@@ -11,11 +11,11 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.infrastructure.metrics.StockCacheDivergenceMetrics;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,13 +43,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class PaymentReconciler {
 
-    // TODO: T1-16에서 StockCacheDivergenceMetrics 클래스로 교체
-    private final AtomicLong divergenceCount = new AtomicLong(0);
-
     private final PaymentEventRepository paymentEventRepository;
     private final StockCachePort stockCachePort;
     private final ProductPort productPort;
     private final LocalDateTimeProvider localDateTimeProvider;
+    private final StockCacheDivergenceMetrics divergenceMetrics;
     private final long inFlightTimeoutSeconds;
 
     public PaymentReconciler(
@@ -57,12 +55,14 @@ public class PaymentReconciler {
             StockCachePort stockCachePort,
             ProductPort productPort,
             LocalDateTimeProvider localDateTimeProvider,
+            StockCacheDivergenceMetrics divergenceMetrics,
             @Value("${reconciler.in-flight-timeout-seconds:300}") long inFlightTimeoutSeconds
     ) {
         this.paymentEventRepository = paymentEventRepository;
         this.stockCachePort = stockCachePort;
         this.productPort = productPort;
         this.localDateTimeProvider = localDateTimeProvider;
+        this.divergenceMetrics = divergenceMetrics;
         this.inFlightTimeoutSeconds = inFlightTimeoutSeconds;
     }
 
@@ -154,11 +154,10 @@ public class PaymentReconciler {
         if (cached != rdbExpected) {
             // 발산 → RDB 기준 재설정 + divergence_count +1
             stockCachePort.set(productId, rdbExpected);
-            long count = divergenceCount.incrementAndGet();
+            divergenceMetrics.increment();
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                     () -> "Reconciler: 재고 발산 감지 productId=" + productId
-                            + " cached=" + cached + " expected=" + rdbExpected
-                            + " divergence_count=" + count);
+                            + " cached=" + cached + " expected=" + rdbExpected);
         }
     }
 
@@ -186,12 +185,4 @@ public class PaymentReconciler {
         }
     }
 
-    /**
-     * 재고 발산 카운터 조회. T1-16 StockCacheDivergenceMetrics 연동 전 임시 노출.
-     *
-     * @return 누적 발산 감지 건수
-     */
-    public long getDivergenceCount() {
-        return divergenceCount.get();
-    }
 }
