@@ -5,11 +5,13 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgFailureInfo;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,10 +19,18 @@ import org.springframework.stereotype.Component;
  * ADR-21: pg-service 내부 벤더 전략. payment-service 의존 없음.
  *
  * <p>TODO(T2b-01): 실제 HTTP 클라이언트(HttpTossOperator) 주입 + 벤더 호출 구현.
- * 본 태스크(T2a-01)에서는 포트 계층 연결 및 스켈레톤 선언이 목적.
+ * ALREADY_PROCESSED_PAYMENT 분기: T2b-05 구현 완료 — DuplicateApprovalHandler 위임.
  */
 @Component
+@RequiredArgsConstructor
 public class TossPaymentGatewayStrategy implements PgGatewayPort {
+
+    /**
+     * T2b-05: Toss ALREADY_PROCESSED_PAYMENT(중복 승인) 분기에서 DuplicateApprovalHandler 위임.
+     * ADR-21(대칭성): NicePay 2201과 동일 경로 재사용.
+     * infrastructure → application 방향(허용됨).
+     */
+    private final DuplicateApprovalHandler duplicateApprovalHandler;
 
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_DONE = "DONE";
@@ -52,10 +62,19 @@ public class TossPaymentGatewayStrategy implements PgGatewayPort {
     /**
      * Toss Payments 승인 API 호출.
      * TODO(T2b-01): HttpTossOperator를 주입하여 실제 HTTP 호출 구현.
+     *
+     * <p>ALREADY_PROCESSED_PAYMENT 응답 시 DuplicateApprovalHandler 위임 분기 자리:
+     * [분기 자리] errorCode == "ALREADY_PROCESSED_PAYMENT"
+     *   → duplicateApprovalHandler.handleDuplicateApproval(request.orderId(), request.amount(), eventUuid)
      */
     @Override
     public PgConfirmResult confirm(PgConfirmRequest request)
             throws PgGatewayRetryableException, PgGatewayNonRetryableException {
+        // TODO(T2b-01): 실제 HTTP 호출 후 errorCode 파싱
+        // if ("ALREADY_PROCESSED_PAYMENT".equals(errorCode)) {
+        //     duplicateApprovalHandler.handleDuplicateApproval(request.orderId(), request.amount(), eventUuid);
+        //     return; // 또는 적절한 반환값
+        // }
         throw new UnsupportedOperationException("T2b-01에서 구현 예정");
     }
 

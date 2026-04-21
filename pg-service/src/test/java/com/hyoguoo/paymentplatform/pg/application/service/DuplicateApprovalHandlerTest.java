@@ -112,11 +112,11 @@ class DuplicateApprovalHandlerTest {
     @Test
     @DisplayName("pg_duplicate_approval_WhenPgDbExists_WhenAmountMismatch_ShouldQuarantine")
     void pg_duplicate_approval_WhenPgDbExists_WhenAmountMismatch_ShouldQuarantine() {
-        // given — inbox APPROVED(amount=15000) 사전 설정
-        PgInbox approvedInbox = PgInbox.of(
-                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT_LONG,
-                "{\"status\":\"APPROVED\"}", null, Instant.now(), Instant.now());
-        inboxRepository.save(approvedInbox);
+        // given — inbox IN_PROGRESS(amount=15000) 사전 설정 (중복 승인 처리 중 상태)
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
+                null, null, Instant.now(), Instant.now());
+        inboxRepository.save(inProgressInbox);
 
         // vendor getStatus → DONE + 다른 amount(불일치)
         PgStatusResult vendorStatus = new PgStatusResult(
