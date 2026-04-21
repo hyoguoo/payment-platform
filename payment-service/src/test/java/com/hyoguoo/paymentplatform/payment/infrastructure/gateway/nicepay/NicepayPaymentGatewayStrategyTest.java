@@ -12,10 +12,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
@@ -26,11 +24,11 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+// ADR-02 준수: getStatus/getStatusByOrderId 메서드는 Phase 2 완료로 삭제됨. 관련 테스트도 함께 제거.
 
 @ExtendWith(MockitoExtension.class)
 class NicepayPaymentGatewayStrategyTest {
@@ -77,73 +75,6 @@ class NicepayPaymentGatewayStrategyTest {
         // then
         assertThat(result.status()).isEqualTo(PaymentConfirmResultStatus.SUCCESS);
         assertThat(result.approvedAt()).isNotNull();
-        assertThat(result.paymentKey()).isEqualTo("tid-001");
-        assertThat(result.orderId()).isEqualTo("order-001");
-    }
-
-    @Test
-    @DisplayName("getStatus: NicePay status=paid이면 PaymentStatus.DONE을 반환한다")
-    void getStatus_PaidStatus_ReturnsDone() {
-        // given
-        NicepayPaymentResponse response = NicepayPaymentResponse.builder()
-                .tid("tid-001")
-                .orderId("order-001")
-                .amount(BigDecimal.valueOf(10000))
-                .status("paid")
-                .resultCode("0000")
-                .resultMsg("정상 처리되었습니다.")
-                .paidAt("2026-04-13T12:00:00.000+0900")
-                .build();
-        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(response);
-
-        // when
-        PaymentStatusResult result = strategy.getStatus("tid-001");
-
-        // then
-        assertThat(result.status()).isEqualTo(PaymentStatus.DONE);
-    }
-
-    @Test
-    @DisplayName("getStatus: NicePay status=failed이면 PaymentStatus.ABORTED를 반환한다")
-    void getStatus_FailedStatus_ReturnsAborted() {
-        // given
-        NicepayPaymentResponse response = NicepayPaymentResponse.builder()
-                .tid("tid-001")
-                .orderId("order-001")
-                .amount(BigDecimal.valueOf(10000))
-                .status("failed")
-                .resultCode("A000")
-                .resultMsg("결제 실패")
-                .build();
-        given(nicepayGatewayInternalReceiver.getPaymentInfoByTid(anyString())).willReturn(response);
-
-        // when
-        PaymentStatusResult result = strategy.getStatus("tid-001");
-
-        // then
-        assertThat(result.status()).isEqualTo(PaymentStatus.ABORTED);
-    }
-
-    @Test
-    @DisplayName("getStatusByOrderId: orderId로 정상 조회하면 상태가 매핑되어 반환된다")
-    void getStatusByOrderId_Success_ReturnsMapped() throws Exception {
-        // given
-        NicepayPaymentResponse response = NicepayPaymentResponse.builder()
-                .tid("tid-001")
-                .orderId("order-001")
-                .amount(BigDecimal.valueOf(10000))
-                .status("paid")
-                .resultCode("0000")
-                .resultMsg("정상 처리되었습니다.")
-                .paidAt("2026-04-13T12:00:00.000+0900")
-                .build();
-        given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString())).willReturn(response);
-
-        // when
-        PaymentStatusResult result = strategy.getStatusByOrderId("order-001");
-
-        // then
-        assertThat(result.status()).isEqualTo(PaymentStatus.DONE);
         assertThat(result.paymentKey()).isEqualTo("tid-001");
         assertThat(result.orderId()).isEqualTo("order-001");
     }
@@ -268,32 +199,6 @@ class NicepayPaymentGatewayStrategyTest {
         // when & then
         assertThatThrownBy(() -> strategy.confirm(request))
                 .isInstanceOf(PaymentGatewayRetryableException.class);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"2159", "A246", "A299"})
-    @DisplayName("getStatusByOrderId: 재시도 가능 에러 코드이면 PaymentGatewayRetryableException을 던진다")
-    void getStatusByOrderId_RetryableErrorCode_ThrowsRetryableException(String errorCode) throws Exception {
-        // given
-        given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString()))
-                .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 가능 에러"));
-
-        // when & then
-        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001"))
-                .isInstanceOf(PaymentGatewayRetryableException.class);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"3011", "3012", "3013", "3014", "2152", "2156"})
-    @DisplayName("getStatusByOrderId: 재시도 불가 에러 코드이면 PaymentGatewayNonRetryableException을 던진다")
-    void getStatusByOrderId_NonRetryableErrorCode_ThrowsNonRetryableException(String errorCode) throws Exception {
-        // given
-        given(nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(anyString()))
-                .willThrow(PaymentGatewayApiException.of(errorCode, "재시도 불가 에러"));
-
-        // when & then
-        assertThatThrownBy(() -> strategy.getStatusByOrderId("order-001"))
-                .isInstanceOf(PaymentGatewayNonRetryableException.class);
     }
 
     @Test

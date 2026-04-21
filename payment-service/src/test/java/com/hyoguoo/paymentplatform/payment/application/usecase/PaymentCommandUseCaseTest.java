@@ -10,42 +10,31 @@ import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.application.port.PaymentGatewayPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+// ADR-02 준수: confirmPaymentWithGateway·getPaymentStatusByOrderId 메서드는 Phase 2 완료로 삭제됨.
+// 해당 메서드의 테스트(testConfirmPaymentWithGateway_*/getPaymentStatusByOrderId_*)도 함께 제거.
+
 class PaymentCommandUseCaseTest {
 
     private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
-    private PaymentGatewayPort mockPaymentGatewayPort;
     private TestLocalDateTimeProvider testLocalDateTimeProvider;
     private PaymentQuarantineMetrics mockPaymentQuarantineMetrics;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
-        mockPaymentGatewayPort = Mockito.mock(PaymentGatewayPort.class);
         testLocalDateTimeProvider = new TestLocalDateTimeProvider();
         mockPaymentQuarantineMetrics = Mockito.mock(PaymentQuarantineMetrics.class);
         paymentCommandUseCase = new PaymentCommandUseCase(
                 mockPaymentEventRepository,
-                mockPaymentGatewayPort,
                 testLocalDateTimeProvider,
                 mockPaymentQuarantineMetrics
         );
@@ -57,16 +46,11 @@ class PaymentCommandUseCaseTest {
         // given
         String paymentKey = "paymentKey";
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey(paymentKey)
-                .amount(new BigDecimal(10000))
-                .build();
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentConfirmCommand.getPaymentKey());
+        PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
 
         // then
         verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(),
@@ -110,104 +94,6 @@ class PaymentCommandUseCaseTest {
     }
 
     @Test
-    @DisplayName("Toss 결제 승인 성공 시 성공 결과와 함께 결제 정보를 반환한다.")
-    void testConfirmPaymentWithGateway_Success() throws Exception {
-        // given
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .amount(new BigDecimal(10000))
-                .gatewayType(PaymentGatewayType.TOSS)
-                .build();
-
-        PaymentConfirmResult confirmResult =
-                new PaymentConfirmResult(
-                        PaymentConfirmResultStatus.SUCCESS,
-                        "paymentKey",
-                        "order123",
-                        new BigDecimal(10000),
-                        LocalDateTime.now(),
-                        null
-                );
-
-        // when
-        when(mockPaymentGatewayPort.confirm(
-                any(PaymentConfirmRequest.class)))
-                .thenReturn(confirmResult);
-        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(
-                paymentConfirmCommand
-        );
-
-        // then
-        assertThat(result.getPaymentConfirmResultStatus())
-                .isEqualTo(PaymentConfirmResultStatus.SUCCESS);
-    }
-
-    @Test
-    @DisplayName("Toss 결제 승인 중 재시도 가능한 실패 시 RETRYABLE_FAILURE 상태의 결과를 반환한다.")
-    void testConfirmPaymentWithGateway_RetryableFailure() throws Exception {
-        // given
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .amount(new BigDecimal(10000))
-                .gatewayType(PaymentGatewayType.TOSS)
-                .build();
-
-        PaymentConfirmResult confirmResult =
-                new PaymentConfirmResult(
-                        PaymentConfirmResultStatus.RETRYABLE_FAILURE,
-                        "paymentKey",
-                        "order123",
-                        new BigDecimal(10000),
-                        LocalDateTime.now(),
-                        new PaymentFailureInfo("ERROR",
-                                "Retryable error", true)
-                );
-
-        // when
-        when(mockPaymentGatewayPort.confirm(any(PaymentConfirmRequest.class)))
-                .thenReturn(confirmResult);
-        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand);
-
-        // then
-        assertThat(result.getPaymentConfirmResultStatus())
-                .isEqualTo(PaymentConfirmResultStatus.RETRYABLE_FAILURE);
-    }
-
-    @Test
-    @DisplayName("Toss 결제 승인 중 재시도 불가능한 실패 시 NON_RETRYABLE_FAILURE 상태의 결과를 반환한다.")
-    void testConfirmPaymentWithGateway_NonRetryableFailure() throws Exception {
-        // given
-        PaymentConfirmCommand paymentConfirmCommand = PaymentConfirmCommand.builder()
-                .orderId("order123")
-                .paymentKey("paymentKey")
-                .amount(new BigDecimal(10000))
-                .gatewayType(PaymentGatewayType.TOSS)
-                .build();
-
-        PaymentConfirmResult confirmResult =
-                new PaymentConfirmResult(
-                        PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE,
-                        "paymentKey",
-                        "order123",
-                        new BigDecimal(10000),
-                        LocalDateTime.now(),
-                        new PaymentFailureInfo("ERROR",
-                                "Non-retryable error", false)
-                );
-
-        // when
-        when(mockPaymentGatewayPort.confirm(any(PaymentConfirmRequest.class)))
-                .thenReturn(confirmResult);
-        PaymentGatewayInfo result = paymentCommandUseCase.confirmPaymentWithGateway(paymentConfirmCommand);
-
-        // then
-        assertThat(result.getPaymentConfirmResultStatus())
-                .isEqualTo(PaymentConfirmResultStatus.NON_RETRYABLE_FAILURE);
-    }
-
-    @Test
     @DisplayName("markPaymentAsRetrying 호출 시 PaymentEvent.toRetrying()을 호출하고 저장한다.")
     void markPaymentAsRetrying_PaymentEvent_toRetrying_호출_및_저장() {
         // given
@@ -238,27 +124,6 @@ class PaymentCommandUseCaseTest {
         // then
         then(paymentEvent).should(times(1)).quarantine(reason, testLocalDateTimeProvider.now());
         then(mockPaymentQuarantineMetrics).should(times(1)).recordQuarantine(reason);
-    }
-
-    @Test
-    @DisplayName("getPaymentStatusByOrderId 호출 시 PaymentGatewayPort에 위임하고 결과를 반환한다.")
-    void getPaymentStatusByOrderId_DelegatesToPort() throws Exception {
-        // given
-        String orderId = "order-123";
-        PaymentGatewayType gatewayType = PaymentGatewayType.TOSS;
-        PaymentStatusResult expectedResult = new PaymentStatusResult(
-                "paymentKey", orderId, PaymentStatus.DONE,
-                BigDecimal.valueOf(10000), LocalDateTime.now(), null
-        );
-        given(mockPaymentGatewayPort.getStatusByOrderId(orderId, gatewayType))
-                .willReturn(expectedResult);
-
-        // when
-        PaymentStatusResult result = paymentCommandUseCase.getPaymentStatusByOrderId(orderId, gatewayType);
-
-        // then
-        assertThat(result).isEqualTo(expectedResult);
-        then(mockPaymentGatewayPort).should(times(1)).getStatusByOrderId(orderId, gatewayType);
     }
 
     @Test

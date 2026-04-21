@@ -8,10 +8,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentGatewayInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
@@ -20,10 +18,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.PaymentInfrastructureM
 import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
 import com.hyoguoo.paymentplatform.paymentgateway.presentation.PaymentGatewayInternalReceiver;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -182,80 +177,6 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
                 errorCode.equals(ERROR_NETWORK) ||
                 errorCode.startsWith(ERROR_TIMEOUT_PREFIX) ||
                 errorCode.equals(ERROR_PAY_PROCESS_ABORTED);
-    }
-
-    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
-    @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
-                paymentGatewayInternalReceiver.getPaymentInfoByPaymentKey(paymentKey)
-        );
-
-        return convertToPaymentStatusResult(paymentGatewayInfo);
-    }
-
-    // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
-    @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId)
-            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        try {
-            PaymentGatewayInfo paymentGatewayInfo = PaymentInfrastructureMapper.toPaymentGatewayInfo(
-                    paymentGatewayInternalReceiver.getPaymentInfoByOrderId(orderId)
-            );
-            return convertToPaymentStatusResult(paymentGatewayInfo);
-        } catch (WebClientResponseException e) {
-            return handleGetStatusResponseException(e);
-        } catch (WebClientRequestException e) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
-        }
-    }
-
-    private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
-            throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
-        if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
-        }
-        if (e.getStatusCode().is5xxServerError()) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
-        }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
-    }
-
-    private PaymentStatusResult convertToPaymentStatusResult(PaymentGatewayInfo paymentGatewayInfo) {
-        PaymentStatus status = mapToPaymentStatus(
-                paymentGatewayInfo.getPaymentDetails() != null
-                        ? paymentGatewayInfo.getPaymentDetails().getStatus().name()
-                        : STATUS_UNKNOWN
-        );
-
-        PaymentFailureInfo failure = createPaymentFailureInfo(paymentGatewayInfo);
-
-        return new PaymentStatusResult(
-                paymentGatewayInfo.getPaymentKey(),
-                paymentGatewayInfo.getOrderId(),
-                status,
-                paymentGatewayInfo.getPaymentDetails() != null
-                        ? paymentGatewayInfo.getPaymentDetails().getTotalAmount()
-                        : null,
-                paymentGatewayInfo.getPaymentDetails() != null
-                        ? paymentGatewayInfo.getPaymentDetails().getApprovedAt()
-                        : null,
-                failure
-        );
-    }
-
-    private PaymentStatus mapToPaymentStatus(String tossStatus) {
-        return switch (tossStatus) {
-            case STATUS_DONE, STATUS_SUCCESS -> PaymentStatus.DONE;
-            case STATUS_FAILED, STATUS_FAILURE, STATUS_ABORTED -> PaymentStatus.ABORTED;
-            case STATUS_IN_PROGRESS, STATUS_PENDING -> PaymentStatus.IN_PROGRESS;
-            case STATUS_CANCELED -> PaymentStatus.CANCELED;
-            case STATUS_EXPIRED -> PaymentStatus.EXPIRED;
-            case STATUS_WAITING_FOR_DEPOSIT -> PaymentStatus.WAITING_FOR_DEPOSIT;
-            case STATUS_PARTIAL_CANCELED -> PaymentStatus.PARTIAL_CANCELED;
-            case STATUS_READY -> PaymentStatus.READY;
-            default -> PaymentStatus.of(tossStatus);
-        };
     }
 
     private String generateIdempotencyKey(String baseKey) {

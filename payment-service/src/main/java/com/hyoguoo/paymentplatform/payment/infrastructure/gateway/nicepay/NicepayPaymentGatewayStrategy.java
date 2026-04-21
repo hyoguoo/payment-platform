@@ -5,10 +5,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentCancelResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentConfirmResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentFailureInfo;
-import com.hyoguoo.paymentplatform.payment.domain.dto.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentCancelResultStatus;
 import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentConfirmResultStatus;
-import com.hyoguoo.paymentplatform.payment.domain.dto.enums.PaymentStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayRetryableException;
@@ -25,10 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Slf4j
 @Component
@@ -146,48 +141,6 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
         return convertToPaymentCancelResult(response, request);
     }
 
-    // 현재 미사용 — 향후 정산/대사(reconciliation) 용도로 예약
-    @Override
-    public PaymentStatusResult getStatus(String paymentKey) {
-        NicepayPaymentResponse response = nicepayGatewayInternalReceiver.getPaymentInfoByTid(paymentKey);
-        return convertToPaymentStatusResult(response);
-    }
-
-    // 복구 사이클(OutboxProcessingService)의 getStatus 선행 조회 경로에서 사용
-    @Override
-    public PaymentStatusResult getStatusByOrderId(String orderId)
-            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        try {
-            NicepayPaymentResponse response = nicepayGatewayInternalReceiver.getPaymentInfoByOrderId(orderId);
-            return convertToPaymentStatusResult(response);
-        } catch (PaymentGatewayApiException e) {
-            return classifyAndThrowStatusException(e);
-        } catch (WebClientResponseException e) {
-            return handleGetStatusResponseException(e);
-        } catch (WebClientRequestException e) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
-        }
-    }
-
-    private PaymentStatusResult handleGetStatusResponseException(WebClientResponseException e)
-            throws PaymentGatewayNonRetryableException, PaymentGatewayRetryableException {
-        if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-            throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
-        }
-        if (e.getStatusCode().is5xxServerError()) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
-        }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
-    }
-
-    private PaymentStatusResult classifyAndThrowStatusException(PaymentGatewayApiException e)
-            throws PaymentGatewayRetryableException, PaymentGatewayNonRetryableException {
-        if (isRetryableErrorCode(e.getCode())) {
-            throw PaymentGatewayRetryableException.of(PaymentErrorCode.GATEWAY_RETRYABLE_ERROR);
-        }
-        throw PaymentGatewayNonRetryableException.of(PaymentErrorCode.GATEWAY_NON_RETRYABLE_ERROR);
-    }
-
     private PaymentConfirmResult convertToPaymentConfirmResult(
             NicepayPaymentResponse response,
             PaymentConfirmRequest request
@@ -233,35 +186,6 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
             return PaymentCancelResultStatus.SUCCESS;
         }
         return PaymentCancelResultStatus.FAILURE;
-    }
-
-    private PaymentStatusResult convertToPaymentStatusResult(NicepayPaymentResponse response) {
-        PaymentStatus status = mapToPaymentStatus(response.getStatus());
-        LocalDateTime approvedAt = parseApprovedAt(response.getPaidAt());
-
-        return new PaymentStatusResult(
-                response.getTid(),
-                response.getOrderId(),
-                status,
-                response.getAmount(),
-                approvedAt,
-                null
-        );
-    }
-
-    private PaymentStatus mapToPaymentStatus(String nicepayStatus) {
-        if (nicepayStatus == null) {
-            return PaymentStatus.ABORTED;
-        }
-        return switch (nicepayStatus) {
-            case NICEPAY_STATUS_PAID -> PaymentStatus.DONE;
-            case NICEPAY_STATUS_READY -> PaymentStatus.READY;
-            case NICEPAY_STATUS_FAILED -> PaymentStatus.ABORTED;
-            case NICEPAY_STATUS_CANCELLED -> PaymentStatus.CANCELED;
-            case NICEPAY_STATUS_PARTIAL_CANCELLED -> PaymentStatus.PARTIAL_CANCELED;
-            case NICEPAY_STATUS_EXPIRED -> PaymentStatus.EXPIRED;
-            default -> PaymentStatus.of(nicepayStatus);
-        };
     }
 
     private LocalDateTime parseApprovedAt(String paidAt) {

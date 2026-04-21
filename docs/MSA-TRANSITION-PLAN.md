@@ -107,8 +107,11 @@ RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% 
 **Phase 2.c — 전환 스위치 + 기존 reconciler 삭제** (3개)
 
 - ✅ T2c-01 pg.retry.mode=outbox 활성화 스위치
-- T2c-02 기존 reconciler · PG 직접 호출 코드 삭제 + 잔존 어댑터 정리
+- ✅ T2c-02 기존 reconciler · PG 직접 호출 코드 삭제 + 잔존 어댑터 정리
 - T2c-Gate Phase 2.c 마이크로 Gate
+
+**완료 결과 — T2c-02** (2026-04-21):
+`PgStatusAbsenceContractTest` 3케이스(TC1 PgStatusPort 클래스패스 부재/TC2 PgStatusHttpAdapter 클래스패스 부재/TC3 PaymentCommandUseCase·PaymentGatewayStrategy getStatus 메서드 부재) 계약 테스트로 불변식 19 고정. 삭제 확인: `PgStatusPort`, `PgStatusHttpAdapter`, `/internal/pg/status` 엔드포인트 — 이미 부재(T1-11c에서 삭제 완료). payment-service 잔존 PG 직접 호출 코드 전면 삭제: (1) 구버전 `payment/application/port/PaymentGatewayPort.java`(getStatus·getStatusByOrderId 포함) 삭제. (2) 구버전 `payment/infrastructure/internal/InternalPaymentGatewayAdapter.java` 삭제. (3) `PaymentCommandUseCase.confirmPaymentWithGateway()·getPaymentStatusByOrderId()` 삭제 — 프로덕션 미사용 확인. (4) `PaymentGatewayStrategy.getStatus()·getStatusByOrderId()` 인터페이스 메서드 삭제. (5) TossPaymentGatewayStrategy·NicepayPaymentGatewayStrategy getStatus/getStatusByOrderId 구현 삭제. 관련 테스트 정리: InternalPaymentGatewayAdapterTest 삭제, PaymentCommandUseCaseTest 4케이스·NicepayPaymentGatewayStrategyTest 10케이스 삭제, PaymentGatewayFactoryTest 익명 클래스 메서드 제거. `out.PaymentGatewayPort`(confirm/cancel only, ADR-02 준수)·`adapter/internal/InternalPaymentGatewayAdapter` 신버전만 유지. 372/472 PASS(payment-service 379 + pg-service 93) — 삭제 테스트 16건 제외, 회귀 없음. ADR-02/ADR-21 불변 확정.
 
 **완료 결과 — T2c-01** (2026-04-21):
 `pg-service/src/main/resources/application.yml` 신설. server.port=8082(gateway 8080·payment-service 8081 포트 충돌 방지). pg.retry.mode=outbox 키 선언으로 ADR-30 Phase 2.b 스위치 확정. spring.kafka.bootstrap-servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092} — 기존 환경변수 네이밍 대칭 유지. datasource: PG_DATASOURCE_URL/USERNAME/PASSWORD 환경변수(기본값 localhost:3308/pg). flyway.enabled=true + locations=classpath:db/migration. pg.outbox.channel.capacity/worker-count + pg.scheduler.polling-worker.* 기본값 명시. management actuator/prometheus 노출. OutboxProcessingService PG 직접 호출 경로: T1-11c에서 이미 삭제 완료(scheduler/ 패키지에 부재 확인). payment-service의 OutboxRelayService는 PG 직접 호출이 아닌 Kafka 발행 경로(이미 outbox 방식) — flag 적용 대상 없음(T2c-02에서 삭제 예정 코드 확인 후 처리). `./gradlew test` 488/488(payment-service 395 + pg-service 93) 회귀 없음.
