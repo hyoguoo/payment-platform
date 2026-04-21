@@ -1,0 +1,84 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: pg-service
+
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: ${PG_DATASOURCE_URL:jdbc:mysql://localhost:3308/pg?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${PG_DATASOURCE_USERNAME:root}
+    password: ${PG_DATASOURCE_PASSWORD:root}
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 15
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  output:
+    ansi:
+      enabled: always
+
+  myapp:
+    nicepay:
+      client-key: ${NICEPAY_CLIENT_KEY:}
+      secret-key: ${NICEPAY_SECRET_KEY:}
+      api-url: ${NICEPAY_API_URL:https://sandbox-api.nicepay.co.kr}
+
+spring.profiles.default: local
+
+pg:
+  retry:
+    mode: outbox
+  scheduler:
+    polling-worker:
+      fixed-delay-ms: 2000
+      batch-size: 10
+  outbox:
+    channel:
+      capacity: 1024
+      worker-count: 1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: pg-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
