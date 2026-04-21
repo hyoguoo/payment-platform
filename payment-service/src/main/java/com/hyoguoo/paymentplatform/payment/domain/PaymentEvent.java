@@ -175,6 +175,14 @@ public class PaymentEvent {
         this.quarantineCompensationPending = true;
     }
 
+    /**
+     * QuarantineCompensationHandler가 TX 밖 Redis INCR 성공 후 플래그를 해제한다.
+     * 실패 시에는 호출하지 않아 플래그를 유지(불변식 7b).
+     */
+    public void clearQuarantineCompensationPending() {
+        this.quarantineCompensationPending = false;
+    }
+
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }

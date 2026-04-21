@@ -50,7 +50,7 @@
 - ✅ T1-11a KafkaMessagePublisher + OutboxRelayService 구현
 - ✅ T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
 - T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
-- T1-12 QuarantineCompensationHandler + Scheduler
+- ✅ T1-12 QuarantineCompensationHandler + Scheduler
 - T1-13 FCG 격리 불변 + RecoveryDecision 이관
 - T1-14 Reconciliation 루프 + Redis↔RDB 재고 대조
 - T1-15 Graceful Shutdown + Virtual Threads 재검토
@@ -829,6 +829,17 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/application/usecase/QuarantineCompensationHandler.java`
   - `payment-service/src/main/java/.../payment/scheduler/QuarantineCompensationScheduler.java`
+
+#### 완료 결과 (2026-04-21)
+
+- `QuarantineCompensationHandler`: `QuarantineEntry` enum(FCG/DLQ_CONSUMER) 진입점 구분, `handle()` → `handleInTransaction()`(TX 내) + `attemptStockRollback()`(TX 밖, DLQ_CONSUMER만) 2단계 분리 구현.
+- `handleInTransaction()`: `paymentCommandUseCase.markPaymentAsQuarantined()` → `quarantinedEvent.markQuarantineCompensationPending()` → `paymentEventRepository.saveOrUpdate()` 단일 TX.
+- `attemptStockRollback()`: Redis INCR 성공 시 `clearPendingFlagInTx()` 호출(플래그 해제), `RuntimeException` 발생 시 플래그 유지(불변식 7b). FCG 진입점은 즉시 INCR 금지.
+- `retryStockRollback()`: Scheduler 재시도 진입점 — event 재조회 후 `attemptStockRollback()` 위임.
+- `QuarantineCompensationScheduler`: `@Scheduled(fixedDelayString=...)` scan() — `findByQuarantineCompensationPendingTrue()` 조회 후 `retryStockRollback()` 반복.
+- `PaymentEvent.clearQuarantineCompensationPending()` 신설.
+- `PaymentEventRepository.findByQuarantineCompensationPendingTrue()` 인터페이스·구현체(JPA Spring Data 메서드명 규칙)·`FakePaymentEventRepository` 추가.
+- 5/5 테스트 PASS, 전체 379/379 PASS.
 
 ---
 
