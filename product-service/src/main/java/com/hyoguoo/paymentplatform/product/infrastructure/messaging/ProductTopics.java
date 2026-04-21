@@ -19,6 +19,13 @@ public final class ProductTopics {
      */
     public static final String EVENTS_STOCK_SNAPSHOT = "product.events.stock-snapshot";
 
-    // 향후 Phase 3 진행 중 확장 예정:
+    /**
+     * payment-service가 발행하는 재고 확정 커밋 이벤트 토픽.
+     * product-service T3-04 StockCommitConsumer가 구독.
+     * ADR-30: 발행 주체(payment-service)와 상관없이 consumer 측도 상수 독립 선언.
+     */
+    public static final String PAYMENT_EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
+
+    // T3-04b에서 확장 예정:
     // public static final String STOCK_EVENTS_RESTORE = "stock.events.restore";
 }

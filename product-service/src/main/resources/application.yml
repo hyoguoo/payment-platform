@@ -36,9 +36,20 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+product:
+  cache:
+    payment-redis:
+      # host: ${REDIS_PAYMENT_HOST:localhost}  # 운영 환경에서 환경변수로 활성화
+      port: ${REDIS_PAYMENT_PORT:6380}
 
   output:
     ansi:

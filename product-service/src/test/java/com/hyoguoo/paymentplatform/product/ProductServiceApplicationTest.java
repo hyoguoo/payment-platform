@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.product;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
+import com.hyoguoo.paymentplatform.product.application.port.out.PaymentStockCachePort;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
                 "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration",
+        "spring.kafka.listener.auto-startup=false",
 })
 class ProductServiceApplicationTest {
 
@@ -35,6 +37,9 @@ class ProductServiceApplicationTest {
 
     @MockitoBean
     EventDedupeStore eventDedupeStore;
+
+    @MockitoBean
+    PaymentStockCachePort paymentStockCachePort;
 
     @Test
     void contextLoads() {

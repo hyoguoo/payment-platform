@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.hyoguoo.paymentplatform.product.application.usecase.StockCommitUseCase;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockCommittedMessage;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
