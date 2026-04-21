@@ -99,7 +99,10 @@ RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% 
 - ✅ T2b-03 pg-service 내부 FCG 구현
 - ✅ T2b-04 business inbox amount 컬럼 저장 규약 구현
 - ✅ T2b-05 중복 승인 응답 2자 금액 대조 + pg DB 부재 경로 방어
-- T2b-Gate Phase 2.b 마이크로 Gate
+- ✅ T2b-Gate Phase 2.b 마이크로 Gate
+
+**완료 결과 — T2b-Gate** (2026-04-21):
+`scripts/phase-gate/phase-2b-gate.sh` 신설(executable). `docs/phase-gate/phase-2b-gate.md` 신설. 검증 항목 8섹션(a~h): (a) Phase 2.a Gate 전제 9항목(pg-service health/mysql-pg/Flyway V1/amount+reason_code+available_at 컬럼/DLQ 토픽+consumer group), (b) DuplicateApprovalHandlerTest 6케이스 위임(중복 승인 amount 일치/불일치×DB 존재/부재×vendor 실패), (c) pg_inbox.status 5상태 ENUM 컬럼 확인, (d) PgFinalConfirmationGateTest 4케이스 위임(FCG 불변: getStatus 1회, 재시도 0회), (e) PgVendorCallServiceTest 5케이스+RetryPolicyTest 위임(ADR-30 available_at 지연 재발행, DLQ 원자성), (f) PaymentConfirmDlqConsumerTest 4케이스 위임(QUARANTINED 전이+no-op terminal+DLQ consumer 클래스 분리), (g) AmountConverterTest+PgInboxAmountStorageTest 위임+DB smoke(NONE→IN_PROGRESS amount 기록), (h) 전체 Gradle test 488건 이상. `./gradlew test` 488/488 회귀 없음.
 
 **Phase 2.c — 전환 스위치 + 기존 reconciler 삭제** (3개)
 
