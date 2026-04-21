@@ -47,11 +47,6 @@ public class NicepayPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private static final String NICEPAY_NON_RETRYABLE_ERROR_2156 = "2156";
 
     private static final String NICEPAY_STATUS_PAID = "paid";
-    private static final String NICEPAY_STATUS_READY = "ready";
-    private static final String NICEPAY_STATUS_FAILED = "failed";
-    private static final String NICEPAY_STATUS_CANCELLED = "cancelled";
-    private static final String NICEPAY_STATUS_PARTIAL_CANCELLED = "partialCancelled";
-    private static final String NICEPAY_STATUS_EXPIRED = "expired";
 
     private final NicepayGatewayInternalReceiver nicepayGatewayInternalReceiver;
 

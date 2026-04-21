@@ -28,14 +28,7 @@ public class TossPaymentGatewayStrategy implements PaymentGatewayStrategy {
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_FAILED = "FAILED";
     private static final String STATUS_FAILURE = "FAILURE";
-    private static final String STATUS_ABORTED = "ABORTED";
     private static final String STATUS_CANCELED = "CANCELED";
-    private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
-    private static final String STATUS_PENDING = "PENDING";
-    private static final String STATUS_EXPIRED = "EXPIRED";
-    private static final String STATUS_WAITING_FOR_DEPOSIT = "WAITING_FOR_DEPOSIT";
-    private static final String STATUS_PARTIAL_CANCELED = "PARTIAL_CANCELED";
-    private static final String STATUS_READY = "READY";
     private static final String STATUS_UNKNOWN = "UNKNOWN";
 
     private static final String ERROR_PROVIDER_ERROR = "PROVIDER_ERROR";
