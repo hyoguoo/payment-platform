@@ -128,8 +128,15 @@ public class PaymentTransactionCoordinator {
         return quarantined;
     }
 
+    /**
+     * TX 원자성 보장 메서드: executePayment(event 전이) + createPendingRecord(outbox 생성)를 단일 TX에서 실행.
+     * <p>
+     * NOTE: Spring AOP self-invocation 주의 — executePaymentConfirm()에서 직접 호출 시 @Transactional 미적용.
+     * paymentCommandUseCase.executePayment()가 @Transactional이므로 그 TX에 createPendingRecord가 참여하는 구조.
+     * 완전한 AOP 프록시 경유는 T1-06 이후 리팩토링 대상.
+     */
     @Transactional
-    protected PaymentEvent executePaymentConfirmInTransaction(
+    public PaymentEvent executePaymentConfirmInTransaction(
             PaymentEvent paymentEvent,
             String paymentKey,
             String orderId
