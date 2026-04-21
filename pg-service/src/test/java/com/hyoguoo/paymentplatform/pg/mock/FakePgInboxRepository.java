@@ -87,6 +87,31 @@ public class FakePgInboxRepository implements PgInboxRepository {
         });
     }
 
+    /**
+     * non-terminal → QUARANTINED 원자 compare-and-set.
+     * 이미 terminal이면 false 반환 (불변식 6c 중복 DLQ 흡수).
+     */
+    @Override
+    public boolean transitToQuarantined(String orderId, String reasonCode) {
+        AtomicBoolean transitioned = new AtomicBoolean(false);
+        store.compute(orderId, (key, current) -> {
+            if (current == null || current.getStatus().isTerminal()) {
+                return current; // 이미 terminal 또는 미존재 → no-op
+            }
+            transitioned.set(true);
+            return current.withResult(PgInboxStatus.QUARANTINED, null, reasonCode);
+        });
+        return transitioned.get();
+    }
+
+    /**
+     * FOR UPDATE 잠금 조회 — Fake에서는 일반 findByOrderId와 동등.
+     */
+    @Override
+    public Optional<PgInbox> findByOrderIdForUpdate(String orderId) {
+        return findByOrderId(orderId);
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {

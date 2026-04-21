@@ -77,13 +77,16 @@
 **완료 결과 — T2a-06** (2026-04-21):
 EventDedupeStore 포트(markSeen) + FakeEventDedupeStore(ConcurrentHashSet) 신설. PgInboxRepository에 transitNoneToInProgress(orderId, amount): boolean CAS 메서드 추가. FakePgInboxRepository에 putIfAbsent + compute 기반 원자 전이 구현. FakePgOutboxRepository에 id=null auto-increment 처리 추가. PgConfirmService(application/service): handle(PgConfirmCommand) — eventUUID dedupe(1단) → inbox 5상태 분기(2단): NONE→CAS 전이+PG 호출, IN_PROGRESS→no-op, terminal→stored_status_result pg_outbox 재발행(벤더 호출 금지). PaymentConfirmConsumer(infrastructure/messaging/consumer): @KafkaListener(payment.commands.confirm, pg-service) + @ConditionalOnProperty(spring.kafka.bootstrap-servers). PaymentConfirmConsumerTest 5케이스 전부 GREEN: TC1(NONE→PG 1회), TC2(IN_PROGRESS no-op), TC3(terminal 3종 재발행), TC4(eventUUID dedupe), TC5(동시성 8스레드→PG 1회). 전체 418/418 PASS(payment-service 395 + pg-service 23), 회귀 없음.
 
+**완료 결과 — T2b-02** (2026-04-21):
+PgInboxRepository 포트에 transitToQuarantined(orderId, reasonCode): boolean + findByOrderIdForUpdate(orderId): Optional 추가. FakePgInboxRepository에 transitToQuarantined(compute 기반 원자 전이, terminal 체크) + findByOrderIdForUpdate 구현. PgDlqService(application/service) 신설: handle(PgConfirmCommand) @Transactional — FOR UPDATE 조회 → terminal이면 no-op(불변식 6c) → pg_inbox QUARANTINED CAS 전이 + pg_outbox(topic=payment.events.confirmed, QUARANTINED+RETRY_EXHAUSTED 페이로드) INSERT(같은 TX) → TX commit 후 PgOutboxReadyEvent 발행(T2a-05b/c 경로 재사용). PaymentConfirmDlqConsumer(infrastructure/messaging/consumer) 신설: @KafkaListener(payment.commands.confirm.dlq, groupId=pg-service-dlq) + @ConditionalOnProperty(spring.kafka.bootstrap-servers) → PaymentConfirmConsumer와 물리적으로 다른 Spring bean(ADR-30 수락 기준). PaymentConfirmDlqConsumerTest 4케이스(파라미터 포함 6건) GREEN: TC1(IN_PROGRESS→QUARANTINED+events.confirmed 1건), TC2(terminal 3종→no-op+outbox 0건), TC3(events.confirmed row 1건만, 보상 큐 없음), TC4(DlqConsumer≠NormalConsumer 클래스 분리). 전체 470/470 PASS(payment-service 395 + pg-service 75), 회귀 없음.
+
 **완료 결과 — T2b-01** (2026-04-21):
 RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% equal, shouldRetry(attempt<4), computeBackoff(attempt, rng). PgInboxRepository 포트에 transitToApproved(orderId, storedStatusResult) + transitToFailed(orderId, storedStatusResult, reasonCode) 추가. FakePgInboxRepository 구현 확장. PgVendorCallService(application/service) 신설: callVendor(request, attempt, now) @Transactional — GatewayOutcome 캡슐화로 try-catch 외부 변수 재할당 없이 구현 → 성공(APPROVED outbox+inbox전이)/확정실패(FAILED outbox+inbox전이)/retryable+attempt<4(commands.confirm available_at=now+backoff nextAttempt header)/retryable+attempt>=4(commands.confirm.dlq attempt header). PgConfirmService.callVendor() placeholder → PgVendorCallService 위임으로 교체, Clock 주입 추가. PaymentConfirmConsumerTest setUp() 갱신(PgVendorCallService + Clock 주입). PgVendorCallServiceTest 5케이스 GREEN(TC1성공/TC2재시도/TC3DLQ/TC4확정실패/TC5DLQ원자성). RetryPolicyTest: shouldRetry 경계값 5케이스 + computeBackoff 범위 RepeatedTest(attempt=1/4 각 20회). 전체 464/464 PASS(payment-service 395 + pg-service 69), 회귀 없음.
 
 **Phase 2.b — business inbox 5상태 + amount 컬럼 + 벤더 어댑터 통합** (6개)
 
 - ✅ T2b-01 PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행
-- T2b-02 PaymentConfirmDlqConsumer 구현 (DLQ 전용 consumer)
+- ✅ T2b-02 PaymentConfirmDlqConsumer 구현 (DLQ 전용 consumer)
 - T2b-03 pg-service 내부 FCG 구현
 - T2b-04 business inbox amount 컬럼 저장 규약 구현
 - T2b-05 중복 승인 응답 2자 금액 대조 + pg DB 부재 경로 방어

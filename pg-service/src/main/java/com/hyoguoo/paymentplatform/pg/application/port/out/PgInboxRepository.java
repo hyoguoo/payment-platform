@@ -46,4 +46,28 @@ public interface PgInboxRepository {
      * @param reasonCode        실패 사유 코드
      */
     void transitToFailed(String orderId, String storedStatusResult, String reasonCode);
+
+    /**
+     * non-terminal → QUARANTINED compare-and-set 전이.
+     * ADR-30(T2b-02): DLQ consumer가 inbox를 격리 상태로 전이한다.
+     * 이미 terminal(APPROVED/FAILED/QUARANTINED)이면 false를 반환 (불변식 6c 중복 DLQ 흡수).
+     *
+     * <p>실제 구현체(JPA): SELECT FOR UPDATE + 상태 검사 + UPDATE.
+     * Fake 구현체: compute 기반 원자 전이.
+     *
+     * @param orderId    orderId (UNIQUE)
+     * @param reasonCode 격리 사유 코드 (e.g., "RETRY_EXHAUSTED")
+     * @return true — 전이 성공, false — 이미 terminal(no-op)
+     */
+    boolean transitToQuarantined(String orderId, String reasonCode);
+
+    /**
+     * FOR UPDATE 잠금을 포함한 inbox 조회.
+     * ADR-30(T2b-02): DLQ consumer의 중복 진입 방어를 위해 SELECT FOR UPDATE 의미론 적용.
+     * Fake 구현체에서는 일반 findByOrderId와 동등하게 동작한다.
+     *
+     * @param orderId orderId (UNIQUE)
+     * @return inbox Optional
+     */
+    Optional<PgInbox> findByOrderIdForUpdate(String orderId);
 }
