@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEven
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
@@ -228,6 +229,7 @@ class ConfirmedEventConsumerTest {
                 .productId(productId)
                 .quantity(quantity)
                 .totalAmount(BigDecimal.valueOf(1000L * quantity))
+                .status(PaymentOrderStatus.EXECUTING)  // done()/fail() 호출 가능 상태
                 .allArgsBuild();
     }
 }

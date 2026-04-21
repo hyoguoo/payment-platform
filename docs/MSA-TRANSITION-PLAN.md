@@ -119,9 +119,12 @@ RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% 
 **완료 결과 — T2c-01** (2026-04-21):
 `pg-service/src/main/resources/application.yml` 신설. server.port=8082(gateway 8080·payment-service 8081 포트 충돌 방지). pg.retry.mode=outbox 키 선언으로 ADR-30 Phase 2.b 스위치 확정. spring.kafka.bootstrap-servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092} — 기존 환경변수 네이밍 대칭 유지. datasource: PG_DATASOURCE_URL/USERNAME/PASSWORD 환경변수(기본값 localhost:3308/pg). flyway.enabled=true + locations=classpath:db/migration. pg.outbox.channel.capacity/worker-count + pg.scheduler.polling-worker.* 기본값 명시. management actuator/prometheus 노출. OutboxProcessingService PG 직접 호출 경로: T1-11c에서 이미 삭제 완료(scheduler/ 패키지에 부재 확인). payment-service의 OutboxRelayService는 PG 직접 호출이 아닌 Kafka 발행 경로(이미 outbox 방식) — flag 적용 대상 없음(T2c-02에서 삭제 예정 코드 확인 후 처리). `./gradlew test` 488/488(payment-service 395 + pg-service 93) 회귀 없음.
 
+**완료 결과 — T2d-01** (2026-04-21):
+EventDedupeStore 포트 신설(payment-service 독립 복제, ADR-30). StockRestoreEventPublisherPort 포트 신설(stock.events.restore 토픽 발행 계약). ConfirmedEventMessage record 신설(payment.events.confirmed payload). PaymentConfirmResultUseCase(application/usecase) @Transactional handle: (1) eventUUID dedupe(markSeen false→no-op), (2) orderId로 PaymentEvent 조회, (3) status 3-way 분기 — APPROVED: done()+StockCommitEvent 발행(상품별)/FAILED: fail()+StockRestore 발행/QUARANTINED: QuarantineCompensationHandler.handle(FCG 진입점) 위임. ConfirmedEventConsumer(infrastructure/messaging/consumer): @KafkaListener(payment.events.confirmed, groupId=payment-service) + @ConditionalOnProperty(matchIfMissing=true, T1-18 교훈 반영). FakeEventDedupeStore/FakeStockRestoreEventPublisher/FakePaymentEventRepository(test) 신설. ConfirmedEventConsumerTest 5케이스 GREEN(TC1 APPROVED DONE+StockCommit/TC2 FAILED+Restore/TC3 QUARANTINED→handler 위임/TC4 dedupe 1회 전이/TC5 no-op publisher 0회). 전체 477/477 PASS(payment-service 384 + pg-service 93), 회귀 없음.
+
 **Phase 2.d — 관측 대시보드 활성화 + 결제 서비스 측 이벤트 소비** (4개)
 
-- T2d-01 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
+- ✅ T2d-01 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
 - T2d-02 토픽 네이밍 규약 확정 + Outbox 관측 지표 + Grafana 대시보드
 - T2d-03 Gateway 라우팅: PG 내부 API 격리
 - T2d-Gate Phase 2.d 마이크로 Gate + Phase 2 통합 Gate
