@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -21,6 +22,11 @@ public class FakePgOutboxRepository implements PgOutboxRepository {
     public PgOutbox save(PgOutbox outbox) {
         store.put(outbox.getId(), outbox);
         return outbox;
+    }
+
+    @Override
+    public Optional<PgOutbox> findById(long id) {
+        return Optional.ofNullable(store.get(id));
     }
 
     /**

@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.pg.mock;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgEventPublisherPort;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -13,15 +14,25 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class FakePgEventPublisher implements PgEventPublisherPort {
 
-    public record EventCapture(String orderId, String status, String reasonCode, String eventUuid) {
+    public record EventCapture(String topic, String key, Object payload, Map<String, byte[]> headers) {
 
     }
 
     private final CopyOnWriteArrayList<EventCapture> published = new CopyOnWriteArrayList<>();
+    private boolean failOnPublish = false;
 
     @Override
-    public void publishConfirmed(String orderId, String status, String reasonCode, String eventUuid) {
-        published.add(new EventCapture(orderId, status, reasonCode, eventUuid));
+    public void publish(String topic, String key, Object payload, Map<String, byte[]> headers) {
+        if (failOnPublish) {
+            throw new RuntimeException("Fake: Kafka 발행 실패 시뮬레이션");
+        }
+        published.add(new EventCapture(topic, key, payload, headers));
+    }
+
+    // --- 실패 시뮬레이션 ---
+
+    public void setFailOnPublish(boolean fail) {
+        this.failOnPublish = fail;
     }
 
     // --- 검증 헬퍼 ---
@@ -37,9 +48,9 @@ public class FakePgEventPublisher implements PgEventPublisherPort {
         return Optional.of(published.get(published.size() - 1));
     }
 
-    public List<EventCapture> findByOrderId(String orderId) {
+    public List<EventCapture> findByTopic(String topic) {
         return published.stream()
-                .filter(e -> e.orderId().equals(orderId))
+                .filter(e -> e.topic().equals(topic))
                 .toList();
     }
 
@@ -51,5 +62,6 @@ public class FakePgEventPublisher implements PgEventPublisherPort {
 
     public void reset() {
         published.clear();
+        failOnPublish = false;
     }
 }

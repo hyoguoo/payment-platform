@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.pg.application.port.out;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * pg-service outbound 포트 — outbox 저장소 계약.
@@ -12,6 +13,8 @@ import java.util.List;
 public interface PgOutboxRepository {
 
     PgOutbox save(PgOutbox outbox);
+
+    Optional<PgOutbox> findById(long id);
 
     /**
      * processedAt=null AND availableAt <= now 조건의 pending row를 batchSize 개 반환.

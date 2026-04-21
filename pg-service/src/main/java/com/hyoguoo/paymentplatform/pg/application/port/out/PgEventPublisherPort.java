@@ -1,21 +1,31 @@
 package com.hyoguoo.paymentplatform.pg.application.port.out;
 
+import java.util.Map;
+
 /**
  * pg-service outbound 포트 — 결제 이벤트 발행 추상.
  * ADR-04: Transactional Outbox 패턴을 통한 이벤트 발행.
- * 구현체(KafkaPgEventPublisher 등)는 T2a-05a에서 추가.
+ * ADR-30: pg_outbox row의 topic 필드가 발행 대상 토픽을 결정한다.
  *
- * <p>발행 대상 토픽: payment.events.confirmed (PgTopics.EVENTS_CONFIRMED 참고)
+ * <p>PgEventPublisher(infrastructure/messaging/publisher/)가 유일한 Kafka 구현체.
+ * Worker / RelayService 는 반드시 이 포트를 경유해야 한다 — KafkaTemplate 직접 호출 금지.
+ *
+ * <p>발행 대상 토픽 (PgTopics 참고):
+ * <ul>
+ *   <li>payment.commands.confirm</li>
+ *   <li>payment.commands.confirm.dlq</li>
+ *   <li>payment.events.confirmed</li>
+ * </ul>
  */
 public interface PgEventPublisherPort {
 
     /**
-     * 결제 승인 완료 이벤트를 발행한다.
+     * 지정한 토픽으로 메시지를 발행한다.
      *
-     * @param orderId     주문 식별자
-     * @param status      처리 결과 상태 문자열 (APPROVED / FAILED / QUARANTINED)
-     * @param reasonCode  실패 사유 코드 (성공 시 null)
-     * @param eventUuid   이벤트 멱등성 식별자
+     * @param topic   발행 대상 Kafka 토픽 (PgTopics 상수)
+     * @param key     파티션 키 (orderId 등)
+     * @param payload 직렬화될 페이로드 객체
+     * @param headers 전달할 Kafka 헤더 (key → byte[], null 이면 빈 맵으로 처리)
      */
-    void publishConfirmed(String orderId, String status, String reasonCode, String eventUuid);
+    void publish(String topic, String key, Object payload, Map<String, byte[]> headers);
 }
