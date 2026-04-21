@@ -15,9 +15,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,10 +36,11 @@ class PgVendorCallServiceTest {
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(15000);
     private static final String EVENT_UUID = "evt-vendor-uuid-001";
 
+    private static final Instant NOW = Instant.parse("2026-04-21T00:00:00Z");
+
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
-    private Clock fixedClock;
     private PgVendorCallService sut;
 
     @BeforeEach
@@ -49,13 +48,12 @@ class PgVendorCallServiceTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
-        fixedClock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
-        sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, fixedClock);
+        sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter);
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (callVendor 진입 전제조건)
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
-                null, null, Instant.now(fixedClock), Instant.now(fixedClock));
+                null, null, NOW, NOW);
         inboxRepository.save(inbox);
     }
 
@@ -72,7 +70,7 @@ class PgVendorCallServiceTest {
         gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         // when
-        sut.callVendor(buildRequest(ORDER_ID, 1), 1, Instant.now(fixedClock));
+        sut.callVendor(buildRequest(ORDER_ID, 1), 1, NOW);
 
         // then — outbox 1건: topic=payment.events.confirmed, payload에 APPROVED 포함
         List<PgOutbox> rows = outboxRepository.findAll();
@@ -96,7 +94,7 @@ class PgVendorCallServiceTest {
         // given — retryable 예외 주입
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("network timeout"));
 
-        Instant now = Instant.now(fixedClock);
+        Instant now = NOW;
 
         // when — attempt=1
         sut.callVendor(buildRequest(ORDER_ID, 1), 1, now);
@@ -128,7 +126,7 @@ class PgVendorCallServiceTest {
         // given — attempt=4, retryable 예외
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
 
-        Instant now = Instant.now(fixedClock);
+        Instant now = NOW;
 
         // when — attempt=4 (MAX)
         sut.callVendor(buildRequest(ORDER_ID, 4), 4, now);
@@ -153,7 +151,7 @@ class PgVendorCallServiceTest {
         // given — non-retryable 예외 (카드 거절 등)
         gatewayAdapter.throwOnConfirm(PgGatewayNonRetryableException.of("card_declined"));
 
-        Instant now = Instant.now(fixedClock);
+        Instant now = NOW;
 
         // when
         sut.callVendor(buildRequest(ORDER_ID, 1), 1, now);
@@ -180,7 +178,7 @@ class PgVendorCallServiceTest {
         // given — attempt=MAX(4), retryable 예외
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("max attempt reached"));
 
-        Instant now = Instant.now(fixedClock);
+        Instant now = NOW;
 
         // when
         sut.callVendor(buildRequest(ORDER_ID, RetryPolicy.MAX_ATTEMPTS), RetryPolicy.MAX_ATTEMPTS, now);

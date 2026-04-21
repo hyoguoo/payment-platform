@@ -11,7 +11,6 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import java.security.SecureRandom;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +44,6 @@ public class PgVendorCallService {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final PgGatewayPort pgGatewayPort;
-    private final Clock clock;
 
     // -----------------------------------------------------------------------
     // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)

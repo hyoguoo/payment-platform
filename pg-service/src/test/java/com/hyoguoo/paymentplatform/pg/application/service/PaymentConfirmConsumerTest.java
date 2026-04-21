@@ -55,7 +55,7 @@ class PaymentConfirmConsumerTest {
         dedupeStore = new FakeEventDedupeStore();
         Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
         PgVendorCallService vendorCallService =
-                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, clock);
+                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter);
         sut = new PgConfirmService(inboxRepository, outboxRepository, vendorCallService, dedupeStore, clock);
     }
 
