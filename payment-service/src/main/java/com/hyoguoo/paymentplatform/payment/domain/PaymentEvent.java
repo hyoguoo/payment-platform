@@ -163,6 +163,16 @@ public class PaymentEvent {
         this.status = PaymentEventStatus.QUARANTINED;
         this.statusReason = reason;
         this.lastStatusChangedAt = lastStatusChangedAt;
+        // ADR-13 §2-2b-3: QUARANTINED 전이 시 항상 2단계 복구 대기 플래그 set (T1-12 QuarantineCompensationHandler 소비)
+        this.quarantineCompensationPending = true;
+    }
+
+    /**
+     * 외부 캐시 장애·QUARANTINED 경로에서 coordinator가 직접 호출하여 compensation 대기 플래그를 set한다.
+     * quarantine() 도메인 메서드를 거치지 않는 경로(Mock 반환 등)에서도 플래그를 보장하기 위해 노출.
+     */
+    public void markQuarantineCompensationPending() {
+        this.quarantineCompensationPending = true;
     }
 
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {

@@ -41,7 +41,7 @@
 - T1-02 결제 서비스 모듈 신설 + port 계층 구성
 - ✅ T1-03 Fake 구현체 신설 (application 계층 테스트용)
 - ✅ T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
-- T1-05 트랜잭션 경계 + 감사 원자성
+- ✅ T1-05 트랜잭션 경계 + 감사 원자성
 - T1-06 AOP 축 결제 서비스 복제 이관
 - T1-07 결제 서비스 Flyway V1 스키마
 - T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
@@ -588,6 +588,19 @@ flowchart TB
   - `PaymentTransactionCoordinatorTest#executePaymentConfirm_WhenPgTimeout_ShouldTransitionToQuarantineWithoutOutbox` — Redis down 예외 → QUARANTINED, outbox 미생성
   - `PaymentTransactionCoordinatorTest#executePaymentQuarantine_SetsCompensationPendingFlag` — QUARANTINED 전이 + `quarantine_compensation_pending=true` 플래그 set 검증
   - `PaymentHistoryEventListenerTest#onPaymentStatusChange_InsertsHistoryBeforeCommit` — BEFORE_COMMIT 단계 payment_history insert 1회
+
+**완료 결과 (2026-04-21)**
+
+- `PaymentEvent.quarantineCompensationPending` 필드 신설 (boolean, default false). `quarantine()` 메서드에서 자동 set. `markQuarantineCompensationPending()` 도메인 메서드 노출(coordinator 경유 경로 보장용).
+- `PaymentEventEntity.quarantine_compensation_pending` 컬럼 매핑 추가 — `from()`/`toDomain()` 양방향 변환 포함. JPA ddl-auto로 스키마 자동 반영.
+- `PaymentTransactionCoordinator.executePaymentConfirm()` 신설 — TX 경계 외부에서 stockCachePort.decrement() 호출 후 3분기 처리:
+  - REJECTED(false) → markPaymentAsFail, outbox 미생성
+  - CACHE_DOWN(RuntimeException) → markPaymentAsQuarantined + quarantineCompensationPending=true, outbox 미생성
+  - SUCCESS(true) → @Transactional executePaymentConfirmInTransaction (executePayment + createPendingRecord 원자적)
+- `executePaymentQuarantineWithOutbox()`: markPaymentAsQuarantined 후 quarantined.markQuarantineCompensationPending() 호출 추가.
+- `StockCachePort` 의존성을 PaymentTransactionCoordinator에 추가 (@RequiredArgsConstructor).
+- `PaymentHistoryEventListener`가 이미 `BEFORE_COMMIT` 단계임을 확인 — 변경 불필요.
+- 신규 5개 + 기존 379개 = 384/384 PASS.
 
 ---
 

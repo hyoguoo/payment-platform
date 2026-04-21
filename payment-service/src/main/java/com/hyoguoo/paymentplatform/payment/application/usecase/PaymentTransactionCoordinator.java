@@ -69,7 +69,10 @@ public class PaymentTransactionCoordinator {
     ) {
         outbox.toFailed();
         paymentOutboxUseCase.save(outbox);
-        return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+        PaymentEvent quarantined = paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+        // ADR-13 §2-2b-3: QUARANTINED 전이 시 항상 2단계 복구 대기 플래그 set
+        quarantined.markQuarantineCompensationPending();
+        return quarantined;
     }
 
     /**
@@ -85,8 +88,59 @@ public class PaymentTransactionCoordinator {
             String orderId,
             List<PaymentOrder> paymentOrderList
     ) {
-        // TODO(T1-05 GREEN): 재고 캐시 차감 분기 + TX 원자성 구현 예정
-        throw new UnsupportedOperationException("executePaymentConfirm not implemented (T1-05 GREEN)");
+        StockDecrementResult decrementResult = decrementAllStock(paymentOrderList);
+        if (decrementResult == StockDecrementResult.REJECTED) {
+            return paymentCommandUseCase.markPaymentAsFail(paymentEvent, "재고 부족으로 인한 결제 실패");
+        }
+        if (decrementResult == StockDecrementResult.CACHE_DOWN) {
+            return quarantineForCacheFailure(paymentEvent);
+        }
+        return executePaymentConfirmInTransaction(paymentEvent, paymentKey, orderId);
+    }
+
+    private StockDecrementResult decrementAllStock(List<PaymentOrder> paymentOrderList) {
+        for (PaymentOrder order : paymentOrderList) {
+            StockDecrementResult result = decrementSingleStock(order.getProductId(), order.getQuantity());
+            if (result != StockDecrementResult.SUCCESS) {
+                return result;
+            }
+        }
+        return StockDecrementResult.SUCCESS;
+    }
+
+    private StockDecrementResult decrementSingleStock(Long productId, int quantity) {
+        try {
+            return stockCachePort.decrement(productId, quantity)
+                    ? StockDecrementResult.SUCCESS
+                    : StockDecrementResult.REJECTED;
+        } catch (RuntimeException e) {
+            // cache 장애 분기: Redis down 등 예외 → QUARANTINED 처리
+            log.warn("재고 캐시 장애 발생, QUARANTINED 분기로 전환 productId={} qty={}", productId, quantity, e);
+            return StockDecrementResult.CACHE_DOWN;
+        }
+    }
+
+    private PaymentEvent quarantineForCacheFailure(PaymentEvent paymentEvent) {
+        PaymentEvent quarantined = paymentCommandUseCase.markPaymentAsQuarantined(
+                paymentEvent, "재고 캐시 장애로 인한 격리");
+        // ADR-13 §2-2b-3: cache 장애 경로 QUARANTINED → 2단계 복구 대기 플래그 set
+        quarantined.markQuarantineCompensationPending();
+        return quarantined;
+    }
+
+    @Transactional
+    protected PaymentEvent executePaymentConfirmInTransaction(
+            PaymentEvent paymentEvent,
+            String paymentKey,
+            String orderId
+    ) {
+        PaymentEvent inProgress = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
+        paymentOutboxUseCase.createPendingRecord(orderId);
+        return inProgress;
+    }
+
+    private enum StockDecrementResult {
+        SUCCESS, REJECTED, CACHE_DOWN
     }
 
     /**
