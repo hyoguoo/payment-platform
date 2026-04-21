@@ -7,6 +7,12 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - StripPrefix=0
         - id: monolith-fallback
           uri: http://localhost:8081
           predicates:
