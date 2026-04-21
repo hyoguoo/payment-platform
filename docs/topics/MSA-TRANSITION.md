@@ -771,6 +771,48 @@ flowchart TB
   - 공통화(a) 전환 판단 기준: 복제 서비스 수가 3개를 초과하거나 로직 변경이 동시 다발적으로 발생하여 중복 비용이 명백해질 때 재검토한다.
 - **현행 유지**: payment-service의 `core.common.log.LogFmt`, `core.common.log.MaskingPatternLayout`은 현 위치 그대로 유지. logback-spring.xml의 MDC 패턴(`%X{traceId:-N/A}`)도 그대로 유지(ADR-18 traceId 주입과 호환).
 
+#### ADR-12 결론 — 토픽 네이밍 규약 + 이벤트 스키마 (T2d-02, 2026-04-21 확정)
+
+- **네이밍 규약**: `<source-service>.<type>.<action>[.modifier]`
+  - `type` ∈ `{commands, events}` — 커맨드와 이벤트를 명시적으로 구분
+  - `action`은 도메인 용어(소문자 하이픈 구분)
+  - `modifier`는 선택적 (예: `.dlq`, `.retry`)
+  - 파티션 키는 `orderId`(command·dlq·event 공통)
+- **스키마 포맷**: **(c) JSON Schema + 클라이언트 검증** — Avro/Protobuf 도입의 Schema Registry 운영 비용이 현 단계에서 과도. 서비스별 record/DTO 클래스로 페이로드 구조를 고정하고 consumer 측에서 역직렬화 검증.
+- **에러 코드 귀속**: **(d) 어댑터-local 유지 + 도메인 중립 enum** — PG 원문 에러 코드(Toss `ALREADY_PROCESSED_PAYMENT`, NicePay `2201`)는 pg-service 어댑터 내부에만 존재. payment.events.confirmed payload는 `status: APPROVED | FAILED | QUARANTINED` 도메인 중립 enum만 포함. `reasonCode`는 서비스 내부 상수(`AMOUNT_MISMATCH`, `FCG_INDETERMINATE`, `RETRY_EXHAUSTED`)로 제한.
+
+**토픽 목록표**:
+
+| 토픽 | 발행 서비스 | 소비 서비스 | partition 키 | 용도 |
+| ---- | ---------- | ---------- | ------------ | ---- |
+| payment.commands.confirm | payment-service | pg-service | orderId | PG 호출 명령 (초기 발행 + 지연 재발행 공용) |
+| payment.commands.confirm.dlq | pg-service (재시도 소진) | pg-service DlqConsumer | orderId | 재시도 소진 DLQ |
+| payment.events.confirmed | pg-service | payment-service | orderId | 결제 결과 이벤트 (APPROVED/FAILED/QUARANTINED) |
+| stock.events.commit | payment-service (Phase 2.d T2d-01) | product-service (Phase 3) | orderId | 재고 확정 커맨드 |
+| stock.events.restore | payment-service (Phase 2.d T2d-01) | product-service (Phase 3) | orderId | 재고 복원 보상 이벤트 |
+| product.events.stock-snapshot | product-service (Phase 3) | payment-service | productId | 재고 스냅샷 이벤트 |
+
+> **ProductTopics.java** (product-service 전용 상수 파일)는 product-service 모듈이 T3-01에서 신설되므로, 이 태스크(T2d-02)에서는 실파일 생성을 **스킵**한다. 위 표가 Phase 3 시점 구현 명세로 사용된다.
+
+#### ADR-31 결론 — 결제 관측성 4계층 스택 + Outbox 지표 (T2d-02, 2026-04-21 확정)
+
+- **관측 지표 4종 (payment_outbox + pg_outbox 서비스별 대칭)**:
+  - `{payment,pg}_outbox.pending_count` — 현재 처리 가능한 PENDING row 수 (Gauge)
+  - `{payment,pg}_outbox.future_pending_count` — 미래 예약 PENDING row 수 (Gauge)
+  - `{payment,pg}_outbox.oldest_pending_age_seconds` — 가장 오래된 PENDING row 체류 시간(초) (Gauge)
+  - `{payment,pg}_outbox.attempt_count_histogram` — retryCount/attempt 분포 (DistributionSummary)
+- **갱신 주기**: `@Scheduled(fixedDelay=60_000)` — 1분 단위 Gauge 캐시 갱신 (Prometheus scrape 30s 대비 충분)
+- **Gauge 구현**: `AtomicLong` 캐시 + `Gauge.builder(name, atomicLong, AtomicLong::doubleValue)` Supplier 패턴
+- **알림 4종** (Grafana alerting 섹션에 정의):
+  1. **DLQ 유입률 > 0**: `sum(increase(kafka_consumer_records_consumed_total{topic="payment.commands.confirm.dlq"}[1m])) > 0` — 즉시 알림 (critical)
+  2. **future_pending_count > 500 for 5min**: `max(payment_outbox_future_pending_count or pg_outbox_future_pending_count) > 500` — 경고 (warning)
+  3. **oldest_pending_age > 300s**: `max(payment_outbox_oldest_pending_age_seconds or pg_outbox_oldest_pending_age_seconds) > 300` — SLA 위반 (critical)
+  4. **invariant 불일치 > 10**: `sum(payment_event_published_total) - sum(payment_event_terminal_total) > 10` for 5min — 미완결 이벤트 급증 (critical)
+- **구현 위치**:
+  - `payment-service/.../payment/infrastructure/metrics/PaymentOutboxMetrics.java`
+  - `pg-service/.../pg/infrastructure/metrics/PgOutboxMetrics.java`
+  - `chaos/grafana/payment-dashboard.json` (패널 + 알림 4종 추가)
+
 ### 4-7. 이행 (ADR-21 ~ 24)
 
 | # | 제목 | 결정 질문 | 대안 | 선행 | 우선순위 |

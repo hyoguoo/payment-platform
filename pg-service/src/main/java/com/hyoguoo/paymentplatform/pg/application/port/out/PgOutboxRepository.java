@@ -22,4 +22,22 @@ public interface PgOutboxRepository {
     List<PgOutbox> findPendingBatch(int batchSize, Instant now);
 
     void markProcessed(long id, Instant processedAt);
+
+    // ── 관측 지표 집계 (T2d-02, ADR-31) ────────────────────────────────────────
+
+    /**
+     * processedAt=null AND availableAt &lt;= now 인 row 수를 반환한다 (현재 처리 가능한 pending).
+     */
+    long countPending(Instant now);
+
+    /**
+     * processedAt=null AND availableAt &gt; now 인 row 수를 반환한다 (미래 예약 pending).
+     */
+    long countFuturePending(Instant now);
+
+    /**
+     * processedAt=null 인 row 중 가장 오래된 createdAt을 반환한다.
+     * pending row가 없으면 Optional.empty().
+     */
+    Optional<Instant> findOldestPendingCreatedAt();
 }

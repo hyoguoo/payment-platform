@@ -74,6 +74,28 @@ public class FakePgOutboxRepository implements PgOutboxRepository {
         }
     }
 
+    @Override
+    public long countPending(Instant now) {
+        return store.values().stream()
+                .filter(o -> o.isPending() && o.isAvailableAt(now))
+                .count();
+    }
+
+    @Override
+    public long countFuturePending(Instant now) {
+        return store.values().stream()
+                .filter(o -> o.isPending() && !o.isAvailableAt(now))
+                .count();
+    }
+
+    @Override
+    public Optional<Instant> findOldestPendingCreatedAt() {
+        return store.values().stream()
+                .filter(PgOutbox::isPending)
+                .map(PgOutbox::getCreatedAt)
+                .min(Instant::compareTo);
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {

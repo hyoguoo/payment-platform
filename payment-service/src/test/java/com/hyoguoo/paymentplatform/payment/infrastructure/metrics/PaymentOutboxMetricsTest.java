@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -15,68 +15,71 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("OutboxPendingAgeMetrics 테스트")
-class OutboxPendingAgeMetricsTest {
+@DisplayName("PaymentOutboxMetrics 테스트")
+class PaymentOutboxMetricsTest {
 
     private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 4, 21, 12, 0, 0);
 
     private SimpleMeterRegistry meterRegistry;
-    private FakeOutboxRepository fakeOutboxRepository;
-    private OutboxPendingAgeMetrics metrics;
+    private FakePaymentOutboxRepositoryForMetrics fakeRepo;
+    private PaymentOutboxMetrics metrics;
 
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        fakeOutboxRepository = new FakeOutboxRepository();
-        metrics = new OutboxPendingAgeMetrics(meterRegistry, fakeOutboxRepository, () -> FIXED_NOW);
+        fakeRepo = new FakePaymentOutboxRepositoryForMetrics();
+        metrics = new PaymentOutboxMetrics(fakeRepo, () -> FIXED_NOW, meterRegistry);
     }
 
     @Test
-    @DisplayName("record - PENDING 레코드가 있으면 각 레코드의 체류 시간을 histogram에 기록한다")
-    void record_ShouldEmitHistogramForEachPendingRecord() {
-        // given: 두 PENDING 레코드 — 60초, 120초 체류
-        PaymentOutbox outbox1 = pendingOutboxWithCreatedAt("order-001", FIXED_NOW.minusSeconds(60));
-        PaymentOutbox outbox2 = pendingOutboxWithCreatedAt("order-002", FIXED_NOW.minusSeconds(120));
-        fakeOutboxRepository.addPending(outbox1);
-        fakeOutboxRepository.addPending(outbox2);
+    @DisplayName("refresh - PENDING row 2건이 있으면 pending_count Gauge가 2를 반환한다")
+    void refresh_WithTwoPendingRows_GaugeReturnsTwoForPendingCount() {
+        // given
+        fakeRepo.addOutbox(pendingOutbox("order-001", null, FIXED_NOW.minusSeconds(60)));
+        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_NOW.minusSeconds(120)));
 
         // when
-        metrics.record();
+        metrics.refresh();
 
-        // then: histogram에 2건 기록
-        DistributionSummary summary = meterRegistry.find("payment.outbox.pending_age_seconds").summary();
-        assertThat(summary).isNotNull();
-        assertThat(summary.count()).isEqualTo(2L);
-        // 각 값이 기록됨 (60, 120 초)
-        assertThat(summary.totalAmount()).isEqualTo(180.0);
+        // then
+        Gauge gauge = meterRegistry.find(PaymentOutboxMetrics.PENDING_COUNT).gauge();
+        assertThat(gauge).isNotNull();
+        assertThat(gauge.value()).isEqualTo(2.0);
     }
 
     @Test
-    @DisplayName("record - PENDING 레코드가 없으면 histogram을 기록하지 않는다")
-    void record_ZeroPendingRecords_ShouldNotRecord() {
-        // given: 빈 저장소
+    @DisplayName("refresh - 미래 nextRetryAt 가 있는 PENDING row 는 future_pending_count 에 반영된다")
+    void refresh_WithFuturePendingRow_GaugeReflectsFuturePendingCount() {
+        // given
+        LocalDateTime futurRetryAt = FIXED_NOW.plusMinutes(5);
+        fakeRepo.addOutbox(pendingOutbox("order-001", futurRetryAt, FIXED_NOW.minusSeconds(30)));
+        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_NOW.minusSeconds(60)));
 
         // when
-        metrics.record();
+        metrics.refresh();
 
-        // then: histogram이 등록되지 않거나 count가 0
-        DistributionSummary summary = meterRegistry.find("payment.outbox.pending_age_seconds").summary();
-        if (summary != null) {
-            assertThat(summary.count()).isEqualTo(0L);
-        }
+        // then: future_pending_count = 1 (nextRetryAt > now 인 것만)
+        Gauge futureGauge = meterRegistry.find(PaymentOutboxMetrics.FUTURE_PENDING_COUNT).gauge();
+        assertThat(futureGauge).isNotNull();
+        assertThat(futureGauge.value()).isEqualTo(1.0);
+
+        // pending_count = 2 (PENDING 전체)
+        Gauge pendingGauge = meterRegistry.find(PaymentOutboxMetrics.PENDING_COUNT).gauge();
+        assertThat(pendingGauge).isNotNull();
+        assertThat(pendingGauge.value()).isEqualTo(2.0);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // helpers
     // ──────────────────────────────────────────────────────────────────────────
 
-    private PaymentOutbox pendingOutboxWithCreatedAt(String orderId, LocalDateTime createdAt) {
+    private PaymentOutbox pendingOutbox(String orderId, LocalDateTime nextRetryAt, LocalDateTime createdAt) {
         return PaymentOutbox.allArgsBuilder()
                 .id(null)
                 .orderId(orderId)
                 .status(PaymentOutboxStatus.PENDING)
                 .retryCount(0)
-                .nextRetryAt(null)
+                .nextRetryAt(nextRetryAt)
                 .inFlightAt(null)
                 .createdAt(createdAt)
                 .updatedAt(createdAt)
@@ -84,16 +87,16 @@ class OutboxPendingAgeMetricsTest {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // FakeOutboxRepository — inner class
+    // Fake 구현
     // ──────────────────────────────────────────────────────────────────────────
 
-    static class FakeOutboxRepository
+    static class FakePaymentOutboxRepositoryForMetrics
             implements com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository {
 
-        private final List<PaymentOutbox> pendingList = new ArrayList<>();
+        private final List<PaymentOutbox> store = new ArrayList<>();
 
-        void addPending(PaymentOutbox outbox) {
-            pendingList.add(outbox);
+        void addOutbox(PaymentOutbox outbox) {
+            store.add(outbox);
         }
 
         @Override
@@ -103,16 +106,15 @@ class OutboxPendingAgeMetricsTest {
 
         @Override
         public Optional<PaymentOutbox> findByOrderId(String orderId) {
-            return pendingList.stream()
-                    .filter(o -> o.getOrderId().equals(orderId))
-                    .findFirst();
+            return store.stream().filter(o -> o.getOrderId().equals(orderId)).findFirst();
         }
 
         @Override
         public List<PaymentOutbox> findPendingBatch(int limit) {
-            return Collections.unmodifiableList(
-                    pendingList.subList(0, Math.min(limit, pendingList.size()))
-            );
+            return store.stream()
+                    .filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING)
+                    .limit(limit)
+                    .toList();
         }
 
         @Override
@@ -127,17 +129,13 @@ class OutboxPendingAgeMetricsTest {
 
         @Override
         public long countPending() {
-            return pendingList.stream()
-                    .filter(o -> o.getStatus() ==
-                            com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus.PENDING)
-                    .count();
+            return store.stream().filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING).count();
         }
 
         @Override
         public long countFuturePending(LocalDateTime now) {
-            return pendingList.stream()
-                    .filter(o -> o.getStatus() ==
-                            com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus.PENDING
+            return store.stream()
+                    .filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING
                             && o.getNextRetryAt() != null
                             && o.getNextRetryAt().isAfter(now))
                     .count();
@@ -145,10 +143,9 @@ class OutboxPendingAgeMetricsTest {
 
         @Override
         public Optional<LocalDateTime> findOldestPendingCreatedAt() {
-            return pendingList.stream()
-                    .filter(o -> o.getStatus() ==
-                            com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus.PENDING)
-                    .map(com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox::getCreatedAt)
+            return store.stream()
+                    .filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING)
+                    .map(PaymentOutbox::getCreatedAt)
                     .filter(java.util.Objects::nonNull)
                     .min(LocalDateTime::compareTo);
         }

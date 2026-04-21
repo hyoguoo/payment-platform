@@ -28,4 +28,15 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
                         @Param("toStatus") PaymentOutboxStatus toStatus,
                         @Param("fromStatus") PaymentOutboxStatus fromStatus,
                         @Param("now") LocalDateTime now);
+
+    // ── 관측 지표 집계 (T2d-02, ADR-31) ─────────────────────────────────────────
+
+    @Query("SELECT COUNT(e) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING'")
+    long countPending();
+
+    @Query("SELECT COUNT(e) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING' AND e.nextRetryAt IS NOT NULL AND e.nextRetryAt > :now")
+    long countFuturePending(@Param("now") LocalDateTime now);
+
+    @Query("SELECT MIN(e.createdAt) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING'")
+    Optional<LocalDateTime> findOldestPendingCreatedAt();
 }

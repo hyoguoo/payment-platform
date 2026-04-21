@@ -56,4 +56,19 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
                 orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING, inFlightAt) > 0;
     }
 
+    @Override
+    public long countPending() {
+        return jpaPaymentOutboxRepository.countPending();
+    }
+
+    @Override
+    public long countFuturePending(LocalDateTime now) {
+        return jpaPaymentOutboxRepository.countFuturePending(now);
+    }
+
+    @Override
+    public Optional<LocalDateTime> findOldestPendingCreatedAt() {
+        return jpaPaymentOutboxRepository.findOldestPendingCreatedAt();
+    }
+
 }

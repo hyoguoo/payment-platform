@@ -17,7 +17,7 @@
   "annotations": {
     "list": []
   },
-  "description": "MSA-TRANSITION 결제 서비스 전용 대시보드 스켈레톤 (T0-01). 각 패널은 Phase 진행에 따라 실제 메트릭으로 채워진다.",
+  "description": "MSA-TRANSITION 결제 서비스 전용 대시보드 (T0-01 스켈레톤 + T2d-02: payment_outbox/pg_outbox 관측 지표 + 알림 4종).",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -226,6 +226,164 @@
       "type": "row"
     },
     {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "title": "payment_outbox 관측 지표 (T2d-02)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox PENDING row 수 (처리 가능 상태). 높으면 Kafka 발행 지연 또는 워커 병목.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "unit": "short",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 28 },
+      "id": 10,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_pending_count",
+          "legendFormat": "payment pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.pending_count",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox 미래 예약 PENDING row 수 (nextRetryAt > now). 높으면 재시도 대기 급증.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "short",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 28 },
+      "id": 11,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_future_pending_count",
+          "legendFormat": "payment future_pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.future_pending_count",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "가장 오래된 payment_outbox PENDING row 체류 시간(초). 300초 초과 시 알림.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          },
+          "unit": "s",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 28 },
+      "id": 12,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_oldest_pending_age_seconds",
+          "legendFormat": "payment oldest_pending_age_seconds",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.oldest_pending_age_seconds",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox attempt(retryCount) 분포 (p50/p95/p99). p99>1 이상이면 재시도 다발.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 28 },
+      "id": 13,
+      "options": {
+        "bucketOffset": 0,
+        "fillOpacity": 80,
+        "gradientMode": "none",
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "payment_outbox.attempt_count 분포 (p50/p95/p99)",
+      "type": "histogram"
+    },
+    {
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "description": "invariant 불일치 건수. published_total과 terminal_total의 누적 차이. 0이어야 정상. 양수이면 미완결 이벤트 존재. reconciler 알림 트리거 기준.",
       "fieldConfig": {
@@ -269,7 +427,83 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["payment", "msa-transition", "phase-0"],
+  "tags": ["payment", "msa-transition", "phase-0", "phase-2d"],
+  "alerting": {
+    "list": [
+      {
+        "name": "DLQ 유입률 > 0 (ADR-31)",
+        "message": "payment.commands.confirm.dlq 토픽에 메시지 유입. PG 연동 장애 또는 비즈니스 예외 급증 가능성.",
+        "conditions": [
+          {
+            "type": "query",
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "sum", "params": [] },
+            "evaluator": { "type": "gt", "params": [0] },
+            "operator": { "type": "and" }
+          }
+        ],
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(increase(kafka_consumer_records_consumed_total{topic=\"payment.commands.confirm.dlq\"}[1m]))",
+        "for": "1m",
+        "severity": "critical",
+        "alertRuleUID": "alert-dlq-rate"
+      },
+      {
+        "name": "future_pending_count > 500 for 5min (ADR-31)",
+        "message": "payment_outbox 또는 pg_outbox 미래 예약 pending row가 500 초과 5분 지속. 재시도 대기 급증 또는 스케줄러 지연.",
+        "conditions": [
+          {
+            "type": "query",
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "min", "params": [] },
+            "evaluator": { "type": "gt", "params": [500] },
+            "operator": { "type": "and" }
+          }
+        ],
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "max(payment_outbox_future_pending_count or pg_outbox_future_pending_count)",
+        "for": "5m",
+        "severity": "warning",
+        "alertRuleUID": "alert-future-pending"
+      },
+      {
+        "name": "oldest_pending_age > 300s (ADR-31)",
+        "message": "payment_outbox 또는 pg_outbox의 가장 오래된 PENDING row가 300초 초과. SLA 위반 감지.",
+        "conditions": [
+          {
+            "type": "query",
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "last", "params": [] },
+            "evaluator": { "type": "gt", "params": [300] },
+            "operator": { "type": "and" }
+          }
+        ],
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "max(payment_outbox_oldest_pending_age_seconds or pg_outbox_oldest_pending_age_seconds)",
+        "for": "1m",
+        "severity": "critical",
+        "alertRuleUID": "alert-oldest-pending-age"
+      },
+      {
+        "name": "invariant 불일치 > 10 (ADR-31)",
+        "message": "published_total - terminal_total 누적 차이가 10 초과. 미완결 이벤트 급증 — Reconciler 또는 운영자 확인 필요.",
+        "conditions": [
+          {
+            "type": "query",
+            "query": { "params": ["A", "5m", "now"] },
+            "reducer": { "type": "last", "params": [] },
+            "evaluator": { "type": "gt", "params": [10] },
+            "operator": { "type": "and" }
+          }
+        ],
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(payment_event_published_total) - sum(payment_event_terminal_total)",
+        "for": "5m",
+        "severity": "critical",
+        "alertRuleUID": "alert-invariant-mismatch"
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
