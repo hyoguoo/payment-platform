@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
@@ -24,23 +25,23 @@ class OutboxWorkerTest {
     private static final String ORDER_ID_2 = "order-2";
 
     private PaymentOutboxUseCase mockPaymentOutboxUseCase;
-    private OutboxProcessingService mockOutboxProcessingService;
+    private OutboxRelayService mockOutboxRelayService;
     private OutboxWorker outboxWorker;
 
     @BeforeEach
     void setUp() {
         mockPaymentOutboxUseCase = Mockito.mock(PaymentOutboxUseCase.class);
-        mockOutboxProcessingService = Mockito.mock(OutboxProcessingService.class);
+        mockOutboxRelayService = Mockito.mock(OutboxRelayService.class);
 
-        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, mockOutboxProcessingService);
+        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, mockOutboxRelayService);
         ReflectionTestUtils.setField(outboxWorker, "batchSize", 10);
         ReflectionTestUtils.setField(outboxWorker, "parallelEnabled", false);
         ReflectionTestUtils.setField(outboxWorker, "inFlightTimeoutMinutes", 5);
     }
 
     @Test
-    @DisplayName("process - PENDING 없음: OutboxProcessingService를 호출하지 않는다")
-    void process_noPendingRecords_doesNotCallProcessingService() {
+    @DisplayName("process - PENDING 없음: OutboxRelayService를 호출하지 않는다")
+    void process_noPendingRecords_doesNotCallRelayService() {
         // given
         given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
                 .willReturn(Collections.emptyList());
@@ -49,13 +50,13 @@ class OutboxWorkerTest {
         outboxWorker.process();
 
         // then
-        then(mockOutboxProcessingService).shouldHaveNoInteractions();
+        then(mockOutboxRelayService).shouldHaveNoInteractions();
         then(mockPaymentOutboxUseCase).should(times(1)).recoverTimedOutInFlightRecords(5);
     }
 
     @Test
-    @DisplayName("process - PENDING 2건: OutboxProcessingService.process()를 2회 위임한다")
-    void process_pendingRecords_delegatesToProcessingService() {
+    @DisplayName("process - PENDING 2건: OutboxRelayService.relay()를 2회 위임한다")
+    void process_pendingRecords_delegatesToRelayService() {
         // given
         List<PaymentOutbox> pending = List.of(
                 createPendingOutbox(ORDER_ID_1),
@@ -67,9 +68,9 @@ class OutboxWorkerTest {
         outboxWorker.process();
 
         // then
-        then(mockOutboxProcessingService).should(times(2)).process(anyString());
-        then(mockOutboxProcessingService).should(times(1)).process(ORDER_ID_1);
-        then(mockOutboxProcessingService).should(times(1)).process(ORDER_ID_2);
+        then(mockOutboxRelayService).should(times(2)).relay(anyString());
+        then(mockOutboxRelayService).should(times(1)).relay(ORDER_ID_1);
+        then(mockOutboxRelayService).should(times(1)).relay(ORDER_ID_2);
     }
 
     @Test

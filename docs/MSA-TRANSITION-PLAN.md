@@ -785,7 +785,7 @@ flowchart TB
 
 ---
 
-### T1-11c — OutboxImmediateWorker + OutboxWorker 구현 (ADR-04, SmartLifecycle)
+### T1-11c — OutboxImmediateWorker + OutboxWorker 구현 (ADR-04, SmartLifecycle) ☑
 
 - **제목**: payment-service ImmediateWorker + PollingWorker (SmartLifecycle + VT)
 - **목적**: ADR-04(Outbox 4구성 파이프라인 완성) — `OutboxImmediateWorker`(SmartLifecycle + VT 200)가 `channel.take()` → row 로드 → `MessagePublisherPort.publish(topic, key, payload)` → `processed_at=NOW()`. KafkaTemplate 직접 호출 금지. `OutboxWorker`(`@Scheduled fixedDelay`, `SELECT ... FOR UPDATE SKIP LOCKED WHERE processed_at IS NULL AND available_at<=NOW()`)가 Polling 안전망. 중복 발행 방어: `UPDATE ... WHERE processed_at IS NULL` 원자 조건.
@@ -799,6 +799,16 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/scheduler/OutboxImmediateWorker.java` — SmartLifecycle + VT + MessagePublisherPort 경유
   - `payment-service/src/main/java/.../payment/scheduler/OutboxWorker.java` — Polling 안전망
+
+#### 완료 결과 (2026-04-21)
+
+- `OutboxImmediateWorker.workerLoop()`: `outboxProcessingService.process(orderId)` → `outboxRelayService.relay(orderId)` 배선 교체 완료.
+- `OutboxWorker.process()` / `processParallel()`: 동일하게 `outboxRelayService.relay(orderId)` 로 교체. `parallelEnabled`, `recoverTimedOutInFlightRecords` 로직 유지.
+- `OutboxProcessingService.java` 삭제 — PG 직접 호출·RetryPolicy·FCG 로직은 pg-service 이관 대상이므로 payment-service에서 제거.
+- `OutboxProcessingServiceTest.java` 삭제 (17개 테스트 제거).
+- `OutboxImmediateWorkerTest.java` 재작성: FakeMessagePublisher + OutboxRelayService 주입 기반 2개 메서드.
+- `OutboxWorkerTest.java` 재작성: OutboxRelayService Mock 기반 3개 메서드.
+- 374/374 PASS (398 → 374: -17 OutboxProcessingServiceTest, -3 기존 OutboxImmediateWorkerTest, +2 신규, +3 OutboxWorkerTest 재작성분 net -4 => 실제 순감: OutboxProcessingServiceTest 17개 삭제·나머지 신규/재작성 순증 없음으로 374).
 
 ---
 

@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Component;
 public class OutboxImmediateWorker implements SmartLifecycle {
 
     private final PaymentConfirmChannel channel;
-    private final OutboxProcessingService outboxProcessingService;
+    private final OutboxRelayService outboxRelayService;
 
     @Value("${outbox.channel.worker-count:200}")
     private int workerCount;
@@ -80,7 +81,7 @@ public class OutboxImmediateWorker implements SmartLifecycle {
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 String orderId = channel.take();
-                outboxProcessingService.process(orderId);
+                outboxRelayService.relay(orderId);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {

@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
+import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import java.util.List;
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Component;
 public class OutboxWorker {
 
     private final PaymentOutboxUseCase paymentOutboxUseCase;
-    private final OutboxProcessingService outboxProcessingService;
+    private final OutboxRelayService outboxRelayService;
 
     @Value("${scheduler.outbox-worker.batch-size:10}")
     private int batchSize;
@@ -40,14 +41,14 @@ public class OutboxWorker {
         if (parallelEnabled) {
             processParallel(pending);
         } else {
-            pending.forEach(outbox -> outboxProcessingService.process(outbox.getOrderId()));
+            pending.forEach(outbox -> outboxRelayService.relay(outbox.getOrderId()));
         }
     }
 
     private void processParallel(List<PaymentOutbox> records) {
         // Java 21 가상 스레드: try-with-resources로 자동 종료 (awaitTermination 불필요)
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            records.forEach(record -> executor.submit(() -> outboxProcessingService.process(record.getOrderId())));
+            records.forEach(record -> executor.submit(() -> outboxRelayService.relay(record.getOrderId())));
         }
     }
 }
