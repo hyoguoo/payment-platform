@@ -58,6 +58,8 @@ dependencies {
     testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
     testImplementation "org.testcontainers:mysql"
     testImplementation "org.testcontainers:junit-jupiter"
+    // T1-08: StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
+    testImplementation "org.testcontainers:testcontainers"
 }
 
 configurations.all {
