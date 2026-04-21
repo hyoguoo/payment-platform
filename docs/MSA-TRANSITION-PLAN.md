@@ -44,7 +44,7 @@
 - ✅ T1-05 트랜잭션 경계 + 감사 원자성
 - ✅ T1-06 AOP 축 결제 서비스 복제 이관
 - ✅ T1-07 결제 서비스 Flyway V1 스키마
-- T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
+- ✅ T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
 - T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
 - T1-10 StockCommitEventPublisher 구현
 - T1-11a KafkaMessagePublisher + OutboxRelayService 구현
@@ -671,6 +671,17 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/infrastructure/cache/StockCacheRedisAdapter.java`
   - `payment-service/src/main/resources/lua/stock_decrement.lua`
+
+**완료 결과 (2026-04-21)**
+
+- `StockCacheRedisAdapter.java` 신규 생성: `StockCachePort` 구현. `decrement`/`rollback`/`current`/`set` 4개 메서드.
+- `lua/stock_decrement.lua` 신규 생성: DECRBY → 음수 감지 → INCRBY 복구 패턴 (Redis-idiomatic 원자 연산). 키 미존재 시 DECRBY(0→음수) → INCRBY 복구 → -1 반환으로 재고 없음과 동일 처리.
+- `DefaultRedisScript<Long>` static 블록 초기화 — Spring 컨테이너 독립성 보장 (테스트에서 new 직접 생성 지원).
+- `KEY_PREFIX = "stock:"` 내부 상수로 관리. `@Value` 주입 불필요(단일 서비스 확정 prefix).
+- Redis 연결 실패 시 `DataAccessException` 계열 그대로 전파 — try-catch 없음.
+- `build.gradle`: `testcontainers:testcontainers` 추가 (Lua 원자성·동시성 검증용 Redis Testcontainers).
+- `StockCacheRedisAdapterTest` 5개 메서드: 차감 성공/음수 복구/200스레드 동시성(정확히 100번 성공)/rollback INCR/Redis down 예외 전파.
+- 389/389 PASS (기존 384 + 신규 5).
 
 ---
 
