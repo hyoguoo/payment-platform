@@ -44,7 +44,8 @@ class PgOutboxImmediateWorkerTest {
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();
         relayService = new PgOutboxRelayService(outboxRepository, publisher, FIXED_CLOCK);
-        worker = new PgOutboxImmediateWorker(channel, relayService);
+        // workerCount=1: 단위 테스트에서 스레드 수 최소화 (Spring @Value 미주입 환경 대응)
+        worker = new PgOutboxImmediateWorker(channel, relayService, 1);
     }
 
     @AfterEach
