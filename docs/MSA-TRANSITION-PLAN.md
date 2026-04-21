@@ -43,7 +43,7 @@
 - ✅ T1-04 도메인 이관 (PaymentEvent·PaymentOutbox·RetryPolicy)
 - ✅ T1-05 트랜잭션 경계 + 감사 원자성
 - ✅ T1-06 AOP 축 결제 서비스 복제 이관
-- T1-07 결제 서비스 Flyway V1 스키마
+- ✅ T1-07 결제 서비스 Flyway V1 스키마
 - T1-08 StockCachePort Redis 어댑터 (Lua atomic DECR)
 - T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
 - T1-10 StockCommitEventPublisher 구현
@@ -638,6 +638,19 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/resources/db/migration/V1__payment_schema.sql` — `payment_event`(quarantine_compensation_pending 포함), `payment_order`, `payment_outbox`(available_at 컬럼), `payment_history` DDL
   - `docker-compose.infra.yml` 결제 전용 MySQL 컨테이너 추가
+
+**완료 결과 (2026-04-21)**
+
+- `V1__payment_schema.sql` 신규 생성: 테이블 4개 DDL (payment_event, payment_order, payment_outbox, payment_history).
+- `payment_event`: order_id UNIQUE INDEX, (status, last_status_changed_at) 복합 인덱스. `quarantine_compensation_pending BOOLEAN NOT NULL DEFAULT FALSE` 포함.
+- `payment_order`: payment_event_id, order_id 단순 인덱스. FK 제약 없음(MSA 분리 사전 조치). amount 컬럼명은 JPA `@Column(name="amount")`에 맞춤 (`totalAmount` 필드 → `amount` 컬럼).
+- `payment_outbox`: order_id UNIQUE INDEX, (status, available_at) 복합 인덱스(폴링용), (status, next_retry_at, created_at) 복합 인덱스(기존 패턴 호환). `available_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)` 추가(ADR-30 지수 백오프). `retry_count INT NOT NULL DEFAULT 0` 포함.
+- `payment_history`: payment_event_id 인덱스, created_at 인덱스. reason 컬럼 TEXT 타입(JPA columnDefinition="TEXT" 준수). FK 제약 없음.
+- BaseEntity 컬럼(created_at, updated_at, deleted_at) DATETIME 타입 — JPA columnDefinition="datetime" 준수.
+- `docker-compose.infra.yml` mysql-payment 컨테이너 추가(port 3307, platform linux/arm64, mysql-payment-data 볼륨). 기존 mysql(3306, 모놀리스용) 유지.
+- Flyway on/off: 기존 application.yml에 Flyway 설정 없음(off 상태). 스크립트만 배치, 런타임 미실행 — application.yml 전환은 T1-18(Strangler Fig) 시점으로 연기.
+- Hibernate ddl-auto: 기존 값 유지(변경 없음).
+- 384/384 PASS.
 
 ---
 

@@ -154,6 +154,32 @@ services:
       start_period: 20s
 
   # ───────────────────────────────────────────
+  # MySQL — 결제 서비스 전용 (ADR-23 DB 분리, T1-07)
+  # Phase 1: 빈 상태 시작. application.yml 전환은 T1-18(Strangler Fig) 시점.
+  # ───────────────────────────────────────────
+  mysql-payment:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-payment
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment
+      MYSQL_USER: ${MYSQL_PAYMENT_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PAYMENT_PASSWORD:-payment123}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
   # Toxiproxy — 네트워크 장애 주입 (ADR-29)
   # API 포트: 8474 / proxy 포트: 29092(kafka), 23306(mysql), 26380(redis-payment)
   # 애플리케이션은 T4-01까지 직접 upstream을 가리킨다.
@@ -191,4 +217,6 @@ volumes:
   redis-payment-data:
     driver: local
   mysql-data:
+    driver: local
+  mysql-payment-data:
     driver: local
