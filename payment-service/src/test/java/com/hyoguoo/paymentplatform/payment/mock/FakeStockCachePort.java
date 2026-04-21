@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.mock;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,6 +34,13 @@ public class FakeStockCachePort implements StockCachePort {
     @Override
     public int current(Long productId) {
         return stock.getOrDefault(productId, 0);
+    }
+
+    @Override
+    public Optional<Integer> findCurrent(Long productId) {
+        return stock.containsKey(productId)
+                ? Optional.of(stock.get(productId))
+                : Optional.empty();
     }
 
     @Override

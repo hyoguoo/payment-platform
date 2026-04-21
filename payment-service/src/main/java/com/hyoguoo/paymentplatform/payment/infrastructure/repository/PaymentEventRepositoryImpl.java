@@ -129,4 +129,40 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 })
                 .toList();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
+        return jpaPaymentEventRepository
+                .findInProgressOlderThan(before)
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentEvent> findAllByStatus(PaymentEventStatus status) {
+        return jpaPaymentEventRepository
+                .findByStatus(status)
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
+    }
 }

@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.cache;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -53,6 +54,12 @@ public class StockCacheRedisAdapter implements StockCachePort {
     public int current(Long productId) {
         String value = stockCacheRedisTemplate.opsForValue().get(KEY_PREFIX + productId);
         return value == null ? 0 : Integer.parseInt(value);
+    }
+
+    @Override
+    public Optional<Integer> findCurrent(Long productId) {
+        String value = stockCacheRedisTemplate.opsForValue().get(KEY_PREFIX + productId);
+        return value == null ? Optional.empty() : Optional.of(Integer.parseInt(value));
     }
 
     @Override

@@ -34,6 +34,7 @@ public enum PaymentErrorCode implements ErrorCode {
     MISSING_APPROVED_AT("E03027", "승인 시각(approvedAt)이 누락되어 완료 처리할 수 없습니다."),
     UNMAPPED_GATEWAY_STATUS("E03028", "PG 응답에서 알 수 없는 결제 상태값이 수신되었습니다."),
     AMOUNT_MISMATCH("E03029", "결제 금액 위변조 감지"),
+    INVALID_STATUS_TO_RESET("E03030", "READY 상태로 복원할 수 없는 상태입니다."),
     ;
 
     private final String code;

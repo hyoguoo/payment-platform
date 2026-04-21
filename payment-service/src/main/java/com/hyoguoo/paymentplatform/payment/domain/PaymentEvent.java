@@ -183,6 +183,21 @@ public class PaymentEvent {
         this.quarantineCompensationPending = false;
     }
 
+    /**
+     * Reconciler가 timeout된 IN_FLIGHT(IN_PROGRESS) 레코드를 READY 상태로 복원.
+     * 재시도 스케줄러가 재처리할 수 있도록 대기열로 되돌린다.
+     * IN_PROGRESS 상태에서만 호출 가능 (다른 상태는 그대로 유지).
+     *
+     * @param lastStatusChangedAt 상태 변경 시각
+     */
+    public void resetToReady(LocalDateTime lastStatusChangedAt) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RESET);
+        }
+        this.status = PaymentEventStatus.READY;
+        this.lastStatusChangedAt = lastStatusChangedAt;
+    }
+
     public void addPaymentOrderList(List<PaymentOrder> newPaymentOrderList) {
         this.paymentOrderList.addAll(newPaymentOrderList);
     }

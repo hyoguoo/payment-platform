@@ -26,4 +26,9 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     long countByRetryCountGreaterThanEqual(int retryCount);
 
     List<PaymentEventEntity> findByQuarantineCompensationPendingTrue();
+
+    @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'IN_PROGRESS' AND pe.executedAt < :before")
+    List<PaymentEventEntity> findInProgressOlderThan(@Param("before") LocalDateTime before);
+
+    List<PaymentEventEntity> findByStatus(PaymentEventStatus status);
 }
