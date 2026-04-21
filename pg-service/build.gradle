@@ -7,6 +7,12 @@ dependencies {
     // Spring Boot Core
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
+    // AOP (T2a-02: TossApiMetricsAspect — aspectjweaver 전이 의존 포함)
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+    // Actuator / Micrometer (T2a-02: TossApiMetrics MeterRegistry 주입)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
     // Kafka (ADR-30: payment.commands.confirm consumer + payment.events.confirmed publisher)
     implementation 'org.springframework.kafka:spring-kafka'
 }
