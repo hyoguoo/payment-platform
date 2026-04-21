@@ -133,7 +133,10 @@ ADR-21, ADR-02 적용. InternalOnlyGatewayFilter(GlobalFilter, Ordered, order=HI
 - ✅ T2d-01 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
 - ✅ T2d-02 토픽 네이밍 규약 확정 + Outbox 관측 지표 + Grafana 대시보드
 - ✅ T2d-03 Gateway 라우팅: PG 내부 API 격리
-- T2d-Gate Phase 2.d 마이크로 Gate + Phase 2 통합 Gate
+- ✅ T2d-Gate Phase 2.d 마이크로 Gate + Phase 2 통합 Gate
+
+**완료 결과 — Phase-2-Gate** (2026-04-21):
+`scripts/phase-gate/phase-2-gate.sh` 신설(executable). `docs/phase-gate/phase-2-gate.md` 신설. 검증 항목 10섹션(pre~j): (pre) clean test 484건 이상, (a) phase-2a/2b/2c-gate.sh 위임(SKIP_SUB_GATES=true 환경변수로 스킵 가능), (b) pg-service /actuator/health UP(포트 8082), (c) PaymentConfirmConsumerTest 5케이스+PaymentConfirmDlqConsumerTest 4케이스+ConfirmedEventConsumerTest 5케이스 Gradle 위임, (d) eventUUID dedupe(c 섹션 결과 집계), (e) PgVendorCallServiceTest 5케이스+PgFinalConfirmationGateTest 4케이스(FCG 불변: getStatus 1회, 재시도 0회), (f) DuplicateApprovalHandlerTest 6케이스+PgInboxAmountStorageTest 4케이스(2자 금액 대조 양 경로), (g) 3개 토픽 PartitionCount 동일 불변식 6b(Kafka 미기동 시 SKIP), (h) InternalOnlyGatewayFilterTest 2케이스+실제 HTTP 403 검증(Gateway 미기동 시 SKIP), (i) PgStatusAbsenceContractTest 3케이스(불변식 19), (j) 전체 Gradle test 484건 이상. 최종 요약에 "Phase 2 Gate ✓ — Phase 3 진입 가능" 메시지 출력. `./gradlew test` 485/485 회귀 없음(gateway 3+payment-service 387+pg-service 95). Phase 2 완료, Phase 3 진입.
 
 **Phase 3 — 상품·사용자 서비스 분리** (9개)
 
