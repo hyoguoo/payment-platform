@@ -48,7 +48,7 @@
 - T1-09 중복 승인 응답 방어선 구현 (payment-service LVAL 한정)
 - T1-10 StockCommitEventPublisher 구현
 - ✅ T1-11a KafkaMessagePublisher + OutboxRelayService 구현
-- T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
+- ✅ T1-11b PaymentConfirmChannel + OutboxImmediateEventHandler 구현
 - T1-11c OutboxImmediateWorker + OutboxWorker 구현 (SmartLifecycle)
 - T1-12 QuarantineCompensationHandler + Scheduler
 - T1-13 FCG 격리 불변 + RecoveryDecision 이관
@@ -775,6 +775,13 @@ flowchart TB
 - **산출물**:
   - `payment-service/src/main/java/.../payment/core/channel/PaymentConfirmChannel.java` — `LinkedBlockingQueue<Long>`, capacity=1024, offer 실패 시 로그 + Polling 안전망 위임
   - `payment-service/src/main/java/.../payment/listener/OutboxImmediateEventHandler.java` — AFTER_COMMIT 리스너
+
+**완료 결과 (2026-04-21)**
+- `PaymentConfirmChannel` 신설(core/channel). `LinkedBlockingQueue<String>` wrapper(capacity 설정값, 기본 2000). `offer(orderId)` 실패 시 WARN 로그("PaymentConfirmChannel 오버플로우 발생 — OutboxWorker(polling)가 처리 예정"). `take()`, `isNearFull()` 노출. Micrometer Gauge 등록(`@PostConstruct`). `@Component`.
+- `OutboxImmediateEventHandler` 신설(payment/listener). `@TransactionalEventListener(phase = AFTER_COMMIT)`. `PaymentConfirmEvent(orderId)` 수신 → `channel.offer(orderId)` 호출. 실패 시 로그만 남기고 Polling 워커 안전망 위임.
+- `OutboxImmediatePublisher` 신설(infrastructure/publisher). `PaymentConfirmPublisherPort` 구현. `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent.of(...))` 호출 — 이벤트 발행 지점.
+- 설계 편차: 스펙 `LinkedBlockingQueue<Long>`(outboxId) 대신 `LinkedBlockingQueue<String>`(orderId) 채택. 전체 코드베이스가 orderId 기반으로 일관화되어 있어 Long outboxId로의 전환은 T1-11c까지의 Worker 전체 변경을 수반하므로 orderId 기반 유지. 이벤트 타입도 `PaymentOutboxPendingEvent` 대신 `PaymentConfirmEvent` 사용(orderId 포함으로 목적 동일).
+- 398/398 PASS (신규 테스트 없음 — tdd=false, 기존 테스트 회귀 없음).
 
 ---
 
