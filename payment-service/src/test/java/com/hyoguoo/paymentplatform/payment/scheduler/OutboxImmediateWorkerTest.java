@@ -1,91 +1,147 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.verify;
 
 import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
+import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakeMessagePublisher;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+
 @DisplayName("OutboxImmediateWorker 테스트")
 class OutboxImmediateWorkerTest {
 
-    @Test
-    @DisplayName("이벤트를 채널에 제출하면 OutboxProcessingService가 호출된다")
-    void 이벤트를채널에제출하면_OutboxProcessingService가호출된다() {
-        // given
-        MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        PaymentConfirmChannel channel = new PaymentConfirmChannel(1, meterRegistry);
-        OutboxProcessingService mockService = Mockito.mock(OutboxProcessingService.class);
-        OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        ReflectionTestUtils.setField(worker, "workerCount", 1);
-        ReflectionTestUtils.setField(worker, "virtualThreads", true);
+    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 4, 21, 12, 0, 0);
+    private static final String ORDER_ID = "order-imm-001";
 
-        // when
-        worker.start();
-        channel.offer("order-1");
+    private MeterRegistry meterRegistry;
+    private FakeMessagePublisher fakeMessagePublisher;
+    private PaymentOutboxRepository mockOutboxRepository;
+    private PaymentLoadUseCase mockPaymentLoadUseCase;
+    private LocalDateTimeProvider mockLocalDateTimeProvider;
+    private OutboxRelayService outboxRelayService;
+    private PaymentConfirmChannel channel;
+    private OutboxImmediateWorker worker;
 
-        // then
-        await().atMost(1, SECONDS).untilAsserted(
-                () -> verify(mockService, atLeastOnce()).process("order-1")
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        fakeMessagePublisher = new FakeMessagePublisher();
+        mockOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
+        mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
+        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
+
+        given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
+
+        outboxRelayService = new OutboxRelayService(
+                mockOutboxRepository,
+                fakeMessagePublisher,
+                mockPaymentLoadUseCase,
+                mockLocalDateTimeProvider
         );
 
-        worker.stop(() -> {});
+        channel = new PaymentConfirmChannel(1000, meterRegistry);
+        worker = new OutboxImmediateWorker(channel, outboxRelayService);
+        ReflectionTestUtils.setField(worker, "workerCount", 1);
+        ReflectionTestUtils.setField(worker, "virtualThreads", true);
     }
 
+    @AfterEach
+    void tearDown() {
+        if (worker.isRunning()) {
+            worker.stop();
+        }
+    }
+
+    // ─── stop: SmartLifecycle 종료 드레인 검증 ─────────────────────────────
+
     @Test
-    @DisplayName("stop 호출 후 Worker가 중단된다")
-    void stop_호출후_Worker가중단된다() {
+    @DisplayName("stop_DrainsInFlightBeforeShutdown — stop() 후 콜백이 호출되고 워커가 종료된다")
+    void stop_DrainsInFlightBeforeShutdown() throws InterruptedException {
         // given
-        MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        PaymentConfirmChannel channel = new PaymentConfirmChannel(10, meterRegistry);
-        OutboxProcessingService mockService = Mockito.mock(OutboxProcessingService.class);
-        OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        ReflectionTestUtils.setField(worker, "workerCount", 2);
-        ReflectionTestUtils.setField(worker, "virtualThreads", true);
+        worker.start();
+        assertThat(worker.isRunning()).isTrue();
 
         AtomicBoolean callbackInvoked = new AtomicBoolean(false);
 
         // when
-        worker.start();
         worker.stop(() -> callbackInvoked.set(true));
 
-        // then
-        await().atMost(5, SECONDS).untilTrue(callbackInvoked);
+        // then: 5 s 이내 콜백 호출, 워커 isRunning false
+        await().atMost(5, TimeUnit.SECONDS).untilTrue(callbackInvoked);
+        assertThat(worker.isRunning()).isFalse();
     }
 
+    // ─── Race: Immediate + Polling 경쟁 시 publish 1회만 ─────────────────────
+
     @Test
-    @DisplayName("process에서 RuntimeException이 발생해도 Worker 스레드가 종료되지 않는다")
-    void process_RuntimeException_Worker스레드가_종료되지_않는다() {
-        // given
-        MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        PaymentConfirmChannel channel = new PaymentConfirmChannel(10, meterRegistry);
-        OutboxProcessingService mockService = Mockito.mock(OutboxProcessingService.class);
-        Mockito.doThrow(new RuntimeException("test error"))
-                .doNothing()
-                .when(mockService).process(Mockito.anyString());
+    @DisplayName("outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce — 동일 orderId 두 스레드 relay() → publish 1회")
+    void outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce() throws InterruptedException {
+        // given: claimToInFlight — 첫 번째 호출만 성공, 두 번째(racing)는 false
+        PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(ORDER_ID)
+                .status(PaymentOutboxStatus.IN_FLIGHT)
+                .retryCount(0)
+                .inFlightAt(FIXED_NOW)
+                .allArgsBuild();
 
-        OutboxImmediateWorker worker = new OutboxImmediateWorker(channel, mockService);
-        ReflectionTestUtils.setField(worker, "workerCount", 1);
-        ReflectionTestUtils.setField(worker, "virtualThreads", true);
+        PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .buyerId(100L)
+                .orderId(ORDER_ID)
+                .paymentKey("pk-race-001")
+                .gatewayType(PaymentGatewayType.TOSS)
+                .status(PaymentEventStatus.IN_PROGRESS)
+                .paymentOrderList(List.of())
+                .allArgsBuild();
 
-        // when
-        worker.start();
-        channel.offer("order-1"); // 예외 발생
-        channel.offer("order-2"); // 예외 이후에도 처리돼야 함
+        // 첫 번째 claim 성공, 두 번째(경쟁 워커) 실패
+        given(mockOutboxRepository.claimToInFlight(anyString(), any(LocalDateTime.class)))
+                .willReturn(true)
+                .willReturn(false);
+        given(mockOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(outbox));
+        given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
+        given(mockOutboxRepository.save(any(PaymentOutbox.class))).willReturn(outbox);
 
-        // then
-        await().atMost(1, SECONDS).untilAsserted(
-                () -> verify(mockService, atLeastOnce()).process("order-2")
+        // when: Immediate 워커(스레드 1)와 Polling 워커(스레드 2)가 동시에 동일 orderId를 relay
+        Thread immediateThread = Thread.ofVirtual().name("immediate-race").unstarted(
+                () -> outboxRelayService.relay(ORDER_ID)
+        );
+        Thread pollingThread = Thread.ofVirtual().name("polling-race").unstarted(
+                () -> outboxRelayService.relay(ORDER_ID)
         );
 
-        worker.stop(() -> {});
+        immediateThread.start();
+        pollingThread.start();
+        immediateThread.join(2000);
+        pollingThread.join(2000);
+
+        // then: publish는 정확히 1회
+        assertThat(fakeMessagePublisher.count()).isEqualTo(1);
     }
 }
