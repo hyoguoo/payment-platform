@@ -144,11 +144,14 @@ ADR-21, ADR-02 적용. InternalOnlyGatewayFilter(GlobalFilter, Ordered, order=HI
 - ✅ T3-02 사용자 서비스 모듈 신설 + 도메인 이관
 - ✅ T3-03 Fake 상품·사용자 서비스 구현
 - ✅ T3-04 StockCommitConsumer + payment-service 전용 Redis 직접 SET
-- T3-04b FAILED 결제 stock.events.restore 보상 이벤트 발행 (UUID 멱등)
-- T3-05 보상 이벤트 consumer dedupe 구현
-- T3-06 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
+- ✅ T3-04b FAILED 결제 stock.events.restore 보상 이벤트 발행 (UUID 멱등)
+- ✅ T3-05 보상 이벤트 consumer dedupe 구현
+- ✅ T3-06 결제 서비스 ProductPort/UserPort → HTTP 어댑터 교체
 - ✅ T3-07 Gateway 라우팅: 상품·사용자 엔드포인트 교체
-- T3-Gate Phase 3 주변 도메인 + 보상 이벤트화 E2E 검증
+- ✅ T3-Gate Phase 3 주변 도메인 + 보상 이벤트화 E2E 검증
+
+**완료 결과 — T3-Gate** (2026-04-21):
+`scripts/phase-gate/phase-3-gate.sh` 신설(executable). `docs/phase-gate/phase-3-gate.md` 신설. 검증 10섹션(pre~j): (pre) ./gradlew test 516건 이상, (a) product-service /actuator/health UP(포트 8083, 미기동 시 SKIP), (b) user-service /actuator/health UP(포트 8084, 미기동 시 SKIP), (c) Gateway /api/v1/users·/api/v1/products 라우트 T3-07 확인(미기동 시 SKIP), (d) product.events.stock-snapshot 토픽 존재+파티션 확인(Kafka 미기동 시 SKIP), (e) StockCommitConsumerTest(1케이스)+StockCommitUseCaseTest(3케이스) Gradle 위임(T3-04), (f) StockRestoreConsumerTest(1케이스)+StockRestoreUseCaseTest(4케이스) Gradle 위임(T3-05, 불변식 14 이중 복원 방지), (g) StockCommitUseCaseTest TC1+TC3 Redis SET 단위 테스트 커버 확인, (h) FailureCompensationServiceTest(2케이스) — FAILED 보상 발행+멱등 UUID(T3-04b), (i) ProductHttpAdapterTest(2케이스) — @ConditionalOnProperty 병행 유지+Strangler Vine(T3-06), (j) 전체 Gradle test 516건 이상. Phase 3 완료 ADR 확정: ADR-22(user-service 신설)/ADR-16(보상 dedupe)/ADR-14(재시도 정책)/ADR-02(재확정: port 오염 금지). 516/516 PASS, 회귀 없음.
 
 **완료 결과 — T3-07** (2026-04-21):
 gateway/src/main/resources/application.yml에 products-service-route(lb://product-service, /api/v1/products/**) + users-service-route(lb://user-service, /api/v1/users/**) 두 라우트 추가. 기존 payment-service lb 규약 동일하게 Eureka lb 경유. StripPrefix=0 적용(경로 그대로 전달). /internal/** 차단 라우트(block-internal)와 경로 겹침 없음 확인. 516/516 PASS(eureka 1+gateway 3+payment-service 390+pg-service 95+product-service 26+user-service 1), 회귀 없음.
