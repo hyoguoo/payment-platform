@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
@@ -22,6 +23,7 @@ public class PaymentTransactionCoordinator {
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final PaymentLoadUseCase paymentLoadUseCase;
+    private final StockCachePort stockCachePort;
 
     @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentEvent executePaymentAndStockDecreaseWithOutbox(
@@ -68,6 +70,23 @@ public class PaymentTransactionCoordinator {
         outbox.toFailed();
         paymentOutboxUseCase.save(outbox);
         return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+    }
+
+    /**
+     * T1-05: 재고 캐시 차감 → 성공 시 @Transactional 블록(event 전이 + outbox 생성) 진입.
+     * TX 경계: stockCachePort.decrement()는 TX 외부에서 호출됨.
+     * - decrement=false(재고 부족): FAILED 전이, outbox 미생성.
+     * - decrement 예외(cache 장애): QUARANTINED 전이, outbox 미생성, quarantine_compensation_pending=true.
+     * - decrement=true: TX 진입 → executePayment + createPendingRecord (원자적 커밋).
+     */
+    public PaymentEvent executePaymentConfirm(
+            PaymentEvent paymentEvent,
+            String paymentKey,
+            String orderId,
+            List<PaymentOrder> paymentOrderList
+    ) {
+        // TODO(T1-05 GREEN): 재고 캐시 차감 분기 + TX 원자성 구현 예정
+        throw new UnsupportedOperationException("executePaymentConfirm not implemented (T1-05 GREEN)");
     }
 
     /**

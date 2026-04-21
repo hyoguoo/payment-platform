@@ -38,6 +38,8 @@ public class PaymentEvent {
     private List<PaymentOrder> paymentOrderList;
     private LocalDateTime createdAt;
     private LocalDateTime lastStatusChangedAt;
+    // ADR-13 §2-2b-3: QUARANTINED 전이 시 2단계 복구(QuarantineCompensationHandler, T1-12)가 처리해야 함을 표시
+    private boolean quarantineCompensationPending;
 
     public static PaymentEvent create(
             UserInfo userInfo,
