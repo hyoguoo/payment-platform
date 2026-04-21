@@ -4,7 +4,7 @@
 
 ## 활성 작업
 - **주제**: MSA-TRANSITION
-- **단계**: review
+- **단계**: execute
 - **이슈**: #69
 - **브랜치**: `#69`
 - **활성 태스크**: T3-01 (product-service 신규 모듈)
