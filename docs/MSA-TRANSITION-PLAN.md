@@ -108,7 +108,10 @@ RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% 
 
 - ✅ T2c-01 pg.retry.mode=outbox 활성화 스위치
 - ✅ T2c-02 기존 reconciler · PG 직접 호출 코드 삭제 + 잔존 어댑터 정리
-- T2c-Gate Phase 2.c 마이크로 Gate
+- ✅ T2c-Gate Phase 2.c 마이크로 Gate
+
+**완료 결과 — T2c-Gate** (2026-04-21):
+`scripts/phase-gate/phase-2c-gate.sh` 신설(executable). `docs/phase-gate/phase-2c-gate.md` 신설. 검증 항목 7섹션(a~g): (a) Phase 2.b Gate 전제 6항목(pg-service health/mysql-pg/Flyway V1/payment.commands.confirm·dlq 토픽), (b) payment-service cutover 상태: PgStatusAbsenceContractTest 3케이스 GREEN(불변식 19) + PgStatusPort·PgStatusHttpAdapter·구버전 PaymentGatewayPort 소스 부재 + /internal/pg/status 엔드포인트 소스 부재, (c) pg-service application.yml pg.retry.mode=outbox 확인(ADR-30 스위치), (d) consumer group pg-service·pg-service-dlq 등록 확인, (e) Kafka 왕복 E2E: PaymentConfirmConsumerTest 5케이스 + PaymentConfirmDlqConsumerTest 4케이스 Gradle 위임, (f) 잔존 삭제 코드 confirmPaymentWithGateway·getPaymentStatusByOrderId 소스 부재, (g) 전체 Gradle test 472건 이상. T2c-01 application.yml 포트 8082 고정으로 이전 Gate 대비 포트 충돌 없음. Phase 2 전체(2.a+2.b+2.c) 완료 의의 및 Phase 3 진입 기반 문서 포함. `./gradlew test` 472/472 회귀 없음.
 
 **완료 결과 — T2c-02** (2026-04-21):
 `PgStatusAbsenceContractTest` 3케이스(TC1 PgStatusPort 클래스패스 부재/TC2 PgStatusHttpAdapter 클래스패스 부재/TC3 PaymentCommandUseCase·PaymentGatewayStrategy getStatus 메서드 부재) 계약 테스트로 불변식 19 고정. 삭제 확인: `PgStatusPort`, `PgStatusHttpAdapter`, `/internal/pg/status` 엔드포인트 — 이미 부재(T1-11c에서 삭제 완료). payment-service 잔존 PG 직접 호출 코드 전면 삭제: (1) 구버전 `payment/application/port/PaymentGatewayPort.java`(getStatus·getStatusByOrderId 포함) 삭제. (2) 구버전 `payment/infrastructure/internal/InternalPaymentGatewayAdapter.java` 삭제. (3) `PaymentCommandUseCase.confirmPaymentWithGateway()·getPaymentStatusByOrderId()` 삭제 — 프로덕션 미사용 확인. (4) `PaymentGatewayStrategy.getStatus()·getStatusByOrderId()` 인터페이스 메서드 삭제. (5) TossPaymentGatewayStrategy·NicepayPaymentGatewayStrategy getStatus/getStatusByOrderId 구현 삭제. 관련 테스트 정리: InternalPaymentGatewayAdapterTest 삭제, PaymentCommandUseCaseTest 4케이스·NicepayPaymentGatewayStrategyTest 10케이스 삭제, PaymentGatewayFactoryTest 익명 클래스 메서드 제거. `out.PaymentGatewayPort`(confirm/cancel only, ADR-02 준수)·`adapter/internal/InternalPaymentGatewayAdapter` 신버전만 유지. 372/472 PASS(payment-service 379 + pg-service 93) — 삭제 테스트 16건 제외, 회귀 없음. ADR-02/ADR-21 불변 확정.
