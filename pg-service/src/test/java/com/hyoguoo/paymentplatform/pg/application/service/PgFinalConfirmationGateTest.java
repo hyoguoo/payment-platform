@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
 import static org.mockito.ArgumentMatchers.any;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 
 /**
  * PgFinalConfirmationGate 단위 테스트.
@@ -91,7 +92,7 @@ class PgFinalConfirmationGateTest {
         assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
 
         // then — ApplicationEventPublisher 호출 (PgOutboxReadyEvent 발행)
-        verify(eventPublisher, times(1)).publishEvent(any());
+        verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 
     // -----------------------------------------------------------------------
@@ -125,7 +126,7 @@ class PgFinalConfirmationGateTest {
         assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
 
         // then — ApplicationEventPublisher 호출
-        verify(eventPublisher, times(1)).publishEvent(any());
+        verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 
     // -----------------------------------------------------------------------
@@ -157,7 +158,7 @@ class PgFinalConfirmationGateTest {
         assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
 
         // then — ApplicationEventPublisher 호출
-        verify(eventPublisher, times(1)).publishEvent(any());
+        verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 
     // -----------------------------------------------------------------------
@@ -189,6 +190,6 @@ class PgFinalConfirmationGateTest {
         assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
 
         // then — ApplicationEventPublisher 호출
-        verify(eventPublisher, times(1)).publishEvent(any());
+        verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 }

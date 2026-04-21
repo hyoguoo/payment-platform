@@ -77,6 +77,9 @@
 **완료 결과 — T2a-06** (2026-04-21):
 EventDedupeStore 포트(markSeen) + FakeEventDedupeStore(ConcurrentHashSet) 신설. PgInboxRepository에 transitNoneToInProgress(orderId, amount): boolean CAS 메서드 추가. FakePgInboxRepository에 putIfAbsent + compute 기반 원자 전이 구현. FakePgOutboxRepository에 id=null auto-increment 처리 추가. PgConfirmService(application/service): handle(PgConfirmCommand) — eventUUID dedupe(1단) → inbox 5상태 분기(2단): NONE→CAS 전이+PG 호출, IN_PROGRESS→no-op, terminal→stored_status_result pg_outbox 재발행(벤더 호출 금지). PaymentConfirmConsumer(infrastructure/messaging/consumer): @KafkaListener(payment.commands.confirm, pg-service) + @ConditionalOnProperty(spring.kafka.bootstrap-servers). PaymentConfirmConsumerTest 5케이스 전부 GREEN: TC1(NONE→PG 1회), TC2(IN_PROGRESS no-op), TC3(terminal 3종 재발행), TC4(eventUUID dedupe), TC5(동시성 8스레드→PG 1회). 전체 418/418 PASS(payment-service 395 + pg-service 23), 회귀 없음.
 
+**완료 결과 — T2b-03** (2026-04-21):
+PgFinalConfirmationGate(application/service) 신설: performFinalCheck(orderId, eventUuid, amount) @Transactional — FcgOutcome 캡슐화로 try-catch 외부 변수 재할당 없이 구현. FCG 불변(ADR-15): PgGatewayPort.getStatusByOrderId() 단 1회 호출, 재시도 래핑 금지. PgPaymentStatus 3-way 매핑(DONE→APPROVED, ABORTED/CANCELED/PARTIAL_CANCELED/EXPIRED→FAILED, PgGatewayRetryableException·PgGatewayNonRetryableException·미확정→INDETERMINATE). APPROVED: pg_inbox transitToApproved + pg_outbox(events.confirmed, APPROVED) INSERT + PgOutboxReadyEvent. FAILED: transitToFailed(FCG_CONFIRMED_FAILED) + outbox INSERT + event. INDETERMINATE: transitToQuarantined(FCG_INDETERMINATE) + outbox INSERT(QUARANTINED) + event — 재시도 없음. PgFinalConfirmationGateTest 4케이스 GREEN(TC1 APPROVED/TC2 FAILED/TC3 timeout→QUARANTINED 1회만/TC4 5xx→QUARANTINED 재시도 0회). 전체 479/479 PASS(payment-service 395 + pg-service 79), 회귀 없음.
+
 **완료 결과 — T2b-02** (2026-04-21):
 PgInboxRepository 포트에 transitToQuarantined(orderId, reasonCode): boolean + findByOrderIdForUpdate(orderId): Optional 추가. FakePgInboxRepository에 transitToQuarantined(compute 기반 원자 전이, terminal 체크) + findByOrderIdForUpdate 구현. PgDlqService(application/service) 신설: handle(PgConfirmCommand) @Transactional — FOR UPDATE 조회 → terminal이면 no-op(불변식 6c) → pg_inbox QUARANTINED CAS 전이 + pg_outbox(topic=payment.events.confirmed, QUARANTINED+RETRY_EXHAUSTED 페이로드) INSERT(같은 TX) → TX commit 후 PgOutboxReadyEvent 발행(T2a-05b/c 경로 재사용). PaymentConfirmDlqConsumer(infrastructure/messaging/consumer) 신설: @KafkaListener(payment.commands.confirm.dlq, groupId=pg-service-dlq) + @ConditionalOnProperty(spring.kafka.bootstrap-servers) → PaymentConfirmConsumer와 물리적으로 다른 Spring bean(ADR-30 수락 기준). PaymentConfirmDlqConsumerTest 4케이스(파라미터 포함 6건) GREEN: TC1(IN_PROGRESS→QUARANTINED+events.confirmed 1건), TC2(terminal 3종→no-op+outbox 0건), TC3(events.confirmed row 1건만, 보상 큐 없음), TC4(DlqConsumer≠NormalConsumer 클래스 분리). 전체 470/470 PASS(payment-service 395 + pg-service 75), 회귀 없음.
 
@@ -87,7 +90,7 @@ RetryPolicy(domain) 신설: MAX_ATTEMPTS=4, base=2s, multiplier=3, jitter=±25% 
 
 - ✅ T2b-01 PG 벤더 호출 + 재시도 루프 + available_at 지연 재발행
 - ✅ T2b-02 PaymentConfirmDlqConsumer 구현 (DLQ 전용 consumer)
-- T2b-03 pg-service 내부 FCG 구현
+- ✅ T2b-03 pg-service 내부 FCG 구현
 - T2b-04 business inbox amount 컬럼 저장 규약 구현
 - T2b-05 중복 승인 응답 2자 금액 대조 + pg DB 부재 경로 방어
 - T2b-Gate Phase 2.b 마이크로 Gate
