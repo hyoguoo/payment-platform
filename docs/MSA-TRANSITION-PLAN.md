@@ -125,11 +125,14 @@ EventDedupeStore 포트 신설(payment-service 독립 복제, ADR-30). StockRest
 **완료 결과 — T2d-02** (2026-04-21):
 ADR-12 결론 확정: 네이밍 규약 `<source-service>.<type>.<action>[.modifier]` + 토픽 목록표 6종(payment.commands.confirm/dlq/events.confirmed + stock.events.commit/restore + product.events.stock-snapshot) MSA-TRANSITION.md에 기록. 스키마 포맷 JSON Schema + 클라이언트 검증 채택. 에러 코드 어댑터-local 유지 + 도메인 중립 enum(APPROVED/FAILED/QUARANTINED) payload 원칙 확정. ProductTopics.java는 product-service 모듈이 T3-01에서 신설되므로 **이 태스크에서 실파일 생성 스킵** — ADR-12 토픽 목록표에 Phase 3 예고 기록만 함. PaymentTopics/PgTopics: 기존 상수 검토 완료, 누락 없음(중복 선언 금지 준수). ADR-31 결론 확정: 관측 지표 4종(pending_count/future_pending_count/oldest_pending_age_seconds/attempt_count_histogram) + 알림 4종 정의. PaymentOutboxRepository 포트 확장(countPending/countFuturePending/findOldestPendingCreatedAt 메서드 추가). JpaPaymentOutboxRepository JPQL 집계 쿼리 3종 추가. PaymentOutboxRepositoryImpl 구현 추가. PgOutboxRepository 포트 확장(countPending/countFuturePending/findOldestPendingCreatedAt). FakePgOutboxRepository 구현 추가. PaymentOutboxMetrics(payment-service/infrastructure/metrics): Gauge 3종(AtomicLong 캐시+Supplier 패턴) + DistributionSummary 1종, @Scheduled(fixedDelay=60s), @ConditionalOnProperty(scheduler.enabled=true). PgOutboxMetrics(pg-service/infrastructure/metrics): 동일 구조, Clock 주입. PgServiceConfig(pg-service/infrastructure/config): Clock Bean(Clock.systemUTC()) + @EnableScheduling 신설. chaos/grafana/payment-dashboard.json: payment_outbox 패널 4개(pending_count/future_pending_count/oldest_pending_age_seconds/attempt_histogram) 추가 + alerting 4종(DLQ rate>0/future_pending>500 5min/oldest_age>300s/invariant>10). PaymentOutboxMetricsTest 2케이스 + PgOutboxMetricsTest 2케이스 GREEN. 전체 481/481 PASS(payment-service 386 + pg-service 95), 회귀 없음.
 
+**완료 결과 — T2d-03** (2026-04-21):
+ADR-21, ADR-02 적용. InternalOnlyGatewayFilter(GlobalFilter, Ordered, order=HIGHEST_PRECEDENCE+1) 신설: /internal/ 접두사 path 요청에 즉시 403 Forbidden 반환 후 다운스트림 체인 중단. gateway/src/main/resources/application.yml에 block-internal 라우트(uri=no://op, predicates=Path=/internal/**, filters=SetStatus:403) 추가. InternalOnlyGatewayFilterTest 2케이스(내부경로 403 차단/비내부경로 체인 위임) GREEN. 전체 484/484 PASS(gateway 3+payment-service 386+pg-service 95), 회귀 없음.
+
 **Phase 2.d — 관측 대시보드 활성화 + 결제 서비스 측 이벤트 소비** (4개)
 
 - ✅ T2d-01 결제 서비스 측 Kafka consumer (payment.events.confirmed 소비)
 - ✅ T2d-02 토픽 네이밍 규약 확정 + Outbox 관측 지표 + Grafana 대시보드
-- T2d-03 Gateway 라우팅: PG 내부 API 격리
+- ✅ T2d-03 Gateway 라우팅: PG 내부 API 격리
 - T2d-Gate Phase 2.d 마이크로 Gate + Phase 2 통합 Gate
 
 **Phase 3 — 상품·사용자 서비스 분리** (9개)

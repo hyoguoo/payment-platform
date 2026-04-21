@@ -7,6 +7,15 @@ spring:
   cloud:
     gateway:
       routes:
+        # ADR-21, ADR-02: /internal/** 경로를 외부에서 호출 시 403 반환 (InternalOnlyGatewayFilter가 GlobalFilter로 차단)
+        - id: block-internal
+          uri: no://op
+          predicates:
+            - Path=/internal/**
+          filters:
+            - name: SetStatus
+              args:
+                status: "403"
         - id: payment-service
           uri: lb://payment-service
           predicates:
