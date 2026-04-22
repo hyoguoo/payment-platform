@@ -38,8 +38,8 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
   flyway:
     enabled: true
@@ -47,9 +47,9 @@ spring:
 
 product:
   cache:
-    payment-redis:
-      # host: ${REDIS_PAYMENT_HOST:localhost}  # 운영 환경에서 환경변수로 활성화
-      port: ${REDIS_PAYMENT_PORT:6380}
+    stock-redis:
+      # host: ${REDIS_STOCK_HOST:localhost}  # 운영 환경에서 환경변수로 활성화
+      port: ${REDIS_STOCK_PORT:6380}
 
   output:
     ansi:

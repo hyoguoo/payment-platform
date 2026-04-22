@@ -13,14 +13,14 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:redis}
-      port: ${REDIS_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:redis-dedupe}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
 product:
   cache:
-    payment-redis:
-      host: ${REDIS_PAYMENT_HOST:redis-payment}
-      port: ${REDIS_PAYMENT_PORT:6379}
+    stock-redis:
+      host: ${REDIS_STOCK_HOST:redis-stock}
+      port: ${REDIS_STOCK_PORT:6379}
 
 logging:
   level:

@@ -13,7 +13,7 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:redis-shared}
+      host: ${SPRING_DATA_REDIS_HOST:redis-dedupe}
       port: ${SPRING_DATA_REDIS_PORT:6379}
 
 pg:

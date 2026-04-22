@@ -27,22 +27,18 @@ services:
     depends_on:
       eureka:
         condition: service_healthy
-      mysql:
+      mysql-payment:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      redis-payment:
+      redis-dedupe:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_PAYMENT_HOST: redis-payment
-      REDIS_PAYMENT_PORT: "6379"
-      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: redis-dedupe
       SPRING_DATA_REDIS_PORT: "6379"
       DB_USERNAME: root
       DB_PASSWORD: payment123
@@ -76,7 +72,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
+      redis-dedupe:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -88,7 +84,7 @@ services:
       PG_GATEWAY_TYPE: ${PG_GATEWAY_TYPE:-toss}
       NICEPAY_CLIENT_KEY: ${NICEPAY_CLIENT_KEY:-}
       NICEPAY_SECRET_KEY: ${NICEPAY_SECRET_KEY:-}
-      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: redis-dedupe
       SPRING_DATA_REDIS_PORT: "6379"
     networks:
       - payment-infra-network
@@ -115,9 +111,9 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
+      redis-dedupe:
         condition: service_healthy
-      redis-payment:
+      redis-stock:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -126,10 +122,10 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PRODUCT_DATASOURCE_USERNAME: root
       PRODUCT_DATASOURCE_PASSWORD: payment123
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      REDIS_PAYMENT_HOST: redis-payment
-      REDIS_PAYMENT_PORT: "6379"
+      SPRING_DATA_REDIS_HOST: redis-dedupe
+      SPRING_DATA_REDIS_PORT: "6379"
+      REDIS_STOCK_HOST: redis-stock
+      REDIS_STOCK_PORT: "6379"
     networks:
       - payment-infra-network
     healthcheck:

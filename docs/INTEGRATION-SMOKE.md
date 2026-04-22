@@ -94,7 +94,7 @@ bash docs/phase-gate/kafka-topic-config.sh  # 파티션 수 동일성·retry 토
 docker compose -f docker-compose.apps.yml stop payment-service
 EUREKA_CLIENT_ENABLED=true EUREKA_DEFAULT_ZONE=http://localhost:8761/eureka/ \
 SPRING_PROFILES_ACTIVE=docker PRODUCT_ADAPTER_TYPE=http USER_ADAPTER_TYPE=http \
-REDIS_PAYMENT_HOST=localhost REDIS_PAYMENT_PORT=6380 TOSS_SECRET_KEY=test_sk_... \
+SPRING_DATA_REDIS_HOST=localhost SPRING_DATA_REDIS_PORT=6379 TOSS_SECRET_KEY=test_sk_... \
 ./gradlew :payment-service:bootRun
 ```
 

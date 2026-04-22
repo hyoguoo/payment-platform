@@ -1,6 +1,7 @@
 # MSA-TRANSITION Phase 0 — 인프라 컨테이너 정의
 # ADR-10(compose 토폴로지), ADR-27(로컬 DX)
 # Phase 2.a T2a-04: pg-service 전용 MySQL 추가 (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
+# Phase 4 Toxiproxy: docker-compose.chaos.yml로 분리 (T4-01 opt-in)
 #
 # Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
 #   replication.factor=3
@@ -61,16 +62,20 @@ services:
       start_period: 30s
 
   # ───────────────────────────────────────────
-  # 공유 Redis — 범용 캐시 (stock:{id} 등)
+  # Redis — EventDedupeStore (ADR-30)
+  # 실사용 키스페이스:
+  #   dedupe:{eventUuid} — payment-service / pg-service eventUUID dedupe (TTL=8일)
+  # 내구성 불필요(dedupe는 재처리 가능) → appendonly off.
+  # 재고 캐시 stock:{id}는 별도 redis-stock(아래)에 위치.
   # ───────────────────────────────────────────
-  redis:
+  redis-dedupe:
     image: redis:7.2-alpine
-    container_name: payment-redis-shared
+    container_name: payment-redis-dedupe
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
       - "6379:6379"
     volumes:
-      - redis-shared-data:/data
+      - redis-dedupe-data:/data
     networks:
       - payment-infra-network
     healthcheck:
@@ -80,14 +85,13 @@ services:
       retries: 5
 
   # ───────────────────────────────────────────
-  # payment 전용 Redis — AOF 내구성 on
+  # Redis — 재고 캐시 (stock:{productId}) AOF 내구성 on
   # keyspace:
-  #   stock:{productId}   — 재고 캐시 (Lua atomic DECR)
-  #   idem:{key}          — 멱등성 키 (SETNX + TTL)
+  #   stock:{productId}   — 재고 캐시 (product-service write → payment-service read)
   # ───────────────────────────────────────────
-  redis-payment:
+  redis-stock:
     image: redis:7.2-alpine
-    container_name: payment-redis-payment
+    container_name: payment-redis-stock
     command:
       - redis-server
       - "--appendonly"
@@ -99,7 +103,7 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - redis-payment-data:/data
+      - redis-stock-data:/data
     networks:
       - payment-infra-network
     healthcheck:
@@ -130,33 +134,8 @@ services:
       start_period: 30s
 
   # ───────────────────────────────────────────
-  # MySQL (기존 모놀리스 payment-service 용)
-  # ───────────────────────────────────────────
-  mysql:
-    image: mysql:8.0
-    platform: linux/arm64
-    container_name: payment-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-payment123}
-      MYSQL_DATABASE: payment-platform
-      MYSQL_USER: ${MYSQL_USER:-payment}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-payment123}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - payment-infra-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 20s
-
-  # ───────────────────────────────────────────
-  # MySQL — 결제 서비스 전용 (ADR-23 DB 분리, T1-07)
-  # Phase 1: 빈 상태 시작. application.yml 전환은 T1-18(Strangler Fig) 시점.
+  # MySQL — payment-service 전용 (ADR-23 DB per service)
+  # DB 이름은 기존 데이터/외부 스크립트 호환을 위해 `payment-platform` 유지.
   # ───────────────────────────────────────────
   mysql-payment:
     image: mysql:8.0
@@ -164,11 +143,11 @@ services:
     container_name: payment-mysql-payment
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}
-      MYSQL_DATABASE: payment
+      MYSQL_DATABASE: payment-platform
       MYSQL_USER: ${MYSQL_PAYMENT_USER:-payment}
       MYSQL_PASSWORD: ${MYSQL_PAYMENT_PASSWORD:-payment123}
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - mysql-payment-data:/var/lib/mysql
     networks:
@@ -256,31 +235,6 @@ services:
       retries: 10
       start_period: 20s
 
-  # ───────────────────────────────────────────
-  # Toxiproxy — 네트워크 장애 주입 (ADR-29)
-  # API 포트: 8474 / proxy 포트: 29092(kafka), 23306(mysql), 26380(redis-payment)
-  # 애플리케이션은 T4-01까지 직접 upstream을 가리킨다.
-  # ───────────────────────────────────────────
-  toxiproxy:
-    image: ghcr.io/shopify/toxiproxy:2.9.0
-    container_name: payment-toxiproxy
-    command: ["-config", "/etc/toxiproxy/config.json", "-host", "0.0.0.0"]
-    ports:
-      - "8474:8474"
-      - "29093:29092"
-      - "23306:23306"
-      - "26380:26380"
-    volumes:
-      - ./chaos/toxiproxy-config.json:/etc/toxiproxy/config.json:ro
-    networks:
-      - payment-infra-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8474/version || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-
 networks:
   payment-infra-network:
     driver: bridge
@@ -289,11 +243,9 @@ networks:
 volumes:
   kafka-data:
     driver: local
-  redis-shared-data:
+  redis-dedupe-data:
     driver: local
-  redis-payment-data:
-    driver: local
-  mysql-data:
+  redis-stock-data:
     driver: local
   mysql-payment-data:
     driver: local

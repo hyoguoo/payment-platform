@@ -5,11 +5,11 @@ ADR-29 결정에 따라 Kafka·MySQL·Redis 앞단에 Toxiproxy를 배치하여 
 
 ## proxy 구성 (`chaos/toxiproxy-config.json`)
 
-| proxy 이름           | 컨테이너 listen  | 호스트 포트 | upstream           | 용도                         |
-|---------------------|------------------|-------------|--------------------|------------------------------|
-| kafka-proxy         | 0.0.0.0:29092    | 29093       | kafka:9092         | Kafka 브로커 장애 주입        |
-| mysql-proxy         | 0.0.0.0:23306    | 23306       | mysql:3306         | MySQL 연결 장애 주입          |
-| redis-payment-proxy | 0.0.0.0:26380    | 26380       | redis-payment:6379 | 결제 멱등성 Redis 장애 주입   |
+| proxy 이름            | 컨테이너 listen  | 호스트 포트 | upstream                 | 용도                         |
+|----------------------|------------------|-------------|--------------------------|------------------------------|
+| kafka-proxy          | 0.0.0.0:29092    | 29093       | kafka:9092               | Kafka 브로커 장애 주입         |
+| mysql-payment-proxy  | 0.0.0.0:23306    | 23306       | mysql-payment:3306       | payment-service DB 장애 주입   |
+| redis-stock-proxy    | 0.0.0.0:26380    | 26380       | redis-stock:6379         | 재고 캐시 Redis 장애 주입      |
 
 > kafka-proxy 호스트 포트가 29093인 이유: kafka 서비스가 PLAINTEXT_HOST 리스너로 29092를 선점하고 있어 충돌 방지.
 > T4-01에서 애플리케이션을 proxy 경유로 전환할 때 Spring 설정의 bootstrap-servers 포트를 29093으로 바꿀 것.
@@ -20,11 +20,11 @@ ADR-29 결정에 따라 Kafka·MySQL·Redis 앞단에 Toxiproxy를 배치하여 
 ## Toxiproxy 시작
 
 ```bash
-# toxiproxy 서비스만 단독 기동
-docker compose -f docker-compose.infra.yml up toxiproxy
+# toxiproxy 서비스만 단독 기동 (chaos compose, opt-in)
+docker compose -f docker-compose.chaos.yml up toxiproxy
 
-# 전체 인프라와 함께 기동
-docker compose -f docker-compose.infra.yml up
+# 전체 인프라 + chaos 함께 기동
+docker compose -f docker-compose.infra.yml -f docker-compose.chaos.yml up
 ```
 
 ## proxy 목록 확인

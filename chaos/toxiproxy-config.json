@@ -6,15 +6,15 @@
     "enabled": true
   },
   {
-    "name": "mysql-proxy",
+    "name": "mysql-payment-proxy",
     "listen": "0.0.0.0:23306",
-    "upstream": "mysql:3306",
+    "upstream": "mysql-payment:3306",
     "enabled": true
   },
   {
-    "name": "redis-payment-proxy",
+    "name": "redis-stock-proxy",
     "listen": "0.0.0.0:26380",
-    "upstream": "redis-payment:6379",
+    "upstream": "redis-stock:6379",
     "enabled": true
   }
 ]

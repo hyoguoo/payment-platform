@@ -353,7 +353,7 @@ section "g. product→payment Redis SET 확인 (T3-04 단위 테스트 커버)"
 echo "  [INFO] product→payment Redis 직접 SET은 단위 테스트(StockCommitUseCaseTest)로 커버됩니다."
 echo "    - TC1: RDB UPDATE 성공 → PaymentStockCachePort.setStock 1회 호출 (keyspace: stock:{productId})"
 echo "    - TC3: RDB UPDATE 실패 → Redis SET 호출 0회 (원자성 보장)"
-echo "  [INFO] PaymentRedisStockAdapter(infrastructure/cache) → paymentRedisTemplate(@Qualifier) → redis-payment 연결"
+echo "  [INFO] StockRedisAdapter(infrastructure/cache) → stockRedisTemplate(@Qualifier) → redis-stock 연결"
 echo "  [INFO] 로컬 E2E(실제 Redis 연결) 검증은 optional — 인프라 기동 시 별도 확인 권장"
 
 # StockCommitUseCaseTest TC1+TC3는 e-2에서 이미 실행됨 — 결과 재활용

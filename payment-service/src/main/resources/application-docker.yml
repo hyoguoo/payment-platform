@@ -4,7 +4,7 @@ spring:
       on-profile: docker
 
   datasource:
-    url: jdbc:mysql://mysql:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://mysql-payment:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:payment123}
     hikari:

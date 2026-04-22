@@ -41,8 +41,8 @@ PAYMENT_DB_NAME="${PAYMENT_DB_NAME:-payment}"
 PAYMENT_DB_USER="${PAYMENT_DB_USER:-payment}"
 PAYMENT_DB_PASS="${PAYMENT_DB_PASS:-payment123}"
 
-# Redis (결제 전용 — 포트 6380)
-REDIS_CONTAINER="${REDIS_CONTAINER:-payment-redis-payment}"
+# Redis (재고 캐시 전용 — 포트 6380)
+REDIS_CONTAINER="${REDIS_CONTAINER:-payment-redis-stock}"
 
 # E2E 비동기 대기 설정
 ASYNC_WAIT_SECONDS="${ASYNC_WAIT_SECONDS:-10}"

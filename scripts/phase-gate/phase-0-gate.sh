@@ -71,11 +71,10 @@ section "1. 인프라 컴포즈 컨테이너 기동 상태"
 
 REQUIRED_CONTAINERS=(
   payment-kafka
-  payment-redis-shared
-  payment-redis-payment
-  payment-mysql
+  payment-redis-dedupe
+  payment-redis-stock
+  payment-mysql-payment
   payment-eureka
-  payment-toxiproxy
 )
 
 for container in "${REQUIRED_CONTAINERS[@]}"; do
@@ -167,46 +166,46 @@ if [[ "${PARTITION_CHECK_OK}" == "true" && ${#PARTITION_COUNTS[@]} -gt 0 ]]; the
 fi
 
 # ─────────────────────────────────────────────
-# 5. 공유 Redis (6379) PING
+# 5. Dedupe Redis (6379) PING
 # ─────────────────────────────────────────────
-section "5. 공유 Redis (6379) healthcheck"
+section "5. Dedupe Redis (6379) healthcheck"
 
-SHARED_PING=$(docker exec payment-redis-shared redis-cli ping 2>/dev/null || echo "")
-if [[ "${SHARED_PING}" == "PONG" ]]; then
-  pass "공유 Redis PING → PONG"
+DEDUPE_PING=$(docker exec payment-redis-dedupe redis-cli ping 2>/dev/null || echo "")
+if [[ "${DEDUPE_PING}" == "PONG" ]]; then
+  pass "Dedupe Redis PING → PONG"
 else
-  fail "공유 Redis PING" "응답=${SHARED_PING:-없음}"
+  fail "Dedupe Redis PING" "응답=${DEDUPE_PING:-없음}"
 fi
 
 # ─────────────────────────────────────────────
-# 6. 결제 Redis (6380) PING + AOF 설정 확인
+# 6. Stock Redis (6380) PING + AOF 설정 확인
 # ─────────────────────────────────────────────
-section "6. 결제 Redis (6380) healthcheck + AOF 확인"
+section "6. Stock Redis (6380) healthcheck + AOF 확인"
 
-PAYMENT_PING=$(docker exec payment-redis-payment redis-cli ping 2>/dev/null || echo "")
-if [[ "${PAYMENT_PING}" == "PONG" ]]; then
-  pass "결제 Redis PING → PONG"
+STOCK_PING=$(docker exec payment-redis-stock redis-cli ping 2>/dev/null || echo "")
+if [[ "${STOCK_PING}" == "PONG" ]]; then
+  pass "Stock Redis PING → PONG"
 else
-  fail "결제 Redis PING" "응답=${PAYMENT_PING:-없음}"
+  fail "Stock Redis PING" "응답=${STOCK_PING:-없음}"
 fi
 
-AOF_VALUE=$(docker exec payment-redis-payment redis-cli CONFIG GET appendonly 2>/dev/null \
+AOF_VALUE=$(docker exec payment-redis-stock redis-cli CONFIG GET appendonly 2>/dev/null \
   | tail -1 || echo "")
 if [[ "${AOF_VALUE}" == "yes" ]]; then
-  pass "결제 Redis AOF 활성화 (appendonly=yes)"
+  pass "Stock Redis AOF 활성화 (appendonly=yes)"
 else
-  fail "결제 Redis AOF 활성화" "appendonly=${AOF_VALUE:-미확인}"
+  fail "Stock Redis AOF 활성화" "appendonly=${AOF_VALUE:-미확인}"
 fi
 
 # ─────────────────────────────────────────────
 # 7. Redis SETNX 원자성 확인 (멱등성 키 패턴)
 # ─────────────────────────────────────────────
-section "7. 결제 Redis SETNX 원자성"
+section "7. Stock Redis SETNX 원자성"
 
 TEST_KEY="gate-test:phase-0:$$"
 
 # 첫 번째 SET NX → OK
-SET1=$(docker exec payment-redis-payment redis-cli SET "${TEST_KEY}" 1 NX EX 30 2>/dev/null || echo "")
+SET1=$(docker exec payment-redis-stock redis-cli SET "${TEST_KEY}" 1 NX EX 30 2>/dev/null || echo "")
 if [[ "${SET1}" == "OK" ]]; then
   pass "SETNX 첫 번째 → OK"
 else
@@ -214,7 +213,7 @@ else
 fi
 
 # 두 번째 SET NX → (nil) (이미 존재하므로)
-SET2=$(docker exec payment-redis-payment redis-cli SET "${TEST_KEY}" 2 NX EX 30 2>/dev/null || echo "")
+SET2=$(docker exec payment-redis-stock redis-cli SET "${TEST_KEY}" 2 NX EX 30 2>/dev/null || echo "")
 if [[ "${SET2}" == "" ]]; then
   pass "SETNX 두 번째 → (nil) (원자성 보장)"
 else
@@ -222,15 +221,15 @@ else
 fi
 
 # 테스트 키 정리
-docker exec payment-redis-payment redis-cli DEL "${TEST_KEY}" >/dev/null 2>&1 || true
+docker exec payment-redis-stock redis-cli DEL "${TEST_KEY}" >/dev/null 2>&1 || true
 pass "SETNX 테스트 키 정리 완료"
 
 # ─────────────────────────────────────────────
-# 8. MySQL healthcheck
+# 8. MySQL (payment) healthcheck
 # ─────────────────────────────────────────────
-section "8. MySQL healthcheck"
+section "8. MySQL (payment) healthcheck"
 
-if docker exec payment-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+if docker exec payment-mysql-payment mysqladmin ping -h localhost --silent 2>/dev/null; then
   pass "MySQL mysqladmin ping 성공"
 else
   fail "MySQL mysqladmin ping" "mysqladmin ping 실패"
@@ -262,7 +261,7 @@ TOXIPROXY_RESP=$(curl -sf http://localhost:8474/proxies 2>/dev/null || echo "")
 if [[ -n "${TOXIPROXY_RESP}" ]]; then
   pass "Toxiproxy /proxies 200 응답"
 
-  REQUIRED_PROXIES=(kafka-proxy mysql-proxy redis-payment-proxy)
+  REQUIRED_PROXIES=(kafka-proxy mysql-payment-proxy redis-stock-proxy)
   for proxy in "${REQUIRED_PROXIES[@]}"; do
     KEY_EXISTS=$(echo "${TOXIPROXY_RESP}" | jq -r --arg key "${proxy}" 'has($key)' 2>/dev/null || echo "false")
     if [[ "${KEY_EXISTS}" == "true" ]]; then

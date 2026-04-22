@@ -11,8 +11,8 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_PAYMENT_HOST:localhost}
-      port: ${REDIS_PAYMENT_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
   jpa:
     open-in-view: false

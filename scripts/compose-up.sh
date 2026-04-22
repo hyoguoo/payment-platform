@@ -107,7 +107,7 @@ docker compose -f "${INFRA_COMPOSE}" up -d
 
 print_warning "인프라 healthy 대기(최대 120초)..."
 deadline=$(( $(date +%s) + 120 ))
-infra_services=(payment-kafka payment-redis-shared payment-redis-payment payment-eureka payment-mysql payment-mysql-payment payment-mysql-pg payment-mysql-product payment-mysql-user)
+infra_services=(payment-kafka payment-redis-dedupe payment-redis-stock payment-eureka payment-mysql-payment payment-mysql-pg payment-mysql-product payment-mysql-user)
 while :; do
   all_healthy=true
   for c in "${infra_services[@]}"; do
@@ -118,7 +118,7 @@ while :; do
     fi
   done
   if [[ "${all_healthy}" == "true" ]]; then
-    print_info "✅ 인프라 9개 컨테이너 모두 healthy"
+    print_info "✅ 인프라 8개 컨테이너 모두 healthy"
     break
   fi
   if (( $(date +%s) > deadline )); then
