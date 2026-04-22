@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
+import com.hyoguoo.paymentplatform.product.exception.ProductFoundException;
 import com.hyoguoo.paymentplatform.product.exception.ProductStockException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -23,6 +24,18 @@ public class ProductExceptionHandler {
         LogFmt.warn(log, LogDomain.PRODUCT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(
+                                e.getCode(),
+                                e.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(ProductFoundException.class)
+    public ResponseEntity<ErrorResponse> catchProductFoundException(ProductFoundException e) {
+        LogFmt.warn(log, LogDomain.PRODUCT, EventType.EXCEPTION, e::getMessage);
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(
                                 e.getCode(),
                                 e.getMessage()

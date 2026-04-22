@@ -5,8 +5,11 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.user.exception.UserFoundException;
+import com.hyoguoo.paymentplatform.user.exception.common.UserErrorCode;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -19,6 +22,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
  * UserPort 구현체. user.adapter.type=http 프로파일 활성화 시 사용.
  * @CircuitBreaker는 이 클래스 내부 메서드에만 적용 — port 인터페이스 오염 금지(ADR-22).
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "user.adapter.type", havingValue = "http")
 @RequiredArgsConstructor
@@ -56,11 +60,17 @@ public class UserHttpAdapter implements UserPort {
 
     private RuntimeException mapResponseException(WebClientResponseException e) {
         int status = e.getStatusCode().value();
+        if (status == HttpStatus.NOT_FOUND.value()) {
+            log.warn("user_service_not_found status=404 body={}", e.getResponseBodyAsString());
+            return UserFoundException.of(UserErrorCode.USER_NOT_FOUND);
+        }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
+            log.warn("user_service_retryable status={}", status);
             return UserServiceRetryableException.of(PaymentErrorCode.USER_SERVICE_UNAVAILABLE);
         }
-        throw new IllegalStateException(
+        log.warn("user_service_unexpected status={} body={}", status, e.getResponseBodyAsString());
+        return new IllegalStateException(
                 "user-service 오류 status=" + status + " body=" + e.getResponseBodyAsString()
         );
     }

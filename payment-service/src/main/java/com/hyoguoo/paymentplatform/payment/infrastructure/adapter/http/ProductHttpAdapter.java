@@ -6,10 +6,13 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.product.exception.ProductFoundException;
+import com.hyoguoo.paymentplatform.product.exception.common.ProductErrorCode;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -22,6 +25,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
  * ProductPort 구현체. product.adapter.type=http 프로파일 활성화 시 사용.
  * @CircuitBreaker는 이 클래스 내부 메서드에만 적용 — port 인터페이스 오염 금지(ADR-22).
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "product.adapter.type", havingValue = "http")
 @RequiredArgsConstructor
@@ -88,12 +92,17 @@ public class ProductHttpAdapter implements ProductPort {
 
     private RuntimeException mapResponseException(WebClientResponseException e) {
         int status = e.getStatusCode().value();
+        if (status == HttpStatus.NOT_FOUND.value()) {
+            log.warn("product_service_not_found status=404 body={}", e.getResponseBodyAsString());
+            return ProductFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND);
+        }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
+            log.warn("product_service_retryable status={}", status);
             return ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
         }
-        // 4xx 비재시도 — RuntimeException으로 전파
-        throw new IllegalStateException(
+        log.warn("product_service_unexpected status={} body={}", status, e.getResponseBodyAsString());
+        return new IllegalStateException(
                 "product-service 오류 status=" + status + " body=" + e.getResponseBodyAsString()
         );
     }
