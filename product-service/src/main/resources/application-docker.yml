@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: jdbc:mysql://mysql-product:3306/product?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${PRODUCT_DATASOURCE_USERNAME:root}
+    password: ${PRODUCT_DATASOURCE_PASSWORD:payment123}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+
+product:
+  cache:
+    payment-redis:
+      host: ${REDIS_PAYMENT_HOST:redis-payment}
+      port: ${REDIS_PAYMENT_PORT:6379}
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: INFO

@@ -1,0 +1,205 @@
+# MSA-TRANSITION Phase 3 이후 — 전체 앱 서비스 컨테이너 구성
+# 사용법:
+#   ./gradlew :payment-service:bootJar :pg-service:bootJar :product-service:bootJar :user-service:bootJar :gateway:bootJar
+#   docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d
+#
+# 아키텍처:
+#   - payment-service 8080 (컨테이너) ← docker 프로필
+#   - pg-service 8082
+#   - product-service 8083
+#   - user-service 8084
+#   - gateway 8080 → 호스트는 8090 포트로 노출 (payment-service와 컨테이너 포트 중복 회피)
+#   - eureka 8761 (docker-compose.infra.yml에서 기동)
+#
+# ADR-11 (Eureka), ADR-23 (DB per service), T1-18 (Gateway 결제 라우팅)
+
+services:
+
+  # ───────────────────────────────────────────
+  # payment-service (모놀리스 기반 결제 핵심)
+  # ───────────────────────────────────────────
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    hostname: payment-service
+    depends_on:
+      eureka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-payment:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_PAYMENT_HOST: redis-payment
+      REDIS_PAYMENT_PORT: "6379"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      DB_USERNAME: root
+      DB_PASSWORD: payment123
+      PRODUCT_ADAPTER_TYPE: http
+      USER_ADAPTER_TYPE: http
+      PRODUCT_SERVICE_BASE_URL: http://product-service:8083
+      USER_SERVICE_BASE_URL: http://user-service:8084
+      TOSS_SECRET_KEY: ${TOSS_SECRET_KEY:-test_sk_placeholder}
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ───────────────────────────────────────────
+  # pg-service (PG 어댑터 + Outbox + FCG)
+  # ───────────────────────────────────────────
+  pg-service:
+    build:
+      context: ./pg-service
+      dockerfile: Dockerfile
+    container_name: pg-service
+    hostname: pg-service
+    depends_on:
+      eureka:
+        condition: service_healthy
+      mysql-pg:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PG_DATASOURCE_USERNAME: root
+      PG_DATASOURCE_PASSWORD: payment123
+      NICEPAY_CLIENT_KEY: ${NICEPAY_CLIENT_KEY:-}
+      NICEPAY_SECRET_KEY: ${NICEPAY_SECRET_KEY:-}
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ───────────────────────────────────────────
+  # product-service (재고 저장소 + 재고 복원 consumer)
+  # ───────────────────────────────────────────
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    hostname: product-service
+    depends_on:
+      eureka:
+        condition: service_healthy
+      mysql-product:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-payment:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PRODUCT_DATASOURCE_USERNAME: root
+      PRODUCT_DATASOURCE_PASSWORD: payment123
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PAYMENT_HOST: redis-payment
+      REDIS_PAYMENT_PORT: "6379"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ───────────────────────────────────────────
+  # user-service (결제 사용자 조회 API)
+  # ───────────────────────────────────────────
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    hostname: user-service
+    depends_on:
+      eureka:
+        condition: service_healthy
+      mysql-user:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
+      USER_DATASOURCE_USERNAME: root
+      USER_DATASOURCE_PASSWORD: payment123
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ───────────────────────────────────────────
+  # gateway (Spring Cloud Gateway + Eureka lb://)
+  # 컨테이너 내부는 8080이지만 payment-service(8080)와 겹치지 않도록 호스트는 8090 사용
+  # ───────────────────────────────────────────
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    hostname: gateway
+    depends_on:
+      eureka:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      pg-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
+      MONOLITH_FALLBACK_URI: http://payment-service:8080
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network

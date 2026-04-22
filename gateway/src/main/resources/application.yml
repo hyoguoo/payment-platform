@@ -37,7 +37,7 @@ spring:
           filters:
             - StripPrefix=0
         - id: monolith-fallback
-          uri: http://localhost:8081
+          uri: ${MONOLITH_FALLBACK_URI:http://localhost:8081}
           predicates:
             - Path=/**
       default-filters:

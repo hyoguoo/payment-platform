@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: INFO

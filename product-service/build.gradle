@@ -3,12 +3,19 @@ plugins {
     id 'io.spring.dependency-management'
 }
 
+ext {
+    set('springCloudVersion', '2024.0.0')
+}
+
 dependencies {
     // Spring Boot Core (MVC + Virtual Threads — pg-service 구성 대칭)
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
     // Actuator / Micrometer
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     // Kafka (product.events.stock-snapshot 발행)
     implementation 'org.springframework.kafka:spring-kafka'
@@ -21,6 +28,12 @@ dependencies {
 
     // Redis (stock 캐시 직접 SET — T3-04 연결 예정)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
 }
 
 spotbugsMain {

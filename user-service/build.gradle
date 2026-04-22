@@ -3,12 +3,19 @@ plugins {
     id 'io.spring.dependency-management'
 }
 
+ext {
+    set('springCloudVersion', '2024.0.0')
+}
+
 dependencies {
     // Spring Boot Core (MVC + Virtual Threads)
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
     // Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     // JPA + Flyway + MySQL
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -24,6 +31,12 @@ dependencies {
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
 }
 
 spotbugsMain {

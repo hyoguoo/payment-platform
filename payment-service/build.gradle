@@ -8,6 +8,7 @@ ext {
     set('springdocVersion', '2.5.0')
     set('logstashEncoderVersion', '7.4')
     set('querydslVersion', '5.0.0')
+    set('springCloudVersion', '2024.0.0')
 }
 
 dependencies {
@@ -18,6 +19,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     // Development Tools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
@@ -60,6 +64,12 @@ dependencies {
     testImplementation "org.testcontainers:junit-jupiter"
     // T1-08: StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
     testImplementation "org.testcontainers:testcontainers"
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
 }
 
 configurations.all {

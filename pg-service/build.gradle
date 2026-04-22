@@ -3,6 +3,10 @@ plugins {
     id 'io.spring.dependency-management'
 }
 
+ext {
+    set('springCloudVersion', '2024.0.0')
+}
+
 dependencies {
     // Spring Boot Core
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -13,6 +17,9 @@ dependencies {
     // Actuator / Micrometer (T2a-02: TossApiMetrics MeterRegistry 주입)
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
     // Kafka (ADR-30: payment.commands.confirm consumer + payment.events.confirmed publisher)
     implementation 'org.springframework.kafka:spring-kafka'
 
@@ -21,6 +28,12 @@ dependencies {
     implementation 'com.mysql:mysql-connector-j'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
 }
 
 spotbugsMain {
