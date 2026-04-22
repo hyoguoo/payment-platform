@@ -4,10 +4,9 @@ import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.product.exception.ProductFoundException;
-import com.hyoguoo.paymentplatform.product.exception.common.ProductErrorCode;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +87,7 @@ public class ProductHttpAdapter implements ProductPort {
         int status = e.getStatusCode().value();
         if (status == HttpStatus.NOT_FOUND.value()) {
             log.warn("product_service_not_found status=404 body={}", e.getResponseBodyAsString());
-            return ProductFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND);
+            return ProductNotFoundException.of(PaymentErrorCode.PRODUCT_NOT_FOUND);
         }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {

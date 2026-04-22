@@ -9,6 +9,8 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockE
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
+import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -75,6 +77,30 @@ public class PaymentExceptionHandler {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(
+                                e.getCode(),
+                                e.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(ProductNotFoundException.class)
+    public ResponseEntity<ErrorResponse> catchRuntimeException(ProductNotFoundException e) {
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of(
+                                e.getCode(),
+                                e.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> catchRuntimeException(UserNotFoundException e) {
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(
                                 e.getCode(),
                                 e.getMessage()

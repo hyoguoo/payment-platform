@@ -73,11 +73,11 @@ user-service:
 
 product:
   adapter:
-    type: ${PRODUCT_ADAPTER_TYPE:internal}
+    type: ${PRODUCT_ADAPTER_TYPE:http}
 
 user:
   adapter:
-    type: ${USER_ADAPTER_TYPE:internal}
+    type: ${USER_ADAPTER_TYPE:http}
 
 scheduler:
   outbox-worker:

@@ -3,10 +3,9 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
+import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.user.exception.UserFoundException;
-import com.hyoguoo.paymentplatform.user.exception.common.UserErrorCode;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,7 +61,7 @@ public class UserHttpAdapter implements UserPort {
         int status = e.getStatusCode().value();
         if (status == HttpStatus.NOT_FOUND.value()) {
             log.warn("user_service_not_found status=404 body={}", e.getResponseBodyAsString());
-            return UserFoundException.of(UserErrorCode.USER_NOT_FOUND);
+            return UserNotFoundException.of(PaymentErrorCode.USER_NOT_FOUND);
         }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
