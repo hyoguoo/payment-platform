@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.product;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.product.application.port.out.PaymentStockCachePort;
+import com.hyoguoo.paymentplatform.product.application.port.out.ProductRepository;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,6 +36,9 @@ class ProductServiceApplicationTest {
 
     @MockitoBean
     StockRepository stockRepository;
+
+    @MockitoBean
+    ProductRepository productRepository;
 
     @MockitoBean
     EventDedupeStore eventDedupeStore;

@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: payment-platform
+    name: payment-service
 
   threads:
     virtual:

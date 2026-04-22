@@ -1,8 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.service.StockCacheWarmupService;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.StockSnapshotEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -12,27 +14,39 @@ import org.springframework.stereotype.Component;
  * <p>레이어 책임: Kafka 메시지 수신만 담당(thin adapter).
  * 비즈니스 로직은 {@link StockCacheWarmupService}에 위임한다.
  *
- * <p>Phase-3.1(T3 계열)에서 product-service가 실제 snapshot을 발행할 때까지
- * 이 consumer는 빈 토픽에서 메시지를 받지 못하며,
- * warmup orchestration은 {@link StockCacheWarmupApplicationEventListener}가
- * ApplicationReadyEvent로 처리한다.
+ * <p>Producer(product-service StockSnapshotPublisher)는 String 직렬화로 JSON 페이로드를 발행하므로
+ * 이 consumer도 String으로 받아 ObjectMapper로 역직렬화한다
+ * (StringDeserializer 기본값 유지, JsonDeserializer 별도 설정 불필요).
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class StockSnapshotWarmupConsumer {
 
     private final StockCacheWarmupService warmupService;
+    private final ObjectMapper objectMapper;
 
     /**
      * snapshot 이벤트 수신 — WarmupService에 1회 위임.
      *
-     * @param event 수신한 snapshot 이벤트
+     * @param payload 수신한 snapshot JSON 문자열
      */
     @KafkaListener(
             topics = "${payment.stock-cache.warmup.topic:product.events.stock-snapshot}",
             groupId = "${spring.kafka.consumer.group-id:payment-service}"
     )
-    public void consume(StockSnapshotEvent event) {
+    public void consume(String payload) {
+        StockSnapshotEvent event = parse(payload);
         warmupService.handleSnapshot(event);
+    }
+
+    private StockSnapshotEvent parse(String payload) {
+        try {
+            return objectMapper.readValue(payload, StockSnapshotEvent.class);
+        } catch (Exception e) {
+            log.error("StockSnapshotWarmupConsumer: payload 역직렬화 실패 payload={} error={}",
+                    payload, e.getMessage());
+            throw new IllegalStateException("stock snapshot 역직렬화 실패", e);
+        }
     }
 }
