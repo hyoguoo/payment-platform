@@ -22,6 +22,7 @@ TOPICS=(
   "payment.commands.confirm"
   "payment.commands.confirm.dlq"
   "payment.events.confirmed"
+  "stock.events.restore"
 )
 
 GREEN='\033[0;32m'

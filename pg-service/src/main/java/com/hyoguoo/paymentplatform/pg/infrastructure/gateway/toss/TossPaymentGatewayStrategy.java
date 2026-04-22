@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,9 +21,12 @@ import org.springframework.stereotype.Component;
  *
  * <p>TODO(T2b-01): 실제 HTTP 클라이언트(HttpTossOperator) 주입 + 벤더 호출 구현.
  * ALREADY_PROCESSED_PAYMENT 분기: T2b-05 구현 완료 — DuplicateApprovalHandler 위임.
+ *
+ * <p>벤더 선택: {@code pg.gateway.type=toss} 속성에서 활성화. 미설정 시 기본값 toss로 동작.
  */
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "pg.gateway.type", havingValue = "toss", matchIfMissing = true)
 public class TossPaymentGatewayStrategy implements PgGatewayPort {
 
     /**

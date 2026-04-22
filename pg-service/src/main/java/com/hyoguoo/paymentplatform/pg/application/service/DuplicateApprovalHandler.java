@@ -15,9 +15,9 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,7 +46,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DuplicateApprovalHandler {
 
     private static final String REASON_AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
@@ -61,6 +60,23 @@ public class DuplicateApprovalHandler {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+
+    /**
+     * Strategy가 DuplicateApprovalHandler에 생성자 주입을 받고
+     * DuplicateApprovalHandler도 Strategy(PgGatewayPort)를 받는 순환 참조를 끊기 위해
+     * pgGatewayPort에만 {@link Lazy} 프록시를 주입한다. (ADR-21 대칭성 유지)
+     */
+    public DuplicateApprovalHandler(
+            @Lazy PgGatewayPort pgGatewayPort,
+            PgInboxRepository pgInboxRepository,
+            PgOutboxRepository pgOutboxRepository,
+            ApplicationEventPublisher applicationEventPublisher
+    ) {
+        this.pgGatewayPort = pgGatewayPort;
+        this.pgInboxRepository = pgInboxRepository;
+        this.pgOutboxRepository = pgOutboxRepository;
+        this.applicationEventPublisher = applicationEventPublisher;
+    }
 
     // -----------------------------------------------------------------------
     // vendor 조회 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)

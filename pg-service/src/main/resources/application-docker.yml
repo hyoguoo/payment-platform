@@ -11,6 +11,17 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
 
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis-shared}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+pg:
+  gateway:
+    type: ${PG_GATEWAY_TYPE:toss}
+  event-dedupe:
+    ttl: ${PG_EVENT_DEDUPE_TTL:PT1H}
+
 logging:
   level:
     root: INFO

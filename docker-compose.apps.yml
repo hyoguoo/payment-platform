@@ -76,6 +76,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
@@ -83,8 +85,11 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PG_DATASOURCE_USERNAME: root
       PG_DATASOURCE_PASSWORD: payment123
+      PG_GATEWAY_TYPE: ${PG_GATEWAY_TYPE:-toss}
       NICEPAY_CLIENT_KEY: ${NICEPAY_CLIENT_KEY:-}
       NICEPAY_SECRET_KEY: ${NICEPAY_SECRET_KEY:-}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
     networks:
       - payment-infra-network
     healthcheck:

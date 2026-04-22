@@ -23,6 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         "spring.kafka.bootstrap-servers=",
         "spring.autoconfigure.exclude=" +
                 "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
+                "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +

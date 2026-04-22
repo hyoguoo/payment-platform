@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,10 +25,13 @@ import org.springframework.stereotype.Component;
  *
  * <p>TODO(T2b-01): 실제 HTTP 클라이언트(HttpNicepayOperator) 주입 + 벤더 호출 구현.
  * 중복 승인 응답(2201) 방어: T2b-05 구현 완료 — DuplicateApprovalHandler 위임.
+ *
+ * <p>벤더 선택: {@code pg.gateway.type=nicepay} 속성에서 활성화.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "pg.gateway.type", havingValue = "nicepay")
 public class NicepayPaymentGatewayStrategy implements PgGatewayPort {
 
     private static final String NICEPAY_RESULT_CODE_SUCCESS = "0000";
