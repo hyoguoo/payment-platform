@@ -1,8 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.publisher;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisherPort;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -14,6 +18,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>ConditionalOnProperty: spring.kafka.bootstrap-servers가 설정된 환경에서만 빈으로 등록된다.
  * 테스트에서는 FakeMessagePublisher를 직접 주입해 Kafka 없이 검증한다.
+ *
+ * <p>발행은 호출 스레드에서 블로킹 동기 방식이다. kafkaTemplate.send()가 반환하는
+ * CompletableFuture를 sendTimeoutMillis 까지 대기한 뒤 결과를 확인한다.
+ * 실패/타임아웃 시 호출 스레드로 예외를 전파해 OutboxRelayService가 DONE 전이를 막도록 한다.
+ * (virtual thread 기반 OutboxImmediateWorker에서 블로킹은 저비용이다.)
  */
 @Slf4j
 @Component
@@ -23,27 +32,31 @@ public class KafkaMessagePublisher implements MessagePublisherPort {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    /**
-     * Kafka 토픽으로 페이로드를 동기 발행한다.
-     * 발행 실패 시 예외를 호출자에게 전파한다 (OutboxRelayService가 상태 전이를 막을 수 있도록).
-     */
+    @Value("${kafka.publisher.send-timeout-millis:10000}")
+    private long sendTimeoutMillis;
+
     @Override
     public void send(String topic, String key, Object payload) {
-        kafkaTemplate.send(topic, key, payload)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Kafka 발행 실패 topic={} key={} error={}", topic, key, ex.getMessage());
-                        throwUnchecked(ex);
-                    } else {
-                        log.debug("Kafka 발행 성공 topic={} key={} offset={}",
-                                topic, key,
-                                result.getRecordMetadata().offset());
-                    }
-                });
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T extends Throwable> void throwUnchecked(Throwable t) throws T {
-        throw (T) t;
+        try {
+            kafkaTemplate.send(topic, key, payload)
+                    .get(sendTimeoutMillis, TimeUnit.MILLISECONDS);
+            log.debug("Kafka 발행 성공 topic={} key={}", topic, key);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Kafka 발행 중단 topic={} key={}", topic, key);
+            throw new IllegalStateException(
+                    "Kafka 발행 중단 topic=" + topic + " key=" + key, e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.error("Kafka 발행 실패 topic={} key={} error={}", topic, key, cause.getMessage());
+            throw new IllegalStateException(
+                    "Kafka 발행 실패 topic=" + topic + " key=" + key, cause);
+        } catch (TimeoutException e) {
+            log.error("Kafka 발행 타임아웃 topic={} key={} timeoutMs={}",
+                    topic, key, sendTimeoutMillis);
+            throw new IllegalStateException(
+                    "Kafka 발행 타임아웃 topic=" + topic + " key=" + key
+                            + " timeoutMs=" + sendTimeoutMillis, e);
+        }
     }
 }
