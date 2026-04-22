@@ -32,7 +32,6 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 public class ProductHttpAdapter implements ProductPort {
 
     private static final String PRODUCTS_PATH = "/api/v1/products/";
-    private static final String STOCK_DECREASE_PATH = "/api/v1/products/stock/decrease";
     private static final String STOCK_INCREASE_PATH = "/api/v1/products/stock/increase";
 
     private final HttpOperator httpOperator;
@@ -43,11 +42,6 @@ public class ProductHttpAdapter implements ProductPort {
     @Override
     public ProductInfo getProductInfoById(Long productId) {
         return fetchProductById(productId);
-    }
-
-    @Override
-    public void decreaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
-        postStockCommand(STOCK_DECREASE_PATH, orderedProductStockCommandList);
     }
 
     @Override

@@ -9,7 +9,6 @@ import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,22 +25,6 @@ class OrderedProductUseCaseTest {
     void setUp() {
         mockProductPort = Mockito.mock(ProductPort.class);
         orderedProductUseCase = new OrderedProductUseCase(mockProductPort);
-    }
-
-    @Test
-    @DisplayName("재고 감소 시 decreaseStockForOrders 메서드가 한 번 호출된다.")
-    void testDecreaseStockForOrders_Called() throws PaymentOrderedProductStockException {
-        // given
-        PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
-                .allArgsBuild();
-
-        List<PaymentOrder> paymentOrderList = List.of(paymentOrder);
-
-        // when
-        orderedProductUseCase.decreaseStockForOrders(paymentOrderList);
-
-        // then
-        verify(mockProductPort, times(1)).decreaseStockForOrders(Mockito.anyList());
     }
 
     @Test

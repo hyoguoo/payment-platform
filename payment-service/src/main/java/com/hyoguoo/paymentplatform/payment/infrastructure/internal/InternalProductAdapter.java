@@ -33,16 +33,6 @@ public class InternalProductAdapter implements ProductPort {
     }
 
     @Override
-    public void decreaseStockForOrders(
-            List<OrderedProductStockCommand> orderedProductStockCommandList
-    ) {
-        List<ProductStockRequest> productStockRequestList = orderedProductStockCommandList.stream()
-                .map(PaymentInfrastructureMapper::toProductStockRequest)
-                .toList();
-        productInternalReceiver.decreaseStockForOrders(productStockRequestList);
-    }
-
-    @Override
     public void increaseStockForOrders(
             List<OrderedProductStockCommand> orderedProductStockCommandList
     ) {

@@ -8,7 +8,5 @@ public interface ProductPort {
 
     ProductInfo getProductInfoById(Long productId);
 
-    void decreaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList);
-
     void increaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList);
 }

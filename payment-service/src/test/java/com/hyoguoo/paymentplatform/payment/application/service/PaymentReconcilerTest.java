@@ -317,11 +317,6 @@ class PaymentReconcilerTest {
         }
 
         @Override
-        public void decreaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
-            // Reconciler 테스트에서는 사용하지 않음
-        }
-
-        @Override
         public void increaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
             // Reconciler 테스트에서는 사용하지 않음
         }
