@@ -7,7 +7,6 @@ import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentGatewayConfirmException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
@@ -50,18 +49,6 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentValidException.class)
     public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentValidException e) {
-        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(
-                                e.getCode(),
-                                e.getMessage()
-                        )
-                );
-    }
-
-    @ExceptionHandler(PaymentGatewayConfirmException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentGatewayConfirmException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
