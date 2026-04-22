@@ -13,9 +13,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class StartupConfigLogger {
 
-    @Value("${spring.payment.async-strategy:sync}")
-    private String asyncStrategy;
-
     @Value("${spring.threads.virtual.enabled:false}")
     private boolean virtualThreadsEnabled;
 
@@ -32,8 +29,7 @@ public class StartupConfigLogger {
     public void logStartupConfig() {
         LogFmt.info(log, LogDomain.GLOBAL, EventType.APP_STARTUP,
                 () -> String.format(
-                        "async-strategy=%s virtual-threads=%s outbox-parallel=%s outbox-batch-size=%d outbox-fixed-delay-ms=%d",
-                        asyncStrategy,
+                        "virtual-threads=%s outbox-parallel=%s outbox-batch-size=%d outbox-fixed-delay-ms=%d",
                         virtualThreadsEnabled,
                         outboxWorkerParallelEnabled,
                         outboxWorkerBatchSize,
