@@ -35,7 +35,7 @@ docker info > /dev/null 2>&1 && echo "Docker OK" || echo "Docker 미실행"
 bash <PROJECT_ROOT>/scripts/run.sh
 ```
 
-`run.sh`는 내부적으로 `cd docker/compose`를 수행하므로 **반드시 절대 경로로 호출**해야 한다. 스크립트가 완료되면 약 30초 후 모든 서비스가 기동된다. 서비스 상태(mysql, elasticsearch, kibana, logstash, app, prometheus, grafana)가 출력으로 확인된다.
+`run.sh`는 내부적으로 `cd docker/compose`를 수행하므로 **반드시 절대 경로로 호출**해야 한다. 스크립트가 완료되면 약 30초 후 모든 서비스가 기동된다. 서비스 상태(mysql, app)가 출력으로 확인된다. 관측성 스택(Prometheus/Grafana)은 이 compose에서 제외됐으므로, 대시보드가 필요하면 MSA 관측성 compose(`docker-compose.observability.yml`)를 별도로 기동한다.
 
 사전 조건:
 - `docker/compose/.env.secret` 파일이 존재해야 한다 (없으면 스크립트가 안내 메시지를 출력하고 종료)

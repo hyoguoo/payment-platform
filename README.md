@@ -272,15 +272,13 @@ sequenceDiagram
 
 ### 서비스 구성
 
-|  포트  |      서비스      |    설명     |
-|:----:|:-------------:|:---------:|
-| 8080 |  Spring App   | 애플리케이션 서버 |
-| 3306 |     MySQL     |  데이터베이스   |
-| 9200 | Elasticsearch |  로그 저장소   |
-| 5050 |   Logstash    |   로그 수집   |
-| 5601 |    Kibana     |  로그 시각화   |
-| 9090 |  Prometheus   |  메트릭 수집   |
-| 3000 |    Grafana    |  메트릭 시각화  |
+|  포트  |    서비스    |    설명     |
+|:----:|:---------:|:---------:|
+| 8080 | Spring App | 애플리케이션 서버 |
+| 3306 |   MySQL    |  데이터베이스   |
+
+> 관측성(Prometheus·Grafana·Tempo·Loki)은 MSA 스택(`docker-compose.observability.yml`)에서만 기동한다.
+> 레거시 모놀리식 벤치마크 compose(`docker/compose/docker-compose.yml`)에는 관측성 컨테이너가 포함되지 않는다.
 
 #### 시크릿 설정
 
@@ -308,5 +306,3 @@ cp .env.secret.example .env.secret # docker/compose 디렉토리
 | http://localhost:8080/payment/checkout-nicepay.html | 결제하기 — 나이스페이먼츠 결제창 호출                  |
 | http://localhost:8080/admin/payments/events         | 결제 이벤트 목록 조회 / 검색                      |
 | http://localhost:8080/admin/payments/history        | 결제 히스토리 — 상태 변경 이력 조회                  |
-| http://localhost:5601                               | Kibana — 로그 시각화                        |
-| http://localhost:3000                               | Grafana — 메트릭 대시보드 (admin / admin123!) |

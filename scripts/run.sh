@@ -39,7 +39,7 @@ sleep 30
 
 # 서비스 상태 확인
 print_section "Service Status:"
-services=("mysql" "elasticsearch" "kibana" "logstash" "app" "prometheus" "grafana")
+services=("mysql" "app")
 for service in "${services[@]}"; do
     if docker ps | grep -q "payment-$service"; then
         print_info "✅ $service is running"
