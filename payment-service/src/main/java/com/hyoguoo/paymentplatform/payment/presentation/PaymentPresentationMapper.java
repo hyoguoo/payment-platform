@@ -52,7 +52,6 @@ public class PaymentPresentationMapper {
         return PaymentConfirmResponse.builder()
                 .orderId(result.getOrderId())
                 .amount(result.getAmount())
-                .processingDelayed(result.isQueueNearFull())
                 .build();
     }
 

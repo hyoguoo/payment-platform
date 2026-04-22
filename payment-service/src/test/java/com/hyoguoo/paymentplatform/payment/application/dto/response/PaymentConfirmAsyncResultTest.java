@@ -30,27 +30,4 @@ class PaymentConfirmAsyncResultTest {
 
         assertThat(result.getAmount()).isNull();
     }
-
-    @Test
-    @DisplayName("queueNearFull 기본값은 false다")
-    void build_Default_QueueNearFullIsFalse() {
-        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .orderId("order-003")
-                .amount(BigDecimal.valueOf(10000))
-                .build();
-
-        assertThat(result.isQueueNearFull()).isFalse();
-    }
-
-    @Test
-    @DisplayName("queueNearFull=true로 빌드 시 isQueueNearFull()이 true다")
-    void build_WithQueueNearFull_IsTrue() {
-        PaymentConfirmAsyncResult result = PaymentConfirmAsyncResult.builder()
-                .orderId("order-004")
-                .amount(BigDecimal.valueOf(10000))
-                .queueNearFull(true)
-                .build();
-
-        assertThat(result.isQueueNearFull()).isTrue();
-    }
 }

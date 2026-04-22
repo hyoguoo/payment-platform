@@ -11,7 +11,6 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
-import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
@@ -42,7 +41,6 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
     private PaymentConfirmPublisherPort mockConfirmPublisher;
-    private PaymentConfirmChannel mockChannel;
 
     @BeforeEach
     void setUp() {
@@ -50,14 +48,12 @@ class OutboxAsyncConfirmServiceTest {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
         mockConfirmPublisher = Mockito.mock(PaymentConfirmPublisherPort.class);
-        mockChannel = Mockito.mock(PaymentConfirmChannel.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
-                mockConfirmPublisher,
-                mockChannel
+                mockConfirmPublisher
         );
     }
 
@@ -134,47 +130,6 @@ class OutboxAsyncConfirmServiceTest {
             then(mockConfirmPublisher).should(times(1)).publish(eq(orderId), any(), any(), anyString());
         }
 
-        @Test
-        @DisplayName("채널 여유 있을 때 queueNearFull=false")
-        void queueNearFullFalse() throws PaymentOrderedProductStockException {
-            // given
-            given(mockChannel.isNearFull()).willReturn(false);
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
-                    .willReturn(StockDecrementResult.SUCCESS);
-
-            // when
-            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
-
-            // then
-            assertThat(result.isQueueNearFull()).isFalse();
-        }
-
-        @Test
-        @DisplayName("채널 거의 찼을 때 queueNearFull=true")
-        void queueNearFullTrue() throws PaymentOrderedProductStockException {
-            // given
-            given(mockChannel.isNearFull()).willReturn(true);
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
-                    .willReturn(StockDecrementResult.SUCCESS);
-
-            // when
-            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
-
-            // then
-            assertThat(result.isQueueNearFull()).isTrue();
-        }
     }
 
     @Nested

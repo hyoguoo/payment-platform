@@ -10,5 +10,4 @@ public class PaymentConfirmResponse {
 
     private final String orderId;
     private final BigDecimal amount;
-    private final boolean processingDelayed;
 }

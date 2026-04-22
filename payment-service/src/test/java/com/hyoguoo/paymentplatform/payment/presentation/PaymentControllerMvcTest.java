@@ -76,60 +76,6 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("queueNearFull=false 시 202 응답 body에 processingDelayed=false가 포함된다")
-    void confirm_queueNearFull_false_시_202_정상_응답() throws Exception {
-        // given
-        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(1L)
-                .orderId("order-1")
-                .amount(BigDecimal.valueOf(1000))
-                .paymentKey("payment-key-1")
-                .build();
-
-        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
-                .thenReturn(PaymentConfirmAsyncResult.builder()
-
-                        .orderId("order-1")
-                        .amount(BigDecimal.valueOf(1000))
-                        .queueNearFull(false)
-                        .build());
-
-        // when / then
-        mockMvc.perform(post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.processingDelayed").value(false));
-    }
-
-    @Test
-    @DisplayName("queueNearFull=true 시 202 응답 body에 processingDelayed=true가 포함된다")
-    void confirm_queueNearFull_true_시_202_지연_시그널_포함() throws Exception {
-        // given
-        PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
-                .userId(1L)
-                .orderId("order-1")
-                .amount(BigDecimal.valueOf(1000))
-                .paymentKey("payment-key-1")
-                .build();
-
-        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
-                .thenReturn(PaymentConfirmAsyncResult.builder()
-
-                        .orderId("order-1")
-                        .amount(BigDecimal.valueOf(1000))
-                        .queueNearFull(true)
-                        .build());
-
-        // when / then
-        mockMvc.perform(post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.processingDelayed").value(true));
-    }
-
-    @Test
     @DisplayName("DONE 상태 PaymentEvent 조회 시 200 OK와 status=DONE, approvedAt non-null을 반환한다. (STATUS-01, STATUS-02)")
     void getPaymentStatus_Done_Returns200() throws Exception {
         // given

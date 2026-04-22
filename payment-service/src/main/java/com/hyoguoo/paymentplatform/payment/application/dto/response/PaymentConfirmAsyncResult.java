@@ -10,5 +10,4 @@ public class PaymentConfirmAsyncResult {
 
     private final String orderId;
     private final BigDecimal amount;
-    private final boolean queueNearFull;
 }

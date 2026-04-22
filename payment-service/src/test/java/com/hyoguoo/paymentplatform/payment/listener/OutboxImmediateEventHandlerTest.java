@@ -1,11 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.listener;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
-import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
+import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -22,13 +21,13 @@ class OutboxImmediateEventHandlerTest {
 
     private static final String ORDER_ID = "order-123";
 
-    private PaymentConfirmChannel mockChannel;
+    private OutboxRelayService mockRelayService;
     private OutboxImmediateEventHandler handler;
 
     @BeforeEach
     void setUp() {
-        mockChannel = Mockito.mock(PaymentConfirmChannel.class);
-        handler = new OutboxImmediateEventHandler(mockChannel);
+        mockRelayService = Mockito.mock(OutboxRelayService.class);
+        handler = new OutboxImmediateEventHandler(mockRelayService);
     }
 
     private PaymentConfirmEvent createEvent(String orderId) {
@@ -36,54 +35,34 @@ class OutboxImmediateEventHandlerTest {
     }
 
     @Test
-    @DisplayName("handle - 채널 offer 성공: offer(orderId)를 호출한다")
-    void handle_채널offer_성공_true반환() {
-        // given
+    @DisplayName("handle - relayService.relay(orderId)를 1회 호출한다")
+    void handle_relay_1회_호출() {
         PaymentConfirmEvent event = createEvent(ORDER_ID);
-        given(mockChannel.offer(ORDER_ID)).willReturn(true);
 
-        // when
         handler.handle(event);
 
-        // then
-        then(mockChannel).should(times(1)).offer(ORDER_ID);
-    }
-
-    @Test
-    @DisplayName("handle - 채널 오버플로우: offer(orderId)를 호출한다")
-    void handle_채널오버플로우_offer_false반환() {
-        // given
-        PaymentConfirmEvent event = createEvent(ORDER_ID);
-        given(mockChannel.offer(ORDER_ID)).willReturn(false);
-
-        // when
-        handler.handle(event);
-
-        // then
-        then(mockChannel).should(times(1)).offer(ORDER_ID);
+        then(mockRelayService).should(times(1)).relay(ORDER_ID);
     }
 
     @Test
     @DisplayName("handle - @TransactionalEventListener(phase=AFTER_COMMIT) 애노테이션이 존재한다")
     void handle_TransactionalEventListener_AFTER_COMMIT_존재한다() throws NoSuchMethodException {
-        // given
         Method method = OutboxImmediateEventHandler.class.getMethod("handle", PaymentConfirmEvent.class);
 
-        // when
         TransactionalEventListener annotation = method.getAnnotation(TransactionalEventListener.class);
 
-        // then
         assertThat(annotation).isNotNull();
         assertThat(annotation.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
     }
 
     @Test
-    @DisplayName("handle - @Async 애노테이션이 없다")
-    void handle_Async_애노테이션_없다() throws NoSuchMethodException {
-        // given
+    @DisplayName("handle - @Async(\"outboxRelayExecutor\") 애노테이션이 존재한다")
+    void handle_Async_애노테이션_존재한다() throws NoSuchMethodException {
         Method method = OutboxImmediateEventHandler.class.getMethod("handle", PaymentConfirmEvent.class);
 
-        // when & then
-        assertThat(method.getAnnotation(Async.class)).isNull();
+        Async annotation = method.getAnnotation(Async.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo("outboxRelayExecutor");
     }
 }

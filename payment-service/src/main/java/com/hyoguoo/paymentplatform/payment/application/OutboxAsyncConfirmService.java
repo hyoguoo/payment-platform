@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
@@ -35,7 +34,6 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
     private final PaymentConfirmPublisherPort confirmPublisher;
-    private final PaymentConfirmChannel confirmChannel;
 
     @Override
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
@@ -82,7 +80,6 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
         return PaymentConfirmAsyncResult.builder()
                 .orderId(command.getOrderId())
                 .amount(command.getAmount())
-                .queueNearFull(confirmChannel.isNearFull())
                 .build();
     }
 }
