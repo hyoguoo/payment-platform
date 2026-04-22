@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
-import com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
@@ -57,11 +56,12 @@ class PgStatusAbsenceContractTest {
 
     /**
      * TC3: payment-service TX 내 PG HTTP 상태 조회 경로가 없음을 검증한다.
-     * ADR-02: getStatus/getStatusByOrderId 메서드가 PaymentCommandUseCase 및 PaymentGatewayStrategy에 없어야 한다.
+     * ADR-02: getStatus/getStatusByOrderId 메서드가 PaymentCommandUseCase에 없어야 한다.
      * 불변식 12: payment-service TX 내 PG HTTP 호출 금지.
+     * 또한 payment-service 안에 PaymentGatewayStrategy·PaymentGatewayPort 자체가 잔존하면 안 된다.
      */
     @Test
-    @DisplayName("TC3: PaymentCommandUseCase와 PaymentGatewayStrategy에 getStatus/getStatusByOrderId 메서드가 없어야 한다")
+    @DisplayName("TC3: PaymentCommandUseCase에 getStatus 계열 메서드가 없고 PaymentGatewayStrategy·PaymentGatewayPort 클래스도 제거되어야 한다")
     void executePaymentAndOutbox_ShouldNotWrapPgCall() {
         List<String> prohibitedMethods = List.of("getStatus", "getStatusByOrderId", "getPaymentStatusByOrderId");
 
@@ -75,15 +75,13 @@ class PgStatusAbsenceContractTest {
                     .doesNotContain(prohibited);
         }
 
-        // PaymentGatewayStrategy에 PG 상태 조회 메서드가 없어야 한다
-        List<String> strategyMethodNames = Arrays.stream(PaymentGatewayStrategy.class.getDeclaredMethods())
-                .map(Method::getName)
-                .toList();
-        for (String prohibited : List.of("getStatus", "getStatusByOrderId")) {
-            assertThat(strategyMethodNames)
-                    .as("PaymentGatewayStrategy에 %s 메서드가 없어야 한다 (ADR-02)", prohibited)
-                    .doesNotContain(prohibited);
-        }
+        // PaymentGatewayStrategy 계층 자체가 payment-service에 존재하지 않아야 한다
+        assertThatThrownBy(() ->
+                Class.forName("com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayStrategy")
+        ).isInstanceOf(ClassNotFoundException.class);
+        assertThatThrownBy(() ->
+                Class.forName("com.hyoguoo.paymentplatform.payment.infrastructure.gateway.PaymentGatewayFactory")
+        ).isInstanceOf(ClassNotFoundException.class);
 
         // 구버전 PaymentGatewayPort (getStatus 포함 버전)가 application.port 패키지에 없어야 한다
         assertThatThrownBy(() ->

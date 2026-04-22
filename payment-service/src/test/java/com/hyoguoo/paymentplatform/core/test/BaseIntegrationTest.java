@@ -1,8 +1,6 @@
 package com.hyoguoo.paymentplatform.core.test;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.mock.FakeTossHttpOperator;
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -47,11 +45,6 @@ public abstract class BaseIntegrationTest {
 
     @TestConfiguration
     static class BaseTestConfig {
-
-        @Bean
-        public HttpOperator httpOperator() {
-            return new FakeTossHttpOperator();
-        }
 
         @Bean
         public LocalDateTimeProvider localDateTimeProvider() {

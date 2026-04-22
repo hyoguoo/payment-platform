@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -10,7 +9,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
-import com.hyoguoo.paymentplatform.paymentgateway.exception.common.TossPaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,12 +45,6 @@ class PaymentLvalValidatorTest {
         // when & then
         assertThatThrownBy(() -> validator.validate(event, BigDecimal.valueOf(9_999)))
                 .isInstanceOf(PaymentValidException.class);
-    }
-
-    @Test
-    @DisplayName("TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT은 success로 분류되지 않아야 한다")
-    void tossAlreadyProcessed_ShouldNotBeClassifiedAsSuccess() {
-        assertThat(TossPaymentErrorCode.ALREADY_PROCESSED_PAYMENT.isSuccess()).isFalse();
     }
 
     private PaymentEvent buildPaymentEventWithAmount(BigDecimal amount) {

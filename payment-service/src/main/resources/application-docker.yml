@@ -28,10 +28,8 @@ spring:
 
   myapp:
     toss-payments:
-      api-url: https://api.tosspayments.com/v1/payments
-      secret-key: ${TOSS_SECRET_KEY}
       http:
-        read-timeout-millis: 30000
+        read-timeout-millis: 30000   # HttpOperatorImpl @Value 바인딩용 (범용 HTTP 타임아웃)
 
 logging:
   level:
