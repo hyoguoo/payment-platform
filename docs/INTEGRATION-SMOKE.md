@@ -43,10 +43,21 @@ export TOSS_SECRET_KEY=test_sk_xxxxxxxxxxxxxxxxxxxxxxxx  # Toss 샌드박스 키
 
 ### 2-3. 컨테이너 일괄 기동
 ```bash
-# 인프라 + 앱 한 방에
+# 원-커맨드 스크립트 (빌드 + 인프라 + 토픽 + 앱 + Eureka 확인)
+bash scripts/compose-up.sh
+```
+
+스크립트는 다음을 수행:
+1. Docker 데몬 확인
+2. `./gradlew :*:bootJar` 6개 모듈 빌드 (`--skip-build`로 생략 가능)
+3. 인프라(`docker-compose.infra.yml`) 기동 + 9개 healthy 대기 (<120s)
+4. `scripts/phase-gate/create-topics.sh` 호출로 Kafka 토픽 생성(멱등)
+5. 앱(`docker-compose.apps.yml`) 기동 + 5개 healthy 대기 (<180s)
+6. Eureka 등록 확인 + 접속 URL 출력
+
+수동 실행이 필요하면 동일 효과:
+```bash
 docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d --build
-docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml ps
-# 모든 서비스가 healthy 될 때까지 1~2분 대기 (Eureka 등록 간격 포함)
 ```
 
 필요 시 관측 스택도 함께:
