@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.core.channel.PaymentConfirmChannel;
@@ -17,12 +18,12 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPu
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
@@ -61,62 +62,49 @@ class OutboxAsyncConfirmServiceTest {
     }
 
     @Nested
-    @DisplayName("confirm() 메서드 테스트")
-    class ConfirmTest {
+    @DisplayName("confirm() — 재고 차감 SUCCESS 경로")
+    class ConfirmSuccessTest {
 
         @Test
-        @DisplayName("confirm() 호출 시 transactionCoordinator.executePaymentAndStockDecreaseWithOutbox()를 1회 호출한다")
-        void confirm_CallsExecutePaymentAndStockDecreaseWithOutbox_Once() throws PaymentOrderedProductStockException {
+        @DisplayName("decrementStock=SUCCESS → executeConfirmTx 1회 호출")
+        void callsExecuteConfirmTxOnSuccess() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             String paymentKey = "payment-key-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey(paymentKey)
-                    .amount(amount)
-                    .build();
-
+            PaymentConfirmCommand command = buildCommand(1L, orderId, paymentKey, amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(
+                    any(PaymentEvent.class), anyString(), anyString()))
+                    .willReturn(inProgressEvent);
 
             // when
             outboxAsyncConfirmService.confirm(command);
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .executePaymentAndStockDecreaseWithOutbox(
-                            paymentEvent, paymentKey, orderId, paymentEvent.getPaymentOrderList()
-                    );
+                    .decrementStock(paymentEvent.getPaymentOrderList());
+            then(mockTransactionCoordinator).should(times(1))
+                    .executeConfirmTx(paymentEvent, paymentKey, orderId);
         }
 
         @Test
-        @DisplayName("confirm() 성공 시 orderId와 amount를 반환한다")
-        void confirm_Returns_OrderIdAndAmount() throws PaymentOrderedProductStockException {
+        @DisplayName("SUCCESS 시 orderId와 amount를 반환한다")
+        void returnsOrderIdAndAmount() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
-            String paymentKey = "payment-key-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey(paymentKey)
-                    .amount(amount)
-                    .build();
-
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
 
             // when
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
@@ -127,54 +115,17 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("재고 부족 시 PaymentFailureUseCase.handleStockFailure()를 호출하고 예외를 전파한다")
-        void confirm_WhenStockInsufficient_CallsHandleStockFailure() throws PaymentOrderedProductStockException {
-            // given
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(10000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
-
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willThrow(PaymentOrderedProductStockException.of(
-                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
-
-            // when & then
-            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
-                    .isInstanceOf(PaymentOrderedProductStockException.class);
-
-            then(mockPaymentFailureUseCase).should(times(1))
-                    .handleStockFailure(eq(paymentEvent), anyString());
-        }
-
-        @Test
-        @DisplayName("confirm() 성공 시 confirmPublisher.publish(orderId)를 1회 호출한다")
-        void confirm_성공_시_publish_1회_호출한다() throws PaymentOrderedProductStockException {
+        @DisplayName("SUCCESS 시 confirmPublisher.publish(orderId)를 1회 호출한다")
+        void publishesOnceOnSuccess() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
-
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
 
             // when
             outboxAsyncConfirmService.confirm(command);
@@ -184,26 +135,18 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("채널 여유 있을 때 queueNearFull=false를 반환한다")
-        void confirm_채널_여유_있을_때_queueNearFull_false() throws PaymentOrderedProductStockException {
+        @DisplayName("채널 여유 있을 때 queueNearFull=false")
+        void queueNearFullFalse() throws PaymentOrderedProductStockException {
             // given
             given(mockChannel.isNearFull()).willReturn(false);
-
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
 
             // when
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
@@ -213,26 +156,18 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("채널이 거의 찼을 때 queueNearFull=true를 반환한다")
-        void confirm_채널_임계값_이하일_때_queueNearFull_true() throws PaymentOrderedProductStockException {
+        @DisplayName("채널 거의 찼을 때 queueNearFull=true")
+        void queueNearFullTrue() throws PaymentOrderedProductStockException {
             // given
             given(mockChannel.isNearFull()).willReturn(true);
-
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
 
             // when
             PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
@@ -240,53 +175,79 @@ class OutboxAsyncConfirmServiceTest {
             // then
             assertThat(result.isQueueNearFull()).isTrue();
         }
-
-        @Test
-        @DisplayName("재고 부족 시 confirmPublisher.publish()를 호출하지 않는다")
-        void confirm_재고부족_시_publish_호출하지_않는다() throws PaymentOrderedProductStockException {
-            // given
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(10000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
-
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willThrow(PaymentOrderedProductStockException.of(
-                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH));
-
-            // when & then
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
-                    .isInstanceOf(PaymentOrderedProductStockException.class);
-
-            then(mockConfirmPublisher).should(times(0)).publish(any(), any(), any(), any());
-        }
-
     }
 
     @Nested
-    @DisplayName("LVAL 로컬 사용자 검증 테스트")
-    class LvalUserValidationTest {
+    @DisplayName("confirm() — 재고 부족 REJECTED 경로")
+    class ConfirmRejectedTest {
 
         @Test
-        @DisplayName("userId 불일치 시 PaymentValidException을 던진다")
-        void userId_불일치_시_PaymentValidException을_던진다() throws PaymentOrderedProductStockException {
+        @DisplayName("decrementStock=REJECTED → handleStockFailure 호출 + PaymentOrderedProductStockException throw")
+        void rejectedCallsHandleStockFailureAndThrows() {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.REJECTED);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isInstanceOf(PaymentOrderedProductStockException.class);
+
+            then(mockPaymentFailureUseCase).should(times(1))
+                    .handleStockFailure(eq(paymentEvent), anyString());
+            then(mockTransactionCoordinator).should(never())
+                    .executeConfirmTx(any(), anyString(), anyString());
+            then(mockConfirmPublisher).should(never()).publish(any(), any(), any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("confirm() — 캐시 장애 CACHE_DOWN 경로")
+    class ConfirmCacheDownTest {
+
+        @Test
+        @DisplayName("decrementStock=CACHE_DOWN → markStockCacheDownQuarantine 호출 + PaymentOrderedProductStockException throw")
+        void cacheDownQuarantinesAndThrows() {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.CACHE_DOWN);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isInstanceOf(PaymentOrderedProductStockException.class);
+
+            then(mockTransactionCoordinator).should(times(1))
+                    .markStockCacheDownQuarantine(paymentEvent);
+            then(mockTransactionCoordinator).should(never())
+                    .executeConfirmTx(any(), anyString(), anyString());
+            then(mockConfirmPublisher).should(never()).publish(any(), any(), any(), any());
+            then(mockPaymentFailureUseCase).should(never())
+                    .handleStockFailure(any(), anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("LVAL 로컬 검증 — 검증 실패 시 재고 차감 호출 없음")
+    class LvalValidationTest {
+
+        @Test
+        @DisplayName("userId 불일치 시 PaymentValidException, decrementStock 호출 없음")
+        void userIdMismatchThrowsAndSkipsStockDecrement() {
             // given
             String orderId = "order-123";
             BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(999L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
+            PaymentConfirmCommand command = buildCommand(999L, orderId, "payment-key", amount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
@@ -295,55 +256,17 @@ class OutboxAsyncConfirmServiceTest {
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentValidException.class);
 
-            then(mockTransactionCoordinator).should(times(0))
-                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
-        }
-    }
-
-    @Nested
-    @DisplayName("LVAL 로컬 금액 검증 테스트")
-    class LvalValidationTest {
-
-        @Test
-        @DisplayName("금액 일치 시 정상 플로우를 진행한다")
-        void 금액_일치_시_정상_플로우를_진행한다() throws PaymentOrderedProductStockException {
-            // given
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(amount)
-                    .build();
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    any(PaymentEvent.class), anyString(), anyString(), anyList()
-            )).willReturn(inProgressEvent);
-
-            // when & then
-            outboxAsyncConfirmService.confirm(command);
-
-            then(mockTransactionCoordinator).should(times(1))
-                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
+            then(mockTransactionCoordinator).should(never()).decrementStock(anyList());
         }
 
         @Test
-        @DisplayName("금액 불일치 시 PaymentValidException을 던진다")
-        void 금액_불일치_시_PaymentValidException을_던진다() throws PaymentOrderedProductStockException {
+        @DisplayName("금액 불일치 시 PaymentValidException, decrementStock 호출 없음")
+        void amountMismatchThrowsAndSkipsStockDecrement() {
             // given
             String orderId = "order-123";
             BigDecimal eventAmount = BigDecimal.valueOf(15000);
             BigDecimal commandAmount = BigDecimal.valueOf(9999);
-            PaymentConfirmCommand command = PaymentConfirmCommand.builder()
-                    .userId(1L)
-                    .orderId(orderId)
-                    .paymentKey("payment-key")
-                    .amount(commandAmount)
-                    .build();
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", commandAmount);
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, eventAmount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
@@ -352,9 +275,39 @@ class OutboxAsyncConfirmServiceTest {
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentValidException.class);
 
-            then(mockTransactionCoordinator).should(times(0))
-                    .executePaymentAndStockDecreaseWithOutbox(any(), anyString(), anyString(), anyList());
+            then(mockTransactionCoordinator).should(never()).decrementStock(anyList());
         }
+
+        @Test
+        @DisplayName("금액 일치 시 정상 플로우 — decrementStock + executeConfirmTx 호출")
+        void amountMatchProceedsNormally() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(15000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+
+            // when
+            outboxAsyncConfirmService.confirm(command);
+
+            // then
+            then(mockTransactionCoordinator).should(times(1)).decrementStock(anyList());
+            then(mockTransactionCoordinator).should(times(1))
+                    .executeConfirmTx(any(), anyString(), anyString());
+        }
+    }
+
+    private PaymentConfirmCommand buildCommand(Long userId, String orderId, String paymentKey, BigDecimal amount) {
+        return PaymentConfirmCommand.builder()
+                .userId(userId)
+                .orderId(orderId)
+                .paymentKey(paymentKey)
+                .amount(amount)
+                .build();
     }
 
     private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status) {

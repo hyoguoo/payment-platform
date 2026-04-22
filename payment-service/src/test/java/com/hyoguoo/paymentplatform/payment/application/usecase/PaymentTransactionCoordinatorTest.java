@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -12,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
@@ -19,8 +19,6 @@ import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -58,66 +56,99 @@ class PaymentTransactionCoordinatorTest {
     private StockCachePort stockCachePort;
 
     @Nested
-    @DisplayName("Outbox 전략: executePayment + 재고 차감 + Outbox 생성 원자적 실행 테스트")
-    class ExecutePaymentAndStockDecreaseWithOutboxTest {
+    @DisplayName("decrementStock — 재고 캐시 원자 DECR 분기")
+    class DecrementStockTest {
 
         @Test
-        @DisplayName("executePayment, 재고 차감, Outbox PENDING 생성을 모두 수행하고 IN_PROGRESS 이벤트를 반환한다")
-        void executeSuccessfully() throws PaymentOrderedProductStockException {
+        @DisplayName("모든 주문 품목에 대해 decrement=true 반환 시 SUCCESS")
+        void returnsSuccessWhenAllItemsDecremented() {
             // given
-            String orderId = "order-123";
-            String paymentKey = "payment-key-123";
-            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
-            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-            PaymentOutbox expectedOutbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).allArgsBuild();
-
-            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
-            given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(expectedOutbox);
+            List<PaymentOrder> orderList = List.of(
+                    createPaymentOrder(1L, 2),
+                    createPaymentOrder(2L, 3)
+            );
+            given(stockCachePort.decrement(1L, 2)).willReturn(true);
+            given(stockCachePort.decrement(2L, 3)).willReturn(true);
 
             // when
-            PaymentEvent result = coordinator.executePaymentAndStockDecreaseWithOutbox(
-                    readyEvent, paymentKey, orderId, paymentOrderList);
+            StockDecrementResult result = coordinator.decrementStock(orderList);
 
             // then
-            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
-            then(orderedProductUseCase).should(times(1)).decreaseStockForOrders(paymentOrderList);
-            then(paymentOutboxUseCase).should(times(1)).createPendingRecord(orderId);
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            then(stockCachePort).should(times(1)).decrement(1L, 2);
+            then(stockCachePort).should(times(1)).decrement(2L, 3);
         }
 
         @Test
-        @DisplayName("재고 부족 시 예외가 발생하고 createPendingRecord()가 호출되지 않는다")
-        void throwExceptionWhenStockNotEnough() throws PaymentOrderedProductStockException {
+        @DisplayName("첫 번째 품목에서 decrement=false 반환 시 REJECTED, 이후 품목 호출 없음")
+        void returnsRejectedAndShortCircuitsWhenDecrementFalse() {
             // given
-            String orderId = "order-123";
-            String paymentKey = "payment-key-123";
-            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 100));
+            List<PaymentOrder> orderList = List.of(
+                    createPaymentOrder(1L, 100),
+                    createPaymentOrder(2L, 1)
+            );
+            given(stockCachePort.decrement(1L, 100)).willReturn(false);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderList);
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.REJECTED);
+            then(stockCachePort).should(never()).decrement(2L, 1);
+        }
+
+        @Test
+        @DisplayName("RuntimeException 발생 시 CACHE_DOWN 반환")
+        void returnsCacheDownWhenRedisThrows() {
+            // given
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrement(1L, 1);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderList);
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+        }
+    }
+
+    @Nested
+    @DisplayName("markStockCacheDownQuarantine — cache 장애 분기")
+    class MarkStockCacheDownQuarantineTest {
+
+        @Test
+        @DisplayName("QUARANTINED 전이 + quarantine_compensation_pending=true")
+        void marksQuarantinedWithCompensationPending() {
+            // given
+            String orderId = "order-cd";
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
 
-            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
-            org.mockito.BDDMockito.willThrow(PaymentOrderedProductStockException.of(
-                    PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
-                    .given(orderedProductUseCase).decreaseStockForOrders(anyList());
+            given(paymentCommandUseCase.markPaymentAsQuarantined(any(PaymentEvent.class), anyString()))
+                    .willReturn(quarantinedEvent);
 
-            // when & then
-            assertThatThrownBy(() -> coordinator.executePaymentAndStockDecreaseWithOutbox(
-                    readyEvent, paymentKey, orderId, paymentOrderList))
-                    .isInstanceOf(PaymentOrderedProductStockException.class);
+            // when
+            PaymentEvent result = coordinator.markStockCacheDownQuarantine(readyEvent);
 
-            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
-            then(paymentOutboxUseCase).should(times(0)).createPendingRecord(anyString());
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+            assertThat(result.isQuarantineCompensationPending()).isTrue();
+            then(paymentCommandUseCase).should(times(1))
+                    .markPaymentAsQuarantined(readyEvent, "재고 캐시 장애로 인한 격리");
         }
+    }
+
+    @Nested
+    @DisplayName("executeConfirmTx — event 전이 + outbox PENDING 원자 커밋")
+    class ExecuteConfirmTxTest {
 
         @Test
-        @DisplayName("executePayment → 재고 차감 → createPendingRecord 순서로 실행된다")
-        void executesInCorrectOrder() throws PaymentOrderedProductStockException {
+        @DisplayName("executePayment → createPendingRecord 순서로 실행되고 IN_PROGRESS 이벤트 반환")
+        void executesExecutePaymentThenCreatePendingRecord() {
             // given
-            String orderId = "order-123";
-            String paymentKey = "payment-key-123";
-            List<PaymentOrder> paymentOrderList = List.of(createPaymentOrder(1L, 2));
+            String orderId = "order-tx";
+            String paymentKey = "key-tx";
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
@@ -127,14 +158,12 @@ class PaymentTransactionCoordinatorTest {
             given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(outbox);
 
             // when
-            coordinator.executePaymentAndStockDecreaseWithOutbox(
-                    readyEvent, paymentKey, orderId, paymentOrderList);
+            PaymentEvent result = coordinator.executeConfirmTx(readyEvent, paymentKey, orderId);
 
             // then
-            var inOrder = org.mockito.Mockito.inOrder(
-                    paymentCommandUseCase, orderedProductUseCase, paymentOutboxUseCase);
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+            var inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, paymentOutboxUseCase);
             inOrder.verify(paymentCommandUseCase).executePayment(readyEvent, paymentKey);
-            inOrder.verify(orderedProductUseCase).decreaseStockForOrders(paymentOrderList);
             inOrder.verify(paymentOutboxUseCase).createPendingRecord(orderId);
         }
     }
@@ -305,7 +334,7 @@ class PaymentTransactionCoordinatorTest {
             assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
             then(paymentOutboxUseCase).should(times(1)).save(outbox);
             then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
-            then(orderedProductUseCase).should(org.mockito.Mockito.never()).increaseStockForOrders(any());
+            then(orderedProductUseCase).should(never()).increaseStockForOrders(any());
         }
 
         @Test
@@ -326,7 +355,31 @@ class PaymentTransactionCoordinatorTest {
             coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
 
             // then
-            then(orderedProductUseCase).should(org.mockito.Mockito.never()).increaseStockForOrders(any());
+            then(orderedProductUseCase).should(never()).increaseStockForOrders(any());
+        }
+
+        @Test
+        @DisplayName("executePaymentQuarantineWithOutbox 호출 시 QUARANTINED 전이 + quarantine_compensation_pending=true 플래그 set")
+        void executePaymentQuarantine_SetsCompensationPendingFlag() {
+            // given
+            String orderId = "order-quarantine";
+            String reason = "GATEWAY_STATUS_UNKNOWN";
+            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
+            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
+                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
+            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
+
+            given(paymentCommandUseCase.markPaymentAsQuarantined(inProgressEvent, reason))
+                    .willReturn(quarantinedEvent);
+
+            // when
+            PaymentEvent result = coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
+
+            // then
+            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+            assertThat(result.isQuarantineCompensationPending()).isTrue();
+            then(paymentOutboxUseCase).should(times(1)).save(outbox);
+            then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
         }
     }
 
@@ -346,127 +399,5 @@ class PaymentTransactionCoordinatorTest {
                 .status(status)
                 .paymentOrderList(java.util.Collections.emptyList())
                 .allArgsBuild();
-    }
-
-    // =========================================================
-    // T1-05: executePaymentConfirm — TX 경계 + 재고 캐시 분기 테스트
-    // =========================================================
-
-    @Nested
-    @DisplayName("executePaymentConfirm — 단일 TX 원자성 검증")
-    class ExecutePaymentConfirmSingleTxTest {
-
-        @Test
-        @DisplayName("재고 캐시 차감 성공 시 payment_event 전이 + outbox 생성이 단일 TX 안에서 원자적으로 실행된다")
-        void executePaymentConfirm_CommitsPaymentStateAndOutboxInSingleTransaction() {
-            // given
-            String orderId = "order-atom";
-            String paymentKey = "key-atom";
-            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
-            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.PENDING).retryCount(0).allArgsBuild();
-
-            given(stockCachePort.decrement(1L, 1)).willReturn(true);
-            given(paymentCommandUseCase.executePayment(readyEvent, paymentKey)).willReturn(inProgressEvent);
-            given(paymentOutboxUseCase.createPendingRecord(orderId)).willReturn(outbox);
-
-            // when
-            PaymentEvent result = coordinator.executePaymentConfirm(readyEvent, paymentKey, orderId, orderList);
-
-            // then — event 전이 + outbox 생성이 모두 호출됨
-            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-            then(paymentCommandUseCase).should(times(1)).executePayment(readyEvent, paymentKey);
-            then(paymentOutboxUseCase).should(times(1)).createPendingRecord(orderId);
-        }
-    }
-
-    @Nested
-    @DisplayName("executePaymentConfirm — 재고 캐시 차감 거부(재고 부족) 분기")
-    class ExecutePaymentConfirmStockRejectedTest {
-
-        @Test
-        @DisplayName("재고 캐시 차감 결과 false(재고 부족) → FAILED 전이, outbox save 호출 없음")
-        void executePaymentConfirm_WhenStockCacheDecrementRejected_ShouldTransitionToFailed() {
-            // given
-            String orderId = "order-stock-fail";
-            String paymentKey = "key-stock-fail";
-            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
-            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent failedEvent = createPaymentEvent(orderId, PaymentEventStatus.FAILED);
-
-            given(stockCachePort.decrement(1L, 1)).willReturn(false);
-            given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), anyString()))
-                    .willReturn(failedEvent);
-
-            // when
-            PaymentEvent result = coordinator.executePaymentConfirm(readyEvent, paymentKey, orderId, orderList);
-
-            // then — FAILED 전이, outbox 미생성
-            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
-            then(paymentOutboxUseCase).should(never()).createPendingRecord(anyString());
-            then(paymentCommandUseCase).should(never()).executePayment(any(), anyString());
-        }
-    }
-
-    @Nested
-    @DisplayName("executePaymentConfirm — Redis/cache 장애 분기")
-    class ExecutePaymentConfirmCacheDownTest {
-
-        @Test
-        @DisplayName("재고 캐시 차감 중 RuntimeException(cache 장애) → QUARANTINED 전이, outbox 미생성, quarantine_compensation_pending=true")
-        void executePaymentConfirm_WhenPgTimeout_ShouldTransitionToQuarantineWithoutOutbox() {
-            // 테스트명의 "PgTimeout"은 PLAN 기준 "Redis/cache 장애" 분기를 의미한다(cache 장애 분기).
-            // given
-            String orderId = "order-cache-down";
-            String paymentKey = "key-cache-down";
-            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
-            PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
-            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
-
-            willThrow(new RuntimeException("Redis connection failure"))
-                    .given(stockCachePort).decrement(1L, 1);
-            given(paymentCommandUseCase.markPaymentAsQuarantined(any(PaymentEvent.class), anyString()))
-                    .willReturn(quarantinedEvent);
-
-            // when
-            PaymentEvent result = coordinator.executePaymentConfirm(readyEvent, paymentKey, orderId, orderList);
-
-            // then — QUARANTINED 전이, outbox 미생성
-            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
-            assertThat(result.isQuarantineCompensationPending()).isTrue();
-            then(paymentOutboxUseCase).should(never()).createPendingRecord(anyString());
-            then(paymentCommandUseCase).should(never()).executePayment(any(), anyString());
-        }
-    }
-
-    @Nested
-    @DisplayName("executePaymentQuarantine — 보상 플래그 set 검증")
-    class ExecutePaymentQuarantineCompensationFlagTest {
-
-        @Test
-        @DisplayName("executePaymentQuarantineWithOutbox 호출 시 QUARANTINED 전이 + quarantine_compensation_pending=true 플래그 set")
-        void executePaymentQuarantine_SetsCompensationPendingFlag() {
-            // given
-            String orderId = "order-quarantine";
-            String reason = "GATEWAY_STATUS_UNKNOWN";
-            PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
-            PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
-                    .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
-            PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
-
-            given(paymentCommandUseCase.markPaymentAsQuarantined(inProgressEvent, reason))
-                    .willReturn(quarantinedEvent);
-
-            // when
-            PaymentEvent result = coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
-
-            // then — QUARANTINED 전이 + compensation_pending 플래그 set
-            assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
-            assertThat(result.isQuarantineCompensationPending()).isTrue();
-            then(paymentOutboxUseCase).should(times(1)).save(outbox);
-            then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
-        }
     }
 }

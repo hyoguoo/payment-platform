@@ -10,14 +10,22 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPu
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 결제 확정 비동기 오케스트레이터.
+ *
+ * <p>TX 경계를 caller(본 서비스)에서 직접 조립한다: Redis DECR(TX 외부) → 결과 분기
+ * (REJECTED/CACHE_DOWN/SUCCESS) → SUCCESS인 경우에만 coordinator.executeConfirmTx() @Transactional
+ * 내에서 event 전이 + outbox PENDING을 원자 커밋. Kafka 발행은 TX 밖에서 별도.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,7 +38,6 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentConfirmChannel confirmChannel;
 
     @Override
-    @Transactional(rollbackFor = PaymentOrderedProductStockException.class)
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
             throws PaymentOrderedProductStockException {
         PaymentEvent paymentEvent =
@@ -43,18 +50,26 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
                 command.getPaymentKey()
         );
 
-        // executePayment(READY→IN_PROGRESS) + 재고 감소 + Outbox 생성을 단일 트랜잭션으로 처리
-        // → TX1/TX2 분리로 인한 서버 크래시 시 재고 미감소 상태 결제 확인 방지
-        try {
-            transactionCoordinator.executePaymentAndStockDecreaseWithOutbox(
-                    paymentEvent, command.getPaymentKey(),
-                    command.getOrderId(), paymentEvent.getPaymentOrderList()
-            );
-        } catch (PaymentOrderedProductStockException e) {
-            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
-                    () -> String.format("orderId=%s", command.getOrderId()));
-            paymentFailureUseCase.handleStockFailure(paymentEvent, e.getMessage());
-            throw e;
+        StockDecrementResult stockResult =
+                transactionCoordinator.decrementStock(paymentEvent.getPaymentOrderList());
+
+        switch (stockResult) {
+            case REJECTED -> {
+                LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
+                        () -> String.format("orderId=%s reason=stock_rejected", command.getOrderId()));
+                paymentFailureUseCase.handleStockFailure(paymentEvent, "재고 부족으로 인한 결제 실패");
+                throw PaymentOrderedProductStockException.of(
+                        PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
+            }
+            case CACHE_DOWN -> {
+                LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
+                        () -> String.format("orderId=%s reason=cache_down", command.getOrderId()));
+                transactionCoordinator.markStockCacheDownQuarantine(paymentEvent);
+                throw PaymentOrderedProductStockException.of(
+                        PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
+            }
+            case SUCCESS -> transactionCoordinator.executeConfirmTx(
+                    paymentEvent, command.getPaymentKey(), command.getOrderId());
         }
 
         confirmPublisher.publish(
