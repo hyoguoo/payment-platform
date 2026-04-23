@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>처리 흐름:
  * <ol>
- *   <li>PgGatewayPort.confirm() 호출.</li>
+ *   <li>PgConfirmPort.confirm() 호출.</li>
  *   <li>성공 → pg_outbox(payment.events.confirmed, APPROVED 포함) INSERT + pg_inbox APPROVED 전이.</li>
  *   <li>확정 실패(non-retryable) → pg_outbox(payment.events.confirmed, FAILED 포함) INSERT + pg_inbox FAILED 전이.</li>
  *   <li>재시도 가능 + attempt &lt; MAX(4) → pg_outbox(payment.commands.confirm, available_at=now+backoff) INSERT.</li>
@@ -52,7 +52,7 @@ public class PgVendorCallService {
 
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
-    private final PgGatewayPort pgGatewayPort;
+    private final PgConfirmPort pgConfirmPort;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final ObjectMapper objectMapper;
@@ -115,7 +115,7 @@ public class PgVendorCallService {
 
     private GatewayOutcome invokeConfirm(PgConfirmRequest request) {
         try {
-            return GatewayOutcome.success(pgGatewayPort.confirm(request));
+            return GatewayOutcome.success(pgConfirmPort.confirm(request));
         } catch (PgGatewayRetryableException e) {
             return GatewayOutcome.retryable(e.getMessage());
         } catch (PgGatewayNonRetryableException e) {

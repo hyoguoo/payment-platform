@@ -6,7 +6,8 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgFailureInfo;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
@@ -52,7 +53,7 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "pg.gateway.type", havingValue = "toss", matchIfMissing = true)
-public class TossPaymentGatewayStrategy implements PgGatewayPort {
+public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirmPort {
 
     private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
     private static final String IDEMPOTENCY_KEY_HEADER_NAME = "Idempotency-Key";

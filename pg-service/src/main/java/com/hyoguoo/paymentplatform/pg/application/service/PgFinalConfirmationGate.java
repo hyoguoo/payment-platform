@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
@@ -60,7 +60,7 @@ public class PgFinalConfirmationGate {
             PgPaymentStatus.EXPIRED
     );
 
-    private final PgGatewayPort pgGatewayPort;
+    private final PgStatusLookupPort pgStatusLookupPort;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -119,7 +119,7 @@ public class PgFinalConfirmationGate {
 
     private FcgOutcome queryStatusOnce(String orderId) {
         try {
-            PgStatusResult statusResult = pgGatewayPort.getStatusByOrderId(orderId);
+            PgStatusResult statusResult = pgStatusLookupPort.getStatusByOrderId(orderId);
             return mapStatusResult(statusResult);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             log.warn("PgFinalConfirmationGate: 벤더 상태 조회 판정 불가 → INDETERMINATE orderId={} cause={}",

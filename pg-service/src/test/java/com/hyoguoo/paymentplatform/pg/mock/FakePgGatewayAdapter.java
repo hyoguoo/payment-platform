@@ -3,7 +3,8 @@ package com.hyoguoo.paymentplatform.pg.mock;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
@@ -13,7 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * PgGatewayPort Fake — 실제 Toss/NicePay HTTP 없이 application 계층 테스트용.
+ * PgStatusLookupPort + PgConfirmPort Fake — 실제 Toss/NicePay HTTP 없이 application 계층 테스트용.
+ * T3.5-05: PgGatewayPort 분해 후 두 포트를 모두 구현하는 통합 Fake.
  *
  * <p>Thread-safe: AtomicInteger + AtomicReference.
  *
@@ -24,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   fake.throwOnConfirm(PgGatewayRetryableException.of("timeout"));
  * </pre>
  */
-public class FakePgGatewayAdapter implements PgGatewayPort {
+public class FakePgGatewayAdapter implements PgStatusLookupPort, PgConfirmPort {
 
     private final Map<String, PgConfirmResult> confirmResults = new HashMap<>();
     private final Map<String, PgStatusResult> statusResults = new HashMap<>();

@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -20,7 +20,6 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,25 +58,25 @@ public class DuplicateApprovalHandler {
      */
     private static final Set<PgPaymentStatus> APPROVED_STATUSES = Set.of(PgPaymentStatus.DONE);
 
-    private final PgGatewayPort pgGatewayPort;
+    private final PgStatusLookupPort pgStatusLookupPort;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
 
     /**
-     * Strategy가 DuplicateApprovalHandler에 생성자 주입을 받고
-     * DuplicateApprovalHandler도 Strategy(PgGatewayPort)를 받는 순환 참조를 끊기 위해
-     * pgGatewayPort에만 {@link Lazy} 프록시를 주입한다. (ADR-21 대칭성 유지)
+     * T3.5-05: PgGatewayPort 분해로 순환 의존 근본 해소.
+     * DuplicateApprovalHandler는 PgStatusLookupPort(상태 조회 전담)만 의존.
+     * @Lazy 프록시 불필요 — 순환 경로 자체가 단절됨.
      */
     public DuplicateApprovalHandler(
-            @Lazy PgGatewayPort pgGatewayPort,
+            PgStatusLookupPort pgStatusLookupPort,
             PgInboxRepository pgInboxRepository,
             PgOutboxRepository pgOutboxRepository,
             ApplicationEventPublisher applicationEventPublisher,
             ConfirmedEventPayloadSerializer payloadSerializer
     ) {
-        this.pgGatewayPort = pgGatewayPort;
+        this.pgStatusLookupPort = pgStatusLookupPort;
         this.pgInboxRepository = pgInboxRepository;
         this.pgOutboxRepository = pgOutboxRepository;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -151,7 +150,7 @@ public class DuplicateApprovalHandler {
 
     private VendorQueryOutcome queryVendorStatus(String orderId) {
         try {
-            PgStatusResult result = pgGatewayPort.getStatusByOrderId(orderId);
+            PgStatusResult result = pgStatusLookupPort.getStatusByOrderId(orderId);
             return VendorQueryOutcome.success(result);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             log.warn("DuplicateApprovalHandler: vendor 상태 조회 판정 불가 → VENDOR_INDETERMINATE orderId={} cause={}",
