@@ -52,6 +52,7 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "payment_key")
     private String paymentKey;
 
+    // DB 컬럼 바인딩 전용. Phase 2 cutover 이후 payment-service는 벤더 직접 호출 경로 없음 (ADR-02, ADR-21).
     @Enumerated(EnumType.STRING)
     @Column(name = "gateway_type", nullable = false)
     private PaymentGatewayType gatewayType;
