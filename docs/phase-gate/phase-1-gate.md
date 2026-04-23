@@ -78,7 +78,7 @@ which mysql
 | `PAYMENT_DB_NAME` | `payment` | payment DB 이름 |
 | `PAYMENT_DB_USER` | `payment` | payment DB 사용자 |
 | `PAYMENT_DB_PASS` | `payment123` | payment DB 비밀번호 |
-| `REDIS_CONTAINER` | `payment-redis-payment` | 결제 Redis 컨테이너명 |
+| `REDIS_CONTAINER` | `payment-redis-stock` | 재고 Redis 컨테이너명 |
 | `ASYNC_WAIT_SECONDS` | `10` | 비동기 완료 폴링 최대 대기(초) |
 | `ASYNC_POLL_INTERVAL` | `2` | 폴링 간격(초) |
 
@@ -154,7 +154,7 @@ mysql -h 127.0.0.1 -P 3307 -u payment -ppayment123 payment \
        WHERE pe.order_id LIKE 'order-%-gate1-%';
       DELETE FROM payment_event WHERE order_id LIKE 'order-%-gate1-%';"
 
-docker exec payment-redis-payment redis-cli DEL "stock:99901"
+docker exec payment-redis-stock redis-cli DEL "stock:99901"
 ```
 
 ### 항목별 주요 실패 원인

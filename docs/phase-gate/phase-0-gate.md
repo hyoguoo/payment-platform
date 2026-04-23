@@ -47,7 +47,7 @@ broken foundation 위에 태스크가 쌓이는 상황을 방지한다.
 | 10a | Toxiproxy `/proxies` 200 | `curl http://localhost:8474/proxies` | 200 응답 |
 | 10b | `kafka-proxy` 존재 | JSON `.["kafka-proxy"]` | key 존재 |
 | 10c | `mysql-proxy` 존재 | JSON `.["mysql-proxy"]` | key 존재 |
-| 10d | `redis-payment-proxy` 존재 | JSON `.["redis-payment-proxy"]` | key 존재 |
+| 10d | `redis-stock-proxy` 존재 | JSON `.["redis-stock-proxy"]` | key 존재 |
 
 ---
 
@@ -91,8 +91,8 @@ bash scripts/phase-gate/phase-0-gate.sh
 ```
 [FAIL] 결제 Redis AOF 활성화 — appendonly=no
 ```
-- 원인: `docker-compose.infra.yml`의 `redis-payment` command에서 `--appendonly yes` 누락
-- 조치: compose 설정 확인 후 `docker compose up -d redis-payment`
+- 원인: `docker-compose.infra.yml`의 `redis-stock` command에서 `--appendonly yes` 누락
+- 조치: compose 설정 확인 후 `docker compose up -d redis-stock`
 
 ### MySQL 미기동
 ```
@@ -120,7 +120,7 @@ bash scripts/phase-gate/phase-0-gate.sh
 [FAIL] Toxiproxy proxy 존재: kafka-proxy
 ```
 - 원인: `chaos/toxiproxy-config.json`에 해당 proxy 미정의
-- 조치: `chaos/toxiproxy-config.json` 확인. kafka-proxy/mysql-proxy/redis-payment-proxy 3개 모두 있어야 함
+- 조치: `chaos/toxiproxy-config.json` 확인. kafka-proxy/mysql-payment-proxy/redis-stock-proxy 3개 모두 있어야 함
 
 ---
 

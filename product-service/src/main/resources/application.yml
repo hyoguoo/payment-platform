@@ -48,7 +48,8 @@ spring:
 product:
   cache:
     stock-redis:
-      # host: ${REDIS_STOCK_HOST:localhost}  # 운영 환경에서 환경변수로 활성화
+      # host/port는 application-docker.yml에서 REDIS_STOCK_HOST/REDIS_STOCK_PORT 환경변수로 주입
+      # host 미설정 시 StockRedisConfig(@ConditionalOnProperty) 빈 미등록 → 로컬 테스트 safe
       port: ${REDIS_STOCK_PORT:6380}
 
   output:

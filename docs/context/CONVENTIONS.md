@@ -314,6 +314,34 @@ import org.junit.jupiter.api.Test;
 - Every test method uses `// given`, `// when`, `// then` comment sections
 - `@DisplayName` always in Korean describing the business scenario
 
+## 환경변수 네이밍 규약 (T3.5-04, 2026-04-24)
+
+### Redis
+
+| 용도 | compose 서비스명 | container_name | Spring 환경변수 | 프로퍼티 키 |
+|------|----------------|----------------|-----------------|-------------|
+| dedupe 키 (결제·PG·재고) | `redis-dedupe` | `payment-redis-dedupe` | `SPRING_DATA_REDIS_HOST` / `SPRING_DATA_REDIS_PORT` | `spring.data.redis.host/port` (Spring Boot autoconfigure) |
+| 재고 캐시 (product-service 전용) | `redis-stock` | `payment-redis-stock` | `REDIS_STOCK_HOST` / `REDIS_STOCK_PORT` | `product.cache.stock-redis.host/port` |
+
+- `SPRING_DATA_REDIS_*` 는 Spring Boot autoconfigure 표준 환경변수. 서비스별 `application-docker.yml`에서 `spring.data.redis.host/port`로 바인딩된다.
+- Java `@Value("${REDIS_PAYMENT_HOST...}")` 형태의 구버전 환경변수 직접 참조는 금지. autoconfigure가 `spring.data.redis.*`를 읽으므로 `@Value`로 중복 선언하지 않는다.
+- redis-stock 연결은 `StockRedisConfig`(`@ConditionalOnProperty(name = "product.cache.stock-redis.host")`)가 담당 — host 미설정 시 빈 미등록(테스트 safe).
+
+### MySQL
+
+| 서비스 | compose 서비스명 | container_name | 포트 | DB명 |
+|--------|----------------|----------------|------|------|
+| payment-service | `mysql-payment` | `payment-mysql-payment` | 3307 | `payment` |
+| pg-service | `mysql-pg` | `payment-mysql-pg` | 3308 | `pg` |
+| product-service | `mysql-product` | `payment-mysql-product` | 3309 | `product` |
+| user-service | `mysql-user` | `payment-mysql-user` | 3310 | `user` |
+
+- 컨테이너 이름 규칙: `mysql-<service>` (compose 서비스) / `payment-mysql-<service>` (container_name).
+- DB명은 서비스명과 동일하게 유지.
+- datasource URL 환경변수: `<SERVICE>_DATASOURCE_URL` (e.g., `PRODUCT_DATASOURCE_URL`).
+
+---
+
 ## @ConditionalOnProperty 규약 (T3.5-02, 2026-04-24)
 
 - **infra 레이어 @ConditionalOnProperty는 항상 `matchIfMissing=false`(기본값) 사용.** 환경변수가 명시되지 않으면 빈이 등록되지 않는다.
