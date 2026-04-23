@@ -17,7 +17,8 @@ CREATE TABLE payment_event (
     retry_count                    INT,
     status_reason                  VARCHAR(255),
     last_status_changed_at         DATETIME(6),
-    -- ADR-13 §2-2b-3: QUARANTINED 전이 시 2단계 복구 대기 플래그 (T1-12 QuarantineCompensationHandler 소비)
+    -- T3.5-07 이후 도메인 매핑 제거됨. 컬럼은 스키마 호환성을 위해 유지.
+    -- ADR-15: QUARANTINED는 홀딩 상태이며 재고 복구 대상이 아님 — 복구는 FAIL 경로에서만 수행.
     quarantine_compensation_pending BOOLEAN        NOT NULL DEFAULT FALSE,
     created_at                     DATETIME,
     updated_at                     DATETIME,
