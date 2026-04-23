@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -8,6 +9,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
@@ -25,6 +27,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -54,9 +58,13 @@ class PaymentConfirmConsumerTest {
         gatewayAdapter = new FakePgGatewayAdapter();
         dedupeStore = new FakeEventDedupeStore();
         Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
+        ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        ObjectMapper objectMapper = new ObjectMapper();
         PgVendorCallService vendorCallService =
-                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter);
-        sut = new PgConfirmService(inboxRepository, outboxRepository, vendorCallService, dedupeStore, clock);
+                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
+                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper);
+        sut = new PgConfirmService(
+                inboxRepository, outboxRepository, vendorCallService, dedupeStore, eventPublisher, clock);
     }
 
     // -----------------------------------------------------------------------

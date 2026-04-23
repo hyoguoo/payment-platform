@@ -1,11 +1,16 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.publisher;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgEventPublisherPort;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -16,11 +21,15 @@ import org.springframework.stereotype.Component;
  * ADR-30: pg-service는 payment-service의 MessagePublisherPort를 공유하지 않고 독립 복제.
  *         PgEventPublisherPort가 그 역할을 대신한다.
  *
+ * <p>토픽별 타입드 KafkaTemplate 3종을 주입받아 topic 필드 기준으로 발행 경로를 분기한다
+ * ({@code KafkaProducerConfig} 에서 빈 등록). outbox row 의 payload 는 직렬화된 JSON 문자열이므로
+ * 릴레이 단계에서 record 로 역직렬화한 뒤 타입드 템플릿으로 재발행한다 — 직렬화 비용은 DB IO 대비 무시 가능.
+ *
  * <p>발행 대상 토픽 (PgTopics 참고):
  * <ul>
- *   <li>payment.commands.confirm</li>
- *   <li>payment.commands.confirm.dlq</li>
- *   <li>payment.events.confirmed</li>
+ *   <li>payment.events.confirmed → ConfirmedEventPayload</li>
+ *   <li>payment.commands.confirm → PgConfirmCommand (재시도)</li>
+ *   <li>payment.commands.confirm.dlq → PgConfirmCommand (재시도 한도 소진)</li>
  * </ul>
  *
  * <p>멱등성 정책: 호출자(PgOutboxRelayService) 책임.
@@ -32,25 +41,79 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class PgEventPublisher implements PgEventPublisherPort {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, ConfirmedEventPayload> confirmedEventKafkaTemplate;
+    private final KafkaTemplate<String, PgConfirmCommand> commandsConfirmKafkaTemplate;
+    private final KafkaTemplate<String, PgConfirmCommand> commandsConfirmDlqKafkaTemplate;
+
+    private final String eventsConfirmedTopic;
+    private final String commandsConfirmTopic;
+    private final String commandsConfirmDlqTopic;
+
+    public PgEventPublisher(
+            ObjectMapper objectMapper,
+            @Qualifier("confirmedEventKafkaTemplate")
+            KafkaTemplate<String, ConfirmedEventPayload> confirmedEventKafkaTemplate,
+            @Qualifier("commandsConfirmKafkaTemplate")
+            KafkaTemplate<String, PgConfirmCommand> commandsConfirmKafkaTemplate,
+            @Qualifier("commandsConfirmDlqKafkaTemplate")
+            KafkaTemplate<String, PgConfirmCommand> commandsConfirmDlqKafkaTemplate,
+            @Value("${pg.kafka.topics.events-confirmed}") String eventsConfirmedTopic,
+            @Value("${pg.kafka.topics.commands-confirm}") String commandsConfirmTopic,
+            @Value("${pg.kafka.topics.commands-confirm-dlq}") String commandsConfirmDlqTopic
+    ) {
+        this.objectMapper = objectMapper;
+        this.confirmedEventKafkaTemplate = confirmedEventKafkaTemplate;
+        this.commandsConfirmKafkaTemplate = commandsConfirmKafkaTemplate;
+        this.commandsConfirmDlqKafkaTemplate = commandsConfirmDlqKafkaTemplate;
+        this.eventsConfirmedTopic = eventsConfirmedTopic;
+        this.commandsConfirmTopic = commandsConfirmTopic;
+        this.commandsConfirmDlqTopic = commandsConfirmDlqTopic;
+    }
 
     /**
      * 지정 토픽으로 메시지를 동기 발행한다.
-     * 발행 실패 시 예외를 호출자에게 전파한다 (RelayService가 processed_at 갱신을 막을 수 있도록).
+     * payload 는 outbox row 에 저장된 JSON 문자열이며, 토픽에 대응하는 record 로 역직렬화한 뒤 발행한다.
      *
      * @param topic   발행 대상 Kafka 토픽
      * @param key     파티션 키
-     * @param payload 직렬화될 페이로드 객체
+     * @param payload outbox row 에 저장된 JSON 문자열 (String 타입으로 전달됨)
      * @param headers 전달할 Kafka 헤더 (null-safe, 빈 맵 허용)
      */
     @Override
     public void publish(String topic, String key, Object payload, Map<String, byte[]> headers) {
-        ProducerRecord<String, Object> record = buildRecord(topic, key, payload, headers);
-        kafkaTemplate.send(record)
+        String json = toJsonString(payload);
+
+        if (eventsConfirmedTopic.equals(topic)) {
+            ConfirmedEventPayload typed = deserialize(json, ConfirmedEventPayload.class);
+            send(confirmedEventKafkaTemplate, topic, key, typed, headers);
+        } else if (commandsConfirmTopic.equals(topic)) {
+            PgConfirmCommand typed = deserialize(json, PgConfirmCommand.class);
+            send(commandsConfirmKafkaTemplate, topic, key, typed, headers);
+        } else if (commandsConfirmDlqTopic.equals(topic)) {
+            PgConfirmCommand typed = deserialize(json, PgConfirmCommand.class);
+            send(commandsConfirmDlqKafkaTemplate, topic, key, typed, headers);
+        } else {
+            throw new IllegalArgumentException("Unknown Kafka topic: " + topic);
+        }
+    }
+
+    private <T> void send(
+            KafkaTemplate<String, T> template,
+            String topic,
+            String key,
+            T payload,
+            Map<String, byte[]> headers
+    ) {
+        ProducerRecord<String, T> record = new ProducerRecord<>(topic, key, payload);
+        if (headers != null) {
+            headers.forEach((headerKey, headerValue) ->
+                    record.headers().add(new RecordHeader(headerKey, headerValue)));
+        }
+        template.send(record)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         log.error("PgEventPublisher: Kafka 발행 실패 topic={} key={} error={}",
@@ -64,14 +127,25 @@ public class PgEventPublisher implements PgEventPublisherPort {
                 });
     }
 
-    private ProducerRecord<String, Object> buildRecord(
-            String topic, String key, Object payload, Map<String, byte[]> headers) {
-        ProducerRecord<String, Object> record = new ProducerRecord<>(topic, key, payload);
-        if (headers != null) {
-            headers.forEach((headerKey, headerValue) ->
-                    record.headers().add(new RecordHeader(headerKey, headerValue)));
+    private String toJsonString(Object payload) {
+        if (payload instanceof String s) {
+            return s;
         }
-        return record;
+        // outbox relay 경로에서는 항상 String 이지만, 혹시 모를 직접 호출 대비 방어적 직렬화.
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("PgEventPublisher: payload 직렬화 실패", e);
+        }
+    }
+
+    private <T> T deserialize(String json, Class<T> type) {
+        try {
+            return objectMapper.readValue(json, type);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                    "PgEventPublisher: payload 역직렬화 실패 type=" + type.getSimpleName(), e);
+        }
     }
 
     @SuppressWarnings("unchecked")

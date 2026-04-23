@@ -7,6 +7,9 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -39,6 +42,7 @@ public class PgDlqService {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ConfirmedEventPayloadSerializer payloadSerializer;
 
     /**
      * DLQ 메시지를 처리한다.
@@ -91,10 +95,10 @@ public class PgDlqService {
     // -----------------------------------------------------------------------
 
     private String buildQuarantinedPayload(String orderId, Long amount) {
-        return "{\"orderId\":\"" + orderId
-                + "\",\"status\":\"QUARANTINED\""
-                + ",\"reasonCode\":\"" + REASON_RETRY_EXHAUSTED + "\""
-                + (amount != null ? ",\"amount\":" + amount : "")
-                + "}";
+        String eventUuid = UUID.randomUUID().toString();
+        ConfirmedEventPayload payload = (amount != null)
+                ? ConfirmedEventPayload.quarantinedWithAmount(orderId, REASON_RETRY_EXHAUSTED, amount, eventUuid)
+                : ConfirmedEventPayload.quarantined(orderId, REASON_RETRY_EXHAUSTED, eventUuid);
+        return payloadSerializer.serialize(payload);
     }
 }

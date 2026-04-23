@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
@@ -8,6 +9,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer.PaymentConfirmConsumer;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer.PaymentConfirmDlqConsumer;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
@@ -45,7 +47,8 @@ class PaymentConfirmDlqConsumerTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-        pgDlqService = new PgDlqService(inboxRepository, outboxRepository, eventPublisher);
+        pgDlqService = new PgDlqService(inboxRepository, outboxRepository, eventPublisher,
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()));
     }
 
     // -----------------------------------------------------------------------

@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgGatewayPort;
@@ -7,14 +10,20 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,12 +53,15 @@ public class PgVendorCallService {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final PgGatewayPort pgGatewayPort;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final ConfirmedEventPayloadSerializer payloadSerializer;
+    private final ObjectMapper objectMapper;
 
     // -----------------------------------------------------------------------
     // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
     // -----------------------------------------------------------------------
 
-    private enum OutcomeKind { SUCCESS, RETRYABLE, NON_RETRYABLE }
+    private enum OutcomeKind { SUCCESS, RETRYABLE, NON_RETRYABLE, HANDLED_INTERNALLY }
 
     private static final class GatewayOutcome {
 
@@ -73,6 +85,10 @@ public class PgVendorCallService {
 
         static GatewayOutcome nonRetryable(String message) {
             return new GatewayOutcome(OutcomeKind.NON_RETRYABLE, null, message);
+        }
+
+        static GatewayOutcome handledInternally(String message) {
+            return new GatewayOutcome(OutcomeKind.HANDLED_INTERNALLY, null, message);
         }
     }
 
@@ -104,6 +120,8 @@ public class PgVendorCallService {
             return GatewayOutcome.retryable(e.getMessage());
         } catch (PgGatewayNonRetryableException e) {
             return GatewayOutcome.nonRetryable(e.getMessage());
+        } catch (PgGatewayDuplicateHandledException e) {
+            return GatewayOutcome.handledInternally(e.getMessage());
         }
     }
 
@@ -116,6 +134,9 @@ public class PgVendorCallService {
             case SUCCESS -> handleSuccess(request.orderId(), outcome.result);
             case RETRYABLE -> handleRetry(request, attempt, now);
             case NON_RETRYABLE -> handleDefinitiveFailure(request.orderId(), outcome.errorMessage);
+            case HANDLED_INTERNALLY -> log.info(
+                    "PgVendorCallService: 중복 승인(DuplicateApprovalHandler) 내부 처리 완료 — 추가 기록 생략 orderId={} detail={}",
+                    request.orderId(), outcome.errorMessage);
         }
     }
 
@@ -126,8 +147,9 @@ public class PgVendorCallService {
     private void handleSuccess(String orderId, PgConfirmResult result) {
         String payload = buildApprovedPayload(orderId);
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        pgOutboxRepository.save(outbox);
+        PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToApproved(orderId, payload);
+        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         log.info("PgVendorCallService: 성공 처리 완료 orderId={}", orderId);
     }
 
@@ -138,8 +160,9 @@ public class PgVendorCallService {
     private void handleDefinitiveFailure(String orderId, String reasonCode) {
         String payload = buildFailedPayload(orderId, reasonCode);
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        pgOutboxRepository.save(outbox);
+        PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToFailed(orderId, payload, reasonCode);
+        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         log.info("PgVendorCallService: 확정 실패 처리 완료 orderId={} reasonCode={}", orderId, reasonCode);
     }
 
@@ -163,8 +186,9 @@ public class PgVendorCallService {
 
         PgOutbox outbox = PgOutbox.createWithAvailableAt(
                 null, PgTopics.COMMANDS_CONFIRM, request.orderId(),
-                buildRetryPayload(request), headersJson, availableAt);
-        pgOutboxRepository.save(outbox);
+                buildCommandPayload(request), headersJson, availableAt);
+        PgOutbox saved = pgOutboxRepository.save(outbox);
+        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         log.info("PgVendorCallService: 재시도 예약 orderId={} nextAttempt={} availableAt={}",
                 request.orderId(), nextAttempt, availableAt);
@@ -174,8 +198,9 @@ public class PgVendorCallService {
         String headersJson = buildAttemptHeader(attempt);
         PgOutbox outbox = PgOutbox.create(
                 null, PgTopics.COMMANDS_CONFIRM_DLQ, request.orderId(),
-                buildDlqPayload(request, attempt), headersJson);
-        pgOutboxRepository.save(outbox);
+                buildCommandPayload(request), headersJson);
+        PgOutbox saved = pgOutboxRepository.save(outbox);
+        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         log.warn("PgVendorCallService: DLQ 전이 orderId={} attempt={}", request.orderId(), attempt);
     }
@@ -185,21 +210,33 @@ public class PgVendorCallService {
     // -----------------------------------------------------------------------
 
     private String buildApprovedPayload(String orderId) {
-        return "{\"orderId\":\"" + orderId + "\",\"status\":\"APPROVED\"}";
+        // eventUuid: payment-service ConfirmedEventConsumer 의 0단계 dedupe 키.
+        // outbox row 1건당 1 uuid → relay 재시도 시 stored_status_result 재발행 경로에서도 동일 uuid 유지.
+        return payloadSerializer.serialize(ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString()));
     }
 
     private String buildFailedPayload(String orderId, String reasonCode) {
-        return "{\"orderId\":\"" + orderId + "\",\"status\":\"FAILED\",\"reasonCode\":\""
-                + (reasonCode != null ? reasonCode : "") + "\"}";
+        String safeReason = reasonCode != null ? reasonCode : "";
+        return payloadSerializer.serialize(
+                ConfirmedEventPayload.failed(orderId, safeReason, UUID.randomUUID().toString())
+        );
     }
 
-    private String buildRetryPayload(PgConfirmRequest request) {
-        return "{\"orderId\":\"" + request.orderId() + "\",\"paymentKey\":\""
-                + request.paymentKey() + "\",\"amount\":" + request.amount() + "}";
-    }
-
-    private String buildDlqPayload(PgConfirmRequest request, int attempt) {
-        return "{\"orderId\":\"" + request.orderId() + "\",\"attempt\":" + attempt + "}";
+    private String buildCommandPayload(PgConfirmRequest request) {
+        // 재시도/DLQ 공통 스키마. PaymentConfirmConsumer/PaymentConfirmDlqConsumer는 동일 PgConfirmCommand를 기대한다.
+        // eventUuid는 재컨슘 시 새 dedupe 키로 쓰이므로 outbox row마다 새로 발급.
+        PgConfirmCommand command = new PgConfirmCommand(
+                request.orderId(),
+                request.paymentKey(),
+                request.amount(),
+                request.vendorType(),
+                UUID.randomUUID().toString());
+        try {
+            return objectMapper.writeValueAsString(command);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                    "PgVendorCallService: PgConfirmCommand 직렬화 실패 orderId=" + request.orderId(), e);
+        }
     }
 
     private String buildAttemptHeader(int attempt) {

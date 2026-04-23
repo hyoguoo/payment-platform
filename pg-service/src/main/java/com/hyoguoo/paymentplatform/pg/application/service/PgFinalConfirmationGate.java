@@ -10,7 +10,10 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -61,6 +64,7 @@ public class PgFinalConfirmationGate {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ConfirmedEventPayloadSerializer payloadSerializer;
 
     // -----------------------------------------------------------------------
     // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
@@ -207,13 +211,13 @@ public class PgFinalConfirmationGate {
     }
 
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"orderId\":\"").append(orderId).append("\"");
-        sb.append(",\"status\":\"").append(status).append("\"");
-        if (reasonCode != null) {
-            sb.append(",\"reasonCode\":\"").append(reasonCode).append("\"");
-        }
-        sb.append("}");
-        return sb.toString();
+        String eventUuid = UUID.randomUUID().toString();
+        ConfirmedEventPayload payload = switch (status) {
+            case "APPROVED" -> ConfirmedEventPayload.approved(orderId, eventUuid);
+            case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
+            case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
+            default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);
+        };
+        return payloadSerializer.serialize(payload);
     }
 }

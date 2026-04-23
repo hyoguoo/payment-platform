@@ -12,9 +12,12 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
@@ -60,6 +63,7 @@ public class DuplicateApprovalHandler {
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ConfirmedEventPayloadSerializer payloadSerializer;
 
     /**
      * Strategy가 DuplicateApprovalHandler에 생성자 주입을 받고
@@ -70,12 +74,14 @@ public class DuplicateApprovalHandler {
             @Lazy PgGatewayPort pgGatewayPort,
             PgInboxRepository pgInboxRepository,
             PgOutboxRepository pgOutboxRepository,
-            ApplicationEventPublisher applicationEventPublisher
+            ApplicationEventPublisher applicationEventPublisher,
+            ConfirmedEventPayloadSerializer payloadSerializer
     ) {
         this.pgGatewayPort = pgGatewayPort;
         this.pgInboxRepository = pgInboxRepository;
         this.pgOutboxRepository = pgOutboxRepository;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.payloadSerializer = payloadSerializer;
     }
 
     // -----------------------------------------------------------------------
@@ -273,17 +279,19 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
 
     private String buildApprovedPayload(String orderId, long amount) {
-        return "{\"orderId\":\"" + orderId + "\",\"status\":\"APPROVED\",\"amount\":" + amount + "}";
+        return payloadSerializer.serialize(
+                ConfirmedEventPayload.approvedWithAmount(orderId, amount, UUID.randomUUID().toString())
+        );
     }
 
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"orderId\":\"").append(orderId).append("\"");
-        sb.append(",\"status\":\"").append(status).append("\"");
-        if (reasonCode != null) {
-            sb.append(",\"reasonCode\":\"").append(reasonCode).append("\"");
-        }
-        sb.append("}");
-        return sb.toString();
+        String eventUuid = UUID.randomUUID().toString();
+        ConfirmedEventPayload payload = switch (status) {
+            case "APPROVED" -> ConfirmedEventPayload.approved(orderId, eventUuid);
+            case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
+            case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
+            default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);
+        };
+        return payloadSerializer.serialize(payload);
     }
 }

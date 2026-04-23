@@ -35,6 +35,11 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
 
   flyway:
     enabled: true
@@ -45,6 +50,9 @@ spring:
       enabled: always
 
   myapp:
+    toss-payments:
+      secret-key: ${TOSS_SECRET_KEY:}
+      api-url: ${TOSS_API_URL:https://api.tosspayments.com/v1/payments}
     nicepay:
       client-key: ${NICEPAY_CLIENT_KEY:}
       secret-key: ${NICEPAY_SECRET_KEY:}
@@ -63,6 +71,11 @@ eureka:
     prefer-ip-address: true
 
 pg:
+  kafka:
+    topics:
+      events-confirmed: ${PG_TOPIC_EVENTS_CONFIRMED:payment.events.confirmed}
+      commands-confirm: ${PG_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
+      commands-confirm-dlq: ${PG_TOPIC_COMMANDS_CONFIRM_DLQ:payment.commands.confirm.dlq}
   retry:
     mode: outbox
   scheduler:
@@ -73,6 +86,9 @@ pg:
     channel:
       capacity: 1024
       worker-count: 1
+  http:
+    connect-timeout-millis: ${PG_HTTP_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-millis: ${PG_HTTP_READ_TIMEOUT_MS:10000}
 
 management:
   endpoints:

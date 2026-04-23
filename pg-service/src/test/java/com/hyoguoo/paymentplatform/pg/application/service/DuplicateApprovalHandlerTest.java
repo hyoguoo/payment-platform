@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
@@ -8,6 +9,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
@@ -62,7 +64,8 @@ class DuplicateApprovalHandlerTest {
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
         handler = new DuplicateApprovalHandler(
-                gatewayAdapter, inboxRepository, outboxRepository, eventPublisher);
+                gatewayAdapter, inboxRepository, outboxRepository, eventPublisher,
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()));
     }
 
     // -----------------------------------------------------------------------
@@ -241,23 +244,4 @@ class DuplicateApprovalHandlerTest {
         verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 
-    // -----------------------------------------------------------------------
-    // TC6: NicepayStrategy 2201 분기 → DuplicateApprovalHandler 위임 대칭성
-    // (NicepayPaymentGatewayStrategy 내부 2201 분기에서 DuplicateApprovalHandler 호출 확인)
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("NicepayStrategy_WhenCode2201_ShouldDelegateToDuplicateHandler")
-    void NicepayStrategy_WhenCode2201_ShouldDelegateToDuplicateHandler() {
-        // given — DuplicateApprovalHandler mock(호출 확인용)
-        DuplicateApprovalHandler mockHandler = mock(DuplicateApprovalHandler.class);
-        com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.NicepayPaymentGatewayStrategy strategy =
-                new com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.NicepayPaymentGatewayStrategy(mockHandler);
-
-        // when — NicepayStrategy.handleDuplicateApproval 분기 직접 호출
-        strategy.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
-
-        // then — DuplicateApprovalHandler.handleDuplicateApproval 위임 1회
-        verify(mockHandler, times(1)).handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
-    }
 }

@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -11,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
@@ -20,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +45,7 @@ class PgVendorCallServiceTest {
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
+    private ApplicationEventPublisher eventPublisher;
     private PgVendorCallService sut;
 
     @BeforeEach
@@ -48,7 +53,10 @@ class PgVendorCallServiceTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
-        sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter);
+        eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
+                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper);
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (callVendor 진입 전제조건)
         PgInbox inbox = PgInbox.of(
