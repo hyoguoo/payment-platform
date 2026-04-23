@@ -22,4 +22,12 @@ public interface EventDedupeStore {
      * @return true — 새 UUID (처리 진행), false — 중복 UUID (no-op)
      */
     boolean markSeen(String eventUuid);
+
+    /**
+     * markSeen으로 기록된 eventUuid를 제거한다. 처리 TX가 롤백된 경우 dedupe 기록을 되돌려
+     * 재컨슘 시 정상 처리되도록 한다. 존재하지 않는 UUID 호출은 no-op.
+     *
+     * @param eventUuid 제거할 이벤트 고유 식별자
+     */
+    void remove(String eventUuid);
 }

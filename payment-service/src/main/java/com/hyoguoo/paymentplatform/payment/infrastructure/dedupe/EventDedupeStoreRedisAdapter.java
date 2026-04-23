@@ -38,4 +38,9 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
                 .setIfAbsent(KEY_PREFIX + eventUuid, MARKER, ttl);
         return Boolean.TRUE.equals(firstSeen);
     }
+
+    @Override
+    public void remove(String eventUuid) {
+        redisTemplate.delete(KEY_PREFIX + eventUuid);
+    }
 }

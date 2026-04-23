@@ -26,6 +26,11 @@ public class FakeEventDedupeStore implements EventDedupeStore {
         return seen.add(eventUuid);
     }
 
+    @Override
+    public void remove(String eventUuid) {
+        seen.remove(eventUuid);
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {
