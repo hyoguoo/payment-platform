@@ -33,7 +33,7 @@ class StockCommitConsumerTest {
         // given
         long productId = 10L;
         long orderId = 1000L;
-        String eventUuid = "event-uuid-consumer-test";
+        String eventUUID = "event-uuid-consumer-test";
         int qty = 7;
         Instant occurredAt = Instant.now();
         Instant expiresAt = occurredAt.plusSeconds(86400);
@@ -41,7 +41,7 @@ class StockCommitConsumerTest {
         StockCommittedMessage message = new StockCommittedMessage(
                 productId,
                 qty,
-                eventUuid,
+                eventUUID,
                 occurredAt,
                 orderId,
                 expiresAt
@@ -52,6 +52,6 @@ class StockCommitConsumerTest {
 
         // then: usecase 1회 위임
         verify(stockCommitUseCase, times(1))
-                .commit(eventUuid, orderId, productId, qty, expiresAt);
+                .commit(eventUUID, orderId, productId, qty, expiresAt);
     }
 }

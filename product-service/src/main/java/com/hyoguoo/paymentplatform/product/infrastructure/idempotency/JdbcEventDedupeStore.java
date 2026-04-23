@@ -42,39 +42,39 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
     private final JdbcTemplate jdbcTemplate;
 
     /**
-     * eventUuid가 유효하게(TTL 미만료) 존재하는지 확인한다.
+     * eventUUID가 유효하게(TTL 미만료) 존재하는지 확인한다.
      * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
      *
-     * @param eventUuid 이벤트 식별자
+     * @param eventUUID 이벤트 식별자
      * @return 유효한 중복이면 true, 없거나 만료됐으면 false
      */
     @Override
-    public boolean existsValid(String eventUuid) {
-        Integer count = jdbcTemplate.queryForObject(SQL_EXISTS_VALID, Integer.class, eventUuid);
+    public boolean existsValid(String eventUUID) {
+        Integer count = jdbcTemplate.queryForObject(SQL_EXISTS_VALID, Integer.class, eventUUID);
         return count != null && count > 0;
     }
 
     /**
-     * eventUuid를 기록하고, 최초 기록이면 true를 반환한다.
+     * eventUUID를 기록하고, 최초 기록이면 true를 반환한다.
      * 이미 유효한 중복이면 false를 반환한다.
      * 만료된 엔트리는 삭제 후 재삽입하여 true를 반환한다.
      *
-     * @param eventUuid  이벤트 식별자
+     * @param eventUUID  이벤트 식별자
      * @param expiresAt  만료 시각 (TTL)
      * @return 최초 기록(또는 만료 후 재기록)이면 true, 유효한 중복이면 false
      */
     @Override
-    public boolean recordIfAbsent(String eventUuid, Instant expiresAt) {
+    public boolean recordIfAbsent(String eventUUID, Instant expiresAt) {
         // 만료된 엔트리 삭제 (없으면 0 row 영향, 있으면 삭제)
-        jdbcTemplate.update(SQL_DELETE_EXPIRED, eventUuid);
+        jdbcTemplate.update(SQL_DELETE_EXPIRED, eventUUID);
 
         // INSERT IGNORE: 기존 유효 엔트리가 있으면 0, 없으면 1
-        int inserted = jdbcTemplate.update(SQL_INSERT_IGNORE, eventUuid,
+        int inserted = jdbcTemplate.update(SQL_INSERT_IGNORE, eventUUID,
                 java.sql.Timestamp.from(expiresAt));
 
         boolean isFirstSeen = inserted > 0;
-        log.debug("JdbcEventDedupeStore: recordIfAbsent eventUuid={} isFirstSeen={}",
-                eventUuid, isFirstSeen);
+        log.debug("JdbcEventDedupeStore: recordIfAbsent eventUUID={} isFirstSeen={}",
+                eventUUID, isFirstSeen);
         return isFirstSeen;
     }
 }

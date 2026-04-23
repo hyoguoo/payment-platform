@@ -10,22 +10,22 @@ import java.time.Instant;
 public interface EventDedupeStore {
 
     /**
-     * eventUuid를 기록하고, 최초 기록이면 true를 반환한다.
+     * eventUUID를 기록하고, 최초 기록이면 true를 반환한다.
      * 이미 존재하는 경우(중복) false를 반환한다.
      * TTL 만료된 엔트리는 덮어쓰고 true를 반환한다.
      *
-     * @param eventUuid  이벤트 식별자
+     * @param eventUUID  이벤트 식별자
      * @param expiresAt  만료 시각 (TTL)
      * @return 최초 기록(또는 만료 후 재기록)이면 true, 유효한 중복이면 false
      */
-    boolean recordIfAbsent(String eventUuid, Instant expiresAt);
+    boolean recordIfAbsent(String eventUUID, Instant expiresAt);
 
     /**
-     * eventUuid가 유효하게(TTL 미만료) 존재하는지 확인한다.
+     * eventUUID가 유효하게(TTL 미만료) 존재하는지 확인한다.
      * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
      *
-     * @param eventUuid 이벤트 식별자
+     * @param eventUUID 이벤트 식별자
      * @return 유효한 중복이면 true, 없거나 만료됐으면 false
      */
-    boolean existsValid(String eventUuid);
+    boolean existsValid(String eventUUID);
 }

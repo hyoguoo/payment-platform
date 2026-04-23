@@ -39,7 +39,7 @@ public class StockCommitUseCase {
      * 2. RDB: 재고 조회 → qty 감소 → save
      * 3. RDB UPDATE 성공 후 Redis SET
      *
-     * @param eventUuid 이벤트 식별자 (dedupe 키)
+     * @param eventUUID 이벤트 식별자 (dedupe 키)
      * @param orderId   주문 ID
      * @param productId 상품 ID
      * @param qty       확정 차감 수량
@@ -47,15 +47,15 @@ public class StockCommitUseCase {
      * @throws IllegalStateException 해당 상품 재고가 존재하지 않을 경우
      */
     @Transactional
-    public void commit(String eventUuid, long orderId, long productId, int qty, Instant expiresAt) {
-        boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUuid, expiresAt);
+    public void commit(String eventUUID, long orderId, long productId, int qty, Instant expiresAt) {
+        boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUUID, expiresAt);
         if (!firstSeen) {
-            log.info("StockCommitUseCase: 중복 이벤트 무시 eventUuid={} orderId={} productId={}",
-                    eventUuid, orderId, productId);
+            log.info("StockCommitUseCase: 중복 이벤트 무시 eventUUID={} orderId={} productId={}",
+                    eventUUID, orderId, productId);
             return;
         }
 
-        int newStock = commitToRdb(productId, qty, orderId, eventUuid);
+        int newStock = commitToRdb(productId, qty, orderId, eventUUID);
 
         paymentStockCachePort.setStock(productId, newStock);
         log.info("StockCommitUseCase: Redis SET 완료 productId={} stock={}", productId, newStock);
@@ -67,12 +67,12 @@ public class StockCommitUseCase {
      *
      * @return 변경 후 재고 수량
      */
-    private int commitToRdb(long productId, int qty, long orderId, String eventUuid) {
+    private int commitToRdb(long productId, int qty, long orderId, String eventUUID) {
         Stock current = stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalStateException(
                         "재고 정보를 찾을 수 없음 productId=" + productId
                                 + " orderId=" + orderId
-                                + " eventUuid=" + eventUuid));
+                                + " eventUUID=" + eventUUID));
 
         int newQuantity = current.getQuantity() - qty;
         Stock updated = Stock.allArgsBuilder()

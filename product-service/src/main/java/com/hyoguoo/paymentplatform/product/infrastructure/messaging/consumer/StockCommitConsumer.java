@@ -42,7 +42,7 @@ public class StockCommitConsumer {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(StockCommittedMessage message) {
-        log.info("StockCommitConsumer: 메시지 수신 productId={} qty={} eventUuid={}",
+        log.info("StockCommitConsumer: 메시지 수신 productId={} qty={} eventUUID={}",
                 message.productId(), message.qty(), message.idempotencyKey());
 
         stockCommitUseCase.commit(

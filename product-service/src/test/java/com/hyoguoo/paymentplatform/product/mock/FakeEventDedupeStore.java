@@ -32,14 +32,14 @@ public class FakeEventDedupeStore implements EventDedupeStore {
     }
 
     /**
-     * eventUuid를 기록하고, 최초 기록이면 true를 반환한다.
+     * eventUUID를 기록하고, 최초 기록이면 true를 반환한다.
      * 이미 존재하지만 만료된 경우(expiresAt &lt; now) 덮어쓰기 후 true를 반환한다.
      * 유효한 중복이면 false를 반환한다.
      */
     @Override
-    public boolean recordIfAbsent(String eventUuid, Instant expiresAt) {
+    public boolean recordIfAbsent(String eventUUID, Instant expiresAt) {
         boolean[] recorded = {false};
-        store.compute(eventUuid, (key, existing) -> {
+        store.compute(eventUUID, (key, existing) -> {
             if (existing == null || existing.isBefore(Instant.now(clock))) {
                 recorded[0] = true;
                 return expiresAt;
@@ -51,12 +51,12 @@ public class FakeEventDedupeStore implements EventDedupeStore {
     }
 
     /**
-     * eventUuid가 유효하게(TTL 미만료) 존재하는지 확인한다.
+     * eventUUID가 유효하게(TTL 미만료) 존재하는지 확인한다.
      * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
      */
     @Override
-    public boolean existsValid(String eventUuid) {
-        Instant expiry = store.get(eventUuid);
+    public boolean existsValid(String eventUUID) {
+        Instant expiry = store.get(eventUUID);
         if (expiry == null) {
             return false;
         }
@@ -65,8 +65,8 @@ public class FakeEventDedupeStore implements EventDedupeStore {
 
     // --- 검증 헬퍼 ---
 
-    public boolean contains(String eventUuid) {
-        return store.containsKey(eventUuid);
+    public boolean contains(String eventUUID) {
+        return store.containsKey(eventUUID);
     }
 
     public int size() {

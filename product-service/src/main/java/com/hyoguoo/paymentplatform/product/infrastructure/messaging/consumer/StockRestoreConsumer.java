@@ -43,12 +43,12 @@ public class StockRestoreConsumer {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(StockRestoreMessage message) {
-        log.info("StockRestoreConsumer: 메시지 수신 orderId={} productId={} qty={} eventUuid={}",
-                message.orderId(), message.productId(), message.qty(), message.eventUuid());
+        log.info("StockRestoreConsumer: 메시지 수신 orderId={} productId={} qty={} eventUUID={}",
+                message.orderId(), message.productId(), message.qty(), message.eventUUID());
 
         stockRestoreCommandService.restore(
                 message.orderId(),
-                message.eventUuid(),
+                message.eventUUID(),
                 message.productId(),
                 message.qty()
         );

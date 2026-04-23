@@ -32,17 +32,17 @@ class StockRestoreConsumerTest {
     void consume_ShouldDelegateToStockRestoreUseCase() {
         // given
         String orderId = "order-consumer-test";
-        String eventUuid = "event-uuid-consumer-test";
+        String eventUUID = "event-uuid-consumer-test";
         long productId = 10L;
         int qty = 3;
 
-        StockRestoreMessage message = new StockRestoreMessage(orderId, eventUuid, productId, qty);
+        StockRestoreMessage message = new StockRestoreMessage(orderId, eventUUID, productId, qty);
 
         // when
         stockRestoreConsumer.consume(message);
 
         // then: StockRestoreCommandService.restore 1회 위임만
         verify(stockRestoreCommandService, times(1))
-                .restore(orderId, eventUuid, productId, qty);
+                .restore(orderId, eventUUID, productId, qty);
     }
 }

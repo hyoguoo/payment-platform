@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>
  * 불변식:
  * <ul>
- *   <li>불변식 14: 동일 eventUuid dedupe — existsValid true 반환 시 즉시 return (no-op)</li>
+ *   <li>불변식 14: 동일 eventUUID dedupe — existsValid true 반환 시 즉시 return (no-op)</li>
  *   <li>재고 증가 성공 후 dedupe 기록 — 재고 실패 시 dedupe 미기록</li>
  *   <li>TTL = Kafka retention(7일) + 1일 = 8일</li>
  * </ul>
@@ -50,34 +50,34 @@ public class StockRestoreUseCase implements StockRestoreCommandService {
      * 지정 상품의 재고를 qty만큼 복원한다.
      *
      * @param orderId   주문 식별자
-     * @param eventUuid 이벤트 UUID (dedupe 키)
+     * @param eventUUID 이벤트 UUID (dedupe 키)
      * @param productId 복원 대상 상품 ID
      * @param qty       복원 수량
      * @throws IllegalStateException 해당 상품 재고가 존재하지 않을 경우
      */
     @Override
     @Transactional
-    public void restore(String orderId, String eventUuid, long productId, int qty) {
-        if (eventDedupeStore.existsValid(eventUuid)) {
-            log.info("StockRestoreUseCase: 중복 이벤트 무시 eventUuid={} orderId={} productId={}",
-                    eventUuid, orderId, productId);
+    public void restore(String orderId, String eventUUID, long productId, int qty) {
+        if (eventDedupeStore.existsValid(eventUUID)) {
+            log.info("StockRestoreUseCase: 중복 이벤트 무시 eventUUID={} orderId={} productId={}",
+                    eventUUID, orderId, productId);
             return;
         }
 
-        restoreStockInRdb(productId, qty, orderId, eventUuid);
+        restoreStockInRdb(productId, qty, orderId, eventUUID);
 
-        eventDedupeStore.recordIfAbsent(eventUuid, Instant.now().plus(DEDUPE_TTL));
+        eventDedupeStore.recordIfAbsent(eventUUID, Instant.now().plus(DEDUPE_TTL));
 
-        log.info("StockRestoreUseCase: 재고 복원 완료 orderId={} productId={} qty={} eventUuid={}",
-                orderId, productId, qty, eventUuid);
+        log.info("StockRestoreUseCase: 재고 복원 완료 orderId={} productId={} qty={} eventUUID={}",
+                orderId, productId, qty, eventUUID);
     }
 
-    private void restoreStockInRdb(long productId, int qty, String orderId, String eventUuid) {
+    private void restoreStockInRdb(long productId, int qty, String orderId, String eventUUID) {
         Stock current = stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalStateException(
                         "재고 정보를 찾을 수 없음 productId=" + productId
                                 + " orderId=" + orderId
-                                + " eventUuid=" + eventUuid));
+                                + " eventUUID=" + eventUUID));
 
         int newQuantity = current.getQuantity() + qty;
         Stock updated = Stock.allArgsBuilder()

@@ -43,7 +43,7 @@ class StockCommitUseCaseTest {
         // given
         long productId = 1L;
         long orderId = 100L;
-        String eventUuid = "event-uuid-001";
+        String eventUUID = "event-uuid-001";
         int qty = 5;
         int initialStock = 20;
 
@@ -55,7 +55,7 @@ class StockCommitUseCaseTest {
         Instant expiresAt = Instant.now().plusSeconds(3600);
 
         // when
-        stockCommitUseCase.commit(eventUuid, orderId, productId, qty, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
 
         // then: RDB 업데이트 확인 (재고가 변경됨)
         Stock updated = fakeStockRepository.findByProductId(productId).orElseThrow();
@@ -72,7 +72,7 @@ class StockCommitUseCaseTest {
         // given
         long productId = 2L;
         long orderId = 200L;
-        String eventUuid = "event-uuid-dup";
+        String eventUUID = "event-uuid-dup";
         int qty = 3;
         int initialStock = 10;
 
@@ -84,14 +84,14 @@ class StockCommitUseCaseTest {
         Instant expiresAt = Instant.now().plusSeconds(3600);
 
         // when: 첫 번째 호출
-        stockCommitUseCase.commit(eventUuid, orderId, productId, qty, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
 
         // 첫 번째 호출 후 상태 초기화 (2번째 호출의 영향만 측정)
         fakePaymentStockCachePort.reset();
         // NOTE: FakeStockRepository는 리셋하지 않고 재고 상태 유지
 
         // when: 두 번째 중복 호출
-        stockCommitUseCase.commit(eventUuid, orderId, productId, qty, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
 
         // then: 두 번째 호출은 no-op — Redis SET 0회
         assertThat(fakePaymentStockCachePort.getSetCallCount()).isEqualTo(0);
@@ -107,7 +107,7 @@ class StockCommitUseCaseTest {
         // given
         long productId = 3L;
         long orderId = 300L;
-        String eventUuid = "event-uuid-fail";
+        String eventUUID = "event-uuid-fail";
         int qty = 5;
         // 재고가 없는 상품 → findByProductId → Optional.empty() → IllegalStateException
 
@@ -115,7 +115,7 @@ class StockCommitUseCaseTest {
 
         // when / then: RDB UPDATE 실패 시 예외 전파
         assertThatThrownBy(() ->
-                stockCommitUseCase.commit(eventUuid, orderId, productId, qty, expiresAt))
+                stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt))
                 .isInstanceOf(IllegalStateException.class);
 
         // then: Redis SET 호출 0회 (RDB 실패 전에 Set 호출 없음)
