@@ -46,7 +46,7 @@ public class PgInboxEntity {
     @Column(name = "amount", nullable = false)
     private Long amount;
 
-    @Column(name = "stored_status_result", length = 50)
+    @Column(name = "stored_status_result", length = 1024)
     private String storedStatusResult;
 
     @Column(name = "reason_code", length = 100)

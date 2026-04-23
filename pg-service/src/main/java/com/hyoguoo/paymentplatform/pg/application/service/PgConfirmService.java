@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.RoundingMode;
@@ -15,6 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
@@ -45,6 +47,7 @@ public class PgConfirmService implements PgConfirmCommandService {
     private final PgOutboxRepository pgOutboxRepository;
     private final PgVendorCallService pgVendorCallService;
     private final EventDedupeStore eventDedupeStore;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
 
     @Override
@@ -56,6 +59,17 @@ public class PgConfirmService implements PgConfirmCommandService {
             return;
         }
 
+        // TX 경계 불일치 방어: pg_outbox 저장/상태 전이가 롤백되면 dedupe도 되돌려
+        // 재컨슘 경로에서 영구 정체를 방지한다.
+        try {
+            processCommand(command);
+        } catch (RuntimeException e) {
+            eventDedupeStore.remove(command.eventUuid());
+            throw e;
+        }
+    }
+
+    private void processCommand(PgConfirmCommand command) {
         // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
@@ -106,7 +120,8 @@ public class PgConfirmService implements PgConfirmCommandService {
                 inbox.getOrderId(),
                 storedResult,
                 null);
-        pgOutboxRepository.save(reemit);
+        PgOutbox saved = pgOutboxRepository.save(reemit);
+        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         log.info("PgConfirmService: terminal 재발행 orderId={} status={}",
                 inbox.getOrderId(), inbox.getStatus());

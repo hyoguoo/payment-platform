@@ -33,7 +33,7 @@ public class OutboxReadyEventHandler {
 
     private final PgOutboxChannel channel;
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handle(PgOutboxReadyEvent event) {
         boolean offered = channel.offer(event.getOutboxId());
         if (!offered) {
