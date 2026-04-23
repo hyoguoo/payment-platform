@@ -17,15 +17,15 @@ import org.springframework.stereotype.Component;
  * <p>레이어 규칙: @KafkaListener는 infrastructure/messaging/consumer에만 위치한다.
  * use-case 계층에 Kafka 의존을 금지한다.
  *
- * <p>ConditionalOnProperty(matchIfMissing=true): spring.kafka.bootstrap-servers 미설정 환경에서도
- * 빈 등록은 되나 KafkaAutoConfiguration이 없으면 KafkaListenerContainerFactory 빈이 없어 리스너 기동 안 됨.
- * 테스트에서는 PaymentConfirmResultUseCase를 직접 호출하여 Kafka 없이 검증한다.
- * T1-18 교훈: ConditionalOnProperty(spring.kafka.bootstrap-servers) — matchIfMissing=true 적용.
+ * <p>T3.5-02 규약: infra @ConditionalOnProperty는 matchIfMissing=false(기본).
+ * spring.kafka.bootstrap-servers 미명시 시 빈 자체가 등록되지 않는다.
+ * 테스트 컨텍스트는 spring.kafka.listener.auto-startup=false 로 제어한다.
+ * 단위 테스트는 PaymentConfirmResultUseCase를 직접 호출하여 Kafka 없이 검증한다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class ConfirmedEventConsumer {
 
     private final PaymentConfirmResultUseCase paymentConfirmResultUseCase;

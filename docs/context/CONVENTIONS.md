@@ -314,6 +314,13 @@ import org.junit.jupiter.api.Test;
 - Every test method uses `// given`, `// when`, `// then` comment sections
 - `@DisplayName` always in Korean describing the business scenario
 
+## @ConditionalOnProperty 규약 (T3.5-02, 2026-04-24)
+
+- **infra 레이어 @ConditionalOnProperty는 항상 `matchIfMissing=false`(기본값) 사용.** 환경변수가 명시되지 않으면 빈이 등록되지 않는다.
+- Kafka consumer·Redis adapter 등 인프라 bean은 운영 환경에서 환경변수를 명시해야 활성화된다.
+- 테스트 컨텍스트에서 Kafka listener 비기동은 `spring.kafka.listener.auto-startup=false`(`application-test.yml` 또는 `@TestPropertySource`)로 제어한다.
+- `matchIfMissing=true` 사용이 허용되는 케이스: 전략 패턴의 기본 구현체(예: `TossPaymentGatewayStrategy(pg.gateway.type=toss)`, `OutboxImmediateEventHandler(payment.monolith.confirm.enabled)`). 이 경우 인라인 주석으로 이유를 명시한다.
+
 ---
 
 *Convention analysis: 2026-03-18*

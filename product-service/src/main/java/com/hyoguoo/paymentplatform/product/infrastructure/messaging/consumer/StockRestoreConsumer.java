@@ -17,13 +17,14 @@ import org.springframework.stereotype.Component;
  * ADR-16: dedupe·재고 복원 로직은 StockRestoreUseCase(application)에서 처리.
  * consumer 내부에서 dedupe·stock 직접 로직 금지.
  * <p>
- * T1-18 교훈: ConditionalOnProperty(matchIfMissing=true) 적용.
- * spring.kafka.bootstrap-servers 미설정 환경에서 빈 등록은 되나 리스너는 기동하지 않는다.
+ * T3.5-02 규약: infra @ConditionalOnProperty는 matchIfMissing=false(기본).
+ * spring.kafka.bootstrap-servers 미명시 시 빈 자체가 등록되지 않는다.
+ * 테스트 컨텍스트는 spring.kafka.listener.auto-startup=false 로 제어한다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class StockRestoreConsumer {
 
     private static final String TOPIC = "stock.events.restore";

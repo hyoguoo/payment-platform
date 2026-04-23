@@ -44,6 +44,11 @@ logging:
     org.hibernate.SQL: DEBUG
     org.testcontainers: INFO
 
+spring:
+  kafka:
+    listener:
+      auto-startup: false
+
 scheduler:
   enabled: false
   payment-status-sync:

@@ -14,15 +14,16 @@ import org.springframework.stereotype.Component;
  * S-2(StockCommitEvent 소비): 메시지를 파싱하여 StockCommitUseCase로 위임한다.
  * 멱등성·dedupe 로직은 usecase 계층에서 처리한다.
  *
- * <p>T1-18 교훈: ConditionalOnProperty(matchIfMissing=true) 적용.
- * spring.kafka.bootstrap-servers 미설정 환경에서 빈 등록은 되나 리스너는 기동하지 않는다.
+ * <p>T3.5-02 규약: infra @ConditionalOnProperty는 matchIfMissing=false(기본).
+ * spring.kafka.bootstrap-servers 미명시 시 빈 자체가 등록되지 않는다.
+ * 테스트 컨텍스트는 spring.kafka.listener.auto-startup=false 로 제어한다.
  *
  * <p>레이어 규칙: @KafkaListener는 infrastructure/messaging/consumer에만 위치한다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class StockCommitConsumer {
 
     private static final String TOPIC = "payment.events.stock-committed";
