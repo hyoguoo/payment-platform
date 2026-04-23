@@ -30,6 +30,10 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         spring.json.add.type.headers: false
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
 
   output:
     ansi:
@@ -108,3 +112,11 @@ metrics:
       thresholds:
         stuck-in-progress-minutes: 5
         max-retry-count: 5
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}

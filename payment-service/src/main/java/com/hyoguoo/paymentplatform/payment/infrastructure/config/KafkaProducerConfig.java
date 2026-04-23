@@ -46,6 +46,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, PaymentConfirmCommandMessage> producerFactory) {
         KafkaTemplate<String, PaymentConfirmCommandMessage> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(commandsConfirmTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 
@@ -58,6 +59,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, StockCommittedEvent> producerFactory) {
         KafkaTemplate<String, StockCommittedEvent> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(eventsStockCommittedTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 
@@ -70,6 +72,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, StockRestoreEvent> producerFactory) {
         KafkaTemplate<String, StockRestoreEvent> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(eventsStockRestoreTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 }

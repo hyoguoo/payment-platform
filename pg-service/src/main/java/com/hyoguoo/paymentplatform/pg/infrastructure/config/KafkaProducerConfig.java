@@ -45,6 +45,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, ConfirmedEventPayload> producerFactory) {
         KafkaTemplate<String, ConfirmedEventPayload> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(eventsConfirmedTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 
@@ -57,6 +58,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, PgConfirmCommand> producerFactory) {
         KafkaTemplate<String, PgConfirmCommand> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(commandsConfirmTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 
@@ -70,6 +72,7 @@ public class KafkaProducerConfig {
             ProducerFactory<String, PgConfirmCommand> producerFactory) {
         KafkaTemplate<String, PgConfirmCommand> template = new KafkaTemplate<>(producerFactory);
         template.setDefaultTopic(commandsConfirmDlqTopic);
+        template.setObservationEnabled(true);
         return template;
     }
 }
