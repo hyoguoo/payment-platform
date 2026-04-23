@@ -18,20 +18,6 @@
     </encoder>
   </appender>
 
-  <!-- Logstash Appender (Docker Profile) -->
-  <springProfile name="docker">
-    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
-      <destination>logstash:5050</destination>
-      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-        <customFields>{"application":"${springAppName:-payment-platform}","environment":"docker"}</customFields>
-        <!-- Include all MDC fields (traceId, orderId, paymentKey, userId, etc.) -->
-        <includeMdc>true</includeMdc>
-      </encoder>
-      <keepAliveDuration>5 minutes</keepAliveDuration>
-      <reconnectionDelay>10 seconds</reconnectionDelay>
-    </appender>
-  </springProfile>
-
   <!-- Root Logger Configuration -->
   <springProfile name="test">
     <root level="INFO">
@@ -42,10 +28,10 @@
     <logger name="org.hibernate.SQL" level="DEBUG"/>
   </springProfile>
 
+  <!-- docker 프로필: Console stdout만 유지. Promtail이 Docker stdout을 Loki로 수집한다 -->
   <springProfile name="docker">
     <root level="INFO">
       <appender-ref ref="CONSOLE"/>
-      <appender-ref ref="LOGSTASH"/>
     </root>
     <logger name="com.hyoguoo.paymentplatform" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>

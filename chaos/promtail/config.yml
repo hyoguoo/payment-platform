@@ -1,0 +1,33 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+        filters:
+          - name: label
+            values: ["com.hyoguoo.loki.enable=true"]
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.+)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_label_com_hyoguoo_application"]
+        target_label: application
+      - source_labels: ["__meta_docker_container_label_com_hyoguoo_environment"]
+        target_label: environment
+    pipeline_stages:
+      - docker: {}
+      - regex:
+          expression: '.*traceId:(?P<trace_id>[a-zA-Z0-9]+).*'
+      - labels:
+          trace_id:

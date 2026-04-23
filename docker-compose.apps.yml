@@ -24,6 +24,10 @@ services:
       dockerfile: Dockerfile
     container_name: payment-service
     hostname: payment-service
+    labels:
+      com.hyoguoo.loki.enable: "true"
+      com.hyoguoo.application: "payment-service"
+      com.hyoguoo.environment: "docker"
     depends_on:
       eureka:
         condition: service_healthy
@@ -46,7 +50,9 @@ services:
       USER_ADAPTER_TYPE: http
       PRODUCT_SERVICE_BASE_URL: http://product-service:8083
       USER_SERVICE_BASE_URL: http://user-service:8084
-      TOSS_SECRET_KEY: ${TOSS_SECRET_KEY:-test_sk_placeholder}
+      TOSS_SECRET_KEY: ${TOSS_TEST_SECRET_KEY:-test_sk_placeholder}
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:
       - payment-infra-network
     healthcheck:
@@ -65,6 +71,10 @@ services:
       dockerfile: Dockerfile
     container_name: pg-service
     hostname: pg-service
+    labels:
+      com.hyoguoo.loki.enable: "true"
+      com.hyoguoo.application: "pg-service"
+      com.hyoguoo.environment: "docker"
     depends_on:
       eureka:
         condition: service_healthy
@@ -82,10 +92,15 @@ services:
       PG_DATASOURCE_USERNAME: root
       PG_DATASOURCE_PASSWORD: payment123
       PG_GATEWAY_TYPE: ${PG_GATEWAY_TYPE:-toss}
+      TOSS_SECRET_KEY: ${TOSS_TEST_SECRET_KEY:-test_sk_placeholder}
+      TOSS_API_URL: ${TOSS_API_URL:-https://api.tosspayments.com/v1/payments}
       NICEPAY_CLIENT_KEY: ${NICEPAY_CLIENT_KEY:-}
       NICEPAY_SECRET_KEY: ${NICEPAY_SECRET_KEY:-}
+      NICEPAY_API_URL: ${NICEPAY_API_URL:-https://sandbox-api.nicepay.co.kr}
       SPRING_DATA_REDIS_HOST: redis-dedupe
       SPRING_DATA_REDIS_PORT: "6379"
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:
       - payment-infra-network
     healthcheck:
@@ -104,6 +119,10 @@ services:
       dockerfile: Dockerfile
     container_name: product-service
     hostname: product-service
+    labels:
+      com.hyoguoo.loki.enable: "true"
+      com.hyoguoo.application: "product-service"
+      com.hyoguoo.environment: "docker"
     depends_on:
       eureka:
         condition: service_healthy
@@ -126,6 +145,8 @@ services:
       SPRING_DATA_REDIS_PORT: "6379"
       REDIS_STOCK_HOST: redis-stock
       REDIS_STOCK_PORT: "6379"
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:
       - payment-infra-network
     healthcheck:
@@ -144,6 +165,10 @@ services:
       dockerfile: Dockerfile
     container_name: user-service
     hostname: user-service
+    labels:
+      com.hyoguoo.loki.enable: "true"
+      com.hyoguoo.application: "user-service"
+      com.hyoguoo.environment: "docker"
     depends_on:
       eureka:
         condition: service_healthy
@@ -155,6 +180,8 @@ services:
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
       USER_DATASOURCE_USERNAME: root
       USER_DATASOURCE_PASSWORD: payment123
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:
       - payment-infra-network
     healthcheck:
@@ -174,6 +201,10 @@ services:
       dockerfile: Dockerfile
     container_name: gateway
     hostname: gateway
+    labels:
+      com.hyoguoo.loki.enable: "true"
+      com.hyoguoo.application: "gateway"
+      com.hyoguoo.environment: "docker"
     depends_on:
       eureka:
         condition: service_healthy
@@ -191,6 +222,8 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
       MONOLITH_FALLBACK_URI: http://payment-service:8080
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:
       - payment-infra-network
     healthcheck:

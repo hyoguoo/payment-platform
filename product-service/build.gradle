@@ -13,6 +13,9 @@ dependencies {
 
     // Actuator / Micrometer
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
     // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
