@@ -1,7 +1,6 @@
 # MSA-TRANSITION Phase 0 — 인프라 컨테이너 정의
 # ADR-10(compose 토폴로지), ADR-27(로컬 DX)
 # Phase 2.a T2a-04: pg-service 전용 MySQL 추가 (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
-# Phase 4 Toxiproxy: docker-compose.chaos.yml로 분리 (T4-01 opt-in)
 #
 # Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
 #   replication.factor=3

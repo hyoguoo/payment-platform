@@ -256,7 +256,6 @@ sequenceDiagram
 - Spring Boot 3.4.4
 - MySQL 8.0.33
 - JUnit 5
-- k6 (부하 테스트)
 
 <br>
 
@@ -272,21 +271,29 @@ sequenceDiagram
 
 ### 서비스 구성
 
-|  포트  |    서비스    |    설명     |
-|:----:|:---------:|:---------:|
-| 8080 | Spring App | 애플리케이션 서버 |
-| 3306 |   MySQL    |  데이터베이스   |
+|  포트  |        서비스        |      설명      |
+|:----:|:-----------------:|:------------:|
+| 8090 |      Gateway      |   API 게이트웨이   |
+| 8761 |      Eureka       |   서비스 디스커버리   |
+| 8081 |  payment-service  |    결제 서비스    |
+| 8082 |    pg-service     | PG 승인/중계 서비스  |
+| 8083 |  product-service  |    상품 서비스    |
+| 8084 |   user-service    |    회원 서비스    |
+| 3306 | mysql-payment     | payment DB |
+| 3308 |   mysql-pg        |    pg DB     |
+| 3309 | mysql-product     |  product DB  |
+| 3310 |   mysql-user      |   user DB    |
+| 9092 |       Kafka       |   이벤트 브로커    |
+| 6379 |  redis-dedupe     |  dedupe 캐시   |
+| 6380 |   redis-stock     |   재고 캐시    |
 
-> 관측성(Prometheus·Grafana·Tempo·Loki)은 MSA 스택(`docker-compose.observability.yml`)에서만 기동한다.
-> 레거시 모놀리식 벤치마크 compose(`docker/compose/docker-compose.yml`)에는 관측성 컨테이너가 포함되지 않는다.
+> 관측성(Prometheus·Grafana·Tempo·Loki)은 `docker-compose.observability.yml`에서 기동한다.
 
 #### 시크릿 설정
 
 ```bash
-cp .env.secret.example .env.secret # 루트 디렉토리
-cd docker/compose
-cp .env.secret.example .env.secret # docker/compose 디렉토리
-# TOSS_SECRET_KEY, NICEPAY_SECRET_KEY 입력
+cp .env.secret.example .env.secret
+# TOSS_SECRET_KEY, NICEPAY_CLIENT_KEY, NICEPAY_SECRET_KEY 입력
 ```
 
 ### 실행 방법
@@ -294,15 +301,15 @@ cp .env.secret.example .env.secret # docker/compose 디렉토리
 #### 애플리케이션 실행
 
 ```bash
-./scripts/run.sh
+bash scripts/compose-up.sh
 ```
 
-실행 후 http://localhost:8080 에서 전체 페이지를 탐색할 수 있습니다.
+실행 후 http://localhost:8081 (payment-service) 에서 전체 페이지를 탐색할 수 있습니다.
 
 | URL                                                 | 설명                                     |
 |:----------------------------------------------------|:---------------------------------------|
-| http://localhost:8080                               | 홈 — 결제 흐름 · 어드민 · 모니터링 링크 모음           |
-| http://localhost:8080/payment/checkout.html         | 결제하기 — 토스페이먼츠 결제창 호출                   |
-| http://localhost:8080/payment/checkout-nicepay.html | 결제하기 — 나이스페이먼츠 결제창 호출                  |
-| http://localhost:8080/admin/payments/events         | 결제 이벤트 목록 조회 / 검색                      |
-| http://localhost:8080/admin/payments/history        | 결제 히스토리 — 상태 변경 이력 조회                  |
+| http://localhost:8081                               | 홈 — 결제 흐름 · 어드민 · 모니터링 링크 모음           |
+| http://localhost:8081/payment/checkout.html         | 결제하기 — 토스페이먼츠 결제창 호출                   |
+| http://localhost:8081/payment/checkout-nicepay.html | 결제하기 — 나이스페이먼츠 결제창 호출                  |
+| http://localhost:8081/admin/payments/events         | 결제 이벤트 목록 조회 / 검색                      |
+| http://localhost:8081/admin/payments/history        | 결제 히스토리 — 상태 변경 이력 조회                  |

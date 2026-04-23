@@ -16,7 +16,7 @@
 **Build Image:**
 - 호스트에서 `./gradlew clean build -x test` 실행 후 빌드된 JAR를 Docker COPY로 복사 (single-stage Dockerfile)
 - 이유: Docker 내부 Gradle 빌드는 Mac VM I/O로 인해 2~3분 소요; 호스트 빌드는 40초 이내
-- `scripts/run.sh`에 호스트 빌드 → docker image build 순서가 통합되어 있음
+- `scripts/compose-up.sh`에 호스트 빌드(bootJar) → docker image build → infra/apps/observability 기동 순서가 통합되어 있음
 
 **Package Manager:**
 - Gradle 8.10 (wrapper)
