@@ -135,6 +135,29 @@ class QuarantineCompensationHandlerTest {
         then(stockCachePort).should(never()).rollback(any(Long.class), any(Integer.class));
     }
 
+    @Test
+    @DisplayName("handle - QUARANTINED 전이 성공 후 StockCachePort 접촉 0회 (불변식: QUARANTINED는 홀딩)")
+    void handle_QuarantinedTransition_ShouldNeverTouchStockCachePort() {
+        // given: QUARANTINED 전이는 성공하지만 StockCachePort는 전혀 호출되지 않아야 함
+        PaymentOrder order = buildPaymentOrder(40L, 7);
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, false);
+        PaymentEvent quarantinedEvent = buildPaymentEventWithOrders(
+                PaymentEventStatus.QUARANTINED, false, List.of(order));
+
+        given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
+
+        // when: 진입점에 관계없이 StockCachePort 접촉 0회
+        handler.handle(ORDER_ID, REASON);
+
+        // then: StockCachePort 전혀 호출 없음
+        then(stockCachePort).shouldHaveNoInteractions();
+        // then: QUARANTINED 전이는 정상 수행
+        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON);
+        then(paymentEventRepository).should(times(1)).saveOrUpdate(quarantinedEvent);
+    }
+
     // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, boolean pending) {

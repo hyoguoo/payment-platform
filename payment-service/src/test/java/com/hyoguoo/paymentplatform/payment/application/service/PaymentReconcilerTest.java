@@ -144,28 +144,28 @@ class PaymentReconcilerTest {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 4. QUARANTINED 결제 → StockCachePort.rollback() 호출
+    // 4. QUARANTINED 결제 → StockCachePort.rollback() 호출 없음 (불변식)
+    //    도메인 규칙: QUARANTINED는 홀딩 상태이므로 재고 복구 대상이 아니다.
     // ──────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("scan - QUARANTINED 결제가 있으면 각 주문의 DECR 수량을 rollback() 호출로 복원한다")
-    void scan_WhenQuarantinedPaymentExists_ShouldRollbackDecrForEach() {
+    @DisplayName("scan - QUARANTINED 결제가 있어도 StockCachePort.rollback() 호출 없음 (불변식: QUARANTINED는 홀딩)")
+    void scan_WhenQuarantinedPaymentExists_ShouldNotCallRollback() {
         // given: QUARANTINED 이벤트, 주문 수량 5
         Long productId = 200L;
         int quantity = 5;
+        int initialStock = 90;
         fakeProductPort.register(productId, 100);
-        fakeStockCachePort.set(productId, 90); // 10 차감된 상태 (실제로는 5만 차감됐어야 하는데 여기선 단순 테스트)
+        fakeStockCachePort.set(productId, initialStock);
 
         PaymentEvent quarantinedEvent = buildQuarantinedEvent("order-q-001", productId, quantity, false);
         fakePaymentEventRepository.saveOrUpdate(quarantinedEvent);
 
-        int cacheBefore = fakeStockCachePort.current(productId);
-
         // when
         reconciler.scan();
 
-        // then: rollback() 호출로 재고 복원 (+5)
-        assertThat(fakeStockCachePort.current(productId)).isEqualTo(cacheBefore + quantity);
+        // then: rollback() 호출 없음 — 재고 값 그대로 유지
+        assertThat(fakeStockCachePort.current(productId)).isEqualTo(initialStock);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
