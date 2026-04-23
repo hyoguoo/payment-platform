@@ -26,13 +26,13 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @ConditionalOnProperty(
         name = "payment.monolith.confirm.enabled",
         havingValue = "true",
-        matchIfMissing = false
+        matchIfMissing = true
 )
 public class OutboxImmediateEventHandler {
 
     private final OutboxRelayService outboxRelayService;
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     @Async("outboxRelayExecutor")
     public void handle(PaymentConfirmEvent event) {
         outboxRelayService.relay(event.getOrderId());

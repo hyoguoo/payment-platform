@@ -16,6 +16,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Transactional Outbox relay — outbox 레코드를 Kafka로 발행하고 DONE 전이를 수행한다.
@@ -40,7 +41,12 @@ public class OutboxRelayService {
      * <p>Step 2: paymentEvent 조회 후 Kafka payload 구성.
      * <p>Step 3: messagePublisherPort.send() — 실패 시 예외 전파 (상태 전이 방지).
      * <p>Step 4: 성공 시 outbox.toDone() + save().
+     *
+     * <p>@Transactional: @Modifying UPDATE(claimToInFlight) + save가 TX를 요구한다.
+     * AFTER_COMMIT 리스너·@Scheduled 워커 모두 TX-less 진입점이므로 이 메서드에서 TX를 시작한다.
+     * Kafka send가 TX 안에서 수행되지만 outbox 패턴에선 실패 시 rollback으로 PENDING 유지가 올바른 동작.
      */
+    @Transactional
     public void relay(String orderId) {
         LocalDateTime now = localDateTimeProvider.now();
 
@@ -76,12 +82,14 @@ public class OutboxRelayService {
     }
 
     private PaymentConfirmCommandMessage buildMessage(PaymentEvent paymentEvent) {
+        // eventUuid는 orderId로 재사용한다. confirm 명령은 orderId당 1회만 발행되므로
+        // orderId가 곧 메시지 고유 식별자로 기능하며 pg-service의 Redis dedupe 키로 유효하다.
         return new PaymentConfirmCommandMessage(
                 paymentEvent.getOrderId(),
                 paymentEvent.getPaymentKey(),
                 paymentEvent.getTotalAmount(),
                 paymentEvent.getGatewayType(),
-                paymentEvent.getBuyerId()
+                paymentEvent.getOrderId()
         );
     }
 }

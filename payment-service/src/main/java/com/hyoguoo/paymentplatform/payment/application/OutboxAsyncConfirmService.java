@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -33,7 +32,6 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
-    private final PaymentConfirmPublisherPort confirmPublisher;
 
     @Override
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
@@ -69,13 +67,6 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
             case SUCCESS -> transactionCoordinator.executeConfirmTx(
                     paymentEvent, command.getPaymentKey(), command.getOrderId());
         }
-
-        confirmPublisher.publish(
-                command.getOrderId(),
-                paymentEvent.getBuyerId(),
-                paymentEvent.getTotalAmount(),
-                command.getPaymentKey()
-        );
 
         return PaymentConfirmAsyncResult.builder()
                 .orderId(command.getOrderId())

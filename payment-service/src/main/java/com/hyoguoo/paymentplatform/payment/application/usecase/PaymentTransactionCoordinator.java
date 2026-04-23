@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -30,6 +31,7 @@ public class PaymentTransactionCoordinator {
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final StockCachePort stockCachePort;
+    private final PaymentConfirmPublisherPort confirmPublisher;
 
     /**
      * 재고 캐시 원자 DECR. TX 외부에서 실행된다(호출자 OutboxAsyncConfirmService도 TX 없음).
@@ -61,7 +63,11 @@ public class PaymentTransactionCoordinator {
     /**
      * 재고 캐시 장애(CACHE_DOWN) 분기: QUARANTINED 전이 + quarantine_compensation_pending 플래그 set.
      * ADR-13 §2-2b-3.
+     *
+     * <p>@Transactional: 두 번의 상태 변경(markPaymentAsQuarantined +
+     * markQuarantineCompensationPending)을 단일 TX로 묶어 부분 커밋을 막는다.
      */
+    @Transactional
     public PaymentEvent markStockCacheDownQuarantine(PaymentEvent paymentEvent) {
         PaymentEvent quarantined = paymentCommandUseCase.markPaymentAsQuarantined(
                 paymentEvent, "재고 캐시 장애로 인한 격리");
@@ -70,13 +76,22 @@ public class PaymentTransactionCoordinator {
     }
 
     /**
-     * 재고 차감 성공 후 TX 안에서 executePayment(READY→IN_PROGRESS) + outbox PENDING을 원자 커밋.
+     * 재고 차감 성공 후 TX 안에서 executePayment(READY→IN_PROGRESS) + outbox PENDING을 원자 커밋한다.
      * 외부 호출자(OutboxAsyncConfirmService)가 Spring 프록시 경유로 호출하므로 self-invocation 문제 없음.
+     *
+     * <p>PaymentConfirmEvent 발행도 TX 내부에서 수행 — AFTER_COMMIT 리스너가 드롭되지 않도록
+     * TX 동기화가 활성 상태일 때 publish한다. 리스너는 TX 커밋 직후 @Async 스레드에서 outbox relay.
      */
     @Transactional
     public PaymentEvent executeConfirmTx(PaymentEvent paymentEvent, String paymentKey, String orderId) {
         PaymentEvent inProgress = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
         paymentOutboxUseCase.createPendingRecord(orderId);
+        confirmPublisher.publish(
+                orderId,
+                paymentEvent.getBuyerId(),
+                paymentEvent.getTotalAmount(),
+                paymentKey
+        );
         return inProgress;
     }
 

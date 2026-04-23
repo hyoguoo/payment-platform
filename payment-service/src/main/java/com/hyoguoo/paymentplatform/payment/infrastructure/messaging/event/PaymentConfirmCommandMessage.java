@@ -4,22 +4,25 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
 
 /**
- * payment.commands.confirm 토픽 payload.
+ * payment.commands.confirm 토픽 payload (wire contract).
  * OutboxRelayService가 Kafka로 발행하는 confirm 명령 메시지.
- * ADR-04: Transactional Outbox publisher 계층 — payload 최소 구현.
  *
- * @param orderId     주문 ID (파티션 키로도 사용)
- * @param paymentKey  결제 키 (PG 승인 시 필요)
- * @param totalAmount 결제 총액
- * @param gatewayType PG 유형
- * @param buyerId     구매자 ID
+ * <p>ADR-04: Transactional Outbox publisher 계층.
+ * 필드 구성은 pg-service consumer({@code PgConfirmCommand})와 정렬되어 있다.
+ * 두 서비스는 공통 jar를 공유하지 않으므로(ADR-30), JSON 필드명 기준으로 1:1 매핑된다.
+ *
+ * @param orderId    주문 ID (Kafka 파티션 키로도 사용)
+ * @param paymentKey PG 승인 시 필요한 결제 키
+ * @param amount     결제 총액
+ * @param vendorType PG 벤더 (TOSS/NICEPAY)
+ * @param eventUuid  consumer 측 eventUUID dedupe 키 (현재 구현: orderId 재사용 — confirm은 orderId당 1회만 발행)
  */
 public record PaymentConfirmCommandMessage(
         String orderId,
         String paymentKey,
-        BigDecimal totalAmount,
-        PaymentGatewayType gatewayType,
-        Long buyerId
+        BigDecimal amount,
+        PaymentGatewayType vendorType,
+        String eventUuid
 ) {
 
 }

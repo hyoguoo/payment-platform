@@ -13,7 +13,6 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -40,20 +39,17 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
-    private PaymentConfirmPublisherPort mockConfirmPublisher;
 
     @BeforeEach
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
-        mockConfirmPublisher = Mockito.mock(PaymentConfirmPublisherPort.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
-                mockPaymentFailureUseCase,
-                mockConfirmPublisher
+                mockPaymentFailureUseCase
         );
     }
 
@@ -110,26 +106,6 @@ class OutboxAsyncConfirmServiceTest {
             assertThat(result.getAmount()).isEqualByComparingTo(amount);
         }
 
-        @Test
-        @DisplayName("SUCCESS 시 confirmPublisher.publish(orderId)를 1회 호출한다")
-        void publishesOnceOnSuccess() throws PaymentOrderedProductStockException {
-            // given
-            String orderId = "order-123";
-            BigDecimal amount = BigDecimal.valueOf(15000);
-            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
-            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
-                    .willReturn(StockDecrementResult.SUCCESS);
-
-            // when
-            outboxAsyncConfirmService.confirm(command);
-
-            // then
-            then(mockConfirmPublisher).should(times(1)).publish(eq(orderId), any(), any(), anyString());
-        }
-
     }
 
     @Nested
@@ -157,7 +133,6 @@ class OutboxAsyncConfirmServiceTest {
                     .handleStockFailure(eq(paymentEvent), anyString());
             then(mockTransactionCoordinator).should(never())
                     .executeConfirmTx(any(), anyString(), anyString());
-            then(mockConfirmPublisher).should(never()).publish(any(), any(), any(), any());
         }
     }
 
@@ -186,7 +161,6 @@ class OutboxAsyncConfirmServiceTest {
                     .markStockCacheDownQuarantine(paymentEvent);
             then(mockTransactionCoordinator).should(never())
                     .executeConfirmTx(any(), anyString(), anyString());
-            then(mockConfirmPublisher).should(never()).publish(any(), any(), any(), any());
             then(mockPaymentFailureUseCase).should(never())
                     .handleStockFailure(any(), anyString());
         }

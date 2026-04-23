@@ -48,6 +48,17 @@ public class PaymentConfirmResultUseCase {
             return;
         }
 
+        // TX 경계 불일치 방어: stock Kafka publish 실패로 TX 롤백 시 dedupe도 같이 되돌려야
+        // 재컨슘 경로에서 영구 정체를 방지한다.
+        try {
+            processMessage(message);
+        } catch (RuntimeException e) {
+            eventDedupeStore.remove(message.eventUuid());
+            throw e;
+        }
+    }
+
+    private void processMessage(ConfirmedEventMessage message) {
         // 2단: orderId로 PaymentEvent 조회
         PaymentEvent paymentEvent = paymentEventRepository
                 .findByOrderId(message.orderId())

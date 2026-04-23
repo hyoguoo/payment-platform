@@ -10,6 +10,7 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -54,6 +55,9 @@ class PaymentTransactionCoordinatorTest {
 
     @Mock
     private StockCachePort stockCachePort;
+
+    @Mock
+    private PaymentConfirmPublisherPort confirmPublisher;
 
     @Nested
     @DisplayName("decrementStock — 재고 캐시 원자 DECR 분기")
@@ -162,9 +166,15 @@ class PaymentTransactionCoordinatorTest {
 
             // then
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-            var inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, paymentOutboxUseCase);
+            var inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, paymentOutboxUseCase, confirmPublisher);
             inOrder.verify(paymentCommandUseCase).executePayment(readyEvent, paymentKey);
             inOrder.verify(paymentOutboxUseCase).createPendingRecord(orderId);
+            inOrder.verify(confirmPublisher).publish(
+                    org.mockito.ArgumentMatchers.eq(orderId),
+                    any(),
+                    any(),
+                    org.mockito.ArgumentMatchers.eq(paymentKey)
+            );
         }
     }
 
