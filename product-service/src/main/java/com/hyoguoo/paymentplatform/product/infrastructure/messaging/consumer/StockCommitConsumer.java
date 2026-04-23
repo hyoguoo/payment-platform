@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer;
 
 import com.hyoguoo.paymentplatform.product.application.usecase.StockCommitUseCase;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockCommittedMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,8 +45,8 @@ public class StockCommitConsumer {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(StockCommittedMessage message) {
-        log.info("StockCommitConsumer: 메시지 수신 productId={} qty={} eventUUID={}",
-                message.productId(), message.qty(), message.idempotencyKey());
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
+                () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
         stockCommitUseCase.commit(
                 message.idempotencyKey(),

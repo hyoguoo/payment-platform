@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.product.exception.common;
 
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.product.presentation.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +22,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleProductNotFound(ProductNotFoundException e) {
-        log.warn("product_not_found code={} message={}", e.getErrorCode().getCode(), e.getMessage());
+        LogFmt.warn(log, LogDomain.PRODUCT, EventType.EXCEPTION,
+                () -> "product_not_found code=" + e.getErrorCode().getCode() + " message=" + e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(e.getErrorCode().getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntime(RuntimeException e) {
-        log.error("product_internal_error message={}", e.getMessage(), e);
+        LogFmt.error(log, LogDomain.GLOBAL, EventType.EXCEPTION, e::getMessage);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("PRODUCT_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
     }

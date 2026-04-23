@@ -2,6 +2,9 @@ package com.hyoguoo.paymentplatform.product.application.usecase;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.domain.Stock;
 import com.hyoguoo.paymentplatform.product.presentation.port.StockRestoreCommandService;
 import java.time.Duration;
@@ -59,8 +62,8 @@ public class StockRestoreUseCase implements StockRestoreCommandService {
     @Transactional
     public void restore(String orderId, String eventUUID, long productId, int qty) {
         if (eventDedupeStore.existsValid(eventUUID)) {
-            log.info("StockRestoreUseCase: 중복 이벤트 무시 eventUUID={} orderId={} productId={}",
-                    eventUUID, orderId, productId);
+            LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_RESTORE_DUPLICATE,
+                    () -> "eventUUID=" + eventUUID + " orderId=" + orderId + " productId=" + productId);
             return;
         }
 
@@ -68,8 +71,8 @@ public class StockRestoreUseCase implements StockRestoreCommandService {
 
         eventDedupeStore.recordIfAbsent(eventUUID, Instant.now().plus(DEDUPE_TTL));
 
-        log.info("StockRestoreUseCase: 재고 복원 완료 orderId={} productId={} qty={} eventUUID={}",
-                orderId, productId, qty, eventUUID);
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_RESTORE_DONE,
+                () -> "orderId=" + orderId + " productId=" + productId + " qty=" + qty + " eventUUID=" + eventUUID);
     }
 
     private void restoreStockInRdb(long productId, int qty, String orderId, String eventUUID) {
@@ -86,7 +89,7 @@ public class StockRestoreUseCase implements StockRestoreCommandService {
                 .allArgsBuild();
         stockRepository.save(updated);
 
-        log.info("StockRestoreUseCase: RDB UPDATE 완료 productId={} {} -> {}",
-                productId, current.getQuantity(), newQuantity);
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_RESTORE_RDB_DONE,
+                () -> "productId=" + productId + " " + current.getQuantity() + " -> " + newQuantity);
     }
 }

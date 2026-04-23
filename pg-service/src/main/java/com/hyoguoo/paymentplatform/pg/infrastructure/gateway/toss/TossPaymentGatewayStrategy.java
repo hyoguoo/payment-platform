@@ -9,6 +9,9 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
@@ -98,8 +101,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
             throw new IllegalStateException("unreachable — handleErrorResponse 는 항상 예외를 던진다");
         } catch (ResourceAccessException e) {
             // I/O 레벨 실패(커넥션 타임아웃·리셋 등) — 재시도 가능
-            log.warn("TossPaymentGatewayStrategy: 네트워크 I/O 실패 orderId={} cause={}",
-                    request.orderId(), e.getMessage());
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
+                    () -> "orderId=" + request.orderId() + " cause=" + e.getMessage());
             throw PgGatewayRetryableException.of(NETWORK_ERROR_MESSAGE);
         }
     }
@@ -140,8 +143,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
         TossPaymentErrorCode code = TossPaymentErrorCode.of(fail.code());
 
         if (code.isAlreadyProcessed()) {
-            log.info("TossPaymentGatewayStrategy: ALREADY_PROCESSED_PAYMENT → DuplicateApprovalHandler 위임 orderId={}",
-                    request.orderId());
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
                     request.orderId(), request.amount(), request.orderId());
             throw PgGatewayDuplicateHandledException.of(
@@ -150,12 +153,12 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
 
         String detail = fail.code() + ": " + fail.message();
         if (code.isRetryableError()) {
-            log.warn("TossPaymentGatewayStrategy: 재시도 가능 에러 orderId={} detail={}",
-                    request.orderId(), detail);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                    () -> "orderId=" + request.orderId() + " detail=" + detail);
             throw PgGatewayRetryableException.of(detail);
         }
-        log.warn("TossPaymentGatewayStrategy: 확정 실패 orderId={} detail={}",
-                request.orderId(), detail);
+        LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NON_RETRYABLE_ERROR,
+                () -> "orderId=" + request.orderId() + " detail=" + detail);
         throw PgGatewayNonRetryableException.of(detail);
     }
 
@@ -209,7 +212,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
             return OffsetDateTime.parse(approvedAt, TossPaymentApiResponse.DATE_TIME_FORMATTER)
                     .toLocalDateTime();
         } catch (DateTimeParseException e) {
-            log.warn("TossPaymentGatewayStrategy: approvedAt 파싱 실패 fallback=now approvedAt={}", approvedAt);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "approvedAt 파싱 실패 fallback=now approvedAt=" + approvedAt);
             return LocalDateTime.now();
         }
     }
@@ -225,7 +229,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
         try {
             return objectMapper.readValue(errorResponse, TossPaymentApiFailResponse.class);
         } catch (JsonProcessingException e) {
-            log.warn("TossPaymentGatewayStrategy: 에러 응답 파싱 실패 — UNKNOWN 처리 raw={}", errorResponse);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "에러 응답 파싱 실패 — UNKNOWN 처리 raw=" + errorResponse);
             return new TossPaymentApiFailResponse("UNKNOWN", errorResponse);
         }
     }

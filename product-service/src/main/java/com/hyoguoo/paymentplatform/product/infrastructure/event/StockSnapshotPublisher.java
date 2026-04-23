@@ -3,6 +3,9 @@ package com.hyoguoo.paymentplatform.product.infrastructure.event;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.domain.Stock;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.ProductTopics;
 import java.time.Instant;
@@ -39,7 +42,8 @@ public class StockSnapshotPublisher {
     @EventListener(ApplicationReadyEvent.class)
     public void publishAll() {
         List<Stock> stocks = stockRepository.findAll();
-        log.info("action=stock_snapshot_publish count={}", stocks.size());
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_SNAPSHOT_PUBLISH,
+                () -> "count=" + stocks.size());
 
         Instant capturedAt = Instant.now();
         for (Stock stock : stocks) {

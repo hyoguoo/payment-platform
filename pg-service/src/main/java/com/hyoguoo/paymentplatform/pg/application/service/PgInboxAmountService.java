@@ -1,8 +1,10 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
-import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter;
 import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
@@ -48,9 +50,11 @@ public class PgInboxAmountService {
         long amountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
         boolean transitioned = pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
         if (!transitioned) {
-            log.info("PgInboxAmountService: NONE→IN_PROGRESS 전이 실패(이미 선점) orderId={}", orderId);
+            LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_NONE_TO_IN_PROGRESS_PREEMPTED,
+                    () -> "orderId=" + orderId);
         } else {
-            log.info("PgInboxAmountService: payload amount 기록 완료 orderId={} amount={}", orderId, amountLong);
+            LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_RECORDED,
+                    () -> "orderId=" + orderId + " amount=" + amountLong);
         }
     }
 
@@ -76,20 +80,22 @@ public class PgInboxAmountService {
                         "validateAndApprove: inbox not found orderId=" + orderId));
 
         if (inbox.getAmount() == null) {
-            log.warn("PgInboxAmountService: inbox.amount null — QUARANTINED 전이 orderId={}", orderId);
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_NULL_QUARANTINED,
+                    () -> "orderId=" + orderId);
             pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
             return;
         }
 
         if (inbox.getAmount().longValue() != vendorAmount) {
-            log.warn("PgInboxAmountService: 2자 금액 불일치 — QUARANTINED+AMOUNT_MISMATCH orderId={} inboxAmount={} vendorAmount={}",
-                    orderId, inbox.getAmount(), vendorAmount);
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_MISMATCH_QUARANTINED,
+                    () -> "orderId=" + orderId + " inboxAmount=" + inbox.getAmount() + " vendorAmount=" + vendorAmount);
             pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
             return;
         }
 
         pgInboxRepository.transitToApproved(orderId, buildApprovedPayload(orderId, vendorAmount));
-        log.info("PgInboxAmountService: 2자 대조 통과 — APPROVED 전이 orderId={} amount={}", orderId, vendorAmount);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_APPROVED,
+                () -> "orderId=" + orderId + " amount=" + vendorAmount);
     }
 
     // -----------------------------------------------------------------------
@@ -118,7 +124,8 @@ public class PgInboxAmountService {
 
         pgInboxRepository.transitNoneToInProgress(orderId, payloadLong);
         pgInboxRepository.transitToApproved(orderId, buildApprovedPayload(orderId, vendorAmount));
-        log.info("PgInboxAmountService: 직접 APPROVED 전이 완료 orderId={} amount={}", orderId, payloadLong);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_DIRECT_APPROVED,
+                () -> "orderId=" + orderId + " amount=" + payloadLong);
     }
 
     // -----------------------------------------------------------------------

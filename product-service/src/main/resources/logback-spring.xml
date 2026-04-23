@@ -1,0 +1,47 @@
+<configuration>
+  <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [traceId:%X{traceId:-N/A}] %-5level %logger{36} - %msg%n"/>
+  <property name="LOG_PATTERN_COLOR"
+    value="%d{HH:mm:ss.SSS} [%thread] [%magenta(traceId:%X{traceId:-N/A})] %highlight(%-5level) %cyan(%logger{36}) - %msg%n"/>
+
+  <!-- Spring Properties -->
+  <springProperty scope="context" name="springAppName" source="spring.application.name"/>
+
+  <!-- Conversion Rules -->
+  <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
+  <conversionRule conversionWord="wEx"
+    converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+
+  <!-- Console Appender (All Profiles) -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>${LOG_PATTERN_COLOR}</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Root Logger Configuration -->
+  <springProfile name="test">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+    <logger name="com.hyoguoo.paymentplatform.product" level="DEBUG"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+  </springProfile>
+
+  <!-- docker 프로필: Console stdout만 유지. Promtail이 Docker stdout을 Loki로 수집한다 -->
+  <springProfile name="docker">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+    <logger name="com.hyoguoo.paymentplatform.product" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+  </springProfile>
+
+  <!-- Default Profile -->
+  <springProfile name="default">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+</configuration>

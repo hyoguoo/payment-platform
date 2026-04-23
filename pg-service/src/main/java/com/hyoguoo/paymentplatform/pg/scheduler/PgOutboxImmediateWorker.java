@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.pg.scheduler;
 
 import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,9 +28,6 @@ import org.springframework.stereotype.Component;
  *   <li>stop(): running=false + 스레드 interrupt + executor awaitTermination(10s).</li>
  *   <li>getPhase(): Integer.MAX_VALUE - 100 (채널보다 나중에 stop).</li>
  * </ul>
- *
- * <p>LogFmt 미사용: pg-service 는 별도 LogFmt 복제본을 갖지 않아 @Slf4j 평문 로깅.
- * TODO: T5-02 LogFmt 공통화 완결 단계에서 pg-service 전용 LogFmt 복제(또는 공통 모듈 분리) 적용.
  */
 @Slf4j
 @Component
@@ -64,7 +64,8 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
             workers.add(worker);
             worker.start();
         }
-        log.info("PgOutboxImmediateWorker started: workerCount={}", workerCount);
+        LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_STARTED,
+                () -> "workerCount=" + workerCount);
     }
 
     @Override
@@ -87,7 +88,7 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
         workers.clear();
         shutdownRelayExecutor();
         callback.run();
-        log.info("PgOutboxImmediateWorker stopped");
+        LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_STOPPED);
     }
 
     @Override
@@ -109,7 +110,8 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
-                log.warn("PgOutboxImmediateWorker: 워커 루프 예외 message={}", e.getMessage());
+                LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
+                        e::getMessage);
             }
         }
     }
@@ -118,7 +120,8 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
         try {
             pgOutboxRelayService.relay(id);
         } catch (Exception e) {
-            log.warn("PgOutboxImmediateWorker: relay 실패 id={} message={}", id, e.getMessage());
+            LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
+                    () -> "id=" + id + " message=" + e.getMessage());
         }
     }
 

@@ -3,6 +3,9 @@ package com.hyoguoo.paymentplatform.product.application.usecase;
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.product.application.port.out.PaymentStockCachePort;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.domain.Stock;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
@@ -50,15 +53,16 @@ public class StockCommitUseCase {
     public void commit(String eventUUID, long orderId, long productId, int qty, Instant expiresAt) {
         boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUUID, expiresAt);
         if (!firstSeen) {
-            log.info("StockCommitUseCase: 중복 이벤트 무시 eventUUID={} orderId={} productId={}",
-                    eventUUID, orderId, productId);
+            LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_DUPLICATE,
+                    () -> "eventUUID=" + eventUUID + " orderId=" + orderId + " productId=" + productId);
             return;
         }
 
         int newStock = commitToRdb(productId, qty, orderId, eventUUID);
 
         paymentStockCachePort.setStock(productId, newStock);
-        log.info("StockCommitUseCase: Redis SET 완료 productId={} stock={}", productId, newStock);
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_REDIS_DONE,
+                () -> "productId=" + productId + " stock=" + newStock);
     }
 
     /**
@@ -81,8 +85,8 @@ public class StockCommitUseCase {
                 .allArgsBuild();
         stockRepository.save(updated);
 
-        log.info("StockCommitUseCase: RDB UPDATE 완료 productId={} {} -> {}",
-                productId, current.getQuantity(), newQuantity);
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RDB_DONE,
+                () -> "productId=" + productId + " " + current.getQuantity() + " -> " + newQuantity);
         return newQuantity;
     }
 }

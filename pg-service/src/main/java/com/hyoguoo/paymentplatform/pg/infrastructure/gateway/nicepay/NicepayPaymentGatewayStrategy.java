@@ -9,6 +9,9 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
@@ -112,8 +115,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
         } catch (RestClientResponseException e) {
             throw classifyConfirmError(e, request);
         } catch (ResourceAccessException e) {
-            log.warn("NicepayPaymentGatewayStrategy: 네트워크 I/O 실패 orderId={} cause={}",
-                    request.orderId(), e.getMessage());
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
+                    () -> "orderId=" + request.orderId() + " cause=" + e.getMessage());
             throw PgGatewayRetryableException.of(NETWORK_ERROR_MESSAGE);
         }
     }
@@ -154,8 +157,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
         }
 
         if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(response.resultCode())) {
-            log.info("NicepayPaymentGatewayStrategy: 2201 중복 승인 → DuplicateApprovalHandler 위임 orderId={}",
-                    request.orderId());
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " — 2201 중복 승인 DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
                     request.orderId(), request.amount(), request.orderId());
             throw PgGatewayDuplicateHandledException.of(
@@ -164,12 +167,12 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
 
         String detail = response.resultCode() + ": " + response.resultMsg();
         if (isRetryableErrorCode(response.resultCode())) {
-            log.warn("NicepayPaymentGatewayStrategy: 재시도 가능 에러 orderId={} detail={}",
-                    request.orderId(), detail);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                    () -> "orderId=" + request.orderId() + " detail=" + detail);
             throw PgGatewayRetryableException.of(detail);
         }
-        log.warn("NicepayPaymentGatewayStrategy: 확정 실패 orderId={} detail={}",
-                request.orderId(), detail);
+        LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NON_RETRYABLE_ERROR,
+                () -> "orderId=" + request.orderId() + " detail=" + detail);
         throw PgGatewayNonRetryableException.of(detail);
     }
 
@@ -180,8 +183,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
         NicepayPaymentApiFailResponse fail = parseErrorResponse(e.getResponseBodyAsString());
 
         if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(fail.resultCode())) {
-            log.info("NicepayPaymentGatewayStrategy: 2201 중복 승인(HTTP body) → DuplicateApprovalHandler 위임 orderId={}",
-                    request.orderId());
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " — 2201 중복 승인(HTTP body) DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
                     request.orderId(), request.amount(), request.orderId());
             return PgGatewayDuplicateHandledException.of(
@@ -251,7 +254,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             return OffsetDateTime.parse(paidAt, NicepayPaymentApiResponse.DATE_TIME_FORMATTER)
                     .toLocalDateTime();
         } catch (DateTimeParseException e) {
-            log.warn("NicepayPaymentGatewayStrategy: paidAt 파싱 실패 fallback=now paidAt={}", paidAt);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "paidAt 파싱 실패 fallback=now paidAt=" + paidAt);
             return LocalDateTime.now();
         }
     }
@@ -267,7 +271,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
         try {
             return objectMapper.readValue(errorResponse, NicepayPaymentApiFailResponse.class);
         } catch (JsonProcessingException e) {
-            log.warn("NicepayPaymentGatewayStrategy: 에러 응답 파싱 실패 raw={}", errorResponse);
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "에러 응답 파싱 실패 raw=" + errorResponse);
             return new NicepayPaymentApiFailResponse("UNKNOWN", errorResponse);
         }
     }

@@ -3,6 +3,9 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
@@ -59,14 +62,15 @@ public class PgDlqService {
                 .orElse(null);
 
         if (inbox == null) {
-            log.warn("PgDlqService: inbox 없음 — no-op orderId={}", orderId);
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DLQ_NO_INBOX,
+                    () -> "orderId=" + orderId);
             return;
         }
 
         // 2단계: terminal이면 no-op (불변식 6c 중복 DLQ 흡수)
         if (inbox.getStatus().isTerminal()) {
-            log.info("PgDlqService: 이미 terminal — no-op (불변식 6c) orderId={} status={}",
-                    orderId, inbox.getStatus());
+            LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_ALREADY_TERMINAL,
+                    () -> "orderId=" + orderId + " status=" + inbox.getStatus());
             return;
         }
 
@@ -74,7 +78,8 @@ public class PgDlqService {
         boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_RETRY_EXHAUSTED);
         if (!transitioned) {
             // 다른 스레드/인스턴스가 이미 terminal 전이 — no-op
-            log.info("PgDlqService: QUARANTINED 전이 실패(선점됨) — no-op orderId={}", orderId);
+            LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_PREEMPTED,
+                    () -> "orderId=" + orderId);
             return;
         }
 
@@ -83,8 +88,8 @@ public class PgDlqService {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.info("PgDlqService: QUARANTINED 전이 완료 + outbox INSERT orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_QUARANTINED,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
 
         // 5단계: TX commit 후 AFTER_COMMIT → PgOutboxImmediateWorker 경로 재사용 (T2a-05b/c)
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));

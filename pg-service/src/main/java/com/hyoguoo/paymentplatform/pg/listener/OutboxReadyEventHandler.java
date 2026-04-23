@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.pg.listener;
 
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
 import lombok.RequiredArgsConstructor;
@@ -22,9 +25,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *   <li>PgOutboxChannel.offer(outboxId) 호출.</li>
  *   <li>offer 실패(큐 full) 시 warn 로그 — PgOutboxPollingWorker(Polling Worker) 가 fallback 처리.</li>
  * </ol>
- *
- * <p>LogFmt 미사용: pg-service 는 별도 LogFmt 복제본을 갖지 않아 @Slf4j 평문 로깅.
- * TODO: T5-02 LogFmt 공통화 완결 단계에서 pg-service 전용 LogFmt 복제(또는 공통 모듈 분리) 적용.
  */
 @Slf4j
 @Component
@@ -37,8 +37,8 @@ public class OutboxReadyEventHandler {
     public void handle(PgOutboxReadyEvent event) {
         boolean offered = channel.offer(event.getOutboxId());
         if (!offered) {
-            log.warn("PgOutboxChannel 오버플로우 발생 outboxId={} — PgOutboxPollingWorker(Polling Worker)가 처리 예정",
-                    event.getOutboxId());
+            LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_CHANNEL_OVERFLOW,
+                    () -> "outboxId=" + event.getOutboxId() + " — PgOutboxPollingWorker(Polling Worker)가 처리 예정");
         }
     }
 }

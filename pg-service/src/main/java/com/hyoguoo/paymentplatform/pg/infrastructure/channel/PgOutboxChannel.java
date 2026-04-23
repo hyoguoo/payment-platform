@@ -16,9 +16,6 @@ import org.springframework.stereotype.Component;
  *
  * <p>capacity=1024 (payment-service 와 동일).
  * 큐 full 시 offer=false 반환 → OutboxReadyEventHandler 가 warn 로그 → Polling Worker 가 fallback 처리.
- *
- * <p>LogFmt 미사용: pg-service 는 별도 LogFmt 복제본을 갖지 않아 @Slf4j 평문 로깅.
- * TODO: T5-02 LogFmt 공통화 완결 단계에서 pg-service 전용 LogFmt 복제(또는 공통 모듈 분리) 적용.
  */
 @Slf4j
 @Component

@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.product.infrastructure.cache;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.PaymentStockCachePort;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -43,6 +46,7 @@ public class StockRedisAdapter implements PaymentStockCachePort {
     public void setStock(long productId, int stock) {
         String key = KEY_PREFIX + productId;
         stockRedisTemplate.opsForValue().set(key, String.valueOf(stock), DEFAULT_TTL);
-        log.info("StockRedisAdapter: Redis SET key={} stock={}", key, stock);
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_REDIS_SET,
+                () -> "key=" + key + " stock=" + stock);
     }
 }

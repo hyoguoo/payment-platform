@@ -8,6 +8,9 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
@@ -134,9 +137,8 @@ public class PgVendorCallService {
             case SUCCESS -> handleSuccess(request.orderId(), outcome.result);
             case RETRYABLE -> handleRetry(request, attempt, now);
             case NON_RETRYABLE -> handleDefinitiveFailure(request.orderId(), outcome.errorMessage);
-            case HANDLED_INTERNALLY -> log.info(
-                    "PgVendorCallService: 중복 승인(DuplicateApprovalHandler) 내부 처리 완료 — 추가 기록 생략 orderId={} detail={}",
-                    request.orderId(), outcome.errorMessage);
+            case HANDLED_INTERNALLY -> LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " detail=" + outcome.errorMessage);
         }
     }
 
@@ -150,7 +152,8 @@ public class PgVendorCallService {
         PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToApproved(orderId, payload);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
-        log.info("PgVendorCallService: 성공 처리 완료 orderId={}", orderId);
+        LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_SUCCESS,
+                () -> "orderId=" + orderId);
     }
 
     // -----------------------------------------------------------------------
@@ -163,7 +166,8 @@ public class PgVendorCallService {
         PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToFailed(orderId, payload, reasonCode);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
-        log.info("PgVendorCallService: 확정 실패 처리 완료 orderId={} reasonCode={}", orderId, reasonCode);
+        LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DEFINITIVE_FAILURE,
+                () -> "orderId=" + orderId + " reasonCode=" + reasonCode);
     }
 
     // -----------------------------------------------------------------------
@@ -190,8 +194,8 @@ public class PgVendorCallService {
         PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
-        log.info("PgVendorCallService: 재시도 예약 orderId={} nextAttempt={} availableAt={}",
-                request.orderId(), nextAttempt, availableAt);
+        LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_SCHEDULED,
+                () -> "orderId=" + request.orderId() + " nextAttempt=" + nextAttempt + " availableAt=" + availableAt);
     }
 
     private void insertDlqOutbox(PgConfirmRequest request, int attempt) {
@@ -202,7 +206,8 @@ public class PgVendorCallService {
         PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
-        log.warn("PgVendorCallService: DLQ 전이 orderId={} attempt={}", request.orderId(), attempt);
+        LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DLQ,
+                () -> "orderId=" + request.orderId() + " attempt=" + attempt);
     }
 
     // -----------------------------------------------------------------------

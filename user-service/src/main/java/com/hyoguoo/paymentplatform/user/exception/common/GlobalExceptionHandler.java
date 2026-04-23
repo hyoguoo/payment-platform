@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.user.exception.common;
 
+import com.hyoguoo.paymentplatform.user.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.user.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.user.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.user.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.user.presentation.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +22,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
-        log.warn("user_not_found code={} message={}", e.getCode(), e.getMessage());
+        LogFmt.warn(log, LogDomain.USER, EventType.EXCEPTION,
+                () -> "user_not_found code=" + e.getCode() + " message=" + e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of(e.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntime(RuntimeException e) {
-        log.error("user_internal_error message={}", e.getMessage(), e);
+        LogFmt.error(log, LogDomain.GLOBAL, EventType.EXCEPTION, e::getMessage);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("USER_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
     }

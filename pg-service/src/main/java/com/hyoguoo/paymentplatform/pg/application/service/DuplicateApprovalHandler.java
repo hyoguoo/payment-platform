@@ -1,9 +1,12 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
@@ -153,8 +156,8 @@ public class DuplicateApprovalHandler {
             PgStatusResult result = pgStatusLookupPort.getStatusByOrderId(orderId);
             return VendorQueryOutcome.success(result);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
-            log.warn("DuplicateApprovalHandler: vendor 상태 조회 판정 불가 → VENDOR_INDETERMINATE orderId={} cause={}",
-                    orderId, e.getMessage());
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_VENDOR_INDETERMINATE,
+                    () -> "orderId=" + orderId + " cause=" + e.getMessage());
             return VendorQueryOutcome.indeterminate();
         }
     }
@@ -167,15 +170,15 @@ public class DuplicateApprovalHandler {
         Long inboxAmount = inbox.getAmount();
 
         if (inboxAmount == null || inboxAmount.longValue() != vendorAmountLong) {
-            log.warn("DuplicateApprovalHandler: 2자 금액 불일치(DB존재) → QUARANTINED+AMOUNT_MISMATCH "
-                            + "orderId={} inboxAmount={} vendorAmount={}",
-                    orderId, inboxAmount, vendorAmountLong);
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_DB_EXISTS,
+                    () -> "orderId=" + orderId + " inboxAmount=" + inboxAmount + " vendorAmount=" + vendorAmountLong);
             handleAmountMismatchDbExists(orderId);
             return;
         }
 
         // amount 일치 → stored_status_result 기반 재발행
-        log.info("DuplicateApprovalHandler: 2자 대조 통과(DB존재) → stored_status_result 재발행 orderId={}", orderId);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT,
+                () -> "orderId=" + orderId);
         reemitStoredStatus(orderId, inbox);
     }
 
@@ -185,7 +188,8 @@ public class DuplicateApprovalHandler {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, storedResult, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.info("DuplicateApprovalHandler: 재발행 완료 orderId={} outboxId={}", orderId, saved.getId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT_DONE,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
@@ -197,8 +201,8 @@ public class DuplicateApprovalHandler {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.warn("DuplicateApprovalHandler: QUARANTINED(AMOUNT_MISMATCH) 전이(DB존재) orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_EXISTS,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
@@ -216,8 +220,8 @@ public class DuplicateApprovalHandler {
 
     private void handleDbAbsentAmountMatch(String orderId, long amountLong) {
         // vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림
-        log.warn("DuplicateApprovalHandler: pg DB 부재 경로 — 중복 승인 의심, APPROVED 기록 + 운영 알림 필요 orderId={} amount={}",
-                orderId, amountLong);
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED,
+                () -> "orderId=" + orderId + " amount=" + amountLong);
 
         // inbox 신설(NONE→IN_PROGRESS→APPROVED)
         pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
@@ -228,16 +232,15 @@ public class DuplicateApprovalHandler {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.info("DuplicateApprovalHandler: APPROVED 기록 완료(DB부재 경로) orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED_DONE,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
     private void handleDbAbsentAmountMismatch(String orderId, long payloadAmountLong, long vendorAmountLong) {
         // vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH) (불변식 4c)
-        log.warn("DuplicateApprovalHandler: 2자 금액 불일치(DB부재) → QUARANTINED+AMOUNT_MISMATCH "
-                        + "orderId={} payloadAmount={} vendorAmount={}",
-                orderId, payloadAmountLong, vendorAmountLong);
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
+                () -> "orderId=" + orderId + " payloadAmount=" + payloadAmountLong + " vendorAmount=" + vendorAmountLong);
 
         // inbox 신설 후 QUARANTINED 전이 (amount=payloadAmount 기록)
         pgInboxRepository.transitNoneToInProgress(orderId, payloadAmountLong);
@@ -247,8 +250,8 @@ public class DuplicateApprovalHandler {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.warn("DuplicateApprovalHandler: QUARANTINED(AMOUNT_MISMATCH) 전이(DB부재) orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
@@ -268,8 +271,8 @@ public class DuplicateApprovalHandler {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.warn("DuplicateApprovalHandler: QUARANTINED(VENDOR_INDETERMINATE) 전이 orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 

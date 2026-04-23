@@ -2,6 +2,9 @@ package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.service.PgDlqService;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,8 +47,8 @@ public class PaymentConfirmDlqConsumer {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(PgConfirmCommand command) {
-        log.info("PaymentConfirmDlqConsumer: DLQ 메시지 수신 orderId={} eventUuid={}",
-                command.orderId(), command.eventUuid());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_RECEIVED,
+                () -> "DLQ orderId=" + command.orderId() + " eventUuid=" + command.eventUuid());
         pgDlqService.handle(command);
     }
 }

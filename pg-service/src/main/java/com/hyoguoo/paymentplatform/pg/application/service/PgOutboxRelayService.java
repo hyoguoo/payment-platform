@@ -2,6 +2,9 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgEventPublisherPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import java.time.Clock;
 import java.time.Instant;
@@ -70,7 +73,8 @@ public class PgOutboxRelayService {
         outbox.markProcessed(now);
         pgOutboxRepository.save(outbox);
 
-        log.info("PgOutboxRelayService: relay 완료 id={} topic={} key={}", id, outbox.getTopic(), outbox.getKey());
+        LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_DONE,
+                () -> "id=" + id + " topic=" + outbox.getTopic() + " key=" + outbox.getKey());
     }
 
     private Map<String, byte[]> parseHeaders(String headersJson) {

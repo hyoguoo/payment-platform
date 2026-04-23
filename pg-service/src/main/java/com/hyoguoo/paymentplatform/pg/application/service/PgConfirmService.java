@@ -5,6 +5,9 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
@@ -54,8 +57,8 @@ public class PgConfirmService implements PgConfirmCommandService {
     public void handle(PgConfirmCommand command) {
         // 1단계: eventUUID dedupe (메시지 레벨 멱등성 — 불변식 5)
         if (!eventDedupeStore.markSeen(command.eventUuid())) {
-            log.info("PgConfirmService: 중복 eventUUID 감지 — 무시 eventUuid={} orderId={}",
-                    command.eventUuid(), command.orderId());
+            LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_DUPLICATE_UUID,
+                    () -> "eventUuid=" + command.eventUuid() + " orderId=" + command.orderId());
             return;
         }
 
@@ -92,25 +95,28 @@ public class PgConfirmService implements PgConfirmCommandService {
         boolean transitioned = pgInboxRepository.transitNoneToInProgress(command.orderId(), amountLong);
         if (!transitioned) {
             // 다른 스레드/인스턴스가 이미 선점 — IN_PROGRESS 경로로 위임
-            log.info("PgConfirmService: IN_PROGRESS 전이 실패(선점됨) — no-op orderId={}", command.orderId());
+            LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_PREEMPTED,
+                    () -> "orderId=" + command.orderId());
             return;
         }
 
-        log.info("PgConfirmService: NONE→IN_PROGRESS 전이 성공 — PG 호출 시작 orderId={}", command.orderId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_NONE_TO_IN_PROGRESS,
+                () -> "orderId=" + command.orderId());
         callVendor(command, 1);
     }
 
     private void handleInProgress(String orderId) {
         // IN_PROGRESS: 다른 소비자가 처리 중 — no-op 대기 (불변식 4b)
-        log.info("PgConfirmService: IN_PROGRESS 상태 재수신 — no-op orderId={}", orderId);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_NOOP,
+                () -> "orderId=" + orderId);
     }
 
     private void handleTerminal(PgInbox inbox) {
         // terminal 재수신 → stored_status_result 로 pg_outbox 재발행 (벤더 재호출 금지 — 불변식 4/4b)
         String storedResult = inbox.getStoredStatusResult();
         if (storedResult == null || storedResult.isBlank()) {
-            log.warn("PgConfirmService: terminal 상태지만 storedStatusResult 없음 orderId={} status={}",
-                    inbox.getOrderId(), inbox.getStatus());
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
+                    () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus() + " — storedStatusResult 없음");
             return;
         }
 
@@ -123,8 +129,8 @@ public class PgConfirmService implements PgConfirmCommandService {
         PgOutbox saved = pgOutboxRepository.save(reemit);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
-        log.info("PgConfirmService: terminal 재발행 orderId={} status={}",
-                inbox.getOrderId(), inbox.getStatus());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
+                () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus());
     }
 
     private void callVendor(PgConfirmCommand command, int attempt) {
@@ -136,6 +142,7 @@ public class PgConfirmService implements PgConfirmCommandService {
 
         pgVendorCallService.callVendor(request, attempt, Instant.now(clock));
 
-        log.info("PgConfirmService: PG 호출 위임 완료 orderId={}", command.orderId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_VENDOR_DELEGATED,
+                () -> "orderId=" + command.orderId());
     }
 }

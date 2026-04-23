@@ -1,9 +1,12 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
@@ -122,8 +125,8 @@ public class PgFinalConfirmationGate {
             PgStatusResult statusResult = pgStatusLookupPort.getStatusByOrderId(orderId);
             return mapStatusResult(statusResult);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
-            log.warn("PgFinalConfirmationGate: 벤더 상태 조회 판정 불가 → INDETERMINATE orderId={} cause={}",
-                    orderId, e.getMessage());
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_INDETERMINATE,
+                    () -> "orderId=" + orderId + " cause=" + e.getMessage());
             return FcgOutcome.indeterminate();
         }
     }
@@ -139,8 +142,8 @@ public class PgFinalConfirmationGate {
             return FcgOutcome.failed(storedResult);
         }
         // READY, IN_PROGRESS, WAITING_FOR_DEPOSIT 등 미확정 상태 → INDETERMINATE 처리
-        log.warn("PgFinalConfirmationGate: 미확정 상태 → INDETERMINATE orderId={} pgStatus={}",
-                statusResult.orderId(), pgStatus);
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_AMBIGUOUS_STATUS,
+                () -> "orderId=" + statusResult.orderId() + " pgStatus=" + pgStatus);
         return FcgOutcome.indeterminate();
     }
 
@@ -167,7 +170,8 @@ public class PgFinalConfirmationGate {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.info("PgFinalConfirmationGate: APPROVED 확정 orderId={} outboxId={}", orderId, saved.getId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_FCG_APPROVED,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
@@ -182,7 +186,8 @@ public class PgFinalConfirmationGate {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.info("PgFinalConfirmationGate: FAILED 확정 orderId={} outboxId={}", orderId, saved.getId());
+        LogFmt.info(log, LogDomain.PG, EventType.PG_FCG_FAILED,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 
@@ -197,8 +202,8 @@ public class PgFinalConfirmationGate {
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
-        log.warn("PgFinalConfirmationGate: QUARANTINED(FCG_INDETERMINATE) 전이 orderId={} outboxId={}",
-                orderId, saved.getId());
+        LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_QUARANTINED,
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 

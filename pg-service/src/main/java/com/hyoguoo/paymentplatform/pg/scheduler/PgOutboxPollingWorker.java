@@ -2,6 +2,9 @@ package com.hyoguoo.paymentplatform.pg.scheduler;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import java.time.Clock;
 import java.time.Instant;
@@ -27,9 +30,6 @@ import org.springframework.stereotype.Component;
  *
  * <p>실제 DB 환경에서는 JPA 구현체가 FOR UPDATE SKIP LOCKED 를 제공해야 한다 (T2a-04 JPA 어댑터).
  * Fake 환경에서는 FakePgOutboxRepository.findPendingBatch 가 동일 조건을 인메모리로 재현.
- *
- * <p>LogFmt 미사용: pg-service 는 별도 LogFmt 복제본을 갖지 않아 @Slf4j 평문 로깅.
- * TODO: T5-02 LogFmt 공통화 완결 단계에서 pg-service 전용 LogFmt 복제(또는 공통 모듈 분리) 적용.
  */
 @Slf4j
 @Component
@@ -56,12 +56,14 @@ public class PgOutboxPollingWorker {
             return;
         }
 
-        log.debug("PgOutboxPollingWorker: pending row 발견 count={}", pending.size());
+        LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_POLLING_PENDING_FOUND,
+                () -> "count=" + pending.size());
         for (PgOutbox outbox : pending) {
             try {
                 pgOutboxRelayService.relay(outbox.getId());
             } catch (Exception e) {
-                log.warn("PgOutboxPollingWorker: relay 실패 id={} message={}", outbox.getId(), e.getMessage());
+                LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_POLLING_RELAY_FAIL,
+                        () -> "id=" + outbox.getId() + " message=" + e.getMessage());
             }
         }
     }

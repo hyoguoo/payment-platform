@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer;
 
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockRestoreMessage;
 import com.hyoguoo.paymentplatform.product.presentation.port.StockRestoreCommandService;
 import lombok.RequiredArgsConstructor;
@@ -43,8 +46,8 @@ public class StockRestoreConsumer {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(StockRestoreMessage message) {
-        log.info("StockRestoreConsumer: 메시지 수신 orderId={} productId={} qty={} eventUUID={}",
-                message.orderId(), message.productId(), message.qty(), message.eventUUID());
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_RESTORE_RECEIVED,
+                () -> "orderId=" + message.orderId() + " productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.eventUUID());
 
         stockRestoreCommandService.restore(
                 message.orderId(),
