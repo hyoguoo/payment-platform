@@ -61,18 +61,13 @@ public class PaymentTransactionCoordinator {
     }
 
     /**
-     * 재고 캐시 장애(CACHE_DOWN) 분기: QUARANTINED 전이 + quarantine_compensation_pending 플래그 set.
-     * ADR-13 §2-2b-3.
-     *
-     * <p>@Transactional: 두 번의 상태 변경(markPaymentAsQuarantined +
-     * markQuarantineCompensationPending)을 단일 TX로 묶어 부분 커밋을 막는다.
+     * 재고 캐시 장애(CACHE_DOWN) 분기: QUARANTINED 홀딩 전이.
+     * ADR-15: QUARANTINED는 벤더 상태 불명 홀딩 상태. 재고 복구는 수행하지 않는다.
      */
     @Transactional
     public PaymentEvent markStockCacheDownQuarantine(PaymentEvent paymentEvent) {
-        PaymentEvent quarantined = paymentCommandUseCase.markPaymentAsQuarantined(
+        return paymentCommandUseCase.markPaymentAsQuarantined(
                 paymentEvent, "재고 캐시 장애로 인한 격리");
-        quarantined.markQuarantineCompensationPending();
-        return quarantined;
     }
 
     /**
@@ -126,9 +121,8 @@ public class PaymentTransactionCoordinator {
     ) {
         outbox.toFailed();
         paymentOutboxUseCase.save(outbox);
-        PaymentEvent quarantined = paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
-        quarantined.markQuarantineCompensationPending();
-        return quarantined;
+        // QUARANTINED 홀딩 전이 — 재고 복구 없음 (ADR-15)
+        return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
     }
 
     /**

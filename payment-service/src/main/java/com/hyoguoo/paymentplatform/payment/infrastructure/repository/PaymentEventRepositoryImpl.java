@@ -114,24 +114,6 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PaymentEvent> findByQuarantineCompensationPendingTrue() {
-        return jpaPaymentEventRepository
-                .findByQuarantineCompensationPendingTrue()
-                .stream()
-                .map(paymentEventEntity -> {
-                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
-                                    paymentEventEntity.getId()
-                            )
-                            .stream()
-                            .map(PaymentOrderEntity::toDomain)
-                            .toList();
-                    return paymentEventEntity.toDomain(paymentOrderList);
-                })
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
         return jpaPaymentEventRepository
                 .findInProgressOlderThan(before)

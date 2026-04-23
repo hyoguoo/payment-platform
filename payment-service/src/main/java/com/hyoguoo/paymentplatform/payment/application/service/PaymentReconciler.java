@@ -25,19 +25,15 @@ import org.springframework.stereotype.Service;
 /**
  * 결제 서비스 로컬 Reconciler — ADR-07, ADR-17.
  *
- * <p>FCG=즉시 경로, Reconciler=지연 경로. 각 scan() 호출에서:
+ * <p>각 scan() 호출에서:
  * <ol>
  *   <li>IN_FLIGHT(IN_PROGRESS) + timeout 초과 레코드 → READY 복원 (재시도 스케줄러가 재처리)</li>
  *   <li>각 productId별 Redis vs RDB 재고 대조 → 발산 시 RDB 기준으로 Redis 재설정, divergence_count +1</li>
- *   <li>QUARANTINED 결제 → StockCachePort.rollback() 호출 (Reconciler 단독 경로)</li>
  *   <li>Redis key miss(TTL 만료) → RDB 기준 재설정</li>
  * </ol>
  *
- * <p>QuarantineCompensationHandler/Scheduler와 경계:
- * - FCG 진입점: QUARANTINED 전이만 수행, Redis INCR 즉시 금지 → Reconciler 위임.
- * - DLQ_CONSUMER 진입점: TX 커밋 후 즉시 Redis INCR 시도 + 실패 시 QuarantineCompensationScheduler 재시도.
- * - Reconciler: QUARANTINED 레코드에 대해 rollback() 호출 (멱등성은 Redis INCR 자체가 보장).
- *   quarantineCompensationPending 플래그는 Reconciler가 관리하지 않는다(QuarantineCompensationScheduler 경로와 중복 방지).
+ * <p>QUARANTINED 결제는 홀딩 상태이므로 재고 복구 대상이 아니다 (ADR-15).
+ * 재고 복구는 FAIL 경로에서만 발생(FailureCompensationService → stock.events.restore).
  */
 @Slf4j
 @Service
@@ -72,7 +68,6 @@ public class PaymentReconciler {
 
         resetStaleInFlightRecords(now);
         reconcileStockCache();
-        rollbackQuarantinedDecr();
     }
 
     /**
@@ -158,30 +153,6 @@ public class PaymentReconciler {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                     () -> "Reconciler: 재고 발산 감지 productId=" + productId
                             + " cached=" + cached + " expected=" + rdbExpected);
-        }
-    }
-
-    /**
-     * Step 3: QUARANTINED 결제 → StockCachePort.rollback() 호출.
-     * Reconciler 단독 경로 — FCG 진입점의 QUARANTINED 레코드를 처리.
-     * 멱등성: Redis INCR 자체가 멱등 (INCR은 항상 +수량이므로 중복 호출 시 초과 복원 가능성 있음).
-     * TODO: QUARANTINED 레코드에 "Reconciler 처리 완료" 플래그 추가 검토 (현재는 단순 rollback 호출).
-     */
-    private void rollbackQuarantinedDecr() {
-        List<PaymentEvent> quarantinedEvents = paymentEventRepository.findAllByStatus(PaymentEventStatus.QUARANTINED);
-
-        if (quarantinedEvents.isEmpty()) {
-            return;
-        }
-        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SKIPPED,
-                () -> "Reconciler: QUARANTINED 결제 " + quarantinedEvents.size() + "건 재고 복원 시도");
-
-        for (PaymentEvent event : quarantinedEvents) {
-            for (PaymentOrder order : event.getPaymentOrderList()) {
-                stockCachePort.rollback(order.getProductId(), order.getQuantity());
-            }
-            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SUCCESS_COMPLETION,
-                    () -> "Reconciler: orderId=" + event.getOrderId() + " QUARANTINED rollback 완료");
         }
     }
 

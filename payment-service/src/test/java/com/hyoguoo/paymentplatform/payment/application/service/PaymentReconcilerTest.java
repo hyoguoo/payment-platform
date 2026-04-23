@@ -90,7 +90,7 @@ class PaymentReconcilerTest {
 
         PaymentEvent doneEvent = buildTerminalEvent("order-done-001", PaymentEventStatus.DONE, productId, 1);
         PaymentEvent failedEvent = buildTerminalEvent("order-failed-001", PaymentEventStatus.FAILED, productId, 1);
-        PaymentEvent quarantinedEvent = buildQuarantinedEvent("order-quarantine-001", productId, 1, false);
+        PaymentEvent quarantinedEvent = buildQuarantinedEvent("order-quarantine-001", productId, 1);
 
         fakePaymentEventRepository.saveOrUpdate(doneEvent);
         fakePaymentEventRepository.saveOrUpdate(failedEvent);
@@ -158,7 +158,7 @@ class PaymentReconcilerTest {
         fakeProductPort.register(productId, 100);
         fakeStockCachePort.set(productId, initialStock);
 
-        PaymentEvent quarantinedEvent = buildQuarantinedEvent("order-q-001", productId, quantity, false);
+        PaymentEvent quarantinedEvent = buildQuarantinedEvent("order-q-001", productId, quantity);
         fakePaymentEventRepository.saveOrUpdate(quarantinedEvent);
 
         // when
@@ -212,7 +212,6 @@ class PaymentReconcilerTest {
                 .executedAt(executedAt)
                 .retryCount(0)
                 .paymentOrderList(new ArrayList<>())
-                .quarantineCompensationPending(false)
                 .lastStatusChangedAt(executedAt)
                 .allArgsBuild();
     }
@@ -237,12 +236,11 @@ class PaymentReconcilerTest {
                 .status(status)
                 .retryCount(0)
                 .paymentOrderList(new ArrayList<>(List.of(order)))
-                .quarantineCompensationPending(false)
                 .lastStatusChangedAt(FIXED_NOW)
                 .allArgsBuild();
     }
 
-    private PaymentEvent buildQuarantinedEvent(String orderId, Long productId, int quantity, boolean compensationPending) {
+    private PaymentEvent buildQuarantinedEvent(String orderId, Long productId, int quantity) {
         PaymentOrder order = PaymentOrder.allArgsBuilder()
                 .id(null)
                 .paymentEventId(null)
@@ -262,7 +260,6 @@ class PaymentReconcilerTest {
                 .status(PaymentEventStatus.QUARANTINED)
                 .retryCount(0)
                 .paymentOrderList(new ArrayList<>(List.of(order)))
-                .quarantineCompensationPending(compensationPending)
                 .lastStatusChangedAt(FIXED_NOW)
                 .allArgsBuild();
     }
@@ -287,7 +284,6 @@ class PaymentReconcilerTest {
                 .status(PaymentEventStatus.READY)
                 .retryCount(0)
                 .paymentOrderList(new ArrayList<>(List.of(order)))
-                .quarantineCompensationPending(false)
                 .lastStatusChangedAt(FIXED_NOW.minusHours(1))
                 .allArgsBuild();
     }

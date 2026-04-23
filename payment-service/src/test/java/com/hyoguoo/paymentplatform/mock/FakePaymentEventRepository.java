@@ -115,13 +115,6 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findByQuarantineCompensationPendingTrue() {
-        return paymentEventDatabase.values().stream()
-                .filter(PaymentEvent::isQuarantineCompensationPending)
-                .toList();
-    }
-
-    @Override
     public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
         return paymentEventDatabase.values().stream()
                 .filter(event ->

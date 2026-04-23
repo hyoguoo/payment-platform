@@ -76,9 +76,8 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "last_status_changed_at")
     private LocalDateTime lastStatusChangedAt;
 
-    // ADR-13 §2-2b-3: QUARANTINED 전이 시 2단계 복구 대기 플래그 (T1-12 QuarantineCompensationHandler 소비)
-    @Column(name = "quarantine_compensation_pending", nullable = false)
-    private boolean quarantineCompensationPending;
+    // DB 컬럼 quarantine_compensation_pending 은 스키마에 유지됨(ddl-auto 개발 단계).
+    // 도메인에서는 제거됨 — QUARANTINED는 홀딩 상태이며 재고 복구 대상이 아니다 (ADR-15).
 
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()
@@ -95,7 +94,6 @@ public class PaymentEventEntity extends BaseEntity {
                 .retryCount(paymentEvent.getRetryCount())
                 .statusReason(paymentEvent.getStatusReason())
                 .lastStatusChangedAt(paymentEvent.getLastStatusChangedAt())
-                .quarantineCompensationPending(paymentEvent.isQuarantineCompensationPending())
                 .build();
     }
 
@@ -119,7 +117,6 @@ public class PaymentEventEntity extends BaseEntity {
                 )
                 .createdAt(getCreatedAt())
                 .lastStatusChangedAt(lastStatusChangedAt)
-                .quarantineCompensationPending(quarantineCompensationPending)
                 .allArgsBuild();
     }
 }

@@ -122,8 +122,8 @@ class PaymentTransactionCoordinatorTest {
     class MarkStockCacheDownQuarantineTest {
 
         @Test
-        @DisplayName("QUARANTINED 전이 + quarantine_compensation_pending=true")
-        void marksQuarantinedWithCompensationPending() {
+        @DisplayName("QUARANTINED 전이 — 홀딩 상태로 전환됨")
+        void marksQuarantined() {
             // given
             String orderId = "order-cd";
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
@@ -135,9 +135,8 @@ class PaymentTransactionCoordinatorTest {
             // when
             PaymentEvent result = coordinator.markStockCacheDownQuarantine(readyEvent);
 
-            // then
+            // then: QUARANTINED 홀딩 상태로 전환
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
-            assertThat(result.isQuarantineCompensationPending()).isTrue();
             then(paymentCommandUseCase).should(times(1))
                     .markPaymentAsQuarantined(readyEvent, "재고 캐시 장애로 인한 격리");
         }
@@ -385,9 +384,8 @@ class PaymentTransactionCoordinatorTest {
             // when
             PaymentEvent result = coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
 
-            // then
+            // then: QUARANTINED 홀딩 상태로 전환
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
-            assertThat(result.isQuarantineCompensationPending()).isTrue();
             then(paymentOutboxUseCase).should(times(1)).save(outbox);
             then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
         }

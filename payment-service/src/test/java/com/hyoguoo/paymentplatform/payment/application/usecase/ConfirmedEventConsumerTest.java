@@ -135,8 +135,7 @@ class ConfirmedEventConsumerTest {
                 .should(times(1))
                 .handle(
                         org.mockito.ArgumentMatchers.eq(ORDER_ID),
-                        org.mockito.ArgumentMatchers.eq("RETRY_EXHAUSTED"),
-                        org.mockito.ArgumentMatchers.eq(QuarantineCompensationHandler.QuarantineEntry.FCG)
+                        org.mockito.ArgumentMatchers.eq("RETRY_EXHAUSTED")
                 );
 
         // then — 직접 상태 전이 없음 (handler 내부 책임)
@@ -195,7 +194,6 @@ class ConfirmedEventConsumerTest {
                 .should(times(1))
                 .handle(
                         org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any()
                 );
 
@@ -217,7 +215,6 @@ class ConfirmedEventConsumerTest {
                 .status(status)
                 .retryCount(0)
                 .paymentOrderList(orders)
-                .quarantineCompensationPending(false)
                 .allArgsBuild();
     }
 

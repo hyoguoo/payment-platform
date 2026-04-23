@@ -106,8 +106,7 @@ public class PaymentConfirmResultUseCase {
         // QUARANTINED 상태 전이는 handler 내부 책임 — consumer는 위임만
         quarantineCompensationHandler.handle(
                 paymentEvent.getOrderId(),
-                reasonCode,
-                QuarantineCompensationHandler.QuarantineEntry.FCG
+                reasonCode
         );
 
         log.info("PaymentConfirmResultUseCase: QUARANTINED 위임 완료 orderId={}", paymentEvent.getOrderId());
