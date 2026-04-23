@@ -10,10 +10,10 @@
 #   1. Docker 데몬 확인
 #   2. (옵션 --reset-db) MySQL 볼륨 제거 → Flyway 최초 상태로 초기화
 #   3. (옵션 --skip-build) bootJar 6개 빌드
-#   4. 인프라(docker-compose.infra.yml) 기동 + healthy 대기
+#   4. 인프라(docker/docker-compose.infra.yml) 기동 + healthy 대기
 #   5. Kafka 토픽 생성 (create-topics.sh 위임)
-#   6. 앱(docker-compose.apps.yml) 이미지 재빌드 + 강제 재생성 + healthy 대기
-#   7. 관측성(docker-compose.observability.yml) 기동 + healthy 대기
+#   6. 앱(docker/docker-compose.apps.yml) 이미지 재빌드 + 강제 재생성 + healthy 대기
+#   7. 관측성(docker/docker-compose.observability.yml) 기동 + healthy 대기
 #   8. Eureka 등록 확인 + 접속 URL 안내
 #
 # 사용법:
@@ -53,9 +53,9 @@ else
   echo "[compose-up] 주의: .env.secret 없음 — PG 샌드박스 키가 placeholder 로 주입됨"
 fi
 
-INFRA_COMPOSE="docker-compose.infra.yml"
-APPS_COMPOSE="docker-compose.apps.yml"
-OBS_COMPOSE="docker-compose.observability.yml"
+INFRA_COMPOSE="docker/docker-compose.infra.yml"
+APPS_COMPOSE="docker/docker-compose.apps.yml"
+OBS_COMPOSE="docker/docker-compose.observability.yml"
 
 COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE}"
 COMPOSE_ARGS_ALL="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE}"

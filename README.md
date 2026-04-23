@@ -287,7 +287,7 @@ sequenceDiagram
 | 6379 |  redis-dedupe     |  dedupe 캐시   |
 | 6380 |   redis-stock     |   재고 캐시    |
 
-> 관측성(Prometheus·Grafana·Tempo·Loki)은 `docker-compose.observability.yml`에서 기동한다.
+> 관측성(Prometheus·Grafana·Tempo·Loki)은 `docker/docker-compose.observability.yml`에서 기동한다.
 
 #### 시크릿 설정
 

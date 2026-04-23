@@ -50,19 +50,19 @@ bash scripts/compose-up.sh
 스크립트는 다음을 수행:
 1. Docker 데몬 확인
 2. `./gradlew :*:bootJar` 6개 모듈 빌드 (`--skip-build`로 생략 가능)
-3. 인프라(`docker-compose.infra.yml`) 기동 + 9개 healthy 대기 (<120s)
+3. 인프라(`docker/docker-compose.infra.yml`) 기동 + 9개 healthy 대기 (<120s)
 4. `scripts/phase-gate/create-topics.sh` 호출로 Kafka 토픽 생성(멱등)
-5. 앱(`docker-compose.apps.yml`) 기동 + 5개 healthy 대기 (<180s)
+5. 앱(`docker/docker-compose.apps.yml`) 기동 + 5개 healthy 대기 (<180s)
 6. Eureka 등록 확인 + 접속 URL 출력
 
 수동 실행이 필요하면 동일 효과:
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d --build
+docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml up -d --build
 ```
 
 필요 시 관측 스택도 함께:
 ```bash
-docker compose -f docker-compose.observability.yml up -d
+docker compose -f docker/docker-compose.observability.yml up -d
 # Grafana: http://localhost:3000 (admin/admin)
 # Prometheus: http://localhost:9090
 ```
@@ -85,13 +85,13 @@ bash docs/phase-gate/kafka-topic-config.sh  # 파티션 수 동일성·retry 토
 - Gateway health: `curl http://localhost:8090/actuator/health`
 - 각 서비스 health는 Eureka 대시보드로 확인(호스트 포트 노출 안 함)
 
-> **T1-18 재발 방지**: payment-service 환경변수 `SPRING_PROFILES_ACTIVE=docker`·`PRODUCT_ADAPTER_TYPE=http`·`USER_ADAPTER_TYPE=http`는 `docker-compose.apps.yml`에 하드코딩되어 있어 누락 위험 낮음. 다만 `TOSS_SECRET_KEY`는 shell env 의존 — 미설정 시 placeholder로 들어가 실제 Toss 호출은 403 실패.
+> **T1-18 재발 방지**: payment-service 환경변수 `SPRING_PROFILES_ACTIVE=docker`·`PRODUCT_ADAPTER_TYPE=http`·`USER_ADAPTER_TYPE=http`는 `docker/docker-compose.apps.yml`에 하드코딩되어 있어 누락 위험 낮음. 다만 `TOSS_SECRET_KEY`는 shell env 의존 — 미설정 시 placeholder로 들어가 실제 Toss 호출은 403 실패.
 
 ### 2-6. 로컬 bootRun 대안 (디버깅 시)
 
 특정 서비스만 IDE에서 디버깅하려면 해당 서비스 컨테이너만 중지 후 bootRun:
 ```bash
-docker compose -f docker-compose.apps.yml stop payment-service
+docker compose -f docker/docker-compose.apps.yml stop payment-service
 EUREKA_CLIENT_ENABLED=true EUREKA_DEFAULT_ZONE=http://localhost:8761/eureka/ \
 SPRING_PROFILES_ACTIVE=docker PRODUCT_ADAPTER_TYPE=http USER_ADAPTER_TYPE=http \
 SPRING_DATA_REDIS_HOST=localhost SPRING_DATA_REDIS_PORT=6379 TOSS_SECRET_KEY=test_sk_... \
@@ -233,13 +233,13 @@ SELECT quantity FROM stock WHERE product_id = 1;                  -- 1회만 +qt
 
 ```bash
 # 앱 컨테이너 종료 (OutboxImmediateWorker SmartLifecycle drain 관찰 — graceful shutdown)
-docker compose -f docker-compose.apps.yml stop
+docker compose -f docker/docker-compose.apps.yml stop
 
 # 전체 종료 (볼륨 유지)
-docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml down
+docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml down
 
 # 볼륨까지 제거(초기화)
-docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml down -v
+docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml down -v
 ```
 
 ---

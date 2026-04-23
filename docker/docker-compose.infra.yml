@@ -116,7 +116,7 @@ services:
   # ───────────────────────────────────────────
   eureka:
     build:
-      context: ./eureka-server
+      context: ../eureka-server
       dockerfile: Dockerfile
     container_name: payment-eureka
     ports:

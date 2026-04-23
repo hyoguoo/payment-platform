@@ -2,7 +2,7 @@
 # ADR-31(관측성 5개 컴포넌트): Prometheus, Grafana, kafka-exporter, Tempo, Loki
 #
 # 사용법:
-#   docker compose -f docker-compose.infra.yml -f docker-compose.observability.yml up -d
+#   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.observability.yml up -d
 #
 # Grafana 기본 접속:
 #   URL:      http://localhost:3000
@@ -23,7 +23,7 @@ services:
       - "--web.enable-lifecycle"
       - "--web.enable-remote-write-receiver"
     volumes:
-      - ./chaos/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
@@ -48,8 +48,8 @@ services:
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
       - GF_INSTALL_PLUGINS=grafana-clock-panel
     volumes:
-      - ./chaos/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./chaos/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "3000:3000"
@@ -95,7 +95,7 @@ services:
     container_name: payment-tempo
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
-      - ./chaos/tempo/tempo.yml:/etc/tempo.yml:ro
+      - ../observability/tempo/tempo.yml:/etc/tempo.yml:ro
       - tempo-data:/var/tempo
     ports:
       - "3200:3200"    # Tempo HTTP API
@@ -118,7 +118,7 @@ services:
     container_name: payment-loki
     command: ["-config.file=/etc/loki/config.yml"]
     volumes:
-      - ./chaos/loki/config.yml:/etc/loki/config.yml:ro
+      - ../observability/loki/config.yml:/etc/loki/config.yml:ro
       - loki-data:/loki
     ports:
       - "3100:3100"
@@ -139,7 +139,7 @@ services:
     container_name: payment-promtail
     command: ["-config.file=/etc/promtail/config.yml"]
     volumes:
-      - ./chaos/promtail/config.yml:/etc/promtail/config.yml:ro
+      - ../observability/promtail/config.yml:/etc/promtail/config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - promtail-data:/tmp

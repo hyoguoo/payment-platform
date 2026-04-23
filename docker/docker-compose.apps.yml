@@ -1,7 +1,7 @@
 # MSA-TRANSITION Phase 3 이후 — 전체 앱 서비스 컨테이너 구성
 # 사용법:
 #   ./gradlew :payment-service:bootJar :pg-service:bootJar :product-service:bootJar :user-service:bootJar :gateway:bootJar
-#   docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d
+#   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml up -d
 #
 # 아키텍처:
 #   - payment-service 8080 (컨테이너) ← docker 프로필
@@ -9,7 +9,7 @@
 #   - product-service 8083
 #   - user-service 8084
 #   - gateway 8080 → 호스트는 8090 포트로 노출 (payment-service와 컨테이너 포트 중복 회피)
-#   - eureka 8761 (docker-compose.infra.yml에서 기동)
+#   - eureka 8761 (docker/docker-compose.infra.yml에서 기동)
 #
 # ADR-11 (Eureka), ADR-23 (DB per service), T1-18 (Gateway 결제 라우팅)
 
@@ -20,7 +20,7 @@ services:
   # ───────────────────────────────────────────
   payment-service:
     build:
-      context: ./payment-service
+      context: ../payment-service
       dockerfile: Dockerfile
     container_name: payment-service
     hostname: payment-service
@@ -67,7 +67,7 @@ services:
   # ───────────────────────────────────────────
   pg-service:
     build:
-      context: ./pg-service
+      context: ../pg-service
       dockerfile: Dockerfile
     container_name: pg-service
     hostname: pg-service
@@ -115,7 +115,7 @@ services:
   # ───────────────────────────────────────────
   product-service:
     build:
-      context: ./product-service
+      context: ../product-service
       dockerfile: Dockerfile
     container_name: product-service
     hostname: product-service
@@ -161,7 +161,7 @@ services:
   # ───────────────────────────────────────────
   user-service:
     build:
-      context: ./user-service
+      context: ../user-service
       dockerfile: Dockerfile
     container_name: user-service
     hostname: user-service
@@ -197,7 +197,7 @@ services:
   # ───────────────────────────────────────────
   gateway:
     build:
-      context: ./gateway
+      context: ../gateway
       dockerfile: Dockerfile
     container_name: gateway
     hostname: gateway

@@ -179,7 +179,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
   - `PaymentHealthMetrics` — stuck IN_PROGRESS / high retry detection (polling every 10s, `metrics.payment.health.polling-interval-seconds`)
   - `PaymentTransitionMetrics` — status transition counters (via `@PaymentStatusChange` AOP annotation)
   - `TossApiMetrics` — Toss API call duration/success (via `@TossApiMetric` AOP annotation)
-- Grafana dashboards provisioned at `chaos/grafana/provisioning/`
+- Grafana dashboards provisioned at `observability/grafana/provisioning/`
 
 **Logs:**
 - Structured logging via `LogFmt` utility class: `src/main/java/com/hyoguoo/paymentplatform/core/common/log/LogFmt.java`
@@ -195,7 +195,7 @@ _Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
 ## CI/CD & Deployment
 
 **Hosting:**
-- Docker Compose (`docker-compose.infra.yml` + `docker-compose.apps.yml` + `docker-compose.observability.yml`) — local MSA 환경
+- Docker Compose (`docker/docker-compose.infra.yml` + `docker/docker-compose.apps.yml` + `docker/docker-compose.observability.yml`) — local MSA 환경
 - `bash scripts/compose-up.sh`로 일괄 기동
 
 **CI Pipeline:**
