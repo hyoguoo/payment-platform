@@ -6,10 +6,11 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -33,15 +34,32 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PgOutboxPollingWorker {
+
+    // T-F2: ImmediateWorker 와 동일 카운터 이름 — Micrometer 태그로 출처 구분 가능하나 현 시점 단순화
+    static final String RELAY_FAIL_COUNTER_NAME = "pg_outbox.relay_fail_total";
 
     private final PgOutboxRepository pgOutboxRepository;
     private final PgOutboxRelayService pgOutboxRelayService;
     private final Clock clock;
+    private final Counter relayFailCounter;
 
     @Value("${pg.scheduler.polling-worker.batch-size:10}")
     private int batchSize;
+
+    public PgOutboxPollingWorker(
+            PgOutboxRepository pgOutboxRepository,
+            PgOutboxRelayService pgOutboxRelayService,
+            Clock clock,
+            MeterRegistry meterRegistry
+    ) {
+        this.pgOutboxRepository = pgOutboxRepository;
+        this.pgOutboxRelayService = pgOutboxRelayService;
+        this.clock = clock;
+        this.relayFailCounter = Counter.builder(RELAY_FAIL_COUNTER_NAME)
+                .description("PgOutboxPollingWorker relay 실패 횟수")
+                .register(meterRegistry);
+    }
 
     /**
      * processedAt IS NULL AND availableAt <= NOW 조건의 pending row 를 polling 하여 relay 한다.
@@ -61,8 +79,10 @@ public class PgOutboxPollingWorker {
         for (PgOutbox outbox : pending) {
             try {
                 pgOutboxRelayService.relay(outbox.getId());
-            } catch (Exception e) {
-                LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_POLLING_RELAY_FAIL,
+            } catch (RuntimeException e) {
+                // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격 + 카운터 increment
+                relayFailCounter.increment();
+                LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_POLLING_RELAY_FAIL,
                         () -> "id=" + outbox.getId() + " message=" + e.getMessage());
             }
         }

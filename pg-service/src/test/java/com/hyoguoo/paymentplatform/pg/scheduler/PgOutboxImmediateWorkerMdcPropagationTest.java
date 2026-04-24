@@ -44,7 +44,7 @@ class PgOutboxImmediateWorkerMdcPropagationTest {
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();
         CapturingRelayService capturingRelayService = new CapturingRelayService();
-        worker = new PgOutboxImmediateWorker(channel, capturingRelayService, 1);
+        worker = new PgOutboxImmediateWorker(channel, capturingRelayService, 1, new SimpleMeterRegistry());
     }
 
     @AfterEach

@@ -67,7 +67,9 @@
 - [x] T-F1 `FakePgGatewayStrategy.getStatusByOrderId` NPE 제거 — `UnsupportedOperationException` throw
 
   **완료 결과 (2026-04-24)** — `FakePgGatewayStrategy.getStatusByOrderId`: `return null` 제거 → `UnsupportedOperationException` throw로 교체. LogFmt.warn(WARN) 로그는 예외 throw 직전에 유지(예상 밖 호출 추적). 예외 메시지에 실제 복구 사이클 사용 전략(Toss/NicePay) 안내 포함. `FakePgGatewayStrategyTest.getStatusByOrderId_shouldThrowUnsupported` 1케이스 GREEN. 전수 159/159 PASS(pg-service). 회귀 없음.
-- [ ] T-F2 worker/aspect `catch (Exception)` 6건 정리 — RuntimeException 축소 + ERROR 승격 + metric
+- [x] T-F2 worker/aspect `catch (Exception)` 6건 정리 — RuntimeException 축소 + ERROR 승격 + metric
+
+  **완료 결과 (2026-04-24)** — `PgOutboxImmediateWorker.workerLoop/relay`: `catch (Exception)` WARN → `catch (RuntimeException)` ERROR 승격. `relay` 에 `pg_outbox.relay_fail_total` Counter 추가(MeterRegistry 생성자 주입). `PgOutboxPollingWorker.poll`: 동일 패턴, 동일 카운터 이름. `DomainEventLoggingAspect`: 재throw 패턴 `catch (Exception)` → `catch (Throwable)` (Error도 기록 후 re-throw). `TossApiMetricsAspect`: 동일. `StockSnapshotWarmupConsumer.parse`: `catch (Exception)` → `catch (JsonProcessingException)` 전용 축소(RuntimeException 전파). `PaymentHistoryServiceImpl.recordPaymentHistory`: `catch (Exception)` → `catch (RuntimeException)` 축소(re-throw 패턴, checked exception 없음). `PgOutboxImmediateWorkerTest.relay_whenPublishThrows_shouldLogErrorAndIncrementMetric` + `PgOutboxPollingWorkerTest.polling_whenRelayThrows_shouldLogErrorAndContinue` + `StockSnapshotWarmupConsumerTest.parse_whenInvalidJson_shouldCatchJsonProcessingOnly` 3케이스 GREEN. `grep 'catch (Exception' */src/main/java` 결과 0건. 전수 PASS, 회귀 없음. T-F3 진입 가능.
 - [ ] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
 - [ ] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
 

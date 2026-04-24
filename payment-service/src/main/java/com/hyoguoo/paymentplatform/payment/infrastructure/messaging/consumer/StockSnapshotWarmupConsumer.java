@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
@@ -46,7 +47,8 @@ public class StockSnapshotWarmupConsumer {
     private StockSnapshotEvent parse(String payload) {
         try {
             return objectMapper.readValue(payload, StockSnapshotEvent.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
+            // T-F2: JSON 파싱 예외만 포획 — RuntimeException 은 catch 없이 전파
             LogFmt.error(log, LogDomain.PRODUCT, EventType.STOCK_SNAPSHOT_PARSE_FAIL,
                     () -> "payload=" + payload + " error=" + e.getMessage());
             throw new IllegalStateException("stock snapshot 역직렬화 실패", e);

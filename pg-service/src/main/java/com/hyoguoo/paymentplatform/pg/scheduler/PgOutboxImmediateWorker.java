@@ -7,6 +7,8 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
 import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -36,10 +38,13 @@ import org.springframework.stereotype.Component;
 public class PgOutboxImmediateWorker implements SmartLifecycle {
 
     private static final int STOP_AWAIT_TIMEOUT_SECONDS = 10;
+    // T-F2: relay 실패 전용 카운터 — ERROR 레벨 로그와 함께 관측성 제공
+    static final String RELAY_FAIL_COUNTER_NAME = "pg_outbox.relay_fail_total";
 
     private final PgOutboxChannel channel;
     private final PgOutboxRelayService pgOutboxRelayService;
     private final int workerCount;
+    private final Counter relayFailCounter;
 
     private final List<Thread> workers = new ArrayList<>();
     private volatile boolean running = false;
@@ -48,11 +53,15 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     public PgOutboxImmediateWorker(
             PgOutboxChannel channel,
             PgOutboxRelayService pgOutboxRelayService,
-            @Value("${pg.outbox.channel.worker-count:1}") int workerCount
+            @Value("${pg.outbox.channel.worker-count:1}") int workerCount,
+            MeterRegistry meterRegistry
     ) {
         this.channel = channel;
         this.pgOutboxRelayService = pgOutboxRelayService;
         this.workerCount = workerCount;
+        this.relayFailCounter = Counter.builder(RELAY_FAIL_COUNTER_NAME)
+                .description("PgOutboxImmediateWorker relay 실패 횟수")
+                .register(meterRegistry);
     }
 
     @Override
@@ -115,8 +124,9 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
                 relayExecutor.submit(() -> relay(id));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
+            } catch (RuntimeException e) {
+                // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격
+                LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
                         e::getMessage);
             }
         }
@@ -125,8 +135,10 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     private void relay(Long id) {
         try {
             pgOutboxRelayService.relay(id);
-        } catch (Exception e) {
-            LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
+        } catch (RuntimeException e) {
+            // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격 + 카운터 increment
+            relayFailCounter.increment();
+            LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
                     () -> "id=" + id + " message=" + e.getMessage());
         }
     }
