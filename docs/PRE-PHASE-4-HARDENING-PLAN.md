@@ -84,7 +84,9 @@
 - [x] T-G2 `DuplicateApprovalHandler.handleDuplicateApproval` eventUuid 파라미터 정리 (삭제 or 실 값)
 
   **완료 결과 (2026-04-24)** — `DuplicateApprovalHandler.handleDuplicateApproval` 시그니처에서 미사용 `String eventUuid` 3번째 파라미터 제거 (`(String orderId, BigDecimal payloadAmount)` 2-arg 로 단축). Javadoc `@param eventUuid` 항목 삭제. `TossPaymentGatewayStrategy.handleErrorResponse` 호출 (`request.orderId(), request.amount(), request.orderId()` → `request.orderId(), request.amount()`). `NicepayPaymentGatewayStrategy.handleConfirmResponse` + `classifyConfirmError` 2곳 동일 정정. `DuplicateApprovalHandlerTest` 5케이스 3번째 인자 `EVENT_UUID` 제거 + `EVENT_UUID` 상수 삭제. `grep -rn 'request\.orderId()' pg-service/src/main/java/.../gateway/` grep `handleDuplicateApproval` 결과 0건 확인. 161/161 PASS(pg-service), 전수 512 PASS, 회귀 없음. T-G3 진입 가능.
-- [ ] T-G3 QUARANTINED 운영자 복구 경로 `docs/context/TODOS.md` + `ARCHITECTURE.md` Quarantine flow 섹션 추가
+- [x] T-G3 QUARANTINED 운영자 복구 경로 `docs/context/TODOS.md` + `ARCHITECTURE.md` Quarantine flow 섹션 추가
+
+  **완료 결과 (2026-04-24)** — `docs/context/TODOS.md`: "QUARANTINED 홀딩 자산 운영자 복구 (QUARANTINED-ADMIN-RECOVERY 토픽)" 신규 항목 추가(+40행). 배경(FCG INDETERMINATE → QUARANTINED + T3.5-07 자동 복구 철거 근거) + 필요 기능 4종((a) Admin API `/admin/payments/{orderId}/reconcile`, (b) Grafana 대시보드 확장, (c) SLA/TTR/알림 임계 정의, (d) 런북) + 제안 시점(Phase 4 이후 `QUARANTINED-ADMIN-RECOVERY` 토픽) + 관련 파일 4종 기재. `docs/context/ARCHITECTURE.md` Error Handling 섹션: "Quarantine Recovery (운영자 복구 경로) — 현재 자동 경로 없음" 하위 블록 신설(+16행). T3.5-07 철거 근거·홀딩 자산 복구 4단계 절차·모니터링 포인트·별도 토픽 예약 명시. 소스 변경 없음. `./gradlew test` 전수 PASS(소스 영향 없음). T-Gate 진입 가능.
 
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict

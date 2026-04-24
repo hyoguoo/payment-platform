@@ -126,3 +126,29 @@ TOSS_SECRET_KEY=...
 - `payment-service/src/main/resources/application-docker.yml` (L44 `scheduler.enabled: true`)
 - `docs/phase-gate/phase-1-gate.md` (가이드 추가 필요)
 - `docs/MSA-TRANSITION-PLAN.md` T1-18 / T2b-03
+
+---
+
+## QUARANTINED 홀딩 자산 운영자 복구 (QUARANTINED-ADMIN-RECOVERY 토픽)
+
+**배경:**
+FCG(Final Confirmation Gate)가 INDETERMINATE 판정을 내리면 `payment_event.status`가 `QUARANTINED`로 전이된다.
+이 상태에서는 PG 실제 결제 결과(승인/실패)를 시스템이 자동 판단할 수 없어 재고·돈이 동결된다.
+T3.5-07(2026-04-24)에서 QUARANTINED 재고 자동 복구 경로를 철거했다 — PG 실제 승인 건에 이중 복구가 일어날 위험 때문.
+현재 운영자 개입 없이는 `QUARANTINED` 상태에서 `DONE`/`FAILED`로 최종 전이할 경로가 없다.
+
+**필요 기능:**
+- **(a) Admin API `/admin/payments/{orderId}/reconcile`**: PG 수동 조회 결과를 입력받아 `payment_event` 상태를 `DONE` 또는 `FAILED`로 강제 전이. 재고 정합 재조정(DONE이면 재고 차감 유지, FAILED이면 `StockRestoreEventPublisherPort.publishPayload` 경유 복원) 포함.
+- **(b) 운영자 대시보드**: Grafana `payment_outbox` 패널 확장 — `QUARANTINED` 잔여 건수 Gauge + TTR(Time-To-Resolve) 분포 패널 추가.
+- **(c) SLA 정의**: TTR 목표(예: 4시간 이내), 알림 임계(예: 1건 이상 30분 지속 시 PagerDuty). `QUARANTINED-ADMIN-RECOVERY` 토픽 설계 시 확정.
+- **(d) PG 수동 조회 + 정합 재조정 절차**: 운영자 런북 — 조회 → 판단 → API 호출 → 모니터링 확인.
+
+**제안 시점:**
+- Phase 4 이후 별도 토픽 `QUARANTINED-ADMIN-RECOVERY` 에서 설계·구현.
+- Phase 4 완료 전에는 위 §운영자 복구 절차(수동 SQL + Grafana 확인)로 운영.
+
+**관련 파일:**
+- `payment-service/src/main/java/.../payment/application/usecase/QuarantineCompensationHandler.java`
+- `pg-service/src/main/java/.../pg/application/service/PgDlqService.java`
+- `payment-service/src/main/java/.../payment/domain/PaymentEvent.java` — `quarantine()` 메서드
+- `docs/context/ARCHITECTURE.md` — Quarantine Recovery 섹션 (Error Handling 하위)

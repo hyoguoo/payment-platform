@@ -262,6 +262,18 @@ StockEventPublishingListener  [@TransactionalEventListener(AFTER_COMMIT)]
 
 **Compensation flow:** `executePaymentFailureCompensationWithOutbox`는 D12 가드(TX 내 outbox/event 재조회) 후 조건 충족 시에만 재고 복구, `PaymentEvent` FAILED 전이. **Quarantine flow:** `executePaymentQuarantineWithOutbox`는 outbox FAILED + `PaymentEvent` QUARANTINED 전이 + `PaymentQuarantineMetrics` 카운터 증가.
 
+**Quarantine Recovery (운영자 복구 경로) — 현재 자동 경로 없음:**
+- `payment_event.status = QUARANTINED` 는 FCG INDETERMINATE 판정 후 PG 실제 상태를 자동으로 결정할 수 없는 경우에만 발생한다.
+- T3.5-07(2026-04-24)에서 QUARANTINED 재고 자동 복구 경로를 철거 — 자동 복구 시 PG 실제 승인 건의 이중 복구 위험이 있으므로 운영자 개입이 유일한 복구 경로다.
+- `QuarantineCompensationHandler.handle(orderId)`: QUARANTINED 전이만 수행하며 재고·결제 상태를 최종 확정하지 않는다.
+- **홀딩 자산 복구 절차 (현재 수동, 자동화 별도 토픽 `QUARANTINED-ADMIN-RECOVERY` 예약):**
+  1. 운영자가 PG 관리 콘솔에서 `orderId` 기준 실제 결제 상태 확인
+  2. APPROVED 확인 시: `payment_event.status` → DONE 수동 전이 + 재고 차감 유지
+  3. FAILED/취소 확인 시: `payment_event.status` → FAILED 수동 전이 + 재고 복원 수동 발행
+  4. 처리 완료 후 Grafana `payment_outbox` 패널에서 QUARANTINED 잔여 건 0 확인
+- **모니터링**: `PaymentQuarantineMetrics` 카운터 + Grafana alerting(임계 TBD — `QUARANTINED-ADMIN-RECOVERY` 토픽에서 SLA 정의 예정)
+- **관련 파일**: `QuarantineCompensationHandler`, `PgDlqService`, `PaymentEvent.quarantine()`
+
 **Exception handlers:**
 - `src/main/java/com/hyoguoo/paymentplatform/core/common/exception/GlobalExceptionHandler.java`
 
