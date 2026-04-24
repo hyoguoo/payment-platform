@@ -34,6 +34,8 @@ dependencies {
 
     // Redis (ADR-04 2단 멱등성: eventUUID dedupe SET NX EX 마커 저장소)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // T-E2: HttpOperatorImpl traceparent 전파 검증용 MockWebServer
+    testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
 }
 
 dependencyManagement {

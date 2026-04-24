@@ -65,6 +65,8 @@ dependencies {
     testImplementation "org.testcontainers:junit-jupiter"
     // T1-08: StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
     testImplementation "org.testcontainers:testcontainers"
+    // T-E2: HttpOperatorImpl traceparent 전파 검증용 MockWebServer
+    testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
 }
 
 dependencyManagement {
