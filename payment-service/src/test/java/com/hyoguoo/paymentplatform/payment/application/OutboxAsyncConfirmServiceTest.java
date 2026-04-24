@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
@@ -39,17 +40,20 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
+    private StockCachePort mockStockCachePort;
 
     @BeforeEach
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
+        mockStockCachePort = Mockito.mock(StockCachePort.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
-                mockPaymentFailureUseCase
+                mockPaymentFailureUseCase,
+                mockStockCachePort
         );
     }
 
@@ -230,6 +234,83 @@ class OutboxAsyncConfirmServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("confirm() — executeConfirmTx 실패 시 Redis 재고 보상 경로")
+    class ConfirmTxFailureCompensationTest {
+
+        @Test
+        @DisplayName("T-D1-1: executeConfirmTx throw → stockCachePort.increment 1회 호출 + 원본 예외 전파")
+        void confirm_whenConfirmTxFails_shouldCompensateStock() {
+            // given
+            String orderId = "order-comp-1";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            Long productId = 7L;
+            int quantity = 3;
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
+            RuntimeException txException = new RuntimeException("tx-commit-fail");
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
+                    .willThrow(txException);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isSameAs(txException);
+
+            then(mockStockCachePort).should(times(1)).increment(productId, quantity);
+        }
+
+        @Test
+        @DisplayName("T-D1-2: executeConfirmTx 성공 시 increment 호출 없음")
+        void confirm_whenConfirmTxSucceeds_shouldNotCompensate() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-comp-2";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            Long productId = 8L;
+            int quantity = 2;
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey2", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+
+            // when
+            outboxAsyncConfirmService.confirm(command);
+
+            // then
+            then(mockStockCachePort).should(never()).increment(any(), any());
+        }
+
+        @Test
+        @DisplayName("T-D1-3: executeConfirmTx throw + increment도 throw → 원본 예외 전파")
+        void confirm_whenStockCompensationFails_shouldStillThrowOriginal() {
+            // given
+            String orderId = "order-comp-3";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            Long productId = 9L;
+            int quantity = 1;
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey3", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
+            RuntimeException txException = new RuntimeException("tx-fail");
+            RuntimeException compensateException = new RuntimeException("redis-increment-fail");
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
+                    .willThrow(txException);
+            Mockito.doThrow(compensateException).when(mockStockCachePort).increment(productId, quantity);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isSameAs(txException);
+        }
+    }
+
     private PaymentConfirmCommand buildCommand(Long userId, String orderId, String paymentKey, BigDecimal amount) {
         return PaymentConfirmCommand.builder()
                 .userId(userId)
@@ -262,6 +343,24 @@ class OutboxAsyncConfirmServiceTest {
                 .buyerId(1L)
                 .orderId(orderId)
                 .status(status)
+                .paymentOrderList(List.of(paymentOrder))
+                .allArgsBuild();
+    }
+
+    private PaymentEvent createPaymentEventWithProduct(
+            String orderId, Long productId, int quantity, BigDecimal amount) {
+        PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .orderId(orderId)
+                .productId(productId)
+                .quantity(quantity)
+                .totalAmount(amount)
+                .allArgsBuild();
+        return PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .buyerId(1L)
+                .orderId(orderId)
+                .status(PaymentEventStatus.READY)
                 .paymentOrderList(List.of(paymentOrder))
                 .allArgsBuild();
     }
