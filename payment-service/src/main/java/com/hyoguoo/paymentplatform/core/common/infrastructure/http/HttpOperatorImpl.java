@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.core.common.infrastructure.http;
 
 import io.netty.channel.ChannelOption;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,20 +14,24 @@ import reactor.netty.http.client.HttpClient;
 @Component
 public class HttpOperatorImpl implements HttpOperator {
 
-    @Value("${spring.myapp.toss-payments.http.read-timeout-millis}")
-    private long readTimeoutMillis;
+    private final WebClient webClient;
 
-    @Value("${spring.gateway.toss.connect-timeout:3000}")
-    private int connectTimeoutMillis;
-
-    private WebClient webClient;
-
-    @PostConstruct
-    public void init() {
+    /**
+     * Boot auto-config WebClient.Builder 를 주입받아 observationRegistry 자동 적용(D6).
+     *
+     * <p>Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서 {@code ObservationRegistry}
+     * 를 자동 설정한다. Builder 를 주입받기만 하면 HTTP 경계에서 traceparent 자동 전파됨.
+     * 커스텀 connector(connect/read timeout) 는 {@code mutate()} 를 통해 auto-config 설정을 상속하며 적용.
+     */
+    public HttpOperatorImpl(
+            WebClient.Builder webClientBuilder,
+            @Value("${spring.gateway.toss.connect-timeout:3000}") int connectTimeoutMillis,
+            @Value("${spring.myapp.toss-payments.http.read-timeout-millis}") long readTimeoutMillis
+    ) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMillis)
                 .responseTimeout(Duration.ofMillis(readTimeoutMillis));
-        this.webClient = WebClient.builder()
+        this.webClient = webClientBuilder.clone()
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();
     }
