@@ -36,15 +36,30 @@ public class FailureCompensationService {
      */
     public void compensate(String orderId, List<Long> productIds, int qty) {
         for (Long productId : productIds) {
-            UUID eventUUID = deriveEventUUID(orderId, productId);
-            StockRestoreEventPayload payload = new StockRestoreEventPayload(
-                    eventUUID,
-                    orderId,
-                    productId,
-                    qty
-            );
-            stockRestoreEventPublisherPort.publishPayload(payload);
+            compensate(orderId, productId, qty);
         }
+    }
+
+    /**
+     * 단일 상품에 대한 FAILED 결제 재고 복원 보상 이벤트를 발행한다.
+     * ADR-16: eventUUID는 orderId+productId 기반 결정론적 생성 → 동일 조합 재호출 시 동일 UUID.
+     *
+     * <p>T-B1: handleFailed 루프 내부에서 실 qty와 함께 호출하는 단위 진입점.
+     * 레거시 qty=0 플레이스홀더 경로(publish(orderId, productIds))를 대체한다.
+     *
+     * @param orderId   주문 ID
+     * @param productId 복원 대상 상품 ID
+     * @param qty       복원 수량 (실 주문 수량)
+     */
+    public void compensate(String orderId, Long productId, int qty) {
+        UUID eventUUID = deriveEventUUID(orderId, productId);
+        StockRestoreEventPayload payload = new StockRestoreEventPayload(
+                eventUUID,
+                orderId,
+                productId,
+                qty
+        );
+        stockRestoreEventPublisherPort.publishPayload(payload);
     }
 
     /**

@@ -23,7 +23,9 @@
   **완료 결과 (2026-04-24)** — `PaymentConfirmResultUseCase.handleApproved` 시그니처를 `handleApproved(paymentEvent, message)`로 변경. `parseApprovedAt(String)` private 메서드 추출: `approvedAt=null` → `IllegalArgumentException`. `isAmountMismatch(PaymentEvent, Long)` private 메서드 추출: `receivedAmount=null` 또는 도메인 총액(`longValueExact()`)과 불일치 → `true`. 불일치 시 `QuarantineCompensationHandler.handle(orderId, "AMOUNT_MISMATCH")` 호출 후 early return(done 미호출). 일치 시 `OffsetDateTime.parse(approvedAtRaw).toLocalDateTime()` 변환값을 `paymentEvent.done(receivedApprovedAt, localDateTimeProvider.now())`에 주입. `LocalDateTimeProvider` 생성자 주입 추가(`LocalDateTime.now()` 위조 제거). `handleFailed`의 `LocalDateTime.now()` → `localDateTimeProvider.now()` 교체. `ConfirmedEventConsumerTest` 기존 5케이스 APPROVED 메시지에 amount/approvedAt non-null 값 보정. `PaymentConfirmResultUseCaseTest` 신규 4케이스(TC-A2-1~4) 추가. ADR-15 AMOUNT_MISMATCH 방어선 양방향 작동 확인. 전수 285/285 PASS(payment-service), 회귀 없음.
 
 **그룹 B — 재고 보상 실 복원** (축 1, Domain critical-1)
-- [ ] T-B1 `handleFailed` 에서 `FailureCompensationService.compensate(orderId, productId, qty)` 경유
+- [x] T-B1 `handleFailed` 에서 `FailureCompensationService.compensate(orderId, productId, qty)` 경유
+
+  **완료 결과 (2026-04-24)** — `FailureCompensationService.compensate(orderId, Long productId, int qty)` 단일 productId 오버로드 신설. 기존 `compensate(orderId, List<Long>, int)`는 내부에서 단일 오버로드를 위임하도록 리팩토링. `PaymentConfirmResultUseCase`에 `FailureCompensationService` 필드 주입 추가. `handleFailed`에서 레거시 `stockRestoreEventPublisherPort.publish(orderId, productIds)` 호출 제거 → 각 `PaymentOrder`별 `failureCompensationService.compensate(orderId, order.getProductId(), order.getQuantity())` 루프로 교체. `ConfirmedEventConsumerTest` TC2 검증을 `compensate` 호출 기반으로 갱신. `PaymentConfirmResultUseCaseTest` T-B1 신규 3케이스(TC-B1-1 단일 qty / TC-B1-2 복수 productId / TC-B1-3 레거시 publish 미호출) 추가. 전수 288/288 PASS, 회귀 없음. T-B2 진입 가능.
 - [ ] T-B2 레거시 `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 오버로드 철거
 
 **그룹 C — 멱등성 수복** (축 1, critical-4 + major)

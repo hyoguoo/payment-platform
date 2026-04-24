@@ -10,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
+import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -43,6 +44,7 @@ class ConfirmedEventConsumerTest {
     private FakeStockCommitEventPublisher stockCommitPublisher;
     private FakeStockRestoreEventPublisher stockRestorePublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
+    private FailureCompensationService failureCompensationService;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -52,6 +54,7 @@ class ConfirmedEventConsumerTest {
         stockCommitPublisher = new FakeStockCommitEventPublisher();
         stockRestorePublisher = new FakeStockRestoreEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
+        failureCompensationService = Mockito.mock(FailureCompensationService.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
 
@@ -61,7 +64,8 @@ class ConfirmedEventConsumerTest {
                 stockCommitPublisher,
                 stockRestorePublisher,
                 quarantineCompensationHandler,
-                fixedClock
+                fixedClock,
+                failureCompensationService
         );
     }
 
@@ -99,7 +103,7 @@ class ConfirmedEventConsumerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — FAILED 수신 시 PaymentEvent FAILED 전이 + stock.events.restore 발행")
+    @DisplayName("consume — FAILED 수신 시 PaymentEvent FAILED 전이 + FailureCompensationService.compensate 경유 재고 복원")
     void consume_WhenFailed_ShouldTransitionToFailed() {
         // given
         PaymentOrder order = buildPaymentOrder(2L, 3);
@@ -115,8 +119,14 @@ class ConfirmedEventConsumerTest {
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
 
-        // then — stock.events.restore 발행
-        assertThat(stockRestorePublisher.publishedCount()).isEqualTo(1);
+        // then — FailureCompensationService.compensate(orderId, productId=2, qty=3) 1회 호출 (T-B1)
+        then(failureCompensationService)
+                .should(times(1))
+                .compensate(
+                        org.mockito.ArgumentMatchers.eq(ORDER_ID),
+                        org.mockito.ArgumentMatchers.eq(2L),
+                        org.mockito.ArgumentMatchers.eq(3)
+                );
         // then — StockCommitEvent 미발행
         assertThat(stockCommitPublisher.countFor(2L)).isEqualTo(0L);
     }
