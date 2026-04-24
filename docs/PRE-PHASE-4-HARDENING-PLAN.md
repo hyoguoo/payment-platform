@@ -78,7 +78,9 @@
   **완료 결과 (2026-04-24)** — `docs/context/ARCHITECTURE.md` §Scheduler 섹션: 구버전 `OutboxImmediateWorker`(SmartLifecycle+Channel) / `OutboxProcessingService` 참조 전부 제거. 실제 컴포넌트 반영: payment-service `OutboxWorker`(@Scheduled 폴링 안전망), `PaymentScheduler`(만료 스케줄러), pg-service `PgOutboxImmediateWorker`(SmartLifecycle+VT+LinkedBlockingQueue), `PgOutboxPollingWorker`(@Scheduled 2000ms). §Listener 섹션: `OutboxImmediateEventHandler`(AFTER_COMMIT+@Async) 실제 동작 + `StockEventPublishingListener`(T-D2, AFTER_COMMIT stock Kafka 발행) 신규 기술. §Confirm Flow 섹션: `PaymentConfirmChannel` 전제 완전 제거 → 3개 서브섹션(payment-service 발행/pg-service 발행/payment-service 수신)으로 재작성. 대칭성 비교표 + trade-off 명시. Key Design Decisions: `PaymentConfirmChannel` 항목 제거, `OutboxRelayService` 단일 진입점 항목 신설, `@CircuitBreaker` → "Phase 4 설치 예정" 수정. Error Handling: `OutboxProcessingService` 복구 사이클 참조 → `OutboxRelayService`+pg-service FCG 실 구조로 교체. 문서-코드 drift 0. `./gradlew test` 전수 PASS (소스 변경 없음). T-G1 진입 가능.
 
 **그룹 G — minor 정리**
-- [ ] T-G1 `@CircuitBreaker` Javadoc / ARCHITECTURE 문구를 "Phase 4 설치 예정" 으로 정정
+- [x] T-G1 `@CircuitBreaker` Javadoc / ARCHITECTURE 문구를 "Phase 4 설치 예정" 으로 정정
+
+  **완료 결과 (2026-04-24)** — `ProductHttpAdapter` / `UserHttpAdapter` Javadoc: "@CircuitBreaker는 이 클래스 내부 메서드에만 적용" 단언 문구 → "Resilience4j @CircuitBreaker는 이 클래스 내부 메서드에 Phase 4에서 설치 예정 — port 인터페이스 오염 금지(ADR-22)"로 정정. `grep -rn '^\s*@CircuitBreaker' payment-service/src/main/java/.../adapter/http/` 결과 0건. `docs/context/ARCHITECTURE.md` §Key Design Decisions의 `@CircuitBreaker` 항목은 T-F4에서 이미 "Phase 4 설치 예정(ADR-22 예약)" 으로 정정 완료 확인. `./gradlew :payment-service:test --rerun` 324/324 PASS, 회귀 없음. T-G2 진입 가능.
 - [ ] T-G2 `DuplicateApprovalHandler.handleDuplicateApproval` eventUuid 파라미터 정리 (삭제 or 실 값)
 - [ ] T-G3 QUARANTINED 운영자 복구 경로 `docs/context/TODOS.md` + `ARCHITECTURE.md` Quarantine flow 섹션 추가
 

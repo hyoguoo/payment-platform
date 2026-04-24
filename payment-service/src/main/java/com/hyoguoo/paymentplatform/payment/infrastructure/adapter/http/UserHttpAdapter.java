@@ -22,7 +22,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 /**
  * user-service HTTP 어댑터 (ADR-02).
  * UserPort 구현체. user.adapter.type=http 프로파일 활성화 시 사용.
- * @CircuitBreaker는 이 클래스 내부 메서드에만 적용 — port 인터페이스 오염 금지(ADR-22).
+ * Resilience4j @CircuitBreaker는 이 클래스 내부 메서드에 Phase 4에서 설치 예정 — port 인터페이스 오염 금지(ADR-22).
  */
 @Slf4j
 @Component
