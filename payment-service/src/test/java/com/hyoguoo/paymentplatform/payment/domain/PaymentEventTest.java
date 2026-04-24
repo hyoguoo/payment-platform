@@ -707,7 +707,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("격리 전환 시 허용되지 않는 상태(종결 상태)에서는 PaymentStatusException을 던진다. (QUARANTINED는 non-terminal이므로 제외)")
+    @DisplayName("격리 전환 시 허용되지 않는 상태(종결 상태)에서는 IllegalStateException을 던진다. (QUARANTINED는 non-terminal이므로 제외)")
     void quarantine_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -715,7 +715,33 @@ class PaymentEventTest {
 
         // when & then
         assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
-                .isInstanceOf(PaymentStatusException.class);
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("T-C2: markPaymentAsQuarantined(quarantine) — DONE 상태에서 IllegalStateException을 던진다 (도메인 이중 가드)")
+    void markPaymentAsQuarantined_whenDone_shouldThrow() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.DONE, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DONE");
+    }
+
+    @Test
+    @DisplayName("T-C2: markPaymentAsQuarantined(quarantine) — FAILED 상태에서 IllegalStateException을 던진다 (도메인 이중 가드)")
+    void markPaymentAsQuarantined_whenFailed_shouldThrow() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.FAILED, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.quarantine("RETRY_EXHAUSTED", LocalDateTime.now()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FAILED");
     }
 
     // T1-04: 스펙 지정 테스트 메서드 (QUARANTINED non-terminal 설계 검증)

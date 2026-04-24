@@ -15,6 +15,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -99,6 +101,42 @@ class QuarantineCompensationHandlerTest {
 
         // then: 저장된 이벤트가 QUARANTINED 상태
         assertThat(quarantinedEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED"})
+    @DisplayName("handle - 이미 종결 상태(DONE/FAILED)이면 markPaymentAsQuarantined 미호출(no-op)")
+    void handle_whenTerminalStatus_shouldNoOp(PaymentEventStatus terminalStatus) {
+        // given
+        PaymentEvent event = buildPaymentEvent(terminalStatus);
+        given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+
+        // when
+        handler.handle(ORDER_ID, REASON);
+
+        // then: markPaymentAsQuarantined 미호출 + save 미호출
+        then(paymentCommandUseCase).shouldHaveNoInteractions();
+        then(paymentEventRepository).shouldHaveNoInteractions();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
+    @DisplayName("handle - 비종결 상태(IN_PROGRESS/RETRYING)이면 정상 QUARANTINED 전이")
+    void handle_whenNonTerminal_shouldQuarantine(PaymentEventStatus nonTerminalStatus) {
+        // given
+        PaymentEvent event = buildPaymentEvent(nonTerminalStatus);
+        PaymentEvent quarantinedEvent = buildPaymentEvent(PaymentEventStatus.QUARANTINED);
+
+        given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
+
+        // when
+        handler.handle(ORDER_ID, REASON);
+
+        // then: markPaymentAsQuarantined 1회 호출
+        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON);
+        then(paymentEventRepository).should(times(1)).saveOrUpdate(quarantinedEvent);
     }
 
     // ---- factory helpers ----
