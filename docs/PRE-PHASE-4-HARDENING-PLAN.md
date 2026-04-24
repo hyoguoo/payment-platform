@@ -93,6 +93,10 @@
 
   **완료 결과 (2026-04-24)** — `PaymentConfirmPublisherPort` 인터페이스에 포트 계약 Javadoc 추가: TX 내부 in-memory 즉시 완주 / 원격 I/O 차단 금지 / 실제 Kafka 발행은 `AFTER_COMMIT` 리스너 위임 / 위반 시 테스트 실패 안내. `OutboxImmediatePublisherTest.publish_shouldCompleteSynchronouslyUnder50ms` 1케이스 추가 — `Duration.between(before, after) < 50ms` + `publishEvent 1회` 검증(계약 가드). 전수 테스트 3/3 PASS(OutboxImmediatePublisherTest), 전수 `./gradlew test` PASS (325 payment-service 포함). 회귀 없음.
 
+- [x] T-H2 `StockEventPublishingListener` catch 블록 `stock.kafka.publish.fail.total` counter 추가 + `TODOS.md` Phase 4 outbox 이관 항목
+
+  **완료 결과 (2026-04-24)** — `StockEventPublishingListener`: 생성자에 `MeterRegistry` 3번째 인자 추가. `commitFailCounter` (tag `event=commit`) + `restoreFailCounter` (tag `event=restore`) 생성자에서 등록. `onStockCommitRequested` catch 블록: `commitFailCounter.increment()` + LogFmt.error 메시지에 metric 증가 안내 추가. `onStockRestoreRequested` catch 블록: 동일 패턴 `restoreFailCounter.increment()`. counter 이름 `stock.kafka.publish.fail.total` (Prometheus 노출 시 `stock_kafka_publish_fail_total`). swallow 자체는 유지 — TX 이미 commit 의도 보존. `StockEventPublishingListenerTest` TC-H2-1(commit 발행 실패 → counter tag event=commit 값 1) + TC-H2-2(restore 발행 실패 → counter tag event=restore 값 1) GREEN. `docs/context/TODOS.md`: "Phase 4 후속: stock commit/restore payment_outbox 이관" 항목 추가 (배경·방안 A/B·Grafana 알림 요구·관련 파일). 전수 `./gradlew test` PASS. 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

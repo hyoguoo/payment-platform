@@ -5,6 +5,37 @@
 
 ---
 
+## Phase 4 후속: stock commit/restore payment_outbox 이관
+
+**배경:**
+T-D2(2026-04-24)에서 `PaymentConfirmResultUseCase`의 stock commit/restore Kafka 발행을
+`StockEventPublishingListener` AFTER_COMMIT 리스너로 이관했다.
+TX 이미 commit 이후 발행이므로 Kafka broker 장시간 중단 시 이벤트가 영구 유실될 수 있다.
+현재는 `stock.kafka.publish.fail.total` counter + ERROR 로그로 감시 유지 중이다 (T-H2).
+
+**제안:**
+pg-service의 `pg_outbox` 패턴을 payment-service에 동일 적용한다.
+
+- 방안 A: payment-service에 `stock_outbox` 테이블 신설 후 relay 패턴.
+  `StockEventPublishingListener` AFTER_COMMIT 대신 TX 내부에서 `stock_outbox` INSERT → relay 워커 발행.
+- 방안 B: `StockCommitRequestedEvent` / `StockRestoreRequestedEvent` 자체를
+  기존 `payment_outbox` 에 INSERT 후 relay. 테이블 재사용으로 인프라 추가 없음.
+
+**Grafana 알림:**
+`stock.kafka.publish.fail.total` rate 기반 패널 + 임계 알림(1회/분 초과 시 경고) 추가 필요.
+현재 `chaos/grafana/` 디렉토리 미존재 — 관측성 스택 재도입 시 함께 추가.
+
+**제안 시점:**
+- Phase 4 Toxiproxy Kafka 중단 시나리오 검증 후 이관 여부 결정.
+- Phase 4 완료 전에는 counter + ERROR 로그 감시로 운영.
+
+**관련 파일:**
+- `payment-service/src/main/java/.../payment/listener/StockEventPublishingListener.java`
+- `payment-service/src/main/java/.../payment/infrastructure/adapter/messaging/PaymentOutboxRepository.java` (방안 B 경유)
+- (신설) `stock_outbox` 테이블 (방안 A 경유)
+
+---
+
 ## loadPaymentEvent catch(Exception e) 범위 축소 검토
 
 **배경:**

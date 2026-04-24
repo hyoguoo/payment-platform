@@ -8,8 +8,9 @@ import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequeste
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -25,16 +26,40 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *   <li>commit 성공 후 Kafka 발행 실패 시 TX는 이미 완료 — 복구 정책은 별도 태스크(T-E/F).</li>
  * </ul>
  *
- * <p>실패 처리: LogFmt.error + 예외 삼킴 — TX는 이미 commit이므로 rollback 불가.
- * 추후 DLQ 또는 재시도 정책 도입 시 이 리스너에서 확장.
+ * <p>실패 처리: LogFmt.error + {@code stock.kafka.publish.fail.total} counter 증가 + 예외 삼킴.
+ * TX는 이미 commit이므로 rollback 불가. Kafka broker 장시간 중단 시 이 counter + ERROR 로그로 감시.
+ * Phase 4 이후 stock outbox 이관 예정 (TODOS.md 참고).
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class StockEventPublishingListener {
+
+    /** Micrometer counter 이름 — Prometheus에서 {@code stock_kafka_publish_fail_total} 으로 노출된다. */
+    public static final String METRIC_NAME = "stock.kafka.publish.fail.total";
+    public static final String TAG_EVENT = "event";
+    public static final String TAG_EVENT_COMMIT = "commit";
+    public static final String TAG_EVENT_RESTORE = "restore";
 
     private final StockCommitEventPublisherPort stockCommitEventPublisherPort;
     private final StockRestoreEventPublisherPort stockRestoreEventPublisherPort;
+    private final Counter commitFailCounter;
+    private final Counter restoreFailCounter;
+
+    public StockEventPublishingListener(
+            StockCommitEventPublisherPort stockCommitEventPublisherPort,
+            StockRestoreEventPublisherPort stockRestoreEventPublisherPort,
+            MeterRegistry meterRegistry) {
+        this.stockCommitEventPublisherPort = stockCommitEventPublisherPort;
+        this.stockRestoreEventPublisherPort = stockRestoreEventPublisherPort;
+        this.commitFailCounter = Counter.builder(METRIC_NAME)
+                .description("stock Kafka 발행 실패 누적 건수 (AFTER_COMMIT, TX 이미 commit)")
+                .tag(TAG_EVENT, TAG_EVENT_COMMIT)
+                .register(meterRegistry);
+        this.restoreFailCounter = Counter.builder(METRIC_NAME)
+                .description("stock Kafka 발행 실패 누적 건수 (AFTER_COMMIT, TX 이미 commit)")
+                .tag(TAG_EVENT, TAG_EVENT_RESTORE)
+                .register(meterRegistry);
+    }
 
     /**
      * AFTER_COMMIT: stock.events.commit 실제 Kafka 발행.
@@ -53,11 +78,13 @@ public class StockEventPublishingListener {
                             + " productId=" + event.productId()
                             + " qty=" + event.quantity());
         } catch (RuntimeException e) {
+            commitFailCounter.increment();
             LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
                     () -> "stockCommit 발행 실패 — orderId=" + event.orderId()
                             + " productId=" + event.productId()
                             + " cause=" + e.getMessage()
-                            + " action=SWALLOW(TX already committed)");
+                            + " action=SWALLOW(TX already committed)"
+                            + " metric=stock.kafka.publish.fail.total[event=commit]++");
         }
     }
 
@@ -75,11 +102,13 @@ public class StockEventPublishingListener {
                             + " productId=" + event.productId()
                             + " qty=" + event.quantity());
         } catch (RuntimeException e) {
+            restoreFailCounter.increment();
             LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
                     () -> "stockRestore 발행 실패 — orderId=" + event.orderId()
                             + " productId=" + event.productId()
                             + " cause=" + e.getMessage()
-                            + " action=SWALLOW(TX already committed)");
+                            + " action=SWALLOW(TX already committed)"
+                            + " metric=stock.kafka.publish.fail.total[event=restore]++");
         }
     }
 
