@@ -34,6 +34,11 @@ public class QuarantineCompensationHandler {
 
     /**
      * QUARANTINED 전이 수행 (TX 내).
+     * <p>
+     * T-C2 사전 가드: event가 이미 종결 상태(DONE/FAILED 등)이면 no-op + INFO 로그만 남기고 반환.
+     * 뒤늦은 QUARANTINED 메시지가 종결 상태 event를 역전이시키는 것을 방지한다.
+     * 도메인 {@link com.hyoguoo.paymentplatform.payment.domain.PaymentEvent#quarantine} 에도
+     * 이중 가드(IllegalStateException)가 있다.
      *
      * @param orderId 주문 ID
      * @param reason  격리 사유
@@ -41,6 +46,13 @@ public class QuarantineCompensationHandler {
     @Transactional
     public void handle(String orderId, String reason) {
         PaymentEvent event = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+
+        if (event.getStatus().isTerminal()) {
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_QUARANTINE_NOOP_TERMINAL,
+                    () -> "orderId=" + orderId + " status=" + event.getStatus() + " reason=" + reason);
+            return;
+        }
+
         PaymentEvent quarantinedEvent = paymentCommandUseCase.markPaymentAsQuarantined(event, reason);
         paymentEventRepository.saveOrUpdate(quarantinedEvent);
 

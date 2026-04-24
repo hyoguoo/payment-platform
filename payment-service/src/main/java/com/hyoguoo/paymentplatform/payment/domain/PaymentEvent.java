@@ -156,7 +156,9 @@ public class PaymentEvent {
 
     public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
         if (this.status.isTerminal()) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE);
+            // 도메인 이중 가드: 종결 상태 → QUARANTINED 역전이 불가 불변식
+            throw new IllegalStateException(
+                    "Cannot transit terminal status to QUARANTINED: " + this.status);
         }
         this.status = PaymentEventStatus.QUARANTINED;
         this.statusReason = reason;

@@ -34,7 +34,9 @@
 - [x] T-C1 payment dedupe TTL 기본값 `P8D` + application.yml 명시
 
   **완료 결과 (2026-04-24)** — `EventDedupeStoreRedisAdapter`: `@Value("${payment.event-dedupe.ttl:PT1H}")` → `@Value("${payment.event-dedupe.ttl:P8D}")` 기본값 변경. Javadoc 갱신(Kafka retention 7d + 복구 버퍼 1d = 8d 근거, product-service `StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8)` 정렬 명시). `payment-service/src/main/resources/application.yml` `payment.event-dedupe.ttl: P8D` 명시적 override 추가(주석에 근거 포함). `EventDedupeStoreRedisAdapterTest.defaultTtl_shouldBe8Days` 신규 1케이스 GREEN. 전수 474 PASS(eureka 1 + gateway 3 + payment-service 288 + pg-service 155 + product-service 26 + user-service 1). 회귀 없음.
-- [ ] T-C2 `QuarantineCompensationHandler.handle` 사전 `isTerminal` 가드
+- [x] T-C2 `QuarantineCompensationHandler.handle` 사전 `isTerminal` 가드
+
+  **완료 결과 (2026-04-24)** — `PaymentEventStatus.isTerminal()`: 이미 존재(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED=true, QUARANTINED=non-terminal). `PaymentEvent.quarantine()`: 기존 `PaymentStatusException` 가드 → `IllegalStateException("Cannot transit terminal status to QUARANTINED: " + status)` 이중 가드로 교체(도메인 불변식). `QuarantineCompensationHandler.handle`: 진입 직후 `event.getStatus().isTerminal()` 체크 — true면 `PAYMENT_QUARANTINE_NOOP_TERMINAL` LogFmt.info + early return(markPaymentAsQuarantined·save 미호출). `EventType`: `PAYMENT_QUARANTINE_NOOP_TERMINAL` 엔트리 추가. 기존 `quarantine_InvalidStatus` 테스트 expectation `PaymentStatusException` → `IllegalStateException`으로 갱신. 신규 4케이스(handle_whenTerminalStatus_shouldNoOp 2건 / handle_whenNonTerminal_shouldQuarantine 2건 / markPaymentAsQuarantined_whenDone_shouldThrow / _whenFailed_shouldThrow) 전수 PASS. `./gradlew test` 전수 PASS, 회귀 없음.
 - [ ] T-C3 dedupe two-phase lease (`mark` short → `extend` long) + remove 실패 DLQ 전송
 
 **그룹 D — TX-발행 분리** (축 1, major-3·4)
