@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.listener;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -13,29 +13,34 @@ import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequeste
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * T-D2 RED 테스트: StockEventPublishingListener
+ * T-D2 + T-H2 RED 테스트: StockEventPublishingListener
  * - StockCommitRequestedEvent 수신 → stockCommitEventPublisherPort.publish 1회 호출
  * - StockRestoreRequestedEvent 수신 → stockRestoreEventPublisherPort.publishPayload 1회 호출
  * - Kafka publish 실패 시 re-throw 안 함(TX는 이미 commit)
+ * - T-H2: Kafka publish 실패 시 stock.kafka.publish.fail.total counter 증가
  */
 @DisplayName("StockEventPublishingListener — AFTER_COMMIT 리스너 위임 검증")
 class StockEventPublishingListenerTest {
 
     private StockCommitEventPublisherPort stockCommitPublisher;
     private StockRestoreEventPublisherPort stockRestorePublisher;
+    private SimpleMeterRegistry meterRegistry;
     private StockEventPublishingListener sut;
 
     @BeforeEach
     void setUp() {
         stockCommitPublisher = Mockito.mock(StockCommitEventPublisherPort.class);
         stockRestorePublisher = Mockito.mock(StockRestoreEventPublisherPort.class);
-        sut = new StockEventPublishingListener(stockCommitPublisher, stockRestorePublisher);
+        meterRegistry = new SimpleMeterRegistry();
+        sut = new StockEventPublishingListener(stockCommitPublisher, stockRestorePublisher, meterRegistry);
     }
 
     // -----------------------------------------------------------------------
@@ -103,5 +108,59 @@ class StockEventPublishingListenerTest {
         // when & then — 예외 전파 없음
         sut.onStockCommitRequested(event);
         // 도달하면 PASS
+    }
+
+    // -----------------------------------------------------------------------
+    // TC-H2-1: StockCommit publish 실패 시 stock.kafka.publish.fail.total tag event=commit 증가
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("onStockCommitRequested — publish 실패 시 stock.kafka.publish.fail.total[event=commit] 카운터 1 증가")
+    void onStockCommitRequested_whenPublishFails_shouldIncrementCounter() {
+        // given
+        doThrow(new RuntimeException("Kafka broker down"))
+                .when(stockCommitPublisher)
+                .publish(any(), any(Integer.class), any());
+
+        StockCommitRequestedEvent event = new StockCommitRequestedEvent(
+                "evt-h2-commit-001", "order-h2-commit", 10L, 2, "order-h2-commit"
+        );
+
+        // when
+        sut.onStockCommitRequested(event);
+
+        // then — counter 1 증가
+        Counter counter = meterRegistry.find("stock.kafka.publish.fail.total")
+                .tag("event", "commit")
+                .counter();
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // TC-H2-2: StockRestore publish 실패 시 stock.kafka.publish.fail.total tag event=restore 증가
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("onStockRestoreRequested — publish 실패 시 stock.kafka.publish.fail.total[event=restore] 카운터 1 증가")
+    void onStockRestoreRequested_whenPublishFails_shouldIncrementCounter() {
+        // given
+        doThrow(new RuntimeException("Kafka broker down"))
+                .when(stockRestorePublisher)
+                .publishPayload(any());
+
+        StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-h2-restore", 20L, 3
+        );
+
+        // when
+        sut.onStockRestoreRequested(event);
+
+        // then — counter 1 증가
+        Counter counter = meterRegistry.find("stock.kafka.publish.fail.total")
+                .tag("event", "restore")
+                .counter();
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(1.0);
     }
 }
