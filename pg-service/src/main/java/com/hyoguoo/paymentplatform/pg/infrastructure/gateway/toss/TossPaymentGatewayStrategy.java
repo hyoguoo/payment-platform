@@ -146,7 +146,7 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
-                    request.orderId(), request.amount(), request.orderId());
+                    request.orderId(), request.amount());
             throw PgGatewayDuplicateHandledException.of(
                     "ALREADY_PROCESSED_PAYMENT handled for orderId=" + request.orderId());
         }

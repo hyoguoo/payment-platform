@@ -81,7 +81,9 @@
 - [x] T-G1 `@CircuitBreaker` Javadoc / ARCHITECTURE 문구를 "Phase 4 설치 예정" 으로 정정
 
   **완료 결과 (2026-04-24)** — `ProductHttpAdapter` / `UserHttpAdapter` Javadoc: "@CircuitBreaker는 이 클래스 내부 메서드에만 적용" 단언 문구 → "Resilience4j @CircuitBreaker는 이 클래스 내부 메서드에 Phase 4에서 설치 예정 — port 인터페이스 오염 금지(ADR-22)"로 정정. `grep -rn '^\s*@CircuitBreaker' payment-service/src/main/java/.../adapter/http/` 결과 0건. `docs/context/ARCHITECTURE.md` §Key Design Decisions의 `@CircuitBreaker` 항목은 T-F4에서 이미 "Phase 4 설치 예정(ADR-22 예약)" 으로 정정 완료 확인. `./gradlew :payment-service:test --rerun` 324/324 PASS, 회귀 없음. T-G2 진입 가능.
-- [ ] T-G2 `DuplicateApprovalHandler.handleDuplicateApproval` eventUuid 파라미터 정리 (삭제 or 실 값)
+- [x] T-G2 `DuplicateApprovalHandler.handleDuplicateApproval` eventUuid 파라미터 정리 (삭제 or 실 값)
+
+  **완료 결과 (2026-04-24)** — `DuplicateApprovalHandler.handleDuplicateApproval` 시그니처에서 미사용 `String eventUuid` 3번째 파라미터 제거 (`(String orderId, BigDecimal payloadAmount)` 2-arg 로 단축). Javadoc `@param eventUuid` 항목 삭제. `TossPaymentGatewayStrategy.handleErrorResponse` 호출 (`request.orderId(), request.amount(), request.orderId()` → `request.orderId(), request.amount()`). `NicepayPaymentGatewayStrategy.handleConfirmResponse` + `classifyConfirmError` 2곳 동일 정정. `DuplicateApprovalHandlerTest` 5케이스 3번째 인자 `EVENT_UUID` 제거 + `EVENT_UUID` 상수 삭제. `grep -rn 'request\.orderId()' pg-service/src/main/java/.../gateway/` grep `handleDuplicateApproval` 결과 0건 확인. 161/161 PASS(pg-service), 전수 512 PASS, 회귀 없음. T-G3 진입 가능.
 - [ ] T-G3 QUARANTINED 운영자 복구 경로 `docs/context/TODOS.md` + `ARCHITECTURE.md` Quarantine flow 섹션 추가
 
 **T-Gate — 기준선 재리뷰 + 종료 검증**

@@ -48,7 +48,6 @@ import static org.mockito.Mockito.verify;
 class DuplicateApprovalHandlerTest {
 
     private static final String ORDER_ID = "order-dup-001";
-    private static final String EVENT_UUID = "evt-dup-uuid-001";
     private static final BigDecimal PAYLOAD_AMOUNT = BigDecimal.valueOf(15000L);
     private static final long AMOUNT_LONG = 15000L;
     private static final long MISMATCH_AMOUNT_LONG = 9999L;
@@ -92,7 +91,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
 
         // then — pg_outbox 1건, stored_status_result 기반 재발행(topic=events.confirmed)
         List<PgOutbox> outboxRows = outboxRepository.findAll();
@@ -131,7 +130,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
 
         // then — pg_inbox QUARANTINED + reason_code=AMOUNT_MISMATCH (불변식 4c)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -164,7 +163,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
 
         // then — pg_inbox 신설 + APPROVED 상태
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -195,7 +194,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
 
         // then — pg_inbox 신설 + QUARANTINED + reason_code=AMOUNT_MISMATCH
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -230,7 +229,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, EVENT_UUID);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
 
         // then — pg_inbox QUARANTINED + reason_code=VENDOR_INDETERMINATE
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();

@@ -126,10 +126,9 @@ public class DuplicateApprovalHandler {
      *
      * @param orderId       주문 ID
      * @param payloadAmount command payload 금액 (scale=0, 양수)
-     * @param eventUuid     이벤트 UUID (향후 멱등성 키 활용)
      */
     @Transactional
-    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount, String eventUuid) {
+    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount) {
         long payloadAmountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
 
         // 1단계: vendor 상태 조회 (1회만, 실패 시 VENDOR_INDETERMINATE)

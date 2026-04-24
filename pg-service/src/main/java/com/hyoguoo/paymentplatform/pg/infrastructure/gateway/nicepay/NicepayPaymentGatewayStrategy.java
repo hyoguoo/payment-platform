@@ -160,7 +160,7 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — 2201 중복 승인 DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
-                    request.orderId(), request.amount(), request.orderId());
+                    request.orderId(), request.amount());
             throw PgGatewayDuplicateHandledException.of(
                     "2201 handled for orderId=" + request.orderId());
         }
@@ -186,7 +186,7 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — 2201 중복 승인(HTTP body) DuplicateApprovalHandler 위임");
             duplicateApprovalHandler.handleDuplicateApproval(
-                    request.orderId(), request.amount(), request.orderId());
+                    request.orderId(), request.amount());
             return PgGatewayDuplicateHandledException.of(
                     "2201 handled for orderId=" + request.orderId());
         }
