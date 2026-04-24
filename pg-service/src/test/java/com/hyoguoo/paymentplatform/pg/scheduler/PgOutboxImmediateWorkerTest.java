@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,7 +115,18 @@ class PgOutboxImmediateWorkerTest {
         assertThat(saved.getProcessedAt()).isEqualTo(FIXED_NOW);
     }
 
-    @Test
+    /**
+     * T3.5-12 — race window 노출 확률을 높이기 위해 50회 반복.
+     * 각 iteration 마다 setUp() 으로 새 worker / channel / publisher 가 초기화된다.
+     *
+     * <p>현재 시점에서는 FakePgOutboxRepository 가 processedAt 체크를 통한 멱등 보호만
+     * 제공하므로 Immediate 와 Polling 사이에 미세한 시간차(10ms) 를 두어 상호 간섭을
+     * 최소화한다. 실제 production 에서는 SELECT FOR UPDATE + 트랜잭션 경계가 이 보호를
+     * 강화한다 (ADR-04 Outbox 워커 디자인 주석 참고).
+     *
+     * <p>실패 시 재현: 실패한 currentRepetition 를 로그로 확인하고 단일 테스트로 분기한다.
+     */
+    @RepeatedTest(value = 50, name = "exactly-once iteration {currentRepetition}/{totalRepetitions}")
     @DisplayName("exactly-once — Immediate+Polling이 동일 row 경쟁 시 발행 횟수는 정확히 1")
     void outbox_publish_WhenImmediateAndPollingRace_ShouldEmitOnce() throws InterruptedException {
         // given: row 하나 저장 (processed_at IS NULL)
@@ -137,33 +149,26 @@ class PgOutboxImmediateWorkerTest {
         // channel offer → ImmediateWorker가 take()해서 relay 수행
         channel.offer(2L);
 
-        // Polling도 같은 id에 대해 relay 시도
-        // (실제 DB에서는 FOR UPDATE SKIP LOCKED가 보호하지만, FakeRepo는 processedAt 체크로 멱등)
-        // 두 경쟁을 시뮬레이션: ImmediateWorker relay + Polling relay 동시 실행
-
-        // Polling이 동시에 relay(2L) 를 호출하는 상황 시뮬레이션
-        CountDownLatch immediateDone = new CountDownLatch(1);
+        // Polling 도 같은 id 경쟁 relay — ImmediateWorker 가 먼저 진입하도록 짧은 sleep
+        CountDownLatch pollingDone = new CountDownLatch(1);
         Thread pollingThread = Thread.ofVirtual().start(() -> {
             try {
-                // ImmediateWorker가 처리 시작할 때까지 짧게 대기
                 Thread.sleep(10);
-                // Polling도 같은 row relay 시도
                 relayService.relay(2L);
-                immediateDone.countDown();
+                pollingDone.countDown();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         });
 
-        // ImmediateWorker 처리 완료 대기
-        boolean pollingDone = immediateDone.await(3, TimeUnit.SECONDS);
+        assertThat(pollingDone.await(3, TimeUnit.SECONDS)).isTrue();
         pollingThread.join(500);
 
-        // 추가 대기: ImmediateWorker도 완료
+        // ImmediateWorker 완료 대기
         Thread.sleep(200);
 
         // then: 발행 횟수는 정확히 1 (불변식 11 — exactly-once produce)
-        // PgOutboxRelayService의 "processedAt != null이면 skip" 로직이 중복 발행을 방지
+        // PgOutboxRelayService 의 "processedAt != null이면 skip" 로직이 중복 발행을 방지
         assertThat(publisher.getPublishedCount())
                 .as("Immediate+Polling 경쟁 시 exactly-once 보장 — 발행 횟수 1")
                 .isEqualTo(1);

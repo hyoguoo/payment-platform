@@ -44,10 +44,7 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate(
             ProducerFactory<String, PaymentConfirmCommandMessage> producerFactory) {
-        KafkaTemplate<String, PaymentConfirmCommandMessage> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(commandsConfirmTopic);
-        template.setObservationEnabled(true);
-        return template;
+        return buildObservedTemplate(producerFactory, commandsConfirmTopic);
     }
 
     /**
@@ -57,10 +54,7 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, StockCommittedEvent> stockCommittedKafkaTemplate(
             ProducerFactory<String, StockCommittedEvent> producerFactory) {
-        KafkaTemplate<String, StockCommittedEvent> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(eventsStockCommittedTopic);
-        template.setObservationEnabled(true);
-        return template;
+        return buildObservedTemplate(producerFactory, eventsStockCommittedTopic);
     }
 
     /**
@@ -70,8 +64,16 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, StockRestoreEvent> stockRestoreKafkaTemplate(
             ProducerFactory<String, StockRestoreEvent> producerFactory) {
-        KafkaTemplate<String, StockRestoreEvent> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(eventsStockRestoreTopic);
+        return buildObservedTemplate(producerFactory, eventsStockRestoreTopic);
+    }
+
+    /**
+     * 토픽별 타입드 KafkaTemplate 공통 빌더 — defaultTopic 고정 + observation 활성화(T3.5-13).
+     */
+    private static <T> KafkaTemplate<String, T> buildObservedTemplate(
+            ProducerFactory<String, T> factory, String defaultTopic) {
+        KafkaTemplate<String, T> template = new KafkaTemplate<>(factory);
+        template.setDefaultTopic(defaultTopic);
         template.setObservationEnabled(true);
         return template;
     }

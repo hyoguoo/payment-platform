@@ -26,34 +26,52 @@
 
 set -euo pipefail
 
-TOPIC="${KAFKA_TOPIC:payment.commands.confirm}"
+TOPIC="${KAFKA_TOPIC:-payment.commands.confirm}"
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
 BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
-TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-10}"
+TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-20}"
+MAX_MESSAGES="${MAX_MESSAGES:-100}"
 
 echo "[INFO] Kafka topic '$TOPIC' 에서 traceparent header 확인 시작..."
 echo "[INFO] bootstrap-servers: $BOOTSTRAP_SERVERS (timeout: ${TIMEOUT_SECONDS}s)"
 
 # kafka-console-consumer 실행 — print.headers=true 로 record header 포함 출력
 # timeout 후 자동 종료 (메시지가 없을 경우 무한 대기 방지)
-if command -v kafka-console-consumer.sh &>/dev/null; then
-    CONSUMER_CMD="kafka-console-consumer.sh"
+if command -v kafka-console-consumer &>/dev/null; then
+    CONSUMER_CMD="kafka-console-consumer"
 elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${KAFKA_CONTAINER}$"; then
-    CONSUMER_CMD="docker exec ${KAFKA_CONTAINER} kafka-console-consumer.sh"
+    # Kafka 이미지는 배포판에 따라 .sh 접미어가 있을 수도 있어 uppercase 도 시도.
+    if docker exec "${KAFKA_CONTAINER}" bash -c 'command -v kafka-console-consumer' >/dev/null 2>&1; then
+        CONSUMER_CMD="docker exec ${KAFKA_CONTAINER} kafka-console-consumer"
+    else
+        CONSUMER_CMD="docker exec ${KAFKA_CONTAINER} kafka-console-consumer.sh"
+    fi
 else
-    echo "[ERROR] kafka-console-consumer.sh 를 찾을 수 없고 컨테이너 '${KAFKA_CONTAINER}' 도 실행 중이 아닙니다."
-    echo "        KAFKA_CONTAINER 환경변수로 Kafka 컨테이너명을 지정하거나 kafka-console-consumer.sh 를 PATH 에 추가하세요."
+    echo "[ERROR] kafka-console-consumer 를 찾을 수 없고 컨테이너 '${KAFKA_CONTAINER}' 도 실행 중이 아닙니다."
+    echo "        KAFKA_CONTAINER 환경변수로 Kafka 컨테이너명을 지정하거나 kafka-console-consumer 를 PATH 에 추가하세요."
     exit 1
 fi
 
+# T3.5-13 이후 발행된 메시지만 traceparent 헤더가 주입되므로 최근 메시지를 찾기 위해 max-messages 를 늘림.
+# macOS 는 기본적으로 `timeout` 바이너리가 없으므로(coreutils 미설치 시) kafka 자체
+# --timeout-ms 에만 의존. gtimeout 가 있으면 우선 사용.
+if command -v timeout &>/dev/null; then
+    TIMEOUT_WRAP="timeout ${TIMEOUT_SECONDS}"
+elif command -v gtimeout &>/dev/null; then
+    TIMEOUT_WRAP="gtimeout ${TIMEOUT_SECONDS}"
+else
+    TIMEOUT_WRAP=""
+fi
+
 OUTPUT=$(
-    timeout "${TIMEOUT_SECONDS}" ${CONSUMER_CMD} \
+    ${TIMEOUT_WRAP} ${CONSUMER_CMD} \
         --bootstrap-server "${BOOTSTRAP_SERVERS}" \
         --topic "${TOPIC}" \
         --from-beginning \
-        --max-messages 5 \
+        --max-messages "${MAX_MESSAGES}" \
         --property print.headers=true \
         --property print.timestamp=true \
+        --timeout-ms $(( TIMEOUT_SECONDS * 1000 )) \
         2>/dev/null || true
 )
 

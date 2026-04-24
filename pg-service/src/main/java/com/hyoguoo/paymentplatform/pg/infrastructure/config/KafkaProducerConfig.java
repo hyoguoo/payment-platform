@@ -43,10 +43,7 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, ConfirmedEventPayload> confirmedEventKafkaTemplate(
             ProducerFactory<String, ConfirmedEventPayload> producerFactory) {
-        KafkaTemplate<String, ConfirmedEventPayload> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(eventsConfirmedTopic);
-        template.setObservationEnabled(true);
-        return template;
+        return buildObservedTemplate(producerFactory, eventsConfirmedTopic);
     }
 
     /**
@@ -56,10 +53,7 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, PgConfirmCommand> commandsConfirmKafkaTemplate(
             ProducerFactory<String, PgConfirmCommand> producerFactory) {
-        KafkaTemplate<String, PgConfirmCommand> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(commandsConfirmTopic);
-        template.setObservationEnabled(true);
-        return template;
+        return buildObservedTemplate(producerFactory, commandsConfirmTopic);
     }
 
     /**
@@ -70,8 +64,16 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, PgConfirmCommand> commandsConfirmDlqKafkaTemplate(
             ProducerFactory<String, PgConfirmCommand> producerFactory) {
-        KafkaTemplate<String, PgConfirmCommand> template = new KafkaTemplate<>(producerFactory);
-        template.setDefaultTopic(commandsConfirmDlqTopic);
+        return buildObservedTemplate(producerFactory, commandsConfirmDlqTopic);
+    }
+
+    /**
+     * 토픽별 타입드 KafkaTemplate 공통 빌더 — defaultTopic 고정 + observation 활성화(T3.5-13).
+     */
+    private static <T> KafkaTemplate<String, T> buildObservedTemplate(
+            ProducerFactory<String, T> factory, String defaultTopic) {
+        KafkaTemplate<String, T> template = new KafkaTemplate<>(factory);
+        template.setDefaultTopic(defaultTopic);
         template.setObservationEnabled(true);
         return template;
     }

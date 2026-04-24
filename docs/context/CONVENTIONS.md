@@ -356,6 +356,8 @@ import org.junit.jupiter.api.Test;
 ## 관측성 규약 (T3.5-13, 2026-04-24)
 
 - **Kafka producer/consumer observation-enabled 필수** — W3C Trace Context(traceparent/tracestate) 자동 주입/추출을 위해 `spring.kafka.template.observation-enabled=true` + `spring.kafka.listener.observation-enabled=true` 를 반드시 활성화한다. 수동 선언 KafkaTemplate 빈은 `template.setObservationEnabled(true)` 도 추가 필요 (YAML 만으로는 미반영).
-- **Micrometer Tracing 기본값**: `management.tracing.sampling.probability=${TRACING_SAMPLING_PROBABILITY:0.0}` (로컬 기본 꺼짐, 환경변수로 토글 가능), `management.otlp.tracing.endpoint=${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}`. docker 환경은 compose env(`TRACING_SAMPLING_PROBABILITY=1.0`, `OTLP_TRACING_ENDPOINT=http://tempo:4318/v1/traces`) 로 override.
+- **Micrometer Tracing 기본값 (5 서비스 전부 동일)**: `management.tracing.sampling.probability=${TRACING_SAMPLING_PROBABILITY:0.0}` (로컬 기본 꺼짐, 환경변수로 토글 가능), `management.otlp.tracing.endpoint=${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}`. docker 환경은 compose env(`TRACING_SAMPLING_PROBABILITY=1.0`, `OTLP_TRACING_ENDPOINT=http://tempo:4318/v1/traces`) 로 override. **user-service, gateway 도 반드시 포함** — 누락 시 chain 끊김.
+- **traceId MDC 규약** — 5 서비스 `logback-spring.xml` 패턴에 `[traceId:%X{traceId:-N/A}]` 포함. Micrometer Tracing bridge가 OpenTelemetry context → MDC 자동 연결. 로그 라인 grep 으로 전 서비스 span 추적 가능.
+- **신규 서비스 추가 시 체크리스트**: (1) `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` 의존성, (2) `management.tracing.*` + `management.otlp.tracing.*` yml, (3) `logback-spring.xml` traceId 패턴, (4) Kafka 사용 시 `observation-enabled=true` + 수동 빈 `setObservationEnabled(true)`.
 
 *Convention analysis: 2026-03-18*

@@ -1,0 +1,441 @@
+# PRE-PHASE-4-HARDENING-PLAN
+
+**토픽**: [PRE-PHASE-4-HARDENING](topics/PRE-PHASE-4-HARDENING.md)
+**날짜**: 2026-04-24
+**라운드**: 1 (baseline 리뷰 findings 17건 → 19 태스크 분해)
+
+> Baseline 리뷰:
+> - `docs/rounds/pre-phase-4-hardening/review-critic-1.md` (decision=fail, 2 critical / 5 major / 3 minor)
+> - `docs/rounds/pre-phase-4-hardening/review-domain-1.md` (decision=fail, 2 critical / 4 major / 3 minor)
+>
+> Dedupe 후 **critical 4 · major 8 · minor 5**.
+
+---
+
+## 태스크 목록
+
+**그룹 A — 이벤트 계약 확장** (축 1, critical-1·2 기반)
+- [ ] T-A1 `amount` + `approvedAt` 필드 `ConfirmedEventPayload`/`ConfirmedEventMessage` 에 추가
+- [ ] T-A2 `handleApproved` 에 수신 `approvedAt` 주입 + `amount` 총액 대조 → AMOUNT_MISMATCH 역방향 방어
+
+**그룹 B — 재고 보상 실 복원** (축 1, Domain critical-1)
+- [ ] T-B1 `handleFailed` 에서 `FailureCompensationService.compensate(orderId, productId, qty)` 경유
+- [ ] T-B2 레거시 `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 오버로드 철거
+
+**그룹 C — 멱등성 수복** (축 1, critical-4 + major)
+- [ ] T-C1 payment dedupe TTL 기본값 `P8D` + application.yml 명시
+- [ ] T-C2 `QuarantineCompensationHandler.handle` 사전 `isTerminal` 가드
+- [ ] T-C3 dedupe two-phase lease (`mark` short → `extend` long) + remove 실패 DLQ 전송
+
+**그룹 D — TX-발행 분리** (축 1, major-3·4)
+- [ ] T-D1 `OutboxAsyncConfirmService` Redis DECR 보상 경로 (caller 측 catch)
+- [ ] T-D2 `PaymentConfirmResultUseCase` stock commit/restore publish 를 AFTER_COMMIT 리스너로 이동 + TX timeout 명시
+
+**그룹 E — traceId 연속성** (축 2 전체)
+- [ ] T-E1 Micrometer Context Propagation 의존 추가 + VT executor 3곳 (`PgOutboxImmediateWorker`·`OutboxWorker`·`@Async outboxRelayExecutor`) 전파 활성화
+- [ ] T-E2 `HttpOperatorImpl` 2곳(payment-service·pg-service) Boot auto-config builder 주입 → `observationRegistry` 자동 적용
+- [ ] T-E3 `scripts/smoke/trace-continuity-check.sh` 신설 — HTTP → Kafka → HTTP 다중 홉 traceId 연속성 검증
+- [ ] T-E4 `PgOutboxRelayService.parseHeaders` ObjectMapper 실제 파싱 (또는 TODO 제거 + 근거 주석)
+
+**그룹 F — 코드 규율** (축 3)
+- [ ] T-F1 `FakePgGatewayStrategy.getStatusByOrderId` NPE 제거 — `UnsupportedOperationException` throw
+- [ ] T-F2 worker/aspect `catch (Exception)` 6건 정리 — RuntimeException 축소 + ERROR 승격 + metric
+- [ ] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
+- [ ] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
+
+**그룹 G — minor 정리**
+- [ ] T-G1 `@CircuitBreaker` Javadoc / ARCHITECTURE 문구를 "Phase 4 설치 예정" 으로 정정
+- [ ] T-G2 `DuplicateApprovalHandler.handleDuplicateApproval` eventUuid 파라미터 정리 (삭제 or 실 값)
+- [ ] T-G3 QUARANTINED 운영자 복구 경로 `docs/context/TODOS.md` + `ARCHITECTURE.md` Quarantine flow 섹션 추가
+
+**T-Gate — 기준선 재리뷰 + 종료 검증**
+- [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
+- [ ] `scripts/smoke/trace-continuity-check.sh` PASS
+- [ ] `./gradlew test` 전수 PASS (회귀 없음)
+
+---
+
+## 태스크 상세
+
+### T-A1 — `amount`/`approvedAt` 필드 추가
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `pg-service/.../ConfirmedEventPayload.java`: record 에 `Long amount`, `String approvedAt` 추가. APPROVED 팩토리(`approved(...)`) 서명 확장. FAILED/QUARANTINED 팩토리는 해당 필드 `null` 허용.
+- `payment-service/.../ConfirmedEventMessage.java`: 동일 필드 추가. Jackson record 바인딩 그대로.
+- `pg-service/.../DuplicateApprovalHandler` / `PgConfirmService` / `PgFinalConfirmationGate`: APPROVED 확정 지점에서 실제 벤더 `approvedAt`·`amount` 를 payload 에 주입.
+
+**RED 테스트**:
+- `ConfirmedEventPayloadTest`: `amount=null` 인 APPROVED 팩토리 호출 시 `IllegalArgumentException`
+- `ConfirmedEventMessageTest`: ISO-8601 문자열 역직렬화 → `OffsetDateTime.parse` 성공
+- `DuplicateApprovalHandlerTest` 확장: APPROVED 경로 발행 payload 에 amount+approvedAt non-null 검증
+
+**완료 기준**: 모든 APPROVED 발행 경로가 벤더 실측값을 payload 에 실음. 컴파일 에러 0, 회귀 없음.
+
+### T-A2 — `handleApproved` 역방향 금액 방어
+
+**의존**: T-A1
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `payment-service/.../PaymentConfirmResultUseCase.handleApproved`: 수신 `approvedAt` 을 `OffsetDateTime.parse(...).toLocalDateTime()` 변환 후 `PaymentEvent.done(approvedAt, now)` 에 주입.
+- 수신 `amount` 와 `paymentEvent.getTotalAmount()` (Long minor unit 변환) 불일치 시 `QuarantineCompensationHandler.markPaymentAsQuarantined(AMOUNT_MISMATCH)` 호출.
+- `LocalDateTime.now()` 위조 제거.
+
+**RED 테스트**:
+- `PaymentConfirmResultUseCaseTest`: APPROVED 수신 → `PaymentEvent.approvedAt` 이 수신 값과 일치
+- 동일 Test: `amount` 총액 불일치 → AMOUNT_MISMATCH QUARANTINED 전이
+- 동일 Test: `approvedAt` null 인 APPROVED 도착 시 IllegalArgumentException (방어)
+
+**완료 기준**: ADR-15 AMOUNT_MISMATCH 방어선이 양방향으로 작동. 회귀 없음.
+
+### T-B1 — `handleFailed` 실 qty 전달
+
+**의존**: 없음 (T-A1 과 독립)
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `PaymentConfirmResultUseCase.handleFailed` 루프에서 각 `PaymentOrder` 의 `productId` + `quantity` 를 `FailureCompensationService.compensate(...)` 에 전달.
+- `StockRestoreEventKafkaPublisher.publish(orderId, List<Long>)` 오버로드 **호출 제거** (이 태스크에서는 removal 은 안 함; T-B2 로 분리).
+
+**RED 테스트**:
+- `PaymentConfirmResultUseCaseTest.whenFailed_shouldPublishStockRestoreWithActualQty`: 단일 주문 실패 시 `StockRestoreEventPublisher.publishPayload` 호출 인자에 실 qty 확인
+- 복수 productId 시 각 productId 별로 1회씩 호출
+
+**완료 기준**: FAIL 결제 재고 복원이 실 수량으로 동작. 테스트 GREEN.
+
+### T-B2 — 레거시 publish 오버로드 철거
+
+**의존**: T-B1
+**tdd**: false (삭제 작업)
+**domain_risk**: true
+**예상 난이도**: S
+
+**범위**:
+- `StockRestoreEventKafkaPublisher.publish(String orderId, List<Long> productIds)` 메서드 삭제.
+- `StockRestoreEventPublisherPort` 에 해당 오버로드가 선언돼 있다면 삭제.
+- 호출처 grep 해서 0건 확인.
+
+**완료 기준**: 레거시 경로 소멸. 컴파일/테스트 GREEN.
+
+### T-C1 — Payment dedupe TTL `P8D`
+
+**의존**: 없음
+**tdd**: true (낮은 우선순위)
+**domain_risk**: true
+**예상 난이도**: S
+
+**범위**:
+- `EventDedupeStoreRedisAdapter` 기본값 `@Value("${payment.event-dedupe.ttl:P8D}")`.
+- `payment-service/src/main/resources/application.yml`: `payment.event-dedupe.ttl: P8D` 명시.
+- STATE.md / ARCHITECTURE 에 TTL 값 명시 — 사실 기재만.
+
+**RED 테스트**:
+- `EventDedupeStoreRedisAdapterTest`: 기본 TTL 이 `Duration.ofDays(8)` 와 동일
+
+**완료 기준**: 기본값 8일. application.yml 에 override 명시.
+
+### T-C2 — QuarantineCompensationHandler isTerminal 가드
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: S
+
+**범위**:
+- `QuarantineCompensationHandler.handle` 진입 시 `event.getStatus().isTerminal()` 이면 INFO LogFmt + no-op return.
+- 도메인 `PaymentEvent.markPaymentAsQuarantined` 내부에도 이중 가드 — 종결 상태면 `IllegalStateException` (도메인 불변식).
+
+**RED 테스트**:
+- `QuarantineCompensationHandlerTest`: DONE 상태 event 도착 시 no-op + markPaymentAsQuarantined 미호출
+- `PaymentEventTest`: DONE/FAILED → QUARANTINED 전이 시 IllegalStateException
+
+**완료 기준**: 종결 상태 역전이 불가능. 2중 방어.
+
+### T-C3 — dedupe two-phase lease + remove 실패 DLQ
+
+**의존**: 없음 (T-C1 과 독립, 함께 할 수도)
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: L
+
+**범위**:
+- `EventDedupeStore` 포트에 `markWithLease(eventUUID, shortTtl)` + `extendLease(eventUUID, longTtl)` 메서드 분리. 기존 `markSeen` 은 내부 호출로 리팩토링.
+- `PaymentConfirmResultUseCase.handle`:
+  - 진입 시 `markWithLease(eventUuid, Duration.ofMinutes(5))`
+  - `processMessage` 성공 후 `extendLease(eventUuid, TTL)` (TTL 은 `payment.event-dedupe.ttl` 값)
+  - `catch (RuntimeException)` 블록에서 `eventDedupeStore.remove(eventUuid)` 호출 + `remove` 실패 시 별도 경로로 DLQ 전송 (`PaymentConfirmDlqPublisher` 신설 or 재활용)
+- Fake + Redis 어댑터 두 구현 모두 lease 의미 준수.
+
+**RED 테스트**:
+- `EventDedupeStoreTest` (Fake): lease 만료 시 재-`markWithLease` 성공
+- `PaymentConfirmResultUseCaseTest`: `markWithLease` 성공 + `processMessage` 실패 + `remove` 실패 시 DLQ 전송 경로 타는지 확인
+- `PaymentConfirmResultUseCaseTest`: `processMessage` 성공 시 `extendLease` 1회 호출
+
+**완료 기준**: Redis flap 시 dedupe 영구 잠김 경로 소실. DLQ 로 복구.
+
+### T-D1 — Redis DECR 보상 경로
+
+**의존**: 없음 (T-A/B 와 독립)
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `OutboxAsyncConfirmService.confirm`: `decrementStock` 성공 후 `executeConfirmTxWithStockCompensation(...)` private 메서드 호출. 해당 메서드는 `executeConfirmTx` 호출을 `try/catch RuntimeException` 로 감싸고, 예외 발생 시 `stockCachePort.increment(productId, quantity)` 호출 후 re-throw.
+- `try 블록 내 외부 변수 재할당 금지` 규약 준수(필요 시 private 메서드 추출).
+
+**RED 테스트**:
+- `OutboxAsyncConfirmServiceTest.whenConfirmTxFails_ShouldCompensateStock`: `executeConfirmTx` throw → `stockCachePort.increment` 호출 횟수 = 상품 수
+- `whenConfirmTxSucceeds_ShouldNotCompensate`: 성공 시 increment 호출 0
+
+**완료 기준**: Redis 차감 후 TX 실패 시 재고 복원됨. 테스트 GREEN.
+
+### T-D2 — stock commit/restore AFTER_COMMIT 리스너로 이동
+
+**의존**: T-A1, T-B1
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: L
+
+**범위**:
+- `PaymentConfirmResultUseCase.handleApproved`/`handleFailed` 내 직접 `stockCommitEventPublisher.publish` / `stockRestoreEventPublisher.publish` 호출 제거.
+- 각각 `StockCommitRequestedEvent` / `StockRestoreRequestedEvent` Spring `ApplicationEvent` 발행으로 교체. `@TransactionalEventListener(phase=AFTER_COMMIT)` 리스너가 실제 Kafka publish 를 수행.
+- `PaymentConfirmResultUseCase.handle` 에 `@Transactional(timeout=5)` 명시.
+
+**RED 테스트**:
+- `PaymentConfirmResultUseCaseTest`: APPROVED 처리 후 `ApplicationEvents.stream(StockCommitRequestedEvent.class).count() == N`
+- `StockCommitEventListenerTest`: 리스너 수신 → `stockCommitEventPublisher.publish` 호출
+- 기존 테스트 회귀 없음
+
+**완료 기준**: Kafka broker 지연이 DB TX 블로킹으로 이어지지 않음. TX timeout 5초. 회귀 없음.
+
+### T-E1 — MDC 전파 3곳
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: true (사고 재구성)
+**예상 난이도**: M
+
+**범위**:
+- `build.gradle`: `io.micrometer:context-propagation` 의존 추가 (payment-service + pg-service).
+- `pg-service/.../PgOutboxImmediateWorker.relayExecutor`: `ContextExecutorService.wrap(executor, ContextSnapshotFactory.builder().build())` 로 감싸기.
+- `payment-service/.../OutboxWorker.processParallel`: 동일 패턴.
+- `payment-service/.../AsyncConfig` (또는 `SchedulerConfig`): `@Async("outboxRelayExecutor")` 의 `ThreadPoolTaskExecutor.setTaskDecorator(new MdcTaskDecorator())` 적용. `MdcTaskDecorator` 자체는 표준 Spring 패턴으로 작성.
+
+**RED 테스트**:
+- `PgOutboxImmediateWorkerMdcPropagationTest`: MDC 에 `traceId=X` 설정 후 submit → 람다 내부에서 동일 값 읽힘
+- `OutboxRelayAsyncMdcPropagationTest`: `@Async` 경계에서 MDC 전파 확인
+
+**완료 기준**: VT/@Async 3경로에서 MDC traceId 승계. 테스트 GREEN.
+
+### T-E2 — HTTP 클라이언트 ObservationRegistry 자동화
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `payment-service/.../HttpOperatorImpl`: 생성자 주입 `RestClient.Builder` 사용, `.build()` 만 호출(auto-config 가 이미 `observationRegistry` 설정).
+- `pg-service/.../HttpOperatorImpl`: 동일 변경.
+- 어댑터(`ProductHttpAdapter`, `UserHttpAdapter`)에서 `Map.of()` 를 유지하되 traceparent 자동 전파는 observationRegistry 경로로 보장됨.
+
+**RED 테스트**:
+- `HttpOperatorTraceparentPropagationTest` (MockWebServer 기반): 호출 요청에 `traceparent` 헤더 존재 검증
+
+**완료 기준**: HTTP 홉에서 traceparent 자동 전파. 테스트 GREEN.
+
+### T-E3 — trace 연속성 스모크 스크립트
+
+**의존**: T-E1, T-E2
+**tdd**: false (스크립트)
+**domain_risk**: true
+**예상 난이도**: L
+
+**범위**:
+- `scripts/smoke/trace-continuity-check.sh` 신설. compose-up 후 다음 시나리오를 실행:
+  1. `curl -H "traceparent: 00-<trace-id>-<span-id>-01" POST /api/v1/payments/checkout ...`
+  2. `docker compose logs` 에서 `traceId=<trace-id>` 포함 라인이 5개 서비스(gateway/payment/pg/product/user) 전부에서 발견되는지 확인
+  3. `docker compose logs payment-service pg-service` 에서 `[traceId:<trace-id>]` 가 outbox relay 경로 로그에도 존재하는지 확인
+- 종료 조건: traceId 단절 0건. 스크립트 exit 0 이면 PASS.
+- `docs/phase-gate/trace-continuity-smoke.md` 에 시나리오/재현 절차 문서화.
+
+**완료 기준**: 스크립트 PASS. Phase 4 진입 전 관문 추가.
+
+### T-E4 — PgOutboxRelayService.parseHeaders 정리
+
+**의존**: 없음
+**tdd**: false (작은 리팩토링)
+**domain_risk**: false
+**예상 난이도**: S
+
+**범위**:
+- 옵션 A: ObjectMapper 주입 + `readValue(headersJson, Map<String, String>)` 파싱 구현 + 단위 테스트.
+- 옵션 B: TODO 주석 제거 + "observation-enabled=true 로 충분" 근거 주석 + `parseHeaders` 메서드 자체 삭제(호출부 `Map.of()` 직접 전달).
+- **선호: 옵션 B** — 현재 실제 기능 영향 없음, 코드 단순화 우선.
+
+**완료 기준**: TODO 0건. 의도 명확.
+
+### T-F1 — FakePgGatewayStrategy NPE 제거
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: true
+**예상 난이도**: S
+
+**범위**:
+- `getStatusByOrderId(String)` 에서 `return null` → `throw new UnsupportedOperationException("Fake strategy: getStatusByOrderId 는 smoke 경로에서 호출되지 않아야 함")`.
+
+**RED 테스트**:
+- `FakePgGatewayStrategyTest.getStatusByOrderId_shouldThrowUnsupported`: 호출 시 `UnsupportedOperationException`.
+
+**완료 기준**: 포트 계약 복구. 회귀 없음.
+
+### T-F2 — worker/aspect catch 정리
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: false
+**예상 난이도**: M
+
+**범위**:
+- `PgOutboxImmediateWorker.workerLoop/relay`: `catch (Exception)` → `catch (RuntimeException)` + LogFmt.error (WARN → ERROR 승격) + 기존 메트릭 유지.
+- `PgOutboxPollingWorker`: 동일.
+- `DomainEventLoggingAspect`: 재throw 패턴 유지, `catch (Throwable)` 로 축소(Error 도 기록 후 re-throw).
+- `TossApiMetricsAspect`: 동일.
+- `StockSnapshotWarmupConsumer.parse`: `catch (JsonProcessingException)` 전용으로 축소.
+- `PaymentHistoryServiceImpl`: 원래 Exception catch 목적 재검토 후 필요 시 `handleUnknownFailure` 경유.
+
+**완료 기준**:
+- `grep -rn 'catch (Exception' **/src/main/java` 결과 0건
+- worker 계열 `catch (RuntimeException)` + metric increment 테스트 GREEN (aspect 는 재throw 확인)
+- 전수 `./gradlew test` 회귀 없음
+
+### T-F3 — LogFmt.banner 헬퍼
+
+**의존**: 없음
+**tdd**: true
+**domain_risk**: false
+**예상 난이도**: S
+
+**범위**:
+- 5개 서비스(payment/pg/product/user/gateway) `LogFmt` 에 `public static void banner(Logger log, Level level, String... lines)` 헬퍼 추가.
+- `FakePgGatewayStrategy.postConstruct` 배너 4줄 → `LogFmt.banner(log, WARN, "╔...╗", ...)` 로 치환.
+- `docs/context/CONVENTIONS.md` LogFmt 섹션에 "기동 배너는 `LogFmt.banner` 로만 허용" 예외 조항 추가.
+
+**완료 기준**: 평문 `log.warn` 배너 0건. CONVENTIONS 갱신.
+
+### T-F4 — ARCHITECTURE.md Scheduler 섹션 재작성
+
+**의존**: 없음 (T-D2 완료 후 쓰면 더 정확)
+**tdd**: false (문서)
+**domain_risk**: false
+**예상 난이도**: M
+
+**범위**:
+- `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 를 현재 실제 구조로 재작성:
+  - payment-service: `@Async + @TransactionalEventListener` (OutboxImmediateEventHandler) + `OutboxWorker @Scheduled` polling fallback
+  - pg-service: `PgOutboxImmediateWorker` (SmartLifecycle, VT executor + LinkedBlockingQueue) + `PgOutboxPollingWorker @Scheduled`
+  - payment-service `OutboxImmediateWorker` / `PaymentConfirmChannel` 참조 전부 제거
+- Mermaid 다이어그램 갱신 (T-D2 결과 반영 — stock commit/restore 도 AFTER_COMMIT 경로로 표기).
+
+**완료 기준**: 문서-코드 drift 0. Phase 4 시나리오 작성 시 근거 확실.
+
+### T-G1 — @CircuitBreaker 주석 정정
+
+**의존**: 없음
+**tdd**: false
+**domain_risk**: false
+**예상 난이도**: S
+
+**범위**:
+- `ProductHttpAdapter.java` / `UserHttpAdapter.java` Javadoc: "@CircuitBreaker 는 ... 위치" → "(Phase 4 에서 설치 예정)" 로 수정.
+- `docs/context/ARCHITECTURE.md:174` 동일 정정.
+
+**완료 기준**:
+- `grep -rn '@CircuitBreaker' payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/adapter/http/` 결과 0건
+- `ProductHttpAdapter.java` / `UserHttpAdapter.java` Javadoc + `ARCHITECTURE.md:174` 에 "Phase 4 설치 예정" 문구 포함
+
+### T-G2 — DuplicateApprovalHandler eventUuid 파라미터
+
+**의존**: 없음
+**tdd**: false
+**domain_risk**: false
+**예상 난이도**: S
+
+**범위**:
+- `TossPaymentGatewayStrategy.handleErrorResponse` / `NicepayPaymentGatewayStrategy.handleErrorResponse`: 호출 인자 확인. `PgConfirmRequest.eventUuid()` 가 존재하면 전달, 없으면 `DuplicateApprovalHandler.handleDuplicateApproval` 시그니처에서 eventUuid 파라미터 제거.
+- **선호**: 현재 handler 에서 미사용이므로 파라미터 제거.
+
+**완료 기준**:
+- `grep -rn 'request\.orderId()' pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/gateway/` 에서 `handleDuplicateApproval` 호출 시 동일 `request.orderId()` 가 2회 등장하는 패턴 0건
+- `handleDuplicateApproval` 시그니처에서 eventUuid 파라미터 삭제 또는 `request.eventUuid()` 전달로 치환
+- 전수 `./gradlew test` 회귀 없음
+
+### T-G3 — QUARANTINED 복구 경로 문서
+
+**의존**: 없음
+**tdd**: false
+**domain_risk**: false (문서)
+**예상 난이도**: S
+
+**범위**:
+- `docs/context/TODOS.md` 에 "FCG INDETERMINATE → QUARANTINED 홀딩 자산 복구 — 운영자 Admin API + 대시보드 + SLA 정의" 항목 추가.
+- `docs/context/ARCHITECTURE.md` Quarantine flow 섹션 (없으면 신설) 에 운영자 진입점 placeholder 기술.
+- 실제 Admin API 구현은 별도 토픽 (`QUARANTINED-ADMIN-RECOVERY`) 로 이관.
+
+**완료 기준**: 홀딩 자산 복구 경로 문서화 시작점 확립.
+
+### T-Gate — 기준선 재리뷰 + 종료 검증
+
+**의존**: 모든 T-A/B/C/D/E/F/G
+**tdd**: false
+**domain_risk**: true
+**예상 난이도**: M
+
+**범위**:
+- `/review` 스킬 재호출 → `docs/rounds/pre-phase-4-hardening/review-critic-2.md` + `review-domain-2.md`.
+- 두 페르소나 모두 `decision=pass`(critical 0, major 0) 여야 함.
+- `bash scripts/smoke/trace-continuity-check.sh` 실행, exit 0 확인.
+- `./gradlew test` 전수 PASS.
+- STATE.md stage → `verify` 로 전환.
+
+**완료 기준**: 종료 조건 3개 모두 만족.
+
+---
+
+## 의존 그래프 (요약)
+
+```
+A1 ──> A2
+A1 ──> D2
+B1 ──> B2
+B1 ──> D2
+E1, E2 ──> E3
+(그 외 그룹은 병렬 가능)
+모든 그룹 ──> Gate
+```
+
+## ADR 추적
+
+| Finding | ADR 참조 | 태스크 |
+|---|---|---|
+| critical-1 approvedAt/amount | ADR-15 AMOUNT_MISMATCH | T-A1, T-A2 |
+| critical-1 재고 qty=0 | ADR-13 격리 트리거 / T3-04b 보상 | T-B1, T-B2 |
+| critical-4 dedupe TTL | ADR-30 EventDedupeStore | T-C1 |
+| major-3 TX 블로킹 | ADR-04 비동기 아키텍처 | T-D2 |
+| major-4 Redis 비원자성 | ADR-13 격리 트리거 (경로 분리) | T-D1 |
+| major MDC/OTel | CONVENTIONS 관측성 | T-E1, T-E2 |
+
+## 변경 로그
+
+- **2026-04-24** 초안 작성 (baseline 리뷰 Round 1 기반)

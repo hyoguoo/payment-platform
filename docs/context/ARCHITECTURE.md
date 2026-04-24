@@ -60,9 +60,9 @@
   - JPA entities: `entity/PaymentEventEntity`, `PaymentOrderEntity`, `PaymentOutboxEntity`, `PaymentHistoryEntity`
   - Spring Data interfaces: `repository/JpaPaymentEventRepository`, `JpaPaymentOrderRepository`, `JpaPaymentOutboxRepository`, `JpaPaymentHistoryRepository`
   - Port implementations: `repository/PaymentEventRepositoryImpl`, `PaymentOutboxRepositoryImpl`, etc.
-  - Gateway strategy: `gateway/PaymentGatewayStrategy` (interface), `PaymentGatewayFactory`, `PaymentGatewayProperties`; concrete: `gateway/toss/TossPaymentGatewayStrategy`, `gateway/nicepay/NicepayPaymentGatewayStrategy`
-  - `PaymentGatewayType` enum is in `domain/enums/` (TOSS, NICEPAY); `PaymentEvent.gatewayType` stores per-event PG 선택
-  - Cross-context adapters: `internal/InternalPaymentGatewayAdapter` implements `PaymentGatewayPort`, `InternalProductAdapter` implements `ProductPort`, `InternalUserAdapter` implements `UserPort`
+  - Gateway strategy (pg-service 모듈 쪽 구현): `pg/infrastructure/gateway/toss/TossPaymentGatewayStrategy`, `pg/infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy`, `pg/infrastructure/gateway/fake/FakePgGatewayStrategy` (smoke 프로파일 한정)
+  - `PaymentGatewayType` enum is in `payment/domain/enums/` (TOSS, NICEPAY); `PaymentEvent.gatewayType` stores per-event PG 선택 (DB 컬럼 바인딩 + Kafka wire contract 이중 역할)
+  - Cross-context HTTP adapters: `payment/infrastructure/adapter/http/ProductHttpAdapter` implements `ProductPort`, `UserHttpAdapter` implements `UserPort`. Conditional on `product.adapter.type=http` / `user.adapter.type=http` (MSA 기본 프로파일)
   - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
   - Idempotency: `idempotency/IdempotencyStoreImpl` implements `IdempotencyStore`, `IdempotencyProperties`
   - Mapper: `PaymentInfrastructureMapper`
@@ -166,17 +166,18 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 - `OutboxImmediatePublisher` (infrastructure 계층)가 `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)`로 구현
 - Application 계층은 Spring 이벤트 발행 세부 구현을 알지 못함
 
-**Cross-Context Communication pattern:**
-- `payment` calls `paymentgateway` via `InternalPaymentGatewayAdapter` → `PaymentGatewayInternalReceiver` (Toss) / `NicepayGatewayInternalReceiver` (NicePay) (internal Java facades, not HTTP endpoints from outside)
-- `payment` calls `product` via `InternalProductAdapter` → `ProductInternalReceiver`
-- `payment` calls `user` via `InternalUserAdapter` → `UserInternalReceiver`
-- No cross-context JPA joins
+**Cross-Context Communication pattern (MSA 기준):**
+- `payment-service` → `pg-service`: Kafka `payment.commands.confirm` 토픽 발행, pg-service 가 consume. 응답은 `payment.events.confirmed` 경로로 비동기 귀환 (ADR-02, ADR-21)
+- `payment-service` → `product-service`: 상품·재고 조회는 HTTP(`ProductHttpAdapter` → `GET /api/v1/products/{id}`), 재고 확정·복원은 Kafka (`payment.events.stock-committed`, `stock.events.restore`) 이벤트
+- `payment-service` → `user-service`: HTTP 조회 전용 (`UserHttpAdapter` → `GET /api/v1/users/{id}`)
+- No cross-context JPA joins (ADR-23: DB per service)
+- 모든 HTTP 호출은 Gateway(Eureka `lb://`) 경유. `@CircuitBreaker` 는 adapter 내부 메서드에만 위치 (ADR-22)
 
 **AOP-Driven Observability:**
-- `@PublishDomainEvent` on `PaymentCommandUseCase` → `DomainEventLoggingAspect` publishes Spring `ApplicationEvent`
-- `@PaymentStatusChange` on `PaymentCommandUseCase` → `PaymentStatusMetricsAspect` records Micrometer counters
-- `@TossApiMetric` → `TossApiMetricsAspect` records API latency
-- Aspect classes: `src/main/java/com/hyoguoo/paymentplatform/core/common/aspect/` and `core/common/metrics/aspect/`
+- `@PublishDomainEvent` on `PaymentCommandUseCase` (payment-service) → `DomainEventLoggingAspect` publishes Spring `ApplicationEvent`
+- `@PaymentStatusChange` on `PaymentCommandUseCase` (payment-service) → `PaymentStatusMetricsAspect` records Micrometer counters
+- `@TossApiMetric` (pg-service) → `TossApiMetricsAspect` records vendor API latency
+- Aspect classes: `payment-service/.../core/common/aspect/` (payment-service 내부), `pg-service/.../infrastructure/aspect/` (pg-service 벤더 호출 메트릭)
 
 **Benchmark profile:**
 - `@Profile("benchmark")` in `mock/BenchmarkConfig.java` replaces the real `HttpOperator` with `FakeTossHttpOperator` (configurable delay)
@@ -222,4 +223,27 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 
 ---
 
-*Architecture analysis: 2026-04-14*
+## Kafka Consumer Group 정책 (T3.5-09)
+
+**원칙**: **기능(도메인 플로우)별 독립 groupId**. 같은 서비스 안이라도 논리적으로 분리된 경로는 독립 그룹으로 둔다.
+
+**근거**:
+- 한 consumer group 안의 consumer 는 offset commit·rebalance 를 공유한다. commit 경로에서 DB lock 지연이 발생하면 restore(보상) 경로까지 lag 이 생긴다.
+- 재고 commit 과 재고 복원은 서로 독립된 도메인 플로우다 — commit 이 느려도 보상은 제 속도로 흘러야 한다.
+- Kafka consumer group 자체는 매우 가볍다(coordinator 노드의 mapping 하나). 분리 비용이 사실상 0.
+
+**적용 현황**:
+
+| 서비스 | Consumer | Topic | groupId |
+|---|---|---|---|
+| payment-service | `ConfirmedEventConsumer` | `payment.events.confirmed` | `payment-service` |
+| pg-service | `PaymentConfirmConsumer` | `payment.commands.confirm` | `pg-service` |
+| pg-service | `PaymentConfirmDlqConsumer` | `payment.commands.confirm.dlq` | `pg-service-dlq` |
+| product-service | `StockCommitConsumer` | `payment.events.stock-committed` | `product-service-stock-commit` |
+| product-service | `StockRestoreConsumer` | `stock.events.restore` | `product-service-stock-restore` |
+
+**신규 consumer 추가 시**: 새 도메인 플로우라면 새 groupId 를 발급한다. 같은 플로우의 파티션 병렬 소비 확장은 동일 groupId 하에 consumer 인스턴스 증설로 처리한다.
+
+---
+
+*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09)*
