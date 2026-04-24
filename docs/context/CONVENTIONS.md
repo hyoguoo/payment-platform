@@ -222,6 +222,19 @@ All domain events are enumerated: `PAYMENT_CHECKOUT_START`, `PAYMENT_CONFIRM_SUC
 
 **Rule:** Always pass message as `Supplier<String>` (lambda or method reference). Never pre-compute a string and pass it as a plain `String`.
 
+**기동 배너 예외 조항 (T-F3, 2026-04-24):**
+- 애플리케이션 기동 시 시각적 경고 배너(`╔...╗` 형식)는 `LogFmt.banner(Logger, Level, String... lines)` 로만 허용한다.
+- 직접 `log.warn("╔...")` / `log.info("╔...")` 호출은 금지 — 반드시 `LogFmt.banner` 경유.
+- 배너 레벨은 일반적으로 `Level.WARN` 사용 (prod 오염 경고 등 즉시 눈에 띄어야 할 경우).
+- 예시:
+  ```java
+  LogFmt.banner(log, Level.WARN,
+      "╔══════════════════════════════╗",
+      "║  FAKE MODE ACTIVE — TEST ONLY ║",
+      "╚══════════════════════════════╝"
+  );
+  ```
+
 ## Naming Conventions
 
 **Files:**

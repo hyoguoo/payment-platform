@@ -70,7 +70,9 @@
 - [x] T-F2 worker/aspect `catch (Exception)` 6건 정리 — RuntimeException 축소 + ERROR 승격 + metric
 
   **완료 결과 (2026-04-24)** — `PgOutboxImmediateWorker.workerLoop/relay`: `catch (Exception)` WARN → `catch (RuntimeException)` ERROR 승격. `relay` 에 `pg_outbox.relay_fail_total` Counter 추가(MeterRegistry 생성자 주입). `PgOutboxPollingWorker.poll`: 동일 패턴, 동일 카운터 이름. `DomainEventLoggingAspect`: 재throw 패턴 `catch (Exception)` → `catch (Throwable)` (Error도 기록 후 re-throw). `TossApiMetricsAspect`: 동일. `StockSnapshotWarmupConsumer.parse`: `catch (Exception)` → `catch (JsonProcessingException)` 전용 축소(RuntimeException 전파). `PaymentHistoryServiceImpl.recordPaymentHistory`: `catch (Exception)` → `catch (RuntimeException)` 축소(re-throw 패턴, checked exception 없음). `PgOutboxImmediateWorkerTest.relay_whenPublishThrows_shouldLogErrorAndIncrementMetric` + `PgOutboxPollingWorkerTest.polling_whenRelayThrows_shouldLogErrorAndContinue` + `StockSnapshotWarmupConsumerTest.parse_whenInvalidJson_shouldCatchJsonProcessingOnly` 3케이스 GREEN. `grep 'catch (Exception' */src/main/java` 결과 0건. 전수 PASS, 회귀 없음. T-F3 진입 가능.
-- [ ] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
+- [x] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
+
+  **완료 결과 (2026-04-24)** — `LogFmt.banner(Logger, Level, String... lines)` 헬퍼를 5개 서비스(payment-service·pg-service·product-service·user-service·gateway) 각 LogFmt에 ADR-19 복제(b) 방침으로 독립 추가. `org.slf4j.event.Level` import 추가, switch expression으로 레벨별 isEnabled 가드 후 직접 출력. `FakePgGatewayStrategy.warnActivation()`: 4줄 `log.warn("╔...")` 직접 호출 → `LogFmt.banner(log, Level.WARN, "╔...╗", "║...║", "╚...╝", ...)` 치환. `docs/context/CONVENTIONS.md` LogFmt 섹션에 기동 배너 예외 조항 추가(`LogFmt.banner` 경유 필수, 직접 `log.warn` 금지, 레벨·예시 포함). `LogFmtBannerTest` 3케이스(WARN 2줄/INFO 3줄/빈배열) GREEN. `grep -rn '\blog\.(warn|info|error)\b' */src/main/java` → 실 코드 0건(Javadoc 주석만). 전수 테스트 통과. T-F4 진입 가능.
 - [ ] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
 
 **그룹 G — minor 정리**

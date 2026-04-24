@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.event.Level;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -54,12 +55,14 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
 
     @PostConstruct
     void warnActivation() {
-        // 의도적 평문 로그 — LogFmt 의 key=value 포맷과 달리 시각적 경고 배너.
-        // 기동 로그에서 즉시 눈에 띄어야 prod 오염 사고를 방지할 수 있다.
-        log.warn("╔══════════════════════════════════════════════════════════════╗");
-        log.warn("║  FAKE PG STRATEGY ACTIVE — SMOKE PROFILE ONLY                ║");
-        log.warn("║  PRODUCTION ENVIRONMENT MUST NOT ENABLE pg.gateway.type=fake ║");
-        log.warn("╚══════════════════════════════════════════════════════════════╝");
+        // 기동 배너 — LogFmt.banner 경유 필수 (CONVENTIONS: 기동 배너는 LogFmt.banner 로만 허용).
+        // 시각적 경고로 prod 오염 사고를 방지한다.
+        LogFmt.banner(log, Level.WARN,
+                "╔══════════════════════════════════════════════════════════════╗",
+                "║  FAKE PG STRATEGY ACTIVE — SMOKE PROFILE ONLY                ║",
+                "║  PRODUCTION ENVIRONMENT MUST NOT ENABLE pg.gateway.type=fake ║",
+                "╚══════════════════════════════════════════════════════════════╝"
+        );
     }
 
     @Override
