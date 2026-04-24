@@ -1,14 +1,19 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
+import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import java.util.Map;
 
 /**
  * payment-service Kafka 프로듀서 — 토픽별 타입드 KafkaTemplate 빈 등록.
@@ -27,6 +32,9 @@ import org.springframework.kafka.core.ProducerFactory;
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class KafkaProducerConfig {
+
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
 
     @Value("${payment.kafka.topics.commands-confirm}")
     private String commandsConfirmTopic;
@@ -65,6 +73,25 @@ public class KafkaProducerConfig {
     public KafkaTemplate<String, StockRestoreEvent> stockRestoreKafkaTemplate(
             ProducerFactory<String, StockRestoreEvent> producerFactory) {
         return buildObservedTemplate(producerFactory, eventsStockRestoreTopic);
+    }
+
+    /**
+     * payment.events.confirmed.dlq 전용 String KafkaTemplate.
+     * T-C3: dedupe remove 실패 시 DLQ 전송용. String 페이로드(reason)만 전송.
+     * 별도 StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
+     */
+    @Bean
+    public KafkaTemplate<String, String> confirmedDlqKafkaTemplate() {
+        Map<String, Object> props = Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
+        );
+        ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
+        template.setDefaultTopic(PaymentTopics.EVENTS_CONFIRMED_DLQ);
+        template.setObservationEnabled(true);
+        return template;
     }
 
     /**

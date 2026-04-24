@@ -48,6 +48,14 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic paymentEventsConfirmedDlq() {
+        return TopicBuilder.name(PaymentTopics.EVENTS_CONFIRMED_DLQ)
+                .partitions(PARTITIONS)
+                .replicas(REPLICAS)
+                .build();
+    }
+
+    @Bean
     public NewTopic paymentEventsStockCommitted() {
         return TopicBuilder.name(PaymentTopics.EVENTS_STOCK_COMMITTED)
                 .partitions(PARTITIONS)

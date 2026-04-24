@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ class ConfirmedEventConsumerTest {
     private FakeStockCommitEventPublisher stockCommitPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
+    private FakePaymentConfirmDlqPublisher dlqPublisher;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -47,6 +49,7 @@ class ConfirmedEventConsumerTest {
         stockCommitPublisher = new FakeStockCommitEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
+        dlqPublisher = new FakePaymentConfirmDlqPublisher();
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
 
@@ -56,7 +59,8 @@ class ConfirmedEventConsumerTest {
                 stockCommitPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
-                failureCompensationService
+                failureCompensationService,
+                dlqPublisher
         );
     }
 

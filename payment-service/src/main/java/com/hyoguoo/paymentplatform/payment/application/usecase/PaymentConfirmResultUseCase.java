@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
@@ -13,10 +14,11 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,13 @@ import org.springframework.transaction.annotation.Transactional;
  * payment.events.confirmed 소비 후 결제 상태 분기 use-case.
  * ADR-04(2단 멱등성): eventUUID dedupe 선행, 처리 주체 결정.
  * ADR-14: stock 이벤트 발행(commit/restore) 담당.
+ *
+ * <p>T-C3 two-phase lease 패턴:
+ * <ol>
+ *   <li>진입 시 {@code markWithLease(eventUuid, leaseTtl)} — shortTtl(기본 5분) 잠금</li>
+ *   <li>processMessage 성공 후 {@code extendLease(eventUuid, longTtl)} — P8D로 연장</li>
+ *   <li>실패 시 {@code remove(eventUuid)} — 재컨슘 허용. remove false이면 DLQ 전송</li>
+ * </ol>
  *
  * <p>상태 분기:
  * <ul>
@@ -34,8 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PaymentConfirmResultUseCase {
+
+    /** T-C3: processMessage 성공 전 초기 lease TTL. 기본 5분. */
+    static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(5);
+    /** T-C3: processMessage 성공 후 연장 TTL. Kafka retention(7d) + 버퍼(1d) = 8d. */
+    static final Duration DEFAULT_LONG_TTL = Duration.ofDays(8);
 
     private final PaymentEventRepository paymentEventRepository;
     private final EventDedupeStore eventDedupeStore;
@@ -43,23 +56,80 @@ public class PaymentConfirmResultUseCase {
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final LocalDateTimeProvider localDateTimeProvider;
     private final FailureCompensationService failureCompensationService;
+    private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
 
+    @Value("${payment.event-dedupe.lease-ttl:PT5M}")
+    private Duration leaseTtl = DEFAULT_LEASE_TTL;
+
+    @Value("${payment.event-dedupe.ttl:P8D}")
+    private Duration longTtl = DEFAULT_LONG_TTL;
+
+    public PaymentConfirmResultUseCase(
+            PaymentEventRepository paymentEventRepository,
+            EventDedupeStore eventDedupeStore,
+            StockCommitEventPublisherPort stockCommitEventPublisherPort,
+            QuarantineCompensationHandler quarantineCompensationHandler,
+            LocalDateTimeProvider localDateTimeProvider,
+            FailureCompensationService failureCompensationService,
+            PaymentConfirmDlqPublisher paymentConfirmDlqPublisher) {
+        this.paymentEventRepository = paymentEventRepository;
+        this.eventDedupeStore = eventDedupeStore;
+        this.stockCommitEventPublisherPort = stockCommitEventPublisherPort;
+        this.quarantineCompensationHandler = quarantineCompensationHandler;
+        this.localDateTimeProvider = localDateTimeProvider;
+        this.failureCompensationService = failureCompensationService;
+        this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
+    }
+
+    /**
+     * T-C3 two-phase lease:
+     * 1) markWithLease(shortTtl) — 처리 권한 획득. false이면 다른 consumer가 처리 중 → skip.
+     * 2) processMessage 성공 → extendLease(longTtl).
+     * 3) processMessage 실패 → remove. remove false이면 DLQ 전송 후 예외 재전파.
+     */
     @Transactional
     public void handle(ConfirmedEventMessage message) {
-        // 1단: eventUUID dedupe
-        if (!eventDedupeStore.markSeen(message.eventUuid())) {
+        // 1단: eventUUID lease dedupe
+        if (!eventDedupeStore.markWithLease(message.eventUuid(), leaseTtl)) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DEDUPE,
                     () -> "orderId=" + message.orderId() + " eventUuid=" + message.eventUuid());
             return;
         }
 
-        // TX 경계 불일치 방어: stock Kafka publish 실패로 TX 롤백 시 dedupe도 같이 되돌려야
-        // 재컨슘 경로에서 영구 정체를 방지한다.
+        // TX 경계 불일치 방어: processMessage 실패 시 dedupe 기록 제거 → 재컨슘 허용
+        // remove 실패(Redis flap) 시 dedupe 영구 잠금 → DLQ 전송으로 복구 경로 보장
+        processMessageWithLeaseGuard(message);
+    }
+
+    /**
+     * processMessage 호출 후 성공/실패 분기:
+     * - 성공: extendLease로 TTL 연장
+     * - 실패: remove 시도. remove false이면 DLQ 발행 후 예외 재전파
+     *
+     * <p>try 블록 내 외부 변수 재할당 금지 규약 준수 — private 메서드로 추출.
+     */
+    private void processMessageWithLeaseGuard(ConfirmedEventMessage message) {
         try {
             processMessage(message);
+            eventDedupeStore.extendLease(message.eventUuid(), longTtl);
         } catch (RuntimeException e) {
-            eventDedupeStore.remove(message.eventUuid());
+            handleRemoveOnFailure(message.eventUuid(), e);
             throw e;
+        }
+    }
+
+    /**
+     * processMessage 실패 후 dedupe 기록 제거 시도.
+     * remove 실패(false) 시 DLQ 발행으로 dedupe 영구 잠금 방지.
+     */
+    private void handleRemoveOnFailure(String eventUuid, RuntimeException originalException) {
+        boolean removed = eventDedupeStore.remove(eventUuid);
+        if (!removed) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DEDUPE,
+                    () -> "eventUuid=" + eventUuid + " remove=false"
+                            + " cause=" + originalException.getMessage()
+                            + " action=DLQ_PUBLISH");
+            paymentConfirmDlqPublisher.publishDlq(eventUuid, originalException.getMessage());
         }
     }
 
