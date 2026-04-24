@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -282,7 +283,7 @@ class OutboxAsyncConfirmServiceTest {
             outboxAsyncConfirmService.confirm(command);
 
             // then
-            then(mockStockCachePort).should(never()).increment(any(), any());
+            then(mockStockCachePort).should(never()).increment(any(Long.class), anyInt());
         }
 
         @Test
@@ -303,7 +304,7 @@ class OutboxAsyncConfirmServiceTest {
                     .willReturn(StockDecrementResult.SUCCESS);
             given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
                     .willThrow(txException);
-            Mockito.doThrow(compensateException).when(mockStockCachePort).increment(productId, quantity);
+            Mockito.doThrow(compensateException).when(mockStockCachePort).increment(eq(productId), eq(quantity));
 
             // when & then
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))

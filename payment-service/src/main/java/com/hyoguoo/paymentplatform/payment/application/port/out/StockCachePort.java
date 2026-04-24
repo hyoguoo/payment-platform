@@ -44,6 +44,17 @@ public interface StockCachePort {
     Optional<Integer> findCurrent(Long productId);
 
     /**
+     * 재고 캐시 증가 (confirmTx 실패 시 보상용).
+     *
+     * <p>executeConfirmTx 실패 후 decrementStock 에서 차감한 수량을 복원한다.
+     * rollback 과 달리 보상 맥락이므로 별도 메서드로 분리.
+     *
+     * @param productId 상품 ID
+     * @param quantity  복원 수량
+     */
+    void increment(Long productId, int quantity);
+
+    /**
      * 재고 캐시 수량 설정 (warmup·대조 보정용).
      *
      * @param productId 상품 ID

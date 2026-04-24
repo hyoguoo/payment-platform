@@ -51,6 +51,11 @@ public class StockCacheRedisAdapter implements StockCachePort {
     }
 
     @Override
+    public void increment(Long productId, int quantity) {
+        stockCacheRedisTemplate.opsForValue().increment(KEY_PREFIX + productId, quantity);
+    }
+
+    @Override
     public int current(Long productId) {
         String value = stockCacheRedisTemplate.opsForValue().get(KEY_PREFIX + productId);
         return value == null ? 0 : Integer.parseInt(value);
