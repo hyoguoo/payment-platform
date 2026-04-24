@@ -7,7 +7,6 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -41,7 +40,6 @@ public class PaymentConfirmResultUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final EventDedupeStore eventDedupeStore;
     private final StockCommitEventPublisherPort stockCommitEventPublisherPort;
-    private final StockRestoreEventPublisherPort stockRestoreEventPublisherPort;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final LocalDateTimeProvider localDateTimeProvider;
     private final FailureCompensationService failureCompensationService;
@@ -161,8 +159,7 @@ public class PaymentConfirmResultUseCase {
      *
      * <p>ADR-13/T3-04b: 재고 복원은 FailureCompensationService.compensate(orderId, productId, qty) 경유.
      * 각 PaymentOrder의 실 수량(qty)을 전달해 product-service에서 정확한 재고가 복원된다.
-     * 레거시 qty=0 플레이스홀더 경로(stockRestoreEventPublisherPort.publish(orderId, productIds))는
-     * 호출하지 않는다 — T-B2에서 해당 오버로드 자체를 철거 예정.
+     * T-B2: qty=0 플레이스홀더 경로(publish(orderId, productIds)) 오버로드 철거 완료.
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
         paymentEvent.fail(reasonCode, localDateTimeProvider.now());

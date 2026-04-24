@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.StockRestoreEventPayload;
-import java.util.List;
 
 /**
  * stock.events.restore 토픽 발행 전용 고수준 port.
@@ -10,16 +9,11 @@ import java.util.List;
  *
  * <p>T3-04b: FAILED 결제 stock.events.restore 보상 이벤트 발행 (UUID 멱등) 태스크에서
  * 실제 Kafka 어댑터로 교체 예정.
+ *
+ * <p>T-B2: qty=0 플레이스홀더 경로였던 publish(orderId, List<Long>) 오버로드 철거.
+ * 호출처 전수 확인 결과 0건 — FailureCompensationService.compensate(orderId, productId, qty) 단일 경로만 사용.
  */
 public interface StockRestoreEventPublisherPort {
-
-    /**
-     * 재고 복원 이벤트를 발행한다.
-     *
-     * @param orderId    주문 ID (멱등성 키)
-     * @param productIds 복원할 상품 ID 목록
-     */
-    void publish(String orderId, List<Long> productIds);
 
     /**
      * 보상 이벤트 payload(UUID 포함)를 outbox에 발행한다.

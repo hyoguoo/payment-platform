@@ -26,7 +26,9 @@
 - [x] T-B1 `handleFailed` 에서 `FailureCompensationService.compensate(orderId, productId, qty)` 경유
 
   **완료 결과 (2026-04-24)** — `FailureCompensationService.compensate(orderId, Long productId, int qty)` 단일 productId 오버로드 신설. 기존 `compensate(orderId, List<Long>, int)`는 내부에서 단일 오버로드를 위임하도록 리팩토링. `PaymentConfirmResultUseCase`에 `FailureCompensationService` 필드 주입 추가. `handleFailed`에서 레거시 `stockRestoreEventPublisherPort.publish(orderId, productIds)` 호출 제거 → 각 `PaymentOrder`별 `failureCompensationService.compensate(orderId, order.getProductId(), order.getQuantity())` 루프로 교체. `ConfirmedEventConsumerTest` TC2 검증을 `compensate` 호출 기반으로 갱신. `PaymentConfirmResultUseCaseTest` T-B1 신규 3케이스(TC-B1-1 단일 qty / TC-B1-2 복수 productId / TC-B1-3 레거시 publish 미호출) 추가. 전수 288/288 PASS, 회귀 없음. T-B2 진입 가능.
-- [ ] T-B2 레거시 `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 오버로드 철거
+- [x] T-B2 레거시 `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 오버로드 철거
+
+  **완료 결과 (2026-04-24)** — `StockRestoreEventPublisherPort.publish(String, List<Long>)` 인터페이스 선언 삭제. `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 구현(qty=0 플레이스홀더) 삭제 — `publishPayload(StockRestoreEventPayload)` 단일 경로만 유지. `FakeStockRestoreEventPublisher`: `publish(String, List<Long>)` 구현, `StockRestoredRecord` inner record, `published` 리스트, `callCount` AtomicInteger, `publishedEvents()`/`publishedCount()` 메서드 모두 삭제. `PaymentConfirmResultUseCase`: `stockRestoreEventPublisherPort` 필드 삭제(handleFailed 이미 FailureCompensationService 경유) + 관련 import 제거. `PaymentConfirmResultUseCaseTest`: TC-B1-3(레거시 미호출 검증) 삭제 — 메서드 자체가 소멸됐으므로. `ConfirmedEventConsumerTest`: `stockRestorePublisher.publishedCount()` 잔여 검증 3개소 제거 + 불필요 import 정리. 호출처 grep 결과 실 코드 0건(주석만 1건). `./gradlew test` 전수 287/287 PASS, 회귀 없음. T-C1 진입 가능.
 
 **그룹 C — 멱등성 수복** (축 1, critical-4 + major)
 - [ ] T-C1 payment dedupe TTL 기본값 `P8D` + application.yml 명시

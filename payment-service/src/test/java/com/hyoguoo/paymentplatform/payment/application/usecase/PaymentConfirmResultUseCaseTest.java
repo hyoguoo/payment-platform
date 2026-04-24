@@ -9,10 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
-import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -22,7 +18,6 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockRestoreEventPublisher;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -50,7 +45,6 @@ class PaymentConfirmResultUseCaseTest {
     private FakePaymentEventRepository paymentEventRepository;
     private FakeEventDedupeStore dedupeStore;
     private FakeStockCommitEventPublisher stockCommitPublisher;
-    private FakeStockRestoreEventPublisher stockRestorePublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private PaymentConfirmResultUseCase sut;
@@ -60,7 +54,6 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository = new FakePaymentEventRepository();
         dedupeStore = new FakeEventDedupeStore();
         stockCommitPublisher = new FakeStockCommitEventPublisher();
-        stockRestorePublisher = new FakeStockRestoreEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
 
@@ -70,7 +63,6 @@ class PaymentConfirmResultUseCaseTest {
                 paymentEventRepository,
                 dedupeStore,
                 stockCommitPublisher,
-                stockRestorePublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService
@@ -239,29 +231,6 @@ class PaymentConfirmResultUseCaseTest {
         then(failureCompensationService)
                 .should(times(1))
                 .compensate(eq(ORDER_ID), eq(200L), eq(5));
-    }
-
-    // -----------------------------------------------------------------------
-    // TC-B1-3: 레거시 publish(String, List<Long>) 오버로드가 호출되지 않아야 함
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("handleFailed — 레거시 publish(orderId, List<Long>) 오버로드가 호출되지 않는다")
-    void handleFailed_shouldNotInvokeLegacyPublish() {
-        // given
-        PaymentOrder order = buildPaymentOrder(100L, 2, BigDecimal.valueOf(200));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
-        paymentEventRepository.save(event);
-
-        ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", "VENDOR_FAILED", EVENT_UUID, null, null
-        );
-
-        // when
-        sut.handle(message);
-
-        // then — 레거시 publish(orderId, productIds) 미호출
-        assertThat(stockRestorePublisher.publishedCount()).isEqualTo(0);
     }
 
     // ---- factory helpers ----
