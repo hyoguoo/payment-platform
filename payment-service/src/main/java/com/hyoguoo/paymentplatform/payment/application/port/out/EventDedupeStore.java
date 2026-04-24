@@ -1,5 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.port.out;
 
+import java.time.Duration;
+
 /**
  * payment-service outbound 포트 — 메시지 레벨 eventUUID dedupe 계약.
  * ADR-04(2단 멱등성 키): 메시지 레벨 dedupe — 동일 eventUUID 재소비 차단.
@@ -7,28 +9,66 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
  *
  * <p>구현체:
  * <ul>
- *   <li>FakeEventDedupeStore (test source) — in-memory ConcurrentHashSet</li>
- *   <li>실제 Redis 구현체는 Phase 2.d+ 후속 태스크에서 추가 예정</li>
+ *   <li>FakeEventDedupeStore (test source) — in-memory ConcurrentHashMap + TTL Clock</li>
+ *   <li>EventDedupeStoreRedisAdapter (infrastructure) — Redis SET NX/XX EX</li>
  * </ul>
  *
- * <p>markSeen(eventUuid): 최초 호출 시 true(새 UUID), 이미 본 UUID이면 false(중복).
+ * <p>T-C3 two-phase lease 패턴:
+ * <ol>
+ *   <li>{@link #markWithLease(String, Duration)} — shortTtl(5m)로 처리 권한 예약</li>
+ *   <li>processMessage 성공 후 {@link #extendLease(String, Duration)} — longTtl(P8D)로 연장</li>
+ *   <li>실패 시 {@link #remove(String)} — 재처리 가능 상태로 복원. false 반환 시 DLQ 전송</li>
+ * </ol>
+ *
+ * @deprecated {@link #markSeen(String)} 는 PaymentConfirmResultUseCase 이전 호출처에서만 사용.
+ *             신규 코드는 markWithLease + extendLease 패턴을 사용한다.
  */
 public interface EventDedupeStore {
 
     /**
-     * eventUuid를 최초로 처리하는 경우 true를 반환하고 seen으로 등록한다.
-     * 이미 처리된 eventUuid이면 false를 반환한다 (no-op 신호).
+     * shortTtl 동안 eventUuid에 대한 처리 권한을 예약(lease)한다.
+     * 이미 처리 중인(또는 완료된) UUID이면 false를 반환한다.
+     *
+     * <p>Redis 구현: SET NX EX shortTtl.
+     * Fake 구현: ConcurrentHashMap + 만료 시각 추적.
      *
      * @param eventUuid 이벤트 고유 식별자
-     * @return true — 새 UUID (처리 진행), false — 중복 UUID (no-op)
+     * @param shortTtl  초기 lease TTL (예: 5분)
+     * @return true — 처리 권한 획득(새 UUID 또는 만료된 UUID), false — 이미 처리 중
      */
-    boolean markSeen(String eventUuid);
+    boolean markWithLease(String eventUuid, Duration shortTtl);
 
     /**
-     * markSeen으로 기록된 eventUuid를 제거한다. 처리 TX가 롤백된 경우 dedupe 기록을 되돌려
-     * 재컨슘 시 정상 처리되도록 한다. 존재하지 않는 UUID 호출은 no-op.
+     * processMessage 성공 후 dedupe 키의 TTL을 longTtl로 연장한다.
+     * 키가 존재하지 않으면(예: Redis flap으로 만료) false를 반환한다.
+     *
+     * <p>Redis 구현: SET XX EX longTtl (존재 시에만 갱신).
+     * Fake 구현: 키 존재 확인 후 만료 시각 갱신.
+     *
+     * @param eventUuid 이벤트 고유 식별자
+     * @param longTtl   연장할 TTL (예: P8D)
+     * @return true — 연장 성공, false — 키 없음(no-op)
+     */
+    boolean extendLease(String eventUuid, Duration longTtl);
+
+    /**
+     * dedupe 기록을 제거한다. processMessage 실패 시 재컨슘을 허용하기 위해 호출한다.
+     * 삭제 성공 여부를 반환한다 — false이면 Redis flap 등으로 제거 실패를 의미한다.
+     *
+     * <p>Redis 구현: DEL key → boolean(삭제 건수 > 0).
+     * Fake 구현: Map.remove 결과.
      *
      * @param eventUuid 제거할 이벤트 고유 식별자
+     * @return true — 삭제 성공, false — 키 없음 또는 Redis 오류
      */
-    void remove(String eventUuid);
+    boolean remove(String eventUuid);
+
+    /**
+     * @deprecated T-C3 이후 신규 코드는 {@link #markWithLease} 를 사용한다.
+     *             기존 호출처 호환을 위해 longTtl 기본값으로 위임한다.
+     */
+    @Deprecated
+    default boolean markSeen(String eventUuid) {
+        return markWithLease(eventUuid, Duration.ofDays(8));
+    }
 }

@@ -10,7 +10,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * EventDedupeStore Redis 구현체. ADR-04(2단 멱등성 키).
- * SET NX EX 패턴으로 eventUuid별 단일 소비를 보장한다.
+ *
+ * <p>T-C3 two-phase lease 패턴:
+ * <ul>
+ *   <li>markWithLease: SET NX EX shortTtl — 처리 권한 예약</li>
+ *   <li>extendLease: SET XX EX longTtl — 성공 후 TTL 연장</li>
+ *   <li>remove: DEL — boolean(삭제 성공 여부) 반환</li>
+ * </ul>
  *
  * <p>keyspace: {@code evt:seen:{uuid}}.
  * TTL: {@code payment.event-dedupe.ttl}. 기본 8일 — Kafka retention(7d) + 복구 버퍼(1d) = P8D.
@@ -32,16 +38,40 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
     @Value("${payment.event-dedupe.ttl:P8D}")
     private Duration ttl;
 
+    /**
+     * shortTtl 동안 처리 권한을 예약한다. SET NX EX shortTtl.
+     *
+     * @return true — 처리 권한 획득, false — 이미 처리 중(NX 실패)
+     */
     @Override
-    public boolean markSeen(String eventUuid) {
+    public boolean markWithLease(String eventUuid, Duration shortTtl) {
         Boolean firstSeen = redisTemplate
                 .opsForValue()
-                .setIfAbsent(KEY_PREFIX + eventUuid, MARKER, ttl);
+                .setIfAbsent(KEY_PREFIX + eventUuid, MARKER, shortTtl);
         return Boolean.TRUE.equals(firstSeen);
     }
 
+    /**
+     * 성공 후 dedupe 키를 longTtl로 연장한다. SET XX EX longTtl.
+     *
+     * @return true — 연장 성공, false — 키 없음(Redis flap 등)
+     */
     @Override
-    public void remove(String eventUuid) {
-        redisTemplate.delete(KEY_PREFIX + eventUuid);
+    public boolean extendLease(String eventUuid, Duration longTtl) {
+        Boolean updated = redisTemplate
+                .opsForValue()
+                .setIfPresent(KEY_PREFIX + eventUuid, MARKER, longTtl);
+        return Boolean.TRUE.equals(updated);
+    }
+
+    /**
+     * dedupe 기록을 삭제한다.
+     *
+     * @return true — 삭제 성공, false — 키 없음 또는 Redis 오류
+     */
+    @Override
+    public boolean remove(String eventUuid) {
+        Boolean deleted = redisTemplate.delete(KEY_PREFIX + eventUuid);
+        return Boolean.TRUE.equals(deleted);
     }
 }
