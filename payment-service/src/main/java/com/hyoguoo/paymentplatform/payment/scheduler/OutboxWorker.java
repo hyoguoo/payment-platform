@@ -3,6 +3,8 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,7 +49,10 @@ public class OutboxWorker {
 
     private void processParallel(List<PaymentOutbox> records) {
         // Java 21 가상 스레드: try-with-resources로 자동 종료 (awaitTermination 불필요)
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        // T-E1: ContextExecutorService.wrap — VT 실행 시 MDC/OTel context 승계
+        ExecutorService raw = Executors.newVirtualThreadPerTaskExecutor();
+        try (ExecutorService executor = ContextExecutorService.wrap(
+                raw, ContextSnapshotFactory.builder().build())) {
             records.forEach(record -> executor.submit(() -> outboxRelayService.relay(record.getOrderId())));
         }
     }

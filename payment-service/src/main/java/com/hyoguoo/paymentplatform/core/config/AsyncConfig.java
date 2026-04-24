@@ -14,6 +14,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * {@code @Async("outboxRelayExecutor")}로 이 executor를 가리키면
  * confirm 요청 스레드는 즉시 반환되고, relay는 별도 VT에서 수행된다.
  * Tomcat 워커 스레드(플랫폼 스레드)는 점유되지 않는다.
+ *
+ * <p>T-E1: {@link MdcTaskDecorator} 를 적용하여 @Async 경계에서 MDC(traceId 등) 를 승계한다.
  */
 @Configuration
 @EnableAsync
@@ -21,6 +23,8 @@ public class AsyncConfig {
 
     @Bean("outboxRelayExecutor")
     public AsyncTaskExecutor outboxRelayExecutor() {
-        return new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
+        TaskExecutorAdapter adapter = new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
+        adapter.setTaskDecorator(new MdcTaskDecorator());
+        return adapter;
     }
 }

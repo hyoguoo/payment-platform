@@ -5,6 +5,8 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -56,7 +58,11 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     @Override
     public void start() {
         running = true;
-        relayExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        // T-E1: ContextExecutorService.wrap — VT 실행 시 MDC/OTel context 승계
+        relayExecutor = ContextExecutorService.wrap(
+                Executors.newVirtualThreadPerTaskExecutor(),
+                ContextSnapshotFactory.builder().build()
+        );
         for (int i = 0; i < workerCount; i++) {
             Thread worker = Thread.ofVirtual()
                     .name("pg-outbox-immediate-worker-" + i)

@@ -3,8 +3,10 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
+import com.hyoguoo.paymentplatform.core.config.Slf4jMdcThreadLocalAccessor;
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisherPort;
+import io.micrometer.context.ContextRegistry;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
@@ -44,6 +46,8 @@ class OutboxWorkerMdcPropagationTest {
 
     @BeforeEach
     void setUp() {
+        // T-E1: 단위 테스트 환경에서는 Spring context 가 없으므로 MDC accessor 를 수동 등록
+        ContextRegistry.getInstance().registerThreadLocalAccessor(new Slf4jMdcThreadLocalAccessor());
         mockPaymentOutboxUseCase = Mockito.mock(PaymentOutboxUseCase.class);
         capturingRelayService = new CapturingOutboxRelayService(2);
         outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, capturingRelayService);
