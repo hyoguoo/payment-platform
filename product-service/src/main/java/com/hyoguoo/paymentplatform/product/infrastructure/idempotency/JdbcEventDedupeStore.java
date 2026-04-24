@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.product.infrastructure.idempotency;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
+import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -73,8 +76,8 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
                 java.sql.Timestamp.from(expiresAt));
 
         boolean isFirstSeen = inserted > 0;
-        log.debug("JdbcEventDedupeStore: recordIfAbsent eventUUID={} isFirstSeen={}",
-                eventUUID, isFirstSeen);
+        LogFmt.debug(log, LogDomain.STOCK, EventType.EVENT_DEDUPE_RECORD,
+                () -> "eventUUID=" + eventUUID + " isFirstSeen=" + isFirstSeen);
         return isFirstSeen;
     }
 }

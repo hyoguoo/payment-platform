@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +44,7 @@ public class QuarantineCompensationHandler {
         PaymentEvent quarantinedEvent = paymentCommandUseCase.markPaymentAsQuarantined(event, reason);
         paymentEventRepository.saveOrUpdate(quarantinedEvent);
 
-        log.info("QuarantineCompensationHandler: QUARANTINED 전이 완료 orderId={} reason={}", orderId, reason);
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_QUARANTINE_TRANSITIONED,
+                () -> "orderId=" + orderId + " reason=" + reason);
     }
 }

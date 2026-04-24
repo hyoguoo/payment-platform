@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.publisher;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisherPort;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
@@ -83,20 +86,23 @@ public class KafkaMessagePublisher implements MessagePublisherPort {
     private <T> void sendTyped(KafkaTemplate<String, T> template, String topic, String key, T payload) {
         try {
             template.send(topic, key, payload).get(sendTimeoutMillis, TimeUnit.MILLISECONDS);
-            log.debug("Kafka 발행 성공 topic={} key={}", topic, key);
+            LogFmt.debug(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_SUCCESS,
+                    () -> "topic=" + topic + " key=" + key);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Kafka 발행 중단 topic={} key={}", topic, key);
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
+                    () -> "interrupted topic=" + topic + " key=" + key);
             throw new IllegalStateException(
                     "Kafka 발행 중단 topic=" + topic + " key=" + key, e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            log.error("Kafka 발행 실패 topic={} key={} error={}", topic, key, cause.getMessage());
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
+                    () -> "topic=" + topic + " key=" + key + " error=" + cause.getMessage());
             throw new IllegalStateException(
                     "Kafka 발행 실패 topic=" + topic + " key=" + key, cause);
         } catch (TimeoutException e) {
-            log.error("Kafka 발행 타임아웃 topic={} key={} timeoutMs={}",
-                    topic, key, sendTimeoutMillis);
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_FAIL,
+                    () -> "timeout topic=" + topic + " key=" + key + " timeoutMs=" + sendTimeoutMillis);
             throw new IllegalStateException(
                     "Kafka 발행 타임아웃 topic=" + topic + " key=" + key
                             + " timeoutMs=" + sendTimeoutMillis, e);

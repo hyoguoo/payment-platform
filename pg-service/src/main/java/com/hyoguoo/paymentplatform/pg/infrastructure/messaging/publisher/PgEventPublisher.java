@@ -4,8 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgEventPublisherPort;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -52,6 +58,9 @@ public class PgEventPublisher implements PgEventPublisherPort {
     private final String eventsConfirmedTopic;
     private final String commandsConfirmTopic;
     private final String commandsConfirmDlqTopic;
+
+    @Value("${kafka.publisher.send-timeout-millis:10000}")
+    private long sendTimeoutMillis;
 
     public PgEventPublisher(
             ObjectMapper objectMapper,
@@ -113,18 +122,29 @@ public class PgEventPublisher implements PgEventPublisherPort {
             headers.forEach((headerKey, headerValue) ->
                     record.headers().add(new RecordHeader(headerKey, headerValue)));
         }
-        template.send(record)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("PgEventPublisher: Kafka 발행 실패 topic={} key={} error={}",
-                                topic, key, ex.getMessage());
-                        throwUnchecked(ex);
-                    } else {
-                        log.info("PgEventPublisher: Kafka 발행 성공 topic={} key={} offset={}",
-                                topic, key,
-                                result.getRecordMetadata().offset());
-                    }
-                });
+        try {
+            template.send(record).get(sendTimeoutMillis, TimeUnit.MILLISECONDS);
+            LogFmt.debug(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_DONE,
+                    () -> "topic=" + topic + " key=" + key);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
+                    () -> "interrupted topic=" + topic + " key=" + key);
+            throw new IllegalStateException(
+                    "PgEventPublisher: Kafka 발행 중단 topic=" + topic + " key=" + key, e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
+                    () -> "topic=" + topic + " key=" + key + " error=" + cause.getMessage());
+            throw new IllegalStateException(
+                    "PgEventPublisher: Kafka 발행 실패 topic=" + topic + " key=" + key, cause);
+        } catch (TimeoutException e) {
+            LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
+                    () -> "timeout topic=" + topic + " key=" + key + " timeoutMs=" + sendTimeoutMillis);
+            throw new IllegalStateException(
+                    "PgEventPublisher: Kafka 발행 타임아웃 topic=" + topic + " key=" + key
+                            + " timeoutMs=" + sendTimeoutMillis, e);
+        }
     }
 
     private String toJsonString(Object payload) {
@@ -146,10 +166,5 @@ public class PgEventPublisher implements PgEventPublisherPort {
             throw new IllegalStateException(
                     "PgEventPublisher: payload 역직렬화 실패 type=" + type.getSimpleName(), e);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T extends Throwable> void throwUnchecked(Throwable t) throws T {
-        throw (T) t;
     }
 }

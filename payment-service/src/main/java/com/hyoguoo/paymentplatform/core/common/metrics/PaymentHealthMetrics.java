@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.core.common.metrics;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -32,13 +35,12 @@ public class PaymentHealthMetrics {
 
     @PostConstruct
     public void init() {
-        log.info("Initializing PaymentHealthMetrics with thresholds - stuckInProgressMinutes={}, maxRetryCount={}",
-                stuckInProgressMinutes, maxRetryCount);
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.METRICS_INIT,
+                () -> "component=PaymentHealthMetrics stuckInProgressMinutes=" + stuckInProgressMinutes
+                        + " maxRetryCount=" + maxRetryCount);
 
         registerHealthGauge("stuck_in_progress", "Count of payments stuck in IN_PROGRESS status");
         registerHealthGauge("max_retry_reached", "Count of payments that reached max retry count");
-
-        log.info("PaymentHealthMetrics initialization complete");
     }
 
     private void registerHealthGauge(String type, String description) {
@@ -49,7 +51,8 @@ public class PaymentHealthMetrics {
                 .description(description)
                 .register(meterRegistry);
 
-        log.debug("Registered health gauge: payment_health_{}_total", type);
+        LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_REGISTERED,
+                () -> "gauge=payment_health_" + type + "_total");
     }
 
     @Scheduled(fixedDelayString = "${metrics.payment.health.polling-interval-seconds:10}000")
@@ -65,7 +68,7 @@ public class PaymentHealthMetrics {
                 .countByRetryCountGreaterThanEqual(maxRetryCount);
         healthGauges.get("max_retry_reached").set(maxRetryReached);
 
-        log.debug("Health gauges updated - stuckInProgress={}, maxRetryReached={}",
-                stuckInProgress, maxRetryReached);
+        LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_UPDATED,
+                () -> "stuckInProgress=" + stuckInProgress + " maxRetryReached=" + maxRetryReached);
     }
 }

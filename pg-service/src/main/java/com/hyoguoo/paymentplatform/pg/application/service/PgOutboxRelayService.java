@@ -48,20 +48,23 @@ public class PgOutboxRelayService {
 
         Optional<PgOutbox> outboxOpt = pgOutboxRepository.findById(id);
         if (outboxOpt.isEmpty()) {
-            log.debug("PgOutboxRelayService: outbox 없음 id={}", id);
+            LogFmt.debug(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_NOT_FOUND,
+                    () -> "id=" + id);
             return;
         }
         PgOutbox outbox = outboxOpt.get();
 
         // 이미 발행된 row — no-op
         if (outbox.getProcessedAt() != null) {
-            log.debug("PgOutboxRelayService: 이미 처리된 row id={}", id);
+            LogFmt.debug(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_ALREADY_PROCESSED,
+                    () -> "id=" + id);
             return;
         }
 
         // available_at > now → skip
         if (!outbox.isAvailableAt(now)) {
-            log.debug("PgOutboxRelayService: available_at 미도래 id={} availableAt={}", id, outbox.getAvailableAt());
+            LogFmt.debug(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_NOT_AVAILABLE_YET,
+                    () -> "id=" + id + " availableAt=" + outbox.getAvailableAt());
             return;
         }
 

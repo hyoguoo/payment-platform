@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
@@ -60,15 +63,18 @@ public class UserHttpAdapter implements UserPort {
     private RuntimeException mapResponseException(WebClientResponseException e) {
         int status = e.getStatusCode().value();
         if (status == HttpStatus.NOT_FOUND.value()) {
-            log.warn("user_service_not_found status=404 body={}", e.getResponseBodyAsString());
+            LogFmt.warn(log, LogDomain.USER, EventType.USER_SERVICE_NOT_FOUND,
+                    () -> "status=404 body=" + e.getResponseBodyAsString());
             return UserNotFoundException.of(PaymentErrorCode.USER_NOT_FOUND);
         }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
-            log.warn("user_service_retryable status={}", status);
+            LogFmt.warn(log, LogDomain.USER, EventType.USER_SERVICE_RETRYABLE,
+                    () -> "status=" + status);
             return UserServiceRetryableException.of(PaymentErrorCode.USER_SERVICE_UNAVAILABLE);
         }
-        log.warn("user_service_unexpected status={} body={}", status, e.getResponseBodyAsString());
+        LogFmt.warn(log, LogDomain.USER, EventType.USER_SERVICE_UNEXPECTED,
+                () -> "status=" + status + " body=" + e.getResponseBodyAsString());
         return new IllegalStateException(
                 "user-service 오류 status=" + status + " body=" + e.getResponseBodyAsString()
         );

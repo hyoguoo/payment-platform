@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.service.StockCacheWarmupService;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.StockSnapshotEvent;
 import lombok.RequiredArgsConstructor;
@@ -44,8 +47,8 @@ public class StockSnapshotWarmupConsumer {
         try {
             return objectMapper.readValue(payload, StockSnapshotEvent.class);
         } catch (Exception e) {
-            log.error("StockSnapshotWarmupConsumer: payload 역직렬화 실패 payload={} error={}",
-                    payload, e.getMessage());
+            LogFmt.error(log, LogDomain.PRODUCT, EventType.STOCK_SNAPSHOT_PARSE_FAIL,
+                    () -> "payload=" + payload + " error=" + e.getMessage());
             throw new IllegalStateException("stock snapshot 역직렬화 실패", e);
         }
     }

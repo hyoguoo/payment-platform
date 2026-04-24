@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.publisher;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentCreatedEvent;
@@ -28,8 +31,8 @@ public class PaymentEventPublisher {
                         occurredAt
                 )
         );
-        log.info("Published payment created event: orderId={}, status={}",
-                paymentEvent.getOrderId(), paymentEvent.getStatus());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.DOMAIN_EVENT_CREATED_PUBLISHED,
+                () -> "orderId=" + paymentEvent.getOrderId() + " status=" + paymentEvent.getStatus());
     }
 
     public void publishStatusChange(PaymentEvent paymentEvent,
@@ -46,8 +49,9 @@ public class PaymentEventPublisher {
                         occurredAt
                 )
         );
-        log.info("Published status change event: orderId={}, {} -> {}",
-                paymentEvent.getOrderId(), previousStatus, paymentEvent.getStatus());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.DOMAIN_EVENT_STATUS_CHANGE_PUBLISHED,
+                () -> "orderId=" + paymentEvent.getOrderId()
+                        + " " + previousStatus + "->" + paymentEvent.getStatus());
     }
 
     public void publishRetryAttempt(PaymentEvent paymentEvent,
@@ -64,7 +68,9 @@ public class PaymentEventPublisher {
                         occurredAt
                 )
         );
-        log.info("Published retry attempt event: orderId={}, retryCount={}, {} -> {}",
-                paymentEvent.getOrderId(), paymentEvent.getRetryCount(), previousStatus, paymentEvent.getStatus());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.DOMAIN_EVENT_RETRY_PUBLISHED,
+                () -> "orderId=" + paymentEvent.getOrderId()
+                        + " retryCount=" + paymentEvent.getRetryCount()
+                        + " " + previousStatus + "->" + paymentEvent.getStatus());
     }
 }

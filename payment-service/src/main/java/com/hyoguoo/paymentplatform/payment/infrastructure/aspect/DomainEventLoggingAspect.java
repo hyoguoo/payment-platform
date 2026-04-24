@@ -1,11 +1,14 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
-import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation.PublishDomainEvent;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
@@ -43,7 +46,8 @@ public class DomainEventLoggingAspect {
 
             return result;
         } catch (Exception e) {
-            log.error("Error occurred while processing payment: {}", e.getMessage(), e);
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.ASPECT_PROCEED_ERROR,
+                    () -> "aspect=DomainEventLoggingAspect error=" + e.getMessage());
             throw e;
         }
     }
@@ -96,7 +100,8 @@ public class DomainEventLoggingAspect {
                 String changeReason = reason != null ? reason : "Payment is in progress successfully.";
                 paymentEventPublisher.publishStatusChange(afterEvent, beforeStatus, changeReason, occurredAt);
             }
-            default -> log.warn("Unknown action '{}' in @PublishDomainEvent annotation.", publishEvent.action());
+            default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.ASPECT_UNKNOWN_ACTION,
+                    () -> "action=" + publishEvent.action());
         }
     }
 }

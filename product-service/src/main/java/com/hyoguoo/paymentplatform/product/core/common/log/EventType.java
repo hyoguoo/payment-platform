@@ -21,5 +21,7 @@ public enum EventType {
 
     STOCK_REDIS_SET,
 
+    EVENT_DEDUPE_RECORD,
+
     EXCEPTION,
 }

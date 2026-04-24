@@ -33,6 +33,8 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class PaymentConfirmDlqConsumer {
 
+    private static final String GROUP_ID = "pg-service-dlq";
+
     private final PgDlqService pgDlqService;
 
     /**
@@ -43,7 +45,7 @@ public class PaymentConfirmDlqConsumer {
      */
     @KafkaListener(
             topics = PgTopics.COMMANDS_CONFIRM_DLQ,
-            groupId = "pg-service-dlq",
+            groupId = GROUP_ID,
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(PgConfirmCommand command) {

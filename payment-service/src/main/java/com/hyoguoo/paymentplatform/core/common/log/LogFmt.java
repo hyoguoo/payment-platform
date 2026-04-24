@@ -65,4 +65,16 @@ public class LogFmt {
             logger.error(INFO_LOG_FORMAT, logDomain.name(), event.name(), messageSupplier.get());
         }
     }
+
+    public static void debug(Logger logger, LogDomain logDomain, EventType event) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(INFO_LOG_FORMAT_NO_MESSAGE, logDomain.name(), event.name());
+        }
+    }
+
+    public static void debug(Logger logger, LogDomain logDomain, EventType event, Supplier<String> messageSupplier) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(INFO_LOG_FORMAT, logDomain.name(), event.name(), messageSupplier.get());
+        }
+    }
 }

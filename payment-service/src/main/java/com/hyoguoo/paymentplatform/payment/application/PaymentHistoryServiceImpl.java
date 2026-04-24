@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentHistoryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentHistoryEvent;
 import com.hyoguoo.paymentplatform.payment.listener.port.PaymentHistoryService;
@@ -16,14 +19,18 @@ public class PaymentHistoryServiceImpl implements PaymentHistoryService {
 
     @Override
     public void recordPaymentHistory(PaymentHistoryEvent event) {
-        log.debug("Processing payment history event: type={}, paymentEventId={}, orderId={}",
-                event.getEventType(), event.getPaymentEventId(), event.getOrderId());
+        LogFmt.debug(log, LogDomain.PAYMENT, EventType.PAYMENT_HISTORY_SAVE_START,
+                () -> "type=" + event.getEventType()
+                        + " paymentEventId=" + event.getPaymentEventId()
+                        + " orderId=" + event.getOrderId());
 
         try {
             paymentHistoryUseCase.savePaymentHistory(event);
-            log.debug("Successfully saved payment history for orderId: {}", event.getOrderId());
+            LogFmt.debug(log, LogDomain.PAYMENT, EventType.PAYMENT_HISTORY_SAVE_DONE,
+                    () -> "orderId=" + event.getOrderId());
         } catch (Exception e) {
-            log.error("Failed to save payment history for event: {}", event, e);
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_HISTORY_SAVE_FAIL,
+                    () -> "orderId=" + event.getOrderId() + " error=" + e.getMessage());
             throw e;
         }
     }

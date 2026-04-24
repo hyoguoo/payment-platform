@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
@@ -28,6 +31,8 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class ConfirmedEventConsumer {
 
+    private static final String GROUP_ID = "payment-service";
+
     private final PaymentConfirmResultUseCase paymentConfirmResultUseCase;
 
     /**
@@ -38,12 +43,13 @@ public class ConfirmedEventConsumer {
      */
     @KafkaListener(
             topics = PaymentTopics.EVENTS_CONFIRMED,
-            groupId = "payment-service",
+            groupId = GROUP_ID,
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(ConfirmedEventMessage message) {
-        log.info("ConfirmedEventConsumer: 메시지 수신 orderId={} status={} eventUuid={}",
-                message.orderId(), message.status(), message.eventUuid());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_RECEIVED,
+                () -> "orderId=" + message.orderId() + " status=" + message.status()
+                        + " eventUuid=" + message.eventUuid());
         paymentConfirmResultUseCase.handle(message);
     }
 }

@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.core.common.metrics;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -50,7 +53,8 @@ public class PaymentTransitionMetrics {
             timer.record(duration);
         }
 
-        log.debug("Recorded payment transition: {} -> {} (trigger: {}, duration: {})",
-                fromStatus, toStatus, trigger, duration);
+        LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_RECORDED,
+                () -> "metric=payment_transition " + fromStatus + "->" + toStatus
+                        + " trigger=" + trigger + " duration=" + duration);
     }
 }

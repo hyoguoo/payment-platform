@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.gateway.filter;
 
+import com.hyoguoo.paymentplatform.gateway.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.gateway.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.gateway.core.common.log.LogFmt;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -63,7 +66,8 @@ public class TraceContextPropagationFilter implements WebFilter, Ordered {
             TraceIds ids = parsed.get();
             MDC.put(MDC_TRACE_ID, ids.traceId());
             MDC.put(MDC_SPAN_ID, ids.spanId());
-            log.debug("traceparent 주입 완료: traceId={} spanId={}", ids.traceId(), ids.spanId());
+            LogFmt.debug(log, LogDomain.GATEWAY, EventType.TRACE_CONTEXT_INJECTED,
+                    () -> "traceId=" + ids.traceId() + " spanId=" + ids.spanId());
         }
 
         return chain.filter(exchange)
@@ -86,7 +90,8 @@ public class TraceContextPropagationFilter implements WebFilter, Ordered {
 
         Matcher matcher = TRACEPARENT_PATTERN.matcher(traceparent.trim().toLowerCase());
         if (!matcher.matches()) {
-            log.debug("traceparent 포맷 불일치, Micrometer Tracing 자동 생성으로 위임: value={}", traceparent);
+            LogFmt.debug(log, LogDomain.GATEWAY, EventType.TRACE_CONTEXT_MALFORMED,
+                    () -> "value=" + traceparent);
             return Optional.empty();
         }
 

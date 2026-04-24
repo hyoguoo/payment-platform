@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.core.common.metrics;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import io.micrometer.core.instrument.Gauge;
@@ -25,7 +28,8 @@ public class PaymentStateMetrics {
 
     @PostConstruct
     public void init() {
-        log.info("Initializing PaymentStateMetrics");
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.METRICS_INIT,
+                () -> "component=PaymentStateMetrics");
 
         for (PaymentEventStatus status : PaymentEventStatus.values()) {
             AtomicLong gaugeValue = new AtomicLong(0);
@@ -36,10 +40,9 @@ public class PaymentStateMetrics {
                     .tag("status", status.name())
                     .register(meterRegistry);
 
-            log.debug("Registered status gauge for status: {}", status);
+            LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_REGISTERED,
+                    () -> "gauge=payment_state_current_total status=" + status);
         }
-
-        log.info("PaymentStateMetrics initialization complete");
     }
 
     @Scheduled(fixedDelayString = "${metrics.payment.state.polling-interval-seconds:10}000")
@@ -54,6 +57,7 @@ public class PaymentStateMetrics {
                 statusGauges.get(status).set(count)
         );
 
-        log.debug("Updated state gauges: {}", statusCounts);
+        LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_UPDATED,
+                () -> "component=PaymentStateMetrics counts=" + statusCounts);
     }
 }

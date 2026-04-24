@@ -184,26 +184,20 @@ public class DuplicateApprovalHandler {
 
     private void reemitStoredStatus(String orderId, PgInbox inbox) {
         // pg_inbox 상태 변경 없음(이미 terminal)
-        String storedResult = inbox.getStoredStatusResult();
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, storedResult, null);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
+        long outboxId = enqueueOutbox(orderId, inbox.getStoredStatusResult());
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT_DONE,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
     private void handleAmountMismatchDbExists(String orderId) {
         // inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH (불변식 4c)
         pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
 
-        String payload = buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH);
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
+        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_EXISTS,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
     // -----------------------------------------------------------------------
@@ -228,13 +222,10 @@ public class DuplicateApprovalHandler {
         String approvedResult = buildApprovedPayload(orderId, amountLong);
         pgInboxRepository.transitToApproved(orderId, approvedResult);
 
-        String payload = buildConfirmedPayload(orderId, "APPROVED", null);
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
+        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "APPROVED", null));
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED_DONE,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
     private void handleDbAbsentAmountMismatch(String orderId, long payloadAmountLong, long vendorAmountLong) {
@@ -246,13 +237,10 @@ public class DuplicateApprovalHandler {
         pgInboxRepository.transitNoneToInProgress(orderId, payloadAmountLong);
         pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
 
-        String payload = buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH);
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
+        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
     // -----------------------------------------------------------------------
@@ -267,13 +255,23 @@ public class DuplicateApprovalHandler {
         }
         pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
 
-        String payload = buildConfirmedPayload(orderId, "QUARANTINED", REASON_VENDOR_INDETERMINATE);
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
+        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_VENDOR_INDETERMINATE));
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
+    }
+
+    /**
+     * pg_outbox row 저장 + PgOutboxReadyEvent 발행을 하나의 단위로 묶는다.
+     * 5개 분기 경로에서 동일한 3단(create/save/publish) 을 공유한다.
+     *
+     * @return 저장된 pg_outbox row id (AFTER_COMMIT 이벤트 핸들러가 상관 키로 사용)
+     */
+    private long enqueueOutbox(String orderId, String payload) {
+        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+        return saved.getId();
     }
 
     // -----------------------------------------------------------------------

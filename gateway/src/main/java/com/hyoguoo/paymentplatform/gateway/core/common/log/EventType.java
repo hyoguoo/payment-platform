@@ -7,5 +7,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum EventType {
 
+    TRACE_CONTEXT_INJECTED,
+    TRACE_CONTEXT_MALFORMED,
+
     EXCEPTION,
 }

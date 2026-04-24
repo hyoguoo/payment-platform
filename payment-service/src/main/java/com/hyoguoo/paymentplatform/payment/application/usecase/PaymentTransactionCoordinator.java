@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -55,7 +58,8 @@ public class PaymentTransactionCoordinator {
                     ? StockDecrementResult.SUCCESS
                     : StockDecrementResult.REJECTED;
         } catch (RuntimeException e) {
-            log.warn("재고 캐시 장애 발생, QUARANTINED 분기로 전환 productId={} qty={}", productId, quantity, e);
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_CACHE_DOWN_QUARANTINE,
+                    () -> "productId=" + productId + " qty=" + quantity + " error=" + e.getMessage());
             return StockDecrementResult.CACHE_DOWN;
         }
     }
@@ -145,10 +149,10 @@ public class PaymentTransactionCoordinator {
         if (outboxInFlight && eventCompensatable) {
             orderedProductUseCase.increaseStockForOrders(paymentOrderList);
         } else {
-            log.warn(
-                    "D12 guard: 재고 복구 건너뜀 orderId={} outboxStatus={} eventStatus={}",
-                    orderId, freshOutbox.getStatus(), freshEvent.getStatus()
-            );
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.D12_GUARD_SKIP_STOCK_RESTORE,
+                    () -> "orderId=" + orderId
+                            + " outboxStatus=" + freshOutbox.getStatus()
+                            + " eventStatus=" + freshEvent.getStatus());
         }
 
         if (outboxInFlight) {

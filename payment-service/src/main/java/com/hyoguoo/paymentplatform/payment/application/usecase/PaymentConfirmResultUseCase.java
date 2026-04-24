@@ -1,5 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
@@ -43,8 +46,8 @@ public class PaymentConfirmResultUseCase {
     public void handle(ConfirmedEventMessage message) {
         // 1단: eventUUID dedupe
         if (!eventDedupeStore.markSeen(message.eventUuid())) {
-            log.info("PaymentConfirmResultUseCase: 중복 eventUUID — no-op orderId={} eventUuid={}",
-                    message.orderId(), message.eventUuid());
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DEDUPE,
+                    () -> "orderId=" + message.orderId() + " eventUuid=" + message.eventUuid());
             return;
         }
 
@@ -64,16 +67,17 @@ public class PaymentConfirmResultUseCase {
                 .findByOrderId(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
-        log.info("PaymentConfirmResultUseCase: 처리 시작 orderId={} status={} eventUuid={}",
-                message.orderId(), message.status(), message.eventUuid());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
+                () -> "orderId=" + message.orderId() + " status=" + message.status()
+                        + " eventUuid=" + message.eventUuid());
 
         // 3단: status별 분기
         switch (message.status()) {
             case "APPROVED" -> handleApproved(paymentEvent);
             case "FAILED" -> handleFailed(paymentEvent, message.reasonCode());
             case "QUARANTINED" -> handleQuarantined(paymentEvent, message.reasonCode());
-            default -> log.warn("PaymentConfirmResultUseCase: 알 수 없는 status={} orderId={}",
-                    message.status(), message.orderId());
+            default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
+                    () -> "orderId=" + message.orderId() + " status=" + message.status());
         }
     }
 
@@ -86,7 +90,8 @@ public class PaymentConfirmResultUseCase {
             stockCommitEventPublisherPort.publish(order.getProductId(), order.getQuantity(), paymentEvent.getOrderId());
         }
 
-        log.info("PaymentConfirmResultUseCase: DONE 전이 완료 orderId={}", paymentEvent.getOrderId());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
+                () -> "orderId=" + paymentEvent.getOrderId());
     }
 
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
@@ -99,7 +104,8 @@ public class PaymentConfirmResultUseCase {
                 .toList();
         stockRestoreEventPublisherPort.publish(paymentEvent.getOrderId(), productIds);
 
-        log.info("PaymentConfirmResultUseCase: FAILED 전이 + restore 발행 완료 orderId={}", paymentEvent.getOrderId());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED,
+                () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
     }
 
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
@@ -109,6 +115,7 @@ public class PaymentConfirmResultUseCase {
                 reasonCode
         );
 
-        log.info("PaymentConfirmResultUseCase: QUARANTINED 위임 완료 orderId={}", paymentEvent.getOrderId());
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINED,
+                () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
     }
 }

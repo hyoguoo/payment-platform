@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
+import com.hyoguoo.paymentplatform.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
@@ -86,15 +89,18 @@ public class ProductHttpAdapter implements ProductPort {
     private RuntimeException mapResponseException(WebClientResponseException e) {
         int status = e.getStatusCode().value();
         if (status == HttpStatus.NOT_FOUND.value()) {
-            log.warn("product_service_not_found status=404 body={}", e.getResponseBodyAsString());
+            LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_NOT_FOUND,
+                    () -> "status=404 body=" + e.getResponseBodyAsString());
             return ProductNotFoundException.of(PaymentErrorCode.PRODUCT_NOT_FOUND);
         }
         if (status == HttpStatus.SERVICE_UNAVAILABLE.value()
                 || status == HttpStatus.TOO_MANY_REQUESTS.value()) {
-            log.warn("product_service_retryable status={}", status);
+            LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_RETRYABLE,
+                    () -> "status=" + status);
             return ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
         }
-        log.warn("product_service_unexpected status={} body={}", status, e.getResponseBodyAsString());
+        LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_UNEXPECTED,
+                () -> "status=" + status + " body=" + e.getResponseBodyAsString());
         return new IllegalStateException(
                 "product-service 오류 status=" + status + " body=" + e.getResponseBodyAsString()
         );

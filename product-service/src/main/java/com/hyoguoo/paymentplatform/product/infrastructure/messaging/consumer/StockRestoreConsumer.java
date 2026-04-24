@@ -23,6 +23,9 @@ import org.springframework.stereotype.Component;
  * T3.5-02 규약: infra @ConditionalOnProperty는 matchIfMissing=false(기본).
  * spring.kafka.bootstrap-servers 미명시 시 빈 자체가 등록되지 않는다.
  * 테스트 컨텍스트는 spring.kafka.listener.auto-startup=false 로 제어한다.
+ *
+ * <p>T3.5-09 규약: StockCommit/StockRestore consumer 는 독립 groupId 를 사용한다.
+ * commit 경로의 rebalance·lag·장애가 restore(보상) 경로에 파급되지 않도록 격리한다.
  */
 @Slf4j
 @Component
@@ -31,7 +34,7 @@ import org.springframework.stereotype.Component;
 public class StockRestoreConsumer {
 
     private static final String TOPIC = "stock.events.restore";
-    private static final String GROUP_ID = "product-service";
+    private static final String GROUP_ID = "product-service-stock-restore";
 
     private final StockRestoreCommandService stockRestoreCommandService;
 
