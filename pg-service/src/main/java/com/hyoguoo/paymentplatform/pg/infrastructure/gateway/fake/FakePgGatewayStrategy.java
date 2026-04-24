@@ -90,11 +90,16 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
 
     @Override
     public PgStatusResult getStatusByOrderId(String orderId) {
-        // smoke happy path 상에서는 호출되지 않는다.
-        // 호출됐다는 것은 복구 사이클 진입을 의미 — 운영 지표로 감시 대상.
+        // Fake 전략은 smoke happy-path 전용이므로 getStatusByOrderId 는 호출될 수 없다.
+        // DuplicateApprovalHandler / PgFinalConfirmationGate(복구 사이클) 에서만 호출되는 경로로,
+        // smoke 환경에서 해당 경로가 트리거됐다면 시나리오 설계 오류 또는 예기치 못한 중복 승인 발생을 의미한다.
+        // 계약은 코드로 표현돼야 한다 — null 반환 대신 명시적 예외로 즉시 실패.
         LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
-                () -> "fake getStatusByOrderId called — 복구 경로 진입 (smoke 예상 밖 경로) orderId=" + orderId);
-        return null;
+                () -> "fake getStatusByOrderId 호출 감지 — smoke 경로에서 예상되지 않은 복구 사이클 진입. orderId=" + orderId);
+        throw new UnsupportedOperationException(
+                "Fake strategy: getStatusByOrderId 는 smoke 경로에서 호출되지 않아야 함. "
+                        + "실제 복구 사이클은 TossPaymentGatewayStrategy / NicepayPaymentGatewayStrategy 를 사용하라."
+        );
     }
 
     private static String maskKey(String key) {

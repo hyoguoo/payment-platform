@@ -64,7 +64,9 @@
   **완료 결과 (2026-04-24)** — 옵션 B 적용. `parseHeaders(String headersJson)` private 메서드 삭제. 호출부(`relay` 메서드 내 publish 직전)에서 `Map.of()` 직접 전달. 근거 주석 추가: "Kafka 헤더는 `spring.kafka.template.observation-enabled=true` 가 publish 시점의 현재 span 에서 traceparent 를 자동 주입한다. `outbox row 의 headers_json` 은 향후 확장(예: attempt 카운터)을 위해 예약 필드이며 현 시점에는 사용하지 않는다." `PgOutboxRelayServiceTest` 에 `parseHeaders` 단위 테스트 없음 — 삭제 대상 없음. 전수 509/509 PASS (eureka 1 + gateway 3 + payment-service 320 + pg-service 158 + product-service 26 + user-service 1). 회귀 없음. T-F1 진입 가능.
 
 **그룹 F — 코드 규율** (축 3)
-- [ ] T-F1 `FakePgGatewayStrategy.getStatusByOrderId` NPE 제거 — `UnsupportedOperationException` throw
+- [x] T-F1 `FakePgGatewayStrategy.getStatusByOrderId` NPE 제거 — `UnsupportedOperationException` throw
+
+  **완료 결과 (2026-04-24)** — `FakePgGatewayStrategy.getStatusByOrderId`: `return null` 제거 → `UnsupportedOperationException` throw로 교체. LogFmt.warn(WARN) 로그는 예외 throw 직전에 유지(예상 밖 호출 추적). 예외 메시지에 실제 복구 사이클 사용 전략(Toss/NicePay) 안내 포함. `FakePgGatewayStrategyTest.getStatusByOrderId_shouldThrowUnsupported` 1케이스 GREEN. 전수 159/159 PASS(pg-service). 회귀 없음.
 - [ ] T-F2 worker/aspect `catch (Exception)` 6건 정리 — RuntimeException 축소 + ERROR 승격 + metric
 - [ ] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
 - [ ] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
