@@ -15,7 +15,9 @@
 ## 태스크 목록
 
 **그룹 A — 이벤트 계약 확장** (축 1, critical-1·2 기반)
-- [ ] T-A1 `amount` + `approvedAt` 필드 `ConfirmedEventPayload`/`ConfirmedEventMessage` 에 추가
+- [x] T-A1 `amount` + `approvedAt` 필드 `ConfirmedEventPayload`/`ConfirmedEventMessage` 에 추가
+
+  **완료 결과 (2026-04-24)** — `ConfirmedEventPayload` (pg-service): `amount(Long)` + `approvedAt(String)` 필드 추가, `approved(orderId, eventUuid, amount, approvedAt)` 팩토리에 `requireNonNull` 가드 적용. `quarantinedWithAmount` 추가. `ConfirmedEventMessage` (payment-service): 동일 두 필드 추가, 기존 테스트 5케이스 호환 유지. `PgConfirmResult`: `approvedAtRaw(String)` 7번째 필드 추가 + deprecated 6-arg 생성자 보존. `PgVendorCallService.buildApprovedPayload`: `result.approvedAtRaw()` non-null 시 원본 보존, null 시 Clock fallback. `PgFinalConfirmationGate.handleApproved`: Clock fallback으로 `approvedAtRaw` 주입. `DuplicateApprovalHandler.buildApprovedPayload`: Clock fallback 주입. `TossPaymentGatewayStrategy.toConfirmResult`: `response.approvedAt()` raw 문자열 7번째 arg 전달. `NicepayPaymentGatewayStrategy.toConfirmResult`: `response.paidAt()` raw 문자열 전달. `FakePgGatewayStrategy.confirm`: `approvedAtRaw` UTC 시각 주입. 전수 467 테스트 PASS (eureka 1 + gateway 3 + payment-service 281 + pg-service 155 + product-service 26 + user-service 1). 회귀 없음.
 - [ ] T-A2 `handleApproved` 에 수신 `approvedAt` 주입 + `amount` 총액 대조 → AMOUNT_MISMATCH 역방향 방어
 
 **그룹 B — 재고 보상 실 복원** (축 1, Domain critical-1)

@@ -15,6 +15,8 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -68,6 +70,7 @@ public class PgFinalConfirmationGate {
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
+    private final Clock clock;
 
     // -----------------------------------------------------------------------
     // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
@@ -153,7 +156,7 @@ public class PgFinalConfirmationGate {
 
     private void dispatchOutcome(FcgOutcome outcome, String orderId, long amount) {
         switch (outcome.kind) {
-            case APPROVED -> handleApproved(orderId, outcome.storedStatusResult);
+            case APPROVED -> handleApproved(orderId, outcome.storedStatusResult, amount);
             case FAILED -> handleFailed(orderId, outcome.storedStatusResult);
             case INDETERMINATE -> handleIndeterminate(orderId, amount);
         }
@@ -163,10 +166,13 @@ public class PgFinalConfirmationGate {
     // APPROVED 처리
     // -----------------------------------------------------------------------
 
-    private void handleApproved(String orderId, String storedStatusResult) {
+    private void handleApproved(String orderId, String storedStatusResult, long amount) {
         pgInboxRepository.transitToApproved(orderId, storedStatusResult);
 
-        String payload = buildConfirmedPayload(orderId, "APPROVED", null);
+        // T-A1: APPROVED payload 에 벤더 실측 amount + approvedAt(Clock fallback) 주입.
+        // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 사용한다.
+        String approvedAtRaw = OffsetDateTime.now(clock).toString();
+        String payload = buildApprovedPayload(orderId, amount, approvedAtRaw);
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
@@ -215,10 +221,19 @@ public class PgFinalConfirmationGate {
         return "{\"orderId\":\"" + orderId + "\",\"pgStatus\":\"" + pgStatusName + "\"}";
     }
 
+    /**
+     * APPROVED payload 빌드.
+     * T-A1: amount + approvedAt 주입 — ADR-15 AMOUNT_MISMATCH 역방향 방어선.
+     */
+    private String buildApprovedPayload(String orderId, long amount, String approvedAtRaw) {
+        String eventUuid = UUID.randomUUID().toString();
+        return payloadSerializer.serialize(
+                ConfirmedEventPayload.approved(orderId, eventUuid, amount, approvedAtRaw));
+    }
+
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
         String eventUuid = UUID.randomUUID().toString();
         ConfirmedEventPayload payload = switch (status) {
-            case "APPROVED" -> ConfirmedEventPayload.approved(orderId, eventUuid);
             case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
             case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
             default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);

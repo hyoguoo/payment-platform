@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.Objects;
 
 /**
  * payment.events.confirmed 토픽 payload — pg-service 발행 측.
@@ -8,12 +9,13 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * <p>payment-service {@code ConfirmedEventMessage} record 와 필드명·의미가 대칭이어야 한다.
  * 구조 변경 시 양쪽을 함께 갱신한다 (ADR-30: 공유 JAR 없이 pg-service 독립 복제).
  *
- * <p>Null 필드는 JSON 직렬화에서 제외 (APPROVED 에서 reasonCode/amount 가 누락되는 등).
+ * <p>Null 필드는 JSON 직렬화에서 제외 (APPROVED 에서 reasonCode 가 누락되는 등).
  *
  * @param orderId    주문 ID
  * @param status     APPROVED / FAILED / QUARANTINED
  * @param reasonCode 실패·격리 사유 코드 (APPROVED 시 null)
- * @param amount     원화 최소 단위 정수 (nullable — DuplicateApprovalHandler·DLQ 경로에서만 기록)
+ * @param amount     원화 최소 단위 정수 (APPROVED 시 non-null, FAILED/QUARANTINED 시 nullable)
+ * @param approvedAt 벤더 승인 시각 ISO-8601 OffsetDateTime 문자열 (APPROVED 시 non-null, 그 외 nullable)
  * @param eventUuid  0단계 dedupe 키 (매 outbox row 당 1 개 생성)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -22,26 +24,35 @@ public record ConfirmedEventPayload(
         String status,
         String reasonCode,
         Long amount,
+        String approvedAt,
         String eventUuid
 ) {
 
-    public static ConfirmedEventPayload approved(String orderId, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "APPROVED", null, null, eventUuid);
-    }
-
-    public static ConfirmedEventPayload approvedWithAmount(String orderId, long amount, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "APPROVED", null, amount, eventUuid);
+    /**
+     * APPROVED 팩토리 — amount/approvedAt non-null 강제.
+     * ADR-15 AMOUNT_MISMATCH 역방향 방어선: payment-service 가 수신 후 amount 총액 대조에 사용.
+     *
+     * @param orderId    주문 ID
+     * @param eventUuid  dedupe 키
+     * @param amount     벤더 실측 금액 (minor unit, non-null)
+     * @param approvedAt 벤더 승인 시각 ISO-8601 문자열 (non-null)
+     */
+    public static ConfirmedEventPayload approved(
+            String orderId, String eventUuid, Long amount, String approvedAt) {
+        Objects.requireNonNull(amount, "APPROVED payload: amount must not be null");
+        Objects.requireNonNull(approvedAt, "APPROVED payload: approvedAt must not be null");
+        return new ConfirmedEventPayload(orderId, "APPROVED", null, amount, approvedAt, eventUuid);
     }
 
     public static ConfirmedEventPayload failed(String orderId, String reasonCode, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "FAILED", reasonCode, null, eventUuid);
+        return new ConfirmedEventPayload(orderId, "FAILED", reasonCode, null, null, eventUuid);
     }
 
     public static ConfirmedEventPayload quarantined(String orderId, String reasonCode, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, null, eventUuid);
+        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, null, null, eventUuid);
     }
 
     public static ConfirmedEventPayload quarantinedWithAmount(String orderId, String reasonCode, Long amount, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, amount, eventUuid);
+        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, amount, null, eventUuid);
     }
 }

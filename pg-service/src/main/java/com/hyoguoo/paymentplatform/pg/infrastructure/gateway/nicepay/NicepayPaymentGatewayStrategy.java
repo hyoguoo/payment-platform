@@ -215,7 +215,8 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
                 response.orderId(),
                 response.amount(),
                 parseApprovedAt(response.paidAt()),
-                null
+                null,
+                response.paidAt()   // T-A1: raw ISO-8601 문자열 보존 (ConfirmedEventPayload 직렬화 용)
         );
     }
 

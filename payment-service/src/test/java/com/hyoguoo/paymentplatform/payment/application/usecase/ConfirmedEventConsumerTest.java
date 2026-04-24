@@ -72,7 +72,7 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID);
+        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID, null, null);
 
         // when
         sut.handle(message);
@@ -99,7 +99,7 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "FAILED", "VENDOR_FAILED", EVENT_UUID);
+        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "FAILED", "VENDOR_FAILED", EVENT_UUID, null, null);
 
         // when
         sut.handle(message);
@@ -125,7 +125,7 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of());
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID);
+        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID, null, null);
 
         // when
         sut.handle(message);
@@ -155,7 +155,7 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID);
+        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID, null, null);
 
         // when — 첫 번째 소비 (정상 처리)
         sut.handle(message);
@@ -181,8 +181,8 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of());
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage first = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID);
-        ConfirmedEventMessage second = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID);
+        ConfirmedEventMessage first = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID, null, null);
+        ConfirmedEventMessage second = new ConfirmedEventMessage(ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", EVENT_UUID, null, null);
 
         // when — 첫 번째 소비
         sut.handle(first);

@@ -62,7 +62,7 @@ class PaymentConfirmConsumerTest {
         ObjectMapper objectMapper = new ObjectMapper();
         PgVendorCallService vendorCallService =
                 new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
-                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper);
+                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock);
         sut = new PgConfirmService(
                 inboxRepository, outboxRepository, vendorCallService, dedupeStore, eventPublisher, clock);
     }
@@ -76,7 +76,8 @@ class PaymentConfirmConsumerTest {
     void consume_WhenInboxNone_ShouldTransitToInProgressAndCallVendor() {
         // given
         PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null);
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
         gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         PgConfirmCommand command = new PgConfirmCommand(
@@ -162,7 +163,8 @@ class PaymentConfirmConsumerTest {
     void consume_DuplicateEventUUID_ShouldNoOp() {
         // given
         PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null);
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
         gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         PgConfirmCommand command = new PgConfirmCommand(
@@ -188,7 +190,8 @@ class PaymentConfirmConsumerTest {
     void consume_WhenInboxNoneToInProgress_ShouldBeAtomicUnderConcurrency() throws InterruptedException {
         // given
         PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null);
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
         gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         int threadCount = 8;

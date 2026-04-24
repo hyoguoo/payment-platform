@@ -18,6 +18,8 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -66,24 +68,28 @@ public class DuplicateApprovalHandler {
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
+    private final Clock clock;
 
     /**
      * T3.5-05: PgGatewayPort 분해로 순환 의존 근본 해소.
      * DuplicateApprovalHandler는 PgStatusLookupPort(상태 조회 전담)만 의존.
      * @Lazy 프록시 불필요 — 순환 경로 자체가 단절됨.
+     * T-A1: Clock 주입 추가 — APPROVED approvedAt fallback용.
      */
     public DuplicateApprovalHandler(
             PgStatusLookupPort pgStatusLookupPort,
             PgInboxRepository pgInboxRepository,
             PgOutboxRepository pgOutboxRepository,
             ApplicationEventPublisher applicationEventPublisher,
-            ConfirmedEventPayloadSerializer payloadSerializer
+            ConfirmedEventPayloadSerializer payloadSerializer,
+            Clock clock
     ) {
         this.pgStatusLookupPort = pgStatusLookupPort;
         this.pgInboxRepository = pgInboxRepository;
         this.pgOutboxRepository = pgOutboxRepository;
         this.applicationEventPublisher = applicationEventPublisher;
         this.payloadSerializer = payloadSerializer;
+        this.clock = clock;
     }
 
     // -----------------------------------------------------------------------
@@ -219,10 +225,11 @@ public class DuplicateApprovalHandler {
 
         // inbox 신설(NONE→IN_PROGRESS→APPROVED)
         pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
-        String approvedResult = buildApprovedPayload(orderId, amountLong);
-        pgInboxRepository.transitToApproved(orderId, approvedResult);
+        // T-A1: buildApprovedPayload 가 amount + approvedAt(Clock fallback) 를 포함한 payload 생성.
+        String approvedPayload = buildApprovedPayload(orderId, amountLong);
+        pgInboxRepository.transitToApproved(orderId, approvedPayload);
 
-        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "APPROVED", null));
+        long outboxId = enqueueOutbox(orderId, approvedPayload);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED_DONE,
                 () -> "orderId=" + orderId + " outboxId=" + outboxId);
@@ -278,16 +285,29 @@ public class DuplicateApprovalHandler {
     // payload 빌더
     // -----------------------------------------------------------------------
 
+    /**
+     * APPROVED 확정 payload 빌드.
+     * T-A1: amount + approvedAt(Clock fallback) 주입 — ADR-15 AMOUNT_MISMATCH 역방향 방어선.
+     * DB absent 경로에서는 vendor status 조회 결과의 amount 를 그대로 사용하며,
+     * approvedAt raw 문자열은 PgStatusResult 에 없으므로 Clock fallback 으로 현재 UTC 시각을 주입한다.
+     */
     private String buildApprovedPayload(String orderId, long amount) {
+        String approvedAtRaw = OffsetDateTime.now(clock).toString();
         return payloadSerializer.serialize(
-                ConfirmedEventPayload.approvedWithAmount(orderId, amount, UUID.randomUUID().toString())
+                ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString(), amount, approvedAtRaw)
         );
     }
 
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
         String eventUuid = UUID.randomUUID().toString();
         ConfirmedEventPayload payload = switch (status) {
-            case "APPROVED" -> ConfirmedEventPayload.approved(orderId, eventUuid);
+            case "APPROVED" -> {
+                // DB-exists 경로: stored_status_result 재발행(enqueueOutbox 직접 호출) 이므로 이 분기는 사용 안 됨.
+                // 혹시 호출되는 경우를 대비해 Clock fallback 으로 approvedAt 을 주입한다 (amount 미확인 → 0).
+                // 실제 APPROVED 발행은 buildApprovedPayload 또는 enqueueOutbox(storedStatusResult) 로 처리됨.
+                throw new IllegalArgumentException(
+                        "buildConfirmedPayload: APPROVED 분기는 buildApprovedPayload 를 사용할 것");
+            }
             case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
             case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
             default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);

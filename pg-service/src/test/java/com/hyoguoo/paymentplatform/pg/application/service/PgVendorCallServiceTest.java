@@ -17,7 +17,9 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,8 +57,9 @@ class PgVendorCallServiceTest {
         gatewayAdapter = new FakePgGatewayAdapter();
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         ObjectMapper objectMapper = new ObjectMapper();
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
         sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
-                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper);
+                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock);
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (callVendor 진입 전제조건)
         PgInbox inbox = PgInbox.of(
@@ -72,9 +75,10 @@ class PgVendorCallServiceTest {
     @Test
     @DisplayName("callVendor — 벤더 호출 성공 시 payment.events.confirmed + status=APPROVED outbox row 1건 INSERT")
     void callVendor_WhenSuccess_ShouldInsertApprovedOutboxRow() {
-        // given
+        // given — T-A1: approvedAtRaw 포함 7-arg 생성자
         PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null);
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
         gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         // when

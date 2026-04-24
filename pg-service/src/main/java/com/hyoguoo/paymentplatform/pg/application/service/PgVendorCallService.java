@@ -21,8 +21,10 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +61,7 @@ public class PgVendorCallService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     // -----------------------------------------------------------------------
     // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
@@ -147,7 +150,7 @@ public class PgVendorCallService {
     // -----------------------------------------------------------------------
 
     private void handleSuccess(String orderId, PgConfirmResult result) {
-        String payload = buildApprovedPayload(orderId);
+        String payload = buildApprovedPayload(orderId, result);
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToApproved(orderId, payload);
@@ -214,10 +217,18 @@ public class PgVendorCallService {
     // payload / header 빌더
     // -----------------------------------------------------------------------
 
-    private String buildApprovedPayload(String orderId) {
+    private String buildApprovedPayload(String orderId, PgConfirmResult result) {
         // eventUuid: payment-service ConfirmedEventConsumer 의 0단계 dedupe 키.
         // outbox row 1건당 1 uuid → relay 재시도 시 stored_status_result 재발행 경로에서도 동일 uuid 유지.
-        return payloadSerializer.serialize(ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString()));
+        String eventUuid = UUID.randomUUID().toString();
+        // T-A1: 벤더 실측 amount/approvedAt 주입. approvedAtRaw 가 null 이면 Clock fallback.
+        long amount = com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter
+                .fromBigDecimalStrict(result.amount());
+        String approvedAtRaw = result.approvedAtRaw() != null
+                ? result.approvedAtRaw()
+                : OffsetDateTime.now(clock).toString();
+        return payloadSerializer.serialize(
+                ConfirmedEventPayload.approved(orderId, eventUuid, amount, approvedAtRaw));
     }
 
     private String buildFailedPayload(String orderId, String reasonCode) {

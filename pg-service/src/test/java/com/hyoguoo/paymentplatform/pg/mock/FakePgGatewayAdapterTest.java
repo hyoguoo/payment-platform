@@ -34,6 +34,7 @@ class FakePgGatewayAdapterTest {
                 "order-1",
                 BigDecimal.valueOf(10000),
                 null,
+                null,
                 null);
         fake.setConfirmResult("order-1", expected);
 
@@ -59,7 +60,7 @@ class FakePgGatewayAdapterTest {
     @Test
     void reset_호출_후_상태가_초기화된다() {
         PgConfirmResult result = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, "pk", "order-3", BigDecimal.TEN, null, null);
+                PgConfirmResultStatus.SUCCESS, "pk", "order-3", BigDecimal.TEN, null, null, null);
         fake.setConfirmResult("order-3", result);
         fake.confirm(new PgConfirmRequest("order-3", "pk", BigDecimal.TEN, PgVendorType.NICEPAY));
 

@@ -13,6 +13,8 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -73,13 +75,16 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                         + " paymentKey=" + maskKey(request.paymentKey())
                         + " amount=" + request.amount());
 
+        // T-A1: approvedAtRaw — ISO-8601 OffsetDateTime 문자열 (UTC). ConfirmedEventPayload.approved() 에 주입.
+        String approvedAtRaw = OffsetDateTime.now(clock.withZone(ZoneOffset.UTC)).toString();
         return new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS,
                 request.paymentKey(),
                 request.orderId(),
                 request.amount(),
                 LocalDateTime.now(clock),
-                null
+                null,
+                approvedAtRaw
         );
     }
 
