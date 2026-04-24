@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgEventPublisher;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,6 +37,7 @@ class PgOutboxImmediateWorkerTest {
     private FakePgEventPublisher publisher;
     private PgOutboxChannel channel;
     private PgOutboxRelayService relayService;
+    private SimpleMeterRegistry meterRegistry;
     private PgOutboxImmediateWorker worker;
 
     @BeforeEach
@@ -45,8 +47,9 @@ class PgOutboxImmediateWorkerTest {
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();
         relayService = new PgOutboxRelayService(outboxRepository, publisher, FIXED_CLOCK);
+        meterRegistry = new SimpleMeterRegistry();
         // workerCount=1: 단위 테스트에서 스레드 수 최소화 (Spring @Value 미주입 환경 대응)
-        worker = new PgOutboxImmediateWorker(channel, relayService, 1);
+        worker = new PgOutboxImmediateWorker(channel, relayService, 1, meterRegistry);
     }
 
     @AfterEach
@@ -174,5 +177,41 @@ class PgOutboxImmediateWorkerTest {
                 .isEqualTo(1);
 
         worker.stop();
+    }
+
+    @Test
+    @DisplayName("relay_whenPublishThrows — RuntimeException 발생 시 ERROR 로그 + relay_fail 카운터 increment")
+    void relay_whenPublishThrows_shouldLogErrorAndIncrementMetric() throws InterruptedException {
+        // given: relay 시 RuntimeException 을 던지는 publisher
+        publisher.setFailOnPublish(true);
+
+        PgOutbox outbox = PgOutbox.of(
+                3L,
+                PgTopics.EVENTS_CONFIRMED,
+                "order-fail-001",
+                "{\"orderId\":\"order-fail-001\"}",
+                null,
+                FIXED_NOW.minusSeconds(1),
+                null,
+                0,
+                FIXED_NOW.minusSeconds(60)
+        );
+        outboxRepository.save(outbox);
+
+        // when: worker 기동 + channel 에 offer
+        worker.start();
+        channel.offer(3L);
+
+        // relay 실패 처리를 위한 충분한 대기
+        Thread.sleep(500);
+
+        // then: pg_outbox.relay_fail_total 카운터가 1 이상 증가했어야 한다
+        Counter relayFailCounter = meterRegistry.find("pg_outbox.relay_fail_total").counter();
+        assertThat(relayFailCounter)
+                .as("relay 실패 시 pg_outbox.relay_fail_total 카운터가 등록되어야 한다")
+                .isNotNull();
+        assertThat(relayFailCounter.count())
+                .as("relay 실패 시 카운터가 1 이상이어야 한다")
+                .isGreaterThanOrEqualTo(1.0);
     }
 }
