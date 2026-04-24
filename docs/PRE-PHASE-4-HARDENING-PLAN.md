@@ -59,7 +59,9 @@
 - [x] T-E3 `scripts/smoke/trace-continuity-check.sh` 신설 — HTTP → Kafka → HTTP 다중 홉 traceId 연속성 검증
 
   **완료 결과 (2026-04-24)** — `scripts/smoke/trace-continuity-check.sh` 신설 (chmod +x, `#!/usr/bin/env bash`, `set -euo pipefail`). 시나리오: (1) 선행 조건 확인(docker/curl/openssl 명령어 + Gateway health). (2) `openssl rand -hex 16/8` 로 W3C traceparent(`00-<32hex>-<16hex>-01`) 생성. (3) `POST /api/v1/payments/checkout` 201 + orderId 추출. (4) `POST /api/v1/payments/confirm` 202 Accepted. (5) `GET /api/v1/payments/{orderId}/status` 폴링 → DONE 확인. (6) 비동기 relay 완주 대기(기본 20s). (7) `docker compose -f docker-compose.apps.yml logs --since=5m` 로 5개 서비스 로그 수집 → `traceId:<trace-id>` 등장 여부 검증. (8) payment-service Kafka listener / pg-service Kafka consumer 경로 추가 확인. 미발견 서비스 이름 출력 후 exit 1. 상단 주석: 용도·선행 조건·재현 절차·실패 시 조치 명시. `--auto-compose-up` / `--verbose` 옵션 지원. `docs/phase-gate/trace-continuity-smoke.md` 신설: 시나리오 설명·재현 명령어·서비스별 로그 위치·실패 시 트리아지(VT executor 미전파/Kafka observation 미활성/HTTP observationRegistry 미주입). `bash -n` 문법 검증 PASS. `./gradlew test` 전수 509/509 PASS (eureka 1 + gateway 3 + payment-service 320 + pg-service 158 + product-service 26 + user-service 1). 회귀 없음. T-E4 진입 가능.
-- [ ] T-E4 `PgOutboxRelayService.parseHeaders` ObjectMapper 실제 파싱 (또는 TODO 제거 + 근거 주석)
+- [x] T-E4 `PgOutboxRelayService.parseHeaders` ObjectMapper 실제 파싱 (또는 TODO 제거 + 근거 주석)
+
+  **완료 결과 (2026-04-24)** — 옵션 B 적용. `parseHeaders(String headersJson)` private 메서드 삭제. 호출부(`relay` 메서드 내 publish 직전)에서 `Map.of()` 직접 전달. 근거 주석 추가: "Kafka 헤더는 `spring.kafka.template.observation-enabled=true` 가 publish 시점의 현재 span 에서 traceparent 를 자동 주입한다. `outbox row 의 headers_json` 은 향후 확장(예: attempt 카운터)을 위해 예약 필드이며 현 시점에는 사용하지 않는다." `PgOutboxRelayServiceTest` 에 `parseHeaders` 단위 테스트 없음 — 삭제 대상 없음. 전수 509/509 PASS (eureka 1 + gateway 3 + payment-service 320 + pg-service 158 + product-service 26 + user-service 1). 회귀 없음. T-F1 진입 가능.
 
 **그룹 F — 코드 규율** (축 3)
 - [ ] T-F1 `FakePgGatewayStrategy.getStatusByOrderId` NPE 제거 — `UnsupportedOperationException` throw

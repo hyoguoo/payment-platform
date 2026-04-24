@@ -69,8 +69,10 @@ public class PgOutboxRelayService {
         }
 
         // publish — 실패 시 예외 전파(row 미갱신)
-        Map<String, byte[]> headers = parseHeaders(outbox.getHeadersJson());
-        pgEventPublisherPort.publish(outbox.getTopic(), outbox.getKey(), outbox.getPayload(), headers);
+        // Kafka 헤더는 spring.kafka.template.observation-enabled=true 가 publish 시점의
+        // 현재 span 에서 traceparent 를 자동 주입한다. outbox row 의 headers_json 은
+        // 향후 확장(예: attempt 카운터)을 위해 예약 필드이며 현 시점에는 사용하지 않는다.
+        pgEventPublisherPort.publish(outbox.getTopic(), outbox.getKey(), outbox.getPayload(), Map.of());
 
         // 성공 시 processed_at 갱신
         outbox.markProcessed(now);
@@ -78,16 +80,5 @@ public class PgOutboxRelayService {
 
         LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_RELAY_DONE,
                 () -> "id=" + id + " topic=" + outbox.getTopic() + " key=" + outbox.getKey());
-    }
-
-    private Map<String, byte[]> parseHeaders(String headersJson) {
-        if (headersJson == null || headersJson.isBlank() || headersJson.equals("{}")) {
-            return Map.of();
-        }
-        // 헤더 JSON 파싱은 PgEventPublisher(infrastructure) 계층이 담당.
-        // RelayService는 raw headersJson 문자열을 그대로 단일 헤더로 전달하지 않고,
-        // 실제 Map 파싱은 T2a-05a 범위에서 단순 empty-map 처리로 제한한다.
-        // (T2b 이후 실제 헤더 활용 시 ObjectMapper 주입으로 확장)
-        return Map.of();
     }
 }
