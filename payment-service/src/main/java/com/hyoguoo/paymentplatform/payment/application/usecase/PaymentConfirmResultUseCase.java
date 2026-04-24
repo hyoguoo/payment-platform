@@ -4,10 +4,10 @@ import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -19,13 +19,16 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * payment.events.confirmed 소비 후 결제 상태 분기 use-case.
  * ADR-04(2단 멱등성): eventUUID dedupe 선행, 처리 주체 결정.
- * ADR-14: stock 이벤트 발행(commit/restore) 담당.
+ * ADR-14: stock 이벤트 ApplicationEvent 발행(commit/restore) 담당.
+ * T-D2: 실제 Kafka 발행은 AFTER_COMMIT 리스너(StockEventPublishingListener)가 수행.
+ * TX 내부는 이벤트 발행만 — Kafka 지연이 DB TX 블로킹으로 이어지지 않음.
  *
  * <p>T-C3 two-phase lease 패턴:
  * <ol>
@@ -52,7 +55,7 @@ public class PaymentConfirmResultUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final EventDedupeStore eventDedupeStore;
-    private final StockCommitEventPublisherPort stockCommitEventPublisherPort;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final LocalDateTimeProvider localDateTimeProvider;
     private final FailureCompensationService failureCompensationService;
@@ -67,14 +70,14 @@ public class PaymentConfirmResultUseCase {
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
             EventDedupeStore eventDedupeStore,
-            StockCommitEventPublisherPort stockCommitEventPublisherPort,
+            ApplicationEventPublisher applicationEventPublisher,
             QuarantineCompensationHandler quarantineCompensationHandler,
             LocalDateTimeProvider localDateTimeProvider,
             FailureCompensationService failureCompensationService,
             PaymentConfirmDlqPublisher paymentConfirmDlqPublisher) {
         this.paymentEventRepository = paymentEventRepository;
         this.eventDedupeStore = eventDedupeStore;
-        this.stockCommitEventPublisherPort = stockCommitEventPublisherPort;
+        this.applicationEventPublisher = applicationEventPublisher;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.localDateTimeProvider = localDateTimeProvider;
         this.failureCompensationService = failureCompensationService;
@@ -87,7 +90,7 @@ public class PaymentConfirmResultUseCase {
      * 2) processMessage 성공 → extendLease(longTtl).
      * 3) processMessage 실패 → remove. remove false이면 DLQ 전송 후 예외 재전파.
      */
-    @Transactional
+    @Transactional(timeout = 5)
     public void handle(ConfirmedEventMessage message) {
         // 1단: eventUUID lease dedupe
         if (!eventDedupeStore.markWithLease(message.eventUuid(), leaseTtl)) {
@@ -182,9 +185,16 @@ public class PaymentConfirmResultUseCase {
         paymentEvent.done(receivedApprovedAt, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        // stock.events.commit 발행: 각 주문 상품별 1건씩
+        // T-D2: stock commit ApplicationEvent 발행 — 실제 Kafka publish는 AFTER_COMMIT 리스너 담당
+        // Kafka 지연이 DB TX 블로킹으로 이어지지 않음 (ADR-04)
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
-            stockCommitEventPublisherPort.publish(order.getProductId(), order.getQuantity(), paymentEvent.getOrderId());
+            applicationEventPublisher.publishEvent(new StockCommitRequestedEvent(
+                    paymentEvent.getOrderId() + ":" + order.getProductId(),
+                    paymentEvent.getOrderId(),
+                    order.getProductId(),
+                    order.getQuantity(),
+                    paymentEvent.getOrderId()
+            ));
         }
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
@@ -230,13 +240,16 @@ public class PaymentConfirmResultUseCase {
      * <p>ADR-13/T3-04b: 재고 복원은 FailureCompensationService.compensate(orderId, productId, qty) 경유.
      * 각 PaymentOrder의 실 수량(qty)을 전달해 product-service에서 정확한 재고가 복원된다.
      * T-B2: qty=0 플레이스홀더 경로(publish(orderId, productIds)) 오버로드 철거 완료.
+     * T-D2: FailureCompensationService 내부에서 StockRestoreRequestedEvent ApplicationEvent 발행 —
+     *        실제 Kafka 발행은 AFTER_COMMIT 리스너 담당(ADR-04).
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
         paymentEvent.fail(reasonCode, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        // stock.events.restore 발행: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
+        // stock.events.restore ApplicationEvent 발행: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
         // T-B1: FailureCompensationService 경유 — 결정론적 UUID(ADR-16) + 실 qty 전달
+        // T-D2: 내부에서 ApplicationEvent 발행 → AFTER_COMMIT 리스너가 Kafka publish 수행
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             failureCompensationService.compensate(
                     paymentEvent.getOrderId(),

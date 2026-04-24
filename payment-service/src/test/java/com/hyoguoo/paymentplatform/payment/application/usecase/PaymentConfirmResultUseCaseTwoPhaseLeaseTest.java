@@ -19,7 +19,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -28,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * T-C3 RED — PaymentConfirmResultUseCase two-phase lease + remove 실패 DLQ 전송 검증.
@@ -50,7 +50,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
 
     private FakePaymentEventRepository paymentEventRepository;
     private EventDedupeStore eventDedupeStore;
-    private FakeStockCommitEventPublisher stockCommitPublisher;
+    private ApplicationEventPublisher applicationEventPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private PaymentConfirmDlqPublisher dlqPublisher;
@@ -60,7 +60,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
         eventDedupeStore = Mockito.mock(EventDedupeStore.class);
-        stockCommitPublisher = new FakeStockCommitEventPublisher();
+        applicationEventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = Mockito.mock(PaymentConfirmDlqPublisher.class);
@@ -70,7 +70,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 eventDedupeStore,
-                stockCommitPublisher,
+                applicationEventPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService,

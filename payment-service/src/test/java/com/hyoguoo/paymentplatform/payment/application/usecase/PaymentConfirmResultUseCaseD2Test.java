@@ -185,7 +185,7 @@ class PaymentConfirmResultUseCaseD2Test {
             return events.stream()
                     .filter(type::isInstance)
                     .map(e -> (T) e)
-                    .toList();
+                    .collect(java.util.stream.Collectors.toList());
         }
     }
 }

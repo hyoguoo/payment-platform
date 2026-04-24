@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -18,14 +19,16 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * T-A2: handleApproved 수신 approvedAt 주입 + amount 역방향 대조 RED 테스트.
@@ -45,7 +48,7 @@ class PaymentConfirmResultUseCaseTest {
 
     private FakePaymentEventRepository paymentEventRepository;
     private FakeEventDedupeStore dedupeStore;
-    private FakeStockCommitEventPublisher stockCommitPublisher;
+    private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
@@ -55,7 +58,7 @@ class PaymentConfirmResultUseCaseTest {
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
         dedupeStore = new FakeEventDedupeStore();
-        stockCommitPublisher = new FakeStockCommitEventPublisher();
+        capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
@@ -65,12 +68,44 @@ class PaymentConfirmResultUseCaseTest {
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 dedupeStore,
-                stockCommitPublisher,
+                capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher
         );
+    }
+
+    // ---- helper: ApplicationEventPublisher that captures events ----
+
+    static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
+
+        private final List<Object> events = new ArrayList<>();
+
+        @Override
+        public void publishEvent(ApplicationEvent event) {
+            events.add(event);
+        }
+
+        @Override
+        public void publishEvent(Object event) {
+            events.add(event);
+        }
+
+        @SuppressWarnings("unchecked")
+        public <T> List<T> captured(Class<T> type) {
+            return events.stream()
+                    .filter(type::isInstance)
+                    .map(e -> (T) e)
+                    .toList();
+        }
+
+        public long countFor(Class<?> type, Long productId) {
+            return events.stream()
+                    .filter(e -> e instanceof StockCommitRequestedEvent sce
+                            && sce.productId().equals(productId))
+                    .count();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -127,7 +162,7 @@ class PaymentConfirmResultUseCaseTest {
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
 
         // then — stock.events.commit 발행 없음
-        assertThat(stockCommitPublisher.countFor(1L)).isEqualTo(0L);
+        assertThat(capturingPublisher.countFor(StockCommitRequestedEvent.class, 1L)).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -174,8 +209,8 @@ class PaymentConfirmResultUseCaseTest {
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // then — StockCommitEvent 발행 1회
-        assertThat(stockCommitPublisher.countFor(2L)).isEqualTo(1L);
+        // then — StockCommitRequestedEvent ApplicationEvent 발행 1회
+        assertThat(capturingPublisher.countFor(StockCommitRequestedEvent.class, 2L)).isEqualTo(1L);
 
         // then — quarantine 미호출
         then(quarantineCompensationHandler).should(never()).handle(any(), any());

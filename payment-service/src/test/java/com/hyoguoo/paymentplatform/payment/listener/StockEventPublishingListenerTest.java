@@ -70,7 +70,7 @@ class StockEventPublishingListenerTest {
     void onStockRestoreEvent_shouldDelegateToPublisher() {
         // given
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "evt-d2-restore-001", "order-002", 99L, 5
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-002", 99L, 5
         );
 
         // when

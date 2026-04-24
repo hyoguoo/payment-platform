@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -14,14 +15,16 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트.
@@ -36,7 +39,7 @@ class ConfirmedEventConsumerTest {
 
     private FakePaymentEventRepository paymentEventRepository;
     private FakeEventDedupeStore dedupeStore;
-    private FakeStockCommitEventPublisher stockCommitPublisher;
+    private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
@@ -46,7 +49,7 @@ class ConfirmedEventConsumerTest {
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
         dedupeStore = new FakeEventDedupeStore();
-        stockCommitPublisher = new FakeStockCommitEventPublisher();
+        capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
@@ -56,12 +59,40 @@ class ConfirmedEventConsumerTest {
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 dedupeStore,
-                stockCommitPublisher,
+                capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher
         );
+    }
+
+    // ---- helper: ApplicationEventPublisher that captures events ----
+
+    static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
+
+        private final List<Object> events = new ArrayList<>();
+
+        @Override
+        public void publishEvent(ApplicationEvent event) {
+            events.add(event);
+        }
+
+        @Override
+        public void publishEvent(Object event) {
+            events.add(event);
+        }
+
+        public long countFor(Long productId) {
+            return events.stream()
+                    .filter(e -> e instanceof StockCommitRequestedEvent sce
+                            && sce.productId().equals(productId))
+                    .count();
+        }
+
+        public List<Object> publishedEvents() {
+            return List.copyOf(events);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -88,7 +119,7 @@ class ConfirmedEventConsumerTest {
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
         // then — StockCommitEvent 발행 1회 (orderId 기준)
-        assertThat(stockCommitPublisher.countFor(1L)).isEqualTo(1L);
+        assertThat(capturingPublisher.countFor(1L)).isEqualTo(1L);
     }
 
     // -----------------------------------------------------------------------
@@ -121,7 +152,7 @@ class ConfirmedEventConsumerTest {
                         org.mockito.ArgumentMatchers.eq(3)
                 );
         // then — StockCommitEvent 미발행
-        assertThat(stockCommitPublisher.countFor(2L)).isEqualTo(0L);
+        assertThat(capturingPublisher.countFor(2L)).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -149,7 +180,7 @@ class ConfirmedEventConsumerTest {
                 );
 
         // then — 직접 상태 전이 없음 (handler 내부 책임)
-        assertThat(stockCommitPublisher.countFor(999L)).isEqualTo(0L);
+        assertThat(capturingPublisher.countFor(999L)).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -170,13 +201,13 @@ class ConfirmedEventConsumerTest {
 
         // when — 첫 번째 소비 (정상 처리)
         sut.handle(message);
-        long firstCommitCount = stockCommitPublisher.countFor(3L);
+        long firstCommitCount = capturingPublisher.countFor(3L);
 
         // when — 두 번째 소비 (동일 eventUUID → dedupe)
         sut.handle(message);
 
         // then — StockCommitEvent 추가 발행 없음
-        assertThat(stockCommitPublisher.countFor(3L)).isEqualTo(firstCommitCount);
+        assertThat(capturingPublisher.countFor(3L)).isEqualTo(firstCommitCount);
         // dedupe store 에 1개만 저장됨
         assertThat(dedupeStore.contains(EVENT_UUID)).isTrue();
     }
@@ -209,7 +240,7 @@ class ConfirmedEventConsumerTest {
                 );
 
         // then — publisher는 0회
-        assertThat(stockCommitPublisher.publishedEvents()).isEmpty();
+        assertThat(capturingPublisher.publishedEvents()).isEmpty();
     }
 
     // ---- factory helpers ----
