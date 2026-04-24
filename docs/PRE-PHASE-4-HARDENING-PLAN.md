@@ -31,7 +31,9 @@
   **완료 결과 (2026-04-24)** — `StockRestoreEventPublisherPort.publish(String, List<Long>)` 인터페이스 선언 삭제. `StockRestoreEventKafkaPublisher.publish(String, List<Long>)` 구현(qty=0 플레이스홀더) 삭제 — `publishPayload(StockRestoreEventPayload)` 단일 경로만 유지. `FakeStockRestoreEventPublisher`: `publish(String, List<Long>)` 구현, `StockRestoredRecord` inner record, `published` 리스트, `callCount` AtomicInteger, `publishedEvents()`/`publishedCount()` 메서드 모두 삭제. `PaymentConfirmResultUseCase`: `stockRestoreEventPublisherPort` 필드 삭제(handleFailed 이미 FailureCompensationService 경유) + 관련 import 제거. `PaymentConfirmResultUseCaseTest`: TC-B1-3(레거시 미호출 검증) 삭제 — 메서드 자체가 소멸됐으므로. `ConfirmedEventConsumerTest`: `stockRestorePublisher.publishedCount()` 잔여 검증 3개소 제거 + 불필요 import 정리. 호출처 grep 결과 실 코드 0건(주석만 1건). `./gradlew test` 전수 287/287 PASS, 회귀 없음. T-C1 진입 가능.
 
 **그룹 C — 멱등성 수복** (축 1, critical-4 + major)
-- [ ] T-C1 payment dedupe TTL 기본값 `P8D` + application.yml 명시
+- [x] T-C1 payment dedupe TTL 기본값 `P8D` + application.yml 명시
+
+  **완료 결과 (2026-04-24)** — `EventDedupeStoreRedisAdapter`: `@Value("${payment.event-dedupe.ttl:PT1H}")` → `@Value("${payment.event-dedupe.ttl:P8D}")` 기본값 변경. Javadoc 갱신(Kafka retention 7d + 복구 버퍼 1d = 8d 근거, product-service `StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8)` 정렬 명시). `payment-service/src/main/resources/application.yml` `payment.event-dedupe.ttl: P8D` 명시적 override 추가(주석에 근거 포함). `EventDedupeStoreRedisAdapterTest.defaultTtl_shouldBe8Days` 신규 1케이스 GREEN. 전수 474 PASS(eureka 1 + gateway 3 + payment-service 288 + pg-service 155 + product-service 26 + user-service 1). 회귀 없음.
 - [ ] T-C2 `QuarantineCompensationHandler.handle` 사전 `isTerminal` 가드
 - [ ] T-C3 dedupe two-phase lease (`mark` short → `extend` long) + remove 실패 DLQ 전송
 

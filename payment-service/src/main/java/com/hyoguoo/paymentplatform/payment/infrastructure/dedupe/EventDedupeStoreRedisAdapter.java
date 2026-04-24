@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
  * SET NX EX 패턴으로 eventUuid별 단일 소비를 보장한다.
  *
  * <p>keyspace: {@code evt:seen:{uuid}}.
- * TTL: {@code payment.event-dedupe.ttl}. 기본 1시간 — Kafka consumer의 최대 재처리 윈도우를 덮는다.
+ * TTL: {@code payment.event-dedupe.ttl}. 기본 8일 — Kafka retention(7d) + 복구 버퍼(1d) = P8D.
+ * product-service StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8) 과 정렬.
  *
  * <p>활성 조건: {@code spring.data.redis.host} 속성이 설정되어 있을 때만 등록.
  * 테스트(JPA/Redis autoconfig 제외)에서는 FakeEventDedupeStore를 사용한다.
@@ -28,7 +29,7 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
 
     private final StringRedisTemplate redisTemplate;
 
-    @Value("${payment.event-dedupe.ttl:PT1H}")
+    @Value("${payment.event-dedupe.ttl:P8D}")
     private Duration ttl;
 
     @Override
