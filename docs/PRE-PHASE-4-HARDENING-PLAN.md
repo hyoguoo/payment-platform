@@ -73,7 +73,9 @@
 - [x] T-F3 `LogFmt.banner(Logger, String...)` 헬퍼 + `FakePgGatewayStrategy` 배너 치환 + CONVENTIONS 규약 추가
 
   **완료 결과 (2026-04-24)** — `LogFmt.banner(Logger, Level, String... lines)` 헬퍼를 5개 서비스(payment-service·pg-service·product-service·user-service·gateway) 각 LogFmt에 ADR-19 복제(b) 방침으로 독립 추가. `org.slf4j.event.Level` import 추가, switch expression으로 레벨별 isEnabled 가드 후 직접 출력. `FakePgGatewayStrategy.warnActivation()`: 4줄 `log.warn("╔...")` 직접 호출 → `LogFmt.banner(log, Level.WARN, "╔...╗", "║...║", "╚...╝", ...)` 치환. `docs/context/CONVENTIONS.md` LogFmt 섹션에 기동 배너 예외 조항 추가(`LogFmt.banner` 경유 필수, 직접 `log.warn` 금지, 레벨·예시 포함). `LogFmtBannerTest` 3케이스(WARN 2줄/INFO 3줄/빈배열) GREEN. `grep -rn '\blog\.(warn|info|error)\b' */src/main/java` → 실 코드 0건(Javadoc 주석만). 전수 테스트 통과. T-F4 진입 가능.
-- [ ] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
+- [x] T-F4 `docs/context/ARCHITECTURE.md` §Scheduler / §Confirm Flow 현재 구조로 재작성
+
+  **완료 결과 (2026-04-24)** — `docs/context/ARCHITECTURE.md` §Scheduler 섹션: 구버전 `OutboxImmediateWorker`(SmartLifecycle+Channel) / `OutboxProcessingService` 참조 전부 제거. 실제 컴포넌트 반영: payment-service `OutboxWorker`(@Scheduled 폴링 안전망), `PaymentScheduler`(만료 스케줄러), pg-service `PgOutboxImmediateWorker`(SmartLifecycle+VT+LinkedBlockingQueue), `PgOutboxPollingWorker`(@Scheduled 2000ms). §Listener 섹션: `OutboxImmediateEventHandler`(AFTER_COMMIT+@Async) 실제 동작 + `StockEventPublishingListener`(T-D2, AFTER_COMMIT stock Kafka 발행) 신규 기술. §Confirm Flow 섹션: `PaymentConfirmChannel` 전제 완전 제거 → 3개 서브섹션(payment-service 발행/pg-service 발행/payment-service 수신)으로 재작성. 대칭성 비교표 + trade-off 명시. Key Design Decisions: `PaymentConfirmChannel` 항목 제거, `OutboxRelayService` 단일 진입점 항목 신설, `@CircuitBreaker` → "Phase 4 설치 예정" 수정. Error Handling: `OutboxProcessingService` 복구 사이클 참조 → `OutboxRelayService`+pg-service FCG 실 구조로 교체. 문서-코드 drift 0. `./gradlew test` 전수 PASS (소스 변경 없음). T-G1 진입 가능.
 
 **그룹 G — minor 정리**
 - [ ] T-G1 `@CircuitBreaker` Javadoc / ARCHITECTURE 문구를 "Phase 4 설치 예정" 으로 정정

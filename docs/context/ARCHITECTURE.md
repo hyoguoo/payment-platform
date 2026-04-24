@@ -80,98 +80,151 @@
 - Purpose: Background scheduled jobs and lifecycle-managed async workers
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
 - Contains:
-  - `OutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 200개)의 VT/PT 워커 스레드를 생성해 `PaymentConfirmChannel`에서 `take()`로 orderId를 꺼내 처리; VT/PT는 `outbox.channel.virtual-threads`로 제어
-  - `OutboxProcessingService` — `OutboxImmediateWorker`와 `OutboxWorker` 양쪽이 공유하는 단일 처리 서비스; `claimToInFlight → getStatus → RecoveryDecision → applyDecision (success/retry/quarantine/FCG)` 복구 사이클 로직을 캡슐화
-  - `OutboxWorker` — `@Scheduled(fixedDelayString)` 폴백 전용; `PaymentConfirmChannel` 오버플로우 시 누락된 PENDING 레코드를 배치로 처리; 내부적으로 `OutboxProcessingService.process()` 위임
+  - `OutboxWorker` — `@Scheduled(fixedDelayString)` 폴링 안전망; PENDING outbox 레코드를 배치 조회 → `OutboxRelayService.relay(orderId)` 위임. 병렬 모드(`scheduler.outbox-worker.parallel-enabled=true`) 시 `ContextExecutorService.wrap` 기반 VT 풀을 사용해 MDC 승계.
   - `PaymentScheduler` — 만료 스케줄러; `@Scheduled(fixedRateString)` 기본 5분마다 READY 상태 오래된 결제를 만료 처리
 - Port interfaces: `scheduler/port/PaymentExpirationService`
-- Depends on: `application` use-case services directly, `core/channel/PaymentConfirmChannel`
+- Depends on: `application/service/OutboxRelayService`, `application/usecase/PaymentOutboxUseCase`
+- **pg-service scheduler 구조 (대칭 설계):**
+  - `PgOutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 1개, `pg.outbox.channel.worker-count`) VT 워커 스레드를 기동. `PgOutboxChannel.take()`로 outboxId를 수신 → `ContextExecutorService.wrap` 기반 `relayExecutor`에 relay 제출. `stop()`: running=false + 스레드 interrupt + awaitTermination(10s). `getPhase()=Integer.MAX_VALUE-100` (채널보다 나중에 stop).
+  - `PgOutboxPollingWorker` — `@Scheduled(fixedDelayString=2000ms)` 안전망; `available_at <= NOW AND processedAt IS NULL` 조건 polling → `PgOutboxRelayService.relay(id)` 위임.
 
 **Listener (`payment/listener`):**
-- Purpose: Outbox 즉시 처리 핸들러 및 Spring 이벤트 리스너
+- Purpose: TX commit 이후 Kafka 발행을 담당하는 AFTER_COMMIT 리스너 + Spring 이벤트 리스너
 - Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
 - Contains:
-  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 `PaymentConfirmChannel.offer(orderId)`를 호출해 큐에 적재; 큐 가득 찬 경우 warn 로그 — OutboxWorker(polling)가 처리
+  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("outboxRelayExecutor")`; confirm TX 커밋 직후 VT 풀에서 `OutboxRelayService.relay(orderId)` 호출해 Kafka 발행. HTTP 워커 스레드를 즉시 해방. 실패/누락은 `OutboxWorker`(polling) 안전망이 회복.
+  - `StockEventPublishingListener` — `@TransactionalEventListener(AFTER_COMMIT)`; `handleApproved`(T-D2) 경로의 stock commit/restore Kafka 발행 담당. `StockCommitRequestedEvent` → `StockCommitEventPublisherPort.publish`, `StockRestoreRequestedEvent` → `StockRestoreEventPublisherPort.publishPayload`. TX 이미 commit이므로 발행 실패 시 예외 삼킴(LogFmt.error).
   - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
 - Port interfaces: `listener/port/PaymentHistoryService`
-- Depends on: `core/channel/PaymentConfirmChannel`
+- Depends on: `application/service/OutboxRelayService`, `application/port/out/StockCommitEventPublisherPort`, `application/port/out/StockRestoreEventPublisherPort`
 
 ---
 
 ## Confirm Flow (Outbox 단일 전략)
 
+### payment-service 발행 경로 (HTTP → Kafka)
+
 ```
 PaymentController.confirm()
-  → OutboxAsyncConfirmService.confirm()  [@Transactional]
-      1. executePaymentAndStockDecreaseWithOutbox()
-         [single TX: READY→IN_PROGRESS + stock-- + PaymentOutbox(PENDING) created atomically]
-      2. PaymentConfirmPublisherPort.publish(orderId)
-         [OutboxImmediatePublisher: ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)]
-         [이벤트는 TX 커밋 후 AFTER_COMMIT 단계에서 발동]
+  → OutboxAsyncConfirmService.confirm()
+      1. Redis DECR (stockCachePort.decrement) — TX 외부
+         REJECTED → 재고 부족 예외 즉시 반환
+         CACHE_DOWN → 캐시 장애 → coordinator.executeConfirmTxWithStockCompensation 경유
+         SUCCESS → coordinator.executeConfirmTxWithStockCompensation(@Transactional)
+      2. coordinator.executeConfirmTxWithStockCompensation()  [@Transactional]
+         - PaymentEvent READY→IN_PROGRESS 전이 + PaymentOutbox(PENDING) INSERT (원자 TX)
+         - ApplicationEventPublisher.publishEvent(PaymentConfirmEvent) — TX 내 이벤트 예약
+         - TX 실패 시: stockCachePort.increment(productId, qty) 보상(ADR-D3)
   ← ResponseEntity.accepted(202)
 
-OutboxImmediateEventHandler.handle(event)  [@TransactionalEventListener(AFTER_COMMIT)]
-  — TX 커밋 직후 HTTP 요청 스레드에서 실행 (비블로킹 — channel.offer만 호출)
-  channel.offer(orderId)
-    → true:  LinkedBlockingQueue에 적재 완료 — OutboxImmediateWorker가 비동기 처리
-    → false: 큐 가득 참 (warn 로그) — OutboxWorker(polling)가 폴백 처리
+OutboxImmediateEventHandler.handle(PaymentConfirmEvent)
+  [@TransactionalEventListener(AFTER_COMMIT), @Async("outboxRelayExecutor")]
+  — TX 커밋 직후 VT 풀(outboxRelayExecutor)에서 비동기 실행
+  → OutboxRelayService.relay(orderId)
+       Step 1: paymentOutboxRepository.claimToInFlight(orderId, now)  [atomic PENDING→IN_FLIGHT]
+               claimed=false → 다른 워커 처리 중 → 즉시 return (멱등성 보장)
+       Step 2: paymentEvent 조회 → PaymentConfirmCommandMessage 구성
+       Step 3: messagePublisherPort.send(payment.commands.confirm, orderId, message)
+               실패 시 예외 전파 → TX rollback → outbox PENDING 유지
+       Step 4: outbox.toDone() + save
 
-OutboxImmediateWorker  [SmartLifecycle — 앱 시작 시 N개 VT/PT 워커 스레드 생성]
-  — 정상 경로: channel.take()로 blocking wait → 꺼내는 즉시 처리
-  workerLoop() { channel.take() → OutboxProcessingService.process(orderId) }
-
-OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유 — 복구 사이클]
-  Step 1: claimToInFlight(orderId)           [atomic UPDATE PENDING→IN_FLIGHT, REQUIRES_NEW TX]
-  Step 2: loadPaymentEvent(orderId)          [실패 시 incrementRetryOrFail → return]
-  Step 3: 로컬 종결 재진입 차단              [isTerminal() → rejectReentry(outbox toDone)]
-  Step 4: retryCount==0 → 바로 confirm (PG 선조회 불필요)
-          retryCount>=1 → getPaymentStatusByOrderId(orderId, gatewayType) [PG 상태 선행 조회, no TX]
-          → RecoveryDecision.from(event, result, retryCount, maxRetries)
-  Step 5: applyDecision — RecoveryDecision.Type에 따라 분기:
-    COMPLETE_SUCCESS        → executePaymentSuccessCompletionWithOutbox()
-    COMPLETE_FAILURE        → executePaymentFailureCompensationWithOutbox() (D12 가드)
-    ATTEMPT_CONFIRM         → confirmPaymentWithGateway() → 2차 분기 (SUCCESS/FAILURE/RETRYABLE)
-    RETRY_LATER (미소진)    → executePaymentRetryWithOutbox()
-    RETRY_LATER (소진)      → FCG(Final Confirmation Gate) → getStatus 1회 재조회 → success/failure/quarantine
-    GUARD_MISSING_APPROVED_AT (미소진) → executePaymentRetryWithOutbox()
-    GUARD_MISSING_APPROVED_AT (소진)   → FCG → quarantine
-    QUARANTINE              → FCG → quarantine
-    REJECT_REENTRY          → rejectReentry(outbox toDone)
-
-OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
-  — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
-  Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → reset to PENDING]
-  Step 1: findPendingBatch(batchSize)       [기본 50건]
-  per record: OutboxProcessingService.process(outbox.getOrderId())
+OutboxWorker.process()  [@Scheduled fixedDelay=5000ms — 안전망 폴링]
+  — OuboxImmediateEventHandler 누락·크래시 시 PENDING row 재픽업
+  Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → PENDING 복구]
+  Step 1: findPendingBatch(batchSize=10)
+  per record: OutboxRelayService.relay(outbox.getOrderId())  [동일 relay 경로]
 ```
+
+### pg-service 발행 경로 (Kafka 소비 → pg-service 내부)
+
+```
+PaymentConfirmConsumer  [@KafkaListener payment.commands.confirm, groupId=pg-service]
+  → PgConfirmService.handle(PgConfirmCommand)
+       1. EventDedupeStore.markWithLease(eventUUID, shortTtl)  [dedupe 1단]
+       2. pgInboxRepository.transitNoneToInProgress(orderId, amount)  [CAS 원자 선점]
+          IN_PROGRESS/terminal → 분기 처리 (no-op 또는 재발행)
+       3. PgVendorCallService.call()  [Toss/NicePay 벤더 API 호출]
+          → PgFinalConfirmationGate.performFinalCheck()  [FCG: getStatus 1회만]
+       4. PgOutbox INSERT (PENDING) + PgOutboxReadyEvent 발행
+
+PgOutboxReadyEvent  [@TransactionalEventListener(AFTER_COMMIT)]
+  → PgOutboxChannel.offer(outboxId)  [LinkedBlockingQueue<Long>]
+
+PgOutboxImmediateWorker  [SmartLifecycle — VT 워커]
+  PgOutboxChannel.take() → relayExecutor.submit → PgOutboxRelayService.relay(id)
+  → PgEventPublisherPort.publish(payment.events.confirmed, orderId, payload, headers)
+     payload: ConfirmedEventPayload (APPROVED/FAILED/QUARANTINED + amount + approvedAt)
+
+PgOutboxPollingWorker  [@Scheduled fixedDelay=2000ms — 안전망]
+  findPendingBatch(batchSize, now) → PgOutboxRelayService.relay(id)  [동일 relay 경로]
+```
+
+### payment-service 수신 경로 (pg-service → Kafka → stock 처리)
+
+```
+ConfirmedEventConsumer  [@KafkaListener payment.events.confirmed, groupId=payment-service]
+  → PaymentConfirmResultUseCase.handle(ConfirmedEventMessage)  [@Transactional(timeout=5)]
+       T-C3 two-phase lease:
+         진입: eventDedupeStore.markWithLease(eventUuid, leaseTtl=5m)
+         성공 후: extendLease(eventUuid, longTtl=P8D)
+         실패 후: remove(eventUuid) → remove=false이면 DLQ 전송
+       분기:
+         APPROVED →
+           paymentEvent.done(approvedAt, now)  [amount 불일치 시 AMOUNT_MISMATCH QUARANTINED]
+           + applicationEventPublisher.publishEvent(StockCommitRequestedEvent) per order  [T-D2]
+         FAILED →
+           paymentEvent.fail(now)
+           + failureCompensationService.compensate(orderId, productId, qty) per order
+             → applicationEventPublisher.publishEvent(StockRestoreRequestedEvent)  [T-D2]
+         QUARANTINED →
+           QuarantineCompensationHandler.handle(orderId)
+
+StockEventPublishingListener  [@TransactionalEventListener(AFTER_COMMIT)]
+  — T-D2: TX commit 이후 stock Kafka 발행 (DB TX 블로킹 방지)
+  onStockCommitRequested  → StockCommitEventPublisherPort.publish(payment.events.stock-committed)
+  onStockRestoreRequested → StockRestoreEventPublisherPort.publishPayload(stock.events.restore)
+  발행 실패 시: LogFmt.error + 예외 삼킴 (TX 이미 commit — 롤백 불가)
+```
+
+### payment-service vs pg-service 구조 대칭성
+
+| | payment-service | pg-service |
+|---|---|---|
+| 즉시 처리 | `OutboxImmediateEventHandler` (`@Async` + `@TransactionalEventListener`) | `PgOutboxImmediateWorker` (`SmartLifecycle` + `LinkedBlockingQueue` + VT) |
+| 폴링 안전망 | `OutboxWorker` (`@Scheduled` 5000ms) | `PgOutboxPollingWorker` (`@Scheduled` 2000ms) |
+| Kafka 발행 | `OutboxRelayService` → `MessagePublisherPort` | `PgOutboxRelayService` → `PgEventPublisherPort` |
+| MDC 전파 | `MdcTaskDecorator` (outboxRelayExecutor) | `ContextExecutorService.wrap` (relayExecutor) |
+| 종료 제어 | Spring `@Async` 스레드풀 lifecycle 위임 | `SmartLifecycle.stop()` 직접 제어 (awaitTermination 10s) |
+
+**트레이드오프**: pg-service SmartLifecycle은 종료 순서·drain 제어가 세밀하나 구현 복잡도가 높다. payment-service의 Spring-native `@TransactionalEventListener + @Async` 조합은 TX 동기화가 자동 보장되어 단순하나 스레드풀 lifecycle은 Spring container에 위임한다.
 
 ---
 
 ## Key Design Decisions
 
 **PaymentTransactionCoordinator — shared transactional boundary:**
-- A plain `@Service` (no interface) shared by `OutboxAsyncConfirmService`, `OutboxWorker`, and `OutboxImmediateWorker`
+- A plain `@Service` (no interface) shared by `OutboxAsyncConfirmService` and `OutboxWorker`
 - Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
-- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox` (D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구), `executePaymentRetryWithOutbox`, `executePaymentQuarantineWithOutbox` (격리 전이: outbox FAILED + event QUARANTINED)
+- Key methods: `executeConfirmTxWithStockCompensation`(confirm TX + ADR-D3 Redis 보상), `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox` (D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구), `executePaymentRetryWithOutbox`, `executePaymentQuarantineWithOutbox` (격리 전이: outbox FAILED + event QUARANTINED)
 - File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
-
-**PaymentConfirmChannel — HTTP 스레드와 Worker 스레드 디커플링:**
-- `core/channel/PaymentConfirmChannel` — `LinkedBlockingQueue<String>` 래퍼; `offer(orderId)`(non-blocking), `take()`(blocking) 제공
-- `OutboxImmediateEventHandler`가 TX 커밋 후 `offer()`로 큐에 적재 → HTTP 스레드 즉시 해방
-- `OutboxImmediateWorker`의 VT/PT 워커들이 `take()`로 blocking wait → Toss API 호출
-- 큐 용량은 `outbox.channel.capacity`(기본 2000)로 제어; 오버플로우 시 OutboxWorker 폴백
 
 **PaymentConfirmPublisherPort — Outbox 즉시 처리 이벤트 추상화:**
 - Interface in `application/port/out/PaymentConfirmPublisherPort` with single method `publish(String orderId)`
 - `OutboxImmediatePublisher` (infrastructure 계층)가 `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)`로 구현
 - Application 계층은 Spring 이벤트 발행 세부 구현을 알지 못함
 
+**OutboxRelayService — Kafka relay 단일 진입점:**
+- `application/service/OutboxRelayService` — `OutboxImmediateEventHandler`(AFTER_COMMIT+@Async 경로)와 `OutboxWorker`(@Scheduled 경로) 양쪽에서 공유하는 단일 relay 서비스
+- `relay(orderId)`: `claimToInFlight`(원자 선점) → paymentEvent 조회 → `messagePublisherPort.send(payment.commands.confirm)` → `outbox.toDone()`
+- `@Transactional`: 양 경로 모두 TX-less 진입이므로 relay 메서드에서 TX 시작
+- `payment-service` 에는 `OutboxImmediateWorker` / `PaymentConfirmChannel` 이 존재하지 않는다 — 이는 구버전 문서의 잔재이며 실제 코드에 부재.
+
 **Cross-Context Communication pattern (MSA 기준):**
 - `payment-service` → `pg-service`: Kafka `payment.commands.confirm` 토픽 발행, pg-service 가 consume. 응답은 `payment.events.confirmed` 경로로 비동기 귀환 (ADR-02, ADR-21)
 - `payment-service` → `product-service`: 상품·재고 조회는 HTTP(`ProductHttpAdapter` → `GET /api/v1/products/{id}`), 재고 확정·복원은 Kafka (`payment.events.stock-committed`, `stock.events.restore`) 이벤트
 - `payment-service` → `user-service`: HTTP 조회 전용 (`UserHttpAdapter` → `GET /api/v1/users/{id}`)
 - No cross-context JPA joins (ADR-23: DB per service)
-- 모든 HTTP 호출은 Gateway(Eureka `lb://`) 경유. `@CircuitBreaker` 는 adapter 내부 메서드에만 위치 (ADR-22)
+- 모든 HTTP 호출은 Gateway(Eureka `lb://`) 경유. `@CircuitBreaker` 는 Phase 4에서 설치 예정 (ADR-22 예약)
 
 **AOP-Driven Observability:**
 - `@PublishDomainEvent` on `PaymentCommandUseCase` (payment-service) → `DomainEventLoggingAspect` publishes Spring `ApplicationEvent`
@@ -187,9 +240,9 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 
 ## Error Handling
 
-**Strategy — Recovery Cycle:** `OutboxProcessingService`는 PG 상태 선행 조회(`getPaymentStatusByOrderId`) → `RecoveryDecision` 값 객체로 복구 결정을 수립한다.
-- `RecoveryDecision.Type`: `COMPLETE_SUCCESS`, `COMPLETE_FAILURE`, `ATTEMPT_CONFIRM`, `RETRY_LATER`, `GUARD_MISSING_APPROVED_AT`, `QUARANTINE`, `REJECT_REENTRY`
-- **FCG(Final Confirmation Gate)**: retry 소진 시 getStatus 1회 재조회 → 판별 가능하면 success/failure, 불가하면 quarantine
+**Strategy — Outbox Relay 복구:** `OutboxRelayService.relay(orderId)` → `claimToInFlight`(원자 선점) → Kafka 발행. 실패 시 TX rollback → outbox PENDING 유지 → `OutboxWorker` 재시도. pg-service 측에서는 `PgVendorCallService` → `PgFinalConfirmationGate(FCG)` → `PgOutbox` 경유로 최종 결과를 `payment.events.confirmed` 로 발행한다.
+- **FCG(Final Confirmation Gate)**: pg-service에서 retry 소진 시 `getStatusByOrderId` 1회 재조회 → 판별 가능하면 APPROVED/FAILED, 불가하면 QUARANTINED
+- **T-D2 AFTER_COMMIT 분리**: payment-service `PaymentConfirmResultUseCase`(APPROVED/FAILED 처리) → stock ApplicationEvent 발행 → `StockEventPublishingListener`(AFTER_COMMIT) → Kafka 발행. DB TX 블로킹 방지.
 
 **PG 예외 분류:**
 - `PaymentGatewayRetryableException` — PG 일시 오류, 재시도 가능 → `RETRY_LATER` 또는 `QUARANTINE`
@@ -246,4 +299,4 @@ OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
 
 ---
 
-*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09)*
+*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09, T-F4)*
