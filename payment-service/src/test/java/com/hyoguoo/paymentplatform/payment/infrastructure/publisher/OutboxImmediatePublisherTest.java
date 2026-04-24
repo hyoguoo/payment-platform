@@ -7,6 +7,8 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -56,5 +58,22 @@ class OutboxImmediatePublisherTest {
         assertThat(event.getUserId()).isEqualTo(userId);
         assertThat(event.getAmount()).isEqualByComparingTo(amount);
         assertThat(event.getPaymentKey()).isEqualTo(paymentKey);
+    }
+
+    @Test
+    @DisplayName("publish()는 TX 내부 non-blocking 계약 — 50ms 이내 완주해야 한다")
+    void publish_shouldCompleteSynchronouslyUnder50ms() {
+        // given
+        // PaymentConfirmPublisherPort 계약: in-memory 즉시 완주 (원격 I/O 차단 금지)
+        // 향후 Kafka 구현체가 TX 안에서 직접 블로킹 publish하면 이 테스트가 실패한다
+
+        // when
+        Instant before = Instant.now();
+        outboxImmediatePublisher.publish("order-789", 1L, BigDecimal.valueOf(5000), "payment-key-xyz");
+        Instant after = Instant.now();
+
+        // then
+        assertThat(Duration.between(before, after)).isLessThan(Duration.ofMillis(50));
+        then(mockApplicationEventPublisher).should(times(1)).publishEvent(any(Object.class));
     }
 }
