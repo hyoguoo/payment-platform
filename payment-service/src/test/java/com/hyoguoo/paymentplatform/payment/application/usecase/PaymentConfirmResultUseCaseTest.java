@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
@@ -57,12 +58,15 @@ class PaymentConfirmResultUseCaseTest {
         stockRestorePublisher = new FakeStockRestoreEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
 
+        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
+
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 dedupeStore,
                 stockCommitPublisher,
                 stockRestorePublisher,
-                quarantineCompensationHandler
+                quarantineCompensationHandler,
+                fixedClock
         );
     }
 

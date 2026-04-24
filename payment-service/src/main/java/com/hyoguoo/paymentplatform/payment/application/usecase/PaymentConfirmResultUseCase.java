@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
@@ -13,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,7 @@ public class PaymentConfirmResultUseCase {
     private final StockCommitEventPublisherPort stockCommitEventPublisherPort;
     private final StockRestoreEventPublisherPort stockRestoreEventPublisherPort;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
     public void handle(ConfirmedEventMessage message) {
@@ -73,7 +76,7 @@ public class PaymentConfirmResultUseCase {
 
         // 3단: status별 분기
         switch (message.status()) {
-            case "APPROVED" -> handleApproved(paymentEvent);
+            case "APPROVED" -> handleApproved(paymentEvent, message);
             case "FAILED" -> handleFailed(paymentEvent, message.reasonCode());
             case "QUARANTINED" -> handleQuarantined(paymentEvent, message.reasonCode());
             default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
@@ -81,8 +84,33 @@ public class PaymentConfirmResultUseCase {
         }
     }
 
-    private void handleApproved(PaymentEvent paymentEvent) {
-        paymentEvent.done(LocalDateTime.now(), LocalDateTime.now());
+    /**
+     * APPROVED 결과 처리.
+     *
+     * <p>ADR-15 역방향 방어선:
+     * <ol>
+     *   <li>수신 approvedAt null 방어 — null이면 {@link IllegalArgumentException}</li>
+     *   <li>수신 amount vs paymentEvent 총액 대조 — 불일치 시 AMOUNT_MISMATCH QUARANTINED 전이</li>
+     *   <li>일치 시 수신 approvedAt(OffsetDateTime→LocalDateTime 변환)을 done()에 주입</li>
+     * </ol>
+     */
+    private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
+        LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
+
+        if (isAmountMismatch(paymentEvent, message.amount())) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
+                    () -> "orderId=" + paymentEvent.getOrderId()
+                            + " expected=" + paymentEvent.getTotalAmount().longValue()
+                            + " received=" + message.amount()
+                            + " action=QUARANTINE_AMOUNT_MISMATCH");
+            quarantineCompensationHandler.handle(
+                    paymentEvent.getOrderId(),
+                    PaymentErrorCode.AMOUNT_MISMATCH.name()
+            );
+            return;
+        }
+
+        paymentEvent.done(receivedApprovedAt, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
         // stock.events.commit 발행: 각 주문 상품별 1건씩
@@ -94,8 +122,41 @@ public class PaymentConfirmResultUseCase {
                 () -> "orderId=" + paymentEvent.getOrderId());
     }
 
+    /**
+     * 수신 approvedAt 문자열을 LocalDateTime으로 파싱.
+     *
+     * @param approvedAtRaw ISO-8601 OffsetDateTime 문자열 (non-null 강제)
+     * @return LocalDateTime (UTC 기준 — OffsetDateTime.toLocalDateTime)
+     * @throws IllegalArgumentException approvedAt이 null인 경우
+     */
+    private static LocalDateTime parseApprovedAt(String approvedAtRaw) {
+        if (approvedAtRaw == null) {
+            throw new IllegalArgumentException(
+                    "APPROVED 메시지에 approvedAt이 null입니다. ADR-15 방어선 위반.");
+        }
+        return OffsetDateTime.parse(approvedAtRaw).toLocalDateTime();
+    }
+
+    /**
+     * 수신 amount와 paymentEvent 총액을 대조.
+     *
+     * <p>paymentEvent.getTotalAmount()은 BigDecimal(scale=0 원화) — longValue()로 안전 변환.
+     * scale>0 케이스는 도메인 생성 시점에 이미 방어됨.
+     *
+     * @param paymentEvent 결제 이벤트
+     * @param receivedAmount 수신 amount (Long, nullable — null이면 대조 불가 → 불일치로 간주)
+     * @return true이면 불일치
+     */
+    private static boolean isAmountMismatch(PaymentEvent paymentEvent, Long receivedAmount) {
+        if (receivedAmount == null) {
+            return true;
+        }
+        long domainAmount = paymentEvent.getTotalAmount().longValueExact();
+        return domainAmount != receivedAmount;
+    }
+
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        paymentEvent.fail(reasonCode, LocalDateTime.now());
+        paymentEvent.fail(reasonCode, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
         // stock.events.restore 발행: 주문 상품 ID 목록

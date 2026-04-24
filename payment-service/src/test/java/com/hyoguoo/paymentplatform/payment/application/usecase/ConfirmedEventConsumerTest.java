@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
@@ -19,6 +20,7 @@ import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCommitEventPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockRestoreEventPublisher;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -51,12 +53,15 @@ class ConfirmedEventConsumerTest {
         stockRestorePublisher = new FakeStockRestoreEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
 
+        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
+
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 dedupeStore,
                 stockCommitPublisher,
                 stockRestorePublisher,
-                quarantineCompensationHandler
+                quarantineCompensationHandler,
+                fixedClock
         );
     }
 
@@ -72,7 +77,9 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID, null, null);
+        // amount=2000(=1000*2), approvedAt non-null — T-A2 역방향 방어선 통과 조건
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, EVENT_UUID, 2000L, "2026-04-24T01:00:00Z");
 
         // when
         sut.handle(message);
@@ -155,7 +162,9 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "APPROVED", null, EVENT_UUID, null, null);
+        // amount=1000(=1000*1), approvedAt non-null — T-A2 역방향 방어선 통과 조건
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, EVENT_UUID, 1000L, "2026-04-24T01:00:00Z");
 
         // when — 첫 번째 소비 (정상 처리)
         sut.handle(message);
