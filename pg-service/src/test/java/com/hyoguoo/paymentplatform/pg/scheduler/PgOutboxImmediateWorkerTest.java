@@ -81,7 +81,7 @@ class PgOutboxImmediateWorkerTest {
         assertThat(worker.isRunning()).isTrue();
 
         // channel에 id offer (ImmediateWorker가 take()해서 relay 수행)
-        channel.offer(1L);
+        channel.offerNow(1L);
 
         // relay가 완료될 시간을 충분히 대기 (비동기 처리)
         CountDownLatch processingDone = new CountDownLatch(1);
@@ -150,7 +150,7 @@ class PgOutboxImmediateWorkerTest {
         worker.start();
 
         // channel offer → ImmediateWorker가 take()해서 relay 수행
-        channel.offer(2L);
+        channel.offerNow(2L);
 
         // Polling 도 같은 id 경쟁 relay — ImmediateWorker 가 먼저 진입하도록 짧은 sleep
         CountDownLatch pollingDone = new CountDownLatch(1);
@@ -200,7 +200,7 @@ class PgOutboxImmediateWorkerTest {
 
         // when: worker 기동 + channel 에 offer
         worker.start();
-        channel.offer(3L);
+        channel.offerNow(3L);
 
         // relay 실패 처리를 위한 충분한 대기
         Thread.sleep(500);

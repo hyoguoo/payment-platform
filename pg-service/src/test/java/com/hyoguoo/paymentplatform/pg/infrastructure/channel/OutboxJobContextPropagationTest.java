@@ -94,10 +94,10 @@ class OutboxJobContextPropagationTest {
     }
 
     @Test
-    @DisplayName("offer(Long) — 기존 long offer API 는 offerNow 위임으로 큐에 정상 삽입된다")
-    void offer_long_하위호환() throws InterruptedException {
+    @DisplayName("offerNow — 여러 outboxId 를 순차 삽입하면 size 가 정확히 일치한다")
+    void offerNow_순차삽입_size검증() throws InterruptedException {
         // when
-        boolean offered = channel.offer(77L);
+        boolean offered = channel.offerNow(77L);
 
         // then
         assertThat(offered).isTrue();

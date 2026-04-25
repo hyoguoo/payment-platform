@@ -75,18 +75,6 @@ public class PgOutboxChannel {
     }
 
     /**
-     * pg_outbox.id 를 큐에 비차단 삽입한다 (하위 호환 API).
-     *
-     * <p>내부적으로 {@link #offerNow(Long)} 에 위임하여 OTel Context + MDC snapshot 을 동봉한다.
-     *
-     * @param outboxId pg_outbox PK
-     * @return 삽입 성공 여부 (false 이면 큐 full — Polling Worker 가 fallback 처리)
-     */
-    public boolean offer(Long outboxId) {
-        return offerNow(outboxId);
-    }
-
-    /**
      * 큐에서 {@link OutboxJob} 을 차단 대기하여 가져온다 (PgOutboxImmediateWorker 전용).
      *
      * <p>반환된 job 의 otelContext + snapshot 을 relay 직전에 restore 하여 context 를 복원해야 한다.

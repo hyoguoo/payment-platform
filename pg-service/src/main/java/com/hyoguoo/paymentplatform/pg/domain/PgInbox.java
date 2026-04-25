@@ -231,35 +231,4 @@ public class PgInbox {
         this.updatedAt = updatedAt;
     }
 
-    /**
-     * @deprecated 호출처 없음 — markInProgress/markApproved/markFailed/markQuarantined 로 교체.
-     *             K4 이후 제거 예정.
-     */
-    @Deprecated(since = "K4", forRemoval = true)
-    public PgInbox withStatus(PgInboxStatus newStatus) {
-        return new PgInbox(
-                this.orderId,
-                newStatus,
-                this.amount,
-                this.storedStatusResult,
-                this.reasonCode,
-                this.createdAt,
-                Instant.now());
-    }
-
-    /**
-     * @deprecated 호출처 FakePgInboxRepository 에서만 사용 — markApproved/markFailed/markQuarantined 로 교체.
-     *             K4 이후 제거 예정.
-     */
-    @Deprecated(since = "K4", forRemoval = true)
-    public PgInbox withResult(PgInboxStatus newStatus, String storedStatusResult, String reasonCode) {
-        return new PgInbox(
-                this.orderId,
-                newStatus,
-                this.amount,
-                storedStatusResult,
-                reasonCode,
-                this.createdAt,
-                Instant.now());
-    }
 }

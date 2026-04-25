@@ -20,8 +20,6 @@ import java.time.Duration;
  *   <li>실패 시 {@link #remove(String)} — 재처리 가능 상태로 복원. false 반환 시 DLQ 전송</li>
  * </ol>
  *
- * @deprecated {@link #markSeen(String)} 는 PaymentConfirmResultUseCase 이전 호출처에서만 사용.
- *             신규 코드는 markWithLease + extendLease 패턴을 사용한다.
  */
 public interface EventDedupeStore {
 
@@ -63,12 +61,4 @@ public interface EventDedupeStore {
      */
     boolean remove(String eventUuid);
 
-    /**
-     * @deprecated T-C3 이후 신규 코드는 {@link #markWithLease} 를 사용한다.
-     *             기존 호출처 호환을 위해 longTtl 기본값으로 위임한다.
-     */
-    @Deprecated
-    default boolean markSeen(String eventUuid) {
-        return markWithLease(eventUuid, Duration.ofDays(8));
-    }
 }

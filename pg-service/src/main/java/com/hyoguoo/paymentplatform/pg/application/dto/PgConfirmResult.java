@@ -21,21 +21,6 @@ public record PgConfirmResult(
         String approvedAtRaw
 ) {
 
-    /**
-     * 기존 6-arg 생성자 — 레거시 호출처 호환용. approvedAtRaw=null.
-     * @deprecated T-A1 이후에는 7-arg 생성자를 직접 사용할 것.
-     */
-    @Deprecated
-    public PgConfirmResult(
-            PgConfirmResultStatus status,
-            String paymentKey,
-            String orderId,
-            BigDecimal amount,
-            LocalDateTime approvedAt,
-            PgFailureInfo failure) {
-        this(status, paymentKey, orderId, amount, approvedAt, failure, null);
-    }
-
     public boolean isSuccess() {
         return status == PgConfirmResultStatus.SUCCESS;
     }

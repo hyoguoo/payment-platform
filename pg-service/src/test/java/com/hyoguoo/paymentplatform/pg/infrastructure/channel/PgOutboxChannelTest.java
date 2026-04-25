@@ -32,7 +32,7 @@ class PgOutboxChannelTest {
     @Test
     @DisplayName("offer — 빈 큐에 offer 하면 true 반환, take 로 꺼낸 outboxId 가 일치한다")
     void offer_take_정상동작() throws InterruptedException {
-        boolean offered = channel.offer(42L);
+        boolean offered = channel.offerNow(42L);
 
         assertThat(offered).isTrue();
         assertThat(channel.size()).isEqualTo(1);
@@ -47,12 +47,12 @@ class PgOutboxChannelTest {
     void offer_큐_full_시_false_반환() {
         // capacity(10) 개 채우기
         for (long i = 0; i < TEST_CAPACITY; i++) {
-            boolean offered = channel.offer(i);
+            boolean offered = channel.offerNow(i);
             assertThat(offered).isTrue();
         }
 
         // 하나 더 offer — 큐 full
-        boolean overflow = channel.offer(99L);
+        boolean overflow = channel.offerNow(99L);
         assertThat(overflow).isFalse();
     }
 
@@ -64,12 +64,12 @@ class PgOutboxChannelTest {
 
         // 8개 채움: remainingCapacity = 2, 2*5=10 < 10 → false (경계값: 정확히 80%)
         for (long i = 0; i < 8; i++) {
-            channel.offer(i);
+            channel.offerNow(i);
         }
         assertThat(channel.isNearFull()).isFalse();
 
         // 9개 채움: remainingCapacity = 1, 1*5=5 < 10 → true (80% 초과 — nearFull)
-        channel.offer(99L);
+        channel.offerNow(99L);
         assertThat(channel.isNearFull()).isTrue();
     }
 
@@ -78,9 +78,9 @@ class PgOutboxChannelTest {
     void size_정확한_항목수_반환() {
         assertThat(channel.size()).isEqualTo(0);
 
-        channel.offer(1L);
-        channel.offer(2L);
-        channel.offer(3L);
+        channel.offerNow(1L);
+        channel.offerNow(2L);
+        channel.offerNow(3L);
 
         assertThat(channel.size()).isEqualTo(3);
     }
