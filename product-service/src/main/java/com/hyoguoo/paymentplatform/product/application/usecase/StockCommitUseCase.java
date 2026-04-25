@@ -49,15 +49,19 @@ public class StockCommitUseCase {
      * 2. RDB: 재고 조회 → qty 감소 → save
      * 3. RDB UPDATE 성공 후 Redis SET
      *
+     * <p>K3: orderId 타입을 String으로 변경 — producer(StockCommittedEvent)와 타입 통일.
+     * payment-service의 orderId는 "order-xxx" 형태의 String이므로 long 파싱 불가.
+     * orderId는 로깅·추적 용도로만 사용되므로 String 그대로 처리.
+     *
      * @param eventUUID 이벤트 식별자 (dedupe 키)
-     * @param orderId   주문 ID
+     * @param orderId   주문 ID (String, 추적 메타데이터)
      * @param productId 상품 ID
      * @param qty       확정 차감 수량
      * @param expiresAt dedupe TTL 만료 시각
      * @throws IllegalStateException 해당 상품 재고가 존재하지 않을 경우
      */
     @Transactional
-    public void commit(String eventUUID, long orderId, long productId, int qty, Instant expiresAt) {
+    public void commit(String eventUUID, String orderId, long productId, int qty, Instant expiresAt) {
         boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUUID, expiresAt);
         if (!firstSeen) {
             LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_DUPLICATE,
@@ -78,7 +82,7 @@ public class StockCommitUseCase {
      *
      * @return 변경 후 재고 수량
      */
-    private int commitToRdb(long productId, int qty, long orderId, String eventUUID) {
+    private int commitToRdb(long productId, int qty, String orderId, String eventUUID) {
         Stock current = stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalStateException(
                         "재고 정보를 찾을 수 없음 productId=" + productId

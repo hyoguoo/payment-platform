@@ -35,7 +35,7 @@ class StockCommitConsumerTest {
     void consume_ShouldDelegateToStockCommitUseCase() {
         // given
         long productId = 10L;
-        long orderId = 1000L;
+        String orderId = "order-1000";  // K3: String 통일
         String eventUUID = "event-uuid-consumer-test";
         int qty = 7;
         Instant occurredAt = Instant.now();
@@ -53,7 +53,7 @@ class StockCommitConsumerTest {
         // when
         stockCommitConsumer.consume(message);
 
-        // then: usecase 1회 위임
+        // then: usecase 1회 위임 (K3: orderId String 그대로 전달)
         verify(stockCommitUseCase, times(1))
                 .commit(eventUUID, orderId, productId, qty, expiresAt);
     }
@@ -63,7 +63,7 @@ class StockCommitConsumerTest {
     void consume_whenExpiresAtNull_shouldFallbackFromOccurredAt() {
         // given
         long productId = 10L;
-        long orderId = 1000L;
+        String orderId = "order-1000";  // K3: String 통일
         String eventUUID = "event-uuid-fallback-test";
         int qty = 3;
         Instant occurredAt = Instant.parse("2026-01-01T00:00:00Z");
@@ -100,7 +100,7 @@ class StockCommitConsumerTest {
     void consume_whenBothNull_shouldFallbackFromNow() {
         // given
         long productId = 10L;
-        long orderId = 1000L;
+        String orderId = "order-1000";  // K3: String 통일
         String eventUUID = "event-uuid-bothnull-test";
         int qty = 1;
 

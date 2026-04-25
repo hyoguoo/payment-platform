@@ -42,7 +42,7 @@ class StockCommitUseCaseTest {
     void commit_ShouldUpdateRdbAndSetPaymentRedis() {
         // given
         long productId = 1L;
-        long orderId = 100L;
+        String orderId = "order-100";  // K3: String 통일
         String eventUUID = "event-uuid-001";
         int qty = 5;
         int initialStock = 20;
@@ -71,7 +71,7 @@ class StockCommitUseCaseTest {
     void commit_DuplicateEventUuid_ShouldNoOp() {
         // given
         long productId = 2L;
-        long orderId = 200L;
+        String orderId = "order-200";  // K3: String 통일
         String eventUUID = "event-uuid-dup";
         int qty = 3;
         int initialStock = 10;
@@ -106,7 +106,7 @@ class StockCommitUseCaseTest {
     void commit_WhenRdbUpdateFails_ShouldNotSetRedis() {
         // given
         long productId = 3L;
-        long orderId = 300L;
+        String orderId = "order-300";  // K3: String 통일
         String eventUUID = "event-uuid-fail";
         int qty = 5;
         // 재고가 없는 상품 → findByProductId → Optional.empty() → IllegalStateException

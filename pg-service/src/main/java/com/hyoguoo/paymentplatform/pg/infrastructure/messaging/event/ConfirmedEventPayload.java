@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import java.util.Objects;
 
 /**
@@ -8,6 +9,9 @@ import java.util.Objects;
  *
  * <p>payment-service {@code ConfirmedEventMessage} record 와 필드명·의미가 대칭이어야 한다.
  * 구조 변경 시 양쪽을 함께 갱신한다 (ADR-30: 공유 JAR 없이 pg-service 독립 복제).
+ *
+ * <p>K3: {@code @JsonPropertyOrder} 명시로 직렬화 순서 강제.
+ * payment-service {@code ConfirmedEventSchemaParityTest} 가 양쪽 동기화를 검증한다.
  *
  * <p>Null 필드는 JSON 직렬화에서 제외 (APPROVED 에서 reasonCode 가 누락되는 등).
  *
@@ -19,6 +23,7 @@ import java.util.Objects;
  * @param eventUuid  0단계 dedupe 키 (매 outbox row 당 1 개 생성)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonPropertyOrder({"orderId", "status", "reasonCode", "amount", "approvedAt", "eventUuid"})
 public record ConfirmedEventPayload(
         String orderId,
         String status,

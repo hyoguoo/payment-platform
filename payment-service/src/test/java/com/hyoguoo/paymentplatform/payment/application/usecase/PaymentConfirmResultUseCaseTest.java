@@ -129,7 +129,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when
@@ -154,7 +154,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, 999L, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, 999L, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when
@@ -187,7 +187,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, null
+                ORDER_ID, "APPROVED", null, AMOUNT, null, EVENT_UUID
         );
 
         // when & then
@@ -208,7 +208,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when
@@ -241,7 +241,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", "VENDOR_FAILED", EVENT_UUID, null, null
+                ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID
         );
 
         // when
@@ -268,7 +268,7 @@ class PaymentConfirmResultUseCaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", "VENDOR_FAILED", EVENT_UUID, null, null
+                ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID
         );
 
         // when

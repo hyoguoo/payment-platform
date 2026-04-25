@@ -47,6 +47,10 @@ public class StockCommitConsumer {
      * occurredAt 도 null 이면 {@code Instant.now() + DEDUPE_TTL} 로 fallback 한다.
      * 사전 메시지(구버전 페이로드)와의 하위 호환 유지 목적.
      *
+     * <p>K3: orderId 타입이 String으로 통일됨.
+     * producer(payment-service)가 orderId를 직접 채워 전송하므로 fallback 0L 불필요.
+     * orderId null 이면 빈 문자열로 fallback (하위 호환 — 구버전 producer 대응).
+     *
      * @param message 역직렬화된 StockCommittedMessage
      */
     @KafkaListener(
@@ -59,10 +63,11 @@ public class StockCommitConsumer {
                 () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
         Instant expiresAt = resolveExpiresAt(message);
+        String orderId = message.orderId() != null ? message.orderId() : "";
 
         stockCommitUseCase.commit(
                 message.idempotencyKey(),
-                message.orderId() != null ? message.orderId() : 0L,
+                orderId,
                 message.productId(),
                 message.qty(),
                 expiresAt

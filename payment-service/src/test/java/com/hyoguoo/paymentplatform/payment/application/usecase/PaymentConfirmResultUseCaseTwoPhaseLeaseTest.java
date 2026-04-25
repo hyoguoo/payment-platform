@@ -101,7 +101,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when
@@ -126,7 +126,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
 
         // paymentEventRepository에 이벤트 없음 → findByOrderId empty → PaymentFoundException
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when & then — 예외는 전파되어야 한다
@@ -152,7 +152,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
 
         // paymentEventRepository에 이벤트 없음 → processMessage 내부 예외
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when & then — 원본 예외 전파
@@ -176,7 +176,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         given(eventDedupeStore.markWithLease(eq(EVENT_UUID), any(Duration.class))).willReturn(false);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
         );
 
         // when

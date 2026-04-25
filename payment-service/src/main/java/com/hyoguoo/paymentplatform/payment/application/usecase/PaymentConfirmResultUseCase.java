@@ -234,15 +234,23 @@ public class PaymentConfirmResultUseCase {
      * 기존 paymentEvent.getOrderId() 단일값 사용은 multi-product 결제 시 모든 이벤트가
      * 동일 dedupe key를 공유하여 product-service가 첫 product만 처리하는 회귀를 유발.
      * ADR-16 참고: StockEventUuidDeriver.derive(orderId, productId, "stock-commit").
+     *
+     * <p>K3 fix: StockCommittedEvent에 orderId(String) + expiresAt(Instant) 명시 전달.
+     * producer가 직접 채워 consumer 측 fallback null 의존 제거.
+     * expiresAt = Instant.now() + longTtl(8d) — consumer의 DEDUPE_TTL(8d)과 동일 정책.
      */
     private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
         String idempotencyKey = StockEventUuidDeriver.derive(
                 paymentEvent.getOrderId(), order.getProductId(), "stock-commit");
+        Instant occurredAt = Instant.now();
+        Instant expiresAt = occurredAt.plus(longTtl);
         StockCommittedEvent event = new StockCommittedEvent(
                 order.getProductId(),
                 order.getQuantity(),
                 idempotencyKey,
-                Instant.now()
+                occurredAt,
+                paymentEvent.getOrderId(),
+                expiresAt
         );
         String payloadJson = serializeToJson(event);
         return StockOutbox.create(
