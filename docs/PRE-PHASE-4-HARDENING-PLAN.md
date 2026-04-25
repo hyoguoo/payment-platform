@@ -223,6 +223,33 @@
 
   `./gradlew clean test` 전수 PASS(BUILD SUCCESSFUL). 레이어 위반 0건 (`grep -rn 'import *.infrastructure.' */application/` 결과 없음). 회귀 없음.
 
+**그룹 K10 — K9 이후 dead infrastructure 파일 삭제**
+- [x] K10 K9에서 application 패키지로 이전된 infrastructure 원본 파일 14개 삭제 + 빈 디렉토리 6개 삭제
+
+  **완료 결과 K10 (2026-04-24)** — tdd=false 단일 `chore:` 커밋. 삭제 전 전수 `grep -rn "import.*<FQN>"` 결과 main/test 합산 0건 확인. 테스트 소스 3파일 import 누락 발견(암묵적 패키지 참조) → K10 범위 내 import 갱신 후 삭제 완료.
+
+  **삭제 파일 (14개)**:
+  - `payment-service/.../infrastructure/messaging/PaymentTopics.java` (application.messaging으로 이전)
+  - `pg-service/.../infrastructure/messaging/PgTopics.java` (application.messaging으로 이전)
+  - `payment-service/.../infrastructure/messaging/event/StockCommittedEvent.java` (application.dto.event로 이전)
+  - `payment-service/.../infrastructure/messaging/event/StockRestoreEvent.java` (application.dto.event로 이전)
+  - `payment-service/.../infrastructure/messaging/event/PaymentConfirmCommandMessage.java` (application.dto.event로 이전)
+  - `payment-service/.../infrastructure/messaging/consumer/dto/ConfirmedEventMessage.java` (application.dto.event로 이전)
+  - `payment-service/.../infrastructure/messaging/consumer/dto/StockSnapshotEvent.java` (application.dto.event로 이전)
+  - `pg-service/.../infrastructure/messaging/event/ConfirmedEventPayload.java` (application.dto.event로 이전)
+  - `pg-service/.../infrastructure/messaging/event/ConfirmedEventPayloadSerializer.java` (application.dto.event로 이전)
+  - `pg-service/.../infrastructure/converter/AmountConverter.java` (application.util로 이전)
+  - `payment-service/.../infrastructure/aspect/annotation/PublishDomainEvent.java` (application.aspect.annotation으로 이전)
+  - `payment-service/.../infrastructure/aspect/annotation/PaymentStatusChange.java` (application.aspect.annotation으로 이전)
+  - `pg-service/.../infrastructure/aspect/annotation/TossApiMetric.java` (application.aspect.annotation으로 이전)
+  - `pg-service/.../infrastructure/aspect/annotation/ErrorCode.java` (application.aspect.annotation으로 이전)
+
+  **삭제 디렉토리 (6개)**: `payment infrastructure/messaging/event/`, `payment infrastructure/messaging/consumer/dto/`, `payment infrastructure/aspect/annotation/`, `pg infrastructure/messaging/event/`, `pg infrastructure/converter/`, `pg infrastructure/aspect/annotation/`
+
+  **import 갱신 (3개 테스트 파일)**: `ConfirmedEventMessageTest`, `AmountConverterTest`, `ConfirmedEventPayloadTest` — 암묵적 패키지 참조 → 신설 위치 명시 import 추가.
+
+  `./gradlew test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

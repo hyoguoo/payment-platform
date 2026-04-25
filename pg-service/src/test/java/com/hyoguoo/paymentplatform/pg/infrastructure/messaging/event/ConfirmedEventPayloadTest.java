@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event;
 
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

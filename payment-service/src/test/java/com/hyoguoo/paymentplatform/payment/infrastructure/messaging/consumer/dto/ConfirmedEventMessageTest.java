@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
