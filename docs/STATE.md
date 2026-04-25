@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-24 (T-J4 — PgOutboxChannel OutboxJob 타입 도입. offer→take 경계 OTel Context + MDC 동봉/복원으로 payment.events.confirmed traceparent 회귀 근본 해소. 522/522 PASS, 회귀 없음)
+> 최종 수정: 2026-04-24 (K1 — StockEventUuidDeriver 신설 + PaymentConfirmResultUseCase.buildStockCommitOutbox idempotencyKey (orderId,productId) UUID v3 변경 + FailureCompensationService 일원화. multi-product RDB↔Redis 재고 불일치 회귀 해소. 526/526 PASS, 회귀 없음)
 
 ## 활성 작업
 - **주제**: PRE-PHASE-4-HARDENING

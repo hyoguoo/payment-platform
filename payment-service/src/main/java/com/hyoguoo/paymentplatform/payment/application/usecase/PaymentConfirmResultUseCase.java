@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
+import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
@@ -228,12 +229,19 @@ public class PaymentConfirmResultUseCase {
      * stock commit outbox row 빌드.
      * payload: StockCommittedEvent JSON 직렬화.
      * key: productId.toString() — 동일 상품 이벤트를 동일 파티션에 라우팅(ADR-12).
+     *
+     * <p>K1 fix: idempotencyKey는 (orderId, productId) 기반 결정론적 UUID v3으로 도출.
+     * 기존 paymentEvent.getOrderId() 단일값 사용은 multi-product 결제 시 모든 이벤트가
+     * 동일 dedupe key를 공유하여 product-service가 첫 product만 처리하는 회귀를 유발.
+     * ADR-16 참고: StockEventUuidDeriver.derive(orderId, productId, "stock-commit").
      */
     private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
+        String idempotencyKey = StockEventUuidDeriver.derive(
+                paymentEvent.getOrderId(), order.getProductId(), "stock-commit");
         StockCommittedEvent event = new StockCommittedEvent(
                 order.getProductId(),
                 order.getQuantity(),
-                paymentEvent.getOrderId(),
+                idempotencyKey,
                 Instant.now()
         );
         String payloadJson = serializeToJson(event);

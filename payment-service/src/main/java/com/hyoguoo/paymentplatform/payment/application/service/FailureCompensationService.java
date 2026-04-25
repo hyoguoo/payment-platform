@@ -4,10 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
+import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -68,7 +68,8 @@ public class FailureCompensationService {
      * @param qty       복원 수량 (실 주문 수량)
      */
     public void compensate(String orderId, Long productId, int qty) {
-        UUID eventUUID = deriveEventUUID(orderId, productId);
+        // K1: StockEventUuidDeriver 위임 — commit 측과 동일 도출 전략, "stock-restore" prefix로 분리.
+        UUID eventUUID = UUID.fromString(StockEventUuidDeriver.derive(orderId, productId, "stock-restore"));
         StockRestoreEvent event = new StockRestoreEvent(eventUUID, orderId, productId, qty, Instant.now());
         String payloadJson = serializeToJson(event);
 
@@ -81,16 +82,6 @@ public class FailureCompensationService {
         );
         StockOutbox saved = stockOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new StockOutboxReadyEvent(saved.getId()));
-    }
-
-    /**
-     * orderId + productId 기반 결정론적 UUID 생성.
-     * ADR-16: "stock-restore:{orderId}:{productId}" → UUID v3(name-based).
-     * 동일 입력 → 동일 UUID 출력 보장.
-     */
-    private UUID deriveEventUUID(String orderId, Long productId) {
-        String seed = "stock-restore:" + orderId + ":" + productId;
-        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

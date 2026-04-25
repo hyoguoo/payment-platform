@@ -154,26 +154,15 @@ class PaymentConfirmResultUseCaseD2Test {
         // idempotencyKey는 productId별로 달라야 한다 (K1 핵심 불변식)
         assertThat(key0).isNotEqualTo(key1);
 
-        // 같은 orderId 반복 호출 시 동일 productId → 동일 idempotencyKey (결정론적 UUID)
-        stockOutboxRepository.clear();
-        dedupeStore.reset();
-        paymentEventRepository.save(buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2)));
+        // 결정론적 UUID 검증 — StockEventUuidDeriver.derive 예측값과 일치해야 한다
+        String expectedKey10 = com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver
+                .derive(ORDER_ID, 10L, "stock-commit");
+        String expectedKey20 = com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver
+                .derive(ORDER_ID, 20L, "stock-commit");
 
-        ConfirmedEventMessage message2 = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, "evt-d2-002", AMOUNT, APPROVED_AT_STR
-        );
-        sut.handle(message2);
-
-        List<StockOutbox> saved2 = stockOutboxRepository.allSaved()
-                .stream()
-                .sorted(java.util.Comparator.comparing(StockOutbox::getKey))
-                .toList();
-
-        String key0Again = om.readTree(saved2.get(0).getPayload()).get("idempotencyKey").asText();
-        String key1Again = om.readTree(saved2.get(1).getPayload()).get("idempotencyKey").asText();
-
-        assertThat(key0Again).isEqualTo(key0);
-        assertThat(key1Again).isEqualTo(key1);
+        // saved는 key(productId) 오름차순 정렬: "10" < "20"
+        assertThat(key0).isEqualTo(expectedKey10);
+        assertThat(key1).isEqualTo(expectedKey20);
     }
 
     // -----------------------------------------------------------------------
