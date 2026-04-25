@@ -10,7 +10,8 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import java.math.BigDecimal;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.StockCommandItem;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -120,19 +121,4 @@ public class ProductHttpAdapter implements ProductPort {
                 .build();
     }
 
-    /**
-     * product-service GET /api/v1/products/{id} 응답 DTO.
-     */
-    public record ProductResponse(
-            Long id,
-            String name,
-            BigDecimal price,
-            Integer stock,
-            Long sellerId
-    ) {}
-
-    /**
-     * product-service POST stock 요청 item.
-     */
-    record StockCommandItem(Long productId, Integer stock) {}
 }

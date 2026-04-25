@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.given;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,7 @@ class ProductHttpAdapterContractTest {
     @Test
     @DisplayName("404 응답 → ProductNotFoundException(PRODUCT_NOT_FOUND)")
     void getProduct_NotFound_ShouldThrowProductNotFoundException() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductHttpAdapter.ProductResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.NOT_FOUND.value(), "Not Found", null, null, null));
 
@@ -57,7 +58,7 @@ class ProductHttpAdapterContractTest {
     @Test
     @DisplayName("503 응답 → ProductServiceRetryableException(PRODUCT_SERVICE_UNAVAILABLE)")
     void getProduct_ServiceUnavailable_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductHttpAdapter.ProductResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.SERVICE_UNAVAILABLE.value(), "Service Unavailable", null, null, null));
 
@@ -68,7 +69,7 @@ class ProductHttpAdapterContractTest {
     @Test
     @DisplayName("429 응답 → ProductServiceRetryableException(Too Many Requests)")
     void getProduct_TooManyRequests_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductHttpAdapter.ProductResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests", null, null, null));
 
@@ -79,7 +80,7 @@ class ProductHttpAdapterContractTest {
     @Test
     @DisplayName("500 응답 → IllegalStateException (미분류 서버 에러)")
     void getProduct_InternalServerError_ShouldThrowIllegalState() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductHttpAdapter.ProductResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", null, null, null));
 

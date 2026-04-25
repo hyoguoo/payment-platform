@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
 import java.math.BigDecimal;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -31,10 +32,10 @@ class ProductHttpAdapterTest {
     @DisplayName("getProduct_ShouldCallProductServiceAndReturnDomain: HTTP 응답이 도메인 DTO로 변환된다")
     void getProduct_ShouldCallProductServiceAndReturnDomain() {
         // given
-        ProductHttpAdapter.ProductResponse response = new ProductHttpAdapter.ProductResponse(
+        ProductResponse response = new ProductResponse(
                 1L, "상품A", new BigDecimal("10000"), 50, 100L
         );
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductHttpAdapter.ProductResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
                 .willReturn(response);
 
         // when

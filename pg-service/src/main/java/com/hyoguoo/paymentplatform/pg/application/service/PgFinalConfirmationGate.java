@@ -74,31 +74,15 @@ public class PgFinalConfirmationGate {
 
     // -----------------------------------------------------------------------
     // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
+    // F-12: enum + static class → sealed interface + record 패턴으로 통일
     // -----------------------------------------------------------------------
 
-    private enum FcgOutcomeKind { APPROVED, FAILED, INDETERMINATE }
+    private sealed interface FcgOutcome
+            permits FcgOutcome.Approved, FcgOutcome.Failed, FcgOutcome.Indeterminate {
 
-    private static final class FcgOutcome {
-
-        private final FcgOutcomeKind kind;
-        private final String storedStatusResult;
-
-        private FcgOutcome(FcgOutcomeKind kind, String storedStatusResult) {
-            this.kind = kind;
-            this.storedStatusResult = storedStatusResult;
-        }
-
-        static FcgOutcome approved(String statusResult) {
-            return new FcgOutcome(FcgOutcomeKind.APPROVED, statusResult);
-        }
-
-        static FcgOutcome failed(String statusResult) {
-            return new FcgOutcome(FcgOutcomeKind.FAILED, statusResult);
-        }
-
-        static FcgOutcome indeterminate() {
-            return new FcgOutcome(FcgOutcomeKind.INDETERMINATE, null);
-        }
+        record Approved(String storedStatusResult) implements FcgOutcome {}
+        record Failed(String storedStatusResult) implements FcgOutcome {}
+        record Indeterminate() implements FcgOutcome {}
     }
 
     // -----------------------------------------------------------------------
@@ -130,7 +114,7 @@ public class PgFinalConfirmationGate {
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_INDETERMINATE,
                     () -> "orderId=" + orderId + " cause=" + e.getMessage());
-            return FcgOutcome.indeterminate();
+            return new FcgOutcome.Indeterminate();
         }
     }
 
@@ -138,16 +122,16 @@ public class PgFinalConfirmationGate {
         PgPaymentStatus pgStatus = statusResult.status();
         if (APPROVED_STATUSES.contains(pgStatus)) {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
-            return FcgOutcome.approved(storedResult);
+            return new FcgOutcome.Approved(storedResult);
         }
         if (FAILED_STATUSES.contains(pgStatus)) {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
-            return FcgOutcome.failed(storedResult);
+            return new FcgOutcome.Failed(storedResult);
         }
         // READY, IN_PROGRESS, WAITING_FOR_DEPOSIT 등 미확정 상태 → INDETERMINATE 처리
         LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_AMBIGUOUS_STATUS,
                 () -> "orderId=" + statusResult.orderId() + " pgStatus=" + pgStatus);
-        return FcgOutcome.indeterminate();
+        return new FcgOutcome.Indeterminate();
     }
 
     // -----------------------------------------------------------------------
@@ -155,10 +139,10 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private void dispatchOutcome(FcgOutcome outcome, String orderId, long amount) {
-        switch (outcome.kind) {
-            case APPROVED -> handleApproved(orderId, outcome.storedStatusResult, amount);
-            case FAILED -> handleFailed(orderId, outcome.storedStatusResult);
-            case INDETERMINATE -> handleIndeterminate(orderId, amount);
+        switch (outcome) {
+            case FcgOutcome.Approved a -> handleApproved(orderId, a.storedStatusResult(), amount);
+            case FcgOutcome.Failed f -> handleFailed(orderId, f.storedStatusResult());
+            case FcgOutcome.Indeterminate ignored -> handleIndeterminate(orderId, amount);
         }
     }
 

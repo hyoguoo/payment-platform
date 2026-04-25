@@ -9,6 +9,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.UserResponse;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -90,8 +91,4 @@ public class UserHttpAdapter implements UserPort {
                 .build();
     }
 
-    /**
-     * user-service GET /api/v1/users/{id} 응답 DTO.
-     */
-    record UserResponse(Long id, String email, String createdAt) {}
 }

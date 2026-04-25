@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.given;
 import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.UserResponse;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class UserHttpAdapterContractTest {
     @Test
     @DisplayName("404 응답 → UserNotFoundException(USER_NOT_FOUND)")
     void getUser_NotFound_ShouldThrowUserNotFoundException() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserHttpAdapter.UserResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.NOT_FOUND.value(), "Not Found", null, null, null));
 
@@ -54,7 +55,7 @@ class UserHttpAdapterContractTest {
     @Test
     @DisplayName("503 응답 → UserServiceRetryableException(USER_SERVICE_UNAVAILABLE)")
     void getUser_ServiceUnavailable_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserHttpAdapter.UserResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.SERVICE_UNAVAILABLE.value(), "Service Unavailable", null, null, null));
 
@@ -65,7 +66,7 @@ class UserHttpAdapterContractTest {
     @Test
     @DisplayName("429 응답 → UserServiceRetryableException(Too Many Requests)")
     void getUser_TooManyRequests_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserHttpAdapter.UserResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests", null, null, null));
 
@@ -76,7 +77,7 @@ class UserHttpAdapterContractTest {
     @Test
     @DisplayName("500 응답 → IllegalStateException (미분류 서버 에러)")
     void getUser_InternalServerError_ShouldThrowIllegalState() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserHttpAdapter.UserResponse.class)))
+        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
                 .willThrow(WebClientResponseException.create(
                         HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", null, null, null));
 

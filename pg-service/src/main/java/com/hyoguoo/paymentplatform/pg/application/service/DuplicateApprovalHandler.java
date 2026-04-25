@@ -94,27 +94,14 @@ public class DuplicateApprovalHandler {
 
     // -----------------------------------------------------------------------
     // vendor 조회 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
+    // F-12: enum + static class → sealed interface + record 패턴으로 통일
     // -----------------------------------------------------------------------
 
-    private enum VendorQueryKind { SUCCESS, INDETERMINATE }
+    private sealed interface VendorQueryOutcome
+            permits VendorQueryOutcome.Success, VendorQueryOutcome.Indeterminate {
 
-    private static final class VendorQueryOutcome {
-
-        private final VendorQueryKind kind;
-        private final PgStatusResult statusResult;
-
-        private VendorQueryOutcome(VendorQueryKind kind, PgStatusResult statusResult) {
-            this.kind = kind;
-            this.statusResult = statusResult;
-        }
-
-        static VendorQueryOutcome success(PgStatusResult result) {
-            return new VendorQueryOutcome(VendorQueryKind.SUCCESS, result);
-        }
-
-        static VendorQueryOutcome indeterminate() {
-            return new VendorQueryOutcome(VendorQueryKind.INDETERMINATE, null);
-        }
+        record Success(PgStatusResult statusResult) implements VendorQueryOutcome {}
+        record Indeterminate() implements VendorQueryOutcome {}
     }
 
     // -----------------------------------------------------------------------
@@ -134,12 +121,12 @@ public class DuplicateApprovalHandler {
         // 1단계: vendor 상태 조회 (1회만, 실패 시 VENDOR_INDETERMINATE)
         VendorQueryOutcome queryOutcome = queryVendorStatus(orderId);
 
-        if (queryOutcome.kind == VendorQueryKind.INDETERMINATE) {
+        if (queryOutcome instanceof VendorQueryOutcome.Indeterminate) {
             handleVendorIndeterminate(orderId, payloadAmountLong);
             return;
         }
 
-        PgStatusResult vendorStatus = queryOutcome.statusResult;
+        PgStatusResult vendorStatus = ((VendorQueryOutcome.Success) queryOutcome).statusResult();
         long vendorAmountLong = AmountConverter.fromBigDecimalStrict(vendorStatus.amount());
 
         // 2단계: pg DB 존재 여부 분기
@@ -159,11 +146,11 @@ public class DuplicateApprovalHandler {
     private VendorQueryOutcome queryVendorStatus(String orderId) {
         try {
             PgStatusResult result = pgStatusLookupPort.getStatusByOrderId(orderId);
-            return VendorQueryOutcome.success(result);
+            return new VendorQueryOutcome.Success(result);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_VENDOR_INDETERMINATE,
                     () -> "orderId=" + orderId + " cause=" + e.getMessage());
-            return VendorQueryOutcome.indeterminate();
+            return new VendorQueryOutcome.Indeterminate();
         }
     }
 

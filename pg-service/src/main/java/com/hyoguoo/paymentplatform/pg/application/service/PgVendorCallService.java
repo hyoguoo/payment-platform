@@ -66,37 +66,17 @@ public class PgVendorCallService {
 
     // -----------------------------------------------------------------------
     // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
+    // F-12: enum + static class → sealed interface + record 패턴으로 통일
     // -----------------------------------------------------------------------
 
-    private enum OutcomeKind { SUCCESS, RETRYABLE, NON_RETRYABLE, HANDLED_INTERNALLY }
+    private sealed interface GatewayOutcome
+            permits GatewayOutcome.Success, GatewayOutcome.Retryable,
+                    GatewayOutcome.NonRetryable, GatewayOutcome.HandledInternally {
 
-    private static final class GatewayOutcome {
-
-        private final OutcomeKind kind;
-        private final PgConfirmResult result;
-        private final String errorMessage;
-
-        private GatewayOutcome(OutcomeKind kind, PgConfirmResult result, String errorMessage) {
-            this.kind = kind;
-            this.result = result;
-            this.errorMessage = errorMessage;
-        }
-
-        static GatewayOutcome success(PgConfirmResult result) {
-            return new GatewayOutcome(OutcomeKind.SUCCESS, result, null);
-        }
-
-        static GatewayOutcome retryable(String message) {
-            return new GatewayOutcome(OutcomeKind.RETRYABLE, null, message);
-        }
-
-        static GatewayOutcome nonRetryable(String message) {
-            return new GatewayOutcome(OutcomeKind.NON_RETRYABLE, null, message);
-        }
-
-        static GatewayOutcome handledInternally(String message) {
-            return new GatewayOutcome(OutcomeKind.HANDLED_INTERNALLY, null, message);
-        }
+        record Success(PgConfirmResult result) implements GatewayOutcome {}
+        record Retryable(String message) implements GatewayOutcome {}
+        record NonRetryable(String message) implements GatewayOutcome {}
+        record HandledInternally(String message) implements GatewayOutcome {}
     }
 
     // -----------------------------------------------------------------------
@@ -122,13 +102,13 @@ public class PgVendorCallService {
 
     private GatewayOutcome invokeConfirm(PgConfirmRequest request) {
         try {
-            return GatewayOutcome.success(pgConfirmPort.confirm(request));
+            return new GatewayOutcome.Success(pgConfirmPort.confirm(request));
         } catch (PgGatewayRetryableException e) {
-            return GatewayOutcome.retryable(e.getMessage());
+            return new GatewayOutcome.Retryable(e.getMessage());
         } catch (PgGatewayNonRetryableException e) {
-            return GatewayOutcome.nonRetryable(e.getMessage());
+            return new GatewayOutcome.NonRetryable(e.getMessage());
         } catch (PgGatewayDuplicateHandledException e) {
-            return GatewayOutcome.handledInternally(e.getMessage());
+            return new GatewayOutcome.HandledInternally(e.getMessage());
         }
     }
 
@@ -137,12 +117,13 @@ public class PgVendorCallService {
     // -----------------------------------------------------------------------
 
     private void dispatchOutcome(GatewayOutcome outcome, PgConfirmRequest request, int attempt, Instant now) {
-        switch (outcome.kind) {
-            case SUCCESS -> handleSuccess(request.orderId(), outcome.result);
-            case RETRYABLE -> handleRetry(request, attempt, now);
-            case NON_RETRYABLE -> handleDefinitiveFailure(request.orderId(), outcome.errorMessage);
-            case HANDLED_INTERNALLY -> LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
-                    () -> "orderId=" + request.orderId() + " detail=" + outcome.errorMessage);
+        switch (outcome) {
+            case GatewayOutcome.Success s -> handleSuccess(request.orderId(), s.result());
+            case GatewayOutcome.Retryable ignored -> handleRetry(request, attempt, now);
+            case GatewayOutcome.NonRetryable nr -> handleDefinitiveFailure(request.orderId(), nr.message());
+            case GatewayOutcome.HandledInternally hi -> LogFmt.info(log, LogDomain.PG_VENDOR,
+                    EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " detail=" + hi.message());
         }
     }
 

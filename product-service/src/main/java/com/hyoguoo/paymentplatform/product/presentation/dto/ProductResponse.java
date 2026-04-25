@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 
 /**
  * GET /api/v1/products/{id} 응답 DTO.
- * payment-service ProductHttpAdapter.ProductResponse와 필드 시그니처가 일치해야 한다(레코드 역직렬화).
+ * payment-service infrastructure.adapter.http.dto.ProductResponse와 필드 시그니처가 일치해야 한다(레코드 역직렬화).
  */
 public record ProductResponse(
         Long id,
