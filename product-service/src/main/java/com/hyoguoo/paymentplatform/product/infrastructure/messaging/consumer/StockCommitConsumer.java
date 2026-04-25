@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockCommittedMessage;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,6 +41,12 @@ public class StockCommitConsumer {
     /**
      * payment.events.stock-committed 메시지를 수신하여 재고 확정 커밋을 실행한다.
      *
+     * <p>T-I6: expiresAt null fallback — Producer(payment-service StockCommittedEvent)가
+     * expiresAt 을 미전송할 경우(스키마 불일치), Jackson 역직렬화 시 null 이 된다.
+     * null 이면 {@code occurredAt + DEDUPE_TTL} 로 계산하고,
+     * occurredAt 도 null 이면 {@code Instant.now() + DEDUPE_TTL} 로 fallback 한다.
+     * 사전 메시지(구버전 페이로드)와의 하위 호환 유지 목적.
+     *
      * @param message 역직렬화된 StockCommittedMessage
      */
     @KafkaListener(
@@ -51,12 +58,32 @@ public class StockCommitConsumer {
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
+        Instant expiresAt = resolveExpiresAt(message);
+
         stockCommitUseCase.commit(
                 message.idempotencyKey(),
                 message.orderId() != null ? message.orderId() : 0L,
                 message.productId(),
                 message.qty(),
-                message.expiresAt()
+                expiresAt
         );
+    }
+
+    /**
+     * expiresAt null fallback 계산.
+     * <ol>
+     *   <li>message.expiresAt() non-null → 그대로 사용</li>
+     *   <li>null + occurredAt non-null → occurredAt + DEDUPE_TTL</li>
+     *   <li>null + occurredAt null → Instant.now() + DEDUPE_TTL</li>
+     * </ol>
+     */
+    private Instant resolveExpiresAt(StockCommittedMessage message) {
+        if (message.expiresAt() != null) {
+            return message.expiresAt();
+        }
+        Instant base = message.occurredAt() != null ? message.occurredAt() : Instant.now();
+        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
+                () -> "expiresAt null fallback: base=" + base + " eventUUID=" + message.idempotencyKey());
+        return base.plus(StockCommitUseCase.DEDUPE_TTL);
     }
 }

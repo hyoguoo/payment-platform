@@ -97,7 +97,7 @@
 
   **완료 결과 (2026-04-24)** — `StockEventPublishingListener`: 생성자에 `MeterRegistry` 3번째 인자 추가. `commitFailCounter` (tag `event=commit`) + `restoreFailCounter` (tag `event=restore`) 생성자에서 등록. `onStockCommitRequested` catch 블록: `commitFailCounter.increment()` + LogFmt.error 메시지에 metric 증가 안내 추가. `onStockRestoreRequested` catch 블록: 동일 패턴 `restoreFailCounter.increment()`. counter 이름 `stock.kafka.publish.fail.total` (Prometheus 노출 시 `stock_kafka_publish_fail_total`). swallow 자체는 유지 — TX 이미 commit 의도 보존. `StockEventPublishingListenerTest` TC-H2-1(commit 발행 실패 → counter tag event=commit 값 1) + TC-H2-2(restore 발행 실패 → counter tag event=restore 값 1) GREEN. `docs/context/TODOS.md`: "Phase 4 후속: stock commit/restore payment_outbox 이관" 항목 추가 (배경·방안 A/B·Grafana 알림 요구·관련 파일). 전수 `./gradlew test` PASS. 회귀 없음.
 
-**그룹 I — 실 환경 회귀 fix (compose-up 스모크 발견)**
+**그룹 I — 실 환경 회귀 fix (compose-up 스모크 발견 + R3''' NPE 회귀)**
 - [x] T-I1 `AmountConverter.fromBigDecimalStrict` scale 검증 완화 — trailing zeros 허용
 
   **완료 결과 (2026-04-24)** — 회귀 발견 경위: T-A1 이후 compose-up 스모크에서 `PgVendorCallService.buildApprovedPayload`가 `AmountConverter.fromBigDecimalStrict(result.amount())`를 호출하는 경로에서, Kafka JSON 역직렬화 시 `BigDecimal("1000.00")` (scale=2, 정수 값)로 들어와 기존 `scale > 0` 거부 조건이 `ArithmeticException`을 던짐. 결과: `handleSuccess` throw → pg_inbox IN_PROGRESS 박힘 → 무한 NOOP → 결제 영구 PROCESSING. 수정 내용: `scale > 0 → ArithmeticException` 조건 제거 → `longValueExact()`로 교체 — 정수 값이면 trailing zeros(`1000.00`) 허용, 진짜 fractional(`150.50`) 만 거부. Javadoc 갱신: "정수 값이면 trailing zeros(`1000.00`) 허용 — Kafka JSON 역직렬화 호환" 명시. `PgInboxAmountStorageTest.TC4` 메시지 검증 완화(`"scale must be 0"` → 타입만 검증). 신규 3케이스(trailing zeros 허용 / 진짜 fractional 거부 / zero 반환) GREEN. 전수 `./gradlew test` PASS 회귀 없음.
@@ -117,6 +117,10 @@
 - [x] T-I5 gateway access log INFO + smoke 시나리오 user-service GET 추가 — R1/R4 회귀 해소
 
   **완료 결과 (2026-04-24)** — 회귀 발견 경위(R1/R4): R1 — gateway `TraceContextPropagationFilter`가 MDC에 traceId를 정상 주입하나 Spring Cloud Gateway happy path에서 access log가 INFO 레벨 출력 없음 → smoke grep 미매치. R4 — 스모크 시나리오가 checkout/confirm만 호출하여 user-service 로그에 traceId가 등장하지 않음. 수정 내용: (1) `EventType.GATEWAY_REQUEST_RECEIVED` enum 추가. (2) `TraceContextPropagationFilter.filter`: MDC 주입 블록 이후 `chain.filter` 직전에 `LogFmt.info(..., EventType.GATEWAY_REQUEST_RECEIVED, () -> "method=" + method + " path=" + path)` 추가 — traceparent 유무 무관하게 모든 요청에 INFO 출력. (3) `scripts/smoke/trace-continuity-check.sh`: checkout 직전에 `GET /api/v1/users/1` 호출 추가(동일 traceparent 헤더, HTTP 200 검증 후 진행). gateway 3/3 PASS, 전수 `./gradlew test` PASS. 회귀 없음.
+
+- [x] T-I6 product-service `StockCommitConsumer` expiresAt null fallback — Producer/Consumer 스키마 차이 견고화
+
+  **완료 결과 (2026-04-24)** — 회귀 발견 경위(R3'''): `StockCommitConsumer.consume`이 `message.expiresAt()`를 `null`인 채 `StockCommitUseCase.commit`에 전달 → `JdbcEventDedupeStore.recordIfAbsent(eventUuid, null)` 에서 `Timestamp.from(null)` NPE 발생. 근본 원인: payment-service `StockCommittedEvent`(4필드)와 product-service `StockCommittedMessage`(6필드) 스키마 불일치로 Jackson 역직렬화 시 `expiresAt=null`. 수정 내용: (1) `StockCommitUseCase`에 `public static final Duration DEDUPE_TTL = Duration.ofDays(8)` 추가 — Consumer에서 접근 가능하도록 public 공개. (2) `StockCommitConsumer.consume`: `message.expiresAt()` 직접 전달 대신 `resolveExpiresAt(message)` private 메서드 호출로 교체. `resolveExpiresAt`: expiresAt non-null이면 그대로, null이면 `occurredAt + DEDUPE_TTL`, occurredAt도 null이면 `Instant.now() + DEDUPE_TTL` fallback. LogFmt.info로 fallback 발생 사실 기록. (3) `StockRestoreConsumer`: `StockRestoreMessage`에 expiresAt 필드가 없고 `StockRestoreUseCase`가 내부적으로 `Instant.now().plus(DEDUPE_TTL)` 계산 — Consumer 레벨 fallback 불필요. TC-I6-1(occurredAt fixed → 정확한 8d 검증) + TC-I6-2(양쪽 null → ±5초 윈도우 검증) GREEN. 전수 525/525 PASS (eureka 1 + gateway 3 + payment-service 329 + pg-service 163 + product-service 28 + user-service 1). 회귀 없음.
 
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict

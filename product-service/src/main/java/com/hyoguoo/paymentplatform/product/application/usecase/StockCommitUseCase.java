@@ -30,6 +30,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StockCommitUseCase {
 
+    /**
+     * dedupe TTL = Kafka 기본 retention(7일) + 1일 = 8일.
+     * StockRestoreUseCase.DEDUPE_TTL 과 동일한 값 — StockCommitConsumer 에서
+     * expiresAt null fallback 계산에도 사용한다.
+     */
+    public static final java.time.Duration DEDUPE_TTL = java.time.Duration.ofDays(8);
+
     private final StockRepository stockRepository;
     private final EventDedupeStore eventDedupeStore;
     private final PaymentStockCachePort paymentStockCachePort;
