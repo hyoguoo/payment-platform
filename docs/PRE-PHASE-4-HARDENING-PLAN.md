@@ -293,6 +293,23 @@
 
   `find .../src/main/java -path '*/scheduler/*' -name '*.java'` 결과 전부 `infrastructure/scheduler/` 내 위치 확인. `grep -rn 'import .*\.scheduler\.'` 결과 0건. `./gradlew clean test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
 
+**그룹 K13 — Toss 모드 순환 의존 회귀 fix (CRITICAL 회귀)**
+- [x] K13 `TossPaymentGatewayStrategy` → `DuplicateApprovalHandler` 직접 의존 제거 — ApplicationEvent 패턴으로 cycle 영구 단절
+
+  **완료 결과 K13 (2026-04-24)** — `pg.gateway.type=toss` (matchIfMissing=true, 기본 모드) 로 pg-service 기동 시
+  `┌TossPaymentGatewayStrategy → DuplicateApprovalHandler → PgStatusLookupPort(←Toss)┘` cycle로
+  `Application failed to start` 발생. fake 모드 smoke에서는 Toss 비활성화로 발견 불가.
+
+  **원인**: T3.5-05가 NicePay cycle만 끊고 Toss의 `DuplicateApprovalHandler` 직접 의존은 그대로였음.
+
+  **수정**:
+  - `DuplicateApprovalDetectedEvent record` 신설 (`pg.application.event`, orderId/amount/paymentKey/reasonCode 4필드).
+  - `TossPaymentGatewayStrategy`: `DuplicateApprovalHandler` 필드 제거 → `ApplicationEventPublisher` 주입 + 명시 생성자. `handleErrorResponse` ALREADY_PROCESSED_PAYMENT 분기에서 `publishEvent(DuplicateApprovalDetectedEvent)` 발행. `@RequiredArgsConstructor` 제거.
+  - `NicepayPaymentGatewayStrategy`: 동일 패턴 — `DuplicateApprovalHandler` 필드 제거 → `ApplicationEventPublisher` 주입 + 명시 생성자. `handleConfirmResponse`/`classifyConfirmError` 2201 분기에서 `publishEvent` 발행.
+  - `DuplicateApprovalHandler`: `@EventListener` 메서드 `onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent)` 신설 — `handleDuplicateApproval` 위임. Spring ApplicationEvent 동기 처리 → 기존 TX 컨텍스트 참여. `EventType.PG_DUPLICATE_EVENT_RECEIVED` 추가.
+  - 테스트: `DuplicateApprovalHandlerCircularDependencyTest` TC5(Toss)/TC6(NicePay) 추가. `TossPaymentGatewayStrategyDuplicateEventTest` 3케이스 신설. `DuplicateApprovalHandlerListenerTest` 2케이스 신설.
+  - `./gradlew test` 전수 584/584 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 195 + product-service 31 + user-service 1). cycle 회귀 불변식 6케이스 GREEN. 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

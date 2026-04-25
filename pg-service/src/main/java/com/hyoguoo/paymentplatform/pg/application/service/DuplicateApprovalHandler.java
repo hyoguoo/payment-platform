@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
+import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,6 +109,25 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
     // 공개 API
     // -----------------------------------------------------------------------
+
+    /**
+     * K13: DuplicateApprovalDetectedEvent 수신 리스너 — 벤더 전략 → ApplicationEvent → 핸들러 위임.
+     *
+     * <p>cycle 단절: TossPaymentGatewayStrategy/NicepayPaymentGatewayStrategy 가
+     * DuplicateApprovalHandler 를 직접 호출하는 대신 이벤트를 발행하고,
+     * 이 메서드가 @EventListener 로 수신하여 {@link #handleDuplicateApproval} 에 위임한다.
+     *
+     * <p>Spring ApplicationEvent 는 동기 처리이므로 기존 트랜잭션 컨텍스트 안에서 실행됨.
+     * {@link #handleDuplicateApproval} 의 @Transactional(REQUIRED) 이 참여(join)한다.
+     *
+     * @param event DuplicateApprovalDetectedEvent (orderId, amount, paymentKey, reasonCode)
+     */
+    @EventListener
+    public void onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent event) {
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_EVENT_RECEIVED,
+                () -> "orderId=" + event.orderId() + " reasonCode=" + event.reasonCode());
+        handleDuplicateApproval(event.orderId(), event.amount());
+    }
 
     /**
      * 중복 승인 응답 처리 — 2자 금액 대조 + pg DB 부재 경로 방어.
