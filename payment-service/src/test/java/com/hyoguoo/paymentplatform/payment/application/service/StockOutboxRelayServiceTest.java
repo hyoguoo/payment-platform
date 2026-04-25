@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
@@ -40,7 +41,14 @@ class StockOutboxRelayServiceTest {
     void setUp() {
         stockOutboxRepository = Mockito.mock(StockOutboxRepository.class);
         stockOutboxPublisherPort = Mockito.mock(StockOutboxPublisherPort.class);
-        sut = new StockOutboxRelayService(stockOutboxRepository, stockOutboxPublisherPort);
+        // K5: LocalDateTimeProvider 주입 (기존 테스트는 시간 값 검증 불필요 → 시스템 시각 그대로)
+        LocalDateTimeProvider systemProvider = new LocalDateTimeProvider() {
+            @Override
+            public java.time.LocalDateTime now() {
+                return LocalDateTime.now();
+            }
+        };
+        sut = new StockOutboxRelayService(stockOutboxRepository, stockOutboxPublisherPort, systemProvider);
     }
 
     // -----------------------------------------------------------------------

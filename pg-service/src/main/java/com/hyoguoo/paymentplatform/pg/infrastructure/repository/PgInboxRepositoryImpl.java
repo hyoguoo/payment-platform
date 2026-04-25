@@ -4,9 +4,9 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -24,6 +24,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class PgInboxRepositoryImpl implements PgInboxRepository {
 
     private final JpaPgInboxRepository jpaPgInboxRepository;
+    /**
+     * K5: 시간 소스 주입 — LocalDateTime.now(ZoneOffset.UTC) 직접 호출 제거.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.config.PgServiceConfig} 에서
+     * {@code Clock.systemUTC()} Bean 주입.
+     */
+    private final Clock clock;
 
     @Override
     public Optional<PgInbox> findByOrderId(String orderId) {
@@ -47,13 +53,15 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Transactional
     public boolean transitNoneToInProgress(String orderId, long amount) {
         Optional<PgInboxEntity> existing = jpaPgInboxRepository.findByOrderId(orderId);
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // K5: LocalDateTime.now(ZoneOffset.UTC) 직접 호출 제거 → clock 사용
+        LocalDateTime now = LocalDateTime.now(clock);
+        Instant nowInstant = clock.instant();
 
         if (existing.isEmpty()) {
             PgInbox inProgress = PgInbox.of(
                     orderId, PgInboxStatus.IN_PROGRESS, amount,
                     null, null,
-                    now.toInstant(ZoneOffset.UTC), now.toInstant(ZoneOffset.UTC));
+                    nowInstant, nowInstant);
             jpaPgInboxRepository.save(PgInboxEntity.from(inProgress));
             return true;
         }
@@ -65,24 +73,27 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Override
     @Transactional
     public void transitToApproved(String orderId, String storedStatusResult) {
+        // K5: LocalDateTime.now(ZoneOffset.UTC) 직접 호출 제거 → clock 사용
         jpaPgInboxRepository.casInProgressToApproved(
-                orderId, storedStatusResult, LocalDateTime.now(ZoneOffset.UTC),
+                orderId, storedStatusResult, LocalDateTime.now(clock),
                 PgInboxStatus.IN_PROGRESS, PgInboxStatus.APPROVED);
     }
 
     @Override
     @Transactional
     public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+        // K5: LocalDateTime.now(ZoneOffset.UTC) 직접 호출 제거 → clock 사용
         jpaPgInboxRepository.casInProgressToFailed(
-                orderId, storedStatusResult, reasonCode, LocalDateTime.now(ZoneOffset.UTC),
+                orderId, storedStatusResult, reasonCode, LocalDateTime.now(clock),
                 PgInboxStatus.IN_PROGRESS, PgInboxStatus.FAILED);
     }
 
     @Override
     @Transactional
     public boolean transitToQuarantined(String orderId, String reasonCode) {
+        // K5: LocalDateTime.now(ZoneOffset.UTC) 직접 호출 제거 → clock 사용
         return jpaPgInboxRepository.casNonTerminalToQuarantined(
-                orderId, reasonCode, LocalDateTime.now(ZoneOffset.UTC),
+                orderId, reasonCode, LocalDateTime.now(clock),
                 PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
     }
 

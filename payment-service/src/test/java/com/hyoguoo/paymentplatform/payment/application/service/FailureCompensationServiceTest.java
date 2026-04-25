@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
@@ -39,8 +40,10 @@ class FailureCompensationServiceTest {
     void setUp() {
         eventPublisher = new CapturingApplicationEventPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
+        // K5: LocalDateTimeProvider — 기존 테스트는 시간 값 검증 불필요 → default nowInstant() 위임
+        LocalDateTimeProvider systemProvider = java.time.LocalDateTime::now;
         sut = new FailureCompensationService(eventPublisher, stockOutboxRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule()));
+                new ObjectMapper().registerModule(new JavaTimeModule()), systemProvider);
     }
 
     // -----------------------------------------------------------------------
@@ -101,8 +104,9 @@ class FailureCompensationServiceTest {
         // 독립 인스턴스에서도 동일 UUID 생성
         CapturingApplicationEventPublisher anotherPublisher = new CapturingApplicationEventPublisher();
         FakeStockOutboxRepository anotherRepo = new FakeStockOutboxRepository();
+        LocalDateTimeProvider anotherProvider = java.time.LocalDateTime::now;
         FailureCompensationService another = new FailureCompensationService(anotherPublisher, anotherRepo,
-                new ObjectMapper().registerModule(new JavaTimeModule()));
+                new ObjectMapper().registerModule(new JavaTimeModule()), anotherProvider);
         another.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
 
         StockOutbox anotherSaved = anotherRepo.allSaved().get(0);

@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
@@ -41,10 +42,16 @@ public class StockOutboxRelayService {
 
     private final StockOutboxRepository stockOutboxRepository;
     private final StockOutboxPublisherPort stockOutboxPublisherPort;
+    /**
+     * K5: 시간 소스 주입 — LocalDateTime.now() 직접 호출 제거.
+     * 테스트에서 fixed clock 주입 → relay processedAt 결정성 보장.
+     */
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     @Transactional
     public void relay(Long outboxId) {
-        LocalDateTime now = LocalDateTime.now();
+        // K5: LocalDateTime.now() 직접 호출 제거 → localDateTimeProvider.now() 사용
+        LocalDateTime now = localDateTimeProvider.now();
 
         Optional<StockOutbox> outboxOpt = stockOutboxRepository.findById(outboxId);
         if (outboxOpt.isEmpty()) {

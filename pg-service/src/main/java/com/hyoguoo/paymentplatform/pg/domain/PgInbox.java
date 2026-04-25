@@ -41,6 +41,18 @@ public class PgInbox {
         return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
     }
 
+    /**
+     * K5: fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
+     * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     *
+     * @param orderId 주문 ID
+     * @param amount  결제 금액
+     * @param now     현재 Instant (clock.instant() 전달)
+     */
+    public static PgInbox create(String orderId, Long amount, Instant now) {
+        return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
+    }
+
     public static PgInbox of(
             String orderId,
             PgInboxStatus status,
@@ -96,6 +108,22 @@ public class PgInbox {
     }
 
     /**
+     * K5: fixed Instant 주입 오버로드 — NONE → IN_PROGRESS 전이 + updatedAt 결정성.
+     * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     *
+     * @param updatedAt 갱신 시각 (clock.instant() 전달)
+     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     */
+    public void markInProgress(Instant updatedAt) {
+        if (this.status != PgInboxStatus.NONE) {
+            throw new IllegalStateException(
+                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+        }
+        this.status = PgInboxStatus.IN_PROGRESS;
+        this.updatedAt = updatedAt;
+    }
+
+    /**
      * IN_PROGRESS → APPROVED 도메인 전이.
      *
      * @param storedStatusResult 벤더 응답 JSON
@@ -109,6 +137,23 @@ public class PgInbox {
         this.status = PgInboxStatus.APPROVED;
         this.storedStatusResult = storedStatusResult;
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * K5: fixed Instant 주입 오버로드 — IN_PROGRESS → APPROVED 전이 + updatedAt 결정성.
+     *
+     * @param storedStatusResult 벤더 응답 JSON
+     * @param updatedAt          갱신 시각 (clock.instant() 전달)
+     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
+     */
+    public void markApproved(String storedStatusResult, Instant updatedAt) {
+        if (this.status != PgInboxStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "PgInbox.markApproved: status must be IN_PROGRESS but was " + this.status);
+        }
+        this.status = PgInboxStatus.APPROVED;
+        this.storedStatusResult = storedStatusResult;
+        this.updatedAt = updatedAt;
     }
 
     /**
@@ -130,6 +175,25 @@ public class PgInbox {
     }
 
     /**
+     * K5: fixed Instant 주입 오버로드 — IN_PROGRESS → FAILED 전이 + updatedAt 결정성.
+     *
+     * @param storedStatusResult 벤더 응답 JSON
+     * @param reasonCode         실패 사유 코드
+     * @param updatedAt          갱신 시각 (clock.instant() 전달)
+     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
+     */
+    public void markFailed(String storedStatusResult, String reasonCode, Instant updatedAt) {
+        if (this.status != PgInboxStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "PgInbox.markFailed: status must be IN_PROGRESS but was " + this.status);
+        }
+        this.status = PgInboxStatus.FAILED;
+        this.storedStatusResult = storedStatusResult;
+        this.reasonCode = reasonCode;
+        this.updatedAt = updatedAt;
+    }
+
+    /**
      * non-terminal → QUARANTINED 도메인 전이.
      * DLQ consumer 또는 FCG 에서 격리 시 호출한다.
      *
@@ -146,6 +210,25 @@ public class PgInbox {
         this.storedStatusResult = storedStatusResult;
         this.reasonCode = reasonCode;
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * K5: fixed Instant 주입 오버로드 — non-terminal → QUARANTINED 전이 + updatedAt 결정성.
+     *
+     * @param storedStatusResult 벤더 응답 JSON (nullable)
+     * @param reasonCode         격리 사유 코드
+     * @param updatedAt          갱신 시각 (clock.instant() 전달)
+     * @throws IllegalStateException 이미 terminal 상태에서 호출 시 (불변식 6c)
+     */
+    public void markQuarantined(String storedStatusResult, String reasonCode, Instant updatedAt) {
+        if (this.status.isTerminal()) {
+            throw new IllegalStateException(
+                    "PgInbox.markQuarantined: status is already terminal: " + this.status);
+        }
+        this.status = PgInboxStatus.QUARANTINED;
+        this.storedStatusResult = storedStatusResult;
+        this.reasonCode = reasonCode;
+        this.updatedAt = updatedAt;
     }
 
     /**

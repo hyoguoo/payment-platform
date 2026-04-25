@@ -86,6 +86,8 @@ class FailureCompensationServiceClockTest {
 
     /**
      * TC-K5-COMP-2: StockRestoreEvent.occurredAt(Instant) 이 fixed provider.nowInstant() 와 일치.
+     * Jackson WRITE_DATES_AS_TIMESTAMPS(기본 true) → occurredAt 은 epoch seconds(double) 로 직렬화됨.
+     * epoch seconds 비교로 검증한다.
      */
     @Test
     @DisplayName("compensate — StockRestoreEvent.occurredAt 이 fixed provider.nowInstant() 와 일치")
@@ -101,9 +103,11 @@ class FailureCompensationServiceClockTest {
                 new com.fasterxml.jackson.databind.ObjectMapper()
                         .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         com.fasterxml.jackson.databind.JsonNode node = om.readTree(saved.getPayload());
-        // occurredAt 필드가 fixed instant와 일치
-        Instant occurredAt = Instant.parse(node.get("occurredAt").asText());
-        assertThat(occurredAt).isEqualTo(FIXED_INSTANT);
+        // occurredAt 필드가 fixed instant 의 epoch seconds 와 일치
+        // Jackson WRITE_DATES_AS_TIMESTAMPS=true → 숫자(double) 직렬화
+        double epochSeconds = node.get("occurredAt").asDouble();
+        long actualEpochSecond = (long) epochSeconds;
+        assertThat(actualEpochSecond).isEqualTo(FIXED_INSTANT.getEpochSecond());
     }
 
     // ---- helper ----

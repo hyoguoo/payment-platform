@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
@@ -37,6 +38,11 @@ public class FailureCompensationService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final StockOutboxRepository stockOutboxRepository;
     private final ObjectMapper objectMapper;
+    /**
+     * K5: 시간 소스 주입 — Instant.now() / LocalDateTime.now() 직접 호출 제거.
+     * 테스트에서 fixed clock 주입 → 시간 결정성 보장.
+     */
+    private final LocalDateTimeProvider localDateTimeProvider;
 
     /**
      * FAILED 결제에 대한 재고 복원 보상 이벤트를 발행한다.
@@ -70,10 +76,13 @@ public class FailureCompensationService {
     public void compensate(String orderId, Long productId, int qty) {
         // K1: StockEventUuidDeriver 위임 — commit 측과 동일 도출 전략, "stock-restore" prefix로 분리.
         UUID eventUUID = UUID.fromString(StockEventUuidDeriver.derive(orderId, productId, "stock-restore"));
-        StockRestoreEvent event = new StockRestoreEvent(eventUUID, orderId, productId, qty, Instant.now());
+        // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
+        Instant occurredAt = localDateTimeProvider.nowInstant();
+        StockRestoreEvent event = new StockRestoreEvent(eventUUID, orderId, productId, qty, occurredAt);
         String payloadJson = serializeToJson(event);
 
-        LocalDateTime now = LocalDateTime.now();
+        // K5: LocalDateTime.now() 직접 호출 제거 → localDateTimeProvider.now() 사용
+        LocalDateTime now = localDateTimeProvider.now();
         StockOutbox outbox = StockOutbox.create(
                 PaymentTopics.EVENTS_STOCK_RESTORE,
                 String.valueOf(productId),

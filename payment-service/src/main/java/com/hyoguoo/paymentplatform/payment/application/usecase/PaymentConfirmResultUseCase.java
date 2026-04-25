@@ -242,7 +242,8 @@ public class PaymentConfirmResultUseCase {
     private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
         String idempotencyKey = StockEventUuidDeriver.derive(
                 paymentEvent.getOrderId(), order.getProductId(), "stock-commit");
-        Instant occurredAt = Instant.now();
+        // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
+        Instant occurredAt = localDateTimeProvider.nowInstant();
         Instant expiresAt = occurredAt.plus(longTtl);
         StockCommittedEvent event = new StockCommittedEvent(
                 order.getProductId(),
