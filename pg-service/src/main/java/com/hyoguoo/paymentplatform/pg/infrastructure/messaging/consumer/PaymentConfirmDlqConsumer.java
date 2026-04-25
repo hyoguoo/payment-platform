@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.pg.application.service.PgDlqService;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

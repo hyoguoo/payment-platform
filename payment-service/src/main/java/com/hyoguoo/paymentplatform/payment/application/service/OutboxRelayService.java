@@ -9,8 +9,8 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRep
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;

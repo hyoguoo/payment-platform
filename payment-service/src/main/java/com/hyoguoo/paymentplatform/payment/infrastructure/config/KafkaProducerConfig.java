@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Map;
 import org.apache.kafka.clients.producer.ProducerConfig;

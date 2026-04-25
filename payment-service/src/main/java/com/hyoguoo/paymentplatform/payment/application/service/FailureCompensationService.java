@@ -7,8 +7,8 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepos
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.application.util.StockOutboxFactory;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.StockRestoreEvent;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;

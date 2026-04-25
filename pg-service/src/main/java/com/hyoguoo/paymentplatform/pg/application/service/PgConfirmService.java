@@ -12,7 +12,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.RoundingMode;
 import java.time.Clock;

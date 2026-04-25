@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.config;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;

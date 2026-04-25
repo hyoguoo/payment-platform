@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;

@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.config;
 
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
