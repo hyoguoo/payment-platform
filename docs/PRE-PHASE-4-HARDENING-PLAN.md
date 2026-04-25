@@ -178,6 +178,34 @@
 
   **완료 결과 K7 (2026-04-24)** — F-5: `Context.taskWrapping(Executors.newVirtualThreadPerTaskExecutor())` → `ContextExecutorService.wrap(otelWrapped, ContextSnapshotFactory.builder().build())` 이중 래핑이 3곳에 동일 라인으로 복제된 boilerplate를 단일 헬퍼로 통일. ADR-19 복제(b) 방침 준수 — 공유 jar 없이 모듈별 독립 복사. 신설: `payment-service/core/config/concurrent/ContextAwareVirtualThreadExecutors.java` + `pg-service/pg/core/config/concurrent/ContextAwareVirtualThreadExecutors.java` (각 모듈 독립, `final` 클래스, private 생성자). 변경 3곳: (1) `AsyncConfig.outboxRelayExecutor()` — 기존 3줄 이중 래핑 → `new TaskExecutorAdapter(ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor())` 1줄. (2) `OutboxWorker.processParallel()` — `try (ExecutorService executor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor())` 위임. (3) `PgOutboxImmediateWorker.start()` — `relayExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 위임. 불필요해진 import(`Context`, `ContextExecutorService`, `ContextSnapshotFactory`, `Executors`) 3파일에서 제거. `./gradlew test` 전수 PASS(eureka 1 + gateway 3 + payment-service 352 + pg-service 188 + product-service 31 + user-service 1 = 576/576). 회귀 없음.
 
+**그룹 K8 — Critic Round 4 + Domain Round 4 minor 12건 일괄 정리**
+- [x] K8 Critic R4 + Domain R4 minor findings 12건 일괄 정리 (F-6~F-14, Domain F-7/F-8/F-11)
+
+  **완료 결과 K8 (2026-04-24)** — 3커밋(K8a/K8b/K8c) + 1커밋(K8d)로 12건 일괄 처리.
+
+  **K8a** (refactor): F-6(LogFmt JavaTimeModule) + F-7(StockOutboxFactory 분리) + F-8(PgVendorCallService FQN) + F-9(DuplicateApprovalHandler dead branch 제거).
+  - F-6: 5개 서비스 LogFmt.java `ObjectMapper` 인스턴스에 `JavaTimeModule` 등록 + `WRITE_DATES_AS_TIMESTAMPS` disable(ADR-19 복제(b)).
+  - F-7: `StockOutboxFactory`(`payment.application.util`) 신설 — `buildStockCommitOutbox`/`serialize` static 헬퍼. `PaymentConfirmResultUseCase`·`FailureCompensationService` 각각 직접 구현 → 위임으로 교체. 중복 `serializeToJson` private 제거.
+  - F-8: `PgVendorCallService` line 225-226 FQN(`com.hyoguoo...AmountConverter`) → `import AmountConverter` 선언 + 단축 참조.
+  - F-9: `DuplicateApprovalHandler.buildConfirmedPayload` switch의 `case "APPROVED" -> throw IllegalArgumentException` dead branch 제거(QUARANTINED·FAILED만 유효).
+
+  **K8b** (refactor): F-10(Deprecated 청소) + F-11(offer(Long) 제거) + F-14(PgConfirmResult 6-arg ctor 제거).
+  - F-10a: `EventDedupeStore.markSeen` default 메서드(0 caller) 삭제 + @deprecated Javadoc 제거.
+  - F-10c: `PgInbox.withStatus`/`withResult` deprecated 메서드(0 caller) 삭제.
+  - F-11: `PgOutboxChannel.offer(Long)` 제거. 테스트 3파일(PgOutboxImmediateWorkerTest·PgOutboxChannelTest·OutboxJobContextPropagationTest) `offer()` → `offerNow()` 마이그레이션.
+  - F-14: `PgConfirmResult` deprecated 6-arg 생성자 제거(모든 호출처 이미 7-arg 사용).
+
+  **K8c** (refactor): F-12(sealed interface outcome) + F-13(Adapter DTO 분리).
+  - F-12: `PgVendorCallService.GatewayOutcome` + `PgFinalConfirmationGate.FcgOutcome` + `DuplicateApprovalHandler.VendorQueryOutcome` — `enum OutcomeKind + static class` 패턴 → `sealed interface + record` 패턴으로 전환. 기존 `switch(outcome.kind())` → `switch(outcome)` pattern matching.
+  - F-13: `ProductHttpAdapter`·`UserHttpAdapter` inline record 정의(`ProductResponse`·`StockCommandItem`·`UserResponse`) → `infrastructure/adapter/http/dto/` 패키지 추출. 테스트 3파일 수정(`ProductHttpAdapterTest`·`ProductHttpAdapterContractTest`·`UserHttpAdapterContractTest`).
+
+  **K8d** (refactor): Domain F-8(PaymentErrorCode 중복 해소) + Domain F-7(TODOS.md 이관) + Domain F-11(TODOS.md 이관) + PLAN/STATE 완료.
+  - Domain F-8: `INVALID_TOTAL_AMOUNT("E03002")` → `("E03006")` (INVALID_STATUS_TO_EXECUTE와 code 충돌 해소). `PaymentErrorCodeUniquenessTest` 신설(모든 enum code 중복 없음 회귀 보호).
+  - Domain F-7: SYNTHETIC_APPROVED_AT 마커 도입 Option C(defer) — `docs/context/TODOS.md`에 이관.
+  - Domain F-11: Money/OrderId/PaymentKey VO — 대규모 리팩토링, 별도 토픽(`DOMAIN-VALUE-OBJECTS`)으로 이관.
+
+  `./gradlew clean test` 전수 577/577 PASS(eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS
