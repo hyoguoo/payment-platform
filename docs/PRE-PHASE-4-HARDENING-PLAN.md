@@ -106,6 +106,10 @@
 
   **완료 결과 (2026-04-24)** — 회귀 발견 경위(R2): compose-up 스모크에서 Kafka producer 가 발행하는 메시지의 `traceparent` 헤더가 incoming HTTP traceparent 와 다른 새 trace 로 박힘. 근본 원인: `outboxRelayExecutor` 의 `MdcTaskDecorator` 가 SLF4J MDC ThreadLocal 만 복사하고 OTel Context ThreadLocal(span/traceId) 을 무시하므로 `@Async("outboxRelayExecutor")` 경계에서 active span 이 소실 → VT 에서 KafkaTemplate.send() 가 새 trace 시작. 수정 내용: `MdcTaskDecorator` 제거 → 이중 래핑 적용. (1) `Context.taskWrapping(raw)` — OTel Context ThreadLocal 전파(OTel ContextStorage 는 Micrometer ContextRegistry 와 별개 경로). (2) `ContextExecutorService.wrap(otelWrapped, factory::captureAll)` — Micrometer ContextRegistry 등록 accessor(MDC 등) 전파. `MdcTaskDecorator`(main) + `MdcTaskDecoratorTest`(test) 삭제(다른 사용처 없음). `AsyncConfigContextPropagationTest` 신규 2케이스(TC1 OTel Context 전파 / TC2 MDC 전파) GREEN. 전수 520/520 PASS (eureka 1 + gateway 3 + payment-service 326 + pg-service 163 + product-service 26 + user-service 1). 회귀 없음. T-Gate 진입 가능.
 
+- [x] T-I3 product-service `KafkaMessageConverterConfig` 추가 — Kafka record deserialize 회귀 해소
+
+  **완료 결과 (2026-04-24)** — 회귀 발견 경위(R3'): compose-up 스모크에서 `StockCommitConsumer`/`StockRestoreConsumer` 가 `Cannot convert from [java.lang.String] to [StockCommittedMessage]` 오류로 backoff 소진. 근본 원인: product-service 에 `RecordMessageConverter` 빈 부재 — pg-service 의 `KafkaMessageConverterConfig` 와 달리 product-service 에는 동일 빈이 등록되어 있지 않아 StringDeserializer 로 수신한 JSON 문자열이 record 타입으로 변환되지 못함. 수정 내용: `product-service/.../infrastructure/config/KafkaMessageConverterConfig.java` 신설 — `StringJsonMessageConverter(objectMapper)` 빈 등록, `@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")` 조건 적용(ADR-19 복제(b) 방침 — pg-service 패턴 독립 복제). user-service `@KafkaListener` grep 결과 0건 — 영향 없음. 전수 520/520 PASS (eureka 1 + gateway 3 + payment-service 326 + pg-service 163 + product-service 26 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS
