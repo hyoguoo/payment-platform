@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * PaymentEventRepository Fake — in-memory 구현체.
@@ -18,6 +19,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FakePaymentEventRepository implements PaymentEventRepository {
 
     private final Map<String, PaymentEvent> store = new ConcurrentHashMap<>();
+    private final AtomicInteger saveOrUpdateCount = new AtomicInteger(0);
+
+    /** K15: saveOrUpdate 직접 호출 횟수 — PaymentCommandUseCase 위임 검증용. */
+    public int saveOrUpdateCallCount() {
+        return saveOrUpdateCount.get();
+    }
 
     public void save(PaymentEvent event) {
         store.put(event.getOrderId(), event);
@@ -37,6 +44,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
+        saveOrUpdateCount.incrementAndGet();
         store.put(paymentEvent.getOrderId(), paymentEvent);
         return paymentEvent;
     }
