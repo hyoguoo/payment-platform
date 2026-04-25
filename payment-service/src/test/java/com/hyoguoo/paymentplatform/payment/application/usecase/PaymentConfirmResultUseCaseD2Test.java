@@ -118,6 +118,65 @@ class PaymentConfirmResultUseCaseD2Test {
     }
 
     // -----------------------------------------------------------------------
+    // TC-K1-5: APPROVED 처리 — 2개 ProductId → payload의 idempotencyKey 서로 다름 (K1 회귀)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("handleApproved — multi-product 시 각 stock_outbox payload의 idempotencyKey가 서로 다르다")
+    void handleApproved_multiProduct_shouldUseUniqueIdempotencyKeyPerProduct() throws Exception {
+        // given: productId 10, productId 20 — 2개 PaymentOrder
+        PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
+        PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, EVENT_UUID, AMOUNT, APPROVED_AT_STR
+        );
+
+        // when
+        sut.handle(message);
+
+        // then — stock_outbox payload에서 idempotencyKey 추출
+        com.fasterxml.jackson.databind.ObjectMapper om =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+
+        List<StockOutbox> saved = stockOutboxRepository.allSaved()
+                .stream()
+                .sorted(java.util.Comparator.comparing(StockOutbox::getKey))
+                .toList();
+        assertThat(saved).hasSize(2);
+
+        String key0 = om.readTree(saved.get(0).getPayload()).get("idempotencyKey").asText();
+        String key1 = om.readTree(saved.get(1).getPayload()).get("idempotencyKey").asText();
+
+        // idempotencyKey는 productId별로 달라야 한다 (K1 핵심 불변식)
+        assertThat(key0).isNotEqualTo(key1);
+
+        // 같은 orderId 반복 호출 시 동일 productId → 동일 idempotencyKey (결정론적 UUID)
+        stockOutboxRepository.clear();
+        dedupeStore.reset();
+        paymentEventRepository.save(buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2)));
+
+        ConfirmedEventMessage message2 = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, "evt-d2-002", AMOUNT, APPROVED_AT_STR
+        );
+        sut.handle(message2);
+
+        List<StockOutbox> saved2 = stockOutboxRepository.allSaved()
+                .stream()
+                .sorted(java.util.Comparator.comparing(StockOutbox::getKey))
+                .toList();
+
+        String key0Again = om.readTree(saved2.get(0).getPayload()).get("idempotencyKey").asText();
+        String key1Again = om.readTree(saved2.get(1).getPayload()).get("idempotencyKey").asText();
+
+        assertThat(key0Again).isEqualTo(key0);
+        assertThat(key1Again).isEqualTo(key1);
+    }
+
+    // -----------------------------------------------------------------------
     // TC-J1-7: FAILED 처리 → FailureCompensationService.compensate 호출 확인
     // -----------------------------------------------------------------------
 
