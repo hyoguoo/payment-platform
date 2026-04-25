@@ -13,7 +13,6 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,16 +29,21 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "product.adapter.type", havingValue = "http")
-@RequiredArgsConstructor
 public class ProductHttpAdapter implements ProductPort {
 
     private static final String PRODUCTS_PATH = "/api/v1/products/";
     private static final String STOCK_INCREASE_PATH = "/api/v1/products/stock/increase";
 
     private final HttpOperator httpOperator;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final String productServiceBaseUrl;
 
-    @Value("${product-service.base-url:http://localhost:8083}")
-    private String productServiceBaseUrl;
+    public ProductHttpAdapter(
+            HttpOperator httpOperator,
+            @Value("${product-service.base-url:http://localhost:8083}") String productServiceBaseUrl) {
+        this.httpOperator = httpOperator;
+        this.productServiceBaseUrl = productServiceBaseUrl;
+    }
 
     @Override
     public ProductInfo getProductInfoById(Long productId) {

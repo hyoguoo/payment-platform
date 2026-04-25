@@ -10,7 +10,6 @@ import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,15 +26,20 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "user.adapter.type", havingValue = "http")
-@RequiredArgsConstructor
 public class UserHttpAdapter implements UserPort {
 
     private static final String USERS_PATH = "/api/v1/users/";
 
     private final HttpOperator httpOperator;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final String userServiceBaseUrl;
 
-    @Value("${user-service.base-url:http://localhost:8084}")
-    private String userServiceBaseUrl;
+    public UserHttpAdapter(
+            HttpOperator httpOperator,
+            @Value("${user-service.base-url:http://localhost:8084}") String userServiceBaseUrl) {
+        this.httpOperator = httpOperator;
+        this.userServiceBaseUrl = userServiceBaseUrl;
+    }
 
     @Override
     public UserInfo getUserInfoById(Long userId) {

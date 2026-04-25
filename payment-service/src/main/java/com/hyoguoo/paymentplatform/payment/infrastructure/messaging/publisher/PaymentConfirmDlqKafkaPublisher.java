@@ -31,14 +31,15 @@ import org.springframework.stereotype.Component;
 public class PaymentConfirmDlqKafkaPublisher implements PaymentConfirmDlqPublisher {
 
     private final KafkaTemplate<String, String> confirmedDlqKafkaTemplate;
-
-    @Value("${kafka.publisher.send-timeout-millis:10000}")
-    private long sendTimeoutMillis;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final long sendTimeoutMillis;
 
     public PaymentConfirmDlqKafkaPublisher(
             @Qualifier("confirmedDlqKafkaTemplate")
-            KafkaTemplate<String, String> confirmedDlqKafkaTemplate) {
+            KafkaTemplate<String, String> confirmedDlqKafkaTemplate,
+            @Value("${kafka.publisher.send-timeout-millis:10000}") long sendTimeoutMillis) {
         this.confirmedDlqKafkaTemplate = confirmedDlqKafkaTemplate;
+        this.sendTimeoutMillis = sendTimeoutMillis;
     }
 
     @Override

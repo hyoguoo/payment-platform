@@ -38,17 +38,18 @@ public class KafkaMessagePublisher implements MessagePublisherPort {
 
     private final KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate;
     private final String commandsConfirmTopic;
-
-    @Value("${kafka.publisher.send-timeout-millis:10000}")
-    private long sendTimeoutMillis;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final long sendTimeoutMillis;
 
     public KafkaMessagePublisher(
             @Qualifier("commandsConfirmKafkaTemplate")
             KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate,
-            @Value("${payment.kafka.topics.commands-confirm}") String commandsConfirmTopic
+            @Value("${payment.kafka.topics.commands-confirm}") String commandsConfirmTopic,
+            @Value("${kafka.publisher.send-timeout-millis:10000}") long sendTimeoutMillis
     ) {
         this.commandsConfirmKafkaTemplate = commandsConfirmKafkaTemplate;
         this.commandsConfirmTopic = commandsConfirmTopic;
+        this.sendTimeoutMillis = sendTimeoutMillis;
     }
 
     @Override

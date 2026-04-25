@@ -9,26 +9,32 @@ import io.opentelemetry.context.Context;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
 public class OutboxWorker {
 
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final OutboxRelayService outboxRelayService;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final int batchSize;
+    private final boolean parallelEnabled;
+    private final int inFlightTimeoutMinutes;
 
-    @Value("${scheduler.outbox-worker.batch-size:10}")
-    private int batchSize;
-
-    @Value("${scheduler.outbox-worker.parallel-enabled:false}")
-    private boolean parallelEnabled;
-
-    @Value("${scheduler.outbox-worker.in-flight-timeout-minutes:5}")
-    private int inFlightTimeoutMinutes;
+    public OutboxWorker(
+            PaymentOutboxUseCase paymentOutboxUseCase,
+            OutboxRelayService outboxRelayService,
+            @Value("${scheduler.outbox-worker.batch-size:10}") int batchSize,
+            @Value("${scheduler.outbox-worker.parallel-enabled:false}") boolean parallelEnabled,
+            @Value("${scheduler.outbox-worker.in-flight-timeout-minutes:5}") int inFlightTimeoutMinutes) {
+        this.paymentOutboxUseCase = paymentOutboxUseCase;
+        this.outboxRelayService = outboxRelayService;
+        this.batchSize = batchSize;
+        this.parallelEnabled = parallelEnabled;
+        this.inFlightTimeoutMinutes = inFlightTimeoutMinutes;
+    }
 
     @Scheduled(fixedDelayString = "${scheduler.outbox-worker.fixed-delay-ms:5000}")
     public void process() {

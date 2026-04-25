@@ -23,7 +23,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.slf4j.MDC;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * T-E1 RED — OutboxWorker.processParallel VT MDC 전파 확인.
@@ -50,10 +49,8 @@ class OutboxWorkerMdcPropagationTest {
         ContextRegistry.getInstance().registerThreadLocalAccessor(new Slf4jMdcThreadLocalAccessor());
         mockPaymentOutboxUseCase = Mockito.mock(PaymentOutboxUseCase.class);
         capturingRelayService = new CapturingOutboxRelayService(2);
-        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, capturingRelayService);
-        ReflectionTestUtils.setField(outboxWorker, "batchSize", 10);
-        ReflectionTestUtils.setField(outboxWorker, "parallelEnabled", true);
-        ReflectionTestUtils.setField(outboxWorker, "inFlightTimeoutMinutes", 5);
+        // K6: 생성자 파라미터 @Value 이전 — ReflectionTestUtils 제거
+        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, capturingRelayService, 10, true, 5);
     }
 
     @AfterEach

@@ -31,14 +31,15 @@ import org.springframework.stereotype.Component;
 public class StockOutboxKafkaPublisher implements StockOutboxPublisherPort {
 
     private final KafkaTemplate<String, String> stockOutboxKafkaTemplate;
-
-    @Value("${kafka.publisher.send-timeout-millis:10000}")
-    private long sendTimeoutMillis;
+    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
+    private final long sendTimeoutMillis;
 
     public StockOutboxKafkaPublisher(
             @Qualifier("stockOutboxKafkaTemplate")
-            KafkaTemplate<String, String> stockOutboxKafkaTemplate) {
+            KafkaTemplate<String, String> stockOutboxKafkaTemplate,
+            @Value("${kafka.publisher.send-timeout-millis:10000}") long sendTimeoutMillis) {
         this.stockOutboxKafkaTemplate = stockOutboxKafkaTemplate;
+        this.sendTimeoutMillis = sendTimeoutMillis;
     }
 
     @Override

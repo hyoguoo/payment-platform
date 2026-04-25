@@ -16,8 +16,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
-
+/**
+ * K6: OutboxWorker 생성자 파라미터 @Value로 이전 — ReflectionTestUtils 제거.
+ */
 @DisplayName("OutboxWorker 테스트")
 class OutboxWorkerTest {
 
@@ -33,10 +34,7 @@ class OutboxWorkerTest {
         mockPaymentOutboxUseCase = Mockito.mock(PaymentOutboxUseCase.class);
         mockOutboxRelayService = Mockito.mock(OutboxRelayService.class);
 
-        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, mockOutboxRelayService);
-        ReflectionTestUtils.setField(outboxWorker, "batchSize", 10);
-        ReflectionTestUtils.setField(outboxWorker, "parallelEnabled", false);
-        ReflectionTestUtils.setField(outboxWorker, "inFlightTimeoutMinutes", 5);
+        outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, mockOutboxRelayService, 10, false, 5);
     }
 
     @Test

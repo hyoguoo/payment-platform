@@ -81,7 +81,9 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
                 failureCompensationService,
                 dlqPublisher,
                 stockOutboxRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule())
+                new ObjectMapper().registerModule(new JavaTimeModule()),
+                PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
+                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL
         );
     }
 

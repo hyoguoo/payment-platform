@@ -75,12 +75,10 @@ public class PaymentConfirmResultUseCase {
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
     private final StockOutboxRepository stockOutboxRepository;
     private final ObjectMapper objectMapper;
-
-    @Value("${payment.event-dedupe.lease-ttl:PT5M}")
-    private Duration leaseTtl = DEFAULT_LEASE_TTL;
-
-    @Value("${payment.event-dedupe.ttl:P8D}")
-    private Duration longTtl = DEFAULT_LONG_TTL;
+    /** T-C3: processMessage 성공 전 초기 lease TTL. 기본 5분. K6: 생성자 파라미터 @Value로 이전. */
+    private final Duration leaseTtl;
+    /** T-C3: processMessage 성공 후 연장 TTL. K6: 생성자 파라미터 @Value로 이전. */
+    private final Duration longTtl;
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
@@ -91,7 +89,9 @@ public class PaymentConfirmResultUseCase {
             FailureCompensationService failureCompensationService,
             PaymentConfirmDlqPublisher paymentConfirmDlqPublisher,
             StockOutboxRepository stockOutboxRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            @Value("${payment.event-dedupe.lease-ttl:PT5M}") Duration leaseTtl,
+            @Value("${payment.event-dedupe.ttl:P8D}") Duration longTtl) {
         this.paymentEventRepository = paymentEventRepository;
         this.eventDedupeStore = eventDedupeStore;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -101,6 +101,8 @@ public class PaymentConfirmResultUseCase {
         this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
         this.stockOutboxRepository = stockOutboxRepository;
         this.objectMapper = objectMapper;
+        this.leaseTtl = leaseTtl;
+        this.longTtl = longTtl;
     }
 
     /**
