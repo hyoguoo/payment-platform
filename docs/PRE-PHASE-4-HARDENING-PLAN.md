@@ -206,6 +206,23 @@
 
   `./gradlew clean test` 전수 577/577 PASS(eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
 
+**그룹 K9 — application → infrastructure 레이어 위반 해소 (CRITICAL)**
+- [x] K9 application 레이어 클래스 13건이 infrastructure 패키지를 직접 import 하는 위반 해소 (Phase A~E)
+
+  **완료 결과 K9 (2026-04-24)** — 5단계 리팩토링으로 헥사고날 아키텍처 레이어 경계 복원. 5커밋.
+
+  **K9a** (refactor): `PaymentTopics` → `payment.application.messaging`, `PgTopics` → `pg.application.messaging`. application/infrastructure 양쪽 18개 참조처 전환.
+
+  **K9b** (refactor): wire-format DTO 이동. payment-service: `StockCommittedEvent`, `StockRestoreEvent`, `PaymentConfirmCommandMessage`, `ConfirmedEventMessage`, `StockSnapshotEvent` → `payment.application.dto.event`. pg-service: `ConfirmedEventPayload`, `ConfirmedEventPayloadSerializer` → `pg.application.dto.event`. 참조처 + schema parity 테스트 import 33파일 갱신.
+
+  **K9c** (refactor): `AmountConverter` → `pg.application.util`. ADR-19 복제(b): `payment.application.util.AmountConverter` 독립 사본 신설.
+
+  **K9d** (refactor): aspect 어노테이션 이동. `PublishDomainEvent`, `PaymentStatusChange` → `payment.application.aspect.annotation`. `TossApiMetric`, `ErrorCode` → `pg.application.aspect.annotation`. aspect 구현체(`DomainEventLoggingAspect` 등)는 infrastructure에 유지.
+
+  **K9e** (refactor): `StockCacheDivergenceRecorder` 포트 인터페이스 신설(`payment.application.port.out`). `StockCacheDivergenceMetrics`가 구현체로 등록. `PaymentReconciler`가 infrastructure 클래스 직접 참조 → 포트 인터페이스 주입으로 전환.
+
+  `./gradlew clean test` 전수 PASS(BUILD SUCCESSFUL). 레이어 위반 0건 (`grep -rn 'import *.infrastructure.' */application/` 결과 없음). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS
