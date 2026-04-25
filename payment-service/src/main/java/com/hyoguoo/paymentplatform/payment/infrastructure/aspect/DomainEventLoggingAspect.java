@@ -8,7 +8,7 @@ import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvide
 import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;

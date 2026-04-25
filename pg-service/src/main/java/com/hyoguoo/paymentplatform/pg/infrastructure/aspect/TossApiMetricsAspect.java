@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.aspect;
 
-import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.annotation.ErrorCode;
-import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.annotation.TossApiMetric;
+import com.hyoguoo.paymentplatform.pg.application.aspect.annotation.ErrorCode;
+import com.hyoguoo.paymentplatform.pg.application.aspect.annotation.TossApiMetric;
 import java.lang.reflect.Parameter;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
