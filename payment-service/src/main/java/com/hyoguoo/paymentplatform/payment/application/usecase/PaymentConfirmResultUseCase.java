@@ -14,6 +14,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
+import io.micrometer.context.ContextSnapshot;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -60,6 +62,7 @@ public class PaymentConfirmResultUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
     private final FailureCompensationService failureCompensationService;
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
+    private final ContextSnapshotFactory contextSnapshotFactory;
 
     @Value("${payment.event-dedupe.lease-ttl:PT5M}")
     private Duration leaseTtl = DEFAULT_LEASE_TTL;
@@ -82,6 +85,10 @@ public class PaymentConfirmResultUseCase {
         this.localDateTimeProvider = localDateTimeProvider;
         this.failureCompensationService = failureCompensationService;
         this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
+        // T-I4: AFTER_COMMIT 리스너 context 복원용 snapshot factory — Spring Boot auto-config Bean 없음.
+        // ContextSnapshotFactory.builder().build()는 ContextRegistry에 등록된 모든 accessor를 사용한다.
+        // MdcContextPropagationConfig.registerMdcAccessor()가 먼저 등록되므로 MDC가 포함된다.
+        this.contextSnapshotFactory = ContextSnapshotFactory.builder().build();
     }
 
     /**
@@ -187,13 +194,17 @@ public class PaymentConfirmResultUseCase {
 
         // T-D2: stock commit ApplicationEvent 발행 — 실제 Kafka publish는 AFTER_COMMIT 리스너 담당
         // Kafka 지연이 DB TX 블로킹으로 이어지지 않음 (ADR-04)
+        // T-I4: AFTER_COMMIT 시점에 active span이 이미 종료되므로 현재 context를 캡처하여
+        //        event에 포함. 리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
+        ContextSnapshot snapshot = contextSnapshotFactory.captureAll();
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             applicationEventPublisher.publishEvent(new StockCommitRequestedEvent(
                     paymentEvent.getOrderId() + ":" + order.getProductId(),
                     paymentEvent.getOrderId(),
                     order.getProductId(),
                     order.getQuantity(),
-                    paymentEvent.getOrderId()
+                    paymentEvent.getOrderId(),
+                    snapshot
             ));
         }
 

@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequeste
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEventPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
+import io.micrometer.context.ContextSnapshot;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.UUID;
@@ -64,10 +65,15 @@ public class StockEventPublishingListener {
     /**
      * AFTER_COMMIT: stock.events.commit 실제 Kafka 발행.
      * TX commit 성공 후에만 실행 — 발행 실패는 TX 영향 없음.
+     *
+     * <p>T-I4: AFTER_COMMIT 시점에 KafkaListener observation이 이미 닫혀 active span이 소실된다.
+     * event에 포함된 ContextSnapshot으로 producer 측 context(MDC + OTel span)를 복원하여
+     * KafkaTemplate.send()가 올바른 traceparent를 헤더에 주입하도록 한다.
+     * try-with-resources 종료 시 호출 전 context로 자동 복원된다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockCommitRequested(StockCommitRequestedEvent event) {
-        try {
+        try (ContextSnapshot.Scope scope = event.contextSnapshot().setThreadLocals()) {
             stockCommitEventPublisherPort.publish(
                     event.productId(),
                     event.quantity(),
@@ -91,11 +97,16 @@ public class StockEventPublishingListener {
     /**
      * AFTER_COMMIT: stock.events.restore 실제 Kafka 발행.
      * TX commit 성공 후에만 실행 — 발행 실패는 TX 영향 없음.
+     *
+     * <p>T-I4: AFTER_COMMIT 시점에 KafkaListener observation이 이미 닫혀 active span이 소실된다.
+     * event에 포함된 ContextSnapshot으로 producer 측 context(MDC + OTel span)를 복원하여
+     * KafkaTemplate.send()가 올바른 traceparent를 헤더에 주입하도록 한다.
+     * try-with-resources 종료 시 호출 전 context로 자동 복원된다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockRestoreRequested(StockRestoreRequestedEvent event) {
         StockRestoreEventPayload payload = buildRestorePayload(event);
-        try {
+        try (ContextSnapshot.Scope scope = event.contextSnapshot().setThreadLocals()) {
             stockRestoreEventPublisherPort.publishPayload(payload);
             LogFmt.debug(log, LogDomain.PAYMENT, EventType.KAFKA_PUBLISH_SUCCESS,
                     () -> "stockRestore orderId=" + event.orderId()
