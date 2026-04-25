@@ -2,6 +2,8 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy;
+import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.NicepayPaymentGatewayStrategy;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
@@ -16,11 +18,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>T3.5-05: PgGatewayPort 분해(PgStatusLookupPort + PgConfirmPort)로
  * NicepayPaymentGatewayStrategy ↔ DuplicateApprovalHandler ↔ PgGatewayPort self-loop를 근본 해소.
  *
+ * <p>K13: TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 근본 해소 (ApplicationEvent 패턴).
+ * Toss/NicePay 전략 모두 DuplicateApprovalHandler 직접 의존 제거.
+ *
  * <p>불변식:
  * <ul>
  *   <li>DuplicateApprovalHandler 생성자 파라미터 중 {@code @Lazy} 어노테이션 부재</li>
  *   <li>DuplicateApprovalHandler 필드 중 {@link PgStatusLookupPort} 타입 존재</li>
  *   <li>DuplicateApprovalHandler 필드 중 {@code PgGatewayPort} 타입 부재</li>
+ *   <li>TossPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
+ *   <li>NicepayPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
  * </ul>
  */
 @DisplayName("DuplicateApprovalHandler 순환 의존 해소 계약")
@@ -94,5 +101,39 @@ class DuplicateApprovalHandlerCircularDependencyTest {
         assertThat(firstParamIsPgStatusLookupPort)
                 .as("DuplicateApprovalHandler 생성자 첫 파라미터가 PgStatusLookupPort 이어야 함")
                 .isTrue();
+    }
+
+    /**
+     * TC5: TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
+     *
+     * <p>K13: Toss 전략이 DuplicateApprovalHandler를 직접 보유하면 PgStatusLookupPort 구현체(Toss) ↔
+     * DuplicateApprovalHandler ↔ PgStatusLookupPort cycle 이 형성됨.
+     * ApplicationEvent 패턴으로 cycle 영구 단절.
+     */
+    @Test
+    @DisplayName("Toss전략_DuplicateApprovalHandler_직접_의존_없어야_한다")
+    void Toss전략_DuplicateApprovalHandler_직접_의존_없어야_한다() {
+        boolean hasDuplicateApprovalHandlerField = Arrays.stream(TossPaymentGatewayStrategy.class.getDeclaredFields())
+                .anyMatch(field -> field.getType() == DuplicateApprovalHandler.class);
+
+        assertThat(hasDuplicateApprovalHandlerField)
+                .as("TossPaymentGatewayStrategy에 DuplicateApprovalHandler 필드가 있으면 안 됨 — K13 cycle 단절")
+                .isFalse();
+    }
+
+    /**
+     * TC6: NicepayPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
+     *
+     * <p>K13: NicePay 전략도 동일한 cycle 위험 — DuplicateApprovalHandler 직접 의존 제거.
+     */
+    @Test
+    @DisplayName("NicePay전략_DuplicateApprovalHandler_직접_의존_없어야_한다")
+    void NicePay전략_DuplicateApprovalHandler_직접_의존_없어야_한다() {
+        boolean hasDuplicateApprovalHandlerField = Arrays.stream(NicepayPaymentGatewayStrategy.class.getDeclaredFields())
+                .anyMatch(field -> field.getType() == DuplicateApprovalHandler.class);
+
+        assertThat(hasDuplicateApprovalHandlerField)
+                .as("NicepayPaymentGatewayStrategy에 DuplicateApprovalHandler 필드가 있으면 안 됨 — K13 cycle 단절")
+                .isFalse();
     }
 }
