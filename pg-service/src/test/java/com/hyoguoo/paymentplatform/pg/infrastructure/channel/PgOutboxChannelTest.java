@@ -12,6 +12,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * PgOutboxChannel 단위 스모크 테스트.
  * domain_risk=true: offer/take 정상 동작, capacity full 시 offer=false, isNearFull 임계치.
+ *
+ * <p>T-J4: LinkedBlockingQueue&lt;Long&gt; → LinkedBlockingQueue&lt;OutboxJob&gt; 변경 반영.
+ * take() 반환 타입이 OutboxJob 이므로 outboxId 추출 검증으로 보정.
  */
 @DisplayName("PgOutboxChannel")
 class PgOutboxChannelTest {
@@ -27,15 +30,15 @@ class PgOutboxChannelTest {
     }
 
     @Test
-    @DisplayName("offer — 빈 큐에 offer 하면 true 반환, take 로 꺼낸 값이 일치한다")
+    @DisplayName("offer — 빈 큐에 offer 하면 true 반환, take 로 꺼낸 outboxId 가 일치한다")
     void offer_take_정상동작() throws InterruptedException {
         boolean offered = channel.offer(42L);
 
         assertThat(offered).isTrue();
         assertThat(channel.size()).isEqualTo(1);
 
-        Long taken = channel.take();
-        assertThat(taken).isEqualTo(42L);
+        OutboxJob job = channel.take();
+        assertThat(job.outboxId()).isEqualTo(42L);
         assertThat(channel.size()).isEqualTo(0);
     }
 
@@ -93,7 +96,7 @@ class PgOutboxChannelTest {
         Field queueField = PgOutboxChannel.class.getDeclaredField("queue");
         queueField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        LinkedBlockingQueue<Long> internalQueue = (LinkedBlockingQueue<Long>) queueField.get(largeChannel);
+        LinkedBlockingQueue<OutboxJob> internalQueue = (LinkedBlockingQueue<OutboxJob>) queueField.get(largeChannel);
 
         assertThat(internalQueue.remainingCapacity()).isEqualTo(1024);
     }

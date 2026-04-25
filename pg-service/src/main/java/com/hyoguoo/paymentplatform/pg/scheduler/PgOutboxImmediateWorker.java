@@ -4,12 +4,15 @@ import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.pg.infrastructure.channel.OutboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
 import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -124,8 +127,12 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     private void workerLoop() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                Long id = channel.take();
-                relayExecutor.submit(() -> relay(id));
+                OutboxJob job = channel.take();
+                // T-J4: relayExecutor.submit lambda 에서 offer 시점(Kafka consumer thread)의
+                // OTel Context + MDC snapshot 을 restore — worker VT thread 의 빈 context 를 덮어씀.
+                // try-with-resources 이중 scope: MDC(Micrometer) → OTel Context 순으로 열고
+                // 역순으로 닫아 smoke traceparent 가 KafkaTemplate.send() 에 정확히 전파된다.
+                relayExecutor.submit(() -> relayWithContext(job));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
@@ -133,6 +140,15 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
                 LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
                         e::getMessage);
             }
+        }
+    }
+
+    private void relayWithContext(OutboxJob job) {
+        try (
+                ContextSnapshot.Scope mdcScope = job.snapshot().setThreadLocals();
+                Scope otelScope = job.otelContext().makeCurrent()
+        ) {
+            relay(job.outboxId());
         }
     }
 

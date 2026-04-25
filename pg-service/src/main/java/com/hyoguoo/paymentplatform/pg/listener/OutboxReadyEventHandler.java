@@ -35,7 +35,8 @@ public class OutboxReadyEventHandler {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handle(PgOutboxReadyEvent event) {
-        boolean offered = channel.offer(event.getOutboxId());
+        // T-J4: offerNow — Kafka consumer thread(smoke trace 활성) 시점의 OTel Context + MDC snapshot 캡처
+        boolean offered = channel.offerNow(event.getOutboxId());
         if (!offered) {
             LogFmt.warn(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_CHANNEL_OVERFLOW,
                     () -> "outboxId=" + event.getOutboxId() + " — PgOutboxPollingWorker(Polling Worker)가 처리 예정");

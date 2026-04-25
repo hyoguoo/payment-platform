@@ -1,7 +1,8 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.channel;
 
+import com.hyoguoo.paymentplatform.pg.infrastructure.config.PgSlf4jMdcThreadLocalAccessor;
+import io.micrometer.context.ContextRegistry;
 import io.micrometer.context.ContextSnapshot;
-import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.opentelemetry.context.Context;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +38,8 @@ class OutboxJobContextPropagationTest {
 
     @BeforeEach
     void setUp() {
+        // T-J4: 단위 테스트 환경에서는 Spring context 없으므로 MDC accessor 를 수동 등록
+        ContextRegistry.getInstance().registerThreadLocalAccessor(new PgSlf4jMdcThreadLocalAccessor());
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();
         MDC.clear();
