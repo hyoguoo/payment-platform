@@ -250,6 +250,23 @@
 
   `./gradlew test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
 
+**그룹 K11 — 모듈 간 패키지 구조 일관성 정리**
+- [x] K11 5개 영역 mechanical refactor: Area A(core/ → payment/core/) + Area B(listener → infrastructure/listener) + Area C(StockCacheWarmupApplicationEventListener 위치 정리) + Area D(package-info.java 추가) + Area E(publisher 통합)
+
+  **완료 결과 K11 (2026-04-24)** — tdd=false, 5단계 커밋.
+
+  **K11a** (refactor): Area A — payment-service `core/` → `payment/core/` 이동. 35개 파일 package 선언 변경, main 79개 + test 27개 파일 import 갱신. 구 `core/` 디렉토리 삭제.
+
+  **K11b** (refactor): Area B — Spring event listener `payment/listener/` → `payment/infrastructure/listener/` 통합. `OutboxImmediateEventHandler`, `PaymentHistoryEventListener`, `StockOutboxImmediateEventHandler` 3파일 이동. `PaymentHistoryService` 인터페이스 `listener/port/` → `application/port/in/`. pg-service `pg/listener/OutboxReadyEventHandler` → `pg/infrastructure/listener/` 이동. 테스트 파일 6개 동반 이동.
+
+  **K11c** (refactor): Area C — `StockCacheWarmupApplicationEventListener` `infrastructure/messaging/consumer/` → `infrastructure/listener/` 이동 (Spring `@EventListener`, Kafka consumer 아님).
+
+  **K11d** (refactor): Area D — `application/event/` + `application/dto/event/` 각각 package-info.java 추가(Spring 내부 이벤트 vs Kafka wire format DTO 명확화).
+
+  **K11e** (refactor): Area E — `infrastructure/publisher/OutboxImmediatePublisher` → `infrastructure/messaging/publisher/` 통합. 테스트 파일 동반 이동. `PaymentConfirmPublisherPort` Javadoc @see 경로 갱신.
+
+  **docs** (docs): ARCHITECTURE.md Listener 섹션 갱신 + Package Layout 신설 + Cross-cutting/Exception handler 경로 갱신. `./gradlew clean test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

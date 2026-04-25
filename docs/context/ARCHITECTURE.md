@@ -63,7 +63,7 @@
   - Gateway strategy (pg-service 모듈 쪽 구현): `pg/infrastructure/gateway/toss/TossPaymentGatewayStrategy`, `pg/infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy`, `pg/infrastructure/gateway/fake/FakePgGatewayStrategy` (smoke 프로파일 한정)
   - `PaymentGatewayType` enum is in `payment/domain/enums/` (TOSS, NICEPAY); `PaymentEvent.gatewayType` stores per-event PG 선택 (DB 컬럼 바인딩 + Kafka wire contract 이중 역할)
   - Cross-context HTTP adapters: `payment/infrastructure/adapter/http/ProductHttpAdapter` implements `ProductPort`, `UserHttpAdapter` implements `UserPort`. Conditional on `product.adapter.type=http` / `user.adapter.type=http` (MSA 기본 프로파일)
-  - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
+  - Outbox 즉시 처리 발행자: `messaging/publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
   - Idempotency: `idempotency/IdempotencyStoreImpl` implements `IdempotencyStore`, `IdempotencyProperties`
   - Mapper: `PaymentInfrastructureMapper`
 - Depends on: `application/port`, `paymentgateway/presentation/port`, `product/presentation/port`, `user/presentation/port`
@@ -88,15 +88,16 @@
   - `PgOutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 1개, `pg.outbox.channel.worker-count`) VT 워커 스레드를 기동. `PgOutboxChannel.take()`로 outboxId를 수신 → `ContextExecutorService.wrap` 기반 `relayExecutor`에 relay 제출. `stop()`: running=false + 스레드 interrupt + awaitTermination(10s). `getPhase()=Integer.MAX_VALUE-100` (채널보다 나중에 stop).
   - `PgOutboxPollingWorker` — `@Scheduled(fixedDelayString=2000ms)` 안전망; `available_at <= NOW AND processedAt IS NULL` 조건 polling → `PgOutboxRelayService.relay(id)` 위임.
 
-**Listener (`payment/listener`):**
+**Listener (`payment/infrastructure/listener`):**
 - Purpose: TX commit 이후 Kafka 발행을 담당하는 AFTER_COMMIT 리스너 + Spring 이벤트 리스너
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
+- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/listener/`
 - Contains:
   - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("outboxRelayExecutor")`; confirm TX 커밋 직후 VT 풀에서 `OutboxRelayService.relay(orderId)` 호출해 Kafka 발행. HTTP 워커 스레드를 즉시 해방. 실패/누락은 `OutboxWorker`(polling) 안전망이 회복.
-  - `StockEventPublishingListener` — `@TransactionalEventListener(AFTER_COMMIT)`; `handleApproved`(T-D2) 경로의 stock commit/restore Kafka 발행 담당. `StockCommitRequestedEvent` → `StockCommitEventPublisherPort.publish`, `StockRestoreRequestedEvent` → `StockRestoreEventPublisherPort.publishPayload`. TX 이미 commit이므로 발행 실패 시 예외 삼킴(LogFmt.error).
-  - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
-- Port interfaces: `listener/port/PaymentHistoryService`
-- Depends on: `application/service/OutboxRelayService`, `application/port/out/StockCommitEventPublisherPort`, `application/port/out/StockRestoreEventPublisherPort`
+  - `StockOutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("outboxRelayExecutor")`; stock_outbox DB 커밋 직후 `StockOutboxRelayService.relay(outboxId)` 트리거. T-J1 Transactional Outbox 패턴.
+  - `PaymentHistoryEventListener` — `@TransactionalEventListener(BEFORE_COMMIT)` 기반 결제 이력 저장 리스너. `PaymentHistoryService`(application/port/in) 경유.
+  - `StockCacheWarmupApplicationEventListener` — `@EventListener(ApplicationReadyEvent.class)` 기반 재고 캐시 warmup 트리거. Spring ApplicationReadyEvent 구독 — Kafka consumer 아님.
+- Port interfaces: `application/port/in/PaymentHistoryService` (K11: listener/port/ → application/port/in/ 이동)
+- Depends on: `application/service/OutboxRelayService`, `application/service/StockOutboxRelayService`, `application/port/in/PaymentHistoryService`
 
 ---
 
@@ -179,11 +180,11 @@ ConfirmedEventConsumer  [@KafkaListener payment.events.confirmed, groupId=paymen
          QUARANTINED →
            QuarantineCompensationHandler.handle(orderId)
 
-StockEventPublishingListener  [@TransactionalEventListener(AFTER_COMMIT)]
-  — T-D2: TX commit 이후 stock Kafka 발행 (DB TX 블로킹 방지)
-  onStockCommitRequested  → StockCommitEventPublisherPort.publish(payment.events.stock-committed)
-  onStockRestoreRequested → StockRestoreEventPublisherPort.publishPayload(stock.events.restore)
-  발행 실패 시: LogFmt.error + 예외 삼킴 (TX 이미 commit — 롤백 불가)
+StockOutboxImmediateEventHandler  [@TransactionalEventListener(AFTER_COMMIT), @Async("outboxRelayExecutor")]
+  — T-J1: stock 발행 Transactional Outbox 패턴 (payment.commands.confirm 경로와 대칭)
+  StockOutboxReadyEvent 수신 → StockOutboxRelayService.relay(outboxId)
+    → StockOutboxKafkaPublisher.send(topic, key, payload)
+  발행 실패 시: 안전망 폴링은 현재 미구현 — Phase 4 stock_outbox 폴링 워커 예정 (TODOS.md)
 ```
 
 ### payment-service vs pg-service 구조 대칭성
@@ -275,16 +276,16 @@ StockEventPublishingListener  [@TransactionalEventListener(AFTER_COMMIT)]
 - **관련 파일**: `QuarantineCompensationHandler`, `PgDlqService`, `PaymentEvent.quarantine()`
 
 **Exception handlers:**
-- `src/main/java/com/hyoguoo/paymentplatform/core/common/exception/GlobalExceptionHandler.java`
+- `src/main/java/com/hyoguoo/paymentplatform/payment/core/common/exception/GlobalExceptionHandler.java`
 
 ---
 
 ## Cross-Cutting Concerns
 
-**Logging:** `LogFmt` (`core/common/log/LogFmt.java`) produces structured `key=value` lines; `MaskingPatternLayout` masks sensitive values in logback
+**Logging:** `LogFmt` (`payment/core/common/log/LogFmt.java`) produces structured `key=value` lines; `MaskingPatternLayout` masks sensitive values in logback
 **Validation:** Domain object guard clauses (`PaymentEvent.execute()`, `done(approvedAt null 가드)`, `fail(종결 no-op)`, `expire()`, `toRetrying()`, `quarantine()`)
 **Transaction boundary:** All multi-step DB operations go through `PaymentTransactionCoordinator`
-**Metrics:** `PaymentStateMetrics`, `PaymentHealthMetrics`, `PaymentTransitionMetrics`, `TossApiMetrics`, `PaymentQuarantineMetrics` (격리 카운터) in `core/common/metrics/`
+**Metrics:** `PaymentStateMetrics`, `PaymentHealthMetrics`, `PaymentTransitionMetrics`, `TossApiMetrics`, `PaymentQuarantineMetrics` (격리 카운터) in `payment/core/common/metrics/`
 
 ---
 
@@ -311,4 +312,73 @@ StockEventPublishingListener  [@TransactionalEventListener(AFTER_COMMIT)]
 
 ---
 
-*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09, T-F4)*
+---
+
+## Package Layout (K11 기준 — 2026-04-24 확정)
+
+각 서비스의 표준 패키지 배치. pg-service가 reference 구현체이며 payment-service도 동일 기준을 따른다.
+
+```
+<svc>/                                   ← com.hyoguoo.paymentplatform.<svc>.*
+  presentation/                          ← REST Controller + presentation/port/(inbound interfaces)
+  application/
+    usecase/                             ← Use Case 클래스 (fine-grained, @Transactional)
+    service/                             ← Application Service
+    port/in/                             ← Inbound port 인터페이스 (presentation/listener 경유 호출)
+    port/out/                            ← Outbound port 인터페이스 (infrastructure 구현)
+    dto/                                 ← Application 내부 DTO
+    dto/event/                           ← Kafka wire format DTO (외부 직렬화 포맷)
+    event/                               ← Spring ApplicationEvent record (JVM 내부 이벤트)
+    aspect/annotation/                   ← AOP annotation only
+    messaging/                           ← Kafka 토픽 상수 (PaymentTopics 등)
+    util/                                ← 유틸 클래스
+    config/                              ← Application 레이어 설정 (RetryPolicyProperties 등)
+  domain/
+    enums/                               ← Domain enum (PaymentEventStatus 등)
+    event/                               ← DomainEvent (PaymentHistoryEvent 등)
+    dto/, dto/vo/                        ← 도메인 내부 DTO
+  infrastructure/
+    adapter/http/                        ← HTTP 아웃바운드 어댑터 (ProductHttpAdapter 등)
+    adapter/http/dto/                    ← HTTP 어댑터 전용 DTO (request/response record)
+    messaging/publisher/                 ← Kafka 발행 어댑터 (KafkaMessagePublisher 등)
+    messaging/consumer/                  ← Kafka @KafkaListener 어댑터 (ConfirmedEventConsumer 등)
+    listener/                            ← Spring @TransactionalEventListener / @EventListener
+                                            (OutboxImmediateEventHandler, PaymentHistoryEventListener,
+                                             StockCacheWarmupApplicationEventListener 등)
+    repository/                          ← JPA Repository 구현체
+    entity/                              ← JPA @Entity
+    cache/                               ← Redis 어댑터
+    config/                              ← Infrastructure 설정 (KafkaProducerConfig 등)
+    aspect/                              ← AOP 구현체 (DomainEventLoggingAspect 등)
+    dedupe/                              ← 중복 처리 어댑터 (EventDedupeStoreRedisAdapter 등)
+    metrics/                             ← Micrometer 메트릭 어댑터
+    idempotency/                         ← 멱등성 어댑터
+  core/                                  ← Cross-cutting (payment-service: payment/core/ 패키지)
+    common/log/                          ← LogFmt + LogDomain + EventType (ADR-19 복제(b))
+    common/exception/                    ← GlobalExceptionHandler + ErrorCode
+    common/infrastructure/               ← BaseEntity + SystemLocalDateTimeProvider 등
+    common/metrics/                      ← PaymentStateMetrics 등 공통 메트릭
+    common/service/port/                 ← LocalDateTimeProvider + UUIDProvider
+    config/                              ← AsyncConfig, JpaConfig, WebConfig 등
+    config/concurrent/                   ← ContextAwareVirtualThreadExecutors
+    response/                            ← BasicResponse, ErrorResponse, ResponseAdvice
+  scheduler/ (payment-service 한정)      ← @Scheduled 폴링 워커 + SmartLifecycle 워커
+```
+
+### 패키지 배치 결정 원칙
+
+| 위치 | 배치 기준 |
+|---|---|
+| `application/event/` | Spring `ApplicationEventPublisher`로 발행하는 JVM 내부 이벤트 record |
+| `application/dto/event/` | Kafka 토픽을 통해 서비스 경계를 넘는 wire format DTO |
+| `infrastructure/listener/` | `@TransactionalEventListener` / `@EventListener` 구현체 (Kafka consumer 아님) |
+| `infrastructure/messaging/consumer/` | `@KafkaListener` 기반 Kafka 소비 어댑터 |
+| `infrastructure/messaging/publisher/` | `KafkaTemplate` 기반 Kafka 발행 어댑터 (Spring ApplicationEventPublisher 포함) |
+| `application/port/in/` | listener가 호출하는 inbound service 인터페이스 (K11: listener/port/ 폐지) |
+| `payment/core/` | payment-service 전용 cross-cutting (pg.core / 타 서비스는 각자 `<svc>/core/`) |
+
+*Package analysis: 2026-04-24 (K11)*
+
+---
+
+*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09, T-F4, K11)*
