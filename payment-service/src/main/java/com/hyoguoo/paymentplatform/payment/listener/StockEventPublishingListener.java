@@ -14,6 +14,7 @@ import io.opentelemetry.context.Scope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -74,8 +75,13 @@ public class StockEventPublishingListener {
      * <p>T-I7: ContextSnapshot(captureAll)은 Micrometer ContextRegistry(MDC)만 복원한다.
      * OTel Context 는 별도 ThreadLocal이므로 event.otelContext().makeCurrent() 로 명시 활성화.
      * try-with-resources 이중 중첩 — 종료 순서는 otelScope → mdcScope (LIFO) 로 자동 복원.
+     *
+     * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑(OTel Context.taskWrapping
+     * + ContextExecutorService.wrap)이 submit 시점 OTel Context 와 MDC 를 VT 에서 자동 복원한다.
+     * 기존 try-with-resources(T-I4 + T-I7)는 이중 보호로 유지.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async("outboxRelayExecutor")
     public void onStockCommitRequested(StockCommitRequestedEvent event) {
         try (
                 ContextSnapshot.Scope mdcScope = event.contextSnapshot().setThreadLocals();
@@ -112,8 +118,12 @@ public class StockEventPublishingListener {
      * <p>T-I7: ContextSnapshot(captureAll)은 Micrometer ContextRegistry(MDC)만 복원한다.
      * OTel Context 는 별도 ThreadLocal이므로 event.otelContext().makeCurrent() 로 명시 활성화.
      * try-with-resources 이중 중첩 — 종료 순서는 otelScope → mdcScope (LIFO) 로 자동 복원.
+     *
+     * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑이 submit 시점
+     * OTel Context 와 MDC 를 VT 에서 자동 복원한다. 기존 try-with-resources(T-I4 + T-I7) 이중 보호 유지.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async("outboxRelayExecutor")
     public void onStockRestoreRequested(StockRestoreRequestedEvent event) {
         StockRestoreEventPayload payload = buildRestorePayload(event);
         try (
