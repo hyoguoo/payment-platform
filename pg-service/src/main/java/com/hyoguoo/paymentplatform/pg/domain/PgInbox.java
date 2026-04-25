@@ -80,6 +80,79 @@ public class PgInbox {
         return updatedAt;
     }
 
+    /**
+     * NONE → IN_PROGRESS 도메인 전이.
+     * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다(옵션 A — SQL CAS 가 race window 최종 가드).
+     *
+     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     */
+    public void markInProgress() {
+        if (this.status != PgInboxStatus.NONE) {
+            throw new IllegalStateException(
+                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+        }
+        this.status = PgInboxStatus.IN_PROGRESS;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * IN_PROGRESS → APPROVED 도메인 전이.
+     *
+     * @param storedStatusResult 벤더 응답 JSON
+     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
+     */
+    public void markApproved(String storedStatusResult) {
+        if (this.status != PgInboxStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "PgInbox.markApproved: status must be IN_PROGRESS but was " + this.status);
+        }
+        this.status = PgInboxStatus.APPROVED;
+        this.storedStatusResult = storedStatusResult;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * IN_PROGRESS → FAILED 도메인 전이.
+     *
+     * @param storedStatusResult 벤더 응답 JSON
+     * @param reasonCode         실패 사유 코드
+     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
+     */
+    public void markFailed(String storedStatusResult, String reasonCode) {
+        if (this.status != PgInboxStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "PgInbox.markFailed: status must be IN_PROGRESS but was " + this.status);
+        }
+        this.status = PgInboxStatus.FAILED;
+        this.storedStatusResult = storedStatusResult;
+        this.reasonCode = reasonCode;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * non-terminal → QUARANTINED 도메인 전이.
+     * DLQ consumer 또는 FCG 에서 격리 시 호출한다.
+     *
+     * @param storedStatusResult 벤더 응답 JSON (nullable)
+     * @param reasonCode         격리 사유 코드 (e.g., "RETRY_EXHAUSTED")
+     * @throws IllegalStateException 이미 terminal 상태에서 호출 시 (불변식 6c)
+     */
+    public void markQuarantined(String storedStatusResult, String reasonCode) {
+        if (this.status.isTerminal()) {
+            throw new IllegalStateException(
+                    "PgInbox.markQuarantined: status is already terminal: " + this.status);
+        }
+        this.status = PgInboxStatus.QUARANTINED;
+        this.storedStatusResult = storedStatusResult;
+        this.reasonCode = reasonCode;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * @deprecated 호출처 없음 — markInProgress/markApproved/markFailed/markQuarantined 로 교체.
+     *             K4 이후 제거 예정.
+     */
+    @Deprecated(since = "K4", forRemoval = true)
     public PgInbox withStatus(PgInboxStatus newStatus) {
         return new PgInbox(
                 this.orderId,
@@ -91,6 +164,11 @@ public class PgInbox {
                 Instant.now());
     }
 
+    /**
+     * @deprecated 호출처 FakePgInboxRepository 에서만 사용 — markApproved/markFailed/markQuarantined 로 교체.
+     *             K4 이후 제거 예정.
+     */
+    @Deprecated(since = "K4", forRemoval = true)
     public PgInbox withResult(PgInboxStatus newStatus, String storedStatusResult, String reasonCode) {
         return new PgInbox(
                 this.orderId,

@@ -58,28 +58,32 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
             return true;
         }
 
-        return jpaPgInboxRepository.casNoneToInProgress(orderId, now) > 0;
+        return jpaPgInboxRepository.casNoneToInProgress(
+                orderId, now, PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS) > 0;
     }
 
     @Override
     @Transactional
     public void transitToApproved(String orderId, String storedStatusResult) {
         jpaPgInboxRepository.casInProgressToApproved(
-                orderId, storedStatusResult, LocalDateTime.now(ZoneOffset.UTC));
+                orderId, storedStatusResult, LocalDateTime.now(ZoneOffset.UTC),
+                PgInboxStatus.IN_PROGRESS, PgInboxStatus.APPROVED);
     }
 
     @Override
     @Transactional
     public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
         jpaPgInboxRepository.casInProgressToFailed(
-                orderId, storedStatusResult, reasonCode, LocalDateTime.now(ZoneOffset.UTC));
+                orderId, storedStatusResult, reasonCode, LocalDateTime.now(ZoneOffset.UTC),
+                PgInboxStatus.IN_PROGRESS, PgInboxStatus.FAILED);
     }
 
     @Override
     @Transactional
     public boolean transitToQuarantined(String orderId, String reasonCode) {
         return jpaPgInboxRepository.casNonTerminalToQuarantined(
-                orderId, reasonCode, LocalDateTime.now(ZoneOffset.UTC)) > 0;
+                orderId, reasonCode, LocalDateTime.now(ZoneOffset.UTC),
+                PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
     }
 
     @Override

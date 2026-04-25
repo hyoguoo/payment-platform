@@ -69,21 +69,17 @@ public class FakePgInboxRepository implements PgInboxRepository {
 
     @Override
     public void transitToApproved(String orderId, String storedStatusResult) {
-        store.compute(orderId, (key, current) -> {
-            if (current == null) {
-                return null;
-            }
-            return current.withResult(PgInboxStatus.APPROVED, storedStatusResult, null);
+        store.computeIfPresent(orderId, (key, current) -> {
+            current.markApproved(storedStatusResult);
+            return current;
         });
     }
 
     @Override
     public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
-        store.compute(orderId, (key, current) -> {
-            if (current == null) {
-                return null;
-            }
-            return current.withResult(PgInboxStatus.FAILED, storedStatusResult, reasonCode);
+        store.computeIfPresent(orderId, (key, current) -> {
+            current.markFailed(storedStatusResult, reasonCode);
+            return current;
         });
     }
 
@@ -94,12 +90,13 @@ public class FakePgInboxRepository implements PgInboxRepository {
     @Override
     public boolean transitToQuarantined(String orderId, String reasonCode) {
         AtomicBoolean transitioned = new AtomicBoolean(false);
-        store.compute(orderId, (key, current) -> {
-            if (current == null || current.getStatus().isTerminal()) {
-                return current; // 이미 terminal 또는 미존재 → no-op
+        store.computeIfPresent(orderId, (key, current) -> {
+            if (current.getStatus().isTerminal()) {
+                return current; // 이미 terminal → no-op
             }
+            current.markQuarantined(null, reasonCode);
             transitioned.set(true);
-            return current.withResult(PgInboxStatus.QUARANTINED, null, reasonCode);
+            return current;
         });
         return transitioned.get();
     }
