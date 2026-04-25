@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
-import com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter;
+import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
 import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
