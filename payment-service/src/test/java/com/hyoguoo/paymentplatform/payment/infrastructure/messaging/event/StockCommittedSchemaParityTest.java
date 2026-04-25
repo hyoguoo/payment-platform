@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

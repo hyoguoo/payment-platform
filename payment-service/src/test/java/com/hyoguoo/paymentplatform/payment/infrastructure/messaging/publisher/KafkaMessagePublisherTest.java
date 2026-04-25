@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import java.math.BigDecimal;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;

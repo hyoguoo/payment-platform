@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.pg.scheduler;
 import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgEventPublisher;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import io.micrometer.core.instrument.Counter;

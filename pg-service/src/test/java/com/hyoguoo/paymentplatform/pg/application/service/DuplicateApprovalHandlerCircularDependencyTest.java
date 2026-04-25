@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;

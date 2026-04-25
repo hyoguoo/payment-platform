@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgEventPublisher;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.time.Clock;

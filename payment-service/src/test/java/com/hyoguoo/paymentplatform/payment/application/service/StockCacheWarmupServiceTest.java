@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.StockSnapshotEvent;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.StockSnapshotEvent;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import java.time.Instant;
 import java.util.List;

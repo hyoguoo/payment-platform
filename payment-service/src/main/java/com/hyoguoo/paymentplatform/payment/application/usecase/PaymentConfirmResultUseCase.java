@@ -17,7 +17,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;

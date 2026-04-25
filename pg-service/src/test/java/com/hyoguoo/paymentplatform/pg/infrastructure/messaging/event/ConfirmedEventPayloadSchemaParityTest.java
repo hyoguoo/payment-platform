@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
-import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
