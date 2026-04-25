@@ -79,6 +79,17 @@ public class StockEventPublishingListener {
      * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑(OTel Context.taskWrapping
      * + ContextExecutorService.wrap)이 submit 시점 OTel Context 와 MDC 를 VT 에서 자동 복원한다.
      * 기존 try-with-resources(T-I4 + T-I7)는 이중 보호로 유지.
+     *
+     * <p>T-I9 (Part A) 시도 결과:
+     * {@code io.micrometer.tracing.Tracer.withSpan()} API 검토 — OtelTracer.withSpan()은
+     * 내부에서 {@code OtelCurrentTraceContext.maybeScope(traceContext)}를 호출하며, 이는
+     * OTel Context.makeCurrent()와 동일한 ThreadLocal 활성화 효과를 가진다.
+     * 단, Tracer.withSpan()이 {@code OtelSpan} 타입을 요구하므로 OTel Span 직접 변환 후
+     * 주입이 필요한 반면, T-I7에서 적용한 {@code event.otelContext().makeCurrent()}는
+     * 더 단순하고 동일한 OTel ContextStorage 활성화를 달성한다.
+     * StockEventPublishingListenerOtelContextTest TC-I7-1~3 이 단위 수준 OTel Context
+     * 활성화를 검증하므로 Tracer API 전환으로 얻는 추가 이점이 없다고 판단, 현행 유지.
+     * 실제 KafkaTemplate observation traceparent 정합성은 통합 스모크(compose-up) 에서만 확인 가능.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async("outboxRelayExecutor")
@@ -121,6 +132,8 @@ public class StockEventPublishingListener {
      *
      * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑이 submit 시점
      * OTel Context 와 MDC 를 VT 에서 자동 복원한다. 기존 try-with-resources(T-I4 + T-I7) 이중 보호 유지.
+     *
+     * <p>T-I9 Part A: onStockCommitRequested Javadoc 참조.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async("outboxRelayExecutor")

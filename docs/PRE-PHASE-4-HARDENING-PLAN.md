@@ -130,6 +130,10 @@
 
   **완료 결과 (2026-04-24)** — `StockEventPublishingListener.onStockCommitRequested` + `onStockRestoreRequested` 두 메서드에 `@Async("outboxRelayExecutor")` 추가. `org.springframework.scheduling.annotation.Async` import 추가. T-I2 의 `outboxRelayExecutor`(이중 래핑: `Context.taskWrapping` + `ContextExecutorService.wrap`)가 submit 시점 OTel Context + MDC 를 VT 에서 자동 복원 → `payment.commands.confirm` 발행 경로(`OutboxImmediateEventHandler.@Async("outboxRelayExecutor")`)와 동일한 propagation 패턴으로 통일. 기존 try-with-resources(T-I4 + T-I7)는 이중 보호로 그대로 유지. Javadoc T-I8 절 추가(두 메서드 모두). `./gradlew test` 전수 528/528 PASS (eureka 1 + gateway 3 + payment-service 332 + pg-service 163 + product-service 28 + user-service 1). 회귀 없음.
 
+- [x] T-I9 Part A `StockEventPublishingListener` Tracer/Span API 명시 활성화 시도 + Part B `UserController` access log
+
+  **완료 결과 (2026-04-24)** — **Part A**: `io.micrometer.tracing.Tracer.withSpan()` API 검토 — `OtelTracer.withSpan()`은 내부에서 `OtelCurrentTraceContext.maybeScope(traceContext)`를 호출하며 OTel Context.makeCurrent()와 동일한 ThreadLocal 활성화 효과를 가짐. 단, Tracer.withSpan()은 `OtelSpan` 타입을 요구하므로 OTel Span 직접 변환이 추가로 필요한 반면, T-I7에서 적용한 `event.otelContext().makeCurrent()`는 더 단순하고 동일한 OTel ContextStorage 활성화를 달성. `StockEventPublishingListenerOtelContextTest` TC-I7-1~3 이 단위 수준 OTel Context 활성화를 이미 검증하므로 Tracer API 전환으로 얻는 추가 이점 없음 → 현행 유지. `StockEventPublishingListener.onStockCommitRequested` Javadoc에 T-I9 시도 결과 및 판단 근거 추가. 실제 KafkaTemplate observation traceparent 정합성은 통합 스모크(compose-up)에서만 최종 확인 가능. **Part B**: `user-service/.../user/core/common/log/EventType.java`에 `USER_QUERY_RECEIVED` 추가. `UserController.getUser`에 `LogFmt.info(log, LogDomain.USER, EventType.USER_QUERY_RECEIVED, () -> "id=" + id)` 진입 INFO log 추가. `@Slf4j` annotation 추가. 전수 528/528 PASS (eureka 1 + gateway 3 + payment-service 332 + pg-service 163 + product-service 28 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

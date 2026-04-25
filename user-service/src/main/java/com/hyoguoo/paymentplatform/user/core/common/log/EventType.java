@@ -8,4 +8,5 @@ import lombok.RequiredArgsConstructor;
 public enum EventType {
 
     EXCEPTION,
+    USER_QUERY_RECEIVED,
 }
