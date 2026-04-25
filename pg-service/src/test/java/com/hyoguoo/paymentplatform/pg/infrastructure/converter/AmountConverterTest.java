@@ -32,11 +32,19 @@ class AmountConverterTest {
     }
 
     @Test
-    @DisplayName("fromBigDecimalStrict — scale>0 입력 시 ArithmeticException (scale must be 0)")
+    @DisplayName("fromBigDecimalStrict — scale>0 이지만 정수 값인 경우 long 정상 반환 (trailing zeros 허용)")
+    void fromBigDecimalStrict_WhenScaleGtZeroButIntegral_ShouldReturnLong() {
+        // Kafka JSON 역직렬화 시 1000.00 형태로 들어오는 케이스
+        long result = AmountConverter.fromBigDecimalStrict(new BigDecimal("1000.00"));
+
+        assertThat(result).isEqualTo(1000L);
+    }
+
+    @Test
+    @DisplayName("fromBigDecimalStrict — 진짜 소수 입력 시 ArithmeticException (fractional part 거부)")
     void fromBigDecimalStrict_WhenScaleNotZero_ShouldThrowArithmeticException() {
         assertThatThrownBy(() -> AmountConverter.fromBigDecimalStrict(new BigDecimal("150.50")))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessageContaining("scale must be 0");
+                .isInstanceOf(ArithmeticException.class);
     }
 
     @Test
@@ -45,5 +53,13 @@ class AmountConverterTest {
         assertThatThrownBy(() -> AmountConverter.fromBigDecimalStrict(new BigDecimal("-1000")))
                 .isInstanceOfAny(ArithmeticException.class, IllegalArgumentException.class)
                 .hasMessageContaining("non-negative");
+    }
+
+    @Test
+    @DisplayName("fromBigDecimalStrict — BigDecimal(\"0\") 입력 시 0L 반환")
+    void fromBigDecimalStrict_WhenZero_ShouldReturnZero() {
+        long result = AmountConverter.fromBigDecimalStrict(new BigDecimal("0"));
+
+        assertThat(result).isEqualTo(0L);
     }
 }
