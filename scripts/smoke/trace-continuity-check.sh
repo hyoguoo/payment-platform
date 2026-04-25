@@ -127,7 +127,23 @@ echo "[INFO] 테스트 traceparent 생성: ${TRACEPARENT}"
 echo "[INFO]   trace-id: ${TRACE_ID}"
 
 # ─────────────────────────────────────────────
-# 3. checkout 요청 (201 기대)
+# 3. user-service 호출 (200 기대) — user-service 로그에 traceId 주입
+# ─────────────────────────────────────────────
+echo "[INFO] GET /api/v1/users/1 요청..."
+USER_HTTP_CODE=$(curl -sS -o /tmp/trace-smoke-user.json -w "%{http_code}" \
+  -X GET "${GATEWAY_BASE}/api/v1/users/1" \
+  -H "traceparent: ${TRACEPARENT}" \
+  2>/dev/null || echo "000")
+
+if [[ "${USER_HTTP_CODE}" != "200" ]]; then
+  echo "[ERROR] GET /users/1 실패: HTTP ${USER_HTTP_CODE}" >&2
+  head -5 /tmp/trace-smoke-user.json >&2 2>/dev/null || true
+  exit 1
+fi
+echo "[INFO] user 200 OK"
+
+# ─────────────────────────────────────────────
+# 4. checkout 요청 (201 기대)
 # ─────────────────────────────────────────────
 echo "[INFO] POST /api/v1/payments/checkout 요청..."
 IDEM_KEY="trace-smoke-$(date +%s)-${SPAN_ID}"
@@ -162,7 +178,7 @@ fi
 echo "[INFO] checkout 201 — orderId=${ORDER_ID} totalAmount=${TOTAL_AMOUNT}"
 
 # ─────────────────────────────────────────────
-# 4. confirm 요청 (202 기대)
+# 5. confirm 요청 (202 기대)
 # ─────────────────────────────────────────────
 echo "[INFO] POST /api/v1/payments/confirm 요청..."
 FAKE_PAYMENT_KEY="fake-trace-${ORDER_ID}"
@@ -185,7 +201,7 @@ fi
 echo "[INFO] confirm 202 Accepted — 비동기 승인 진입"
 
 # ─────────────────────────────────────────────
-# 5. status 폴링 → DONE 대기
+# 6. status 폴링 → DONE 대기
 # ─────────────────────────────────────────────
 echo "[INFO] status 폴링 (최대 ${POLL_TIMEOUT_SECONDS}s)..."
 DEADLINE=$(( $(date +%s) + POLL_TIMEOUT_SECONDS ))
@@ -209,13 +225,13 @@ fi
 echo "[INFO] status=DONE 확인 — 5-service chain 완주"
 
 # ─────────────────────────────────────────────
-# 6. 비동기 relay(Kafka consumer + outbox relay) 로그 안정화 대기
+# 7. 비동기 relay(Kafka consumer + outbox relay) 로그 안정화 대기
 # ─────────────────────────────────────────────
 echo "[INFO] 비동기 relay 완주 대기 ${LOG_WAIT_SECONDS}s..."
 sleep "${LOG_WAIT_SECONDS}"
 
 # ─────────────────────────────────────────────
-# 7. 로그 수집 + traceId 등장 여부 검증
+# 8. 로그 수집 + traceId 등장 여부 검증
 #    MDC 패턴: [traceId:<traceId>] (logback-spring.xml LOG_PATTERN)
 # ─────────────────────────────────────────────
 echo "[INFO] docker compose 로그 수집 (최근 5분)..."
@@ -226,7 +242,7 @@ SERVICES=("gateway" "payment-service" "pg-service" "product-service" "user-servi
 MISSING_SERVICES=()
 
 for svc in "${SERVICES[@]}"; do
-  SVC_LOG=$(docker compose -f "${COMPOSE_APPS}" logs --since=5m "${svc}" 2>/dev/null || echo "")
+  SVC_LOG=$(docker logs --since=5m "${svc}" 2>&1 || echo "")
   # logback 패턴: [traceId:<trace-id>]
   if echo "${SVC_LOG}" | grep -q "traceId:${TRACE_ID}"; then
     echo "[PASS] ${svc}: traceId 발견 (traceId:${TRACE_ID})"
@@ -240,15 +256,15 @@ for svc in "${SERVICES[@]}"; do
 done
 
 # ─────────────────────────────────────────────
-# 8. payment-service + pg-service 추가 검증
+# 9. payment-service + pg-service 추가 검증
 #    — Kafka consumer / outbox relay 경로 로그에도 등장해야 함
 # ─────────────────────────────────────────────
 echo ""
 echo "[INFO] payment-service Kafka listener 경로 추가 검증..."
-PAYMENT_LOG=$(docker compose -f "${COMPOSE_APPS}" logs --since=5m payment-service 2>/dev/null || echo "")
+PAYMENT_LOG=$(docker logs --since=5m payment-service 2>&1 || echo "")
 
 # PaymentConfirmResultUseCase 또는 ConfirmedEventConsumer 로그에 traceId 등장 여부
-PAYMENT_KAFKA_HIT=$(echo "${PAYMENT_LOG}" | grep "traceId:${TRACE_ID}" | grep -i "confirm\|consumer\|kafka\|relay\|result" | wc -l | tr -d ' ' || echo "0")
+PAYMENT_KAFKA_HIT=$(echo "${PAYMENT_LOG}" | grep "traceId:${TRACE_ID}" | grep -ci "confirm\|consumer\|kafka\|relay\|result" || true)
 if [[ "${PAYMENT_KAFKA_HIT}" -gt 0 ]]; then
   echo "[PASS] payment-service Kafka listener 경로에서 traceId 발견 (${PAYMENT_KAFKA_HIT}건)"
 else
@@ -261,9 +277,9 @@ else
 fi
 
 echo "[INFO] pg-service Kafka consumer 경로 추가 검증..."
-PG_LOG=$(docker compose -f "${COMPOSE_APPS}" logs --since=5m pg-service 2>/dev/null || echo "")
+PG_LOG=$(docker logs --since=5m pg-service 2>&1 || echo "")
 
-PG_KAFKA_HIT=$(echo "${PG_LOG}" | grep "traceId:${TRACE_ID}" | grep -i "consumer\|kafka\|relay\|outbox\|confirm\|payment" | wc -l | tr -d ' ' || echo "0")
+PG_KAFKA_HIT=$(echo "${PG_LOG}" | grep "traceId:${TRACE_ID}" | grep -ci "consumer\|kafka\|relay\|outbox\|confirm\|payment" || true)
 if [[ "${PG_KAFKA_HIT}" -gt 0 ]]; then
   echo "[PASS] pg-service Kafka consumer/outbox relay 경로에서 traceId 발견 (${PG_KAFKA_HIT}건)"
 else
@@ -275,7 +291,7 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# 9. 최종 판정
+# 10. 최종 판정
 # ─────────────────────────────────────────────
 echo ""
 echo "════════════════════════════════════════════"

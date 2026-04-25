@@ -70,6 +70,11 @@ public class TraceContextPropagationFilter implements WebFilter, Ordered {
                     () -> "traceId=" + ids.traceId() + " spanId=" + ids.spanId());
         }
 
+        String method = exchange.getRequest().getMethod().name();
+        String path = exchange.getRequest().getURI().getPath();
+        LogFmt.info(log, LogDomain.GATEWAY, EventType.GATEWAY_REQUEST_RECEIVED,
+                () -> "method=" + method + " path=" + path);
+
         return chain.filter(exchange)
                 .doFinally(signal -> {
                     MDC.remove(MDC_TRACE_ID);
