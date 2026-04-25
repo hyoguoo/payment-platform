@@ -58,6 +58,7 @@ class PaymentConfirmResultUseCaseTest {
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
+    private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -69,6 +70,7 @@ class PaymentConfirmResultUseCaseTest {
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
+        paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
@@ -83,7 +85,8 @@ class PaymentConfirmResultUseCaseTest {
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL
+                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
+                paymentCommandUseCase
         );
     }
 
@@ -123,12 +126,18 @@ class PaymentConfirmResultUseCaseTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handleApproved — 수신 approvedAt이 PaymentEvent.done에 주입된다")
+    @DisplayName("handleApproved — 수신 approvedAt이 PaymentCommandUseCase.markPaymentAsDone에 주입된다")
     void handleApproved_whenReceivedApprovedAt_shouldPassToPaymentEventDone() {
         // given
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub — 위임 경로 정상 완주 위해 필요
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
@@ -137,10 +146,12 @@ class PaymentConfirmResultUseCaseTest {
         // when
         sut.handle(message);
 
-        // then — PaymentEvent.approvedAt이 수신값(UTC→LDT 변환)과 일치
-        PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
-        assertThat(saved.getApprovedAt()).isEqualTo(EXPECTED_APPROVED_AT);
+        // then — markPaymentAsDone이 수신값(UTC→LDT 변환)과 일치하는 approvedAt으로 호출됨
+        then(paymentCommandUseCase)
+                .should(times(1))
+                .markPaymentAsDone(
+                        org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                        eq(EXPECTED_APPROVED_AT));
     }
 
     // -----------------------------------------------------------------------
@@ -202,12 +213,18 @@ class PaymentConfirmResultUseCaseTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handleApproved — amount 일치 시 PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행")
+    @DisplayName("handleApproved — amount 일치 시 markPaymentAsDone 위임 + StockOutboxReadyEvent 발행")
     void handleApproved_whenAmountMatch_shouldTransitToDone() {
         // given
         PaymentOrder order = buildPaymentOrder(2L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
@@ -216,9 +233,10 @@ class PaymentConfirmResultUseCaseTest {
         // when
         sut.handle(message);
 
-        // then — DONE 전이
-        PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+        // then — markPaymentAsDone 위임 (DONE 전이는 PaymentCommandUseCase 책임)
+        then(paymentCommandUseCase)
+                .should(times(1))
+                .markPaymentAsDone(any(PaymentEvent.class), eq(EXPECTED_APPROVED_AT));
 
         // then — StockOutboxReadyEvent 1건 발행 (productId=2, order 1개)
         assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
@@ -241,6 +259,12 @@ class PaymentConfirmResultUseCaseTest {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsFail stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsFail(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(String.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID
@@ -268,6 +292,12 @@ class PaymentConfirmResultUseCaseTest {
         PaymentOrder order2 = buildPaymentOrder(200L, 5, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsFail stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsFail(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(String.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID

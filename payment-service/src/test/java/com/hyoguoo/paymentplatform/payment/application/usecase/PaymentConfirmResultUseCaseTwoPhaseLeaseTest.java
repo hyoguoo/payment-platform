@@ -58,6 +58,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
     private FailureCompensationService failureCompensationService;
     private PaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
+    private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -69,6 +70,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = Mockito.mock(PaymentConfirmDlqPublisher.class);
         stockOutboxRepository = new FakeStockOutboxRepository();
+        paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
@@ -83,7 +85,8 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL
+                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
+                paymentCommandUseCase
         );
     }
 
@@ -101,6 +104,10 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: PaymentCommandUseCase.markPaymentAsDone stub — processMessage 정상 완주 위해 필요
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID

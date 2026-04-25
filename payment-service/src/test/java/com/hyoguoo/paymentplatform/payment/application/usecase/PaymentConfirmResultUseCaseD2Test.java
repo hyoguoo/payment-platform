@@ -54,6 +54,7 @@ class PaymentConfirmResultUseCaseD2Test {
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private CapturingApplicationEventPublisher capturingPublisher;
+    private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -65,6 +66,7 @@ class PaymentConfirmResultUseCaseD2Test {
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
         capturingPublisher = new CapturingApplicationEventPublisher();
+        paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
@@ -79,7 +81,8 @@ class PaymentConfirmResultUseCaseD2Test {
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL
+                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
+                paymentCommandUseCase
         );
     }
 
@@ -95,6 +98,12 @@ class PaymentConfirmResultUseCaseD2Test {
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
@@ -131,6 +140,12 @@ class PaymentConfirmResultUseCaseD2Test {
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
@@ -178,6 +193,12 @@ class PaymentConfirmResultUseCaseD2Test {
         PaymentOrder order = buildPaymentOrder(100L, 5, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsFail stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsFail(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(String.class)))
+                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID

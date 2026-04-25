@@ -76,6 +76,12 @@ public class PaymentConfirmResultUseCase {
     private final Duration leaseTtl;
     /** T-C3: processMessage 성공 후 연장 TTL. K6: 생성자 파라미터 @Value로 이전. */
     private final Duration longTtl;
+    /**
+     * K15: 상태 전이 위임 use-case.
+     * AOP(@PublishDomainEvent + @PaymentStatusChange)가 Spring Bean 메서드를 통해 작동하므로
+     * self-invocation 우회를 방지하기 위해 외부 빈 경유 필수.
+     */
+    private final PaymentCommandUseCase paymentCommandUseCase;
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
@@ -88,7 +94,8 @@ public class PaymentConfirmResultUseCase {
             StockOutboxRepository stockOutboxRepository,
             ObjectMapper objectMapper,
             @Value("${payment.event-dedupe.lease-ttl:PT5M}") Duration leaseTtl,
-            @Value("${payment.event-dedupe.ttl:P8D}") Duration longTtl) {
+            @Value("${payment.event-dedupe.ttl:P8D}") Duration longTtl,
+            PaymentCommandUseCase paymentCommandUseCase) {
         this.paymentEventRepository = paymentEventRepository;
         this.eventDedupeStore = eventDedupeStore;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -100,6 +107,7 @@ public class PaymentConfirmResultUseCase {
         this.objectMapper = objectMapper;
         this.leaseTtl = leaseTtl;
         this.longTtl = longTtl;
+        this.paymentCommandUseCase = paymentCommandUseCase;
     }
 
     /**
@@ -206,8 +214,9 @@ public class PaymentConfirmResultUseCase {
             return;
         }
 
-        paymentEvent.done(receivedApprovedAt, localDateTimeProvider.now());
-        paymentEventRepository.saveOrUpdate(paymentEvent);
+        // K15: PaymentCommandUseCase 경유 — AOP(@PublishDomainEvent+@PaymentStatusChange) 정상 작동.
+        // self-invocation 우회 방지: 외부 빈(paymentCommandUseCase proxy)을 통해 호출해야 AOP 가로챔.
+        paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt);
 
         // T-J1: TX 내부 stock_outbox INSERT + StockOutboxReadyEvent 발행
         // 기존 StockCommitRequestedEvent(T-D2~T-I10 경로) 철거.
@@ -277,8 +286,8 @@ public class PaymentConfirmResultUseCase {
      *        실제 Kafka 발행은 AFTER_COMMIT 리스너 담당(ADR-04).
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        paymentEvent.fail(reasonCode, localDateTimeProvider.now());
-        paymentEventRepository.saveOrUpdate(paymentEvent);
+        // K15: PaymentCommandUseCase 경유 — AOP(@PublishDomainEvent+@PaymentStatusChange) 정상 작동.
+        paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
         // stock.events.restore outbox INSERT: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
         // T-B1: FailureCompensationService 경유 — 결정론적 UUID(ADR-16) + 실 qty 전달

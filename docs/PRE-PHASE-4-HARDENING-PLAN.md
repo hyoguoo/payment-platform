@@ -328,6 +328,11 @@
   - 테스트: `PgConfirmStrategySelectorTest` / `PgStatusLookupStrategySelectorTest` 각 3케이스. `PgVendorCallServiceVendorTypeTest` 2케이스. `FakePgGatewayAdapterToss` / `FakePgGatewayAdapterNicepay` 신설. 기존 `DuplicateApprovalHandlerTest` / `PgFinalConfirmationGateTest` / `PgVendorCallServiceTest` / `PaymentConfirmConsumerTest` / `DuplicateApprovalHandlerCircularDependencyTest` / `DuplicateApprovalHandlerListenerTest` selector 시그니처로 갱신.
   - `./gradlew test` 전수 592/592 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 203 + product-service 31 + user-service 1). 회귀 없음.
 
+**그룹 K15 — PaymentConfirmResultUseCase AOP 적용 회복**
+- [x] K15 `PaymentConfirmResultUseCase` 의 `handleApproved`/`handleFailed` 가 `PaymentCommandUseCase` 의 대응 메서드 경유 — `payment_history` DONE/FAILED AOP 적용 회복
+
+  **완료 결과 K15 (2026-04-24)** — 사용자 진단: `payment_history` status 분포 DONE 0건. 근본 원인: `handleApproved`(`paymentEvent.done()+saveOrUpdate()` 직접 호출)가 `@PublishDomainEvent`+`@PaymentStatusChange` AOP 포인트컷을 우회 → `payment_history` 미기록. 수정: (1) `PaymentConfirmResultUseCase`에 `PaymentCommandUseCase` 필드 + 생성자 파라미터(12번째) 추가. (2) `handleApproved`: `paymentEvent.done()+paymentEventRepository.saveOrUpdate()` 제거 → `paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt)` 위임. (3) `handleFailed`: `paymentEvent.fail()+saveOrUpdate()` 제거 → `paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode)` 위임. K15 근거 주석 추가(self-invocation 우회 방지 원칙). 기존 테스트 5개 파일(`ConfirmedEventConsumerTest`/`PaymentConfirmResultUseCaseTest`/`PaymentConfirmResultUseCaseD2Test`/`PaymentConfirmResultUseCaseTwoPhaseLeaseTest`/`PaymentConfirmResultUseCaseK15Test`) 생성자 보정 + APPROVED/FAILED 케이스 `markPaymentAsDone`/`markPaymentAsFail` Mock stub 추가. `FakePaymentEventRepository` `saveOrUpdateCallCount()` 추적 메서드 추가. `PaymentConfirmResultUseCaseK15Test` 4케이스 신규 GREEN(TC-K15-1 markPaymentAsDone 위임/TC-K15-2 saveOrUpdate 직접 호출 없음/TC-K15-3 markPaymentAsFail 위임/TC-K15-4 saveOrUpdate 직접 호출 없음). `./gradlew test` 전수 PASS (payment-service 357/357 + 전체 회귀 없음). AOP(@PublishDomainEvent+@PaymentStatusChange) `payment_history` DONE/FAILED 기록 회복.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

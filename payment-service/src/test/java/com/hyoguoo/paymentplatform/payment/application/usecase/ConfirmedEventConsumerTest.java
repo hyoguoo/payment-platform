@@ -49,6 +49,7 @@ class ConfirmedEventConsumerTest {
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
+    private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -60,6 +61,7 @@ class ConfirmedEventConsumerTest {
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
+        paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
 
@@ -74,7 +76,8 @@ class ConfirmedEventConsumerTest {
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL
+                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
+                paymentCommandUseCase
         );
     }
 
@@ -110,12 +113,18 @@ class ConfirmedEventConsumerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — APPROVED 수신 시 PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행")
+    @DisplayName("consume — APPROVED 수신 시 PaymentCommandUseCase.markPaymentAsDone 위임 + StockOutboxReadyEvent 발행")
     void consume_WhenApproved_ShouldTransitionToDone() {
         // given
         PaymentOrder order = buildPaymentOrder(1L, 2);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub — APPROVED 처리 정상 완주 위해 필요
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         // amount=2000(=1000*2), approvedAt non-null — T-A2 역방향 방어선 통과 조건
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -124,9 +133,12 @@ class ConfirmedEventConsumerTest {
         // when
         sut.handle(message);
 
-        // then — DONE 전이
-        PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+        // then — K15: markPaymentAsDone 위임 1회 (DONE 전이는 PaymentCommandUseCase 내부)
+        then(paymentCommandUseCase)
+                .should(times(1))
+                .markPaymentAsDone(
+                        org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                        org.mockito.ArgumentMatchers.any(LocalDateTime.class));
 
         // then — StockOutboxReadyEvent 1건 발행 (productId=1, order 1개)
         assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
@@ -139,21 +151,30 @@ class ConfirmedEventConsumerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — FAILED 수신 시 PaymentEvent FAILED 전이 + FailureCompensationService.compensate 경유 재고 복원")
+    @DisplayName("consume — FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 + FailureCompensationService.compensate 경유 재고 복원")
     void consume_WhenFailed_ShouldTransitionToFailed() {
         // given
         PaymentOrder order = buildPaymentOrder(2L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
+        // K15: markPaymentAsFail stub — FAILED 처리 정상 완주 위해 필요
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsFail(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(String.class)))
+                .willReturn(event);
+
         ConfirmedEventMessage message = new ConfirmedEventMessage(ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID);
 
         // when
         sut.handle(message);
 
-        // then — FAILED 전이
-        PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        // then — K15: markPaymentAsFail 위임 1회 (FAILED 전이는 PaymentCommandUseCase 내부)
+        then(paymentCommandUseCase)
+                .should(times(1))
+                .markPaymentAsFail(
+                        org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                        org.mockito.ArgumentMatchers.eq("VENDOR_FAILED"));
 
         // then — FailureCompensationService.compensate(orderId, productId=2, qty=3) 1회 호출 (T-B1)
         then(failureCompensationService)
@@ -206,6 +227,12 @@ class ConfirmedEventConsumerTest {
         PaymentOrder order = buildPaymentOrder(3L, 1);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        // K15: markPaymentAsDone stub
+        org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
+                org.mockito.ArgumentMatchers.any(PaymentEvent.class),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(event);
 
         // amount=1000(=1000*1), approvedAt non-null — T-A2 역방향 방어선 통과 조건
         ConfirmedEventMessage message = new ConfirmedEventMessage(
