@@ -15,7 +15,7 @@ import java.math.BigDecimal;
  *
  * <p>이 계약을 위반한 구현은 {@code OutboxImmediatePublisherTest} 의 non-blocking assertion 에서 실패한다.
  *
- * @see com.hyoguoo.paymentplatform.payment.infrastructure.publisher.OutboxImmediatePublisher
+ * @see com.hyoguoo.paymentplatform.payment.infrastructure.messaging.publisher.OutboxImmediatePublisher
  */
 public interface PaymentConfirmPublisherPort {
 

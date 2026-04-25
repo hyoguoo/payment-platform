@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.publisher;
+package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.publisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

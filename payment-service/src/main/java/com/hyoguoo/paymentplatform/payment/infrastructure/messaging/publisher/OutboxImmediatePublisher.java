@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.infrastructure.publisher;
+package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.publisher;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentConfirmEvent;
