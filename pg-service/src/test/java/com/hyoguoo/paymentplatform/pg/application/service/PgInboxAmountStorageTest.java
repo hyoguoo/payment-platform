@@ -112,10 +112,9 @@ class PgInboxAmountStorageTest {
         // given — scale=2 BigDecimal (소수점 포함 — 원화 규약 위반)
         BigDecimal fractionalAmount = new BigDecimal("150.50");
 
-        // when/then — ArithmeticException 발생
+        // when/then — ArithmeticException 발생 (메시지는 "integral" 또는 "scale" 무관, 타입만 검증)
         assertThatThrownBy(() -> sut.recordPayloadAmount(ORDER_ID, fractionalAmount))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessageContaining("scale must be 0");
+                .isInstanceOf(ArithmeticException.class);
 
         // given — 음수 BigDecimal (도메인 불변식 위반)
         BigDecimal negativeAmount = new BigDecimal("-1000");

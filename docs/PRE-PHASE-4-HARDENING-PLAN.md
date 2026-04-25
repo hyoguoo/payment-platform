@@ -97,6 +97,11 @@
 
   **완료 결과 (2026-04-24)** — `StockEventPublishingListener`: 생성자에 `MeterRegistry` 3번째 인자 추가. `commitFailCounter` (tag `event=commit`) + `restoreFailCounter` (tag `event=restore`) 생성자에서 등록. `onStockCommitRequested` catch 블록: `commitFailCounter.increment()` + LogFmt.error 메시지에 metric 증가 안내 추가. `onStockRestoreRequested` catch 블록: 동일 패턴 `restoreFailCounter.increment()`. counter 이름 `stock.kafka.publish.fail.total` (Prometheus 노출 시 `stock_kafka_publish_fail_total`). swallow 자체는 유지 — TX 이미 commit 의도 보존. `StockEventPublishingListenerTest` TC-H2-1(commit 발행 실패 → counter tag event=commit 값 1) + TC-H2-2(restore 발행 실패 → counter tag event=restore 값 1) GREEN. `docs/context/TODOS.md`: "Phase 4 후속: stock commit/restore payment_outbox 이관" 항목 추가 (배경·방안 A/B·Grafana 알림 요구·관련 파일). 전수 `./gradlew test` PASS. 회귀 없음.
 
+**그룹 I — 실 환경 회귀 fix (compose-up 스모크 발견)**
+- [x] T-I1 `AmountConverter.fromBigDecimalStrict` scale 검증 완화 — trailing zeros 허용
+
+  **완료 결과 (2026-04-24)** — 회귀 발견 경위: T-A1 이후 compose-up 스모크에서 `PgVendorCallService.buildApprovedPayload`가 `AmountConverter.fromBigDecimalStrict(result.amount())`를 호출하는 경로에서, Kafka JSON 역직렬화 시 `BigDecimal("1000.00")` (scale=2, 정수 값)로 들어와 기존 `scale > 0` 거부 조건이 `ArithmeticException`을 던짐. 결과: `handleSuccess` throw → pg_inbox IN_PROGRESS 박힘 → 무한 NOOP → 결제 영구 PROCESSING. 수정 내용: `scale > 0 → ArithmeticException` 조건 제거 → `longValueExact()`로 교체 — 정수 값이면 trailing zeros(`1000.00`) 허용, 진짜 fractional(`150.50`) 만 거부. Javadoc 갱신: "정수 값이면 trailing zeros(`1000.00`) 허용 — Kafka JSON 역직렬화 호환" 명시. `PgInboxAmountStorageTest.TC4` 메시지 검증 완화(`"scale must be 0"` → 타입만 검증). 신규 3케이스(trailing zeros 허용 / 진짜 fractional 거부 / zero 반환) GREEN. 전수 `./gradlew test` PASS 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS
