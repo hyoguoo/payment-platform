@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.metrics;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCacheDivergenceRecorder;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -10,11 +11,13 @@ import org.springframework.stereotype.Component;
  *
  * <p>메트릭명: {@code payment.stock_cache.divergence_count}
  *
- * <p>{@link PaymentReconciler}가 Redis↔RDB 발산을 감지할 때 {@link #increment()}를 호출한다.
+ * <p>K9e: {@link StockCacheDivergenceRecorder} 포트 구현체.
+ * {@link com.hyoguoo.paymentplatform.payment.application.service.PaymentReconciler}가
+ * 포트 인터페이스만 의존하여 infrastructure 직접 참조를 차단한다.
  */
 @Slf4j
 @Component
-public class StockCacheDivergenceMetrics {
+public class StockCacheDivergenceMetrics implements StockCacheDivergenceRecorder {
 
     public static final String METRIC_NAME = "payment.stock_cache.divergence_count";
 

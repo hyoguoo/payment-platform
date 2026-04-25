@@ -11,6 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCacheDivergenceRecorder;
 import com.hyoguoo.paymentplatform.payment.infrastructure.metrics.StockCacheDivergenceMetrics;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import io.micrometer.core.instrument.Counter;

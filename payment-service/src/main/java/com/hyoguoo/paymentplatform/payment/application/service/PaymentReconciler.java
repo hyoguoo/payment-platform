@@ -11,7 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import com.hyoguoo.paymentplatform.payment.infrastructure.metrics.StockCacheDivergenceMetrics;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCacheDivergenceRecorder;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +43,7 @@ public class PaymentReconciler {
     private final StockCachePort stockCachePort;
     private final ProductPort productPort;
     private final LocalDateTimeProvider localDateTimeProvider;
-    private final StockCacheDivergenceMetrics divergenceMetrics;
+    private final StockCacheDivergenceRecorder divergenceRecorder;
     private final long inFlightTimeoutSeconds;
 
     public PaymentReconciler(
@@ -51,14 +51,14 @@ public class PaymentReconciler {
             StockCachePort stockCachePort,
             ProductPort productPort,
             LocalDateTimeProvider localDateTimeProvider,
-            StockCacheDivergenceMetrics divergenceMetrics,
+            StockCacheDivergenceRecorder divergenceRecorder,
             @Value("${reconciler.in-flight-timeout-seconds:300}") long inFlightTimeoutSeconds
     ) {
         this.paymentEventRepository = paymentEventRepository;
         this.stockCachePort = stockCachePort;
         this.productPort = productPort;
         this.localDateTimeProvider = localDateTimeProvider;
-        this.divergenceMetrics = divergenceMetrics;
+        this.divergenceRecorder = divergenceRecorder;
         this.inFlightTimeoutSeconds = inFlightTimeoutSeconds;
     }
 
@@ -149,7 +149,7 @@ public class PaymentReconciler {
         if (cached != rdbExpected) {
             // 발산 → RDB 기준 재설정 + divergence_count +1
             stockCachePort.set(productId, rdbExpected);
-            divergenceMetrics.increment();
+            divergenceRecorder.increment();
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                     () -> "Reconciler: 재고 발산 감지 productId=" + productId
                             + " cached=" + cached + " expected=" + rdbExpected);
