@@ -17,6 +17,7 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
+import com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.event.ConfirmedEventPayloadSerializer;
@@ -222,8 +223,7 @@ public class PgVendorCallService {
         // outbox row 1건당 1 uuid → relay 재시도 시 stored_status_result 재발행 경로에서도 동일 uuid 유지.
         String eventUuid = UUID.randomUUID().toString();
         // T-A1: 벤더 실측 amount/approvedAt 주입. approvedAtRaw 가 null 이면 Clock fallback.
-        long amount = com.hyoguoo.paymentplatform.pg.infrastructure.converter.AmountConverter
-                .fromBigDecimalStrict(result.amount());
+        long amount = AmountConverter.fromBigDecimalStrict(result.amount());
         String approvedAtRaw = result.approvedAtRaw() != null
                 ? result.approvedAtRaw()
                 : OffsetDateTime.now(clock).toString();

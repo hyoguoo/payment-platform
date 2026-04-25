@@ -299,14 +299,9 @@ public class DuplicateApprovalHandler {
 
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
         String eventUuid = UUID.randomUUID().toString();
+        // F-9: APPROVED 분기는 buildApprovedPayload/enqueueOutbox(storedStatusResult) 경로로만 발행.
+        // buildConfirmedPayload 호출처는 QUARANTINED/FAILED 만 전달한다.
         ConfirmedEventPayload payload = switch (status) {
-            case "APPROVED" -> {
-                // DB-exists 경로: stored_status_result 재발행(enqueueOutbox 직접 호출) 이므로 이 분기는 사용 안 됨.
-                // 혹시 호출되는 경우를 대비해 Clock fallback 으로 approvedAt 을 주입한다 (amount 미확인 → 0).
-                // 실제 APPROVED 발행은 buildApprovedPayload 또는 enqueueOutbox(storedStatusResult) 로 처리됨.
-                throw new IllegalArgumentException(
-                        "buildConfirmedPayload: APPROVED 분기는 buildApprovedPayload 를 사용할 것");
-            }
             case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
             case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
             default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);

@@ -1,11 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.application.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
+import com.hyoguoo.paymentplatform.payment.application.util.StockOutboxFactory;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
@@ -79,7 +79,7 @@ public class FailureCompensationService {
         // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
         Instant occurredAt = localDateTimeProvider.nowInstant();
         StockRestoreEvent event = new StockRestoreEvent(eventUUID, orderId, productId, qty, occurredAt);
-        String payloadJson = serializeToJson(event);
+        String payloadJson = StockOutboxFactory.serialize(event, objectMapper);
 
         // K5: LocalDateTime.now() 직접 호출 제거 → localDateTimeProvider.now() 사용
         LocalDateTime now = localDateTimeProvider.now();
@@ -93,15 +93,4 @@ public class FailureCompensationService {
         applicationEventPublisher.publishEvent(new StockOutboxReadyEvent(saved.getId()));
     }
 
-    /**
-     * 도메인 이벤트를 JSON String으로 직렬화한다.
-     * try 블록 내 외부 변수 재할당 금지 규약 준수 — private 메서드로 추출.
-     */
-    private String serializeToJson(Object event) {
-        try {
-            return objectMapper.writeValueAsString(event);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("stock restore outbox payload 직렬화 실패: " + e.getMessage(), e);
-        }
-    }
 }

@@ -1,13 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
+import com.hyoguoo.paymentplatform.payment.application.util.StockOutboxFactory;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
@@ -18,9 +17,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -229,39 +226,12 @@ public class PaymentConfirmResultUseCase {
 
     /**
      * stock commit outbox row 빌드.
-     * payload: StockCommittedEvent JSON 직렬화.
-     * key: productId.toString() — 동일 상품 이벤트를 동일 파티션에 라우팅(ADR-12).
-     *
-     * <p>K1 fix: idempotencyKey는 (orderId, productId) 기반 결정론적 UUID v3으로 도출.
-     * 기존 paymentEvent.getOrderId() 단일값 사용은 multi-product 결제 시 모든 이벤트가
-     * 동일 dedupe key를 공유하여 product-service가 첫 product만 처리하는 회귀를 유발.
-     * ADR-16 참고: StockEventUuidDeriver.derive(orderId, productId, "stock-commit").
-     *
-     * <p>K3 fix: StockCommittedEvent에 orderId(String) + expiresAt(Instant) 명시 전달.
-     * producer가 직접 채워 consumer 측 fallback null 의존 제거.
-     * expiresAt = Instant.now() + longTtl(8d) — consumer의 DEDUPE_TTL(8d)과 동일 정책.
+     * F-7: StockOutboxFactory 에 위임한다.
      */
     private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
-        String idempotencyKey = StockEventUuidDeriver.derive(
-                paymentEvent.getOrderId(), order.getProductId(), "stock-commit");
         // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
         Instant occurredAt = localDateTimeProvider.nowInstant();
-        Instant expiresAt = occurredAt.plus(longTtl);
-        StockCommittedEvent event = new StockCommittedEvent(
-                order.getProductId(),
-                order.getQuantity(),
-                idempotencyKey,
-                occurredAt,
-                paymentEvent.getOrderId(),
-                expiresAt
-        );
-        String payloadJson = serializeToJson(event);
-        return StockOutbox.create(
-                PaymentTopics.EVENTS_STOCK_COMMITTED,
-                String.valueOf(order.getProductId()),
-                payloadJson,
-                now
-        );
+        return StockOutboxFactory.buildStockCommitOutbox(paymentEvent, order, occurredAt, longTtl, now, objectMapper);
     }
 
     /**
@@ -336,15 +306,4 @@ public class PaymentConfirmResultUseCase {
                 () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
     }
 
-    /**
-     * 도메인 이벤트를 JSON String으로 직렬화한다.
-     * try 블록 내 외부 변수 재할당 금지 규약 준수 — private 메서드로 추출.
-     */
-    private String serializeToJson(Object event) {
-        try {
-            return objectMapper.writeValueAsString(event);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("stock outbox payload 직렬화 실패: " + e.getMessage(), e);
-        }
-    }
 }
