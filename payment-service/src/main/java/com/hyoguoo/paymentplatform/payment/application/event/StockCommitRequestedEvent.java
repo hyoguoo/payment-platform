@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.event;
 
 import io.micrometer.context.ContextSnapshot;
+import io.opentelemetry.context.Context;
 
 /**
  * stock.events.commit 발행 요청 Spring ApplicationEvent.
@@ -10,12 +11,20 @@ import io.micrometer.context.ContextSnapshot;
  * 생성되는 회귀를 방지한다. producer 측에서 captureAll() 로 context를 캡처하고,
  * 리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
  *
+ * <p>T-I7: ContextSnapshot(captureAll)은 Micrometer ContextRegistry 에 등록된
+ * Slf4jMdcThreadLocalAccessor(MDC)만 캡처한다. OTel Context 는 별도 ThreadLocal
+ * (OTel ContextStorage)에 있어 captureAll 대상이 아니다.
+ * otelContext 필드에 {@link Context#current()} 를 명시 캡처하고, 리스너에서
+ * {@link Context#makeCurrent()} 로 활성화하여 KafkaTemplate.send() 가 올바른
+ * traceparent 를 헤더에 주입하도록 한다.
+ *
  * @param eventUUID       멱등성 키 (ADR-16 결정론적 UUID)
  * @param orderId         주문 ID
  * @param productId       재고 차감 대상 상품 ID
  * @param quantity        차감 수량
  * @param idempotencyKey  멱등성 키 (주문 ID 등 — 소비자 측 중복 처리 식별용)
- * @param contextSnapshot producer 측 캡처 컨텍스트 (MDC + OTel span) — 리스너에서 복원
+ * @param contextSnapshot producer 측 캡처 Micrometer 컨텍스트 (MDC) — 리스너에서 복원
+ * @param otelContext     producer 측 캡처 OTel Context (span/traceId) — 리스너에서 복원
  */
 public record StockCommitRequestedEvent(
         String eventUUID,
@@ -23,7 +32,8 @@ public record StockCommitRequestedEvent(
         Long productId,
         int quantity,
         String idempotencyKey,
-        ContextSnapshot contextSnapshot
+        ContextSnapshot contextSnapshot,
+        Context otelContext
 ) {
 
 }

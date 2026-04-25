@@ -17,6 +17,7 @@ import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.opentelemetry.context.Context;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,7 +60,7 @@ class StockEventPublishingListenerTest {
     void onStockCommitEvent_shouldDelegateToPublisher() {
         // given
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-d2-commit-001", "order-001", 42L, 3, "order-001", emptySnapshot()
+                "evt-d2-commit-001", "order-001", 42L, 3, "order-001", emptySnapshot(), Context.root()
         );
 
         // when
@@ -82,7 +83,7 @@ class StockEventPublishingListenerTest {
     void onStockRestoreEvent_shouldDelegateToPublisher() {
         // given
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-002", 99L, 5, emptySnapshot()
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-002", 99L, 5, emptySnapshot(), Context.root()
         );
 
         // when
@@ -109,7 +110,7 @@ class StockEventPublishingListenerTest {
                 .publish(any(), any(Integer.class), any());
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-fail-001", "order-fail", 1L, 1, "order-fail", emptySnapshot()
+                "evt-fail-001", "order-fail", 1L, 1, "order-fail", emptySnapshot(), Context.root()
         );
 
         // when & then — 예외 전파 없음
@@ -130,7 +131,7 @@ class StockEventPublishingListenerTest {
                 .publish(any(), any(Integer.class), any());
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-h2-commit-001", "order-h2-commit", 10L, 2, "order-h2-commit", emptySnapshot()
+                "evt-h2-commit-001", "order-h2-commit", 10L, 2, "order-h2-commit", emptySnapshot(), Context.root()
         );
 
         // when
@@ -157,7 +158,7 @@ class StockEventPublishingListenerTest {
                 .publishPayload(any());
 
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-h2-restore", 20L, 3, emptySnapshot()
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-h2-restore", 20L, 3, emptySnapshot(), Context.root()
         );
 
         // when

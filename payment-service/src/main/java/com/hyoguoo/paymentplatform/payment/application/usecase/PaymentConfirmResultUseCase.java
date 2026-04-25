@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.opentelemetry.context.Context;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -194,9 +195,12 @@ public class PaymentConfirmResultUseCase {
 
         // T-D2: stock commit ApplicationEvent 발행 — 실제 Kafka publish는 AFTER_COMMIT 리스너 담당
         // Kafka 지연이 DB TX 블로킹으로 이어지지 않음 (ADR-04)
-        // T-I4: AFTER_COMMIT 시점에 active span이 이미 종료되므로 현재 context를 캡처하여
-        //        event에 포함. 리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
+        // T-I4: AFTER_COMMIT 시점에 active span이 이미 종료되므로 현재 context를 캡처하여 event에 포함.
+        //        리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
+        // T-I7: captureAll()은 Micrometer ContextRegistry(MDC)만 대상 — OTel Context 는
+        //        별도 ThreadLocal이므로 Context.current()를 명시 캡처하여 event에 포함한다.
         ContextSnapshot snapshot = contextSnapshotFactory.captureAll();
+        Context otelContext = Context.current();
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             applicationEventPublisher.publishEvent(new StockCommitRequestedEvent(
                     paymentEvent.getOrderId() + ":" + order.getProductId(),
@@ -204,7 +208,8 @@ public class PaymentConfirmResultUseCase {
                     order.getProductId(),
                     order.getQuantity(),
                     paymentEvent.getOrderId(),
-                    snapshot
+                    snapshot,
+                    otelContext
             ));
         }
 

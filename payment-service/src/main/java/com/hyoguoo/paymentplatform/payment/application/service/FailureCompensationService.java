@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.opentelemetry.context.Context;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -63,13 +64,17 @@ public class FailureCompensationService {
     public void compensate(String orderId, Long productId, int qty) {
         UUID eventUUID = deriveEventUUID(orderId, productId);
         // T-I4: AFTER_COMMIT 시점 active span 소실 방지 — 현재 context를 캡처하여 event에 포함
+        // T-I7: captureAll()은 Micrometer ContextRegistry(MDC)만 대상 — OTel Context 는
+        //        별도 ThreadLocal이므로 Context.current()를 명시 캡처하여 event에 포함한다.
         ContextSnapshot snapshot = ContextSnapshotFactory.builder().build().captureAll();
+        Context otelContext = Context.current();
         applicationEventPublisher.publishEvent(new StockRestoreRequestedEvent(
                 eventUUID.toString(),
                 orderId,
                 productId,
                 qty,
-                snapshot
+                snapshot,
+                otelContext
         ));
     }
 
