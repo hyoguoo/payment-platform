@@ -54,6 +54,11 @@ public class PaymentOutbox {
     }
 
     public void incrementRetryCount(RetryPolicy policy, LocalDateTime now) {
+        // ADR-K2 Finding 6: toInFlight/toDone/toFailed 과 동일하게 IN_FLIGHT 상태에서만 허용.
+        // DONE/FAILED outbox에서 호출 시 silent하게 PENDING 재활성화되던 버그 방어.
+        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
+        }
         this.retryCount++;
         this.status = PaymentOutboxStatus.PENDING;
         this.nextRetryAt = now.plus(policy.nextDelay(this.retryCount));

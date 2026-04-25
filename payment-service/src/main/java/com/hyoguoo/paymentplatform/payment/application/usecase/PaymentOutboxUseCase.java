@@ -75,8 +75,8 @@ public class PaymentOutboxUseCase {
 
     public Optional<PaymentOutboxStatus> findActiveOutboxStatus(String orderId) {
         return paymentOutboxRepository.findByOrderId(orderId)
-                .filter(outbox -> outbox.getStatus() == PaymentOutboxStatus.PENDING
-                        || outbox.getStatus() == PaymentOutboxStatus.IN_FLIGHT)
+                .filter(outbox -> outbox.getStatus().isClaimable()
+                        || outbox.getStatus().isInFlight())
                 .map(PaymentOutbox::getStatus);
     }
 }

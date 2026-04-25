@@ -230,8 +230,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE"})
-    @DisplayName("결제 완료 시 특정 상태에서 성공적으로 done 상태로 변경한다.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
+    @DisplayName("결제 완료 시 IN_PROGRESS/RETRYING 상태에서 성공적으로 done 상태로 변경한다. (K2-F2: DONE은 no-op으로 별도 테스트)")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -248,8 +248,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE"})
-    @DisplayName("done() 호출 시 approvedAt non-null이면 status가 DONE이 되고 approvedAt이 저장된다.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
+    @DisplayName("done() 호출 시 approvedAt non-null이면 status가 DONE이 되고 approvedAt이 저장된다. (K2-F2: DONE은 no-op으로 별도 테스트)")
     void done_WithApprovedAt_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -269,13 +269,11 @@ class PaymentEventTest {
     @Test
     @DisplayName("done() 호출 시 approvedAt이 null이면 MISSING_APPROVED_AT 코드로 PaymentStatusException을 던진다.")
     void done_NullApprovedAt_ThrowsPaymentStatusException() {
-        // given — 허용 source(IN_PROGRESS/RETRYING/DONE) 중 IN_PROGRESS 대표 사용
-        // DONE source + null approvedAt 조합은 allArgsBuilder로만 생성 가능한 시나리오이므로
-        // domain invariant 검증 목적으로 세 가지 source 모두 확인
+        // given — 허용 source(IN_PROGRESS/RETRYING) 에서 null approvedAt 전달
+        // K2-F2: DONE은 no-op return이므로 null approvedAt 검증이 먼저 수행되지 않음 — 제외
         for (PaymentEventStatus source : List.of(
                 PaymentEventStatus.IN_PROGRESS,
-                PaymentEventStatus.RETRYING,
-                PaymentEventStatus.DONE)) {
+                PaymentEventStatus.RETRYING)) {
             PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                     source,
                     PaymentOrderStatus.EXECUTING
@@ -707,41 +705,39 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("격리 전환 시 허용되지 않는 상태(종결 상태)에서는 IllegalStateException을 던진다. (QUARANTINED는 non-terminal이므로 제외)")
+    @DisplayName("격리 전환 시 허용되지 않는 상태(종결 상태)에서는 PaymentStatusException을 던진다. (QUARANTINED는 non-terminal이므로 제외)")
     void quarantine_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
-        // when & then
+        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
         assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(PaymentStatusException.class);
     }
 
     @Test
-    @DisplayName("T-C2: markPaymentAsQuarantined(quarantine) — DONE 상태에서 IllegalStateException을 던진다 (도메인 이중 가드)")
+    @DisplayName("T-C2/K2-F9: markPaymentAsQuarantined(quarantine) — DONE 상태에서 PaymentStatusException을 던진다 (도메인 이중 가드)")
     void markPaymentAsQuarantined_whenDone_shouldThrow() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.DONE, PaymentOrderStatus.EXECUTING);
 
-        // when & then
+        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
         assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("DONE");
+                .isInstanceOf(PaymentStatusException.class);
     }
 
     @Test
-    @DisplayName("T-C2: markPaymentAsQuarantined(quarantine) — FAILED 상태에서 IllegalStateException을 던진다 (도메인 이중 가드)")
+    @DisplayName("T-C2/K2-F9: markPaymentAsQuarantined(quarantine) — FAILED 상태에서 PaymentStatusException을 던진다 (도메인 이중 가드)")
     void markPaymentAsQuarantined_whenFailed_shouldThrow() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.FAILED, PaymentOrderStatus.EXECUTING);
 
-        // when & then
+        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
         assertThatThrownBy(() -> paymentEvent.quarantine("RETRY_EXHAUSTED", LocalDateTime.now()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("FAILED");
+                .isInstanceOf(PaymentStatusException.class);
     }
 
     // T1-04: 스펙 지정 테스트 메서드 (QUARANTINED non-terminal 설계 검증)

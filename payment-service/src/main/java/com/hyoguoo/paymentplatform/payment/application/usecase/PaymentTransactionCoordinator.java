@@ -9,7 +9,6 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -143,7 +142,7 @@ public class PaymentTransactionCoordinator {
                 .orElseThrow(() -> new IllegalStateException("Outbox not found for orderId: " + orderId));
         PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
-        boolean outboxInFlight = freshOutbox.getStatus() == PaymentOutboxStatus.IN_FLIGHT;
+        boolean outboxInFlight = freshOutbox.getStatus().isInFlight();
         boolean eventCompensatable = freshEvent.getStatus().isCompensatableByFailureHandler();
 
         if (outboxInFlight && eventCompensatable) {

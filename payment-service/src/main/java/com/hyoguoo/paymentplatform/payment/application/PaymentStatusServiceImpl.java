@@ -26,7 +26,7 @@ public class PaymentStatusServiceImpl implements PaymentStatusService {
     }
 
     private PaymentStatusResult buildFromOutbox(String orderId, PaymentOutboxStatus outboxStatus) {
-        StatusType statusType = outboxStatus == PaymentOutboxStatus.PENDING
+        StatusType statusType = outboxStatus.isClaimable()
                 ? StatusType.PENDING
                 : StatusType.PROCESSING;
         return PaymentStatusResult.builder()
