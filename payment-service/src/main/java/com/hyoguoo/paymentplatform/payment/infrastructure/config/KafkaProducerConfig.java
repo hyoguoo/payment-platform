@@ -2,8 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
+import java.util.Map;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +12,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import java.util.Map;
 
 /**
  * payment-service Kafka 프로듀서 — 토픽별 타입드 KafkaTemplate 빈 등록.
@@ -25,9 +23,8 @@ import java.util.Map;
  *   <li>setDefaultTopic() 으로 발행 코드에서 토픽 문자열 누락/오타 가능성이 제거된다.</li>
  * </ul>
  *
- * <p>ProducerFactory 는 Spring Boot 오토컨피그의 기본 빈을 재사용한다
- * (application.yml {@code spring.kafka.producer.*} 설정 적용: JsonSerializer 등).
- * 타입 파라미터는 제네릭 지우기로 런타임에 무관하므로 단일 팩토리를 모든 템플릿이 공유한다.
+ * <p>T-J1: stock publishing은 StockOutboxKafkaPublisher (StockOutboxPublisherPort 구현체)로 분리되었다.
+ * 이 config는 payment.commands.confirm / stock_outbox / dlq 템플릿만 관리한다.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -38,12 +35,6 @@ public class KafkaProducerConfig {
 
     @Value("${payment.kafka.topics.commands-confirm}")
     private String commandsConfirmTopic;
-
-    @Value("${payment.kafka.topics.events-stock-committed}")
-    private String eventsStockCommittedTopic;
-
-    @Value("${payment.kafka.topics.events-stock-restore}")
-    private String eventsStockRestoreTopic;
 
     /**
      * payment.commands.confirm 전용 템플릿.
@@ -56,23 +47,22 @@ public class KafkaProducerConfig {
     }
 
     /**
-     * payment.events.stock-committed 전용 템플릿.
-     * 발행 주체: payment-service StockCommitEventKafkaPublisher — 결제 확정 시 재고 차감 이벤트.
+     * stock_outbox relay 전용 String KafkaTemplate.
+     * T-J1: stock_outbox row의 pre-serialized JSON payload를 재직렬화 없이 직접 발행.
+     * StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
+     * observation-enabled=true — traceparent 자동 주입 (T3.5-13).
      */
     @Bean
-    public KafkaTemplate<String, StockCommittedEvent> stockCommittedKafkaTemplate(
-            ProducerFactory<String, StockCommittedEvent> producerFactory) {
-        return buildObservedTemplate(producerFactory, eventsStockCommittedTopic);
-    }
-
-    /**
-     * stock.events.restore 전용 템플릿.
-     * 발행 주체: payment-service StockRestoreEventKafkaPublisher — FAILED 결제 보상 이벤트.
-     */
-    @Bean
-    public KafkaTemplate<String, StockRestoreEvent> stockRestoreKafkaTemplate(
-            ProducerFactory<String, StockRestoreEvent> producerFactory) {
-        return buildObservedTemplate(producerFactory, eventsStockRestoreTopic);
+    public KafkaTemplate<String, String> stockOutboxKafkaTemplate() {
+        Map<String, Object> props = Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
+        );
+        ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
+        template.setObservationEnabled(true);
+        return template;
     }
 
     /**

@@ -1,25 +1,27 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
-import io.micrometer.context.ContextSnapshot;
-import io.micrometer.context.ContextSnapshotFactory;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
-import io.opentelemetry.context.Context;
+import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +34,13 @@ import org.springframework.transaction.annotation.Transactional;
  * payment.events.confirmed 소비 후 결제 상태 분기 use-case.
  * ADR-04(2단 멱등성): eventUUID dedupe 선행, 처리 주체 결정.
  * ADR-14: stock 이벤트 ApplicationEvent 발행(commit/restore) 담당.
- * T-D2: 실제 Kafka 발행은 AFTER_COMMIT 리스너(StockEventPublishingListener)가 수행.
- * TX 내부는 이벤트 발행만 — Kafka 지연이 DB TX 블로킹으로 이어지지 않음.
+ *
+ * <p>T-J1: AFTER_COMMIT stock Kafka 발행 회귀 완전 해소.
+ * TX 내부에서 stock_outbox INSERT → StockOutboxReadyEvent 발행.
+ * AFTER_COMMIT 리스너(StockOutboxImmediateEventHandler)가 @Async("outboxRelayExecutor")로
+ * relay를 수행한다. outboxRelayExecutor의 T-I2 이중 래핑이 OTel Context + MDC를
+ * submit 시점에 캡처하여 VT에서 정확히 복원 → traceparent 회귀 없음.
+ * T-D2~T-I10의 ContextSnapshot/OTel/Observation 활성화 시도 경로 철거.
  *
  * <p>T-C3 two-phase lease 패턴:
  * <ol>
@@ -44,8 +51,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>상태 분기:
  * <ul>
- *   <li>APPROVED → PaymentEvent DONE 전이 + stock.events.commit 발행</li>
- *   <li>FAILED → PaymentEvent FAILED 전이 + stock.events.restore 발행</li>
+ *   <li>APPROVED → PaymentEvent DONE 전이 + stock_outbox INSERT(commit) + StockOutboxReadyEvent</li>
+ *   <li>FAILED → PaymentEvent FAILED 전이 + FailureCompensationService.compensate(outbox INSERT + event)</li>
  *   <li>QUARANTINED → QuarantineCompensationHandler.handle(FCG 진입점) 위임</li>
  * </ul>
  */
@@ -65,8 +72,8 @@ public class PaymentConfirmResultUseCase {
     private final LocalDateTimeProvider localDateTimeProvider;
     private final FailureCompensationService failureCompensationService;
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
-    private final ContextSnapshotFactory contextSnapshotFactory;
-    private final ObservationRegistry observationRegistry;
+    private final StockOutboxRepository stockOutboxRepository;
+    private final ObjectMapper objectMapper;
 
     @Value("${payment.event-dedupe.lease-ttl:PT5M}")
     private Duration leaseTtl = DEFAULT_LEASE_TTL;
@@ -82,7 +89,8 @@ public class PaymentConfirmResultUseCase {
             LocalDateTimeProvider localDateTimeProvider,
             FailureCompensationService failureCompensationService,
             PaymentConfirmDlqPublisher paymentConfirmDlqPublisher,
-            ObservationRegistry observationRegistry) {
+            StockOutboxRepository stockOutboxRepository,
+            ObjectMapper objectMapper) {
         this.paymentEventRepository = paymentEventRepository;
         this.eventDedupeStore = eventDedupeStore;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -90,11 +98,8 @@ public class PaymentConfirmResultUseCase {
         this.localDateTimeProvider = localDateTimeProvider;
         this.failureCompensationService = failureCompensationService;
         this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
-        this.observationRegistry = observationRegistry;
-        // T-I4: AFTER_COMMIT 리스너 context 복원용 snapshot factory — Spring Boot auto-config Bean 없음.
-        // ContextSnapshotFactory.builder().build()는 ContextRegistry에 등록된 모든 accessor를 사용한다.
-        // MdcContextPropagationConfig.registerMdcAccessor()가 먼저 등록되므로 MDC가 포함된다.
-        this.contextSnapshotFactory = ContextSnapshotFactory.builder().build();
+        this.stockOutboxRepository = stockOutboxRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -178,6 +183,12 @@ public class PaymentConfirmResultUseCase {
      *   <li>수신 amount vs paymentEvent 총액 대조 — 불일치 시 AMOUNT_MISMATCH QUARANTINED 전이</li>
      *   <li>일치 시 수신 approvedAt(OffsetDateTime→LocalDateTime 변환)을 done()에 주입</li>
      * </ol>
+     *
+     * <p>T-J1: stock commit outbox 패턴.
+     * 기존 StockCommitRequestedEvent (T-D2~T-I10 경로) 철거.
+     * TX 내부에서 각 PaymentOrder에 대해 stock_outbox INSERT + StockOutboxReadyEvent 발행.
+     * AFTER_COMMIT 리스너(StockOutboxImmediateEventHandler)가 @Async("outboxRelayExecutor")로
+     * relay를 트리거한다. outboxRelayExecutor의 이중 래핑이 traceparent 정확히 전파.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
         LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
@@ -198,33 +209,40 @@ public class PaymentConfirmResultUseCase {
         paymentEvent.done(receivedApprovedAt, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        // T-D2: stock commit ApplicationEvent 발행 — 실제 Kafka publish는 AFTER_COMMIT 리스너 담당
-        // Kafka 지연이 DB TX 블로킹으로 이어지지 않음 (ADR-04)
-        // T-I4: AFTER_COMMIT 시점에 active span이 이미 종료되므로 현재 context를 캡처하여 event에 포함.
-        //        리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
-        // T-I7: captureAll()은 Micrometer ContextRegistry(MDC)만 대상 — OTel Context 는
-        //        별도 ThreadLocal이므로 Context.current()를 명시 캡처하여 event에 포함한다.
-        // T-I10: KafkaTemplate observation-enabled=true 가 parent 로 사용하는
-        //         ObservationRegistry.getCurrentObservation()(Micrometer ThreadLocal) 을 명시 캡처.
-        //         리스너에서 openScope() 로 활성화하여 KafkaTemplate observation parent 인식 정확화.
-        ContextSnapshot snapshot = contextSnapshotFactory.captureAll();
-        Context otelContext = Context.current();
-        Observation parentObs = observationRegistry.getCurrentObservation();
+        // T-J1: TX 내부 stock_outbox INSERT + StockOutboxReadyEvent 발행
+        // 기존 StockCommitRequestedEvent(T-D2~T-I10 경로) 철거.
+        // outboxRelayExecutor(@Async, T-I2 이중 래핑)가 submit 시점 OTel Context + MDC를
+        // VT에서 정확히 복원 → KafkaTemplate.observation-enabled=true 가 traceparent 자동 주입.
+        LocalDateTime now = localDateTimeProvider.now();
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
-            applicationEventPublisher.publishEvent(new StockCommitRequestedEvent(
-                    paymentEvent.getOrderId() + ":" + order.getProductId(),
-                    paymentEvent.getOrderId(),
-                    order.getProductId(),
-                    order.getQuantity(),
-                    paymentEvent.getOrderId(),
-                    snapshot,
-                    otelContext,
-                    parentObs
-            ));
+            StockOutbox outbox = buildStockCommitOutbox(paymentEvent, order, now);
+            StockOutbox saved = stockOutboxRepository.save(outbox);
+            applicationEventPublisher.publishEvent(new StockOutboxReadyEvent(saved.getId()));
         }
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
                 () -> "orderId=" + paymentEvent.getOrderId());
+    }
+
+    /**
+     * stock commit outbox row 빌드.
+     * payload: StockCommittedEvent JSON 직렬화.
+     * key: productId.toString() — 동일 상품 이벤트를 동일 파티션에 라우팅(ADR-12).
+     */
+    private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
+        StockCommittedEvent event = new StockCommittedEvent(
+                order.getProductId(),
+                order.getQuantity(),
+                paymentEvent.getOrderId(),
+                Instant.now()
+        );
+        String payloadJson = serializeToJson(event);
+        return StockOutbox.create(
+                PaymentTopics.EVENTS_STOCK_COMMITTED,
+                String.valueOf(order.getProductId()),
+                payloadJson,
+                now
+        );
     }
 
     /**
@@ -266,16 +284,16 @@ public class PaymentConfirmResultUseCase {
      * <p>ADR-13/T3-04b: 재고 복원은 FailureCompensationService.compensate(orderId, productId, qty) 경유.
      * 각 PaymentOrder의 실 수량(qty)을 전달해 product-service에서 정확한 재고가 복원된다.
      * T-B2: qty=0 플레이스홀더 경로(publish(orderId, productIds)) 오버로드 철거 완료.
-     * T-D2: FailureCompensationService 내부에서 StockRestoreRequestedEvent ApplicationEvent 발행 —
+     * T-J1: FailureCompensationService 내부에서 stock_outbox INSERT + StockOutboxReadyEvent 발행 —
      *        실제 Kafka 발행은 AFTER_COMMIT 리스너 담당(ADR-04).
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
         paymentEvent.fail(reasonCode, localDateTimeProvider.now());
         paymentEventRepository.saveOrUpdate(paymentEvent);
 
-        // stock.events.restore ApplicationEvent 발행: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
+        // stock.events.restore outbox INSERT: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
         // T-B1: FailureCompensationService 경유 — 결정론적 UUID(ADR-16) + 실 qty 전달
-        // T-D2: 내부에서 ApplicationEvent 발행 → AFTER_COMMIT 리스너가 Kafka publish 수행
+        // T-J1: 내부에서 stock_outbox INSERT + StockOutboxReadyEvent 발행
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             failureCompensationService.compensate(
                     paymentEvent.getOrderId(),
@@ -297,5 +315,17 @@ public class PaymentConfirmResultUseCase {
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINED,
                 () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
+    }
+
+    /**
+     * 도메인 이벤트를 JSON String으로 직렬화한다.
+     * try 블록 내 외부 변수 재할당 금지 규약 준수 — private 메서드로 추출.
+     */
+    private String serializeToJson(Object event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("stock outbox payload 직렬화 실패: " + e.getMessage(), e);
+        }
     }
 }
