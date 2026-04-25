@@ -4,19 +4,16 @@ import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.pg.core.config.concurrent.ContextAwareVirtualThreadExecutors;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.OutboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
-import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshot;
-import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -72,13 +69,8 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     public void start() {
         running = true;
         // T-J3: OTel Context + MDC 이중 래핑 — payment.events.confirmed 발행 시 traceparent 정확히 propagate
-        // Step 1: OTel Context 전파 (OTel ContextStorage 는 Micrometer ContextRegistry 와 별개)
-        ExecutorService otelWrapped = Context.taskWrapping(Executors.newVirtualThreadPerTaskExecutor());
-        // Step 2: Micrometer ContextRegistry 등록 accessor(MDC 등) 전파
-        relayExecutor = ContextExecutorService.wrap(
-                otelWrapped,
-                ContextSnapshotFactory.builder().build()
-        );
+        // K7: ContextAwareVirtualThreadExecutors 헬퍼로 이중 래핑 boilerplate 통일
+        relayExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
         for (int i = 0; i < workerCount; i++) {
             Thread worker = Thread.ofVirtual()
                     .name("pg-outbox-immediate-worker-" + i)
