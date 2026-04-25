@@ -102,6 +102,10 @@
 
   **완료 결과 (2026-04-24)** — 회귀 발견 경위: T-A1 이후 compose-up 스모크에서 `PgVendorCallService.buildApprovedPayload`가 `AmountConverter.fromBigDecimalStrict(result.amount())`를 호출하는 경로에서, Kafka JSON 역직렬화 시 `BigDecimal("1000.00")` (scale=2, 정수 값)로 들어와 기존 `scale > 0` 거부 조건이 `ArithmeticException`을 던짐. 결과: `handleSuccess` throw → pg_inbox IN_PROGRESS 박힘 → 무한 NOOP → 결제 영구 PROCESSING. 수정 내용: `scale > 0 → ArithmeticException` 조건 제거 → `longValueExact()`로 교체 — 정수 값이면 trailing zeros(`1000.00`) 허용, 진짜 fractional(`150.50`) 만 거부. Javadoc 갱신: "정수 값이면 trailing zeros(`1000.00`) 허용 — Kafka JSON 역직렬화 호환" 명시. `PgInboxAmountStorageTest.TC4` 메시지 검증 완화(`"scale must be 0"` → 타입만 검증). 신규 3케이스(trailing zeros 허용 / 진짜 fractional 거부 / zero 반환) GREEN. 전수 `./gradlew test` PASS 회귀 없음.
 
+- [x] T-I2 `AsyncConfig.outboxRelayExecutor` — `ContextExecutorService.wrap` + `Context.taskWrapping` 이중 래핑으로 Tracing context 전파
+
+  **완료 결과 (2026-04-24)** — 회귀 발견 경위(R2): compose-up 스모크에서 Kafka producer 가 발행하는 메시지의 `traceparent` 헤더가 incoming HTTP traceparent 와 다른 새 trace 로 박힘. 근본 원인: `outboxRelayExecutor` 의 `MdcTaskDecorator` 가 SLF4J MDC ThreadLocal 만 복사하고 OTel Context ThreadLocal(span/traceId) 을 무시하므로 `@Async("outboxRelayExecutor")` 경계에서 active span 이 소실 → VT 에서 KafkaTemplate.send() 가 새 trace 시작. 수정 내용: `MdcTaskDecorator` 제거 → 이중 래핑 적용. (1) `Context.taskWrapping(raw)` — OTel Context ThreadLocal 전파(OTel ContextStorage 는 Micrometer ContextRegistry 와 별개 경로). (2) `ContextExecutorService.wrap(otelWrapped, factory::captureAll)` — Micrometer ContextRegistry 등록 accessor(MDC 등) 전파. `MdcTaskDecorator`(main) + `MdcTaskDecoratorTest`(test) 삭제(다른 사용처 없음). `AsyncConfigContextPropagationTest` 신규 2케이스(TC1 OTel Context 전파 / TC2 MDC 전파) GREEN. 전수 520/520 PASS (eureka 1 + gateway 3 + payment-service 326 + pg-service 163 + product-service 26 + user-service 1). 회귀 없음. T-Gate 진입 가능.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS
