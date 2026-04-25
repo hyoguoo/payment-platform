@@ -10,8 +10,9 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCommitEvent
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRestoreEventPublisherPort;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.core.instrument.Counter;
-import io.opentelemetry.context.Scope;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
+import io.opentelemetry.context.Scope;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -90,10 +91,65 @@ public class StockEventPublishingListener {
      * StockEventPublishingListenerOtelContextTest TC-I7-1~3 이 단위 수준 OTel Context
      * 활성화를 검증하므로 Tracer API 전환으로 얻는 추가 이점이 없다고 판단, 현행 유지.
      * 실제 KafkaTemplate observation traceparent 정합성은 통합 스모크(compose-up) 에서만 확인 가능.
+     *
+     * <p>T-I10: OTel Context 와 ObservationRegistry ThreadLocal(Micrometer) 이 동기화되지 않는 문제 대응.
+     * KafkaTemplate observation-enabled=true 는 ObservationRegistry.getCurrentObservation()을 parent 로 사용한다.
+     * event.parentObservation() 이 non-null 이면 outermost try 로 openScope() 활성화 후
+     * 기존 mdcScope + otelScope 이중 보호를 내부에서 실행한다.
+     * parentObservation 이 null 이면 기존 경로만 적용(fallback).
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async("outboxRelayExecutor")
     public void onStockCommitRequested(StockCommitRequestedEvent event) {
+        Observation parent = event.parentObservation();
+        if (parent != null) {
+            try (Observation.Scope obsScope = parent.openScope()) {
+                publishStockCommit(event);
+            }
+        } else {
+            publishStockCommit(event);
+        }
+    }
+
+    /**
+     * AFTER_COMMIT: stock.events.restore 실제 Kafka 발행.
+     * TX commit 성공 후에만 실행 — 발행 실패는 TX 영향 없음.
+     *
+     * <p>T-I4: AFTER_COMMIT 시점에 KafkaListener observation이 이미 닫혀 active span이 소실된다.
+     * event에 포함된 ContextSnapshot으로 producer 측 MDC context를 복원하여
+     * KafkaTemplate.send()가 올바른 traceparent를 헤더에 주입하도록 한다.
+     *
+     * <p>T-I7: ContextSnapshot(captureAll)은 Micrometer ContextRegistry(MDC)만 복원한다.
+     * OTel Context 는 별도 ThreadLocal이므로 event.otelContext().makeCurrent() 로 명시 활성화.
+     * try-with-resources 이중 중첩 — 종료 순서는 otelScope → mdcScope (LIFO) 로 자동 복원.
+     *
+     * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑이 submit 시점
+     * OTel Context 와 MDC 를 VT 에서 자동 복원한다. 기존 try-with-resources(T-I4 + T-I7) 이중 보호 유지.
+     *
+     * <p>T-I9 Part A: onStockCommitRequested Javadoc 참조.
+     *
+     * <p>T-I10: onStockCommitRequested Javadoc 참조.
+     * event.parentObservation() non-null 이면 openScope() 활성화 후 기존 경로 실행.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async("outboxRelayExecutor")
+    public void onStockRestoreRequested(StockRestoreRequestedEvent event) {
+        Observation parent = event.parentObservation();
+        if (parent != null) {
+            try (Observation.Scope obsScope = parent.openScope()) {
+                publishStockRestore(event);
+            }
+        } else {
+            publishStockRestore(event);
+        }
+    }
+
+    /**
+     * stock.events.commit 실제 Kafka 발행 내부 로직.
+     * T-I4 + T-I7 이중 보호 (mdcScope + otelScope) 를 통해 publish를 수행한다.
+     * 발행 실패 시 swallow (TX 이미 commit) + counter 증가.
+     */
+    private void publishStockCommit(StockCommitRequestedEvent event) {
         try (
                 ContextSnapshot.Scope mdcScope = event.contextSnapshot().setThreadLocals();
                 Scope otelScope = event.otelContext().makeCurrent()
@@ -119,25 +175,11 @@ public class StockEventPublishingListener {
     }
 
     /**
-     * AFTER_COMMIT: stock.events.restore 실제 Kafka 발행.
-     * TX commit 성공 후에만 실행 — 발행 실패는 TX 영향 없음.
-     *
-     * <p>T-I4: AFTER_COMMIT 시점에 KafkaListener observation이 이미 닫혀 active span이 소실된다.
-     * event에 포함된 ContextSnapshot으로 producer 측 MDC context를 복원하여
-     * KafkaTemplate.send()가 올바른 traceparent를 헤더에 주입하도록 한다.
-     *
-     * <p>T-I7: ContextSnapshot(captureAll)은 Micrometer ContextRegistry(MDC)만 복원한다.
-     * OTel Context 는 별도 ThreadLocal이므로 event.otelContext().makeCurrent() 로 명시 활성화.
-     * try-with-resources 이중 중첩 — 종료 순서는 otelScope → mdcScope (LIFO) 로 자동 복원.
-     *
-     * <p>T-I8: @Async("outboxRelayExecutor") 추가 — T-I2 의 이중 래핑이 submit 시점
-     * OTel Context 와 MDC 를 VT 에서 자동 복원한다. 기존 try-with-resources(T-I4 + T-I7) 이중 보호 유지.
-     *
-     * <p>T-I9 Part A: onStockCommitRequested Javadoc 참조.
+     * stock.events.restore 실제 Kafka 발행 내부 로직.
+     * T-I4 + T-I7 이중 보호 (mdcScope + otelScope) 를 통해 publish를 수행한다.
+     * 발행 실패 시 swallow (TX 이미 commit) + counter 증가.
      */
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Async("outboxRelayExecutor")
-    public void onStockRestoreRequested(StockRestoreRequestedEvent event) {
+    private void publishStockRestore(StockRestoreRequestedEvent event) {
         StockRestoreEventPayload payload = buildRestorePayload(event);
         try (
                 ContextSnapshot.Scope mdcScope = event.contextSnapshot().setThreadLocals();

@@ -77,7 +77,7 @@ class StockEventPublishingListenerTraceRestorationTest {
         }).when(stockCommitPublisher).publish(any(), any(Integer.class), any());
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-i4-commit-001", "order-i4-001", 42L, 3, "order-i4-001", snapshot, Context.root()
+                "evt-i4-commit-001", "order-i4-001", 42L, 3, "order-i4-001", snapshot, Context.root(), null
         );
 
         // when
@@ -110,7 +110,7 @@ class StockEventPublishingListenerTraceRestorationTest {
         }).when(stockRestorePublisher).publishPayload(any());
 
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-i4-002", 99L, 5, snapshot, Context.root()
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-i4-002", 99L, 5, snapshot, Context.root(), null
         );
 
         // when
@@ -142,7 +142,7 @@ class StockEventPublishingListenerTraceRestorationTest {
         MDC.put("traceId", "original-trace-caller");
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-i4-commit-003", "order-i4-003", 10L, 1, "order-i4-003", snapshot, Context.root()
+                "evt-i4-commit-003", "order-i4-003", 10L, 1, "order-i4-003", snapshot, Context.root(), null
         );
 
         // when

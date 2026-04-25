@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,7 +34,7 @@ class FailureCompensationServiceTest {
     @BeforeEach
     void setUp() {
         eventPublisher = new CapturingApplicationEventPublisher();
-        sut = new FailureCompensationService(eventPublisher);
+        sut = new FailureCompensationService(eventPublisher, ObservationRegistry.NOOP);
     }
 
     // -----------------------------------------------------------------------
@@ -82,7 +83,7 @@ class FailureCompensationServiceTest {
 
         // 독립 인스턴스에서도 동일 UUID 생성
         CapturingApplicationEventPublisher anotherPublisher = new CapturingApplicationEventPublisher();
-        FailureCompensationService another = new FailureCompensationService(anotherPublisher);
+        FailureCompensationService another = new FailureCompensationService(anotherPublisher, ObservationRegistry.NOOP);
         another.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
 
         String uuid3 = anotherPublisher.capturedRestoreEvents().get(0).eventUUID();

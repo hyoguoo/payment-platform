@@ -88,7 +88,7 @@ class StockEventPublishingListenerOtelContextTest {
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
                 "evt-i7-commit-001", "order-i7-001", 42L, 3, "order-i7-001",
-                emptySnapshot, producerOtelContext
+                emptySnapshot, producerOtelContext, null
         );
 
         // when
@@ -125,7 +125,7 @@ class StockEventPublishingListenerOtelContextTest {
 
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
                 "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-i7-002", 99L, 5,
-                emptySnapshot, producerOtelContext
+                emptySnapshot, producerOtelContext, null
         );
 
         // when
@@ -163,7 +163,7 @@ class StockEventPublishingListenerOtelContextTest {
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
                 "evt-i7-commit-003", "order-i7-003", 10L, 1, "order-i7-003",
-                emptySnapshot, producerOtelContext
+                emptySnapshot, producerOtelContext, null
         );
 
         // when: 호출 스레드에 callerSpan 활성화 상태에서 listener 호출

@@ -17,6 +17,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
+import io.micrometer.observation.ObservationRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -68,7 +69,8 @@ class PaymentConfirmResultUseCaseD2Test {
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService,
-                dlqPublisher
+                dlqPublisher,
+                ObservationRegistry.NOOP
         );
     }
 

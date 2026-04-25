@@ -60,7 +60,7 @@ class StockEventPublishingListenerTest {
     void onStockCommitEvent_shouldDelegateToPublisher() {
         // given
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-d2-commit-001", "order-001", 42L, 3, "order-001", emptySnapshot(), Context.root()
+                "evt-d2-commit-001", "order-001", 42L, 3, "order-001", emptySnapshot(), Context.root(), null
         );
 
         // when
@@ -83,7 +83,7 @@ class StockEventPublishingListenerTest {
     void onStockRestoreEvent_shouldDelegateToPublisher() {
         // given
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-002", 99L, 5, emptySnapshot(), Context.root()
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-002", 99L, 5, emptySnapshot(), Context.root(), null
         );
 
         // when
@@ -110,7 +110,7 @@ class StockEventPublishingListenerTest {
                 .publish(any(), any(Integer.class), any());
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-fail-001", "order-fail", 1L, 1, "order-fail", emptySnapshot(), Context.root()
+                "evt-fail-001", "order-fail", 1L, 1, "order-fail", emptySnapshot(), Context.root(), null
         );
 
         // when & then — 예외 전파 없음
@@ -131,7 +131,7 @@ class StockEventPublishingListenerTest {
                 .publish(any(), any(Integer.class), any());
 
         StockCommitRequestedEvent event = new StockCommitRequestedEvent(
-                "evt-h2-commit-001", "order-h2-commit", 10L, 2, "order-h2-commit", emptySnapshot(), Context.root()
+                "evt-h2-commit-001", "order-h2-commit", 10L, 2, "order-h2-commit", emptySnapshot(), Context.root(), null
         );
 
         // when
@@ -158,7 +158,7 @@ class StockEventPublishingListenerTest {
                 .publishPayload(any());
 
         StockRestoreRequestedEvent event = new StockRestoreRequestedEvent(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-h2-restore", 20L, 3, emptySnapshot(), Context.root()
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "order-h2-restore", 20L, 3, emptySnapshot(), Context.root(), null
         );
 
         // when

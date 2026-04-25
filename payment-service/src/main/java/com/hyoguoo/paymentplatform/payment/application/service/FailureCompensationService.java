@@ -3,11 +3,12 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import io.opentelemetry.context.Context;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -23,12 +24,23 @@ import org.springframework.stereotype.Service;
  * <p>T-I4: AFTER_COMMIT 리스너 실행 시 active span이 이미 종료되어 새 trace가 생성되는 회귀 방지.
  * compensate 호출 시점에 captureAll()로 context를 캡처하고 StockRestoreRequestedEvent에 포함.
  * 리스너(StockEventPublishingListener)가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
+ *
+ * <p>T-I10: KafkaTemplate observation-enabled=true 가 parent 로 사용하는
+ * ObservationRegistry.getCurrentObservation()(Micrometer ThreadLocal) 을 명시 캡처.
+ * 리스너에서 openScope() 로 활성화하여 KafkaTemplate observation parent 인식 정확화.
  */
 @Service
-@RequiredArgsConstructor
 public class FailureCompensationService {
 
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ObservationRegistry observationRegistry;
+
+    public FailureCompensationService(
+            ApplicationEventPublisher applicationEventPublisher,
+            ObservationRegistry observationRegistry) {
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.observationRegistry = observationRegistry;
+    }
 
     /**
      * FAILED 결제에 대한 재고 복원 보상 이벤트를 발행한다.
@@ -66,15 +78,19 @@ public class FailureCompensationService {
         // T-I4: AFTER_COMMIT 시점 active span 소실 방지 — 현재 context를 캡처하여 event에 포함
         // T-I7: captureAll()은 Micrometer ContextRegistry(MDC)만 대상 — OTel Context 는
         //        별도 ThreadLocal이므로 Context.current()를 명시 캡처하여 event에 포함한다.
+        // T-I10: KafkaTemplate observation parent 인식 정확화 — ObservationRegistry.getCurrentObservation()
+        //         캡처. 리스너에서 openScope()로 활성화. null이면 기존 경로만 적용.
         ContextSnapshot snapshot = ContextSnapshotFactory.builder().build().captureAll();
         Context otelContext = Context.current();
+        Observation parentObs = observationRegistry.getCurrentObservation();
         applicationEventPublisher.publishEvent(new StockRestoreRequestedEvent(
                 eventUUID.toString(),
                 orderId,
                 productId,
                 qty,
                 snapshot,
-                otelContext
+                otelContext,
+                parentObs
         ));
     }
 

@@ -19,6 +19,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
+import io.micrometer.observation.ObservationRegistry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -74,7 +75,8 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
                 quarantineCompensationHandler,
                 fixedClock,
                 failureCompensationService,
-                dlqPublisher
+                dlqPublisher,
+                ObservationRegistry.NOOP
         );
     }
 

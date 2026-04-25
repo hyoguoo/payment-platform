@@ -16,6 +16,8 @@ import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import io.opentelemetry.context.Context;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -64,6 +66,7 @@ public class PaymentConfirmResultUseCase {
     private final FailureCompensationService failureCompensationService;
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
     private final ContextSnapshotFactory contextSnapshotFactory;
+    private final ObservationRegistry observationRegistry;
 
     @Value("${payment.event-dedupe.lease-ttl:PT5M}")
     private Duration leaseTtl = DEFAULT_LEASE_TTL;
@@ -78,7 +81,8 @@ public class PaymentConfirmResultUseCase {
             QuarantineCompensationHandler quarantineCompensationHandler,
             LocalDateTimeProvider localDateTimeProvider,
             FailureCompensationService failureCompensationService,
-            PaymentConfirmDlqPublisher paymentConfirmDlqPublisher) {
+            PaymentConfirmDlqPublisher paymentConfirmDlqPublisher,
+            ObservationRegistry observationRegistry) {
         this.paymentEventRepository = paymentEventRepository;
         this.eventDedupeStore = eventDedupeStore;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -86,6 +90,7 @@ public class PaymentConfirmResultUseCase {
         this.localDateTimeProvider = localDateTimeProvider;
         this.failureCompensationService = failureCompensationService;
         this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
+        this.observationRegistry = observationRegistry;
         // T-I4: AFTER_COMMIT 리스너 context 복원용 snapshot factory — Spring Boot auto-config Bean 없음.
         // ContextSnapshotFactory.builder().build()는 ContextRegistry에 등록된 모든 accessor를 사용한다.
         // MdcContextPropagationConfig.registerMdcAccessor()가 먼저 등록되므로 MDC가 포함된다.
@@ -199,8 +204,12 @@ public class PaymentConfirmResultUseCase {
         //        리스너가 setThreadLocals()로 복원한 뒤 Kafka publish를 수행한다.
         // T-I7: captureAll()은 Micrometer ContextRegistry(MDC)만 대상 — OTel Context 는
         //        별도 ThreadLocal이므로 Context.current()를 명시 캡처하여 event에 포함한다.
+        // T-I10: KafkaTemplate observation-enabled=true 가 parent 로 사용하는
+        //         ObservationRegistry.getCurrentObservation()(Micrometer ThreadLocal) 을 명시 캡처.
+        //         리스너에서 openScope() 로 활성화하여 KafkaTemplate observation parent 인식 정확화.
         ContextSnapshot snapshot = contextSnapshotFactory.captureAll();
         Context otelContext = Context.current();
+        Observation parentObs = observationRegistry.getCurrentObservation();
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             applicationEventPublisher.publishEvent(new StockCommitRequestedEvent(
                     paymentEvent.getOrderId() + ":" + order.getProductId(),
@@ -209,7 +218,8 @@ public class PaymentConfirmResultUseCase {
                     order.getQuantity(),
                     paymentEvent.getOrderId(),
                     snapshot,
-                    otelContext
+                    otelContext,
+                    parentObs
             ));
         }
 
