@@ -1,11 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentHistoryUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentHistoryEvent;
-import com.hyoguoo.paymentplatform.payment.listener.port.PaymentHistoryService;
+import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentHistoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

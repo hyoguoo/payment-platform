@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.pg.listener;
+package com.hyoguoo.paymentplatform.pg.infrastructure.listener;
 
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
