@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.scheduler;
+package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;

@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.pg.scheduler;
+package com.hyoguoo.paymentplatform.pg.infrastructure.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;

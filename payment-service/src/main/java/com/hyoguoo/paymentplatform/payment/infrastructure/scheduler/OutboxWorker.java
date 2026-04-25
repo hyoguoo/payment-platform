@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.scheduler;
+package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
 import com.hyoguoo.paymentplatform.payment.core.config.concurrent.ContextAwareVirtualThreadExecutors;
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;

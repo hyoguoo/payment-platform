@@ -267,6 +267,32 @@
 
   **docs** (docs): ARCHITECTURE.md Listener 섹션 갱신 + Package Layout 신설 + Cross-cutting/Exception handler 경로 갱신. `./gradlew clean test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
 
+**그룹 K12 — scheduler 위치 → infrastructure/scheduler/ 통일**
+- [x] K12 payment-service + pg-service의 `scheduler/` 디렉토리를 `infrastructure/scheduler/`로 이동 (hexagonal 정석 — 시간 기반 입력 어댑터)
+
+  **완료 결과 K12 (2026-04-24)** — tdd=false, 단일 `refactor:` 커밋.
+
+  **이동 파일 (main 5 + port 1)**:
+  - `payment/scheduler/OutboxWorker.java` → `payment/infrastructure/scheduler/OutboxWorker.java`
+  - `payment/scheduler/PaymentScheduler.java` → `payment/infrastructure/scheduler/PaymentScheduler.java`
+  - `payment/scheduler/port/PaymentExpirationService.java` → `payment/application/port/in/PaymentExpirationService.java` (port는 application 레이어)
+  - `pg/scheduler/PgOutboxImmediateWorker.java` → `pg/infrastructure/scheduler/PgOutboxImmediateWorker.java`
+  - `pg/scheduler/PgOutboxPollingWorker.java` → `pg/infrastructure/scheduler/PgOutboxPollingWorker.java`
+
+  **이동 파일 (test 5)**:
+  - `payment/scheduler/OutboxWorkerTest.java` → `payment/infrastructure/scheduler/OutboxWorkerTest.java`
+  - `payment/scheduler/PaymentSchedulerTest.java` → `payment/infrastructure/scheduler/PaymentSchedulerTest.java`
+  - `payment/scheduler/OutboxWorkerMdcPropagationTest.java` → `payment/infrastructure/scheduler/OutboxWorkerMdcPropagationTest.java`
+  - `pg/scheduler/PgOutboxImmediateWorkerTest.java` → `pg/infrastructure/scheduler/PgOutboxImmediateWorkerTest.java`
+  - `pg/scheduler/PgOutboxPollingWorkerTest.java` → `pg/infrastructure/scheduler/PgOutboxPollingWorkerTest.java`
+  - `pg/scheduler/PgOutboxImmediateWorkerMdcPropagationTest.java` → `pg/infrastructure/scheduler/PgOutboxImmediateWorkerMdcPropagationTest.java`
+
+  **import 갱신**: `PaymentExpirationServiceImpl` + `PaymentExpirationServiceImplTest` — `scheduler.port` → `application.port.in`. `PaymentScheduler` — 동일.
+
+  **ARCHITECTURE.md** Package Layout `scheduler/` → `infrastructure/scheduler/` 갱신. Scheduler 섹션 경로 + pg-service 대칭 설계 경로 갱신. `application/port/in/` 테이블 행에 K12 scheduler/port/ 폐지 명시.
+
+  `find .../src/main/java -path '*/scheduler/*' -name '*.java'` 결과 전부 `infrastructure/scheduler/` 내 위치 확인. `grep -rn 'import .*\.scheduler\.'` 결과 0건. `./gradlew clean test` 전수 577/577 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 188 + product-service 31 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

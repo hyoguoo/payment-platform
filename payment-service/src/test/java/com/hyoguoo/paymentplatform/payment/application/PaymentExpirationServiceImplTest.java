@@ -11,7 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
-import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
+import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;

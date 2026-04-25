@@ -51,7 +51,7 @@
 - Utilities (application layer, not ports/use-cases):
   - `IdempotencyKeyHasher` — 멱등성 키 해시 유틸
 - Depends on: `domain`, `core/common`
-- Used by: `presentation`, `scheduler`, `listener`
+- Used by: `presentation`, `infrastructure/scheduler`, `infrastructure/listener`
 
 **Infrastructure (`payment/infrastructure`):**
 - Purpose: JPA entities, Spring Data, gateway adapters, Kafka publisher
@@ -76,15 +76,15 @@
 - `PaymentController.confirm()` always returns `ResponseEntity.accepted(202)`
 - Depends on: application layer via port interfaces only
 
-**Scheduler (`payment/scheduler`):**
+**Scheduler (`payment/infrastructure/scheduler`):**
 - Purpose: Background scheduled jobs and lifecycle-managed async workers
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
+- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/scheduler/`
 - Contains:
   - `OutboxWorker` — `@Scheduled(fixedDelayString)` 폴링 안전망; PENDING outbox 레코드를 배치 조회 → `OutboxRelayService.relay(orderId)` 위임. 병렬 모드(`scheduler.outbox-worker.parallel-enabled=true`) 시 `ContextExecutorService.wrap` 기반 VT 풀을 사용해 MDC 승계.
   - `PaymentScheduler` — 만료 스케줄러; `@Scheduled(fixedRateString)` 기본 5분마다 READY 상태 오래된 결제를 만료 처리
-- Port interfaces: `scheduler/port/PaymentExpirationService`
+- Port interfaces: `application/port/in/PaymentExpirationService` (K12: scheduler/port/ → application/port/in/ 이동)
 - Depends on: `application/service/OutboxRelayService`, `application/usecase/PaymentOutboxUseCase`
-- **pg-service scheduler 구조 (대칭 설계):**
+- **pg-service scheduler 구조 (대칭 설계, `pg/infrastructure/scheduler/`):**
   - `PgOutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 1개, `pg.outbox.channel.worker-count`) VT 워커 스레드를 기동. `PgOutboxChannel.take()`로 outboxId를 수신 → `ContextExecutorService.wrap` 기반 `relayExecutor`에 relay 제출. `stop()`: running=false + 스레드 interrupt + awaitTermination(10s). `getPhase()=Integer.MAX_VALUE-100` (채널보다 나중에 stop).
   - `PgOutboxPollingWorker` — `@Scheduled(fixedDelayString=2000ms)` 안전망; `available_at <= NOW AND processedAt IS NULL` 조건 polling → `PgOutboxRelayService.relay(id)` 위임.
 
@@ -362,7 +362,7 @@ StockOutboxImmediateEventHandler  [@TransactionalEventListener(AFTER_COMMIT), @A
     config/                              ← AsyncConfig, JpaConfig, WebConfig 등
     config/concurrent/                   ← ContextAwareVirtualThreadExecutors
     response/                            ← BasicResponse, ErrorResponse, ResponseAdvice
-  scheduler/ (payment-service 한정)      ← @Scheduled 폴링 워커 + SmartLifecycle 워커
+  infrastructure/scheduler/              ← @Scheduled 폴링 워커 + SmartLifecycle 워커 (K12: 시간 기반 입력 어댑터 — infrastructure 정석)
 ```
 
 ### 패키지 배치 결정 원칙
@@ -374,11 +374,12 @@ StockOutboxImmediateEventHandler  [@TransactionalEventListener(AFTER_COMMIT), @A
 | `infrastructure/listener/` | `@TransactionalEventListener` / `@EventListener` 구현체 (Kafka consumer 아님) |
 | `infrastructure/messaging/consumer/` | `@KafkaListener` 기반 Kafka 소비 어댑터 |
 | `infrastructure/messaging/publisher/` | `KafkaTemplate` 기반 Kafka 발행 어댑터 (Spring ApplicationEventPublisher 포함) |
-| `application/port/in/` | listener가 호출하는 inbound service 인터페이스 (K11: listener/port/ 폐지) |
+| `infrastructure/scheduler/` | `@Scheduled` / `SmartLifecycle` 워커 — 시간 기반 입력 어댑터 (K12: scheduler/ top-level 폐지) |
+| `application/port/in/` | listener/scheduler가 호출하는 inbound service 인터페이스 (K11: listener/port/ 폐지, K12: scheduler/port/ 폐지) |
 | `payment/core/` | payment-service 전용 cross-cutting (pg.core / 타 서비스는 각자 `<svc>/core/`) |
 
-*Package analysis: 2026-04-24 (K11)*
+*Package analysis: 2026-04-24 (K11, K12)*
 
 ---
 
-*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09, T-F4, K11)*
+*Architecture analysis: 2026-04-14 (updated 2026-04-24 for T3.5-09, T-F4, K11, K12)*

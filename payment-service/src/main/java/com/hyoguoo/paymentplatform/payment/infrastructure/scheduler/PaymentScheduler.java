@@ -1,6 +1,6 @@
-package com.hyoguoo.paymentplatform.payment.scheduler;
+package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
-import com.hyoguoo.paymentplatform.payment.scheduler.port.PaymentExpirationService;
+import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

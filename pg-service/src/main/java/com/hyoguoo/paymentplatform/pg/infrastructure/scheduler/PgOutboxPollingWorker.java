@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.pg.scheduler;
+package com.hyoguoo.paymentplatform.pg.infrastructure.scheduler;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.service.PgOutboxRelayService;
