@@ -9,6 +9,7 @@ import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.context.Context;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -67,9 +68,12 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     @Override
     public void start() {
         running = true;
-        // T-E1: ContextExecutorService.wrap — VT 실행 시 MDC/OTel context 승계
+        // T-J3: OTel Context + MDC 이중 래핑 — payment.events.confirmed 발행 시 traceparent 정확히 propagate
+        // Step 1: OTel Context 전파 (OTel ContextStorage 는 Micrometer ContextRegistry 와 별개)
+        ExecutorService otelWrapped = Context.taskWrapping(Executors.newVirtualThreadPerTaskExecutor());
+        // Step 2: Micrometer ContextRegistry 등록 accessor(MDC 등) 전파
         relayExecutor = ContextExecutorService.wrap(
-                Executors.newVirtualThreadPerTaskExecutor(),
+                otelWrapped,
                 ContextSnapshotFactory.builder().build()
         );
         for (int i = 0; i < workerCount; i++) {

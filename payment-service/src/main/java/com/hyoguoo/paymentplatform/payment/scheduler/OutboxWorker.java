@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseC
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
+import io.opentelemetry.context.Context;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,10 +50,12 @@ public class OutboxWorker {
 
     private void processParallel(List<PaymentOutbox> records) {
         // Java 21 가상 스레드: try-with-resources로 자동 종료 (awaitTermination 불필요)
-        // T-E1: ContextExecutorService.wrap — VT 실행 시 MDC/OTel context 승계
-        ExecutorService raw = Executors.newVirtualThreadPerTaskExecutor();
+        // T-J3: OTel Context + MDC 이중 래핑 — polling fallback 경로에서도 traceparent 정확히 propagate
+        // Step 1: OTel Context 전파 (OTel ContextStorage 는 Micrometer ContextRegistry 와 별개)
+        ExecutorService otelWrapped = Context.taskWrapping(Executors.newVirtualThreadPerTaskExecutor());
+        // Step 2: Micrometer ContextRegistry 등록 accessor(MDC 등) 전파
         try (ExecutorService executor = ContextExecutorService.wrap(
-                raw, ContextSnapshotFactory.builder().build())) {
+                otelWrapped, ContextSnapshotFactory.builder().build())) {
             records.forEach(record -> executor.submit(() -> outboxRelayService.relay(record.getOrderId())));
         }
     }
