@@ -21,11 +21,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>K13: TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 근본 해소 (ApplicationEvent 패턴).
  * Toss/NicePay 전략 모두 DuplicateApprovalHandler 직접 의존 제거.
  *
+ * <p>K14: DuplicateApprovalHandler 가 PgStatusLookupPort 단일 의존 대신
+ * PgStatusLookupStrategySelector 를 통한 vendorType 기반 분기로 확장.
+ *
  * <p>불변식:
  * <ul>
  *   <li>DuplicateApprovalHandler 생성자 파라미터 중 {@code @Lazy} 어노테이션 부재</li>
- *   <li>DuplicateApprovalHandler 필드 중 {@link PgStatusLookupPort} 타입 존재</li>
+ *   <li>DuplicateApprovalHandler 필드 중 {@link PgStatusLookupStrategySelector} 타입 존재 (K14)</li>
  *   <li>DuplicateApprovalHandler 필드 중 {@code PgGatewayPort} 타입 부재</li>
+ *   <li>DuplicateApprovalHandler 생성자 첫 파라미터가 {@link PgStatusLookupStrategySelector} 타입 (K14)</li>
  *   <li>TossPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
  *   <li>NicepayPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
  * </ul>
@@ -53,18 +57,19 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC2: DuplicateApprovalHandler 필드 중 PgStatusLookupPort 타입이 존재해야 한다.
+     * TC2: DuplicateApprovalHandler 필드 중 PgStatusLookupStrategySelector 타입이 존재해야 한다.
      *
-     * <p>포트 분해 후 DuplicateApprovalHandler는 PgStatusLookupPort만 의존.
+     * <p>K14: PgStatusLookupPort 단일 의존 → PgStatusLookupStrategySelector 로 교체.
+     * vendorType 기반 분기로 Toss/NicePay 동시 활성 지원.
      */
     @Test
-    @DisplayName("PgStatusLookupPort_필드가_존재해야_한다")
-    void PgStatusLookupPort_필드가_존재해야_한다() {
-        boolean hasPgStatusLookupPortField = Arrays.stream(DuplicateApprovalHandler.class.getDeclaredFields())
-                .anyMatch(field -> field.getType() == PgStatusLookupPort.class);
+    @DisplayName("PgStatusLookupStrategySelector_필드가_존재해야_한다")
+    void PgStatusLookupStrategySelector_필드가_존재해야_한다() {
+        boolean hasSelectorField = Arrays.stream(DuplicateApprovalHandler.class.getDeclaredFields())
+                .anyMatch(field -> field.getType() == PgStatusLookupStrategySelector.class);
 
-        assertThat(hasPgStatusLookupPortField)
-                .as("DuplicateApprovalHandler에 PgStatusLookupPort 타입 필드가 있어야 함 — T3.5-05 포트 분해 불변식")
+        assertThat(hasSelectorField)
+                .as("DuplicateApprovalHandler에 PgStatusLookupStrategySelector 타입 필드가 있어야 함 — K14 selector 분기 불변식")
                 .isTrue();
     }
 
@@ -86,20 +91,19 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC4: DuplicateApprovalHandler 생성자의 첫 파라미터가 PgStatusLookupPort 타입이어야 한다.
+     * TC4: DuplicateApprovalHandler 생성자의 첫 파라미터가 PgStatusLookupStrategySelector 타입이어야 한다.
      *
-     * <p>생성자 시그니처: (PgStatusLookupPort, PgInboxRepository, PgOutboxRepository,
-     * ApplicationEventPublisher, ConfirmedEventPayloadSerializer)
+     * <p>K14: 생성자 시그니처 갱신 — (PgStatusLookupStrategySelector, PgInboxRepository, ...).
      */
     @Test
-    @DisplayName("생성자_첫_파라미터가_PgStatusLookupPort_이어야_한다")
-    void 생성자_첫_파라미터가_PgStatusLookupPort_이어야_한다() {
-        boolean firstParamIsPgStatusLookupPort = Arrays.stream(DuplicateApprovalHandler.class.getDeclaredConstructors())
+    @DisplayName("생성자_첫_파라미터가_PgStatusLookupStrategySelector_이어야_한다")
+    void 생성자_첫_파라미터가_PgStatusLookupStrategySelector_이어야_한다() {
+        boolean firstParamIsSelector = Arrays.stream(DuplicateApprovalHandler.class.getDeclaredConstructors())
                 .filter(c -> c.getParameterCount() > 0)
-                .anyMatch(c -> c.getParameterTypes()[0] == PgStatusLookupPort.class);
+                .anyMatch(c -> c.getParameterTypes()[0] == PgStatusLookupStrategySelector.class);
 
-        assertThat(firstParamIsPgStatusLookupPort)
-                .as("DuplicateApprovalHandler 생성자 첫 파라미터가 PgStatusLookupPort 이어야 함")
+        assertThat(firstParamIsSelector)
+                .as("DuplicateApprovalHandler 생성자 첫 파라미터가 PgStatusLookupStrategySelector 이어야 함 — K14 selector 불변식")
                 .isTrue();
     }
 

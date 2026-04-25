@@ -58,7 +58,7 @@ public class PgVendorCallService {
 
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
-    private final PgConfirmPort pgConfirmPort;
+    private final PgConfirmStrategySelector pgConfirmStrategySelector;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final ObjectMapper objectMapper;
@@ -102,7 +102,9 @@ public class PgVendorCallService {
 
     private GatewayOutcome invokeConfirm(PgConfirmRequest request) {
         try {
-            return new GatewayOutcome.Success(pgConfirmPort.confirm(request));
+            // K14: vendorType 기반 strategy 선택 — Toss/NicePay 동시 활성화 지원
+            PgConfirmPort port = pgConfirmStrategySelector.select(request.vendorType());
+            return new GatewayOutcome.Success(port.confirm(request));
         } catch (PgGatewayRetryableException e) {
             return new GatewayOutcome.Retryable(e.getMessage());
         } catch (PgGatewayNonRetryableException e) {

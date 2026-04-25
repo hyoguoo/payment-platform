@@ -29,7 +29,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -54,10 +54,13 @@ import org.springframework.web.client.RestClientResponseException;
  * <p>K13: DuplicateApprovalHandler 직접 의존 제거 — ApplicationEventPublisher 경유.
  * cycle 단절: NicepayPaymentGatewayStrategy(PgStatusLookupPort 구현) → DuplicateApprovalHandler
  * → PgStatusLookupPort cycle이 ApplicationEvent로 끊김.
+ *
+ * <p>K14: fake 모드가 아닐 때 항상 활성화 (Toss와 동시 등록).
+ * pg.gateway.type=fake 이면 비활성 — FakePgGatewayStrategy 가 대체함.
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "pg.gateway.type", havingValue = "nicepay")
+@ConditionalOnExpression("'${pg.gateway.type:vendor}' != 'fake'")
 public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirmPort {
 
     private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
@@ -178,8 +181,10 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — 2201 중복 승인 DuplicateApprovalDetectedEvent 발행");
             // K13: 직접 호출 대신 ApplicationEvent 발행 → cycle 단절
+            // K14: vendorType 포함 — DuplicateApprovalHandler 가 PgStatusLookupStrategySelector 로 올바른 전략 선택
             applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
-                    request.orderId(), request.amount(), request.paymentKey(), "2201"));
+                    request.orderId(), request.amount(), request.paymentKey(), "2201",
+                    PgVendorType.NICEPAY));
             throw PgGatewayDuplicateHandledException.of(
                     "2201 handled for orderId=" + request.orderId());
         }
@@ -205,8 +210,10 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — 2201 중복 승인(HTTP body) DuplicateApprovalDetectedEvent 발행");
             // K13: 직접 호출 대신 ApplicationEvent 발행 → cycle 단절
+            // K14: vendorType 포함 — DuplicateApprovalHandler 가 PgStatusLookupStrategySelector 로 올바른 전략 선택
             applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
-                    request.orderId(), request.amount(), request.paymentKey(), "2201"));
+                    request.orderId(), request.amount(), request.paymentKey(), "2201",
+                    PgVendorType.NICEPAY));
             return PgGatewayDuplicateHandledException.of(
                     "2201 handled for orderId=" + request.orderId());
         }

@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
@@ -65,7 +66,7 @@ public class PgFinalConfirmationGate {
             PgPaymentStatus.EXPIRED
     );
 
-    private final PgStatusLookupPort pgStatusLookupPort;
+    private final PgStatusLookupStrategySelector pgStatusLookupStrategySelector;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -93,13 +94,14 @@ public class PgFinalConfirmationGate {
      * 재시도 소진 후 최종 상태 확인을 단일 TX 내에서 수행한다.
      * FCG 불변: getStatusByOrderId() 1회만 호출. 예외 → 재시도 없이 QUARANTINED.
      *
-     * @param orderId   주문 ID
-     * @param eventUuid 이벤트 UUID (향후 멱등성 키로 활용 예정)
-     * @param amount    원화 금액
+     * @param orderId    주문 ID
+     * @param eventUuid  이벤트 UUID (향후 멱등성 키로 활용 예정)
+     * @param amount     원화 금액
+     * @param vendorType PG 벤더 구분 (K14: PgStatusLookupStrategySelector 분기에 사용)
      */
     @Transactional
-    public void performFinalCheck(String orderId, String eventUuid, long amount) {
-        FcgOutcome outcome = queryStatusOnce(orderId);
+    public void performFinalCheck(String orderId, String eventUuid, long amount, PgVendorType vendorType) {
+        FcgOutcome outcome = queryStatusOnce(orderId, vendorType);
         dispatchOutcome(outcome, orderId, amount);
     }
 
@@ -107,13 +109,15 @@ public class PgFinalConfirmationGate {
     // 벤더 상태 조회 — 1회만, 예외는 INDETERMINATE로 변환 (FCG 불변)
     // -----------------------------------------------------------------------
 
-    private FcgOutcome queryStatusOnce(String orderId) {
+    private FcgOutcome queryStatusOnce(String orderId, PgVendorType vendorType) {
         try {
-            PgStatusResult statusResult = pgStatusLookupPort.getStatusByOrderId(orderId);
+            // K14: vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
+            PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
+            PgStatusResult statusResult = port.getStatusByOrderId(orderId);
             return mapStatusResult(statusResult);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_INDETERMINATE,
-                    () -> "orderId=" + orderId + " cause=" + e.getMessage());
+                    () -> "orderId=" + orderId + " vendorType=" + vendorType + " cause=" + e.getMessage());
             return new FcgOutcome.Indeterminate();
         }
     }

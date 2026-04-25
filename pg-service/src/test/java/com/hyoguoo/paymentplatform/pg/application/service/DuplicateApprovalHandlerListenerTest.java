@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,8 +51,10 @@ class DuplicateApprovalHandlerListenerTest {
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
+        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         handler = new DuplicateApprovalHandler(
-                gatewayAdapter, inboxRepository, outboxRepository, eventPublisher,
+                selector, inboxRepository, outboxRepository, eventPublisher,
                 new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
     }
 
@@ -92,8 +96,9 @@ class DuplicateApprovalHandlerListenerTest {
         gatewayAdapter.throwOnStatusQuery(
                 com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException.of("timeout"));
 
+        // K14: vendorType 추가 — selector 분기에 사용
         DuplicateApprovalDetectedEvent event = new DuplicateApprovalDetectedEvent(
-                ORDER_ID, PAYLOAD_AMOUNT, "pk-test-001", "ALREADY_PROCESSED_PAYMENT");
+                ORDER_ID, PAYLOAD_AMOUNT, "pk-test-001", "ALREADY_PROCESSED_PAYMENT", PgVendorType.TOSS);
 
         // when — reflection 으로 이벤트 리스너 메서드 직접 호출 (Spring event bus 우회, 단위 테스트)
         java.lang.reflect.Method listenerMethod = DuplicateApprovalHandler.class.getMethod(

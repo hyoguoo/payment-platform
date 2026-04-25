@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
@@ -56,8 +57,10 @@ class PgFinalConfirmationGateTest {
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
+        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         fcg = new PgFinalConfirmationGate(
-                gatewayAdapter, inboxRepository, outboxRepository, eventPublisher,
+                selector, inboxRepository, outboxRepository, eventPublisher,
                 new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
 
         // inbox를 IN_PROGRESS 상태로 사전 설정 (재시도 소진 직후 상태)
@@ -81,7 +84,7 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT);
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox APPROVED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -115,7 +118,7 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.setStatusResult(ORDER_ID, failedStatus);
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT);
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox FAILED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -146,7 +149,7 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout"));
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT);
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox QUARANTINED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -178,7 +181,7 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayNonRetryableException.of("5xx server error"));
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT);
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox QUARANTINED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();

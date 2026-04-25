@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetecte
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
@@ -65,7 +66,7 @@ public class DuplicateApprovalHandler {
      */
     private static final Set<PgPaymentStatus> APPROVED_STATUSES = Set.of(PgPaymentStatus.DONE);
 
-    private final PgStatusLookupPort pgStatusLookupPort;
+    private final PgStatusLookupStrategySelector pgStatusLookupStrategySelector;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -74,19 +75,19 @@ public class DuplicateApprovalHandler {
 
     /**
      * T3.5-05: PgGatewayPort 분해로 순환 의존 근본 해소.
-     * DuplicateApprovalHandler는 PgStatusLookupPort(상태 조회 전담)만 의존.
-     * @Lazy 프록시 불필요 — 순환 경로 자체가 단절됨.
+     * K14: PgStatusLookupPort 직접 의존 → PgStatusLookupStrategySelector로 교체.
+     * vendorType 기반 strategy 선택으로 Toss/NicePay 동시 활성 지원.
      * T-A1: Clock 주입 추가 — APPROVED approvedAt fallback용.
      */
     public DuplicateApprovalHandler(
-            PgStatusLookupPort pgStatusLookupPort,
+            PgStatusLookupStrategySelector pgStatusLookupStrategySelector,
             PgInboxRepository pgInboxRepository,
             PgOutboxRepository pgOutboxRepository,
             ApplicationEventPublisher applicationEventPublisher,
             ConfirmedEventPayloadSerializer payloadSerializer,
             Clock clock
     ) {
-        this.pgStatusLookupPort = pgStatusLookupPort;
+        this.pgStatusLookupStrategySelector = pgStatusLookupStrategySelector;
         this.pgInboxRepository = pgInboxRepository;
         this.pgOutboxRepository = pgOutboxRepository;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -125,8 +126,9 @@ public class DuplicateApprovalHandler {
     @EventListener
     public void onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent event) {
         LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_EVENT_RECEIVED,
-                () -> "orderId=" + event.orderId() + " reasonCode=" + event.reasonCode());
-        handleDuplicateApproval(event.orderId(), event.amount());
+                () -> "orderId=" + event.orderId() + " reasonCode=" + event.reasonCode()
+                        + " vendorType=" + event.vendorType());
+        handleDuplicateApproval(event.orderId(), event.amount(), event.vendorType());
     }
 
     /**
@@ -134,13 +136,14 @@ public class DuplicateApprovalHandler {
      *
      * @param orderId       주문 ID
      * @param payloadAmount command payload 금액 (scale=0, 양수)
+     * @param vendorType    PG 벤더 구분 (K14: PgStatusLookupStrategySelector 분기에 사용)
      */
     @Transactional
-    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount) {
+    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount, PgVendorType vendorType) {
         long payloadAmountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
 
-        // 1단계: vendor 상태 조회 (1회만, 실패 시 VENDOR_INDETERMINATE)
-        VendorQueryOutcome queryOutcome = queryVendorStatus(orderId);
+        // 1단계: vendor 상태 조회 (1회만, 실패 시 VENDOR_INDETERMINATE) — K14: vendorType 기반 strategy 선택
+        VendorQueryOutcome queryOutcome = queryVendorStatus(orderId, vendorType);
 
         if (queryOutcome instanceof VendorQueryOutcome.Indeterminate) {
             handleVendorIndeterminate(orderId, payloadAmountLong);
@@ -164,13 +167,15 @@ public class DuplicateApprovalHandler {
     // vendor 조회 — 1회만, 예외 시 INDETERMINATE 변환
     // -----------------------------------------------------------------------
 
-    private VendorQueryOutcome queryVendorStatus(String orderId) {
+    private VendorQueryOutcome queryVendorStatus(String orderId, PgVendorType vendorType) {
         try {
-            PgStatusResult result = pgStatusLookupPort.getStatusByOrderId(orderId);
+            // K14: vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
+            PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
+            PgStatusResult result = port.getStatusByOrderId(orderId);
             return new VendorQueryOutcome.Success(result);
         } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_VENDOR_INDETERMINATE,
-                    () -> "orderId=" + orderId + " cause=" + e.getMessage());
+                    () -> "orderId=" + orderId + " vendorType=" + vendorType + " cause=" + e.getMessage());
             return new VendorQueryOutcome.Indeterminate();
         }
     }

@@ -310,6 +310,24 @@
   - 테스트: `DuplicateApprovalHandlerCircularDependencyTest` TC5(Toss)/TC6(NicePay) 추가. `TossPaymentGatewayStrategyDuplicateEventTest` 3케이스 신설. `DuplicateApprovalHandlerListenerTest` 2케이스 신설.
   - `./gradlew test` 전수 584/584 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 195 + product-service 31 + user-service 1). cycle 회귀 불변식 6케이스 GREEN. 회귀 없음.
 
+**그룹 K14 — PG 전략 패턴 정착 (Toss + Nicepay 동시 활성)**
+- [x] K14 production 모드에서 Toss + Nicepay 빈 동시 등록, vendorType 기반 selector 분기 — `PgConfirmStrategySelector` / `PgStatusLookupStrategySelector` 신설
+
+  **완료 결과 K14 (2026-04-24)** — tdd=true, RED(`72eeacc7`) + GREEN 커밋.
+
+  **배경**: `TossPaymentGatewayStrategy @ConditionalOnProperty(matchIfMissing=true)` + `NicepayPaymentGatewayStrategy @ConditionalOnProperty(havingValue="nicepay")` 구조로 production에서 단일 PG만 운영 가능. `supports(PgVendorType)` 메서드가 0회 호출됨.
+
+  **수정**:
+  - `TossPaymentGatewayStrategy` / `NicepayPaymentGatewayStrategy`: `@ConditionalOnProperty` → `@ConditionalOnExpression("'${pg.gateway.type:vendor}' != 'fake'")` — fake 모드가 아닐 때 둘 다 활성.
+  - `PgConfirmStrategySelector` 신설 (`application/service/`, `List<PgConfirmPort>` 주입, `select(vendorType)` → `supports()` 기반 탐색).
+  - `PgStatusLookupStrategySelector` 신설 (동일 패턴).
+  - `PgVendorCallService`: `PgConfirmPort` 단일 의존 → `PgConfirmStrategySelector` 교체. `invokeConfirm`에서 `select(request.vendorType())` 후 confirm 호출.
+  - `DuplicateApprovalHandler`: `PgStatusLookupPort` 단일 의존 → `PgStatusLookupStrategySelector` 교체. `handleDuplicateApproval(orderId, amount, vendorType)` 시그니처 확장. `queryVendorStatus(orderId, vendorType)` 에서 selector 경유.
+  - `PgFinalConfirmationGate`: `PgStatusLookupPort` → `PgStatusLookupStrategySelector` 교체. `performFinalCheck(orderId, eventUuid, amount, vendorType)` 시그니처 확장.
+  - `DuplicateApprovalDetectedEvent`: `vendorType` 필드 추가 (K14: selector 분기에 필요).
+  - 테스트: `PgConfirmStrategySelectorTest` / `PgStatusLookupStrategySelectorTest` 각 3케이스. `PgVendorCallServiceVendorTypeTest` 2케이스. `FakePgGatewayAdapterToss` / `FakePgGatewayAdapterNicepay` 신설. 기존 `DuplicateApprovalHandlerTest` / `PgFinalConfirmationGateTest` / `PgVendorCallServiceTest` / `PaymentConfirmConsumerTest` / `DuplicateApprovalHandlerCircularDependencyTest` / `DuplicateApprovalHandlerListenerTest` selector 시그니처로 갱신.
+  - `./gradlew test` 전수 592/592 PASS (eureka 1 + gateway 3 + payment-service 353 + pg-service 203 + product-service 31 + user-service 1). 회귀 없음.
+
 **T-Gate — 기준선 재리뷰 + 종료 검증**
 - [ ] Critic + Domain Expert 재리뷰 양쪽 SHIP_READY verdict
 - [ ] `scripts/smoke/trace-continuity-check.sh` PASS

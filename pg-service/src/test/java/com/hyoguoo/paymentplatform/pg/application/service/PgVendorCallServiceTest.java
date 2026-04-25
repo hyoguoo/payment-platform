@@ -58,7 +58,9 @@ class PgVendorCallServiceTest {
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         ObjectMapper objectMapper = new ObjectMapper();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
-        sut = new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
+        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
+        sut = new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                 new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock);
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (callVendor 진입 전제조건)

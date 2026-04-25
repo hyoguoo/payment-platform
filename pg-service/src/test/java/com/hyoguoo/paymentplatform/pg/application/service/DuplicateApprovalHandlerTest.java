@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
@@ -65,8 +66,10 @@ class DuplicateApprovalHandlerTest {
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
+        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         handler = new DuplicateApprovalHandler(
-                gatewayAdapter, inboxRepository, outboxRepository, eventPublisher,
+                selector, inboxRepository, outboxRepository, eventPublisher,
                 new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
     }
 
@@ -91,7 +94,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
         // then — pg_outbox 1건, stored_status_result 기반 재발행(topic=events.confirmed)
         List<PgOutbox> outboxRows = outboxRepository.findAll();
@@ -130,7 +133,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox QUARANTINED + reason_code=AMOUNT_MISMATCH (불변식 4c)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -163,7 +166,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox 신설 + APPROVED 상태
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -194,7 +197,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox 신설 + QUARANTINED + reason_code=AMOUNT_MISMATCH
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -229,7 +232,7 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
         // then — pg_inbox QUARANTINED + reason_code=VENDOR_INDETERMINATE
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();

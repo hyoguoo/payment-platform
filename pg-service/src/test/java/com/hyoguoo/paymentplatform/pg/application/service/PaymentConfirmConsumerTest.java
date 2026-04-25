@@ -60,8 +60,10 @@ class PaymentConfirmConsumerTest {
         Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
         ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         ObjectMapper objectMapper = new ObjectMapper();
+        // K14: FakePgGatewayAdapter.supports(vendorType)=true → selector 가 항상 반환함
+        PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
         PgVendorCallService vendorCallService =
-                new PgVendorCallService(inboxRepository, outboxRepository, gatewayAdapter, eventPublisher,
+                new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                         new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock);
         sut = new PgConfirmService(
                 inboxRepository, outboxRepository, vendorCallService, dedupeStore, eventPublisher, clock);
