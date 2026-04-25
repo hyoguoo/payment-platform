@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -15,7 +17,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import io.micrometer.observation.ObservationRegistry;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,6 +33,8 @@ import org.springframework.context.ApplicationEventPublisher;
  * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트.
  * ADR-04(eventUUID dedupe), ADR-14(stock 이벤트 발행).
  * domain_risk=true: APPROVED/FAILED/QUARANTINED 분기 + dedupe 불변 커버.
+ *
+ * <p>T-J1: StockCommitRequestedEvent → StockOutboxReadyEvent + stock_outbox INSERT 검증.
  */
 @DisplayName("ConfirmedEventConsumerTest")
 class ConfirmedEventConsumerTest {
@@ -44,6 +48,7 @@ class ConfirmedEventConsumerTest {
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -54,6 +59,7 @@ class ConfirmedEventConsumerTest {
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
+        stockOutboxRepository = new FakeStockOutboxRepository();
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
 
@@ -65,7 +71,8 @@ class ConfirmedEventConsumerTest {
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher,
-                ObservationRegistry.NOOP
+                stockOutboxRepository,
+                new ObjectMapper().registerModule(new JavaTimeModule())
         );
     }
 
@@ -85,10 +92,9 @@ class ConfirmedEventConsumerTest {
             events.add(event);
         }
 
-        public long countFor(Long productId) {
+        public long countReadyEvents() {
             return events.stream()
-                    .filter(e -> e instanceof StockCommitRequestedEvent sce
-                            && sce.productId().equals(productId))
+                    .filter(e -> e instanceof StockOutboxReadyEvent)
                     .count();
         }
 
@@ -98,11 +104,11 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: APPROVED → PaymentEvent DONE 전이 + StockCommitEvent 발행
+    // TC1: APPROVED → PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — APPROVED 수신 시 PaymentEvent DONE 전이 + StockCommitEvent 발행")
+    @DisplayName("consume — APPROVED 수신 시 PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행")
     void consume_WhenApproved_ShouldTransitionToDone() {
         // given
         PaymentOrder order = buildPaymentOrder(1L, 2);
@@ -120,8 +126,10 @@ class ConfirmedEventConsumerTest {
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // then — StockCommitEvent 발행 1회 (orderId 기준)
-        assertThat(capturingPublisher.countFor(1L)).isEqualTo(1L);
+        // then — StockOutboxReadyEvent 1건 발행 (productId=1, order 1개)
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
+        // then — stock_outbox 1건 INSERT
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(1);
     }
 
     // -----------------------------------------------------------------------
@@ -153,8 +161,8 @@ class ConfirmedEventConsumerTest {
                         org.mockito.ArgumentMatchers.eq(2L),
                         org.mockito.ArgumentMatchers.eq(3)
                 );
-        // then — StockCommitEvent 미발행
-        assertThat(capturingPublisher.countFor(2L)).isEqualTo(0L);
+        // then — StockOutboxReadyEvent 미발행 (FailureCompensationService 내부 책임, mock이므로 0건)
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -182,7 +190,7 @@ class ConfirmedEventConsumerTest {
                 );
 
         // then — 직접 상태 전이 없음 (handler 내부 책임)
-        assertThat(capturingPublisher.countFor(999L)).isEqualTo(0L);
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -203,13 +211,13 @@ class ConfirmedEventConsumerTest {
 
         // when — 첫 번째 소비 (정상 처리)
         sut.handle(message);
-        long firstCommitCount = capturingPublisher.countFor(3L);
+        long firstCount = capturingPublisher.countReadyEvents();
 
         // when — 두 번째 소비 (동일 eventUUID → dedupe)
         sut.handle(message);
 
-        // then — StockCommitEvent 추가 발행 없음
-        assertThat(capturingPublisher.countFor(3L)).isEqualTo(firstCommitCount);
+        // then — StockOutboxReadyEvent 추가 발행 없음
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(firstCount);
         // dedupe store 에 1개만 저장됨
         assertThat(dedupeStore.contains(EVENT_UUID)).isTrue();
     }
@@ -241,7 +249,7 @@ class ConfirmedEventConsumerTest {
                         org.mockito.ArgumentMatchers.any()
                 );
 
-        // then — publisher는 0회
+        // then — StockOutboxReadyEvent는 0회 (QUARANTINED → outbox 발행 없음)
         assertThat(capturingPublisher.publishedEvents()).isEmpty();
     }
 

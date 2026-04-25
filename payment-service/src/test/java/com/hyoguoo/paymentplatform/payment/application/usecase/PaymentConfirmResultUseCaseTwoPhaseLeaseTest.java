@@ -18,8 +18,10 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import io.micrometer.observation.ObservationRegistry;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -55,6 +57,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private PaymentConfirmDlqPublisher dlqPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -65,6 +68,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = Mockito.mock(PaymentConfirmDlqPublisher.class);
+        stockOutboxRepository = new FakeStockOutboxRepository();
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
@@ -76,7 +80,8 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher,
-                ObservationRegistry.NOOP
+                stockOutboxRepository,
+                new ObjectMapper().registerModule(new JavaTimeModule())
         );
     }
 

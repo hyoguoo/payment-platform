@@ -2,22 +2,23 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
-import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import io.micrometer.observation.ObservationRegistry;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -30,12 +31,15 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * T-D2 RED 테스트:
- * - handleApproved: StockCommitRequestedEvent ApplicationEvent 발행 확인 + 직접 publisher 호출 0건
- * - handleFailed: StockRestoreRequestedEvent ApplicationEvent 발행 확인
- * ADR-04: stock publish는 TX 외부(AFTER_COMMIT)에서 실행 — TX 내부는 이벤트 발행만.
+ * T-D2 (갱신됨 → T-J1) RED→GREEN 테스트:
+ * - handleApproved: stock_outbox INSERT + StockOutboxReadyEvent 발행 확인
+ * - handleFailed: FailureCompensationService.compensate 호출 확인
+ * ADR-04: stock publish는 TX 외부(AFTER_COMMIT)에서 실행 — TX 내부는 outbox INSERT + event 발행만.
+ *
+ * <p>T-J1: StockCommitRequestedEvent → StockOutboxReadyEvent 전환 검증.
+ * stockOutboxRepository.save 호출 여부 + StockOutboxReadyEvent 발행 건수.
  */
-@DisplayName("PaymentConfirmResultUseCase T-D2 — stock publish AFTER_COMMIT 리스너 분리")
+@DisplayName("PaymentConfirmResultUseCase T-J1 — stock outbox 패턴 도입 검증")
 class PaymentConfirmResultUseCaseD2Test {
 
     private static final String ORDER_ID = "order-d2-001";
@@ -48,6 +52,7 @@ class PaymentConfirmResultUseCaseD2Test {
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private CapturingApplicationEventPublisher capturingPublisher;
     private PaymentConfirmResultUseCase sut;
 
@@ -58,6 +63,7 @@ class PaymentConfirmResultUseCaseD2Test {
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
+        stockOutboxRepository = new FakeStockOutboxRepository();
         capturingPublisher = new CapturingApplicationEventPublisher();
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
@@ -70,19 +76,19 @@ class PaymentConfirmResultUseCaseD2Test {
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher,
-                ObservationRegistry.NOOP
+                stockOutboxRepository,
+                new ObjectMapper().registerModule(new JavaTimeModule())
         );
     }
 
     // -----------------------------------------------------------------------
-    // TC-D2-1: APPROVED 처리 → StockCommitRequestedEvent 발행 확인,
-    //          직접 publisher(StockCommitEventPublisherPort) 호출 0건
+    // TC-J1-6: APPROVED 처리 → stock_outbox save 2회 + StockOutboxReadyEvent 2건 발행
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handleApproved — ApplicationEvent StockCommitRequestedEvent 발행, 직접 publisher 미호출")
-    void handleApproved_shouldPublishStockCommitEvent_notDirectPublisher() {
-        // given: 2개 PaymentOrder → 2개 StockCommitRequestedEvent 기대
+    @DisplayName("handleApproved — stock_outbox INSERT 2건 + StockOutboxReadyEvent 2건 발행 (productId 2개)")
+    void handleApproved_shouldSaveStockOutboxAndPublishReadyEvent() {
+        // given: 2개 PaymentOrder → 2개 outbox INSERT 기대
         PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
@@ -95,28 +101,29 @@ class PaymentConfirmResultUseCaseD2Test {
         // when
         sut.handle(message);
 
-        // then — StockCommitRequestedEvent 2건 발행
-        List<StockCommitRequestedEvent> commitEvents = capturingPublisher.captured(StockCommitRequestedEvent.class);
-        assertThat(commitEvents).hasSize(2);
+        // then — stock_outbox 2건 저장
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(2);
 
-        // productId 순 정렬 후 검증
-        commitEvents.sort((a, b) -> Long.compare(a.productId(), b.productId()));
-        assertThat(commitEvents.get(0).productId()).isEqualTo(10L);
-        assertThat(commitEvents.get(0).quantity()).isEqualTo(2);
-        assertThat(commitEvents.get(1).productId()).isEqualTo(20L);
-        assertThat(commitEvents.get(1).quantity()).isEqualTo(3);
+        // then — StockOutboxReadyEvent 2건 발행
+        List<StockOutboxReadyEvent> readyEvents = capturingPublisher.captured(StockOutboxReadyEvent.class);
+        assertThat(readyEvents).hasSize(2);
 
-        // then — StockRestoreRequestedEvent 발행 없음
-        assertThat(capturingPublisher.captured(StockRestoreRequestedEvent.class)).isEmpty();
+        // then — saved outbox의 topic이 올바름
+        List<StockOutbox> saved = stockOutboxRepository.allSaved();
+        assertThat(saved).allMatch(o -> "payment.events.stock-committed".equals(o.getTopic()));
+
+        // then — key는 productId 문자열
+        List<String> keys = saved.stream().map(StockOutbox::getKey).sorted().toList();
+        assertThat(keys).containsExactlyInAnyOrder("10", "20");
     }
 
     // -----------------------------------------------------------------------
-    // TC-D2-2: FAILED 처리 → StockRestoreRequestedEvent 발행 확인
+    // TC-J1-7: FAILED 처리 → FailureCompensationService.compensate 호출 확인
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handleFailed — FailureCompensationService.compensate 호출 (StockRestoreRequestedEvent 발행)")
-    void handleFailed_shouldPublishStockRestoreEvent() {
+    @DisplayName("handleFailed — FailureCompensationService.compensate 호출 (StockOutboxReadyEvent 발행은 서비스 내부)")
+    void handleFailed_shouldCallFailureCompensationService() {
         // given
         PaymentOrder order = buildPaymentOrder(100L, 5, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
@@ -134,8 +141,10 @@ class PaymentConfirmResultUseCaseD2Test {
                 .should(times(1))
                 .compensate(ORDER_ID, 100L, 5);
 
-        // then — StockCommitRequestedEvent 발행 없음
-        assertThat(capturingPublisher.captured(StockCommitRequestedEvent.class)).isEmpty();
+        // then — StockOutboxReadyEvent는 FailureCompensationService 내부에서 발행 — 이 UseCase는 발행 안 함
+        assertThat(capturingPublisher.captured(StockOutboxReadyEvent.class)).isEmpty();
+        // stockOutboxRepository는 FailureCompensationService 내부 책임 — mock이므로 UseCase 테스트에선 0건
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(0);
     }
 
     // ---- factory helpers ----

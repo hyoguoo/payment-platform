@@ -8,11 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockCommittedEvent;
-import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.StockRestoreEvent;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,19 +19,18 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.test.util.ReflectionTestUtils;
 
+/**
+ * KafkaMessagePublisher 단위 테스트.
+ * T-J1: stock publishing은 StockOutboxKafkaPublisher로 분리되어 이 테스트에서 제거되었다.
+ * 이 클래스는 payment.commands.confirm 토픽 단일 경로만 검증한다.
+ */
 @ExtendWith(MockitoExtension.class)
 class KafkaMessagePublisherTest {
 
     private static final String COMMANDS_CONFIRM = "payment.commands.confirm";
-    private static final String EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
-    private static final String EVENTS_STOCK_RESTORE = "stock.events.restore";
 
     @Mock
     private KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate;
-    @Mock
-    private KafkaTemplate<String, StockCommittedEvent> stockCommittedKafkaTemplate;
-    @Mock
-    private KafkaTemplate<String, StockRestoreEvent> stockRestoreKafkaTemplate;
 
     private KafkaMessagePublisher publisher;
 
@@ -43,11 +38,7 @@ class KafkaMessagePublisherTest {
     void setUp() {
         publisher = new KafkaMessagePublisher(
                 commandsConfirmKafkaTemplate,
-                stockCommittedKafkaTemplate,
-                stockRestoreKafkaTemplate,
-                COMMANDS_CONFIRM,
-                EVENTS_STOCK_COMMITTED,
-                EVENTS_STOCK_RESTORE);
+                COMMANDS_CONFIRM);
         ReflectionTestUtils.setField(publisher, "sendTimeoutMillis", 500L);
     }
 
@@ -101,34 +92,9 @@ class KafkaMessagePublisherTest {
 
     @Test
     void 토픽과_페이로드_타입이_일치하지_않으면_IllegalArgumentException_을_던진다() {
-        // commands.confirm 토픽에 StockCommittedEvent 를 넘기면 거부된다 (cast 검사)
-        StockCommittedEvent wrongPayload = new StockCommittedEvent(1L, 1, "idem", Instant.now());
-
-        assertThatThrownBy(() -> publisher.send(COMMANDS_CONFIRM, "k", wrongPayload))
+        // commands.confirm 토픽에 String 을 넘기면 거부된다 (cast 검사)
+        assertThatThrownBy(() -> publisher.send(COMMANDS_CONFIRM, "k", "wrong-payload"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("payload 타입 불일치");
-    }
-
-    @Test
-    void stock_committed_토픽은_전용_템플릿으로_발행된다() {
-        StockCommittedEvent payload = new StockCommittedEvent(42L, 3, "idem-1", Instant.now());
-        CompletableFuture<SendResult<String, StockCommittedEvent>> future = new CompletableFuture<>();
-        future.complete(null);
-        when(stockCommittedKafkaTemplate.send(eq(EVENTS_STOCK_COMMITTED), eq("42"), any()))
-                .thenReturn(future);
-
-        publisher.send(EVENTS_STOCK_COMMITTED, "42", payload);
-    }
-
-    @Test
-    void stock_restore_토픽은_전용_템플릿으로_발행된다() {
-        StockRestoreEvent payload = new StockRestoreEvent(
-                UUID.randomUUID(), "order-1", 42L, 3, Instant.now());
-        CompletableFuture<SendResult<String, StockRestoreEvent>> future = new CompletableFuture<>();
-        future.complete(null);
-        when(stockRestoreKafkaTemplate.send(eq(EVENTS_STOCK_RESTORE), eq("42"), any()))
-                .thenReturn(future);
-
-        publisher.send(EVENTS_STOCK_RESTORE, "42", payload);
     }
 }

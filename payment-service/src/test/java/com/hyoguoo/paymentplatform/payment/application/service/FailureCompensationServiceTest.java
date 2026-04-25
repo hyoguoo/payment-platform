@@ -2,8 +2,11 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.hyoguoo.paymentplatform.payment.application.event.StockRestoreRequestedEvent;
-import io.micrometer.observation.ObservationRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
+import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -18,8 +21,8 @@ import org.springframework.context.ApplicationEventPublisher;
  * ADR-04(Transactional Outbox), ADR-16(UUID dedupe).
  * domain_risk=true: FAILED 전이 보상 이벤트 발행 + UUID 멱등성 불변 커버.
  *
- * <p>T-I4: FailureCompensationService가 ApplicationEventPublisher 경유로 StockRestoreRequestedEvent
- * (ContextSnapshot 포함)를 발행하도록 변경됨에 따라 검증 로직 갱신.
+ * <p>T-J1: FailureCompensationService가 stock_outbox INSERT + StockOutboxReadyEvent 발행으로 전환됨.
+ * FakeStockOutboxRepository + CapturingApplicationEventPublisher로 검증.
  */
 @DisplayName("FailureCompensationServiceTest")
 class FailureCompensationServiceTest {
@@ -29,65 +32,82 @@ class FailureCompensationServiceTest {
     private static final int QTY = 3;
 
     private CapturingApplicationEventPublisher eventPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private FailureCompensationService sut;
 
     @BeforeEach
     void setUp() {
         eventPublisher = new CapturingApplicationEventPublisher();
-        sut = new FailureCompensationService(eventPublisher, ObservationRegistry.NOOP);
+        stockOutboxRepository = new FakeStockOutboxRepository();
+        sut = new FailureCompensationService(eventPublisher, stockOutboxRepository,
+                new ObjectMapper().registerModule(new JavaTimeModule()));
     }
 
     // -----------------------------------------------------------------------
-    // TC1: FAILED 전이 시 StockRestoreRequestedEvent 1건 발행
+    // TC1: FAILED 전이 시 stock_outbox INSERT 1건 + StockOutboxReadyEvent 1건 발행
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("whenFailed_ShouldEnqueueStockRestoreCompensation — FAILED 전이 시 StockRestoreRequestedEvent 1건 발행(orderId·productId·qty·eventUUID 필드 포함)")
+    @DisplayName("whenFailed_ShouldEnqueueStockRestoreCompensation — stock_outbox INSERT 1건 + StockOutboxReadyEvent 발행")
     void whenFailed_ShouldEnqueueStockRestoreCompensation() {
         // when
         sut.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
 
-        // then — 1건만 발행
-        List<StockRestoreRequestedEvent> events = eventPublisher.capturedRestoreEvents();
-        assertThat(events).hasSize(1);
+        // then — stock_outbox 1건 저장
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(1);
 
-        StockRestoreRequestedEvent event = events.get(0);
-        assertThat(event.orderId()).isEqualTo(ORDER_ID);
-        assertThat(event.productId()).isEqualTo(PRODUCT_ID);
-        assertThat(event.quantity()).isEqualTo(QTY);
-        assertThat(event.eventUUID()).isNotNull();
-        assertThat(event.eventUUID()).isNotBlank();
-        // T-I4: contextSnapshot이 non-null이어야 한다
-        assertThat(event.contextSnapshot()).isNotNull();
+        StockOutbox saved = stockOutboxRepository.allSaved().get(0);
+        assertThat(saved.getTopic()).isEqualTo("stock.events.restore");
+        assertThat(saved.getKey()).isEqualTo(String.valueOf(PRODUCT_ID));
+        assertThat(saved.getPayload()).isNotNull();
+        assertThat(saved.getPayload()).isNotBlank();
+        assertThat(saved.getProcessedAt()).isNull();
+
+        // then — StockOutboxReadyEvent 1건 발행
+        List<StockOutboxReadyEvent> events = eventPublisher.capturedReadyEvents();
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).outboxId()).isNotNull();
     }
 
     // -----------------------------------------------------------------------
-    // TC2: 동일 orderId+productId 2회 → UUID 동일성 보장 (결정론적 UUID)
+    // TC2: 동일 orderId+productId 2회 → payload의 UUID 동일성 보장 (결정론적 UUID)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("whenFailed_IdempotentWhenCalledTwice — 동일 orderId+productId 2회 호출 시 발행 UUID가 동일하다 (ADR-16 결정론적)")
-    void whenFailed_IdempotentWhenCalledTwice() {
+    @DisplayName("whenFailed_IdempotentWhenCalledTwice — 동일 orderId+productId 2회 호출 시 payload eventUUID가 동일 (ADR-16 결정론적)")
+    void whenFailed_IdempotentWhenCalledTwice() throws Exception {
         // when — 동일 orderId+productId로 2회 호출
         sut.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
         sut.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
 
-        // then — 2번 모두 발행되지만(Fake는 멱등 시뮬레이션 없음, 실제 dedupe는 consumer 측 책임)
-        // UUID 결정론적 검증 — 동일 입력이면 동일 UUID
-        List<StockRestoreRequestedEvent> events = eventPublisher.capturedRestoreEvents();
-        assertThat(events).hasSize(2);
+        // then — 2건 INSERT (dedupe는 consumer 측 책임)
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(2);
 
-        String uuid1 = events.get(0).eventUUID();
-        String uuid2 = events.get(1).eventUUID();
-        assertThat(uuid1).isEqualTo(uuid2);
+        // then — payload의 eventUUID 결정론적 동일성 검증
+        ObjectMapper om = new ObjectMapper();
+        List<StockOutbox> saved = stockOutboxRepository.allSaved();
+
+        com.fasterxml.jackson.databind.JsonNode node0 = om.readTree(saved.stream()
+                .sorted(java.util.Comparator.comparingLong(StockOutbox::getId))
+                .toList().get(0).getPayload());
+        com.fasterxml.jackson.databind.JsonNode node1 = om.readTree(saved.stream()
+                .sorted(java.util.Comparator.comparingLong(StockOutbox::getId))
+                .toList().get(1).getPayload());
+
+        String uuid0 = node0.get("eventUUID").asText();
+        String uuid1 = node1.get("eventUUID").asText();
+        assertThat(uuid0).isEqualTo(uuid1);
 
         // 독립 인스턴스에서도 동일 UUID 생성
         CapturingApplicationEventPublisher anotherPublisher = new CapturingApplicationEventPublisher();
-        FailureCompensationService another = new FailureCompensationService(anotherPublisher, ObservationRegistry.NOOP);
+        FakeStockOutboxRepository anotherRepo = new FakeStockOutboxRepository();
+        FailureCompensationService another = new FailureCompensationService(anotherPublisher, anotherRepo,
+                new ObjectMapper().registerModule(new JavaTimeModule()));
         another.compensate(ORDER_ID, List.of(PRODUCT_ID), QTY);
 
-        String uuid3 = anotherPublisher.capturedRestoreEvents().get(0).eventUUID();
-        assertThat(uuid1).isEqualTo(uuid3);
+        StockOutbox anotherSaved = anotherRepo.allSaved().get(0);
+        com.fasterxml.jackson.databind.JsonNode nodeAnother = om.readTree(anotherSaved.getPayload());
+        assertThat(uuid0).isEqualTo(nodeAnother.get("eventUUID").asText());
     }
 
     // ---- helper: ApplicationEventPublisher that captures events ----
@@ -106,10 +126,10 @@ class FailureCompensationServiceTest {
             events.add(event);
         }
 
-        public List<StockRestoreRequestedEvent> capturedRestoreEvents() {
+        public List<StockOutboxReadyEvent> capturedReadyEvents() {
             return events.stream()
-                    .filter(e -> e instanceof StockRestoreRequestedEvent)
-                    .map(e -> (StockRestoreRequestedEvent) e)
+                    .filter(e -> e instanceof StockOutboxReadyEvent)
+                    .map(e -> (StockOutboxReadyEvent) e)
                     .filter(Objects::nonNull)
                     .toList();
         }

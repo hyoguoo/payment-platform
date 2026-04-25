@@ -8,8 +8,10 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.event.StockCommitRequestedEvent;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -19,7 +21,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer.dto
 import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import io.micrometer.observation.ObservationRegistry;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -37,6 +39,8 @@ import org.springframework.context.ApplicationEventPublisher;
  *
  * <p>T-B1: handleFailed 실 qty FailureCompensationService 경유 RED 테스트.
  * FAILED 결제 재고 복원 실 수량 전달 + 레거시 publish 미호출 검증.
+ *
+ * <p>T-J1: StockCommitRequestedEvent → StockOutboxReadyEvent + stock_outbox INSERT 전환.
  */
 @DisplayName("PaymentConfirmResultUseCaseTest — T-A2 역방향 방어선 + T-B1 handleFailed 실 qty")
 class PaymentConfirmResultUseCaseTest {
@@ -53,6 +57,7 @@ class PaymentConfirmResultUseCaseTest {
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private FailureCompensationService failureCompensationService;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -63,6 +68,7 @@ class PaymentConfirmResultUseCaseTest {
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         failureCompensationService = Mockito.mock(FailureCompensationService.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
+        stockOutboxRepository = new FakeStockOutboxRepository();
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
@@ -74,7 +80,8 @@ class PaymentConfirmResultUseCaseTest {
                 fixedClock,
                 failureCompensationService,
                 dlqPublisher,
-                ObservationRegistry.NOOP
+                stockOutboxRepository,
+                new ObjectMapper().registerModule(new JavaTimeModule())
         );
     }
 
@@ -102,10 +109,9 @@ class PaymentConfirmResultUseCaseTest {
                     .toList();
         }
 
-        public long countFor(Class<?> type, Long productId) {
+        public long countReadyEvents() {
             return events.stream()
-                    .filter(e -> e instanceof StockCommitRequestedEvent sce
-                            && sce.productId().equals(productId))
+                    .filter(e -> e instanceof StockOutboxReadyEvent)
                     .count();
         }
     }
@@ -163,8 +169,9 @@ class PaymentConfirmResultUseCaseTest {
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
 
-        // then — stock.events.commit 발행 없음
-        assertThat(capturingPublisher.countFor(StockCommitRequestedEvent.class, 1L)).isEqualTo(0L);
+        // then — stock outbox 미발행
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(0);
     }
 
     // -----------------------------------------------------------------------
@@ -189,11 +196,11 @@ class PaymentConfirmResultUseCaseTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC-A2-4: amount 일치 시 정상 DONE 전이
+    // TC-A2-4: amount 일치 시 정상 DONE 전이 + StockOutboxReadyEvent 발행
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handleApproved — amount 일치 시 PaymentEvent DONE 전이 + StockCommitEvent 발행")
+    @DisplayName("handleApproved — amount 일치 시 PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행")
     void handleApproved_whenAmountMatch_shouldTransitToDone() {
         // given
         PaymentOrder order = buildPaymentOrder(2L, 1, BigDecimal.valueOf(AMOUNT));
@@ -211,8 +218,10 @@ class PaymentConfirmResultUseCaseTest {
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // then — StockCommitRequestedEvent ApplicationEvent 발행 1회
-        assertThat(capturingPublisher.countFor(StockCommitRequestedEvent.class, 2L)).isEqualTo(1L);
+        // then — StockOutboxReadyEvent 1건 발행 (productId=2, order 1개)
+        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
+        // then — stock_outbox 1건 INSERT
+        assertThat(stockOutboxRepository.savedCount()).isEqualTo(1);
 
         // then — quarantine 미호출
         then(quarantineCompensationHandler).should(never()).handle(any(), any());
