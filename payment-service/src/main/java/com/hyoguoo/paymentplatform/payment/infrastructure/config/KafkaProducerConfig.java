@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.infrastructure.messaging.event.PaymentConfirmCommandMessage;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.Map;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -50,10 +51,13 @@ public class KafkaProducerConfig {
      * stock_outbox relay 전용 String KafkaTemplate.
      * T-J1: stock_outbox row의 pre-serialized JSON payload를 재직렬화 없이 직접 발행.
      * StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
-     * observation-enabled=true — traceparent 자동 주입 (T3.5-13).
+     * T-J2: ObservationRegistry 명시 wiring — 자체 생성 DefaultKafkaProducerFactory는 Boot
+     * auto-config의 ObservationRegistry interceptor wire-in을 받지 못하므로
+     * setObservationRegistry()로 직접 주입해 traceparent 전파 경로를 확보한다.
      */
     @Bean
-    public KafkaTemplate<String, String> stockOutboxKafkaTemplate() {
+    public KafkaTemplate<String, String> stockOutboxKafkaTemplate(
+            ObservationRegistry observationRegistry) {
         Map<String, Object> props = Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
@@ -62,6 +66,7 @@ public class KafkaProducerConfig {
         ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
         KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
         template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
         return template;
     }
 
@@ -69,9 +74,11 @@ public class KafkaProducerConfig {
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
      * T-C3: dedupe remove 실패 시 DLQ 전송용. String 페이로드(reason)만 전송.
      * 별도 StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
+     * T-J2: ObservationRegistry 명시 wiring (stockOutboxKafkaTemplate과 동일 패턴, 일관성).
      */
     @Bean
-    public KafkaTemplate<String, String> confirmedDlqKafkaTemplate() {
+    public KafkaTemplate<String, String> confirmedDlqKafkaTemplate(
+            ObservationRegistry observationRegistry) {
         Map<String, Object> props = Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
@@ -81,6 +88,7 @@ public class KafkaProducerConfig {
         KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
         template.setDefaultTopic(PaymentTopics.EVENTS_CONFIRMED_DLQ);
         template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
         return template;
     }
 
