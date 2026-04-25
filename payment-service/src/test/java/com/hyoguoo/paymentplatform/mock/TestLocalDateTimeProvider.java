@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.mock;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import java.time.LocalDateTime;
 
 public class TestLocalDateTimeProvider implements LocalDateTimeProvider {

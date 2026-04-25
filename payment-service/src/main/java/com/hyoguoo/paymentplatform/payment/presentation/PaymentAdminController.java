@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
-import com.hyoguoo.paymentplatform.core.common.dto.PageResponse;
-import com.hyoguoo.paymentplatform.core.common.dto.PageSpec;
-import com.hyoguoo.paymentplatform.core.common.dto.SortDirection;
+import com.hyoguoo.paymentplatform.payment.core.common.dto.PageResponse;
+import com.hyoguoo.paymentplatform.payment.core.common.dto.PageSpec;
+import com.hyoguoo.paymentplatform.payment.core.common.dto.SortDirection;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventSearchQuery;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentHistoryResult;

@@ -2,9 +2,9 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.service.StockCacheWarmupService;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockSnapshotEvent;
 import lombok.RequiredArgsConstructor;

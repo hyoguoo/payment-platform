@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.mock;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperatorImpl;
+import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpOperatorImpl;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.reactive.function.client.WebClient;

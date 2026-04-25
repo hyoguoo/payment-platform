@@ -1,0 +1,106 @@
+package com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.micrometer.observation.ObservationRegistry;
+import java.io.IOException;
+import java.util.Map;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.client.WebClient;
+
+/**
+ * T-E2 GREEN — HttpOperatorImpl(payment-service) Boot auto-config Builder 주입 구조 검증.
+ *
+ * <p>설계 결정 D6: Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서
+ * {@code ObservationRegistry} 를 자동 설정한다. Builder 를 생성자로 주입받기만 하면
+ * HTTP 경계에서 traceparent 자동 전파 가능.
+ *
+ * <p>이 테스트는 Builder 생성자 주입 구조를 검증한다:
+ * <ul>
+ *   <li>RED: 생성자가 없어 컴파일 에러 (이전 {@code @PostConstruct} 수동 빌드 구조)</li>
+ *   <li>GREEN: {@code WebClient.Builder} 생성자 추가 후 정상 HTTP 호출 성공</li>
+ * </ul>
+ *
+ * <p>실제 {@code traceparent} 전파는 Spring Boot auto-config + micrometer-tracing-bridge-otel
+ * 가 활성화된 운영 환경에서 보장된다. 단위 테스트에서는 Builder 주입 구조의 정합성만 검증.
+ */
+@DisplayName("T-E2 HttpOperatorImpl(payment-service) Builder 주입 구조 검증")
+class HttpOperatorTraceparentPropagationTest {
+
+    private MockWebServer mockWebServer;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        mockWebServer.shutdown();
+    }
+
+    @Test
+    @DisplayName("requestGet — WebClient.Builder 생성자 주입 시 HTTP 요청 정상 수행 + observationRegistry 등록 구조 확인")
+    void requestGet_withInjectedBuilder_shouldPerformHttpRequest()
+            throws InterruptedException {
+        // given: ObservationRegistry + WebClient.Builder (Boot auto-config 환경 시뮬레이션)
+        ObservationRegistry observationRegistry = ObservationRegistry.create();
+        WebClient.Builder builder = WebClient.builder()
+                .observationRegistry(observationRegistry);
+
+        HttpOperatorImpl operator = new HttpOperatorImpl(builder, 3000, 5000);
+
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("ok")
+                .addHeader("Content-Type", "text/plain"));
+
+        String url = mockWebServer.url("/test").toString();
+
+        // when: Builder 주입 구조로 생성된 HttpOperatorImpl 이 HTTP 요청 수행
+        String result = operator.requestGet(url, Map.of(), String.class);
+
+        // then: HTTP 요청이 정상 수행되고 응답을 수신
+        RecordedRequest request = mockWebServer.takeRequest();
+        assertThat(request).isNotNull();
+        assertThat(request.getMethod()).isEqualTo("GET");
+        assertThat(result).isEqualTo("ok");
+        // observationRegistry 가 Builder 에 설정되었으므로 운영 환경에서 traceparent 자동 전파 보장
+        // (Spring Boot auto-config WebClient.Builder 가 ObservationRegistry 를 자동 주입함)
+    }
+
+    @Test
+    @DisplayName("requestPost — WebClient.Builder 생성자 주입 시 HTTP POST 요청 정상 수행")
+    void requestPost_withInjectedBuilder_shouldPerformHttpPost()
+            throws InterruptedException {
+        // given
+        ObservationRegistry observationRegistry = ObservationRegistry.create();
+        WebClient.Builder builder = WebClient.builder()
+                .observationRegistry(observationRegistry);
+
+        HttpOperatorImpl operator = new HttpOperatorImpl(builder, 3000, 5000);
+
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("created")
+                .addHeader("Content-Type", "text/plain"));
+
+        String url = mockWebServer.url("/test").toString();
+
+        // when
+        String result = operator.requestPost(url, Map.of(), "{\"key\":\"value\"}", String.class);
+
+        // then
+        RecordedRequest request = mockWebServer.takeRequest();
+        assertThat(request).isNotNull();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(result).isEqualTo("created");
+    }
+}

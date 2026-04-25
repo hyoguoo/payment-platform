@@ -8,7 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;

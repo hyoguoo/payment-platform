@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.messaging.consumer;
 
-import com.hyoguoo.paymentplatform.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;

@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;

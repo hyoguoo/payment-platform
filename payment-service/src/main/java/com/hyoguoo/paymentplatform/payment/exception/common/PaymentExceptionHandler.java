@@ -1,9 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.exception.common;
 
-import com.hyoguoo.paymentplatform.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.response.ErrorResponse;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;

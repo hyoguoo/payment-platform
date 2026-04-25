@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
+import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;

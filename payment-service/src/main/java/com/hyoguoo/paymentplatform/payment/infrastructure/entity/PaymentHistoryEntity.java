@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.entity;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
+import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentHistory;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import jakarta.persistence.Column;

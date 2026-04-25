@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.entity;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.BaseEntity;
+import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.BaseEntity;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;

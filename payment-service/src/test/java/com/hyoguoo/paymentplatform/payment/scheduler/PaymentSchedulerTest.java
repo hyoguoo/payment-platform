@@ -2,8 +2,8 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;

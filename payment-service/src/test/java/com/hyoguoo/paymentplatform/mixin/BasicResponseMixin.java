@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.mixin;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.hyoguoo.paymentplatform.core.response.ErrorResponse;
+import com.hyoguoo.paymentplatform.payment.core.response.ErrorResponse;
 
 @SuppressWarnings("unused")
 public class BasicResponseMixin<T> {

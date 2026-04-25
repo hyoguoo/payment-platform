@@ -3,13 +3,13 @@ package com.hyoguoo.paymentplatform.payment.scheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.core.config.Slf4jMdcThreadLocalAccessor;
+import com.hyoguoo.paymentplatform.payment.core.config.Slf4jMdcThreadLocalAccessor;
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisherPort;
 import io.micrometer.context.ContextRegistry;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;

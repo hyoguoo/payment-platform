@@ -1,10 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
-import com.hyoguoo.paymentplatform.core.common.aspect.annotation.Reason;
-import com.hyoguoo.paymentplatform.core.common.metrics.PaymentQuarantineMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
-import com.hyoguoo.paymentplatform.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import java.time.LocalDateTime;

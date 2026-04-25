@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import lombok.RequiredArgsConstructor;

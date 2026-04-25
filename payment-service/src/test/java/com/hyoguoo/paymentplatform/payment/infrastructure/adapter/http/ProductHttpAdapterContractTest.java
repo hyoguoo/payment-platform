@@ -6,7 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.core.common.infrastructure.http.HttpOperator;
+import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;

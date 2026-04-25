@@ -9,8 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.hyoguoo.paymentplatform.core.test.BaseIntegrationTest;
-import com.hyoguoo.paymentplatform.core.response.BasicResponse;
+import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
+import com.hyoguoo.paymentplatform.payment.core.response.BasicResponse;
 import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;

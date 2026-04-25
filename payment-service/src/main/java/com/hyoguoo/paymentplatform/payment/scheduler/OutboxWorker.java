@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.scheduler;
 
-import com.hyoguoo.paymentplatform.core.config.concurrent.ContextAwareVirtualThreadExecutors;
+import com.hyoguoo.paymentplatform.payment.core.config.concurrent.ContextAwareVirtualThreadExecutors;
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;

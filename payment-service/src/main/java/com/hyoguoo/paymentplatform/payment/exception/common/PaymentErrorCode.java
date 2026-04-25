@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.exception.common;
 
-import com.hyoguoo.paymentplatform.core.common.exception.ErrorCode;
+import com.hyoguoo.paymentplatform.payment.core.common.exception.ErrorCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
