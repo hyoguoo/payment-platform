@@ -72,6 +72,24 @@ class PaymentOutboxTest {
     }
 
     @Nested
+    @DisplayName("K2-F6: incrementRetryCount — IN_FLIGHT 아닌 상태 가드 테스트")
+    class IncrementRetryCountGuardTest {
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
+        @DisplayName("K2-F6: IN_FLIGHT이 아닌 상태에서 incrementRetryCount 호출 시 PaymentStatusException이 발생한다")
+        void incrementRetryCount_whenNotInFlight_shouldThrow(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+
+            // when & then
+            assertThatThrownBy(() -> outbox.incrementRetryCount(policy, LocalDateTime.now()))
+                    .isInstanceOf(PaymentStatusException.class);
+        }
+    }
+
+    @Nested
     @DisplayName("재시도 카운트 증가 테스트")
     class IncrementRetryCountTest {
 
@@ -79,7 +97,7 @@ class PaymentOutboxTest {
         @DisplayName("incrementRetryCount(policy, now) 호출 시 retryCount+1, status=PENDING으로 복귀한다")
         void incrementRetryCount() {
             // given
-            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.FAILED);
+            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
             int initialRetryCount = outbox.getRetryCount();
             RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
 

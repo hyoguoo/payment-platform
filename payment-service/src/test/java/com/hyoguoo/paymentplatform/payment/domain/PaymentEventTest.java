@@ -777,6 +777,45 @@ class PaymentEventTest {
         assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
     }
 
+    // K2: done() 자기전이 no-op 가드
+
+    @Test
+    @DisplayName("K2-F2: done() — 이미 DONE 상태에서 재호출 시 예외 없이 no-op (status 변경 없음)")
+    void done_whenAlreadyDone_shouldNoOp() {
+        // given — DONE 상태 event (paymentOrder도 SUCCESS 상태)
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.DONE,
+                PaymentOrderStatus.SUCCESS
+        );
+        LocalDateTime originalApprovedAt = paymentEvent.getApprovedAt();
+
+        // when — 예외 없이 완료되어야 한다 (no-op)
+        paymentEvent.done(LocalDateTime.of(2024, 1, 1, 12, 0, 0), LocalDateTime.now());
+
+        // then — status가 변경되지 않아야 한다
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+        assertThat(paymentEvent.getApprovedAt()).isEqualTo(originalApprovedAt);
+    }
+
+    // K2: quarantine() PaymentStatusException 패턴 통일
+
+    @Test
+    @DisplayName("K2-F9: quarantine() — 종결 상태에서 PaymentStatusException 발생 (IllegalStateException 아님)")
+    void quarantine_terminalStatus_shouldThrowPaymentStatusException() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.DONE, PaymentOrderStatus.SUCCESS);
+
+        // when & then — PaymentStatusException이어야 한다 (IllegalStateException 금지)
+        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class)
+                .satisfies(ex -> {
+                    PaymentStatusException statusEx = (PaymentStatusException) ex;
+                    assertThat(statusEx.getCode())
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE.getCode());
+                });
+    }
+
     @ParameterizedTest
     @EnumSource(PaymentGatewayType.class)
     @DisplayName("create() 호출 시 전달한 gatewayType이 getGatewayType()으로 반환된다.")
