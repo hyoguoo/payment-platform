@@ -1,5 +1,10 @@
 server:
   port: 8081
+  # Spring Cloud Gateway 뒤에 있을 때 NicepayReturnController 같은 서버 측 redirect가
+  # backend hostname(payment-service:8080) 대신 사용자 origin(localhost:8090)을 사용하도록
+  # X-Forwarded-Host/Port/Proto 헤더를 ForwardedHeaderFilter 가 신뢰하게 한다.
+  # Spring Boot 3 기본값 none 이면 헤더가 무시되어 도커 네트워크 호스트로 absolute redirect 가 만들어진다.
+  forward-headers-strategy: framework
 
 spring:
   application:
