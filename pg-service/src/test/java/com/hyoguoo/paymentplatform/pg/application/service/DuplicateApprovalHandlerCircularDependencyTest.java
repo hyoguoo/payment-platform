@@ -18,10 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>T3.5-05: PgGatewayPort 분해(PgStatusLookupPort + PgConfirmPort)로
  * NicepayPaymentGatewayStrategy ↔ DuplicateApprovalHandler ↔ PgGatewayPort self-loop를 근본 해소.
  *
- * <p>K13: TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 근본 해소 (ApplicationEvent 패턴).
+ * <p>TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 을 ApplicationEvent 패턴으로 근본 해소.
  * Toss/NicePay 전략 모두 DuplicateApprovalHandler 직접 의존 제거.
  *
- * <p>K14: DuplicateApprovalHandler 가 PgStatusLookupPort 단일 의존 대신
+ * <p>DuplicateApprovalHandler 가 PgStatusLookupPort 단일 의존 대신
  * PgStatusLookupStrategySelector 를 통한 vendorType 기반 분기로 확장.
  *
  * <p>불변식:
@@ -40,8 +40,8 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     /**
      * TC1: DuplicateApprovalHandler 생성자 파라미터에 @Lazy 어노테이션이 없어야 한다.
      *
-     * <p>@Lazy는 순환 의존 임시 우회책으로 사용되었으나, T3.5-05에서 포트 분해로 완전 해소.
-     * 이 테스트가 PASS = @Lazy가 완전히 제거된 상태.
+     * <p>@Lazy 는 cycle 임시 우회책으로 쓰였지만 포트 분해 + ApplicationEvent 패턴으로 완전히 제거되었다.
+     * 이 테스트가 PASS = @Lazy 가 완전히 제거된 상태.
      */
     @Test
     @DisplayName("생성자_파라미터에_@Lazy_어노테이션이_없어야_한다")
@@ -52,15 +52,15 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(annotation -> annotation.annotationType() == Lazy.class);
 
         assertThat(hasLazyAnnotation)
-                .as("DuplicateApprovalHandler 생성자에 @Lazy 어노테이션이 존재하면 안 됨 — T3.5-05 포트 분해로 순환 해소")
+                .as("DuplicateApprovalHandler 생성자에 @Lazy 어노테이션이 존재하면 안 됨 — 포트 분해로 순환 해소")
                 .isFalse();
     }
 
     /**
      * TC2: DuplicateApprovalHandler 필드 중 PgStatusLookupStrategySelector 타입이 존재해야 한다.
      *
-     * <p>K14: PgStatusLookupPort 단일 의존 → PgStatusLookupStrategySelector 로 교체.
-     * vendorType 기반 분기로 Toss/NicePay 동시 활성 지원.
+     * <p>PgStatusLookupPort 단일 의존 대신 PgStatusLookupStrategySelector 를 통해 vendorType 기반 분기 —
+     * Toss/NicePay 동시 활성 지원의 핵심 불변식.
      */
     @Test
     @DisplayName("PgStatusLookupStrategySelector_필드가_존재해야_한다")
@@ -69,14 +69,14 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(field -> field.getType() == PgStatusLookupStrategySelector.class);
 
         assertThat(hasSelectorField)
-                .as("DuplicateApprovalHandler에 PgStatusLookupStrategySelector 타입 필드가 있어야 함 — K14 selector 분기 불변식")
+                .as("DuplicateApprovalHandler 에 PgStatusLookupStrategySelector 타입 필드가 있어야 함 — selector 분기 불변식")
                 .isTrue();
     }
 
     /**
      * TC3: DuplicateApprovalHandler 필드 중 PgGatewayPort 타입이 없어야 한다.
      *
-     * <p>T3.5-05 포트 완전 교체 — PgGatewayPort 잔재 0건.
+     * <p>PgGatewayPort 는 PgStatusLookupPort + PgConfirmPort 로 분해되었으므로 잔재 필드가 0건이어야 한다.
      */
     @Test
     @DisplayName("PgGatewayPort_필드가_없어야_한다")
@@ -86,14 +86,14 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(type -> type.getSimpleName().equals("PgGatewayPort"));
 
         assertThat(hasPgGatewayPortField)
-                .as("DuplicateApprovalHandler에 PgGatewayPort 타입 필드가 없어야 함 — T3.5-05 포트 분해로 완전 제거")
+                .as("DuplicateApprovalHandler 에 PgGatewayPort 타입 필드가 없어야 함 — 포트 분해로 완전 제거")
                 .isFalse();
     }
 
     /**
      * TC4: DuplicateApprovalHandler 생성자의 첫 파라미터가 PgStatusLookupStrategySelector 타입이어야 한다.
      *
-     * <p>K14: 생성자 시그니처 갱신 — (PgStatusLookupStrategySelector, PgInboxRepository, ...).
+     * <p>생성자 시그니처: (PgStatusLookupStrategySelector, PgInboxRepository, ...).
      */
     @Test
     @DisplayName("생성자_첫_파라미터가_PgStatusLookupStrategySelector_이어야_한다")
@@ -103,16 +103,15 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(c -> c.getParameterTypes()[0] == PgStatusLookupStrategySelector.class);
 
         assertThat(firstParamIsSelector)
-                .as("DuplicateApprovalHandler 생성자 첫 파라미터가 PgStatusLookupStrategySelector 이어야 함 — K14 selector 불변식")
+                .as("DuplicateApprovalHandler 생성자 첫 파라미터가 PgStatusLookupStrategySelector 이어야 함 — selector 불변식")
                 .isTrue();
     }
 
     /**
      * TC5: TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
      *
-     * <p>K13: Toss 전략이 DuplicateApprovalHandler를 직접 보유하면 PgStatusLookupPort 구현체(Toss) ↔
-     * DuplicateApprovalHandler ↔ PgStatusLookupPort cycle 이 형성됨.
-     * ApplicationEvent 패턴으로 cycle 영구 단절.
+     * <p>Toss 전략이 DuplicateApprovalHandler 를 직접 보유하면 PgStatusLookupPort 구현체(Toss) ↔
+     * DuplicateApprovalHandler ↔ PgStatusLookupPort cycle 이 형성된다 — ApplicationEvent 패턴으로 영구 단절했다.
      */
     @Test
     @DisplayName("Toss전략_DuplicateApprovalHandler_직접_의존_없어야_한다")
@@ -121,14 +120,14 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(field -> field.getType() == DuplicateApprovalHandler.class);
 
         assertThat(hasDuplicateApprovalHandlerField)
-                .as("TossPaymentGatewayStrategy에 DuplicateApprovalHandler 필드가 있으면 안 됨 — K13 cycle 단절")
+                .as("TossPaymentGatewayStrategy 에 DuplicateApprovalHandler 필드가 있으면 안 됨 — cycle 단절")
                 .isFalse();
     }
 
     /**
      * TC6: NicepayPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
      *
-     * <p>K13: NicePay 전략도 동일한 cycle 위험 — DuplicateApprovalHandler 직접 의존 제거.
+     * <p>NicePay 전략도 동일한 cycle 위험이 있으므로 DuplicateApprovalHandler 직접 의존을 제거한다.
      */
     @Test
     @DisplayName("NicePay전략_DuplicateApprovalHandler_직접_의존_없어야_한다")

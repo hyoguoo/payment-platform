@@ -65,8 +65,7 @@ public class PgVendorCallService {
     private final Clock clock;
 
     // -----------------------------------------------------------------------
-    // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
-    // F-12: enum + static class → sealed interface + record 패턴으로 통일
+    // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
     private sealed interface GatewayOutcome
@@ -102,7 +101,7 @@ public class PgVendorCallService {
 
     private GatewayOutcome invokeConfirm(PgConfirmRequest request) {
         try {
-            // K14: vendorType 기반 strategy 선택 — Toss/NicePay 동시 활성화 지원
+            // vendorType 기반 strategy 선택 — Toss/NicePay 동시 활성화 지원
             PgConfirmPort port = pgConfirmStrategySelector.select(request.vendorType());
             return new GatewayOutcome.Success(port.confirm(request));
         } catch (PgGatewayRetryableException e) {
@@ -205,7 +204,7 @@ public class PgVendorCallService {
         // eventUuid: payment-service ConfirmedEventConsumer 의 0단계 dedupe 키.
         // outbox row 1건당 1 uuid → relay 재시도 시 stored_status_result 재발행 경로에서도 동일 uuid 유지.
         String eventUuid = UUID.randomUUID().toString();
-        // T-A1: 벤더 실측 amount/approvedAt 주입. approvedAtRaw 가 null 이면 Clock fallback.
+        // 벤더 실측 amount/approvedAt 주입 — approvedAtRaw 가 null 이면 Clock fallback 으로 보정한다.
         long amount = AmountConverter.fromBigDecimalStrict(result.amount());
         String approvedAtRaw = result.approvedAtRaw() != null
                 ? result.approvedAtRaw()

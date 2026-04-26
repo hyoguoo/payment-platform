@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 /**
- * K13: DuplicateApprovalHandler — DuplicateApprovalDetectedEvent 수신 시 handleDuplicateApproval 위임 단위 테스트.
+ * DuplicateApprovalHandler — DuplicateApprovalDetectedEvent 수신 시 handleDuplicateApproval 위임 단위 테스트.
  *
  * <p>불변식:
  * <ul>
@@ -31,7 +31,7 @@ import static org.mockito.Mockito.mock;
  *   <li>TC2: 이벤트 수신 → handleDuplicateApproval 호출 (vendor 조회 → outbox 1건 생성)</li>
  * </ul>
  */
-@DisplayName("DuplicateApprovalHandler K13 — EventListener 위임")
+@DisplayName("DuplicateApprovalHandler — EventListener 위임")
 class DuplicateApprovalHandlerListenerTest {
 
     private static final String ORDER_ID = "order-listener-001";
@@ -51,7 +51,7 @@ class DuplicateApprovalHandlerListenerTest {
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
-        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         handler = new DuplicateApprovalHandler(
                 selector, inboxRepository, outboxRepository, eventPublisher,
@@ -61,7 +61,7 @@ class DuplicateApprovalHandlerListenerTest {
     /**
      * TC1: DuplicateApprovalHandler 에 onDuplicateApprovalDetected 메서드가 존재해야 한다.
      *
-     * <p>K13: @EventListener 또는 @TransactionalEventListener 기반 리스너 메서드 신설.
+     * <p>{@code @EventListener} 또는 {@code @TransactionalEventListener} 기반 리스너 메서드.
      */
     @Test
     @DisplayName("onDuplicateApprovalDetected_메서드_존재해야_한다")
@@ -78,16 +78,16 @@ class DuplicateApprovalHandlerListenerTest {
         }
 
         assertThat(methodExists)
-                .as("DuplicateApprovalHandler 에 onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent) 메서드가 있어야 함 — K13 EventListener")
+                .as("DuplicateApprovalHandler 에 onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent) 메서드가 있어야 함 — EventListener 진입점")
                 .isTrue();
     }
 
     /**
      * TC2: DuplicateApprovalDetectedEvent 수신 시 handleDuplicateApproval 동등 결과 — outbox 1건 생성.
      *
-     * <p>K13: 이벤트 수신 → handleDuplicateApproval(orderId, amount) 호출 위임.
-     * VENDOR_INDETERMINATE 경로(상태 조회 예외 주입)로 outbox 1건 생성 여부만 검증.
-     * reflection 으로 메서드 호출 — 메서드 부재 시 NoSuchMethodException 발생.
+     * <p>이벤트 수신 시 handleDuplicateApproval(orderId, amount) 호출이 위임되는지 확인.
+     * VENDOR_INDETERMINATE 경로(상태 조회 예외 주입)로 outbox 1건 생성 여부만 검증한다.
+     * reflection 으로 메서드를 직접 호출하므로 메서드 부재 시 NoSuchMethodException 이 떨어진다.
      */
     @Test
     @DisplayName("이벤트_수신시_handleDuplicateApproval_호출_위임_outbox_생성됨")
@@ -96,7 +96,7 @@ class DuplicateApprovalHandlerListenerTest {
         gatewayAdapter.throwOnStatusQuery(
                 com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException.of("timeout"));
 
-        // K14: vendorType 추가 — selector 분기에 사용
+        // vendorType 은 DuplicateApprovalHandler 가 selector 분기에 사용한다.
         DuplicateApprovalDetectedEvent event = new DuplicateApprovalDetectedEvent(
                 ORDER_ID, PAYLOAD_AMOUNT, "pk-test-001", "ALREADY_PROCESSED_PAYMENT", PgVendorType.TOSS);
 

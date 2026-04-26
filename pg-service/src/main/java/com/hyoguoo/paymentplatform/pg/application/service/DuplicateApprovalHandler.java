@@ -74,10 +74,9 @@ public class DuplicateApprovalHandler {
     private final Clock clock;
 
     /**
-     * T3.5-05: PgGatewayPort 분해로 순환 의존 근본 해소.
-     * K14: PgStatusLookupPort 직접 의존 → PgStatusLookupStrategySelector로 교체.
-     * vendorType 기반 strategy 선택으로 Toss/NicePay 동시 활성 지원.
-     * T-A1: Clock 주입 추가 — APPROVED approvedAt fallback용.
+     * 직접 PgStatusLookupPort 를 의존하지 않고 PgStatusLookupStrategySelector 를 거친다 —
+     * vendorType 기반 strategy 선택으로 Toss/NicePay 동시 활성을 지원하며 cycle 도 해소된다.
+     * Clock 은 APPROVED approvedAt fallback 에 사용한다.
      */
     public DuplicateApprovalHandler(
             PgStatusLookupStrategySelector pgStatusLookupStrategySelector,
@@ -96,8 +95,7 @@ public class DuplicateApprovalHandler {
     }
 
     // -----------------------------------------------------------------------
-    // vendor 조회 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
-    // F-12: enum + static class → sealed interface + record 패턴으로 통일
+    // vendor 조회 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
     private sealed interface VendorQueryOutcome
@@ -112,11 +110,12 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
 
     /**
-     * K13: DuplicateApprovalDetectedEvent 수신 리스너 — 벤더 전략 → ApplicationEvent → 핸들러 위임.
+     * DuplicateApprovalDetectedEvent 수신 리스너 — 벤더 전략이 발행한 이벤트를 받아 핸들러에 위임한다.
      *
-     * <p>cycle 단절: TossPaymentGatewayStrategy/NicepayPaymentGatewayStrategy 가
-     * DuplicateApprovalHandler 를 직접 호출하는 대신 이벤트를 발행하고,
-     * 이 메서드가 @EventListener 로 수신하여 {@link #handleDuplicateApproval} 에 위임한다.
+     * <p>cycle 단절 의도: TossPaymentGatewayStrategy / NicepayPaymentGatewayStrategy 가
+     * DuplicateApprovalHandler 를 직접 호출하면 PgStatusLookupPort 와 양방향 의존이 만들어진다.
+     * 전략은 이벤트만 발행하고, 이 메서드가 {@code @EventListener} 로 수신해
+     * {@link #handleDuplicateApproval} 에 위임함으로써 cycle 을 끊는다.
      *
      * <p>Spring ApplicationEvent 는 동기 처리이므로 기존 트랜잭션 컨텍스트 안에서 실행됨.
      * {@link #handleDuplicateApproval} 의 @Transactional(REQUIRED) 이 참여(join)한다.
@@ -136,13 +135,13 @@ public class DuplicateApprovalHandler {
      *
      * @param orderId       주문 ID
      * @param payloadAmount command payload 금액 (scale=0, 양수)
-     * @param vendorType    PG 벤더 구분 (K14: PgStatusLookupStrategySelector 분기에 사용)
+     * @param vendorType    PG 벤더 구분 — PgStatusLookupStrategySelector 분기에 사용
      */
     @Transactional
     public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount, PgVendorType vendorType) {
         long payloadAmountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
 
-        // 1단계: vendor 상태 조회 (1회만, 실패 시 VENDOR_INDETERMINATE) — K14: vendorType 기반 strategy 선택
+        // 1단계: vendor 상태 조회 — vendorType 기반 strategy 선택. 1회만 호출하고 실패 시 INDETERMINATE 처리.
         VendorQueryOutcome queryOutcome = queryVendorStatus(orderId, vendorType);
 
         if (queryOutcome instanceof VendorQueryOutcome.Indeterminate) {
@@ -169,7 +168,7 @@ public class DuplicateApprovalHandler {
 
     private VendorQueryOutcome queryVendorStatus(String orderId, PgVendorType vendorType) {
         try {
-            // K14: vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
+            // vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
             PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
             PgStatusResult result = port.getStatusByOrderId(orderId);
             return new VendorQueryOutcome.Success(result);
@@ -237,7 +236,7 @@ public class DuplicateApprovalHandler {
 
         // inbox 신설(NONE→IN_PROGRESS→APPROVED)
         pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
-        // T-A1: buildApprovedPayload 가 amount + approvedAt(Clock fallback) 를 포함한 payload 생성.
+        // buildApprovedPayload 가 amount + approvedAt(Clock fallback) 을 포함한 payload 를 만든다.
         String approvedPayload = buildApprovedPayload(orderId, amountLong);
         pgInboxRepository.transitToApproved(orderId, approvedPayload);
 
@@ -299,7 +298,7 @@ public class DuplicateApprovalHandler {
 
     /**
      * APPROVED 확정 payload 빌드.
-     * T-A1: amount + approvedAt(Clock fallback) 주입 — ADR-15 AMOUNT_MISMATCH 역방향 방어선.
+     * amount + approvedAt(Clock fallback) 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
      * DB absent 경로에서는 vendor status 조회 결과의 amount 를 그대로 사용하며,
      * approvedAt raw 문자열은 PgStatusResult 에 없으므로 Clock fallback 으로 현재 UTC 시각을 주입한다.
      */
@@ -312,7 +311,7 @@ public class DuplicateApprovalHandler {
 
     private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
         String eventUuid = UUID.randomUUID().toString();
-        // F-9: APPROVED 분기는 buildApprovedPayload/enqueueOutbox(storedStatusResult) 경로로만 발행.
+        // APPROVED 분기는 buildApprovedPayload + enqueueOutbox(storedStatusResult) 경로로만 발행한다.
         // buildConfirmedPayload 호출처는 QUARANTINED/FAILED 만 전달한다.
         ConfirmedEventPayload payload = switch (status) {
             case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);

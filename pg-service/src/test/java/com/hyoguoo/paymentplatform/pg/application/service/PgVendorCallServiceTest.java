@@ -58,7 +58,7 @@ class PgVendorCallServiceTest {
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         ObjectMapper objectMapper = new ObjectMapper();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
-        // K14: FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더) → selector가 항상 반환함
+        // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
         sut = new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                 new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock);
@@ -77,7 +77,7 @@ class PgVendorCallServiceTest {
     @Test
     @DisplayName("callVendor — 벤더 호출 성공 시 payment.events.confirmed + status=APPROVED outbox row 1건 INSERT")
     void callVendor_WhenSuccess_ShouldInsertApprovedOutboxRow() {
-        // given — T-A1: approvedAtRaw 포함 7-arg 생성자
+        // given — approvedAtRaw 포함 7-arg 생성자로 SUCCESS 결과 빌드
         PgConfirmResult successResult = new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
                 "2026-04-24T01:00:00Z");

@@ -74,8 +74,7 @@ public class PgFinalConfirmationGate {
     private final Clock clock;
 
     // -----------------------------------------------------------------------
-    // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응)
-    // F-12: enum + static class → sealed interface + record 패턴으로 통일
+    // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
     private sealed interface FcgOutcome
@@ -97,7 +96,7 @@ public class PgFinalConfirmationGate {
      * @param orderId    주문 ID
      * @param eventUuid  이벤트 UUID (향후 멱등성 키로 활용 예정)
      * @param amount     원화 금액
-     * @param vendorType PG 벤더 구분 (K14: PgStatusLookupStrategySelector 분기에 사용)
+     * @param vendorType PG 벤더 구분 — PgStatusLookupStrategySelector 분기에 사용
      */
     @Transactional
     public void performFinalCheck(String orderId, String eventUuid, long amount, PgVendorType vendorType) {
@@ -111,7 +110,7 @@ public class PgFinalConfirmationGate {
 
     private FcgOutcome queryStatusOnce(String orderId, PgVendorType vendorType) {
         try {
-            // K14: vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
+            // vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
             PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
             PgStatusResult statusResult = port.getStatusByOrderId(orderId);
             return mapStatusResult(statusResult);
@@ -157,8 +156,7 @@ public class PgFinalConfirmationGate {
     private void handleApproved(String orderId, String storedStatusResult, long amount) {
         pgInboxRepository.transitToApproved(orderId, storedStatusResult);
 
-        // T-A1: APPROVED payload 에 벤더 실측 amount + approvedAt(Clock fallback) 주입.
-        // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 사용한다.
+        // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 fallback 으로 사용한다.
         String approvedAtRaw = OffsetDateTime.now(clock).toString();
         String payload = buildApprovedPayload(orderId, amount, approvedAtRaw);
         PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
@@ -210,8 +208,7 @@ public class PgFinalConfirmationGate {
     }
 
     /**
-     * APPROVED payload 빌드.
-     * T-A1: amount + approvedAt 주입 — ADR-15 AMOUNT_MISMATCH 역방향 방어선.
+     * APPROVED payload 빌드 — amount 와 approvedAt 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
      */
     private String buildApprovedPayload(String orderId, long amount, String approvedAtRaw) {
         String eventUuid = UUID.randomUUID().toString();

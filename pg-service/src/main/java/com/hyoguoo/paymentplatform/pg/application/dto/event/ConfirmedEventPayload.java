@@ -8,9 +8,8 @@ import java.util.Objects;
  * payment.events.confirmed 토픽 payload — pg-service 발행 측.
  *
  * <p>payment-service {@code ConfirmedEventMessage} record 와 필드명·의미가 대칭이어야 한다.
- * 구조 변경 시 양쪽을 함께 갱신한다 (ADR-30: 공유 JAR 없이 pg-service 독립 복제).
- *
- * <p>K3: {@code @JsonPropertyOrder} 명시로 직렬화 순서 강제.
+ * 구조 변경 시 양쪽을 함께 갱신한다 — 공유 JAR 없이 독립 복제이므로
+ * {@code @JsonPropertyOrder} 로 직렬화 순서까지 강제하고
  * payment-service {@code ConfirmedEventSchemaParityTest} 가 양쪽 동기화를 검증한다.
  *
  * <p>Null 필드는 JSON 직렬화에서 제외 (APPROVED 에서 reasonCode 가 누락되는 등).
