@@ -236,14 +236,19 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
         PgConfirmResultStatus resultStatus = pgStatus == PgPaymentStatus.DONE
                 ? PgConfirmResultStatus.SUCCESS
                 : PgConfirmResultStatus.NON_RETRYABLE_FAILURE;
+        // NicePay paidAt 은 'yyyy-MM-dd'T'HH:mm:ss.SSSZ' (offset +0900, 콜론 없음).
+        // ConfirmedEventPayload.approvedAt contract 는 ISO_OFFSET_DATE_TIME (+09:00) 표준이므로
+        // payment-service PaymentConfirmResultUseCase.parseApprovedAt 의 OffsetDateTime.parse 가 거부한다.
+        // 정규화: OffsetDateTime.toString() → ISO_OFFSET_DATE_TIME 형식으로 변환해 contract 준수.
+        OffsetDateTime parsedPaidAt = parsePaidAtAsOffsetDateTime(response.paidAt());
         return new PgConfirmResult(
                 resultStatus,
                 response.tid(),
                 response.orderId(),
                 response.amount(),
-                parseApprovedAt(response.paidAt()),
+                parsedPaidAt != null ? parsedPaidAt.toLocalDateTime() : null,
                 null,
-                response.paidAt()   // T-A1: raw ISO-8601 문자열 보존 (ConfirmedEventPayload 직렬화 용)
+                parsedPaidAt != null ? parsedPaidAt.toString() : null
         );
     }
 
@@ -275,16 +280,20 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
     }
 
     private LocalDateTime parseApprovedAt(String paidAt) {
+        OffsetDateTime parsed = parsePaidAtAsOffsetDateTime(paidAt);
+        return parsed != null ? parsed.toLocalDateTime() : null;
+    }
+
+    private OffsetDateTime parsePaidAtAsOffsetDateTime(String paidAt) {
         if (paidAt == null || paidAt.isBlank()) {
             return null;
         }
         try {
-            return OffsetDateTime.parse(paidAt, NicepayPaymentApiResponse.DATE_TIME_FORMATTER)
-                    .toLocalDateTime();
+            return OffsetDateTime.parse(paidAt, NicepayPaymentApiResponse.DATE_TIME_FORMATTER);
         } catch (DateTimeParseException e) {
             LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
                     () -> "paidAt 파싱 실패 fallback=now paidAt=" + paidAt);
-            return LocalDateTime.now();
+            return OffsetDateTime.now();
         }
     }
 
