@@ -17,21 +17,16 @@ import org.slf4j.MDC;
 import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
- * T-I2 RED — AsyncConfig.outboxRelayExecutor ContextExecutorService.wrap 검증.
+ * AsyncConfig.outboxRelayExecutor 의 ContextExecutorService.wrap 적용 검증.
  *
- * <p>현재 MdcTaskDecorator 만 적용된 구현은 MDC 는 전파하지만
- * OpenTelemetry Context (별도 ThreadLocal) 는 전파하지 않는다.
+ * <p>MdcTaskDecorator 만 적용하면 MDC 는 전파되지만 OpenTelemetry Context(별도 ThreadLocal)는 누락된다.
+ * ContextExecutorService.wrap 으로 교체하면 ContextRegistry 에 등록된 accessor 를 통해
+ * MDC + OTel context 양쪽이 모두 승계된다.
  *
- * <p>ContextExecutorService.wrap 으로 교체하면 MDC + OTel Tracing context 양쪽 모두
- * ContextRegistry 에 등록된 accessor 경유 전파된다.
- *
- * <p>TC1 — OTel Context.current() 의 커스텀 키 값이 VT 경계에서 승계된다.
- *   MdcTaskDecorator 는 MDC ThreadLocal 만 복사하므로 OTel Context 는 VT 에 전파되지 않아
- *   capturedValue == null → FAIL 확인.
- *
- * <p>TC2 — MDC 값 또한 VT 경계에서 승계된다 (ContextExecutorService.wrap 이 MDC 도 캡처).
+ * <p>TC1 — OTel Context.current() 의 커스텀 키 값이 VT 경계에서 승계된다(wrap 이전엔 capturedValue==null).
+ * <p>TC2 — MDC 값도 VT 경계에서 승계된다(wrap 이 MDC 도 캡처).
  */
-@DisplayName("T-I2 AsyncConfig.outboxRelayExecutor — ContextExecutorService 전파 검증")
+@DisplayName("AsyncConfig.outboxRelayExecutor — ContextExecutorService 전파 검증")
 class AsyncConfigContextPropagationTest {
 
     private static final String TRACE_ID_KEY = "traceId";

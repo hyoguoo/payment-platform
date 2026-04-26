@@ -8,8 +8,7 @@ import lombok.Getter;
 
 /**
  * 상품 애그리거트 루트.
- * payment-service의 product 도메인에서 복사 이관 (T3-01).
- * payment-service 원본 삭제는 후속 태스크(T3-06) 범위.
+ * payment-service 의 product 도메인에서 복제 이관됐다 — payment-service 원본 삭제는 별도 작업으로 분리한다.
  */
 @Getter
 @Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")

@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * PaymentStockCachePort Fake — in-memory 구현체 (product-service 테스트 전용).
  * <p>
- * T3-03 신설 — T3-04(StockCommitUseCase) 단위 테스트에서 SET 호출 횟수·순서를 assert.
+ * StockCommitUseCase 단위 테스트에서 SET 호출 횟수·순서를 assert 하기 위한 in-memory fake.
  * <p>
  * 제공 기능:
  * <ul>

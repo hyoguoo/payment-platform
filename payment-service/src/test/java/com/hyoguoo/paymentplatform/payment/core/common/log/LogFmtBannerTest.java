@@ -14,12 +14,12 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 /**
- * T-F3 RED — LogFmt.banner 헬퍼 단위 테스트.
+ * LogFmt.banner 헬퍼 단위 테스트.
  *
- * <p>LogFmt.banner(Logger, Level, String... lines) 호출 시
- * 지정한 레벨로 각 라인이 개별 로그 이벤트로 기록됨을 검증한다.
+ * <p>LogFmt.banner(Logger, Level, String... lines) 호출 시 지정한 레벨로 각 라인이
+ * 개별 로그 이벤트로 기록되는지 검증한다.
  */
-@DisplayName("LogFmt.banner 헬퍼 단위 테스트 (T-F3 RED)")
+@DisplayName("LogFmt.banner 헬퍼 단위 테스트")
 class LogFmtBannerTest {
 
     private static final org.slf4j.Logger SLF4J_LOG =

@@ -8,10 +8,9 @@ import java.time.Instant;
  * ADR-30(공통 jar 금지): payment-service StockCommittedEvent를 직접 참조하지 않고
  * product-service 독립 record로 복제한다.
  * <p>
- * K3: orderId 타입을 Long에서 String으로 통일.
- * producer(payment-service StockCommittedEvent)의 orderId가 String이므로
- * consumer도 동일 타입으로 수신해야 형 변환 충돌이 없다.
- * expiresAt은 producer가 직접 채워 전송 — consumer fallback은 하위 호환용으로 유지.
+ * orderId 는 producer(payment-service StockCommittedEvent) 와 타입을 맞춰 String 으로 둔다 —
+ * 그래야 형 변환 충돌이 없다. expiresAt 은 producer 가 직접 채워 전송하며, consumer 의 fallback 은
+ * 구버전 페이로드와의 하위 호환 용도로만 남긴다.
  * <p>
  * 필드:
  * <ul>

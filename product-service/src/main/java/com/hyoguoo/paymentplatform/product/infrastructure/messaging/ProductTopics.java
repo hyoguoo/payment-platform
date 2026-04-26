@@ -14,22 +14,20 @@ import lombok.NoArgsConstructor;
 public final class ProductTopics {
 
     /**
-     * 전 상품 재고 스냅샷 발행 토픽.
-     * payment-service T1-17 warmup consumer가 구독 — Phase 1.17 pair.
+     * 전 상품 재고 스냅샷 발행 토픽 — payment-service warmup consumer 가 구독한다.
      */
     public static final String EVENTS_STOCK_SNAPSHOT = "product.events.stock-snapshot";
 
     /**
-     * payment-service가 발행하는 재고 확정 커밋 이벤트 토픽.
-     * product-service T3-04 StockCommitConsumer가 구독.
-     * ADR-30: 발행 주체(payment-service)와 상관없이 consumer 측도 상수 독립 선언.
+     * payment-service 가 발행하는 재고 확정 커밋 이벤트 토픽.
+     * product-service StockCommitConsumer 가 구독한다.
+     * 발행 주체와 상관없이 consumer 측도 상수를 독립 선언한다.
      */
     public static final String PAYMENT_EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
 
     /**
-     * payment-service T3-04b(FailureCompensationService)가 발행하는 재고 복원 보상 이벤트 토픽.
-     * product-service T3-05 StockRestoreConsumer가 구독.
-     * ADR-16: 보상 dedupe 소유 = consumer 측.
+     * payment-service FailureCompensationService 가 발행하는 재고 복원 보상 이벤트 토픽.
+     * product-service StockRestoreConsumer 가 구독하고, 보상 dedupe 의 소유는 consumer 측이다.
      */
     public static final String STOCK_EVENTS_RESTORE = "stock.events.restore";
 }

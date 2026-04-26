@@ -15,8 +15,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * confirm 요청 스레드는 즉시 반환되고, relay는 별도 VT에서 수행된다.
  * Tomcat 워커 스레드(플랫폼 스레드)는 점유되지 않는다.
  *
- * <p>T-I2: {@link ContextAwareVirtualThreadExecutors#newWrappedVirtualThreadExecutor()} 로
- * @Async 경계에서 MDC(SLF4J) + OpenTelemetry Tracing context 를 모두 승계한다.
+ * <p>{@link ContextAwareVirtualThreadExecutors#newWrappedVirtualThreadExecutor()} 로
+ * {@code @Async} 경계에서 MDC(SLF4J) + OpenTelemetry Tracing context 를 모두 승계한다.
  * OTel Context + Micrometer ContextRegistry 이중 래핑 세부 사항은 헬퍼 Javadoc 참조.
  *
  * <p>레거시 {@code MdcTaskDecorator} 는 MDC 만 복사하고 OTel Context ThreadLocal 은 무시하므로

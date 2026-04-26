@@ -21,7 +21,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     private final Map<String, PaymentEvent> store = new ConcurrentHashMap<>();
     private final AtomicInteger saveOrUpdateCount = new AtomicInteger(0);
 
-    /** K15: saveOrUpdate 직접 호출 횟수 — PaymentCommandUseCase 위임 검증용. */
+    /** saveOrUpdate 직접 호출 횟수 — PaymentCommandUseCase 위임 검증용. */
     public int saveOrUpdateCallCount() {
         return saveOrUpdateCount.get();
     }

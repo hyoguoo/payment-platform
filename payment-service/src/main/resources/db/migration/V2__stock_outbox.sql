@@ -1,7 +1,6 @@
--- T-J1: stock_outbox 테이블 신설
--- stock commit/restore 이벤트 발행에 Transactional Outbox 패턴 적용.
--- pg_outbox 와 동일 구조 (ADR-19 복제(b) 방침).
--- payment_outbox 의 order_id UNIQUE 제약과 달리 id PK만 — 다중 productId 지원.
+-- stock_outbox 테이블 신설 — stock commit/restore 이벤트 발행에 transactional outbox 패턴 적용.
+-- pg_outbox 와 동일 구조이지만 공유 lib 없이 독립 복제하며, payment_outbox 와 달리 order_id UNIQUE 제약이 없다
+-- (한 주문이 여러 productId 에 대해 별도 row 를 갖는다).
 
 CREATE TABLE stock_outbox (
     id              BIGINT       NOT NULL AUTO_INCREMENT,

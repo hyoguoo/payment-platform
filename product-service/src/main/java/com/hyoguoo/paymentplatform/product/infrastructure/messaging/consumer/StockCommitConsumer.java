@@ -41,15 +41,12 @@ public class StockCommitConsumer {
     /**
      * payment.events.stock-committed 메시지를 수신하여 재고 확정 커밋을 실행한다.
      *
-     * <p>T-I6: expiresAt null fallback — Producer(payment-service StockCommittedEvent)가
-     * expiresAt 을 미전송할 경우(스키마 불일치), Jackson 역직렬화 시 null 이 된다.
-     * null 이면 {@code occurredAt + DEDUPE_TTL} 로 계산하고,
-     * occurredAt 도 null 이면 {@code Instant.now() + DEDUPE_TTL} 로 fallback 한다.
-     * 사전 메시지(구버전 페이로드)와의 하위 호환 유지 목적.
+     * <p>expiresAt 이 null 이면 {@code occurredAt + DEDUPE_TTL} 로 계산하고,
+     * occurredAt 도 null 이면 {@code Instant.now() + DEDUPE_TTL} 로 fallback 한다 —
+     * producer 가 expiresAt 을 미전송하던 구버전 페이로드와의 하위 호환 유지 목적이다.
      *
-     * <p>K3: orderId 타입이 String으로 통일됨.
-     * producer(payment-service)가 orderId를 직접 채워 전송하므로 fallback 0L 불필요.
-     * orderId null 이면 빈 문자열로 fallback (하위 호환 — 구버전 producer 대응).
+     * <p>orderId 는 String 으로 통일됐고 producer 가 직접 채워 전송한다.
+     * null 인 경우엔 빈 문자열로 fallback 하여 구버전 producer 대응만 남긴다.
      *
      * @param message 역직렬화된 StockCommittedMessage
      */

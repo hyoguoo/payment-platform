@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * PaymentConfirmDlqPublisher Fake — in-memory 캡처 구현체 (테스트 전용).
- * T-C3: remove 실패 시 DLQ 전송 경로 검증용.
+ * dedupe remove 실패 시 DLQ 전송 경로 검증용.
  */
 public class FakePaymentConfirmDlqPublisher implements PaymentConfirmDlqPublisher {
 

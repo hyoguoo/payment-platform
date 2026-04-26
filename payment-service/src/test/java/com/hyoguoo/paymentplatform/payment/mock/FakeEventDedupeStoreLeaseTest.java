@@ -11,8 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * T-C3 RED — FakeEventDedupeStore two-phase lease 의미 검증.
- * EventDedupeStore.markWithLease / extendLease / boolean remove 시나리오.
+ * FakeEventDedupeStore two-phase lease 계약 검증 —
+ * markWithLease / extendLease / boolean remove 시나리오를 다룬다.
  */
 @DisplayName("FakeEventDedupeStore — two-phase lease 계약")
 class FakeEventDedupeStoreLeaseTest {

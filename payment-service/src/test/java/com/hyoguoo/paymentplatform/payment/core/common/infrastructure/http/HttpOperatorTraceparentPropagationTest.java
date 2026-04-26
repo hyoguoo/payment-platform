@@ -15,22 +15,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * T-E2 GREEN — HttpOperatorImpl(payment-service) Boot auto-config Builder 주입 구조 검증.
+ * HttpOperatorImpl(payment-service) Builder 주입 구조 검증.
  *
- * <p>설계 결정 D6: Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서
- * {@code ObservationRegistry} 를 자동 설정한다. Builder 를 생성자로 주입받기만 하면
- * HTTP 경계에서 traceparent 자동 전파 가능.
- *
- * <p>이 테스트는 Builder 생성자 주입 구조를 검증한다:
- * <ul>
- *   <li>RED: 생성자가 없어 컴파일 에러 (이전 {@code @PostConstruct} 수동 빌드 구조)</li>
- *   <li>GREEN: {@code WebClient.Builder} 생성자 추가 후 정상 HTTP 호출 성공</li>
- * </ul>
- *
- * <p>실제 {@code traceparent} 전파는 Spring Boot auto-config + micrometer-tracing-bridge-otel
- * 가 활성화된 운영 환경에서 보장된다. 단위 테스트에서는 Builder 주입 구조의 정합성만 검증.
+ * <p>Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서 {@code ObservationRegistry} 를
+ * 자동 설정한다. Builder 를 생성자로 주입받기만 하면 HTTP 경계에서 traceparent 가 자동 전파된다.
+ * 실제 전파는 Boot auto-config + micrometer-tracing-bridge-otel 이 활성화된 운영 환경에서 보장되며,
+ * 이 단위 테스트는 Builder 주입 구조의 정합성만 검증한다.
  */
-@DisplayName("T-E2 HttpOperatorImpl(payment-service) Builder 주입 구조 검증")
+@DisplayName("HttpOperatorImpl(payment-service) Builder 주입 구조 검증")
 class HttpOperatorTraceparentPropagationTest {
 
     private MockWebServer mockWebServer;

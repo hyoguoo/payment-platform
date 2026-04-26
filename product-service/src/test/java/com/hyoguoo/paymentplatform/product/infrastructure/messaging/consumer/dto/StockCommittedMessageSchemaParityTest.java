@@ -70,7 +70,7 @@ class StockCommittedMessageSchemaParityTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: StockCommittedMessage.orderId 타입이 String이어야 한다 (K3: Long 폐기)
+    // TC3: StockCommittedMessage.orderId 타입이 String 이어야 한다 (Long 사용 금지)
     // -----------------------------------------------------------------------
 
     @Test

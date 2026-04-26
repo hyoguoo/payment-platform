@@ -8,11 +8,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * EventDedupeStore Fake — in-memory 구현체 (payment-service 전용).
- * ADR-04(2단 멱등성 키): 메시지 레벨 eventUUID dedupe 테스트용.
- * ADR-30: pg-service의 FakeEventDedupeStore와 독립 복제 — 공통 lib 금지.
+ * 메시지 레벨 eventUuid dedupe 테스트용으로, pg-service Fake 와는 공유 없이 독립 복제된 구조다.
  *
- * <p>T-C3: Clock 주입으로 TTL 만료 시뮬레이션 지원.
- * markWithLease(shortTtl) → extendLease(longTtl) → remove 패턴 준수.
+ * <p>Clock 주입으로 TTL 만료 시뮬레이션을 지원하며,
+ * markWithLease(shortTtl) → extendLease(longTtl) → remove 패턴을 따른다.
  *
  * <p>Thread-safe: ConcurrentHashMap 기반.
  */
@@ -33,7 +32,7 @@ public class FakeEventDedupeStore implements EventDedupeStore {
     }
 
     // -----------------------------------------------------------------------
-    // T-C3 two-phase lease API
+    // two-phase lease API
     // -----------------------------------------------------------------------
 
     @Override

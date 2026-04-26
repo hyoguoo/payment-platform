@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.product.presentation.port;
 
 /**
  * 재고 복원 인바운드 포트 (presentation 계층 진입점).
- * stock.events.restore 이벤트 소비 → 재고 원복 — T3-05에서 구현 완성.
+ * stock.events.restore 이벤트를 소비해 재고를 원복한다.
  */
 public interface StockRestoreCommandService {
 

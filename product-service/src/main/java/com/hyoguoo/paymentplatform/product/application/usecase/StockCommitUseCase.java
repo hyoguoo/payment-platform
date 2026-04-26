@@ -49,9 +49,9 @@ public class StockCommitUseCase {
      * 2. RDB: 재고 조회 → qty 감소 → save
      * 3. RDB UPDATE 성공 후 Redis SET
      *
-     * <p>K3: orderId 타입을 String으로 변경 — producer(StockCommittedEvent)와 타입 통일.
-     * payment-service의 orderId는 "order-xxx" 형태의 String이므로 long 파싱 불가.
-     * orderId는 로깅·추적 용도로만 사용되므로 String 그대로 처리.
+     * <p>orderId 는 producer(StockCommittedEvent) 와 타입을 통일해 String 으로 둔다.
+     * payment-service 의 orderId 는 "order-xxx" 형태이므로 long 으로 파싱할 수 없다.
+     * 여기서는 로깅·추적 용도로만 사용하므로 String 그대로 처리한다.
      *
      * @param eventUUID 이벤트 식별자 (dedupe 키)
      * @param orderId   주문 ID (String, 추적 메타데이터)

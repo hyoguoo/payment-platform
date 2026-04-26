@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * StockRepository Fake — in-memory 구현체 (product-service 테스트 전용).
  * <p>
  * Thread-safe: ConcurrentHashMap.compute 로 원자적 increment/decrement 보장.
- * T3-03 신설 — T3-04 이후 StockCommitUseCase 단위 테스트에서 소비 예정.
+ * StockCommitUseCase 단위 테스트에서 소비한다.
  */
 public class FakeStockRepository implements StockRepository {
 

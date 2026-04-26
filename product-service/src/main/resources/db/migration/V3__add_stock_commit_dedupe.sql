@@ -1,7 +1,6 @@
 -- product-service V3 — stock_commit_dedupe 테이블 신설
--- T3-04: StockCommitConsumer eventUUID dedupe 전용 테이블.
--- T3-05에서 stock.events.restore 보상 이벤트 dedupe(V2)와 별개 스키마로 관리.
--- NOTE: V2는 T3-05(FailureCompensationService)에서 신설 예정.
+-- StockCommitConsumer 의 eventUUID dedupe 전용 테이블.
+-- stock.events.restore 보상 이벤트 dedupe 는 V2 의 product_event_dedupe 와 별개 스키마로 관리한다.
 
 CREATE TABLE IF NOT EXISTS stock_commit_dedupe
 (

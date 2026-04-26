@@ -10,8 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * StockOutboxRepository Fake — 단위 테스트용 in-memory 구현.
- * T-J1: stock outbox 패턴 테스트 지원.
+ * StockOutboxRepository Fake — 단위 테스트용 in-memory 구현. stock outbox 패턴 테스트 지원.
  */
 public class FakeStockOutboxRepository implements StockOutboxRepository {
 

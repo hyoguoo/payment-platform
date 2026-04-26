@@ -6,7 +6,6 @@ import java.util.Optional;
 
 /**
  * 재고 outbound 포트.
- * T3-01 스캐폴드 — DB 어댑터 구현은 T3-05에서 완성.
  */
 public interface StockRepository {
 

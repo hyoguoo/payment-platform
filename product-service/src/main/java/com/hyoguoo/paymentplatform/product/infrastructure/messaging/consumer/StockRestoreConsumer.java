@@ -14,11 +14,9 @@ import org.springframework.stereotype.Component;
 /**
  * stock.events.restore 토픽 Kafka consumer.
  * <p>
- * payment-service T3-04b(FailureCompensationService)가 발행한 보상 이벤트를 소비한다.
- * 메시지를 파싱하여 StockRestoreCommandService(inbound port)로 위임한다.
- * <p>
- * ADR-16: dedupe·재고 복원 로직은 StockRestoreUseCase(application)에서 처리.
- * consumer 내부에서 dedupe·stock 직접 로직 금지.
+ * payment-service FailureCompensationService 가 발행한 보상 이벤트를 소비한다.
+ * 메시지를 파싱해 StockRestoreCommandService(inbound port) 로 위임할 뿐, dedupe·재고 복원 로직은
+ * StockRestoreUseCase 가 담당한다 — consumer 내부에서 직접 처리하지 않는다.
  * <p>
  * T3.5-02 규약: infra @ConditionalOnProperty는 matchIfMissing=false(기본).
  * spring.kafka.bootstrap-servers 미명시 시 빈 자체가 등록되지 않는다.

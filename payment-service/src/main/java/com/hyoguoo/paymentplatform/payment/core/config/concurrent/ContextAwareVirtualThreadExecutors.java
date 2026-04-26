@@ -12,8 +12,7 @@ import java.util.concurrent.Executors;
  * <p>(1) {@link Context#taskWrapping(ExecutorService)} — OTel Context ThreadLocal 전파.
  * (2) {@link ContextExecutorService#wrap} — Micrometer ContextRegistry(MDC 등) 전파.
  *
- * <p>두 ThreadLocal 은 서로 다른 storage 라 양쪽 적용 필수.
- * 누락 시 traceparent 회귀 가능 — T-I2 / T-J3 / T-J4 라운드 검증 사례 참조.
+ * <p>두 ThreadLocal 은 서로 다른 storage 라 양쪽 적용이 필수다 — 누락 시 traceparent 가 끊기는 회귀가 발생한다.
  */
 public final class ContextAwareVirtualThreadExecutors {
 
