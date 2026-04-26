@@ -30,37 +30,36 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * payment.events.confirmed 소비 후 결제 상태 분기 use-case.
- * ADR-04(2단 멱등성): eventUUID dedupe 선행, 처리 주체 결정.
- * ADR-14: stock 이벤트 ApplicationEvent 발행(commit/restore) 담당.
  *
- * <p>T-J1: AFTER_COMMIT stock Kafka 발행 회귀 완전 해소.
- * TX 내부에서 stock_outbox INSERT → StockOutboxReadyEvent 발행.
- * AFTER_COMMIT 리스너(StockOutboxImmediateEventHandler)가 @Async("outboxRelayExecutor")로
- * relay를 수행한다. outboxRelayExecutor의 T-I2 이중 래핑이 OTel Context + MDC를
- * submit 시점에 캡처하여 VT에서 정확히 복원 → traceparent 회귀 없음.
- * T-D2~T-I10의 ContextSnapshot/OTel/Observation 활성화 시도 경로 철거.
+ * <p>2 단 멱등성: eventUuid dedupe 가 선행하고 그 다음 orderId 로 PaymentEvent 를 조회한다.
+ * stock 이벤트 발행은 ApplicationEvent 로 위임해 TX 경계와 직접 결합하지 않는다.
  *
- * <p>T-C3 two-phase lease 패턴:
+ * <p>stock 이벤트 발행 경로: TX 내부에서 stock_outbox row 를 INSERT 하고
+ * {@link StockOutboxReadyEvent} 를 발행한다. AFTER_COMMIT 리스너가 비동기로 relay 를 트리거하며,
+ * relay executor 가 OTel Context 와 MDC 를 submit 시점에 캡처해 VT 에서 복원하므로
+ * traceparent 가 끊기지 않는다. 직접 KafkaTemplate.send 를 호출하면 이 보장이 깨진다.
+ *
+ * <p>two-phase lease:
  * <ol>
- *   <li>진입 시 {@code markWithLease(eventUuid, leaseTtl)} — shortTtl(기본 5분) 잠금</li>
- *   <li>processMessage 성공 후 {@code extendLease(eventUuid, longTtl)} — P8D로 연장</li>
- *   <li>실패 시 {@code remove(eventUuid)} — 재컨슘 허용. remove false이면 DLQ 전송</li>
+ *   <li>진입 시 {@code markWithLease(eventUuid, leaseTtl)} — short TTL(기본 5 분) 로 잠금. false 이면 다른 consumer 가 이미 처리 중.</li>
+ *   <li>processMessage 성공 후 {@code extendLease(eventUuid, longTtl)} — Kafka retention + 버퍼(8 일) 로 연장.</li>
+ *   <li>실패 시 {@code remove(eventUuid)} — 재컨슘 허용. remove false 면 DLQ 발행으로 dedupe 영구 잠금 방지.</li>
  * </ol>
  *
  * <p>상태 분기:
  * <ul>
- *   <li>APPROVED → PaymentEvent DONE 전이 + stock_outbox INSERT(commit) + StockOutboxReadyEvent</li>
- *   <li>FAILED → PaymentEvent FAILED 전이 + FailureCompensationService.compensate(outbox INSERT + event)</li>
- *   <li>QUARANTINED → QuarantineCompensationHandler.handle(FCG 진입점) 위임</li>
+ *   <li>APPROVED → PaymentCommandUseCase.markPaymentAsDone 위임 + stock_outbox INSERT + StockOutboxReadyEvent</li>
+ *   <li>FAILED → PaymentCommandUseCase.markPaymentAsFail 위임 + FailureCompensationService.compensate(per order)</li>
+ *   <li>QUARANTINED → QuarantineCompensationHandler.handle 위임 (FCG 진입점)</li>
  * </ul>
  */
 @Slf4j
 @Service
 public class PaymentConfirmResultUseCase {
 
-    /** T-C3: processMessage 성공 전 초기 lease TTL. 기본 5분. */
+    /** processMessage 성공 전 초기 lease TTL. 기본 5 분 — short TTL 로 처리 권한만 잠근다. */
     static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(5);
-    /** T-C3: processMessage 성공 후 연장 TTL. Kafka retention(7d) + 버퍼(1d) = 8d. */
+    /** processMessage 성공 후 연장 TTL. Kafka retention(7 일) + 복구 버퍼(1 일) = 8 일. */
     static final Duration DEFAULT_LONG_TTL = Duration.ofDays(8);
 
     private final PaymentEventRepository paymentEventRepository;
@@ -72,14 +71,11 @@ public class PaymentConfirmResultUseCase {
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
     private final StockOutboxRepository stockOutboxRepository;
     private final ObjectMapper objectMapper;
-    /** T-C3: processMessage 성공 전 초기 lease TTL. 기본 5분. K6: 생성자 파라미터 @Value로 이전. */
     private final Duration leaseTtl;
-    /** T-C3: processMessage 성공 후 연장 TTL. K6: 생성자 파라미터 @Value로 이전. */
     private final Duration longTtl;
     /**
-     * K15: 상태 전이 위임 use-case.
-     * AOP(@PublishDomainEvent + @PaymentStatusChange)가 Spring Bean 메서드를 통해 작동하므로
-     * self-invocation 우회를 방지하기 위해 외부 빈 경유 필수.
+     * 상태 전이 위임 use-case. self-invocation 으로 호출하면
+     * {@code @PublishDomainEvent} / {@code @PaymentStatusChange} AOP 가 적용되지 않으므로 외부 빈을 통해 호출해야 한다.
      */
     private final PaymentCommandUseCase paymentCommandUseCase;
 
@@ -111,31 +107,28 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * T-C3 two-phase lease:
-     * 1) markWithLease(shortTtl) — 처리 권한 획득. false이면 다른 consumer가 처리 중 → skip.
-     * 2) processMessage 성공 → extendLease(longTtl).
-     * 3) processMessage 실패 → remove. remove false이면 DLQ 전송 후 예외 재전파.
+     * two-phase lease 진입점:
+     * <ol>
+     *   <li>markWithLease(shortTtl) — 처리 권한 획득. false 면 다른 consumer 가 처리 중 → skip.</li>
+     *   <li>processMessage 성공 → extendLease(longTtl).</li>
+     *   <li>processMessage 실패 → remove. remove false 면 DLQ 전송 후 예외 재전파.</li>
+     * </ol>
      */
     @Transactional(timeout = 5)
     public void handle(ConfirmedEventMessage message) {
-        // 1단: eventUUID lease dedupe
         if (!eventDedupeStore.markWithLease(message.eventUuid(), leaseTtl)) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DEDUPE,
                     () -> "orderId=" + message.orderId() + " eventUuid=" + message.eventUuid());
             return;
         }
 
-        // TX 경계 불일치 방어: processMessage 실패 시 dedupe 기록 제거 → 재컨슘 허용
-        // remove 실패(Redis flap) 시 dedupe 영구 잠금 → DLQ 전송으로 복구 경로 보장
+        // 실패 시 dedupe 기록을 제거해 재컨슘을 허용한다.
+        // 단 remove 자체가 실패하면(예: Redis 일시 장애) dedupe 가 영구 잠겨버리므로 DLQ 로 보내 복구 경로를 남긴다.
         processMessageWithLeaseGuard(message);
     }
 
     /**
-     * processMessage 호출 후 성공/실패 분기:
-     * - 성공: extendLease로 TTL 연장
-     * - 실패: remove 시도. remove false이면 DLQ 발행 후 예외 재전파
-     *
-     * <p>try 블록 내 외부 변수 재할당 금지 규약 준수 — private 메서드로 추출.
+     * 성공 시 TTL 연장, 실패 시 remove 시도 후 예외 재전파.
      */
     private void processMessageWithLeaseGuard(ConfirmedEventMessage message) {
         try {
@@ -163,7 +156,6 @@ public class PaymentConfirmResultUseCase {
     }
 
     private void processMessage(ConfirmedEventMessage message) {
-        // 2단: orderId로 PaymentEvent 조회
         PaymentEvent paymentEvent = paymentEventRepository
                 .findByOrderId(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
@@ -172,7 +164,6 @@ public class PaymentConfirmResultUseCase {
                 () -> "orderId=" + message.orderId() + " status=" + message.status()
                         + " eventUuid=" + message.eventUuid());
 
-        // 3단: status별 분기
         switch (message.status()) {
             case "APPROVED" -> handleApproved(paymentEvent, message);
             case "FAILED" -> handleFailed(paymentEvent, message.reasonCode());
@@ -183,20 +174,16 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * APPROVED 결과 처리.
+     * APPROVED 결과 처리. 벤더가 한 번 승인한 후 우리 시스템이 다시 한 번 검증한다 — amount 와 approvedAt.
      *
-     * <p>ADR-15 역방향 방어선:
      * <ol>
-     *   <li>수신 approvedAt null 방어 — null이면 {@link IllegalArgumentException}</li>
-     *   <li>수신 amount vs paymentEvent 총액 대조 — 불일치 시 AMOUNT_MISMATCH QUARANTINED 전이</li>
-     *   <li>일치 시 수신 approvedAt(OffsetDateTime→LocalDateTime 변환)을 done()에 주입</li>
+     *   <li>approvedAt null 방어 — null 이면 contract 위반이므로 즉시 예외</li>
+     *   <li>amount 가 paymentEvent 총액과 다르면 AMOUNT_MISMATCH 로 격리(DONE 전이 안 함)</li>
+     *   <li>둘 다 통과하면 수신 approvedAt 으로 PaymentCommandUseCase.markPaymentAsDone 위임</li>
      * </ol>
      *
-     * <p>T-J1: stock commit outbox 패턴.
-     * 기존 StockCommitRequestedEvent (T-D2~T-I10 경로) 철거.
-     * TX 내부에서 각 PaymentOrder에 대해 stock_outbox INSERT + StockOutboxReadyEvent 발행.
-     * AFTER_COMMIT 리스너(StockOutboxImmediateEventHandler)가 @Async("outboxRelayExecutor")로
-     * relay를 트리거한다. outboxRelayExecutor의 이중 래핑이 traceparent 정확히 전파.
+     * <p>stock commit 발행은 TX 내부에서 stock_outbox INSERT + {@link StockOutboxReadyEvent} 만 한다.
+     * 실 Kafka publish 는 AFTER_COMMIT 리스너가 비동기로 처리하므로 여기서는 KafkaTemplate.send 를 직접 부르지 않는다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
         LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
@@ -214,14 +201,9 @@ public class PaymentConfirmResultUseCase {
             return;
         }
 
-        // K15: PaymentCommandUseCase 경유 — AOP(@PublishDomainEvent+@PaymentStatusChange) 정상 작동.
-        // self-invocation 우회 방지: 외부 빈(paymentCommandUseCase proxy)을 통해 호출해야 AOP 가로챔.
+        // 외부 빈 경유 필수 — self-invocation 으로 호출하면 PaymentCommandUseCase 의 상태 전이 AOP 가 적용되지 않는다.
         paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt);
 
-        // T-J1: TX 내부 stock_outbox INSERT + StockOutboxReadyEvent 발행
-        // 기존 StockCommitRequestedEvent(T-D2~T-I10 경로) 철거.
-        // outboxRelayExecutor(@Async, T-I2 이중 래핑)가 submit 시점 OTel Context + MDC를
-        // VT에서 정확히 복원 → KafkaTemplate.observation-enabled=true 가 traceparent 자동 주입.
         LocalDateTime now = localDateTimeProvider.now();
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             StockOutbox outbox = buildStockCommitOutbox(paymentEvent, order, now);
@@ -233,40 +215,25 @@ public class PaymentConfirmResultUseCase {
                 () -> "orderId=" + paymentEvent.getOrderId());
     }
 
-    /**
-     * stock commit outbox row 빌드.
-     * F-7: StockOutboxFactory 에 위임한다.
-     */
     private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
-        // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
         Instant occurredAt = localDateTimeProvider.nowInstant();
         return StockOutboxFactory.buildStockCommitOutbox(paymentEvent, order, occurredAt, longTtl, now, objectMapper);
     }
 
     /**
-     * 수신 approvedAt 문자열을 LocalDateTime으로 파싱.
-     *
-     * @param approvedAtRaw ISO-8601 OffsetDateTime 문자열 (non-null 강제)
-     * @return LocalDateTime (UTC 기준 — OffsetDateTime.toLocalDateTime)
-     * @throws IllegalArgumentException approvedAt이 null인 경우
+     * 수신 approvedAt 문자열을 LocalDateTime 으로 변환.
+     * approvedAt 은 ISO_OFFSET_DATE_TIME contract(non-null) 위반 시 즉시 예외.
      */
     private static LocalDateTime parseApprovedAt(String approvedAtRaw) {
         if (approvedAtRaw == null) {
-            throw new IllegalArgumentException(
-                    "APPROVED 메시지에 approvedAt이 null입니다. ADR-15 방어선 위반.");
+            throw new IllegalArgumentException("APPROVED 메시지에 approvedAt 이 null 입니다.");
         }
         return OffsetDateTime.parse(approvedAtRaw).toLocalDateTime();
     }
 
     /**
-     * 수신 amount와 paymentEvent 총액을 대조.
-     *
-     * <p>paymentEvent.getTotalAmount()은 BigDecimal(scale=0 원화) — longValue()로 안전 변환.
-     * scale>0 케이스는 도메인 생성 시점에 이미 방어됨.
-     *
-     * @param paymentEvent 결제 이벤트
-     * @param receivedAmount 수신 amount (Long, nullable — null이면 대조 불가 → 불일치로 간주)
-     * @return true이면 불일치
+     * 수신 amount 와 paymentEvent 총액 대조. paymentEvent.getTotalAmount() 는 원화 정수(scale=0)만 들어오므로
+     * longValueExact 가 안전하다. 수신 amount 가 null 이면 비교 불가 → 불일치로 간주해 격리한다.
      */
     private static boolean isAmountMismatch(PaymentEvent paymentEvent, Long receivedAmount) {
         if (receivedAmount == null) {
@@ -277,21 +244,13 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * FAILED 결과 처리.
-     *
-     * <p>ADR-13/T3-04b: 재고 복원은 FailureCompensationService.compensate(orderId, productId, qty) 경유.
-     * 각 PaymentOrder의 실 수량(qty)을 전달해 product-service에서 정확한 재고가 복원된다.
-     * T-B2: qty=0 플레이스홀더 경로(publish(orderId, productIds)) 오버로드 철거 완료.
-     * T-J1: FailureCompensationService 내부에서 stock_outbox INSERT + StockOutboxReadyEvent 발행 —
-     *        실제 Kafka 발행은 AFTER_COMMIT 리스너 담당(ADR-04).
+     * FAILED 결과 처리. 상태 전이는 PaymentCommandUseCase 위임이고, 재고 복원은 PaymentOrder 별로
+     * 실 qty 와 함께 FailureCompensationService.compensate 를 부른다. compensate 내부에서
+     * stock_outbox INSERT + StockOutboxReadyEvent 발행을 한다 — 이 메서드는 그 책임을 가지지 않는다.
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        // K15: PaymentCommandUseCase 경유 — AOP(@PublishDomainEvent+@PaymentStatusChange) 정상 작동.
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
-        // stock.events.restore outbox INSERT: 각 주문 상품별 실 qty 포함 보상 이벤트 발행
-        // T-B1: FailureCompensationService 경유 — 결정론적 UUID(ADR-16) + 실 qty 전달
-        // T-J1: 내부에서 stock_outbox INSERT + StockOutboxReadyEvent 발행
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
             failureCompensationService.compensate(
                     paymentEvent.getOrderId(),
@@ -305,7 +264,6 @@ public class PaymentConfirmResultUseCase {
     }
 
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
-        // QUARANTINED 상태 전이는 handler 내부 책임 — consumer는 위임만
         quarantineCompensationHandler.handle(
                 paymentEvent.getOrderId(),
                 reasonCode
