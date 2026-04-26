@@ -36,7 +36,6 @@ public class ProductHttpAdapter implements ProductPort {
     private static final String STOCK_INCREASE_PATH = "/api/v1/products/stock/increase";
 
     private final HttpOperator httpOperator;
-    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
     private final String productServiceBaseUrl;
 
     public ProductHttpAdapter(

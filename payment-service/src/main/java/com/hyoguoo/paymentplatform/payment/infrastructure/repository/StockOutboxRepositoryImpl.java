@@ -9,8 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 /**
- * StockOutboxRepository 포트 JPA 구현체.
- * T-J1: stock_outbox 테이블 어댑터.
+ * StockOutboxRepository 포트 JPA 구현체 — stock_outbox 테이블 어댑터.
  */
 @Repository
 @RequiredArgsConstructor

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 /**
- * K6: OutboxWorker 생성자 파라미터 @Value로 이전 — ReflectionTestUtils 제거.
+ * OutboxWorker 단위 테스트 — 생성자 @Value 주입을 검증하므로 ReflectionTestUtils 미사용.
  */
 @DisplayName("OutboxWorker 테스트")
 class OutboxWorkerTest {

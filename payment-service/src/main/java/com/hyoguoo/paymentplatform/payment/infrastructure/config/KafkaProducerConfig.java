@@ -24,8 +24,8 @@ import org.springframework.kafka.core.ProducerFactory;
  *   <li>setDefaultTopic() 으로 발행 코드에서 토픽 문자열 누락/오타 가능성이 제거된다.</li>
  * </ul>
  *
- * <p>T-J1: stock publishing은 StockOutboxKafkaPublisher (StockOutboxPublisherPort 구현체)로 분리되었다.
- * 이 config는 payment.commands.confirm / stock_outbox / dlq 템플릿만 관리한다.
+ * <p>stock publishing 은 StockOutboxKafkaPublisher (StockOutboxPublisherPort 구현체) 로 분리되어 있다.
+ * 이 config 는 payment.commands.confirm / stock_outbox / dlq 템플릿만 관리한다.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -49,11 +49,11 @@ public class KafkaProducerConfig {
 
     /**
      * stock_outbox relay 전용 String KafkaTemplate.
-     * T-J1: stock_outbox row의 pre-serialized JSON payload를 재직렬화 없이 직접 발행.
-     * StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
-     * T-J2: ObservationRegistry 명시 wiring — 자체 생성 DefaultKafkaProducerFactory는 Boot
-     * auto-config의 ObservationRegistry interceptor wire-in을 받지 못하므로
-     * setObservationRegistry()로 직접 주입해 traceparent 전파 경로를 확보한다.
+     * stock_outbox row 의 pre-serialized JSON payload 를 재직렬화 없이 직접 발행하므로
+     * StringSerializer ProducerFactory 를 쓴다 — JsonSerializer 혼용을 차단한다.
+     * 자체 생성한 DefaultKafkaProducerFactory 는 Boot auto-config 의 ObservationRegistry
+     * interceptor wire-in 을 받지 못하므로 setObservationRegistry() 로 직접 주입해
+     * traceparent 전파 경로를 확보한다.
      */
     @Bean
     public KafkaTemplate<String, String> stockOutboxKafkaTemplate(
@@ -72,9 +72,9 @@ public class KafkaProducerConfig {
 
     /**
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
-     * T-C3: dedupe remove 실패 시 DLQ 전송용. String 페이로드(reason)만 전송.
-     * 별도 StringSerializer ProducerFactory 사용 — JsonSerializer 혼용 방지.
-     * T-J2: ObservationRegistry 명시 wiring (stockOutboxKafkaTemplate과 동일 패턴, 일관성).
+     * dedupe remove 실패 시 DLQ 로 String 페이로드(reason) 만 전송한다.
+     * 별도 StringSerializer ProducerFactory 사용으로 JsonSerializer 혼용을 차단하고,
+     * stockOutboxKafkaTemplate 과 같은 이유로 ObservationRegistry 를 명시 wiring 한다.
      */
     @Bean
     public KafkaTemplate<String, String> confirmedDlqKafkaTemplate(

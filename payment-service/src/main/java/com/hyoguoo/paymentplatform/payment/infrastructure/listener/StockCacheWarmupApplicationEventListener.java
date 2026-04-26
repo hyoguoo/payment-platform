@@ -40,7 +40,7 @@ public class StockCacheWarmupApplicationEventListener {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_RECOVERY_SKIPPED,
                 () -> "StockCacheWarmup: ApplicationReadyEvent 수신 — warmup 시작");
 
-        // Phase 1: product-service snapshot 발행 훅(T3-01)이 없으므로 빈 목록으로 warmup
+        // Phase 1: product-service snapshot 발행 훅이 미구현이라 빈 목록으로 warmup 한다.
         List<StockSnapshotEvent> snapshots = collectSnapshotsFromTopic();
         warmupService.applySnapshots(snapshots);
     }
@@ -54,8 +54,8 @@ public class StockCacheWarmupApplicationEventListener {
      * @return 수집된 snapshot 목록 (Phase 1: 빈 목록)
      */
     private List<StockSnapshotEvent> collectSnapshotsFromTopic() {
-        // Phase 1: snapshot 발행 훅(T3-01) 미구현 — 빈 목록 반환
-        // Phase 3+: KafkaConsumer로 product.events.stock-snapshot 토픽 전체 replay
+        // Phase 1: snapshot 발행 훅이 미구현이라 빈 목록을 반환한다.
+        // Phase 3+: KafkaConsumer 로 product.events.stock-snapshot 토픽 전체를 replay 할 예정.
         return List.of();
     }
 }

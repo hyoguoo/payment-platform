@@ -48,7 +48,7 @@ public class StockSnapshotWarmupConsumer {
         try {
             return objectMapper.readValue(payload, StockSnapshotEvent.class);
         } catch (JsonProcessingException e) {
-            // T-F2: JSON 파싱 예외만 포획 — RuntimeException 은 catch 없이 전파
+            // JSON 파싱 예외만 포획하고 RuntimeException 은 catch 하지 않고 전파한다.
             LogFmt.error(log, LogDomain.PRODUCT, EventType.STOCK_SNAPSHOT_PARSE_FAIL,
                     () -> "payload=" + payload + " error=" + e.getMessage());
             throw new IllegalStateException("stock snapshot 역직렬화 실패", e);

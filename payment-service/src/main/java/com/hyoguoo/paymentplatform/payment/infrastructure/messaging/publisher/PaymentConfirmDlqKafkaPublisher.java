@@ -16,8 +16,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * PaymentConfirmDlqPublisher Kafka 구현체.
- * T-C3: dedupe remove 실패 시 payment.events.confirmed.dlq 토픽으로 DLQ 이벤트를 전송한다.
+ * PaymentConfirmDlqPublisher Kafka 구현체 — dedupe remove 가 실패한 경우
+ * payment.events.confirmed.dlq 토픽으로 DLQ 이벤트를 전송한다.
  *
  * <p>payload: "eventUuid={uuid} reason={reason}" 문자열.
  * key: eventUuid (파티션 일관성 보장).
@@ -31,7 +31,6 @@ import org.springframework.stereotype.Component;
 public class PaymentConfirmDlqKafkaPublisher implements PaymentConfirmDlqPublisher {
 
     private final KafkaTemplate<String, String> confirmedDlqKafkaTemplate;
-    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
     private final long sendTimeoutMillis;
 
     public PaymentConfirmDlqKafkaPublisher(

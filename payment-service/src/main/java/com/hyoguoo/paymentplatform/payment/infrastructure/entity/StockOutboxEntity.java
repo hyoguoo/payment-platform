@@ -16,12 +16,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * stock_outbox 테이블 JPA 엔티티.
- * T-J1: stock commit/restore 이벤트 Transactional Outbox 패턴.
+ * stock_outbox 테이블 JPA 엔티티 — stock commit/restore 이벤트의 transactional outbox row.
  *
- * <p>ADR-19 복제(b): pg-service {@code PgOutboxEntity} 구조를 독립 복제.
- * V2__stock_outbox.sql 스키마와 1:1 매핑.
- * payment_outbox 의 UNIQUE 제약(order_id) 없음 — 다중 productId 지원.
+ * <p>pg-service {@code PgOutboxEntity} 와 동격 구조이지만 공유 JAR 없이 독립 복제한다.
+ * V2__stock_outbox.sql 스키마와 1:1 매핑이며, payment_outbox 와 달리 order_id UNIQUE 제약이 없다 —
+ * 한 주문이 여러 productId 에 대해 별도 row 를 INSERT 하기 때문이다.
  *
  * <p>컬럼 "key"는 MySQL 예약어여서 백틱으로 감싼다.
  */

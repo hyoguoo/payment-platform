@@ -15,7 +15,6 @@ public class OutboxWorker {
 
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final OutboxRelayService outboxRelayService;
-    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
     private final int batchSize;
     private final boolean parallelEnabled;
     private final int inFlightTimeoutMinutes;
@@ -52,9 +51,9 @@ public class OutboxWorker {
     }
 
     private void processParallel(List<PaymentOutbox> records) {
-        // Java 21 가상 스레드: try-with-resources로 자동 종료 (awaitTermination 불필요)
-        // T-J3: OTel Context + MDC 이중 래핑 — polling fallback 경로에서도 traceparent 정확히 propagate
-        // K7: ContextAwareVirtualThreadExecutors 헬퍼로 이중 래핑 boilerplate 통일
+        // Java 21 가상 스레드 — try-with-resources 로 자동 종료(awaitTermination 불필요).
+        // OTel Context + MDC 이중 래핑이 polling fallback 경로에서도 traceparent 를 그대로 전파한다.
+        // 이중 래핑 boilerplate 는 ContextAwareVirtualThreadExecutors 헬퍼로 통일한다.
         try (ExecutorService executor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()) {
             records.forEach(record -> executor.submit(() -> outboxRelayService.relay(record.getOrderId())));
         }

@@ -18,11 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 /**
- * KafkaMessagePublisher 단위 테스트.
- * T-J1: stock publishing은 StockOutboxKafkaPublisher로 분리되어 이 테스트에서 제거되었다.
- * 이 클래스는 payment.commands.confirm 토픽 단일 경로만 검증한다.
- *
- * <p>K6: sendTimeoutMillis 생성자 파라미터로 이전 — ReflectionTestUtils 제거.
+ * KafkaMessagePublisher 단위 테스트 — payment.commands.confirm 토픽 단일 경로만 검증한다.
+ * stock publishing 은 StockOutboxKafkaPublisher 로 분리되어 있어 이 테스트 범위 밖이다.
  */
 @ExtendWith(MockitoExtension.class)
 class KafkaMessagePublisherTest {

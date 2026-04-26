@@ -8,8 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /**
- * stock_outbox 테이블 Spring Data JPA 레포지토리.
- * T-J1: stock commit/restore 이벤트 outbox 패턴.
+ * stock_outbox 테이블 Spring Data JPA 레포지토리 — stock commit/restore 이벤트의 outbox 저장소.
  */
 public interface JpaStockOutboxRepository extends JpaRepository<StockOutboxEntity, Long> {
 

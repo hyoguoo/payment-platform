@@ -9,9 +9,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * EventDedupeStore Redis 구현체. ADR-04(2단 멱등성 키).
+ * EventDedupeStore Redis 구현체.
  *
- * <p>T-C3 two-phase lease 패턴:
+ * <p>two-phase lease 패턴:
  * <ul>
  *   <li>markWithLease: SET NX EX shortTtl — 처리 권한 예약</li>
  *   <li>extendLease: SET XX EX longTtl — 성공 후 TTL 연장</li>

@@ -8,10 +8,8 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ConfirmedEventMessage 단위 테스트.
- * T-A1: amount + approvedAt 필드 추가 RED 단계.
- *
- * <p>Jackson 역직렬화로 amount(Long)/approvedAt(String ISO-8601) 필드 파싱 검증.
+ * ConfirmedEventMessage Jackson 역직렬화 단위 테스트 —
+ * amount(Long) / approvedAt(String ISO-8601) 필드 파싱을 검증한다.
  */
 @DisplayName("ConfirmedEventMessage")
 class ConfirmedEventMessageTest {

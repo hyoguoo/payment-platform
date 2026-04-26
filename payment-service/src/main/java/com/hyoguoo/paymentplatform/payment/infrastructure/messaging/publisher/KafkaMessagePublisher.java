@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * ADR-04: KafkaTemplate 직접 호출은 이 클래스에만 허용된다.
  * Worker / RelayService 등 호출자는 반드시 MessagePublisherPort 인터페이스를 통해 발행한다.
  *
- * <p>T-J1: stock publishing은 StockOutboxKafkaPublisher / StockOutboxPublisherPort 로 분리되었다.
+ * <p>stock publishing 은 StockOutboxKafkaPublisher / StockOutboxPublisherPort 로 분리되어 있고,
  * 이 클래스는 payment.commands.confirm 토픽 단일 경로만 담당한다.
  *
  * <p>발행은 호출 스레드에서 블로킹 동기 방식이다. kafkaTemplate.send()가 반환하는
@@ -38,7 +38,6 @@ public class KafkaMessagePublisher implements MessagePublisherPort {
 
     private final KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate;
     private final String commandsConfirmTopic;
-    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
     private final long sendTimeoutMillis;
 
     public KafkaMessagePublisher(

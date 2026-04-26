@@ -46,7 +46,7 @@ public class DomainEventLoggingAspect {
 
             return result;
         } catch (Throwable e) {
-            // T-F2: Error(OOM 등)도 기록 후 re-throw — catch(Exception) 확장
+            // Error(OOM 등) 도 기록 후 re-throw — catch(Exception) 보다 넓게 잡는다.
             LogFmt.error(log, LogDomain.PAYMENT, EventType.ASPECT_PROCEED_ERROR,
                     () -> "aspect=DomainEventLoggingAspect error=" + e.getMessage());
             throw e;

@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * T-J1 RED: StockOutboxImmediateEventHandler
- * - StockOutboxReadyEvent 수신 → StockOutboxRelayService.relay(outboxId) 1회 호출
+ * StockOutboxImmediateEventHandler — StockOutboxReadyEvent 수신 시
+ * StockOutboxRelayService.relay(outboxId) 가 1회 호출되는지 검증한다.
  */
 @DisplayName("StockOutboxImmediateEventHandler — AFTER_COMMIT relay 위임 검증")
 class StockOutboxImmediateEventHandlerTest {

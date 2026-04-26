@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * StockOutboxPublisherPort 구현체 — String payload Kafka 발행 어댑터.
- * T-J1: stock_outbox row의 pre-serialized JSON String을 직접 발행한다.
+ * stock_outbox row 의 pre-serialized JSON String 을 직접 발행한다.
  *
  * <p>ADR-04: KafkaTemplate 직접 호출은 인프라 계층 publisher에서만 허용.
  * <p>stockOutboxKafkaTemplate(KafkaTemplate<String, String>)을 사용하므로
@@ -31,7 +31,6 @@ import org.springframework.stereotype.Component;
 public class StockOutboxKafkaPublisher implements StockOutboxPublisherPort {
 
     private final KafkaTemplate<String, String> stockOutboxKafkaTemplate;
-    /** K6: @Value 생성자 파라미터 주입 — 필드 final 부여. */
     private final long sendTimeoutMillis;
 
     public StockOutboxKafkaPublisher(

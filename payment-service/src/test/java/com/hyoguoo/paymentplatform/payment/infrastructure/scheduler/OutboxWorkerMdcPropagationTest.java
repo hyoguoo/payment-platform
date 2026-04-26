@@ -25,13 +25,11 @@ import org.mockito.Mockito;
 import org.slf4j.MDC;
 
 /**
- * T-E1 RED — OutboxWorker.processParallel VT MDC 전파 확인.
- *
- * <p>MDC에 traceId=X 설정 후 processParallel 경로에서
- * relay 람다 내부에서 동일 값이 읽혀야 한다.
- * ContextExecutorService.wrap 적용 전에는 VT 경계에서 MDC가 비어 FAIL 한다.
+ * OutboxWorker.processParallel 의 VT 경계 MDC 전파 검증.
+ * MDC 에 traceId=X 를 설정하고 processParallel 을 돌리면 relay 람다 안에서도 같은 값이 읽혀야 한다.
+ * ContextExecutorService.wrap 이 적용되지 않으면 VT 경계에서 MDC 가 비어 실패한다.
  */
-@DisplayName("OutboxWorker — processParallel MDC 전파 (T-E1 RED)")
+@DisplayName("OutboxWorker — processParallel MDC 전파")
 class OutboxWorkerMdcPropagationTest {
 
     private static final String TRACE_ID_KEY = "traceId";
@@ -45,11 +43,11 @@ class OutboxWorkerMdcPropagationTest {
 
     @BeforeEach
     void setUp() {
-        // T-E1: 단위 테스트 환경에서는 Spring context 가 없으므로 MDC accessor 를 수동 등록
+        // 단위 테스트 환경에선 Spring context 가 없으므로 MDC accessor 를 수동 등록한다.
         ContextRegistry.getInstance().registerThreadLocalAccessor(new Slf4jMdcThreadLocalAccessor());
         mockPaymentOutboxUseCase = Mockito.mock(PaymentOutboxUseCase.class);
         capturingRelayService = new CapturingOutboxRelayService(2);
-        // K6: 생성자 파라미터 @Value 이전 — ReflectionTestUtils 제거
+        // 생성자 @Value 주입 — ReflectionTestUtils 미사용
         outboxWorker = new OutboxWorker(mockPaymentOutboxUseCase, capturingRelayService, 10, true, 5);
     }
 
