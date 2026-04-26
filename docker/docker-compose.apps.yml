@@ -37,6 +37,8 @@ services:
         condition: service_healthy
       redis-dedupe:
         condition: service_healthy
+      redis-stock:
+        condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
@@ -44,6 +46,8 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATA_REDIS_HOST: redis-dedupe
       SPRING_DATA_REDIS_PORT: "6379"
+      REDIS_STOCK_HOST: redis-stock
+      REDIS_STOCK_PORT: "6379"
       DB_USERNAME: root
       DB_PASSWORD: payment123
       PRODUCT_ADAPTER_TYPE: http

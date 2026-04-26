@@ -25,6 +25,12 @@ spring:
       http:
         read-timeout-millis: 30000   # HttpOperatorImpl @Value 바인딩용 (범용 HTTP 타임아웃)
 
+payment:
+  cache:
+    stock-redis:
+      host: ${REDIS_STOCK_HOST:redis-stock}
+      port: ${REDIS_STOCK_PORT:6379}
+
 logging:
   level:
     root: INFO

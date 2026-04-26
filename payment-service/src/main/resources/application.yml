@@ -79,6 +79,12 @@ eureka:
     prefer-ip-address: true
 
 payment:
+  cache:
+    stock-redis:
+      # 재고 선차감 캐시 전용 Redis(redis-stock). dedupe / idempotency 용 redis-dedupe 와 분리.
+      # 로컬 실행 시 6380 으로 띄운 redis 가 필요. 테스트는 FakeStockCachePort 주입.
+      host: ${REDIS_STOCK_HOST:localhost}
+      port: ${REDIS_STOCK_PORT:6380}
   event-dedupe:
     ttl: P8D  # Kafka retention(7d) + 복구 버퍼(1d) = 8일. product-service StockRestoreUseCase.DEDUPE_TTL 과 정렬.
     lease-ttl: PT5M  # two-phase lease 의 처리 권한 초기 잠금 TTL. processMessage 성공 시 ttl(P8D)로 연장.
