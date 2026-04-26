@@ -17,12 +17,20 @@
 #   8. Eureka 등록 확인 + 접속 URL 안내
 #
 # 사용법:
-#   bash scripts/compose-up.sh                # 완전 재빌드 후 기동
+#   bash scripts/compose-up.sh                # 완전 재빌드 후 기동 (production 모드 — Toss/NicePay 둘 다 활성)
+#   bash scripts/compose-up.sh --mode fake    # FakePgGatewayStrategy 활성 (실 PG 키 불필요, smoke 시나리오 완주)
+#   bash scripts/compose-up.sh --mode prod    # production 모드 명시 (default 와 동일)
 #   bash scripts/compose-up.sh --skip-build   # bootJar 재빌드만 생략 (Docker image는 여전히 재빌드)
 #   bash scripts/compose-up.sh --skip-obs     # 관측성 스택 생략
 #   bash scripts/compose-up.sh --reset-db     # MySQL 볼륨 제거 후 완전 재기동 (Flyway 재실행)
 #   bash scripts/compose-up.sh --down         # 전체 종료 (볼륨 유지)
 #   bash scripts/compose-up.sh --clean        # 전체 종료 + 모든 볼륨 제거
+#
+# 모드 (--mode):
+#   prod (default) — Toss + NicePay 두 PG 전략 동시 활성 (vendorType 으로 selector 분기, K14)
+#                    실 PG 호출에 TOSS_SECRET_KEY / NICEPAY_CLIENT_KEY / NICEPAY_SECRET_KEY 필요
+#   fake           — FakePgGatewayStrategy 만 활성 (PG 호출 우회, traceparent E2E 검증용)
+#                    docker/docker-compose.smoke.yml override 적용
 #
 # 환경변수:
 #   TOSS_SECRET_KEY        — payment-service Toss 샌드박스 키
@@ -56,9 +64,14 @@ fi
 INFRA_COMPOSE="docker/docker-compose.infra.yml"
 APPS_COMPOSE="docker/docker-compose.apps.yml"
 OBS_COMPOSE="docker/docker-compose.observability.yml"
+SMOKE_COMPOSE="docker/docker-compose.smoke.yml"
 
-COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE}"
-COMPOSE_ARGS_ALL="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE}"
+# 모드 — prod (default, Toss/NicePay 동시 활성) / fake (FakePgGatewayStrategy)
+MODE="prod"
+
+# COMPOSE_ARGS 는 MODE 결정 후 채운다 (fake 모드면 SMOKE_COMPOSE 추가)
+COMPOSE_ARGS_APPS=""
+COMPOSE_ARGS_ALL=""
 
 # docker compose 프로젝트명 (volume 접두어) — 상위 디렉토리 이름 기반
 COMPOSE_PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
@@ -77,23 +90,43 @@ RESET_DB=false
 DO_DOWN=false
 DO_CLEAN=false
 
-for arg in "$@"; do
-  case "${arg}" in
-    --skip-build) SKIP_BUILD=true ;;
-    --skip-obs) SKIP_OBS=true ;;
-    --reset-db) RESET_DB=true ;;
-    --down) DO_DOWN=true ;;
-    --clean) DO_CLEAN=true ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-build) SKIP_BUILD=true; shift ;;
+    --skip-obs) SKIP_OBS=true; shift ;;
+    --reset-db) RESET_DB=true; shift ;;
+    --down) DO_DOWN=true; shift ;;
+    --clean) DO_CLEAN=true; shift ;;
+    --mode)
+      shift
+      [[ $# -gt 0 ]] || { print_error "--mode 옵션에 값이 필요합니다 (prod | fake)"; exit 1; }
+      case "$1" in
+        prod|fake) MODE="$1" ;;
+        *) print_error "알 수 없는 모드: $1 (prod | fake 만 지원)"; exit 1 ;;
+      esac
+      shift
+      ;;
     -h|--help)
-      sed -n '2,32p' "$0"
+      sed -n '2,40p' "$0"
       exit 0
       ;;
     *)
-      print_error "알 수 없는 옵션: ${arg}"
+      print_error "알 수 없는 옵션: $1"
       exit 1
       ;;
   esac
 done
+
+# 모드 적용 — fake 모드는 smoke override 추가
+if [[ "${MODE}" == "fake" ]]; then
+  COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${SMOKE_COMPOSE}"
+  COMPOSE_ARGS_ALL="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE} -f ${SMOKE_COMPOSE}"
+  print_info "모드: fake — FakePgGatewayStrategy 활성 (PG 호출 우회)"
+else
+  COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE}"
+  COMPOSE_ARGS_ALL="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE}"
+  print_info "모드: prod — Toss + NicePay 동시 활성 (vendorType selector 분기)"
+fi
 
 # ───────────────────────────────────────────
 # 종료 경로 (--down / --clean)
