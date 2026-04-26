@@ -10,8 +10,8 @@ import com.hyoguoo.paymentplatform.payment.application.util.StockOutboxFactory;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
-import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
@@ -49,9 +49,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>상태 분기:
  * <ul>
  *   <li>APPROVED → PaymentCommandUseCase.markPaymentAsDone 위임 + stock_outbox INSERT + StockOutboxReadyEvent</li>
- *   <li>FAILED → PaymentCommandUseCase.markPaymentAsFail 위임 + FailureCompensationService.compensate(per order)</li>
- *   <li>QUARANTINED → QuarantineCompensationHandler.handle 위임 (FCG 진입점)</li>
+ *   <li>FAILED → PaymentCommandUseCase.markPaymentAsFail 위임 + 각 PaymentOrder 별 stockCachePort.increment (Redis 보상)</li>
+ *   <li>QUARANTINED → 각 PaymentOrder 별 stockCachePort.increment + QuarantineCompensationHandler.handle 위임</li>
  * </ul>
+ *
+ * <p>재고 모델: redis-stock = product RDB 의 선차감 캐시. PG 결과별로 payment 가 자기 책임으로 보상한다.
+ * stock.events.restore 토픽 발행은 폐기 — product RDB 는 APPROVED 시 누적 차감만 받는다.
  */
 @Slf4j
 @Service
@@ -67,7 +70,7 @@ public class PaymentConfirmResultUseCase {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final LocalDateTimeProvider localDateTimeProvider;
-    private final FailureCompensationService failureCompensationService;
+    private final StockCachePort stockCachePort;
     private final PaymentConfirmDlqPublisher paymentConfirmDlqPublisher;
     private final StockOutboxRepository stockOutboxRepository;
     private final ObjectMapper objectMapper;
@@ -85,7 +88,7 @@ public class PaymentConfirmResultUseCase {
             ApplicationEventPublisher applicationEventPublisher,
             QuarantineCompensationHandler quarantineCompensationHandler,
             LocalDateTimeProvider localDateTimeProvider,
-            FailureCompensationService failureCompensationService,
+            StockCachePort stockCachePort,
             PaymentConfirmDlqPublisher paymentConfirmDlqPublisher,
             StockOutboxRepository stockOutboxRepository,
             ObjectMapper objectMapper,
@@ -97,7 +100,7 @@ public class PaymentConfirmResultUseCase {
         this.applicationEventPublisher = applicationEventPublisher;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.localDateTimeProvider = localDateTimeProvider;
-        this.failureCompensationService = failureCompensationService;
+        this.stockCachePort = stockCachePort;
         this.paymentConfirmDlqPublisher = paymentConfirmDlqPublisher;
         this.stockOutboxRepository = stockOutboxRepository;
         this.objectMapper = objectMapper;
@@ -244,26 +247,26 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * FAILED 결과 처리. 상태 전이는 PaymentCommandUseCase 위임이고, 재고 복원은 PaymentOrder 별로
-     * 실 qty 와 함께 FailureCompensationService.compensate 를 부른다. compensate 내부에서
-     * stock_outbox INSERT + StockOutboxReadyEvent 발행을 한다 — 이 메서드는 그 책임을 가지지 않는다.
+     * FAILED 결과 처리. 상태 전이는 PaymentCommandUseCase 위임. 재고 복원은 redis-stock 캐시에
+     * 한정 — 각 PaymentOrder 별 stockCachePort.increment 호출. product RDB 는 애초에 차감되지
+     * 않았으므로 복원 메시지(stock.events.restore) 발행은 하지 않는다.
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
-        for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
-            failureCompensationService.compensate(
-                    paymentEvent.getOrderId(),
-                    order.getProductId(),
-                    order.getQuantity()
-            );
-        }
+        compensateStockCache(paymentEvent, reasonCode);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED,
                 () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
     }
 
+    /**
+     * QUARANTINED 결과 처리. 격리도 결제 미성립이므로 redis-stock 캐시는 보상한다 (선차감 분량 복원).
+     * product RDB 는 변경되지 않는다 — 격리 사유 조사·admin 처리는 별도 경로.
+     */
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
+        compensateStockCache(paymentEvent, reasonCode);
+
         quarantineCompensationHandler.handle(
                 paymentEvent.getOrderId(),
                 reasonCode
@@ -271,6 +274,25 @@ public class PaymentConfirmResultUseCase {
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINED,
                 () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
+    }
+
+    /**
+     * Redis 선차감 캐시 보상. 각 PaymentOrder 별로 increment.
+     * INCR 자체 실패는 LogFmt.error 후 다음 order 로 진행 — 원본 흐름 차단 금지.
+     */
+    private void compensateStockCache(PaymentEvent paymentEvent, String reasonCode) {
+        for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
+            try {
+                stockCachePort.increment(order.getProductId(), order.getQuantity());
+            } catch (RuntimeException e) {
+                LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
+                        () -> "orderId=" + paymentEvent.getOrderId()
+                                + " productId=" + order.getProductId()
+                                + " qty=" + order.getQuantity()
+                                + " reasonCode=" + reasonCode
+                                + " error=" + e.getMessage());
+            }
+        }
     }
 
 }

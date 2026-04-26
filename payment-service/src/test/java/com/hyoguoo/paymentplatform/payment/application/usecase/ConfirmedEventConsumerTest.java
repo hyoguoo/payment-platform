@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -44,7 +44,7 @@ class ConfirmedEventConsumerTest {
     private FakeEventDedupeStore dedupeStore;
     private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
-    private FailureCompensationService failureCompensationService;
+    private StockCachePort stockCachePort;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -56,7 +56,7 @@ class ConfirmedEventConsumerTest {
         dedupeStore = new FakeEventDedupeStore();
         capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
-        failureCompensationService = Mockito.mock(FailureCompensationService.class);
+        stockCachePort = Mockito.mock(StockCachePort.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
@@ -69,7 +69,7 @@ class ConfirmedEventConsumerTest {
                 capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
-                failureCompensationService,
+                stockCachePort,
                 dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
@@ -145,11 +145,11 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: FAILED → PaymentEvent FAILED 전이 + stock.events.restore 발행
+    // TC2: FAILED → PaymentEvent FAILED 전이 + Redis INCR 보상 (선차감 캐시 복원)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 + FailureCompensationService.compensate 경유 재고 복원")
+    @DisplayName("consume — FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 + StockCachePort.increment 보상")
     void consume_WhenFailed_ShouldTransitionToFailed() {
         // given
         PaymentOrder order = buildPaymentOrder(2L, 3);
@@ -174,15 +174,11 @@ class ConfirmedEventConsumerTest {
                         org.mockito.ArgumentMatchers.any(PaymentEvent.class),
                         org.mockito.ArgumentMatchers.eq("VENDOR_FAILED"));
 
-        // then — FailureCompensationService.compensate(orderId, productId=2, qty=3) 1회 호출 (실 qty 전달)
-        then(failureCompensationService)
+        // then — StockCachePort.increment(productId=2, qty=3) 1회 호출 (Redis 선차감 캐시 보상)
+        then(stockCachePort)
                 .should(times(1))
-                .compensate(
-                        org.mockito.ArgumentMatchers.eq(ORDER_ID),
-                        org.mockito.ArgumentMatchers.eq(2L),
-                        org.mockito.ArgumentMatchers.eq(3)
-                );
-        // then — StockOutboxReadyEvent 미발행 (FailureCompensationService 내부 책임, mock이므로 0건)
+                .increment(2L, 3);
+        // then — StockOutboxReadyEvent 미발행 (restore 경로 폐기)
         assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
     }
 

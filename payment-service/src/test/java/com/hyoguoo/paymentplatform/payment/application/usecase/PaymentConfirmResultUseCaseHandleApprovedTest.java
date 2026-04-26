@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -63,7 +63,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     private FakeEventDedupeStore dedupeStore;
     private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
-    private FailureCompensationService failureCompensationService;
+    private StockCachePort stockCachePort;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -75,7 +75,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         dedupeStore = new FakeEventDedupeStore();
         capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
-        failureCompensationService = Mockito.mock(FailureCompensationService.class);
+        stockCachePort = Mockito.mock(StockCachePort.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
@@ -88,7 +88,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
-                failureCompensationService,
+                stockCachePort,
                 dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),

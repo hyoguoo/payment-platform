@@ -100,7 +100,6 @@ payment:
     topics:
       commands-confirm: ${PAYMENT_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
       events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
-      events-stock-restore: ${PAYMENT_TOPIC_EVENTS_STOCK_RESTORE:stock.events.restore}
 
 product-service:
   base-url: ${PRODUCT_SERVICE_BASE_URL:http://localhost:8083}

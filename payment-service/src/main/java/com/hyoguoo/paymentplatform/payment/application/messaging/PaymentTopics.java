@@ -17,5 +17,4 @@ public final class PaymentTopics {
     public static final String EVENTS_CONFIRMED = "payment.events.confirmed";
     public static final String EVENTS_CONFIRMED_DLQ = "payment.events.confirmed.dlq";
     public static final String EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
-    public static final String EVENTS_STOCK_RESTORE = "stock.events.restore";
 }

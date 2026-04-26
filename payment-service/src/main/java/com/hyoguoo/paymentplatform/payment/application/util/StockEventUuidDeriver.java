@@ -7,11 +7,9 @@ import java.util.UUID;
  * stock 이벤트 전용 결정론적 UUID v3 도출 유틸리티.
  * "{prefix}:{orderId}:{productId}" 를 시드로 UUID nameUUIDFromBytes 를 호출한다.
  *
- * <p>사용처:
- * <ul>
- *   <li>{@code PaymentConfirmResultUseCase.buildStockCommitOutbox} — stock-commit prefix</li>
- *   <li>{@code FailureCompensationService.compensate} — stock-restore prefix</li>
- * </ul>
+ * <p>사용처: {@code PaymentConfirmResultUseCase.buildStockCommitOutbox} (stock-commit prefix).
+ * 재고 복원(stock-restore) 경로는 폐기되어 사용처가 stock-commit 한 곳뿐이지만, prefix 인자를
+ * 유지해 향후 추가 이벤트 종류 도입 시 같은 도출 규칙을 재사용할 수 있도록 한다.
  *
  * <p>multi-product 결제 시 모든 stock-committed 이벤트가 동일 orderId 를 공유하더라도
  * productId 별로 고유한 idempotencyKey 를 갖도록 보장한다 — product-service
@@ -29,7 +27,7 @@ public final class StockEventUuidDeriver {
      *
      * @param orderId   주문 ID
      * @param productId 상품 ID
-     * @param prefix    이벤트 구분 접두사 (예: "stock-commit", "stock-restore")
+     * @param prefix    이벤트 구분 접두사 (예: "stock-commit")
      * @return UUID v3 문자열 (소문자 하이픈 포함)
      */
     public static String derive(String orderId, Long productId, String prefix) {

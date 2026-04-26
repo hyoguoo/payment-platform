@@ -4,15 +4,12 @@ import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpO
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.application.dto.request.OrderedProductStockCommand;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
-import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.StockCommandItem;
-import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +30,6 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 public class ProductHttpAdapter implements ProductPort {
 
     private static final String PRODUCTS_PATH = "/api/v1/products/";
-    private static final String STOCK_INCREASE_PATH = "/api/v1/products/stock/increase";
 
     private final HttpOperator httpOperator;
     private final String productServiceBaseUrl;
@@ -50,11 +46,6 @@ public class ProductHttpAdapter implements ProductPort {
         return fetchProductById(productId);
     }
 
-    @Override
-    public void increaseStockForOrders(List<OrderedProductStockCommand> orderedProductStockCommandList) {
-        postStockCommand(STOCK_INCREASE_PATH, orderedProductStockCommandList);
-    }
-
     private ProductInfo fetchProductById(Long productId) {
         ProductResponse response = callGet(
                 productServiceBaseUrl + PRODUCTS_PATH + productId,
@@ -63,26 +54,9 @@ public class ProductHttpAdapter implements ProductPort {
         return toProductInfo(response);
     }
 
-    private void postStockCommand(String path, List<OrderedProductStockCommand> commands) {
-        List<StockCommandItem> items = commands.stream()
-                .map(c -> new StockCommandItem(c.getProductId(), c.getStock()))
-                .toList();
-        callPost(productServiceBaseUrl + path, items);
-    }
-
     private <T> T callGet(String url, Class<T> responseType) {
         try {
             return httpOperator.requestGet(url, Map.of(), responseType);
-        } catch (WebClientResponseException e) {
-            throw mapResponseException(e);
-        } catch (WebClientRequestException e) {
-            throw ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
-        }
-    }
-
-    private void callPost(String url, Object body) {
-        try {
-            httpOperator.requestPost(url, Map.of(), body, Void.class);
         } catch (WebClientResponseException e) {
             throw mapResponseException(e);
         } catch (WebClientRequestException e) {

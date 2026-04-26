@@ -2,7 +2,9 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -40,9 +42,6 @@ class PaymentTransactionCoordinatorTest {
 
     @InjectMocks
     private PaymentTransactionCoordinator coordinator;
-
-    @Mock
-    private OrderedProductUseCase orderedProductUseCase;
 
     @Mock
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -233,7 +232,7 @@ class PaymentTransactionCoordinatorTest {
 
             // then
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
-            then(orderedProductUseCase).should(times(1)).increaseStockForOrders(paymentOrderList);
+            then(stockCachePort).should(times(1)).increment(1L, 2);
             then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(freshEvent, failureReason);
         }
 
@@ -259,7 +258,7 @@ class PaymentTransactionCoordinatorTest {
                     orderId, paymentOrderList, failureReason);
 
             // then
-            then(orderedProductUseCase).should(never()).increaseStockForOrders(anyList());
+            then(stockCachePort).should(never()).increment(anyLong(), anyInt());
             then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(freshEvent, failureReason);
         }
 
@@ -285,7 +284,7 @@ class PaymentTransactionCoordinatorTest {
                     orderId, paymentOrderList, failureReason);
 
             // then
-            then(orderedProductUseCase).should(never()).increaseStockForOrders(anyList());
+            then(stockCachePort).should(never()).increment(anyLong(), anyInt());
         }
     }
 
@@ -343,7 +342,7 @@ class PaymentTransactionCoordinatorTest {
             assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
             then(paymentOutboxUseCase).should(times(1)).save(outbox);
             then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(inProgressEvent, reason);
-            then(orderedProductUseCase).should(never()).increaseStockForOrders(any());
+            then(stockCachePort).should(never()).increment(anyLong(), anyInt());
         }
 
         @Test
@@ -364,7 +363,7 @@ class PaymentTransactionCoordinatorTest {
             coordinator.executePaymentQuarantineWithOutbox(inProgressEvent, outbox, reason);
 
             // then
-            then(orderedProductUseCase).should(never()).increaseStockForOrders(any());
+            then(stockCachePort).should(never()).increment(anyLong(), anyInt());
         }
 
         @Test

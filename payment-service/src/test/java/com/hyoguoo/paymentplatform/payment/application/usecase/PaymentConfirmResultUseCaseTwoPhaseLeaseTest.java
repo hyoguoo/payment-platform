@@ -12,7 +12,7 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmDlqPublisher;
-import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -55,7 +55,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
     private EventDedupeStore eventDedupeStore;
     private ApplicationEventPublisher applicationEventPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
-    private FailureCompensationService failureCompensationService;
+    private StockCachePort stockCachePort;
     private PaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -67,7 +67,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         eventDedupeStore = Mockito.mock(EventDedupeStore.class);
         applicationEventPublisher = Mockito.mock(ApplicationEventPublisher.class);
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
-        failureCompensationService = Mockito.mock(FailureCompensationService.class);
+        stockCachePort = Mockito.mock(StockCachePort.class);
         dlqPublisher = Mockito.mock(PaymentConfirmDlqPublisher.class);
         stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
@@ -80,7 +80,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
                 applicationEventPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
-                failureCompensationService,
+                stockCachePort,
                 dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),

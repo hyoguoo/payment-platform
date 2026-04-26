@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PaymentTransactionCoordinator {
 
-    private final OrderedProductUseCase orderedProductUseCase;
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentOutboxUseCase paymentOutboxUseCase;
     private final PaymentLoadUseCase paymentLoadUseCase;
@@ -146,7 +145,17 @@ public class PaymentTransactionCoordinator {
         boolean eventCompensatable = freshEvent.getStatus().isCompensatableByFailureHandler();
 
         if (outboxInFlight && eventCompensatable) {
-            orderedProductUseCase.increaseStockForOrders(paymentOrderList);
+            for (PaymentOrder order : paymentOrderList) {
+                try {
+                    stockCachePort.increment(order.getProductId(), order.getQuantity());
+                } catch (RuntimeException e) {
+                    LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
+                            () -> "D12: orderId=" + orderId
+                                    + " productId=" + order.getProductId()
+                                    + " qty=" + order.getQuantity()
+                                    + " error=" + e.getMessage());
+                }
+            }
         } else {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.D12_GUARD_SKIP_STOCK_RESTORE,
                     () -> "orderId=" + orderId

@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -56,7 +56,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
     private FakeEventDedupeStore dedupeStore;
     private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
-    private FailureCompensationService failureCompensationService;
+    private StockCachePort stockCachePort;
     private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -68,7 +68,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         dedupeStore = new FakeEventDedupeStore();
         capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
-        failureCompensationService = Mockito.mock(FailureCompensationService.class);
+        stockCachePort = Mockito.mock(StockCachePort.class);
         dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
@@ -81,7 +81,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
-                failureCompensationService,
+                stockCachePort,
                 dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
@@ -108,14 +108,14 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
-        then(failureCompensationService)
+        then(stockCachePort)
                 .should(times(1))
-                .compensate(eq(ORDER_ID), eq(100L), eq(3));
+                .increment(100L, 3);
     }
 
     @Test
-    @DisplayName("복수 주문 FAILED — compensate 가 productId/qty 별로 따로 호출된다")
-    void 복수_주문_FAILED_시_compensate_가_productId_별로_호출() {
+    @DisplayName("복수 주문 FAILED — increment 가 productId/qty 별로 따로 호출된다")
+    void 복수_주문_FAILED_시_increment_가_productId_별로_호출() {
         PaymentOrder order1 = buildPaymentOrder(100L, 2, BigDecimal.valueOf(200));
         PaymentOrder order2 = buildPaymentOrder(200L, 5, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
@@ -128,12 +128,12 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
 
         sut.handle(message);
 
-        then(failureCompensationService)
+        then(stockCachePort)
                 .should(times(1))
-                .compensate(eq(ORDER_ID), eq(100L), eq(2));
-        then(failureCompensationService)
+                .increment(100L, 2);
+        then(stockCachePort)
                 .should(times(1))
-                .compensate(eq(ORDER_ID), eq(200L), eq(5));
+                .increment(200L, 5);
     }
 
     @Test
