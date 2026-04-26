@@ -115,7 +115,7 @@ flowchart TD
     AC1 -->|No| AC2["paymentEvent 조회"]
     AC2 --> AD{"message.status"}
     AD -->|APPROVED| AE1["event.done approvedAt<br/>각 PaymentOrder별로<br/>stock.events.commit 발행<br/>→ product-service 재고 확정"]
-    AD -->|FAILED| AE2["event.fail reasonCode<br/>stock.events.restore 발행<br/>→ product-service 재고 복원"]
+    AD -->|FAILED| AE2["event.fail reasonCode<br/>각 PaymentOrder 별 redis-stock INCR 보상<br/>(product RDB 변경 없음 — 애초에 차감 X)"]
     AD -->|QUARANTINED| AE3["QuarantineCompensationHandler.handle<br/>FCG 진입점<br/>재고 복구 + 수동 조사 알림"]
 
     AF["브라우저: 폴링<br/>GET /api/v1/payments/orderId/status"] --> AG["PaymentStatusServiceImpl"]

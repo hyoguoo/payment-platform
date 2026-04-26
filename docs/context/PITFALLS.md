@@ -139,6 +139,24 @@ process(result);  // result 가 null 일 수 있음
 - pg-service 만 벤더 호출. payment 와는 Kafka 양방향 메시지로만 통신
 - `PgGatewayPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
 
+## 16. 재고 SoT 모델 — RDB 가 SoT, redis-stock 은 선차감 캐시
+
+**증상**: payment 가 Redis 만 차감했는데 product RDB 와 발산.
+
+**원인**: 두 저장소의 역할이 분리되어 있다.
+- product-service mysql `stock` 테이블 = **진짜 잔고 (SoT)**. APPROVED 결제만 누적 차감 (`stock.events.commit`)
+- redis-stock = payment-service 의 **선차감 게이트 캐시**. confirm 진입 시 Lua 원자 DECR 로 빠른 reject
+
+**처방** (이번 stock 모델 정리):
+- payment 가 Redis 자기 책임으로 관리: confirm 진입 시 DECR, FAILED/QUARANTINED 회신 시 INCR 보상
+- product DB 차감은 APPROVED 시만 — 복원(restore) 메시지 자체가 폐기됨 (애초에 차감 안 됐으므로 복원 불필요)
+- 부팅 직후 1회 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 동일 수치 시드. 이후 동기화 메커니즘은 의도적 부재
+- AMOUNT_MISMATCH 격리 시에도 Redis INCR 보상 — 결제 미성립이라 일관
+
+**알려진 한계**:
+- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 추후 시점·정책 별도 정리 필요 (TODOS)
+- 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
+
 ## 관련 자료
 
 - 도메인 학습 자료: archive 안 토픽별 `COMPLETION-BRIEFING.md`

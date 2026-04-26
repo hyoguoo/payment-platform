@@ -74,7 +74,7 @@ payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eurek
 | payment-service | product-service | HTTP | `GET /api/products/*` |
 | payment-service | user-service | HTTP | `GET /api/users/*` |
 | payment-service ↔ pg-service | Kafka | bidirectional | `payment.commands.confirm` / `payment.events.confirmed` (+ DLQ 2종) |
-| payment-service → product-service | Kafka | one-way | `stock.events.commit` / `stock.events.restore` |
+| payment-service → product-service | Kafka | one-way | `stock.events.commit` (APPROVED 시만 — RDB 누적 차감 ledger) |
 | pg-service → 벤더 | HTTP | one-way | Toss / NicePay confirm/getStatus |
 
 ## 관측성 통합

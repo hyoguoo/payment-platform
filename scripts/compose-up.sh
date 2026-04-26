@@ -325,6 +325,10 @@ if [[ "${SKIP_OBS}" != "true" ]]; then
 fi
 
 echo
+print_section "=== stock 시드 (mysql-product → redis-stock) ==="
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/seed-stock.sh" || print_warning "시드 실패 — payment-service 의 confirm 진입 시 redis 키 부재로 동작 이상 가능"
+
+echo
 print_warning "헬스 체크:       bash scripts/smoke/infra-healthcheck.sh   (가이드: docs/smoke/infra-healthcheck.md)"
 print_warning "로그 팔로우:     docker compose ${COMPOSE_ARGS_ALL} logs -f <service>"
 print_warning "종료:            bash scripts/compose-up.sh --down  (또는 --clean 으로 볼륨 포함 제거)"

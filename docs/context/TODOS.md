@@ -58,7 +58,8 @@
 ### TQ-3 — REDIS-CACHE-FAILURE-POLICY
 
 - `redis-stock` 다운 시 어떤 정책으로 가야 하는가? — 현재는 CACHE_DOWN → QUARANTINED + 보상 펜딩
-- 운영 시 Redis HA / fallback 정책 결정 필요
+- 또한 redis 데이터 lost 시 부팅 재시드(`scripts/seed-stock.sh`) 외 회복 경로 없음 — payment 진행 중이면 Redis 키 부재로 confirm DECR 음수 가능성
+- 운영 시 Redis HA / fallback / AOF 운영 가이드 결정 필요
 
 ### TQ-4 — Vendor 동적 라우팅
 
@@ -90,7 +91,15 @@
 - 옵션: `spring.flyway.locations` 환경별 분리 또는 placeholder 활용
 - 현재는 데모 / 스모크 환경에서 동작하므로 우선순위 낮음
 
-### TC-3 — EXPIRED 만료 스케줄러 정책 명확화
+### TC-3 — 재고 동기화 정책 (부팅 외 시점)
+
+- 새 재고 모델: redis-stock = payment 의 선차감 캐시, product RDB = SoT
+- 현재는 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 1회 시드. 이후 동기화 X
+- 발산 발생 시점: product RDB 가 외부(관리자 / 입고 / 외부 시스템)에서 변경되면 Redis 와 발산
+- 후보 방안: (a) admin endpoint `/admin/stock/resync` 로 수동 재시드, (b) product 가 RDB 변경 시 redis pub/sub 으로 cache invalidation, (c) 주기적 재시드 스케줄러 (사용자 결정으로 일단 미도입)
+- 우선순위: Phase 4 부하 시나리오에서 발산이 실제로 문제되는 것을 확인한 후 결정
+
+### TC-4 — EXPIRED 만료 스케줄러 정책 명확화
 
 - `PaymentEventStatus.EXPIRED` 정의는 있으나 도메인 매핑이 PRE-PHASE-4 시점에 일부 제거됨
 - `quarantine_compensation_pending` 컬럼은 호환용 유지

@@ -118,12 +118,12 @@ flowchart TD
     LOAD --> SW{message.status}
 
     SW -->|APPROVED| AMT[parseApprovedAt<br/>+ isAmountMismatch 검사]
-    AMT -->|불일치| QU_AM[QuarantineCompensationHandler<br/>reason=AMOUNT_MISMATCH<br/>markPaymentAsQuarantined]
-    AMT -->|일치| DONE_OK[markPaymentAsDone approvedAt<br/>각 PaymentOrder 별<br/>StockCommitRequestedEvent publish]
+    AMT -->|불일치| QU_AM[stockCachePort.increment 보상<br/>+ QuarantineCompensationHandler<br/>reason=AMOUNT_MISMATCH]
+    AMT -->|일치| DONE_OK[markPaymentAsDone approvedAt<br/>각 PaymentOrder 별<br/>stock_outbox INSERT + StockOutboxReadyEvent publish]
 
-    SW -->|FAILED| FAIL_OK[markPaymentAsFail reason<br/>각 PaymentOrder 별<br/>FailureCompensationService.compensate]
+    SW -->|FAILED| FAIL_OK[markPaymentAsFail reason<br/>각 PaymentOrder 별<br/>stockCachePort.increment 보상]
 
-    SW -->|QUARANTINED| QU_PG[QuarantineCompensationHandler<br/>reason=PG_QUARANTINED]
+    SW -->|QUARANTINED| QU_PG[stockCachePort.increment 보상<br/>+ QuarantineCompensationHandler<br/>reason=PG_QUARANTINED]
 
     DONE_OK --> EXT[extendLease<br/>longTtl=P8D<br/>SET XX EX]
     FAIL_OK --> EXT
@@ -135,19 +135,22 @@ flowchart TD
     FAIL_OK -.실패시.-> RM
 ```
 
-## 6. AFTER_COMMIT stock 발행 — `StockEventPublishingListener`
+## 6. AFTER_COMMIT stock 발행 — `StockOutboxImmediateEventHandler`
+
+APPROVED 결과에서만 발행됨 — FAILED/QUARANTINED 시 stock 발행 X (Redis 보상만).
 
 ```mermaid
 flowchart TD
-    AE([ApplicationEvent — TX 커밋 직후]) --> SEL{Event 종류}
+    AE([StockOutboxReadyEvent — TX 커밋 직후<br/>@TransactionalEventListener AFTER_COMMIT + @Async outboxRelayExecutor]) --> RELAY[StockOutboxRelayService.relay outboxId]
 
-    SEL -->|StockCommitRequestedEvent| SC[stock.events.commit Kafka publish]
-    SEL -->|StockRestoreRequestedEvent| SR[stock.events.restore Kafka publish]
+    RELAY --> CL[claimToInFlight CAS]
+    CL -->|선점 실패| SKIP([no-op])
+    CL -->|선점 성공| SEND[StockOutboxKafkaPublisher.send<br/>topic=stock.events.commit]
 
-    SC -->|발행 실패| LOG_C[LogFmt.error STOCK_KAFKA_PUBLISH_FAIL<br/>예외 삼킴 — TX 이미 commit]
-    SR -->|발행 실패| LOG_R[동일 패턴]
-    SC --> END([완료])
-    SR --> END
+    SEND -->|성공| DONE[stock_outbox.toDone save]
+    SEND -->|실패| LOG_FAIL[stock.kafka.publish.fail.total counter +1<br/>processedAt 미기록 → Polling 재시도]
+    DONE --> END([완료])
+    LOG_FAIL --> END
 ```
 
 ## 7. AMOUNT_MISMATCH 양방향 방어 (ADR-15 + ADR-D1)
@@ -186,7 +189,7 @@ flowchart TD
     CHK_OB -->|예| CHK_EV{event.status<br/>비종결?}
 
     CHK_EV -->|아니오 DONE/FAILED/QUARANTINED| SKIP
-    CHK_EV -->|예 READY/IN_PROGRESS/RETRYING| RESTORE[increaseStockForOrders<br/>재고 복구 ✅]
+    CHK_EV -->|예 READY/IN_PROGRESS/RETRYING| RESTORE[각 PaymentOrder 별<br/>stockCachePort.increment<br/>Redis 보상 ✅]
 
     RESTORE --> FAIL_OB[outbox.toFailed save]
     SKIP --> CHK_OB2{outbox 가<br/>IN_FLIGHT 였나?}

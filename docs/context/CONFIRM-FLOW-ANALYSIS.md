@@ -146,28 +146,31 @@ else
       // AOP @PaymentStatusChange + @PublishDomainEvent 가 payment_history 자동 기록
 
       각 PaymentOrder 별:
-        applicationEventPublisher.publishEvent(StockCommitRequestedEvent(orderId, productId, qty, eventUuid))
-      // StockEventPublishingListener 가 AFTER_COMMIT 으로 stock.events.commit 발행
+        stock_outbox INSERT(payload=StockCommittedEvent) + StockOutboxReadyEvent publish
+      // StockOutboxImmediateEventHandler 가 AFTER_COMMIT 으로 StockOutboxRelayService 호출 → stock.events.commit Kafka publish
 ```
 
 ### handleFailed
 
 ```
-paymentCommandUseCase.markPaymentAsFail(paymentEvent, reason, now)
+paymentCommandUseCase.markPaymentAsFail(paymentEvent, reason)
       // AOP audit
 
 각 PaymentOrder 별:
-      failureCompensationService.compensate(orderId, productId, qty)
-      // 단일 productId 오버로드 — 내부에서 stock.events.restore 발행
+      stockCachePort.increment(productId, qty)
+      // redis-stock 선차감 캐시 보상. product RDB 는 차감되지 않았으므로 복원 메시지 발행 X.
 ```
 
 ### handleQuarantined
 
-PG 측 격리(QUARANTINED) 결정을 payment 측 도 격리로 전이.
+PG 측 격리(QUARANTINED) 결정 또는 AMOUNT_MISMATCH 감지 시 호출.
 ```
+각 PaymentOrder 별:
+      stockCachePort.increment(productId, qty)   // Redis 선차감 보상
+
 QuarantineCompensationHandler.handle(orderId, reason)
       → markPaymentAsQuarantined
-      → 재고 보상 정책 별도 (ADR-13)
+      → admin 조사 큐에 등록 (ADR-13)
 ```
 
 ## 복구 사이클 — `PaymentReconciler` (`@Scheduled` 2분)

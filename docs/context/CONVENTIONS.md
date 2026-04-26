@@ -10,7 +10,7 @@
 @RequiredArgsConstructor
 public class PaymentConfirmResultUseCase {
     private final EventDedupeStore eventDedupeStore;
-    private final FailureCompensationService failureCompensationService;
+    private final StockCachePort stockCachePort;
     // ...
 }
 ```
@@ -69,13 +69,13 @@ RuntimeException
 | 카테고리 | 규칙 | 예 |
 |---|---|---|
 | Use case | `<Action><Subject>UseCase` | `PaymentConfirmResultUseCase`, `StockRestoreUseCase` |
-| Service (보조) | `<Subject>Service` | `OutboxRelayService`, `FailureCompensationService` |
+| Service (보조) | `<Subject>Service` | `OutboxRelayService`, `StockOutboxRelayService` |
 | Use case 입력 포트 | `<Verb>UseCase` 인터페이스 | `PaymentCommandUseCase` |
 | 출력 포트 | `<Subject>Port` | `StockCachePort`, `PaymentConfirmPublisherPort` |
 | 출력 포트 어댑터 | `<Subject><Tech>Adapter` | `StockCacheRedisAdapter`, `PaymentConfirmDlqKafkaPublisher` |
 | Kafka 메시지 record | `<Subject>EventMessage` (수신) / `<Subject>EventPayload` (발행) | `ConfirmedEventMessage`, `ConfirmedEventPayload` |
 | 이벤트 (Spring ApplicationEvent) | `<Subject>RequestedEvent` | `StockCommitRequestedEvent` |
-| Listener | `<Subject>Listener` | `StockEventPublishingListener` |
+| Listener | `<Subject>Listener` 또는 `<Subject>EventHandler` | `StockOutboxImmediateEventHandler`, `OutboxImmediateEventHandler` |
 | Scheduler | `<Subject>Worker` | `OutboxWorker`, `PgOutboxImmediateWorker` |
 | Fake (테스트 전용) | `Fake<Subject><Type>` | `FakeStockCachePort`, `FakeEventDedupeStore` |
 | Test class | `<Subject>Test` (단위) / `<Subject>ContractTest` / `<Subject>MdcPropagationTest` | `PaymentConfirmResultUseCaseTest` |

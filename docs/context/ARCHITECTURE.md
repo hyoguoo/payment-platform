@@ -103,8 +103,7 @@ flowchart LR
 | `payment.commands.confirm.dlq` | payment-service / pg-service relay | (수동) | confirm 발행 실패 |
 | `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 |
 | `payment.events.confirmed.dlq` | payment-service | (수동) | 결과 처리 영구 실패 |
-| `stock.events.commit` | payment-service (AFTER_COMMIT) | product-service | 재고 확정 |
-| `stock.events.restore` | payment-service (AFTER_COMMIT) | product-service | 재고 복원 |
+| `stock.events.commit` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
 
 ## 비동기 어댑터 위치 (왜 어디 두는가)
 
@@ -116,7 +115,7 @@ flowchart LR
 | `OutboxWorker` (`@Scheduled`) | `payment-service/.../infrastructure/scheduler` | 폴링 폴백. Spring Scheduler 의존이라 infrastructure |
 | `ConfirmedEventConsumer` (`@KafkaListener`) | `payment-service/.../infrastructure/messaging/consumer` | Kafka 입력 어댑터 — `PaymentConfirmResultUseCase` 호출 |
 | `PgOutboxImmediateWorker` | `pg-service/.../infrastructure/scheduler` | pg 측 즉시 발행 워커. `PgOutboxChannel` BlockingQueue 와 SmartLifecycle 패턴 |
-| `StockEventPublishingListener` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT 으로 stock.* 발행 위임 (TX-publish 분리, ADR-D2) |
+| `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `stock.events.commit` Kafka publish (TX-publish 분리, ADR-D2 의 진화형) |
 
 ## 인프라 별 책임
 
@@ -133,8 +132,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | Redis | 책임 | 사용처 |
 |---|---|---|
-| `redis-dedupe` (6379) | 메시지 중복 제거 (`EventDedupeStore`) | payment-service, pg-service, product-service 모두 사용. two-phase lease 패턴(P8D 만료) |
-| `redis-stock` (6380) | 재고 캐시(`StockCachePort`) | product-service. confirm 진입 시 원자 DECR + 보상 INCR |
+| `redis-dedupe` (6379) | 메시지 dedupe + checkout 멱등성 store | payment-service `EventDedupeStore` (two-phase lease P8D) + `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용 |
+| `redis-stock` (6380) | 재고 선차감 캐시 (`StockCachePort`) | payment-service 단독. confirm 진입 시 Lua 원자 DECR, FAILED/QUARANTINED 회신 시 INCR 보상. product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드 |
 
 ### Kafka
 
