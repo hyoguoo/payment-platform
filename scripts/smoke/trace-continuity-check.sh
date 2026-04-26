@@ -339,6 +339,6 @@ else
     esac
   done
   echo ""
-  echo "  docs/phase-gate/trace-continuity-smoke.md 의 상세 트리아지 가이드를 참고하세요."
+  echo "  docs/smoke/trace-continuity-check.md 가이드를 참고하세요."
   exit 1
 fi

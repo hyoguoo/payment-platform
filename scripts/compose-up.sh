@@ -325,6 +325,6 @@ if [[ "${SKIP_OBS}" != "true" ]]; then
 fi
 
 echo
-print_warning "스모크 시나리오: docs/INTEGRATION-SMOKE.md §3~§6 참고"
+print_warning "헬스 체크:       bash scripts/smoke/infra-healthcheck.sh   (가이드: docs/smoke/infra-healthcheck.md)"
 print_warning "로그 팔로우:     docker compose ${COMPOSE_ARGS_ALL} logs -f <service>"
 print_warning "종료:            bash scripts/compose-up.sh --down  (또는 --clean 으로 볼륨 포함 제거)"
