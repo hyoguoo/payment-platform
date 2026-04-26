@@ -1,256 +1,233 @@
-# PaymentConfirmService 구현체 비즈니스 로직 분석
+# Confirm Flow — 비즈니스 로직 분석
 
-> 최종 수정: 2026-04-10
+> 최종 갱신: 2026-04-27 (post-MSA + PRE-PHASE-4-HARDENING 봉인)
+> 짝 문서: [`CONFIRM-FLOW-FLOWCHART.md`](CONFIRM-FLOW-FLOWCHART.md), 전체 end-to-end 는 [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
----
+## 책임 분담
 
-## 1. Outbox 플로우 (`OutboxAsyncConfirmService` + `PaymentConfirmChannel` + `OutboxImmediateWorker` + `OutboxWorker`)
+본 문서는 **payment-service 측 비동기 confirm 사이클**을 다룬다. PG 벤더 호출(pg-service `PgConfirmService` + 벤더 어댑터)·Kafka 양방향 왕복 전체 흐름은 `PAYMENT-FLOW.md` 가 다룬다.
 
-> **Outbox 단일 전략** — `OutboxAsyncConfirmService`가 유일한 `PaymentConfirmService` 구현체
->
-> **채널 기반 비동기 처리 + 폴백(OutboxWorker) 이중 구조**
-> - 정상 경로: confirm() 커밋 후 `OutboxImmediateEventHandler`가 `channel.offer(orderId)` → `OutboxImmediateWorker` VT/PT 워커가 `channel.take()` → `OutboxProcessingService.process()` 처리
-> - 폴백 경로: 큐 오버플로우 또는 서버 크래시 시 `OutboxWorker(fixedDelay 2s)`가 PENDING 레코드 배치 처리 → `OutboxProcessingService.process()` 위임
-
-### 1-1. confirm() — HTTP 요청 처리
+## 진입점 — `OutboxAsyncConfirmService.confirm()`
 
 ```
-[Controller] POST /confirm
+[Controller] POST /api/v1/payments/confirm
       │
       ▼
 ① getPaymentEventByOrderId(orderId)
       │  PaymentEvent 조회 (상태: READY 예상)
       ▼
-② LVAL: command.amount == paymentEvent.totalAmount 검증
-      │  [실패] PaymentValidException → 즉시 throw (TX 진입 전, 금액 위변조 감지)
+② paymentEvent.validateConfirmRequest(userId, amount, orderId, paymentKey)
+      │  사용자 입력 위변조 감지 — TX 진입 전 도메인 가드
+      │  [실패] PaymentValidException → 즉시 throw (4xx)
       ▼
-      @Transactional(rollbackFor=PaymentOrderedProductStockException)
+③ PaymentTransactionCoordinator.decrementStock(paymentOrderList)
+      │  Redis 원자 DECR — TX 외부
+      │  결과: SUCCESS / REJECTED(재고 부족) / CACHE_DOWN(Redis 장애)
       │
-③ executePaymentAndStockDecreaseWithOutbox(paymentEvent, paymentKey, orderId, paymentOrderList)
-      │  단일 트랜잭션 내 (rollbackFor=PaymentOrderedProductStockException)
-      │  ┌─ executePayment()             — PaymentEvent: READY → IN_PROGRESS, paymentKey 기록
-      │  ├─ decreaseStockForOrders()     — 재고 감소
-      │  └─ createPendingRecord(orderId) — PaymentOutbox: PENDING 생성
+      ├─ REJECTED → handleStockFailure → event.status=FAILED + 4xx throw
       │
-      │  [실패] PaymentOrderedProductStockException (재고 부족)
-      │    → 트랜잭션 롤백 (PaymentEvent READY로 복원, Outbox 롤백)
-      │    └─ handleStockFailure(paymentEvent, message)
-      │         └─ markPaymentAsFail()   → PaymentEvent: FAILED
-      │         └─ rethrow PaymentOrderedProductStockException (4xx)
+      └─ CACHE_DOWN → markStockCacheDownQuarantine
+      │            → event.status=QUARANTINED (보상 펜딩) + 4xx throw
       ▼
-④ confirmPublisher.publish(orderId)  [OutboxImmediatePublisher]
+④ executeConfirmTxWithStockCompensation (ADR-D3)
+      │  try {
+      │     coordinator.executeConfirmTx(paymentEvent, paymentKey, orderId)
+      │       — @Transactional, 단일 TX:
+      │         · paymentEvent: READY → IN_PROGRESS
+      │         · paymentKey 기록
+      │         · payment_outbox PENDING 행 INSERT
+      │  } catch (RuntimeException txException) {
+      │     compensateStock(paymentOrderList)  // Redis INCR 보상
+      │     throw txException
+      │  }
+      ▼
+⑤ confirmPublisher.publish(orderId)
       │  Spring ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)
-      │  트랜잭션 커밋 이후 @TransactionalEventListener(AFTER_COMMIT)가 발동
-      │  (TX 내에서 이벤트 큐잉 → 커밋 후 비동기 처리)
+      │  TX 이미 커밋됨 — AFTER_COMMIT 리스너 트리거 큐잉
       ▼
-[Controller] 202 Accepted
-      (이후 처리는 OutboxImmediateEventHandler가 비동기로 담당)
+[Controller] 202 Accepted (orderId, amount 즉시 반환)
+      이후 비동기 처리는 OutboxImmediateEventHandler / OutboxWorker 가 담당
 ```
 
-### 1-2. OutboxImmediateEventHandler.handle() — 채널 적재 (비블로킹)
+## AFTER_COMMIT — `OutboxImmediateEventHandler`
+
+`@TransactionalEventListener(AFTER_COMMIT, fallbackExecution=true)` + `@Async("outboxRelayExecutor")` (Spring 관리 VT executor).
 
 ```
-[@TransactionalEventListener(AFTER_COMMIT)]
-TX 커밋 직후 HTTP 요청 스레드에서 실행 (블로킹 없음)
+HTTP 스레드: TX 커밋 → publishEvent 큐잉 → 즉시 반환
+
+[VT executor]
       │
       ▼
-channel.offer(orderId)
-      ├─ true:  LinkedBlockingQueue에 적재 완료
-      │         → OutboxImmediateWorker 워커가 비동기 처리
+OutboxRelayService.relay(orderId)
       │
-      └─ false: 큐 가득 참 (capacity 초과)
-                → warn 로그 기록
-                → OutboxWorker(polling)가 폴백 처리
-[종료 — HTTP 스레드 즉시 반환]
+      ├─ Step 1: claimToInFlight(orderId)
+      │     atomic UPDATE WHERE status='PENDING' → IN_FLIGHT (REQUIRES_NEW)
+      │     [선점 실패] → return (다른 워커가 처리 중)
+      │
+      ├─ Step 2: outbox + paymentEvent 조회
+      │
+      ├─ Step 3: KafkaMessagePublisher.send
+      │     topic=payment.commands.confirm
+      │     payload=PaymentConfirmCommandMessage(orderId, paymentKey, amount, gatewayType, buyerId, eventUuid)
+      │     [실패 예외] → IN_FLIGHT 유지 → OutboxWorker 폴백 재발행
+      │
+      └─ Step 4: outbox.toDone() 저장 → PaymentOutbox: IN_FLIGHT → DONE
 ```
 
-### 1-3. OutboxImmediateWorker.workerLoop() — 채널 소비 (VT/PT 워커)
+## 폴백 — `OutboxWorker`
+
+`@Scheduled(fixedDelay)` — 큐 오버플로우 / 워커 크래시 / 발행 실패 회복 전용.
 
 ```
-[SmartLifecycle — 앱 시작 시 workerCount개(기본 200) 워커 스레드 생성]
-각 워커 스레드가 독립적으로 루프 실행
-
-workerLoop():
-      │
-      ▼
-channel.take()  [blocking wait — 큐에 항목이 올 때까지 대기]
-      │
-      ▼
-OutboxProcessingService.process(orderId)
-      [아래 1-4 참조]
-      │
-      └─ loop 반복 (InterruptedException → 루프 종료)
-```
-
-### 1-4. OutboxProcessingService.process() — 복구 사이클 (공유 처리 로직)
-
-```
-[OutboxImmediateWorker 및 OutboxWorker 양쪽에서 호출]
-      │
-      ▼
-① claimToInFlight(orderId)
-      │  atomic UPDATE WHERE status='PENDING' → IN_FLIGHT
-      │  REQUIRES_NEW 트랜잭션으로 즉시 커밋 — 중복 처리 방지
-      │
-      │  [클레임 실패 — Optional.empty()] → return
-      ▼
-② loadPaymentEvent(orderId)
-      │
-      │  [조회 실패] → incrementRetryOrFail(orderId, outbox) → return
-      ▼
-③ 로컬 종결 재진입 차단
-      │  paymentEvent.getStatus().isTerminal() → true일 때
-      │  rejectReentry(outbox) — outbox.toDone() + save (PG 조회 불필요)
-      │
-      │  [종결 상태] → return
-      ▼
-④ getPaymentStatusByOrderId(orderId)  [PG 상태 선행 조회, TX 밖]
-      │  → RecoveryDecision.from(event, result, retryCount, maxRetries) 수립
-      │  예외 시 → RecoveryDecision.fromException(event, exception, retryCount, maxRetries)
-      ▼
-⑤ applyDecision — RecoveryDecision.Type에 따라 분기
-      │
-      ├─ COMPLETE_SUCCESS
-      │    → executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)
-      │         ├─ outbox.toDone() + save()  — PaymentOutbox: DONE
-      │         └─ markPaymentAsDone()       — PaymentEvent: DONE
-      │
-      ├─ COMPLETE_FAILURE
-      │    → executePaymentFailureCompensationWithOutbox(orderId, orderList, reason)
-      │         ├─ D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구
-      │         ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
-      │         └─ markPaymentAsFail()         — PaymentEvent: FAILED
-      │
-      ├─ ATTEMPT_CONFIRM
-      │    → confirmPaymentWithGateway(command)  [Toss API confirm 호출]
-      │         ├─ SUCCESS → executePaymentSuccessCompletionWithOutbox()
-      │         ├─ NON_RETRYABLE_FAILURE → executePaymentFailureCompensationWithOutbox()
-      │         └─ RETRYABLE_FAILURE → 미소진: retry / 소진: FCG
-      │
-      ├─ RETRY_LATER
-      │    → 미소진: executePaymentRetryWithOutbox() — RETRYING + PENDING(nextRetryAt)
-      │    → 소진: FCG(Final Confirmation Gate)
-      │
-      ├─ GUARD_MISSING_APPROVED_AT (PG DONE + approvedAt null)
-      │    → 미소진: executePaymentRetryWithOutbox() — 다음 틱 재시도
-      │    → 소진: FCG
-      │
-      ├─ QUARANTINE (retryCount >= maxRetries)
-      │    → FCG
-      │
-      └─ REJECT_REENTRY → rejectReentry(outbox)
-
-⑥ FCG(Final Confirmation Gate) — 소진 시 최종 getStatus 1회 재호출
-      │  getPaymentStatusByOrderId(orderId)  [retryCount=0, maxRetries=1로 고정]
-      │  freshPaymentEvent = DB 재조회 (stale 방지)
-      │
-      ├─ COMPLETE_SUCCESS → executePaymentSuccessCompletionWithOutbox(freshEvent, approvedAt, outbox)
-      ├─ COMPLETE_FAILURE → executePaymentFailureCompensationWithOutbox(orderId, orderList, reason)
-      └─ 그 외 → executePaymentQuarantineWithOutbox(freshEvent, outbox, reason)
-               ├─ outbox.toFailed() + save()  — PaymentOutbox: FAILED
-               └─ markPaymentAsQuarantined()  — PaymentEvent: QUARANTINED
-```
-
-### 1-5. OutboxWorker.process() — 폴백 스케줄러
-
-```
-[@Scheduled fixedDelay — 기본 2000ms]
-주 역할: 큐 오버플로우 / 서버 재시작으로 누락된 PENDING 레코드 재처리
-      │
-      ▼
 Step 0: recoverTimedOutInFlightRecords(inFlightTimeoutMinutes)
-      │  IN_FLIGHT 상태 레코드 중 inFlightAt 기준 N분(기본 5분) 초과 시
-      │  → PaymentOutbox: IN_FLIGHT → PENDING (워커 비정상 종료 복구)
-      ▼
+      IN_FLIGHT 중 inFlightAt 기준 N분(기본 5분) 초과 → PENDING 복귀
+
 Step 1: findPendingBatch(batchSize)
-      │  PaymentOutbox: PENDING 상태 배치 조회 (기본 50건)
-      │  정상 환경에서는 채널 처리로 PENDING이 없어 바로 return
-      │  parallel 모드 시 가상 스레드(Java 21)로 병렬 처리
+      PENDING 배치 조회 (기본 50건). 정상 환경에서는 채널 처리로 PENDING 없음 → no-op
+
+Per record:
+      OutboxRelayService.relay(orderId)   (위 AFTER_COMMIT 경로와 동일)
+```
+
+## 결과 수신 — `ConfirmedEventConsumer` + `PaymentConfirmResultUseCase`
+
+`@KafkaListener(topics="payment.events.confirmed", groupId="payment-service")` → use case 위임.
+
+```
+ConfirmedEventConsumer.consume(message)
       │
-      │  [배치 없음] → return (다음 사이클 대기)
       ▼
-per record:
-      OutboxProcessingService.process(outbox.getOrderId())
-      [처리 로직은 1-4와 동일]
-      ▼
-[종료]
+PaymentConfirmResultUseCase.handle(message)
+      │
+      ├─ Step 1: two-phase lease
+      │     EventDedupeStore.markWithLease(eventUuid, leaseTtl=PT5M)
+      │       → false: 이미 처리 중 (다른 인스턴스 또는 재처리). no-op + return
+      │       → true: 처리 권한 획득
+      │
+      ├─ Step 2: paymentEvent 조회 (orderId)
+      │
+      ├─ Step 3: processMessageWithLeaseGuard(paymentEvent, message)
+      │     try {
+      │        @Transactional(timeout=5)
+      │        분기:
+      │          · APPROVED → handleApproved
+      │          · FAILED   → handleFailed
+      │          · QUARANTINED → handleQuarantined
+      │
+      │        성공 시: extendLease(eventUuid, longTtl=P8D)
+      │     } catch (...) {
+      │        보상 또는 재throw (운영 컨벤션)
+      │        실패 시 remove(eventUuid):
+      │          → false 면 dlqPublisher.publishDlq (payment.events.confirmed.dlq)
+      │     }
+      │
+      └─ end
 ```
 
----
-
-## 2. 공유 메커니즘
-
-### 2-1. executePaymentSuccessCompletionWithOutbox (Outbox 성공 완료)
-
-> `PaymentTransactionCoordinator.executePaymentSuccessCompletionWithOutbox(paymentEvent, approvedAt, outbox)`
+### handleApproved (ADR-D1 양방향 amount 방어)
 
 ```
-단일 @Transactional
+parseApprovedAt(message.approvedAt)
+      [null] → IllegalArgumentException (APPROVED 인데 approvedAt null = 계약 위반)
 
-① outbox.toDone()
-② paymentOutboxUseCase.save(outbox)  — PaymentOutbox: IN_FLIGHT → DONE
-③ markPaymentAsDone(paymentEvent, approvedAt)  → PaymentEvent: DONE
+isAmountMismatch(paymentEvent, message.amount)
+      paymentEvent.totalAmount.longValueExact() vs message.amount
+      [불일치 또는 message.amount null] → true
+
+if (isAmountMismatch)
+      → QuarantineCompensationHandler.handle(orderId, "AMOUNT_MISMATCH")
+        markPaymentAsQuarantined(reason)
+        early return (done 미호출, 재고 보상 미수행 — 격리 정책)
+
+else
+      receivedApprovedAt = OffsetDateTime.parse(message.approvedAt).toLocalDateTime()
+      paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt, localDateTimeProvider.now())
+      // AOP @PaymentStatusChange + @PublishDomainEvent 가 payment_history 자동 기록
+
+      각 PaymentOrder 별:
+        applicationEventPublisher.publishEvent(StockCommitRequestedEvent(orderId, productId, qty, eventUuid))
+      // StockEventPublishingListener 가 AFTER_COMMIT 으로 stock.events.commit 발행
 ```
 
-**호출 지점:** OutboxProcessingService (Toss confirm 성공 후)
-
-### 2-2. executePaymentFailureCompensationWithOutbox (Outbox 실패 보상 — D12 가드)
-
-> `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox(orderId, paymentOrderList, failureReason)`
+### handleFailed
 
 ```
-단일 @Transactional
+paymentCommandUseCase.markPaymentAsFail(paymentEvent, reason, now)
+      // AOP audit
 
-① freshOutbox = findByOrderId(orderId)       — TX 내 outbox 재조회
-② freshEvent = getPaymentEventByOrderId(orderId) — TX 내 event 재조회
-③ D12 가드 판정: outboxInFlight AND eventNonTerminal
-   ├─ 충족 → increaseStockForOrders(paymentOrderList) — 재고 복원
-   └─ 미충족 → 재고 복구 건너뜀 (warn 로그)
-④ outboxInFlight → freshOutbox.toFailed() + save() — PaymentOutbox: FAILED
-⑤ markPaymentAsFail(freshEvent, reason)    — PaymentEvent: FAILED (종결 no-op)
+각 PaymentOrder 별:
+      failureCompensationService.compensate(orderId, productId, qty)
+      // 단일 productId 오버로드 — 내부에서 stock.events.restore 발행
 ```
 
-**호출 지점:** OutboxProcessingService (COMPLETE_FAILURE, ATTEMPT_CONFIRM NON_RETRYABLE 등)
+### handleQuarantined
 
-### 2-3. executePaymentRetryWithOutbox (재시도 전환)
-
-> `PaymentTransactionCoordinator.executePaymentRetryWithOutbox(paymentEvent, outbox, policy, now)`
-
+PG 측 격리(QUARANTINED) 결정을 payment 측 도 격리로 전이.
 ```
-단일 @Transactional
-
-① outbox.incrementRetryCount(policy, now)
-   — retryCount++, status=PENDING, nextRetryAt=now+policy.nextDelay(retryCount)
-② paymentOutboxUseCase.save(outbox)   — PaymentOutbox: IN_FLIGHT → PENDING (nextRetryAt 설정)
-③ markPaymentAsRetrying(paymentEvent) — PaymentEvent: IN_PROGRESS 또는 RETRYING → RETRYING
+QuarantineCompensationHandler.handle(orderId, reason)
+      → markPaymentAsQuarantined
+      → 재고 보상 정책 별도 (ADR-13)
 ```
 
-**호출 지점:** OutboxProcessingService (RETRY_LATER/GUARD_MISSING_APPROVED_AT 미소진, ATTEMPT_CONFIRM RETRYABLE 미소진)
+## 복구 사이클 — `PaymentReconciler` (`@Scheduled` 2분)
 
-**백오프 전략 (`BackoffType`):**
-- `FIXED`: 매회 `baseDelayMs`만큼 대기
-- `EXPONENTIAL`: `min(baseDelayMs * 2^retryCount, maxDelayMs)` — 지수 증가, 상한 있음
+payment / pg 상태 불일치 스캔. 일정 시간 동안 PROCESSING 에 머문 건을 PG 에 직접 getStatus 조회 → RecoveryDecision 적용.
 
-### 2-4. executePaymentQuarantineWithOutbox (격리 전이)
+자세한 RecoveryDecision 분기는 `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md`.
 
-> `PaymentTransactionCoordinator.executePaymentQuarantineWithOutbox(paymentEvent, outbox, reason)`
+## 핵심 멱등성 / 가드
 
-```
-단일 @Transactional
+| 위치 | 메커니즘 |
+|---|---|
+| confirm 진입 | LVAL 가드 (`validateConfirmRequest`) — TX 진입 전 |
+| confirm TX | `@Transactional` + `payment_outbox PENDING` 단일 커밋 |
+| outbox claim | `claimToInFlight` REQUIRES_NEW atomic CAS — 다중 워커 선점 방지 |
+| Kafka 멱등 | producer key=orderId, eventUuid 별도 첨부 |
+| consumer 멱등 | `EventDedupeStore` two-phase lease (Redis SET NX EX) — markWithLease(PT5M) → 처리 → extendLease(P8D) |
+| amount 방어 | 양방향 — pg 발행 시 non-null 강제 + payment 수신 시 대조 (ADR-15 + ADR-D1) |
+| 상태 전이 | `PaymentEventStatus.isTerminal()` SSOT — 종결 상태 재진입 차단 |
+| 재고 보상 | D12 가드 — TX 내 outbox/event 재조회 후 양 조건 충족 시에만 INCR |
 
-① outbox.toFailed()
-② paymentOutboxUseCase.save(outbox)             — PaymentOutbox: IN_FLIGHT → FAILED
-③ markPaymentAsQuarantined(paymentEvent, reason) — PaymentEvent: QUARANTINED
-   └─ PaymentQuarantineMetrics.recordQuarantine(reason) — Micrometer 카운터 증가
-```
+## 상태 머신 — `PaymentEventStatus`
 
-**호출 지점:** OutboxProcessingService FCG default 분기 (판단 불가 시 격리)
+| 상태 | 의미 | 진입 |
+|---|---|---|
+| READY | 결제 초기 생성 | checkout 완료 |
+| IN_PROGRESS | confirm TX 커밋, paymentKey 기록 | `executePayment()` |
+| RETRYING | 복구 사이클 재시도 대기 (outbox PENDING + nextRetryAt) | `markPaymentAsRetrying()` |
+| DONE | PG 결제 완료 (approvedAt non-null) | `markPaymentAsDone()` |
+| FAILED | 재고 부족 / PG 종결 실패 / non-retryable | `markPaymentAsFail()` |
+| QUARANTINED | 판단 불가 격리 (수동 확인 필요) | `markPaymentAsQuarantined()` |
+| CANCELED / PARTIAL_CANCELED / EXPIRED | PG 또는 만료 스케줄러 | (별도 경로) |
 
-### 2-5. handleStockFailure (재고 부족 전용)
+`isTerminal()` = DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED.
 
-> `PaymentFailureUseCase.handleStockFailure(paymentEvent, failureMessage)`
+## PaymentOutbox 상태 머신
 
-```
-markPaymentAsFail(paymentEvent, failureMessage)  → PaymentEvent: FAILED
-(재고 복원 없음 — 재고 감소 자체가 트랜잭션 롤백으로 복원됨)
-```
+| 상태 | 의미 |
+|---|---|
+| PENDING | 발행 대기. AFTER_COMMIT 리스너 또는 OutboxWorker 가 처리 |
+| IN_FLIGHT | 워커가 선점, 발행 진행 중 |
+| DONE | Kafka 발행 성공 |
+| FAILED | 발행 영구 실패 (DLQ 또는 수동 처리) |
+
+IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀로 워커 크래시 회복.
+
+## 회복 시나리오 인덱스
+
+| 장애 | 동작 |
+|---|---|
+| 리스너 스킵 / 워커 크래시 | OutboxWorker 가 PENDING + IN_FLIGHT 타임아웃 회수 |
+| Kafka producer 실패 | IN_FLIGHT 유지 → OutboxWorker 폴백 |
+| pg-service 측 Toss/NicePay 5xx | pg_inbox=QUARANTINED → ConfirmedEvent QUARANTINED → handleQuarantined |
+| Redis dedupe 장애 | confirm 단계 CACHE_DOWN → QUARANTINED + 보상 펜딩 |
+| amount 위변조 | pg 발행 시 차단 + payment 수신 시 차단 (양방향) |
+| 중복 메시지 | EventDedupeStore two-phase lease + outbox/inbox 상태 CAS 2단 멱등성 |
+
+## 관련 문서
+
+- 전체 end-to-end (브라우저 → 200 → 폴링): `PAYMENT-FLOW.md`
+- 다이어그램: `CONFIRM-FLOW-FLOWCHART.md`
+- 복구 사이클 상세 (RecoveryDecision, FCG, D12): `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md`
+- AMOUNT_MISMATCH 양방향 방어: `docs/archive/pre-phase-4-hardening/COMPLETION-BRIEFING.md` (D1)

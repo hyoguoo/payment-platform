@@ -1,167 +1,146 @@
 # Domain Pitfalls
 
-**Domain:** Async payment processing (DB Outbox 단일 전략)
-**Researched:** 2026-03-14
+> 최종 갱신: 2026-04-27
+> 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
----
+## 1. AOP 우회 → audit trail 누락
 
-## Critical Pitfalls
+**증상**: `paymentEvent.done(approvedAt)` 직접 호출 후 `saveOrUpdate(paymentEvent)` 하면 `payment_history` row 가 생기지 않는다. 추후 사고 재구성 시 상태 전이 흔적이 사라짐.
 
-Mistakes that cause rewrites, data corruption, or make portfolio claims incorrect.
+**원인**: `@PublishDomainEvent` + `@PaymentStatusChange` AOP 가 `markPaymentAsDone` / `markPaymentAsFail` / `markPaymentAsRetrying` / `markPaymentAsQuarantined` 메서드에만 부착돼 있다. 직접 도메인 메서드 + save 호출은 AOP 우회.
 
----
+**처방** (PRE-PHASE-4 K15):
+- 모든 상태 전이를 `PaymentCommandUseCase` 위임 메서드로 일원화
+- 직접 `done() + save()` 패턴 코드 리뷰에서 차단
 
-### Pitfall 1: Outbox Worker Runs Before the Writing Transaction Commits
+## 2. Try 블록에서 외부 변수 재할당
 
-**What goes wrong:**
-The `executeStockDecreaseWithJobCreation` method in `PaymentTransactionCoordinator` is annotated `@Transactional`. If the Outbox worker polls the outbox table via a separate scheduled thread and reads a `PENDING` row that was inserted but not yet committed, one of two outcomes occurs: (a) the row is invisible under READ COMMITTED isolation and the worker never sees it, or (b) under a weaker isolation level, the worker reads and processes the row, then the outer transaction rolls back, leaving stock decreased but the Outbox record permanently marked COMPLETED with no matching payment.
+**증상**: catch 분기에서 외부 변수 null/sentinel 처리 코드가 늘어나고, race condition / 부분 초기화 디버깅이 어려움.
 
-**Why it happens:**
-Scheduled pollers run on a different thread and a different transaction. The interaction between the write transaction's commit timing and the poller's SELECT window is easy to overlook.
+**원인**:
+```java
+ResultType result = null;
+try { result = service.call(); } catch (Exception e) { /* */ }
+process(result);  // result 가 null 일 수 있음
+```
 
-**Consequences:**
-- Silent data loss: stock is consumed, payment never completes, customer is in limbo.
-- No exception is raised because the worker "successfully" processed what it found.
+**처방**: private 메서드 추출 + 반환값으로 의도 표현. 변수 재할당 패턴 자체를 금지.
 
-**Prevention:**
-Write the Outbox record inside `executePaymentAndStockDecreaseWithOutbox`'s existing `@Transactional` boundary — exactly where stock decrease already happens. The poller only ever reads rows that a committed transaction created. Never create the Outbox row before committing the business transaction.
+## 3. `@Transactional` 안에서 동기 Kafka publish
 
-**Detection:**
-Unit test that inserts a PENDING row and rolls back the enclosing transaction, then asserts the worker cannot find it. Integration test that verifies PENDING rows only appear after the transaction completes.
+**증상**: Kafka broker 가 느려지면 `KafkaTemplate.send().get()` 가 트랜잭션 안에서 대기 → Hikari 커넥션 점유 → 풀 고갈 → cascade 장애.
 
-**Phase:** Outbox adapter implementation (schema change + worker).
+**처방** (PRE-PHASE-4 D2):
+- TX 안에서는 `ApplicationEventPublisher.publishEvent()` 만
+- 실제 Kafka publish 는 `@TransactionalEventListener(AFTER_COMMIT)` 리스너에서
+- `@Transactional(timeout=5)` 명시로 외부 호출 끼어 있는 경로의 점유 한계 시각화
 
----
+## 4. fire-and-forget Kafka publisher
 
-### Pitfall 2: Outbox Worker Processes the Same Row Twice
+**증상**: `whenComplete((res, ex) -> ...)` 로 콜백 등록만 하고 main thread 가 outbox.done() 처리 → broker 미도달 시 메시지 유실.
 
-**What goes wrong:**
-The `@Scheduled` Outbox poller fires every N milliseconds. Even in a single-instance environment, if the worker thread is still processing batch N when the next scheduler tick fires, a second invocation starts and picks up the same rows (which are still PROCESSING or not yet transitioned to COMPLETED). The `PaymentTransactionCoordinator` will call `executeStockDecreaseWithJobCreation` again, decrease stock a second time, and attempt a second Toss API call with the same `paymentKey`.
+**처방** (PRE-PHASE-4 D5):
+- `KafkaTemplate.send().get(timeout)` 동기 호출
+- broker 도달 보장 후 outbox 상태 변경
+- timeout 명시로 무한 대기 방지
 
-**Why it happens:**
-Spring's `@Scheduled` with a fixed delay does not prevent overlapping executions unless the method is synchronised or the scheduler has a single-thread pool. The existing `SchedulerConfig` must be checked — if it uses `@EnableScheduling` with default settings, overlap is possible under load.
+## 5. `catch (Exception)` swallow
 
-**Consequences:**
-- Double stock decrease (real inventory corruption).
-- Toss returns `ALREADY_PROCESSED_PAYMENT` — which `TossPaymentErrorCode.isSuccess()` treats as success — masking the duplicate entirely. The existing tech-debt item in `CONCERNS.md` makes this worse.
+**증상**: 워커/aspect 에서 모든 Exception 잡고 로그 한 줄 + return → 실제 장애 신호가 묻힘.
 
-**Prevention:**
-Two complementary guards:
-1. Set `fixedDelay` rather than `fixedRate` for the Outbox worker so the next tick only starts after the previous one finishes.
-2. Use a status gate: transition PENDING → IN_FLIGHT atomically before processing (`UPDATE ... SET status = 'IN_FLIGHT' WHERE status = 'PENDING' LIMIT batch_size`). Worker only processes IN_FLIGHT rows it owns; new scheduler tick skips rows it cannot transition.
+**처방**:
+- 가능하면 catch 자체를 좁히거나(특정 RuntimeException) 제거
+- 워커 등 절대 죽으면 안 되는 경로만 catch + ERROR 승격 + 메트릭(`*_fail_total` 카운터)
+- 단순 swallow + INFO/WARN 로그는 사고 가시화 실패
 
-**Detection:**
-Warning sign: `ALREADY_PROCESSED_PAYMENT` errors appear in logs during load tests. Monitor for `ALREADY_PROCESSED_PAYMENT` Toss API responses for the same `orderId`.
+## 6. `LocalDateTime.now()` 직접 호출
 
-**Phase:** Outbox adapter worker implementation.
+**증상**: 테스트에서 시간 위조 불가 → 시간 의존 분기를 단정하기 어려움.
 
----
+**처방** (PRE-PHASE-4 T-A2):
+- `LocalDateTimeProvider` 주입
+- 테스트는 위조된 Provider 로 시각 고정
 
-## Moderate Pitfalls
+## 7. 종결 상태 재진입
 
-Mistakes that cause incorrect behavior or unreliable tests but do not cause data corruption.
+**증상**: 다중 워커 / 메시지 재배달 환경에서 이미 DONE 인 결제에 또 done() 또는 quarantine() 호출 → 도메인 불변식 위반.
 
----
+**처방**:
+- `PaymentEventStatus.isTerminal()` 단일 진실 원천(SSOT) 사용 — exhaustive switch
+- `paymentEvent.quarantine()` 등에 isTerminal 사전 가드 + `IllegalStateException` 이중 가드
+- `QuarantineCompensationHandler.handle` 진입 직후 `isTerminal()` 체크 → terminal 이면 no-op + LogFmt
 
-### Pitfall 8: Outbox Worker Polling Interval Creates False Latency Disadvantage
+## 8. AMOUNT_MISMATCH 단방향 검증
 
-**What goes wrong:**
-If the Outbox worker polls every 5 seconds (matching the existing scheduler interval), the average latency for an Outbox-processed payment will be 2.5 seconds of queuing delay plus Toss API time. The k6 benchmark will show Outbox as dramatically slower than Kafka, not because the pattern is slower but because of the poll interval choice.
+**증상**: pg 측에서만 amount 검증하고 payment 측은 받은 amount 신뢰 → pg 측 버그 / 메시지 변조 시 잘못된 amount 로 done() 처리.
 
-**Why it happens:**
-Using the existing scheduler interval (5 minutes for recovery, likely seconds for the Outbox worker) without tuning it for demo purposes.
+**처방** (PRE-PHASE-4 D1):
+- pg 발행 시 APPROVED 라면 amount/approvedAt non-null 강제
+- payment 수신 시 `paymentEvent.totalAmount` vs `message.amount` 대조 → 불일치 시 QUARANTINED
 
-**Prevention:**
-For the benchmark, use a short polling interval (e.g., 200–500ms) that represents a reasonable production configuration. Document the interval in the benchmark results. The comparison should measure architectural overhead, not polling interval choice.
+## 9. dedupe TTL ≠ Kafka retention
 
-**Detection:**
-P95 latency for Outbox ≈ poll_interval + Toss_API_time. If P95 is much larger than Toss API P95, the poll interval is too long relative to the test window.
+**증상**: Kafka retention(7d) 안에 메시지가 재배달되는데 dedupe TTL 이 1h 면 중복 처리 발생.
 
-**Phase:** Outbox worker configuration, before k6 runs.
+**처방** (PRE-PHASE-4 T-C1):
+- dedupe TTL 기본 P8D (Kafka retention 7d + 복구 버퍼 1d)
+- 모든 모듈의 dedupe TTL 정렬 (`StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
 
----
+## 10. Single-phase mark with long TTL
 
-### Pitfall 9: Compensation Double-Execution During Outbox Worker Retry
+**증상**: 처리 도중 워커 크래시 → markSeen 만 박아둔 상태에서 8일 동안 다른 워커가 재처리 못 함.
 
-**What goes wrong:**
-This is an existing known bug (`CONCERNS.md`: "Compensation Idempotency Not Guaranteed") that becomes worse with the Outbox pattern. If the Outbox worker calls the Toss API and gets a retryable error, then on the next worker tick retries and gets a non-retryable error, `executePaymentFailureCompensation` calls `increaseStockForOrders` without checking if stock was already restored. Under at-least-once delivery, if the worker runs compensation twice, stock is double-restored.
+**처방** (PRE-PHASE-4 T-C3 — two-phase lease):
+- `markWithLease(eventUuid, leaseTtl=PT5M)` — 짧은 lease 로 처리 권한
+- 처리 완료 시 `extendLease(eventUuid, longTtl=P8D)` 로 dedupe 윈도우 확장
+- 처리 실패 시 `remove(eventUuid)` → false 면 DLQ publish
 
-**Prevention:**
-Before the Outbox adapter goes live, add a guard in `executePaymentFailureCompensation`: check whether stock was already restored (e.g., check `PaymentEventStatus` — if already FAILED, skip stock restoration). Alternatively, use an idempotency flag on the `PaymentOrder` domain object to track whether compensation has run.
+## 11. 보상 트랜잭션 중복 진입
 
-**Detection:**
-After a simulated worker crash-and-retry under a non-retryable Toss error, assert stock levels. If stock is higher than starting value, double-compensation occurred.
+**증상**: 다중 워커 동시 진입 또는 retry 후 응답 처리 직전 크래시 → 같은 결제에 재고 INCR 두 번 → 재고 발산.
 
-**Phase:** Outbox adapter worker error handling.
+**처방** (PRE-PHASE-4 D12):
+- `executePaymentFailureCompensationWithOutbox` 진입 시 TX 내 outbox + event 재조회
+- outbox 가 IN_FLIGHT AND event 가 비종결일 때만 재고 INCR
+- 한쪽이라도 종결된 흔적 있으면 재고 복구 skip + warn 로그
 
----
+## 12. Virtual Thread / Async 경계 MDC 손실
 
-### Pitfall 10: `PaymentHistory` AOP Listener Silently Fails for Async Paths
+**증상**: HTTP → @Async → Kafka 경계에서 traceparent 가 끊김 → 사고 시 trace 추적 불가.
 
-**What goes wrong:**
-`PaymentHistoryEventListener` depends on Spring application events published via AOP (`@PublishDomainEvent`). The existing sync confirm path triggers AOP aspects correctly because the domain method is called in the same thread/context as the Spring application event publishing. The Outbox worker and Kafka consumer run in separate threads with their own transaction contexts. If the AOP aspect does not fire (wrong pointcut match, transaction propagation boundary, or the domain method is called via a bean not managed by the AOP proxy), payment history records will be missing for async-processed payments with no error surfaced.
+**처방** (PRE-PHASE-4 T-E*):
+- Spring `@Async` executor 가 OTel context 자동 전파하도록 wiring
+- Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 명시 wiring (T-J2)
+- `OtelMdcMessageInterceptor` 로 consumer 측 traceparent → MDC 복원
 
-**Prevention:**
-After implementing each async adapter, write an integration test that confirms a `PaymentHistory` record exists for a payment processed via that adapter. Do not assume AOP aspect fire automatically because it worked for the sync path.
+## 13. NicePay paidAt offset 정규화
 
-**Detection:**
-Warning sign: admin payment history endpoint shows zero history events for Outbox/Kafka-processed payments. This is the "Fragile Areas" item from `CONCERNS.md` applied to the async paths.
+**증상**: NicePay 응답의 `paidAt` 이 `+09:00` offset 으로 오는데 ConfirmedEventPayload 직렬화 시 제대로 안 들어가면 payment 측 역직렬화에서 `OffsetDateTime.parse` 실패.
 
-**Phase:** Integration testing of each async adapter.
+**처방** (직전 fix):
+- pg-service 측에서 raw 문자열 보존 → `approvedAtRaw(String)` 으로 ConfirmedEventPayload 에 전달
+- payment 측에서 `OffsetDateTime.parse(approvedAtRaw).toLocalDateTime()` 변환
 
----
+## 14. ddl-auto: update 와 Flyway 혼용
 
-## Minor Pitfalls
+**증상**: 한 서비스에 Flyway 도입하면서 다른 서비스만 `ddl-auto: update` 로 두면, 운영 환경에 컬럼 추가 같은 변경을 ad-hoc SQL 메모로 따로 관리해야 함.
 
----
+**처방** (이번 봉인 작업):
+- 4서비스 모두 Flyway + `ddl-auto: validate` 통일
+- schema 변경은 V 파일로만, JPA Entity 변경 시 V N+1 추가
+- `flyway_schema_history` 테이블이 단일 진실 원천
 
-### Pitfall 11: `ALREADY_PROCESSED_PAYMENT` as Success Masks Duplicate Consumer Execution
+## 15. PG 호출 직접 호출 — 아키텍처 경계 위반
 
-**What goes wrong:**
-`TossPaymentErrorCode.isSuccess()` returns `true` for `ALREADY_PROCESSED_PAYMENT`. If the idempotency guard (Pitfall 3) is missing or fires too late (after stock decrease), the Toss API returns `ALREADY_PROCESSED_PAYMENT`, the consumer treats it as success, marks the payment DONE, and the duplicate stock decrease is never noticed. The consumer appears to have worked correctly.
+**증상**: payment-service 안에서 직접 Toss/NicePay HTTP 호출하면 PG 벤더 회복성/멱등성/dedupe 가 도메인 코드와 섞여 망가지기 쉬움.
 
-**Prevention:**
-Treat `ALREADY_PROCESSED_PAYMENT` as a signal to skip, not a signal to complete. When received, verify the existing `PaymentEventStatus` from the DB: if already DONE, skip without modifying domain state. If not DONE, something is inconsistent — log a WARNING and route to investigation rather than silently marking DONE.
+**처방** (MSA-TRANSITION):
+- payment-service 는 PG 호출 안 함
+- pg-service 만 벤더 호출. payment 와는 Kafka 양방향 메시지로만 통신
+- `PgGatewayPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
 
-**Detection:**
-Add a Micrometer counter `payment.toss.already_processed` that increments on this response. Nonzero values during tests indicate duplicate processing is occurring.
+## 관련 자료
 
-**Phase:** Outbox worker Toss API response handling.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Outbox worker implementation | Overlapping scheduler invocations causing double processing (Pitfall 2) | Use `fixedDelay` + IN_FLIGHT status transition |
-| Outbox worker error handling | Compensation double-execution on retry (Pitfall 9) | Add idempotency guard to `executePaymentFailureCompensation` before use in async path |
-| Outbox worker startup | Transaction commit timing vs poller read window (Pitfall 1) | Write Outbox record inside existing `@Transactional` boundary |
-| Outbox worker Toss response handling | Silent duplicate masked by `ALREADY_PROCESSED_PAYMENT` (Pitfall 11) | Add counter metric; verify domain state before marking done |
-| k6 Outbox latency | Poll interval dominates latency, not architecture (Pitfall 8) | Tune poll interval before benchmark; document it in results |
-| Integration testing | `PaymentHistory` AOP silent miss for async paths (Pitfall 10) | Assert history record exists after each adapter's integration test |
-
----
-
-## Sources
-
-- Codebase analysis (HIGH confidence):
-  - `PaymentTransactionCoordinator.java` — transaction boundaries, compensation logic
-  - `PaymentController.java` — current 200-only response pattern
-  - `.planning/codebase/CONCERNS.md` — existing known bugs (compensation idempotency, AOP history listener)
-
-- [Kafka Idempotent Consumer & Transactional Outbox — lydtechconsulting.com](https://www.lydtechconsulting.com/blog/kafka-idempotent-consumer-transactional-outbox) — MEDIUM confidence
-
-- [Delivery Semantics for Kafka Consumers — conduktor.io](https://learn.conduktor.io/kafka/delivery-semantics-for-kafka-consumers/) — MEDIUM confidence
-
-- [Idempotent Reader pattern — Confluent Developer](https://developer.confluent.io/patterns/event-processing/idempotent-reader/) — MEDIUM confidence
-
-- [Transactional Outbox Pattern with Spring Boot — medium.com/AlexanderObregon](https://medium.com/@AlexanderObregon/transactional-outbox-pattern-with-spring-boot-and-jpa-912a812d6a70) — MEDIUM confidence
-
-- [Outbox Pattern Survival Guide — medium.com/tpierrain](https://medium.com/@tpierrain/outbox-pattern-survival-guide-6ad4b57ef189) — MEDIUM confidence
-
-- [Revisiting the Outbox Pattern — decodable.co](https://www.decodable.co/blog/revisiting-the-outbox-pattern) — MEDIUM confidence
-
-- [Performance Testing Asynchronous Applications — testrail.com](https://www.testrail.com/blog/performance-test-asynchronous-applications/) — LOW confidence (general, not Spring-specific)
-
-- [Asynchronous API Performance Testing — octoperf.com](https://octoperf.com/blog/2020/04/08/asynchronous-api) — LOW confidence (older, JMeter-focused, principles apply)
+- 도메인 학습 자료: archive 안 토픽별 `COMPLETION-BRIEFING.md`
+- 자주 겹치는 우려: `CONCERNS.md`
+- 향후 처리 항목: `TODOS.md`

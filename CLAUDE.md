@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-Payment platform based on a hexagonal architecture. The confirm flow runs asynchronously end-to-end; TPS/latency is measured via k6 benchmarks.
+결제 도메인 학습용 MSA 플랫폼. 4 비즈니스 서비스(payment / pg / product / user) + Eureka + Gateway, hexagonal architecture, Kafka 양방향 비동기 confirm. TPS/latency 는 k6 벤치마크로 측정.
 
 ---
 
@@ -31,14 +31,23 @@ Payment platform based on a hexagonal architecture. The confirm flow runs asynch
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
-- [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — hexagonal layer rules, module boundaries, async adapter placement
-- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok conventions, exception handling, naming, LogFmt logging
-- [`docs/context/TESTING.md`](docs/context/TESTING.md) — test strategy (Fake vs Mock), JaCoCo, test patterns
-- [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss Payments integration, domain entities, confirm flow
-- [`docs/context/STACK.md`](docs/context/STACK.md) — technology stack, dependencies
-- [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — async confirm flow analysis
-- [`docs/context/CONFIRM-FLOW-FLOWCHART.md`](docs/context/CONFIRM-FLOW-FLOWCHART.md) — confirm flow mermaid diagrams
-- [`docs/context/TODOS.md`](docs/context/TODOS.md) — 향후 정리 예정 작업 목록 (discuss idle 시 참고)
+- [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — 4서비스 토폴로지, hexagonal layer 룰, 비동기 어댑터 위치, ADR 인덱스
+- [`docs/context/STRUCTURE.md`](docs/context/STRUCTURE.md) — 디렉토리 트리, 모듈 의존, 패키지 컨벤션
+- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, Flyway 운영 가이드, 빌드 / 정적 분석
+- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok, 예외 계층, naming, LogFmt, AOP, 트랜잭션 룰
+- [`docs/context/TESTING.md`](docs/context/TESTING.md) — Fake vs Mock 룰, Testcontainers, contract test, JaCoCo, TDD 흐름
+- [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss + NicePay Strategy, cross-service HTTP, 외부 의존 관리
+- [`docs/context/PAYMENT-FLOW.md`](docs/context/PAYMENT-FLOW.md) — end-to-end 결제 플로우 (브라우저 → Phase 5)
+- [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — payment-service 측 비동기 confirm 사이클 분석
+- [`docs/context/CONFIRM-FLOW-FLOWCHART.md`](docs/context/CONFIRM-FLOW-FLOWCHART.md) — 위 사이클 Mermaid 다이어그램
+- [`docs/context/PITFALLS.md`](docs/context/PITFALLS.md) — 학습된 도메인 함정 인덱스
+- [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
+- [`docs/context/TODOS.md`](docs/context/TODOS.md) — Phase 4 후속 + 향후 처리 항목
+
+### 영구 도구 가이드 (docs/smoke/) — 시점 무관
+
+- [`docs/smoke/infra-healthcheck.md`](docs/smoke/infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사 스크립트 가이드
+- [`docs/smoke/trace-continuity-check.md`](docs/smoke/trace-continuity-check.md) — 분산 트레이스 연속성 검사 가이드
 
 ### 작업 중 설계 문서 (docs/topics/) — 작업 단위 생명주기
 

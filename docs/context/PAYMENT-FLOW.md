@@ -1,6 +1,9 @@
-# Payment Flow 브리핑 — 웹에서 결제 요청 시 end-to-end 처리
+# Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-현재 `main` (MSA 전환 중, pg-service 분리 완료 후 기준) 코드를 기준으로, 브라우저가
+> 최종 갱신: 2026-04-27 (MSA-TRANSITION + PRE-PHASE-4-HARDENING 봉인 시점)
+> 짝 문서 — payment-service 측 비동기 confirm 사이클 상세: [`CONFIRM-FLOW-ANALYSIS.md`](CONFIRM-FLOW-ANALYSIS.md), [`CONFIRM-FLOW-FLOWCHART.md`](CONFIRM-FLOW-FLOWCHART.md)
+
+현재 `main` (MSA 4서비스 분리 + Phase 0~3.5 + PRE-PHASE-4-HARDENING 봉인 시점) 코드를 기준으로, 브라우저가
 결제를 시작해서 최종 DONE/FAILED까지 도달하는 전 과정을 정리한다.
 
 ---

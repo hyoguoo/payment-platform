@@ -1,418 +1,134 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-31
+> 최종 갱신: 2026-04-27
 
-## Test Framework
+## 테스트 프레임워크
 
-**Runner:**
-- JUnit 5 (Jupiter) via `org.springframework.boot:spring-boot-starter-test`
-- Config: `build.gradle` — `useJUnitPlatform { excludeTags 'integration' }`
+- JUnit 5 (Jupiter) — `spring-boot-starter-test`
+- Mockito — Spring Boot Test 번들 포함
+- AssertJ — 가독성 우선
+- Testcontainers (`org.testcontainers:mysql`) — 통합 테스트 시 새 MySQL 컨테이너
+- MockWebServer (`com.squareup.okhttp3:mockwebserver`) — HTTP 어댑터 contract test
 
-**Assertion Library:**
-- AssertJ (`org.assertj.core.api.Assertions`)
-- Mockito BDD style (`org.mockito.BDDMockito`)
+## 테스트 카테고리
 
-**Run Commands:**
-```bash
-./gradlew test          # Unit + integration-tagged tests EXCLUDED
-./gradlew test -PrunIntegration  # Not wired; run integration tests individually
-```
+| 카테고리 | 도구 | 특징 | 위치 |
+|---|---|---|---|
+| **도메인 단위** | JUnit + AssertJ | Spring 의존 0. `@ParameterizedTest @EnumSource` 로 상태 전이 유효/무효 모두 | `<service>/src/test/java/.../domain/` |
+| **Use case 단위** | Mockito + Fake | port 는 Fake, 외부 의존(Repository 등)은 Mock 가능 | `.../application/` |
+| **Adapter 단위** | Mockito | 출력 포트 어댑터의 변환·예외 분기 | `.../infrastructure/` |
+| **JPA / Repository** | Testcontainers MySQL + `@DataJpaTest` | 실제 SQL 검증 | `.../infrastructure/persistence/` |
+| **Kafka producer/consumer** | Spring Kafka EmbeddedKafka 또는 Mock + 자체 어댑터 | 실 broker 없이도 직렬화·observation 검증 | `.../infrastructure/messaging/` |
+| **HTTP 어댑터 contract** | MockWebServer | 404/503/429/500 분기별 어댑터 행동 고정 | `.../infrastructure/http/` |
+| **Web layer** | `@WebMvcTest` + `MockMvc` | controller 입력 매핑 + 예외 → HTTP 상태 | `.../presentation/` |
+| **통합** | `@SpringBootTest` + Testcontainers + `@Tag("integration")` | 부팅 + 실 DB | 별도 `integrationTest` task |
 
-## Test File Organization
+## Fake vs Mock 룰
 
-**Location:** Co-located with source modules under `src/test/java/com/hyoguoo/paymentplatform/`
+| 종류 | 언제 |
+|---|---|
+| **Fake (정식 구현체)** | port 의 정상 행동을 재현해야 하는 경우. ConcurrentHashMap 기반 in-memory 또는 Clock 주입 TTL 시뮬레이션. **여러 테스트가 같은 행동 기대** |
+| **Mock (Mockito)** | 호출 사실 검증(`verify(...)`) 또는 특정 시나리오 stub 만 필요할 때. 단일 테스트 의존 |
 
-**Structure mirrors main:**
-```
-src/test/java/com/hyoguoo/paymentplatform/
-├── core/test/                         # Base test classes
-│   └── BaseIntegrationTest.java
-├── mock/                              # Fake / test-double implementations
-│   ├── FakePaymentEventRepository.java
-│   ├── FakeProductRepository.java
-│   ├── FakeUserRepository.java
-│   ├── FakeTossOperator.java
-│   ├── FakeIdempotencyStore.java
-│   └── AdditionalHeaderHttpOperator.java
-├── mixin/                             # Jackson MixIns for deserialization in tests
-│   ├── BasicResponseMixin.java
-│   ├── CheckoutResponseMixin.java
-│   └── PaymentConfirmResponseMixin.java
-├── payment/
-│   ├── domain/                        # Pure domain entity tests
-│   ├── application/                   # Use-case / service unit tests
-│   │   ├── usecase/
-│   │   └── IdempotencyKeyHasherTest.java
-│   ├── presentation/                  # Controller tests
-│   ├── scheduler/                     # Scheduler unit tests
-│   │   ├── OutboxImmediateWorkerTest.java    # SmartLifecycle + VT/PT 워커 생명주기 테스트
-│   │   ├── OutboxProcessingServiceTest.java  # process() 성공/실패/재시도 시나리오
-│   │   └── OutboxWorkerTest.java             # 폴백 배치 처리 + 타임아웃 복구
-│   ├── listener/                      # Event listener tests
-│   │   └── OutboxImmediateEventHandlerTest.java  # channel.offer 위임 + 오버플로우 경고
-│   └── infrastructure/                # Infrastructure unit tests
-│       └── publisher/
-│           └── OutboxImmediatePublisherTest.java
-├── paymentgateway/application/
-├── product/
-└── user/
-```
+**예**:
+- `FakeEventDedupeStore` — markWithLease/extendLease/remove 의 TTL 시뮬레이션을 정식 구현체로 (여러 테스트가 의존)
+- `FakeStockCachePort` — ConcurrentHashMap merge 로 INCR/DECR 멱등 시뮬레이션
+- `FakePaymentConfirmDlqPublisher` — DLQ 발행 누적 검증
+- `Mockito.when(repo.findById(...)).thenReturn(Optional.of(...))` — 단일 테스트 시나리오
 
-**Naming:**
-- Unit/service tests: `{ClassName}Test.java`
-- MVC tests: `{Controller}MvcTest.java`
-- Integration tests: `{ClassName}IntegrationTest.java`
+원칙: **외부 의존은 가능한 Fake. 내부 협력자는 Mock**.
 
-## Test Hierarchy
-
-### BaseIntegrationTest
-File: `src/test/java/com/hyoguoo/paymentplatform/core/test/BaseIntegrationTest.java`
+## Testcontainers MySQL 패턴
 
 ```java
 @SpringBootTest
-@ActiveProfiles("test")
 @Testcontainers
 @Tag("integration")
-public abstract class BaseIntegrationTest {
-
+class SomeIntegrationTest {
     @Container
-    protected static final MySQLContainer<?> MYSQL_CONTAINER = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("payment-test")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci");
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
 
     @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", MYSQL_CONTAINER::getJdbcUrl);
+    static void registerProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", mysql::getJdbcUrl);
         // ...
-        registry.add("scheduler.enabled", () -> "true");
     }
 }
 ```
 
-## @Tag("integration") Exclusion Pattern
+부팅 시 자동:
+1. Testcontainers 가 새 MySQL 컨테이너 기동
+2. Flyway `migrate()` 가 V1 부터 적용
+3. JPA `ddl-auto: validate` 가 schema 검증
+4. 테스트 실행
 
-**All integration tests** are tagged `@Tag("integration")` via the base class annotations.
+매 테스트 클래스마다 새 컨테이너 — schema 가 통합 V1 으로 잘 부팅되는 사실 자체가 회귀 게이트 역할.
 
-`build.gradle` excludes this tag from the default `./gradlew test` task:
-```groovy
-test {
-    useJUnitPlatform {
-        excludeTags 'integration'
-    }
-}
-```
+## Contract test 패턴 (T3.5-10)
 
-## Test Strategy: Fake vs Mock
+`ProductHttpAdapterContractTest`, `UserHttpAdapterContractTest` — MockWebServer 로 4개 분기 고정:
 
-**Use Fake (in-memory implementation) when:**
-- Testing a full service chain that needs a functioning repository
-- The collaborator has meaningful state that affects test outcomes
-- Avoiding Spring context startup overhead for use-case tests
+| 시나리오 | MockResponse | 어댑터 행동 |
+|---|---|---|
+| 404 NOT_FOUND | `setResponseCode(404)` | `Optional.empty()` 또는 `NotFoundException` |
+| 503 SERVICE_UNAVAILABLE | `setResponseCode(503)` | retryable 예외 throw |
+| 429 TOO_MANY_REQUESTS | `setResponseCode(429)` | retryable 예외 throw |
+| 500 INTERNAL_SERVER_ERROR | `setResponseCode(500)` | retryable 예외 throw |
 
-**Use Mockito Mock when:**
-- Verifying interaction counts or argument values with `verify()` / `then().should()`
-- Stubbing return values for a dependency that doesn't need state
-- Testing a single unit in isolation where the collaborator logic is irrelevant
+목적: HTTP 상태 → 도메인 의미 매핑 계약 동결. 어댑터 변경 시 회귀 즉시 감지.
 
-### Fake repository pattern
-```java
-// src/test/java/com/hyoguoo/paymentplatform/mock/FakePaymentEventRepository.java
-public class FakePaymentEventRepository implements PaymentEventRepository {
-    private final Map<Long, PaymentEvent> paymentEventDatabase = new HashMap<>();
-    private Long autoGeneratedEventId = 1L;
+## `@RepeatedTest` 결정 케이스 (T3.5-12)
 
-    @Override
-    public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
-        if (paymentEvent.getId() == null) {
-            ReflectionTestUtils.setField(paymentEvent, "id", autoGeneratedEventId++);
-        }
-        paymentEventDatabase.put(paymentEvent.getId(), paymentEvent);
-        return paymentEvent;
-    }
-    // full interface implementation with in-memory logic
-}
-```
+`PgOutboxImmediateWorkerTest` 의 exactly-once 케이스는 `@RepeatedTest(50)` 으로 확장 — race window 검증. 단발 PASS 로는 lock-free 코드의 동시성 결함을 못 잡는다.
 
-### Fake operator pattern (in src/main — benchmark profile)
-`FakeTossHttpOperator` implements `HttpOperator` and is placed in `src/main/java/com/hyoguoo/paymentplatform/mock/FakeTossHttpOperator.java` (not `src/test`) to make it available to the benchmark Spring profile.
+룰:
+- 동시성·exactly-once·atomic 보장 검증 테스트 → `@RepeatedTest(50)` 이상
+- 단순 분기 테스트 → 일반 `@Test`
 
-It exposes control methods called via `ReflectionTestUtils.invokeMethod` in tests:
-```java
-// In test setUp or within a test:
-ReflectionTestUtils.invokeMethod(httpOperator, "setDelayRange", 0, 0);
-ReflectionTestUtils.invokeMethod(httpOperator, "addErrorInPostRequest",
-        TossPaymentErrorCode.PROVIDER_ERROR.name(), TossPaymentErrorCode.PROVIDER_ERROR.getDescription());
-ReflectionTestUtils.invokeMethod(httpOperator, "clearErrorInPostRequest");
-```
+## JaCoCo 커버리지 정책
 
-Registered in integration tests via `@TestConfiguration`:
-```java
-@TestConfiguration
-static class TestConfig {
-    @Bean
-    public HttpOperator httpOperator() {
-        return new FakeTossHttpOperator();
-    }
-}
-```
+**측정 대상**: application / use case / domain layer 만.
+**제외**: `dto`, `entity`, `enums`, `event`, `exception`, `infrastructure`, `presentation`, `publisher`, `mock`, `aspect`, `metrics`, `log`, `filter`, `util`, `config`, `response`, `PaymentPlatformApplication`
 
-## Manual Mock Instantiation Pattern
+이유: infrastructure / presentation 은 Spring wiring + Testcontainers 통합 테스트로 검증, JaCoCo 라인 커버리지 의미 약함. 도메인 + use case 가 본질.
 
-Most use-case tests instantiate mocks manually in `@BeforeEach` rather than using `@ExtendWith(MockitoExtension.class)`. This is the dominant pattern for service/use-case tests:
+## TDD 흐름 (CLAUDE.md 룰)
 
-```java
-class PaymentCreateUseCaseTest {
+1. **RED**: 실패하는 테스트 작성 → `test:` 커밋
+2. **GREEN**: 최소 구현 → `feat:` 커밋 (PLAN.md / STATE.md 함께)
+3. **REFACTOR** (선택): `refactor:` 커밋
 
-    private PaymentCreateUseCase paymentCreateUseCase;
-    private PaymentEventRepository mockPaymentEventRepository;
-    private UUIDProvider mockUUIDProvider;
+매 태스크 완료 후 `./gradlew test` 회귀 0 확인.
 
-    @BeforeEach
-    void setUp() {
-        mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
-        mockUUIDProvider = Mockito.mock(UUIDProvider.class);
-
-        paymentCreateUseCase = new PaymentCreateUseCase(
-                mockPaymentEventRepository,
-                mockPaymentOrderRepository,
-                mockUUIDProvider,
-                mockLocalDateTimeProvider
-        );
-    }
-}
-```
-
-**Awaitility 비동기 검증 패턴** (`OutboxImmediateWorkerTest`):
-```java
-import static org.awaitility.Awaitility.await;
-
-// 워커 스레드가 비동기로 process()를 호출하는 것을 검증
-await().atMost(2, TimeUnit.SECONDS)
-        .untilAsserted(() ->
-                verify(mockOutboxProcessingService, times(1)).process(orderId));
-```
-`spring-boot-starter-test`에 Awaitility가 포함되어 별도 의존성 추가 불필요.
-
-**Exception:** `PaymentTransactionCoordinatorTest` uses `@ExtendWith(MockitoExtension.class)` with `@InjectMocks` / `@Mock`:
-```java
-@ExtendWith(MockitoExtension.class)
-class PaymentTransactionCoordinatorTest {
-    @InjectMocks
-    private PaymentTransactionCoordinator coordinator;
-}
-```
-
-## @WebMvcTest Pattern
-
-Used for controller-layer-only tests without full Spring context.
-File: `src/test/java/com/hyoguoo/paymentplatform/payment/presentation/PaymentControllerMvcTest.java`
-
-```java
-@WebMvcTest(PaymentController.class)
-class PaymentControllerMvcTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private PaymentConfirmService paymentConfirmService;
-
-    @MockitoBean
-    private PaymentStatusService paymentStatusService;
-
-    @MockitoBean
-    private UUIDProvider uuidProvider;
-
-    @Test
-    @DisplayName("confirm() 호출 시 202 Accepted를 반환한다.")
-    void confirm_Returns202() throws Exception {
-        // given
-        when(paymentConfirmService.confirm(any(PaymentConfirmCommand.class)))
-                .thenReturn(PaymentConfirmAsyncResult.builder()
-                        .orderId("order-1")
-                        .build());
-
-        // when / then
-        mockMvc.perform(post("/api/v1/payments/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(confirmRequest)))
-                .andExpect(status().isAccepted());
-    }
-}
-```
-
-`@WebMvcTest` uses `@MockitoBean` (Spring Boot 3.4+ 권장) for service dependencies (unlike use-case tests which use `Mockito.mock()`).
-Response JSON is verified with `jsonPath`:
-```java
-.andExpect(jsonPath("$.data.orderId").value("order-done"))
-.andExpect(jsonPath("$.data.status").value("DONE"))
-.andExpect(jsonPath("$.data.approvedAt").isNotEmpty());
-```
-
-## Mockito BDD Style
-
-The newer tests (e.g., `OutboxAsyncConfirmServiceTest`, `PaymentTransactionCoordinatorTest`) use BDD-style Mockito:
-
-```java
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.BDDMockito.willThrow;
-
-// given
-given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-
-// exception stubbing
-willThrow(PaymentOrderedProductStockException.of(PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH))
-        .given(mockTransactionCoordinator)
-        .executePaymentAndStockDecrease(any(PaymentEvent.class), anyString(), anyList());
-
-// then — verify interactions
-then(mockPaymentFailureUseCase).should(times(1))
-        .handleStockFailure(eq(paymentEvent), anyString());
-```
-
-Older tests (e.g., `PaymentCreateUseCaseTest`) use classic Mockito:
-```java
-when(mockPaymentLoadUseCase.getPaymentEventByOrderId(any())).thenReturn(mockPaymentEvent);
-verify(mockPaymentCommandUseCase, times(1)).markPaymentAsFail(eq(...), any());
-```
-
-Both styles are present. Prefer BDD (`given` / `then`) for new tests.
-
-## Domain Entity Test Pattern
-
-Domain tests use `@ParameterizedTest @EnumSource` to exhaustively cover valid AND invalid state transitions.
+## 도메인 enum + 상태 전이 테스트
 
 ```java
 @ParameterizedTest
-@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
-@DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경한다.")
-void execute_Success(PaymentEventStatus paymentEventStatus) {
-    // given
-    PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-            paymentEventStatus, PaymentOrderStatus.NOT_STARTED);
-
-    // when
-    paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now());
-
-    // then
-    assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-}
+@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+void quarantine_whenNonTerminal_shouldTransition(PaymentEventStatus from) { ... }
 
 @ParameterizedTest
-@EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-@DisplayName("결제 시작 시 변경 불가한 상태에서는 예외를 던진다.")
-void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
-    // when & then
-    assertThatThrownBy(() -> paymentEvent.execute(...))
-            .isInstanceOf(PaymentStatusException.class);
-}
+@EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "EXPIRED", "QUARANTINED", "PARTIAL_CANCELED"})
+void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 ```
 
-Also used: `@CsvSource` for multi-parameter validation cases:
-```java
-@ParameterizedTest
-@CsvSource({
-    "2, validPaymentKey, 15000, order123, INVALID_USER_ID",
-    "1, invalidPaymentKey, 15000, order123, INVALID_PAYMENT_KEY",
-})
-void validate_InvalidCases(Long userId, String paymentKey, int amount, String orderId) { ... }
-```
+- 유효 source / 무효 source 양쪽을 `@EnumSource(names=...)` 로 명시
+- 새 상태 추가 시 빠진 case 가 컴파일러는 못 잡지만 테스트가 잡는다 (exhaustive switch + isTerminal SSOT 와 같이)
 
-And `@MethodSource` for complex argument sets:
-```java
-static Stream<Arguments> provideRetryCountAndExpectedResult() {
-    return Stream.of(
-            Arguments.of(0, true),
-            Arguments.of(PaymentEvent.RETRYABLE_LIMIT, false)
-    );
-}
+## LocalDateTimeProvider 주입
 
-@ParameterizedTest
-@MethodSource("provideRetryCountAndExpectedResult")
-void isRetryableInProgress_RetryCount(int retryCount, boolean expectedResult) { ... }
-```
+`LocalDateTime.now()` 직접 호출 금지 → `LocalDateTimeProvider` 주입 (테스트에서 위조 가능). PRE-PHASE-4 T-A2 에서 도입.
 
-## @Nested Test Organization
+## 현재 테스트 카운트 (2026-04-27 기준)
 
-Used in `OutboxAsyncConfirmServiceTest` and `OutboxImmediateEventHandlerTest` to group related scenarios:
+| 모듈 | 테스트 수 |
+|---|---|
+| eureka-server | 1 |
+| gateway | 3 |
+| payment-service | 355 |
+| pg-service | 206 |
+| product-service | 31 |
+| user-service | 1 |
+| **합계** | **597 PASS** (회귀 0) |
 
-```java
-@DisplayName("OutboxAsyncConfirmService 테스트")
-class OutboxAsyncConfirmServiceTest {
-
-    @Nested
-    @DisplayName("confirm() 메서드 테스트")
-    class ConfirmTest {
-
-        @Test
-        @DisplayName("confirm() 호출 시 confirmPublisher.publish(orderId)를 1회 호출한다")
-        void confirm_CallsConfirmPublisher_Once() { ... }
-    }
-}
-```
-
-Use `@Nested` when a single class has multiple distinct method groups to test.
-
-## Testcontainers Setup
-
-**MySQL** (`mysql:8.0`) used in `BaseIntegrationTest`.
-
-Container lifecycle: static `@Container` fields — shared across all tests in a class. `@DynamicPropertySource` injects the container URLs at Spring context startup.
-
-Seed data: `src/test/resources/data-test.sql` inserts test users and products via `@Sql(scripts = "/data-test.sql")` on `BaseIntegrationTest` subclasses.
-
-Active profile: `test` (`src/test/resources/application-test.yml`). Key settings:
-- `spring.jpa.hibernate.ddl-auto: create-drop` — schema recreated per test run
-- `scheduler.enabled: false` (overridden to `true` by `@DynamicPropertySource` in base classes)
-
-## JaCoCo Configuration
-
-Configured in `build.gradle`:
-
-```groovy
-jacoco { toolVersion = '0.8.11' }
-
-jacocoTestReport {
-    reports { html.required = true; xml.required = true }
-
-    classDirectories.setFrom(files(classDirectories.files.collect {
-        fileTree(dir: it, excludes: [
-            '**/Q*',           // QueryDSL generated
-            '**/dto/**',
-            '**/entity/**',
-            '**/exception/**',
-            '**/infrastructure/**',
-            '**/enums/**',
-            '**/PaymentPlatformApplication.class'
-        ])
-    }))
-}
-```
-
-Same exclusion list applies to `jacocoTestCoverageVerification`. No numeric line/branch coverage threshold is configured (rule block exists but has no `limit` entries).
-
-Coverage report generated at: `build/reports/jacoco/test/html/index.html`
-
-## Jackson MixIn Pattern
-
-Concrete DTO classes use constructor-based deserialization which Jackson cannot handle without hints. Test MixIns are in `src/test/java/com/hyoguoo/paymentplatform/mixin/` and registered in `@BeforeEach`:
-
-```java
-@BeforeEach
-void setUp() {
-    objectMapper.addMixIn(CheckoutResponse.class, CheckoutResponseMixin.class);
-    objectMapper.addMixIn(BasicResponse.class, BasicResponseMixin.class);
-    objectMapper.addMixIn(PaymentConfirmResponse.class, PaymentConfirmResponseMixin.class);
-}
-```
-
-## TestLocalDateTimeProvider
-
-A test double for `LocalDateTimeProvider` at `src/test/java/com/hyoguoo/paymentplatform/mock/TestLocalDateTimeProvider.java` — allows pinning `LocalDateTime.now()` in domain tests.
-
----
-
-*Testing analysis: 2026-03-31*
+`./gradlew test --rerun-tasks` 로 전체 검증.

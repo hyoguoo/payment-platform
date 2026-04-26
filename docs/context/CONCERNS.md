@@ -1,107 +1,107 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-29
+> 최종 갱신: 2026-04-27
+> 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
----
+## High — Phase 4 진입 차단 가능성
 
-## Missing Benchmark Data
+### C-1. Toxiproxy 장애 주입 검증 부재
 
-### BENCHMARK.md has all "-" placeholder values
+- **현황**: 실제 broker / DB / vendor 장애 시 회복성을 단위 테스트는 검증하지만 통합 환경에서 8가지 시나리오(Kafka 지연, DB 지연, 프로세스 kill+재시작, 보상 중복 방지, FCG PG timeout, Redis 다운, 재고 캐시 발산, DLQ 소진) 전수 미검증
+- **영향**: 운영 환경 실 장애 시 추측에 의존
+- **처방**: Phase 4 의 T4-01 — Toxiproxy + k6 부하 + 메트릭 검증
 
-- **Issue:** The benchmark results tables in `.planning/BENCHMARK.md` lines 36-53 contain only `-` for every metric across all three strategies and all VU levels (50 / 100 / 200 VU).
-- **Files:** `.planning/BENCHMARK.md:34-54`
-- **Impact:** The primary project goal — measuring TPS and latency differences between Sync / DB Outbox / Kafka strategies — has not been executed. No quantitative basis exists for choosing a strategy.
-- **Fix approach:** Run `./scripts/k6/run-benchmark.sh` and fill in the table. The `application-benchmark.yml` already has `scheduler.enabled=true` (line 22), so the OutboxWorker will be active during the Outbox benchmark.
+### C-2. CircuitBreaker 미적용 — cross-service HTTP
 
----
+- **현황**: `ProductHttpAdapter` / `UserHttpAdapter` 가 `try/catch` + 재시도. ADR-22 대로라면 Resilience4j CircuitBreaker 가 들어가야 함
+- **영향**: product/user 서비스 장애 시 payment-service 가 같이 끌려갈 위험
+- **처방**: Phase 4 — CircuitBreaker 적용 + p95 latency 메트릭
 
-## Configuration Concerns
+### C-3. 로컬 오토스케일러 부재
 
-### Outbox worker sub-properties not tuned in application-benchmark.yml
+- **현황**: 부하 시 수동 docker compose scale 만 가능. payment-service 의 큐 길이 / CPU 임계로 자동 scale 하는 메커니즘 없음
+- **영향**: 부하 spike 시 응답 시간 발산
+- **처방**: Phase 4 — Prometheus 메트릭 기반 로컬 scaler
 
-- **Issue:** `application-benchmark.yml` sets `scheduler.enabled=true` (line 22) which activates `SchedulerConfig` and thus `OutboxWorker`. However, the `scheduler.outbox-worker.*` sub-properties (`fixed-delay-ms`, `batch-size`, `parallel-enabled`, `in-flight-timeout-minutes`) are not overridden in the benchmark profile — they fall back to `application.yml` defaults (`fixedDelay=1000ms`, `batchSize=10`, `parallel-enabled=false`).
-- **Files:**
-  `src/main/resources/application-benchmark.yml:21-22`
-  `src/main/resources/application.yml:58-63`
-  `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxWorker.java:37-44`
-- **Impact:** Under 200 VU benchmark load with FakeTossHttpOperator adding 100–300ms per call, each batch of 10 takes 1–3 seconds serially. The Outbox strategy throughput is capped at roughly 10 TPS for end-to-end processing. Benchmark results may understate the maximum achievable Outbox throughput.
-- **Fix approach:** Add benchmark-specific overrides (e.g., `batch-size: 50`, `parallel-enabled: true`) to `application-benchmark.yml` when measuring Outbox peak throughput.
+## Medium — 운영 부담
 
-### PaymentScheduler only runs expiration — no recovery under any profile
+### C-4. flyway_schema_history 운영 적용 가이드 부재
 
-- **Issue:** `PaymentScheduler` now has only `expireOldReadyPayments()`. `PaymentRecoverServiceImpl` and `PaymentRecoverService` port were deleted in ASYNC-PAYMENT-CLEANUP(2026-03-29). Recovery of stuck IN_PROGRESS payments no longer runs.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/PaymentScheduler.java`
-- **Impact:** ASYNC-PAYMENT-CLEANUP(2026-03-29) 이후 stuck IN_PROGRESS 상태를 복구하는 메커니즘이 없다. Outbox 전략은 `OutboxWorker`가 IN_FLIGHT 타임아웃을 처리하지만, PaymentEvent IN_PROGRESS 상태 복구는 현재 미구현이다.
+- **현황**: `baseline-on-migrate` 옵션을 default(false) 로 두고 있어 기존 DB 에 Flyway 도입할 때 수동 baseline 작업 필요
+- **영향**: 운영 도입 시 시행착오 가능
+- **처방**: STACK.md 운영 가이드 절 + `baseline-on-migrate: true + baseline-version: 0` 옵션 가이드 명시 (이미 본 문서 갱신에 포함)
 
----
+### C-5. DLQ 소비 자동화 부재
 
-## Transaction and Concurrency Edge Cases
+- **현황**: `payment.commands.confirm.dlq`, `payment.events.confirmed.dlq` 가 발행되지만 자동 처리 컨슈머 없음. 수동 검증 후 처리
+- **영향**: DLQ 적재가 누적되면 트리아지 부담
+- **처방**: 별도 토픽 — DLQ 처리 정책 (수동 admin tool 또는 자동 재시도 정책)
 
-### recoverTimedOutInFlightRecords may trigger duplicate Toss API confirm
+### C-6. 단일 Kafka broker
 
-- **Issue:** `PaymentOutboxUseCase.recoverTimedOutInFlightRecords()` calls `outbox.incrementRetryCount()` on timed-out IN_FLIGHT records. `incrementRetryCount()` resets `status = PENDING` (line 63 of `PaymentOutbox.java`), requeueing the record for re-processing. It does not check whether the Toss API call may have already succeeded during the in-flight window. If the Toss API completed successfully during the timeout window, the OutboxWorker will call `confirmPaymentWithGateway()` again on the same `paymentKey`.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentOutboxUseCase.java:76-83`
-  `src/main/java/com/hyoguoo/paymentplatform/payment/domain/PaymentOutbox.java:61-64`
-  `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxWorker.java:49`
-- **Impact:** Toss Payments uses idempotency keys based on `orderId`; re-confirming a completed payment will return a non-retryable error, triggering `executePaymentFailureCompensation` and rolling back stock decreases for a successfully paid order.
-- **Fix approach:** Before resetting to PENDING, call `paymentGatewayPort.getStatus(orderId)` to check whether the payment is already DONE; if so, run `executePaymentSuccessCompletion` instead of requeueing.
+- **현황**: `kafka:9092` 1대. replication-factor=1
+- **영향**: broker 장애 시 메시지 처리 중단
+- **처방**: 운영 환경 / Phase 4 부하 테스트 시 multi-broker 검토
 
-### executePaymentFailureCompensation always increases stock regardless of prior state
+### C-7. payment-service 측 application.yml 의 ddl-auto 비명시 시기 (해소됨)
 
-- **Issue:** `PaymentTransactionCoordinator.executePaymentFailureCompensation()` unconditionally calls `orderedProductUseCase.increaseStockForOrders(paymentOrderList)`. 동일 orderId에 대해 두 경로가 이 메서드를 동시에 호출하면 재고가 이중 복원된다.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
-- **Impact:** Outbox 전략에서 `OutboxImmediateEventHandler`와 `OutboxWorker`가 동일 레코드를 동시에 처리하는 경쟁 조건 시 발생 가능. `claimToInFlight()` REQUIRES_NEW TX가 1차 방어선이지만 클레임 실패 경로에서 보상이 중복 실행될 여지가 있다.
+- ~~기존: default profile 에서 `spring.jpa.hibernate.ddl-auto` 미명시 → IDE 로컬 실행 시 빈 DB 부팅 실패 가능~~
+- **해소**: 본 봉인 작업의 Flyway 통일 커밋에서 `ddl-auto: validate` 명시. Flyway 가 baseline 자동 적용
 
----
+## Low — 코드 청결도
 
-## Code Quality Issues
+### C-8. archive 안의 historical 잔재 참조
 
-### Duplicate error code E03002 in PaymentErrorCode
+- **현황**: archive 안의 여러 plan / context 문서가 옛 클래스 이름 (`OutboxImmediateWorker`, `executePaymentAndStockDecreaseWithOutbox` 등)을 참조
+- **영향**: AI 에이전트가 archive 를 읽지 말라는 룰을 어기면 혼동
+- **처방**: archive `README.md` 가 명시적으로 "AI 에이전트 미참조" 선언 — 이미 적용. 추가 조치 불필요
 
-- **Issue:** `INVALID_STATUS_TO_EXECUTE` and `INVALID_TOTAL_AMOUNT` both use error code string `"E03002"`.
-- **Files:** `src/main/java/com/hyoguoo/paymentplatform/payment/exception/common/PaymentErrorCode.java:12-13`
-- **Impact:** When a client receives `E03002`, the error meaning is ambiguous. Error monitoring cannot distinguish a status-transition violation from an amount mismatch.
-- **Fix approach:** Assign a new unique code (e.g., `"E03026"`) to `INVALID_TOTAL_AMOUNT`.
+### C-9. observability 대시보드 현행화
 
-### Typo in error code string for TOSS_RETRYABLE_ERROR
+- **현황**: Grafana 대시보드 정의가 옛 메트릭 이름 일부 사용 가능
+- **영향**: Phase 4 진입 시 대시보드 표시 누락
+- **처방**: Phase 4 시작 시 대시보드 inventory + 갱신
 
-- **Issue:** `TOSS_RETRYABLE_ERROR` uses code `"EO3009"` (letter O, not digit 0) instead of `"E03009"`.
-- **Files:** `src/main/java/com/hyoguoo/paymentplatform/payment/exception/common/PaymentErrorCode.java:18`
-- **Impact:** Any client or monitoring alert filtering on the `"E03"` prefix will miss retryable Toss errors; they will appear as unknown codes in dashboards.
-- **Fix approach:** Change `"EO3009"` to `"E03009"`.
+### C-10. seed 데이터의 운영 안전성
 
-### TODO: error response parsing in HttpTossOperator is fragile
+- **현황**: `product/V2__seed_product_stock.sql` 와 `user/V2__seed_user.sql` 가 `INSERT IGNORE` 로 멱등이지만 운영 배포에 같이 적용됨
+- **영향**: 운영 환경에 dummy seed 가 들어갈 가능성
+- **처방**: 운영 배포 시 `spring.flyway.locations` 에서 seed 디렉토리 분리 또는 `placeholder` 활용. **현재는 데모/스모크 환경 한정으로 OK**
 
-- **Issue:** `HttpTossOperator.parseErrorResponse()` has a `// TODO: 파싱 방법 개선 필요` comment (line 150). The implementation uses a regex (`\{.*}`) to extract a JSON fragment from the raw error string. A Toss API error response that does not contain a `{...}` JSON block will throw an uncaught `IllegalArgumentException`.
-- **Files:** `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/api/HttpTossOperator.java:150-168`
-- **Impact:** `IllegalArgumentException` is not a `PaymentTossNonRetryableException` or `PaymentTossRetryableException`. `OutboxImmediateEventHandler` / `OutboxWorker`에서 분류되지 않은 예외는 retryable/non-retryable 분기를 통과하지 못해 Outbox 레코드가 IN_FLIGHT 상태로 타임아웃까지 방치된다.
-- **Fix approach:** Catch `IllegalArgumentException` in `parseErrorResponse` and rethrow as `PaymentTossNonRetryableException`, or switch to direct `ObjectMapper.readValue(rawBody, TossPaymentApiFailResponse.class)` with explicit error handling.
+## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 
----
+### L-1. 단일 리전 / 단일 AZ
 
-## PaymentStatusServiceImpl Coverage
+본 프로젝트는 학습용 — multi-region, geo-redundancy 미구현.
 
-### EXPIRED events return PROCESSING from the status endpoint
+### L-2. 결제 cancel / refund 미구현
 
-- **Issue:** `PaymentStatusServiceImpl.mapEventStatus()` maps all non-DONE, non-FAILED statuses (including EXPIRED) to `StatusType.PROCESSING` via the `default` arm.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java:53-58`
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/dto/response/PaymentStatusResult.java:11-16`
-- **Impact:** A client polling an expired payment receives `status=PROCESSING` indefinitely rather than a terminal state. This causes the k6 benchmark polling loop (which waits for DONE or FAILED) to time out for expired orders, inflating the error rate metric.
-- **Fix approach:** Add `EXPIRED` to `StatusType` and map it explicitly in `mapEventStatus()`. Alternatively, map `EXPIRED` to `FAILED` as a terminal state to avoid client-visible API changes.
+`PgGatewayPort.cancel(...)` 인터페이스만 존재. 운영 활용 별도 토픽.
 
-### Status endpoint throws 404 for unknown orderId with no test coverage
+### L-3. EXPIRED 상태의 만료 스케줄러 정책
 
-- **Issue:** When no Outbox record exists and `getPaymentEventByOrderId` cannot find the event, `PaymentFoundException` propagates as 404. No test in `PaymentStatusServiceImplTest` covers this path.
-- **Files:**
-  `src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java:29`
-  `src/test/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImplTest.java`
-- **Risk:** Low; the exception propagation is standard and handled by `GlobalExceptionHandler`. Minor test coverage gap.
-- **Priority:** Low
+`PaymentEventStatus.EXPIRED` 가 정의되어 있지만 만료 스케줄러는 PRE-PHASE-4 시점에 도메인 매핑이 일부 제거됨 (`quarantine_compensation_pending` 컬럼은 호환용 유지). 명확한 만료 정책 별도 정리 필요.
 
----
+### L-4. Two-strategy PG 라우팅 — 결제 건별 `gatewayType` 결정 정책
 
-*Concerns audit: 2026-03-18 (updated 2026-04-05)*
+현재 결제 건별 `gatewayType` 은 client 측에서 결정해 전송. 동적 routing (예: 벤더 장애 시 자동 fallback) 미구현.
+
+## 회피된 우려 (해소 완료, 기록 보존용)
+
+| 우려 | 해소 위치 |
+|---|---|
+| ~~Sync/Outbox/Kafka 3전략 분리의 복잡도~~ | `outbox-only-refactor` archive — 단일 비동기 경로 |
+| ~~UNKNOWN 상태의 조용한 흡수~~ | `payment-double-fault-recovery` archive — `PaymentGatewayStatusUnmappedException` |
+| ~~payment-service Flyway 비대칭~~ | 이번 봉인 — Flyway 통일 |
+| ~~AMOUNT_MISMATCH 단방향~~ | PRE-PHASE-4 D1 |
+| ~~stock publish 가 TX 안에서 Hikari 점유~~ | PRE-PHASE-4 D2 |
+| ~~Redis DECR 보상 부재~~ | PRE-PHASE-4 D3 |
+| ~~payment-history audit 누락 (직접 done() 호출)~~ | PRE-PHASE-4 K15 |
+| ~~consumer groupId 공유로 토픽 간 백압~~ | PRE-PHASE-4 D6 |
+| ~~outbox immediate worker 의 race~~ | PRE-PHASE-4 T3.5-12 — `@RepeatedTest(50)` 검증 |
+| ~~문서/스킬에 옛 3전략 어조 잔재~~ | 이번 봉인 + context 갈아엎기 |
+
+## 관련
+
+- 학습된 함정: `PITFALLS.md`
+- 향후 처리: `TODOS.md`

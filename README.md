@@ -1,6 +1,8 @@
 # Payments Platform
 
-결제 연동을 환경에서 발생하는 문제들(위변조 방지, 멱등성 보장, 비동기 결제 처리, 자동 복구 등)을 직접 설계하고 구현한 프로젝트입니다.
+결제 연동 환경에서 발생하는 문제들(위변조 방지, 멱등성 보장, 비동기 결제 처리, 자동 복구, 분산 트랜잭션 등)을 직접 설계하고 구현한 프로젝트입니다.
+
+> **현재 상태** (2026-04-27): MSA 4서비스(payment / pg / product / user) + Eureka + Gateway 분리 완료. Kafka 양방향 비동기 confirm. 다음 단계는 PHASE-4 (Toxiproxy 장애 주입 + k6 재설계 + 로컬 오토스케일러).
 
 <br>
 
@@ -9,6 +11,7 @@
 - **동기 → 비동기 아키텍처 전환 및 성능 측정**: Toss API 지연이 HTTP 스레드를 직접 블로킹하는 동기 구조에서 비동기 + Outbox 채널 전략으로 전환
 - **정합성 오류 및 위변조 요청 방지**: 클라이언트·서버·PG 응답값을 교차 검증하고 Checkout 멱등성(Caffeine 캐시 + TOCTOU 해결)을 보장하여 중복 주문 및 금액 위변조를 차단
 - **장애 내성 복구 체계 설계**: 복구 판정 객체로 결정을 집중하고, 스케줄링·재고 복원 가드·격리 전 최종 확인으로 외부 장애 시에도 재고·결제 상태의 일관성 유지
+- **모놀리스 → MSA 분리**: 단일 모놀리스를 4 비즈니스 서비스(payment / pg / product / user) + Eureka + Gateway 로 분해. payment ↔ pg 는 Kafka 양방향 메시지로만 통신하여 PG 호출을 격리하고, AMOUNT_MISMATCH 양방향 방어·dedupe two-phase lease·다중 홉 traceparent 전파를 보강
 
 <br>
 
@@ -21,6 +24,7 @@
 | Phase 3 | 운영 가시성 및 안정성       | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics) |
 | Phase 4 | 데이터 정합성 심화 및 중복 제어 | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                         |
 | Phase 5 | 비동기 결제 아키텍처 전환     | [비동기 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                       |
+| Phase 6 | MSA 분리 + Kafka 양방향   | 모놀리스 → 4서비스 + Eureka + Gateway 분해, payment ↔ pg Kafka 양방향 confirm 왕복, ADR-23 DB 분리, AMOUNT_MISMATCH 양방향 방어 (PRE-PHASE-4-HARDENING 포함)                                                                                                  |
 |   ETC   | 설계 유연성             | [전략 패턴 기반 멀티 PG 연동](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                         |
 |   ETC   | AI 기반 개발 워크플로우     | [서브에이전트 기반 6단계 워크플로우](https://github.com/hyoguoo/payment-platform/wiki/ai-workflow)                                                                                                                                                       |
 
@@ -302,6 +306,12 @@ cp .env.secret.example .env.secret
 
 ```bash
 bash scripts/compose-up.sh
+```
+
+기동 후 인프라 + 4서비스 헬스 검증:
+
+```bash
+bash scripts/smoke/infra-healthcheck.sh
 ```
 
 실행 후 http://localhost:8081 (payment-service) 에서 전체 페이지를 탐색할 수 있습니다.
