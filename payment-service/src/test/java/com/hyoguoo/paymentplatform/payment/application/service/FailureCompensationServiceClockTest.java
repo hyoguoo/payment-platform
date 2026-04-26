@@ -48,7 +48,7 @@ class FailureCompensationServiceClockTest {
         stockOutboxRepository = new FakeStockOutboxRepository();
         eventPublisher = new CapturingApplicationEventPublisher();
 
-        // K5: LocalDateTimeProvider — fixed clock 주입 (nowInstant() 메서드 필요)
+        // fixed clock 주입으로 occurredAt 결정성 확보 (nowInstant() 사용)
         LocalDateTimeProvider fixedProvider = new LocalDateTimeProvider() {
             @Override
             public LocalDateTime now() {

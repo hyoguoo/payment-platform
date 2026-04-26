@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 /**
  * payment.events.confirmed.dlq 발행 포트.
- * T-C3: remove 실패 시 dedupe 영구 잠금 방지를 위해 DLQ로 이벤트를 전송한다.
+ * dedupe remove 가 실패한 경우 dedupe 가 영구 잠기는 것을 막기 위해 DLQ 로 이벤트를 보낸다.
  *
  * <p>구현체:
  * <ul>

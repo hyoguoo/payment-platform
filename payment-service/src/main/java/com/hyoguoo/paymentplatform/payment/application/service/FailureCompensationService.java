@@ -18,18 +18,13 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
- * FAILED 결제 보상 서비스.
- * ADR-04(Transactional Outbox), ADR-16(UUID dedupe).
- * stock.events.restore 보상 이벤트를 stock_outbox INSERT + StockOutboxReadyEvent 발행으로 처리한다.
+ * FAILED 결제에 대한 재고 복원 보상.
  *
- * <p>UUID 멱등성 전략: UUID v3(nameUUIDFromBytes) — "stock-restore:{orderId}:{productId}" 기반 결정론적 생성.
- * 동일 orderId + productId 재호출 시 동일 UUID가 생성되어 product-service의 dedupe 로직과 결합,
- * 중복 재고 복원을 차단한다. (ADR-16)
+ * <p>stock.events.restore 보상은 transactional outbox 패턴으로 처리한다 — TX 내부에서 stock_outbox 를
+ * INSERT 하고 {@link StockOutboxReadyEvent} 만 발행한다. 실 Kafka publish 는 AFTER_COMMIT 비동기 리스너 책임.
  *
- * <p>T-J1: stock_outbox INSERT + StockOutboxReadyEvent 발행으로 전환.
- * 기존 StockRestoreRequestedEvent(T-D2~T-I10 경로) 철거.
- * outboxRelayExecutor(@Async, T-I2 이중 래핑)가 submit 시점 OTel Context + MDC를
- * VT에서 정확히 복원 → traceparent 회귀 없음.
+ * <p>UUID 결정론: {@code "stock-restore:{orderId}:{productId}"} 로 UUID v3 를 생성한다 — 동일
+ * orderId+productId 재호출 시 같은 UUID 가 나와 product-service dedupe 와 결합해 중복 복원을 차단한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,21 +33,10 @@ public class FailureCompensationService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final StockOutboxRepository stockOutboxRepository;
     private final ObjectMapper objectMapper;
-    /**
-     * K5: 시간 소스 주입 — Instant.now() / LocalDateTime.now() 직접 호출 제거.
-     * 테스트에서 fixed clock 주입 → 시간 결정성 보장.
-     */
     private final LocalDateTimeProvider localDateTimeProvider;
 
     /**
-     * FAILED 결제에 대한 재고 복원 보상 이벤트를 발행한다.
-     * ADR-16: eventUUID는 orderId 기반 결정론적 생성 → 동일 orderId 재호출 시 동일 UUID.
-     *
-     * <p>productIds 리스트의 각 상품에 대해 개별 stock_outbox INSERT를 수행한다.
-     *
-     * @param orderId    주문 ID
-     * @param productIds 복원 대상 상품 ID 목록
-     * @param qty        복원 수량 (각 상품별 동일 수량 적용)
+     * 여러 상품을 한 번에 복원할 때의 진입점. 각 productId 별로 단일 compensate 를 그대로 호출한다.
      */
     public void compensate(String orderId, List<Long> productIds, int qty) {
         for (Long productId : productIds) {
@@ -61,27 +45,15 @@ public class FailureCompensationService {
     }
 
     /**
-     * 단일 상품에 대한 FAILED 결제 재고 복원 outbox INSERT + 이벤트 발행.
-     * ADR-16: eventUUID는 orderId+productId 기반 결정론적 생성 → 동일 조합 재호출 시 동일 UUID.
-     *
-     * <p>T-B1: handleFailed 루프 내부에서 실 qty와 함께 호출하는 단위 진입점.
-     *
-     * <p>T-J1: stock_outbox INSERT + StockOutboxReadyEvent 발행.
-     * outboxRelayExecutor(@Async)가 traceparent를 정확히 전파한다.
-     *
-     * @param orderId   주문 ID
-     * @param productId 복원 대상 상품 ID
-     * @param qty       복원 수량 (실 주문 수량)
+     * 단일 상품 재고 복원 outbox row INSERT + StockOutboxReadyEvent 발행.
+     * eventUuid 는 (orderId, productId, "stock-restore") 로 결정되며, 같은 조합이 다시 들어와도 같은 UUID 가 나온다.
      */
     public void compensate(String orderId, Long productId, int qty) {
-        // K1: StockEventUuidDeriver 위임 — commit 측과 동일 도출 전략, "stock-restore" prefix로 분리.
         UUID eventUUID = UUID.fromString(StockEventUuidDeriver.derive(orderId, productId, "stock-restore"));
-        // K5: Instant.now() 직접 호출 제거 → localDateTimeProvider.nowInstant() 사용
         Instant occurredAt = localDateTimeProvider.nowInstant();
         StockRestoreEvent event = new StockRestoreEvent(eventUUID, orderId, productId, qty, occurredAt);
         String payloadJson = StockOutboxFactory.serialize(event, objectMapper);
 
-        // K5: LocalDateTime.now() 직접 호출 제거 → localDateTimeProvider.now() 사용
         LocalDateTime now = localDateTimeProvider.now();
         StockOutbox outbox = StockOutbox.create(
                 PaymentTopics.EVENTS_STOCK_RESTORE,

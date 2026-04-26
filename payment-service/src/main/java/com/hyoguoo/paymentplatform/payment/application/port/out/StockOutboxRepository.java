@@ -5,10 +5,9 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
- * stock_outbox 저장소 포트.
- * T-J1: stock commit/restore 이벤트 Transactional Outbox 패턴 적용.
+ * stock_outbox 저장소 포트 — stock commit/restore 이벤트의 transactional outbox 저장소.
  *
- * <p>pg-service {@code PgOutboxRepository} 구조를 독립 복제 (ADR-19 복제(b) 방침).
+ * <p>pg-service {@code PgOutboxRepository} 와 동격 구조이지만 공유 JAR 없이 독립 복제한다.
  */
 public interface StockOutboxRepository {
 

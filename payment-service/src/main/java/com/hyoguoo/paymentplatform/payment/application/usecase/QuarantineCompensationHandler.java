@@ -13,9 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * QUARANTINED 상태 전이 핸들러.
  * <p>
- * ADR-15: QUARANTINED는 "벤더 상태 불명" 홀딩 상태. 재고 복구 대상이 아니다.
- * 재고 복구는 FAIL 경로에서만 발생(FailureCompensationService → stock.events.restore).
- * QUARANTINED → FAIL 전이는 운영자 수동으로만 수행.
+ * QUARANTINED 는 "벤더 상태 불명" 홀딩 상태이므로 재고 복구 대상이 아니다.
+ * 재고 복구는 FAIL 경로에서만 발생한다 (FailureCompensationService → stock.events.restore).
+ * QUARANTINED → FAIL 전이는 운영자 수동으로만 수행한다.
  * <p>
  * 진입점:
  * (a) FCG — pg-service FCG 결과 status=QUARANTINED
@@ -35,8 +35,8 @@ public class QuarantineCompensationHandler {
     /**
      * QUARANTINED 전이 수행 (TX 내).
      * <p>
-     * T-C2 사전 가드: event가 이미 종결 상태(DONE/FAILED 등)이면 no-op + INFO 로그만 남기고 반환.
-     * 뒤늦은 QUARANTINED 메시지가 종결 상태 event를 역전이시키는 것을 방지한다.
+     * 사전 가드: event 가 이미 종결 상태(DONE/FAILED 등)이면 no-op + INFO 로그만 남기고 반환한다.
+     * 뒤늦은 QUARANTINED 메시지가 종결 상태 event 를 역전이시키는 것을 방지한다.
      * 도메인 {@link com.hyoguoo.paymentplatform.payment.domain.PaymentEvent#quarantine} 에도
      * 이중 가드(IllegalStateException)가 있다.
      *

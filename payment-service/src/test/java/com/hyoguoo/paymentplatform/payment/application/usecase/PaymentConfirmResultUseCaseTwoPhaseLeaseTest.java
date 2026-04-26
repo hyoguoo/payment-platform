@@ -33,7 +33,7 @@ import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * T-C3 RED — PaymentConfirmResultUseCase two-phase lease + remove 실패 DLQ 전송 검증.
+ * PaymentConfirmResultUseCase two-phase lease + remove 실패 시 DLQ 전송 검증.
  *
  * <p>검증 목표:
  * <ul>
@@ -43,7 +43,7 @@ import org.springframework.context.ApplicationEventPublisher;
  *   <li>handle_whenMarkWithLeaseFails_shouldSkipProcess: markWithLease false → processMessage 미호출</li>
  * </ul>
  */
-@DisplayName("PaymentConfirmResultUseCaseTest — T-C3 two-phase lease + DLQ")
+@DisplayName("PaymentConfirmResultUseCase two-phase lease + DLQ")
 class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
 
     private static final String ORDER_ID = "order-tc3-001";
@@ -105,7 +105,7 @@ class PaymentConfirmResultUseCaseTwoPhaseLeaseTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        // K15: PaymentCommandUseCase.markPaymentAsDone stub — processMessage 정상 완주 위해 필요
+        // PaymentCommandUseCase.markPaymentAsDone stub — processMessage 정상 완주 위해 필요
         given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
                 .willReturn(event);
 

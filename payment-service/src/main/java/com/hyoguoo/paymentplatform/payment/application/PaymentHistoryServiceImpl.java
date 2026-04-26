@@ -29,7 +29,7 @@ public class PaymentHistoryServiceImpl implements PaymentHistoryService {
             LogFmt.debug(log, LogDomain.PAYMENT, EventType.PAYMENT_HISTORY_SAVE_DONE,
                     () -> "orderId=" + event.getOrderId());
         } catch (RuntimeException e) {
-            // T-F2: savePaymentHistory 는 unchecked exception 만 throw — RuntimeException 으로 축소
+            // savePaymentHistory 는 unchecked exception 만 던진다.
             LogFmt.error(log, LogDomain.PAYMENT, EventType.PAYMENT_HISTORY_SAVE_FAIL,
                     () -> "orderId=" + event.getOrderId() + " error=" + e.getMessage());
             throw e;

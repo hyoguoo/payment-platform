@@ -30,11 +30,9 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트.
- * ADR-04(eventUUID dedupe), ADR-14(stock 이벤트 발행).
- * domain_risk=true: APPROVED/FAILED/QUARANTINED 분기 + dedupe 불변 커버.
- *
- * <p>T-J1: StockCommitRequestedEvent → StockOutboxReadyEvent + stock_outbox INSERT 검증.
+ * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트 —
+ * APPROVED/FAILED/QUARANTINED 분기와 eventUuid dedupe 불변식 검증.
+ * APPROVED 처리 시 stock_outbox INSERT + StockOutboxReadyEvent 발행도 함께 확인한다.
  */
 @DisplayName("ConfirmedEventConsumerTest")
 class ConfirmedEventConsumerTest {
@@ -120,20 +118,20 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        // K15: markPaymentAsDone stub — APPROVED 처리 정상 완주 위해 필요
+        // markPaymentAsDone stub — APPROVED 처리 정상 완주 위해 필요
         org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
                 org.mockito.ArgumentMatchers.any(PaymentEvent.class),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
                 .willReturn(event);
 
-        // amount=2000(=1000*2), approvedAt non-null — T-A2 역방향 방어선 통과 조건
+        // amount=2000(=1000*2), approvedAt non-null — 역방향 방어선 통과 조건
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, 2000L, "2026-04-24T01:00:00Z", EVENT_UUID);
 
         // when
         sut.handle(message);
 
-        // then — K15: markPaymentAsDone 위임 1회 (DONE 전이는 PaymentCommandUseCase 내부)
+        // then — markPaymentAsDone 위임 1회 (DONE 전이는 PaymentCommandUseCase 내부)
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsDone(
@@ -158,7 +156,7 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        // K15: markPaymentAsFail stub — FAILED 처리 정상 완주 위해 필요
+        // markPaymentAsFail stub — FAILED 처리 정상 완주 위해 필요
         org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsFail(
                 org.mockito.ArgumentMatchers.any(PaymentEvent.class),
                 org.mockito.ArgumentMatchers.any(String.class)))
@@ -169,14 +167,14 @@ class ConfirmedEventConsumerTest {
         // when
         sut.handle(message);
 
-        // then — K15: markPaymentAsFail 위임 1회 (FAILED 전이는 PaymentCommandUseCase 내부)
+        // then — markPaymentAsFail 위임 1회 (FAILED 전이는 PaymentCommandUseCase 내부)
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsFail(
                         org.mockito.ArgumentMatchers.any(PaymentEvent.class),
                         org.mockito.ArgumentMatchers.eq("VENDOR_FAILED"));
 
-        // then — FailureCompensationService.compensate(orderId, productId=2, qty=3) 1회 호출 (T-B1)
+        // then — FailureCompensationService.compensate(orderId, productId=2, qty=3) 1회 호출 (실 qty 전달)
         then(failureCompensationService)
                 .should(times(1))
                 .compensate(
@@ -228,13 +226,13 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        // K15: markPaymentAsDone stub
+        // markPaymentAsDone stub
         org.mockito.BDDMockito.given(paymentCommandUseCase.markPaymentAsDone(
                 org.mockito.ArgumentMatchers.any(PaymentEvent.class),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
                 .willReturn(event);
 
-        // amount=1000(=1000*1), approvedAt non-null — T-A2 역방향 방어선 통과 조건
+        // amount=1000(=1000*1), approvedAt non-null — 역방향 방어선 통과 조건
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, 1000L, "2026-04-24T01:00:00Z", EVENT_UUID);
 

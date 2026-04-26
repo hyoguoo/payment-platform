@@ -18,12 +18,9 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * FailureCompensationService 단위 테스트.
- * ADR-04(Transactional Outbox), ADR-16(UUID dedupe).
- * domain_risk=true: FAILED 전이 보상 이벤트 발행 + UUID 멱등성 불변 커버.
- *
- * <p>T-J1: FailureCompensationService가 stock_outbox INSERT + StockOutboxReadyEvent 발행으로 전환됨.
- * FakeStockOutboxRepository + CapturingApplicationEventPublisher로 검증.
+ * FailureCompensationService 단위 테스트 — FAILED 전이 시 보상 이벤트 발행과 UUID 멱등성 검증.
+ * stock_outbox INSERT + StockOutboxReadyEvent 발행을
+ * FakeStockOutboxRepository + CapturingApplicationEventPublisher 로 확인한다.
  */
 @DisplayName("FailureCompensationServiceTest")
 class FailureCompensationServiceTest {
@@ -40,7 +37,7 @@ class FailureCompensationServiceTest {
     void setUp() {
         eventPublisher = new CapturingApplicationEventPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
-        // K5: LocalDateTimeProvider — 기존 테스트는 시간 값 검증 불필요 → default nowInstant() 위임
+        // 시간 값 검증 없는 케이스라 default nowInstant() 그대로 사용
         LocalDateTimeProvider systemProvider = java.time.LocalDateTime::now;
         sut = new FailureCompensationService(eventPublisher, stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()), systemProvider);

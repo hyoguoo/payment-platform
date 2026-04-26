@@ -48,7 +48,7 @@ class StockOutboxRelayServiceClockTest {
         stockOutboxRepository = Mockito.mock(StockOutboxRepository.class);
         stockOutboxPublisherPort = Mockito.mock(StockOutboxPublisherPort.class);
 
-        // K5: LocalDateTimeProvider — fixed clock 주입
+        // fixed clock 주입으로 processedAt 결정성 확보
         LocalDateTimeProvider fixedProvider = new LocalDateTimeProvider() {
             @Override
             public LocalDateTime now() {

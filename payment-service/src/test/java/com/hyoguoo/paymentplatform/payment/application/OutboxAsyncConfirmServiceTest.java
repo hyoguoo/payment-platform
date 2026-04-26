@@ -240,7 +240,7 @@ class OutboxAsyncConfirmServiceTest {
     class ConfirmTxFailureCompensationTest {
 
         @Test
-        @DisplayName("T-D1-1: executeConfirmTx throw → stockCachePort.increment 1회 호출 + 원본 예외 전파")
+        @DisplayName("executeConfirmTx 가 throw 하면 stockCachePort.increment 1회 호출 후 원본 예외를 전파한다")
         void confirm_whenConfirmTxFails_shouldCompensateStock() {
             // given
             String orderId = "order-comp-1";
@@ -265,7 +265,7 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("T-D1-2: executeConfirmTx 성공 시 increment 호출 없음")
+        @DisplayName("executeConfirmTx 가 성공하면 increment 가 호출되지 않는다")
         void confirm_whenConfirmTxSucceeds_shouldNotCompensate() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-comp-2";
@@ -287,7 +287,7 @@ class OutboxAsyncConfirmServiceTest {
         }
 
         @Test
-        @DisplayName("T-D1-3: executeConfirmTx throw + increment도 throw → 원본 예외 전파")
+        @DisplayName("executeConfirmTx throw + increment 도 throw 시 원본 예외를 전파한다")
         void confirm_whenStockCompensationFails_shouldStillThrowOriginal() {
             // given
             String orderId = "order-comp-3";

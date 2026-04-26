@@ -10,12 +10,12 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
  * {"orderId":"order-001","status":"APPROVED","reasonCode":null,"amount":15000,
  *  "approvedAt":"2026-04-24T10:00:00+09:00","eventUuid":"evt-uuid-001"}
  *
- * <p>ADR-15 AMOUNT_MISMATCH 역방향 방어선: handleApproved 에서 amount 총액 대조에 사용.
- * approvedAt 은 OffsetDateTime.parse 후 PaymentEvent.done(...) 에 전달 (T-A2 범위).
+ * <p>amount 는 handleApproved 의 역방향 방어선에서 paymentEvent 총액 대조에 쓰이고, approvedAt 은
+ * OffsetDateTime.parse 후 markPaymentAsDone 의 인자로 들어간다.
  *
- * <p>K3: 필드 선언 순서를 pg-service {@code ConfirmedEventPayload} canonical 순서와 동일하게 통일.
- * {@code @JsonPropertyOrder} 명시로 직렬화 순서까지 강제.
- * ADR-30: 공유 JAR 없이 독립 복제 — {@code ConfirmedEventSchemaParityTest} 가 동기화를 강제한다.
+ * <p>필드 선언 순서는 pg-service {@code ConfirmedEventPayload} 와 동일해야 하며 {@code @JsonPropertyOrder} 로
+ * 직렬화 순서까지 강제한다. 두 모듈은 공유 JAR 없이 독립 복제이므로 {@code ConfirmedEventSchemaParityTest} 가
+ * 양쪽의 동기화를 검증한다.
  *
  * <p>K9b: infrastructure.messaging.consumer.dto → application.dto.event 으로 이동.
  * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.

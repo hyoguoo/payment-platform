@@ -21,10 +21,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 /**
- * T-J1 RED: StockOutboxRelayService
- * - relay(id) — outbox row 로드 → publisher.send → markProcessed
- * - processedAt != null → skip (멱등성)
- * - outbox 없으면 no-op
+ * StockOutboxRelayService.relay 단위 검증:
+ * <ul>
+ *   <li>outbox row 로드 → publisher.send → markProcessed 의 정상 흐름</li>
+ *   <li>processedAt != null 이면 skip (멱등성)</li>
+ *   <li>outbox row 없으면 no-op</li>
+ * </ul>
  */
 @DisplayName("StockOutboxRelayService — relay 멱등성 + 발행 검증")
 class StockOutboxRelayServiceTest {
@@ -41,7 +43,7 @@ class StockOutboxRelayServiceTest {
     void setUp() {
         stockOutboxRepository = Mockito.mock(StockOutboxRepository.class);
         stockOutboxPublisherPort = Mockito.mock(StockOutboxPublisherPort.class);
-        // K5: LocalDateTimeProvider 주입 (기존 테스트는 시간 값 검증 불필요 → 시스템 시각 그대로)
+        // 시간 값 검증 없는 케이스라 시스템 시각 default 그대로 사용
         LocalDateTimeProvider systemProvider = new LocalDateTimeProvider() {
             @Override
             public java.time.LocalDateTime now() {

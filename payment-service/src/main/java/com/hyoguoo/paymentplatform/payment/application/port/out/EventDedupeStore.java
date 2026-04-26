@@ -3,9 +3,9 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 import java.time.Duration;
 
 /**
- * payment-service outbound 포트 — 메시지 레벨 eventUUID dedupe 계약.
- * ADR-04(2단 멱등성 키): 메시지 레벨 dedupe — 동일 eventUUID 재소비 차단.
- * ADR-30: pg-service의 EventDedupeStore와 독립 복제 — 공통 lib 금지.
+ * payment-service outbound 포트 — 메시지 레벨 eventUuid dedupe 계약.
+ * 동일 eventUuid 재소비를 차단한다. pg-service 의 EventDedupeStore 와 동격이지만
+ * 공유 JAR 없이 독립 복제다.
  *
  * <p>구현체:
  * <ul>
@@ -13,7 +13,7 @@ import java.time.Duration;
  *   <li>EventDedupeStoreRedisAdapter (infrastructure) — Redis SET NX/XX EX</li>
  * </ul>
  *
- * <p>T-C3 two-phase lease 패턴:
+ * <p>two-phase lease 패턴:
  * <ol>
  *   <li>{@link #markWithLease(String, Duration)} — shortTtl(5m)로 처리 권한 예약</li>
  *   <li>processMessage 성공 후 {@link #extendLease(String, Duration)} — longTtl(P8D)로 연장</li>

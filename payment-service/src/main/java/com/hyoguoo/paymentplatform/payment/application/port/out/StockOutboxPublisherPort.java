@@ -2,16 +2,14 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 /**
  * stock outbox relay 전용 Kafka 발행 포트.
- * T-J1: stock_outbox row의 String payload를 직접 Kafka로 발행한다.
+ * stock_outbox row 의 String payload 를 그대로 Kafka 로 발행한다.
  *
- * <p>pg-service {@code PgEventPublisherPort} 구조를 독립 복제 (ADR-19 복제(b) 방침).
- * outbox row에는 payload가 미리 직렬화된 JSON String으로 저장되어 있으므로
- * 재직렬화 없이 KafkaTemplate<String, String>으로 직접 발행한다.
+ * <p>pg-service {@code PgEventPublisherPort} 와 동격 구조이지만 공유 JAR 없이 독립 복제한다.
+ * outbox row 의 payload 는 이미 JSON String 으로 직렬화되어 있으므로 재직렬화 없이
+ * KafkaTemplate&lt;String, String&gt; 으로 직접 발행한다.
  *
- * <p>spring.kafka.template.observation-enabled=true가 publish 시점의
- * 현재 span에서 traceparent를 자동 주입한다.
- * outboxRelayExecutor(@Async)가 T-I2 이중 래핑(OTel Context + MDC)으로
- * submit 시점 context를 VT에서 정확히 복원하므로 traceparent 회귀 없음.
+ * <p>traceparent 는 outboxRelayExecutor 의 OTel Context + MDC 복원과
+ * {@code spring.kafka.template.observation-enabled=true} 가 함께 보장한다.
  */
 public interface StockOutboxPublisherPort {
 

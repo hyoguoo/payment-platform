@@ -6,13 +6,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * K1: StockEventUuidDeriver — (orderId, productId, prefix) 기반 결정론적 UUID v3 도출 검증.
- * ADR-16: 동일 입력 → 동일 UUID, 다른 입력 → 다른 UUID 불변식.
+ * StockEventUuidDeriver — (orderId, productId, prefix) 기반 결정론적 UUID v3 도출.
+ * 동일 입력 → 동일 UUID, 다른 입력 → 다른 UUID 불변식 검증.
  */
-@DisplayName("StockEventUuidDeriverTest — K1 결정론적 UUID v3 도출")
+@DisplayName("StockEventUuidDeriver 결정론적 UUID v3 도출")
 class StockEventUuidDeriverTest {
 
-    private static final String ORDER_ID = "order-k1-001";
+    private static final String ORDER_ID = "order-uuid-001";
     private static final long PRODUCT_ID_1 = 100L;
     private static final long PRODUCT_ID_2 = 200L;
     private static final String PREFIX_COMMIT = "stock-commit";
