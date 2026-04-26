@@ -78,7 +78,7 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                         + " paymentKey=" + maskKey(request.paymentKey())
                         + " amount=" + request.amount());
 
-        // T-A1: approvedAtRaw — ISO-8601 OffsetDateTime 문자열 (UTC). ConfirmedEventPayload.approved() 에 주입.
+        // approvedAtRaw 는 ISO-8601 OffsetDateTime(UTC) 문자열로 ConfirmedEventPayload.approved() 에 주입된다.
         String approvedAtRaw = OffsetDateTime.now(clock.withZone(ZoneOffset.UTC)).toString();
         return new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS,

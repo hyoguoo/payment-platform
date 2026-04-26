@@ -52,12 +52,12 @@ import org.springframework.web.client.RestClientResponseException;
  *   <li>그 외 → {@link PgGatewayNonRetryableException}.</li>
  * </ul>
  *
- * <p>K13: DuplicateApprovalHandler 직접 의존 제거 — ApplicationEventPublisher 경유.
- * cycle 단절: TossPaymentGatewayStrategy(PgStatusLookupPort 구현) → DuplicateApprovalHandler
- * → PgStatusLookupPort(← Toss) cycle이 ApplicationEvent로 끊김.
+ * <p>cycle 회피: 이 전략은 PgStatusLookupPort 구현이고 DuplicateApprovalHandler 는 그 포트를 의존하므로,
+ * 전략이 핸들러를 직접 호출하면 cycle 이 만들어진다. 직접 호출 대신 ApplicationEventPublisher 로 이벤트를 발행해
+ * 핸들러가 EventListener 로 수신하도록 한다.
  *
- * <p>K14: fake 모드가 아닐 때 항상 활성화 (NicePay와 동시 등록).
- * pg.gateway.type=fake 이면 비활성 — FakePgGatewayStrategy 가 대체함.
+ * <p>활성화 조건: {@code pg.gateway.type=fake} 가 아닐 때 항상 활성된다 — NicePay 전략과 동시에 등록된다.
+ * fake 모드에서는 FakePgGatewayStrategy 가 대신 동작한다.
  */
 @Slf4j
 @Component
@@ -78,8 +78,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
     private final ObjectMapper objectMapper;
 
     /**
-     * K13: DuplicateApprovalHandler 직접 의존 제거 — ApplicationEventPublisher 주입.
-     * @Value 필드는 생성자 방식으로 주입 불가(Spring SpEL 한계) — 필드 방식 유지.
+     * DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 주입한다 — cycle 회피.
+     * @Value 필드는 생성자 방식으로 주입할 수 없어(Spring SpEL 한계) 필드 방식을 유지한다.
      */
     public TossPaymentGatewayStrategy(
             HttpOperator httpOperator,
@@ -167,9 +167,9 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
         if (code.isAlreadyProcessed()) {
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
                     () -> "orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT DuplicateApprovalDetectedEvent 발행");
-            // K13: 직접 호출 대신 ApplicationEvent 발행 → cycle 단절
-            // DuplicateApprovalHandler.onDuplicateApprovalDetected(@EventListener)가 수신 처리
-            // K14: vendorType 포함 — DuplicateApprovalHandler 가 PgStatusLookupStrategySelector 로 올바른 전략 선택
+            // DuplicateApprovalHandler 직접 호출 대신 ApplicationEvent 를 발행해 cycle 을 끊는다.
+            // DuplicateApprovalHandler.onDuplicateApprovalDetected(@EventListener) 가 수신해 처리하며,
+            // vendorType 은 PgStatusLookupStrategySelector 로 올바른 전략을 선택할 때 사용된다.
             applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
                     request.orderId(), request.amount(), request.paymentKey(),
                     "ALREADY_PROCESSED_PAYMENT", PgVendorType.TOSS));
@@ -210,7 +210,7 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
                 BigDecimal.valueOf(response.totalAmount()),
                 parseApprovedAt(response.approvedAt()),
                 failure,
-                response.approvedAt()   // T-A1: raw ISO-8601 문자열 보존 (ConfirmedEventPayload 직렬화 용)
+                response.approvedAt()   // raw ISO-8601 문자열 보존 — ConfirmedEventPayload 직렬화 시 그대로 사용
         );
     }
 

@@ -20,15 +20,13 @@ import org.slf4j.MDC;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * T-E1 RED → GREEN — PgOutboxImmediateWorker relayExecutor MDC 전파 확인.
+ * PgOutboxImmediateWorker.relayExecutor 의 MDC 전파 검증.
  *
- * <p>relayExecutor(ContextExecutorService.wrap 적용)에 직접 submit 시
- * 호출 스레드 MDC traceId 가 VT 내부에서 승계되어야 한다.
- *
- * <p>ContextExecutorService.wrap 적용 전에는 VT 경계에서 MDC 가 비어 FAIL 한다.
- * apply 후에는 ContextRegistry 에 등록된 Slf4jMdcThreadLocalAccessor 가 MDC 를 캡처·복원한다.
+ * <p>ContextExecutorService.wrap 이 적용된 relayExecutor 에 submit 하면 호출 스레드의 MDC traceId 가
+ * VT 내부에서 승계되어야 한다. 적용 전에는 VT 경계에서 MDC 가 비어 FAIL 하며, 적용 후에는 ContextRegistry 에
+ * 등록된 Slf4jMdcThreadLocalAccessor 가 MDC 를 캡처·복원한다.
  */
-@DisplayName("PgOutboxImmediateWorker — relayExecutor MDC 전파 (T-E1)")
+@DisplayName("PgOutboxImmediateWorker — relayExecutor MDC 전파")
 class PgOutboxImmediateWorkerMdcPropagationTest {
 
     private static final String TRACE_ID_KEY = "traceId";
@@ -39,7 +37,7 @@ class PgOutboxImmediateWorkerMdcPropagationTest {
 
     @BeforeEach
     void setUp() {
-        // T-E1: 단위 테스트 환경에서는 Spring context 가 없으므로 MDC accessor 를 수동 등록
+        // 단위 테스트 환경엔 Spring context 가 없으므로 MDC accessor 를 수동 등록한다.
         ContextRegistry.getInstance().registerThreadLocalAccessor(new PgSlf4jMdcThreadLocalAccessor());
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();

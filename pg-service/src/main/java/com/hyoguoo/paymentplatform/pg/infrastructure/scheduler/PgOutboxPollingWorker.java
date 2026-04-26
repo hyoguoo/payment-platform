@@ -36,7 +36,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PgOutboxPollingWorker {
 
-    // T-F2: ImmediateWorker 와 동일 카운터 이름 — Micrometer 태그로 출처 구분 가능하나 현 시점 단순화
+    // ImmediateWorker 와 카운터 이름을 공유한다 — Micrometer 태그로 출처를 분리할 수 있으나 현재는 단순화한다.
     static final String RELAY_FAIL_COUNTER_NAME = "pg_outbox.relay_fail_total";
 
     private final PgOutboxRepository pgOutboxRepository;
@@ -80,7 +80,7 @@ public class PgOutboxPollingWorker {
             try {
                 pgOutboxRelayService.relay(outbox.getId());
             } catch (RuntimeException e) {
-                // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격 + 카운터 increment
+                // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그 + 카운터 increment 로 승격한다.
                 relayFailCounter.increment();
                 LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_POLLING_RELAY_FAIL,
                         () -> "id=" + outbox.getId() + " message=" + e.getMessage());

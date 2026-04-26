@@ -7,7 +7,7 @@ import org.slf4j.MDC;
 /**
  * Micrometer Context Propagation — pg-service Slf4j MDC 전파를 위한 ThreadLocalAccessor.
  *
- * <p>T-E1: {@code ContextRegistry.getInstance().registerThreadLocalAccessor(this)} 로 등록하면
+ * <p>{@code ContextRegistry.getInstance().registerThreadLocalAccessor(this)} 로 등록하면
  * {@code ContextExecutorService.wrap()} 이 VT submit 시 MDC(traceId 등) 스냅샷을 자동으로 캡처·복원한다.
  *
  * <p>등록 시점: {@link PgServiceConfig} @PostConstruct 로 애플리케이션 기동 직후 등록.

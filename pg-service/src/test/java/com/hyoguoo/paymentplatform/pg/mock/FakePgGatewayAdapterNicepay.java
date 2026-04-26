@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * NICEPAY 전용 PgStatusLookupPort + PgConfirmPort Fake.
- * K14: selector 단위 테스트에서 NICEPAY 전략 구별용으로 사용한다.
+ * selector 단위 테스트에서 NICEPAY 전략 구별용으로 사용한다.
  *
  * <p>FakePgGatewayAdapter 와의 차이: {@link #supports(PgVendorType)} 이 NICEPAY 만 true 반환.
  */

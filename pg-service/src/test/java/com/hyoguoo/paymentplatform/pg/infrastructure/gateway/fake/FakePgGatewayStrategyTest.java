@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * T-F1: FakePgGatewayStrategy.getStatusByOrderId 계약 검증.
+ * FakePgGatewayStrategy.getStatusByOrderId 계약 검증.
  *
  * <p>Fake 전략은 smoke happy-path 전용이며 getStatusByOrderId 는
  * DuplicateApprovalHandler / PgFinalConfirmationGate(복구 사이클) 경로에서만 호출된다.

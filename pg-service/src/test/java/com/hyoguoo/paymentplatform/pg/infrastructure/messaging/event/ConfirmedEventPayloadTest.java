@@ -8,11 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 /**
- * ConfirmedEventPayload 단위 테스트.
- * T-A1: amount + approvedAt 필드 추가 RED 단계.
+ * ConfirmedEventPayload 팩토리 단위 테스트.
  *
- * <p>APPROVED 팩토리: amount/approvedAt non-null 강제.
- * FAILED/QUARANTINED 팩토리: 두 필드 null 허용.
+ * <p>APPROVED 팩토리는 amount/approvedAt non-null 을 강제하고,
+ * FAILED/QUARANTINED 팩토리는 두 필드를 null 로 허용한다.
  */
 @DisplayName("ConfirmedEventPayload")
 class ConfirmedEventPayloadTest {

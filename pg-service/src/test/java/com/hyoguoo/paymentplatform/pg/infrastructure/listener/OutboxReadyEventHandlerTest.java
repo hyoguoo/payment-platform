@@ -18,7 +18,7 @@ import static org.mockito.Mockito.when;
  * domain_risk=true: handle() 호출 시 channel.offerNow(outboxId) 가 반드시 호출되는지 검증.
  * AFTER_COMMIT 실제 통합 테스트는 T2a-06 이후에 Spring context 통합 테스트로 묶어 진행.
  *
- * <p>T-J4: offer → offerNow 호출 변경 반영.
+ * <p>offer → offerNow 호출 변경을 반영한다 (offer 시점의 OTel Context + MDC snapshot 캡처).
  */
 @DisplayName("OutboxReadyEventHandler")
 @ExtendWith(MockitoExtension.class)

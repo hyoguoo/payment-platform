@@ -42,7 +42,7 @@ public class PgInbox {
     }
 
     /**
-     * K5: fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
+     * fixed Instant 주입 오버로드 —시간 결정성 테스트용.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
      *
      * @param orderId 주문 ID
@@ -108,7 +108,7 @@ public class PgInbox {
     }
 
     /**
-     * K5: fixed Instant 주입 오버로드 — NONE → IN_PROGRESS 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 —NONE → IN_PROGRESS 전이 + updatedAt 결정성.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
      *
      * @param updatedAt 갱신 시각 (clock.instant() 전달)
@@ -140,7 +140,7 @@ public class PgInbox {
     }
 
     /**
-     * K5: fixed Instant 주입 오버로드 — IN_PROGRESS → APPROVED 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 —IN_PROGRESS → APPROVED 전이 + updatedAt 결정성.
      *
      * @param storedStatusResult 벤더 응답 JSON
      * @param updatedAt          갱신 시각 (clock.instant() 전달)
@@ -175,7 +175,7 @@ public class PgInbox {
     }
 
     /**
-     * K5: fixed Instant 주입 오버로드 — IN_PROGRESS → FAILED 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 —IN_PROGRESS → FAILED 전이 + updatedAt 결정성.
      *
      * @param storedStatusResult 벤더 응답 JSON
      * @param reasonCode         실패 사유 코드
@@ -213,7 +213,7 @@ public class PgInbox {
     }
 
     /**
-     * K5: fixed Instant 주입 오버로드 — non-terminal → QUARANTINED 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 —non-terminal → QUARANTINED 전이 + updatedAt 결정성.
      *
      * @param storedStatusResult 벤더 응답 JSON (nullable)
      * @param reasonCode         격리 사유 코드

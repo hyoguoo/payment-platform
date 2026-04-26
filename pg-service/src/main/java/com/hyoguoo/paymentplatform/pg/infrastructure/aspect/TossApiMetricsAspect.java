@@ -42,7 +42,7 @@ public class TossApiMetricsAspect {
 
             return result;
         } catch (Throwable e) {
-            // T-F2: Error(OOM 등)도 메트릭 기록 후 re-throw — catch(Exception) 확장
+            // Error(OOM 등)도 메트릭 기록 후 re-throw — catch(Exception) 보다 넓게 잡는다.
             long duration = System.currentTimeMillis() - startTime;
 
             handleFailure(tossApiMetric, duration);

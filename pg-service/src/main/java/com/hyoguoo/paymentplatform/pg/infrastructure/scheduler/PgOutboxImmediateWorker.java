@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
 public class PgOutboxImmediateWorker implements SmartLifecycle {
 
     private static final int STOP_AWAIT_TIMEOUT_SECONDS = 10;
-    // T-F2: relay 실패 전용 카운터 — ERROR 레벨 로그와 함께 관측성 제공
+    // relay 실패 전용 카운터 — ERROR 레벨 로그와 함께 관측성을 제공한다.
     static final String RELAY_FAIL_COUNTER_NAME = "pg_outbox.relay_fail_total";
 
     private final PgOutboxChannel channel;
@@ -68,8 +68,8 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     @Override
     public void start() {
         running = true;
-        // T-J3: OTel Context + MDC 이중 래핑 — payment.events.confirmed 발행 시 traceparent 정확히 propagate
-        // K7: ContextAwareVirtualThreadExecutors 헬퍼로 이중 래핑 boilerplate 통일
+        // OTel Context + MDC 이중 래핑이 payment.events.confirmed 발행 시 traceparent 를 정확히 전파한다.
+        // 이중 래핑 boilerplate 는 ContextAwareVirtualThreadExecutors 헬퍼로 통일한다.
         relayExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
         for (int i = 0; i < workerCount; i++) {
             Thread worker = Thread.ofVirtual()
@@ -120,15 +120,15 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 OutboxJob job = channel.take();
-                // T-J4: relayExecutor.submit lambda 에서 offer 시점(Kafka consumer thread)의
-                // OTel Context + MDC snapshot 을 restore — worker VT thread 의 빈 context 를 덮어씀.
+                // relayExecutor.submit lambda 에서 offer 시점(Kafka consumer thread)의
+                // OTel Context + MDC snapshot 을 restore — worker VT thread 의 빈 context 를 덮어쓴다.
                 // try-with-resources 이중 scope: MDC(Micrometer) → OTel Context 순으로 열고
                 // 역순으로 닫아 smoke traceparent 가 KafkaTemplate.send() 에 정확히 전파된다.
                 relayExecutor.submit(() -> relayWithContext(job));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
-                // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격
+                // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그로 승격한다.
                 LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
                         e::getMessage);
             }
@@ -148,7 +148,7 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
         try {
             pgOutboxRelayService.relay(id);
         } catch (RuntimeException e) {
-            // T-F2: Error 는 전파 — RuntimeException 만 포획 후 ERROR 승격 + 카운터 increment
+            // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그 + 카운터 increment 로 승격한다.
             relayFailCounter.increment();
             LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
                     () -> "id=" + id + " message=" + e.getMessage());

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * T-F2 RED — PgOutboxPollingWorker catch(Exception) 축소 검증.
+ * PgOutboxPollingWorker — RuntimeException 만 포획하는 catch 축소 검증.
  *
  * <p>단일 건 실패 시 루프가 계속되고 ERROR 로그 + relay_fail 카운터가 증가해야 한다.
  */

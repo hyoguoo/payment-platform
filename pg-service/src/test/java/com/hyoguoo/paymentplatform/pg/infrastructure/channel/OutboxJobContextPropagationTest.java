@@ -19,16 +19,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * T-J4 RED — PgOutboxChannel OutboxJob context 동봉 검증.
+ * PgOutboxChannel — OutboxJob 에 OTel Context + MDC 가 동봉되는지 검증.
  *
- * <p>offer 시점의 OTel Context + MDC 스냅샷이 OutboxJob 에 동봉되어,
- * 별도 스레드에서 take 후 restore 하면 caller context 가 정확히 복원되어야 한다.
- *
- * <p>이 테스트는 OutboxJob record 가 존재하고,
- * offerNow(Long) 편의 메서드가 current context 를 캡처하며,
- * take() 가 OutboxJob 을 반환하는 것을 전제한다.
+ * <p>offer 시점의 OTel Context + MDC 스냅샷이 OutboxJob 에 동봉되어, 다른 스레드에서 take 한 뒤 restore 하면
+ * caller 의 context 가 정확히 복원되어야 한다. 전제: OutboxJob record 존재, offerNow(Long) 가 current context 를
+ * 캡처, take() 가 OutboxJob 을 반환.
  */
-@DisplayName("OutboxJob — offer→take 경계 OTel Context + MDC 동봉 검증 (T-J4)")
+@DisplayName("OutboxJob — offer→take 경계 OTel Context + MDC 동봉 검증")
 class OutboxJobContextPropagationTest {
 
     private static final String TRACE_ID_KEY = "traceId";
@@ -38,7 +35,7 @@ class OutboxJobContextPropagationTest {
 
     @BeforeEach
     void setUp() {
-        // T-J4: 단위 테스트 환경에서는 Spring context 없으므로 MDC accessor 를 수동 등록
+        // 단위 테스트 환경엔 Spring context 가 없으므로 MDC accessor 를 수동 등록한다.
         ContextRegistry.getInstance().registerThreadLocalAccessor(new PgSlf4jMdcThreadLocalAccessor());
         channel = new PgOutboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();

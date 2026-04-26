@@ -20,8 +20,8 @@ import org.springframework.stereotype.Component;
  * <p>capacity=1024 (payment-service 와 동일).
  * 큐 full 시 offer=false 반환 → OutboxReadyEventHandler 가 warn 로그 → Polling Worker 가 fallback 처리.
  *
- * <p>T-J4: offer 시점(Kafka consumer thread — smoke trace 활성)에서 context 를 캡처하여
- * worker VT thread 에서 relay 직전에 restore — payment.events.confirmed traceparent 회귀 근본 해소.
+ * <p>offer 시점(Kafka consumer thread — smoke trace 활성)에서 context 를 캡처하고
+ * worker VT thread 에서 relay 직전에 restore 한다 — payment.events.confirmed 의 traceparent 회귀를 근본 해소한 구조다.
  */
 @Slf4j
 @Component
@@ -62,8 +62,8 @@ public class PgOutboxChannel {
     /**
      * pg_outbox.id 를 큐에 비차단 삽입한다. 호출 스레드의 OTel Context + MDC snapshot 을 캡처하여 동봉한다.
      *
-     * <p>T-J4: offer 시점(Kafka consumer thread)에서 current OTel Context + ContextSnapshot 을 캡처한다.
-     * 이 context 는 worker VT thread 가 relay 직전에 restore 하여 smoke traceparent 를 Kafka 헤더에 전파한다.
+     * <p>offer 시점(Kafka consumer thread)에서 current OTel Context + ContextSnapshot 을 캡처해 두면,
+     * worker VT thread 가 relay 직전에 restore 해 smoke traceparent 가 Kafka 헤더에 그대로 전파된다.
      *
      * @param outboxId pg_outbox PK
      * @return 삽입 성공 여부 (false 이면 큐 full — Polling Worker 가 fallback 처리)

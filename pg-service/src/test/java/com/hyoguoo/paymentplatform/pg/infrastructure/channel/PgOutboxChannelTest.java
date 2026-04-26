@@ -13,8 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * PgOutboxChannel 단위 스모크 테스트.
  * domain_risk=true: offer/take 정상 동작, capacity full 시 offer=false, isNearFull 임계치.
  *
- * <p>T-J4: LinkedBlockingQueue&lt;Long&gt; → LinkedBlockingQueue&lt;OutboxJob&gt; 변경 반영.
- * take() 반환 타입이 OutboxJob 이므로 outboxId 추출 검증으로 보정.
+ <p>queue 가 {@code LinkedBlockingQueue<OutboxJob>} 이므로 take() 반환 타입에서 outboxId 추출까지 검증한다.
  */
 @DisplayName("PgOutboxChannel")
 class PgOutboxChannelTest {
