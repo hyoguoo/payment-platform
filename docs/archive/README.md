@@ -23,3 +23,5 @@
 | `payment-retry-state/` | 재시도 정교화 — RetryPolicy(FIXED/EXPONENTIAL 백오프), RETRYING 상태 도입, 예외 기반 분기 → PaymentConfirmResultStatus enum 전환, nextRetryAt DB 기록 | 2026-04-07 |
 | `payment-double-fault-recovery/` | 이중장애 복구 — RecoveryDecision 값 객체, PG getStatus 선행 조회 복구 사이클, FCG(Final Confirmation Gate), QUARANTINED 상태, D12 재고 가드, isTerminal() SSOT | 2026-04-10 |
 | `nicepay-pg-strategy/` | NicePay PG 전략 추가 — 멀티 PG 연동 (Strategy 패턴), gatewayType 결제건별 라우팅, NicePay confirm/cancel/getStatus, 복구 사이클 최초 시도 PG 선조회 제거, 예외 벤더 중립 rename | 2026-04-14 |
+| `msa-transition/` | MSA 전환 — 모놀리스 → 4서비스 분해(payment/pg/product/user) + Eureka + Gateway, 4 MySQL 인스턴스 분리(ADR-23), Kafka 양방향 confirm 왕복(ADR-30), Phase 0~3.5 게이트 통과 | 2026-04-24 |
+| `pre-phase-4-hardening/` | Pre-Phase-4 하드닝 — 비즈니스 로직 정확성·traceId 추적·코드 작성 수준 3축 19태스크(T-A~T-J + K1~K15), AMOUNT_MISMATCH 양방향 방어, dedupe two-phase lease + DLQ, AFTER_COMMIT stock publish, traceparent 다중 홉 검증 | 2026-04-24 |
