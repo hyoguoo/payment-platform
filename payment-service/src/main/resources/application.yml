@@ -21,12 +21,18 @@ spring:
 
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: validate
     properties:
       hibernate:
         jdbc:
           batch_size: 25
         order_inserts: true
         order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

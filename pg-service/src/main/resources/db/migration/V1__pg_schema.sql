@@ -1,10 +1,11 @@
--- Flyway V1 — T2a-04 (MSA-TRANSITION Phase 2.a). ADR-21 보강(business inbox amount 컬럼), ADR-30(pg_outbox available_at).
+-- pg-service Flyway baseline.
+-- ADR-21 보강(business inbox amount 컬럼), ADR-30(pg_outbox available_at).
 
 -- ─────────────────────────────────────────────────────────
 -- pg_inbox
 -- business inbox 5상태(NONE/IN_PROGRESS/APPROVED/FAILED/QUARANTINED).
 -- amount: 원화 최소 단위 정수 (payload BigDecimal → DB BIGINT 변환 규약: scale=0, 음수·소수 거부 — 애플리케이션 계층 검증).
--- stored_status_result: 벤더 원문 상태 스냅샷 (nullable — 벤더 호출 후에만 채움).
+-- stored_status_result: 재발행용 전체 JSON payload 스냅샷 (nullable — 벤더 호출 후에만 채움).
 -- reason_code: 실패·격리 사유 코드 (nullable).
 -- ─────────────────────────────────────────────────────────
 CREATE TABLE pg_inbox (
@@ -12,7 +13,7 @@ CREATE TABLE pg_inbox (
     order_id             VARCHAR(100)  NOT NULL,
     status               ENUM('NONE','IN_PROGRESS','APPROVED','FAILED','QUARANTINED') NOT NULL,
     amount               BIGINT        NOT NULL,
-    stored_status_result VARCHAR(50),
+    stored_status_result VARCHAR(1024),
     reason_code          VARCHAR(100),
     created_at           DATETIME(6)   NOT NULL,
     updated_at           DATETIME(6)   NOT NULL,

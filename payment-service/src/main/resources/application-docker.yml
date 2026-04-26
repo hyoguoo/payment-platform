@@ -17,14 +17,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
-    defer-datasource-initialization: true
-
-  sql:
-    init:
-      mode: always
-      continue-on-error: true
 
   myapp:
     toss-payments:

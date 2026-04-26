@@ -1,4 +1,5 @@
--- Flyway V1 — T1-07 (MSA-TRANSITION Phase 1). ADR-23 DB 분리 시작 시점.
+-- payment-service Flyway baseline.
+-- ADR-23: payment 도메인 전용 MySQL 인스턴스(`payment-platform`) 의 단일 baseline.
 
 -- ─────────────────────────────────────────────────────────
 -- payment_event
@@ -17,8 +18,8 @@ CREATE TABLE payment_event (
     retry_count                    INT,
     status_reason                  VARCHAR(255),
     last_status_changed_at         DATETIME(6),
-    -- T3.5-07 이후 도메인 매핑 제거됨. 컬럼은 스키마 호환성을 위해 유지.
-    -- ADR-15: QUARANTINED는 홀딩 상태이며 재고 복구 대상이 아님 — 복구는 FAIL 경로에서만 수행.
+    -- 컬럼 자체는 스키마 호환성을 위해 유지(도메인 매핑은 제거됨).
+    -- ADR-15: QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아님 — 복구는 FAIL 경로에서만 수행.
     quarantine_compensation_pending BOOLEAN        NOT NULL DEFAULT FALSE,
     created_at                     DATETIME,
     updated_at                     DATETIME,
@@ -100,3 +101,23 @@ CREATE TABLE payment_history (
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
+
+-- ─────────────────────────────────────────────────────────
+-- stock_outbox
+-- stock commit/restore 이벤트 발행에 transactional outbox 패턴 적용.
+-- pg_outbox 와 동일 구조이지만 공유 lib 없이 독립 복제하며, payment_outbox 와 달리 order_id UNIQUE 제약이 없다
+-- (한 주문이 여러 productId 에 대해 별도 row 를 갖는다).
+-- ─────────────────────────────────────────────────────────
+CREATE TABLE stock_outbox (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    topic           VARCHAR(200) NOT NULL,
+    `key`           VARCHAR(100) NOT NULL,
+    payload         LONGTEXT     NOT NULL,
+    headers_json    TEXT,
+    available_at    DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    processed_at    DATETIME(6),
+    attempt         INT          NOT NULL DEFAULT 0,
+    created_at      DATETIME(6)  NOT NULL,
+    PRIMARY KEY (id),
+    INDEX idx_stock_outbox_processed_available (processed_at, available_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
