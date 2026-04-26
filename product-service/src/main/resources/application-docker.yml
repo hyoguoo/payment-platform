@@ -11,17 +11,6 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
 
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:redis-dedupe}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-
-product:
-  cache:
-    stock-redis:
-      host: ${REDIS_STOCK_HOST:redis-stock}
-      port: ${REDIS_STOCK_PORT:6379}
-
 logging:
   level:
     root: INFO

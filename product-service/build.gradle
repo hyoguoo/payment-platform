@@ -28,9 +28,6 @@ dependencies {
     implementation 'com.mysql:mysql-connector-j'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
-
-    // Redis (stock 캐시 직접 SET — T3-04 연결 예정)
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }
 
 dependencyManagement {

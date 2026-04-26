@@ -40,21 +40,9 @@ spring:
     listener:
       observation-enabled: true
 
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-
   flyway:
     enabled: true
     locations: classpath:db/migration
-
-product:
-  cache:
-    stock-redis:
-      # host/port는 application-docker.yml에서 REDIS_STOCK_HOST/REDIS_STOCK_PORT 환경변수로 주입
-      # host 미설정 시 StockRedisConfig(@ConditionalOnProperty) 빈 미등록 → 로컬 테스트 safe
-      port: ${REDIS_STOCK_PORT:6380}
 
   output:
     ansi:

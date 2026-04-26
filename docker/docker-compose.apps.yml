@@ -115,7 +115,7 @@ services:
       start_period: 60s
 
   # ───────────────────────────────────────────
-  # product-service (재고 저장소 + 재고 복원 consumer)
+  # product-service (재고 저장소 + StockCommit consumer)
   # ───────────────────────────────────────────
   product-service:
     build:
@@ -134,10 +134,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis-dedupe:
-        condition: service_healthy
-      redis-stock:
-        condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
@@ -145,10 +141,6 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PRODUCT_DATASOURCE_USERNAME: root
       PRODUCT_DATASOURCE_PASSWORD: payment123
-      SPRING_DATA_REDIS_HOST: redis-dedupe
-      SPRING_DATA_REDIS_PORT: "6379"
-      REDIS_STOCK_HOST: redis-stock
-      REDIS_STOCK_PORT: "6379"
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
       MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:

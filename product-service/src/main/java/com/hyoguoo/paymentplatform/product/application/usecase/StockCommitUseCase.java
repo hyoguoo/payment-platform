@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.product.application.usecase;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
-import com.hyoguoo.paymentplatform.product.application.port.out.PaymentStockCachePort;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
 import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
@@ -18,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>
  * S-2(StockCommitEvent 소비), S-3(Redis 직접 쓰기) 담당.
  * <p>
- * 불변식:
+ * 새 모델: product RDB 가 재고의 SoT, redis-stock 캐시는 payment-service 가 자기 책임으로 관리한다.
+ * 본 use case 는 RDB 차감만 수행하고 Redis 동기화 책임은 가지지 않는다.
+ *
+ * <p>불변식:
  * <ul>
  *   <li>eventUUID dedupe — EventDedupeStore.recordIfAbsent false 반환 시 즉시 return</li>
- *   <li>RDB UPDATE 성공 후에만 PaymentStockCachePort.setStock 호출 (원자성)</li>
- *   <li>RDB UPDATE 실패 시 예외 전파 — Redis SET 호출 금지</li>
+ *   <li>재고 row 미존재 시 IllegalStateException</li>
  * </ul>
  */
 @Slf4j
@@ -39,7 +40,6 @@ public class StockCommitUseCase {
 
     private final StockRepository stockRepository;
     private final EventDedupeStore eventDedupeStore;
-    private final PaymentStockCachePort paymentStockCachePort;
 
     /**
      * StockCommitEvent를 처리한다.
@@ -69,20 +69,14 @@ public class StockCommitUseCase {
             return;
         }
 
-        int newStock = commitToRdb(productId, qty, orderId, eventUUID);
-
-        paymentStockCachePort.setStock(productId, newStock);
-        LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_REDIS_DONE,
-                () -> "productId=" + productId + " stock=" + newStock);
+        commitToRdb(productId, qty, orderId, eventUUID);
     }
 
     /**
      * RDB 재고를 qty만큼 감소시키고 저장한다.
      * 재고가 존재하지 않으면 {@link IllegalStateException}을 throw한다.
-     *
-     * @return 변경 후 재고 수량
      */
-    private int commitToRdb(long productId, int qty, String orderId, String eventUUID) {
+    private void commitToRdb(long productId, int qty, String orderId, String eventUUID) {
         Stock current = stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalStateException(
                         "재고 정보를 찾을 수 없음 productId=" + productId
@@ -98,6 +92,5 @@ public class StockCommitUseCase {
 
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RDB_DONE,
                 () -> "productId=" + productId + " " + current.getQuantity() + " -> " + newQuantity);
-        return newQuantity;
     }
 }

@@ -48,19 +48,6 @@ public class StockCommandUseCase implements StockCommandService {
         }
     }
 
-    @Override
-    @Transactional
-    public void increaseForOrders(List<ProductStockCommand> commands) {
-        for (ProductStockCommand command : commands) {
-            Stock current = loadStock(command.productId());
-            int newQuantity = current.getQuantity() + command.stock();
-            stockRepository.save(Stock.allArgsBuilder()
-                    .productId(current.getProductId())
-                    .quantity(newQuantity)
-                    .allArgsBuild());
-        }
-    }
-
     private Stock loadStock(Long productId) {
         return stockRepository.findByProductId(productId)
                 .orElseThrow(() -> ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND));

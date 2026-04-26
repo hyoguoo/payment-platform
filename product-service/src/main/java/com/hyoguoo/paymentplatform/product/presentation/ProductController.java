@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>GET /api/v1/products/{id} — 상품+재고 조회</li>
  *   <li>POST /api/v1/products/stock/decrease — 동기 재고 차감</li>
- *   <li>POST /api/v1/products/stock/increase — 동기 재고 복구</li>
  * </ul>
  */
 @RestController
@@ -42,12 +41,6 @@ public class ProductController {
     @PostMapping("/stock/decrease")
     public ResponseEntity<Void> decreaseStock(@RequestBody List<StockCommandItem> items) {
         stockCommandService.decreaseForOrders(toCommands(items));
-        return ResponseEntity.ok().build();
-    }
-
-    @PostMapping("/stock/increase")
-    public ResponseEntity<Void> increaseStock(@RequestBody List<StockCommandItem> items) {
-        stockCommandService.increaseForOrders(toCommands(items));
         return ResponseEntity.ok().build();
     }
 

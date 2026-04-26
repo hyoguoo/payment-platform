@@ -33,24 +33,8 @@ CREATE TABLE IF NOT EXISTS stock
   COLLATE = utf8mb4_unicode_ci;
 
 -- ─────────────────────────────────────────────────────────
--- product_event_dedupe
--- StockRestoreConsumer 용 TTL 기반 recordIfAbsent dedupe 테이블.
--- pg-service 의 dedupe(markSeen/boolean) 와 다른 모델 — 만료 인덱스로 정리.
--- ─────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS product_event_dedupe
-(
-    event_uuid CHAR(36)    NOT NULL,
-    expires_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (event_uuid),
-    INDEX idx_expires_at (expires_at)
-) ENGINE = InnoDB
-  DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_unicode_ci;
-
--- ─────────────────────────────────────────────────────────
 -- stock_commit_dedupe
 -- StockCommitConsumer 의 eventUUID dedupe 전용 테이블.
--- stock.events.restore 보상 이벤트는 product_event_dedupe 와 별개 스키마로 관리한다 (D6 — consumer groupId 분리에 맞춘 dedupe 분리).
 -- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stock_commit_dedupe
 (
