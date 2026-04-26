@@ -1,15 +1,16 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
+import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.service.FailureCompensationService;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -32,24 +33,24 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * K15 RED — PaymentConfirmResultUseCase → PaymentCommandUseCase 위임 검증.
+ * PaymentConfirmResultUseCase.handleFailed 단위 검증.
  *
- * <p>검증 목표:
+ * <p>커버 범위:
  * <ul>
- *   <li>APPROVED 처리 시 PaymentCommandUseCase.markPaymentAsDone 1회 호출</li>
- *   <li>APPROVED 처리 시 paymentEventRepository.saveOrUpdate 직접 호출 없음 (PaymentCommandUseCase가 내부에서 수행)</li>
- *   <li>FAILED 처리 시 PaymentCommandUseCase.markPaymentAsFail 1회 호출</li>
- *   <li>FAILED 처리 시 paymentEventRepository.saveOrUpdate 직접 호출 없음</li>
+ *   <li>FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 (reasonCode 그대로 전달)</li>
+ *   <li>FailureCompensationService.compensate 가 PaymentOrder 별로 실 qty 와 함께 호출되어야 함
+ *       — 단일 주문 / 복수 주문 모두</li>
+ *   <li>UseCase 자체는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 발행하지 않음
+ *       (그 책임은 FailureCompensationService 내부)</li>
+ *   <li>UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하지 않고 위임한다</li>
  * </ul>
  */
-@DisplayName("PaymentConfirmResultUseCaseK15Test — PaymentCommandUseCase 위임 검증 RED")
-class PaymentConfirmResultUseCaseK15Test {
+@DisplayName("PaymentConfirmResultUseCase handleFailed")
+class PaymentConfirmResultUseCaseHandleFailedTest {
 
-    private static final String ORDER_ID = "order-k15-001";
-    private static final String EVENT_UUID = "evt-k15-001";
-    private static final String APPROVED_AT_STR = "2026-04-24T10:00:00Z";
-    private static final LocalDateTime EXPECTED_APPROVED_AT = LocalDateTime.of(2026, 4, 24, 10, 0, 0);
-    private static final long AMOUNT = 1000L;
+    private static final String ORDER_ID = "order-failed-001";
+    private static final String EVENT_UUID = "evt-failed-001";
+    private static final String REASON_CODE = "VENDOR_FAILED";
 
     private FakePaymentEventRepository paymentEventRepository;
     private FakeEventDedupeStore dedupeStore;
@@ -74,7 +75,6 @@ class PaymentConfirmResultUseCaseK15Test {
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
-        // K15: PaymentCommandUseCase 주입 필요 — 현재 생성자에 없으므로 RED 단계에서 컴파일 실패
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
                 dedupeStore,
@@ -87,132 +87,94 @@ class PaymentConfirmResultUseCaseK15Test {
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
                 PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
-                paymentCommandUseCase  // K15: 신규 파라미터
+                paymentCommandUseCase
         );
     }
 
-    // -----------------------------------------------------------------------
-    // TC-K15-1: APPROVED → PaymentCommandUseCase.markPaymentAsDone 1회 호출
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("handleApproved — PaymentCommandUseCase.markPaymentAsDone 1회 호출")
-    void handleApproved_shouldDelegateToMarkPaymentAsDone() {
-        // given
-        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
-        paymentEventRepository.save(event);
-
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
-                .willReturn(event);
-
-        ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
-        );
-
-        // when
-        sut.handle(message);
-
-        // then — PaymentCommandUseCase.markPaymentAsDone 1회 호출 (approvedAt 값 일치)
-        then(paymentCommandUseCase)
-                .should(times(1))
-                .markPaymentAsDone(any(PaymentEvent.class), eq(EXPECTED_APPROVED_AT));
-    }
-
-    // -----------------------------------------------------------------------
-    // TC-K15-2: APPROVED → paymentEventRepository.saveOrUpdate 직접 호출 없음
-    //           (PaymentCommandUseCase 내부에서 처리)
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("handleApproved — paymentEventRepository.saveOrUpdate 직접 호출 없음 (PaymentCommandUseCase 위임)")
-    void handleApproved_shouldNotCallSaveDirectly() {
-        // given
-        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
-        paymentEventRepository.save(event);
-
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
-                .willReturn(event);
-
-        ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID
-        );
-
-        // when
-        int saveCountBefore = paymentEventRepository.saveOrUpdateCallCount();
-        sut.handle(message);
-        int saveCountAfter = paymentEventRepository.saveOrUpdateCallCount();
-
-        // then — PaymentConfirmResultUseCase 자체에서 saveOrUpdate 추가 호출 없음
-        // (PaymentCommandUseCase.markPaymentAsDone이 내부에서 저장 담당)
-        then(paymentCommandUseCase)
-                .should(times(1))
-                .markPaymentAsDone(any(PaymentEvent.class), eq(EXPECTED_APPROVED_AT));
-        // saveOrUpdate 호출 횟수가 위임 전후 동일해야 함 (직접 호출 없음 검증)
-        org.assertj.core.api.Assertions.assertThat(saveCountAfter - saveCountBefore).isZero();
-    }
-
-    // -----------------------------------------------------------------------
-    // TC-K15-3: FAILED → PaymentCommandUseCase.markPaymentAsFail 1회 호출
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("handleFailed — PaymentCommandUseCase.markPaymentAsFail 1회 호출")
-    void handleFailed_shouldDelegateToMarkPaymentAsFail() {
-        // given
+    @DisplayName("단일 주문 FAILED — markPaymentAsFail 위임 + compensate 가 실 qty 로 호출된다")
+    void 단일_주문_FAILED_시_markPaymentAsFail_위임_및_compensate_호출() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
-
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID
-        );
+                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
         sut.handle(message);
 
-        // then — PaymentCommandUseCase.markPaymentAsFail 1회 호출 (reasonCode 값 일치)
         then(paymentCommandUseCase)
                 .should(times(1))
-                .markPaymentAsFail(any(PaymentEvent.class), eq("VENDOR_FAILED"));
+                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
+        then(failureCompensationService)
+                .should(times(1))
+                .compensate(eq(ORDER_ID), eq(100L), eq(3));
     }
 
-    // -----------------------------------------------------------------------
-    // TC-K15-4: FAILED → paymentEventRepository.saveOrUpdate 직접 호출 없음
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("handleFailed — paymentEventRepository.saveOrUpdate 직접 호출 없음 (PaymentCommandUseCase 위임)")
-    void handleFailed_shouldNotCallSaveDirectly() {
-        // given
-        PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+    @DisplayName("복수 주문 FAILED — compensate 가 productId/qty 별로 따로 호출된다")
+    void 복수_주문_FAILED_시_compensate_가_productId_별로_호출() {
+        PaymentOrder order1 = buildPaymentOrder(100L, 2, BigDecimal.valueOf(200));
+        PaymentOrder order2 = buildPaymentOrder(200L, 5, BigDecimal.valueOf(500));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
-
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID
-        );
+                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
+        sut.handle(message);
+
+        then(failureCompensationService)
+                .should(times(1))
+                .compensate(eq(ORDER_ID), eq(100L), eq(2));
+        then(failureCompensationService)
+                .should(times(1))
+                .compensate(eq(ORDER_ID), eq(200L), eq(5));
+    }
+
+    @Test
+    @DisplayName("UseCase 는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 직접 발행하지 않는다")
+    void UseCase_는_stock_outbox_를_직접_INSERT_하지_않는다() {
+        PaymentOrder order = buildPaymentOrder(100L, 5, BigDecimal.valueOf(500));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
+                .willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(capturingPublisher.captured(StockOutboxReadyEvent.class)).isEmpty();
+        assertThat(stockOutboxRepository.savedCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하지 않고 PaymentCommandUseCase 에 위임한다")
+    void UseCase_가_paymentEventRepository_saveOrUpdate_를_직접_호출하지_않는다() {
+        PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
+                .willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
+
         int saveCountBefore = paymentEventRepository.saveOrUpdateCallCount();
         sut.handle(message);
         int saveCountAfter = paymentEventRepository.saveOrUpdateCallCount();
 
-        // then — saveOrUpdate 직접 호출 없음
         then(paymentCommandUseCase)
                 .should(times(1))
-                .markPaymentAsFail(any(PaymentEvent.class), eq("VENDOR_FAILED"));
-        org.assertj.core.api.Assertions.assertThat(saveCountAfter - saveCountBefore).isZero();
+                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
+        assertThat(saveCountAfter - saveCountBefore).isZero();
     }
-
-    // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, List<PaymentOrder> orders) {
         return PaymentEvent.allArgsBuilder()
@@ -221,7 +183,7 @@ class PaymentConfirmResultUseCaseK15Test {
                 .sellerId(200L)
                 .orderName("테스트 상품")
                 .orderId(ORDER_ID)
-                .paymentKey("pk-k15")
+                .paymentKey("pk-failed")
                 .status(status)
                 .retryCount(0)
                 .paymentOrderList(orders)
@@ -239,8 +201,6 @@ class PaymentConfirmResultUseCaseK15Test {
                 .status(PaymentOrderStatus.EXECUTING)
                 .allArgsBuild();
     }
-
-    // ---- helper: ApplicationEventPublisher that captures events ----
 
     static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
 
