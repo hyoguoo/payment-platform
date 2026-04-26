@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Domain F-8: PaymentErrorCode 코드 유일성 검증.
+ * PaymentErrorCode 코드 유일성 검증.
  * 동일 error code(예: E03002)가 2개 이상 enum 상수에 할당되지 않았음을 컴파일 타임이 아닌
  * 런타임 자동 검증으로 회귀를 차단한다.
  */

@@ -72,12 +72,12 @@ class PaymentOutboxTest {
     }
 
     @Nested
-    @DisplayName("K2-F6: incrementRetryCount — IN_FLIGHT 아닌 상태 가드 테스트")
+    @DisplayName("incrementRetryCount — IN_FLIGHT 아닌 상태 가드")
     class IncrementRetryCountGuardTest {
 
         @ParameterizedTest
         @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
-        @DisplayName("K2-F6: IN_FLIGHT이 아닌 상태에서 incrementRetryCount 호출 시 PaymentStatusException이 발생한다")
+        @DisplayName("IN_FLIGHT 가 아닌 상태에서 incrementRetryCount 호출 시 PaymentStatusException 이 발생한다")
         void incrementRetryCount_whenNotInFlight_shouldThrow(PaymentOutboxStatus initialStatus) {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(initialStatus);

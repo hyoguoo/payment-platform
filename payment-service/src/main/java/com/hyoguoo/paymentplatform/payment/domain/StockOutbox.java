@@ -7,16 +7,15 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * stock_outbox 테이블 도메인 POJO.
- * T-J1: stock commit/restore Kafka 발행 Transactional Outbox 패턴 적용.
+ * stock_outbox 테이블 도메인 POJO — stock commit/restore Kafka 발행을 위한 transactional outbox row.
  *
- * <p>ADR-19 복제(b): pg-service {@code PgOutbox} 구조를 독립 복제 (pg-service 직접 import 금지).
- * <p>pg_outbox 와 동일 구조 — id(PK), topic, key, payload(JSON String),
- * available_at, processed_at, attempt, created_at.
- * payment_outbox 의 order_id UNIQUE 제약 없음 — 동일 주문의 다중 productId 수용.
+ * <p>pg-service {@code PgOutbox} 와 동격 구조이지만 공유 JAR 없이 독립 복제한다(pg-service 직접 import 금지).
+ * pg_outbox 와 동일하게 id(PK) / topic / key / payload(JSON String) / available_at / processed_at /
+ * attempt / created_at 필드를 갖는다. payment_outbox 와 달리 order_id UNIQUE 제약은 없다 —
+ * 한 주문이 여러 productId 에 대해 별도 row 를 갖는다.
  *
- * <p>K6: PaymentEvent/PgOutbox 일관 Lombok 패턴 적용.
- * mutable 필드(processedAt, attempt)는 도메인 의미 메서드(markProcessed/incrementAttempt)로만 변경한다.
+ * <p>PaymentEvent / PgOutbox 와 일관된 Lombok 패턴을 쓴다.
+ * mutable 필드(processedAt, attempt) 는 도메인 의미 메서드(markProcessed / incrementAttempt) 로만 변경한다.
  */
 @Getter
 @Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")

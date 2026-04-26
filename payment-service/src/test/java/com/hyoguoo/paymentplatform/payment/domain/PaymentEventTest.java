@@ -231,7 +231,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
-    @DisplayName("결제 완료 시 IN_PROGRESS/RETRYING 상태에서 성공적으로 done 상태로 변경한다. (K2-F2: DONE은 no-op으로 별도 테스트)")
+    @DisplayName("결제 완료 시 IN_PROGRESS/RETRYING 상태에서 성공적으로 done 상태로 변경한다 (DONE 자기전이는 no-op 별도 테스트)")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -249,7 +249,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
-    @DisplayName("done() 호출 시 approvedAt non-null이면 status가 DONE이 되고 approvedAt이 저장된다. (K2-F2: DONE은 no-op으로 별도 테스트)")
+    @DisplayName("done() 호출 시 approvedAt non-null 이면 status 가 DONE 이 되고 approvedAt 이 저장된다 (DONE 자기전이는 no-op 별도 테스트)")
     void done_WithApprovedAt_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -270,7 +270,7 @@ class PaymentEventTest {
     @DisplayName("done() 호출 시 approvedAt이 null이면 MISSING_APPROVED_AT 코드로 PaymentStatusException을 던진다.")
     void done_NullApprovedAt_ThrowsPaymentStatusException() {
         // given — 허용 source(IN_PROGRESS/RETRYING) 에서 null approvedAt 전달
-        // K2-F2: DONE은 no-op return이므로 null approvedAt 검증이 먼저 수행되지 않음 — 제외
+        // DONE 자기전이는 no-op return 이라 null approvedAt 검증이 선행되지 않음 — 제외
         for (PaymentEventStatus source : List.of(
                 PaymentEventStatus.IN_PROGRESS,
                 PaymentEventStatus.RETRYING)) {
@@ -711,31 +711,31 @@ class PaymentEventTest {
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
-        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
+        // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
         assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
     @Test
-    @DisplayName("T-C2/K2-F9: markPaymentAsQuarantined(quarantine) — DONE 상태에서 PaymentStatusException을 던진다 (도메인 이중 가드)")
+    @DisplayName("markPaymentAsQuarantined(quarantine) — DONE 상태에서 PaymentStatusException 을 던진다 (도메인 이중 가드)")
     void markPaymentAsQuarantined_whenDone_shouldThrow() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.DONE, PaymentOrderStatus.EXECUTING);
 
-        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
+        // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
         assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
     @Test
-    @DisplayName("T-C2/K2-F9: markPaymentAsQuarantined(quarantine) — FAILED 상태에서 PaymentStatusException을 던진다 (도메인 이중 가드)")
+    @DisplayName("markPaymentAsQuarantined(quarantine) — FAILED 상태에서 PaymentStatusException 을 던진다 (도메인 이중 가드)")
     void markPaymentAsQuarantined_whenFailed_shouldThrow() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.FAILED, PaymentOrderStatus.EXECUTING);
 
-        // when & then — K2-F9: IllegalStateException → PaymentStatusException 으로 통일
+        // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
         assertThatThrownBy(() -> paymentEvent.quarantine("RETRY_EXHAUSTED", LocalDateTime.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
@@ -773,10 +773,10 @@ class PaymentEventTest {
         assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
     }
 
-    // K2: done() 자기전이 no-op 가드
+    // done() 자기전이 no-op 가드
 
     @Test
-    @DisplayName("K2-F2: done() — 이미 DONE 상태에서 재호출 시 예외 없이 no-op (status 변경 없음)")
+    @DisplayName("done() — 이미 DONE 상태에서 재호출 시 예외 없이 no-op (status 변경 없음)")
     void done_whenAlreadyDone_shouldNoOp() {
         // given — DONE 상태 event (paymentOrder도 SUCCESS 상태)
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -793,10 +793,10 @@ class PaymentEventTest {
         assertThat(paymentEvent.getApprovedAt()).isEqualTo(originalApprovedAt);
     }
 
-    // K2: quarantine() PaymentStatusException 패턴 통일
+    // quarantine() 종결 상태 가드 — PaymentStatusException 패턴
 
     @Test
-    @DisplayName("K2-F9: quarantine() — 종결 상태에서 PaymentStatusException 발생 (IllegalStateException 아님)")
+    @DisplayName("quarantine() — 종결 상태에서 PaymentStatusException 발생 (IllegalStateException 아님)")
     void quarantine_terminalStatus_shouldThrowPaymentStatusException() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(

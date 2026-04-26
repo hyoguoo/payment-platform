@@ -7,7 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
-@DisplayName("K2-F10: PaymentOutboxStatus SSOT 메서드 테스트")
+@DisplayName("PaymentOutboxStatus SSOT 메서드 테스트")
 class PaymentOutboxStatusTest {
 
     @ParameterizedTest
@@ -17,7 +17,7 @@ class PaymentOutboxStatusTest {
             "DONE,     true",
             "FAILED,   true",
     })
-    @DisplayName("K2-F10: isTerminal() — DONE/FAILED=true, 나머지=false")
+    @DisplayName("isTerminal() — DONE/FAILED=true, 나머지=false")
     void isTerminal(PaymentOutboxStatus status, boolean expected) {
         assertThat(status.isTerminal()).isEqualTo(expected);
     }
@@ -29,7 +29,7 @@ class PaymentOutboxStatusTest {
             "DONE,     false",
             "FAILED,   false",
     })
-    @DisplayName("K2-F10: isClaimable() — PENDING=true, 나머지=false")
+    @DisplayName("isClaimable() — PENDING=true, 나머지=false")
     void isClaimable(PaymentOutboxStatus status, boolean expected) {
         assertThat(status.isClaimable()).isEqualTo(expected);
     }
@@ -41,14 +41,14 @@ class PaymentOutboxStatusTest {
             "DONE,     false",
             "FAILED,   false",
     })
-    @DisplayName("K2-F10: isInFlight() — IN_FLIGHT=true, 나머지=false")
+    @DisplayName("isInFlight() — IN_FLIGHT=true, 나머지=false")
     void isInFlight(PaymentOutboxStatus status, boolean expected) {
         assertThat(status.isInFlight()).isEqualTo(expected);
     }
 
     @ParameterizedTest
     @EnumSource(PaymentOutboxStatus.class)
-    @DisplayName("K2-F10: isTerminal/isClaimable/isInFlight — 각 상태별 4가지 값 일관성 (정확히 1개 그룹에 속함)")
+    @DisplayName("isTerminal/isClaimable/isInFlight — 각 상태별 4가지 값이 정확히 1개 그룹에만 속한다")
     void eachStatus_belongsToExactlyOneGroup(PaymentOutboxStatus status) {
         boolean terminal = status.isTerminal();
         boolean claimable = status.isClaimable();
