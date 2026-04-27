@@ -116,7 +116,7 @@
 - 완료 결과: `spring-cloud-starter-openfeign:4.2.0` 직접 의존성 추가 확인. `@EnableFeignClients` 어노테이션 활성화 (basePackages 미지정). `compileJava` PASS, 348/348 tests PASS.
 
 ### B2. Feign 인터페이스 정의
-- [ ] `infrastructure/adapter/http/feign/ProductFeignClient.java` 신규
+- [x] `infrastructure/adapter/http/feign/ProductFeignClient.java` 신규
   ```java
   @FeignClient(name = "product-service", configuration = ProductFeignConfig.class)
   public interface ProductFeignClient {
@@ -125,11 +125,12 @@
       // ... 다른 endpoint
   }
   ```
-- [ ] `UserFeignClient.java` 동일
-- [ ] DTO 는 기존 `ProductHttpAdapter` 가 사용하던 record 재사용
+- [x] `UserFeignClient.java` 동일
+- [x] DTO 는 기존 `ProductHttpAdapter` 가 사용하던 record 재사용
 - 의존: B1
 - TDD: 불필요 (선언적 인터페이스 정의 — 동작 검증은 B4/B6 의 contract test 가 담당)
 - 단일 commit: `feat(payment-service): ProductFeignClient / UserFeignClient 인터페이스 정의`
+- 완료 결과: `feign/` 패키지 신규. `ProductFeignClient` — `GET /api/v1/products/{id}` → `ProductResponse` 반환. `UserFeignClient` — `GET /api/v1/users/{id}` → `UserResponse` 반환. 기존 어댑터 / DTO 무변경. `compileJava` PASS, 348/348 tests PASS.
 
 ### B3. Feign 설정 (Encoder/Decoder/ErrorDecoder)
 - [ ] `ProductFeignConfig.java`: Jackson encoder/decoder + ErrorDecoder
