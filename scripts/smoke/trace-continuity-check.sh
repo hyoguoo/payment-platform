@@ -39,8 +39,8 @@
 #     TraceContextPropagationFilter 확인
 #   - payment-service 미등장: MdcContextPropagationConfig (MDC 전파) 확인
 #   - pg-service 미등장: PgSlf4jMdcThreadLocalAccessor 등록 확인
-#   - product-service / user-service 미등장: HttpOperatorImpl 의 WebClient/RestClient
-#     Builder observationRegistry 상속 확인
+#   - product-service / user-service 미등장: payment-service Feign 클라이언트 또는
+#     product/user 자체 클라이언트의 observationRegistry 상속 확인 (traceparent 자동 전파)
 #   - Kafka consumer 경로 미등장: spring.kafka.listener.observation-enabled=true 확인
 #
 # 종료 코드:
@@ -236,24 +236,54 @@ sleep "${LOG_WAIT_SECONDS}"
 # ─────────────────────────────────────────────
 echo "[INFO] docker compose 로그 수집 (최근 5분)..."
 
-# docker-compose.apps.yml 의 서비스 이름으로 로그 수집
-SERVICES=("gateway" "payment-service" "pg-service" "product-service" "user-service")
+# 단일 컨테이너의 로그에서 traceId 검색 (verbose 시 sample 라인 출력).
+# return: 0 = 발견, 1 = 미발견.
+find_trace_in_logs() {
+  local container="$1"
+  local svc_log
+  svc_log=$(docker logs --since=5m "${container}" 2>&1 || echo "")
+  if echo "${svc_log}" | grep -q "traceId:${TRACE_ID}"; then
+    if [[ "${VERBOSE}" == "true" ]]; then
+      echo "${svc_log}" | grep "traceId:${TRACE_ID}" | head -3 | sed 's/^/         /'
+    fi
+    return 0
+  fi
+  return 1
+}
+
+# product-service 는 오토스케일링 대상이라 동적 검사. 그 외는 단일 컨테이너 이름.
+SERVICES=("gateway" "payment-service" "pg-service" "user-service")
 
 MISSING_SERVICES=()
 
 for svc in "${SERVICES[@]}"; do
-  SVC_LOG=$(docker logs --since=5m "${svc}" 2>&1 || echo "")
-  # logback 패턴: [traceId:<trace-id>]
-  if echo "${SVC_LOG}" | grep -q "traceId:${TRACE_ID}"; then
+  if find_trace_in_logs "${svc}"; then
     echo "[PASS] ${svc}: traceId 발견 (traceId:${TRACE_ID})"
-    if [[ "${VERBOSE}" == "true" ]]; then
-      echo "${SVC_LOG}" | grep "traceId:${TRACE_ID}" | head -3 | sed 's/^/         /'
-    fi
   else
     echo "[FAIL] ${svc}: traceId 미발견 (traceId:${TRACE_ID})"
     MISSING_SERVICES+=("${svc}")
   fi
 done
+
+# product-service — scale=N 대응 (docker-product-service-{1..N}).
+# Feign LB 가 한 인스턴스로만 호출을 보내므로, traceId 가 어느 한 인스턴스에 있어도 PASS.
+PRODUCT_INSTANCES=$(docker ps --filter "name=docker-product-service-" --format "{{.Names}}" 2>/dev/null)
+if [ -z "${PRODUCT_INSTANCES}" ]; then
+  echo "[FAIL] product-service: 인스턴스 0건 (compose up 안 됐나?)"
+  MISSING_SERVICES+=("product-service")
+else
+  PRODUCT_FOUND=false
+  while IFS= read -r instance; do
+    if find_trace_in_logs "${instance}"; then
+      PRODUCT_FOUND=true
+      echo "[PASS] product-service (${instance}): traceId 발견 (traceId:${TRACE_ID})"
+    fi
+  done <<< "${PRODUCT_INSTANCES}"
+  if [[ "${PRODUCT_FOUND}" == "false" ]]; then
+    echo "[FAIL] product-service: 모든 인스턴스에서 traceId 미발견 (인스턴스: $(echo "${PRODUCT_INSTANCES}" | tr '\n' ' '))"
+    MISSING_SERVICES+=("product-service")
+  fi
+fi
 
 # ─────────────────────────────────────────────
 # 9. payment-service + pg-service 추가 검증
@@ -299,7 +329,7 @@ echo " trace-continuity-check 결과"
 echo "════════════════════════════════════════════"
 echo " trace-id  : ${TRACE_ID}"
 echo " orderId   : ${ORDER_ID}"
-echo " 검증 서비스: ${SERVICES[*]}"
+echo " 검증 서비스: ${SERVICES[*]} product-service($(echo "${PRODUCT_INSTANCES:-0건}" | tr '\n' ',' | sed 's/,$//'))"
 echo ""
 
 if [[ ${#MISSING_SERVICES[@]} -eq 0 ]]; then

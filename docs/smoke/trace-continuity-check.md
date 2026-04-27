@@ -40,7 +40,7 @@ sleep 60   # start_period 통과 대기
 |---|---|---|
 | Kafka producer → consumer | producer 측 KafkaTemplate 가 `ObservationRegistry` 미주입 | `KafkaProducerConfig` 의 자체 생성 ProducerFactory 들이 ObservationRegistry 명시 wiring 됐는지 확인 |
 | Consumer → 다음 hop | `OtelMdcMessageInterceptor` 미등록 또는 `@KafkaListener` 측 MDC 복원 누락 | 컨슈머 설정 검증 |
-| HTTP 어댑터 hop | WebClient/RestClient 가 `traceparent` 헤더 자동 주입 안 함 | `HttpOperatorImpl` 에 OTel propagation 적용됐는지 |
+| HTTP 어댑터 hop | Feign / WebClient / RestClient 가 `traceparent` 헤더 자동 주입 안 함 | 클라이언트 빌더가 Spring Boot auto-config 의 ObservationRegistry 를 상속받는지 확인 |
 | Virtual Thread 경계 | VT executor 가 MDC 복사 미수행 | `MdcContextExecutor` 또는 동등 wrapper 사용 확인 |
 
 ## 영구성
