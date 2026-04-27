@@ -1,7 +1,7 @@
-# Refactor Findings — Round 1 정적 사실 수집
+# Refactor Findings — 정적 사실 수집 + Round 3 처리 결과
 
 > 작성: 2026-04-27 — Phase 4 진입 전 최종 코드 검수.
-> 임시 파일 — Round 4 종료 시 archive 또는 삭제.
+> Round 3 (3a/3b/3c) 처리 완료 — Round 4에서 archive 이동.
 >
 > 우선순위: **Critical** = 동작/보안 결함 · **Major** = 도메인 일관성/회복성 약점 · **Minor** = 가독성/모던 자바/메서드 분리 · **Defer** = 비용>이득.
 
@@ -163,4 +163,20 @@
 - 모던 자바 활용 (record / sealed / switch expression 적극)
 - 노이즈 (println / 빈 catch / TODO 0건)
 
-남은 정리는 **Minor** 카테고리만으로 한정 (메서드 분리 2건, Optional/boolean param 정리 7건). Round 3a/3b/3c 진행 후 종결 권장.
+---
+
+## 11. Round 3 처리 결과 (2026-04-27)
+
+| Round | 항목 | 결과 | commit |
+|---|---|---|---|
+| 3a | `AdminPaymentQueryRepositoryImpl.searchPaymentEvents` (40 라인) | `fetchEventIds` + `assembleEventsWithOrders` 추출 (11 라인) | `e6e2705f` |
+| 3a | `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox` (nesting 6) | `compensateStockCacheGuarded` 추출 (nesting 3) | `e6e2705f` |
+| 3b | `TraceContextPropagationFilter.filter` isPresent + get | `parseTraceparent(...).ifPresent(ids -> ...)` | `1c41ef8e` |
+| 3b | `DuplicateApprovalHandler.processDuplicate` DB 존재 분기 | `findByOrderId(...).ifPresentOrElse(...)` | `1c41ef8e` |
+| 3b | A3 `orElse(null)` 3건 (DomainEventLoggingAspect / PgConfirmService / PgDlqService) | 3-way 분기로 Optional 변환 시 가독성 저하 — **의도적 보존** | — |
+| 3c | `TossApiMetrics.recordTossApiCall(...boolean success...)` | `CallOutcome { SUCCESS, FAILURE }` enum 도입 + 호출처 3곳 갱신 | `c2966251` |
+| 3d | `LocalDateTime.now()` Provider 일관 정리 | 비용 > 이득 — **Defer** (TODOS 등록) |
+
+**검증**: 매 commit 후 회귀 테스트 PASS (gateway 3 / pg-service 206 / payment-service 348 / product-service 19 / user-service 1 / eureka 1 = **578 PASS**).
+
+**기능 동작 무변경**: 모든 변경이 시그니처 단순화 / 메서드 추출 / Optional 패턴 / enum 캡슐화 — 도메인 invariant + 메트릭 태그 값 보존.
