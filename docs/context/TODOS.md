@@ -175,6 +175,27 @@
 - `pg-service/.../domain/PgOutbox.java:45,51` (동)
 - `pg-service/.../infrastructure/gateway/toss/TossPaymentGatewayStrategy.java:244` (LocalDateTime.now() 잔존)
 
+### TC-9 — FakePgGatewayAdapter 의 vendor 멱등성 시뮬 추가
+
+`FakePgGatewayAdapter` 가 같은 paymentKey 두 번 호출 시 `PgGatewayDuplicateHandledException` 을 던지지 않아 production vendor 의 멱등성 응답을 시뮬레이션하지 못함.
+
+**현황**:
+- IN_PROGRESS self-loop retry path (commit `e524b514`) 에서 vendor 재호출이 가능해짐
+- production: Toss/NicePay 가 `paymentKey + orderId` 단위 멱등성 보장 → 두 번째 호출은 "이미 처리됨" 응답 → `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 가 흡수
+- Fake: 두 번째 호출 시 도메인 가드 예외 (`PgInbox.markApproved: status must be IN_PROGRESS but was APPROVED`) 만 발생 → production 동작과 다름
+
+**도입 시**:
+- `FakePgGatewayAdapter` 에 "같은 paymentKey 가 이미 SUCCESS 로 처리됐으면 다음 호출 시 duplicate 예외 던짐" 모드 추가
+- 같은 paymentKey 의 처리 결과를 in-memory map 에 보관 → 두 번째 호출 시 `PgGatewayDuplicateHandledException` throw
+- 통합 테스트 (특히 retry self-loop 시나리오) 가 진짜 production 동작과 정합
+
+**처리 시점**: Phase 4 의 T4-A (Toxiproxy 8종 장애 주입) 시 retry 시나리오 검증할 때 이 시뮬 정합성 필요. 함께 처리.
+
+**관련 코드**:
+- `pg-service/.../infrastructure/gateway/fake/FakePgGatewayStrategy.java`
+- `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
+- `pg-service/.../application/service/DuplicateApprovalHandler.java`
+
 ---
 
 ## Plan 작성 시 사용 가이드
