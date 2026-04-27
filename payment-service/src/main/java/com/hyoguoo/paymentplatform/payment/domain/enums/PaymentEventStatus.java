@@ -1,25 +1,16 @@
 package com.hyoguoo.paymentplatform.payment.domain.enums;
 
-import java.util.Arrays;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-
-@Getter
-@RequiredArgsConstructor
 public enum PaymentEventStatus {
 
-    READY("READY"),
-    IN_PROGRESS("IN_PROGRESS"),
-    RETRYING("RETRYING"),
-    DONE("DONE"),
-    FAILED("FAILED"),
-    CANCELED("CANCELED"),
-    PARTIAL_CANCELED("PARTIAL_CANCELED"),
-    EXPIRED("EXPIRED"),
-    QUARANTINED("QUARANTINED"),
-    ;
-
-    private final String value;
+    READY,
+    IN_PROGRESS,
+    RETRYING,
+    DONE,
+    FAILED,
+    CANCELED,
+    PARTIAL_CANCELED,
+    EXPIRED,
+    QUARANTINED;
 
     /**
      * 종결 상태 여부를 반환한다.
@@ -45,12 +36,5 @@ public enum PaymentEventStatus {
             case READY, IN_PROGRESS, RETRYING -> true;
             case DONE, FAILED, CANCELED, PARTIAL_CANCELED, EXPIRED, QUARANTINED -> false;
         };
-    }
-
-    public static PaymentEventStatus of(String value) {
-        return Arrays.stream(PaymentEventStatus.values())
-                .filter(v -> v.getValue().equals(value))
-                .findFirst()
-                .orElseThrow();
     }
 }

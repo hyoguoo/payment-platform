@@ -91,12 +91,6 @@
 - 옵션: `spring.flyway.locations` 환경별 분리 또는 placeholder 활용
 - 현재는 데모 / 스모크 환경에서 동작하므로 우선순위 낮음
 
-### TC-2b — `payment_event.quarantine_compensation_pending` dead column 제거
-
-- payment-service Flyway V1 의 컬럼인데 JPA Entity 에 매핑이 0건 — 도메인에서 제거된 후로 dead column 으로 남아있다.
-- V2 ALTER TABLE DROP COLUMN 으로 정리. 단 운영 환경에 이미 V1 적용된 곳 있으면 schema 호환 영향 검토 필요.
-- 우선순위 낮음 — read/write 경로 없으므로 동작 영향 X. 청결도 차원의 정리.
-
 ### TC-3 — 재고 동기화 정책 (부팅 외 시점)
 
 - 새 재고 모델: redis-stock = payment 의 선차감 캐시, product RDB = SoT
@@ -107,8 +101,7 @@
 
 ### TC-4 — EXPIRED 만료 스케줄러 정책 명확화
 
-- `PaymentEventStatus.EXPIRED` 정의는 있으나 도메인 매핑이 PRE-PHASE-4 시점에 일부 제거됨
-- `quarantine_compensation_pending` 컬럼은 호환용 유지
+- `PaymentEventStatus.EXPIRED` 정의는 있으나 도메인 매핑은 일부만 활성
 - 만료 스케줄러 정책 (몇 시간 후 EXPIRED 전이?) 별도 토픽 정리 필요
 
 ---

@@ -76,8 +76,7 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "last_status_changed_at")
     private LocalDateTime lastStatusChangedAt;
 
-    // DB 컬럼 quarantine_compensation_pending 은 스키마에 유지(dead column — 후속 V2 ALTER 정리 대상).
-    // 도메인에서는 제거 — QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아니다.
+    // QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아니다 — 별도 컬럼 없이 status + status_reason 로 판정한다.
 
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()

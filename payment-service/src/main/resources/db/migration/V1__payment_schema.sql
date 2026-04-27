@@ -18,11 +18,6 @@ CREATE TABLE payment_event (
     retry_count                    INT,
     status_reason                  VARCHAR(255),
     last_status_changed_at         DATETIME(6),
-    -- DEAD COLUMN — JPA Entity 매핑 0 (T3.5-07 이후 도메인 매핑 제거).
-    -- 운영 환경에 이미 컬럼이 있는 곳과의 schema 호환성을 위해 V1 baseline 에 잔존시킨다.
-    -- 신규 환경에서는 NOT NULL DEFAULT FALSE 로 자동 채워질 뿐 read/write 경로 없음.
-    -- 향후 별도 토픽에서 V2 ALTER 로 DROP 검토 (TODOS).
-    quarantine_compensation_pending BOOLEAN        NOT NULL DEFAULT FALSE,
     created_at                     DATETIME,
     updated_at                     DATETIME,
     deleted_at                     DATETIME,
