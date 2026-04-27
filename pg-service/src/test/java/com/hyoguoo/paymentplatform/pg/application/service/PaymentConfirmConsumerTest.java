@@ -98,30 +98,59 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: IN_PROGRESS → no-op (불변식 4b)
+    // TC2: IN_PROGRESS + attempt >= 2 → vendor 재호출 (self-loop retry)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox IN_PROGRESS 상태일 때 no-op 처리한다 (불변식 4b)")
-    void consume_WhenInboxInProgress_ShouldNoOp() {
+    @DisplayName("consume — inbox IN_PROGRESS + attempt=2 (self-loop retry) 시 vendor를 재호출한다")
+    void consume_WhenInboxInProgressAndAttempt2_ShouldCallVendor() {
         // given — inbox를 IN_PROGRESS 상태로 사전 설정
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
                 null, null, Instant.now(), Instant.now());
         inboxRepository.save(inProgressInbox);
 
+        PgConfirmResult successResult = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
+        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
+
         PgConfirmCommand command = new PgConfirmCommand(
-                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-002");
+                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-retry-002");
 
-        // when
-        sut.handle(command);
+        // when — attempt=2 (self-loop retry)
+        sut.handle(command, 2);
 
-        // then — PG 호출 없음 (no-op)
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
+        // then — vendor 재호출 1회
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
+    }
 
-        // then — inbox 상태 변경 없음
-        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+    // -----------------------------------------------------------------------
+    // TC2b: IN_PROGRESS + attempt=1 → vendor 재호출 (동시 race도 멱등성 흡수)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("consume — inbox IN_PROGRESS + attempt=1 (동시 race) 시에도 vendor 재호출 — 멱등성 layer 흡수")
+    void consume_WhenInboxInProgressAndAttempt1_ShouldCallVendor() {
+        // given — inbox를 IN_PROGRESS 상태로 사전 설정
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
+                null, null, Instant.now(), Instant.now());
+        inboxRepository.save(inProgressInbox);
+
+        PgConfirmResult successResult = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                "2026-04-24T01:00:00Z");
+        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
+
+        PgConfirmCommand command = new PgConfirmCommand(
+                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-race-001");
+
+        // when — attempt=1 (동시 race 시뮬, vendor 멱등성으로 흡수)
+        sut.handle(command, 1);
+
+        // then — vendor 호출 1회 (멱등성 layer 에 의해 안전하게 흡수 가능)
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
     }
 
     // -----------------------------------------------------------------------
