@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -25,4 +26,10 @@ public interface StockOutboxRepository {
      * 성공적으로 발행된 row의 processed_at을 갱신한다.
      */
     void markProcessed(Long id, LocalDateTime processedAt);
+
+    /**
+     * 미발행 (processedAt IS NULL) row 를 batchSize 만큼 id 오름차순으로 반환.
+     * StockOutboxWorker 폴링용.
+     */
+    List<StockOutbox> findPendingBatch(int batchSize);
 }

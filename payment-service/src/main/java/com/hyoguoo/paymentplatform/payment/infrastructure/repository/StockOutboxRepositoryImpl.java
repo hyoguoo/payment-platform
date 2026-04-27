@@ -4,8 +4,10 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepos
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.StockOutboxEntity;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -32,5 +34,13 @@ public class StockOutboxRepositoryImpl implements StockOutboxRepository {
     @Override
     public void markProcessed(Long id, LocalDateTime processedAt) {
         jpaStockOutboxRepository.markProcessed(id, processedAt);
+    }
+
+    @Override
+    public List<StockOutbox> findPendingBatch(int batchSize) {
+        return jpaStockOutboxRepository.findPendingBatch(PageRequest.of(0, batchSize))
+                .stream()
+                .map(StockOutboxEntity::toDomain)
+                .toList();
     }
 }

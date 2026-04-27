@@ -121,6 +121,10 @@ scheduler:
     batch-size: 50
     parallel-enabled: true
     in-flight-timeout-minutes: 5
+  stock-outbox-worker:
+    fixed-delay-ms: 5000
+    batch-size: 50
+    parallel-enabled: true
 
 metrics:
   payment:

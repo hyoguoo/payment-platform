@@ -48,6 +48,15 @@ public class FakeStockOutboxRepository implements StockOutboxRepository {
         }
     }
 
+    @Override
+    public List<StockOutbox> findPendingBatch(int batchSize) {
+        return store.values().stream()
+                .filter(StockOutbox::isPending)
+                .sorted(java.util.Comparator.comparingLong(StockOutbox::getId))
+                .limit(batchSize)
+                .toList();
+    }
+
     // --- test assertion helpers ---
 
     public int savedCount() {
