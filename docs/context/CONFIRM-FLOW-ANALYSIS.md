@@ -241,14 +241,30 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 - pg 측은 "vendor 가 답을 안 함" 회복 — Kafka self-loop + attempt 헤더
 - Kafka client 자체의 default error handler 는 customize 안 함 (위 두 application-level retry 가 대체)
 
+### pg-service IN_PROGRESS 분기에서의 vendor 재호출 (2026-04-27 정책 변경)
+
+self-loop retry 메시지가 commands.confirm 토픽에 도착할 때 pg_inbox 가 이미 IN_PROGRESS 상태인 경우 — 이전엔 `handleInProgress` no-op 으로 vendor 재호출이 막혔다. 정책 변경:
+
+- **`PaymentConfirmConsumer.consume`** 가 Kafka 헤더 `attempt` 를 파싱 (default 1)
+- **`PgConfirmService.handle(command, attempt)`** 시그니처 — attempt 까지 service 까지 전달
+- **`handleInProgress(command, attempt)`** 가 vendor 를 재호출 (`callVendor(command, attempt)`)
+- 새 EventType: `PG_CONFIRM_IN_PROGRESS_RETRY`
+
+안전성 — 멱등성 layer 3종에 의존:
+1. **vendor (Toss/NicePay)** — `paymentKey + orderId` 단위 멱등성. 같은 호출 두 번 시 "이미 처리됨" 응답 → `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 흡수
+2. **pg-service dedupe** — `EventDedupeStore.markSeen(eventUuid)` Redis SET NX EX. retry 마다 새 eventUuid 발급 (UUID.randomUUID)
+3. **payment-service dedupe** — Redis two-phase lease + 도메인 메서드 가드 + product 의 stock_commit_dedupe (재고 중복 차감 방지)
+
+원래 `handleInProgress` no-op 의 의도 (동시 두 consumer race 보호) 는 vendor 멱등성으로 흡수됨 — race 시에도 vendor 가 두 호출 중 하나만 새로 처리, 나머지는 duplicate 응답 → 단일 결과 발행.
+
 ## 회복 시나리오 인덱스
 
 | 장애 | 동작 |
 |---|---|
 | 리스너 스킵 / 워커 크래시 (payment 측) | OutboxWorker 가 PENDING + IN_FLIGHT 타임아웃 회수 |
 | Kafka producer 실패 (payment 측) | IN_FLIGHT 유지 → OutboxWorker 폴백 |
-| pg-service 측 Toss/NicePay retryable (5xx/timeout) | **pg-service 자체 retry** — `pg_outbox.available_at = now + backoff` 로 `payment.commands.confirm` 에 재발행. attempt < 4 까지 |
-| pg-service 측 retry 한도 초과 (attempt ≥ 4) | `payment.commands.confirm.dlq` 로 격리 (`PgVendorCallService.insertDlqOutbox`). pg_inbox 는 IN_PROGRESS 유지 |
+| pg-service 측 Toss/NicePay retryable (5xx/timeout) | **pg-service 자체 retry** — `pg_outbox.available_at = now + backoff` 로 `payment.commands.confirm` 에 재발행. self-loop 도착 시 IN_PROGRESS 분기에서도 vendor 재호출 (`handleInProgress(command, attempt)` → vendor 멱등성 의존, 2026-04-27 변경). attempt < 4 까지 |
+| pg-service 측 retry 한도 초과 (attempt ≥ 4) | `payment.commands.confirm.dlq` 로 격리 (`PgVendorCallService.insertDlqOutbox`) → `PgDlqService` 가 pg_inbox QUARANTINED 전이 |
 | pg-service 측 non-retryable (4xx) | pg_inbox=FAILED → ConfirmedEvent FAILED → payment handleFailed |
 | pg-service 측 판단 불가 / 5xx 한도 소진 | pg_inbox=QUARANTINED → ConfirmedEvent QUARANTINED → payment handleQuarantined |
 | Redis dedupe 장애 | confirm 단계 CACHE_DOWN → QUARANTINED + 보상 펜딩 |
