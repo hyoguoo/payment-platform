@@ -52,8 +52,6 @@ services:
       DB_PASSWORD: payment123
       PRODUCT_ADAPTER_TYPE: http
       USER_ADAPTER_TYPE: http
-      PRODUCT_SERVICE_BASE_URL: http://product-service:8083
-      USER_SERVICE_BASE_URL: http://user-service:8084
       TOSS_SECRET_KEY: ${TOSS_TEST_SECRET_KEY:-test_sk_placeholder}
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
       MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces

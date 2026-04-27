@@ -61,10 +61,11 @@
 - 완료 결과: `HttpOperatorImpl` 생성자 `@LoadBalanced` 적용 + javadoc 보강. `compileJava` PASS, 348/348 tests PASS.
 
 ### A5. docker-compose 의 cross-service env 정리
-- [ ] `docker/docker-compose.apps.yml` 의 `payment-service` env 에서 `PRODUCT_SERVICE_BASE_URL` / `USER_SERVICE_BASE_URL` 명시 제거 (default = logical name 사용)
+- [x] `docker/docker-compose.apps.yml` 의 `payment-service` env 에서 `PRODUCT_SERVICE_BASE_URL` / `USER_SERVICE_BASE_URL` 명시 제거 (default = logical name 사용)
 - 의존: A3
 - TDD: 불필요 (config)
 - 단일 commit: `chore(docker): payment-service env 의 cross-service URL override 제거`
+- 완료 결과: docker-compose.apps.yml 55~56번 줄 두 env 제거. docker-compose.smoke.yml 에는 해당 prop 없음 확인. `docker compose config` YAML 유효성 PASS, `compileJava` PASS.
 
 ### A6. 검증 — 스케일 업 시나리오
 - [ ] stack 기동: `bash scripts/compose-up.sh --mode fake --reset-db`
