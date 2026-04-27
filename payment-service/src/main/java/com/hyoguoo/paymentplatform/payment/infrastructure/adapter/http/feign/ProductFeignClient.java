@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
  * <p>현재 ProductHttpAdapter 가 호출하는 endpoint 와 정확히 동일한 시그니처.
  * GET /api/v1/products/{id} — 단건 조회.
  */
-@FeignClient(name = "product-service")
+@FeignClient(name = "product-service", configuration = ProductFeignConfig.class)
 public interface ProductFeignClient {
 
     @GetMapping("/api/v1/products/{id}")

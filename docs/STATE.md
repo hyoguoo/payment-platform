@@ -10,7 +10,7 @@
   - **Phase A 종결** (A1 → A2 → A3 → A4 → A5 → A5b → A6 모두 완료)
     - LB 작동 확인: 두 product-service 인스턴스 round-robin 분산 (11/16 traceId)
     - 회귀 0 (`./gradlew test` 578 PASS)
-  - active task: **B3** (Feign 설정 — Encoder / Decoder / ErrorDecoder)
+  - active task: **B4** (어댑터를 Feign 위임으로 재구성)
 
 ## 직전 봉인
 

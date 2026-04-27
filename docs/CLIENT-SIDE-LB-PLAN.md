@@ -133,12 +133,15 @@
 - 완료 결과: `feign/` 패키지 신규. `ProductFeignClient` — `GET /api/v1/products/{id}` → `ProductResponse` 반환. `UserFeignClient` — `GET /api/v1/users/{id}` → `UserResponse` 반환. 기존 어댑터 / DTO 무변경. `compileJava` PASS, 348/348 tests PASS.
 
 ### B3. Feign 설정 (Encoder/Decoder/ErrorDecoder)
-- [ ] `ProductFeignConfig.java`: Jackson encoder/decoder + ErrorDecoder
-- [ ] ErrorDecoder 가 4xx/5xx → `ProductNotFoundException` / `ProductServiceRetryableException` / `IllegalStateException` 매핑
+- [x] `ProductFeignConfig.java`: ErrorDecoder 전용 설정 클래스 신규 (`@Configuration` 미부착)
+- [x] ErrorDecoder 가 4xx/5xx → `ProductNotFoundException` / `ProductServiceRetryableException` / `IllegalStateException` 매핑
   - 기존 `ProductHttpAdapterContractTest` 의 4분기 정확히 동일하게 재현
+- [x] `UserFeignConfig.java`: User 측 예외로 동일 룰 적용
+- [x] `ProductFeignClient` / `UserFeignClient` 에 `configuration =` 인자 명시
 - 의존: B2
 - TDD: contract test 가 같은 행동을 검증 (재사용 가능하게 base 추출 또는 새 contract)
 - 단일 commit: `feat(payment-service): Feign ErrorDecoder — 4xx/5xx → 도메인 예외 매핑`
+- 완료 결과: `feign/ProductFeignConfig` + `feign/UserFeignConfig` 신규. 매핑 룰: 404→NotFound, 429/503→Retryable, 그 외→IllegalStateException. `@Configuration` 미부착으로 해당 FeignClient 한정 등록. `compileJava` PASS, 348/348 tests PASS.
 
 ### B4. 어댑터를 Feign 위임으로 재구성
 - [ ] `ProductHttpAdapter` 가 `WebClient` 직접 호출 → `ProductFeignClient` 호출 위임

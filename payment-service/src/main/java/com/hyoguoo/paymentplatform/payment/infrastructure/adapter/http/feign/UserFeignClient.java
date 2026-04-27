@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
  * <p>현재 UserHttpAdapter 가 호출하는 endpoint 와 정확히 동일한 시그니처.
  * GET /api/v1/users/{id} — 단건 조회.
  */
-@FeignClient(name = "user-service")
+@FeignClient(name = "user-service", configuration = UserFeignConfig.class)
 public interface UserFeignClient {
 
     @GetMapping("/api/v1/users/{id}")
