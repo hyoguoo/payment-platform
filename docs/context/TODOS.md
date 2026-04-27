@@ -142,6 +142,39 @@
 - `payment-service/.../application/config/RetryPolicyProperties.java`
 - `payment-service/.../domain/RetryPolicy.java`
 
+### TC-8 — 시간 추상화 통합 (Clock / Instant / LocalDateTime 혼용 정리)
+
+서비스 간 + 서비스 내부에서 시간 처리 방식이 일관되지 않음.
+
+**현황**:
+- **payment-service**: `LocalDateTimeProvider` 포트 + `SystemLocalDateTimeProvider` 구현. `LocalDateTime` 위주. 일부 메서드에 `Instant.now()` default 도 노출
+- **pg-service**: `Clock` 직접 빈 주입. 서비스 / 워커 / 메트릭은 `Clock` 사용 (`clock.instant()`). 단 도메인 (`PgInbox`, `PgOutbox`) 내부는 `Instant.now()` 직접 호출 — Clock 미주입 시점 혼재
+- **product-service / user-service**: 미조사 (작업 시 추가 검사 필요)
+- **외부 PG strategy**: `TossPaymentGatewayStrategy:244` 에 `LocalDateTime.now()` 직접 호출 잔존
+
+**문제점**:
+1. **인지 부담**: 두 서비스의 다른 추상화 (`LocalDateTimeProvider` vs `Clock`) 학습 비용
+2. **도메인 의미 불일치**: `LocalDateTime` (timezone 정보 없음) vs `Instant` (UTC 기반) — 같은 결제 시각을 두 형태로 표현
+3. **testability 흠집**: 도메인 안의 `Instant.now()` / `LocalDateTime.now()` 직접 호출 → fixed clock 주입 불가, 시간 의존 단위 테스트 어려움
+4. **pg-service 내부 일관성도 일부 깨짐**: 서비스는 Clock, 도메인은 `Instant.now()` 직접
+
+**조정 방향 (검토 필요)**:
+1. **표준 선택** — 두 후보:
+   - (a) `Clock` + `Instant` 통일 (modern, timezone 안전, JDK 권장 패턴)
+   - (b) `LocalDateTimeProvider` 같은 자체 포트 + `LocalDateTime` 통일
+2. **도메인 메서드 시그니처에 시간 인자 명시** — `markSeen()` / `done(now)` 처럼 호출자가 시간 주입 → 도메인 안에서 `now()` 직접 호출 금지
+3. **외부 PG strategy 잔존 `LocalDateTime.now()` 제거** — Clock 주입으로 교체
+
+**처리 시점**: 별개의 정리 토픽으로 승격 가능 또는 다른 cleanup 묶음. 운영 영향 없는 코드 청결도 작업이라 priority 낮음. Phase 4 진입 후 짬내서 처리하거나 별도 토픽.
+
+**관련 코드**:
+- `payment-service/.../core/common/service/port/LocalDateTimeProvider.java`
+- `payment-service/.../core/common/infrastructure/SystemLocalDateTimeProvider.java`
+- `pg-service/.../infrastructure/config/PgServiceConfig.java:25` (Clock Bean)
+- `pg-service/.../domain/PgInbox.java:40,107,139,174,212` (Instant.now() 직접 호출)
+- `pg-service/.../domain/PgOutbox.java:45,51` (동)
+- `pg-service/.../infrastructure/gateway/toss/TossPaymentGatewayStrategy.java:244` (LocalDateTime.now() 잔존)
+
 ---
 
 ## Plan 작성 시 사용 가이드
