@@ -165,12 +165,14 @@
 - 단일 commit: `chore(payment-service): WebClient 의존성 일체 제거 — Feign 단일 경로`
 - 완료 결과: production 3개 + 설정 4개 + 테스트 2개 + 의존성 2개 제거. 잔여 참조 0건 (HttpOperator/HttpClientConfig/webflux import). 342/342 tests PASS.
 
-### B6. contract test 재작성
-- [ ] `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 를 Feign 기반으로 재작성
-- [ ] 4xx/5xx 4분기 그대로 검증 (404 → NotFound, 503 → Retryable, 429 → Retryable, 500 → IllegalState)
+### B6. ErrorDecoder 단위 테스트 신규 작성
+> **명세 정정**: 원안(168~173번 줄)은 "ProductHttpAdapterContractTest / UserHttpAdapterContractTest 를 Feign 기반으로 재작성" 이었으나, B4 에서 어댑터 contract test 를 propagation 검증 2케이스로 이미 축소했고 4xx/5xx 매핑 책임이 ErrorDecoder 로 이동했다. 따라서 B6 실제 작업은 ErrorDecoder 단위 테스트 신규 작성으로 변경. 기존 contract test 는 propagation 계약 검증으로 별도 가치를 가지므로 그대로 유지.
+- [x] `ProductFeignConfigTest` 신규 작성 — 404/429/503/500 4분기 매핑 검증
+- [x] `UserFeignConfigTest` 신규 작성 — 404/429/503/500 4분기 매핑 검증
 - 의존: B4
-- TDD: 이게 RED → GREEN
-- 단일 commit: `test(payment-service): contract test 재작성 — Feign 기반 4xx/5xx 매핑 검증`
+- TDD: 단일 commit
+- 단일 commit: `test(payment-service): Feign ErrorDecoder 4xx/5xx 매핑 단위 테스트 신규`
+- 완료 결과: ProductFeignConfigTest 4케이스 + UserFeignConfigTest 4케이스 = 8케이스 추가. 342 → 350/350 PASS. 기존 propagation contract test 유지.
 
 ### B7. 검증
 - [ ] `./gradlew test` 회귀 0

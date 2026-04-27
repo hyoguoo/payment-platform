@@ -10,7 +10,7 @@
   - **Phase A 종결** (A1 → A2 → A3 → A4 → A5 → A5b → A6 모두 완료)
     - LB 작동 확인: 두 product-service 인스턴스 round-robin 분산 (11/16 traceId)
     - 회귀 0 (`./gradlew test` 578 PASS)
-  - active task: **B6** (contract test 재작성 — Feign 기반 4xx/5xx 매핑 검증)
+  - active task: **B7** (검증 — 회귀 0 + scale up + smoke-all)
 
 ## 직전 봉인
 
