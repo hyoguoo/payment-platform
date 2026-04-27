@@ -77,7 +77,7 @@
       → 한 인스턴스만 등록됨. fix: `product-service/src/main/resources/application.yml` 의
       `eureka.instance.instance-id: ${spring.application.name}:${random.uuid}` 명시
 - [x] payment-service / pg-service / user-service / gateway 의 container_name 은 **보존** (단일 인스턴스 — 오토스케일링 대상 아님)
-- [x] `infra-healthcheck.sh` 의 `EXPECTED_SERVICES` 는 후속 토픽에서 보강 (이 태스크 범위 외)
+- [x] `infra-healthcheck.sh` 의 `EXPECTED_SERVICES` 보강 — `docker-product-service-{N}` 동적 검사 (B7 후속에서 처리, scale-aware)
 - 의존: A5
 - TDD: 불필요 (config)
 - 검증: 두 인스턴스 모두 healthy + Eureka 등록 + payment → product 호출 round-robin 분산 확인
@@ -177,12 +177,12 @@
 ### B7. 검증
 - [x] `./gradlew test` 회귀 0
 - [x] stack 기동 + scale up 시나리오 (Phase A6 와 동일) — Feign 도 round-robin 확인
-- [x] `scripts/smoke-all.sh --with-trace` PASS (단, Phase 1.1 product-service 컨테이너명 불일치 잡음 1건 — 별도 이슈)
+- [x] `scripts/smoke-all.sh --with-trace` PASS
 - 단일 commit (선택): `test(scale): Feign client 다중 인스턴스 검증 결과 기록`
 - 완료 결과:
   - `./gradlew test` 전체 579/579 PASS (payment-service 350 + product-service 19 + pg-service 206 + user-service 3 + commons 1)
   - Feign round-robin 분산: docker-product-service-1 7건, docker-product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
-  - smoke-all Phase 1 26/27 PASS (FAIL 1건: product-service 컨테이너명 불일치 — scale 상태 잡음, LB 검증 무관)
+  - smoke-all Phase 1 28/28 PASS (B7 후속에서 infra-healthcheck.sh 가 product-service scale-aware 동적 검사 처리)
   - smoke-all Phase 2 (trace-continuity) PASS — 5-service chain 완주, traceId 전파 확인
   - Phase B 종결 기준 충족
 

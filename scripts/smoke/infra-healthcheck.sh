@@ -43,24 +43,9 @@ check_fail() {
 # ─────────────────────────────────────────────
 print_section "▶ Docker compose 서비스 health"
 
-EXPECTED_SERVICES=(
-    "payment-kafka"
-    "payment-redis-dedupe"
-    "payment-redis-stock"
-    "payment-mysql-payment"
-    "payment-mysql-pg"
-    "payment-mysql-product"
-    "payment-mysql-user"
-    "payment-eureka"
-    "gateway"
-    "payment-service"
-    "pg-service"
-    "product-service"
-    "user-service"
-)
-
-for svc in "${EXPECTED_SERVICES[@]}"; do
-    # docker inspect 로 health status 조회. 컨테이너가 없으면 빈 문자열.
+check_container_health() {
+    local svc="$1"
+    local status
     status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${svc}" 2>/dev/null || echo "missing")
     case "${status}" in
         healthy)
@@ -83,7 +68,39 @@ for svc in "${EXPECTED_SERVICES[@]}"; do
             check_fail "${svc} (unexpected state: ${status})"
             ;;
     esac
+}
+
+# product-service 는 오토스케일링 대상이라 container_name 미고정 (A5b).
+# 그 외 서비스는 단일 인스턴스 + container_name 보존.
+EXPECTED_SERVICES=(
+    "payment-kafka"
+    "payment-redis-dedupe"
+    "payment-redis-stock"
+    "payment-mysql-payment"
+    "payment-mysql-pg"
+    "payment-mysql-product"
+    "payment-mysql-user"
+    "payment-eureka"
+    "gateway"
+    "payment-service"
+    "pg-service"
+    "user-service"
+)
+
+for svc in "${EXPECTED_SERVICES[@]}"; do
+    check_container_health "${svc}"
 done
+
+# product-service 인스턴스 — docker compose scale 대응 (docker-product-service-{N}).
+# 1개 이상의 인스턴스가 떠 있어야 PASS.
+PRODUCT_INSTANCES=$(docker ps --filter "name=docker-product-service-" --format "{{.Names}}" 2>/dev/null)
+if [ -z "${PRODUCT_INSTANCES}" ]; then
+    check_fail "product-service 인스턴스 0건 — compose up 안 됐나?"
+else
+    while IFS= read -r svc; do
+        check_container_health "${svc}"
+    done <<< "${PRODUCT_INSTANCES}"
+fi
 
 # ─────────────────────────────────────────────
 # 2. 호스트 노출 포트 접근성
