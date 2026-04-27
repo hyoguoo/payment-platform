@@ -17,10 +17,10 @@ import lombok.NoArgsConstructor;
 
 /**
  * pg_outbox 테이블 JPA 엔티티.
- * V1__pg_schema.sql의 (topic/key/payload/available_at/processed_at/attempt/created_at) 스키마와 매핑된다.
- * ADR-30: available_at 기반 지연 발행 + attempt 재시도 카운트.
+ * V1__pg_schema.sql 의 (topic/key/payload/available_at/processed_at/attempt/created_at) 스키마와 매핑된다.
+ * available_at 기반 지연 발행 + attempt 재시도 카운트.
  *
- * <p>컬럼 "key"는 MySQL 예약어여서 백틱으로 감싼다.
+ * <p>컬럼 "key" 는 MySQL 예약어여서 백틱으로 감싼다.
  */
 @Getter
 @Entity

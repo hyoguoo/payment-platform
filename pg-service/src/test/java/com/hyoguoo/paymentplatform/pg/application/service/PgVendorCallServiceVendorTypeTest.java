@@ -26,7 +26,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * K14 RED: PgVendorCallService — vendorType 기반 strategy 분기 검증.
+ * PgVendorCallService — vendorType 기반 strategy 분기 검증.
  *
  * <p>TOSS 요청 → Toss strategy 호출됨 (Nicepay는 호출되지 않음).
  * NICEPAY 요청 → Nicepay strategy 호출됨 (Toss는 호출되지 않음).

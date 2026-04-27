@@ -14,10 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * PgInboxRepository 포트 JPA 어댑터.
- * ADR-04(2단 멱등성) + ADR-21(5상태 business inbox) 계약을 DB-레벨 compare-and-set + FOR UPDATE로 이행한다.
+ * 2단 멱등성 + 5상태 business inbox 계약을 DB-레벨 compare-and-set + FOR UPDATE 로 이행한다.
  *
- * <p>{@link #transitNoneToInProgress(String, long)}는 row 부재 시 INSERT로 선점하고,
- * 존재 시 JPQL UPDATE의 status=NONE 조건으로 CAS한다.
+ * <p>{@link #transitNoneToInProgress(String, long)} 는 row 부재 시 INSERT 로 선점하고,
+ * 존재 시 JPQL UPDATE 의 status=NONE 조건으로 CAS 한다.
  */
 @Repository
 @RequiredArgsConstructor

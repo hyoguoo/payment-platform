@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /**
- * 결제 서비스 로컬 Reconciler — ADR-07.
+ * 결제 서비스 로컬 Reconciler — IN_FLIGHT timeout 복원 전담.
  *
  * <p>각 scan() 호출에서 IN_FLIGHT(IN_PROGRESS) + timeout 초과 레코드를 READY 로 복원해
  * 재시도 스케줄러(OutboxWorker)가 재처리하도록 한다.

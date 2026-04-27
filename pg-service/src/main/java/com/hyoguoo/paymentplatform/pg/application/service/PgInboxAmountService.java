@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service business inbox amount 컬럼 저장 규약 서비스.
- * ADR-21 보강(T2b-04) — 불변식 4c: amount는 아래 3경로로만 기록된다.
+ * amount 는 아래 3경로로만 기록된다 — 다른 경로의 직접 UPDATE 금지.
  *
  * <ol>
  *   <li>(a) NONE→IN_PROGRESS: {@link #recordPayloadAmount} — command payload amount 기록.</li>
@@ -99,7 +99,7 @@ public class PgInboxAmountService {
     }
 
     // -----------------------------------------------------------------------
-    // (c) NONE → APPROVED 직접 전이 (pg DB 부재 경로 ADR-05 보강 6번)
+    // (c) NONE → APPROVED 직접 전이 (pg DB 레코드가 부재한 상태에서 벤더만 APPROVED 인 경로)
     // -----------------------------------------------------------------------
 
     /**

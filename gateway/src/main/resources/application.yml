@@ -7,7 +7,7 @@ spring:
   cloud:
     gateway:
       routes:
-        # ADR-21, ADR-02: /internal/** 경로를 외부에서 호출 시 403 반환 (InternalOnlyGatewayFilter가 GlobalFilter로 차단)
+        # /internal/** 경로를 외부에서 호출 시 403 반환 (InternalOnlyGatewayFilter 가 GlobalFilter 로 차단)
         - id: block-internal
           uri: no://op
           predicates:
@@ -22,14 +22,14 @@ spring:
             - Path=/api/v1/payments/**
           filters:
             - StripPrefix=0
-        # ADR-01, ADR-02: /api/v1/products/** → product-service (Eureka lb 경유)
+        # /api/v1/products/** → product-service (Eureka lb 경유)
         - id: products-service-route
           uri: lb://product-service
           predicates:
             - Path=/api/v1/products/**
           filters:
             - StripPrefix=0
-        # ADR-01, ADR-02: /api/v1/users/** → user-service (Eureka lb 경유)
+        # /api/v1/users/** → user-service (Eureka lb 경유)
         - id: users-service-route
           uri: lb://user-service
           predicates:

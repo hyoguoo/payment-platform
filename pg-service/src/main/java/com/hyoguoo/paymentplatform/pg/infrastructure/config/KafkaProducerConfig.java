@@ -68,7 +68,7 @@ public class KafkaProducerConfig {
     }
 
     /**
-     * 토픽별 타입드 KafkaTemplate 공통 빌더 — defaultTopic 고정 + observation 활성화(T3.5-13).
+     * 토픽별 타입드 KafkaTemplate 공통 빌더 — defaultTopic 고정 + observation 활성화 (traceparent 자동 전파).
      */
     private static <T> KafkaTemplate<String, T> buildObservedTemplate(
             ProducerFactory<String, T> factory, String defaultTopic) {

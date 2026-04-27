@@ -3,8 +3,8 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 import java.util.Optional;
 
 /**
- * 재고 캐시 outbound port — atomic decrement/rollback/조회/설정.
- * Phase 1.8(T1-08)에서 Redis Lua atomic 어댑터로 구현된다.
+ * 재고 캐시 outbound port — atomic decrement / rollback / 조회 / 설정.
+ * 운영 구현체는 Redis Lua atomic 어댑터({@code StockCacheRedisAdapter}).
  */
 public interface StockCachePort {
 

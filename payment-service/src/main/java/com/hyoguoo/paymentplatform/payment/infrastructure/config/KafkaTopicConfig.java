@@ -9,11 +9,11 @@ import org.springframework.kafka.config.TopicBuilder;
 
 /**
  * payment-service 전용 Kafka 토픽 선언.
- * ADR-30: 파티션 수 3 — create-topics.sh와 동일하게 유지.
- * ADR-11: 공통 jar 금지 — pg-service는 Phase 2에서 자체 KafkaTopicConfig를 갖는다.
+ * 파티션 수 3 — create-topics.sh 의 운영 토폴로지와 동일하게 유지한다.
+ * pg-service 는 자체 KafkaTopicConfig 를 가지며 공통 jar 를 공유하지 않는다.
  *
  * <p>로컬/프로덕션 Compose 환경에서는 auto.create.topics.enable=false 이므로
- * create-topics.sh가 실제 토픽 생성을 담당한다.
+ * create-topics.sh 가 실제 토픽 생성을 담당한다.
  * 이 설정은 선언적 문서 + 테스트/임베디드 환경용이다.
  */
 @Configuration

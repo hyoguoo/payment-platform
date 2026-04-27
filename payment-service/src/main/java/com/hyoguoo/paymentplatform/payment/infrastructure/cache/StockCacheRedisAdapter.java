@@ -11,12 +11,12 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 /**
- * ADR-05: 재고 캐시 Redis 어댑터.
+ * 재고 캐시 Redis 어댑터 — payment-service 의 선차감 캐시.
  *
  * <p>keyspace: {@code stock:{productId}}.
  * Lua 스크립트로 DECRBY → 음수 감지 → INCRBY 복구를 원자적으로 수행한다.
- * AOF(appendonly yes) 전제 하에 재시작 복원 보장.
- * Redis 연결 실패 시 예외를 그대로 전파한다(QUARANTINED 분기는 상위 계층).
+ * AOF(appendonly yes) 전제 하에 재시작 복원이 보장된다.
+ * Redis 연결 실패 시 예외를 그대로 전파한다 — QUARANTINED 분기 결정은 상위 계층 책임.
  */
 @Slf4j
 @Component

@@ -17,8 +17,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * MessagePublisherPort 유일 Kafka 구현체.
- * ADR-04: KafkaTemplate 직접 호출은 이 클래스에만 허용된다.
- * Worker / RelayService 등 호출자는 반드시 MessagePublisherPort 인터페이스를 통해 발행한다.
+ * KafkaTemplate 직접 호출은 이 클래스에만 허용된다 — Worker / RelayService 등 호출자는
+ * 반드시 MessagePublisherPort 인터페이스를 통해 발행한다.
  *
  * <p>stock publishing 은 StockOutboxKafkaPublisher / StockOutboxPublisherPort 로 분리되어 있고,
  * 이 클래스는 payment.commands.confirm 토픽 단일 경로만 담당한다.

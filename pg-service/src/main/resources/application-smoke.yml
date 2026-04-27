@@ -1,13 +1,12 @@
-# pg-service smoke 프로파일 — phase-3-integration-smoke.sh 전용.
+# pg-service smoke 프로파일 — happy-path 통합 스모크 전용 (PG 호출 우회).
 #
 # 활성화 방법 (절대 production 에서 활성화 금지):
-#   SPRING_PROFILES_ACTIVE=docker,smoke 또는
-#   docker-compose.smoke.yml override 적용.
+#   SPRING_PROFILES_ACTIVE=docker,smoke 또는 docker-compose.smoke.yml override 적용.
 #
 # 효과:
 #   - pg.gateway.type=fake 로 override 되어 FakePgGatewayStrategy 가 로드된다.
 #   - Toss/NicePay 스트래티지는 @ConditionalOnProperty 미스매치로 로드되지 않는다.
-#   - 트레이싱 샘플링률 100% 로 Tempo chain 확인을 보장한다.
+#   - 트레이싱 샘플링률 100% 로 분산 트레이스 chain 확인을 보장한다.
 pg:
   gateway:
     type: fake

@@ -9,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * pg-service 자체 소유 복제본. ADR-30 §2-6 — 공통 library jar 금지, 서비스 소유.
+ * pg-service 자체 소유 복제본 — 공통 library jar 를 두지 않고 각 서비스가 동일 메트릭 컴포넌트를 보유한다.
  * payment-service 의존 없음.
  */
 @Slf4j

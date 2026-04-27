@@ -61,14 +61,14 @@ RuntimeException
 **룰**:
 - 도메인 예외는 `PaymentBaseException` 계열로 분류 (코드 + 메시지)
 - 단순 가드(이미 다른 예외로 막혔어야 할 case)는 `IllegalStateException` 으로 두 번째 가드 (예: `quarantine()` 메서드의 isTerminal 가드)
-- **`catch (Exception e)` swallow 금지** (PRE-PHASE-4 축 3) — 잡으면 LogFmt.error + 재throw 또는 명시적 fallback. 워커 등 절대 죽으면 안 되는 경로만 예외적으로 catch + ERROR 승격
+- **`catch (Exception e)` swallow 금지** — 잡으면 LogFmt.error + 재throw 또는 명시적 fallback. 워커 등 절대 죽으면 안 되는 경로만 예외적으로 catch + ERROR 승격
 - presentation 측에서 도메인 예외 → HTTP 상태 매핑은 `@RestControllerAdvice` 가 단일 진실 원천
 
 ## Naming
 
 | 카테고리 | 규칙 | 예 |
 |---|---|---|
-| Use case | `<Action><Subject>UseCase` | `PaymentConfirmResultUseCase`, `StockRestoreUseCase` |
+| Use case | `<Action><Subject>UseCase` | `PaymentConfirmResultUseCase`, `StockCommitUseCase` |
 | Service (보조) | `<Subject>Service` | `OutboxRelayService`, `StockOutboxRelayService` |
 | Use case 입력 포트 | `<Verb>UseCase` 인터페이스 | `PaymentCommandUseCase` |
 | 출력 포트 | `<Subject>Port` | `StockCachePort`, `PaymentConfirmPublisherPort` |
@@ -99,7 +99,7 @@ LogFmt.info(
 
 ## AOP 컨벤션
 
-**`@PublishDomainEvent` + `@PaymentStatusChange`** (PRE-PHASE-4 K15):
+**`@PublishDomainEvent` + `@PaymentStatusChange`**:
 - payment 상태 전이 시 `payment_history` audit row 자동 기록
 - `markPaymentAsDone` / `markPaymentAsFail` / `markPaymentAsRetrying` / `markPaymentAsQuarantined` 같은 위임 경로에만 AOP 적용
 - 직접 `paymentEvent.done() + saveOrUpdate()` 호출 시 audit trail 누락 — **반드시 위임 경로 사용**
@@ -134,7 +134,7 @@ private ResultType doSafely() {
 
 ## 트랜잭션 + Hikari
 
-- `@Transactional(timeout=5)` 명시 (PRE-PHASE-4 D2) — payment confirm result 처리 등 외부 호출 끼어 있는 경로
+- `@Transactional(timeout=5)` 명시 — payment confirm result 처리 등 외부 호출이 끼어 있는 경로에서 Hikari 점유 한도 보호
 - `@Transactional` 안에서 동기 Kafka publish 금지 — AFTER_COMMIT 분리
 - 외부 HTTP / Redis 호출도 `@Transactional` 밖에서 우선 시도 (실패 보상은 catch)
 

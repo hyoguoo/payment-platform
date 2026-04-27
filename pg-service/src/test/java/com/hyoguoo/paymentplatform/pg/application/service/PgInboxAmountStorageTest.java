@@ -14,9 +14,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * PgInboxAmountService 단위 테스트.
- * ADR-21 보강 — business inbox amount 컬럼 저장 규약 검증.
+ * business inbox amount 컬럼 저장 규약을 검증한다.
  *
- * <p>불변식 4c: pg_inbox.amount는 아래 3가지 경로로만 기록된다.
+ * <p>pg_inbox.amount 는 아래 3가지 경로로만 기록된다 — 다른 경로의 직접 UPDATE 금지.
  * <ul>
  *   <li>(a) NONE→IN_PROGRESS: command payload amount (BigDecimal scale=0 검증 후 long 변환)</li>
  *   <li>(b) IN_PROGRESS→APPROVED: 벤더 2자 대조 통과값 (inbox.amount == vendorAmount)</li>

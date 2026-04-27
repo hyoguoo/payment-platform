@@ -4,8 +4,8 @@ import java.time.Instant;
 
 /**
  * 이벤트 중복 처리 방지 outbound 포트.
- * pg-service EventDedupeStore(markSeen)와 시그니처가 다름 — ADR-30 독립 복제 원칙.
- * product-service는 TTL 기반 recordIfAbsent 방식 채택.
+ * pg-service EventDedupeStore(markSeen) 와 시그니처가 다르다 — 공통 jar 금지 정책에 따라 독립 정의.
+ * product-service 는 TTL 기반 recordIfAbsent 방식을 채택한다.
  */
 public interface EventDedupeStore {
 

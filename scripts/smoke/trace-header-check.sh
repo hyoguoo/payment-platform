@@ -52,7 +52,7 @@ else
     exit 1
 fi
 
-# T3.5-13 이후 발행된 메시지만 traceparent 헤더가 주입되므로 최근 메시지를 찾기 위해 max-messages 를 늘림.
+# observation 활성화된 producer 가 발행한 메시지만 traceparent 헤더를 가지므로 최근 메시지에서 찾도록 max-messages 를 늘림.
 # macOS 는 기본적으로 `timeout` 바이너리가 없으므로(coreutils 미설치 시) kafka 자체
 # --timeout-ms 에만 의존. gtimeout 가 있으면 우선 사용.
 if command -v timeout &>/dev/null; then

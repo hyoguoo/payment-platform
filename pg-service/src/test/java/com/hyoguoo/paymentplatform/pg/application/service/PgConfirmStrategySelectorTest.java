@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * K14 RED: PgConfirmStrategySelector — vendorType 기반 전략 분기 단위 테스트.
+ * PgConfirmStrategySelector 단위 테스트 — vendorType 기반 전략 분기 검증.
  *
  * <p>불변식:
  * <ul>

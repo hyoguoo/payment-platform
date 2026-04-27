@@ -6,12 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * pg-service 자체 소유 복제본. ADR-30 §2-6 — 공통 library jar 금지, 서비스 소유.
+ * pg-service 자체 소유 복제본 — 공통 library jar 를 두지 않고 각 서비스가 같은 어노테이션을 들고 있는다.
  * payment-service 의존 없음.
  *
- * <p>K9d: infrastructure.aspect.annotation → application.aspect.annotation 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
- * aspect 구현체(TossApiMetricsAspect)는 infrastructure 에 그대로 둔다.
+ * <p>application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
+ * aspect 구현체(TossApiMetricsAspect) 는 infrastructure 에 그대로 둔다.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

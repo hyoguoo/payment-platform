@@ -31,8 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * PgVendorCallService 단위 테스트.
- * ADR-30: 재시도 = outbox available_at 지연 표현.
- * domain_risk=true: 성공/재시도/DLQ/확정실패 + 원자성 불변식 6 검증.
+ * 재시도는 outbox available_at 의 지연 시각으로 표현된다 — 별도 큐 없음.
+ * domain_risk=true — 성공 / 재시도 / DLQ / 확정 실패 시나리오 + 원자성 검증.
  */
 @DisplayName("PgVendorCallService")
 class PgVendorCallServiceTest {
@@ -211,7 +211,7 @@ class PgVendorCallServiceTest {
                 .orElseThrow();
         assertThat(dlqRow.getHeadersJson()).contains("\"attempt\":" + RetryPolicy.MAX_ATTEMPTS);
 
-        // then — inbox는 IN_PROGRESS 유지 (QUARANTINED는 T2b-02 DLQ consumer가 전이)
+        // then — inbox는 IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
     }

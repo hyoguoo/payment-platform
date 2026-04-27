@@ -39,7 +39,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 /**
  * Toss Payments PG 벤더 전략 실구현.
- * ADR-21 / ADR-30: pg-service 내부 벤더 호출 — payment-service 의존 없음.
+ * pg-service 내부에서만 호출 — payment-service 의존 없음.
  *
  * <p>승인 API: POST {tossApiUrl}/confirm (Basic 인증 + Idempotency-Key).
  * 조회 API: GET {tossApiUrl}/orders/{orderId}.

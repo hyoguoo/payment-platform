@@ -14,14 +14,14 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 /**
- * stock_outbox row 빌더 유틸리티. PaymentConfirmResultUseCase / FailureCompensationService 가
- * 공유하던 직렬화 + outbox 빌드 로직을 단일 헬퍼로 추출했다.
+ * stock_outbox row 빌더 유틸리티. {@code PaymentConfirmResultUseCase.handleApproved} 가 사용하는
+ * stock commit 직렬화 + outbox 빌드 로직을 단일 헬퍼로 추출했다.
  *
  * <p>stock commit outbox row 빌드:
  * <ul>
- *   <li>idempotencyKey: (orderId, productId) 기반 결정론적 UUID v3 (ADR-16)</li>
+ *   <li>idempotencyKey: (orderId, productId) 기반 결정론적 UUID v3 — 재발행 시 동일 키 보장.</li>
  *   <li>payload: StockCommittedEvent JSON 직렬화</li>
- *   <li>key: productId.toString() — 동일 상품 이벤트를 동일 파티션에 라우팅(ADR-12)</li>
+ *   <li>key: productId.toString() — 동일 상품 이벤트를 동일 파티션으로 라우팅해 순서 보장.</li>
  * </ul>
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

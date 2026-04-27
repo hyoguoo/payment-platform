@@ -9,7 +9,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
- * /internal/** 경로 외부 노출 차단 필터 (ADR-21, ADR-02).
+ * /internal/** 경로 외부 노출 차단 필터.
  *
  * <p>Gateway 레벨에서 {@code /internal/} 로 시작하는 요청을 외부 클라이언트로부터 차단하여
  * PG 서비스 내부 API(예: {@code GET /internal/pg/status})가 외부에 노출되지 않도록 한다.

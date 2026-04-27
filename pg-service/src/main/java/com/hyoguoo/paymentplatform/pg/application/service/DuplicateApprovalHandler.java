@@ -32,8 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 중복 승인 응답 방어 핸들러.
- * ADR-05 보강, ADR-21(캡슐화 대상): pg-service 내부 중복 승인 방어.
+ * 중복 승인 응답 방어 핸들러 — pg-service 내부에서만 보유한다 (payment-service 미노출).
  *
  * <p>경로 (1) pg DB 레코드 존재:
  * <ul>
@@ -41,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH + pg_outbox INSERT + publishEvent</li>
  * </ul>
  *
- * <p>경로 (2) pg DB 레코드 부재(ADR-05 보강 6번):
+ * <p>경로 (2) pg DB 레코드 부재 (벤더만 APPROVED, inbox row 없음):
  * <ul>
  *   <li>vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림(로그) + pg_outbox INSERT + publishEvent</li>
  *   <li>vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH) + pg_outbox INSERT + publishEvent</li>
@@ -51,8 +50,6 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>timeout/5xx/네트워크 → QUARANTINED(VENDOR_INDETERMINATE) + pg_outbox INSERT + publishEvent</li>
  * </ul>
- *
- * <p>payment-service는 이 로직의 존재를 모른다(ADR-21(v) 불변).
  */
 @Slf4j
 @Service

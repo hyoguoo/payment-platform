@@ -64,7 +64,7 @@ class SomeIntegrationTest {
 
 매 테스트 클래스마다 새 컨테이너 — schema 가 통합 V1 으로 잘 부팅되는 사실 자체가 회귀 게이트 역할.
 
-## Contract test 패턴 (T3.5-10)
+## Contract test 패턴
 
 `ProductHttpAdapterContractTest`, `UserHttpAdapterContractTest` — MockWebServer 로 4개 분기 고정:
 
@@ -77,7 +77,7 @@ class SomeIntegrationTest {
 
 목적: HTTP 상태 → 도메인 의미 매핑 계약 동결. 어댑터 변경 시 회귀 즉시 감지.
 
-## `@RepeatedTest` 결정 케이스 (T3.5-12)
+## `@RepeatedTest` 결정 케이스
 
 `PgOutboxImmediateWorkerTest` 의 exactly-once 케이스는 `@RepeatedTest(50)` 으로 확장 — race window 검증. 단발 PASS 로는 lock-free 코드의 동시성 결함을 못 잡는다.
 
@@ -117,7 +117,7 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 
 ## LocalDateTimeProvider 주입
 
-`LocalDateTime.now()` 직접 호출 금지 → `LocalDateTimeProvider` 주입 (테스트에서 위조 가능). PRE-PHASE-4 T-A2 에서 도입.
+`LocalDateTime.now()` 직접 호출 금지 → `LocalDateTimeProvider` 주입 (테스트에서 fixed clock 위조 가능).
 
 ## 현재 테스트 카운트 (2026-04-27 기준)
 
@@ -125,10 +125,10 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 |---|---|
 | eureka-server | 1 |
 | gateway | 3 |
-| payment-service | 355 |
+| payment-service | 348 |
 | pg-service | 206 |
-| product-service | 31 |
+| product-service | 19 |
 | user-service | 1 |
-| **합계** | **597 PASS** (회귀 0) |
+| **합계** | **578 PASS** (회귀 0) |
 
 `./gradlew test --rerun-tasks` 로 전체 검증.

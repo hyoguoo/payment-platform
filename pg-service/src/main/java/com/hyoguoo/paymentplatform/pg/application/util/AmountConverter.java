@@ -6,11 +6,10 @@ import java.math.BigDecimal;
  * BigDecimal ↔ long 금액 변환 유틸리티.
  * discuss-domain-5 minor: 원화 최소 단위는 정수 — fractional digit 거부.
  *
- * <p>ADR-21 보강(T2b-04): pg_inbox.amount 컬럼 저장 시 이 변환을 통해야 한다.
+ * <p>pg_inbox.amount 컬럼 저장 시 반드시 이 변환을 경유한다 — 소수점·음수 진입 차단.
  *
- * <p>K9c: infrastructure.converter → application.util 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
- * ADR-19 복제(b) 준수 — 모듈 간 공유 jar 금지, application 계층 내부 유틸리티.
+ * <p>application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
+ * 모듈 간 공유 jar 금지 — pg-service 내부 유틸리티로만 보유한다.
  */
 public final class AmountConverter {
 

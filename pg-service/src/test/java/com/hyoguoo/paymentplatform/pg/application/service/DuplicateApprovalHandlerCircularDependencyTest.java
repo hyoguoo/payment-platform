@@ -15,8 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * DuplicateApprovalHandler 순환 의존 해소 계약 테스트.
  *
- * <p>T3.5-05: PgGatewayPort 분해(PgStatusLookupPort + PgConfirmPort)로
- * NicepayPaymentGatewayStrategy ↔ DuplicateApprovalHandler ↔ PgGatewayPort self-loop를 근본 해소.
+ <p>PgGatewayPort 를 PgStatusLookupPort + PgConfirmPort 로 분해해
+ * NicepayPaymentGatewayStrategy ↔ DuplicateApprovalHandler ↔ PgGatewayPort self-loop 를 근본 해소.
  *
  * <p>TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 을 ApplicationEvent 패턴으로 근본 해소.
  * Toss/NicePay 전략 모두 DuplicateApprovalHandler 직접 의존 제거.
@@ -27,11 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>불변식:
  * <ul>
  *   <li>DuplicateApprovalHandler 생성자 파라미터 중 {@code @Lazy} 어노테이션 부재</li>
- *   <li>DuplicateApprovalHandler 필드 중 {@link PgStatusLookupStrategySelector} 타입 존재 (K14)</li>
+ *   <li>DuplicateApprovalHandler 필드 중 {@link PgStatusLookupStrategySelector} 타입 존재</li>
  *   <li>DuplicateApprovalHandler 필드 중 {@code PgGatewayPort} 타입 부재</li>
- *   <li>DuplicateApprovalHandler 생성자 첫 파라미터가 {@link PgStatusLookupStrategySelector} 타입 (K14)</li>
- *   <li>TossPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
- *   <li>NicepayPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (K13)</li>
+ *   <li>DuplicateApprovalHandler 생성자 첫 파라미터가 {@link PgStatusLookupStrategySelector} 타입</li>
+ *   <li>TossPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (cycle 단절)</li>
+ *   <li>NicepayPaymentGatewayStrategy 필드 중 {@code DuplicateApprovalHandler} 타입 부재 (cycle 단절)</li>
  * </ul>
  */
 @DisplayName("DuplicateApprovalHandler 순환 의존 해소 계약")
@@ -136,7 +136,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
                 .anyMatch(field -> field.getType() == DuplicateApprovalHandler.class);
 
         assertThat(hasDuplicateApprovalHandlerField)
-                .as("NicepayPaymentGatewayStrategy에 DuplicateApprovalHandler 필드가 있으면 안 됨 — K13 cycle 단절")
+                .as("NicepayPaymentGatewayStrategy 에 DuplicateApprovalHandler 필드가 있으면 안 된다 — cycle 단절")
                 .isFalse();
     }
 }

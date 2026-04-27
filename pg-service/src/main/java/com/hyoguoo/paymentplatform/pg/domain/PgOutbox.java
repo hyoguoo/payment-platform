@@ -4,9 +4,9 @@ import java.time.Instant;
 
 /**
  * pg-service outbox 도메인 POJO.
- * T2a-04에서 JPA 엔티티·Flyway 스키마로 승격 예정. 지금은 plain POJO.
+ * JPA 엔티티(PgOutboxEntity) 와 도메인 객체를 분리해 hexagonal 경계를 유지한다.
  *
- * <p>ADR-30: available_at 지연 발행, attempt 재시도 횟수 추적.
+ * <p>available_at 지연 발행, attempt 재시도 횟수 추적.
  */
 public class PgOutbox {
 

@@ -7,7 +7,7 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 
 /**
  * pg-service outbound 포트 — 벤더 상태 조회 전담 계약.
- * T3.5-05: PgGatewayPort 분해 — getStatusByOrderId 전담 포트.
+ * 과거 PgGatewayPort 의 getStatusByOrderId 책임을 이 포트로 분리한다 (cycle 단절 목적).
  *
  * <p>사용처:
  * <ul>

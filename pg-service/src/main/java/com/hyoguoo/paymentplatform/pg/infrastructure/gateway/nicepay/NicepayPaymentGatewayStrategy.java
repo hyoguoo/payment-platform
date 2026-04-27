@@ -38,7 +38,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 /**
  * NicePay PG 벤더 전략 실구현.
- * ADR-21 / ADR-30: pg-service 내부 벤더 호출 — payment-service 의존 없음.
+ * pg-service 내부에서만 호출 — payment-service 의존 없음.
  *
  * <p>승인 API: POST {nicepayApiUrl}/v1/payments/{tid} (Basic 인증).
  * 조회 API: GET {nicepayApiUrl}/v1/payments/find/{orderId}.

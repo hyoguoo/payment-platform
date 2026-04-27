@@ -34,8 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * PaymentConfirmConsumer(PgConfirmService) 단위 테스트.
- * ADR-04(2단 멱등성) + ADR-21(inbox 5상태) 핵심 불변 검증.
- * domain_risk=true: 동시성·재진입·terminal 재발행 시나리오 모두 커버.
+ * 2단 멱등성 + inbox 5상태 핵심 불변 검증.
+ * domain_risk=true — 동시성 / 재진입 / terminal 재발행 시나리오 모두 커버한다.
  */
 @DisplayName("PaymentConfirmConsumer(PgConfirmService)")
 class PaymentConfirmConsumerTest {

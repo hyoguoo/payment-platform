@@ -28,8 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service Final Confirmation Gate (FCG).
- * ADR-15(FCG 불변): PG 내부 재시도 루프 소진 후 벤더 getStatus 1회 최종 확인.
- * 재시도 래핑 금지 — getStatusByOrderId() 단 1회 호출.
+ * PG 내부 재시도 루프가 소진된 뒤 벤더 getStatus 를 단 1회 호출해 최종 상태를 확정한다.
+ * 재시도 래핑 금지 — getStatusByOrderId() 는 정확히 한 번만 호출되어야 한다.
  *
  * <p>결과 분기:
  * <ul>
@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  * </ul>
  *
  * <p>payment-service는 FCG 존재를 모른다 (캡슐화).
- * 호출 주체는 후속 Phase에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정 (T2b-04 이후).
+ * 호출 주체는 후속 Phase에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정.
  */
 @Slf4j
 @Service

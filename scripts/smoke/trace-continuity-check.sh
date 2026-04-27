@@ -37,10 +37,10 @@
 # 실패 시 조치:
 #   - gateway 미등장: gateway logback-spring.xml traceId MDC 패턴 또는
 #     TraceContextPropagationFilter 확인
-#   - payment-service 미등장: MDC 전파 여부 확인 (T-E1 MdcContextPropagationConfig)
-#   - pg-service 미등장: PgSlf4jMdcThreadLocalAccessor 등록 확인 (T-E1)
-#   - product-service / user-service 미등장: HTTP observationRegistry 자동 전파 확인
-#     (T-E2 HttpOperatorImpl WebClient.Builder / RestClient.Builder 생성자 주입)
+#   - payment-service 미등장: MdcContextPropagationConfig (MDC 전파) 확인
+#   - pg-service 미등장: PgSlf4jMdcThreadLocalAccessor 등록 확인
+#   - product-service / user-service 미등장: HttpOperatorImpl 의 WebClient/RestClient
+#     Builder observationRegistry 상속 확인
 #   - Kafka consumer 경로 미등장: spring.kafka.listener.observation-enabled=true 확인
 #
 # 종료 코드:
@@ -321,17 +321,17 @@ else
         echo "    · gateway: TraceContextPropagationFilter MDC 주입 여부 / logback-spring.xml traceId 패턴 확인"
         ;;
       payment-service)
-        echo "    · payment-service: T-E1 MdcContextPropagationConfig @PostConstruct registerMdcAccessor 확인"
-        echo "                       T-E2 WebClient.Builder auto-config 상속 확인"
+        echo "    · payment-service: MdcContextPropagationConfig @PostConstruct registerMdcAccessor 확인"
+        echo "                       WebClient.Builder auto-config 상속 확인"
         ;;
       pg-service)
-        echo "    · pg-service: T-E1 PgServiceConfig @PostConstruct registerMdcAccessor 확인"
-        echo "                  T-E1 PgOutboxImmediateWorker ContextExecutorService.wrap 확인"
+        echo "    · pg-service: PgServiceConfig @PostConstruct registerMdcAccessor 확인"
+        echo "                  PgOutboxImmediateWorker ContextExecutorService.wrap 확인"
         echo "                  spring.kafka.listener.observation-enabled=true 확인"
         ;;
       product-service)
-        echo "    · product-service: T-E2 RestClient.Builder / WebClient.Builder observationRegistry 상속 확인"
-        echo "                       stock commit/restore Kafka consumer MDC 전파 확인"
+        echo "    · product-service: RestClient.Builder / WebClient.Builder observationRegistry 상속 확인"
+        echo "                       stock-commit Kafka consumer MDC 전파 확인"
         ;;
       user-service)
         echo "    · user-service: HTTP 요청 수신 시 MDC 주입 여부 확인"

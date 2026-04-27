@@ -2,15 +2,15 @@ package com.hyoguoo.paymentplatform.pg.application.port.out;
 
 /**
  * pg-service outbound 포트 — 메시지 레벨 eventUUID dedupe 계약.
- * ADR-04(2단 멱등성 키): 메시지 레벨 dedupe — 동일 eventUUID 재소비 차단.
+ * 2단 멱등성 키 중 메시지 레벨 — 동일 eventUUID 재소비를 차단한다.
  *
  * <p>구현체:
  * <ul>
- *   <li>FakeEventDedupeStore (test source) — in-memory ConcurrentHashSet</li>
- *   <li>실제 Redis 구현체는 Phase 2.b+ 후속 태스크에서 추가 예정</li>
+ *   <li>{@code EventDedupeStoreRedisAdapter} — Redis SETNX 기반 운영 구현</li>
+ *   <li>{@code FakeEventDedupeStore} (test source) — in-memory ConcurrentHashSet</li>
  * </ul>
  *
- * <p>markSeen(eventUuid): 최초 호출 시 true(새 UUID), 이미 본 UUID이면 false(중복).
+ * <p>markSeen(eventUuid): 최초 호출 시 true(새 UUID), 이미 본 UUID 이면 false(중복).
  */
 public interface EventDedupeStore {
 

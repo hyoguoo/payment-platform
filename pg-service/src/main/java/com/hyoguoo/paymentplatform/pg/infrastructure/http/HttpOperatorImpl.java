@@ -15,9 +15,9 @@ import org.springframework.web.client.RestClient;
  *
  * <p>타임아웃은 벤더 공통 {@code pg.http.*} 프로퍼티로 주입한다.
  *
- * <p>Spring Boot 3.2+ 는 {@code RestClient.Builder} auto-config 에서 {@code ObservationRegistry}
- * 를 자동 설정한다. Builder 를 생성자로 주입받아 HTTP 경계에서 traceparent 자동 전파(D6).
- * 커스텀 requestFactory(connect/read timeout) 는 auto-config 설정을 상속하면서 적용.
+ * <p>Spring Boot 3.2+ 는 {@code RestClient.Builder} auto-config 에서 {@code ObservationRegistry} 를 자동 설정한다.
+ * Builder 를 생성자로 주입받아 HTTP 경계에서 traceparent 가 자동 전파된다.
+ * 커스텀 requestFactory(connect/read timeout) 는 auto-config 설정을 상속하면서 적용한다.
  */
 @Component
 public class HttpOperatorImpl implements HttpOperator {

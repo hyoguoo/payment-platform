@@ -2,8 +2,6 @@ package com.hyoguoo.paymentplatform.product.mock;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
 import com.hyoguoo.paymentplatform.product.domain.Stock;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,18 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FakeStockRepository implements StockRepository {
 
     private final ConcurrentHashMap<Long, Integer> store = new ConcurrentHashMap<>();
-
-    @Override
-    public List<Stock> findAll() {
-        List<Stock> result = new ArrayList<>();
-        store.forEach((productId, quantity) ->
-                result.add(Stock.allArgsBuilder()
-                        .productId(productId)
-                        .quantity(quantity)
-                        .allArgsBuild())
-        );
-        return result;
-    }
 
     @Override
     public Optional<Stock> findByProductId(Long productId) {

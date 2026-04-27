@@ -14,10 +14,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
 /**
  * pg_outbox row DB 커밋 이후 PgOutboxChannel 에 outboxId 를 전달하는 AFTER_COMMIT 리스너.
  *
- * <p>ADR-04 대칭: payment-service 의 OutboxImmediateEventHandler 와 동격.
+ * <p>payment-service 의 OutboxImmediateEventHandler 와 대칭 위치.
  *
- * <p>T1-18 교훈 반영: pg-service 는 신규 서비스이므로 기본 활성화가 자연스럽다.
- * @ConditionalOnProperty 를 의도적으로 부여하지 않는다.
+ * <p>pg-service 는 신규 서비스이므로 기본 활성화가 자연스럽다 — @ConditionalOnProperty 는 의도적으로 부여하지 않는다.
  *
  * <p>동작:
  * <ol>

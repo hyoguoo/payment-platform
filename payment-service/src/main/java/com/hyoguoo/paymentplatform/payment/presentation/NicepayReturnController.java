@@ -13,7 +13,7 @@ public class NicepayReturnController {
     /**
      * NicePay JS SDK의 returnUrl 수신 엔드포인트.
      * NicePay는 인증 완료 후 이 URL로 form POST를 보낸다.
-     * tid를 paymentKey로 매핑(D1 결정)하여 success.html로 리다이렉트한다.
+     * tid 를 paymentKey 로 매핑하여 success.html 로 리다이렉트한다.
      */
     @PostMapping("/payment/nicepay-return")
     public String receiveNicepayReturn(

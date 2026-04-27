@@ -32,7 +32,7 @@ MYSQL_DB="${MYSQL_PRODUCT_DB:-product}"
 MYSQL_USER="${MYSQL_PRODUCT_USER:-root}"
 MYSQL_PASSWORD="${MYSQL_PRODUCT_PASSWORD:-payment123}"
 
-REDIS_CONTAINER="${REDIS_STOCK_CONTAINER:-redis-stock}"
+REDIS_CONTAINER="${REDIS_STOCK_CONTAINER:-payment-redis-stock}"
 REDIS_KEY_PREFIX="stock:"
 
 print_section "▶ stock 시드 시작 — mysql-product → redis-stock"

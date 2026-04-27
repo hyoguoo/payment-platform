@@ -1,5 +1,5 @@
 -- pg-service Flyway baseline.
--- ADR-21 보강(business inbox amount 컬럼), ADR-30(pg_outbox available_at).
+-- pg_inbox amount 컬럼 + pg_outbox available_at 지연 발행 컬럼 포함.
 
 -- ─────────────────────────────────────────────────────────
 -- pg_inbox
@@ -27,7 +27,7 @@ CREATE TABLE pg_inbox (
 
 -- ─────────────────────────────────────────────────────────
 -- pg_outbox
--- ADR-30: available_at — 재시도 백오프 예약 발행 시각.
+-- available_at — 재시도 백오프 예약 발행 시각 (재시도는 별도 큐 없이 이 컬럼으로 표현).
 -- topic: payment.commands.confirm / payment.commands.confirm.dlq / payment.events.confirmed.
 -- processed_at: NULL = pending, NOT NULL = 발행 완료.
 -- attempt: 재시도 카운트.

@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * PgInbox 도메인 메서드 단위 테스트 (K4 — anemic 도메인 부활).
+ * PgInbox 도메인 메서드 단위 테스트.
  *
  * <p>각 메서드의 pre-condition 가드와 상태 전이 결과를 검증한다.
  * FakePgInboxRepository 와의 통합이 아닌 순수 도메인 로직만 테스트.

@@ -20,8 +20,8 @@ public interface LocalDateTimeProvider {
     /**
      * UTC 기준 현재 Instant.
      *
-     * <p>K5 추가: Instant.now() 직접 호출 대신 이 메서드를 통해 시간 소스를 주입받는다.
-     * 기본 구현은 {@code Instant.now()} 위임 — 기존 구현체 호환 유지.
+     * <p>{@code Instant.now()} 를 직접 호출하는 대신 이 메서드를 통해 시간 소스를 주입받는다.
+     * 기본 구현은 {@code Instant.now()} 위임이라 기존 구현체와의 호환을 유지한다.
      */
     default Instant nowInstant() {
         return Instant.now();

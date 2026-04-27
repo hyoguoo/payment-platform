@@ -27,8 +27,8 @@ import org.springframework.stereotype.Service;
  * (REJECTED/CACHE_DOWN/SUCCESS) → SUCCESS인 경우에만 coordinator.executeConfirmTx() @Transactional
  * 내에서 event 전이 + outbox PENDING을 원자 커밋. Kafka 발행은 TX 밖에서 별도.
  *
- * <p>ADR-D3: executeConfirmTx 실패 시 decrementStock 으로 차감한 재고를 increment 로 보상한다.
- * try 블록 외부 변수 재할당 금지 규약에 따라 private 메서드로 추출한다.
+ * <p>executeConfirmTx 실패 시 decrementStock 으로 차감한 재고를 redis-stock INCR 로 보상한다.
+ * try 블록 외부 변수 재할당을 막기 위해 보상 로직은 private 메서드로 추출한다.
  */
 @Slf4j
 @Service
@@ -84,8 +84,7 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     /**
      * executeConfirmTx 를 호출하고, 실패 시 decrementStock 에서 차감한 재고를 보상한다.
      *
-     * <p>ADR-D3 옵션 B: caller 측 try/catch 보상. try 블록 외부 변수 재할당 금지 규약을 준수하기 위해
-     * private 메서드로 추출한다. 보상 increment 가 실패해도 원본 예외를 전파한다.
+     * <p>caller 측 try/catch 로 보상한다. 보상 increment 가 실패해도 원본 예외는 그대로 전파한다.
      */
     private void executeConfirmTxWithStockCompensation(
             PaymentEvent paymentEvent, String paymentKey, String orderId) {

@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 /**
  * pg-service Transactional Outbox 즉시 전달 워커.
  *
- * <p>ADR-04 대칭: payment-service 의 OutboxImmediateWorker 와 동격.
+ * <p>payment-service 의 OutboxImmediateWorker 와 대칭 위치.
  * PgOutboxChannel.take() 로 outboxId 를 수신 → PgOutboxRelayService.relay(id) 위임.
  * KafkaTemplate 직접 호출 금지 — 반드시 PgOutboxRelayService(→ PgEventPublisherPort) 경유.
  *

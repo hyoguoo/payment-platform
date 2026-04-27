@@ -8,8 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * EventDedupeStore Fake — in-memory TTL 시뮬레이션 구현체 (product-service 테스트 전용).
  * <p>
- * ADR-16(UUID dedupe + Redis TTL) 보상 로직 테스트 지원.
- * ADR-30 독립 복제 원칙: payment-service·pg-service의 FakeEventDedupeStore와 공통 lib 금지.
+ * UUID dedupe + Redis TTL 보상 로직 테스트 지원.
+ * 공통 jar 금지 정책에 따라 payment-service / pg-service 의 FakeEventDedupeStore 와 서비스별로 따로 둔다.
  * <p>
  * TTL 만료 시뮬레이션:
  * - recordIfAbsent 호출 시 기존 엔트리의 expiresAt가 현재 시각(clock) 이전이면 만료로 간주,

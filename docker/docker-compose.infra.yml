@@ -1,18 +1,17 @@
-# MSA-TRANSITION Phase 0 — 인프라 컨테이너 정의
-# ADR-10(compose 토폴로지), ADR-27(로컬 DX)
-# Phase 2.a T2a-04: pg-service 전용 MySQL 추가 (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
+# 인프라 컨테이너 정의 (Kafka / Redis / MySQL × 4)
+# 로컬 DX 위주 — pg-service 의 outbox/inbox 도 자체 MySQL 에 격리한다.
 #
 # Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
 #   replication.factor=3
 #   min.insync.replicas=2
 # 현재 로컬 단일 브로커는 편의상 rf=1, 개발·통합테스트 전용.
 #
-# 토픽 3개 (동일 파티션 수 전제 — ADR-30):
+# 토픽 3개 (동일 파티션 수 전제):
 #   payment.commands.confirm
 #   payment.commands.confirm.dlq
 #   payment.events.confirmed
-# retry 전용 토픽 미생성 (ADR-30 방침 — retry는 DLQ 재처리로 대체)
-# 실제 토픽 생성은 T0-01b 스크립트에서 수행
+# retry 전용 토픽은 만들지 않는다 — retry 는 DLQ 재처리로 대체한다
+# 실제 토픽 생성은 scripts/smoke/create-topics.sh 에서 수행
 
 services:
 
@@ -61,7 +60,7 @@ services:
       start_period: 30s
 
   # ───────────────────────────────────────────
-  # Redis — EventDedupeStore (ADR-30)
+  # Redis — EventDedupeStore (메시지 dedupe 캐시)
   # 실사용 키스페이스:
   #   dedupe:{eventUuid} — payment-service / pg-service eventUUID dedupe (TTL=8일)
   # 내구성 불필요(dedupe는 재처리 가능) → appendonly off.
@@ -86,7 +85,8 @@ services:
   # ───────────────────────────────────────────
   # Redis — 재고 캐시 (stock:{productId}) AOF 내구성 on
   # keyspace:
-  #   stock:{productId}   — 재고 캐시 (product-service write → payment-service read)
+  #   stock:{productId}   — 재고 선차감 캐시 (payment-service 가 직접 read/write)
+  #   초기 시드는 scripts/seed-stock.sh 가 mysql-product → redis-stock 으로 1회 SET 한다.
   # ───────────────────────────────────────────
   redis-stock:
     image: redis:7.2-alpine
@@ -112,7 +112,7 @@ services:
       retries: 5
 
   # ───────────────────────────────────────────
-  # Eureka Discovery Server (자체 모듈 — ADR-11)
+  # Eureka Discovery Server
   # ───────────────────────────────────────────
   eureka:
     build:
@@ -133,7 +133,7 @@ services:
       start_period: 30s
 
   # ───────────────────────────────────────────
-  # MySQL — payment-service 전용 (ADR-23 DB per service)
+  # MySQL — payment-service 전용 (DB per service)
   # DB 이름은 기존 데이터/외부 스크립트 호환을 위해 `payment-platform` 유지.
   # ───────────────────────────────────────────
   mysql-payment:
@@ -159,8 +159,7 @@ services:
       start_period: 20s
 
   # ───────────────────────────────────────────
-  # MySQL — pg-service 전용 (Phase 2.a T2a-04)
-  # Phase 2.a T2a-04: pg-service 전용 DB (무상태 전제는 ADR-30 outbox/inbox 설계로 뒤집힘)
+  # MySQL — pg-service 전용 (outbox/inbox 격리)
   # ───────────────────────────────────────────
   mysql-pg:
     image: mysql:8.0
@@ -185,7 +184,7 @@ services:
       start_period: 20s
 
   # ───────────────────────────────────────────
-  # MySQL — product-service 전용 (ADR-23 DB per service, Phase 3)
+  # MySQL — product-service 전용 (DB per service)
   # ───────────────────────────────────────────
   mysql-product:
     image: mysql:8.0
@@ -210,7 +209,7 @@ services:
       start_period: 20s
 
   # ───────────────────────────────────────────
-  # MySQL — user-service 전용 (ADR-23 DB per service, Phase 3)
+  # MySQL — user-service 전용 (DB per service)
   # ───────────────────────────────────────────
   mysql-user:
     image: mysql:8.0

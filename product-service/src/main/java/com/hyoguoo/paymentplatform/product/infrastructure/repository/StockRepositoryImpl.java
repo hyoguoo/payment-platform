@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.product.infrastructure.repository;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
 import com.hyoguoo.paymentplatform.product.domain.Stock;
 import com.hyoguoo.paymentplatform.product.infrastructure.entity.StockEntity;
-import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -18,15 +17,6 @@ import org.springframework.stereotype.Repository;
 public class StockRepositoryImpl implements StockRepository {
 
     private final JpaStockRepository jpaStockRepository;
-
-    @Override
-    public List<Stock> findAll() {
-        return jpaStockRepository
-                .findAll()
-                .stream()
-                .map(StockEntity::toDomain)
-                .toList();
-    }
 
     @Override
     public Optional<Stock> findByProductId(Long productId) {

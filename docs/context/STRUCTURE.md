@@ -130,7 +130,7 @@ flowchart TD
     Pay -- "HTTP /api/users/*" --> Usr
 
     Pay <-- "Kafka payment.commands.confirm /\npayment.events.confirmed" --> Pg
-    Pay -- "Kafka stock.events.commit/restore" --> Prod
+    Pay -- "Kafka payment.events.stock-committed" --> Prod
 
     Pg -- "HTTP" --> Vendor[Toss / NicePay]
 ```
@@ -142,7 +142,7 @@ flowchart TD
 - Base package: `com.hyoguoo.paymentplatform.<bounded>` — `<bounded>` 는 `payment` / `pg` / `product` / `user` / `gateway` / `eurekaserver`
 - Test 코드는 main 과 동일 패키지 트리 + `*Test` / `*ContractTest` / `*MdcPropagationTest` 같은 접미사
 - Fake 어댑터: `application/<area>/Fake*Adapter` 또는 `infrastructure/<area>/Fake*` (테스트 전용)
-- Use case 명명: `<Action><Subject>UseCase` (예: `PaymentConfirmResultUseCase`, `StockRestoreUseCase`)
+- Use case 명명: `<Action><Subject>UseCase` (예: `PaymentConfirmResultUseCase`, `StockCommitUseCase`)
 - Port 명명: 입력은 `<Verb>UseCase`, 출력은 `<Subject>Port` (예: `StockCachePort`, `PaymentConfirmPublisherPort`)
 - 메시지 record: `<Subject>EventMessage` (Kafka payload 수신용), `<Subject>EventPayload` (발행용)
 

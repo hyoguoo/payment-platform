@@ -4,11 +4,10 @@ import java.util.Map;
 
 /**
  * pg-service outbound 포트 — 결제 이벤트 발행 추상.
- * ADR-04: Transactional Outbox 패턴을 통한 이벤트 발행.
- * ADR-30: pg_outbox row의 topic 필드가 발행 대상 토픽을 결정한다.
+ * Transactional Outbox 릴레이 경로 — pg_outbox row 의 topic 필드가 발행 대상 토픽을 결정한다.
  *
- * <p>PgEventPublisher(infrastructure/messaging/publisher/)가 유일한 Kafka 구현체.
- * Worker / RelayService 는 반드시 이 포트를 경유해야 한다 — KafkaTemplate 직접 호출 금지.
+ * <p>PgEventPublisher(infrastructure/messaging/publisher/) 가 유일한 Kafka 구현체.
+ * Worker / RelayService 는 반드시 이 포트를 경유한다 — KafkaTemplate 직접 호출 금지.
  *
  * <p>발행 대상 토픽 (PgTopics 참고):
  * <ul>

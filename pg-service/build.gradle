@@ -20,21 +20,21 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
-    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    // Service Discovery (Eureka 등록 — docker 프로필에서만 활성화)
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
-    // Kafka (ADR-30: payment.commands.confirm consumer + payment.events.confirmed publisher)
+    // Kafka — payment.commands.confirm consumer + payment.events.confirmed publisher
     implementation 'org.springframework.kafka:spring-kafka'
 
-    // JPA + Flyway + MySQL (T2a-04: pg_inbox · pg_outbox 스키마 마이그레이션)
+    // JPA + Flyway + MySQL — pg_inbox · pg_outbox 스키마
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'com.mysql:mysql-connector-j'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
 
-    // Redis (ADR-04 2단 멱등성: eventUUID dedupe SET NX EX 마커 저장소)
+    // Redis — eventUUID dedupe SET NX EX 마커 저장소 (메시지 레벨 멱등성)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-    // T-E2: HttpOperatorImpl traceparent 전파 검증용 MockWebServer
+    // HttpOperatorImpl traceparent 전파 검증용 MockWebServer
     testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
 }
 

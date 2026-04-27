@@ -62,7 +62,7 @@ flowchart TD
 
     DECR -->|REJECTED| RJ[handleStockFailure<br/>event=FAILED]
     DECR -->|CACHE_DOWN| CD[markStockCacheDownQuarantine<br/>event=QUARANTINED<br/>quarantine_compensation_pending=true]
-    DECR -->|SUCCESS| TX[executeConfirmTxWithStockCompensation<br/>ADR-D3]
+    DECR -->|SUCCESS| TX[executeConfirmTxWithStockCompensation]
 
     RJ --> FAIL_409([409 throw])
     CD --> FAIL_409
@@ -145,7 +145,7 @@ flowchart TD
 
     RELAY --> CL[claimToInFlight CAS]
     CL -->|선점 실패| SKIP([no-op])
-    CL -->|선점 성공| SEND[StockOutboxKafkaPublisher.send<br/>topic=stock.events.commit]
+    CL -->|선점 성공| SEND[StockOutboxKafkaPublisher.send<br/>topic=payment.events.stock-committed]
 
     SEND -->|성공| DONE[stock_outbox.toDone save]
     SEND -->|실패| LOG_FAIL[stock.kafka.publish.fail.total counter +1<br/>processedAt 미기록 → Polling 재시도]
@@ -153,7 +153,7 @@ flowchart TD
     LOG_FAIL --> END
 ```
 
-## 7. AMOUNT_MISMATCH 양방향 방어 (ADR-15 + ADR-D1)
+## 7. AMOUNT_MISMATCH 양방향 방어
 
 ```mermaid
 sequenceDiagram
@@ -171,7 +171,7 @@ sequenceDiagram
 
     alt 일치
         Pay->>Pay: paymentEvent.done(approvedAt)
-        Pay->>K: stock.events.commit publish
+        Pay->>K: payment.events.stock-committed publish
     else 불일치 또는 amount=null
         Pay->>Quar: handle(orderId, AMOUNT_MISMATCH)
         Quar->>Pay: paymentEvent.quarantine(reason)
@@ -204,4 +204,4 @@ flowchart TD
 - 진입점·use case 분석: `CONFIRM-FLOW-ANALYSIS.md`
 - 전체 end-to-end (브라우저 → 폴링): `PAYMENT-FLOW.md`
 - RecoveryDecision / FCG / D12 의 도입 배경: `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md`
-- two-phase lease, AFTER_COMMIT stock 분리, ADR-D 시리즈: `docs/archive/pre-phase-4-hardening/COMPLETION-BRIEFING.md`
+- two-phase lease, AFTER_COMMIT stock 분리, 보강 결정 시리즈: `docs/archive/pre-phase-4-hardening/COMPLETION-BRIEFING.md`

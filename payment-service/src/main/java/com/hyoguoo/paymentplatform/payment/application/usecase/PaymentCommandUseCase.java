@@ -14,8 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 결제 이벤트 상태 전이 use-case.
- * ADR-02: PG 직접 HTTP 호출(getStatus/confirm) 금지 — pg-service Kafka 연동 전담.
- * confirmPaymentWithGateway·getPaymentStatusByOrderId는 Phase 2 완료 시 삭제됨.
+ * payment-service 에서는 PG 를 HTTP 로 직접 호출하지 않는다 — pg-service 가 Kafka 연동을 전담한다.
  */
 @Service
 @RequiredArgsConstructor

@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * pg-service 내부 HTTP 호출 포트.
- * ADR-30: payment-service 의존 없이 pg-service 독립 복제.
+ * 공통 jar 금지 정책에 따라 pg-service 독립 복제본으로 보유한다.
  */
 public interface HttpOperator {
 

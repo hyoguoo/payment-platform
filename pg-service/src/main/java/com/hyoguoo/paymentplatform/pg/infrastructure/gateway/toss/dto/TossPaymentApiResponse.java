@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter;
  * Toss Payments API 승인/조회 응답의 pg-service 전용 slim 버전.
  * 포팅 시 전략이 실제로 읽는 필드(paymentKey/orderId/totalAmount/status/approvedAt/failure)만 유지.
  *
- * <p>ADR-30: payment-service 의존 없이 pg-service 독립 복제.
+ * <p>공통 jar 금지 정책에 따라 pg-service 독립 복제본으로 보유한다.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TossPaymentApiResponse(

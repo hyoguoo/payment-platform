@@ -21,7 +21,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  *
  * <p>레거시 {@code MdcTaskDecorator} 는 MDC 만 복사하고 OTel Context ThreadLocal 은 무시하므로
  * 실 환경에서 incoming HTTP traceparent 와 다른 새 trace 가 Kafka 메시지에 박히는
- * 회귀가 발생한다 — 이중 래핑으로 교체하여 해결 (ADR-13).
+ * 회귀가 발생한다 — 이중 래핑으로 교체하여 해결한다.
  */
 @Configuration
 @EnableAsync

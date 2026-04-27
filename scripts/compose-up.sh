@@ -27,7 +27,7 @@
 #   bash scripts/compose-up.sh --clean        # 전체 종료 + 모든 볼륨 제거
 #
 # 모드 (--mode):
-#   prod (default) — Toss + NicePay 두 PG 전략 동시 활성 (vendorType 으로 selector 분기, K14)
+#   prod (default) — Toss + NicePay 두 PG 전략 동시 활성 (vendorType 으로 selector 분기)
 #                    실 PG 호출에 TOSS_SECRET_KEY / NICEPAY_CLIENT_KEY / NICEPAY_SECRET_KEY 필요
 #   fake           — FakePgGatewayStrategy 만 활성 (PG 호출 우회, traceparent E2E 검증용)
 #                    docker/docker-compose.smoke.yml override 적용

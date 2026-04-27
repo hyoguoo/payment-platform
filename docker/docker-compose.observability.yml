@@ -1,5 +1,5 @@
-# MSA-TRANSITION Phase 0 — 관측성 컨테이너 정의
-# ADR-31(관측성 5개 컴포넌트): Prometheus, Grafana, kafka-exporter, Tempo, Loki
+# 관측성 컨테이너 정의
+# 5개 구성: Prometheus, Grafana, kafka-exporter, Tempo, Loki
 #
 # 사용법:
 #   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.observability.yml up -d

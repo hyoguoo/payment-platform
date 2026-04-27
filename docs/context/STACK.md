@@ -28,7 +28,7 @@ org.flywaydb:flyway-mysql                    # MySQL 8 dialect
 runtimeOnly com.mysql:mysql-connector-j
 
 io.micrometer:micrometer-registry-prometheus
-io.micrometer:micrometer-tracing-bridge-otel  # W3C Trace Context (ADR-18)
+io.micrometer:micrometer-tracing-bridge-otel  # W3C Trace Context
 io.opentelemetry:opentelemetry-exporter-otlp
 net.logstash.logback:logstash-logback-encoder
 
@@ -51,7 +51,7 @@ com.squareup.okhttp3:mockwebserver  # HTTP 어댑터 contract test
 
 | 컴포넌트 | 이미지 / 버전 | 호스트 포트 | 책임 |
 |---|---|---|---|
-| MySQL × 4 | `mysql:8.0` (linux/arm64) | 3306 / 3308 / 3309 / 3310 | 서비스별 독립 DB (ADR-23) |
+| MySQL × 4 | `mysql:8.0` (linux/arm64) | 3306 / 3308 / 3309 / 3310 | 서비스별 독립 DB |
 | Redis dedupe | `redis:7.x` (alpine) | 6379 | 메시지 중복 제거 |
 | Redis stock | `redis:7.x` | 6380 | 재고 캐시 (Lua 원자 DECR/INCR) |
 | Kafka | `confluentinc/cp-kafka` (KRaft 모드) | 9092 / 29092 | 메시지 브로커 |
@@ -109,6 +109,9 @@ SELECT version, script, installed_on, success FROM flyway_schema_history ORDER B
 
 **Testcontainers**: 매 테스트마다 새 MySQL 컨테이너 → V1 부터 자동 적용. `ddl-auto: validate` 로 테스트 schema 검증
 
+**통합 테스트 환경 격리**: `@Tag("integration")` 통합 테스트는 `application-test.yml` 의 `spring.flyway.enabled: false` + `jpa.hibernate.ddl-auto: create-drop` 으로 운영하며, `BaseIntegrationTest` 의 Testcontainers MySQL 위에서 JPA 가 `@Entity` 기반 schema 를 생성한다. 의도: Flyway ↔ JPA 순환 의존(`Circular depends-on relationship between 'flyway' and 'entityManagerFactory'`) 회피 + 테스트 격리.
+- `@Sql("/data-test.sql")` 시드: 현재 NOOP(`SELECT 1`). MSA 분리 후 user/product 데이터는 별도 서비스 책임이라 본 시드는 빈 자리만 유지
+
 ## 빌드 / 검증
 
 | 명령 | 동작 |
@@ -133,7 +136,7 @@ SELECT version, script, installed_on, success FROM flyway_schema_history ORDER B
 |---|---|---|
 | 메시지 직렬화 | Jackson + JsonSerializer/JsonDeserializer | Kafka producer/consumer |
 | HTTP 클라이언트 | WebClient (`spring-boot-starter-webflux`) | `HttpOperatorImpl` (vendor 호출 + cross-service HTTP) |
-| Test HTTP server | OkHttp MockWebServer | `HttpOperatorImpl` traceparent 전파 검증 (T-E2) |
+| Test HTTP server | OkHttp MockWebServer | `HttpOperatorImpl` traceparent 전파 contract test |
 | Bean Validation | spring-boot-starter-validation | request DTO `@NotNull`/`@Min` |
 | In-memory cache | Caffeine | payment-service 의 `IdempotencyStore` 일부 |
 | Querying | QueryDSL 5.0.0 (jakarta classifier) | payment-service / product-service 동적 쿼리 |

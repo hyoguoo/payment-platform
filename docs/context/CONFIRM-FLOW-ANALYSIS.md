@@ -29,7 +29,7 @@
       └─ CACHE_DOWN → markStockCacheDownQuarantine
       │            → event.status=QUARANTINED (보상 펜딩) + 4xx throw
       ▼
-④ executeConfirmTxWithStockCompensation (ADR-D3)
+④ executeConfirmTxWithStockCompensation
       │  try {
       │     coordinator.executeConfirmTx(paymentEvent, paymentKey, orderId)
       │       — @Transactional, 단일 TX:
@@ -125,7 +125,7 @@ PaymentConfirmResultUseCase.handle(message)
       └─ end
 ```
 
-### handleApproved (ADR-D1 양방향 amount 방어)
+### handleApproved (양방향 amount 방어)
 
 ```
 parseApprovedAt(message.approvedAt)
@@ -147,7 +147,7 @@ else
 
       각 PaymentOrder 별:
         stock_outbox INSERT(payload=StockCommittedEvent) + StockOutboxReadyEvent publish
-      // StockOutboxImmediateEventHandler 가 AFTER_COMMIT 으로 StockOutboxRelayService 호출 → stock.events.commit Kafka publish
+      // StockOutboxImmediateEventHandler 가 AFTER_COMMIT 으로 StockOutboxRelayService 호출 → payment.events.stock-committed Kafka publish
 ```
 
 ### handleFailed
@@ -170,7 +170,7 @@ PG 측 격리(QUARANTINED) 결정 또는 AMOUNT_MISMATCH 감지 시 호출.
 
 QuarantineCompensationHandler.handle(orderId, reason)
       → markPaymentAsQuarantined
-      → admin 조사 큐에 등록 (ADR-13)
+      → admin 조사 큐에 등록 (CACHE_DOWN / 판단 불가 격리 트리거)
 ```
 
 ## 복구 사이클 — `PaymentReconciler` (`@Scheduled` 2분)
@@ -187,24 +187,27 @@ payment / pg 상태 불일치 스캔. 일정 시간 동안 PROCESSING 에 머문
 | confirm TX | `@Transactional` + `payment_outbox PENDING` 단일 커밋 |
 | outbox claim | `claimToInFlight` REQUIRES_NEW atomic CAS — 다중 워커 선점 방지 |
 | Kafka 멱등 | producer key=orderId, eventUuid 별도 첨부 |
-| consumer 멱등 | `EventDedupeStore` two-phase lease (Redis SET NX EX) — markWithLease(PT5M) → 처리 → extendLease(P8D) |
-| amount 방어 | 양방향 — pg 발행 시 non-null 강제 + payment 수신 시 대조 (ADR-15 + ADR-D1) |
+| consumer 멱등 (payment 측) | `EventDedupeStore` **two-phase lease** (Redis SET NX EX) — markWithLease(PT5M) → 처리 → extendLease(P8D). 처리 실패 시 remove → false 면 DLQ |
+| consumer 멱등 (pg 측) | `EventDedupeStore.markSeen` **단순 mark** (Redis SET NX EX P8D). 처리 실패 시 try/catch + remove 보상. payment 의 two-phase lease 와 다른 모델 — pg 는 `pg_inbox` 상태 CAS 가 추가 멱등 가드라 단순 mark 만으로 충분 |
+| amount 방어 | 양방향 — pg 발행 시 non-null 강제 + payment 수신 시 대조 |
 | 상태 전이 | `PaymentEventStatus.isTerminal()` SSOT — 종결 상태 재진입 차단 |
 | 재고 보상 | D12 가드 — TX 내 outbox/event 재조회 후 양 조건 충족 시에만 INCR |
 
 ## 상태 머신 — `PaymentEventStatus`
 
-| 상태 | 의미 | 진입 |
-|---|---|---|
-| READY | 결제 초기 생성 | checkout 완료 |
-| IN_PROGRESS | confirm TX 커밋, paymentKey 기록 | `executePayment()` |
-| RETRYING | 복구 사이클 재시도 대기 (outbox PENDING + nextRetryAt) | `markPaymentAsRetrying()` |
-| DONE | PG 결제 완료 (approvedAt non-null) | `markPaymentAsDone()` |
-| FAILED | 재고 부족 / PG 종결 실패 / non-retryable | `markPaymentAsFail()` |
-| QUARANTINED | 판단 불가 격리 (수동 확인 필요) | `markPaymentAsQuarantined()` |
-| CANCELED / PARTIAL_CANCELED / EXPIRED | PG 또는 만료 스케줄러 | (별도 경로) |
+| 상태 | 의미 | 진입 | `GET /status` 폴링 응답 |
+|---|---|---|---|
+| READY | 결제 초기 생성 | checkout 완료 | `PROCESSING` (default 분기) |
+| IN_PROGRESS | confirm TX 커밋, paymentKey 기록 | `executePayment()` | `PROCESSING` |
+| RETRYING | 복구 사이클 재시도 대기 (outbox PENDING + nextRetryAt) | `markPaymentAsRetrying()` | `PROCESSING` |
+| DONE | PG 결제 완료 (approvedAt non-null) | `markPaymentAsDone()` | `DONE` |
+| FAILED | 재고 부족 / PG 종결 실패 / non-retryable | `markPaymentAsFail()` | `FAILED` |
+| **QUARANTINED** | **판단 불가 격리 (수동 확인 필요)** | `markPaymentAsQuarantined()` | **`PROCESSING`** ⚠️ — 클라이언트 폴링이 영영 종료되지 않음. admin 복구 필요 |
+| CANCELED / PARTIAL_CANCELED / EXPIRED | PG 또는 만료 스케줄러 | (별도 경로) | `PROCESSING` (default) |
 
 `isTerminal()` = DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED.
+
+> **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 default 분기가 QUARANTINED 를 PROCESSING 으로 매핑한다 — `isTerminal()` 의 종결 상태이지만 status 폴링 결과는 종결을 표현하지 않는다. 격리된 결제는 admin 이 수동으로 DONE/FAILED 강제 전이를 해야 클라이언트 폴링이 종료된다.
 
 ## PaymentOutbox 상태 머신
 
@@ -221,12 +224,16 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 
 | 장애 | 동작 |
 |---|---|
-| 리스너 스킵 / 워커 크래시 | OutboxWorker 가 PENDING + IN_FLIGHT 타임아웃 회수 |
-| Kafka producer 실패 | IN_FLIGHT 유지 → OutboxWorker 폴백 |
-| pg-service 측 Toss/NicePay 5xx | pg_inbox=QUARANTINED → ConfirmedEvent QUARANTINED → handleQuarantined |
+| 리스너 스킵 / 워커 크래시 (payment 측) | OutboxWorker 가 PENDING + IN_FLIGHT 타임아웃 회수 |
+| Kafka producer 실패 (payment 측) | IN_FLIGHT 유지 → OutboxWorker 폴백 |
+| pg-service 측 Toss/NicePay retryable (5xx/timeout) | **pg-service 자체 retry** — `pg_outbox.available_at = now + backoff` 로 `payment.commands.confirm` 에 재발행. attempt < 4 까지 |
+| pg-service 측 retry 한도 초과 (attempt ≥ 4) | `payment.commands.confirm.dlq` 로 격리 (`PgVendorCallService.insertDlqOutbox`). pg_inbox 는 IN_PROGRESS 유지 |
+| pg-service 측 non-retryable (4xx) | pg_inbox=FAILED → ConfirmedEvent FAILED → payment handleFailed |
+| pg-service 측 판단 불가 / 5xx 한도 소진 | pg_inbox=QUARANTINED → ConfirmedEvent QUARANTINED → payment handleQuarantined |
 | Redis dedupe 장애 | confirm 단계 CACHE_DOWN → QUARANTINED + 보상 펜딩 |
 | amount 위변조 | pg 발행 시 차단 + payment 수신 시 차단 (양방향) |
-| 중복 메시지 | EventDedupeStore two-phase lease + outbox/inbox 상태 CAS 2단 멱등성 |
+| 중복 메시지 (payment 측) | two-phase lease (markWithLease/extendLease/remove) + outbox 상태 CAS 2단 |
+| 중복 메시지 (pg 측) | markSeen + try/catch remove 보상 + inbox 상태 CAS 2단 |
 
 ## 관련 문서
 

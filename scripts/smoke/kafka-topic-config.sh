@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# kafka-topic-config.sh
-# ADR-30 — 토픽 설정 검증 스크립트
+# kafka-topic-config.sh — 토픽 설정 검증 스크립트
 #
-# 목적: payment 도메인 토픽 3개의 partition 수·replication-factor·min.insync.replicas가
-#       동일하고 ADR-30 규정을 충족하는지 검증한다.
+# 목적: payment 도메인 토픽 3개의 partition 수·replication-factor·min.insync.replicas 가
+#       서로 동일한지 검증한다.
 #
 # 사용법:
 #   bash docs/phase-gate/kafka-topic-config.sh [BOOTSTRAP_SERVER]
@@ -19,7 +18,7 @@ set -euo pipefail
 
 BOOTSTRAP_SERVER="${1:-localhost:29092}"
 
-# ADR-30 대상 토픽 목록 (retry 전용 토픽 제외)
+# 검증 대상 토픽 목록 (retry 전용 토픽 제외)
 TOPICS=(
   "payment.commands.confirm"
   "payment.commands.confirm.dlq"
@@ -46,7 +45,7 @@ if ! command -v kafka-topics &>/dev/null; then
 fi
 
 echo "======================================================="
-echo "  Kafka 토픽 설정 검증 (ADR-30)"
+echo "  Kafka 토픽 설정 검증"
 echo "  BOOTSTRAP: ${BOOTSTRAP_SERVER}"
 echo "======================================================="
 
@@ -104,7 +103,7 @@ done
 
 echo ""
 echo "======================================================="
-echo "  검증 1: 토픽 간 PartitionCount 동일 여부 (ADR-30)"
+echo "  검증 1: 토픽 간 PartitionCount 동일 여부"
 echo "======================================================="
 
 FIRST_TOPIC="${TOPICS[0]}"
@@ -152,7 +151,7 @@ done
 
 echo ""
 echo "======================================================="
-echo "  검증 3: retry 전용 토픽 미존재 확인 (ADR-30 방침)"
+echo "  검증 3: retry 전용 토픽 미존재 확인 (retry 는 DLQ 재처리로 대체)"
 echo "======================================================="
 
 RETRY_TOPICS=(
@@ -170,7 +169,7 @@ for RETRY_TOPIC in "${RETRY_TOPICS[@]}"; do
   if echo "${RETRY_OUT}" | grep -q "does not exist"; then
     pass "retry 토픽 없음: ${RETRY_TOPIC}"
   elif echo "${RETRY_OUT}" | grep -q "^Topic:"; then
-    fail "retry 전용 토픽이 존재합니다 (ADR-30 위반): ${RETRY_TOPIC}"
+    fail "retry 전용 토픽이 존재합니다 (정책 위반): ${RETRY_TOPIC}"
     FAIL_COUNT=$((FAIL_COUNT + 1))
   else
     info "확인 불가 (무시): ${RETRY_TOPIC}"
@@ -180,7 +179,7 @@ done
 echo ""
 echo "======================================================="
 if [[ "${FAIL_COUNT}" -eq 0 ]]; then
-  pass "전체 검증 통과 (ADR-30 준수)"
+  pass "전체 검증 통과"
   echo "======================================================="
   exit 0
 else

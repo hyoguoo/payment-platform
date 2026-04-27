@@ -37,7 +37,7 @@ public enum PaymentEventStatus {
     /**
      * 일반 보상 경로(executePaymentFailureCompensationWithOutbox)에서 재고 복원이 허용되는 상태인지 반환한다.
      * READY, IN_PROGRESS, RETRYING만 보상 대상이며, 이 세 상태에서만 재고 차감이 발생했을 수 있다.
-     * QUARANTINED는 T1-12 QuarantineCompensationHandler가 전담 처리하므로 여기서는 false.
+     * QUARANTINED 는 QuarantineCompensationHandler 가 전담 처리하므로 여기서는 false.
      * DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED(terminal)도 이미 처리 완료이므로 false.
      */
     public boolean isCompensatableByFailureHandler() {

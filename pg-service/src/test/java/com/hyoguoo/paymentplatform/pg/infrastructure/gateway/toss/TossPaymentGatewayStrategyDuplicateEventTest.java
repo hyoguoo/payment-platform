@@ -75,7 +75,7 @@ class TossPaymentGatewayStrategyDuplicateEventTest {
         }
 
         assertThat(eventClassExists)
-                .as("DuplicateApprovalDetectedEvent 클래스가 pg.application.event 패키지에 존재해야 함 — K13 신설")
+                .as("DuplicateApprovalDetectedEvent 클래스가 pg.application.event 패키지에 존재해야 한다 (cycle 단절용 이벤트)")
                 .isTrue();
     }
 }

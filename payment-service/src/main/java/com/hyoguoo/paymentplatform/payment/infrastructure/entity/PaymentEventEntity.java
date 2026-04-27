@@ -52,7 +52,7 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "payment_key")
     private String paymentKey;
 
-    // DB 컬럼 바인딩 전용. Phase 2 cutover 이후 payment-service는 벤더 직접 호출 경로 없음 (ADR-02, ADR-21).
+    // DB 컬럼 바인딩 전용 — payment-service 는 벤더를 직접 호출하지 않는다(pg-service 가 전담).
     @Enumerated(EnumType.STRING)
     @Column(name = "gateway_type", nullable = false)
     private PaymentGatewayType gatewayType;
@@ -76,8 +76,8 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "last_status_changed_at")
     private LocalDateTime lastStatusChangedAt;
 
-    // DB 컬럼 quarantine_compensation_pending 은 스키마에 유지됨(ddl-auto 개발 단계).
-    // 도메인에서는 제거됨 — QUARANTINED는 홀딩 상태이며 재고 복구 대상이 아니다 (ADR-15).
+    // DB 컬럼 quarantine_compensation_pending 은 스키마에 유지(dead column — 후속 V2 ALTER 정리 대상).
+    // 도메인에서는 제거 — QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아니다.
 
     public static PaymentEventEntity from(PaymentEvent paymentEvent) {
         return PaymentEventEntity.builder()

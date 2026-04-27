@@ -1,5 +1,5 @@
 -- payment-service Flyway baseline.
--- ADR-23: payment 도메인 전용 MySQL 인스턴스(`payment-platform`) 의 단일 baseline.
+-- payment 도메인 전용 MySQL 인스턴스(`payment-platform`) 의 단일 schema baseline.
 
 -- ─────────────────────────────────────────────────────────
 -- payment_event
@@ -18,8 +18,10 @@ CREATE TABLE payment_event (
     retry_count                    INT,
     status_reason                  VARCHAR(255),
     last_status_changed_at         DATETIME(6),
-    -- 컬럼 자체는 스키마 호환성을 위해 유지(도메인 매핑은 제거됨).
-    -- ADR-15: QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아님 — 복구는 FAIL 경로에서만 수행.
+    -- DEAD COLUMN — JPA Entity 매핑 0 (T3.5-07 이후 도메인 매핑 제거).
+    -- 운영 환경에 이미 컬럼이 있는 곳과의 schema 호환성을 위해 V1 baseline 에 잔존시킨다.
+    -- 신규 환경에서는 NOT NULL DEFAULT FALSE 로 자동 채워질 뿐 read/write 경로 없음.
+    -- 향후 별도 토픽에서 V2 ALTER 로 DROP 검토 (TODOS).
     quarantine_compensation_pending BOOLEAN        NOT NULL DEFAULT FALSE,
     created_at                     DATETIME,
     updated_at                     DATETIME,
@@ -54,7 +56,7 @@ CREATE TABLE payment_order (
 
 -- ─────────────────────────────────────────────────────────
 -- payment_outbox
--- ADR-30: 지수 백오프 지연 발행용 available_at 컬럼 포함.
+-- 지수 백오프 지연 발행용 available_at 컬럼 포함.
 -- OutboxPollingWorker: WHERE status IN ('PENDING','IN_FLIGHT') AND available_at <= NOW()
 -- ─────────────────────────────────────────────────────────
 CREATE TABLE payment_outbox (
@@ -64,7 +66,7 @@ CREATE TABLE payment_outbox (
     retry_count   INT          NOT NULL DEFAULT 0,
     next_retry_at DATETIME(6),
     in_flight_at  DATETIME(6),
-    -- ADR-30 지수 백오프 지연 발행용: 폴링 기준 컬럼, DEFAULT = 즉시 발행
+    -- 지수 백오프 지연 발행용 폴링 기준 컬럼, DEFAULT = 즉시 발행
     available_at  DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     created_at    DATETIME,
     updated_at    DATETIME,

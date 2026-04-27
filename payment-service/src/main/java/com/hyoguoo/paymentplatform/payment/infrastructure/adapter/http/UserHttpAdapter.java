@@ -20,9 +20,9 @@ import org.springframework.web.reactive.function.client.WebClientRequestExceptio
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * user-service HTTP 어댑터 (ADR-02).
- * UserPort 구현체. user.adapter.type=http 프로파일 활성화 시 사용.
- * Resilience4j @CircuitBreaker는 이 클래스 내부 메서드에 Phase 4에서 설치 예정 — port 인터페이스 오염 금지(ADR-22).
+ * user-service HTTP 어댑터.
+ * UserPort 구현체로, {@code user.adapter.type=http} 프로파일에서 활성화된다.
+ * Resilience4j {@code @CircuitBreaker} 는 Phase 4 에서 이 클래스 내부 메서드에 설치한다 — port 인터페이스는 회복성 어노테이션으로부터 격리된 채로 유지한다.
  */
 @Slf4j
 @Component

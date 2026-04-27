@@ -12,8 +12,7 @@ import org.springframework.stereotype.Component;
  * <p>직렬화 실패는 well-formed record 입력에서는 발생하지 않는 불변 위반이므로
  * IllegalStateException 으로 상위에 알려 TX 롤백을 유도한다.
  *
- * <p>K9b: infrastructure.messaging.event → application.dto.event 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
+ * <p>application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
  */
 @Component
 @RequiredArgsConstructor

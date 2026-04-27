@@ -4,12 +4,11 @@ import java.math.BigDecimal;
 
 /**
  * BigDecimal ↔ long 금액 변환 유틸리티.
- * discuss-domain-5 minor: 원화 최소 단위는 정수 — fractional digit 거부.
+ * 원화 최소 단위는 정수 — fractional digit 은 거부한다.
  *
- * <p>K9c: ADR-19 복제(b) 방침 — 모듈 간 공유 jar 금지.
- * pg-service {@code pg.application.util.AmountConverter} 의 독립 복제본.
- * 두 서비스가 동일 변환 규약을 독립적으로 보유한다.
- * 변경 시 양쪽을 함께 갱신한다 ({@code AmountConverterTest} 가 동기화를 검증한다).
+ * <p>모듈 간 공유 jar 금지 방침에 따라 pg-service 의 동일 이름 클래스와 1:1 독립 복제본이다.
+ * 두 서비스가 같은 변환 규약을 따로 들고 있으므로, 변경 시 양쪽을 함께 갱신한다
+ * ({@code AmountConverterTest} 가 동기화를 검증한다).
  */
 public final class AmountConverter {
 

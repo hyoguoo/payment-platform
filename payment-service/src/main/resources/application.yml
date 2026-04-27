@@ -86,7 +86,7 @@ payment:
       host: ${REDIS_STOCK_HOST:localhost}
       port: ${REDIS_STOCK_PORT:6380}
   event-dedupe:
-    ttl: P8D  # Kafka retention(7d) + 복구 버퍼(1d) = 8일. product-service StockRestoreUseCase.DEDUPE_TTL 과 정렬.
+    ttl: P8D  # Kafka retention(7d) + 복구 버퍼(1d) = 8일. product-service StockCommitUseCase.DEDUPE_TTL 과 정렬.
     lease-ttl: PT5M  # two-phase lease 의 처리 권한 초기 잠금 TTL. processMessage 성공 시 ttl(P8D)로 연장.
   retry:
     max-attempts: 5

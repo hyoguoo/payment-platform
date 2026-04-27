@@ -7,8 +7,7 @@ import java.util.Optional;
 
 /**
  * pg-service outbound 포트 — outbox 저장소 계약.
- * ADR-04: Transactional Outbox 패턴, ADR-30: available_at 지연 발행.
- * 구현체(JPA 어댑터)는 T2a-04에서 추가.
+ * Transactional Outbox 패턴 + available_at 기반 지연 발행.
  */
 public interface PgOutboxRepository {
 
@@ -23,7 +22,7 @@ public interface PgOutboxRepository {
 
     void markProcessed(long id, Instant processedAt);
 
-    // ── 관측 지표 집계 (T2d-02, ADR-31) ────────────────────────────────────────
+    // ── 관측 지표 집계 (Prometheus gauge) ───────────────────────────────────────
 
     /**
      * processedAt=null AND availableAt &lt;= now 인 row 수를 반환한다 (현재 처리 가능한 pending).

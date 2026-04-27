@@ -23,7 +23,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 /**
  * UserHttpAdapter 404/503/429/500 응답 분기 계약 테스트.
  *
- * <p>T3.5-10 산출물. f3e0334f 수습분 회귀 방지:
+ * <p>contract test — 서브도메인 404/5xx 매핑 회귀 방지:
  * <ul>
  *   <li>404 → UserNotFoundException (PaymentErrorCode.USER_NOT_FOUND)</li>
  *   <li>503 → UserServiceRetryableException (USER_SERVICE_UNAVAILABLE)</li>

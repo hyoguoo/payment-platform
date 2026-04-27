@@ -6,10 +6,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * EventDedupeStore Fake — in-memory 구현체.
- * ADR-04(2단 멱등성): 메시지 레벨 eventUUID dedupe 테스트용.
+ * 메시지 레벨 eventUUID dedupe 테스트용.
  *
  * <p>Thread-safe: ConcurrentHashMap.newKeySet() 기반.
- * 실제 Redis 구현체는 Phase 2.b+ 후속 태스크에서 추가 예정.
  */
 public class FakeEventDedupeStore implements EventDedupeStore {
 

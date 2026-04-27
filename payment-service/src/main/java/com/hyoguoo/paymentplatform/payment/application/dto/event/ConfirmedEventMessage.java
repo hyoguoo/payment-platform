@@ -14,11 +14,10 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
  * OffsetDateTime.parse 후 markPaymentAsDone 의 인자로 들어간다.
  *
  * <p>필드 선언 순서는 pg-service {@code ConfirmedEventPayload} 와 동일해야 하며 {@code @JsonPropertyOrder} 로
- * 직렬화 순서까지 강제한다. 두 모듈은 공유 JAR 없이 독립 복제이므로 {@code ConfirmedEventSchemaParityTest} 가
+ * 직렬화 순서까지 강제한다. 두 모듈은 공유 jar 없이 독립 복제이므로 {@code ConfirmedEventSchemaParityTest} 가
  * 양쪽의 동기화를 검증한다.
  *
- * <p>K9b: infrastructure.messaging.consumer.dto → application.dto.event 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
+ * <p>application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
  *
  * @param orderId    주문 ID
  * @param status     결제 결과 상태 (APPROVED, FAILED, QUARANTINED)

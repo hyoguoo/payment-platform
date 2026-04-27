@@ -11,18 +11,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * K5 RED: PgInbox 도메인 메서드 시간 결정성 검증.
+ * PgInbox 도메인 메서드 시간 결정성 검증.
  *
- * <p>fixed Instant 를 파라미터로 전달하면
- * markInProgress(updatedAt) / markApproved(result, updatedAt) 등이
- * 해당 시각을 updatedAt으로 정확히 설정해야 한다.
- * 현재 도메인 메서드 내부에서 Instant.now()를 직접 호출하므로
- * 시간 결정성 검증 불가 → 파라미터 추가 전에는 컴파일 에러(RED).
+ * <p>fixed Instant 를 파라미터로 전달하면 markInProgress(updatedAt) / markApproved(result, updatedAt) 등이
+ * 해당 시각을 updatedAt 으로 정확히 설정해야 한다.
  *
- * <p>PgInboxRepositoryImpl Clock 주입 검증은 JPA 의존 없이
- * 도메인 메서드 시그니처 변경으로 범위를 제한한다.
+ * <p>PgInboxRepositoryImpl Clock 주입 검증은 JPA 의존 없이 도메인 메서드 시그니처 변경으로 범위를 제한한다.
  */
-@DisplayName("PgInbox — K5 시간 결정성 (fixed Instant 파라미터)")
+@DisplayName("PgInbox — 시간 결정성 (fixed Instant 파라미터)")
 class PgInboxClockTest {
 
     private static final String ORDER_ID = "order-k5-inbox-001";
@@ -33,13 +29,12 @@ class PgInboxClockTest {
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
 
     /**
-     * TC-K5-INBOX-1: PgInbox.create(orderId, amount, now) 로 생성 시
-     * createdAt / updatedAt 이 fixed instant 와 일치.
+     * PgInbox.create(orderId, amount, now) 로 생성 시 createdAt / updatedAt 이 fixed instant 와 일치.
      */
     @Test
     @DisplayName("create — fixed Instant 파라미터로 생성 시 createdAt/updatedAt 일치")
     void create_withFixedInstant_shouldSetCreatedAtAndUpdatedAt() {
-        // when: K5 — create(orderId, amount, now) 오버로드 필요
+        // when:create(orderId, amount, now) 오버로드 필요
         PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, FIXED_INSTANT);
 
         // then
@@ -49,7 +44,7 @@ class PgInboxClockTest {
     }
 
     /**
-     * TC-K5-INBOX-2: markInProgress(updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
+     * markInProgress(updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
      */
     @Test
     @DisplayName("markInProgress — fixed updatedAt 파라미터 시 updatedAt 일치")
@@ -59,7 +54,7 @@ class PgInboxClockTest {
 
         Instant laterInstant = FIXED_INSTANT.plusSeconds(10);
 
-        // when: K5 — markInProgress(updatedAt) 오버로드 필요
+        // when:markInProgress(updatedAt) 오버로드 필요
         inbox.markInProgress(laterInstant);
 
         // then
@@ -68,7 +63,7 @@ class PgInboxClockTest {
     }
 
     /**
-     * TC-K5-INBOX-3: markApproved(result, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
+     * markApproved(result, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
      */
     @Test
     @DisplayName("markApproved — fixed updatedAt 파라미터 시 updatedAt 일치")
@@ -79,7 +74,7 @@ class PgInboxClockTest {
 
         Instant laterInstant = FIXED_INSTANT.plusSeconds(20);
 
-        // when: K5 — markApproved(result, updatedAt) 오버로드 필요
+        // when:markApproved(result, updatedAt) 오버로드 필요
         inbox.markApproved("vendor-result", laterInstant);
 
         // then
@@ -88,7 +83,7 @@ class PgInboxClockTest {
     }
 
     /**
-     * TC-K5-INBOX-4: markFailed(result, reasonCode, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
+     * markFailed(result, reasonCode, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
      */
     @Test
     @DisplayName("markFailed — fixed updatedAt 파라미터 시 updatedAt 일치")
@@ -99,7 +94,7 @@ class PgInboxClockTest {
 
         Instant laterInstant = FIXED_INSTANT.plusSeconds(30);
 
-        // when: K5 — markFailed(result, reasonCode, updatedAt) 오버로드 필요
+        // when:markFailed(result, reasonCode, updatedAt) 오버로드 필요
         inbox.markFailed("vendor-fail-result", "VENDOR_REJECTED", laterInstant);
 
         // then
@@ -108,7 +103,7 @@ class PgInboxClockTest {
     }
 
     /**
-     * TC-K5-INBOX-5: markQuarantined(result, reasonCode, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
+     * markQuarantined(result, reasonCode, updatedAt) 에 fixed Instant 전달 시 updatedAt 일치.
      */
     @Test
     @DisplayName("markQuarantined — fixed updatedAt 파라미터 시 updatedAt 일치")
@@ -119,7 +114,7 @@ class PgInboxClockTest {
 
         Instant laterInstant = FIXED_INSTANT.plusSeconds(40);
 
-        // when: K5 — markQuarantined(result, reasonCode, updatedAt) 오버로드 필요
+        // when:markQuarantined(result, reasonCode, updatedAt) 오버로드 필요
         inbox.markQuarantined(null, "RETRY_EXHAUSTED", laterInstant);
 
         // then

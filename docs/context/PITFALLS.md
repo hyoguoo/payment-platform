@@ -9,7 +9,7 @@
 
 **원인**: `@PublishDomainEvent` + `@PaymentStatusChange` AOP 가 `markPaymentAsDone` / `markPaymentAsFail` / `markPaymentAsRetrying` / `markPaymentAsQuarantined` 메서드에만 부착돼 있다. 직접 도메인 메서드 + save 호출은 AOP 우회.
 
-**처방** (PRE-PHASE-4 K15):
+**처방**:
 - 모든 상태 전이를 `PaymentCommandUseCase` 위임 메서드로 일원화
 - 직접 `done() + save()` 패턴 코드 리뷰에서 차단
 
@@ -30,7 +30,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: Kafka broker 가 느려지면 `KafkaTemplate.send().get()` 가 트랜잭션 안에서 대기 → Hikari 커넥션 점유 → 풀 고갈 → cascade 장애.
 
-**처방** (PRE-PHASE-4 D2):
+**처방**:
 - TX 안에서는 `ApplicationEventPublisher.publishEvent()` 만
 - 실제 Kafka publish 는 `@TransactionalEventListener(AFTER_COMMIT)` 리스너에서
 - `@Transactional(timeout=5)` 명시로 외부 호출 끼어 있는 경로의 점유 한계 시각화
@@ -39,7 +39,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: `whenComplete((res, ex) -> ...)` 로 콜백 등록만 하고 main thread 가 outbox.done() 처리 → broker 미도달 시 메시지 유실.
 
-**처방** (PRE-PHASE-4 D5):
+**처방**:
 - `KafkaTemplate.send().get(timeout)` 동기 호출
 - broker 도달 보장 후 outbox 상태 변경
 - timeout 명시로 무한 대기 방지
@@ -57,7 +57,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: 테스트에서 시간 위조 불가 → 시간 의존 분기를 단정하기 어려움.
 
-**처방** (PRE-PHASE-4 T-A2):
+**처방**:
 - `LocalDateTimeProvider` 주입
 - 테스트는 위조된 Provider 로 시각 고정
 
@@ -74,7 +74,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: pg 측에서만 amount 검증하고 payment 측은 받은 amount 신뢰 → pg 측 버그 / 메시지 변조 시 잘못된 amount 로 done() 처리.
 
-**처방** (PRE-PHASE-4 D1):
+**처방**:
 - pg 발행 시 APPROVED 라면 amount/approvedAt non-null 강제
 - payment 수신 시 `paymentEvent.totalAmount` vs `message.amount` 대조 → 불일치 시 QUARANTINED
 
@@ -82,15 +82,15 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: Kafka retention(7d) 안에 메시지가 재배달되는데 dedupe TTL 이 1h 면 중복 처리 발생.
 
-**처방** (PRE-PHASE-4 T-C1):
+**처방**:
 - dedupe TTL 기본 P8D (Kafka retention 7d + 복구 버퍼 1d)
-- 모든 모듈의 dedupe TTL 정렬 (`StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
+- 모든 모듈의 dedupe TTL 정렬 (`StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
 
 ## 10. Single-phase mark with long TTL
 
 **증상**: 처리 도중 워커 크래시 → markSeen 만 박아둔 상태에서 8일 동안 다른 워커가 재처리 못 함.
 
-**처방** (PRE-PHASE-4 T-C3 — two-phase lease):
+**처방** (two-phase lease):
 - `markWithLease(eventUuid, leaseTtl=PT5M)` — 짧은 lease 로 처리 권한
 - 처리 완료 시 `extendLease(eventUuid, longTtl=P8D)` 로 dedupe 윈도우 확장
 - 처리 실패 시 `remove(eventUuid)` → false 면 DLQ publish
@@ -99,7 +99,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: 다중 워커 동시 진입 또는 retry 후 응답 처리 직전 크래시 → 같은 결제에 재고 INCR 두 번 → 재고 발산.
 
-**처방** (PRE-PHASE-4 D12):
+**처방**:
 - `executePaymentFailureCompensationWithOutbox` 진입 시 TX 내 outbox + event 재조회
 - outbox 가 IN_FLIGHT AND event 가 비종결일 때만 재고 INCR
 - 한쪽이라도 종결된 흔적 있으면 재고 복구 skip + warn 로그
@@ -108,9 +108,9 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: HTTP → @Async → Kafka 경계에서 traceparent 가 끊김 → 사고 시 trace 추적 불가.
 
-**처방** (PRE-PHASE-4 T-E*):
+**처방**:
 - Spring `@Async` executor 가 OTel context 자동 전파하도록 wiring
-- Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 명시 wiring (T-J2)
+- Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 를 명시적으로 wiring
 - `OtelMdcMessageInterceptor` 로 consumer 측 traceparent → MDC 복원
 
 ## 13. NicePay paidAt offset 정규화
@@ -144,7 +144,7 @@ process(result);  // result 가 null 일 수 있음
 **증상**: payment 가 Redis 만 차감했는데 product RDB 와 발산.
 
 **원인**: 두 저장소의 역할이 분리되어 있다.
-- product-service mysql `stock` 테이블 = **진짜 잔고 (SoT)**. APPROVED 결제만 누적 차감 (`stock.events.commit`)
+- product-service mysql `stock` 테이블 = **진짜 잔고 (SoT)**. APPROVED 결제만 누적 차감 (`payment.events.stock-committed`)
 - redis-stock = payment-service 의 **선차감 게이트 캐시**. confirm 진입 시 Lua 원자 DECR 로 빠른 reject
 
 **처방** (이번 stock 모델 정리):
@@ -156,6 +156,20 @@ process(result);  // result 가 null 일 수 있음
 **알려진 한계**:
 - 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 추후 시점·정책 별도 정리 필요 (TODOS)
 - 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
+
+## 17. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
+
+**증상**: 클라이언트가 `GET /api/v1/payments/{orderId}/status` 폴링하는데 결제가 격리됐는데도 응답이 영영 `PROCESSING` 으로만 옴. 폴링 무한 루프.
+
+**원인**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 가 DONE / FAILED 만 명시적 매핑하고 나머지는 default = `PROCESSING`. QUARANTINED 는 도메인상 종결(`isTerminal()` true) 이지만 폴링 결과에선 종결 표현이 없다.
+
+**처방** (단기):
+- 클라이언트가 무한 폴링하지 않도록 timeout 정책을 client 측에 둠
+- admin 도구로 격리 결제를 검토 후 DONE / FAILED 강제 전이 → 폴링 자연 종료
+
+**처방** (장기):
+- `PaymentStatusResult.StatusType` 에 `QUARANTINED` 추가 + `mapEventStatus` 명시 매핑 → 클라이언트가 격리 상태를 인지하고 polling 종료
+- TODOS.md 의 admin 복구 도구(TQ-2 QUARANTINED-ADMIN-RECOVERY) 와 함께 진행
 
 ## 관련 자료
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-04-27 (MSA-TRANSITION + PRE-PHASE-4-HARDENING 봉인 시점)
+> 최종 갱신: 2026-04-27 (MSA 분리 + 결제 회복성 보강 봉인 시점)
 
 ## 개요
 
@@ -10,12 +10,12 @@ payment-platform 은 결제 도메인을 6개 Spring Boot 모듈로 분해한 MS
 |---|---|
 | `payment-service` | 결제 도메인 본체 — checkout / confirm / status. 비동기 confirm 사이클의 진입점이자 상태 권한자. PG 호출은 직접 하지 않고 Kafka 로 위임 |
 | `pg-service` | PG 벤더(Toss / NicePay) 호출 격리. `payment.commands.confirm` 소비 → 벤더 confirm/getStatus → `payment.events.confirmed` 발행 |
-| `product-service` | 상품 + 재고 도메인. payment-service 의 HTTP 조회와 Kafka stock 이벤트(`stock.events.commit/restore`) 처리 |
+| `product-service` | 상품 + 재고 도메인. payment-service 의 HTTP 조회와 Kafka stock 이벤트(`payment.events.stock-committed`) 처리 |
 | `user-service` | 사용자 도메인. payment-service 의 HTTP 조회 |
 | `gateway` | Spring Cloud Gateway — 단일 진입점(8090). Eureka 기반 라우팅 |
 | `eureka-server` | Netflix Eureka — 서비스 디스커버리 |
 
-각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)와 두 Redis(`redis-dedupe`, `redis-stock`)를 공유한다(ADR-23). Kafka 는 양방향 메시징의 척추.
+각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가지며, 두 Redis(`redis-dedupe`, `redis-stock`)를 용도별로 분리해 공유한다. Kafka 는 양방향 메시징의 척추.
 
 ## 토폴로지
 
@@ -64,7 +64,7 @@ flowchart LR
 
     Pay <-->|"payment.commands.confirm /\npayment.events.confirmed"| K
     K <--> Pg
-    Pay -->|"stock.events.commit/restore"| K
+    Pay -->|"payment.events.stock-committed"| K
     K --> Prod
 
     Pg -->|HTTP| Vendor["Toss / NicePay"]
@@ -99,11 +99,11 @@ flowchart LR
 
 | 토픽 | 발행 | 소비 | 책임 |
 |---|---|---|---|
-| `payment.commands.confirm` | payment-service | pg-service | confirm 명령 전달 |
-| `payment.commands.confirm.dlq` | payment-service / pg-service relay | (수동) | confirm 발행 실패 |
-| `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 |
-| `payment.events.confirmed.dlq` | payment-service | (수동) | 결과 처리 영구 실패 |
-| `stock.events.commit` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
+| `payment.commands.confirm` | payment-service (최초) + **pg-service self-retry** (attempt<4 시 자기 자신에게 재발행, `pg_outbox.available_at` 기반 지연) | pg-service | confirm 명령 전달 + 재시도 |
+| `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | (수동) | retry 한도 초과 격리 |
+| `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
+| `payment.events.confirmed.dlq` | payment-service (`PaymentConfirmDlqKafkaPublisher`, lease remove 실패 시) | (수동) | 결과 처리 영구 실패 |
+| `payment.events.stock-committed` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
 
 ## 비동기 어댑터 위치 (왜 어디 두는가)
 
@@ -115,13 +115,13 @@ flowchart LR
 | `OutboxWorker` (`@Scheduled`) | `payment-service/.../infrastructure/scheduler` | 폴링 폴백. Spring Scheduler 의존이라 infrastructure |
 | `ConfirmedEventConsumer` (`@KafkaListener`) | `payment-service/.../infrastructure/messaging/consumer` | Kafka 입력 어댑터 — `PaymentConfirmResultUseCase` 호출 |
 | `PgOutboxImmediateWorker` | `pg-service/.../infrastructure/scheduler` | pg 측 즉시 발행 워커. `PgOutboxChannel` BlockingQueue 와 SmartLifecycle 패턴 |
-| `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `stock.events.commit` Kafka publish (TX-publish 분리, ADR-D2 의 진화형) |
+| `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `payment.events.stock-committed` Kafka publish (TX 와 publish 분리) |
 
 ## 인프라 별 책임
 
 ### MySQL — 4 인스턴스
 
-각 서비스는 독립 DB 를 가진다(ADR-23). 분리 동기:
+각 서비스는 독립 DB 를 가진다. 분리 동기:
 - 도메인 경계에서 schema 결합 차단
 - 운영 시 백업/복구/스케일 분리
 - 코드 의존이 HTTP/Kafka 로만 가능 — DB 직접 join 금지
@@ -138,42 +138,42 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 ### Kafka
 
 - broker 1대(`kafka:9092`), KRaft 모드, auto-create 비활성
-- 토픽 사전 생성: `scripts/smoke/create-topics.sh` (ADR-30)
+- 토픽 사전 생성: `scripts/smoke/create-topics.sh`
 - 파티션 / replication-factor / min.insync.replicas 검증: `scripts/smoke/kafka-topic-config.sh`
-- Spring Kafka `@KafkaListener` + `KafkaTemplate`. Producer 측 traceparent 전파 위해 자체 생성 ProducerFactory 들에도 `ObservationRegistry` 명시 wiring (PRE-PHASE-4 T-J2)
+- Spring Kafka `@KafkaListener` + `KafkaTemplate`. Producer 측 traceparent 전파 위해 자체 생성 ProducerFactory 들에도 `ObservationRegistry` 를 명시적으로 wiring 한다.
 
 ### Eureka + Gateway
 
-- Eureka(`payment-eureka:8761`) — 5앱 등록(payment / pg / product / user / payment-gateway)
+- Eureka(`payment-eureka:8761`) — 5앱 등록 (PAYMENT-SERVICE / PG-SERVICE / PRODUCT-SERVICE / USER-SERVICE / GATEWAY — `spring.application.name` 기준 대문자화)
 - Gateway(`payment-gateway:8090`) — 외부 단일 진입점. Eureka discovery 기반 라우팅
 
 ## 횡단 관심사
 
 | 관심사 | 위치 | 비고 |
 |---|---|---|
-| Tracing | `core/config/AsyncConfig` 등 | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파 (PRE-PHASE-4 T-E*) |
+| Tracing | `core/config/AsyncConfig` 등 | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파 |
 | MDC + LogFmt | `core/log/LogFmt` | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
-| AOP `@PublishDomainEvent` + `@PaymentStatusChange` | `core/aspect` | `payment_history` audit trail 자동 기록 (PRE-PHASE-4 K15) |
+| AOP `@PublishDomainEvent` + `@PaymentStatusChange` | `core/aspect` | `payment_history` audit trail 자동 기록 |
 | Metrics | `core/metrics`, `infrastructure/metrics` | Micrometer + Prometheus. `payment_quarantined_total`, `stock_kafka_publish_fail_total` 등 |
 
-## ADR 인덱스 (현재 운영 중)
+## 핵심 설계 결정 인덱스 (현재 운영 중)
 
-| ADR | 제목 | 상태 |
-|---|---|---|
-| ADR-04 | 비동기 confirm 아키텍처 | 적용 — payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
-| ADR-13 | 격리 트리거 (CACHE_DOWN / 판단 불가) | 적용 — `QuarantineCompensationHandler` |
-| ADR-15 | AMOUNT_MISMATCH 양방향 방어 | 적용 — pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
-| ADR-16 | 분산 멱등성 store | 적용 — `redis-dedupe` two-phase lease |
-| ADR-21 | business inbox amount | 적용 — pg `pg_inbox.amount BIGINT` |
-| ADR-22 | HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
-| ADR-23 | DB 분리 | 적용 — 4 MySQL 인스턴스 |
-| ADR-30 | Kafka 토픽 + dedupe TTL 정책 | 적용 — 6 토픽 + DLQ 2종, dedupe TTL P8D |
-| ADR-D1 | `ConfirmedEvent` 계약 확장 (PRE-PHASE-4) | 적용 |
-| ADR-D2 | Stock publish AFTER_COMMIT 분리 (PRE-PHASE-4) | 적용 |
-| ADR-D3 | Redis DECR 보상 (PRE-PHASE-4) | 적용 |
-| ADR-D7 | Final Confirmation Gate (FCG) | 적용 — 복구 사이클 한도 소진 시 1회 재조회 |
-| ADR-D10 | RecoveryDecision 값 객체 | 적용 — payment 측 복구 판정 SSOT |
-| ADR-D12 | 재고 복구 가드 (TX 내 재조회) | 적용 — `executePaymentFailureCompensationWithOutbox` |
+| 결정 | 적용 위치 |
+|---|---|
+| 비동기 confirm 아키텍처 | payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
+| 격리 트리거 (CACHE_DOWN / 판단 불가) | `QuarantineCompensationHandler` |
+| AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
+| 분산 멱등성 store | `redis-dedupe` two-phase lease |
+| business inbox amount | pg `pg_inbox.amount BIGINT` |
+| HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
+| DB 분리 | 4 MySQL 인스턴스 (DB per service) |
+| Kafka 토픽 + dedupe TTL 정책 | 6 토픽 + DLQ 2종, dedupe TTL P8D |
+| `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |
+| Stock publish AFTER_COMMIT 분리 | TX commit 후 stock-committed 발행 |
+| Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
+| Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
+| RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |
+| 재고 복구 가드 (TX 내 재조회) | `executePaymentFailureCompensationWithOutbox` |
 
 상세 history 는 archive 안 토픽별 `COMPLETION-BRIEFING.md` / `*-CONTEXT.md`.
 

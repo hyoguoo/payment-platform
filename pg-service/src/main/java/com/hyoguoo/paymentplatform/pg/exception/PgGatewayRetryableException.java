@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.pg.exception;
 
 /**
  * pg-service 내부 PG 게이트웨이 재시도 가능 예외.
- * payment-service의 PaymentGatewayRetryableException 의존을 끊고 pg-service 독립 예외로 선언.
+ * 벤더 호출 실패 중 일시적 오류(네트워크 / 5xx 일부) 시 throw → 백오프 후 재시도 경로로 분기된다.
  */
 public class PgGatewayRetryableException extends RuntimeException {
 

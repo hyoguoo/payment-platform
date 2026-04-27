@@ -7,12 +7,10 @@ import java.math.BigDecimal;
  * payment.commands.confirm 토픽 payload (wire contract).
  * OutboxRelayService가 Kafka로 발행하는 confirm 명령 메시지.
  *
- * <p>ADR-04: Transactional Outbox publisher 계층.
- * 필드 구성은 pg-service consumer({@code PgConfirmCommand})와 정렬되어 있다.
- * 두 서비스는 공통 jar를 공유하지 않으므로(ADR-30), JSON 필드명 기준으로 1:1 매핑된다.
+ * <p>필드 구성은 pg-service consumer({@code PgConfirmCommand}) 와 1:1 정렬된다 — 두 서비스는
+ * 공통 jar 를 공유하지 않으므로 JSON 필드명 기준으로 매핑된다.
  *
- * <p>K9b: infrastructure.messaging.event → application.dto.event 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
+ * <p>application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
  *
  * @param orderId    주문 ID (Kafka 파티션 키로도 사용)
  * @param paymentKey PG 승인 시 필요한 결제 키

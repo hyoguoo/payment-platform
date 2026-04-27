@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Toss Payments 에러 코드 분류.
- * ADR-21 / ADR-30: pg-service 내부에서만 사용 — payment-service 미노출.
+ * pg-service 내부에서만 사용 — payment-service 에는 노출하지 않는다.
  *
  * <p>ALREADY_PROCESSED_PAYMENT 는 {@link TossPaymentGatewayStrategy}에서 DuplicateApprovalHandler
  * 로 분기되므로 {@link #isRetryableError()} / {@link #isFailure()} 양쪽에 포함하지 않는다.

@@ -53,8 +53,12 @@ public class RedisConfig {
         return new LettuceConnectionFactory(config, clientConfig);
     }
 
+    /**
+     * default StringRedisTemplate. {@code @Primary} 미부착 — RedisTemplate 타입으로 주입하는
+     * 자리에서 RedisTemplate primary 와 충돌하지 않도록 한다. EventDedupeStoreRedisAdapter 가
+     * 변수명 매칭(stringRedisTemplate)으로 default 빈을 직접 받으므로 충분하다.
+     */
     @Bean
-    @Primary
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
         return new StringRedisTemplate(redisConnectionFactory);
     }

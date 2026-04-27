@@ -119,13 +119,13 @@ class PgOutboxImmediateWorkerTest {
     }
 
     /**
-     * T3.5-12 — race window 노출 확률을 높이기 위해 50회 반복.
+     * race window 노출 확률을 높이기 위해 50회 반복.
      * 각 iteration 마다 setUp() 으로 새 worker / channel / publisher 가 초기화된다.
      *
      * <p>현재 시점에서는 FakePgOutboxRepository 가 processedAt 체크를 통한 멱등 보호만
      * 제공하므로 Immediate 와 Polling 사이에 미세한 시간차(10ms) 를 두어 상호 간섭을
      * 최소화한다. 실제 production 에서는 SELECT FOR UPDATE + 트랜잭션 경계가 이 보호를
-     * 강화한다 (ADR-04 Outbox 워커 디자인 주석 참고).
+     * 강화한다 (Transactional Outbox 워커 디자인 — repository 구현체 docstring 참고).
      *
      * <p>실패 시 재현: 실패한 currentRepetition 를 로그로 확인하고 단일 테스트로 분기한다.
      */

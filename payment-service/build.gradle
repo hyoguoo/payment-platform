@@ -20,7 +20,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // Service Discovery (ADR-11: Eureka 등록, docker 프로필에서만 활성화)
+    // Service Discovery (Eureka 등록 — docker 프로필에서만 활성화)
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     // Development Tools
@@ -48,17 +48,17 @@ dependencies {
     // Cache
     implementation 'com.github.ben-manes.caffeine:caffeine'
 
-    // Redis (ADR-16: distributed idempotency store)
+    // Redis — distributed idempotency store + redis-stock 선차감 캐시
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
-    // Kafka (ADR-02, ADR-11: payment 도메인 이벤트 발행)
+    // Kafka — payment 도메인 이벤트 양방향 (commands.confirm 발행 / events.confirmed 소비)
     implementation 'org.springframework.kafka:spring-kafka'
 
     // Monitoring
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
 
-    // W3C Trace Context (ADR-18): OTel bridge — Servlet 환경 MDC 주입. 버전은 Spring Boot BOM 관리
+    // W3C Trace Context: OTel bridge — Servlet 환경 MDC 주입 (버전은 Spring Boot BOM 관리)
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
@@ -67,9 +67,9 @@ dependencies {
     testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
     testImplementation "org.testcontainers:mysql"
     testImplementation "org.testcontainers:junit-jupiter"
-    // T1-08: StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
+    // StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
     testImplementation "org.testcontainers:testcontainers"
-    // T-E2: HttpOperatorImpl traceparent 전파 검증용 MockWebServer
+    // HttpOperatorImpl traceparent 전파 검증용 MockWebServer
     testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
 }
 

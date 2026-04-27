@@ -29,7 +29,7 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
                         @Param("fromStatus") PaymentOutboxStatus fromStatus,
                         @Param("now") LocalDateTime now);
 
-    // ── 관측 지표 집계 (T2d-02, ADR-31) ─────────────────────────────────────────
+    // ── 관측 지표 집계 (Prometheus gauge) ───────────────────────────────────────
 
     @Query("SELECT COUNT(e) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING'")
     long countPending();

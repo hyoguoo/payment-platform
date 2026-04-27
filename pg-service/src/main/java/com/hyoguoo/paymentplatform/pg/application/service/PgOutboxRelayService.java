@@ -16,9 +16,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * pg-service Transactional Outbox relay.
- * ADR-04: PgEventPublisherPort를 경유해서만 발행 — KafkaTemplate 직접 호출 금지.
- * ADR-30: pg_outbox는 별도 status 컬럼 없이 processed_at만 존재.
- *         available_at 기반 지연 발행, 멱등성은 워커 루프(processed_at IS NULL AND available_at ≤ NOW)가 담당.
+ * PgEventPublisherPort 를 경유해서만 발행한다 — KafkaTemplate 직접 호출 금지.
+ * pg_outbox 는 별도 status 컬럼 없이 processed_at 만 존재한다.
+ * available_at 기반 지연 발행이고, 멱등성은 워커 루프(processed_at IS NULL AND available_at ≤ NOW) 가 담당한다.
  *
  * <p>relay(id) 처리 순서:
  * <ol>

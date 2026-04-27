@@ -27,8 +27,8 @@ import static org.mockito.Mockito.mock;
 
 /**
  * PaymentConfirmDlqConsumer(PgDlqService) 단위 테스트.
- * ADR-30(DLQ 전용 consumer 분리) + 불변식 6c(terminal 중복 흡수) 검증.
- * domain_risk=true: QUARANTINED 전이 원자성 + no-op 중복 방어 시나리오 커버.
+ * DLQ 전용 consumer 분리 + terminal 중복 흡수 동작을 검증한다.
+ * domain_risk=true — QUARANTINED 전이 원자성 + no-op 중복 방어 시나리오 커버.
  */
 @DisplayName("PaymentConfirmDlqConsumer(PgDlqService)")
 class PaymentConfirmDlqConsumerTest {
@@ -145,13 +145,13 @@ class PaymentConfirmDlqConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: PaymentConfirmDlqConsumer는 PaymentConfirmConsumer와 다른 bean (ADR-30 수락 기준)
+    // TC4: PaymentConfirmDlqConsumer 는 PaymentConfirmConsumer 와 다른 bean
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("dlq_consumer — PaymentConfirmDlqConsumer는 PaymentConfirmConsumer와 물리적으로 다른 클래스 (ADR-30)")
+    @DisplayName("dlq_consumer — PaymentConfirmDlqConsumer 는 PaymentConfirmConsumer 와 물리적으로 다른 클래스")
     void dlq_consumer_WhenConsumerItself_ShouldBeDifferentBeanFromNormalConsumer() {
-        // ADR-30: DLQ consumer는 PaymentConfirmConsumer와 별도 Spring bean (다른 클래스)
+        // DLQ consumer 는 PaymentConfirmConsumer 와 별도 Spring bean (groupId 분리, 다른 클래스)
         assertThat(PaymentConfirmDlqConsumer.class)
                 .isNotEqualTo(PaymentConfirmConsumer.class);
 

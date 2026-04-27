@@ -21,7 +21,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Fake PG 벤더 전략 — phase-3-integration-smoke 전용.
+ * Fake PG 벤더 전략 — happy-path 통합 스모크 전용.
  *
  * <p><b>production 환경에서 절대 활성화 금지.</b>
  * 활성화 조건: {@code pg.gateway.type=fake} (smoke 프로파일에서만 override).

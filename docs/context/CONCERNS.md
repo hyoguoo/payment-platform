@@ -9,11 +9,11 @@
 
 - **현황**: 실제 broker / DB / vendor 장애 시 회복성을 단위 테스트는 검증하지만 통합 환경에서 8가지 시나리오(Kafka 지연, DB 지연, 프로세스 kill+재시작, 보상 중복 방지, FCG PG timeout, Redis 다운, 재고 캐시 발산, DLQ 소진) 전수 미검증
 - **영향**: 운영 환경 실 장애 시 추측에 의존
-- **처방**: Phase 4 의 T4-01 — Toxiproxy + k6 부하 + 메트릭 검증
+- **처방**: Phase 4 — Toxiproxy + k6 부하 + 메트릭 검증
 
 ### C-2. CircuitBreaker 미적용 — cross-service HTTP
 
-- **현황**: `ProductHttpAdapter` / `UserHttpAdapter` 가 `try/catch` + 재시도. ADR-22 대로라면 Resilience4j CircuitBreaker 가 들어가야 함
+- **현황**: `ProductHttpAdapter` / `UserHttpAdapter` 가 `try/catch` + 재시도만 적용 — Resilience4j CircuitBreaker 는 Phase 4 에서 도입 예정
 - **영향**: product/user 서비스 장애 시 payment-service 가 같이 끌려갈 위험
 - **처방**: Phase 4 — CircuitBreaker 적용 + p95 latency 메트릭
 
@@ -93,12 +93,12 @@
 | ~~Sync/Outbox/Kafka 3전략 분리의 복잡도~~ | `outbox-only-refactor` archive — 단일 비동기 경로 |
 | ~~UNKNOWN 상태의 조용한 흡수~~ | `payment-double-fault-recovery` archive — `PaymentGatewayStatusUnmappedException` |
 | ~~payment-service Flyway 비대칭~~ | 이번 봉인 — Flyway 통일 |
-| ~~AMOUNT_MISMATCH 단방향~~ | PRE-PHASE-4 D1 |
-| ~~stock publish 가 TX 안에서 Hikari 점유~~ | PRE-PHASE-4 D2 |
-| ~~Redis DECR 보상 부재~~ | PRE-PHASE-4 D3 |
-| ~~payment-history audit 누락 (직접 done() 호출)~~ | PRE-PHASE-4 K15 |
-| ~~consumer groupId 공유로 토픽 간 백압~~ | PRE-PHASE-4 D6 |
-| ~~outbox immediate worker 의 race~~ | PRE-PHASE-4 T3.5-12 — `@RepeatedTest(50)` 검증 |
+| ~~AMOUNT_MISMATCH 단방향~~ | PRE-PHASE-4 — pg → payment 양방향 amount 대조 |
+| ~~stock publish 가 TX 안에서 Hikari 점유~~ | PRE-PHASE-4 — AFTER_COMMIT 분리 |
+| ~~Redis DECR 보상 부재~~ | PRE-PHASE-4 — caller 측 try/catch 보상 |
+| ~~payment-history audit 누락 (직접 done() 호출)~~ | PRE-PHASE-4 — `@PublishDomainEvent` AOP 강제 |
+| ~~consumer groupId 공유로 토픽 간 백압~~ | PRE-PHASE-4 — groupId 토픽별 분리 |
+| ~~outbox immediate worker 의 race~~ | PRE-PHASE-4 — `@RepeatedTest(50)` 검증 |
 | ~~문서/스킬에 옛 3전략 어조 잔재~~ | 이번 봉인 + context 갈아엎기 |
 
 ## 관련

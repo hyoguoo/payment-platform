@@ -18,7 +18,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 **공통 인터페이스** (`PgGatewayPort`):
 - `confirm(PgConfirmCommand)` → `PgConfirmResult` (APPROVED / FAILED / QUARANTINED 결과 + amount + approvedAtRaw)
-- `getStatus(orderId)` → 벤더 상태 조회 (복구 사이클 진입 전 선행 호출 — ADR-D1 reverse direction)
+- `getStatus(orderId)` → 벤더 상태 조회 (복구 사이클 진입 전 선행 호출 — Final Confirmation Gate)
 - `cancel(...)` (구조 존재, 운영 활용 별도)
 
 ## Toss Payments
@@ -48,7 +48,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 - retryable 분류: 타임아웃 / 5xx / 매핑 불가 — `PaymentRetryableException` 또는 `PaymentTossRetryableException`. 복구 사이클이 RETRY_LATER 로 처리
 - non-retryable: 4xx / PG_NOT_FOUND — 즉시 COMPLETE_FAILURE 분기
-- AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어, ADR-15 + ADR-D1)
+- AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
 
 ## Cross-service HTTP
 
@@ -59,9 +59,9 @@ payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eurek
 | product 조회 | `GET /api/products/{id}` 등 | `ProductHttpAdapter` (payment-service 측) |
 | user 조회 | `GET /api/users/{id}` | `UserHttpAdapter` (payment-service 측) |
 
-**공통 어댑터** `HttpOperatorImpl` 가 traceparent 헤더 자동 주입. `MockWebServer` 기반 contract test 로 404/503/429/500 분기 계약 고정 (T3.5-10 + T-E2).
+**공통 어댑터** `HttpOperatorImpl` 가 traceparent 헤더 자동 주입. `MockWebServer` 기반 contract test 로 404/503/429/500 분기 계약을 고정한다.
 
-**회복성**: 현재 `try/catch` + 재시도. **CircuitBreaker 는 Phase 4 예정** (ADR-22).
+**회복성**: 현재 `try/catch` + 재시도. **CircuitBreaker 는 Phase 4 예정**.
 
 ## 외부 시스템 통신 매트릭스
 
@@ -73,8 +73,12 @@ payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eurek
 | gateway | user-service | HTTP | Eureka 라우팅 |
 | payment-service | product-service | HTTP | `GET /api/products/*` |
 | payment-service | user-service | HTTP | `GET /api/users/*` |
-| payment-service ↔ pg-service | Kafka | bidirectional | `payment.commands.confirm` / `payment.events.confirmed` (+ DLQ 2종) |
-| payment-service → product-service | Kafka | one-way | `stock.events.commit` (APPROVED 시만 — RDB 누적 차감 ledger) |
+| payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
+| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry, attempt < 4) — `pg_outbox.available_at` 기반 지연 발행 |
+| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (attempt ≥ 4 시 격리, `PgVendorCallService.insertDlqOutbox`) |
+| pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
+| payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (`PaymentConfirmDlqKafkaPublisher` — 결과 처리 영구 실패 시) |
+| payment-service → product-service | Kafka | one-way | `payment.events.stock-committed` (APPROVED 시만 — RDB 누적 차감 ledger) |
 | pg-service → 벤더 | HTTP | one-way | Toss / NicePay confirm/getStatus |
 
 ## 관측성 통합

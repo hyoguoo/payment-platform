@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * PgInboxRepository Fake — DB 없이 application 계층 테스트용.
  *
  * <p>Thread-safe: ConcurrentHashMap.
- * orderId를 키로 단일 inbox 행을 관리한다 (ADR-21: UNIQUE 제약 반영).
+ * orderId 를 키로 단일 inbox 행을 관리한다 (UNIQUE 제약 반영).
  */
 public class FakePgInboxRepository implements PgInboxRepository {
 
@@ -33,7 +33,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
 
     /**
      * NONE → IN_PROGRESS 원자 compare-and-set.
-     * ADR-04: 동시 진입 시 단 1 스레드만 true를 반환한다.
+     * 동시 진입 시 단 1 스레드만 true 를 반환한다.
      *
      * <p>구현 방식:
      * <ul>

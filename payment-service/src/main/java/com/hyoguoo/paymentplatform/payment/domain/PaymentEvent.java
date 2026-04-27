@@ -98,8 +98,8 @@ public class PaymentEvent {
         if (approvedAt == null) {
             throw PaymentStatusException.of(PaymentErrorCode.MISSING_APPROVED_AT);
         }
-        // ADR-K2 Finding 2: fail()의 isTerminal no-op 패턴과 동일하게 DONE→DONE 자기전이를 no-op으로 처리.
-        // 허용 목록에서 DONE을 제거하고 isTerminal 가드로 통일하면 CANCELED/EXPIRED 등도 no-op이 되어
+        // fail() 의 isTerminal no-op 패턴과 동일하게 DONE→DONE 자기전이를 no-op 으로 처리한다.
+        // 허용 목록에서 DONE 을 빼고 isTerminal 가드로 통일하면 CANCELED/EXPIRED 도 no-op 이 되어
         // 의미가 달라지므로, DONE 단독 가드만 적용한다.
         if (this.status == PaymentEventStatus.DONE) {
             return;
@@ -161,9 +161,8 @@ public class PaymentEvent {
 
     public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
         if (this.status.isTerminal()) {
-            // ADR-K2 Finding 9: 도메인 이중 가드 — 종결 상태 → QUARANTINED 역전이 불가.
-            // 다른 도메인 메서드와 동일하게 PaymentStatusException.of 패턴으로 통일.
-            // INVALID_STATUS_TO_QUARANTINE(E03026)은 정의만 되고 미사용이었으나 여기서 사용.
+            // 도메인 이중 가드 — 종결(terminal) 상태 → QUARANTINED 역전이는 허용하지 않는다.
+            // 다른 도메인 메서드와 동일하게 PaymentStatusException.of 패턴으로 통일한다.
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE);
         }
         this.status = PaymentEventStatus.QUARANTINED;

@@ -6,11 +6,9 @@
  *
  * <p>예:
  * <ul>
- *   <li>{@code ConfirmedEventMessage} — pg-service에서 수신하는 결제 확정 결과 메시지</li>
- *   <li>{@code StockCommittedEvent} — product-service로 발행하는 재고 커밋 요청</li>
- *   <li>{@code StockRestoreEvent} — product-service로 발행하는 재고 복원 요청</li>
- *   <li>{@code PaymentConfirmCommandMessage} — pg-service로 발행하는 결제 확정 명령</li>
- *   <li>{@code StockSnapshotEvent} — product-service에서 수신하는 재고 스냅샷</li>
+ *   <li>{@code ConfirmedEventMessage} — pg-service 에서 수신하는 결제 확정 결과 메시지</li>
+ *   <li>{@code StockCommittedEvent} — product-service 로 발행하는 재고 차감 요청 (APPROVED 결과 전용)</li>
+ *   <li>{@code PaymentConfirmCommandMessage} — pg-service 로 발행하는 결제 확정 명령</li>
  * </ul>
  *
  * <p>JVM 내부 Spring ApplicationEvent는 {@code application.event} 패키지에 배치한다.

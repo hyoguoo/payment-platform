@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * K14 RED: PgStatusLookupStrategySelector — vendorType 기반 전략 분기 단위 테스트.
+ * PgStatusLookupStrategySelector 단위 테스트 — vendorType 기반 전략 분기 검증.
  *
  * <p>불변식:
  * <ul>

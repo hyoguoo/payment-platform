@@ -21,19 +21,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service DLQ 전용 처리 서비스.
- * ADR-30(T2b-02): PaymentConfirmDlqConsumer로부터 위임받아 단일 TX 내에서
+ * PaymentConfirmDlqConsumer로부터 위임받아 단일 TX 내에서
  * pg_inbox QUARANTINED 전이 + pg_outbox(payment.events.confirmed) row INSERT를 수행한다.
  *
  * <p>처리 흐름:
  * <ol>
  *   <li>pg_inbox FOR UPDATE 조회 (중복 DLQ 메시지 방어).</li>
- *   <li>이미 terminal(APPROVED/FAILED/QUARANTINED)이면 no-op (불변식 6c).</li>
+ *   <li>이미 terminal(APPROVED/FAILED/QUARANTINED)이면 no-op.</li>
  *   <li>그렇지 않으면 pg_inbox QUARANTINED 전이 + pg_outbox INSERT (같은 TX).</li>
- *   <li>TX commit 후 AFTER_COMMIT 이벤트 → T2a-05b/c 경로 재사용.</li>
+ *   <li>TX commit 후 AFTER_COMMIT 이벤트 → PgOutboxImmediateWorker 경로 재사용.</li>
  * </ol>
  *
  * <p>DLQ consumer 자체 실패 시 offset 미커밋 → 재기동 후 재처리.
- * pg_inbox UNIQUE + terminal 체크로 중복 방어 (불변식 6c).
+ * pg_inbox UNIQUE + terminal 체크로 중복 진입을 흡수한다.
  */
 @Slf4j
 @Service
@@ -67,7 +67,7 @@ public class PgDlqService {
             return;
         }
 
-        // 2단계: terminal이면 no-op (불변식 6c 중복 DLQ 흡수)
+        // 2단계: terminal이면 no-op (중복 DLQ 진입 흡수)
         if (inbox.getStatus().isTerminal()) {
             LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_ALREADY_TERMINAL,
                     () -> "orderId=" + orderId + " status=" + inbox.getStatus());
@@ -91,7 +91,7 @@ public class PgDlqService {
         LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_QUARANTINED,
                 () -> "orderId=" + orderId + " outboxId=" + saved.getId());
 
-        // 5단계: TX commit 후 AFTER_COMMIT → PgOutboxImmediateWorker 경로 재사용 (T2a-05b/c)
+        // 5단계: TX commit 후 AFTER_COMMIT → PgOutboxImmediateWorker 경로 재사용
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 

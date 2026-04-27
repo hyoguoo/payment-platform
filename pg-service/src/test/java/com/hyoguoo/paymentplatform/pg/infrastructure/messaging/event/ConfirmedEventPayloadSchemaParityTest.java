@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * K3 schema parity 테스트 — ConfirmedEventPayload 필드 순서 검증.
+ * Schema parity 테스트 — ConfirmedEventPayload 필드 순서 검증.
  *
  * <p>pg-service {@code ConfirmedEventPayload} 가 정식 발행 측이다.
  * payment-service {@code ConfirmedEventMessage} 소비 측도 동일 순서를 유지해야 하며,

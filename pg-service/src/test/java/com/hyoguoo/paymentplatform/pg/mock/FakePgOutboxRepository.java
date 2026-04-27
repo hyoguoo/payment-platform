@@ -13,8 +13,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * PgOutboxRepository Fake — DB 없이 application 계층 테스트용.
  *
  * <p>Thread-safe: ConcurrentHashMap.
- * ADR-30: available_at 기반 지연 발행 조건을 인메모리에서 그대로 재현.
- * id=null인 경우 auto-increment ID를 생성한다 (실제 DB auto-generated ID 모사).
+ * available_at 기반 지연 발행 조건을 인메모리에서 그대로 재현한다.
+ * id=null 인 경우 auto-increment ID 를 생성한다 (실제 DB auto-generated ID 모사).
  */
 public class FakePgOutboxRepository implements PgOutboxRepository {
 
@@ -49,8 +49,8 @@ public class FakePgOutboxRepository implements PgOutboxRepository {
     }
 
     /**
-     * processedAt=null AND availableAt <= now 인 row를 batchSize 개 반환한다.
-     * ADR-30: available_at 기반 지연 발행 필터링.
+     * processedAt=null AND availableAt &lt;= now 인 row 를 batchSize 개 반환한다.
+     * available_at 기반 지연 발행 필터링.
      */
     @Override
     public List<PgOutbox> findPendingBatch(int batchSize, Instant now) {

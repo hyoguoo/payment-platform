@@ -6,9 +6,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * K9d: infrastructure.aspect.annotation → application.aspect.annotation 으로 이동.
- * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약 준수.
- * aspect 구현체(DomainEventLoggingAspect)는 infrastructure 에 그대로 둔다.
+ * 결제 상태 전이 마커 어노테이션 — payment_history audit trail 자동 기록 트리거.
+ * application 계층이 infrastructure 패키지를 직접 참조하지 않도록 hexagonal layer 규약을 따른다.
+ * aspect 구현체(DomainEventLoggingAspect) 는 infrastructure 에 그대로 둔다.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

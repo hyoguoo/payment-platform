@@ -17,7 +17,7 @@
   "annotations": {
     "list": []
   },
-  "description": "MSA-TRANSITION 결제 서비스 전용 대시보드 (T0-01 스켈레톤 + T2d-02: payment_outbox/pg_outbox 관측 지표 + 알림 4종).",
+  "description": "결제 도메인 통합 대시보드 — payment_outbox / pg_outbox 관측 지표 + 알림 4종.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -431,7 +431,7 @@
   "alerting": {
     "list": [
       {
-        "name": "DLQ 유입률 > 0 (ADR-31)",
+        "name": "DLQ 유입률 > 0",
         "message": "payment.commands.confirm.dlq 토픽에 메시지 유입. PG 연동 장애 또는 비즈니스 예외 급증 가능성.",
         "conditions": [
           {
@@ -449,7 +449,7 @@
         "alertRuleUID": "alert-dlq-rate"
       },
       {
-        "name": "future_pending_count > 500 for 5min (ADR-31)",
+        "name": "future_pending_count > 500 for 5min",
         "message": "payment_outbox 또는 pg_outbox 미래 예약 pending row가 500 초과 5분 지속. 재시도 대기 급증 또는 스케줄러 지연.",
         "conditions": [
           {
@@ -467,7 +467,7 @@
         "alertRuleUID": "alert-future-pending"
       },
       {
-        "name": "oldest_pending_age > 300s (ADR-31)",
+        "name": "oldest_pending_age > 300s",
         "message": "payment_outbox 또는 pg_outbox의 가장 오래된 PENDING row가 300초 초과. SLA 위반 감지.",
         "conditions": [
           {
@@ -485,7 +485,7 @@
         "alertRuleUID": "alert-oldest-pending-age"
       },
       {
-        "name": "invariant 불일치 > 10 (ADR-31)",
+        "name": "invariant 불일치 > 10",
         "message": "published_total - terminal_total 누적 차이가 10 초과. 미완결 이벤트 급증 — Reconciler 또는 운영자 확인 필요.",
         "conditions": [
           {

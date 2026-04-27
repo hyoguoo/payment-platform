@@ -13,15 +13,17 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * QUARANTINED 상태 전이 핸들러.
  * <p>
- * QUARANTINED 는 "벤더 상태 불명" 홀딩 상태이므로 재고 복구 대상이 아니다.
- * 재고 복구는 FAIL 경로에서만 발생한다 (FailureCompensationService → stock.events.restore).
- * QUARANTINED → FAIL 전이는 운영자 수동으로만 수행한다.
+ * 본 핸들러 자체는 product RDB 보상을 수행하지 않는다 — 새 재고 모델에서 product RDB 는
+ * APPROVED 시만 차감되므로 QUARANTINED 시 RDB 복원 대상이 아니다. redis-stock 선차감 캐시 보상은
+ * 호출자(PaymentConfirmResultUseCase.handleQuarantined / handleApproved AMOUNT_MISMATCH)가
+ * stockCachePort.increment 로 별도 수행한다.
  * <p>
  * 진입점:
  * (a) FCG — pg-service FCG 결과 status=QUARANTINED
- * (b) DLQ_CONSUMER — PaymentConfirmDlqConsumer 처리 후 status=QUARANTINED
+ * (b) AMOUNT_MISMATCH — payment-service 가 amount 위변조 감지 시
+ * (c) DLQ_CONSUMER — PaymentConfirmDlqConsumer 처리 후 status=QUARANTINED
  * <p>
- * 두 진입점 모두 TX 내 상태 전이만 수행. Redis/StockCachePort 접촉 없음.
+ * 모든 진입점에서 본 핸들러는 TX 내 상태 전이만 수행한다 (markPaymentAsQuarantined 위임).
  */
 @Slf4j
 @Service

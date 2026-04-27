@@ -19,8 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Transactional Outbox relay — outbox 레코드를 Kafka로 발행하고 DONE 전이를 수행한다.
- * ADR-04: KafkaTemplate 직접 호출 금지. MessagePublisherPort를 통해서만 발행.
+ * Transactional Outbox relay — outbox 레코드를 Kafka 로 발행하고 DONE 전이를 수행한다.
+ * KafkaTemplate 직접 호출 금지 — MessagePublisherPort 를 통해서만 발행한다.
  *
  * <p>Idempotency: claimToInFlight 원자 선점을 통해 동일 orderId에 대한 중복 발행을 방지한다.
  */

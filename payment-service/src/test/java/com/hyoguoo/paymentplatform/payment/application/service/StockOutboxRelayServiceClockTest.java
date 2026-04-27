@@ -21,14 +21,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 /**
- * K5 RED: StockOutboxRelayService 시간 결정성 검증.
+ * StockOutboxRelayService 시간 결정성 검증.
  *
- * <p>fixed clock을 {@link LocalDateTimeProvider}로 주입하면
- * relay() 시 markProcessed에 전달되는 processedAt 이 fixed 시각과 일치해야 한다.
- * 현재 직접 호출(LocalDateTime.now())이라 fixed clock 주입 경로 없음
- * → {@link LocalDateTimeProvider} 생성자 주입 전에는 컴파일 에러(RED).
+ * <p>fixed clock 을 {@link LocalDateTimeProvider} 로 주입하면
+ * relay() 시 markProcessed 에 전달되는 processedAt 이 fixed 시각과 일치해야 한다.
  */
-@DisplayName("StockOutboxRelayService — K5 시간 결정성 (fixed LocalDateTimeProvider)")
+@DisplayName("StockOutboxRelayService — 시간 결정성 (fixed LocalDateTimeProvider)")
 class StockOutboxRelayServiceClockTest {
 
     private static final String TOPIC = "payment.events.stock-committed";
@@ -65,7 +63,7 @@ class StockOutboxRelayServiceClockTest {
     }
 
     /**
-     * TC-K5-RELAY-1: markProcessed 에 전달되는 processedAt 이 fixed provider.now() 와 일치.
+     * markProcessed 에 전달되는 processedAt 이 fixed provider.now() 와 일치.
      */
     @Test
     @DisplayName("relay — markProcessed 인자 processedAt 이 fixed provider.now() 와 일치")

@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * pg-service 내부 재시도 정책.
- * ADR-30: 재시도 = pg_outbox.available_at 지연 표현.
+ * 재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 큐/스케줄러 없음.
  *
  * <p>파라미터:
  * <ul>

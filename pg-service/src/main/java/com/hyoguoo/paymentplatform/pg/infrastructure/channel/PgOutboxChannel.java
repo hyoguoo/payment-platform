@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 /**
  * pg-service Transactional Outbox 인메모리 전달 채널.
  *
- * <p>ADR-04 대칭: payment-service 의 PaymentConfirmChannel 과 동격.
+ * <p>payment-service 의 PaymentConfirmChannel 과 대칭 위치.
  * element 는 {@link OutboxJob} — pg_outbox.id(Long) + offer 시점의 OTel Context + MDC snapshot.
  *
  * <p>capacity=1024 (payment-service 와 동일).

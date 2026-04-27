@@ -5,8 +5,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * product-service Kafka 토픽 상수.
- * ADR-12: 토픽 이름은 이 클래스에서만 정의한다.
- * ADR-30(공통 jar 금지): 다른 서비스의 Topics 클래스를 참조하지 않고 독립 선언.
+ * 토픽 이름은 이 클래스에서만 정의한다 — 공통 jar 금지 정책에 따라 다른 서비스의 Topics 를 참조하지 않는다.
  *
  * <p>토픽 네이밍 규약: {@code <source-service>.<type>.<action>[.modifier]}
  */
@@ -14,20 +13,9 @@ import lombok.NoArgsConstructor;
 public final class ProductTopics {
 
     /**
-     * 전 상품 재고 스냅샷 발행 토픽 — payment-service warmup consumer 가 구독한다.
-     */
-    public static final String EVENTS_STOCK_SNAPSHOT = "product.events.stock-snapshot";
-
-    /**
      * payment-service 가 발행하는 재고 확정 커밋 이벤트 토픽.
      * product-service StockCommitConsumer 가 구독한다.
-     * 발행 주체와 상관없이 consumer 측도 상수를 독립 선언한다.
+     * 발행 주체와 상관없이 consumer 측도 상수를 독립 선언한다 (공통 jar 금지).
      */
     public static final String PAYMENT_EVENTS_STOCK_COMMITTED = "payment.events.stock-committed";
-
-    /**
-     * payment-service FailureCompensationService 가 발행하는 재고 복원 보상 이벤트 토픽.
-     * product-service StockRestoreConsumer 가 구독하고, 보상 dedupe 의 소유는 consumer 측이다.
-     */
-    public static final String STOCK_EVENTS_RESTORE = "stock.events.restore";
 }

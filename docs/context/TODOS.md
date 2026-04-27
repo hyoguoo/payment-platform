@@ -33,7 +33,7 @@
 - docker compose scale up/down 자동화
 - scale 결정 logging + Grafana dashboard
 
-### T4-D — CircuitBreaker 적용 (ADR-22)
+### T4-D — CircuitBreaker 적용
 
 - `ProductHttpAdapter` / `UserHttpAdapter` 에 Resilience4j CircuitBreaker
 - Prometheus 메트릭 (`circuit_breaker_state`, `circuit_breaker_calls_total`)
@@ -90,6 +90,12 @@
 - `product/V2__seed_product_stock.sql`, `user/V2__seed_user.sql` 가 운영 배포에도 같이 적용됨
 - 옵션: `spring.flyway.locations` 환경별 분리 또는 placeholder 활용
 - 현재는 데모 / 스모크 환경에서 동작하므로 우선순위 낮음
+
+### TC-2b — `payment_event.quarantine_compensation_pending` dead column 제거
+
+- payment-service Flyway V1 의 컬럼인데 JPA Entity 에 매핑이 0건 — 도메인에서 제거된 후로 dead column 으로 남아있다.
+- V2 ALTER TABLE DROP COLUMN 으로 정리. 단 운영 환경에 이미 V1 적용된 곳 있으면 schema 호환 영향 검토 필요.
+- 우선순위 낮음 — read/write 경로 없으므로 동작 영향 X. 청결도 차원의 정리.
 
 ### TC-3 — 재고 동기화 정책 (부팅 외 시점)
 

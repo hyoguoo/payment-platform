@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * payment_outbox 관측 지표 (ADR-31, T2d-02).
+ * payment_outbox 관측 지표 — Prometheus gauge / histogram.
  *
  * <ul>
  *   <li>{@code payment_outbox.pending_count} — PENDING 상태 row 수
@@ -67,7 +67,7 @@ public class PaymentOutboxMetrics {
 
     /**
      * 매분 Gauge 캐시 갱신 + attempt histogram 기록.
-     * ADR-31: 1분 단위 재계산으로 Prometheus scrape 주기(30s) 대비 충분한 freshness.
+     * 1분 단위 재계산은 Prometheus scrape 주기(30s) 대비 충분한 freshness 를 제공한다.
      */
     @Scheduled(fixedDelay = 60_000)
     public void refresh() {

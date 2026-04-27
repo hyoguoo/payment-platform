@@ -32,7 +32,7 @@ import static org.mockito.Mockito.verify;
 
 /**
  * DuplicateApprovalHandler 단위 테스트.
- * ADR-05 보강 + ADR-21(캡슐화 대상): 중복 승인 응답 2자 금액 대조 방어.
+ * 중복 승인 응답에 대한 2자 금액 대조 방어 — pg-service 내부 캡슐화 (payment-service 미노출).
  *
  * <p>경로 (1) pg DB 레코드 존재:
  *   - inbox.amount == vendor.amount → pg_outbox INSERT(stored_status_result 재발행) + publishEvent

@@ -9,8 +9,8 @@ import org.springframework.kafka.support.converter.StringJsonMessageConverter;
 
 /**
  * Kafka 메시지 컨버터 구성.
- * ADR-04/30: producer는 JSON 문자열을 StringSerializer로 전송하고 consumer는 StringDeserializer로 받는다.
- * 이 컨버터는 수신된 JSON String을 @KafkaListener 파라미터 타입(POJO/record)으로 변환한다.
+ * producer 는 JSON 문자열을 StringSerializer 로 전송하고 consumer 는 StringDeserializer 로 받는다.
+ * 이 컨버터는 수신된 JSON String 을 @KafkaListener 파라미터 타입(POJO/record) 으로 변환한다.
  *
  * <p>Spring Boot Kafka 오토컨피그는 RecordMessageConverter 빈을 감지하면
  * 기본 ConcurrentKafkaListenerContainerFactory 에 자동 주입한다.

@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * PENDING Outbox 레코드의 체류 시간을 histogram으로 기록한다 (ADR-20, ADR-31).
+ * PENDING Outbox 레코드의 체류 시간을 histogram 으로 기록한다.
  *
  * <p>메트릭명: {@code payment.outbox.pending_age_seconds}
  *

@@ -35,7 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service PG 벤더 호출 + 재시도/DLQ/성공/실패 분기 서비스.
- * ADR-30: 재시도 = pg_outbox.available_at 지연 표현.
+ * 재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
  *
  * <p>처리 흐름:
  * <ol>
@@ -43,11 +43,11 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>성공 → pg_outbox(payment.events.confirmed, APPROVED 포함) INSERT + pg_inbox APPROVED 전이.</li>
  *   <li>확정 실패(non-retryable) → pg_outbox(payment.events.confirmed, FAILED 포함) INSERT + pg_inbox FAILED 전이.</li>
  *   <li>재시도 가능 + attempt &lt; MAX(4) → pg_outbox(payment.commands.confirm, available_at=now+backoff) INSERT.</li>
- *   <li>재시도 가능 + attempt &gt;= MAX(4) → pg_outbox(payment.commands.confirm.dlq) INSERT (불변식 6).</li>
+ *   <li>재시도 가능 + attempt &gt;= MAX(4) → pg_outbox(payment.commands.confirm.dlq) INSERT.</li>
  * </ol>
  *
- * <p>TX commit 후 AFTER_COMMIT 이벤트 → PgOutboxChannel(T2a-05b/c 경로 재사용).
- * inbox IN_PROGRESS 상태는 재시도/DLQ 경로에서 유지 (QUARANTINED 전이는 T2b-02 DLQ consumer).
+ * <p>TX commit 후 AFTER_COMMIT 이벤트 → PgOutboxChannel 경로 재사용.
+ * inbox IN_PROGRESS 상태는 재시도/DLQ 경로에서 유지 (QUARANTINED 전이는 DLQ consumer 책임).
  */
 @Slf4j
 @Service

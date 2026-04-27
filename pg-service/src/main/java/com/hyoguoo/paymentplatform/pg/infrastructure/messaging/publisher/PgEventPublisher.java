@@ -23,9 +23,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * PgEventPublisherPort 유일 Kafka 구현체.
- * ADR-04: KafkaTemplate 직접 호출은 이 클래스에만 허용된다.
- * ADR-30: pg-service는 payment-service의 MessagePublisherPort를 공유하지 않고 독립 복제.
- *         PgEventPublisherPort가 그 역할을 대신한다.
+ * KafkaTemplate 직접 호출은 이 클래스에만 허용된다.
+ * pg-service 는 payment-service 의 MessagePublisherPort 를 공유하지 않고 독립 복제로 PgEventPublisherPort 를 둔다.
  *
  * <p>토픽별 타입드 KafkaTemplate 3종을 주입받아 topic 필드 기준으로 발행 경로를 분기한다
  * ({@code KafkaProducerConfig} 에서 빈 등록). outbox row 의 payload 는 직렬화된 JSON 문자열이므로

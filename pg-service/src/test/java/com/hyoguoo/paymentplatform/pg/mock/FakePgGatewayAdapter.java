@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * PgStatusLookupPort + PgConfirmPort Fake — 실제 Toss/NicePay HTTP 없이 application 계층 테스트용.
- * T3.5-05: PgGatewayPort 분해 후 두 포트를 모두 구현하는 통합 Fake.
+ * 두 포트를 모두 구현하는 통합 Fake.
  *
  * <p>Thread-safe: AtomicInteger + AtomicReference.
  *

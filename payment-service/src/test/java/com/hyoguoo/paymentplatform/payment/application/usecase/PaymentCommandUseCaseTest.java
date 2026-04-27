@@ -18,8 +18,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-// ADR-02 준수: confirmPaymentWithGateway·getPaymentStatusByOrderId 메서드는 Phase 2 완료로 삭제됨.
-// 해당 메서드의 테스트(testConfirmPaymentWithGateway_*/getPaymentStatusByOrderId_*)도 함께 제거.
+// payment-service 는 PG 를 직접 호출하지 않는다 — confirmPaymentWithGateway / getPaymentStatusByOrderId
+// 메서드는 삭제되었으며 그에 대응하는 테스트도 함께 제거되었다.
 
 class PaymentCommandUseCaseTest {
 

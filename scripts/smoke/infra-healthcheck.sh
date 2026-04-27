@@ -44,15 +44,15 @@ check_fail() {
 print_section "▶ Docker compose 서비스 health"
 
 EXPECTED_SERVICES=(
-    "kafka"
-    "redis-dedupe"
-    "redis-stock"
-    "mysql-payment"
-    "mysql-pg"
-    "mysql-product"
-    "mysql-user"
+    "payment-kafka"
+    "payment-redis-dedupe"
+    "payment-redis-stock"
+    "payment-mysql-payment"
+    "payment-mysql-pg"
+    "payment-mysql-product"
+    "payment-mysql-user"
     "payment-eureka"
-    "payment-gateway"
+    "gateway"
     "payment-service"
     "pg-service"
     "product-service"
@@ -120,7 +120,7 @@ done
 for redis_port in 6379:dedupe 6380:stock; do
     port="${redis_port%%:*}"
     label="${redis_port##*:}"
-    if docker exec -i redis-${label} redis-cli ping 2>/dev/null | grep -q PONG; then
+    if docker exec -i payment-redis-${label} redis-cli ping 2>/dev/null | grep -q PONG; then
         check_pass "redis-${label} ping (localhost:${port})"
     else
         check_fail "redis-${label} ping (localhost:${port})"
@@ -128,7 +128,7 @@ for redis_port in 6379:dedupe 6380:stock; do
 done
 
 # Kafka — 토픽 list 가능 여부 (broker 도달성)
-if docker exec -i kafka kafka-topics --list --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+if docker exec -i payment-kafka kafka-topics --list --bootstrap-server localhost:9092 >/dev/null 2>&1; then
     check_pass "kafka 토픽 list (localhost:9092)"
 else
     check_fail "kafka 토픽 list (localhost:9092)"
@@ -144,7 +144,7 @@ EUREKA_APPS_JSON=$(curl -sf -m 5 -H "Accept: application/json" "http://localhost
 if [ -z "${EUREKA_APPS_JSON}" ]; then
     check_fail "eureka /eureka/apps 응답 없음"
 else
-    for app in PAYMENT-SERVICE PG-SERVICE PRODUCT-SERVICE USER-SERVICE PAYMENT-GATEWAY; do
+    for app in PAYMENT-SERVICE PG-SERVICE PRODUCT-SERVICE USER-SERVICE GATEWAY; do
         if echo "${EUREKA_APPS_JSON}" | grep -q "\"name\":\"${app}\""; then
             check_pass "${app} 등록됨"
         else

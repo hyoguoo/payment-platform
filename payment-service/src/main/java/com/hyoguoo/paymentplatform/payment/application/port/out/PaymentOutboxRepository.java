@@ -17,7 +17,7 @@ public interface PaymentOutboxRepository {
 
     boolean claimToInFlight(String orderId, LocalDateTime inFlightAt);
 
-    // ── 관측 지표 집계 (T2d-02, ADR-31) ────────────────────────────────────────
+    // ── 관측 지표 집계 (Prometheus gauge) ───────────────────────────────────────
 
     /**
      * PENDING 상태 row 수를 반환한다.

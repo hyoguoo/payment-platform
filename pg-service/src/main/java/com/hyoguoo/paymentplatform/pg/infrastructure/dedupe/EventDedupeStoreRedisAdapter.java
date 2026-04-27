@@ -9,8 +9,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * EventDedupeStore Redis 구현체 (pg-service). ADR-04(2단 멱등성 키).
- * SET NX EX 패턴으로 eventUuid별 단일 소비를 보장한다.
+ * EventDedupeStore Redis 구현체 (pg-service) — 2단 멱등성 중 메시지 레벨 dedupe.
+ * SET NX EX 패턴으로 eventUuid 별 단일 소비를 보장한다.
  *
  * <p>keyspace: {@code evt:seen:{uuid}}.
  * TTL: {@code pg.event-dedupe.ttl}. 기본 1시간 — Kafka consumer 재처리 윈도우를 덮는다.

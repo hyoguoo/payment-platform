@@ -17,7 +17,7 @@ public class HttpOperatorImpl implements HttpOperator {
     private final WebClient webClient;
 
     /**
-     * Boot auto-config WebClient.Builder 를 주입받아 observationRegistry 자동 적용(D6).
+     * Boot auto-config WebClient.Builder 를 주입받아 observationRegistry 가 자동 적용된다.
      *
      * <p>Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서 {@code ObservationRegistry}
      * 를 자동 설정한다. Builder 를 주입받기만 하면 HTTP 경계에서 traceparent 자동 전파됨.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# create-topics.sh — Kafka 토픽 초기 생성 스크립트 (T0-01b 역할)
-# ADR-30 — payment 도메인 토픽 3개, 동일 파티션 수, retry 전용 토픽 미생성
+# create-topics.sh — Kafka 토픽 초기 생성 스크립트
+# payment 도메인 토픽 3개를 동일 파티션 수로 생성한다 — retry 전용 토픽은 만들지 않는다.
 #
 # 전제조건:
 #   - docker-compose.infra.yml up 완료 후 실행

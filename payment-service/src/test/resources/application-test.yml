@@ -26,8 +26,10 @@ spring:
 
   sql:
     init:
-      mode: always
-      continue-on-error: false
+      mode: never
+
+  flyway:
+    enabled: false   # 통합 테스트는 ddl-auto: create-drop 으로 schema 생성. Flyway ↔ JPA 순환 의존 회피
 
   myapp:
     toss-payments:
@@ -36,6 +38,10 @@ spring:
       http:
         read-timeout-millis: 5000
 
+  kafka:
+    listener:
+      auto-startup: false
+
 logging:
   level:
     root: INFO
@@ -43,11 +49,6 @@ logging:
     org.springframework.web: INFO
     org.hibernate.SQL: DEBUG
     org.testcontainers: INFO
-
-spring:
-  kafka:
-    listener:
-      auto-startup: false
 
 scheduler:
   enabled: false

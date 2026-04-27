@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * payment.commands.confirm.dlq 토픽 Kafka consumer.
- * ADR-30(T2b-02): PaymentConfirmConsumer와 물리적으로 다른 Spring bean.
+ * PaymentConfirmConsumer 와 물리적으로 다른 Spring bean (groupId 분리).
  *
  * <p>처리 위임: PgDlqService.handle(command) — 실제 QUARANTINED 전이 로직은 서비스 계층.
  *
@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  * 테스트에서는 PgDlqService를 직접 호출하여 Kafka 없이 검증한다.
  *
  * <p>DLQ consumer 자체 실패 시 offset 미커밋 → 재기동 후 재처리.
- * pg_inbox UNIQUE + terminal 체크로 중복 방어 (불변식 6c).
+ * pg_inbox UNIQUE + terminal 체크로 중복 진입을 흡수한다.
  */
 @Slf4j
 @Component
@@ -39,7 +39,7 @@ public class PaymentConfirmDlqConsumer {
 
     /**
      * payment.commands.confirm.dlq 토픽 메시지를 소비한다.
-     * groupId는 pg-service-dlq 전용으로 고정 (ADR-30: PaymentConfirmConsumer groupId=pg-service와 분리).
+     * groupId 는 pg-service-dlq 전용으로 고정 (PaymentConfirmConsumer groupId=pg-service 와 분리).
      *
      * @param command 역직렬화된 PgConfirmCommand
      */

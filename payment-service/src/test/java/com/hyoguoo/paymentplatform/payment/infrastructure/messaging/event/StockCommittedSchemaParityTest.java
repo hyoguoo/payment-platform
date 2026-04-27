@@ -9,14 +9,15 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * K3 schema parity 테스트 — StockCommittedEvent 필드 검증.
+/**
+ * StockCommittedEvent schema parity 테스트 — producer/consumer 필드 동기화 검증.
  *
- * <p>producer(payment-service {@code StockCommittedEvent})와
- * consumer(product-service {@code StockCommittedMessage})는 동일한 필드를 가져야 한다.
- * ADR-30: 공유 JAR 없이 독립 복제 — 필드 목록·순서 동기화를 테스트로 강제한다.
+ * <p>producer(payment-service {@code StockCommittedEvent}) 와
+ * consumer(product-service {@code StockCommittedMessage}) 는 동일한 필드를 가져야 한다.
+ * 공통 jar 금지 정책에 따라 두 서비스가 따로 들고 있는 record 의 필드 목록·순서 동기화를 강제한다.
  *
  * <p>canonical 순서: {@code productId, qty, idempotencyKey, occurredAt, orderId, expiresAt}
- * (consumer 측 6 필드가 기준 — K3 스펙: producer를 consumer 수준으로 확장)
+ * (consumer 측 6 필드가 기준 — producer 도 consumer 수준으로 확장 보유).
  */
 @DisplayName("StockCommittedEvent schema parity")
 class StockCommittedSchemaParityTest {

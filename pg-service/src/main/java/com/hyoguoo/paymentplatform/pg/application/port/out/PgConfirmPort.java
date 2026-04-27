@@ -8,7 +8,7 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 
 /**
  * pg-service outbound 포트 — 벤더 승인 호출 전담 계약.
- * T3.5-05: PgGatewayPort 분해 — confirm 전담 포트.
+ * 과거 PgGatewayPort 의 confirm 책임을 이 포트로 분리한다.
  *
  * <p>사용처:
  * <ul>

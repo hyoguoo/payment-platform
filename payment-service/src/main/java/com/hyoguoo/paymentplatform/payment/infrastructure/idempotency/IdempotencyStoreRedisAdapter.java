@@ -15,7 +15,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 /**
- * ADR-16: 멱등성 저장소 Redis 어댑터.
+ * 멱등성 저장소 Redis 어댑터 — 클라이언트 idempotency-key 보존.
  * <p>
  * keyspace: {@code idem:{key}}. Lua script 2단계 원자 연산으로 동시 경합 처리:
  * <ol>

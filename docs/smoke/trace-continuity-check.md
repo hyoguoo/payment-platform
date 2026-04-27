@@ -12,7 +12,7 @@
 ```
 브라우저 → gateway(traceparent 생성)
         → payment-service(receive + Kafka producer 헤더 주입)
-            → kafka-topics: payment.commands.confirm, stock.events.*
+            → kafka-topics: payment.commands.confirm, payment.events.confirmed, payment.events.stock-committed
                 → pg-service / product-service(consumer 헤더 → MDC 복원)
                     → 외부 PG / 내부 HTTP 호출(traceparent 재주입)
                         → user-service / 벤더(헤더 수신)

@@ -5,8 +5,8 @@ import java.time.Instant;
 /**
  * payment.events.stock-committed 토픽 페이로드 — product-service consumer 수신 DTO.
  * <p>
- * ADR-30(공통 jar 금지): payment-service StockCommittedEvent를 직접 참조하지 않고
- * product-service 독립 record로 복제한다.
+ * 공통 jar 금지 정책에 따라 payment-service StockCommittedEvent 를 직접 참조하지 않고
+ * product-service 자체 record 로 복제 보유한다.
  * <p>
  * orderId 는 producer(payment-service StockCommittedEvent) 와 타입을 맞춰 String 으로 둔다 —
  * 그래야 형 변환 충돌이 없다. expiresAt 은 producer 가 직접 채워 전송하며, consumer 의 fallback 은

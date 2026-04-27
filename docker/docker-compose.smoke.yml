@@ -1,4 +1,4 @@
-# docker-compose.smoke.yml — phase-3-integration-smoke.sh 전용 override.
+# docker-compose.smoke.yml — happy-path 통합 스모크 전용 override (PG 호출 우회).
 #
 # 사용법:
 #   docker compose \

@@ -38,10 +38,10 @@ import org.springframework.context.ApplicationEventPublisher;
  * <p>커버 범위:
  * <ul>
  *   <li>FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 (reasonCode 그대로 전달)</li>
- *   <li>FailureCompensationService.compensate 가 PaymentOrder 별로 실 qty 와 함께 호출되어야 함
+ *   <li>각 PaymentOrder 별로 stockCachePort.increment 가 productId/qty 와 함께 호출됨 (redis-stock 보상)
  *       — 단일 주문 / 복수 주문 모두</li>
- *   <li>UseCase 자체는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 발행하지 않음
- *       (그 책임은 FailureCompensationService 내부)</li>
+ *   <li>UseCase 는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 발행하지 않는다
+ *       (FAILED 시 product RDB 차감이 없었으므로 commit 발행 X — 새 재고 모델)</li>
  *   <li>UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하지 않고 위임한다</li>
  * </ul>
  */

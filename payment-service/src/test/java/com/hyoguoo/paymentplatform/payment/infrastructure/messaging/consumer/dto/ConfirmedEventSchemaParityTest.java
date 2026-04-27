@@ -9,13 +9,13 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * K3 schema parity 테스트 — ConfirmedEventMessage 필드 순서 검증.
+ * Schema parity 테스트 — ConfirmedEventMessage 필드 순서가 producer 와 동일한지 검증한다.
  *
  * <p>pg-service {@code ConfirmedEventPayload} 가 Kafka로 발행하는 순서:
  * {@code orderId, status, reasonCode, amount, approvedAt, eventUuid}
  *
  * <p>payment-service {@code ConfirmedEventMessage} 소비 측도 동일 순서를 유지해야 한다.
- * ADR-30: 공유 JAR 없이 독립 복제 — 순서 동기화를 테스트로 강제한다.
+ * 공통 jar 금지 정책에 따라 두 서비스가 따로 들고 있는 record 의 순서 동기화를 이 테스트가 강제한다.
  *
  * <p>Jackson은 필드명으로 역직렬화하므로 순서 불일치가 런타임 오류로 이어지지 않으나,
  * 새 필드 추가 시 한쪽 누락을 PR 통과 후 실기동 장애로 알게 되는 위험을 이 테스트가 잡는다.

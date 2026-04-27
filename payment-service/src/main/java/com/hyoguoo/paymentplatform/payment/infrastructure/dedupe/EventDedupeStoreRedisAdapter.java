@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>keyspace: {@code evt:seen:{uuid}}.
  * TTL: {@code payment.event-dedupe.ttl}. 기본 8일 — Kafka retention(7d) + 복구 버퍼(1d) = P8D.
- * product-service StockRestoreUseCase.DEDUPE_TTL = Duration.ofDays(8) 과 정렬.
+ * product-service {@code StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)} 과 정렬.
  *
  * <p>활성 조건: {@code spring.data.redis.host} 속성이 설정되어 있을 때만 등록.
  * 테스트(JPA/Redis autoconfig 제외)에서는 FakeEventDedupeStore를 사용한다.
@@ -33,7 +33,7 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
     private static final String KEY_PREFIX = "evt:seen:";
     private static final String MARKER = "1";
 
-    private final StringRedisTemplate redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Value("${payment.event-dedupe.ttl:P8D}")
     private Duration ttl;
@@ -45,7 +45,7 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
      */
     @Override
     public boolean markWithLease(String eventUuid, Duration shortTtl) {
-        Boolean firstSeen = redisTemplate
+        Boolean firstSeen = stringRedisTemplate
                 .opsForValue()
                 .setIfAbsent(KEY_PREFIX + eventUuid, MARKER, shortTtl);
         return Boolean.TRUE.equals(firstSeen);
@@ -58,7 +58,7 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
      */
     @Override
     public boolean extendLease(String eventUuid, Duration longTtl) {
-        Boolean updated = redisTemplate
+        Boolean updated = stringRedisTemplate
                 .opsForValue()
                 .setIfPresent(KEY_PREFIX + eventUuid, MARKER, longTtl);
         return Boolean.TRUE.equals(updated);
@@ -71,7 +71,7 @@ public class EventDedupeStoreRedisAdapter implements EventDedupeStore {
      */
     @Override
     public boolean remove(String eventUuid) {
-        Boolean deleted = redisTemplate.delete(KEY_PREFIX + eventUuid);
+        Boolean deleted = stringRedisTemplate.delete(KEY_PREFIX + eventUuid);
         return Boolean.TRUE.equals(deleted);
     }
 }

@@ -17,7 +17,7 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
 /**
- * W3C Trace Context 전파 필터 (ADR-18).
+ * W3C Trace Context 전파 필터.
  *
  * <p>유입 요청의 {@code traceparent} 헤더를 검사·검증하여 MDC에 {@code traceId}/{@code spanId}를
  * 주입한다. 헤더가 없거나 포맷이 유효하지 않으면 주입 없이 다음 필터로 패스하여

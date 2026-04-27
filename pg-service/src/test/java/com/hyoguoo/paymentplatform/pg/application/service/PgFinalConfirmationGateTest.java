@@ -33,9 +33,9 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 
 /**
  * PgFinalConfirmationGate 단위 테스트.
- * ADR-15(FCG 불변): 재시도 루프 소진 후 벤더 getStatus 1회 최종 확인.
- * ADR-21: APPROVED/FAILED → pg_outbox(events.confirmed). 판정 불가 → 무조건 QUARANTINED (재시도 없음).
- * domain_risk=true: FCG 불변(1회만 호출, 재시도 래핑 금지) + QUARANTINED 전이 원자성 커버.
+ * 재시도 루프 소진 후 벤더 getStatus 단 1회 호출로 최종 상태를 확정한다 (FCG 불변).
+ * APPROVED/FAILED 는 pg_outbox(events.confirmed) 로 흐르고, 판정 불가는 무조건 QUARANTINED (재시도 없음).
+ * domain_risk=true — 1회 호출 보장 + QUARANTINED 전이 원자성 커버.
  */
 @DisplayName("PgFinalConfirmationGate")
 class PgFinalConfirmationGateTest {
@@ -75,7 +75,7 @@ class PgFinalConfirmationGateTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("fcg — 벤더 getStatus APPROVED 반환 시 pg_outbox(APPROVED) INSERT + pg_inbox APPROVED 전이 (ADR-15)")
+    @DisplayName("fcg — 벤더 getStatus APPROVED 반환 시 pg_outbox(APPROVED) INSERT + pg_inbox APPROVED 전이")
     void fcg_WhenVendorReturnsApproved_ShouldInsertApprovedOutboxRow() {
         // given — getStatusByOrderId → DONE(APPROVED 매핑)
         PgStatusResult approvedStatus = new PgStatusResult(

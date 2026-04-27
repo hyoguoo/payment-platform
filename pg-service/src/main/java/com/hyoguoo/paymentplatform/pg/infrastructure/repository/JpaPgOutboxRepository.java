@@ -12,7 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 /**
  * Spring Data JPA — pg_outbox 테이블 접근.
- * ADR-04 Transactional Outbox + ADR-30 available_at 지연 발행.
+ * Transactional Outbox + available_at 기반 지연 발행.
  */
 public interface JpaPgOutboxRepository extends JpaRepository<PgOutboxEntity, Long> {
 

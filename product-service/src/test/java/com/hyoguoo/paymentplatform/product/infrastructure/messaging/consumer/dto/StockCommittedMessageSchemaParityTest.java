@@ -8,14 +8,14 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * K3 schema parity 테스트 — StockCommittedMessage 필드 검증.
+ * Schema parity 테스트 — StockCommittedMessage 필드 검증.
  *
  * <p>consumer(product-service {@code StockCommittedMessage})는
  * producer(payment-service {@code StockCommittedEvent})와 동일 필드 구조를 유지해야 한다.
- * ADR-30: 공유 JAR 없이 독립 복제 — 필드 목록·순서·타입 동기화를 테스트로 강제한다.
+ * 공통 jar 금지 정책에 따라 두 서비스가 따로 들고 있는 record 의 필드 목록·순서·타입 동기화를
+ * 이 테스트가 강제한다.
  *
- * <p>K3 스펙: orderId 타입은 String 통일 (producer/consumer 모두).
- * consumer 기존 orderId(Long) 폐기.
+ * <p>orderId 타입은 String 으로 통일 (producer/consumer 양쪽).
  */
 @DisplayName("StockCommittedMessage schema parity")
 class StockCommittedMessageSchemaParityTest {
@@ -83,7 +83,7 @@ class StockCommittedMessageSchemaParityTest {
                 .getType();
 
         assertThat(orderIdType)
-                .as("StockCommittedMessage.orderId 타입이 String이어야 합니다. K3 스펙: Long 폐기")
+                .as("StockCommittedMessage.orderId 타입이 String 이어야 한다 — Long 사용 금지")
                 .isEqualTo(String.class);
     }
 }

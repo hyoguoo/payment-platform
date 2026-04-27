@@ -13,11 +13,11 @@ import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.stereotype.Component;
 
 /**
- * pg-service 자체 소유 복제본. ADR-30 §2-6 — 공통 library jar 금지, 서비스 소유.
+ * pg-service 자체 소유 복제본 — 공통 library jar 를 두지 않고 각 서비스가 같은 aspect 를 들고 있는다.
  * payment-service 의존 없음.
  *
  * <p>pointcut 대상: {@code com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.*}
- * (T2b-01에서 실제 HTTP 호출 구현 시 @TossApiMetric 어노테이션 적용 예정)
+ * — 실 HTTP 호출 메서드에 {@code @TossApiMetric} 을 부여하면 metrics 가 적용된다.
  */
 @Slf4j
 @Aspect

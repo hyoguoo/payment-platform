@@ -5,9 +5,9 @@ import java.time.Instant;
 
 /**
  * pg-service business inbox 도메인 POJO.
- * T2a-04에서 JPA 엔티티·Flyway 스키마로 승격 예정. 지금은 plain POJO.
+ * JPA 엔티티(PgInboxEntity) 와 도메인 객체를 분리해 hexagonal 경계를 유지한다.
  *
- * <p>amount: 원화 최소 단위 정수 (BigDecimal → Long scale=0 변환 규약은 T2a-04에서 적용).
+ * <p>amount: 원화 최소 단위 정수 (BigDecimal → Long scale=0 변환은 {@code AmountConverter} 경유).
  */
 public class PgInbox {
 

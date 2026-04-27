@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * RetryPolicy 단위 테스트.
- * ADR-30: base=2s, multiplier=3, jitter=±25% equal jitter, MAX_ATTEMPTS=4.
+ * 정책 파라미터: base=2s, multiplier=3, jitter=±25% equal jitter, MAX_ATTEMPTS=4.
  */
 @DisplayName("RetryPolicy")
 class RetryPolicyTest {

@@ -42,15 +42,6 @@ class FakeStockRepositoryTest {
     }
 
     @Test
-    @DisplayName("findAll — 저장된 모든 재고 반환")
-    void findAll_ReturnsAllSavedStocks() {
-        repository.save(Stock.allArgsBuilder().productId(1L).quantity(10).allArgsBuild());
-        repository.save(Stock.allArgsBuilder().productId(2L).quantity(20).allArgsBuild());
-
-        assertThat(repository.findAll()).hasSize(2);
-    }
-
-    @Test
     @DisplayName("increment — 원자적 재고 증가")
     void increment_IncreasesStock() {
         repository.save(Stock.allArgsBuilder().productId(1L).quantity(50).allArgsBuild());

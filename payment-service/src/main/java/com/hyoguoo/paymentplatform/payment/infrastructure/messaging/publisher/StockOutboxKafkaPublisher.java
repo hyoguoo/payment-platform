@@ -18,9 +18,9 @@ import org.springframework.stereotype.Component;
  * StockOutboxPublisherPort 구현체 — String payload Kafka 발행 어댑터.
  * stock_outbox row 의 pre-serialized JSON String 을 직접 발행한다.
  *
- * <p>ADR-04: KafkaTemplate 직접 호출은 인프라 계층 publisher에서만 허용.
- * <p>stockOutboxKafkaTemplate(KafkaTemplate<String, String>)을 사용하므로
- * JSON 재직렬화 없이 outbox row의 payload를 그대로 발행한다.
+ * <p>KafkaTemplate 직접 호출은 인프라 계층 publisher 에서만 허용한다.
+ * <p>stockOutboxKafkaTemplate(KafkaTemplate&lt;String, String&gt;) 을 사용하므로
+ * JSON 재직렬화 없이 outbox row 의 payload 를 그대로 발행한다.
  *
  * <p>ConditionalOnProperty: spring.kafka.bootstrap-servers 설정 시만 활성화.
  * 테스트에서는 FakeStockOutboxPublisher를 직접 주입해 Kafka 없이 검증한다.

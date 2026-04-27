@@ -1,4 +1,4 @@
-# MSA-TRANSITION Phase 3 이후 — 전체 앱 서비스 컨테이너 구성
+# 앱 서비스 컨테이너 구성 (4 비즈니스 서비스 + Eureka + Gateway)
 # 사용법:
 #   ./gradlew :payment-service:bootJar :pg-service:bootJar :product-service:bootJar :user-service:bootJar :gateway:bootJar
 #   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml up -d
@@ -11,12 +11,12 @@
 #   - gateway 8080 → 호스트는 8090 포트로 노출 (payment-service와 컨테이너 포트 중복 회피)
 #   - eureka 8761 (docker/docker-compose.infra.yml에서 기동)
 #
-# ADR-11 (Eureka), ADR-23 (DB per service), T1-18 (Gateway 결제 라우팅)
+# 토폴로지: Eureka discovery + DB per service + Gateway routing
 
 services:
 
   # ───────────────────────────────────────────
-  # payment-service (모놀리스 기반 결제 핵심)
+  # payment-service — 결제 도메인 핵심 (orderId 점유, redis-stock 선차감, outbox)
   # ───────────────────────────────────────────
   payment-service:
     build:

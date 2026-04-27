@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component;
 /**
  * pg-service Transactional Outbox Polling 안전망 워커.
  *
- * <p>ADR-04 대칭: payment-service 의 OutboxWorker 와 동격.
- * ADR-30: available_at 기반 지연 발행 — processedAt IS NULL AND availableAt <= NOW 조건 Polling.
+ * <p>payment-service 의 OutboxWorker 와 대칭 위치.
+ * available_at 기반 지연 발행 — {@code processedAt IS NULL AND availableAt <= NOW} 조건으로 polling 한다.
  *
  * <p>역할:
  * <ul>
@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
  *   <li>PgOutboxRelayService 내부에서 processedAt != null 이면 skip → exactly-once 보장.</li>
  * </ul>
  *
- * <p>실제 DB 환경에서는 JPA 구현체가 FOR UPDATE SKIP LOCKED 를 제공해야 한다 (T2a-04 JPA 어댑터).
+ * <p>실제 DB 환경에서는 JPA 구현체가 FOR UPDATE SKIP LOCKED 를 제공한다.
  * Fake 환경에서는 FakePgOutboxRepository.findPendingBatch 가 동일 조건을 인메모리로 재현.
  */
 @Slf4j
