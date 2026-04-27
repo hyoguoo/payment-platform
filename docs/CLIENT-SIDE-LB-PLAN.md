@@ -31,16 +31,17 @@
 - 완료 결과: `HttpClientConfig` 신규 등록, `compileJava` PASS, 전체 578/578 tests PASS
 
 ### A3. base-url 을 logical service name 으로 변경
-- [ ] `application.yml`:
+- [x] `application.yml`:
   ```yaml
   product-service.base-url: ${PRODUCT_SERVICE_BASE_URL:http://product-service}
   user-service.base-url:    ${USER_SERVICE_BASE_URL:http://user-service}
   ```
-- [ ] `application-docker.yml` 에 별도 override 가 있으면 제거 또는 동일하게 유지 (docker network 안에서도 logical name 동일)
-- [ ] `application-test.yml` 은 통합 테스트가 cross-service HTTP 안 타므로 영향 없음 (확인)
+- [x] `application-docker.yml` 에 별도 override 가 있으면 제거 또는 동일하게 유지 (docker network 안에서도 logical name 동일)
+- [x] `application-test.yml` 은 통합 테스트가 cross-service HTTP 안 타므로 영향 없음 (확인)
 - 의존: A2 (Bean 등록되어야 logical name resolve 동작)
 - TDD: A4 가 검증
 - 단일 commit: `refactor(payment-service): cross-service base-url 을 logical service name 으로 변경`
+- 완료 결과: application.yml default 값만 변경 (localhost:8083→product-service, localhost:8084→user-service). docker/benchmark/test yml 에는 해당 prop override 없음 확인.
 
 ### A4. ProductHttpAdapter / UserHttpAdapter 의 builder 주입을 LoadBalanced 로 전환
 - [ ] `ProductHttpAdapter` 생성자: `WebClient.Builder` → `@LoadBalanced WebClient.Builder`

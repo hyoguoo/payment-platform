@@ -96,10 +96,10 @@ payment:
       events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
 
 product-service:
-  base-url: ${PRODUCT_SERVICE_BASE_URL:http://localhost:8083}
+  base-url: ${PRODUCT_SERVICE_BASE_URL:http://product-service}
 
 user-service:
-  base-url: ${USER_SERVICE_BASE_URL:http://localhost:8084}
+  base-url: ${USER_SERVICE_BASE_URL:http://user-service}
 
 product:
   adapter:
