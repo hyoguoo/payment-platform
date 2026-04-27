@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
+import org.springframework.http.HttpStatus;
 
 /**
  * ProductFeignClient 전용 Feign 설정.
@@ -44,12 +45,13 @@ public class ProductFeignConfig {
         int status = response.status();
         String body = readBodyQuietly(response);
 
-        if (status == 404) {
+        if (status == HttpStatus.NOT_FOUND.value()) {
             LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_NOT_FOUND,
-                    () -> "status=404 body=" + body);
+                    () -> "status=" + status + " body=" + body);
             return ProductNotFoundException.of(PaymentErrorCode.PRODUCT_NOT_FOUND);
         }
-        if (status == 429 || status == 503) {
+        if (status == HttpStatus.TOO_MANY_REQUESTS.value()
+                || status == HttpStatus.SERVICE_UNAVAILABLE.value()) {
             LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_RETRYABLE,
                     () -> "status=" + status);
             return ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE);
