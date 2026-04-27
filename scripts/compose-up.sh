@@ -74,7 +74,9 @@ COMPOSE_ARGS_APPS=""
 COMPOSE_ARGS_ALL=""
 
 # docker compose 프로젝트명 (volume 접두어) — 상위 디렉토리 이름 기반
-COMPOSE_PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
+# docker compose 의 기본 project name 은 compose 파일이 있는 디렉토리명("docker") 이다.
+# --reset-db 의 볼륨 prefix 는 그에 맞춰야 한다 — project root basename 사용 시 mismatch.
+COMPOSE_PROJECT_NAME="docker"
 
 MYSQL_CONTAINERS=(payment-mysql-payment payment-mysql-pg payment-mysql-product payment-mysql-user)
 MYSQL_VOLUMES=(
@@ -254,7 +256,7 @@ echo
 # 5. Kafka 토픽 생성 (멱등)
 # ───────────────────────────────────────────
 print_section "▶ Kafka 토픽 생성"
-bash "${PROJECT_ROOT}/scripts/phase-gate/create-topics.sh"
+bash "${PROJECT_ROOT}/scripts/smoke/create-topics.sh"
 
 # ───────────────────────────────────────────
 # 6. 앱 기동 (완전 재빌드: image rebuild + 컨테이너 강제 재생성)
