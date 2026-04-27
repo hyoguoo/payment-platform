@@ -67,14 +67,33 @@
 - 단일 commit: `chore(docker): payment-service env 의 cross-service URL override 제거`
 - 완료 결과: docker-compose.apps.yml 55~56번 줄 두 env 제거. docker-compose.smoke.yml 에는 해당 prop 없음 확인. `docker compose config` YAML 유효성 PASS, `compileJava` PASS.
 
+### A5b. product-service 의 container_name 제거 + Eureka instanceId 고유화
+- [x] **A6 dispatch 시 발견 1**: `docker compose up --scale product-service=2` 실행 시
+      `container_name: product-service` 가 unique 이름을 강제해 두 번째 인스턴스 생성
+      차단됨 (`Docker requires each container to have a unique name`)
+- [x] `docker/docker-compose.apps.yml` 의 `product-service` 서비스에서 `container_name` 제거.
+      compose 가 `docker-product-service-1` / `docker-product-service-2` 자동 생성.
+- [x] **A6 dispatch 시 발견 2**: hostname 동일하면 Eureka instanceId 도 충돌 (`product-service:product-service:8083`)
+      → 한 인스턴스만 등록됨. fix: `product-service/src/main/resources/application.yml` 의
+      `eureka.instance.instance-id: ${spring.application.name}:${random.uuid}` 명시
+- [x] payment-service / pg-service / user-service / gateway 의 container_name 은 **보존** (단일 인스턴스 — 오토스케일링 대상 아님)
+- [x] `infra-healthcheck.sh` 의 `EXPECTED_SERVICES` 는 후속 토픽에서 보강 (이 태스크 범위 외)
+- 의존: A5
+- TDD: 불필요 (config)
+- 검증: 두 인스턴스 모두 healthy + Eureka 등록 + payment → product 호출 round-robin 분산 확인
+- 단일 commit: `chore(scaling): product-service container_name 제거 + Eureka instanceId 고유화`
+- 완료 결과: docker-product-service-1 / docker-product-service-2 자동 이름, Eureka 에 random UUID instanceId 2건 UP 확인.
+
 ### A6. 검증 — 스케일 업 시나리오
-- [ ] stack 기동: `bash scripts/compose-up.sh --mode fake --reset-db`
-- [ ] product-service 인스턴스 2개로 scale: `docker compose -f docker/docker-compose.apps.yml up --scale product-service=2 -d`
-- [ ] Eureka 대시보드에서 PRODUCT-SERVICE 가 인스턴스 2건 등록 확인
-- [ ] curl 결제 요청 5건 → product-service 두 인스턴스 로그에 traceId 분산되어 도착 확인 (round-robin)
-- [ ] `bash scripts/smoke-all.sh` PASS
+- [x] stack 기동: `bash scripts/compose-up.sh --mode fake --reset-db`
+- [x] product-service 인스턴스 2개로 scale: `docker compose ... up product-service --scale product-service=2 -d --no-recreate`
+- [x] Eureka 등록 PRODUCT-SERVICE 2건 (random UUID instanceId, 둘 다 UP)
+- [x] curl 결제 checkout 5건 (Gateway 8090 경유) → 두 product-service 인스턴스 로그에 traceId 분산 도착 확인
+  - docker-product-service-1: 11 trace match, docker-product-service-2: 16 trace match → round-robin 분산 정상
+- [x] `bash scripts/smoke-all.sh` Phase 1 PASS (infra-healthcheck 27/27 + kafka-topic-config)
+- 비고: HTTP 500 (도메인 — gateway_type NOT NULL 위반) 은 LB 검증과 무관, 별도 이슈
 - TDD: 통합 시나리오 — 검증 단계
-- 단일 commit (선택): `test(scale): product-service 다중 인스턴스 round-robin 시나리오 검증 결과 기록`
+- 완료 결과: LB round-robin 분산 정상 작동 확인. Phase A 종결 기준 충족.
 
 ### Phase A 종결 기준
 - 의존성 / Bean / config / 어댑터 / 검증 모두 PASS

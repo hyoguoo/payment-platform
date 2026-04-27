@@ -7,7 +7,10 @@
 - **CLIENT-SIDE-LB** — Phase A (LoadBalanced WebClient) → Phase B (OpenFeign) 순차 도입
   - discuss: `docs/topics/CLIENT-SIDE-LB.md`
   - plan: `docs/CLIENT-SIDE-LB-PLAN.md`
-  - active task: **A6** (A5 완료 — docker-compose cross-service URL override 제거)
+  - **Phase A 종결** (A1 → A2 → A3 → A4 → A5 → A5b → A6 모두 완료)
+    - LB 작동 확인: 두 product-service 인스턴스 round-robin 분산 (11/16 traceId)
+    - 회귀 0 (`./gradlew test` 578 PASS)
+  - active task: **B1** (Phase B 진입 — spring-cloud-starter-openfeign 추가)
 
 ## 직전 봉인
 

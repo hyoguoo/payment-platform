@@ -114,12 +114,13 @@ services:
 
   # ───────────────────────────────────────────
   # product-service (재고 저장소 + StockCommit consumer)
+  # container_name 미지정 — `docker compose up --scale product-service=N` 으로 다중 인스턴스 기동.
+  # compose 가 docker-product-service-1, docker-product-service-2 ... 자동 부여.
   # ───────────────────────────────────────────
   product-service:
     build:
       context: ../product-service
       dockerfile: Dockerfile
-    container_name: product-service
     hostname: product-service
     labels:
       com.hyoguoo.loki.enable: "true"
