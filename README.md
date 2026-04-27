@@ -310,11 +310,25 @@ cp .env.secret.example .env.secret
 bash scripts/compose-up.sh
 ```
 
-기동 후 인프라 + 4서비스 헬스 검증:
+기동 후 smoke 검증:
 
 ```bash
-bash scripts/smoke/infra-healthcheck.sh
+bash scripts/smoke-all.sh                  # Phase 1: 인프라 헬스 + Kafka 토픽 정책
+bash scripts/smoke-all.sh --with-trace     # Phase 1 + 트레이스(결제 1건 발생 후)
+# 또는 stack up 과 동시에:
+bash scripts/compose-up.sh --with-smoke    # 기동 직후 Phase 1 자동 실행
 ```
+
+#### Smoke 스크립트 구성
+
+| 스크립트                                  | 검증 항목                                                        | 트래픽 의존 |
+|:-------------------------------------|:-------------------------------------------------------------|:------:|
+| `scripts/smoke/infra-healthcheck.sh` | 13 컨테이너 health + 9 호스트 포트 + 5 Eureka 등록 (총 27 항목)             |   X    |
+| `scripts/smoke/kafka-topic-config.sh` | 토픽 partition 동일성 / replication-factor 정책 / retry 토픽 미존재       |   X    |
+| `scripts/smoke/trace-header-check.sh` | `payment.commands.confirm` Kafka record header 의 traceparent  |   O    |
+| `scripts/smoke/trace-continuity-check.sh` | gateway → payment → pg → product/user 다중 홉 traceId 연속성        |   O    |
+
+`scripts/smoke-all.sh` 가 위 4개를 fail-fast 로 일괄 실행한다 (Phase 2 는 `--with-trace` 옵션 시).
 
 실행 후 http://localhost:8081 (payment-service) 에서 전체 페이지를 탐색할 수 있습니다.
 

@@ -23,6 +23,7 @@
 #   bash scripts/compose-up.sh --skip-build   # bootJar 재빌드만 생략 (Docker image는 여전히 재빌드)
 #   bash scripts/compose-up.sh --skip-obs     # 관측성 스택 생략
 #   bash scripts/compose-up.sh --reset-db     # MySQL 볼륨 제거 후 완전 재기동 (Flyway 재실행)
+#   bash scripts/compose-up.sh --with-smoke   # stack up 직후 smoke-all Phase 1 자동 실행 (헬스 + 토픽)
 #   bash scripts/compose-up.sh --down         # 전체 종료 (볼륨 유지)
 #   bash scripts/compose-up.sh --clean        # 전체 종료 + 모든 볼륨 제거
 #
@@ -91,6 +92,7 @@ SKIP_OBS=false
 RESET_DB=false
 DO_DOWN=false
 DO_CLEAN=false
+WITH_SMOKE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -99,6 +101,7 @@ while [[ $# -gt 0 ]]; do
     --reset-db) RESET_DB=true; shift ;;
     --down) DO_DOWN=true; shift ;;
     --clean) DO_CLEAN=true; shift ;;
+    --with-smoke) WITH_SMOKE=true; shift ;;
     --mode)
       shift
       [[ $# -gt 0 ]] || { print_error "--mode 옵션에 값이 필요합니다 (prod | fake)"; exit 1; }
@@ -331,6 +334,17 @@ print_section "=== stock 시드 (mysql-product → redis-stock) ==="
 bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/seed-stock.sh" || print_warning "시드 실패 — payment-service 의 confirm 진입 시 redis 키 부재로 동작 이상 가능"
 
 echo
-print_warning "헬스 체크:       bash scripts/smoke/infra-healthcheck.sh   (가이드: docs/smoke/infra-healthcheck.md)"
+print_warning "헬스 체크:       bash scripts/smoke-all.sh   (Phase 1 — infra + kafka topic config)"
+print_warning "트레이스 검증:   bash scripts/smoke-all.sh --with-trace   (결제 1건 발생 후)"
 print_warning "로그 팔로우:     docker compose ${COMPOSE_ARGS_ALL} logs -f <service>"
 print_warning "종료:            bash scripts/compose-up.sh --down  (또는 --clean 으로 볼륨 포함 제거)"
+
+# --with-smoke 옵션 — stack up 직후 smoke-all Phase 1 자동 실행
+if [[ "${WITH_SMOKE}" == "true" ]]; then
+  echo
+  print_section "=== --with-smoke: smoke-all Phase 1 자동 실행 ==="
+  if ! bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/smoke-all.sh"; then
+    print_error "❌ smoke-all 실패 — 위 출력의 FAIL 라인 확인"
+    exit 1
+  fi
+fi

@@ -14,9 +14,10 @@
 #   0 — 전체 검증 통과
 #   1 — 하나 이상 검증 실패
 
-set -euo pipefail
+set -o pipefail
 
-BOOTSTRAP_SERVER="${1:-localhost:29092}"
+BOOTSTRAP_SERVER_ARG="${1:-}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
 
 # 검증 대상 토픽 목록 (retry 전용 토픽 제외)
 TOPICS=(
@@ -37,10 +38,18 @@ info() { echo -e "${YELLOW}[INFO]${NC} $*"; }
 
 FAIL_COUNT=0
 
-# ── kafka-topics 명령 존재 확인 ──────────────────────────────
-if ! command -v kafka-topics &>/dev/null; then
-  info "kafka-topics 명령을 찾을 수 없습니다. Docker 컨테이너 내부에서 실행하거나 PATH를 확인하세요."
-  info "대안: docker exec payment-kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic <TOPIC>"
+# ── kafka-topics 실행 경로 결정 ──────────────────────────────
+# 호스트에 kafka-topics 가 있으면 그대로, 없으면 docker exec 폴백.
+if command -v kafka-topics &>/dev/null; then
+  KAFKA_TOPICS=(kafka-topics)
+  BOOTSTRAP_SERVER="${BOOTSTRAP_SERVER_ARG:-localhost:9092}"
+elif docker exec "${KAFKA_CONTAINER}" kafka-topics --version &>/dev/null; then
+  info "호스트에 kafka-topics 없음 — docker exec ${KAFKA_CONTAINER} 경유"
+  KAFKA_TOPICS=(docker exec -i "${KAFKA_CONTAINER}" kafka-topics)
+  # 컨테이너 내부 네트워크에서 broker 는 localhost:9092
+  BOOTSTRAP_SERVER="${BOOTSTRAP_SERVER_ARG:-localhost:9092}"
+else
+  fail "kafka-topics 사용 불가 — 호스트 PATH 와 ${KAFKA_CONTAINER} 컨테이너 양쪽에서 미존재"
   exit 1
 fi
 
@@ -49,16 +58,16 @@ echo "  Kafka 토픽 설정 검증"
 echo "  BOOTSTRAP: ${BOOTSTRAP_SERVER}"
 echo "======================================================="
 
-# ── 각 토픽 describe 후 partition/rf/isr 파싱 ────────────────
-declare -A PARTITION_MAP
-declare -A RF_MAP
-declare -A ISR_MAP
+# ── 각 토픽 describe 후 partition/rf 파싱 + 즉시 검증 ──────────
+# macOS bash 3.2 는 associative array 미지원이라 indexed array + 단일 루프로 처리.
+BASELINE_PARTITION=""
+ALL_SAME=true
 
 for TOPIC in "${TOPICS[@]}"; do
   echo ""
   info "토픽 조회: ${TOPIC}"
 
-  DESCRIBE_OUT=$(kafka-topics \
+  DESCRIBE_OUT=$("${KAFKA_TOPICS[@]}" \
     --bootstrap-server "${BOOTSTRAP_SERVER}" \
     --describe \
     --topic "${TOPIC}" 2>&1) || {
@@ -67,22 +76,12 @@ for TOPIC in "${TOPICS[@]}"; do
     continue
   }
 
-  # PartitionCount 파싱
-  PARTITION_COUNT=$(echo "${DESCRIBE_OUT}" \
-    | grep "^Topic:" \
-    | head -1 \
-    | grep -oP 'PartitionCount:\s*\K[0-9]+' || echo "")
-
-  # ReplicationFactor 파싱
-  RF=$(echo "${DESCRIBE_OUT}" \
-    | grep "^Topic:" \
-    | head -1 \
-    | grep -oP 'ReplicationFactor:\s*\K[0-9]+' || echo "")
-
-  # min.insync.replicas 파싱 (Configs 행)
-  ISR=$(echo "${DESCRIBE_OUT}" \
-    | grep -oP 'min\.insync\.replicas=\K[0-9]+' \
-    | head -1 || echo "")
+  # PartitionCount / ReplicationFactor / min.insync.replicas 파싱.
+  # macOS BSD grep 은 -P 미지원 — sed -E 로 portable 추출.
+  HEADER_LINE=$(echo "${DESCRIBE_OUT}" | grep "^Topic:" | head -1)
+  PARTITION_COUNT=$(echo "${HEADER_LINE}" | sed -nE 's/.*PartitionCount:[[:space:]]*([0-9]+).*/\1/p')
+  RF=$(echo "${HEADER_LINE}" | sed -nE 's/.*ReplicationFactor:[[:space:]]*([0-9]+).*/\1/p')
+  ISR=$(echo "${DESCRIBE_OUT}" | sed -nE 's/.*min\.insync\.replicas=([0-9]+).*/\1/p' | head -1)
 
   if [[ -z "${PARTITION_COUNT}" || -z "${RF}" ]]; then
     fail "파싱 실패 — 토픽이 존재하지 않거나 출력 형식이 다릅니다: ${TOPIC}"
@@ -92,62 +91,41 @@ for TOPIC in "${TOPICS[@]}"; do
     continue
   fi
 
-  PARTITION_MAP["${TOPIC}"]="${PARTITION_COUNT}"
-  RF_MAP["${TOPIC}"]="${RF}"
-  ISR_MAP["${TOPIC}"]="${ISR:-N/A}"
-
   echo "  PartitionCount    = ${PARTITION_COUNT}"
   echo "  ReplicationFactor = ${RF}"
   echo "  min.insync.replicas = ${ISR:-N/A (broker default)}"
+
+  # 검증 1 — 첫 토픽을 baseline 으로 잡고 이후 토픽과 비교
+  if [[ -z "${BASELINE_PARTITION}" ]]; then
+    BASELINE_PARTITION="${PARTITION_COUNT}"
+  elif [[ "${PARTITION_COUNT}" != "${BASELINE_PARTITION}" ]]; then
+    fail "${TOPIC} partition=${PARTITION_COUNT} (기준: ${BASELINE_PARTITION})"
+    ALL_SAME=false
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+
+  # 검증 2 — replication.factor 정책
+  if [[ "${RF}" -ge 3 ]]; then
+    pass "${TOPIC}: replication.factor=${RF}"
+  elif [[ "${RF}" -eq 1 ]]; then
+    echo -e "${YELLOW}[WARN]${NC} ${TOPIC}: replication.factor=${RF} (로컬 허용, 프로덕션 배포 전 3으로 변경 필요)"
+  else
+    fail "${TOPIC}: replication.factor=${RF} (2는 split-brain 위험 — 1 또는 3+ 사용)"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 done
 
 echo ""
 echo "======================================================="
-echo "  검증 1: 토픽 간 PartitionCount 동일 여부"
+echo "  검증 1 종합: 토픽 간 PartitionCount 동일 여부"
 echo "======================================================="
-
-FIRST_TOPIC="${TOPICS[0]}"
-BASELINE_PARTITION="${PARTITION_MAP[${FIRST_TOPIC}]:-}"
 
 if [[ -z "${BASELINE_PARTITION}" ]]; then
   fail "기준 토픽 partition 수를 확인할 수 없어 동일성 검증을 건너뜁니다."
   FAIL_COUNT=$((FAIL_COUNT + 1))
-else
-  ALL_SAME=true
-  for TOPIC in "${TOPICS[@]}"; do
-    CURRENT="${PARTITION_MAP[${TOPIC}]:-}"
-    if [[ "${CURRENT}" != "${BASELINE_PARTITION}" ]]; then
-      fail "${TOPIC} partition=${CURRENT} (기준: ${BASELINE_PARTITION})"
-      ALL_SAME=false
-      FAIL_COUNT=$((FAIL_COUNT + 1))
-    fi
-  done
-
-  if [[ "${ALL_SAME}" == "true" ]]; then
-    pass "전체 토픽 partition 수 동일: ${BASELINE_PARTITION}"
-  fi
+elif [[ "${ALL_SAME}" == "true" ]]; then
+  pass "전체 토픽 partition 수 동일: ${BASELINE_PARTITION}"
 fi
-
-echo ""
-echo "======================================================="
-echo "  검증 2: ReplicationFactor >= 3 (프로덕션 권고)"
-echo "  (로컬 단일 브로커 환경에서는 1 허용 — 경고만)"
-echo "======================================================="
-
-for TOPIC in "${TOPICS[@]}"; do
-  RF_VAL="${RF_MAP[${TOPIC}]:-}"
-  if [[ -z "${RF_VAL}" ]]; then
-    continue
-  fi
-  if [[ "${RF_VAL}" -ge 3 ]]; then
-    pass "${TOPIC}: replication.factor=${RF_VAL}"
-  elif [[ "${RF_VAL}" -eq 1 ]]; then
-    echo -e "${YELLOW}[WARN]${NC} ${TOPIC}: replication.factor=${RF_VAL} (로컬 허용, 프로덕션 배포 전 3으로 변경 필요)"
-  else
-    fail "${TOPIC}: replication.factor=${RF_VAL} (2는 split-brain 위험 — 1 또는 3+ 사용)"
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-  fi
-done
 
 echo ""
 echo "======================================================="
@@ -161,7 +139,7 @@ RETRY_TOPICS=(
 )
 
 for RETRY_TOPIC in "${RETRY_TOPICS[@]}"; do
-  RETRY_OUT=$(kafka-topics \
+  RETRY_OUT=$("${KAFKA_TOPICS[@]}" \
     --bootstrap-server "${BOOTSTRAP_SERVER}" \
     --describe \
     --topic "${RETRY_TOPIC}" 2>&1 || true)
