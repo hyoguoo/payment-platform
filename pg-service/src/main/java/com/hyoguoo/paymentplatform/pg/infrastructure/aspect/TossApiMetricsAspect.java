@@ -56,11 +56,12 @@ public class TossApiMetricsAspect {
 
         switch (tossApiMetric.value()) {
             case SUCCESS:
-                tossApiMetrics.recordTossApiCall(operation, duration, true);
+                tossApiMetrics.recordTossApiCall(operation, duration, TossApiMetrics.CallOutcome.SUCCESS);
                 break;
             case RETRYABLE_FAILURE, NON_RETRYABLE_FAILURE:
                 extractErrorCode(joinPoint).ifPresent(
-                        errorCode -> tossApiMetrics.recordTossApiCall(operation, duration, false, errorCode)
+                        errorCode -> tossApiMetrics.recordTossApiCall(
+                                operation, duration, TossApiMetrics.CallOutcome.FAILURE, errorCode)
                 );
                 break;
         }
@@ -71,7 +72,7 @@ public class TossApiMetricsAspect {
 
         switch (tossApiMetric.value()) {
             case SUCCESS:
-                tossApiMetrics.recordTossApiCall(operation, duration, false);
+                tossApiMetrics.recordTossApiCall(operation, duration, TossApiMetrics.CallOutcome.FAILURE);
                 break;
             case RETRYABLE_FAILURE, NON_RETRYABLE_FAILURE:
                 break;
