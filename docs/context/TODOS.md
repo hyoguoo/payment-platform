@@ -121,6 +121,27 @@
 - 처리 시점: Phase 4 의 T4-A (Toxiproxy 8종 장애 주입) + T4-B (k6 부하) 측정 결과 기반 — "측정 없이 마법 숫자 박지 않는다" 원칙
 - 도입 후보: T4-D 의 Resilience4j 묶음에 `@Bulkhead("productService")` 추가, 또는 외부 PG 호출 어댑터에 명시 Semaphore. 측정값 기반으로 결정
 
+### TC-7 — outbox retry 정책 정렬 (stock 도입 + payment 재검토)
+
+두 outbox 의 retry 정책이 비대칭. 같은 시점에 일관 정책으로 정렬 필요.
+
+**현황**:
+- `payment_outbox`: `RetryPolicy` 활용 중 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. `incrementRetryCount(policy, now)` 호출 + `nextRetryAt` 시각 표현 + 한도 초과 시 종결
+- `stock_outbox`: schema 와 `attempt` 필드 / `incrementAttempt()` 메서드 자리는 잡혀 있으나 **호출처 0건** — 실제 retry policy 미연결. 발행 실패 시 다음 cycle 그대로 재시도, counter 미관리, backoff 미적용
+
+**조정 필요 사항**:
+1. **stock_outbox 에 retry policy 도입** — `payment_outbox` 미러링. `incrementAttempt()` 활성화 + `nextAvailableAt` 또는 동등 backoff 도입 + 한도 초과 시 DLQ / FAILED 처리
+2. **payment_outbox 정책 재검토** — 현재 maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증. backoff 가 EXPONENTIAL 가 더 적합한 시나리오인지 검토
+3. **두 outbox 의 정책 일관성** — 같은 책임 (Kafka publish 실패 회복) 이라 동일 RetryPolicy 클래스 또는 통일된 properties 구조로 정렬
+
+**처리 시점**: Phase 4 의 T4-A (Toxiproxy 장애 주입) + T4-B (k6 부하) 측정 결과 기반. 운영 SLO 데이터 없이 마법 숫자 정렬 금지.
+
+**관련 코드**:
+- `payment-service/.../domain/PaymentOutbox.java` — retryCount + incrementRetryCount
+- `payment-service/.../domain/StockOutbox.java:93` — incrementAttempt() (호출 0)
+- `payment-service/.../application/config/RetryPolicyProperties.java`
+- `payment-service/.../domain/RetryPolicy.java`
+
 ---
 
 ## Plan 작성 시 사용 가이드
