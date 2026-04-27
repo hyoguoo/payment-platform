@@ -10,12 +10,13 @@
 ## Phase A — Spring Cloud LoadBalancer + WebClient
 
 ### A1. 의존성 명시 추가
-- [ ] `payment-service/build.gradle` 에 `spring-cloud-starter-loadbalancer` 명시
+- [x] `payment-service/build.gradle` 에 `spring-cloud-starter-loadbalancer` 명시
   - 이유: 현재 `eureka-client` 가 transitively 가져오지만 명시가 hexagonal/dep 가시성에 좋음
   - 검증: `./gradlew :payment-service:dependencies | grep loadbalancer`
 - 의존: 없음 (Phase A 진입점)
 - TDD: 불필요 (의존성 변경)
 - 단일 commit: `chore(payment-service): spring-cloud-starter-loadbalancer 명시 추가`
+- 완료 결과: `spring-cloud-starter-loadbalancer:4.2.0` 직접 의존성 추가 확인, `compileJava` PASS
 
 ### A2. `@LoadBalanced WebClient.Builder` Bean 등록
 - [ ] `payment-service/.../core/config/HttpClientConfig.java` 신규 (또는 기존 config 에 추가)
