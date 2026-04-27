@@ -61,13 +61,11 @@ subprojects {
 
     // Test Configuration
     test {
-        useJUnitPlatform()
-
-        jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
-
         useJUnitPlatform {
             excludeTags 'integration'
         }
+
+        jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
 
         testLogging {
             events "passed", "skipped", "failed"

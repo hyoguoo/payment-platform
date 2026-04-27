@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfir
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.CheckoutResponse;
@@ -51,7 +52,7 @@ public class PaymentController {
     @PostMapping("/api/v1/payments/confirm")
     public ResponseEntity<PaymentConfirmResponse> confirm(
             @RequestBody PaymentConfirmRequest paymentConfirmRequest
-    ) throws com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException {
+    ) throws PaymentOrderedProductStockException {
         PaymentConfirmCommand paymentConfirmCommand = PaymentPresentationMapper.toPaymentConfirmCommand(
                 paymentConfirmRequest
         );

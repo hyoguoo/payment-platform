@@ -223,11 +223,11 @@ class PaymentOutboxTest {
         }
     }
 
-    // T1-04: 스펙 지정 테스트 메서드
+    // 상태 전이 스펙 검증
 
     @Nested
-    @DisplayName("T1-04 스펙 지정 전이 테스트")
-    class T1Spec04Test {
+    @DisplayName("상태 전이 스펙 테스트")
+    class StateTransitionSpecTest {
 
         @Test
         @DisplayName("toDone_ChangesStatusToProcessed: IN_FLIGHT 상태에서 toDone() 호출 시 status=DONE으로 변경된다.")

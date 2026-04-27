@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class PaymentExceptionHandler {
 
     @ExceptionHandler(PaymentFoundException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentFoundException e) {
+    public ResponseEntity<ErrorResponse> handlePaymentFound(PaymentFoundException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -36,7 +36,7 @@ public class PaymentExceptionHandler {
     }
 
     @ExceptionHandler(PaymentStatusException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentStatusException e) {
+    public ResponseEntity<ErrorResponse> handlePaymentStatus(PaymentStatusException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -48,7 +48,7 @@ public class PaymentExceptionHandler {
     }
 
     @ExceptionHandler(PaymentValidException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentValidException e) {
+    public ResponseEntity<ErrorResponse> handlePaymentValid(PaymentValidException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -60,7 +60,7 @@ public class PaymentExceptionHandler {
     }
 
     @ExceptionHandler(PaymentOrderedProductStockException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(PaymentOrderedProductStockException e) {
+    public ResponseEntity<ErrorResponse> handlePaymentOrderedProductStock(PaymentOrderedProductStockException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -72,7 +72,7 @@ public class PaymentExceptionHandler {
     }
 
     @ExceptionHandler(ProductNotFoundException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(ProductNotFoundException e) {
+    public ResponseEntity<ErrorResponse> handleProductNotFound(ProductNotFoundException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -84,7 +84,7 @@ public class PaymentExceptionHandler {
     }
 
     @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<ErrorResponse> catchRuntimeException(UserNotFoundException e) {
+    public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
