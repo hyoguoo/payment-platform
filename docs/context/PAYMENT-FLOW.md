@@ -124,7 +124,7 @@ flowchart TD
     Y2 --> Z["PgOutboxRelayService<br/>→ PgEventPublisher<br/>→ Kafka 발행 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq)"]
     Y3 --> Z
 
-    Z -.commands.confirm.dlq.-> DLQ_CONS["PaymentConfirmDlqConsumer<br/>@KafkaListener groupId=pg-service-dlq"]
+    Z -.->|"commands.confirm.dlq"| DLQ_CONS["PaymentConfirmDlqConsumer<br/>@KafkaListener groupId=pg-service-dlq"]
     DLQ_CONS --> DLQ_HANDLE["PgDlqService.handle<br/>pg_inbox QUARANTINED 전이<br/>+ pg_outbox events.confirmed QUARANTINED INSERT"]
     DLQ_HANDLE --> Y
 ```

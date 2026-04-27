@@ -35,7 +35,7 @@ flowchart TD
     A([Controller: POST /confirm]) --> B[getPaymentEventByOrderId]
     B --> LVAL[validateConfirmRequest<br/>userId/amount/orderId/paymentKey]
     LVAL -->|PaymentValidException| FAIL_4XX([4xx throw])
-    LVAL --> DECR[decrementStock<br/>Redis 원자 DECR — TX 외부]
+    LVAL --> DECR[decrementStock<br/>Redis 원자 DECR - TX 외부]
 
     DECR -->|REJECTED| RJ[PaymentFailureUseCase.handleStockFailure<br/>event=FAILED]
     DECR -->|CACHE_DOWN| CD[PaymentTransactionCoordinator<br/>.markStockCacheDownQuarantine<br/>event=QUARANTINED]
@@ -45,7 +45,7 @@ flowchart TD
     CD --> FAIL_409
 
     TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY → IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox PENDING INSERT<br/>confirmPublisher.publish (ApplicationEvent)"]
-    TX_INNER -->|RuntimeException| COMP[compensateStock<br/>Redis INCR 보상<br/>(private 메서드)]
+    TX_INNER -->|RuntimeException| COMP[compensateStock<br/>Redis INCR 보상<br/>private 메서드]
     COMP --> RETHROW([txException re-throw])
     TX_INNER -->|성공| RESP([202 Accepted])
 ```
