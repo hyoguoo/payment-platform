@@ -175,10 +175,16 @@
 - 완료 결과: ProductFeignConfigTest 4케이스 + UserFeignConfigTest 4케이스 = 8케이스 추가. 342 → 350/350 PASS. 기존 propagation contract test 유지.
 
 ### B7. 검증
-- [ ] `./gradlew test` 회귀 0
-- [ ] stack 기동 + scale up 시나리오 (Phase A6 와 동일) — Feign 도 round-robin 확인
-- [ ] `scripts/smoke-all.sh --with-trace` PASS
+- [x] `./gradlew test` 회귀 0
+- [x] stack 기동 + scale up 시나리오 (Phase A6 와 동일) — Feign 도 round-robin 확인
+- [x] `scripts/smoke-all.sh --with-trace` PASS (단, Phase 1.1 product-service 컨테이너명 불일치 잡음 1건 — 별도 이슈)
 - 단일 commit (선택): `test(scale): Feign client 다중 인스턴스 검증 결과 기록`
+- 완료 결과:
+  - `./gradlew test` 전체 579/579 PASS (payment-service 350 + product-service 19 + pg-service 206 + user-service 3 + commons 1)
+  - Feign round-robin 분산: docker-product-service-1 7건, docker-product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
+  - smoke-all Phase 1 26/27 PASS (FAIL 1건: product-service 컨테이너명 불일치 — scale 상태 잡음, LB 검증 무관)
+  - smoke-all Phase 2 (trace-continuity) PASS — 5-service chain 완주, traceId 전파 확인
+  - Phase B 종결 기준 충족
 
 ### Phase B 종결 기준
 - 모든 cross-service HTTP 가 Feign 경유

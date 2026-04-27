@@ -1,6 +1,7 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-27 — Phase 4 진입 전 self-loop sweep 봉인
+> 최종 수정: 2026-04-27 — CLIENT-SIDE-LB Phase B 종결, review 단계 대기
+> stage: review
 
 ## 활성 작업
 
@@ -10,7 +11,10 @@
   - **Phase A 종결** (A1 → A2 → A3 → A4 → A5 → A5b → A6 모두 완료)
     - LB 작동 확인: 두 product-service 인스턴스 round-robin 분산 (11/16 traceId)
     - 회귀 0 (`./gradlew test` 578 PASS)
-  - active task: **B7** (검증 — 회귀 0 + scale up + smoke-all)
+  - **Phase B 종결** (B1 → B7 모두 완료)
+    - round-robin Feign 분산: product-service-1 7건 / product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
+    - 회귀 0 (`./gradlew test` 579 PASS)
+  - active task: **B7 완료** — Phase B 종결, review 대기
 
 ## 직전 봉인
 
