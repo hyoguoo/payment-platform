@@ -82,8 +82,8 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 - `.claude/skills/workflow-{discuss,plan,plan-review,execute,review,verify}/` — 각 단계 오케스트레이터
 - `.claude/skills/review/`, `.claude/skills/plan-review/` — 단독 호출용 (1라운드)
 - `.claude/skills/_shared/checklists/` — 단계별 판정 체크리스트 (discuss/plan/code/verify-ready.md)
-- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 (discuss/plan/code/verify/qa/unstuck/commit/vc-round.md)
-- `.claude/skills/_shared/personas/` — 8개 페르소나 (interviewer/architect/planner/critic/domain-expert/implementer/verifier/pr-manager)
+- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 9종 (discuss/plan/code/verify/qa/unstuck/commit/vc/doc-review-round.md)
+- `.claude/skills/_shared/personas/` — 9개 페르소나 (interviewer/architect/planner/plan-reviewer/critic/domain-expert/implementer/verifier/pr-manager)
 
 ## Commit Style
 
