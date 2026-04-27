@@ -47,7 +47,7 @@
 - [ ] 기존 contract test (`*HttpAdapterContractTest.java`) 는 `MockWebServer` 로 직접 host 주입이라 LB 우회 — 회귀 없음 검증
 - [ ] 단위 테스트 추가 (선택): `@LoadBalanced` 어노테이션이 builder field 에 부착되어 있는지 reflection 검사 (회귀 방지)
 - 의존: A2, A3
-- TDD: 어댑터 생성자 변경이 contract test 컴파일 오류로 강제 — RED 자동
+- TDD: 불필요 (생성자 시그니처 / 어노테이션 변경) — 기존 contract test 가 회귀 게이트 역할
 - 단일 commit: `refactor(payment-service): ProductHttpAdapter / UserHttpAdapter LoadBalanced 전환`
 
 ### A5. docker-compose 의 cross-service env 정리
@@ -80,6 +80,8 @@
 - [ ] `payment-service/build.gradle` 에 `spring-cloud-starter-openfeign` 추가
 - [ ] `@EnableFeignClients(basePackages = "com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.feign")` 활성화
 - 의존: Phase A 종결
+- TDD: 불필요 (의존성 / 어노테이션 활성화)
+- 검증: `./gradlew :payment-service:dependencies | grep openfeign`
 - 단일 commit: `chore(payment-service): spring-cloud-starter-openfeign 추가`
 
 ### B2. Feign 인터페이스 정의
@@ -94,7 +96,8 @@
   ```
 - [ ] `UserFeignClient.java` 동일
 - [ ] DTO 는 기존 `ProductHttpAdapter` 가 사용하던 record 재사용
-- TDD: B4 단위 테스트로 인터페이스 mock 검증
+- 의존: B1
+- TDD: 불필요 (선언적 인터페이스 정의 — 동작 검증은 B4/B6 의 contract test 가 담당)
 - 단일 commit: `feat(payment-service): ProductFeignClient / UserFeignClient 인터페이스 정의`
 
 ### B3. Feign 설정 (Encoder/Decoder/ErrorDecoder)
