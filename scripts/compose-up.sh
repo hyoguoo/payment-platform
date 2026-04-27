@@ -241,6 +241,33 @@ wait_healthy() {
   done
 }
 
+# 서비스 이름(container_name 미고정 가정)을 실제 컨테이너 이름으로 resolve.
+# docker compose 가 <project>-<service>-<n> 형식으로 자동 부여하므로
+# COMPOSE_PROJECT_NAME prefix 로 필터링해 모든 인스턴스를 반환한다.
+resolve_instances() {
+  local svc="$1"
+  docker ps --filter "name=${COMPOSE_PROJECT_NAME}-${svc}-" --format "{{.Names}}" 2>/dev/null
+}
+
+# 서비스 이름 배열을 받아 인스턴스를 동적으로 resolve 한 뒤 wait_healthy 에 전달.
+# container_name 고정 서비스(인프라)는 기존 wait_healthy 를 직접 사용.
+wait_healthy_by_service() {
+  local stage="$1"; shift
+  local timeout="$1"; shift
+  local services=("$@")
+  local containers=()
+  for svc in "${services[@]}"; do
+    while IFS= read -r inst; do
+      [ -n "${inst}" ] && containers+=("${inst}")
+    done < <(resolve_instances "${svc}")
+  done
+  if [ "${#containers[@]}" -eq 0 ]; then
+    print_error "❌ resolve_instances: 인스턴스 0건 — compose up 이 아직 완료 안 됐을 수 있습니다."
+    return 1
+  fi
+  wait_healthy "${stage}" "${timeout}" "${containers[@]}"
+}
+
 # ───────────────────────────────────────────
 # 4. 공유 네트워크 보장
 #    payment-infra-network 는 infra.yml / apps.yml 양쪽에서 external 로 참조하는
@@ -279,7 +306,7 @@ print_section "▶ 앱 컨테이너 완전 재빌드 (${APPS_COMPOSE})"
 docker compose ${COMPOSE_ARGS_APPS} up -d --build --force-recreate \
   payment-service pg-service product-service user-service gateway
 
-if ! wait_healthy "앱" 180 \
+if ! wait_healthy_by_service "앱" 300 \
   payment-service pg-service product-service user-service gateway; then
   docker compose ${COMPOSE_ARGS_APPS} ps
   print_warning "로그 확인: docker compose ${COMPOSE_ARGS_APPS} logs -f <service>"
