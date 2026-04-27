@@ -1,88 +1,57 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
-import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.UserResponse;
-import java.util.Map;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.feign.UserFeignClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * UserHttpAdapter 404/503/429/500 응답 분기 계약 테스트.
+ * UserHttpAdapter FeignClient 예외 propagation 계약 테스트.
  *
- * <p>contract test — 서브도메인 404/5xx 매핑 회귀 방지:
+ * <p>ErrorDecoder 가 throw 한 도메인 예외를 어댑터가 그대로 propagate 하는지 검증한다.
+ * 4xx/5xx → 도메인 예외 매핑 자체는 B6 에서 UserFeignConfigTest 로 별도 검증한다.
+ *
  * <ul>
- *   <li>404 → UserNotFoundException (PaymentErrorCode.USER_NOT_FOUND)</li>
- *   <li>503 → UserServiceRetryableException (USER_SERVICE_UNAVAILABLE)</li>
- *   <li>429 → UserServiceRetryableException (USER_SERVICE_UNAVAILABLE)</li>
- *   <li>500 → IllegalStateException</li>
+ *   <li>FeignClient 가 {@link UserNotFoundException} throw → 어댑터가 그대로 propagate</li>
+ *   <li>FeignClient 가 {@link UserServiceRetryableException} throw → 어댑터가 그대로 propagate</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("UserHttpAdapter 계약 — 404/503/429/500 응답 분기")
+@DisplayName("UserHttpAdapter 계약 — FeignClient 예외 propagation")
 class UserHttpAdapterContractTest {
 
     @Mock
-    private HttpOperator httpOperator;
+    private UserFeignClient userFeignClient;
 
     @InjectMocks
     private UserHttpAdapter adapter;
 
     @Test
-    @DisplayName("404 응답 → UserNotFoundException(USER_NOT_FOUND)")
-    void getUser_NotFound_ShouldThrowUserNotFoundException() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.NOT_FOUND.value(), "Not Found", null, null, null));
+    @DisplayName("FeignClient 가 UserNotFoundException throw → 어댑터가 그대로 propagate")
+    void getUser_WhenFeignThrowsUserNotFound_ShouldPropagate() {
+        given(userFeignClient.getUserById(999L))
+                .willThrow(UserNotFoundException.of(PaymentErrorCode.USER_NOT_FOUND));
 
         assertThatThrownBy(() -> adapter.getUserInfoById(999L))
                 .isInstanceOf(UserNotFoundException.class);
     }
 
     @Test
-    @DisplayName("503 응답 → UserServiceRetryableException(USER_SERVICE_UNAVAILABLE)")
-    void getUser_ServiceUnavailable_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.SERVICE_UNAVAILABLE.value(), "Service Unavailable", null, null, null));
+    @DisplayName("FeignClient 가 UserServiceRetryableException throw → 어댑터가 그대로 propagate")
+    void getUser_WhenFeignThrowsRetryable_ShouldPropagate() {
+        given(userFeignClient.getUserById(1L))
+                .willThrow(UserServiceRetryableException.of(PaymentErrorCode.USER_SERVICE_UNAVAILABLE));
 
         assertThatThrownBy(() -> adapter.getUserInfoById(1L))
                 .isInstanceOf(UserServiceRetryableException.class);
-    }
-
-    @Test
-    @DisplayName("429 응답 → UserServiceRetryableException(Too Many Requests)")
-    void getUser_TooManyRequests_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests", null, null, null));
-
-        assertThatThrownBy(() -> adapter.getUserInfoById(1L))
-                .isInstanceOf(UserServiceRetryableException.class);
-    }
-
-    @Test
-    @DisplayName("500 응답 → IllegalStateException (미분류 서버 에러)")
-    void getUser_InternalServerError_ShouldThrowIllegalState() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(UserResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", null, null, null));
-
-        assertThatThrownBy(() -> adapter.getUserInfoById(1L))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("status=500");
     }
 }

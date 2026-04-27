@@ -1,16 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.feign.ProductFeignClient;
 import java.math.BigDecimal;
-import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ProductHttpAdapterTest {
 
     @Mock
-    private HttpOperator httpOperator;
+    private ProductFeignClient productFeignClient;
 
     @InjectMocks
     private ProductHttpAdapter productHttpAdapter;
@@ -35,8 +31,7 @@ class ProductHttpAdapterTest {
         ProductResponse response = new ProductResponse(
                 1L, "상품A", new BigDecimal("10000"), 50, 100L
         );
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
-                .willReturn(response);
+        given(productFeignClient.getProductById(1L)).willReturn(response);
 
         // when
         ProductInfo result = productHttpAdapter.getProductInfoById(1L);
@@ -48,5 +43,4 @@ class ProductHttpAdapterTest {
         assertThat(result.getStock()).isEqualTo(50);
         assertThat(result.getSellerId()).isEqualTo(100L);
     }
-
 }

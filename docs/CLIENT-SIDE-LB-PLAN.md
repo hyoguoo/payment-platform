@@ -144,13 +144,14 @@
 - 완료 결과: `feign/ProductFeignConfig` + `feign/UserFeignConfig` 신규. 매핑 룰: 404→NotFound, 429/503→Retryable, 그 외→IllegalStateException. `@Configuration` 미부착으로 해당 FeignClient 한정 등록. `compileJava` PASS, 348/348 tests PASS.
 
 ### B4. 어댑터를 Feign 위임으로 재구성
-- [ ] `ProductHttpAdapter` 가 `WebClient` 직접 호출 → `ProductFeignClient` 호출 위임
-- [ ] `UserHttpAdapter` 동일
-- [ ] 기존 `@Value("${product-service.base-url}")` 제거 — Feign 이 `name="product-service"` 로 LB resolve
-- [ ] 도메인 예외는 Feign ErrorDecoder 가 throw, 어댑터는 그대로 propagate 또는 wrap
+- [x] `ProductHttpAdapter` 가 `WebClient` 직접 호출 → `ProductFeignClient` 호출 위임
+- [x] `UserHttpAdapter` 동일
+- [x] 기존 `@Value("${product-service.base-url}")` 제거 — Feign 이 `name="product-service"` 로 LB resolve
+- [x] 도메인 예외는 Feign ErrorDecoder 가 throw, 어댑터는 그대로 propagate 또는 wrap
 - 의존: B3
 - TDD: 기존 contract test 재구성 (MockWebServer → Feign client mock 또는 동일 MockWebServer 유지하되 Feign 으로 교체)
 - 단일 commit: `refactor(payment-service): HttpAdapter 가 Feign client 위임 — WebClient 제거`
+- 완료 결과: `ProductHttpAdapter` / `UserHttpAdapter` 에서 `HttpOperator`, `@Value(base-url)`, 경로 상수, `callGet`, `mapResponseException` 전체 제거. `ProductFeignClient` / `UserFeignClient` 단순 위임 + DTO 변환만 잔존. `ProductHttpAdapterTest` — `@Mock HttpOperator` → `@Mock ProductFeignClient` 교체. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` — 4분기 삭제 후 FeignClient 예외 propagation 검증 2케이스로 축소. 344/344 tests PASS.
 
 ### B5. WebClient 의존성 정리
 - [ ] cross-service 호출이 Feign 으로 전환됐으니, `spring-boot-starter-webflux` 가 다른 데서 쓰이는지 검증

@@ -1,91 +1,57 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.payment.core.common.infrastructure.http.HttpOperator;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
-import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.dto.ProductResponse;
-import java.util.Map;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.feign.ProductFeignClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * ProductHttpAdapter 404/503/429/500 응답 분기 계약 테스트.
+ * ProductHttpAdapter FeignClient 예외 propagation 계약 테스트.
  *
- * <p>contract test — 서브도메인 404/5xx 매핑 회귀 방지:
+ * <p>ErrorDecoder 가 throw 한 도메인 예외를 어댑터가 그대로 propagate 하는지 검증한다.
+ * 4xx/5xx → 도메인 예외 매핑 자체는 B6 에서 ProductFeignConfigTest 로 별도 검증한다.
+ *
  * <ul>
- *   <li>404 → ProductNotFoundException (PaymentErrorCode.PRODUCT_NOT_FOUND)</li>
- *   <li>503 → ProductServiceRetryableException (PRODUCT_SERVICE_UNAVAILABLE)</li>
- *   <li>429 → ProductServiceRetryableException (PRODUCT_SERVICE_UNAVAILABLE)</li>
- *   <li>500 → IllegalStateException</li>
+ *   <li>FeignClient 가 {@link ProductNotFoundException} throw → 어댑터가 그대로 propagate</li>
+ *   <li>FeignClient 가 {@link ProductServiceRetryableException} throw → 어댑터가 그대로 propagate</li>
  * </ul>
- *
- * <p>Strangler Vine 원칙: 기존 ProductHttpAdapterTest 의 happy path 2 케이스는 유지.
- * 본 계약 테스트는 실패·격리 경로 분기 커버리지만 담당한다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ProductHttpAdapter 계약 — 404/503/429/500 응답 분기")
+@DisplayName("ProductHttpAdapter 계약 — FeignClient 예외 propagation")
 class ProductHttpAdapterContractTest {
 
     @Mock
-    private HttpOperator httpOperator;
+    private ProductFeignClient productFeignClient;
 
     @InjectMocks
     private ProductHttpAdapter adapter;
 
     @Test
-    @DisplayName("404 응답 → ProductNotFoundException(PRODUCT_NOT_FOUND)")
-    void getProduct_NotFound_ShouldThrowProductNotFoundException() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.NOT_FOUND.value(), "Not Found", null, null, null));
+    @DisplayName("FeignClient 가 ProductNotFoundException throw → 어댑터가 그대로 propagate")
+    void getProduct_WhenFeignThrowsProductNotFound_ShouldPropagate() {
+        given(productFeignClient.getProductById(999L))
+                .willThrow(ProductNotFoundException.of(PaymentErrorCode.PRODUCT_NOT_FOUND));
 
         assertThatThrownBy(() -> adapter.getProductInfoById(999L))
                 .isInstanceOf(ProductNotFoundException.class);
     }
 
     @Test
-    @DisplayName("503 응답 → ProductServiceRetryableException(PRODUCT_SERVICE_UNAVAILABLE)")
-    void getProduct_ServiceUnavailable_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.SERVICE_UNAVAILABLE.value(), "Service Unavailable", null, null, null));
+    @DisplayName("FeignClient 가 ProductServiceRetryableException throw → 어댑터가 그대로 propagate")
+    void getProduct_WhenFeignThrowsRetryable_ShouldPropagate() {
+        given(productFeignClient.getProductById(1L))
+                .willThrow(ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE));
 
         assertThatThrownBy(() -> adapter.getProductInfoById(1L))
                 .isInstanceOf(ProductServiceRetryableException.class);
-    }
-
-    @Test
-    @DisplayName("429 응답 → ProductServiceRetryableException(Too Many Requests)")
-    void getProduct_TooManyRequests_ShouldThrowRetryable() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests", null, null, null));
-
-        assertThatThrownBy(() -> adapter.getProductInfoById(1L))
-                .isInstanceOf(ProductServiceRetryableException.class);
-    }
-
-    @Test
-    @DisplayName("500 응답 → IllegalStateException (미분류 서버 에러)")
-    void getProduct_InternalServerError_ShouldThrowIllegalState() {
-        given(httpOperator.requestGet(anyString(), any(Map.class), eq(ProductResponse.class)))
-                .willThrow(WebClientResponseException.create(
-                        HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", null, null, null));
-
-        assertThatThrownBy(() -> adapter.getProductInfoById(1L))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("status=500");
     }
 }
