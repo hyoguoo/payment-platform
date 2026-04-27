@@ -250,8 +250,19 @@ public class PaymentConfirmResultUseCase {
      * FAILED 결과 처리. 상태 전이는 PaymentCommandUseCase 위임. 재고 복원은 redis-stock 캐시에
      * 한정 — 각 PaymentOrder 별 stockCachePort.increment 호출. product RDB 는 애초에 차감되지
      * 않았으므로 복원 메시지(stock.events.restore) 발행은 하지 않는다.
+     *
+     * <p>race 방어 가드: markWithLease 는 같은 eventUuid 만 보호한다. IN_PROGRESS self-loop retry
+     * 활성화 후 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면 두 번 진입 가능 → 보상 중복 →
+     * redis-stock 발산. paymentEvent 가 이미 종결(isTerminal)이면 보상과 상태 전이를 모두 skip 한다.
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
+        if (paymentEvent.getStatus().isTerminal()) {
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED_NOOP,
+                    () -> "orderId=" + paymentEvent.getOrderId()
+                            + " 이미 종결 status=" + paymentEvent.getStatus());
+            return;
+        }
+
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
         compensateStockCache(paymentEvent, reasonCode);
@@ -263,8 +274,18 @@ public class PaymentConfirmResultUseCase {
     /**
      * QUARANTINED 결과 처리. 격리도 결제 미성립이므로 redis-stock 캐시는 보상한다 (선차감 분량 복원).
      * product RDB 는 변경되지 않는다 — 격리 사유 조사·admin 처리는 별도 경로.
+     *
+     * <p>race 방어 가드: handleFailed 와 동일한 이유로 paymentEvent 가 이미 종결(isTerminal)이면
+     * 보상과 quarantineCompensationHandler 호출을 모두 skip 한다.
      */
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
+        if (paymentEvent.getStatus().isTerminal()) {
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINED_NOOP,
+                    () -> "orderId=" + paymentEvent.getOrderId()
+                            + " 이미 종결 status=" + paymentEvent.getStatus());
+            return;
+        }
+
         compensateStockCache(paymentEvent, reasonCode);
 
         quarantineCompensationHandler.handle(
