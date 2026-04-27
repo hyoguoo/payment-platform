@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,16 +37,36 @@ public class PaymentConfirmConsumer {
      * payment.commands.confirm 토픽 메시지를 소비한다.
      * groupId 는 pg-service 전용으로 고정 — pg-service 독립 소비 그룹.
      *
-     * @param command 역직렬화된 PgConfirmCommand
+     * <p>attempt 헤더: self-loop retry 시 발행자가 설정하는 1-based 시도 횟수.
+     * 헤더 부재 시 1(최초 진입)로 간주한다.
+     *
+     * @param command       역직렬화된 PgConfirmCommand
+     * @param attemptHeader attempt 헤더 값 (없으면 null)
      */
     @KafkaListener(
             topics = PgTopics.COMMANDS_CONFIRM,
             groupId = GROUP_ID,
             containerFactory = "kafkaListenerContainerFactory"
     )
-    public void consume(PgConfirmCommand command) {
+    public void consume(
+            PgConfirmCommand command,
+            @Header(value = "attempt", required = false) String attemptHeader
+    ) {
+        int attempt = parseAttempt(attemptHeader);
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_RECEIVED,
-                () -> "orderId=" + command.orderId() + " eventUuid=" + command.eventUuid());
-        pgConfirmCommandService.handle(command);
+                () -> "orderId=" + command.orderId() + " eventUuid=" + command.eventUuid()
+                        + " attempt=" + attempt);
+        pgConfirmCommandService.handle(command, attempt);
+    }
+
+    private int parseAttempt(String headerValue) {
+        if (headerValue == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(headerValue.trim());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
     }
 }

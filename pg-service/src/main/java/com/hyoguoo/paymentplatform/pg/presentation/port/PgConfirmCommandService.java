@@ -9,5 +9,19 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
  */
 public interface PgConfirmCommandService {
 
-    void handle(PgConfirmCommand command);
+    /**
+     * attempt 헤더를 포함한 confirm 처리 (메인 시그니처).
+     * self-loop retry 시 attempt >= 2, 최초 진입 시 attempt=1.
+     *
+     * @param command PG 승인 커맨드
+     * @param attempt 시도 횟수 (1-based, 최초=1)
+     */
+    void handle(PgConfirmCommand command, int attempt);
+
+    /**
+     * attempt=1 기본값 위임 (하위 호환).
+     */
+    default void handle(PgConfirmCommand command) {
+        handle(command, 1);
+    }
 }

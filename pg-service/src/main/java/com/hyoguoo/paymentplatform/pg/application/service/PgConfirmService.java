@@ -53,7 +53,7 @@ public class PgConfirmService implements PgConfirmCommandService {
     private final Clock clock;
 
     @Override
-    public void handle(PgConfirmCommand command) {
+    public void handle(PgConfirmCommand command, int attempt) {
         // 1단계: eventUUID dedupe (메시지 레벨 멱등성)
         if (!eventDedupeStore.markSeen(command.eventUuid())) {
             LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_DUPLICATE_UUID,
@@ -64,21 +64,21 @@ public class PgConfirmService implements PgConfirmCommandService {
         // TX 경계 불일치 방어: pg_outbox 저장/상태 전이가 롤백되면 dedupe도 되돌려
         // 재컨슘 경로에서 영구 정체를 방지한다.
         try {
-            processCommand(command);
+            processCommand(command, attempt);
         } catch (RuntimeException e) {
             eventDedupeStore.remove(command.eventUuid());
             throw e;
         }
     }
 
-    private void processCommand(PgConfirmCommand command) {
+    private void processCommand(PgConfirmCommand command, int attempt) {
         // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
         if (inbox == null || inbox.getStatus() == PgInboxStatus.NONE) {
-            handleNone(command);
+            handleNone(command, attempt);
         } else if (inbox.getStatus() == PgInboxStatus.IN_PROGRESS) {
-            handleInProgress(command.orderId());
+            handleInProgress(command, attempt);
         } else if (inbox.getStatus().isTerminal()) {
             // terminal 재수신 → 벤더 재호출 금지, stored_status_result 재발행만 수행
             handleTerminal(inbox);
@@ -89,7 +89,7 @@ public class PgConfirmService implements PgConfirmCommandService {
     // 내부 분기 메서드
     // -----------------------------------------------------------------------
 
-    private void handleNone(PgConfirmCommand command) {
+    private void handleNone(PgConfirmCommand command, int attempt) {
         long amountLong = command.amount().setScale(0, RoundingMode.UNNECESSARY).longValue();
 
         boolean transitioned = pgInboxRepository.transitNoneToInProgress(command.orderId(), amountLong);
@@ -102,13 +102,16 @@ public class PgConfirmService implements PgConfirmCommandService {
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_NONE_TO_IN_PROGRESS,
                 () -> "orderId=" + command.orderId());
-        callVendor(command, 1);
+        callVendor(command, attempt);
     }
 
-    private void handleInProgress(String orderId) {
-        // IN_PROGRESS: 다른 소비자가 처리 중 — no-op 대기
-        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_NOOP,
-                () -> "orderId=" + orderId);
+    private void handleInProgress(PgConfirmCommand command, int attempt) {
+        // no-op 폐기: self-loop retry (attempt >= 2) 와 동시 race (attempt=1) 모두
+        // vendor 재호출로 처리한다. 중복 호출은 vendor/pg-service/payment-service 3단
+        // 멱등성 layer 가 흡수한다 (PgGatewayDuplicateHandledException → DuplicateApprovalHandler).
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_RETRY,
+                () -> "orderId=" + command.orderId() + " attempt=" + attempt);
+        callVendor(command, attempt);
     }
 
     private void handleTerminal(PgInbox inbox) {
