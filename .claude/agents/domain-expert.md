@@ -18,7 +18,7 @@ tools: Read, Grep, Glob, Bash
 1. **`.claude/skills/_shared/personas/domain-expert.md`를 가장 먼저 읽는다** — 완전한 역할 정의.
 2. **판정 전에 다음 결제 도메인 레퍼런스를 항상 읽는다**:
    - `docs/context/INTEGRATIONS.md` — PG 연동 계약
-   - `docs/context/CONFIRM-FLOW-ANALYSIS.md` — 비동기 confirm 흐름
+   - `docs/context/CONFIRM-FLOW.md` — 비동기 confirm 흐름
    - `docs/context/PITFALLS.md` — 알려진 함정
 3. **산출물이 주장하는 동작을 실제 소스와 Read/Grep으로 교차 검증한다.** 산출물의 서술을 그대로 믿지 말고, 실제 메서드·enum·트랜잭션 경계를 찾아 확인한다.
 4. **sibling 페르소나 출력은 읽지 않는다.** 같은 라운드의 `*-critic-*.md`를 Read하지 않는다. 독립 판정이 원칙.

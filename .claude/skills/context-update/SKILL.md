@@ -43,8 +43,7 @@ git diff main...HEAD --stat
 | `STACK.md` | 기술 스택, 의존성 버전 | `build.gradle`, `docker-compose.yml` |
 | `INTEGRATIONS.md` | 외부 연동(Toss / NicePay), 벤더 어댑터, cross-service HTTP | 벤더 Strategy, HTTP 어댑터, contract test |
 | `PAYMENT-FLOW.md` | end-to-end 결제 플로우 (브라우저 → DONE/FAILED) | 컨트롤러·use case·Kafka 토픽·status 폴링 |
-| `CONFIRM-FLOW-ANALYSIS.md` | payment-service 측 비동기 confirm 사이클 분석 | 진입 use case, AFTER_COMMIT 리스너, 폴백 워커, consumer |
-| `CONFIRM-FLOW-FLOWCHART.md` | Mermaid 다이어그램 | 실제 흐름과 다이어그램 일치 여부 |
+| `CONFIRM-FLOW.md` | payment-service 측 비동기 confirm 사이클 deep dive (분석 + Mermaid 다이어그램 통합) | 진입 use case, AFTER_COMMIT 리스너, 폴백 워커, consumer, two-phase lease, 상태 머신 |
 | `TESTING.md` | 테스트 전략, Fake/Mock 패턴, JaCoCo | 테스트 클래스 패턴, 설정 파일 |
 | `CONVENTIONS.md` | Lombok 컨벤션, 예외 처리, LogFmt 로깅, AOP | 실제 코드 관례 |
 | `STRUCTURE.md` | 디렉토리 트리, 모듈 의존, 패키지 컨벤션 | settings.gradle, src 트리 |
