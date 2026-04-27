@@ -40,6 +40,7 @@
 - 폐쇄/반열림/열림 상태 시각화
 - **이 도입과 동시에**: 어댑터의 `try/catch (feign.RetryableException)` 매핑을 Feign **fallbackFactory** 로 마이그레이션 (transport / read-timeout / circuit-open 을 한 곳에서 처리). 현재 어댑터의 임시 try/catch 는 회귀 방어용으로 회복성 마이그레이션 시점에 제거.
 - **timeout 정밀 튜닝**: `application.yml` 의 `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}` baseline 을 Phase 4 부하 측정 기반 SLO 로 조정.
+- **pg-service 외부 PG timeout 정밀 튜닝**: `pg.http.{connect-timeout-millis: 3000, read-timeout-millis: 10000}` 은 현재 측정 없는 baseline. T4-B/T4-A 부하 + 장애 주입 측정 결과로 SLO 기반 값으로 교체. `max.poll.records` 기본값(500) 검증도 병행.
 
 ---
 

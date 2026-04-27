@@ -22,7 +22,7 @@ public class OutboxWorker {
     public OutboxWorker(
             PaymentOutboxUseCase paymentOutboxUseCase,
             OutboxRelayService outboxRelayService,
-            @Value("${scheduler.outbox-worker.batch-size:10}") int batchSize,
+            @Value("${scheduler.outbox-worker.batch-size:50}") int batchSize,
             @Value("${scheduler.outbox-worker.parallel-enabled:false}") boolean parallelEnabled,
             @Value("${scheduler.outbox-worker.in-flight-timeout-minutes:5}") int inFlightTimeoutMinutes) {
         this.paymentOutboxUseCase = paymentOutboxUseCase;

@@ -94,6 +94,12 @@ pg:
       capacity: 1024
       worker-count: 1
   http:
+    # connect-timeout: TCP 연결 수립 timeout. Toss/NicePay 벤더 측 LB 가 빠른 응답을 반환한다고 가정 — 3s 로 충분.
+    # read-timeout: 벤더 confirm/getStatus 응답 대기. payment-service Feign cross-service(5s)보다 길게 잡는 이유 —
+    #   카드망 round-trip 포함 벤더 처리 시간이 평균 1~3s, 피크 시 그 이상도 가능. 10s 를 baseline 으로 설정.
+    #   payment-service Feign(5s)과의 비대칭은 의도적 — pg-service 가 외부 PG 처리 완료까지 기다려야 하므로
+    #   cross-service 내부 call timeout 보다 외부 PG timeout 이 반드시 길어야 한다.
+    # Phase 4 부하 측정(T4-D 묶음) 후 실제 SLO 기반 정밀 튜닝 예정.
     connect-timeout-millis: ${PG_HTTP_CONNECT_TIMEOUT_MS:3000}
     read-timeout-millis: ${PG_HTTP_READ_TIMEOUT_MS:10000}
 

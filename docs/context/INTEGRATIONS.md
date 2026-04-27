@@ -50,6 +50,22 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 - non-retryable: 4xx / PG_NOT_FOUND — 즉시 COMPLETE_FAILURE 분기
 - AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
 
+## 외부 PG HTTP timeout 정책
+
+pg-service 가 Toss / NicePay 벤더를 호출할 때 적용하는 timeout 설정과 그 근거.
+
+| timeout | 기본값 | 환경변수 | 근거 |
+|---|---|---|---|
+| connect-timeout | 3000ms | `PG_HTTP_CONNECT_TIMEOUT_MS` | 벤더 LB 가 TCP 연결을 빠르게 수락하므로 3s 로 충분 |
+| read-timeout | 10000ms | `PG_HTTP_READ_TIMEOUT_MS` | 카드망 round-trip 포함 벤더 처리에 평균 1~3s, 피크 시 그 이상도 가능. 10s 를 안전 baseline 으로 설정 |
+
+**payment-service Feign(5s) vs pg-service 외부 PG(10s) 비대칭 이유**:
+payment-service 의 Feign `readTimeout: 5000` 은 같은 플랫폼 내부 서비스 간 call 기준이다.
+pg-service 는 카드망을 포함한 외부 PG 처리를 기다려야 하므로 내부 call timeout 보다 외부 PG timeout 이 반드시 길어야 한다.
+내부 5s 보다 짧으면 pg-service 가 벤더 응답을 기다리는 중에 payment-service 가 먼저 타임아웃 나는 것을 방지하지 못한다.
+
+**Phase 4 튜닝 deferred**: 현재 값은 운영 측정 없는 baseline. T4-D (부하 측정) 결과를 기반으로 실제 SLO 에 맞춰 정밀 튜닝할 예정.
+
 ## Cross-service HTTP
 
 payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eureka discovery + WebClient).
