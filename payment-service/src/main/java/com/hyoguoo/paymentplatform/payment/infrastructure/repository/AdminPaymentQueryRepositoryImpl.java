@@ -70,7 +70,16 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
         Pageable pageable = toPageable(pageSpec);
         BooleanExpression predicate = orderIdContains(searchQuery.getOrderId());
 
-        List<Long> eventIds = queryFactory
+        List<Long> eventIds = fetchEventIds(predicate, pageable);
+        List<PaymentEvent> content = assembleEventsWithOrders(eventIds);
+
+        long total = count(paymentEvent, predicate);
+        Page<PaymentEvent> page = new PageImpl<>(content, pageable, total);
+        return toPageResponse(page);
+    }
+
+    private List<Long> fetchEventIds(BooleanExpression predicate, Pageable pageable) {
+        return queryFactory
                 .select(paymentEvent.id)
                 .from(paymentEvent)
                 .where(predicate)
@@ -78,25 +87,25 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
                 .limit(pageable.getPageSize())
                 .orderBy(paymentEvent.createdAt.desc())
                 .fetch();
+    }
 
-        List<PaymentEventEntity> entities = eventIds.isEmpty() ? List.of() :
-                queryFactory
-                        .selectFrom(paymentEvent)
-                        .where(paymentEvent.id.in(eventIds))
-                        .orderBy(paymentEvent.createdAt.desc())
-                        .fetch();
-
-        List<PaymentOrderEntity> allOrders = eventIds.isEmpty() ? List.of() :
-                queryFactory
-                        .selectFrom(paymentOrder)
-                        .where(paymentOrder.paymentEventId.in(eventIds))
-                        .orderBy(paymentOrder.id.asc())
-                        .fetch();
-
-        Map<Long, List<PaymentOrderEntity>> ordersByEventId = allOrders.stream()
+    private List<PaymentEvent> assembleEventsWithOrders(List<Long> eventIds) {
+        if (eventIds.isEmpty()) {
+            return List.of();
+        }
+        List<PaymentEventEntity> entities = queryFactory
+                .selectFrom(paymentEvent)
+                .where(paymentEvent.id.in(eventIds))
+                .orderBy(paymentEvent.createdAt.desc())
+                .fetch();
+        Map<Long, List<PaymentOrderEntity>> ordersByEventId = queryFactory
+                .selectFrom(paymentOrder)
+                .where(paymentOrder.paymentEventId.in(eventIds))
+                .orderBy(paymentOrder.id.asc())
+                .fetch()
+                .stream()
                 .collect(Collectors.groupingBy(PaymentOrderEntity::getPaymentEventId));
-
-        List<PaymentEvent> content = entities.stream()
+        return entities.stream()
                 .map(entity -> {
                     List<PaymentOrder> orders = ordersByEventId
                             .getOrDefault(entity.getId(), List.of())
@@ -106,11 +115,6 @@ public class AdminPaymentQueryRepositoryImpl implements AdminPaymentQueryReposit
                     return entity.toDomain(orders);
                 })
                 .toList();
-
-        long total = count(paymentEvent, predicate);
-        Page<PaymentEvent> page = new PageImpl<>(content, pageable, total);
-
-        return toPageResponse(page);
     }
 
     @Override

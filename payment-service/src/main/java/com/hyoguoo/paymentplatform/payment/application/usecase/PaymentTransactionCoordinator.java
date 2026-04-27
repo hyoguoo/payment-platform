@@ -145,17 +145,7 @@ public class PaymentTransactionCoordinator {
         boolean eventCompensatable = freshEvent.getStatus().isCompensatableByFailureHandler();
 
         if (outboxInFlight && eventCompensatable) {
-            for (PaymentOrder order : paymentOrderList) {
-                try {
-                    stockCachePort.increment(order.getProductId(), order.getQuantity());
-                } catch (RuntimeException e) {
-                    LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
-                            () -> "stockCompensate orderId=" + orderId
-                                    + " productId=" + order.getProductId()
-                                    + " qty=" + order.getQuantity()
-                                    + " error=" + e.getMessage());
-                }
-            }
+            compensateStockCacheGuarded(orderId, paymentOrderList);
         } else {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_GUARD_SKIPPED,
                     () -> "orderId=" + orderId
@@ -169,6 +159,24 @@ public class PaymentTransactionCoordinator {
         }
 
         return paymentCommandUseCase.markPaymentAsFail(freshEvent, failureReason);
+    }
+
+    /**
+     * 재고 캐시 보상 — 각 PaymentOrder 별 increment.
+     * 단일 INCR 실패는 원본 흐름 차단 금지 — LogFmt.error 후 다음 order 진행.
+     */
+    private void compensateStockCacheGuarded(String orderId, List<PaymentOrder> paymentOrderList) {
+        for (PaymentOrder order : paymentOrderList) {
+            try {
+                stockCachePort.increment(order.getProductId(), order.getQuantity());
+            } catch (RuntimeException e) {
+                LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
+                        () -> "stockCompensate orderId=" + orderId
+                                + " productId=" + order.getProductId()
+                                + " qty=" + order.getQuantity()
+                                + " error=" + e.getMessage());
+            }
+        }
     }
 
     public enum StockDecrementResult {
