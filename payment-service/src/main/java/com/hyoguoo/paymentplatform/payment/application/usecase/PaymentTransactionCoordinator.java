@@ -64,7 +64,7 @@ public class PaymentTransactionCoordinator {
 
     /**
      * 재고 캐시 장애(CACHE_DOWN) 분기: QUARANTINED 홀딩 전이.
-     * ADR-15: QUARANTINED는 벤더 상태 불명 홀딩 상태. 재고 복구는 수행하지 않는다.
+     * QUARANTINED 는 벤더 상태 불명 홀딩 상태로, 캐시 차감이 일어나지 않았으므로 재고 복구도 수행하지 않는다.
      */
     @Transactional
     public PaymentEvent markStockCacheDownQuarantine(PaymentEvent paymentEvent) {
@@ -123,13 +123,13 @@ public class PaymentTransactionCoordinator {
     ) {
         outbox.toFailed();
         paymentOutboxUseCase.save(outbox);
-        // QUARANTINED 홀딩 전이 — 재고 복구 없음 (ADR-15)
+        // QUARANTINED 홀딩 전이 — 재고 복구 없음
         return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
     }
 
     /**
-     * D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구 수행.
-     * 조건: outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}
+     * 재고 복구 가드: TX 내 outbox/event 를 다시 조회한 뒤 조건이 충족된 경우에만 재고를 복구한다.
+     * 조건: outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}.
      */
     @Transactional
     public PaymentEvent executePaymentFailureCompensationWithOutbox(
@@ -150,14 +150,14 @@ public class PaymentTransactionCoordinator {
                     stockCachePort.increment(order.getProductId(), order.getQuantity());
                 } catch (RuntimeException e) {
                     LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
-                            () -> "D12: orderId=" + orderId
+                            () -> "stockCompensate orderId=" + orderId
                                     + " productId=" + order.getProductId()
                                     + " qty=" + order.getQuantity()
                                     + " error=" + e.getMessage());
                 }
             }
         } else {
-            LogFmt.warn(log, LogDomain.PAYMENT, EventType.D12_GUARD_SKIP_STOCK_RESTORE,
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_GUARD_SKIPPED,
                     () -> "orderId=" + orderId
                             + " outboxStatus=" + freshOutbox.getStatus()
                             + " eventStatus=" + freshEvent.getStatus());
