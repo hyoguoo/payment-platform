@@ -19,15 +19,16 @@
 - 완료 결과: `spring-cloud-starter-loadbalancer:4.2.0` 직접 의존성 추가 확인, `compileJava` PASS
 
 ### A2. `@LoadBalanced WebClient.Builder` Bean 등록
-- [ ] `payment-service/.../core/config/HttpClientConfig.java` 신규 (또는 기존 config 에 추가)
-- [ ] `@Bean @LoadBalanced public WebClient.Builder loadBalancedWebClientBuilder() { ... }` 정의
+- [x] `payment-service/.../core/config/HttpClientConfig.java` 신규 (또는 기존 config 에 추가)
+- [x] `@Bean @LoadBalanced public WebClient.Builder loadBalancedWebClientBuilder() { ... }` 정의
   - **주의**: 기본 `WebClient.Builder` (autoconfig) 와 별개로, `@LoadBalanced` 는 한정자(qualifier) 역할도 한다
-- [ ] `HttpOperatorImpl` 의 builder 주입을 `@LoadBalanced` 로 한정 — Toss/NicePay 외부 호출은 logical name 미사용이므로 이 builder 가 외부 host 그대로 호출하는지 검증 필요
+- [x] `HttpOperatorImpl` 의 builder 주입을 `@LoadBalanced` 로 한정 — Toss/NicePay 외부 호출은 logical name 미사용이므로 이 builder 가 외부 host 그대로 호출하는지 검증 필요
   - **결정**: 외부 host (e.g. `https://api.tosspayments.com`) 는 LoadBalancer 가 통과시킴 (logical name 형식 아니면 패스스루)
   - 단 Phase A 에선 영향 최소화를 위해 새 LoadBalanced builder 를 별도로 만들고, internal cross-service 호출 어댑터(ProductHttpAdapter/UserHttpAdapter) 만 사용
 - 의존: A1
 - TDD: A4 의 단위 테스트가 검증 — 따로 RED 필요 없음
 - 단일 commit: `feat(payment-service): @LoadBalanced WebClient.Builder Bean 추가`
+- 완료 결과: `HttpClientConfig` 신규 등록, `compileJava` PASS, 전체 578/578 tests PASS
 
 ### A3. base-url 을 logical service name 으로 변경
 - [ ] `application.yml`:
