@@ -107,12 +107,13 @@
 > Phase A 종결 후 진행. A 가 끝났다는 사실은 STATE.md 직전 봉인 항목으로 기록.
 
 ### B1. 의존성 추가
-- [ ] `payment-service/build.gradle` 에 `spring-cloud-starter-openfeign` 추가
-- [ ] `@EnableFeignClients(basePackages = "com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http.feign")` 활성화
+- [x] `payment-service/build.gradle` 에 `spring-cloud-starter-openfeign` 추가
+- [x] `@EnableFeignClients` 활성화 (basePackages 미지정 — main 클래스 하위 자동 scan)
 - 의존: Phase A 종결
 - TDD: 불필요 (의존성 / 어노테이션 활성화)
 - 검증: `./gradlew :payment-service:dependencies | grep openfeign`
 - 단일 commit: `chore(payment-service): spring-cloud-starter-openfeign 추가`
+- 완료 결과: `spring-cloud-starter-openfeign:4.2.0` 직접 의존성 추가 확인. `@EnableFeignClients` 어노테이션 활성화 (basePackages 미지정). `compileJava` PASS, 348/348 tests PASS.
 
 ### B2. Feign 인터페이스 정의
 - [ ] `infrastructure/adapter/http/feign/ProductFeignClient.java` 신규

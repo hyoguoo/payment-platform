@@ -24,6 +24,8 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     // Client-side load balancing — payment → product/user 호출 시 Eureka 인스턴스 list 기반 round-robin
     implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+    // OpenFeign — 선언적 cross-service HTTP 클라이언트 (B Phase)
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
 
     // Development Tools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
