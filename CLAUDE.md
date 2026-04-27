@@ -27,6 +27,16 @@
 
 ---
 
+## Conversation Rules
+
+1. **태스크 ID 단독 사용 금지**: PLAN.md 의 태스크 식별자(`A1`, `A5b`, `B7`, `T-E3`, `K12` 등)를 사용자 응답에서 단독으로 던지지 않는다. 사용자가 PLAN 을 매번 열지 않아도 맥락을 알 수 있도록 ID 옆에 그 작업의 내용을 1줄 이내로 풀어서 같이 적는다.
+   - 나쁨: "A5b 후속에서 처리"
+   - 좋음: "A5b (product-service container_name 제거 + Eureka instanceId 고유화) 후속에서 처리"
+   - 또는 ID 빼고 내용으로만: "container_name 제거 작업 후속에서 처리"
+   - 단, PLAN.md / commit message / implementer 디스패치 프롬프트 같은 산출물에서는 ID 그대로 OK (그게 본 식별자)
+
+---
+
 ## Reference Files
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
