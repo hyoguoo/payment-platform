@@ -175,6 +175,33 @@
 - `pg-service/.../domain/PgOutbox.java:45,51` (동)
 - `pg-service/.../infrastructure/gateway/toss/TossPaymentGatewayStrategy.java:244` (LocalDateTime.now() 잔존)
 
+### TC-10 — pg-service 도메인 객체 생성자 패턴 통일 (PgInbox / PgOutbox)
+
+**현황**:
+- payment-service 의 `PaymentOutbox` / `StockOutbox` 등은 `@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")` + `@AllArgsConstructor(PRIVATE)` + factory method (`createPending` 등) 안에서 builder 사용 — 일관 패턴
+- pg-service 의 `PgInbox` / `PgOutbox` 는 명시 `private` 생성자 + static factory method 3~4개로 별개 패턴
+
+**문제점**:
+1. **dead parameter** — `PgOutbox.create(Long id, ...)` 의 `id` 매개변수가 호출처 10곳 모두 `null` 명시. `PgOutbox.createWithAvailableAt(Long id, ...)` 도 동일
+2. **일관성 부재** — payment-service 도메인과 다른 패턴 → 다른 서비스 코드 보다가 컨벤션 차이 인지 부담
+3. **시나리오 분기 명시 가치 vs 호출 길이** — factory 3개 (`create` / `createWithAvailableAt` / `of`) 가 의도 명시는 좋으나 `null` 박는 게 어색
+
+**조정 방향**:
+1. **PgOutbox** — payment-service 패턴 따라 `@Builder` + `@AllArgsConstructor(PRIVATE)` + factory method 안에서 builder 사용. `id` 는 builder 에서 생략 가능
+2. **PgInbox** — 동일 패턴 적용
+3. factory 의 시나리오 의도 (즉시 발행 / 지연 발행 / DB 복원) 는 보존 — builder 호출을 factory 안에 캡슐화
+
+**처리 시점**: cleanup / 청결도 작업이라 priority 낮음. 별도 정리 토픽 또는 다른 cleanup 묶음 (TC-8 시간 추상화 통합과 같이) 으로 처리 가능.
+
+**관련 코드**:
+- `pg-service/.../domain/PgInbox.java`
+- `pg-service/.../domain/PgOutbox.java:44,49,54` (3개 factory)
+- `payment-service/.../domain/PaymentOutbox.java:13` (참조 패턴)
+- `payment-service/.../domain/StockOutbox.java:21` (참조 패턴)
+- 호출처 10곳 (PgConfirmService / PgVendorCallService / PgDlqService / PgFinalConfirmationGate / DuplicateApprovalHandler)
+
+---
+
 ### TC-9 — FakePgGatewayAdapter 의 vendor 멱등성 시뮬 추가
 
 `FakePgGatewayAdapter` 가 같은 paymentKey 두 번 호출 시 `PgGatewayDuplicateHandledException` 을 던지지 않아 production vendor 의 멱등성 응답을 시뮬레이션하지 못함.
