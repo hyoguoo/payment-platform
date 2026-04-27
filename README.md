@@ -256,16 +256,18 @@ sequenceDiagram
 
 ### 🛠 사용 기술 스택
 
-- Java 21
-- Spring Boot 3.4.4
-- MySQL 8.0.33
-- JUnit 5
+- **Language / Runtime**: Java 21 (Virtual Threads), Spring Boot 3.4.4, Spring Cloud 2024.0.0
+- **Persistence**: MySQL 8.0 × 4 (DB per service), Flyway, JPA + QueryDSL
+- **Messaging / Cache**: Kafka, Redis (dedupe + redis-stock 분리)
+- **Service Discovery / Routing**: Eureka, Spring Cloud Gateway
+- **Observability**: Micrometer + Prometheus + Grafana + Tempo + Loki, OpenTelemetry traceparent
+- **Test**: JUnit 5, AssertJ, Mockito, Testcontainers (MySQL), MockWebServer
 
 <br>
 
 ## 🏗 [프로젝트 구조](https://github.com/hyoguoo/payment-platform/wiki/architecture)
 
-헥사고날 아키텍처(포트/어댑터) 기반으로 도메인을 분리하고, 도메인 간 협력은 Internal Receiver 패턴을 통해 결합도를 낮췄습니다.
+헥사고날 아키텍처(포트/어댑터) 기반으로 도메인을 분리하고, payment ↔ pg 간 협력은 Kafka 양방향 메시지(Transactional Outbox)로 격리해 결합도를 낮췄습니다.
 
 <img width="100%" alt="architecture" src="https://github.com/user-attachments/assets/26cb69e5-6c89-479e-8181-4dd6a13c5eb5">
 
