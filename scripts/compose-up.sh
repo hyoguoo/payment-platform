@@ -242,7 +242,18 @@ wait_healthy() {
 }
 
 # ───────────────────────────────────────────
-# 4. 인프라 기동
+# 4. 공유 네트워크 보장
+#    payment-infra-network 는 infra.yml / apps.yml 양쪽에서 external 로 참조하는
+#    공유 자원. 어느 compose project 에도 ownership 이 묶이지 않도록 사전 생성.
+# ───────────────────────────────────────────
+if ! docker network inspect payment-infra-network >/dev/null 2>&1; then
+  print_section "▶ 공유 네트워크 생성 (payment-infra-network)"
+  docker network create payment-infra-network >/dev/null
+  print_info "✅ payment-infra-network 생성"
+fi
+
+# ───────────────────────────────────────────
+# 5. 인프라 기동
 # ───────────────────────────────────────────
 print_section "▶ 인프라 컨테이너 기동 (${INFRA_COMPOSE})"
 docker compose -f "${INFRA_COMPOSE}" up -d
@@ -256,13 +267,13 @@ fi
 echo
 
 # ───────────────────────────────────────────
-# 5. Kafka 토픽 생성 (멱등)
+# 6. Kafka 토픽 생성 (멱등)
 # ───────────────────────────────────────────
 print_section "▶ Kafka 토픽 생성"
 bash "${PROJECT_ROOT}/scripts/smoke/create-topics.sh"
 
 # ───────────────────────────────────────────
-# 6. 앱 기동 (완전 재빌드: image rebuild + 컨테이너 강제 재생성)
+# 7. 앱 기동 (완전 재빌드: image rebuild + 컨테이너 강제 재생성)
 # ───────────────────────────────────────────
 print_section "▶ 앱 컨테이너 완전 재빌드 (${APPS_COMPOSE})"
 docker compose ${COMPOSE_ARGS_APPS} up -d --build --force-recreate \
@@ -277,7 +288,7 @@ fi
 echo
 
 # ───────────────────────────────────────────
-# 7. 관측성 기동 (Prometheus / Grafana / Loki / Tempo / Promtail / kafka-exporter)
+# 8. 관측성 기동 (Prometheus / Grafana / Loki / Tempo / Promtail / kafka-exporter)
 # ───────────────────────────────────────────
 if [[ "${SKIP_OBS}" == "true" ]]; then
   print_warning "▶ 관측성 스택 기동 건너뜀(--skip-obs)"
@@ -297,7 +308,7 @@ else
 fi
 
 # ───────────────────────────────────────────
-# 8. Eureka 등록 확인 + 안내
+# 9. Eureka 등록 확인 + 안내
 # ───────────────────────────────────────────
 print_section "▶ Eureka 등록 확인"
 sleep 5  # Eureka 인스턴스 리프레시 텀

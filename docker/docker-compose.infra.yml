@@ -235,7 +235,7 @@ services:
 
 networks:
   payment-infra-network:
-    driver: bridge
+    external: true
     name: payment-infra-network
 
 volumes:
