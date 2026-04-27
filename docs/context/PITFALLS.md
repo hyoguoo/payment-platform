@@ -161,7 +161,7 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: 클라이언트가 `GET /api/v1/payments/{orderId}/status` 폴링하는데 결제가 격리됐는데도 응답이 영영 `PROCESSING` 으로만 옴. 폴링 무한 루프.
 
-**원인**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 가 DONE / FAILED 만 명시적 매핑하고 나머지는 default = `PROCESSING`. QUARANTINED 는 도메인상 종결(`isTerminal()` true) 이지만 폴링 결과에선 종결 표현이 없다.
+**원인**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 가 DONE / FAILED 만 명시적 매핑하고 나머지는 default = `PROCESSING`. QUARANTINED 는 도메인상 `isTerminal()` = false (후속 복구 워커가 보정/포기 결정하는 대기 상태) 라서 default 분기로 PROCESSING 응답이 되지만, 실제로는 자동 진행 메커니즘이 없어 admin 강제 전이 없으면 영영 PROCESSING 만 응답한다.
 
 **처방** (단기):
 - 클라이언트가 무한 폴링하지 않도록 timeout 정책을 client 측에 둠

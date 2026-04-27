@@ -8,7 +8,7 @@
 - Mockito — Spring Boot Test 번들 포함
 - AssertJ — 가독성 우선
 - Testcontainers (`org.testcontainers:mysql`) — 통합 테스트 시 새 MySQL 컨테이너
-- MockWebServer (`com.squareup.okhttp3:mockwebserver`) — HTTP 어댑터 contract test
+- MockWebServer (`com.squareup.okhttp3:mockwebserver`) — pg-service vendor HTTP 어댑터(`HttpOperatorImpl`) traceparent 전파 contract test 한정
 
 ## 테스트 카테고리
 
@@ -19,7 +19,9 @@
 | **Adapter 단위** | Mockito | 출력 포트 어댑터의 변환·예외 분기 | `.../infrastructure/` |
 | **JPA / Repository** | Testcontainers MySQL + `@DataJpaTest` | 실제 SQL 검증 | `.../infrastructure/persistence/` |
 | **Kafka producer/consumer** | Spring Kafka EmbeddedKafka 또는 Mock + 자체 어댑터 | 실 broker 없이도 직렬화·observation 검증 | `.../infrastructure/messaging/` |
-| **HTTP 어댑터 contract** | MockWebServer | 404/503/429/500 분기별 어댑터 행동 고정 | `.../infrastructure/http/` |
+| **HTTP 어댑터 contract (cross-service)** | Mockito FeignClient mock | FeignClient 가 throw 한 도메인 예외 / `feign.RetryableException` 의 어댑터 propagation·변환 | `.../infrastructure/adapter/http/*ContractTest` |
+| **Feign ErrorDecoder** | Mockito + `feign.Response` mock | 404 → NotFoundException, 429/503 → RetryableException, 그 외 5xx → IllegalStateException | `.../infrastructure/adapter/http/feign/*FeignConfigTest` |
+| **HTTP 어댑터 contract (vendor)** | MockWebServer | pg-service `HttpOperatorImpl` traceparent 전파 | `pg-service/.../infrastructure/http/HttpOperatorTraceparentPropagationTest` |
 | **Web layer** | `@WebMvcTest` + `MockMvc` | controller 입력 매핑 + 예외 → HTTP 상태 | `.../presentation/` |
 | **통합** | `@SpringBootTest` + Testcontainers + `@Tag("integration")` | 부팅 + 실 DB | 별도 `integrationTest` task |
 
@@ -66,16 +68,33 @@ class SomeIntegrationTest {
 
 ## Contract test 패턴
 
-`ProductHttpAdapterContractTest`, `UserHttpAdapterContractTest` — MockWebServer 로 4개 분기 고정:
+cross-service HTTP 의 4xx / 5xx → 도메인 예외 매핑은 **2-layer** 로 검증한다 — Feign `ErrorDecoder` 가 응답 → 예외 변환을 책임지고, `*HttpAdapter` 는 transport-level 변환만 책임진다.
 
-| 시나리오 | MockResponse | 어댑터 행동 |
+### Layer 1 — `*FeignConfigTest` (ErrorDecoder 매핑)
+
+Mockito 로 `feign.Response` 를 mock 하고 `ErrorDecoder.decode()` 결과를 검증.
+
+| 시나리오 | Response 상태 | ErrorDecoder 결과 |
 |---|---|---|
-| 404 NOT_FOUND | `setResponseCode(404)` | `Optional.empty()` 또는 `NotFoundException` |
-| 503 SERVICE_UNAVAILABLE | `setResponseCode(503)` | retryable 예외 throw |
-| 429 TOO_MANY_REQUESTS | `setResponseCode(429)` | retryable 예외 throw |
-| 500 INTERNAL_SERVER_ERROR | `setResponseCode(500)` | retryable 예외 throw |
+| 404 NOT_FOUND | 404 | `ProductNotFoundException` / `UserNotFoundException` |
+| 503 SERVICE_UNAVAILABLE | 503 | `*ServiceRetryableException` (`PRODUCT_SERVICE_UNAVAILABLE` / `USER_SERVICE_UNAVAILABLE`) |
+| 429 TOO_MANY_REQUESTS | 429 | `*ServiceRetryableException` |
+| 500 INTERNAL_SERVER_ERROR | 500 | `IllegalStateException` |
 
-목적: HTTP 상태 → 도메인 의미 매핑 계약 동결. 어댑터 변경 시 회귀 즉시 감지.
+### Layer 2 — `*HttpAdapterContractTest` (어댑터 propagation)
+
+Mockito 로 FeignClient 를 mock 하고 throw 시나리오별 어댑터 동작을 검증.
+
+| 시나리오 | FeignClient 행동 | 어댑터 결과 |
+|---|---|---|
+| 도메인 예외 throw | `*NotFoundException` / `*ServiceRetryableException` 그대로 throw | 어댑터가 그대로 propagate |
+| transport 예외 | `feign.RetryableException` (connect/read timeout 등) | 어댑터가 `*ServiceRetryableException` 로 변환 |
+
+목적: HTTP 상태 → 도메인 의미 매핑 계약 동결 + transport 분기 동작 동결. ErrorDecoder 또는 어댑터 변경 시 회귀 즉시 감지.
+
+### vendor 측 contract — pg-service `HttpOperatorImpl`
+
+`HttpOperatorTraceparentPropagationTest` 가 OkHttp `MockWebServer` 로 임의 응답을 띄우고 `RestClient.Builder` 주입 구조의 `HttpOperatorImpl` 이 traceparent 헤더를 vendor 호출에 전파하는지 검증.
 
 ## `@RepeatedTest` 결정 케이스
 
@@ -125,10 +144,10 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 |---|---|
 | eureka-server | 1 |
 | gateway | 3 |
-| payment-service | 348 |
-| pg-service | 206 |
+| payment-service | 358 |
+| pg-service | 207 |
 | product-service | 19 |
 | user-service | 1 |
-| **합계** | **578 PASS** (회귀 0) |
+| **합계** | **589 PASS** (회귀 0) |
 
 `./gradlew test --rerun-tasks` 로 전체 검증.

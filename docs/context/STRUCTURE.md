@@ -81,7 +81,8 @@ payment-platform/
     │   │   │   ├── messaging/
     │   │   │   │   ├── publisher/
     │   │   │   │   └── consumer/
-    │   │   │   ├── http/         # WebClient/RestClient 어댑터
+    │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service 측 — feign/ 서브폴더에 *FeignClient + *FeignConfig)
+    │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service 측 — HttpOperatorImpl)
     │   │   │   ├── cache/        # Redis 어댑터
     │   │   │   ├── scheduler/    # @Scheduled 워커
     │   │   │   ├── listener/     # @TransactionalEventListener 등

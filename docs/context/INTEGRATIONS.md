@@ -68,16 +68,27 @@ pg-service 는 카드망을 포함한 외부 PG 처리를 기다려야 하므로
 
 ## Cross-service HTTP
 
-payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eureka discovery + WebClient).
+payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin, CLIENT-SIDE-LB Phase B).
 
-| 호출 | 경로 | 어댑터 |
-|---|---|---|
-| product 조회 | `GET /api/products/{id}` 등 | `ProductHttpAdapter` (payment-service 측) |
-| user 조회 | `GET /api/users/{id}` | `UserHttpAdapter` (payment-service 측) |
+| 호출 | 경로 | Feign 클라이언트 | 어댑터 (port 구현) |
+|---|---|---|---|
+| product 조회 | `GET /api/v1/products/{id}` | `ProductFeignClient` (`@FeignClient(name = "product-service", configuration = ProductFeignConfig.class)`) | `ProductHttpAdapter` |
+| user 조회 | `GET /api/v1/users/{id}` | `UserFeignClient` (`@FeignClient(name = "user-service", configuration = UserFeignConfig.class)`) | `UserHttpAdapter` |
 
-**공통 어댑터** `HttpOperatorImpl` 가 traceparent 헤더 자동 주입. `MockWebServer` 기반 contract test 로 404/503/429/500 분기 계약을 고정한다.
+**계약 매핑**: 각 `*FeignConfig` 의 `ErrorDecoder` 가 4xx / 5xx 응답을 도메인 예외로 매핑.
+- 404 → `*NotFoundException` (PRODUCT_NOT_FOUND / USER_NOT_FOUND)
+- 429 / 503 → `*ServiceRetryableException` (`PRODUCT_SERVICE_UNAVAILABLE` / `USER_SERVICE_UNAVAILABLE`)
+- 그 외 5xx → `IllegalStateException`
 
-**회복성**: 현재 `try/catch` + 재시도. **CircuitBreaker 는 Phase 4 예정**.
+**Transport 예외**: 어댑터 (`ProductHttpAdapter` / `UserHttpAdapter`) 가 `feign.RetryableException` 만 catch 해 `*ServiceRetryableException` 으로 변환. 4xx / 5xx 매핑은 `ErrorDecoder` 단계에서 끝났으므로 어댑터에는 try/catch 가 transport 한 분기만 남는다.
+
+**Timeout baseline**: `application.yml:18-23` — `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. Phase 4 측정 기반 SLO 로 조정 예정 (TODOS T4-D).
+
+**Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
+
+**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 4분기 (404 / 429 / 503 / 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함).
+
+**회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
 
 ## 외부 시스템 통신 매트릭스
 
@@ -87,8 +98,8 @@ payment-service 가 product-service / user-service 를 직접 HTTP 조회 (Eurek
 | gateway | payment-service | HTTP | Eureka 라우팅 |
 | gateway | product-service | HTTP | Eureka 라우팅 |
 | gateway | user-service | HTTP | Eureka 라우팅 |
-| payment-service | product-service | HTTP | `GET /api/products/*` |
-| payment-service | user-service | HTTP | `GET /api/users/*` |
+| payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` |
+| payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
 | payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
 | pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry, attempt < 4) — `pg_outbox.available_at` 기반 지연 발행 |
 | pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (attempt ≥ 4 시 격리, `PgVendorCallService.insertDlqOutbox`) |

@@ -15,7 +15,7 @@
 ## 비즈니스 서비스 의존 (4서비스 공통)
 
 ```
-spring-boot-starter-web              # REST 진입점 (gateway 는 webflux)
+spring-boot-starter-web              # REST 진입점 (gateway 는 webflux 기반 spring-cloud-starter-gateway)
 spring-boot-starter-data-jpa
 spring-boot-starter-actuator         # /actuator/health · prometheus 스크랩
 spring-boot-starter-data-redis       # EventDedupeStore + StockCachePort
@@ -37,14 +37,14 @@ spring-boot-starter-test
 spring-boot-testcontainers
 org.testcontainers:mysql
 org.testcontainers:junit-jupiter
-com.squareup.okhttp3:mockwebserver  # HTTP 어댑터 contract test
+com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어댑터(HttpOperatorImpl) traceparent 전파 테스트 전용
 ```
 
 서비스별 추가 의존:
-- payment-service: webflux, thymeleaf, springdoc-openapi-starter-webmvc-ui, querydsl-jpa(:jakarta), caffeine
-- pg-service: webflux, springdoc-openapi-starter-webmvc-ui, FakePgGatewayStrategy 가 `pg.gateway.type=fake` 로 활성화
+- payment-service: thymeleaf, springdoc-openapi-starter-webmvc-ui, querydsl-jpa(:jakarta), caffeine, spring-cloud-starter-loadbalancer, spring-cloud-starter-openfeign (CLIENT-SIDE-LB Phase B)
+- pg-service: springdoc-openapi-starter-webmvc-ui, FakePgGatewayStrategy 가 `pg.gateway.type=fake` 로 활성화
 - product-service: querydsl-jpa(:jakarta)
-- gateway: webflux 만 (라우팅 전용)
+- gateway: spring-cloud-starter-gateway (webflux 기반 라우팅 전용)
 - eureka-server: spring-cloud-starter-netflix-eureka-server
 
 ## 인프라
@@ -135,8 +135,9 @@ SELECT version, script, installed_on, success FROM flyway_schema_history ORDER B
 | 카테고리 | 라이브러리 | 사용 위치 |
 |---|---|---|
 | 메시지 직렬화 | Jackson + JsonSerializer/JsonDeserializer | Kafka producer/consumer |
-| HTTP 클라이언트 | WebClient (`spring-boot-starter-webflux`) | `HttpOperatorImpl` (vendor 호출 + cross-service HTTP) |
-| Test HTTP server | OkHttp MockWebServer | `HttpOperatorImpl` traceparent 전파 contract test |
+| HTTP 클라이언트 (cross-service) | OpenFeign (`spring-cloud-starter-openfeign`) + `spring-cloud-starter-loadbalancer` | payment-service `ProductFeignClient` / `UserFeignClient` (B Phase) — `ErrorDecoder` 가 4xx/5xx → 도메인 예외 매핑 |
+| HTTP 클라이언트 (vendor) | `RestClient` (Spring Framework 6.2 동기 client, `RestClient.Builder` auto-config) | pg-service `HttpOperatorImpl` — Toss / NicePay 외부 호출. `pg.http.{connect-timeout-millis: 3000, read-timeout-millis: 10000}` |
+| Test HTTP server | OkHttp MockWebServer | pg-service `HttpOperatorImpl` traceparent 전파 contract test 한정 |
 | Bean Validation | spring-boot-starter-validation | request DTO `@NotNull`/`@Min` |
 | In-memory cache | Caffeine | payment-service 의 `IdempotencyStore` 일부 |
 | Querying | QueryDSL 5.0.0 (jakarta classifier) | payment-service / product-service 동적 쿼리 |

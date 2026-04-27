@@ -13,9 +13,9 @@
 
 ### C-2. CircuitBreaker 미적용 — cross-service HTTP
 
-- **현황**: `ProductHttpAdapter` / `UserHttpAdapter` 가 `try/catch` + 재시도만 적용 — Resilience4j CircuitBreaker 는 Phase 4 에서 도입 예정
-- **영향**: product/user 서비스 장애 시 payment-service 가 같이 끌려갈 위험
-- **처방**: Phase 4 — CircuitBreaker 적용 + p95 latency 메트릭
+- **현황**: `ProductHttpAdapter` / `UserHttpAdapter` 가 `feign.RetryableException` 을 catch 해 `*ServiceRetryableException` 으로 변환하는 transport 분기 한 줄만 가짐. 4xx/5xx 매핑은 `ErrorDecoder` 가 담당. 재시도 / CircuitBreaker / fallback 은 미적용
+- **영향**: product/user 서비스 장애 시 Feign 호출이 timeout 까지 spawn 누적 → payment-service 가 같이 끌려갈 위험
+- **처방**: Phase 4 (T4-D) — Resilience4j CircuitBreaker 적용 + fallbackFactory 마이그레이션 (어댑터 try/catch 제거) + p95 latency 메트릭
 
 ### C-3. 로컬 오토스케일러 부재
 

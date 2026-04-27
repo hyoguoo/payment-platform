@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-27 — verify 직전 후속 조치 (container_name 제거 + instanceId 통일 + timeout 보강)
+> 최종 수정: 2026-04-27 — verify 직전 context 정합성 정리 (Phase B OpenFeign 도입 반영 + 테스트 수 동기화 + PITFALL 17 isTerminal 표기 정정)
 > stage: verify
 
 ## 활성 작업
@@ -14,7 +14,9 @@
   - **Phase B 종결** (B1 → B7 모두 완료)
     - round-robin Feign 분산: product-service-1 7건 / product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
     - 회귀 0 (`./gradlew test` 579 PASS)
-  - active task: **verify 직전 후속 조치 완료** — verify 진입 대기
+  - **verify 직전 후속 조치 완료** — container_name 제거 + instanceId 통일 + Feign timeout 보강
+  - **verify 직전 context 정합성 정리 완료** — Phase B OpenFeign 도입이 STACK / INTEGRATIONS / TESTING / CONCERNS 에 미반영이던 drift 해소 + PITFALL 17 isTerminal 표기 정정 + ARCHITECTURE dedupe 표 pg layer 보강 + 테스트 수 동기화 (`./gradlew test --rerun-tasks` 결과 **589 PASS** — payment 358 / pg 207 / product 19 / user 1 / gateway 3 / eureka 1)
+  - active task: **verify 진입 대기**
 
 ## 직전 봉인
 

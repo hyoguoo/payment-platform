@@ -185,7 +185,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
 |---|---|---|---|---|
 | payment | `EventDedupeStoreRedisAdapter` | Redis (redis-dedupe) | PaymentEvent 상태 전이 + stock_outbox INSERT (RDB) | 약함 — 도메인 메서드 가드로 멱등성 회복 |
-| pg | `PgInboxRepository.markSeen` | MySQL (pg_inbox) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — 같은 TX 필수 |
+| pg | `EventDedupeStore.markSeen` (Redis) + `PgInboxRepository.markSeen` (MySQL pg_inbox) — **2-layer** | Redis (TX 외부 빠른 거름) + MySQL (TX 내부 atomic 거름) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — RDB layer 가 같은 TX 필수, Redis layer 는 보조 |
 | product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
 
 **결정 룰 한 줄**:
