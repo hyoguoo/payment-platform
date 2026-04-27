@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
@@ -18,11 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * ProductHttpAdapter FeignClient 예외 propagation 계약 테스트.
  *
  * <p>ErrorDecoder 가 throw 한 도메인 예외를 어댑터가 그대로 propagate 하는지 검증한다.
- * 4xx/5xx → 도메인 예외 매핑 자체는 B6 에서 ProductFeignConfigTest 로 별도 검증한다.
+ * 4xx/5xx → 도메인 예외 매핑 자체는 ProductFeignConfigTest 에서 별도 검증한다.
  *
  * <ul>
  *   <li>FeignClient 가 {@link ProductNotFoundException} throw → 어댑터가 그대로 propagate</li>
  *   <li>FeignClient 가 {@link ProductServiceRetryableException} throw → 어댑터가 그대로 propagate</li>
+ *   <li>FeignClient 가 {@link feign.RetryableException} throw → 어댑터가 {@link ProductServiceRetryableException} 으로 변환</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +52,16 @@ class ProductHttpAdapterContractTest {
     void getProduct_WhenFeignThrowsRetryable_ShouldPropagate() {
         given(productFeignClient.getProductById(1L))
                 .willThrow(ProductServiceRetryableException.of(PaymentErrorCode.PRODUCT_SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> adapter.getProductInfoById(1L))
+                .isInstanceOf(ProductServiceRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("FeignClient 가 feign.RetryableException(transport 오류) throw → 어댑터가 ProductServiceRetryableException 으로 변환")
+    void getProduct_WhenFeignThrowsTransportRetryableException_ShouldConvertToProductServiceRetryable() {
+        feign.RetryableException transportException = mock(feign.RetryableException.class);
+        given(productFeignClient.getProductById(1L)).willThrow(transportException);
 
         assertThatThrownBy(() -> adapter.getProductInfoById(1L))
                 .isInstanceOf(ProductServiceRetryableException.class);

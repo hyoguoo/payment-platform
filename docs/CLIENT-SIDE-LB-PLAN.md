@@ -214,3 +214,15 @@
 - gateway → 4서비스 (이미 `lb://`)
 - Resilience4j CircuitBreaker (Phase 4 T4-D 별도 토픽)
 - 분산 트랜잭션 / Saga
+
+---
+
+## Review 1라운드 결과 (2026-04-27)
+
+- Critic + Domain-expert 1라운드 검토 — 둘 다 revise
+- major 2건:
+  - M1 transport-level 예외 매핑 회귀 — 어댑터 try/catch (feign.RetryableException → Product/UserServiceRetryableException) 복원으로 즉시 처리
+  - M2 Feign timeout 명시 부재 — application.yml 에 connectTimeout 2s / readTimeout 5s baseline 추가
+- minor: PaymentPlatformApplication.java 주석 정리 + Feign 산출물 javadoc phase ID 제거 + smoke script project-name 변수화. ControllerAdvice 매핑은 별도 토픽 (TC-5 신규) 으로 deferred
+- fallbackFactory idiomatic 마이그레이션은 T4-D (Resilience4j CircuitBreaker) 와 동시 처리하기로 deferred
+- 출력: docs/rounds/client-side-lb/review-{critic,domain}-1.md

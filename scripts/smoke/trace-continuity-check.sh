@@ -55,6 +55,7 @@ set -euo pipefail
 GATEWAY_BASE="${GATEWAY_BASE:-http://localhost:8090}"
 COMPOSE_PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_APPS="${COMPOSE_PROJECT_ROOT}/docker/docker-compose.apps.yml"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker}"
 
 LOG_WAIT_SECONDS="${LOG_WAIT_SECONDS:-20}"   # confirm 처리 + 비동기 relay 완주 대기 시간
 POLL_TIMEOUT_SECONDS="${POLL_TIMEOUT_SECONDS:-30}"  # status=DONE 폴링 최대 대기 시간
@@ -267,7 +268,7 @@ done
 
 # product-service — scale=N 대응 (docker-product-service-{1..N}).
 # Feign LB 가 한 인스턴스로만 호출을 보내므로, traceId 가 어느 한 인스턴스에 있어도 PASS.
-PRODUCT_INSTANCES=$(docker ps --filter "name=docker-product-service-" --format "{{.Names}}" 2>/dev/null)
+PRODUCT_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-product-service-" --format "{{.Names}}" 2>/dev/null)
 if [ -z "${PRODUCT_INSTANCES}" ]; then
   echo "[FAIL] product-service: 인스턴스 0건 (compose up 안 됐나?)"
   MISSING_SERVICES+=("product-service")

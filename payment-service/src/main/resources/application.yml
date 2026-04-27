@@ -14,6 +14,15 @@ spring:
     virtual:
       enabled: true
 
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            # Feign timeout baseline — Phase 4 부하 측정 기반 SLO 로 조정 예정 (TODOS.md T4-D 참고).
+            connectTimeout: 2000
+            readTimeout: 5000
+
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}

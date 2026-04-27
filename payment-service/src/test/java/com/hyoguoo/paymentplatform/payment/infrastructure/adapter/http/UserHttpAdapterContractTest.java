@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
@@ -18,11 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * UserHttpAdapter FeignClient 예외 propagation 계약 테스트.
  *
  * <p>ErrorDecoder 가 throw 한 도메인 예외를 어댑터가 그대로 propagate 하는지 검증한다.
- * 4xx/5xx → 도메인 예외 매핑 자체는 B6 에서 UserFeignConfigTest 로 별도 검증한다.
+ * 4xx/5xx → 도메인 예외 매핑 자체는 UserFeignConfigTest 에서 별도 검증한다.
  *
  * <ul>
  *   <li>FeignClient 가 {@link UserNotFoundException} throw → 어댑터가 그대로 propagate</li>
  *   <li>FeignClient 가 {@link UserServiceRetryableException} throw → 어댑터가 그대로 propagate</li>
+ *   <li>FeignClient 가 {@link feign.RetryableException} throw → 어댑터가 {@link UserServiceRetryableException} 으로 변환</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +52,16 @@ class UserHttpAdapterContractTest {
     void getUser_WhenFeignThrowsRetryable_ShouldPropagate() {
         given(userFeignClient.getUserById(1L))
                 .willThrow(UserServiceRetryableException.of(PaymentErrorCode.USER_SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> adapter.getUserInfoById(1L))
+                .isInstanceOf(UserServiceRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("FeignClient 가 feign.RetryableException(transport 오류) throw → 어댑터가 UserServiceRetryableException 으로 변환")
+    void getUser_WhenFeignThrowsTransportRetryableException_ShouldConvertToUserServiceRetryable() {
+        feign.RetryableException transportException = mock(feign.RetryableException.class);
+        given(userFeignClient.getUserById(1L)).willThrow(transportException);
 
         assertThatThrownBy(() -> adapter.getUserInfoById(1L))
                 .isInstanceOf(UserServiceRetryableException.class);

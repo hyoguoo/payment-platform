@@ -38,6 +38,8 @@
 - `ProductHttpAdapter` / `UserHttpAdapter` 에 Resilience4j CircuitBreaker
 - Prometheus 메트릭 (`circuit_breaker_state`, `circuit_breaker_calls_total`)
 - 폐쇄/반열림/열림 상태 시각화
+- **이 도입과 동시에**: 어댑터의 `try/catch (feign.RetryableException)` 매핑을 Feign **fallbackFactory** 로 마이그레이션 (transport / read-timeout / circuit-open 을 한 곳에서 처리). 현재 어댑터의 임시 try/catch 는 회귀 방어용으로 회복성 마이그레이션 시점에 제거.
+- **timeout 정밀 튜닝**: `application.yml` 의 `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}` baseline 을 Phase 4 부하 측정 기반 SLO 로 조정.
 
 ---
 
@@ -103,6 +105,13 @@
 
 - `PaymentEventStatus.EXPIRED` 정의는 있으나 도메인 매핑은 일부만 활성
 - 만료 스케줄러 정책 (몇 시간 후 EXPIRED 전이?) 별도 토픽 정리 필요
+
+### TC-5 — Retryable 예외 ControllerAdvice 매핑 보강
+
+- `ProductServiceRetryableException` / `UserServiceRetryableException` 가 ControllerAdvice 매처 미등록 → 클라이언트엔 503/429 가 500 으로 보임
+- pre-existing 이슈, CLIENT-SIDE-LB 회귀 아님
+- ErrorDecoder + 어댑터 try/catch 가 명시적으로 throw 하기 시작했으니 정렬 가치 있음
+- 처리 시: HTTP 503 / 429 로 정확히 노출 + Retry-After 헤더 포함 검토
 
 ---
 

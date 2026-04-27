@@ -24,6 +24,8 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # shellcheck source=../common.sh
 source "${ROOT_DIR}/scripts/common.sh"
 
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker}"
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -93,7 +95,7 @@ done
 
 # product-service 인스턴스 — docker compose scale 대응 (docker-product-service-{N}).
 # 1개 이상의 인스턴스가 떠 있어야 PASS.
-PRODUCT_INSTANCES=$(docker ps --filter "name=docker-product-service-" --format "{{.Names}}" 2>/dev/null)
+PRODUCT_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-product-service-" --format "{{.Names}}" 2>/dev/null)
 if [ -z "${PRODUCT_INSTANCES}" ]; then
     check_fail "product-service 인스턴스 0건 — compose up 안 됐나?"
 else
