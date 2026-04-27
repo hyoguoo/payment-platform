@@ -740,7 +740,7 @@ class PaymentEventTest {
                 .isInstanceOf(PaymentStatusException.class);
     }
 
-    // T1-04: 스펙 지정 테스트 메서드 (QUARANTINED non-terminal 설계 검증)
+    // 상태 전이 스펙 검증 — QUARANTINED non-terminal 설계
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "EXPIRED"})
@@ -837,5 +837,42 @@ class PaymentEventTest {
 
         // then
         assertThat(paymentEvent.getGatewayType()).isEqualTo(gatewayType);
+    }
+
+    // resetToReady() — Reconciler timeout 복원 경로 invariants
+
+    @Test
+    @DisplayName("resetToReady() — IN_PROGRESS 상태에서 READY 로 전이하고 lastStatusChangedAt 이 갱신된다")
+    void resetToReady_inProgress_shouldTransitionToReadyAndUpdateTimestamp() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS, PaymentOrderStatus.EXECUTING);
+        LocalDateTime resetAt = LocalDateTime.now().plusMinutes(10);
+
+        // when
+        paymentEvent.resetToReady(resetAt);
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class,
+            names = {"READY", "RETRYING", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("resetToReady() — IN_PROGRESS 가 아닌 모든 상태에서 PaymentStatusException 을 던진다 (INVALID_STATUS_TO_RESET)")
+    void resetToReady_nonInProgress_shouldThrow(PaymentEventStatus from) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                from, PaymentOrderStatus.NOT_STARTED);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.resetToReady(LocalDateTime.now()))
+                .isInstanceOf(PaymentStatusException.class)
+                .satisfies(ex -> {
+                    PaymentStatusException statusEx = (PaymentStatusException) ex;
+                    assertThat(statusEx.getCode())
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_RESET.getCode());
+                });
     }
 }
