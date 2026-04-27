@@ -224,6 +224,33 @@
 - `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
 - `pg-service/.../application/service/DuplicateApprovalHandler.java`
 
+### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 부재
+
+장기 운영 시 만료 row 누적으로 쿼리 성능 저하 가능.
+
+**현황**:
+- product-service `stock_commit_dedupe` — 만료 row 자동 cleanup 스케줄러 없음
+- pg-service `pg_inbox` — 동일
+- payment-service 의 Redis dedupe (`EventDedupeStoreRedisAdapter`) 는 TTL 자동 expire — 문제 없음
+- ARCHITECTURE.md 의 dedupe 결정 사유 섹션에 한 줄 메모만 존재
+
+**문제점**:
+- 시간이 지날수록 테이블 크기 무한 증가
+- 인덱스 / 쿼리 성능 저하 (FOR UPDATE 락 길이 / SELECT 풀스캔 위험)
+- 운영 환경 모니터링 / 운영 가이드 부재
+
+**도입 후보**:
+- (a) `@Scheduled` cleanup 워커 — 주기적 `DELETE WHERE created_at < NOW() - INTERVAL X` (X = Kafka retention + 버퍼 = 8일 정도)
+- (b) admin endpoint `/admin/dedupe/cleanup` 수동 트리거
+- (c) 별도 인프라 (event-time partitioning 등) — 학습 단계엔 over-engineering
+
+**처리 시점**: Phase 4 부하 측정 시 테이블 누적 영향 측정 → 발현 시 도입 결정. 운영 SLO 데이터 없이 TTL 결정 금지.
+
+**관련 코드**:
+- `product-service/.../infrastructure/idempotency/JdbcEventDedupeStore.java`
+- `pg-service/.../infrastructure/repository/PgInboxRepositoryImpl.java`
+- `docs/context/ARCHITECTURE.md` (Phase 4 후속 검토 메모)
+
 ---
 
 ## Plan 작성 시 사용 가이드
