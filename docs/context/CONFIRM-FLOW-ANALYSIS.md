@@ -220,6 +220,27 @@ payment / pg 상태 불일치 스캔. 일정 시간 동안 PROCESSING 에 머문
 
 IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀로 워커 크래시 회복.
 
+## 재시도 정책 — 두 layer 분리
+
+두 서비스가 **다른 layer 의 다른 실패 모드** 를 각자 책임진다. 겹치지 않음.
+
+| | payment-service | pg-service |
+|---|---|---|
+| 책임 layer | Kafka publish (자기 → broker) | 외부 PG 호출 (vendor 응답) |
+| 실패 종류 | broker 도달 실패 / ack 없음 / publish timeout | vendor 5xx / timeout / transient |
+| 정책 정의 | `RetryPolicyProperties` (env 주입, `payment.retry.*`) | `pg-service/.../domain/RetryPolicy.java` (hardcoded) |
+| maxAttempts | 5 (default) | 4 (`MAX_ATTEMPTS`) |
+| backoff 전략 | FIXED 5s (default) — EXPONENTIAL 옵션 가능 | EXPONENTIAL × jitter (base=2s, ×3, ±25%) |
+| 시각 표현 | `payment_outbox.next_retry_at` (RDB row) | `pg_outbox.available_at` (RDB row) + Kafka self-loop |
+| 한도 초과 시 | outbox 종결 (FAILED/DLQ) | `payment.commands.confirm.dlq` 로 격리 |
+| 트리거 | `OutboxImmediateWorker` / `@Scheduled OutboxRelayService` | `PaymentConfirmConsumer` 가 자기 자신에게 재발행 → 다음 consume |
+| 코드 진입점 | `PaymentOutboxUseCase.incrementRetryOrFail` | `PgVendorCallService.handleRetry` |
+
+**핵심**:
+- payment 측은 "내가 publish 못함" 회복 — outbox 패턴 + 워커 폴백
+- pg 측은 "vendor 가 답을 안 함" 회복 — Kafka self-loop + attempt 헤더
+- Kafka client 자체의 default error handler 는 customize 안 함 (위 두 application-level retry 가 대체)
+
 ## 회복 시나리오 인덱스
 
 | 장애 | 동작 |
