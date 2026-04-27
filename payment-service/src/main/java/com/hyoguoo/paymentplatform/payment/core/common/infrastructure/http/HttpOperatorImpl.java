@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
@@ -17,14 +18,17 @@ public class HttpOperatorImpl implements HttpOperator {
     private final WebClient webClient;
 
     /**
-     * Boot auto-config WebClient.Builder 를 주입받아 observationRegistry 가 자동 적용된다.
+     * {@code @LoadBalanced} 한정 WebClient.Builder 를 주입받아 cross-service 호출에
+     * Eureka 인스턴스 list 기반 round-robin LB + observationRegistry 자동 적용을
+     * 동시에 받는다. 외부 host (logical service name 형식이 아닌 URL) 호출 시에는
+     * LB 가 그대로 통과시킨다.
      *
      * <p>Spring Boot 3.2+ 는 {@code WebClient.Builder} auto-config 에서 {@code ObservationRegistry}
      * 를 자동 설정한다. Builder 를 주입받기만 하면 HTTP 경계에서 traceparent 자동 전파됨.
      * 커스텀 connector(connect/read timeout) 는 {@code mutate()} 를 통해 auto-config 설정을 상속하며 적용.
      */
     public HttpOperatorImpl(
-            WebClient.Builder webClientBuilder,
+            @LoadBalanced WebClient.Builder webClientBuilder,
             @Value("${spring.gateway.toss.connect-timeout:3000}") int connectTimeoutMillis,
             @Value("${spring.myapp.toss-payments.http.read-timeout-millis}") long readTimeoutMillis
     ) {

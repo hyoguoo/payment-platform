@@ -7,7 +7,7 @@
 - **CLIENT-SIDE-LB** — Phase A (LoadBalanced WebClient) → Phase B (OpenFeign) 순차 도입
   - discuss: `docs/topics/CLIENT-SIDE-LB.md`
   - plan: `docs/CLIENT-SIDE-LB-PLAN.md`
-  - active task: **A4** (A3 완료 — base-url logical service name 전환)
+  - active task: **A5** (A4 완료 — HttpOperatorImpl @LoadBalanced 적용)
 
 ## 직전 봉인
 

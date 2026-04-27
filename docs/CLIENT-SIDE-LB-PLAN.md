@@ -43,15 +43,22 @@
 - 단일 commit: `refactor(payment-service): cross-service base-url 을 logical service name 으로 변경`
 - 완료 결과: application.yml default 값만 변경 (localhost:8083→product-service, localhost:8084→user-service). docker/benchmark/test yml 에는 해당 prop override 없음 확인.
 
-### A4. ProductHttpAdapter / UserHttpAdapter 의 builder 주입을 LoadBalanced 로 전환
-- [ ] `ProductHttpAdapter` 생성자: `WebClient.Builder` → `@LoadBalanced WebClient.Builder`
-- [ ] `UserHttpAdapter` 동일
-- [ ] 기존 `@Value("${product-service.base-url:...}")` 그대로 유지 — 단 값이 logical name (e.g. `http://product-service`)
-- [ ] 기존 contract test (`*HttpAdapterContractTest.java`) 는 `MockWebServer` 로 직접 host 주입이라 LB 우회 — 회귀 없음 검증
-- [ ] 단위 테스트 추가 (선택): `@LoadBalanced` 어노테이션이 builder field 에 부착되어 있는지 reflection 검사 (회귀 방지)
+### A4. HttpOperatorImpl 의 WebClient.Builder 주입에 @LoadBalanced 적용
+- [x] **정정 사항** (A4 dispatch 시 발견): 어댑터 (ProductHttpAdapter / UserHttpAdapter) 는
+      `WebClient.Builder` 를 직접 받지 않고 `HttpOperator` 추상화를 통해 간접 사용한다.
+      실제 builder 주입처는 `payment-service/.../core/common/infrastructure/http/HttpOperatorImpl`.
+      따라서 `@LoadBalanced` 부착 위치는 어댑터가 아니라 `HttpOperatorImpl` 한 곳.
+- [x] `HttpOperatorImpl` 생성자의 `WebClient.Builder webClientBuilder` 매개변수에
+      `@LoadBalanced` 어노테이션 추가 + import (`org.springframework.cloud.client.loadbalancer.LoadBalanced`)
+- [x] payment-service 의 `HttpOperator` 사용처 검증: ProductHttpAdapter / UserHttpAdapter
+      두 군데뿐 — 외부 PG (Toss/NicePay) 호출은 pg-service 의 별개 `HttpOperatorImpl` 이
+      전담하므로 본 변경의 부수효과 없음
+- [x] 어댑터 두 클래스는 변경 없음 — `@Mock HttpOperator` 기반 contract test 영향 0
 - 의존: A2, A3
-- TDD: 불필요 (생성자 시그니처 / 어노테이션 변경) — 기존 contract test 가 회귀 게이트 역할
-- 단일 commit: `refactor(payment-service): ProductHttpAdapter / UserHttpAdapter LoadBalanced 전환`
+- TDD: 불필요 — 기존 contract test 가 `@Mock HttpOperator` 기반이라 시그니처 변경 없음.
+       회귀 게이트는 `./gradlew :payment-service:test` 348 tests 회귀 0 으로 갈음.
+- 단일 commit: `refactor(payment-service): HttpOperatorImpl WebClient.Builder 에 @LoadBalanced 적용`
+- 완료 결과: `HttpOperatorImpl` 생성자 `@LoadBalanced` 적용 + javadoc 보강. `compileJava` PASS, 348/348 tests PASS.
 
 ### A5. docker-compose 의 cross-service env 정리
 - [ ] `docker/docker-compose.apps.yml` 의 `payment-service` env 에서 `PRODUCT_SERVICE_BASE_URL` / `USER_SERVICE_BASE_URL` 명시 제거 (default = logical name 사용)
