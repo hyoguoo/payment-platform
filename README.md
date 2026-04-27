@@ -321,12 +321,17 @@ bash scripts/compose-up.sh --with-smoke    # 기동 직후 Phase 1 자동 실행
 
 #### Smoke 스크립트 구성
 
-| 스크립트                                  | 검증 항목                                                        | 트래픽 의존 |
-|:-------------------------------------|:-------------------------------------------------------------|:------:|
-| `scripts/smoke/infra-healthcheck.sh` | 13 컨테이너 health + 9 호스트 포트 + 5 Eureka 등록 (총 27 항목)             |   X    |
-| `scripts/smoke/kafka-topic-config.sh` | 토픽 partition 동일성 / replication-factor 정책 / retry 토픽 미존재       |   X    |
-| `scripts/smoke/trace-header-check.sh` | `payment.commands.confirm` Kafka record header 의 traceparent  |   O    |
-| `scripts/smoke/trace-continuity-check.sh` | gateway → payment → pg → product/user 다중 홉 traceId 연속성        |   O    |
+| 스크립트                                       | 검증 항목                                                            | 결제 1건 선행 필요 |
+|:------------------------------------------|:-----------------------------------------------------------------|:----------:|
+| `scripts/smoke/infra-healthcheck.sh`      | 13 컨테이너 health + 9 호스트 포트 + 5 Eureka 등록 (총 27 항목)                 |     X      |
+| `scripts/smoke/kafka-topic-config.sh`     | 토픽 partition 동일성 / replication-factor 정책 / retry 토픽 미존재           |     X      |
+| `scripts/smoke/trace-header-check.sh`     | `payment.commands.confirm` Kafka record header 의 traceparent     |     O      |
+| `scripts/smoke/trace-continuity-check.sh` | gateway → payment → pg → product/user 다중 홉 traceId 연속성            |     O      |
+
+> **결제 1건 선행 필요 = O** 인 스크립트는 토픽에 메시지가 / 서비스 로그에 traceId 가 박혀 있어야
+> 검증 대상이 존재한다. 빈 환경에서 실행하면 검사 대상 0건으로 false negative 가 난다.
+> 따라서 `--with-trace` 는 `curl -X POST http://localhost:8090/api/v1/payments/...` 같은
+> 결제 요청을 한 번 보낸 뒤에 실행한다.
 
 `scripts/smoke-all.sh` 가 위 4개를 fail-fast 로 일괄 실행한다 (Phase 2 는 `--with-trace` 옵션 시).
 
