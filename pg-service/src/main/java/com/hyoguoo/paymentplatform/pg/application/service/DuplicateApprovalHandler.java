@@ -150,13 +150,10 @@ public class DuplicateApprovalHandler {
         long vendorAmountLong = AmountConverter.fromBigDecimalStrict(vendorStatus.amount());
 
         // 2단계: pg DB 존재 여부 분기
-        Optional<PgInbox> existingInbox = pgInboxRepository.findByOrderId(orderId);
-
-        if (existingInbox.isPresent()) {
-            handleDbExists(orderId, existingInbox.get(), vendorAmountLong, vendorStatus);
-        } else {
-            handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong);
-        }
+        pgInboxRepository.findByOrderId(orderId).ifPresentOrElse(
+                inbox -> handleDbExists(orderId, inbox, vendorAmountLong, vendorStatus),
+                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong)
+        );
     }
 
     // -----------------------------------------------------------------------

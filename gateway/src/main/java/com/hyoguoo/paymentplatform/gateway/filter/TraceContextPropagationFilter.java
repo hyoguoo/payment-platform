@@ -60,15 +60,12 @@ public class TraceContextPropagationFilter implements WebFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String traceparent = exchange.getRequest().getHeaders().getFirst(TRACEPARENT_HEADER);
 
-        Optional<TraceIds> parsed = parseTraceparent(traceparent);
-
-        if (parsed.isPresent()) {
-            TraceIds ids = parsed.get();
+        parseTraceparent(traceparent).ifPresent(ids -> {
             MDC.put(MDC_TRACE_ID, ids.traceId());
             MDC.put(MDC_SPAN_ID, ids.spanId());
             LogFmt.debug(log, LogDomain.GATEWAY, EventType.TRACE_CONTEXT_INJECTED,
                     () -> "traceId=" + ids.traceId() + " spanId=" + ids.spanId());
-        }
+        });
 
         String method = exchange.getRequest().getMethod().name();
         String path = exchange.getRequest().getURI().getPath();
