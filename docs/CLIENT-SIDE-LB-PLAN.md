@@ -154,12 +154,16 @@
 - 완료 결과: `ProductHttpAdapter` / `UserHttpAdapter` 에서 `HttpOperator`, `@Value(base-url)`, 경로 상수, `callGet`, `mapResponseException` 전체 제거. `ProductFeignClient` / `UserFeignClient` 단순 위임 + DTO 변환만 잔존. `ProductHttpAdapterTest` — `@Mock HttpOperator` → `@Mock ProductFeignClient` 교체. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` — 4분기 삭제 후 FeignClient 예외 propagation 검증 2케이스로 축소. 344/344 tests PASS.
 
 ### B5. WebClient 의존성 정리
-- [ ] cross-service 호출이 Feign 으로 전환됐으니, `spring-boot-starter-webflux` 가 다른 데서 쓰이는지 검증
-  - 외부 PG 호출 (HttpOperatorImpl) 는 여전히 WebClient 사용 — 보존
-- [ ] `@LoadBalanced WebClient.Builder` Bean 도 cross-service 만 쓰던 것이라면 제거
+- [x] 조사 결과 payment-service HttpOperatorImpl 은 외부 PG 호출에 사용되지 않음 (pg-service 가 담당). B4 후 production 참조 0건 → 옵션 (A) 사용자 결정으로 전체 제거
+- [x] production 삭제: `HttpOperator.java` / `HttpOperatorImpl.java` / `HttpClientConfig.java` (3개)
+- [x] 설정 삭제: `application.yml` product-service/user-service base-url 블록, `application-docker.yml` / `application-benchmark.yml` / `application-test.yml` myapp.toss-payments.http.read-timeout-millis 블록 (4개)
+- [x] 테스트 삭제: `AdditionalHeaderHttpOperator.java` / `HttpOperatorTraceparentPropagationTest.java` (2개)
+- [x] 의존성 삭제: `spring-boot-starter-webflux` + `mockwebserver:4.12.0` (2개)
+- [x] `ProductFeignConfig` / `UserFeignConfig` docstring — HttpOperatorImpl 참조 문구 제거
 - 의존: B4
-- TDD: 회귀 테스트
-- 단일 commit (선택): `chore(payment-service): cross-service 전용 LoadBalanced builder 제거 (Feign 으로 흡수)`
+- TDD: 불필요 (dead code 제거) — 회귀 게이트: `./gradlew :payment-service:test` 342/342 PASS
+- 단일 commit: `chore(payment-service): WebClient 의존성 일체 제거 — Feign 단일 경로`
+- 완료 결과: production 3개 + 설정 4개 + 테스트 2개 + 의존성 2개 제거. 잔여 참조 0건 (HttpOperator/HttpClientConfig/webflux import). 342/342 tests PASS.
 
 ### B6. contract test 재작성
 - [ ] `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 를 Feign 기반으로 재작성

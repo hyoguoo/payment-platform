@@ -20,11 +20,6 @@ spring:
       ddl-auto: validate
     show-sql: false
 
-  myapp:
-    toss-payments:
-      http:
-        read-timeout-millis: 30000   # HttpOperatorImpl @Value 바인딩용 (범용 HTTP 타임아웃)
-
 payment:
   cache:
     stock-redis:

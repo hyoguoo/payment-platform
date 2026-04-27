@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Bean;
  * UserFeignClient 전용 Feign 설정.
  *
  * <p>ErrorDecoder 가 4xx/5xx → 도메인 예외 매핑.
- * 매핑 룰은 기존 UserHttpAdapter (HttpOperatorImpl 기반) 의 예외 분기와 정확히 일치한다.
+ * UserFeignClient 호출에서 발생하는 4xx/5xx 응답을 도메인 예외로 매핑한다.
  *
  * <ul>
  *   <li>404 → {@link UserNotFoundException} (USER_NOT_FOUND)</li>

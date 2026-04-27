@@ -31,11 +31,6 @@ spring:
   flyway:
     enabled: false   # 통합 테스트는 ddl-auto: create-drop 으로 schema 생성. Flyway ↔ JPA 순환 의존 회피
 
-  myapp:
-    toss-payments:
-      http:
-        read-timeout-millis: 5000   # HttpOperatorImpl @Value 바인딩용 (범용 HTTP 타임아웃)
-
   kafka:
     listener:
       auto-startup: false

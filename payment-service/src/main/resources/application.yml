@@ -95,12 +95,6 @@ payment:
       commands-confirm: ${PAYMENT_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
       events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
 
-product-service:
-  base-url: ${PRODUCT_SERVICE_BASE_URL:http://product-service}
-
-user-service:
-  base-url: ${USER_SERVICE_BASE_URL:http://user-service}
-
 product:
   adapter:
     type: ${PRODUCT_ADAPTER_TYPE:http}
