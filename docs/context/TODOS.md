@@ -113,6 +113,14 @@
 - ErrorDecoder + 어댑터 try/catch 가 명시적으로 throw 하기 시작했으니 정렬 가치 있음
 - 처리 시: HTTP 503 / 429 로 정확히 노출 + Retry-After 헤더 포함 검토
 
+### TC-6 — 가상 스레드 명시적 throttle / bulkhead 검토
+
+- 현재 백프레셔는 다운스트림 자원 (Hikari 30, Kafka in-flight 5, Redis Lettuce single connection, scheduler batch-size 50) 으로 자연 형성
+- 명시적 `Semaphore` / `RateLimiter` / Resilience4j `Bulkhead` 코드는 0건
+- 위험 시나리오: 외부 PG (Toss/NicePay) 호출 시 벤더 측 rate limit 초과 / 다운스트림 다운 시 VT 가 timeout 까지 spawn 누적 → 메모리 압박
+- 처리 시점: Phase 4 의 T4-A (Toxiproxy 8종 장애 주입) + T4-B (k6 부하) 측정 결과 기반 — "측정 없이 마법 숫자 박지 않는다" 원칙
+- 도입 후보: T4-D 의 Resilience4j 묶음에 `@Bulkhead("productService")` 추가, 또는 외부 PG 호출 어댑터에 명시 Semaphore. 측정값 기반으로 결정
+
 ---
 
 ## Plan 작성 시 사용 가이드
