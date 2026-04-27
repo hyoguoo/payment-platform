@@ -4,7 +4,9 @@
 
 ## 활성 작업
 
-- 없음
+- **CLIENT-SIDE-LB** — Phase A (LoadBalanced WebClient) → Phase B (OpenFeign) 순차 도입
+  - discuss: `docs/topics/CLIENT-SIDE-LB.md`
+  - plan: `docs/CLIENT-SIDE-LB-PLAN.md`
 
 ## 직전 봉인
 
