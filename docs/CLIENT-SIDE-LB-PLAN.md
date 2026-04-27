@@ -226,3 +226,15 @@
 - minor: PaymentPlatformApplication.java 주석 정리 + Feign 산출물 javadoc phase ID 제거 + smoke script project-name 변수화. ControllerAdvice 매핑은 별도 토픽 (TC-5 신규) 으로 deferred
 - fallbackFactory idiomatic 마이그레이션은 T4-D (Resilience4j CircuitBreaker) 와 동시 처리하기로 deferred
 - 출력: docs/rounds/client-side-lb/review-{critic,domain}-1.md
+
+## verify 직전 후속 조치 (2026-04-27)
+
+사용자 발견 3가지 이슈 영구 해결:
+1. `compose-up.sh` 앱 health timeout 180→300s + `wait_healthy_by_service` 헬퍼 추가
+   — 부팅 마진 부족으로 관측성 기동 미수행 → tempo DNS 실패 → OTLP exporter spam 회피
+   — container_name 미고정 서비스를 동적 resolve 해 `docker inspect` 실패 회피
+2. 모든 비즈니스 서비스 (payment / pg / product / user / gateway) 의 `container_name` 제거
+   — Phase 4 오토스케일러 (T4-C) 사전 표준화
+   — `infra-healthcheck.sh` / `trace-continuity-check.sh` 동적 인스턴스 검색으로 통일
+3. 5개 서비스 Eureka instance-id 형식 통일: `${spring.application.name}:${random.uuid}:${server.port}`
+   — UUID 충돌 회피 + 포트 가시성 보존

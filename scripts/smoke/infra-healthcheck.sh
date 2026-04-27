@@ -72,9 +72,8 @@ check_container_health() {
     esac
 }
 
-# product-service 는 오토스케일링 대상이라 container_name 미고정 (A5b).
-# 그 외 서비스는 단일 인스턴스 + container_name 보존.
-EXPECTED_SERVICES=(
+# 인프라 / Eureka — container_name 고정 (단일 인스턴스, 오토스케일 대상 아님)
+EXPECTED_INFRA_SERVICES=(
     "payment-kafka"
     "payment-redis-dedupe"
     "payment-redis-stock"
@@ -83,26 +82,25 @@ EXPECTED_SERVICES=(
     "payment-mysql-product"
     "payment-mysql-user"
     "payment-eureka"
-    "gateway"
-    "payment-service"
-    "pg-service"
-    "user-service"
 )
 
-for svc in "${EXPECTED_SERVICES[@]}"; do
+for svc in "${EXPECTED_INFRA_SERVICES[@]}"; do
     check_container_health "${svc}"
 done
 
-# product-service 인스턴스 — docker compose scale 대응 (docker-product-service-{N}).
-# 1개 이상의 인스턴스가 떠 있어야 PASS.
-PRODUCT_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-product-service-" --format "{{.Names}}" 2>/dev/null)
-if [ -z "${PRODUCT_INSTANCES}" ]; then
-    check_fail "product-service 인스턴스 0건 — compose up 안 됐나?"
-else
-    while IFS= read -r svc; do
-        check_container_health "${svc}"
-    done <<< "${PRODUCT_INSTANCES}"
-fi
+# 비즈니스 서비스 5개 — 모두 scale-able, container_name 미고정.
+# docker compose 가 <project>-<service>-<n> 자동 부여하므로 prefix 매칭으로 인스턴스 검색.
+SCALABLE_SERVICES=("gateway" "payment-service" "pg-service" "user-service" "product-service")
+for svc in "${SCALABLE_SERVICES[@]}"; do
+    INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-${svc}-" --format "{{.Names}}" 2>/dev/null)
+    if [ -z "${INSTANCES}" ]; then
+        check_fail "${svc}: 인스턴스 0건 — compose up 안 됐나?"
+    else
+        while IFS= read -r instance; do
+            check_container_health "${instance}"
+        done <<< "${INSTANCES}"
+    fi
+done
 
 # ─────────────────────────────────────────────
 # 2. 호스트 노출 포트 접근성

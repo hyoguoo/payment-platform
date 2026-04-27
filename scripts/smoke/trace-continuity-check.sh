@@ -252,54 +252,51 @@ find_trace_in_logs() {
   return 1
 }
 
-# product-service 는 오토스케일링 대상이라 동적 검사. 그 외는 단일 컨테이너 이름.
-SERVICES=("gateway" "payment-service" "pg-service" "user-service")
+# 비즈니스 서비스 5개 — 모두 scale-able, container_name 미고정.
+# Feign LB 가 한 인스턴스로만 호출을 보낼 수 있으므로, 서비스당 한 인스턴스에서라도
+# traceId 가 발견되면 PASS.
+SCALABLE_SERVICES=("gateway" "payment-service" "pg-service" "user-service" "product-service")
 
 MISSING_SERVICES=()
 
-for svc in "${SERVICES[@]}"; do
-  if find_trace_in_logs "${svc}"; then
-    echo "[PASS] ${svc}: traceId 발견 (traceId:${TRACE_ID})"
-  else
-    echo "[FAIL] ${svc}: traceId 미발견 (traceId:${TRACE_ID})"
+for svc in "${SCALABLE_SERVICES[@]}"; do
+  INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-${svc}-" --format "{{.Names}}" 2>/dev/null)
+  if [ -z "${INSTANCES}" ]; then
+    echo "[FAIL] ${svc}: 인스턴스 0건 (compose up 안 됐나?)"
+    MISSING_SERVICES+=("${svc}")
+    continue
+  fi
+  SVC_FOUND=false
+  while IFS= read -r instance; do
+    if find_trace_in_logs "${instance}"; then
+      SVC_FOUND=true
+      echo "[PASS] ${svc} (${instance}): traceId 발견 (traceId:${TRACE_ID})"
+    fi
+  done <<< "${INSTANCES}"
+  if [[ "${SVC_FOUND}" == "false" ]]; then
+    echo "[FAIL] ${svc}: 모든 인스턴스에서 traceId 미발견 (인스턴스: $(echo "${INSTANCES}" | tr '\n' ' '))"
     MISSING_SERVICES+=("${svc}")
   fi
 done
 
-# product-service — scale=N 대응 (docker-product-service-{1..N}).
-# Feign LB 가 한 인스턴스로만 호출을 보내므로, traceId 가 어느 한 인스턴스에 있어도 PASS.
-PRODUCT_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-product-service-" --format "{{.Names}}" 2>/dev/null)
-if [ -z "${PRODUCT_INSTANCES}" ]; then
-  echo "[FAIL] product-service: 인스턴스 0건 (compose up 안 됐나?)"
-  MISSING_SERVICES+=("product-service")
-else
-  PRODUCT_FOUND=false
-  while IFS= read -r instance; do
-    if find_trace_in_logs "${instance}"; then
-      PRODUCT_FOUND=true
-      echo "[PASS] product-service (${instance}): traceId 발견 (traceId:${TRACE_ID})"
-    fi
-  done <<< "${PRODUCT_INSTANCES}"
-  if [[ "${PRODUCT_FOUND}" == "false" ]]; then
-    echo "[FAIL] product-service: 모든 인스턴스에서 traceId 미발견 (인스턴스: $(echo "${PRODUCT_INSTANCES}" | tr '\n' ' '))"
-    MISSING_SERVICES+=("product-service")
-  fi
-fi
-
 # ─────────────────────────────────────────────
 # 9. payment-service + pg-service 추가 검증
 #    — Kafka consumer / outbox relay 경로 로그에도 등장해야 함
+#    — 각 서비스의 첫 번째 인스턴스 로그를 사용 (scale=1 기본, 다중 인스턴스 시 합산)
 # ─────────────────────────────────────────────
 echo ""
 echo "[INFO] payment-service Kafka listener 경로 추가 검증..."
-PAYMENT_LOG=$(docker logs --since=5m payment-service 2>&1 || echo "")
+PAYMENT_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-payment-service-" --format "{{.Names}}" 2>/dev/null)
+PAYMENT_LOG=""
+while IFS= read -r inst; do
+  PAYMENT_LOG+=$(docker logs --since=5m "${inst}" 2>&1 || echo "")
+done <<< "${PAYMENT_INSTANCES}"
 
 # PaymentConfirmResultUseCase 또는 ConfirmedEventConsumer 로그에 traceId 등장 여부
 PAYMENT_KAFKA_HIT=$(echo "${PAYMENT_LOG}" | grep "traceId:${TRACE_ID}" | grep -ci "confirm\|consumer\|kafka\|relay\|result" || true)
 if [[ "${PAYMENT_KAFKA_HIT}" -gt 0 ]]; then
   echo "[PASS] payment-service Kafka listener 경로에서 traceId 발견 (${PAYMENT_KAFKA_HIT}건)"
 else
-  # Kafka listener 경로 로그가 없어도 payment-service 전체에서 이미 확인됐으면 경고만
   if echo "${PAYMENT_LOG}" | grep -q "traceId:${TRACE_ID}"; then
     echo "[INFO] payment-service Kafka listener 경로 특정 불가 — 전체 로그에서는 발견됨 (로그 레벨 확인 권장)"
   else
@@ -308,7 +305,11 @@ else
 fi
 
 echo "[INFO] pg-service Kafka consumer 경로 추가 검증..."
-PG_LOG=$(docker logs --since=5m pg-service 2>&1 || echo "")
+PG_INSTANCES=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-pg-service-" --format "{{.Names}}" 2>/dev/null)
+PG_LOG=""
+while IFS= read -r inst; do
+  PG_LOG+=$(docker logs --since=5m "${inst}" 2>&1 || echo "")
+done <<< "${PG_INSTANCES}"
 
 PG_KAFKA_HIT=$(echo "${PG_LOG}" | grep "traceId:${TRACE_ID}" | grep -ci "consumer\|kafka\|relay\|outbox\|confirm\|payment" || true)
 if [[ "${PG_KAFKA_HIT}" -gt 0 ]]; then
@@ -330,7 +331,7 @@ echo " trace-continuity-check 결과"
 echo "════════════════════════════════════════════"
 echo " trace-id  : ${TRACE_ID}"
 echo " orderId   : ${ORDER_ID}"
-echo " 검증 서비스: ${SERVICES[*]} product-service($(echo "${PRODUCT_INSTANCES:-0건}" | tr '\n' ',' | sed 's/,$//'))"
+echo " 검증 서비스: ${SCALABLE_SERVICES[*]}"
 echo ""
 
 if [[ ${#MISSING_SERVICES[@]} -eq 0 ]]; then

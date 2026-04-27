@@ -54,6 +54,9 @@ eureka:
     fetch-registry: true
   instance:
     prefer-ip-address: true
+    # 다중 인스턴스 (--scale <svc>=N) 시 instanceId 충돌 회피.
+    # spring.application.name + 랜덤 UUID + 포트 — 인스턴스마다 고유 + 포트 가시성 보존.
+    instance-id: ${spring.application.name}:${random.uuid}:${server.port}
 
 management:
   endpoints:

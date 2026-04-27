@@ -1,7 +1,7 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-04-27 — CLIENT-SIDE-LB Phase B 종결, review 단계 대기
-> stage: review
+> 최종 수정: 2026-04-27 — verify 직전 후속 조치 (container_name 제거 + instanceId 통일 + timeout 보강)
+> stage: verify
 
 ## 활성 작업
 
@@ -14,7 +14,7 @@
   - **Phase B 종결** (B1 → B7 모두 완료)
     - round-robin Feign 분산: product-service-1 7건 / product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
     - 회귀 0 (`./gradlew test` 579 PASS)
-  - active task: **review 1라운드 피드백 반영 완료** — review 재라운드 대기
+  - active task: **verify 직전 후속 조치 완료** — verify 진입 대기
 
 ## 직전 봉인
 

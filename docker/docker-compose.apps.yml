@@ -16,13 +16,17 @@
 services:
 
   # ───────────────────────────────────────────
+  # 비즈니스 서비스 공통: container_name 미지정 — 모든 비즈니스 서비스가 scale-able.
+  # docker compose 가 <project>-<service>-<n> 자동 부여 (--scale <svc>=N 시 -1, -2, ...).
+  # ───────────────────────────────────────────
+
+  # ───────────────────────────────────────────
   # payment-service — 결제 도메인 핵심 (orderId 점유, redis-stock 선차감, outbox)
   # ───────────────────────────────────────────
   payment-service:
     build:
       context: ../payment-service
       dockerfile: Dockerfile
-    container_name: payment-service
     hostname: payment-service
     labels:
       com.hyoguoo.loki.enable: "true"
@@ -71,7 +75,6 @@ services:
     build:
       context: ../pg-service
       dockerfile: Dockerfile
-    container_name: pg-service
     hostname: pg-service
     labels:
       com.hyoguoo.loki.enable: "true"
@@ -114,8 +117,6 @@ services:
 
   # ───────────────────────────────────────────
   # product-service (재고 저장소 + StockCommit consumer)
-  # container_name 미지정 — `docker compose up --scale product-service=N` 으로 다중 인스턴스 기동.
-  # compose 가 docker-product-service-1, docker-product-service-2 ... 자동 부여.
   # ───────────────────────────────────────────
   product-service:
     build:
@@ -158,7 +159,6 @@ services:
     build:
       context: ../user-service
       dockerfile: Dockerfile
-    container_name: user-service
     hostname: user-service
     labels:
       com.hyoguoo.loki.enable: "true"
@@ -194,7 +194,6 @@ services:
     build:
       context: ../gateway
       dockerfile: Dockerfile
-    container_name: gateway
     hostname: gateway
     labels:
       com.hyoguoo.loki.enable: "true"
