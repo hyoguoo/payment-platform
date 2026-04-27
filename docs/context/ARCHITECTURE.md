@@ -163,7 +163,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 비동기 confirm 아키텍처 | payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
 | 격리 트리거 (CACHE_DOWN / 판단 불가) | `QuarantineCompensationHandler` |
 | AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
-| 분산 멱등성 store | `redis-dedupe` two-phase lease |
+| 분산 멱등성 store | `redis-dedupe` two-phase lease (payment 만) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
 | business inbox amount | pg `pg_inbox.amount BIGINT` |
 | HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
 | DB 분리 | 4 MySQL 인스턴스 (DB per service) |
@@ -176,6 +176,38 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 재고 복구 가드 (TX 내 재조회) | `executePaymentFailureCompensationWithOutbox` |
 
 상세 history 는 archive 안 토픽별 `COMPLETION-BRIEFING.md` / `*-CONTEXT.md`.
+
+## 결정 사유 — Dedupe 저장소 선택
+
+세 비즈니스 서비스의 dedupe 어댑터가 서로 다른 저장소 사용:
+
+| 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
+|---|---|---|---|---|
+| payment | `EventDedupeStoreRedisAdapter` | Redis (redis-dedupe) | PaymentEvent 상태 전이 + stock_outbox INSERT (RDB) | 약함 — 도메인 메서드 가드로 멱등성 회복 |
+| pg | `PgInboxRepository.markSeen` | MySQL (pg_inbox) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — 같은 TX 필수 |
+| product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
+
+**결정 룰 한 줄**:
+> dedupe 와 그 이후 작업이 같은 RDB 자원을 변경하면 RDB, lease/lock 의미가 강하면 Redis.
+
+**왜 이 룰인가**:
+- Redis 와 RDB 는 서로 다른 시스템이라 `@Transactional` 이 둘을 같이 묶지 못함. 부분 실패 (Redis 기록 후 RDB 실패) 시 "이미 처리됨" 판정으로 후속 영영 멈춤 = **돈 새는 경로**
+- product / pg 는 atomicity 가 도메인 정확성의 본질 → 같은 RDB 위에 dedupe 테이블 두기 → 같은 TX 로 commit/rollback
+- payment 는 dedupe 가 "메시지 처리 권한의 lease 의미" — 처리 권한 잠금 / 연장 / 해제가 in-memory 성능 + TTL 자동 expire 가 자연. 후속 작업은 도메인 가드 (`이미 DONE 이면 no-op`) 로 멱등성 별도 보장
+
+**구현 디테일**:
+- **payment**: Redis `SET NX EX` (markWithLease 5분) → `EXPIRE` (extendLease 8일) → `DEL` (remove). two-phase lease 패턴
+- **pg**: pg_inbox 테이블 + UPSERT (markSeen). 같은 TX 안에서 inbox 상태 전이까지
+- **product**: stock_commit_dedupe 테이블 + DELETE 만료 + INSERT IGNORE. 같은 TX 안에서 재고 차감까지
+
+**대안 비교** (모두 검토 후 현재 안이 채택):
+- 모두 Redis 통일 → product / pg 의 atomicity 깨짐, 부분 실패 위험
+- 모두 RDB 통일 → payment 의 lease 패턴이 row lock 점유로 in-memory 성능 손실, 운영 추가 부담 (테이블 cleanup)
+- 현재 채택 — 도메인 요구별 적합한 저장소
+
+**Phase 4 후속**:
+- TC-7 (outbox retry 정책 정렬) 와 별개
+- product / pg 의 dedupe 테이블 cleanup 스케줄러 부재 → 만료 row 누적 시 운영 부담. 부하 측정 후 도입 결정 가치
 
 ## 다음 토픽
 
