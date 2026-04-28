@@ -10,6 +10,21 @@
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     </Match>
 
+    <!--
+        Java 21 record / type pattern matching on sealed interfaces requires a binding
+        (or zero-component record pattern) for exhaustiveness. SpotBugs reports the
+        unread synthetic local as DLS_DEAD_LOCAL_STORE. The binding is structural —
+        suppressed only for the dispatchOutcome switches that exhaust marker variants.
+    -->
+    <Match>
+        <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
+        <Or>
+            <Class name="com.hyoguoo.paymentplatform.pg.application.service.PgFinalConfirmationGate"/>
+            <Class name="com.hyoguoo.paymentplatform.pg.application.service.PgVendorCallService"/>
+        </Or>
+        <Method name="dispatchOutcome"/>
+    </Match>
+
     <!-- 비의미적 패키지 제외 (JaCoCo / Checkstyle 제외 목록과 동일) -->
     <Match>
         <Or>

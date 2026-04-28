@@ -120,7 +120,7 @@ public class PgVendorCallService {
     private void dispatchOutcome(GatewayOutcome outcome, PgConfirmRequest request, int attempt, Instant now) {
         switch (outcome) {
             case GatewayOutcome.Success s -> handleSuccess(request.orderId(), s.result());
-            case GatewayOutcome.Retryable ignored -> handleRetry(request, attempt, now);
+            case GatewayOutcome.Retryable(String reason) -> handleRetry(request, attempt, now, reason);
             case GatewayOutcome.NonRetryable nr -> handleDefinitiveFailure(request.orderId(), nr.message());
             case GatewayOutcome.HandledInternally hi -> LogFmt.info(log, LogDomain.PG_VENDOR,
                     EventType.PG_VENDOR_DUPLICATE_HANDLED,
@@ -160,15 +160,15 @@ public class PgVendorCallService {
     // 재시도 분기
     // -----------------------------------------------------------------------
 
-    private void handleRetry(PgConfirmRequest request, int attempt, Instant now) {
+    private void handleRetry(PgConfirmRequest request, int attempt, Instant now, String reason) {
         if (RetryPolicy.shouldRetry(attempt)) {
-            insertRetryOutbox(request, attempt, now);
+            insertRetryOutbox(request, attempt, now, reason);
         } else {
-            insertDlqOutbox(request, attempt);
+            insertDlqOutbox(request, attempt, reason);
         }
     }
 
-    private void insertRetryOutbox(PgConfirmRequest request, int attempt, Instant now) {
+    private void insertRetryOutbox(PgConfirmRequest request, int attempt, Instant now, String reason) {
         int nextAttempt = attempt + 1;
         Duration backoff = RetryPolicy.computeBackoff(nextAttempt, RNG);
         Instant availableAt = now.plus(backoff);
@@ -181,10 +181,13 @@ public class PgVendorCallService {
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_SCHEDULED,
-                () -> "orderId=" + request.orderId() + " nextAttempt=" + nextAttempt + " availableAt=" + availableAt);
+                () -> "orderId=" + request.orderId()
+                        + " nextAttempt=" + nextAttempt
+                        + " availableAt=" + availableAt
+                        + " reason=" + reason);
     }
 
-    private void insertDlqOutbox(PgConfirmRequest request, int attempt) {
+    private void insertDlqOutbox(PgConfirmRequest request, int attempt, String reason) {
         String headersJson = buildAttemptHeader(attempt);
         PgOutbox outbox = PgOutbox.create(
                 null, PgTopics.COMMANDS_CONFIRM_DLQ, request.orderId(),
@@ -193,7 +196,9 @@ public class PgVendorCallService {
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DLQ,
-                () -> "orderId=" + request.orderId() + " attempt=" + attempt);
+                () -> "orderId=" + request.orderId()
+                        + " attempt=" + attempt
+                        + " reason=" + reason);
     }
 
     // -----------------------------------------------------------------------

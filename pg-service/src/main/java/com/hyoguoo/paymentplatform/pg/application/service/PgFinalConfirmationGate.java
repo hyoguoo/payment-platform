@@ -145,7 +145,7 @@ public class PgFinalConfirmationGate {
         switch (outcome) {
             case FcgOutcome.Approved a -> handleApproved(orderId, a.storedStatusResult(), amount);
             case FcgOutcome.Failed f -> handleFailed(orderId, f.storedStatusResult());
-            case FcgOutcome.Indeterminate ignored -> handleIndeterminate(orderId, amount);
+            case FcgOutcome.Indeterminate() -> handleIndeterminate(orderId, amount);
         }
     }
 
