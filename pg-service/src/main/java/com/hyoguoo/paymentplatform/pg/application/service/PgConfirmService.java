@@ -119,7 +119,9 @@ public class PgConfirmService implements PgConfirmCommandService {
         String storedResult = inbox.getStoredStatusResult();
         if (storedResult == null || storedResult.isBlank()) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
-                    () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus() + " — storedStatusResult 없음");
+                    () -> "orderId=" + inbox.getOrderId()
+                            + " status=" + inbox.getStatus()
+                            + " — storedStatusResult 없음");
             return;
         }
 

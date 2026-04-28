@@ -243,7 +243,9 @@ public class DuplicateApprovalHandler {
     private void handleDbAbsentAmountMismatch(String orderId, long payloadAmountLong, long vendorAmountLong) {
         // vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH) (불변식 4c)
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
-                () -> "orderId=" + orderId + " payloadAmount=" + payloadAmountLong + " vendorAmount=" + vendorAmountLong);
+                () -> "orderId=" + orderId
+                        + " payloadAmount=" + payloadAmountLong
+                        + " vendorAmount=" + vendorAmountLong);
 
         // inbox 신설 후 QUARANTINED 전이 (amount=payloadAmount 기록)
         pgInboxRepository.transitNoneToInProgress(orderId, payloadAmountLong);
@@ -267,7 +269,9 @@ public class DuplicateApprovalHandler {
         }
         pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
 
-        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_VENDOR_INDETERMINATE));
+        long outboxId = enqueueOutbox(
+                orderId,
+                buildConfirmedPayload(orderId, "QUARANTINED", REASON_VENDOR_INDETERMINATE));
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
                 () -> "orderId=" + orderId + " outboxId=" + outboxId);
