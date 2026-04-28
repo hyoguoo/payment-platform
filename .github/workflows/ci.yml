@@ -82,12 +82,14 @@ jobs:
 
       - name: Run Checkstyle
         id: checkstyle
-        run: ./gradlew checkstyleMain checkstyleTest
+        # --continue: 한 모듈의 task 실패가 다른 모듈 실행을 막지 않도록 — 라운드당 한 번에 모든 위반 surface
+        run: ./gradlew checkstyleMain checkstyleTest --continue
         continue-on-error: true
 
       - name: Run SpotBugs
         id: spotbugs
-        run: ./gradlew spotbugsMain
+        # --continue 동일 이유 — 한 모듈 fail 이 다른 모듈 spotbugs 차단 방지
+        run: ./gradlew spotbugsMain --continue
         continue-on-error: true
 
       - name: Reviewdog — Checkstyle
