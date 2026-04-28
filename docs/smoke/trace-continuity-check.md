@@ -38,10 +38,11 @@ sleep 60   # start_period 통과 대기
 
 | 누락 위치 | 원인 후보 | 조치 |
 |---|---|---|
-| Kafka producer → consumer | producer 측 KafkaTemplate 가 `ObservationRegistry` 미주입 | `KafkaProducerConfig` 의 자체 생성 ProducerFactory 들이 ObservationRegistry 명시 wiring 됐는지 확인 |
-| Consumer → 다음 hop | `OtelMdcMessageInterceptor` 미등록 또는 `@KafkaListener` 측 MDC 복원 누락 | 컨슈머 설정 검증 |
+| Kafka producer → consumer | producer 측 KafkaTemplate 가 `ObservationRegistry` 미주입 | `KafkaProducerConfig` 의 자체 생성 ProducerFactory 들이 ObservationRegistry 명시 wiring 됐는지 + `spring.kafka.template.observation-enabled=true` 확인 |
+| Consumer → 다음 hop | `spring.kafka.listener.observation-enabled=true` 누락 또는 `MdcContextPropagationConfig` 의 `Slf4jMdcThreadLocalAccessor` 등록 누락 | 두 설정 모두 활성 + `ContextRegistry` 에 MDC accessor 등록 확인 |
 | HTTP 어댑터 hop | Feign / WebClient / RestClient 가 `traceparent` 헤더 자동 주입 안 함 | 클라이언트 빌더가 Spring Boot auto-config 의 ObservationRegistry 를 상속받는지 확인 |
-| Virtual Thread 경계 | VT executor 가 MDC 복사 미수행 | `MdcContextExecutor` 또는 동등 wrapper 사용 확인 |
+| Virtual Thread 경계 | VT executor 가 OTel + MDC 두 컨텍스트를 캡처·복원 안 함 | `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 사용 확인 |
+| in-memory channel 경계 (pg-service) | offer 시점 컨텍스트 캡처 누락 또는 take 시점 set 누락 | `PgOutboxChannel.offerNow` 가 `Context.current()` + `captureAll()` / `PgOutboxImmediateWorker.relayWithContext` 가 두 Scope set 하는지 확인 |
 
 ## 영구성
 

@@ -77,24 +77,36 @@ payment-platform/
     │   │   │   ├── port/         # presentation 측 인터페이스 (있으면)
     │   │   │   └── dto/          # request / response DTO
     │   │   ├── infrastructure/   # 출력 포트 구현 + 외부 어댑터
-    │   │   │   ├── persistence/  # JPA Entity + Repository
+    │   │   │   ├── entity/       # JPA Entity
+    │   │   │   ├── repository/   # JPA Repository 구현 (출력 포트 어댑터)
     │   │   │   ├── messaging/
     │   │   │   │   ├── publisher/
     │   │   │   │   └── consumer/
-    │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service 측 — feign/ 서브폴더에 *FeignClient + *FeignConfig)
-    │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service 측 — HttpOperatorImpl)
-    │   │   │   ├── cache/        # Redis 어댑터
-    │   │   │   ├── scheduler/    # @Scheduled 워커
-    │   │   │   ├── listener/     # @TransactionalEventListener 등
-    │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service 한정)
+    │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service — feign/ 서브폴더에 *FeignClient + *FeignConfig)
+    │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service — HttpOperatorImpl)
+    │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
+    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment Redis / pg Redis+RDB / product RDB)
+    │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
+    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker)
+    │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
+    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob)
+    │   │   │   ├── aspect/       # 인프라 측 AOP 구현 (DomainEventLoggingAspect, *MetricsAspect)
+    │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service — toss/ nicepay/ fake/)
+    │   │   │   ├── metrics/      # Micrometer 메트릭 정의 / 등록
     │   │   │   └── config/
-    │   │   ├── core/             # 횡단 관심사
+    │   │   ├── application/aspect/annotation/  # AOP 어노테이션 정의 (@PublishDomainEvent, @PaymentStatusChange, @TossApiMetric — 어노테이션만)
+    │   │   ├── core/             # 횡단 관심사 (서비스마다 깊이 다름 — 아래는 payment-service 기준 최대 트리)
+    │   │   │   ├── common/
+    │   │   │   │   ├── log/      # LogFmt — 모든 서비스 공통 보유
+    │   │   │   │   ├── aspect/   # 가벼운 메타 aspect 어노테이션 (payment-service 만)
+    │   │   │   │   ├── dto/      # 공통 DTO (payment-service 만)
+    │   │   │   │   ├── exception/  # 공통 예외 (payment-service 만)
+    │   │   │   │   ├── infrastructure/  # 공통 인프라 어댑터 (payment-service 만 — 예: LocalDateTimeProvider 구현)
+    │   │   │   │   ├── metrics/  # 공통 메트릭 (payment-service 만)
+    │   │   │   │   └── service/  # 공통 서비스 + port (payment-service 만)
     │   │   │   ├── config/       # @Configuration (AsyncConfig, KafkaConfig, ...)
-    │   │   │   ├── aspect/       # AOP
-    │   │   │   ├── log/          # LogFmt
-    │   │   │   ├── filter/       # Servlet Filter
-    │   │   │   ├── metrics/      # Micrometer 정의
-    │   │   │   └── util/
+    │   │   │   │   └── concurrent/  # ContextAwareVirtualThreadExecutors (payment / pg)
+    │   │   │   └── response/     # 공통 응답 wrapper (payment-service 만)
     │   │   └── exception/        # 애플리케이션 공통 예외
     │   └── resources/
     │       ├── application.yml

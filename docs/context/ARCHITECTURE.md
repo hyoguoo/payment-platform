@@ -60,7 +60,7 @@ flowchart LR
     Pay --> RedD
     Pg  --> RedD
     Prod --> RedD
-    Prod --> RedS
+    Pay --> RedS
 
     Pay <-->|"payment.commands.confirm /\npayment.events.confirmed"| K
     K <--> Pg
@@ -114,8 +114,11 @@ flowchart LR
 | `KafkaMessagePublisher` | `payment-service/.../infrastructure/messaging/publisher` | Spring Kafka 어댑터. 출력 포트 구현 |
 | `OutboxWorker` (`@Scheduled`) | `payment-service/.../infrastructure/scheduler` | 폴링 폴백. Spring Scheduler 의존이라 infrastructure |
 | `ConfirmedEventConsumer` (`@KafkaListener`) | `payment-service/.../infrastructure/messaging/consumer` | Kafka 입력 어댑터 — `PaymentConfirmResultUseCase` 호출 |
-| `PgOutboxImmediateWorker` | `pg-service/.../infrastructure/scheduler` | pg 측 즉시 발행 워커. `PgOutboxChannel` BlockingQueue 와 SmartLifecycle 패턴 |
+| `PgOutboxChannel` + `OutboxJob` | `pg-service/.../infrastructure/channel` | in-memory `LinkedBlockingQueue` + 작업 record(`outboxId, otelContext, snapshot`). offer 시점에 OTel Context + ContextSnapshot 캡처해 작업에 동봉 — Kafka consumer ↔ VT 워커 간 시간차로 Executor 자동 캡처가 안 통하는 경계 처리 |
+| `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
+| `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
 | `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `payment.events.stock-committed` Kafka publish (TX 와 publish 분리) |
+| `ContextAwareVirtualThreadExecutors` | `payment-service` / `pg-service` `core/config/concurrent` | OTel Context + MDC 이중 래핑 VT executor 헬퍼. payment 의 `AsyncConfig.outboxRelayExecutor`, pg 의 `PgOutboxImmediateWorker.relayExecutor` 가 사용 — 호출 시점 컨텍스트를 새 VT 스레드에 자동 캡처·복원 |
 
 ## 인프라 별 책임
 
@@ -151,10 +154,10 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | 관심사 | 위치 | 비고 |
 |---|---|---|
-| Tracing | `core/config/AsyncConfig` 등 | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파 |
-| MDC + LogFmt | `core/log/LogFmt` | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
-| AOP `@PublishDomainEvent` + `@PaymentStatusChange` | `core/aspect` | `payment_history` audit trail 자동 기록 |
-| Metrics | `core/metrics`, `infrastructure/metrics` | Micrometer + Prometheus. `payment_quarantined_total`, `stock_kafka_publish_fail_total` 등 |
+| Tracing | `core/config/AsyncConfig`, `core/config/concurrent/ContextAwareVirtualThreadExecutors`, infrastructure messaging/listener | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파. pg-service in-memory channel 은 `OutboxJob` 동봉으로 명시 캡처·복원 |
+| MDC + LogFmt | `core/common/log/LogFmt` (모든 서비스) | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
+| AOP `@PublishDomainEvent` + `@PaymentStatusChange` | 어노테이션 정의: `application/aspect/annotation/` / 구현: `infrastructure/aspect/DomainEventLoggingAspect` (payment), `infrastructure/aspect/TossApiMetricsAspect` (pg) | `payment_history` audit trail 자동 기록 + Toss 호출 메트릭 |
+| Metrics | `core/common/metrics` (payment 공통), `infrastructure/metrics/*` (서비스별 Micrometer 카운터/타이머 등록) | Prometheus 노출 — `payment_quarantined_total`, `stock_kafka_publish_fail_total`, `pg_outbox.relay_fail_total` 등 |
 
 ## 핵심 설계 결정 인덱스 (현재 운영 중)
 

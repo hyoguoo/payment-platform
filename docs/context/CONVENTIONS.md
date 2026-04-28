@@ -82,7 +82,7 @@ RuntimeException
 
 ## LogFmt + 트레이스 컨텍스트
 
-**모든 로그는 `core/log/LogFmt` 를 통해**:
+**모든 로그는 `core/common/log/LogFmt` 를 통해** (4서비스 + gateway 공통 위치):
 ```java
 LogFmt.info(
     EventType.PAYMENT_CONFIRM_SUCCESS,

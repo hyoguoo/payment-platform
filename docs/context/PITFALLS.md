@@ -109,9 +109,11 @@ process(result);  // result 가 null 일 수 있음
 **증상**: HTTP → @Async → Kafka 경계에서 traceparent 가 끊김 → 사고 시 trace 추적 불가.
 
 **처방**:
-- Spring `@Async` executor 가 OTel context 자동 전파하도록 wiring
-- Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 를 명시적으로 wiring
-- `OtelMdcMessageInterceptor` 로 consumer 측 traceparent → MDC 복원
+- 가상 스레드 executor 는 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 로 생성 — OTel Context + MDC 둘 다 호출자 스레드에서 자동 캡처해 새 VT 에 set
+- Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 를 명시적으로 wiring (자동 wiring 이 닿지 않는 비표준 경로)
+- `@Async` 메서드는 위 executor 를 사용하는 빈(`outboxRelayExecutor` 등) 을 `@Async("...")` 로 지정
+- pg-service 의 in-memory channel 처럼 호출자/소비자 사이 시간차가 있어 Executor 자동 캡처가 안 통하는 경계는 `OutboxJob` 같은 작업 객체에 두 컨텍스트를 동봉해 워커가 직접 set/원복
+- consumer 측 traceparent → MDC 복원은 `spring.kafka.listener.observation-enabled=true` + `MdcContextPropagationConfig` 의 `Slf4jMdcThreadLocalAccessor` 등록이 자동 처리
 
 ## 13. NicePay paidAt offset 정규화
 
