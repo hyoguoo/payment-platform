@@ -1,7 +1,5 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.NicepayPaymentGatewayStrategy;
 import java.lang.reflect.Field;

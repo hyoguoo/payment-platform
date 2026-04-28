@@ -1,10 +1,8 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
-import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
