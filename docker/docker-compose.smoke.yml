@@ -1,0 +1,45 @@
+# docker-compose.smoke.yml — happy-path 통합 스모크 전용 override (PG 호출 우회).
+#
+# 사용법:
+#   docker compose \
+#     -f docker/docker-compose.infra.yml \
+#     -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.observability.yml \
+#     -f docker/docker-compose.smoke.yml \
+#     up -d
+#
+# 효과:
+#   - pg-service 의 PG_GATEWAY_TYPE 을 fake 로 강제 → FakePgGatewayStrategy 활성화.
+#   - Toss/NicePay 샌드박스 호출 없이 happy path 전 구간을 E2E 로 검증.
+#   - 모든 서비스의 tracing sampling probability 를 1.0 으로 고정.
+#
+# 주의:
+#   - 이 파일을 production 환경에 적용하면 모든 결제가 FakePgGatewayStrategy 로 우회되어
+#     돈이 움직이지 않으면서도 결제가 APPROVED 로 응답된다. 절대 prod 에 적용 금지.
+services:
+
+  pg-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,smoke
+      PG_GATEWAY_TYPE: fake
+      # smoke 모드에서는 Toss/NicePay 키가 무의미하므로 placeholder 로 고정
+      TOSS_SECRET_KEY: "smoke-unused"
+      NICEPAY_CLIENT_KEY: "smoke-unused"
+      NICEPAY_SECRET_KEY: "smoke-unused"
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+
+  payment-service:
+    environment:
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+
+  product-service:
+    environment:
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+
+  user-service:
+    environment:
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+
+  gateway:
+    environment:
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"

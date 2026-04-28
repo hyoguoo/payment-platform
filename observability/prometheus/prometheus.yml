@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: docker
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["payment-service:8080"]
+        labels:
+          application: payment-service
+
+  - job_name: pg-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["pg-service:8082"]
+        labels:
+          application: pg-service
+
+  - job_name: product-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["product-service:8083"]
+        labels:
+          application: product-service
+
+  - job_name: user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["user-service:8084"]
+        labels:
+          application: user-service
+
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["gateway:8080"]
+        labels:
+          application: gateway
+
+  - job_name: eureka-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["eureka:8761"]
+        labels:
+          application: eureka-server
+
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+        labels:
+          application: kafka

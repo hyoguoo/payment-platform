@@ -1,0 +1,53 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+    import: optional:file:.env.secret[.properties]
+  main:
+    allow-bean-definition-overriding: true
+
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    defer-datasource-initialization: true
+    generate-ddl: true
+
+  sql:
+    init:
+      mode: never
+
+  flyway:
+    enabled: false   # 통합 테스트는 ddl-auto: create-drop 으로 schema 생성. Flyway ↔ JPA 순환 의존 회피
+
+  kafka:
+    listener:
+      auto-startup: false
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.testcontainers: INFO
+
+scheduler:
+  enabled: false
+  payment-status-sync:
+    enabled: false
+
+springdoc:
+  swagger-ui:
+    enabled: false

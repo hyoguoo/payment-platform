@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: jdbc:mysql://mysql-pg:3306/pg?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${PG_DATASOURCE_USERNAME:root}
+    password: ${PG_DATASOURCE_PASSWORD:payment123}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis-dedupe}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+pg:
+  gateway:
+    type: ${PG_GATEWAY_TYPE:toss}
+  event-dedupe:
+    ttl: ${PG_EVENT_DEDUPE_TTL:PT1H}
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: INFO

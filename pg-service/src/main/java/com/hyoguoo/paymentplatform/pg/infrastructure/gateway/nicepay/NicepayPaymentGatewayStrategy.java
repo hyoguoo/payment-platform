@@ -1,0 +1,316 @@
+package com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgFailureInfo;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
+import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
+import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.dto.NicepayPaymentApiFailResponse;
+import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.dto.NicepayPaymentApiResponse;
+import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
+import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
+
+/**
+ * NicePay PG 벤더 전략 실구현.
+ * pg-service 내부에서만 호출 — payment-service 의존 없음.
+ *
+ * <p>승인 API: POST {nicepayApiUrl}/v1/payments/{tid} (Basic 인증).
+ * 조회 API: GET {nicepayApiUrl}/v1/payments/find/{orderId}.
+ *
+ * <p>에러 분기:
+ * <ul>
+ *   <li>2201(중복 승인) → {@link DuplicateApprovalDetectedEvent} 발행 후
+ *       {@link PgGatewayDuplicateHandledException} 전파.</li>
+ *   <li>2159 / A246 / A299 → {@link PgGatewayRetryableException}.</li>
+ *   <li>그 외 → {@link PgGatewayNonRetryableException}.</li>
+ * </ul>
+ *
+ * <p>cycle 회피: 이 전략은 PgStatusLookupPort 구현이고 DuplicateApprovalHandler 는 그 포트를 의존하므로,
+ * 전략이 핸들러를 직접 호출하면 cycle 이 만들어진다. 직접 호출 대신 ApplicationEventPublisher 로 이벤트를 발행해
+ * 핸들러가 EventListener 로 수신하도록 한다.
+ *
+ * <p>활성화 조건: {@code pg.gateway.type=fake} 가 아닐 때 항상 활성된다 — Toss 전략과 동시에 등록된다.
+ * fake 모드에서는 FakePgGatewayStrategy 가 대신 동작한다.
+ */
+@Slf4j
+@Component
+@ConditionalOnExpression("'${pg.gateway.type:vendor}' != 'fake'")
+public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirmPort {
+
+    private static final String AUTHORIZATION_HEADER_NAME = "Authorization";
+    private static final String BASIC_AUTHORIZATION_TYPE = "Basic ";
+
+    private static final String NICEPAY_RESULT_CODE_SUCCESS = "0000";
+    private static final String NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL = "2201";
+
+    private static final String NICEPAY_RETRYABLE_ERROR_2159 = "2159";
+    private static final String NICEPAY_RETRYABLE_ERROR_A246 = "A246";
+    private static final String NICEPAY_RETRYABLE_ERROR_A299 = "A299";
+
+    private static final String NETWORK_ERROR_CODE = "NETWORK_ERROR";
+    private static final String NETWORK_ERROR_MESSAGE = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    private static final String UNAUTHORIZED_MESSAGE = "인증되지 않은 NicePay 클라이언트/시크릿 키.";
+
+    private static final String NICEPAY_STATUS_PAID = "paid";
+    private static final String NICEPAY_STATUS_READY = "ready";
+    private static final String NICEPAY_STATUS_FAILED = "failed";
+    private static final String NICEPAY_STATUS_CANCELLED = "cancelled";
+    private static final String NICEPAY_STATUS_PARTIAL_CANCELLED = "partialCancelled";
+    private static final String NICEPAY_STATUS_EXPIRED = "expired";
+
+    private final HttpOperator httpOperator;
+    private final EncodeUtils encodeUtils;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 주입한다 — cycle 회피.
+     */
+    public NicepayPaymentGatewayStrategy(
+            HttpOperator httpOperator,
+            EncodeUtils encodeUtils,
+            ApplicationEventPublisher applicationEventPublisher,
+            ObjectMapper objectMapper
+    ) {
+        this.httpOperator = httpOperator;
+        this.encodeUtils = encodeUtils;
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.objectMapper = objectMapper;
+    }
+
+    @Value("${spring.myapp.nicepay.client-key}")
+    private String clientKey;
+
+    @Value("${spring.myapp.nicepay.secret-key}")
+    private String secretKey;
+
+    @Value("${spring.myapp.nicepay.api-url}")
+    private String nicepayApiUrl;
+
+    @Override
+    public boolean supports(PgVendorType vendorType) {
+        return vendorType == PgVendorType.NICEPAY;
+    }
+
+    @Override
+    public PgConfirmResult confirm(PgConfirmRequest request)
+            throws PgGatewayRetryableException, PgGatewayNonRetryableException {
+        Map<String, String> headers = Map.of(
+                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
+        );
+        // NicePay 승인: tid == paymentKey (client-side authnet에서 전달받은 거래 ID)
+        String tid = request.paymentKey();
+        Map<String, Object> body = Map.of("amount", request.amount());
+
+        try {
+            NicepayPaymentApiResponse response = httpOperator.requestPost(
+                    nicepayApiUrl + "/v1/payments/" + tid, headers, body,
+                    NicepayPaymentApiResponse.class);
+            return handleConfirmResponse(response, request);
+        } catch (RestClientResponseException e) {
+            throw classifyConfirmError(e, request);
+        } catch (ResourceAccessException e) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
+                    () -> "orderId=" + request.orderId() + " cause=" + e.getMessage());
+            throw PgGatewayRetryableException.of(NETWORK_ERROR_MESSAGE);
+        }
+    }
+
+    @Override
+    public PgStatusResult getStatusByOrderId(String orderId)
+            throws PgGatewayRetryableException, PgGatewayNonRetryableException {
+        Map<String, String> headers = Map.of(
+                AUTHORIZATION_HEADER_NAME, generateBasicAuthHeaderValue()
+        );
+        try {
+            NicepayPaymentApiResponse response = httpOperator.requestGet(
+                    nicepayApiUrl + "/v1/payments/find/" + orderId, headers,
+                    NicepayPaymentApiResponse.class);
+            return toStatusResult(response);
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw PgGatewayNonRetryableException.of(UNAUTHORIZED_MESSAGE);
+            }
+            NicepayPaymentApiFailResponse fail = parseErrorResponse(e.getResponseBodyAsString());
+            if (isRetryableErrorCode(fail.resultCode())) {
+                throw PgGatewayRetryableException.of(fail.resultCode() + ": " + fail.resultMsg());
+            }
+            throw PgGatewayNonRetryableException.of(fail.resultCode() + ": " + fail.resultMsg());
+        } catch (ResourceAccessException e) {
+            throw PgGatewayRetryableException.of(NETWORK_ERROR_MESSAGE);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 내부 구현
+    // -----------------------------------------------------------------------
+
+    private PgConfirmResult handleConfirmResponse(NicepayPaymentApiResponse response, PgConfirmRequest request) {
+        // NicePay는 2xx 상태 코드로도 resultCode != "0000" 인 실패 응답을 돌려줄 수 있다 — body 필드로 판단.
+        if (NICEPAY_RESULT_CODE_SUCCESS.equals(response.resultCode())) {
+            return toConfirmResult(response);
+        }
+
+        if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(response.resultCode())) {
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " — 2201 중복 승인 DuplicateApprovalDetectedEvent 발행");
+            // DuplicateApprovalHandler 직접 호출 대신 ApplicationEvent 를 발행해 cycle 을 끊는다.
+            // vendorType 은 PgStatusLookupStrategySelector 로 올바른 전략을 선택할 때 사용된다.
+            applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
+                    request.orderId(), request.amount(), request.paymentKey(), "2201",
+                    PgVendorType.NICEPAY));
+            throw PgGatewayDuplicateHandledException.of(
+                    "2201 handled for orderId=" + request.orderId());
+        }
+
+        String detail = response.resultCode() + ": " + response.resultMsg();
+        if (isRetryableErrorCode(response.resultCode())) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                    () -> "orderId=" + request.orderId() + " detail=" + detail);
+            throw PgGatewayRetryableException.of(detail);
+        }
+        LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NON_RETRYABLE_ERROR,
+                () -> "orderId=" + request.orderId() + " detail=" + detail);
+        throw PgGatewayNonRetryableException.of(detail);
+    }
+
+    private RuntimeException classifyConfirmError(RestClientResponseException e, PgConfirmRequest request) {
+        if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+            return PgGatewayNonRetryableException.of(UNAUTHORIZED_MESSAGE);
+        }
+        NicepayPaymentApiFailResponse fail = parseErrorResponse(e.getResponseBodyAsString());
+
+        if (NICEPAY_ERROR_CODE_DUPLICATE_APPROVAL.equals(fail.resultCode())) {
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                    () -> "orderId=" + request.orderId() + " — 2201 중복 승인(HTTP body) DuplicateApprovalDetectedEvent 발행");
+            // DuplicateApprovalHandler 직접 호출 대신 ApplicationEvent 를 발행해 cycle 을 끊는다.
+            // vendorType 은 PgStatusLookupStrategySelector 로 올바른 전략을 선택할 때 사용된다.
+            applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
+                    request.orderId(), request.amount(), request.paymentKey(), "2201",
+                    PgVendorType.NICEPAY));
+            return PgGatewayDuplicateHandledException.of(
+                    "2201 handled for orderId=" + request.orderId());
+        }
+
+        String detail = fail.resultCode() + ": " + fail.resultMsg();
+        if (isRetryableErrorCode(fail.resultCode())) {
+            return PgGatewayRetryableException.of(detail);
+        }
+        return PgGatewayNonRetryableException.of(detail);
+    }
+
+    private boolean isRetryableErrorCode(String errorCode) {
+        return NICEPAY_RETRYABLE_ERROR_2159.equals(errorCode)
+                || NICEPAY_RETRYABLE_ERROR_A246.equals(errorCode)
+                || NICEPAY_RETRYABLE_ERROR_A299.equals(errorCode);
+    }
+
+    private PgConfirmResult toConfirmResult(NicepayPaymentApiResponse response) {
+        PgPaymentStatus pgStatus = mapToPaymentStatus(response.status());
+        PgConfirmResultStatus resultStatus = pgStatus == PgPaymentStatus.DONE
+                ? PgConfirmResultStatus.SUCCESS
+                : PgConfirmResultStatus.NON_RETRYABLE_FAILURE;
+        // NicePay paidAt 은 'yyyy-MM-dd'T'HH:mm:ss.SSSZ' (offset +0900, 콜론 없음).
+        // ConfirmedEventPayload.approvedAt contract 는 ISO_OFFSET_DATE_TIME (+09:00) 표준이므로
+        // payment-service PaymentConfirmResultUseCase.parseApprovedAt 의 OffsetDateTime.parse 가 거부한다.
+        // 정규화: OffsetDateTime.toString() → ISO_OFFSET_DATE_TIME 형식으로 변환해 contract 준수.
+        OffsetDateTime parsedPaidAt = parsePaidAtAsOffsetDateTime(response.paidAt());
+        return new PgConfirmResult(
+                resultStatus,
+                response.tid(),
+                response.orderId(),
+                response.amount(),
+                parsedPaidAt != null ? parsedPaidAt.toLocalDateTime() : null,
+                null,
+                parsedPaidAt != null ? parsedPaidAt.toString() : null
+        );
+    }
+
+    private PgStatusResult toStatusResult(NicepayPaymentApiResponse response) {
+        PgPaymentStatus pgStatus = mapToPaymentStatus(response.status());
+        return new PgStatusResult(
+                response.tid(),
+                response.orderId(),
+                pgStatus,
+                response.amount(),
+                parseApprovedAt(response.paidAt()),
+                null
+        );
+    }
+
+    private PgPaymentStatus mapToPaymentStatus(String nicepayStatus) {
+        if (nicepayStatus == null) {
+            return PgPaymentStatus.ABORTED;
+        }
+        return switch (nicepayStatus) {
+            case NICEPAY_STATUS_PAID -> PgPaymentStatus.DONE;
+            case NICEPAY_STATUS_READY -> PgPaymentStatus.READY;
+            case NICEPAY_STATUS_FAILED -> PgPaymentStatus.ABORTED;
+            case NICEPAY_STATUS_CANCELLED -> PgPaymentStatus.CANCELED;
+            case NICEPAY_STATUS_PARTIAL_CANCELLED -> PgPaymentStatus.PARTIAL_CANCELED;
+            case NICEPAY_STATUS_EXPIRED -> PgPaymentStatus.EXPIRED;
+            default -> PgPaymentStatus.ABORTED;
+        };
+    }
+
+    private LocalDateTime parseApprovedAt(String paidAt) {
+        OffsetDateTime parsed = parsePaidAtAsOffsetDateTime(paidAt);
+        return parsed != null ? parsed.toLocalDateTime() : null;
+    }
+
+    private OffsetDateTime parsePaidAtAsOffsetDateTime(String paidAt) {
+        if (paidAt == null || paidAt.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(paidAt, NicepayPaymentApiResponse.DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException e) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "paidAt 파싱 실패 fallback=now paidAt=" + paidAt);
+            return OffsetDateTime.now();
+        }
+    }
+
+    private String generateBasicAuthHeaderValue() {
+        return BASIC_AUTHORIZATION_TYPE + encodeUtils.encodeBase64(clientKey + ":" + secretKey);
+    }
+
+    private NicepayPaymentApiFailResponse parseErrorResponse(String errorResponse) {
+        if (errorResponse == null || errorResponse.isBlank()) {
+            return new NicepayPaymentApiFailResponse(NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE);
+        }
+        try {
+            return objectMapper.readValue(errorResponse, NicepayPaymentApiFailResponse.class);
+        } catch (JsonProcessingException e) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
+                    () -> "에러 응답 파싱 실패 raw=" + errorResponse);
+            return new NicepayPaymentApiFailResponse("UNKNOWN", errorResponse);
+        }
+    }
+}

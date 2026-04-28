@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-Payment platform based on a hexagonal architecture. The confirm flow runs asynchronously end-to-end; TPS/latency is measured via k6 benchmarks.
+결제 도메인 학습용 MSA 플랫폼. 4 비즈니스 서비스(payment / pg / product / user) + Eureka + Gateway, hexagonal architecture, Kafka 양방향 비동기 confirm. TPS/latency 는 k6 벤치마크로 측정.
 
 ---
 
@@ -27,18 +27,36 @@ Payment platform based on a hexagonal architecture. The confirm flow runs asynch
 
 ---
 
+## Conversation Rules
+
+1. **태스크 ID 단독 사용 금지**: PLAN.md 의 태스크 식별자(`A1`, `A5b`, `B7`, `T-E3`, `K12` 등)를 사용자 응답에서 단독으로 던지지 않는다. 사용자가 PLAN 을 매번 열지 않아도 맥락을 알 수 있도록 ID 옆에 그 작업의 내용을 1줄 이내로 풀어서 같이 적는다.
+   - 나쁨: "A5b 후속에서 처리"
+   - 좋음: "A5b (product-service container_name 제거 + Eureka instanceId 고유화) 후속에서 처리"
+   - 또는 ID 빼고 내용으로만: "container_name 제거 작업 후속에서 처리"
+   - 단, PLAN.md / commit message / implementer 디스패치 프롬프트 같은 산출물에서는 ID 그대로 OK (그게 본 식별자)
+
+---
+
 ## Reference Files
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
-- [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — hexagonal layer rules, module boundaries, async adapter placement
-- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok conventions, exception handling, naming, LogFmt logging
-- [`docs/context/TESTING.md`](docs/context/TESTING.md) — test strategy (Fake vs Mock), JaCoCo, test patterns
-- [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss Payments integration, domain entities, confirm flow
-- [`docs/context/STACK.md`](docs/context/STACK.md) — technology stack, dependencies
-- [`docs/context/CONFIRM-FLOW-ANALYSIS.md`](docs/context/CONFIRM-FLOW-ANALYSIS.md) — async confirm flow analysis
-- [`docs/context/CONFIRM-FLOW-FLOWCHART.md`](docs/context/CONFIRM-FLOW-FLOWCHART.md) — confirm flow mermaid diagrams
-- [`docs/context/TODOS.md`](docs/context/TODOS.md) — 향후 정리 예정 작업 목록 (discuss idle 시 참고)
+- [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — 4서비스 토폴로지, hexagonal layer 룰, 비동기 어댑터 위치, 핵심 설계 결정 인덱스
+- [`docs/context/STRUCTURE.md`](docs/context/STRUCTURE.md) — 디렉토리 트리, 모듈 의존, 패키지 컨벤션
+- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, Flyway 운영 가이드, 빌드 / 정적 분석
+- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok, 예외 계층, naming, LogFmt, AOP, 트랜잭션 룰
+- [`docs/context/TESTING.md`](docs/context/TESTING.md) — Fake vs Mock 룰, Testcontainers, contract test, JaCoCo, TDD 흐름
+- [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss + NicePay Strategy, cross-service HTTP, 외부 의존 관리
+- [`docs/context/PAYMENT-FLOW.md`](docs/context/PAYMENT-FLOW.md) — end-to-end 결제 플로우 (브라우저 checkout → Gateway → payment ↔ pg ↔ vendor → 결과 콜백)
+- [`docs/context/CONFIRM-FLOW.md`](docs/context/CONFIRM-FLOW.md) — payment-service 측 비동기 confirm 사이클 deep dive (분석 + Mermaid 다이어그램 통합)
+- [`docs/context/PITFALLS.md`](docs/context/PITFALLS.md) — 학습된 도메인 함정 인덱스
+- [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
+- [`docs/context/TODOS.md`](docs/context/TODOS.md) — Phase 4 후속 + 향후 처리 항목
+
+### 영구 도구 가이드 (docs/smoke/) — 시점 무관
+
+- [`docs/smoke/infra-healthcheck.md`](docs/smoke/infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사 스크립트 가이드
+- [`docs/smoke/trace-continuity-check.md`](docs/smoke/trace-continuity-check.md) — 분산 트레이스 연속성 검사 가이드
 
 ### 작업 중 설계 문서 (docs/topics/) — 작업 단위 생명주기
 
@@ -64,8 +82,8 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 - `.claude/skills/workflow-{discuss,plan,plan-review,execute,review,verify}/` — 각 단계 오케스트레이터
 - `.claude/skills/review/`, `.claude/skills/plan-review/` — 단독 호출용 (1라운드)
 - `.claude/skills/_shared/checklists/` — 단계별 판정 체크리스트 (discuss/plan/code/verify-ready.md)
-- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 (discuss/plan/code/verify/qa/unstuck/commit/vc-round.md)
-- `.claude/skills/_shared/personas/` — 8개 페르소나 (interviewer/architect/planner/critic/domain-expert/implementer/verifier/pr-manager)
+- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 9종 (discuss/plan/code/verify/qa/unstuck/commit/vc/doc-review-round.md)
+- `.claude/skills/_shared/personas/` — 9개 페르소나 (interviewer/architect/planner/plan-reviewer/critic/domain-expert/implementer/verifier/pr-manager)
 
 ## Commit Style
 

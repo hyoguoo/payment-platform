@@ -1,0 +1,255 @@
+# 인프라 컨테이너 정의 (Kafka / Redis / MySQL × 4)
+# 로컬 DX 위주 — pg-service 의 outbox/inbox 도 자체 MySQL 에 격리한다.
+#
+# Kafka 브로커 설정 주의사항 (프로덕션 3-broker 구성 시):
+#   replication.factor=3
+#   min.insync.replicas=2
+# 현재 로컬 단일 브로커는 편의상 rf=1, 개발·통합테스트 전용.
+#
+# 토픽 3개 (동일 파티션 수 전제):
+#   payment.commands.confirm
+#   payment.commands.confirm.dlq
+#   payment.events.confirmed
+# retry 전용 토픽은 만들지 않는다 — retry 는 DLQ 재처리로 대체한다
+# 실제 토픽 생성은 scripts/smoke/create-topics.sh 에서 수행
+
+services:
+
+  # ───────────────────────────────────────────
+  # Kafka (KRaft 모드 — ZooKeeper 불필요)
+  # ───────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: payment-kafka
+    hostname: kafka
+    environment:
+      # KRaft 설정
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
+      # 브로커 설정
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1        # 로컬 단일 브로커용; 프로덕션=3
+      KAFKA_MIN_INSYNC_REPLICAS: 1               # 프로덕션=2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_NUM_PARTITIONS: 3
+      # JVM
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ───────────────────────────────────────────
+  # Redis — EventDedupeStore (메시지 dedupe 캐시)
+  # 실사용 키스페이스:
+  #   dedupe:{eventUuid} — payment-service / pg-service eventUUID dedupe (TTL=8일)
+  # 내구성 불필요(dedupe는 재처리 가능) → appendonly off.
+  # 재고 캐시 stock:{id}는 별도 redis-stock(아래)에 위치.
+  # ───────────────────────────────────────────
+  redis-dedupe:
+    image: redis:7.2-alpine
+    container_name: payment-redis-dedupe
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dedupe-data:/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # Redis — 재고 캐시 (stock:{productId}) AOF 내구성 on
+  # keyspace:
+  #   stock:{productId}   — 재고 선차감 캐시 (payment-service 가 직접 read/write)
+  #   초기 시드는 scripts/seed-stock.sh 가 mysql-product → redis-stock 으로 1회 SET 한다.
+  # ───────────────────────────────────────────
+  redis-stock:
+    image: redis:7.2-alpine
+    container_name: payment-redis-stock
+    command:
+      - redis-server
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--save"
+      - "60 1"
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-stock-data:/data
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # Eureka Discovery Server
+  # ───────────────────────────────────────────
+  eureka:
+    build:
+      context: ../eureka-server
+      dockerfile: Dockerfile
+    container_name: payment-eureka
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ───────────────────────────────────────────
+  # MySQL — payment-service 전용 (DB per service)
+  # DB 이름은 기존 데이터/외부 스크립트 호환을 위해 `payment-platform` 유지.
+  # ───────────────────────────────────────────
+  mysql-payment:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-payment
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment-platform
+      MYSQL_USER: ${MYSQL_PAYMENT_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PAYMENT_PASSWORD:-payment123}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
+  # MySQL — pg-service 전용 (outbox/inbox 격리)
+  # ───────────────────────────────────────────
+  mysql-pg:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-pg
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PG_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: pg
+      MYSQL_USER: ${MYSQL_PG_USER:-pg}
+      MYSQL_PASSWORD: ${MYSQL_PG_PASSWORD:-payment123}
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-pg-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
+  # MySQL — product-service 전용 (DB per service)
+  # ───────────────────────────────────────────
+  mysql-product:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-product
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PRODUCT_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: product
+      MYSQL_USER: ${MYSQL_PRODUCT_USER:-product}
+      MYSQL_PASSWORD: ${MYSQL_PRODUCT_PASSWORD:-payment123}
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-product-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
+  # MySQL — user-service 전용 (DB per service)
+  # ───────────────────────────────────────────
+  mysql-user:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-user
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_USER_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: user
+      MYSQL_USER: ${MYSQL_USER_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_USER_PASSWORD:-payment123}
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql-user-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network
+
+volumes:
+  kafka-data:
+    driver: local
+  redis-dedupe-data:
+    driver: local
+  redis-stock-data:
+    driver: local
+  mysql-payment-data:
+    driver: local
+  mysql-pg-data:
+    driver: local
+  mysql-product-data:
+    driver: local
+  mysql-user-data:
+    driver: local

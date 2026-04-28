@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: jdbc:mysql://mysql-product:3306/product?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${PRODUCT_DATASOURCE_USERNAME:root}
+    password: ${PRODUCT_DATASOURCE_PASSWORD:payment123}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: INFO

@@ -1,0 +1,105 @@
+package com.hyoguoo.paymentplatform.pg.infrastructure.repository;
+
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
+import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * PgInboxRepository 포트 JPA 어댑터.
+ * 2단 멱등성 + 5상태 business inbox 계약을 DB-레벨 compare-and-set + FOR UPDATE 로 이행한다.
+ *
+ * <p>{@link #transitNoneToInProgress(String, long)} 는 row 부재 시 INSERT 로 선점하고,
+ * 존재 시 JPQL UPDATE 의 status=NONE 조건으로 CAS 한다.
+ */
+@Repository
+@RequiredArgsConstructor
+public class PgInboxRepositoryImpl implements PgInboxRepository {
+
+    private final JpaPgInboxRepository jpaPgInboxRepository;
+    /**
+     * Clock 주입으로 시간 결정성 확보 — {@code LocalDateTime.now(ZoneOffset.UTC)} 직접 호출을 금지한다.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.config.PgServiceConfig} 에서
+     * {@code Clock.systemUTC()} Bean 으로 주입한다.
+     */
+    private final Clock clock;
+
+    @Override
+    public Optional<PgInbox> findByOrderId(String orderId) {
+        return jpaPgInboxRepository.findByOrderId(orderId).map(PgInboxEntity::toDomain);
+    }
+
+    @Override
+    public PgInbox save(PgInbox inbox) {
+        return jpaPgInboxRepository.save(PgInboxEntity.from(inbox)).toDomain();
+    }
+
+    /**
+     * NONE → IN_PROGRESS 원자 전이.
+     * row 부재 시: IN_PROGRESS row로 직접 INSERT 선점.
+     * row 존재 시: status=NONE 조건의 JPQL UPDATE(CAS) 성공 여부로 판정.
+     *
+     * <p>순서 이유: 이미 IN_PROGRESS/APPROVED/FAILED/QUARANTINED인 row에 INSERT하면 UNIQUE 충돌이 발생하므로,
+     * 먼저 find → 부재 시에만 INSERT, 존재 시 CAS UPDATE로 분기한다.
+     */
+    @Override
+    @Transactional
+    public boolean transitNoneToInProgress(String orderId, long amount) {
+        Optional<PgInboxEntity> existing = jpaPgInboxRepository.findByOrderId(orderId);
+        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
+        LocalDateTime now = LocalDateTime.now(clock);
+        Instant nowInstant = clock.instant();
+
+        if (existing.isEmpty()) {
+            PgInbox inProgress = PgInbox.of(
+                    orderId, PgInboxStatus.IN_PROGRESS, amount,
+                    null, null,
+                    nowInstant, nowInstant);
+            jpaPgInboxRepository.save(PgInboxEntity.from(inProgress));
+            return true;
+        }
+
+        return jpaPgInboxRepository.casNoneToInProgress(
+                orderId, now, PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS) > 0;
+    }
+
+    @Override
+    @Transactional
+    public void transitToApproved(String orderId, String storedStatusResult) {
+        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
+        jpaPgInboxRepository.casInProgressToApproved(
+                orderId, storedStatusResult, LocalDateTime.now(clock),
+                PgInboxStatus.IN_PROGRESS, PgInboxStatus.APPROVED);
+    }
+
+    @Override
+    @Transactional
+    public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
+        jpaPgInboxRepository.casInProgressToFailed(
+                orderId, storedStatusResult, reasonCode, LocalDateTime.now(clock),
+                PgInboxStatus.IN_PROGRESS, PgInboxStatus.FAILED);
+    }
+
+    @Override
+    @Transactional
+    public boolean transitToQuarantined(String orderId, String reasonCode) {
+        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
+        return jpaPgInboxRepository.casNonTerminalToQuarantined(
+                orderId, reasonCode, LocalDateTime.now(clock),
+                PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
+    }
+
+    @Override
+    public Optional<PgInbox> findByOrderIdForUpdate(String orderId) {
+        return jpaPgInboxRepository.findByOrderIdForUpdate(orderId).map(PgInboxEntity::toDomain);
+    }
+
+}

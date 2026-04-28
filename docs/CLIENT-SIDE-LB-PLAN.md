@@ -1,0 +1,240 @@
+# Plan — Client-side Load Balancing 도입 (A → B)
+
+> 작성: 2026-04-27 · 활성 토픽 — `docs/topics/CLIENT-SIDE-LB.md` 참고.
+>
+> 진행 순서: **Phase A** (LoadBalanced WebClient) 완료 → 검증 → **Phase B** (OpenFeign) 진행.
+> 각 태스크는 독립 commit 단위. 매 태스크 후 `./gradlew test` 회귀 0 확인.
+
+---
+
+## Phase A — Spring Cloud LoadBalancer + WebClient
+
+### A1. 의존성 명시 추가
+- [x] `payment-service/build.gradle` 에 `spring-cloud-starter-loadbalancer` 명시
+  - 이유: 현재 `eureka-client` 가 transitively 가져오지만 명시가 hexagonal/dep 가시성에 좋음
+  - 검증: `./gradlew :payment-service:dependencies | grep loadbalancer`
+- 의존: 없음 (Phase A 진입점)
+- TDD: 불필요 (의존성 변경)
+- 단일 commit: `chore(payment-service): spring-cloud-starter-loadbalancer 명시 추가`
+- 완료 결과: `spring-cloud-starter-loadbalancer:4.2.0` 직접 의존성 추가 확인, `compileJava` PASS
+
+### A2. `@LoadBalanced WebClient.Builder` Bean 등록
+- [x] `payment-service/.../core/config/HttpClientConfig.java` 신규 (또는 기존 config 에 추가)
+- [x] `@Bean @LoadBalanced public WebClient.Builder loadBalancedWebClientBuilder() { ... }` 정의
+  - **주의**: 기본 `WebClient.Builder` (autoconfig) 와 별개로, `@LoadBalanced` 는 한정자(qualifier) 역할도 한다
+- [x] `HttpOperatorImpl` 의 builder 주입을 `@LoadBalanced` 로 한정 — Toss/NicePay 외부 호출은 logical name 미사용이므로 이 builder 가 외부 host 그대로 호출하는지 검증 필요
+  - **결정**: 외부 host (e.g. `https://api.tosspayments.com`) 는 LoadBalancer 가 통과시킴 (logical name 형식 아니면 패스스루)
+  - 단 Phase A 에선 영향 최소화를 위해 새 LoadBalanced builder 를 별도로 만들고, internal cross-service 호출 어댑터(ProductHttpAdapter/UserHttpAdapter) 만 사용
+- 의존: A1
+- TDD: A4 의 단위 테스트가 검증 — 따로 RED 필요 없음
+- 단일 commit: `feat(payment-service): @LoadBalanced WebClient.Builder Bean 추가`
+- 완료 결과: `HttpClientConfig` 신규 등록, `compileJava` PASS, 전체 578/578 tests PASS
+
+### A3. base-url 을 logical service name 으로 변경
+- [x] `application.yml`:
+  ```yaml
+  product-service.base-url: ${PRODUCT_SERVICE_BASE_URL:http://product-service}
+  user-service.base-url:    ${USER_SERVICE_BASE_URL:http://user-service}
+  ```
+- [x] `application-docker.yml` 에 별도 override 가 있으면 제거 또는 동일하게 유지 (docker network 안에서도 logical name 동일)
+- [x] `application-test.yml` 은 통합 테스트가 cross-service HTTP 안 타므로 영향 없음 (확인)
+- 의존: A2 (Bean 등록되어야 logical name resolve 동작)
+- TDD: A4 가 검증
+- 단일 commit: `refactor(payment-service): cross-service base-url 을 logical service name 으로 변경`
+- 완료 결과: application.yml default 값만 변경 (localhost:8083→product-service, localhost:8084→user-service). docker/benchmark/test yml 에는 해당 prop override 없음 확인.
+
+### A4. HttpOperatorImpl 의 WebClient.Builder 주입에 @LoadBalanced 적용
+- [x] **정정 사항** (A4 dispatch 시 발견): 어댑터 (ProductHttpAdapter / UserHttpAdapter) 는
+      `WebClient.Builder` 를 직접 받지 않고 `HttpOperator` 추상화를 통해 간접 사용한다.
+      실제 builder 주입처는 `payment-service/.../core/common/infrastructure/http/HttpOperatorImpl`.
+      따라서 `@LoadBalanced` 부착 위치는 어댑터가 아니라 `HttpOperatorImpl` 한 곳.
+- [x] `HttpOperatorImpl` 생성자의 `WebClient.Builder webClientBuilder` 매개변수에
+      `@LoadBalanced` 어노테이션 추가 + import (`org.springframework.cloud.client.loadbalancer.LoadBalanced`)
+- [x] payment-service 의 `HttpOperator` 사용처 검증: ProductHttpAdapter / UserHttpAdapter
+      두 군데뿐 — 외부 PG (Toss/NicePay) 호출은 pg-service 의 별개 `HttpOperatorImpl` 이
+      전담하므로 본 변경의 부수효과 없음
+- [x] 어댑터 두 클래스는 변경 없음 — `@Mock HttpOperator` 기반 contract test 영향 0
+- 의존: A2, A3
+- TDD: 불필요 — 기존 contract test 가 `@Mock HttpOperator` 기반이라 시그니처 변경 없음.
+       회귀 게이트는 `./gradlew :payment-service:test` 348 tests 회귀 0 으로 갈음.
+- 단일 commit: `refactor(payment-service): HttpOperatorImpl WebClient.Builder 에 @LoadBalanced 적용`
+- 완료 결과: `HttpOperatorImpl` 생성자 `@LoadBalanced` 적용 + javadoc 보강. `compileJava` PASS, 348/348 tests PASS.
+
+### A5. docker-compose 의 cross-service env 정리
+- [x] `docker/docker-compose.apps.yml` 의 `payment-service` env 에서 `PRODUCT_SERVICE_BASE_URL` / `USER_SERVICE_BASE_URL` 명시 제거 (default = logical name 사용)
+- 의존: A3
+- TDD: 불필요 (config)
+- 단일 commit: `chore(docker): payment-service env 의 cross-service URL override 제거`
+- 완료 결과: docker-compose.apps.yml 55~56번 줄 두 env 제거. docker-compose.smoke.yml 에는 해당 prop 없음 확인. `docker compose config` YAML 유효성 PASS, `compileJava` PASS.
+
+### A5b. product-service 의 container_name 제거 + Eureka instanceId 고유화
+- [x] **A6 dispatch 시 발견 1**: `docker compose up --scale product-service=2` 실행 시
+      `container_name: product-service` 가 unique 이름을 강제해 두 번째 인스턴스 생성
+      차단됨 (`Docker requires each container to have a unique name`)
+- [x] `docker/docker-compose.apps.yml` 의 `product-service` 서비스에서 `container_name` 제거.
+      compose 가 `docker-product-service-1` / `docker-product-service-2` 자동 생성.
+- [x] **A6 dispatch 시 발견 2**: hostname 동일하면 Eureka instanceId 도 충돌 (`product-service:product-service:8083`)
+      → 한 인스턴스만 등록됨. fix: `product-service/src/main/resources/application.yml` 의
+      `eureka.instance.instance-id: ${spring.application.name}:${random.uuid}` 명시
+- [x] payment-service / pg-service / user-service / gateway 의 container_name 은 **보존** (단일 인스턴스 — 오토스케일링 대상 아님)
+- [x] `infra-healthcheck.sh` 의 `EXPECTED_SERVICES` 보강 — `docker-product-service-{N}` 동적 검사 (B7 후속에서 처리, scale-aware)
+- 의존: A5
+- TDD: 불필요 (config)
+- 검증: 두 인스턴스 모두 healthy + Eureka 등록 + payment → product 호출 round-robin 분산 확인
+- 단일 commit: `chore(scaling): product-service container_name 제거 + Eureka instanceId 고유화`
+- 완료 결과: docker-product-service-1 / docker-product-service-2 자동 이름, Eureka 에 random UUID instanceId 2건 UP 확인.
+
+### A6. 검증 — 스케일 업 시나리오
+- [x] stack 기동: `bash scripts/compose-up.sh --mode fake --reset-db`
+- [x] product-service 인스턴스 2개로 scale: `docker compose ... up product-service --scale product-service=2 -d --no-recreate`
+- [x] Eureka 등록 PRODUCT-SERVICE 2건 (random UUID instanceId, 둘 다 UP)
+- [x] curl 결제 checkout 5건 (Gateway 8090 경유) → 두 product-service 인스턴스 로그에 traceId 분산 도착 확인
+  - docker-product-service-1: 11 trace match, docker-product-service-2: 16 trace match → round-robin 분산 정상
+- [x] `bash scripts/smoke-all.sh` Phase 1 PASS (infra-healthcheck 27/27 + kafka-topic-config)
+- 비고: HTTP 500 (도메인 — gateway_type NOT NULL 위반) 은 LB 검증과 무관, 별도 이슈
+- TDD: 통합 시나리오 — 검증 단계
+- 완료 결과: LB round-robin 분산 정상 작동 확인. Phase A 종결 기준 충족.
+
+### Phase A 종결 기준
+- 의존성 / Bean / config / 어댑터 / 검증 모두 PASS
+- `./gradlew test` 578+ tests 회귀 0
+- `scripts/smoke-all.sh --with-trace` 결제 1건 후 PASS
+
+---
+
+## Phase B — OpenFeign 도입
+
+> Phase A 종결 후 진행. A 가 끝났다는 사실은 STATE.md 직전 봉인 항목으로 기록.
+
+### B1. 의존성 추가
+- [x] `payment-service/build.gradle` 에 `spring-cloud-starter-openfeign` 추가
+- [x] `@EnableFeignClients` 활성화 (basePackages 미지정 — main 클래스 하위 자동 scan)
+- 의존: Phase A 종결
+- TDD: 불필요 (의존성 / 어노테이션 활성화)
+- 검증: `./gradlew :payment-service:dependencies | grep openfeign`
+- 단일 commit: `chore(payment-service): spring-cloud-starter-openfeign 추가`
+- 완료 결과: `spring-cloud-starter-openfeign:4.2.0` 직접 의존성 추가 확인. `@EnableFeignClients` 어노테이션 활성화 (basePackages 미지정). `compileJava` PASS, 348/348 tests PASS.
+
+### B2. Feign 인터페이스 정의
+- [x] `infrastructure/adapter/http/feign/ProductFeignClient.java` 신규
+  ```java
+  @FeignClient(name = "product-service", configuration = ProductFeignConfig.class)
+  public interface ProductFeignClient {
+      @GetMapping("/api/v1/products/{id}")
+      ProductInfoDto getProduct(@PathVariable("id") Long id);
+      // ... 다른 endpoint
+  }
+  ```
+- [x] `UserFeignClient.java` 동일
+- [x] DTO 는 기존 `ProductHttpAdapter` 가 사용하던 record 재사용
+- 의존: B1
+- TDD: 불필요 (선언적 인터페이스 정의 — 동작 검증은 B4/B6 의 contract test 가 담당)
+- 단일 commit: `feat(payment-service): ProductFeignClient / UserFeignClient 인터페이스 정의`
+- 완료 결과: `feign/` 패키지 신규. `ProductFeignClient` — `GET /api/v1/products/{id}` → `ProductResponse` 반환. `UserFeignClient` — `GET /api/v1/users/{id}` → `UserResponse` 반환. 기존 어댑터 / DTO 무변경. `compileJava` PASS, 348/348 tests PASS.
+
+### B3. Feign 설정 (Encoder/Decoder/ErrorDecoder)
+- [x] `ProductFeignConfig.java`: ErrorDecoder 전용 설정 클래스 신규 (`@Configuration` 미부착)
+- [x] ErrorDecoder 가 4xx/5xx → `ProductNotFoundException` / `ProductServiceRetryableException` / `IllegalStateException` 매핑
+  - 기존 `ProductHttpAdapterContractTest` 의 4분기 정확히 동일하게 재현
+- [x] `UserFeignConfig.java`: User 측 예외로 동일 룰 적용
+- [x] `ProductFeignClient` / `UserFeignClient` 에 `configuration =` 인자 명시
+- 의존: B2
+- TDD: contract test 가 같은 행동을 검증 (재사용 가능하게 base 추출 또는 새 contract)
+- 단일 commit: `feat(payment-service): Feign ErrorDecoder — 4xx/5xx → 도메인 예외 매핑`
+- 완료 결과: `feign/ProductFeignConfig` + `feign/UserFeignConfig` 신규. 매핑 룰: 404→NotFound, 429/503→Retryable, 그 외→IllegalStateException. `@Configuration` 미부착으로 해당 FeignClient 한정 등록. `compileJava` PASS, 348/348 tests PASS.
+
+### B4. 어댑터를 Feign 위임으로 재구성
+- [x] `ProductHttpAdapter` 가 `WebClient` 직접 호출 → `ProductFeignClient` 호출 위임
+- [x] `UserHttpAdapter` 동일
+- [x] 기존 `@Value("${product-service.base-url}")` 제거 — Feign 이 `name="product-service"` 로 LB resolve
+- [x] 도메인 예외는 Feign ErrorDecoder 가 throw, 어댑터는 그대로 propagate 또는 wrap
+- 의존: B3
+- TDD: 기존 contract test 재구성 (MockWebServer → Feign client mock 또는 동일 MockWebServer 유지하되 Feign 으로 교체)
+- 단일 commit: `refactor(payment-service): HttpAdapter 가 Feign client 위임 — WebClient 제거`
+- 완료 결과: `ProductHttpAdapter` / `UserHttpAdapter` 에서 `HttpOperator`, `@Value(base-url)`, 경로 상수, `callGet`, `mapResponseException` 전체 제거. `ProductFeignClient` / `UserFeignClient` 단순 위임 + DTO 변환만 잔존. `ProductHttpAdapterTest` — `@Mock HttpOperator` → `@Mock ProductFeignClient` 교체. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` — 4분기 삭제 후 FeignClient 예외 propagation 검증 2케이스로 축소. 344/344 tests PASS.
+
+### B5. WebClient 의존성 정리
+- [x] 조사 결과 payment-service HttpOperatorImpl 은 외부 PG 호출에 사용되지 않음 (pg-service 가 담당). B4 후 production 참조 0건 → 옵션 (A) 사용자 결정으로 전체 제거
+- [x] production 삭제: `HttpOperator.java` / `HttpOperatorImpl.java` / `HttpClientConfig.java` (3개)
+- [x] 설정 삭제: `application.yml` product-service/user-service base-url 블록, `application-docker.yml` / `application-benchmark.yml` / `application-test.yml` myapp.toss-payments.http.read-timeout-millis 블록 (4개)
+- [x] 테스트 삭제: `AdditionalHeaderHttpOperator.java` / `HttpOperatorTraceparentPropagationTest.java` (2개)
+- [x] 의존성 삭제: `spring-boot-starter-webflux` + `mockwebserver:4.12.0` (2개)
+- [x] `ProductFeignConfig` / `UserFeignConfig` docstring — HttpOperatorImpl 참조 문구 제거
+- 의존: B4
+- TDD: 불필요 (dead code 제거) — 회귀 게이트: `./gradlew :payment-service:test` 342/342 PASS
+- 단일 commit: `chore(payment-service): WebClient 의존성 일체 제거 — Feign 단일 경로`
+- 완료 결과: production 3개 + 설정 4개 + 테스트 2개 + 의존성 2개 제거. 잔여 참조 0건 (HttpOperator/HttpClientConfig/webflux import). 342/342 tests PASS.
+
+### B6. ErrorDecoder 단위 테스트 신규 작성
+> **명세 정정**: 원안(168~173번 줄)은 "ProductHttpAdapterContractTest / UserHttpAdapterContractTest 를 Feign 기반으로 재작성" 이었으나, B4 에서 어댑터 contract test 를 propagation 검증 2케이스로 이미 축소했고 4xx/5xx 매핑 책임이 ErrorDecoder 로 이동했다. 따라서 B6 실제 작업은 ErrorDecoder 단위 테스트 신규 작성으로 변경. 기존 contract test 는 propagation 계약 검증으로 별도 가치를 가지므로 그대로 유지.
+- [x] `ProductFeignConfigTest` 신규 작성 — 404/429/503/500 4분기 매핑 검증
+- [x] `UserFeignConfigTest` 신규 작성 — 404/429/503/500 4분기 매핑 검증
+- 의존: B4
+- TDD: 단일 commit
+- 단일 commit: `test(payment-service): Feign ErrorDecoder 4xx/5xx 매핑 단위 테스트 신규`
+- 완료 결과: ProductFeignConfigTest 4케이스 + UserFeignConfigTest 4케이스 = 8케이스 추가. 342 → 350/350 PASS. 기존 propagation contract test 유지.
+
+### B7. 검증
+- [x] `./gradlew test` 회귀 0
+- [x] stack 기동 + scale up 시나리오 (Phase A6 와 동일) — Feign 도 round-robin 확인
+- [x] `scripts/smoke-all.sh --with-trace` PASS
+- 단일 commit (선택): `test(scale): Feign client 다중 인스턴스 검증 결과 기록`
+- 완료 결과:
+  - `./gradlew test` 전체 579/579 PASS (payment-service 350 + product-service 19 + pg-service 206 + user-service 3 + commons 1)
+  - Feign round-robin 분산: docker-product-service-1 7건, docker-product-service-2 8건 (총 15건, GET /api/v1/products/{id} Prometheus metrics 기준)
+  - smoke-all Phase 1 28/28 PASS (B7 후속에서 infra-healthcheck.sh 가 product-service scale-aware 동적 검사 처리)
+  - smoke-all Phase 2 (trace-continuity) PASS — 5-service chain 완주, traceId 전파 확인
+  - Phase B 종결 기준 충족
+
+### Phase B 종결 기준
+- 모든 cross-service HTTP 가 Feign 경유
+- 어댑터의 `@Value("${...base-url}")` 제거됨
+- contract test 재작성 + 4xx/5xx 매핑 검증
+- 회귀 0
+
+---
+
+## 산출물 / commit 정책
+
+- A1~A6 / B1~B7 각각 단일 commit
+- TDD 적용 태스크는 `test:` (RED) → `feat:` 또는 `refactor:` (GREEN) 순서
+- Phase A 종결 시 STATE.md 갱신 (직전 봉인 추가)
+- Phase B 종결 시 docs/topics/CLIENT-SIDE-LB.md → docs/archive/client-side-lb/ 봉인
+
+## 검증 매트릭스
+
+| Phase | 단계 | 검증 |
+|---|---|---|
+| A | 후 | `./gradlew test` PASS + scale=2 round-robin 확인 + smoke-all PASS |
+| B | 후 | `./gradlew test` PASS + scale=2 round-robin 확인 + contract test (Feign 기반) PASS |
+
+## 비범위 (이 PLAN 에서 하지 않음)
+
+- pg-service ↔ payment-service 통신 (Kafka 만)
+- gateway → 4서비스 (이미 `lb://`)
+- Resilience4j CircuitBreaker (Phase 4 T4-D 별도 토픽)
+- 분산 트랜잭션 / Saga
+
+---
+
+## Review 1라운드 결과 (2026-04-27)
+
+- Critic + Domain-expert 1라운드 검토 — 둘 다 revise
+- major 2건:
+  - M1 transport-level 예외 매핑 회귀 — 어댑터 try/catch (feign.RetryableException → Product/UserServiceRetryableException) 복원으로 즉시 처리
+  - M2 Feign timeout 명시 부재 — application.yml 에 connectTimeout 2s / readTimeout 5s baseline 추가
+- minor: PaymentPlatformApplication.java 주석 정리 + Feign 산출물 javadoc phase ID 제거 + smoke script project-name 변수화. ControllerAdvice 매핑은 별도 토픽 (TC-5 신규) 으로 deferred
+- fallbackFactory idiomatic 마이그레이션은 T4-D (Resilience4j CircuitBreaker) 와 동시 처리하기로 deferred
+- 출력: docs/rounds/client-side-lb/review-{critic,domain}-1.md
+
+## verify 직전 후속 조치 (2026-04-27)
+
+사용자 발견 3가지 이슈 영구 해결:
+1. `compose-up.sh` 앱 health timeout 180→300s + `wait_healthy_by_service` 헬퍼 추가
+   — 부팅 마진 부족으로 관측성 기동 미수행 → tempo DNS 실패 → OTLP exporter spam 회피
+   — container_name 미고정 서비스를 동적 resolve 해 `docker inspect` 실패 회피
+2. 모든 비즈니스 서비스 (payment / pg / product / user / gateway) 의 `container_name` 제거
+   — Phase 4 오토스케일러 (T4-C) 사전 표준화
+   — `infra-healthcheck.sh` / `trace-continuity-check.sh` 동적 인스턴스 검색으로 통일
+3. 5개 서비스 Eureka instance-id 형식 통일: `${spring.application.name}:${random.uuid}:${server.port}`
+   — UUID 충돌 회피 + 포트 가시성 보존

@@ -1,0 +1,14 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: jdbc:mysql://mysql-user:3306/user?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${USER_DATASOURCE_USERNAME:root}
+    password: ${USER_DATASOURCE_PASSWORD:payment123}
+
+logging:
+  level:
+    root: INFO
+    com.hyoguoo.paymentplatform: INFO

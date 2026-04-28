@@ -1,0 +1,108 @@
+package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
+
+import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Aspect
+@Component
+@RequiredArgsConstructor
+public class DomainEventLoggingAspect {
+
+    private final PaymentEventPublisher paymentEventPublisher;
+    private final LocalDateTimeProvider localDateTimeProvider;
+
+    @Around("@annotation(publishEvent)")
+    public Object publishHistoryEvent(ProceedingJoinPoint joinPoint, PublishDomainEvent publishEvent)
+            throws Throwable {
+        Optional<PaymentEvent> beforeEventOpt = findPaymentEvent(joinPoint.getArgs());
+        PaymentEventStatus beforeStatus = beforeEventOpt.map(PaymentEvent::getStatus).orElse(null);
+
+        String reason = findReasonParameter(joinPoint);
+
+        try {
+            Object result = joinPoint.proceed();
+
+            processResultAndPublishEvent(beforeStatus, result, reason, publishEvent);
+
+            return result;
+        } catch (Throwable e) {
+            // Error(OOM 등) 도 기록 후 re-throw — catch(Exception) 보다 넓게 잡는다.
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.ASPECT_PROCEED_ERROR,
+                    () -> "aspect=DomainEventLoggingAspect error=" + e.getMessage());
+            throw e;
+        }
+    }
+
+    private Optional<PaymentEvent> findPaymentEvent(Object[] args) {
+        return Arrays.stream(args)
+                .filter(PaymentEvent.class::isInstance)
+                .map(PaymentEvent.class::cast)
+                .findFirst();
+    }
+
+    private String findReasonParameter(ProceedingJoinPoint joinPoint) {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        Object[] args = joinPoint.getArgs();
+        Annotation[][] parameterAnnotations = method.getParameterAnnotations();
+
+        for (int i = 0; i < args.length; i++) {
+            for (Annotation annotation : parameterAnnotations[i]) {
+                if (annotation instanceof Reason && args[i] instanceof String) {
+                    return (String) args[i];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void processResultAndPublishEvent(
+            PaymentEventStatus beforeStatus,
+            Object result,
+            String reason,
+            PublishDomainEvent publishEvent
+    ) {
+        LocalDateTime occurredAt = localDateTimeProvider.now();
+        if (!(result instanceof PaymentEvent afterEvent)) {
+            return;
+        }
+
+        switch (publishEvent.action()) {
+            case "created" -> {
+                String createdReason = "New payment created";
+                paymentEventPublisher.publishPaymentCreated(afterEvent, createdReason, occurredAt);
+            }
+            case "retry" -> {
+                String retryReason = String.format("Retry attempt #%d", afterEvent.getRetryCount());
+                paymentEventPublisher.publishRetryAttempt(afterEvent, beforeStatus, retryReason, occurredAt);
+            }
+            case "changed" -> {
+                String changeReason = reason != null ? reason : "Payment is in progress successfully.";
+                paymentEventPublisher.publishStatusChange(afterEvent, beforeStatus, changeReason, occurredAt);
+            }
+            default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.ASPECT_UNKNOWN_ACTION,
+                    () -> "action=" + publishEvent.action());
+        }
+    }
+}

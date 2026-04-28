@@ -1,0 +1,145 @@
+server:
+  port: 8081
+  # Spring Cloud Gateway 뒤에 있을 때 NicepayReturnController 같은 서버 측 redirect가
+  # backend hostname(payment-service:8080) 대신 사용자 origin(localhost:8090)을 사용하도록
+  # X-Forwarded-Host/Port/Proto 헤더를 ForwardedHeaderFilter 가 신뢰하게 한다.
+  # Spring Boot 3 기본값 none 이면 헤더가 무시되어 도커 네트워크 호스트로 absolute redirect 가 만들어진다.
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: payment-service
+
+  threads:
+    virtual:
+      enabled: true
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            # Feign timeout baseline — Phase 4 부하 측정 기반 SLO 로 조정 예정 (TODOS.md T4-D 참고).
+            connectTimeout: 2000
+            readTimeout: 5000
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
+
+  output:
+    ansi:
+      enabled: always
+
+springdoc:
+  packages-to-scan: com.hyoguoo.paymentplatform
+  default-produces-media-type: application/json
+  api-docs:
+    path: /api-docs/json
+    groups:
+      enabled: true
+  cache:
+    disabled: true
+
+spring.profiles.default: local
+
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:false}
+    register-with-eureka: ${EUREKA_CLIENT_ENABLED:false}
+    fetch-registry: ${EUREKA_CLIENT_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    # 다중 인스턴스 (--scale <svc>=N) 시 instanceId 충돌 회피.
+    # spring.application.name + 랜덤 UUID + 포트 — 인스턴스마다 고유 + 포트 가시성 보존.
+    instance-id: ${spring.application.name}:${random.uuid}:${server.port}
+
+payment:
+  cache:
+    stock-redis:
+      # 재고 선차감 캐시 전용 Redis(redis-stock). dedupe / idempotency 용 redis-dedupe 와 분리.
+      # 로컬 실행 시 6380 으로 띄운 redis 가 필요. 테스트는 FakeStockCachePort 주입.
+      host: ${REDIS_STOCK_HOST:localhost}
+      port: ${REDIS_STOCK_PORT:6380}
+  event-dedupe:
+    ttl: P8D  # Kafka retention(7d) + 복구 버퍼(1d) = 8일. product-service StockCommitUseCase.DEDUPE_TTL 과 정렬.
+    lease-ttl: PT5M  # two-phase lease 의 처리 권한 초기 잠금 TTL. processMessage 성공 시 ttl(P8D)로 연장.
+  retry:
+    max-attempts: 5
+    backoff-type: FIXED
+    base-delay-ms: 5000
+    max-delay-ms: 60000
+  idempotency:
+    maximum-size: 10000
+    expire-after-write-seconds: 10
+  kafka:
+    topics:
+      commands-confirm: ${PAYMENT_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
+      events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
+
+product:
+  adapter:
+    type: ${PRODUCT_ADAPTER_TYPE:http}
+
+user:
+  adapter:
+    type: ${USER_ADAPTER_TYPE:http}
+
+scheduler:
+  outbox-worker:
+    fixed-delay-ms: 5000
+    batch-size: 50
+    parallel-enabled: true
+    in-flight-timeout-minutes: 5
+  stock-outbox-worker:
+    fixed-delay-ms: 5000
+    batch-size: 50
+    parallel-enabled: true
+
+metrics:
+  payment:
+    state:
+      polling-interval-seconds: 10
+    health:
+      polling-interval-seconds: 10
+      thresholds:
+        stuck-in-progress-minutes: 5
+        max-retry-count: 5
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}

@@ -36,14 +36,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
-          path: build/reports/jacoco/test/html/
+          path: |
+            payment-service/build/reports/jacoco/test/html/
+            pg-service/build/reports/jacoco/test/html/
+            product-service/build/reports/jacoco/test/html/
+            user-service/build/reports/jacoco/test/html/
+            gateway/build/reports/jacoco/test/html/
+            eureka-server/build/reports/jacoco/test/html/
           retention-days: 14
 
       - name: JaCoCo PR coverage comment
         if: github.event_name == 'pull_request'
         uses: Madrapps/jacoco-report@v1.7.2
         with:
-          paths: build/reports/jacoco/test/jacocoTestReport.xml
+          paths: |
+            ${{ github.workspace }}/payment-service/build/reports/jacoco/test/jacocoTestReport.xml
+            ${{ github.workspace }}/pg-service/build/reports/jacoco/test/jacocoTestReport.xml
+            ${{ github.workspace }}/product-service/build/reports/jacoco/test/jacocoTestReport.xml
+            ${{ github.workspace }}/user-service/build/reports/jacoco/test/jacocoTestReport.xml
+            ${{ github.workspace }}/gateway/build/reports/jacoco/test/jacocoTestReport.xml
+            ${{ github.workspace }}/eureka-server/build/reports/jacoco/test/jacocoTestReport.xml
           token: ${{ secrets.GITHUB_TOKEN }}
           update-comment: true
 
@@ -70,12 +82,14 @@ jobs:
 
       - name: Run Checkstyle
         id: checkstyle
-        run: ./gradlew checkstyleMain checkstyleTest
+        # --continue: 한 모듈의 task 실패가 다른 모듈 실행을 막지 않도록 — 라운드당 한 번에 모든 위반 surface
+        run: ./gradlew checkstyleMain checkstyleTest --continue
         continue-on-error: true
 
       - name: Run SpotBugs
         id: spotbugs
-        run: ./gradlew spotbugsMain
+        # --continue 동일 이유 — 한 모듈 fail 이 다른 모듈 spotbugs 차단 방지
+        run: ./gradlew spotbugsMain --continue
         continue-on-error: true
 
       - name: Reviewdog — Checkstyle
@@ -83,21 +97,33 @@ jobs:
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          reviewdog -f=checkstyle -name="Checkstyle" \
-            -reporter=github-pr-review -fail-on-error=true \
-            < build/reports/checkstyle/main.xml
-          reviewdog -f=checkstyle -name="Checkstyle (test)" \
-            -reporter=github-pr-review -fail-on-error=true \
-            < build/reports/checkstyle/test.xml
+          # 모든 subproject 의 checkstyle 리포트를 합쳐서 reviewdog 에 전달
+          for module in payment-service pg-service product-service user-service gateway eureka-server; do
+            for report in main test; do
+              file="$module/build/reports/checkstyle/${report}.xml"
+              if [ -f "$file" ]; then
+                reviewdog -f=checkstyle -name="Checkstyle (${module}/${report})" \
+                  -reporter=github-pr-review -fail-on-error=true \
+                  < "$file"
+              fi
+            done
+          done
 
       - name: Reviewdog — SpotBugs
         if: always() && github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 .github/scripts/spotbugs-to-rdjsonl.py build/reports/spotbugs/main.xml \
-            | reviewdog -f=rdjsonl -name="SpotBugs" \
-              -reporter=github-pr-review -fail-on-error=true
+          # 모든 subproject 의 spotbugs main 리포트를 reviewdog 에 전달
+          # 두 번째 인자로 module 디렉토리 명시 — sourcepath 앞에 prefix 추가되어 PR diff 매칭됨
+          for module in payment-service pg-service product-service user-service gateway eureka-server; do
+            file="$module/build/reports/spotbugs/main.xml"
+            if [ -f "$file" ]; then
+              python3 .github/scripts/spotbugs-to-rdjsonl.py "$file" "$module" \
+                | reviewdog -f=rdjsonl -name="SpotBugs (${module})" \
+                  -reporter=github-pr-review -fail-on-error=true
+            fi
+          done
 
       - name: Lint summary comment
         if: always() && github.event_name == 'pull_request'

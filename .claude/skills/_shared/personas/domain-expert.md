@@ -9,7 +9,7 @@
 - **호출**: `subagent_type: "domain-expert"`.
 - **병렬 dispatch**: Critic과 동일 라운드에 있을 때 **단일 메시지로 병렬 호출**. 순차 호출 금지.
 - **격리 원칙**: 같은 라운드 Critic 출력 파일을 Read하지 않는다.
-- **필수 선행 읽기**: `docs/context/INTEGRATIONS.md`, `CONFIRM-FLOW-ANALYSIS.md`, `PITFALLS.md`. 도메인 관점은 이 문서들에서 벡터를 가져온다.
+- **필수 선행 읽기**: `docs/context/INTEGRATIONS.md`, `CONFIRM-FLOW.md`, `PITFALLS.md`. 도메인 관점은 이 문서들에서 벡터를 가져온다.
 - **금지**: 메인 스레드 흉내 금지.
 - **관점**: 결제에서는 한 건의 잘못된 상태 전이나 멱등성 누락이 즉시 돈·정합성 사고로 이어진다. 일반적 "좋은 코드" 기준보다 **실패 시 돈이 새는 경로**와 **복구 가능성**을 우선 본다.
 
@@ -22,7 +22,7 @@
 
 ## 입력
 - 해당 단계 산출물
-- `docs/context/INTEGRATIONS.md`, `CONFIRM-FLOW-ANALYSIS.md`
+- `docs/context/INTEGRATIONS.md`, `CONFIRM-FLOW.md`
 - Critic의 현재 라운드 판정 (교차 검증용)
 
 ## 출력

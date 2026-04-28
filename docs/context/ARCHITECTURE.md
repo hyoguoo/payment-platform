@@ -1,225 +1,218 @@
 # Architecture
 
-**Analysis Date:** 2026-04-04
+> 최종 갱신: 2026-04-27 (MSA 분리 + 결제 회복성 보강 봉인 시점)
 
-## Pattern Overview
+## 개요
 
-**Overall:** Hexagonal Architecture (Ports and Adapters) with vertical-slice bounded contexts
+payment-platform 은 결제 도메인을 6개 Spring Boot 모듈로 분해한 MSA 시스템이다.
 
-**Key Characteristics:**
-- Four bounded contexts: `payment`, `paymentgateway`, `product`, `user` — each has its own `domain → application → infrastructure → presentation` layer stack
-- Ports are Java interfaces defined in `application/port/` (outbound) and `presentation/port/` (inbound); all infrastructure implements those interfaces
-- Outbox 단일 전략: `OutboxAsyncConfirmService`가 유일한 `PaymentConfirmService` 구현체 (전략 선택 불필요)
-- Cross-context calls never share a repository; they go through `presentation/port` interfaces of the target context, consumed by `infrastructure/internal/` adapters in the calling context
+| 모듈 | 책임 |
+|---|---|
+| `payment-service` | 결제 도메인 본체 — checkout / confirm / status. 비동기 confirm 사이클의 진입점이자 상태 권한자. PG 호출은 직접 하지 않고 Kafka 로 위임 |
+| `pg-service` | PG 벤더(Toss / NicePay) 호출 격리. `payment.commands.confirm` 소비 → 벤더 confirm/getStatus → `payment.events.confirmed` 발행 |
+| `product-service` | 상품 + 재고 도메인. payment-service 의 HTTP 조회와 Kafka stock 이벤트(`payment.events.stock-committed`) 처리 |
+| `user-service` | 사용자 도메인. payment-service 의 HTTP 조회 |
+| `gateway` | Spring Cloud Gateway — 단일 진입점(8090). Eureka 기반 라우팅 |
+| `eureka-server` | Netflix Eureka — 서비스 디스커버리 |
 
----
+각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가지며, 두 Redis(`redis-dedupe`, `redis-stock`)를 용도별로 분리해 공유한다. Kafka 는 양방향 메시징 인프라.
 
-## Layers (payment context — the primary context)
+## 토폴로지
 
-**Domain (`payment/domain`):**
-- Purpose: Pure business logic, zero Spring dependencies
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/domain/`
-- Contains: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox`, `PaymentHistory` aggregates; `RecoveryDecision` record (복구 사이클 결정 값 객체, Type enum + RecoveryReason); `RetryPolicy` record (maxAttempts, backoffType, baseDelayMs, maxDelayMs); status enums in `domain/enums/` including `BackoffType` (FIXED/EXPONENTIAL), `PaymentEventStatus` (with `isTerminal()` SSOT 판별자), `RecoveryReason`; cross-context DTOs in `domain/dto/` and `domain/dto/vo/`; Spring `ApplicationEvent` subtypes in `domain/event/`
-- Depends on: nothing outside `domain`
-- Used by: `application` use-case services
+```mermaid
+flowchart LR
+    Browser["브라우저"]
 
-**Application (`payment/application`):**
-- Purpose: Orchestrates domain objects; owns all port interfaces; contains the confirm service bean
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/application/`
-- Inbound ports (interfaces in `presentation/port/`, implemented here):
-  - `PaymentConfirmService` — implemented by `OutboxAsyncConfirmService` (only implementation)
-  - `PaymentStatusService` — implemented by `PaymentStatusServiceImpl` (always active)
-  - `PaymentCheckoutService` — implemented by `PaymentCheckoutServiceImpl`
-  - `AdminPaymentService` — implemented by `AdminPaymentServiceImpl`
-- Outbound ports (interfaces in `application/port/`, implemented in `infrastructure`):
-  - `PaymentEventRepository`, `PaymentOrderRepository`, `PaymentOutboxRepository`, `PaymentHistoryRepository`
-  - `PaymentGatewayPort` — confirm/cancel/status calls to PG (Toss/NicePay)
-  - `ProductPort`, `UserPort` — cross-context calls
-  - `application/port/out/PaymentConfirmPublisherPort` — Outbox 즉시 처리 이벤트 발행 추상화
-  - `IdempotencyStore` — 멱등성 키 저장소 (port at `application/port/IdempotencyStore.java`)
-- Fine-grained use-case services (internal, not exposed as ports):
-  - `PaymentCommandUseCase` — all status-changing operations; owns `@PublishDomainEvent` and `@PaymentStatusChange` annotations; `getPaymentStatusByOrderId()` — 복구 사이클용 PG 상태 조회 위임 (scheduler → application 레이어 경유); `markPaymentAsQuarantined()` — 격리 상태 전이 + `PaymentQuarantineMetrics` 카운터 증가
-  - `PaymentLoadUseCase` — read operations
-  - `PaymentOutboxUseCase` — outbox lifecycle
-  - `PaymentFailureUseCase` — failure routing logic
-  - `PaymentTransactionCoordinator` — all `@Transactional` boundary definitions; owns `claimToInFlight` delegation pattern
-  - `OrderedProductUseCase`, `OrderedUserUseCase`, `PaymentCreateUseCase`
-  - `PaymentHistoryUseCase` — payment history 저장/조회
-  - `AdminPaymentLoadUseCase` — admin 쿼리 전용 use-case
-- Config (application layer):
-  - `RetryPolicyProperties` — `@ConfigurationProperties(prefix = "payment.retry")`; `toRetryPolicy()` converts to `RetryPolicy` domain record; defaults: maxAttempts=5, backoffType=FIXED, baseDelayMs=5000, maxDelayMs=60000
-- Utilities (application layer, not ports/use-cases):
-  - `IdempotencyKeyHasher` — 멱등성 키 해시 유틸
-- Depends on: `domain`, `core/common`
-- Used by: `presentation`, `scheduler`, `listener`
+    subgraph Edge
+        GW["gateway:8090"]
+        E["eureka:8761"]
+    end
 
-**Infrastructure (`payment/infrastructure`):**
-- Purpose: JPA entities, Spring Data, gateway adapters, Kafka publisher
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/`
-- Contains:
-  - JPA entities: `entity/PaymentEventEntity`, `PaymentOrderEntity`, `PaymentOutboxEntity`, `PaymentHistoryEntity`
-  - Spring Data interfaces: `repository/JpaPaymentEventRepository`, `JpaPaymentOrderRepository`, `JpaPaymentOutboxRepository`, `JpaPaymentHistoryRepository`
-  - Port implementations: `repository/PaymentEventRepositoryImpl`, `PaymentOutboxRepositoryImpl`, etc.
-  - Gateway strategy: `gateway/PaymentGatewayStrategy` (interface), `PaymentGatewayFactory`, `PaymentGatewayProperties`; concrete: `gateway/toss/TossPaymentGatewayStrategy`, `gateway/nicepay/NicepayPaymentGatewayStrategy`
-  - `PaymentGatewayType` enum is in `domain/enums/` (TOSS, NICEPAY); `PaymentEvent.gatewayType` stores per-event PG 선택
-  - Cross-context adapters: `internal/InternalPaymentGatewayAdapter` implements `PaymentGatewayPort`, `InternalProductAdapter` implements `ProductPort`, `InternalUserAdapter` implements `UserPort`
-  - Outbox 즉시 처리 발행자: `publisher/OutboxImmediatePublisher` implements `PaymentConfirmPublisherPort` (Spring `ApplicationEventPublisher` 기반)
-  - Idempotency: `idempotency/IdempotencyStoreImpl` implements `IdempotencyStore`, `IdempotencyProperties`
-  - Mapper: `PaymentInfrastructureMapper`
-- Depends on: `application/port`, `paymentgateway/presentation/port`, `product/presentation/port`, `user/presentation/port`
+    subgraph Apps["MSA 4서비스"]
+        Pay["payment-service"]
+        Pg["pg-service"]
+        Prod["product-service"]
+        Usr["user-service"]
+    end
 
-**Presentation (`payment/presentation`):**
-- Purpose: HTTP controllers and inbound port interface definitions
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/presentation/`
-- Contains: `PaymentController`, `PaymentAdminController`, `NicepayReturnController`, `PaymentPresentationMapper`; request/response DTOs in `presentation/dto/`
-- Inbound port interfaces: `presentation/port/PaymentConfirmService`, `PaymentCheckoutService`, `PaymentStatusService`, `AdminPaymentService`
-- `PaymentController.confirm()` always returns `ResponseEntity.accepted(202)`
-- Depends on: application layer via port interfaces only
+    subgraph Stores
+        MyP[("mysql-payment:3306")]
+        MyG[("mysql-pg:3308")]
+        MyPr[("mysql-product:3309")]
+        MyU[("mysql-user:3310")]
+        RedD[("redis-dedupe:6379")]
+        RedS[("redis-stock:6380")]
+    end
 
-**Scheduler (`payment/scheduler`):**
-- Purpose: Background scheduled jobs and lifecycle-managed async workers
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/`
-- Contains:
-  - `OutboxImmediateWorker` — `SmartLifecycle` 구현체; 앱 시작 시 N개(기본 200개)의 VT/PT 워커 스레드를 생성해 `PaymentConfirmChannel`에서 `take()`로 orderId를 꺼내 처리; VT/PT는 `outbox.channel.virtual-threads`로 제어
-  - `OutboxProcessingService` — `OutboxImmediateWorker`와 `OutboxWorker` 양쪽이 공유하는 단일 처리 서비스; `claimToInFlight → getStatus → RecoveryDecision → applyDecision (success/retry/quarantine/FCG)` 복구 사이클 로직을 캡슐화
-  - `OutboxWorker` — `@Scheduled(fixedDelayString)` 폴백 전용; `PaymentConfirmChannel` 오버플로우 시 누락된 PENDING 레코드를 배치로 처리; 내부적으로 `OutboxProcessingService.process()` 위임
-  - `PaymentScheduler` — 만료 스케줄러; `@Scheduled(fixedRateString)` 기본 5분마다 READY 상태 오래된 결제를 만료 처리
-- Port interfaces: `scheduler/port/PaymentExpirationService`
-- Depends on: `application` use-case services directly, `core/channel/PaymentConfirmChannel`
+    subgraph Bus
+        K[("Kafka:9092")]
+    end
 
-**Listener (`payment/listener`):**
-- Purpose: Outbox 즉시 처리 핸들러 및 Spring 이벤트 리스너
-- Location: `src/main/java/com/hyoguoo/paymentplatform/payment/listener/`
-- Contains:
-  - `OutboxImmediateEventHandler` — `@TransactionalEventListener(AFTER_COMMIT)`; confirm() 트랜잭션 커밋 직후 `PaymentConfirmChannel.offer(orderId)`를 호출해 큐에 적재; 큐 가득 찬 경우 warn 로그 — OutboxWorker(polling)가 처리
-  - `PaymentHistoryEventListener` — handles Spring `ApplicationEvent` subtypes from `domain/event/`
-- Port interfaces: `listener/port/PaymentHistoryService`
-- Depends on: `core/channel/PaymentConfirmChannel`
+    Browser -->|"HTTP /api/v1/payments/*"| GW
+    GW --> Pay & Prod & Usr
+    Pay & Pg & Prod & Usr -. heartbeat .-> E
 
----
+    Pay --> MyP
+    Pg  --> MyG
+    Prod --> MyPr
+    Usr --> MyU
 
-## Confirm Flow (Outbox 단일 전략)
+    Pay --> RedD
+    Pg  --> RedD
+    Prod --> RedD
+    Pay --> RedS
 
-```
-PaymentController.confirm()
-  → OutboxAsyncConfirmService.confirm()  [@Transactional]
-      1. executePaymentAndStockDecreaseWithOutbox()
-         [single TX: READY→IN_PROGRESS + stock-- + PaymentOutbox(PENDING) created atomically]
-      2. PaymentConfirmPublisherPort.publish(orderId)
-         [OutboxImmediatePublisher: ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)]
-         [이벤트는 TX 커밋 후 AFTER_COMMIT 단계에서 발동]
-  ← ResponseEntity.accepted(202)
+    Pay <-->|"payment.commands.confirm /\npayment.events.confirmed"| K
+    K <--> Pg
+    Pay -->|"payment.events.stock-committed"| K
+    K --> Prod
 
-OutboxImmediateEventHandler.handle(event)  [@TransactionalEventListener(AFTER_COMMIT)]
-  — TX 커밋 직후 HTTP 요청 스레드에서 실행 (비블로킹 — channel.offer만 호출)
-  channel.offer(orderId)
-    → true:  LinkedBlockingQueue에 적재 완료 — OutboxImmediateWorker가 비동기 처리
-    → false: 큐 가득 참 (warn 로그) — OutboxWorker(polling)가 폴백 처리
-
-OutboxImmediateWorker  [SmartLifecycle — 앱 시작 시 N개 VT/PT 워커 스레드 생성]
-  — 정상 경로: channel.take()로 blocking wait → 꺼내는 즉시 처리
-  workerLoop() { channel.take() → OutboxProcessingService.process(orderId) }
-
-OutboxProcessingService.process(orderId)  [ImmediateWorker/OutboxWorker 공유 — 복구 사이클]
-  Step 1: claimToInFlight(orderId)           [atomic UPDATE PENDING→IN_FLIGHT, REQUIRES_NEW TX]
-  Step 2: loadPaymentEvent(orderId)          [실패 시 incrementRetryOrFail → return]
-  Step 3: 로컬 종결 재진입 차단              [isTerminal() → rejectReentry(outbox toDone)]
-  Step 4: retryCount==0 → 바로 confirm (PG 선조회 불필요)
-          retryCount>=1 → getPaymentStatusByOrderId(orderId, gatewayType) [PG 상태 선행 조회, no TX]
-          → RecoveryDecision.from(event, result, retryCount, maxRetries)
-  Step 5: applyDecision — RecoveryDecision.Type에 따라 분기:
-    COMPLETE_SUCCESS        → executePaymentSuccessCompletionWithOutbox()
-    COMPLETE_FAILURE        → executePaymentFailureCompensationWithOutbox() (D12 가드)
-    ATTEMPT_CONFIRM         → confirmPaymentWithGateway() → 2차 분기 (SUCCESS/FAILURE/RETRYABLE)
-    RETRY_LATER (미소진)    → executePaymentRetryWithOutbox()
-    RETRY_LATER (소진)      → FCG(Final Confirmation Gate) → getStatus 1회 재조회 → success/failure/quarantine
-    GUARD_MISSING_APPROVED_AT (미소진) → executePaymentRetryWithOutbox()
-    GUARD_MISSING_APPROVED_AT (소진)   → FCG → quarantine
-    QUARANTINE              → FCG → quarantine
-    REJECT_REENTRY          → rejectReentry(outbox toDone)
-
-OutboxWorker.process()  [@Scheduled every 5s — 폴백 전용]
-  — 폴백 경로: 큐 오버플로우 또는 서버 재시작으로 누락된 PENDING 레코드 배치 처리
-  Step 0: recoverTimedOutInFlightRecords()  [IN_FLIGHT timeout → reset to PENDING]
-  Step 1: findPendingBatch(batchSize)       [기본 50건]
-  per record: OutboxProcessingService.process(outbox.getOrderId())
+    Pg -->|HTTP| Vendor["Toss / NicePay"]
+    Pay -->|HTTP product/user 조회| Prod
+    Pay -->|HTTP user 조회| Usr
 ```
 
----
+## Hexagonal Layer 룰
 
-## Key Design Decisions
+각 서비스는 동일한 6개 패키지로 구성된다. 4서비스 모두 `com.hyoguoo.paymentplatform.<bounded>` 아래에 같은 트리.
 
-**PaymentTransactionCoordinator — shared transactional boundary:**
-- A plain `@Service` (no interface) shared by `OutboxAsyncConfirmService`, `OutboxWorker`, and `OutboxImmediateWorker`
-- Every method annotated with `@Transactional`; individual use-case services are not `@Transactional` themselves unless they have single-operation needs
-- Key methods: `executePaymentAndStockDecreaseWithOutbox`, `executePaymentSuccessCompletionWithOutbox`, `executePaymentFailureCompensationWithOutbox` (D12 가드: TX 내 outbox/event 재조회 후 조건 충족 시에만 재고 복구), `executePaymentRetryWithOutbox`, `executePaymentQuarantineWithOutbox` (격리 전이: outbox FAILED + event QUARANTINED)
-- File: `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
+| 패키지 | 역할 | 의존 방향 |
+|---|---|---|
+| `domain` | 순수 도메인 — Entity, Value Object, 도메인 서비스. Spring 의존 없음 | 의존 없음 (가장 안쪽) |
+| `application` | Use case + 입력 포트(`port.in`) + 출력 포트(`port.out`). Spring 만 의존 | `domain` 만 |
+| `presentation` | HTTP 진입(`Controller`, request/response DTO). 입력 포트 호출 | `application.port.in` 만 |
+| `infrastructure` | 출력 포트 어댑터 — JPA Repository, Kafka Publisher/Consumer, HTTP 클라이언트, Redis 어댑터, Scheduler | `application.port.out` 만 (구현) |
+| `core` | 횡단 관심사 — `@Configuration`, AOP, MDC/LogFmt, Filter, KafkaProducer/Consumer 설정 | 모든 layer 가능 (인프라 wiring) |
+| `exception` | 도메인·애플리케이션 예외 계층 | `domain` / `application` 에서만 throw |
 
-**PaymentConfirmChannel — HTTP 스레드와 Worker 스레드 디커플링:**
-- `core/channel/PaymentConfirmChannel` — `LinkedBlockingQueue<String>` 래퍼; `offer(orderId)`(non-blocking), `take()`(blocking) 제공
-- `OutboxImmediateEventHandler`가 TX 커밋 후 `offer()`로 큐에 적재 → HTTP 스레드 즉시 해방
-- `OutboxImmediateWorker`의 VT/PT 워커들이 `take()`로 blocking wait → Toss API 호출
-- 큐 용량은 `outbox.channel.capacity`(기본 2000)로 제어; 오버플로우 시 OutboxWorker 폴백
+**핵심 규칙**:
+- 도메인 → 외부 의존 0. JPA·Spring 어노테이션 금지
+- 입력 포트(`port.in`)는 use case 인터페이스. presentation 만 호출
+- 출력 포트(`port.out`)는 의존성 역전 인터페이스. application 이 정의, infrastructure 가 구현
+- AOP·이벤트 발행 같은 횡단 관심사는 `core` 또는 `infrastructure/listener` 에서만
 
-**PaymentConfirmPublisherPort — Outbox 즉시 처리 이벤트 추상화:**
-- Interface in `application/port/out/PaymentConfirmPublisherPort` with single method `publish(String orderId)`
-- `OutboxImmediatePublisher` (infrastructure 계층)가 `ApplicationEventPublisher.publishEvent(PaymentConfirmEvent)`로 구현
-- Application 계층은 Spring 이벤트 발행 세부 구현을 알지 못함
+## 비동기 confirm 흐름
 
-**Cross-Context Communication pattern:**
-- `payment` calls `paymentgateway` via `InternalPaymentGatewayAdapter` → `PaymentGatewayInternalReceiver` (Toss) / `NicepayGatewayInternalReceiver` (NicePay) (internal Java facades, not HTTP endpoints from outside)
-- `payment` calls `product` via `InternalProductAdapter` → `ProductInternalReceiver`
-- `payment` calls `user` via `InternalUserAdapter` → `UserInternalReceiver`
-- No cross-context JPA joins
+브라우저 → checkout → PG SDK 창 → confirm → **HTTP 202 즉시 반환** → 비동기 양방향 Kafka 왕복 → 브라우저 status 폴링.
 
-**AOP-Driven Observability:**
-- `@PublishDomainEvent` on `PaymentCommandUseCase` → `DomainEventLoggingAspect` publishes Spring `ApplicationEvent`
-- `@PaymentStatusChange` on `PaymentCommandUseCase` → `PaymentStatusMetricsAspect` records Micrometer counters
-- `@TossApiMetric` → `TossApiMetricsAspect` records API latency
-- Aspect classes: `src/main/java/com/hyoguoo/paymentplatform/core/common/aspect/` and `core/common/metrics/aspect/`
+세부는 [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md) 와 [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md) 참조. 핵심 토픽:
 
-**Benchmark profile:**
-- `@Profile("benchmark")` in `mock/BenchmarkConfig.java` replaces the real `HttpOperator` with `FakeTossHttpOperator` (configurable delay)
-- Files: `src/main/java/com/hyoguoo/paymentplatform/mock/BenchmarkConfig.java`, `FakeTossHttpOperator.java`
+| 토픽 | 발행 | 소비 | 책임 |
+|---|---|---|---|
+| `payment.commands.confirm` | payment-service (최초) + **pg-service self-retry** (attempt<4 시 자기 자신에게 재발행, `pg_outbox.available_at` 기반 지연) | pg-service | confirm 명령 전달 + 재시도 |
+| `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | (수동) | retry 한도 초과 격리 |
+| `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
+| `payment.events.confirmed.dlq` | payment-service (`PaymentConfirmDlqKafkaPublisher`, lease remove 실패 시) | (수동) | 결과 처리 영구 실패 |
+| `payment.events.stock-committed` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
 
----
+## 비동기 어댑터 위치 (왜 어디 두는가)
 
-## Error Handling
+| 어댑터 | 위치 | 이유 |
+|---|---|---|
+| `OutboxImmediateEventHandler` (`@TransactionalEventListener(AFTER_COMMIT)`) | `payment-service/.../infrastructure/listener` | TX 커밋 직후 발행 트리거. application 의 use case 와 분리해 retry 폴백 워커와 동일 entry point 노출 |
+| `OutboxRelayService` | `payment-service/.../application/service` | claim → 발행 → done 의 비즈니스 로직. infrastructure 가 아닌 application — 발행 결정은 도메인 책임 |
+| `KafkaMessagePublisher` | `payment-service/.../infrastructure/messaging/publisher` | Spring Kafka 어댑터. 출력 포트 구현 |
+| `OutboxWorker` (`@Scheduled`) | `payment-service/.../infrastructure/scheduler` | 폴링 폴백. Spring Scheduler 의존이라 infrastructure |
+| `ConfirmedEventConsumer` (`@KafkaListener`) | `payment-service/.../infrastructure/messaging/consumer` | Kafka 입력 어댑터 — `PaymentConfirmResultUseCase` 호출 |
+| `PgOutboxChannel` + `OutboxJob` | `pg-service/.../infrastructure/channel` | in-memory `LinkedBlockingQueue` + 작업 record(`outboxId, otelContext, snapshot`). offer 시점에 OTel Context + ContextSnapshot 캡처해 작업에 동봉 — Kafka consumer ↔ VT 워커 간 시간차로 Executor 자동 캡처가 안 통하는 경계 처리 |
+| `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
+| `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
+| `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `payment.events.stock-committed` Kafka publish (TX 와 publish 분리) |
+| `ContextAwareVirtualThreadExecutors` | `payment-service` / `pg-service` `core/config/concurrent` | OTel Context + MDC 이중 래핑 VT executor 헬퍼. payment 의 `AsyncConfig.outboxRelayExecutor`, pg 의 `PgOutboxImmediateWorker.relayExecutor` 가 사용 — 호출 시점 컨텍스트를 새 VT 스레드에 자동 캡처·복원 |
 
-**Strategy — Recovery Cycle:** `OutboxProcessingService`는 PG 상태 선행 조회(`getPaymentStatusByOrderId`) → `RecoveryDecision` 값 객체로 복구 결정을 수립한다.
-- `RecoveryDecision.Type`: `COMPLETE_SUCCESS`, `COMPLETE_FAILURE`, `ATTEMPT_CONFIRM`, `RETRY_LATER`, `GUARD_MISSING_APPROVED_AT`, `QUARANTINE`, `REJECT_REENTRY`
-- **FCG(Final Confirmation Gate)**: retry 소진 시 getStatus 1회 재조회 → 판별 가능하면 success/failure, 불가하면 quarantine
+## 인프라 별 책임
 
-**PG 예외 분류:**
-- `PaymentGatewayRetryableException` — PG 일시 오류, 재시도 가능 → `RETRY_LATER` 또는 `QUARANTINE`
-- `PaymentGatewayNonRetryableException` — PG에 결제 기록 없음 → `ATTEMPT_CONFIRM` (confirm 시도)
-- `PaymentGatewayConfirmException` — confirm 실패 (벤더 무관 공통 예외)
+### MySQL — 4 인스턴스
 
-**Confirm 결과 분류** (`PaymentConfirmResultStatus`, ATTEMPT_CONFIRM 경로에서 사용):
-- `SUCCESS` — `executePaymentSuccessCompletionWithOutbox` (DONE)
-- `RETRYABLE_FAILURE` — 미소진: `executePaymentRetryWithOutbox`, 소진: FCG
-- `NON_RETRYABLE_FAILURE` — `executePaymentFailureCompensationWithOutbox` (D12 가드 + FAILED)
+각 서비스는 독립 DB 를 가진다. 분리 동기:
+- 도메인 경계에서 schema 결합 차단
+- 운영 시 백업/복구/스케일 분리
+- 코드 의존이 HTTP/Kafka 로만 가능 — DB 직접 join 금지
 
-**기타 예외:**
-- `PaymentOrderedProductStockException` — stock exhausted; payment marked FAILED, no compensation (stock was never decremented)
-- `PaymentStatusException` / `PaymentValidException` — domain guard violations; handler returns 4xx
+Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sql` (스키마) + 필요 시 `V2__seed_*.sql` (시드). 자세한 운영 가이드는 [`STACK.md`](STACK.md).
 
-**Retry backoff:** Configured via `RetryPolicyProperties` (`payment.retry.*`); `RetryPolicy.nextDelay(retryCount)` computes FIXED or EXPONENTIAL delay; `PaymentOutbox.nextRetryAt` stores scheduled time; `OutboxWorker` queries `WHERE status='PENDING' AND next_retry_at <= now`.
+### Redis — 2 인스턴스
 
-**Compensation flow:** `executePaymentFailureCompensationWithOutbox`는 D12 가드(TX 내 outbox/event 재조회) 후 조건 충족 시에만 재고 복구, `PaymentEvent` FAILED 전이. **Quarantine flow:** `executePaymentQuarantineWithOutbox`는 outbox FAILED + `PaymentEvent` QUARANTINED 전이 + `PaymentQuarantineMetrics` 카운터 증가.
+| Redis | 책임 | 사용처 |
+|---|---|---|
+| `redis-dedupe` (6379) | 메시지 dedupe + checkout 멱등성 store | payment-service `EventDedupeStore` (two-phase lease P8D) + `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용 |
+| `redis-stock` (6380) | 재고 선차감 캐시 (`StockCachePort`) | payment-service 단독. confirm 진입 시 Lua 원자 DECR, FAILED/QUARANTINED 회신 시 INCR 보상. product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드 |
 
-**Exception handlers:**
-- `src/main/java/com/hyoguoo/paymentplatform/core/common/exception/GlobalExceptionHandler.java`
+### Kafka
 
----
+- broker 1대(`kafka:9092`), KRaft 모드, auto-create 비활성
+- 토픽 사전 생성: `scripts/smoke/create-topics.sh`
+- 파티션 / replication-factor / min.insync.replicas 검증: `scripts/smoke/kafka-topic-config.sh`
+- Spring Kafka `@KafkaListener` + `KafkaTemplate`. Producer 측 traceparent 전파 위해 자체 생성 ProducerFactory 들에도 `ObservationRegistry` 를 명시적으로 wiring 한다.
 
-## Cross-Cutting Concerns
+### Eureka + Gateway
 
-**Logging:** `LogFmt` (`core/common/log/LogFmt.java`) produces structured `key=value` lines; `MaskingPatternLayout` masks sensitive values in logback
-**Validation:** Domain object guard clauses (`PaymentEvent.execute()`, `done(approvedAt null 가드)`, `fail(종결 no-op)`, `expire()`, `toRetrying()`, `quarantine()`)
-**Transaction boundary:** All multi-step DB operations go through `PaymentTransactionCoordinator`
-**Metrics:** `PaymentStateMetrics`, `PaymentHealthMetrics`, `PaymentTransitionMetrics`, `TossApiMetrics`, `PaymentQuarantineMetrics` (격리 카운터) in `core/common/metrics/`
+- Eureka(`payment-eureka:8761`) — 5앱 등록 (PAYMENT-SERVICE / PG-SERVICE / PRODUCT-SERVICE / USER-SERVICE / GATEWAY — `spring.application.name` 기준 대문자화)
+- Gateway(`payment-gateway:8090`) — 외부 단일 진입점. Eureka discovery 기반 라우팅
 
----
+## 횡단 관심사
 
-*Architecture analysis: 2026-04-14*
+| 관심사 | 위치 | 비고 |
+|---|---|---|
+| Tracing | `core/config/AsyncConfig`, `core/config/concurrent/ContextAwareVirtualThreadExecutors`, infrastructure messaging/listener | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파. pg-service in-memory channel 은 `OutboxJob` 동봉으로 명시 캡처·복원 |
+| MDC + LogFmt | `core/common/log/LogFmt` (모든 서비스) | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
+| AOP `@PublishDomainEvent` + `@PaymentStatusChange` | 어노테이션 정의: `application/aspect/annotation/` / 구현: `infrastructure/aspect/DomainEventLoggingAspect` (payment), `infrastructure/aspect/TossApiMetricsAspect` (pg) | `payment_history` audit trail 자동 기록 + Toss 호출 메트릭 |
+| Metrics | `core/common/metrics` (payment 공통), `infrastructure/metrics/*` (서비스별 Micrometer 카운터/타이머 등록) | Prometheus 노출 — `payment_quarantined_total`, `stock_kafka_publish_fail_total`, `pg_outbox.relay_fail_total` 등 |
+
+## 핵심 설계 결정 인덱스 (현재 운영 중)
+
+| 결정 | 적용 위치 |
+|---|---|
+| 비동기 confirm 아키텍처 | payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
+| 격리 트리거 (CACHE_DOWN / 판단 불가) | `QuarantineCompensationHandler` |
+| AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
+| 분산 멱등성 store | `redis-dedupe` two-phase lease (payment 만) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
+| business inbox amount | pg `pg_inbox.amount BIGINT` |
+| HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
+| DB 분리 | 4 MySQL 인스턴스 (DB per service) |
+| Kafka 토픽 + dedupe TTL 정책 | 5 토픽 (운영 3 + DLQ 2), dedupe TTL P8D |
+| `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |
+| Stock publish AFTER_COMMIT 분리 | TX commit 후 stock-committed 발행 |
+| Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
+| Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
+| RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |
+| 재고 복구 가드 (TX 내 재조회) | `executePaymentFailureCompensationWithOutbox` |
+| pg-service IN_PROGRESS retry 활성화 | `PgConfirmService.handleInProgress(command, attempt)` — vendor 재호출 + 멱등성 layer 3종(vendor/pg/payment) 의존 |
+
+상세 history 는 archive 안 토픽별 `COMPLETION-BRIEFING.md` / `*-CONTEXT.md`.
+
+## 결정 사유 — Dedupe 저장소 선택
+
+세 비즈니스 서비스의 dedupe 어댑터가 서로 다른 저장소 사용:
+
+| 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
+|---|---|---|---|---|
+| payment | `EventDedupeStoreRedisAdapter` | Redis (redis-dedupe) | PaymentEvent 상태 전이 + stock_outbox INSERT (RDB) | 약함 — 도메인 메서드 가드로 멱등성 회복 |
+| pg | `EventDedupeStore.markSeen` (Redis) + `PgInboxRepository.markSeen` (MySQL pg_inbox) — **2-layer** | Redis (TX 외부 빠른 거름) + MySQL (TX 내부 atomic 거름) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — RDB layer 가 같은 TX 필수, Redis layer 는 보조 |
+| product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
+
+**결정 룰 한 줄**:
+> dedupe 와 그 이후 작업이 같은 RDB 자원을 변경하면 RDB, lease/lock 의미가 강하면 Redis.
+
+**왜 이 룰인가**:
+- Redis 와 RDB 는 서로 다른 시스템이라 `@Transactional` 이 둘을 같이 묶지 못함. 부분 실패 (Redis 기록 후 RDB 실패) 시 "이미 처리됨" 판정으로 후속 영영 멈춤 = **돈 새는 경로**
+- product / pg 는 atomicity 가 도메인 정확성의 본질 → 같은 RDB 위에 dedupe 테이블 두기 → 같은 TX 로 commit/rollback
+- payment 는 dedupe 가 "메시지 처리 권한의 lease 의미" — 처리 권한 잠금 / 연장 / 해제가 in-memory 성능 + TTL 자동 expire 가 자연. 후속 작업은 도메인 가드 (`이미 DONE 이면 no-op`) 로 멱등성 별도 보장
+
+**구현 디테일**:
+- **payment**: Redis `SET NX EX` (markWithLease 5분) → `EXPIRE` (extendLease 8일) → `DEL` (remove). two-phase lease 패턴
+- **pg**: pg_inbox 테이블 + UPSERT (markSeen). 같은 TX 안에서 inbox 상태 전이까지
+- **product**: stock_commit_dedupe 테이블 + DELETE 만료 + INSERT IGNORE. 같은 TX 안에서 재고 차감까지
+
+**대안 비교** (모두 검토 후 현재 안이 채택):
+- 모두 Redis 통일 → product / pg 의 atomicity 깨짐, 부분 실패 위험
+- 모두 RDB 통일 → payment 의 lease 패턴이 row lock 점유로 in-memory 성능 손실, 운영 추가 부담 (테이블 cleanup)
+- 현재 채택 — 도메인 요구별 적합한 저장소
+
+**Phase 4 후속**:
+- TC-7 (outbox retry 정책 정렬) 와 별개
+- product / pg 의 dedupe 테이블 cleanup 스케줄러 부재 → 만료 row 누적 시 운영 부담. 부하 측정 후 도입 결정 가치
+
+## 다음 토픽
+
+PHASE-4 — Toxiproxy 8종 장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러. 본 토폴로지를 그대로 두고 회복성 검증.

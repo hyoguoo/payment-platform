@@ -1,239 +1,139 @@
 # External Integrations
 
-**Analysis Date:** 2026-04-05
+> 최종 갱신: 2026-04-27
 
-## APIs & External Services
+## PG 벤더 — Strategy 패턴
 
-**Payment Gateway — Toss Payments:**
-- Base URL: `https://api.tosspayments.com` (config key `payment.gateway.toss.base-url`)
-- API version: `2022-11-16`
-- SDK/Client: `HttpTossOperator` implements `TossOperator` port
-  - Implementation: `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/api/HttpTossOperator.java`
-  - HTTP client: Spring `WebClient` (WebFlux) via `HttpOperatorImpl` (`src/main/java/com/hyoguoo/paymentplatform/core/common/infrastructure/http/HttpOperatorImpl.java`)
-- Auth: HTTP Basic Auth with Base64-encoded `${TOSS_SECRET_KEY}:` — config key `spring.myapp.toss-payments.secret-key` (docker) or `payment.gateway.toss.secret-key` (PaymentGatewayProperties)
-- Timeouts: connect 3000ms, read 10000ms (default); read 30000ms (docker/benchmark)
+pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다(`gatewayType` 필드, Toss / NicePay).
 
-**Toss Payments API Endpoints:**
+**전략 위치**: `pg-service/.../infrastructure/gateway/`
 
-| Operation | Method | Path | Notes |
-|-----------|--------|------|-------|
-| Confirm payment | POST | `{base-url}/v1/payments/confirm` | Idempotency-Key header required |
-| Cancel payment | POST | `{base-url}/v1/payments/{paymentKey}/cancel` | Idempotency-Key header required |
-| Get payment by orderId | GET | `{base-url}/v1/payments/orders/{orderId}` | |
-| Get payment by paymentKey | GET | `{base-url}/v1/payments/{paymentKey}` | |
+| 전략 | 클래스 | 활성화 조건 |
+|---|---|---|
+| Toss | `toss/TossPaymentGatewayStrategy` | 항상 |
+| NicePay | `nicepay/NicepayPaymentGatewayStrategy` | 항상 |
+| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치 전용. PostConstruct 경고 배너 |
 
-**Confirm Request Body** (`TossConfirmCommand` → `TossConfirmRequest`):
-```json
-{
-  "paymentKey": "string",
-  "orderId": "string",
-  "amount": "number"
-}
-```
+**선택 로직**: `PgConfirmStrategySelector` 가 `gatewayType` (DB 또는 메시지 payload 의 `PaymentGatewayType` enum) 으로 분기 → 해당 전략 호출.
 
-**Confirm Response** (`TossPaymentApiResponse`, version `2022-11-16`):
-```json
-{
-  "version": "2022-11-16",
-  "paymentKey": "string",
-  "type": "NORMAL",
-  "orderId": "string",
-  "orderName": "string",
-  "currency": "KRW",
-  "method": "카드",
-  "totalAmount": 0.0,
-  "balanceAmount": 0.0,
-  "status": "DONE | IN_PROGRESS | ...",
-  "requestedAt": "2024-01-01T00:00:00+09:00",
-  "approvedAt": "2024-01-01T00:00:00+09:00",
-  ...
-}
-```
+**공통 인터페이스** (`PgGatewayPort`):
+- `confirm(PgConfirmCommand)` → `PgConfirmResult` (APPROVED / FAILED / QUARANTINED 결과 + amount + approvedAtRaw)
+- `getStatus(orderId)` → 벤더 상태 조회 (복구 사이클 진입 전 선행 호출 — Final Confirmation Gate)
+- `cancel(...)` (구조 존재, 운영 활용 별도)
 
-**Error Response** (`TossPaymentApiFailResponse`):
-```json
-{ "code": "string", "message": "string" }
-```
+## Toss Payments
 
-**Confirm Flow:**
+| 항목 | 값 |
+|---|---|
+| Base URL | 환경별 (`payment.gateway.toss.base-url` 등 — 벤더 키 환경변수에서 주입) |
+| 인증 | Basic Auth (Secret Key, base64) |
+| confirm endpoint | `POST /v1/payments/confirm` |
+| getStatus endpoint | `GET /v1/payments/orders/{orderId}` |
+| 상태 매핑 | `TossPaymentStatus` enum + `PaymentStatus` 도메인 매핑 (UNMAPPED 시 `PaymentGatewayStatusUnmappedException`) |
+| 에러 코드 | `TossPaymentErrorCode` — retryable / non-retryable 분류 |
+| 시각 처리 | `approvedAt` 원문(ISO-8601) 보존 → `ConfirmedEventPayload.approvedAt` 으로 전달 |
 
-_Outbox_ (`OutboxAsyncConfirmService`, `@Service` — 단일 구현체):
-1. `POST /api/v1/payments/confirm` received
-2. READY → IN_PROGRESS + stock decrease + `PaymentOutbox(PENDING)` in single TX (`executePaymentAndStockDecreaseWithOutbox`)
-3. Return `202 Accepted` with `PaymentConfirmAsyncResult(ASYNC_202)`
-4. `OutboxImmediateEventHandler` (AFTER_COMMIT, @Async) calls Toss API and marks DONE/FAILED
-5. **폴백**: `OutboxWorker` (5s fixedDelay)가 즉시 처리 누락된 PENDING 레코드 재처리
+## NicePay
 
----
+| 항목 | 값 |
+|---|---|
+| Base URL | `${NICEPAY_API_URL:https://sandbox-api.nicepay.co.kr}` |
+| 인증 | Client Key / Secret Key (`NICEPAY_CLIENT_KEY` / `NICEPAY_SECRET_KEY`) |
+| confirm endpoint | `POST /v1/payments/{tid}` |
+| getStatus endpoint | `GET /v1/payments/{tid}` |
+| 시각 처리 | `paidAt` 원문 보존, offset 정규화 적용 (직전 fix — `NicePay paidAt offset 정규화 — ConfirmedEvent 역직렬화 회복`) |
+| 응답 매핑 | `NicepayPaymentApiResponse` / `NicepayPaymentApiFailResponse` |
 
-**Payment Gateway — NicePay:**
-- Base URL: `https://sandbox-api.nicepay.co.kr` (config key `payment.gateway.nicepay.base-url`)
-- SDK/Client: `HttpNicepayOperator` implements `NicepayOperator` port
-  - Implementation: `src/main/java/com/hyoguoo/paymentplatform/paymentgateway/infrastructure/api/HttpNicepayOperator.java`
-  - HTTP client: Spring `WebClient` via `HttpOperatorImpl` (same as Toss)
-- Auth: HTTP Basic Auth with Base64-encoded `${NICEPAY_SECRET_KEY}:` — config key `payment.gateway.nicepay.secret-key`
+## 벤더 호출 회복성
 
-**NicePay API Endpoints:**
+- retryable 분류: 타임아웃 / 5xx / 매핑 불가 — `PaymentRetryableException` 또는 `PaymentTossRetryableException`. 복구 사이클이 RETRY_LATER 로 처리
+- non-retryable: 4xx / PG_NOT_FOUND — 즉시 COMPLETE_FAILURE 분기
+- AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
 
-| Operation | Method | Path | Notes |
-|-----------|--------|------|-------|
-| Confirm payment | POST | `{base-url}/v1/payments/{tid}` | tid = paymentKey (멱등성 키 역할) |
-| Cancel payment | POST | `{base-url}/v1/payments/{tid}/cancel` | |
-| Get payment by tid | GET | `{base-url}/v1/payments/{tid}` | |
-| Get payment by orderId | GET | `{base-url}/v1/payments/find/{orderId}` | |
+## 외부 PG HTTP timeout 정책
 
-**NicePay 특수 에러 처리:**
-- `2201` (중복 승인): `handleDuplicateApprovalCompensation` — tid로 PG 재조회 → status==paid AND 금액 일치 검증 → SUCCESS
-- Retryable: `2159`, `A246`, `A299`
-- Non-retryable: `3011`~`3014`, `2152`, `2156`
+pg-service 가 Toss / NicePay 벤더를 호출할 때 적용하는 timeout 설정과 그 근거.
 
----
+| timeout | 기본값 | 환경변수 | 근거 |
+|---|---|---|---|
+| connect-timeout | 3000ms | `PG_HTTP_CONNECT_TIMEOUT_MS` | 벤더 LB 가 TCP 연결을 빠르게 수락하므로 3s 로 충분 |
+| read-timeout | 10000ms | `PG_HTTP_READ_TIMEOUT_MS` | 카드망 round-trip 포함 벤더 처리에 평균 1~3s, 피크 시 그 이상도 가능. 10s 를 안전 baseline 으로 설정 |
 
-**Benchmark mode** (`benchmark` profile, `BenchmarkConfig`):
-- `FakeTossHttpOperator` replaces `HttpOperatorImpl` as `@Primary` `HttpOperator` bean
-- Location: `src/main/java/com/hyoguoo/paymentplatform/mock/FakeTossHttpOperator.java`
-- Simulates network delay: `min-delay-millis` to `max-delay-millis` (default 100–300ms)
-- Returns fixed `DONE` response on POST, `IN_PROGRESS` on GET
+**payment-service Feign(5s) vs pg-service 외부 PG(10s) 비대칭 이유**:
+payment-service 의 Feign `readTimeout: 5000` 은 같은 플랫폼 내부 서비스 간 call 기준이다.
+pg-service 는 카드망을 포함한 외부 PG 처리를 기다려야 하므로 내부 call timeout 보다 외부 PG timeout 이 반드시 길어야 한다.
+내부 5s 보다 짧으면 pg-service 가 벤더 응답을 기다리는 중에 payment-service 가 먼저 타임아웃 나는 것을 방지하지 못한다.
 
-## Data Storage
+**Phase 4 튜닝 deferred**: 현재 값은 운영 측정 없는 baseline. T4-D (부하 측정) 결과를 기반으로 실제 SLO 에 맞춰 정밀 튜닝할 예정.
 
-**Databases:**
-- Type: MySQL 8.0 (`mysql:8.0` Docker image)
-- Database name: `payment-platform`
-- Connection (docker): `jdbc:mysql://mysql:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true`
-- Connection env vars: `DB_USERNAME` / `DB_PASSWORD`
-- Client: Spring Data JPA with Hibernate (dialect `org.hibernate.dialect.MySQLDialect`)
-- ORM: Hibernate with JPA entities extending `BaseEntity` (`created_at`, `updated_at`)
-- DDL: `hibernate.ddl-auto: update` (docker profile)
-- Seed data: `src/main/resources/data.sql` (2 users, 2 products via `INSERT IGNORE`)
+## Cross-service HTTP
 
-**MySQL Schema — Key Tables:**
+payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin, CLIENT-SIDE-LB Phase B).
 
-`payment_event` — maps to `PaymentEventEntity`:
-- `id` BIGINT PK AUTO_INCREMENT
-- `buyer_id` BIGINT NOT NULL
-- `seller_id` BIGINT NOT NULL
-- `order_name` VARCHAR NOT NULL
-- `order_id` VARCHAR NOT NULL
-- `payment_key` VARCHAR (nullable until confirm)
-- `status` ENUM(`READY`, `IN_PROGRESS`, `RETRYING`, `DONE`, `FAILED`, `CANCELED`, `PARTIAL_CANCELED`, `EXPIRED`, `QUARANTINED`) NOT NULL
-- `gateway_type` VARCHAR(20) (TOSS/NICEPAY, nullable for legacy records — Flyway V1 migration)
-- `executed_at`, `approved_at`, `last_status_changed_at` DATETIME
-- `retry_count` INT
-- `status_reason` VARCHAR
-- `created_at`, `updated_at` (from `BaseEntity`)
+| 호출 | 경로 | Feign 클라이언트 | 어댑터 (port 구현) |
+|---|---|---|---|
+| product 조회 | `GET /api/v1/products/{id}` | `ProductFeignClient` (`@FeignClient(name = "product-service", configuration = ProductFeignConfig.class)`) | `ProductHttpAdapter` |
+| user 조회 | `GET /api/v1/users/{id}` | `UserFeignClient` (`@FeignClient(name = "user-service", configuration = UserFeignConfig.class)`) | `UserHttpAdapter` |
 
-`payment_order` — maps to `PaymentOrderEntity`:
-- `id` BIGINT PK
-- `payment_event_id` BIGINT NOT NULL (FK to payment_event)
-- `order_id` VARCHAR NOT NULL
-- `product_id` BIGINT NOT NULL
-- `quantity` INT NOT NULL
-- `amount` DECIMAL NOT NULL
-- `status` ENUM(`NOT_STARTED`, `EXECUTING`, `SUCCESS`, `FAIL`, `CANCEL`, `EXPIRED`) NOT NULL
+**계약 매핑**: 각 `*FeignConfig` 의 `ErrorDecoder` 가 4xx / 5xx 응답을 도메인 예외로 매핑.
+- 404 → `*NotFoundException` (PRODUCT_NOT_FOUND / USER_NOT_FOUND)
+- 429 / 503 → `*ServiceRetryableException` (`PRODUCT_SERVICE_UNAVAILABLE` / `USER_SERVICE_UNAVAILABLE`)
+- 그 외 5xx → `IllegalStateException`
 
-`payment_outbox` — maps to `PaymentOutboxEntity` (Outbox strategy):
-- `id` BIGINT PK
-- `order_id` VARCHAR(100) NOT NULL UNIQUE
-- `status` ENUM(`PENDING`, `IN_FLIGHT`, `DONE`, `FAILED`) NOT NULL VARCHAR(20)
-- `retry_count` INT NOT NULL
-- `next_retry_at` DATETIME (nullable; set on RETRYABLE_FAILURE to schedule next processing time)
-- `in_flight_at` DATETIME
-- `created_at`, `updated_at`
-- Index: `idx_payment_outbox_status_created` on `(status, created_at)`
+**Transport 예외**: 어댑터 (`ProductHttpAdapter` / `UserHttpAdapter`) 가 `feign.RetryableException` 만 catch 해 `*ServiceRetryableException` 으로 변환. 4xx / 5xx 매핑은 `ErrorDecoder` 단계에서 끝났으므로 어댑터에는 try/catch 가 transport 한 분기만 남는다.
 
-`payment_history` — maps to `PaymentHistoryEntity` (audit trail):
-- `id` BIGINT PK
-- `payment_event_id` BIGINT NOT NULL
-- `order_id` VARCHAR NOT NULL
-- `previous_status` ENUM (nullable for initial creation)
-- `current_status` ENUM NOT NULL
-- `reason` TEXT
-- `change_status_at` DATETIME NOT NULL
+**Timeout baseline**: `application.yml:18-23` — `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. Phase 4 측정 기반 SLO 로 조정 예정 (TODOS T4-D).
 
-`user` — maps to `UserEntity`:
-- `id`, `email`, `username`, `created_at`, `updated_at`
+**Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
 
-`product` — maps to `ProductEntity`:
-- `id`, `name`, `description`, `price`, `stock`, `seller_id`, `created_at`, `updated_at`
+**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 4분기 (404 / 429 / 503 / 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함).
 
-**File Storage:**
-- Local filesystem only — log files written to `/var/log/app` (mounted volume in Docker)
+**회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
 
-**Caching:**
-- None
+## 외부 시스템 통신 매트릭스
 
-## Authentication & Identity
+| 출발 | 도착 | 프로토콜 | 토픽/엔드포인트 |
+|---|---|---|---|
+| 브라우저 | gateway | HTTP | `/api/v1/payments/{checkout,confirm,status}/...` |
+| gateway | payment-service | HTTP | Eureka 라우팅 |
+| gateway | product-service | HTTP | Eureka 라우팅 |
+| gateway | user-service | HTTP | Eureka 라우팅 |
+| payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` |
+| payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
+| payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
+| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry, attempt < 4) — `pg_outbox.available_at` 기반 지연 발행 |
+| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (attempt ≥ 4 시 격리, `PgVendorCallService.insertDlqOutbox`) |
+| pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
+| payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (`PaymentConfirmDlqKafkaPublisher` — 결과 처리 영구 실패 시) |
+| payment-service → product-service | Kafka | one-way | `payment.events.stock-committed` (APPROVED 시만 — RDB 누적 차감 ledger) |
+| pg-service → 벤더 | HTTP | one-way | Toss / NicePay confirm/getStatus |
 
-**Auth Provider:**
-- None (no user authentication for API endpoints)
-- Toss Payments uses Basic Auth: `Authorization: Basic base64(secretKey:)` — implemented in `HttpTossOperator.generateBasicAuthHeaderValue()`
+## 관측성 통합
 
-## Monitoring & Observability
+| 시스템 | 통합 방식 |
+|---|---|
+| Prometheus | 각 서비스 `/actuator/prometheus` 스크랩 (15s) |
+| Grafana | Prometheus + Loki + Tempo 데이터소스 |
+| Loki | Logback `LogstashEncoder` + LogFmt → Promtail/직접 push |
+| Tempo | OTel exporter (`io.opentelemetry:opentelemetry-exporter-otlp`) |
+| traceparent 전파 | OTel propagation — Servlet/VT/Async/Kafka producer/consumer 경계 모두 |
 
-**Metrics:**
-- Micrometer + Prometheus: `micrometer-registry-prometheus`
-- Exposed at `/actuator/prometheus` (docker profile)
-- Custom metric beans:
-  - `PaymentStateMetrics` — payment status counts (polling every 10s, `metrics.payment.state.polling-interval-seconds`)
-  - `PaymentHealthMetrics` — stuck IN_PROGRESS / high retry detection (polling every 10s, `metrics.payment.health.polling-interval-seconds`)
-  - `PaymentTransitionMetrics` — status transition counters (via `@PaymentStatusChange` AOP annotation)
-  - `TossApiMetrics` — Toss API call duration/success (via `@TossApiMetric` AOP annotation)
-- Grafana dashboards provisioned at `docker/compose/grafana/provisioning/`
+## 로컬 개발 시 외부 의존 관리
 
-**Logs:**
-- Structured logging via `LogFmt` utility class: `src/main/java/com/hyoguoo/paymentplatform/core/common/log/LogFmt.java`
-- Log fields: `domain`, `eventType`, `traceId` (MDC), message
-- Local/test profile: plain-text console with color (`LOG_PATTERN_COLOR`)
-- Docker profile: console + Logstash TCP socket at `logstash:5050` (port 5050)
-- `TraceIdFilter` injects `traceId` into MDC for each request: `src/main/java/com/hyoguoo/paymentplatform/core/common/filter/TraceIdFilter.java`
-- Log masking: `MaskingPatternLayout` (`src/main/java/com/hyoguoo/paymentplatform/core/common/log/MaskingPatternLayout.java`)
+| 의존 | 안 떠 있을 때 동작 |
+|---|---|
+| 다른 비즈니스 서비스 | checkout/confirm 시 503 (`USER_SERVICE_UNAVAILABLE` / `PRODUCT_SERVICE_UNAVAILABLE`) |
+| Kafka | confirm 은 HTTP 202 까지 가지만 outbox→Kafka 발행 실패 → relay 재시도 또는 DLQ. payment.events.confirmed consumer 도 미동작 → status 영구 PROCESSING |
+| Redis dedupe | `EventDedupeStore` 호출 실패 → CACHE_DOWN 경로 → QUARANTINED + 보상 펜딩 |
+| Redis stock | confirm 시 재고 DECR 실패 → 동일 |
+| MySQL | 부팅 자체 실패 (Flyway 가 DB 연결 못 함) |
+| Eureka | discovery 미동작 → cross-service HTTP 가 IP 직접 못 찾음 |
 
-**Error Tracking:**
-- None (Sentry or equivalent not present)
+## 설정 파일 인덱스
 
-## CI/CD & Deployment
-
-**Hosting:**
-- Docker Compose (`docker/compose/docker-compose.yml`) — local/benchmark environment
-- Active profiles on app service: `SPRING_PROFILES_ACTIVE=docker,benchmark`
-
-**CI Pipeline:**
-- GitHub Actions (`.github/workflows/ci.yml`): push/PR to `main` → JUnit 테스트 + JaCoCo 커버리지 리포트 → reviewdog로 PR 어노테이션
-
-**Docker Compose Services:**
-
-| Service | Image | Port | Notes |
-|---------|-------|------|-------|
-| `mysql` | `mysql:8.0` | 3306 | database `payment-platform` |
-| `elasticsearch` | `docker.elastic.co/elasticsearch/elasticsearch:7.17.9` | 9200 | single-node, no security |
-| `logstash` | `docker.elastic.co/logstash/logstash:7.17.9` | 5050 (TCP), 5051 (UDP) | receives JSON from logback |
-| `kibana` | `docker.elastic.co/kibana/kibana:7.17.9` | 5601 | dashboard |
-| `kibana-init` | `curlimages/curl:latest` | — | loads saved objects on startup |
-| `prometheus` | `prom/prometheus:latest` | 9090 | scrapes `/actuator/prometheus` |
-| `grafana` | `grafana/grafana:latest` | 3000 | dashboards provisioned via bind-mounts |
-| `app` | Dockerfile | 8080 | Spring Boot app, profiles `docker,benchmark` |
-
-## Webhooks & Callbacks
-
-**Incoming:**
-- None (no Toss webhook endpoints registered)
-
-**Outgoing:**
-- Toss Payments / NicePay API calls (confirm, cancel, status query)
-
-## Environment Configuration
-
-**Required env vars:**
-- `TOSS_SECRET_KEY` — Toss Payments secret key
-- `NICEPAY_SECRET_KEY` — NicePay secret key
-- `DB_USERNAME` — MySQL username (default `payment`)
-- `DB_PASSWORD` — MySQL password (default `payment123`)
-- `GRAFANA_USER` / `GRAFANA_PASSWORD` — Grafana admin credentials
-
-**Secrets location:**
-- `docker/compose/.env.secret` — loaded by docker-compose `env_file` for `app` service (not committed)
-
----
-
-*Integration audit: 2026-04-14*
+| 파일 | 용도 |
+|---|---|
+| `application.yml` | default profile — IDE 로컬 실행 (호스트 포트 사용) |
+| `application-docker.yml` | docker compose 배포 — 컨테이너 hostname (`mysql-payment`, `kafka` 등) 사용 |
+| `application-benchmark.yml` (payment-service) | k6 부하 테스트 프로필 |
+| `application-smoke.yml` (pg-service) | FakePgGatewayStrategy 활성화용 스모크 프로필 |

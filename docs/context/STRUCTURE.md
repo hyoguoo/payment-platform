@@ -1,361 +1,188 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-04-05
+> 최종 갱신: 2026-04-27
 
-## Directory Layout
+## 루트 레이아웃
 
 ```
 payment-platform/
-├── src/main/java/com/hyoguoo/paymentplatform/
-│   ├── PaymentPlatformApplication.java          # Spring Boot entry point
-│   ├── core/
-│   │   ├── common/
-│   │   │   ├── aspect/                          # @PublishDomainEvent AOP
-│   │   │   │   └── annotation/                  # @PublishDomainEvent, @Reason
-│   │   │   ├── dto/                             # PageResponse, PageSpec, SortDirection
-│   │   │   ├── exception/                       # ErrorCode, GlobalErrorCode, GlobalExceptionHandler
-│   │   │   ├── filter/                          # TraceIdFilter
-│   │   │   ├── infrastructure/
-│   │   │   │   └── http/                        # HttpOperator, HttpOperatorImpl
-│   │   │   ├── log/                             # LogFmt, LogDomain, EventType, MaskingPatternLayout
-│   │   │   ├── metrics/                         # Micrometer metric beans
-│   │   │   │   ├── annotation/                  # @PaymentStatusChange, @TossApiMetric, @ErrorCode
-│   │   │   │   └── aspect/                      # PaymentStatusMetricsAspect, TossApiMetricsAspect
-│   │   │   ├── service/port/                    # LocalDateTimeProvider, UUIDProvider
-│   │   │   └── util/                            # EncodeUtils
-│   │   ├── config/                              # JpaConfig, MetricsConfig, QueryDslConfig, SchedulerConfig, WebConfig
-│   │   └── response/                            # BasicResponse, ErrorResponse, ResponseAdvice, ResponseUtil
-│   ├── mock/                                    # FakeTossHttpOperator, BenchmarkConfig (@Profile("benchmark"))
-│   ├── payment/                                 # Primary bounded context
-│   │   ├── application/
-│   │   │   ├── OutboxAsyncConfirmService.java   # confirm service implementation (outbox 전략)
-│   │   │   ├── IdempotencyKeyHasher.java        # idempotency key hashing helper
-│   │   │   ├── PaymentStatusServiceImpl.java    # always active
-│   │   │   ├── PaymentCheckoutServiceImpl.java
-│   │   │   ├── AdminPaymentServiceImpl.java
-│   │   │   ├── PaymentExpirationServiceImpl.java
-│   │   │   ├── PaymentHistoryServiceImpl.java
-│   │   │   ├── dto/
-│   │   │   │   ├── admin/                       # PaymentEventResult, PaymentHistoryResult, PaymentOrderResult, search queries
-│   │   │   │   ├── request/                     # CheckoutCommand, PaymentConfirmCommand, TossConfirmGatewayCommand, etc.
-│   │   │   │   ├── response/                    # PaymentConfirmAsyncResult, PaymentConfirmResult, CheckoutResult, PaymentStatusResult
-│   │   │   │   └── vo/                          # OrderedProduct
-│   │   │   ├── port/                            # outbound port interfaces
-│   │   │   │   ├── PaymentEventRepository.java
-│   │   │   │   ├── PaymentGatewayPort.java
-│   │   │   │   ├── PaymentOrderRepository.java
-│   │   │   │   ├── PaymentOutboxRepository.java
-│   │   │   │   ├── PaymentHistoryRepository.java
-│   │   │   │   ├── IdempotencyStore.java        # idempotency 저장소 포트
-│   │   │   │   ├── ProductPort.java
-│   │   │   │   ├── UserPort.java
-│   │   │   │   └── AdminPaymentQueryRepository.java
-│   │   │   ├── publisher/
-│   │   │   │   └── PaymentEventPublisher.java   # Spring ApplicationEventPublisher wrapper
-│   │   │   └── usecase/                         # internal application services (not ports)
-│   │   │       ├── PaymentTransactionCoordinator.java   # all @Transactional boundaries
-│   │   │       ├── PaymentCommandUseCase.java   # status-change operations
-│   │   │       ├── PaymentLoadUseCase.java
-│   │   │       ├── PaymentOutboxUseCase.java
-│   │   │       ├── PaymentHistoryUseCase.java
-│   │   │       ├── AdminPaymentLoadUseCase.java
-│   │   │       ├── PaymentFailureUseCase.java
-│   │   │       ├── PaymentCreateUseCase.java
-│   │   │       ├── OrderedProductUseCase.java
-│   │   │       └── OrderedUserUseCase.java
-│   │   ├── domain/
-│   │   │   ├── PaymentEvent.java                # primary aggregate
-│   │   │   ├── PaymentOrder.java
-│   │   │   ├── PaymentOutbox.java               # outbox strategy domain object
-│   │   │   ├── PaymentHistory.java
-│   │   │   ├── dto/                             # cross-layer DTOs (records)
-│   │   │   │   ├── enums/                       # PaymentStatus, TossPaymentStatus, PaymentConfirmResultStatus, etc.
-│   │   │   │   └── vo/                          # PaymentDetails, PaymentFailure
-│   │   │   ├── enums/                           # PaymentEventStatus, PaymentOrderStatus, PaymentOutboxStatus
-│   │   │   └── event/                           # PaymentCreatedEvent, PaymentStatusChangedEvent, PaymentRetryAttemptedEvent, PaymentHistoryEvent
-│   │   ├── exception/
-│   │   │   ├── PaymentStatusException.java
-│   │   │   ├── PaymentValidException.java
-│   │   │   ├── PaymentTossRetryableException.java
-│   │   │   ├── PaymentTossNonRetryableException.java
-│   │   │   ├── PaymentTossConfirmException.java
-│   │   │   ├── PaymentOrderedProductStockException.java
-│   │   │   ├── PaymentFoundException.java
-│   │   │   ├── PaymentHistoryException.java
-│   │   │   ├── PaymentRetryableValidateException.java
-│   │   │   ├── UnsupportedPaymentGatewayException.java
-│   │   │   └── common/
-│   │   │       ├── PaymentErrorCode.java
-│   │   │       └── PaymentExceptionHandler.java
-│   │   ├── infrastructure/
-│   │   │   ├── PaymentInfrastructureMapper.java
-│   │   │   ├── entity/                          # JPA entities (PaymentEventEntity, etc.)
-│   │   │   ├── gateway/
-│   │   │   │   ├── PaymentGatewayFactory.java
-│   │   │   │   ├── PaymentGatewayProperties.java
-│   │   │   │   ├── PaymentGatewayStrategy.java  # interface
-│   │   │   │   ├── PaymentGatewayType.java
-│   │   │   │   └── toss/
-│   │   │   │       └── TossPaymentGatewayStrategy.java
-│   │   │   ├── idempotency/
-│   │   │   │   ├── IdempotencyStoreImpl.java    # implements IdempotencyStore
-│   │   │   │   └── IdempotencyProperties.java   # idempotency 설정 프로퍼티
-│   │   │   ├── internal/                        # cross-context adapters
-│   │   │   │   ├── InternalPaymentGatewayAdapter.java  # implements PaymentGatewayPort
-│   │   │   │   ├── InternalProductAdapter.java         # implements ProductPort
-│   │   │   │   └── InternalUserAdapter.java            # implements UserPort
-│   │   │   ├── publisher/
-│   │   │   │   └── OutboxImmediatePublisher.java  # outbox 즉시 발행 구현체
-│   │   │   └── repository/
-│   │   │       ├── JpaPaymentEventRepository.java
-│   │   │       ├── JpaPaymentOrderRepository.java
-│   │   │       ├── JpaPaymentOutboxRepository.java
-│   │   │       ├── JpaPaymentHistoryRepository.java
-│   │   │       ├── PaymentEventRepositoryImpl.java
-│   │   │       ├── PaymentOutboxRepositoryImpl.java
-│   │   │       ├── PaymentHistoryRepositoryImpl.java
-│   │   │       ├── PaymentOrderRepositoryImpl.java
-│   │   │       └── AdminPaymentQueryRepositoryImpl.java
-│   │   ├── listener/
-│   │   │   ├── OutboxImmediateEventHandler.java # @TransactionalEventListener(AFTER_COMMIT) — channel.offer 호출
-│   │   │   ├── PaymentHistoryEventListener.java # Spring ApplicationEvent handler
-│   │   │   └── port/
-│   │   │       └── PaymentHistoryService.java
-│   │   ├── presentation/
-│   │   │   ├── PaymentController.java           # POST /api/v1/payments/confirm, /checkout; GET /status
-│   │   │   ├── PaymentAdminController.java
-│   │   │   ├── PaymentPresentationMapper.java
-│   │   │   ├── dto/
-│   │   │   │   ├── request/                     # CheckoutRequest, PaymentConfirmRequest, PaymentCancelRequest
-│   │   │   │   └── response/                    # PaymentConfirmResponse, PaymentStatusResponse, PaymentStatusApiResponse, etc.
-│   │   │   └── port/                            # inbound port interfaces
-│   │   │       ├── PaymentConfirmService.java   # implemented by OutboxAsyncConfirmService
-│   │   │       ├── PaymentStatusService.java    # implemented by PaymentStatusServiceImpl
-│   │   │       ├── PaymentCheckoutService.java
-│   │   │       └── AdminPaymentService.java
-│   │   └── scheduler/
-│   │       ├── OutboxImmediateWorker.java       # SmartLifecycle — VT/PT 워커 스레드; channel.take()
-│   │       ├── OutboxProcessingService.java     # ImmediateWorker/OutboxWorker 공유 처리 로직
-│   │       ├── OutboxWorker.java                # @Scheduled 폴백 outbox processor
-│   │       ├── PaymentScheduler.java            # @Scheduled expiration
-│   │       └── port/
-│   │           └── PaymentExpirationService.java
-│   ├── paymentgateway/                          # Toss Payments gateway context
-│   │   ├── application/
-│   │   │   ├── PaymentGatewayServiceImpl.java
-│   │   │   ├── dto/request/                     # TossConfirmCommand, TossCancelCommand
-│   │   │   ├── port/
-│   │   │   │   └── TossOperator.java
-│   │   │   └── usecase/                         # TossApiCallUseCase, TossApiFailureUseCase
-│   │   ├── domain/
-│   │   │   ├── TossPaymentInfo.java
-│   │   │   ├── enums/                           # PaymentConfirmResultStatus, TossPaymentStatus
-│   │   │   └── vo/                              # TossPaymentDetails, TossPaymentFailure
-│   │   ├── exception/
-│   │   │   ├── PaymentGatewayApiException.java
-│   │   │   └── common/                          # PaymentGatewayErrorCode, PaymentGatewayExceptionHandler, TossPaymentErrorCode
-│   │   ├── infrastructure/
-│   │   │   ├── PaymentGatewayInfrastructureMapper.java
-│   │   │   ├── api/
-│   │   │   │   └── HttpTossOperator.java        # implements TossOperator
-│   │   │   └── dto/response/                    # TossPaymentApiResponse, TossPaymentApiFailResponse
-│   │   └── presentation/
-│   │       ├── PaymentGatewayInternalReceiver.java   # internal Java facade (not a public HTTP endpoint)
-│   │       ├── PaymentGatewayPresentationMapper.java
-│   │       ├── dto/request/                     # TossConfirmRequest, TossCancelRequest
-│   │       ├── dto/response/                    # TossPaymentResponse
-│   │       └── port/
-│   │           └── PaymentGatewayService.java
-│   ├── product/                                 # Product / stock context
-│   │   ├── application/
-│   │   │   ├── ProductServiceImpl.java
-│   │   │   ├── dto/                             # ProductStockCommand
-│   │   │   └── port/
-│   │   │       └── ProductRepository.java
-│   │   ├── domain/
-│   │   │   └── Product.java
-│   │   ├── exception/                           # ProductFoundException, ProductStockException
-│   │   │   └── common/                          # ProductErrorCode, ProductExceptionHandler
-│   │   ├── infrastructure/
-│   │   │   ├── entity/                          # ProductEntity
-│   │   │   └── repository/                      # JpaProductRepository, ProductRepositoryImpl
-│   │   └── presentation/
-│   │       ├── ProductInternalReceiver.java     # internal Java facade
-│   │       ├── ProductPresentationMapper.java
-│   │       ├── dto/                             # ProductInfoResponse, ProductStockRequest
-│   │       └── port/
-│   │           └── ProductService.java
-│   └── user/                                    # User context
-│       ├── application/
-│       │   ├── UserServiceImpl.java
-│       │   └── port/
-│       │       └── UserRepository.java
-│       ├── domain/
-│       │   └── User.java
-│       ├── exception/                           # UserFoundException
-│       │   └── common/                          # UserErrorCode, UserExceptionHandler
-│       ├── infrastructure/
-│       │   ├── entity/                          # UserEntity
-│       │   └── repository/                      # JpaUserRepository, UserRepositoryImpl
-│       └── presentation/
-│           ├── UserInternalReceiver.java        # internal Java facade
-│           ├── UserPresentationMapper.java
-│           ├── dto/                             # UserInfoResponse
-│           └── port/
-│               └── UserService.java
-├── src/main/resources/
-│   ├── application.yml                          # default config (outbox 전략, JPA settings)
-│   ├── application-benchmark.yml               # benchmark profile overrides
-│   ├── application-docker.yml                  # docker profile overrides
-│   ├── data.sql                                # seed data
-│   ├── logback-spring.xml
-│   └── templates/admin/                        # Thymeleaf admin UI templates
-└── src/test/java/com/hyoguoo/paymentplatform/
-    ├── core/test/                               # shared test utilities
-    ├── mixin/                                   # Jackson mixin helpers
-    ├── mock/                                    # test fakes (FakePaymentEventRepository, FakeIdempotencyStore, etc.)
-    └── payment/
-        ├── application/                         # unit tests for application services
-        │   ├── dto/response/                    # DTO unit tests
-        │   ├── IdempotencyKeyHasherTest.java    # IdempotencyKeyHasher 단위 테스트
-        │   └── usecase/                         # use-case unit tests
-        ├── domain/                              # domain entity unit tests
-        ├── infrastructure/
-        │   ├── gateway/                         # TossPaymentGatewayStrategy tests
-        │   └── publisher/                       # OutboxImmediatePublisher tests
-        ├── listener/                            # PaymentHistoryEventListener tests
-        ├── presentation/                        # PaymentController slice tests (extends BaseIntegrationTest)
-        └── scheduler/                           # OutboxWorker tests
+├── settings.gradle               # 6개 Gradle 모듈 등록
+├── build.gradle                  # 루트 빌드 설정 (공통 plugin · BOM · 컴파일 옵션)
+├── lombok.config                 # Lombok 글로벌 설정
+├── CLAUDE.md                     # AI 에이전트 가이드 (영구 문서 인덱스)
+├── README.md                     # 프로젝트 README
+│
+├── config/                       # 정적 분석 룰
+│   ├── checkstyle/
+│   └── spotbugs/                 # spotbugs-exclude*.xml
+│
+├── docker/                       # docker compose 정의 (인프라 + 앱 + 관측성 + 스모크)
+│   ├── docker-compose.infra.yml
+│   ├── docker-compose.apps.yml
+│   ├── docker-compose.observability.yml
+│   └── docker-compose.smoke.yml
+│
+├── observability/                # Prometheus / Grafana / Loki / Tempo 설정
+│
+├── scripts/                      # 운영 도구 (시점 무관 영구)
+│   ├── common.sh
+│   ├── compose-up.sh
+│   └── smoke/                    # 모든 영구 smoke 도구
+│       ├── infra-healthcheck.sh
+│       ├── trace-continuity-check.sh
+│       ├── trace-header-check.sh
+│       ├── create-topics.sh
+│       └── kafka-topic-config.sh
+│
+├── docs/
+│   ├── STATE.md                  # 활성 작업 상태 (단일 파일)
+│   ├── context/                  # 영구 문서 (이 디렉토리)
+│   ├── smoke/                    # 영구 smoke 가이드
+│   └── archive/                  # 종결된 토픽 보관 — AI 에이전트 미참조
+│       ├── README.md             # 토픽 인덱스 표
+│       └── <topic>/              # PLAN, CONTEXT, COMPLETION-BRIEFING, rounds, phase-gate, scripts
+│
+└── 6개 Gradle 모듈
+    ├── eureka-server/
+    ├── gateway/
+    ├── payment-service/
+    ├── pg-service/
+    ├── product-service/
+    └── user-service/
 ```
 
----
+## 서비스 모듈 트리 (4 비즈니스 서비스 공통)
 
-## Directory Purposes
+각 비즈니스 서비스(`payment` / `pg` / `product` / `user`) 는 동일한 hexagonal 6-layer 구조.
 
-**`payment/application/`:**
-- All application-level service beans live here, including the confirm service implementation (outbox 단일 전략)
-- Use-case sub-services are in `usecase/`; port interfaces in `port/`
+```
+<service>/
+├── build.gradle                  # 모듈별 의존성
+└── src/
+    ├── main/
+    │   ├── java/com/hyoguoo/paymentplatform/<bounded>/
+    │   │   ├── domain/           # 순수 도메인 — Entity, Value Object, 도메인 서비스
+    │   │   │   ├── enums/
+    │   │   │   └── exception/    # 도메인 예외
+    │   │   ├── application/      # Use case + 포트
+    │   │   │   ├── port/
+    │   │   │   │   ├── in/       # 입력 포트 (use case 인터페이스)
+    │   │   │   │   └── out/      # 출력 포트 (의존성 역전)
+    │   │   │   ├── usecase/      # 입력 포트 구현
+    │   │   │   ├── service/      # 보조 서비스 (TX 코디네이터 등)
+    │   │   │   ├── dto/          # 애플리케이션 DTO
+    │   │   │   └── messaging/    # 토픽명 상수, 메시지 DTO
+    │   │   ├── presentation/     # HTTP 진입점
+    │   │   │   ├── controller/
+    │   │   │   ├── port/         # presentation 측 인터페이스 (있으면)
+    │   │   │   └── dto/          # request / response DTO
+    │   │   ├── infrastructure/   # 출력 포트 구현 + 외부 어댑터
+    │   │   │   ├── entity/       # JPA Entity
+    │   │   │   ├── repository/   # JPA Repository 구현 (출력 포트 어댑터)
+    │   │   │   ├── messaging/
+    │   │   │   │   ├── publisher/
+    │   │   │   │   └── consumer/
+    │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service — feign/ 서브폴더에 *FeignClient + *FeignConfig)
+    │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service — HttpOperatorImpl)
+    │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
+    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment Redis / pg Redis+RDB / product RDB)
+    │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
+    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker)
+    │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
+    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob)
+    │   │   │   ├── aspect/       # 인프라 측 AOP 구현 (DomainEventLoggingAspect, *MetricsAspect)
+    │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service — toss/ nicepay/ fake/)
+    │   │   │   ├── metrics/      # Micrometer 메트릭 정의 / 등록
+    │   │   │   └── config/
+    │   │   ├── application/aspect/annotation/  # AOP 어노테이션 정의 (@PublishDomainEvent, @PaymentStatusChange, @TossApiMetric — 어노테이션만)
+    │   │   ├── core/             # 횡단 관심사 (서비스마다 깊이 다름 — 아래는 payment-service 기준 최대 트리)
+    │   │   │   ├── common/
+    │   │   │   │   ├── log/      # LogFmt — 모든 서비스 공통 보유
+    │   │   │   │   ├── aspect/   # 가벼운 메타 aspect 어노테이션 (payment-service 만)
+    │   │   │   │   ├── dto/      # 공통 DTO (payment-service 만)
+    │   │   │   │   ├── exception/  # 공통 예외 (payment-service 만)
+    │   │   │   │   ├── infrastructure/  # 공통 인프라 어댑터 (payment-service 만 — 예: LocalDateTimeProvider 구현)
+    │   │   │   │   ├── metrics/  # 공통 메트릭 (payment-service 만)
+    │   │   │   │   └── service/  # 공통 서비스 + port (payment-service 만)
+    │   │   │   ├── config/       # @Configuration (AsyncConfig, KafkaConfig, ...)
+    │   │   │   │   └── concurrent/  # ContextAwareVirtualThreadExecutors (payment / pg)
+    │   │   │   └── response/     # 공통 응답 wrapper (payment-service 만)
+    │   │   └── exception/        # 애플리케이션 공통 예외
+    │   └── resources/
+    │       ├── application.yml
+    │       ├── application-docker.yml
+    │       ├── application-benchmark.yml   # (payment-service 만)
+    │       ├── application-smoke.yml       # (pg-service 만)
+    │       ├── db/migration/               # Flyway V1 schema + (필요 시) V2 seed
+    │       ├── static/                     # 결제 UI (payment-service 만)
+    │       ├── templates/                  # Thymeleaf admin (payment-service 만)
+    │       └── logback-spring.xml
+    └── test/
+        ├── java/com/hyoguoo/paymentplatform/<bounded>/
+        │   ├── domain/                     # @ParameterizedTest 도메인 단위
+        │   ├── application/                # Mockito 단위 + Fake 어댑터
+        │   ├── infrastructure/             # Testcontainers MySQL/Redis 통합
+        │   └── presentation/               # @WebMvcTest
+        └── resources/
+            └── application-test.yml        # (필요 시)
+```
 
-**`payment/application/usecase/`:**
-- Internal collaborators, not exposed as ports
-- `PaymentTransactionCoordinator` is the only place where `@Transactional` coordinates multiple use cases
+## 모듈 의존 그래프
 
-**`payment/infrastructure/internal/`:**
-- Adapters that cross context boundaries by calling into another context's `presentation/port` interface
-- No HTTP wire calls — direct Spring bean method calls
+```mermaid
+flowchart TD
+    GW[gateway] -.discovery.-> EU[eureka-server]
+    Pay[payment-service] -.discovery.-> EU
+    Pg[pg-service] -.discovery.-> EU
+    Prod[product-service] -.discovery.-> EU
+    Usr[user-service] -.discovery.-> EU
 
-**`payment/infrastructure/idempotency/`:**
-- `IdempotencyStoreImpl` implements the `IdempotencyStore` port using Redis or in-memory store
-- `IdempotencyProperties` holds related configuration properties
+    GW -- "라우팅" --> Pay & Prod & Usr
 
-**`payment/infrastructure/publisher/`:**
-- `OutboxImmediatePublisher` implements outbox 즉시 발행 로직 (outbox 레코드 생성 후 즉시 처리)
+    Pay -- "HTTP /api/products/*" --> Prod
+    Pay -- "HTTP /api/users/*" --> Usr
 
-**`payment/listener/`:**
-- Spring event listener (`PaymentHistoryEventListener`) for domain event handling
-- Infrastructure-adjacent but placed in its own package due to its cross-cutting driver role
+    Pay <-- "Kafka payment.commands.confirm /\npayment.events.confirmed" --> Pg
+    Pay -- "Kafka payment.events.stock-committed" --> Prod
 
-**`mock/`:**
-- `@Profile("benchmark")` only; activates `FakeTossHttpOperator` so k6 tests run without real Toss API
+    Pg -- "HTTP" --> Vendor[Toss / NicePay]
+```
 
-**`core/`:**
-- Shared cross-cutting infrastructure not belonging to any bounded context: logging, metrics, AOP, HTTP client, global exception handling, pagination DTOs
+모듈 간 코드 의존(`implementation project(':...')`) 없음 — 모든 통신은 HTTP 또는 Kafka.
 
----
+## 패키지 컨벤션
 
-## Key File Locations
+- Base package: `com.hyoguoo.paymentplatform.<bounded>` — `<bounded>` 는 `payment` / `pg` / `product` / `user` / `gateway` / `eurekaserver`
+- Test 코드는 main 과 동일 패키지 트리 + `*Test` / `*ContractTest` / `*MdcPropagationTest` 같은 접미사
+- Fake 어댑터: `application/<area>/Fake*Adapter` 또는 `infrastructure/<area>/Fake*` (테스트 전용)
+- Use case 명명: `<Action><Subject>UseCase` (예: `PaymentConfirmResultUseCase`, `StockCommitUseCase`)
+- Port 명명: 입력은 `<Verb>UseCase`, 출력은 `<Subject>Port` (예: `StockCachePort`, `PaymentConfirmPublisherPort`)
+- 메시지 record: `<Subject>EventMessage` (Kafka payload 수신용), `<Subject>EventPayload` (발행용)
 
-**Entry Point:**
-- `src/main/java/com/hyoguoo/paymentplatform/PaymentPlatformApplication.java`
+## 빌드 트리거
 
-**Confirm Service Implementation (단일 전략):**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/OutboxAsyncConfirmService.java`
+| 명령 | 동작 |
+|---|---|
+| `./gradlew build` | 전 모듈 컴파일 + 테스트 + JaCoCo + checkstyle/spotbugs |
+| `./gradlew test` | 전 모듈 단위 + 통합 테스트 (Testcontainers MySQL/Redis 포함) |
+| `./gradlew :payment-service:test` | 단일 모듈 |
+| `./gradlew :payment-service:integrationTest` | 통합 태그(`@Tag("integration")`) 만 |
 
-**Shared Transaction Coordinator:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java`
+## 정적 분석
 
-**Publisher Port and Impl:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/publisher/OutboxImmediatePublisher.java`
+- Checkstyle: `config/checkstyle/checkstyle.xml`
+- SpotBugs: `config/spotbugs/spotbugs-exclude.xml` (main) / `spotbugs-exclude-test.xml` (test)
+- JaCoCo: 모듈별 `build.gradle` 의 `jacocoTestReport` + `jacocoTestCoverageVerification`. `dto`/`entity`/`enums`/`event`/`exception`/`infrastructure`/`presentation`/`publisher`/`mock`/`aspect`/`metrics`/`log`/`filter`/`util`/`config`/`response`/`PaymentPlatformApplication` 제외 — application/use case/domain 만 측정
 
-**Outbox Worker:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/scheduler/OutboxWorker.java`
+## 흔히 찾는 위치
 
-**Primary Domain Entity:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/domain/PaymentEvent.java`
-
-**PaymentController:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/presentation/PaymentController.java`
-
-**Confirm Response Type:**
-- `src/main/java/com/hyoguoo/paymentplatform/payment/application/dto/response/PaymentConfirmAsyncResult.java`
-
----
-
-## Naming Conventions
-
-**Files:**
-- Domain aggregates: `PaymentEvent`, `PaymentOrder`, `PaymentOutbox` (PascalCase, no suffix)
-- Use-case services: `PaymentCommandUseCase`, `PaymentLoadUseCase` (suffix `UseCase`)
-- Confirm service: `OutboxAsyncConfirmService` (단일 전략)
-- Port interfaces: `PaymentEventRepository`, `PaymentGatewayPort`, `PaymentConfirmService` (no `I` prefix)
-- Infrastructure implementations: `PaymentEventRepositoryImpl`, `OutboxImmediatePublisher`, `InternalPaymentGatewayAdapter`
-- JPA Spring Data: `JpaPaymentEventRepository`, `JpaPaymentOrderRepository` (prefix `Jpa`)
-- JPA entity classes: `PaymentEventEntity`, `PaymentOrderEntity` (suffix `Entity`)
-- Mapper utilities: `PaymentInfrastructureMapper`, `PaymentPresentationMapper` (suffix `Mapper`)
-- Exception classes: `PaymentStatusException`, `PaymentTossRetryableException`
-- Error codes: `PaymentErrorCode`, `GlobalErrorCode` (suffix `ErrorCode`)
-
-**Packages:**
-- `presentation/port/` — inbound port interfaces (consumed by controllers / schedulers / listeners)
-- `application/port/` — outbound port interfaces (implemented by infrastructure)
-- `infrastructure/idempotency/` — idempotency 저장소 구현체 및 설정
-- `application/usecase/` — internal application services not directly injected by outside callers
-- `infrastructure/internal/` — cross-context Java adapters
-
----
-
-## Where to Add New Code
-
-**New outbound port (e.g., new external service):**
-1. Interface → `src/main/java/com/hyoguoo/paymentplatform/payment/application/port/NewServicePort.java`
-2. Adapter implementation → `src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/NewServiceAdapter.java`
-3. Inject port interface into use-case or coordinator
-
-**New internal use-case operation:**
-- Stateless helper → add method to the closest existing `UseCase` service in `application/usecase/`
-- New transactional multi-step flow → add method to `PaymentTransactionCoordinator`
-
-**New domain behavior (status transition):**
-1. Add guard logic method to the relevant aggregate in `payment/domain/`
-2. Add corresponding `@PublishDomainEvent` + `@PaymentStatusChange` method in `PaymentCommandUseCase`
-
-**New scheduled job:**
-- If it is specific to the outbox strategy → add method to `OutboxWorker` or a helper class in `payment/scheduler/`
-- If it is for general recovery/expiration → add to `PaymentScheduler` with `@ConditionalOnProperty` guard
-
-**New infrastructure repository:**
-1. JPA entity → `payment/infrastructure/entity/`
-2. Spring Data interface → `payment/infrastructure/repository/JpaXxxRepository.java`
-3. Port interface → `payment/application/port/XxxRepository.java`
-4. Impl → `payment/infrastructure/repository/XxxRepositoryImpl.java`
-
-**New test:**
-- Unit test for domain → `src/test/java/com/hyoguoo/paymentplatform/payment/domain/`
-- Unit test for use case → `src/test/java/com/hyoguoo/paymentplatform/payment/application/usecase/`
-- Fake implementation → `src/test/java/com/hyoguoo/paymentplatform/mock/`
-
----
-
-## Special Directories
-
-**`src/main/java/com/hyoguoo/paymentplatform/mock/`:**
-- Purpose: `FakeTossHttpOperator` and `BenchmarkConfig`
-- Generated: No
-- Committed: Yes (active only with `@Profile("benchmark")`)
-
-**`src/**/out/` directories:**
-- `.gitignore` has `!src/**/out/` exception — these compiled output directories are explicitly tracked if present
-
----
-
-*Structure analysis: 2026-04-05*
+| 항목 | 경로 |
+|---|---|
+| 결제 confirm 진입점 | `payment-service/.../presentation/controller/PaymentController.java` |
+| 비동기 confirm 사이클 | `payment-service/.../application/OutboxAsyncConfirmService.java` |
+| Outbox 릴레이 | `payment-service/.../application/service/OutboxRelayService.java` + `infrastructure/listener/OutboxImmediateEventHandler.java` + `infrastructure/scheduler/OutboxWorker.java` |
+| pg confirm 처리 | `pg-service/.../application/service/PgConfirmService.java` |
+| 벤더 어댑터 | `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` |
+| Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
+| Flyway 마이그레이션 | `<service>/src/main/resources/db/migration/V*.sql` |
+| 영구 smoke | `scripts/smoke/*.sh` + `docs/smoke/*.md` |

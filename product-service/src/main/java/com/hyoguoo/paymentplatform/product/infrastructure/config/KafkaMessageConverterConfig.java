@@ -1,0 +1,27 @@
+package com.hyoguoo.paymentplatform.product.infrastructure.config;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.support.converter.RecordMessageConverter;
+import org.springframework.kafka.support.converter.StringJsonMessageConverter;
+
+/**
+ * Kafka 메시지 컨버터 구성.
+ * producer 는 JSON String 으로 발행하고 consumer 도 StringDeserializer 로 받는다.
+ * RecordMessageConverter 빈은 기본 ConcurrentKafkaListenerContainerFactory 에 자동 주입된다.
+ *
+ * <p>StockCommitConsumer 가 record 타입(StockCommittedMessage) 으로 파라미터를 선언했지만,
+ * RecordMessageConverter 부재 시 String 으로만 도착해 변환에 실패한다.
+ * pg-service KafkaMessageConverterConfig 와 동일 패턴 — 공통 jar 금지 정책에 따라 각 서비스가 자체 보유한다.
+ */
+@Configuration
+@ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
+public class KafkaMessageConverterConfig {
+
+    @Bean
+    public RecordMessageConverter recordMessageConverter(ObjectMapper objectMapper) {
+        return new StringJsonMessageConverter(objectMapper);
+    }
+}

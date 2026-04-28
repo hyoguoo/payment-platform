@@ -1,0 +1,214 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+ext {
+    set('testcontainersVersion', '1.20.4')
+    set('springdocVersion', '2.5.0')
+    set('logstashEncoderVersion', '7.4')
+    set('querydslVersion', '5.0.0')
+    set('springCloudVersion', '2024.0.0')
+}
+
+dependencies {
+    // Spring Boot Core
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Service Discovery (Eureka 등록 — docker 프로필에서만 활성화)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    // Client-side load balancing — payment → product/user 호출 시 Eureka 인스턴스 list 기반 round-robin
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
+    // OpenFeign — 선언적 cross-service HTTP 클라이언트 (B Phase)
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+
+    // Development Tools
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    // Template Engine
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    // API Documentation
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+
+    // Database
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // JPA + Flyway + MySQL
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-mysql'
+
+    // QueryDSL
+    implementation "com.querydsl:querydsl-jpa:${querydslVersion}:jakarta"
+    annotationProcessor "com.querydsl:querydsl-apt:${querydslVersion}:jakarta"
+    annotationProcessor "jakarta.annotation:jakarta.annotation-api"
+    annotationProcessor "jakarta.persistence:jakarta.persistence-api"
+
+    // Cache
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+
+    // Redis — distributed idempotency store + redis-stock 선차감 캐시
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Kafka — payment 도메인 이벤트 양방향 (commands.confirm 발행 / events.confirmed 소비)
+    implementation 'org.springframework.kafka:spring-kafka'
+
+    // Monitoring
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
+
+    // W3C Trace Context: OTel bridge — Servlet 환경 MDC 주입 (버전은 Spring Boot BOM 관리)
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+
+    // Test Dependencies
+    testImplementation "org.springframework.boot:spring-boot-testcontainers"
+    testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+    testImplementation "org.testcontainers:mysql"
+    testImplementation "org.testcontainers:junit-jupiter"
+    // StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
+    testImplementation "org.testcontainers:testcontainers"
+
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == 'org.testcontainers') {
+            details.useVersion testcontainersVersion
+            details.because 'Override Spring Boot BOM strict constraint to use newer Testcontainers with Docker Desktop 4.65+ support'
+        }
+    }
+}
+
+task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nIntegration Test Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
+            }
+        }
+    }
+}
+
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
+
+jacocoTestReport {
+    dependsOn test
+
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
+    }
+
+    classDirectories.setFrom(
+            files(classDirectories.files.collect {
+                fileTree(dir: it, excludes: [
+                        // QueryDSL generated
+                        '**/Q*',
+                        // Data carriers
+                        '**/dto/**',
+                        '**/entity/**',
+                        '**/enums/**',
+                        '**/event/**',
+                        // Exception classes
+                        '**/exception/**',
+                        // Infrastructure / adapters
+                        '**/infrastructure/**',
+                        '**/presentation/**',
+                        '**/publisher/**',
+                        '**/mock/**',
+                        // Cross-cutting concerns (AOP, metrics, logging, filter, util)
+                        '**/aspect/**',
+                        '**/metrics/**',
+                        '**/log/**',
+                        '**/filter/**',
+                        '**/util/**',
+                        // Spring config & response wrappers
+                        '**/config/**',
+                        '**/response/**',
+                        // Entry point
+                        '**/PaymentPlatformApplication.class'
+                ])
+            })
+    )
+
+    finalizedBy jacocoTestCoverageVerification
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            element = 'CLASS'
+
+            excludes = [
+                    '*.Q*',
+                    '**/dto/**',
+                    '**/entity/**',
+                    '**/enums/**',
+                    '**/event/**',
+                    '**/exception/**',
+                    '**/infrastructure/**',
+                    '**/presentation/**',
+                    '**/publisher/**',
+                    '**/mock/**',
+                    '**/aspect/**',
+                    '**/metrics/**',
+                    '**/log/**',
+                    '**/filter/**',
+                    '**/util/**',
+                    '**/config/**',
+                    '**/response/**',
+                    '**/PaymentPlatformApplication'
+            ]
+        }
+    }
+}
+
+spotbugsMain {
+    excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')
+    reports {
+        html {
+            required = true
+        }
+        xml {
+            required = true
+        }
+    }
+}
+
+spotbugsTest {
+    excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude-test.xml')
+    reports {
+        html {
+            required = true
+        }
+        xml {
+            required = true
+        }
+    }
+}

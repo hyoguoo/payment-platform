@@ -1,0 +1,71 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      routes:
+        # /internal/** 경로를 외부에서 호출 시 403 반환 (InternalOnlyGatewayFilter 가 GlobalFilter 로 차단)
+        - id: block-internal
+          uri: no://op
+          predicates:
+            - Path=/internal/**
+          filters:
+            - name: SetStatus
+              args:
+                status: "403"
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - StripPrefix=0
+        # /api/v1/products/** → product-service (Eureka lb 경유)
+        - id: products-service-route
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+          filters:
+            - StripPrefix=0
+        # /api/v1/users/** → user-service (Eureka lb 경유)
+        - id: users-service-route
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - StripPrefix=0
+        - id: monolith-fallback
+          uri: ${MONOLITH_FALLBACK_URI:http://localhost:8081}
+          predicates:
+            - Path=/**
+      default-filters:
+        - name: AddRequestHeader
+          args:
+            name: X-Gateway
+            value: payment-platform
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    # 다중 인스턴스 (--scale <svc>=N) 시 instanceId 충돌 회피.
+    # spring.application.name + 랜덤 UUID + 포트 — 인스턴스마다 고유 + 포트 가시성 보존.
+    instance-id: ${spring.application.name}:${random.uuid}:${server.port}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}

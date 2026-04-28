@@ -15,9 +15,22 @@ function countMatches(file, pattern) {
 }
 
 module.exports = async ({ github, context }) => {
-    const csMain = countMatches('build/reports/checkstyle/main.xml', /<error /g);
-    const csTest = countMatches('build/reports/checkstyle/test.xml', /<error /g);
-    const sb = countMatches('build/reports/spotbugs/main.xml', /<BugInstance /g);
+    // multi-module subprojects 모두 합산
+    const modules = [
+        'payment-service',
+        'pg-service',
+        'product-service',
+        'user-service',
+        'gateway',
+        'eureka-server',
+    ];
+
+    let csMain = 0, csTest = 0, sb = 0;
+    for (const m of modules) {
+        csMain += countMatches(`${m}/build/reports/checkstyle/main.xml`, /<error /g);
+        csTest += countMatches(`${m}/build/reports/checkstyle/test.xml`, /<error /g);
+        sb += countMatches(`${m}/build/reports/spotbugs/main.xml`, /<BugInstance /g);
+    }
     const total = csMain + csTest + sb;
 
     const icon = total === 0 ? '✅' : '❌';
