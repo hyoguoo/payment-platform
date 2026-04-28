@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
@@ -15,7 +14,6 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakeMessagePublisher;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
