@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # create-topics.sh — Kafka 토픽 초기 생성 스크립트
-# payment 도메인 토픽 3개를 동일 파티션 수로 생성한다 — retry 전용 토픽은 만들지 않는다.
+# payment 도메인 운영 토픽 5개(운영 3 + DLQ 2)를 동일 파티션 수로 생성한다.
 #
 # 전제조건:
 #   - docker-compose.infra.yml up 완료 후 실행
@@ -22,7 +22,8 @@ TOPICS=(
   "payment.commands.confirm"
   "payment.commands.confirm.dlq"
   "payment.events.confirmed"
-  "stock.events.restore"
+  "payment.events.confirmed.dlq"
+  "payment.events.stock-committed"
 )
 
 GREEN='\033[0;32m'

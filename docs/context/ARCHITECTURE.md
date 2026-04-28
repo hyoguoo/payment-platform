@@ -15,7 +15,7 @@ payment-platform 은 결제 도메인을 6개 Spring Boot 모듈로 분해한 MS
 | `gateway` | Spring Cloud Gateway — 단일 진입점(8090). Eureka 기반 라우팅 |
 | `eureka-server` | Netflix Eureka — 서비스 디스커버리 |
 
-각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가지며, 두 Redis(`redis-dedupe`, `redis-stock`)를 용도별로 분리해 공유한다. Kafka 는 양방향 메시징의 척추.
+각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가지며, 두 Redis(`redis-dedupe`, `redis-stock`)를 용도별로 분리해 공유한다. Kafka 는 양방향 메시징 인프라.
 
 ## 토폴로지
 
@@ -167,7 +167,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | business inbox amount | pg `pg_inbox.amount BIGINT` |
 | HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
 | DB 분리 | 4 MySQL 인스턴스 (DB per service) |
-| Kafka 토픽 + dedupe TTL 정책 | 6 토픽 + DLQ 2종, dedupe TTL P8D |
+| Kafka 토픽 + dedupe TTL 정책 | 5 토픽 (운영 3 + DLQ 2), dedupe TTL P8D |
 | `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |
 | Stock publish AFTER_COMMIT 분리 | TX commit 후 stock-committed 발행 |
 | Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
