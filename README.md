@@ -157,6 +157,8 @@ sequenceDiagram
 
 ### [분산 트레이싱 — OTel + Kafka 헤더 + VT 컨텍스트 전파](https://github.com/hyoguoo/payment-platform/wiki/trace-propagation)
 
+<img width="80%" alt="image" src="https://github.com/user-attachments/assets/0460199f-9af1-4f4b-a3bc-4e8c06146eb8">
+
 결제 한 건이 5 서비스 + Kafka + 외부 PG 호출을 거치는 동안 같은 traceId 가 메시지 / 로그 / HTTP 헤더에 같이 따라간다.
 
 - 한 스레드 안에 OTel(트레이스용) 과 MDC(로그용) 가 각자 자기 traceId 를 따로 들고 있음
