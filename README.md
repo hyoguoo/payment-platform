@@ -4,8 +4,9 @@
 
 [![CI](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml)
 
-> ✅ **현재** (2026-04-27) · Phase 6   
+> 🚧 **진행 중** · Phase 6   
 > MSA 서비스 + Eureka + Gateway · Kafka 양방향 코레오그래피 + Outbox 3 모델 + 분산 트레이싱 운영 · 589 PASS  
+> Phase 6 은 아직 작업 / 점검 중이며 후속 보강 작업이 누적되어 있음 (예: 보상 트랜잭션 자동 회복 layer, 컨텍스트 정합성 점검 등)  
 > 🔜 **다음** · Phase 7  
 > 회복성 검증 (장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러 + 서킷브레이커)
 
