@@ -4,13 +4,18 @@
 
 ## 활성 작업
 - **주제**: STOCK-COMPENSATION-RECOVERY (결제 결과 보상 실패 자동 회복 layer)
-- **단계**: plan
+- **단계**: plan (확장 discuss 6라운드 후 D enhanced 채택)
+- **채택안**: Candidate D (enhanced) — payment_history audit-driven + happy path SUCCEEDED action
 - **이슈**: #71
 - **브랜치**: #71
 
 ## 파일 링크
-- 설계: docs/topics/STOCK-COMPENSATION-RECOVERY.md
-- 라운드: docs/rounds/stock-compensation-recovery/
+- **결정 (채택안 권위)**: docs/topics/STOCK-COMPENSATION-RECOVERY-DECISION.md
+- 대안 본문 (이력): docs/topics/STOCK-COMPENSATION-RECOVERY-ALTERNATIVES.md
+- 원본 사전 브리핑 (Baseline 0, 비교 baseline): docs/topics/STOCK-COMPENSATION-RECOVERY.md
+- 라운드 산출물:
+  - docs/rounds/stock-compensation-recovery/ (Round 0~2 — Baseline 0)
+  - docs/rounds/stock-compensation-recovery-alternatives/ (Round 1~6 — D 결정)
 - 플랜: docs/STOCK-COMPENSATION-RECOVERY-PLAN.md (plan 단계 산출 예정)
 
 ## 단계 진행
