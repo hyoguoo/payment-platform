@@ -5,8 +5,9 @@
 [![CI](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml)
 
 > 🚧 **진행 중** · Phase 6   
-> MSA 서비스 + Eureka + Gateway · Kafka 양방향 코레오그래피 + Outbox 3 모델 + 분산 트레이싱 운영 · 589 PASS  
+> MSA 서비스 + Eureka + Gateway · Kafka 양방향 코레오그래피 + Outbox 모델 + 분산 트레이싱 운영 · 589 PASS  
 > Phase 6 은 아직 작업 / 점검 중이며 후속 보강 작업이 누적되어 있음 (예: 보상 트랜잭션 자동 회복 layer, 컨텍스트 정합성 점검 등)  
+> ⚠️ **본 README / 위키는 설계 의도 기준이며 실제 코드와 일부 정합이 안 맞을 수 있음** — 코드 sync 작업이 진행 중  
 > 🔜 **다음** · Phase 7  
 > 회복성 검증 (장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러 + 서킷브레이커)
 
@@ -16,29 +17,30 @@
 
 ## 🚀 주요 해결 과제
 
-|       해결 영역        | 핵심                                                                           |                      결과 / 검증                      |
-|:------------------:|:-----------------------------------------------------------------------------|:-------------------------------------------------:|
-|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환               | **TPS +47% / 요청 유실 -100%** (k6 Round 9 · 모놀리스 시점) |
-|    정합성 / 멱등성 보장    | 클라이언트·서버·PG 교차 검증 + Checkout 멱등성 (TOCTOU 해결)                                 |                  중복 주문 / 위변조 차단                   |
-|    장애 내성 복구 체계     | 복구 판정 객체 + 스케줄링 + 재고 복원 가드 + 격리 직전 vendor 재조회                                |       **6 분기** 복구 결정 + 격리 전 최종 확인 + 동시성 가드        |
-| MSA 분리 + Kafka 양방향 | 모놀리스 → 4 비즈니스 서비스 + Eureka + Gateway / payment ↔ pg Kafka 양방향 confirm        | **5 토픽** (운영 3 + DLQ 2) + AMOUNT_MISMATCH 양방향 방어  |
-| Outbox 모델 + 멱등 소비  | payment / pg / stock 세 outbox 정밀도 분기 + dedupe 결정 룰 (Redis / RDB inbox / RDB) |        **at-least-once + 멱등** (3 저장소 결정 룰)        |
-|      분산 트레이싱       | OTel Context + MDC 두 ThreadLocal 을 가상 스레드 / in-memory channel 경계에서 명시 캡처·복원  |           5 서비스 + Kafka traceId 연속성 검증            |
+|       해결 영역        | 핵심                                                                                            |                      결과 / 검증                      |
+|:------------------:|:----------------------------------------------------------------------------------------------|:-------------------------------------------------:|
+|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 Round 9 · 모놀리스 시점) |
+|    정합성 / 멱등성 보장    | 클라이언트·서버·PG 교차 검증 + Checkout 멱등성 (TOCTOU 해결)                                                  |                  중복 주문 / 위변조 차단                   |
+|    장애 내성 복구 체계     | 복구 판정 객체 + 스케줄링 + 재고 복원 가드 + 격리 직전 vendor 재조회                                                 |       **6 분기** 복구 결정 + 격리 전 최종 확인 + 동시성 가드        |
+| MSA 분리 + Kafka 양방향 | 모놀리스 → 4 비즈니스 서비스 + Eureka + Gateway / payment ↔ pg Kafka 양방향 confirm                         | **5 토픽** (운영 3 + DLQ 2) + AMOUNT_MISMATCH 양방향 방어  |
+| Outbox 모델 + 멱등 소비  | payment / pg 두 outbox 정밀도 분기 + dedupe 결정 룰 (Kafka EOS + RDB / Redis + RDB inbox / RDB)        |        **at-least-once + 멱등** (3 저장소 결정 룰)        |
+|   PG 결제 확인 흐름 분리   | listener (Inbox 시그널 INSERT) → 워커 VT (벤더 호출 + 결과 반영) → 릴레이 워커 (Kafka 발행) 3단 + 단계 사이 채널 + 폴백 폴링 |   **벤더 latency 와 인바운드 처리량 독립** + 어디서 죽어도 폴링이 회수   |
+|      분산 트레이싱       | OTel Context + MDC 두 ThreadLocal 을 가상 스레드 / in-memory channel 경계에서 명시 캡처·복원                   |           5 서비스 + Kafka traceId 연속성 검증            |
 
 ---
 
 ## 🗺️ 개발 과정
 
-|    Phase    | 목표                               | 구현 내용                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|:-----------:|:---------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|   Phase 1   | 데이터 정합성 확립                       | [교차 검증 연동](https://github.com/hyoguoo/payment-platform/wiki/cross-validation)                                                                                                                                                                                                                                                                                                                                                                |
-|   Phase 2   | 결합도 해소 및 자가 복구력                  | [트랜잭션 범위 최소화](https://github.com/hyoguoo/payment-platform/wiki/tx-scope) · [상태 기반 복구 모델 및 재시도 로직](https://github.com/hyoguoo/payment-platform/wiki/retry-recovery)                                                                                                                                                                                                                                                                           |
-|   Phase 3   | 운영 가시성 및 안정성                     | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics)                                                                                                                                                                                                    |
-|   Phase 4   | 데이터 정합성 심화 및 중복 제어               | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                                                                                                                                                                                                                            |
-|   Phase 5   | 비동기 결제 아키텍처 전환                   | [비동기 Outbox · 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                                                                                                                                                                                                                 |
-| **Phase 6** | **MSA 분리 + Kafka 양방향 + 분산 트레이싱** | [MSA 전환](https://github.com/hyoguoo/payment-platform/wiki/msa-transition) · [이벤트 드리븐 코레오그래피](https://github.com/hyoguoo/payment-platform/wiki/event-driven-choreography) · [Outbox 패턴](https://github.com/hyoguoo/payment-platform/wiki/outbox-pattern) · [메시지 전달 보장 + dedupe](https://github.com/hyoguoo/payment-platform/wiki/message-delivery-and-dedupe) · [분산 트레이싱](https://github.com/hyoguoo/payment-platform/wiki/trace-propagation) |
-|     ETC     | 설계 유연성                           | [전략 패턴 기반 멀티 PG 연동](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                                                                                                                                                                                                                            |
-|     ETC     | AI 기반 개발 워크플로우                   | [서브에이전트 기반 6단계 워크플로우](https://github.com/hyoguoo/payment-platform/wiki/ai-workflow)                                                                                                                                                                                                                                                                                                                                                          |
+|    Phase    | 목표                               | 구현 내용                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|:-----------:|:---------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|   Phase 1   | 데이터 정합성 확립                       | [교차 검증 연동](https://github.com/hyoguoo/payment-platform/wiki/cross-validation)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|   Phase 2   | 결합도 해소 및 자가 복구력                  | [트랜잭션 범위 최소화](https://github.com/hyoguoo/payment-platform/wiki/tx-scope) · [상태 기반 복구 모델 및 재시도 로직](https://github.com/hyoguoo/payment-platform/wiki/retry-recovery)                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|   Phase 3   | 운영 가시성 및 안정성                     | [시나리오 테스트](https://github.com/hyoguoo/payment-platform/wiki/scenario-test) · [구조화된 로깅](https://github.com/hyoguoo/payment-platform/wiki/structured-logging) · [결제 이력 추적 및 모니터링](https://github.com/hyoguoo/payment-platform/wiki/metrics)                                                                                                                                                                                                                                                                                                                                                                                          |
+|   Phase 4   | 데이터 정합성 심화 및 중복 제어               | [보상 TX 실패 대응](https://github.com/hyoguoo/payment-platform/wiki/compensation-tx) · [Checkout 멱등성 보장](https://github.com/hyoguoo/payment-platform/wiki/idempotency)                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|   Phase 5   | 비동기 결제 아키텍처 전환                   | [비동기 Outbox · 가상 스레드 기반 결제 플로우](https://github.com/hyoguoo/payment-platform/wiki/async-outbox) · [도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Phase 6** | **MSA 분리 + Kafka 양방향 + 분산 트레이싱** | [MSA 전환](https://github.com/hyoguoo/payment-platform/wiki/msa-transition) · [이벤트 드리븐 코레오그래피](https://github.com/hyoguoo/payment-platform/wiki/event-driven-choreography) · [재고 캐시 보상 회복 — Lua atomic](https://github.com/hyoguoo/payment-platform/wiki/stock-cache-recovery) · [Outbox 패턴](https://github.com/hyoguoo/payment-platform/wiki/outbox-pattern) · [메시지 전달 보장 + dedupe](https://github.com/hyoguoo/payment-platform/wiki/message-delivery-and-dedupe) · [PG 결제 확인 흐름](https://github.com/hyoguoo/payment-platform/wiki/pg-confirm-flow) · [분산 트레이싱](https://github.com/hyoguoo/payment-platform/wiki/trace-propagation) |
+|     ETC     | 설계 유연성                           | [전략 패턴 기반 멀티 PG 연동](https://github.com/hyoguoo/payment-platform/wiki/pg-strategy)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|     ETC     | AI 기반 개발 워크플로우                   | [서브에이전트 기반 6단계 워크플로우](https://github.com/hyoguoo/payment-platform/wiki/ai-workflow)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ---
 
@@ -101,13 +103,13 @@ flowchart LR
 
 #### **Kafka 토픽 카탈로그** (운영 3 + DLQ 2)
 
-|                토픽                |              발행자               |    소비자     |                     의미                     |
-|:--------------------------------:|:------------------------------:|:----------:|:------------------------------------------:|
-|    `payment.commands.confirm`    | payment (최초) + pg (self-retry) |     pg     |                  결제 확정 명령                  |
-|    `payment.events.confirmed`    |               pg               |  payment   | PG 결과 회신 (APPROVED / FAILED / QUARANTINED) |
-| `payment.events.stock-committed` |      payment (APPROVED 시)      |  product   |                  재고 확정 통지                  |
-|  `payment.commands.confirm.dlq`  |       pg (attempt 4 격리)        | pg DLQ 컨슈머 |           self-loop retry 한도 초과            |
-|  `payment.events.confirmed.dlq`  |   payment (lease remove 실패)    |    (수동)    |               결과 처리 영구 실패 격리               |
+|                토픽                |                    발행자                    |    소비자     |                     의미                     |
+|:--------------------------------:|:-----------------------------------------:|:----------:|:------------------------------------------:|
+|    `payment.commands.confirm`    |      payment (최초) + pg (self-retry)       |     pg     |                  결제 확정 명령                  |
+|    `payment.events.confirmed`    |                    pg                     |  payment   | PG 결과 회신 (APPROVED / FAILED / QUARANTINED) |
+| `payment.events.stock-committed` |           payment (APPROVED 시)            |  product   |                  재고 확정 통지                  |
+|  `payment.commands.confirm.dlq`  |             pg (attempt 4 격리)             | pg DLQ 컨슈머 |           self-loop retry 한도 초과            |
+|  `payment.events.confirmed.dlq`  | payment (DefaultErrorHandler retry 한도 초과) |    (수동)    |               결과 처리 영구 실패 격리               |
 
 ### [Outbox 패턴 + 메시지 전달 보장 + 멱등 소비](https://github.com/hyoguoo/payment-platform/wiki/outbox-pattern)
 
@@ -139,17 +141,19 @@ sequenceDiagram
 |:----------------:|:---------------:|:----------------------------------------------------:|
 | `payment_outbox` | payment-service | 4상태 머신 (PENDING / IN_FLIGHT / DONE / FAILED) + 선점 방식 |
 |   `pg_outbox`    |   pg-service    |     processedAt + availableAt + self-loop retry      |
-|  `stock_outbox`  | payment-service |                 pg_outbox 컬럼 + 단순 사용                 |
+
+재고 확정 통지(`payment.events.stock-committed`)는 outbox 가 아니라 Kafka EOS 로 발행한다 —
+payment-service confirmed consumer 의 RDB 변경과 같은 Kafka 트랜잭션 단위로 묶인다.
 
 #### 멱등 소비 — 서비스 dedupe
 
-후속 작업이 같은 RDB 자원을 변경하면 RDB, 그 외엔 Redis 방식으로 처리헀다.
+세 서비스가 도메인 요구에 따라 다른 패턴을 쓴다.
 
-|   서비스   |             저장소             |                    패턴                     |
-|:-------:|:---------------------------:|:-----------------------------------------:|
-| payment |   Redis (`redis-dedupe`)    | two-phase lease (5분 lease → 8일 dedupe 보존) |
-|   pg    | Redis 1차 필터 + RDB atomic 필터 |            도메인 작업과 한 TX commit            |
-| product |  RDB `stock_commit_dedupe`  |            재고 차감과 한 TX commit             |
+|   서비스   |             저장소             |            패턴             |
+|:-------:|:---------------------------:|:-------------------------:|
+| payment | RDB `payment_event_dedupe`  | Kafka EOS + RDB 멱등 INSERT |
+|   pg    | Redis 1차 필터 + RDB atomic 필터 |    도메인 작업과 한 TX commit    |
+| product |  RDB `stock_commit_dedupe`  |    재고 차감과 한 TX commit     |
 
 각 모델의 상태 머신·선점 메커니즘·TTL 근거 같은 디테일은 다음 글에 정리하였다.
 
