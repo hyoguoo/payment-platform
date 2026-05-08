@@ -1,8 +1,8 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -92,21 +92,28 @@ class PgInboxImmediateWorkerTest {
     @DisplayName("workerLoop_runtimeException_incrementsFailCounter — RuntimeException → pg_inbox.process_fail_total +1, 워커 계속 실행")
     void workerLoop_runtimeException_incrementsFailCounter() throws InterruptedException {
         // given: 첫 번째 호출은 RuntimeException, 두 번째는 정상
-        CountDownLatch secondCallLatch = new CountDownLatch(2);
+        CountDownLatch firstCallLatch = new CountDownLatch(1);
+        CountDownLatch secondCallLatch = new CountDownLatch(1);
 
-        doThrow(new RuntimeException("처리 실패"))
-                .doAnswer(inv -> { secondCallLatch.countDown(); return null; })
-                .when(processor).processPending(org.mockito.ArgumentMatchers.anyLong());
+        doAnswer(inv -> {
+            firstCallLatch.countDown();
+            throw new RuntimeException("처리 실패");
+        }).doAnswer(inv -> {
+            secondCallLatch.countDown();
+            return null;
+        }).when(processor).processPending(org.mockito.ArgumentMatchers.anyLong());
 
         worker.start();
 
-        // when: 두 건 offer
+        // when: 첫 번째 offer — RuntimeException 발생
         channel.offerNow(1L);
-        channel.offerNow(2L);
+        boolean firstProcessed = firstCallLatch.await(3, TimeUnit.SECONDS);
+        assertThat(firstProcessed).as("첫 번째 processPending 호출이 이뤄져야 한다").isTrue();
 
-        // then: 두 건 모두 처리 (워커가 RuntimeException 후 계속 실행)
-        boolean bothProcessed = secondCallLatch.await(3, TimeUnit.SECONDS);
-        assertThat(bothProcessed).as("RuntimeException 후 워커가 계속 실행되어야 한다").isTrue();
+        // 두 번째 offer — 정상 처리 (워커가 계속 실행 중임을 검증)
+        channel.offerNow(2L);
+        boolean secondProcessed = secondCallLatch.await(3, TimeUnit.SECONDS);
+        assertThat(secondProcessed).as("RuntimeException 후 워커가 계속 실행되어야 한다").isTrue();
 
         // then: pg_inbox.process_fail_total 카운터가 1 이상
         Counter failCounter = meterRegistry.find(PgInboxImmediateWorker.PROCESS_FAIL_COUNTER_NAME).counter();

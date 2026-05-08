@@ -435,6 +435,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../infrastructure/scheduler/PgInboxImmediateWorker.java` (신규)
 - `pg-service/src/test/java/.../infrastructure/scheduler/PgInboxImmediateWorkerTest.java` (신규)
 
+- [x] **완료** — `PgInboxImmediateWorker` (`infrastructure/scheduler/`, `SmartLifecycle + VT worker=5`) 신규 추가. `PgOutboxImmediateWorker` 1:1 거울 패턴 — `Thread.ofVirtual().name(...).unstarted(this::workerLoop)` + `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 이중 컨텍스트 래핑. `stop()` → running=false + Thread.interrupt + join(10s) + executor shutdown graceful. `PROCESS_FAIL_COUNTER_NAME="pg_inbox.process_fail_total"` Micrometer 카운터. `EventType.PG_INBOX_WORKER_STARTED / STOPPED / LOOP_ERROR / FAIL` 추가 (PCS-14 SoT 선행 반영). `PgInboxImmediateWorkerTest` 4케이스 전체 PASS. `./gradlew test` 275 PASS / 0 FAIL.
+
 ---
 
 ### PCS-13 — 인프라: `PgInboxPollingWorker` 신규 (좀비 폴링 — 두 경로)

@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PCS-11 완료 (InboxReadyEventHandler 신규, AFTER_COMMIT 채널 적재, 활성 태스크 PCS-12)
+> 최종 수정: 2026-05-09 — PCS-12 완료 (PgInboxImmediateWorker 신규, SmartLifecycle + VT worker=5, 활성 태스크 PCS-13)
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: execute (활성 태스크 PCS-12 — `PgInboxImmediateWorker` 신규 (SmartLifecycle + VT worker=5))
+- **단계**: execute (활성 태스크 PCS-13 — `PgInboxPollingWorker` 신규 (PENDING / IN_PROGRESS 두 경로, 60s 통일, 새 root span))
 - **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73
