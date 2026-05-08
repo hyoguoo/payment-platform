@@ -338,7 +338,7 @@ flowchart TD
 
 ---
 
-### SCR-6. `PaymentConfirmResultUseCase` — 보상 경로 재작성 (호출 순서 뒤집기 + wrapper 제거)
+### SCR-6. `PaymentConfirmResultUseCase` — 보상 경로 재작성 (호출 순서 뒤집기 + wrapper 제거) ✅
 
 - **결정 ID**: D3, D4, D6
 - **tdd**: true
@@ -388,6 +388,8 @@ public void handle(ConfirmedEventMessage message) {
 - `PaymentConfirmResultUseCaseIdempotencyGuardTest` — lease 의존 제거로 재작성 (또는 본 토픽 후 의미 없으면 삭제)
 - `PaymentConfirmResultUseCaseTwoPhaseLeaseTest` — 삭제
 - `ConfirmedEventConsumerTest` — 생성자 픽스처 갱신 (Fake dedupe / DLQ publisher 주입 제거)
+
+**완료 결과**: 10개 신규/갱신 테스트 PASS. handleFailed InOrder(compensateAtomic → markPaymentAsFail) 검증, handleQuarantined InOrder(compensateAtomic → quarantineHandler) 검증, ALREADY_DONE 이어도 RDB 진행, RuntimeException 전파 검증. processMessageWithLeaseGuard / handleRemoveOnFailure / compensateStockCache 메서드 제거, EventDedupeStore / PaymentConfirmDlqPublisher / leaseTtl / longTtl 생성자 파라미터 제거, TwoPhaseLeaseTest 삭제. 전체 회귀 383 PASS.
 
 **산출물**:
 - `payment-service/src/main/java/.../application/usecase/PaymentConfirmResultUseCase.java`
