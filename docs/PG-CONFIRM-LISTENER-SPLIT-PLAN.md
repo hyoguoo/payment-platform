@@ -27,7 +27,7 @@
 12. **PCS-12** — `PgInboxImmediateWorker` (SmartLifecycle + VT worker=5)
 13. **PCS-13** — `PgInboxPollingWorker` (PENDING / IN_PROGRESS 두 경로, 60s 통일, 새 root span)
 14. **PCS-14** ✅ — yml 설정 키 + EventType (`PG_INBOX_WORKER_FAIL` / `PG_INBOX_LISTENER_TX_TIMEOUT` 등)
-15. **PCS-15** — 통합 테스트 (A1~A4 acceptance 시나리오)
+15. **PCS-15** ✅ — 통합 테스트 (A1~A4 acceptance 시나리오)
 16. **PCS-16** — 위키 + 영구 문서 동기화
 
 ### 변경 후 흐름 (전체 경로 — to-be)
@@ -515,6 +515,15 @@ pg:
 
 **산출물**:
 - `pg-service/src/test/java/.../PgConfirmListenerSplitIntegrationTest.java` (신규, `@Tag("integration")`)
+
+- [x] **완료** — `PgConfirmListenerSplitIntegrationTest` 신규 작성. A1~A4 acceptance 시나리오 4개 GREEN.
+  - A1: `verify(fakePgGatewayStrategy, never()).confirm(any())` — listener 내 벤더 호출 0 확인.
+  - A2: 벤더 5s 지연 주입 후 2x handle() latency < 1000ms (listener throughput 무영향).
+  - A3: `doThrow RuntimeException` → IN_PROGRESS 좀비 확인 → `doReturn successResult` → `processInProgressZombie` → terminal 전이 확인.
+  - A4: `handleDbAbsentAmountMatch` → APPROVED 직접 전이 확인 (PENDING 우회).
+  - **버그 수정 포함 (code-round Rule 1)**: `PgInboxProcessor.buildRequest()` null 하드코딩 → `inbox.getPaymentKey()` + `PgVendorType.valueOf(inbox.getVendorType())` 실 값 사용.
+  - **컨텍스트 오염 수정**: `PgInboxPendingServiceTest.TxIntegrationTestConfig` `@Configuration` → `@TestConfiguration` — `@Primary MockPgInboxRepository`가 통합 테스트 컨텍스트를 오염시키는 문제 해소.
+  - integrationTest 4/4 PASS, test 281/281 PASS.
 
 ---
 

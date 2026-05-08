@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
@@ -146,24 +147,25 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
     /**
      * PgInbox 에서 PgConfirmRequest 를 구성한다.
      *
-     * <p>현재 pg_inbox 스키마에 paymentKey / vendorType 컬럼이 없으므로
-     * null 로 임시 처리한다.
-     * TODO PCS-X: pg_inbox 스키마에 vendorType / paymentKey 컬럼 추가 후 정합 필요.
+     * <p>PCS-9 V3 migration: pg_inbox 에 paymentKey / vendorType 컬럼 추가됨.
+     * inbox 에서 직접 읽어 PgConfirmRequest 를 구성한다.
+     * vendorType 은 String → PgVendorType 변환 (null-safe).
      *
-     * @param inbox pg_inbox row
-     * @return PgConfirmRequest (orderId + amount 만 유효, paymentKey/vendorType = null)
+     * @param inbox pg_inbox row (paymentKey / vendorType 포함)
+     * @return PgConfirmRequest
      */
     private PgConfirmRequest buildRequest(PgInbox inbox) {
         BigDecimal amount = inbox.getAmount() != null
                 ? BigDecimal.valueOf(inbox.getAmount())
                 : BigDecimal.ZERO;
-        // TODO PCS-X: paymentKey / vendorType 은 pg_inbox 스키마 확장 후 inbox 에서 읽어야 한다.
-        return new PgConfirmRequest(inbox.getOrderId(), null, amount, null);
+        PgVendorType vendorType = inbox.getVendorType() != null
+                ? PgVendorType.valueOf(inbox.getVendorType())
+                : null;
+        return new PgConfirmRequest(inbox.getOrderId(), inbox.getPaymentKey(), amount, vendorType);
     }
 
     /**
      * attempt 번호 결정 — 현재 스키마에 attempt 컬럼 없으므로 1 고정.
-     * TODO PCS-X: pg_inbox 에 attempt 컬럼 추가 후 정합 필요.
      */
     private int resolveAttempt(PgInbox inbox) {
         return 1;

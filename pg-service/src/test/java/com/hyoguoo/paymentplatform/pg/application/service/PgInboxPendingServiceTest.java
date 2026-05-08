@@ -257,7 +257,7 @@ class PgInboxPendingServiceTest {
 
     // ── 테스트 전용 Spring 설정 ──────────────────────────────────────────────────
 
-    @Configuration
+    @org.springframework.boot.test.context.TestConfiguration
     @EnableTransactionManagement
     static class TxIntegrationTestConfig {
 
