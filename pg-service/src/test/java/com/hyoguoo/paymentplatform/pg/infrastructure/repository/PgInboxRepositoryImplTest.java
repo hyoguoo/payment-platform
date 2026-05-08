@@ -6,9 +6,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.config.PgServiceConfig;
 import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -24,27 +22,33 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * PgInboxRepositoryImpl SKIP LOCKED + 멱등 INSERT 단위 테스트.
  * MySQL Testcontainers 기반 — SKIP LOCKED 동시성 검증 포함.
+ *
+ * <p>docker-java 기본 API 버전(1.32)이 Docker 29.4.2 최소 지원 버전(1.40)보다 낮아
+ * src/test/resources/docker-java.properties 에서 api.version=1.44 로 고정한다.
  */
 @DataJpaTest
-@Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({PgInboxRepositoryImpl.class, PgServiceConfig.class})
 @DisplayName("PgInboxRepositoryImpl — SKIP LOCKED + 멱등 INSERT")
 class PgInboxRepositoryImplTest {
 
-    @Container
-    static final MySQLContainer<?> MYSQL_CONTAINER = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("pg-test")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci");
+    static final MySQLContainer<?> MYSQL_CONTAINER;
+
+    static {
+        MYSQL_CONTAINER = new MySQLContainer<>("mysql:8.0")
+                .withDatabaseName("pg-test")
+                .withUsername("test")
+                .withPassword("test")
+                .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci");
+        MYSQL_CONTAINER.start();
+    }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -200,10 +204,17 @@ class PgInboxRepositoryImplTest {
         assertThat(stillInProgress.get().getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
     }
 
+    /**
+     * SKIP LOCKED 동시성 테스트.
+     * @Transactional(NOT_SUPPORTED) — @DataJpaTest 의 외부 트랜잭션을 비활성화하여
+     * 워커 스레드가 커밋된 PENDING 행을 실제로 볼 수 있도록 한다.
+     * 외부 트랜잭션 안에서 insertPending 을 호출하면 워커가 미커밋 행을 못 보므로 trueCount=0 이 된다.
+     */
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     @DisplayName("transitPendingToInProgress — SKIP LOCKED: 동시 워커 2개 중 하나만 true 반환")
     void transitPendingToInProgress_skipLocked_concurrentWorkerSeesEmpty() throws InterruptedException {
-        // given — PENDING 행 1개
+        // given — PENDING 행 삽입 + 자체 TX 커밋 (NOT_SUPPORTED 이므로 insertPending 의 @Transactional 이 독립 TX)
         String orderId = "order-pcs4-skip-locked";
         Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-skip", "TOSS_PAYMENTS", "pay-key-skip");
 
@@ -239,6 +250,9 @@ class PgInboxRepositoryImplTest {
         Optional<PgInboxEntity> finalState = jpaRepository.findById(inboxId);
         assertThat(finalState).isPresent();
         assertThat(finalState.get().getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+
+        // cleanup — NOT_SUPPORTED 이므로 @BeforeEach 롤백이 없어 수동 정리
+        jpaRepository.deleteAll();
     }
 
     // ─── findPendingZombieIds ───────────────────────────────────────────────────

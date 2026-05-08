@@ -219,6 +219,8 @@ List<Long> findInProgressZombieIds(int batchSize, long thresholdMs);
 - `pg-service/src/main/java/.../infrastructure/repository/JpaPgInboxRepository.java` (native query 추가)
 - `pg-service/src/test/java/.../infrastructure/repository/PgInboxRepositoryImplTest.java` (신규/갱신)
 
+- [x] **완료** — `JpaPgInboxRepository` native query 6종 추가 (insertIgnorePending / findIdByOrderId / selectForUpdateSkipLockedPending / updatePendingToInProgress / findPendingZombieIdsBefore / findInProgressZombieIdsBefore). `PgInboxRepositoryImpl` 6개 stub 실 구현. `PgInboxRepositoryImplTest` 10종 Testcontainers MySQL 테스트. `pg-service/src/test/resources/docker-java.properties` (api.version=1.44) 추가로 Docker 29.4.2 API 버전 호환 해소. SKIP LOCKED 동시성 테스트는 `@Transactional(propagation=NOT_SUPPORTED)` 로 미커밋 가시성 문제 해소. `./gradlew test` 229 PASS / 0 FAIL.
+
 ---
 
 <!-- architect: PCS-5 산출물 위치가 기존 거울 (PgOutboxReadyEvent) 과 비정합. 실제 코드:
