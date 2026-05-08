@@ -26,7 +26,7 @@
 11. **PCS-11** — `InboxReadyEventHandler` (`infrastructure/listener`, AFTER_COMMIT 채널 적재)
 12. **PCS-12** — `PgInboxImmediateWorker` (SmartLifecycle + VT worker=5)
 13. **PCS-13** — `PgInboxPollingWorker` (PENDING / IN_PROGRESS 두 경로, 60s 통일, 새 root span)
-14. **PCS-14** — yml 설정 키 + EventType (`PG_INBOX_WORKER_FAIL` / `PG_INBOX_LISTENER_TX_TIMEOUT` 등)
+14. **PCS-14** ✅ — yml 설정 키 + EventType (`PG_INBOX_WORKER_FAIL` / `PG_INBOX_LISTENER_TX_TIMEOUT` 등)
 15. **PCS-15** — 통합 테스트 (A1~A4 acceptance 시나리오)
 16. **PCS-16** — 위키 + 영구 문서 동기화
 
@@ -462,11 +462,13 @@ public interface PgInboxProcessUseCase {
 
 ---
 
-### PCS-14 — yml 설정 키 + 메트릭 상수 + EventType 추가
+### PCS-14 — yml 설정 키 + 메트릭 상수 + EventType 추가 ✅
 
 **목적**: §1.2 ~ §1.4, §7.2 — yml 설정 키 6종 + Micrometer counter 이름 상수 + EventType enum 신규 값. application.yml 기본값 명시.
 **tdd**: false
 **domain_risk**: false
+
+- [x] **완료** — `application.yml` 에 `pg.inbox.channel` (capacity=1024, worker-count=5) + `pg.scheduler.inbox-polling-worker` (fixed-delay-ms=5000, batch-size=10, pending-timeout-ms=60000, in-progress-timeout-ms=60000) 키 명시. `EventType` 에 `PG_INBOX_LISTENER_TX_TIMEOUT` + `PG_INBOX_ZOMBIE_RECOVERED_PENDING` + `PG_INBOX_ZOMBIE_RECOVERED_IN_PROGRESS` 3종 추가 (워커/폴링 측 EventType 은 PCS-12/PCS-13 implementer 가 선행 추가). `PgInboxPendingService` 에 `TransactionTimedOutException` catch + `pg_inbox.listener_tx_timeout_total` Micrometer Counter + `LogFmt.warn` 로그 (PC-F3 흡수). 단위 테스트 `insertPendingAndPublish_timeoutExceeded_emitsCounterAndRethrows` 추가. `./gradlew test` 281 PASS / 0 FAIL.
 
 **yml 키 추가**:
 ```yaml

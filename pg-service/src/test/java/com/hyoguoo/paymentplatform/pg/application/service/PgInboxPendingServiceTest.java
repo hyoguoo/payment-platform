@@ -12,6 +12,8 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +33,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -62,11 +65,13 @@ class PgInboxPendingServiceTest {
         @Mock
         private ApplicationEventPublisher applicationEventPublisher;
 
+        private MeterRegistry meterRegistry;
         private PgInboxPendingService sut;
 
         @BeforeEach
         void setUp() {
-            sut = new PgInboxPendingService(pgInboxRepository, applicationEventPublisher);
+            meterRegistry = new SimpleMeterRegistry();
+            sut = new PgInboxPendingService(pgInboxRepository, applicationEventPublisher, meterRegistry);
         }
 
         @Test
@@ -135,6 +140,33 @@ class PgInboxPendingServiceTest {
                     .hasMessage("DB 연결 오류");
 
             // publishEvent 미호출 검증 — TX 롤백 경로
+            verify(applicationEventPublisher, never()).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("insertPendingAndPublish — TransactionTimedOutException 발생 시 카운터 증가 + 예외 재전파 (PCS-14 / PC-F3)")
+        void insertPendingAndPublish_timeoutExceeded_emitsCounterAndRethrows() {
+            // given
+            String orderId = "order-pcs14-timeout";
+            long amount = 10_000L;
+            String eventUuid = "evt-uuid-timeout";
+            String vendorType = "TOSS_PAYMENTS";
+            String paymentKey = "pay-key-timeout";
+
+            when(pgInboxRepository.insertPending(eq(orderId), eq(amount), eq(eventUuid), eq(vendorType), eq(paymentKey)))
+                    .thenThrow(new TransactionTimedOutException("TX timeout 5s 초과"));
+
+            // when / then — TransactionTimedOutException 재전파
+            assertThatThrownBy(() ->
+                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey))
+                    .isInstanceOf(TransactionTimedOutException.class);
+
+            // 카운터 증가 검증
+            assertThat(meterRegistry.counter(PgInboxPendingService.LISTENER_TX_TIMEOUT_COUNTER_NAME).count())
+                    .as("listener_tx_timeout_total 카운터가 1 증가해야 한다")
+                    .isEqualTo(1.0);
+
+            // publishEvent 미호출 검증
             verify(applicationEventPublisher, never()).publishEvent(any());
         }
     }
@@ -243,6 +275,11 @@ class PgInboxPendingServiceTest {
         @Bean
         TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
             return new TransactionTemplate(transactionManager);
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
         }
 
         /**
