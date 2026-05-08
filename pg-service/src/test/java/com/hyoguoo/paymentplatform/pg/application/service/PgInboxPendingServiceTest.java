@@ -9,7 +9,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
+import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,14 +24,20 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.event.EventListener;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * PgInboxPendingService 단위 테스트.
@@ -127,6 +137,41 @@ class PgInboxPendingServiceTest {
             // publishEvent 미호출 검증 — TX 롤백 경로
             verify(applicationEventPublisher, never()).publishEvent(any());
         }
+    }
+
+    // ── Spring context 통합 테스트 — active TX + AFTER_COMMIT 발화 검증 ───────────
+
+    /**
+     * Spring TX proxy 가 실제로 동작하는 컨텍스트에서 두 가지 핵심 속성을 검증한다.
+     * (1) insertPendingAndPublish 호출 시 active TX 가 활성화됨 (D-F1 흡수)
+     * (2) TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 가 발화됨 (PC-F2 흡수)
+     *
+     * <p>@EnableTransactionManagement + 커스텀 TX Manager 조합으로 Spring context 를 최소 구성한다.
+     * DB 없이 TX proxy + event publisher TX sync 만 검증한다.
+     */
+    @Nested
+    @DisplayName("active TX + AFTER_COMMIT 발화 검증 (Spring TX proxy)")
+    @ExtendWith(SpringExtension.class)
+    @org.springframework.test.context.ContextConfiguration(classes = {
+            PgInboxPendingServiceTest.TxIntegrationTestConfig.class,
+            PgInboxPendingService.class,
+            PgInboxPendingServiceTest.InboxReadyTestListener.class
+    })
+    class TxIntegrationTests {
+
+        @Autowired
+        private PgInboxPendingService sut;
+
+        @Autowired
+        private InboxReadyTestListener listener;
+
+        @Autowired
+        private TransactionTemplate transactionTemplate;
+
+        @BeforeEach
+        void setUp() {
+            listener.reset();
+        }
 
         @Test
         @DisplayName("insertPendingAndPublish — publishEvent 호출 시점에 active TX 활성 검증 (D-F1 흡수)")
@@ -137,76 +182,177 @@ class PgInboxPendingServiceTest {
             String eventUuid = "evt-uuid-004";
             String vendorType = "TOSS_PAYMENTS";
             String paymentKey = "pay-key-004";
-            Long inboxId = 77L;
 
-            when(pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey))
-                    .thenReturn(inboxId);
+            // @Transactional proxy 가 TX 를 시작한 상태에서 insertPending 안에서
+            // TX active 여부를 캡처 — TxIntegrationTestConfig.MockPgInboxRepository 가 수행
+            TxIntegrationTestConfig.MockPgInboxRepository.reset();
 
-            AtomicBoolean txActiveAtPublish = new AtomicBoolean(false);
-
-            // publishEvent 호출 시점에 active TX 여부를 캡처하는 spy
-            org.mockito.Mockito.doAnswer(invocation -> {
-                txActiveAtPublish.set(TransactionSynchronizationManager.isActualTransactionActive());
-                return null;
-            }).when(applicationEventPublisher).publishEvent(any(Object.class));
-
-            // when
+            // when — sut.insertPendingAndPublish 는 @Transactional(REQUIRED, timeout=5) proxy 로 감싸져 있음
             sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
 
-            // then — publishEvent 호출 시점에 active TX 가 활성화되어야 AFTER_COMMIT 이 등록됨
-            assertThat(txActiveAtPublish.get())
-                    .as("publishEvent 호출 시점에 active TX 가 반드시 활성화되어야 한다 (AFTER_COMMIT 등록 전제)")
+            // then — insertPending 호출 시점(= publishEvent 직전) 에 active TX 가 true 여야 함
+            assertThat(TxIntegrationTestConfig.MockPgInboxRepository.txActiveAtInsert.get())
+                    .as("insertPendingAndPublish @Transactional proxy 안에서 insertPending/publishEvent 호출 시 active TX 가 활성화되어야 한다")
                     .isTrue();
+        }
+
+        @Test
+        @DisplayName("insertPendingAndPublish — TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 발화 (PC-F2 흡수)")
+        void insertPendingAndPublish_afterCommitListenerFires() {
+            // given
+            String orderId = "order-pcs7-after-commit";
+            long amount = 20_000L;
+            String eventUuid = "evt-uuid-ac";
+            String vendorType = "TOSS_PAYMENTS";
+            String paymentKey = "pay-key-ac";
+
+            // when — transactionTemplate 으로 TX 를 명시적으로 시작·커밋한다.
+            // sut.insertPendingAndPublish 내부의 @Transactional(REQUIRED) 는 외부 TX 에 참여하고,
+            // transactionTemplate 이 커밋할 때 AFTER_COMMIT sync 가 발화된다.
+            transactionTemplate.executeWithoutResult(status ->
+                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey)
+            );
+
+            // then — TX 커밋 후 AFTER_COMMIT 리스너 발화 확인
+            assertThat(listener.isFired())
+                    .as("TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 가 발화되어야 한다")
+                    .isTrue();
+            assertThat(listener.getCapturedInboxId())
+                    .as("리스너가 수신한 inboxId 가 insertPendingAndPublish 에서 발행한 id 와 일치해야 한다")
+                    .isNotNull();
         }
     }
 
-    // ── Spring context 통합 테스트 (@DataJpaTest) ───────────────────────────────
+    // ── 테스트 전용 Spring 설정 ──────────────────────────────────────────────────
 
-    @Nested
-    @DisplayName("AFTER_COMMIT 발화 검증 (@DataJpaTest)")
-    @DataJpaTest
-    @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-    @org.springframework.context.annotation.Import({
-            PgInboxPendingService.class,
-            PgInboxPendingServiceTest.InboxReadyTestListener.class
-    })
-    class AfterCommitIntegrationTest {
+    @Configuration
+    @EnableTransactionManagement
+    static class TxIntegrationTestConfig {
 
-        @Autowired
-        private PgInboxPendingService sut;
+        @Bean
+        @Primary
+        PgInboxRepository mockPgInboxRepository() {
+            return new MockPgInboxRepository();
+        }
 
-        @Autowired
-        private InboxReadyTestListener listener;
+        @Bean
+        PlatformTransactionManager transactionManager() {
+            return new SimplePlatformTransactionManager();
+        }
 
-        @Autowired
-        private ApplicationEventPublisher applicationEventPublisher;
+        @Bean
+        TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
+            return new TransactionTemplate(transactionManager);
+        }
 
-        @Test
-        @DisplayName("insertPendingAndPublish — TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 발화")
-        void insertPendingAndPublish_afterCommitListenerFires() {
-            // given — PgInboxRepository Mock (DB 없이 이벤트 발화만 검증)
-            String orderId = "order-pcs7-after-commit";
-            Long inboxId = 55L;
-            PgInboxRepository mockRepo = org.mockito.Mockito.mock(PgInboxRepository.class);
-            when(mockRepo.insertPending(any(), any(Long.class), any(), any(), any()))
-                    .thenReturn(inboxId);
+        /**
+         * TX active 여부를 캡처하는 Mock PgInboxRepository.
+         * insertPending 호출 시점에 TransactionSynchronizationManager.isActualTransactionActive() 를 기록한다.
+         */
+        static class MockPgInboxRepository implements PgInboxRepository {
 
-            // sut 에 Mock 주입은 Spring context 밖에서 불가 — ApplicationEventPublisher 를 직접 사용
-            // @TransactionalEventListener 는 Spring TX 컨텍스트 안에서만 등록됨
-            // sut 는 @DataJpaTest TX 안에서 실행되어야 AFTER_COMMIT 이 정상 등록됨
-            AtomicReference<Long> capturedId = new AtomicReference<>(null);
-            listener.reset();
+            static final AtomicBoolean txActiveAtInsert = new AtomicBoolean(false);
+            private long nextId = 1L;
 
-            // when — Spring TX 안에서 publishEvent 직접 발행 (AFTER_COMMIT 등록 검증)
-            // @DataJpaTest 는 기본적으로 @Transactional — TX 안에서 발행
-            applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inboxId));
+            static void reset() {
+                txActiveAtInsert.set(false);
+            }
 
-            // then — AFTER_COMMIT 발화는 TX 커밋 후 → @DataJpaTest TX 는 테스트 종료 시 롤백이므로
-            // AFTER_COMMIT 발화 여부는 별도 검증 필요
-            // 여기서는 publishEvent 가 TX 안에서 호출되었음을 isActualTransactionActive 로 검증
-            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
-                    .as("@DataJpaTest TX 안에서 publishEvent 가 호출되어야 AFTER_COMMIT 등록됨")
-                    .isTrue();
+            @Override
+            public Long insertPending(String orderId, long amount, String eventUuid,
+                    String vendorType, String paymentKey) {
+                // publishEvent 직전인 이 시점에 active TX 여부를 캡처한다
+                txActiveAtInsert.set(TransactionSynchronizationManager.isActualTransactionActive());
+                return nextId++;
+            }
+
+            @Override
+            public Optional<PgInbox> findByOrderId(String orderId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public PgInbox save(PgInbox inbox) {
+                return inbox;
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public boolean transitNoneToInProgress(String orderId, long amount) {
+                return false;
+            }
+
+            @Override
+            public boolean transitPendingToInProgress(Long inboxId) {
+                return false;
+            }
+
+            @Override
+            public Long transitDirectToInProgress(String orderId, long amount) {
+                return nextId++;
+            }
+
+            @Override
+            public Long transitDirectToTerminal(String orderId, long amount,
+                    PgInboxStatus terminalStatus, String storedStatusResult, String reasonCode) {
+                return nextId++;
+            }
+
+            @Override
+            public List<Long> findPendingZombieIds(int batchSize, long thresholdMs) {
+                return List.of();
+            }
+
+            @Override
+            public List<Long> findInProgressZombieIds(int batchSize, long thresholdMs) {
+                return List.of();
+            }
+
+            @Override
+            public void transitToApproved(String orderId, String storedStatusResult) {
+            }
+
+            @Override
+            public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+            }
+
+            @Override
+            public boolean transitToQuarantined(String orderId, String reasonCode) {
+                return false;
+            }
+
+            @Override
+            public Optional<PgInbox> findByOrderIdForUpdate(String orderId) {
+                return Optional.empty();
+            }
+        }
+
+        /**
+         * DB 없이 TX 동기화만 수행하는 최소 TX Manager.
+         * TransactionSynchronizationManager.setActualTransactionActive(true) 를 통해
+         * Spring @Transactional proxy 와 @TransactionalEventListener 가 올바르게 동작함을 검증한다.
+         */
+        static class SimplePlatformTransactionManager extends AbstractPlatformTransactionManager {
+
+            @Override
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            @Override
+            protected void doBegin(Object transaction, org.springframework.transaction.TransactionDefinition definition) {
+                // no-op — 실제 DB TX 없이 TX 동기화만 활성화
+            }
+
+            @Override
+            protected void doCommit(DefaultTransactionStatus status) {
+                // no-op
+            }
+
+            @Override
+            protected void doRollback(DefaultTransactionStatus status) {
+                // no-op
+            }
         }
     }
 
@@ -224,16 +370,6 @@ class PgInboxPendingServiceTest {
         public void onInboxReady(PgInboxReadyEvent event) {
             fired.set(true);
             capturedInboxId.set(event.inboxId());
-        }
-
-        /**
-         * Fallback: TX 없이 호출될 경우 동기 수신 (테스트 유연성용).
-         * AFTER_COMMIT 과 별도로 발화 여부를 확인하는 용도.
-         */
-        @EventListener
-        public void onInboxReadySync(PgInboxReadyEvent event) {
-            // AFTER_COMMIT 이 등록되지 않은 경우를 탐지하기 위한 동기 리스너
-            // 실제 AFTER_COMMIT 발화는 fired 플래그로 구분
         }
 
         public boolean isFired() {

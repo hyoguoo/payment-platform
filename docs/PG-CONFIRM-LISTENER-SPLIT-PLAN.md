@@ -298,6 +298,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../application/service/PgInboxPendingService.java` (신규)
 - `pg-service/src/test/java/.../application/service/PgInboxPendingServiceTest.java` (신규)
 
+- [x] **완료** — `PgInboxPendingService` 신규 (`@Transactional(propagation=REQUIRED, timeout=5)`). `insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey)` — PENDING INSERT + publishEvent 단일 TX 봉인. `PgInboxPendingServiceTest` 5케이스: Mockito 3종 + Spring TX proxy 통합 2종 (active TX 검증 D-F1 흡수, AFTER_COMMIT 발화 PC-F2 흡수). `@EnableTransactionManagement` + `SimplePlatformTransactionManager` 조합으로 DB 없이 TX proxy + AFTER_COMMIT sync 검증. `./gradlew test` 243 PASS / 0 FAIL.
+
 ---
 
 ### PCS-8 — application service: `PgInboxProcessor` 신규 (`PgInboxProcessUseCase` 구현)
