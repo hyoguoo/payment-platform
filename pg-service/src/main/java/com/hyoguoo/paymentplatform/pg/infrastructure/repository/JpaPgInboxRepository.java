@@ -24,11 +24,12 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     Optional<PgInboxEntity> findByOrderIdForUpdate(@Param("orderId") String orderId);
 
     /**
-     * NONE → IN_PROGRESS compare-and-set.
-     * 이미 존재하는 row의 status가 NONE인 경우에만 IN_PROGRESS로 전이한다.
+     * PENDING → IN_PROGRESS compare-and-set.
+     * 이미 존재하는 row의 status가 PENDING인 경우에만 IN_PROGRESS로 전이한다.
      * enum 파라미터를 사용하여 컴파일러가 명칭 변경을 감지할 수 있도록 한다.
+     * TODO PCS-9: 메서드명 casNoneToInProgress → casPendingToInProgress 로 변경 예정
      *
-     * @return 1 = 전이 성공, 0 = 이미 NONE이 아님 (또는 row 부재)
+     * @return 1 = 전이 성공, 0 = 이미 PENDING이 아님 (또는 row 부재)
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE PgInboxEntity e SET e.status = :inProgress, e.updatedAt = :now "
@@ -67,9 +68,10 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
                               @Param("failed") PgInboxStatus failed);
 
     /**
-     * non-terminal(NONE/IN_PROGRESS) → QUARANTINED.
+     * non-terminal(PENDING/IN_PROGRESS) → QUARANTINED.
      * 이미 terminal(APPROVED/FAILED/QUARANTINED)인 경우 0을 반환한다 (중복 DLQ 흡수, 불변식 6c).
      * enum 파라미터 사용.
+     * TODO PCS-9: NONE 폐기 후 PENDING 파라미터로 봉합됨 — 주석 정합 완료
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE PgInboxEntity e SET e.status = :quarantined, e.reasonCode = :reasonCode, "

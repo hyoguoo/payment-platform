@@ -75,7 +75,8 @@ public class PgConfirmService implements PgConfirmCommandService {
         // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
-        if (inbox == null || inbox.getStatus() == PgInboxStatus.NONE) {
+        // TODO PCS-9: NONE 폐기 후 PENDING 분기로 교체 예정 — 현재는 임시 봉합 (NONE → PENDING 의미)
+        if (inbox == null || inbox.getStatus() == PgInboxStatus.PENDING) {
             handleNone(command, attempt);
         } else if (inbox.getStatus() == PgInboxStatus.IN_PROGRESS) {
             handleInProgress(command, attempt);

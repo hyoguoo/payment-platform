@@ -157,6 +157,8 @@ ALTER TABLE pg_inbox
 
 **예상 회귀 surface**: `PgInboxStatus.NONE` 직접 참조 코드 전부 컴파일 에러 — PCS-3 ~ PCS-6 에서 순차 해소.
 
+- [x] **완료** — `PgInboxStatus`: NONE 제거 + PENDING 추가 (5상태 = PENDING/IN_PROGRESS/APPROVED/FAILED/QUARANTINED). `PgInbox.create` PENDING 시작. `markInProgress` 가드 NONE → PENDING 변경. 보정 경로 정적 팩토리 `createDirectInProgress` / `createDirectTerminal` 신규 추가. `PgInboxStatus.NONE` 직접 참조 6곳 임시 봉합 (`// TODO PCS-9` 주석 + PENDING 대체): `PgConfirmService`, `PgInboxRepositoryImpl`(×2), `JpaPgInboxRepository`(주석), `FakePgInboxRepository`, `PaymentConfirmConsumerTest`(×2), `PgInboxClockTest`. `./gradlew test` 219 PASS / 0 FAIL.
+
 ---
 
 ### PCS-3 — 출력 포트: `PgInboxRepository` 신규 메서드 4종 + 좀비 조회 메서드 추가

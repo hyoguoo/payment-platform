@@ -93,8 +93,8 @@ class PaymentConfirmConsumerTest {
 
         // then — inbox 상태 전이 확인
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
-        // NONE → IN_PROGRESS 전이 후 PG 호출 완료 → 최종 상태는 저장된 상태
-        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.NONE);
+        // PENDING → IN_PROGRESS 전이 후 PG 호출 완료 → 최종 상태는 저장된 상태 (PCS-2: NONE 폐기)
+        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.PENDING);
     }
 
     // -----------------------------------------------------------------------
@@ -266,8 +266,8 @@ class PaymentConfirmConsumerTest {
                 .toList();
         assertThat(unexpectedErrors).isEmpty();
 
-        // then — inbox 상태는 IN_PROGRESS 이후 상태 (NONE 아님)
+        // then — inbox 상태는 IN_PROGRESS 이후 상태 (PENDING 아님 — PCS-2: NONE 폐기)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.NONE);
+        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.PENDING);
     }
 }

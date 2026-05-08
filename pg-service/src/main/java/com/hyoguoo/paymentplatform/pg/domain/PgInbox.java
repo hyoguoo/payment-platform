@@ -36,13 +36,20 @@ public class PgInbox {
         this.updatedAt = updatedAt;
     }
 
+    /**
+     * 정상 경로 신규 inbox 생성 — PENDING 상태로 시작.
+     * listener TX 에서 PENDING INSERT 시 사용.
+     *
+     * @param orderId 주문 ID
+     * @param amount  결제 금액
+     */
     public static PgInbox create(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now);
     }
 
     /**
-     * fixed Instant 주입 오버로드 —시간 결정성 테스트용.
+     * fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
      *
      * @param orderId 주문 ID
@@ -50,7 +57,39 @@ public class PgInbox {
      * @param now     현재 Instant (clock.instant() 전달)
      */
     public static PgInbox create(String orderId, Long amount, Instant now) {
-        return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now);
+    }
+
+    /**
+     * 보정 경로 전용 — PENDING 우회, 바로 IN_PROGRESS 신설.
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     *
+     * @param orderId 주문 ID
+     * @param amount  결제 금액
+     */
+    public static PgInbox createDirectInProgress(String orderId, Long amount) {
+        Instant now = Instant.now();
+        return new PgInbox(orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now);
+    }
+
+    /**
+     * 보정 경로 전용 — PENDING 우회, 바로 terminal 상태(APPROVED / QUARANTINED) 신설.
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     *
+     * @param orderId            주문 ID
+     * @param amount             결제 금액
+     * @param terminalStatus     APPROVED 또는 QUARANTINED (terminal 이어야 함)
+     * @param storedStatusResult 벤더 응답 JSON
+     * @throws IllegalArgumentException terminal 이 아닌 status 전달 시
+     */
+    public static PgInbox createDirectTerminal(
+            String orderId, Long amount, PgInboxStatus terminalStatus, String storedStatusResult) {
+        if (!terminalStatus.isTerminal()) {
+            throw new IllegalArgumentException(
+                    "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
+        }
+        Instant now = Instant.now();
+        return new PgInbox(orderId, terminalStatus, amount, storedStatusResult, null, now, now);
     }
 
     public static PgInbox of(
@@ -93,31 +132,33 @@ public class PgInbox {
     }
 
     /**
-     * NONE → IN_PROGRESS 도메인 전이.
+     * PENDING → IN_PROGRESS 도메인 전이.
      * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다(옵션 A — SQL CAS 가 race window 최종 가드).
+     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
      *
-     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
      */
     public void markInProgress() {
-        if (this.status != PgInboxStatus.NONE) {
+        if (this.status != PgInboxStatus.PENDING) {
             throw new IllegalStateException(
-                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+                    "PgInbox.markInProgress: status must be PENDING but was " + this.status);
         }
         this.status = PgInboxStatus.IN_PROGRESS;
         this.updatedAt = Instant.now();
     }
 
     /**
-     * fixed Instant 주입 오버로드 —NONE → IN_PROGRESS 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 — PENDING → IN_PROGRESS 전이 + updatedAt 결정성.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
      *
      * @param updatedAt 갱신 시각 (clock.instant() 전달)
-     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
      */
     public void markInProgress(Instant updatedAt) {
-        if (this.status != PgInboxStatus.NONE) {
+        if (this.status != PgInboxStatus.PENDING) {
             throw new IllegalStateException(
-                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+                    "PgInbox.markInProgress: status must be PENDING but was " + this.status);
         }
         this.status = PgInboxStatus.IN_PROGRESS;
         this.updatedAt = updatedAt;

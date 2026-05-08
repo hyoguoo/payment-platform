@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -55,19 +54,18 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
         Optional<PgInboxEntity> existing = jpaPgInboxRepository.findByOrderId(orderId);
         // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
         LocalDateTime now = LocalDateTime.now(clock);
-        Instant nowInstant = clock.instant();
 
         if (existing.isEmpty()) {
-            PgInbox inProgress = PgInbox.of(
-                    orderId, PgInboxStatus.IN_PROGRESS, amount,
-                    null, null,
-                    nowInstant, nowInstant);
+            // TODO PCS-9: transitNoneToInProgress 자체가 PCS-9 에서 제거/교체 예정
+            // 임시 봉합: PgInbox.createDirectInProgress 팩토리 사용 (PENDING 우회 — 보정 경로 패턴 차용)
+            PgInbox inProgress = PgInbox.createDirectInProgress(orderId, amount);
             jpaPgInboxRepository.save(PgInboxEntity.from(inProgress));
             return true;
         }
 
+        // TODO PCS-9: NONE → PENDING 전이 정합 정정 예정 — 현재 임시 봉합 (NONE 폐기, PENDING 으로 대체)
         return jpaPgInboxRepository.casNoneToInProgress(
-                orderId, now, PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS) > 0;
+                orderId, now, PgInboxStatus.PENDING, PgInboxStatus.IN_PROGRESS) > 0;
     }
 
     @Override
@@ -92,9 +90,10 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Transactional
     public boolean transitToQuarantined(String orderId, String reasonCode) {
         // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
+        // TODO PCS-9: NONE → PENDING 전이 정합 정정 예정 — casNonTerminalToQuarantined 파라미터 갱신
         return jpaPgInboxRepository.casNonTerminalToQuarantined(
                 orderId, reasonCode, LocalDateTime.now(clock),
-                PgInboxStatus.NONE, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
+                PgInboxStatus.PENDING, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
     }
 
     @Override
