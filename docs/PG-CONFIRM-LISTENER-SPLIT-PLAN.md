@@ -387,6 +387,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../infrastructure/channel/PgInboxChannel.java` (신규)
 - `pg-service/src/test/java/.../infrastructure/channel/PgInboxChannelTest.java` (신규)
 
+- [x] **완료** — `InboxJob` record (`inboxId`, `otelContext`, `snapshot`) + `PgInboxChannel` (`LinkedBlockingQueue<InboxJob>` cap=1024, `offerNow`/`take`/`size`/`isNearFull`/`registerMetrics`). `PgOutboxChannel` 1:1 거울. `PgInboxChannelTest` 7케이스 전체 PASS. `./gradlew test` 267 PASS / 0 FAIL.
+
 ---
 
 <!-- architect: PCS-11 산출물 위치 정정 필요. PLAN 은 `infrastructure/messaging/event/InboxReadyEventHandler.java` 로 적었으나, 거울 컴포넌트 `OutboxReadyEventHandler` 는 실제로 `infrastructure/listener/OutboxReadyEventHandler.java` 위치다.
