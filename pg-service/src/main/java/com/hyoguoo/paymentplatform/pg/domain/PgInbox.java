@@ -18,6 +18,15 @@ public class PgInbox {
     private String reasonCode;
     private final Instant createdAt;
     private Instant updatedAt;
+    /**
+     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 결제 키.
+     * 워커(PgInboxProcessor)가 inboxId 기반 재조회 후 PgConfirmRequest 구성에 사용한다.
+     */
+    private final String paymentKey;
+    /**
+     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
+     */
+    private final String vendorType;
 
     private PgInbox(
             String orderId,
@@ -26,7 +35,9 @@ public class PgInbox {
             String storedStatusResult,
             String reasonCode,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
         this.orderId = orderId;
         this.status = status;
         this.amount = amount;
@@ -34,30 +45,59 @@ public class PgInbox {
         this.reasonCode = reasonCode;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.paymentKey = paymentKey;
+        this.vendorType = vendorType;
     }
 
     /**
      * 정상 경로 신규 inbox 생성 — PENDING 상태로 시작.
      * listener TX 에서 PENDING INSERT 시 사용.
      *
+     * @param orderId    주문 ID
+     * @param amount     결제 금액
+     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
+     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     */
+    public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
+        Instant now = Instant.now();
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+    }
+
+    /**
+     * 하위 호환 오버로드 — paymentKey / vendorType null 기본값.
+     * 기존 테스트 코드 호환성 유지 (PCS-9).
+     *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      */
     public static PgInbox create(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now);
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
     }
 
     /**
      * fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
      *
+     * @param orderId    주문 ID
+     * @param amount     결제 금액
+     * @param now        현재 Instant (clock.instant() 전달)
+     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
+     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     */
+    public static PgInbox create(String orderId, Long amount, Instant now, String paymentKey, String vendorType) {
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+    }
+
+    /**
+     * fixed Instant 주입 오버로드 — paymentKey / vendorType null 기본값. 하위 호환.
+     *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      * @param now     현재 Instant (clock.instant() 전달)
      */
     public static PgInbox create(String orderId, Long amount, Instant now) {
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now);
+        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
     }
 
     /**
@@ -69,7 +109,7 @@ public class PgInbox {
      */
     public static PgInbox createDirectInProgress(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now);
+        return new PgInbox(orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now, null, null);
     }
 
     /**
@@ -89,7 +129,7 @@ public class PgInbox {
                     "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
         }
         Instant now = Instant.now();
-        return new PgInbox(orderId, terminalStatus, amount, storedStatusResult, null, now, now);
+        return new PgInbox(orderId, terminalStatus, amount, storedStatusResult, null, now, now, null, null);
     }
 
     public static PgInbox of(
@@ -100,7 +140,21 @@ public class PgInbox {
             String reasonCode,
             Instant createdAt,
             Instant updatedAt) {
-        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt);
+        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt, null, null);
+    }
+
+    public static PgInbox of(
+            String orderId,
+            PgInboxStatus status,
+            Long amount,
+            String storedStatusResult,
+            String reasonCode,
+            Instant createdAt,
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
+        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, paymentKey, vendorType);
     }
 
     public String getOrderId() {
@@ -129,6 +183,14 @@ public class PgInbox {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public String getPaymentKey() {
+        return paymentKey;
+    }
+
+    public String getVendorType() {
+        return vendorType;
     }
 
     /**

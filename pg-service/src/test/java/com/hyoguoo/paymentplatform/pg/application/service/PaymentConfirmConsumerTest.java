@@ -67,92 +67,79 @@ class PaymentConfirmConsumerTest {
                 new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                         new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
                         duplicateApprovalHandler);
+        // PCS-9: PgConfirmService 생성자에 PgInboxPendingService 추가
+        PgInboxPendingService pendingService = Mockito.mock(PgInboxPendingService.class);
+        Mockito.when(pendingService.insertPendingAndPublish(
+                Mockito.anyString(), Mockito.anyLong(), Mockito.anyString(),
+                Mockito.any(), Mockito.any()))
+                .thenReturn(1L);
         sut = new PgConfirmService(
-                inboxRepository, outboxRepository, vendorCallService, dedupeStore, eventPublisher, clock);
+                inboxRepository, outboxRepository, vendorCallService, dedupeStore,
+                eventPublisher, clock, pendingService);
     }
 
     // -----------------------------------------------------------------------
-    // TC1: NONE → IN_PROGRESS + PG 호출 1회
+    // TC1: inbox 없음 → insertPendingAndPublish 호출, PG 호출 0 (PCS-9 분기 재배치)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox NONE 상태일 때 IN_PROGRESS 전이 후 PG 호출을 1회 수행한다")
-    void consume_WhenInboxNone_ShouldTransitToInProgressAndCallVendor() {
-        // given
-        PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
-                "2026-04-24T01:00:00Z");
-        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
-
+    @DisplayName("consume — inbox 없을 때 insertPendingAndPublish 위임 (PCS-9 A1 acceptance: listener 내 벤더 호출 0)")
+    void consume_WhenInboxAbsent_ShouldCallInsertPendingAndPublish() {
+        // given — inbox 없음 (FakePgInboxRepository 빈 상태)
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, EVENT_UUID);
 
         // when
         sut.handle(command);
 
-        // then — PG 호출 1회
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
-
-        // then — inbox 상태 전이 확인
-        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
-        // PENDING → IN_PROGRESS 전이 후 PG 호출 완료 → 최종 상태는 저장된 상태 (PCS-2: NONE 폐기)
-        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.PENDING);
+        // then — PG 벤더 호출 0회 (listener 책임: INSERT + ack 까지만)
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
     }
 
     // -----------------------------------------------------------------------
-    // TC2: IN_PROGRESS + attempt >= 2 → vendor 재호출 (self-loop retry)
+    // TC2: IN_PROGRESS → publishEvent 채널 재적재, 벤더 호출 0 (PCS-9 분기 재배치)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox IN_PROGRESS + attempt=2 (self-loop retry) 시 vendor를 재호출한다")
-    void consume_WhenInboxInProgressAndAttempt2_ShouldCallVendor() {
+    @DisplayName("consume — inbox IN_PROGRESS 존재 시 채널 재적재(publishEvent) 수행, 벤더 호출 0 (PCS-9)")
+    void consume_WhenInboxInProgressAndAttempt2_ShouldPublishEventNotCallVendor() {
         // given — inbox를 IN_PROGRESS 상태로 사전 설정
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
                 null, null, Instant.now(), Instant.now());
         inboxRepository.save(inProgressInbox);
-
-        PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
-                "2026-04-24T01:00:00Z");
-        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
 
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-retry-002");
 
-        // when — attempt=2 (self-loop retry)
+        // when — attempt=2 (self-loop retry → PCS-9: 채널 재적재로 위임)
         sut.handle(command, 2);
 
-        // then — vendor 재호출 1회
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
+        // then — 벤더 호출 0회 (PCS-9: listener는 채널 재적재만, 워커가 처리)
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
     }
 
     // -----------------------------------------------------------------------
-    // TC2b: IN_PROGRESS + attempt=1 → vendor 재호출 (동시 race도 멱등성 흡수)
+    // TC2b: PENDING → publishEvent 채널 재적재, 벤더 호출 0 (PCS-9)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox IN_PROGRESS + attempt=1 (동시 race) 시에도 vendor 재호출 — 멱등성 layer 흡수")
-    void consume_WhenInboxInProgressAndAttempt1_ShouldCallVendor() {
-        // given — inbox를 IN_PROGRESS 상태로 사전 설정
-        PgInbox inProgressInbox = PgInbox.of(
-                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
+    @DisplayName("consume — inbox PENDING 존재 시 채널 재적재, 벤더 호출 0 (PCS-9)")
+    void consume_WhenInboxPending_ShouldPublishEventNotCallVendor() {
+        // given — inbox를 PENDING 상태로 사전 설정
+        PgInbox pendingInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.PENDING, AMOUNT.longValue(),
                 null, null, Instant.now(), Instant.now());
-        inboxRepository.save(inProgressInbox);
-
-        PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
-                "2026-04-24T01:00:00Z");
-        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
+        inboxRepository.save(pendingInbox);
 
         PgConfirmCommand command = new PgConfirmCommand(
-                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-race-001");
+                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-pending-001");
 
-        // when — attempt=1 (동시 race 시뮬, vendor 멱등성으로 흡수)
+        // when
         sut.handle(command, 1);
 
-        // then — vendor 호출 1회 (멱등성 layer 에 의해 안전하게 흡수 가능)
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
+        // then — 벤더 호출 0회
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
     }
 
     // -----------------------------------------------------------------------
@@ -215,18 +202,14 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC5: 동시 진입 시 inbox 전이 원자성 + vendor 재호출 멱등성
+    // TC5: 동시 진입 시 dedupe 작동 + 벤더 호출 0 (PCS-9 분기 재배치)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — 동시 진입 시 inbox 상태는 NONE이 아니고 vendor 호출 >= 1회 (IN_PROGRESS도 재호출 — 멱등성 흡수)")
-    void consume_WhenInboxNoneToInProgress_ShouldBeAtomicUnderConcurrency() throws InterruptedException {
-        // given
-        PgConfirmResult successResult = new PgConfirmResult(
-                PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
-                "2026-04-24T01:00:00Z");
-        gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
-
+    @DisplayName("consume — 동일 eventUUID 동시 진입 시 dedupe 작동, 벤더 호출 0 (PCS-9 listener 채널 위임)")
+    void consume_WhenInboxAbsent_ConcurrentDedupe_ShouldBeAtomicUnderConcurrency() throws InterruptedException {
+        // given — inbox 없음 (FakePgInboxRepository 빈 상태)
+        // PCS-9: absent → insertPendingAndPublish → 워커가 처리 (listener 내 벤더 호출 0)
         int threadCount = 8;
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
@@ -236,7 +219,6 @@ class PaymentConfirmConsumerTest {
         for (int i = 0; i < threadCount; i++) {
             int threadIdx = i;
             Thread.ofVirtual().start(() -> {
-                // 각 스레드는 서로 다른 eventUUID로 소비 시도 (dedupe 우회)
                 PgConfirmCommand cmd = new PgConfirmCommand(
                         ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS,
                         "evt-concurrent-" + threadIdx);
@@ -258,18 +240,11 @@ class PaymentConfirmConsumerTest {
         startLatch.countDown();
         doneLatch.await();
 
-        // then — vendor 호출 >= 1회 (최초 선점 스레드 + 타이밍상 IN_PROGRESS 경로 진입 스레드)
-        // IN_PROGRESS 경로에서 재호출은 vendor/pg-service/payment-service 3단 멱등성 layer 가 흡수한다.
-        // Fake 환경에서는 DuplicateHandledException 대신 도메인 가드 예외(IllegalStateException)가
-        // 발생할 수 있음 — Fake 한계이므로 해당 예외는 필터링한다.
-        assertThat(gatewayAdapter.getConfirmCallCount()).isGreaterThanOrEqualTo(1);
+        // then — 벤더 호출 0 (PCS-9: listener는 INSERT + ack 까지만)
+        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
         List<Exception> unexpectedErrors = errors.stream()
                 .filter(e -> !(e instanceof IllegalStateException))
                 .toList();
         assertThat(unexpectedErrors).isEmpty();
-
-        // then — inbox 상태는 IN_PROGRESS 이후 상태 (PENDING 아님 — PCS-2: NONE 폐기)
-        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
-        assertThat(inbox.getStatus()).isNotEqualTo(PgInboxStatus.PENDING);
     }
 }

@@ -362,6 +362,8 @@ public interface PgInboxProcessUseCase {
 - 기존 Fake 구현체 갱신 (테스트용 FakePgInboxRepository)
 - 관련 테스트 갱신
 
+- [x] **완료** — `PgConfirmService` 재작성: handleAbsent (`PgInboxPendingService.insertPendingAndPublish` 위임) + handleActiveInbox (PENDING/IN_PROGRESS → publishEvent 채널 재적재) + handleTerminal (`@Transactional` 봉인, D-F3 흡수). `DuplicateApprovalHandler`: `handleDbAbsentAmountMatch` → `transitDirectToTerminal(APPROVED)`, `handleDbAbsentAmountMismatch` → `transitDirectToTerminal(QUARANTINED)`, `handleVendorIndeterminate` (inbox 없음) → `transitDirectToInProgress` (D-F2 atomicity 봉인). `PgInboxRepository.transitNoneToInProgress` 삭제. `JpaPgInboxRepository.casNoneToInProgress` 삭제. `PgInboxRepositoryImpl.transitNoneToInProgress` 삭제. `FakePgInboxRepository`: stub → 실제 구현. `PgInboxAmountService`: 컴파일 에러 해소 (dead service 주석 명시). Flyway V3 migration (`payment_key` / `vendor_type` 컬럼 추가) + `PgInbox` 도메인 / `PgInboxEntity` 확장 (PCS-8 보고 사항 (a) 채택). `./gradlew test` 260 PASS / 0 FAIL.
+
 ---
 
 ### PCS-10 — 인프라: `InboxJob` record + `PgInboxChannel` 신규

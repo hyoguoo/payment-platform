@@ -51,40 +51,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return inbox;
     }
 
-    /**
-     * PENDING → IN_PROGRESS 원자 compare-and-set.
-     * 동시 진입 시 단 1 스레드만 true 를 반환한다.
-     * TODO PCS-9: transitNoneToInProgress 교체 예정 — 현재 PENDING → IN_PROGRESS 로 임시 봉합
-     *
-     * <p>구현 방식:
-     * <ul>
-     *   <li>row가 없는 경우: putIfAbsent로 IN_PROGRESS row를 생성 — 성공(null 반환)이면 true.</li>
-     *   <li>row가 있는 경우: 현재 상태가 PENDING인지 확인 후 compare-and-set 전이 시도.
-     *       PENDING이 아니면 false 즉시 반환.</li>
-     * </ul>
-     */
-    @Override
-    public boolean transitNoneToInProgress(String orderId, long amount) {
-        // TODO PCS-9: createDirectInProgress 또는 새 repo 메서드로 교체 예정
-        PgInbox inProgress = PgInbox.createDirectInProgress(orderId, amount);
-
-        // row가 없는 경우 — putIfAbsent로 원자 생성
-        PgInbox existing = store.putIfAbsent(orderId, inProgress);
-        if (existing == null) {
-            return true; // 새 row 생성 성공
-        }
-
-        // row가 있는 경우 — PENDING 상태인 경우만 IN_PROGRESS 전이 시도 (NONE 폐기)
-        AtomicBoolean transitioned = new AtomicBoolean(false);
-        store.compute(orderId, (key, current) -> {
-            if (current != null && current.getStatus() == PgInboxStatus.PENDING) {
-                transitioned.set(true);
-                return inProgress;
-            }
-            return current; // 상태 유지 (전이 실패)
-        });
-        return transitioned.get();
-    }
+    // PCS-9: transitNoneToInProgress 삭제 — 호출처 모두 교체 완료.
 
     @Override
     public void transitToApproved(String orderId, String storedStatusResult) {
@@ -128,38 +95,101 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return findByOrderId(orderId);
     }
 
-    // TODO PCS-4: 아래 stub 메서드들은 PCS-4 Fake 업데이트 시 실제 동작으로 교체한다.
-
+    /**
+     * PCS-9: listener 경로 PENDING INSERT — orderId 충돌 시 기존 id 반환.
+     * paymentKey / vendorType 포함 저장 (V3 migration 정합).
+     */
     @Override
     public Long insertPending(String orderId, long amount, String eventUuid,
                               String vendorType, String paymentKey) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        // orderId 충돌 시 기존 row 유지, 신규 row id 발급 없음
+        AtomicBoolean[] inserted = {new AtomicBoolean(false)};
+        store.computeIfAbsent(orderId, key -> {
+            Long newId = idSequence.getAndIncrement();
+            PgInbox inbox = PgInbox.of(orderId, PgInboxStatus.PENDING, amount,
+                    null, null, java.time.Instant.now(), java.time.Instant.now(),
+                    paymentKey, vendorType);
+            idIndex.put(newId, orderId);
+            inserted[0].set(true);
+            // 실제 저장은 compute 으로 진행
+            return inbox;
+        });
+        // id 조회 — store 에서 orderId로 찾은 후 idIndex 역방향
+        PgInbox inbox = store.get(orderId);
+        if (inbox == null) {
+            return null;
+        }
+        // idIndex에서 orderId에 대응하는 id를 역방향 검색
+        return idIndex.entrySet().stream()
+                .filter(e -> e.getValue().equals(orderId))
+                .map(java.util.Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
     }
 
+    /**
+     * PCS-9: 워커 TX_A — PENDING → IN_PROGRESS SKIP LOCKED (Fake 단순 구현).
+     * 동시성 없이 PENDING row 가 존재하면 IN_PROGRESS 전이.
+     */
     @Override
     public boolean transitPendingToInProgress(Long inboxId) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        String orderId = idIndex.get(inboxId);
+        if (orderId == null) {
+            return false;
+        }
+        AtomicBoolean transitioned = new AtomicBoolean(false);
+        store.compute(orderId, (key, current) -> {
+            if (current != null && current.getStatus() == PgInboxStatus.PENDING) {
+                transitioned.set(true);
+                return PgInbox.of(orderId, PgInboxStatus.IN_PROGRESS, current.getAmount(),
+                        current.getStoredStatusResult(), current.getReasonCode(),
+                        current.getCreatedAt(), java.time.Instant.now(),
+                        current.getPaymentKey(), current.getVendorType());
+            }
+            return current;
+        });
+        return transitioned.get();
     }
 
+    /**
+     * PCS-9: 보정 경로 — PENDING 우회, 바로 IN_PROGRESS.
+     */
     @Override
     public Long transitDirectToInProgress(String orderId, long amount) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        Long newId = idSequence.getAndIncrement();
+        PgInbox inbox = PgInbox.createDirectInProgress(orderId, amount);
+        store.put(orderId, inbox);
+        idIndex.put(newId, orderId);
+        return newId;
     }
 
+    /**
+     * PCS-9: 보정 경로 — PENDING + IN_PROGRESS 우회, 직접 terminal.
+     */
     @Override
     public Long transitDirectToTerminal(String orderId, long amount, PgInboxStatus terminalStatus,
                                         String storedStatusResult, String reasonCode) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        if (!terminalStatus.isTerminal()) {
+            throw new IllegalArgumentException(
+                    "FakePgInboxRepository.transitDirectToTerminal: non-terminal status=" + terminalStatus);
+        }
+        Long newId = idSequence.getAndIncrement();
+        java.time.Instant now = java.time.Instant.now();
+        PgInbox inbox = PgInbox.of(orderId, terminalStatus, amount,
+                storedStatusResult, reasonCode, now, now, null, null);
+        store.put(orderId, inbox);
+        idIndex.put(newId, orderId);
+        return newId;
     }
 
     @Override
     public List<Long> findPendingZombieIds(int batchSize, long thresholdMs) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        return List.of(); // Fake — 좀비 없음
     }
 
     @Override
     public List<Long> findInProgressZombieIds(int batchSize, long thresholdMs) {
-        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+        return List.of(); // Fake — 좀비 없음
     }
 
     // --- 검증 헬퍼 ---

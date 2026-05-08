@@ -281,11 +281,7 @@ class PgInboxPendingServiceTest {
                 return inbox;
             }
 
-            @Override
-            @SuppressWarnings("deprecation")
-            public boolean transitNoneToInProgress(String orderId, long amount) {
-                return false;
-            }
+            // PCS-9: transitNoneToInProgress 삭제됨
 
             @Override
             public boolean transitPendingToInProgress(Long inboxId) {

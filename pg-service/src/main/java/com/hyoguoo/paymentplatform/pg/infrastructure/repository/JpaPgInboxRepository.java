@@ -24,21 +24,7 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     @Query("SELECT e FROM PgInboxEntity e WHERE e.orderId = :orderId")
     Optional<PgInboxEntity> findByOrderIdForUpdate(@Param("orderId") String orderId);
 
-    /**
-     * PENDING → IN_PROGRESS compare-and-set.
-     * 이미 존재하는 row의 status가 PENDING인 경우에만 IN_PROGRESS로 전이한다.
-     * enum 파라미터를 사용하여 컴파일러가 명칭 변경을 감지할 수 있도록 한다.
-     * TODO PCS-9: 메서드명 casNoneToInProgress → casPendingToInProgress 로 변경 예정
-     *
-     * @return 1 = 전이 성공, 0 = 이미 PENDING이 아님 (또는 row 부재)
-     */
-    @Modifying(clearAutomatically = true)
-    @Query("UPDATE PgInboxEntity e SET e.status = :inProgress, e.updatedAt = :now "
-            + "WHERE e.orderId = :orderId AND e.status = :none")
-    int casNoneToInProgress(@Param("orderId") String orderId,
-                            @Param("now") LocalDateTime now,
-                            @Param("none") PgInboxStatus none,
-                            @Param("inProgress") PgInboxStatus inProgress);
+    // PCS-9: casNoneToInProgress 삭제 — transitNoneToInProgress 호출처 모두 교체 완료.
 
     /**
      * IN_PROGRESS → APPROVED.
@@ -71,8 +57,7 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     /**
      * non-terminal(PENDING/IN_PROGRESS) → QUARANTINED.
      * 이미 terminal(APPROVED/FAILED/QUARANTINED)인 경우 0을 반환한다 (중복 DLQ 흡수, 불변식 6c).
-     * enum 파라미터 사용.
-     * TODO PCS-9: NONE 폐기 후 PENDING 파라미터로 봉합됨 — 주석 정합 완료
+     * enum 파라미터 사용. PCS-9: NONE 폐기 완료, PENDING 파라미터로 정합.
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE PgInboxEntity e SET e.status = :quarantined, e.reasonCode = :reasonCode, "
@@ -91,14 +76,17 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
      * orderId UNIQUE INSERT IGNORE + 기존 id 조회.
      * IGNORE로 중복 row가 있어도 예외 없이 통과하고, 조회로 기존 id를 반환한다.
      * native query 사용 이유: JPQL 은 INSERT IGNORE 를 지원하지 않는다.
-     * TODO PCS-X: event_uuid, vendor_type, payment_key 컬럼 스키마 추가 시 INSERT 에 포함할 것
+     * PCS-9 (V3 migration): payment_key / vendor_type 컬럼 포함.
      */
     @Modifying
-    @Query(value = "INSERT IGNORE INTO pg_inbox (order_id, status, amount, created_at, updated_at) "
-            + "VALUES (:orderId, 'PENDING', :amount, :now, :now)",
+    @Query(value = "INSERT IGNORE INTO pg_inbox "
+            + "(order_id, status, amount, payment_key, vendor_type, created_at, updated_at) "
+            + "VALUES (:orderId, 'PENDING', :amount, :paymentKey, :vendorType, :now, :now)",
             nativeQuery = true)
     void insertIgnorePending(@Param("orderId") String orderId,
                              @Param("amount") long amount,
+                             @Param("paymentKey") String paymentKey,
+                             @Param("vendorType") String vendorType,
                              @Param("now") LocalDateTime now);
 
     /**

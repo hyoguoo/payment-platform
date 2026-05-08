@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
-import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
@@ -11,34 +10,39 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.RoundingMode;
 import java.time.Clock;
-import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * pg-service business inbox 상태 분기 오케스트레이터.
+ * pg-service business inbox 상태 분기 오케스트레이터 (PCS-9 재배치).
  * inbox 5상태 + 2단 멱등성 키(eventUUID + orderId) 적용.
  *
- * <p>처리 흐름:
+ * <p>PCS-9 분기 재배치:
  * <ol>
  *   <li>eventUUID dedupe — {@link EventDedupeStore#markSeen}: false면 즉시 no-op.</li>
  *   <li>inbox 상태 분기:
  *     <ul>
- *       <li>NONE → transitNoneToInProgress CAS → 성공 시 PG 호출</li>
- *       <li>IN_PROGRESS → no-op (불변식 4b)</li>
- *       <li>APPROVED/FAILED/QUARANTINED → stored_status_result 재발행 (불변식 4/4b)</li>
+ *       <li>absent(inbox 없음) → {@link PgInboxPendingService#insertPendingAndPublish} (listener TX 봉인)</li>
+ *       <li>PENDING → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
+ *       <li>IN_PROGRESS → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
+ *       <li>terminal(APPROVED/FAILED/QUARANTINED) → handleTerminal (@Transactional 봉인,
+ *           stored_status_result 재발행)</li>
  *     </ul>
  *   </li>
  * </ol>
  *
- * <p>실제 PG 벤더 호출: {@link PgVendorCallService}에 위임.
+ * <p>§1.6 분기 재배치 + D-F3 흡수:
+ * handleTerminal 에 {@code @Transactional} 명시 — pg_outbox save + publishEvent 가 동일 active TX 안에서
+ * 실행되어야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가 등록된다.
  */
 @Slf4j
 @Service
@@ -51,6 +55,7 @@ public class PgConfirmService implements PgConfirmCommandService {
     private final EventDedupeStore eventDedupeStore;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
+    private final PgInboxPendingService pgInboxPendingService;
 
     @Override
     public void handle(PgConfirmCommand command, int attempt) {
@@ -61,8 +66,7 @@ public class PgConfirmService implements PgConfirmCommandService {
             return;
         }
 
-        // TX 경계 불일치 방어: pg_outbox 저장/상태 전이가 롤백되면 dedupe도 되돌려
-        // 재컨슘 경로에서 영구 정체를 방지한다.
+        // TX 경계 불일치 방어: 처리 실패 시 dedupe 도 되돌려 재컨슘 경로에서 영구 정체를 방지한다.
         try {
             processCommand(command, attempt);
         } catch (RuntimeException e) {
@@ -75,13 +79,15 @@ public class PgConfirmService implements PgConfirmCommandService {
         // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
-        // TODO PCS-9: NONE 폐기 후 PENDING 분기로 교체 예정 — 현재는 임시 봉합 (NONE → PENDING 의미)
-        if (inbox == null || inbox.getStatus() == PgInboxStatus.PENDING) {
-            handleNone(command, attempt);
-        } else if (inbox.getStatus() == PgInboxStatus.IN_PROGRESS) {
-            handleInProgress(command, attempt);
+        if (inbox == null) {
+            // absent → listener TX 봉인 경로
+            handleAbsent(command);
+        } else if (inbox.getStatus() == PgInboxStatus.PENDING
+                || inbox.getStatus() == PgInboxStatus.IN_PROGRESS) {
+            // PENDING / IN_PROGRESS → 채널 재적재 (워커가 처리)
+            handleActiveInbox(inbox);
         } else if (inbox.getStatus().isTerminal()) {
-            // terminal 재수신 → 벤더 재호출 금지, stored_status_result 재발행만 수행
+            // terminal 재수신 → stored_status_result 재발행 (@Transactional 봉인)
             handleTerminal(inbox);
         }
     }
@@ -90,33 +96,48 @@ public class PgConfirmService implements PgConfirmCommandService {
     // 내부 분기 메서드
     // -----------------------------------------------------------------------
 
-    private void handleNone(PgConfirmCommand command, int attempt) {
+    /**
+     * inbox 없음 — listener TX 경계 봉인 경로.
+     * {@link PgInboxPendingService#insertPendingAndPublish} 가 PENDING INSERT + publishEvent 를 단일 TX 안에서 수행.
+     * listener 책임: INSERT + ack 까지. 워커 VT 풀이 채널에서 take 해 처리.
+     */
+    private void handleAbsent(PgConfirmCommand command) {
         long amountLong = command.amount().setScale(0, RoundingMode.UNNECESSARY).longValue();
+        String vendorType = command.vendorType() != null ? command.vendorType().name() : null;
 
-        boolean transitioned = pgInboxRepository.transitNoneToInProgress(command.orderId(), amountLong);
-        if (!transitioned) {
-            // 다른 스레드/인스턴스가 이미 선점 — IN_PROGRESS 경로로 위임
-            LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_PREEMPTED,
-                    () -> "orderId=" + command.orderId());
-            return;
-        }
+        pgInboxPendingService.insertPendingAndPublish(
+                command.orderId(),
+                amountLong,
+                command.eventUuid(),
+                vendorType,
+                command.paymentKey());
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_NONE_TO_IN_PROGRESS,
-                () -> "orderId=" + command.orderId());
-        callVendor(command, attempt);
+                () -> "orderId=" + command.orderId() + " — PENDING INSERT + publishEvent 위임");
     }
 
-    private void handleInProgress(PgConfirmCommand command, int attempt) {
-        // no-op 폐기: self-loop retry (attempt >= 2) 와 동시 race (attempt=1) 모두
-        // vendor 재호출로 처리한다. 중복 호출은 vendor/pg-service/payment-service 3단
-        // 멱등성 layer 가 흡수한다 (PgGatewayDuplicateHandledException → DuplicateApprovalHandler).
+    /**
+     * PENDING / IN_PROGRESS inbox 존재 — 채널 재적재.
+     * publishEvent(PgInboxReadyEvent) 로 채널에 재적재하고, 워커가 처리를 이어받는다.
+     * IN_PROGRESS 자기 재진입(attempt >= 2) 도 이 경로로 처리되며, 워커가 IN_PROGRESS 좀비 경로를 밟는다.
+     */
+    private void handleActiveInbox(PgInbox inbox) {
+        applicationEventPublisher.publishEvent(new PgInboxReadyEvent(null));
+
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_RETRY,
-                () -> "orderId=" + command.orderId() + " attempt=" + attempt);
-        callVendor(command, attempt);
+                () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus()
+                        + " — 채널 재적재");
     }
 
-    private void handleTerminal(PgInbox inbox) {
-        // stored_status_result 로 pg_outbox 재발행 — 벤더 재호출 금지
+    /**
+     * terminal 재수신 — stored_status_result 재발행.
+     * D-F3 흡수: {@code @Transactional} 명시 — pg_outbox save + publishEvent 가 동일 active TX 안에서
+     * 실행되어야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가 등록된다.
+     * TX 없으면 JpaRepository.save 가 자체 TX 로 즉시 커밋 → 후속 publishEvent 는 active TX 외부
+     * → AFTER_COMMIT 미등록 → 채널 적재 0.
+     */
+    @Transactional
+    protected void handleTerminal(PgInbox inbox) {
         String storedResult = inbox.getStoredStatusResult();
         if (storedResult == null || storedResult.isBlank()) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
@@ -137,18 +158,5 @@ public class PgConfirmService implements PgConfirmCommandService {
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
                 () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus());
-    }
-
-    private void callVendor(PgConfirmCommand command, int attempt) {
-        PgConfirmRequest request = new PgConfirmRequest(
-                command.orderId(),
-                command.paymentKey(),
-                command.amount(),
-                command.vendorType());
-
-        pgVendorCallService.callVendor(request, attempt, Instant.now(clock));
-
-        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_VENDOR_DELEGATED,
-                () -> "orderId=" + command.orderId());
     }
 }

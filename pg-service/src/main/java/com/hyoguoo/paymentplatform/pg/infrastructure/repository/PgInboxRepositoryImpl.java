@@ -47,33 +47,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
         return jpaPgInboxRepository.save(PgInboxEntity.from(inbox)).toDomain();
     }
 
-    /**
-     * NONE → IN_PROGRESS 원자 전이.
-     * row 부재 시: IN_PROGRESS row로 직접 INSERT 선점.
-     * row 존재 시: status=NONE 조건의 JPQL UPDATE(CAS) 성공 여부로 판정.
-     *
-     * <p>순서 이유: 이미 IN_PROGRESS/APPROVED/FAILED/QUARANTINED인 row에 INSERT하면 UNIQUE 충돌이 발생하므로,
-     * 먼저 find → 부재 시에만 INSERT, 존재 시 CAS UPDATE로 분기한다.
-     */
-    @Override
-    @Transactional
-    public boolean transitNoneToInProgress(String orderId, long amount) {
-        Optional<PgInboxEntity> existing = jpaPgInboxRepository.findByOrderId(orderId);
-        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
-        LocalDateTime now = LocalDateTime.now(clock);
-
-        if (existing.isEmpty()) {
-            // TODO PCS-9: transitNoneToInProgress 자체가 PCS-9 에서 제거/교체 예정
-            // 임시 봉합: PgInbox.createDirectInProgress 팩토리 사용 (PENDING 우회 — 보정 경로 패턴 차용)
-            PgInbox inProgress = PgInbox.createDirectInProgress(orderId, amount);
-            jpaPgInboxRepository.save(PgInboxEntity.from(inProgress));
-            return true;
-        }
-
-        // TODO PCS-9: NONE → PENDING 전이 정합 정정 예정 — 현재 임시 봉합 (NONE 폐기, PENDING 으로 대체)
-        return jpaPgInboxRepository.casNoneToInProgress(
-                orderId, now, PgInboxStatus.PENDING, PgInboxStatus.IN_PROGRESS) > 0;
-    }
+    // PCS-9: transitNoneToInProgress 삭제 — 호출처 모두 교체 완료.
 
     @Override
     @Transactional
@@ -96,8 +70,8 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Override
     @Transactional
     public boolean transitToQuarantined(String orderId, String reasonCode) {
-        // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
-        // TODO PCS-9: NONE → PENDING 전이 정합 정정 예정 — casNonTerminalToQuarantined 파라미터 갱신
+        // 시간 결정성 위해 LocalDateTime.now(clock) 사용
+        // PCS-9: NONE 폐기 완료 — PENDING / IN_PROGRESS non-terminal 파라미터 정합
         return jpaPgInboxRepository.casNonTerminalToQuarantined(
                 orderId, reasonCode, LocalDateTime.now(clock),
                 PgInboxStatus.PENDING, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
@@ -114,16 +88,15 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
      * <p>INSERT IGNORE 로 orderId UNIQUE 충돌을 흡수하고, SELECT 로 실제 id 를 반환한다.
      * 신규 삽입 또는 기존 row — 어느 경우도 동일한 id 를 반환하여 downstream 이 inboxId 를 보유한다.
      *
-     * <p>TODO PCS-X: eventUuid, vendorType, paymentKey 컬럼이 스키마에 추가되면
-     * insertIgnorePending JPQL 과 PgInboxEntity 에 해당 필드를 포함할 것.
-     * 현재는 포트 계약 시그니처만 존재하고 DB 컬럼이 없으므로 파라미터를 무시한다.
+     * <p>PCS-9 (V3 migration): paymentKey / vendorType 컬럼 포함하여 INSERT.
+     * eventUuid 는 DB 컬럼 없이 EventDedupeStore 에서 관리하므로 여기서는 무시한다.
      */
     @Override
     @Transactional
     public Long insertPending(String orderId, long amount, String eventUuid,
                               String vendorType, String paymentKey) {
         LocalDateTime now = LocalDateTime.now(clock);
-        jpaPgInboxRepository.insertIgnorePending(orderId, amount, now);
+        jpaPgInboxRepository.insertIgnorePending(orderId, amount, paymentKey, vendorType, now);
         return jpaPgInboxRepository.findIdByOrderId(orderId);
     }
 

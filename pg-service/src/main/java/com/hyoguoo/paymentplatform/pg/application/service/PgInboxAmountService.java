@@ -14,12 +14,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service business inbox amount 컬럼 저장 규약 서비스.
- * amount 는 아래 3경로로만 기록된다 — 다른 경로의 직접 UPDATE 금지.
+ *
+ * <p>WARNING: 이 서비스는 main 코드에서 호출처가 없는 dead service 입니다.
+ * PCS-9 에서 포트 메서드(transitNoneToInProgress) 삭제에 따른 컴파일 에러 해소만 진행합니다.
+ * dead service 자체 제거는 별 토픽 / 사용자 확인 후 처리합니다.
+ *
+ * <p>amount 는 아래 3경로로만 기록된다 — 다른 경로의 직접 UPDATE 금지.
  *
  * <ol>
- *   <li>(a) NONE→IN_PROGRESS: {@link #recordPayloadAmount} — command payload amount 기록.</li>
+ *   <li>(a) 직접 IN_PROGRESS 신설: {@link #recordPayloadAmount} — command payload amount 기록.</li>
  *   <li>(b) IN_PROGRESS→APPROVED: {@link #validateAndApprove} — 벤더 2자 대조 통과값 기록.</li>
- *   <li>(c) NONE→APPROVED 직접: {@link #recordAndApproveDirect} — payload vs vendor 2자 대조 통과값 기록.</li>
+ *   <li>(c) 직접 APPROVED 신설: {@link #recordAndApproveDirect} — payload vs vendor 2자 대조 통과값 기록.</li>
  * </ol>
  */
 @Slf4j
@@ -32,11 +37,12 @@ public class PgInboxAmountService {
     private final PgInboxRepository pgInboxRepository;
 
     // -----------------------------------------------------------------------
-    // (a) NONE → IN_PROGRESS: payload amount 기록
+    // (a) 직접 IN_PROGRESS 신설: payload amount 기록
     // -----------------------------------------------------------------------
 
     /**
-     * NONE→IN_PROGRESS 전이 시 command payload amount를 pg_inbox.amount에 기록한다.
+     * 직접 IN_PROGRESS 신설 + payload amount 기록.
+     * PCS-9: transitNoneToInProgress → transitDirectToInProgress 교체 (PENDING 우회).
      *
      * <p>BigDecimal 검증: scale=0 강제(소수점 거부) + 음수 거부.
      *
@@ -48,14 +54,10 @@ public class PgInboxAmountService {
     @Transactional
     public void recordPayloadAmount(String orderId, BigDecimal payloadAmount) {
         long amountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
-        boolean transitioned = pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
-        if (!transitioned) {
-            LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_NONE_TO_IN_PROGRESS_PREEMPTED,
-                    () -> "orderId=" + orderId);
-        } else {
-            LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_RECORDED,
-                    () -> "orderId=" + orderId + " amount=" + amountLong);
-        }
+        // PCS-9: transitNoneToInProgress 삭제 → transitDirectToInProgress 교체 (PENDING 우회)
+        pgInboxRepository.transitDirectToInProgress(orderId, amountLong);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_RECORDED,
+                () -> "orderId=" + orderId + " amount=" + amountLong);
     }
 
     // -----------------------------------------------------------------------
@@ -103,8 +105,9 @@ public class PgInboxAmountService {
     // -----------------------------------------------------------------------
 
     /**
-     * NONE→APPROVED 직접 전이 (pg DB 부재 경로).
+     * 직접 APPROVED 신설 (pg DB 부재 경로).
      * payload vs vendor 2자 대조 통과값을 amount로 기록하며 즉시 APPROVED 전이.
+     * PCS-9: transitNoneToInProgress → transitDirectToTerminal(APPROVED) 교체 (PENDING 우회).
      *
      * <p>payload != vendor → 즉시 {@link IllegalStateException} (저장 자체를 차단).
      *
@@ -122,8 +125,11 @@ public class PgInboxAmountService {
                             + " payloadAmount=" + payloadLong + " vendorAmount=" + vendorAmount);
         }
 
-        pgInboxRepository.transitNoneToInProgress(orderId, payloadLong);
-        pgInboxRepository.transitToApproved(orderId, buildApprovedPayload(orderId, vendorAmount));
+        // PCS-9: transitNoneToInProgress 삭제 → transitDirectToTerminal(APPROVED) 교체 (PENDING 우회)
+        String approvedPayload = buildApprovedPayload(orderId, vendorAmount);
+        pgInboxRepository.transitDirectToTerminal(orderId, payloadLong,
+                com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus.APPROVED,
+                approvedPayload, null);
         LogFmt.info(log, LogDomain.PG, EventType.PG_INBOX_AMOUNT_DIRECT_APPROVED,
                 () -> "orderId=" + orderId + " amount=" + payloadLong);
     }
