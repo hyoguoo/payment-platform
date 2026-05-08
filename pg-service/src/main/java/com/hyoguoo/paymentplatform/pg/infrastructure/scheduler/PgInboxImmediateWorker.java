@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.pg.core.config.concurrent.ContextAwareVirtualThreadExecutors;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.InboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgInboxChannel;
 import io.micrometer.context.ContextSnapshot;
@@ -76,8 +77,7 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
         // OTel Context + MDC 이중 래핑 — offer 시점(Kafka consumer thread)의 traceparent 를
         // worker VT thread 에 정확히 전파한다. 이중 래핑 boilerplate 는
         // ContextAwareVirtualThreadExecutors 헬퍼로 통일한다.
-        processExecutor = com.hyoguoo.paymentplatform.pg.core.config.concurrent
-                .ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
+        processExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
         for (int i = 0; i < workerCount; i++) {
             Thread worker = Thread.ofVirtual()
                     .name("pg-inbox-immediate-worker-" + i)
