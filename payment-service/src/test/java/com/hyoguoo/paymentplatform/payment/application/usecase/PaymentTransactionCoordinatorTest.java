@@ -13,7 +13,6 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
