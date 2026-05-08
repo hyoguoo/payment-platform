@@ -1,19 +1,26 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT 토픽 시작, discuss 진입 대기
+> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT discuss 종결 (Round 2 둘 다 pass), plan 진입 대기
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: discuss 대기
+- **단계**: plan (Round 2 critic + domain 모두 pass — Round 1 finding 11건 흡수, minor 1건 typo fix)
+- **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73
 
 ## 파일 링크
-- **사전 브리핑 (Baseline 0)**: docs/topics/PG-CONFIRM-LISTENER-SPLIT.md
-- 라운드 산출물: docs/rounds/pg-confirm-listener-split/ (discuss 단계 진입 시 생성)
+- **토픽 본문 (채택안 권위)**: docs/topics/PG-CONFIRM-LISTENER-SPLIT.md (§1.1~§1.9 + §2.1/§2.2 + §3 인벤토리 + §4 검증 plan + §7 acceptance + §8 흡수 노트)
+- 라운드 산출물:
+  - docs/rounds/pg-confirm-listener-split/discuss-interview-0.md (Round 0 ledger)
+  - docs/rounds/pg-confirm-listener-split/discuss-critic-1.md (Round 1 — major 3 + minor 3, revise)
+  - docs/rounds/pg-confirm-listener-split/discuss-domain-1.md (Round 1 — major 3 + minor 2, revise)
+  - docs/rounds/pg-confirm-listener-split/discuss-critic-2.md (Round 2 — minor 1, pass)
+  - docs/rounds/pg-confirm-listener-split/discuss-domain-2.md (Round 2 — finding 0, pass)
+- 플랜: docs/PG-CONFIRM-LISTENER-SPLIT-PLAN.md (plan 단계 산출 예정)
 
 ## 단계 진행
-- [ ] discuss
+- [x] discuss
 - [ ] plan
 - [ ] plan-review
 - [ ] execute
