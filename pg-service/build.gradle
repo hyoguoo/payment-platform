@@ -75,6 +75,36 @@ test {
     environment 'DOCKER_API_VERSION', '1.44'
 }
 
+// PCS-15 통합 테스트 — @Tag("integration") 전용 태스크.
+// Testcontainers MySQL + @SpringBootTest 전체 컨텍스트 로드로 acceptance A1~A4 검증.
+// payment-service SCR-10 패턴 동일 구조.
+task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    environment 'DOCKER_API_VERSION', '1.44'
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nIntegration Test Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
+            }
+        }
+    }
+}
+
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
+
 spotbugsMain {
     excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')
     reports {
