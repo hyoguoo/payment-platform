@@ -422,7 +422,7 @@ public void handle(ConfirmedEventMessage message) {
 ---
 
 <!-- arch-comment: 호출 순서 뒤집기는 application use case 안 변경. domain / port / infrastructure 어느 layer 도 추가 영향 없음 — 누락 layer 0. wrapper(processMessageWithLeaseGuard / handleRemoveOnFailure) 제거로 application 가 retry/DLQ 책임을 infrastructure(Spring Kafka DefaultErrorHandler, SCR-8) 로 위임하는 구조는 hexagonal 정합 (인프라 관심사를 인프라로). 다만 SCR-6 의 결과로 application 이 PaymentConfirmDlqPublisher port 의존을 잃는 점이 SCR-7 의 폐기 대상에 명시되어야 함 — `PaymentConfirmDlqPublisher` port + `PaymentConfirmDlqKafkaPublisher` adapter 는 본 PLAN 의 SCR-7 에서 폐기 대상으로 들어있지 않다. SCR-6 본문 마지막에 "생성자에서 PaymentConfirmDlqPublisher 파라미터 제거" 가 명시되어 있으나 port/adapter 자체의 운명(다른 사용처 0이면 SCR-7 에 합류, 다른 사용처 있으면 명시)이 PLAN 에 빠져 있음. critic 라운드에서 사용처 grep 후 SCR-7 합류 또는 별 태스크 분리를 결정할 것. -->
-### SCR-7. `EventDedupeStore` + `PaymentConfirmDlqPublisher` port/adapter 폐기 — 의존 코드 정리
+### SCR-7. `EventDedupeStore` + `PaymentConfirmDlqPublisher` port/adapter 폐기 — 의존 코드 정리 ✅
 
 - **결정 ID**: D4, D7
 - **tdd**: false
@@ -441,11 +441,16 @@ public void handle(ConfirmedEventMessage message) {
 - `application/port/out/EventDedupeStore.java` 삭제
 - `infrastructure/dedupe/EventDedupeStoreRedisAdapter.java` 삭제
 - `mock/FakeEventDedupeStore.java` 삭제
+- `mock/FakeEventDedupeStoreLeaseTest.java` 삭제 (Fake 의존 테스트)
 - `infrastructure/dedupe/EventDedupeStoreRedisAdapterTest.java` 삭제
 - `application/port/out/PaymentConfirmDlqPublisher.java` 삭제 (orphan port — SCR-8 인프라 bean 이 책임 흡수)
 - `infrastructure/messaging/publisher/PaymentConfirmDlqKafkaPublisher.java` 삭제
 - `mock/FakePaymentConfirmDlqPublisher.java` 삭제
 - `application.yml` — `payment.event-dedupe.*` 키 제거
+- `RedisConfig.java` — EventDedupeStoreRedisAdapter 관련 주석 정리
+- `KafkaProducerConfig.java` — confirmedDlqKafkaTemplate 빈 주석 SCR-8 용도로 갱신
+
+**완료 결과**: 파일 8개 삭제 + application.yml event-dedupe 키 제거 + 주석 2건 정리. `confirmedDlqKafkaTemplate` 빈은 SCR-8 DeadLetterPublishingRecoverer 에서 재사용 예정으로 유지. 전체 회귀 374 PASS.
 
 ---
 

@@ -18,13 +18,13 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 /**
  * 기본 Redis(redis-dedupe) 연결 설정.
  *
- * <p>EventDedupeStore + IdempotencyStore 가 사용하는 redis-dedupe 인스턴스 wiring.
+ * <p>IdempotencyStore 가 사용하는 redis-dedupe 인스턴스 wiring.
  * {@link StockRedisConfig} 가 redis-stock 용 별도 ConnectionFactory 를 등록하면
  * {@code @ConditionalOnMissingBean(RedisConnectionFactory.class)} 인 Spring Boot
  * autoconfig 가 default factory 를 등록하지 못한다 — 따라서 default 도 명시 등록한다.
  *
  * <p>{@code @Primary} 표시: redis 의존 어댑터 중 변수명/Qualifier 명시가 없는 곳이
- * 이 default 빈을 받도록 한다 (IdempotencyStoreRedisAdapter, EventDedupeStoreRedisAdapter).
+ * 이 default 빈을 받도록 한다 (IdempotencyStoreRedisAdapter).
  * StockCacheRedisAdapter 는 변수명 {@code stockCacheRedisTemplate} 으로 별도 빈을 받는다.
  */
 @Configuration
@@ -55,8 +55,7 @@ public class RedisConfig {
 
     /**
      * default StringRedisTemplate. {@code @Primary} 미부착 — RedisTemplate 타입으로 주입하는
-     * 자리에서 RedisTemplate primary 와 충돌하지 않도록 한다. EventDedupeStoreRedisAdapter 가
-     * 변수명 매칭(stringRedisTemplate)으로 default 빈을 직접 받으므로 충분하다.
+     * 자리에서 RedisTemplate primary 와 충돌하지 않도록 한다.
      */
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
