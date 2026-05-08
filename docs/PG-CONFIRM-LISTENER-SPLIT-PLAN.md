@@ -323,6 +323,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../application/service/PgInboxProcessor.java` (신규 — `PgInboxProcessUseCase` 구현)
 - `pg-service/src/test/java/.../application/service/PgInboxProcessorTest.java` (신규)
 
+- [x] **완료** — `PgInboxProcessor` 신규 (`@Service`, `PgInboxProcessUseCase` 구현). `processPending` (findById → empty 즉시 return / `transitPendingToInProgress` false → 선점 return / true → `invokeVendor` → `applyOutcome`) + `processInProgressZombie` (findById → empty 즉시 return / IN_PROGRESS 아닌 상태 → return / `invokeVendor` → `applyOutcome`). `PgInboxProcessorTest` 7케이스: TX_A CAS 성공/실패, 벤더 RuntimeException → TX_B 미진입, ALREADY_PROCESSED HandledInternally → `applyOutcome` 위임 (C-F2/PC-F4 흡수). 자동 수정(Rule 1): `PgInboxRepository.findById(Long)` 신규 포트 메서드 + `PgInboxRepositoryImpl` / `FakePgInboxRepository` 구현 + `EventType` 3종 (`PG_INBOX_WORKER_START` / `PG_INBOX_WORKER_SKIP` / `PG_INBOX_WORKER_PROCESS_FAIL`) 추가. 현재 스키마 제약(paymentKey/vendorType 컬럼 없음) → `PgConfirmRequest` orderId/amount만 유효, TODO PCS-X 주석 기재. `./gradlew test` 250 PASS / 0 FAIL.
+
 ---
 
 ### PCS-9 — application service: `PgConfirmService` 분기 재배치 + `DuplicateApprovalHandler` + `PgInboxAmountService` 갱신

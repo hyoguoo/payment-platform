@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -69,7 +70,7 @@ class PgInboxProcessorTest {
 
         // then
         verify(vendorCallService, times(1)).invokeVendor(any());
-        verify(vendorCallService, times(1)).applyOutcome(any(), any(), any(), any());
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), anyInt(), any());
     }
 
     @Test
@@ -86,7 +87,7 @@ class PgInboxProcessorTest {
 
         // then — 벤더 호출 0
         verify(vendorCallService, never()).invokeVendor(any());
-        verify(vendorCallService, never()).applyOutcome(any(), any(), any(), any());
+        verify(vendorCallService, never()).applyOutcome(any(), any(), anyInt(), any());
     }
 
     @Test
@@ -119,7 +120,7 @@ class PgInboxProcessorTest {
 
         // then — applyOutcome 미호출 (pg_inbox IN_PROGRESS 잔존 → 좀비 폴링 회수)
         verify(vendorCallService, times(1)).invokeVendor(any());
-        verify(vendorCallService, never()).applyOutcome(any(), any(), any(), any());
+        verify(vendorCallService, never()).applyOutcome(any(), any(), anyInt(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -140,7 +141,7 @@ class PgInboxProcessorTest {
 
         // then
         verify(vendorCallService, times(1)).invokeVendor(any());
-        verify(vendorCallService, times(1)).applyOutcome(any(), any(), any(), any());
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), anyInt(), any());
     }
 
     @Test
@@ -154,7 +155,7 @@ class PgInboxProcessorTest {
 
         // then
         verify(vendorCallService, never()).invokeVendor(any());
-        verify(vendorCallService, never()).applyOutcome(any(), any(), any(), any());
+        verify(vendorCallService, never()).applyOutcome(any(), any(), anyInt(), any());
     }
 
     @Test
@@ -173,6 +174,6 @@ class PgInboxProcessorTest {
         // then — applyOutcome 1회 호출 — HandledInternally 분기가 DuplicateApprovalHandler 에 위임 (PCS-6 검증)
         verify(vendorCallService, times(1)).invokeVendor(any());
         verify(vendorCallService, times(1)).applyOutcome(
-                eq(handledInternally), any(), any(), any());
+                eq(handledInternally), any(), anyInt(), any());
     }
 }
