@@ -190,6 +190,8 @@ List<Long> findPendingZombieIds(int batchSize, long thresholdMs);
 List<Long> findInProgressZombieIds(int batchSize, long thresholdMs);
 ```
 
+- [x] **완료** — `PgInboxRepository` 인터페이스에 신규 메서드 6종 선언: `insertPending` (listener PENDING INSERT, UNIQUE 충돌 시 기존 id 반환), `transitPendingToInProgress` (워커 TX_A SKIP LOCKED), `transitDirectToInProgress` (보정 경로 PENDING 우회 IN_PROGRESS 직진), `transitDirectToTerminal` (보정 경로 terminal 직진), `findPendingZombieIds` / `findInProgressZombieIds` (좀비 폴링). `transitNoneToInProgress` `@Deprecated(forRemoval = true)` 표기. `PgInboxRepositoryImpl` + `FakePgInboxRepository` stub 추가 (PCS-4 구현 예정). `./gradlew test` 620 PASS / 0 FAIL.
+
 ---
 
 ### PCS-4 — 인프라: `PgInboxRepositoryImpl` 신규 메서드 구현

@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PCS-2 완료 (도메인 PgInboxStatus PENDING 추가 + NONE 폐기 + 보정 경로 팩토리 신규, 활성 태스크 PCS-3)
+> 최종 수정: 2026-05-09 — PCS-3 완료 (출력 포트 PgInboxRepository 신규 메서드 6종 선언 + transitNoneToInProgress deprecated, 활성 태스크 PCS-4)
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: execute (활성 태스크 PCS-3 — 출력 포트 `PgInboxRepository` 신규 메서드 4종 + 좀비 조회 메서드 추가)
+- **단계**: execute (활성 태스크 PCS-4 — `PgInboxRepositoryImpl` SKIP LOCKED 구현 + Testcontainers 단위 테스트)
 - **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73

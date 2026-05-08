@@ -107,6 +107,40 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return findByOrderId(orderId);
     }
 
+    // TODO PCS-4: 아래 stub 메서드들은 PCS-4 Fake 업데이트 시 실제 동작으로 교체한다.
+
+    @Override
+    public Long insertPending(String orderId, long amount, String eventUuid,
+                              String vendorType, String paymentKey) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
+    @Override
+    public boolean transitPendingToInProgress(Long inboxId) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
+    @Override
+    public Long transitDirectToInProgress(String orderId, long amount) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
+    @Override
+    public Long transitDirectToTerminal(String orderId, long amount, PgInboxStatus terminalStatus,
+                                        String storedStatusResult, String reasonCode) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
+    @Override
+    public List<Long> findPendingZombieIds(int batchSize, long thresholdMs) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
+    @Override
+    public List<Long> findInProgressZombieIds(int batchSize, long thresholdMs) {
+        throw new UnsupportedOperationException("PCS-4 에서 구현 예정");
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {
