@@ -96,7 +96,7 @@ services:
       - "--appendonly"
       - "yes"
       - "--appendfsync"
-      - "everysec"
+      - "always"
       - "--save"
       - "60 1"
     ports:

@@ -512,7 +512,7 @@ public class KafkaErrorHandlerConfig {
 
 ---
 
-### SCR-9. Redis `appendfsync=always` 설정 변경 — `docker-compose.infra.yml`
+### SCR-9. Redis `appendfsync=always` 설정 변경 — `docker-compose.infra.yml` ✅
 
 - **결정 ID**: D8
 - **tdd**: false
@@ -529,6 +529,8 @@ public class KafkaErrorHandlerConfig {
 
 **산출물**:
 - `docker/docker-compose.infra.yml` — `--appendfsync always` 변경
+
+**완료 결과**: `redis-stock` 서비스 `command` 에서 `appendfsync everysec` → `always` 변경. 다른 라인/서비스 영향 0. 전체 회귀 BUILD SUCCESSFUL (UP-TO-DATE).
 
 ---
 
