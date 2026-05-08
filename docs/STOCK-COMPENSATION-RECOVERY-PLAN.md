@@ -534,7 +534,7 @@ public class KafkaErrorHandlerConfig {
 
 ---
 
-### SCR-10. 통합 시나리오 테스트 — 보상 플로우 end-to-end 검증
+### SCR-10. 통합 시나리오 테스트 — 보상 플로우 end-to-end 검증 ✅
 
 - **결정 ID**: D1, D2, D3, D4, D6, D7
 - **tdd**: true
@@ -555,6 +555,8 @@ public class KafkaErrorHandlerConfig {
 - `KafkaTemplate` 로 `events.confirmed` 직접 발행 → `PaymentConfirmResultUseCase` 경유 → Redis 재고 검증
 
 **예상 회귀 surface**: 기존 통합 테스트 없으면 신규. 기존 있으면 시나리오 추가.
+
+**완료 결과**: 5개 테스트 전부 PASS (정상_FAILED_보상_플로우_재고_복원 / 보상_ALREADY_DONE_재배달_멱등 / RuntimeException_시_retry_5회_후_DLQ / not_retryable_IllegalArgumentException_즉시_DLQ / 호출_순서_검증_보상_먼저_RDB_나중). `@SpringBootTest` + `@EmbeddedKafka` + Testcontainers Redis + MySQL 전 경로 검증. `@MockitoSpyBean` 을 사용하여 `StockCachePort` RuntimeException stub + `PaymentCommandUseCase` InOrder 검증. `spring-kafka-test` testImplementation 추가 (build.gradle Rule 2 — 구현 없는 test-only 의존성으로 보고). 전체 회귀 단위 377 PASS.
 
 **산출물**:
 - `payment-service/src/test/java/.../integration/StockCompensationRecoveryIntegrationTest.java`
