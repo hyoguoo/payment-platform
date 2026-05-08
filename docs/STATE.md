@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-08 — SCR-10 완료, execute 단계 종결 → review 전이
+> 최종 수정: 2026-05-08 — review 1라운드 critic + domain 둘 다 pass, verify 진입 대기
 
 ## 활성 작업
 - **주제**: STOCK-COMPENSATION-RECOVERY (결제 결과 보상 실패 자동 회복 layer)
-- **단계**: review (SCR-10 통합 시나리오 테스트 완료, execute 전 태스크 모두 완료)
+- **단계**: verify (review 1라운드 pass — critic minor 3 + domain minor 1, 머지 차단 사유 0. domain D1 흡수: PLAN PHASE2 항목에 dedup token cascade 인지 추가)
 - **채택안**: Round 7 — `stock_decrement_atomic.lua` + `stock_compensation_atomic.lua` + Spring Kafka `DefaultErrorHandler` 위임 + dedupe lease / `PaymentConfirmDlqPublisher` port 폐기
 - **이슈**: #71
 - **브랜치**: #71
@@ -14,16 +14,16 @@
 - 대안 본문 (이력): docs/topics/STOCK-COMPENSATION-RECOVERY-ALTERNATIVES.md
 - 원본 사전 브리핑 (Baseline 0, 비교 baseline): docs/topics/STOCK-COMPENSATION-RECOVERY.md
 - 라운드 산출물:
-  - docs/rounds/stock-compensation-recovery/ (Round 0~2 — Baseline 0, plan-review-1)
+  - docs/rounds/stock-compensation-recovery/ (Round 0~2 — Baseline 0, plan-review-1, review-critic-1, review-domain-1)
   - docs/rounds/stock-compensation-recovery-alternatives/ (Round 1~6 — D 결정 후 Round 7 폐기)
-- 플랜: docs/STOCK-COMPENSATION-RECOVERY-PLAN.md (10 태스크, Round 1 critic + domain finding 흡수, Round 2 둘 다 pass, plan-review-1 pass)
+- 플랜: docs/STOCK-COMPENSATION-RECOVERY-PLAN.md (10 태스크 모두 GREEN, review pass, PHASE2 인지 강화)
 
 ## 단계 진행
 - [x] discuss
 - [x] plan
 - [x] plan-review
 - [x] execute
-- [ ] review
+- [x] review
 - [ ] verify
 
 ## 직전 봉인

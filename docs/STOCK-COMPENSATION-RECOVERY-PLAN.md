@@ -649,7 +649,7 @@ P8D 안에서 동일 `orderId` 의 `decrement:done` + `compensation:done` dedup 
 
 본 토픽 완료 후 별 토픽에서 처리:
 
-- `OutboxAsyncConfirmService.compensateStock` (line 99-119) — 같은 silent loss 패턴, 동일 Lua atomic 모델 재사용 가능 (STOCK-COMPENSATION-OTHER-PATHS)
+- `OutboxAsyncConfirmService.compensateStock` (line 99-119) — 같은 silent loss 패턴, 동일 Lua atomic 모델 재사용 가능. **추가 인지 (review Domain D1 흡수)**: confirm TX 실패 보상 시 `decrement:done:{orderId}` dedup token 이 P8D 살아있는 채로 재고만 복원되어 같은 orderId 재confirm 시 `decrementAtomic` ALREADY_DONE → SUCCESS cascade 가능 (L6 와 같은 본질, 매우 낮은 확률). PHASE2 작업 시 token DEL 또는 compensation token 박기 정책 정밀화 필요. (STOCK-COMPENSATION-OTHER-PATHS)
 - `PaymentTransactionCoordinator.compensateStockCacheGuarded` (line 168-180) — 동일
 - DLQ admin 도구 — DLQ 토픽 조회 / 수동 재처리 / 강제 종결
 - Redis cluster 환경 대응 — hash tag 글로벌 묶음 또는 항목 단위 RDB outbox 회복
