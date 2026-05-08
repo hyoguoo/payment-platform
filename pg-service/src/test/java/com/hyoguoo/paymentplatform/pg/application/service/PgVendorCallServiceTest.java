@@ -3,16 +3,17 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
-import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
@@ -23,16 +24,20 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
- * PgVendorCallService 단위 테스트.
- * 재시도는 outbox available_at 의 지연 시각으로 표현된다 — 별도 큐 없음.
- * domain_risk=true — 성공 / 재시도 / DLQ / 확정 실패 시나리오 + 원자성 검증.
+ * PgVendorCallService 단위 테스트 — PCS-6 재작성.
+ *
+ * <p>invokeVendor (TX 없음, 벤더 HTTP) + applyOutcome (@Transactional TX_B, 5분기) 분리 검증.
+ * domain_risk=true — TX 경계 분리 + 5분기 결과 반영 정밀 검증.
  */
 @DisplayName("PgVendorCallService")
 class PgVendorCallServiceTest {
@@ -40,7 +45,6 @@ class PgVendorCallServiceTest {
     private static final String ORDER_ID = "order-vendor-001";
     private static final String PAYMENT_KEY = "pk-vendor-001";
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(15000);
-    private static final String EVENT_UUID = "evt-vendor-uuid-001";
 
     private static final Instant NOW = Instant.parse("2026-04-21T00:00:00Z");
 
@@ -48,6 +52,7 @@ class PgVendorCallServiceTest {
     private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
     private ApplicationEventPublisher eventPublisher;
+    private DuplicateApprovalHandler duplicateApprovalHandler;
     private PgVendorCallService sut;
 
     @BeforeEach
@@ -56,28 +61,204 @@ class PgVendorCallServiceTest {
         outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        duplicateApprovalHandler = Mockito.mock(DuplicateApprovalHandler.class);
+
         ObjectMapper objectMapper = new ObjectMapper();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
-        // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
-        sut = new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
-                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock);
 
-        // inbox를 IN_PROGRESS 상태로 사전 준비 (callVendor 진입 전제조건)
-        PgInbox inbox = PgInbox.of(
+        sut = new PgVendorCallService(
+                inboxRepository, outboxRepository, selector,
+                eventPublisher, new ConfirmedEventPayloadSerializer(objectMapper),
+                objectMapper, fixedClock, duplicateApprovalHandler);
+
+        // inbox를 IN_PROGRESS 상태로 사전 준비 (applyOutcome 진입 전제조건)
+        inboxRepository.save(PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT.longValue(),
-                null, null, NOW, NOW);
-        inboxRepository.save(inbox);
+                null, null, NOW, NOW));
     }
 
     // -----------------------------------------------------------------------
-    // TC1: 성공 경로 — APPROVED outbox row
+    // invokeVendor — TX 없음 경로
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("invokeVendor")
+    class InvokeVendor {
+
+        @Test
+        @DisplayName("성공 응답 — PgConfirmPort.confirm() 1회 호출 + GatewayOutcome.Success 반환")
+        void invokeVendor_callsConfirmPort_returnsGatewayOutcome() {
+            // given
+            PgConfirmResult successResult = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            gatewayAdapter.setConfirmResult(ORDER_ID, successResult);
+
+            // when
+            GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
+
+            // then
+            assertThat(outcome).isInstanceOf(GatewayOutcome.Success.class);
+            assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("PgGatewayRetryableException → GatewayOutcome.Retryable 반환")
+        void invokeVendor_retryableException_returnsRetryableOutcome() {
+            // given
+            gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("network timeout"));
+
+            // when
+            GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
+
+            // then
+            assertThat(outcome).isInstanceOf(GatewayOutcome.Retryable.class);
+        }
+
+        @Test
+        @DisplayName("PgGatewayNonRetryableException → GatewayOutcome.NonRetryable 반환")
+        void invokeVendor_nonRetryableException_returnsNonRetryableOutcome() {
+            // given
+            gatewayAdapter.throwOnConfirm(PgGatewayNonRetryableException.of("card_declined"));
+
+            // when
+            GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
+
+            // then
+            assertThat(outcome).isInstanceOf(GatewayOutcome.NonRetryable.class);
+        }
+
+        @Test
+        @DisplayName("PgGatewayDuplicateHandledException → GatewayOutcome.HandledInternally 반환")
+        void invokeVendor_duplicateException_returnsHandledInternally() {
+            // given
+            gatewayAdapter.throwOnConfirm(PgGatewayDuplicateHandledException.of("ALREADY_PROCESSED"));
+
+            // when
+            GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
+
+            // then
+            assertThat(outcome).isInstanceOf(GatewayOutcome.HandledInternally.class);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // applyOutcome — TX_B 5분기
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("applyOutcome")
+    class ApplyOutcome {
+
+        @Test
+        @DisplayName("Success outcome → pg_inbox APPROVED + pg_outbox payment.events.confirmed INSERT")
+        void applyOutcome_success_transitsToApproved() {
+            // given
+            PgConfirmResult result = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            GatewayOutcome outcome = new GatewayOutcome.Success(result);
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — inbox APPROVED
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+
+            // then — outbox 1건: topic=payment.events.confirmed
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            assertThat(rows.get(0).getPayload()).containsIgnoringCase("APPROVED");
+        }
+
+        @Test
+        @DisplayName("Retryable outcome (잔여 시도) → pg_outbox 재시도 명령 INSERT, pg_inbox IN_PROGRESS 유지")
+        void applyOutcome_retryable_insertsRetryCommand() {
+            // given — attempt=1 (잔여 시도 있음)
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("network timeout");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — outbox 1건: topic=payment.commands.confirm (재시도)
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
+            assertThat(rows.get(0).getAvailableAt()).isAfter(NOW);
+
+            // then — inbox IN_PROGRESS 유지
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+        }
+
+        @Test
+        @DisplayName("Retryable outcome (시도 소진) → pg_outbox DLQ 명령 INSERT, pg_inbox IN_PROGRESS 유지")
+        void applyOutcome_retryExhausted_insertsDlqCommand_inboxStaysInProgress() {
+            // given — attempt=MAX (시도 소진)
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("upstream timeout");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), RetryPolicy.MAX_ATTEMPTS, NOW);
+
+            // then — outbox 1건: topic=payment.commands.confirm.dlq
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM_DLQ);
+
+            // then — inbox IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임)
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+        }
+
+        @Test
+        @DisplayName("NonRetryable outcome → pg_inbox FAILED + pg_outbox payment.events.confirmed INSERT")
+        void applyOutcome_nonRetryable_transitsToFailed() {
+            // given
+            GatewayOutcome outcome = new GatewayOutcome.NonRetryable("card_declined");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — inbox FAILED
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
+
+            // then — outbox 1건: topic=payment.events.confirmed
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            assertThat(rows.get(0).getPayload()).containsIgnoringCase("FAILED");
+        }
+
+        @Test
+        @DisplayName("HandledInternally outcome → DuplicateApprovalHandler.handleDuplicateApproval 1회 위임")
+        void applyOutcome_handledInternally_delegatesToDuplicateHandler() {
+            // given
+            GatewayOutcome outcome = new GatewayOutcome.HandledInternally("ALREADY_PROCESSED");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — DuplicateApprovalHandler.handleDuplicateApproval 1회 호출
+            verify(duplicateApprovalHandler, times(1))
+                    .handleDuplicateApproval(
+                            Mockito.eq(ORDER_ID),
+                            Mockito.eq(AMOUNT),
+                            Mockito.eq(PgVendorType.TOSS));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 기존 callVendor 회귀 테스트 (deprecated 하되 기능 보존 확인)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("callVendor — 벤더 호출 성공 시 payment.events.confirmed + status=APPROVED outbox row 1건 INSERT")
+    @DisplayName("callVendor — 벤더 호출 성공 시 payment.events.confirmed + status=APPROVED outbox row 1건 INSERT (회귀)")
     void callVendor_WhenSuccess_ShouldInsertApprovedOutboxRow() {
-        // given — approvedAtRaw 포함 7-arg 생성자로 SUCCESS 결과 빌드
+        // given
         PgConfirmResult successResult = new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
                 "2026-04-24T01:00:00Z");
@@ -86,132 +267,93 @@ class PgVendorCallServiceTest {
         // when
         sut.callVendor(buildRequest(ORDER_ID, 1), 1, NOW);
 
-        // then — outbox 1건: topic=payment.events.confirmed, payload에 APPROVED 포함
+        // then
         List<PgOutbox> rows = outboxRepository.findAll();
         assertThat(rows).hasSize(1);
-        PgOutbox row = rows.get(0);
-        assertThat(row.getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
-        assertThat(row.getPayload()).containsIgnoringCase("APPROVED");
+        assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+        assertThat(rows.get(0).getPayload()).containsIgnoringCase("APPROVED");
 
-        // then — inbox 상태 APPROVED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
     }
 
-    // -----------------------------------------------------------------------
-    // TC2: 재시도 경로 — attempt=1에서 retryable 오류 → retry outbox row
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("callVendor — retryable 오류 + attempt=1 → payment.commands.confirm + available_at > now + attempt=2 header")
+    @DisplayName("callVendor — retryable 오류 + attempt=1 → payment.commands.confirm + available_at > now + attempt=2 header (회귀)")
     void callVendor_WhenRetryableErrorAndAttemptNotExceeded_ShouldInsertRetryOutboxRow() {
-        // given — retryable 예외 주입
+        // given
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("network timeout"));
 
-        Instant now = NOW;
-
         // when — attempt=1
-        sut.callVendor(buildRequest(ORDER_ID, 1), 1, now);
+        sut.callVendor(buildRequest(ORDER_ID, 1), 1, NOW);
 
-        // then — outbox 1건: topic=payment.commands.confirm
+        // then
         List<PgOutbox> rows = outboxRepository.findAll();
         assertThat(rows).hasSize(1);
-        PgOutbox row = rows.get(0);
-        assertThat(row.getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
+        assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
+        assertThat(rows.get(0).getAvailableAt()).isAfter(NOW);
+        assertThat(rows.get(0).getHeadersJson()).contains("\"attempt\":2");
 
-        // then — available_at > now (지연 표현)
-        assertThat(row.getAvailableAt()).isAfter(now);
-
-        // then — headers에 attempt=2 포함
-        assertThat(row.getHeadersJson()).contains("\"attempt\":2");
-
-        // then — inbox 상태는 IN_PROGRESS 유지 (재시도 중)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
     }
 
-    // -----------------------------------------------------------------------
-    // TC3: DLQ 경로 — attempt=4에서 retryable 오류 → DLQ outbox row (불변식 6)
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("callVendor — retryable 오류 + attempt=4 → payment.commands.confirm.dlq + attempt=4 header (불변식 6)")
+    @DisplayName("callVendor — retryable 오류 + attempt=4 → payment.commands.confirm.dlq + attempt=4 header (회귀)")
     void callVendor_WhenRetryableErrorAndAttemptExceeded_ShouldInsertDlqOutboxRow() {
-        // given — attempt=4, retryable 예외
+        // given
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
 
-        Instant now = NOW;
-
         // when — attempt=4 (MAX)
-        sut.callVendor(buildRequest(ORDER_ID, 4), 4, now);
+        sut.callVendor(buildRequest(ORDER_ID, 4), 4, NOW);
 
-        // then — outbox 1건: topic=payment.commands.confirm.dlq
+        // then
         List<PgOutbox> rows = outboxRepository.findAll();
         assertThat(rows).hasSize(1);
-        PgOutbox row = rows.get(0);
-        assertThat(row.getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM_DLQ);
-
-        // then — headers에 attempt=4 포함 (불변식 6)
-        assertThat(row.getHeadersJson()).contains("\"attempt\":4");
+        assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM_DLQ);
+        assertThat(rows.get(0).getHeadersJson()).contains("\"attempt\":4");
     }
 
-    // -----------------------------------------------------------------------
-    // TC4: 확정 실패 경로 — FAILED outbox row
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("callVendor — non-retryable 확정 실패 시 payment.events.confirmed + status=FAILED outbox row 1건 INSERT")
+    @DisplayName("callVendor — non-retryable 확정 실패 시 payment.events.confirmed + status=FAILED outbox row 1건 INSERT (회귀)")
     void callVendor_WhenDefinitiveFailure_ShouldInsertFailedOutboxRow() {
-        // given — non-retryable 예외 (카드 거절 등)
+        // given
         gatewayAdapter.throwOnConfirm(PgGatewayNonRetryableException.of("card_declined"));
 
-        Instant now = NOW;
-
         // when
-        sut.callVendor(buildRequest(ORDER_ID, 1), 1, now);
+        sut.callVendor(buildRequest(ORDER_ID, 1), 1, NOW);
 
-        // then — outbox 1건: topic=payment.events.confirmed, payload에 FAILED 포함
+        // then
         List<PgOutbox> rows = outboxRepository.findAll();
         assertThat(rows).hasSize(1);
-        PgOutbox row = rows.get(0);
-        assertThat(row.getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
-        assertThat(row.getPayload()).containsIgnoringCase("FAILED");
+        assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+        assertThat(rows.get(0).getPayload()).containsIgnoringCase("FAILED");
 
-        // then — inbox 상태 FAILED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
     }
 
-    // -----------------------------------------------------------------------
-    // TC5: DLQ 원자성 — DLQ row INSERT와 inbox 상태 기록이 같은 TX (불변식 6)
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("retry — attempt 소진 경계에서 DLQ outbox row INSERT와 pg_inbox 상태 기록 원자성 검증")
+    @DisplayName("retry — attempt 소진 경계에서 DLQ outbox row INSERT와 pg_inbox 상태 기록 원자성 검증 (회귀)")
     void retry_WhenAttemptExceeded_ShouldWriteDlqOutboxRow() {
-        // given — attempt=MAX(4), retryable 예외
+        // given
         gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("max attempt reached"));
 
-        Instant now = NOW;
-
         // when
-        sut.callVendor(buildRequest(ORDER_ID, RetryPolicy.MAX_ATTEMPTS), RetryPolicy.MAX_ATTEMPTS, now);
+        sut.callVendor(buildRequest(ORDER_ID, RetryPolicy.MAX_ATTEMPTS), RetryPolicy.MAX_ATTEMPTS, NOW);
 
-        // then — DLQ row 정확히 1건 (원자성: 이중 INSERT 없음)
+        // then — DLQ row 정확히 1건
         List<PgOutbox> rows = outboxRepository.findAll();
         long dlqCount = rows.stream()
                 .filter(r -> PgTopics.COMMANDS_CONFIRM_DLQ.equals(r.getTopic()))
                 .count();
         assertThat(dlqCount).isEqualTo(1);
 
-        // then — DLQ row에 attempt=MAX_ATTEMPTS header
         PgOutbox dlqRow = rows.stream()
                 .filter(r -> PgTopics.COMMANDS_CONFIRM_DLQ.equals(r.getTopic()))
                 .findFirst()
                 .orElseThrow();
         assertThat(dlqRow.getHeadersJson()).contains("\"attempt\":" + RetryPolicy.MAX_ATTEMPTS);
 
-        // then — inbox는 IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
     }
@@ -219,6 +361,10 @@ class PgVendorCallServiceTest {
     // -----------------------------------------------------------------------
     // 헬퍼
     // -----------------------------------------------------------------------
+
+    private PgConfirmRequest buildRequest(String orderId) {
+        return new PgConfirmRequest(orderId, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS);
+    }
 
     private PgConfirmRequest buildRequest(String orderId, int attempt) {
         return new PgConfirmRequest(orderId, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS);
