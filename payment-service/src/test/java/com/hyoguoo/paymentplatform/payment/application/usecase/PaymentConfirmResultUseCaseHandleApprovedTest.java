@@ -21,8 +21,6 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
-import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
-import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
@@ -60,11 +58,9 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     private static final long AMOUNT = 1000L;
 
     private FakePaymentEventRepository paymentEventRepository;
-    private FakeEventDedupeStore dedupeStore;
     private CapturingApplicationEventPublisher capturingPublisher;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
-    private FakePaymentConfirmDlqPublisher dlqPublisher;
     private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
@@ -72,11 +68,9 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        dedupeStore = new FakeEventDedupeStore();
         capturingPublisher = new CapturingApplicationEventPublisher();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
-        dlqPublisher = new FakePaymentConfirmDlqPublisher();
         stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
@@ -84,16 +78,12 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                dedupeStore,
                 capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
-                PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
                 paymentCommandUseCase
         );
     }

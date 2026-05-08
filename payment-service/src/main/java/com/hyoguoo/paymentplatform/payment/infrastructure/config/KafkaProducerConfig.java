@@ -72,7 +72,7 @@ public class KafkaProducerConfig {
 
     /**
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
-     * dedupe remove 실패 시 DLQ 로 String 페이로드(reason) 만 전송한다.
+     * SCR-8 KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
      * 별도 StringSerializer ProducerFactory 사용으로 JsonSerializer 혼용을 차단하고,
      * stockOutboxKafkaTemplate 과 같은 이유로 ObservationRegistry 를 명시 wiring 한다.
      */

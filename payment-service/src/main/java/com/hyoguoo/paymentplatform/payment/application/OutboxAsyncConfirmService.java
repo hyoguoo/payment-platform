@@ -54,7 +54,8 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
         );
 
         StockDecrementResult stockResult =
-                transactionCoordinator.decrementStock(paymentEvent.getPaymentOrderList());
+                transactionCoordinator.decrementStock(
+                        command.getOrderId(), paymentEvent.getPaymentOrderList());
 
         switch (stockResult) {
             case REJECTED -> {

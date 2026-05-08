@@ -91,9 +91,6 @@ payment:
       # 로컬 실행 시 6380 으로 띄운 redis 가 필요. 테스트는 FakeStockCachePort 주입.
       host: ${REDIS_STOCK_HOST:localhost}
       port: ${REDIS_STOCK_PORT:6380}
-  event-dedupe:
-    ttl: P8D  # Kafka retention(7d) + 복구 버퍼(1d) = 8일. product-service StockCommitUseCase.DEDUPE_TTL 과 정렬.
-    lease-ttl: PT5M  # two-phase lease 의 처리 권한 초기 잠금 TTL. processMessage 성공 시 ttl(P8D)로 연장.
   retry:
     max-attempts: 5
     backoff-type: FIXED
@@ -106,6 +103,12 @@ payment:
     topics:
       commands-confirm: ${PAYMENT_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
       events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
+    error-handler:
+      backoff:
+        # FixedBackOff 재시도 간격 (ms). 일시적 인프라 장애(Redis/RDB) 복구를 기다리는 시간.
+        interval: 1000
+        # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행.
+        max-attempts: 5
 
 product:
   adapter:

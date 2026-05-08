@@ -74,7 +74,7 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
             given(mockTransactionCoordinator.executeConfirmTx(
                     any(PaymentEvent.class), anyString(), anyString()))
@@ -85,7 +85,7 @@ class OutboxAsyncConfirmServiceTest {
 
             // then
             then(mockTransactionCoordinator).should(times(1))
-                    .decrementStock(paymentEvent.getPaymentOrderList());
+                    .decrementStock(eq(orderId), eq(paymentEvent.getPaymentOrderList()));
             then(mockTransactionCoordinator).should(times(1))
                     .executeConfirmTx(paymentEvent, paymentKey, orderId);
         }
@@ -100,7 +100,7 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
 
             // when
@@ -127,7 +127,7 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.REJECTED);
 
             // when & then
@@ -155,7 +155,7 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.CACHE_DOWN);
 
             // when & then
@@ -190,7 +190,7 @@ class OutboxAsyncConfirmServiceTest {
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentValidException.class);
 
-            then(mockTransactionCoordinator).should(never()).decrementStock(anyList());
+            then(mockTransactionCoordinator).should(never()).decrementStock(anyString(), anyList());
         }
 
         @Test
@@ -209,7 +209,7 @@ class OutboxAsyncConfirmServiceTest {
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isInstanceOf(PaymentValidException.class);
 
-            then(mockTransactionCoordinator).should(never()).decrementStock(anyList());
+            then(mockTransactionCoordinator).should(never()).decrementStock(anyString(), anyList());
         }
 
         @Test
@@ -222,14 +222,14 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
 
             // when
             outboxAsyncConfirmService.confirm(command);
 
             // then
-            then(mockTransactionCoordinator).should(times(1)).decrementStock(anyList());
+            then(mockTransactionCoordinator).should(times(1)).decrementStock(anyString(), anyList());
             then(mockTransactionCoordinator).should(times(1))
                     .executeConfirmTx(any(), anyString(), anyString());
         }
@@ -252,7 +252,7 @@ class OutboxAsyncConfirmServiceTest {
             RuntimeException txException = new RuntimeException("tx-commit-fail");
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
             given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
                     .willThrow(txException);
@@ -276,7 +276,7 @@ class OutboxAsyncConfirmServiceTest {
             PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
 
             // when
@@ -300,7 +300,7 @@ class OutboxAsyncConfirmServiceTest {
             RuntimeException compensateException = new RuntimeException("redis-increment-fail");
 
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyList()))
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
                     .willReturn(StockDecrementResult.SUCCESS);
             given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
                     .willThrow(txException);

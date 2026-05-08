@@ -21,10 +21,12 @@ import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -58,57 +60,91 @@ class PaymentTransactionCoordinatorTest {
     private PaymentConfirmPublisherPort confirmPublisher;
 
     @Nested
-    @DisplayName("decrementStock — 재고 캐시 원자 DECR 분기")
-    class DecrementStockTest {
+    @DisplayName("decrementStock — atomic 1회 호출 분기 (FakeStockCachePort 사용)")
+    class DecrementStockAtomicTest {
+
+        private FakeStockCachePort fakeStockCachePort;
+        private PaymentTransactionCoordinator coordinatorWithFake;
+
+        @BeforeEach
+        void setUp() {
+            fakeStockCachePort = new FakeStockCachePort();
+            coordinatorWithFake = new PaymentTransactionCoordinator(
+                    paymentCommandUseCase,
+                    paymentOutboxUseCase,
+                    paymentLoadUseCase,
+                    fakeStockCachePort,
+                    confirmPublisher
+            );
+        }
 
         @Test
-        @DisplayName("모든 주문 품목에 대해 decrement=true 반환 시 SUCCESS")
-        void returnsSuccessWhenAllItemsDecremented() {
+        @DisplayName("decrementStock_정상_차감_OK — decrementAtomic OK → SUCCESS 반환 + 재고 감소")
+        void decrementStock_정상_차감_OK() {
             // given
+            String orderId = "order-001";
+            fakeStockCachePort.set(1L, 10);
+            fakeStockCachePort.set(2L, 5);
             List<PaymentOrder> orderList = List.of(
                     createPaymentOrder(1L, 2),
                     createPaymentOrder(2L, 3)
             );
-            given(stockCachePort.decrement(1L, 2)).willReturn(true);
-            given(stockCachePort.decrement(2L, 3)).willReturn(true);
 
             // when
-            StockDecrementResult result = coordinator.decrementStock(orderList);
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
 
             // then
             assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
-            then(stockCachePort).should(times(1)).decrement(1L, 2);
-            then(stockCachePort).should(times(1)).decrement(2L, 3);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
+            assertThat(fakeStockCachePort.current(2L)).isEqualTo(2);
         }
 
         @Test
-        @DisplayName("첫 번째 품목에서 decrement=false 반환 시 REJECTED, 이후 품목 호출 없음")
-        void returnsRejectedAndShortCircuitsWhenDecrementFalse() {
+        @DisplayName("decrementStock_재고_부족_REJECTED — decrementAtomic INSUFFICIENT → REJECTED 반환 + 재고 불변")
+        void decrementStock_재고_부족_REJECTED() {
             // given
-            List<PaymentOrder> orderList = List.of(
-                    createPaymentOrder(1L, 100),
-                    createPaymentOrder(2L, 1)
-            );
-            given(stockCachePort.decrement(1L, 100)).willReturn(false);
+            String orderId = "order-002";
+            fakeStockCachePort.set(1L, 1);
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 100));
 
             // when
-            StockDecrementResult result = coordinator.decrementStock(orderList);
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
 
             // then
             assertThat(result).isEqualTo(StockDecrementResult.REJECTED);
-            then(stockCachePort).should(never()).decrement(2L, 1);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(1);
         }
 
         @Test
-        @DisplayName("RuntimeException 발생 시 CACHE_DOWN 반환")
-        void returnsCacheDownWhenRedisThrows() {
+        @DisplayName("decrementStock_ALREADY_DONE_은_SUCCESS — 동일 orderId 재호출 시 SUCCESS + 재고 변화 없음")
+        void decrementStock_ALREADY_DONE_은_SUCCESS() {
             // given
+            String orderId = "order-003";
+            fakeStockCachePort.set(1L, 10);
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 2));
+
+            coordinatorWithFake.decrementStock(orderId, orderList);
+            int stockAfterFirst = fakeStockCachePort.current(1L);
+
+            // when — 동일 orderId 재호출
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — ALREADY_DONE 은 SUCCESS 로 매핑, 재고 변화 없음
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(stockAfterFirst);
+        }
+
+        @Test
+        @DisplayName("decrementStock_Redis_예외_CACHE_DOWN — RuntimeException → CACHE_DOWN 반환")
+        void decrementStock_Redis_예외_CACHE_DOWN() {
+            // given
+            String orderId = "order-004";
             List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
             willThrow(new RuntimeException("Redis connection failure"))
-                    .given(stockCachePort).decrement(1L, 1);
+                    .given(stockCachePort).decrementAtomic(orderId, orderList);
 
             // when
-            StockDecrementResult result = coordinator.decrementStock(orderList);
+            StockDecrementResult result = coordinator.decrementStock(orderId, orderList);
 
             // then
             assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);

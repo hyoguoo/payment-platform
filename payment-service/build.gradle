@@ -72,6 +72,8 @@ dependencies {
     testImplementation "org.testcontainers:junit-jupiter"
     // StockCacheRedisAdapter Lua 원자성 검증용 Redis Testcontainers
     testImplementation "org.testcontainers:testcontainers"
+    // SCR-10 통합 테스트: @EmbeddedKafka + KafkaConsumer 거동 검증 (DefaultErrorHandler retry/DLQ)
+    testImplementation "org.springframework.kafka:spring-kafka-test"
 
 }
 

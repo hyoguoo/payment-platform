@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-04-27 (MSA + PRE-PHASE-4-HARDENING 봉인 후 전면 재작성).
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — silent loss / lease 폐기 + STOCK-COMPENSATION-OTHER-PATHS 후속 추가).
 > 이 파일은 현재 활성 작업 범위 밖이지만 향후 처리가 필요한 항목을 추적한다.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -78,6 +78,25 @@
 
 - `PgGatewayPort.cancel(...)` 인터페이스만 존재
 - 운영 cancel 정책 + 부분 환불 + audit trail
+
+### TQ-7 — STOCK-COMPENSATION-OTHER-PATHS (보상 패턴 일관 적용)
+
+STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `handleQuarantined` 만 Lua atomic + dedup token 으로 정리. 동일 silent loss 패턴이 남아 있는 다른 경로들을 같은 모델로 일관 적용.
+
+**현황**:
+- `OutboxAsyncConfirmService.compensateStock` (line 99-119) — confirm TX 실패 보상. 같은 try/catch swallow 패턴, 동일 Lua atomic 모델 재사용 가능
+- `PaymentTransactionCoordinator.compensateStockCacheGuarded` (line 168-180) — D12 재고 복구 가드 보상. 동일
+
+**추가 정밀화 필요 사항**:
+- `decrement:done:{orderId}` dedup token namespace 정합 — confirm TX 실패 보상이 `decrementAtomic` 이미 박은 token 을 어떻게 처리할지 정책 결정 (DEL vs compensation token 박기)
+- L6 cascade (보상 끝 결제 재confirm) 차단 layer 추가 검토
+
+**처리 시점**: STOCK-COMPENSATION-RECOVERY 의 PHASE2 직속 후속. 운영 측정 결과 cascade 발현 시 우선순위 상승.
+
+**관련 코드**:
+- `payment-service/.../application/OutboxAsyncConfirmService.java`
+- `payment-service/.../application/usecase/PaymentTransactionCoordinator.java`
+- `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` (재사용 가능)
 
 ---
 
@@ -223,6 +242,138 @@
 - `pg-service/.../infrastructure/gateway/fake/FakePgGatewayStrategy.java`
 - `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
 - `pg-service/.../application/service/DuplicateApprovalHandler.java`
+
+### TC-12 — pg-service Worker.stop 채널 drain 도입
+
+`PgOutboxImmediateWorker.stop()` 의 graceful 동작이 *의도한 설계* 와 *현재 구현* 사이에 갭이 있다.
+
+**현황**:
+- `stop()` 가 `running=false` + `Thread::interrupt` + `worker.join(10s)` + `relayExecutor.shutdown()` 까지만 수행
+- Worker 가 `channel.take()` 에서 `InterruptedException` 받으면 채널에 남아있는 `OutboxJob` 들을 drain 안 하고 즉시 종료
+- 잔여 Job 은 다음 부팅 시 `PgOutboxPollingWorker` 가 RDB SoT 에서 `availableAt <= NOW` 조건으로 회수 — 메시지 유실 0 은 보장됨
+
+**위키 표현과의 갭**:
+- `outbox-channel-dispatch.md` 의 비교 표 / 본문은 "SmartLifecycle.stop 이 채널 drain 후 Worker 종료" 라고 적힘 (의도한 설계)
+- 코드는 "interrupt + RDB 폴링 회수" 만 — 위키와 코드 사이에 정밀 정합성 갭 존재
+
+**도입 방향**:
+1. `stop()` 안에 best-effort drain 단계 추가 — `running=false` 설정 후, `pg.outbox.channel.drain-timeout-ms` (default 5000) 안에서 채널이 비워질 때까지 폴링 대기
+2. drain timeout 초과 시 기존 경로 (interrupt + join) 로 폴백 — 잔여는 RDB SoT 폴링이 다음 부팅에 회수
+3. K8s SIGTERM grace period(보통 30s) 와 정합성 검증
+
+**제약 / 트레이드오프**:
+- drain timeout 너무 크면 K8s SIGTERM grace period 내에 못 끝나 SIGKILL 위험 — inflight publish 까지 짤림. 기본 5s 정도가 안전선
+- drain 의 이득은 *재기동 시 폴링 1회 (≤ 2s) 면제* 정도로 작음. 메시지 유실 0 은 RDB SoT 로 이미 보장됨
+- broker 느림 / 잔여 Job 많음 시나리오에선 drain timeout 만 다 쓰고 결국 폴백 — 그 케이스에선 도입 가치 미미
+
+**처리 시점**: Phase 4 의 T4-A (Toxiproxy 장애 주입) 시 shutdown 시나리오 검증과 함께. 운영 SLO 데이터로 drain timeout 결정.
+
+**관련 코드**:
+- `pg-service/.../infrastructure/scheduler/PgOutboxImmediateWorker.java:91-106` (stop 메서드)
+- `pg-service/.../infrastructure/channel/PgOutboxChannel.java`
+- `pg-service/.../infrastructure/scheduler/PgOutboxPollingWorker.java` (RDB 폴백)
+
+### TC-13 — payment-service confirmed consumer EOS 전환 (위키 sync) — 부분 진척
+
+위키는 EOS 패턴으로 기술돼 있고, STOCK-COMPENSATION-RECOVERY 봉인으로 일부가 코드에 반영됨 (✅ 표시). 잔여 (아래 "잔여 갭") 는 후속.
+
+**현재 진척 상태 (2026-05-08)**:
+- ✅ `EventDedupeStore` (lease 메커니즘 단위) port + Redis adapter + Fake 폐기
+- ✅ `PaymentConfirmDlqPublisher` 직접 호출 폐기 → Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 도입 (`KafkaErrorHandlerConfig`)
+- ✅ `PaymentConfirmResultUseCase.handle` 1줄 (`processMessage(message)`) — `markWithLease/extendLease/remove` 제거 + `processMessageWithLeaseGuard` / `handleRemoveOnFailure` wrapper 제거
+- ✅ 메시지 dedupe 의 의미 layer 분리 — 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D), 재시도 / DLQ 는 Spring Kafka native
+
+**잔여 갭 (위키 EOS vs 현재 코드)**:
+- 컨슈머: `ConfirmedEventConsumer` 가 `KafkaTransactionManager` 통합 안 됨 — 여전히 명시 ack 모델
+- producer EOS: `transactional.id` + `enable.idempotence=true` 미적용
+- `payment_event_dedupe(event_uuid)` UNIQUE INSERT IGNORE 테이블 신규 안 됨 — 위키는 이 테이블 기준
+- `stock_outbox` 묶음 (도메인 + relay 서비스 + listener + worker) 그대로 — 위키 EOS 안에서는 직접 `producer.send(stock-committed)` 로 대체 예정
+- `payment_stock_outbox` drop 미실행
+
+**전제 (잔여 갭 적용 시)**: DB 멱등성 보장 (`payment_event_dedupe(event_uuid)` UNIQUE INSERT IGNORE) + 비즈니스 멱등 (`handleApproved` 에 `isTerminal` 가드 추가). 이 전제 위에서 EOS 는 정합성 측면 모든 시나리오를 보장. 가용성 결은 별개 — Kafka 클러스터 죽으면 처리 자체가 멈춤.
+
+**잔여 변경 폭 (코드 / 인프라)**:
+- 컨슈머: `ConfirmedEventConsumer` → `KafkaTransactionManager` 통합. 명시 ack 없음
+- 유스케이스: `INSERT IGNORE payment_event_dedupe` + 직접 `producer.send(stock-committed)`. `handleApproved` 에 `isTerminal` 가드 추가
+- 포트 (잔여): `EventDedupeStore` 의 RDB JDBC `markSeen`/`recordIfAbsent` 단일 메서드 어댑터 신규 (현재는 Lua dedup token 만 존재)
+- outbox: `StockOutbox` 도메인 + `StockOutboxRepository` + `StockOutboxFactory` + `StockOutboxReadyEvent` 리스너 + `StockOutboxRelayService` + `StockOutboxKafkaPublisher` + `StockOutboxImmediateEventHandler` + `StockOutboxWorker` 모두 제거
+- 테이블: `payment_stock_outbox` drop, `payment_event_dedupe` 신규 (Flyway migration)
+- 설정: `KafkaTransactionManager` 빈 + `transactional.id` (인스턴스별 결정적 id) + producer `enable.idempotence=true`
+
+**downstream 영향**:
+- `product-service` `StockCommitConsumer` consumer config `isolation.level=read_committed` 전환. 이 설정 누락 시 abort batch 노출 → 정합 깨짐
+
+**운영 invariant**:
+- `transactional.id` — 인스턴스별 결정적 id (재시작 시 동일). pod 이름 / instance UUID 기반. fence 로 좀비 producer 차단
+- `max.poll.interval.ms` — rebalance 윈도우. fence 와 함께 split-brain 방지
+- broker 가용성 — Kafka tx coordinator 죽으면 처리 정지. outbox 와 비교 시 가용성 결이 약하다는 점 인지
+
+**테스트**:
+- 단위 테스트: `PaymentConfirmResultUseCaseTwoPhaseLeaseTest` 삭제 → `…EosTest` 재작성. `FakeEventDedupeStore` 단순화 또는 제거
+- EOS 동작 자체는 Testcontainers Kafka tx 통합 테스트 1 개로 검증 (Kafka tx coordinator 가 본질이라 Fake 로 검증 불가)
+
+**현재 어긋남 인벤토리** (위키 + README 는 EOS, 코드는 native error handler + Lua atomic dedup token + stock_outbox):
+
+코드 측 잔여:
+- `payment-service/.../infrastructure/messaging/consumer/ConfirmedEventConsumer.java` (KafkaTransactionManager 통합 안 됨)
+- `payment-service/.../domain/StockOutbox.java` 외 stock outbox 묶음 6+ 클래스 (drop 미실행)
+- `product-service/.../infrastructure/messaging/consumer/StockCommitConsumer` consumer config (`isolation.level` 적용 안 됨)
+- `payment_event_dedupe` 테이블 + JDBC 어댑터 신규 안 됨
+- producer `transactional.id` + `enable.idempotence=true` 설정 안 됨
+
+코드 측 해소 (STOCK-COMPENSATION-RECOVERY 봉인):
+- ~~`payment-service/.../application/port/out/EventDedupeStore.java`~~ (제거)
+- ~~`payment-service/.../infrastructure/dedupe/EventDedupeStoreRedisAdapter.java`~~ (제거)
+- ~~`payment-service/.../infrastructure/messaging/.../PaymentConfirmDlqPublisher*`~~ (제거 → `KafkaErrorHandlerConfig`)
+- ~~`payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` lease/DLQ 분기~~ (재작성 — handle 1줄)
+
+문서 측 sync 완료 (위키 진실원 기준):
+- `README.md` — 멱등 소비 표 (`payment` 행 → `RDB payment_event_dedupe` + `Kafka EOS + RDB 멱등 INSERT`), Outbox 모델 표 (stock_outbox 행 제거 + "Kafka EOS 로 발행" 한 줄), 토픽 카탈로그 (`confirmed.dlq` 발행자 → `DefaultErrorHandler retry 한도 초과`), "Outbox 3 모델" → "Outbox 모델", 진행 중 notice 에 "README/위키 = 설계 의도 기준, 코드와 일부 정합 안 맞을 수 있음" 명시
+
+**처리 시점**: 면접 / 위키 / README 문서가 EOS 톤으로 봉인된 상태이므로 코드 sync 우선순위는 높지 않으나, 위키-코드 갭이 누적되면 추후 해석 비용. Phase 4 부하 측정 후 가용성 결 (Kafka 클러스터 의존도) 판단을 거친 뒤 결정 권장.
+
+**관련 위키**: `message-delivery-and-dedupe.md` (메인) / `outbox-pattern.md` (stock_outbox 빠진 상태) / `tx-scope.md` / `event-driven-choreography.md` / `architecture.md` / `Home.md` / `msa-transition.md` / `trace-propagation.md`
+
+### TC-14 — pg-service vendor 호출 listener thread 분리 검토
+
+PG 벤더 HTTP 호출이 Kafka listener thread 안에서 이뤄지고 있어 (TX2 = `PgVendorCallService.callVendor` `@Transactional`), 벤더 latency 가 인바운드 throughput 에 직접 영향.
+
+**검토 안 — Inbox 를 작업 큐로 겸용**:
+- listener 는 `INSERT pg_inbox status='PENDING' + ack` 까지만 (TX 1개)
+- 별도 워커 VT 가 채널 + 폴백 폴링으로 PENDING row 를 가져가 처리:
+  - TX_A: `PENDING → IN_PROGRESS` CAS UPDATE, 짧게 commit (lock 즉시 해제)
+  - 벤더 HTTP 호출 (DB 자유 상태)
+  - TX_B: `IN_PROGRESS → APPROVED + Outbox INSERT + publishEvent`
+- 좀비 폴링 — `WHERE status='IN_PROGRESS' AND updated_at < now() - 60s` 로 워커 크래시 회수
+- 벤더 idempotency-key (orderId) + `DuplicateApprovalHandler` 가 좀비 회수 후 재호출 시 중복 흡수
+
+**효과**:
+- listener 책임이 매우 가벼워짐 → 벤더 latency 가 인바운드 처리량에 영향 없음
+- 동시 처리 수는 워커 VT 풀 크기 + DB connection pool 로 명시 통제
+
+**현재 갭 (위키 + README 는 분리 안, 코드는 listener thread 안에서 벤더 호출)**:
+
+문서 측 (분리 안 기준):
+- `pg-confirm-flow.md` — **메인 흐름이 분리 안 기준** 으로 작성됨 (listener / 워커 VT / 릴레이 워커 3단). 페이지 상단에 "도메인 설계 의도 기준, 현재 코드는 일부 단계가 합쳐져 있음" notice
+- `README.md` — 해결 과제 표에 "PG 결제 확인 흐름 분리" 행 추가 (listener / 워커 VT / 릴레이 워커 3단)
+
+코드 측 (현재 구조):
+- `PgConfirmService.handleNone` 안에서 TX1 (`transitNoneToInProgress`) → TX2 (`callVendor` 안에서 벤더 HTTP + Outbox INSERT + Inbox 종결) 가 같은 listener thread 위에서 순차 진행
+- 분리 안으로 가려면 Inbox 상태에 `PENDING` 추가, listener 는 PENDING INSERT + ack 까지만, 별도 워커 VT 가 PENDING 을 take 해 TX_A → 벤더 → TX_B 진행
+
+**같이 갱신 필요한 위키 (분리 안 적용 시)**:
+- `outbox-channel-dispatch.md` — 현재 발행 측 채널 (워커 → 릴레이 워커) 1개 기준. 분리 안에서는 작업 큐 채널 + 발행 큐 채널 2개가 되므로 본문 갱신 필요. 현재 페이지에서 `pg-confirm-flow.md` 와 겹치는 메시지 생명주기 / 큐 둔 이유 / 토폴로지 / 장애 폴백 시나리오 / 단계별 상세 흐름 섹션은 이미 정리 (책임 분담)
+
+**처리 시점**: 별도 토픽으로 승격 검토. Phase 4 부하 측정 (T4-A / T4-B) 결과 listener thread 가 벤더 latency 에 묶이는 것이 throughput 병목으로 확인되면 우선순위 상승.
+
+**관련 위키**: `pg-confirm-flow.md` (메인 — 분리 안 기준) / `outbox-channel-dispatch.md` (분리 안 적용 시 채널 두 개로 본문 갱신 필요)
+
+**관련 코드**:
+- `pg-service/.../application/service/PgConfirmService.java` (오케스트레이터)
+- `pg-service/.../application/service/PgVendorCallService.java` (현재 단일 TX2)
+- `pg-service/.../infrastructure/messaging/consumer/PaymentConfirmConsumer.java` (listener 진입점)
+
+---
 
 ### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 부재
 

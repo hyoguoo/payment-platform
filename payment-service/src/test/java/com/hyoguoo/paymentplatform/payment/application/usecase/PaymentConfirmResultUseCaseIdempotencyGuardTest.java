@@ -10,13 +10,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
-import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
-import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
@@ -31,13 +30,13 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * PaymentConfirmResultUseCase handleFailed / handleQuarantined 이중 진입 가드 검증.
+ * PaymentConfirmResultUseCase handleFailed / handleQuarantined 이중 진입 가드 검증 (SCR-6 재작성).
  *
- * <p>race 시나리오: IN_PROGRESS self-loop retry 활성화 후 다른 eventUuid 로 같은 orderId 결과가
- * 두 번 도착하면, markWithLease 는 같은 eventUuid 만 보호하므로 handleFailed/handleQuarantined 에
- * 두 번 진입 가능 → 보상 중복 → redis-stock 발산.
+ * <p>race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면
+ * handleFailed/handleQuarantined 에 두 번 진입 가능 → 보상 중복 → redis-stock 발산.
  *
- * <p>이 테스트는 paymentEvent.getStatus().isTerminal() 가드가 없으면 RED 로 떨어진다.
+ * <p>이 테스트는 paymentEvent.getStatus().isTerminal() 가드를 검증한다.
+ * SCR-6 이후 dedupe lease 의존은 제거됐으나 isTerminal 가드는 여전히 유효하다.
  */
 @DisplayName("PaymentConfirmResultUseCase 이중 진입 가드 — 이미 종결 상태면 보상 skip")
 class PaymentConfirmResultUseCaseIdempotencyGuardTest {
@@ -47,7 +46,6 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     private static final String REASON_CODE = "VENDOR_FAILED";
 
     private FakePaymentEventRepository paymentEventRepository;
-    private FakeEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
     private PaymentCommandUseCase paymentCommandUseCase;
@@ -56,7 +54,6 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        dedupeStore = new FakeEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
@@ -65,54 +62,35 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                dedupeStore,
                 new NoopApplicationEventPublisher(),
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                new FakePaymentConfirmDlqPublisher(),
                 new FakeStockOutboxRepository(),
                 new ObjectMapper().registerModule(new JavaTimeModule()),
-                PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
                 paymentCommandUseCase
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Test 1: handleFailed — 이미 FAILED(terminal) 상태면 보상 skip
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal)이면 compensateStockCache + markPaymentAsFail 미호출")
+    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal)이면 compensateAtomic + markPaymentAsFail 미호출")
     void handleFailed_whenAlreadyTerminal_shouldSkipCompensation() {
-        // given: paymentEvent 가 이미 FAILED(종결) 상태
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 
-        // dedupeStore 에는 아직 기록이 없어야 markWithLease 통과
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
         sut.handle(message);
 
-        // then: 종결 상태라 보상 메서드 호출 0회
         then(stockCachePort).shouldHaveNoInteractions();
         then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
     }
 
-    // -----------------------------------------------------------------------
-    // Test 2: handleQuarantined — 이미 QUARANTINED(non-terminal) vs FAILED(terminal) 주의
-    //   QUARANTINED 는 isTerminal()=false → 보상 실행
-    //   FAILED 는 isTerminal()=true → 보상 skip (handleQuarantined 경유)
-    // -----------------------------------------------------------------------
-
     @Test
-    @DisplayName("handleQuarantined — paymentEvent 가 이미 FAILED(terminal)이면 compensateStockCache + quarantineHandler 미호출")
+    @DisplayName("handleQuarantined — paymentEvent 가 이미 FAILED(terminal)이면 compensateAtomic + quarantineHandler 미호출")
     void handleQuarantined_whenAlreadyTerminal_shouldSkipAll() {
-        // given: paymentEvent 가 이미 FAILED(terminal) 상태인데 QUARANTINED 메시지 수신
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
@@ -120,59 +98,49 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "QUARANTINED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
         sut.handle(message);
 
-        // then: 종결 상태라 보상 없음
         then(stockCachePort).shouldHaveNoInteractions();
         then(quarantineCompensationHandler).should(never()).handle(any(), any());
     }
 
-    // -----------------------------------------------------------------------
-    // Test 3: handleFailed — 정상 IN_PROGRESS 상태에선 그대로 보상 호출
-    // -----------------------------------------------------------------------
-
     @Test
     @DisplayName("handleFailed — paymentEvent 가 IN_PROGRESS(non-terminal)이면 보상 정상 실행")
     void handleFailed_whenInProgress_shouldCompensateNormally() {
-        // given
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        given(stockCachePort.compensateAtomic(any(), any()))
+                .willReturn(StockCompensationAtomicResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
         sut.handle(message);
 
-        // then: 정상 보상 경로
+        then(stockCachePort).should(times(1)).compensateAtomic(any(), any());
         then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(any(PaymentEvent.class), any(String.class));
-        then(stockCachePort).should(times(1)).increment(100L, 3);
     }
-
-    // -----------------------------------------------------------------------
-    // Test 4: handleQuarantined — 정상 IN_PROGRESS 상태에선 보상 + quarantineHandler 호출
-    // -----------------------------------------------------------------------
 
     @Test
     @DisplayName("handleQuarantined — paymentEvent 가 IN_PROGRESS(non-terminal)이면 보상 + quarantineHandler 정상 실행")
     void handleQuarantined_whenInProgress_shouldCompensateAndQuarantine() {
-        // given
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
+        given(stockCachePort.compensateAtomic(any(), any()))
+                .willReturn(StockCompensationAtomicResult.OK);
+
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "QUARANTINED", REASON_CODE, null, null, EVENT_UUID);
 
-        // when
         sut.handle(message);
 
-        // then: 보상 + quarantine handler 모두 호출
-        then(stockCachePort).should(times(1)).increment(100L, 3);
+        then(stockCachePort).should(times(1)).compensateAtomic(any(), any());
         then(quarantineCompensationHandler).should(times(1)).handle(ORDER_ID, REASON_CODE);
     }
 

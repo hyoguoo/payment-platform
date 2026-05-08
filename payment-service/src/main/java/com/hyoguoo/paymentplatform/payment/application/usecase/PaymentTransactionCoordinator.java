@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
@@ -35,29 +36,24 @@ public class PaymentTransactionCoordinator {
     private final PaymentConfirmPublisherPort confirmPublisher;
 
     /**
-     * 재고 캐시 원자 DECR. TX 외부에서 실행된다(호출자 OutboxAsyncConfirmService도 TX 없음).
+     * 재고 캐시 원자 DECR (결제 단위 N개 atomic). TX 외부에서 실행된다(호출자 OutboxAsyncConfirmService도 TX 없음).
      *
-     * @return SUCCESS: 전량 차감 성공, REJECTED: 재고 부족(decrement=false),
-     *         CACHE_DOWN: Redis 호출 예외(연결 실패 등)
+     * @param orderId          결제 주문 ID (dedup token key 에 사용)
+     * @param paymentOrderList 차감 대상 상품 목록
+     * @return SUCCESS: 정상 차감 또는 동일 orderId 멱등 재진입(ALREADY_DONE),
+     *         REJECTED: 재고 부족, CACHE_DOWN: Redis 호출 예외
      */
-    public StockDecrementResult decrementStock(List<PaymentOrder> paymentOrderList) {
-        for (PaymentOrder order : paymentOrderList) {
-            StockDecrementResult result = decrementSingleStock(order.getProductId(), order.getQuantity());
-            if (result != StockDecrementResult.SUCCESS) {
-                return result;
-            }
-        }
-        return StockDecrementResult.SUCCESS;
-    }
-
-    private StockDecrementResult decrementSingleStock(Long productId, int quantity) {
+    public StockDecrementResult decrementStock(String orderId, List<PaymentOrder> paymentOrderList) {
         try {
-            return stockCachePort.decrement(productId, quantity)
-                    ? StockDecrementResult.SUCCESS
-                    : StockDecrementResult.REJECTED;
+            StockDecrementAtomicResult atomicResult =
+                    stockCachePort.decrementAtomic(orderId, paymentOrderList);
+            return switch (atomicResult) {
+                case OK, ALREADY_DONE -> StockDecrementResult.SUCCESS;
+                case INSUFFICIENT -> StockDecrementResult.REJECTED;
+            };
         } catch (RuntimeException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_CACHE_DOWN_QUARANTINE,
-                    () -> "productId=" + productId + " qty=" + quantity + " error=" + e.getMessage());
+                    () -> "orderId=" + orderId + " error=" + e.getMessage());
             return StockDecrementResult.CACHE_DOWN;
         }
     }

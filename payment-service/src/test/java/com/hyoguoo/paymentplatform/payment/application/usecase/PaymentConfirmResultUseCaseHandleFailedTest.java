@@ -1,24 +1,23 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
-import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
-import com.hyoguoo.paymentplatform.payment.mock.FakeEventDedupeStore;
-import com.hyoguoo.paymentplatform.payment.mock.FakePaymentConfirmDlqPublisher;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
@@ -28,22 +27,16 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
- * PaymentConfirmResultUseCase.handleFailed 단위 검증.
+ * PaymentConfirmResultUseCase.handleFailed 단위 검증 (SCR-6 재작성).
  *
- * <p>커버 범위:
- * <ul>
- *   <li>FAILED 수신 시 PaymentCommandUseCase.markPaymentAsFail 위임 (reasonCode 그대로 전달)</li>
- *   <li>각 PaymentOrder 별로 stockCachePort.increment 가 productId/qty 와 함께 호출됨 (redis-stock 보상)
- *       — 단일 주문 / 복수 주문 모두</li>
- *   <li>UseCase 는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 발행하지 않는다
- *       (FAILED 시 product RDB 차감이 없었으므로 commit 발행 X — 새 재고 모델)</li>
- *   <li>UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하지 않고 위임한다</li>
- * </ul>
+ * <p>핵심: 호출 순서 뒤집기 — compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중).
+ * ALREADY_DONE 이어도 RDB 진행. RuntimeException 은 그대로 전파.
  */
 @DisplayName("PaymentConfirmResultUseCase handleFailed")
 class PaymentConfirmResultUseCaseHandleFailedTest {
@@ -53,50 +46,43 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
     private static final String REASON_CODE = "VENDOR_FAILED";
 
     private FakePaymentEventRepository paymentEventRepository;
-    private FakeEventDedupeStore dedupeStore;
-    private CapturingApplicationEventPublisher capturingPublisher;
+    private FakeStockOutboxRepository stockOutboxRepository;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
-    private FakePaymentConfirmDlqPublisher dlqPublisher;
-    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        dedupeStore = new FakeEventDedupeStore();
-        capturingPublisher = new CapturingApplicationEventPublisher();
+        stockOutboxRepository = new FakeStockOutboxRepository();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
-        dlqPublisher = new FakePaymentConfirmDlqPublisher();
-        stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                dedupeStore,
-                capturingPublisher,
+                new NoopApplicationEventPublisher(),
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                dlqPublisher,
                 stockOutboxRepository,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
-                PaymentConfirmResultUseCase.DEFAULT_LEASE_TTL,
-                PaymentConfirmResultUseCase.DEFAULT_LONG_TTL,
                 paymentCommandUseCase
         );
     }
 
     @Test
-    @DisplayName("단일 주문 FAILED — markPaymentAsFail 위임 + compensate 가 실 qty 로 호출된다")
-    void 단일_주문_FAILED_시_markPaymentAsFail_위임_및_compensate_호출() {
+    @DisplayName("FAILED 수신 — compensateAtomic 이 markPaymentAsFail 보다 먼저 호출된다 (호출 순서 검증)")
+    void FAILED_수신_보상_먼저_RDB_나중_호출순서() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
+                .willReturn(StockCompensationAtomicResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
                 .willReturn(event);
 
@@ -105,76 +91,69 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
 
         sut.handle(message);
 
-        then(paymentCommandUseCase)
-                .should(times(1))
-                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
-        then(stockCachePort)
-                .should(times(1))
-                .increment(100L, 3);
+        InOrder inOrder = inOrder(stockCachePort, paymentCommandUseCase);
+        inOrder.verify(stockCachePort).compensateAtomic(eq(ORDER_ID), any());
+        inOrder.verify(paymentCommandUseCase).markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
     }
 
     @Test
-    @DisplayName("복수 주문 FAILED — increment 가 productId/qty 별로 따로 호출된다")
-    void 복수_주문_FAILED_시_increment_가_productId_별로_호출() {
-        PaymentOrder order1 = buildPaymentOrder(100L, 2, BigDecimal.valueOf(200));
-        PaymentOrder order2 = buildPaymentOrder(200L, 5, BigDecimal.valueOf(500));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
+    @DisplayName("FAILED — 이미 종결 상태이면 compensateAtomic 미호출 (noop)")
+    void FAILED_이미_종결_noop() {
+        PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
-                .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
         sut.handle(message);
 
-        then(stockCachePort)
-                .should(times(1))
-                .increment(100L, 2);
-        then(stockCachePort)
-                .should(times(1))
-                .increment(200L, 5);
+        then(stockCachePort).shouldHaveNoInteractions();
+        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
     }
 
     @Test
-    @DisplayName("UseCase 는 stock_outbox 를 직접 INSERT 하거나 StockOutboxReadyEvent 를 직접 발행하지 않는다")
-    void UseCase_는_stock_outbox_를_직접_INSERT_하지_않는다() {
-        PaymentOrder order = buildPaymentOrder(100L, 5, BigDecimal.valueOf(500));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
-        paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
-                .willReturn(event);
-
-        ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
-
-        sut.handle(message);
-
-        assertThat(capturingPublisher.captured(StockOutboxReadyEvent.class)).isEmpty();
-        assertThat(stockOutboxRepository.savedCount()).isZero();
-    }
-
-    @Test
-    @DisplayName("UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하지 않고 PaymentCommandUseCase 에 위임한다")
-    void UseCase_가_paymentEventRepository_saveOrUpdate_를_직접_호출하지_않는다() {
+    @DisplayName("FAILED — compensateAtomic 이 ALREADY_DONE 이어도 markPaymentAsFail 는 호출된다")
+    void FAILED_보상_ALREADY_DONE_이어도_RDB_진행() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
+
+        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
+                .willReturn(StockCompensationAtomicResult.ALREADY_DONE);
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
 
-        int saveCountBefore = paymentEventRepository.saveOrUpdateCallCount();
         sut.handle(message);
-        int saveCountAfter = paymentEventRepository.saveOrUpdateCallCount();
 
-        then(paymentCommandUseCase)
-                .should(times(1))
-                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
-        assertThat(saveCountAfter - saveCountBefore).isZero();
+        then(stockCachePort).should().compensateAtomic(eq(ORDER_ID), any());
+        then(paymentCommandUseCase).should().markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
     }
+
+    @Test
+    @DisplayName("FAILED — compensateAtomic RuntimeException 전파 시 markPaymentAsFail 미호출")
+    void FAILED_보상_RuntimeException_전파() {
+        PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+
+        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
+                .willThrow(new RuntimeException("Redis 연결 실패"));
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "FAILED", REASON_CODE, null, null, EVENT_UUID);
+
+        assertThatThrownBy(() -> sut.handle(message))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Redis 연결 실패");
+
+        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
+    }
+
+    // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, List<PaymentOrder> orders) {
         return PaymentEvent.allArgsBuilder()
@@ -202,7 +181,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 .allArgsBuild();
     }
 
-    static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
+    static class NoopApplicationEventPublisher implements ApplicationEventPublisher {
 
         private final List<Object> events = new ArrayList<>();
 
@@ -214,14 +193,6 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         @Override
         public void publishEvent(Object event) {
             events.add(event);
-        }
-
-        @SuppressWarnings("unchecked")
-        public <T> List<T> captured(Class<T> type) {
-            return events.stream()
-                    .filter(type::isInstance)
-                    .map(e -> (T) e)
-                    .toList();
         }
     }
 }

@@ -3,6 +3,11 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -160,5 +165,112 @@ class StockCacheRedisAdapterTest {
                 .isInstanceOf(DataAccessException.class);
 
         badFactory.destroy();
+    }
+
+    @Test
+    @DisplayName("decrementAtomic — 2개 상품 정상 차감 시 OK를 반환하고 재고가 줄어든다")
+    void decrementAtomic_2개_상품_정상_차감() {
+        // given
+        Long productId1 = 101L;
+        Long productId2 = 102L;
+        adapter.set(productId1, 10);
+        adapter.set(productId2, 5);
+        List<PaymentOrder> orders = List.of(
+                buildOrder(productId1, 3),
+                buildOrder(productId2, 2)
+        );
+
+        // when
+        StockDecrementAtomicResult result = adapter.decrementAtomic("order-scr4-001", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockDecrementAtomicResult.OK);
+        assertThat(adapter.current(productId1)).isEqualTo(7);
+        assertThat(adapter.current(productId2)).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("decrementAtomic — 재고 부족 시 INSUFFICIENT를 반환하고 재고는 불변이다")
+    void decrementAtomic_재고_부족_INSUFFICIENT() {
+        // given
+        Long productId = 103L;
+        adapter.set(productId, 1);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 5));
+
+        // when
+        StockDecrementAtomicResult result = adapter.decrementAtomic("order-scr4-002", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockDecrementAtomicResult.INSUFFICIENT);
+        assertThat(adapter.current(productId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("decrementAtomic — 동일 orderId 재호출 시 ALREADY_DONE을 반환한다")
+    void decrementAtomic_중복_ALREADY_DONE() {
+        // given
+        Long productId = 104L;
+        adapter.set(productId, 10);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+        adapter.decrementAtomic("order-scr4-003", orders);
+
+        // when
+        StockDecrementAtomicResult result = adapter.decrementAtomic("order-scr4-003", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockDecrementAtomicResult.ALREADY_DONE);
+    }
+
+    @Test
+    @DisplayName("compensateAtomic — 2개 상품 정상 복원 시 OK를 반환하고 재고가 증가한다")
+    void compensateAtomic_2개_상품_정상_복원() {
+        // given
+        Long productId1 = 105L;
+        Long productId2 = 106L;
+        adapter.set(productId1, 5);
+        adapter.set(productId2, 3);
+        List<PaymentOrder> orders = List.of(
+                buildOrder(productId1, 3),
+                buildOrder(productId2, 2)
+        );
+
+        // when
+        StockCompensationAtomicResult result = adapter.compensateAtomic("order-scr4-004", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockCompensationAtomicResult.OK);
+        assertThat(adapter.current(productId1)).isEqualTo(8);
+        assertThat(adapter.current(productId2)).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("compensateAtomic — 동일 orderId 재호출 시 ALREADY_DONE을 반환하고 재고는 불변이다")
+    void compensateAtomic_중복_ALREADY_DONE() {
+        // given
+        Long productId = 107L;
+        adapter.set(productId, 5);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+        adapter.compensateAtomic("order-scr4-005", orders);
+
+        // when
+        StockCompensationAtomicResult result = adapter.compensateAtomic("order-scr4-005", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockCompensationAtomicResult.ALREADY_DONE);
+        assertThat(adapter.current(productId)).isEqualTo(8); // 첫 번째 보상 결과만 반영
+    }
+
+    // --- helpers ---
+
+    private PaymentOrder buildOrder(Long productId, int quantity) {
+        return PaymentOrder.allArgsBuilder()
+                .id(productId)
+                .paymentEventId(1L)
+                .orderId("order-test")
+                .productId(productId)
+                .quantity(quantity)
+                .totalAmount(BigDecimal.valueOf(1000))
+                .status(PaymentOrderStatus.EXECUTING)
+                .allArgsBuild();
     }
 }
