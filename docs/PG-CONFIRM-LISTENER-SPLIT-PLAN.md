@@ -458,6 +458,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../infrastructure/scheduler/PgInboxPollingWorker.java` (신규)
 - `pg-service/src/test/java/.../infrastructure/scheduler/PgInboxPollingWorkerTest.java` (신규)
 
+- [x] **완료** — `PgInboxPollingWorker` (`infrastructure/scheduler/`, `@Scheduled fixedDelay=5000`) 신규 추가. PENDING 좀비 (`findPendingZombieIds` → `processPending`) + IN_PROGRESS 좀비 (`findInProgressZombieIds` → `processInProgressZombie`) 두 경로. `@Value` 생성자 파라미터 주입 (batchSize=10, pendingTimeoutMs=60000, inProgressTimeoutMs=60000). `ZOMBIE_FAIL_COUNTER_NAME="pg_inbox.zombie_fail_total"` Micrometer 카운터 — RuntimeException 포획 + 루프 계속. 새 root span 의도 주석 명시 (PHASE2 D-F5 흡수). `EventType.PG_INBOX_POLLING_PENDING_FOUND / IN_PROGRESS_FOUND / ZOMBIE_FAIL` 3종 추가 (PCS-13 범위). `PgInboxPollingWorkerTest` 5케이스 전체 PASS. `./gradlew test` 280 PASS / 0 FAIL.
+
 ---
 
 ### PCS-14 — yml 설정 키 + 메트릭 상수 + EventType 추가

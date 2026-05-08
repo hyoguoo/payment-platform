@@ -39,7 +39,7 @@ class PgInboxPollingWorkerTest {
         inboxRepository = mock(PgInboxRepository.class);
         processor = mock(PgInboxProcessUseCase.class);
         meterRegistry = new SimpleMeterRegistry();
-        pollingWorker = new PgInboxPollingWorker(inboxRepository, processor, meterRegistry);
+        pollingWorker = new PgInboxPollingWorker(inboxRepository, processor, 10, 60_000L, 60_000L, meterRegistry);
     }
 
     @Test
