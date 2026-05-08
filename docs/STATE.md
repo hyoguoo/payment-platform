@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT plan 종결 (Round 2 둘 다 pass), plan-review 진입 대기
+> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT plan-review pass, execute 진입 (활성 태스크 PCS-1)
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: plan-review (16 태스크 분해 — Round 1 finding 11건 흡수, Round 2 critic + domain 모두 pass)
+- **단계**: execute (활성 태스크 PCS-1 — Flyway migration `pg_inbox.status` ENUM PENDING 추가 + NONE 제거)
 - **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73
@@ -22,7 +22,7 @@
 ## 단계 진행
 - [x] discuss
 - [x] plan
-- [ ] plan-review
+- [x] plan-review
 - [ ] execute
 - [ ] review
 - [ ] verify
