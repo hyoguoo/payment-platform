@@ -412,6 +412,8 @@ public interface PgInboxProcessUseCase {
 - `pg-service/src/main/java/.../infrastructure/listener/InboxReadyEventHandler.java` (신규 — `@TransactionalEventListener(AFTER_COMMIT)`)
 - `pg-service/src/test/java/.../infrastructure/listener/InboxReadyEventHandlerTest.java` (신규)
 
+- [x] **완료** — `InboxReadyEventHandler` (`@TransactionalEventListener(AFTER_COMMIT, fallbackExecution=true)`) 신규 추가. `OutboxReadyEventHandler` 1:1 거울 패턴. `LogDomain.PG_INBOX` + `EventType.PG_INBOX_CHANNEL_OVERFLOW` 자동 수정 추가. `InboxReadyEventHandlerTest` 4케이스 전체 PASS. `./gradlew test` 271 PASS / 0 FAIL.
+
 ---
 
 ### PCS-12 — 인프라: `PgInboxImmediateWorker` 신규 (VT 워커)
