@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-04-27 (CONFIRM-FLOW-ANALYSIS + CONFIRM-FLOW-FLOWCHART 통합, 코드 사실 재검증)
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — Lua atomic + Spring Kafka native 에러 핸들러 + dedupe lease 폐기)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -18,7 +18,7 @@
     → OutboxRelayService.relay (claimToInFlight CAS → Kafka publish)
     → [pg-service 처리 — PAYMENT-FLOW.md]
     → ConfirmedEventConsumer
-    → PaymentConfirmResultUseCase.handle (two-phase lease → 분기)
+    → PaymentConfirmResultUseCase.handle (Spring Kafka native error handler + 분기)
     → StockOutboxImmediateEventHandler (AFTER_COMMIT VT, APPROVED 시)
     → StockOutboxRelayService.relay
 ```
@@ -52,7 +52,7 @@ flowchart TD
 
 **핵심 포인트:**
 - `validateConfirmRequest` — TX 진입 전 도메인 가드. 위변조 / 상태 불일치 조기 차단.
-- `decrementStock` — TX 외부. `PaymentTransactionCoordinator.decrementSingleStock` 에서 `stockCachePort.decrement` 호출. Redis 장애 → `CACHE_DOWN` (try/catch 내 private 메서드 반환).
+- `decrementStock(orderId, paymentOrders)` — TX 외부. `PaymentTransactionCoordinator.decrementStock` 에서 `stockCachePort.decrementAtomic(orderId, paymentOrders)` Lua 1회 호출 (결제 단위 N개 상품 atomic 차감 + dedup token `decrement:done:{orderId}` SETNX P8D). 결과 enum 매핑: `OK` / `ALREADY_DONE` → `SUCCESS`, `INSUFFICIENT` → `REJECTED`, RuntimeException → `CACHE_DOWN`.
 - `executeConfirmTx` — `@Transactional`. event 상태 전이 + outbox INSERT + `confirmPublisher.publish` (ApplicationEvent) 를 하나의 TX 에 원자 커밋. publish 가 TX 안에서 일어나야 AFTER_COMMIT 리스너가 TX 동기화 활성 상태에서 등록된다.
 - 보상 로직은 `compensateStock` private 메서드로 추출 — try 블록 외부 변수 재할당 금지 패턴.
 - 반환값: `PaymentConfirmAsyncResult` (orderId, amount). `202 Accepted` 즉시 반환.
@@ -115,47 +115,45 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>@ConditionalOnProperty(spring.kafka.bootstrap-servers)"]) --> UC[PaymentConfirmResultUseCase.handle]
+    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>@ConditionalOnProperty(spring.kafka.bootstrap-servers)"]) --> UC["PaymentConfirmResultUseCase.handle<br/>(1줄 — processMessage(message))"]
 
-    UC --> MARK["markWithLease(eventUuid, leaseTtl=PT5M)<br/>SET NX EX — payment.event-dedupe.lease-ttl"]
-    MARK -->|false 이미 처리 중| SKIP([no-op return])
-    MARK -->|true 처리 권한 획득| PROC[processMessageWithLeaseGuard]
-
-    PROC --> MSG[processMessage]
+    UC --> MSG[processMessage]
     MSG --> LOAD[paymentEvent 조회]
     LOAD --> SW{message.status}
 
     SW -->|APPROVED| AMT["parseApprovedAt (null → IllegalArgumentException)<br/>isAmountMismatch 검사"]
-    AMT -->|불일치 또는 amount=null| QU_AM["stockCachePort.increment 보상 없음<br/>(handleApproved 는 보상 미수행)<br/>+ QuarantineCompensationHandler.handle<br/>reason=AMOUNT_MISMATCH"]
+    AMT -->|불일치 또는 amount=null| QU_AM["(redis 보상 미수행 — 격리 정책)<br/>+ QuarantineCompensationHandler.handle<br/>reason=AMOUNT_MISMATCH"]
     AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>(AOP: @PaymentStatusChange + @PublishDomainEvent)<br/>각 PaymentOrder 별 stock_outbox INSERT<br/>+ StockOutboxReadyEvent publish"]
 
-    SW -->|FAILED| FAIL_OK["paymentCommandUseCase.markPaymentAsFail<br/>각 PaymentOrder 별<br/>stockCachePort.increment 보상"]
+    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic(orderId, orders) 먼저<br/>→ paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기 — silent loss 차단)"]
 
-    SW -->|QUARANTINED| QU_PG["compensateStockCache<br/>(각 PaymentOrder 별 stockCachePort.increment)<br/>+ QuarantineCompensationHandler.handle"]
+    SW -->|QUARANTINED| QU_PG["stockCachePort.compensateAtomic(orderId, orders)<br/>+ QuarantineCompensationHandler.handle"]
 
-    DONE_OK --> EXT["extendLease(eventUuid, longTtl=P8D)<br/>SET XX EX — payment.event-dedupe.ttl"]
-    FAIL_OK --> EXT
-    QU_AM --> EXT
-    QU_PG --> EXT
-    EXT --> END([완료])
+    DONE_OK --> END([완료])
+    FAIL_OK --> END
+    QU_AM --> END
+    QU_PG --> END
 
-    PROC -.실패 catch RuntimeException.-> RM["handleRemoveOnFailure<br/>remove(eventUuid)<br/>false → DLQ publish (payment.events.confirmed.dlq)<br/>throw 재전파"]
+    UC -.예외 throw.-> ERR["Spring Kafka DefaultErrorHandler<br/>FixedBackOff(1000ms, 5회)<br/>한도 초과 → DeadLetterPublishingRecoverer<br/>→ payment.events.confirmed.dlq"]
 ```
 
-**two-phase lease 상세:**
-1. `markWithLease(eventUuid, leaseTtl=PT5M)` — Redis SET NX EX 5분. false → skip (다른 consumer 처리 중).
-2. `processMessage` 성공 → `extendLease(eventUuid, longTtl=P8D)` — Redis SET XX EX 8일. Kafka retention(7d) + 복구 버퍼(1d).
-3. `processMessage` 실패 → `remove(eventUuid)` — DEL. false (키 없음 또는 Redis 오류) → `paymentConfirmDlqPublisher.publishDlq` → `payment.events.confirmed.dlq`.
+**Spring Kafka native 에러 핸들링:**
+- `KafkaErrorHandlerConfig` (`infrastructure/config`) 에서 `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈 등록.
+- not-retryable 예외: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException` — 즉시 DLQ.
+- 그 외 RuntimeException — 1초 간격으로 5회 재시도 후 한도 초과 시 `payment.events.confirmed.dlq` 로 publish.
+- `PaymentConfirmResultUseCase` 는 예외를 그대로 throw — retry / DLQ 책임은 Spring Kafka 가 가져간다. 직접 DLQ publish 호출 / lease remove 로직 모두 폐기.
 
-TTL 설정: `payment.event-dedupe.lease-ttl=PT5M`, `payment.event-dedupe.ttl=P8D` (application.yml).
+**Lua atomic dedup token (orderId 단위):**
+- `compensateAtomic(orderId, orders)` 가 `lua/stock_compensation_atomic.lua` 1회 호출 — 결제 단위 N개 상품 atomic 보상 + dedup token `compensation:done:{orderId}` SETNX P8D. 동일 orderId 재처리 시 `ALREADY_DONE` 반환 → 보상 멱등.
+- 차감 측은 `decrement:done:{orderId}` SETNX P8D 가 차감 멱등을 보장. payment-service 측 메시지 dedupe 는 이 두 token (차감 / 보상 단위 SETNX P8D) 으로 일원화 — 별도 `EventDedupeStore` (Redis lease) 어댑터는 폐기.
 
-**`@Transactional(timeout=5)` 주의:** `handle` 메서드에 `@Transactional(timeout=5)` 적용. 5초 초과 시 TX rollback — 실패 분기로 진입.
+**`@Transactional(timeout=5)` 주의:** `processMessage` 메서드에 `@Transactional(timeout=5)` 적용. 5초 초과 시 TX rollback — Spring Kafka 가 retry 분기로 진입.
 
 ### handleApproved (양방향 amount 방어)
 
 ```
 parseApprovedAt(message.approvedAt)
-      [null] → IllegalArgumentException ("APPROVED 메시지에 approvedAt 이 null")
+      [null] → IllegalArgumentException ("APPROVED 메시지에 approvedAt 이 null") → 즉시 DLQ
 
 isAmountMismatch(paymentEvent, message.amount)
       paymentEvent.getTotalAmount().longValueExact() vs message.amount
@@ -164,7 +162,7 @@ isAmountMismatch(paymentEvent, message.amount)
 if (isAmountMismatch)
       → (redis 보상 미수행 — 격리 정책)
       → QuarantineCompensationHandler.handle(orderId, "AMOUNT_MISMATCH")
-        early return (extendLease 는 정상 경로와 동일하게 호출)
+        early return
 
 else
       paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt)
@@ -176,22 +174,24 @@ else
       // StockOutboxImmediateEventHandler 가 AFTER_COMMIT 으로 StockOutboxRelayService.relay 호출
 ```
 
-> AMOUNT_MISMATCH 시 `handleApproved` 내부에서 redis 보상(`stockCachePort.increment`)을 **직접 호출하지 않는다**. `QuarantineCompensationHandler.handle` 위임 후 early return. 보상은 `QuarantineCompensationHandler` 가 아닌 별도 관리 경로(격리 정책).
+> AMOUNT_MISMATCH 시 `handleApproved` 내부에서 redis 보상을 **직접 호출하지 않는다**. `QuarantineCompensationHandler.handle` 위임 후 early return. 보상은 별도 관리 경로(격리 정책).
 
-### handleFailed
+### handleFailed (호출 순서 뒤집기 — SCR-6)
 
 ```
-paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode)
-// AOP 감사 기록
+stockCachePort.compensateAtomic(orderId, paymentOrders)
+// Redis 선차감 캐시 복원. Lua atomic + dedup token compensation:done:{orderId} SETNX P8D.
+// 보상이 먼저 끝나야 markPaymentAsFail 영구 실패 시에도 재고는 이미 복원돼 silent loss 0.
 
-compensateStockCache: 각 PaymentOrder 별 stockCachePort.increment
-// Redis 선차감 캐시 복원. product RDB 는 애초에 차감되지 않아 복원 메시지 발행 X.
+paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode)
+// AOP 감사 기록. 영구 실패 시 예외 throw → DefaultErrorHandler → retry → 한도 초과 시 DLQ.
+// L7 cascade 인지: DLQ + Reconciler resetToReady + 새 confirm 사이클 → 재고 발산 가능 (PG 멱등성으로 일반 차단)
 ```
 
 ### handleQuarantined
 
 ```
-compensateStockCache: 각 PaymentOrder 별 stockCachePort.increment
+stockCachePort.compensateAtomic(orderId, paymentOrders)
 
 QuarantineCompensationHandler.handle(orderId, reasonCode)
       → event 가 이미 terminal 이면 no-op (이중 전이 방지)
@@ -395,19 +395,20 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | pg-service 측 판단 불가 / 5xx 한도 소진 | pg_inbox QUARANTINED → events.confirmed QUARANTINED → payment `handleQuarantined` |
 | Redis 재고 캐시 장애 (CACHE_DOWN) | confirm 단계 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` |
 | AMOUNT_MISMATCH 감지 | `handleApproved` 내부 격리 → `QuarantineCompensationHandler.handle(AMOUNT_MISMATCH)` |
-| Redis dedupe 장애 (markWithLease 실패) | `EventDedupeStoreRedisAdapter` 가 `ConditionalOnProperty(spring.data.redis.host)` — Redis 자체가 내려가면 어댑터 빈 없음 → `EventDedupeStore` 미등록 오류 가능. 설계 한계. |
-| 중복 메시지 (payment 측 events.confirmed) | two-phase lease (markWithLease PT5M → extendLease P8D) + 도메인 메서드 terminal 재진입 가드 |
+| 중복 메시지 (payment 측 events.confirmed) | Lua atomic dedup token — `decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D 가 차감 / 보상 멱등을 결제 단위로 보장. 별도 메시지 dedupe lease 폐기 |
 | stock_outbox 발행 실패 | `StockOutboxRelayService.relay` 에서 `processedAt` 체크 — 다음 번 relay 재시도. 폴링 폴백 별도 스케줄러 없음 (미연결) |
 | payment event IN_PROGRESS 장기 체류 | `PaymentReconciler` (`@Scheduled fixedDelayMs=120000, 2분`) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업 |
 
 ---
 
-## 12. two-phase lease TTL 정리
+## 12. dedup token TTL 정리 (payment-service)
 
-| TTL | 이름 | 설정 키 | 기본값 | 의미 |
-|---|---|---|---|---|
-| short | leaseTtl | `payment.event-dedupe.lease-ttl` | PT5M (5분) | 처리 권한 초기 잠금. processMessage 성공 전까지 다른 consumer 차단. |
-| long | longTtl | `payment.event-dedupe.ttl` | P8D (8일) | processMessage 성공 후 연장. Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCase.DEDUPE_TTL` 과 정렬. |
+| token | Lua 스크립트 | TTL | 의미 |
+|---|---|---|---|
+| `decrement:done:{orderId}` | `lua/stock_decrement_atomic.lua` | P8D (8일) | 결제 단위 차감 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 차감 멱등 보장. |
+| `compensation:done:{orderId}` | `lua/stock_compensation_atomic.lua` | P8D (8일) | 결제 단위 보상 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 보상 멱등 보장. |
+
+P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCase.DEDUPE_TTL` 과 정렬. 이전 `EventDedupeStore` lease (markWithLease PT5M / extendLease P8D / remove) 는 본 토픽에서 폐기.
 
 ---
 
@@ -420,7 +421,8 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | checkout 중복 | `IdempotencyStoreRedisAdapter` — Redis SET NX EX. 키=`Idempotency-Key` 헤더 | `IdempotencyStoreRedisAdapter.getOrCreate` |
 | outbox claim | `claimToInFlight` REQUIRES_NEW atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
 | Kafka 멱등 | producer key=orderId. eventUuid=orderId 재사용 (1회 발행 per orderId) | `OutboxRelayService.buildMessage` |
-| consumer 멱등 | **two-phase lease** (Redis SET NX EX) — `markWithLease(PT5M)` → 처리 → `extendLease(P8D)`. 실패 시 `remove` → false → DLQ | `EventDedupeStoreRedisAdapter` |
+| consumer 멱등 (재고) | **Lua atomic dedup token** — `decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D. 같은 orderId 재진입 시 `ALREADY_DONE` 반환으로 멱등. | `lua/stock_decrement_atomic.lua` / `lua/stock_compensation_atomic.lua` |
+| consumer 멱등 (메시지 dedupe) | Spring Kafka `DefaultErrorHandler` + `FixedBackOff(1000ms, 5)` + `DeadLetterPublishingRecoverer` — retry 한도 초과 시 자동 DLQ | `KafkaErrorHandlerConfig` |
 | stock 중복 발행 방지 | `StockOutbox.processedAt != null` 체크 (단순 mark) | `StockOutboxRelayService.relay` |
 | product 재고 이중 차감 방지 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe 테이블, 재고 차감과 같은 TX) | product-service 측 |
 | 상태 전이 재진입 | `PaymentEventStatus.isTerminal()` + domain 메서드 guard — terminal 상태 재전이 차단 | `PaymentEvent.quarantine`, `markPaymentAsDone` 등 |
@@ -456,8 +458,10 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | stock Kafka 발행 | `payment-service/.../infrastructure/messaging/publisher/StockOutboxKafkaPublisher.java` |
 | 격리 보상 핸들러 | `payment-service/.../application/usecase/QuarantineCompensationHandler.java` |
 | 복구 사이클 스캐너 | `payment-service/.../application/service/PaymentReconciler.java` |
-| dedupe 저장소 (Redis) | `payment-service/.../infrastructure/dedupe/EventDedupeStoreRedisAdapter.java` |
-| 멱등성 저장소 (Redis) | `payment-service/.../infrastructure/idempotency/IdempotencyStoreRedisAdapter.java` |
+| Lua atomic 차감 + dedup token | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua` |
+| Lua atomic 보상 + dedup token | `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` |
+| 멱등성 저장소 (Redis, checkout 측) | `payment-service/.../infrastructure/idempotency/IdempotencyStoreRedisAdapter.java` |
+| Spring Kafka 에러 핸들러 빈 | `payment-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` |
 | 재시도 정책 설정 | `payment-service/.../application/config/RetryPolicyProperties.java` |
 | 상태 enum | `payment-service/.../domain/enums/PaymentEventStatus.java` |
 | outbox 상태 enum | `payment-service/.../domain/enums/PaymentOutboxStatus.java` |

@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-04-27
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — 보상 silent loss / dedupe lease 8일 잠금 해소)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -86,6 +86,18 @@
 
 현재 결제 건별 `gatewayType` 은 client 측에서 결정해 전송. 동적 routing (예: 벤더 장애 시 자동 fallback) 미구현.
 
+### L-5. Redis cluster 환경에서 multi-key Lua 사용 불가
+
+`stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 가 결제 단위 N개 상품 KEYS 를 한 번에 받는다. Redis cluster 에서는 same hash slot 이어야 하는데 글로벌 상품 키(`stock:{productId}`) 는 결제 단위로 hash tag 묶을 수 없음. **단일 노드 Redis 가정 위에서 성립**, cluster 도입 시 별 토픽.
+
+### L-6. 보상 끝난 결제의 새 confirm 사이클 cascade (인지)
+
+P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
+
+### L-7. `markPaymentAsFail` 영구 실패 → Reconciler resetToReady cascade (인지)
+
+`handleFailed` 호출 순서 (보상 → `markPaymentAsFail`) 에서 보상 OK + `markPaymentAsFail` 영구 실패 → DefaultErrorHandler retry 5회 후 DLQ → Reconciler 가 IN_PROGRESS 결제를 resetToReady → 새 confirm 사이클 → 벤더가 재confirm 시 APPROVED 회신 가능 → product RDB 차감 + redis 보상 +1 잔존 → 발산. PG 멱등성 (idempotency-key=orderId) 으로 일반적으로 차단. PHASE2 admin 도구 또는 자동 QUARANTINED fallback 별 토픽 결정.
+
 ## 회피된 우려 (해소 완료, 기록 보존용)
 
 | 우려 | 해소 위치 |
@@ -100,6 +112,9 @@
 | ~~consumer groupId 공유로 토픽 간 백압~~ | PRE-PHASE-4 — groupId 토픽별 분리 |
 | ~~outbox immediate worker 의 race~~ | PRE-PHASE-4 — `@RepeatedTest(50)` 검증 |
 | ~~문서/스킬에 옛 3전략 어조 잔재~~ | 이번 봉인 + context 갈아엎기 |
+| ~~보상 silent loss (compensateStockCache try/catch swallow)~~ | STOCK-COMPENSATION-RECOVERY — Lua atomic + 호출 순서 뒤집기 + DefaultErrorHandler |
+| ~~dedupe lease 8일 잠금 + 처리 권한 모호~~ | STOCK-COMPENSATION-RECOVERY — `EventDedupeStore` 폐기, Lua dedup token (orderId 단위) 으로 일원화 |
+| ~~PaymentConfirmDlqPublisher 직접 호출~~ | STOCK-COMPENSATION-RECOVERY — Spring Kafka native `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 위임 |
 
 ## 관련
 

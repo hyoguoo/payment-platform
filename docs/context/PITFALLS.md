@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-04-27
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — 보상 silent loss / dedupe lease 폐기 반영)
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -53,6 +53,10 @@ process(result);  // result 가 null 일 수 있음
 - 워커 등 절대 죽으면 안 되는 경로만 catch + ERROR 승격 + 메트릭(`*_fail_total` 카운터)
 - 단순 swallow + INFO/WARN 로그는 사고 가시화 실패
 
+**적용 사례 (STOCK-COMPENSATION-RECOVERY 봉인)**:
+- `PaymentConfirmResultUseCase.compensateStockCache` 의 try/catch swallow + WARN 한 줄 + 진행 패턴이 본 함정의 전형 — 보상 호출이 RuntimeException 으로 끝나도 후속 `markPaymentAsFail` 이 진행되어 재고 silent loss 발생
+- 처방: catch 제거 + Spring Kafka `DefaultErrorHandler` (`KafkaErrorHandlerConfig`) 가 retry / DLQ 책임. `handleFailed` 호출 순서를 보상 → `markPaymentAsFail` 로 뒤집어 보상 먼저 끝내도록 강제. 보상 자체는 Lua atomic + dedup token 으로 멱등 보장
+
 ## 6. `LocalDateTime.now()` 직접 호출
 
 **증상**: 테스트에서 시간 위조 불가 → 시간 의존 분기를 단정하기 어려움.
@@ -86,14 +90,14 @@ process(result);  // result 가 null 일 수 있음
 - dedupe TTL 기본 P8D (Kafka retention 7d + 복구 버퍼 1d)
 - 모든 모듈의 dedupe TTL 정렬 (`StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
 
-## 10. Single-phase mark with long TTL
+## 10. Single-phase mark with long TTL — payment-service 측 폐기
 
-**증상**: 처리 도중 워커 크래시 → markSeen 만 박아둔 상태에서 8일 동안 다른 워커가 재처리 못 함.
+**증상 (이전)**: 메시지 단위 dedupe lease 가 처리 후속 RDB 작업과 같은 TX 가 아니어서 부분 실패 시 silent loss 위험.
 
-**처방** (two-phase lease):
-- `markWithLease(eventUuid, leaseTtl=PT5M)` — 짧은 lease 로 처리 권한
-- 처리 완료 시 `extendLease(eventUuid, longTtl=P8D)` 로 dedupe 윈도우 확장
-- 처리 실패 시 `remove(eventUuid)` → false 면 DLQ publish
+**처방 (현재)**: payment-service `EventDedupeStore` (two-phase lease) 패턴은 STOCK-COMPENSATION-RECOVERY 봉인에서 폐기.
+- 재고 멱등성은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D) 으로 같은 Lua 안에서 atomic 보장
+- 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 + `payment.events.confirmed.dlq`) 가 native 책임
+- pg-service `EventDedupeStore.markSeen` (Redis SET NX EX 1h) + pg_inbox UPSERT 2-layer 모델은 그대로 (RDB 같은 TX 안에서 atomicity 강제됨)
 
 ## 11. 보상 트랜잭션 중복 진입
 
@@ -103,6 +107,10 @@ process(result);  // result 가 null 일 수 있음
 - `executePaymentFailureCompensationWithOutbox` 진입 시 TX 내 outbox + event 재조회
 - outbox 가 IN_FLIGHT AND event 가 비종결일 때만 재고 INCR
 - 한쪽이라도 종결된 흔적 있으면 재고 복구 skip + warn 로그
+
+**STOCK-COMPENSATION-RECOVERY 흐름의 보강**:
+- `handleFailed` / `handleQuarantined` 의 보상은 `compensateAtomic(orderId, orders)` Lua 1회 호출로 통합 — `compensation:done:{orderId}` SETNX P8D dedup token 이 결제 단위 멱등 보장
+- 동일 orderId 재진입 시 Lua 가 `ALREADY_DONE` early return → 재고 INCR 0회. 다중 워커 race 시에도 token 1회만 박힘
 
 ## 12. Virtual Thread / Async 경계 MDC 손실
 
@@ -159,7 +167,29 @@ process(result);  // result 가 null 일 수 있음
 - 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 추후 시점·정책 별도 정리 필요 (TODOS)
 - 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
 
-## 17. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
+## 17. Redis crash + AOF fsync race window
+
+**증상**: Redis 가 `decrementAtomic` Lua 응답을 클라이언트에 돌려준 직후 crash. AOF 가 `appendfsync=everysec` 면 최대 1초치 명령이 디스크에 안 박혀 있을 수 있음 → 재기동 시 token / 재고 상태가 “명령 직전”으로 복원 → 같은 orderId 재진입이 ALREADY_DONE 이 아닌 OK 로 잡혀 재고 발산.
+
+**처방** (수용된 trade-off):
+- redis-stock 의 AOF 를 `appendfsync=always` 로 운영 (`docker/docker-compose.infra.yml`) — 매 명령 fsync
+- throughput 감소 trade-off 인정. cluster 환경 / 더 강한 보장은 별 토픽
+- 이론적으로 디스크 latency 수준의 race window 는 잔존 (L2 알려진 한계)
+
+## 18. 보상 끝난 결제의 재confirm cascade (L6 / L7)
+
+**증상**: P8D 안에서 동일 orderId 가 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클로 재진입. `decrementAtomic` 이 ALREADY_DONE → SUCCESS 매핑되어 재고는 추가 차감 안 되지만, 벤더가 APPROVED 회신하면 product RDB 만 차감 + redis 보상 +1 잔존 → 발산.
+
+**원인**:
+- L6: `OutboxAsyncConfirmService.compensateStock` 같은 폐기 경로 또는 외부 force resetToReady 가 동일 orderId 재confirm 을 띄울 때 발생 가능
+- L7: `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToReady` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
+
+**처방** (수용된 trade-off, 본 토픽 범위 외):
+- 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음
+- 본 cascade 를 차단하는 코드는 STOCK-COMPENSATION-RECOVERY 범위 밖, 알려진 한계로 인정
+- PHASE2 에서 token DEL 정책 정밀화 또는 admin QUARANTINED fallback 별 토픽 결정 (TODOS `STOCK-COMPENSATION-OTHER-PATHS` 참고)
+
+## 19. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
 
 **증상**: 클라이언트가 `GET /api/v1/payments/{orderId}/status` 폴링하는데 결제가 격리됐는데도 응답이 영영 `PROCESSING` 으로만 옴. 폴링 무한 루프.
 

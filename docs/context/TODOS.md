@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-04-27 (MSA + PRE-PHASE-4-HARDENING 봉인 후 전면 재작성).
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — silent loss / lease 폐기 + STOCK-COMPENSATION-OTHER-PATHS 후속 추가).
 > 이 파일은 현재 활성 작업 범위 밖이지만 향후 처리가 필요한 항목을 추적한다.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -78,6 +78,25 @@
 
 - `PgGatewayPort.cancel(...)` 인터페이스만 존재
 - 운영 cancel 정책 + 부분 환불 + audit trail
+
+### TQ-7 — STOCK-COMPENSATION-OTHER-PATHS (보상 패턴 일관 적용)
+
+STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `handleQuarantined` 만 Lua atomic + dedup token 으로 정리. 동일 silent loss 패턴이 남아 있는 다른 경로들을 같은 모델로 일관 적용.
+
+**현황**:
+- `OutboxAsyncConfirmService.compensateStock` (line 99-119) — confirm TX 실패 보상. 같은 try/catch swallow 패턴, 동일 Lua atomic 모델 재사용 가능
+- `PaymentTransactionCoordinator.compensateStockCacheGuarded` (line 168-180) — D12 재고 복구 가드 보상. 동일
+
+**추가 정밀화 필요 사항**:
+- `decrement:done:{orderId}` dedup token namespace 정합 — confirm TX 실패 보상이 `decrementAtomic` 이미 박은 token 을 어떻게 처리할지 정책 결정 (DEL vs compensation token 박기)
+- L6 cascade (보상 끝 결제 재confirm) 차단 layer 추가 검토
+
+**처리 시점**: STOCK-COMPENSATION-RECOVERY 의 PHASE2 직속 후속. 운영 측정 결과 cascade 발현 시 우선순위 상승.
+
+**관련 코드**:
+- `payment-service/.../application/OutboxAsyncConfirmService.java`
+- `payment-service/.../application/usecase/PaymentTransactionCoordinator.java`
+- `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` (재사용 가능)
 
 ---
 
@@ -254,18 +273,29 @@
 - `pg-service/.../infrastructure/channel/PgOutboxChannel.java`
 - `pg-service/.../infrastructure/scheduler/PgOutboxPollingWorker.java` (RDB 폴백)
 
-### TC-13 — payment-service confirmed consumer EOS 전환 (위키 sync)
+### TC-13 — payment-service confirmed consumer EOS 전환 (위키 sync) — 부분 진척
 
-위키는 EOS 패턴으로 기술돼 있으나, 코드는 two-phase lease + `stock_outbox` + AFTER_COMMIT relay 그대로 — 위키-코드 어긋남 상태. 면접 / 문서 자료 목적으로 위키만 선반영했고, 코드 적용은 후속 작업.
+위키는 EOS 패턴으로 기술돼 있고, STOCK-COMPENSATION-RECOVERY 봉인으로 일부가 코드에 반영됨 (✅ 표시). 잔여 (아래 "잔여 갭") 는 후속.
 
-**전제**: DB 멱등성 보장 (`payment_event_dedupe(event_uuid)` UNIQUE INSERT IGNORE) + 비즈니스 멱등 (`handleApproved` 에 `isTerminal` 가드 추가). 이 전제 위에서 EOS 는 정합성 측면 모든 시나리오를 보장. 가용성 결은 별개 — Kafka 클러스터 죽으면 처리 자체가 멈춤.
+**현재 진척 상태 (2026-05-08)**:
+- ✅ `EventDedupeStore` (lease 메커니즘 단위) port + Redis adapter + Fake 폐기
+- ✅ `PaymentConfirmDlqPublisher` 직접 호출 폐기 → Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 도입 (`KafkaErrorHandlerConfig`)
+- ✅ `PaymentConfirmResultUseCase.handle` 1줄 (`processMessage(message)`) — `markWithLease/extendLease/remove` 제거 + `processMessageWithLeaseGuard` / `handleRemoveOnFailure` wrapper 제거
+- ✅ 메시지 dedupe 의 의미 layer 분리 — 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D), 재시도 / DLQ 는 Spring Kafka native
 
-**변경 폭 (코드 / 인프라)**:
+**잔여 갭 (위키 EOS vs 현재 코드)**:
+- 컨슈머: `ConfirmedEventConsumer` 가 `KafkaTransactionManager` 통합 안 됨 — 여전히 명시 ack 모델
+- producer EOS: `transactional.id` + `enable.idempotence=true` 미적용
+- `payment_event_dedupe(event_uuid)` UNIQUE INSERT IGNORE 테이블 신규 안 됨 — 위키는 이 테이블 기준
+- `stock_outbox` 묶음 (도메인 + relay 서비스 + listener + worker) 그대로 — 위키 EOS 안에서는 직접 `producer.send(stock-committed)` 로 대체 예정
+- `payment_stock_outbox` drop 미실행
+
+**전제 (잔여 갭 적용 시)**: DB 멱등성 보장 (`payment_event_dedupe(event_uuid)` UNIQUE INSERT IGNORE) + 비즈니스 멱등 (`handleApproved` 에 `isTerminal` 가드 추가). 이 전제 위에서 EOS 는 정합성 측면 모든 시나리오를 보장. 가용성 결은 별개 — Kafka 클러스터 죽으면 처리 자체가 멈춤.
+
+**잔여 변경 폭 (코드 / 인프라)**:
 - 컨슈머: `ConfirmedEventConsumer` → `KafkaTransactionManager` 통합. 명시 ack 없음
-- 유스케이스: `PaymentConfirmResultUseCase` → `markWithLease/extendLease/remove` 제거 + `INSERT IGNORE payment_event_dedupe` + 직접 `producer.send(stock-committed)`. `try/extend/remove/DLQ` 4-way 분기 소멸. `handleApproved` 에 `isTerminal` 가드 추가
-- 포트: `EventDedupeStore` → `markSeen`/`recordIfAbsent` 단일 메서드 (RDB JDBC 어댑터)
-- 어댑터: `EventDedupeStoreRedisAdapter` 제거, `JdbcEventDedupeStore` 신규
-- DLQ: `PaymentConfirmDlqPublisher` 제거 → `DefaultErrorHandler` + `FixedBackOff(N회)` + `DeadLetterPublishingRecoverer`
+- 유스케이스: `INSERT IGNORE payment_event_dedupe` + 직접 `producer.send(stock-committed)`. `handleApproved` 에 `isTerminal` 가드 추가
+- 포트 (잔여): `EventDedupeStore` 의 RDB JDBC `markSeen`/`recordIfAbsent` 단일 메서드 어댑터 신규 (현재는 Lua dedup token 만 존재)
 - outbox: `StockOutbox` 도메인 + `StockOutboxRepository` + `StockOutboxFactory` + `StockOutboxReadyEvent` 리스너 + `StockOutboxRelayService` + `StockOutboxKafkaPublisher` + `StockOutboxImmediateEventHandler` + `StockOutboxWorker` 모두 제거
 - 테이블: `payment_stock_outbox` drop, `payment_event_dedupe` 신규 (Flyway migration)
 - 설정: `KafkaTransactionManager` 빈 + `transactional.id` (인스턴스별 결정적 id) + producer `enable.idempotence=true`
@@ -282,16 +312,20 @@
 - 단위 테스트: `PaymentConfirmResultUseCaseTwoPhaseLeaseTest` 삭제 → `…EosTest` 재작성. `FakeEventDedupeStore` 단순화 또는 제거
 - EOS 동작 자체는 Testcontainers Kafka tx 통합 테스트 1 개로 검증 (Kafka tx coordinator 가 본질이라 Fake 로 검증 불가)
 
-**현재 어긋남 인벤토리** (위키 + README 는 EOS, 코드는 lease/outbox):
+**현재 어긋남 인벤토리** (위키 + README 는 EOS, 코드는 native error handler + Lua atomic dedup token + stock_outbox):
 
-코드 측:
-- `payment-service/.../infrastructure/messaging/consumer/ConfirmedEventConsumer.java`
-- `payment-service/.../application/usecase/PaymentConfirmResultUseCase.java`
-- `payment-service/.../application/port/out/EventDedupeStore.java`
-- `payment-service/.../infrastructure/dedupe/EventDedupeStoreRedisAdapter.java`
-- `payment-service/.../domain/StockOutbox.java` 외 stock outbox 묶음 6+ 클래스
-- `payment-service/.../infrastructure/messaging/.../PaymentConfirmDlqPublisher*`
-- `product-service/.../infrastructure/messaging/consumer/StockCommitConsumer` consumer config
+코드 측 잔여:
+- `payment-service/.../infrastructure/messaging/consumer/ConfirmedEventConsumer.java` (KafkaTransactionManager 통합 안 됨)
+- `payment-service/.../domain/StockOutbox.java` 외 stock outbox 묶음 6+ 클래스 (drop 미실행)
+- `product-service/.../infrastructure/messaging/consumer/StockCommitConsumer` consumer config (`isolation.level` 적용 안 됨)
+- `payment_event_dedupe` 테이블 + JDBC 어댑터 신규 안 됨
+- producer `transactional.id` + `enable.idempotence=true` 설정 안 됨
+
+코드 측 해소 (STOCK-COMPENSATION-RECOVERY 봉인):
+- ~~`payment-service/.../application/port/out/EventDedupeStore.java`~~ (제거)
+- ~~`payment-service/.../infrastructure/dedupe/EventDedupeStoreRedisAdapter.java`~~ (제거)
+- ~~`payment-service/.../infrastructure/messaging/.../PaymentConfirmDlqPublisher*`~~ (제거 → `KafkaErrorHandlerConfig`)
+- ~~`payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` lease/DLQ 분기~~ (재작성 — handle 1줄)
 
 문서 측 sync 완료 (위키 진실원 기준):
 - `README.md` — 멱등 소비 표 (`payment` 행 → `RDB payment_event_dedupe` + `Kafka EOS + RDB 멱등 INSERT`), Outbox 모델 표 (stock_outbox 행 제거 + "Kafka EOS 로 발행" 한 줄), 토픽 카탈로그 (`confirmed.dlq` 발행자 → `DefaultErrorHandler retry 한도 초과`), "Outbox 3 모델" → "Outbox 모델", 진행 중 notice 에 "README/위키 = 설계 의도 기준, 코드와 일부 정합 안 맞을 수 있음" 명시

@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-04-27
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — DLQ 발행자 / Redis dedupe 표현 갱신)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -104,7 +104,7 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 | pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry, attempt < 4) — `pg_outbox.available_at` 기반 지연 발행 |
 | pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (attempt ≥ 4 시 격리, `PgVendorCallService.insertDlqOutbox`) |
 | pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
-| payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (`PaymentConfirmDlqKafkaPublisher` — 결과 처리 영구 실패 시) |
+| payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` — retry 5회 한도 초과 시 자동 발행. `KafkaErrorHandlerConfig`) |
 | payment-service → product-service | Kafka | one-way | `payment.events.stock-committed` (APPROVED 시만 — RDB 누적 차감 ledger) |
 | pg-service → 벤더 | HTTP | one-way | Toss / NicePay confirm/getStatus |
 
@@ -124,7 +124,7 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 |---|---|
 | 다른 비즈니스 서비스 | checkout/confirm 시 503 (`USER_SERVICE_UNAVAILABLE` / `PRODUCT_SERVICE_UNAVAILABLE`) |
 | Kafka | confirm 은 HTTP 202 까지 가지만 outbox→Kafka 발행 실패 → relay 재시도 또는 DLQ. payment.events.confirmed consumer 도 미동작 → status 영구 PROCESSING |
-| Redis dedupe | `EventDedupeStore` 호출 실패 → CACHE_DOWN 경로 → QUARANTINED + 보상 펜딩 |
+| Redis dedupe | pg-service `EventDedupeStore` (markSeen) / payment-service checkout `IdempotencyStore` 호출 실패 → 각 layer 가드. payment-service 측 events.confirmed dedupe 는 redis-stock Lua atomic dedup token 으로 일원화 |
 | Redis stock | confirm 시 재고 DECR 실패 → 동일 |
 | MySQL | 부팅 자체 실패 (Flyway 가 DB 연결 못 함) |
 | Eureka | discovery 미동작 → cross-service HTTP 가 IP 직접 못 찾음 |

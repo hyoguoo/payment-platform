@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-04-27 (MSA 분리 + 결제 회복성 보강 봉인 시점)
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — Lua atomic + Spring Kafka native 에러 핸들러)
 
 ## 개요
 
@@ -102,7 +102,7 @@ flowchart LR
 | `payment.commands.confirm` | payment-service (최초) + **pg-service self-retry** (attempt<4 시 자기 자신에게 재발행, `pg_outbox.available_at` 기반 지연) | pg-service | confirm 명령 전달 + 재시도 |
 | `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | (수동) | retry 한도 초과 격리 |
 | `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
-| `payment.events.confirmed.dlq` | payment-service (`PaymentConfirmDlqKafkaPublisher`, lease remove 실패 시) | (수동) | 결과 처리 영구 실패 |
+| `payment.events.confirmed.dlq` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 초과 시) | (수동) | 결과 처리 영구 실패 |
 | `payment.events.stock-committed` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
 
 ## 비동기 어댑터 위치 (왜 어디 두는가)
@@ -118,6 +118,7 @@ flowchart LR
 | `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
 | `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `payment.events.stock-committed` Kafka publish (TX 와 publish 분리) |
+| `KafkaErrorHandlerConfig` | `payment-service/.../infrastructure/config` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈. not-retryable: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException`. retry 한도 초과 시 자동으로 `payment.events.confirmed.dlq` 로 publish — 직접 DLQ 호출 / lease 폐기 |
 | `ContextAwareVirtualThreadExecutors` | `payment-service` / `pg-service` `core/config/concurrent` | OTel Context + MDC 이중 래핑 VT executor 헬퍼. payment 의 `AsyncConfig.outboxRelayExecutor`, pg 의 `PgOutboxImmediateWorker.relayExecutor` 가 사용 — 호출 시점 컨텍스트를 새 VT 스레드에 자동 캡처·복원 |
 
 ## 인프라 별 책임
@@ -135,8 +136,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | Redis | 책임 | 사용처 |
 |---|---|---|
-| `redis-dedupe` (6379) | 메시지 dedupe + checkout 멱등성 store | payment-service `EventDedupeStore` (two-phase lease P8D) + `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용 |
-| `redis-stock` (6380) | 재고 선차감 캐시 (`StockCachePort`) | payment-service 단독. confirm 진입 시 Lua 원자 DECR, FAILED/QUARANTINED 회신 시 INCR 보상. product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드 |
+| `redis-dedupe` (6379) | checkout 멱등성 store + pg-service 메시지 dedupe | payment-service `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용. payment-service 측 events.confirmed dedupe 는 `redis-stock` Lua atomic dedup token 으로 일원화 |
+| `redis-stock` (6380) | 재고 선차감 캐시 + Lua atomic dedup token (`StockCachePort`) | payment-service 단독. confirm 진입 시 `decrementAtomic(orderId, orders)` Lua 1회 호출 (결제 단위 N개 atomic + `decrement:done:{orderId}` SETNX P8D), FAILED/QUARANTINED 회신 시 `compensateAtomic(orderId, orders)` Lua 1회 (결제 단위 N개 atomic + `compensation:done:{orderId}` SETNX P8D). 결과 enum: `StockDecrementAtomicResult` (OK / ALREADY_DONE / INSUFFICIENT) / `StockCompensationAtomicResult` (OK / ALREADY_DONE). product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드. AOF `appendfsync=always` 운영 (L2 race window 완화 trade-off) |
 
 ### Kafka
 
@@ -166,7 +167,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 비동기 confirm 아키텍처 | payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
 | 격리 트리거 (CACHE_DOWN / 판단 불가) | `QuarantineCompensationHandler` |
 | AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
-| 분산 멱등성 store | `redis-dedupe` two-phase lease (payment 만) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
+| 분산 멱등성 store | payment-service: Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 에 통합) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
 | business inbox amount | pg `pg_inbox.amount BIGINT` |
 | HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
 | DB 분리 | 4 MySQL 인스턴스 (DB per service) |
@@ -187,20 +188,20 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
 |---|---|---|---|---|
-| payment | `EventDedupeStoreRedisAdapter` | Redis (redis-dedupe) | PaymentEvent 상태 전이 + stock_outbox INSERT (RDB) | 약함 — 도메인 메서드 가드로 멱등성 회복 |
+| payment | Lua atomic dedup token (`stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 안에서 SETNX) | Redis (redis-stock) | 같은 Lua 안에서 재고 DECR / INCR + dedup token 박기 (atomic) | **강함** — Lua 스크립트가 single-shot atomic. 차감/보상 + 멱등 표시가 한 KEYS 호출 안에서 commit |
 | pg | `EventDedupeStore.markSeen` (Redis) + `PgInboxRepository.markSeen` (MySQL pg_inbox) — **2-layer** | Redis (TX 외부 빠른 거름) + MySQL (TX 내부 atomic 거름) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — RDB layer 가 같은 TX 필수, Redis layer 는 보조 |
 | product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
 
 **결정 룰 한 줄**:
-> dedupe 와 그 이후 작업이 같은 RDB 자원을 변경하면 RDB, lease/lock 의미가 강하면 Redis.
+> dedupe 와 그 이후 작업이 같은 자원 안에서 atomic 으로 묶이는 메커니즘을 우선한다 — RDB 면 같은 TX, Redis 면 같은 Lua.
 
 **왜 이 룰인가**:
 - Redis 와 RDB 는 서로 다른 시스템이라 `@Transactional` 이 둘을 같이 묶지 못함. 부분 실패 (Redis 기록 후 RDB 실패) 시 "이미 처리됨" 판정으로 후속 영영 멈춤 = **돈 새는 경로**
 - product / pg 는 atomicity 가 도메인 정확성의 본질 → 같은 RDB 위에 dedupe 테이블 두기 → 같은 TX 로 commit/rollback
-- payment 는 dedupe 가 "메시지 처리 권한의 lease 의미" — 처리 권한 잠금 / 연장 / 해제가 in-memory 성능 + TTL 자동 expire 가 자연. 후속 작업은 도메인 가드 (`이미 DONE 이면 no-op`) 로 멱등성 별도 보장
+- payment 의 재고 차감/보상은 Redis 단일 자원 변경 — 같은 Lua 스크립트 안에서 DECR/INCR 와 dedup token SETNX 를 묶어 single-shot atomic 보장. 메시지 단위 lease (이전 `EventDedupeStore` two-phase) 는 in-memory 성능 의미만 가졌을 뿐 후속 RDB 작업과 같은 TX 가 아니라 silent loss 위험이 있어 본 토픽에서 폐기
 
 **구현 디테일**:
-- **payment**: Redis `SET NX EX` (markWithLease 5분) → `EXPIRE` (extendLease 8일) → `DEL` (remove). two-phase lease 패턴
+- **payment**: `stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` — KEYS 에 `stock:{productId}` 들 + `decrement:done:{orderId}` (또는 `compensation:done:{orderId}`) 동봉. 한 호출 안에서 dedup token SETNX → 이미 박혀 있으면 `ALREADY_DONE` early return, 아니면 N개 상품 DECR/INCR + dedup token SETNX P8D. 메시지 dedupe 는 Spring Kafka native 에러 핸들러 (retry + DLQ) 가 별도 layer 로 처리
 - **pg**: pg_inbox 테이블 + UPSERT (markSeen). 같은 TX 안에서 inbox 상태 전이까지
 - **product**: stock_commit_dedupe 테이블 + DELETE 만료 + INSERT IGNORE. 같은 TX 안에서 재고 차감까지
 

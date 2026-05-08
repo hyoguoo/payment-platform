@@ -1,6 +1,6 @@
 # Coding Conventions
 
-> 최종 갱신: 2026-04-27
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — Spring Kafka 에러 핸들러 + Lombok 예시 갱신)
 
 ## Lombok 사용 패턴
 
@@ -9,8 +9,8 @@
 @Service
 @RequiredArgsConstructor
 public class PaymentConfirmResultUseCase {
-    private final EventDedupeStore eventDedupeStore;
     private final StockCachePort stockCachePort;
+    private final QuarantineCompensationHandler quarantineCompensationHandler;
     // ...
 }
 ```
@@ -72,12 +72,12 @@ RuntimeException
 | Service (보조) | `<Subject>Service` | `OutboxRelayService`, `StockOutboxRelayService` |
 | Use case 입력 포트 | `<Verb>UseCase` 인터페이스 | `PaymentCommandUseCase` |
 | 출력 포트 | `<Subject>Port` | `StockCachePort`, `PaymentConfirmPublisherPort` |
-| 출력 포트 어댑터 | `<Subject><Tech>Adapter` | `StockCacheRedisAdapter`, `PaymentConfirmDlqKafkaPublisher` |
+| 출력 포트 어댑터 | `<Subject><Tech>Adapter` | `StockCacheRedisAdapter` |
 | Kafka 메시지 record | `<Subject>EventMessage` (수신) / `<Subject>EventPayload` (발행) | `ConfirmedEventMessage`, `ConfirmedEventPayload` |
 | 이벤트 (Spring ApplicationEvent) | `<Subject>RequestedEvent` | `StockCommitRequestedEvent` |
 | Listener | `<Subject>Listener` 또는 `<Subject>EventHandler` | `StockOutboxImmediateEventHandler`, `OutboxImmediateEventHandler` |
 | Scheduler | `<Subject>Worker` | `OutboxWorker`, `PgOutboxImmediateWorker` |
-| Fake (테스트 전용) | `Fake<Subject><Type>` | `FakeStockCachePort`, `FakeEventDedupeStore` |
+| Fake (테스트 전용) | `Fake<Subject><Type>` | `FakeStockCachePort` |
 | Test class | `<Subject>Test` (단위) / `<Subject>ContractTest` / `<Subject>MdcPropagationTest` | `PaymentConfirmResultUseCaseTest` |
 
 ## LogFmt + 트레이스 컨텍스트
@@ -147,13 +147,17 @@ Spring 의 default `@Transactional` 은 **timeout 무한**. 외부 의존성 (Re
 | 외부 HTTP 호출 포함 | 호출 timeout × 1.5 | Feign / WebClient timeout 보다 살짝 길게 — TX rollback 보다 client timeout 이 먼저 발생 |
 | 단순 단일 row update | 명시 불요 | default 도 OK (외부 의존성 없음) |
 
-**예시** (`PaymentConfirmResultUseCase.handle:120`):
+**예시** (`PaymentConfirmResultUseCase.processMessage`):
 ```java
 @Transactional(timeout = 5)
-public void handle(ConfirmedEventMessage message) {
-    eventDedupeStore.markWithLease(...);   // Redis ~ms
-    processMessage(message);                // DB save + outbox INSERT
-    eventDedupeStore.extendLease(...);      // Redis ~ms
+public void processMessage(ConfirmedEventMessage message) {
+    PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(...);
+    switch (message.status()) {
+        case APPROVED -> handleApproved(...);
+        case FAILED -> handleFailed(...);     // compensateAtomic 먼저 → markPaymentAsFail 나중
+        case QUARANTINED -> handleQuarantined(...);
+    }
+    // 예외 throw 시 Spring Kafka DefaultErrorHandler 가 retry / DLQ 책임
 }
 ```
 
@@ -177,6 +181,21 @@ public void handle(ConfirmedEventMessage message) {
 | `PaymentConfirmDlqConsumer` (pg-service) | `pg-service-dlq` |
 
 Kafka rebalance 단위는 consumer group. 하나의 서비스가 여러 토픽을 같은 group 으로 소비하면 한 토픽 처리 지연이 다른 토픽 consume 도 막을 수 있다. 정상 토픽과 DLQ 토픽을 다른 group 으로 분리(`pg-service` / `pg-service-dlq`)한 이유가 이것이다. 토픽별 추가 group 분리는 부하 측정 결과 기반으로 결정한다.
+
+### Kafka consumer 에러 핸들링 (retry / DLQ)
+
+payment-service `ConfirmedEventConsumer` 는 Spring Kafka native 패턴 사용 — 직접 try/catch 후 DLQ publish 호출 금지.
+
+| 컴포넌트 | 책임 |
+|---|---|
+| `DefaultErrorHandler` | retry 정책 (`FixedBackOff(1000ms, 5)`) + not-retryable 분류 (`MessageConversionException` / `IllegalArgumentException` / `IllegalStateException` 즉시 DLQ) |
+| `DeadLetterPublishingRecoverer` | 한도 초과 메시지를 `<topic>.dlq` 로 자동 발행 |
+| 빈 등록 | `infrastructure/config/KafkaErrorHandlerConfig` |
+
+룰:
+- consumer use case 에서는 비즈니스 분기만, 예외는 그대로 throw
+- 도메인이 비/재시도 가능 의미를 가지면 not-retryable 예외 (`IllegalArgumentException` / `IllegalStateException`) 사용 → 즉시 DLQ 분기
+- 직접 `kafkaTemplate.send(<dlq-topic>, ...)` 호출하는 패턴 금지
 
 ### Kafka consumer timeout 정렬
 

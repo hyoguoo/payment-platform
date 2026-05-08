@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-04-27
+> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — Lua 스크립트 디렉토리 + port enum 추가 반영)
 
 ## 루트 레이아웃
 
@@ -85,7 +85,7 @@ payment-platform/
     │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service — feign/ 서브폴더에 *FeignClient + *FeignConfig)
     │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service — HttpOperatorImpl)
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
-    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment Redis / pg Redis+RDB / product RDB)
+    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (pg Redis+RDB / product RDB. payment 측은 Lua atomic dedup token 으로 일원화 — 본 디렉토리 어댑터 없음)
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
     │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker)
     │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
@@ -114,6 +114,7 @@ payment-platform/
     │       ├── application-benchmark.yml   # (payment-service 만)
     │       ├── application-smoke.yml       # (pg-service 만)
     │       ├── db/migration/               # Flyway V1 schema + (필요 시) V2 seed
+    │       ├── lua/                        # Redis Lua 스크립트 (payment-service 만 — stock_decrement_atomic.lua, stock_compensation_atomic.lua)
     │       ├── static/                     # 결제 UI (payment-service 만)
     │       ├── templates/                  # Thymeleaf admin (payment-service 만)
     │       └── logback-spring.xml
@@ -181,6 +182,9 @@ flowchart TD
 | 결제 confirm 진입점 | `payment-service/.../presentation/controller/PaymentController.java` |
 | 비동기 confirm 사이클 | `payment-service/.../application/OutboxAsyncConfirmService.java` |
 | Outbox 릴레이 | `payment-service/.../application/service/OutboxRelayService.java` + `infrastructure/listener/OutboxImmediateEventHandler.java` + `infrastructure/scheduler/OutboxWorker.java` |
+| 재고 Lua 스크립트 | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua`, `stock_compensation_atomic.lua` |
+| 재고 atomic 결과 enum | `payment-service/.../application/port/out/StockDecrementAtomicResult.java`, `StockCompensationAtomicResult.java` |
+| Kafka 에러 핸들러 빈 | `payment-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` |
 | pg confirm 처리 | `pg-service/.../application/service/PgConfirmService.java` |
 | 벤더 어댑터 | `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` |
 | Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
