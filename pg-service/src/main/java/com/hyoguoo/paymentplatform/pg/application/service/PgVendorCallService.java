@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
@@ -17,10 +21,6 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
-import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
-import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -34,20 +34,27 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * pg-service PG 벤더 호출 + 재시도/DLQ/성공/실패 분기 서비스.
- * 재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
+ * pg-service PG 벤더 호출 서비스 — TX 경계 분리 버전.
  *
- * <p>처리 흐름:
+ * <p>PCS-6: invokeVendor (TX 없음) + applyOutcome (TX_B) 분리.
+ * 워커 VT 가 이 두 메서드를 순서대로 호출한다:
  * <ol>
- *   <li>PgConfirmPort.confirm() 호출.</li>
- *   <li>성공 → pg_outbox(payment.events.confirmed, APPROVED 포함) INSERT + pg_inbox APPROVED 전이.</li>
- *   <li>확정 실패(non-retryable) → pg_outbox(payment.events.confirmed, FAILED 포함) INSERT + pg_inbox FAILED 전이.</li>
- *   <li>재시도 가능 + attempt &lt; MAX(4) → pg_outbox(payment.commands.confirm, available_at=now+backoff) INSERT.</li>
- *   <li>재시도 가능 + attempt &gt;= MAX(4) → pg_outbox(payment.commands.confirm.dlq) INSERT.</li>
+ *   <li>{@link #invokeVendor} — TX 외부에서 벤더 HTTP 호출. VT 가 캐리어 양보, DB 자유 상태.</li>
+ *   <li>{@link #applyOutcome} — @Transactional TX_B. 벤더 응답 5분기 처리 + RDB 반영.</li>
  * </ol>
  *
- * <p>TX commit 후 AFTER_COMMIT 이벤트 → PgOutboxChannel 경로 재사용.
- * inbox IN_PROGRESS 상태는 재시도/DLQ 경로에서 유지 (QUARANTINED 전이는 DLQ consumer 책임).
+ * <p>응답 5분기 (@Transactional TX_B):
+ * <ol>
+ *   <li>승인 성공 → APPROVED 종결 + Outbox INSERT</li>
+ *   <li>확정 실패 → FAILED 종결 + Outbox INSERT</li>
+ *   <li>일시 실패 잔여 시도 → 재시도 명령 INSERT (IN_PROGRESS 유지)</li>
+ *   <li>일시 실패 시도 소진 → 격리 명령 INSERT (IN_PROGRESS 유지)</li>
+ *   <li>ALREADY_PROCESSED → {@link DuplicateApprovalHandler} 위임 (보정 경로 진입)</li>
+ * </ol>
+ *
+ * <p>재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
+ *
+ * @deprecated {@link #callVendor} 는 PCS-9 에서 호출처가 invokeVendor + applyOutcome 두 단계로 교체될 예정.
  */
 @Slf4j
 @Service
@@ -63,23 +70,42 @@ public class PgVendorCallService {
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final DuplicateApprovalHandler duplicateApprovalHandler;
 
     // -----------------------------------------------------------------------
-    // 게이트웨이 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
+    // 공개 API — 신규 (PCS-6)
     // -----------------------------------------------------------------------
 
-    private sealed interface GatewayOutcome
-            permits GatewayOutcome.Success, GatewayOutcome.Retryable,
-                    GatewayOutcome.NonRetryable, GatewayOutcome.HandledInternally {
+    /**
+     * 벤더 HTTP 호출 전용 메서드 — TX 없음.
+     *
+     * <p>워커 VT 가 TX_A (PENDING→IN_PROGRESS) 커밋 후 이 메서드를 TX 외부에서 호출한다.
+     * DB 커넥션을 점유하지 않은 상태로 벤더 HTTP 대기를 수행한다.
+     *
+     * @param request PG 확정 요청 DTO
+     * @return 벤더 호출 결과 {@link GatewayOutcome}
+     */
+    public GatewayOutcome invokeVendor(PgConfirmRequest request) {
+        return invokeConfirm(request);
+    }
 
-        record Success(PgConfirmResult result) implements GatewayOutcome {}
-        record Retryable(String message) implements GatewayOutcome {}
-        record NonRetryable(String message) implements GatewayOutcome {}
-        record HandledInternally(String message) implements GatewayOutcome {}
+    /**
+     * 벤더 응답 5분기 처리 — @Transactional TX_B.
+     *
+     * <p>invokeVendor 반환값을 받아 inbox 종결 또는 재시도/격리 명령 INSERT 를 TX 안에서 수행한다.
+     *
+     * @param outcome invokeVendor 결과
+     * @param request PG 확정 요청 DTO
+     * @param attempt 현재 attempt 번호 (1부터 시작)
+     * @param now     현재 시각
+     */
+    @Transactional
+    public void applyOutcome(GatewayOutcome outcome, PgConfirmRequest request, int attempt, Instant now) {
+        dispatchOutcome(outcome, request, attempt, now);
     }
 
     // -----------------------------------------------------------------------
-    // 공개 API
+    // 공개 API — 기존 (deprecated, PCS-9 호출처 교체 후 삭제 예정)
     // -----------------------------------------------------------------------
 
     /**
@@ -88,7 +114,10 @@ public class PgVendorCallService {
      * @param request PG 확정 요청 DTO
      * @param attempt 현재 attempt 번호 (1부터 시작)
      * @param now     현재 시각
+     * @deprecated PCS-9 에서 invokeVendor + applyOutcome 두 단계 호출로 교체 예정.
+     *             {@link #invokeVendor} + {@link #applyOutcome} 을 직접 사용하라.
      */
+    @Deprecated(forRemoval = true)
     @Transactional
     public void callVendor(PgConfirmRequest request, int attempt, Instant now) {
         GatewayOutcome outcome = invokeConfirm(request);
@@ -122,9 +151,7 @@ public class PgVendorCallService {
             case GatewayOutcome.Success s -> handleSuccess(request.orderId(), s.result());
             case GatewayOutcome.Retryable(String reason) -> handleRetry(request, attempt, now, reason);
             case GatewayOutcome.NonRetryable nr -> handleDefinitiveFailure(request.orderId(), nr.message());
-            case GatewayOutcome.HandledInternally hi -> LogFmt.info(log, LogDomain.PG_VENDOR,
-                    EventType.PG_VENDOR_DUPLICATE_HANDLED,
-                    () -> "orderId=" + request.orderId() + " detail=" + hi.message());
+            case GatewayOutcome.HandledInternally hi -> handleDuplicate(request, hi.message());
         }
     }
 
@@ -154,6 +181,17 @@ public class PgVendorCallService {
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DEFINITIVE_FAILURE,
                 () -> "orderId=" + orderId + " reasonCode=" + reasonCode);
+    }
+
+    // -----------------------------------------------------------------------
+    // ALREADY_PROCESSED 처리 — DuplicateApprovalHandler 위임
+    // -----------------------------------------------------------------------
+
+    private void handleDuplicate(PgConfirmRequest request, String message) {
+        LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
+                () -> "orderId=" + request.orderId() + " detail=" + message);
+        duplicateApprovalHandler.handleDuplicateApproval(
+                request.orderId(), request.amount(), request.vendorType());
     }
 
     // -----------------------------------------------------------------------

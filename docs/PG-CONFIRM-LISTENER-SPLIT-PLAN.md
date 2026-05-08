@@ -274,6 +274,8 @@ public interface PgInboxProcessUseCase {
 
 **예상 회귀 surface**: 기존 `callVendor` 호출처 (`PgConfirmService.handleNone`, `PgConfirmService.handleInProgress`) 가 컴파일 경고 발생 — PCS-7 에서 해소.
 
+- [x] **완료** — `GatewayOutcome` sealed interface 별도 파일 추출 (package-private). `invokeVendor` (TX 없음, 벤더 HTTP 호출 + GatewayOutcome 반환) 신규 공개 메서드 추가. `applyOutcome` (@Transactional TX_B, 5분기) 신규 공개 메서드 추가. `callVendor` @Deprecated(forRemoval=true) 표기 유지. `DuplicateApprovalHandler` 생성자 주입 추가 (HandledInternally 분기 위임). `PaymentConfirmConsumerTest` / `PgVendorCallServiceVendorTypeTest` 생성자 호출 갱신 (컴파일 오류 자동 수정). `./gradlew test` 238 PASS / 0 FAIL.
+
 ---
 
 ### PCS-7 — application service: `PgInboxPendingService` 신규 (listener TX 경계 봉인)

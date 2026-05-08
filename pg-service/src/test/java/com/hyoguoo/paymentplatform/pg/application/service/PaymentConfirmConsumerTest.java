@@ -62,9 +62,11 @@ class PaymentConfirmConsumerTest {
         ObjectMapper objectMapper = new ObjectMapper();
         // FakePgGatewayAdapter.supports(vendorType)=true 라 selector 가 항상 반환한다.
         PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
+        DuplicateApprovalHandler duplicateApprovalHandler = Mockito.mock(DuplicateApprovalHandler.class);
         PgVendorCallService vendorCallService =
                 new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
-                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock);
+                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
+                        duplicateApprovalHandler);
         sut = new PgConfirmService(
                 inboxRepository, outboxRepository, vendorCallService, dedupeStore, eventPublisher, clock);
     }
