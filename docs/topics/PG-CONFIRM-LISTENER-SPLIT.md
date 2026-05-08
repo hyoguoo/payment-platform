@@ -655,7 +655,7 @@ flowchart TD
 | infrastructure/scheduler | `PgInboxImmediateWorker` | 신규 | `PgOutboxImmediateWorker` 1:1 거울. SmartLifecycle + VT 워커 5개 baseline. `PgInboxProcessUseCase.processPending` / `processInProgressZombie` 호출 |
 | infrastructure/scheduler | `PgInboxPollingWorker` | 신규 | `PgOutboxPollingWorker` 패턴 + 두 회수 경로 (PENDING 60s / IN_PROGRESS 60s). @Scheduled 5초 주기. 회수는 채널 우회 — `processPending` / `processInProgressZombie` 직접 호출. traceparent 새 root span (§1.4) |
 | infrastructure/listener | `InboxReadyEventHandler` | 신규 | AFTER_COMMIT — `PgInboxReadyEvent` → `PgInboxChannel.offerNow` (기존 `OutboxReadyEventHandler` 1:1 거울) |
-| application/event | `PgInboxReadyEvent` | 신규 | record (`Long inboxId`) — `PgOutboxReadyEvent` 거울 (도메인 이벤트 아닌 application 이벤트 — Spring `ApplicationEventPublisher` 용) |
+| domain/event | `PgInboxReadyEvent` | 신규 | record (`Long inboxId`) — `PgOutboxReadyEvent` 거울 (Spring `ApplicationEventPublisher` 용. 거울 위치 정합: `PgOutboxReadyEvent` 도 `domain/event/` 위치 — PC-F5 흡수) |
 | infrastructure/messaging/consumer | `PaymentConfirmConsumer` | 변경 0 | 입력 포트 시그니처 (`PgConfirmCommandService.handle`) 유지 — listener 코드는 변경 없음 |
 | 메트릭 | `pg_inbox_channel_queue_size` / `pg_inbox.process_fail_total` / `pg_inbox.zombie_recovered_total` | 신규 | acceptance 노출 (§7) |
 | Flyway | `V<N>__add_pg_inbox_pending_status.sql` | 신규 | enum 컬럼에 PENDING 추가 + NONE 제거 (§1.5 단일 migration) |
