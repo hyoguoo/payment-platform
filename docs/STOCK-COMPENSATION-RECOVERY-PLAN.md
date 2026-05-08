@@ -455,7 +455,7 @@ public void handle(ConfirmedEventMessage message) {
 ---
 
 <!-- arch-comment: `infrastructure/config` 패키지 배치 정합 — 기존 `KafkaMessageConverterConfig` / `KafkaProducerConfig` / `KafkaTopicConfig` 와 동일 layer. application 의 try/catch 책임을 인프라 bean 으로 옮기는 방향이 hexagonal 정합 (인프라 관심사 외부화). -->
-### SCR-8. Spring Kafka `DefaultErrorHandler` bean 신설 — `KafkaErrorHandlerConfig`
+### SCR-8. Spring Kafka `DefaultErrorHandler` bean 신설 — `KafkaErrorHandlerConfig` ✅
 
 - **결정 ID**: D7
 - **tdd**: true
@@ -491,6 +491,8 @@ public class KafkaErrorHandlerConfig {
 - `KafkaMessageConverterConfig` 와 같은 `infrastructure/config` 패키지 배치
 
 **예상 회귀 surface**: `KafkaMessageConverterConfig` 와 동일 패키지 — 기존 Kafka 설정 충돌 없음 확인 필요.
+
+**완료 결과**: 3개 테스트 전부 PASS (errorHandler_빈_생성_성공 / not_retryable_예외_목록_포함_확인 / backoff_설정값_반영). `KafkaErrorHandlerConfig` 신설, `application.yml` error-handler 설정 키 추가. Spring Boot Kafka 오토컨피그가 `CommonErrorHandler` 빈 자동 감지 → 별도 factory wiring 없이 `kafkaListenerContainerFactory` 에 적용됨. 전체 회귀 377 PASS.
 
 **산출물**:
 - `payment-service/src/main/java/.../infrastructure/config/KafkaErrorHandlerConfig.java`

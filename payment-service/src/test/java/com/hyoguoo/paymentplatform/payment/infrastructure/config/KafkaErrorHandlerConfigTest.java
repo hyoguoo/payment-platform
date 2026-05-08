@@ -11,6 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.messaging.converter.MessageConversionException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.util.backoff.BackOff;
 import org.springframework.util.backoff.BackOffExecution;
 import org.springframework.util.backoff.FixedBackOff;
 
@@ -63,9 +64,11 @@ class KafkaErrorHandlerConfigTest {
         KafkaTemplate<String, String> mockTemplate = mock(KafkaTemplate.class);
         DefaultErrorHandler handler = config.kafkaErrorHandler(mockTemplate);
 
-        FixedBackOff backOff = (FixedBackOff) ReflectionTestUtils.getField(handler, "backOff");
+        Object failureTracker = ReflectionTestUtils.getField(handler, "failureTracker");
+        assertThat(failureTracker).isNotNull();
+        BackOff backOff = (BackOff) ReflectionTestUtils.getField(failureTracker, "backOff");
+        assertThat(backOff).isInstanceOf(FixedBackOff.class);
 
-        assertThat(backOff).isNotNull();
         BackOffExecution exec = backOff.start();
         assertThat(exec.nextBackOff()).isEqualTo(1000L);
         assertThat(exec.nextBackOff()).isEqualTo(1000L);

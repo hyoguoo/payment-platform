@@ -103,6 +103,12 @@ payment:
     topics:
       commands-confirm: ${PAYMENT_TOPIC_COMMANDS_CONFIRM:payment.commands.confirm}
       events-stock-committed: ${PAYMENT_TOPIC_EVENTS_STOCK_COMMITTED:payment.events.stock-committed}
+    error-handler:
+      backoff:
+        # FixedBackOff 재시도 간격 (ms). 일시적 인프라 장애(Redis/RDB) 복구를 기다리는 시간.
+        interval: 1000
+        # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행.
+        max-attempts: 5
 
 product:
   adapter:
