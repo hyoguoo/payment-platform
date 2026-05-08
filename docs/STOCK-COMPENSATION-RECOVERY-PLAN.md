@@ -135,7 +135,7 @@ flowchart TD
 
 ---
 
-### SCR-1. 선차감 Lua 강화 — `stock_decrement_atomic.lua` 신설
+### SCR-1. 선차감 Lua 강화 — `stock_decrement_atomic.lua` 신설 ✅
 
 - **결정 ID**: D1
 - **tdd**: true
@@ -155,8 +155,10 @@ flowchart TD
 **예상 회귀 surface**: `StockCacheRedisAdapter.decrement` 호출부 (Coordinator) + 어댑터 단위 테스트 + 기존 `StockCacheRedisAdapterTest`.
 
 **산출물**:
-- `payment-service/src/main/resources/lua/stock_decrement_atomic.lua`
-- `payment-service/src/test/java/.../infrastructure/cache/StockDecrementAtomicLuaTest.java`
+- `payment-service/src/main/resources/lua/stock_decrement_atomic.lua` ✅
+- `payment-service/src/test/java/.../infrastructure/cache/StockDecrementAtomicLuaTest.java` ✅
+
+**완료 결과**: 5개 테스트 전부 PASS (단일_상품_정상_차감_성공 / 재고_부족_시_INSUFFICIENT_반환_및_차감_없음 / 두번째_호출_ALREADY_DONE / 부분_부족_시_전체_미차감 / dedup_token_TTL_설정_확인). 전체 회귀 0.
 
 **테스트 스펙**:
 
