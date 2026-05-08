@@ -296,7 +296,7 @@ flowchart TD
 ---
 
 <!-- arch-comment: SCR-5 / SCR-6 가 SCR-3 (port) + SCR-4 (adapter) 완료 후라는 의존 그래프 명시 OK. application → port → infrastructure 의존 방향 정합. `decrementStock(orderId, list)` 시그니처에 orderId 추가는 application 안 변경이라 layer 추가 영향 0 — OutboxAsyncConfirmService 호출부 동시 수정도 application/application 동일 layer. -->
-### SCR-5. `PaymentTransactionCoordinator.decrementStock` — for-loop 제거 + atomic 1회 호출
+### SCR-5. `PaymentTransactionCoordinator.decrementStock` — for-loop 제거 + atomic 1회 호출 ✅
 
 - **결정 ID**: D1, D5
 - **tdd**: true
@@ -316,6 +316,8 @@ flowchart TD
 - **단, `orderId` 파라미터 추가 필요** — `decrementStock(String orderId, List<PaymentOrder> paymentOrderList)` 시그니처 변경 → 호출부 (`OutboxAsyncConfirmService.java:57`) 도 함께 수정
 
 **예상 회귀 surface**: `PaymentTransactionCoordinatorTest`, `OutboxAsyncConfirmService` 호출부. `decrementStock` 시그니처 변경이므로 컴파일 에러로 회귀 즉시 감지.
+
+**완료 결과**: 4개 케이스 PASS (decrementStock_정상_차감_OK / decrementStock_재고_부족_REJECTED / decrementStock_ALREADY_DONE_은_SUCCESS / decrementStock_Redis_예외_CACHE_DOWN). `decrementSingleStock` private 메서드 제거, `decrementStock(String orderId, List<PaymentOrder>)` 시그니처 변경, `stockCachePort.decrementAtomic` 1회 호출, ALREADY_DONE → SUCCESS 매핑 (도메인 의미: L6 한계 인정). `OutboxAsyncConfirmService.java:57` 호출부 `orderId` 전달 추가. 전체 회귀 386 PASS.
 
 **산출물**:
 - `payment-service/src/main/java/.../application/usecase/PaymentTransactionCoordinator.java`
