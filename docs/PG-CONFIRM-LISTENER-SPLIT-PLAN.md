@@ -125,6 +125,8 @@ ALTER TABLE pg_inbox
 
 **예상 회귀 surface**: Flyway checksum 검증. Testcontainers 통합 테스트 기동 시 V1 → V2 자동 적용 — schema validate 통과 여부 확인.
 
+- [x] **완료** — V2 migration 작성. `UPDATE pg_inbox SET status='PENDING' WHERE status='NONE'` 사전 변환 포함. `./gradlew test` 377 PASS / 0 FAIL — Testcontainers V1→V2 자동 적용 검증 완료.
+
 ---
 
 ### PCS-2 — 도메인: `PgInboxStatus` enum 변경 + `PgInbox` 도메인 팩토리 갱신
