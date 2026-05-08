@@ -11,6 +11,12 @@ import java.time.Instant;
  */
 public class PgInbox {
 
+    /**
+     * DB row pk. JPA 어댑터가 toDomain() 에서 주입한다.
+     * 신규 생성(INSERT 전) 객체에서는 null — id 필요 시 저장 후 반환값을 사용한다.
+     * PCS-9 REFACTOR: PgConfirmService.handleActiveInbox 에서 채널 재적재 시 inboxId 로 사용.
+     */
+    private final Long id;
     private final String orderId;
     private PgInboxStatus status;
     private final Long amount;
@@ -29,6 +35,7 @@ public class PgInbox {
     private final String vendorType;
 
     private PgInbox(
+            Long id,
             String orderId,
             PgInboxStatus status,
             Long amount,
@@ -38,6 +45,7 @@ public class PgInbox {
             Instant updatedAt,
             String paymentKey,
             String vendorType) {
+        this.id = id;
         this.orderId = orderId;
         this.status = status;
         this.amount = amount;
@@ -60,7 +68,7 @@ public class PgInbox {
      */
     public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
     }
 
     /**
@@ -72,7 +80,7 @@ public class PgInbox {
      */
     public static PgInbox create(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
     }
 
     /**
@@ -86,7 +94,7 @@ public class PgInbox {
      * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
      */
     public static PgInbox create(String orderId, Long amount, Instant now, String paymentKey, String vendorType) {
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
     }
 
     /**
@@ -97,7 +105,7 @@ public class PgInbox {
      * @param now     현재 Instant (clock.instant() 전달)
      */
     public static PgInbox create(String orderId, Long amount, Instant now) {
-        return new PgInbox(orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
     }
 
     /**
@@ -109,7 +117,7 @@ public class PgInbox {
      */
     public static PgInbox createDirectInProgress(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now, null, null);
+        return new PgInbox(null, orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now, null, null);
     }
 
     /**
@@ -129,7 +137,7 @@ public class PgInbox {
                     "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
         }
         Instant now = Instant.now();
-        return new PgInbox(orderId, terminalStatus, amount, storedStatusResult, null, now, now, null, null);
+        return new PgInbox(null, orderId, terminalStatus, amount, storedStatusResult, null, now, now, null, null);
     }
 
     public static PgInbox of(
@@ -140,7 +148,7 @@ public class PgInbox {
             String reasonCode,
             Instant createdAt,
             Instant updatedAt) {
-        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt, null, null);
+        return new PgInbox(null, orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt, null, null);
     }
 
     public static PgInbox of(
@@ -153,8 +161,31 @@ public class PgInbox {
             Instant updatedAt,
             String paymentKey,
             String vendorType) {
-        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode,
+        return new PgInbox(null, orderId, status, amount, storedStatusResult, reasonCode,
                 createdAt, updatedAt, paymentKey, vendorType);
+    }
+
+    /**
+     * JPA 어댑터 전용 — DB row pk 포함 재구성.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity#toDomain()} 에서만 사용.
+     */
+    public static PgInbox ofWithId(
+            Long id,
+            String orderId,
+            PgInboxStatus status,
+            Long amount,
+            String storedStatusResult,
+            String reasonCode,
+            Instant createdAt,
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
+        return new PgInbox(id, orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, paymentKey, vendorType);
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getOrderId() {

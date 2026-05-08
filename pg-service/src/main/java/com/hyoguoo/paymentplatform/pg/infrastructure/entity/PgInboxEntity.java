@@ -87,7 +87,8 @@ public class PgInboxEntity {
     }
 
     public PgInbox toDomain() {
-        return PgInbox.of(
+        return PgInbox.ofWithId(
+                id,
                 orderId,
                 status,
                 amount,

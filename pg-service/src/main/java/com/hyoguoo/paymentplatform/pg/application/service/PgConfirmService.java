@@ -120,9 +120,12 @@ public class PgConfirmService implements PgConfirmCommandService {
      * PENDING / IN_PROGRESS inbox 존재 — 채널 재적재.
      * publishEvent(PgInboxReadyEvent) 로 채널에 재적재하고, 워커가 처리를 이어받는다.
      * IN_PROGRESS 자기 재진입(attempt >= 2) 도 이 경로로 처리되며, 워커가 IN_PROGRESS 좀비 경로를 밟는다.
+     *
+     * <p>inbox.getId() — JPA 어댑터 toDomain() 에서 DB pk 를 주입하므로 실제 환경에서는 non-null.
+     * Fake 환경(단위 테스트)에서는 idIndex 로 관리하므로 id 가 없을 수 있음.
      */
     private void handleActiveInbox(PgInbox inbox) {
-        applicationEventPublisher.publishEvent(new PgInboxReadyEvent(null));
+        applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inbox.getId()));
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_IN_PROGRESS_RETRY,
                 () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus()
