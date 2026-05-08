@@ -175,7 +175,7 @@ flowchart TD
 
 ---
 
-### SCR-2. 보상 Lua 신설 — `stock_compensation_atomic.lua`
+### SCR-2. 보상 Lua 신설 — `stock_compensation_atomic.lua` ✅
 
 - **결정 ID**: D2
 - **tdd**: true
@@ -194,9 +194,11 @@ flowchart TD
 
 **예상 회귀 surface**: `StockCacheRedisAdapter.increment` 호출부 (ConfirmResultUseCase) + 어댑터 단위 테스트.
 
+**완료 결과**: 5개 테스트 전부 PASS (단일_상품_정상_보상_성공 / 복수_상품_atomic_보상 / 두번째_호출_ALREADY_DONE / 다른_orderId_는_독립적 / dedup_token_TTL_설정_확인). 전체 회귀 0.
+
 **산출물**:
-- `payment-service/src/main/resources/lua/stock_compensation_atomic.lua`
-- `payment-service/src/test/java/.../infrastructure/cache/StockCompensationAtomicLuaTest.java`
+- `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` ✅
+- `payment-service/src/test/java/.../infrastructure/cache/StockCompensationAtomicLuaTest.java` ✅
 
 **테스트 스펙**:
 
