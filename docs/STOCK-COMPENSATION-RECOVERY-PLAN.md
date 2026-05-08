@@ -216,7 +216,7 @@ flowchart TD
 ---
 
 <!-- arch-comment: layer 의존 순서 정합. port 인터페이스 / 반환 enum 모두 application/port/out 에 배치 — hexagonal 정합. 단, `StockDecrementAtomicResult` enum 의 패키지를 `application/port/out` 에 명시한 점은 OK 이지만 PLAN 본문에서 enum 의 valueset(OK/ALREADY_DONE/INSUFFICIENT) 만 명시하고 Lua 반환 문자열 → enum 매핑 책임을 어댑터(SCR-4)에 둔다는 점이 SCR-4 본문에 명시되어 있어 layer 책임 분리 정합. -->
-### SCR-3. `StockCachePort` 시그니처 변경 + `FakeStockCachePort` 갱신
+### SCR-3. `StockCachePort` 시그니처 변경 + `FakeStockCachePort` 갱신 ✅
 
 - **결정 ID**: D5
 - **tdd**: true
@@ -238,6 +238,8 @@ flowchart TD
 - `payment-service/src/main/java/.../application/port/out/StockDecrementAtomicResult.java` (신규 enum)
 - `payment-service/src/main/java/.../application/port/out/StockCompensationAtomicResult.java` (신규 enum)
 - `payment-service/src/test/java/.../mock/FakeStockCachePort.java` (새 메서드 구현)
+
+**완료 결과**: 5개 테스트 전부 PASS (decrementAtomic_정상_차감_성공 / decrementAtomic_재고_부족 / decrementAtomic_중복_orderId / compensateAtomic_정상_보상 / compensateAtomic_중복_orderId). `StockDecrementAtomicResult` / `StockCompensationAtomicResult` enum 신설. `StockCachePort` 에 `decrementAtomic` / `compensateAtomic` 추가. `StockCacheRedisAdapter` 에 SCR-4 구현 예정 stub 추가. 전체 회귀 380 PASS.
 
 **테스트 스펙**:
 

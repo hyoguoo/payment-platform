@@ -1,6 +1,9 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.cache;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,24 @@ public class StockCacheRedisAdapter implements StockCachePort {
     }
 
     private final StringRedisTemplate stockCacheRedisTemplate;
+
+    /**
+     * SCR-4 에서 Lua 구현 예정. StockCachePort 계약 이행을 위한 stub.
+     */
+    @Override
+    public StockDecrementAtomicResult decrementAtomic(String orderId, List<PaymentOrder> paymentOrders) {
+        // TODO(SCR-4): stock_decrement_atomic.lua 로딩 + Lua 실행 + 결과 enum 변환
+        throw new UnsupportedOperationException("SCR-4 에서 구현 예정");
+    }
+
+    /**
+     * SCR-4 에서 Lua 구현 예정. StockCachePort 계약 이행을 위한 stub.
+     */
+    @Override
+    public StockCompensationAtomicResult compensateAtomic(String orderId, List<PaymentOrder> paymentOrders) {
+        // TODO(SCR-4): stock_compensation_atomic.lua 로딩 + Lua 실행 + 결과 enum 변환
+        throw new UnsupportedOperationException("SCR-4 에서 구현 예정");
+    }
 
     @Override
     public boolean decrement(Long productId, int quantity) {

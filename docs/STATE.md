@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-08 — SCR-2 완료, 활성 태스크 SCR-3
+> 최종 수정: 2026-05-08 — SCR-3 완료, 활성 태스크 SCR-4
 
 ## 활성 작업
 - **주제**: STOCK-COMPENSATION-RECOVERY (결제 결과 보상 실패 자동 회복 layer)
-- **단계**: execute (활성 태스크 SCR-3 — StockCachePort 시그니처 변경 + FakeStockCachePort 갱신)
+- **단계**: execute (활성 태스크 SCR-4 — StockCacheRedisAdapter 새 메서드 구현)
 - **채택안**: Round 7 — `stock_decrement_atomic.lua` + `stock_compensation_atomic.lua` + Spring Kafka `DefaultErrorHandler` 위임 + dedupe lease / `PaymentConfirmDlqPublisher` port 폐기
 - **이슈**: #71
 - **브랜치**: #71
