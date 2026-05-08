@@ -256,7 +256,7 @@ flowchart TD
 
 ---
 
-### SCR-4. `StockCacheRedisAdapter` 새 메서드 구현
+### SCR-4. `StockCacheRedisAdapter` 새 메서드 구현 ✅
 
 - **결정 ID**: D5
 - **tdd**: true
@@ -273,6 +273,8 @@ flowchart TD
 - `compensateAtomic(orderId, List<PaymentOrder>)` — KEYS 구성 (`compensation:done:{orderId}` + `stock:{productId}` N개) + ARGV 구성 → Lua 실행 → 결과 enum 변환 (OK / ALREADY_DONE). RuntimeException 은 그대로 전파
 
 **예상 회귀 surface**: `StockCacheRedisAdapterTest` 신규 케이스 추가. 기존 `decrement` / `increment` 테스트 그대로 유지.
+
+**완료 결과**: 5개 신규 테스트 PASS (decrementAtomic_2개_상품_정상_차감 / decrementAtomic_재고_부족_INSUFFICIENT / decrementAtomic_중복_ALREADY_DONE / compensateAtomic_2개_상품_정상_복원 / compensateAtomic_중복_ALREADY_DONE). 기존 5개 포함 총 10개 PASS. 전체 회귀 0. `DECREMENT_ATOMIC_SCRIPT` / `COMPENSATION_ATOMIC_SCRIPT` 정적 초기화, `buildDecrementKeys` / `buildCompensationKeys` / `buildArgv` private 메서드로 KEY·ARGV 구성 분리.
 
 **산출물**:
 - `payment-service/src/main/java/.../infrastructure/cache/StockCacheRedisAdapter.java` (메서드 추가)
