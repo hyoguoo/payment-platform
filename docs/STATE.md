@@ -1,11 +1,11 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-04 — STOCK-COMPENSATION-RECOVERY discuss 종결, plan 진입 대기
+> 최종 수정: 2026-05-08 — STOCK-COMPENSATION-RECOVERY plan 종결 (Round 2 critic + domain 모두 pass), plan-review 진입 대기
 
 ## 활성 작업
 - **주제**: STOCK-COMPENSATION-RECOVERY (결제 결과 보상 실패 자동 회복 layer)
-- **단계**: plan (확장 discuss 6라운드 후 D enhanced 채택)
-- **채택안**: Candidate D (enhanced) — payment_history audit-driven + happy path SUCCEEDED action
+- **단계**: plan-review (Round 7 채택안 — Lua atomic + Kafka native + dedupe lease 폐기)
+- **채택안**: Round 7 — `stock_decrement_atomic.lua` + `stock_compensation_atomic.lua` + Spring Kafka `DefaultErrorHandler` 위임 + dedupe lease / `PaymentConfirmDlqPublisher` port 폐기
 - **이슈**: #71
 - **브랜치**: #71
 
@@ -15,12 +15,12 @@
 - 원본 사전 브리핑 (Baseline 0, 비교 baseline): docs/topics/STOCK-COMPENSATION-RECOVERY.md
 - 라운드 산출물:
   - docs/rounds/stock-compensation-recovery/ (Round 0~2 — Baseline 0)
-  - docs/rounds/stock-compensation-recovery-alternatives/ (Round 1~6 — D 결정)
-- 플랜: docs/STOCK-COMPENSATION-RECOVERY-PLAN.md (plan 단계 산출 예정)
+  - docs/rounds/stock-compensation-recovery-alternatives/ (Round 1~6 — D 결정 후 Round 7 폐기)
+- 플랜: docs/STOCK-COMPENSATION-RECOVERY-PLAN.md (10 태스크, Round 1 critic + domain finding 흡수, Round 2 둘 다 pass)
 
 ## 단계 진행
 - [x] discuss
-- [ ] plan
+- [x] plan
 - [ ] plan-review
 - [ ] execute
 - [ ] review
