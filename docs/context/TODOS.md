@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — silent loss / lease 폐기 + STOCK-COMPENSATION-OTHER-PATHS 후속 추가).
+> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT 봉인 — TC-14 완료 표기 + PHASE2 정밀화 항목 신규 등록).
 > 이 파일은 현재 활성 작업 범위 밖이지만 향후 처리가 필요한 항목을 추적한다.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -334,44 +334,40 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 
 **관련 위키**: `message-delivery-and-dedupe.md` (메인) / `outbox-pattern.md` (stock_outbox 빠진 상태) / `tx-scope.md` / `event-driven-choreography.md` / `architecture.md` / `Home.md` / `msa-transition.md` / `trace-propagation.md`
 
-### TC-14 — pg-service vendor 호출 listener thread 분리 검토
+### ✅ TC-14 — pg-service vendor 호출 listener thread 분리 (완료 — PG-CONFIRM-LISTENER-SPLIT, 2026-05-09)
 
-PG 벤더 HTTP 호출이 Kafka listener thread 안에서 이뤄지고 있어 (TX2 = `PgVendorCallService.callVendor` `@Transactional`), 벤더 latency 가 인바운드 throughput 에 직접 영향.
+PG 벤더 HTTP 호출을 Kafka listener thread 에서 분리해 인바운드 throughput 이 벤더 latency 에 묶이는 문제를 해소. `PgInboxPendingService` (listener TX 경계) + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (VT 워커 5개) + `PgInboxPollingWorker` (PENDING / IN_PROGRESS 60s 좀비 폴링) 신규 도입. `NONE` 폐기 → `PENDING` 추가. 보정 경로 PENDING 우회 룰 봉인. 위키 2개 + 영구 문서 4개 동기화.
 
-**검토 안 — Inbox 를 작업 큐로 겸용**:
-- listener 는 `INSERT pg_inbox status='PENDING' + ack` 까지만 (TX 1개)
-- 별도 워커 VT 가 채널 + 폴백 폴링으로 PENDING row 를 가져가 처리:
-  - TX_A: `PENDING → IN_PROGRESS` CAS UPDATE, 짧게 commit (lock 즉시 해제)
-  - 벤더 HTTP 호출 (DB 자유 상태)
-  - TX_B: `IN_PROGRESS → APPROVED + Outbox INSERT + publishEvent`
-- 좀비 폴링 — `WHERE status='IN_PROGRESS' AND updated_at < now() - 60s` 로 워커 크래시 회수
-- 벤더 idempotency-key (orderId) + `DuplicateApprovalHandler` 가 좀비 회수 후 재호출 시 중복 흡수
+- 봉인 기록: `docs/archive/pg-confirm-listener-split/` (verify 완료 후 이동 예정)
 
-**효과**:
-- listener 책임이 매우 가벼워짐 → 벤더 latency 가 인바운드 처리량에 영향 없음
-- 동시 처리 수는 워커 VT 풀 크기 + DB connection pool 로 명시 통제
+### TC-15 — PG-CONFIRM-LISTENER-SPLIT PHASE2 정밀화
 
-**현재 갭 (위키 + README 는 분리 안, 코드는 listener thread 안에서 벤더 호출)**:
+PG-CONFIRM-LISTENER-SPLIT 이 의도적으로 측정 없는 baseline 으로 채택한 값들의 부하 기반 정밀화 + 알려진 한계 해소.
 
-문서 측 (분리 안 기준):
-- `pg-confirm-flow.md` — **메인 흐름이 분리 안 기준** 으로 작성됨 (listener / 워커 VT / 릴레이 워커 3단). 페이지 상단에 "도메인 설계 의도 기준, 현재 코드는 일부 단계가 합쳐져 있음" notice
-- `README.md` — 해결 과제 표에 "PG 결제 확인 흐름 분리" 행 추가 (listener / 워커 VT / 릴레이 워커 3단)
+**항목 1 — 워커 VT 풀 / 채널 cap / 좀비 임계 측정 기반 정밀화**:
+- 워커 5개 / cap=1024 / PENDING-IN_PROGRESS 좀비 임계 60s 모두 측정 없는 baseline
+- T4-B (k6 부하 곡선) 측정 결과로 벤더 latency p95 확인 → 임계 정밀화 (60s ↔ 실제 벤더 timeout × 2)
+- cap=1024 가 peak TPS 에서 부족한지 overflow + fallback 빈도 측정
+- yml 키 (`pg.inbox.channel.capacity` / `pg.inbox.channel.worker-count` / `pg.scheduler.inbox-polling-worker.*`) 로 즉시 조정 가능 — 코드 변경 없이 운영 배포 가능
 
-코드 측 (현재 구조):
-- `PgConfirmService.handleNone` 안에서 TX1 (`transitNoneToInProgress`) → TX2 (`callVendor` 안에서 벤더 HTTP + Outbox INSERT + Inbox 종결) 가 같은 listener thread 위에서 순차 진행
-- 분리 안으로 가려면 Inbox 상태에 `PENDING` 추가, listener 는 PENDING INSERT + ack 까지만, 별도 워커 VT 가 PENDING 을 take 해 TX_A → 벤더 → TX_B 진행
+**항목 2 — 멀티 인스턴스 worker concurrency 검증 (SKIP LOCKED 멀티 인스턴스)**:
+- 현재 구현은 단일 인스턴스 가정. `FOR UPDATE SKIP LOCKED` 가 멀티 인스턴스 환경에서도 중복 처리 0 을 보장하는지 검증
+- 검증 환경: 동일 pg-service 2~3 인스턴스 + 같은 `mysql-pg` DB + 동일 Kafka consumer group
+- 기대: 각 인스턴스가 서로 다른 row 를 선점 (SKIP LOCKED 의 정의상 보장되어야 함). 검증을 통해 dead-lock / contention 발현 시나리오 식별
 
-**같이 갱신 필요한 위키 (분리 안 적용 시)**:
-- `outbox-channel-dispatch.md` — 현재 발행 측 채널 (워커 → 릴레이 워커) 1개 기준. 분리 안에서는 작업 큐 채널 + 발행 큐 채널 2개가 되므로 본문 갱신 필요. 현재 페이지에서 `pg-confirm-flow.md` 와 겹치는 메시지 생명주기 / 큐 둔 이유 / 토폴로지 / 장애 폴백 시나리오 / 단계별 상세 흐름 섹션은 이미 정리 (책임 분담)
+**항목 3 — 좀비 폴링 회수 traceparent 이어붙이기 (stored_traceparent RDB 보관 방안)**:
+- 현재 `PgInboxPollingWorker` 의 폴링 진입은 OTel 새 root span — 원 Kafka message traceparent 와 끊김
+- 방안: `pg_inbox` 에 `stored_traceparent VARCHAR` 컬럼 추가 → listener INSERT 시 Kafka header 의 `traceparent` 값 기록 → 폴링 회수 시 저장된 값으로 새 span 의 parent 를 설정
+- 필요 Flyway migration 1건 + `PgInboxPendingService` + `PgInboxPollingWorker` 수정
+- 처리 시점: PHASE2 별 토픽 (T4-A 장애 주입 trace 추적 품질 요구 확인 후 결정)
 
-**처리 시점**: 별도 토픽으로 승격 검토. Phase 4 부하 측정 (T4-A / T4-B) 결과 listener thread 가 벤더 latency 에 묶이는 것이 throughput 병목으로 확인되면 우선순위 상승.
-
-**관련 위키**: `pg-confirm-flow.md` (메인 — 분리 안 기준) / `outbox-channel-dispatch.md` (분리 안 적용 시 채널 두 개로 본문 갱신 필요)
+**처리 시점**: T4-B 부하 측정 결과 이후. 운영 SLO 데이터 없이 마법 숫자 정밀화 금지.
 
 **관련 코드**:
-- `pg-service/.../application/service/PgConfirmService.java` (오케스트레이터)
-- `pg-service/.../application/service/PgVendorCallService.java` (현재 단일 TX2)
-- `pg-service/.../infrastructure/messaging/consumer/PaymentConfirmConsumer.java` (listener 진입점)
+- `pg-service/.../infrastructure/scheduler/PgInboxImmediateWorker.java`
+- `pg-service/.../infrastructure/scheduler/PgInboxPollingWorker.java`
+- `pg-service/.../infrastructure/channel/PgInboxChannel.java`
+- `pg-service/src/main/resources/application.yml` (inbox 설정 키)
 
 ---
 

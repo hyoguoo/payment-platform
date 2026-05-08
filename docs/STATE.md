@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PCS-15 완료 (listener 책임 분리 + 좀비 회수 acceptance 통합 테스트 A1~A4 GREEN, 281 PASS, 활성 태스크 PCS-16)
+> 최종 수정: 2026-05-09 — PCS-16 완료 (위키 + 영구 문서 동기화, stage execute → review 전환)
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: execute (활성 태스크 PCS-16 — 위키 + 영구 문서 동기화)
+- **단계**: review (execute 완료 — PCS-16 위키/영구 문서 동기화 마지막 태스크 GREEN)
 - **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73
@@ -23,7 +23,7 @@
 - [x] discuss
 - [x] plan
 - [x] plan-review
-- [ ] execute
+- [x] execute
 - [ ] review
 - [ ] verify
 

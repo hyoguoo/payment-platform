@@ -28,7 +28,7 @@
 13. **PCS-13** — `PgInboxPollingWorker` (PENDING / IN_PROGRESS 두 경로, 60s 통일, 새 root span)
 14. **PCS-14** ✅ — yml 설정 키 + EventType (`PG_INBOX_WORKER_FAIL` / `PG_INBOX_LISTENER_TX_TIMEOUT` 등)
 15. **PCS-15** ✅ — 통합 테스트 (A1~A4 acceptance 시나리오)
-16. **PCS-16** — 위키 + 영구 문서 동기화
+16. **PCS-16** ✅ — 위키 + 영구 문서 동기화
 
 ### 변경 후 흐름 (전체 경로 — to-be)
 
@@ -546,6 +546,14 @@ pg:
 - `docs/context/CONFIRM-FLOW.md` — pg 측 분리 안 인용 본문 갱신
 - `docs/context/STRUCTURE.md` — pg-service 디렉토리 트리 신규 컴포넌트 추가
 - `docs/context/TODOS.md` — TC-14 봉인 표기 + PHASE2 정밀화 항목 신규 등록
+
+**완료 결과** (2026-05-09):
+- `pg-confirm-flow.md` — "한눈에 보는 흐름" Mermaid 에 listener 3분기 (PENDING INSERT+AFTER_COMMIT / terminal 재수신 직접 / 보정 경로) 분기 노드 추가. "단계별 정리 §1" 에 terminal 재수신 직접 처리 + 보정 경로 PENDING 우회 룰 + 폴링 traceparent 새 root span 정책 추가
+- `outbox-channel-dispatch.md` — inbox+outbox 2단계 토폴로지 mermaid 전면 재작성. 장애/폴백 표에 PENDING/IN_PROGRESS 좀비 row 추가. 관련 설정 표에 `pg.inbox.*` 6개 키 추가. 폴링 traceparent 정책 명시
+- `ARCHITECTURE.md` — "비동기 어댑터 위치" 표에 `PgInboxChannel+InboxJob` / `InboxReadyEventHandler` / `PgInboxImmediateWorker` / `PgInboxPollingWorker` 4행 추가
+- `CONFIRM-FLOW.md` — §16 신설 (pg 측 listener TX 경계 + 처리 TX 경계 + 보정 경로 PENDING 우회 룰 + terminal 재수신 직접 처리)
+- `STRUCTURE.md` — "흔히 찾는 위치" 표 + channel/scheduler 트리 주석 갱신
+- `TODOS.md` — TC-14 완료 (`✅`) + TC-15 (PHASE2 정밀화 3항목) 신규 등록
 
 ---
 
