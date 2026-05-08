@@ -245,6 +245,8 @@ public interface PgInboxProcessUseCase {
 }
 ```
 
+- [x] **완료** — `PgInboxReadyEvent` (`domain/event/`, `record PgInboxReadyEvent(Long inboxId)`) 신규. `PgInboxProcessUseCase` (`application/port/in/`, `processPending` + `processInProgressZombie`) 신규. `PgOutboxReadyEvent` 거울 1:1 정합. `./gradlew test` 229 PASS / 0 FAIL.
+
 ---
 
 ### PCS-6 — application service: `PgVendorCallService` 분리 (`invokeVendor` + `applyOutcome`)
