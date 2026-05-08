@@ -272,6 +272,11 @@ class PgInboxPendingServiceTest {
             }
 
             @Override
+            public Optional<PgInbox> findById(Long inboxId) {
+                return Optional.empty();
+            }
+
+            @Override
             public PgInbox save(PgInbox inbox) {
                 return inbox;
             }

@@ -38,6 +38,11 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     }
 
     @Override
+    public Optional<PgInbox> findById(Long inboxId) {
+        return jpaPgInboxRepository.findById(inboxId).map(PgInboxEntity::toDomain);
+    }
+
+    @Override
     public PgInbox save(PgInbox inbox) {
         return jpaPgInboxRepository.save(PgInboxEntity.from(inbox)).toDomain();
     }

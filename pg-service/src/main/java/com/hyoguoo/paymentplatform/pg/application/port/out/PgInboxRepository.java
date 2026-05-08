@@ -15,6 +15,15 @@ public interface PgInboxRepository {
 
     Optional<PgInbox> findByOrderId(String orderId);
 
+    /**
+     * PK 기반 inbox 조회.
+     * PCS-8: PgInboxProcessor 가 inboxId 로 inbox 데이터를 조회할 때 사용한다.
+     *
+     * @param inboxId pg_inbox.id
+     * @return inbox Optional
+     */
+    Optional<PgInbox> findById(Long inboxId);
+
     PgInbox save(PgInbox inbox);
 
     /**

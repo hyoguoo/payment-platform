@@ -8,16 +8,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * PgInboxRepository Fake — DB 없이 application 계층 테스트용.
  *
  * <p>Thread-safe: ConcurrentHashMap.
  * orderId 를 키로 단일 inbox 행을 관리한다 (UNIQUE 제약 반영).
+ * PCS-8: id 기반 조회를 위해 id → orderId 역인덱스 추가.
  */
 public class FakePgInboxRepository implements PgInboxRepository {
 
     private final ConcurrentHashMap<String, PgInbox> store = new ConcurrentHashMap<>();
+    /** id → orderId 역인덱스 — findById 지원용 (PCS-8) */
+    private final ConcurrentHashMap<Long, String> idIndex = new ConcurrentHashMap<>();
+    private final AtomicLong idSequence = new AtomicLong(1);
 
     @Override
     public Optional<PgInbox> findByOrderId(String orderId) {
@@ -25,8 +30,24 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     @Override
+    public Optional<PgInbox> findById(Long inboxId) {
+        String orderId = idIndex.get(inboxId);
+        if (orderId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(store.get(orderId));
+    }
+
+    @Override
     public PgInbox save(PgInbox inbox) {
-        store.put(inbox.getOrderId(), inbox);
+        // orderId 로 먼저 찾아 기존 id 재사용, 없으면 신규 id 발급
+        store.compute(inbox.getOrderId(), (key, existing) -> {
+            if (existing == null) {
+                Long newId = idSequence.getAndIncrement();
+                idIndex.put(newId, inbox.getOrderId());
+            }
+            return inbox;
+        });
         return inbox;
     }
 
