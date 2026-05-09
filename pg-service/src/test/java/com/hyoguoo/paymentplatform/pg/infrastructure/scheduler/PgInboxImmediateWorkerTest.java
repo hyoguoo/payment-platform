@@ -4,13 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
+import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgInboxChannel;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -27,8 +34,11 @@ import org.junit.jupiter.api.Test;
 @DisplayName("PgInboxImmediateWorker")
 class PgInboxImmediateWorkerTest {
 
+    private static final Instant NOW = Instant.parse("2026-05-09T00:00:00Z");
+
     private PgInboxChannel channel;
     private PgInboxProcessUseCase processor;
+    private PgInboxRepository inboxRepository;
     private SimpleMeterRegistry meterRegistry;
     private PgInboxImmediateWorker worker;
 
@@ -37,9 +47,10 @@ class PgInboxImmediateWorkerTest {
         channel = new PgInboxChannel(1024, new SimpleMeterRegistry());
         channel.registerMetrics();
         processor = mock(PgInboxProcessUseCase.class);
+        inboxRepository = mock(PgInboxRepository.class);
         meterRegistry = new SimpleMeterRegistry();
         // workerCount=1: 단위 테스트에서 스레드 수 최소화
-        worker = new PgInboxImmediateWorker(channel, processor, 1, meterRegistry);
+        worker = new PgInboxImmediateWorker(channel, processor, inboxRepository, 1, meterRegistry);
     }
 
     @AfterEach
@@ -77,6 +88,8 @@ class PgInboxImmediateWorkerTest {
     @DisplayName("workerLoop_pendingJob_callsProcessPending — 채널 offer 후 processPending 1회 호출")
     void workerLoop_pendingJob_callsProcessPending() throws InterruptedException {
         // given
+        PgInbox pendingInbox = PgInbox.of("order-1", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(42L)).thenReturn(Optional.of(pendingInbox));
         doNothing().when(processor).processPending(42L);
 
         worker.start();
@@ -89,9 +102,79 @@ class PgInboxImmediateWorkerTest {
     }
 
     @Test
+    @DisplayName("workerLoop_inProgressJob_callsProcessInProgressZombie — IN_PROGRESS inbox → processInProgressZombie 1회 호출")
+    void workerLoop_inProgressJob_callsProcessInProgressZombie() throws InterruptedException {
+        // given
+        PgInbox inProgressInbox = PgInbox.of("order-2", PgInboxStatus.IN_PROGRESS, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(99L)).thenReturn(Optional.of(inProgressInbox));
+        doNothing().when(processor).processInProgressZombie(99L);
+
+        worker.start();
+
+        // when
+        channel.offerNow(99L);
+
+        // then: processInProgressZombie 호출 (최대 3s 대기)
+        verify(processor, timeout(3_000).times(1)).processInProgressZombie(99L);
+        verify(processor, never()).processPending(99L);
+    }
+
+    @Test
+    @DisplayName("workerLoop_terminalJob_skipsAndLogsInfo — terminal inbox (APPROVED) → processPending / processInProgressZombie 미호출")
+    void workerLoop_terminalJob_skipsAndLogsInfo() throws InterruptedException {
+        // given
+        PgInbox approvedInbox = PgInbox.of("order-3", PgInboxStatus.APPROVED, 10000L, "{}", null, NOW, NOW);
+        CountDownLatch findLatch = new CountDownLatch(1);
+        when(inboxRepository.findById(77L)).thenAnswer(inv -> {
+            findLatch.countDown();
+            return Optional.of(approvedInbox);
+        });
+
+        worker.start();
+
+        // when
+        channel.offerNow(77L);
+
+        // then: findById 호출 확인 후 processPending/processInProgressZombie 미호출
+        boolean found = findLatch.await(3, TimeUnit.SECONDS);
+        assertThat(found).as("findById 가 호출되어야 한다").isTrue();
+        // 약간 대기 후 검증 (VT 스케줄링 지연 허용)
+        Thread.sleep(200);
+        verify(processor, never()).processPending(77L);
+        verify(processor, never()).processInProgressZombie(77L);
+    }
+
+    @Test
+    @DisplayName("workerLoop_missingInbox_skipsAndLogsWarn — row 없음 → processPending / processInProgressZombie 미호출")
+    void workerLoop_missingInbox_skipsAndLogsWarn() throws InterruptedException {
+        // given
+        CountDownLatch findLatch = new CountDownLatch(1);
+        when(inboxRepository.findById(55L)).thenAnswer(inv -> {
+            findLatch.countDown();
+            return Optional.empty();
+        });
+
+        worker.start();
+
+        // when
+        channel.offerNow(55L);
+
+        // then
+        boolean found = findLatch.await(3, TimeUnit.SECONDS);
+        assertThat(found).as("findById 가 호출되어야 한다").isTrue();
+        Thread.sleep(200);
+        verify(processor, never()).processPending(55L);
+        verify(processor, never()).processInProgressZombie(55L);
+    }
+
+    @Test
     @DisplayName("workerLoop_runtimeException_incrementsFailCounter — RuntimeException → pg_inbox.process_fail_total +1, 워커 계속 실행")
     void workerLoop_runtimeException_incrementsFailCounter() throws InterruptedException {
-        // given: 첫 번째 호출은 RuntimeException, 두 번째는 정상
+        // given: PENDING inbox — processPending이 첫 번째는 RuntimeException, 두 번째는 정상
+        PgInbox pendingInbox = PgInbox.of("order-fail", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(Optional.of(pendingInbox));
+
         CountDownLatch firstCallLatch = new CountDownLatch(1);
         CountDownLatch secondCallLatch = new CountDownLatch(1);
 
