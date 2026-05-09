@@ -1,10 +1,13 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.scheduler;
 
 import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.core.config.concurrent.ContextAwareVirtualThreadExecutors;
+import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.InboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgInboxChannel;
 import io.micrometer.context.ContextSnapshot;
@@ -13,6 +16,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.context.Scope;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +54,7 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
 
     private final PgInboxChannel channel;
     private final PgInboxProcessUseCase processor;
+    private final PgInboxRepository inboxRepository;
     private final int workerCount;
     private final Counter processFailCounter;
 
@@ -60,11 +65,13 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
     public PgInboxImmediateWorker(
             PgInboxChannel channel,
             PgInboxProcessUseCase processor,
+            PgInboxRepository inboxRepository,
             @Value("${pg.inbox.channel.worker-count:5}") int workerCount,
             MeterRegistry meterRegistry
     ) {
         this.channel = channel;
         this.processor = processor;
+        this.inboxRepository = inboxRepository;
         this.workerCount = workerCount;
         this.processFailCounter = Counter.builder(PROCESS_FAIL_COUNTER_NAME)
                 .description("PgInboxImmediateWorker 처리 실패 횟수")
@@ -151,9 +158,37 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
         }
     }
 
+    /**
+     * inboxId 에 해당하는 row 상태를 조회해 분기 처리한다.
+     *
+     * <ul>
+     *   <li>PENDING → {@code processor.processPending(inboxId)}</li>
+     *   <li>IN_PROGRESS → {@code processor.processInProgressZombie(inboxId)} (워커 재진입 / 채널 재적재)</li>
+     *   <li>terminal (APPROVED/FAILED/QUARANTINED) → skip + LogFmt info</li>
+     *   <li>row 없음 → skip + LogFmt warn</li>
+     * </ul>
+     *
+     * <p>M1 dispatch 분기: inboxRepository.findById 는 조회 전용 — TX 영향 없음.
+     */
     private void process(Long inboxId) {
         try {
-            processor.processPending(inboxId);
+            Optional<PgInbox> inboxOpt = inboxRepository.findById(inboxId);
+            if (inboxOpt.isEmpty()) {
+                LogFmt.warn(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_SKIP,
+                        () -> "inboxId=" + inboxId + " reason=NOT_FOUND");
+                return;
+            }
+            PgInbox inbox = inboxOpt.get();
+            PgInboxStatus status = inbox.getStatus();
+            if (status == PgInboxStatus.PENDING) {
+                processor.processPending(inboxId);
+            } else if (status == PgInboxStatus.IN_PROGRESS) {
+                processor.processInProgressZombie(inboxId);
+            } else {
+                // terminal (APPROVED / FAILED / QUARANTINED) — 이미 처리 완료, 채널 재적재 무시
+                LogFmt.info(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_SKIP,
+                        () -> "inboxId=" + inboxId + " status=" + status + " reason=TERMINAL_SKIP");
+            }
         } catch (RuntimeException e) {
             // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그 + 카운터 increment 로 승격한다.
             processFailCounter.increment();
