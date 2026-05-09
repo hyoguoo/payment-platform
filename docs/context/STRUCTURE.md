@@ -188,6 +188,7 @@ flowchart TD
 | pg confirm 처리 | `pg-service/.../application/service/PgConfirmService.java` |
 | pg inbox 작업 큐 진입점 (listener TX) | `pg-service/.../application/service/PgInboxPendingService.java` |
 | pg inbox 처리자 (두 진입점) | `pg-service/.../application/service/PgInboxProcessor.java` |
+| pg terminal 재수신 재발행 (별 빈 — proxy 통과 보장) | `pg-service/.../application/service/PgTerminalReemitService.java` |
 | pg inbox + outbox 벤더 호출 / 결과 반영 분리 | `pg-service/.../application/service/PgVendorCallService.java` (`invokeVendor` / `applyOutcome`) |
 | pg inbox 작업 큐 채널 + 작업 record | `pg-service/.../infrastructure/channel/PgInboxChannel.java` + `InboxJob.java` |
 | pg inbox AFTER_COMMIT 채널 적재 리스너 | `pg-service/.../infrastructure/listener/InboxReadyEventHandler.java` |

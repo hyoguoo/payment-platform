@@ -505,9 +505,11 @@ pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPub
 - **부재 + 금액 불일치** → `insertDirectToTerminal(QUARANTINED)` — 동일 우회.
 - **벤더 조회 미확정** → `transitDirectToInProgress(orderId, amount)` — IN_PROGRESS 신설 후 격리 처리.
 
-### terminal 재수신 직접 처리 (`PgConfirmService.handleTerminal`)
+### terminal 재수신 직접 처리 (`PgTerminalReemitService.reemit`)
 
-이미 APPROVED / FAILED / QUARANTINED 인 주문에 동일 명령이 재도착하면 `PgConfirmService.handleTerminal` 이 `storedStatusResult` 를 `pg_outbox` 에 직접 INSERT 해 재발행한다. 벤더 호출 없음, 워커 큐 우회 → latency 우위. 수신 측이 `eventUuid` 로 멱등 흡수.
+이미 APPROVED / FAILED / QUARANTINED 인 주문에 동일 명령이 재도착하면 `PgConfirmService` 가 `PgTerminalReemitService.reemit(inbox)` 를 호출해 `storedStatusResult` 를 `pg_outbox` 에 직접 INSERT 후 `PgOutboxReadyEvent` 를 publish 한다. 벤더 호출 없음, 워커 큐 우회 → latency 우위. 수신 측이 `eventUuid` 로 멱등 흡수.
+
+별 빈으로 분리한 이유: `PgConfirmService` 가 자기 자신의 `@Transactional` 메서드를 호출하면 Spring AOP proxy 를 우회해 TX 가 무력화된다. `pg_outbox INSERT + publishEvent` 가 같은 active TX 안에서 실행되어야 `OutboxReadyEventHandler(@TransactionalEventListener(AFTER_COMMIT))` 가 정상 등록된다 — proxy 통과 보장 위해 `PgTerminalReemitService` 외부 빈으로 추출.
 
 ---
 
