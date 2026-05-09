@@ -17,8 +17,15 @@ import org.springframework.transaction.annotation.Transactional;
  * PgInboxRepository 포트 JPA 어댑터.
  * 2단 멱등성 + 5상태 business inbox 계약을 DB-레벨 compare-and-set + FOR UPDATE 로 이행한다.
  *
- * <p>{@link #transitNoneToInProgress(String, long)} 는 row 부재 시 INSERT 로 선점하고,
- * 존재 시 JPQL UPDATE 의 status=NONE 조건으로 CAS 한다.
+ * <p>주요 메서드:
+ * <ul>
+ *   <li>{@link #insertPending} — orderId UNIQUE INSERT IGNORE + id 반환 (listener 경로 PENDING 시작)</li>
+ *   <li>{@link #transitPendingToInProgress} — SKIP LOCKED SELECT + UPDATE (워커 TX_A)</li>
+ *   <li>{@link #transitDirectToInProgress} — PENDING 우회 IN_PROGRESS 직진 (보정 경로)</li>
+ *   <li>{@link #transitDirectToTerminal} — PENDING + IN_PROGRESS 우회 terminal 직진 (보정 경로)</li>
+ *   <li>{@link #findPendingZombieIds} / {@link #findInProgressZombieIds} — 좀비 폴링 조회</li>
+ *   <li>{@link #selectInProgressForUpdateSkipLocked} — IN_PROGRESS SKIP LOCKED 단건 선점 (M4)</li>
+ * </ul>
  */
 @Repository
 @RequiredArgsConstructor

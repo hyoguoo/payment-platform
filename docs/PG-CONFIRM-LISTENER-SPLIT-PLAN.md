@@ -557,6 +557,25 @@ pg:
 
 ---
 
+### Review Finding 수정 — M1~M4 + minor (2026-05-09)
+
+review-critic-1.md / review-domain-1.md finding 8건 일괄 수정 완료.
+
+| Finding | 수정 내용 | 커밋 |
+|---|---|---|
+| M1 (major) — 워커 IN_PROGRESS dispatch 분기 누락 | `PgInboxImmediateWorker.process()` 에 `inboxRepository.findById` 후 상태 분기 추가 (PENDING→processPending / IN_PROGRESS→processInProgressZombie / terminal→skip / missing→skip) | GREEN |
+| M2 (major) — handleTerminal self-invocation | `PgTerminalReemitService` 별 빈 신규 분리. `PgConfirmService` → 외부 빈 위임으로 Spring proxy 경유 TX 경계 보장 | GREEN |
+| M3 (major) — zombie_recovered_total Counter 미등록 | `PgInboxPollingWorker.processSafely` 성공 경로에 `pg_inbox.zombie_recovered_total{status=PENDING|IN_PROGRESS}` increment + LogFmt emit (§7.2 F3) | GREEN |
+| M4 (major) — IN_PROGRESS SKIP LOCKED 미적용 | `JpaPgInboxRepository.selectForUpdateSkipLockedInProgress` native query 추가. `PgInboxRepository` 포트 + `PgInboxRepositoryImpl` 구현. `PgInboxProcessor.processInProgressZombie` 진입 직후 락 선점 → empty→silent return | GREEN |
+| m1 (minor) — PgInboxAmountService dead service 제거 | `docs/context/TODOS.md` TC-16 항목 등록 (본 토픽 범위 외, 사용자 확인 후 별 토픽 처리) | refactor |
+| m2 (minor) — PgInboxProcessor javadoc stale TODO | `TODO PCS-X` 단락 삭제 → "PCS-9 V3 migration 으로 정합 완료" 로 갱신 | refactor |
+| m3 (minor) — PgInboxRepositoryImpl javadoc stale | `transitNoneToInProgress` 참조 삭제 + 실제 메서드 목록으로 재작성 | refactor |
+| domain#5 (minor) — EventType NONE 잔재 rename | `PG_CONFIRM_NONE_TO_IN_PROGRESS` → `PG_CONFIRM_PENDING_INSERT`, `PG_INBOX_AMOUNT_NONE_TO_IN_PROGRESS_PREEMPTED` → `PG_INBOX_AMOUNT_PENDING_PREEMPTED` | refactor |
+
+**최종 테스트**: 294 PASS / 0 FAIL.
+
+---
+
 ## 레이어 의존 그래프
 
 ```

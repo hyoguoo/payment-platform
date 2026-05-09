@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PCS-16 완료 (위키 + 영구 문서 동기화, stage execute → review 전환)
+> 최종 수정: 2026-05-09 — review finding M1~M4 + minor 8건 일괄 수정 완료 (294 PASS)
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)

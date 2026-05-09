@@ -108,7 +108,7 @@ public class PgConfirmService implements PgConfirmCommandService {
                 vendorType,
                 command.paymentKey());
 
-        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_NONE_TO_IN_PROGRESS,
+        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_PENDING_INSERT,
                 () -> "orderId=" + command.orderId() + " — PENDING INSERT + publishEvent 위임");
     }
 
