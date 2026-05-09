@@ -147,6 +147,56 @@ class PgInboxPollingWorkerTest {
                 .isEqualTo(60_000L);
     }
 
+    @Test
+    @DisplayName("poll_pendingZombies_incrementsRecoveredCounterWithPendingTag — PENDING 좀비 처리 성공 → zombie_recovered_total{status=PENDING} +1")
+    void poll_pendingZombies_incrementsRecoveredCounterWithPendingTag() {
+        // given
+        when(inboxRepository.findPendingZombieIds(anyInt(), anyLong()))
+                .thenReturn(List.of(10L));
+        when(inboxRepository.findInProgressZombieIds(anyInt(), anyLong()))
+                .thenReturn(List.of());
+
+        // when
+        pollingWorker.poll();
+
+        // then: zombie_recovered_total{status=PENDING} 카운터가 1 이어야 한다
+        Counter recoveredCounter = meterRegistry
+                .find(PgInboxPollingWorker.ZOMBIE_RECOVERED_COUNTER_NAME)
+                .tag("status", "PENDING")
+                .counter();
+        assertThat(recoveredCounter)
+                .as("PENDING 좀비 회수 카운터가 등록되어야 한다")
+                .isNotNull();
+        assertThat(recoveredCounter.count())
+                .as("PENDING 좀비 1건 처리 → 카운터가 1이어야 한다")
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("poll_inProgressZombies_incrementsRecoveredCounterWithInProgressTag — IN_PROGRESS 좀비 처리 성공 → zombie_recovered_total{status=IN_PROGRESS} +1")
+    void poll_inProgressZombies_incrementsRecoveredCounterWithInProgressTag() {
+        // given
+        when(inboxRepository.findPendingZombieIds(anyInt(), anyLong()))
+                .thenReturn(List.of());
+        when(inboxRepository.findInProgressZombieIds(anyInt(), anyLong()))
+                .thenReturn(List.of(20L));
+
+        // when
+        pollingWorker.poll();
+
+        // then: zombie_recovered_total{status=IN_PROGRESS} 카운터가 1 이어야 한다
+        Counter recoveredCounter = meterRegistry
+                .find(PgInboxPollingWorker.ZOMBIE_RECOVERED_COUNTER_NAME)
+                .tag("status", "IN_PROGRESS")
+                .counter();
+        assertThat(recoveredCounter)
+                .as("IN_PROGRESS 좀비 회수 카운터가 등록되어야 한다")
+                .isNotNull();
+        assertThat(recoveredCounter.count())
+                .as("IN_PROGRESS 좀비 1건 처리 → 카운터가 1이어야 한다")
+                .isEqualTo(1.0);
+    }
+
     // Mockito argument helpers
     private static int anyInt() {
         return org.mockito.ArgumentMatchers.anyInt();
