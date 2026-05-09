@@ -176,4 +176,20 @@ class PgInboxProcessorTest {
         verify(vendorCallService, times(1)).applyOutcome(
                 eq(handledInternally), any(), anyInt(), any());
     }
+
+    @Test
+    @DisplayName("processInProgressZombie_lockHeld_skipsSilently — selectInProgressForUpdateSkipLocked 빈 결과 → invokeVendor 미호출 (M4)")
+    void processInProgressZombie_lockHeld_skipsSilently() {
+        // given: selectInProgressForUpdateSkipLocked 가 empty 반환 (락 선점 실패)
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.empty());
+
+        // when
+        sut.processInProgressZombie(INBOX_ID);
+
+        // then — invokeVendor 미호출 (다른 워커가 이미 처리 중)
+        verify(vendorCallService, never()).invokeVendor(any());
+        verify(vendorCallService, never()).applyOutcome(any(), any(), anyInt(), any());
+        // findById 는 더 이상 호출되지 않음 (selectInProgressForUpdateSkipLocked 로 대체)
+        verify(inboxRepository, never()).findById(any());
+    }
 }

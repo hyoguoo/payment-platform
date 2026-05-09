@@ -299,6 +299,86 @@ class PgInboxRepositoryImplTest {
         assertThat(zombieIds).doesNotContain(fresh.getId());
     }
 
+    // ─── selectInProgressForUpdateSkipLocked ────────────────────────────────────
+
+    @Test
+    @DisplayName("selectInProgressForUpdateSkipLocked — IN_PROGRESS 행 → Optional.of(inbox) 반환")
+    void selectInProgressForUpdateSkipLocked_inProgressRow_returnsInbox() {
+        // given — IN_PROGRESS 행 삽입
+        String orderId = "order-skip-ip-001";
+        Long inboxId = sut.transitDirectToInProgress(orderId, AMOUNT);
+
+        // when
+        Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> result =
+                sut.selectInProgressForUpdateSkipLocked(inboxId);
+
+        // then
+        assertThat(result).isPresent();
+        assertThat(result.get().getOrderId()).isEqualTo(orderId);
+    }
+
+    @Test
+    @DisplayName("selectInProgressForUpdateSkipLocked — PENDING 행 → Optional.empty() 반환 (상태 조건 불일치)")
+    void selectInProgressForUpdateSkipLocked_pendingRow_returnsEmpty() {
+        // given — PENDING 행 삽입
+        String orderId = "order-skip-pending-001";
+        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-skip-p", "TOSS_PAYMENTS", "pk-skip-p");
+
+        // when
+        Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> result =
+                sut.selectInProgressForUpdateSkipLocked(inboxId);
+
+        // then — PENDING 이므로 IN_PROGRESS 조건 불일치 → empty
+        assertThat(result).isEmpty();
+    }
+
+    /**
+     * SKIP LOCKED 동시성 테스트 — IN_PROGRESS 경로.
+     * TX_lock 이 보유 중일 때 두 번째 호출이 빈 결과를 반환하는지 검증.
+     * NOT_SUPPORTED: @DataJpaTest 외부 트랜잭션 비활성화로 독립 TX 커밋 가시성 확보.
+     */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty — 동시 두 TX 중 하나만 row 획득")
+    void selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty() throws InterruptedException {
+        // given — IN_PROGRESS 행 삽입 + 자체 TX 커밋
+        String orderId = "order-skip-ip-concurrent";
+        Long inboxId = sut.transitDirectToInProgress(orderId, AMOUNT);
+
+        // when — 워커 2개가 동시에 동일 IN_PROGRESS row 를 SKIP LOCKED 선점 시도
+        AtomicInteger presentCount = new AtomicInteger(0);
+        AtomicInteger emptyCount = new AtomicInteger(0);
+        CountDownLatch latch = new CountDownLatch(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        for (int i = 0; i < 2; i++) {
+            final Long targetId = inboxId;
+            executor.submit(() -> {
+                try {
+                    Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> result =
+                            sut.selectInProgressForUpdateSkipLocked(targetId);
+                    if (result.isPresent()) {
+                        presentCount.incrementAndGet();
+                    } else {
+                        emptyCount.incrementAndGet();
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        latch.await();
+        executor.shutdown();
+
+        // then — 정확히 1개만 row 획득, 1개는 빈 결과 (SKIP LOCKED 원자성)
+        assertThat(presentCount.get()).isEqualTo(1);
+        assertThat(emptyCount.get()).isEqualTo(1);
+
+        // cleanup
+        jpaRepository.deleteAll();
+    }
+
     // ─── 헬퍼 메서드 ────────────────────────────────────────────────────────────
 
     private PgInboxEntity buildPendingEntity(String orderId, LocalDateTime createdAt) {
