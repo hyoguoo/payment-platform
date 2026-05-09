@@ -43,9 +43,21 @@ public class PgInboxPollingWorker {
      */
     static final String ZOMBIE_FAIL_COUNTER_NAME = "pg_inbox.zombie_fail_total";
 
+    /**
+     * 좀비 회수 성공 카운터 이름 — M3 review finding 흡수.
+     * status 태그 (PENDING / IN_PROGRESS) 로 두 경로를 구분한다.
+     * §7.2 F3 SoT: {@code pg_inbox.zombie_recovered_total{status=PENDING|IN_PROGRESS}}.
+     */
+    static final String ZOMBIE_RECOVERED_COUNTER_NAME = "pg_inbox.zombie_recovered_total";
+
+    private static final String STATUS_TAG_PENDING = "PENDING";
+    private static final String STATUS_TAG_IN_PROGRESS = "IN_PROGRESS";
+
     private final PgInboxRepository inboxRepository;
     private final PgInboxProcessUseCase processor;
     private final Counter zombieFailCounter;
+    private final Counter zombieRecoveredPendingCounter;
+    private final Counter zombieRecoveredInProgressCounter;
     private final int batchSize;
     private final long pendingTimeoutMs;
     private final long inProgressTimeoutMs;
@@ -65,6 +77,14 @@ public class PgInboxPollingWorker {
         this.inProgressTimeoutMs = inProgressTimeoutMs;
         this.zombieFailCounter = Counter.builder(ZOMBIE_FAIL_COUNTER_NAME)
                 .description("PgInboxPollingWorker 좀비 처리 실패 횟수")
+                .register(meterRegistry);
+        this.zombieRecoveredPendingCounter = Counter.builder(ZOMBIE_RECOVERED_COUNTER_NAME)
+                .description("PgInboxPollingWorker 좀비 회수 성공 횟수 (PENDING 경로)")
+                .tag("status", STATUS_TAG_PENDING)
+                .register(meterRegistry);
+        this.zombieRecoveredInProgressCounter = Counter.builder(ZOMBIE_RECOVERED_COUNTER_NAME)
+                .description("PgInboxPollingWorker 좀비 회수 성공 횟수 (IN_PROGRESS 경로)")
+                .tag("status", STATUS_TAG_IN_PROGRESS)
                 .register(meterRegistry);
     }
 
@@ -91,7 +111,8 @@ public class PgInboxPollingWorker {
                 () -> "count=" + pendingZombieIds.size());
 
         for (Long inboxId : pendingZombieIds) {
-            processSafely(() -> processor.processPending(inboxId), inboxId, "PENDING");
+            processSafely(() -> processor.processPending(inboxId), inboxId, STATUS_TAG_PENDING,
+                    zombieRecoveredPendingCounter, EventType.PG_INBOX_ZOMBIE_RECOVERED_PENDING);
         }
     }
 
@@ -106,13 +127,28 @@ public class PgInboxPollingWorker {
                 () -> "count=" + inProgressZombieIds.size());
 
         for (Long inboxId : inProgressZombieIds) {
-            processSafely(() -> processor.processInProgressZombie(inboxId), inboxId, "IN_PROGRESS");
+            processSafely(() -> processor.processInProgressZombie(inboxId), inboxId, STATUS_TAG_IN_PROGRESS,
+                    zombieRecoveredInProgressCounter, EventType.PG_INBOX_ZOMBIE_RECOVERED_IN_PROGRESS);
         }
     }
 
-    private void processSafely(Runnable action, Long inboxId, String zombieStatus) {
+    /**
+     * 좀비 처리 단건 — 성공 시 회수 카운터 + 로그, 실패 시 실패 카운터 + ERROR 로그.
+     *
+     * @param action           처리 액션 (processPending / processInProgressZombie)
+     * @param inboxId          처리 대상 inbox id
+     * @param zombieStatus     로그 태그 (PENDING / IN_PROGRESS)
+     * @param recoveredCounter 회수 성공 카운터
+     * @param recoveredEvent   회수 성공 EventType (LogFmt info용)
+     */
+    private void processSafely(Runnable action, Long inboxId, String zombieStatus,
+                               Counter recoveredCounter, EventType recoveredEvent) {
         try {
             action.run();
+            // 성공 시 회수 카운터 increment + LogFmt info emit (§7.2 F3 흡수)
+            recoveredCounter.increment();
+            LogFmt.info(log, LogDomain.PG_INBOX, recoveredEvent,
+                    () -> "inboxId=" + inboxId + " status=" + zombieStatus);
         } catch (RuntimeException e) {
             // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그 + 카운터 increment 로 승격한다.
             zombieFailCounter.increment();
