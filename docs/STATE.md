@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — review finding M1~M4 + minor 8건 일괄 수정 완료 (294 PASS)
+> 최종 수정: 2026-05-09 — review 라운드 2 critic + domain 양쪽 pass (각 minor 1건 잔존, 봉인 가능). 단계 verify 진입.
 
 ## 활성 작업
 - **주제**: PG-CONFIRM-LISTENER-SPLIT (pg-service vendor 호출 listener thread 분리, pg-confirm-flow.md 위키 정합)
-- **단계**: review (execute 완료 — PCS-16 위키/영구 문서 동기화 마지막 태스크 GREEN)
+- **단계**: verify (review 완료 — 라운드 1 finding 8건 흡수, 라운드 2 양쪽 pass)
 - **채택안**: 위키 분리 안 정합 — `PgInboxPendingService` 신규 `@Transactional` listener TX 경계 + `PgInboxChannel` (cap=1024) + `PgInboxImmediateWorker` (worker=5, processPending/processInProgressZombie 분리) + `PgInboxPollingWorker` (60s 통일, 새 root span) + `PgInboxStatus` PENDING 추가 + NONE 폐기 + 보정 경로 PENDING 우회 룰 (§1.8 신규 repo 메서드 4종)
 - **이슈**: #73
 - **브랜치**: #73
@@ -17,14 +17,21 @@
   - docs/rounds/pg-confirm-listener-split/discuss-domain-1.md (Round 1 — major 3 + minor 2, revise)
   - docs/rounds/pg-confirm-listener-split/discuss-critic-2.md (Round 2 — minor 1, pass)
   - docs/rounds/pg-confirm-listener-split/discuss-domain-2.md (Round 2 — finding 0, pass)
-- 플랜: docs/PG-CONFIRM-LISTENER-SPLIT-PLAN.md (plan 단계 산출 예정)
+  - docs/rounds/pg-confirm-listener-split/plan-critic-1.md (Round 1 — major 4 + minor 3, revise)
+  - docs/rounds/pg-confirm-listener-split/plan-domain-1.md (Round 1 — major 4 + minor 1, revise)
+  - docs/rounds/pg-confirm-listener-split/plan-review-1.md (pass)
+  - docs/rounds/pg-confirm-listener-split/review-critic-1.md (Round 1 — major 4 + minor 3, revise)
+  - docs/rounds/pg-confirm-listener-split/review-domain-1.md (Round 1 — major 2 + minor 3, revise)
+  - docs/rounds/pg-confirm-listener-split/review-critic-2.md (Round 2 — minor 1, pass)
+  - docs/rounds/pg-confirm-listener-split/review-domain-2.md (Round 2 — minor 1, pass)
+- 플랜: docs/PG-CONFIRM-LISTENER-SPLIT-PLAN.md
 
 ## 단계 진행
 - [x] discuss
 - [x] plan
 - [x] plan-review
 - [x] execute
-- [ ] review
+- [x] review
 - [ ] verify
 
 ## 직전 봉인

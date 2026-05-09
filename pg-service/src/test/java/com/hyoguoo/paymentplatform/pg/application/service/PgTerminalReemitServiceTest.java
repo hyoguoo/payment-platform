@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,7 +59,7 @@ class PgTerminalReemitServiceTest {
 
         // then
         verify(pgOutboxRepository, times(1)).save(any());
-        verify(applicationEventPublisher, times(1)).publishEvent(any());
+        verify(applicationEventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
     }
 
     @Test

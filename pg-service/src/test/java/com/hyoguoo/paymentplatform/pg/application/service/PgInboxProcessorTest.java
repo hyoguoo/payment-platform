@@ -130,10 +130,10 @@ class PgInboxProcessorTest {
     @Test
     @DisplayName("processInProgressZombie — IN_PROGRESS row 존재 → invokeVendor 1회 + applyOutcome 1회")
     void processInProgressZombie_inProgressRow_callsInvokeVendorAndApplyOutcome() {
-        // given
+        // given: M4 — selectInProgressForUpdateSkipLocked 로 선점 성공
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, 15000L, null, null, NOW, NOW);
-        when(inboxRepository.findById(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
         when(vendorCallService.invokeVendor(any())).thenReturn(new GatewayOutcome.Success(null));
 
         // when
@@ -145,10 +145,10 @@ class PgInboxProcessorTest {
     }
 
     @Test
-    @DisplayName("processInProgressZombie — findById empty (0 row) → invokeVendor 미호출")
+    @DisplayName("processInProgressZombie — selectInProgressForUpdateSkipLocked empty (0 row/락 선점 실패) → invokeVendor 미호출")
     void processInProgressZombie_noRow_returnsWithoutVendorCall() {
-        // given
-        when(inboxRepository.findById(INBOX_ID)).thenReturn(Optional.empty());
+        // given: M4 — selectInProgressForUpdateSkipLocked 가 empty 반환
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.empty());
 
         // when
         sut.processInProgressZombie(INBOX_ID);
@@ -161,10 +161,10 @@ class PgInboxProcessorTest {
     @Test
     @DisplayName("processInProgressZombie — 벤더가 HandledInternally(ALREADY_PROCESSED) 반환 → applyOutcome 의 5분기 HandledInternally → DuplicateApprovalHandler 1회 위임 (C-F2/PC-F4 흡수)")
     void processInProgressZombie_vendorReturnsAlreadyProcessed_delegatesToDuplicateApprovalHandler() {
-        // given
+        // given: M4 — selectInProgressForUpdateSkipLocked 로 선점 성공
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, 15000L, null, null, NOW, NOW);
-        when(inboxRepository.findById(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
         GatewayOutcome handledInternally = new GatewayOutcome.HandledInternally("ALREADY_PROCESSED");
         when(vendorCallService.invokeVendor(any())).thenReturn(handledInternally);
 
