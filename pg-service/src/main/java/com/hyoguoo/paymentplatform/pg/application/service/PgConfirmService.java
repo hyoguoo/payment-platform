@@ -3,16 +3,12 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
-import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.RoundingMode;
 import java.time.Clock;
@@ -20,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * pg-service business inbox 상태 분기 오케스트레이터 (PCS-9 재배치).
@@ -40,9 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
  *   </li>
  * </ol>
  *
- * <p>§1.6 분기 재배치 + D-F3 흡수:
- * handleTerminal 에 {@code @Transactional} 명시 — pg_outbox save + publishEvent 가 동일 active TX 안에서
- * 실행되어야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가 등록된다.
+ * <p>§1.6 분기 재배치 + D-F3 흡수 (M2 review finding):
+ * handleTerminal 의 @Transactional self-invocation 을 {@link PgTerminalReemitService} 별 빈으로 분리.
+ * Spring proxy 를 경유하여 TX 경계(pg_outbox save + publishEvent 동일 TX) 를 보장한다.
  */
 @Slf4j
 @Service
@@ -50,12 +45,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class PgConfirmService implements PgConfirmCommandService {
 
     private final PgInboxRepository pgInboxRepository;
-    private final PgOutboxRepository pgOutboxRepository;
     private final PgVendorCallService pgVendorCallService;
     private final EventDedupeStore eventDedupeStore;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
     private final PgInboxPendingService pgInboxPendingService;
+    private final PgTerminalReemitService pgTerminalReemitService;
 
     @Override
     public void handle(PgConfirmCommand command, int attempt) {
@@ -87,8 +82,9 @@ public class PgConfirmService implements PgConfirmCommandService {
             // PENDING / IN_PROGRESS → 채널 재적재 (워커가 처리)
             handleActiveInbox(inbox);
         } else if (inbox.getStatus().isTerminal()) {
-            // terminal 재수신 → stored_status_result 재발행 (@Transactional 봉인)
-            handleTerminal(inbox);
+            // terminal 재수신 → stored_status_result 재발행
+            // M2: PgTerminalReemitService 외부 빈 위임 — self-invocation @Transactional 우회 해소
+            pgTerminalReemitService.reemit(inbox);
         }
     }
 
@@ -132,34 +128,4 @@ public class PgConfirmService implements PgConfirmCommandService {
                         + " — 채널 재적재");
     }
 
-    /**
-     * terminal 재수신 — stored_status_result 재발행.
-     * D-F3 흡수: {@code @Transactional} 명시 — pg_outbox save + publishEvent 가 동일 active TX 안에서
-     * 실행되어야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가 등록된다.
-     * TX 없으면 JpaRepository.save 가 자체 TX 로 즉시 커밋 → 후속 publishEvent 는 active TX 외부
-     * → AFTER_COMMIT 미등록 → 채널 적재 0.
-     */
-    @Transactional
-    protected void handleTerminal(PgInbox inbox) {
-        String storedResult = inbox.getStoredStatusResult();
-        if (storedResult == null || storedResult.isBlank()) {
-            LogFmt.warn(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
-                    () -> "orderId=" + inbox.getOrderId()
-                            + " status=" + inbox.getStatus()
-                            + " — storedStatusResult 없음");
-            return;
-        }
-
-        PgOutbox reemit = PgOutbox.create(
-                null,
-                PgTopics.EVENTS_CONFIRMED,
-                inbox.getOrderId(),
-                storedResult,
-                null);
-        PgOutbox saved = pgOutboxRepository.save(reemit);
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
-
-        LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_TERMINAL_REEMIT,
-                () -> "orderId=" + inbox.getOrderId() + " status=" + inbox.getStatus());
-    }
 }

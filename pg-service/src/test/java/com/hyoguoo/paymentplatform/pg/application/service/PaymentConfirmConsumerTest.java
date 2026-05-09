@@ -73,9 +73,11 @@ class PaymentConfirmConsumerTest {
                 Mockito.anyString(), Mockito.anyLong(), Mockito.anyString(),
                 Mockito.any(), Mockito.any()))
                 .thenReturn(1L);
+        // M2: PgTerminalReemitService 별 빈 분리 — terminal 재발행 위임
+        PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher);
         sut = new PgConfirmService(
-                inboxRepository, outboxRepository, vendorCallService, dedupeStore,
-                eventPublisher, clock, pendingService);
+                inboxRepository, vendorCallService, dedupeStore,
+                eventPublisher, clock, pendingService, terminalReemitService);
     }
 
     // -----------------------------------------------------------------------

@@ -2,12 +2,10 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -22,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -36,7 +35,7 @@ import static org.mockito.Mockito.when;
  *   <li>inbox 없음 (absent) → {@link PgInboxPendingService#insertPendingAndPublish} 호출</li>
  *   <li>PENDING inbox → publishEvent(PgInboxReadyEvent), insertPending 0회</li>
  *   <li>IN_PROGRESS inbox → publishEvent(PgInboxReadyEvent), insertPending 0회</li>
- *   <li>terminal inbox → handleTerminal (@Transactional 봉인) — outbox INSERT 1회, 벤더 호출 0</li>
+ *   <li>terminal inbox → {@link PgTerminalReemitService#reemit} 1회 호출 (M2: self-invocation 우회)</li>
  * </ul>
  */
 @DisplayName("PgConfirmService (PCS-9 분기 재배치)")
@@ -49,29 +48,30 @@ class PgConfirmServiceTest {
     private static final String VENDOR_TYPE_STR = "TOSS";
 
     private PgInboxRepository pgInboxRepository;
-    private PgOutboxRepository pgOutboxRepository;
     private PgVendorCallService pgVendorCallService;
     private EventDedupeStore eventDedupeStore;
     private ApplicationEventPublisher applicationEventPublisher;
     private PgInboxPendingService pgInboxPendingService;
+    private PgTerminalReemitService pgTerminalReemitService;
     private PgConfirmService sut;
 
     @BeforeEach
     void setUp() {
         pgInboxRepository = mock(PgInboxRepository.class);
-        pgOutboxRepository = mock(PgOutboxRepository.class);
         pgVendorCallService = mock(PgVendorCallService.class);
         eventDedupeStore = mock(EventDedupeStore.class);
         applicationEventPublisher = mock(ApplicationEventPublisher.class);
         pgInboxPendingService = mock(PgInboxPendingService.class);
+        pgTerminalReemitService = mock(PgTerminalReemitService.class);
         Clock clock = Clock.fixed(Instant.parse("2026-05-09T00:00:00Z"), ZoneOffset.UTC);
 
         // dedupe 항상 통과 (markSeen=true, remove no-op)
         when(eventDedupeStore.markSeen(anyString())).thenReturn(true);
 
         sut = new PgConfirmService(
-                pgInboxRepository, pgOutboxRepository, pgVendorCallService,
-                eventDedupeStore, applicationEventPublisher, clock, pgInboxPendingService);
+                pgInboxRepository, pgVendorCallService,
+                eventDedupeStore, applicationEventPublisher, clock,
+                pgInboxPendingService, pgTerminalReemitService);
     }
 
     // -----------------------------------------------------------------------
@@ -179,7 +179,7 @@ class PgConfirmServiceTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handle — terminal inbox 재수신 시 outbox 재발행 1회, 벤더 호출 0")
+    @DisplayName("handle — terminal inbox 재수신 시 PgTerminalReemitService.reemit 1회 호출, 벤더 호출 0 (M2)")
     void handle_terminalInbox_reemitsStoredStatus() {
         // given
         String storedResult = "{\"orderId\":\"" + ORDER_ID + "\",\"status\":\"APPROVED\"}";
@@ -188,18 +188,7 @@ class PgConfirmServiceTest {
                 storedResult, null, Instant.now(), Instant.now());
         when(pgInboxRepository.findByOrderId(ORDER_ID))
                 .thenReturn(java.util.Optional.of(approvedInbox));
-
-        com.hyoguoo.paymentplatform.pg.domain.PgOutbox outbox =
-                com.hyoguoo.paymentplatform.pg.domain.PgOutbox.create(
-                        null,
-                        com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics.EVENTS_CONFIRMED,
-                        ORDER_ID, storedResult, null);
-        com.hyoguoo.paymentplatform.pg.domain.PgOutbox savedOutbox =
-                com.hyoguoo.paymentplatform.pg.domain.PgOutbox.create(
-                        1L,
-                        com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics.EVENTS_CONFIRMED,
-                        ORDER_ID, storedResult, null);
-        when(pgOutboxRepository.save(any())).thenReturn(savedOutbox);
+        doNothing().when(pgTerminalReemitService).reemit(any());
 
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-terminal-001");
@@ -207,10 +196,8 @@ class PgConfirmServiceTest {
         // when
         sut.handle(command, 1);
 
-        // then — outbox 저장 1회
-        verify(pgOutboxRepository, times(1)).save(any());
-        // then — PgOutboxReadyEvent publishEvent 1회
-        verify(applicationEventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+        // then — PgTerminalReemitService.reemit 1회 호출 (M2: 외부 빈 위임으로 self-invocation 해소)
+        verify(pgTerminalReemitService, times(1)).reemit(any(PgInbox.class));
         // then — 벤더 호출 0
         verify(pgVendorCallService, never()).callVendor(any(), anyInt(), any());
         verify(pgVendorCallService, never()).invokeVendor(any());
