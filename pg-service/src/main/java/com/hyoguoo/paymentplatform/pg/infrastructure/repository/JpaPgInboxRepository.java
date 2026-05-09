@@ -137,4 +137,20 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     List<Long> findInProgressZombieIdsBefore(@Param("inProgress") PgInboxStatus inProgress,
                                              @Param("before") LocalDateTime before,
                                              org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     *
+     * <p>{@code SELECT id FROM pg_inbox WHERE id=? AND status='IN_PROGRESS' FOR UPDATE SKIP LOCKED}.
+     * 다른 워커가 이미 잠근 경우(SKIP LOCKED) 빈 결과 반환 → processInProgressZombie silent return.
+     * nativeQuery 사용 이유: JPQL 은 SKIP LOCKED 를 지원하지 않는다.
+     *
+     * <p>주의: 이 메서드는 반드시 active 트랜잭션 안에서 호출해야 SKIP LOCKED 효과가 적용된다.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.repository.PgInboxRepositoryImpl#selectInProgressForUpdateSkipLocked}
+     * 에서 {@code @Transactional} 경계를 제공한다.
+     */
+    @Query(value = "SELECT id FROM pg_inbox WHERE id = :inboxId AND status = 'IN_PROGRESS' "
+            + "FOR UPDATE SKIP LOCKED",
+            nativeQuery = true)
+    Optional<Long> selectForUpdateSkipLockedInProgress(@Param("inboxId") Long inboxId);
 }

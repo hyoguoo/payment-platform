@@ -137,4 +137,19 @@ public interface PgInboxRepository {
      * @return inbox Optional
      */
     Optional<PgInbox> findByOrderIdForUpdate(String orderId);
+
+    /**
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     *
+     * <p>{@code SELECT * FROM pg_inbox WHERE id=:inboxId AND status='IN_PROGRESS' FOR UPDATE SKIP LOCKED}.
+     * 0 row 반환 시 {@code Optional.empty()} — 다른 워커가 이미 해당 row 를 잠금.
+     * {@link com.hyoguoo.paymentplatform.pg.application.service.PgInboxProcessor#processInProgressZombie}
+     * 진입 직후 호출해 동시 처리를 방지한다.
+     *
+     * <p>lock TX 는 짧게 유지 — 상태 확인 + updated_at 갱신만. 벤더 HTTP 호출은 TX 외부.
+     *
+     * @param inboxId pg_inbox PK
+     * @return 선점 성공한 IN_PROGRESS inbox Optional, 선점 실패(다른 워커 보유) 시 empty
+     */
+    Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId);
 }

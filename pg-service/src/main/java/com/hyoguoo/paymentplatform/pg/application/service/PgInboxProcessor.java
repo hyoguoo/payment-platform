@@ -39,10 +39,8 @@ import org.springframework.stereotype.Service;
  * ALREADY_PROCESSED 응답은 HandledInternally outcome 으로 변환되어
  * {@code applyOutcome} 의 5분기 안에서 {@code DuplicateApprovalHandler} 에 위임된다.
  *
- * <p>현재 스키마 제약: {@code pg_inbox} 에 {@code paymentKey} / {@code vendorType} 컬럼 없음.
- * {@link PgConfirmRequest} 는 orderId + amount 만으로 임시 구성하며,
- * paymentKey={@code null}, vendorType={@code null} 로 설정된다.
- * TODO PCS-X: {@code pg_inbox} 스키마에 vendorType / paymentKey 컬럼 추가 후 정합 필요.
+ * <p>PCS-9 V3 migration 으로 {@code pg_inbox} 에 {@code payment_key} / {@code vendor_type} 컬럼 정합 완료.
+ * {@link PgConfirmRequest} 는 inbox 에서 직접 읽어 구성한다.
  */
 @Slf4j
 @Service
@@ -104,8 +102,10 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
     /**
      * IN_PROGRESS 좀비 상태의 inbox row 를 재처리한다.
      *
-     * <p>TX_A 생략 — 이미 IN_PROGRESS 인 row 를 그대로 사용한다.
-     * row 부재 시 즉시 return.
+     * <p>M4 review finding 흡수: 진입 직후 {@code selectInProgressForUpdateSkipLocked} 로 락 선점.
+     * 0 row(SKIP LOCKED — 다른 워커가 이미 보유) → silent return.
+     *
+     * <p>lock TX (짧게) → status 확인 → commit → 벤더 HTTP (TX 외부) → applyOutcome (TX_B).
      * 벤더 재호출 시 idempotency-key 로 ALREADY_PROCESSED 응답 가능 →
      * {@code applyOutcome} 의 HandledInternally 분기 → {@code DuplicateApprovalHandler} 위임.
      *
@@ -113,27 +113,22 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
      */
     @Override
     public void processInProgressZombie(Long inboxId) {
-        Optional<PgInbox> inboxOpt = inboxRepository.findById(inboxId);
-        if (inboxOpt.isEmpty()) {
+        // M4: TX_lock — selectInProgressForUpdateSkipLocked + status 확인.
+        // 다른 워커가 이미 잠근 경우(SKIP LOCKED) empty → silent return.
+        Optional<PgInbox> lockedOpt = inboxRepository.selectInProgressForUpdateSkipLocked(inboxId);
+        if (lockedOpt.isEmpty()) {
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_INBOX_WORKER_SKIP,
-                    () -> "inboxId=" + inboxId + " reason=NOT_FOUND");
+                    () -> "inboxId=" + inboxId + " reason=CONCURRENT_LOCK_ACQUIRED_OR_NOT_IN_PROGRESS");
             return;
         }
-        PgInbox inbox = inboxOpt.get();
-
-        // IN_PROGRESS 가 아닌 row 는 이미 종결 → 정상 종료
-        if (inbox.getStatus() != PgInboxStatus.IN_PROGRESS) {
-            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_INBOX_WORKER_SKIP,
-                    () -> "inboxId=" + inboxId + " status=" + inbox.getStatus() + " reason=NOT_IN_PROGRESS");
-            return;
-        }
+        PgInbox inbox = lockedOpt.get();
 
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_INBOX_WORKER_START,
                 () -> "inboxId=" + inboxId + " orderId=" + inbox.getOrderId() + " zombie=true");
 
         PgConfirmRequest request = buildRequest(inbox);
 
-        // 벤더 재호출 (멱등성 3단 layer — ALREADY_PROCESSED 응답 가능)
+        // 벤더 재호출 (멱등성 3단 layer — ALREADY_PROCESSED 응답 가능). TX 외부.
         GatewayOutcome outcome = vendorCallService.invokeVendor(request);
 
         // TX_B — 5분기 처리. HandledInternally → DuplicateApprovalHandler 보정 경로

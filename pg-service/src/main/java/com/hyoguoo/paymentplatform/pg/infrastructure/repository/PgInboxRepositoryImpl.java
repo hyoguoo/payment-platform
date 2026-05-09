@@ -171,4 +171,21 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
                 PgInboxStatus.IN_PROGRESS, before, PageRequest.of(0, batchSize));
     }
 
+    /**
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     *
+     * <p>{@code SELECT FOR UPDATE SKIP LOCKED WHERE id=? AND status='IN_PROGRESS'} 로
+     * 다른 워커가 동시에 동일 row 를 처리하는 경우 선점 실패(빈 결과) → Optional.empty() 반환.
+     * 선점 성공 시 {@link PgInboxEntity#toDomain()} 으로 변환하여 반환한다.
+     */
+    @Override
+    @Transactional
+    public Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId) {
+        Optional<Long> locked = jpaPgInboxRepository.selectForUpdateSkipLockedInProgress(inboxId);
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
+        return jpaPgInboxRepository.findById(inboxId).map(PgInboxEntity::toDomain);
+    }
+
 }

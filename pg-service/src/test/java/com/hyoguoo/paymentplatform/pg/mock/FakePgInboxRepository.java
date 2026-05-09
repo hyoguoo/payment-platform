@@ -192,6 +192,23 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return List.of(); // Fake — 좀비 없음
     }
 
+    /**
+     * M4: IN_PROGRESS SKIP LOCKED 선점 — Fake 단순 구현.
+     * Fake 에서는 동시성 없이 IN_PROGRESS row 조회와 동등하게 동작한다.
+     */
+    @Override
+    public Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId) {
+        String orderId = idIndex.get(inboxId);
+        if (orderId == null) {
+            return Optional.empty();
+        }
+        PgInbox inbox = store.get(orderId);
+        if (inbox == null || inbox.getStatus() != PgInboxStatus.IN_PROGRESS) {
+            return Optional.empty();
+        }
+        return Optional.of(inbox);
+    }
+
     // --- 검증 헬퍼 ---
 
     public int size() {

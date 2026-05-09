@@ -363,6 +363,11 @@ class PgInboxPendingServiceTest {
             public Optional<PgInbox> findByOrderIdForUpdate(String orderId) {
                 return Optional.empty();
             }
+
+            @Override
+            public Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId) {
+                return Optional.empty();
+            }
         }
 
         /**
