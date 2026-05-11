@@ -1,11 +1,11 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-11 — CBA-12 완료 (TODOS.md 갱신 — [PR A] 4항목 완료 이전 + [NET-RETRY] / [FLYWAY-USER-SEED-GAP] 신규 등재). execute 완료, stage → review 전환.
+> 최종 수정: 2026-05-12 — CLEANUP-BATCH-A review Round 1 양쪽 pass (critic minor 2 / domain pass). minor 2건 흡수 완료. verify 대기.
 
 ## 활성 작업
 
 - **주제**: CLEANUP-BATCH-A (코드 청소 4건 묶음 — TC-16 + TC-10 + TC-2 + TC-5)
-- **단계**: review — Critic + Domain Expert 병렬 dispatch 대기
+- **단계**: verify — 사용자 "verify 시작" 명시 요청 대기
 - **채택안**: 단일 토픽 4 sub-section. §1.1 `PgInboxAmountService` dead service 제거 + §1.2 `PgInbox` / `PgOutbox` 의 `@Builder + @AllArgsConstructor(PRIVATE)` 패턴 통일 (factory only 노출) + §1.3 Flyway `db/schema/` + `db/seed/` 디렉토리 분리 (`docker` profile 은 schema 만) + §1.4 `Retryable` 예외 503 + `Retry-After: 5` 일괄 매핑. cross 의존 0, implement 권고 순서 §1.1 → §1.3 → §1.4 → §1.2.
 - **이슈**: #75
 - **브랜치**: #75
@@ -23,6 +23,8 @@
   - docs/rounds/cleanup-batch-a/plan-critic-2.md (Round 2 — pass)
   - docs/rounds/cleanup-batch-a/plan-domain-2.md (Round 2 — pass, minor 1 carry-over 흡수)
   - docs/rounds/cleanup-batch-a/plan-review-1.md (pass, clean)
+  - docs/rounds/cleanup-batch-a/review-critic-1.md (pass, minor 2 — Instant qualifier + GREEN prefix 일관성)
+  - docs/rounds/cleanup-batch-a/review-domain-1.md (pass, finding 0)
 - 플랜: docs/CLEANUP-BATCH-A-PLAN.md (12 태스크)
 
 ## 단계 진행
@@ -30,7 +32,7 @@
 - [x] plan
 - [x] plan-review
 - [x] execute
-- [ ] review
+- [x] review
 - [ ] verify
 
 ## 직전 봉인
