@@ -1,14 +1,36 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT 봉인 (PCS-1~16 16태스크 + review 라운드 2 양쪽 pass + 294 PASS / 0 FAIL). PR 생성 대기.
+> 최종 수정: 2026-05-11 — CLEANUP-BATCH-A discuss 종결 (Round 2 양쪽 pass). plan 단계 진입.
 
 ## 활성 작업
 
-없음. 다음 토픽 후보 참고.
+- **주제**: CLEANUP-BATCH-A (코드 청소 4건 묶음 — TC-16 + TC-10 + TC-2 + TC-5)
+- **단계**: plan
+- **채택안**: 단일 토픽 4 sub-section. §1.1 `PgInboxAmountService` dead service 제거 + §1.2 `PgInbox` / `PgOutbox` 의 `@Builder + @AllArgsConstructor(PRIVATE)` 패턴 통일 (factory only 노출) + §1.3 Flyway `db/schema/` + `db/seed/` 디렉토리 분리 (`docker` profile 은 schema 만) + §1.4 `Retryable` 예외 503 + `Retry-After: 5` 일괄 매핑. cross 의존 0, implement 권고 순서 §1.1 → §1.3 → §1.4 → §1.2.
+- **이슈**: #75
+- **브랜치**: #75
+
+## 파일 링크
+- **토픽 본문 (채택안 권위)**: docs/topics/CLEANUP-BATCH-A.md (사전 + 요약 브리핑 + §0~§7)
+- 라운드 산출물:
+  - docs/rounds/cleanup-batch-a/discuss-interview-0.md (Round 0 ledger — 4트랙, Path 1 7건 / Path 2 5건)
+  - docs/rounds/cleanup-batch-a/discuss-critic-1.md (Round 1 — minor 1, pass)
+  - docs/rounds/cleanup-batch-a/discuss-domain-1.md (Round 1 — major 1 + minor 3, revise)
+  - docs/rounds/cleanup-batch-a/discuss-critic-2.md (Round 2 — pass)
+  - docs/rounds/cleanup-batch-a/discuss-domain-2.md (Round 2 — pass)
+- 플랜: docs/CLEANUP-BATCH-A-PLAN.md (plan 단계 산출 예정)
+
+## 단계 진행
+- [x] discuss
+- [ ] plan
+- [ ] plan-review
+- [ ] execute
+- [ ] review
+- [ ] verify
 
 ## 직전 봉인
 
-- **PG-CONFIRM-LISTENER-SPLIT** (pg-service Kafka listener TX 에서 벤더 호출 분리, 2026-05-09) — `docs/archive/pg-confirm-listener-split/`
+- **PG-CONFIRM-LISTENER-SPLIT** (pg-service Kafka listener TX 에서 벤더 호출 분리, 2026-05-09 PR #74 머지) — `docs/archive/pg-confirm-listener-split/`
   - `PgInboxPendingService` (listener TX timeout=5s, INSERT IGNORE + publishEvent) + `PgInboxChannel` (LinkedBlockingQueue cap=1024) + `PgInboxImmediateWorker` (VT 5, status 4분기 dispatch) + `PgInboxPollingWorker` (60s 통일, PENDING/IN_PROGRESS 두 경로, 새 OTel root span)
   - `PgInboxStatus` PENDING 추가 + NONE 폐기 + Flyway V2~V3 (PENDING enum + paymentKey/vendorType 컬럼)
   - 보정 경로 PENDING 우회 룰 (`DuplicateApprovalHandler` `transitDirectToTerminal` / `transitDirectToInProgress`)
