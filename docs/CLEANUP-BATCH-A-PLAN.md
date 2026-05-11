@@ -438,7 +438,9 @@ class FlywayDockerProfileTest {
 
 ---
 
-### CBA-11 — CONVENTIONS.md Lombok/Builder 룰 pg-service 정합 표기
+### CBA-11 — CONVENTIONS.md Lombok/Builder 룰 pg-service 정합 표기 ✅
+
+> **완료** (2026-05-11): CONVENTIONS.md Lombok 섹션에 "Builder 룰 — payment-service + pg-service 정합 (CBA-8/9 봉인)" 서브섹션 추가. factory only 노출 룰 + 시나리오 의도 보존 + 적용 위치 (pg-service PgInbox/PgOutbox) + mutable 필드 변경 룰 명시. docs 변경만, 회귀 0.
 
 **목적**: §1.2 (TC-10) — Lombok/Builder 룰 섹션에 pg-service 도메인 POJO (`PgInbox` / `PgOutbox`) 가 payment-service 와 동일한 `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` + factory only 노출 룰을 따른다는 것을 영구 문서에 명시한다.
 
