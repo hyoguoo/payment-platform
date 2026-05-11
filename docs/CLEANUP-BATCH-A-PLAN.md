@@ -220,7 +220,9 @@ flowchart LR
 
 ---
 
-### CBA-6 — PaymentExceptionHandler 핸들러 2건 추가
+### CBA-6 — PaymentExceptionHandler 핸들러 2건 추가 ✅
+
+> **완료** (2026-05-11): `handleProductServiceRetryable` / `handleUserServiceRetryable` 핸들러 2건 추가. 503 + `Retry-After: 5` + `E03031`/`E03032` 응답. `PaymentExceptionHandlerTest` 신규 2건 PASS. payment-service 379 PASS / 0 FAIL. 전체 PASS.
 
 **목적**: §1.4 (TC-5) — `ProductServiceRetryableException` / `UserServiceRetryableException` 두 예외를 `503 Service Unavailable + Retry-After: 5` 로 매핑하는 핸들러를 `PaymentExceptionHandler` 에 추가한다. `GlobalExceptionHandler.catchRuntimeException` fallback 으로 500 을 반환하던 경로를 차단.
 

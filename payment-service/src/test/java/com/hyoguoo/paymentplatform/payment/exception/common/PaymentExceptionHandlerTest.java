@@ -29,7 +29,7 @@ class PaymentExceptionHandlerTest {
         mockMvc.perform(get("/test/product-retryable"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "5"))
-                .andExpect(jsonPath("$.code").value("E03031"));
+                .andExpect(jsonPath("$.error.code").value("E03031"));
     }
 
     @Test
@@ -38,7 +38,7 @@ class PaymentExceptionHandlerTest {
         mockMvc.perform(get("/test/user-retryable"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string("Retry-After", "5"))
-                .andExpect(jsonPath("$.code").value("E03032"));
+                .andExpect(jsonPath("$.error.code").value("E03032"));
     }
 
     @RestController
