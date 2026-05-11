@@ -148,7 +148,9 @@ public class PgInbox {
             String reasonCode,
             Instant createdAt,
             Instant updatedAt) {
-        return new PgInbox(null, orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt, null, null);
+        return new PgInbox(
+                null, orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, null, null);
     }
 
     public static PgInbox of(

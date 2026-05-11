@@ -28,7 +28,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -223,7 +222,7 @@ class PgInboxPendingServiceTest {
             sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
 
             // then — insertPending 호출 시점(= publishEvent 직전) 에 active TX 가 true 여야 함
-            assertThat(TxIntegrationTestConfig.MockPgInboxRepository.txActiveAtInsert.get())
+            assertThat(TxIntegrationTestConfig.MockPgInboxRepository.TX_ACTIVE_AT_INSERT.get())
                     .as("insertPendingAndPublish @Transactional proxy 안에서 insertPending/publishEvent 호출 시 active TX 가 활성화되어야 한다")
                     .isTrue();
         }
@@ -288,18 +287,18 @@ class PgInboxPendingServiceTest {
          */
         static class MockPgInboxRepository implements PgInboxRepository {
 
-            static final AtomicBoolean txActiveAtInsert = new AtomicBoolean(false);
+            static final AtomicBoolean TX_ACTIVE_AT_INSERT = new AtomicBoolean(false);
             private long nextId = 1L;
 
             static void reset() {
-                txActiveAtInsert.set(false);
+                TX_ACTIVE_AT_INSERT.set(false);
             }
 
             @Override
             public Long insertPending(String orderId, long amount, String eventUuid,
                     String vendorType, String paymentKey) {
                 // publishEvent 직전인 이 시점에 active TX 여부를 캡처한다
-                txActiveAtInsert.set(TransactionSynchronizationManager.isActualTransactionActive());
+                TX_ACTIVE_AT_INSERT.set(TransactionSynchronizationManager.isActualTransactionActive());
                 return nextId++;
             }
 
