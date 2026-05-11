@@ -414,7 +414,9 @@ class FlywayDockerProfileTest {
 
 ---
 
-### CBA-10 — STACK.md Flyway 운영 가이드 갱신 (D4 흡수)
+### CBA-10 — STACK.md Flyway 운영 가이드 갱신 (D4 흡수) ✅
+
+> **완료** (2026-05-11): STACK.md Flyway 섹션 전면 갱신 — db/schema + db/seed 디렉토리 구조 + profile별 locations 설정 + named volume 재사용 시 MissingMigrationException 3-step 대응 가이드 (Step 1: volume prune / Step 2: history 수동 삭제 / Step 3: ignore-migration-patterns 임시 설정) + 운영 학습용 가정 추가. docs 변경만, 회귀 0.
 
 **목적**: §1.3 (TC-2) + D4 — `db/schema` / `db/seed` 디렉토리 분리 룰 + profile override 룰 + **named volume 재사용 시 missing-migration 3-step 대응 가이드** 를 STACK.md 에 추가한다.
 
