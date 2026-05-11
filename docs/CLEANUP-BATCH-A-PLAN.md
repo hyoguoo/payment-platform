@@ -330,7 +330,9 @@ class FlywayDockerProfileTest {
 
 ---
 
-### CBA-8 — PgInbox 도메인 builder 전환 + factory 본문 갈아끼움
+### CBA-8 — PgInbox 도메인 builder 전환 + factory 본문 갈아끼움 ✅
+
+> **완료** (2026-05-11): `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` 적용. 명시 생성자 본체 제거. factory 4종 + of 2종 + ofWithId 본문을 `allArgsBuilder()...allArgsBuild()` 호출로 교체. 클래스 레벨 + factory 4종 JavaDoc 추가 (factory only 룰, main 호출처 0건, 어댑터 가드 D1 흡수). `PgInboxTest` 신규 7건 추가 (create 4종 + createDirectTerminal 가드 보존 + of 7-arg 필드 매핑 + ofWithId id 포함). `PgInboxRepositoryImplTest.transitDirectToTerminal*` 회귀 2건 PASS. pg-service 290→296 PASS / 0 FAIL. 전체 PASS.
 
 **목적**: §1.2 (TC-10) — `PgInbox` 에 `@Builder(builderMethodName="allArgsBuilder", buildMethodName="allArgsBuild") + @AllArgsConstructor(access = AccessLevel.PRIVATE)` 를 적용하고 factory 본문을 builder 호출로 교체한다. `private` 생성자 본체는 Lombok 이 대체. factory 시그니처 / 가드 / 시나리오 의도는 그대로 보존. 어댑터 가드 (`PgInboxRepositoryImpl.transitDirectToTerminal:150`) 는 비범위 — 손대지 않는다.
 
