@@ -165,7 +165,9 @@ flowchart LR
 
 ---
 
-### CBA-3 — user-service SQL 파일 이동 (db/migration → db/schema + db/seed)
+### CBA-3 — user-service SQL 파일 이동 (db/migration → db/schema + db/seed) ✅
+
+> **완료** (2026-05-11): V1__user_schema.sql → db/schema/, V2__seed_user.sql → db/seed/ git mv 이동. db/migration 디렉토리 삭제. CBA-5 와 단일 커밋으로 묶음.
 
 **목적**: §1.3 (TC-2) — user-service 의 Flyway SQL 파일을 `db/schema/` + `db/seed/` 로 물리 분리한다.
 
@@ -200,7 +202,9 @@ flowchart LR
 
 ---
 
-### CBA-5 — user-service application.yml + application-docker.yml Flyway locations 수정
+### CBA-5 — user-service application.yml + application-docker.yml Flyway locations 수정 ✅
+
+> **완료** (2026-05-11): application.yml `spring.flyway.locations: classpath:db/schema,classpath:db/seed`. application-docker.yml `spring.flyway.locations: classpath:db/schema` override 추가. user-service 1 PASS / 0 FAIL.
 
 **목적**: §1.3 (TC-2) — user-service 의 Flyway locations 를 product-service 와 동일 패턴으로 설정한다.
 
