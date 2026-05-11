@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — Lua 스크립트 디렉토리 + port enum 추가 반영)
+> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT — pg-service inbox 작업 큐 신규 컴포넌트 반영)
 
 ## 루트 레이아웃
 
@@ -87,9 +87,9 @@ payment-platform/
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
     │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (pg Redis+RDB / product RDB. payment 측은 Lua atomic dedup token 으로 일원화 — 본 디렉토리 어댑터 없음)
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
-    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker)
+    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker, PgInboxImmediateWorker, PgInboxPollingWorker)
     │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
-    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob)
+    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob, PgInboxChannel + InboxJob)
     │   │   │   ├── aspect/       # 인프라 측 AOP 구현 (DomainEventLoggingAspect, *MetricsAspect)
     │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service — toss/ nicepay/ fake/)
     │   │   │   ├── metrics/      # Micrometer 메트릭 정의 / 등록
@@ -186,6 +186,14 @@ flowchart TD
 | 재고 atomic 결과 enum | `payment-service/.../application/port/out/StockDecrementAtomicResult.java`, `StockCompensationAtomicResult.java` |
 | Kafka 에러 핸들러 빈 | `payment-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` |
 | pg confirm 처리 | `pg-service/.../application/service/PgConfirmService.java` |
+| pg inbox 작업 큐 진입점 (listener TX) | `pg-service/.../application/service/PgInboxPendingService.java` |
+| pg inbox 처리자 (두 진입점) | `pg-service/.../application/service/PgInboxProcessor.java` |
+| pg terminal 재수신 재발행 (별 빈 — proxy 통과 보장) | `pg-service/.../application/service/PgTerminalReemitService.java` |
+| pg inbox + outbox 벤더 호출 / 결과 반영 분리 | `pg-service/.../application/service/PgVendorCallService.java` (`invokeVendor` / `applyOutcome`) |
+| pg inbox 작업 큐 채널 + 작업 record | `pg-service/.../infrastructure/channel/PgInboxChannel.java` + `InboxJob.java` |
+| pg inbox AFTER_COMMIT 채널 적재 리스너 | `pg-service/.../infrastructure/listener/InboxReadyEventHandler.java` |
+| pg inbox VT 워커 | `pg-service/.../infrastructure/scheduler/PgInboxImmediateWorker.java` |
+| pg inbox 좀비 폴링 | `pg-service/.../infrastructure/scheduler/PgInboxPollingWorker.java` |
 | 벤더 어댑터 | `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` |
 | Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
 | Flyway 마이그레이션 | `<service>/src/main/resources/db/migration/V*.sql` |

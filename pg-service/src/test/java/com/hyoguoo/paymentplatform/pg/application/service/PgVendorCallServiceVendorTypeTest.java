@@ -59,10 +59,12 @@ class PgVendorCallServiceVendorTypeTest {
 
         PgConfirmStrategySelector confirmSelector =
                 new PgConfirmStrategySelector(List.of(tossAdapter, nicepayAdapter));
+        DuplicateApprovalHandler duplicateApprovalHandler = Mockito.mock(DuplicateApprovalHandler.class);
 
         sut = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmSelector, eventPublisher,
-                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock);
+                new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock,
+                duplicateApprovalHandler);
 
         // inbox IN_PROGRESS 사전 준비
         inboxRepository.save(PgInbox.of(

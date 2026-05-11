@@ -5,6 +5,7 @@ plugins {
 
 ext {
     set('springCloudVersion', '2024.0.0')
+    set('testcontainersVersion', '1.20.4')
 }
 
 dependencies {
@@ -36,6 +37,16 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     // HttpOperatorImpl traceparent 전파 검증용 MockWebServer
     testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+
+    // Testcontainers — PCS-4 PgInboxRepositoryImpl SKIP LOCKED 단위 테스트 (MySQL)
+    testImplementation "org.springframework.boot:spring-boot-testcontainers"
+    testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+    testImplementation "org.testcontainers:mysql"
+    testImplementation "org.testcontainers:junit-jupiter"
+    testImplementation "org.testcontainers:testcontainers"
+    // macOS Docker Desktop 4.65+ 환경에서 docker-java 가 Netty 기반 Unix socket 전송을 사용할 때
+    // API 버전 협상이 올바르게 동작한다. zerodep 전송 기본값(API v1.32)은 Docker 29.4.2와 호환 불가.
+    testImplementation "io.netty:netty-transport-native-epoll:4.1.119.Final"
 }
 
 dependencyManagement {
@@ -43,6 +54,56 @@ dependencyManagement {
         mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
     }
 }
+
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == 'org.testcontainers') {
+            details.useVersion testcontainersVersion
+            details.because 'Override Spring Boot BOM strict constraint to use newer Testcontainers with Docker Desktop 4.65+ support'
+        }
+    }
+}
+
+// Testcontainers MySQL — PCS-4 SKIP LOCKED 단위 테스트에서 Docker 소켓 경로를 명시해야 한다.
+// macOS Docker Desktop 4.65+ 환경에서 /var/run/docker.sock symlink 가 docker-java zerodep 전송과
+// 호환되지 않을 수 있어 raw socket 경로를 직접 지정한다.
+// 해당 설정이 없으면 Testcontainers 가 docker-cli.sock 을 잘못 참조해 Status 400 을 반환받는다.
+// 소켓 경로는 환경별로 다를 수 있으므로 환경 변수 오버라이드 우선 → 기본값 fallback 구조.
+test {
+    // macOS Docker Desktop 4.65+ 에서 docker-java 기본 API 버전 1.32가 Docker 29.4.2 의 최소
+    // 지원 버전(1.40) 보다 낮아 Status 400 이 반환된다. 환경변수로 버전을 명시한다.
+    environment 'DOCKER_API_VERSION', '1.44'
+}
+
+// PCS-15 통합 테스트 — @Tag("integration") 전용 태스크.
+// Testcontainers MySQL + @SpringBootTest 전체 컨텍스트 로드로 acceptance A1~A4 검증.
+// payment-service SCR-10 패턴 동일 구조.
+task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    environment 'DOCKER_API_VERSION', '1.44'
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nIntegration Test Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
+            }
+        }
+    }
+}
+
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
 
 spotbugsMain {
     excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')

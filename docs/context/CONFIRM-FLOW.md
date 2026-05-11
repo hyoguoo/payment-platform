@@ -1,11 +1,12 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — Lua atomic + Spring Kafka native 에러 핸들러 + dedupe lease 폐기)
+> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT 봉인 — pg 측 listener 분리 안 코드 정합 + 위키 동기화)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
 - PG 벤더 호출 (pg-service `PgConfirmService` + 전략 어댑터) 와 Kafka 양방향 왕복 전체 흐름은 `PAYMENT-FLOW.md` Phase 4 절이 담당한다.
 - 다이어그램과 분석 텍스트를 한 파일에 통합 배치한다.
+- pg-service 측 listener 분리 안 상세 (TX 경계 + 워커 분기 + 보정 경로 PENDING 우회) 는 §16 참조.
 
 ---
 
@@ -470,7 +471,49 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 
 ---
 
-## 16. 관련 문서
+## 16. pg-service 측 listener 분리 안 상세
+
+> PG-CONFIRM-LISTENER-SPLIT 봉인 (2026-05-09). 위키 진실원: `pg-confirm-flow.md`.
+
+### listener TX 경계 (`PgInboxPendingService`)
+
+pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPublish` 한 메서드에 봉인된다.
+
+- `@Transactional(propagation = REQUIRED, timeout = 5)` — 짧은 INSERT 1건 + publishEvent 1건. timeout=5s 는 GC pause / Hikari 대기 마진 포함.
+- 메서드 안: `pgInboxRepository.insertPending(orderId, amount, ...)` → `INSERT pg_inbox status=PENDING` (`order_id` UNIQUE 충돌 시 IGNORE + 기존 inboxId 반환) → `applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inboxId))`.
+- AFTER_COMMIT 단계에서 `InboxReadyEventHandler` 가 `PgInboxChannel.offerNow(inboxId)` 호출 → 채널 적재.
+- TX 가 활성 상태에서 `publishEvent` 를 호출해야 `@TransactionalEventListener(AFTER_COMMIT)` 가 등록됨 — TX 밖에서 호출하면 채널 적재 0 → 폴링 5s 지연 (`PITFALLS.md §3`).
+
+### 처리 TX 경계 (`PgInboxProcessor`)
+
+워커 VT 는 두 진입점을 통해 TX_A → 벤더 HTTP → TX_B 3단계를 진행한다.
+
+| 진입점 | TX_A 검사 조건 | 호출처 |
+|---|---|---|
+| `processPending(inboxId)` | `WHERE id=? AND status=PENDING FOR UPDATE SKIP LOCKED` | `PgInboxImmediateWorker` (정상 흐름) + `PgInboxPollingWorker` (PENDING 좀비) |
+| `processInProgressZombie(inboxId)` | `WHERE id=? AND status=IN_PROGRESS FOR UPDATE SKIP LOCKED` | `PgInboxImmediateWorker` (IN_PROGRESS 재진입) + `PgInboxPollingWorker` (IN_PROGRESS 좀비) |
+
+- **TX_A** — `PENDING → IN_PROGRESS` (또는 IN_PROGRESS `updated_at` 갱신) 후 즉시 커밋 → lock 해제.
+- **벤더 HTTP** — `PgVendorCallService.invokeVendor(request)` → `GatewayOutcome` 반환. TX 밖, DB 자유 상태. VT 가 캐리어 양보.
+- **TX_B** — `PgVendorCallService.applyOutcome(outcome, request, attempt, now)` 안에서 5분기 처리 → `pg_inbox` UPDATE + `pg_outbox` INSERT + AFTER_COMMIT publishEvent → TX_B commit.
+
+### 보정 경로 PENDING 우회 룰 (`DuplicateApprovalHandler`)
+
+`DuplicateApprovalHandler` 의 inbox 신설은 PENDING 을 거치지 않고 직접 종결 또는 IN_PROGRESS 로 진입한다.
+
+- **부재 + 금액 일치** → `insertDirectToTerminal(APPROVED)` — PENDING 우회. 보정 경로가 벤더 호출 1회를 이미 끝낸 상태에서 PENDING 으로 돌리면 워커가 다시 벤더 호출 → ALREADY_PROCESSED → 동일 보정 경로 → **무한 루프** 가능. 보정 경로의 inbox 신설은 결과를 박는 행위지 처리 시작이 아니다.
+- **부재 + 금액 불일치** → `insertDirectToTerminal(QUARANTINED)` — 동일 우회.
+- **벤더 조회 미확정** → `transitDirectToInProgress(orderId, amount)` — IN_PROGRESS 신설 후 격리 처리.
+
+### terminal 재수신 직접 처리 (`PgTerminalReemitService.reemit`)
+
+이미 APPROVED / FAILED / QUARANTINED 인 주문에 동일 명령이 재도착하면 `PgConfirmService` 가 `PgTerminalReemitService.reemit(inbox)` 를 호출해 `storedStatusResult` 를 `pg_outbox` 에 직접 INSERT 후 `PgOutboxReadyEvent` 를 publish 한다. 벤더 호출 없음, 워커 큐 우회 → latency 우위. 수신 측이 `eventUuid` 로 멱등 흡수.
+
+별 빈으로 분리한 이유: `PgConfirmService` 가 자기 자신의 `@Transactional` 메서드를 호출하면 Spring AOP proxy 를 우회해 TX 가 무력화된다. `pg_outbox INSERT + publishEvent` 가 같은 active TX 안에서 실행되어야 `OutboxReadyEventHandler(@TransactionalEventListener(AFTER_COMMIT))` 가 정상 등록된다 — proxy 통과 보장 위해 `PgTerminalReemitService` 외부 빈으로 추출.
+
+---
+
+## 17. 관련 문서
 
 - **end-to-end 전체 (브라우저 → 폴링)**: [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
   - Phase 1~3: checkout / confirm TX / outbox relay
@@ -478,3 +521,4 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
   - Phase 5: 결과 수신 overview + 폴링
 - **복구 사이클 상세** (RecoveryDecision, FCG, D12): `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md`
 - **AMOUNT_MISMATCH 양방향 방어 도입 배경**: `docs/archive/pre-phase-4-hardening/COMPLETION-BRIEFING.md` (D1)
+- **pg-service listener 분리 안 설계 기록**: `docs/archive/pg-confirm-listener-split/` (verify 완료 후 이동 예정)

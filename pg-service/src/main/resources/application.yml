@@ -89,10 +89,19 @@ pg:
     polling-worker:
       fixed-delay-ms: 2000
       batch-size: 10
+    inbox-polling-worker:
+      fixed-delay-ms: 5000
+      batch-size: 10
+      pending-timeout-ms: 60000
+      in-progress-timeout-ms: 60000
   outbox:
     channel:
       capacity: 1024
       worker-count: 1
+  inbox:
+    channel:
+      capacity: 1024
+      worker-count: 5
   http:
     # connect-timeout: TCP 연결 수립 timeout. Toss/NicePay 벤더 측 LB 가 빠른 응답을 반환한다고 가정 — 3s 로 충분.
     # read-timeout: 벤더 confirm/getStatus 응답 대기. payment-service Feign cross-service(5s)보다 길게 잡는 이유 —

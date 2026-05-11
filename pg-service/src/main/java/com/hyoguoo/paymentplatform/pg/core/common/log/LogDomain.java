@@ -9,5 +9,6 @@ public enum LogDomain {
     GLOBAL,
     PG,
     PG_VENDOR,
-    PG_OUTBOX
+    PG_OUTBOX,
+    PG_INBOX
 }

@@ -225,14 +225,16 @@ public class DuplicateApprovalHandler {
 
     private void handleDbAbsentAmountMatch(String orderId, long amountLong) {
         // vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림
+        // PCS-9 §1.8: PENDING 우회 — transitDirectToTerminal(APPROVED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED,
                 () -> "orderId=" + orderId + " amount=" + amountLong);
 
-        // inbox 신설(NONE→IN_PROGRESS→APPROVED)
-        pgInboxRepository.transitNoneToInProgress(orderId, amountLong);
         // buildApprovedPayload 가 amount + approvedAt(Clock fallback) 을 포함한 payload 를 만든다.
         String approvedPayload = buildApprovedPayload(orderId, amountLong);
-        pgInboxRepository.transitToApproved(orderId, approvedPayload);
+        // PENDING 우회: PENDING + IN_PROGRESS 중간 상태 없이 직접 APPROVED 신설
+        pgInboxRepository.transitDirectToTerminal(orderId, amountLong,
+                com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus.APPROVED,
+                approvedPayload, null);
 
         long outboxId = enqueueOutbox(orderId, approvedPayload);
 
@@ -242,16 +244,19 @@ public class DuplicateApprovalHandler {
 
     private void handleDbAbsentAmountMismatch(String orderId, long payloadAmountLong, long vendorAmountLong) {
         // vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH) (불변식 4c)
+        // PCS-9 §1.8: PENDING 우회 — transitDirectToTerminal(QUARANTINED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
                 () -> "orderId=" + orderId
                         + " payloadAmount=" + payloadAmountLong
                         + " vendorAmount=" + vendorAmountLong);
 
-        // inbox 신설 후 QUARANTINED 전이 (amount=payloadAmount 기록)
-        pgInboxRepository.transitNoneToInProgress(orderId, payloadAmountLong);
-        pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
+        String quarantinedPayload = buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH);
+        // PENDING 우회: PENDING + IN_PROGRESS 중간 상태 없이 직접 QUARANTINED 신설
+        pgInboxRepository.transitDirectToTerminal(orderId, payloadAmountLong,
+                com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus.QUARANTINED,
+                quarantinedPayload, REASON_AMOUNT_MISMATCH);
 
-        long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
+        long outboxId = enqueueOutbox(orderId, quarantinedPayload);
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
                 () -> "orderId=" + orderId + " outboxId=" + outboxId);
@@ -261,12 +266,24 @@ public class DuplicateApprovalHandler {
     // vendor 조회 실패 경로
     // -----------------------------------------------------------------------
 
+    /**
+     * vendor 조회 실패 — inbox 부재 시 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
+     *
+     * <p>D-F2 흡수: transitDirectToInProgress + transitToQuarantined 두 호출이 반드시 같은 TX 안에 묶여야 한다.
+     * 이 메서드는 {@code handleDuplicateApproval} 의 {@code @Transactional} TX 안에서 호출되므로
+     * 두 호출이 동일 TX 를 공유한다.
+     * transitDirectToInProgress 커밋 후 JVM 장애 시 IN_PROGRESS 좀비 잔존 → processInProgressZombie
+     * → 벤더 재호출 → ALREADY_PROCESSED / INDETERMINATE 재진입 무한 루프 위험이 있으므로
+     * 반드시 atomicity 봉인이 필요하다.
+     */
     private void handleVendorIndeterminate(String orderId, long payloadAmountLong) {
-        // inbox가 없을 경우 생성 후 QUARANTINED
+        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (§1.8 보정 경로)
         Optional<PgInbox> existing = pgInboxRepository.findByOrderId(orderId);
         if (existing.isEmpty()) {
-            pgInboxRepository.transitNoneToInProgress(orderId, payloadAmountLong);
+            // PCS-9: transitNoneToInProgress → transitDirectToInProgress (PENDING 우회)
+            pgInboxRepository.transitDirectToInProgress(orderId, payloadAmountLong);
         }
+        // transitToQuarantined: 같은 @Transactional TX 안에서 호출 (D-F2 atomicity 봉인)
         pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
 
         long outboxId = enqueueOutbox(

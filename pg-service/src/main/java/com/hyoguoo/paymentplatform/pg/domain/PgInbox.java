@@ -11,6 +11,12 @@ import java.time.Instant;
  */
 public class PgInbox {
 
+    /**
+     * DB row pk. JPA 어댑터가 toDomain() 에서 주입한다.
+     * 신규 생성(INSERT 전) 객체에서는 null — id 필요 시 저장 후 반환값을 사용한다.
+     * PCS-9 REFACTOR: PgConfirmService.handleActiveInbox 에서 채널 재적재 시 inboxId 로 사용.
+     */
+    private final Long id;
     private final String orderId;
     private PgInboxStatus status;
     private final Long amount;
@@ -18,15 +24,28 @@ public class PgInbox {
     private String reasonCode;
     private final Instant createdAt;
     private Instant updatedAt;
+    /**
+     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 결제 키.
+     * 워커(PgInboxProcessor)가 inboxId 기반 재조회 후 PgConfirmRequest 구성에 사용한다.
+     */
+    private final String paymentKey;
+    /**
+     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
+     */
+    private final String vendorType;
 
     private PgInbox(
+            Long id,
             String orderId,
             PgInboxStatus status,
             Long amount,
             String storedStatusResult,
             String reasonCode,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
+        this.id = id;
         this.orderId = orderId;
         this.status = status;
         this.amount = amount;
@@ -34,23 +53,91 @@ public class PgInbox {
         this.reasonCode = reasonCode;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
-    }
-
-    public static PgInbox create(String orderId, Long amount) {
-        Instant now = Instant.now();
-        return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
+        this.paymentKey = paymentKey;
+        this.vendorType = vendorType;
     }
 
     /**
-     * fixed Instant 주입 오버로드 —시간 결정성 테스트용.
+     * 정상 경로 신규 inbox 생성 — PENDING 상태로 시작.
+     * listener TX 에서 PENDING INSERT 시 사용.
+     *
+     * @param orderId    주문 ID
+     * @param amount     결제 금액
+     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
+     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     */
+    public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
+        Instant now = Instant.now();
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+    }
+
+    /**
+     * 하위 호환 오버로드 — paymentKey / vendorType null 기본값.
+     * 기존 테스트 코드 호환성 유지 (PCS-9).
+     *
+     * @param orderId 주문 ID
+     * @param amount  결제 금액
+     */
+    public static PgInbox create(String orderId, Long amount) {
+        Instant now = Instant.now();
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+    }
+
+    /**
+     * fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     *
+     * @param orderId    주문 ID
+     * @param amount     결제 금액
+     * @param now        현재 Instant (clock.instant() 전달)
+     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
+     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     */
+    public static PgInbox create(String orderId, Long amount, Instant now, String paymentKey, String vendorType) {
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+    }
+
+    /**
+     * fixed Instant 주입 오버로드 — paymentKey / vendorType null 기본값. 하위 호환.
      *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      * @param now     현재 Instant (clock.instant() 전달)
      */
     public static PgInbox create(String orderId, Long amount, Instant now) {
-        return new PgInbox(orderId, PgInboxStatus.NONE, amount, null, null, now, now);
+        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+    }
+
+    /**
+     * 보정 경로 전용 — PENDING 우회, 바로 IN_PROGRESS 신설.
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     *
+     * @param orderId 주문 ID
+     * @param amount  결제 금액
+     */
+    public static PgInbox createDirectInProgress(String orderId, Long amount) {
+        Instant now = Instant.now();
+        return new PgInbox(null, orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now, null, null);
+    }
+
+    /**
+     * 보정 경로 전용 — PENDING 우회, 바로 terminal 상태(APPROVED / QUARANTINED) 신설.
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     *
+     * @param orderId            주문 ID
+     * @param amount             결제 금액
+     * @param terminalStatus     APPROVED 또는 QUARANTINED (terminal 이어야 함)
+     * @param storedStatusResult 벤더 응답 JSON
+     * @throws IllegalArgumentException terminal 이 아닌 status 전달 시
+     */
+    public static PgInbox createDirectTerminal(
+            String orderId, Long amount, PgInboxStatus terminalStatus, String storedStatusResult) {
+        if (!terminalStatus.isTerminal()) {
+            throw new IllegalArgumentException(
+                    "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
+        }
+        Instant now = Instant.now();
+        return new PgInbox(null, orderId, terminalStatus, amount, storedStatusResult, null, now, now, null, null);
     }
 
     public static PgInbox of(
@@ -61,7 +148,46 @@ public class PgInbox {
             String reasonCode,
             Instant createdAt,
             Instant updatedAt) {
-        return new PgInbox(orderId, status, amount, storedStatusResult, reasonCode, createdAt, updatedAt);
+        return new PgInbox(
+                null, orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, null, null);
+    }
+
+    public static PgInbox of(
+            String orderId,
+            PgInboxStatus status,
+            Long amount,
+            String storedStatusResult,
+            String reasonCode,
+            Instant createdAt,
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
+        return new PgInbox(null, orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, paymentKey, vendorType);
+    }
+
+    /**
+     * JPA 어댑터 전용 — DB row pk 포함 재구성.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity#toDomain()} 에서만 사용.
+     */
+    public static PgInbox ofWithId(
+            Long id,
+            String orderId,
+            PgInboxStatus status,
+            Long amount,
+            String storedStatusResult,
+            String reasonCode,
+            Instant createdAt,
+            Instant updatedAt,
+            String paymentKey,
+            String vendorType) {
+        return new PgInbox(id, orderId, status, amount, storedStatusResult, reasonCode,
+                createdAt, updatedAt, paymentKey, vendorType);
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getOrderId() {
@@ -92,32 +218,42 @@ public class PgInbox {
         return updatedAt;
     }
 
+    public String getPaymentKey() {
+        return paymentKey;
+    }
+
+    public String getVendorType() {
+        return vendorType;
+    }
+
     /**
-     * NONE → IN_PROGRESS 도메인 전이.
+     * PENDING → IN_PROGRESS 도메인 전이.
      * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다(옵션 A — SQL CAS 가 race window 최종 가드).
+     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
      *
-     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
      */
     public void markInProgress() {
-        if (this.status != PgInboxStatus.NONE) {
+        if (this.status != PgInboxStatus.PENDING) {
             throw new IllegalStateException(
-                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+                    "PgInbox.markInProgress: status must be PENDING but was " + this.status);
         }
         this.status = PgInboxStatus.IN_PROGRESS;
         this.updatedAt = Instant.now();
     }
 
     /**
-     * fixed Instant 주입 오버로드 —NONE → IN_PROGRESS 전이 + updatedAt 결정성.
+     * fixed Instant 주입 오버로드 — PENDING → IN_PROGRESS 전이 + updatedAt 결정성.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
      *
      * @param updatedAt 갱신 시각 (clock.instant() 전달)
-     * @throws IllegalStateException NONE 이 아닌 상태에서 호출 시
+     * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
      */
     public void markInProgress(Instant updatedAt) {
-        if (this.status != PgInboxStatus.NONE) {
+        if (this.status != PgInboxStatus.PENDING) {
             throw new IllegalStateException(
-                    "PgInbox.markInProgress: status must be NONE but was " + this.status);
+                    "PgInbox.markInProgress: status must be PENDING but was " + this.status);
         }
         this.status = PgInboxStatus.IN_PROGRESS;
         this.updatedAt = updatedAt;

@@ -40,7 +40,8 @@ class PgInboxClockTest {
         // then
         assertThat(inbox.getCreatedAt()).isEqualTo(FIXED_INSTANT);
         assertThat(inbox.getUpdatedAt()).isEqualTo(FIXED_INSTANT);
-        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.NONE);
+        // PCS-2: create 는 이제 PENDING 으로 시작 (NONE 폐기)
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
     }
 
     /**
