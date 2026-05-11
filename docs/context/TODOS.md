@@ -1,8 +1,30 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-05-11 (PR #74 머지 후 재정리 — 부하 측정 / 인프라 의존 항목 Phase 5 로 이동, 현재 과업 = 위키 정합 + 측정 무관 코드 청결도).
+> 최종 갱신: 2026-05-11 (PR #74 머지 후 재정리 — 부하 측정 / 인프라 의존 항목 Phase 5 로 이동, 현재 과업 = 위키 정합 + 측정 무관 코드 청결도. 진행 단위는 3 PR 묶음으로 봉인).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
+
+---
+
+## 토픽 묶음 계획 (PR 단위)
+
+현재 과업 7개를 3 PR 로 진행. 작은 청소 → 도메인 결정 → 큰 정합성 순서.
+
+| PR | 묶음명 | 토픽 | 크기 | 성격 |
+|---|---|---|---|---|
+| **A** | 코드 청소 4건 | TC-16, TC-10, TC-2, TC-5 | ~2일 | 도메인 결정 없음, 영역 분리 |
+| **B** | 도메인 결정 묶음 | TC-4, TC-8 | ~3~4일 | EXPIRED 정책 + 시간 추상화 표준 결정 동반 |
+| **C** | EOS 전환 (위키 정합) | TC-13 | ~1주+ | 가용성 결 트레이드오프 결정 동반 |
+
+### 묶음 근거
+
+- **PR A** — 모두 작은 청소. 도메인 결정 없고 영역이 분리됨 (pg-service 도메인 / Flyway / ControllerAdvice / Lombok 패턴). plan / review 단계 부담 적음.
+- **PR B** — 둘 다 도메인 결정 동반 (EXPIRED 전이 정책 + Clock vs LocalDateTimeProvider). 시간 표준 결정이 EXPIRED 만료 시각 타입에 영향이라 같이 가는 게 자연스러움.
+- **PR C** — 가용성 결 트레이드오프 (Kafka tx coordinator 의존) 결정 동반. 변경 범위 가장 큼.
+
+### 권장 순서
+
+A → B → C. 작은 청소로 직전 토픽 (PG-CONFIRM-LISTENER-SPLIT) 맥락 살아있을 때 마무리하고, 도메인 결정 묶음 거쳐 EOS 큰 토픽으로.
 
 ---
 
@@ -10,7 +32,7 @@
 
 ### A. 위키 정합 (큰 토픽 1)
 
-#### TC-13 — payment-service EOS 전환 (위키 sync 잔여 갭)
+#### TC-13 — payment-service EOS 전환 (위키 sync 잔여 갭) `[PR C]`
 
 위키 (`message-delivery-and-dedupe.md` / `outbox-pattern.md` / `tx-scope.md` / `event-driven-choreography.md`) 가 EOS (Exactly-Once Semantics) 톤으로 봉인된 상태. STOCK-COMPENSATION-RECOVERY 봉인으로 일부 해소됐고, 잔여 갭만 후속 처리 필요.
 
@@ -55,25 +77,25 @@
 
 ### B. 코드 청결도 (측정 무관 6개)
 
-#### TC-2 — Seed 데이터 분리 (운영 안전성)
+#### TC-2 — Seed 데이터 분리 (운영 안전성) `[PR A]`
 
 - `product/V2__seed_product_stock.sql`, `user/V2__seed_user.sql` 가 운영 배포에도 같이 적용됨
 - 옵션: `spring.flyway.locations` 환경별 분리 또는 placeholder 활용
 - 현재는 데모 / 스모크 환경에서 동작하므로 우선순위 낮음
 
-#### TC-4 — EXPIRED 만료 스케줄러 정책 명확화
+#### TC-4 — EXPIRED 만료 스케줄러 정책 명확화 `[PR B]`
 
 - `PaymentEventStatus.EXPIRED` 정의는 있으나 도메인 매핑은 일부만 활성
 - 만료 스케줄러 정책 (몇 시간 후 EXPIRED 전이?) 별도 토픽 정리 필요
 
-#### TC-5 — Retryable 예외 ControllerAdvice 매핑 보강
+#### TC-5 — Retryable 예외 ControllerAdvice 매핑 보강 `[PR A]`
 
 - `ProductServiceRetryableException` / `UserServiceRetryableException` 가 ControllerAdvice 매처 미등록 → 클라이언트엔 503/429 가 500 으로 보임
 - pre-existing 이슈, CLIENT-SIDE-LB 회귀 아님
 - ErrorDecoder + 어댑터 try/catch 가 명시적으로 throw 하기 시작했으니 정렬 가치 있음
 - 처리 시: HTTP 503 / 429 로 정확히 노출 + Retry-After 헤더 포함 검토
 
-#### TC-8 — 시간 추상화 통합 (Clock / Instant / LocalDateTime 혼용 정리)
+#### TC-8 — 시간 추상화 통합 (Clock / Instant / LocalDateTime 혼용 정리) `[PR B]`
 
 서비스 간 + 서비스 내부에서 시간 처리 방식이 일관되지 않음.
 
@@ -104,7 +126,7 @@
 - `pg-service/.../domain/PgOutbox.java:45,51` (동)
 - `pg-service/.../infrastructure/gateway/toss/TossPaymentGatewayStrategy.java:244` (LocalDateTime.now() 잔존)
 
-#### TC-10 — pg-service 도메인 객체 생성자 패턴 통일 (PgInbox / PgOutbox)
+#### TC-10 — pg-service 도메인 객체 생성자 패턴 통일 (PgInbox / PgOutbox) `[PR A]`
 
 **현황**:
 - payment-service 의 `PaymentOutbox` / `StockOutbox` 등은 `@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")` + `@AllArgsConstructor(PRIVATE)` + factory method (`createPending` 등) 안에서 builder 사용 — 일관 패턴
@@ -127,7 +149,7 @@
 - `payment-service/.../domain/StockOutbox.java:21` (참조 패턴)
 - 호출처 10곳 (PgConfirmService / PgVendorCallService / PgDlqService / PgFinalConfirmationGate / DuplicateApprovalHandler)
 
-#### TC-16 — PgInboxAmountService dead service 제거
+#### TC-16 — PgInboxAmountService dead service 제거 `[PR A]`
 
 `PgInboxAmountService` 는 main 코드 호출처가 0인 dead service. PG-CONFIRM-LISTENER-SPLIT (PCS-9) 에서 포트 메서드(`transitNoneToInProgress`) 삭제에 따른 컴파일 에러 해소만 진행했고, dead service 자체 제거는 별 토픽으로 분리됨.
 
