@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-09 — PG-CONFIRM-LISTENER-SPLIT 봉인 (PCS-1~16 16태스크 + review 라운드 2 양쪽 pass + 294 PASS / 0 FAIL). PR 생성 대기.
+> 최종 수정: 2026-05-12 — CLEANUP-BATCH-A 봉인 (CBA-1~12 12태스크 + review 라운드 1 양쪽 pass + 702 PASS / 0 FAIL). PR 생성 대기.
 
 ## 활성 작업
 
@@ -8,7 +8,15 @@
 
 ## 직전 봉인
 
-- **PG-CONFIRM-LISTENER-SPLIT** (pg-service Kafka listener TX 에서 벤더 호출 분리, 2026-05-09) — `docs/archive/pg-confirm-listener-split/`
+- **CLEANUP-BATCH-A** (PR 묶음 A — 코드 청소 4건, 2026-05-12) — `docs/archive/cleanup-batch-a/`
+  - §1.1 TC-16 `PgInboxAmountService` dead service 본체 + 단독 테스트 2 파일 삭제 + 영구 문서 dangling 정정
+  - §1.2 TC-10 `PgInbox` / `PgOutbox` `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` 통일, factory only 노출, `PgOutbox` `Long id` dead parameter 제거 (호출처 5 파일 정정), payment-service `PaymentOutbox` 패턴과 정합
+  - §1.3 TC-2 product / user-service Flyway `db/migration/` → `db/schema/` + `db/seed/` 분리, `application-docker.yml` 의 `spring.flyway.locations: classpath:db/schema` override 로 운영 seed 차단, `FlywayDockerProfileTest` Testcontainers 검증 (product-service)
+  - §1.4 TC-5 payment-service `PaymentExceptionHandler` 에 `ProductServiceRetryableException` / `UserServiceRetryableException` → 503 + `Retry-After: 5` 헤더 일괄 매핑
+  - 영구 문서 6개 갱신 (CONFIRM-FLOW / PAYMENT-FLOW / STACK / CONVENTIONS / STRUCTURE / TODOS)
+  - 후속 등재 — `[NET-RETRY]` (Feign ErrorDecoder 429/503 분기) / `[FLYWAY-USER-SEED-GAP]` (user-service Testcontainers 동등)
+  - `./gradlew test` 698 → 702 PASS / 0 FAIL (+4)
+- **PG-CONFIRM-LISTENER-SPLIT** (pg-service Kafka listener TX 에서 벤더 호출 분리, 2026-05-09 PR #74 머지) — `docs/archive/pg-confirm-listener-split/`
   - `PgInboxPendingService` (listener TX timeout=5s, INSERT IGNORE + publishEvent) + `PgInboxChannel` (LinkedBlockingQueue cap=1024) + `PgInboxImmediateWorker` (VT 5, status 4분기 dispatch) + `PgInboxPollingWorker` (60s 통일, PENDING/IN_PROGRESS 두 경로, 새 OTel root span)
   - `PgInboxStatus` PENDING 추가 + NONE 폐기 + Flyway V2~V3 (PENDING enum + paymentKey/vendorType 컬럼)
   - 보정 경로 PENDING 우회 룰 (`DuplicateApprovalHandler` `transitDirectToTerminal` / `transitDirectToInProgress`)
@@ -27,12 +35,14 @@
 - **MSA-TRANSITION** (Phase 0~3.5 완료) — `docs/archive/msa-transition/`
 - **PRE-PHASE-4-HARDENING** (3축 19태스크 + K1~K15) — `docs/archive/pre-phase-4-hardening/`
 - **PHASE-4-READINESS-SWEEP** (Self-loop 정리, 2026-04-27) — `docs/archive/phase-4-readiness-sweep/`
-- 봉인 시점 코드 상태: 4서비스(payment/pg/product/user) + Eureka + Gateway, Kafka 양방향 confirm, AMOUNT_MISMATCH 양방향 방어, payment-service 측 dedupe = Lua atomic dedup token (orderId 단위 P8D) + Spring Kafka native `DefaultErrorHandler`, client-side LB (LoadBalanced WebClient + OpenFeign), Redis `appendfsync=always`, **pg-service listener TX 분리 (PgInboxPendingService) + inbox 작업 큐 (cap=1024) + VT 워커 5 + 60s 좀비 폴링 (PENDING/IN_PROGRESS) + 보정 경로 PENDING 우회 + PgTerminalReemitService 별 빈**
+- 봉인 시점 코드 상태: 4서비스(payment/pg/product/user) + Eureka + Gateway, Kafka 양방향 confirm, AMOUNT_MISMATCH 양방향 방어, payment-service 측 dedupe = Lua atomic dedup token (orderId 단위 P8D) + Spring Kafka native `DefaultErrorHandler`, client-side LB (LoadBalanced WebClient + OpenFeign), Redis `appendfsync=always`, pg-service listener TX 분리 (PgInboxPendingService) + inbox 작업 큐 (cap=1024) + VT 워커 5 + 60s 좀비 폴링 (PENDING/IN_PROGRESS) + 보정 경로 PENDING 우회 + PgTerminalReemitService 별 빈, **pg-service `PgInbox` / `PgOutbox` 의 `@Builder + @AllArgsConstructor(PRIVATE)` 통일 + Flyway db/schema+db/seed 환경 분리 + payment-service `Retryable` 예외 503+Retry-After 매핑**
 
 ## 다음 토픽 후보
 
+- **`PR B (TC-4 + TC-8)`** — 도메인 결정 묶음 (EXPIRED 만료 스케줄러 정책 + Clock/Instant/LocalDateTime 시간 추상화 통합)
+- **`PR C (TC-13)`** — payment-service EOS 전환 (위키 정합 잔여 갭, stock_outbox 묶음 제거 + Kafka tx)
+- **`[NET-RETRY]`** (CLEANUP-BATCH-A 후속) — Feign ErrorDecoder 429/503 분기 보존 + 비-503 5xx (500/502/504) 매핑
+- **`[FLYWAY-USER-SEED-GAP]`** (CLEANUP-BATCH-A 후속) — user-service Testcontainers 동등 검증
 - **`PHASE-4`** — Toxiproxy 8종 장애 주입 시나리오 + k6 시나리오 재설계 + 로컬 오토스케일러
-- **`STOCK-COMPENSATION-OTHER-PATHS`** (후속) — `OutboxAsyncConfirmService.compensateStock` / `PaymentTransactionCoordinator.compensateStockCacheGuarded` 의 동일 silent loss 패턴 회복 (review Domain D1 인지: confirm TX 실패 보상 시 `decrement:done` token 정합 — token DEL 또는 compensation token 박기 정책 정밀화 필요)
-- **`TC-13`** — payment-service confirmed consumer EOS 전환 (위키-코드 sync 잔여 갭, stock_outbox 묶음 제거 + Kafka tx)
-- **`TC-15`** — PG-CONFIRM-LISTENER-SPLIT PHASE2 정밀화 (워커 VT 풀 / 채널 cap / 좀비 임계 측정 기반 정밀화, 멀티 인스턴스 worker concurrency 검증, 좀비 폴링 traceparent 이어붙이기)
-- **`TC-16`** — `PgInboxAmountService` dead service 제거
+- **`STOCK-COMPENSATION-OTHER-PATHS`** (후속) — `OutboxAsyncConfirmService.compensateStock` / `PaymentTransactionCoordinator.compensateStockCacheGuarded` 의 동일 silent loss 패턴 회복
+- **`TC-15`** — PG-CONFIRM-LISTENER-SPLIT PHASE2 정밀화

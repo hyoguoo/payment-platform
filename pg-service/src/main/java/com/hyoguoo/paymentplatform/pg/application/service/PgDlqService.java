@@ -85,7 +85,7 @@ public class PgDlqService {
 
         // 4단계: pg_outbox INSERT — topic=payment.events.confirmed, QUARANTINED 페이로드
         String payload = buildQuarantinedPayload(orderId, inbox.getAmount());
-        PgOutbox outbox = PgOutbox.create(null, PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_QUARANTINED,

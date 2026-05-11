@@ -9,10 +9,13 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockE
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -93,6 +96,24 @@ public class PaymentExceptionHandler {
                                 e.getMessage()
                         )
                 );
+    }
+
+    @ExceptionHandler(ProductServiceRetryableException.class)
+    public ResponseEntity<ErrorResponse> handleProductServiceRetryable(ProductServiceRetryableException e) {
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+        return retryableServiceUnavailable(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(UserServiceRetryableException.class)
+    public ResponseEntity<ErrorResponse> handleUserServiceRetryable(UserServiceRetryableException e) {
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+        return retryableServiceUnavailable(e.getCode(), e.getMessage());
+    }
+
+    private ResponseEntity<ErrorResponse> retryableServiceUnavailable(String code, String message) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "5")
+                .body(ErrorResponse.of(code, message));
     }
 }
 

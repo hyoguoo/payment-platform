@@ -113,7 +113,8 @@ payment-platform/
     │       ├── application-docker.yml
     │       ├── application-benchmark.yml   # (payment-service 만)
     │       ├── application-smoke.yml       # (pg-service 만)
-    │       ├── db/migration/               # Flyway V1 schema + (필요 시) V2 seed
+    │       ├── db/schema/                  # Flyway V1 schema (payment / pg / product / user 모두)
+    │       ├── db/seed/                    # Flyway V2 seed (product / user — local/test profile 에서만 적용, docker profile 차단)
     │       ├── lua/                        # Redis Lua 스크립트 (payment-service 만 — stock_decrement_atomic.lua, stock_compensation_atomic.lua)
     │       ├── static/                     # 결제 UI (payment-service 만)
     │       ├── templates/                  # Thymeleaf admin (payment-service 만)
@@ -196,5 +197,5 @@ flowchart TD
 | pg inbox 좀비 폴링 | `pg-service/.../infrastructure/scheduler/PgInboxPollingWorker.java` |
 | 벤더 어댑터 | `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` |
 | Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
-| Flyway 마이그레이션 | `<service>/src/main/resources/db/migration/V*.sql` |
+| Flyway 마이그레이션 | `<service>/src/main/resources/db/schema/V*.sql` (필수) + `db/seed/V*.sql` (product / user 만, profile 별 적용) |
 | 영구 smoke | `scripts/smoke/*.sh` + `docs/smoke/*.md` |

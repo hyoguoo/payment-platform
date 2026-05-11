@@ -399,7 +399,7 @@ payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s)
 | Toss strategy | `pg-service/.../infrastructure/gateway/toss/TossPaymentGatewayStrategy.java` |
 | NicePay strategy | `pg-service/.../infrastructure/gateway/nicepay/NicepayPaymentGatewayStrategy.java` |
 | Fake strategy (smoke) | `pg-service/.../infrastructure/gateway/fake/FakePgGatewayStrategy.java` |
-| amount 양방향 방어 | `pg-service/.../application/service/PgInboxAmountService.java` |
+| amount 양방향 방어 | `AmountConverter.fromBigDecimalStrict` (`PgInboxRepositoryImpl.insertPending` + `DuplicateApprovalHandler.amountMismatch` 경로) |
 | 중복 승인 처리 | `pg-service/.../application/service/DuplicateApprovalHandler.java` |
 | FCG (미연결) | `pg-service/.../application/service/PgFinalConfirmationGate.java` |
 | DLQ 처리 | `pg-service/.../application/service/PgDlqService.java` |

@@ -32,6 +32,50 @@ public class PaymentEvent {
 - `@Setter` 금지. 상태 변경은 도메인 메서드로
 - JPA Entity 는 `@NoArgsConstructor(access = PROTECTED)` 로 외부 생성 차단
 
+### Builder 룰 — payment-service + pg-service 정합 (CBA-8/9 봉인)
+
+**도메인 POJO 표준 패턴**:
+```java
+@Getter
+@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+public class PgInbox {
+    private Long id;
+    private PgInboxStatus status;
+    // ...
+
+    /**
+     * 외부 호출자는 factory method(create*, of, ofWithId)만 사용.
+     * allArgsBuilder() 직접 호출 금지 — factory 내부 캡슐화 전용.
+     */
+    public static PgInbox createPending(String orderId, BigDecimal amount) {
+        return allArgsBuilder()
+                .orderId(orderId)
+                .status(PgInboxStatus.PENDING)
+                .amount(amount)
+                // ...
+                .allArgsBuild();
+    }
+}
+```
+
+**factory only 노출 룰**:
+- 외부 호출자는 정적 factory 메서드만 호출 (예: `PgInbox.createPending(...)` / `PgInbox.createDirectInProgress(...)` / `PaymentOutbox.createFromCommand(...)`)
+- `allArgsBuilder()` 는 factory 내부 캡슐화 전용 — 외부 직접 호출 금지
+- 컴파일러 강제 불가 (Lombok 제약) — JavaDoc + code review 로 강제
+
+**시나리오 의도 보존**:
+- factory 시그니처가 도메인 시나리오를 명시 (예: 정상 PENDING 진입 / 보정 직접 진입 / DB 복원 / test 픽스처)
+- builder 외부 노출 시 시나리오 우회 가능 — 금지 이유
+
+**적용 위치**:
+- payment-service: `PaymentOutbox`, `StockOutbox`, `Payment`, ...
+- pg-service: `PgInbox`, `PgOutbox` (CBA-8/9, 2026-05-11)
+
+**mutable 필드 변경 룰**:
+- 상태 전이 대상 필드는 도메인 메서드로만 변경 (예: `PgInbox.markInProgress()`, `PgOutbox.markDone()`)
+- builder 는 build 시점만 — setter 노출 없음
+
 **Record DTO**:
 ```java
 public record ConfirmedEventMessage(

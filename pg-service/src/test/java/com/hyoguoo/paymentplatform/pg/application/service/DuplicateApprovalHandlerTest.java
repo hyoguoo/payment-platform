@@ -297,7 +297,8 @@ class DuplicateApprovalHandlerTest {
             // outbox save stub — 저장된 outbox 반환 (publishEvent 에서 id 필요)
             when(mockOutboxRepo.save(any())).thenAnswer(inv -> {
                 PgOutbox o = inv.getArgument(0);
-                return PgOutbox.create(99L, o.getTopic(), o.getKey(), o.getPayload(), null);
+                return PgOutbox.of(99L, o.getTopic(), o.getKey(), o.getPayload(), null,
+                        Instant.now(), null, 0, Instant.now());
             });
         }
 

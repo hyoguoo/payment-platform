@@ -2,13 +2,28 @@ package com.hyoguoo.paymentplatform.pg.domain;
 
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
 
 /**
  * pg-service business inbox 도메인 POJO.
  * JPA 엔티티(PgInboxEntity) 와 도메인 객체를 분리해 hexagonal 경계를 유지한다.
  *
  * <p>amount: 원화 최소 단위 정수 (BigDecimal → Long scale=0 변환은 {@code AmountConverter} 경유).
+ *
+ * <p><b>factory only 노출 룰</b> — 외부에서 {@code allArgsBuilder()} 직접 호출 금지.
+ * builder 는 factory 내부 캡슐화 용도이며 외부 호출자는 아래 factory method 만 사용한다:
+ * {@code create*}, {@code of}, {@code ofWithId}.
+ *
+ * <p>PG-CONFIRM-LISTENER-SPLIT 시나리오 의도 (정상 PENDING / 보정 IN_PROGRESS 우회 /
+ * 보정 terminal 우회 / DB 복원 / test 픽스처) 보존.
+ * payment-service {@code PaymentOutbox} 와 동일 Lombok builder 패턴 채택 (CBA-8).
  */
+@Getter
+@Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PgInbox {
 
     /**
@@ -34,32 +49,11 @@ public class PgInbox {
      */
     private final String vendorType;
 
-    private PgInbox(
-            Long id,
-            String orderId,
-            PgInboxStatus status,
-            Long amount,
-            String storedStatusResult,
-            String reasonCode,
-            Instant createdAt,
-            Instant updatedAt,
-            String paymentKey,
-            String vendorType) {
-        this.id = id;
-        this.orderId = orderId;
-        this.status = status;
-        this.amount = amount;
-        this.storedStatusResult = storedStatusResult;
-        this.reasonCode = reasonCode;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.paymentKey = paymentKey;
-        this.vendorType = vendorType;
-    }
-
     /**
      * 정상 경로 신규 inbox 생성 — PENDING 상태로 시작.
      * listener TX 에서 PENDING INSERT 시 사용.
+     *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
      * @param orderId    주문 ID
      * @param amount     결제 금액
@@ -68,24 +62,50 @@ public class PgInbox {
      */
     public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
         Instant now = Instant.now();
-        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PgInboxStatus.PENDING)
+                .amount(amount)
+                .storedStatusResult(null)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(paymentKey)
+                .vendorType(vendorType)
+                .allArgsBuild();
     }
 
     /**
      * 하위 호환 오버로드 — paymentKey / vendorType null 기본값.
      * 기존 테스트 코드 호환성 유지 (PCS-9).
      *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
+     *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      */
     public static PgInbox create(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PgInboxStatus.PENDING)
+                .amount(amount)
+                .storedStatusResult(null)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(null)
+                .vendorType(null)
+                .allArgsBuild();
     }
 
     /**
      * fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
      * @param orderId    주문 ID
      * @param amount     결제 금액
@@ -94,35 +114,76 @@ public class PgInbox {
      * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
      */
     public static PgInbox create(String orderId, Long amount, Instant now, String paymentKey, String vendorType) {
-        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, paymentKey, vendorType);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PgInboxStatus.PENDING)
+                .amount(amount)
+                .storedStatusResult(null)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(paymentKey)
+                .vendorType(vendorType)
+                .allArgsBuild();
     }
 
     /**
      * fixed Instant 주입 오버로드 — paymentKey / vendorType null 기본값. 하위 호환.
+     *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      * @param now     현재 Instant (clock.instant() 전달)
      */
     public static PgInbox create(String orderId, Long amount, Instant now) {
-        return new PgInbox(null, orderId, PgInboxStatus.PENDING, amount, null, null, now, now, null, null);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PgInboxStatus.PENDING)
+                .amount(amount)
+                .storedStatusResult(null)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(null)
+                .vendorType(null)
+                .allArgsBuild();
     }
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 IN_PROGRESS 신설.
      * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
      *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
+     *
      * @param orderId 주문 ID
      * @param amount  결제 금액
      */
     public static PgInbox createDirectInProgress(String orderId, Long amount) {
         Instant now = Instant.now();
-        return new PgInbox(null, orderId, PgInboxStatus.IN_PROGRESS, amount, null, null, now, now, null, null);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PgInboxStatus.IN_PROGRESS)
+                .amount(amount)
+                .storedStatusResult(null)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(null)
+                .vendorType(null)
+                .allArgsBuild();
     }
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 terminal 상태(APPROVED / QUARANTINED) 신설.
      * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     *
+     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
+     * 도메인 가드 {@code isTerminal()} 은 test 픽스처 이중화 목적 — main 보호는 어댑터 가드
+     * ({@code PgInboxRepositoryImpl.transitDirectToTerminal:150}) 가 담당한다.
      *
      * @param orderId            주문 ID
      * @param amount             결제 금액
@@ -137,9 +198,25 @@ public class PgInbox {
                     "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
         }
         Instant now = Instant.now();
-        return new PgInbox(null, orderId, terminalStatus, amount, storedStatusResult, null, now, now, null, null);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(terminalStatus)
+                .amount(amount)
+                .storedStatusResult(storedStatusResult)
+                .reasonCode(null)
+                .createdAt(now)
+                .updatedAt(now)
+                .paymentKey(null)
+                .vendorType(null)
+                .allArgsBuild();
     }
 
+    /**
+     * DB 복원 전용 7-arg 오버로드 — id null, paymentKey / vendorType null 기본값.
+     * {@link com.hyoguoo.paymentplatform.pg.infrastructure.repository.PgInboxRepositoryImpl#transitDirectToTerminal}
+     * 에서 terminal 상태 도메인 객체 생성 시 사용 (reasonCode 포함).
+     */
     public static PgInbox of(
             String orderId,
             PgInboxStatus status,
@@ -148,11 +225,23 @@ public class PgInbox {
             String reasonCode,
             Instant createdAt,
             Instant updatedAt) {
-        return new PgInbox(
-                null, orderId, status, amount, storedStatusResult, reasonCode,
-                createdAt, updatedAt, null, null);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(status)
+                .amount(amount)
+                .storedStatusResult(storedStatusResult)
+                .reasonCode(reasonCode)
+                .createdAt(createdAt)
+                .updatedAt(updatedAt)
+                .paymentKey(null)
+                .vendorType(null)
+                .allArgsBuild();
     }
 
+    /**
+     * DB 복원 9-arg 오버로드 — id null, paymentKey / vendorType 명시.
+     */
     public static PgInbox of(
             String orderId,
             PgInboxStatus status,
@@ -163,8 +252,18 @@ public class PgInbox {
             Instant updatedAt,
             String paymentKey,
             String vendorType) {
-        return new PgInbox(null, orderId, status, amount, storedStatusResult, reasonCode,
-                createdAt, updatedAt, paymentKey, vendorType);
+        return PgInbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(status)
+                .amount(amount)
+                .storedStatusResult(storedStatusResult)
+                .reasonCode(reasonCode)
+                .createdAt(createdAt)
+                .updatedAt(updatedAt)
+                .paymentKey(paymentKey)
+                .vendorType(vendorType)
+                .allArgsBuild();
     }
 
     /**
@@ -182,48 +281,18 @@ public class PgInbox {
             Instant updatedAt,
             String paymentKey,
             String vendorType) {
-        return new PgInbox(id, orderId, status, amount, storedStatusResult, reasonCode,
-                createdAt, updatedAt, paymentKey, vendorType);
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getOrderId() {
-        return orderId;
-    }
-
-    public PgInboxStatus getStatus() {
-        return status;
-    }
-
-    public Long getAmount() {
-        return amount;
-    }
-
-    public String getStoredStatusResult() {
-        return storedStatusResult;
-    }
-
-    public String getReasonCode() {
-        return reasonCode;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public String getPaymentKey() {
-        return paymentKey;
-    }
-
-    public String getVendorType() {
-        return vendorType;
+        return PgInbox.allArgsBuilder()
+                .id(id)
+                .orderId(orderId)
+                .status(status)
+                .amount(amount)
+                .storedStatusResult(storedStatusResult)
+                .reasonCode(reasonCode)
+                .createdAt(createdAt)
+                .updatedAt(updatedAt)
+                .paymentKey(paymentKey)
+                .vendorType(vendorType)
+                .allArgsBuild();
     }
 
     /**

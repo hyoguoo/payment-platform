@@ -23,6 +23,117 @@ class PgInboxTest {
     private static final Long AMOUNT = 10000L;
 
     // =========================================================================
+    // CBA-8: factory 4종 시그니처 + 필드 매핑 검증 (builder 전환 회귀 방어)
+    // =========================================================================
+
+    @Test
+    @DisplayName("create — paymentKey + vendorType 포함 4-arg 오버로드 → status=PENDING, paymentKey/vendorType 세팅")
+    void create_withPaymentKeyAndVendorType_startsPending() {
+        // when
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, "pay-key-001", "TOSS_PAYMENTS");
+
+        // then
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
+        assertThat(inbox.getPaymentKey()).isEqualTo("pay-key-001");
+        assertThat(inbox.getVendorType()).isEqualTo("TOSS_PAYMENTS");
+        assertThat(inbox.getOrderId()).isEqualTo(ORDER_ID);
+        assertThat(inbox.getAmount()).isEqualTo(AMOUNT);
+        assertThat(inbox.getId()).isNull();
+    }
+
+    @Test
+    @DisplayName("create — 2-arg 오버로드 → status=PENDING, paymentKey/vendorType null")
+    void create_withoutPaymentKey_startsPending() {
+        // when
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+
+        // then
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
+        assertThat(inbox.getPaymentKey()).isNull();
+        assertThat(inbox.getVendorType()).isNull();
+        assertThat(inbox.getId()).isNull();
+    }
+
+    @Test
+    @DisplayName("createDirectTerminal — terminal status → 성공 + storedStatusResult 세팅")
+    void createDirectTerminal_approvedStatus_succeeds() {
+        // given
+        String storedResult = "{\"status\":\"DONE\"}";
+
+        // when
+        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.APPROVED, storedResult);
+
+        // then
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(inbox.getStoredStatusResult()).isEqualTo(storedResult);
+        assertThat(inbox.getId()).isNull();
+    }
+
+    @Test
+    @DisplayName("createDirectTerminal — non-terminal status 전달 시 IllegalArgumentException (가드 보존)")
+    void createDirectTerminal_nonTerminalStatus_throwsIllegalArgument() {
+        // when / then — 도메인 가드: test 픽스처 이중화 목적 (main 보호는 어댑터 가드 담당)
+        assertThatThrownBy(() ->
+                PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.PENDING, "result"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("of — 7-arg 오버로드 → 모든 필드 정확 매핑 (builder 전환 후 silent corruption 방지)")
+    void of_sevenArg_constructsCorrectly() {
+        // given
+        Instant created = Instant.parse("2026-01-01T00:00:00Z");
+        Instant updated = Instant.parse("2026-01-01T01:00:00Z");
+
+        // when — transitDirectToTerminal 어댑터 경로와 동일한 7-arg of 호출
+        PgInbox inbox = PgInbox.of(
+                ORDER_ID,
+                PgInboxStatus.APPROVED,
+                AMOUNT,
+                "{\"status\":\"DONE\"}",
+                "REASON_CODE",
+                created,
+                updated);
+
+        // then
+        assertThat(inbox.getOrderId()).isEqualTo(ORDER_ID);
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(inbox.getAmount()).isEqualTo(AMOUNT);
+        assertThat(inbox.getStoredStatusResult()).isEqualTo("{\"status\":\"DONE\"}");
+        assertThat(inbox.getReasonCode()).isEqualTo("REASON_CODE");
+        assertThat(inbox.getCreatedAt()).isEqualTo(created);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(updated);
+        assertThat(inbox.getId()).isNull();
+        assertThat(inbox.getPaymentKey()).isNull();
+        assertThat(inbox.getVendorType()).isNull();
+    }
+
+    @Test
+    @DisplayName("ofWithId — id 포함 전체 10-arg → getId() == id (JPA 어댑터 toDomain 경로)")
+    void ofWithId_includesId() {
+        // given
+        Instant now = Instant.now();
+
+        // when
+        PgInbox inbox = PgInbox.ofWithId(
+                42L,
+                ORDER_ID,
+                PgInboxStatus.IN_PROGRESS,
+                AMOUNT,
+                null,
+                null,
+                now,
+                now,
+                "pay-key-ofwithid",
+                "NICE_PAY");
+
+        // then
+        assertThat(inbox.getId()).isEqualTo(42L);
+        assertThat(inbox.getPaymentKey()).isEqualTo("pay-key-ofwithid");
+        assertThat(inbox.getVendorType()).isEqualTo("NICE_PAY");
+    }
+
+    // =========================================================================
     // PCS-2: create — PENDING 시작
     // =========================================================================
 
