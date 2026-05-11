@@ -50,7 +50,6 @@ public class PgTerminalReemitService {
         }
 
         PgOutbox reemit = PgOutbox.create(
-                null,
                 PgTopics.EVENTS_CONFIRMED,
                 inbox.getOrderId(),
                 storedResult,
