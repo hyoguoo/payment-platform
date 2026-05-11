@@ -101,19 +101,19 @@ public class PaymentExceptionHandler {
     @ExceptionHandler(ProductServiceRetryableException.class)
     public ResponseEntity<ErrorResponse> handleProductServiceRetryable(ProductServiceRetryableException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
-
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .header(HttpHeaders.RETRY_AFTER, "5")
-                .body(ErrorResponse.of(e.getCode(), e.getMessage()));
+        return retryableServiceUnavailable(e.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(UserServiceRetryableException.class)
     public ResponseEntity<ErrorResponse> handleUserServiceRetryable(UserServiceRetryableException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+        return retryableServiceUnavailable(e.getCode(), e.getMessage());
+    }
 
+    private ResponseEntity<ErrorResponse> retryableServiceUnavailable(String code, String message) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "5")
-                .body(ErrorResponse.of(e.getCode(), e.getMessage()));
+                .body(ErrorResponse.of(code, message));
     }
 }
 
