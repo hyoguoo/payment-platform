@@ -455,7 +455,9 @@ class FlywayDockerProfileTest {
 
 ---
 
-### CBA-12 — TODOS.md 갱신 — [PR A] 4항목 제거 + D3 후속 등재
+### CBA-12 — TODOS.md 갱신 — [PR A] 4항목 제거 + D3 후속 등재 ✅
+
+> **완료** (2026-05-11): TC-16/TC-2/TC-5/TC-10 완료 섹션 이전 (한 줄 요약). [NET-RETRY] Feign ErrorDecoder 분기 보존 + 비-503 5xx 갭 등재. [FLYWAY-USER-SEED-GAP] user-service Testcontainers 검증 부재 등재. PR 묶음 표 PR A 행 완료 표기. STATE.md stage execute → review 전환.
 
 **목적**: D3 + §1.4 비범위 — `[PR A]` 태그 4항목 (TC-2, TC-5, TC-10, TC-16) 을 TODOS.md 에서 제거하고, `Feign ErrorDecoder 429/503 분기 보존` 후속 토픽을 신규 항목으로 등재한다. 503 일괄 매핑이 코드에 박힌 결정과 묶여 부채가 시야에서 사라지지 않도록 가시화한다.
 
