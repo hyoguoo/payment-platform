@@ -371,7 +371,7 @@ class FlywayDockerProfileTest {
 
 ### CBA-9 — PgOutbox 도메인 builder 전환 + id dead parameter 제거 ✅
 
-> **완료** (2026-05-11): `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` 적용. 명시 생성자 본체 제거. factory 3종 (`create`/`createWithAvailableAt`/`of`) 본문을 `allArgsBuilder()...allArgsBuild()` 호출로 교체. `create` / `createWithAvailableAt` 시그니처에서 `Long id` dead parameter 제거 (main 10건 모두 null 제거). `DuplicateApprovalHandlerTest:300` 의 `PgOutbox.create(99L, ...)` → `PgOutbox.of(99L, ...)` 교체. 클래스 레벨 + factory 3종 JavaDoc 추가 (factory only 룰 + Long id 제거 사유). `PgOutboxTest` 신규 3건 추가. pg-service 296→299 PASS / 0 FAIL. 전체 PASS.
+> **완료** (2026-05-11): `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` 적용. 명시 생성자 본체 제거. factory 3종 (`create`/`createWithAvailableAt`/`of`) 본문을 `allArgsBuilder()...allArgsBuild()` 호출로 교체. `create` / `createWithAvailableAt` 시그니처에서 `Long id` dead parameter 제거 (main 10건 모두 null 제거). `DuplicateApprovalHandlerTest:300` 의 `PgOutbox.create(99L, ...)` → `PgOutbox.of(99L, ...)` 교체. 클래스 레벨 + factory 3종 JavaDoc 추가 (factory only 룰 + Long id 제거 사유). `PgOutboxTest` 신규 3건 추가. pg-service 296→299 PASS / 0 FAIL. 전체 PASS. GREEN prefix `refactor:` 채택 (dead parameter 제거가 본질) — CBA-6/8 의 `feat:` 와 일관성 미세 차이, 의도된 결정.
 
 **목적**: §1.2 (TC-10) — `PgOutbox` 에 동일 builder 패턴 적용. `create` / `createWithAvailableAt` 의 `Long id` dead parameter (main 호출처 10건 모두 null — Round 2 흡수 D2 정정) 를 제거. 호출처 5 파일 (create ×9 + createWithAvailableAt ×1 = 10건) 의 `null` 인자 제거. test 1건 (`DuplicateApprovalHandlerTest:304`) 의 `PgOutbox.create(99L, ...)` → `PgOutbox.of(99L, ...)` 교체.
 
