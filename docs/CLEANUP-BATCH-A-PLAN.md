@@ -146,7 +146,9 @@ flowchart LR
 
 <!-- Round 2 흡수 결정 (F1·F2): CBA-2 + CBA-4 는 단일 커밋으로 묶는다. CBA-2 단독 커밋 금지 — 빈 db/migration 을 가리키는 yml 중간 상태에서 product-service 빌드 깨짐. 메타 commit 묶음 정책 항목에 동일 룰 명시. -->
 
-### CBA-2 — product-service SQL 파일 이동 (db/migration → db/schema + db/seed)
+### CBA-2 — product-service SQL 파일 이동 (db/migration → db/schema + db/seed) ✅
+
+> **완료** (2026-05-11): V1__product_schema.sql → db/schema/, V2__seed_product_stock.sql → db/seed/ git mv 이동. db/migration 디렉토리 삭제. CBA-4 와 단일 커밋으로 묶음.
 
 **목적**: §1.3 (TC-2) — product-service 의 Flyway SQL 파일을 `db/migration/` 에서 `db/schema/` 와 `db/seed/` 로 물리 분리한다. 기존 `db/migration/` 디렉토리는 삭제한다.
 
@@ -180,7 +182,9 @@ flowchart LR
 
 ---
 
-### CBA-4 — product-service application.yml + application-docker.yml Flyway locations 수정
+### CBA-4 — product-service application.yml + application-docker.yml Flyway locations 수정 ✅
+
+> **완료** (2026-05-11): application.yml `spring.flyway.locations: classpath:db/schema,classpath:db/seed`. application-docker.yml `spring.flyway.locations: classpath:db/schema` override 추가. product-service 19 PASS / 0 FAIL.
 
 **목적**: §1.3 (TC-2) — default profile 은 schema + seed 둘 다 적용, docker profile 은 schema 만 적용하도록 `spring.flyway.locations` 를 설정한다.
 

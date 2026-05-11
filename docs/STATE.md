@@ -1,11 +1,11 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-11 — CBA-1 완료 (PgInboxAmountService dead service 제거 + context 문서 정정). 활성 태스크 CBA-2.
+> 최종 수정: 2026-05-11 — CBA-2+CBA-4 완료 (product-service Flyway db/schema+db/seed 분리 + yml locations override). 활성 태스크 CBA-3.
 
 ## 활성 작업
 
 - **주제**: CLEANUP-BATCH-A (코드 청소 4건 묶음 — TC-16 + TC-10 + TC-2 + TC-5)
-- **단계**: execute (활성 태스크 CBA-2 — product-service SQL 파일 이동 (migration → schema/seed))
+- **단계**: execute (활성 태스크 CBA-3 — user-service SQL 파일 이동 (migration → schema/seed))
 - **채택안**: 단일 토픽 4 sub-section. §1.1 `PgInboxAmountService` dead service 제거 + §1.2 `PgInbox` / `PgOutbox` 의 `@Builder + @AllArgsConstructor(PRIVATE)` 패턴 통일 (factory only 노출) + §1.3 Flyway `db/schema/` + `db/seed/` 디렉토리 분리 (`docker` profile 은 schema 만) + §1.4 `Retryable` 예외 503 + `Retry-After: 5` 일괄 매핑. cross 의존 0, implement 권고 순서 §1.1 → §1.3 → §1.4 → §1.2.
 - **이슈**: #75
 - **브랜치**: #75
@@ -29,7 +29,6 @@
 - [x] discuss
 - [x] plan
 - [x] plan-review
-- [ ] execute
 - [ ] execute
 - [ ] review
 - [ ] verify
