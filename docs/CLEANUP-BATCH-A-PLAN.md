@@ -119,7 +119,9 @@ flowchart LR
 
 ---
 
-### CBA-1 — PgInboxAmountService + 단독 테스트 2 파일 삭제
+### CBA-1 — PgInboxAmountService + 단독 테스트 2 파일 삭제 ✅
+
+> **완료** (2026-05-11): PgInboxAmountService 본체 + PgInboxAmountStorageTest (4건) 삭제. CONFIRM-FLOW.md §7/§13 + PAYMENT-FLOW.md dangling reference 정정. pg-service 290 PASS / 0 FAIL.
 
 **목적**: §1.1 (TC-16) — main 호출처 0건이 확인된 dead service 본체와 단독 테스트를 컴파일 단위에서 완전 제거한다.
 

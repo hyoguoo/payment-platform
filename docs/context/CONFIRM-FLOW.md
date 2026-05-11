@@ -251,7 +251,7 @@ sequenceDiagram
     end
 ```
 
-- **pg 측 방어 (1단)**: `PgInboxAmountService` / `AmountConverter.fromBigDecimalStrict` — scale·음수 검증. `ConfirmedEventPayload` 에 APPROVED 시 amount non-null 강제.
+- **pg 측 방어 (1단)**: `AmountConverter.fromBigDecimalStrict` — scale·음수 검증 (`PgInboxRepositoryImpl.insertPending` 경로 + `DuplicateApprovalHandler.amountMismatch` 경로). TC-16 dead service 제거 완료. `ConfirmedEventPayload` 에 APPROVED 시 amount non-null 강제.
 - **payment 측 방어 (2단)**: `isAmountMismatch(paymentEvent, message.amount)` — `paymentEvent.getTotalAmount().longValueExact()` 와 수신 amount 대조. `message.amount` null → 불일치로 처리.
 
 ---
@@ -427,7 +427,7 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | stock 중복 발행 방지 | `StockOutbox.processedAt != null` 체크 (단순 mark) | `StockOutboxRelayService.relay` |
 | product 재고 이중 차감 방지 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe 테이블, 재고 차감과 같은 TX) | product-service 측 |
 | 상태 전이 재진입 | `PaymentEventStatus.isTerminal()` + domain 메서드 guard — terminal 상태 재전이 차단 | `PaymentEvent.quarantine`, `markPaymentAsDone` 등 |
-| AMOUNT_MISMATCH | 양방향 방어 — pg 발행 시 non-null 강제 + payment 수신 시 대조 | `PgInboxAmountService` (pg) + `isAmountMismatch` (payment) |
+| AMOUNT_MISMATCH | 양방향 방어 — pg 발행 시 non-null 강제 + payment 수신 시 대조 | `AmountConverter.fromBigDecimalStrict` (pg — `insertPending` 경로) + `isAmountMismatch` (payment) |
 
 ---
 
