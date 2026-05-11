@@ -264,7 +264,9 @@ public ResponseEntity<ErrorResponse> handleUserServiceRetryable(UserServiceRetry
 
 ---
 
-### CBA-7 — FlywayDockerProfileTest — Testcontainers docker profile seed 차단 검증
+### CBA-7 — FlywayDockerProfileTest — Testcontainers docker profile seed 차단 검증 ✅
+
+> **완료** (2026-05-11): FlywayDockerProfileTest 신규 추가 — CBA-4 이미 적용 상태라 RED 없이 GREEN 직행. product-service integrationTest 1 PASS / 0 FAIL. flyway_schema_history row count 1 (V1 only), product row count 0 확인. product-service build.gradle Testcontainers 의존성 + integrationTest task 추가. docker-java.properties (api.version=1.44) test/resources 에 추가.
 
 **목적**: §1.3 (TC-2) — `application-docker.yml` 의 `spring.flyway.locations: classpath:db/schema` override 가 실제 docker profile 활성 시 V2 seed 를 차단하는지 Testcontainers 통합 테스트로 검증한다.
 

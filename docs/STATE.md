@@ -1,11 +1,11 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-11 — CBA-3+CBA-5 완료 (user-service Flyway db/schema+db/seed 분리 + yml locations override). 활성 태스크 CBA-7.
+> 최종 수정: 2026-05-11 — CBA-7 완료 (FlywayDockerProfileTest — Testcontainers docker profile seed 차단 검증, integrationTest 1 PASS). 활성 태스크 CBA-6.
 
 ## 활성 작업
 
 - **주제**: CLEANUP-BATCH-A (코드 청소 4건 묶음 — TC-16 + TC-10 + TC-2 + TC-5)
-- **단계**: execute (활성 태스크 CBA-7 — FlywayDockerProfileTest — Testcontainers docker profile seed 차단 검증)
+- **단계**: execute (활성 태스크 CBA-6 — PaymentExceptionHandler 핸들러 2건 추가, §1.4 TC-5)
 - **채택안**: 단일 토픽 4 sub-section. §1.1 `PgInboxAmountService` dead service 제거 + §1.2 `PgInbox` / `PgOutbox` 의 `@Builder + @AllArgsConstructor(PRIVATE)` 패턴 통일 (factory only 노출) + §1.3 Flyway `db/schema/` + `db/seed/` 디렉토리 분리 (`docker` profile 은 schema 만) + §1.4 `Retryable` 예외 503 + `Retry-After: 5` 일괄 매핑. cross 의존 0, implement 권고 순서 §1.1 → §1.3 → §1.4 → §1.2.
 - **이슈**: #75
 - **브랜치**: #75
