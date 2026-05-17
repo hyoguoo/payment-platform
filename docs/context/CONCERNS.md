@@ -77,6 +77,13 @@
 - **수용 근거**: 학습용 프로젝트 EOS 정합 목표 (D3). 운영 환경에서는 모니터링 대시보드로 coordinator 가용성 가시화 필요 (TC-13-FOLLOW-3).
 - **처방 후속**: TC-13-FOLLOW-3 (Kafka tx coordinator 가용성 모니터링 대시보드).
 
+**EOS atomicity 정합 SSOT (RD1-2 명시):**
+- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
+- 이 구조에서 RDB commit 성공 + Kafka producer commit 실패(또는 그 역) 시 at-least-once 재배달이 발생한다.
+- **정합성 SSOT 는 EOS atomicity 자체가 아니라 "중복 시 발행 항상 진행 (위키 line 141)" 룰**: 0 row(중복) 시에도 stock-committed 발행을 진행하고, product-service `stock_commit_dedupe` 가 재배달을 흡수한다.
+- 즉 EOS 는 "정상 경로 중복 발행 최소화" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
+- **후속 과제**: TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 `ChainedKafkaTransactionManager` 도입 검토 (CONFIRM-FLOW.md §5 EOS atomicity SSOT 절 참조).
+
 ### L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재
 
 - **현황**: `payment_event_dedupe` 테이블에 `expires_at = receivedAt + P8D` 컬럼이 있지만 자동 cleanup 스케줄러 없음. 장기 운영 시 만료 row 누적 → 인덱스 비대 → 쿼리 성능 저하 가능.

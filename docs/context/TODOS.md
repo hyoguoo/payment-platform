@@ -69,6 +69,13 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 - **문제**: `isCompensatableByFailureHandler()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단 없음
 - **처방 후보**: `PaymentConfirmResultUseCase` 내 D7 가드 분기에 `payment_eos_guard_skip_total{status}` Micrometer 카운터 + Grafana 알람 SLO
 
+#### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 또는 ChainedKafkaTransactionManager 검토 (RD1-2)
+
+- **문제**: `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 가 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택. `KafkaTransactionManager(EOS)` 와 별개 TM 으로 동작해 crash 시 at-least-once 재배달이 발생 가능.
+- **정합 SSOT**: "중복 시 발행 항상 진행 (위키 line 141)" + product-service dedupe 조합 (CONCERNS.md L-1, CONFIRM-FLOW.md §5).
+- **처방 후보**: (a) `@Transactional("transactionManager")` qualifier 명시 (현재 동작 그대로 문서화) 또는 (b) `ChainedKafkaTransactionManager` 도입 — JPA TM 과 Kafka TM 을 체인해 원자성 강화.
+- **선행**: 운영 환경에서 at-least-once 허용 불가 수준의 중복 발생 시 우선 처리.
+
 #### TC-13-FOLLOW-5 — D7 `isCompensatableByFailureHandler` 시맨틱 SSOT 정리 (DM2-2 후속)
 
 - **문제**: `isCompensatableByFailureHandler` 가 두 사용처 (보상 핸들러 재고 복원 허용 / EOS consumer 진입 가드) 에 사용됨. 시맨틱이 두 도메인 목적을 동시에 표현해 변경 시 하나를 깨뜨릴 수 있음

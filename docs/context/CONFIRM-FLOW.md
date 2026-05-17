@@ -156,6 +156,13 @@ flowchart TD
 - consumer offset commit 이 producer 트랜잭션에 동행 (`sendOffsetsToTransaction`) — RDB commit + producer commit + offset commit 이 원자적.
 - abort 시 RDB rollback + 발행 버퍼 폐기 + offset 미커밋 → 동일 메시지 재배달.
 
+**EOS atomicity SSOT (RD1-2 명시):**
+- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
+- 결과적으로 RDB commit 과 Kafka commit 사이에 crash 시 at-least-once 재배달이 발생한다.
+- **정합성 SSOT 는 EOS atomicity 그 자체가 아니라 위키 line 141 룰**: 0 row(중복) 시에도 stock-committed 발행은 항상 진행 → product-service `stock_commit_dedupe` 가 재배달을 흡수 → 최종 재고 정합 보장.
+- 즉 EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
+- 후속 과제: `TODOS.md` TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 ChainedKafkaTransactionManager 검토.
+
 **D7 진입 가드:**
 - `paymentEvent.getStatus().isCompensatableByFailureHandler()` — READY / IN_PROGRESS / RETRYING 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
 - QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 D7 가드가 차단 — DLQ silent 분기 방지 (DR-3 가드).
