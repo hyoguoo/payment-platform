@@ -437,10 +437,11 @@ flowchart LR
   - `DROP TABLE IF EXISTS payment_stock_outbox;` 한 줄 SQL 파일 존재
   - `./gradlew test` 통합 테스트 환경에서 Flyway V1 → V2 → V3 순서 정상 적용
   - 기존 테스트 회귀 0
+- **완료 결과**: `V3__drop_payment_stock_outbox.sql` 신설. V1 실제 테이블명 `stock_outbox` 확인 (FK 없음) — DROP 대상 수정 반영. Flyway V1→V2→V3 순서 적용 검증, 385건 PASS / 0 FAIL, 회귀 0.
 - **체크리스트**:
-  - [ ] GREEN: SQL 파일 작성 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: SQL 파일 작성 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 
