@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.transaction.KafkaTransactionManager;
 
 /**
@@ -100,13 +101,30 @@ public class KafkaProducerConfig {
     }
 
     /**
+     * payment.commands.confirm 전용 ProducerFactory.
+     * PET-6 에서 stockCommittedProducerFactory 가 명시 등록된 이후
+     * Spring Boot auto-config 의 주 ProducerFactory 가 ambiguous 해져
+     * JsonSerializer 기반 타입드 주입이 깨지는 문제를 방지하기 위해 명시 정의.
+     * application.yml 의 spring.json.add.type.headers=false 와 동일한 설정 적용.
+     */
+    @Bean
+    public ProducerFactory<String, PaymentConfirmCommandMessage> commandsConfirmProducerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        return new DefaultKafkaProducerFactory<>(props);
+    }
+
+    /**
      * payment.commands.confirm 전용 템플릿.
      * 발행 주체: payment-service OutboxRelayService — pg-service 로 confirm 명령을 넘긴다.
      */
     @Bean
     public KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate(
-            ProducerFactory<String, PaymentConfirmCommandMessage> producerFactory) {
-        return buildObservedTemplate(producerFactory, commandsConfirmTopic);
+            ProducerFactory<String, PaymentConfirmCommandMessage> commandsConfirmProducerFactory) {
+        return buildObservedTemplate(commandsConfirmProducerFactory, commandsConfirmTopic);
     }
 
     /**

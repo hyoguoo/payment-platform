@@ -497,11 +497,20 @@ flowchart LR
   - `shouldSkipBusinessButResendOnDuplicateInsert()` — 동일 event_uuid 재배달 → payment 상태 불변 + stock-committed 가시화 (위키 line 141)
   - `shouldPublishDistinctIdempotencyKeyPerProductOnMultiProduct()` — PaymentOrder 2건 → stock-committed 2건 + productId 별 서로 다른 idempotencyKey + 재배달 시 두 메시지 모두 dedupe skip
   - `shouldSkipQuarantinedLateApprovedWithNoDlq()` — QUARANTINED 결제 + APPROVED 메시지 → dedupe row 0건 + payment 상태 QUARANTINED 유지 + stock-committed 0건 + DLQ 0건 + warn 로그 1건
+- **완료 결과**: `PaymentEosIntegrationTest` 신설 — 5개 시나리오 모두 GREEN.
+  - #1 정상 commit: APPROVED → dedupe 1 row + payment DONE + stock-committed 1건 read_committed 가시화
+  - #2 abort: markPaymentAsDone RuntimeException 주입 → dedupe 0 row + payment 불변 + stock-committed 0건 (발행 전 abort) + DLQ 1건 (5 retry)
+  - #3 중복 INSERT IGNORE: dedupe row 선행 삽입 → markIfAbsent 0 row → 비즈니스 skip + stock-committed 발행 + payment 불변
+  - #4 multi-product DR-1: PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성 + 재배달 dedupe skip
+  - #5 QUARANTINED D7 가드: DONE이 아닌 QUARANTINED 상태 → noop + dedupe 0 row + stock-committed 0건 + DLQ 0건
+  - SUT 수정 2건 (auto-fix Rule 1): JpaConfig — @Primary JPA transactionManager 명시 + KafkaProducerConfig — commandsConfirmProducerFactory 명시 (PET-6 @ConditionalOnMissingBean 회귀 수정)
+  - 단위 테스트 385건 PASS / 0 FAIL, 통합 테스트 5건 신규 GREEN
+
 - **체크리스트**:
-  - [ ] RED: 5개 실패 테스트 작성 + 커밋 (`test:` prefix)
-  - [ ] GREEN: 최소 구현 보완으로 GREEN + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] RED: 5개 실패 테스트 작성 + 커밋 (`test:` prefix)
+  - [x] GREEN: SUT 수정 + 테스트 GREEN + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

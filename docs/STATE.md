@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PET-11 완료 (product-service `application.yml` consumer `isolation.level=read_committed` 적용, 19건 PASS). 활성 태스크 PET-12.
+> 최종 수정: 2026-05-17 — PET-12 완료 (EOS 통합 5 시나리오 GREEN, SUT 수정 2건). 활성 태스크 PET-13.
 
 ## 활성 작업
 
