@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PET-14 완료 + execute 봉인. review 단계 진입.
+> 최종 수정: 2026-05-18 — review R1 fix 완료 (integrationTest 23/23 PASS).
 
 ## 활성 작업
 

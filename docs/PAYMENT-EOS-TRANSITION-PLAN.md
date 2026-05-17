@@ -678,3 +678,36 @@ PET-5, PET-7, PET-8, PET-10 완료 후:
 
 - 모든 critical 항목 (layer 룰, 포트 위치, 모듈 경계, 삭제 순서, orphan, StockEventUuidDeriver 보존) **정합**.
 - 2개 약한 우려 (PET-11 commit 순서, PET-6/7 TDD 분류) 는 강제 수정 아닌 검토 의견 — Critic + Domain Expert 판정 대기.
+
+---
+
+## Review Round 1 Fix (RD1)
+
+> 수행일: 2026-05-18
+
+### 직전 implementer (중단) fix 완료 + 잔존 회귀 4건 fix
+
+**직전 implementer 변경 (uncommitted 상태 인계):**
+- SCR, PET-12 EOS, JdbcPaymentEventDedupeStore, PaymentScheduler — 5건 fix 완료 (pass 확인)
+- BaseIntegrationTest Redis + ProductPort/UserPort fake bean 추가 (checkout 통합 테스트 인프라)
+- KafkaProducerConfig Javadoc 정리, PaymentConfirmResultUseCase JavaTimeModule import 정리
+- JdbcPaymentEventDedupeStore LocalDateTimeProvider 주입 (Instant.now() → nowInstant())
+- JdbcPaymentEventDedupeStoreTest, PaymentEosIntegrationTest, StockCompensationRecoveryIntegrationTest @Testcontainers → 수동 start 패턴 전환
+
+**본 라운드 추가 fix (RD1):**
+1. checkout 500 회귀 — `gatewayType=null` DB NOT NULL 위반: 테스트 `buildCheckoutRequest()` / `checkout_Success()` 에 `gatewayType(PaymentGatewayType.TOSS)` 추가, `PAYMENT_EVENT_INSERT_SQL` 에 `gateway_type` 컬럼 추가
+2. `CheckoutResult` 역직렬화 실패 — Jackson boolean getter `is` prefix 제거로 JSON key `"duplicate"` ≠ Builder setter `isDuplicate` 불일치: `@JsonProperty("duplicate")` 추가
+3. `IdempotencyStoreRedisAdapter` race condition — 동시 GET null → 모든 thread creator 호출: IN_PROGRESS 마커 기반 lock + loser polling 구현
+4. `IdempotencyStoreRedisAdapterTest` 단위 테스트 3건 새 구현 정합 갱신 (JSON key / TTL capture / loser 기대 수정)
+5. `checkout_Success` BigDecimal scale 불일치 (`20000.00` vs `20000`) — assertion `isEqualByComparingTo` 로 변경
+
+**최종 결과:**
+- `./gradlew :payment-service:test` 385/385 PASS
+- `./gradlew :payment-service:integrationTest` 23/23 PASS
+- 회귀 0
+
+**체크리스트:**
+- [x] fix(payment-eos-transition): review R1 직전 implementer 변경 — SCR/EOS/JPA wiring/Testcontainer
+- [x] fix(payment-eos-transition): checkout 500 회귀 — gatewayType null + BigDecimal scale + Redis race (review R1 추가)
+- [x] PLAN.md 완료 결과 갱신
+- [x] STATE.md active task 갱신

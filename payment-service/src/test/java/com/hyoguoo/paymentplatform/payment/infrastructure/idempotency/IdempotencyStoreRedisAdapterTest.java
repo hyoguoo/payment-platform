@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.idempotency;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -76,7 +77,8 @@ class IdempotencyStoreRedisAdapterTest {
         // given
         Supplier<CheckoutResult> creator = Mockito.mock(Supplier.class);
 
-        String storedJson = "{\"orderId\":\"order-002\",\"totalAmount\":20000,\"isDuplicate\":true}";
+        // JSON key 는 @JsonProperty("duplicate") 기준 — isDuplicate 아님
+        String storedJson = "{\"orderId\":\"order-002\",\"totalAmount\":20000,\"duplicate\":true}";
         given(mockValueOps.get("idem:test-key-2")).willReturn(storedJson);
 
         // when
@@ -91,39 +93,34 @@ class IdempotencyStoreRedisAdapterTest {
     }
 
     @Test
-    @DisplayName("동시 miss 경합 시 creator는 1회만 호출되고 winner 값을 hit으로 반환한다")
+    @DisplayName("동시 miss 경합 시 loser 는 creator를 호출하지 않고 winner 값을 hit으로 반환한다")
     @SuppressWarnings("unchecked")
     void getOrCreate_ConcurrentMiss_ShouldInvokeCreatorOnce() {
         // given
-        CheckoutResult myValue = CheckoutResult.builder()
-                .orderId("order-mine")
-                .totalAmount(BigDecimal.valueOf(10000))
-                .isDuplicate(false)
-                .build();
         Supplier<CheckoutResult> creator = Mockito.mock(Supplier.class);
-        given(creator.get()).willReturn(myValue);
 
-        // GET 첫 호출(phase 1) null, 두 번째(loser fallback) winnerJson
-        String winnerJson = "{\"orderId\":\"order-winner\",\"totalAmount\":10000,\"isDuplicate\":false}";
+        // GET: 첫 호출(phase 1) null → SET NX 실패(loser) → pollForResult 에서 GET winnerJson
+        // JSON key 는 @JsonProperty("duplicate") 기준
+        String winnerJson = "{\"orderId\":\"order-winner\",\"totalAmount\":10000,\"duplicate\":false}";
         given(mockValueOps.get("idem:concurrent-key"))
                 .willReturn(null)
                 .willReturn(winnerJson);
         // SET NX 실패 (loser)
-        given(mockValueOps.setIfAbsent(eq("idem:concurrent-key"), any(String.class), any(Duration.class)))
+        given(mockValueOps.setIfAbsent(eq("idem:concurrent-key"), anyString(), any(Duration.class)))
                 .willReturn(false);
 
         // when
         IdempotencyResult<CheckoutResult> result = adapter.getOrCreate("concurrent-key", creator);
 
-        // then — winner의 값을 hit으로 반환
+        // then — loser: creator 호출 없이 winner 값을 hit으로 반환
         assertThat(result.isDuplicate()).isTrue();
         assertThat(result.getValue().getOrderId()).isEqualTo("order-winner");
-        then(creator).should(times(1)).get();
+        then(creator).should(never()).get();
         then(mockValueOps).should(times(2)).get("idem:concurrent-key");
     }
 
     @Test
-    @DisplayName("setIfAbsent 호출 시 expireAfterWriteSeconds 가 Duration 으로 전달된다")
+    @DisplayName("winner 가 최종 값을 set 할 때 expireAfterWriteSeconds 가 TTL 로 전달된다")
     @SuppressWarnings("unchecked")
     void getOrCreate_ShouldRespectExpireAfterWriteSeconds() {
         // given
@@ -136,14 +133,18 @@ class IdempotencyStoreRedisAdapterTest {
         given(creator.get()).willReturn(result);
 
         given(mockValueOps.get("idem:ttl-key")).willReturn(null);
-        ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
-        given(mockValueOps.setIfAbsent(eq("idem:ttl-key"), any(String.class), ttlCaptor.capture()))
+        // IN_PROGRESS 마커 SET NX 는 IN_PROGRESS_TTL(10) 로 호출됨
+        given(mockValueOps.setIfAbsent(eq("idem:ttl-key"), anyString(), any(Duration.class)))
                 .willReturn(true);
+        // winner 는 creator 호출 후 set(key, json, resultTtl) 로 최종 저장
+        ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
 
         // when
         adapter.getOrCreate("ttl-key", creator);
 
-        // then — TTL 이 IdempotencyProperties 의 expireAfterWriteSeconds(30) 와 일치
+        // then — set() 호출 시 TTL 이 IdempotencyProperties.expireAfterWriteSeconds(30) 와 일치
+        then(mockValueOps).should(times(1))
+                .set(eq("idem:ttl-key"), anyString(), ttlCaptor.capture());
         assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofSeconds(30));
     }
 }
