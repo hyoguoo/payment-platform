@@ -35,6 +35,12 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      properties:
+        # D6 결정 — EOS read_committed: payment-service 가 abort 한 트랜잭션 메시지가
+        # StockCommitConsumer 에 노출되지 않도록 차단. DR-4 흡수.
+        # 운영 배포 순서: product-service 먼저 배포 → payment-service EOS 발행 시작 (DR-4).
+        isolation.level: read_committed
     template:
       observation-enabled: true
     listener:

@@ -463,10 +463,11 @@ flowchart LR
   - `StockCommitConsumer` 자체 코드 변경 없음
   - `./gradlew :product-service:test` 회귀 0
 - **비고**: §12 deploy 순서 — 이 변경이 먼저 staging 에 배포되어야 함 (payment-service EOS 발행 시작 전)
+- **완료 결과**: `product-service/src/main/resources/application.yml` 에 `spring.kafka.consumer.properties.isolation.level: read_committed` 추가 (payment-service PET-7 패턴 동일). `application-docker.yml` 는 consumer 설정 override 없음 — application.yml 자동 상속으로 변경 불필요. Java 코드 변경 없음 (Spring Boot auto-config 가 yml property 흡수). product-service 19건 PASS / 0 FAIL, 회귀 0.
 - **체크리스트**:
-  - [ ] GREEN: yml 변경 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: yml 변경 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

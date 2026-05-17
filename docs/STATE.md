@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PET-10 완료 (Flyway V3 `stock_outbox` 테이블 DROP — V1 실제 테이블명 확인, FK 없음, 385건 PASS). 활성 태스크 PET-11.
+> 최종 수정: 2026-05-17 — PET-11 완료 (product-service `application.yml` consumer `isolation.level=read_committed` 적용, 19건 PASS). 활성 태스크 PET-12.
 
 ## 활성 작업
 
 - **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md` + `docs/PAYMENT-EOS-TRANSITION-PLAN.md`
   - stage: **execute** (plan-review pass → execute 진입)
-  - 활성 태스크: **PET-11** (product-service `application.yml` consumer `isolation.level=read_committed` 적용)
+  - 활성 태스크: **PET-12** (EOS 통합 테스트 5개 시나리오 — Testcontainers Kafka + MySQL)
   - 이슈: [#77](https://github.com/hyoguoo/payment-platform/issues/77)
   - 브랜치: `#77`
   - discuss 라운드 합의: Round 2 양쪽 pass (Round 1 critical 1 + high 3 + medium 3 흡수)
