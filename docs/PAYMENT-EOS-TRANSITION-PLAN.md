@@ -325,10 +325,11 @@ flowchart LR
   - consumer `isolation.level = read_committed` 설정 (`spring.kafka.consumer.isolation-level` 또는 `ConsumerConfig` 직접 설정)
   - `ConfirmedEventConsumer` 의 `containerFactory = "kafkaListenerContainerFactory"` 참조는 변경 없음
   - 컴파일 통과 + 기존 테스트 회귀 0
+- **완료 결과**: `KafkaConsumerConfig.java` 신설 (옵션 A — Java config). `kafkaListenerContainerFactory` 빈 명시 정의 + `KafkaTransactionManager` wire-in (stockCommittedProducerFactory 공유). `isolation.level=read_committed` 는 `application.yml` `spring.kafka.consumer.properties.isolation.level` 로 적용 (auto-config ConsumerFactory 가 흡수). `kafkaErrorHandler` / `recordMessageConverter` 명시 주입으로 auto-config 동등 기능 유지. 전체 테스트 389건 PASS / 0 FAIL, 회귀 0.
 - **체크리스트**:
-  - [ ] GREEN: config 변경 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: config 변경 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

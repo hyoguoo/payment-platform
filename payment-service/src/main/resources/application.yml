@@ -50,6 +50,11 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         spring.json.add.type.headers: false
+    consumer:
+      properties:
+        # D6 결정 — EOS read_committed: abort 된 트랜잭션 메시지가 컨슈머에 노출되지 않도록 차단.
+        # payment-service 는 자기 자신이 발행한 stock-committed 를 컨슘하지 않으나 일관성 기준 적용.
+        isolation.level: read_committed
     template:
       observation-enabled: true
     listener:
