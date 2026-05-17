@@ -1,21 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PAYMENT-EOS-TRANSITION discuss Round 2 양쪽 pass. plan 단계 진입 대기. 이슈 #77 / 브랜치 `#77`.
+> 최종 수정: 2026-05-17 — PAYMENT-EOS-TRANSITION plan Round 1 양쪽 pass. plan-review 단계 진입.
 
 ## 활성 작업
 
-- **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md`
-  - stage: **plan** (discuss 봉인 → plan 진입)
+- **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md` + `docs/PAYMENT-EOS-TRANSITION-PLAN.md`
+  - stage: **plan-review** (plan 봉인 → plan-review 진입)
   - 이슈: [#77](https://github.com/hyoguoo/payment-platform/issues/77)
   - 브랜치: `#77`
-  - discuss 라운드 합의:
-    - Round 1: Critic pass / Domain Expert fail (1 critical + 3 high + 3 medium + 1 minor)
-    - Round 2: Architect 흡수 (critical/high 4건 + medium 3건 + §12 deploy 순서 신설)
-    - Round 2: Critic pass / Domain Expert **pass** (Round 1 critical/high 모두 resolved, 새 critical 없음)
+  - discuss 라운드 합의: Round 2 양쪽 pass (Round 1 critical 1 + high 3 + medium 3 흡수)
+  - plan 라운드 합의: **Round 1 Critic pass (minor 4) / Domain Expert pass (minor 2)** — 1라운드 만에 양쪽 pass, 새 critical 없음
+  - 14개 태스크 (TDD 4 / non-TDD 10) — PET-1 ~ PET-14
   - 8개 핵심 결정 (D1~D8): 위키 EOS 안 채택 / 빅뱅 1 PR / 가용성 트레이드오프 수용 / `transactional.id` 정책 / `payment_event_dedupe` 스키마 / product-service `read_committed` / `handle` 진입 가드 / 두 종류 UUID 역할 분리
   - 영향 모듈: payment-service (application/usecase + application/port/out + infrastructure/dedupe + infrastructure/config + Flyway V2/V3) + product-service (application-*.yml)
   - 삭제 대상: 16+ 파일 (`StockOutbox` 묶음 + 테스트) + `payment_stock_outbox` 테이블 drop
   - 유지 대상: `StockEventUuidDeriver` (multi-product idempotencyKey 결정성 도출)
+  - plan minor (forward-fix 가능): PD1-1 EventDedupeStore 동명 재사용 / PD1-2 EOS wiring 단위 검증 부재
 
 ## 직전 봉인
 
