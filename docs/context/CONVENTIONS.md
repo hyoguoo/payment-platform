@@ -69,7 +69,7 @@ public class PgInbox {
 - builder 외부 노출 시 시나리오 우회 가능 — 금지 이유
 
 **적용 위치**:
-- payment-service: `PaymentOutbox`, `StockOutbox`, `Payment`, ...
+- payment-service: `PaymentOutbox`, `Payment`, ... (`StockOutbox` 는 PAYMENT-EOS-TRANSITION 봉인으로 폐기됨)
 - pg-service: `PgInbox`, `PgOutbox` (CBA-8/9, 2026-05-11)
 
 **mutable 필드 변경 룰**:
@@ -113,13 +113,13 @@ RuntimeException
 | 카테고리 | 규칙 | 예 |
 |---|---|---|
 | Use case | `<Action><Subject>UseCase` | `PaymentConfirmResultUseCase`, `StockCommitUseCase` |
-| Service (보조) | `<Subject>Service` | `OutboxRelayService`, `StockOutboxRelayService` |
+| Service (보조) | `<Subject>Service` | `OutboxRelayService`, `PgInboxPendingService` |
 | Use case 입력 포트 | `<Verb>UseCase` 인터페이스 | `PaymentCommandUseCase` |
 | 출력 포트 | `<Subject>Port` | `StockCachePort`, `PaymentConfirmPublisherPort` |
 | 출력 포트 어댑터 | `<Subject><Tech>Adapter` | `StockCacheRedisAdapter` |
 | Kafka 메시지 record | `<Subject>EventMessage` (수신) / `<Subject>EventPayload` (발행) | `ConfirmedEventMessage`, `ConfirmedEventPayload` |
 | 이벤트 (Spring ApplicationEvent) | `<Subject>RequestedEvent` | `StockCommitRequestedEvent` |
-| Listener | `<Subject>Listener` 또는 `<Subject>EventHandler` | `StockOutboxImmediateEventHandler`, `OutboxImmediateEventHandler` |
+| Listener | `<Subject>Listener` 또는 `<Subject>EventHandler` | `OutboxImmediateEventHandler`, `InboxReadyEventHandler` |
 | Scheduler | `<Subject>Worker` | `OutboxWorker`, `PgOutboxImmediateWorker` |
 | Fake (테스트 전용) | `Fake<Subject><Type>` | `FakeStockCachePort` |
 | Test class | `<Subject>Test` (단위) / `<Subject>ContractTest` / `<Subject>MdcPropagationTest` | `PaymentConfirmResultUseCaseTest` |
