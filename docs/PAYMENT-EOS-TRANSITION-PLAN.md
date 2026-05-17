@@ -535,9 +535,11 @@ flowchart LR
   - `message-delivery-and-dedupe.md` 의 EOS 시퀀스가 변경 후 코드 흐름과 1:1 매핑 확인
   - 기존 테스트 회귀 0
 - **체크리스트**:
-  - [ ] GREEN: 위키 파일 갱신 + 커밋 (`docs:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: 위키 파일 갱신 + 커밋 (`docs:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
+
+**완료 결과**: 위키 4개 파일 Phase 6 마커 제거. mismatch 수정 2건 (architecture.md: `EventDedupeStore` → `PaymentEventDedupeStore`, `JdbcEventDedupeStore` → `JdbcPaymentEventDedupeStore`). 위키 commit: ff2735c.
 
 ---
 
