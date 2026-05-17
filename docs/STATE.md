@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PET-3 완료 (PaymentEventStatus.isCompensatableByFailureHandler 회귀 테스트 3건 신설 + Javadoc 보강). 활성 태스크 PET-4.
+> 최종 수정: 2026-05-17 — PET-4 완료 (Flyway V2 `payment_event_dedupe` 테이블 신설, D5 결정 그대로). 활성 태스크 PET-5.
 
 ## 활성 작업
 
 - **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md` + `docs/PAYMENT-EOS-TRANSITION-PLAN.md`
   - stage: **execute** (plan-review pass → execute 진입)
-  - 활성 태스크: **PET-4** (Flyway V2 `payment_event_dedupe` 테이블 신설)
+  - 활성 태스크: **PET-5** (`JdbcEventDedupeStore` 어댑터 TDD — Testcontainers MySQL)
   - 이슈: [#77](https://github.com/hyoguoo/payment-platform/issues/77)
   - 브랜치: `#77`
   - discuss 라운드 합의: Round 2 양쪽 pass (Round 1 critical 1 + high 3 + medium 3 흡수)

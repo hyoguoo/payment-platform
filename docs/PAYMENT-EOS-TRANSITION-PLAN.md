@@ -16,7 +16,7 @@
 | **PET-1** | 멱등 마킹 포트 신설 (단일 메서드 — INSERT IGNORE 결과 row 수 반환) | feat | F | F |
 | **PET-2** | 멱등 마킹 포트의 Fake 구현 (Map 기반 시뮬레이션) | test | F | F |
 | **PET-3** | 결제 상태 enum 의 "보상 핸들러 진입 가능" 판정 메서드 Javadoc 보강 | refactor | T | T |
-| **PET-4** | Flyway V2 — 멱등 테이블 신규 (`payment_event_dedupe`, 6컬럼) | feat | F | F |
+| **PET-4** | Flyway V2 — 멱등 테이블 신규 (`payment_event_dedupe`, 6컬럼) | feat | T | T |
 | **PET-5** | JDBC 어댑터 신설 + 단위 4건 (신규 / 중복 / 메타데이터 / 동시 race) | feat | T | T |
 | **PET-6** | Producer EOS 설정 (`transactional.id` + `enable.idempotence=true` + 트랜잭션 매니저 빈) | feat | F | F |
 | **PET-7** | 컨슈머 wiring 갱신 (트랜잭션 매니저 wire-in + `isolation.level=read_committed`) | feat | F | F |
@@ -240,9 +240,11 @@ flowchart LR
   - D5 결정의 스키마 그대로: `event_uuid VARCHAR(64) PK`, `order_id BIGINT`, `status VARCHAR(32)`, `received_at TIMESTAMP`, `expires_at TIMESTAMP`, `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`, `INDEX idx_expires_at(expires_at)`, `ENGINE=InnoDB utf8mb4_unicode_ci`
   - `./gradlew test` 회귀 0 (Testcontainers MySQL 통합 테스트에서 Flyway V1 → V2 순서 적용 확인)
 - **체크리스트**:
-  - [ ] GREEN: SQL 파일 작성 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: SQL 파일 작성 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
+
+**완료 결과**: Flyway V2 신설 (`V2__payment_event_dedupe.sql`), test container 적용 검증, 회귀 0
 
 ---
 
