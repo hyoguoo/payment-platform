@@ -1,12 +1,15 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-18 — review R1 fix 완료 (integrationTest 23/23 PASS).
+> 최종 수정: 2026-05-18 — PAYMENT-EOS-TRANSITION review Round 2 양쪽 pass. verify 진입.
 
 ## 활성 작업
 
 - **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md` + `docs/PAYMENT-EOS-TRANSITION-PLAN.md`
-  - stage: **review** (execute 봉인 → review 진입)
-  - 활성 태스크: 없음 (14/14 완료)
+  - stage: **verify** (review Round 2 양쪽 pass → verify 진입)
+  - 활성 태스크: 없음 (14/14 PET 완료 + review R1 fix 4 커밋 흡수)
+  - review 합의: Round 1 양쪽 revise → Round 2 양쪽 **pass** (Critic minor 2 / Domain Expert 0, DR-1~5 모두 protected)
+  - 검증 백본: `./gradlew :payment-service:test` 385/385 + `:payment-service:integrationTest` 23/23 PASS
+  - hidden bug 3건 동시 fix (gatewayType=null / CheckoutResult Jackson is-prefix / IdempotencyStoreRedisAdapter race)
   - 이슈: [#77](https://github.com/hyoguoo/payment-platform/issues/77)
   - 브랜치: `#77`
   - discuss 라운드 합의: Round 2 양쪽 pass (Round 1 critical 1 + high 3 + medium 3 흡수)
