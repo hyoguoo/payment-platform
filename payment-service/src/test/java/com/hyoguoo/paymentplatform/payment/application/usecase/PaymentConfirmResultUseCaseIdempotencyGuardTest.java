@@ -6,8 +6,6 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
@@ -16,29 +14,30 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase handleFailed / handleQuarantined 이중 진입 가드 검증 (SCR-6 재작성).
+ * PaymentConfirmResultUseCase D7 진입 가드 검증 (PET-8 갱신).
  *
- * <p>race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면
- * handleFailed/handleQuarantined 에 두 번 진입 가능 → 보상 중복 → redis-stock 발산.
+ * <p>D7 가드: handle() 진입 시 paymentEvent.getStatus().isCompensatableByFailureHandler() 로 단일화.
+ * isCompensatableByFailureHandler=false (종결 상태: DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)
+ * → markIfAbsent 미호출 + warn noop.
  *
- * <p>이 테스트는 paymentEvent.getStatus().isTerminal() 가드를 검증한다.
- * SCR-6 이후 dedupe lease 의존은 제거됐으나 isTerminal 가드는 여전히 유효하다.
+ * <p>기존 handleFailed / handleQuarantined 안의 isTerminal 가드와 통합됨.
+ * race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면
+ * 진입 가드가 D7 기준으로 걸러낸다.
  */
-@DisplayName("PaymentConfirmResultUseCase 이중 진입 가드 — 이미 종결 상태면 보상 skip")
+@DisplayName("PaymentConfirmResultUseCase D7 진입 가드 — 종결 상태면 전체 skip")
 class PaymentConfirmResultUseCaseIdempotencyGuardTest {
 
     private static final String ORDER_ID = "order-guard-001";
@@ -46,34 +45,48 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     private static final String REASON_CODE = "VENDOR_FAILED";
 
     private FakePaymentEventRepository paymentEventRepository;
+    private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
     private PaymentCommandUseCase paymentCommandUseCase;
+    @SuppressWarnings("unchecked")
+    private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
+        dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 27, 12, 0, 0);
+        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
+            @Override
+            public LocalDateTime now() {
+                return LocalDateTime.of(2026, 4, 27, 12, 0, 0);
+            }
+
+            @Override
+            public Instant nowInstant() {
+                return Instant.parse("2026-04-27T12:00:00Z");
+            }
+        };
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                new NoopApplicationEventPublisher(),
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                new FakeStockOutboxRepository(),
-                new ObjectMapper().registerModule(new JavaTimeModule()),
+                dedupeStore,
+                stockCommittedKafkaTemplate,
                 paymentCommandUseCase
         );
     }
 
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal)이면 compensateAtomic + markPaymentAsFail 미호출")
+    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal, isCompensatableByFailureHandler=false)이면 compensateAtomic + markPaymentAsFail 미호출")
     void handleFailed_whenAlreadyTerminal_shouldSkipCompensation() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
@@ -105,7 +118,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     }
 
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 IN_PROGRESS(non-terminal)이면 보상 정상 실행")
+    @DisplayName("handleFailed — paymentEvent 가 IN_PROGRESS(non-terminal, isCompensatableByFailureHandler=true)이면 보상 정상 실행")
     void handleFailed_whenInProgress_shouldCompensateNormally() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
@@ -170,20 +183,5 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
                 .totalAmount(BigDecimal.valueOf(300L))
                 .status(PaymentOrderStatus.EXECUTING)
                 .allArgsBuild();
-    }
-
-    static class NoopApplicationEventPublisher implements ApplicationEventPublisher {
-
-        private final List<Object> events = new ArrayList<>();
-
-        @Override
-        public void publishEvent(ApplicationEvent event) {
-            events.add(event);
-        }
-
-        @Override
-        public void publishEvent(Object event) {
-            events.add(event);
-        }
     }
 }

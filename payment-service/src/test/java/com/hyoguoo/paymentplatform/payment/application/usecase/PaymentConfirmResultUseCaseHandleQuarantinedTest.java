@@ -8,8 +8,6 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
@@ -18,25 +16,27 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase.handleQuarantined 단위 검증 (SCR-6 신규).
+ * PaymentConfirmResultUseCase.handleQuarantined 단위 검증 (PET-8 갱신 — stock_outbox 의존성 제거).
  *
  * <p>핵심: 순서 뒤집기가 아닌 "메서드 교체" — 기존 보상 → quarantineHandler 순서를 유지하면서
  * compensateStockCache(for-loop) → compensateAtomic 직접 호출로 교체.
+ *
+ * <p>D7 진입 가드 — isCompensatableByFailureHandler 로 통합 (isTerminal 가드 제거).
+ * QUARANTINED / FAILED 등 종결 상태는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다.
  */
 @DisplayName("PaymentConfirmResultUseCase handleQuarantined")
 class PaymentConfirmResultUseCaseHandleQuarantinedTest {
@@ -46,30 +46,42 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
     private static final String REASON_CODE = "RETRY_EXHAUSTED";
 
     private FakePaymentEventRepository paymentEventRepository;
-    private FakeStockOutboxRepository stockOutboxRepository;
+    private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
     private PaymentCommandUseCase paymentCommandUseCase;
+    @SuppressWarnings("unchecked")
+    private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        stockOutboxRepository = new FakeStockOutboxRepository();
+        dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
+        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
+            @Override
+            public LocalDateTime now() {
+                return LocalDateTime.of(2026, 4, 24, 12, 0, 0);
+            }
+
+            @Override
+            public Instant nowInstant() {
+                return Instant.parse("2026-04-24T12:00:00Z");
+            }
+        };
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                new NoopApplicationEventPublisher(),
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                stockOutboxRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule()),
+                dedupeStore,
+                stockCommittedKafkaTemplate,
                 paymentCommandUseCase
         );
     }
@@ -95,9 +107,10 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
     }
 
     @Test
-    @DisplayName("QUARANTINED — 이미 종결 상태이면 compensateAtomic 및 quarantineHandler 미호출 (noop)")
+    @DisplayName("QUARANTINED — 이미 종결 상태(FAILED)이면 D7 가드에서 noop (compensateAtomic 및 quarantineHandler 미호출)")
     void QUARANTINED_이미_종결_noop() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
+        // FAILED 는 isCompensatableByFailureHandler=false → D7 진입 가드에서 걸린다
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 
@@ -156,20 +169,5 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
                 .totalAmount(totalAmount)
                 .status(PaymentOrderStatus.EXECUTING)
                 .allArgsBuild();
-    }
-
-    static class NoopApplicationEventPublisher implements ApplicationEventPublisher {
-
-        private final List<Object> events = new ArrayList<>();
-
-        @Override
-        public void publishEvent(ApplicationEvent event) {
-            events.add(event);
-        }
-
-        @Override
-        public void publishEvent(Object event) {
-            events.add(event);
-        }
     }
 }
