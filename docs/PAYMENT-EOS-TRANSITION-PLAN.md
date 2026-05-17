@@ -270,11 +270,12 @@ flowchart LR
   - `shouldReturnZeroOnDuplicate()` — 동일 event_uuid 재시도 → 0 반환
   - `shouldStoreMetadataCorrectly()` — `order_id`, `status`, `received_at`, `expires_at` 컬럼 값 검증
   - `shouldNotThrowOnConcurrentInsertSameKey()` — 동시 INSERT IGNORE 양쪽 모두 예외 없음 (DR-5 race 시뮬레이션)
+- **완료 결과**: `JdbcPaymentEventDedupeStore` 신설 (`infrastructure/dedupe/`). `NamedParameterJdbcTemplate` 기반 `INSERT IGNORE`. Flyway V1→V2 자동 적용 Testcontainers MySQL 환경에서 4건 (신규/중복/메타데이터/동시 race) 모두 GREEN. 전체 테스트 회귀 0.
 - **체크리스트**:
-  - [ ] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
-  - [ ] GREEN: 최소 구현 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
+  - [x] GREEN: 최소 구현 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 
