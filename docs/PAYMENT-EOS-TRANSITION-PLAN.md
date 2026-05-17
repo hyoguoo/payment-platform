@@ -216,11 +216,12 @@ flowchart LR
   - `shouldReturnTrueForProceedableStatuses()` — `@ParameterizedTest @EnumSource(names={"READY","IN_PROGRESS","RETRYING"})`
   - `shouldReturnFalseForNonProceedableStatuses()` — `@ParameterizedTest @EnumSource(names={"DONE","FAILED","CANCELED","PARTIAL_CANCELED","EXPIRED","QUARANTINED"})`
   - `shouldSkipQuarantinedExplicitly()` — QUARANTINED 단독 assert
+- **완료 결과**: `PaymentEventStatusEosGuardTest` 신설 (3건 — 진입 가능 3 상태 / 진입 불가 6 상태 / QUARANTINED 단독 DR-3 가드). `PaymentEventStatus.isCompensatableByFailureHandler` Javadoc 보강 (두 사용처 명시 + DR-3 영향 경고). 전체 테스트 GREEN.
 - **체크리스트**:
-  - [ ] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
-  - [ ] GREEN: Javadoc 보강 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
+  - [x] GREEN: Javadoc 보강 + 커밋 (`refactor:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 
