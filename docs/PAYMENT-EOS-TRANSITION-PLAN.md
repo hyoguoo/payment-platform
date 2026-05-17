@@ -171,7 +171,7 @@ flowchart LR
 
 ---
 
-### PET-2: `FakeEventDedupeStore` 테스트 Fake 구현 신설
+### PET-2: `FakePaymentEventDedupeStore` 테스트 Fake 구현 신설
 
 - **type**: test
 - **tdd**: false
@@ -180,15 +180,17 @@ flowchart LR
 - **결정 매핑**: D1, D5
 - **선행 의존**: PET-1
 - **건드릴 파일/패턴**:
-  - 신규: `payment-service/src/test/java/com/hyoguoo/paymentplatform/payment/mock/FakeEventDedupeStore.java`
+  - 신규: `payment-service/src/test/java/com/hyoguoo/paymentplatform/payment/mock/FakePaymentEventDedupeStore.java`
 - **완료 기준**:
-  - `FakeEventDedupeStore implements EventDedupeStore` 존재 + 컴파일 통과
-  - `ConcurrentHashMap<String, Integer>` 기반 INSERT IGNORE 시뮬레이션: 키 존재 → 0 반환, 신규 → 1 반환
+  - `FakePaymentEventDedupeStore implements PaymentEventDedupeStore` 존재 + 컴파일 통과
+  - `ConcurrentHashMap.newKeySet()` 기반 INSERT IGNORE 시뮬레이션: 키 존재 → 0 반환, 신규 → 1 반환
   - 기존 테스트 회귀 0
 - **체크리스트**:
-  - [ ] GREEN: Fake 파일 작성 + 커밋 (`test:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: Fake 파일 작성 + 커밋 (`test:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
+
+**완료 결과**: PET-1 PD1-1 결정 연쇄 적용 — `FakePaymentEventDedupeStore` / `PaymentEventDedupeStore` 분리 명명 일관성 유지. `ConcurrentHashMap.newKeySet()` atomic `add` 로 INSERT IGNORE 시뮬레이션. 테스트 헬퍼 `clear` / `size` / `contains` 제공. `./gradlew :payment-service:compileTestJava` BUILD SUCCESSFUL.
 
 ---
 
