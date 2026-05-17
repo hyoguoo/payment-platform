@@ -364,12 +364,13 @@ flowchart LR
   - `shouldDeriveDistinctIdempotencyKeyPerProduct()` — PaymentOrder 2건 → `stockCommittedKafkaTemplate.send` 2회 호출, 각 호출의 payload 에 서로 다른 idempotencyKey (D8)
   - `shouldMaintainCompensationOrderForFailed()` — compensateAtomic 먼저, markPaymentAsFail 나중
   - `shouldQuarantineOnAmountMismatch()` — amount 불일치 시 quarantineCompensationHandler 위임
+- **완료 결과**: `PaymentConfirmResultUseCase` 재작성 완료 (D7 가드 + D5 멱등 마킹 + D8 multi-product EOS 발행). 의존 정리 — `ApplicationEventPublisher` / `StockOutboxRepository` / `StockOutboxFactory` 제거, `PaymentEventDedupeStore` + `@Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String>` 주입. 신규 테스트 `PaymentConfirmResultUseCaseTest` 7건 + 기존 4 클래스 갱신 (stock_outbox 의존 제거). DR-1/3/5/7 모두 단위 테스트 커버. 397건 PASS / 0 FAIL, 회귀 0.
 - **체크리스트**:
-  - [ ] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
-  - [ ] GREEN: 최소 구현 + 커밋 (`feat:` prefix)
+  - [x] RED: 실패 테스트 작성 + 커밋 (`test:` prefix)
+  - [x] GREEN: 최소 구현 + 커밋 (`feat:` prefix)
   - [ ] REFACTOR: 불필요 의존 제거 정리 + 커밋 (`refactor:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

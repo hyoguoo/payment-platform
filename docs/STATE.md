@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-17 — PET-7 완료 (KafkaConsumerConfig 신설, kafkaListenerContainerFactory + KafkaTransactionManager wire-in + isolation.level=read_committed, 옵션 A). 활성 태스크 PET-8.
+> 최종 수정: 2026-05-17 — PET-8 완료 (PaymentConfirmResultUseCase EOS 재작성 — D7 가드 + D5 멱등 마킹 + D8 multi-product 발행, 신규 7건 + 기존 4 클래스 갱신, 397건 PASS). 활성 태스크 PET-9.
 
 ## 활성 작업
 
 - **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, 위키 정합 잔여 갭) — `docs/topics/PAYMENT-EOS-TRANSITION.md` + `docs/PAYMENT-EOS-TRANSITION-PLAN.md`
   - stage: **execute** (plan-review pass → execute 진입)
-  - 활성 태스크: **PET-8** (결과 처리 유스케이스 재작성 — D7 가드 + EOS 멱등 마킹 + multi-product 직접 발행)
+  - 활성 태스크: **PET-9** (StockOutbox 묶음 17단위 일괄 삭제)
   - 이슈: [#77](https://github.com/hyoguoo/payment-platform/issues/77)
   - 브랜치: `#77`
   - discuss 라운드 합의: Round 2 양쪽 pass (Round 1 critical 1 + high 3 + medium 3 흡수)

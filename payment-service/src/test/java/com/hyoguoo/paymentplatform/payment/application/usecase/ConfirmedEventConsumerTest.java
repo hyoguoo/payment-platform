@@ -1,16 +1,13 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
-import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
@@ -18,24 +15,23 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트 (SCR-6 픽스처 갱신).
+ * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트 (PET-8 갱신 — stock_outbox 의존성 제거).
  *
  * <p>APPROVED/FAILED/QUARANTINED 분기 검증.
- * SCR-6 이후: dedupe lease 제거, compensateAtomic 직접 호출 검증.
+ * PET-8 이후: stock_outbox INSERT 제거, stockCommittedKafkaTemplate.send 직접 발행으로 교체.
  */
 @DisplayName("ConfirmedEventConsumerTest")
 class ConfirmedEventConsumerTest {
@@ -44,70 +40,53 @@ class ConfirmedEventConsumerTest {
     private static final String EVENT_UUID = "evt-uuid-confirmed-001";
 
     private FakePaymentEventRepository paymentEventRepository;
-    private CapturingApplicationEventPublisher capturingPublisher;
+    private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
-    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
+    @SuppressWarnings("unchecked")
+    private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        capturingPublisher = new CapturingApplicationEventPublisher();
+        dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
-        stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 0, 0, 0);
+        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
+            @Override
+            public LocalDateTime now() {
+                return LocalDateTime.of(2026, 4, 24, 0, 0, 0);
+            }
+
+            @Override
+            public Instant nowInstant() {
+                return Instant.parse("2026-04-24T00:00:00Z");
+            }
+        };
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                stockOutboxRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule()),
+                dedupeStore,
+                stockCommittedKafkaTemplate,
                 paymentCommandUseCase
         );
     }
 
-    // ---- helper: ApplicationEventPublisher that captures events ----
-
-    static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
-
-        private final List<Object> events = new ArrayList<>();
-
-        @Override
-        public void publishEvent(ApplicationEvent event) {
-            events.add(event);
-        }
-
-        @Override
-        public void publishEvent(Object event) {
-            events.add(event);
-        }
-
-        public long countReadyEvents() {
-            return events.stream()
-                    .filter(e -> e instanceof StockOutboxReadyEvent)
-                    .count();
-        }
-
-        public List<Object> publishedEvents() {
-            return List.copyOf(events);
-        }
-    }
-
     // -----------------------------------------------------------------------
-    // TC1: APPROVED → PaymentEvent DONE 전이 + StockOutboxReadyEvent 발행
+    // TC1: APPROVED → PaymentEvent DONE 전이 + stockCommittedKafkaTemplate.send 발행
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — APPROVED 수신 시 PaymentCommandUseCase.markPaymentAsDone 위임 + StockOutboxReadyEvent 발행")
-    void consume_WhenApproved_ShouldTransitionToDone() {
+    @DisplayName("consume — APPROVED 수신 시 PaymentCommandUseCase.markPaymentAsDone 위임 + send 호출")
+    void consume_WhenApproved_ShouldTransitionToDoneAndSend() {
         PaymentOrder order = buildPaymentOrder(1L, 2);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
@@ -129,8 +108,9 @@ class ConfirmedEventConsumerTest {
                         any(PaymentEvent.class),
                         any(LocalDateTime.class));
 
-        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
-        assertThat(stockOutboxRepository.savedCount()).isEqualTo(1);
+        then(stockCommittedKafkaTemplate)
+                .should(times(1))
+                .send(eq("payment.events.stock-committed"), eq("1"), anyString());
     }
 
     // -----------------------------------------------------------------------
@@ -164,8 +144,6 @@ class ConfirmedEventConsumerTest {
                 .markPaymentAsFail(
                         any(PaymentEvent.class),
                         eq("VENDOR_FAILED"));
-
-        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
     }
 
     // -----------------------------------------------------------------------
@@ -190,8 +168,6 @@ class ConfirmedEventConsumerTest {
         then(quarantineCompensationHandler)
                 .should(times(1))
                 .handle(eq(ORDER_ID), eq("RETRY_EXHAUSTED"));
-
-        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(0L);
     }
 
     // ---- factory helpers ----
