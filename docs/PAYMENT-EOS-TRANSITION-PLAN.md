@@ -300,10 +300,11 @@ flowchart LR
   - `application.yml` 의 `eureka.instance.instance-id` 를 `${spring.application.name}:${HOSTNAME:local}:${server.port}` 로 변경 (D4 보강)
   - 컴파일 통과 + 기존 테스트 회귀 0
 - **비고**: `commandsConfirmKafkaTemplate` / `confirmedDlqKafkaTemplate` 은 EOS 와 직교 — 기존 ProducerFactory 그대로 유지
+- **완료 결과**: `KafkaProducerConfig` 에 EOS-aware `stockCommittedProducerFactory` 빈 신설 (transactional.id prefix = `${payment.kafka.transactional-id-prefix:${spring.application.name}-${HOSTNAME:local}}-`, enable.idempotence=true, transaction.timeout.ms=10000). `KafkaTransactionManager` 빈 신설 (stockCommittedProducerFactory wire-in). `stockCommittedKafkaTemplate` 빈 신설 (EOS-aware, defaultTopic=payment.events.stock-committed). 기존 `stockOutboxKafkaTemplate` / `commandsConfirmKafkaTemplate` / `confirmedDlqKafkaTemplate` 보존. `application.yml` eureka instance-id 패턴 HOSTNAME:local 로 통일 (D4 보강). PD1-2 wiring 검증: 선택지 A 채택 — PET-12 통합 테스트 end-to-end 검증에 100% 의존. 컴파일 통과, 전체 테스트 389건 PASS / 0 FAIL, 회귀 0.
 - **체크리스트**:
-  - [ ] GREEN: config 변경 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: config 변경 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

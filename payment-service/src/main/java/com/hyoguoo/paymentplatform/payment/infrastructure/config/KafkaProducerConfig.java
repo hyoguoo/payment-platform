@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.transaction.KafkaTransactionManager;
 
 /**
  * payment-service Kafka 프로듀서 — 토픽별 타입드 KafkaTemplate 빈 등록.
@@ -24,8 +26,12 @@ import org.springframework.kafka.core.ProducerFactory;
  *   <li>setDefaultTopic() 으로 발행 코드에서 토픽 문자열 누락/오타 가능성이 제거된다.</li>
  * </ul>
  *
- * <p>stock publishing 은 StockOutboxKafkaPublisher (StockOutboxPublisherPort 구현체) 로 분리되어 있다.
- * 이 config 는 payment.commands.confirm / stock_outbox / dlq 템플릿만 관리한다.
+ * <p>stock-committed 발행은 EOS-aware ProducerFactory (stockCommittedProducerFactory) 를 사용한다.
+ * transactional.id = ${spring.application.name}-${HOSTNAME:local} (D4 결정 — 단일 인스턴스 가정).
+ * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq / stock_outbox 템플릿을 관리한다.
+ *
+ * <p>PET-9 에서 stock_outbox 묶음 삭제 예정 — stockOutboxKafkaTemplate 은 삭제 예정.
+ * stockCommittedKafkaTemplate 이 EOS 발행 전용 신규 빈.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -36,6 +42,64 @@ public class KafkaProducerConfig {
 
     @Value("${payment.kafka.topics.commands-confirm}")
     private String commandsConfirmTopic;
+
+    @Value("${payment.kafka.topics.events-stock-committed}")
+    private String eventsStockCommittedTopic;
+
+    /**
+     * D4 결정 — transactional.id prefix.
+     * ${spring.application.name}-${HOSTNAME:local} 패턴으로 단일 인스턴스 가정.
+     * 다중 인스턴스 확장 시 CONCERNS.md L6 / TODOS TC-13-FOLLOW-1 참조.
+     */
+    @Value("${payment.kafka.transactional-id-prefix:${spring.application.name}-${HOSTNAME:local}}")
+    private String transactionalIdPrefix;
+
+    /**
+     * EOS-aware ProducerFactory — stock-committed 발행 전용.
+     * transactional.id prefix + enable.idempotence=true + transaction.timeout.ms=10000 (D4).
+     * transaction.timeout.ms = 10000 — RDB @Transactional(timeout=5) 의 2배 마진.
+     */
+    @Bean
+    public ProducerFactory<String, String> stockCommittedProducerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        props.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, 10000);
+        DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        factory.setTransactionIdPrefix(transactionalIdPrefix + "-");
+        return factory;
+    }
+
+    /**
+     * KafkaTransactionManager — EOS stock-committed 발행 전용.
+     * PET-7 에서 kafkaListenerContainerFactory 에 wire-in 될 빈.
+     * stockCommittedProducerFactory 와 같은 인스턴스를 공유해야 transactional.id 정합이 유지된다.
+     */
+    @Bean
+    public KafkaTransactionManager<String, String> kafkaTransactionManager(
+            ProducerFactory<String, String> stockCommittedProducerFactory) {
+        return new KafkaTransactionManager<>(stockCommittedProducerFactory);
+    }
+
+    /**
+     * stock-committed 발행 전용 EOS KafkaTemplate (PET-6 신규 빈).
+     * EOS-aware ProducerFactory (stockCommittedProducerFactory) 기반 — Kafka 트랜잭션 안에서 발행된다.
+     * PET-8 유스케이스 재작성 시 이 템플릿으로 재고 확정 메시지를 발행한다.
+     *
+     * <p>기존 stockOutboxKafkaTemplate 과 다른 빈 — outbox 묶음은 PET-9 에서 삭제 예정.
+     */
+    @Bean
+    public KafkaTemplate<String, String> stockCommittedKafkaTemplate(
+            ProducerFactory<String, String> stockCommittedProducerFactory,
+            ObservationRegistry observationRegistry) {
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(stockCommittedProducerFactory);
+        template.setDefaultTopic(eventsStockCommittedTopic);
+        template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
+        return template;
+    }
 
     /**
      * payment.commands.confirm 전용 템플릿.
@@ -54,6 +118,8 @@ public class KafkaProducerConfig {
      * 자체 생성한 DefaultKafkaProducerFactory 는 Boot auto-config 의 ObservationRegistry
      * interceptor wire-in 을 받지 못하므로 setObservationRegistry() 로 직접 주입해
      * traceparent 전파 경로를 확보한다.
+     *
+     * <p>PET-9 에서 StockOutbox 묶음 삭제 예정 — 이 빈도 함께 삭제된다.
      */
     @Bean
     public KafkaTemplate<String, String> stockOutboxKafkaTemplate(
