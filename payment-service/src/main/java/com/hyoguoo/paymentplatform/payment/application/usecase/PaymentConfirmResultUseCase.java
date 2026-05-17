@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -86,7 +87,7 @@ public class PaymentConfirmResultUseCase {
         this.paymentEventDedupeStore = paymentEventDedupeStore;
         this.stockCommittedKafkaTemplate = stockCommittedKafkaTemplate;
         this.objectMapper = new ObjectMapper()
-                .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+                .registerModule(new JavaTimeModule());
         this.paymentCommandUseCase = paymentCommandUseCase;
     }
 

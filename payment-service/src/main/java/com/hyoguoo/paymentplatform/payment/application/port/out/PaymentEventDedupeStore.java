@@ -6,7 +6,7 @@ import java.time.Instant;
  * 결제 결과 이벤트의 멱등 마킹 출력 포트.
  *
  * <p>운영 구현체는 MySQL {@code payment_event_dedupe} 테이블에 {@code INSERT IGNORE} 를 실행하고
- * affected row 수를 반환한다 (PET-5 {@code JdbcEventDedupeStore}).
+ * affected row 수를 반환한다 (PET-5 {@code JdbcPaymentEventDedupeStore}).
  *
  * <p>SCR 토픽에서 폐기한 동명 port 와 시그니처가 다르다.
  * SCR : Redis lease two-phase (markWithLease / extendLease).

@@ -21,8 +21,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * JdbcPaymentEventDedupeStore Testcontainers MySQL 단위 테스트.
@@ -32,11 +30,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @SpringBootTest
 @Tag("integration")
-@Testcontainers
 @DisplayName("JdbcPaymentEventDedupeStore INSERT IGNORE 단위 테스트")
 class JdbcPaymentEventDedupeStoreTest {
 
-    @Container
     @SuppressWarnings("resource")
     static final MySQLContainer<?> MYSQL_CONTAINER =
             new MySQLContainer<>("mysql:8.0")
@@ -45,6 +41,13 @@ class JdbcPaymentEventDedupeStoreTest {
                     .withPassword("test")
                     .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")
                     .withReuse(true);
+
+    static {
+        // @Testcontainers/@Container 를 사용하지 않고 수동 start.
+        // @Container 로 관리하면 JUnit5 extension 이 테스트 클래스 완료 후 stop() 을 명시 호출하여
+        // withReuse(true) 설정에도 불구하고 컨테이너가 종료된다.
+        MYSQL_CONTAINER.start();
+    }
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {

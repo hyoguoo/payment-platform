@@ -55,8 +55,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * PET-12 — EOS 통합 회귀 가드 5 시나리오.
@@ -83,9 +81,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest
 @ActiveProfiles("test")
 @Tag("integration")
-@Testcontainers
 @EmbeddedKafka(
-        partitions = 1,
+        partitions = 2,
         topics = {
                 PaymentTopics.EVENTS_CONFIRMED,
                 PaymentTopics.EVENTS_CONFIRMED_DLQ,
@@ -101,7 +98,6 @@ class PaymentEosIntegrationTest {
     private static final int ORDER_QUANTITY = 2;
     private static final BigDecimal UNIT_AMOUNT = BigDecimal.valueOf(10000);
 
-    @Container
     @SuppressWarnings("resource")
     static final MySQLContainer<?> MYSQL_CONTAINER =
             new MySQLContainer<>("mysql:8.0")
@@ -114,11 +110,21 @@ class PaymentEosIntegrationTest {
                     )
                     .withReuse(true);
 
-    @Container
     @SuppressWarnings("resource")
     static final GenericContainer<?> REDIS_CONTAINER =
             new GenericContainer<>("redis:7.2-alpine")
-                    .withExposedPorts(6379);
+                    .withExposedPorts(6379)
+                    .withReuse(true);
+
+    static {
+        // @Testcontainers/@Container 를 사용하지 않고 수동 start.
+        // @Container 로 관리하면 JUnit5 extension 이 테스트 클래스 완료 후 stop() 을 명시 호출하여
+        // withReuse(true) 설정에도 불구하고 컨테이너가 종료된다.
+        // 종료된 MySQL 컨테이너는 BaseIntegrationTest 컨텍스트(HikariPool) 의 연결을 끊어
+        // 후속 PaymentControllerTest / PaymentCheckoutConcurrencyIntegrationTest 를 실패시킨다.
+        MYSQL_CONTAINER.start();
+        REDIS_CONTAINER.start();
+    }
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {

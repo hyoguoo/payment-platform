@@ -83,11 +83,12 @@ public class KafkaProducerConfig {
     }
 
     /**
-     * stock-committed 발행 전용 EOS KafkaTemplate (PET-6 신규 빈).
+     * stock-committed 발행 전용 EOS KafkaTemplate.
      * EOS-aware ProducerFactory (stockCommittedProducerFactory) 기반 — Kafka 트랜잭션 안에서 발행된다.
-     * PET-8 유스케이스 재작성 시 이 템플릿으로 재고 확정 메시지를 발행한다.
+     * {@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase} 가
+     * APPROVED 결과 처리 시 이 템플릿으로 재고 확정 메시지를 발행한다.
      *
-     * <p>기존 stockOutboxKafkaTemplate 과 다른 빈 — outbox 묶음은 PET-9 에서 삭제 예정.
+     * <p>PET-9 에서 StockOutbox 묶음이 제거되어 이 템플릿이 stock-committed 발행의 단일 경로다.
      */
     @Bean
     public KafkaTemplate<String, String> stockCommittedKafkaTemplate(
