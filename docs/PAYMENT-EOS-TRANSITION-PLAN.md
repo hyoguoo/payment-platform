@@ -163,10 +163,11 @@ flowchart LR
   - `markIfAbsent(String eventUuid, Long orderId, String status, LocalDateTime receivedAt, LocalDateTime expiresAt) -> int` 시그니처 확정
   - 기존 테스트 회귀 0
 - **비고**: SCR 토픽에서 폐기한 동명 포트와 시그니처가 다름 (lease 기반 two-phase → INSERT IGNORE one-phase). DR-8 minor — 동명 재사용 OK (§5 layer 표 명시 결정)
+- **완료 결과**: `PaymentEventDedupeStore.java` 신설 (PD1-1 forward-fix: (b) 분리 명명 채택 — SCR 폐기 port 와 이름 충돌 회피). `markIfAbsent(String, long, String, Instant) -> int` 시그니처 확정. 컴파일 통과, 전체 테스트 회귀 0.
 - **체크리스트**:
-  - [ ] GREEN: 인터페이스 파일 작성 + 커밋 (`feat:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신 (활성 태스크 ID)
+  - [x] GREEN: 인터페이스 파일 작성 + 커밋 (`feat:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신 (활성 태스크 ID)
 
 ---
 
