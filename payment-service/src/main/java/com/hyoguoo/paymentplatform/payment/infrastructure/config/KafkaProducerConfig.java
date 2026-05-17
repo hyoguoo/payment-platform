@@ -28,10 +28,8 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  *
  * <p>stock-committed 발행은 EOS-aware ProducerFactory (stockCommittedProducerFactory) 를 사용한다.
  * transactional.id = ${spring.application.name}-${HOSTNAME:local} (D4 결정 — 단일 인스턴스 가정).
- * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq / stock_outbox 템플릿을 관리한다.
- *
- * <p>PET-9 에서 stock_outbox 묶음 삭제 예정 — stockOutboxKafkaTemplate 은 삭제 예정.
- * stockCommittedKafkaTemplate 이 EOS 발행 전용 신규 빈.
+ * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq 템플릿을 관리한다.
+ * stockCommittedKafkaTemplate 이 EOS 발행 전용 빈.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -112,35 +110,10 @@ public class KafkaProducerConfig {
     }
 
     /**
-     * stock_outbox relay 전용 String KafkaTemplate.
-     * stock_outbox row 의 pre-serialized JSON payload 를 재직렬화 없이 직접 발행하므로
-     * StringSerializer ProducerFactory 를 쓴다 — JsonSerializer 혼용을 차단한다.
-     * 자체 생성한 DefaultKafkaProducerFactory 는 Boot auto-config 의 ObservationRegistry
-     * interceptor wire-in 을 받지 못하므로 setObservationRegistry() 로 직접 주입해
-     * traceparent 전파 경로를 확보한다.
-     *
-     * <p>PET-9 에서 StockOutbox 묶음 삭제 예정 — 이 빈도 함께 삭제된다.
-     */
-    @Bean
-    public KafkaTemplate<String, String> stockOutboxKafkaTemplate(
-            ObservationRegistry observationRegistry) {
-        Map<String, Object> props = Map.of(
-                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
-                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
-        );
-        ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
-        KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
-        template.setObservationEnabled(true);
-        template.setObservationRegistry(observationRegistry);
-        return template;
-    }
-
-    /**
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
      * SCR-8 KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
      * 별도 StringSerializer ProducerFactory 사용으로 JsonSerializer 혼용을 차단하고,
-     * stockOutboxKafkaTemplate 과 같은 이유로 ObservationRegistry 를 명시 wiring 한다.
+     * ObservationRegistry 를 명시 wiring 해 traceparent 전파 경로를 확보한다.
      */
     @Bean
     public KafkaTemplate<String, String> confirmedDlqKafkaTemplate(

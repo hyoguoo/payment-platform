@@ -19,7 +19,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 /**
  * KafkaMessagePublisher 단위 테스트 — payment.commands.confirm 토픽 단일 경로만 검증한다.
- * stock publishing 은 StockOutboxKafkaPublisher 로 분리되어 있어 이 테스트 범위 밖이다.
+ * stock-committed 발행은 EOS 직접 발행 (stockCommittedKafkaTemplate) 으로 분리되어 있다.
  */
 @ExtendWith(MockitoExtension.class)
 class KafkaMessagePublisherTest {

@@ -415,10 +415,11 @@ flowchart LR
   - `./gradlew build` 컴파일 통과
   - `./gradlew test` 회귀 0 (삭제된 SUT 의 테스트가 함께 삭제됨)
 - **비고**: `QStockOutboxEntity.java` 는 `build/generated/` 아래 QueryDSL 생성물 — `clean` 시 자동 제거. 명시 삭제 불필요
+- **완료 결과**: 19개 파일 삭제 (main 13 — domain/application event+port+service+util / infrastructure entity+listener+publisher+repository+scheduler + test 6 — domain/application service+mock / infrastructure listener+scheduler). `KafkaProducerConfig` `stockOutboxKafkaTemplate` 빈 삭제. `application.yml` `scheduler.stock-outbox-worker` 섹션 삭제. `StockEventUuidDeriver` / `StockCommittedEvent` / `PaymentTopics` 보존 확인. 385건 PASS / 0 FAIL.
 - **체크리스트**:
-  - [ ] GREEN: 파일 삭제 + 컴파일 확인 + 커밋 (`refactor:` prefix)
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: 파일 삭제 + 컴파일 확인 + 커밋 (`refactor:` prefix)
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

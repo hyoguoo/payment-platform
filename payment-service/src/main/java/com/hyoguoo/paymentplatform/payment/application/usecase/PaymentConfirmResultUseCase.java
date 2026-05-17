@@ -39,8 +39,6 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>위키 line 141 보장 — 0 row(중복) 시에도 발행은 항상 진행 (product-service dedupe 가 막음)</li>
  * </ul>
  *
- * <p>제거된 의존: {@code ApplicationEventPublisher} (StockOutboxReadyEvent 발행 용도) /
- * {@code StockOutboxRepository} / {@code StockOutboxFactory} — PET-9 에서 관련 묶음 전체 삭제 예정.
  *
  * <p>상태 분기:
  * <ul>

@@ -20,8 +20,8 @@ import org.springframework.stereotype.Component;
  * KafkaTemplate 직접 호출은 이 클래스에만 허용된다 — Worker / RelayService 등 호출자는
  * 반드시 MessagePublisherPort 인터페이스를 통해 발행한다.
  *
- * <p>stock publishing 은 StockOutboxKafkaPublisher / StockOutboxPublisherPort 로 분리되어 있고,
- * 이 클래스는 payment.commands.confirm 토픽 단일 경로만 담당한다.
+ * <p>이 클래스는 payment.commands.confirm 토픽 단일 경로만 담당한다.
+ * stock-committed 발행은 EOS 직접 발행 (stockCommittedKafkaTemplate — PaymentConfirmResultUseCase) 으로 분리되어 있다.
  *
  * <p>발행은 호출 스레드에서 블로킹 동기 방식이다. kafkaTemplate.send()가 반환하는
  * CompletableFuture를 sendTimeoutMillis 까지 대기한 뒤 결과를 확인한다.
