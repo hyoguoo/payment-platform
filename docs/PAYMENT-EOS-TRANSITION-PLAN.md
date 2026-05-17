@@ -564,10 +564,12 @@ flowchart LR
   - `CONCERNS.md` 에 L1/L3/L5/L6 4개 항목 박힘
   - `TODOS.md` 에 TC-13-FOLLOW-1~5 박힘
   - 기존 테스트 회귀 0
+**완료 결과**: CONFIRM-FLOW (EOS 안 재작성 — §1/§5/§6/§12/§13/§15 갱신 + PET-12 통합 시나리오 5건 §16 등재) / ARCHITECTURE (EOS 구조 명시, StockOutbox 폐기, JdbcPaymentEventDedupeStore 신설) / STRUCTURE (dedupe 디렉토리 갱신, Flyway V2/V3 명시, 흔히 찾는 위치 갱신) / PITFALLS (함정 20~23번 신규 등재) / CONCERNS (L1~L6 재번호 + EOS 수용 한계 4건 신설) / TODOS (TC-13 완료 + TC-13-FOLLOW-1~5 등재). STATE.md stage review 전환. 전체 테스트 회귀 0.
+
 - **체크리스트**:
-  - [ ] GREEN: 6개 문서 갱신 + 단일 `docs:` 커밋
-  - [ ] PLAN.md 체크박스 갱신
-  - [ ] STATE.md 갱신
+  - [x] GREEN: 6개 문서 갱신 + 단일 `docs:` 커밋
+  - [x] PLAN.md 체크박스 갱신
+  - [x] STATE.md 갱신
 
 ---
 

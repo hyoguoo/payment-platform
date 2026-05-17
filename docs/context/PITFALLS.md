@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — 보상 silent loss / dedupe lease 폐기 반영)
+> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 도입 학습 함정 4건 등재)
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -202,6 +202,43 @@ process(result);  // result 가 null 일 수 있음
 **처방** (장기):
 - `PaymentStatusResult.StatusType` 에 `QUARANTINED` 추가 + `mapEventStatus` 명시 매핑 → 클라이언트가 격리 상태를 인지하고 polling 종료
 - TODOS.md 의 admin 복구 도구(TQ-2 QUARANTINED-ADMIN-RECOVERY) 와 함께 진행
+
+## 20. INSERT IGNORE 0 row 시 비즈니스 skip 해도 발행은 항상 진행 (EOS 도입)
+
+**증상**: `payment_event_dedupe` INSERT IGNORE 가 0 row 를 반환할 때 비즈니스 처리(결제 상태 전이)도 skip 하고 재고 확정 발행도 skip 하면 재배달 시 product-service 가 stock-committed 를 수신하지 못해 재고 차감이 영영 누락된다.
+
+**원인**: 0 row = "이미 처리됐음" 이지, "발행 안 해도 됨" 이 아니다. product-service 의 `JdbcEventDedupeStore` 가 stock-committed idempotencyKey 기반으로 중복 차감을 막으므로, 발행이 여러 번 와도 재고는 1번만 차감된다.
+
+**처방** (위키 line 141 보장):
+- `markIfAbsent()` 0 row 시 비즈니스 처리는 skip 하되 `PaymentOrder` 순회 + `stockCommittedKafkaTemplate.send` 는 **항상 진행**.
+- product-service `JdbcEventDedupeStore` (INSERT IGNORE, 같은 TX) 가 이중 차감 방어를 담당.
+
+## 21. QUARANTINED 결제에 늦은 APPROVED 메시지 — D7 가드 없으면 DLQ silent 분기
+
+**증상**: 결제가 QUARANTINED 된 이후 뒤늦게 APPROVED 결제 결과 메시지가 도착 (pg-service retry 지연 등). 가드 없으면 `handleApproved` 가 실행 → `markPaymentAsDone` 에서 `IllegalStateException` (QUARANTINED → DONE 비허용 전이) → not-retryable 즉시 DLQ → 재고 발행 0 + 상태 불일치 로그 없음.
+
+**처방** (D7 가드 — PET-3 / PET-8):
+- `handle()` 진입 직후 `paymentEvent.getStatus().isCompensatableByFailureHandler()` 체크.
+- false (QUARANTINED 포함 종결 상태) → `LogFmt.warn` + noop return. DLQ 전혀 건드리지 않음.
+- D7 가드 변경 시 `PaymentEventStatusEosGuardTest` (QUARANTINED 단독 assert) 가 회귀 탐지 (DR-3).
+
+## 22. multi-product 결제의 idempotencyKey 결정성 — StockEventUuidDeriver 보존 이유
+
+**증상**: EOS 전환 시 `StockOutbox` 묶음 삭제하면서 `StockEventUuidDeriver` 까지 함께 삭제하면, 재고 확정 발행의 idempotencyKey 가 결정적 UUID 가 아닌 임의 UUID 로 바뀐다 → 재배달 시 product-service dedupe 가 "처음 보는 key" 로 인식 → 재고 N건 중복 차감.
+
+**처방** (DR-1 / D8):
+- `StockEventUuidDeriver.derive(orderId, productId, "stock-commit")` 는 StockOutbox 묶음 삭제와 무관하게 **반드시 보존**.
+- PET-9 삭제 대상 명세에 "유지 대상 (삭제 금지)" 블록으로 명시.
+- `PaymentEosIntegrationTest` 시나리오 #4 (multi-product + 재배달 dedupe) 가 회귀 가드.
+
+## 23. rolling deploy 순서 역전 — EOS abort invisible 보장 무력화
+
+**증상**: payment-service EOS 전환(producer tx 발행)이 먼저 배포되고 product-service `isolation.level=read_committed` 적용이 나중에 오면, abort 된 stock-committed 메시지가 product-service 에 read_uncommitted 로 보인다. abort 직후 재배달 전에 product-service 가 abort 메시지를 처리하면 dedupe 키가 박혀 재배달 메시지를 중복으로 판정 → stock-committed 0건 처리 + 재고 차감 0 → 정합 발산.
+
+**처방** (D6 deploy 순서 — DR-4):
+- product-service `read_committed` 먼저 배포 → payment-service EOS 발행 나중 배포.
+- 역순(payment EOS 먼저)이면 abort 가 가시화되는 **spurious 차감 윈도우** 발생.
+- PR 본문 또는 운영 배포 체크리스트에 deploy 순서를 명시한다.
 
 ## 관련 자료
 

@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT — pg-service inbox 작업 큐 신규 컴포넌트 반영)
+> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — payment-service dedupe 신설 + StockOutbox 묶음 폐기 반영)
 
 ## 루트 레이아웃
 
@@ -85,7 +85,7 @@ payment-platform/
     │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service — feign/ 서브폴더에 *FeignClient + *FeignConfig)
     │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service — HttpOperatorImpl)
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
-    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (pg Redis+RDB / product RDB. payment 측은 Lua atomic dedup token 으로 일원화 — 본 디렉토리 어댑터 없음)
+    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment: JdbcPaymentEventDedupeStore — payment_event_dedupe INSERT IGNORE / pg Redis+RDB / product RDB)
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
     │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker, PgInboxImmediateWorker, PgInboxPollingWorker)
     │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
@@ -113,7 +113,7 @@ payment-platform/
     │       ├── application-docker.yml
     │       ├── application-benchmark.yml   # (payment-service 만)
     │       ├── application-smoke.yml       # (pg-service 만)
-    │       ├── db/schema/                  # Flyway V1 schema (payment / pg / product / user 모두)
+    │       ├── db/schema/ OR db/migration/  # Flyway schema (payment/pg: db/migration/ — V1 schema + V2 payment_event_dedupe + V3 stock_outbox DROP. product/user: db/schema/)
     │       ├── db/seed/                    # Flyway V2 seed (product / user — local/test profile 에서만 적용, docker profile 차단)
     │       ├── lua/                        # Redis Lua 스크립트 (payment-service 만 — stock_decrement_atomic.lua, stock_compensation_atomic.lua)
     │       ├── static/                     # 결제 UI (payment-service 만)
@@ -182,7 +182,13 @@ flowchart TD
 |---|---|
 | 결제 confirm 진입점 | `payment-service/.../presentation/controller/PaymentController.java` |
 | 비동기 confirm 사이클 | `payment-service/.../application/OutboxAsyncConfirmService.java` |
-| Outbox 릴레이 | `payment-service/.../application/service/OutboxRelayService.java` + `infrastructure/listener/OutboxImmediateEventHandler.java` + `infrastructure/scheduler/OutboxWorker.java` |
+| Outbox 릴레이 (confirm) | `payment-service/.../application/service/OutboxRelayService.java` + `infrastructure/listener/OutboxImmediateEventHandler.java` + `infrastructure/scheduler/OutboxWorker.java` |
+| EOS 결과 처리 use case | `payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` |
+| EOS 멱등 마킹 포트 | `payment-service/.../application/port/out/PaymentEventDedupeStore.java` |
+| EOS 멱등 마킹 어댑터 | `payment-service/.../infrastructure/dedupe/JdbcPaymentEventDedupeStore.java` |
+| EOS consumer wiring | `payment-service/.../infrastructure/config/KafkaConsumerConfig.java` |
+| EOS producer wiring | `payment-service/.../infrastructure/config/KafkaProducerConfig.java` (stockCommittedProducerFactory + KafkaTransactionManager) |
+| stock idempotencyKey 도출 (보존) | `payment-service/.../application/util/StockEventUuidDeriver.java` |
 | 재고 Lua 스크립트 | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua`, `stock_compensation_atomic.lua` |
 | 재고 atomic 결과 enum | `payment-service/.../application/port/out/StockDecrementAtomicResult.java`, `StockCompensationAtomicResult.java` |
 | Kafka 에러 핸들러 빈 | `payment-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` |
