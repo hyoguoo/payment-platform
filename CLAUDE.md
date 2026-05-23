@@ -25,6 +25,18 @@
 2. **Minimal change**: 현재 태스크 범위 밖 코드는 수정하지 않는다. 발견한 문제는 주석으로 메모만 한다.
 3. **Verify**: 매 태스크 완료 후 `./gradlew test`로 회귀 없음을 확인한다.
 
+상세 코딩 컨벤션(주석/문서화 규칙, 안티패턴 회피 등)은 [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) 참고.
+
+---
+
+## Subagent 작업
+
+대량 기계적 편집(전체 파일 주석 정리 등)을 서브에이전트로 병렬 위임하면, 에이전트는 자동 생성된 git worktree(`.claude/worktrees/agent-*`)에서 작업한다. 이 worktree 는 메인 HEAD 가 아닌 옛 커밋 기반일 수 있어, 변경이 메인 트리에 흩어지거나 결과가 메인 코드와 어긋날 수 있다.
+
+- worktree 결과를 통째 복사하지 않는다 (옛 코드로 메인을 덮어쓸 위험).
+- `git -C <worktree> diff` 로 patch 를 떠 메인에서 `git apply --check` 로 호환을 검증하고, 통과분만 `git apply` 한다. 충돌분(메인과 코드가 다른 파일)은 메인 기준으로 재작업한다.
+- 작업 후 `git worktree remove -f -f <path>` 로 정리한다.
+
 ---
 
 ## Conversation Rules
@@ -44,7 +56,7 @@
 - [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — 4서비스 토폴로지, hexagonal layer 룰, 비동기 어댑터 위치, 핵심 설계 결정 인덱스
 - [`docs/context/STRUCTURE.md`](docs/context/STRUCTURE.md) — 디렉토리 트리, 모듈 의존, 패키지 컨벤션
 - [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, Flyway 운영 가이드, 빌드 / 정적 분석
-- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok, 예외 계층, naming, LogFmt, AOP, 트랜잭션 룰
+- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — 주제별 코딩 컨벤션 인덱스 (conventions/ 하위: code-style / error-logging / transactions / kafka / testing)
 - [`docs/context/TESTING.md`](docs/context/TESTING.md) — Fake vs Mock 룰, Testcontainers, contract test, JaCoCo, TDD 흐름
 - [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss + NicePay Strategy, cross-service HTTP, 외부 의존 관리
 - [`docs/context/PAYMENT-FLOW.md`](docs/context/PAYMENT-FLOW.md) — end-to-end 결제 플로우 (브라우저 checkout → Gateway → payment ↔ pg ↔ vendor → 결과 콜백)
