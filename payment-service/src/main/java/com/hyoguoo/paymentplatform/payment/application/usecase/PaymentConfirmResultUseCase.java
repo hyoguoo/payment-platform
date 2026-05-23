@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
@@ -111,22 +112,24 @@ public class PaymentConfirmResultUseCase {
                 expiresAt
         );
 
+        ConfirmStatus confirmStatus = ConfirmStatus.from(message.status());
+
         if (affected == 0) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
                     () -> "중복 skip — orderId=" + message.orderId()
                             + " eventUuid=" + message.eventUuid());
             // 중복이면 비즈니스 로직은 건너뛰되, 재고 확정 발행은 항상 수행한다 (product 측에서 다시 멱등 처리).
-            if ("APPROVED".equals(message.status())) {
+            if (confirmStatus == ConfirmStatus.APPROVED) {
                 sendStockCommittedEvents(paymentEvent);
             }
             return;
         }
 
-        switch (message.status()) {
-            case "APPROVED" -> handleApproved(paymentEvent, message);
-            case "FAILED" -> handleFailed(paymentEvent, message.reasonCode());
-            case "QUARANTINED" -> handleQuarantined(paymentEvent, message.reasonCode());
-            default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
+        switch (confirmStatus) {
+            case APPROVED -> handleApproved(paymentEvent, message);
+            case FAILED -> handleFailed(paymentEvent, message.reasonCode());
+            case QUARANTINED -> handleQuarantined(paymentEvent, message.reasonCode());
+            case UNKNOWN -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
                     () -> "orderId=" + message.orderId() + " status=" + message.status());
         }
     }
@@ -190,10 +193,6 @@ public class PaymentConfirmResultUseCase {
     }
 
     private String serializeToJson(StockCommittedEvent payload) {
-        return serializeQuietly(payload);
-    }
-
-    private String serializeQuietly(StockCommittedEvent payload) {
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {

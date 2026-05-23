@@ -41,7 +41,7 @@ public class IdempotencyStoreRedisAdapter implements IdempotencyStore {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final IdempotencyProperties idempotencyProperties;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     public IdempotencyResult<CheckoutResult> getOrCreate(String key, Supplier<CheckoutResult> creator) {

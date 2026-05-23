@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import java.math.BigDecimal;
@@ -38,7 +39,7 @@ class IdempotencyStoreRedisAdapterTest {
         given(mockRedisTemplate.opsForValue()).willReturn(mockValueOps);
 
         idempotencyProperties = new IdempotencyProperties(10000L, 30L);
-        adapter = new IdempotencyStoreRedisAdapter(mockRedisTemplate, idempotencyProperties);
+        adapter = new IdempotencyStoreRedisAdapter(mockRedisTemplate, idempotencyProperties, new ObjectMapper());
     }
 
     @Test

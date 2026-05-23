@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
+import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import java.time.Clock;
@@ -174,7 +175,7 @@ public class PgFinalConfirmationGate {
     private void handleFailed(String orderId, String storedStatusResult) {
         pgInboxRepository.transitToFailed(orderId, storedStatusResult, "FCG_CONFIRMED_FAILED");
 
-        String payload = buildConfirmedPayload(orderId, "FAILED", "FCG_CONFIRMED_FAILED");
+        String payload = buildConfirmedPayload(orderId, ConfirmStatus.FAILED, "FCG_CONFIRMED_FAILED");
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
@@ -190,7 +191,7 @@ public class PgFinalConfirmationGate {
     private void handleIndeterminate(String orderId, long amount) {
         pgInboxRepository.transitToQuarantined(orderId, REASON_FCG_INDETERMINATE);
 
-        String payload = buildConfirmedPayload(orderId, "QUARANTINED", REASON_FCG_INDETERMINATE);
+        String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, REASON_FCG_INDETERMINATE);
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
@@ -216,11 +217,11 @@ public class PgFinalConfirmationGate {
                 ConfirmedEventPayload.approved(orderId, eventUuid, amount, approvedAtRaw));
     }
 
-    private String buildConfirmedPayload(String orderId, String status, String reasonCode) {
+    private String buildConfirmedPayload(String orderId, ConfirmStatus status, String reasonCode) {
         String eventUuid = UUID.randomUUID().toString();
         ConfirmedEventPayload payload = switch (status) {
-            case "FAILED" -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
-            case "QUARANTINED" -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
+            case FAILED -> ConfirmedEventPayload.failed(orderId, reasonCode, eventUuid);
+            case QUARANTINED -> ConfirmedEventPayload.quarantined(orderId, reasonCode, eventUuid);
             default -> throw new IllegalArgumentException("지원하지 않는 status: " + status);
         };
         return payloadSerializer.serialize(payload);
