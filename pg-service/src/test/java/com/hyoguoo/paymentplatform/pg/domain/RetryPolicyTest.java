@@ -22,7 +22,7 @@ class RetryPolicyTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("shouldRetry — attempt=1,2,3은 true, attempt=4는 false (불변식 6)")
+    @DisplayName("shouldRetry — attempt=1,2,3은 true, attempt=4는 false")
     void shouldRetry_BoundaryValues() {
         assertThat(RetryPolicy.shouldRetry(1)).isTrue();
         assertThat(RetryPolicy.shouldRetry(2)).isTrue();

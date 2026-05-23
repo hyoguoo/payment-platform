@@ -16,18 +16,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>불변식:
  * <ul>
- *   <li>TC1: TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 함 — 직접 의존 제거</li>
- *   <li>TC2: TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 함 — 이벤트 발행 경로</li>
- *   <li>TC3: duplicate 감지 시 DuplicateApprovalDetectedEvent 가 발행되어야 함</li>
+ *   <li>TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 함 — 직접 의존 제거</li>
+ *   <li>TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 함 — 이벤트 발행 경로</li>
+ *   <li>duplicate 감지 시 DuplicateApprovalDetectedEvent 가 발행되어야 함</li>
  * </ul>
  */
 @DisplayName("TossPaymentGatewayStrategy — ApplicationEvent 패턴 순환 의존 해소")
 class TossPaymentGatewayStrategyDuplicateEventTest {
 
     /**
-     * TC1: TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
+     * TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
      *
-     * <p>DuplicateApprovalHandler 직접 의존을 ApplicationEventPublisher 로 교체해 cycle 을 끊었다.
+     * <p>DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 둬서 cycle 을 방지한다.
      * cycle: TossPaymentGatewayStrategy → DuplicateApprovalHandler → PgStatusLookupPort(← Toss).
      */
     @Test
@@ -42,9 +42,9 @@ class TossPaymentGatewayStrategyDuplicateEventTest {
     }
 
     /**
-     * TC2: TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 한다.
+     * TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 한다.
      *
-     * <p>cycle 단절을 위해 DuplicateApprovalHandler 직접 호출이 ApplicationEventPublisher.publishEvent 로 교체됐다.
+     * <p>cycle 을 피하기 위해 DuplicateApprovalHandler 를 직접 호출하지 않고 ApplicationEventPublisher.publishEvent 로 이벤트를 발행한다.
      */
     @Test
     @DisplayName("Toss전략_ApplicationEventPublisher_필드_있어야_한다")
@@ -58,7 +58,7 @@ class TossPaymentGatewayStrategyDuplicateEventTest {
     }
 
     /**
-     * TC3: PgConfirmRequest 인터페이스 — duplicate 감지 메서드 호출 시 DuplicateApprovalDetectedEvent 발행.
+     * PgConfirmRequest 인터페이스 — duplicate 감지 메서드 호출 시 DuplicateApprovalDetectedEvent 발행.
      *
      * <p>duplicate 분기 시 applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(...)) 가 호출돼야 한다.
      */

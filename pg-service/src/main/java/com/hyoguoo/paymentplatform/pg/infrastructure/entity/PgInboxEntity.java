@@ -59,14 +59,14 @@ public class PgInboxEntity {
     private LocalDateTime updatedAt;
 
     /**
-     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 결제 키.
+     * listener PENDING INSERT 시 기록한 벤더 결제 키.
      * 워커(PgInboxProcessor)가 inboxId 기반 재조회 시 PgConfirmRequest 구성에 사용한다.
      */
     @Column(name = "payment_key", length = 200)
     private String paymentKey;
 
     /**
-     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
+     * listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
      * 워커가 vendorType 기반 strategy 선택 시 사용한다.
      */
     @Column(name = "vendor_type", length = 50)

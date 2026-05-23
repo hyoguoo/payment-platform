@@ -34,7 +34,7 @@ class StockCommitUseCaseTest {
     }
 
     @Test
-    @DisplayName("TC1: 첫 호출 시 RDB 재고가 qty 만큼 차감된다")
+    @DisplayName("첫 호출 시 RDB 재고가 qty 만큼 차감된다")
     void commit_ShouldDecreaseRdbStock() {
         long productId = 1L;
         String orderId = "order-100";
@@ -56,7 +56,7 @@ class StockCommitUseCaseTest {
     }
 
     @Test
-    @DisplayName("TC2: 동일 eventUUID 2회 호출 → 두 번째는 no-op (dedupe)")
+    @DisplayName("동일 eventUUID 2회 호출 → 두 번째는 no-op (dedupe)")
     void commit_DuplicateEventUuid_ShouldNoOp() {
         long productId = 2L;
         String orderId = "order-200";
@@ -80,7 +80,7 @@ class StockCommitUseCaseTest {
     }
 
     @Test
-    @DisplayName("TC3: 재고 row 미존재 시 IllegalStateException 전파")
+    @DisplayName("재고 row 미존재 시 IllegalStateException 전파")
     void commit_WhenStockNotFound_ShouldThrow() {
         long productId = 3L;
         String orderId = "order-300";

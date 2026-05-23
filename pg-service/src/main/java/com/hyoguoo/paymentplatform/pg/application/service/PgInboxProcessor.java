@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * PgInboxProcessUseCase 구현체 — PCS-8.
+ * PgInboxProcessUseCase 구현체.
  *
  * <p>워커({@code PgInboxImmediateWorker} / {@code PgInboxPollingWorker}) 가 호출하는 두 진입점:
  * <ul>
@@ -38,8 +38,8 @@ import org.springframework.stereotype.Service;
  * ALREADY_PROCESSED 응답은 HandledInternally outcome 으로 변환되어
  * {@code applyOutcome} 의 5분기 안에서 {@code DuplicateApprovalHandler} 에 위임된다.
  *
- * <p>PCS-9 V3 migration 으로 {@code pg_inbox} 에 {@code payment_key} / {@code vendor_type} 컬럼 정합 완료.
- * {@link PgConfirmRequest} 는 inbox 에서 직접 읽어 구성한다.
+ * <p>{@code pg_inbox} 의 {@code payment_key} / {@code vendor_type} 컬럼에서 직접 읽어
+ * {@link PgConfirmRequest} 를 구성한다.
  */
 @Slf4j
 @Service
@@ -101,7 +101,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
     /**
      * IN_PROGRESS 좀비 상태의 inbox row 를 재처리한다.
      *
-     * <p>M4 review finding 흡수: 진입 직후 {@code selectInProgressForUpdateSkipLocked} 로 락 선점.
+     * <p>진입 직후 {@code selectInProgressForUpdateSkipLocked} 로 락을 선점한다.
      * 0 row(SKIP LOCKED — 다른 워커가 이미 보유) → silent return.
      *
      * <p>lock TX (짧게) → status 확인 → commit → 벤더 HTTP (TX 외부) → applyOutcome (TX_B).
@@ -112,7 +112,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
      */
     @Override
     public void processInProgressZombie(Long inboxId) {
-        // M4: TX_lock — selectInProgressForUpdateSkipLocked + status 확인.
+        // TX_lock — selectInProgressForUpdateSkipLocked + status 확인.
         // 다른 워커가 이미 잠근 경우(SKIP LOCKED) empty → silent return.
         Optional<PgInbox> lockedOpt = inboxRepository.selectInProgressForUpdateSkipLocked(inboxId);
         if (lockedOpt.isEmpty()) {
@@ -141,8 +141,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
     /**
      * PgInbox 에서 PgConfirmRequest 를 구성한다.
      *
-     * <p>PCS-9 V3 migration: pg_inbox 에 paymentKey / vendorType 컬럼 추가됨.
-     * inbox 에서 직접 읽어 PgConfirmRequest 를 구성한다.
+     * <p>pg_inbox 의 paymentKey / vendorType 컬럼에서 직접 읽어 PgConfirmRequest 를 구성한다.
      * vendorType 은 String → PgVendorType 변환 (null-safe).
      *
      * @param inbox pg_inbox row (paymentKey / vendorType 포함)

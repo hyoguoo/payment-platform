@@ -15,11 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * terminal inbox 재발행 서비스 — M2 review finding 흡수.
+ * terminal inbox 재발행 서비스.
  *
- * <p>{@code PgConfirmService.handleTerminal} 이 {@code @Transactional} 메서드를
+ * <p>{@code PgConfirmService} 가 {@code @Transactional} 메서드를
  * self-invocation 하면 Spring proxy 를 우회해 TX 경계가 무시된다.
- * 별 빈으로 분리하여 proxy 경유를 보장한다.
+ * 별도 빈으로 분리하여 proxy 경유를 보장한다.
  *
  * <p>pg_outbox save + publishEvent(PgOutboxReadyEvent) 가 동일 active TX 안에서
  * 실행되어야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가 등록된다.

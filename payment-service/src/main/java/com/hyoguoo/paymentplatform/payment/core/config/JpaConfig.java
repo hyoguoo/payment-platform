@@ -13,9 +13,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 public class JpaConfig {
 
     /**
-     * 명시적 JPA 트랜잭션 매니저 — PET-12 SUT 수정 (PET-6 regression).
+     * 명시적 JPA 트랜잭션 매니저.
      *
-     * <p>PET-6 에서 {@code KafkaTransactionManager} 를 명시 등록하면서
+     * <p>{@code KafkaTransactionManager} 를 명시 등록하면
      * {@code KafkaTransactionManager} 가 {@code PlatformTransactionManager} 를 구현하기 때문에
      * Spring Boot JPA auto-config 의 {@code @ConditionalOnMissingBean(PlatformTransactionManager.class)}
      * 조건이 충족되어 JPA {@code transactionManager} 빈 자동 생성이 억제됨.

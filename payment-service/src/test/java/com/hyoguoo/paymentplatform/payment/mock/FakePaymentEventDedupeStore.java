@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * INSERT IGNORE + affected row 반환 동작과 정합한다.
  *
  * <p>단위 테스트 assertion 헬퍼 ({@code clear} / {@code size} / {@code contains}) 를 제공한다.
- * PET-5 JDBC 어댑터 단위 테스트 + PET-8 유스케이스 테스트에서 소비.
+ * JDBC 어댑터 단위 테스트와 유스케이스 테스트에서 소비.
  */
 public class FakePaymentEventDedupeStore implements PaymentEventDedupeStore {
 

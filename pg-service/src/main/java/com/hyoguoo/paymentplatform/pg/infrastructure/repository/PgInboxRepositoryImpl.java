@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>{@link #transitDirectToInProgress} — PENDING 우회 IN_PROGRESS 직진 (보정 경로)</li>
  *   <li>{@link #transitDirectToTerminal} — PENDING + IN_PROGRESS 우회 terminal 직진 (보정 경로)</li>
  *   <li>{@link #findPendingZombieIds} / {@link #findInProgressZombieIds} — 좀비 폴링 조회</li>
- *   <li>{@link #selectInProgressForUpdateSkipLocked} — IN_PROGRESS SKIP LOCKED 단건 선점 (M4)</li>
+ *   <li>{@link #selectInProgressForUpdateSkipLocked} — IN_PROGRESS SKIP LOCKED 단건 선점</li>
  * </ul>
  */
 @Repository
@@ -54,8 +54,6 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
         return jpaPgInboxRepository.save(PgInboxEntity.from(inbox)).toDomain();
     }
 
-    // PCS-9: transitNoneToInProgress 삭제 — 호출처 모두 교체 완료.
-
     @Override
     @Transactional
     public void transitToApproved(String orderId, String storedStatusResult) {
@@ -78,7 +76,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Transactional
     public boolean transitToQuarantined(String orderId, String reasonCode) {
         // 시간 결정성 위해 LocalDateTime.now(clock) 사용
-        // PCS-9: NONE 폐기 완료 — PENDING / IN_PROGRESS non-terminal 파라미터 정합
+        // PENDING / IN_PROGRESS non-terminal 상태만 격리 대상
         return jpaPgInboxRepository.casNonTerminalToQuarantined(
                 orderId, reasonCode, LocalDateTime.now(clock),
                 PgInboxStatus.PENDING, PgInboxStatus.IN_PROGRESS, PgInboxStatus.QUARANTINED) > 0;
@@ -95,7 +93,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
      * <p>INSERT IGNORE 로 orderId UNIQUE 충돌을 흡수하고, SELECT 로 실제 id 를 반환한다.
      * 신규 삽입 또는 기존 row — 어느 경우도 동일한 id 를 반환하여 downstream 이 inboxId 를 보유한다.
      *
-     * <p>PCS-9 (V3 migration): paymentKey / vendorType 컬럼 포함하여 INSERT.
+     * <p>paymentKey / vendorType 컬럼을 포함하여 INSERT 한다.
      * eventUuid 는 DB 컬럼 없이 EventDedupeStore 에서 관리하므로 여기서는 무시한다.
      */
     @Override
@@ -179,7 +177,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     }
 
     /**
-     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점.
      *
      * <p>{@code SELECT FOR UPDATE SKIP LOCKED WHERE id=? AND status='IN_PROGRESS'} 로
      * 다른 워커가 동시에 동일 row 를 처리하는 경우 선점 실패(빈 결과) → Optional.empty() 반환.

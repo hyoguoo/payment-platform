@@ -67,13 +67,13 @@ class PaymentConfirmConsumerTest {
                 new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                         new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
                         duplicateApprovalHandler);
-        // PCS-9: PgConfirmService 생성자에 PgInboxPendingService 추가
+        // PgConfirmService 생성자에 PgInboxPendingService 주입
         PgInboxPendingService pendingService = Mockito.mock(PgInboxPendingService.class);
         Mockito.when(pendingService.insertPendingAndPublish(
                 Mockito.anyString(), Mockito.anyLong(), Mockito.anyString(),
                 Mockito.any(), Mockito.any()))
                 .thenReturn(1L);
-        // M2: PgTerminalReemitService 별 빈 분리 — terminal 재발행 위임
+        // terminal 재발행은 별도 빈(PgTerminalReemitService)에 위임한다
         PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher);
         sut = new PgConfirmService(
                 inboxRepository, vendorCallService, dedupeStore,
@@ -81,11 +81,11 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: inbox 없음 → insertPendingAndPublish 호출, PG 호출 0 (PCS-9 분기 재배치)
+    // inbox 없음 → insertPendingAndPublish 호출, PG 호출 0
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox 없을 때 insertPendingAndPublish 위임 (PCS-9 A1 acceptance: listener 내 벤더 호출 0)")
+    @DisplayName("consume — inbox 없을 때 insertPendingAndPublish 위임 (listener 내 벤더 호출 0)")
     void consume_WhenInboxAbsent_ShouldCallInsertPendingAndPublish() {
         // given — inbox 없음 (FakePgInboxRepository 빈 상태)
         PgConfirmCommand command = new PgConfirmCommand(
@@ -99,11 +99,11 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: IN_PROGRESS → publishEvent 채널 재적재, 벤더 호출 0 (PCS-9 분기 재배치)
+    // IN_PROGRESS → publishEvent 채널 재적재, 벤더 호출 0
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox IN_PROGRESS 존재 시 채널 재적재(publishEvent) 수행, 벤더 호출 0 (PCS-9)")
+    @DisplayName("consume — inbox IN_PROGRESS 존재 시 채널 재적재(publishEvent) 수행, 벤더 호출 0")
     void consume_WhenInboxInProgressAndAttempt2_ShouldPublishEventNotCallVendor() {
         // given — inbox를 IN_PROGRESS 상태로 사전 설정
         PgInbox inProgressInbox = PgInbox.of(
@@ -114,19 +114,19 @@ class PaymentConfirmConsumerTest {
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-uuid-retry-002");
 
-        // when — attempt=2 (self-loop retry → PCS-9: 채널 재적재로 위임)
+        // when — attempt=2 (self-loop retry → 채널 재적재로 위임)
         sut.handle(command, 2);
 
-        // then — 벤더 호출 0회 (PCS-9: listener는 채널 재적재만, 워커가 처리)
+        // then — 벤더 호출 0회 (listener는 채널 재적재만, 워커가 처리)
         assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
     }
 
     // -----------------------------------------------------------------------
-    // TC2b: PENDING → publishEvent 채널 재적재, 벤더 호출 0 (PCS-9)
+    // PENDING → publishEvent 채널 재적재, 벤더 호출 0
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — inbox PENDING 존재 시 채널 재적재, 벤더 호출 0 (PCS-9)")
+    @DisplayName("consume — inbox PENDING 존재 시 채널 재적재, 벤더 호출 0")
     void consume_WhenInboxPending_ShouldPublishEventNotCallVendor() {
         // given — inbox를 PENDING 상태로 사전 설정
         PgInbox pendingInbox = PgInbox.of(
@@ -145,7 +145,7 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: terminal(APPROVED/FAILED/QUARANTINED) → stored_status_result 재발행
+    // terminal(APPROVED/FAILED/QUARANTINED) → stored_status_result 재발행
     // -----------------------------------------------------------------------
 
     @ParameterizedTest
@@ -165,7 +165,7 @@ class PaymentConfirmConsumerTest {
         // when
         sut.handle(command);
 
-        // then — 벤더 호출 0회 (불변식 4/4b)
+        // then — terminal 재수신이므로 벤더 재호출은 없다
         assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
 
         // then — pg_outbox에 재발행 row 생성
@@ -177,11 +177,11 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: 동일 eventUUID 2회 → no-op (불변식 5)
+    // 동일 eventUUID 2회 → no-op (eventUUID dedupe)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — 동일 eventUUID 2회 수신 시 PG 호출 0회 (불변식 5: eventUUID dedupe)")
+    @DisplayName("consume — 동일 eventUUID 2회 수신 시 PG 호출 0회 (eventUUID dedupe)")
     void consume_DuplicateEventUUID_ShouldNoOp() {
         // given
         PgConfirmResult successResult = new PgConfirmResult(
@@ -204,14 +204,14 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC5: 동시 진입 시 dedupe 작동 + 벤더 호출 0 (PCS-9 분기 재배치)
+    // 동시 진입 시 dedupe 작동 + 벤더 호출 0
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — 동일 eventUUID 동시 진입 시 dedupe 작동, 벤더 호출 0 (PCS-9 listener 채널 위임)")
+    @DisplayName("consume — 동일 eventUUID 동시 진입 시 dedupe 작동, 벤더 호출 0 (listener 채널 위임)")
     void consume_WhenInboxAbsent_ConcurrentDedupe_ShouldBeAtomicUnderConcurrency() throws InterruptedException {
         // given — inbox 없음 (FakePgInboxRepository 빈 상태)
-        // PCS-9: absent → insertPendingAndPublish → 워커가 처리 (listener 내 벤더 호출 0)
+        // absent → insertPendingAndPublish → 워커가 처리 (listener 내 벤더 호출 0)
         int threadCount = 8;
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
@@ -242,7 +242,7 @@ class PaymentConfirmConsumerTest {
         startLatch.countDown();
         doneLatch.await();
 
-        // then — 벤더 호출 0 (PCS-9: listener는 INSERT + ack 까지만)
+        // then — 벤더 호출 0 (listener는 INSERT + ack 까지만)
         assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
         List<Exception> unexpectedErrors = errors.stream()
                 .filter(e -> !(e instanceof IllegalStateException))

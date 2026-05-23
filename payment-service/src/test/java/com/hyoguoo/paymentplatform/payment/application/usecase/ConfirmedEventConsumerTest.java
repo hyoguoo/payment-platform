@@ -28,10 +28,10 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트 (PET-8 갱신 — stock_outbox 의존성 제거).
+ * ConfirmedEventConsumer(PaymentConfirmResultUseCase) 단위 테스트.
  *
- * <p>APPROVED/FAILED/QUARANTINED 분기 검증.
- * PET-8 이후: stock_outbox INSERT 제거, stockCommittedKafkaTemplate.send 직접 발행으로 교체.
+ * <p>APPROVED/FAILED/QUARANTINED 분기를 검증한다.
+ * stockCommittedKafkaTemplate.send 로 재고 확정을 직접 발행한다.
  */
 @DisplayName("ConfirmedEventConsumerTest")
 class ConfirmedEventConsumerTest {
@@ -81,7 +81,7 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: APPROVED → PaymentEvent DONE 전이 + stockCommittedKafkaTemplate.send 발행
+    // APPROVED → PaymentEvent DONE 전이 + stockCommittedKafkaTemplate.send 발행
     // -----------------------------------------------------------------------
 
     @Test
@@ -114,7 +114,7 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: FAILED → compensateAtomic 먼저 + markPaymentAsFail 나중
+    // FAILED → compensateAtomic 먼저 + markPaymentAsFail 나중
     // -----------------------------------------------------------------------
 
     @Test
@@ -147,7 +147,7 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: QUARANTINED → QuarantineCompensationHandler.handle 위임
+    // QUARANTINED → QuarantineCompensationHandler.handle 위임
     // -----------------------------------------------------------------------
 
     @Test

@@ -56,9 +56,9 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
- * PET-12 — EOS 통합 회귀 가드 5 시나리오.
+ * EOS 통합 회귀 가드 5 시나리오.
  *
- * <p>검증 범위: PET-6/7/8 에서 완성된 EOS SUT 의 통합 동작.
+ * <p>검증 범위: EOS SUT 의 통합 동작.
  * ConfirmedEventConsumer → KafkaTransactionManager (EOS) → PaymentConfirmResultUseCase → RDB + Kafka 발행.
  *
  * <p>5 시나리오:
@@ -66,15 +66,15 @@ import org.testcontainers.containers.MySQLContainer;
  *   <li>#1 정상 EOS commit — APPROVED → dedupe 1 row + payment DONE + stock-committed 1건 가시화</li>
  *   <li>#2 abort 흐름 — RuntimeException → EOS abort → dedupe 0 row + payment 불변 + stock-committed 0건 + DLQ 1건</li>
  *   <li>#3 중복 INSERT IGNORE — 동일 event_uuid 재배달 → dedupe 1 row (기존) + stock-committed 재발행 + payment 불변</li>
- *   <li>#4 multi-product DR-1 — PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성</li>
- *   <li>#5 QUARANTINED D7 가드 — QUARANTINED 결제 + APPROVED → noop + dedupe 0 row + stock-committed 0건</li>
+ *   <li>#4 multi-product — PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성</li>
+ *   <li>#5 QUARANTINED 가드 — QUARANTINED 결제 + APPROVED → noop + dedupe 0 row + stock-committed 0건</li>
  * </ol>
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
  *   <li>abort invisibility 의 "stock-committed abort" 시뮬레이션 — stock-committed send 이후 abort 를
  *       주입할 수 없어, markPaymentAsDone RuntimeException 주입으로 대체 (발행 전 abort 검증)</li>
- *   <li>multi-instance transactional.id fencing (DR-2 / CONCERNS L6) — 통합 테스트 범위 밖</li>
+ *   <li>multi-instance transactional.id fencing — 통합 테스트 범위 밖</li>
  * </ul>
  */
 @SpringBootTest
@@ -89,7 +89,7 @@ import org.testcontainers.containers.MySQLContainer;
         },
         bootstrapServersProperty = "spring.kafka.bootstrap-servers"
 )
-@DisplayName("PET-12 EOS 통합 회귀 가드 5 시나리오")
+@DisplayName("EOS 통합 회귀 가드 5 시나리오")
 class PaymentEosIntegrationTest {
 
     private static final Long PRODUCT_ID = 100L;
@@ -291,7 +291,7 @@ class PaymentEosIntegrationTest {
         confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
 
         // then — 비즈니스 skip (markPaymentAsDone 미호출) — payment 상태 IN_PROGRESS 유지
-        // 발행은 항상 진행 (위키 line 141) — stock-committed 1건 발행됨
+        // 발행은 항상 진행 — stock-committed 1건 발행됨
         await().atMost(Duration.ofSeconds(15))
                 .untilAsserted(() -> {
                     // stock-committed 발행 확인 — dedupe 중복이어도 발행은 진행됨
@@ -314,7 +314,7 @@ class PaymentEosIntegrationTest {
     // ── 시나리오 #4 ─────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("#4 multi-product DR-1: PaymentOrder 2건 → stock-committed 2건 + productId 별 distinct idempotencyKey")
+    @DisplayName("#4 multi-product: PaymentOrder 2건 → stock-committed 2건 + productId 별 distinct idempotencyKey")
     void shouldPublishDistinctIdempotencyKeyPerProductOnMultiProduct() throws Exception {
         // given — 2개 ProductId 포함 PaymentEvent
         String orderId = "order-eos4-" + UUID.randomUUID();
@@ -340,7 +340,7 @@ class PaymentEosIntegrationTest {
         List<StockCommittedEvent> stockEvents = pollStockCommitted(orderId, 2, Duration.ofSeconds(10));
         assertThat(stockEvents).hasSize(2);
 
-        // productId 별 idempotencyKey 결정성 검증 (DR-1)
+        // productId 별 idempotencyKey 결정성 검증
         String expectedKey1 = StockEventUuidDeriver.derive(orderId, PRODUCT_ID, "stock-commit");
         String expectedKey2 = StockEventUuidDeriver.derive(orderId, PRODUCT_ID_2, "stock-commit");
 
@@ -355,8 +355,8 @@ class PaymentEosIntegrationTest {
         // dedupe 1 row
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
-        // 재배달 시 두 메시지 모두 dedupe skip 검증 (DR-1 회귀 가드)
-        // — 재배달 시에도 동일 idempotencyKey 로 발행됨 (위키 line 141: 0 row 시에도 발행 진행)
+        // 재배달 시 두 메시지 모두 dedupe skip 검증
+        // — 재배달 시에도 동일 idempotencyKey 로 발행됨 (0 row 시에도 발행 진행)
         // — dedupe row 가 존재하는 상태에서 새로운 IN_PROGRESS 결제로 재배달 시뮬레이션
         String redeliveryOrderId = "order-eos4-redeliver-" + UUID.randomUUID();
         String redeliveryEventUuid = UUID.randomUUID().toString();
@@ -385,7 +385,7 @@ class PaymentEosIntegrationTest {
     // ── 시나리오 #5 ─────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("#5 QUARANTINED D7 가드: QUARANTINED 결제 + APPROVED → dedupe 0 row + stock-committed 0건 + DLQ 0건")
+    @DisplayName("#5 QUARANTINED 가드: QUARANTINED 결제 + APPROVED → dedupe 0 row + stock-committed 0건 + DLQ 0건")
     void shouldSkipQuarantinedLateApprovedWithNoDlq() throws Exception {
         // given — QUARANTINED 상태의 결제 이벤트 저장
         String orderId = "order-eos5-" + UUID.randomUUID();
@@ -399,7 +399,7 @@ class PaymentEosIntegrationTest {
         // when
         confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
 
-        // then — 충분한 시간 대기 후 상태 불변 확인 (D7 가드 → noop)
+        // then — 충분한 시간 대기 후 상태 불변 확인 (가드 → noop)
         // DLQ 발행이 없으므로 retry 를 기다리지 않고 2s 후 검증
         Thread.sleep(2000);
 
@@ -407,14 +407,14 @@ class PaymentEosIntegrationTest {
         PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
 
-        // dedupe 0 row (D7 가드 → markIfAbsent 미호출)
+        // dedupe 0 row (가드 → markIfAbsent 미호출)
         assertThat(countDedupeRow(eventUuid)).isZero();
 
         // stock-committed 0건
         List<StockCommittedEvent> stockEvents = pollStockCommitted(orderId, 0, Duration.ofSeconds(2));
         assertThat(stockEvents).isEmpty();
 
-        // paymentCommandUseCase 호출 없음 (D7 가드에서 early return)
+        // paymentCommandUseCase 호출 없음 (가드에서 early return)
         verify(paymentCommandUseCase, times(0)).markPaymentAsDone(
                 any(PaymentEvent.class), any(LocalDateTime.class));
     }

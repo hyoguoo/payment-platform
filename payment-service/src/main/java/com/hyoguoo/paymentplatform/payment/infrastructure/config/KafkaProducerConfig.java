@@ -28,7 +28,7 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  * </ul>
  *
  * <p>stock-committed 발행은 EOS-aware ProducerFactory (stockCommittedProducerFactory) 를 사용한다.
- * transactional.id = ${spring.application.name}-${HOSTNAME:local} (D4 결정 — 단일 인스턴스 가정).
+ * transactional.id = ${spring.application.name}-${HOSTNAME:local} (단일 인스턴스 가정).
  * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq 템플릿을 관리한다.
  * stockCommittedKafkaTemplate 이 EOS 발행 전용 빈.
  */
@@ -46,16 +46,15 @@ public class KafkaProducerConfig {
     private String eventsStockCommittedTopic;
 
     /**
-     * D4 결정 — transactional.id prefix.
-     * ${spring.application.name}-${HOSTNAME:local} 패턴으로 단일 인스턴스 가정.
-     * 다중 인스턴스 확장 시 CONCERNS.md L6 / TODOS TC-13-FOLLOW-1 참조.
+     * transactional.id prefix. ${spring.application.name}-${HOSTNAME:local} 패턴으로 단일 인스턴스를 가정한다.
+     * 다중 인스턴스로 확장하면 인스턴스마다 고유한 prefix 가 필요하다.
      */
     @Value("${payment.kafka.transactional-id-prefix:${spring.application.name}-${HOSTNAME:local}}")
     private String transactionalIdPrefix;
 
     /**
      * EOS-aware ProducerFactory — stock-committed 발행 전용.
-     * transactional.id prefix + enable.idempotence=true + transaction.timeout.ms=10000 (D4).
+     * transactional.id prefix + enable.idempotence=true + transaction.timeout.ms=10000.
      * transaction.timeout.ms = 10000 — RDB @Transactional(timeout=5) 의 2배 마진.
      */
     @Bean
@@ -73,7 +72,7 @@ public class KafkaProducerConfig {
 
     /**
      * KafkaTransactionManager — EOS stock-committed 발행 전용.
-     * PET-7 에서 kafkaListenerContainerFactory 에 wire-in 될 빈.
+     * kafkaListenerContainerFactory 에 wire-in 되어 consumer offset commit 을 프로듀서 트랜잭션과 묶는다.
      * stockCommittedProducerFactory 와 같은 인스턴스를 공유해야 transactional.id 정합이 유지된다.
      */
     @Bean
@@ -88,7 +87,7 @@ public class KafkaProducerConfig {
      * {@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase} 가
      * APPROVED 결과 처리 시 이 템플릿으로 재고 확정 메시지를 발행한다.
      *
-     * <p>PET-9 에서 StockOutbox 묶음이 제거되어 이 템플릿이 stock-committed 발행의 단일 경로다.
+     * <p>이 템플릿이 stock-committed 발행의 단일 경로다.
      */
     @Bean
     public KafkaTemplate<String, String> stockCommittedKafkaTemplate(
@@ -103,9 +102,8 @@ public class KafkaProducerConfig {
 
     /**
      * payment.commands.confirm 전용 ProducerFactory.
-     * PET-6 에서 stockCommittedProducerFactory 가 명시 등록된 이후
-     * Spring Boot auto-config 의 주 ProducerFactory 가 ambiguous 해져
-     * JsonSerializer 기반 타입드 주입이 깨지는 문제를 방지하기 위해 명시 정의.
+     * stockCommittedProducerFactory 가 명시 등록되면 Spring Boot auto-config 의 주 ProducerFactory 가
+     * ambiguous 해져 JsonSerializer 기반 타입드 주입이 깨지므로, 이를 막기 위해 명시 정의한다.
      * application.yml 의 spring.json.add.type.headers=false 와 동일한 설정 적용.
      */
     @Bean
@@ -130,7 +128,7 @@ public class KafkaProducerConfig {
 
     /**
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
-     * SCR-8 KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
+     * KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
      * 별도 StringSerializer ProducerFactory 사용으로 JsonSerializer 혼용을 차단하고,
      * ObservationRegistry 를 명시 wiring 해 traceparent 전파 경로를 확보한다.
      */

@@ -25,8 +25,8 @@ import static org.mockito.Mockito.mock;
  *
  * <p>불변식:
  * <ul>
- *   <li>TC1: DuplicateApprovalHandler 에 onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent) 메서드가 존재해야 함</li>
- *   <li>TC2: 이벤트 수신 → handleDuplicateApproval 호출 (vendor 조회 → outbox 1건 생성)</li>
+ *   <li>DuplicateApprovalHandler 에 onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent) 메서드가 존재해야 함</li>
+ *   <li>이벤트 수신 → handleDuplicateApproval 호출 (vendor 조회 → outbox 1건 생성)</li>
  * </ul>
  */
 @DisplayName("DuplicateApprovalHandler — EventListener 위임")
@@ -57,7 +57,7 @@ class DuplicateApprovalHandlerListenerTest {
     }
 
     /**
-     * TC1: DuplicateApprovalHandler 에 onDuplicateApprovalDetected 메서드가 존재해야 한다.
+     * DuplicateApprovalHandler 에 onDuplicateApprovalDetected 메서드가 존재해야 한다.
      *
      * <p>{@code @EventListener} 또는 {@code @TransactionalEventListener} 기반 리스너 메서드.
      */
@@ -81,7 +81,7 @@ class DuplicateApprovalHandlerListenerTest {
     }
 
     /**
-     * TC2: DuplicateApprovalDetectedEvent 수신 시 handleDuplicateApproval 동등 결과 — outbox 1건 생성.
+     * DuplicateApprovalDetectedEvent 수신 시 handleDuplicateApproval 동등 결과 — outbox 1건 생성.
      *
      * <p>이벤트 수신 시 handleDuplicateApproval(orderId, amount) 호출이 위임되는지 확인.
      * VENDOR_INDETERMINATE 경로(상태 조회 예외 주입)로 outbox 1건 생성 여부만 검증한다.

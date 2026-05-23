@@ -34,7 +34,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * PgVendorCallService 단위 테스트 — PCS-6 재작성.
+ * PgVendorCallService 단위 테스트.
  *
  * <p>invokeVendor (TX 없음, 벤더 HTTP) + applyOutcome (@Transactional TX_B, 5분기) 분리 검증.
  * domain_risk=true — TX 경계 분리 + 5분기 결과 반영 정밀 검증.

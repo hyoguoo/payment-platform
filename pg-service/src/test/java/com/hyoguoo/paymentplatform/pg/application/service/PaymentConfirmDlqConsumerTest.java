@@ -52,11 +52,11 @@ class PaymentConfirmDlqConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: DLQ 메시지 정상 처리 → pg_inbox QUARANTINED + payment.events.confirmed outbox row 1건
+    // DLQ 메시지 정상 처리 → pg_inbox QUARANTINED + payment.events.confirmed outbox row 1건
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("dlq_consumer — DLQ 메시지 정상 처리 시 pg_inbox QUARANTINED 전이 + payment.events.confirmed outbox row 1건 (불변식 6)")
+    @DisplayName("dlq_consumer — DLQ 메시지 정상 처리 시 pg_inbox QUARANTINED 전이 + payment.events.confirmed outbox row 1건")
     void dlq_consumer_WhenNormalMessage_ShouldQuarantine() {
         // given — inbox가 IN_PROGRESS 상태 (DLQ 진입 직전 상태)
         PgInbox inbox = PgInbox.of(
@@ -85,12 +85,12 @@ class PaymentConfirmDlqConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: pg_inbox가 이미 terminal → no-op (불변식 6c)
+    // pg_inbox가 이미 terminal → no-op (중복 DLQ 흡수)
     // -----------------------------------------------------------------------
 
     @ParameterizedTest
     @EnumSource(value = PgInboxStatus.class, names = {"APPROVED", "FAILED", "QUARANTINED"})
-    @DisplayName("dlq_consumer — pg_inbox가 이미 terminal(APPROVED/FAILED/QUARANTINED)이면 no-op (불변식 6c), pg_outbox row 0건")
+    @DisplayName("dlq_consumer — pg_inbox가 이미 terminal(APPROVED/FAILED/QUARANTINED)이면 no-op, pg_outbox row 0건")
     void dlq_consumer_WhenAlreadyTerminal_ShouldBeNoOp(PgInboxStatus terminalStatus) {
         // given — inbox가 이미 terminal 상태
         PgInbox terminalInbox = PgInbox.of(
@@ -114,7 +114,7 @@ class PaymentConfirmDlqConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: QUARANTINED 전이 시 payment.events.confirmed outbox row 1건만 INSERT (보상 큐 row 없음)
+    // QUARANTINED 전이 시 payment.events.confirmed outbox row 1건만 INSERT (보상 큐 row 없음)
     // -----------------------------------------------------------------------
 
     @Test
@@ -145,7 +145,7 @@ class PaymentConfirmDlqConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: PaymentConfirmDlqConsumer 는 PaymentConfirmConsumer 와 다른 bean
+    // PaymentConfirmDlqConsumer 는 PaymentConfirmConsumer 와 다른 bean
     // -----------------------------------------------------------------------
 
     @Test

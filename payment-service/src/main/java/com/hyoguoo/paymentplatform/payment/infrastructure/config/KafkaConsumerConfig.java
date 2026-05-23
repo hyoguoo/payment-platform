@@ -10,7 +10,7 @@ import org.springframework.kafka.support.converter.RecordMessageConverter;
 import org.springframework.kafka.transaction.KafkaTransactionManager;
 
 /**
- * payment-service Kafka 컨슈머 컨테이너 팩토리 명시 설정 (PET-7).
+ * payment-service Kafka 컨슈머 컨테이너 팩토리 명시 설정.
  *
  * <p>Spring Boot auto-config 의 {@code kafkaListenerContainerFactory} 를 교체한다.
  * 명시 정의가 필요한 이유: auto-config 는 {@link KafkaTransactionManager} wire-in 경로를 제공하지 않아
@@ -20,10 +20,10 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  * <ul>
  *   <li>{@link ConsumerFactory} — Spring Boot auto-config 생성 (application.yml 기반).
  *       isolation.level=read_committed 는 application.yml
- *       {@code spring.kafka.consumer.properties.isolation.level} 로 설정 (D6).</li>
- *   <li>{@link KafkaTransactionManager} — PET-6 에서 stockCommittedProducerFactory 와 wiring 된 빈.
+ *       {@code spring.kafka.consumer.properties.isolation.level} 로 설정한다.</li>
+ *   <li>{@link KafkaTransactionManager} — stockCommittedProducerFactory 와 wiring 된 빈.
  *       wire-in 으로 consumer offset commit 이 Kafka tx 단위로 묶인다.</li>
- *   <li>{@link CommonErrorHandler} ({@code kafkaErrorHandler}) — PET-6 이전 KafkaErrorHandlerConfig 에서 등록.
+ *   <li>{@link CommonErrorHandler} ({@code kafkaErrorHandler}) — KafkaErrorHandlerConfig 에서 등록.
  *       auto-config 시 자동 감지되던 빈을 명시 팩토리에서 직접 주입.</li>
  *   <li>{@link RecordMessageConverter} ({@code recordMessageConverter}) — KafkaMessageConverterConfig 에서 등록.
  *       마찬가지로 명시 주입.</li>
@@ -34,7 +34,7 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  * RuntimeException 으로 롤백되면 프로듀서 abort + 오프셋 미커밋 → 동일 메시지 재배달.
  *
  * <p>isolation.level=read_committed: payment-service 는 자기 자신이 발행한 stock-committed 메시지를
- * 컨슘하지 않으나, EOS 일관성 기준(D6)에 따라 read_committed 를 적용한다.
+ * 컨슘하지 않으나, EOS 일관성 기준에 따라 read_committed 를 적용한다.
  * 주된 보호 대상은 abort 된 메시지가 컨슈머에 노출되지 않도록 막는 것.
  */
 @Configuration
@@ -46,7 +46,7 @@ public class KafkaConsumerConfig {
      * {@link ConfirmedEventConsumer} 의 {@code containerFactory = "kafkaListenerContainerFactory"} 가 이 빈을 참조한다.
      *
      * @param consumerFactory       Spring Boot auto-config ConsumerFactory (application.yml 기반)
-     * @param kafkaTransactionManager PET-6 에서 등록된 EOS-aware KafkaTransactionManager
+     * @param kafkaTransactionManager EOS-aware KafkaTransactionManager
      * @param kafkaErrorHandler     KafkaErrorHandlerConfig 에서 등록된 DefaultErrorHandler
      * @param recordMessageConverter KafkaMessageConverterConfig 에서 등록된 StringJsonMessageConverter
      */

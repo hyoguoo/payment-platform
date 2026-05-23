@@ -34,20 +34,20 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase PET-8 EOS 재작성 단위 검증.
+ * PaymentConfirmResultUseCase EOS 단위 검증.
  *
- * <p>커버 범위 (PLAN PET-8 명세):
+ * <p>커버 범위:
  * <ul>
- *   <li>D7 진입 가드 — isCompensatableByFailureHandler false(종결 상태) → markIfAbsent 미호출 + warn noop</li>
+ *   <li>진입 가드 — isCompensatableByFailureHandler false(종결 상태) → markIfAbsent 미호출 + warn noop</li>
  *   <li>멱등 마킹 0 row — 비즈니스 skip (markPaymentAsDone 미호출)</li>
- *   <li>멱등 마킹 0 row 에도 발행은 항상 진행 (위키 line 141)</li>
- *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성 (DR-1)</li>
- *   <li>FAILED 보상 순서 보존 — compensateAtomic 먼저, markPaymentAsFail 나중 (DR-7)</li>
+ *   <li>멱등 마킹 0 row 에도 발행은 항상 진행</li>
+ *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성</li>
+ *   <li>FAILED 보상 순서 보존 — compensateAtomic 먼저, markPaymentAsFail 나중</li>
  *   <li>APPROVED 정상 — markPaymentAsDone + send loop 호출</li>
  *   <li>amount 불일치 — quarantineCompensationHandler 위임 (markPaymentAsDone 미호출)</li>
  * </ul>
  */
-@DisplayName("PaymentConfirmResultUseCase PET-8 EOS 재작성")
+@DisplayName("PaymentConfirmResultUseCase EOS")
 class PaymentConfirmResultUseCaseTest {
 
     private static final String ORDER_ID = "order-eos-001";
@@ -96,7 +96,7 @@ class PaymentConfirmResultUseCaseTest {
         );
     }
 
-    // ---- D7 진입 가드 (DR-3) ----
+    // ---- 진입 가드 ----
 
     @Test
     @DisplayName("shouldSkipWhenStatusIsNotProceedable — QUARANTINED(종결) 상태면 markIfAbsent 미호출 + warn noop")
@@ -132,7 +132,7 @@ class PaymentConfirmResultUseCaseTest {
         assertThat(dedupeStore.contains(EVENT_UUID)).isTrue();
     }
 
-    // ---- 멱등 마킹 0 row (DR-5) ----
+    // ---- 멱등 마킹 0 row ----
 
     @Test
     @DisplayName("shouldSkipBusinessWhenMarkIfAbsentReturnsZero — 0 row 시 markPaymentAsDone 미호출")
@@ -153,7 +153,7 @@ class PaymentConfirmResultUseCaseTest {
     }
 
     @Test
-    @DisplayName("shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero — 0 row 에도 발행은 항상 진행 (위키 line 141)")
+    @DisplayName("shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero — 0 row 에도 발행은 항상 진행")
     void shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero() {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
@@ -173,7 +173,7 @@ class PaymentConfirmResultUseCaseTest {
                 .send(eq("payment.events.stock-committed"), eq("1"), anyString());
     }
 
-    // ---- multi-product 결정성 (DR-1) ----
+    // ---- multi-product 결정성 ----
 
     @Test
     @DisplayName("shouldDeriveDistinctIdempotencyKeyPerProduct — PaymentOrder 2건 → send 2회, 각 idempotencyKey 결정성")
@@ -212,7 +212,7 @@ class PaymentConfirmResultUseCaseTest {
         assertThat(payloads).anyMatch(p -> p.contains(expectedKey20));
     }
 
-    // ---- FAILED 보상 순서 보존 (DR-7) ----
+    // ---- FAILED 보상 순서 보존 ----
 
     @Test
     @DisplayName("shouldMaintainCompensationOrderForFailed — compensateAtomic 먼저, markPaymentAsFail 나중")

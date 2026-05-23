@@ -11,11 +11,10 @@ import static java.time.temporal.ChronoUnit.SECONDS;
 /**
  * PgOutbox 도메인 factory 메서드 단위 테스트.
  *
- * <p>CBA-9: builder 전환 + Long id dead parameter 제거 회귀 방어.
- * {@code create} / {@code createWithAvailableAt} 의 Long id 인자 제거 후
+ * <p>{@code create} / {@code createWithAvailableAt} 의
  * 시그니처 / 필드 매핑 / isPending 상태를 검증한다.
  */
-@DisplayName("PgOutbox — factory 메서드 + builder 전환 회귀 방어 (CBA-9)")
+@DisplayName("PgOutbox — factory 메서드 + builder 회귀 방어")
 class PgOutboxTest {
 
     private static final String TOPIC = "payment.commands.confirm";

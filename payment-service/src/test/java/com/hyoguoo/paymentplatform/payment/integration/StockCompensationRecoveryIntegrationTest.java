@@ -48,17 +48,17 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
- * SCR-10 — 보상 플로우 end-to-end 통합 시나리오 테스트.
+ * 보상 플로우 end-to-end 통합 시나리오 테스트.
  *
- * <p>검증 범위: SCR-1~9 변경이 통합된 결제 결과 보상 플로우.
+ * <p>검증 범위: 결제 결과 보상 플로우.
  * ConfirmedEventConsumer → PaymentConfirmResultUseCase → StockCacheRedisAdapter → Lua 전 경로.
  * Spring Kafka DefaultErrorHandler 의 retry / DLQ 거동도 통합 컨텍스트에서 검증.
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
- *   <li>L3 (P8D 만료 후 Reconciler resetToReady race) — 통합 테스트 범위 밖</li>
- *   <li>L6 (보상 끝난 결제의 새 confirm 사이클 cascade) — 통합 테스트 범위 밖</li>
- *   <li>L7 (markPaymentAsFail 영구 실패 cascade) — 통합 테스트 범위 밖</li>
+ *   <li>P8D 만료 후 Reconciler resetToReady race — 통합 테스트 범위 밖</li>
+ *   <li>보상 끝난 결제의 새 confirm 사이클 cascade — 통합 테스트 범위 밖</li>
+ *   <li>markPaymentAsFail 영구 실패 cascade — 통합 테스트 범위 밖</li>
  * </ul>
  */
 @SpringBootTest
@@ -72,7 +72,7 @@ import org.testcontainers.containers.MySQLContainer;
         },
         bootstrapServersProperty = "spring.kafka.bootstrap-servers"
 )
-@DisplayName("SCR-10 보상 플로우 end-to-end 통합 시나리오 테스트")
+@DisplayName("보상 플로우 end-to-end 통합 시나리오 테스트")
 class StockCompensationRecoveryIntegrationTest {
 
     private static final Long PRODUCT_ID = 100L;

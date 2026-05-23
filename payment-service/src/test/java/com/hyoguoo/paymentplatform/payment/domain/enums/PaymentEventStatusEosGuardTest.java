@@ -24,7 +24,7 @@ class PaymentEventStatusEosGuardTest {
         assertThat(status.isCompensatableByFailureHandler()).isFalse();
     }
 
-    @DisplayName("isCompensatableByFailureHandler — QUARANTINED 는 늦은 APPROVED 시 DLQ silent 분기 회피용 명시 가드 (DR-3)")
+    @DisplayName("isCompensatableByFailureHandler — QUARANTINED 는 늦은 APPROVED 시 DLQ silent 분기 회피용 명시 가드")
     @Test
     void shouldSkipQuarantinedExplicitly() {
         assertThat(PaymentEventStatus.QUARANTINED.isCompensatableByFailureHandler()).isFalse();

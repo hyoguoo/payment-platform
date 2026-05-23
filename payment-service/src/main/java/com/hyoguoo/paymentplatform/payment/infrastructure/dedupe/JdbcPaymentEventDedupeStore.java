@@ -11,14 +11,14 @@ import org.springframework.stereotype.Repository;
 /**
  * PaymentEventDedupeStore JDBC 구현체.
  *
- * <p>PET-4 신설 {@code payment_event_dedupe} 테이블에 {@code INSERT IGNORE} 를 실행한다.
+ * <p>{@code payment_event_dedupe} 테이블에 {@code INSERT IGNORE} 를 실행한다.
  * affected row 수 (0 또는 1) 를 그대로 반환 — 호출자가 신규/중복 여부를 판단한다.
  *
  * <p>INSERT IGNORE: PK(event_uuid) 중복 시 예외 없이 0 row 반환 (MySQL 시맨틱).
- * DR-5 race window — 동시 INSERT IGNORE 양쪽 모두 예외 없음, 합 == 1 보장.
+ * 동시 INSERT IGNORE 가 경합해도 양쪽 모두 예외 없이 한 쪽만 1 row 를 얻는다 (합 == 1 보장).
  *
- * <p>received_at 시간 소스는 {@link LocalDateTimeProvider#nowInstant()} 로 주입받아
- * PITFALLS #6 ({@code Instant.now()} 직접 호출 금지) 를 준수한다.
+ * <p>received_at 시간 소스는 {@link LocalDateTimeProvider#nowInstant()} 로 주입받는다
+ * ({@code Instant.now()} 직접 호출 금지).
  */
 @Repository
 public class JdbcPaymentEventDedupeStore implements PaymentEventDedupeStore {

@@ -29,28 +29,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * payment.events.confirmed 소비 후 결제 상태 분기 use-case (PET-8 EOS 재작성).
+ * payment.events.confirmed 를 소비해 결제 상태를 분기하는 use-case.
  *
- * <p>EOS 전환 후 변경 사항:
  * <ul>
- *   <li>D7 진입 가드 — {@code isCompensatableByFailureHandler()} 로 종결 상태 진입 차단 (noop return)</li>
- *   <li>D5 멱등 마킹 — {@code PaymentEventDedupeStore.markIfAbsent()} 로 INSERT IGNORE, 0 row 시 비즈니스 skip</li>
- *   <li>D8 발행 측 결정성 — multi-product for-loop 안에서 {@code StockEventUuidDeriver.derive} 로 idempotencyKey 도출
- *       후 {@code stockCommittedKafkaTemplate.send} 직접 발행 (EOS producer tx 안에 buffer)</li>
- *   <li>위키 line 141 보장 — 0 row(중복) 시에도 발행은 항상 진행 (product-service dedupe 가 막음)</li>
+ *   <li>APPROVED → 금액·승인시각 재검증 후 결제 완료 + 재고 확정 이벤트 발행</li>
+ *   <li>FAILED → 재고 보상 후 결제 실패 마킹</li>
+ *   <li>QUARANTINED → 재고 보상 후 격리 핸들러 위임</li>
  * </ul>
  *
- *
- * <p>상태 분기:
- * <ul>
- *   <li>APPROVED → 금액 검증 → markPaymentAsDone + multi-product send loop</li>
- *   <li>FAILED → compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중). RuntimeException 은 그대로 throw.</li>
- *   <li>QUARANTINED → compensateAtomic (보상 먼저) → quarantineCompensationHandler. 기존 순서 유지.</li>
- * </ul>
- *
- * <p>호출 순서 근거 (FAILED): DECISION §6 crash 표 — 구 순서(RDB → 보상)는 RDB commit 직후/보상 전 crash 시
- * isCompensatableByFailureHandler=false 로 재배달 noop → 보상 누락 silent loss. 새 순서(보상 → RDB)는 crash 후 재배달 시
- * compensateAtomic 의 dedup token 이 ALREADY_DONE 을 반환 → markPaymentAsFail 재진행 → 정합 보장.
+ * <p>FAILED·QUARANTINED 는 보상을 먼저 하고 RDB 상태 전이를 나중에 한다. RDB 를 먼저 커밋하면
+ * 보상 직전에 crash 했을 때 재배달이 종결 상태 가드에 막혀 보상이 조용히 유실되기 때문이다.
  */
 @Slf4j
 @Service
@@ -92,9 +80,8 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * 메시지 처리 진입점.
-     * D7 진입 가드 → D5 멱등 마킹 → 상태 분기.
-     * RuntimeException 은 Spring Kafka DefaultErrorHandler(SCR-8) 가 처리한다.
+     * 메시지 처리 진입점. 종결 상태 가드 → 멱등 마킹 → 상태 분기 순으로 진행한다.
+     * RuntimeException 은 그대로 던져 Kafka 에러 핸들러가 재시도/DLQ 를 결정한다.
      */
     @Transactional(timeout = 5)
     public void handle(ConfirmedEventMessage message) {
@@ -102,10 +89,10 @@ public class PaymentConfirmResultUseCase {
                 .findByOrderId(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
-        // D7 진입 가드 — 종결 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) 이면 noop
+        // 종결 상태면 이미 처리된 메시지이므로 무시한다.
         if (!paymentEvent.getStatus().isCompensatableByFailureHandler()) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
-                    () -> "D7 가드 skip — orderId=" + message.orderId()
+                    () -> "종결 상태 skip — orderId=" + message.orderId()
                             + " status=" + paymentEvent.getStatus()
                             + " eventUuid=" + message.eventUuid());
             return;
@@ -115,7 +102,7 @@ public class PaymentConfirmResultUseCase {
                 () -> "orderId=" + message.orderId() + " status=" + message.status()
                         + " eventUuid=" + message.eventUuid());
 
-        // D5 멱등 마킹 — INSERT IGNORE, 0 row 면 비즈니스 skip (발행은 항상 진행)
+        // 멱등 마킹: 이미 처리된 event_uuid 면 affected=0.
         Instant expiresAt = localDateTimeProvider.nowInstant().plus(STOCK_COMMITTED_TTL);
         int affected = paymentEventDedupeStore.markIfAbsent(
                 message.eventUuid(),
@@ -126,10 +113,9 @@ public class PaymentConfirmResultUseCase {
 
         if (affected == 0) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
-                    () -> "D5 중복 skip — orderId=" + message.orderId()
-                            + " eventUuid=" + message.eventUuid()
-                            + " action=SKIP_BUSINESS_ALWAYS_SEND");
-            // 0 row 시 비즈니스 skip + 발행은 항상 진행 (위키 line 141)
+                    () -> "중복 skip — orderId=" + message.orderId()
+                            + " eventUuid=" + message.eventUuid());
+            // 중복이면 비즈니스 로직은 건너뛰되, 재고 확정 발행은 항상 수행한다 (product 측에서 다시 멱등 처리).
             if ("APPROVED".equals(message.status())) {
                 sendStockCommittedEvents(paymentEvent);
             }
@@ -146,17 +132,8 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * APPROVED 결과 처리. 벤더가 한 번 승인한 후 우리 시스템이 다시 한 번 검증한다 — amount 와 approvedAt.
-     *
-     * <ol>
-     *   <li>approvedAt null 방어 — null 이면 contract 위반이므로 즉시 예외</li>
-     *   <li>amount 가 paymentEvent 총액과 다르면 AMOUNT_MISMATCH 로 격리(DONE 전이 안 함)</li>
-     *   <li>둘 다 통과하면 수신 approvedAt 으로 PaymentCommandUseCase.markPaymentAsDone 위임</li>
-     *   <li>multi-product for-loop 안에서 stock-committed 직접 발행 (EOS producer tx 버퍼)</li>
-     * </ol>
-     *
-     * <p>D8: idempotencyKey = StockEventUuidDeriver.derive(orderId, productId, "stock-commit")
-     * D4 결정: send 는 KafkaTransactionManager 가 관리하는 EOS 트랜잭션 안에 buffer.
+     * APPROVED 처리. 벤더 승인 후 우리 쪽에서 금액과 승인시각을 다시 검증한다.
+     * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
         LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
@@ -174,7 +151,7 @@ public class PaymentConfirmResultUseCase {
             return;
         }
 
-        // 외부 빈 경유 필수 — self-invocation 으로 호출하면 PaymentCommandUseCase 의 상태 전이 AOP 가 적용되지 않는다.
+        // 외부 빈 경유 필수 — self-invocation 으로 호출하면 상태 전이 AOP 가 적용되지 않는다.
         paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt);
 
         sendStockCommittedEvents(paymentEvent);
@@ -184,10 +161,9 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * multi-product stock-committed 발행 for-loop.
-     * EOS KafkaTemplate send 는 KafkaTransactionManager 가 관리하는 tx 안에 buffer.
-     * 메시지 키 = productId (파티션 키 전략 — 동일 상품 이벤트 순서 보장).
-     * 중복(0 row) 시에도 호출됨 — product-service stock_commit_dedupe 가 막음 (위키 line 141).
+     * 주문에 속한 상품마다 stock-committed 이벤트를 발행한다.
+     * 메시지 키는 productId — 동일 상품 이벤트의 순서를 보장한다.
+     * 발행은 EOS 프로듀서 트랜잭션에 묶이며, 중복 수신 시에도 발행한다 (product 측에서 멱등 처리).
      */
     private void sendStockCommittedEvents(PaymentEvent paymentEvent) {
         Instant occurredAt = localDateTimeProvider.nowInstant();
@@ -249,23 +225,11 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * FAILED 결과 처리 — 호출 순서: 보상(compensateAtomic) 먼저, RDB(markPaymentAsFail) 나중.
-     *
-     * <p>호출 순서 근거: 구 순서(RDB → 보상)는 RDB commit 직후/보상 전 crash 시
-     * isCompensatableByFailureHandler=false 로 재배달이 noop 처리돼 보상 누락 silent loss 발생.
-     * 새 순서(보상 → RDB)에서 crash 후 재배달 시 compensateAtomic 의 dedup token 이
-     * ALREADY_DONE 을 반환하므로 markPaymentAsFail 을 재진행해 정합이 보장된다.
-     *
-     * <p>D7 진입 가드 통합 후 이 메서드 내부의 isTerminal 가드는 제거됨.
-     * 종결 상태 방어는 handle() 진입점 D7 가드가 담당한다.
-     *
-     * <p>RuntimeException 은 그대로 throw — Spring Kafka DefaultErrorHandler(SCR-8) 가 retry / DLQ 책임.
+     * FAILED 처리. 재고 보상을 먼저 하고 결제 실패 마킹을 나중에 한다(순서 이유는 클래스 주석 참고).
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        // 보상 먼저 (ALREADY_DONE 이어도 RDB 진행)
         stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
 
-        // RDB 나중
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED,
@@ -273,18 +237,10 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * QUARANTINED 결과 처리 — 기존 순서 유지 (보상 → quarantineHandler).
-     * compensateStockCache for-loop 을 compensateAtomic 직접 호출로 교체.
-     *
-     * <p>implementer 주의: 이 메서드는 "순서를 뒤집는" 게 아니라 "메서드만 교체"한다.
-     * 기존 보상 → quarantineHandler 순서 외로 변경하면 PITFALLS #11 보상 트랜잭션 중복 진입 race 신설 위험.
-     *
-     * <p>D7 진입 가드 통합 후 이 메서드 내부의 isTerminal 가드는 제거됨.
-     *
-     * <p>RuntimeException 은 그대로 throw — Spring Kafka DefaultErrorHandler(SCR-8) 가 retry / DLQ 책임.
+     * QUARANTINED 처리. 재고 보상 후 격리 핸들러에 위임한다.
+     * 보상 → 핸들러 순서는 유지해야 한다 — 뒤집으면 보상 트랜잭션 중복 진입 race 가 생긴다.
      */
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
-        // 보상 먼저 (기존 순서 유지 — 메서드 교체만)
         stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
 
         quarantineCompensationHandler.handle(

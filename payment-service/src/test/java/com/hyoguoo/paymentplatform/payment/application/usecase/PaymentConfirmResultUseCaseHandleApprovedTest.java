@@ -32,7 +32,7 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase.handleApproved 단위 검증 (PET-8 갱신 — stock_outbox 의존성 제거).
+ * PaymentConfirmResultUseCase.handleApproved 단위 검증.
  *
  * <p>커버 범위:
  * <ul>

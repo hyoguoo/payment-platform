@@ -25,8 +25,8 @@ import static org.mockito.Mockito.when;
 /**
  * InboxReadyEventHandler 단위 테스트.
  *
- * <p>PCS-11 — AFTER_COMMIT 시점에 PgInboxChannel.offerNow 호출 검증.
- * PLAN § PCS-11 테스트 케이스:
+ * <p>AFTER_COMMIT 시점에 PgInboxChannel.offerNow 호출 검증.
+ * 테스트 케이스:
  * - onInboxReady_channelOfferSucceeds_noWarnLog
  * - onInboxReady_channelFull_logsWarn
  * - onInboxReady_callsChannelOfferWithCorrectId

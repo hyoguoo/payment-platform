@@ -30,13 +30,11 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase.handleQuarantined 단위 검증 (PET-8 갱신 — stock_outbox 의존성 제거).
+ * PaymentConfirmResultUseCase.handleQuarantined 단위 검증.
  *
- * <p>핵심: 순서 뒤집기가 아닌 "메서드 교체" — 기존 보상 → quarantineHandler 순서를 유지하면서
- * compensateStockCache(for-loop) → compensateAtomic 직접 호출로 교체.
+ * <p>보상 → quarantineHandler 순서로 처리한다 (보상은 compensateAtomic 직접 호출).
  *
- * <p>D7 진입 가드 — isCompensatableByFailureHandler 로 통합 (isTerminal 가드 제거).
- * QUARANTINED / FAILED 등 종결 상태는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다.
+ * <p>진입 가드: QUARANTINED / FAILED 등 종결 상태는 isCompensatableByFailureHandler=false 라 걸러진다.
  */
 @DisplayName("PaymentConfirmResultUseCase handleQuarantined")
 class PaymentConfirmResultUseCaseHandleQuarantinedTest {
@@ -107,10 +105,10 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
     }
 
     @Test
-    @DisplayName("QUARANTINED — 이미 종결 상태(FAILED)이면 D7 가드에서 noop (compensateAtomic 및 quarantineHandler 미호출)")
+    @DisplayName("QUARANTINED — 이미 종결 상태(FAILED)이면 진입 가드에서 noop (compensateAtomic 및 quarantineHandler 미호출)")
     void QUARANTINED_이미_종결_noop() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
-        // FAILED 는 isCompensatableByFailureHandler=false → D7 진입 가드에서 걸린다
+        // FAILED 는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 

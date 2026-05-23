@@ -25,7 +25,7 @@ import org.testcontainers.containers.MySQLContainer;
 /**
  * JdbcPaymentEventDedupeStore Testcontainers MySQL 단위 테스트.
  *
- * <p>DR-1 (멱등 마킹 정확성) + DR-5 (INSERT IGNORE race window) 회귀 가드.
+ * <p>멱등 마킹 정확성 + INSERT IGNORE race window 회귀 가드.
  * Flyway V1 → V2 자동 적용 환경에서 payment_event_dedupe 테이블 행동 검증.
  */
 @SpringBootTest
@@ -194,7 +194,7 @@ class JdbcPaymentEventDedupeStoreTest {
                 sum += future.get();
             }
 
-            // DR-5 회귀 가드: 두 스레드 결과 합 == 1 (한 쪽만 신규, 다른 쪽은 중복)
+            // race 회귀 가드: 두 스레드 결과 합 == 1 (한 쪽만 신규, 다른 쪽은 중복)
             assertThat(sum).isEqualTo(1);
         } finally {
             executor.shutdown();

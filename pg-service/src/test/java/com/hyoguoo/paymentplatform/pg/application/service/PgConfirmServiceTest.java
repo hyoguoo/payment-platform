@@ -28,17 +28,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * PgConfirmService 단위 테스트 (PCS-9 분기 재배치 검증).
+ * PgConfirmService 단위 테스트 — inbox 상태별 분기 검증.
  *
- * <p>분기 재배치:
+ * <p>분기:
  * <ul>
  *   <li>inbox 없음 (absent) → {@link PgInboxPendingService#insertPendingAndPublish} 호출</li>
  *   <li>PENDING inbox → publishEvent(PgInboxReadyEvent), insertPending 0회</li>
  *   <li>IN_PROGRESS inbox → publishEvent(PgInboxReadyEvent), insertPending 0회</li>
- *   <li>terminal inbox → {@link PgTerminalReemitService#reemit} 1회 호출 (M2: self-invocation 우회)</li>
+ *   <li>terminal inbox → {@link PgTerminalReemitService#reemit} 1회 호출 (self-invocation 우회를 위해 외부 빈에 위임)</li>
  * </ul>
  */
-@DisplayName("PgConfirmService (PCS-9 분기 재배치)")
+@DisplayName("PgConfirmService")
 class PgConfirmServiceTest {
 
     private static final String ORDER_ID = "order-pcs9-001";
@@ -75,7 +75,7 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: inbox 없음 → insertPendingAndPublish 호출
+    // inbox 없음 → insertPendingAndPublish 호출
     // -----------------------------------------------------------------------
 
     @Test
@@ -99,11 +99,11 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: inbox 없음 → 벤더 호출 0 (A1 acceptance)
+    // inbox 없음 → 벤더 호출 0 (listener 내 벤더 호출 없음)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handle — inbox 없을 때 PgConfirmPort.confirm 미호출 (A1 acceptance)")
+    @DisplayName("handle — inbox 없을 때 PgConfirmPort.confirm 미호출 (listener 내 벤더 호출 0)")
     void handle_absentInbox_doesNotCallVendor() {
         // given
         when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
@@ -123,7 +123,7 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: PENDING inbox → publishEvent 1회, insertPending 0회
+    // PENDING inbox → publishEvent 1회, insertPending 0회
     // -----------------------------------------------------------------------
 
     @Test
@@ -149,7 +149,7 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: IN_PROGRESS inbox → publishEvent 1회, insertPending 0회
+    // IN_PROGRESS inbox → publishEvent 1회, insertPending 0회
     // -----------------------------------------------------------------------
 
     @Test
@@ -175,11 +175,11 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC5: terminal inbox → outbox INSERT 1회, 벤더 호출 0
+    // terminal inbox → outbox INSERT 1회, 벤더 호출 0
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handle — terminal inbox 재수신 시 PgTerminalReemitService.reemit 1회 호출, 벤더 호출 0 (M2)")
+    @DisplayName("handle — terminal inbox 재수신 시 PgTerminalReemitService.reemit 1회 호출, 벤더 호출 0")
     void handle_terminalInbox_reemitsStoredStatus() {
         // given
         String storedResult = "{\"orderId\":\"" + ORDER_ID + "\",\"status\":\"APPROVED\"}";
@@ -196,7 +196,7 @@ class PgConfirmServiceTest {
         // when
         sut.handle(command, 1);
 
-        // then — PgTerminalReemitService.reemit 1회 호출 (M2: 외부 빈 위임으로 self-invocation 해소)
+        // then — PgTerminalReemitService.reemit 1회 호출 (외부 빈 위임으로 self-invocation 해소)
         verify(pgTerminalReemitService, times(1)).reemit(any(PgInbox.class));
         // then — 벤더 호출 0
         verify(pgVendorCallService, never()).callVendor(any(), anyInt(), any());

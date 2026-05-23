@@ -15,12 +15,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Thread-safe: ConcurrentHashMap.
  * orderId 를 키로 단일 inbox 행을 관리한다 (UNIQUE 제약 반영).
- * PCS-8: id 기반 조회를 위해 id → orderId 역인덱스 추가.
+ * id 기반 조회를 위해 id → orderId 역인덱스를 둔다.
  */
 public class FakePgInboxRepository implements PgInboxRepository {
 
     private final ConcurrentHashMap<String, PgInbox> store = new ConcurrentHashMap<>();
-    /** id → orderId 역인덱스 — findById 지원용 (PCS-8) */
+    /** id → orderId 역인덱스 — findById 지원용 */
     private final ConcurrentHashMap<Long, String> idIndex = new ConcurrentHashMap<>();
     private final AtomicLong idSequence = new AtomicLong(1);
 
@@ -51,8 +51,6 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return inbox;
     }
 
-    // PCS-9: transitNoneToInProgress 삭제 — 호출처 모두 교체 완료.
-
     @Override
     public void transitToApproved(String orderId, String storedStatusResult) {
         store.computeIfPresent(orderId, (key, current) -> {
@@ -71,7 +69,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
 
     /**
      * non-terminal → QUARANTINED 원자 compare-and-set.
-     * 이미 terminal이면 false 반환 (불변식 6c 중복 DLQ 흡수).
+     * 이미 terminal이면 false 반환 (중복 DLQ 흡수).
      */
     @Override
     public boolean transitToQuarantined(String orderId, String reasonCode) {
@@ -96,7 +94,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     /**
-     * PCS-9: listener 경로 PENDING INSERT — orderId 충돌 시 기존 id 반환.
+     * listener 경로 PENDING INSERT — orderId 충돌 시 기존 id 반환.
      * paymentKey / vendorType 포함 저장 (V3 migration 정합).
      */
     @Override
@@ -128,7 +126,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     /**
-     * PCS-9: 워커 TX_A — PENDING → IN_PROGRESS SKIP LOCKED (Fake 단순 구현).
+     * 워커 TX_A — PENDING → IN_PROGRESS SKIP LOCKED (Fake 단순 구현).
      * 동시성 없이 PENDING row 가 존재하면 IN_PROGRESS 전이.
      */
     @Override
@@ -152,7 +150,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     /**
-     * PCS-9: 보정 경로 — PENDING 우회, 바로 IN_PROGRESS.
+     * 보정 경로 — PENDING 우회, 바로 IN_PROGRESS.
      */
     @Override
     public Long transitDirectToInProgress(String orderId, long amount) {
@@ -164,7 +162,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     /**
-     * PCS-9: 보정 경로 — PENDING + IN_PROGRESS 우회, 직접 terminal.
+     * 보정 경로 — PENDING + IN_PROGRESS 우회, 직접 terminal.
      */
     @Override
     public Long transitDirectToTerminal(String orderId, long amount, PgInboxStatus terminalStatus,

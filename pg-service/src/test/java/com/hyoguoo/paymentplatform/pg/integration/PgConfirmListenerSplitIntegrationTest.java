@@ -43,19 +43,19 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * PCS-15 — listener 책임 분리 + 좀비 회수 acceptance 통합 테스트.
+ * listener 책임 분리 + 좀비 회수 acceptance 통합 테스트.
  *
- * <p>검증 범위 (§7 acceptance A1~A4):
+ * <p>검증 범위:
  * <ul>
- *   <li>A1 — listener 내 벤더 호출 0: {@code PgConfirmService.handle} 이 벤더를 직접 호출하지 않음</li>
- *   <li>A2 — 벤더 지연 격리: Mock 벤더 5s 지연 시 handle() latency 에 영향 없음 (워커 처리)</li>
- *   <li>A3 — 워커 크래시 후 IN_PROGRESS 좀비 회수: processInProgressZombie → terminal 전이</li>
- *   <li>A4 — 보정 경로 PENDING 우회: DuplicateApprovalHandler.handleDbAbsent* 진입 시 status=PENDING 미경유</li>
+ *   <li>listener 내 벤더 호출 0: {@code PgConfirmService.handle} 이 벤더를 직접 호출하지 않음</li>
+ *   <li>벤더 지연 격리: Mock 벤더 5s 지연 시 handle() latency 에 영향 없음 (워커 처리)</li>
+ *   <li>워커 크래시 후 IN_PROGRESS 좀비 회수: processInProgressZombie → terminal 전이</li>
+ *   <li>보정 경로 PENDING 우회: DuplicateApprovalHandler.handleDbAbsent* 진입 시 status=PENDING 미경유</li>
  * </ul>
  *
  * <p>인프라:
  * <ul>
- *   <li>Testcontainers MySQL — PgInboxRepositoryImpl SKIP LOCKED 테스트(PCS-4) 동일 패턴</li>
+ *   <li>Testcontainers MySQL — PgInboxRepositoryImpl SKIP LOCKED 테스트와 동일 패턴</li>
  *   <li>Redis 미사용 — {@code EventDedupeStoreRedisAdapter} {@code @ConditionalOnProperty} 비활성,
  *       {@link IntegrationTestConfig} 의 FakeEventDedupeStore 로 대체</li>
  *   <li>Kafka 미사용 — {@code PaymentConfirmConsumer} {@code @ConditionalOnProperty} 비활성,
@@ -77,7 +77,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Tag("integration")
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
-@DisplayName("PCS-15 listener 책임 분리 + 좀비 회수 acceptance 통합 테스트")
+@DisplayName("listener 책임 분리 + 좀비 회수 acceptance 통합 테스트")
 class PgConfirmListenerSplitIntegrationTest {
 
     // ─── Testcontainers MySQL ─────────────────────────────────────────────────
@@ -165,11 +165,11 @@ class PgConfirmListenerSplitIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // A1 — listener 내 벤더 호출 0
+    // listener 내 벤더 호출 0
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("A1 — payment.commands.confirm 수신 후 listener 가 벤더(confirm) 호출 안 함")
+    @DisplayName("payment.commands.confirm 수신 후 listener 가 벤더(confirm) 호출 안 함")
     void listenerDoesNotCallVendor_whenNewMessage() throws InterruptedException {
         // given
         String orderId = "order-a1-" + UUID.randomUUID();
@@ -196,11 +196,11 @@ class PgConfirmListenerSplitIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // A2 — 벤더 지연 격리: listener(handle) latency 에 영향 없음
+    // 벤더 지연 격리: listener(handle) latency 에 영향 없음
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("A2 — Mock 벤더 5s 지연 설정 후 handle() latency < 1s (벤더 지연이 listener 에 영향 없음)")
+    @DisplayName("Mock 벤더 5s 지연 설정 후 handle() latency < 1s (벤더 지연이 listener 에 영향 없음)")
     void listenerThroughputUnaffectedByVendorDelay() throws Exception {
         // given — 벤더 confirm 호출 시 5s 지연 주입 (워커가 처리하므로 handle 에는 미영향)
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -230,11 +230,11 @@ class PgConfirmListenerSplitIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // A3 — 워커 크래시 후 IN_PROGRESS 좀비 회수
+    // 워커 크래시 후 IN_PROGRESS 좀비 회수
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("A3 — processPending 중 RuntimeException → IN_PROGRESS 좀비 → processInProgressZombie → terminal 전이")
+    @DisplayName("processPending 중 RuntimeException → IN_PROGRESS 좀비 → processInProgressZombie → terminal 전이")
     void zombieRecovery_afterWorkerCrash_completesProcessing() {
         // given — PENDING 행 INSERT
         String orderId = "order-a3-" + UUID.randomUUID();
@@ -253,7 +253,7 @@ class PgConfirmListenerSplitIntegrationTest {
             // 예상된 크래시 시뮬레이션
         }
 
-        // IN_PROGRESS 좀비 잔존 확인 (A3 전제)
+        // IN_PROGRESS 좀비 잔존 확인 (회수 시나리오 전제)
         Optional<PgInbox> zombie = pgInboxRepository.findByOrderId(orderId);
         assertThat(zombie).isPresent();
         assertThat(zombie.get().getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
@@ -264,7 +264,7 @@ class PgConfirmListenerSplitIntegrationTest {
         // when — processInProgressZombie → 벤더 재호출 → terminal 전이
         pgInboxProcessUseCase.processInProgressZombie(inboxId);
 
-        // then — terminal 상태로 전이 확인 (A3 검증)
+        // then — terminal 상태로 전이 확인
         Optional<PgInbox> recovered = pgInboxRepository.findByOrderId(orderId);
         assertThat(recovered).isPresent();
         assertThat(recovered.get().getStatus().isTerminal())
@@ -273,11 +273,11 @@ class PgConfirmListenerSplitIntegrationTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // A4 — 보정 경로 PENDING 우회
+    // 보정 경로 PENDING 우회
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("A4 — DuplicateApprovalHandler.handleDbAbsentAmountMatch 진입 시 PENDING 미경유, 직접 APPROVED 전이")
+    @DisplayName("DuplicateApprovalHandler.handleDbAbsentAmountMatch 진입 시 PENDING 미경유, 직접 APPROVED 전이")
     void correctionPath_doesNotGoThroughPending() {
         // given — inbox 행 없음 (absent 상태)
         String orderId = "order-a4-" + UUID.randomUUID();
@@ -300,7 +300,7 @@ class PgConfirmListenerSplitIntegrationTest {
         duplicateApprovalHandler.handleDuplicateApproval(
                 orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
 
-        // then — APPROVED 상태로 직접 전이 (PENDING 미경유 — A4 검증)
+        // then — APPROVED 상태로 직접 전이 (PENDING 미경유)
         Optional<PgInbox> result = pgInboxRepository.findByOrderId(orderId);
         assertThat(result).isPresent();
         assertThat(result.get().getStatus())

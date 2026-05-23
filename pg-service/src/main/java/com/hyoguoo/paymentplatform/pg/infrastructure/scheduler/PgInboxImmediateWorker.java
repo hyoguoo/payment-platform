@@ -48,7 +48,7 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
 
     /**
      * 처리 실패 전용 카운터 이름 — ERROR 레벨 로그와 함께 관측성을 제공한다.
-     * PCS-14 SoT (PC-F6 흡수) — pg_inbox.process_fail_total.
+     * 워커 처리 실패 카운터의 단일 출처다.
      */
     static final String PROCESS_FAIL_COUNTER_NAME = "pg_inbox.process_fail_total";
 
@@ -168,7 +168,7 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
      *   <li>row 없음 → skip + LogFmt warn</li>
      * </ul>
      *
-     * <p>M1 dispatch 분기: inboxRepository.findById 는 조회 전용 — TX 영향 없음.
+     * <p>inboxRepository.findById 는 조회 전용이므로 TX 영향이 없다.
      */
     private void process(Long inboxId) {
         try {

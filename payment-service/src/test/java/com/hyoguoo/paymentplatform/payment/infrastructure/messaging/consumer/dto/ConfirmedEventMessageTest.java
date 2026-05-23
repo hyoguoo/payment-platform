@@ -17,7 +17,7 @@ class ConfirmedEventMessageTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // -----------------------------------------------------------------------
-    // TC1: APPROVED 메시지 역직렬화 — amount/approvedAt 파싱
+    // APPROVED 메시지 역직렬화 — amount/approvedAt 파싱
     // -----------------------------------------------------------------------
 
     @Test
@@ -43,7 +43,7 @@ class ConfirmedEventMessageTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: FAILED 메시지 역직렬화 — amount/approvedAt null 허용
+    // FAILED 메시지 역직렬화 — amount/approvedAt null 허용
     // -----------------------------------------------------------------------
 
     @Test

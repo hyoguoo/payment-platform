@@ -42,8 +42,7 @@ public class KafkaErrorHandlerConfig {
     private long maxAttempts;
 
     /**
-     * Kafka 컨슈머 에러 핸들러.
-     * confirmedDlqKafkaTemplate 는 SCR-7 에서 보존된 빈을 재사용한다.
+     * Kafka 컨슈머 에러 핸들러. confirmedDlqKafkaTemplate 빈을 재사용한다.
      */
     @Bean
     public DefaultErrorHandler kafkaErrorHandler(

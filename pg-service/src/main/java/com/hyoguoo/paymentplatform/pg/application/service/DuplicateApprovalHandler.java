@@ -92,7 +92,7 @@ public class DuplicateApprovalHandler {
     }
 
     // -----------------------------------------------------------------------
-    // vendor 조회 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
+    // vendor 조회 결과 캡슐화 — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
     private sealed interface VendorQueryOutcome
@@ -202,7 +202,7 @@ public class DuplicateApprovalHandler {
     }
 
     private void handleAmountMismatchDbExists(String orderId) {
-        // inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH (불변식 4c)
+        // 금액 불일치는 격리한다: inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH
         pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
 
         long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
@@ -225,7 +225,7 @@ public class DuplicateApprovalHandler {
 
     private void handleDbAbsentAmountMatch(String orderId, long amountLong) {
         // vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림
-        // PCS-9 §1.8: PENDING 우회 — transitDirectToTerminal(APPROVED) 로 직접 종결.
+        // PENDING 우회 — transitDirectToTerminal(APPROVED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED,
                 () -> "orderId=" + orderId + " amount=" + amountLong);
 
@@ -243,8 +243,8 @@ public class DuplicateApprovalHandler {
     }
 
     private void handleDbAbsentAmountMismatch(String orderId, long payloadAmountLong, long vendorAmountLong) {
-        // vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH) (불변식 4c)
-        // PCS-9 §1.8: PENDING 우회 — transitDirectToTerminal(QUARANTINED) 로 직접 종결.
+        // vendor.amount != payloadAmount → inbox 신설(QUARANTINED+AMOUNT_MISMATCH)
+        // PENDING 우회 — transitDirectToTerminal(QUARANTINED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
                 () -> "orderId=" + orderId
                         + " payloadAmount=" + payloadAmountLong
@@ -269,7 +269,7 @@ public class DuplicateApprovalHandler {
     /**
      * vendor 조회 실패 — inbox 부재 시 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
      *
-     * <p>D-F2 흡수: transitDirectToInProgress + transitToQuarantined 두 호출이 반드시 같은 TX 안에 묶여야 한다.
+     * <p>transitDirectToInProgress + transitToQuarantined 두 호출이 반드시 같은 TX 안에 묶여야 한다.
      * 이 메서드는 {@code handleDuplicateApproval} 의 {@code @Transactional} TX 안에서 호출되므로
      * 두 호출이 동일 TX 를 공유한다.
      * transitDirectToInProgress 커밋 후 JVM 장애 시 IN_PROGRESS 좀비 잔존 → processInProgressZombie
@@ -277,13 +277,12 @@ public class DuplicateApprovalHandler {
      * 반드시 atomicity 봉인이 필요하다.
      */
     private void handleVendorIndeterminate(String orderId, long payloadAmountLong) {
-        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (§1.8 보정 경로)
+        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (보정 경로)
         Optional<PgInbox> existing = pgInboxRepository.findByOrderId(orderId);
         if (existing.isEmpty()) {
-            // PCS-9: transitNoneToInProgress → transitDirectToInProgress (PENDING 우회)
             pgInboxRepository.transitDirectToInProgress(orderId, payloadAmountLong);
         }
-        // transitToQuarantined: 같은 @Transactional TX 안에서 호출 (D-F2 atomicity 봉인)
+        // 같은 @Transactional TX 안에서 호출 — IN_PROGRESS 신설과 격리를 atomic 하게 묶는다
         pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
 
         long outboxId = enqueueOutbox(

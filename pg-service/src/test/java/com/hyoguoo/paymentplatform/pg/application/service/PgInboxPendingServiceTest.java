@@ -45,8 +45,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * PgInboxPendingService 단위 테스트.
  *
  * <p>domain_risk=true: listener TX 경계 봉인 검증.
- * - active TX 안에서 publishEvent 호출 검증 (D-F1 / PC-F2 흡수)
- * - @TransactionalEventListener(AFTER_COMMIT) 발화 검증 (D-F1 / PC-F2 흡수)
+ * - active TX 안에서 publishEvent 호출 검증
+ * - @TransactionalEventListener(AFTER_COMMIT) 발화 검증
  */
 @DisplayName("PgInboxPendingService")
 class PgInboxPendingServiceTest {
@@ -143,7 +143,7 @@ class PgInboxPendingServiceTest {
         }
 
         @Test
-        @DisplayName("insertPendingAndPublish — TransactionTimedOutException 발생 시 카운터 증가 + 예외 재전파 (PCS-14 / PC-F3)")
+        @DisplayName("insertPendingAndPublish — TransactionTimedOutException 발생 시 카운터 증가 + 예외 재전파")
         void insertPendingAndPublish_timeoutExceeded_emitsCounterAndRethrows() {
             // given
             String orderId = "order-pcs14-timeout";
@@ -174,8 +174,8 @@ class PgInboxPendingServiceTest {
 
     /**
      * Spring TX proxy 가 실제로 동작하는 컨텍스트에서 두 가지 핵심 속성을 검증한다.
-     * (1) insertPendingAndPublish 호출 시 active TX 가 활성화됨 (D-F1 흡수)
-     * (2) TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 가 발화됨 (PC-F2 흡수)
+     * (1) insertPendingAndPublish 호출 시 active TX 가 활성화됨
+     * (2) TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 가 발화됨
      *
      * <p>@EnableTransactionManagement + 커스텀 TX Manager 조합으로 Spring context 를 최소 구성한다.
      * DB 없이 TX proxy + event publisher TX sync 만 검증한다.
@@ -205,7 +205,7 @@ class PgInboxPendingServiceTest {
         }
 
         @Test
-        @DisplayName("insertPendingAndPublish — publishEvent 호출 시점에 active TX 활성 검증 (D-F1 흡수)")
+        @DisplayName("insertPendingAndPublish — publishEvent 호출 시점에 active TX 활성 검증")
         void insertPendingAndPublish_publishesEventInsideActiveTransaction() {
             // given
             String orderId = "order-pcs7-004";
@@ -228,7 +228,7 @@ class PgInboxPendingServiceTest {
         }
 
         @Test
-        @DisplayName("insertPendingAndPublish — TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 발화 (PC-F2 흡수)")
+        @DisplayName("insertPendingAndPublish — TX 커밋 후 @TransactionalEventListener(AFTER_COMMIT) 발화")
         void insertPendingAndPublish_afterCommitListenerFires() {
             // given
             String orderId = "order-pcs7-after-commit";
@@ -316,8 +316,6 @@ class PgInboxPendingServiceTest {
             public PgInbox save(PgInbox inbox) {
                 return inbox;
             }
-
-            // PCS-9: transitNoneToInProgress 삭제됨
 
             @Override
             public boolean transitPendingToInProgress(Long inboxId) {

@@ -27,17 +27,15 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase D7 진입 가드 검증 (PET-8 갱신).
+ * PaymentConfirmResultUseCase 진입 가드 검증.
  *
- * <p>D7 가드: handle() 진입 시 paymentEvent.getStatus().isCompensatableByFailureHandler() 로 단일화.
+ * <p>handle() 진입 시 paymentEvent.getStatus().isCompensatableByFailureHandler() 로 판정한다.
  * isCompensatableByFailureHandler=false (종결 상태: DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)
  * → markIfAbsent 미호출 + warn noop.
  *
- * <p>기존 handleFailed / handleQuarantined 안의 isTerminal 가드와 통합됨.
- * race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면
- * 진입 가드가 D7 기준으로 걸러낸다.
+ * <p>race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면 진입 가드가 걸러낸다.
  */
-@DisplayName("PaymentConfirmResultUseCase D7 진입 가드 — 종결 상태면 전체 skip")
+@DisplayName("PaymentConfirmResultUseCase 진입 가드 — 종결 상태면 전체 skip")
 class PaymentConfirmResultUseCaseIdempotencyGuardTest {
 
     private static final String ORDER_ID = "order-guard-001";

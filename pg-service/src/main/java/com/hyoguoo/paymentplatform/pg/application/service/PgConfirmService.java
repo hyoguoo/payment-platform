@@ -18,10 +18,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
- * pg-service business inbox 상태 분기 오케스트레이터 (PCS-9 재배치).
+ * pg-service business inbox 상태 분기 오케스트레이터.
  * inbox 5상태 + 2단 멱등성 키(eventUUID + orderId) 적용.
  *
- * <p>PCS-9 분기 재배치:
+ * <p>분기 흐름:
  * <ol>
  *   <li>eventUUID dedupe — {@link EventDedupeStore#markSeen}: false면 즉시 no-op.</li>
  *   <li>inbox 상태 분기:
@@ -35,9 +35,9 @@ import org.springframework.stereotype.Service;
  *   </li>
  * </ol>
  *
- * <p>§1.6 분기 재배치 + D-F3 흡수 (M2 review finding):
- * handleTerminal 의 @Transactional self-invocation 을 {@link PgTerminalReemitService} 별 빈으로 분리.
- * Spring proxy 를 경유하여 TX 경계(pg_outbox save + publishEvent 동일 TX) 를 보장한다.
+ * <p>terminal 재발행은 {@link PgTerminalReemitService} 별도 빈으로 분리한다.
+ * Spring proxy 를 경유해야 @Transactional self-invocation 우회 없이
+ * TX 경계(pg_outbox save + publishEvent 동일 TX)를 보장할 수 있다.
  */
 @Slf4j
 @Service
@@ -83,7 +83,7 @@ public class PgConfirmService implements PgConfirmCommandService {
             handleActiveInbox(inbox);
         } else if (inbox.getStatus().isTerminal()) {
             // terminal 재수신 → stored_status_result 재발행
-            // M2: PgTerminalReemitService 외부 빈 위임 — self-invocation @Transactional 우회 해소
+            // 외부 빈에 위임해 self-invocation @Transactional 우회를 피한다
             pgTerminalReemitService.reemit(inbox);
         }
     }

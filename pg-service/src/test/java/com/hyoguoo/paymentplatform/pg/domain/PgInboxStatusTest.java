@@ -12,9 +12,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * PgInboxStatus enum 단위 테스트.
  *
- * <p>PCS-2: NONE 폐기 + PENDING 도입 후 isTerminal() 계약 검증.
+ * <p>PENDING 시작 상태를 포함한 상태 집합의 isTerminal() 계약 검증.
  */
-@DisplayName("PgInboxStatus — isTerminal() 계약 + NONE 폐기 검증")
+@DisplayName("PgInboxStatus — isTerminal() 계약 검증")
 class PgInboxStatusTest {
 
     @Test

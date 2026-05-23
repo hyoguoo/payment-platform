@@ -30,13 +30,12 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * PaymentConfirmResultUseCase.handleFailed 단위 검증 (PET-8 갱신 — stock_outbox 의존성 제거).
+ * PaymentConfirmResultUseCase.handleFailed 단위 검증.
  *
- * <p>핵심: 호출 순서 뒤집기 — compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중).
+ * <p>호출 순서: compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중).
  * ALREADY_DONE 이어도 RDB 진행. RuntimeException 은 그대로 전파.
  *
- * <p>D7 진입 가드 — isCompensatableByFailureHandler 로 통합 (isTerminal 가드 제거).
- * FAILED 종결 상태도 isCompensatableByFailureHandler=false 로 진입 가드에서 걸린다.
+ * <p>진입 가드: FAILED 종결 상태는 isCompensatableByFailureHandler=false 라 걸러진다.
  */
 @DisplayName("PaymentConfirmResultUseCase handleFailed")
 class PaymentConfirmResultUseCaseHandleFailedTest {
@@ -109,10 +108,10 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
     }
 
     @Test
-    @DisplayName("FAILED — 이미 종결 상태(FAILED)이면 D7 가드에서 noop (compensateAtomic 미호출)")
+    @DisplayName("FAILED — 이미 종결 상태(FAILED)이면 진입 가드에서 noop (compensateAtomic 미호출)")
     void FAILED_이미_종결_noop() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
-        // FAILED 는 isCompensatableByFailureHandler=false → D7 진입 가드에서 걸린다
+        // FAILED 는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 

@@ -23,7 +23,7 @@ class PgInboxTest {
     private static final Long AMOUNT = 10000L;
 
     // =========================================================================
-    // CBA-8: factory 4종 시그니처 + 필드 매핑 검증 (builder 전환 회귀 방어)
+    // factory 4종 시그니처 + 필드 매핑 검증 (builder 회귀 방어)
     // =========================================================================
 
     @Test
@@ -134,7 +134,7 @@ class PgInboxTest {
     }
 
     // =========================================================================
-    // PCS-2: create — PENDING 시작
+    // create — PENDING 시작
     // =========================================================================
 
     @Test
@@ -152,7 +152,7 @@ class PgInboxTest {
     }
 
     // =========================================================================
-    // PCS-2: createDirectInProgress — 보정 경로 PENDING 우회
+    // createDirectInProgress — 보정 경로 PENDING 우회
     // =========================================================================
 
     @Test
@@ -168,7 +168,7 @@ class PgInboxTest {
     }
 
     // =========================================================================
-    // PCS-2: createDirectTerminal — 보정 경로 terminal 신설
+    // createDirectTerminal — 보정 경로 terminal 신설
     // =========================================================================
 
     @Test
@@ -346,7 +346,7 @@ class PgInboxTest {
     }
 
     @Test
-    @DisplayName("markQuarantined — 이미 terminal 상태이면 IllegalStateException (불변식 6c)")
+    @DisplayName("markQuarantined — 이미 terminal 상태이면 IllegalStateException")
     void markQuarantined_WhenAlreadyTerminal_ShouldThrow() {
         // given — APPROVED terminal 상태
         PgInbox inbox = PgInbox.of(
