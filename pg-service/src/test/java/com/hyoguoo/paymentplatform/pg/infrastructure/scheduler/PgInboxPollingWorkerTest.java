@@ -20,10 +20,10 @@ import org.junit.jupiter.api.Test;
 /**
  * PgInboxPollingWorker — PENDING / IN_PROGRESS 두 경로 좀비 회수 + 카운터 검증.
  *
- * <p>domain_risk=true: SKIP LOCKED 멱등성은 PCS-4 (PgInboxRepository) 계층 책임.
+ * <p>domain_risk=true: SKIP LOCKED 멱등성은 PgInboxRepository 계층 책임.
  * 본 테스트는 워커가 올바른 usecase 메서드를 호출하는지만 검증한다.
  *
- * <p>traceparent 분리(새 root span) 의도 — PHASE2 연계 예정 (Round 1 D-F5 흡수).
+ * <p>traceparent 분리(새 root span) 의도 — PHASE2 연계 예정.
  * 현재는 OTel context 없이 직접 호출한다.
  */
 @DisplayName("PgInboxPollingWorker")

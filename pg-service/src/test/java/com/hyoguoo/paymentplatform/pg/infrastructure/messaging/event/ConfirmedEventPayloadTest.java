@@ -22,7 +22,7 @@ class ConfirmedEventPayloadTest {
     private static final String APPROVED_AT = "2026-04-24T10:00:00+09:00";
 
     // -----------------------------------------------------------------------
-    // TC1: approved() — amount null 시 NullPointerException
+    // approved() — amount null 시 NullPointerException
     // -----------------------------------------------------------------------
 
     @Test
@@ -33,7 +33,7 @@ class ConfirmedEventPayloadTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: approved() — approvedAt null 시 NullPointerException
+    // approved() — approvedAt null 시 NullPointerException
     // -----------------------------------------------------------------------
 
     @Test
@@ -44,7 +44,7 @@ class ConfirmedEventPayloadTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: approved() — 정상 호출 시 amount/approvedAt 값 일치
+    // approved() — 정상 호출 시 amount/approvedAt 값 일치
     // -----------------------------------------------------------------------
 
     @Test
@@ -59,7 +59,7 @@ class ConfirmedEventPayloadTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: failed() — amount/approvedAt null (두 필드 nullable)
+    // failed() — amount/approvedAt null (두 필드 nullable)
     // -----------------------------------------------------------------------
 
     @Test

@@ -37,7 +37,7 @@ class PgConfirmStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: TOSS → Toss strategy
+    // TOSS → Toss strategy
     // -----------------------------------------------------------------------
 
     @Test
@@ -48,7 +48,7 @@ class PgConfirmStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: NICEPAY → Nicepay strategy
+    // NICEPAY → Nicepay strategy
     // -----------------------------------------------------------------------
 
     @Test
@@ -59,7 +59,7 @@ class PgConfirmStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: 빈 목록 또는 미지원 벤더 → IllegalStateException
+    // 빈 목록 또는 미지원 벤더 → IllegalStateException
     // -----------------------------------------------------------------------
 
     @Test

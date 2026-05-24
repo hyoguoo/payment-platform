@@ -9,7 +9,7 @@ public enum EventType {
 
     PG_CONFIRM_RECEIVED,
     PG_CONFIRM_DUPLICATE_UUID,
-    /** PCS-9 이후: NONE 폐기, PENDING 시작. NONE_TO_IN_PROGRESS 명칭을 PENDING_INSERT 로 정정 (domain#5). */
+    /** inbox 진입 상태가 PENDING 으로 시작됨을 나타낸다. */
     PG_CONFIRM_PENDING_INSERT,
     PG_CONFIRM_IN_PROGRESS_NOOP,
     PG_CONFIRM_IN_PROGRESS_RETRY,
@@ -49,7 +49,7 @@ public enum EventType {
     PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
     PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
 
-    /** PCS-9 이후: NONE 폐기. NONE_TO_IN_PROGRESS_PREEMPTED 명칭을 PENDING_PREEMPTED 로 정정 (domain#5). */
+    /** PENDING 상태에서 다른 워커에 선점된 경우. */
     PG_INBOX_AMOUNT_PENDING_PREEMPTED,
     PG_INBOX_AMOUNT_RECORDED,
     PG_INBOX_AMOUNT_NULL_QUARANTINED,
@@ -61,21 +61,21 @@ public enum EventType {
     PG_INBOX_WORKER_SKIP,
     PG_INBOX_WORKER_PROCESS_FAIL,
 
-    // PCS-12: ImmediateWorker SmartLifecycle 이벤트
+    // ImmediateWorker SmartLifecycle 이벤트
     PG_INBOX_WORKER_STARTED,
     PG_INBOX_WORKER_STOPPED,
     PG_INBOX_WORKER_LOOP_ERROR,
-    // PCS-14 SoT — PC-F6 흡수. 기존 PG_INBOX_WORKER_PROCESS_FAIL 는 레거시 유지
+    // 워커 처리 실패 카운터의 단일 출처
     PG_INBOX_WORKER_FAIL,
 
     PG_INBOX_CHANNEL_OVERFLOW,
 
-    // PCS-13: InboxPollingWorker 좀비 회수 이벤트
+    // InboxPollingWorker 좀비 회수 이벤트
     PG_INBOX_POLLING_PENDING_FOUND,
     PG_INBOX_POLLING_IN_PROGRESS_FOUND,
     PG_INBOX_POLLING_ZOMBIE_FAIL,
 
-    // PCS-14: listener TX timeout + 좀비 회수 성공 이벤트 (PC-F3 흡수)
+    // listener TX timeout + 좀비 회수 성공 이벤트
     PG_INBOX_LISTENER_TX_TIMEOUT,
     PG_INBOX_ZOMBIE_RECOVERED_PENDING,
     PG_INBOX_ZOMBIE_RECOVERED_IN_PROGRESS,

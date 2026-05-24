@@ -3,37 +3,33 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
-import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
-import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.mock.FakeStockOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.kafka.core.KafkaTemplate;
 
 /**
  * PaymentConfirmResultUseCase.handleApproved 단위 검증.
@@ -43,8 +39,8 @@ import org.springframework.context.ApplicationEventPublisher;
  *   <li>수신 approvedAt → markPaymentAsDone 으로 그대로 전달</li>
  *   <li>amount 역방향 대조 — 불일치 시 AMOUNT_MISMATCH 격리, DONE 전이 차단</li>
  *   <li>approvedAt null 수신 시 IllegalArgumentException</li>
- *   <li>amount 일치 시 markPaymentAsDone 위임 + stock_outbox INSERT 발생</li>
- *   <li>multi-product 시 stock_outbox 가 productId 별로 따로 INSERT 되고 idempotencyKey 가 분리</li>
+ *   <li>amount 일치 시 markPaymentAsDone 위임 + stockCommittedKafkaTemplate.send 호출</li>
+ *   <li>multi-product 시 send 가 productId 별로 분리 호출되고 idempotencyKey 가 분리</li>
  *   <li>상태 전이는 PaymentCommandUseCase 가 단독 수행 — UseCase 가 paymentEventRepository.saveOrUpdate 를 직접 호출하면 안 됨</li>
  * </ul>
  */
@@ -58,32 +54,42 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     private static final long AMOUNT = 1000L;
 
     private FakePaymentEventRepository paymentEventRepository;
-    private CapturingApplicationEventPublisher capturingPublisher;
+    private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
-    private FakeStockOutboxRepository stockOutboxRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
+    @SuppressWarnings("unchecked")
+    private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = new FakePaymentEventRepository();
-        capturingPublisher = new CapturingApplicationEventPublisher();
+        dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
-        stockOutboxRepository = new FakeStockOutboxRepository();
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = () -> LocalDateTime.of(2026, 4, 24, 12, 0, 0);
+        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
+            @Override
+            public LocalDateTime now() {
+                return LocalDateTime.of(2026, 4, 24, 12, 0, 0);
+            }
+
+            @Override
+            public Instant nowInstant() {
+                return Instant.parse("2026-04-24T12:00:00Z");
+            }
+        };
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
-                capturingPublisher,
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
-                stockOutboxRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule()),
+                dedupeStore,
+                stockCommittedKafkaTemplate,
                 paymentCommandUseCase
         );
     }
@@ -124,8 +130,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 .handle(eq(ORDER_ID), eq("AMOUNT_MISMATCH"));
         PaymentEvent saved = paymentEventRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-        assertThat(capturingPublisher.countReadyEvents()).isZero();
-        assertThat(stockOutboxRepository.savedCount()).isZero();
+        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
     }
 
     @Test
@@ -143,8 +148,8 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     }
 
     @Test
-    @DisplayName("amount 일치 시 markPaymentAsDone 위임 + stock_outbox INSERT + StockOutboxReadyEvent 발행")
-    void amount_일치_시_markPaymentAsDone_위임_및_stock_outbox_발행() {
+    @DisplayName("amount 일치 시 markPaymentAsDone 위임 + stockCommittedKafkaTemplate.send 호출")
+    void amount_일치_시_markPaymentAsDone_위임_및_stock_committed_발행() {
         PaymentOrder order = buildPaymentOrder(2L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
@@ -159,14 +164,14 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsDone(any(PaymentEvent.class), eq(EXPECTED_APPROVED_AT));
-        assertThat(capturingPublisher.countReadyEvents()).isEqualTo(1L);
-        assertThat(stockOutboxRepository.savedCount()).isEqualTo(1);
+        then(stockCommittedKafkaTemplate).should(times(1))
+                .send(eq("payment.events.stock-committed"), eq("2"), anyString());
         then(quarantineCompensationHandler).should(never()).handle(any(), any());
     }
 
     @Test
-    @DisplayName("multi-product 시 stock_outbox 가 productId 별로 분리 INSERT 되고 topic 은 stock-committed")
-    void multiProduct_시_stock_outbox_가_productId_별로_분리_INSERT() {
+    @DisplayName("multi-product 시 send 가 productId 별로 분리 호출된다 (topic = stock-committed)")
+    void multiProduct_시_send_가_productId_별로_분리_호출() {
         PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
@@ -179,17 +184,18 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
 
         sut.handle(message);
 
-        assertThat(stockOutboxRepository.savedCount()).isEqualTo(2);
-        assertThat(capturingPublisher.captured(StockOutboxReadyEvent.class)).hasSize(2);
-        List<StockOutbox> saved = stockOutboxRepository.allSaved();
-        assertThat(saved).allMatch(o -> "payment.events.stock-committed".equals(o.getTopic()));
-        assertThat(saved.stream().map(StockOutbox::getKey).sorted().toList())
-                .containsExactly("10", "20");
+        then(stockCommittedKafkaTemplate).should(times(2))
+                .send(eq("payment.events.stock-committed"), anyString(), anyString());
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        then(stockCommittedKafkaTemplate).should(times(2))
+                .send(anyString(), keyCaptor.capture(), anyString());
+        assertThat(keyCaptor.getAllValues()).containsExactlyInAnyOrder("10", "20");
     }
 
     @Test
-    @DisplayName("multi-product 시 각 stock_outbox payload 의 idempotencyKey 가 productId 단위로 분리된다")
-    void multiProduct_idempotencyKey_가_productId_단위로_분리된다() throws Exception {
+    @DisplayName("multi-product 시 각 payload 의 idempotencyKey 가 productId 단위로 분리된다")
+    void multiProduct_idempotencyKey_가_productId_단위로_분리된다() {
         PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
@@ -202,16 +208,17 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
 
         sut.handle(message);
 
-        ObjectMapper om = new ObjectMapper().registerModule(new JavaTimeModule());
-        List<StockOutbox> saved = stockOutboxRepository.allSaved().stream()
-                .sorted(Comparator.comparing(StockOutbox::getKey))
-                .toList();
-        String key10 = om.readTree(saved.get(0).getPayload()).get("idempotencyKey").asText();
-        String key20 = om.readTree(saved.get(1).getPayload()).get("idempotencyKey").asText();
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        then(stockCommittedKafkaTemplate).should(times(2))
+                .send(anyString(), anyString(), payloadCaptor.capture());
 
-        assertThat(key10).isNotEqualTo(key20);
-        assertThat(key10).isEqualTo(StockEventUuidDeriver.derive(ORDER_ID, 10L, "stock-commit"));
-        assertThat(key20).isEqualTo(StockEventUuidDeriver.derive(ORDER_ID, 20L, "stock-commit"));
+        String expectedKey10 = StockEventUuidDeriver.derive(ORDER_ID, 10L, "stock-commit");
+        String expectedKey20 = StockEventUuidDeriver.derive(ORDER_ID, 20L, "stock-commit");
+        assertThat(expectedKey10).isNotEqualTo(expectedKey20);
+
+        List<String> payloads = payloadCaptor.getAllValues();
+        assertThat(payloads).anyMatch(p -> p.contains(expectedKey10));
+        assertThat(payloads).anyMatch(p -> p.contains(expectedKey20));
     }
 
     @Test
@@ -260,34 +267,5 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 .totalAmount(totalAmount)
                 .status(PaymentOrderStatus.EXECUTING)
                 .allArgsBuild();
-    }
-
-    static class CapturingApplicationEventPublisher implements ApplicationEventPublisher {
-
-        private final List<Object> events = new ArrayList<>();
-
-        @Override
-        public void publishEvent(ApplicationEvent event) {
-            events.add(event);
-        }
-
-        @Override
-        public void publishEvent(Object event) {
-            events.add(event);
-        }
-
-        @SuppressWarnings("unchecked")
-        public <T> List<T> captured(Class<T> type) {
-            return events.stream()
-                    .filter(type::isInstance)
-                    .map(e -> (T) e)
-                    .toList();
-        }
-
-        public long countReadyEvents() {
-            return events.stream()
-                    .filter(StockOutboxReadyEvent.class::isInstance)
-                    .count();
-        }
     }
 }

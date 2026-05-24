@@ -34,7 +34,7 @@ class StockCommittedMessageSchemaParityTest {
     );
 
     // -----------------------------------------------------------------------
-    // TC1: StockCommittedMessage 필드 이름 set이 canonical과 동일해야 한다
+    // StockCommittedMessage 필드 이름 set이 canonical과 동일해야 한다
     // -----------------------------------------------------------------------
 
     @Test
@@ -52,7 +52,7 @@ class StockCommittedMessageSchemaParityTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: StockCommittedMessage 필드 순서가 canonical과 동일해야 한다
+    // StockCommittedMessage 필드 순서가 canonical과 동일해야 한다
     // -----------------------------------------------------------------------
 
     @Test
@@ -70,7 +70,7 @@ class StockCommittedMessageSchemaParityTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: StockCommittedMessage.orderId 타입이 String 이어야 한다 (Long 사용 금지)
+    // StockCommittedMessage.orderId 타입이 String 이어야 한다 (Long 사용 금지)
     // -----------------------------------------------------------------------
 
     @Test

@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DuplicateApprovalHandlerCircularDependencyTest {
 
     /**
-     * TC1: DuplicateApprovalHandler 생성자 파라미터에 @Lazy 어노테이션이 없어야 한다.
+     * DuplicateApprovalHandler 생성자 파라미터에 @Lazy 어노테이션이 없어야 한다.
      *
      * <p>@Lazy 는 cycle 임시 우회책으로 쓰였지만 포트 분해 + ApplicationEvent 패턴으로 완전히 제거되었다.
      * 이 테스트가 PASS = @Lazy 가 완전히 제거된 상태.
@@ -55,7 +55,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC2: DuplicateApprovalHandler 필드 중 PgStatusLookupStrategySelector 타입이 존재해야 한다.
+     * DuplicateApprovalHandler 필드 중 PgStatusLookupStrategySelector 타입이 존재해야 한다.
      *
      * <p>PgStatusLookupPort 단일 의존 대신 PgStatusLookupStrategySelector 를 통해 vendorType 기반 분기 —
      * Toss/NicePay 동시 활성 지원의 핵심 불변식.
@@ -72,7 +72,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC3: DuplicateApprovalHandler 필드 중 PgGatewayPort 타입이 없어야 한다.
+     * DuplicateApprovalHandler 필드 중 PgGatewayPort 타입이 없어야 한다.
      *
      * <p>PgGatewayPort 는 PgStatusLookupPort + PgConfirmPort 로 분해되었으므로 잔재 필드가 0건이어야 한다.
      */
@@ -89,7 +89,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC4: DuplicateApprovalHandler 생성자의 첫 파라미터가 PgStatusLookupStrategySelector 타입이어야 한다.
+     * DuplicateApprovalHandler 생성자의 첫 파라미터가 PgStatusLookupStrategySelector 타입이어야 한다.
      *
      * <p>생성자 시그니처: (PgStatusLookupStrategySelector, PgInboxRepository, ...).
      */
@@ -106,7 +106,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC5: TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
+     * TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
      *
      * <p>Toss 전략이 DuplicateApprovalHandler 를 직접 보유하면 PgStatusLookupPort 구현체(Toss) ↔
      * DuplicateApprovalHandler ↔ PgStatusLookupPort cycle 이 형성된다 — ApplicationEvent 패턴으로 영구 단절했다.
@@ -123,7 +123,7 @@ class DuplicateApprovalHandlerCircularDependencyTest {
     }
 
     /**
-     * TC6: NicepayPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
+     * NicepayPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
      *
      * <p>NicePay 전략도 동일한 cycle 위험이 있으므로 DuplicateApprovalHandler 직접 의존을 제거한다.
      */

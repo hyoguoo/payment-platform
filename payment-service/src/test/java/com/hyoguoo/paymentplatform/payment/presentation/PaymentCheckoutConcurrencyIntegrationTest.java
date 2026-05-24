@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
@@ -160,6 +161,7 @@ class PaymentCheckoutConcurrencyIntegrationTest extends BaseIntegrationTest {
                                 .quantity(1)
                                 .build()
                 ))
+                .gatewayType(PaymentGatewayType.TOSS)
                 .build();
     }
 

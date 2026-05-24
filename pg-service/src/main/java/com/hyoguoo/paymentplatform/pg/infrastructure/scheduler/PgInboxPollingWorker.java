@@ -28,10 +28,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>새 root span: 폴링 워커는 원 Kafka 메시지의 traceparent 와 연결하지 않고 새 OTel root span 으로 시작한다.
  * 이는 의도적인 설계 결정으로, 복구 트레이스를 기존 비즈니스 트레이스와 분리한다.
- * 원 traceparent 연결은 PHASE2 에서 정밀화 예정 (Round 1 D-F5 흡수).
  *
  * <p>race window: PENDING → IN_PROGRESS / IN_PROGRESS → terminal 전이의 SELECT FOR UPDATE SKIP LOCKED 는
- * {@link PgInboxRepository} 구현체(PCS-4) 계층 책임이다. 본 워커는 호출만 위임한다.
+ * {@link PgInboxRepository} 구현체 계층 책임이다. 본 워커는 호출만 위임한다.
  */
 @Slf4j
 @Component
@@ -44,9 +43,9 @@ public class PgInboxPollingWorker {
     static final String ZOMBIE_FAIL_COUNTER_NAME = "pg_inbox.zombie_fail_total";
 
     /**
-     * 좀비 회수 성공 카운터 이름 — M3 review finding 흡수.
+     * 좀비 회수 성공 카운터 이름.
      * status 태그 (PENDING / IN_PROGRESS) 로 두 경로를 구분한다.
-     * §7.2 F3 SoT: {@code pg_inbox.zombie_recovered_total{status=PENDING|IN_PROGRESS}}.
+     * {@code pg_inbox.zombie_recovered_total{status=PENDING|IN_PROGRESS}}.
      */
     static final String ZOMBIE_RECOVERED_COUNTER_NAME = "pg_inbox.zombie_recovered_total";
 
@@ -92,7 +91,7 @@ public class PgInboxPollingWorker {
      * PENDING / IN_PROGRESS 두 경로의 좀비 row 를 회수한다.
      *
      * <p>fixedDelay: 이전 실행 완료 후 지정 시간 대기 (과부하 방지).
-     * 새 root span 시작 의도 — OTel context 연결은 PHASE2 예정.
+     * 복구 트레이스를 기존 트레이스와 분리하기 위해 새 root span 으로 시작한다.
      */
     @Scheduled(fixedDelayString = "${pg.scheduler.inbox-polling-worker.fixed-delay-ms:5000}")
     public void poll() {
@@ -145,7 +144,7 @@ public class PgInboxPollingWorker {
                                Counter recoveredCounter, EventType recoveredEvent) {
         try {
             action.run();
-            // 성공 시 회수 카운터 increment + LogFmt info emit (§7.2 F3 흡수)
+            // 성공 시 회수 카운터 increment + LogFmt info emit
             recoveredCounter.increment();
             LogFmt.info(log, LogDomain.PG_INBOX, recoveredEvent,
                     () -> "inboxId=" + inboxId + " status=" + zombieStatus);

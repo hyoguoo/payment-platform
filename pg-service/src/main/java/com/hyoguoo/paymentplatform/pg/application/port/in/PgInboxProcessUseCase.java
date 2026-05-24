@@ -7,11 +7,11 @@ package com.hyoguoo.paymentplatform.pg.application.port.in;
  *
  * <p>사용처:
  * <ul>
- *   <li>{@code PgInboxImmediateWorker} (PCS-12) — AFTER_COMMIT channel take 후 {@link #processPending} 호출</li>
- *   <li>{@code PgInboxPollingWorker} (PCS-13) — IN_PROGRESS 좀비 회수 시 {@link #processInProgressZombie} 호출</li>
+ *   <li>{@code PgInboxImmediateWorker} — AFTER_COMMIT channel take 후 {@link #processPending} 호출</li>
+ *   <li>{@code PgInboxPollingWorker} — IN_PROGRESS 좀비 회수 시 {@link #processInProgressZombie} 호출</li>
  * </ul>
  *
- * <p>구현체 {@code PgInboxProcessor} 는 application/service 계층에 위치 (PCS-8).
+ * <p>구현체 {@code PgInboxProcessor} 는 application/service 계층에 위치한다.
  */
 public interface PgInboxProcessUseCase {
 

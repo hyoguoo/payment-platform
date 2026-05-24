@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT 봉인 — pg 측 listener 분리 안 코드 정합 + 위키 동기화)
+> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — payment-service 결제 결과 컨슈머 EOS 전환, StockOutbox 묶음 폐기)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -19,13 +19,18 @@
     → OutboxRelayService.relay (claimToInFlight CAS → Kafka publish)
     → [pg-service 처리 — PAYMENT-FLOW.md]
     → ConfirmedEventConsumer
-    → PaymentConfirmResultUseCase.handle (Spring Kafka native error handler + 분기)
-    → StockOutboxImmediateEventHandler (AFTER_COMMIT VT, APPROVED 시)
-    → StockOutboxRelayService.relay
+    → PaymentConfirmResultUseCase.handle (EOS: KafkaTransactionManager + D7 가드 + D5 멱등 마킹 + D8 직접 발행)
+    → payment.events.stock-committed 직접 발행 (EOS producer tx 안에서 APPROVED 시)
 ```
 
 진입: `POST /api/v1/payments/confirm` (`PaymentController`)
-출구: `payment.events.stock-committed` Kafka 발행 (APPROVED) / Redis 선차감 보상 (FAILED/QUARANTINED)
+출구: `payment.events.stock-committed` Kafka 발행 (APPROVED, EOS producer tx commit 시 가시화) / Redis 선차감 보상 (FAILED/QUARANTINED)
+
+**EOS 전환 이후 변경 핵심**:
+- `StockOutbox` 묶음 (`StockOutboxImmediateEventHandler` / `StockOutboxRelayService` / `StockOutboxKafkaPublisher` / `StockOutboxWorker` 등 16+ 파일) 폐기.
+- 결제 결과 컨슈머가 `KafkaTransactionManager` 통합 — consumer offset commit + RDB commit + producer send 가 한 Kafka 트랜잭션으로 묶임.
+- `PaymentEventDedupeStore.markIfAbsent(event_uuid)` INSERT IGNORE 로 메시지 단위 멱등 마킹.
+- product-service `StockCommitConsumer` 가 `isolation.level=read_committed` 로 abort 된 메시지 invisible 보장.
 
 ---
 
@@ -112,45 +117,78 @@ flowchart TD
 
 ---
 
-## 5. 결과 수신 — `ConfirmedEventConsumer` + `PaymentConfirmResultUseCase`
+## 5. 결과 수신 — `ConfirmedEventConsumer` + `PaymentConfirmResultUseCase` (EOS 전환 후)
 
 ```mermaid
 flowchart TD
-    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>@ConditionalOnProperty(spring.kafka.bootstrap-servers)"]) --> UC["PaymentConfirmResultUseCase.handle<br/>(1줄 — processMessage(message))"]
+    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>containerFactory=kafkaListenerContainerFactory<br/>(KafkaTransactionManager 통합)"]) --> GUARD{"D7 가드<br/>isCompensatableByFailureHandler?"}
 
-    UC --> MSG[processMessage]
-    MSG --> LOAD[paymentEvent 조회]
+    GUARD -->|false = 종결 상태| NOOP["noop 로그 + return<br/>(QUARANTINED 늦은 APPROVED 포함)"]
+    GUARD -->|true = 진행 가능| DEDUPE["PaymentEventDedupeStore.markIfAbsent<br/>(INSERT IGNORE payment_event_dedupe)"]
+
+    DEDUPE -->|0 row = 중복| RESEND["비즈니스 skip<br/>발행은 항상 진행 (위키 line 141)"]
+    DEDUPE -->|1 row = 신규| LOAD[paymentEvent 조회]
     LOAD --> SW{message.status}
 
     SW -->|APPROVED| AMT["parseApprovedAt (null → IllegalArgumentException)<br/>isAmountMismatch 검사"]
     AMT -->|불일치 또는 amount=null| QU_AM["(redis 보상 미수행 — 격리 정책)<br/>+ QuarantineCompensationHandler.handle<br/>reason=AMOUNT_MISMATCH"]
-    AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>(AOP: @PaymentStatusChange + @PublishDomainEvent)<br/>각 PaymentOrder 별 stock_outbox INSERT<br/>+ StockOutboxReadyEvent publish"]
+    AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>+ for-loop (PaymentOrder × N)<br/>  StockEventUuidDeriver.derive → stockCommittedKafkaTemplate.send<br/>(EOS producer tx buffer, D8)"]
 
-    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic(orderId, orders) 먼저<br/>→ paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기 — silent loss 차단)"]
+    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic 먼저<br/>→ paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기)"]
 
-    SW -->|QUARANTINED| QU_PG["stockCachePort.compensateAtomic(orderId, orders)<br/>+ QuarantineCompensationHandler.handle"]
+    SW -->|QUARANTINED| QU_PG["stockCachePort.compensateAtomic<br/>+ QuarantineCompensationHandler.handle"]
 
-    DONE_OK --> END([완료])
-    FAIL_OK --> END
-    QU_AM --> END
-    QU_PG --> END
+    DONE_OK --> COMMIT["EOS 트랜잭션 커밋<br/>RDB commit + offset commit + producer commit"]
+    FAIL_OK --> COMMIT
+    QU_AM --> COMMIT
+    QU_PG --> COMMIT
+    RESEND --> COMMIT
+    NOOP --> END([완료])
+    COMMIT --> END
 
-    UC -.예외 throw.-> ERR["Spring Kafka DefaultErrorHandler<br/>FixedBackOff(1000ms, 5회)<br/>한도 초과 → DeadLetterPublishingRecoverer<br/>→ payment.events.confirmed.dlq"]
+    COMMIT -.->|RuntimeException| ABORT["producer abort + RDB rollback<br/>offset 미커밋 → 재배달"]
+    ABORT --> RETRY["DefaultErrorHandler FixedBackOff(1s×5)"]
+    RETRY -->|5회 실패| DLQ["payment.events.confirmed.dlq"]
 ```
+
+**EOS 트랜잭션 구조:**
+- `KafkaConsumerConfig` 의 `kafkaListenerContainerFactory` 가 `KafkaTransactionManager(stockCommittedProducerFactory)` 를 통합.
+- consumer offset commit 이 producer 트랜잭션에 동행 (`sendOffsetsToTransaction`) — RDB commit + producer commit + offset commit 이 원자적.
+- abort 시 RDB rollback + 발행 버퍼 폐기 + offset 미커밋 → 동일 메시지 재배달.
+
+**EOS atomicity SSOT (RD1-2 명시):**
+- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
+- 결과적으로 RDB commit 과 Kafka commit 사이에 crash 시 at-least-once 재배달이 발생한다.
+- **정합성 SSOT 는 EOS atomicity 그 자체가 아니라 위키 line 141 룰**: 0 row(중복) 시에도 stock-committed 발행은 항상 진행 → product-service `stock_commit_dedupe` 가 재배달을 흡수 → 최종 재고 정합 보장.
+- 즉 EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
+- 후속 과제: `TODOS.md` TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 ChainedKafkaTransactionManager 검토.
+
+**D7 진입 가드:**
+- `paymentEvent.getStatus().isCompensatableByFailureHandler()` — READY / IN_PROGRESS / RETRYING 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
+- QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 D7 가드가 차단 — DLQ silent 분기 방지 (DR-3 가드).
+
+**D5 멱등 마킹 (`payment_event_dedupe`):**
+- `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, receivedAt, expiresAt) → int`.
+- `INSERT IGNORE INTO payment_event_dedupe(event_uuid, ...)` — affected rows 0 = 중복, 1 = 신규.
+- 0 row 시 비즈니스 skip 하되 발행은 항상 진행 (위키 line 141 보장 — product-service dedupe 가 재배달 흡수).
+- TTL: `expires_at = receivedAt + 8일` (Kafka retention 7d + 복구 버퍼 1d).
+
+**D8 직접 발행 (EOS producer tx):**
+- APPROVED 경로: `for-loop(paymentEvent.getPaymentOrderList())` 안에서 `StockEventUuidDeriver.derive(orderId, productId, "stock-commit")` → `stockCommittedKafkaTemplate.send(topic, key, payload)`.
+- producer tx 안에서 buffer — RDB commit 과 같은 트랜잭션 커밋 시 product-service 에 원자적으로 가시화.
+- multi-product 결제 N건의 idempotencyKey 가 각 productId 별로 결정적으로 다름 (DR-1 회귀 가드).
 
 **Spring Kafka native 에러 핸들링:**
 - `KafkaErrorHandlerConfig` (`infrastructure/config`) 에서 `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈 등록.
 - not-retryable 예외: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException` — 즉시 DLQ.
 - 그 외 RuntimeException — 1초 간격으로 5회 재시도 후 한도 초과 시 `payment.events.confirmed.dlq` 로 publish.
-- `PaymentConfirmResultUseCase` 는 예외를 그대로 throw — retry / DLQ 책임은 Spring Kafka 가 가져간다. 직접 DLQ publish 호출 / lease remove 로직 모두 폐기.
+- `PaymentConfirmResultUseCase` 는 예외를 그대로 throw — retry / DLQ 책임은 Spring Kafka 가 가져간다.
 
 **Lua atomic dedup token (orderId 단위):**
 - `compensateAtomic(orderId, orders)` 가 `lua/stock_compensation_atomic.lua` 1회 호출 — 결제 단위 N개 상품 atomic 보상 + dedup token `compensation:done:{orderId}` SETNX P8D. 동일 orderId 재처리 시 `ALREADY_DONE` 반환 → 보상 멱등.
-- 차감 측은 `decrement:done:{orderId}` SETNX P8D 가 차감 멱등을 보장. payment-service 측 메시지 dedupe 는 이 두 token (차감 / 보상 단위 SETNX P8D) 으로 일원화 — 별도 `EventDedupeStore` (Redis lease) 어댑터는 폐기.
+- 차감 측은 `decrement:done:{orderId}` SETNX P8D 가 차감 멱등을 보장.
 
-**`@Transactional(timeout=5)` 주의:** `processMessage` 메서드에 `@Transactional(timeout=5)` 적용. 5초 초과 시 TX rollback — Spring Kafka 가 retry 분기로 진입.
-
-### handleApproved (양방향 amount 방어)
+### handleApproved (양방향 amount 방어 + EOS 직접 발행)
 
 ```
 parseApprovedAt(message.approvedAt)
@@ -169,10 +207,11 @@ else
       paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt)
       // AOP @PaymentStatusChange + @PublishDomainEvent 가 상태 전이 감사 기록
 
-      각 PaymentOrder 별:
-        stock_outbox INSERT (StockOutboxFactory.buildStockCommitOutbox)
-        applicationEventPublisher.publishEvent(StockOutboxReadyEvent(outboxId))
-      // StockOutboxImmediateEventHandler 가 AFTER_COMMIT 으로 StockOutboxRelayService.relay 호출
+      for (PaymentOrder order : paymentEvent.getPaymentOrderList()):
+        String idempotencyKey = StockEventUuidDeriver.derive(orderId, productId, "stock-commit")
+        StockCommittedEvent payload = new StockCommittedEvent(orderId, productId, quantity, idempotencyKey)
+        stockCommittedKafkaTemplate.send(PaymentTopics.STOCK_COMMITTED, orderId, payload)
+      // EOS producer tx 안에서 buffer → 트랜잭션 커밋 시 원자적으로 가시화
 ```
 
 > AMOUNT_MISMATCH 시 `handleApproved` 내부에서 redis 보상을 **직접 호출하지 않는다**. `QuarantineCompensationHandler.handle` 위임 후 early return. 보상은 별도 관리 경로(격리 정책).
@@ -201,28 +240,33 @@ QuarantineCompensationHandler.handle(orderId, reasonCode)
 
 ---
 
-## 6. AFTER_COMMIT stock 발행 — `StockOutboxImmediateEventHandler` + `StockOutboxRelayService`
+## 6. EOS 직접 발행 — `stockCommittedKafkaTemplate` (EOS 전환 후)
 
 APPROVED 결과에서만 발행됨 — FAILED/QUARANTINED 시 stock 발행 X (redis 보상만).
 
+EOS 전환 이후 `StockOutboxImmediateEventHandler` / `StockOutboxRelayService` / `StockOutboxWorker` 묶음은 폐기됨.
+`PaymentConfirmResultUseCase.handleApproved` 안에서 `stockCommittedKafkaTemplate.send` 를 **EOS producer 트랜잭션 안에서 직접 호출**.
+
 ```mermaid
 flowchart TD
-    AE(["StockOutboxReadyEvent (outboxId)<br/>TX 커밋 직후<br/>@TransactionalEventListener(AFTER_COMMIT)<br/>fallbackExecution=true<br/>@Async(outboxRelayExecutor VT)"]) --> RELAY[StockOutboxRelayService.relay outboxId]
-
-    RELAY --> FIND[stockOutboxRepository.findById outboxId]
-    FIND -->|없음| WARN([warn 로그 return])
-    FIND --> CHK{outbox.processedAt != null?}
-    CHK -->|이미 처리| SKIP([debug 로그 skip])
-    CHK -->|미처리| SEND["stockOutboxPublisherPort.send<br/>topic=payment.events.stock-committed<br/>key=outbox.key<br/>payload=outbox.payload(StockCommittedEvent JSON)"]
-
-    SEND --> MARK["stockOutboxRepository.markProcessed(outboxId, now)"]
-    MARK --> END([완료])
+    APPROVED["handleApproved 진입<br/>(EOS 트랜잭션 진행 중)"] --> MARK_DONE["markPaymentAsDone(paymentEvent, approvedAt)<br/>RDB 상태 전이"]
+    MARK_DONE --> LOOP["for (PaymentOrder order : paymentEvent.getPaymentOrderList())"]
+    LOOP --> DERIVE["StockEventUuidDeriver.derive(orderId, productId, 'stock-commit')<br/>→ idempotencyKey (결정적 UUID, D8)"]
+    DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=orderId<br/>payload=StockCommittedEvent(idempotencyKey)"]
+    SEND --> LOOP
+    LOOP -->|loop 종료| COMMIT["EOS 트랜잭션 커밋<br/>RDB + offset + producer 원자 커밋"]
+    COMMIT --> VISIBLE["product-service (read_committed) 가시화"]
 ```
 
 **책임 분석:**
-- `StockOutboxImmediateEventHandler` — `OutboxImmediateEventHandler` 와 동일 패턴. `@ConditionalOnProperty` 없음 (항상 활성).
-- `StockOutboxRelayService.relay` — `@Transactional`. `processedAt != null` 체크로 중복 발행 방지 (`payment_outbox` 의 `claimToInFlight CAS` 와 다른 간단한 idempotency 모델).
-- `StockOutbox` 에는 PENDING/IN_FLIGHT/DONE/FAILED 상태 없음. `processedAt IS NULL` = 미처리, non-null = 처리됨. pg-service `pg_outbox` 의 `processedAt` 기반 모델과 동일.
+- `stockCommittedKafkaTemplate` — `KafkaProducerConfig` 의 EOS-aware `stockCommittedProducerFactory` 로 생성된 `KafkaTemplate`. `transactional.id = ${spring.application.name}-${HOSTNAME:local}-` prefix.
+- `StockEventUuidDeriver.derive` — DR-1 회귀 가드 보존. multi-product 결제 N건의 idempotencyKey 를 `orderId + productId + action` 으로 결정적으로 도출 → 재배달 시에도 동일 key 생성.
+- `payment_stock_outbox` 테이블 — Flyway V3 (`V3__drop_payment_stock_outbox.sql`) 로 DROP 완료. 폴링 폴백 워커 없음.
+
+**폐기된 컴포넌트** (EOS 전환 이후):
+- `StockOutboxImmediateEventHandler`, `StockOutboxRelayService`, `StockOutboxKafkaPublisher`, `StockOutboxWorker`
+- `StockOutbox` 도메인, `StockOutboxEntity`, `StockOutboxFactory`, `StockOutboxReadyEvent`
+- `StockOutboxRepository`, `StockOutboxPublisherPort`, `JpaStockOutboxRepository`, `StockOutboxRepositoryImpl`
 
 ---
 
@@ -396,20 +440,22 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | pg-service 측 판단 불가 / 5xx 한도 소진 | pg_inbox QUARANTINED → events.confirmed QUARANTINED → payment `handleQuarantined` |
 | Redis 재고 캐시 장애 (CACHE_DOWN) | confirm 단계 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` |
 | AMOUNT_MISMATCH 감지 | `handleApproved` 내부 격리 → `QuarantineCompensationHandler.handle(AMOUNT_MISMATCH)` |
-| 중복 메시지 (payment 측 events.confirmed) | Lua atomic dedup token — `decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D 가 차감 / 보상 멱등을 결제 단위로 보장. 별도 메시지 dedupe lease 폐기 |
-| stock_outbox 발행 실패 | `StockOutboxRelayService.relay` 에서 `processedAt` 체크 — 다음 번 relay 재시도. 폴링 폴백 별도 스케줄러 없음 (미연결) |
+| 중복 메시지 (payment 측 events.confirmed) | `payment_event_dedupe` INSERT IGNORE (D5 멱등 마킹) — 0 row = 비즈니스 skip + 발행 항상 진행 (위키 line 141). Lua atomic dedup token (차감/보상 단위 orderId P8D) 은 redis 보상 멱등을 별도 보장. |
+| stock-committed 재배달 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe UNIQUE INSERT IGNORE, 같은 TX) 가 흡수. idempotencyKey = `StockEventUuidDeriver.derive` 결정적 UUID (DR-1 보존). |
+| EOS abort (producer tx abort) | RDB rollback + offset 미커밋 → 동일 메시지 재배달 → DefaultErrorHandler FixedBackOff 1s×5. product-service 측 abort 메시지 invisible (read_committed). |
 | payment event IN_PROGRESS 장기 체류 | `PaymentReconciler` (`@Scheduled fixedDelayMs=120000, 2분`) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업 |
 
 ---
 
-## 12. dedup token TTL 정리 (payment-service)
+## 12. dedup token / dedupe TTL 정리 (payment-service)
 
-| token | Lua 스크립트 | TTL | 의미 |
+| token / 테이블 | 저장소 | TTL | 의미 |
 |---|---|---|---|
-| `decrement:done:{orderId}` | `lua/stock_decrement_atomic.lua` | P8D (8일) | 결제 단위 차감 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 차감 멱등 보장. |
-| `compensation:done:{orderId}` | `lua/stock_compensation_atomic.lua` | P8D (8일) | 결제 단위 보상 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 보상 멱등 보장. |
+| `decrement:done:{orderId}` | Redis (Lua `stock_decrement_atomic.lua`) | P8D (8일) | 결제 단위 차감 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 차감 멱등 보장. |
+| `compensation:done:{orderId}` | Redis (Lua `stock_compensation_atomic.lua`) | P8D (8일) | 결제 단위 보상 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 보상 멱등 보장. |
+| `payment_event_dedupe.event_uuid` | MySQL (INSERT IGNORE) | `expires_at = receivedAt + P8D` | 메시지 단위 dedupe. 0 row = 중복 skip. TTL 정리 스케줄러는 TC-13-FOLLOW-2 후속 항목. |
 
-P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCase.DEDUPE_TTL` 과 정렬. 이전 `EventDedupeStore` lease (markWithLease PT5M / extendLease P8D / remove) 는 본 토픽에서 폐기.
+P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCase.DEDUPE_TTL` 과 정렬.
 
 ---
 
@@ -423,8 +469,8 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | outbox claim | `claimToInFlight` REQUIRES_NEW atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
 | Kafka 멱등 | producer key=orderId. eventUuid=orderId 재사용 (1회 발행 per orderId) | `OutboxRelayService.buildMessage` |
 | consumer 멱등 (재고) | **Lua atomic dedup token** — `decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D. 같은 orderId 재진입 시 `ALREADY_DONE` 반환으로 멱등. | `lua/stock_decrement_atomic.lua` / `lua/stock_compensation_atomic.lua` |
-| consumer 멱등 (메시지 dedupe) | Spring Kafka `DefaultErrorHandler` + `FixedBackOff(1000ms, 5)` + `DeadLetterPublishingRecoverer` — retry 한도 초과 시 자동 DLQ | `KafkaErrorHandlerConfig` |
-| stock 중복 발행 방지 | `StockOutbox.processedAt != null` 체크 (단순 mark) | `StockOutboxRelayService.relay` |
+| consumer 멱등 (메시지 dedupe) | `payment_event_dedupe` INSERT IGNORE — 0 row 시 비즈니스 skip. `DefaultErrorHandler` + `FixedBackOff(1000ms, 5)` + DLQ 가 retry/DLQ layer 처리 | `PaymentEventDedupeStore` / `KafkaErrorHandlerConfig` |
+| stock-committed 발행 결정성 | `StockEventUuidDeriver.derive(orderId, productId, "stock-commit")` — 재배달 시에도 동일 idempotencyKey. product-service dedupe 가 흡수 | `StockEventUuidDeriver` |
 | product 재고 이중 차감 방지 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe 테이블, 재고 차감과 같은 TX) | product-service 측 |
 | 상태 전이 재진입 | `PaymentEventStatus.isTerminal()` + domain 메서드 guard — terminal 상태 재전이 차단 | `PaymentEvent.quarantine`, `markPaymentAsDone` 등 |
 | AMOUNT_MISMATCH | 양방향 방어 — pg 발행 시 non-null 강제 + payment 수신 시 대조 | `AmountConverter.fromBigDecimalStrict` (pg — `insertPending` 경로) + `isAmountMismatch` (payment) |
@@ -453,10 +499,12 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | 폴링 폴백 워커 | `payment-service/.../infrastructure/scheduler/OutboxWorker.java` |
 | Kafka 발행 | `payment-service/.../infrastructure/messaging/publisher/KafkaMessagePublisher.java` |
 | Kafka 수신 (결과) | `payment-service/.../infrastructure/messaging/consumer/ConfirmedEventConsumer.java` |
-| 결과 처리 use case | `payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` |
-| AFTER_COMMIT 리스너 (stock) | `payment-service/.../infrastructure/listener/StockOutboxImmediateEventHandler.java` |
-| stock outbox relay | `payment-service/.../application/service/StockOutboxRelayService.java` |
-| stock Kafka 발행 | `payment-service/.../infrastructure/messaging/publisher/StockOutboxKafkaPublisher.java` |
+| 결과 처리 use case (EOS) | `payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` |
+| 멱등 마킹 포트 | `payment-service/.../application/port/out/PaymentEventDedupeStore.java` |
+| 멱등 마킹 어댑터 | `payment-service/.../infrastructure/dedupe/JdbcPaymentEventDedupeStore.java` |
+| EOS stock 발행 템플릿 | `KafkaProducerConfig.stockCommittedKafkaTemplate` (EOS-aware, transactional.id) |
+| stock idempotencyKey 도출 | `payment-service/.../application/util/StockEventUuidDeriver.java` |
+| consumer EOS wiring | `payment-service/.../infrastructure/config/KafkaConsumerConfig.java` |
 | 격리 보상 핸들러 | `payment-service/.../application/usecase/QuarantineCompensationHandler.java` |
 | 복구 사이클 스캐너 | `payment-service/.../application/service/PaymentReconciler.java` |
 | Lua atomic 차감 + dedup token | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua` |
@@ -471,7 +519,23 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 
 ---
 
-## 16. pg-service 측 listener 분리 안 상세
+## 16. EOS 통합 검증 시나리오 (PET-12 회귀 가드)
+
+`PaymentEosIntegrationTest` 5건 — Testcontainers Kafka + MySQL 환경에서 검증. 아래 시나리오를 건드리는 변경은 반드시 이 테스트를 통과해야 한다.
+
+| # | 시나리오 | 검증 포인트 | 관련 결정 |
+|---|---|---|---|
+| 1 | **EOS commit 정상 흐름** | APPROVED 메시지 → `payment_event_dedupe` 1 row + payment DONE + stock-committed 1건 read_committed 가시화 | D1, D5, D6 |
+| 2 | **EOS abort invisibility** | 비즈니스 RuntimeException 주입 → dedupe 0 row + payment 상태 불변 + stock-committed 0건 + DLQ 재시도 후 1건 | D6, DR-4 |
+| 3 | **중복 INSERT IGNORE 흐름** | 동일 event_uuid 재배달 → markIfAbsent 0 row → 비즈니스 skip + stock-committed 발행 진행 + payment 불변 | D5, DR-5 |
+| 4 | **multi-product DR-1 가드** | PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성 + 재배달 dedupe skip | D8, DR-1 |
+| 5 | **QUARANTINED D7 가드** | QUARANTINED 결제 + APPROVED 메시지 → noop + dedupe 0 row + stock-committed 0건 + DLQ 0건 | D7, DR-3 |
+
+> **주의**: 시나리오 #2 (abort invisibility) 는 product-service `isolation.level=read_committed` 가 적용된 상태에서만 성립. deploy 순서 — product-service 먼저 배포 후 payment-service EOS 전환.
+
+---
+
+## 17. pg-service 측 listener 분리 안 상세
 
 > PG-CONFIRM-LISTENER-SPLIT 봉인 (2026-05-09). 위키 진실원: `pg-confirm-flow.md`.
 
@@ -513,7 +577,7 @@ pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPub
 
 ---
 
-## 17. 관련 문서
+## 18. 관련 문서
 
 - **end-to-end 전체 (브라우저 → 폴링)**: [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
   - Phase 1~3: checkout / confirm TX / outbox relay

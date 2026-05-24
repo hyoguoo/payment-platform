@@ -24,8 +24,6 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     @Query("SELECT e FROM PgInboxEntity e WHERE e.orderId = :orderId")
     Optional<PgInboxEntity> findByOrderIdForUpdate(@Param("orderId") String orderId);
 
-    // PCS-9: casNoneToInProgress 삭제 — transitNoneToInProgress 호출처 모두 교체 완료.
-
     /**
      * IN_PROGRESS → APPROVED.
      * enum 파라미터 사용.
@@ -56,8 +54,8 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
 
     /**
      * non-terminal(PENDING/IN_PROGRESS) → QUARANTINED.
-     * 이미 terminal(APPROVED/FAILED/QUARANTINED)인 경우 0을 반환한다 (중복 DLQ 흡수, 불변식 6c).
-     * enum 파라미터 사용. PCS-9: NONE 폐기 완료, PENDING 파라미터로 정합.
+     * 이미 terminal(APPROVED/FAILED/QUARANTINED)인 경우 0을 반환한다 (중복 DLQ 흡수).
+     * enum 파라미터 사용.
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE PgInboxEntity e SET e.status = :quarantined, e.reasonCode = :reasonCode, "
@@ -70,13 +68,13 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
                                     @Param("inProgress") PgInboxStatus inProgress,
                                     @Param("quarantined") PgInboxStatus quarantined);
 
-    // ─── PCS-4: 신규 메서드 ────────────────────────────────────────────────────
+    // ─── listener / 워커 / 좀비 폴링 경로 메서드 ────────────────────────────────
 
     /**
      * orderId UNIQUE INSERT IGNORE + 기존 id 조회.
      * IGNORE로 중복 row가 있어도 예외 없이 통과하고, 조회로 기존 id를 반환한다.
      * native query 사용 이유: JPQL 은 INSERT IGNORE 를 지원하지 않는다.
-     * PCS-9 (V3 migration): payment_key / vendor_type 컬럼 포함.
+     * payment_key / vendor_type 컬럼을 포함하여 INSERT 한다.
      */
     @Modifying
     @Query(value = "INSERT IGNORE INTO pg_inbox "
@@ -139,7 +137,7 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
                                              org.springframework.data.domain.Pageable pageable);
 
     /**
-     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점.
      *
      * <p>{@code SELECT id FROM pg_inbox WHERE id=? AND status='IN_PROGRESS' FOR UPDATE SKIP LOCKED}.
      * 다른 워커가 이미 잠근 경우(SKIP LOCKED) 빈 결과 반환 → processInProgressZombie silent return.

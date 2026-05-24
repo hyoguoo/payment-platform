@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-05-09 (PG-CONFIRM-LISTENER-SPLIT 봉인 — inbox 작업 큐 + 워커 VT + 좀비 폴링 신규 어댑터 위치 반영)
+> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 전환, StockOutbox 묶음 폐기, payment_event_dedupe 신설)
 
 ## 개요
 
@@ -103,7 +103,7 @@ flowchart LR
 | `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | (수동) | retry 한도 초과 격리 |
 | `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
 | `payment.events.confirmed.dlq` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 초과 시) | (수동) | 결과 처리 영구 실패 |
-| `payment.events.stock-committed` | payment-service (stock_outbox AFTER_COMMIT) | product-service | 재고 확정 (APPROVED 결제만) |
+| `payment.events.stock-committed` | payment-service (EOS producer tx 안에서 직접 발행 — `stockCommittedKafkaTemplate`) | product-service | 재고 확정 (APPROVED 결제만) |
 
 ## 비동기 어댑터 위치 (왜 어디 두는가)
 
@@ -121,8 +121,10 @@ flowchart LR
 | `PgOutboxChannel` + `OutboxJob` | `pg-service/.../infrastructure/channel` | outbox **발행 큐** (`LinkedBlockingQueue<OutboxJob>` cap=1024) — offer 시점 OTel Context + ContextSnapshot 캡처해 작업에 동봉 |
 | `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | outbox VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | outbox 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
-| `StockOutboxImmediateEventHandler` | `payment-service/.../infrastructure/listener` | AFTER_COMMIT + `@Async` 로 `StockOutboxRelayService.relay` 트리거 → `payment.events.stock-committed` Kafka publish (TX 와 publish 분리) |
-| `KafkaErrorHandlerConfig` | `payment-service/.../infrastructure/config` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈. not-retryable: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException`. retry 한도 초과 시 자동으로 `payment.events.confirmed.dlq` 로 publish — 직접 DLQ 호출 / lease 폐기 |
+| `JdbcPaymentEventDedupeStore` | `payment-service/.../infrastructure/dedupe` | `payment_event_dedupe` INSERT IGNORE 어댑터. `PaymentEventDedupeStore` 포트 구현 (PET-5). EOS 트랜잭션 안에서 멱등 마킹 |
+| `KafkaConsumerConfig` | `payment-service/.../infrastructure/config` | `kafkaListenerContainerFactory` 명시 정의 + `KafkaTransactionManager(stockCommittedProducerFactory)` wire-in (EOS consumer). `isolation.level=read_committed` 는 `application.yml` `spring.kafka.consumer.properties.isolation.level` 로 적용 |
+| `KafkaProducerConfig` (EOS) | `payment-service/.../infrastructure/config` | EOS-aware `stockCommittedProducerFactory` + `KafkaTransactionManager` + `stockCommittedKafkaTemplate` 빈 (transactional.id prefix = `${spring.application.name}-${HOSTNAME:local}-`, enable.idempotence=true, transaction.timeout.ms=10000) |
+| `KafkaErrorHandlerConfig` | `payment-service/.../infrastructure/config` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈. not-retryable: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException`. retry 한도 초과 시 자동으로 `payment.events.confirmed.dlq` 로 publish |
 | `ContextAwareVirtualThreadExecutors` | `payment-service` / `pg-service` `core/config/concurrent` | OTel Context + MDC 이중 래핑 VT executor 헬퍼. payment 의 `AsyncConfig.outboxRelayExecutor`, pg 의 `PgOutboxImmediateWorker.relayExecutor` 가 사용 — 호출 시점 컨텍스트를 새 VT 스레드에 자동 캡처·복원 |
 
 ## 인프라 별 책임
@@ -140,7 +142,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | Redis | 책임 | 사용처 |
 |---|---|---|
-| `redis-dedupe` (6379) | checkout 멱등성 store + pg-service 메시지 dedupe | payment-service `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용. payment-service 측 events.confirmed dedupe 는 `redis-stock` Lua atomic dedup token 으로 일원화 |
+| `redis-dedupe` (6379) | checkout 멱등성 store + pg-service 메시지 dedupe | payment-service `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용. payment-service 측 events.confirmed 메시지 dedupe 는 `payment_event_dedupe` MySQL INSERT IGNORE (`JdbcPaymentEventDedupeStore`) 로 EOS 트랜잭션 안에서 처리. 재고 차감/보상 멱등은 `redis-stock` Lua atomic dedup token 으로 별도 보장 |
 | `redis-stock` (6380) | 재고 선차감 캐시 + Lua atomic dedup token (`StockCachePort`) | payment-service 단독. confirm 진입 시 `decrementAtomic(orderId, orders)` Lua 1회 호출 (결제 단위 N개 atomic + `decrement:done:{orderId}` SETNX P8D), FAILED/QUARANTINED 회신 시 `compensateAtomic(orderId, orders)` Lua 1회 (결제 단위 N개 atomic + `compensation:done:{orderId}` SETNX P8D). 결과 enum: `StockDecrementAtomicResult` (OK / ALREADY_DONE / INSUFFICIENT) / `StockCompensationAtomicResult` (OK / ALREADY_DONE). product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드. AOF `appendfsync=always` 운영 (L2 race window 완화 trade-off) |
 
 ### Kafka
@@ -186,6 +188,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | pg-service listener TX 분리 + inbox 작업 큐 | `PgInboxPendingService` (listener TX 5s, INSERT IGNORE + publishEvent) → `InboxReadyEventHandler` (AFTER_COMMIT) → `PgInboxChannel` (cap=1024) → `PgInboxImmediateWorker` (VT 5) — listener 스레드에서 벤더 호출 0 보장 |
 | pg-service inbox 좀비 회수 | `PgInboxPollingWorker` 60s 주기 — PENDING 좀비 (received_at) + IN_PROGRESS 좀비 (updated_at) 두 경로. native query `FOR UPDATE SKIP LOCKED` 로 멀티 워커 race 차단 |
 | pg-service inbox 보정 경로 PENDING 우회 | `DuplicateApprovalHandler.handleDbAbsent*` 가 `transitDirectToTerminal` / `transitDirectToInProgress` 사용 — PENDING 거치지 않음 (보정 경로는 결과를 박는 행위지 처리 시작이 아님) |
+| payment-service EOS 전환 (PAYMENT-EOS-TRANSITION) | `ConfirmedEventConsumer` + `KafkaTransactionManager` 통합. `PaymentConfirmResultUseCase` 안에서 D7 진입 가드 + D5 멱등 마킹 (`payment_event_dedupe` INSERT IGNORE) + D8 multi-product 직접 발행 (`stockCommittedKafkaTemplate.send`). `StockOutbox` 묶음 16+ 파일 + `payment_stock_outbox` 테이블 폐기. product-service `isolation.level=read_committed` 동시 적용 |
 
 상세 history 는 archive 안 토픽별 `COMPLETION-BRIEFING.md` / `*-CONTEXT.md`.
 
@@ -195,7 +198,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
 |---|---|---|---|---|
-| payment | Lua atomic dedup token (`stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 안에서 SETNX) | Redis (redis-stock) | 같은 Lua 안에서 재고 DECR / INCR + dedup token 박기 (atomic) | **강함** — Lua 스크립트가 single-shot atomic. 차감/보상 + 멱등 표시가 한 KEYS 호출 안에서 commit |
+| payment | (1) Lua atomic dedup token — 재고 차감/보상 멱등 (redis-stock). (2) `JdbcPaymentEventDedupeStore` (`payment_event_dedupe` INSERT IGNORE) — **메시지 단위 dedupe** (PET-5 신설). 둘은 역할이 다름 | (1) Redis (redis-stock) / (2) MySQL (mysql-payment) | (1) Lua 안에서 재고 DECR/INCR + token 박기 atomic. (2) EOS 트랜잭션 안에서 RDB dedupe + RDB 상태 전이 + Kafka 발행이 원자 | **강함** — (1) Lua single-shot atomic, (2) EOS 트랜잭션 원자성 |
 | pg | `EventDedupeStore.markSeen` (Redis) + `PgInboxRepository.markSeen` (MySQL pg_inbox) — **2-layer** | Redis (TX 외부 빠른 거름) + MySQL (TX 내부 atomic 거름) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — RDB layer 가 같은 TX 필수, Redis layer 는 보조 |
 | product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
 

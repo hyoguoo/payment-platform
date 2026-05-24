@@ -71,7 +71,7 @@ class PgFinalConfirmationGateTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: 벤더 getStatus 최종 확인 APPROVED → pg_outbox(APPROVED) INSERT + pg_inbox APPROVED 전이
+    // 벤더 getStatus 최종 확인 APPROVED → pg_outbox(APPROVED) INSERT + pg_inbox APPROVED 전이
     // -----------------------------------------------------------------------
 
     @Test
@@ -105,7 +105,7 @@ class PgFinalConfirmationGateTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: 벤더 getStatus 확정 실패(FAILED) → pg_outbox(FAILED) INSERT + pg_inbox FAILED 전이
+    // 벤더 getStatus 확정 실패(FAILED) → pg_outbox(FAILED) INSERT + pg_inbox FAILED 전이
     // -----------------------------------------------------------------------
 
     @Test
@@ -139,7 +139,7 @@ class PgFinalConfirmationGateTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: 벤더 timeout → QUARANTINED + FCG_INDETERMINATE. getStatus 호출 1회만 (재시도 0회)
+    // 벤더 timeout → QUARANTINED + FCG_INDETERMINATE. getStatus 호출 1회만 (재시도 0회)
     // -----------------------------------------------------------------------
 
     @Test
@@ -171,7 +171,7 @@ class PgFinalConfirmationGateTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: 5xx/네트워크 에러 → QUARANTINED + FCG_INDETERMINATE. 재시도 0회
+    // 5xx/네트워크 에러 → QUARANTINED + FCG_INDETERMINATE. 재시도 0회
     // -----------------------------------------------------------------------
 
     @Test

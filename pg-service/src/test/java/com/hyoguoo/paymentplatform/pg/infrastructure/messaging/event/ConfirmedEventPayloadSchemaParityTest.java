@@ -35,7 +35,7 @@ class ConfirmedEventPayloadSchemaParityTest {
     );
 
     // -----------------------------------------------------------------------
-    // TC1: ConfirmedEventPayload 필드 이름 set이 canonical과 동일해야 한다
+    // ConfirmedEventPayload 필드 이름 set이 canonical과 동일해야 한다
     // -----------------------------------------------------------------------
 
     @Test
@@ -52,7 +52,7 @@ class ConfirmedEventPayloadSchemaParityTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: ConfirmedEventPayload 필드 순서가 canonical과 동일해야 한다
+    // ConfirmedEventPayload 필드 순서가 canonical과 동일해야 한다
     // -----------------------------------------------------------------------
 
     @Test
@@ -70,7 +70,7 @@ class ConfirmedEventPayloadSchemaParityTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: ConfirmedEventPayload 에 @JsonPropertyOrder 어노테이션이 있어야 한다
+    // ConfirmedEventPayload 에 @JsonPropertyOrder 어노테이션이 있어야 한다
     // -----------------------------------------------------------------------
 
     @Test

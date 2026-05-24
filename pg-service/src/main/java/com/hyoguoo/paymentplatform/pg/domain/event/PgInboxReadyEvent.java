@@ -14,7 +14,7 @@ package com.hyoguoo.paymentplatform.pg.domain.event;
  *
  * <p>수신 지점:
  * <pre>
- *   PgInboxReadyEventHandler (PCS-11) — AFTER_COMMIT 트랜잭션 단계에서 channel 에 적재
+ *   PgInboxReadyEventHandler — AFTER_COMMIT 트랜잭션 단계에서 channel 에 적재
  * </pre>
  */
 public record PgInboxReadyEvent(Long inboxId) {

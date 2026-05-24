@@ -46,27 +46,24 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * SCR-10 — 보상 플로우 end-to-end 통합 시나리오 테스트.
+ * 보상 플로우 end-to-end 통합 시나리오 테스트.
  *
- * <p>검증 범위: SCR-1~9 변경이 통합된 결제 결과 보상 플로우.
+ * <p>검증 범위: 결제 결과 보상 플로우.
  * ConfirmedEventConsumer → PaymentConfirmResultUseCase → StockCacheRedisAdapter → Lua 전 경로.
  * Spring Kafka DefaultErrorHandler 의 retry / DLQ 거동도 통합 컨텍스트에서 검증.
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
- *   <li>L3 (P8D 만료 후 Reconciler resetToReady race) — 통합 테스트 범위 밖</li>
- *   <li>L6 (보상 끝난 결제의 새 confirm 사이클 cascade) — 통합 테스트 범위 밖</li>
- *   <li>L7 (markPaymentAsFail 영구 실패 cascade) — 통합 테스트 범위 밖</li>
+ *   <li>P8D 만료 후 Reconciler resetToReady race — 통합 테스트 범위 밖</li>
+ *   <li>보상 끝난 결제의 새 confirm 사이클 cascade — 통합 테스트 범위 밖</li>
+ *   <li>markPaymentAsFail 영구 실패 cascade — 통합 테스트 범위 밖</li>
  * </ul>
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @Tag("integration")
-@Testcontainers
 @EmbeddedKafka(
         partitions = 1,
         topics = {
@@ -75,14 +72,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         },
         bootstrapServersProperty = "spring.kafka.bootstrap-servers"
 )
-@DisplayName("SCR-10 보상 플로우 end-to-end 통합 시나리오 테스트")
+@DisplayName("보상 플로우 end-to-end 통합 시나리오 테스트")
 class StockCompensationRecoveryIntegrationTest {
 
     private static final Long PRODUCT_ID = 100L;
     private static final int INITIAL_STOCK = 10;
     private static final int ORDER_QUANTITY = 3;
 
-    @Container
     @SuppressWarnings("resource")
     static final MySQLContainer<?> MYSQL_CONTAINER =
             new MySQLContainer<>("mysql:8.0")
@@ -92,12 +88,22 @@ class StockCompensationRecoveryIntegrationTest {
                     .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")
                     .withReuse(true);
 
-    @Container
     @SuppressWarnings("resource")
     static final GenericContainer<?> REDIS_CONTAINER =
             new GenericContainer<>("redis:7.2-alpine")
                     .withCommand("redis-server", "--appendonly", "yes", "--appendfsync", "always")
-                    .withExposedPorts(6379);
+                    .withExposedPorts(6379)
+                    .withReuse(true);
+
+    static {
+        // @Testcontainers/@Container 를 사용하지 않고 수동 start.
+        // @Container 로 관리하면 JUnit5 extension 이 테스트 클래스 완료 후 stop() 을 명시 호출하여
+        // withReuse(true) 설정에도 불구하고 컨테이너가 종료된다.
+        // 종료된 컨테이너는 BaseIntegrationTest 컨텍스트(HikariPool) 의 연결을 끊어 후속
+        // PaymentControllerTest / PaymentCheckoutConcurrencyIntegrationTest 를 실패시킨다.
+        MYSQL_CONTAINER.start();
+        REDIS_CONTAINER.start();
+    }
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
@@ -105,6 +111,14 @@ class StockCompensationRecoveryIntegrationTest {
         registry.add("spring.datasource.username", MYSQL_CONTAINER::getUsername);
         registry.add("spring.datasource.password", MYSQL_CONTAINER::getPassword);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
+        // Flyway 활성화 — payment_event_dedupe V2 테이블 필요
+        // application-test.yml 에서 false 로 설정되나, 이 테스트는 JDBC INSERT IGNORE 를 사용하므로
+        // ddl-auto: create-drop 으로는 payment_event_dedupe 테이블이 생성되지 않아 활성화 필요.
+        registry.add("spring.flyway.enabled", () -> "true");
+        // Flyway 와 JPA ddl-auto 충돌 방지 — Flyway 가 스키마를 담당
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
+        // defer-datasource-initialization 비활성화 — Flyway 활성화 시 circular depends-on 방지
+        registry.add("spring.jpa.defer-datasource-initialization", () -> "false");
         registry.add("scheduler.enabled", () -> "false");
         // StockCacheRedisAdapter 가 payment.cache.stock-redis.* 를 사용한다 (StockRedisConfig).
         registry.add("payment.cache.stock-redis.host", REDIS_CONTAINER::getHost);
@@ -113,6 +127,9 @@ class StockCompensationRecoveryIntegrationTest {
         // EmbeddedKafka 테스트에서 ConfirmedEventConsumer 를 실제로 시작해야 한다.
         // application-test.yml 의 auto-startup=false 를 오버라이드.
         registry.add("spring.kafka.listener.auto-startup", () -> "true");
+        // EOS backoff 단축 — 테스트 DLQ 검증 시간 단축 (backoff 200ms × 5회 = 1s)
+        registry.add("payment.kafka.error-handler.backoff.interval", () -> "200");
+        registry.add("payment.kafka.error-handler.backoff.max-attempts", () -> "5");
     }
 
     @Autowired

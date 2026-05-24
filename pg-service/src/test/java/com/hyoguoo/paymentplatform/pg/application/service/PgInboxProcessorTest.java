@@ -21,14 +21,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * PgInboxProcessor 단위 테스트 — PCS-8.
+ * PgInboxProcessor 단위 테스트.
  *
  * <p>domain_risk=true: TX_A → 벤더 HTTP → TX_B 시퀀스 검증.
  * - processPending: PENDING→IN_PROGRESS CAS (SKIP LOCKED) + invokeVendor + applyOutcome
  * - processInProgressZombie: IN_PROGRESS row 사용 + invokeVendor + applyOutcome
  * - 예외 경로: 0 row → 즉시 return (벤더 호출 0)
  * - 벤더 예외 → applyOutcome 미호출
- * - ALREADY_PROCESSED → applyOutcome 의 HandledInternally 분기 → DuplicateApprovalHandler 위임 (C-F2/PC-F4 흡수)
+ * - ALREADY_PROCESSED → applyOutcome 의 HandledInternally 분기 → DuplicateApprovalHandler 위임
  */
 @DisplayName("PgInboxProcessor")
 @ExtendWith(MockitoExtension.class)
@@ -159,7 +159,7 @@ class PgInboxProcessorTest {
     }
 
     @Test
-    @DisplayName("processInProgressZombie — 벤더가 HandledInternally(ALREADY_PROCESSED) 반환 → applyOutcome 의 5분기 HandledInternally → DuplicateApprovalHandler 1회 위임 (C-F2/PC-F4 흡수)")
+    @DisplayName("processInProgressZombie — 벤더가 HandledInternally(ALREADY_PROCESSED) 반환 → applyOutcome 의 5분기 HandledInternally → DuplicateApprovalHandler 1회 위임")
     void processInProgressZombie_vendorReturnsAlreadyProcessed_delegatesToDuplicateApprovalHandler() {
         // given: M4 — selectInProgressForUpdateSkipLocked 로 선점 성공
         PgInbox inProgressInbox = PgInbox.of(
@@ -171,7 +171,7 @@ class PgInboxProcessorTest {
         // when
         sut.processInProgressZombie(INBOX_ID);
 
-        // then — applyOutcome 1회 호출 — HandledInternally 분기가 DuplicateApprovalHandler 에 위임 (PCS-6 검증)
+        // then — applyOutcome 1회 호출 — HandledInternally 분기가 DuplicateApprovalHandler 에 위임
         verify(vendorCallService, times(1)).invokeVendor(any());
         verify(vendorCallService, times(1)).applyOutcome(
                 eq(handledInternally), any(), anyInt(), any());

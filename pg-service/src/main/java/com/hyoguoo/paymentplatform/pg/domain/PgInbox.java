@@ -17,9 +17,9 @@ import lombok.Getter;
  * builder 는 factory 내부 캡슐화 용도이며 외부 호출자는 아래 factory method 만 사용한다:
  * {@code create*}, {@code of}, {@code ofWithId}.
  *
- * <p>PG-CONFIRM-LISTENER-SPLIT 시나리오 의도 (정상 PENDING / 보정 IN_PROGRESS 우회 /
- * 보정 terminal 우회 / DB 복원 / test 픽스처) 보존.
- * payment-service {@code PaymentOutbox} 와 동일 Lombok builder 패턴 채택 (CBA-8).
+ * <p>여러 생성 시나리오(정상 PENDING / 보정 IN_PROGRESS 우회 / 보정 terminal 우회 /
+ * DB 복원 / test 픽스처)를 factory method 로 구분해 노출한다.
+ * payment-service {@code PaymentOutbox} 와 동일한 Lombok builder 패턴을 따른다.
  */
 @Getter
 @Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")
@@ -29,7 +29,7 @@ public class PgInbox {
     /**
      * DB row pk. JPA 어댑터가 toDomain() 에서 주입한다.
      * 신규 생성(INSERT 전) 객체에서는 null — id 필요 시 저장 후 반환값을 사용한다.
-     * PCS-9 REFACTOR: PgConfirmService.handleActiveInbox 에서 채널 재적재 시 inboxId 로 사용.
+     * PgConfirmService 가 채널 재적재 시 inboxId 로 사용한다.
      */
     private final Long id;
     private final String orderId;
@@ -40,12 +40,12 @@ public class PgInbox {
     private final Instant createdAt;
     private Instant updatedAt;
     /**
-     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 결제 키.
+     * listener PENDING INSERT 시 기록한 벤더 결제 키.
      * 워커(PgInboxProcessor)가 inboxId 기반 재조회 후 PgConfirmRequest 구성에 사용한다.
      */
     private final String paymentKey;
     /**
-     * PCS-9 (V3 migration): listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
+     * listener PENDING INSERT 시 기록한 벤더 타입 (e.g., "TOSS_PAYMENTS").
      */
     private final String vendorType;
 
@@ -57,8 +57,8 @@ public class PgInbox {
      *
      * @param orderId    주문 ID
      * @param amount     결제 금액
-     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
-     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     * @param paymentKey 벤더 결제 키
+     * @param vendorType 벤더 타입 문자열
      */
     public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
         Instant now = Instant.now();
@@ -78,7 +78,6 @@ public class PgInbox {
 
     /**
      * 하위 호환 오버로드 — paymentKey / vendorType null 기본값.
-     * 기존 테스트 코드 호환성 유지 (PCS-9).
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
@@ -110,8 +109,8 @@ public class PgInbox {
      * @param orderId    주문 ID
      * @param amount     결제 금액
      * @param now        현재 Instant (clock.instant() 전달)
-     * @param paymentKey 벤더 결제 키 (PCS-9 V3)
-     * @param vendorType 벤더 타입 문자열 (PCS-9 V3)
+     * @param paymentKey 벤더 결제 키
+     * @param vendorType 벤더 타입 문자열
      */
     public static PgInbox create(String orderId, Long amount, Instant now, String paymentKey, String vendorType) {
         return PgInbox.allArgsBuilder()
@@ -154,7 +153,7 @@ public class PgInbox {
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 IN_PROGRESS 신설.
-     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
@@ -179,11 +178,11 @@ public class PgInbox {
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 terminal 상태(APPROVED / QUARANTINED) 신설.
-     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정 (§1.8 봉인).
+     * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
-     * 도메인 가드 {@code isTerminal()} 은 test 픽스처 이중화 목적 — main 보호는 어댑터 가드
-     * ({@code PgInboxRepositoryImpl.transitDirectToTerminal:150}) 가 담당한다.
+     * 도메인 가드 {@code isTerminal()} 은 test 픽스처 이중화 목적 — main 보호는 어댑터
+     * {@code PgInboxRepositoryImpl.transitDirectToTerminal} 의 가드가 담당한다.
      *
      * @param orderId            주문 ID
      * @param amount             결제 금액
@@ -297,8 +296,7 @@ public class PgInbox {
 
     /**
      * PENDING → IN_PROGRESS 도메인 전이.
-     * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다(옵션 A — SQL CAS 가 race window 최종 가드).
-     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
+     * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다 (race window 최종 가드는 SQL CAS).
      *
      * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
      */
@@ -314,7 +312,6 @@ public class PgInbox {
     /**
      * fixed Instant 주입 오버로드 — PENDING → IN_PROGRESS 전이 + updatedAt 결정성.
      * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
-     * PCS-2: NONE 폐기 후 진입 조건이 PENDING 으로 변경됨.
      *
      * @param updatedAt 갱신 시각 (clock.instant() 전달)
      * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
@@ -404,7 +401,7 @@ public class PgInbox {
      *
      * @param storedStatusResult 벤더 응답 JSON (nullable)
      * @param reasonCode         격리 사유 코드 (e.g., "RETRY_EXHAUSTED")
-     * @throws IllegalStateException 이미 terminal 상태에서 호출 시 (불변식 6c)
+     * @throws IllegalStateException 이미 terminal 상태에서 호출 시
      */
     public void markQuarantined(String storedStatusResult, String reasonCode) {
         if (this.status.isTerminal()) {
@@ -423,7 +420,7 @@ public class PgInbox {
      * @param storedStatusResult 벤더 응답 JSON (nullable)
      * @param reasonCode         격리 사유 코드
      * @param updatedAt          갱신 시각 (clock.instant() 전달)
-     * @throws IllegalStateException 이미 terminal 상태에서 호출 시 (불변식 6c)
+     * @throws IllegalStateException 이미 terminal 상태에서 호출 시
      */
     public void markQuarantined(String storedStatusResult, String reasonCode, Instant updatedAt) {
         if (this.status.isTerminal()) {

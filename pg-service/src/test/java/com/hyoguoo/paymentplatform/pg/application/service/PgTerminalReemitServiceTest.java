@@ -21,9 +21,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * PgTerminalReemitService 단위 테스트 (M2 review finding).
+ * PgTerminalReemitService 단위 테스트.
  *
- * <p>handleTerminal self-invocation 우회를 위해 별 빈 분리.
+ * <p>handleTerminal self-invocation 을 우회하기 위해 별도 빈으로 둔 재발행 책임.
  * - reemit 이 @Transactional 경계 안에서 pg_outbox save + publishEvent 수행
  * - storedStatusResult 없으면 warn 로그 + 즉시 return (outbox INSERT 미발생)
  */

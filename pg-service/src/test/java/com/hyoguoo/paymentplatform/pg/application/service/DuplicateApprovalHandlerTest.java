@@ -85,7 +85,7 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: pg DB 존재 + amount 일치 → 저장 status 재발행
+    // pg DB 존재 + amount 일치 → 저장 status 재발행
     // -----------------------------------------------------------------------
 
     @Test
@@ -125,7 +125,7 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: pg DB 존재 + amount 불일치 → QUARANTINED+AMOUNT_MISMATCH
+    // pg DB 존재 + amount 불일치 → QUARANTINED+AMOUNT_MISMATCH
     // -----------------------------------------------------------------------
 
     @Test
@@ -146,7 +146,7 @@ class DuplicateApprovalHandlerTest {
         // when
         handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
-        // then — pg_inbox QUARANTINED + reason_code=AMOUNT_MISMATCH (불변식 4c)
+        // then — pg_inbox QUARANTINED + reason_code=AMOUNT_MISMATCH
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
         assertThat(inbox.getReasonCode()).isEqualTo("AMOUNT_MISMATCH");
@@ -163,7 +163,7 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: pg DB 부재 + amount 일치 → APPROVED 기록 + 운영 알림
+    // pg DB 부재 + amount 일치 → APPROVED 기록 + 운영 알림
     // -----------------------------------------------------------------------
 
     @Test
@@ -194,7 +194,7 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC4: pg DB 부재 + amount 불일치 → QUARANTINED+AMOUNT_MISMATCH
+    // pg DB 부재 + amount 불일치 → QUARANTINED+AMOUNT_MISMATCH
     // -----------------------------------------------------------------------
 
     @Test
@@ -227,7 +227,7 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC5: vendor.getStatus() 실패(timeout/5xx) → QUARANTINED+VENDOR_INDETERMINATE
+    // vendor.getStatus() 실패(timeout/5xx) → QUARANTINED+VENDOR_INDETERMINATE
     // -----------------------------------------------------------------------
 
     @Test
@@ -261,15 +261,15 @@ class DuplicateApprovalHandlerTest {
     }
 
     // =======================================================================
-    // PCS-9: 보정 경로 PENDING 우회 + atomicity 검증 (Mockito 기반)
+    // 보정 경로 PENDING 우회 + atomicity 검증 (Mockito 기반)
     // =======================================================================
 
     /**
-     * PCS-9 신규 테스트 — transitNoneToInProgress 삭제 후 신규 메서드 호출 검증.
+     * 보정 경로가 PENDING 을 우회해 신규 전이 메서드를 호출하는지 검증한다.
      * Mockito 기반으로 포트 메서드 호출 여부를 직접 검증한다.
      */
     @Nested
-    @DisplayName("PCS-9: 보정 경로 PENDING 우회 검증 (Mockito)")
+    @DisplayName("보정 경로 PENDING 우회 검증 (Mockito)")
     class Pcs9MockTests {
 
         private PgInboxRepository mockInboxRepo;
@@ -303,7 +303,7 @@ class DuplicateApprovalHandlerTest {
         }
 
         // -----------------------------------------------------------------------
-        // PCS-9 TC1: handleDbAbsentAmountMatch → transitDirectToInProgress + transitToApproved
+        // handleDbAbsentAmountMatch → transitDirectToInProgress + transitToApproved
         //            (transitNoneToInProgress 미호출)
         // -----------------------------------------------------------------------
 
@@ -333,7 +333,7 @@ class DuplicateApprovalHandlerTest {
         }
 
         // -----------------------------------------------------------------------
-        // PCS-9 TC2: handleDbAbsentAmountMismatch → transitDirectToTerminal(QUARANTINED)
+        // handleDbAbsentAmountMismatch → transitDirectToTerminal(QUARANTINED)
         //            (transitNoneToInProgress 미호출)
         // -----------------------------------------------------------------------
 
@@ -363,8 +363,8 @@ class DuplicateApprovalHandlerTest {
         }
 
         // -----------------------------------------------------------------------
-        // PCS-9 TC3: handleVendorIndeterminate (inbox 없음) → transitDirectToInProgress
-        //            (PENDING 우회 검증 — A4 acceptance)
+        // handleVendorIndeterminate (inbox 없음) → transitDirectToInProgress
+        //            (PENDING 우회 검증)
         // -----------------------------------------------------------------------
 
         @Test
@@ -391,8 +391,7 @@ class DuplicateApprovalHandlerTest {
         }
 
         // -----------------------------------------------------------------------
-        // PCS-9 TC4: handleVendorAlreadyProcessed — IN_PROGRESS inbox + amount 일치 → APPROVED
-        //            (PC-F4 흡수)
+        // handleVendorAlreadyProcessed — IN_PROGRESS inbox + amount 일치 → APPROVED
         // -----------------------------------------------------------------------
 
         @Test
@@ -420,13 +419,13 @@ class DuplicateApprovalHandlerTest {
         }
 
         // -----------------------------------------------------------------------
-        // PCS-9 TC5: handleVendorIndeterminate atomicity — transitDirectToInProgress +
-        //            transitToQuarantined 두 호출이 같은 @Transactional TX 안 (D-F2 흡수)
+        // handleVendorIndeterminate atomicity — transitDirectToInProgress +
+        //            transitToQuarantined 두 호출이 같은 @Transactional TX 안
         //            Mockito inOrder 로 호출 순서 검증 + @Transactional 봉인
         // -----------------------------------------------------------------------
 
         @Test
-        @DisplayName("handleVendorIndeterminate — transitDirectToInProgress + transitToQuarantined 순서 보장 (D-F2 atomicity 봉인)")
+        @DisplayName("handleVendorIndeterminate — transitDirectToInProgress + transitToQuarantined 순서 보장 (atomicity 봉인)")
         void handleVendorIndeterminate_atomicity_singleTransaction() {
             // given — inbox 없음, vendor 실패
             when(mockInboxRepo.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());

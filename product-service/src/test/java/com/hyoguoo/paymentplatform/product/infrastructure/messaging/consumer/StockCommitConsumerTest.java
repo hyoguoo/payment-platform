@@ -31,7 +31,7 @@ class StockCommitConsumerTest {
     private StockCommitConsumer stockCommitConsumer;
 
     @Test
-    @DisplayName("TC4: consume 호출 시 StockCommitUseCase.commit 1회 위임")
+    @DisplayName("consume 호출 시 StockCommitUseCase.commit 1회 위임")
     void consume_ShouldDelegateToStockCommitUseCase() {
         // given
         long productId = 10L;
@@ -59,7 +59,7 @@ class StockCommitConsumerTest {
     }
 
     @Test
-    @DisplayName("TC-I6-1: expiresAt=null, occurredAt=fixed → expiresAt = occurredAt + 8d 로 fallback")
+    @DisplayName("expiresAt=null, occurredAt=fixed → expiresAt = occurredAt + 8d 로 fallback")
     void consume_whenExpiresAtNull_shouldFallbackFromOccurredAt() {
         // given
         long productId = 10L;
@@ -96,7 +96,7 @@ class StockCommitConsumerTest {
     }
 
     @Test
-    @DisplayName("TC-I6-2: expiresAt=null, occurredAt=null → expiresAt ≈ now + 8d (±5초)")
+    @DisplayName("expiresAt=null, occurredAt=null → expiresAt ≈ now + 8d (±5초)")
     void consume_whenBothNull_shouldFallbackFromNow() {
         // given
         long productId = 10L;

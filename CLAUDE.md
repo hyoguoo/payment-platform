@@ -25,6 +25,18 @@
 2. **Minimal change**: 현재 태스크 범위 밖 코드는 수정하지 않는다. 발견한 문제는 주석으로 메모만 한다.
 3. **Verify**: 매 태스크 완료 후 `./gradlew test`로 회귀 없음을 확인한다.
 
+상세 코딩 컨벤션(주석/문서화 규칙, 안티패턴 회피 등)은 [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) 참고.
+
+---
+
+## Subagent 작업
+
+대량 기계적 편집(전체 파일 주석 정리 등)을 서브에이전트로 병렬 위임하면, 에이전트는 자동 생성된 git worktree(`.claude/worktrees/agent-*`)에서 작업한다. 이 worktree 는 메인 HEAD 가 아닌 옛 커밋 기반일 수 있어, 변경이 메인 트리에 흩어지거나 결과가 메인 코드와 어긋날 수 있다.
+
+- worktree 결과를 통째 복사하지 않는다 (옛 코드로 메인을 덮어쓸 위험).
+- `git -C <worktree> diff` 로 patch 를 떠 메인에서 `git apply --check` 로 호환을 검증하고, 통과분만 `git apply` 한다. 충돌분(메인과 코드가 다른 파일)은 메인 기준으로 재작업한다.
+- 작업 후 `git worktree remove -f -f <path>` 로 정리한다.
+
 ---
 
 ## Conversation Rules
@@ -39,12 +51,28 @@
 
 ## Reference Files
 
+> **작업 유형별 진입** — 전부 읽지 말고, 지금 하는 작업에 해당하는 줄의 문서만 연다. 상세 설명은 아래 목록 참고.
+
+| 지금 하는 작업 | 먼저 볼 문서 |
+|---|---|
+| 전체 구조 파악 / 새 기능 설계 | `ARCHITECTURE` → `STRUCTURE` |
+| 결제 플로우(브라우저 → 결과) 수정 | `PAYMENT-FLOW` + `PITFALLS` |
+| 비동기 confirm 사이클 수정 | `CONFIRM-FLOW` + `conventions/kafka` |
+| 코드 작성 (스타일 / 규칙) | `conventions/` 해당 주제 (code-style / error-logging / transactions / kafka / testing) |
+| 테스트 작성 | `TESTING` + `conventions/testing` |
+| PG / 벤더 외부 연동 | `INTEGRATIONS` + `conventions/kafka` |
+| 인프라 / 빌드 / 정적분석 | `STACK` |
+| DB 마이그레이션 (Flyway) | `stack/flyway-operations` |
+| 버그 / 도메인 함정 회피 | `PITFALLS` + `CONCERNS` |
+| 인프라 헬스체크 / 트레이스 검증 | `docs/smoke/*` |
+| 워크플로우 작업 재개 | `docs/topics/<TOPIC>-BRIEFING` → 원본 |
+
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
 - [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — 4서비스 토폴로지, hexagonal layer 룰, 비동기 어댑터 위치, 핵심 설계 결정 인덱스
 - [`docs/context/STRUCTURE.md`](docs/context/STRUCTURE.md) — 디렉토리 트리, 모듈 의존, 패키지 컨벤션
-- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, Flyway 운영 가이드, 빌드 / 정적 분석
-- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — Lombok, 예외 계층, naming, LogFmt, AOP, 트랜잭션 룰
+- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, 인프라, 빌드 / 정적 분석 (Flyway 운영 가이드는 [`stack/flyway-operations.md`](docs/context/stack/flyway-operations.md))
+- [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — 주제별 코딩 컨벤션 인덱스 (conventions/ 하위: code-style / error-logging / transactions / kafka / testing)
 - [`docs/context/TESTING.md`](docs/context/TESTING.md) — Fake vs Mock 룰, Testcontainers, contract test, JaCoCo, TDD 흐름
 - [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss + NicePay Strategy, cross-service HTTP, 외부 의존 관리
 - [`docs/context/PAYMENT-FLOW.md`](docs/context/PAYMENT-FLOW.md) — end-to-end 결제 플로우 (브라우저 checkout → Gateway → payment ↔ pg ↔ vendor → 결과 콜백)
@@ -88,8 +116,9 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 ## Commit Style
 
 세부 규칙은 `.claude/skills/_shared/protocols/commit-round.md` 참고. 요약:
-- 영문 type prefix + 한글 본문
+- **`<type>(<scope>): <한글 제목>`** — type 은 영문(`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`build` 등), 제목·본문은 한글
+- **scope 는 고정 어휘만**: 서비스(`payment`/`pg`/`product`/`user`/`gateway`/`eureka`) 또는 횡단(`docs`/`build`/`infra`/`deps`). 한 scope 로 못 묶으면 생략. 토픽명·태스크 ID 금지
+- **마지막 줄 `Co-Authored-By:` 트레일러 일관 포함**
 - amend 금지, 명시 staging, hook 우회 금지
 - TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
-- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋
-- STATE.md 단독 커밋 금지
+- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지

@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — 보상 silent loss / dedupe lease 8일 잠금 해소)
+> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 도입 수용 한계 L1/L2/L3/L5/L6 등재)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -70,33 +70,73 @@
 
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 
-### L-1. 단일 리전 / 단일 AZ
+### L-1. Kafka tx coordinator 의존 — 가용성 약화 (EOS 전환 수용)
 
-본 프로젝트는 학습용 — multi-region, geo-redundancy 미구현.
+- **현황**: EOS (Kafka 트랜잭션) 전환 이후 payment-service 결제 결과 처리가 Kafka tx coordinator 에 의존. broker 가 죽거나 tx coordinator 가 응답 못 하면 `ConfirmedEventConsumer` 처리 자체가 멈춤.
+- **이전 모델 대비**: `StockOutbox` 모델에서는 RDB 만 살아있으면 outbox 행이 쌓이고 broker 복구 후 OutboxWorker 가 자동 회수 — 더 높은 가용성.
+- **수용 근거**: 학습용 프로젝트 EOS 정합 목표 (D3). 운영 환경에서는 모니터링 대시보드로 coordinator 가용성 가시화 필요 (TC-13-FOLLOW-3).
+- **처방 후속**: TC-13-FOLLOW-3 (Kafka tx coordinator 가용성 모니터링 대시보드).
 
-### L-2. 결제 cancel / refund 미구현
+**EOS atomicity 정합 SSOT (RD1-2 명시):**
+- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
+- 이 구조에서 RDB commit 성공 + Kafka producer commit 실패(또는 그 역) 시 at-least-once 재배달이 발생한다.
+- **정합성 SSOT 는 EOS atomicity 자체가 아니라 "중복 시 발행 항상 진행 (위키 line 141)" 룰**: 0 row(중복) 시에도 stock-committed 발행을 진행하고, product-service `stock_commit_dedupe` 가 재배달을 흡수한다.
+- 즉 EOS 는 "정상 경로 중복 발행 최소화" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
+- **후속 과제**: TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 `ChainedKafkaTransactionManager` 도입 검토 (CONFIRM-FLOW.md §5 EOS atomicity SSOT 절 참조).
 
-`PgGatewayPort.cancel(...)` 인터페이스만 존재. 운영 활용 별도 토픽.
+### L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재
 
-### L-3. EXPIRED 상태의 만료 스케줄러 정책
+- **현황**: `payment_event_dedupe` 테이블에 `expires_at = receivedAt + P8D` 컬럼이 있지만 자동 cleanup 스케줄러 없음. 장기 운영 시 만료 row 누적 → 인덱스 비대 → 쿼리 성능 저하 가능.
+- **비교**: product-service `stock_commit_dedupe` / pg-service `pg_inbox` 도 동일 문제 (TC-11).
+- **처방 후속**: TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리를 TC-11 cleanup 스케줄러 통합 토픽에 묶어 처리.
 
-`PaymentEventStatus.EXPIRED` 가 정의되어 있지만 만료 스케줄러는 PRE-PHASE-4 시점에 도메인 매핑이 일부 제거됨 (`quarantine_compensation_pending` 컬럼은 호환용 유지). 명확한 만료 정책 별도 정리 필요.
+### L-3. 다중 인스턴스 동시 운영 검증 부재
+
+- **현황**: EOS 전환 후 `transactional.id = ${spring.application.name}-${HOSTNAME:local}` 단일 인스턴스 가정 (D4). 다중 인스턴스 동시 운영 시 transactional.id 충돌 → Kafka producer fencing 동작 불확실.
+- **영향**: Phase 5 부하 테스트 시 멀티 인스턴스 확장 전제 시나리오에서 EOS fencing 검증 필요.
+- **처방 후속**: TC-13-FOLLOW-1 (multi-instance 확장 시 docker-compose hostname 라인 제거 또는 INSTANCE_ID 환경변수 도입).
 
 ### L-4. Two-strategy PG 라우팅 — 결제 건별 `gatewayType` 결정 정책
 
 현재 결제 건별 `gatewayType` 은 client 측에서 결정해 전송. 동적 routing (예: 벤더 장애 시 자동 fallback) 미구현.
 
-### L-5. Redis cluster 환경에서 multi-key Lua 사용 불가
+### L-5. 회복 비대칭 — EOS abort 시 Redis 보상 lease 미회복
 
-`stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 가 결제 단위 N개 상품 KEYS 를 한 번에 받는다. Redis cluster 에서는 same hash slot 이어야 하는데 글로벌 상품 키(`stock:{productId}`) 는 결제 단위로 hash tag 묶을 수 없음. **단일 노드 Redis 가정 위에서 성립**, cluster 도입 시 별 토픽.
+- **현황**: EOS abort 발생 시 RDB rollback + producer tx abort 는 자동 원복. 그러나 `compensateAtomic` (Redis 보상 Lua) 은 EOS tx 밖에서 실행 (Redis 는 XA 참여 불가) — abort 시 Redis 보상이 완료됐지만 RDB rollback 으로 결제 상태는 복귀 → 재배달 시 보상 dedup token `compensation:done:{orderId}` 이 이미 박혀 있어 보상 재실행이 `ALREADY_DONE` 으로 막힘.
+- **빈도**: FAILED/QUARANTINED 경로 + EOS abort 가 동시에 발생하는 case 에만 해당. 빈도 낮음.
+- **수용 근거**: SCR L7 cascade 평가 결과 수용. Redis 보상 dedup token 은 P8D TTL 로 자연 만료.
+- **참고**: 이전 L-6 (보상 끝난 결제 재confirm cascade) 과 관련.
 
-### L-6. 보상 끝난 결제의 새 confirm 사이클 cascade (인지)
+### L-6. EOS multi-instance 확장 시 docker-compose hostname 충돌
 
-P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
+- **현황**: `docker/docker-compose.apps.yml` 의 payment-service 컨테이너에 `hostname: payment-service` 라인 존재 시, 다중 인스턴스 배포에서 두 컨테이너가 동일 hostname → transactional.id 충돌 → Kafka producer epoch fencing 불확실.
+- **현재**: 단일 인스턴스 운영이라 문제 없음 (D4 단일 인스턴스 가정).
+- **트리거 조건**: payment-service 를 2개 이상 컨테이너로 scale-out 할 때.
+- **처방 후속**: TC-13-FOLLOW-1 — `hostname:` 라인 제거 또는 `INSTANCE_ID` 환경변수 도입.
 
 ### L-7. `markPaymentAsFail` 영구 실패 → Reconciler resetToReady cascade (인지)
 
 `handleFailed` 호출 순서 (보상 → `markPaymentAsFail`) 에서 보상 OK + `markPaymentAsFail` 영구 실패 → DefaultErrorHandler retry 5회 후 DLQ → Reconciler 가 IN_PROGRESS 결제를 resetToReady → 새 confirm 사이클 → 벤더가 재confirm 시 APPROVED 회신 가능 → product RDB 차감 + redis 보상 +1 잔존 → 발산. PG 멱등성 (idempotency-key=orderId) 으로 일반적으로 차단. PHASE2 admin 도구 또는 자동 QUARANTINED fallback 별 토픽 결정.
+
+### L-8. 단일 리전 / 단일 AZ
+
+본 프로젝트는 학습용 — multi-region, geo-redundancy 미구현.
+
+### L-9. 결제 cancel / refund 미구현
+
+`PgGatewayPort.cancel(...)` 인터페이스만 존재. 운영 활용 별도 토픽.
+
+### L-10. EXPIRED 상태의 만료 스케줄러 정책
+
+`PaymentEventStatus.EXPIRED` 가 정의되어 있지만 만료 스케줄러는 PRE-PHASE-4 시점에 도메인 매핑이 일부 제거됨 (`quarantine_compensation_pending` 컬럼은 호환용 유지). 명확한 만료 정책 별도 정리 필요.
+
+### L-11. Redis cluster 환경에서 multi-key Lua 사용 불가
+
+`stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 가 결제 단위 N개 상품 KEYS 를 한 번에 받는다. Redis cluster 에서는 same hash slot 이어야 하는데 글로벌 상품 키(`stock:{productId}`) 는 결제 단위로 hash tag 묶을 수 없음. **단일 노드 Redis 가정 위에서 성립**, cluster 도입 시 별 토픽.
+
+### L-12. 보상 끝난 결제의 새 confirm 사이클 cascade (인지)
+
+P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * pg-service PG 벤더 호출 서비스 — TX 경계 분리 버전.
  *
- * <p>PCS-6: invokeVendor (TX 없음) + applyOutcome (TX_B) 분리.
+ * <p>invokeVendor (TX 없음) + applyOutcome (TX_B) 로 TX 경계를 분리한다.
  * 워커 VT 가 이 두 메서드를 순서대로 호출한다:
  * <ol>
  *   <li>{@link #invokeVendor} — TX 외부에서 벤더 HTTP 호출. VT 가 캐리어 양보, DB 자유 상태.</li>
@@ -54,7 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
  *
- * @deprecated {@link #callVendor} 는 PCS-9 에서 호출처가 invokeVendor + applyOutcome 두 단계로 교체될 예정.
+ * @deprecated {@link #callVendor} 는 invokeVendor + applyOutcome 두 단계 호출로 대체된다.
  */
 @Slf4j
 @Service
@@ -73,7 +73,7 @@ public class PgVendorCallService {
     private final DuplicateApprovalHandler duplicateApprovalHandler;
 
     // -----------------------------------------------------------------------
-    // 공개 API — 신규 (PCS-6)
+    // 공개 API — TX 분리 버전
     // -----------------------------------------------------------------------
 
     /**
@@ -105,7 +105,7 @@ public class PgVendorCallService {
     }
 
     // -----------------------------------------------------------------------
-    // 공개 API — 기존 (deprecated, PCS-9 호출처 교체 후 삭제 예정)
+    // 공개 API — deprecated (단일 TX 버전)
     // -----------------------------------------------------------------------
 
     /**
@@ -114,7 +114,7 @@ public class PgVendorCallService {
      * @param request PG 확정 요청 DTO
      * @param attempt 현재 attempt 번호 (1부터 시작)
      * @param now     현재 시각
-     * @deprecated PCS-9 에서 invokeVendor + applyOutcome 두 단계 호출로 교체 예정.
+     * @deprecated invokeVendor + applyOutcome 두 단계 호출로 대체된다.
      *             {@link #invokeVendor} + {@link #applyOutcome} 을 직접 사용하라.
      */
     @Deprecated(forRemoval = true)

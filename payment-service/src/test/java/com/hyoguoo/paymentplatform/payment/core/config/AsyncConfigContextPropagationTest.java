@@ -23,8 +23,8 @@ import org.springframework.core.task.AsyncTaskExecutor;
  * ContextExecutorService.wrap 으로 교체하면 ContextRegistry 에 등록된 accessor 를 통해
  * MDC + OTel context 양쪽이 모두 승계된다.
  *
- * <p>TC1 — OTel Context.current() 의 커스텀 키 값이 VT 경계에서 승계된다(wrap 이전엔 capturedValue==null).
- * <p>TC2 — MDC 값도 VT 경계에서 승계된다(wrap 이 MDC 도 캡처).
+ * <p>OTel Context.current() 의 커스텀 키 값이 VT 경계에서 승계된다(wrap 이전엔 capturedValue==null).
+ * <p>MDC 값도 VT 경계에서 승계된다(wrap 이 MDC 도 캡처).
  */
 @DisplayName("AsyncConfig.outboxRelayExecutor — ContextExecutorService 전파 검증")
 class AsyncConfigContextPropagationTest {
@@ -47,7 +47,7 @@ class AsyncConfigContextPropagationTest {
     }
 
     @Test
-    @DisplayName("TC1 — outboxRelayExecutor 는 OTel Context 를 VT 경계에서 전파해야 한다 (MdcTaskDecorator 미적용 시 FAIL)")
+    @DisplayName("outboxRelayExecutor 는 OTel Context 를 VT 경계에서 전파해야 한다 (MdcTaskDecorator 미적용 시 FAIL)")
     void outboxRelayExecutor_shouldPropagateOtelContextToVirtualThread() throws Exception {
         // given: 현재 OTel Context 에 커스텀 값을 설정한 스코프
         AtomicReference<String> capturedOtelValue = new AtomicReference<>();
@@ -79,7 +79,7 @@ class AsyncConfigContextPropagationTest {
     }
 
     @Test
-    @DisplayName("TC2 — outboxRelayExecutor 는 MDC traceId 를 VT 경계에서 전파해야 한다")
+    @DisplayName("outboxRelayExecutor 는 MDC traceId 를 VT 경계에서 전파해야 한다")
     void outboxRelayExecutor_shouldPropagateMdcToVirtualThread() throws Exception {
         // given: 호출 스레드에 traceId 설정
         MDC.put(TRACE_ID_KEY, TRACE_ID_VALUE);

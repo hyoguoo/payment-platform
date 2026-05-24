@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * PgOutboxImmediateWorker 단위 테스트.
  * domain_risk=true:
- *   - 불변식 11: exactly-once produce (Immediate+Polling 동시 경쟁 시 발행 횟수 = 1)
+ *   - exactly-once produce (Immediate+Polling 동시 경쟁 시 발행 횟수 = 1)
  *   - SmartLifecycle stop() 시 in-flight 처리 완료 후 종료
  */
 @DisplayName("PgOutboxImmediateWorker")
@@ -170,7 +170,7 @@ class PgOutboxImmediateWorkerTest {
         // ImmediateWorker 완료 대기
         Thread.sleep(200);
 
-        // then: 발행 횟수는 정확히 1 (불변식 11 — exactly-once produce)
+        // then: 발행 횟수는 정확히 1 (exactly-once produce)
         // PgOutboxRelayService 의 "processedAt != null이면 skip" 로직이 중복 발행을 방지
         assertThat(publisher.getPublishedCount())
                 .as("Immediate+Polling 경쟁 시 exactly-once 보장 — 발행 횟수 1")

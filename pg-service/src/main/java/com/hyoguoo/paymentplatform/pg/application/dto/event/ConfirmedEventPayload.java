@@ -47,18 +47,18 @@ public record ConfirmedEventPayload(
             String orderId, String eventUuid, Long amount, String approvedAt) {
         Objects.requireNonNull(amount, "APPROVED payload: amount must not be null");
         Objects.requireNonNull(approvedAt, "APPROVED payload: approvedAt must not be null");
-        return new ConfirmedEventPayload(orderId, "APPROVED", null, amount, approvedAt, eventUuid);
+        return new ConfirmedEventPayload(orderId, ConfirmStatus.APPROVED.name(), null, amount, approvedAt, eventUuid);
     }
 
     public static ConfirmedEventPayload failed(String orderId, String reasonCode, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "FAILED", reasonCode, null, null, eventUuid);
+        return new ConfirmedEventPayload(orderId, ConfirmStatus.FAILED.name(), reasonCode, null, null, eventUuid);
     }
 
     public static ConfirmedEventPayload quarantined(String orderId, String reasonCode, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, null, null, eventUuid);
+        return new ConfirmedEventPayload(orderId, ConfirmStatus.QUARANTINED.name(), reasonCode, null, null, eventUuid);
     }
 
     public static ConfirmedEventPayload quarantinedWithAmount(String orderId, String reasonCode, Long amount, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, "QUARANTINED", reasonCode, amount, null, eventUuid);
+        return new ConfirmedEventPayload(orderId, ConfirmStatus.QUARANTINED.name(), reasonCode, amount, null, eventUuid);
     }
 }

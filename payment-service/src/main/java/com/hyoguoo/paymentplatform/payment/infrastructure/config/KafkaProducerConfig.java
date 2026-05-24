@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -13,6 +14,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.transaction.KafkaTransactionManager;
 
 /**
  * payment-service Kafka 프로듀서 — 토픽별 타입드 KafkaTemplate 빈 등록.
@@ -24,8 +27,10 @@ import org.springframework.kafka.core.ProducerFactory;
  *   <li>setDefaultTopic() 으로 발행 코드에서 토픽 문자열 누락/오타 가능성이 제거된다.</li>
  * </ul>
  *
- * <p>stock publishing 은 StockOutboxKafkaPublisher (StockOutboxPublisherPort 구현체) 로 분리되어 있다.
- * 이 config 는 payment.commands.confirm / stock_outbox / dlq 템플릿만 관리한다.
+ * <p>stock-committed 발행은 EOS-aware ProducerFactory (stockCommittedProducerFactory) 를 사용한다.
+ * transactional.id = ${spring.application.name}-${HOSTNAME:local} (단일 인스턴스 가정).
+ * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq 템플릿을 관리한다.
+ * stockCommittedKafkaTemplate 이 EOS 발행 전용 빈.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -37,44 +42,95 @@ public class KafkaProducerConfig {
     @Value("${payment.kafka.topics.commands-confirm}")
     private String commandsConfirmTopic;
 
+    @Value("${payment.kafka.topics.events-stock-committed}")
+    private String eventsStockCommittedTopic;
+
     /**
-     * payment.commands.confirm 전용 템플릿.
-     * 발행 주체: payment-service OutboxRelayService — pg-service 로 confirm 명령을 넘긴다.
+     * transactional.id prefix. ${spring.application.name}-${HOSTNAME:local} 패턴으로 단일 인스턴스를 가정한다.
+     * 다중 인스턴스로 확장하면 인스턴스마다 고유한 prefix 가 필요하다.
+     */
+    @Value("${payment.kafka.transactional-id-prefix:${spring.application.name}-${HOSTNAME:local}}")
+    private String transactionalIdPrefix;
+
+    /**
+     * EOS-aware ProducerFactory — stock-committed 발행 전용.
+     * transactional.id prefix + enable.idempotence=true + transaction.timeout.ms=10000.
+     * transaction.timeout.ms = 10000 — RDB @Transactional(timeout=5) 의 2배 마진.
      */
     @Bean
-    public KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate(
-            ProducerFactory<String, PaymentConfirmCommandMessage> producerFactory) {
-        return buildObservedTemplate(producerFactory, commandsConfirmTopic);
+    public ProducerFactory<String, String> stockCommittedProducerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        props.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, 10000);
+        DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        factory.setTransactionIdPrefix(transactionalIdPrefix + "-");
+        return factory;
     }
 
     /**
-     * stock_outbox relay 전용 String KafkaTemplate.
-     * stock_outbox row 의 pre-serialized JSON payload 를 재직렬화 없이 직접 발행하므로
-     * StringSerializer ProducerFactory 를 쓴다 — JsonSerializer 혼용을 차단한다.
-     * 자체 생성한 DefaultKafkaProducerFactory 는 Boot auto-config 의 ObservationRegistry
-     * interceptor wire-in 을 받지 못하므로 setObservationRegistry() 로 직접 주입해
-     * traceparent 전파 경로를 확보한다.
+     * KafkaTransactionManager — EOS stock-committed 발행 전용.
+     * kafkaListenerContainerFactory 에 wire-in 되어 consumer offset commit 을 프로듀서 트랜잭션과 묶는다.
+     * stockCommittedProducerFactory 와 같은 인스턴스를 공유해야 transactional.id 정합이 유지된다.
      */
     @Bean
-    public KafkaTemplate<String, String> stockOutboxKafkaTemplate(
+    public KafkaTransactionManager<String, String> kafkaTransactionManager(
+            ProducerFactory<String, String> stockCommittedProducerFactory) {
+        return new KafkaTransactionManager<>(stockCommittedProducerFactory);
+    }
+
+    /**
+     * stock-committed 발행 전용 EOS KafkaTemplate.
+     * EOS-aware ProducerFactory (stockCommittedProducerFactory) 기반 — Kafka 트랜잭션 안에서 발행된다.
+     * {@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase} 가
+     * APPROVED 결과 처리 시 이 템플릿으로 재고 확정 메시지를 발행한다.
+     *
+     * <p>이 템플릿이 stock-committed 발행의 단일 경로다.
+     */
+    @Bean
+    public KafkaTemplate<String, String> stockCommittedKafkaTemplate(
+            ProducerFactory<String, String> stockCommittedProducerFactory,
             ObservationRegistry observationRegistry) {
-        Map<String, Object> props = Map.of(
-                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
-                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
-        );
-        ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
-        KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(stockCommittedProducerFactory);
+        template.setDefaultTopic(eventsStockCommittedTopic);
         template.setObservationEnabled(true);
         template.setObservationRegistry(observationRegistry);
         return template;
     }
 
     /**
+     * payment.commands.confirm 전용 ProducerFactory.
+     * stockCommittedProducerFactory 가 명시 등록되면 Spring Boot auto-config 의 주 ProducerFactory 가
+     * ambiguous 해져 JsonSerializer 기반 타입드 주입이 깨지므로, 이를 막기 위해 명시 정의한다.
+     * application.yml 의 spring.json.add.type.headers=false 와 동일한 설정 적용.
+     */
+    @Bean
+    public ProducerFactory<String, PaymentConfirmCommandMessage> commandsConfirmProducerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        return new DefaultKafkaProducerFactory<>(props);
+    }
+
+    /**
+     * payment.commands.confirm 전용 템플릿.
+     * 발행 주체: payment-service OutboxRelayService — pg-service 로 confirm 명령을 넘긴다.
+     */
+    @Bean
+    public KafkaTemplate<String, PaymentConfirmCommandMessage> commandsConfirmKafkaTemplate(
+            ProducerFactory<String, PaymentConfirmCommandMessage> commandsConfirmProducerFactory) {
+        return buildObservedTemplate(commandsConfirmProducerFactory, commandsConfirmTopic);
+    }
+
+    /**
      * payment.events.confirmed.dlq 전용 String KafkaTemplate.
-     * SCR-8 KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
+     * KafkaErrorHandlerConfig 의 DeadLetterPublishingRecoverer 가 DLQ 발행에 사용한다.
      * 별도 StringSerializer ProducerFactory 사용으로 JsonSerializer 혼용을 차단하고,
-     * stockOutboxKafkaTemplate 과 같은 이유로 ObservationRegistry 를 명시 wiring 한다.
+     * ObservationRegistry 를 명시 wiring 해 traceparent 전파 경로를 확보한다.
      */
     @Bean
     public KafkaTemplate<String, String> confirmedDlqKafkaTemplate(

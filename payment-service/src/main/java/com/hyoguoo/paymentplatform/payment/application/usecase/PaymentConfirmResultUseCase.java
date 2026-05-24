@@ -1,62 +1,59 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
-import com.hyoguoo.paymentplatform.payment.application.event.StockOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.payment.application.util.StockOutboxFactory;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
+import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockOutboxRepository;
+import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
-import com.hyoguoo.paymentplatform.payment.domain.StockOutbox;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * payment.events.confirmed 소비 후 결제 상태 분기 use-case (SCR-6 재작성).
+ * payment.events.confirmed 를 소비해 결제 상태를 분기하는 use-case.
  *
- * <p>dedupe 책임 0 — eventUuid dedupe lease 및 DLQ 직접 호출 제거.
- * retry / DLQ 정책은 Spring Kafka {@code DefaultErrorHandler} (SCR-8) 가 담당한다.
- *
- * <p>stock 이벤트 발행은 ApplicationEvent 로 위임해 TX 경계와 직접 결합하지 않는다.
- *
- * <p>상태 분기:
  * <ul>
- *   <li>APPROVED → PaymentCommandUseCase.markPaymentAsDone 위임 + stock_outbox INSERT + StockOutboxReadyEvent</li>
- *   <li>FAILED → compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중). RuntimeException 은 그대로 throw.</li>
- *   <li>QUARANTINED → compensateAtomic (보상 먼저) → quarantineCompensationHandler. 기존 순서 유지.</li>
+ *   <li>APPROVED → 금액·승인시각 재검증 후 결제 완료 + 재고 확정 이벤트 발행</li>
+ *   <li>FAILED → 재고 보상 후 결제 실패 마킹</li>
+ *   <li>QUARANTINED → 재고 보상 후 격리 핸들러 위임</li>
  * </ul>
  *
- * <p>호출 순서 근거 (FAILED): DECISION §6 crash 표 — 구 순서(RDB → 보상)는 RDB commit 직후/보상 전 crash 시
- * isTerminal=true 로 재배달 noop → 보상 누락 silent loss. 새 순서(보상 → RDB)는 crash 후 재배달 시
- * compensateAtomic 의 dedup token 이 ALREADY_DONE 을 반환 → markPaymentAsFail 재진행 → 정합 보장.
+ * <p>FAILED·QUARANTINED 는 보상을 먼저 하고 RDB 상태 전이를 나중에 한다. RDB 를 먼저 커밋하면
+ * 보상 직전에 crash 했을 때 재배달이 종결 상태 가드에 막혀 보상이 조용히 유실되기 때문이다.
  */
 @Slf4j
 @Service
 public class PaymentConfirmResultUseCase {
 
-    /** stock_outbox expiresAt 계산용 TTL. Kafka retention(7 일) + 복구 버퍼(1 일) = 8 일. */
-    private static final Duration STOCK_OUTBOX_TTL = Duration.ofDays(8);
+    /** stock-committed expiresAt 계산용 TTL. Kafka retention(7 일) + 복구 버퍼(1 일) = 8 일. */
+    private static final Duration STOCK_COMMITTED_TTL = Duration.ofDays(8);
 
     private final PaymentEventRepository paymentEventRepository;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final LocalDateTimeProvider localDateTimeProvider;
     private final StockCachePort stockCachePort;
-    private final StockOutboxRepository stockOutboxRepository;
+    private final PaymentEventDedupeStore paymentEventDedupeStore;
+    private final KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private final ObjectMapper objectMapper;
     /**
      * 상태 전이 위임 use-case. self-invocation 으로 호출하면
@@ -66,61 +63,80 @@ public class PaymentConfirmResultUseCase {
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
-            ApplicationEventPublisher applicationEventPublisher,
             QuarantineCompensationHandler quarantineCompensationHandler,
             LocalDateTimeProvider localDateTimeProvider,
             StockCachePort stockCachePort,
-            StockOutboxRepository stockOutboxRepository,
-            ObjectMapper objectMapper,
+            PaymentEventDedupeStore paymentEventDedupeStore,
+            @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase) {
         this.paymentEventRepository = paymentEventRepository;
-        this.applicationEventPublisher = applicationEventPublisher;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.localDateTimeProvider = localDateTimeProvider;
         this.stockCachePort = stockCachePort;
-        this.stockOutboxRepository = stockOutboxRepository;
-        this.objectMapper = objectMapper;
+        this.paymentEventDedupeStore = paymentEventDedupeStore;
+        this.stockCommittedKafkaTemplate = stockCommittedKafkaTemplate;
+        this.objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule());
         this.paymentCommandUseCase = paymentCommandUseCase;
     }
 
     /**
-     * 메시지 처리 진입점. dedupe lease 없이 직접 processMessage 위임.
-     * RuntimeException 은 Spring Kafka DefaultErrorHandler(SCR-8) 가 처리한다.
+     * 메시지 처리 진입점. 종결 상태 가드 → 멱등 마킹 → 상태 분기 순으로 진행한다.
+     * RuntimeException 은 그대로 던져 Kafka 에러 핸들러가 재시도/DLQ 를 결정한다.
      */
     @Transactional(timeout = 5)
     public void handle(ConfirmedEventMessage message) {
-        processMessage(message);
-    }
-
-    private void processMessage(ConfirmedEventMessage message) {
         PaymentEvent paymentEvent = paymentEventRepository
                 .findByOrderId(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
+
+        // 종결 상태면 이미 처리된 메시지이므로 무시한다.
+        if (!paymentEvent.getStatus().isCompensatableByFailureHandler()) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
+                    () -> "종결 상태 skip — orderId=" + message.orderId()
+                            + " status=" + paymentEvent.getStatus()
+                            + " eventUuid=" + message.eventUuid());
+            return;
+        }
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
                 () -> "orderId=" + message.orderId() + " status=" + message.status()
                         + " eventUuid=" + message.eventUuid());
 
-        switch (message.status()) {
-            case "APPROVED" -> handleApproved(paymentEvent, message);
-            case "FAILED" -> handleFailed(paymentEvent, message.reasonCode());
-            case "QUARANTINED" -> handleQuarantined(paymentEvent, message.reasonCode());
-            default -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
+        // 멱등 마킹: 이미 처리된 event_uuid 면 affected=0.
+        Instant expiresAt = localDateTimeProvider.nowInstant().plus(STOCK_COMMITTED_TTL);
+        int affected = paymentEventDedupeStore.markIfAbsent(
+                message.eventUuid(),
+                paymentEvent.getId(),
+                message.status(),
+                expiresAt
+        );
+
+        ConfirmStatus confirmStatus = ConfirmStatus.from(message.status());
+
+        if (affected == 0) {
+            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
+                    () -> "중복 skip — orderId=" + message.orderId()
+                            + " eventUuid=" + message.eventUuid());
+            // 중복이면 비즈니스 로직은 건너뛰되, 재고 확정 발행은 항상 수행한다 (product 측에서 다시 멱등 처리).
+            if (confirmStatus == ConfirmStatus.APPROVED) {
+                sendStockCommittedEvents(paymentEvent);
+            }
+            return;
+        }
+
+        switch (confirmStatus) {
+            case APPROVED -> handleApproved(paymentEvent, message);
+            case FAILED -> handleFailed(paymentEvent, message.reasonCode());
+            case QUARANTINED -> handleQuarantined(paymentEvent, message.reasonCode());
+            case UNKNOWN -> LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
                     () -> "orderId=" + message.orderId() + " status=" + message.status());
         }
     }
 
     /**
-     * APPROVED 결과 처리. 벤더가 한 번 승인한 후 우리 시스템이 다시 한 번 검증한다 — amount 와 approvedAt.
-     *
-     * <ol>
-     *   <li>approvedAt null 방어 — null 이면 contract 위반이므로 즉시 예외</li>
-     *   <li>amount 가 paymentEvent 총액과 다르면 AMOUNT_MISMATCH 로 격리(DONE 전이 안 함)</li>
-     *   <li>둘 다 통과하면 수신 approvedAt 으로 PaymentCommandUseCase.markPaymentAsDone 위임</li>
-     * </ol>
-     *
-     * <p>stock commit 발행은 TX 내부에서 stock_outbox INSERT + {@link StockOutboxReadyEvent} 만 한다.
-     * 실 Kafka publish 는 AFTER_COMMIT 리스너가 비동기로 처리하므로 여기서는 KafkaTemplate.send 를 직접 부르지 않는다.
+     * APPROVED 처리. 벤더 승인 후 우리 쪽에서 금액과 승인시각을 다시 검증한다.
+     * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
         LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
@@ -138,24 +154,50 @@ public class PaymentConfirmResultUseCase {
             return;
         }
 
-        // 외부 빈 경유 필수 — self-invocation 으로 호출하면 PaymentCommandUseCase 의 상태 전이 AOP 가 적용되지 않는다.
+        // 외부 빈 경유 필수 — self-invocation 으로 호출하면 상태 전이 AOP 가 적용되지 않는다.
         paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt);
 
-        LocalDateTime now = localDateTimeProvider.now();
-        for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
-            StockOutbox outbox = buildStockCommitOutbox(paymentEvent, order, now);
-            StockOutbox saved = stockOutboxRepository.save(outbox);
-            applicationEventPublisher.publishEvent(new StockOutboxReadyEvent(saved.getId()));
-        }
+        sendStockCommittedEvents(paymentEvent);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
                 () -> "orderId=" + paymentEvent.getOrderId());
     }
 
-    private StockOutbox buildStockCommitOutbox(PaymentEvent paymentEvent, PaymentOrder order, LocalDateTime now) {
+    /**
+     * 주문에 속한 상품마다 stock-committed 이벤트를 발행한다.
+     * 메시지 키는 productId — 동일 상품 이벤트의 순서를 보장한다.
+     * 발행은 EOS 프로듀서 트랜잭션에 묶이며, 중복 수신 시에도 발행한다 (product 측에서 멱등 처리).
+     */
+    private void sendStockCommittedEvents(PaymentEvent paymentEvent) {
         Instant occurredAt = localDateTimeProvider.nowInstant();
-        return StockOutboxFactory.buildStockCommitOutbox(
-                paymentEvent, order, occurredAt, STOCK_OUTBOX_TTL, now, objectMapper);
+        Instant expiresAt = occurredAt.plus(STOCK_COMMITTED_TTL);
+
+        for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
+            String idempotencyKey = StockEventUuidDeriver.derive(
+                    paymentEvent.getOrderId(), order.getProductId(), "stock-commit");
+            StockCommittedEvent payload = new StockCommittedEvent(
+                    order.getProductId(),
+                    order.getQuantity(),
+                    idempotencyKey,
+                    occurredAt,
+                    paymentEvent.getOrderId(),
+                    expiresAt
+            );
+            String json = serializeToJson(payload);
+            stockCommittedKafkaTemplate.send(
+                    PaymentTopics.EVENTS_STOCK_COMMITTED,
+                    String.valueOf(order.getProductId()),
+                    json
+            );
+        }
+    }
+
+    private String serializeToJson(StockCommittedEvent payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("StockCommittedEvent 직렬화 실패 — productId=" + payload.productId(), e);
+        }
     }
 
     /**
@@ -182,29 +224,11 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * FAILED 결과 처리 — 호출 순서: 보상(compensateAtomic) 먼저, RDB(markPaymentAsFail) 나중.
-     *
-     * <p>호출 순서 근거: 구 순서(RDB → 보상)는 RDB commit 직후/보상 전 crash 시
-     * isTerminal=true 로 재배달이 noop 처리돼 보상 누락 silent loss 발생.
-     * 새 순서(보상 → RDB)에서 crash 후 재배달 시 compensateAtomic 의 dedup token 이
-     * ALREADY_DONE 을 반환하므로 markPaymentAsFail 을 재진행해 정합이 보장된다.
-     *
-     * <p>race 방어 가드: paymentEvent 가 이미 종결(isTerminal)이면 보상과 상태 전이를 모두 skip 한다.
-     *
-     * <p>RuntimeException 은 그대로 throw — Spring Kafka DefaultErrorHandler(SCR-8) 가 retry / DLQ 책임.
+     * FAILED 처리. 재고 보상을 먼저 하고 결제 실패 마킹을 나중에 한다(순서 이유는 클래스 주석 참고).
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        if (paymentEvent.getStatus().isTerminal()) {
-            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED_NOOP,
-                    () -> "orderId=" + paymentEvent.getOrderId()
-                            + " 이미 종결 status=" + paymentEvent.getStatus());
-            return;
-        }
-
-        // 보상 먼저 (ALREADY_DONE 이어도 RDB 진행)
         stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
 
-        // RDB 나중
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED,
@@ -212,25 +236,10 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * QUARANTINED 결과 처리 — 기존 순서 유지 (보상 → quarantineHandler).
-     * compensateStockCache for-loop 을 compensateAtomic 직접 호출로 교체.
-     *
-     * <p>implementer 주의: 이 메서드는 "순서를 뒤집는" 게 아니라 "메서드만 교체"한다.
-     * 기존 보상 → quarantineHandler 순서 외로 변경하면 PITFALLS #11 보상 트랜잭션 중복 진입 race 신설 위험.
-     *
-     * <p>race 방어 가드: paymentEvent 가 이미 종결(isTerminal)이면 보상과 quarantineCompensationHandler 호출을 모두 skip.
-     *
-     * <p>RuntimeException 은 그대로 throw — Spring Kafka DefaultErrorHandler(SCR-8) 가 retry / DLQ 책임.
+     * QUARANTINED 처리. 재고 보상 후 격리 핸들러에 위임한다.
+     * 보상 → 핸들러 순서는 유지해야 한다 — 뒤집으면 보상 트랜잭션 중복 진입 race 가 생긴다.
      */
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
-        if (paymentEvent.getStatus().isTerminal()) {
-            LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINED_NOOP,
-                    () -> "orderId=" + paymentEvent.getOrderId()
-                            + " 이미 종결 status=" + paymentEvent.getStatus());
-            return;
-        }
-
-        // 보상 먼저 (기존 순서 유지 — 메서드 교체만)
         stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
 
         quarantineCompensationHandler.handle(

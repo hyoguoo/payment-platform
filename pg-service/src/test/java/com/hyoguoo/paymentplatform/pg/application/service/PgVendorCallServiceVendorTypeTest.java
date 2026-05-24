@@ -76,7 +76,7 @@ class PgVendorCallServiceVendorTypeTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: TOSS 요청 → Toss strategy 호출됨
+    // TOSS 요청 → Toss strategy 호출됨
     // -----------------------------------------------------------------------
 
     @Test
@@ -97,7 +97,7 @@ class PgVendorCallServiceVendorTypeTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: NICEPAY 요청 → Nicepay strategy 호출됨
+    // NICEPAY 요청 → Nicepay strategy 호출됨
     // -----------------------------------------------------------------------
 
     @Test

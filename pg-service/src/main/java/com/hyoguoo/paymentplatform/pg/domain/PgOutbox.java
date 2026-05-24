@@ -17,7 +17,7 @@ import lombok.Getter;
  * {@code create}, {@code createWithAvailableAt}, {@code of}.
  *
  * <p>payment-service {@code PaymentOutbox} / pg-service {@code PgInbox} 와 동일 Lombok builder
- * 패턴 채택 (CBA-9). {@code allArgsBuilder()} 는 패키지 내부 factory 캡슐화 전용.
+ * 패턴을 채택한다. {@code allArgsBuilder()} 는 패키지 내부 factory 캡슐화 전용.
  */
 @Getter
 @Builder(builderMethodName = "allArgsBuilder", buildMethodName = "allArgsBuild")

@@ -37,7 +37,7 @@ class PgStatusLookupStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC1: TOSS → Toss strategy
+    // TOSS → Toss strategy
     // -----------------------------------------------------------------------
 
     @Test
@@ -48,7 +48,7 @@ class PgStatusLookupStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC2: NICEPAY → Nicepay strategy
+    // NICEPAY → Nicepay strategy
     // -----------------------------------------------------------------------
 
     @Test
@@ -59,7 +59,7 @@ class PgStatusLookupStrategySelectorTest {
     }
 
     // -----------------------------------------------------------------------
-    // TC3: 빈 목록 → IllegalStateException
+    // 빈 목록 → IllegalStateException
     // -----------------------------------------------------------------------
 
     @Test

@@ -9,7 +9,7 @@ import java.util.Optional;
  * pg-service outbound 포트 — business inbox 저장소 계약.
  * order_id UNIQUE 보장 + 5상태 전이.
  *
- * <p>PCS-3: listener 경로 PENDING INSERT + 워커 TX_A + 보정 경로 직진 전이 + 좀비 조회 메서드 추가.
+ * <p>listener 경로 PENDING INSERT + 워커 TX_A + 보정 경로 직진 전이 + 좀비 조회를 제공한다.
  */
 public interface PgInboxRepository {
 
@@ -17,7 +17,7 @@ public interface PgInboxRepository {
 
     /**
      * PK 기반 inbox 조회.
-     * PCS-8: PgInboxProcessor 가 inboxId 로 inbox 데이터를 조회할 때 사용한다.
+     * PgInboxProcessor 가 inboxId 로 inbox 데이터를 조회할 때 사용한다.
      *
      * @param inboxId pg_inbox.id
      * @return inbox Optional
@@ -139,7 +139,7 @@ public interface PgInboxRepository {
     Optional<PgInbox> findByOrderIdForUpdate(String orderId);
 
     /**
-     * IN_PROGRESS row 단건 SKIP LOCKED 선점 — M4 review finding 흡수.
+     * IN_PROGRESS row 단건 SKIP LOCKED 선점.
      *
      * <p>{@code SELECT * FROM pg_inbox WHERE id=:inboxId AND status='IN_PROGRESS' FOR UPDATE SKIP LOCKED}.
      * 0 row 반환 시 {@code Optional.empty()} — 다른 워커가 이미 해당 row 를 잠금.

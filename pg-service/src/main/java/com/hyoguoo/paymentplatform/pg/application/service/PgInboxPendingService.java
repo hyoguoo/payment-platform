@@ -15,29 +15,29 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * pg-service listener TX 경계 봉인 서비스 (PCS-7).
+ * pg-service listener TX 경계 봉인 서비스.
  *
- * <p>§1.1 — listener 가 호출하는 단일 메서드 {@link #insertPendingAndPublish} 에 TX 경계를 봉인한다.
+ * <p>listener 가 호출하는 단일 메서드 {@link #insertPendingAndPublish} 에 TX 경계를 봉인한다.
  * {@code @Transactional(propagation=REQUIRED, timeout=5)} 보장:
  * <ul>
  *   <li>pg_inbox PENDING INSERT + {@link ApplicationEventPublisher#publishEvent} 를 같은 TX 위에서 실행.</li>
  *   <li>TX 내부에서 publishEvent 를 호출해야 {@code @TransactionalEventListener(AFTER_COMMIT)} 가
  *       TX sync 로 등록되고, 커밋 후 발화된다.</li>
  *   <li>timeout=5s — 비정상 hang 시 {@code TransactionTimedOutException} 발화 →
- *       {@code pg_inbox.listener_tx_timeout_total} 카운터 + LogFmt warn 로그 (PC-F3 흡수).</li>
+ *       {@code pg_inbox.listener_tx_timeout_total} 카운터 + LogFmt warn 로그.</li>
  * </ul>
  *
- * <p>AFTER_COMMIT 이후 채널 적재는 PCS-11 의 {@code InboxReadyEventHandler} 가 담당한다.
+ * <p>AFTER_COMMIT 이후 채널 적재는 {@code InboxReadyEventHandler} 가 담당한다.
  *
  * <p>TX 외부에서 publishEvent 를 호출하면 AFTER_COMMIT 리스너가 등록되지 않아 채널 적재가 0이 된다.
- * 이 경우 좀비 폴링(PCS-13)이 60s 임계로 회수하는 fallback 경로로 진행된다.
+ * 이 경우 좀비 폴링이 60s 임계로 회수하는 fallback 경로로 진행된다.
  */
 @Slf4j
 @Service
 public class PgInboxPendingService {
 
     /**
-     * listener TX timeout 카운터 이름 (PC-F3 흡수 — Round 1 §7.2 F4 매핑).
+     * listener TX timeout 카운터 이름.
      * {@code @Transactional(timeout=5)} 초과 시 {@link TransactionTimedOutException} 발화 →
      * 이 카운터 + {@link EventType#PG_INBOX_LISTENER_TX_TIMEOUT} warn 로그로 관측성 제공.
      */
