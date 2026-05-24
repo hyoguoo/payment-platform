@@ -51,11 +51,27 @@
 
 ## Reference Files
 
+> **작업 유형별 진입** — 전부 읽지 말고, 지금 하는 작업에 해당하는 줄의 문서만 연다. 상세 설명은 아래 목록 참고.
+
+| 지금 하는 작업 | 먼저 볼 문서 |
+|---|---|
+| 전체 구조 파악 / 새 기능 설계 | `ARCHITECTURE` → `STRUCTURE` |
+| 결제 플로우(브라우저 → 결과) 수정 | `PAYMENT-FLOW` + `PITFALLS` |
+| 비동기 confirm 사이클 수정 | `CONFIRM-FLOW` + `conventions/kafka` |
+| 코드 작성 (스타일 / 규칙) | `conventions/` 해당 주제 (code-style / error-logging / transactions / kafka / testing) |
+| 테스트 작성 | `TESTING` + `conventions/testing` |
+| PG / 벤더 외부 연동 | `INTEGRATIONS` + `conventions/kafka` |
+| 인프라 / 빌드 / 정적분석 | `STACK` |
+| DB 마이그레이션 (Flyway) | `stack/flyway-operations` |
+| 버그 / 도메인 함정 회피 | `PITFALLS` + `CONCERNS` |
+| 인프라 헬스체크 / 트레이스 검증 | `docs/smoke/*` |
+| 워크플로우 작업 재개 | `docs/topics/<TOPIC>-BRIEFING` → 원본 |
+
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
 - [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — 4서비스 토폴로지, hexagonal layer 룰, 비동기 어댑터 위치, 핵심 설계 결정 인덱스
 - [`docs/context/STRUCTURE.md`](docs/context/STRUCTURE.md) — 디렉토리 트리, 모듈 의존, 패키지 컨벤션
-- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, Flyway 운영 가이드, 빌드 / 정적 분석
+- [`docs/context/STACK.md`](docs/context/STACK.md) — 기술 스택, 인프라, 빌드 / 정적 분석 (Flyway 운영 가이드는 [`stack/flyway-operations.md`](docs/context/stack/flyway-operations.md))
 - [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) — 주제별 코딩 컨벤션 인덱스 (conventions/ 하위: code-style / error-logging / transactions / kafka / testing)
 - [`docs/context/TESTING.md`](docs/context/TESTING.md) — Fake vs Mock 룰, Testcontainers, contract test, JaCoCo, TDD 흐름
 - [`docs/context/INTEGRATIONS.md`](docs/context/INTEGRATIONS.md) — Toss + NicePay Strategy, cross-service HTTP, 외부 의존 관리

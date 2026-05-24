@@ -40,7 +40,7 @@ git diff main...HEAD --stat
 | 파일 | 담당 내용 | 코드에서 대조할 것 |
 |------|----------|-----------------|
 | `ARCHITECTURE.md` | 헥사고날 레이어 구조, 포트/어댑터 목록, 모듈 경계 | 실제 패키지 구조, 포트 인터페이스, 어댑터 구현체 |
-| `STACK.md` | 기술 스택, 의존성 버전 | `build.gradle`, `docker-compose.yml` |
+| `STACK.md` (+ `stack/flyway-operations.md`) | 기술 스택, 의존성 버전, Flyway 운영 가이드 | `build.gradle`, `docker-compose.yml`, `db/` 마이그레이션 |
 | `INTEGRATIONS.md` | 외부 연동(Toss / NicePay), 벤더 어댑터, cross-service HTTP | 벤더 Strategy, HTTP 어댑터, contract test |
 | `PAYMENT-FLOW.md` | end-to-end 결제 플로우 (브라우저 → DONE/FAILED) | 컨트롤러·use case·Kafka 토픽·status 폴링 |
 | `CONFIRM-FLOW.md` | payment-service 측 비동기 confirm 사이클 deep dive (분석 + Mermaid 다이어그램 통합) | 진입 use case, AFTER_COMMIT 리스너, 폴백 워커, consumer, two-phase lease, 상태 머신 |
