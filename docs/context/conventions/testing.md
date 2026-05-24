@@ -18,7 +18,9 @@
 
 ## Commit Style
 
-- **영문 type prefix + 한글 본문**: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
+- **포맷**: `<type>(<scope>): <한글 제목>` + 한글 본문(선택) + `Co-Authored-By:` 트레일러
+  - type(영문): `feat` / `fix` / `refactor` / `test` / `docs` / `chore` / `build` / `style` / `perf`
+  - **scope(고정 어휘)**: 서비스 `payment` / `pg` / `product` / `user` / `gateway` / `eureka`, 횡단 `docs` / `build` / `infra` / `deps`. 한 scope 로 못 묶이면 생략하고, **토픽명·태스크 ID 는 scope 로 쓰지 않는다**.
 - amend 금지, hook 우회 금지, `git add -A` 대신 명시 staging
 - `STATE.md` 단독 커밋 금지 — 항상 다른 변경과 함께
 - 문서 변경은 단일 커밋에 묶음 (한 결의 변경 한 번에)

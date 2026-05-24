@@ -116,8 +116,9 @@ discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
 ## Commit Style
 
 세부 규칙은 `.claude/skills/_shared/protocols/commit-round.md` 참고. 요약:
-- 영문 type prefix + 한글 본문
+- **`<type>(<scope>): <한글 제목>`** — type 은 영문(`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`build` 등), 제목·본문은 한글
+- **scope 는 고정 어휘만**: 서비스(`payment`/`pg`/`product`/`user`/`gateway`/`eureka`) 또는 횡단(`docs`/`build`/`infra`/`deps`). 한 scope 로 못 묶으면 생략. 토픽명·태스크 ID 금지
+- **마지막 줄 `Co-Authored-By:` 트레일러 일관 포함**
 - amend 금지, 명시 staging, hook 우회 금지
 - TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
-- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋
-- STATE.md 단독 커밋 금지
+- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지
