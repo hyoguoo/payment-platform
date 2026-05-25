@@ -25,7 +25,7 @@ verify 단계에서 호출한다.
 - 제목: `<type>: <한글 요약>` (70자 이내). 토픽 코드(영문 UPPER-KEBAB-CASE)를 제목에 넣지 않는다 — 한글로 무슨 변경인지 읽히게 한다.
 - Labels: 변경 유형에 맞게 (`enhancement`, `refactor`, `documentation` 등)
 - Assignees: 작업자
-- 본문 템플릿 (한글 헤더, 서사형):
+- 본문 템플릿 (한글 명사형 헤더, 불릿 중심):
   ```
   ## 관련 이슈
   Closes #<issue-number>
