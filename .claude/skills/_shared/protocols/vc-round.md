@@ -10,8 +10,8 @@ verify 단계에서 호출한다.
 
 ### Step 1 — 이슈 생성 (선택)
 - 토픽 시작 시 `gh issue create`로 이슈 개설
-- 제목: `<TOPIC>` (UPPER-KEBAB-CASE)
-- 본문: discuss 산출물 요약 링크
+- 제목: **한글**로 무슨 작업인지 읽히게 쓴다. 토픽 코드(영문 UPPER-KEBAB-CASE)는 브랜치명·파일명 전용 — 제목에 넣지 않는다.
+- 본문: 사람이 읽어 이해되는 **서사형 한글**. 내부 식별자(태스크 ID `FOLLOW-6`/`TC-11`, 결정 ID `D-TM-1`, 토픽 코드 등)를 그대로 노출하지 말고 그 내용을 풀어 쓴다. 설계 문서 경로 참조는 1줄로 남겨도 된다.
 
 ### Step 2 — 브랜치
 - 브랜치 명: `#<issue-number>` 또는 `<topic-slug>`
@@ -21,7 +21,7 @@ verify 단계에서 호출한다.
 ### Step 3 — PR 생성 (verify 단계)
 - 조건: `verify-ready.md` 전 항목 yes AND 로컬 `./gradlew test` pass
 - `gh pr create --base main --head <branch>` 사용
-- 제목: `<type>: <TOPIC> — <한글 요약>` (70자 이내)
+- 제목: `<type>: <한글 요약>` (70자 이내). 토픽 코드(영문 UPPER-KEBAB-CASE)를 제목에 넣지 않는다 — 한글로 무슨 변경인지 읽히게 한다.
 - Labels: 변경 유형에 맞게 (`enhancement`, `refactor`, `documentation` 등)
 - Assignees: 작업자
 - 본문 템플릿 (한글 헤더, 서사형):
@@ -54,6 +54,7 @@ verify 단계에서 호출한다.
 
 - **금지**: 파일 경로를 추측하지 않는다. 실제 `git diff --stat` 출력을 기반으로만 작성.
 - **금지**: 영문 헤더(Summary, Changes, Test plan) 사용 금지. 한글 헤더 사용.
+- **금지**: 내부 식별자(태스크 ID·결정 ID·토픽 코드) 본문 노출. 그 내용을 한글 서사로 풀어 쓴다.
 
 ### Step 4 — PR 갱신
 - 리뷰 피드백 대응은 **새 커밋** + `git push`
