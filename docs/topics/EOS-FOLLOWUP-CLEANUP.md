@@ -371,9 +371,9 @@ stateDiagram-v2
 - k6 벤치마크: 본 토픽 전 작업군 불요(측정 의존 non-goal). cleanup 처리량 튜닝은 부하 측정 후속(non-goal).
 - **검증 의무 항목 (interview-0 §verification)**: 재시도 제외 목록(`IllegalArgumentException`/`IllegalStateException`/`MessageConversionException`)이 재시도 필요한 DB 인프라 실패(`DataAccessException` 계열 락/타임아웃)를 잘못 즉시 DLQ로 보내지 않는지 경계 확인. → `DataAccessException`은 not-retryable 화이트리스트에 없으므로 `FixedBackOff(1000ms,5)` 재시도 대상이 맞음을 단위/검토 수준에서 확인(코드 변경 불요면 확인만, 갭 발견 시 Critic으로 끌어올림).
 
-## 9. 미해결 아키텍처 적신호 (Domain Expert / Critic 판정 요청)
+## 9. 아키텍처 적신호 — plan 진입 시 모두 해소됨
 
-- **D-TM-3**: `setKafkaAwareTransactionManager` 시그니처가 현 Spring Kafka 버전에 존재하는지 plan 전 확인 필요. 부재 시 대체 API 재조사.
-- **D-TRACE-2**: traceparent 추출 소스(OTel `Context.current()` vs Kafka `@Header("traceparent")`) 택일 — plan 단계에서 안정적인 쪽 확정.
+- **D-TM-3 [해소]**: `setKafkaAwareTransactionManager(KafkaAwareTransactionManager<?, ?>)`가 spring-kafka 3.3.4 `ContainerProperties`에 실재함을 jar(`javap`)로 확인. 현재 주입 빈 `KafkaTransactionManager<String, String>`은 `KafkaAwareTransactionManager`를 구현하므로 인자 변경 없이 메서드명만 교체 가능. 동작 동일.
+- **D-TRACE-2 [해소]**: traceparent 추출 소스는 OTel `Context.current()`로 확정. pg-service가 이미 `PgInboxChannel`(`Context.current()` 캡처) / `PgOutboxChannel` / `OutboxJob` / `InboxJob`에서 OTel Context 캡처·복원 패턴을 일관 사용하므로 동일 방식이 정합. Kafka `@Header("traceparent")`는 미채택(자동 계측 컨텍스트가 이미 활성).
 
 > D-TRACE-3(폴링 회수 시 parent 복원의 정확성)과 D-SPLIT-1(메서드 명명)은 Round 1 Domain Expert 판정으로 닫혔다 — 좀비 회수는 원본 confirm의 인과적 연속이라 span link가 아닌 parent 복원이 정확하며, 메서드 명명은 `canApplyConfirmResult` / `canCompensateStock`으로 확정(D-SPLIT-1).

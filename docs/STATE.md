@@ -1,18 +1,19 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-25 — EOS-FOLLOWUP-CLEANUP discuss 완료 (Round 2 Critic·Domain Expert 양쪽 pass). 이슈 #79, 브랜치 #79, stage=plan.
+> 최종 수정: 2026-05-26 — EOS-FOLLOWUP-CLEANUP plan 완료 (14 태스크, Critic R3 / Domain Expert R2 pass). 이슈 #79, 브랜치 #79, stage=plan-review.
 
 ## 활성 작업
 
-- **EOS-FOLLOWUP-CLEANUP** (이슈 #79, 브랜치 #79, stage=**plan**) — EOS 전환 후속 정합 + 결제 비동기 경로 청소. 5작업군:
+- **EOS-FOLLOWUP-CLEANUP** (이슈 #79, 브랜치 #79, stage=**plan-review**) — EOS 전환 후속 정합 + 결제 비동기 경로 청소. 5작업군:
   - FOLLOW-6 — `PaymentConfirmResultUseCase.handle`에 TM qualifier 명시(나머지 13개+ 무변경) + deprecated `setTransactionManager` → `setKafkaAwareTransactionManager` 교체 + best-effort 1PC 한계 문서화
   - FOLLOW-5 — 겸용 판별 메서드를 `canApplyConfirmResult` / `canCompensateStock`로 분리 + 두 메서드 종결/QUARANTINED/EXPIRED 답 동조 교차 불변식 회귀 테스트(D-SPLIT-3)
   - FOLLOW-2 — `payment_event_dedupe` 만료 행 cleanup 스케줄러
   - TC-11 — product `stock_commit_dedupe` 만료 행 cleanup 스케줄러
   - TC-15 항목3 — `pg_inbox.stored_traceparent` 컬럼(Flyway) + 폴링 회수 시 부모 추적 복원
   - pg_inbox 청소는 종결 행이 confirm 재배달 멱등 SoT라 범위 제외(Round 1 Domain Expert critical 대응).
-  - plan 전 확인 의무 2건: `setKafkaAwareTransactionManager` 버전 존재 / traceparent 추출 소스(OTel 컨텍스트 vs Kafka 헤더) 택일.
-  - 설계: `docs/topics/EOS-FOLLOWUP-CLEANUP.md`. 라운드: `docs/rounds/eos-followup-cleanup/`.
+  - 확인 의무 2건 해소: `setKafkaAwareTransactionManager`는 spring-kafka 3.3.4에 실재(메서드명만 교체) / traceparent 추출은 OTel `Context.current()` 확정.
+  - plan 완료 — 14 태스크(작업군 A~E, 서로 독립 병렬 가능). E 작업군은 Round 1 critical(application→infra 역의존) → 추출을 consumer로 재배치해 해소.
+  - 설계: `docs/topics/EOS-FOLLOWUP-CLEANUP.md`. 계획: `docs/EOS-FOLLOWUP-CLEANUP-PLAN.md`. 라운드: `docs/rounds/eos-followup-cleanup/`.
 
 ## 직전 봉인
 
