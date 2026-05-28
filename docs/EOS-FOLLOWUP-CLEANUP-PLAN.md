@@ -508,6 +508,16 @@ deleteExpired_existsValid미만료행_불영향()
     두 행 existsValid == true (멱등 가드 유효 보존)
 ```
 
+**완료 결과** (2026-05-29):
+- [x] `JdbcEventDedupeStore.deleteExpired` — `DELETE FROM stock_commit_dedupe WHERE expires_at < :now LIMIT :batchSize` 구현 (UnsupportedOperationException stub 제거)
+- [x] `SQL_DELETE_EXPIRED` 상수 추가, `Timestamp.from(now)` 변환 + `NamedParameterJdbcTemplate.update` 사용 (LIMIT 바인딩 안전 처리)
+- [x] `NamedParameterJdbcTemplate` 필드 추가 (`@RequiredArgsConstructor` 자동 주입)
+- [x] `JdbcEventDedupeStoreCleanupTest` 3개 시나리오 모두 PASS (Testcontainers MySQL, @Tag("integration"))
+  - 만료 행 3건 삭제·미만료 2건 잔존
+  - batchSize 3 제한 시 만료 5건 중 3건만 삭제
+  - 미만료 행 existsValid=true 보존 (멱등 가드 유효)
+- [x] `./gradlew :product-service:test :product-service:integrationTest` 20/20 + 4/4 PASS
+
 ---
 
 #### D-3. `DedupeCleanupWorker` (product-service) — 청소 스케줄러 신설

@@ -4,10 +4,13 @@ import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore
 import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
+import java.sql.Timestamp;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -21,6 +24,8 @@ import org.springframework.stereotype.Repository;
  * - existsValid: SELECT + expires_at 비교 (만료 여부 확인)
  * - recordIfAbsent: 만료 엔트리 DELETE → INSERT IGNORE.
  *   INSERT IGNORE 가 0 row 영향이면 중복(false), 1 row 이면 최초(true).
+ * - deleteExpired: expires_at &lt; :now 조건 idempotent batch DELETE (LIMIT :batchSize).
+ *   NamedParameterJdbcTemplate 을 사용해 LIMIT 바인딩을 안전하게 처리한다.
  * <p>
  * 호출자(StockCommitUseCase)의 {@code @Transactional} 안에서 호출되므로 같은 트랜잭션에 참여한다.
  */
@@ -39,7 +44,13 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
     private static final String SQL_DELETE_EXPIRED_BY_UUID =
             "DELETE FROM stock_commit_dedupe WHERE event_uuid = ? AND expires_at < NOW()";
 
+    private static final String SQL_DELETE_EXPIRED =
+            "DELETE FROM stock_commit_dedupe "
+                    + "WHERE expires_at < :now "
+                    + "LIMIT :batchSize";
+
     private final JdbcTemplate jdbcTemplate;
+    private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     /**
      * eventUUID 가 유효하게(TTL 미만료) 존재하는지 확인한다.
@@ -80,10 +91,10 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
 
     /**
      * 만료된 dedupe 행을 일괄 삭제한다.
-     * expires_at < now 조건의 idempotent batch DELETE.
+     * expires_at &lt; :now 조건의 idempotent batch DELETE.
      *
-     * <p>완전 구현은 D-2(JdbcEventDedupeStoreCleanupTest)에서 수행한다.
-     * 현재는 포트 계약 컴파일 통과용 stub — UnsupportedOperationException 반환.
+     * <p>LIMIT :batchSize 로 한 번에 삭제할 최대 행 수를 제한한다.
+     * 이미 삭제된 행은 0 row affected — 동시 실행 무해.
      *
      * @param now       현재 시각
      * @param batchSize 최대 삭제 건수
@@ -91,6 +102,9 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      */
     @Override
     public int deleteExpired(Instant now, int batchSize) {
-        throw new UnsupportedOperationException("D-2에서 구현 예정");
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("now", Timestamp.from(now))
+                .addValue("batchSize", batchSize);
+        return namedParameterJdbcTemplate.update(SQL_DELETE_EXPIRED, params);
     }
 }
