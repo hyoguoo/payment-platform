@@ -40,6 +40,21 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>FAILED·QUARANTINED 는 보상을 먼저 하고 RDB 상태 전이를 나중에 한다. RDB 를 먼저 커밋하면
  * 보상 직전에 crash 했을 때 재배달이 종결 상태 가드에 막혀 보상이 조용히 유실되기 때문이다.
+ *
+ * <h2>트랜잭션 매니저 분리 원칙</h2>
+ *
+ * <p>{@link #handle} 의 {@code @Transactional(transactionManager = "transactionManager")} 는
+ * {@link com.hyoguoo.paymentplatform.payment.core.config.JpaConfig#transactionManager} 가 등록하는
+ * {@code @Primary} JPA 트랜잭션 매니저를 명시적으로 지정한다. 이로써 이 DB 트랜잭션은
+ * 컨슈머 컨테이너가 관리하는 Kafka {@code KafkaTransactionManager}(qualifier: {@code kafkaTransactionManager})와
+ * 완전히 분리된다 — Kafka tx 와 JPA tx 는 별개의 트랜잭션 범위로 운영된다.
+ *
+ * <h2>best-effort 1PC 한계</h2>
+ *
+ * <p>JPA DB 트랜잭션 commit 과 Kafka EOS 트랜잭션 commit 은 원자적으로 묶이지 않는다 (2PC 미지원).
+ * DB commit 성공 후 Kafka commit 전 crash 가 발생하면 재배달이 일어난다.
+ * 이 경우 {@code payment_event_dedupe} 의 {@code INSERT IGNORE} 멱등 마킹이
+ * 중복 비즈니스 로직 실행을 흡수한다 — best-effort 1PC 보상 설계.
  */
 @Slf4j
 @Service
@@ -83,8 +98,12 @@ public class PaymentConfirmResultUseCase {
     /**
      * 메시지 처리 진입점. 종결 상태 가드 → 멱등 마킹 → 상태 분기 순으로 진행한다.
      * RuntimeException 은 그대로 던져 Kafka 에러 핸들러가 재시도/DLQ 를 결정한다.
+     *
+     * <p>qualifier {@code "transactionManager"} 는 {@code JpaConfig#transactionManager} 빈을 명시 지정한다.
+     * Kafka {@code KafkaTransactionManager} 와의 혼동을 방지하고,
+     * DB tx 가 Kafka tx 와 별개의 JPA 매니저로 동작함을 코드 수준에서 보장한다.
      */
-    @Transactional(timeout = 5)
+    @Transactional(transactionManager = "transactionManager", timeout = 5)
     public void handle(ConfirmedEventMessage message) {
         PaymentEvent paymentEvent = paymentEventRepository
                 .findByOrderId(message.orderId())

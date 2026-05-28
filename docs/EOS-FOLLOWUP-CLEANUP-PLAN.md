@@ -262,6 +262,14 @@ expired_canApply와canCompensate_동조_명시단언()
 
 **수락 조건**: `@Transactional(transactionManager = "transactionManager", timeout = 5)` 존재. 클래스 Javadoc에 TM 분리 원칙 + 1PC 한계 문구 존재. 기존 EOS 통합 테스트(`PaymentEosIntegrationTest`) 회귀 없음.
 
+**완료 결과** (2026-05-29):
+- [x] `handle` 메서드에 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 적용
+- [x] 클래스 Javadoc에 TM 분리 원칙 (DB tx vs Kafka tx 별개 범위) 문구 추가
+- [x] 클래스 Javadoc에 best-effort 1PC 한계 (`dedupe INSERT IGNORE` 흡수) 문구 추가
+- [x] `handle` 메서드 Javadoc에 qualifier 명시 이유 주석 추가
+- [x] `JpaConfig#transactionManager` 빈 Javadoc에 `PaymentConfirmResultUseCase` 상호 참조 추가
+- [x] `./gradlew test` 409/409 PASS
+
 ---
 
 ### 작업군 C — FOLLOW-2 (payment-service): `payment_event_dedupe` 만료 행 청소 스케줄러

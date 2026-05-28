@@ -25,6 +25,12 @@ public class JpaConfig {
      *
      * <p>수정: {@code @Primary} JPA {@code transactionManager} 빈을 명시 등록.
      * {@code KafkaTransactionManager} 는 {@code kafkaTransactionManager} 이름으로 qualifier 분리됨.
+     *
+     * <p>이 빈은
+     * {@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase#handle}
+     * 에서 {@code @Transactional(transactionManager = "transactionManager")} qualifier 로 명시 참조된다.
+     * Kafka {@code KafkaTransactionManager} 와의 TM 분리 원칙은
+     * {@code PaymentConfirmResultUseCase} 클래스 주석 참고.
      */
     @Bean
     @Primary
