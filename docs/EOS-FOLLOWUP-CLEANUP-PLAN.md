@@ -662,6 +662,18 @@ restore_형식오류_예외없이null반환()
   단언: 예외 없음 (best-effort — 실패 시 폴백)
 ```
 
+**완료 결과** (2026-05-29):
+- [x] `TraceparentExtractor` 신설 — `pg-service/infrastructure/trace` 패키지, OTel API import 격리
+- [x] `extractFromCurrentContext()` — `W3CTraceContextPropagator.inject`로 현재 Context에서 traceparent 추출. INVALID Span이면 `null` 반환
+- [x] `restoreContext(String)` — `W3CTraceContextPropagator.extract`로 traceparent 문자열에서 OTel Context 복원. null/빈 문자열/형식 오류 시 `Context.root()` 폴백 — 예외 전파 없음
+- [x] `TraceparentExtractorTest` 5개 케이스 모두 PASS (OTel SDK SdkTracerProvider 사용)
+  - 활성 컨텍스트 → 유효 traceparent 추출 + W3C 형식 정규식 매칭
+  - INVALID Span → null 반환
+  - 유효 traceparent → 복원 Context의 trace-id 일치 단언
+  - null 입력 → Context.root() 반환, 예외 없음
+  - "invalid-format" 입력 → 예외 없이 폴백
+- [x] `./gradlew test` 304/304 PASS (전체 회귀 없음)
+
 ---
 
 #### E-3. `PgInboxRepository` 포트 + consumer/service — `insertPending` 시그니처에 `storedTraceparent` 추가, 추출은 consumer에서
