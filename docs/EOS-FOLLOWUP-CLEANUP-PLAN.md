@@ -848,6 +848,14 @@ insertPending_traceparentNull_INSERT성공_폴백()
 
 **수락 조건**: 회수된 좀비 span의 trace-id가 `stored_traceparent`에서 복원한 원본 trace-id와 동일. traceparent NULL/형식 오류 시 폴백으로 회수 정상 완료.
 
+**완료 결과** (2026-05-29):
+- [x] `PgInboxTraceparentIntegrationTest` 신설 — `pg-service/src/test/java/.../pg/integration/` 패키지, `@SpringBootTest @Testcontainers @Tag("integration")`
+- [x] `flywayMigration_V4컬럼존재()` — INFORMATION_SCHEMA 조회로 `pg_inbox.stored_traceparent` 컬럼 존재 확인 PASS
+- [x] `insertPending_traceparent저장됨()` — W3C traceparent 문자열 INSERT 후 `findStoredTraceparent` 조회 결과 일치 PASS
+- [x] `insertPending_traceparentNull_INSERT성공_폴백()` — traceparent=null 인자로 INSERT 성공 + `stored_traceparent IS NULL` PASS
+- [x] `./gradlew :pg-service:integrationTest` 7/7 PASS (기존 4건 + E-5 3건)
+- [x] `./gradlew test` 전체 307/307 PASS (회귀 없음)
+
 ---
 
 ## 리스크 → 태스크 교차 참조 테이블
