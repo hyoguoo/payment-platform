@@ -800,6 +800,20 @@ recoverPendingZombies_traceparent형식오류_폴백처리완료()
   단언: 예외 없음, processor.processPending 호출됨 (best-effort 폴백)
 ```
 
+**완료 결과** (2026-05-29):
+- [x] `PgInboxPollingWorker`에 `processWithRestoredContext` private 헬퍼 추가
+  - `inboxRepository.findStoredTraceparent(inboxId)` 조회
+  - `TraceparentExtractor.restoreContext(traceparent)` 로 OTel Context 복원 (`Optional.empty()` → `Context.root()` 폴백)
+  - `try (Scope ignored = restoredContext.makeCurrent())` 블록 안에서 `processSafely` 호출
+- [x] `recoverPendingZombies` / `recoverInProgressZombies` — 루프 body를 `processWithRestoredContext` 위임으로 교체
+- [x] 클래스 Javadoc "새 root span: 복구 트레이스를 기존 비즈니스 트레이스와 분리" → "원본 confirm 추적과 연속(parent 복원)" 갱신
+- [x] `poll` 메서드 Javadoc에 traceparent 조회 + 복원 + 폴백 흐름 설명 추가
+- [x] `PgInboxPollingWorkerTraceparentTest` 3개 케이스 PASS
+  - traceparent 있음 → `findStoredTraceparent` 호출 + `processPending` 호출 verify
+  - traceparent 없음 → `Optional.empty()` 폴백 + `processPending` 정상 호출
+  - 형식 오류 traceparent → best-effort 폴백 + 예외 없이 `processPending` 호출
+- [x] `./gradlew test` 전체 307/307 PASS (회귀 없음)
+
 ---
 
 #### E-5. 추적 연속성 Testcontainers 통합 테스트
