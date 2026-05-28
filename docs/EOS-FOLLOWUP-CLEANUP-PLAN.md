@@ -242,6 +242,12 @@ expired_canApply와canCompensate_동조_명시단언()
 
 **수락 조건**: `./gradlew :payment-service:compileJava` deprecated 경고 0건(`setTransactionManager(PlatformTransactionManager)` 경고 제거).
 
+**완료 결과** (2026-05-29):
+- [x] `KafkaConsumerConfig.getContainerProperties().setTransactionManager(...)` → `setKafkaAwareTransactionManager(...)` 교체
+- [x] 클래스 Javadoc 내 `setTransactionManager` 언급도 동일하게 갱신
+- [x] `./gradlew :payment-service:compileJava` — deprecated 경고 0건
+- [x] `./gradlew test` 409/409 PASS
+
 ---
 
 #### B-2. `PaymentConfirmResultUseCase` — TM qualifier 명시 + 1PC 한계·TM 분리 원칙 Javadoc

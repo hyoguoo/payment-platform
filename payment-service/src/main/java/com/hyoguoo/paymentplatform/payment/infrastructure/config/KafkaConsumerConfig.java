@@ -29,7 +29,7 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  *       마찬가지로 명시 주입.</li>
  * </ul>
  *
- * <p>EOS 동작 원리: {@code setTransactionManager} 가 설정되면 Spring Kafka 가 컨슈머 진입 시
+ * <p>EOS 동작 원리: {@code setKafkaAwareTransactionManager} 가 설정되면 Spring Kafka 가 컨슈머 진입 시
  * {@code producer.beginTransaction()} 을 자동 호출하고, offset commit 을 프로듀서 트랜잭션에 동행시킨다.
  * RuntimeException 으로 롤백되면 프로듀서 abort + 오프셋 미커밋 → 동일 메시지 재배달.
  *
@@ -59,7 +59,7 @@ public class KafkaConsumerConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
-        factory.getContainerProperties().setTransactionManager(kafkaTransactionManager);
+        factory.getContainerProperties().setKafkaAwareTransactionManager(kafkaTransactionManager);
         factory.setCommonErrorHandler(kafkaErrorHandler);
         factory.setRecordMessageConverter(recordMessageConverter);
         return factory;
