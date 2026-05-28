@@ -91,7 +91,7 @@ public class PaymentConfirmResultUseCase {
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
         // 종결 상태면 이미 처리된 메시지이므로 무시한다.
-        if (!paymentEvent.getStatus().isCompensatableByFailureHandler()) {
+        if (!paymentEvent.getStatus().canApplyConfirmResult()) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
                     () -> "종결 상태 skip — orderId=" + message.orderId()
                             + " status=" + paymentEvent.getStatus()

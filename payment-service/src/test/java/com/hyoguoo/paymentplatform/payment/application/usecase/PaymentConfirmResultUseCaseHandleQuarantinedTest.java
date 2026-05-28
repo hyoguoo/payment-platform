@@ -34,7 +34,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  *
  * <p>보상 → quarantineHandler 순서로 처리한다 (보상은 compensateAtomic 직접 호출).
  *
- * <p>진입 가드: QUARANTINED / FAILED 등 종결 상태는 isCompensatableByFailureHandler=false 라 걸러진다.
+ * <p>진입 가드: QUARANTINED / FAILED 등 종결 상태는 canApplyConfirmResult=false 라 걸러진다.
  */
 @DisplayName("PaymentConfirmResultUseCase handleQuarantined")
 class PaymentConfirmResultUseCaseHandleQuarantinedTest {
@@ -108,7 +108,7 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
     @DisplayName("QUARANTINED — 이미 종결 상태(FAILED)이면 진입 가드에서 noop (compensateAtomic 및 quarantineHandler 미호출)")
     void QUARANTINED_이미_종결_noop() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
-        // FAILED 는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다
+        // FAILED 는 canApplyConfirmResult=false → 진입 가드에서 걸린다
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 

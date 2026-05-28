@@ -215,6 +215,14 @@ expired_canApply와canCompensate_동조_명시단언()
 - A-1/A-2 테스트 전부 green, `PaymentEosIntegrationTest` 회귀 없음.
 - `./gradlew :payment-service:test` pass.
 
+**완료 결과** (2026-05-29):
+- [x] `PaymentEventStatus`에 `canApplyConfirmResult()` / `canCompensateStock()` 추가, `isCompensatableByFailureHandler()` 제거
+- [x] `PaymentConfirmResultUseCase.handle` 호출처 → `canApplyConfirmResult()` 교체
+- [x] `PaymentTransactionCoordinator.executePaymentFailureCompensationWithOutbox` 호출처 → `canCompensateStock()` 교체
+- [x] `PaymentEventStatusEosGuardTest` 삭제 (역할 이전: `PaymentEventStatusSplitMethodTest`)
+- [x] `grep -r "isCompensatableByFailureHandler" payment-service/src` 0건 확인
+- [x] `./gradlew :payment-service:test` 409/409 PASS
+
 ---
 
 ### 작업군 B — FOLLOW-6 (payment-service): TM qualifier 명시 + deprecated API 교체 + 1PC 문서화

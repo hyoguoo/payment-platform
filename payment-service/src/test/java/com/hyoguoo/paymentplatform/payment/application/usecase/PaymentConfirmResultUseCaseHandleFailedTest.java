@@ -35,7 +35,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  * <p>호출 순서: compensateAtomic (보상 먼저) → markPaymentAsFail (RDB 나중).
  * ALREADY_DONE 이어도 RDB 진행. RuntimeException 은 그대로 전파.
  *
- * <p>진입 가드: FAILED 종결 상태는 isCompensatableByFailureHandler=false 라 걸러진다.
+ * <p>진입 가드: FAILED 종결 상태는 canApplyConfirmResult=false 라 걸러진다.
  */
 @DisplayName("PaymentConfirmResultUseCase handleFailed")
 class PaymentConfirmResultUseCaseHandleFailedTest {
@@ -111,7 +111,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
     @DisplayName("FAILED — 이미 종결 상태(FAILED)이면 진입 가드에서 noop (compensateAtomic 미호출)")
     void FAILED_이미_종결_noop() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
-        // FAILED 는 isCompensatableByFailureHandler=false → 진입 가드에서 걸린다
+        // FAILED 는 canApplyConfirmResult=false → 진입 가드에서 걸린다
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
         paymentEventRepository.save(event);
 

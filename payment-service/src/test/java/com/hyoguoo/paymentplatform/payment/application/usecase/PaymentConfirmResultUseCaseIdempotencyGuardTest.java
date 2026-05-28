@@ -29,8 +29,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 /**
  * PaymentConfirmResultUseCase 진입 가드 검증.
  *
- * <p>handle() 진입 시 paymentEvent.getStatus().isCompensatableByFailureHandler() 로 판정한다.
- * isCompensatableByFailureHandler=false (종결 상태: DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)
+ * <p>handle() 진입 시 paymentEvent.getStatus().canApplyConfirmResult() 로 판정한다.
+ * canApplyConfirmResult=false (종결 상태: DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)
  * → markIfAbsent 미호출 + warn noop.
  *
  * <p>race 시나리오: 다른 eventUuid 로 같은 orderId 결과가 두 번 도착하면 진입 가드가 걸러낸다.
@@ -84,7 +84,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     }
 
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal, isCompensatableByFailureHandler=false)이면 compensateAtomic + markPaymentAsFail 미호출")
+    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal, canApplyConfirmResult=false)이면 compensateAtomic + markPaymentAsFail 미호출")
     void handleFailed_whenAlreadyTerminal_shouldSkipCompensation() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
@@ -116,7 +116,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     }
 
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 IN_PROGRESS(non-terminal, isCompensatableByFailureHandler=true)이면 보상 정상 실행")
+    @DisplayName("handleFailed — paymentEvent 가 IN_PROGRESS(non-terminal, canApplyConfirmResult=true)이면 보상 정상 실행")
     void handleFailed_whenInProgress_shouldCompensateNormally() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
