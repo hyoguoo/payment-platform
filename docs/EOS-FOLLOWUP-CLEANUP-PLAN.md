@@ -416,6 +416,15 @@ scheduler:
 
 **수락 조건**: 만료/미만료 행 혼재 시 cleanup 1회 실행 후 만료 행만 삭제·미만료 행 잔존(C-2 통합 테스트). 카운터 `payment_event_dedupe.cleanup_deleted_total` 노출.
 
+**완료 결과** (2026-05-29):
+- [x] `DedupeCleanupWorker` 신설 — `infrastructure/scheduler`에 `@Scheduled(fixedDelayString)` 컴포넌트
+- [x] `PaymentEventDedupeStore.deleteExpired(localDateTimeProvider.nowInstant(), batchSize)` 호출
+- [x] Micrometer 카운터 `payment_event_dedupe.cleanup_deleted_total` — 삭제 행 수 누적 합산
+- [x] 예외 발생 시 전파 없이 ERROR 로그 + 다음 주기 재시도 (`executeDeleteExpired` private 메서드로 try/catch 분리)
+- [x] `application.yml`에 `scheduler.dedupe-cleanup-worker.fixed-delay-ms: 3600000` / `batch-size: 1000` 설정 키 추가
+- [x] 단위 테스트 2개 PASS (counter 증가 / 예외 전파 없음)
+- [x] `./gradlew :payment-service:test` 412/412 PASS
+
 ---
 
 ### 작업군 D — TC-11 (product-service): `stock_commit_dedupe` 만료 행 청소 스케줄러
