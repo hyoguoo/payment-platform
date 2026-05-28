@@ -86,7 +86,7 @@ class PgInboxRepositoryImplTest {
         String orderId = "order-pcs4-001";
 
         // when
-        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-001", "TOSS_PAYMENTS", "pay-key-001");
+        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-001", "TOSS_PAYMENTS", "pay-key-001", null);
 
         // then
         assertThat(inboxId).isNotNull().isPositive();
@@ -102,10 +102,10 @@ class PgInboxRepositoryImplTest {
     void insertPending_duplicateOrderId_returnsExistingId() {
         // given
         String orderId = "order-pcs4-002";
-        Long firstId = sut.insertPending(orderId, AMOUNT, "evt-uuid-002", "TOSS_PAYMENTS", "pay-key-002");
+        Long firstId = sut.insertPending(orderId, AMOUNT, "evt-uuid-002", "TOSS_PAYMENTS", "pay-key-002", null);
 
         // when — 동일 orderId 재호출
-        Long secondId = sut.insertPending(orderId, AMOUNT, "evt-uuid-002b", "TOSS_PAYMENTS", "pay-key-002b");
+        Long secondId = sut.insertPending(orderId, AMOUNT, "evt-uuid-002b", "TOSS_PAYMENTS", "pay-key-002b", null);
 
         // then — 동일 id 반환, 총 행 수 1개
         assertThat(secondId).isEqualTo(firstId);
@@ -175,7 +175,7 @@ class PgInboxRepositoryImplTest {
     void transitPendingToInProgress_pendingRow_updatesStatus() {
         // given — PENDING 행 삽입
         String orderId = "order-pcs4-006";
-        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-006", "TOSS_PAYMENTS", "pay-key-006");
+        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-006", "TOSS_PAYMENTS", "pay-key-006", null);
 
         // when
         boolean result = sut.transitPendingToInProgress(inboxId);
@@ -216,7 +216,7 @@ class PgInboxRepositoryImplTest {
     void transitPendingToInProgress_skipLocked_concurrentWorkerSeesEmpty() throws InterruptedException {
         // given — PENDING 행 삽입 + 자체 TX 커밋 (NOT_SUPPORTED 이므로 insertPending 의 @Transactional 이 독립 TX)
         String orderId = "order-pcs4-skip-locked";
-        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-skip", "TOSS_PAYMENTS", "pay-key-skip");
+        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-uuid-skip", "TOSS_PAYMENTS", "pay-key-skip", null);
 
         // when — 워커 2개가 동시에 동일 PENDING row를 선점 시도
         AtomicInteger trueCount = new AtomicInteger(0);
@@ -322,7 +322,7 @@ class PgInboxRepositoryImplTest {
     void selectInProgressForUpdateSkipLocked_pendingRow_returnsEmpty() {
         // given — PENDING 행 삽입
         String orderId = "order-skip-pending-001";
-        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-skip-p", "TOSS_PAYMENTS", "pk-skip-p");
+        Long inboxId = sut.insertPending(orderId, AMOUNT, "evt-skip-p", "TOSS_PAYMENTS", "pk-skip-p", null);
 
         // when
         Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> result =

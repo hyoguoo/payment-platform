@@ -72,6 +72,14 @@ public class PgInboxEntity {
     @Column(name = "vendor_type", length = 50)
     private String vendorType;
 
+    /**
+     * W3C traceparent 문자열 — 관측성 전용. 비즈니스 판정 비참여.
+     * PaymentConfirmConsumer(infrastructure)가 추출하여 PENDING INSERT 시 함께 기록한다.
+     * NULL 허용 — 헤더 부재·구버전 행 호환.
+     */
+    @Column(name = "stored_traceparent", length = 64)
+    private String storedTraceparent;
+
     public static PgInboxEntity from(PgInbox inbox) {
         return PgInboxEntity.builder()
                 .orderId(inbox.getOrderId())

@@ -82,17 +82,18 @@ class PgInboxPendingServiceTest {
             String eventUuid = "evt-uuid-001";
             String vendorType = "TOSS_PAYMENTS";
             String paymentKey = "pay-key-001";
+            String traceparent = "00-aabbccdd11223344556677889900aabb-1122334455667788-01";
             Long expectedId = 42L;
 
-            when(pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey))
+            when(pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey, traceparent))
                     .thenReturn(expectedId);
 
             // when
-            Long result = sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
+            Long result = sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, traceparent);
 
             // then
             assertThat(result).isEqualTo(expectedId);
-            verify(pgInboxRepository).insertPending(orderId, amount, eventUuid, vendorType, paymentKey);
+            verify(pgInboxRepository).insertPending(orderId, amount, eventUuid, vendorType, paymentKey, traceparent);
             verify(applicationEventPublisher).publishEvent(new PgInboxReadyEvent(expectedId));
         }
 
@@ -108,11 +109,11 @@ class PgInboxPendingServiceTest {
             Long existingId = 99L;
 
             // 중복 orderId — 기존 inboxId 반환 (멱등 보장)
-            when(pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey))
+            when(pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey, null))
                     .thenReturn(existingId);
 
             // when
-            Long result = sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
+            Long result = sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, null);
 
             // then
             assertThat(result).isEqualTo(existingId);
@@ -129,12 +130,12 @@ class PgInboxPendingServiceTest {
             String vendorType = "TOSS_PAYMENTS";
             String paymentKey = "pay-key-003";
 
-            when(pgInboxRepository.insertPending(eq(orderId), eq(amount), eq(eventUuid), eq(vendorType), eq(paymentKey)))
+            when(pgInboxRepository.insertPending(eq(orderId), eq(amount), eq(eventUuid), eq(vendorType), eq(paymentKey), any()))
                     .thenThrow(new RuntimeException("DB 연결 오류"));
 
             // when / then
             assertThatThrownBy(() ->
-                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey))
+                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, null))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("DB 연결 오류");
 
@@ -152,12 +153,12 @@ class PgInboxPendingServiceTest {
             String vendorType = "TOSS_PAYMENTS";
             String paymentKey = "pay-key-timeout";
 
-            when(pgInboxRepository.insertPending(eq(orderId), eq(amount), eq(eventUuid), eq(vendorType), eq(paymentKey)))
+            when(pgInboxRepository.insertPending(eq(orderId), eq(amount), eq(eventUuid), eq(vendorType), eq(paymentKey), any()))
                     .thenThrow(new TransactionTimedOutException("TX timeout 5s 초과"));
 
             // when / then — TransactionTimedOutException 재전파
             assertThatThrownBy(() ->
-                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey))
+                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, null))
                     .isInstanceOf(TransactionTimedOutException.class);
 
             // 카운터 증가 검증
@@ -219,7 +220,7 @@ class PgInboxPendingServiceTest {
             TxIntegrationTestConfig.MockPgInboxRepository.reset();
 
             // when — sut.insertPendingAndPublish 는 @Transactional(REQUIRED, timeout=5) proxy 로 감싸져 있음
-            sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
+            sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, null);
 
             // then — insertPending 호출 시점(= publishEvent 직전) 에 active TX 가 true 여야 함
             assertThat(TxIntegrationTestConfig.MockPgInboxRepository.TX_ACTIVE_AT_INSERT.get())
@@ -241,7 +242,7 @@ class PgInboxPendingServiceTest {
             // sut.insertPendingAndPublish 내부의 @Transactional(REQUIRED) 는 외부 TX 에 참여하고,
             // transactionTemplate 이 커밋할 때 AFTER_COMMIT sync 가 발화된다.
             transactionTemplate.executeWithoutResult(status ->
-                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey)
+                    sut.insertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, null)
             );
 
             // then — TX 커밋 후 AFTER_COMMIT 리스너 발화 확인
@@ -296,10 +297,15 @@ class PgInboxPendingServiceTest {
 
             @Override
             public Long insertPending(String orderId, long amount, String eventUuid,
-                    String vendorType, String paymentKey) {
+                    String vendorType, String paymentKey, String storedTraceparent) {
                 // publishEvent 직전인 이 시점에 active TX 여부를 캡처한다
                 TX_ACTIVE_AT_INSERT.set(TransactionSynchronizationManager.isActualTransactionActive());
                 return nextId++;
+            }
+
+            @Override
+            public Optional<String> findStoredTraceparent(Long inboxId) {
+                return Optional.empty();
             }
 
             @Override

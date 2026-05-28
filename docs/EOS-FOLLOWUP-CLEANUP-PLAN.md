@@ -741,6 +741,21 @@ Long insertPendingAndPublish(String orderId, long amount, String eventUuid,
 - `PgConfirmCommandService.java` / `PgConfirmService.java` / `PgInboxPendingService.java` 세 파일 모두 OTel API import 없음.
 - `PgInbox` domain 엔티티 무변경.
 
+**완료 결과** (2026-05-29):
+- [x] `PgInboxRepository` 포트에 `insertPending` 시그니처 `String storedTraceparent` 파라미터 추가
+- [x] `PgInboxRepository` 포트에 `findStoredTraceparent(Long inboxId): Optional<String>` 전용 조회 메서드 신설
+- [x] `PgInboxEntity`에 `storedTraceparent` 필드 추가 (`@Column(name = "stored_traceparent", length = 64)`)
+- [x] `JpaPgInboxRepository.insertIgnorePending`에 `stored_traceparent` 컬럼 포함, `findStoredTraceparentById` 추가
+- [x] `PgInboxRepositoryImpl.insertPending` — `storedTraceparent` 파라미터 전달, `findStoredTraceparent` 구현
+- [x] `PgConfirmCommandService` inbound 포트에 `handle(command, attempt, storedTraceparent)` 메인 시그니처 추가. 기존 `handle(command, attempt)` / `handle(command)` default 위임 메서드는 null 전달로 하위 호환 유지
+- [x] `PgConfirmService.handle` → `processCommand` → `handleAbsent` 전달 사슬에 `storedTraceparent` String 파라미터 추가. OTel API import 없음
+- [x] `PgInboxPendingService.insertPendingAndPublish` 시그니처에 `storedTraceparent` 파라미터 추가. OTel API import 없음
+- [x] `PaymentConfirmConsumer.consume`에 `TraceparentExtractor.extractFromCurrentContext()` 추출 호출 추가. 추출한 String을 `handle(command, attempt, storedTraceparent)` 경로로 전달
+- [x] `FakePgInboxRepository.insertPending` 시그니처 갱신, `traceparentIndex` 추가, `findStoredTraceparent` 구현
+- [x] 기존 테스트(`PgConfirmServiceTest`, `PgInboxPendingServiceTest`, `PaymentConfirmConsumerTest`, `PgInboxRepositoryImplTest`, `PgConfirmListenerSplitIntegrationTest`) 시그니처 갱신
+- [x] `PgInbox` domain 엔티티 무변경 확인
+- [x] `./gradlew :pg-service:test` 304/304 PASS (전체 회귀 없음)
+
 ---
 
 #### E-4. `PgInboxPollingWorker` — 부모 추적 복원 + Javadoc 의도 갱신
