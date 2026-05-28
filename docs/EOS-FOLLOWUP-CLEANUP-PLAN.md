@@ -462,6 +462,14 @@ scheduler:
   int deleteExpired(Instant now, int batchSize);
 ```
 
+**완료 결과** (2026-05-29):
+- [x] `EventDedupeStore` 포트에 `deleteExpired(Instant now, int batchSize): int` 메서드 추가
+- [x] Javadoc에 멱등 시맨틱 + D-2 구현 예정 명시
+- [x] `JdbcEventDedupeStore`에 컴파일용 stub 추가 (`UnsupportedOperationException` — D-2에서 완전 구현 예정)
+- [x] `FakeEventDedupeStore`에 기본 구현(0 반환) 추가
+- [x] `EventDedupeStoreContractTest` — 포트 시그니처 컴파일 계약 테스트 추가
+- [x] `./gradlew :product-service:test` 20/20 PASS
+
 ---
 
 #### D-2. `JdbcEventDedupeStore` — `deleteExpired` 구현 + Testcontainers 통합 테스트

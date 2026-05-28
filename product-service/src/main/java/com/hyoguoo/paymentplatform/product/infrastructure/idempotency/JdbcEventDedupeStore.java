@@ -36,7 +36,7 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
     private static final String SQL_INSERT_IGNORE =
             "INSERT IGNORE INTO stock_commit_dedupe (event_uuid, expires_at) VALUES (?, ?)";
 
-    private static final String SQL_DELETE_EXPIRED =
+    private static final String SQL_DELETE_EXPIRED_BY_UUID =
             "DELETE FROM stock_commit_dedupe WHERE event_uuid = ? AND expires_at < NOW()";
 
     private final JdbcTemplate jdbcTemplate;
@@ -66,7 +66,7 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
     @Override
     public boolean recordIfAbsent(String eventUUID, Instant expiresAt) {
         // 만료된 엔트리 삭제 (없으면 0 row 영향)
-        jdbcTemplate.update(SQL_DELETE_EXPIRED, eventUUID);
+        jdbcTemplate.update(SQL_DELETE_EXPIRED_BY_UUID, eventUUID);
 
         // INSERT IGNORE: 기존 유효 엔트리가 있으면 0, 없으면 1
         int inserted = jdbcTemplate.update(SQL_INSERT_IGNORE, eventUUID,
@@ -76,5 +76,21 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
         LogFmt.debug(log, LogDomain.STOCK, EventType.EVENT_DEDUPE_RECORD,
                 () -> "eventUUID=" + eventUUID + " isFirstSeen=" + isFirstSeen);
         return isFirstSeen;
+    }
+
+    /**
+     * 만료된 dedupe 행을 일괄 삭제한다.
+     * expires_at < now 조건의 idempotent batch DELETE.
+     *
+     * <p>완전 구현은 D-2(JdbcEventDedupeStoreCleanupTest)에서 수행한다.
+     * 현재는 포트 계약 컴파일 통과용 stub — UnsupportedOperationException 반환.
+     *
+     * @param now       현재 시각
+     * @param batchSize 최대 삭제 건수
+     * @return 실제 삭제된 행 수
+     */
+    @Override
+    public int deleteExpired(Instant now, int batchSize) {
+        throw new UnsupportedOperationException("D-2에서 구현 예정");
     }
 }

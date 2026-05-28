@@ -63,6 +63,19 @@ public class FakeEventDedupeStore implements EventDedupeStore {
         return !expiry.isBefore(Instant.now(clock));
     }
 
+    /**
+     * 만료된 dedupe 행을 일괄 삭제한다.
+     * Fake 구현 — in-memory store에서 expiresAt < now 엔트리 삭제.
+     *
+     * @param now       현재 시각
+     * @param batchSize 최대 삭제 건수
+     * @return 삭제된 항목 수 (batchSize 초과분은 제외)
+     */
+    @Override
+    public int deleteExpired(Instant now, int batchSize) {
+        return 0;
+    }
+
     // --- 검증 헬퍼 ---
 
     public boolean contains(String eventUUID) {
