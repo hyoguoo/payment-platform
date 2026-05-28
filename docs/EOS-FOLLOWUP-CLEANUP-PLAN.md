@@ -311,6 +311,14 @@ expired_canApply와canCompensate_동조_명시단언()
 
 > 포트 타입 `Instant` 확정: `LocalDateTimeProvider`는 `nowInstant(): Instant`를 노출하며, 기존 `JdbcPaymentEventDedupeStore`가 이미 `nowInstant() → Timestamp.from(Instant)`로 `expires_at`을 기록하는 선례와 일치. C-3 워커는 `localDateTimeProvider.nowInstant()`를 포트에 전달하면 됨. JDBC 타입(DATETIME)에 끌려가지 않는다.
 
+**완료 결과** (2026-05-29):
+- [x] `PaymentEventDedupeStore` 포트에 `deleteExpired(Instant now, int batchSize): int` 메서드 추가
+- [x] Javadoc에 Instant 타입 확정 근거 + 멱등 시맨틱 명시
+- [x] `JdbcPaymentEventDedupeStore`에 컴파일용 stub 추가 (C-2에서 완전 구현 예정)
+- [x] `FakePaymentEventDedupeStore`에 기본 구현(0 반환) 추가
+- [x] `PaymentEventDedupeStoreContractTest` — 포트 시그니처 컴파일 계약 테스트 추가
+- [x] `./gradlew :payment-service:test` 410/410 PASS
+
 ---
 
 #### C-2. `JdbcPaymentEventDedupeStore` — `deleteExpired` 구현 + Testcontainers 통합 테스트

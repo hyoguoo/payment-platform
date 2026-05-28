@@ -54,4 +54,16 @@ public class JdbcPaymentEventDedupeStore implements PaymentEventDedupeStore {
                 .addValue("expiresAt", Timestamp.from(expiresAt));
         return jdbcTemplate.update(INSERT_IGNORE_SQL, params);
     }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>C-2 태스크에서 완전 구현 예정.
+     * expires_at &lt; :now 조건 batch DELETE — {@code LIMIT :batchSize}.
+     */
+    @Override
+    public int deleteExpired(Instant now, int batchSize) {
+        // TODO(C-2): DELETE FROM payment_event_dedupe WHERE expires_at < :now LIMIT :batchSize
+        throw new UnsupportedOperationException("C-2 태스크에서 구현 예정");
+    }
 }
