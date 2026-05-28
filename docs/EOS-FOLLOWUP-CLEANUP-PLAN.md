@@ -362,6 +362,16 @@ deleteExpired_멱등성_이미삭제된행재실행_0반환()
   단언: 두 번째 반환값 == 0
 ```
 
+**완료 결과** (2026-05-29):
+- [x] `JdbcPaymentEventDedupeStore.deleteExpired` — `DELETE FROM payment_event_dedupe WHERE expires_at < :now LIMIT :batchSize` 구현 (UnsupportedOperationException stub 제거)
+- [x] `DELETE_EXPIRED_SQL` 상수 추가, `Timestamp.from(now)` 변환 + NamedParameterJdbcTemplate.update 사용
+- [x] `JdbcPaymentEventDedupeStoreCleanupTest` 4개 시나리오 모두 PASS (Testcontainers MySQL, @Tag("integration"))
+  - 만료 행 3건 삭제·미만료 2건 잔존
+  - batchSize 3 제한 시 만료 5건 중 3건만 삭제
+  - 빈 테이블 0 반환
+  - 멱등성: 이미 삭제된 행 재실행 0 반환
+- [x] `./gradlew :payment-service:test :payment-service:integrationTest` 27/27 PASS
+
 ---
 
 #### C-3. `DedupeCleanupWorker` (payment-service) — 청소 스케줄러 신설

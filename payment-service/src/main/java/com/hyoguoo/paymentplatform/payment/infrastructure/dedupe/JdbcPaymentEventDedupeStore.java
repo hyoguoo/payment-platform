@@ -28,6 +28,11 @@ public class JdbcPaymentEventDedupeStore implements PaymentEventDedupeStore {
                     + "(event_uuid, order_id, status, received_at, expires_at) "
                     + "VALUES (:eventUuid, :orderId, :status, :receivedAt, :expiresAt)";
 
+    private static final String DELETE_EXPIRED_SQL =
+            "DELETE FROM payment_event_dedupe "
+                    + "WHERE expires_at < :now "
+                    + "LIMIT :batchSize";
+
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final LocalDateTimeProvider localDateTimeProvider;
 
@@ -58,12 +63,15 @@ public class JdbcPaymentEventDedupeStore implements PaymentEventDedupeStore {
     /**
      * {@inheritDoc}
      *
-     * <p>C-2 태스크에서 완전 구현 예정.
-     * expires_at &lt; :now 조건 batch DELETE — {@code LIMIT :batchSize}.
+     * <p>expires_at &lt; :now 조건 idempotent batch DELETE.
+     * LIMIT :batchSize 로 한 번에 삭제할 최대 행 수를 제한한다.
+     * 이미 삭제된 행은 0 row affected — 동시 실행 무해.
      */
     @Override
     public int deleteExpired(Instant now, int batchSize) {
-        // TODO(C-2): DELETE FROM payment_event_dedupe WHERE expires_at < :now LIMIT :batchSize
-        throw new UnsupportedOperationException("C-2 태스크에서 구현 예정");
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("now", Timestamp.from(now))
+                .addValue("batchSize", batchSize);
+        return jdbcTemplate.update(DELETE_EXPIRED_SQL, params);
     }
 }
