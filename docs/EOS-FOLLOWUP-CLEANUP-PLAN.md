@@ -607,6 +607,13 @@ ALTER TABLE pg_inbox
 
 **수락 조건**: `./gradlew :pg-service:flywayMigrate` (또는 Testcontainers 부팅) 성공. `pg_inbox` 테이블에 `stored_traceparent` 컬럼 존재.
 
+**완료 결과** (2026-05-29):
+- [x] `pg-service/src/main/resources/db/migration/V4__add_pg_inbox_stored_traceparent.sql` 신설
+- [x] `ALTER TABLE pg_inbox ADD COLUMN stored_traceparent VARCHAR(64) NULL` — NULL 허용, 인덱스 불필요
+- [x] VARCHAR(64): W3C traceparent "00-\<32hex\>-\<16hex\>-\<2hex\>" = 55자 + 여유
+- [x] 기존 V1~V3 마이그레이션과 동일한 `db/migration/` 경로 배치
+- [x] `./gradlew test` 전체 PASS (pg-service 299/299)
+
 ---
 
 #### E-2. traceparent 직렬화 헬퍼 단위 테스트 + `TraceparentExtractor` 신설
