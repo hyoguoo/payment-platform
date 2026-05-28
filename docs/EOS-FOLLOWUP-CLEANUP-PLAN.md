@@ -559,6 +559,17 @@ scheduler:
 
 **수락 조건**: `stock_commit_dedupe` 만료 행만 삭제·미만료 잔존(D-2 통합 테스트). 카운터 `stock_commit_dedupe.cleanup_deleted_total` 노출.
 
+**완료 결과** (2026-05-29):
+- [x] `DedupeCleanupWorker` 신설 — `infrastructure/scheduler`에 `@Scheduled(fixedDelayString)` 컴포넌트
+- [x] `EventDedupeStore.deleteExpired(Instant.now(), batchSize)` 호출 (product-service에 LocalDateTimeProvider 없으므로 Instant.now() 직접 사용)
+- [x] Micrometer 카운터 `stock_commit_dedupe.cleanup_deleted_total` — 삭제 행 수 누적 합산
+- [x] 예외 발생 시 전파 없이 ERROR 로그 + 다음 주기 재시도 (`executeDeleteExpired` private 메서드로 try/catch 분리)
+- [x] `SchedulerConfig` 신설 — `@EnableScheduling` + `@ConditionalOnProperty(scheduler.enabled=true)` (payment-service 패턴과 정합)
+- [x] `application.yml`에 `scheduler.dedupe-cleanup-worker.fixed-delay-ms: 3600000` / `batch-size: 1000` 설정 키 추가
+- [x] `EventType`에 `EVENT_DEDUPE_CLEANUP` / `SCHEDULER_ENABLED` 추가
+- [x] 단위 테스트 2개 PASS (counter 증가 / 예외 전파 없음)
+- [x] `./gradlew test` 22/22 PASS (전체 빌드 포함)
+
 ---
 
 ### 작업군 E — TC-15 항목3 (pg-service): 폴링 회수 시 분산 추적 복원

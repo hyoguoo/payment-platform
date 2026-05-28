@@ -12,6 +12,9 @@ public enum EventType {
     STOCK_COMMIT_RDB_DONE,
 
     EVENT_DEDUPE_RECORD,
+    EVENT_DEDUPE_CLEANUP,
+
+    SCHEDULER_ENABLED,
 
     EXCEPTION,
 }

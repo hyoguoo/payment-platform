@@ -1,10 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-29 — EOS-FOLLOWUP-CLEANUP D-2 GREEN 완료. 이슈 #79, 브랜치 #79, stage=execute, Task D-3 대기.
+> 최종 수정: 2026-05-29 — EOS-FOLLOWUP-CLEANUP D-3 GREEN 완료. 이슈 #79, 브랜치 #79, stage=execute, Task E-1 대기.
 
 ## 활성 작업
 
-- **EOS-FOLLOWUP-CLEANUP** (이슈 #79, 브랜치 #79, stage=**execute**, 현재 Task **D-3** 대기) — EOS 전환 후속 정합 + 결제 비동기 경로 청소. 5작업군: A-1~A-3, B-1~B-2, C-1~C-3, D-1~D-2 완료.
+- **EOS-FOLLOWUP-CLEANUP** (이슈 #79, 브랜치 #79, stage=**execute**, 현재 Task **E-1** 대기) — EOS 전환 후속 정합 + 결제 비동기 경로 청소. 5작업군: A-1~A-3, B-1~B-2, C-1~C-3, D-1~D-3 완료.
   - FOLLOW-6 — `PaymentConfirmResultUseCase.handle`에 TM qualifier 명시(나머지 13개+ 무변경) + deprecated `setTransactionManager` → `setKafkaAwareTransactionManager` 교체 + best-effort 1PC 한계 문서화
   - FOLLOW-5 — 겸용 판별 메서드를 `canApplyConfirmResult` / `canCompensateStock`로 분리 + 두 메서드 종결/QUARANTINED/EXPIRED 답 동조 교차 불변식 회귀 테스트(D-SPLIT-3)
   - FOLLOW-2 — `payment_event_dedupe` 만료 행 cleanup 스케줄러
