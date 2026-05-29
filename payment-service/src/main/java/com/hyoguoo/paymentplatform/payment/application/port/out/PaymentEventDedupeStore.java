@@ -29,7 +29,7 @@ public interface PaymentEventDedupeStore {
      * expires_at < now 조건의 idempotent batch DELETE.
      * 동시 실행 시 이미 삭제된 행은 0 row affected — 무해.
      *
-     * <p>시계 소스는 {@link com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider#nowInstant()} 기준.
+     * <p>시계 소스는 {@code LocalDateTimeProvider#nowInstant()} 기준.
      * 호출자(스케줄러)가 {@code localDateTimeProvider.nowInstant()} 를 전달하면 됨.
      * JDBC DATETIME 타입에 끌려가지 않도록 {@link Instant} 로 확정.
      *

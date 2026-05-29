@@ -100,7 +100,8 @@ public class PgInboxPendingService {
             String storedTraceparent
     ) {
         try {
-            Long inboxId = pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
+            Long inboxId = pgInboxRepository.insertPending(
+                    orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
             applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inboxId));
             return inboxId;
         } catch (TransactionTimedOutException e) {
