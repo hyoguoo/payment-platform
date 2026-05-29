@@ -89,6 +89,7 @@ process(result);  // result 가 null 일 수 있음
 **처방**:
 - dedupe TTL 기본 P8D (Kafka retention 7d + 복구 버퍼 1d)
 - 모든 모듈의 dedupe TTL 정렬 (`StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
+- 만료 행 청소는 `DedupeCleanupWorker` (`@Scheduled`, payment/product) 가 `expires_at < now` 기준으로 DELETE — TTL P8D > Kafka retention 7d 관계상 삭제 대상은 이미 재배달 가능 윈도우를 벗어난 행뿐이라 멱등에 무해 (EOS-FOLLOWUP-CLEANUP)
 
 ## 10. Single-phase mark with long TTL — payment-service 측 폐기
 
@@ -218,9 +219,9 @@ process(result);  // result 가 null 일 수 있음
 **증상**: 결제가 QUARANTINED 된 이후 뒤늦게 APPROVED 결제 결과 메시지가 도착 (pg-service retry 지연 등). 가드 없으면 `handleApproved` 가 실행 → `markPaymentAsDone` 에서 `IllegalStateException` (QUARANTINED → DONE 비허용 전이) → not-retryable 즉시 DLQ → 재고 발행 0 + 상태 불일치 로그 없음.
 
 **처방** (D7 가드 — PET-3 / PET-8):
-- `handle()` 진입 직후 `paymentEvent.getStatus().isCompensatableByFailureHandler()` 체크.
+- `handle()` 진입 직후 `paymentEvent.getStatus().canApplyConfirmResult()` 체크.
 - false (QUARANTINED 포함 종결 상태) → `LogFmt.warn` + noop return. DLQ 전혀 건드리지 않음.
-- D7 가드 변경 시 `PaymentEventStatusEosGuardTest` (QUARANTINED 단독 assert) 가 회귀 탐지 (DR-3).
+- D7 가드 변경 시 `PaymentEventStatusSplitMethodTest` (분리 메서드 검증) + `PaymentEventStatusCrossInvariantTest` (`canApplyConfirmResult` ↔ `canCompensateStock` 교차 동조 불변식) 가 회귀 탐지 (DR-3).
 
 ## 22. multi-product 결제의 idempotencyKey 결정성 — StockEventUuidDeriver 보존 이유
 
