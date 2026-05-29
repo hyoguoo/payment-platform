@@ -138,7 +138,7 @@ public class PaymentTransactionCoordinator {
         PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
         boolean outboxInFlight = freshOutbox.getStatus().isInFlight();
-        boolean eventCompensatable = freshEvent.getStatus().isCompensatableByFailureHandler();
+        boolean eventCompensatable = freshEvent.getStatus().canCompensateStock();
 
         if (outboxInFlight && eventCompensatable) {
             compensateStockCacheGuarded(orderId, paymentOrderList);

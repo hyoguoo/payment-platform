@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — payment-service dedupe 신설 + StockOutbox 묶음 폐기 반영)
+> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product DedupeCleanupWorker + product SchedulerConfig + pg trace 패키지 반영)
 
 ## 루트 레이아웃
 
@@ -87,13 +87,14 @@ payment-platform/
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
     │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment: JdbcPaymentEventDedupeStore — payment_event_dedupe INSERT IGNORE / pg Redis+RDB / product RDB)
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
-    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (PgOutboxImmediateWorker, PgInboxImmediateWorker, PgInboxPollingWorker)
+    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (pg: PgOutboxImmediateWorker, PgInboxImmediateWorker, PgInboxPollingWorker / payment·product: DedupeCleanupWorker — dedupe 만료 행 청소)
+    │   │   │   ├── trace/        # OTel traceparent 추출·복원 어댑터 (pg-service — TraceparentExtractor, pg_inbox.stored_traceparent 기반 폴링 회수 추적 복원)
     │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
     │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob, PgInboxChannel + InboxJob)
     │   │   │   ├── aspect/       # 인프라 측 AOP 구현 (DomainEventLoggingAspect, *MetricsAspect)
     │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service — toss/ nicepay/ fake/)
     │   │   │   ├── metrics/      # Micrometer 메트릭 정의 / 등록
-    │   │   │   └── config/
+    │   │   │   └── config/       # @Configuration (product: SchedulerConfig — @EnableScheduling + @ConditionalOnProperty scheduler.enabled)
     │   │   ├── application/aspect/annotation/  # AOP 어노테이션 정의 (@PublishDomainEvent, @PaymentStatusChange, @TossApiMetric — 어노테이션만)
     │   │   ├── core/             # 횡단 관심사 (서비스마다 깊이 다름 — 아래는 payment-service 기준 최대 트리)
     │   │   │   ├── common/

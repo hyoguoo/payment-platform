@@ -30,6 +30,17 @@ public class FakePaymentEventDedupeStore implements PaymentEventDedupeStore {
         return inserted ? 1 : 0;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Fake 구현 — 테스트에서 실제 삭제 시뮬레이션이 필요하면 하위 클래스에서 override.
+     * 기본 구현은 0 을 반환한다 (삭제된 행 없음).
+     */
+    @Override
+    public int deleteExpired(Instant now, int batchSize) {
+        return 0;
+    }
+
     // --- assertion helpers ---
 
     /**

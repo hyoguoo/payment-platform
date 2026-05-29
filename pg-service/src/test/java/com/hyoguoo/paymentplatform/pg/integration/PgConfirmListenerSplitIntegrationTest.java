@@ -239,7 +239,7 @@ class PgConfirmListenerSplitIntegrationTest {
         // given — PENDING 행 INSERT
         String orderId = "order-a3-" + UUID.randomUUID();
         Long inboxId = pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-a3");
+                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-a3", null);
 
         // processPending 내 invokeVendor 단계에서 RuntimeException 강제 주입
         // TX_A(PENDING→IN_PROGRESS) 는 이미 커밋됨, TX_B 미진입 → IN_PROGRESS 잔존 (좀비)

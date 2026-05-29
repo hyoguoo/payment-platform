@@ -1,12 +1,22 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-18 — PAYMENT-EOS-TRANSITION 봉인 (14 PET + review R2 양쪽 pass + test 708 + integrationTest 23 PASS). PR 생성 대기.
+> 최종 수정: 2026-05-29 — EOS-FOLLOWUP-CLEANUP verify 완료, stage=**done**. 14 태스크 전체 + `./gradlew test` 746 PASS + 영구 문서 5개 갱신 + 아카이브 완료. PR 생성만 대기(사용자 지시로 PR 직전 정지).
 
 ## 활성 작업
 
-없음. 다음 토픽 후보 참고.
+(없음)
 
 ## 직전 봉인
+
+- **EOS-FOLLOWUP-CLEANUP** (EOS 전환 후속 정합 + 결제 비동기 경로 청소, PR 생성 대기, 2026-05-29, 이슈 #79 · 브랜치 #79) — `docs/archive/eos-followup-cleanup/COMPLETION-BRIEFING.md`
+  - 14 태스크(A-1~A-3, B-1~B-2, C-1~C-3, D-1~D-3, E-1~E-5) 31 커밋
+  - FOLLOW-6: `handle`에 `@Transactional(transactionManager="transactionManager")` qualifier 명시(위험 지점 1곳만) + deprecated→`setKafkaAwareTransactionManager` 교체 + 1PC 한계 Javadoc
+  - FOLLOW-5: `isCompensatableByFailureHandler` → `canApplyConfirmResult`/`canCompensateStock` 분리 + 교차 불변식 회귀 테스트(D7 침묵 DLQ 드리프트 가드) + `PaymentEventStatusEosGuardTest` 삭제
+  - FOLLOW-2/TC-11: payment·product dedupe 만료행 청소 `DedupeCleanupWorker`(@Scheduled, `deleteExpired` 추가, TTL P8D>retention 7d 멱등 무해), pg_inbox는 재배달 멱등 SoT라 제외
+  - TC-15 항목3: Flyway V4 `pg_inbox.stored_traceparent` + `TraceparentExtractor`(OTel infra 격리) — consumer 추출→RDB 보관→폴링 회수 시 원본 confirm parent 복원
+  - 리뷰 critical/major 0, minor 3 후속 등재(PRODUCT-TIME-ABSTRACTION / SCHEDULER-ENABLED-GATE / CLEANUP-FAILURE-COUNTER, TODOS.md)
+  - `./gradlew test` 746 PASS, 영구 문서 5개 갱신(CONFIRM-FLOW / ARCHITECTURE / STRUCTURE / PITFALLS / TODOS)
+- **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, PR 생성 대기, 2026-05-18) — `docs/archive/payment-eos-transition/`
 
 - **PAYMENT-EOS-TRANSITION** (payment-service 결제 결과 컨슈머 EOS 전환, PR 생성 대기, 2026-05-18) — `docs/archive/payment-eos-transition/`
   - 발행 보장 모델을 outbox → Kafka EOS 빅뱅 전환 (1 PR 안에 `StockOutbox` 묶음 22 파일 삭제 + `KafkaTransactionManager` + `payment_event_dedupe` UNIQUE INSERT IGNORE + product-service `read_committed` 동시 적용)

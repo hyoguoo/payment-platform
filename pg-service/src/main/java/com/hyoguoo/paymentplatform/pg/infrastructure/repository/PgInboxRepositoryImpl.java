@@ -93,16 +93,26 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
      * <p>INSERT IGNORE 로 orderId UNIQUE 충돌을 흡수하고, SELECT 로 실제 id 를 반환한다.
      * 신규 삽입 또는 기존 row — 어느 경우도 동일한 id 를 반환하여 downstream 이 inboxId 를 보유한다.
      *
-     * <p>paymentKey / vendorType 컬럼을 포함하여 INSERT 한다.
+     * <p>paymentKey / vendorType / storedTraceparent 컬럼을 포함하여 INSERT 한다.
      * eventUuid 는 DB 컬럼 없이 EventDedupeStore 에서 관리하므로 여기서는 무시한다.
+     * storedTraceparent 는 NULL 허용 — 헤더 부재·구버전 행 호환.
      */
     @Override
     @Transactional
     public Long insertPending(String orderId, long amount, String eventUuid,
-                              String vendorType, String paymentKey) {
+                              String vendorType, String paymentKey, String storedTraceparent) {
         LocalDateTime now = LocalDateTime.now(clock);
-        jpaPgInboxRepository.insertIgnorePending(orderId, amount, paymentKey, vendorType, now);
+        jpaPgInboxRepository.insertIgnorePending(orderId, amount, paymentKey, vendorType, storedTraceparent, now);
         return jpaPgInboxRepository.findIdByOrderId(orderId);
+    }
+
+    /**
+     * 회수 경로 전용 — stored_traceparent 단일 컬럼 조회.
+     * NULL 또는 행 없음이면 Optional.empty() 반환.
+     */
+    @Override
+    public Optional<String> findStoredTraceparent(Long inboxId) {
+        return jpaPgInboxRepository.findStoredTraceparentById(inboxId);
     }
 
     /**

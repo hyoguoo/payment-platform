@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 전환, StockOutbox 묶음 폐기, payment_event_dedupe 신설)
+> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product dedupe cleanup 스케줄러 + pg stored_traceparent 복원 반영)
 
 ## 개요
 
@@ -117,11 +117,14 @@ flowchart LR
 | `PgInboxChannel` + `InboxJob` | `pg-service/.../infrastructure/channel` | inbox **작업 큐** (`LinkedBlockingQueue<InboxJob>` cap=1024) — `InboxJob` 은 `inboxId + otelContext + snapshot`. `InboxReadyEventHandler` (AFTER_COMMIT) 가 offer. Kafka consumer ↔ VT 워커 간 시간차 컨텍스트 경계 처리 |
 | `InboxReadyEventHandler` (`@TransactionalEventListener(AFTER_COMMIT)`) | `pg-service/.../infrastructure/listener` | TX 커밋 직후 `PgInboxChannel.offerNow(inboxId)` 호출 — inbox 작업 큐 적재 트리거 |
 | `PgInboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | inbox VT 워커 5개 — 채널에서 `InboxJob` take 후 컨텍스트 복원 → `PgInboxProcessUseCase.processPending` 또는 `processInProgressZombie` 호출 (TX_A → 벤더 → TX_B) |
-| `PgInboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | inbox 좀비 폴링 폴백 (5초 주기) — PENDING 좀비 (`received_at < now-60s`) + IN_PROGRESS 좀비 (`updated_at < now-60s`) 두 경로 회수. 폴링 진입은 OTel 새 root span |
+| `PgInboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | inbox 좀비 폴링 폴백 (5초 주기) — PENDING 좀비 (`received_at < now-60s`) + IN_PROGRESS 좀비 (`updated_at < now-60s`) 두 경로 회수. 폴링 회수 시 `pg_inbox.stored_traceparent` 로 부모 추적 복원 (`TraceparentExtractor`, EOS-FOLLOWUP-CLEANUP — 이전 OTel 새 root span 에서 변경) |
 | `PgOutboxChannel` + `OutboxJob` | `pg-service/.../infrastructure/channel` | outbox **발행 큐** (`LinkedBlockingQueue<OutboxJob>` cap=1024) — offer 시점 OTel Context + ContextSnapshot 캡처해 작업에 동봉 |
 | `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | outbox VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | outbox 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
-| `JdbcPaymentEventDedupeStore` | `payment-service/.../infrastructure/dedupe` | `payment_event_dedupe` INSERT IGNORE 어댑터. `PaymentEventDedupeStore` 포트 구현 (PET-5). EOS 트랜잭션 안에서 멱등 마킹 |
+| `JdbcPaymentEventDedupeStore` | `payment-service/.../infrastructure/dedupe` | `payment_event_dedupe` INSERT IGNORE 어댑터. `PaymentEventDedupeStore` 포트 구현 (PET-5). EOS 트랜잭션 안에서 멱등 마킹. `deleteExpired(Instant, int)` 만료 행 일괄 삭제 추가 (EOS-FOLLOWUP-CLEANUP) |
+| `DedupeCleanupWorker` (payment, `@Scheduled`) | `payment-service/.../infrastructure/scheduler` | `payment_event_dedupe` 만료 행 (`expires_at < now`) 주기 청소. `LocalDateTimeProvider` 주입으로 현재 시각 획득. `payment_event_dedupe.cleanup_deleted_total` 카운터 (EOS-FOLLOWUP-CLEANUP) |
+| `DedupeCleanupWorker` (product, `@Scheduled`) | `product-service/.../infrastructure/scheduler` | `stock_commit_dedupe` 만료 행 주기 청소. `Instant.now()` 직접 사용 (서비스 시간 추상화 부재). `SchedulerConfig` (`@EnableScheduling` + `@ConditionalOnProperty scheduler.enabled`) 로 활성 게이트 (EOS-FOLLOWUP-CLEANUP) |
+| `TraceparentExtractor` | `pg-service/.../infrastructure/trace` | OTel `W3CTraceContextPropagator` 래핑 — `extractFromCurrentContext` / `restoreContext`. consumer 가 추출한 traceparent 를 `pg_inbox.stored_traceparent` 에 RDB 저장 → 폴링 회수 시 부모 추적 복원. 관측성 전용, 비즈니스 비참여 (EOS-FOLLOWUP-CLEANUP) |
 | `KafkaConsumerConfig` | `payment-service/.../infrastructure/config` | `kafkaListenerContainerFactory` 명시 정의 + `KafkaTransactionManager(stockCommittedProducerFactory)` wire-in (EOS consumer). `isolation.level=read_committed` 는 `application.yml` `spring.kafka.consumer.properties.isolation.level` 로 적용 |
 | `KafkaProducerConfig` (EOS) | `payment-service/.../infrastructure/config` | EOS-aware `stockCommittedProducerFactory` + `KafkaTransactionManager` + `stockCommittedKafkaTemplate` 빈 (transactional.id prefix = `${spring.application.name}-${HOSTNAME:local}-`, enable.idempotence=true, transaction.timeout.ms=10000) |
 | `KafkaErrorHandlerConfig` | `payment-service/.../infrastructure/config` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈. not-retryable: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException`. retry 한도 초과 시 자동으로 `payment.events.confirmed.dlq` 로 publish |
@@ -161,7 +164,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | 관심사 | 위치 | 비고 |
 |---|---|---|
-| Tracing | `core/config/AsyncConfig`, `core/config/concurrent/ContextAwareVirtualThreadExecutors`, infrastructure messaging/listener | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파. pg-service in-memory channel 은 `OutboxJob` 동봉으로 명시 캡처·복원 |
+| Tracing | `core/config/AsyncConfig`, `core/config/concurrent/ContextAwareVirtualThreadExecutors`, infrastructure messaging/listener, pg `infrastructure/trace/TraceparentExtractor` | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파. pg-service in-memory channel 은 `OutboxJob` 동봉으로 명시 캡처·복원. pg-service inbox 폴링 회수 경로는 `pg_inbox.stored_traceparent` RDB 보관 → `TraceparentExtractor` 로 부모 추적 복원 (좀비 회수도 원 Kafka 메시지 추적과 연결) |
 | MDC + LogFmt | `core/common/log/LogFmt` (모든 서비스) | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
 | AOP `@PublishDomainEvent` + `@PaymentStatusChange` | 어노테이션 정의: `application/aspect/annotation/` / 구현: `infrastructure/aspect/DomainEventLoggingAspect` (payment), `infrastructure/aspect/TossApiMetricsAspect` (pg) | `payment_history` audit trail 자동 기록 + Toss 호출 메트릭 |
 | Metrics | `core/common/metrics` (payment 공통), `infrastructure/metrics/*` (서비스별 Micrometer 카운터/타이머 등록) | Prometheus 노출 — `payment_quarantined_total`, `stock_kafka_publish_fail_total`, `pg_outbox.relay_fail_total` 등 |
@@ -222,7 +225,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 **Phase 4 후속**:
 - TC-7 (outbox retry 정책 정렬) 와 별개
-- product / pg 의 dedupe 테이블 cleanup 스케줄러 부재 → 만료 row 누적 시 운영 부담. 부하 측정 후 도입 결정 가치
+- payment / product 의 dedupe 테이블 cleanup 스케줄러 도입 완료 (EOS-FOLLOWUP-CLEANUP) — `DedupeCleanupWorker` (`@Scheduled`) 가 `expires_at < now` 만료 행을 일괄 DELETE. pg_inbox 청소는 종결 행이 confirm 재배달 멱등 SoT 라 범위 제외
 
 ## 다음 토픽
 

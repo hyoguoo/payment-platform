@@ -68,11 +68,15 @@ public class PgInboxPendingService {
      * <p>TX timeout(5s) 초과 시 {@link TransactionTimedOutException} 을 전파하기 전에
      * 카운터 + warn 로그를 기록한다. 예외는 재전파되어 Kafka consumer 의 에러 핸들링으로 올라간다.
      *
-     * @param orderId    주문 식별자 (pg_inbox.order_id UNIQUE)
-     * @param amount     원화 최소 단위 정수
-     * @param eventUuid  PG 콜백 이벤트 UUID (중복 방어용)
-     * @param vendorType 벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
-     * @param paymentKey 벤더 결제 키
+     * <p>storedTraceparent 는 불투명 String 토큰으로만 전달 — OTel API import 없음.
+     * traceparent 기록은 absent(신규 PENDING) 경로 한정.
+     *
+     * @param orderId           주문 식별자 (pg_inbox.order_id UNIQUE)
+     * @param amount            원화 최소 단위 정수
+     * @param eventUuid         PG 콜백 이벤트 UUID (중복 방어용)
+     * @param vendorType        벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
+     * @param paymentKey        벤더 결제 키
+     * @param storedTraceparent W3C traceparent 불투명 문자열 (null 허용)
      * @return 삽입 또는 기존 row 의 id
      */
     @Transactional(propagation = Propagation.REQUIRED, timeout = 5)
@@ -81,9 +85,10 @@ public class PgInboxPendingService {
             long amount,
             String eventUuid,
             String vendorType,
-            String paymentKey
+            String paymentKey,
+            String storedTraceparent
     ) {
-        return doInsertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey);
+        return doInsertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
     }
 
     private Long doInsertPendingAndPublish(
@@ -91,10 +96,12 @@ public class PgInboxPendingService {
             long amount,
             String eventUuid,
             String vendorType,
-            String paymentKey
+            String paymentKey,
+            String storedTraceparent
     ) {
         try {
-            Long inboxId = pgInboxRepository.insertPending(orderId, amount, eventUuid, vendorType, paymentKey);
+            Long inboxId = pgInboxRepository.insertPending(
+                    orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
             applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inboxId));
             return inboxId;
         } catch (TransactionTimedOutException e) {

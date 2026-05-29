@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — payment-service 결제 결과 컨슈머 EOS 전환, StockOutbox 묶음 폐기)
+> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -121,7 +121,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>containerFactory=kafkaListenerContainerFactory<br/>(KafkaTransactionManager 통합)"]) --> GUARD{"D7 가드<br/>isCompensatableByFailureHandler?"}
+    KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>containerFactory=kafkaListenerContainerFactory<br/>(KafkaTransactionManager 통합)"]) --> GUARD{"D7 가드<br/>canApplyConfirmResult?"}
 
     GUARD -->|false = 종결 상태| NOOP["noop 로그 + return<br/>(QUARANTINED 늦은 APPROVED 포함)"]
     GUARD -->|true = 진행 가능| DEDUPE["PaymentEventDedupeStore.markIfAbsent<br/>(INSERT IGNORE payment_event_dedupe)"]
@@ -157,14 +157,14 @@ flowchart TD
 - abort 시 RDB rollback + 발행 버퍼 폐기 + offset 미커밋 → 동일 메시지 재배달.
 
 **EOS atomicity SSOT (RD1-2 명시):**
-- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
-- 결과적으로 RDB commit 과 Kafka commit 사이에 crash 시 at-least-once 재배달이 발생한다.
+- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 는 `@Primary JpaTransactionManager` 를 qualifier 로 **명시 고정** 한다 (EOS-FOLLOWUP-CLEANUP — 이전 qualifier 미명시 시 다중 TM 환경에서 선택 모호성 제거). `KafkaTransactionManager(EOS)` 와 별개 TM 임을 코드 레벨에서 못박는다.
+- 결과적으로 RDB commit 과 Kafka commit 사이에 crash 시 at-least-once 재배달이 발생한다 (best-effort 1PC 한계). 이 한계와 TM 분리 원칙은 `handle` Javadoc 에 명시되어 있다.
 - **정합성 SSOT 는 EOS atomicity 그 자체가 아니라 위키 line 141 룰**: 0 row(중복) 시에도 stock-committed 발행은 항상 진행 → product-service `stock_commit_dedupe` 가 재배달을 흡수 → 최종 재고 정합 보장.
 - 즉 EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
-- 후속 과제: `TODOS.md` TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 ChainedKafkaTransactionManager 검토.
+- ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
 
 **D7 진입 가드:**
-- `paymentEvent.getStatus().isCompensatableByFailureHandler()` — READY / IN_PROGRESS / RETRYING 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
+- `paymentEvent.getStatus().canApplyConfirmResult()` — READY / IN_PROGRESS / RETRYING 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
 - QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 D7 가드가 차단 — DLQ silent 분기 방지 (DR-3 가드).
 
 **D5 멱등 마킹 (`payment_event_dedupe`):**
@@ -308,7 +308,7 @@ flowchart TD
 
     RELOAD --> CHK_OB{outbox.status.isInFlight?}
     CHK_OB -->|아니오 DONE/FAILED| SKIP_LOG[재고 복구 skip<br/>warn 로그]
-    CHK_OB -->|예 IN_FLIGHT| CHK_EV{event.status<br/>.isCompensatableByFailureHandler?}
+    CHK_OB -->|예 IN_FLIGHT| CHK_EV{event.status<br/>.canCompensateStock?}
 
     CHK_EV -->|false: DONE/FAILED/QUARANTINED/terminal| SKIP_LOG
     CHK_EV -->|true: READY/IN_PROGRESS/RETRYING| RESTORE["compensateStockCacheGuarded<br/>각 PaymentOrder 별 stockCachePort.increment"]
@@ -324,7 +324,7 @@ flowchart TD
 
 **이중 가드 조건:**
 - `outbox.status.isInFlight()` — DONE/FAILED 이면 이미 처리됨 → skip
-- `event.status.isCompensatableByFailureHandler()` — READY/IN_PROGRESS/RETRYING 만 보상. QUARANTINED 는 `QuarantineCompensationHandler` 전담이므로 false. terminal 도 false.
+- `event.status.canCompensateStock()` — READY/IN_PROGRESS/RETRYING 만 보상. QUARANTINED 는 `QuarantineCompensationHandler` 전담이므로 false. terminal 도 false.
 
 ---
 
@@ -375,7 +375,7 @@ stateDiagram-v2
 >
 > **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 에서 DONE → StatusType.DONE, FAILED → StatusType.FAILED, 그 외 default → StatusType.PROCESSING. QUARANTINED 는 default 분기 → PROCESSING. 격리된 결제는 admin 이 DONE/FAILED 강제 전이해야 클라이언트 폴링이 종료된다.
 
-`isCompensatableByFailureHandler()` = READY / IN_PROGRESS / RETRYING (재고 차감이 발생했을 수 있는 상태).
+`canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = `canCompensateStock()` (보상 가드) = READY / IN_PROGRESS / RETRYING (재고 차감이 발생했을 수 있는 상태). 두 메서드는 EOS-FOLLOWUP-CLEANUP 에서 분리됐고, 종결 / QUARANTINED / EXPIRED 에서 답이 동조한다 (둘 다 false).
 
 ### PaymentOutboxStatus
 

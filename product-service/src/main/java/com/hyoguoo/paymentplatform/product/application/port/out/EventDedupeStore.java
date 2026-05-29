@@ -28,4 +28,15 @@ public interface EventDedupeStore {
      * @return 유효한 중복이면 true, 없거나 만료됐으면 false
      */
     boolean existsValid(String eventUUID);
+
+    /**
+     * 만료된 dedupe 행을 일괄 삭제한다.
+     * expires_at < now 조건의 idempotent batch DELETE.
+     * 동시 실행 시 이미 삭제된 행은 0 row affected — 무해.
+     *
+     * @param now       현재 시각
+     * @param batchSize 최대 삭제 건수
+     * @return 실제 삭제된 행 수
+     */
+    int deleteExpired(Instant now, int batchSize);
 }

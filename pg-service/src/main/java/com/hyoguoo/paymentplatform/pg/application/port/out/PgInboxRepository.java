@@ -30,15 +30,26 @@ public interface PgInboxRepository {
      * listener 경로 — PENDING row INSERT.
      * orderId UNIQUE 충돌 시 IGNORE 하고 기존 row 의 id 를 반환한다 (멱등 보장).
      *
-     * @param orderId     orderId (UNIQUE)
-     * @param amount      원화 최소 단위 정수
-     * @param eventUuid   PG 콜백 이벤트 UUID (중복 방어용)
-     * @param vendorType  벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
-     * @param paymentKey  벤더 결제 키
+     * @param orderId            orderId (UNIQUE)
+     * @param amount             원화 최소 단위 정수
+     * @param eventUuid          PG 콜백 이벤트 UUID (중복 방어용)
+     * @param vendorType         벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
+     * @param paymentKey         벤더 결제 키
+     * @param storedTraceparent  W3C traceparent 문자열 (null 허용 — 헤더 부재·구버전 행 호환)
      * @return 삽입 또는 기존 row 의 id
      */
     Long insertPending(String orderId, long amount, String eventUuid,
-                       String vendorType, String paymentKey);
+                       String vendorType, String paymentKey, String storedTraceparent);
+
+    /**
+     * 회수 경로 전용 — stored_traceparent 단일 컬럼 조회.
+     * PgInboxPollingWorker 가 부모 추적 복원 시 사용한다.
+     * traceparent 가 없거나(NULL) 행이 없으면 Optional.empty() 반환.
+     *
+     * @param inboxId pg_inbox PK
+     * @return stored_traceparent 문자열 Optional
+     */
+    Optional<String> findStoredTraceparent(Long inboxId);
 
     /**
      * 워커 TX_A — PENDING → IN_PROGRESS SKIP LOCKED.

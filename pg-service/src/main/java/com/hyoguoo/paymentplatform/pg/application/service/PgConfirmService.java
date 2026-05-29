@@ -53,7 +53,7 @@ public class PgConfirmService implements PgConfirmCommandService {
     private final PgTerminalReemitService pgTerminalReemitService;
 
     @Override
-    public void handle(PgConfirmCommand command, int attempt) {
+    public void handle(PgConfirmCommand command, int attempt, String storedTraceparent) {
         // 1단계: eventUUID dedupe (메시지 레벨 멱등성)
         if (!eventDedupeStore.markSeen(command.eventUuid())) {
             LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_DUPLICATE_UUID,
@@ -63,20 +63,20 @@ public class PgConfirmService implements PgConfirmCommandService {
 
         // TX 경계 불일치 방어: 처리 실패 시 dedupe 도 되돌려 재컨슘 경로에서 영구 정체를 방지한다.
         try {
-            processCommand(command, attempt);
+            processCommand(command, attempt, storedTraceparent);
         } catch (RuntimeException e) {
             eventDedupeStore.remove(command.eventUuid());
             throw e;
         }
     }
 
-    private void processCommand(PgConfirmCommand command, int attempt) {
+    private void processCommand(PgConfirmCommand command, int attempt, String storedTraceparent) {
         // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
         if (inbox == null) {
             // absent → listener TX 봉인 경로
-            handleAbsent(command);
+            handleAbsent(command, storedTraceparent);
         } else if (inbox.getStatus() == PgInboxStatus.PENDING
                 || inbox.getStatus() == PgInboxStatus.IN_PROGRESS) {
             // PENDING / IN_PROGRESS → 채널 재적재 (워커가 처리)
@@ -96,8 +96,11 @@ public class PgConfirmService implements PgConfirmCommandService {
      * inbox 없음 — listener TX 경계 봉인 경로.
      * {@link PgInboxPendingService#insertPendingAndPublish} 가 PENDING INSERT + publishEvent 를 단일 TX 안에서 수행.
      * listener 책임: INSERT + ack 까지. 워커 VT 풀이 채널에서 take 해 처리.
+     *
+     * <p>storedTraceparent 는 불투명 String 토큰으로만 전달 — OTel API import 없음.
+     * traceparent 기록은 absent(신규 PENDING) 경로 한정.
      */
-    private void handleAbsent(PgConfirmCommand command) {
+    private void handleAbsent(PgConfirmCommand command, String storedTraceparent) {
         long amountLong = command.amount().setScale(0, RoundingMode.UNNECESSARY).longValue();
         String vendorType = command.vendorType() != null ? command.vendorType().name() : null;
 
@@ -106,7 +109,8 @@ public class PgConfirmService implements PgConfirmCommandService {
                 amountLong,
                 command.eventUuid(),
                 vendorType,
-                command.paymentKey());
+                command.paymentKey(),
+                storedTraceparent);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_PENDING_INSERT,
                 () -> "orderId=" + command.orderId() + " — PENDING INSERT + publishEvent 위임");

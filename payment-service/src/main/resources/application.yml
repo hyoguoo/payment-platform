@@ -131,6 +131,11 @@ scheduler:
     batch-size: 50
     parallel-enabled: true
     in-flight-timeout-minutes: 5
+  dedupe-cleanup-worker:
+    # payment_event_dedupe 만료 행 청소 주기 (ms). 기본값 1시간.
+    # 보존 정책: TTL(8d) > Kafka retention(7d) 불변식 준수 — 단축 금지.
+    fixed-delay-ms: 3600000
+    batch-size: 1000
 metrics:
   payment:
     state:

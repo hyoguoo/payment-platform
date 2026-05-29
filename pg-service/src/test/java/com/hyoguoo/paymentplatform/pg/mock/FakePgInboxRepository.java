@@ -22,6 +22,8 @@ public class FakePgInboxRepository implements PgInboxRepository {
     private final ConcurrentHashMap<String, PgInbox> store = new ConcurrentHashMap<>();
     /** id → orderId 역인덱스 — findById 지원용 */
     private final ConcurrentHashMap<Long, String> idIndex = new ConcurrentHashMap<>();
+    /** id → storedTraceparent 인덱스 — findStoredTraceparent 지원용 */
+    private final ConcurrentHashMap<Long, String> traceparentIndex = new ConcurrentHashMap<>();
     private final AtomicLong idSequence = new AtomicLong(1);
 
     @Override
@@ -95,11 +97,12 @@ public class FakePgInboxRepository implements PgInboxRepository {
 
     /**
      * listener 경로 PENDING INSERT — orderId 충돌 시 기존 id 반환.
-     * paymentKey / vendorType 포함 저장 (V3 migration 정합).
+     * paymentKey / vendorType / storedTraceparent 포함 저장 (V4 migration 정합).
+     * storedTraceparent 는 NULL 허용 — 헤더 부재·구버전 행 호환.
      */
     @Override
     public Long insertPending(String orderId, long amount, String eventUuid,
-                              String vendorType, String paymentKey) {
+                              String vendorType, String paymentKey, String storedTraceparent) {
         // orderId 충돌 시 기존 row 유지, 신규 row id 발급 없음
         AtomicBoolean[] inserted = {new AtomicBoolean(false)};
         store.computeIfAbsent(orderId, key -> {
@@ -108,6 +111,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
                     null, null, java.time.Instant.now(), java.time.Instant.now(),
                     paymentKey, vendorType);
             idIndex.put(newId, orderId);
+            traceparentIndex.put(newId, storedTraceparent);
             inserted[0].set(true);
             // 실제 저장은 compute 으로 진행
             return inbox;
@@ -123,6 +127,11 @@ public class FakePgInboxRepository implements PgInboxRepository {
                 .map(java.util.Map.Entry::getKey)
                 .findFirst()
                 .orElse(null);
+    }
+
+    @Override
+    public Optional<String> findStoredTraceparent(Long inboxId) {
+        return Optional.ofNullable(traceparentIndex.get(inboxId));
     }
 
     /**

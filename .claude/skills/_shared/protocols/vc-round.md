@@ -10,8 +10,9 @@ verify 단계에서 호출한다.
 
 ### Step 1 — 이슈 생성 (선택)
 - 토픽 시작 시 `gh issue create`로 이슈 개설
-- 제목: `<TOPIC>` (UPPER-KEBAB-CASE)
-- 본문: discuss 산출물 요약 링크
+- 제목: **한글**로 무슨 작업인지 읽히게 쓴다. 토픽 코드(영문 UPPER-KEBAB-CASE)는 브랜치명·파일명 전용 — 제목에 넣지 않는다.
+- 본문: **불릿 중심으로 간결하게**. 긴 줄글 문단을 늘어놓지 않는다. 헤더는 **명사형**(`배경` / `작업 항목` / `제외 범위` / `검증 방법` 등) — `무엇을 하나` / `범위에서 뺀 것` 같은 구어체 금지. 내부 식별자(태스크 ID `FOLLOW-6`/`TC-11`, 결정 ID `D-TM-1`, 토픽 코드)는 노출하지 말고 내용을 풀어 쓴다. 필요하면 Mermaid 플로우차트를 넣어도 된다. 설계 문서 경로 참조는 1줄로.
+- **Labels + Assignees 지정**: 변경 유형 라벨(`refactor` / `enhancement` / `documentation` / `test` 등, 복수 가능) + 작업자 assignee.
 
 ### Step 2 — 브랜치
 - 브랜치 명: `#<issue-number>` 또는 `<topic-slug>`
@@ -21,18 +22,18 @@ verify 단계에서 호출한다.
 ### Step 3 — PR 생성 (verify 단계)
 - 조건: `verify-ready.md` 전 항목 yes AND 로컬 `./gradlew test` pass
 - `gh pr create --base main --head <branch>` 사용
-- 제목: `<type>: <TOPIC> — <한글 요약>` (70자 이내)
+- 제목: `<type>: <한글 요약>` (70자 이내). 토픽 코드(영문 UPPER-KEBAB-CASE)를 제목에 넣지 않는다 — 한글로 무슨 변경인지 읽히게 한다.
 - Labels: 변경 유형에 맞게 (`enhancement`, `refactor`, `documentation` 등)
 - Assignees: 작업자
-- 본문 템플릿 (한글 헤더, 서사형):
+- 본문 템플릿 (한글 명사형 헤더, 불릿 중심):
   ```
   ## 관련 이슈
   Closes #<issue-number>
 
   ## 개요
 
-  <서사형 설명: 어떤 문제가 있었고, 왜 이 변경이 필요하며, 어떻게 해소하는지.
-  bullet 나열이 아닌 문단으로 작성한다.>
+  <문제·필요성·해소 방향을 간결히. 긴 줄글로 늘어놓지 말고, 핵심은 불릿으로 끊어도 된다.
+  헤더는 명사형으로 — 구어체 소제목 금지.>
 
   ## 구현 내용
 
@@ -54,6 +55,7 @@ verify 단계에서 호출한다.
 
 - **금지**: 파일 경로를 추측하지 않는다. 실제 `git diff --stat` 출력을 기반으로만 작성.
 - **금지**: 영문 헤더(Summary, Changes, Test plan) 사용 금지. 한글 헤더 사용.
+- **금지**: 내부 식별자(태스크 ID·결정 ID·토픽 코드) 본문 노출. 그 내용을 한글 서사로 풀어 쓴다.
 
 ### Step 4 — PR 갱신
 - 리뷰 피드백 대응은 **새 커밋** + `git push`

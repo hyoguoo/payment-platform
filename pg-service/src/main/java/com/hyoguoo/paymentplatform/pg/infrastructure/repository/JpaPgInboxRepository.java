@@ -74,18 +74,26 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
      * orderId UNIQUE INSERT IGNORE + 기존 id 조회.
      * IGNORE로 중복 row가 있어도 예외 없이 통과하고, 조회로 기존 id를 반환한다.
      * native query 사용 이유: JPQL 은 INSERT IGNORE 를 지원하지 않는다.
-     * payment_key / vendor_type 컬럼을 포함하여 INSERT 한다.
+     * payment_key / vendor_type / stored_traceparent 컬럼을 포함하여 INSERT 한다.
      */
     @Modifying
     @Query(value = "INSERT IGNORE INTO pg_inbox "
-            + "(order_id, status, amount, payment_key, vendor_type, created_at, updated_at) "
-            + "VALUES (:orderId, 'PENDING', :amount, :paymentKey, :vendorType, :now, :now)",
+            + "(order_id, status, amount, payment_key, vendor_type, stored_traceparent, created_at, updated_at) "
+            + "VALUES (:orderId, 'PENDING', :amount, :paymentKey, :vendorType, :storedTraceparent, :now, :now)",
             nativeQuery = true)
     void insertIgnorePending(@Param("orderId") String orderId,
                              @Param("amount") long amount,
                              @Param("paymentKey") String paymentKey,
                              @Param("vendorType") String vendorType,
+                             @Param("storedTraceparent") String storedTraceparent,
                              @Param("now") LocalDateTime now);
+
+    /**
+     * stored_traceparent 단일 컬럼 조회 — 회수 경로 전용.
+     * PgInboxPollingWorker 가 부모 추적 복원 시 사용한다.
+     */
+    @Query("SELECT e.storedTraceparent FROM PgInboxEntity e WHERE e.id = :inboxId")
+    Optional<String> findStoredTraceparentById(@Param("inboxId") Long inboxId);
 
     /**
      * orderId로 id 조회 — insertIgnorePending 이후 실제 id 반환용.

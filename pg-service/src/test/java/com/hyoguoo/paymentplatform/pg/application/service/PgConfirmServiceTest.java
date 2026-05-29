@@ -84,18 +84,18 @@ class PgConfirmServiceTest {
         // given
         when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
         when(pgInboxPendingService.insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString()))
+                anyString(), anyLong(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(1L);
 
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, EVENT_UUID);
 
         // when
-        sut.handle(command, 1);
+        sut.handle(command, 1, null);
 
         // then
         verify(pgInboxPendingService, times(1)).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString());
+                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -108,14 +108,14 @@ class PgConfirmServiceTest {
         // given
         when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
         when(pgInboxPendingService.insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString()))
+                anyString(), anyLong(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(1L);
 
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, EVENT_UUID);
 
         // when
-        sut.handle(command, 1);
+        sut.handle(command, 1, null);
 
         // then — 벤더 호출 0회
         verify(pgVendorCallService, never()).callVendor(any(), anyInt(), any());
@@ -140,12 +140,12 @@ class PgConfirmServiceTest {
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-pending-001");
 
         // when
-        sut.handle(command, 1);
+        sut.handle(command, 1, null);
 
         // then
         verify(applicationEventPublisher, times(1)).publishEvent(any(PgInboxReadyEvent.class));
         verify(pgInboxPendingService, never()).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString());
+                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -166,12 +166,12 @@ class PgConfirmServiceTest {
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-inprog-001");
 
         // when
-        sut.handle(command, 1);
+        sut.handle(command, 1, null);
 
         // then
         verify(applicationEventPublisher, times(1)).publishEvent(any(PgInboxReadyEvent.class));
         verify(pgInboxPendingService, never()).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString());
+                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -194,7 +194,7 @@ class PgConfirmServiceTest {
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, "evt-terminal-001");
 
         // when
-        sut.handle(command, 1);
+        sut.handle(command, 1, null);
 
         // then — PgTerminalReemitService.reemit 1회 호출 (외부 빈 위임으로 self-invocation 해소)
         verify(pgTerminalReemitService, times(1)).reemit(any(PgInbox.class));

@@ -38,7 +38,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  *
  * <p>커버 범위:
  * <ul>
- *   <li>진입 가드 — isCompensatableByFailureHandler false(종결 상태) → markIfAbsent 미호출 + warn noop</li>
+ *   <li>진입 가드 — canApplyConfirmResult false(종결 상태) → markIfAbsent 미호출 + warn noop</li>
  *   <li>멱등 마킹 0 row — 비즈니스 skip (markPaymentAsDone 미호출)</li>
  *   <li>멱등 마킹 0 row 에도 발행은 항상 진행</li>
  *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성</li>
