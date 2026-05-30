@@ -77,8 +77,8 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 
 **계약 매핑**: 각 `*FeignConfig` 의 `ErrorDecoder` 가 4xx / 5xx 응답을 도메인 예외로 매핑.
 - 404 → `*NotFoundException` (PRODUCT_NOT_FOUND / USER_NOT_FOUND)
-- 429 / 503 → `*ServiceRetryableException` (`PRODUCT_SERVICE_UNAVAILABLE` / `USER_SERVICE_UNAVAILABLE`)
-- 그 외 5xx → `IllegalStateException`
+- 429 / 503 / **502 / 504** → `*ServiceRetryableException` (`PRODUCT_SERVICE_UNAVAILABLE` / `USER_SERVICE_UNAVAILABLE`) → 핸들러가 `503 + Retry-After: 5` 로 환원. 502 Bad Gateway / 504 Gateway Timeout 은 게이트웨이·프록시 일시 장애라 retryable 로 승격 (cross-service 호출이 GET 단건 조회 전용이라 비멱등 재시도 위험 없음)
+- 500 및 그 외 5xx → `IllegalStateException` (영구 오류, 재시도 유도 안 함)
 
 **Transport 예외**: 어댑터 (`ProductHttpAdapter` / `UserHttpAdapter`) 가 `feign.RetryableException` 만 catch 해 `*ServiceRetryableException` 으로 변환. 4xx / 5xx 매핑은 `ErrorDecoder` 단계에서 끝났으므로 어댑터에는 try/catch 가 transport 한 분기만 남는다.
 
@@ -86,7 +86,7 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 
 **Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
 
-**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 4분기 (404 / 429 / 503 / 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함).
+**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함).
 
 **회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
 
