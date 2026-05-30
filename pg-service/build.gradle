@@ -6,6 +6,8 @@ plugins {
 ext {
     set('springCloudVersion', '2024.0.0')
     set('testcontainersVersion', '1.20.4')
+    // C-2: LINE 커버리지 minimum — integrationTest 합산 실측 94.00% 기준, 안전마진 3%p 적용
+    set('jacoco.lineCoverageMinimum', '0.91')
 }
 
 dependencies {
