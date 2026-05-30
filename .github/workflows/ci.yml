@@ -55,18 +55,43 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: JUnit Test Report
 
-      - name: JaCoCo PR coverage comment
+      # 커버리지 코멘트는 서비스별로 분리한다. 단일 합산은 Overall 한 줄만 나와
+      # 어느 서비스가 낮은지 안 보이므로, payment/pg/product/user 각각 별도 코멘트로 노출.
+      # gateway/eureka 는 측정 대상 클래스가 거의 없어 제외.
+      - name: Coverage comment - payment-service
         if: github.event_name == 'pull_request'
         uses: Madrapps/jacoco-report@v1.7.2
         with:
-          paths: |
-            ${{ github.workspace }}/payment-service/build/reports/jacoco/test/jacocoTestReport.xml
-            ${{ github.workspace }}/pg-service/build/reports/jacoco/test/jacocoTestReport.xml
-            ${{ github.workspace }}/product-service/build/reports/jacoco/test/jacocoTestReport.xml
-            ${{ github.workspace }}/user-service/build/reports/jacoco/test/jacocoTestReport.xml
-            ${{ github.workspace }}/gateway/build/reports/jacoco/test/jacocoTestReport.xml
-            ${{ github.workspace }}/eureka-server/build/reports/jacoco/test/jacocoTestReport.xml
+          paths: ${{ github.workspace }}/payment-service/build/reports/jacoco/test/jacocoTestReport.xml
           token: ${{ secrets.GITHUB_TOKEN }}
+          title: 📊 payment-service Coverage
+          update-comment: true
+
+      - name: Coverage comment - pg-service
+        if: github.event_name == 'pull_request'
+        uses: Madrapps/jacoco-report@v1.7.2
+        with:
+          paths: ${{ github.workspace }}/pg-service/build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: 📊 pg-service Coverage
+          update-comment: true
+
+      - name: Coverage comment - product-service
+        if: github.event_name == 'pull_request'
+        uses: Madrapps/jacoco-report@v1.7.2
+        with:
+          paths: ${{ github.workspace }}/product-service/build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: 📊 product-service Coverage
+          update-comment: true
+
+      - name: Coverage comment - user-service
+        if: github.event_name == 'pull_request'
+        uses: Madrapps/jacoco-report@v1.7.2
+        with:
+          paths: ${{ github.workspace }}/user-service/build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: 📊 user-service Coverage
           update-comment: true
 
   lint:
