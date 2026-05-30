@@ -89,14 +89,22 @@ flowchart TD
   - **major F1** (해소): C-2 커밋에 build GREEN 을 위한 pg/product 사전 부채 4건이 혼입 → 독립 `fix:` 커밋(19142957)으로 분리, C-2 본체(343a01f0)와 관심사 분리.
   - **minor**: element CLASS→BUNDLE(수용, 합리적) / user 0.0 무게이트(수용, 후속) / TODOS stale(verify 갱신) / infra 커버리지 집계 제외(수용, 테스트는 실행되어 회귀 가드 유효).
 
+## verify CI 단계 발견·수정
+
+verify 의 `./gradlew build` 는 로컬에서 GREEN 이었으나(payment-service UP-TO-DATE 캐시로 통합테스트 미재실행), PR #82 의 CI 에서 `integrationTest` 가 실패했다. 근본 인과는 이번 토픽 자체였다 — **C-1(jacocoTestReport→integrationTest dependsOn)이 ci.yml 의 `test jacocoTestReport` 를 통해 CI 에서 통합테스트를 처음 실행시켰고**, 그동안 CI 에서 안 돌아 숨어 있던 `PaymentEosIntegrationTest` 시나리오 #1 의 cold-start flaky 가 노출됐다. #1만 실패(`expected DONE but was IN_PROGRESS`)하고 #2~5 는 통과 — 첫 시나리오에서 consumer group join + Kafka tx coordinator 초기화 + partition assignment 가 처음 일어나며 `await(15초)` 를 초과한 것. setUp 에 consumer partition assignment 완료 대기를 추가(cold-start 를 await 밖으로 분리)해 해소했고, 부수적으로 ci.yml 에 JUnit 테스트 리포트 액션(`mikepenz/action-junit-report`)을 추가해 테스트 실패가 PR 에 가시화되도록 했다. 재실행 결과 CI 전체(Test & Coverage / Lint / JUnit Test Report) GREEN.
+
+- `4f8bc6f3` test(payment): EOS 통합테스트 consumer assignment 대기 — `ContainerTestUtils.waitForAssignment` 대신 Awaitility 사용(Spring Context 공유로 실제 파티션 수가 가변이라 strict equality 회피)
+- `52d42a40` build(ci): 테스트 실패 PR 리포트 코멘트 액션 추가
+
 ## 수치
 
 | 항목 | 값 |
 |------|---|
 | 태스크 | 6개 (A-1/A-2/B-1/B-2/C-1/C-2) |
-| 커밋 | 12개 (코드 8 + docs 4) |
-| 테스트 | payment 416 PASS + integrationTest 27 PASS, 4서비스 `build` GREEN |
+| 커밋 | 16개 (코드 8 + verify CI 수정 2 + docs 6) |
+| 테스트 | payment 416 PASS + integrationTest 27 PASS, **CI 전체 GREEN**(Test & Coverage / Lint / JUnit Test Report) |
 | spotbugs | 위반 0 (5건 전부 코드 정정, 억제 0) |
 | 커버리지 게이트 | 4서비스 jacocoTestCoverageVerification PASS (음성 검증 완료) |
 | 코드 리뷰 findings | critical 0 / major 1(해소) / minor 4 |
-| 후속 | user 게이트 0.0 / deprecated Groovy 문법 / infra 커버리지 집계 (TODOS `[CLEANUP-BATCH-B 후속]`) |
+| verify CI 수정 | EOS #1 cold-start flaky 해소(consumer assignment 대기) + 테스트 실패 PR 가시화(JUnit 리포트 액션) |
+| 후속 | user 게이트 0.0 / deprecated Groovy 문법 / infra 커버리지 집계 / Node.js 20 액션 deprecated (TODOS `[CLEANUP-BATCH-B 후속]`) |

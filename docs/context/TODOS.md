@@ -167,6 +167,7 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 - **user-service 커버리지 게이트 무실효** — `jacoco.lineCoverageMinimum` 0.0. user-service 는 측정 대상(application/domain) 라인이 거의 없어 게이트가 사실상 없음. 결제 정합성 로직 부재라 도메인 위험은 아니나(user 조회 실패는 checkout 진입에만 영향), 테스트 보강 후 minimum 상향 필요. product-service 0.40 도 동일 결의 낮은 게이트.
 - **deprecated Groovy space-assignment 문법** — 루트/서비스 `build.gradle` 다수에 `propName value` 형태(예: `exceptionFormat "full"`)가 Gradle 8.14.4 에서 deprecated 경고. Gradle 10.0 에서 제거 예정 → `propName = value` 로 마이그레이션 필요.
 - **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
+- **GitHub Actions Node.js 20 deprecated** — CI 경고: `actions/checkout@v4`, `actions/setup-java@v4`, `actions/upload-artifact@v4`, `gradle/actions/setup-gradle@v3`, `Madrapps/jacoco-report@v1.7.2`, `mikepenz/action-junit-report@v4` 가 Node.js 20 기반. 2026-06-16 부터 Node.js 24 강제, 09-16 제거 예정. Node.js 24 지원 버전으로 액션 업그레이드 필요.
 
 ---
 

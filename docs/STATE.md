@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **봉인 완료** (verify pass, PR 생성 단계). 이슈 #81, 브랜치 #81. 활성 작업 없음.
+> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **봉인 완료** (PR #82, CI 전체 GREEN). 이슈 #81, 브랜치 #81. 활성 작업 없음.
 > **다음 세션 진입점**: `## 다음 토픽 후보` 참조 — 다음 작업은 토픽 B `PR B`(TC-4 EXPIRED 정책 + TC-8 시간 추상화 통합). `workflow-discuss`로 시작.
 
 ## 활성 작업
@@ -9,10 +9,11 @@
 
 ## 직전 봉인
 
-- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, 2026-05-31) — `docs/archive/cleanup-batch-b/COMPLETION-BRIEFING.md`
-  - 6태스크 12커밋. spotbugs 5건 **전부 코드 정정**(억제 0; NP_NULL은 `if-null-throw`—`requireNonNull`을 SpotBugs 6.0.9가 미인식, EI_EXPOSE_REP2는 `FakeMessagePublisher` Throwable→Supplier) + 502/504 retryable 승격(500 유지·429/503 단일) + JaCoCo 게이트 실효화(루트 subprojects 공통화 + integrationTest 합산 + 서비스별 LINE minimum, element=BUNDLE) + Gradle 8.14.4(Java 24)
-  - review major 1(C-2 범위 밖 부채 혼입→커밋 분리)/minor 4, Domain Expert pass(결제 정합성 위험 0). `./gradlew build` 4서비스 GREEN, payment 416+27 PASS
-  - 영구 문서 4개 갱신(INTEGRATIONS / STACK / TESTING / TODOS). 후속: `[CLEANUP-BATCH-B 후속]`(user 게이트 0.0 / Groovy space-assignment 문법 / infra 커버리지 집계)
+- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, PR #82, 2026-05-31) — `docs/archive/cleanup-batch-b/COMPLETION-BRIEFING.md`
+  - 6태스크 16커밋. spotbugs 5건 **전부 코드 정정**(억제 0; NP_NULL은 `if-null-throw`—`requireNonNull`을 SpotBugs 6.0.9가 미인식, EI_EXPOSE_REP2는 `FakeMessagePublisher` Throwable→Supplier) + 502/504 retryable 승격(500 유지·429/503 단일) + JaCoCo 게이트 실효화(루트 subprojects 공통화 + integrationTest 합산 + 서비스별 LINE minimum, element=BUNDLE) + Gradle 8.14.4(Java 24)
+  - review major 1(C-2 범위 밖 부채 혼입→커밋 분리)/minor 4, Domain Expert pass(결제 정합성 위험 0)
+  - **verify CI 단계 발견·수정**: C-1(jacocoTestReport→integrationTest dependsOn)이 CI 에서 통합테스트를 처음 실행 → `PaymentEosIntegrationTest` #1 cold-start flaky 노출(consumer assignment 미대기). setUp 에 partition assignment 대기 추가로 해소 + ci.yml JUnit 리포트 액션(테스트 실패 PR 가시성). CI 전체 GREEN
+  - 영구 문서 4개 갱신(INTEGRATIONS / STACK / TESTING / TODOS). 후속: `[CLEANUP-BATCH-B 후속]`(user 게이트 0.0 / Groovy space-assignment 문법 / infra 커버리지 집계 / Node.js 20 액션 deprecated)
 - **EOS-FOLLOWUP-CLEANUP** (EOS 전환 후속 정합 + 결제 비동기 경로 청소, **PR #80** Closes #79, 2026-05-29, 브랜치 #79) — `docs/archive/eos-followup-cleanup/COMPLETION-BRIEFING.md`
   - 14 태스크(A-1~A-3, B-1~B-2, C-1~C-3, D-1~D-3, E-1~E-5) 31 커밋
   - FOLLOW-6: `handle`에 `@Transactional(transactionManager="transactionManager")` qualifier 명시(위험 지점 1곳만) + deprecated→`setKafkaAwareTransactionManager` 교체 + 1PC 한계 Javadoc
