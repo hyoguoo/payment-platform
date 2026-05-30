@@ -1,12 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **C-2 완료**, 6태스크 전부 완료, **stage=review**. 이슈 #81, 브랜치 #81.
-> **다음 세션 진입점**: `## 활성 작업` 참조 — 모든 태스크 완료, review 단계 대기.
+> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **review 완료**, **stage=verify**. 이슈 #81, 브랜치 #81.
+> **다음 세션 진입점**: `## 활성 작업` 참조 — review pass(major F1 커밋 분리로 해소, minor 3 후속). "verify 시작" 으로 최종 검증 단계 진입.
 
 ## 활성 작업
 
-- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=review**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
-  - discuss 2라운드 pass, plan 1라운드 pass, plan-review pass(clean)
+- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=verify**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
+  - discuss 2라운드 pass, plan 1라운드 pass, plan-review pass(clean), review 2라운드 pass(Critic R1 revise→R2 pass, Domain pass)
+  - **review 후속 (verify 에서 처리)**: F3/D1 user-service 커버리지 게이트 0.0(측정 대상 3라인뿐, 무게이트) + F4 TODOS 갱신([SPOTBUGS-TEST-DEBT]/[NET-RETRY] 완료 반영) + deprecated Groovy space-assignment 문법(Gradle 10.0 제거 예정) 후속 등재. F2 element BUNDLE/D2 infra 커버리지 제외는 수용.
   - 6태스크: A-1✅/A-2✅(spotbugs 코드 정정 완료) · B-1✅(RED: 502/504 테스트 추가, 신규 4건 FAIL/기존 8건 PASS)/B-2✅(GREEN: 502/504 retryable 분기 구현 + Javadoc 갱신, 416 PASS) · C-1✅(루트 subprojects jacoco 공통화 + integrationTest exec 합산, payment 개별 블록 제거, Gradle 8.10→8.14.4, LINE 89.12%→92.86%)/C-2✅(서비스별 minimum 실측 설정 + 음성 검증 완료, 4서비스 빌드 GREEN). 6태스크 전부 완료
   - 핵심 결정: spotbugs 5건 코드 정정(억제 금지, 가짜 발행기 `Throwable`→`Supplier`) / 502·504 retryable 승격·500 유지·429·503 단일 유지 / Retry-After 5s vs 진입 멱등 마커 TTL 10s 어긋남 윈도우 수용(금전 무해) / 커버리지 측정 대상 정책 유지 + LINE 임계 도입 + 통합테스트 합산 + 루트 subprojects 4서비스 공통화
   - 라운드 문서: `docs/rounds/cleanup-batch-b/` (interview-0 / discuss-critic-1,2 / discuss-domain-1,2 / plan-critic-1 / plan-domain-1)
