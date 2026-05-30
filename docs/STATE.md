@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-30 — CLEANUP-BATCH-B **plan 완료**, stage=plan-review 전환. 이슈 #81, 브랜치 #81.
-> **다음 세션 진입점**: `## 활성 작업` 참조 — CLEANUP-BATCH-B plan 두 페르소나 pass. 다음은 `workflow-plan-review`로 plan-review 단계 시작.
+> 최종 수정: 2026-05-30 — CLEANUP-BATCH-B **plan-review 완료**, stage=execute 전환. 이슈 #81, 브랜치 #81. 활성 태스크 → A-1.
+> **다음 세션 진입점**: `## 활성 작업` 참조 — CLEANUP-BATCH-B plan-review pass(clean). 다음은 `workflow-execute`로 A-1(정리 메서드 널 역참조 4건 정정)부터 실행.
 
 ## 활성 작업
 
-- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=plan-review**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
-  - discuss 2라운드 pass, plan 1라운드 pass (Critic minor 1 — B-2 Javadoc 갱신, architect 인라인 노트로 포착)
+- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=execute, 활성 태스크 A-1**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
+  - discuss 2라운드 pass, plan 1라운드 pass, plan-review pass(clean)
   - 6태스크: A-1/A-2(spotbugs 코드 정정) · B-1/B-2(NET-RETRY 502/504 승격 TDD, domain_risk) · C-1/C-2(JaCoCo 통합테스트 합산+공통화+LINE 임계). 권장 실행 A→B→C
   - 핵심 결정: spotbugs 5건 코드 정정(억제 금지, 가짜 발행기 `Throwable`→`Supplier`) / 502·504 retryable 승격·500 유지·429·503 단일 유지 / Retry-After 5s vs 진입 멱등 마커 TTL 10s 어긋남 윈도우 수용(금전 무해) / 커버리지 측정 대상 정책 유지 + LINE 임계 도입 + 통합테스트 합산 + 루트 subprojects 4서비스 공통화
   - 라운드 문서: `docs/rounds/cleanup-batch-b/` (interview-0 / discuss-critic-1,2 / discuss-domain-1,2 / plan-critic-1 / plan-domain-1)
