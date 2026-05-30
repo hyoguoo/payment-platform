@@ -25,7 +25,6 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentE
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;

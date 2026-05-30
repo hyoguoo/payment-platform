@@ -61,7 +61,11 @@ class PgOutboxImmediateWorkerMdcPropagationTest {
 
         // relayExecutor 필드를 직접 꺼내어 검증
         // (workerLoop VT 가 아닌 테스트 스레드에서 submit — 호출 스레드의 MDC 를 캡처하는 동작 검증)
-        ExecutorService relayExecutor = (ExecutorService) ReflectionTestUtils.getField(worker, "relayExecutor");
+        Object rawExecutor = ReflectionTestUtils.getField(worker, "relayExecutor");
+        if (rawExecutor == null) {
+            throw new IllegalStateException("relayExecutor 필드를 찾을 수 없습니다 — PgOutboxImmediateWorker 내부 구조 변경 확인 필요");
+        }
+        ExecutorService relayExecutor = (ExecutorService) rawExecutor;
 
         // 호출 스레드에 traceId 설정
         MDC.put(TRACE_ID_KEY, TRACE_ID_VALUE);
