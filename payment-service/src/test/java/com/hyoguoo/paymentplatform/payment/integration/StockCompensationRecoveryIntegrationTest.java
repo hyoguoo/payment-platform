@@ -25,6 +25,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentE
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -36,6 +37,8 @@ import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -174,7 +177,15 @@ class StockCompensationRecoveryIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
+        RedisConnectionFactory factory = redisTemplate.getConnectionFactory();
+        if (factory == null) {
+            throw new IllegalStateException("RedisConnectionFactory must not be null");
+        }
+        RedisConnection connection = factory.getConnection();
+        if (connection == null) {
+            throw new IllegalStateException("RedisConnection must not be null");
+        }
+        connection.serverCommands().flushAll();
         connectionFactory.destroy();
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
