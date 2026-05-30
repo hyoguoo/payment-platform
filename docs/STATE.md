@@ -1,13 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-30 — CLEANUP-BATCH-B **B-2 완료(GREEN)**, stage=execute 진행 중. 이슈 #81, 브랜치 #81. 활성 태스크 → C-1.
-> **다음 세션 진입점**: `## 활성 작업` 참조 — CLEANUP-BATCH-B A-1/A-2 완료(NP_NULL 4건 + EI_EXPOSE_REP2 1건 제거, spotbugsTest 위반 총 0건), B-1 완료(502/504 retryable 케이스 테스트 추가 RED 확인, 신규 4건 FAIL/기존 8건 PASS), B-2 완료(502/504 retryable 분기 구현 + Javadoc 갱신 GREEN, 416 PASS). 다음은 C-1(루트 subprojects jacoco 공통화 + integrationTest exec 합산).
+> 최종 수정: 2026-05-30 — CLEANUP-BATCH-B **C-1 완료**, stage=execute 진행 중. 이슈 #81, 브랜치 #81. 활성 태스크 → C-2.
+> **다음 세션 진입점**: `## 활성 작업` 참조 — CLEANUP-BATCH-B A-1/A-2 완료(NP_NULL 4건 + EI_EXPOSE_REP2 1건 제거, spotbugsTest 위반 총 0건), B-1 완료(502/504 retryable 케이스 테스트 추가 RED 확인, 신규 4건 FAIL/기존 8건 PASS), B-2 완료(502/504 retryable 분기 구현 + Javadoc 갱신 GREEN, 416 PASS), C-1 완료(루트 subprojects jacoco 공통화 + integrationTest exec 합산, payment-service 개별 블록 제거, Gradle 8.10→8.14.4 업그레이드, application+domain LINE 89.12%→92.86%). 다음은 C-2(서비스별 커버리지 minimum 실측 설정 + 음성 검증).
 
 ## 활성 작업
 
-- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=execute, 활성 태스크 C-1**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
+- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=execute, 활성 태스크 C-2**) — `docs/topics/CLEANUP-BATCH-B.md`, `docs/CLEANUP-BATCH-B-PLAN.md`
   - discuss 2라운드 pass, plan 1라운드 pass, plan-review pass(clean)
-  - 6태스크: A-1✅/A-2✅(spotbugs 코드 정정 완료) · B-1✅(RED: 502/504 테스트 추가, 신규 4건 FAIL/기존 8건 PASS)/B-2✅(GREEN: 502/504 retryable 분기 구현 + Javadoc 갱신, 416 PASS) · C-1/C-2(JaCoCo 통합테스트 합산+공통화+LINE 임계). 권장 실행 A→B→C
+  - 6태스크: A-1✅/A-2✅(spotbugs 코드 정정 완료) · B-1✅(RED: 502/504 테스트 추가, 신규 4건 FAIL/기존 8건 PASS)/B-2✅(GREEN: 502/504 retryable 분기 구현 + Javadoc 갱신, 416 PASS) · C-1✅(루트 subprojects jacoco 공통화 + integrationTest exec 합산, payment 개별 블록 제거, Gradle 8.10→8.14.4, LINE 89.12%→92.86%)/C-2(서비스별 minimum 실측 + 음성 검증). 권장 실행 A→B→C
   - 핵심 결정: spotbugs 5건 코드 정정(억제 금지, 가짜 발행기 `Throwable`→`Supplier`) / 502·504 retryable 승격·500 유지·429·503 단일 유지 / Retry-After 5s vs 진입 멱등 마커 TTL 10s 어긋남 윈도우 수용(금전 무해) / 커버리지 측정 대상 정책 유지 + LINE 임계 도입 + 통합테스트 합산 + 루트 subprojects 4서비스 공통화
   - 라운드 문서: `docs/rounds/cleanup-batch-b/` (interview-0 / discuss-critic-1,2 / discuss-domain-1,2 / plan-critic-1 / plan-domain-1)
 

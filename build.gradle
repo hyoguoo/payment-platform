@@ -85,4 +85,79 @@ subprojects {
 
         finalizedBy jacocoTestReport
     }
+
+    jacocoTestReport {
+        dependsOn test
+
+        reports {
+            html.required = true
+            xml.required = true
+            csv.required = false
+        }
+
+        def excludePatterns = [
+                '**/Q*',
+                '**/dto/**',
+                '**/entity/**',
+                '**/enums/**',
+                '**/event/**',
+                '**/exception/**',
+                '**/infrastructure/**',
+                '**/presentation/**',
+                '**/publisher/**',
+                '**/mock/**',
+                '**/aspect/**',
+                '**/metrics/**',
+                '**/log/**',
+                '**/filter/**',
+                '**/util/**',
+                '**/config/**',
+                '**/response/**',
+                '**/*Application.class'
+        ]
+        classDirectories.setFrom(
+                files(classDirectories.files.collect { fileTree(dir: it, excludes: excludePatterns) })
+        )
+
+        finalizedBy jacocoTestCoverageVerification
+    }
+
+    // integrationTest exec 를 jacocoTestReport 에 조건부 합산.
+    // integrationTest 태스크를 보유한 서비스(payment/pg/product)만 합산 대상 — 보유하지 않는 서비스는 가드 false 로 자연 스킵.
+    afterEvaluate {
+        def itTask = tasks.findByName('integrationTest')
+        if (itTask != null) {
+            jacocoTestReport.dependsOn itTask
+            jacocoTestReport.executionData(new File(buildDir, 'jacoco/integrationTest.exec'))
+        }
+    }
+
+    jacocoTestCoverageVerification {
+        violationRules {
+            rule {
+                element = 'CLASS'
+
+                excludes = [
+                        '*.Q*',
+                        '**/dto/**',
+                        '**/entity/**',
+                        '**/enums/**',
+                        '**/event/**',
+                        '**/exception/**',
+                        '**/infrastructure/**',
+                        '**/presentation/**',
+                        '**/publisher/**',
+                        '**/mock/**',
+                        '**/aspect/**',
+                        '**/metrics/**',
+                        '**/log/**',
+                        '**/filter/**',
+                        '**/util/**',
+                        '**/config/**',
+                        '**/response/**',
+                        '**.*Application'
+                ]
+            }
+        }
+    }
 }
