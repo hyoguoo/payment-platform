@@ -24,8 +24,8 @@ import org.springframework.http.HttpStatus;
  *
  * <ul>
  *   <li>404 → {@link UserNotFoundException} (USER_NOT_FOUND)</li>
- *   <li>429 / 503 → {@link UserServiceRetryableException} (USER_SERVICE_UNAVAILABLE)</li>
- *   <li>그 외 5xx → {@link IllegalStateException}</li>
+ *   <li>429 / 502 / 503 / 504 → {@link UserServiceRetryableException} (USER_SERVICE_UNAVAILABLE)</li>
+ *   <li>500 및 그 외 5xx → {@link IllegalStateException}</li>
  * </ul>
  *
  * <p>NOTE: {@code @Configuration} 어노테이션 부착 금지.
@@ -51,7 +51,9 @@ public class UserFeignConfig {
             return UserNotFoundException.of(PaymentErrorCode.USER_NOT_FOUND);
         }
         if (status == HttpStatus.TOO_MANY_REQUESTS.value()
-                || status == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+                || status == HttpStatus.BAD_GATEWAY.value()
+                || status == HttpStatus.SERVICE_UNAVAILABLE.value()
+                || status == HttpStatus.GATEWAY_TIMEOUT.value()) {
             LogFmt.warn(log, LogDomain.USER, EventType.USER_SERVICE_RETRYABLE,
                     () -> "status=" + status);
             return UserServiceRetryableException.of(PaymentErrorCode.USER_SERVICE_UNAVAILABLE);
