@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * MessagePublisherPort Fake — Kafka 없이 application 계층 테스트용.
@@ -19,17 +20,17 @@ public class FakeMessagePublisher implements MessagePublisherPort {
     }
 
     private final List<SentMessage> sent = new CopyOnWriteArrayList<>();
-    private final AtomicReference<Throwable> nextFailure = new AtomicReference<>();
-    private volatile Throwable permanentFailure;
+    private final AtomicReference<Supplier<? extends Throwable>> nextFailure = new AtomicReference<>();
+    private volatile Supplier<? extends Throwable> permanentFailure;
 
     @Override
     public void send(String topic, String key, Object payload) {
-        Throwable failure = nextFailure.getAndSet(null);
-        if (failure != null) {
-            throwUnchecked(failure);
+        Supplier<? extends Throwable> failureSupplier = nextFailure.getAndSet(null);
+        if (failureSupplier != null) {
+            throwUnchecked(failureSupplier.get());
         }
         if (permanentFailure != null) {
-            throwUnchecked(permanentFailure);
+            throwUnchecked(permanentFailure.get());
         }
         sent.add(new SentMessage(topic, key, payload, LocalDateTime.now()));
     }
@@ -65,21 +66,21 @@ public class FakeMessagePublisher implements MessagePublisherPort {
      * 다음 send() 한 번만 예외를 던진다.
      */
     public void failNext() {
-        nextFailure.set(new RuntimeException("FakeMessagePublisher: simulated failure"));
+        nextFailure.set(() -> new RuntimeException("FakeMessagePublisher: simulated failure"));
     }
 
     /**
-     * 특정 예외를 다음 send() 한 번만 던진다.
+     * 특정 예외 공급자를 다음 send() 한 번만 사용한다.
      */
-    public void setFailure(Throwable throwable) {
-        nextFailure.set(throwable);
+    public void setFailure(Supplier<? extends Throwable> supplier) {
+        nextFailure.set(supplier);
     }
 
     /**
      * 이후 모든 send() 호출마다 예외를 던진다. null 전달 시 비활성화.
      */
-    public void setPermanentFailure(Throwable throwable) {
-        permanentFailure = throwable;
+    public void setPermanentFailure(Supplier<? extends Throwable> supplier) {
+        permanentFailure = supplier;
     }
 
     @SuppressWarnings("unchecked")
