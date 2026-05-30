@@ -1,14 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-29 — EOS-FOLLOWUP-CLEANUP verify 완료, stage=**done**. 14 태스크 전체 + `./gradlew test` 746 PASS + 영구 문서 5개 갱신 + 아카이브 완료. PR 생성만 대기(사용자 지시로 PR 직전 정지).
+> 최종 수정: 2026-05-30 — CLEANUP-BATCH-B **discuss 완료**, stage=plan 전환. 이슈 #81, 브랜치 #81.
+> **다음 세션 진입점**: `## 활성 작업` 참조 — CLEANUP-BATCH-B discuss 두 페르소나 pass. 다음은 `workflow-plan`으로 plan 단계 시작.
 
 ## 활성 작업
 
-(없음)
+- **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, **stage=plan**) — `docs/topics/CLEANUP-BATCH-B.md`
+  - discuss 2라운드 만에 Critic + Domain Expert 모두 pass (Round 1 Domain revise → Round 2 pass)
+  - 핵심 결정: spotbugs 5건 코드 정정(억제 금지, 가짜 발행기 `Throwable`→`Supplier`) / 502·504 retryable 승격·500 유지·429·503 단일 유지 / Retry-After 5s vs 진입 멱등 마커 TTL 10s 어긋남 윈도우 수용(금전 무해) / 커버리지 측정 대상 정책 유지 + LINE 임계 도입 + 통합테스트 합산 + 루트 subprojects 4서비스 공통화
+  - 라운드 문서: `docs/rounds/cleanup-batch-b/` (interview-0 / critic-1,2 / domain-1,2)
 
 ## 직전 봉인
 
-- **EOS-FOLLOWUP-CLEANUP** (EOS 전환 후속 정합 + 결제 비동기 경로 청소, PR 생성 대기, 2026-05-29, 이슈 #79 · 브랜치 #79) — `docs/archive/eos-followup-cleanup/COMPLETION-BRIEFING.md`
+- **EOS-FOLLOWUP-CLEANUP** (EOS 전환 후속 정합 + 결제 비동기 경로 청소, **PR #80** Closes #79, 2026-05-29, 브랜치 #79) — `docs/archive/eos-followup-cleanup/COMPLETION-BRIEFING.md`
   - 14 태스크(A-1~A-3, B-1~B-2, C-1~C-3, D-1~D-3, E-1~E-5) 31 커밋
   - FOLLOW-6: `handle`에 `@Transactional(transactionManager="transactionManager")` qualifier 명시(위험 지점 1곳만) + deprecated→`setKafkaAwareTransactionManager` 교체 + 1PC 한계 Javadoc
   - FOLLOW-5: `isCompensatableByFailureHandler` → `canApplyConfirmResult`/`canCompensateStock` 분리 + 교차 불변식 회귀 테스트(D7 침묵 DLQ 드리프트 가드) + `PaymentEventStatusEosGuardTest` 삭제
@@ -60,8 +64,11 @@
 
 ## 다음 토픽 후보
 
-- **`PR B (TC-4 + TC-8)`** — 도메인 결정 묶음 (EXPIRED 만료 스케줄러 정책 + Clock/Instant/LocalDateTime 시간 추상화 통합)
-- **`[NET-RETRY]`** (CLEANUP-BATCH-A 후속) — Feign ErrorDecoder 429/503 분기 보존 + 비-503 5xx (500/502/504) 매핑
+> **진행 상황 (2026-05-30)**: 토픽 A `CLEANUP-BATCH-B` 는 discuss 완료 후 활성 작업으로 승격(위 `## 활성 작업` 참조). 토픽 B 만 후보로 남음.
+>
+> - **토픽 B `PR B`** (도메인 설계, 묵직 — 토픽 A 이후) — discuss 제대로 거칠 묶음:
+>   - TC-4 (EXPIRED 만료 스케줄러 정책: 언제·어떤 상태에서 만료 전이) + TC-8 (Clock/Instant/LocalDateTime 시간 추상화 통합) + `[PRODUCT-TIME-ABSTRACTION]`(product-service `LocalDateTimeProvider`/Clock 부재 — TC-8에 흡수) 함께.
+
 - **`[FLYWAY-USER-SEED-GAP]`** (CLEANUP-BATCH-A 후속) — user-service Testcontainers 동등 검증
 - **`TC-13-FOLLOW`** (PAYMENT-EOS-TRANSITION 후속) — multi-instance hostname 충돌 / TTL 정리 스케줄러 / tx coordinator 모니터링 / D7 분기 알람 SLO / D7 SSOT 정리 / `@Transactional` 한정자 또는 Chained KTM
 - **`PHASE-4`** — Toxiproxy 8종 장애 주입 시나리오 + k6 시나리오 재설계 + 로컬 오토스케일러
