@@ -12,8 +12,11 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -810,6 +813,105 @@ class PaymentEventTest {
                     assertThat(statusEx.getCode())
                             .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_QUARANTINE.getCode());
                 });
+    }
+
+    // ---- T2: Instant 기반 도메인 시각 전환 테스트 (RED 단계) ----
+
+    @Test
+    @DisplayName("expire(Instant) — READY 상태에서 EXPIRED 로 전이하고 lastStatusChangedAt 이 고정 Instant 와 일치한다.")
+    void expire_whenReady_shouldTransitionToExpired() {
+        // given
+        Instant fixedInstant = Instant.parse("2026-01-01T00:00:00Z");
+        Clock fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
+        Instant now = fixedClock.instant();
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.READY,
+                PaymentOrderStatus.NOT_STARTED
+        );
+
+        // when
+        paymentEvent.expire(now);
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.EXPIRED);
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(now);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("expire(Instant) — READY 가 아닌 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다.")
+    void expire_whenNotReady_shouldThrow(PaymentEventStatus status) {
+        // given
+        Instant now = Instant.parse("2026-01-01T00:00:00Z");
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                status,
+                PaymentOrderStatus.EXECUTING
+        );
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.expire(now))
+                .isInstanceOf(PaymentStatusException.class)
+                .satisfies(ex -> {
+                    PaymentStatusException statusEx = (PaymentStatusException) ex;
+                    assertThat(statusEx.getCode())
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE.getCode());
+                });
+    }
+
+    @Test
+    @DisplayName("done(Instant, Instant) — Instant approvedAt 인자로 호출 후 getApprovedAt() 동치 단정.")
+    void done_withInstantApprovedAt_shouldSetApprovedAt() {
+        // given
+        Instant approvedAt = Instant.parse("2026-01-01T12:00:00Z");
+        Instant lastChanged = Instant.parse("2026-01-01T12:00:01Z");
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS,
+                PaymentOrderStatus.EXECUTING
+        );
+
+        // when
+        paymentEvent.done(approvedAt, lastChanged);
+
+        // then
+        assertThat(paymentEvent.getApprovedAt()).isEqualTo(approvedAt);
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+    }
+
+    @Test
+    @DisplayName("execute(String, Instant, Instant) — Instant 인자로 호출 후 status=IN_PROGRESS 단정.")
+    void execute_withInstantArgs_shouldTransitionToInProgress() {
+        // given
+        Instant executedAt = Instant.parse("2026-01-01T09:00:00Z");
+        Instant lastChanged = Instant.parse("2026-01-01T09:00:01Z");
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.READY,
+                PaymentOrderStatus.NOT_STARTED
+        );
+
+        // when
+        paymentEvent.execute("key-123", executedAt, lastChanged);
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+        assertThat(paymentEvent.getExecutedAt()).isEqualTo(executedAt);
+    }
+
+    @Test
+    @DisplayName("resetToReady(Instant) — Instant 인자로 호출 후 status=READY 단정.")
+    void resetToReady_withInstant_shouldRestoreStatus() {
+        // given
+        Instant resetAt = Instant.parse("2026-01-01T10:00:00Z");
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.IN_PROGRESS,
+                PaymentOrderStatus.EXECUTING
+        );
+
+        // when
+        paymentEvent.resetToReady(resetAt);
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
+        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
     }
 
     @ParameterizedTest
