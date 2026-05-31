@@ -1,11 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **봉인 완료** (PR #82, CI 전체 GREEN). 이슈 #81, 브랜치 #81. 활성 작업 없음.
-> **다음 세션 진입점**: `## 다음 토픽 후보` 참조 — 다음 작업은 토픽 B `PR B`(TC-4 EXPIRED 정책 + TC-8 시간 추상화 통합). `workflow-discuss`로 시작.
+> 최종 수정: 2026-05-31 — TIME-MODEL-AND-EXPIRY **discuss 완료**, stage → plan. 이슈 #83, 브랜치 #83.
+> **다음 세션 진입점**: `workflow-plan`으로 plan 단계 시작. 설계 문서 `docs/topics/TIME-MODEL-AND-EXPIRY.md`(결정 D1~D8 + 후속 위임 R1/R2/D7범위/verify동기화) 기반 태스크 분해.
 
 ## 활성 작업
 
-(없음)
+- **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
+  - stage: **plan** (discuss 2라운드 합의 완료 — Critic pass / Domain Expert pass)
+  - 이슈 #83, 브랜치 #83
+  - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, 라운드: `docs/rounds/time-model-and-expiry/`
+  - 핵심 결정: D1(Clock+Instant 표준) / D2(Clock 빈 config 배치 + 도메인 시각 인자 주입) / D3(UTC 저장 일관, DATETIME 컬럼 유지·Flyway 불필요) / D4(만료 임계 외부화 기본30) / D5(스케줄러 키 정정+폴백) / D6(만료 2단 연쇄 명문화, READY 가드 유지) / D7(raw-JDBC connectionTimeZone=UTC + product NOW/Instant split-brain 수렴) / D8(벤더 승인 시각 .toInstant 정규화)
+  - 범위: payment/pg/product 시간 추상화 통일, user 무변경
+  - plan 게이트 위임: R1(영속 데이터 존재 시 UTC 규약 영향 확인) / R2(BaseEntity auditing 소스 일원화 이연 확정) / D7 범위(product NOW 비교 앱 Instant 통일 여부) / verify 시 PITFALLS §13 본문 갱신
 
 ## 직전 봉인
 
