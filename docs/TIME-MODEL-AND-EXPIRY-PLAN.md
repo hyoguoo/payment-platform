@@ -264,7 +264,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
   - `payment-service/src/main/java/.../payment/infrastructure/repository/PaymentOutboxRepositoryImpl.java`
   - `payment-service/src/main/java/.../payment/infrastructure/aspect/PaymentStatusMetricsAspect.java` — L23 필드 `LocalDateTimeProvider` → `Clock`, L46 `.now()` → `clock.instant()`
   - `payment-service/src/main/java/.../payment/infrastructure/aspect/DomainEventLoggingAspect.java` — L32 필드 `LocalDateTimeProvider` → `Clock`, L86 `.now()` → `clock.instant()` 기반 시각 (audit trail TZ 제거)
-- **완료 기준**: `grep -r "LocalDateTimeProvider" payment-service/src/main/java` 결과 **0건** (AC1 만족). 이 태스크 완료 후 AC1이 달성 가능하려면 T3(application 레이어)와 T12(dedupe 인프라)도 완료돼야 한다. 전체 주입처 전수 목록: `PaymentCommandUseCase`·`PaymentLoadUseCase`·`PaymentCreateUseCase`·`PaymentOutboxUseCase`·`OutboxRelayService`·`PaymentReconciler`·`PaymentConfirmResultUseCase`(T3), `JdbcPaymentEventDedupeStore`(T12), `PaymentHealthMetrics`·`OutboxPendingAgeMetrics`·`PaymentOutboxMetrics`·`DedupeCleanupWorker`·`PaymentOutboxRepositoryImpl`·`PaymentStatusMetricsAspect`·`DomainEventLoggingAspect`(T7) — 총 14개 클래스, 전부 태스크 매핑 완료.
+- **완료 기준**: `grep -r "LocalDateTimeProvider" payment-service/src/main/java` 결과 **0건** (AC1 만족). 이 태스크 완료 후 AC1이 달성 가능하려면 T3(application 레이어)와 T12(dedupe 인프라)도 완료돼야 한다. 전체 주입처 전수 목록: `PaymentCommandUseCase`·`PaymentLoadUseCase`·`PaymentCreateUseCase`·`PaymentOutboxUseCase`·`OutboxRelayService`·`PaymentReconciler`·`PaymentConfirmResultUseCase`(T3), `JdbcPaymentEventDedupeStore`(T12), `PaymentHealthMetrics`·`OutboxPendingAgeMetrics`·`PaymentOutboxMetrics`·`DedupeCleanupWorker`·`PaymentOutboxRepositoryImpl`·`PaymentStatusMetricsAspect`·`DomainEventLoggingAspect`(T7) — 총 15개 클래스, 전부 태스크 매핑 완료.
 
 ---
 
@@ -459,7 +459,7 @@ T1 (config/port 정리)
 ## 반환 요약
 
 - **태스크 총 개수**: 16
-- **domain_risk 태스크 개수**: 9 (T2, T3, T7, T8, T10, T11, T12, T13, T14)
+- **domain_risk 태스크 개수**: 10 (T2, T3, T7, T8, T10, T11, T12, T13, T14, T15)
 
 | domain_risk=true 태스크 | 커버하는 discuss 리스크 |
 |---|---|
@@ -472,6 +472,7 @@ T1 (config/port 정리)
 | T12 — payment dedupe raw-JDBC UTC + DedupeStore javadoc 정정 | D7/major #1 (멱등성 TTL 윈도우 오차) |
 | T13 — product dedupe raw-JDBC UTC | D7/major #1 (split-brain, 재고 중복) |
 | T14 — approvedAt toInstant 정규화 (T3 선행으로 LocalDateTimeProvider 이미 제거) | D8/major #2 (정산 시각 9시간 오차) |
+| T15 — pg 벤더 strategy 시각 정리 + 메시지 contract 보존 | D8/major #2 (정산 앵커 raw 문자열 contract 불변) |
 
 - **topic.md 결정 중 태스크로 매핑하지 못한 항목**: **없음 (D1~D8 전부 1개 이상 태스크에 매핑됨)**
 

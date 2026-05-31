@@ -1,14 +1,16 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **plan 완료**, stage → plan-review. 이슈 #83, 브랜치 #83.
-> **다음 세션 진입점**: `workflow-plan-review`로 plan-review 단계 시작. PLAN `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크) 문서 정합성 경량 검증.
+> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **plan-review 통과**, stage → execute. 이슈 #83, 브랜치 #83.
+> **다음 세션 진입점**: `workflow-execute`로 execute 시작. 활성 태스크 T1(payment Clock 빈 등록 + LocalDateTimeProvider 제거). 실행 순서는 PLAN 하단 참조 — T1 → [T2+T4+T5 단일 커밋] → T10 → T3 → T6 → T7 …
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
-  - stage: **plan-review** (plan 2라운드 합의 완료 — Critic pass / Domain Expert pass)
+  - stage: **execute** (plan-review pass — Plan Reviewer pass, minor 3건 비차단/표기 오기 2건 정정 완료)
+  - 활성 태스크: **T1** (payment-service Clock 빈 등록 + LocalDateTimeProvider/SystemLocalDateTimeProvider 제거)
   - 이슈 #83, 브랜치 #83
-  - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 9), 라운드: `docs/rounds/time-model-and-expiry/`
+  - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
+  - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인
   - 핵심 결정: D1(Clock+Instant 표준) / D2(Clock 빈 config 배치 + 도메인 시각 인자 주입) / D3(UTC 저장 일관, DATETIME 컬럼 유지·Flyway 불필요) / D4(만료 임계 외부화 기본30) / D5(스케줄러 키 정정+폴백) / D6(만료 2단 연쇄 명문화, READY 가드 유지) / D7(raw-JDBC connectionTimeZone=UTC + product NOW/Instant split-brain 수렴) / D8(벤더 승인 시각 .toInstant 정규화)
   - 범위: payment/pg/product 시간 추상화 통일, user 무변경
   - plan 게이트 위임: R1(영속 데이터 존재 시 UTC 규약 영향 확인) / R2(BaseEntity auditing 소스 일원화 이연 확정) / D7 범위(product NOW 비교 앱 Instant 통일 여부) / verify 시 PITFALLS §13 본문 갱신
