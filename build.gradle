@@ -85,4 +85,116 @@ subprojects {
 
         finalizedBy jacocoTestReport
     }
+
+    jacocoTestReport {
+        dependsOn test
+
+        reports {
+            html.required = true
+            xml.required = true
+            csv.required = false
+        }
+
+        def excludePatterns = [
+                '**/Q*',
+                '**/dto/**',
+                '**/entity/**',
+                '**/enums/**',
+                '**/event/**',
+                '**/exception/**',
+                '**/infrastructure/**',
+                '**/presentation/**',
+                '**/publisher/**',
+                '**/mock/**',
+                '**/aspect/**',
+                '**/metrics/**',
+                '**/log/**',
+                '**/filter/**',
+                '**/util/**',
+                '**/config/**',
+                '**/response/**',
+                '**/*Application.class'
+        ]
+        classDirectories.setFrom(
+                files(classDirectories.files.collect { fileTree(dir: it, excludes: excludePatterns) })
+        )
+
+        finalizedBy jacocoTestCoverageVerification
+    }
+
+    // integrationTest exec 를 jacocoTestReport 에 조건부 합산.
+    // integrationTest 태스크를 보유한 서비스(payment/pg/product)만 합산 대상 — 보유하지 않는 서비스는 가드 false 로 자연 스킵.
+    // jacocoTestCoverageVerification 도 동일 exec + classDirectories 로 연결해 게이트가 실제로 막도록 wiring.
+    afterEvaluate {
+        def itTask = tasks.findByName('integrationTest')
+        if (itTask != null) {
+            jacocoTestReport.dependsOn itTask
+            jacocoTestReport.executionData(new File(buildDir, 'jacoco/integrationTest.exec'))
+        }
+
+        // jacocoTestCoverageVerification 에 exec 파일을 직접 연결해 게이트가 실제로 동작하도록 wiring.
+        // (jacocoTestReport.executionData 는 평가 완료 전 resolve 안 됨 — 파일 경로 직접 지정)
+        jacocoTestCoverageVerification.dependsOn jacocoTestReport
+        jacocoTestCoverageVerification.executionData(new File(buildDir, 'jacoco/test.exec'))
+        if (itTask != null) {
+            jacocoTestCoverageVerification.executionData(new File(buildDir, 'jacoco/integrationTest.exec'))
+        }
+
+        // classDirectories 는 jacocoTestReport 와 동일한 excludePatterns 를 공유한다.
+        def excludePatterns = [
+                '**/Q*',
+                '**/dto/**',
+                '**/entity/**',
+                '**/enums/**',
+                '**/event/**',
+                '**/exception/**',
+                '**/infrastructure/**',
+                '**/presentation/**',
+                '**/publisher/**',
+                '**/mock/**',
+                '**/aspect/**',
+                '**/metrics/**',
+                '**/log/**',
+                '**/filter/**',
+                '**/util/**',
+                '**/config/**',
+                '**/response/**',
+                '**/*Application.class'
+        ]
+        jacocoTestCoverageVerification.classDirectories.setFrom(
+                files(sourceSets.main.output.classesDirs.collect { fileTree(dir: it, excludes: excludePatterns) })
+        )
+
+        // 서비스별 LINE 커버리지 minimum 을 ext 속성에서 읽어 violationRules limit 에 적용.
+        // subprojects 블록 평가 완료 후 afterEvaluate 에서 읽어야 서비스 ext 값이 반영된다.
+        def lineCoverageMinimum = project.ext.has('jacoco.lineCoverageMinimum')
+                ? project.ext.get('jacoco.lineCoverageMinimum') as BigDecimal
+                : BigDecimal.ZERO
+        jacocoTestCoverageVerification.violationRules.rules.each { rule ->
+            rule.limits.each { lim ->
+                if (lim.counter == 'LINE' && lim.value == 'COVEREDRATIO') {
+                    lim.minimum = lineCoverageMinimum
+                }
+            }
+        }
+    }
+
+    jacocoTestCoverageVerification {
+        violationRules {
+            // BUNDLE 단위 LINE 커버리지 게이트 — 전체 번들 합산으로 체크.
+            // element = 'CLASS' 는 클래스별로 minimum 을 강제해 테스트가 없는 관리 기능 클래스가 있으면
+            // 전체 플로우가 차단됨. BUNDLE 이 실측 기반 minimum 과 의미적으로 정합.
+            rule {
+                element = 'BUNDLE'
+
+                // LINE minimum 은 afterEvaluate 에서 서비스별 ext 속성을 읽어 동적으로 설정한다.
+                // (서비스 build.gradle 의 ext 는 subprojects 블록 평가 후 반영 — 여기서 직접 읽으면 0.0 이 됨)
+                limit {
+                    counter = 'LINE'
+                    value = 'COVEREDRATIO'
+                    minimum = 0.0
+                }
+            }
+        }
+    }
 }

@@ -45,6 +45,16 @@ jobs:
             eureka-server/build/reports/jacoco/test/html/
           retention-days: 14
 
+      - name: JUnit Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: |
+            **/build/test-results/test/**/*.xml
+            **/build/test-results/integrationTest/**/*.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: JUnit Test Report
+
       - name: JaCoCo PR coverage comment
         if: github.event_name == 'pull_request'
         uses: Madrapps/jacoco-report@v1.7.2

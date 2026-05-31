@@ -9,6 +9,8 @@ ext {
     set('logstashEncoderVersion', '7.4')
     set('querydslVersion', '5.0.0')
     set('springCloudVersion', '2024.0.0')
+    // C-2: LINE 커버리지 minimum — integrationTest 합산 실측 92.87% 기준, 안전마진 3%p 적용
+    set('jacoco.lineCoverageMinimum', '0.89')
 }
 
 dependencies {
@@ -117,79 +119,6 @@ task integrationTest(type: Test) {
 
 check.dependsOn integrationTest
 integrationTest.mustRunAfter test
-
-jacocoTestReport {
-    dependsOn test
-
-    reports {
-        html.required = true
-        xml.required = true
-        csv.required = false
-    }
-
-    classDirectories.setFrom(
-            files(classDirectories.files.collect {
-                fileTree(dir: it, excludes: [
-                        // QueryDSL generated
-                        '**/Q*',
-                        // Data carriers
-                        '**/dto/**',
-                        '**/entity/**',
-                        '**/enums/**',
-                        '**/event/**',
-                        // Exception classes
-                        '**/exception/**',
-                        // Infrastructure / adapters
-                        '**/infrastructure/**',
-                        '**/presentation/**',
-                        '**/publisher/**',
-                        '**/mock/**',
-                        // Cross-cutting concerns (AOP, metrics, logging, filter, util)
-                        '**/aspect/**',
-                        '**/metrics/**',
-                        '**/log/**',
-                        '**/filter/**',
-                        '**/util/**',
-                        // Spring config & response wrappers
-                        '**/config/**',
-                        '**/response/**',
-                        // Entry point
-                        '**/PaymentPlatformApplication.class'
-                ])
-            })
-    )
-
-    finalizedBy jacocoTestCoverageVerification
-}
-
-jacocoTestCoverageVerification {
-    violationRules {
-        rule {
-            element = 'CLASS'
-
-            excludes = [
-                    '*.Q*',
-                    '**/dto/**',
-                    '**/entity/**',
-                    '**/enums/**',
-                    '**/event/**',
-                    '**/exception/**',
-                    '**/infrastructure/**',
-                    '**/presentation/**',
-                    '**/publisher/**',
-                    '**/mock/**',
-                    '**/aspect/**',
-                    '**/metrics/**',
-                    '**/log/**',
-                    '**/filter/**',
-                    '**/util/**',
-                    '**/config/**',
-                    '**/response/**',
-                    '**/PaymentPlatformApplication'
-            ]
-        }
-    }
-}
 
 spotbugsMain {
     excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')

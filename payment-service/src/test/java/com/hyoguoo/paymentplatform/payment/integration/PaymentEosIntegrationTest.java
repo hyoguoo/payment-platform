@@ -46,7 +46,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -177,8 +179,21 @@ class PaymentEosIntegrationTest {
     @Autowired
     private org.springframework.kafka.test.EmbeddedKafkaBroker embeddedKafkaBroker;
 
+    @Autowired
+    private KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
+
     @BeforeEach
     void setUp() {
+        // cold-start 방어: consumer group join + partition assignment 가 setUp 안에서 완료되도록 대기.
+        // ContainerTestUtils.waitForAssignment 은 파티션 수가 정확히 일치해야 하므로(strict equality),
+        // 대신 Awaitility 로 "할당된 파티션 ≥ 1" 조건을 기다린다.
+        // 이로써 #1 시나리오의 await(15초) 전에 consumer 가 준비 완료된다.
+        for (MessageListenerContainer container : kafkaListenerEndpointRegistry.getListenerContainers()) {
+            await().atMost(Duration.ofSeconds(30))
+                    .until(() -> container.getAssignedPartitions() != null
+                            && !container.getAssignedPartitions().isEmpty());
+        }
+
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
         namedParameterJdbcTemplate.update(

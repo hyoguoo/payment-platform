@@ -50,10 +50,6 @@ class FakeEventDedupeStoreTest {
         Instant shortTtl = BASE_TIME.plusSeconds(1);
         store.recordIfAbsent("uuid-1", shortTtl);
 
-        // 시간 경과 후(BASE_TIME+2s) 동일 UUID 재호출 — 기존 엔트리 expiresAt(BASE_TIME+1s) < now(BASE_TIME+2s)
-        FakeEventDedupeStore storeAfterExpiry = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME.plusSeconds(2), ZoneOffset.UTC)
-        );
         // 만료 시뮬레이션을 위해 동일 store에 Clock을 주입해야 하므로
         // 같은 인스턴스에 clock 교체가 불가 — 별도 store로 검증 (동일 in-memory 상태 불필요)
         // 대신 TTL=과거로 기록 후 현재 시각이 미래인 store로 재확인

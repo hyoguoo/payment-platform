@@ -48,6 +48,26 @@ class UserFeignConfigTest {
     }
 
     @Test
+    @DisplayName("502 → UserServiceRetryableException")
+    void decode_BadGateway_ShouldReturnRetryable() {
+        Response response = buildResponse(502, "{\"message\":\"bad gateway\"}");
+
+        Exception exception = decoder.decode("methodKey", response);
+
+        assertThat(exception).isInstanceOf(UserServiceRetryableException.class);
+    }
+
+    @Test
+    @DisplayName("504 → UserServiceRetryableException")
+    void decode_GatewayTimeout_ShouldReturnRetryable() {
+        Response response = buildResponse(504, "{\"message\":\"gateway timeout\"}");
+
+        Exception exception = decoder.decode("methodKey", response);
+
+        assertThat(exception).isInstanceOf(UserServiceRetryableException.class);
+    }
+
+    @Test
     @DisplayName("500 → IllegalStateException (미분류 서버 에러, message 에 status 포함)")
     void decode_InternalServerError_ShouldReturnIllegalState() {
         Response response = buildResponse(500, "{\"error\":\"boom\"}");

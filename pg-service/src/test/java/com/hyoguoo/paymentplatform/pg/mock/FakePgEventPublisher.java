@@ -16,6 +16,26 @@ public class FakePgEventPublisher implements PgEventPublisherPort {
 
     public record EventCapture(String topic, String key, Object payload, Map<String, byte[]> headers) {
 
+        /**
+         * compact canonical constructor — headers 의 byte[] 값을 defensive copy 해 가변 배열 노출을 방지한다.
+         */
+        public EventCapture {
+            if (headers != null) {
+                java.util.Map<String, byte[]> copy = new java.util.HashMap<>(headers.size());
+                headers.forEach((k, v) -> copy.put(k, v == null ? null : v.clone()));
+                headers = java.util.Collections.unmodifiableMap(copy);
+            }
+        }
+
+        @Override
+        public Map<String, byte[]> headers() {
+            if (headers == null) {
+                return null;
+            }
+            java.util.Map<String, byte[]> copy = new java.util.HashMap<>(headers.size());
+            headers.forEach((k, v) -> copy.put(k, v == null ? null : v.clone()));
+            return java.util.Collections.unmodifiableMap(copy);
+        }
     }
 
     private final CopyOnWriteArrayList<EventCapture> published = new CopyOnWriteArrayList<>();

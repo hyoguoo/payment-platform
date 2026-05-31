@@ -9,6 +9,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -54,7 +56,15 @@ class StockDecrementAtomicLuaTest {
 
     @AfterEach
     void tearDown() {
-        redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
+        RedisConnectionFactory factory = redisTemplate.getConnectionFactory();
+        if (factory == null) {
+            throw new IllegalStateException("RedisConnectionFactory must not be null");
+        }
+        RedisConnection connection = factory.getConnection();
+        if (connection == null) {
+            throw new IllegalStateException("RedisConnection must not be null");
+        }
+        connection.serverCommands().flushAll();
         connectionFactory.destroy();
     }
 
