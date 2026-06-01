@@ -11,11 +11,11 @@
 
 ### Task 목록 (16개)
 
-- **T1** 결제 서비스에 표준 시계 빈 등록 + 자체 시간 공급 포트 제거
-- **T2** 결제 이벤트 도메인 시각 타입을 절대 시점으로 전환 (만료/승인/상태변경 시각)
-- **T3** 결제 응용 계층 시각 소스를 표준 시계로 교체 (만료 조회·정합 스캐너·**멱등 정리 만료시각 소스**)
-- **T4** 결제 이벤트 엔티티 시각 타입 전환 + 표준 매핑 경로 UTC 설정
-- **T5** 결제 이벤트 저장소 포트·구현 시각 타입 전환
+- [x] **T1** 결제 서비스에 표준 시계 빈 등록 + 자체 시간 공급 포트 제거
+- [x] **T2** 결제 이벤트 도메인 시각 타입을 절대 시점으로 전환 (만료/승인/상태변경 시각)
+- [ ] **T3** 결제 응용 계층 시각 소스를 표준 시계로 교체 (만료 조회·정합 스캐너·**멱등 정리 만료시각 소스**)
+- [x] **T4** 결제 이벤트 엔티티 시각 타입 전환 + 표준 매핑 경로 UTC 설정
+- [x] **T5** 결제 이벤트 저장소 포트·구현 시각 타입 전환
 - **T6** 만료 임계(30분) 환경 설정 외부화
 - **T7** 결제 인프라 계층(지표·스케줄러·감사 관점) 시각 소스 교체 — 자체 포트 완전 제거 달성
 - **T8** PG 도메인 직접 시각 호출 제거 → 호출자 인자 주입
@@ -228,6 +228,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
 - **테스트 클래스**: `PaymentEventRepositoryImplTest` (신규 또는 기존)
 - **테스트 메서드 스펙**:
   - `findReadyPaymentsOlderThan_withInstantCutoff_returnsOnlyOlderPayments` — Testcontainers MySQL에서 READY 결제 두 건(cutoff 이전/이후) INSERT 후 `Instant` cutoff로 조회하여 이전 건만 반환됨 단정
+- **완료 결과** (2026-06-01): `JpaPaymentEventRepository.findReadyPaymentsOlderThan` 파라미터를 `LocalDateTime` → `Instant`로 전환. `PaymentEventRepositoryImpl`의 `LocalDateTime.ofInstant` 변환 제거. Hibernate가 `Instant`를 `hibernate.jdbc.time_zone=UTC` + UTC Calendar로 바인딩하여 JdbcTemplate(`connectionTimeZone=UTC`) 경로와 동일 UTC 기준 비교 달성. 통합 테스트 28/28 PASS.
 
 ---
 

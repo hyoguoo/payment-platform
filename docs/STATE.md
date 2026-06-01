@@ -1,13 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **execute 진행 중 (WIP, 세션 한도 중단)**. 이슈 #83, 브랜치 #83.
-> **다음 세션 진입점**: `docs/.continue-here.md` 먼저 읽기. T1+[T2+T4+T5] 묶음 GREEN 미완성 — 컴파일 그린·단위 통과·integrationTest 2건 실패(PaymentEventRepositoryImplTest.findReadyPaymentsOlderThan(Instant), PaymentSchedulerTest 30분 EXPIRED). 실패 2건 GREEN화 → feat 커밋 → 남은 T3/T6/T7 재산정.
+> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **execute 진행 중**. 이슈 #83, 브랜치 #83.
+> T1+[T2+T4+T5] 묶음 GREEN 완료(integrationTest 28/28). 다음 진입점: T3(application 레이어 Clock 전환) + LocalDateTimeProvider 잔여 사용처 확인.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
   - stage: **execute** (plan-review pass — Plan Reviewer pass, minor 3건 비차단/표기 오기 2건 정정 완료)
-  - 활성 태스크: **T1** (payment-service Clock 빈 등록 + LocalDateTimeProvider/SystemLocalDateTimeProvider 제거)
+  - 활성 태스크: **T3** (payment-service application 레이어 시각 소스 Clock 전환)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
   - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인

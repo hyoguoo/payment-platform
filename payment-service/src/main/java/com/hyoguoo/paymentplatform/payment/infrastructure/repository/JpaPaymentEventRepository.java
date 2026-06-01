@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,12 +13,13 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
 
-    // BaseEntity.createdAt 이 LocalDateTime(DATETIME) 이므로 native query 에서 문자열 비교.
-    // JPQL 파라미터 바인딩 시 시스템 TZ 의존 문제를 피하기 위해 native query 사용.
-    // 포트 시그니처는 Instant — PaymentEventRepositoryImpl 에서 UTC LocalDateTime 변환 후 전달.
+    // D3 — BaseEntity.createdAt 은 LocalDateTime(DATETIME) 컬럼이나, Instant 파라미터를
+    // Hibernate 가 hibernate.jdbc.time_zone=UTC 기준으로 UTC Calendar 바인딩하므로
+    // JdbcTemplate 경로(connectionTimeZone=UTC)와 동일한 UTC 기준으로 비교된다.
+    // PaymentEventRepositoryImpl 에서 LocalDateTime 변환 없이 Instant 를 직접 전달.
     @Query(value = "SELECT * FROM payment_event WHERE status = 'READY' AND created_at < :before",
             nativeQuery = true)
-    List<PaymentEventEntity> findReadyPaymentsOlderThan(@Param("before") LocalDateTime before);
+    List<PaymentEventEntity> findReadyPaymentsOlderThan(@Param("before") Instant before);
 
     @Query("SELECT pe.status, COUNT(pe) FROM PaymentEventEntity pe GROUP BY pe.status")
     List<Object[]> countByStatusGrouped();

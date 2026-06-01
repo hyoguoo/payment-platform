@@ -62,7 +62,7 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
         // TestLocalDateTimeProvider.nowInstant() 를 현재 시각으로 고정하면
         // getReadyPaymentsOlder() 의 cutoff = now - 30min.
         Instant nowInstant = Instant.now();
-        LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.systemDefault());
+        LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.UTC);
         LocalDateTime thirtyOneMinutesAgo = nowLdt.minus(31, ChronoUnit.MINUTES);
         LocalDateTime twentyNineMinutesAgo = nowLdt.minus(29, ChronoUnit.MINUTES);
 
@@ -131,7 +131,7 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
     void testExpireOldReadyPayments_NotReadyStatus() {
         // given — 현재 시각 기준 상대 시각 사용
         Instant nowInstant = Instant.now();
-        LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.systemDefault());
+        LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.UTC);
         LocalDateTime thirtyOneMinutesAgo = nowLdt.minus(31, ChronoUnit.MINUTES);
 
         ((TestLocalDateTimeProvider) localDateTimeProvider).setFixedInstant(nowInstant);

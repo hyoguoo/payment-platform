@@ -7,18 +7,14 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-@Slf4j
 @Repository
 @RequiredArgsConstructor
 public class PaymentEventRepositoryImpl implements PaymentEventRepository {
@@ -74,12 +70,10 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     public List<PaymentEvent> findReadyPaymentsOlderThan(Instant before) {
-        // BaseEntity.createdAt 이 LocalDateTime 이므로 JPQL 비교를 위해 UTC 변환.
-        // T7(BaseEntity auditing 일원화) 전까지 임시 변환 유지.
-        LocalDateTime beforeLdt = LocalDateTime.ofInstant(before, ZoneOffset.UTC);
-        log.debug("findReadyPaymentsOlderThan: before={}, beforeLdt={}", before, beforeLdt);
+        // D3 — Instant 를 직접 native query 에 전달. Hibernate 가 hibernate.jdbc.time_zone=UTC
+        // 기준으로 UTC Calendar 바인딩하므로 JdbcTemplate(connectionTimeZone=UTC) 과 동일 UTC 기준으로 비교된다.
         return jpaPaymentEventRepository
-                .findReadyPaymentsOlderThan(beforeLdt)
+                .findReadyPaymentsOlderThan(before)
                 .stream()
                 .map(paymentEventEntity -> {
                     List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
