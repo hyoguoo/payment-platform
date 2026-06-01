@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventRes
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -23,9 +23,10 @@ public class PaymentEventResponse {
     private final Long buyerId;
     private final Long sellerId;
     private final Integer retryCount;
-    private final LocalDateTime createdAt;
-    private final LocalDateTime executedAt;
-    private final LocalDateTime approvedAt;
+    // TODO T3: 시각 필드 → Instant (D1/D3). PaymentEventResult 전환에 따라 동반 전환.
+    private final Instant createdAt;
+    private final Instant executedAt;
+    private final Instant approvedAt;
 
     public static PaymentEventResponse from(PaymentEventResult result) {
         return PaymentEventResponse.builder()

@@ -15,7 +15,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.assertj.core.api.Assertions;
@@ -82,7 +81,7 @@ class PaymentEventTest {
                 .paymentKey("validPaymentKey")
                 .status(paymentEventStatus)
                 .retryCount(0)
-                .approvedAt(LocalDateTime.of(2021, 1, 1, 0, 0, 0))
+                .approvedAt(Instant.parse("2021-01-01T00:00:00Z"))
                 .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
                 .allArgsBuild();
     }
@@ -98,8 +97,8 @@ class PaymentEventTest {
         String orderId = "order123";
         String paymentKey = "validPaymentKey";
         PaymentEventStatus status = PaymentEventStatus.IN_PROGRESS;
-        LocalDateTime approvedAt = LocalDateTime.now();
-        LocalDateTime executedAt = LocalDateTime.now();
+        Instant approvedAt = Instant.now();
+        Instant executedAt = Instant.now();
         Integer retryCount = 1;
         List<PaymentOrder> paymentOrderList = List.of(
                 PaymentOrder.allArgsBuilder()
@@ -182,7 +181,7 @@ class PaymentEventTest {
                 userInfo,
                 productInfoList,
                 orderId,
-                LocalDateTime.now(),
+                Instant.now(),
                 PaymentGatewayType.TOSS
         );
 
@@ -201,14 +200,14 @@ class PaymentEventTest {
     @DisplayName("결제 시작 시 특정 상태에서 성공적으로 IN_PROGRESS 상태로 변경하고, 실행 시간을 설정한다.")
     void execute_Success(PaymentEventStatus paymentEventStatus) {
         // given
-        LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant executedAt = Instant.parse("2021-01-01T00:00:00Z");
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
 
         // when
-        paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now());
+        paymentEvent.execute("validPaymentKey", executedAt, Instant.now());
 
         // then
         assertThat(paymentEvent.getPaymentKey()).isEqualTo("validPaymentKey");
@@ -221,14 +220,14 @@ class PaymentEventTest {
     @DisplayName("결제 시작 시  in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
-        LocalDateTime executedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant executedAt = Instant.parse("2021-01-01T00:00:00Z");
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 paymentEventStatus,
                 PaymentOrderStatus.NOT_STARTED
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", executedAt, LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.execute("validPaymentKey", executedAt, Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -242,9 +241,9 @@ class PaymentEventTest {
                 PaymentOrderStatus.EXECUTING
         );
 
-        LocalDateTime approvedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant approvedAt = Instant.parse("2021-01-01T00:00:00Z");
         // when
-        paymentEvent.done(approvedAt, LocalDateTime.now());
+        paymentEvent.done(approvedAt, Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
@@ -259,10 +258,10 @@ class PaymentEventTest {
                 paymentEventStatus,
                 PaymentOrderStatus.EXECUTING
         );
-        LocalDateTime approvedAt = LocalDateTime.of(2024, 6, 1, 12, 0, 0);
+        Instant approvedAt = Instant.parse("2024-06-01T12:00:00Z");
 
         // when
-        paymentEvent.done(approvedAt, LocalDateTime.now());
+        paymentEvent.done(approvedAt, Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
@@ -283,7 +282,7 @@ class PaymentEventTest {
             );
 
             // when & then
-            assertThatThrownBy(() -> paymentEvent.done(null, LocalDateTime.now()))
+            assertThatThrownBy(() -> paymentEvent.done(null, Instant.now()))
                     .isInstanceOf(PaymentStatusException.class)
                     .satisfies(ex -> {
                         PaymentStatusException statusEx = (PaymentStatusException) ex;
@@ -302,10 +301,10 @@ class PaymentEventTest {
                 PaymentOrderStatus.EXECUTING
         );
 
-        LocalDateTime approvedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant approvedAt = Instant.parse("2021-01-01T00:00:00Z");
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.done(approvedAt, LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.done(approvedAt, Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -321,7 +320,7 @@ class PaymentEventTest {
         String reason = "test failure reason";
 
         // when
-        paymentEvent.fail(reason, LocalDateTime.now());
+        paymentEvent.fail(reason, Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
@@ -339,7 +338,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.fail("test failure reason", LocalDateTime.now());
+        paymentEvent.fail("test failure reason", Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
@@ -357,7 +356,7 @@ class PaymentEventTest {
         PaymentEventStatus statusBefore = paymentEvent.getStatus();
 
         // when & then — 예외 없이 완료되어야 하며 status가 변경되지 않아야 한다
-        paymentEvent.fail("attempt to fail terminal", LocalDateTime.now());
+        paymentEvent.fail("attempt to fail terminal", Instant.now());
         assertThat(paymentEvent.getStatus()).isEqualTo(statusBefore);
     }
 
@@ -419,7 +418,7 @@ class PaymentEventTest {
         );
 
         // when
-        paymentEvent.expire(LocalDateTime.now());
+        paymentEvent.expire(Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.EXPIRED);
@@ -439,7 +438,7 @@ class PaymentEventTest {
         );
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.expire(LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.expire(Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -455,7 +454,7 @@ class PaymentEventTest {
                 .stock(100)
                 .sellerId(2L)
                 .build();
-        LocalDateTime creationTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant creationTime = Instant.parse("2021-01-01T00:00:00Z");
 
         // when
         PaymentEvent paymentEvent = PaymentEvent.create(
@@ -474,8 +473,8 @@ class PaymentEventTest {
     @DisplayName("상태 변경 시 lastStatusChangedAt 필드가 업데이트된다.")
     void lastStatusChangedAt_UpdatedOnStatusChange() {
         // given
-        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
-        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 5, 0);
+        Instant initialTime = Instant.parse("2021-01-01T00:00:00Z");
+        Instant statusChangeTime = Instant.parse("2021-01-01T00:05:00Z");
 
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
                 .buyerId(1L)
@@ -500,8 +499,8 @@ class PaymentEventTest {
     @DisplayName("상태 변경 간의 Duration을 계산할 수 있다.")
     void lastStatusChangedAt_DurationCalculation() {
         // given
-        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
-        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 5, 30);
+        Instant initialTime = Instant.parse("2021-01-01T00:00:00Z");
+        Instant statusChangeTime = Instant.parse("2021-01-01T00:05:30Z");
 
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
                 .buyerId(1L)
@@ -527,8 +526,8 @@ class PaymentEventTest {
     @DisplayName("각 상태 변경 메서드 호출 시 lastStatusChangedAt이 업데이트된다.")
     void lastStatusChangedAt_UpdatedOnEachStatusChange(PaymentEventStatus targetStatus) {
         // given
-        LocalDateTime initialTime = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
-        LocalDateTime statusChangeTime = LocalDateTime.of(2021, 1, 1, 0, 10, 0);
+        Instant initialTime = Instant.parse("2021-01-01T00:00:00Z");
+        Instant statusChangeTime = Instant.parse("2021-01-01T00:10:00Z");
 
         PaymentEventStatus initialStatus = switch (targetStatus) {
             case DONE, FAILED -> PaymentEventStatus.IN_PROGRESS;
@@ -610,7 +609,7 @@ class PaymentEventTest {
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
         // when
-        paymentEvent.toRetrying(LocalDateTime.now());
+        paymentEvent.toRetrying(Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
@@ -625,7 +624,7 @@ class PaymentEventTest {
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.toRetrying(LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.toRetrying(Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -637,7 +636,7 @@ class PaymentEventTest {
                 PaymentEventStatus.READY, PaymentOrderStatus.NOT_STARTED);
 
         // when
-        paymentEvent.toRetrying(LocalDateTime.now());
+        paymentEvent.toRetrying(Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
@@ -653,7 +652,7 @@ class PaymentEventTest {
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.toRetrying(LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.toRetrying(Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -666,7 +665,7 @@ class PaymentEventTest {
         int initialRetryCount = paymentEvent.getRetryCount();
 
         // when
-        paymentEvent.toRetrying(LocalDateTime.now());
+        paymentEvent.toRetrying(Instant.now());
 
         // then
         assertThat(paymentEvent.getRetryCount()).isEqualTo(initialRetryCount + 1);
@@ -699,7 +698,7 @@ class PaymentEventTest {
         String reason = "한도 소진 후 판단 불가";
 
         // when
-        paymentEvent.quarantine(reason, LocalDateTime.now());
+        paymentEvent.quarantine(reason, Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
@@ -715,7 +714,7 @@ class PaymentEventTest {
                 paymentEventStatus, PaymentOrderStatus.EXECUTING);
 
         // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
-        assertThatThrownBy(() -> paymentEvent.quarantine("reason", LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.quarantine("reason", Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -727,7 +726,7 @@ class PaymentEventTest {
                 PaymentEventStatus.DONE, PaymentOrderStatus.EXECUTING);
 
         // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
-        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -739,7 +738,7 @@ class PaymentEventTest {
                 PaymentEventStatus.FAILED, PaymentOrderStatus.EXECUTING);
 
         // when & then — quarantine 가드는 IllegalStateException 이 아닌 PaymentStatusException 으로 통일됨
-        assertThatThrownBy(() -> paymentEvent.quarantine("RETRY_EXHAUSTED", LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.quarantine("RETRY_EXHAUSTED", Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -752,10 +751,10 @@ class PaymentEventTest {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 terminalStatus, PaymentOrderStatus.EXECUTING);
-        LocalDateTime executedAt = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
+        Instant executedAt = Instant.parse("2024-01-01T00:00:00Z");
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.execute("key", executedAt, LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.execute("key", executedAt, Instant.now()))
                 .isInstanceOf(PaymentStatusException.class);
     }
 
@@ -769,7 +768,7 @@ class PaymentEventTest {
         String reason = "복구 워커 보정 대기";
 
         // when
-        paymentEvent.quarantine(reason, LocalDateTime.now());
+        paymentEvent.quarantine(reason, Instant.now());
 
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
@@ -786,10 +785,10 @@ class PaymentEventTest {
                 PaymentEventStatus.DONE,
                 PaymentOrderStatus.SUCCESS
         );
-        LocalDateTime originalApprovedAt = paymentEvent.getApprovedAt();
+        Instant originalApprovedAt = paymentEvent.getApprovedAt();
 
         // when — 예외 없이 완료되어야 한다 (no-op)
-        paymentEvent.done(LocalDateTime.of(2024, 1, 1, 12, 0, 0), LocalDateTime.now());
+        paymentEvent.done(Instant.parse("2024-01-01T12:00:00Z"), Instant.now());
 
         // then — status가 변경되지 않아야 한다
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
@@ -806,7 +805,7 @@ class PaymentEventTest {
                 PaymentEventStatus.DONE, PaymentOrderStatus.SUCCESS);
 
         // when & then — PaymentStatusException이어야 한다 (IllegalStateException 금지)
-        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.quarantine("AMOUNT_MISMATCH", Instant.now()))
                 .isInstanceOf(PaymentStatusException.class)
                 .satisfies(ex -> {
                     PaymentStatusException statusEx = (PaymentStatusException) ex;
@@ -933,7 +932,7 @@ class PaymentEventTest {
                 userInfo,
                 List.of(productInfo),
                 "order123",
-                LocalDateTime.now(),
+                Instant.now(),
                 gatewayType
         );
 
@@ -949,7 +948,7 @@ class PaymentEventTest {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.IN_PROGRESS, PaymentOrderStatus.EXECUTING);
-        LocalDateTime resetAt = LocalDateTime.now().plusMinutes(10);
+        Instant resetAt = Instant.now().plus(Duration.ofMinutes(10));
 
         // when
         paymentEvent.resetToReady(resetAt);
@@ -969,7 +968,7 @@ class PaymentEventTest {
                 from, PaymentOrderStatus.NOT_STARTED);
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.resetToReady(LocalDateTime.now()))
+        assertThatThrownBy(() -> paymentEvent.resetToReady(Instant.now()))
                 .isInstanceOf(PaymentStatusException.class)
                 .satisfies(ex -> {
                     PaymentStatusException statusEx = (PaymentStatusException) ex;

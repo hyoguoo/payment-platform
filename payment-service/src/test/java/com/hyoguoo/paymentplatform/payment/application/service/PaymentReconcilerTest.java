@@ -11,7 +11,9 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,8 +49,8 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("stale IN_FLIGHT 가 있으면 READY 로 복원한다.")
     void scan_resetsStaleInFlightRecords() {
-        LocalDateTime now = LocalDateTime.of(2026, 4, 27, 12, 0, 0);
-        when(localDateTimeProvider.now()).thenReturn(now);
+        Instant now = Instant.parse("2026-04-27T12:00:00Z");
+        when(localDateTimeProvider.nowInstant()).thenReturn(now);
 
         PaymentEvent stale = Mockito.mock(PaymentEvent.class);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of(stale));
@@ -62,8 +64,8 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("stale IN_FLIGHT 가 없으면 saveOrUpdate 가 호출되지 않는다.")
     void scan_whenNoStale_skipsSave() {
-        LocalDateTime now = LocalDateTime.of(2026, 4, 27, 12, 0, 0);
-        when(localDateTimeProvider.now()).thenReturn(now);
+        Instant now = Instant.parse("2026-04-27T12:00:00Z");
+        when(localDateTimeProvider.nowInstant()).thenReturn(now);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
 
         reconciler.scan();
@@ -74,13 +76,13 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("findInProgressOlderThan 의 cutoff 가 now - timeout 이다.")
     void scan_cutoffEqualsNowMinusTimeout() {
-        LocalDateTime now = LocalDateTime.of(2026, 4, 27, 12, 0, 0);
-        when(localDateTimeProvider.now()).thenReturn(now);
+        Instant now = Instant.parse("2026-04-27T12:00:00Z");
+        when(localDateTimeProvider.nowInstant()).thenReturn(now);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
 
         reconciler.scan();
 
-        LocalDateTime expectedCutoff = now.minusSeconds(TIMEOUT_SECONDS);
+        Instant expectedCutoff = now.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
         verify(paymentEventRepository, times(1)).findInProgressOlderThan(expectedCutoff);
         assertThat(expectedCutoff).isBefore(now);
     }

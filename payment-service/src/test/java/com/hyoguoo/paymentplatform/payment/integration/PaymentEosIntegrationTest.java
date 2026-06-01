@@ -25,7 +25,7 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentE
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -258,7 +258,7 @@ class PaymentEosIntegrationTest {
         savePaymentInProgress(orderId, PRODUCT_ID, UNIT_AMOUNT);
 
         doThrow(new RuntimeException("EOS abort 시뮬레이션 — markPaymentAsDone RuntimeException"))
-                .when(paymentCommandUseCase).markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class));
+                .when(paymentCommandUseCase).markPaymentAsDone(any(PaymentEvent.class), any(Instant.class));
 
         ConfirmedEventMessage message = approvedMessage(orderId, UNIT_AMOUNT.longValue(), eventUuid);
         String payload = objectMapper.writeValueAsString(message);
@@ -270,7 +270,7 @@ class PaymentEosIntegrationTest {
         await().atMost(Duration.ofSeconds(30))
                 .untilAsserted(() ->
                         verify(paymentCommandUseCase, times(6)).markPaymentAsDone(
-                                any(PaymentEvent.class), any(LocalDateTime.class))
+                                any(PaymentEvent.class), any(Instant.class))
                 );
 
         // dedupe 0 row — RDB 롤백 확인
@@ -323,7 +323,7 @@ class PaymentEosIntegrationTest {
 
         // verify paymentCommandUseCase.markPaymentAsDone 미호출 (비즈니스 skip 확인)
         verify(paymentCommandUseCase, times(0))
-                .markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class));
+                .markPaymentAsDone(any(PaymentEvent.class), any(Instant.class));
     }
 
     // ── 시나리오 #4 ─────────────────────────────────────────────────────────────
@@ -431,7 +431,7 @@ class PaymentEosIntegrationTest {
 
         // paymentCommandUseCase 호출 없음 (가드에서 early return)
         verify(paymentCommandUseCase, times(0)).markPaymentAsDone(
-                any(PaymentEvent.class), any(LocalDateTime.class));
+                any(PaymentEvent.class), any(Instant.class));
     }
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -510,7 +510,7 @@ class PaymentEosIntegrationTest {
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(status)
                 .retryCount(0)
-                .lastStatusChangedAt(LocalDateTime.now())
+                .lastStatusChangedAt(Instant.now())
                 .build();
     }
 

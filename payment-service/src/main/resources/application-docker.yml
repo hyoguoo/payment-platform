@@ -19,6 +19,11 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          # D3 — DATETIME(6) 컬럼에 Instant 를 UTC 기준으로 저장/조회.
+          time_zone: UTC
 
 payment:
   cache:

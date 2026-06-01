@@ -12,7 +12,7 @@ import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantine
 import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,8 +53,8 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.executePayment(paymentEvent, paymentKey);
 
         // then
-        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.now(),
-                testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).execute(paymentKey, testLocalDateTimeProvider.nowInstant(),
+                testLocalDateTimeProvider.nowInstant());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -63,7 +63,7 @@ class PaymentCommandUseCaseTest {
     void testMarkPaymentAsDone() {
         // given
         PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        LocalDateTime approvedAt = LocalDateTime.of(2021, 1, 1, 0, 0, 0);
+        Instant approvedAt = Instant.parse("2021-01-01T00:00:00Z");
 
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
@@ -71,7 +71,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
 
         // then
-        verify(paymentEvent, times(1)).done(approvedAt, testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).done(approvedAt, testLocalDateTimeProvider.nowInstant());
         assertThat(result.getId()).isEqualTo(paymentEvent.getId());
 
     }
@@ -89,7 +89,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
 
         // then
-        verify(paymentEvent, times(1)).fail(failureReason, testLocalDateTimeProvider.now());
+        verify(paymentEvent, times(1)).fail(failureReason, testLocalDateTimeProvider.nowInstant());
         assertThat(result).isEqualTo(paymentEvent);
     }
 
@@ -105,7 +105,7 @@ class PaymentCommandUseCaseTest {
         paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
 
         // then
-        then(paymentEvent).should(times(1)).toRetrying(testLocalDateTimeProvider.now());
+        then(paymentEvent).should(times(1)).toRetrying(testLocalDateTimeProvider.nowInstant());
         then(mockPaymentEventRepository).should(times(1)).saveOrUpdate(paymentEvent);
     }
 
@@ -122,7 +122,7 @@ class PaymentCommandUseCaseTest {
         paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
 
         // then
-        then(paymentEvent).should(times(1)).quarantine(reason, testLocalDateTimeProvider.now());
+        then(paymentEvent).should(times(1)).quarantine(reason, testLocalDateTimeProvider.nowInstant());
         then(mockPaymentQuarantineMetrics).should(times(1)).recordQuarantine(reason);
     }
 
@@ -138,7 +138,7 @@ class PaymentCommandUseCaseTest {
         PaymentEvent result = paymentCommandUseCase.expirePayment(paymentEvent);
 
         // then
-        then(paymentEvent).should(times(1)).expire(testLocalDateTimeProvider.now());
+        then(paymentEvent).should(times(1)).expire(testLocalDateTimeProvider.nowInstant());
         assertThat(result).isEqualTo(paymentEvent);
     }
 }

@@ -8,65 +8,79 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
 
     @Autowired
     private PaymentEventRepository paymentEventRepository;
 
+    @Autowired
+    private JpaPaymentEventRepository jpaPaymentEventRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void cleanUp() {
+        jpaPaymentEventRepository.deleteAllInBatch();
+    }
+
     @Test
     @DisplayName("findReadyPaymentsOlderThan(Instant) — cutoff 이전 READY 결제만 반환한다.")
     void findReadyPaymentsOlderThan_withInstantCutoff_returnsOnlyOlderPayments() {
-        // given
-        Instant baseTime = Instant.parse("2026-01-01T12:00:00Z");
-        Instant cutoff = Instant.parse("2026-01-01T12:30:00Z");
+        // given — READY 결제 2건을 raw SQL 로 직접 삽입하여 created_at 을 제어한다.
+        // created_at 은 LocalDateTime (BaseEntity), JPQL 비교도 LocalDateTime 기준.
+        // 테스트에서 두 건의 created_at 시각 차이를 명확히 하여 cutoff 경계를 검증한다.
 
-        // cutoff 이전에 생성된 READY 결제 (조회 대상)
-        PaymentEvent olderEvent = paymentEventRepository.saveOrUpdate(
-                PaymentEvent.create(
-                        UserInfo.builder().id(1L).build(),
-                        List.of(ProductInfo.builder()
-                                .id(1L)
-                                .name("상품1")
-                                .price(BigDecimal.valueOf(10000))
-                                .stock(10)
-                                .sellerId(2L)
-                                .build()),
-                        "older-order-" + System.nanoTime(),
-                        baseTime,  // cutoff 이전
-                        PaymentGatewayType.TOSS
-                )
-        );
+        // older: 현재 UTC - 61분 (cutoff 이전 → 조회 대상)
+        LocalDateTime olderCreatedAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(61);
+        // newer: 현재 UTC + 5분 (cutoff 이후 → 조회 제외)
+        LocalDateTime newerCreatedAt = LocalDateTime.now(ZoneOffset.UTC).plusMinutes(5);
 
-        // cutoff 이후에 생성된 READY 결제 (조회 제외)
-        PaymentEvent newerEvent = paymentEventRepository.saveOrUpdate(
-                PaymentEvent.create(
-                        UserInfo.builder().id(1L).build(),
-                        List.of(ProductInfo.builder()
-                                .id(1L)
-                                .name("상품2")
-                                .price(BigDecimal.valueOf(5000))
-                                .stock(5)
-                                .sellerId(2L)
-                                .build()),
-                        "newer-order-" + System.nanoTime(),
-                        cutoff.plusSeconds(300),  // cutoff 이후
-                        PaymentGatewayType.TOSS
-                )
-        );
+        jdbcTemplate.update("""
+                        INSERT INTO payment_event
+                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, retry_count, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                1L, 2L, "older-order", "older-order-id-1", "TOSS", "READY", 0,
+                olderCreatedAt, olderCreatedAt);
+
+        Long olderEventId = jdbcTemplate.queryForObject(
+                "SELECT id FROM payment_event WHERE order_id = ?",
+                Long.class, "older-order-id-1");
+
+        jdbcTemplate.update("""
+                        INSERT INTO payment_event
+                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, retry_count, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                1L, 2L, "newer-order", "newer-order-id-1", "TOSS", "READY", 0,
+                newerCreatedAt, newerCreatedAt);
+
+        Long newerEventId = jdbcTemplate.queryForObject(
+                "SELECT id FROM payment_event WHERE order_id = ?",
+                Long.class, "newer-order-id-1");
+
+        // cutoff = 현재 UTC - 30분 (older 포함, newer 제외)
+        Instant cutoff = Instant.now().minusSeconds(30 * 60);
 
         // when
         List<PaymentEvent> result = paymentEventRepository.findReadyPaymentsOlderThan(cutoff);
 
         // then
         List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
-        assertThat(resultIds).contains(olderEvent.getId());
-        assertThat(resultIds).doesNotContain(newerEvent.getId());
+        assertThat(resultIds).contains(olderEventId);
+        assertThat(resultIds).doesNotContain(newerEventId);
     }
 }

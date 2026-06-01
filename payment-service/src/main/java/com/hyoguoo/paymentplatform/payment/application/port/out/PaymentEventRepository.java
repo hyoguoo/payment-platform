@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,11 +15,11 @@ public interface PaymentEventRepository {
 
     PaymentEvent saveOrUpdate(PaymentEvent paymentEvent);
 
-    List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before);
+    List<PaymentEvent> findReadyPaymentsOlderThan(Instant before);
 
     Map<PaymentEventStatus, Long> countByStatus();
 
-    long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before);
+    long countByStatusAndExecutedAtBefore(PaymentEventStatus status, Instant before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
 
@@ -30,7 +30,7 @@ public interface PaymentEventRepository {
      * @param before 기준 시각 (이 시각 이전에 실행된 레코드)
      * @return timeout된 IN_PROGRESS 이벤트 목록
      */
-    List<PaymentEvent> findInProgressOlderThan(LocalDateTime before);
+    List<PaymentEvent> findInProgressOlderThan(Instant before);
 
     /**
      * 지정 상태의 모든 결제 이벤트 목록 반환.

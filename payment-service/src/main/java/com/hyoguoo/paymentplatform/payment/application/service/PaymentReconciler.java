@@ -6,7 +6,8 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,7 +44,8 @@ public class PaymentReconciler {
 
     @Scheduled(fixedDelayString = "${reconciler.fixed-delay-ms:120000}")
     public void scan() {
-        LocalDateTime now = localDateTimeProvider.now();
+        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
+        Instant now = localDateTimeProvider.nowInstant();
         resetStaleInFlightRecords(now);
     }
 
@@ -51,8 +53,8 @@ public class PaymentReconciler {
      * IN_FLIGHT(IN_PROGRESS) + timeout 초과 → READY 복원.
      * 재시도 스케줄러(OutboxWorker)가 READY 상태를 재처리한다.
      */
-    private void resetStaleInFlightRecords(LocalDateTime now) {
-        LocalDateTime cutoff = now.minusSeconds(inFlightTimeoutSeconds);
+    private void resetStaleInFlightRecords(Instant now) {
+        Instant cutoff = now.minus(Duration.ofSeconds(inFlightTimeoutSeconds));
         List<PaymentEvent> staleEvents = paymentEventRepository.findInProgressOlderThan(cutoff);
 
         if (staleEvents.isEmpty()) {

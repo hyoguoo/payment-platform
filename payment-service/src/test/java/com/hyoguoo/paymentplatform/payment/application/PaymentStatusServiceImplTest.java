@@ -10,7 +10,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseC
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +85,7 @@ class PaymentStatusServiceImplTest {
         void returnsStatusDone_WhenEventIsDone() {
             // given
             String orderId = "order-1";
-            LocalDateTime approvedAt = LocalDateTime.of(2026, 3, 18, 12, 0);
+            Instant approvedAt = Instant.parse("2026-03-18T12:00:00Z");
             given(mockPaymentOutboxUseCase.findActiveOutboxStatus(orderId))
                     .willReturn(Optional.empty());
             given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId))
@@ -134,7 +134,7 @@ class PaymentStatusServiceImplTest {
         }
     }
 
-    private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status, LocalDateTime approvedAt) {
+    private PaymentEvent createPaymentEvent(String orderId, PaymentEventStatus status, Instant approvedAt) {
         return PaymentEvent.allArgsBuilder()
                 .id(1L)
                 .orderId(orderId)

@@ -61,6 +61,8 @@ public abstract class BaseIntegrationTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        // D3/D7 — raw-JDBC 및 JPA 경로 모두 UTC 기준으로 통일하기 위해 connectionTimeZone=UTC 추가.
+        // Hibernate hibernate.jdbc.time_zone=UTC 와 연계하여 DATETIME ↔ Instant 라운드트립 일관성 보장.
         registry.add("spring.datasource.url", MYSQL_CONTAINER::getJdbcUrl);
         registry.add("spring.datasource.username", MYSQL_CONTAINER::getUsername);
         registry.add("spring.datasource.password", MYSQL_CONTAINER::getPassword);
@@ -82,6 +84,7 @@ public abstract class BaseIntegrationTest {
     static class BaseTestConfig {
 
         @Bean
+        @Primary
         public LocalDateTimeProvider localDateTimeProvider() {
             return new TestLocalDateTimeProvider();
         }

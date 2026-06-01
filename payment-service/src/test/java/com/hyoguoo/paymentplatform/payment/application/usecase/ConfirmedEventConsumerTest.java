@@ -19,7 +19,6 @@ import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,8 +58,8 @@ class ConfirmedEventConsumerTest {
 
         LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
             @Override
-            public LocalDateTime now() {
-                return LocalDateTime.of(2026, 4, 24, 0, 0, 0);
+            public java.time.LocalDateTime now() {
+                return java.time.LocalDateTime.of(2026, 4, 24, 0, 0, 0);
             }
 
             @Override
@@ -93,7 +92,7 @@ class ConfirmedEventConsumerTest {
 
         given(paymentCommandUseCase.markPaymentAsDone(
                 any(PaymentEvent.class),
-                any(LocalDateTime.class)))
+                any(Instant.class)))
                 .willReturn(event);
 
         // amount=2000(=1000*2), approvedAt non-null — 역방향 방어선 통과 조건
@@ -106,7 +105,7 @@ class ConfirmedEventConsumerTest {
                 .should(times(1))
                 .markPaymentAsDone(
                         any(PaymentEvent.class),
-                        any(LocalDateTime.class));
+                        any(Instant.class));
 
         then(stockCommittedKafkaTemplate)
                 .should(times(1))

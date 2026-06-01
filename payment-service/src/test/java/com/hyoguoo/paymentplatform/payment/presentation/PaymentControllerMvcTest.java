@@ -21,7 +21,7 @@ import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutServ
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentStatusService;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,7 +79,7 @@ class PaymentControllerMvcTest {
     @DisplayName("DONE 상태 PaymentEvent 조회 시 200 OK와 status=DONE, approvedAt non-null을 반환한다. (STATUS-01, STATUS-02)")
     void getPaymentStatus_Done_Returns200() throws Exception {
         // given
-        LocalDateTime approvedAt = LocalDateTime.of(2024, 1, 1, 12, 0, 0);
+        Instant approvedAt = Instant.parse("2024-01-01T12:00:00Z");
         when(paymentStatusService.getPaymentStatus("order-done"))
                 .thenReturn(PaymentStatusResult.builder()
                         .orderId("order-done")

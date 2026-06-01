@@ -5,7 +5,8 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepo
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,9 @@ public class PaymentLoadUseCase {
     }
 
     public List<PaymentEvent> getReadyPaymentsOlder() {
-        LocalDateTime now = localDateTimeProvider.now().minusMinutes(PaymentEvent.EXPIRATION_MINUTES);
-        return paymentEventRepository.findReadyPaymentsOlderThan(now);
+        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() + T6 외부화 예정
+        Instant cutoff = localDateTimeProvider.nowInstant()
+                .minus(Duration.ofMinutes(PaymentEvent.EXPIRATION_MINUTES));
+        return paymentEventRepository.findReadyPaymentsOlderThan(cutoff);
     }
 }

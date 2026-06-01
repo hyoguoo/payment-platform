@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.mock;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,7 +50,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findReadyPaymentsOlderThan(Instant before) {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.READY)
                 .filter(e -> e.getCreatedAt() != null && e.getCreatedAt().isBefore(before))
@@ -67,7 +67,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before) {
+    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, Instant before) {
         return store.values().stream()
                 .filter(e -> e.getStatus() == status)
                 .filter(e -> e.getExecutedAt() != null && e.getExecutedAt().isBefore(before))
@@ -82,7 +82,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findInProgressOlderThan(Instant before) {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.IN_PROGRESS)
                 .filter(e -> e.getExecutedAt() != null && e.getExecutedAt().isBefore(before))

@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.mixin;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.PaymentStatusResponse;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @SuppressWarnings("unused")
 public class PaymentStatusApiResponseMixin {
@@ -12,7 +12,7 @@ public class PaymentStatusApiResponseMixin {
     public PaymentStatusApiResponseMixin(
             @JsonProperty("orderId") String orderId,
             @JsonProperty("status") PaymentStatusResponse status,
-            @JsonProperty("approvedAt") LocalDateTime approvedAt
+            @JsonProperty("approvedAt") Instant approvedAt
     ) {
     }
 }

@@ -55,11 +55,12 @@ public class PaymentCreateUseCase {
             List<ProductInfo> productInfoList,
             PaymentGatewayType gatewayType
     ) {
+        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
         PaymentEvent paymentEvent = PaymentEvent.create(
                 userInfo,
                 productInfoList,
                 uuidProvider.generateUUID(),
-                localDateTimeProvider.now(),
+                localDateTimeProvider.nowInstant(),
                 gatewayType
         );
 

@@ -17,7 +17,7 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,7 +86,7 @@ class PaymentCreateUseCaseTest {
         List<ProductInfo> productInfoList = List.of(productInfo1, productInfo2);
 
         String generatedUUID = "1234-1234-1234-1234";
-        LocalDateTime now = LocalDateTime.of(2024, 1, 1, 0, 0);
+        Instant now = Instant.parse("2024-01-01T00:00:00Z");
 
         PaymentEvent mockSavedPaymentEvent = PaymentEvent.allArgsBuilder()
                 .buyerId(1L)
@@ -101,7 +101,7 @@ class PaymentCreateUseCaseTest {
 
         // when
         when(mockUUIDProvider.generateUUID()).thenReturn(generatedUUID);
-        when(mockLocalDateTimeProvider.now()).thenReturn(now);
+        when(mockLocalDateTimeProvider.nowInstant()).thenReturn(now);
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(mockSavedPaymentEvent);
         when(mockPaymentOrderRepository.saveAll(Mockito.any()))

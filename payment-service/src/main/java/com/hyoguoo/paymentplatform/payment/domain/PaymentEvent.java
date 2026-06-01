@@ -8,7 +8,7 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -21,6 +21,7 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentEvent {
 
+    // D4 — 만료 임계는 application 레이어에서 외부화(T6). 이 상수는 T6에서 제거된다.
     public static final int EXPIRATION_MINUTES = 30;
 
     private Long id;
@@ -31,19 +32,19 @@ public class PaymentEvent {
     private String paymentKey;
     private PaymentGatewayType gatewayType;
     private PaymentEventStatus status;
-    private LocalDateTime executedAt;
-    private LocalDateTime approvedAt;
+    private Instant executedAt;
+    private Instant approvedAt;
     private Integer retryCount;
     private String statusReason;
     private List<PaymentOrder> paymentOrderList;
-    private LocalDateTime createdAt;
-    private LocalDateTime lastStatusChangedAt;
+    private Instant createdAt;
+    private Instant lastStatusChangedAt;
 
     public static PaymentEvent create(
             UserInfo userInfo,
             List<ProductInfo> productInfoList,
             String orderId,
-            LocalDateTime lastStatusChangedAt,
+            Instant lastStatusChangedAt,
             PaymentGatewayType gatewayType
     ) {
         return PaymentEvent.allArgsBuilder()
@@ -65,7 +66,7 @@ public class PaymentEvent {
         return productInfoList.getFirst().getName() + " 포함 " + productInfoList.size() + "건";
     }
 
-    public void execute(String paymentKey, LocalDateTime executedAt, LocalDateTime lastStatusChangedAt) {
+    public void execute(String paymentKey, Instant executedAt, Instant lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXECUTE);
@@ -83,7 +84,7 @@ public class PaymentEvent {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public void toRetrying(LocalDateTime lastStatusChangedAt) {
+    public void toRetrying(Instant lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY &&
                 this.status != PaymentEventStatus.IN_PROGRESS &&
                 this.status != PaymentEventStatus.RETRYING) {
@@ -94,7 +95,7 @@ public class PaymentEvent {
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
-    public void done(LocalDateTime approvedAt, LocalDateTime lastStatusChangedAt) {
+    public void done(Instant approvedAt, Instant lastStatusChangedAt) {
         if (approvedAt == null) {
             throw PaymentStatusException.of(PaymentErrorCode.MISSING_APPROVED_AT);
         }
@@ -115,7 +116,7 @@ public class PaymentEvent {
         this.paymentOrderList.forEach(PaymentOrder::success);
     }
 
-    public void fail(String failureReason, LocalDateTime lastStatusChangedAt) {
+    public void fail(String failureReason, Instant lastStatusChangedAt) {
         if (isTerminalStatus()) {
             return;
         }
@@ -134,7 +135,7 @@ public class PaymentEvent {
         return this.status.isTerminal();
     }
 
-    public void expire(LocalDateTime lastStatusChangedAt) {
+    public void expire(Instant lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.READY) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE);
         }
@@ -159,7 +160,7 @@ public class PaymentEvent {
         }
     }
 
-    public void quarantine(String reason, LocalDateTime lastStatusChangedAt) {
+    public void quarantine(String reason, Instant lastStatusChangedAt) {
         if (this.status.isTerminal()) {
             // 도메인 이중 가드 — 종결(terminal) 상태 → QUARANTINED 역전이는 허용하지 않는다.
             // 다른 도메인 메서드와 동일하게 PaymentStatusException.of 패턴으로 통일한다.
@@ -177,7 +178,7 @@ public class PaymentEvent {
      *
      * @param lastStatusChangedAt 상태 변경 시각
      */
-    public void resetToReady(LocalDateTime lastStatusChangedAt) {
+    public void resetToReady(Instant lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RESET);
         }

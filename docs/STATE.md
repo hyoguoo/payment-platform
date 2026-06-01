@@ -1,7 +1,7 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **plan-review 통과**, stage → execute. 이슈 #83, 브랜치 #83.
-> **다음 세션 진입점**: `workflow-execute`로 execute 시작. 활성 태스크 T1(payment Clock 빈 등록 + LocalDateTimeProvider 제거). 실행 순서는 PLAN 하단 참조 — T1 → [T2+T4+T5 단일 커밋] → T10 → T3 → T6 → T7 …
+> 최종 수정: 2026-06-01 — TIME-MODEL-AND-EXPIRY **execute 진행 중 (WIP, 세션 한도 중단)**. 이슈 #83, 브랜치 #83.
+> **다음 세션 진입점**: `docs/.continue-here.md` 먼저 읽기. T1+[T2+T4+T5] 묶음 GREEN 미완성 — 컴파일 그린·단위 통과·integrationTest 2건 실패(PaymentEventRepositoryImplTest.findReadyPaymentsOlderThan(Instant), PaymentSchedulerTest 30분 EXPIRED). 실패 2건 GREEN화 → feat 커밋 → 남은 T3/T6/T7 재산정.
 
 ## 활성 작업
 

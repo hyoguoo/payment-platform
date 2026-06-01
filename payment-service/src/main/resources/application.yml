@@ -36,6 +36,9 @@ spring:
       hibernate:
         jdbc:
           batch_size: 25
+          # D3 — DATETIME(6) 컬럼에 Instant 를 UTC 기준으로 저장/조회.
+          # Hibernate 가 Instant ↔ DATETIME 변환 시 이 TZ 를 사용한다.
+          time_zone: UTC
         order_inserts: true
         order_updates: true
 

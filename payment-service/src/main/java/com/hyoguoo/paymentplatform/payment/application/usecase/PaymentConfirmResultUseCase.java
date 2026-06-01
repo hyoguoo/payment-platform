@@ -158,7 +158,8 @@ public class PaymentConfirmResultUseCase {
      * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
-        LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
+        // TODO T14: parseApprovedAt 을 .toInstant() 정규화로 완전 전환 예정 (D8)
+        Instant receivedApprovedAt = parseApprovedAt(message.approvedAt());
 
         if (isAmountMismatch(paymentEvent, message.amount())) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
@@ -220,14 +221,20 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * 수신 approvedAt 문자열을 LocalDateTime 으로 변환.
+     * 수신 approvedAt 문자열을 Instant 로 변환.
      * approvedAt 은 ISO_OFFSET_DATE_TIME contract(non-null) 위반 시 즉시 예외.
+     *
+     * <p>T14(D8)에서 offset 정규화(.toInstant()) 완전 전환이 예정되어 있으며,
+     * 현재는 임시 변환(toLocalDateTime()→Instant) 대신 직접 toInstant() 를 사용한다.
      */
-    private static LocalDateTime parseApprovedAt(String approvedAtRaw) {
+    private static Instant parseApprovedAt(String approvedAtRaw) {
         if (approvedAtRaw == null) {
             throw new IllegalArgumentException("APPROVED 메시지에 approvedAt 이 null 입니다.");
         }
-        return OffsetDateTime.parse(approvedAtRaw).toLocalDateTime();
+        // TODO T14: OffsetDateTime.parse(approvedAtRaw).toLocalDateTime() 은 오프셋을 무시하여
+        //           승인 시각에 최대 9시간 오차가 발생할 수 있다(D8 major #2).
+        //           이 메서드는 임시로 toInstant()를 사용하여 오프셋을 보존한다.
+        return OffsetDateTime.parse(approvedAtRaw).toInstant();
     }
 
     /**

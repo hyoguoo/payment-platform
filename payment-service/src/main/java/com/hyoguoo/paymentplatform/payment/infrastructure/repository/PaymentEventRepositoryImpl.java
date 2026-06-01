@@ -6,15 +6,19 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Repository
 @RequiredArgsConstructor
 public class PaymentEventRepositoryImpl implements PaymentEventRepository {
@@ -69,9 +73,13 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findReadyPaymentsOlderThan(Instant before) {
+        // BaseEntity.createdAt 이 LocalDateTime 이므로 JPQL 비교를 위해 UTC 변환.
+        // T7(BaseEntity auditing 일원화) 전까지 임시 변환 유지.
+        LocalDateTime beforeLdt = LocalDateTime.ofInstant(before, ZoneOffset.UTC);
+        log.debug("findReadyPaymentsOlderThan: before={}, beforeLdt={}", before, beforeLdt);
         return jpaPaymentEventRepository
-                .findReadyPaymentsOlderThan(before)
+                .findReadyPaymentsOlderThan(beforeLdt)
                 .stream()
                 .map(paymentEventEntity -> {
                     List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
@@ -102,7 +110,7 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before) {
+    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, Instant before) {
         return jpaPaymentEventRepository.countByStatusAndExecutedAtBefore(status, before);
     }
 
@@ -114,7 +122,7 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findInProgressOlderThan(Instant before) {
         return jpaPaymentEventRepository
                 .findInProgressOlderThan(before)
                 .stream()

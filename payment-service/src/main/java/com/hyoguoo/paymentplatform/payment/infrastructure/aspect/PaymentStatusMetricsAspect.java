@@ -5,7 +5,7 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.Payment
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -29,7 +29,7 @@ public class PaymentStatusMetricsAspect {
     ) throws Throwable {
         PaymentEvent originalEvent = extractPaymentEvent(joinPoint);
         String fromStatus = originalEvent != null ? originalEvent.getStatus().name() : "UNKNOWN";
-        LocalDateTime lastStatusChangedAt = originalEvent != null ? originalEvent.getLastStatusChangedAt() : null;
+        Instant lastStatusChangedAt = originalEvent != null ? originalEvent.getLastStatusChangedAt() : null;
 
         Object result = joinPoint.proceed();
 
@@ -41,9 +41,10 @@ public class PaymentStatusMetricsAspect {
             trigger = detectTriggerFromCallStack();
         }
 
+        // TODO T7: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
         Duration duration = null;
         if (lastStatusChangedAt != null) {
-            LocalDateTime now = localDateTimeProvider.now();
+            Instant now = localDateTimeProvider.nowInstant();
             duration = Duration.between(lastStatusChangedAt, now);
         }
 

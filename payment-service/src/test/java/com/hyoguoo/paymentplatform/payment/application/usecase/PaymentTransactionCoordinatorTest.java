@@ -23,7 +23,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -220,13 +220,13 @@ class PaymentTransactionCoordinatorTest {
         void 성공_시_PaymentEvent_DONE_및_outbox_toDone_저장() {
             // given
             String orderId = "order-123";
-            LocalDateTime approvedAt = LocalDateTime.now();
+            Instant approvedAt = Instant.parse("2026-04-07T12:00:00Z");
             PaymentEvent paymentEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()
                     .id(1L).orderId(orderId).status(PaymentOutboxStatus.IN_FLIGHT).retryCount(0).allArgsBuild();
             PaymentEvent donePaymentEvent = createPaymentEvent(orderId, PaymentEventStatus.DONE);
 
-            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+            given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                     .willReturn(donePaymentEvent);
 
             // when
@@ -332,7 +332,7 @@ class PaymentTransactionCoordinatorTest {
         void executePaymentRetryWithOutbox_Outbox_PENDING_복원_및_PaymentEvent_RETRYING_전환() {
             // given
             String orderId = "order-123";
-            LocalDateTime now = LocalDateTime.of(2026, 4, 7, 12, 0, 0);
+            Instant now = Instant.parse("2026-04-07T12:00:00Z");
             RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
             PaymentEvent inProgressEvent = createPaymentEvent(orderId, PaymentEventStatus.IN_PROGRESS);
             PaymentOutbox outbox = PaymentOutbox.allArgsBuilder()

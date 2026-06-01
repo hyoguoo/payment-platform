@@ -13,7 +13,8 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +42,7 @@ class PaymentExpirationServiceImplTest {
     @DisplayName("30분이 지난 READY 상태의 결제를 성공적으로 만료 처리한다.")
     void testExpireOldReadyPayments_Success() {
         // given
-        LocalDateTime thirtyOneMinutesAgo = LocalDateTime.now().minusMinutes(31);
+        Instant thirtyOneMinutesAgo = Instant.now().minus(31, ChronoUnit.MINUTES);
 
         List<PaymentOrder> paymentOrderList = new ArrayList<>();
         PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
@@ -136,7 +137,7 @@ class PaymentExpirationServiceImplTest {
                     .status(PaymentEventStatus.READY)
                     .retryCount(0)
                     .paymentOrderList(orderList)
-                    .createdAt(LocalDateTime.now().minusMinutes(31))
+                    .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
 
             readyPayments.add(readyPayment);
@@ -162,7 +163,7 @@ class PaymentExpirationServiceImplTest {
                     .status(PaymentEventStatus.EXPIRED)
                     .retryCount(0)
                     .paymentOrderList(expiredOrderList)
-                    .createdAt(LocalDateTime.now().minusMinutes(31))
+                    .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
 
             expiredPayments.add(expiredPayment);
