@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **T17 완료 → review 재확인 대기**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: T17(PaymentOutbox Instant 전환) 구현 완료. review에서 T17 결과 확인 후 verify 진행. verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재.
+> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **review 완료(T17 포함) → verify 대기**. 이슈 #83, 브랜치 #83.
+> **다음 진입점**: 사용자가 "verify 시작" 요청 시 진행. review 3라운드까지 완료(T17 PaymentOutbox Instant 전환 재리뷰 Critic/Domain Expert pass). verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재 + wip 커밋 squash + PR.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
-  - stage: **review**
+  - stage: **verify**
   - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2) + **T17(PaymentOutbox Instant 전환)**
     - DM1: JpaConfig clockDateTimeProvider 등록 + @EnableJpaAuditing(dateTimeProviderRef) 연결. 회귀 테스트 추가.
     - DM2: product default application.yml datasource URL에 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true 추가.
