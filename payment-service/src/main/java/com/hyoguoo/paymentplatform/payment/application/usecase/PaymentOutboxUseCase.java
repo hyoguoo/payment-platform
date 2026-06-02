@@ -6,8 +6,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +35,8 @@ public class PaymentOutboxUseCase {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<PaymentOutbox> claimToInFlight(String orderId) {
-        LocalDateTime nowLdt = nowAsLocalDateTime();
-        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, nowLdt);
+        Instant now = clock.instant();
+        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, now);
         if (!claimed) {
             return Optional.empty();
         }
@@ -48,7 +47,7 @@ public class PaymentOutboxUseCase {
     public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
         RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
         if (!policy.isExhausted(currentOutbox.getRetryCount())) {
-            currentOutbox.incrementRetryCount(policy, nowAsLocalDateTime());
+            currentOutbox.incrementRetryCount(policy, clock.instant());
             paymentOutboxRepository.save(currentOutbox);
             return false;
         }
@@ -58,8 +57,8 @@ public class PaymentOutboxUseCase {
     @Transactional
     public void recoverTimedOutInFlightRecords(int timeoutMinutes) {
         RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
-        LocalDateTime now = nowAsLocalDateTime();
-        LocalDateTime cutoff = now.minusMinutes(timeoutMinutes);
+        Instant now = clock.instant();
+        Instant cutoff = now.minusSeconds(timeoutMinutes * 60L);
         List<PaymentOutbox> timedOut = paymentOutboxRepository.findTimedOutInFlight(cutoff);
         for (PaymentOutbox outbox : timedOut) {
             outbox.incrementRetryCount(policy, now);
@@ -82,12 +81,4 @@ public class PaymentOutboxUseCase {
                 .map(PaymentOutbox::getStatus);
     }
 
-    /**
-     * Clock 으로 현재 시각을 UTC LocalDateTime 으로 변환.
-     * PaymentOutboxRepository 포트가 LocalDateTime 을 받으므로 변환이 필요하다.
-     * 포트 시그니처 전환은 T12 이후 별도 리팩토링에서 처리한다.
-     */
-    private LocalDateTime nowAsLocalDateTime() {
-        return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-    }
 }

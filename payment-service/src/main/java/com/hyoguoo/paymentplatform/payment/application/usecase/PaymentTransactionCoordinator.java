@@ -11,8 +11,6 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -108,8 +106,7 @@ public class PaymentTransactionCoordinator {
             RetryPolicy policy,
             Instant now
     ) {
-        // TODO T3: PaymentOutbox.incrementRetryCount 도 Instant 인자로 전환 예정
-        outbox.incrementRetryCount(policy, LocalDateTime.ofInstant(now, ZoneOffset.UTC));
+        outbox.incrementRetryCount(policy, now);
         paymentOutboxUseCase.save(outbox);
         return paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
     }

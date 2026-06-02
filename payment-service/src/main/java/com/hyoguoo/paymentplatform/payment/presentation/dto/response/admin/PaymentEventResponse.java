@@ -23,7 +23,6 @@ public class PaymentEventResponse {
     private final Long buyerId;
     private final Long sellerId;
     private final Integer retryCount;
-    // TODO T3: 시각 필드 → Instant (D1/D3). PaymentEventResult 전환에 따라 동반 전환.
     private final Instant createdAt;
     private final Instant executedAt;
     private final Instant approvedAt;

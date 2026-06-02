@@ -1,17 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **review 완료 → verify 대기**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: 사용자가 "verify 시작" 요청 시 verify 진행. review 2라운드(DM1/DM2 운영 정합 닫힘) + 가드 보강(커밋 c429e572)까지 완료. verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재 + wip 커밋 squash 처리.
+> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **T17 완료 → review 재확인 대기**. 이슈 #83, 브랜치 #83.
+> **다음 진입점**: T17(PaymentOutbox Instant 전환) 구현 완료. review에서 T17 결과 확인 후 verify 진행. verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
-  - stage: **verify**
-  - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2)
+  - stage: **review**
+  - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2) + **T17(PaymentOutbox Instant 전환)**
     - DM1: JpaConfig clockDateTimeProvider 등록 + @EnableJpaAuditing(dateTimeProviderRef) 연결. 회귀 테스트 추가.
     - DM2: product default application.yml datasource URL에 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true 추가.
     - M2: docs/.continue-here.md git rm.
     - R2 PLAN.md 기록 갱신.
+    - T17: PaymentOutbox LocalDateTime→Instant 전환, 경계 ofInstant 변환 6곳 제거, DTO stale TODO 주석 4곳 제거.
   - 활성 태스크: **없음** (T16은 verify 단계 예고)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`

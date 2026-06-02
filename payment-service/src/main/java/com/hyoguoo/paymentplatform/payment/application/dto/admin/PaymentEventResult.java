@@ -21,7 +21,6 @@ public class PaymentEventResult {
     private final String paymentKey;
     private final PaymentEventStatus status;
     private final PaymentGatewayType gatewayType;
-    // TODO T3: 시각 필드 → Instant (D1/D3). PaymentEvent.executedAt/approvedAt 전환에 따라 동반 전환.
     private final Instant executedAt;
     private final Instant approvedAt;
     private final Integer retryCount;

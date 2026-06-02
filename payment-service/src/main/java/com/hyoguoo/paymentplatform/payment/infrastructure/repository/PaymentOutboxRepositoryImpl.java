@@ -5,6 +5,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOutboxEntity;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -44,17 +45,19 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     }
 
     @Override
-    public List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before) {
-        return jpaPaymentOutboxRepository.findTimedOutInFlight(before)
+    public List<PaymentOutbox> findTimedOutInFlight(Instant before) {
+        return jpaPaymentOutboxRepository
+                .findTimedOutInFlight(toLocalDateTime(before))
                 .stream()
                 .map(PaymentOutboxEntity::toDomain)
                 .toList();
     }
 
     @Override
-    public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
+    public boolean claimToInFlight(String orderId, Instant inFlightAt) {
+        LocalDateTime ldt = toLocalDateTime(inFlightAt);
         return jpaPaymentOutboxRepository.claimToInFlight(
-                orderId, inFlightAt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING, inFlightAt) > 0;
+                orderId, ldt, PaymentOutboxStatus.IN_FLIGHT, PaymentOutboxStatus.PENDING, ldt) > 0;
     }
 
     @Override
@@ -63,13 +66,20 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     }
 
     @Override
-    public long countFuturePending(LocalDateTime now) {
-        return jpaPaymentOutboxRepository.countFuturePending(now);
+    public long countFuturePending(Instant now) {
+        return jpaPaymentOutboxRepository.countFuturePending(toLocalDateTime(now));
     }
 
     @Override
-    public Optional<LocalDateTime> findOldestPendingCreatedAt() {
-        return jpaPaymentOutboxRepository.findOldestPendingCreatedAt();
+    public Optional<Instant> findOldestPendingCreatedAt() {
+        return jpaPaymentOutboxRepository.findOldestPendingCreatedAt()
+                .map(ldt -> ldt.toInstant(ZoneOffset.UTC));
     }
 
+    private static LocalDateTime toLocalDateTime(Instant instant) {
+        if (instant == null) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
 }

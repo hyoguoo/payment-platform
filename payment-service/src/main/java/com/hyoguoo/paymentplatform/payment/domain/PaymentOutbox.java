@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.domain;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,10 +18,10 @@ public class PaymentOutbox {
     private String orderId;
     private PaymentOutboxStatus status;
     private int retryCount;
-    private LocalDateTime nextRetryAt;
-    private LocalDateTime inFlightAt;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant nextRetryAt;
+    private Instant inFlightAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 
     public static PaymentOutbox createPending(String orderId) {
         return PaymentOutbox.allArgsBuilder()
@@ -31,7 +31,7 @@ public class PaymentOutbox {
                 .allArgsBuild();
     }
 
-    public void toInFlight(LocalDateTime inFlightAt) {
+    public void toInFlight(Instant inFlightAt) {
         if (this.status != PaymentOutboxStatus.PENDING) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_IN_FLIGHT);
         }
@@ -53,7 +53,7 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.FAILED;
     }
 
-    public void incrementRetryCount(RetryPolicy policy, LocalDateTime now) {
+    public void incrementRetryCount(RetryPolicy policy, Instant now) {
         // toInFlight/toDone/toFailed 와 동일하게 IN_FLIGHT 상태에서만 허용.
         // DONE/FAILED outbox 에서 호출 시 silent 하게 PENDING 재활성화되던 버그 방어.
         if (this.status != PaymentOutboxStatus.IN_FLIGHT) {

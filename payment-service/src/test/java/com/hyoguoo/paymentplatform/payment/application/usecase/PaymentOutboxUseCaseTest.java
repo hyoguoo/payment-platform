@@ -13,8 +13,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +32,6 @@ class PaymentOutboxUseCaseTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-03-15T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
     private static final String ORDER_ID = "order-123";
 
     @BeforeEach
@@ -71,9 +70,9 @@ class PaymentOutboxUseCaseTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
-                .inFlightAt(FIXED_NOW)
+                .inFlightAt(FIXED_INSTANT)
                 .allArgsBuild();
-        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(true);
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_INSTANT)).willReturn(true);
         given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(inFlightOutbox));
 
         // when
@@ -82,7 +81,7 @@ class PaymentOutboxUseCaseTest {
         // then
         assertThat(result).isPresent();
         assertThat(result.get().getStatus()).isEqualTo(PaymentOutboxStatus.IN_FLIGHT);
-        then(mockPaymentOutboxRepository).should(times(1)).claimToInFlight(ORDER_ID, FIXED_NOW);
+        then(mockPaymentOutboxRepository).should(times(1)).claimToInFlight(ORDER_ID, FIXED_INSTANT);
         then(mockPaymentOutboxRepository).should(times(1)).findByOrderId(ORDER_ID);
     }
 
@@ -90,7 +89,7 @@ class PaymentOutboxUseCaseTest {
     @DisplayName("claimToInFlight - 이미 처리됨: UPDATE 0건 시 Optional.empty() 반환, findByOrderId 미호출")
     void claimToInFlight_alreadyClaimed_returnsEmpty() {
         // given
-        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(false);
+        given(mockPaymentOutboxRepository.claimToInFlight(ORDER_ID, FIXED_INSTANT)).willReturn(false);
 
         // when
         Optional<PaymentOutbox> result = paymentOutboxUseCase.claimToInFlight(ORDER_ID);
@@ -119,7 +118,7 @@ class PaymentOutboxUseCaseTest {
         assertThat(result).isFalse();
         assertThat(retryableOutbox.getRetryCount()).isEqualTo(4);
         assertThat(retryableOutbox.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
-        assertThat(retryableOutbox.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
+        assertThat(retryableOutbox.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(5))); // FIXED 5000ms
         then(mockPaymentOutboxRepository).should(times(1)).save(retryableOutbox);
     }
 
@@ -151,17 +150,17 @@ class PaymentOutboxUseCaseTest {
                 .orderId("order-001")
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(1)
-                .inFlightAt(FIXED_NOW.minusMinutes(10))
+                .inFlightAt(FIXED_INSTANT.minus(Duration.ofMinutes(10)))
                 .allArgsBuild();
         PaymentOutbox outbox2 = PaymentOutbox.allArgsBuilder()
                 .id(2L)
                 .orderId("order-002")
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(2)
-                .inFlightAt(FIXED_NOW.minusMinutes(10))
+                .inFlightAt(FIXED_INSTANT.minus(Duration.ofMinutes(10)))
                 .allArgsBuild();
 
-        given(mockPaymentOutboxRepository.findTimedOutInFlight(any(LocalDateTime.class)))
+        given(mockPaymentOutboxRepository.findTimedOutInFlight(any(Instant.class)))
                 .willReturn(List.of(outbox1, outbox2));
         given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(outbox1);
 
@@ -171,10 +170,10 @@ class PaymentOutboxUseCaseTest {
         // then
         assertThat(outbox1.getRetryCount()).isEqualTo(2);
         assertThat(outbox1.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
-        assertThat(outbox1.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
+        assertThat(outbox1.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(5))); // FIXED 5000ms
         assertThat(outbox2.getRetryCount()).isEqualTo(3);
         assertThat(outbox2.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
-        assertThat(outbox2.getNextRetryAt()).isEqualTo(FIXED_NOW.plusSeconds(5)); // FIXED 5000ms
+        assertThat(outbox2.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(5))); // FIXED 5000ms
         then(mockPaymentOutboxRepository).should(times(2)).save(any(PaymentOutbox.class));
     }
 

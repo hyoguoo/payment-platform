@@ -5,8 +5,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +47,7 @@ public class OutboxPendingAgeMetrics {
             return;
         }
 
-        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        Instant now = clock.instant();
         DistributionSummary summary = buildSummary();
 
         for (PaymentOutbox outbox : pendingOutboxes) {

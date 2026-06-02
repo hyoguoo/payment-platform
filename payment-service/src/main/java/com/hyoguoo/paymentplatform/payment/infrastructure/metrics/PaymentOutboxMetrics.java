@@ -5,8 +5,7 @@ import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +71,7 @@ public class PaymentOutboxMetrics {
      */
     @Scheduled(fixedDelay = 60_000)
     public void refresh() {
-        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        Instant now = clock.instant();
 
         pendingCount.set(paymentOutboxRepository.countPending());
         futurePendingCount.set(paymentOutboxRepository.countFuturePending(now));

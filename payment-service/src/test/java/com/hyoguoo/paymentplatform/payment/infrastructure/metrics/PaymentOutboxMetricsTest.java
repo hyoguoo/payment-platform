@@ -7,8 +7,8 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,7 +23,6 @@ class PaymentOutboxMetricsTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-04-21T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
 
     private SimpleMeterRegistry meterRegistry;
     private FakePaymentOutboxRepositoryForMetrics fakeRepo;
@@ -40,8 +39,8 @@ class PaymentOutboxMetricsTest {
     @DisplayName("refresh - PENDING row 2건이 있으면 pending_count Gauge가 2를 반환한다")
     void refresh_WithTwoPendingRows_GaugeReturnsTwoForPendingCount() {
         // given
-        fakeRepo.addOutbox(pendingOutbox("order-001", null, FIXED_NOW.minusSeconds(60)));
-        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_NOW.minusSeconds(120)));
+        fakeRepo.addOutbox(pendingOutbox("order-001", null, FIXED_INSTANT.minus(Duration.ofSeconds(60))));
+        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_INSTANT.minus(Duration.ofSeconds(120))));
 
         // when
         metrics.refresh();
@@ -56,9 +55,9 @@ class PaymentOutboxMetricsTest {
     @DisplayName("refresh - 미래 nextRetryAt 가 있는 PENDING row 는 future_pending_count 에 반영된다")
     void refresh_WithFuturePendingRow_GaugeReflectsFuturePendingCount() {
         // given
-        LocalDateTime futurRetryAt = FIXED_NOW.plusMinutes(5);
-        fakeRepo.addOutbox(pendingOutbox("order-001", futurRetryAt, FIXED_NOW.minusSeconds(30)));
-        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_NOW.minusSeconds(60)));
+        Instant futureRetryAt = FIXED_INSTANT.plus(Duration.ofMinutes(5));
+        fakeRepo.addOutbox(pendingOutbox("order-001", futureRetryAt, FIXED_INSTANT.minus(Duration.ofSeconds(30))));
+        fakeRepo.addOutbox(pendingOutbox("order-002", null, FIXED_INSTANT.minus(Duration.ofSeconds(60))));
 
         // when
         metrics.refresh();
@@ -78,7 +77,7 @@ class PaymentOutboxMetricsTest {
     // helpers
     // ──────────────────────────────────────────────────────────────────────────
 
-    private PaymentOutbox pendingOutbox(String orderId, LocalDateTime nextRetryAt, LocalDateTime createdAt) {
+    private PaymentOutbox pendingOutbox(String orderId, Instant nextRetryAt, Instant createdAt) {
         return PaymentOutbox.allArgsBuilder()
                 .id(null)
                 .orderId(orderId)
@@ -123,12 +122,12 @@ class PaymentOutboxMetricsTest {
         }
 
         @Override
-        public List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before) {
+        public List<PaymentOutbox> findTimedOutInFlight(Instant before) {
             return Collections.emptyList();
         }
 
         @Override
-        public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
+        public boolean claimToInFlight(String orderId, Instant inFlightAt) {
             return false;
         }
 
@@ -138,7 +137,7 @@ class PaymentOutboxMetricsTest {
         }
 
         @Override
-        public long countFuturePending(LocalDateTime now) {
+        public long countFuturePending(Instant now) {
             return store.stream()
                     .filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING
                             && o.getNextRetryAt() != null
@@ -147,12 +146,12 @@ class PaymentOutboxMetricsTest {
         }
 
         @Override
-        public Optional<LocalDateTime> findOldestPendingCreatedAt() {
+        public Optional<Instant> findOldestPendingCreatedAt() {
             return store.stream()
                     .filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING)
                     .map(PaymentOutbox::getCreatedAt)
                     .filter(java.util.Objects::nonNull)
-                    .min(LocalDateTime::compareTo);
+                    .min(Instant::compareTo);
         }
     }
 }

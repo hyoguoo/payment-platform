@@ -27,6 +27,7 @@
 - [x] **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
 - [x] **T15** PG 벤더 전략 시각 처리 정리 + 메시지 문자열 형식 보존 확인
 - **T16** (verify 단계 예고) PITFALLS 및 영구 문서 동기화
+- [x] **T17** (review 후 범위 확대) PaymentOutbox 도메인/엔티티/저장소 Instant 전환 + 경계 ofInstant 변환 제거 + DTO stale 주석 정리 — payment 도메인 시각 타입 PaymentEvent/PaymentOutbox 일관
 
 ### 변경 후 런타임 동작 (to-be)
 
@@ -451,6 +452,15 @@ BaseEntity 필드/컬럼 타입 변경 없음(NG4). 회귀 테스트(`PaymentEve
   - `docs/context/TODOS.md` — `BaseEntity` auditing 일원화 후속 항목 등재 (R2 이연)
   - F6 approvedAt 과도기 행 관련 배포 전 컨테이너 TZ=UTC 선반영 게이트 명시 (discuss-domain-2 minor #4)
 - **완료 기준**: AC7(`./gradlew test` 회귀 0) 이후 별도 `docs:` 커밋으로 기록
+
+---
+
+### T17 — (review 후 범위 확대) PaymentOutbox 도메인/엔티티/저장소 Instant 전환 + 경계 ofInstant 변환 제거 + DTO stale 주석 정리
+
+- **tdd**: true
+- **domain_risk**: false
+- **완료 결과** (2026-06-03): `PaymentOutbox` 도메인 시각 필드 4개(`nextRetryAt/inFlightAt/createdAt/updatedAt`) `LocalDateTime` → `Instant` 전환. `toInFlight(Instant)`, `incrementRetryCount(RetryPolicy, Instant)` 메서드 인자 Instant 일원화. `PaymentOutboxEntity` 매핑 — BaseEntity는 `LocalDateTime` 유지(NG4 준수), `from()/toDomain()`에서 UTC 기준 `toLocalDateTime()/toInstant()` 변환 담당. `PaymentOutboxRepository` 포트 시그니처 전체 `Instant` 전환(`findTimedOutInFlight/claimToInFlight/countFuturePending/findOldestPendingCreatedAt`). `PaymentOutboxRepositoryImpl` 내부에서 JpaQuery와 BaseEntity의 `LocalDateTime` 경계 처리(변환 캡슐화). 경계 `ofInstant` 변환 6곳 제거: `OutboxRelayService`(L52), `PaymentOutboxUseCase`(nowAsLocalDateTime 메서드 삭제), `PaymentTransactionCoordinator`(L112 + TODO T3 주석 제거), `OutboxPendingAgeMetrics`(L51), `PaymentOutboxMetrics`(L75). `PaymentOutboxEntity.from()`의 `nextRetryAt/inFlightAt` 변환 캡슐화로 호출 경계에서도 변환 일원화. DTO stale TODO 주석 4곳 제거: `PaymentStatusResult`, `PaymentEventResult`, `PaymentEventResponse`, `PaymentStatusApiResponse`. 테스트 정합 수정: `PaymentOutboxTest`(Instant fixture), `PaymentOutboxUseCaseTest`(Instant fixture), `PaymentOutboxMetricsTest`(Instant fixture), `OutboxPendingAgeMetricsTest`(Instant fixture), `OutboxRelayServiceTest`(Instant fixture). `grep -rn "TODO T3" payment-service/src/main` 0건 달성. `grep -rn "LocalDateTime.ofInstant" payment-service/src/main` PaymentOutbox 관련 제거 — JpaConfig(auditing)+DomainEventLoggingAspect(audit trail)+PaymentOutboxRepositoryImpl 내부 변환 캡슐화 3곳만 남음. 단위+통합 전체 PASS.
+- **BaseEntity 상속 판단**: `PaymentOutboxEntity`가 `BaseEntity`를 상속하므로 `createdAt/updatedAt`은 BaseEntity 필드. PaymentOutbox 도메인 자체 `createdAt/updatedAt` 필드는 `toDomain()`에서 `BaseEntity.getCreatedAt().toInstant(UTC)` 변환으로 Instant화. BaseEntity 필드 자체는 `LocalDateTime` 유지(NG4 준수). Flyway DDL 변경 불필요(컬럼 타입 `DATETIME` 유지).
 
 ---
 

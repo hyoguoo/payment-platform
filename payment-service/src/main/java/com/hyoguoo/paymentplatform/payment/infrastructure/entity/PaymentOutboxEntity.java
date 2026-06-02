@@ -12,7 +12,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -59,8 +61,8 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .orderId(paymentOutbox.getOrderId())
                 .status(paymentOutbox.getStatus())
                 .retryCount(paymentOutbox.getRetryCount())
-                .nextRetryAt(paymentOutbox.getNextRetryAt())
-                .inFlightAt(paymentOutbox.getInFlightAt())
+                .nextRetryAt(toLocalDateTime(paymentOutbox.getNextRetryAt()))
+                .inFlightAt(toLocalDateTime(paymentOutbox.getInFlightAt()))
                 .build();
     }
 
@@ -70,10 +72,24 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .orderId(orderId)
                 .status(status)
                 .retryCount(retryCount)
-                .nextRetryAt(nextRetryAt)
-                .inFlightAt(inFlightAt)
-                .createdAt(getCreatedAt())
-                .updatedAt(getUpdatedAt())
+                .nextRetryAt(toInstant(nextRetryAt))
+                .inFlightAt(toInstant(inFlightAt))
+                .createdAt(toInstant(getCreatedAt()))
+                .updatedAt(toInstant(getUpdatedAt()))
                 .allArgsBuild();
+    }
+
+    private static LocalDateTime toLocalDateTime(Instant instant) {
+        if (instant == null) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static Instant toInstant(LocalDateTime localDateTime) {
+        if (localDateTime == null) {
+            return null;
+        }
+        return localDateTime.toInstant(ZoneOffset.UTC);
     }
 }

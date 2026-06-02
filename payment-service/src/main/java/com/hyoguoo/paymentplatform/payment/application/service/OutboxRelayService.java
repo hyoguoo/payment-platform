@@ -11,8 +11,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +48,7 @@ public class OutboxRelayService {
      */
     @Transactional
     public void relay(String orderId) {
-        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        Instant now = clock.instant();
 
         // Step 1: 원자 선점 — false이면 다른 워커가 처리 중이므로 포기
         boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, now);

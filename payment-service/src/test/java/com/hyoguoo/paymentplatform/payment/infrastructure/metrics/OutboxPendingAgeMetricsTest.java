@@ -7,8 +7,8 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,7 +23,6 @@ class OutboxPendingAgeMetricsTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-04-21T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
 
     private SimpleMeterRegistry meterRegistry;
     private FakeOutboxRepository fakeOutboxRepository;
@@ -40,8 +39,8 @@ class OutboxPendingAgeMetricsTest {
     @DisplayName("record - PENDING 레코드가 있으면 각 레코드의 체류 시간을 histogram에 기록한다")
     void record_ShouldEmitHistogramForEachPendingRecord() {
         // given: 두 PENDING 레코드 — 60초, 120초 체류
-        PaymentOutbox outbox1 = pendingOutboxWithCreatedAt("order-001", FIXED_NOW.minusSeconds(60));
-        PaymentOutbox outbox2 = pendingOutboxWithCreatedAt("order-002", FIXED_NOW.minusSeconds(120));
+        PaymentOutbox outbox1 = pendingOutboxWithCreatedAt("order-001", FIXED_INSTANT.minus(Duration.ofSeconds(60)));
+        PaymentOutbox outbox2 = pendingOutboxWithCreatedAt("order-002", FIXED_INSTANT.minus(Duration.ofSeconds(120)));
         fakeOutboxRepository.addPending(outbox1);
         fakeOutboxRepository.addPending(outbox2);
 
@@ -75,7 +74,7 @@ class OutboxPendingAgeMetricsTest {
     // helpers
     // ──────────────────────────────────────────────────────────────────────────
 
-    private PaymentOutbox pendingOutboxWithCreatedAt(String orderId, LocalDateTime createdAt) {
+    private PaymentOutbox pendingOutboxWithCreatedAt(String orderId, Instant createdAt) {
         return PaymentOutbox.allArgsBuilder()
                 .id(null)
                 .orderId(orderId)
@@ -121,12 +120,12 @@ class OutboxPendingAgeMetricsTest {
         }
 
         @Override
-        public List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before) {
+        public List<PaymentOutbox> findTimedOutInFlight(Instant before) {
             return Collections.emptyList();
         }
 
         @Override
-        public boolean claimToInFlight(String orderId, LocalDateTime inFlightAt) {
+        public boolean claimToInFlight(String orderId, Instant inFlightAt) {
             return false;
         }
 
@@ -139,7 +138,7 @@ class OutboxPendingAgeMetricsTest {
         }
 
         @Override
-        public long countFuturePending(LocalDateTime now) {
+        public long countFuturePending(Instant now) {
             return pendingList.stream()
                     .filter(o -> o.getStatus() ==
                             com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus.PENDING
@@ -149,13 +148,13 @@ class OutboxPendingAgeMetricsTest {
         }
 
         @Override
-        public Optional<LocalDateTime> findOldestPendingCreatedAt() {
+        public Optional<Instant> findOldestPendingCreatedAt() {
             return pendingList.stream()
                     .filter(o -> o.getStatus() ==
                             com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus.PENDING)
                     .map(com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox::getCreatedAt)
                     .filter(java.util.Objects::nonNull)
-                    .min(LocalDateTime::compareTo);
+                    .min(Instant::compareTo);
         }
     }
 }
