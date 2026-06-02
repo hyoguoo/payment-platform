@@ -1,7 +1,9 @@
 package com.hyoguoo.paymentplatform.pg.domain;
 
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -369,5 +371,42 @@ class PgInboxTest {
         // when / then
         assertThatThrownBy(() -> inbox.markQuarantined(null, "NEW_REASON"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // =========================================================================
+    // T8 — 고정 Instant 인자 주입 결정성 테스트
+    // =========================================================================
+
+    @Test
+    @DisplayName("markInProgress — 고정 Instant 인자 주입 → updatedAt 결정성 단정 (T8 D2)")
+    void markInProgress_withFixedInstant_setsUpdatedAt() {
+        // given
+        Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
+        Clock fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
+        Instant now = fixedClock.instant();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now, "pay-key", "TOSS");
+
+        // when
+        Instant laterInstant = fixedInstant.plusSeconds(10);
+        inbox.markInProgress(laterInstant);
+
+        // then
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(laterInstant);
+    }
+
+    @Test
+    @DisplayName("create — 고정 Instant 인자 주입 → createdAt/updatedAt 결정성 단정 (T8 D2)")
+    void create_withFixedInstant_setsCreatedAt() {
+        // given
+        Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
+
+        // when
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, fixedInstant);
+
+        // then
+        assertThat(inbox.getCreatedAt()).isEqualTo(fixedInstant);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(fixedInstant);
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
     }
 }

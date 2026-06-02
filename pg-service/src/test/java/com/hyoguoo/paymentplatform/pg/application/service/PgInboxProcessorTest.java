@@ -11,7 +11,9 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +39,8 @@ class PgInboxProcessorTest {
     private static final Long INBOX_ID = 42L;
     private static final String ORDER_ID = "order-processor-001";
     private static final Instant NOW = Instant.parse("2026-05-09T00:00:00Z");
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
 
     @Mock
     private PgInboxRepository inboxRepository;
@@ -48,7 +52,7 @@ class PgInboxProcessorTest {
 
     @BeforeEach
     void setUp() {
-        sut = new PgInboxProcessor(inboxRepository, vendorCallService);
+        sut = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
     }
 
     // -----------------------------------------------------------------------
@@ -191,5 +195,42 @@ class PgInboxProcessorTest {
         verify(vendorCallService, never()).applyOutcome(any(), any(), anyInt(), any());
         // findById 는 더 이상 호출되지 않음 (selectInProgressForUpdateSkipLocked 로 대체)
         verify(inboxRepository, never()).findById(any());
+    }
+
+    // -----------------------------------------------------------------------
+    // T8 — Clock 주입 결정성 검증 (D2)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("processPending — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    void process_usesClockInstant_viaProcessPending() {
+        // given
+        PgInbox pendingInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.PENDING, 15000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(INBOX_ID)).thenReturn(Optional.of(pendingInbox));
+        when(inboxRepository.transitPendingToInProgress(INBOX_ID)).thenReturn(true);
+        when(vendorCallService.invokeVendor(any())).thenReturn(new GatewayOutcome.Success(null));
+
+        // when
+        sut.processPending(INBOX_ID);
+
+        // then — FIXED_CLOCK 으로부터 얻은 FIXED_INSTANT 가 applyOutcome 네 번째 인자로 전달됨
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), anyInt(), eq(FIXED_INSTANT));
+    }
+
+    @Test
+    @DisplayName("processInProgressZombie — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    void process_usesClockInstant_viaProcessInProgressZombie() {
+        // given
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, 15000L, null, null, NOW, NOW);
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
+        when(vendorCallService.invokeVendor(any())).thenReturn(new GatewayOutcome.Success(null));
+
+        // when
+        sut.processInProgressZombie(INBOX_ID);
+
+        // then — FIXED_CLOCK 으로부터 얻은 FIXED_INSTANT 가 applyOutcome 네 번째 인자로 전달됨
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), anyInt(), eq(FIXED_INSTANT));
     }
 }
