@@ -23,7 +23,7 @@
 - [x] **T10** 만료 도메인 가드(대기 상태에서만 만료) 전수 테스트
 - [x] **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
 - [x] **T12** 결제 멱등 정리 직접 DB 접근 경로 UTC 규약 적용 (LocalDateTimeProvider 포트 최종 삭제 — AC1 grep 0 달성)
-- **T13** 상품 서비스 표준 시계 빈 도입 + 멱등 정리 직접 DB 접근 경로 UTC 규약
+- [x] **T13** 상품 서비스 표준 시계 빈 도입 + 멱등 정리 직접 DB 접근 경로 UTC 규약
 - **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
 - [x] **T15** PG 벤더 전략 시각 처리 정리 + 메시지 문자열 형식 보존 확인
 - **T16** (verify 단계 예고) PITFALLS 및 영구 문서 동기화
@@ -396,6 +396,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
   - `existsValid_nowBasedOnConnectionUTC_sameBoundaryAsAppInstant` — `NOW()` 기반 `existsValid`와 앱 `Instant.isAfter(expiresAt)` 비교가 동일 만료 경계를 보는지 검증 (split-brain 부재)
 - **주의**: T12와 동일한 비-UTC JVM TZ 강제 주의사항 적용.
 - **완료 기준**: `grep -rn "Instant.now()" product-service/src/main/java` 결과 0건 (AC2 product 부분)
+- **완료 결과** (2026-06-02): `ClockConfig` 신규 등록(`infrastructure/config/ClockConfig.java`, `Clock.systemUTC()`). `JdbcEventDedupeStore` `Clock` 필드 주입 + `recordIfAbsent` `Timestamp.from(expiresAt)` 바인딩에 UTC Calendar 명시(PreparedStatementSetter). `DedupeCleanupWorker` `Clock` 생성자 주입 + `Instant.now()` → `clock.instant()`. `StockCommitConsumer` `@RequiredArgsConstructor` 제거 + 명시 생성자에 `Clock clock` 추가 + `Instant.now()` fallback → `clock.instant()`. `application-docker.yml` datasource URL `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` 추가. `DedupeCleanupWorkerTest`/`StockCommitConsumerTest` Clock 주입 정합 수정. `JdbcEventDedupeStoreRoundTripTest` 통합 테스트(AC8) 신규 추가. `grep -rn "Instant.now()" product-service/src/main/java` 0건(AC2 달성). 단위+통합 6+기존 PASS.
 
 ---
 

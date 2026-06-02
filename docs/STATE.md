@@ -1,14 +1,14 @@
 # 현재 작업 상태
 
 > 최종 수정: 2026-06-02 — TIME-MODEL-AND-EXPIRY **execute 진행 중**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: T1~T12, T15 완료(payment 전체 Clock/Instant 전환 + pg 시각 정리 + **AC1 LocalDateTimeProvider 포트 완전 제거**). payment 단위+통합 30/30, pg 단위 311+통합 7. 남은 태스크: **T13**(product Clock 빈 + dedupe raw-JDBC UTC) → T14(payment approvedAt offset 정규화) → (verify) T16.
+> **다음 진입점**: T1~T13 완료(product Clock 빈 + dedupe raw-JDBC UTC + AC2 product Instant.now() 0건). 남은 태스크: **T14**(payment approvedAt offset 정규화 + TODO 정리) → (verify) T16.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
   - stage: **execute** (plan-review pass — Plan Reviewer pass, minor 3건 비차단/표기 오기 2건 정정 완료)
-  - 완료: T1~T12, T15 (payment 도메인/엔티티/저장소/application/infra/dedupe Clock·Instant 전환 + 만료 임계 외부화 + 만료 정책 명문화 + 스케줄러 키 정정 + pg 도메인·벤더 시각 정리). **AC1 달성 — `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 완전 삭제, main grep 0.**
-  - 활성 태스크: **T13** (product-service `Clock` 빈 도입 + `JdbcEventDedupeStore` raw-JDBC UTC 규약 + DedupeCleanupWorker/StockCommitConsumer Instant.now() 제거)
+  - 완료: T1~T13, T15 (payment 도메인/엔티티/저장소/application/infra/dedupe Clock·Instant 전환 + 만료 임계 외부화 + 만료 정책 명문화 + 스케줄러 키 정정 + pg 도메인·벤더 시각 정리 + product Clock 빈·dedupe raw-JDBC UTC). **AC1 달성, AC2(product Instant.now() 0건) 달성.**
+  - 활성 태스크: **T14** (payment `parseApprovedAt` offset 정규화 TODO 정리 + AC9 테스트)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
   - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인

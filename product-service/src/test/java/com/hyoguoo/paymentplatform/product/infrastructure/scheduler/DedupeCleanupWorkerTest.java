@@ -10,7 +10,9 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,9 @@ class DedupeCleanupWorkerTest {
 
     private static final String COUNTER_NAME = "stock_commit_dedupe.cleanup_deleted_total";
 
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-01-01T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+
     private EventDedupeStore mockDedupeStore;
     private SimpleMeterRegistry meterRegistry;
     private DedupeCleanupWorker worker;
@@ -38,7 +43,7 @@ class DedupeCleanupWorkerTest {
     void setUp() {
         mockDedupeStore = Mockito.mock(EventDedupeStore.class);
         meterRegistry = new SimpleMeterRegistry();
-        worker = new DedupeCleanupWorker(mockDedupeStore, 1000, meterRegistry);
+        worker = new DedupeCleanupWorker(FIXED_CLOCK, mockDedupeStore, 1000, meterRegistry);
     }
 
     @Test

@@ -6,8 +6,8 @@ import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.ProductTopics;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockCommittedMessage;
+import java.time.Clock;
 import java.time.Instant;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -26,20 +26,25 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class StockCommitConsumer {
 
     private static final String TOPIC = ProductTopics.PAYMENT_EVENTS_STOCK_COMMITTED;
     private static final String GROUP_ID = "product-service-stock-commit";
 
+    private final Clock clock;
     private final StockCommitUseCase stockCommitUseCase;
+
+    public StockCommitConsumer(Clock clock, StockCommitUseCase stockCommitUseCase) {
+        this.clock = clock;
+        this.stockCommitUseCase = stockCommitUseCase;
+    }
 
     /**
      * payment.events.stock-committed 메시지를 수신하여 재고 확정 커밋을 실행한다.
      *
      * <p>expiresAt 이 null 이면 {@code occurredAt + DEDUPE_TTL} 로 계산하고,
-     * occurredAt 도 null 이면 {@code Instant.now() + DEDUPE_TTL} 로 fallback 한다 —
+     * occurredAt 도 null 이면 {@code clock.instant() + DEDUPE_TTL} 로 fallback 한다 —
      * producer 가 expiresAt 을 미전송하던 구버전 페이로드와의 하위 호환 유지 목적이다.
      *
      * <p>orderId 는 String 으로 통일됐고 producer 가 직접 채워 전송한다.
@@ -73,14 +78,15 @@ public class StockCommitConsumer {
      * <ol>
      *   <li>message.expiresAt() non-null → 그대로 사용</li>
      *   <li>null + occurredAt non-null → occurredAt + DEDUPE_TTL</li>
-     *   <li>null + occurredAt null → Instant.now() + DEDUPE_TTL</li>
+     *   <li>null + occurredAt null → clock.instant() + DEDUPE_TTL</li>
      * </ol>
      */
     private Instant resolveExpiresAt(StockCommittedMessage message) {
         if (message.expiresAt() != null) {
             return message.expiresAt();
         }
-        Instant base = message.occurredAt() != null ? message.occurredAt() : Instant.now();
+        // D1 — Instant.now() 직접 호출 대신 Clock 주입으로 시각 소스 교체 (T13)
+        Instant base = message.occurredAt() != null ? message.occurredAt() : clock.instant();
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "expiresAt null fallback: base=" + base + " eventUUID=" + message.idempotencyKey());
         return base.plus(StockCommitUseCase.DEDUPE_TTL);

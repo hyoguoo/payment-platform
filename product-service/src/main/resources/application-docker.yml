@@ -4,7 +4,9 @@ spring:
       on-profile: docker
 
   datasource:
-    url: jdbc:mysql://mysql-product:3306/product?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    # D7 — connectionTimeZone=UTC: raw-JDBC 경로(JdbcTemplate) NOW() 기준을 앱 Instant 와 동일 UTC 기준으로 통일
+    #       forceConnectionTimeZoneToSession=true: DB 세션 TZ 를 UTC 로 강제 (split-brain 해소)
+    url: jdbc:mysql://mysql-product:3306/product?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${PRODUCT_DATASOURCE_USERNAME:root}
     password: ${PRODUCT_DATASOURCE_PASSWORD:payment123}
 
