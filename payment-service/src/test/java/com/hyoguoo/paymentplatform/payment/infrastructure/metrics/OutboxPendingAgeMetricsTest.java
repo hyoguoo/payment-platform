@@ -6,7 +6,10 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,7 +21,9 @@ import org.junit.jupiter.api.Test;
 @DisplayName("OutboxPendingAgeMetrics 테스트")
 class OutboxPendingAgeMetricsTest {
 
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 4, 21, 12, 0, 0);
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-04-21T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
 
     private SimpleMeterRegistry meterRegistry;
     private FakeOutboxRepository fakeOutboxRepository;
@@ -28,7 +33,7 @@ class OutboxPendingAgeMetricsTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         fakeOutboxRepository = new FakeOutboxRepository();
-        metrics = new OutboxPendingAgeMetrics(meterRegistry, fakeOutboxRepository, () -> FIXED_NOW);
+        metrics = new OutboxPendingAgeMetrics(meterRegistry, fakeOutboxRepository, FIXED_CLOCK);
     }
 
     @Test

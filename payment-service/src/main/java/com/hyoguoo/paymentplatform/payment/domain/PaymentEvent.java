@@ -21,9 +21,6 @@ import lombok.Getter;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaymentEvent {
 
-    // D4 — 만료 임계는 application 레이어에서 외부화(T6). 이 상수는 T6에서 제거된다.
-    public static final int EXPIRATION_MINUTES = 30;
-
     private Long id;
     private Long buyerId;
     private Long sellerId;

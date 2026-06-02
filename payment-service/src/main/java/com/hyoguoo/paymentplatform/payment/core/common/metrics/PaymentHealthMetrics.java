@@ -3,12 +3,12 @@ package com.hyoguoo.paymentplatform.payment.core.common.metrics;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -27,7 +27,7 @@ public class PaymentHealthMetrics {
 
     private final MeterRegistry meterRegistry;
     private final PaymentEventRepository paymentEventRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final Map<String, AtomicLong> healthGauges = new ConcurrentHashMap<>();
     @Value("${metrics.payment.health.thresholds.stuck-in-progress-minutes:5}")
     private long stuckInProgressMinutes;
@@ -58,8 +58,7 @@ public class PaymentHealthMetrics {
 
     @Scheduled(fixedDelayString = "${metrics.payment.health.polling-interval-seconds:10}000")
     public void updateHealthGauges() {
-        // TODO T7: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
 
         Instant stuckThreshold = now.minus(Duration.ofMinutes(stuckInProgressMinutes));
         long stuckInProgress = paymentEventRepository

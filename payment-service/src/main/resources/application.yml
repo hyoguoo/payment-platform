@@ -119,6 +119,9 @@ payment:
         interval: 1000
         # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행.
         max-attempts: 5
+  expiration:
+    # D4 — 만료 임계(분). READY 상태에서 이 시간이 지나면 만료 후보가 된다. 기본값 30분.
+    ready-timeout-minutes: 30
 
 product:
   adapter:

@@ -97,7 +97,7 @@ class PaymentConfirmResultUseCaseClockTest {
     }
 
     @Test
-    @DisplayName("confirmResult — stock-committed occurredAt 은 clock.instant() 이어야 한다")
+    @DisplayName("confirmResult — stock-committed occurredAt 은 clock.instant() 기반이어야 한다")
     void confirmResult_occurredAt_usesClockInstant() {
         PaymentOrder order = buildOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
@@ -106,15 +106,17 @@ class PaymentConfirmResultUseCaseClockTest {
 
         sut.handle(buildMessage("APPROVED", AMOUNT, "2026-06-01T12:00:00Z"));
 
-        // send 에 넘어간 payload JSON 에 occurredAt = fixedInstant 가 포함되어야 한다
+        // send 에 넘어간 payload JSON 에 occurredAt = fixedInstant(에포크 초) 가 포함되어야 한다.
+        // ObjectMapper 는 JavaTimeModule 기본 설정에서 Instant 를 에포크 초(소수점)로 직렬화한다.
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         then(stockCommittedKafkaTemplate).should(times(1))
                 .send(anyString(), anyString(), payloadCaptor.capture());
 
         String payload = payloadCaptor.getValue();
-        // occurredAt 은 Instant → ISO 직렬화(예: "2026-06-01T12:00:00Z" 또는 에포크 초)
+        // FIXED_INSTANT = 2026-06-01T12:00:00Z = 1780315200 에포크초
+        long expectedEpochSeconds = FIXED_INSTANT.getEpochSecond();
         org.assertj.core.api.Assertions.assertThat(payload)
-                .contains("2026-06-01T12:00:00Z");
+                .contains(String.valueOf(expectedEpochSeconds));
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

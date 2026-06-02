@@ -4,9 +4,9 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.Publish
 import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Clock;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,15 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentCommandUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final PaymentQuarantineMetrics paymentQuarantineMetrics;
 
     @Transactional
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = "confirm")
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.execute(paymentKey, now, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -38,8 +37,7 @@ public class PaymentCommandUseCase {
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, Instant approvedAt) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.done(approvedAt, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -48,8 +46,7 @@ public class PaymentCommandUseCase {
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "FAILED", trigger = "auto")
     public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.fail(failureReason, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -58,8 +55,7 @@ public class PaymentCommandUseCase {
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.expire(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -68,8 +64,7 @@ public class PaymentCommandUseCase {
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "RETRYING", trigger = "auto")
     public PaymentEvent markPaymentAsRetrying(PaymentEvent paymentEvent) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.toRetrying(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
@@ -78,8 +73,7 @@ public class PaymentCommandUseCase {
     @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "QUARANTINED", trigger = "auto")
     public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         paymentEvent.quarantine(reason, now);
         PaymentEvent saved = paymentEventRepository.saveOrUpdate(paymentEvent);
         paymentQuarantineMetrics.recordQuarantine(reason);

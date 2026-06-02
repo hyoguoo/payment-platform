@@ -6,11 +6,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -29,19 +27,19 @@ import org.mockito.Mockito;
 class PaymentReconcilerTest {
 
     private static final long TIMEOUT_SECONDS = 300;
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-04-27T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
 
     private PaymentEventRepository paymentEventRepository;
-    private LocalDateTimeProvider localDateTimeProvider;
     private PaymentReconciler reconciler;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = Mockito.mock(PaymentEventRepository.class);
-        localDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
 
         reconciler = new PaymentReconciler(
                 paymentEventRepository,
-                localDateTimeProvider,
+                FIXED_CLOCK,
                 TIMEOUT_SECONDS
         );
     }
@@ -49,8 +47,7 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("stale IN_FLIGHT 가 있으면 READY 로 복원한다.")
     void scan_resetsStaleInFlightRecords() {
-        Instant now = Instant.parse("2026-04-27T12:00:00Z");
-        when(localDateTimeProvider.nowInstant()).thenReturn(now);
+        Instant now = FIXED_INSTANT;
 
         PaymentEvent stale = Mockito.mock(PaymentEvent.class);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of(stale));
@@ -64,8 +61,6 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("stale IN_FLIGHT 가 없으면 saveOrUpdate 가 호출되지 않는다.")
     void scan_whenNoStale_skipsSave() {
-        Instant now = Instant.parse("2026-04-27T12:00:00Z");
-        when(localDateTimeProvider.nowInstant()).thenReturn(now);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
 
         reconciler.scan();
@@ -76,14 +71,12 @@ class PaymentReconcilerTest {
     @Test
     @DisplayName("findInProgressOlderThan 의 cutoff 가 now - timeout 이다.")
     void scan_cutoffEqualsNowMinusTimeout() {
-        Instant now = Instant.parse("2026-04-27T12:00:00Z");
-        when(localDateTimeProvider.nowInstant()).thenReturn(now);
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
 
         reconciler.scan();
 
-        Instant expectedCutoff = now.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
+        Instant expectedCutoff = FIXED_INSTANT.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
         verify(paymentEventRepository, times(1)).findInProgressOlderThan(expectedCutoff);
-        assertThat(expectedCutoff).isBefore(now);
+        assertThat(expectedCutoff).isBefore(FIXED_INSTANT);
     }
 }

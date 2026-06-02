@@ -1,11 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.metrics;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +37,7 @@ public class PaymentOutboxMetrics {
     public static final String ATTEMPT_COUNT_HISTOGRAM = "payment_outbox.attempt_count_histogram";
 
     private final PaymentOutboxRepository paymentOutboxRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final MeterRegistry meterRegistry;
 
     private final AtomicLong pendingCount = new AtomicLong(0L);
@@ -45,10 +46,10 @@ public class PaymentOutboxMetrics {
 
     public PaymentOutboxMetrics(
             PaymentOutboxRepository paymentOutboxRepository,
-            LocalDateTimeProvider localDateTimeProvider,
+            Clock clock,
             MeterRegistry meterRegistry) {
         this.paymentOutboxRepository = paymentOutboxRepository;
-        this.localDateTimeProvider = localDateTimeProvider;
+        this.clock = clock;
         this.meterRegistry = meterRegistry;
 
         Gauge.builder(PENDING_COUNT, pendingCount, AtomicLong::doubleValue)
@@ -71,7 +72,7 @@ public class PaymentOutboxMetrics {
      */
     @Scheduled(fixedDelay = 60_000)
     public void refresh() {
-        LocalDateTime now = localDateTimeProvider.now();
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 
         pendingCount.set(paymentOutboxRepository.countPending());
         futurePendingCount.set(paymentOutboxRepository.countFuturePending(now));

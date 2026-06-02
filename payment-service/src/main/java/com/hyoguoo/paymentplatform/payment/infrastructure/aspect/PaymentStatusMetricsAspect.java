@@ -2,8 +2,8 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 public class PaymentStatusMetricsAspect {
 
     private final PaymentTransitionMetrics paymentTransitionMetrics;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     @Around("@annotation(paymentStatusChange)")
     public Object recordStatusChange(
@@ -41,11 +41,9 @@ public class PaymentStatusMetricsAspect {
             trigger = detectTriggerFromCallStack();
         }
 
-        // TODO T7: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
         Duration duration = null;
         if (lastStatusChangedAt != null) {
-            Instant now = localDateTimeProvider.nowInstant();
-            duration = Duration.between(lastStatusChangedAt, now);
+            duration = Duration.between(lastStatusChangedAt, clock.instant());
         }
 
         // Record transition metric with duration

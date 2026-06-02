@@ -6,7 +6,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
@@ -17,7 +16,9 @@ import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,24 +28,25 @@ import org.mockito.Mockito;
 
 class PaymentCreateUseCaseTest {
 
+    private static final Instant FIXED_INSTANT = Instant.parse("2024-01-01T00:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+
     private PaymentCreateUseCase paymentCreateUseCase;
     private PaymentEventRepository mockPaymentEventRepository;
     private PaymentOrderRepository mockPaymentOrderRepository;
     private UUIDProvider mockUUIDProvider;
-    private LocalDateTimeProvider mockLocalDateTimeProvider;
 
     @BeforeEach
     void setUp() {
         mockPaymentEventRepository = Mockito.mock(PaymentEventRepository.class);
         mockPaymentOrderRepository = Mockito.mock(PaymentOrderRepository.class);
         mockUUIDProvider = Mockito.mock(UUIDProvider.class);
-        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
 
         paymentCreateUseCase = new PaymentCreateUseCase(
                 mockPaymentEventRepository,
                 mockPaymentOrderRepository,
                 mockUUIDProvider,
-                mockLocalDateTimeProvider
+                FIXED_CLOCK
         );
     }
 
@@ -86,7 +88,6 @@ class PaymentCreateUseCaseTest {
         List<ProductInfo> productInfoList = List.of(productInfo1, productInfo2);
 
         String generatedUUID = "1234-1234-1234-1234";
-        Instant now = Instant.parse("2024-01-01T00:00:00Z");
 
         PaymentEvent mockSavedPaymentEvent = PaymentEvent.allArgsBuilder()
                 .buyerId(1L)
@@ -96,12 +97,11 @@ class PaymentCreateUseCaseTest {
                 .paymentKey("paymentKey")
                 .status(PaymentEventStatus.READY)
                 .paymentOrderList(new ArrayList<>(0))
-                .lastStatusChangedAt(now)
+                .lastStatusChangedAt(FIXED_INSTANT)
                 .allArgsBuild();
 
         // when
         when(mockUUIDProvider.generateUUID()).thenReturn(generatedUUID);
-        when(mockLocalDateTimeProvider.nowInstant()).thenReturn(now);
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(mockSavedPaymentEvent);
         when(mockPaymentOrderRepository.saveAll(Mockito.any()))

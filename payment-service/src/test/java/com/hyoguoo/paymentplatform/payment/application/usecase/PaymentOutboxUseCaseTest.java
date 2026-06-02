@@ -7,13 +7,15 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,24 +27,23 @@ import org.mockito.Mockito;
 class PaymentOutboxUseCaseTest {
 
     private PaymentOutboxRepository mockPaymentOutboxRepository;
-    private LocalDateTimeProvider mockLocalDateTimeProvider;
     private RetryPolicyProperties retryPolicyProperties;
     private PaymentOutboxUseCase paymentOutboxUseCase;
 
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 3, 15, 12, 0, 0);
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-03-15T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
     private static final String ORDER_ID = "order-123";
 
     @BeforeEach
     void setUp() {
         mockPaymentOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
-        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
         retryPolicyProperties = new RetryPolicyProperties(5, BackoffType.FIXED, 5000L, 60000L);
         paymentOutboxUseCase = new PaymentOutboxUseCase(
                 mockPaymentOutboxRepository,
-                mockLocalDateTimeProvider,
+                FIXED_CLOCK,
                 retryPolicyProperties
         );
-        given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
     }
 
     @Test

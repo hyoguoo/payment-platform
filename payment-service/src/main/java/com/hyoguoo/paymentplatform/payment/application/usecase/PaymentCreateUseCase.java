@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
@@ -11,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import java.time.Clock;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,7 @@ public class PaymentCreateUseCase {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     @Transactional
     @PublishDomainEvent(action = "created")
@@ -55,12 +55,11 @@ public class PaymentCreateUseCase {
             List<ProductInfo> productInfoList,
             PaymentGatewayType gatewayType
     ) {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
         PaymentEvent paymentEvent = PaymentEvent.create(
                 userInfo,
                 productInfoList,
                 uuidProvider.generateUUID(),
-                localDateTimeProvider.nowInstant(),
+                clock.instant(),
                 gatewayType
         );
 

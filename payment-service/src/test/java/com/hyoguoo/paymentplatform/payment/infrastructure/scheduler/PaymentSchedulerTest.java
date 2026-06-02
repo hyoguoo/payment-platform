@@ -2,9 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -27,7 +25,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * PaymentScheduler 통합 테스트.
  *
  * <p>현재 시각 기준의 상대 시각을 사용하여 TZ 독립적으로 테스트한다.
- * TestLocalDateTimeProvider 를 통해 nowInstant() 를 고정하여 cutoff 를 제어한다.
+ * DB 데이터를 현재 시각 기준 상대 시각으로 삽입하고, 스케줄러의 cutoff 는
+ * application 계층 Clock 기준(기본: systemUTC)으로 자동 계산된다.
  */
 class PaymentSchedulerTest extends BaseIntegrationTest {
 
@@ -46,8 +45,6 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
     private PaymentScheduler paymentScheduler;
     @Autowired
     private JdbcTemplate jdbcTemplate;
-    @Autowired
-    private LocalDateTimeProvider localDateTimeProvider;
 
     @BeforeEach
     void setUp() {
@@ -59,15 +56,11 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
     @DisplayName("스케줄러가 30분 이상 지난 READY 상태의 결제를 EXPIRED로 변경한다")
     void testExpireOldReadyPayments() {
         // given — 현재 시각(KST/UTC 무관) 기준 상대 시각으로 데이터 삽입.
-        // TestLocalDateTimeProvider.nowInstant() 를 현재 시각으로 고정하면
-        // getReadyPaymentsOlder() 의 cutoff = now - 30min.
+        // TestClock 에 현재 시각을 고정하면 getReadyPaymentsOlder() 의 cutoff = now - 30min.
         Instant nowInstant = Instant.now();
         LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.UTC);
         LocalDateTime thirtyOneMinutesAgo = nowLdt.minus(31, ChronoUnit.MINUTES);
         LocalDateTime twentyNineMinutesAgo = nowLdt.minus(29, ChronoUnit.MINUTES);
-
-        // TestLocalDateTimeProvider 에 현재 시각 고정
-        ((TestLocalDateTimeProvider) localDateTimeProvider).setFixedInstant(nowInstant);
 
         jdbcTemplate.update("""
                         INSERT INTO payment_event
@@ -133,8 +126,6 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
         Instant nowInstant = Instant.now();
         LocalDateTime nowLdt = LocalDateTime.ofInstant(nowInstant, ZoneOffset.UTC);
         LocalDateTime thirtyOneMinutesAgo = nowLdt.minus(31, ChronoUnit.MINUTES);
-
-        ((TestLocalDateTimeProvider) localDateTimeProvider).setFixedInstant(nowInstant);
 
         // IN_PROGRESS 상태 결제 (31분 전)
         jdbcTemplate.update("""

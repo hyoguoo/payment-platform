@@ -7,8 +7,12 @@ import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTim
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -97,6 +101,19 @@ public abstract class BaseIntegrationTest {
         }
 
         /**
+         * 테스트용 가변 Clock 빈.
+         * 기본값 = {@code Clock.systemUTC()}.
+         * 각 테스트에서 {@link TestClock#setFixedInstant(Instant)} 로 고정 시각을 주입한다.
+         * application 레이어가 {@code Clock} 을 주입받으므로 통합 테스트에서 시각 제어가 필요하다.
+         * {@code TestClock} 타입으로 반환해 하위 테스트에서 타입 안전하게 캐스팅 가능.
+         */
+        @Bean
+        @Primary
+        public TestClock clock() {
+            return new TestClock();
+        }
+
+        /**
          * ProductPort Fake bean — product-service HTTP 미기동 환경에서 checkout 통합 테스트를 지원한다.
          * {@code @Primary} 로 ProductHttpAdapter 보다 우선 주입되어 HTTP 호출 없이 product 정보를 반환한다.
          * 테스트 데이터: productId=1L(이름="테스트 상품1", 가격=10000, 재고=100, sellerId=2L),
@@ -135,5 +152,40 @@ public abstract class BaseIntegrationTest {
         public UserPort userPort() {
             return userId -> UserInfo.builder().id(userId).build();
         }
+    }
+
+    /**
+     * 통합 테스트용 가변 시계.
+     * 기본값은 시스템 UTC 시각을 사용하며, {@link #setFixedInstant(Instant)} 로 고정 시각을 설정한다.
+     */
+    public static class TestClock extends Clock {
+
+        private final AtomicReference<Instant> fixedInstant = new AtomicReference<>(null);
+
+        @Override
+        public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            Instant fixed = fixedInstant.get();
+            return fixed != null ? fixed : Instant.now();
+        }
+
+        public void setFixedInstant(Instant instant) {
+            this.fixedInstant.set(instant);
+        }
+
+        public void reset() {
+            this.fixedInstant.set(null);
+        }
+
+
     }
 }

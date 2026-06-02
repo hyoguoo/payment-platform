@@ -6,7 +6,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
@@ -19,9 +18,9 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -65,7 +64,7 @@ public class PaymentConfirmResultUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final StockCachePort stockCachePort;
     private final PaymentEventDedupeStore paymentEventDedupeStore;
     private final KafkaTemplate<String, String> stockCommittedKafkaTemplate;
@@ -79,14 +78,14 @@ public class PaymentConfirmResultUseCase {
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
             QuarantineCompensationHandler quarantineCompensationHandler,
-            LocalDateTimeProvider localDateTimeProvider,
+            Clock clock,
             StockCachePort stockCachePort,
             PaymentEventDedupeStore paymentEventDedupeStore,
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase) {
         this.paymentEventRepository = paymentEventRepository;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
-        this.localDateTimeProvider = localDateTimeProvider;
+        this.clock = clock;
         this.stockCachePort = stockCachePort;
         this.paymentEventDedupeStore = paymentEventDedupeStore;
         this.stockCommittedKafkaTemplate = stockCommittedKafkaTemplate;
@@ -123,7 +122,7 @@ public class PaymentConfirmResultUseCase {
                         + " eventUuid=" + message.eventUuid());
 
         // 멱등 마킹: 이미 처리된 event_uuid 면 affected=0.
-        Instant expiresAt = localDateTimeProvider.nowInstant().plus(STOCK_COMMITTED_TTL);
+        Instant expiresAt = clock.instant().plus(STOCK_COMMITTED_TTL);
         int affected = paymentEventDedupeStore.markIfAbsent(
                 message.eventUuid(),
                 paymentEvent.getId(),
@@ -189,7 +188,7 @@ public class PaymentConfirmResultUseCase {
      * 발행은 EOS 프로듀서 트랜잭션에 묶이며, 중복 수신 시에도 발행한다 (product 측에서 멱등 처리).
      */
     private void sendStockCommittedEvents(PaymentEvent paymentEvent) {
-        Instant occurredAt = localDateTimeProvider.nowInstant();
+        Instant occurredAt = clock.instant();
         Instant expiresAt = occurredAt.plus(STOCK_COMMITTED_TTL);
 
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {

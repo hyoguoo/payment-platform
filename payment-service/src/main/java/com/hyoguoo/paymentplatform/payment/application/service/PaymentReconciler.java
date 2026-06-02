@@ -3,9 +3,9 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -29,23 +29,22 @@ import org.springframework.stereotype.Service;
 public class PaymentReconciler {
 
     private final PaymentEventRepository paymentEventRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final long inFlightTimeoutSeconds;
 
     public PaymentReconciler(
             PaymentEventRepository paymentEventRepository,
-            LocalDateTimeProvider localDateTimeProvider,
+            Clock clock,
             @Value("${reconciler.in-flight-timeout-seconds:300}") long inFlightTimeoutSeconds
     ) {
         this.paymentEventRepository = paymentEventRepository;
-        this.localDateTimeProvider = localDateTimeProvider;
+        this.clock = clock;
         this.inFlightTimeoutSeconds = inFlightTimeoutSeconds;
     }
 
     @Scheduled(fixedDelayString = "${reconciler.fixed-delay-ms:120000}")
     public void scan() {
-        // TODO T3: localDateTimeProvider.nowInstant() → clock.instant() 로 전환 예정
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         resetStaleInFlightRecords(now);
     }
 
