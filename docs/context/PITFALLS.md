@@ -57,13 +57,17 @@ process(result);  // result 가 null 일 수 있음
 - `PaymentConfirmResultUseCase.compensateStockCache` 의 try/catch swallow + WARN 한 줄 + 진행 패턴이 본 함정의 전형 — 보상 호출이 RuntimeException 으로 끝나도 후속 `markPaymentAsFail` 이 진행되어 재고 silent loss 발생
 - 처방: catch 제거 + Spring Kafka `DefaultErrorHandler` (`KafkaErrorHandlerConfig`) 가 retry / DLQ 책임. `handleFailed` 호출 순서를 보상 → `markPaymentAsFail` 로 뒤집어 보상 먼저 끝내도록 강제. 보상 자체는 Lua atomic + dedup token 으로 멱등 보장
 
-## 6. `LocalDateTime.now()` 직접 호출
+## 6. 시각 직접 호출(`now()`) 과 시간대 모호성
 
-**증상**: 테스트에서 시간 위조 불가 → 시간 의존 분기를 단정하기 어려움.
+**증상**: ① 테스트에서 시간 위조 불가 → 시간 의존 분기 단정 어려움. ② `LocalDateTime`(시간대 없음)을 쓰면 컨테이너 TZ 에 따라 의미가 달라져, raw-JDBC 저장값과 ORM 조회 기준이 어긋난다(예: 만료 cutoff vs created_at 9시간 어긋남, dedupe TTL 윈도우 오염).
 
-**처방**:
-- `LocalDateTimeProvider` 주입
-- 테스트는 위조된 Provider 로 시각 고정
+**처방** (TIME-MODEL-AND-EXPIRY 이후 표준):
+- **시간 소스 = JDK `Clock` 빈 주입**(4서비스 공통, `Clock.systemUTC()`). 도메인은 `Clock` 을 주입받지 않고 호출자가 `clock.instant()` 로 얻은 `Instant` 를 **인자로 주입**한다(도메인 순수성).
+- **시각 타입 = `Instant`**(절대 시점). `LocalDateTime` 은 표현/감사 경계에서만 제한적으로(아래).
+- **UTC 저장 일관**: ORM 경로 `hibernate.jdbc.time_zone=UTC`, raw-JDBC 경로 datasource URL `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` + 바인딩에 명시 UTC `Calendar`. 컬럼은 `DATETIME` 유지(Flyway 불필요).
+- **JPA auditing**: `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` + `Clock` 기반 `DateTimeProvider` 로 `createdAt/updatedAt`(BaseEntity `LocalDateTime`)도 UTC 기준으로 채운다. created_at 기반 만료 cutoff 비교가 비-UTC JVM 에서 어긋나지 않게 하는 핵심.
+- 테스트는 `Clock.fixed(...)` / 가변 `TestClock` 빈으로 시각 고정.
+- **비-UTC JVM 1차 방어**: 운영 컨테이너/JVM `TZ=UTC` 고정(F6 backstop)을 명시 — auditing UTC化와 별개로 깔아두는 안전망.
 
 ## 7. 종결 상태 재진입
 
@@ -128,9 +132,10 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: NicePay 응답의 `paidAt` 이 `+09:00` offset 으로 오는데 ConfirmedEventPayload 직렬화 시 제대로 안 들어가면 payment 측 역직렬화에서 `OffsetDateTime.parse` 실패.
 
-**처방** (직전 fix):
-- pg-service 측에서 raw 문자열 보존 → `approvedAtRaw(String)` 으로 ConfirmedEventPayload 에 전달
-- payment 측에서 `OffsetDateTime.parse(approvedAtRaw).toLocalDateTime()` 변환
+**처방** (TIME-MODEL-AND-EXPIRY 갱신):
+- pg-service 측에서 raw 문자열 보존 → `approvedAtRaw(String)` 으로 ConfirmedEventPayload 에 전달(offset 보존, Kafka contract 무변경)
+- payment 측에서 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 변환 — **`.toLocalDateTime()` 금지**. offset 을 버리면 KST(+09:00) 응답이 UTC 로 오인돼 정산·감사 앵커(`approvedAt`)가 최대 9시간 틀어진다. `.toInstant()` 는 offset 을 보존한 절대 시점이라 정산 시각 정합.
+- `parseApprovedAt` 경로에 `.toLocalDateTime()` 잔존 0건(AC9 grep 가드).
 
 ## 14. ddl-auto: update 와 Flyway 혼용
 

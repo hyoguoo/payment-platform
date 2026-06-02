@@ -26,7 +26,8 @@ public class PaymentEvent {
     private Long id;
     private PaymentEventStatus status;
     // 변경 메서드는 도메인 행위로만 — setter 금지
-    public void done(LocalDateTime approvedAt) { ... }
+    // 시각은 Instant 인자 주입 (도메인은 Clock/now() 직접 호출 금지 — PITFALLS §6)
+    public void done(Instant approvedAt, Instant lastStatusChangedAt) { ... }
 }
 ```
 - `@Setter` 금지. 상태 변경은 도메인 메서드로

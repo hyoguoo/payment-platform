@@ -1,27 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **review 완료(T17 포함) → verify 대기**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: 사용자가 "verify 시작" 요청 시 진행. review 3라운드까지 완료(T17 PaymentOutbox Instant 전환 재리뷰 Critic/Domain Expert pass). verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재 + wip 커밋 squash + PR.
+> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **봉인 완료** (PR 생성 대기). 이슈 #83, 브랜치 #83. 활성 작업 없음.
+> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조 — 후속 등재 [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE] 또는 PHASE-4 등.
 
 ## 활성 작업
 
-- **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
-  - stage: **verify**
-  - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2) + **T17(PaymentOutbox Instant 전환)**
-    - DM1: JpaConfig clockDateTimeProvider 등록 + @EnableJpaAuditing(dateTimeProviderRef) 연결. 회귀 테스트 추가.
-    - DM2: product default application.yml datasource URL에 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true 추가.
-    - M2: docs/.continue-here.md git rm.
-    - R2 PLAN.md 기록 갱신.
-    - T17: PaymentOutbox LocalDateTime→Instant 전환, 경계 ofInstant 변환 6곳 제거, DTO stale TODO 주석 4곳 제거.
-  - 활성 태스크: **없음** (T16은 verify 단계 예고)
-  - 이슈 #83, 브랜치 #83
-  - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
-  - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인
-  - 핵심 결정: D1(Clock+Instant 표준) / D2(Clock 빈 config 배치 + 도메인 시각 인자 주입) / D3(UTC 저장 일관, DATETIME 컬럼 유지·Flyway 불필요) / D4(만료 임계 외부화 기본30) / D5(스케줄러 키 정정+폴백) / D6(만료 2단 연쇄 명문화, READY 가드 유지) / D7(raw-JDBC connectionTimeZone=UTC + product NOW/Instant split-brain 수렴) / D8(벤더 승인 시각 .toInstant 정규화)
-  - 범위: payment/pg/product 시간 추상화 통일, user 무변경
-  - plan 게이트 위임: R1(영속 데이터 존재 시 UTC 규약 영향 확인) / R2(BaseEntity auditing 소스 일원화 이연 확정) / D7 범위(product NOW 비교 앱 Instant 통일 여부) / verify 시 PITFALLS §13 본문 갱신
+(없음)
 
 ## 직전 봉인
+
+- **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화, 이슈/브랜치 #83, 2026-06-03) — `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`
+  - 17태스크(T1~T17) + DM1/DM2 + 회귀 가드, 27커밋. `./gradlew test` 846 PASS, 최종 리뷰 critical/major 0.
+  - **TC-8 해소**: 4서비스 `Clock` 빈 + `Instant` 통일. `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0), 도메인 `Instant` 인자 주입(now() 직접 0). UTC 저장 일관(ORM hibernate.jdbc.time_zone=UTC + raw-JDBC connectionTimeZone=UTC + 명시 UTC Calendar). payment 도메인 PaymentEvent+PaymentOutbox 모두 Instant(T17, 경계 ofInstant 6곳 제거).
+  - **TC-4 해소**: 만료 정책 명문화 — READY 직접 만료(`expire()` 가드) + 정합 스캐너 2단 연쇄. 임계 외부화(`payment.expiration.ready-timeout-minutes` 기본30) + 스케줄러 키 정정(fallback).
+  - **DM1/DM2/D8**: auditing `clockDateTimeProvider` UTC化(만료 cutoff 정합) / product default+docker connectionTimeZone=UTC(dedupe split-brain 해소) / 벤더 승인 시각 `.toInstant()` 정규화(정산 9시간 오차 차단, approvedAtRaw contract 무변경).
+  - 영구 문서 5개 갱신(PITFALLS §6/§13 / ARCHITECTURE / INTEGRATIONS / CONVENTIONS / TODOS). 후속: [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE].
+  - 잔여: wip 커밋(94a4053f) PR squash merge로 흡수.
 
 - **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, PR #82, 2026-05-31) — `docs/archive/cleanup-batch-b/COMPLETION-BRIEFING.md`
   - 6태스크 16커밋. spotbugs 5건 **전부 코드 정정**(억제 0; NP_NULL은 `if-null-throw`—`requireNonNull`을 SpotBugs 6.0.9가 미인식, EI_EXPOSE_REP2는 `FakeMessagePublisher` Throwable→Supplier) + 502/504 retryable 승격(500 유지·429/503 단일) + JaCoCo 게이트 실효화(루트 subprojects 공통화 + integrationTest 합산 + 서비스별 LINE minimum, element=BUNDLE) + Gradle 8.14.4(Java 24)

@@ -31,7 +31,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 | getStatus endpoint | `GET /v1/payments/orders/{orderId}` |
 | 상태 매핑 | `TossPaymentStatus` enum + `PaymentStatus` 도메인 매핑 (UNMAPPED 시 `PaymentGatewayStatusUnmappedException`) |
 | 에러 코드 | `TossPaymentErrorCode` — retryable / non-retryable 분류 |
-| 시각 처리 | `approvedAt` 원문(ISO-8601) 보존 → `ConfirmedEventPayload.approvedAt` 으로 전달 |
+| 시각 처리 | `approvedAt` 원문(ISO-8601 offset) 보존 → `ConfirmedEventPayload.approvedAt`(`approvedAtRaw` String) 전달. payment 측 `parseApprovedAt` 에서 `.toInstant()` 정규화 (offset 보존, TIME-MODEL-AND-EXPIRY) |
 
 ## NicePay
 
@@ -41,7 +41,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 | 인증 | Client Key / Secret Key (`NICEPAY_CLIENT_KEY` / `NICEPAY_SECRET_KEY`) |
 | confirm endpoint | `POST /v1/payments/{tid}` |
 | getStatus endpoint | `GET /v1/payments/{tid}` |
-| 시각 처리 | `paidAt` 원문 보존, offset 정규화 적용 (직전 fix — `NicePay paidAt offset 정규화 — ConfirmedEvent 역직렬화 회복`) |
+| 시각 처리 | `paidAt` 원문(offset) 보존 → `approvedAtRaw` 전달. payment 측 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 정규화 — `.toLocalDateTime()` 금지(정산 9시간 오차 차단, PITFALLS §13). NicePay 내부 fallback `OffsetDateTime.now(clock)` (예외 경로) |
 | 응답 매핑 | `NicepayPaymentApiResponse` / `NicepayPaymentApiFailResponse` |
 
 ## 벤더 호출 회복성
