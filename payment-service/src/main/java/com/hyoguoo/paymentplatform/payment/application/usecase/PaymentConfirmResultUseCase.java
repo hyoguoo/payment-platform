@@ -157,7 +157,7 @@ public class PaymentConfirmResultUseCase {
      * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
-        // TODO T14: parseApprovedAt 을 .toInstant() 정규화로 완전 전환 예정 (D8)
+        // D8 — parseApprovedAt 은 OffsetDateTime.parse().toInstant() 로 오프셋 보존 정규화 (T14 완료)
         Instant receivedApprovedAt = parseApprovedAt(message.approvedAt());
 
         if (isAmountMismatch(paymentEvent, message.amount())) {
@@ -223,16 +223,14 @@ public class PaymentConfirmResultUseCase {
      * 수신 approvedAt 문자열을 Instant 로 변환.
      * approvedAt 은 ISO_OFFSET_DATE_TIME contract(non-null) 위반 시 즉시 예외.
      *
-     * <p>T14(D8)에서 offset 정규화(.toInstant()) 완전 전환이 예정되어 있으며,
-     * 현재는 임시 변환(toLocalDateTime()→Instant) 대신 직접 toInstant() 를 사용한다.
+     * <p>D8 — {@code OffsetDateTime.parse().toInstant()} 로 오프셋을 보존하여 정산 앵커 UTC 절대시점을 정규화한다.
+     * KST(+09:00) 등 비-UTC 오프셋 입력도 9시간 오차 없이 UTC 절대시점으로 변환된다(AC9).
+     * {@code toLocalDateTime()}을 사용하면 오프셋이 무시되어 최대 9시간 오차가 발생하므로 금지한다.
      */
     private static Instant parseApprovedAt(String approvedAtRaw) {
         if (approvedAtRaw == null) {
             throw new IllegalArgumentException("APPROVED 메시지에 approvedAt 이 null 입니다.");
         }
-        // TODO T14: OffsetDateTime.parse(approvedAtRaw).toLocalDateTime() 은 오프셋을 무시하여
-        //           승인 시각에 최대 9시간 오차가 발생할 수 있다(D8 major #2).
-        //           이 메서드는 임시로 toInstant()를 사용하여 오프셋을 보존한다.
         return OffsetDateTime.parse(approvedAtRaw).toInstant();
     }
 

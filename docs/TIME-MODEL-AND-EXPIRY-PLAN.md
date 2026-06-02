@@ -24,7 +24,7 @@
 - [x] **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
 - [x] **T12** 결제 멱등 정리 직접 DB 접근 경로 UTC 규약 적용 (LocalDateTimeProvider 포트 최종 삭제 — AC1 grep 0 달성)
 - [x] **T13** 상품 서비스 표준 시계 빈 도입 + 멱등 정리 직접 DB 접근 경로 UTC 규약
-- **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
+- [x] **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
 - [x] **T15** PG 벤더 전략 시각 처리 정리 + 메시지 문자열 형식 보존 확인
 - **T16** (verify 단계 예고) PITFALLS 및 영구 문서 동기화
 
@@ -414,6 +414,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
   - `parseApprovedAt_utcOffset_shouldBeIdentical` — `"2026-01-01T00:00:00+00:00"` 입력 → `2026-01-01T00:00:00Z` 동치 단정
   - `parseApprovedAt_null_shouldThrow` — null 입력 → `IllegalArgumentException` 단정
   - `parseApprovedAt_toLocalDateTimeIsBanned_grep` — (정적 검증) `.toLocalDateTime()` 호출이 `parseApprovedAt` 관련 경로에서 0건임을 주석으로 명시 (grep AC9)
+- **완료 결과** (2026-06-02): `parseApprovedAt`은 T3/T12 선행 처리 시점에 이미 `OffsetDateTime.parse().toInstant()` 정규화가 적용됨. T14에서 TODO 주석 정리 + Javadoc D8 설명으로 교체. `markPaymentAsDone(paymentEvent, Instant approvedAt)` 인자 타입 T3에서 이미 Instant. `PaymentConfirmResultUseCaseApprovedAtTest` AC9 테스트(KST→UTC 9시간 오차 없음, UTC 동치, null 예외, .toLocalDateTime() 회귀 가드) 4건 추가. `grep -rn "toLocalDateTime()" payment-service/src/main/java` parseApprovedAt 경로 0건(AC9 달성). payment 단위+통합 30/30 PASS.
 
 ---
 
