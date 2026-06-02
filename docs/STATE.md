@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-02 — TIME-MODEL-AND-EXPIRY **review finding 수정 완료**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: review DM1/DM2/M2 수정 완료. verify 단계 진입 가능.
+> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **review 완료 → verify 대기**. 이슈 #83, 브랜치 #83.
+> **다음 진입점**: 사용자가 "verify 시작" 요청 시 verify 진행. review 2라운드(DM1/DM2 운영 정합 닫힘) + 가드 보강(커밋 c429e572)까지 완료. verify에서 전체 테스트(--rerun) + T16 문서 동기화 + minor 2건(product NOW 통일/F6 backstop) TODOS 등재 + wip 커밋 squash 처리.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
-  - stage: **review**
+  - stage: **verify**
   - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2)
     - DM1: JpaConfig clockDateTimeProvider 등록 + @EnableJpaAuditing(dateTimeProviderRef) 연결. 회귀 테스트 추가.
     - DM2: product default application.yml datasource URL에 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true 추가.
