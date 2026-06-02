@@ -25,7 +25,7 @@
 - **T12** 결제 멱등 정리 직접 DB 접근 경로 UTC 규약 적용
 - **T13** 상품 서비스 표준 시계 빈 도입 + 멱등 정리 직접 DB 접근 경로 UTC 규약
 - **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
-- **T15** PG 벤더 전략 시각 처리 정리 + 메시지 문자열 형식 보존 확인
+- [x] **T15** PG 벤더 전략 시각 처리 정리 + 메시지 문자열 형식 보존 확인
 - **T16** (verify 단계 예고) PITFALLS 및 영구 문서 동기화
 
 ### 변경 후 런타임 동작 (to-be)
@@ -417,6 +417,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
 
 ### T15 — pg-service: 벤더 strategy 시각 처리 정리 (D8 pg측)
 
+- **완료 결과** (2026-06-02): `TossPaymentGatewayStrategy.parseApprovedAt()` fallback `LocalDateTime.now()` → `LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)` 교체 + Clock 필드 신규 주입. `NicepayPaymentGatewayStrategy.parsePaidAtAsOffsetDateTime()` fallback `OffsetDateTime.now()` → `OffsetDateTime.now(clock)` 교체 + Clock 필드 신규 주입. 양 전략 모두 fallback은 파싱 실패 예외 경로이며 `ConfirmedEventPayload.approvedAt` 직렬화 contract(정상 경로 `approvedAtRaw = parsedPaidAt.toString()`)에 영향 없음. F6 contract guard: `NicepayPaymentGatewayStrategyPaidAtNormalizationTest`(RFC 822→ISO_OFFSET_DATE_TIME 정규화 + `OffsetDateTime.parse` 성공)가 approvedAtRaw offset 보존을 기존 커버. `grep -rn "LocalDateTime.now()" pg-service/src/main/java` 주석 제외 실질 호출 0건. 단위 311/311 PASS.
 - **tdd**: false
 - **domain_risk**: true
 - **목적**: D8 — pg 측 strategy가 `ConfirmedEventPayload`에 `approvedAtRaw`(원본 offset 문자열)를 보존함을 확인하고, 내부적으로 `LocalDateTime.now()` 직접 호출(TossPaymentGatewayStrategy L244)을 `clock.instant()` 기반으로 교체한다. `NicepayPaymentGatewayStrategy`의 `parsedPaidAt.toLocalDateTime()` 변환은 `ConfirmedEventPayload`의 `approvedAt` 필드가 raw 문자열 contract을 유지하므로 해당 필드에 영향 없음을 확인한다. pg 내부 도메인/엔티티(`PgInbox`/`PgOutbox`)가 `Instant`를 다룰 때 `.toLocalDateTime()`으로 깎는 지점이 있으면 제거한다.

@@ -24,8 +24,11 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.dto.TossPaymen
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -76,21 +79,25 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
     private final EncodeUtils encodeUtils;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     /**
      * DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 주입한다 — cycle 회피.
      * @Value 필드는 생성자 방식으로 주입할 수 없어(Spring SpEL 한계) 필드 방식을 유지한다.
+     * clock 은 parseApprovedAt 파싱 실패 fallback 시 TZ 누수 제거를 위해 주입한다.
      */
     public TossPaymentGatewayStrategy(
             HttpOperator httpOperator,
             EncodeUtils encodeUtils,
             ApplicationEventPublisher applicationEventPublisher,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            Clock clock
     ) {
         this.httpOperator = httpOperator;
         this.encodeUtils = encodeUtils;
         this.applicationEventPublisher = applicationEventPublisher;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Value("${spring.myapp.toss-payments.secret-key}")
@@ -240,8 +247,11 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
                     .toLocalDateTime();
         } catch (DateTimeParseException e) {
             LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
-                    () -> "approvedAt 파싱 실패 fallback=now approvedAt=" + approvedAt);
-            return LocalDateTime.now();
+                    () -> "approvedAt 파싱 실패 fallback=clock approvedAt=" + approvedAt);
+            // TZ 누수 제거 — LocalDateTime.now()는 시스템 TZ 기반이므로 clock.instant() UTC 기준으로 교체.
+            // approvedAtRaw(String)는 정상 경로에서만 설정되므로 이 fallback은 ConfirmedEventPayload.approvedAt 에 영향 없음.
+            Instant fallback = clock.instant();
+            return LocalDateTime.ofInstant(fallback, ZoneOffset.UTC);
         }
     }
 
