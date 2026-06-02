@@ -9,6 +9,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
 
     private final PgInboxRepository inboxRepository;
     private final PgVendorCallService vendorCallService;
+    private final Clock clock;
 
     // -----------------------------------------------------------------------
     // processPending — TX_A PENDING→IN_PROGRESS CAS + 벤더 HTTP + TX_B
@@ -91,7 +93,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
         GatewayOutcome outcome = vendorCallService.invokeVendor(request);
 
         // TX_B — 벤더 응답 5분기 처리
-        vendorCallService.applyOutcome(outcome, request, resolveAttempt(inbox), Instant.now());
+        vendorCallService.applyOutcome(outcome, request, resolveAttempt(inbox), clock.instant());
     }
 
     // -----------------------------------------------------------------------
@@ -131,7 +133,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
         GatewayOutcome outcome = vendorCallService.invokeVendor(request);
 
         // TX_B — 5분기 처리. HandledInternally → DuplicateApprovalHandler 보정 경로
-        vendorCallService.applyOutcome(outcome, request, resolveAttempt(inbox), Instant.now());
+        vendorCallService.applyOutcome(outcome, request, resolveAttempt(inbox), clock.instant());
     }
 
     // -----------------------------------------------------------------------

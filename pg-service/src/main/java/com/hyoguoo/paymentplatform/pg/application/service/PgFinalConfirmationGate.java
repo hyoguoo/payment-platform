@@ -18,6 +18,7 @@ import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -158,9 +159,10 @@ public class PgFinalConfirmationGate {
         pgInboxRepository.transitToApproved(orderId, storedStatusResult);
 
         // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 fallback 으로 사용한다.
+        Instant now = clock.instant();
         String approvedAtRaw = OffsetDateTime.now(clock).toString();
         String payload = buildApprovedPayload(orderId, amount, approvedAtRaw);
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, now);
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_FCG_APPROVED,
@@ -176,7 +178,7 @@ public class PgFinalConfirmationGate {
         pgInboxRepository.transitToFailed(orderId, storedStatusResult, "FCG_CONFIRMED_FAILED");
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.FAILED, "FCG_CONFIRMED_FAILED");
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_FCG_FAILED,
@@ -192,7 +194,7 @@ public class PgFinalConfirmationGate {
         pgInboxRepository.transitToQuarantined(orderId, REASON_FCG_INDETERMINATE);
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, REASON_FCG_INDETERMINATE);
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_QUARANTINED,

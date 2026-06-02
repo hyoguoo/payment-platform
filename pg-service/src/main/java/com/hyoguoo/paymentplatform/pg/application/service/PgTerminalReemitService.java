@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
+import java.time.Clock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -32,6 +33,7 @@ public class PgTerminalReemitService {
 
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final Clock clock;
 
     /**
      * terminal inbox 의 storedStatusResult 를 재발행한다.
@@ -53,7 +55,8 @@ public class PgTerminalReemitService {
                 PgTopics.EVENTS_CONFIRMED,
                 inbox.getOrderId(),
                 storedResult,
-                null);
+                null,
+                clock.instant());
         PgOutbox saved = pgOutboxRepository.save(reemit);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 

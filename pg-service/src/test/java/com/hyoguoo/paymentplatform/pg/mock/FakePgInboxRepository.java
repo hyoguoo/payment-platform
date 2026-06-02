@@ -56,7 +56,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     @Override
     public void transitToApproved(String orderId, String storedStatusResult) {
         store.computeIfPresent(orderId, (key, current) -> {
-            current.markApproved(storedStatusResult);
+            current.markApproved(storedStatusResult, java.time.Instant.now());
             return current;
         });
     }
@@ -64,7 +64,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     @Override
     public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
         store.computeIfPresent(orderId, (key, current) -> {
-            current.markFailed(storedStatusResult, reasonCode);
+            current.markFailed(storedStatusResult, reasonCode, java.time.Instant.now());
             return current;
         });
     }
@@ -80,7 +80,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
             if (current.getStatus().isTerminal()) {
                 return current; // 이미 terminal → no-op
             }
-            current.markQuarantined(null, reasonCode);
+            current.markQuarantined(null, reasonCode, java.time.Instant.now());
             transitioned.set(true);
             return current;
         });
@@ -164,7 +164,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     @Override
     public Long transitDirectToInProgress(String orderId, long amount) {
         Long newId = idSequence.getAndIncrement();
-        PgInbox inbox = PgInbox.createDirectInProgress(orderId, amount);
+        PgInbox inbox = PgInbox.createDirectInProgress(orderId, amount, java.time.Instant.now());
         store.put(orderId, inbox);
         idIndex.put(newId, orderId);
         return newId;

@@ -13,7 +13,9 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer.PaymentC
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,8 +49,9 @@ class PaymentConfirmDlqConsumerTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC);
         pgDlqService = new PgDlqService(inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()));
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), clock);
     }
 
     // -----------------------------------------------------------------------

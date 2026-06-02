@@ -18,7 +18,7 @@
 - [x] **T5** 결제 이벤트 저장소 포트·구현 시각 타입 전환
 - [x] **T6** 만료 임계(30분) 환경 설정 외부화
 - [x] **T7** 결제 인프라 계층(지표·스케줄러·감사 관점) 시각 소스 교체 (자체 포트 완전 제거는 T12에서 달성)
-- **T8** PG 도메인 직접 시각 호출 제거 → 호출자 인자 주입
+- [x] **T8** PG 도메인 직접 시각 호출 제거 → 호출자 인자 주입
 - **T9** 만료 스케줄러 설정 키 정정 + 폴백 체인(운영 무중단)
 - [x] **T10** 만료 도메인 가드(대기 상태에서만 만료) 전수 테스트
 - [x] **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
@@ -271,6 +271,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
 
 ### T8 — pg-service: `PgInbox`/`PgOutbox` 도메인 `Instant.now()` 직접 호출 제거 → 인자 주입
 
+- **완료 결과** (2026-06-02): `PgInbox` 팩토리 no-arg 버전 4개(`create(orderId,amount)`, `create(orderId,amount,paymentKey,vendorType)`, `createDirectInProgress()`, `createDirectTerminal()`) 제거 — Instant now 인자 필수화로 일원화. mutator no-arg 버전 4개(`markInProgress()`, `markApproved(storedResult)`, `markFailed(storedResult,reasonCode)`, `markQuarantined(storedResult,reasonCode)`) 제거 — Instant updatedAt 인자 필수화. `PgOutbox.create()` no-arg → now 인자 필수화, `createWithAvailableAt()` createdAt 인자 추가. `PgInboxProcessor`에 `Clock clock` 필드 주입 신규, L94·L134 `Instant.now()` → `clock.instant()`. 호출처(`PgVendorCallService`, `PgFinalConfirmationGate`, `PgDlqService`(Clock 신규 주입), `DuplicateApprovalHandler`, `PgTerminalReemitService`(Clock 신규 주입), `PgInboxRepositoryImpl`) clock 기반 인자 주입 완료. `FakePgInboxRepository`/`PgInboxTest`/`PgOutboxTest`/`PgInboxProcessorTest`/`PgTerminalReemitServiceTest`/`PaymentConfirmDlqConsumerTest`/`PaymentConfirmConsumerTest` 테스트 정합 수정. `grep -rn "Instant.now()" pg-service/src/main/java` 0건. 단위 311/311 PASS.
 - **tdd**: true
 - **domain_risk**: true
 - **목적**: D1/D2/R3 — `PgInbox`와 `PgOutbox` 도메인 내부의 `Instant.now()` 직접 호출(`PgInbox` 8곳: L64·L88·L164·L199·L309·L341·L376·L414, `PgOutbox` 2곳: L49·L86)을 제거하고, 호출자가 `clock.instant()`로 `Instant`를 얻어 메서드 인자로 주입하도록 전환한다. 기존에 인자 오버로드가 있는 메서드는 오버로드 일원화(no-arg 버전 제거). 도메인 mutator 호출처 전수:

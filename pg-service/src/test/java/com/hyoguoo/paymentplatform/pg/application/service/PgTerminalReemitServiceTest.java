@@ -13,7 +13,9 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +44,8 @@ class PgTerminalReemitServiceTest {
     void setUp() {
         pgOutboxRepository = mock(PgOutboxRepository.class);
         applicationEventPublisher = mock(ApplicationEventPublisher.class);
-        sut = new PgTerminalReemitService(pgOutboxRepository, applicationEventPublisher);
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        sut = new PgTerminalReemitService(pgOutboxRepository, applicationEventPublisher, clock);
     }
 
     @Test

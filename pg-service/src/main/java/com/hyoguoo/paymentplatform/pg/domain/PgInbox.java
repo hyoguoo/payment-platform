@@ -51,58 +51,7 @@ public class PgInbox {
 
     /**
      * 정상 경로 신규 inbox 생성 — PENDING 상태로 시작.
-     * listener TX 에서 PENDING INSERT 시 사용.
-     *
-     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
-     *
-     * @param orderId    주문 ID
-     * @param amount     결제 금액
-     * @param paymentKey 벤더 결제 키
-     * @param vendorType 벤더 타입 문자열
-     */
-    public static PgInbox create(String orderId, Long amount, String paymentKey, String vendorType) {
-        Instant now = Instant.now();
-        return PgInbox.allArgsBuilder()
-                .id(null)
-                .orderId(orderId)
-                .status(PgInboxStatus.PENDING)
-                .amount(amount)
-                .storedStatusResult(null)
-                .reasonCode(null)
-                .createdAt(now)
-                .updatedAt(now)
-                .paymentKey(paymentKey)
-                .vendorType(vendorType)
-                .allArgsBuild();
-    }
-
-    /**
-     * 하위 호환 오버로드 — paymentKey / vendorType null 기본값.
-     *
-     * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
-     *
-     * @param orderId 주문 ID
-     * @param amount  결제 금액
-     */
-    public static PgInbox create(String orderId, Long amount) {
-        Instant now = Instant.now();
-        return PgInbox.allArgsBuilder()
-                .id(null)
-                .orderId(orderId)
-                .status(PgInboxStatus.PENDING)
-                .amount(amount)
-                .storedStatusResult(null)
-                .reasonCode(null)
-                .createdAt(now)
-                .updatedAt(now)
-                .paymentKey(null)
-                .vendorType(null)
-                .allArgsBuild();
-    }
-
-    /**
-     * fixed Instant 주입 오버로드 — 시간 결정성 테스트용.
-     * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 전달한다.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
@@ -128,7 +77,8 @@ public class PgInbox {
     }
 
     /**
-     * fixed Instant 주입 오버로드 — paymentKey / vendorType null 기본값. 하위 호환.
+     * paymentKey / vendorType null 기본값 오버로드.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 전달한다.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
@@ -153,15 +103,16 @@ public class PgInbox {
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 IN_PROGRESS 신설.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 전달한다.
      * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
      *
      * @param orderId 주문 ID
      * @param amount  결제 금액
+     * @param now     현재 Instant (clock.instant() 전달)
      */
-    public static PgInbox createDirectInProgress(String orderId, Long amount) {
-        Instant now = Instant.now();
+    public static PgInbox createDirectInProgress(String orderId, Long amount, Instant now) {
         return PgInbox.allArgsBuilder()
                 .id(null)
                 .orderId(orderId)
@@ -178,6 +129,7 @@ public class PgInbox {
 
     /**
      * 보정 경로 전용 — PENDING 우회, 바로 terminal 상태(APPROVED / QUARANTINED) 신설.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 전달한다.
      * {@code DuplicateApprovalHandler.handleDbAbsent*} 호출 한정.
      *
      * <p>main 호출처 0건 (test 픽스처 전용) — {@code insertPending} native INSERT 가 정상 경로.
@@ -186,17 +138,17 @@ public class PgInbox {
      *
      * @param orderId            주문 ID
      * @param amount             결제 금액
+     * @param now                현재 Instant (clock.instant() 전달)
      * @param terminalStatus     APPROVED 또는 QUARANTINED (terminal 이어야 함)
      * @param storedStatusResult 벤더 응답 JSON
      * @throws IllegalArgumentException terminal 이 아닌 status 전달 시
      */
     public static PgInbox createDirectTerminal(
-            String orderId, Long amount, PgInboxStatus terminalStatus, String storedStatusResult) {
+            String orderId, Long amount, Instant now, PgInboxStatus terminalStatus, String storedStatusResult) {
         if (!terminalStatus.isTerminal()) {
             throw new IllegalArgumentException(
                     "PgInbox.createDirectTerminal: status must be terminal but was " + terminalStatus);
         }
-        Instant now = Instant.now();
         return PgInbox.allArgsBuilder()
                 .id(null)
                 .orderId(orderId)
@@ -296,22 +248,8 @@ public class PgInbox {
 
     /**
      * PENDING → IN_PROGRESS 도메인 전이.
+     * 호출자(PgInboxRepositoryImpl / PgInboxProcessor)가 {@code clock.instant()} 를 전달한다.
      * SQL CAS 전에 도메인 객체가 사전 검증하는 역할을 한다 (race window 최종 가드는 SQL CAS).
-     *
-     * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
-     */
-    public void markInProgress() {
-        if (this.status != PgInboxStatus.PENDING) {
-            throw new IllegalStateException(
-                    "PgInbox.markInProgress: status must be PENDING but was " + this.status);
-        }
-        this.status = PgInboxStatus.IN_PROGRESS;
-        this.updatedAt = Instant.now();
-    }
-
-    /**
-     * fixed Instant 주입 오버로드 — PENDING → IN_PROGRESS 전이 + updatedAt 결정성.
-     * 호출자(PgInboxRepositoryImpl)가 {@code clock.instant()} 를 전달한다.
      *
      * @param updatedAt 갱신 시각 (clock.instant() 전달)
      * @throws IllegalStateException PENDING 이 아닌 상태에서 호출 시
@@ -327,22 +265,7 @@ public class PgInbox {
 
     /**
      * IN_PROGRESS → APPROVED 도메인 전이.
-     *
-     * @param storedStatusResult 벤더 응답 JSON
-     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
-     */
-    public void markApproved(String storedStatusResult) {
-        if (this.status != PgInboxStatus.IN_PROGRESS) {
-            throw new IllegalStateException(
-                    "PgInbox.markApproved: status must be IN_PROGRESS but was " + this.status);
-        }
-        this.status = PgInboxStatus.APPROVED;
-        this.storedStatusResult = storedStatusResult;
-        this.updatedAt = Instant.now();
-    }
-
-    /**
-     * fixed Instant 주입 오버로드 —IN_PROGRESS → APPROVED 전이 + updatedAt 결정성.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code updatedAt} 을 전달한다.
      *
      * @param storedStatusResult 벤더 응답 JSON
      * @param updatedAt          갱신 시각 (clock.instant() 전달)
@@ -360,24 +283,7 @@ public class PgInbox {
 
     /**
      * IN_PROGRESS → FAILED 도메인 전이.
-     *
-     * @param storedStatusResult 벤더 응답 JSON
-     * @param reasonCode         실패 사유 코드
-     * @throws IllegalStateException IN_PROGRESS 가 아닌 상태에서 호출 시
-     */
-    public void markFailed(String storedStatusResult, String reasonCode) {
-        if (this.status != PgInboxStatus.IN_PROGRESS) {
-            throw new IllegalStateException(
-                    "PgInbox.markFailed: status must be IN_PROGRESS but was " + this.status);
-        }
-        this.status = PgInboxStatus.FAILED;
-        this.storedStatusResult = storedStatusResult;
-        this.reasonCode = reasonCode;
-        this.updatedAt = Instant.now();
-    }
-
-    /**
-     * fixed Instant 주입 오버로드 —IN_PROGRESS → FAILED 전이 + updatedAt 결정성.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code updatedAt} 을 전달한다.
      *
      * @param storedStatusResult 벤더 응답 JSON
      * @param reasonCode         실패 사유 코드
@@ -398,27 +304,10 @@ public class PgInbox {
     /**
      * non-terminal → QUARANTINED 도메인 전이.
      * DLQ consumer 또는 FCG 에서 격리 시 호출한다.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code updatedAt} 을 전달한다.
      *
      * @param storedStatusResult 벤더 응답 JSON (nullable)
      * @param reasonCode         격리 사유 코드 (e.g., "RETRY_EXHAUSTED")
-     * @throws IllegalStateException 이미 terminal 상태에서 호출 시
-     */
-    public void markQuarantined(String storedStatusResult, String reasonCode) {
-        if (this.status.isTerminal()) {
-            throw new IllegalStateException(
-                    "PgInbox.markQuarantined: status is already terminal: " + this.status);
-        }
-        this.status = PgInboxStatus.QUARANTINED;
-        this.storedStatusResult = storedStatusResult;
-        this.reasonCode = reasonCode;
-        this.updatedAt = Instant.now();
-    }
-
-    /**
-     * fixed Instant 주입 오버로드 —non-terminal → QUARANTINED 전이 + updatedAt 결정성.
-     *
-     * @param storedStatusResult 벤더 응답 JSON (nullable)
-     * @param reasonCode         격리 사유 코드
      * @param updatedAt          갱신 시각 (clock.instant() 전달)
      * @throws IllegalStateException 이미 terminal 상태에서 호출 시
      */

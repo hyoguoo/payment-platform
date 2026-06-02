@@ -300,7 +300,7 @@ public class DuplicateApprovalHandler {
      * @return 저장된 pg_outbox row id (AFTER_COMMIT 이벤트 핸들러가 상관 키로 사용)
      */
     private long enqueueOutbox(String orderId, String payload) {
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         return saved.getId();
