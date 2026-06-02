@@ -20,8 +20,8 @@
 - [x] **T7** 결제 인프라 계층(지표·스케줄러·감사 관점) 시각 소스 교체 (자체 포트 완전 제거는 T12에서 달성)
 - **T8** PG 도메인 직접 시각 호출 제거 → 호출자 인자 주입
 - **T9** 만료 스케줄러 설정 키 정정 + 폴백 체인(운영 무중단)
-- **T10** 만료 도메인 가드(대기 상태에서만 만료) 전수 테스트
-- **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
+- [x] **T10** 만료 도메인 가드(대기 상태에서만 만료) 전수 테스트
+- [x] **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
 - **T12** 결제 멱등 정리 직접 DB 접근 경로 UTC 규약 적용
 - **T13** 상품 서비스 표준 시계 빈 도입 + 멱등 정리 직접 DB 접근 경로 UTC 규약
 - **T14** 벤더 승인 시각 오프셋 보존 정규화 (정산 앵커 9시간 오차 차단)
@@ -319,6 +319,11 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
   - `expire_whenReady_withFixedClock_shouldTransitionToExpired` — `Clock.fixed(fixedInstant, UTC)` → `expire(fixedInstant)` 호출 후 status=EXPIRED, lastStatusChangedAt=fixedInstant 단정
   - `expire_whenNotReady_shouldThrow(PaymentEventStatus status)` — `@ParameterizedTest @EnumSource(value=PaymentEventStatus.class, names={"IN_PROGRESS","RETRYING","DONE","FAILED","EXPIRED","QUARANTINED"})` — 각각 `INVALID_STATUS_TO_EXPIRE` 예외 단정 (NG2 회귀 가드)
   - `expire_whenPartialCanceled_shouldThrow` — PARTIAL_CANCELED 상태(존재 시)에서도 예외 단정
+- **완료 결과** (2026-06-02): `PaymentEventTest`에 T10 스펙 메서드 3개 추가.
+  `expire_whenReady_withFixedClock_shouldTransitionToExpired`(Clock.fixed 결정성, EXPIRED 전이 + lastStatusChangedAt 단정),
+  `expire_whenPartialCanceled_shouldThrow`(PARTIAL_CANCELED NG2 회귀 가드),
+  `expire_whenNotReadyExhaustive_shouldThrow`(@EnumSource exhaustive, INVALID_STATUS_TO_EXPIRE 에러코드 명시).
+  기존 구현 변경 없음. 단위 테스트 446/446 PASS.
 
 ---
 
@@ -335,6 +340,12 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
   - `scan_staleInProgress_shouldResetToReady` — `Clock.fixed()` + Mock `PaymentEventRepository`로 IN_PROGRESS `cutoff` 초과 건 반환 → `resetToReady(Instant)` 호출됨 verify
   - `scan_noStaleRecords_shouldDoNothing` — 빈 리스트 반환 → saveOrUpdate 0회 verify
   - `expireOldReadyPayments_afterReset_shouldSucceed` — `PaymentExpirationServiceImplTest`의 기존 테스트를 `Instant` 인자로 전환 (LocalDateTime → Instant fixture 교체)
+- **완료 결과** (2026-06-02): `PaymentReconcilerTest`에 T11 스펙 메서드 2개 추가.
+  `scan_staleInProgress_shouldResetToReady`(Clock.fixed, cutoff 초과 IN_PROGRESS → resetToReady verify),
+  `scan_noStaleRecords_shouldDoNothing`(빈 리스트 → saveOrUpdate 0회).
+  `PaymentExpirationServiceImplTest`에 `expireOldReadyPayments_afterReset_shouldSucceed`(Reconciler 복원 후 만료 2단 연쇄 2단계)추가.
+  기존 `PaymentExpirationServiceImplTest`는 이미 Instant 기반이었으므로 LocalDateTime 전환 불필요.
+  단위 테스트 446/446 PASS.
 
 ---
 

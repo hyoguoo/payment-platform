@@ -1,14 +1,14 @@
 # 현재 작업 상태
 
 > 최종 수정: 2026-06-02 — TIME-MODEL-AND-EXPIRY **execute 진행 중**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: T1~T7 완료(payment 시간 추상화 Clock/Instant 전환 + 만료 임계 외부화). 단위 통과·integrationTest 28/28. 다음 활성 태스크 T10(만료 도메인 가드 테스트). 이후 T11 → T8/T15(pg) → T9 → T12(포트 최종 삭제·AC1 달성) → T13 → T14.
+> **다음 진입점**: T1~T11 완료(payment 시간 추상화 Clock/Instant 전환 + 만료 임계 외부화 + 만료 정책 명문화). 단위 446/446 PASS. 다음 활성 태스크 T8(pg 도메인 Instant.now() 제거). 이후 T15(pg 벤더) → T9(스케줄러 키) → T12(dedupe UTC + AC1) → T13(product) → T14.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
   - stage: **execute** (plan-review pass — Plan Reviewer pass, minor 3건 비차단/표기 오기 2건 정정 완료)
-  - 완료: T1~T7 (도메인/엔티티/저장소 Instant + UTC 저장 일관 + application/infra Clock 전환 + 만료 임계 외부화). `LocalDateTimeProvider` 잔여는 포트 정의 + JdbcPaymentEventDedupeStore(T12 대상)뿐.
-  - 활성 태스크: **T10** (만료 도메인 가드 테스트 강화 — 대기 상태에서만 만료)
+  - 완료: T1~T11 (도메인/엔티티/저장소 Instant + UTC 저장 일관 + application/infra Clock 전환 + 만료 임계 외부화 + 만료 정책 명문화). `LocalDateTimeProvider` 잔여는 포트 정의 + JdbcPaymentEventDedupeStore(T12 대상)뿐.
+  - 활성 태스크: **T8** (pg `PgInbox`/`PgOutbox` 도메인 `Instant.now()` 직접 호출 제거 → 인자 주입)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
   - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인
