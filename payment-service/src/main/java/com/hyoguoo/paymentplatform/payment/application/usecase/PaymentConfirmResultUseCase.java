@@ -226,8 +226,10 @@ public class PaymentConfirmResultUseCase {
      * <p>D8 — {@code OffsetDateTime.parse().toInstant()} 로 오프셋을 보존하여 정산 앵커 UTC 절대시점을 정규화한다.
      * KST(+09:00) 등 비-UTC 오프셋 입력도 9시간 오차 없이 UTC 절대시점으로 변환된다(AC9).
      * {@code toLocalDateTime()}을 사용하면 오프셋이 무시되어 최대 9시간 오차가 발생하므로 금지한다.
+     *
+     * <p>package-private: {@code PaymentConfirmResultUseCaseApprovedAtTest} 에서 직접 단정.
      */
-    private static Instant parseApprovedAt(String approvedAtRaw) {
+    static Instant parseApprovedAt(String approvedAtRaw) {
         if (approvedAtRaw == null) {
             throw new IllegalArgumentException("APPROVED 메시지에 approvedAt 이 null 입니다.");
         }

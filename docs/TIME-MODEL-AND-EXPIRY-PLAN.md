@@ -99,6 +99,11 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
 
 **결론**: `BaseEntity` auditing은 D3 UTC connection 규약과 충돌 없음. 본 토픽에서 변경 안 함.
 
+**review DM1 수정(2026-06-02)**: review Domain Expert 지적에 따라 만료 경로 정합 위해 auditing UTC화 적용.
+`JpaConfig`에 `clockDateTimeProvider` 빈(`DateTimeProvider`) 등록 + `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` 연결.
+`Clock` 기반 `Optional.of(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))` 반환으로 JVM TZ 독립적 UTC LocalDateTime 공급.
+BaseEntity 필드/컬럼 타입 변경 없음(NG4). 회귀 테스트(`PaymentEventRepositoryImplTest.auditing_createdAt_isFilledByClockDateTimeProvider`) 추가.
+
 ### D7 범위 — product `NOW()` 처리 방향
 
 `JdbcEventDedupeStore`의 `SQL_EXISTS_VALID`와 `SQL_DELETE_EXPIRED_BY_UUID`는 `NOW()`(DB 세션 TZ 기준)를 사용한다. `connectionTimeZone=UTC` 적용 시 DB 세션이 UTC가 되어 앱 주입 `Instant`와 동일 기준을 공유하므로 split-brain이 해소된다. 단, "앱 시계 vs DB 시계" 이원화 자체를 줄이는 것이 더 결정적이다. 본 PLAN의 최소선은 **connection TZ=UTC 강제**(split-brain 해소)로 확정하되, `NOW()` 제거(앱 주입 `Instant` 비교로 통일)는 별도 리팩토링 태스크로 포함하지 않는다. 이원화 제거는 향후 개선 항목(TODOS).

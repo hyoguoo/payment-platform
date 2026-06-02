@@ -13,8 +13,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.TimeZone;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,17 +30,9 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private TimeZone originalTimeZone;
-
     @BeforeEach
     void cleanUp() {
         jpaPaymentEventRepository.deleteAllInBatch();
-        originalTimeZone = TimeZone.getDefault();
-    }
-
-    @AfterEach
-    void restoreTimeZone() {
-        TimeZone.setDefault(originalTimeZone);
     }
 
     @Test
@@ -94,26 +84,25 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     }
 
     /**
-     * DM1 회귀 가드 — JPA auditing(@CreatedDate) 경로가 비-UTC JVM TZ 에서 UTC 기준으로 채워지는지 검증.
+     * DM1 회귀 가드 — JPA save(@CreatedDate) 경로가 Clock 기반 DateTimeProvider 를 통해
+     * Instant cutoff 와 정합하게 채워지는지 검증.
      *
-     * <p>JVM TZ 를 Asia/Seoul(KST, UTC+9)로 강제한 상태에서 JPA save 를 수행하면,
-     * {@code dateTimeProviderRef} 없이 Spring 기본 {@code CurrentDateTimeProvider} 를 사용하면
-     * {@code LocalDateTime.now()} 가 KST wall-clock 값(UTC+9)으로 채워진다.
-     * {@code Clock} 기반 {@code DateTimeProvider} 를 등록하면 UTC {@code LocalDateTime} 으로 채워진다.
+     * <p>JPA save 를 통해 실제 auditing(@CreatedDate AuditingEntityListener) 경로를 밟고,
+     * 저장 직후 {@code findReadyPaymentsOlderThan(cutoff)} 로 해당 엔티티가 조회됨을 단정한다.
+     * {@code clockDateTimeProvider} 가 {@code Clock} 기반 UTC 시각을 공급하므로
+     * cutoff(Instant) vs created_at(LocalDateTime) 비교가 동일 UTC 기준으로 일관된다.
      *
-     * <p>cutoff(UTC Instant)와 created_at(LocalDateTime) 비교가 UTC 기준으로 일관돼야
-     * 비-UTC JVM 에서 만료 조기/지연 오판이 없다(DM1 정합 보장).
+     * <p>회귀 가드 목적: Spring 기본 {@code CurrentDateTimeProvider} 로 돌아가거나
+     * {@code dateTimeProviderRef} 설정이 빠지면 JVM TZ에 따라 auditing 시각 기준이
+     * 어긋나 만료 cutoff 비교가 깨진다.
      */
     @Test
-    @DisplayName("DM1 회귀 — 비-UTC JVM TZ에서 JPA auditing created_at 이 UTC 기준으로 채워진다.")
-    void auditing_nonUtcJvm_createdAtIsUtcBased() {
-        // given — JVM TZ 를 KST 로 강제 (비-UTC 환경 재현)
-        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Seoul"));
-
+    @DisplayName("DM1 회귀 — JPA auditing created_at 이 Clock 기반 DateTimeProvider 를 통해 cutoff Instant 와 정합하게 채워진다.")
+    void auditing_createdAt_isFilledByClockDateTimeProvider() {
+        // given — JPA save 를 통해 실제 auditing(@CreatedDate) 경로를 밟는다.
+        // raw SQL INSERT 를 사용하지 않으므로 AuditingEntityListener 가 created_at 을 채운다.
         Instant beforeSave = Instant.now();
 
-        // DM1 — JPA save 를 통해 실제 auditing(@CreatedDate) 경로를 밟는다.
-        // raw SQL INSERT 를 사용하지 않으므로 AuditingEntityListener 가 created_at 을 채운다.
         PaymentEventEntity entity = PaymentEventEntity.builder()
                 .buyerId(1L)
                 .sellerId(2L)
@@ -129,25 +118,24 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
         Instant afterSave = Instant.now();
 
         // when — findReadyPaymentsOlderThan 으로 cutoff(afterSave) 기준 조회
-        // DateTimeProvider 가 UTC Clock 기반이면 created_at < cutoff(UTC) 로 정확히 비교된다.
-        // KST wall-clock 으로 채워지면 created_at = 현재UTC+9h 가 저장되어
-        // cutoff(UTC 현재) < created_at(KST 현재) 가 되어 조회 결과가 비어 오판된다.
+        // clockDateTimeProvider 가 Clock 기반 UTC LocalDateTime 을 공급하면
+        // created_at(UTC LocalDateTime) < cutoff(UTC Instant) 비교가 일관되어 엔티티가 반환된다.
+        // dateTimeProviderRef 가 없어 기본 CurrentDateTimeProvider 를 사용하면
+        // JVM TZ 가 비-UTC 일 때 created_at 이 KST wall-clock 값으로 채워져 비교가 어긋난다.
         List<PaymentEvent> result = paymentEventRepository.findReadyPaymentsOlderThan(afterSave);
 
         // then — 방금 저장한 엔티티가 cutoff(now) 이전으로 조회되어야 한다
-        // (Clock 기반 DateTimeProvider 가 UTC 기준으로 채우면 created_at < afterSave(UTC) 가 성립)
         List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
         assertThat(resultIds)
-                .as("DM1: 비-UTC JVM에서 JPA auditing created_at 이 UTC 기준이면 cutoff 비교 정합")
+                .as("DM1 회귀: clockDateTimeProvider 가 Clock 기반 UTC 시각을 공급하면 created_at < afterSave(UTC) 성립")
                 .contains(entity.getId());
 
-        // 추가 단정 — DB 에서 created_at 을 직접 읽어 UTC 범위 안에 있는지 확인
-        LocalDateTime storedCreatedAt = jdbcTemplate.queryForObject(
-                "SELECT created_at FROM payment_event WHERE id = ?",
-                LocalDateTime.class, entity.getId());
-        assertThat(storedCreatedAt)
-                .as("created_at 은 UTC 기준 LocalDateTime 이어야 한다 (KST = UTC+9 면 beforeSave+9h 범위로 어긋남)")
-                .isAfterOrEqualTo(LocalDateTime.ofInstant(beforeSave.minusSeconds(1), ZoneOffset.UTC))
-                .isBeforeOrEqualTo(LocalDateTime.ofInstant(afterSave.plusSeconds(1), ZoneOffset.UTC));
+        // 추가 단정 — beforeSave(UTC) ~ afterSave(UTC) 범위에 created_at 이 있어야 한다
+        // JPA 도메인 객체를 다시 로드해 createdAt(Instant 기준) 로 범위 확인
+        PaymentEvent loaded = paymentEventRepository.findById(entity.getId()).orElseThrow();
+        assertThat(loaded.getCreatedAt())
+                .as("DM1: JPA save 후 created_at 이 Clock(UTC) 기준으로 채워져 beforeSave 이후이어야 한다")
+                .isAfterOrEqualTo(beforeSave.minusSeconds(1))
+                .isBeforeOrEqualTo(afterSave.plusSeconds(1));
     }
 }

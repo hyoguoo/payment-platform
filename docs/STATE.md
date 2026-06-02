@@ -1,13 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-02 — TIME-MODEL-AND-EXPIRY **execute 완료 → review 준비**. 이슈 #83, 브랜치 #83.
-> **다음 진입점**: T1~T15 전 구현 태스크 완료. AC1(payment LocalDateTimeProvider 0건), AC2(product Instant.now() 0건), AC9(parseApprovedAt .toLocalDateTime() 0건) 달성. review 단계 진입.
+> 최종 수정: 2026-06-02 — TIME-MODEL-AND-EXPIRY **review finding 수정 완료**. 이슈 #83, 브랜치 #83.
+> **다음 진입점**: review DM1/DM2/M2 수정 완료. verify 단계 진입 가능.
 
 ## 활성 작업
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
   - stage: **review**
-  - 완료: T1~T15 전 구현 태스크 (payment 도메인/엔티티/저장소/application/infra/dedupe Clock·Instant 전환 + 만료 임계 외부화 + 만료 정책 명문화 + 스케줄러 키 정정 + pg 도메인·벤더 시각 정리 + product Clock 빈·dedupe raw-JDBC UTC + approvedAt offset 정규화). **AC1/AC2/AC9 달성.**
+  - 완료: T1~T15 전 구현 태스크 + review finding 수정(DM1/DM2/M2)
+    - DM1: JpaConfig clockDateTimeProvider 등록 + @EnableJpaAuditing(dateTimeProviderRef) 연결. 회귀 테스트 추가.
+    - DM2: product default application.yml datasource URL에 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true 추가.
+    - M2: docs/.continue-here.md git rm.
+    - R2 PLAN.md 기록 갱신.
   - 활성 태스크: **없음** (T16은 verify 단계 예고)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
