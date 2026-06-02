@@ -132,6 +132,10 @@ user:
     type: ${USER_ADAPTER_TYPE:http}
 
 scheduler:
+  # D5 — 만료 스케줄러(READY → EXPIRED). 주키. 운영 application-docker.yml 에서 오버라이드.
+  # scheduler.payment-expiration.fixed-rate: (기본값 없음 — PaymentScheduler fallback 300000ms)
+  # scheduler.payment-status-sync.fixed-rate: fallback 키(이름 불일치 구 버전, 이연 삭제 가능)
+  # reconciler.* : 정합 스캐너(IN_PROGRESS → READY, 별개 스케줄러)
   outbox-worker:
     fixed-delay-ms: 5000
     batch-size: 50

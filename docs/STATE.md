@@ -7,8 +7,8 @@
 
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화)
   - stage: **execute** (plan-review pass — Plan Reviewer pass, minor 3건 비차단/표기 오기 2건 정정 완료)
-  - 완료: T1~T11, T8, T15 (도메인/엔티티/저장소 Instant + UTC 저장 일관 + application/infra Clock 전환 + 만료 임계 외부화 + 만료 정책 명문화 + pg 도메인/벤더 Instant.now()/LocalDateTime.now() 제거). `LocalDateTimeProvider` 잔여는 포트 정의 + JdbcPaymentEventDedupeStore(T12 대상)뿐.
-  - 활성 태스크: **T9** (만료 스케줄러 프로퍼티 키 정정 + fallback 체인)
+  - 완료: T1~T11, T8, T9, T15 (도메인/엔티티/저장소 Instant + UTC 저장 일관 + application/infra Clock 전환 + 만료 임계 외부화 + 만료 정책 명문화 + pg 도메인/벤더 Instant.now()/LocalDateTime.now() 제거 + 만료 스케줄러 키 정정). `LocalDateTimeProvider` 잔여는 포트 정의 + JdbcPaymentEventDedupeStore(T12 대상)뿐.
+  - 활성 태스크: **T12** (JdbcPaymentEventDedupeStore Clock 전환 + UTC Calendar + AC1 달성)
   - 이슈 #83, 브랜치 #83
   - 설계: `docs/topics/TIME-MODEL-AND-EXPIRY.md`, PLAN: `docs/TIME-MODEL-AND-EXPIRY-PLAN.md`(16태스크, domain_risk 10), 라운드: `docs/rounds/time-model-and-expiry/`
   - execute 주의: T2+T4+T5는 단일 커밋(빌드 그린), T4·T12 yml 동시편집 순차, AC8 통합테스트는 비-UTC JVM TZ + Testcontainers (verify에서 --rerun), F6(T15 contract 회귀 가드) execute 확인

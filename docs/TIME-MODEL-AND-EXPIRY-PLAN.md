@@ -19,7 +19,7 @@
 - [x] **T6** 만료 임계(30분) 환경 설정 외부화
 - [x] **T7** 결제 인프라 계층(지표·스케줄러·감사 관점) 시각 소스 교체 (자체 포트 완전 제거는 T12에서 달성)
 - [x] **T8** PG 도메인 직접 시각 호출 제거 → 호출자 인자 주입
-- **T9** 만료 스케줄러 설정 키 정정 + 폴백 체인(운영 무중단)
+- [x] **T9** 만료 스케줄러 설정 키 정정 + 폴백 체인(운영 무중단)
 - [x] **T10** 만료 도메인 가드(대기 상태에서만 만료) 전수 테스트
 - [x] **T11** 만료 2단 연쇄(진행 중 정체분 복원 후 만료) 회귀 테스트
 - **T12** 결제 멱등 정리 직접 DB 접근 경로 UTC 규약 적용
@@ -305,6 +305,7 @@ Flyway 마이그레이션은 항상 빈 컨테이너에서 V1부터 재적용되
     - `scheduler.payment-status-sync.*`: fallback 키(이름 불일치 구 버전, 이연 삭제 가능)
     - `reconciler.*`: 정합 스캐너 (IN_PROGRESS → READY, 별개)
 - **완료 기준**: fallback 체인으로 기존 `payment-status-sync.fixed-rate` 값이 여전히 적용됨 확인 (`@SpringBootTest` 빈 바인딩 확인 또는 주석으로 명시)
+- **완료 결과** (2026-06-02): `PaymentScheduler.@Scheduled` fixedRateString을 `${scheduler.payment-expiration.fixed-rate:${scheduler.payment-status-sync.fixed-rate:300000}}` fallback 체인으로 정정. `application-docker.yml`에 `scheduler.payment-expiration.fixed-rate: 3600000` 추가(기존 `payment-status-sync.fixed-rate: 3600000` 병존). `application.yml`에 D5 역할 주석 명시. 단위 446/446 PASS.
 
 ---
 

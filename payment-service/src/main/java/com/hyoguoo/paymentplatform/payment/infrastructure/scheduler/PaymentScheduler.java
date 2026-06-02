@@ -13,7 +13,8 @@ public class PaymentScheduler {
 
     private final PaymentExpirationService paymentExpirationService;
 
-    @Scheduled(fixedRateString = "${scheduler.payment-status-sync.fixed-rate:300000}")
+    // D5 — 주키 scheduler.payment-expiration.fixed-rate, 이전 키 payment-status-sync.fixed-rate 를 fallback으로 보존(운영 무중단).
+    @Scheduled(fixedRateString = "${scheduler.payment-expiration.fixed-rate:${scheduler.payment-status-sync.fixed-rate:300000}}")
     public void expireOldReadyPayments() {
         paymentExpirationService.expireOldReadyPayments();
     }
