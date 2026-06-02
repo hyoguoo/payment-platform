@@ -4,7 +4,9 @@ spring:
       on-profile: docker
 
   datasource:
-    url: jdbc:mysql://mysql-payment:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    # D7 — connectionTimeZone=UTC+forceConnectionTimeZoneToSession=true: raw-JDBC 경로(JdbcTemplate)의
+    # DATETIME 저장/조회가 JVM TZ 에 관계없이 UTC 기준으로 동작하도록 세션 TZ 를 UTC 로 강제한다.
+    url: jdbc:mysql://mysql-payment:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:payment123}
     hikari:

@@ -147,12 +147,18 @@ class JdbcPaymentEventDedupeStoreTest {
         Instant storedReceivedAt = jdbcTemplate.queryForObject(
                 "SELECT received_at FROM payment_event_dedupe WHERE event_uuid = :uuid",
                 params,
-                (rs, rowNum) -> rs.getTimestamp("received_at").toInstant()
+                (rs, rowNum) -> rs.getTimestamp(
+                        "received_at",
+                        java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                ).toInstant()
         );
         Instant storedExpiresAt = jdbcTemplate.queryForObject(
                 "SELECT expires_at FROM payment_event_dedupe WHERE event_uuid = :uuid",
                 params,
-                (rs, rowNum) -> rs.getTimestamp("expires_at").toInstant()
+                (rs, rowNum) -> rs.getTimestamp(
+                        "expires_at",
+                        java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                ).toInstant()
         );
 
         assertThat(storedOrderId).isEqualTo(orderId);

@@ -29,11 +29,11 @@ public interface PaymentEventDedupeStore {
      * expires_at < now 조건의 idempotent batch DELETE.
      * 동시 실행 시 이미 삭제된 행은 0 row affected — 무해.
      *
-     * <p>시계 소스는 {@code LocalDateTimeProvider#nowInstant()} 기준.
-     * 호출자(스케줄러)가 {@code localDateTimeProvider.nowInstant()} 를 전달하면 됨.
+     * <p>D7 — 시계 소스는 {@link java.time.Clock#instant()} 기준.
+     * 호출자(스케줄러)가 {@code clock.instant()} 를 전달한다.
      * JDBC DATETIME 타입에 끌려가지 않도록 {@link Instant} 로 확정.
      *
-     * @param now       현재 시각 (LocalDateTimeProvider.nowInstant() 기준 — Instant 확정)
+     * @param now       현재 시각 (clock.instant() 기준 — Instant 확정)
      * @param batchSize 최대 삭제 건수
      * @return 실제 삭제된 행 수
      */

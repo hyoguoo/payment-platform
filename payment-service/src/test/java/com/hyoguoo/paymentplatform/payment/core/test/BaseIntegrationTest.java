@@ -1,9 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.core.test;
 
-import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.math.BigDecimal;
@@ -93,12 +91,6 @@ public abstract class BaseIntegrationTest {
 
     @TestConfiguration
     static class BaseTestConfig {
-
-        @Bean
-        @Primary
-        public LocalDateTimeProvider localDateTimeProvider() {
-            return new TestLocalDateTimeProvider();
-        }
 
         /**
          * 테스트용 가변 Clock 빈.

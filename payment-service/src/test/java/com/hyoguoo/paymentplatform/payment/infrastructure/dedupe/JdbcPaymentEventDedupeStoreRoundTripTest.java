@@ -34,7 +34,7 @@ import org.testcontainers.containers.MySQLContainer;
  * <p>AC8 — 비-UTC JVM TZ raw-JDBC UTC 규약 검증.
  * D7 — raw-JDBC 경로(JdbcTemplate) UTC Calendar 명시 바인딩.
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.main.allow-bean-definition-overriding=true")
 @Tag("integration")
 @Import(JdbcPaymentEventDedupeStoreRoundTripTest.FixedClockConfig.class)
 @DisplayName("JdbcPaymentEventDedupeStore 비-UTC JVM TZ round-trip 통합 테스트 (AC8)")
