@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -14,7 +13,9 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakeMessagePublisher;
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,13 +25,13 @@ import org.mockito.Mockito;
 @DisplayName("OutboxRelayService 테스트")
 class OutboxRelayServiceTest {
 
-    private static final LocalDateTime FIXED_NOW = LocalDateTime.of(2026, 4, 21, 12, 0, 0);
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-04-21T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
     private static final String ORDER_ID = "order-relay-001";
 
     private FakeMessagePublisher fakeMessagePublisher;
     private PaymentOutboxRepository mockOutboxRepository;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
-    private LocalDateTimeProvider mockLocalDateTimeProvider;
 
     private OutboxRelayService outboxRelayService;
 
@@ -39,15 +40,12 @@ class OutboxRelayServiceTest {
         fakeMessagePublisher = new FakeMessagePublisher();
         mockOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
-        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
-
-        given(mockLocalDateTimeProvider.now()).willReturn(FIXED_NOW);
 
         outboxRelayService = new OutboxRelayService(
                 mockOutboxRepository,
                 fakeMessagePublisher,
                 mockPaymentLoadUseCase,
-                mockLocalDateTimeProvider
+                FIXED_CLOCK
         );
     }
 
@@ -60,7 +58,7 @@ class OutboxRelayServiceTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
-                .inFlightAt(FIXED_NOW)
+                .inFlightAt(FIXED_INSTANT)
                 .allArgsBuild();
 
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
@@ -76,7 +74,7 @@ class OutboxRelayServiceTest {
                 .paymentOrderList(java.util.List.of())
                 .allArgsBuild();
 
-        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(true);
+        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_INSTANT)).willReturn(true);
         given(mockOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(outbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         given(mockOutboxRepository.save(any(PaymentOutbox.class))).willReturn(outbox);
@@ -98,7 +96,7 @@ class OutboxRelayServiceTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
-                .inFlightAt(FIXED_NOW)
+                .inFlightAt(FIXED_INSTANT)
                 .allArgsBuild();
 
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
@@ -114,7 +112,7 @@ class OutboxRelayServiceTest {
                 .paymentOrderList(java.util.List.of())
                 .allArgsBuild();
 
-        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW)).willReturn(true);
+        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_INSTANT)).willReturn(true);
         given(mockOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(outbox));
         given(mockPaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(paymentEvent);
         fakeMessagePublisher.failNext();
@@ -135,7 +133,7 @@ class OutboxRelayServiceTest {
                 .orderId(ORDER_ID)
                 .status(PaymentOutboxStatus.IN_FLIGHT)
                 .retryCount(0)
-                .inFlightAt(FIXED_NOW)
+                .inFlightAt(FIXED_INSTANT)
                 .allArgsBuild();
 
         PaymentEvent paymentEvent = PaymentEvent.allArgsBuilder()
@@ -153,7 +151,7 @@ class OutboxRelayServiceTest {
 
         // 첫 번째 호출: claimToInFlight 성공
         // 두 번째 호출: claimToInFlight 실패(다른 워커가 이미 처리 중)
-        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_NOW))
+        given(mockOutboxRepository.claimToInFlight(ORDER_ID, FIXED_INSTANT))
                 .willReturn(true)
                 .willReturn(false);
         given(mockOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(outbox));

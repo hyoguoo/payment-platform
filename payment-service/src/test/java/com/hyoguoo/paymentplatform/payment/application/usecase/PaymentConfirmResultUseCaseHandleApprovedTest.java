@@ -13,7 +13,6 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -21,8 +20,9 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,7 +50,8 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     private static final String ORDER_ID = "order-approved-001";
     private static final String EVENT_UUID = "evt-approved-001";
     private static final String APPROVED_AT_STR = "2026-04-24T10:00:00Z";
-    private static final LocalDateTime EXPECTED_APPROVED_AT = LocalDateTime.of(2026, 4, 24, 10, 0, 0);
+    // parseApprovedAt 이 toInstant() 를 사용하므로 오프셋 보존된 Instant 가 기대값
+    private static final Instant EXPECTED_APPROVED_AT = Instant.parse("2026-04-24T10:00:00Z");
     private static final long AMOUNT = 1000L;
 
     private FakePaymentEventRepository paymentEventRepository;
@@ -71,17 +72,8 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
-            @Override
-            public LocalDateTime now() {
-                return LocalDateTime.of(2026, 4, 24, 12, 0, 0);
-            }
-
-            @Override
-            public Instant nowInstant() {
-                return Instant.parse("2026-04-24T12:00:00Z");
-            }
-        };
+        Clock fixedClock = Clock.fixed(
+                Instant.parse("2026-04-24T12:00:00Z"), ZoneOffset.UTC);
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,
@@ -100,7 +92,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -153,7 +145,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         PaymentOrder order = buildPaymentOrder(2L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -176,7 +168,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -200,7 +192,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -227,7 +219,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
-        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(LocalDateTime.class)))
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(

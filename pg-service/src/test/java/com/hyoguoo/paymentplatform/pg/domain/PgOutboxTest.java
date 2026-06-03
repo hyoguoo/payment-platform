@@ -5,8 +5,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
-import static java.time.temporal.ChronoUnit.SECONDS;
 
 /**
  * PgOutbox 도메인 factory 메서드 단위 테스트.
@@ -27,11 +25,10 @@ class PgOutboxTest {
     // =========================================================================
 
     @Test
-    @DisplayName("create — Long id 없는 4-arg 시그니처 → isPending=true, attempt=0, availableAt ≈ now")
+    @DisplayName("create — Instant now 포함 5-arg 시그니처 → isPending=true, attempt=0, availableAt == now")
     void create_withoutId_availableAtIsNow() {
-        Instant before = Instant.now();
-        PgOutbox outbox = PgOutbox.create(TOPIC, KEY, PAYLOAD, HEADERS_JSON);
-        Instant after = Instant.now();
+        Instant now = Instant.parse("2026-06-01T00:00:00Z");
+        PgOutbox outbox = PgOutbox.create(TOPIC, KEY, PAYLOAD, HEADERS_JSON, now);
 
         assertThat(outbox.isPending()).isTrue();
         assertThat(outbox.getAttempt()).isZero();
@@ -40,23 +37,20 @@ class PgOutboxTest {
         assertThat(outbox.getPayload()).isEqualTo(PAYLOAD);
         assertThat(outbox.getHeadersJson()).isEqualTo(HEADERS_JSON);
         assertThat(outbox.getId()).isNull();
-        // availableAt ≈ now (생성 직후 처리 가능)
-        assertThat(outbox.getAvailableAt())
-                .isAfterOrEqualTo(before.minusSeconds(1))
-                .isBeforeOrEqualTo(after.plusSeconds(1));
-        assertThat(outbox.getCreatedAt())
-                .isCloseTo(Instant.now(), within(5, SECONDS));
+        assertThat(outbox.getAvailableAt()).isEqualTo(now);
+        assertThat(outbox.getCreatedAt()).isEqualTo(now);
     }
 
     // =========================================================================
-    // createWithAvailableAt — Long id 없는 5-arg 시그니처
+    // createWithAvailableAt — Long id 없는 6-arg 시그니처
     // =========================================================================
 
     @Test
-    @DisplayName("createWithAvailableAt — Long id 없는 5-arg 시그니처 → availableAt == futureAt, isPending=true")
+    @DisplayName("createWithAvailableAt — Instant now + availableAt 6-arg 시그니처 → availableAt == futureAt, isPending=true")
     void createWithAvailableAt_delayedAvailableAt() {
-        Instant futureAt = Instant.now().plusSeconds(30);
-        PgOutbox outbox = PgOutbox.createWithAvailableAt(TOPIC, KEY, PAYLOAD, HEADERS_JSON, futureAt);
+        Instant now = Instant.parse("2026-06-01T00:00:00Z");
+        Instant futureAt = now.plusSeconds(30);
+        PgOutbox outbox = PgOutbox.createWithAvailableAt(TOPIC, KEY, PAYLOAD, HEADERS_JSON, futureAt, now);
 
         assertThat(outbox.isPending()).isTrue();
         assertThat(outbox.getAttempt()).isZero();

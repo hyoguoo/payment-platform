@@ -74,7 +74,7 @@ class PaymentConfirmConsumerTest {
                 Mockito.any(), Mockito.any(), Mockito.any()))
                 .thenReturn(1L);
         // terminal 재발행은 별도 빈(PgTerminalReemitService)에 위임한다
-        PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher);
+        PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher, clock);
         sut = new PgConfirmService(
                 inboxRepository, vendorCallService, dedupeStore,
                 eventPublisher, clock, pendingService, terminalReemitService);

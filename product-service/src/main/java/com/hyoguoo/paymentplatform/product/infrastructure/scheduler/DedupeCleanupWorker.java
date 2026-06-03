@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,14 +39,17 @@ public class DedupeCleanupWorker {
     static final String CLEANUP_DELETED_COUNTER_NAME =
             "stock_commit_dedupe.cleanup_deleted_total";
 
+    private final Clock clock;
     private final EventDedupeStore dedupeStore;
     private final int batchSize;
     private final Counter cleanupDeletedCounter;
 
     public DedupeCleanupWorker(
+            Clock clock,
             EventDedupeStore dedupeStore,
             @Value("${scheduler.dedupe-cleanup-worker.batch-size:1000}") int batchSize,
             MeterRegistry meterRegistry) {
+        this.clock = clock;
         this.dedupeStore = dedupeStore;
         this.batchSize = batchSize;
         this.cleanupDeletedCounter = Counter.builder(CLEANUP_DELETED_COUNTER_NAME)
@@ -61,7 +65,8 @@ public class DedupeCleanupWorker {
      */
     @Scheduled(fixedDelayString = "${scheduler.dedupe-cleanup-worker.fixed-delay-ms:3600000}")
     public void cleanup() {
-        Instant now = Instant.now();
+        // D1 — Instant.now() 직접 호출 대신 Clock 주입으로 시각 소스 교체 (T13)
+        Instant now = clock.instant();
         deleteExpiredBatch(now);
     }
 

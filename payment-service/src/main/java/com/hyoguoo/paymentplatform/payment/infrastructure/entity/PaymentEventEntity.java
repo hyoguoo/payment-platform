@@ -13,7 +13,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -61,11 +61,13 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "status", nullable = false)
     private PaymentEventStatus status;
 
+    // D3 — 컬럼 타입 DATETIME(6) 유지, hibernate.jdbc.time_zone=UTC 로 UTC 일관 저장.
+    // BaseEntity(createdAt/updatedAt)는 NG4 준수로 변경하지 않는다.
     @Column(name = "executed_at")
-    private LocalDateTime executedAt;
+    private Instant executedAt;
 
     @Column(name = "approved_at")
-    private LocalDateTime approvedAt;
+    private Instant approvedAt;
 
     @Column(name = "retry_count")
     private Integer retryCount;
@@ -74,7 +76,7 @@ public class PaymentEventEntity extends BaseEntity {
     private String statusReason;
 
     @Column(name = "last_status_changed_at")
-    private LocalDateTime lastStatusChangedAt;
+    private Instant lastStatusChangedAt;
 
     // QUARANTINED 는 홀딩 상태이며 재고 복구 대상이 아니다 — 별도 컬럼 없이 status + status_reason 로 판정한다.
 
@@ -114,7 +116,9 @@ public class PaymentEventEntity extends BaseEntity {
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)
                                 .orElse(Collections.emptyList()))
                 )
-                .createdAt(getCreatedAt())
+                .createdAt(getCreatedAt() != null
+                        ? getCreatedAt().toInstant(java.time.ZoneOffset.UTC)
+                        : null)
                 .lastStatusChangedAt(lastStatusChangedAt)
                 .allArgsBuild();
     }

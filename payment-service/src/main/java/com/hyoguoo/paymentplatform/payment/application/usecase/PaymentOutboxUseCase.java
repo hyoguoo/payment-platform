@@ -1,12 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentOutboxUseCase {
 
     private final PaymentOutboxRepository paymentOutboxRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final RetryPolicyProperties retryPolicyProperties;
 
     @Transactional
@@ -35,7 +35,8 @@ public class PaymentOutboxUseCase {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<PaymentOutbox> claimToInFlight(String orderId) {
-        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, localDateTimeProvider.now());
+        Instant now = clock.instant();
+        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, now);
         if (!claimed) {
             return Optional.empty();
         }
@@ -46,7 +47,7 @@ public class PaymentOutboxUseCase {
     public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
         RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
         if (!policy.isExhausted(currentOutbox.getRetryCount())) {
-            currentOutbox.incrementRetryCount(policy, localDateTimeProvider.now());
+            currentOutbox.incrementRetryCount(policy, clock.instant());
             paymentOutboxRepository.save(currentOutbox);
             return false;
         }
@@ -56,8 +57,8 @@ public class PaymentOutboxUseCase {
     @Transactional
     public void recoverTimedOutInFlightRecords(int timeoutMinutes) {
         RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
-        LocalDateTime now = localDateTimeProvider.now();
-        LocalDateTime cutoff = now.minusMinutes(timeoutMinutes);
+        Instant now = clock.instant();
+        Instant cutoff = now.minusSeconds(timeoutMinutes * 60L);
         List<PaymentOutbox> timedOut = paymentOutboxRepository.findTimedOutInFlight(cutoff);
         for (PaymentOutbox outbox : timedOut) {
             outbox.incrementRetryCount(policy, now);
@@ -79,4 +80,5 @@ public class PaymentOutboxUseCase {
                         || outbox.getStatus().isInFlight())
                 .map(PaymentOutbox::getStatus);
     }
+
 }

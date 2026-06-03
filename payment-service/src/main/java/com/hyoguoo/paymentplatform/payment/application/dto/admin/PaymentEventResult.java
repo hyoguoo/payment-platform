@@ -4,7 +4,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,12 +21,12 @@ public class PaymentEventResult {
     private final String paymentKey;
     private final PaymentEventStatus status;
     private final PaymentGatewayType gatewayType;
-    private final LocalDateTime executedAt;
-    private final LocalDateTime approvedAt;
+    private final Instant executedAt;
+    private final Instant approvedAt;
     private final Integer retryCount;
     private final String statusReason;
     private final List<PaymentOrderResult> paymentOrderList;
-    private final LocalDateTime createdAt;
+    private final Instant createdAt;
     private final Boolean isPaymentDone;
     private final BigDecimal totalAmount;
 

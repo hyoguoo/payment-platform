@@ -23,6 +23,7 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.dto.Nicepay
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -88,20 +89,24 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
     private final EncodeUtils encodeUtils;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     /**
      * DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 주입한다 — cycle 회피.
+     * clock 은 parsePaidAtAsOffsetDateTime 파싱 실패 fallback 시 TZ 사각지대 제거를 위해 주입한다.
      */
     public NicepayPaymentGatewayStrategy(
             HttpOperator httpOperator,
             EncodeUtils encodeUtils,
             ApplicationEventPublisher applicationEventPublisher,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            Clock clock
     ) {
         this.httpOperator = httpOperator;
         this.encodeUtils = encodeUtils;
         this.applicationEventPublisher = applicationEventPublisher;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Value("${spring.myapp.nicepay.client-key}")
@@ -292,8 +297,12 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             return OffsetDateTime.parse(paidAt, NicepayPaymentApiResponse.DATE_TIME_FORMATTER);
         } catch (DateTimeParseException e) {
             LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
-                    () -> "paidAt 파싱 실패 fallback=now paidAt=" + paidAt);
-            return OffsetDateTime.now();
+                    () -> "paidAt 파싱 실패 fallback=clock paidAt=" + paidAt);
+            // TZ 사각지대 예외 경로, 비차단 — OffsetDateTime.now()는 시스템 TZ 기반이므로 clock 기반으로 교체.
+            // 정상 경로(파싱 성공)에서는 ConfirmedEventPayload.approvedAt = parsedPaidAt.toString()으로
+            // 원본 offset 문자열이 보존된다. 이 fallback은 파싱 실패 시에만 동작하며,
+            // parsedPaidAt.toLocalDateTime() 은 PgConfirmResult.approvedAt(내부 필드)에만 쓰인다.
+            return OffsetDateTime.now(clock);
         }
     }
 

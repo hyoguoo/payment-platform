@@ -10,7 +10,10 @@ spring:
       enabled: true
 
   datasource:
-    url: ${PRODUCT_DATASOURCE_URL:jdbc:mysql://localhost:3309/product?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
+    # DM2 — connectionTimeZone=UTC: existsValid/SQL_DELETE_EXPIRED_BY_UUID 의 DB NOW() 와
+    #        recordIfAbsent 의 UTC Calendar 바인딩이 동일 UTC 기준을 공유하도록 한다.
+    #        docker 프로필(application-docker.yml)과 동일 규약 적용 — split-brain 해소(D7).
+    url: ${PRODUCT_DATASOURCE_URL:jdbc:mysql://localhost:3309/product?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
     username: ${PRODUCT_DATASOURCE_USERNAME:root}
     password: ${PRODUCT_DATASOURCE_PASSWORD:root}
     hikari:

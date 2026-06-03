@@ -9,7 +9,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisher
 import io.micrometer.context.ContextRegistry;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
+import java.time.Clock;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
@@ -104,7 +104,7 @@ class OutboxWorkerMdcPropagationTest {
                     Mockito.mock(PaymentOutboxRepository.class),
                     Mockito.mock(MessagePublisherPort.class),
                     Mockito.mock(PaymentLoadUseCase.class),
-                    Mockito.mock(LocalDateTimeProvider.class)
+                    Clock.systemUTC()
             );
             this.latch = new CountDownLatch(expectedCount);
         }

@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,20 +13,25 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
 
-    @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'READY' AND pe.createdAt < :before")
-    List<PaymentEventEntity> findReadyPaymentsOlderThan(@Param("before") LocalDateTime before);
+    // D3 — BaseEntity.createdAt 은 LocalDateTime(DATETIME) 컬럼이나, Instant 파라미터를
+    // Hibernate 가 hibernate.jdbc.time_zone=UTC 기준으로 UTC Calendar 바인딩하므로
+    // JdbcTemplate 경로(connectionTimeZone=UTC)와 동일한 UTC 기준으로 비교된다.
+    // PaymentEventRepositoryImpl 에서 LocalDateTime 변환 없이 Instant 를 직접 전달.
+    @Query(value = "SELECT * FROM payment_event WHERE status = 'READY' AND created_at < :before",
+            nativeQuery = true)
+    List<PaymentEventEntity> findReadyPaymentsOlderThan(@Param("before") Instant before);
 
     @Query("SELECT pe.status, COUNT(pe) FROM PaymentEventEntity pe GROUP BY pe.status")
     List<Object[]> countByStatusGrouped();
 
     @Query("SELECT COUNT(pe) FROM PaymentEventEntity pe WHERE pe.status = :status AND pe.executedAt < :before")
     long countByStatusAndExecutedAtBefore(@Param("status") PaymentEventStatus status,
-            @Param("before") LocalDateTime before);
+            @Param("before") Instant before);
 
     long countByRetryCountGreaterThanEqual(int retryCount);
 
     @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'IN_PROGRESS' AND pe.executedAt < :before")
-    List<PaymentEventEntity> findInProgressOlderThan(@Param("before") LocalDateTime before);
+    List<PaymentEventEntity> findInProgressOlderThan(@Param("before") Instant before);
 
     List<PaymentEventEntity> findByStatus(PaymentEventStatus status);
 }

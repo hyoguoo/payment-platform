@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,7 @@ public class PgDlqService {
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
+    private final Clock clock;
 
     /**
      * DLQ 메시지를 처리한다.
@@ -85,7 +87,7 @@ public class PgDlqService {
 
         // 4단계: pg_outbox INSERT — topic=payment.events.confirmed, QUARANTINED 페이로드
         String payload = buildQuarantinedPayload(orderId, inbox.getAmount());
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_QUARANTINED,

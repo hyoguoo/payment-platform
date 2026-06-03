@@ -6,7 +6,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
@@ -19,9 +18,9 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -65,7 +64,7 @@ public class PaymentConfirmResultUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final QuarantineCompensationHandler quarantineCompensationHandler;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final StockCachePort stockCachePort;
     private final PaymentEventDedupeStore paymentEventDedupeStore;
     private final KafkaTemplate<String, String> stockCommittedKafkaTemplate;
@@ -79,14 +78,14 @@ public class PaymentConfirmResultUseCase {
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
             QuarantineCompensationHandler quarantineCompensationHandler,
-            LocalDateTimeProvider localDateTimeProvider,
+            Clock clock,
             StockCachePort stockCachePort,
             PaymentEventDedupeStore paymentEventDedupeStore,
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase) {
         this.paymentEventRepository = paymentEventRepository;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
-        this.localDateTimeProvider = localDateTimeProvider;
+        this.clock = clock;
         this.stockCachePort = stockCachePort;
         this.paymentEventDedupeStore = paymentEventDedupeStore;
         this.stockCommittedKafkaTemplate = stockCommittedKafkaTemplate;
@@ -123,7 +122,7 @@ public class PaymentConfirmResultUseCase {
                         + " eventUuid=" + message.eventUuid());
 
         // 멱등 마킹: 이미 처리된 event_uuid 면 affected=0.
-        Instant expiresAt = localDateTimeProvider.nowInstant().plus(STOCK_COMMITTED_TTL);
+        Instant expiresAt = clock.instant().plus(STOCK_COMMITTED_TTL);
         int affected = paymentEventDedupeStore.markIfAbsent(
                 message.eventUuid(),
                 paymentEvent.getId(),
@@ -158,7 +157,8 @@ public class PaymentConfirmResultUseCase {
      * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
-        LocalDateTime receivedApprovedAt = parseApprovedAt(message.approvedAt());
+        // D8 — parseApprovedAt 은 OffsetDateTime.parse().toInstant() 로 오프셋 보존 정규화 (T14 완료)
+        Instant receivedApprovedAt = parseApprovedAt(message.approvedAt());
 
         if (isAmountMismatch(paymentEvent, message.amount())) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
@@ -188,7 +188,7 @@ public class PaymentConfirmResultUseCase {
      * 발행은 EOS 프로듀서 트랜잭션에 묶이며, 중복 수신 시에도 발행한다 (product 측에서 멱등 처리).
      */
     private void sendStockCommittedEvents(PaymentEvent paymentEvent) {
-        Instant occurredAt = localDateTimeProvider.nowInstant();
+        Instant occurredAt = clock.instant();
         Instant expiresAt = occurredAt.plus(STOCK_COMMITTED_TTL);
 
         for (PaymentOrder order : paymentEvent.getPaymentOrderList()) {
@@ -220,14 +220,20 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * 수신 approvedAt 문자열을 LocalDateTime 으로 변환.
+     * 수신 approvedAt 문자열을 Instant 로 변환.
      * approvedAt 은 ISO_OFFSET_DATE_TIME contract(non-null) 위반 시 즉시 예외.
+     *
+     * <p>D8 — {@code OffsetDateTime.parse().toInstant()} 로 오프셋을 보존하여 정산 앵커 UTC 절대시점을 정규화한다.
+     * KST(+09:00) 등 비-UTC 오프셋 입력도 9시간 오차 없이 UTC 절대시점으로 변환된다(AC9).
+     * {@code toLocalDateTime()}을 사용하면 오프셋이 무시되어 최대 9시간 오차가 발생하므로 금지한다.
+     *
+     * <p>package-private: {@code PaymentConfirmResultUseCaseApprovedAtTest} 에서 직접 단정.
      */
-    private static LocalDateTime parseApprovedAt(String approvedAtRaw) {
+    static Instant parseApprovedAt(String approvedAtRaw) {
         if (approvedAtRaw == null) {
             throw new IllegalArgumentException("APPROVED 메시지에 approvedAt 이 null 입니다.");
         }
-        return OffsetDateTime.parse(approvedAtRaw).toLocalDateTime();
+        return OffsetDateTime.parse(approvedAtRaw).toInstant();
     }
 
     /**

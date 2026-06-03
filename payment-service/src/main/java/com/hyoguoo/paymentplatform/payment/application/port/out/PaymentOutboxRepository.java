@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,9 +13,9 @@ public interface PaymentOutboxRepository {
 
     List<PaymentOutbox> findPendingBatch(int limit);
 
-    List<PaymentOutbox> findTimedOutInFlight(LocalDateTime before);
+    List<PaymentOutbox> findTimedOutInFlight(Instant before);
 
-    boolean claimToInFlight(String orderId, LocalDateTime inFlightAt);
+    boolean claimToInFlight(String orderId, Instant inFlightAt);
 
     // ── 관측 지표 집계 (Prometheus gauge) ───────────────────────────────────────
 
@@ -27,11 +27,11 @@ public interface PaymentOutboxRepository {
     /**
      * PENDING 이면서 nextRetryAt &gt; now 인 row 수를 반환한다 (미래 예약 재시도).
      */
-    long countFuturePending(LocalDateTime now);
+    long countFuturePending(Instant now);
 
     /**
      * PENDING row 중 가장 오래된 createdAt을 반환한다.
      * PENDING row가 없으면 Optional.empty().
      */
-    Optional<LocalDateTime> findOldestPendingCreatedAt();
+    Optional<Instant> findOldestPendingCreatedAt();
 }

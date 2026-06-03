@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application.service;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.MessagePublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
@@ -11,7 +10,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +32,7 @@ public class OutboxRelayService {
     private final PaymentOutboxRepository paymentOutboxRepository;
     private final MessagePublisherPort messagePublisherPort;
     private final PaymentLoadUseCase paymentLoadUseCase;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     /**
      * orderId에 해당하는 outbox 레코드를 Kafka로 릴레이한다.
@@ -48,7 +48,7 @@ public class OutboxRelayService {
      */
     @Transactional
     public void relay(String orderId) {
-        LocalDateTime now = localDateTimeProvider.now();
+        Instant now = clock.instant();
 
         // Step 1: 원자 선점 — false이면 다른 워커가 처리 중이므로 포기
         boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, now);

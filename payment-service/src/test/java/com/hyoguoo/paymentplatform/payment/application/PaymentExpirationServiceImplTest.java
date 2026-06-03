@@ -13,7 +13,8 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +42,7 @@ class PaymentExpirationServiceImplTest {
     @DisplayName("30분이 지난 READY 상태의 결제를 성공적으로 만료 처리한다.")
     void testExpireOldReadyPayments_Success() {
         // given
-        LocalDateTime thirtyOneMinutesAgo = LocalDateTime.now().minusMinutes(31);
+        Instant thirtyOneMinutesAgo = Instant.now().minus(31, ChronoUnit.MINUTES);
 
         List<PaymentOrder> paymentOrderList = new ArrayList<>();
         PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
@@ -136,7 +137,7 @@ class PaymentExpirationServiceImplTest {
                     .status(PaymentEventStatus.READY)
                     .retryCount(0)
                     .paymentOrderList(orderList)
-                    .createdAt(LocalDateTime.now().minusMinutes(31))
+                    .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
 
             readyPayments.add(readyPayment);
@@ -162,7 +163,7 @@ class PaymentExpirationServiceImplTest {
                     .status(PaymentEventStatus.EXPIRED)
                     .retryCount(0)
                     .paymentOrderList(expiredOrderList)
-                    .createdAt(LocalDateTime.now().minusMinutes(31))
+                    .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
 
             expiredPayments.add(expiredPayment);
@@ -184,5 +185,61 @@ class PaymentExpirationServiceImplTest {
         for (PaymentEvent payment : readyPayments) {
             verify(mockPaymentCommandUseCase, times(1)).expirePayment(payment);
         }
+    }
+
+    // ---- T11: 만료 2단 연쇄 명문화 — D6 정책 회귀 가드 ----
+
+    @Test
+    @DisplayName("T11 expireOldReadyPayments — READY 복원 이후 만료 대상인 결제를 성공적으로 만료 처리한다. (2단 연쇄 2단계)")
+    void expireOldReadyPayments_afterReset_shouldSucceed() {
+        // given — Reconciler 가 READY 로 복원한 결제(createdAt = Instant 기반)를 만료 서비스가 처리
+        Instant thirtyOneMinutesAgo = Instant.now().minus(31, ChronoUnit.MINUTES);
+
+        List<PaymentOrder> paymentOrderList = new ArrayList<>();
+        PaymentOrder paymentOrder = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .paymentEventId(1L)
+                .orderId("order-reset-001")
+                .productId(1L)
+                .quantity(1)
+                .totalAmount(BigDecimal.valueOf(10000))
+                .status(PaymentOrderStatus.NOT_STARTED)
+                .allArgsBuild();
+        paymentOrderList.add(paymentOrder);
+
+        // Reconciler 가 resetToReady() 완료 후 READY 상태가 된 결제 — lastStatusChangedAt = Instant 기반
+        PaymentEvent restoredReadyPayment = PaymentEvent.allArgsBuilder()
+                .id(10L)
+                .buyerId(1L)
+                .sellerId(1L)
+                .orderName("Reconciler 복원 주문")
+                .orderId("order-reset-001")
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .paymentOrderList(paymentOrderList)
+                .lastStatusChangedAt(thirtyOneMinutesAgo)
+                .allArgsBuild();
+
+        PaymentEvent expiredPayment = PaymentEvent.allArgsBuilder()
+                .id(10L)
+                .buyerId(1L)
+                .sellerId(1L)
+                .orderName("Reconciler 복원 주문")
+                .orderId("order-reset-001")
+                .status(PaymentEventStatus.EXPIRED)
+                .retryCount(0)
+                .paymentOrderList(paymentOrderList)
+                .lastStatusChangedAt(Instant.now())
+                .allArgsBuild();
+
+        when(mockPaymentLoadUseCase.getReadyPaymentsOlder()).thenReturn(List.of(restoredReadyPayment));
+        when(mockPaymentCommandUseCase.expirePayment(restoredReadyPayment)).thenReturn(expiredPayment);
+
+        // when
+        paymentExpirationService.expireOldReadyPayments();
+
+        // then — 2단 연쇄의 2단계: READY 복원 이후 만료 서비스가 EXPIRED 처리
+        verify(mockPaymentLoadUseCase, times(1)).getReadyPaymentsOlder();
+        verify(mockPaymentCommandUseCase, times(1)).expirePayment(restoredReadyPayment);
     }
 }

@@ -1,11 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.metrics;
 
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ public class OutboxPendingAgeMetrics {
 
     private final MeterRegistry meterRegistry;
     private final PaymentOutboxRepository paymentOutboxRepository;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     /**
      * 현재 PENDING 상태인 모든 Outbox 레코드의 체류 시간을 histogram에 기록한다.
@@ -47,7 +47,7 @@ public class OutboxPendingAgeMetrics {
             return;
         }
 
-        LocalDateTime now = localDateTimeProvider.now();
+        Instant now = clock.instant();
         DistributionSummary summary = buildSummary();
 
         for (PaymentOutbox outbox : pendingOutboxes) {

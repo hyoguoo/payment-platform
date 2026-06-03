@@ -36,6 +36,9 @@ spring:
       hibernate:
         jdbc:
           batch_size: 25
+          # D3 — DATETIME(6) 컬럼에 Instant 를 UTC 기준으로 저장/조회.
+          # Hibernate 가 Instant ↔ DATETIME 변환 시 이 TZ 를 사용한다.
+          time_zone: UTC
         order_inserts: true
         order_updates: true
 
@@ -116,6 +119,9 @@ payment:
         interval: 1000
         # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행.
         max-attempts: 5
+  expiration:
+    # D4 — 만료 임계(분). READY 상태에서 이 시간이 지나면 만료 후보가 된다. 기본값 30분.
+    ready-timeout-minutes: 30
 
 product:
   adapter:
@@ -126,6 +132,10 @@ user:
     type: ${USER_ADAPTER_TYPE:http}
 
 scheduler:
+  # D5 — 만료 스케줄러(READY → EXPIRED). 주키. 운영 application-docker.yml 에서 오버라이드.
+  # scheduler.payment-expiration.fixed-rate: (기본값 없음 — PaymentScheduler fallback 300000ms)
+  # scheduler.payment-status-sync.fixed-rate: fallback 키(이름 불일치 구 버전, 이연 삭제 가능)
+  # reconciler.* : 정합 스캐너(IN_PROGRESS → READY, 별개 스케줄러)
   outbox-worker:
     fixed-delay-ms: 5000
     batch-size: 50

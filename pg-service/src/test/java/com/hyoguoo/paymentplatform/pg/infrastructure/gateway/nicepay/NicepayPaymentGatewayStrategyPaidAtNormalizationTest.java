@@ -17,7 +17,10 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.dto.Nicepay
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -51,11 +54,13 @@ class NicepayPaymentGatewayStrategyPaidAtNormalizationTest {
         EncodeUtils encodeUtils = mock(EncodeUtils.class);
         when(encodeUtils.encodeBase64(anyString())).thenReturn("dummy-basic");
 
+        Clock clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC);
         strategy = new NicepayPaymentGatewayStrategy(
                 httpOperator,
                 encodeUtils,
                 mock(ApplicationEventPublisher.class),
-                new ObjectMapper());
+                new ObjectMapper(),
+                clock);
         ReflectionTestUtils.setField(strategy, "clientKey", "S2_dummy");
         ReflectionTestUtils.setField(strategy, "secretKey", "secret-dummy");
         ReflectionTestUtils.setField(strategy, "nicepayApiUrl", "https://sandbox-api.nicepay.co.kr");

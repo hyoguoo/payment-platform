@@ -161,7 +161,7 @@ public class PgVendorCallService {
 
     private void handleSuccess(String orderId, PgConfirmResult result) {
         String payload = buildApprovedPayload(orderId, result);
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToApproved(orderId, payload);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
@@ -175,7 +175,7 @@ public class PgVendorCallService {
 
     private void handleDefinitiveFailure(String orderId, String reasonCode) {
         String payload = buildFailedPayload(orderId, reasonCode);
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
         pgInboxRepository.transitToFailed(orderId, payload, reasonCode);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
@@ -214,7 +214,7 @@ public class PgVendorCallService {
 
         PgOutbox outbox = PgOutbox.createWithAvailableAt(
                 PgTopics.COMMANDS_CONFIRM, request.orderId(),
-                buildCommandPayload(request), headersJson, availableAt);
+                buildCommandPayload(request), headersJson, availableAt, now);
         PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
@@ -229,7 +229,7 @@ public class PgVendorCallService {
         String headersJson = buildAttemptHeader(attempt);
         PgOutbox outbox = PgOutbox.create(
                 PgTopics.COMMANDS_CONFIRM_DLQ, request.orderId(),
-                buildCommandPayload(request), headersJson);
+                buildCommandPayload(request), headersJson, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 

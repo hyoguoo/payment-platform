@@ -7,12 +7,14 @@ import static org.mockito.Mockito.verify;
 
 import com.hyoguoo.paymentplatform.product.application.usecase.StockCommitUseCase;
 import com.hyoguoo.paymentplatform.product.infrastructure.messaging.consumer.dto.StockCommittedMessage;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -20,15 +22,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * StockCommitConsumer 단위 테스트.
  * <p>
  * Mock StockCommitUseCase — 메시지 파싱·위임 검증.
+ * T13: Clock 주입으로 expiresAt=null, occurredAt=null 케이스를 결정적으로 제어한다.
  */
 @ExtendWith(MockitoExtension.class)
 class StockCommitConsumerTest {
 
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-01-01T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+
     @Mock
     private StockCommitUseCase stockCommitUseCase;
 
-    @InjectMocks
     private StockCommitConsumer stockCommitConsumer;
+
+    @BeforeEach
+    void setUp() {
+        stockCommitConsumer = new StockCommitConsumer(FIXED_CLOCK, stockCommitUseCase);
+    }
 
     @Test
     @DisplayName("consume 호출 시 StockCommitUseCase.commit 1회 위임")
@@ -96,11 +106,11 @@ class StockCommitConsumerTest {
     }
 
     @Test
-    @DisplayName("expiresAt=null, occurredAt=null → expiresAt ≈ now + 8d (±5초)")
-    void consume_whenBothNull_shouldFallbackFromNow() {
-        // given
+    @DisplayName("expiresAt=null, occurredAt=null → expiresAt = clock.instant() + 8d (고정 시각 기반)")
+    void consume_whenBothNull_shouldFallbackFromClock() {
+        // given — T13: Clock.fixed 주입으로 fallback 시각을 결정적으로 제어
         long productId = 10L;
-        String orderId = "order-1000";  // orderId 는 String 으로 통일
+        String orderId = "order-1000";
         String eventUUID = "event-uuid-bothnull-test";
         int qty = 1;
 
@@ -113,14 +123,10 @@ class StockCommitConsumerTest {
                 null   // expiresAt null
         );
 
-        Instant beforeCall = Instant.now();
-
         // when
         stockCommitConsumer.consume(message);
 
-        Instant afterCall = Instant.now();
-
-        // then: expiresAt ≈ now + DEDUPE_TTL(8d), ±5초 윈도우
+        // then: expiresAt = FIXED_INSTANT + DEDUPE_TTL (clock.instant() 기반으로 결정적)
         ArgumentCaptor<Instant> expiresAtCaptor = forClass(Instant.class);
         verify(stockCommitUseCase, times(1))
                 .commit(
@@ -131,9 +137,7 @@ class StockCommitConsumerTest {
                         expiresAtCaptor.capture()
                 );
 
-        Instant captured = expiresAtCaptor.getValue();
-        Instant expectedLow = beforeCall.plus(StockCommitUseCase.DEDUPE_TTL).minusSeconds(5);
-        Instant expectedHigh = afterCall.plus(StockCommitUseCase.DEDUPE_TTL).plusSeconds(5);
-        assertThat(captured).isBetween(expectedLow, expectedHigh);
+        Instant expectedExpiresAt = FIXED_INSTANT.plus(StockCommitUseCase.DEDUPE_TTL);
+        assertThat(expiresAtCaptor.getValue()).isEqualTo(expectedExpiresAt);
     }
 }

@@ -9,7 +9,6 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -17,8 +16,9 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,17 +60,8 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
-        LocalDateTimeProvider fixedClock = new LocalDateTimeProvider() {
-            @Override
-            public LocalDateTime now() {
-                return LocalDateTime.of(2026, 4, 27, 12, 0, 0);
-            }
-
-            @Override
-            public Instant nowInstant() {
-                return Instant.parse("2026-04-27T12:00:00Z");
-            }
-        };
+        Clock fixedClock = Clock.fixed(
+                Instant.parse("2026-04-27T12:00:00Z"), ZoneOffset.UTC);
 
         sut = new PaymentConfirmResultUseCase(
                 paymentEventRepository,

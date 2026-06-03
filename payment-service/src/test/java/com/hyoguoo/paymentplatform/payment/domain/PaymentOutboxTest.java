@@ -6,7 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 @DisplayName("PaymentOutbox 도메인 테스트")
 class PaymentOutboxTest {
+
+    private static final Instant FIXED_INSTANT = Instant.parse("2024-01-01T00:00:00Z");
 
     @Nested
     @DisplayName("PENDING 레코드 생성 테스트")
@@ -47,14 +50,13 @@ class PaymentOutboxTest {
         void toInFlight_Success(PaymentOutboxStatus initialStatus) {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
-            LocalDateTime now = LocalDateTime.now();
 
             // when
-            outbox.toInFlight(now);
+            outbox.toInFlight(FIXED_INSTANT);
 
             // then
             assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.IN_FLIGHT);
-            assertThat(outbox.getInFlightAt()).isEqualTo(now);
+            assertThat(outbox.getInFlightAt()).isEqualTo(FIXED_INSTANT);
         }
 
         @ParameterizedTest
@@ -63,10 +65,9 @@ class PaymentOutboxTest {
         void toInFlight_InvalidState(PaymentOutboxStatus initialStatus) {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
-            LocalDateTime now = LocalDateTime.now();
 
             // when & then
-            assertThatThrownBy(() -> outbox.toInFlight(now))
+            assertThatThrownBy(() -> outbox.toInFlight(FIXED_INSTANT))
                     .isInstanceOf(PaymentStatusException.class);
         }
     }
@@ -84,7 +85,7 @@ class PaymentOutboxTest {
             RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
 
             // when & then
-            assertThatThrownBy(() -> outbox.incrementRetryCount(policy, LocalDateTime.now()))
+            assertThatThrownBy(() -> outbox.incrementRetryCount(policy, FIXED_INSTANT))
                     .isInstanceOf(PaymentStatusException.class);
         }
     }
@@ -102,7 +103,7 @@ class PaymentOutboxTest {
             RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
 
             // when
-            outbox.incrementRetryCount(policy, LocalDateTime.now());
+            outbox.incrementRetryCount(policy, FIXED_INSTANT);
 
             // then
             assertThat(outbox.getRetryCount()).isEqualTo(initialRetryCount + 1);
@@ -120,13 +121,12 @@ class PaymentOutboxTest {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
             RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
-            LocalDateTime now = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
 
             // when
-            outbox.incrementRetryCount(policy, now);
+            outbox.incrementRetryCount(policy, FIXED_INSTANT);
 
             // then
-            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(5));
+            assertThat(outbox.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(5)));
         }
 
         @Test
@@ -139,14 +139,13 @@ class PaymentOutboxTest {
                     .retryCount(2)
                     .allArgsBuild();
             RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
-            LocalDateTime now = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
 
             // when
-            outbox.incrementRetryCount(policy, now);
+            outbox.incrementRetryCount(policy, FIXED_INSTANT);
 
             // then
             // retryCount=2에서 호출, 증가 후 retryCount=3, nextDelay = 1000 * 2^3 = 8000ms
-            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(8));
+            assertThat(outbox.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofMillis(8000)));
         }
 
         @Test
@@ -158,7 +157,7 @@ class PaymentOutboxTest {
             int initialRetryCount = outbox.getRetryCount();
 
             // when
-            outbox.incrementRetryCount(policy, LocalDateTime.now());
+            outbox.incrementRetryCount(policy, FIXED_INSTANT);
 
             // then
             assertThat(outbox.getRetryCount()).isEqualTo(initialRetryCount + 1);
@@ -256,14 +255,13 @@ class PaymentOutboxTest {
                     .retryCount(1)
                     .allArgsBuild();
             RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
-            LocalDateTime now = LocalDateTime.of(2024, 6, 1, 0, 0, 0);
 
             // when
-            outbox.incrementRetryCount(policy, now);
+            outbox.incrementRetryCount(policy, FIXED_INSTANT);
 
             // then — retryCount=2, nextDelay = 1000 * 2^2 = 4000ms = 4초
             assertThat(outbox.getRetryCount()).isEqualTo(2);
-            assertThat(outbox.getNextRetryAt()).isEqualTo(now.plusSeconds(4));
+            assertThat(outbox.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(4)));
         }
     }
 

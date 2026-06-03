@@ -1,7 +1,9 @@
 package com.hyoguoo.paymentplatform.pg.domain;
 
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -27,10 +29,11 @@ class PgInboxTest {
     // =========================================================================
 
     @Test
-    @DisplayName("create — paymentKey + vendorType 포함 4-arg 오버로드 → status=PENDING, paymentKey/vendorType 세팅")
+    @DisplayName("create — paymentKey + vendorType 포함 5-arg 오버로드 → status=PENDING, paymentKey/vendorType 세팅")
     void create_withPaymentKeyAndVendorType_startsPending() {
         // when
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, "pay-key-001", "TOSS_PAYMENTS");
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now, "pay-key-001", "TOSS_PAYMENTS");
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
@@ -42,10 +45,11 @@ class PgInboxTest {
     }
 
     @Test
-    @DisplayName("create — 2-arg 오버로드 → status=PENDING, paymentKey/vendorType null")
-    void create_withoutPaymentKey_startsPending() {
+    @DisplayName("create — Instant now 인자 오버로드 → status=PENDING, paymentKey/vendorType null")
+    void create_withInstantNow_startsPending() {
         // when
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
@@ -59,9 +63,10 @@ class PgInboxTest {
     void createDirectTerminal_approvedStatus_succeeds() {
         // given
         String storedResult = "{\"status\":\"DONE\"}";
+        Instant now = Instant.now();
 
         // when
-        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.APPROVED, storedResult);
+        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, now, PgInboxStatus.APPROVED, storedResult);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
@@ -73,8 +78,9 @@ class PgInboxTest {
     @DisplayName("createDirectTerminal — non-terminal status 전달 시 IllegalArgumentException (가드 보존)")
     void createDirectTerminal_nonTerminalStatus_throwsIllegalArgument() {
         // when / then — 도메인 가드: test 픽스처 이중화 목적 (main 보호는 어댑터 가드 담당)
+        Instant now = Instant.now();
         assertThatThrownBy(() ->
-                PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.PENDING, "result"))
+                PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, now, PgInboxStatus.PENDING, "result"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -138,17 +144,16 @@ class PgInboxTest {
     // =========================================================================
 
     @Test
-    @DisplayName("create — orderId + amount 로 생성 시 status=PENDING + receivedAt 세팅")
+    @DisplayName("create — Instant now 인자 → status=PENDING + createdAt/updatedAt 세팅")
     void create_startsWithPendingStatus() {
         // when
-        Instant before = Instant.now();
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
-        Instant after = Instant.now();
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
-        assertThat(inbox.getCreatedAt()).isBetween(before, after);
-        assertThat(inbox.getUpdatedAt()).isBetween(before, after);
+        assertThat(inbox.getCreatedAt()).isEqualTo(now);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(now);
     }
 
     // =========================================================================
@@ -159,7 +164,8 @@ class PgInboxTest {
     @DisplayName("createDirectInProgress — 보정 경로 정적 팩토리 → status=IN_PROGRESS 직진 (PENDING 우회)")
     void createDirectInProgress_statusIsInProgress() {
         // when
-        PgInbox inbox = PgInbox.createDirectInProgress(ORDER_ID, AMOUNT);
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.createDirectInProgress(ORDER_ID, AMOUNT, now);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
@@ -176,9 +182,10 @@ class PgInboxTest {
     void createDirectTerminal_approved_statusIsApproved() {
         // given
         String storedResult = "{\"status\":\"DONE\"}";
+        Instant now = Instant.now();
 
         // when
-        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.APPROVED, storedResult);
+        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, now, PgInboxStatus.APPROVED, storedResult);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
@@ -190,9 +197,10 @@ class PgInboxTest {
     void createDirectTerminal_quarantined_statusIsQuarantined() {
         // given
         String storedResult = "{\"status\":\"QUARANTINED\"}";
+        Instant now = Instant.now();
 
         // when
-        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, PgInboxStatus.QUARANTINED, storedResult);
+        PgInbox inbox = PgInbox.createDirectTerminal(ORDER_ID, AMOUNT, now, PgInboxStatus.QUARANTINED, storedResult);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
@@ -207,17 +215,17 @@ class PgInboxTest {
     @DisplayName("markInProgress — PENDING 상태에서 호출 시 IN_PROGRESS 로 전이")
     void markInProgress_fromPending_succeeds() {
         // given
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
 
         // when
-        Instant before = Instant.now();
-        inbox.markInProgress();
-        Instant after = Instant.now();
+        Instant laterInstant = now.plusSeconds(5);
+        inbox.markInProgress(laterInstant);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
-        assertThat(inbox.getUpdatedAt()).isBetween(before, after);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(laterInstant);
     }
 
     @ParameterizedTest
@@ -225,12 +233,13 @@ class PgInboxTest {
     @DisplayName("markInProgress — 비-PENDING 상태에서 호출 시 IllegalStateException")
     void markInProgress_fromNonPending_throws(PgInboxStatus nonPendingStatus) {
         // given
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, nonPendingStatus, AMOUNT,
-                null, null, Instant.now(), Instant.now());
+                null, null, now, now);
 
         // when / then
-        assertThatThrownBy(inbox::markInProgress)
+        assertThatThrownBy(() -> inbox.markInProgress(now.plusSeconds(1)))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -242,12 +251,14 @@ class PgInboxTest {
     @DisplayName("markApproved — IN_PROGRESS 상태에서 호출 시 APPROVED 전이 + storedStatusResult 설정")
     void markApproved_WhenStatusInProgress_ShouldTransitionAndSetResult() {
         // given
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT,
-                null, null, Instant.now(), Instant.now());
+                null, null, now, now);
 
         // when
-        inbox.markApproved("vendor-approve-json");
+        Instant updatedAt = now.plusSeconds(1);
+        inbox.markApproved("vendor-approve-json", updatedAt);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
@@ -257,11 +268,12 @@ class PgInboxTest {
     @Test
     @DisplayName("markApproved — IN_PROGRESS 가 아닌 상태에서 호출 시 IllegalStateException")
     void markApproved_WhenStatusNotInProgress_ShouldThrow() {
-        // given — PENDING 상태 (NONE 폐기 후 create 는 PENDING 시작)
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+        // given — PENDING 상태
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
 
         // when / then
-        assertThatThrownBy(() -> inbox.markApproved("result"))
+        assertThatThrownBy(() -> inbox.markApproved("result", now))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -269,12 +281,13 @@ class PgInboxTest {
     @DisplayName("markApproved — terminal 상태에서 호출 시 IllegalStateException")
     void markApproved_WhenTerminalStatus_ShouldThrow() {
         // given — FAILED terminal 상태
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.FAILED, AMOUNT,
-                "old-result", "VENDOR_REJECTED", Instant.now(), Instant.now());
+                "old-result", "VENDOR_REJECTED", now, now);
 
         // when / then
-        assertThatThrownBy(() -> inbox.markApproved("new-result"))
+        assertThatThrownBy(() -> inbox.markApproved("new-result", now))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -286,12 +299,14 @@ class PgInboxTest {
     @DisplayName("markFailed — IN_PROGRESS 상태에서 호출 시 FAILED 전이 + result + reasonCode 설정")
     void markFailed_WhenStatusInProgress_ShouldTransitionAndSetResultAndReasonCode() {
         // given
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT,
-                null, null, Instant.now(), Instant.now());
+                null, null, now, now);
 
         // when
-        inbox.markFailed("vendor-fail-json", "VENDOR_REJECTED");
+        Instant updatedAt = now.plusSeconds(1);
+        inbox.markFailed("vendor-fail-json", "VENDOR_REJECTED", updatedAt);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
@@ -302,11 +317,12 @@ class PgInboxTest {
     @Test
     @DisplayName("markFailed — IN_PROGRESS 가 아닌 상태에서 호출 시 IllegalStateException")
     void markFailed_WhenStatusNotInProgress_ShouldThrow() {
-        // given — PENDING 상태 (NONE 폐기 후 create 는 PENDING 시작)
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+        // given — PENDING 상태
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
 
         // when / then
-        assertThatThrownBy(() -> inbox.markFailed("result", "CODE"))
+        assertThatThrownBy(() -> inbox.markFailed("result", "CODE", now))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -317,11 +333,13 @@ class PgInboxTest {
     @Test
     @DisplayName("markQuarantined — PENDING 상태(non-terminal)에서 호출 시 QUARANTINED 전이")
     void markQuarantined_WhenPending_ShouldTransition() {
-        // given — NONE 폐기 후 create 는 PENDING 시작
-        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT);
+        // given — PENDING 시작
+        Instant now = Instant.now();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now);
 
         // when
-        inbox.markQuarantined("QUARANTINED_RESULT", "RETRY_EXHAUSTED");
+        Instant updatedAt = now.plusSeconds(1);
+        inbox.markQuarantined("QUARANTINED_RESULT", "RETRY_EXHAUSTED", updatedAt);
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
@@ -333,12 +351,13 @@ class PgInboxTest {
     @DisplayName("markQuarantined — IN_PROGRESS(non-terminal)에서 호출 시 QUARANTINED 전이")
     void markQuarantined_WhenInProgress_ShouldTransition() {
         // given
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT,
-                null, null, Instant.now(), Instant.now());
+                null, null, now, now);
 
         // when
-        inbox.markQuarantined(null, "DLQ_OVERFLOW");
+        inbox.markQuarantined(null, "DLQ_OVERFLOW", now.plusSeconds(1));
 
         // then
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
@@ -349,12 +368,13 @@ class PgInboxTest {
     @DisplayName("markQuarantined — 이미 terminal 상태이면 IllegalStateException")
     void markQuarantined_WhenAlreadyTerminal_ShouldThrow() {
         // given — APPROVED terminal 상태
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.APPROVED, AMOUNT,
-                "result", null, Instant.now(), Instant.now());
+                "result", null, now, now);
 
         // when / then
-        assertThatThrownBy(() -> inbox.markQuarantined(null, "DLQ"))
+        assertThatThrownBy(() -> inbox.markQuarantined(null, "DLQ", now))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -362,12 +382,50 @@ class PgInboxTest {
     @DisplayName("markQuarantined — QUARANTINED terminal 상태이면 IllegalStateException")
     void markQuarantined_WhenAlreadyQuarantined_ShouldThrow() {
         // given — QUARANTINED terminal 상태
+        Instant now = Instant.now();
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.QUARANTINED, AMOUNT,
-                null, "OLD_REASON", Instant.now(), Instant.now());
+                null, "OLD_REASON", now, now);
 
         // when / then
-        assertThatThrownBy(() -> inbox.markQuarantined(null, "NEW_REASON"))
+        assertThatThrownBy(() -> inbox.markQuarantined(null, "NEW_REASON", now))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // =========================================================================
+    // T8 — 고정 Instant 인자 주입 결정성 테스트
+    // =========================================================================
+
+    @Test
+    @DisplayName("markInProgress — 고정 Instant 인자 주입 → updatedAt 결정성 단정 (T8 D2)")
+    void markInProgress_withFixedInstant_setsUpdatedAt() {
+        // given
+        Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
+        Clock fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
+        Instant now = fixedClock.instant();
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, now, "pay-key", "TOSS");
+
+        // when
+        Instant laterInstant = fixedInstant.plusSeconds(10);
+        inbox.markInProgress(laterInstant);
+
+        // then
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(laterInstant);
+    }
+
+    @Test
+    @DisplayName("create — 고정 Instant 인자 주입 → createdAt/updatedAt 결정성 단정 (T8 D2)")
+    void create_withFixedInstant_setsCreatedAt() {
+        // given
+        Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
+
+        // when
+        PgInbox inbox = PgInbox.create(ORDER_ID, AMOUNT, fixedInstant);
+
+        // then
+        assertThat(inbox.getCreatedAt()).isEqualTo(fixedInstant);
+        assertThat(inbox.getUpdatedAt()).isEqualTo(fixedInstant);
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.PENDING);
     }
 }

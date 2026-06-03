@@ -142,7 +142,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Override
     @Transactional
     public Long transitDirectToInProgress(String orderId, long amount) {
-        PgInbox inbox = PgInbox.createDirectInProgress(orderId, amount);
+        PgInbox inbox = PgInbox.createDirectInProgress(orderId, amount, clock.instant());
         return jpaPgInboxRepository.save(PgInboxEntity.from(inbox)).getId();
     }
 

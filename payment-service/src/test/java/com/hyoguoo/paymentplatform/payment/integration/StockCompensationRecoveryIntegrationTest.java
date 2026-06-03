@@ -357,7 +357,7 @@ class StockCompensationRecoveryIntegrationTest {
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.IN_PROGRESS)
                 .retryCount(0)
-                .lastStatusChangedAt(java.time.LocalDateTime.now())
+                .lastStatusChangedAt(java.time.Instant.now())
                 .build();
         PaymentEventEntity savedEvent = jpaPaymentEventRepository.save(event);
 

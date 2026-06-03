@@ -36,6 +36,7 @@ public class PgOutbox {
 
     /**
      * 신규 outbox row 생성 — availableAt = now (즉시 처리 가능).
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 전달한다.
      *
      * <p><b>Long id 제거됨</b> — RDB {@code AUTO_INCREMENT} ({@code @GeneratedValue(strategy=IDENTITY)})
      * 가 INSERT 시 id 를 채운다. 호출자가 null 을 전달할 필요 없다.
@@ -44,9 +45,9 @@ public class PgOutbox {
      * @param key         Kafka 메시지 키 (orderId)
      * @param payload     직렬화된 이벤트/커맨드 JSON
      * @param headersJson 직렬화된 Kafka 헤더 JSON (nullable)
+     * @param now         현재 Instant (clock.instant() 전달)
      */
-    public static PgOutbox create(String topic, String key, String payload, String headersJson) {
-        Instant now = Instant.now();
+    public static PgOutbox create(String topic, String key, String payload, String headersJson, Instant now) {
         return PgOutbox.allArgsBuilder()
                 .id(null)
                 .topic(topic)
@@ -62,6 +63,7 @@ public class PgOutbox {
 
     /**
      * 지연 발행 outbox row 생성 — availableAt = 지정 시각.
+     * 호출자가 {@code clock.instant()} 로 얻은 {@code now} 를 createdAt 으로 전달한다.
      *
      * <p><b>Long id 제거됨</b> — RDB {@code AUTO_INCREMENT} ({@code @GeneratedValue(strategy=IDENTITY)})
      * 가 INSERT 시 id 를 채운다. 호출자가 null 을 전달할 필요 없다.
@@ -71,9 +73,10 @@ public class PgOutbox {
      * @param payload     직렬화된 이벤트/커맨드 JSON
      * @param headersJson 직렬화된 Kafka 헤더 JSON (nullable)
      * @param availableAt 발행 가능 시각 (재시도 backoff 기반)
+     * @param now         현재 Instant (createdAt 용, clock.instant() 전달)
      */
     public static PgOutbox createWithAvailableAt(
-            String topic, String key, String payload, String headersJson, Instant availableAt) {
+            String topic, String key, String payload, String headersJson, Instant availableAt, Instant now) {
         return PgOutbox.allArgsBuilder()
                 .id(null)
                 .topic(topic)
@@ -83,7 +86,7 @@ public class PgOutbox {
                 .availableAt(availableAt)
                 .processedAt(null)
                 .attempt(0)
-                .createdAt(Instant.now())
+                .createdAt(now)
                 .allArgsBuild();
     }
 

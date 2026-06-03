@@ -122,8 +122,8 @@ flowchart LR
 | `PgOutboxImmediateWorker` (`SmartLifecycle`) | `pg-service/.../infrastructure/scheduler` | outbox VT consumer loop — 채널에서 `OutboxJob` take 후 두 컨텍스트를 자기 스레드에 set 하고 `PgOutboxRelayService.relay` 호출. start/stop 은 Spring `DefaultLifecycleProcessor` 가 자동 호출 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | `pg-service/.../infrastructure/scheduler` | outbox 채널 가득참 / 워커 크래시 회복용 폴링 폴백 (2초 주기). RDB `pg_outbox` 직접 픽업 |
 | `JdbcPaymentEventDedupeStore` | `payment-service/.../infrastructure/dedupe` | `payment_event_dedupe` INSERT IGNORE 어댑터. `PaymentEventDedupeStore` 포트 구현 (PET-5). EOS 트랜잭션 안에서 멱등 마킹. `deleteExpired(Instant, int)` 만료 행 일괄 삭제 추가 (EOS-FOLLOWUP-CLEANUP) |
-| `DedupeCleanupWorker` (payment, `@Scheduled`) | `payment-service/.../infrastructure/scheduler` | `payment_event_dedupe` 만료 행 (`expires_at < now`) 주기 청소. `LocalDateTimeProvider` 주입으로 현재 시각 획득. `payment_event_dedupe.cleanup_deleted_total` 카운터 (EOS-FOLLOWUP-CLEANUP) |
-| `DedupeCleanupWorker` (product, `@Scheduled`) | `product-service/.../infrastructure/scheduler` | `stock_commit_dedupe` 만료 행 주기 청소. `Instant.now()` 직접 사용 (서비스 시간 추상화 부재). `SchedulerConfig` (`@EnableScheduling` + `@ConditionalOnProperty scheduler.enabled`) 로 활성 게이트 (EOS-FOLLOWUP-CLEANUP) |
+| `DedupeCleanupWorker` (payment, `@Scheduled`) | `payment-service/.../infrastructure/scheduler` | `payment_event_dedupe` 만료 행 (`expires_at < now`) 주기 청소. `Clock` 주입으로 현재 시각 획득 (TIME-MODEL-AND-EXPIRY). `payment_event_dedupe.cleanup_deleted_total` 카운터 (EOS-FOLLOWUP-CLEANUP) |
+| `DedupeCleanupWorker` (product, `@Scheduled`) | `product-service/.../infrastructure/scheduler` | `stock_commit_dedupe` 만료 행 주기 청소. `Clock` 주입 (`ClockConfig`, TIME-MODEL-AND-EXPIRY). `SchedulerConfig` (`@EnableScheduling` + `@ConditionalOnProperty scheduler.enabled`) 로 활성 게이트 (EOS-FOLLOWUP-CLEANUP) |
 | `TraceparentExtractor` | `pg-service/.../infrastructure/trace` | OTel `W3CTraceContextPropagator` 래핑 — `extractFromCurrentContext` / `restoreContext`. consumer 가 추출한 traceparent 를 `pg_inbox.stored_traceparent` 에 RDB 저장 → 폴링 회수 시 부모 추적 복원. 관측성 전용, 비즈니스 비참여 (EOS-FOLLOWUP-CLEANUP) |
 | `KafkaConsumerConfig` | `payment-service/.../infrastructure/config` | `kafkaListenerContainerFactory` 명시 정의 + `KafkaTransactionManager(stockCommittedProducerFactory)` wire-in (EOS consumer). `isolation.level=read_committed` 는 `application.yml` `spring.kafka.consumer.properties.isolation.level` 로 적용 |
 | `KafkaProducerConfig` (EOS) | `payment-service/.../infrastructure/config` | EOS-aware `stockCommittedProducerFactory` + `KafkaTransactionManager` + `stockCommittedKafkaTemplate` 빈 (transactional.id prefix = `${spring.application.name}-${HOSTNAME:local}-`, enable.idempotence=true, transaction.timeout.ms=10000) |
@@ -183,6 +183,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | Kafka 토픽 + dedupe TTL 정책 | 5 토픽 (운영 3 + DLQ 2), dedupe TTL P8D |
 | `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |
 | Stock publish AFTER_COMMIT 분리 | TX commit 후 stock-committed 발행 |
+| 시간 모델 표준 (Clock + Instant + UTC) | 4서비스 `Clock` 빈 주입 + 도메인 `Instant` 인자 주입(now() 직접 호출 0). UTC 저장 일관 — ORM `hibernate.jdbc.time_zone=UTC` + raw-JDBC `connectionTimeZone=UTC` + 명시 UTC Calendar. JPA auditing `clockDateTimeProvider`. 만료 임계 외부화(`payment.expiration.ready-timeout-minutes`). 벤더 승인 시각 `.toInstant()` 정규화 (TIME-MODEL-AND-EXPIRY, PITFALLS §6/§13) |
 | Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
 | Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
 | RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |

@@ -4,14 +4,15 @@ import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ import org.springframework.stereotype.Component;
 public class DomainEventLoggingAspect {
 
     private final PaymentEventPublisher paymentEventPublisher;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     @Around("@annotation(publishEvent)")
     public Object publishHistoryEvent(ProceedingJoinPoint joinPoint, PublishDomainEvent publishEvent)
@@ -83,7 +84,8 @@ public class DomainEventLoggingAspect {
             String reason,
             PublishDomainEvent publishEvent
     ) {
-        LocalDateTime occurredAt = localDateTimeProvider.now();
+        // clock.instant() 기반으로 audit 시각을 계산한다. TZ 누수 차단(D2/T7).
+        LocalDateTime occurredAt = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (!(result instanceof PaymentEvent afterEvent)) {
             return;
         }

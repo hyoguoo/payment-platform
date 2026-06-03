@@ -6,7 +6,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +69,9 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
     }
 
     @Override
-    public List<PaymentEvent> findReadyPaymentsOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findReadyPaymentsOlderThan(Instant before) {
+        // D3 — Instant 를 직접 native query 에 전달. Hibernate 가 hibernate.jdbc.time_zone=UTC
+        // 기준으로 UTC Calendar 바인딩하므로 JdbcTemplate(connectionTimeZone=UTC) 과 동일 UTC 기준으로 비교된다.
         return jpaPaymentEventRepository
                 .findReadyPaymentsOlderThan(before)
                 .stream()
@@ -102,7 +104,7 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, LocalDateTime before) {
+    public long countByStatusAndExecutedAtBefore(PaymentEventStatus status, Instant before) {
         return jpaPaymentEventRepository.countByStatusAndExecutedAtBefore(status, before);
     }
 
@@ -114,7 +116,7 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PaymentEvent> findInProgressOlderThan(LocalDateTime before) {
+    public List<PaymentEvent> findInProgressOlderThan(Instant before) {
         return jpaPaymentEventRepository
                 .findInProgressOlderThan(before)
                 .stream()

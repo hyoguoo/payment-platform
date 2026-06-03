@@ -1,13 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-05-31 — CLEANUP-BATCH-B **봉인 완료** (PR #82, CI 전체 GREEN). 이슈 #81, 브랜치 #81. 활성 작업 없음.
-> **다음 세션 진입점**: `## 다음 토픽 후보` 참조 — 다음 작업은 토픽 B `PR B`(TC-4 EXPIRED 정책 + TC-8 시간 추상화 통합). `workflow-discuss`로 시작.
+> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **봉인 완료** (PR 생성 대기). 이슈 #83, 브랜치 #83. 활성 작업 없음.
+> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조 — 후속 등재 [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE] 또는 PHASE-4 등.
 
 ## 활성 작업
 
 (없음)
 
 ## 직전 봉인
+
+- **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화, 이슈/브랜치 #83, 2026-06-03) — `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`
+  - 17태스크(T1~T17) + DM1/DM2 + 회귀 가드, 27커밋. `./gradlew test` 846 PASS, 최종 리뷰 critical/major 0.
+  - **TC-8 해소**: 4서비스 `Clock` 빈 + `Instant` 통일. `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0), 도메인 `Instant` 인자 주입(now() 직접 0). UTC 저장 일관(ORM hibernate.jdbc.time_zone=UTC + raw-JDBC connectionTimeZone=UTC + 명시 UTC Calendar). payment 도메인 PaymentEvent+PaymentOutbox 모두 Instant(T17, 경계 ofInstant 6곳 제거).
+  - **TC-4 해소**: 만료 정책 명문화 — READY 직접 만료(`expire()` 가드) + 정합 스캐너 2단 연쇄. 임계 외부화(`payment.expiration.ready-timeout-minutes` 기본30) + 스케줄러 키 정정(fallback).
+  - **DM1/DM2/D8**: auditing `clockDateTimeProvider` UTC化(만료 cutoff 정합) / product default+docker connectionTimeZone=UTC(dedupe split-brain 해소) / 벤더 승인 시각 `.toInstant()` 정규화(정산 9시간 오차 차단, approvedAtRaw contract 무변경).
+  - 영구 문서 5개 갱신(PITFALLS §6/§13 / ARCHITECTURE / INTEGRATIONS / CONVENTIONS / TODOS). 후속: [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE].
+  - 잔여: wip 커밋(94a4053f) PR squash merge로 흡수.
 
 - **CLEANUP-BATCH-B** (빌드·테스트 게이트 위생 — spotbugs 위반 회복 + NET-RETRY 5xx 매핑 + JaCoCo 게이트 실효화, 이슈 #81, 브랜치 #81, PR #82, 2026-05-31) — `docs/archive/cleanup-batch-b/COMPLETION-BRIEFING.md`
   - 6태스크 16커밋. spotbugs 5건 **전부 코드 정정**(억제 0; NP_NULL은 `if-null-throw`—`requireNonNull`을 SpotBugs 6.0.9가 미인식, EI_EXPOSE_REP2는 `FakeMessagePublisher` Throwable→Supplier) + 502/504 retryable 승격(500 유지·429/503 단일) + JaCoCo 게이트 실효화(루트 subprojects 공통화 + integrationTest 합산 + 서비스별 LINE minimum, element=BUNDLE) + Gradle 8.14.4(Java 24)

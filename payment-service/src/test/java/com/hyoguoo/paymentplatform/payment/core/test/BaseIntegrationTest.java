@@ -1,14 +1,16 @@
 package com.hyoguoo.paymentplatform.payment.core.test;
 
-import com.hyoguoo.paymentplatform.mock.TestLocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.application.port.out.ProductPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.UserPort;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.dto.UserInfo;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,6 +50,11 @@ public abstract class BaseIntegrationTest {
                 .withUsername("test")
                 .withPassword("test")
                 .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")
+                // D3/D7 — raw-JDBC(JdbcTemplate) 와 JPA 가 같은 connection 세션 TZ(UTC) 를 공유하도록
+                // 강제한다. 이 파라미터가 getJdbcUrl() 에 자동 부착되어 LocalDateTime/Instant ↔ DATETIME
+                // 라운드트립이 시스템 TZ 와 무관하게 UTC 기준으로 일관된다.
+                .withUrlParam("connectionTimeZone", "UTC")
+                .withUrlParam("forceConnectionTimeZoneToSession", "true")
                 .withReuse(true);
         REDIS_CONTAINER = new GenericContainer<>("redis:7.2-alpine")
                 .withExposedPorts(6379)
@@ -61,7 +68,11 @@ public abstract class BaseIntegrationTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        // D3/D7 — raw-JDBC 및 JPA 경로 모두 UTC 기준으로 통일.
+        // connectionTimeZone=UTC 는 컨테이너 빌더의 withUrlParam 으로 getJdbcUrl 에 부착된다.
+        // hibernate.jdbc.time_zone=UTC 를 명시 등록해 ORM 바인딩도 UTC 기준으로 고정한다.
         registry.add("spring.datasource.url", MYSQL_CONTAINER::getJdbcUrl);
+        registry.add("spring.jpa.properties.hibernate.jdbc.time_zone", () -> "UTC");
         registry.add("spring.datasource.username", MYSQL_CONTAINER::getUsername);
         registry.add("spring.datasource.password", MYSQL_CONTAINER::getPassword);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
@@ -81,9 +92,17 @@ public abstract class BaseIntegrationTest {
     @TestConfiguration
     static class BaseTestConfig {
 
+        /**
+         * 테스트용 가변 Clock 빈.
+         * 기본값 = {@code Clock.systemUTC()}.
+         * 각 테스트에서 {@link TestClock#setFixedInstant(Instant)} 로 고정 시각을 주입한다.
+         * application 레이어가 {@code Clock} 을 주입받으므로 통합 테스트에서 시각 제어가 필요하다.
+         * {@code TestClock} 타입으로 반환해 하위 테스트에서 타입 안전하게 캐스팅 가능.
+         */
         @Bean
-        public LocalDateTimeProvider localDateTimeProvider() {
-            return new TestLocalDateTimeProvider();
+        @Primary
+        public TestClock clock() {
+            return new TestClock();
         }
 
         /**
@@ -125,5 +144,40 @@ public abstract class BaseIntegrationTest {
         public UserPort userPort() {
             return userId -> UserInfo.builder().id(userId).build();
         }
+    }
+
+    /**
+     * 통합 테스트용 가변 시계.
+     * 기본값은 시스템 UTC 시각을 사용하며, {@link #setFixedInstant(Instant)} 로 고정 시각을 설정한다.
+     */
+    public static class TestClock extends Clock {
+
+        private final AtomicReference<Instant> fixedInstant = new AtomicReference<>(null);
+
+        @Override
+        public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            Instant fixed = fixedInstant.get();
+            return fixed != null ? fixed : Instant.now();
+        }
+
+        public void setFixedInstant(Instant instant) {
+            this.fixedInstant.set(instant);
+        }
+
+        public void reset() {
+            this.fixedInstant.set(null);
+        }
+
+
     }
 }

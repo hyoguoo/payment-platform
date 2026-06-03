@@ -2,10 +2,10 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.time.Clock;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 public class PaymentStatusMetricsAspect {
 
     private final PaymentTransitionMetrics paymentTransitionMetrics;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
 
     @Around("@annotation(paymentStatusChange)")
     public Object recordStatusChange(
@@ -29,7 +29,7 @@ public class PaymentStatusMetricsAspect {
     ) throws Throwable {
         PaymentEvent originalEvent = extractPaymentEvent(joinPoint);
         String fromStatus = originalEvent != null ? originalEvent.getStatus().name() : "UNKNOWN";
-        LocalDateTime lastStatusChangedAt = originalEvent != null ? originalEvent.getLastStatusChangedAt() : null;
+        Instant lastStatusChangedAt = originalEvent != null ? originalEvent.getLastStatusChangedAt() : null;
 
         Object result = joinPoint.proceed();
 
@@ -43,8 +43,7 @@ public class PaymentStatusMetricsAspect {
 
         Duration duration = null;
         if (lastStatusChangedAt != null) {
-            LocalDateTime now = localDateTimeProvider.now();
-            duration = Duration.between(lastStatusChangedAt, now);
+            duration = Duration.between(lastStatusChangedAt, clock.instant());
         }
 
         // Record transition metric with duration

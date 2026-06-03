@@ -5,8 +5,10 @@ import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
-import lombok.RequiredArgsConstructor;
+import java.util.Calendar;
+import java.util.TimeZone;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -21,18 +23,24 @@ import org.springframework.stereotype.Repository;
  * 본 어댑터는 {@code event_uuid + expires_at} 만 사용한다 — 나머지 컬럼은 NULL 허용이다.
  * <p>
  * 전략:
- * - existsValid: SELECT + expires_at 비교 (만료 여부 확인)
+ * - existsValid: SELECT + expires_at 비교 (만료 여부 확인) — NOW() 는 connectionTimeZone=UTC 적용 후 UTC 기준.
  * - recordIfAbsent: 만료 엔트리 DELETE → INSERT IGNORE.
  *   INSERT IGNORE 가 0 row 영향이면 중복(false), 1 row 이면 최초(true).
  * - deleteExpired: expires_at &lt; :now 조건 idempotent batch DELETE (LIMIT :batchSize).
  *   NamedParameterJdbcTemplate 을 사용해 LIMIT 바인딩을 안전하게 처리한다.
  * <p>
+ * D7 — raw-JDBC 경로 UTC 규약: Timestamp.from(instant) 바인딩 시 명시 UTC Calendar 를 사용한다.
+ * 비-UTC JVM TZ 환경에서도 DB 저장 절대시점이 정확히 보존된다(AC8).
+ * datasource URL 에 {@code connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true} 설정 필수.
+ * <p>
  * 호출자(StockCommitUseCase)의 {@code @Transactional} 안에서 호출되므로 같은 트랜잭션에 참여한다.
  */
 @Slf4j
 @Repository
-@RequiredArgsConstructor
 public class JdbcEventDedupeStore implements EventDedupeStore {
+
+    /** D7 — UTC Calendar 상수: raw-JDBC Timestamp 바인딩 시 비-UTC JVM TZ 오차 방지. */
+    private static final Calendar UTC_CALENDAR = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 
     private static final String SQL_EXISTS_VALID =
             "SELECT COUNT(*) FROM stock_commit_dedupe "
@@ -49,8 +57,18 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
                     + "WHERE expires_at < :now "
                     + "LIMIT :batchSize";
 
+    private final Clock clock;
     private final JdbcTemplate jdbcTemplate;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
+
+    public JdbcEventDedupeStore(
+            Clock clock,
+            JdbcTemplate jdbcTemplate,
+            NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
+        this.clock = clock;
+        this.jdbcTemplate = jdbcTemplate;
+        this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
+    }
 
     /**
      * eventUUID 가 유효하게(TTL 미만료) 존재하는지 확인한다.
@@ -80,8 +98,15 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
         jdbcTemplate.update(SQL_DELETE_EXPIRED_BY_UUID, eventUUID);
 
         // INSERT IGNORE: 기존 유효 엔트리가 있으면 0, 없으면 1
-        int inserted = jdbcTemplate.update(SQL_INSERT_IGNORE, eventUUID,
-                java.sql.Timestamp.from(expiresAt));
+        // D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 expires_at 절대시점 정확 보존 (AC8)
+        Timestamp expiresAtTs = Timestamp.from(expiresAt);
+        int inserted = jdbcTemplate.update(
+                SQL_INSERT_IGNORE,
+                ps -> {
+                    ps.setString(1, eventUUID);
+                    ps.setTimestamp(2, expiresAtTs, UTC_CALENDAR);
+                }
+        );
 
         boolean isFirstSeen = inserted > 0;
         LogFmt.debug(log, LogDomain.STOCK, EventType.EVENT_DEDUPE_RECORD,
@@ -102,6 +127,8 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      */
     @Override
     public int deleteExpired(Instant now, int batchSize) {
+        // D7 — NamedParameterJdbcTemplate 경로: connectionTimeZone=UTC datasource 파라미터로
+        // 1차 보정됨. payment-service 패턴과 동일(JdbcPaymentEventDedupeStore.deleteExpired 참고).
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("now", Timestamp.from(now))
                 .addValue("batchSize", batchSize);

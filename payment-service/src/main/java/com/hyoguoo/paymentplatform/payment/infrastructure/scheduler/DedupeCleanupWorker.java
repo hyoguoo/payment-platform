@@ -4,9 +4,9 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedu
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,17 +43,17 @@ public class DedupeCleanupWorker {
             "payment_event_dedupe.cleanup_deleted_total";
 
     private final PaymentEventDedupeStore dedupeStore;
-    private final LocalDateTimeProvider localDateTimeProvider;
+    private final Clock clock;
     private final int batchSize;
     private final Counter cleanupDeletedCounter;
 
     public DedupeCleanupWorker(
             PaymentEventDedupeStore dedupeStore,
-            LocalDateTimeProvider localDateTimeProvider,
+            Clock clock,
             @Value("${scheduler.dedupe-cleanup-worker.batch-size:1000}") int batchSize,
             MeterRegistry meterRegistry) {
         this.dedupeStore = dedupeStore;
-        this.localDateTimeProvider = localDateTimeProvider;
+        this.clock = clock;
         this.batchSize = batchSize;
         this.cleanupDeletedCounter = Counter.builder(CLEANUP_DELETED_COUNTER_NAME)
                 .description("payment_event_dedupe 만료 행 삭제 건수 누적 — TTL 초과 행 청소량 관측")
@@ -68,7 +68,7 @@ public class DedupeCleanupWorker {
      */
     @Scheduled(fixedDelayString = "${scheduler.dedupe-cleanup-worker.fixed-delay-ms:3600000}")
     public void cleanup() {
-        Instant now = localDateTimeProvider.nowInstant();
+        Instant now = clock.instant();
         deleteExpiredBatch(now);
     }
 

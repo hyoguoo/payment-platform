@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.presentation.dto.response;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -10,5 +10,5 @@ public class PaymentStatusApiResponse {
 
     private final String orderId;
     private final PaymentStatusResponse status;
-    private final LocalDateTime approvedAt;
+    private final Instant approvedAt;
 }

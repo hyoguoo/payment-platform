@@ -8,10 +8,11 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
-import com.hyoguoo.paymentplatform.payment.core.common.service.port.LocalDateTimeProvider;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,20 +32,19 @@ class DedupeCleanupWorkerTest {
 
     private static final String COUNTER_NAME = "payment_event_dedupe.cleanup_deleted_total";
 
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+
     private PaymentEventDedupeStore mockDedupeStore;
-    private LocalDateTimeProvider mockLocalDateTimeProvider;
     private SimpleMeterRegistry meterRegistry;
     private DedupeCleanupWorker worker;
 
     @BeforeEach
     void setUp() {
         mockDedupeStore = Mockito.mock(PaymentEventDedupeStore.class);
-        mockLocalDateTimeProvider = Mockito.mock(LocalDateTimeProvider.class);
         meterRegistry = new SimpleMeterRegistry();
 
-        given(mockLocalDateTimeProvider.nowInstant()).willReturn(Instant.now());
-
-        worker = new DedupeCleanupWorker(mockDedupeStore, mockLocalDateTimeProvider, 1000, meterRegistry);
+        worker = new DedupeCleanupWorker(mockDedupeStore, FIXED_CLOCK, 1000, meterRegistry);
     }
 
     @Test
