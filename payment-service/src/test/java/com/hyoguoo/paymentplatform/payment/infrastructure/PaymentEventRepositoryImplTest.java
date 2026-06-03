@@ -100,7 +100,7 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     @DisplayName("DM1 회귀 — JPA auditing created_at 이 Clock 기반 DateTimeProvider 를 통해 cutoff Instant 와 정합하게 채워진다.")
     void auditing_createdAt_isFilledByClockDateTimeProvider() {
         // given — JPA save 를 통해 실제 auditing(@CreatedDate) 경로를 밟는다.
-        // raw SQL INSERT 를 사용하지 않으므로 AuditingEntityListener 가 created_at 을 채운다.
+        // raw SQL INSERT 를 사용하지 않으므로 AuditingEntityListener(clockDateTimeProvider) 가 created_at 을 채운다.
         Instant beforeSave = Instant.now();
 
         PaymentEventEntity entity = PaymentEventEntity.builder()
@@ -117,25 +117,27 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
 
         Instant afterSave = Instant.now();
 
-        // when — findReadyPaymentsOlderThan 으로 cutoff(afterSave) 기준 조회
-        // clockDateTimeProvider 가 Clock 기반 UTC LocalDateTime 을 공급하면
-        // created_at(UTC LocalDateTime) < cutoff(UTC Instant) 비교가 일관되어 엔티티가 반환된다.
-        // dateTimeProviderRef 가 없어 기본 CurrentDateTimeProvider 를 사용하면
-        // JVM TZ 가 비-UTC 일 때 created_at 이 KST wall-clock 값으로 채워져 비교가 어긋난다.
-        List<PaymentEvent> result = paymentEventRepository.findReadyPaymentsOlderThan(afterSave);
+        // when — cutoff 에 여유(+2초)를 준다.
+        // payment_event.created_at 은 DATETIME(초 정밀도)이라 저장 시 밀리초가 반올림되어
+        // 최대 +1초까지 미래로 올라갈 수 있다. cutoff 를 afterSave 와 같은 초로 두면 그 반올림
+        // 경계에서 created_at >= cutoff 가 되어 flaky 하므로(밀리초 0.5+ 케이스) 여유로 흡수한다.
+        // ※ dateTimeProviderRef 누락(기본 CurrentDateTimeProvider 회귀)을 JVM TZ 무관하게 잡는
+        //   결정적 가드는 JpaAuditingProviderWiringTest 가 담당한다. 본 테스트는 통합 경로 스모크다.
+        Instant cutoff = afterSave.plusSeconds(2);
+        List<PaymentEvent> result = paymentEventRepository.findReadyPaymentsOlderThan(cutoff);
 
-        // then — 방금 저장한 엔티티가 cutoff(now) 이전으로 조회되어야 한다
+        // then — auditing 으로 채워진 created_at 이 cutoff 이전이라 조회된다
         List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
         assertThat(resultIds)
-                .as("DM1 회귀: clockDateTimeProvider 가 Clock 기반 UTC 시각을 공급하면 created_at < afterSave(UTC) 성립")
+                .as("DM1 회귀: clockDateTimeProvider 경유 auditing created_at 이 cutoff 이전으로 조회 성립")
                 .contains(entity.getId());
 
-        // 추가 단정 — beforeSave(UTC) ~ afterSave(UTC) 범위에 created_at 이 있어야 한다
-        // JPA 도메인 객체를 다시 로드해 createdAt(Instant 기준) 로 범위 확인
+        // 추가 단정 — created_at 이 save 시점(beforeSave ~ afterSave) 근방으로 채워졌는지 확인.
+        // 반올림 ±1초 + 여유로 ±2초 범위. 비-UTC JVM 에서 기본 provider 로 회귀하면 9시간 어긋나 실패.
         PaymentEvent loaded = paymentEventRepository.findById(entity.getId()).orElseThrow();
         assertThat(loaded.getCreatedAt())
-                .as("DM1: JPA save 후 created_at 이 Clock(UTC) 기준으로 채워져 beforeSave 이후이어야 한다")
-                .isAfterOrEqualTo(beforeSave.minusSeconds(1))
-                .isBeforeOrEqualTo(afterSave.plusSeconds(1));
+                .as("DM1: JPA save 후 created_at 이 Clock(UTC) 기준 save 시점 근방으로 채워져야 한다")
+                .isAfterOrEqualTo(beforeSave.minusSeconds(2))
+                .isBeforeOrEqualTo(afterSave.plusSeconds(2));
     }
 }
