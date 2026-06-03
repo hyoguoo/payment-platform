@@ -10,7 +10,7 @@ STATE 종결 → PR 생성까지 결정론적으로 처리한다.
 - **판정 수용**: Critic JSON `decision`만 기계적으로 읽는다.
 
 ## Participants
-- **Verifier** (Haiku) — 전체 `./gradlew test` 실행
+- **Verifier** (Haiku) — 전체 `./gradlew test` + 린트(`checkstyle` / `spotbugs`) 실행
 - **Critic** (Opus) — `verify-ready.md` 체크리스트 판정
 - **PR Manager** (Haiku) — `vc-round.md` 규칙에 따른 PR 생성/갱신
 
@@ -31,7 +31,8 @@ STATE 종결 → PR 생성까지 결정론적으로 처리한다.
 ## Flow
 
 ### Step 1 — Verifier
-- `./gradlew test` 실행 (전체)
+- `./gradlew test` 실행 (전체). 통합테스트 UP-TO-DATE 캐시 사각지대 회피 위해 `--rerun-tasks` 또는 명시 실행 권장.
+- **린트 게이트도 함께**: `./gradlew checkstyleMain checkstyleTest spotbugsMain --continue` (또는 `./gradlew check`). test 와 별도 task라 `test` 만으로는 unused import 등 린트 위반을 놓친다 — CI 가 PR 전수 게이트로 막으므로 로컬에서 선제 차단.
 - 실패 시 Implementer에게 복귀 (verify 중단)
 
 ### Step 2 — Context 문서 갱신

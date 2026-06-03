@@ -113,7 +113,7 @@ jobs:
               file="$module/build/reports/checkstyle/${report}.xml"
               if [ -f "$file" ]; then
                 reviewdog -f=checkstyle -name="Checkstyle (${module}/${report})" \
-                  -reporter=github-pr-review -fail-on-error=true \
+                  -reporter=github-pr-review -filter-mode=file -fail-on-error=false \
                   < "$file"
               fi
             done
@@ -131,7 +131,7 @@ jobs:
             if [ -f "$file" ]; then
               python3 .github/scripts/spotbugs-to-rdjsonl.py "$file" "$module" \
                 | reviewdog -f=rdjsonl -name="SpotBugs (${module})" \
-                  -reporter=github-pr-review -fail-on-error=true
+                  -reporter=github-pr-review -filter-mode=file -fail-on-error=false
             fi
           done
 
@@ -143,8 +143,11 @@ jobs:
             const script = require('./.github/scripts/lint-summary.js');
             await script({ github, context });
 
-      - name: Fail on violations (push)
-        if: always() && github.event_name != 'pull_request'
+      - name: Fail on violations (lint gate)
+        # PR / push 모두 전수 게이트 — checkstyle/spotbugs task 가 위반 시 fail.
+        # reviewdog 는 인라인 안내(filter-mode=file)만 담당하고 차단은 이 게이트가 책임진다.
+        # reviewdog 필터 범위(변경 파일/라인) 사각지대와 무관하게 전수로 머지를 막는다.
+        if: always()
         run: |
           if [ "${{ steps.checkstyle.outcome }}" != "success" ] || \
              [ "${{ steps.spotbugs.outcome }}" != "success" ]; then
