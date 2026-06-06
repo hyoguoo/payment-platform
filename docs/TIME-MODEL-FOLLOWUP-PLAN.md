@@ -316,12 +316,14 @@ flowchart TD
   - `payment-service/src/test/java/.../payment/core/config/JpaAuditingProviderWiringTest.java` (기존 — 현재 상태 재확인)
   - `payment-service/src/test/java/.../payment/infrastructure/PaymentEventRepositoryImplTest.java` (기존 — 현재 상태 재확인)
 - **완료 조건 (AC)**:
-  - `JpaAuditingProviderWiringTest.jpaAuditing_dateTimeProviderRef_isLinkedToClockDateTimeProvider()` — 이미 존재, P12 실행 전 현재 GREEN임을 `./gradlew test` 확인
-  - `PaymentEventRepositoryImplTest.auditing_createdAt_isFilledByClockDateTimeProvider()` — 이미 존재, GREEN 확인
-  - 신규 메서드 `clockDateTimeProvider_반환타입이Instant_를_반환한다()`: `JpaConfig.clockDateTimeProvider().getNow()` 결과가 `Optional<Instant>` 타입임을 단정 — P12 RED 게이트 역할
+  - [x] `JpaAuditingProviderWiringTest.jpaAuditing_dateTimeProviderRef_isLinkedToClockDateTimeProvider()` — 이미 존재, P12 실행 전 현재 GREEN임을 `./gradlew test` 확인
+  - [x] `PaymentEventRepositoryImplTest.auditing_createdAt_isFilledByClockDateTimeProvider()` — 이미 존재, GREEN 확인
+  - [x] 신규 메서드 `clockDateTimeProvider_반환타입이Instant_를_반환한다()`: `JpaConfig.clockDateTimeProvider().getNow()` 결과가 `Optional<Instant>` 타입임을 단정 — P12 RED 게이트 역할
     - 클래스: `JpaAuditingProviderWiringTest`에 추가
     - `Optional<TemporalAccessor> nowOpt = provider.getNow(); assertThat(nowOpt.get()).isInstanceOf(Instant.class)`
 - **의존**: 없음
+
+**완료 결과**: `JpaAuditingProviderWiringTest`에 `clockDateTimeProvider_반환타입이Instant_를_반환한다()` 추가(P12 RED 게이트). 기존 wiring 가드(`jpaAuditing_dateTimeProviderRef_isLinkedToClockDateTimeProvider`) GREEN 확인. `PaymentEventRepositoryImplTest.auditing_createdAt_isFilledByClockDateTimeProvider` GREEN 확인. 신규 게이트는 현재 `clockDateTimeProvider`가 `LocalDateTime`을 반환하므로 정상 RED — P12 구현 후 GREEN 전환 예정.
 
 ---
 
