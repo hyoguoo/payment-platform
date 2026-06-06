@@ -412,15 +412,17 @@ flowchart TD
 - **변경 파일**:
   - `payment-service/src/main/java/.../payment/infrastructure/entity/PaymentEventEntity.java`
 - **완료 조건 (AC)**:
-  - `toDomain()` 라인 119-120: `getCreatedAt().toInstant(java.time.ZoneOffset.UTC)` → `getCreatedAt()` 직접 사용
-  - `import java.time.ZoneOffset` 제거 (다른 사용처 없으면)
-  - 라인 65 "BaseEntity(createdAt/updatedAt)는 NG4 준수로 변경하지 않는다" stale 주석 제거 (P14 BaseEntity 타입 전환으로 거짓이 된 NG4 흔적 — P12 주석 정리와 동일 사유)
-  - P14 완료(BaseEntity `createdAt`이 `Instant`) 상태에서 컴파일 통과
+  - [x] `toDomain()` 라인 119-120: `getCreatedAt().toInstant(java.time.ZoneOffset.UTC)` → `getCreatedAt()` 직접 사용 (P14 Rule 1 선행 완료)
+  - [x] `import java.time.ZoneOffset` 제거 (P14 선행 완료, grep 0)
+  - [x] 라인 65 "BaseEntity(createdAt/updatedAt)는 NG4 준수로 변경하지 않는다" stale 주석 제거
+  - [x] P14 완료(BaseEntity `createdAt`이 `Instant`) 상태에서 컴파일 통과
 - **의존**: P14
 - **테스트 스펙**:
-  - 클래스: `PaymentEventEntityTest` (신규 단위 테스트, 또는 기존 확장)
+  - 클래스: `PaymentEventEntityTest` (신규 단위 테스트)
   - 메서드:
-    - `toDomain_createdAt이Instant로직접반환된다()`: `PaymentEventEntity` 리플렉션으로 `createdAt` 필드 직접 세팅, `toDomain(emptyList()).getCreatedAt()`이 동일 `Instant` 반환 단정
+    - [x] `toDomain_createdAt이Instant로직접반환된다()`: 리플렉션으로 `createdAt` 필드 직접 세팅, `toDomain(emptyList()).getCreatedAt()`이 동일 `Instant` 반환 단정
+
+**완료 결과**: `toDomain` 매핑 경계 수동 변환은 P14 Rule 1 자동수정으로 선행 제거됨(`getCreatedAt()` 직접). P15는 라인 65 NG4 stale 주석 제거 + `PaymentEventEntityTest` 회귀 가드 추가. `./gradlew :payment-service:test --tests PaymentEventEntityTest` 1 PASS.
 
 ---
 

@@ -61,8 +61,7 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "status", nullable = false)
     private PaymentEventStatus status;
 
-    // D3 — 컬럼 타입 DATETIME(6) 유지, hibernate.jdbc.time_zone=UTC 로 UTC 일관 저장.
-    // BaseEntity(createdAt/updatedAt)는 NG4 준수로 변경하지 않는다.
+    // 컬럼 타입 DATETIME(6) + hibernate.jdbc.time_zone=UTC 로 UTC 일관 저장.
     @Column(name = "executed_at")
     private Instant executedAt;
 
