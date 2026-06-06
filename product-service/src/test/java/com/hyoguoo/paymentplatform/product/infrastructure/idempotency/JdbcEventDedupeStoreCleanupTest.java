@@ -130,7 +130,7 @@ class JdbcEventDedupeStoreCleanupTest {
     }
 
     @Test
-    @DisplayName("deleteExpired — 미만료 dedupe 행은 existsValid=true 유지, 삭제 없음")
+    @DisplayName("deleteExpired — 미만료 dedupe 행은 삭제되지 않고 그대로 잔존")
     void deleteExpired_existsValid미만료행_불영향() {
         Instant future = Instant.now().plusSeconds(604800); // now + 7day
 
@@ -142,7 +142,7 @@ class JdbcEventDedupeStoreCleanupTest {
         int deleted = dedupeStore.deleteExpired(Instant.now(), 10);
 
         assertThat(deleted).isEqualTo(0);
-        assertThat(dedupeStore.existsValid(uuid1)).isTrue();
-        assertThat(dedupeStore.existsValid(uuid2)).isTrue();
+        // P2/D2: existsValid 제거됨 — count 행 수 기반으로 미만료 행 잔존 검증
+        assertThat(countAll()).isEqualTo(2);
     }
 }

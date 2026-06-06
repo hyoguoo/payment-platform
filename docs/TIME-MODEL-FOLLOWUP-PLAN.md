@@ -124,21 +124,23 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/main/java/.../product/infrastructure/idempotency/JdbcEventDedupeStore.java`
 - **완료 조건 (AC)**:
-  - `SQL_EXISTS_VALID` 상수(라인 45-47) 제거
-  - `SQL_DELETE_EXPIRED_BY_UUID`(라인 52-53) `expires_at < NOW()` → `expires_at < ?` 바인딩 파라미터로 교체
-  - `existsValid` 메서드(라인 80-84) 제거
-  - `recordIfAbsent(String eventUUID, Instant expiresAt)` → `recordIfAbsent(String eventUUID, Instant now, Instant expiresAt)` 시그니처 업데이트
-  - DELETE 실행 시 `Timestamp.from(now)` + UTC_CALENDAR 명시 바인딩
-  - 클래스 javadoc 라인 26 줄 전건 정리: existsValid 설명 + NOW() 근거("NOW() 는 connectionTimeZone=UTC 적용 후 UTC 기준") 모두 제거 (D2 existsValid 제거 + D1 NOW() 제거로 전체 무효화)
-  - `JdbcEventDedupeStore`는 `Clock` 필드를 이미 보유하지만, recordIfAbsent 경로에서 self clock.instant() 미사용 — `now`는 호출자(use case P4)에서 주입받음
+  - [x] `SQL_EXISTS_VALID` 상수(라인 45-47) 제거
+  - [x] `SQL_DELETE_EXPIRED_BY_UUID`(라인 52-53) `expires_at < NOW()` → `expires_at < ?` 바인딩 파라미터로 교체
+  - [x] `existsValid` 메서드(라인 80-84) 제거
+  - [x] `recordIfAbsent(String eventUUID, Instant expiresAt)` → `recordIfAbsent(String eventUUID, Instant now, Instant expiresAt)` 시그니처 업데이트
+  - [x] DELETE 실행 시 `Timestamp.from(now)` + UTC_CALENDAR 명시 바인딩
+  - [x] 클래스 javadoc 라인 26 줄 전건 정리: existsValid 설명 + NOW() 근거("NOW() 는 connectionTimeZone=UTC 적용 후 UTC 기준") 모두 제거 (D2 existsValid 제거 + D1 NOW() 제거로 전체 무효화)
+  - [x] `JdbcEventDedupeStore`는 `Clock` 필드를 이미 보유하지만, recordIfAbsent 경로에서 self clock.instant() 미사용 — `now`는 호출자(use case P4)에서 주입받음
 - **의존**: P1 (포트 시그니처 확정 후)
 - **테스트 스펙**:
-  - 기존 `JdbcEventDedupeStoreRoundTripTest`의 2번째 테스트(`existsValid_nowBasedOnConnectionUTC_sameBoundaryAsAppInstant`) 제거 (D2)
-  - 새 테스트 `recordIfAbsent_nonUtcJvm_expiredRow삭제경계_만료행만삭제`:
+  - [x] 기존 `JdbcEventDedupeStoreRoundTripTest`의 2번째 테스트(`existsValid_nowBasedOnConnectionUTC_sameBoundaryAsAppInstant`) 제거 (D2)
+  - [x] 새 테스트 `recordIfAbsent_nonUtcJvm_expiredRow삭제경계_만료행만삭제`:
     - Asia/Seoul JVM TZ 강제, 만료 행(`now` 이전)과 미만료 행(`now` 이후) 각 1건 삽입
     - `recordIfAbsent(uuid, now, futureExpiry)` 호출 시 만료 행이 DELETE되고 미만료 행은 잔존
     - DB 재조회 count 단정 (만료 행만 삭제됨 = 재기록 성공, 미만료 동일 uuid는 false 반환 확인)
     - 경계 동치(DM-2) `expires_at == now`: `expires_at < now` 만 삭제하므로 동일 시각 행은 만료로 보지 않고 잔존 → 동일 uuid `recordIfAbsent`는 `false`(미만료 보존, 중복 재고 차감 skip 멱등 유지) 단정
+
+**완료 결과**: `JdbcEventDedupeStore` — SQL_EXISTS_VALID 상수 제거, existsValid 메서드 제거, SQL_DELETE_EXPIRED_BY_UUID NOW() → `?` 바인딩 파라미터 교체, recordIfAbsent 3-인자 시그니처(now+expiresAt) + DELETE에 UTC_CALENDAR 명시 바인딩. `JdbcEventDedupeStoreRoundTripTest` existsValid 테스트 제거 + 경계 검증 테스트 추가. `JdbcEventDedupeStoreCleanupTest` existsValid 참조 count 기반으로 교체(컴파일 에러 자동수정). product-service 전체 컴파일은 StockCommitUseCase(P4)·StockCommitConsumer(P5) 시그니처 미수정으로 여전히 RED — P3~P5에서 해소 예정. Testcontainers 통합 테스트 GREEN은 P5 이후.
 
 ---
 
