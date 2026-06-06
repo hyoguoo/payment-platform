@@ -279,9 +279,11 @@ flowchart TD
   - `docker/docker-compose.apps.yml` — payment/pg/product/user/gateway 5서비스 `environment.TZ: UTC` 추가
   - `docker/docker-compose.infra.yml` — eureka 서비스 `environment.TZ: UTC` 추가 (라인 124 `environment:` 블록 안)
 - **완료 조건 (AC)**:
-  - `docker-compose.apps.yml`의 각 서비스 `environment` 블록에 `TZ: UTC` 키 추가 (기존 `EUREKA_DEFAULT_ZONE` 등과 병렬)
-  - `docker-compose.infra.yml`의 eureka 서비스 `environment` 블록에 `TZ: UTC` 추가 (라인 124-125 `SPRING_PROFILES_ACTIVE: docker` 옆)
+  - [x] `docker-compose.apps.yml`의 각 서비스 `environment` 블록에 `TZ: UTC` 키 추가 (기존 `EUREKA_DEFAULT_ZONE` 등과 병렬)
+  - [x] `docker-compose.infra.yml`의 eureka 서비스 `environment` 블록에 `TZ: UTC` 추가 (라인 124-125 `SPRING_PROFILES_ACTIVE: docker` 옆)
 - **의존**: P8
+
+**완료 결과**: `docker-compose.apps.yml` 5서비스(payment/pg/product/user/gateway) + `docker-compose.infra.yml` eureka 서비스 `environment:` 블록 최상단에 `TZ: UTC` 추가. 총 6 서비스 TZ 설정 완료. D3 TZ backstop 겹 3(compose 환경변수) 완성. yml 문법 정합 확인.
 
 ---
 

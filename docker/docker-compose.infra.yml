@@ -122,6 +122,7 @@ services:
     ports:
       - "8761:8761"
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
     networks:
       - payment-infra-network
