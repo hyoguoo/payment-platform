@@ -362,7 +362,7 @@ flowchart TD
   - 각 `ALTER TABLE ... MODIFY COLUMN` 구문 — NOT NULL 여부·기존 DEFAULT 보존 (V1 정의 기준 — 3컬럼 모두 nullable + DEFAULT 없음 그대로 유지)
   - `payment_outbox.created_at`(복합 인덱스 `idx_payment_outbox_status_retry_created` 키 컬럼)·`payment_history.created_at`(단일 인덱스 `idx_payment_history_created_at` 키 컬럼)은 MODIFY 후 인덱스 정의 무변경 확인 (DATETIME→DATETIME(6)은 MySQL이 인덱스 자동 재구성하나 validate가 인덱스까지 보므로 V1 인덱스 정의와 동일함을 보장)
   - **순서 불변 (DM-1)**: 이 DDL ALTER 는 P14(BaseEntity `Instant`+`datetime(6)` 매핑 전환)보다 **반드시 앞서** 적용된다. 그래야 P14 후 `ddl-auto: validate` 부팅 시 실제 컬럼 정밀도(`DATETIME(6)`)와 엔티티 매핑 정밀도(`datetime(6)`)가 정합한다. V4 가 BaseEntity 타입 전환보다 뒤에 오면 V1~V3 의 `DATETIME` 컬럼과 엔티티 `datetime(6)` 매핑이 어긋나 validate 부팅이 깨질 수 있다.
-  - Testcontainers MySQL 에서 V1→V4 순차 적용만 검증 (이 시점 엔티티는 아직 `LocalDateTime`/`datetime` — round-trip validate 부팅 round-trip 은 P14 이후 P17/P18 통합 태스크에서 검증)
+  - ⚠️ payment 테스트 프로파일은 `flyway.enabled: false` + `ddl-auto: create-drop`(application-test.yml) — 통합 테스트는 **엔티티 매핑(`columnDefinition="datetime(6)"`) 기반으로 스키마를 생성**하고 V4 ALTER SQL 은 테스트에서 실행되지 않는다. 따라서 P17 round-trip 은 "엔티티 정밀도 = DATETIME(6)" 정합을 검증할 뿐, **V4 마이그레이션 SQL 자체의 문법·실제 적용은 테스트로 검증되지 않는다**. (verify 인계)
 - **의존**: P12
 - **SQL 구조** (12개 ALTER 구문, 4테이블 × 3컬럼):
   ```sql
@@ -373,7 +373,7 @@ flowchart TD
   -- (payment_order, payment_outbox, payment_history 동일 패턴)
   ```
 
-**완료 결과**: `V4__audit_datetime6_upgrade.sql` 신규 작성 — 4테이블(`payment_event`/`payment_order`/`payment_outbox`/`payment_history`) × 3컬럼(`created_at`/`updated_at`/`deleted_at`) 총 12개 `MODIFY COLUMN DATETIME(6)` 구문. nullable + DEFAULT 없음 V1 정의 그대로 유지. `payment_outbox.created_at`(복합 인덱스 키)·`payment_history.created_at`(단일 인덱스 키) 인덱스 재정의 불필요(MySQL 자동 재구성). Testcontainers 통합 부팅에서 V1→V4 순차 적용 에러 없음 확인. 잔존 FAIL(`auditing_createdAt_isFilledByClockDateTimeProvider`) — BaseEntity가 아직 `LocalDateTime`이라 Instant 비교 불일치, P14(BaseEntity Instant 전환) 이후 닫힘(PLAN 명시 정상 잔존).
+**완료 결과**: `V4__audit_datetime6_upgrade.sql` 신규 작성 — 4테이블(`payment_event`/`payment_order`/`payment_outbox`/`payment_history`) × 3컬럼(`created_at`/`updated_at`/`deleted_at`) 총 12개 `MODIFY COLUMN DATETIME(6)` 구문. nullable + DEFAULT 없음 V1 정의 그대로 유지. `payment_outbox.created_at`(복합 인덱스 키)·`payment_history.created_at`(단일 인덱스 키) 인덱스 재정의 불필요(MySQL 자동 재구성). ⚠️ **검증 갭(review F4)**: payment 테스트는 `flyway.enabled=false` + `ddl-auto: create-drop`이라 V4 SQL 이 테스트에서 실행되지 않는다 — 엔티티 `columnDefinition="datetime(6)"` 기반 스키마로 P17 정밀도 정합만 검증됨. **V4 ALTER SQL 자체의 실제 Flyway 적용은 verify(CI)/docker 부팅으로 인계.** 잔존 FAIL(`auditing_createdAt_isFilledByClockDateTimeProvider`) — BaseEntity가 아직 `LocalDateTime`이라 Instant 비교 불일치, P14(BaseEntity Instant 전환) 이후 닫힘(PLAN 명시 정상 잔존).
 
 ---
 

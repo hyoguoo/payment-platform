@@ -12,6 +12,8 @@
   - 핵심 결정 — D1 product `recordIfAbsent` 만료 삭제 `NOW()` → 앱 주입 `Instant` 통일(포트 `now` 인자) / D2 `existsValid` 전건 제거(라이브 0건) / D3 TZ backstop 3겹(Dockerfile+JVM+compose UTC) / D4 payment `BaseEntity` `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 / D5 product `connectionTimeZone=UTC` 존치 / D6 AC8 → `recordIfAbsent` DELETE 경계 검증 재배치 / D7 단일 PR
   - 태스크 18개 3묶음: 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant 전환(P11~P18). **순서 불변**: P13(V4 DDL 정밀도 승급) → P14(BaseEntity 타입 전환) — validate 부팅 정합
   - plan 확인 포인트 — `clockDateTimeProvider` Instant 반환 후 auditing wiring 회귀 가드(#83 review 전례, P11/P18) / eureka compose TZ 위치 = `docker-compose.infra.yml`(P9 확정)
+  - review 1라운드 — Critic·Domain Expert 모두 **pass**(critical/major 0). minor: F1·F2·F5(미사용 Clock 필드·existsValid 잔재·stale 주석) 수정 완료(refactor ce296873). F3(P11 feat 커밋 라벨 불일치) 지난 커밋이라 기록만.
+  - **⚠️ verify 인계(review F4)**: payment 테스트는 `flyway.enabled=false`+`ddl-auto: create-drop`이라 V4 ALTER SQL 이 테스트에서 미실행(엔티티 datetime(6) 기반 스키마로 P17 정밀도만 검증). **verify(CI)/docker 부팅에서 V1→V4 실제 Flyway 적용·문법을 반드시 확인**할 것. 운영 데이터 0이라 회귀 위험은 낮음.
 
 ## 직전 봉인
 
