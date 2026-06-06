@@ -373,6 +373,8 @@ flowchart TD
   -- (payment_order, payment_outbox, payment_history 동일 패턴)
   ```
 
+**완료 결과**: `V4__audit_datetime6_upgrade.sql` 신규 작성 — 4테이블(`payment_event`/`payment_order`/`payment_outbox`/`payment_history`) × 3컬럼(`created_at`/`updated_at`/`deleted_at`) 총 12개 `MODIFY COLUMN DATETIME(6)` 구문. nullable + DEFAULT 없음 V1 정의 그대로 유지. `payment_outbox.created_at`(복합 인덱스 키)·`payment_history.created_at`(단일 인덱스 키) 인덱스 재정의 불필요(MySQL 자동 재구성). Testcontainers 통합 부팅에서 V1→V4 순차 적용 에러 없음 확인. 잔존 FAIL(`auditing_createdAt_isFilledByClockDateTimeProvider`) — BaseEntity가 아직 `LocalDateTime`이라 Instant 비교 불일치, P14(BaseEntity Instant 전환) 이후 닫힘(PLAN 명시 정상 잔존).
+
 ---
 
 ### P14 — [infrastructure/entity-base] D4: BaseEntity audit 컬럼 LocalDateTime → Instant 전환
