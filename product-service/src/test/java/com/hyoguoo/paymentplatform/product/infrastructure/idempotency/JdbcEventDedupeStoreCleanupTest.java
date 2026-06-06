@@ -20,7 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * JdbcEventDedupeStore.deleteExpired Testcontainers 통합 테스트.
  *
- * <p>만료 행만 삭제·미만료 행 잔존, batchSize 제한, 미만료 existsValid 보존 3개 시나리오 검증.
+ * <p>만료 행만 삭제·미만료 행 잔존, batchSize 제한, 미만료 행 불영향 3개 시나리오 검증.
  * product-service Flyway V1(schema only) 자동 적용 환경.
  */
 @SpringBootTest

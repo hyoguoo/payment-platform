@@ -237,10 +237,12 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/test/java/.../product/infrastructure/idempotency/JdbcEventDedupeStoreCleanupTest.java`
 - **완료 조건 (AC)**:
-  - 라인 133-147 `deleteExpired_existsValid미만료행_불영향` 테스트에서 `dedupeStore.existsValid(uuid1)`/`existsValid(uuid2)` 호출 제거
-  - existsValid 대신 `count` 행 수 기반으로 대체 (`countAll() == 2` 단정)
-  - 나머지 두 테스트(`deleteExpired_만료행만삭제_미만료행잔존`, `deleteExpired_batchSize제한_초과분미삭제`)는 그대로 유지
+  - [x] 라인 133-147 `deleteExpired_existsValid미만료행_불영향` 테스트에서 `dedupeStore.existsValid(uuid1)`/`existsValid(uuid2)` 호출 제거
+  - [x] existsValid 대신 `count` 행 수 기반으로 대체 (`countAll() == 2` 단정)
+  - [x] 나머지 두 테스트(`deleteExpired_만료행만삭제_미만료행잔존`, `deleteExpired_batchSize제한_초과분미삭제`)는 그대로 유지
 - **의존**: P2
+
+**완료 결과**: P2 Implementer가 컴파일 에러 자동수정 과정에서 `existsValid` 호출을 이미 `countAll()` 기반으로 교체 완료. AC 전건 이미 충족 상태 확인 — `existsValid` 호출 코드 0건, `countAll() == 2` 단정 잔존. Javadoc 라인 23의 "existsValid 보존" stale 문구만 정리. `./gradlew :product-service:integrationTest` 통합 3 PASS, 전체 6 PASS.
 
 ---
 
