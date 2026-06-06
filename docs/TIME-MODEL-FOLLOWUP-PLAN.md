@@ -476,10 +476,12 @@ flowchart TD
 - **변경 파일**:
   - `payment-service/src/test/java/.../payment/core/config/JpaAuditingProviderWiringTest.java`
 - **완료 조건 (AC)**:
-  - P12 추가한 `clockDateTimeProvider_반환타입이Instant_를_반환한다()` 테스트 GREEN
-  - `jpaAuditing_dateTimeProviderRef_isLinkedToClockDateTimeProvider()` GREEN (빈 연결 회귀 없음)
-  - `./gradlew :payment-service:test` 전체 통과
+  - [x] P12 추가한 `clockDateTimeProvider_반환타입이Instant_를_반환한다()` 테스트 GREEN
+  - [x] `jpaAuditing_dateTimeProviderRef_isLinkedToClockDateTimeProvider()` GREEN (빈 연결 회귀 없음)
+  - [x] payment·product 단위+통합 전체 통과
 - **의존**: P12, P13, P14, P17 (P14 DATETIME(6) DDL은 round-trip 검증의 직접 전제 — P17 경유 transitive 의존을 명시 의존으로 보강)
+
+**완료 결과**: `JpaAuditingProviderWiringTest` 2 PASS(반환 타입 Instant 게이트 + dateTimeProviderRef 빈 연결 가드). 코드 변경 없이 P11/P12 산출 가드가 최종 GREEN 유지 확인. `:payment-service:test+integrationTest` + `:product-service:test+integrationTest` BUILD SUCCESSFUL (3m49s).
 
 ---
 
