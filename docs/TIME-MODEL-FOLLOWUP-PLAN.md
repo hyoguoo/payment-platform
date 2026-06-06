@@ -458,10 +458,12 @@ flowchart TD
 - **변경 파일**:
   - `payment-service/src/test/java/.../payment/infrastructure/PaymentEventRepositoryImplTest.java`
 - **완료 조건 (AC)**:
-  - P15 완료 후 기존 `findReadyPaymentsOlderThan` 테스트가 `LocalDateTime` raw SQL INSERT 대신 `Instant` 또는 그대로 사용 가능한지 확인 — `DATETIME(6)` 컬럼에 `LocalDateTime` INSERT는 여전히 동작하므로 코드 수정 불필요
-  - 신규 메서드 `save_createdAt_Instant_roundTrip()`: JPA save → flush → `findById` → `getCreatedAt()`가 `Instant` 타입이고 save 시점 근방(±2초) 단정 (D4 전환 후 Instant round-trip 완전 검증)
-  - `DM1 회귀 가드` 테스트(기존 `auditing_createdAt_isFilledByClockDateTimeProvider`) — 내부 `loaded.getCreatedAt()` 반환 타입이 `Instant`로 변경됨에 따라 `isAfterOrEqualTo(Instant)` 비교 정합 확인 (현재 메서드는 LocalDateTime 비교 내부를 사용하지 않으므로 무수정 가능)
+  - [x] 기존 `findReadyPaymentsOlderThan` 테스트는 `LocalDateTime` raw SQL INSERT 그대로 — `DATETIME(6)` 컬럼에 LocalDateTime INSERT 동작, 코드 무수정. stale 주석(LocalDateTime/DATETIME 초 정밀도) 정정.
+  - [x] 신규 `save_createdAt_Instant_roundTrip()`: JPA save → flush → `findById` → `getCreatedAt()`가 `Instant` 타입이고 save 시점 근방(±2초) 단정
+  - [x] `DM1 회귀 가드`(`auditing_createdAt_isFilledByClockDateTimeProvider`) — `loaded.getCreatedAt()` Instant 반환으로 `isAfterOrEqualTo(Instant)` 비교 정합, 무수정 통과
 - **의존**: P15, P16
+
+**완료 결과**: `PaymentEventRepositoryImplTest` 3 PASS (`:payment-service:integrationTest`, @Tag integration). round-trip 신규 + DM1 회귀 가드 무수정 정합 + stale 주석 정정.
 
 ---
 
