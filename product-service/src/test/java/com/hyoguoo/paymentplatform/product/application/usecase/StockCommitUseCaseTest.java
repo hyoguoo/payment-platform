@@ -47,9 +47,10 @@ class StockCommitUseCaseTest {
                 .quantity(initialStock)
                 .allArgsBuild());
 
-        Instant expiresAt = Instant.now().plusSeconds(3600);
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
 
-        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
 
         Stock updated = fakeStockRepository.findByProductId(productId).orElseThrow();
         assertThat(updated.getQuantity()).isEqualTo(initialStock - qty);
@@ -69,10 +70,11 @@ class StockCommitUseCaseTest {
                 .quantity(initialStock)
                 .allArgsBuild());
 
-        Instant expiresAt = Instant.now().plusSeconds(3600);
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
 
-        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
-        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
 
         // 두 번째 호출은 dedupe 로 무시 → 재고는 첫 번째 호출 기준
         Stock current = fakeStockRepository.findByProductId(productId).orElseThrow();
@@ -87,10 +89,66 @@ class StockCommitUseCaseTest {
         String eventUUID = "event-uuid-fail";
         int qty = 5;
 
-        Instant expiresAt = Instant.now().plusSeconds(3600);
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
 
         assertThatThrownBy(() ->
-                stockCommitUseCase.commit(eventUUID, orderId, productId, qty, expiresAt))
+                stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("중복 이벤트: recordIfAbsent에 now가 전달되고 false 반환 시 commitToRdb 미호출")
+    void commit_중복이벤트_recordIfAbsent에now전달_false반환시스킵() {
+        long productId = 4L;
+        String orderId = "order-400";
+        String eventUUID = "event-uuid-dup-now";
+        int qty = 2;
+        int initialStock = 15;
+
+        fakeStockRepository.save(Stock.allArgsBuilder()
+                .productId(productId)
+                .quantity(initialStock)
+                .allArgsBuild());
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
+
+        // 첫 번째 호출: true 반환 → 재고 차감
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
+
+        // 두 번째 호출: false 반환 → commitToRdb 미호출
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
+
+        // Fake 에 now 가 전달됐는지는 FakeEventDedupeStore.contains 로 확인
+        assertThat(fakeEventDedupeStore.contains(eventUUID)).isTrue();
+        // 재고는 첫 번째 호출분만 차감
+        Stock current = fakeStockRepository.findByProductId(productId).orElseThrow();
+        assertThat(current.getQuantity()).isEqualTo(initialStock - qty);
+    }
+
+    @Test
+    @DisplayName("최초 이벤트: recordIfAbsent true 반환 시 재고 차감 성공")
+    void commit_최초이벤트_재고차감성공() {
+        long productId = 5L;
+        String orderId = "order-500";
+        String eventUUID = "event-uuid-first";
+        int qty = 7;
+        int initialStock = 30;
+
+        fakeStockRepository.save(Stock.allArgsBuilder()
+                .productId(productId)
+                .quantity(initialStock)
+                .allArgsBuild());
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
+
+        stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt);
+
+        // FakeEventDedupeStore 에 UUID 가 기록됐고 재고 차감 완료
+        assertThat(fakeEventDedupeStore.contains(eventUUID)).isTrue();
+        Stock current = fakeStockRepository.findByProductId(productId).orElseThrow();
+        assertThat(current.getQuantity()).isEqualTo(initialStock - qty);
     }
 }
