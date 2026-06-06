@@ -1,22 +1,20 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **review 완료 → verify 대기**. 이슈/브랜치 #89.
-> **다음 세션 진입점**: TIME-MODEL-FOLLOWUP verify 단계(사용자 "verify 시작" 시). 전체 테스트 + context 갱신 + 아카이브 + PR. **verify 시 V4 Flyway 실제 적용 확인 필수**(review F4). PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`.
+> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **봉인 완료(done)**. 이슈/브랜치 #89, PR 생성 단계. 활성 작업 없음.
+> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조.
 
 ## 활성 작업
 
-- **TIME-MODEL-FOLLOWUP** (stage: **verify**, execute 18/18 + review 2라운드 pass, 이슈/브랜치 #89) — TIME-MODEL-AND-EXPIRY(#83) 이연 후속 3건 한 PR 묶음
-  - execute 완료 — P1~P18 전 태스크 GREEN. payment·product 단위+통합 BUILD SUCCESSFUL. 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant+DATETIME(6) 전환(P11~P18)
-  - 커밋 흐름: 멱등 G1(73583012 등) / TZ G2(9c7ce84f·cd905e19·e5a4eba5) / 감사 G3(P11~P18, BaseEntity Instant 434c0271, V4 DDL 7dd97399)
-  - discuss 완료 (Critic·Domain Expert pass). plan 완료 (Critic·Domain Expert pass — 도중 Domain Expert critical 1[P14 BaseEntity 태스크 본문 소실] 잡아 복원 + major[P13/P14 순서]·minor 반영). plan-review pass(minor 2 정정). 설계: `docs/topics/TIME-MODEL-FOLLOWUP.md`, PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`(18 태스크)
-  - 핵심 결정 — D1 product `recordIfAbsent` 만료 삭제 `NOW()` → 앱 주입 `Instant` 통일(포트 `now` 인자) / D2 `existsValid` 전건 제거(라이브 0건) / D3 TZ backstop 3겹(Dockerfile+JVM+compose UTC) / D4 payment `BaseEntity` `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 / D5 product `connectionTimeZone=UTC` 존치 / D6 AC8 → `recordIfAbsent` DELETE 경계 검증 재배치 / D7 단일 PR
-  - 태스크 18개 3묶음: 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant 전환(P11~P18). **순서 불변**: P13(V4 DDL 정밀도 승급) → P14(BaseEntity 타입 전환) — validate 부팅 정합
-  - plan 확인 포인트 — `clockDateTimeProvider` Instant 반환 후 auditing wiring 회귀 가드(#83 review 전례, P11/P18) / eureka compose TZ 위치 = `docker-compose.infra.yml`(P9 확정)
-  - review 1라운드 — Critic·Domain Expert 모두 **pass**(critical/major 0). minor: F1·F2·F5(미사용 Clock 필드·existsValid 잔재·stale 주석) 수정 완료(refactor ce296873). F3(P11 feat 커밋 라벨 불일치) 지난 커밋이라 기록만. 재리뷰(2라운드) 둘 다 pass, 새 finding 0.
-  - **⚠️ verify 인계(review F4)**: payment 테스트는 `flyway.enabled=false`+`ddl-auto: create-drop`이라 V4 ALTER SQL 이 테스트에서 미실행(엔티티 datetime(6) 기반 스키마로 P17 정밀도만 검증). **verify(CI)/docker 부팅에서 V1→V4 실제 Flyway 적용·문법을 반드시 확인**할 것. 운영 데이터 0이라 회귀 위험은 낮음.
+(없음)
 
 ## 직전 봉인
 
+- **TIME-MODEL-FOLLOWUP** (시간 모델 잔여 정합 3건 — 이슈/브랜치 #89, 2026-06-07) — `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`
+  - 18태스크(P1~P18). payment·product 단위+통합 **857 PASS**, 리뷰 critical/major 0(minor 5 처리). TIME-MODEL-AND-EXPIRY 이연 3건 전부 해소.
+  - **TIME-PRODUCT-NOW-UNIFY**: product `JdbcEventDedupeStore.recordIfAbsent` 만료 삭제 DB `NOW()` → 호출자 주입 `Instant` 통일(DB 시계 의존 제거). 포트 `recordIfAbsent`에 `now` 인자 추가, `StockCommitConsumer`가 `now` 1회 산출 후 전 경로 동일 전달. `existsValid`(라이브 0건)·미사용 `Clock` 필드 전건 제거. `connectionTimeZone=UTC`는 raw-JDBC 바인딩 backstop 존치.
+  - **TZ-UTC-BACKSTOP**: 6서비스 TZ backstop 3겹 — Dockerfile `ENV TZ=UTC` + JVM `-Duser.timezone=UTC` + compose `environment.TZ`(eureka는 infra compose).
+  - **BASEENTITY-AUDIT-SOURCE**: payment `BaseEntity` audit 컬럼 `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 매핑 경계 수동 `.toInstant(UTC)` 제거, `createdAt updatable=false` 보존. (순서 불변 DM-1: V4 DDL → BaseEntity 전환)
+  - verify F4: payment 테스트 `flyway.enabled=false`라 V4 미실행 → docker MySQL V1→V4 순차 적용 실검증(ALTER 문법·datetime(6) 승급·인덱스 보존 통과). 영구 문서 2개 갱신(PITFALLS §6 / ARCHITECTURE).
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화, 이슈/브랜치 #83, 2026-06-03) — `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`
   - 17태스크(T1~T17) + DM1/DM2 + 회귀 가드, 27커밋. `./gradlew test` 846 PASS, 최종 리뷰 critical/major 0.
   - **TC-8 해소**: 4서비스 `Clock` 빈 + `Instant` 통일. `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0), 도메인 `Instant` 인자 주입(now() 직접 0). UTC 저장 일관(ORM hibernate.jdbc.time_zone=UTC + raw-JDBC connectionTimeZone=UTC + 명시 UTC Calendar). payment 도메인 PaymentEvent+PaymentOutbox 모두 Instant(T17, 경계 ofInstant 6곳 제거).

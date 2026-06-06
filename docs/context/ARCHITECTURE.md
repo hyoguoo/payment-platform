@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product dedupe cleanup 스케줄러 + pg stored_traceparent 복원 반영)
+> 최종 갱신: 2026-06-07 (TIME-MODEL-FOLLOWUP — product 멱등 만료 NOW()→Instant 통일 + BaseEntity audit Instant/DATETIME(6) 전환 + TZ backstop 3겹 반영)
 
 ## 개요
 
@@ -184,6 +184,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |
 | Stock publish AFTER_COMMIT 분리 | TX commit 후 stock-committed 발행 |
 | 시간 모델 표준 (Clock + Instant + UTC) | 4서비스 `Clock` 빈 주입 + 도메인 `Instant` 인자 주입(now() 직접 호출 0). UTC 저장 일관 — ORM `hibernate.jdbc.time_zone=UTC` + raw-JDBC `connectionTimeZone=UTC` + 명시 UTC Calendar. JPA auditing `clockDateTimeProvider`. 만료 임계 외부화(`payment.expiration.ready-timeout-minutes`). 벤더 승인 시각 `.toInstant()` 정규화 (TIME-MODEL-AND-EXPIRY, PITFALLS §6/§13) |
+| 시간 모델 잔여 수렴 (TIME-MODEL-FOLLOWUP) | (1) product 재고 멱등(`JdbcEventDedupeStore`) 만료 판정 DB `NOW()` → 호출자 주입 `Instant` 통일(DB 시계 의존 제거), `existsValid`/미사용 `Clock` 필드 제거. (2) BaseEntity audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + V4 `DATETIME` → `DATETIME(6)` 승급, `clockDateTimeProvider` `Instant` 반환. (3) 6서비스 TZ backstop 3겹(Dockerfile `ENV TZ=UTC` + JVM `-Duser.timezone=UTC` + compose `environment.TZ`) |
 | Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
 | Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
 | RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |

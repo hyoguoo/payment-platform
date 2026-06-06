@@ -61,13 +61,14 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: ① 테스트에서 시간 위조 불가 → 시간 의존 분기 단정 어려움. ② `LocalDateTime`(시간대 없음)을 쓰면 컨테이너 TZ 에 따라 의미가 달라져, raw-JDBC 저장값과 ORM 조회 기준이 어긋난다(예: 만료 cutoff vs created_at 9시간 어긋남, dedupe TTL 윈도우 오염).
 
-**처방** (TIME-MODEL-AND-EXPIRY 이후 표준):
-- **시간 소스 = JDK `Clock` 빈 주입**(4서비스 공통, `Clock.systemUTC()`). 도메인은 `Clock` 을 주입받지 않고 호출자가 `clock.instant()` 로 얻은 `Instant` 를 **인자로 주입**한다(도메인 순수성).
-- **시각 타입 = `Instant`**(절대 시점). `LocalDateTime` 은 표현/감사 경계에서만 제한적으로(아래).
-- **UTC 저장 일관**: ORM 경로 `hibernate.jdbc.time_zone=UTC`, raw-JDBC 경로 datasource URL `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` + 바인딩에 명시 UTC `Calendar`. 컬럼은 `DATETIME` 유지(Flyway 불필요).
-- **JPA auditing**: `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` + `Clock` 기반 `DateTimeProvider` 로 `createdAt/updatedAt`(BaseEntity `LocalDateTime`)도 UTC 기준으로 채운다. created_at 기반 만료 cutoff 비교가 비-UTC JVM 에서 어긋나지 않게 하는 핵심.
-- 테스트는 `Clock.fixed(...)` / 가변 `TestClock` 빈으로 시각 고정.
-- **비-UTC JVM 1차 방어**: 운영 컨테이너/JVM `TZ=UTC` 고정(F6 backstop)을 명시 — auditing UTC化와 별개로 깔아두는 안전망.
+**처방** (TIME-MODEL-AND-EXPIRY 표준 + TIME-MODEL-FOLLOWUP 잔여 수렴):
+- **시간 소스 = JDK `Clock` 빈 주입**(4서비스 공통, `Clock.systemUTC()`). 도메인은 `Clock` 을 주입받지 않고 호출자가 `clock.instant()` 로 얻은 `Instant` 를 **인자로 주입**한다(도메인 순수성). 어댑터도 self `clock.instant()` 호출 금지 — 진입점(consumer/스케줄러)이 `now` 를 1회 산출해 전 경로에 같은 `Instant` 를 전달(시계 split 방지). 예: product `StockCommitConsumer` 가 `now` 를 commit 인자와 `resolveExpiresAt` 양쪽에 동일 전달.
+- **시각 타입 = `Instant`**(절대 시점). `LocalDateTime` 은 표현/비즈니스 경계 컬럼(예: `payment_outbox.next_retry_at/in_flight_at`)에서만 제한적으로 — 이 경우 `toInstant/toLocalDateTime(UTC)` 헬퍼로 명시 변환. **BaseEntity audit 컬럼(`created_at/updated_at/deleted_at`)은 `Instant`** (TIME-MODEL-FOLLOWUP 에서 `LocalDateTime` → `Instant` 전환, 매핑 경계 수동 `.toInstant(UTC)` 변환 제거).
+- **UTC 저장 일관**: ORM 경로 `hibernate.jdbc.time_zone=UTC`, raw-JDBC 경로 datasource URL `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` + 바인딩에 명시 UTC `Calendar`. 도메인·audit 시각 컬럼은 `DATETIME(6)`(마이크로초). payment audit 컬럼은 V4(`V4__audit_datetime6_upgrade.sql`)로 `DATETIME` → `DATETIME(6)` 승급.
+- **JPA auditing**: `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` + `Clock` 기반 `DateTimeProvider` 가 `Instant` 를 반환해 `createdAt/updatedAt`(BaseEntity `Instant`)을 UTC 기준으로 채운다. created_at 기반 만료 cutoff 비교가 비-UTC JVM 에서 어긋나지 않게 하는 핵심. 회귀 가드: `JpaAuditingProviderWiringTest`(provider 반환 타입 + `dateTimeProviderRef` 빈 연결).
+- **raw-JDBC 만료 판정도 앱 `Instant` 기준**: product 재고 멱등(`JdbcEventDedupeStore`)의 만료행 삭제·정리가 DB `NOW()` 가 아닌 호출자 주입 `now` 로 비교(TIME-MODEL-FOLLOWUP, DB 시계 의존 제거). `connectionTimeZone=UTC` 는 raw-JDBC `Timestamp` 바인딩 backstop 으로 존치.
+- 테스트는 `Clock.fixed(...)` / 가변 `TestClock` 빈 또는 명시 `Instant` 리터럴로 시각 고정.
+- **비-UTC JVM 1차 방어 (F6 backstop, 적용 완료)**: 6개 서비스 컨테이너/JVM `TZ=UTC` 를 **3겹**으로 명시 — Dockerfile `ENV TZ=UTC` + `ENTRYPOINT` JVM `-Duser.timezone=UTC` + compose `environment.TZ=UTC`(eureka 는 `docker-compose.infra.yml`). 동일값 멱등이라 충돌 없음. auditing UTC化와 별개로 깔아두는 안전망(TIME-MODEL-FOLLOWUP).
 
 ## 7. 종결 상태 재진입
 
