@@ -196,15 +196,17 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/main/java/.../product/infrastructure/messaging/consumer/StockCommitConsumer.java`
 - **완료 조건 (AC)**:
-  - `consume` 메서드 내에서 `Instant now = clock.instant()` 산출
-  - `stockCommitUseCase.commit(idempotencyKey, orderId, productId, qty, now, expiresAt)` — now 추가 전달
-  - `resolveExpiresAt` 내부 `clock.instant()` 호출은 `now`로 대체 또는 공유 (같은 진입점에서 동일 시각 사용)
-  - `consume` 메서드 내 `now` 산출을 `resolveExpiresAt` 호출보다 앞 순서로 배치해 (1) commit의 now 인자, (2) resolveExpiresAt fallback base가 동일 Instant를 공유하도록 한다 (단일 진입점 동일 시각 불변 D1)
+  - [x] `consume` 메서드 내에서 `Instant now = clock.instant()` 산출
+  - [x] `stockCommitUseCase.commit(idempotencyKey, orderId, productId, qty, now, expiresAt)` — now 추가 전달
+  - [x] `resolveExpiresAt` 내부 `clock.instant()` 호출은 `now`로 대체 또는 공유 (같은 진입점에서 동일 시각 사용)
+  - [x] `consume` 메서드 내 `now` 산출을 `resolveExpiresAt` 호출보다 앞 순서로 배치해 (1) commit의 now 인자, (2) resolveExpiresAt fallback base가 동일 Instant를 공유하도록 한다 (단일 진입점 동일 시각 불변 D1)
 - **의존**: P4
 - **테스트 스펙**:
   - 클래스: `StockCommitConsumerTest` (신규 또는 기존 확장)
   - 메서드:
-    - `consume_clock주입now_useCaseCommit에전달()`: `Clock.fixed` 주입 시 `commit`의 now 인자가 고정 시각과 일치하는지 Mock `StockCommitUseCase`로 `verify(stockCommitUseCase).commit(eq(uuid), any(), anyLong(), anyInt(), eq(fixedNow), any())` 단정
+    - [x] `consume_clock주입now_useCaseCommit에전달()`: tick-advancing Clock 주입 — `expiresAt=null/occurredAt=null` 경로에서 commit의 now 인자와 resolveExpiresAt fallback base가 동일 Instant임을 단정 (D1 단일 진입점 동일 시각 불변)
+
+**완료 결과**: `StockCommitConsumer.resolveExpiresAt` 시그니처를 `(StockCommittedMessage, Instant now)`로 변경 — 내부 `clock.instant()` 재호출 제거. `consume` 진입 시 단일 `now = clock.instant()` 산출 후 `resolveExpiresAt(message, now)`와 `commit(..., now, expiresAt)` 양쪽에 동일 Instant 전달. `StockCommitConsumerTest` — tick Clock RED 테스트 `consume_clock주입now_useCaseCommit에전달` 추가 + 기존 3개 유지. product-service 단위 26 + 통합 6 = 32 테스트 전부 PASS. G1 묶음(P1~P5) 컴파일 닫힘 + 멱등 경로 완성.
 
 ---
 
