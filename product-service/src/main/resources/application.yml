@@ -10,9 +10,10 @@ spring:
       enabled: true
 
   datasource:
-    # DM2 — connectionTimeZone=UTC: existsValid/SQL_DELETE_EXPIRED_BY_UUID 의 DB NOW() 와
-    #        recordIfAbsent 의 UTC Calendar 바인딩이 동일 UTC 기준을 공유하도록 한다.
-    #        docker 프로필(application-docker.yml)과 동일 규약 적용 — split-brain 해소(D7).
+    # D1/D2로 NOW()·existsValid 제거 완료.
+    # connectionTimeZone=UTC 존치 근거: raw-JDBC Timestamp.from(instant) 바인딩
+    #   (recordIfAbsent INSERT IGNORE / recordIfAbsent DELETE-by-uuid / deleteExpired)
+    #   의 DB 세션 UTC backstop — D5.
     url: ${PRODUCT_DATASOURCE_URL:jdbc:mysql://localhost:3309/product?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
     username: ${PRODUCT_DATASOURCE_USERNAME:root}
     password: ${PRODUCT_DATASOURCE_PASSWORD:root}

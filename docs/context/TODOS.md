@@ -110,17 +110,17 @@ CBA-7 이 product-service `FlywayDockerProfileTest` 1건만 추가. user-service
 
 product-service 에 `Clock.systemUTC()` 빈(`infrastructure/config/ClockConfig`) 도입. `DedupeCleanupWorker`/`StockCommitConsumer` 의 `Instant.now()` → `clock.instant()` 전환(grep 0건). `JdbcEventDedupeStore` raw-JDBC UTC 규약(connectionTimeZone=UTC default/docker + 명시 UTC Calendar) 적용으로 `NOW()` vs 앱 `Instant` split-brain 해소. 상세는 ## 완료.
 
-#### [TIME-PRODUCT-NOW-UNIFY] — product dedupe `NOW()` → 앱 주입 `Instant` 통일 (D7 범위 이연)
+#### ~~[TIME-PRODUCT-NOW-UNIFY] — product dedupe `NOW()` → 앱 주입 `Instant` 통일~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
 
-`JdbcEventDedupeStore.existsValid`/`SQL_DELETE_EXPIRED_BY_UUID` 가 DB `NOW()`(세션 TZ) 로 만료를 판정하고 `recordIfAbsent` 는 앱 `Instant`(UTC Calendar)로 박는다. 현재 `connectionTimeZone=UTC` 단일 의존으로 정합(split-brain 해소됨)하나, "앱 시계 vs DB 시계" 이원화 자체를 줄이려면 `NOW()` 비교를 앱 주입 `Instant` 로 통일하는 게 더 결정적. TIME-MODEL-AND-EXPIRY 에서 최소선(connection TZ=UTC)으로 처리하고 이원화 제거는 이연.
+`JdbcEventDedupeStore.recordIfAbsent` 의 만료행 삭제 SQL `expires_at < NOW()` 를 호출자 주입 `Instant`(`expires_at < ?`)로 통일해 DB 시계 의존 제거. 포트 `recordIfAbsent` 에 `now` 인자 추가, 진입점(`StockCommitConsumer`)이 `now` 1회 산출 후 전 경로 동일 전달. 실사용 0건 `existsValid`·`SQL_EXISTS_VALID`·미사용 `Clock` 필드 전건 제거. `connectionTimeZone=UTC` 는 raw-JDBC 바인딩 backstop 으로 존치. 상세: `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`.
 
-#### [TZ-UTC-BACKSTOP] — 컨테이너/JVM TZ=UTC 명시 (F6 1차 방어)
+#### ~~[TZ-UTC-BACKSTOP] — 컨테이너/JVM TZ=UTC 명시~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
 
-비-UTC JVM 만료 정합의 1차 방어가 현재 암묵 의존이다. payment auditing 은 `clockDateTimeProvider` 로 UTC 化했으나, 운영 컨테이너/JVM `TZ=UTC` 고정(Dockerfile `ENV TZ=UTC` 또는 `-Duser.timezone=UTC`)을 명시해 backstop 을 코드 외 설정으로도 박을 것. 혼재 배포 시 시각 이중 해석(F6) 방지.
+6개 서비스 TZ backstop 3겹 적용 — Dockerfile `ENV TZ=UTC` + `ENTRYPOINT` JVM `-Duser.timezone=UTC` + compose `environment.TZ=UTC`(eureka 는 `docker-compose.infra.yml`). 동일값 멱등 defense-in-depth, auditing UTC化와 별개 안전망.
 
-#### [BASEENTITY-AUDIT-SOURCE] — BaseEntity auditing 소스 일원화 (R2 후속)
+#### ~~[BASEENTITY-AUDIT-SOURCE] — BaseEntity auditing 소스 일원화~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
 
-TIME-MODEL-AND-EXPIRY 에서 만료 경로 정합을 위해 `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` 로 `createdAt/updatedAt`(BaseEntity `LocalDateTime`)을 UTC `Clock` 기준으로 채우도록 적용했다(payment). 단 BaseEntity 컬럼 타입(`LocalDateTime`) 자체와 다른 서비스 auditing 소스 전반의 일원화는 이연 — 돈 앵커가 아니고 범위 초과였다.
+payment `BaseEntity` audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 엔티티 매핑 경계 수동 `.toInstant(UTC)` 변환 제거, `createdAt updatable=false` 보존. (pg/product/user 는 auditing superclass 부재 — "다른 서비스 일원화" 대상 없음 확인.)
 
 #### [SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화
 

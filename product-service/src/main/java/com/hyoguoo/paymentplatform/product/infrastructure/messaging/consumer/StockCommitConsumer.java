@@ -61,7 +61,9 @@ public class StockCommitConsumer {
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
-        Instant expiresAt = resolveExpiresAt(message);
+        // D1 — 단일 진입점 단일 시각 산출: now를 먼저 산출하고 commit 인자와 resolveExpiresAt fallback base에 동일하게 전달한다.
+        Instant now = clock.instant();
+        Instant expiresAt = resolveExpiresAt(message, now);
         String orderId = message.orderId() != null ? message.orderId() : "";
 
         stockCommitUseCase.commit(
@@ -69,24 +71,26 @@ public class StockCommitConsumer {
                 orderId,
                 message.productId(),
                 message.qty(),
+                now,
                 expiresAt
         );
     }
 
     /**
      * expiresAt null fallback 계산.
+     *
+     * <p>D1: {@code now} 는 consume 진입 시 단일 산출된 Instant — 내부에서 clock.instant() 를 재호출하지 않는다.
      * <ol>
      *   <li>message.expiresAt() non-null → 그대로 사용</li>
      *   <li>null + occurredAt non-null → occurredAt + DEDUPE_TTL</li>
-     *   <li>null + occurredAt null → clock.instant() + DEDUPE_TTL</li>
+     *   <li>null + occurredAt null → now + DEDUPE_TTL (commit 인자 now 와 동일 Instant 공유)</li>
      * </ol>
      */
-    private Instant resolveExpiresAt(StockCommittedMessage message) {
+    private Instant resolveExpiresAt(StockCommittedMessage message, Instant now) {
         if (message.expiresAt() != null) {
             return message.expiresAt();
         }
-        // D1 — Instant.now() 직접 호출 대신 Clock 주입으로 시각 소스 교체 (T13)
-        Instant base = message.occurredAt() != null ? message.occurredAt() : clock.instant();
+        Instant base = message.occurredAt() != null ? message.occurredAt() : now;
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "expiresAt null fallback: base=" + base + " eventUUID=" + message.idempotencyKey());
         return base.plus(StockCommitUseCase.DEDUPE_TTL);

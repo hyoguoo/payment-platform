@@ -12,26 +12,21 @@ public interface EventDedupeStore {
     /**
      * eventUUID를 기록하고, 최초 기록이면 true를 반환한다.
      * 이미 존재하는 경우(중복) false를 반환한다.
-     * TTL 만료된 엔트리는 덮어쓰고 true를 반환한다.
+     * TTL 만료된 엔트리(expires_at &lt; now)는 삭제 후 재삽입하여 true를 반환한다.
+     *
+     * <p>D1 — now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
+     * 포트 구현체는 내부에서 Clock.instant() 를 호출하지 않는다.
      *
      * @param eventUUID  이벤트 식별자
+     * @param now        현재 시각 — 만료 경계 판정 기준 (호출자 주입)
      * @param expiresAt  만료 시각 (TTL)
      * @return 최초 기록(또는 만료 후 재기록)이면 true, 유효한 중복이면 false
      */
-    boolean recordIfAbsent(String eventUUID, Instant expiresAt);
-
-    /**
-     * eventUUID가 유효하게(TTL 미만료) 존재하는지 확인한다.
-     * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
-     *
-     * @param eventUUID 이벤트 식별자
-     * @return 유효한 중복이면 true, 없거나 만료됐으면 false
-     */
-    boolean existsValid(String eventUUID);
+    boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt);
 
     /**
      * 만료된 dedupe 행을 일괄 삭제한다.
-     * expires_at < now 조건의 idempotent batch DELETE.
+     * expires_at &lt; now 조건의 idempotent batch DELETE.
      * 동시 실행 시 이미 삭제된 행은 0 row affected — 무해.
      *
      * @param now       현재 시각

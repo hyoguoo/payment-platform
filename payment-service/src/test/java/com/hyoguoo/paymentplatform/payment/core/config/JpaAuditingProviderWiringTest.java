@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
 import java.lang.reflect.Field;
+import java.time.Instant;
+import java.time.temporal.TemporalAccessor;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -82,5 +85,32 @@ class JpaAuditingProviderWiringTest extends BaseIntegrationTest {
                         JpaConfig.@EnableJpaAuditing 의 dateTimeProviderRef 설정을 확인하라.
                         """)
                 .isSameAs(clockDateTimeProviderBean);
+    }
+
+    /**
+     * D4 전환 가드 — {@code clockDateTimeProvider} 반환 타입이 {@code Instant} 임을 단정한다.
+     *
+     * <p>P12(clockDateTimeProvider 반환 타입 Instant 전환) 의 RED 게이트 역할.
+     * 현재(P11 시점) {@code clockDateTimeProvider} 는 {@code LocalDateTime} 을 반환하므로
+     * 이 테스트는 RED 상태이고, P12 구현 후 GREEN 이 된다.
+     *
+     * <p>P12 완료 후에도 이 테스트가 지속적으로 GREEN 이면 {@code Instant} 반환이 회귀 없이 유지됨을 보장한다.
+     */
+    @Test
+    @DisplayName("clockDateTimeProvider.getNow() 가 Instant 타입을 반환한다 (D4 전환 가드)")
+    void clockDateTimeProvider_반환타입이Instant_를_반환한다() {
+        // given — ApplicationContext 에서 clockDateTimeProvider 빈을 꺼낸다
+        DateTimeProvider provider =
+                applicationContext.getBean("clockDateTimeProvider", DateTimeProvider.class);
+
+        // when
+        Optional<TemporalAccessor> nowOpt = provider.getNow();
+
+        // then — getNow() 결과가 Instant 타입이어야 한다 (D4: LocalDateTime → Instant 전환)
+        assertThat(nowOpt).isPresent();
+        assertThat(nowOpt.get())
+                .as("D4 전환 가드: clockDateTimeProvider 가 Instant 를 반환해야 한다. "
+                        + "LocalDateTime 이 반환되면 P12(반환 타입 Instant 전환)가 미완료된 것이다.")
+                .isInstanceOf(Instant.class);
     }
 }

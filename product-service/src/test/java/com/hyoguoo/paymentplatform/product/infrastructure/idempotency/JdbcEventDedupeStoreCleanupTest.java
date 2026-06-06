@@ -20,7 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * JdbcEventDedupeStore.deleteExpired Testcontainers 통합 테스트.
  *
- * <p>만료 행만 삭제·미만료 행 잔존, batchSize 제한, 미만료 existsValid 보존 3개 시나리오 검증.
+ * <p>만료 행만 삭제·미만료 행 잔존, batchSize 제한, 미만료 행 불영향 3개 시나리오 검증.
  * product-service Flyway V1(schema only) 자동 적용 환경.
  */
 @SpringBootTest
@@ -130,8 +130,8 @@ class JdbcEventDedupeStoreCleanupTest {
     }
 
     @Test
-    @DisplayName("deleteExpired — 미만료 dedupe 행은 existsValid=true 유지, 삭제 없음")
-    void deleteExpired_existsValid미만료행_불영향() {
+    @DisplayName("deleteExpired — 미만료 dedupe 행은 삭제되지 않고 그대로 잔존")
+    void deleteExpired_미만료행_불영향() {
         Instant future = Instant.now().plusSeconds(604800); // now + 7day
 
         String uuid1 = UUID.randomUUID().toString();
@@ -142,7 +142,6 @@ class JdbcEventDedupeStoreCleanupTest {
         int deleted = dedupeStore.deleteExpired(Instant.now(), 10);
 
         assertThat(deleted).isEqualTo(0);
-        assertThat(dedupeStore.existsValid(uuid1)).isTrue();
-        assertThat(dedupeStore.existsValid(uuid2)).isTrue();
+        assertThat(countAll()).isEqualTo(2);
     }
 }

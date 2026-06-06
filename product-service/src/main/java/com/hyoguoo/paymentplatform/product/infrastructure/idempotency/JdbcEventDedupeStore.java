@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -23,8 +22,7 @@ import org.springframework.stereotype.Repository;
  * 본 어댑터는 {@code event_uuid + expires_at} 만 사용한다 — 나머지 컬럼은 NULL 허용이다.
  * <p>
  * 전략:
- * - existsValid: SELECT + expires_at 비교 (만료 여부 확인) — NOW() 는 connectionTimeZone=UTC 적용 후 UTC 기준.
- * - recordIfAbsent: 만료 엔트리 DELETE → INSERT IGNORE.
+ * - recordIfAbsent: 만료 엔트리 DELETE(expires_at &lt; now, 호출자 주입) → INSERT IGNORE.
  *   INSERT IGNORE 가 0 row 영향이면 중복(false), 1 row 이면 최초(true).
  * - deleteExpired: expires_at &lt; :now 조건 idempotent batch DELETE (LIMIT :batchSize).
  *   NamedParameterJdbcTemplate 을 사용해 LIMIT 바인딩을 안전하게 처리한다.
@@ -42,45 +40,25 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
     /** D7 — UTC Calendar 상수: raw-JDBC Timestamp 바인딩 시 비-UTC JVM TZ 오차 방지. */
     private static final Calendar UTC_CALENDAR = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 
-    private static final String SQL_EXISTS_VALID =
-            "SELECT COUNT(*) FROM stock_commit_dedupe "
-                    + "WHERE event_uuid = ? AND expires_at >= NOW()";
-
     private static final String SQL_INSERT_IGNORE =
             "INSERT IGNORE INTO stock_commit_dedupe (event_uuid, expires_at) VALUES (?, ?)";
 
     private static final String SQL_DELETE_EXPIRED_BY_UUID =
-            "DELETE FROM stock_commit_dedupe WHERE event_uuid = ? AND expires_at < NOW()";
+            "DELETE FROM stock_commit_dedupe WHERE event_uuid = ? AND expires_at < ?";
 
     private static final String SQL_DELETE_EXPIRED =
             "DELETE FROM stock_commit_dedupe "
                     + "WHERE expires_at < :now "
                     + "LIMIT :batchSize";
 
-    private final Clock clock;
     private final JdbcTemplate jdbcTemplate;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     public JdbcEventDedupeStore(
-            Clock clock,
             JdbcTemplate jdbcTemplate,
             NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
-        this.clock = clock;
         this.jdbcTemplate = jdbcTemplate;
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
-    }
-
-    /**
-     * eventUUID 가 유효하게(TTL 미만료) 존재하는지 확인한다.
-     * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
-     *
-     * @param eventUUID 이벤트 식별자
-     * @return 유효한 중복이면 true, 없거나 만료됐으면 false
-     */
-    @Override
-    public boolean existsValid(String eventUUID) {
-        Integer count = jdbcTemplate.queryForObject(SQL_EXISTS_VALID, Integer.class, eventUUID);
-        return count != null && count > 0;
     }
 
     /**
@@ -88,14 +66,27 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      * 이미 유효한 중복이면 false 를 반환한다.
      * 만료된 엔트리는 삭제 후 재삽입하여 true 를 반환한다.
      *
+     * <p>D1 — now 는 호출자(컨슈머 진입점)가 주입. 구현체는 내부에서 시각을 생성하지 않는다.
+     * D6 — DELETE 조건 {@code expires_at < now}: 경계 동치(expires_at == now) 는 만료로 보지 않는다.
+     * D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now/expires_at 절대시점 정확 보존.
+     *
      * @param eventUUID  이벤트 식별자
+     * @param now        현재 시각 — 만료 경계 판정 기준 (호출자 주입)
      * @param expiresAt  만료 시각 (TTL)
      * @return 최초 기록(또는 만료 후 재기록)이면 true, 유효한 중복이면 false
      */
     @Override
-    public boolean recordIfAbsent(String eventUUID, Instant expiresAt) {
-        // 만료된 엔트리 삭제 (없으면 0 row 영향)
-        jdbcTemplate.update(SQL_DELETE_EXPIRED_BY_UUID, eventUUID);
+    public boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt) {
+        // 만료된 엔트리 삭제 — expires_at < now(strict). 경계 동치는 잔존(D6).
+        // D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now 절대시점 정확 보존.
+        Timestamp nowTs = Timestamp.from(now);
+        jdbcTemplate.update(
+                SQL_DELETE_EXPIRED_BY_UUID,
+                ps -> {
+                    ps.setString(1, eventUUID);
+                    ps.setTimestamp(2, nowTs, UTC_CALENDAR);
+                }
+        );
 
         // INSERT IGNORE: 기존 유효 엔트리가 있으면 0, 없으면 1
         // D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 expires_at 절대시점 정확 보존 (AC8)

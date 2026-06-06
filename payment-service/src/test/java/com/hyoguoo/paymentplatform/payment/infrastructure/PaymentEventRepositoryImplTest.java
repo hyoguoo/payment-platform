@@ -39,7 +39,8 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     @DisplayName("findReadyPaymentsOlderThan(Instant) — cutoff 이전 READY 결제만 반환한다.")
     void findReadyPaymentsOlderThan_withInstantCutoff_returnsOnlyOlderPayments() {
         // given — READY 결제 2건을 raw SQL 로 직접 삽입하여 created_at 을 제어한다.
-        // created_at 은 LocalDateTime (BaseEntity), JPQL 비교도 LocalDateTime 기준.
+        // created_at 은 Instant (BaseEntity, DATETIME(6)) 이나, raw SQL INSERT 에는 LocalDateTime 바인딩도
+        // DATETIME(6) 컬럼에 그대로 저장된다. cutoff(Instant) 비교는 동일 UTC 기준으로 일관된다.
         // 테스트에서 두 건의 created_at 시각 차이를 명확히 하여 cutoff 경계를 검증한다.
 
         // older: 현재 UTC - 61분 (cutoff 이전 → 조회 대상)
@@ -118,9 +119,8 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
         Instant afterSave = Instant.now();
 
         // when — cutoff 에 여유(+2초)를 준다.
-        // payment_event.created_at 은 DATETIME(초 정밀도)이라 저장 시 밀리초가 반올림되어
-        // 최대 +1초까지 미래로 올라갈 수 있다. cutoff 를 afterSave 와 같은 초로 두면 그 반올림
-        // 경계에서 created_at >= cutoff 가 되어 flaky 하므로(밀리초 0.5+ 케이스) 여유로 흡수한다.
+        // payment_event.created_at 은 DATETIME(6) (마이크로초 정밀도, V4 승급)이라 저장 시 서브초 절삭이
+        // 사실상 없으나, save~afterSave 사이 미세 시차를 흡수하기 위해 +2초 여유를 유지한다.
         // ※ dateTimeProviderRef 누락(기본 CurrentDateTimeProvider 회귀)을 JVM TZ 무관하게 잡는
         //   결정적 가드는 JpaAuditingProviderWiringTest 가 담당한다. 본 테스트는 통합 경로 스모크다.
         Instant cutoff = afterSave.plusSeconds(2);
@@ -137,6 +137,43 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
         PaymentEvent loaded = paymentEventRepository.findById(entity.getId()).orElseThrow();
         assertThat(loaded.getCreatedAt())
                 .as("DM1: JPA save 후 created_at 이 Clock(UTC) 기준 save 시점 근방으로 채워져야 한다")
+                .isAfterOrEqualTo(beforeSave.minusSeconds(2))
+                .isBeforeOrEqualTo(afterSave.plusSeconds(2));
+    }
+
+    /**
+     * P17 — D4(BaseEntity Instant 전환 + DATETIME(6) 승급) 후 created_at 의 Instant round-trip 완전 검증.
+     *
+     * <p>JPA save → flush → findById 경로에서 created_at 이 {@link Instant} 타입으로 저장·조회되고,
+     * save 시점 근방으로 채워짐을 단정한다. DATETIME(6) 마이크로초 정밀도로 서브초 절삭이 없다.
+     */
+    @Test
+    @DisplayName("save round-trip — created_at 이 Instant 로 저장·조회되고 save 시점 근방이다 (DATETIME(6))")
+    void save_createdAt_Instant_roundTrip() {
+        // given
+        Instant beforeSave = Instant.now();
+
+        PaymentEventEntity entity = PaymentEventEntity.builder()
+                .buyerId(1L)
+                .sellerId(2L)
+                .orderName("roundtrip-order")
+                .orderId("roundtrip-order-id-1")
+                .gatewayType(PaymentGatewayType.TOSS)
+                .status(PaymentEventStatus.READY)
+                .retryCount(0)
+                .build();
+        jpaPaymentEventRepository.save(entity);
+        jpaPaymentEventRepository.flush();
+
+        Instant afterSave = Instant.now();
+
+        // when
+        PaymentEvent loaded = paymentEventRepository.findById(entity.getId()).orElseThrow();
+
+        // then — Instant 타입 + save 시점 근방(±2초)
+        assertThat(loaded.getCreatedAt())
+                .as("P17: created_at 이 Instant 타입으로 round-trip 된다")
+                .isInstanceOf(Instant.class)
                 .isAfterOrEqualTo(beforeSave.minusSeconds(2))
                 .isBeforeOrEqualTo(afterSave.plusSeconds(2));
     }

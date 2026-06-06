@@ -44,6 +44,7 @@ services:
       redis-stock:
         condition: service_healthy
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
@@ -90,6 +91,7 @@ services:
       redis-dedupe:
         condition: service_healthy
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
@@ -135,6 +137,7 @@ services:
       kafka:
         condition: service_healthy
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
@@ -170,6 +173,7 @@ services:
       mysql-user:
         condition: service_healthy
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
@@ -213,6 +217,7 @@ services:
     ports:
       - "8090:8080"
     environment:
+      TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_DEFAULT_ZONE: http://eureka:8761/eureka/
       MONOLITH_FALLBACK_URI: http://payment-service:8080

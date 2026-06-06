@@ -74,8 +74,8 @@ public class PaymentOutboxEntity extends BaseEntity {
                 .retryCount(retryCount)
                 .nextRetryAt(toInstant(nextRetryAt))
                 .inFlightAt(toInstant(inFlightAt))
-                .createdAt(toInstant(getCreatedAt()))
-                .updatedAt(toInstant(getUpdatedAt()))
+                .createdAt(getCreatedAt())
+                .updatedAt(getUpdatedAt())
                 .allArgsBuild();
     }
 

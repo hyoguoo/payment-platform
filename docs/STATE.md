@@ -1,7 +1,7 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-03 — TIME-MODEL-AND-EXPIRY **봉인 완료** (PR 생성 대기). 이슈 #83, 브랜치 #83. 활성 작업 없음.
-> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조 — 후속 등재 [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE] 또는 PHASE-4 등.
+> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **봉인 완료(done)**. 이슈/브랜치 #89, PR 생성 단계. 활성 작업 없음.
+> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조.
 
 ## 활성 작업
 
@@ -9,6 +9,12 @@
 
 ## 직전 봉인
 
+- **TIME-MODEL-FOLLOWUP** (시간 모델 잔여 정합 3건 — 이슈/브랜치 #89, 2026-06-07) — `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`
+  - 18태스크(P1~P18). payment·product 단위+통합 **857 PASS**, 리뷰 critical/major 0(minor 5 처리). TIME-MODEL-AND-EXPIRY 이연 3건 전부 해소.
+  - **TIME-PRODUCT-NOW-UNIFY**: product `JdbcEventDedupeStore.recordIfAbsent` 만료 삭제 DB `NOW()` → 호출자 주입 `Instant` 통일(DB 시계 의존 제거). 포트 `recordIfAbsent`에 `now` 인자 추가, `StockCommitConsumer`가 `now` 1회 산출 후 전 경로 동일 전달. `existsValid`(라이브 0건)·미사용 `Clock` 필드 전건 제거. `connectionTimeZone=UTC`는 raw-JDBC 바인딩 backstop 존치.
+  - **TZ-UTC-BACKSTOP**: 6서비스 TZ backstop 3겹 — Dockerfile `ENV TZ=UTC` + JVM `-Duser.timezone=UTC` + compose `environment.TZ`(eureka는 infra compose).
+  - **BASEENTITY-AUDIT-SOURCE**: payment `BaseEntity` audit 컬럼 `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 매핑 경계 수동 `.toInstant(UTC)` 제거, `createdAt updatable=false` 보존. (순서 불변 DM-1: V4 DDL → BaseEntity 전환)
+  - verify F4: payment 테스트 `flyway.enabled=false`라 V4 미실행 → docker MySQL V1→V4 순차 적용 실검증(ALTER 문법·datetime(6) 승급·인덱스 보존 통과). 영구 문서 2개 갱신(PITFALLS §6 / ARCHITECTURE).
 - **TIME-MODEL-AND-EXPIRY** (PR B — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화, 이슈/브랜치 #83, 2026-06-03) — `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`
   - 17태스크(T1~T17) + DM1/DM2 + 회귀 가드, 27커밋. `./gradlew test` 846 PASS, 최종 리뷰 critical/major 0.
   - **TC-8 해소**: 4서비스 `Clock` 빈 + `Instant` 통일. `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0), 도메인 `Instant` 인자 주입(now() 직접 0). UTC 저장 일관(ORM hibernate.jdbc.time_zone=UTC + raw-JDBC connectionTimeZone=UTC + 명시 UTC Calendar). payment 도메인 PaymentEvent+PaymentOutbox 모두 Instant(T17, 경계 ofInstant 6곳 제거).

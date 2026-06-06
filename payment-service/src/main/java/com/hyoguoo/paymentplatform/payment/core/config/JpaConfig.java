@@ -2,8 +2,7 @@ package com.hyoguoo.paymentplatform.payment.core.config;
 
 import jakarta.persistence.EntityManagerFactory;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -20,9 +19,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * <p>DM1 — auditing UTC 일원화:
  * Spring 기본 {@code CurrentDateTimeProvider} 는 JVM 기본 TZ 로 {@code LocalDateTime.now()} 를 반환한다.
  * 비-UTC JVM 에서는 KST wall-clock 값이 저장되어 UTC Instant cutoff 와 TZ 기준 불일치가 발생한다.
- * {@code clockDateTimeProvider} 빈이 {@code Clock} 을 통해 항상 UTC 기준 {@code LocalDateTime} 을 반환한다.
+ * {@code clockDateTimeProvider} 빈이 {@code Clock} 을 통해 {@code Instant} 를 반환한다.
  * {@code @EnableJpaAuditing(dateTimeProviderRef = "clockDateTimeProvider")} 로 연결.
- * BaseEntity 필드/컬럼 타입은 변경하지 않는다(NG4).
  */
 @Configuration
 @EnableJpaAuditing(dateTimeProviderRef = "clockDateTimeProvider")
@@ -39,13 +37,12 @@ public class JpaConfig {
      * Clock 기반 DateTimeProvider.
      *
      * <p>JPA auditing(@CreatedDate/@LastModifiedDate)이 이 빈을 통해 현재 시각을 얻는다.
-     * {@code LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)} 로 UTC 기준 LocalDateTime 을 반환해
-     * 비-UTC JVM TZ 에서도 created_at 이 UTC 기준으로 저장된다.
-     * BaseEntity.createdAt 타입(LocalDateTime)은 유지하므로 NG4 준수.
+     * {@code clock.instant()} 로 절대 시점({@link Instant})을 반환해
+     * 비-UTC JVM TZ 에서도 auditing 시각이 UTC 기준 Instant 로 일관되게 저장된다.
      */
     @Bean
     public DateTimeProvider clockDateTimeProvider() {
-        return () -> Optional.of(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+        return () -> Optional.of(clock.instant());
     }
 
     /**
