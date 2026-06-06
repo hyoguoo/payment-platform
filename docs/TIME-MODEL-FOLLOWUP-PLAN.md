@@ -100,16 +100,18 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/main/java/.../product/application/port/out/EventDedupeStore.java`
 - **완료 조건 (AC)**:
-  - `existsValid(String)` 메서드 + javadoc 제거
-  - `recordIfAbsent` 시그니처 → `boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt)`
-  - 컴파일 통과 (구현체/Fake 아직 미수정이라 컴파일 에러 발생 예정 — RED 상태 정상)
+  - [x] `existsValid(String)` 메서드 + javadoc 제거
+  - [x] `recordIfAbsent` 시그니처 → `boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt)`
+  - [x] 컴파일 통과 (구현체/Fake 아직 미수정이라 컴파일 에러 발생 예정 — RED 상태 정상)
 - **의존**: 없음
 - **테스트 스펙**:
   - 클래스: `EventDedupeStoreContractTest` (기존 파일 교체)
   - 메서드:
-    - `recordIfAbsent_포트시그니처_now포함_컴파일계약()`: 익명 구현체로 `recordIfAbsent(String, Instant, Instant)` 시그니처 존재를 컴파일 수준 단정
-    - `deleteExpired_포트시그니처_컴파일계약()`: 기존 유지
-    - existsValid 계약 테스트 제거
+    - [x] `recordIfAbsent_포트시그니처_now포함_컴파일계약()`: 익명 구현체로 `recordIfAbsent(String, Instant, Instant)` 시그니처 존재를 컴파일 수준 단정
+    - [x] `deleteExpired_포트시그니처_컴파일계약()`: 기존 유지
+    - [x] existsValid 계약 테스트 제거
+
+**완료 결과**: 포트 인터페이스 `EventDedupeStore.java` — `existsValid` 제거 + `recordIfAbsent` 3-인자 시그니처 확정. `EventDedupeStoreContractTest` 컴파일 계약 테스트 2개 작성. 구현체(`JdbcEventDedupeStore`)·Fake·호출자 컴파일 에러는 P2~P5에서 해소 예정(PLAN AC 명시된 정상 RED 상태).
 
 ---
 
