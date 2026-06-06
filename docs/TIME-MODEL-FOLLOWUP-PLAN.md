@@ -260,10 +260,12 @@ flowchart TD
   - `eureka-server/Dockerfile`
   - `gateway/Dockerfile`
 - **완료 조건 (AC)**:
-  - 각 Dockerfile `FROM` 직후 `ENV TZ=UTC` 추가
-  - 각 Dockerfile `ENTRYPOINT` → `["java","-Duser.timezone=UTC","-jar","/app/app.jar"]`
-  - 6개 모두 동일 패턴 적용
+  - [x] 각 Dockerfile `FROM` 직후 `ENV TZ=UTC` 추가
+  - [x] 각 Dockerfile `ENTRYPOINT` → `["java","-Duser.timezone=UTC","-jar","/app/app.jar"]`
+  - [x] 6개 모두 동일 패턴 적용
 - **의존**: 없음
+
+**완료 결과**: 6개 Dockerfile(payment/pg/product/user/eureka/gateway) — `FROM eclipse-temurin:21-jre` 직후 `ENV TZ=UTC` 추가, `ENTRYPOINT` → `["java","-Duser.timezone=UTC","-jar","/app/app.jar"]` 균일 적용. D3 TZ backstop 겹 1(OS 환경변수)+2(JVM 시스템 프로퍼티) 완성.
 
 ---
 
