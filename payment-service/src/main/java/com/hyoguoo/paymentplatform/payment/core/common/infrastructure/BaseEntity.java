@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.core.common.infrastructure;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.Getter;
 
 import jakarta.persistence.EntityListeners;
@@ -15,14 +15,14 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public abstract class BaseEntity {
 
-    @Column(name = "created_at", columnDefinition = "datetime", updatable = false)
+    @Column(name = "created_at", columnDefinition = "datetime(6)", updatable = false)
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
-    @Column(name = "updated_at", columnDefinition = "datetime")
+    @Column(name = "updated_at", columnDefinition = "datetime(6)")
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
-    @Column(name = "deleted_at", columnDefinition = "datetime")
-    private LocalDateTime deletedAt;
+    @Column(name = "deleted_at", columnDefinition = "datetime(6)")
+    private Instant deletedAt;
 }

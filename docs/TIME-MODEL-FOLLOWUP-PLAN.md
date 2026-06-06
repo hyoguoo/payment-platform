@@ -396,8 +396,10 @@ flowchart TD
 - **테스트 스펙**:
   - 클래스: `BaseEntityAuditTypeTest` (신규 단위 테스트)
   - 메서드:
-    - `audit3필드_타입이_Instant()`: 리플렉션으로 `createdAt`/`updatedAt`/`deletedAt` 필드 타입이 `java.time.Instant`임을 단정
-    - `createdAt_updatableFalse_보존()`: `createdAt` 필드의 `@Column.updatable()`이 `false`임을 리플렉션으로 단정(audit 불변 회귀 가드)
+    - [x] `audit3필드_타입이_Instant()`: 리플렉션으로 `createdAt`/`updatedAt`/`deletedAt` 필드 타입이 `java.time.Instant`임을 단정
+    - [x] `createdAt_updatableFalse_보존()`: `createdAt` 필드의 `@Column.updatable()`이 `false`임을 리플렉션으로 단정(audit 불변 회귀 가드)
+
+**완료 결과**: `BaseEntity` 3필드(`createdAt`/`updatedAt`/`deletedAt`) `LocalDateTime` → `Instant` 전환, `@Column.columnDefinition` `"datetime"` → `"datetime(6)"`. `createdAt`의 `@Column(updatable = false)` 보존. import `LocalDateTime` → `Instant`. `BaseEntityAuditTypeTest` 2개 모두 GREEN. DM1 회귀 가드(`auditing_createdAt_isFilledByClockDateTimeProvider`) GREEN(provider Instant ↔ 필드 Instant 정합). 단위 465 + 통합 33 = 498 PASS. Rule 1 자동수정: `PaymentEventEntity` `getCreatedAt().toInstant(ZoneOffset.UTC)` → `getCreatedAt()` + `PaymentOutboxEntity` `toInstant(getCreatedAt())`/`toInstant(getUpdatedAt())` → `getCreatedAt()`/`getUpdatedAt()` (컴파일 차단 최소 수정, P15/P16 스타일·주석 정리는 해당 태스크에서 진행).
 
 ---
 

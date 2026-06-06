@@ -116,9 +116,7 @@ public class PaymentEventEntity extends BaseEntity {
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)
                                 .orElse(Collections.emptyList()))
                 )
-                .createdAt(getCreatedAt() != null
-                        ? getCreatedAt().toInstant(java.time.ZoneOffset.UTC)
-                        : null)
+                .createdAt(getCreatedAt())
                 .lastStatusChangedAt(lastStatusChangedAt)
                 .allArgsBuild();
     }
