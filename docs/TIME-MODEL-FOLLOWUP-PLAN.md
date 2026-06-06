@@ -78,6 +78,7 @@ flowchart TD
 | D4 감사 컬럼 절대 시점 타입 + 정밀도 승급 | P11~P18 |
 | D5 상품 연결 시간대 UTC 존치 | P10 |
 | D6 만료 경계 검증 재배치 | P2·P7 |
+| D7 세 항목 단일 PR·TDD 커밋 흐름 | 전체(P1~P18) |
 
 ### 트레이드오프 / 후속
 
@@ -476,7 +477,7 @@ flowchart TD
 
 - **총 태스크 수**: 18개
 - **domain_risk=true 태스크**: P1, P2, P4, P5, P11, P12, P13, P14, P18 — 9개
-- **tdd=true 태스크**: P1, P2, P4, P5, P11, P12, P13, P15, P16 — 9개
+- **tdd=true 태스크**: P1, P2, P4, P5, P11, P12, P14, P15, P16 — 9개 (P13 Flyway DDL은 tdd=false, P14 BaseEntity 타입 전환이 tdd=true)
 - **topic.md D1~D7 결정 중 태스크 미매핑 항목**: 없음 (pass)
 - **Flyway 신규 버전**: V4 (`V4__audit_datetime6_upgrade.sql`)
 - **layer 정렬 순서**: port(P1) → infrastructure adapter(P2) → test/fake(P3) → application/usecase(P4) → infrastructure/consumer(P5) → test/contract(P6) → test/integration-product(P7) → 설정/Docker(P8,P9) → 설정/yml-주석(P10) → test/회귀가드(P11) → infrastructure/config(P12) → Flyway(P13) → infrastructure/entity-base(P14) → infrastructure/entity-event(P15) → infrastructure/entity-outbox(P16) → test/integration-payment(P17,P18)

@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-06 — TIME-MODEL-FOLLOWUP **plan 완료 → plan-review 대기**. 이슈 #89, 브랜치 #89.
-> **다음 세션 진입점**: TIME-MODEL-FOLLOWUP plan-review 단계. `docs/TIME-MODEL-FOLLOWUP-PLAN.md`(18 태스크) 문서 정합 경량 검증.
+> 최종 수정: 2026-06-06 — TIME-MODEL-FOLLOWUP **plan-review 완료 → execute 진행**. 이슈 #89, 브랜치 #89.
+> **다음 세션 진입점**: TIME-MODEL-FOLLOWUP execute 단계, **Task P1**(재고 멱등 포트 existsValid 제거 + recordIfAbsent now 인자)부터. PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`.
 
 ## 활성 작업
 
-- **TIME-MODEL-FOLLOWUP** (stage: **plan-review**, 이슈/브랜치 #89) — TIME-MODEL-AND-EXPIRY(#83) 이연 후속 3건 한 PR 묶음
-  - discuss 완료 (Critic·Domain Expert pass). plan 완료 (Critic·Domain Expert pass — 도중 Domain Expert critical 1[P14 BaseEntity 태스크 본문 소실] 잡아 복원 + major[P13/P14 순서]·minor 반영). 설계: `docs/topics/TIME-MODEL-FOLLOWUP.md`, PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`(18 태스크)
+- **TIME-MODEL-FOLLOWUP** (stage: **execute**, 활성 태스크 **P1**, 이슈/브랜치 #89) — TIME-MODEL-AND-EXPIRY(#83) 이연 후속 3건 한 PR 묶음
+  - discuss 완료 (Critic·Domain Expert pass). plan 완료 (Critic·Domain Expert pass — 도중 Domain Expert critical 1[P14 BaseEntity 태스크 본문 소실] 잡아 복원 + major[P13/P14 순서]·minor 반영). plan-review pass(minor 2 정정). 설계: `docs/topics/TIME-MODEL-FOLLOWUP.md`, PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`(18 태스크)
   - 핵심 결정 — D1 product `recordIfAbsent` 만료 삭제 `NOW()` → 앱 주입 `Instant` 통일(포트 `now` 인자) / D2 `existsValid` 전건 제거(라이브 0건) / D3 TZ backstop 3겹(Dockerfile+JVM+compose UTC) / D4 payment `BaseEntity` `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 / D5 product `connectionTimeZone=UTC` 존치 / D6 AC8 → `recordIfAbsent` DELETE 경계 검증 재배치 / D7 단일 PR
   - 태스크 18개 3묶음: 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant 전환(P11~P18). **순서 불변**: P13(V4 DDL 정밀도 승급) → P14(BaseEntity 타입 전환) — validate 부팅 정합
   - plan 확인 포인트 — `clockDateTimeProvider` Instant 반환 후 auditing wiring 회귀 가드(#83 review 전례, P11/P18) / eureka compose TZ 위치 = `docker-compose.infra.yml`(P9 확정)
