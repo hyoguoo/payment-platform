@@ -336,13 +336,16 @@ flowchart TD
 - **변경 파일**:
   - `payment-service/src/main/java/.../payment/core/config/JpaConfig.java`
 - **완료 조건 (AC)**:
-  - `clockDateTimeProvider()` 반환: `LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)` → `clock.instant()`
-  - import `LocalDateTime` / `ZoneOffset` 제거
-  - P11의 `clockDateTimeProvider_반환타입이Instant_를_반환한다()` 테스트 GREEN
-  - `JpaAuditingProviderWiringTest` 및 `PaymentEventRepositoryImplTest` DM1 회귀 가드 여전히 GREEN
-  - javadoc 라인 23 "Clock 을 통해 항상 UTC 기준 LocalDateTime 을 반환한다" → Instant 반환으로 정정
-  - 라인 25 "BaseEntity 필드/컬럼 타입은 변경하지 않는다(NG4)" stale 주석 제거 (직전 토픽 D3가 박은 NG4를 D4가 명시 승계·번복)
+  - [x] `clockDateTimeProvider()` 반환: `LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)` → `clock.instant()`
+  - [x] import `LocalDateTime` / `ZoneOffset` 제거
+  - [x] P11의 `clockDateTimeProvider_반환타입이Instant_를_반환한다()` 테스트 GREEN
+  - [x] `JpaAuditingProviderWiringTest` DM1 회귀 가드(wiring 연결 단정) GREEN
+  - [x] javadoc 라인 23 "Clock 을 통해 항상 UTC 기준 LocalDateTime 을 반환한다" → Instant 반환으로 정정
+  - [x] 라인 25 "BaseEntity 필드/컬럼 타입은 변경하지 않는다(NG4)" stale 주석 제거 (직전 토픽 D3가 박은 NG4를 D4가 명시 승계·번복)
+  - [x] `JpaConfigClockDateTimeProviderTest` — 기존 `LocalDateTime.from()` 기반 → Instant 직접 단정으로 갱신
 - **의존**: P11
+
+**완료 결과**: `JpaConfig.clockDateTimeProvider()` — `LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)` → `clock.instant()` 반환 전환 완료. import `LocalDateTime`·`ZoneOffset` 제거. javadoc Instant 반환으로 정정, NG4 stale 주석 제거. `JpaConfigClockDateTimeProviderTest` 3개 테스트 Instant 직접 단정으로 갱신. 단위 463 PASS. 통합 `clockDateTimeProvider_반환타입이Instant_를_반환한다` GREEN(`JpaAuditingProviderWiringTest` 2개 모두 PASS). `auditing_createdAt_isFilledByClockDateTimeProvider` 통합 스모크 — provider Instant ↔ BaseEntity LocalDateTime 불일치로 KST JVM 환경에서 9시간 오차 발생 FAIL. PLAN 명시 일시적 상태(P14 BaseEntity Instant 전환 후 닫힘).
 
 ---
 
