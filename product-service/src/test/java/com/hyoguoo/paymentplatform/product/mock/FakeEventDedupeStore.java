@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.product.mock;
 
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -12,35 +11,30 @@ import java.util.concurrent.ConcurrentHashMap;
  * 공통 jar 금지 정책에 따라 payment-service / pg-service 의 FakeEventDedupeStore 와 서비스별로 따로 둔다.
  * <p>
  * TTL 만료 시뮬레이션:
- * - recordIfAbsent 호출 시 기존 엔트리의 expiresAt가 현재 시각(clock) 이전이면 만료로 간주,
- *   덮어쓰기 후 true를 반환한다.
- * - 테스트 결정성을 위해 {@link Clock.fixed} 주입을 허용한다.
+ * - recordIfAbsent 호출 시 기존 엔트리의 expiresAt 가 now(호출자 주입) 이전이면 만료로 간주,
+ *   덮어쓰기 후 true 를 반환한다.
+ * - D1: 내부 Clock 보유 제거 — now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
  * <p>
  * Thread-safe: ConcurrentHashMap.compute 원자적 갱신.
  */
 public class FakeEventDedupeStore implements EventDedupeStore {
 
     private final ConcurrentHashMap<String, Instant> store = new ConcurrentHashMap<>();
-    private final Clock clock;
-
-    public FakeEventDedupeStore() {
-        this.clock = Clock.systemUTC();
-    }
-
-    public FakeEventDedupeStore(Clock clock) {
-        this.clock = clock;
-    }
 
     /**
-     * eventUUID를 기록하고, 최초 기록이면 true를 반환한다.
-     * 이미 존재하지만 만료된 경우(expiresAt &lt; now) 덮어쓰기 후 true를 반환한다.
-     * 유효한 중복이면 false를 반환한다.
+     * eventUUID 를 기록하고, 최초 기록이면 true 를 반환한다.
+     * 이미 존재하지만 만료된 경우(expiresAt &lt; now) 덮어쓰기 후 true 를 반환한다.
+     * 유효한 중복이면 false 를 반환한다.
+     *
+     * @param eventUUID 이벤트 식별자
+     * @param now       현재 시각 — 만료 경계 판정 기준 (호출자 주입, D1)
+     * @param expiresAt 만료 시각 (TTL)
      */
     @Override
-    public boolean recordIfAbsent(String eventUUID, Instant expiresAt) {
+    public boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt) {
         boolean[] recorded = {false};
         store.compute(eventUUID, (key, existing) -> {
-            if (existing == null || existing.isBefore(Instant.now(clock))) {
+            if (existing == null || existing.isBefore(now)) {
                 recorded[0] = true;
                 return expiresAt;
             }
@@ -51,21 +45,8 @@ public class FakeEventDedupeStore implements EventDedupeStore {
     }
 
     /**
-     * eventUUID가 유효하게(TTL 미만료) 존재하는지 확인한다.
-     * 만료된 엔트리는 존재하지 않는 것으로 간주한다.
-     */
-    @Override
-    public boolean existsValid(String eventUUID) {
-        Instant expiry = store.get(eventUUID);
-        if (expiry == null) {
-            return false;
-        }
-        return !expiry.isBefore(Instant.now(clock));
-    }
-
-    /**
      * 만료된 dedupe 행을 일괄 삭제한다.
-     * Fake 구현 — in-memory store에서 expiresAt < now 엔트리 삭제.
+     * Fake 구현 — in-memory store 에서 expiresAt &lt; now 엔트리 삭제.
      *
      * @param now       현재 시각
      * @param batchSize 최대 삭제 건수

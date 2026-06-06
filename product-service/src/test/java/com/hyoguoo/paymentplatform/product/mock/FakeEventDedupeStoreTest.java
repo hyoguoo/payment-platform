@@ -1,8 +1,6 @@
 package com.hyoguoo.paymentplatform.product.mock;
 
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -15,12 +13,11 @@ class FakeEventDedupeStoreTest {
     @Test
     @DisplayName("미존재 UUID — 최초 기록 시 true 반환")
     void recordIfAbsent_NewUuid_ReturnsTrue() {
-        FakeEventDedupeStore store = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME, ZoneOffset.UTC)
-        );
+        FakeEventDedupeStore store = new FakeEventDedupeStore();
+        Instant now = BASE_TIME;
         Instant expiresAt = BASE_TIME.plusSeconds(3600);
 
-        boolean result = store.recordIfAbsent("uuid-1", expiresAt);
+        boolean result = store.recordIfAbsent("uuid-1", now, expiresAt);
 
         assertThat(result).isTrue();
         assertThat(store.contains("uuid-1")).isTrue();
@@ -29,13 +26,12 @@ class FakeEventDedupeStoreTest {
     @Test
     @DisplayName("중복 UUID (TTL 미만료) — 재호출 시 false 반환")
     void recordIfAbsent_DuplicateUuid_ReturnsFalse() {
-        FakeEventDedupeStore store = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME, ZoneOffset.UTC)
-        );
+        FakeEventDedupeStore store = new FakeEventDedupeStore();
+        Instant now = BASE_TIME;
         Instant expiresAt = BASE_TIME.plusSeconds(3600);
 
-        store.recordIfAbsent("uuid-1", expiresAt);
-        boolean duplicate = store.recordIfAbsent("uuid-1", expiresAt);
+        store.recordIfAbsent("uuid-1", now, expiresAt);
+        boolean duplicate = store.recordIfAbsent("uuid-1", now, expiresAt);
 
         assertThat(duplicate).isFalse();
     }
@@ -43,23 +39,15 @@ class FakeEventDedupeStoreTest {
     @Test
     @DisplayName("TTL 만료 후 재호출 — 만료 엔트리 덮어쓰기 후 true 반환")
     void recordIfAbsent_AfterTtlExpiry_ReturnsTrue() {
-        // 최초 기록: clock=BASE_TIME, expiresAt=BASE_TIME+1s (곧 만료)
-        FakeEventDedupeStore store = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME, ZoneOffset.UTC)
-        );
-        Instant shortTtl = BASE_TIME.plusSeconds(1);
-        store.recordIfAbsent("uuid-1", shortTtl);
+        FakeEventDedupeStore store = new FakeEventDedupeStore();
 
-        // 만료 시뮬레이션을 위해 동일 store에 Clock을 주입해야 하므로
-        // 같은 인스턴스에 clock 교체가 불가 — 별도 store로 검증 (동일 in-memory 상태 불필요)
-        // 대신 TTL=과거로 기록 후 현재 시각이 미래인 store로 재확인
-        FakeEventDedupeStore storeWithFutureClock = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME.plusSeconds(100), ZoneOffset.UTC)
-        );
-        // expiresAt=BASE_TIME+1s(과거), now=BASE_TIME+100s → 만료
-        storeWithFutureClock.recordIfAbsent("uuid-expire", BASE_TIME.plusSeconds(1));
-        // 이 시점에서 store 안의 expiresAt는 이미 past → 재호출 true 기대
-        boolean reprocessed = storeWithFutureClock.recordIfAbsent("uuid-expire", BASE_TIME.plusSeconds(200));
+        // 최초 기록: expiresAt = BASE_TIME+1s (곧 만료)
+        Instant shortTtl = BASE_TIME.plusSeconds(1);
+        store.recordIfAbsent("uuid-expire", BASE_TIME, shortTtl);
+
+        // now = BASE_TIME+100s → expiresAt(BASE_TIME+1s) < now → 만료 판정
+        Instant futureNow = BASE_TIME.plusSeconds(100);
+        boolean reprocessed = store.recordIfAbsent("uuid-expire", futureNow, BASE_TIME.plusSeconds(200));
 
         assertThat(reprocessed).isTrue();
     }
@@ -67,15 +55,14 @@ class FakeEventDedupeStoreTest {
     @Test
     @DisplayName("복수 UUID — 독립적으로 추적")
     void recordIfAbsent_MultipleUuids_TrackedIndependently() {
-        FakeEventDedupeStore store = new FakeEventDedupeStore(
-                Clock.fixed(BASE_TIME, ZoneOffset.UTC)
-        );
+        FakeEventDedupeStore store = new FakeEventDedupeStore();
+        Instant now = BASE_TIME;
         Instant expiresAt = BASE_TIME.plusSeconds(3600);
 
-        assertThat(store.recordIfAbsent("uuid-A", expiresAt)).isTrue();
-        assertThat(store.recordIfAbsent("uuid-B", expiresAt)).isTrue();
-        assertThat(store.recordIfAbsent("uuid-A", expiresAt)).isFalse();
-        assertThat(store.recordIfAbsent("uuid-B", expiresAt)).isFalse();
+        assertThat(store.recordIfAbsent("uuid-A", now, expiresAt)).isTrue();
+        assertThat(store.recordIfAbsent("uuid-B", now, expiresAt)).isTrue();
+        assertThat(store.recordIfAbsent("uuid-A", now, expiresAt)).isFalse();
+        assertThat(store.recordIfAbsent("uuid-B", now, expiresAt)).isFalse();
         assertThat(store.size()).isEqualTo(2);
     }
 }

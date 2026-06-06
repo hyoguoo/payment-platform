@@ -160,6 +160,8 @@ flowchart TD
 - **순서 근거**: Fake가 P4(use case 단위 테스트가 Fake에 now 전달을 단정)·P6(contract 테스트)보다 앞서야 그 테스트들이 컴파일된다. 포트 구현체이므로 의존은 P1(포트)만으로 충분(P2 infra 구현과 독립).
 - **의존**: P1
 
+**완료 결과**: `FakeEventDedupeStore` — `existsValid` 메서드 제거, `clock` 필드 + 생성자 2개 제거, `recordIfAbsent(String, Instant, Instant)` 3-인자 시그니처로 교체(세 번째 파라미터 `now` 만료 비교 기준 — `existing.isBefore(now)` 판정). `deleteExpired` 유지. `FakeEventDedupeStoreTest` 구 Clock 생성자 → no-arg + 3-인자 호출로 정합 갱신. `StockCommitUseCase` 컴파일 에러(2-인자 → 3-인자 미수정)는 P4 대상 정상 RED.
+
 ---
 
 ### P4 — [application] D1: StockCommitUseCase.commit 시그니처에 now 추가 및 전달
