@@ -219,10 +219,12 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/test/java/.../product/application/port/out/EventDedupeStoreContractTest.java`
 - **완료 조건 (AC)**:
-  - P1 완료 후 `EventDedupeStoreContractTest`의 `deleteExpired` 계약 테스트는 유지, existsValid 참조 제거
-  - `recordIfAbsent_포트시그니처_now포함_컴파일계약()` 추가 (P1에서 함께 작성 가능)
-  - `./gradlew test` 통과
+  - [x] P1 완료 후 `EventDedupeStoreContractTest`의 `deleteExpired` 계약 테스트는 유지, existsValid 참조 제거
+  - [x] `recordIfAbsent_포트시그니처_now포함_컴파일계약()` 추가 (P1에서 함께 작성 가능)
+  - [x] `./gradlew test` 통과
 - **의존**: P1, P3
+
+**완료 결과**: P1 Implementer가 `EventDedupeStoreContractTest`를 이미 완전 갱신 완료. `existsValid` 참조 0건, `recordIfAbsent(String, Instant, Instant)` 및 `deleteExpired(Instant, int)` 2개 컴파일 계약 테스트 존재 확인. `./gradlew :product-service:test` 26 PASS, 0 FAIL. AC 전건 이미 충족 — 추가 코드 변경 없음.
 
 ---
 
