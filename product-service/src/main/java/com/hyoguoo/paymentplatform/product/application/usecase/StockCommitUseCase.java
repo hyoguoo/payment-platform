@@ -56,12 +56,13 @@ public class StockCommitUseCase {
      * @param orderId   주문 ID (String, 추적 메타데이터)
      * @param productId 상품 ID
      * @param qty       확정 차감 수량
+     * @param now       현재 시각 — 만료 경계 판정 기준 (호출자 주입, D1 헥사고날 Clock 권한)
      * @param expiresAt dedupe TTL 만료 시각
      * @throws IllegalStateException 해당 상품 재고가 존재하지 않을 경우
      */
     @Transactional
-    public void commit(String eventUUID, String orderId, long productId, int qty, Instant expiresAt) {
-        boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUUID, expiresAt);
+    public void commit(String eventUUID, String orderId, long productId, int qty, Instant now, Instant expiresAt) {
+        boolean firstSeen = eventDedupeStore.recordIfAbsent(eventUUID, now, expiresAt);
         if (!firstSeen) {
             LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_DUPLICATE,
                     () -> "eventUUID=" + eventUUID + " orderId=" + orderId + " productId=" + productId);

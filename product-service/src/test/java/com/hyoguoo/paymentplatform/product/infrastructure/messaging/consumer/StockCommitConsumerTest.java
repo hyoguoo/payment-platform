@@ -64,8 +64,9 @@ class StockCommitConsumerTest {
         stockCommitConsumer.consume(message);
 
         // then: usecase 1회 위임 — orderId 는 String 그대로 전달된다.
+        // now 인자는 consume() 진입 시 clock.instant()로 산출 — FIXED_CLOCK 이므로 FIXED_INSTANT
         verify(stockCommitUseCase, times(1))
-                .commit(eventUUID, orderId, productId, qty, expiresAt);
+                .commit(eventUUID, orderId, productId, qty, FIXED_INSTANT, expiresAt);
     }
 
     @Test
@@ -90,7 +91,7 @@ class StockCommitConsumerTest {
         // when
         stockCommitConsumer.consume(message);
 
-        // then: expiresAt = occurredAt + DEDUPE_TTL(8d)
+        // then: expiresAt = occurredAt + DEDUPE_TTL(8d), now = FIXED_INSTANT (clock.instant())
         ArgumentCaptor<Instant> expiresAtCaptor = forClass(Instant.class);
         verify(stockCommitUseCase, times(1))
                 .commit(
@@ -98,6 +99,7 @@ class StockCommitConsumerTest {
                         org.mockito.ArgumentMatchers.eq(orderId),
                         org.mockito.ArgumentMatchers.eq(productId),
                         org.mockito.ArgumentMatchers.eq(qty),
+                        org.mockito.ArgumentMatchers.eq(FIXED_INSTANT),
                         expiresAtCaptor.capture()
                 );
 
@@ -126,7 +128,7 @@ class StockCommitConsumerTest {
         // when
         stockCommitConsumer.consume(message);
 
-        // then: expiresAt = FIXED_INSTANT + DEDUPE_TTL (clock.instant() 기반으로 결정적)
+        // then: expiresAt = FIXED_INSTANT + DEDUPE_TTL (clock.instant() 기반으로 결정적), now = FIXED_INSTANT
         ArgumentCaptor<Instant> expiresAtCaptor = forClass(Instant.class);
         verify(stockCommitUseCase, times(1))
                 .commit(
@@ -134,6 +136,7 @@ class StockCommitConsumerTest {
                         org.mockito.ArgumentMatchers.eq(orderId),
                         org.mockito.ArgumentMatchers.eq(productId),
                         org.mockito.ArgumentMatchers.eq(qty),
+                        org.mockito.ArgumentMatchers.eq(FIXED_INSTANT),
                         expiresAtCaptor.capture()
                 );
 

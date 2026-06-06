@@ -61,6 +61,7 @@ public class StockCommitConsumer {
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
+        Instant now = clock.instant();
         Instant expiresAt = resolveExpiresAt(message);
         String orderId = message.orderId() != null ? message.orderId() : "";
 
@@ -69,6 +70,7 @@ public class StockCommitConsumer {
                 orderId,
                 message.productId(),
                 message.qty(),
+                now,
                 expiresAt
         );
     }

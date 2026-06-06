@@ -173,15 +173,17 @@ flowchart TD
 - **변경 파일**:
   - `product-service/src/main/java/.../product/application/usecase/StockCommitUseCase.java`
 - **완료 조건 (AC)**:
-  - `commit(String eventUUID, String orderId, long productId, int qty, Instant expiresAt)` → `commit(String eventUUID, String orderId, long productId, int qty, Instant now, Instant expiresAt)` 시그니처 추가
-  - `eventDedupeStore.recordIfAbsent(eventUUID, expiresAt)` → `eventDedupeStore.recordIfAbsent(eventUUID, now, expiresAt)` 전달
-  - `StockCommitUseCase`에 `Clock` 신설 금지 (now는 인자로 받음)
+  - [x] `commit(String eventUUID, String orderId, long productId, int qty, Instant expiresAt)` → `commit(String eventUUID, String orderId, long productId, int qty, Instant now, Instant expiresAt)` 시그니처 추가
+  - [x] `eventDedupeStore.recordIfAbsent(eventUUID, expiresAt)` → `eventDedupeStore.recordIfAbsent(eventUUID, now, expiresAt)` 전달
+  - [x] `StockCommitUseCase`에 `Clock` 신설 금지 (now는 인자로 받음)
 - **의존**: P2, P3 (P3 Fake 시그니처가 먼저 정합돼야 use case 단위 테스트의 now 전달 단정이 컴파일됨)
 - **테스트 스펙**:
   - 클래스: `StockCommitUseCaseTest` (신규 또는 기존 확장)
   - 메서드:
-    - `commit_중복이벤트_recordIfAbsent에now전달_false반환시스킵()`: `FakeEventDedupeStore`에 now 인자가 전달되는지 단정, 중복 시 commitToRdb 미호출 확인
-    - `commit_최초이벤트_재고차감성공()`: recordIfAbsent true 반환 시 재고 차감 확인
+    - [x] `commit_중복이벤트_recordIfAbsent에now전달_false반환시스킵()`: `FakeEventDedupeStore`에 now 인자가 전달되는지 단정, 중복 시 commitToRdb 미호출 확인
+    - [x] `commit_최초이벤트_재고차감성공()`: recordIfAbsent true 반환 시 재고 차감 확인
+
+**완료 결과**: `StockCommitUseCase.commit` — 시그니처에 `Instant now` 인자 추가(5-인자 → 6-인자), `recordIfAbsent(eventUUID, now, expiresAt)` 3-인자 전달 완료. `Clock` 신설 없음(D1 헥사고날 원칙 준수). `StockCommitUseCaseTest` — 기존 3개 테스트 now 인자 포함 갱신 + P4 스펙 신규 2개(`commit_중복이벤트_recordIfAbsent에now전달_false반환시스킵`, `commit_최초이벤트_재고차감성공`) 추가. 컴파일 에러 자동수정: `StockCommitConsumer`(P5 대상) 임시 `now=clock.instant()` 추가로 컴파일 통과, `StockCommitConsumerTest` 구 5-인자 verify → 6-인자 갱신. product-service 단위 테스트 25 PASS.
 
 ---
 
