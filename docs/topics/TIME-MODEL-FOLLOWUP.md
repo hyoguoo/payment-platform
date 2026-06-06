@@ -271,7 +271,7 @@ NOW 통일 / TZ backstop / BaseEntity Instant 를 한 PR로 묶는다. 커밋은
 - `payment .../core/config/JpaConfig.java`
   - `clockDateTimeProvider`(`:47-49`) 반환을 `LocalDateTime.ofInstant(...)` → `clock.instant()`(`Instant`) (D4)
 - `payment .../infrastructure/entity/PaymentEventEntity.java`
-  - `toResult()` `:119-120` `getCreatedAt() != null ? getCreatedAt().toInstant(UTC) : null` → `getCreatedAt()` 직접 (D4)
+  - `toDomain()` `:119-120` `getCreatedAt() != null ? getCreatedAt().toInstant(UTC) : null` → `getCreatedAt()` 직접 (D4)
 - `payment .../infrastructure/entity/PaymentOutboxEntity.java`
   - `toDomain()` `:77-78` `toInstant(getCreatedAt())` / `toInstant(getUpdatedAt())` 헬퍼 호출 제거 → 직접 (D4). 사용처 사라진 `toInstant` private 헬퍼 있으면 동반 제거
 - ~~`OutboxPendingAgeMetrics.java`~~ — **D4 연쇄 대상 아님(M1 정정)**. `:54/:57`의 `getCreatedAt()`는 BaseEntity가 아니라 도메인 `PaymentOutbox.getCreatedAt()`이며 이미 `Instant`다. BaseEntity 타입 전환과 무관하므로 무변경.
