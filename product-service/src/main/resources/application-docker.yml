@@ -4,8 +4,8 @@ spring:
       on-profile: docker
 
   datasource:
-    # D7 — connectionTimeZone=UTC: raw-JDBC 경로(JdbcTemplate) NOW() 기준을 앱 Instant 와 동일 UTC 기준으로 통일
-    #       forceConnectionTimeZoneToSession=true: DB 세션 TZ 를 UTC 로 강제 (split-brain 해소)
+    # D1/D2로 NOW()·existsValid 제거 완료. connectionTimeZone=UTC 존치 근거(D5):
+    #   raw-JDBC Timestamp.from(instant) 바인딩(recordIfAbsent INSERT IGNORE / DELETE-by-uuid / deleteExpired)의 DB 세션 UTC backstop.
     url: jdbc:mysql://mysql-product:3306/product?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${PRODUCT_DATASOURCE_USERNAME:root}
     password: ${PRODUCT_DATASOURCE_PASSWORD:payment123}

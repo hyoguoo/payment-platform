@@ -297,10 +297,12 @@ flowchart TD
   - `product-service/src/main/resources/application.yml` (라인 13-15 주석)
   - `product-service/src/main/resources/application-docker.yml` (라인 7-8 주석)
 - **완료 조건 (AC)**:
-  - `application.yml` 주석: "DM2 — existsValid/SQL_DELETE_EXPIRED_BY_UUID 의 DB NOW()" 언급 제거, 대신 "D1/D2로 NOW()·existsValid 제거 완료. connectionTimeZone=UTC 존치 근거: raw-JDBC Timestamp.from(instant) 바인딩(recordIfAbsent INSERT IGNORE / recordIfAbsent DELETE-by-uuid / deleteExpired)의 DB 세션 UTC backstop"으로 재서술 (DM-3: recordIfAbsent DELETE-by-uuid 경로도 raw-JDBC 바인딩 대상이므로 열거 포함)
-  - `application-docker.yml` 주석도 정합 갱신 (D7 → D5 근거 반영)
-  - `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` URL 값 무변경
+  - [x] `application.yml` 주석: "DM2 — existsValid/SQL_DELETE_EXPIRED_BY_UUID 의 DB NOW()" 언급 제거, 대신 "D1/D2로 NOW()·existsValid 제거 완료. connectionTimeZone=UTC 존치 근거: raw-JDBC Timestamp.from(instant) 바인딩(recordIfAbsent INSERT IGNORE / recordIfAbsent DELETE-by-uuid / deleteExpired)의 DB 세션 UTC backstop"으로 재서술 (DM-3: recordIfAbsent DELETE-by-uuid 경로도 raw-JDBC 바인딩 대상이므로 열거 포함)
+  - [x] `application-docker.yml` 주석도 정합 갱신 (D7 → D5 근거 반영)
+  - [x] `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` URL 값 무변경
 - **의존**: P2 (existsValid 제거 완료 후)
+
+**완료 결과**: `application.yml` 라인 13-16 — DM2/D7 stale 주석 제거, "D1/D2로 NOW()·existsValid 제거 완료. connectionTimeZone=UTC 존치 근거(D5): raw-JDBC Timestamp.from(instant) 바인딩 3경로 열거" 로 재서술. `application-docker.yml` 라인 7-8 — D7 근거 → D5 근거로 정합 갱신. URL 값(connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true) 무변경.
 
 ---
 
