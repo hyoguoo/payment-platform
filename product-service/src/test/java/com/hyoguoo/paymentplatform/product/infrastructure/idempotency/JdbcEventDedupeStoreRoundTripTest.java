@@ -2,9 +2,7 @@ package com.hyoguoo.paymentplatform.product.infrastructure.idempotency;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.TimeZone;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -14,10 +12,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -36,29 +30,13 @@ import org.testcontainers.containers.MySQLContainer;
  * D7 — raw-JDBC 경로(JdbcTemplate) UTC Calendar 명시 바인딩.
  */
 @SpringBootTest(
-        properties = "spring.main.allow-bean-definition-overriding=true",
         webEnvironment = SpringBootTest.WebEnvironment.NONE
 )
 @Tag("integration")
-@Import(JdbcEventDedupeStoreRoundTripTest.FixedClockConfig.class)
 @DisplayName("JdbcEventDedupeStore 비-UTC JVM TZ round-trip 통합 테스트")
 class JdbcEventDedupeStoreRoundTripTest {
 
-    /**
-     * T13 RED — Clock.fixed 를 @Primary 로 오버라이드해 clock 주입 결정성 검증.
-     * 구현이 Clock 주입을 사용할 때만 동작이 결정적으로 제어된다.
-     */
-    @TestConfiguration
-    static class FixedClockConfig {
-
-        static final Instant FIXED_INSTANT = Instant.parse("2026-01-01T12:00:00Z");
-
-        @Bean
-        @Primary
-        public Clock clock() {
-            return Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-        }
-    }
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-01-01T12:00:00Z");
 
     @SuppressWarnings("resource")
     static final MySQLContainer<?> MYSQL_CONTAINER =
@@ -122,8 +100,8 @@ class JdbcEventDedupeStoreRoundTripTest {
     @Test
     @DisplayName("비-UTC JVM TZ에서 expires_at round-trip 절대시점 동치 (UTC Calendar 명시 바인딩)")
     void recordIfAbsent_nonUtcJvm_expiresAtRoundTripSameInstant() {
-        // given — 비-UTC JVM TZ(Asia/Seoul)에서 Clock.fixed UTC 기준 expiresAt 사용
-        Instant fixedInstant = FixedClockConfig.FIXED_INSTANT;
+        // given — 비-UTC JVM TZ(Asia/Seoul)에서 고정 UTC Instant 기준 expiresAt 사용
+        Instant fixedInstant = FIXED_INSTANT;
         String eventUuid = UUID.randomUUID().toString();
         Instant now = fixedInstant;
         Instant expiresAt = fixedInstant.plusSeconds(86400 * 8);  // 8일 후

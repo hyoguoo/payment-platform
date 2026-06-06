@@ -5,7 +5,6 @@ import com.hyoguoo.paymentplatform.product.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.product.core.common.log.LogFmt;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -52,15 +51,12 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
                     + "WHERE expires_at < :now "
                     + "LIMIT :batchSize";
 
-    private final Clock clock;
     private final JdbcTemplate jdbcTemplate;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     public JdbcEventDedupeStore(
-            Clock clock,
             JdbcTemplate jdbcTemplate,
             NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
-        this.clock = clock;
         this.jdbcTemplate = jdbcTemplate;
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
     }
@@ -70,7 +66,7 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      * 이미 유효한 중복이면 false 를 반환한다.
      * 만료된 엔트리는 삭제 후 재삽입하여 true 를 반환한다.
      *
-     * <p>D1 — now 는 호출자(컨슈머 진입점)가 주입. 구현체는 내부에서 clock.instant() 를 호출하지 않는다.
+     * <p>D1 — now 는 호출자(컨슈머 진입점)가 주입. 구현체는 내부에서 시각을 생성하지 않는다.
      * D6 — DELETE 조건 {@code expires_at < now}: 경계 동치(expires_at == now) 는 만료로 보지 않는다.
      * D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now/expires_at 절대시점 정확 보존.
      *
