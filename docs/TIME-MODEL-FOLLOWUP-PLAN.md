@@ -435,15 +435,17 @@ flowchart TD
 - **변경 파일**:
   - `payment-service/src/main/java/.../payment/infrastructure/entity/PaymentOutboxEntity.java`
 - **완료 조건 (AC)**:
-  - `toDomain()` 라인 77-78: `toInstant(getCreatedAt())` / `toInstant(getUpdatedAt())` → `getCreatedAt()` / `getUpdatedAt()` 직접 사용 (BaseEntity getter가 Instant로 바뀌어 변환 불필요)
-  - `toInstant(LocalDateTime)` private 헬퍼는 `nextRetryAt`(라인 75)/`inFlightAt`(라인 76) 변환에 여전히 사용되므로 **제거 금지** — 잔존 확인
-  - 컴파일 통과
+  - [x] `toDomain()` 라인 77-78: `toInstant(getCreatedAt())` / `toInstant(getUpdatedAt())` → `getCreatedAt()` / `getUpdatedAt()` 직접 사용 (P14 Rule 1 선행 완료)
+  - [x] `toInstant(LocalDateTime)` private 헬퍼는 `nextRetryAt`/`inFlightAt` 변환에 여전히 사용되므로 **제거 금지** — 잔존 확인 (라인 75-76 사용 유지)
+  - [x] 컴파일 통과
 - **의존**: P14
 - **테스트 스펙**:
-  - 클래스: `PaymentOutboxEntityTest` (신규 단위 테스트, 또는 기존 확장)
+  - 클래스: `PaymentOutboxEntityTest` (신규 단위 테스트)
   - 메서드:
-    - `toDomain_createdAt_updatedAt이Instant로직접반환된다()`: entity `createdAt`/`updatedAt` 리플렉션 세팅, `toDomain().getCreatedAt()`/`getUpdatedAt()`이 동일 Instant 반환 단정
-    - `toDomain_nextRetryAt_toInstant헬퍼경유동작확인()`: `nextRetryAt` LocalDateTime 세팅, `toDomain().getNextRetryAt()` 정상 Instant 반환 확인 (헬퍼 잔존 회귀 가드)
+    - [x] `toDomain_createdAt_updatedAt이Instant로직접반환된다()`: entity `createdAt`/`updatedAt` 리플렉션 세팅, `toDomain().getCreatedAt()`/`getUpdatedAt()`이 동일 Instant 반환 단정
+    - [x] `toDomain_nextRetryAt_toInstant헬퍼경유동작확인()`: `nextRetryAt` LocalDateTime 세팅, `toDomain().getNextRetryAt()` UTC Instant 반환 확인 (헬퍼 잔존 회귀 가드)
+
+**완료 결과**: `toDomain` createdAt/updatedAt 직접 매핑은 P14 Rule 1로 선행 제거됨. `toInstant`/`toLocalDateTime` 헬퍼는 nextRetryAt/inFlightAt(비즈니스 LocalDateTime 컬럼) 변환에 잔존. `PaymentOutboxEntityTest` 2 PASS.
 
 ---
 
