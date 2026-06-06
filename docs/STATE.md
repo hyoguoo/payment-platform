@@ -1,18 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-06 — TIME-MODEL-FOLLOWUP **execute 완료(18/18) → review 대기**. 이슈/브랜치 #89.
-> **다음 세션 진입점**: TIME-MODEL-FOLLOWUP review 단계. 구현 결과물 페르소나 리뷰. PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`.
+> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **review 완료 → verify 대기**. 이슈/브랜치 #89.
+> **다음 세션 진입점**: TIME-MODEL-FOLLOWUP verify 단계(사용자 "verify 시작" 시). 전체 테스트 + context 갱신 + 아카이브 + PR. **verify 시 V4 Flyway 실제 적용 확인 필수**(review F4). PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`.
 
 ## 활성 작업
 
-- **TIME-MODEL-FOLLOWUP** (stage: **review**, execute 18/18 완료, 이슈/브랜치 #89) — TIME-MODEL-AND-EXPIRY(#83) 이연 후속 3건 한 PR 묶음
+- **TIME-MODEL-FOLLOWUP** (stage: **verify**, execute 18/18 + review 2라운드 pass, 이슈/브랜치 #89) — TIME-MODEL-AND-EXPIRY(#83) 이연 후속 3건 한 PR 묶음
   - execute 완료 — P1~P18 전 태스크 GREEN. payment·product 단위+통합 BUILD SUCCESSFUL. 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant+DATETIME(6) 전환(P11~P18)
   - 커밋 흐름: 멱등 G1(73583012 등) / TZ G2(9c7ce84f·cd905e19·e5a4eba5) / 감사 G3(P11~P18, BaseEntity Instant 434c0271, V4 DDL 7dd97399)
   - discuss 완료 (Critic·Domain Expert pass). plan 완료 (Critic·Domain Expert pass — 도중 Domain Expert critical 1[P14 BaseEntity 태스크 본문 소실] 잡아 복원 + major[P13/P14 순서]·minor 반영). plan-review pass(minor 2 정정). 설계: `docs/topics/TIME-MODEL-FOLLOWUP.md`, PLAN: `docs/TIME-MODEL-FOLLOWUP-PLAN.md`(18 태스크)
   - 핵심 결정 — D1 product `recordIfAbsent` 만료 삭제 `NOW()` → 앱 주입 `Instant` 통일(포트 `now` 인자) / D2 `existsValid` 전건 제거(라이브 0건) / D3 TZ backstop 3겹(Dockerfile+JVM+compose UTC) / D4 payment `BaseEntity` `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 / D5 product `connectionTimeZone=UTC` 존치 / D6 AC8 → `recordIfAbsent` DELETE 경계 검증 재배치 / D7 단일 PR
   - 태스크 18개 3묶음: 멱등 만료 시각 통일(P1~P7) / TZ UTC 3겹(P8~P10) / 감사 컬럼 Instant 전환(P11~P18). **순서 불변**: P13(V4 DDL 정밀도 승급) → P14(BaseEntity 타입 전환) — validate 부팅 정합
   - plan 확인 포인트 — `clockDateTimeProvider` Instant 반환 후 auditing wiring 회귀 가드(#83 review 전례, P11/P18) / eureka compose TZ 위치 = `docker-compose.infra.yml`(P9 확정)
-  - review 1라운드 — Critic·Domain Expert 모두 **pass**(critical/major 0). minor: F1·F2·F5(미사용 Clock 필드·existsValid 잔재·stale 주석) 수정 완료(refactor ce296873). F3(P11 feat 커밋 라벨 불일치) 지난 커밋이라 기록만.
+  - review 1라운드 — Critic·Domain Expert 모두 **pass**(critical/major 0). minor: F1·F2·F5(미사용 Clock 필드·existsValid 잔재·stale 주석) 수정 완료(refactor ce296873). F3(P11 feat 커밋 라벨 불일치) 지난 커밋이라 기록만. 재리뷰(2라운드) 둘 다 pass, 새 finding 0.
   - **⚠️ verify 인계(review F4)**: payment 테스트는 `flyway.enabled=false`+`ddl-auto: create-drop`이라 V4 ALTER SQL 이 테스트에서 미실행(엔티티 datetime(6) 기반 스키마로 P17 정밀도만 검증). **verify(CI)/docker 부팅에서 V1→V4 실제 Flyway 적용·문법을 반드시 확인**할 것. 운영 데이터 0이라 회귀 위험은 낮음.
 
 ## 직전 봉인
