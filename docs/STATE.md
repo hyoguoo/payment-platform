@@ -1,11 +1,23 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **봉인 완료(done)**. 이슈/브랜치 #89, PR 생성 단계. 활성 작업 없음.
-> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조.
+> 최종 수정: 2026-06-07 — CI-PIPELINE-REDESIGN **discuss 완료 → plan 대기**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **plan 단계부터 시작**. 명령: `workflow-plan` 스킬 호출 또는 "plan 작성". 입력 = `docs/topics/CI-PIPELINE-REDESIGN.md`(설계 D1~D8 + 요약 브리핑). 브랜치 `#91` 체크아웃 상태 확인 후 진행.
 
 ## 활성 작업
 
-(없음)
+- **CI-PIPELINE-REDESIGN** (stage: **plan**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
+  - **다음 할 일**: plan 단계 — `docs/topics/CI-PIPELINE-REDESIGN.md`를 실행 태스크로 분해(`workflow-plan`). 설계는 discuss 완료(Critic·Domain Expert 모두 pass).
+  - **핵심 결정 D1~D8**:
+    - D1 fan-out = 재사용 워크플로우 `_service-ci.yml`(입력 `service`/`has-integration`, matrix 기각)
+    - D2 서비스당 1 job(빌드+단위+커버리지+lint) + 통합테스트만 별도 job, `build -x integrationTest` 강제, 통합 없는 서비스(user/gateway/eureka)는 통합 job 생략
+    - D3 test-retry 통합 한정(`org.gradle.test-retry`, maxFailures 값 plan 확정) + Testcontainers `reuse.enable` + setup-gradle 기본 캐싱(build cache 기각)
+    - D4 jacoco-report 내장 base 비교 + PR 단일 통합 코멘트(커버리지 델타+테스트수+lint 요약, 서비스별 난립 금지 O4) + reviewdog 인라인 유지 + Discord 제거. **양립성(액션 서비스별 코멘트 vs 단일) plan 확정 — 불가 시 단일 코멘트 우선**
+    - D5 액션 Node 24 최신: checkout v6 / setup-java v5 / upload-artifact v7 / gradle-actions v6 / junit-report v6 / jacoco-report v1.8 / github-script v9 / reviewdog-setup v1.5 (2026-06-07 GitHub API 실측). 메이저 bump breaking은 PR 실증
+    - D6 Groovy `exceptionFormat "full"` → `= 'full'` 4곳(루트 build.gradle + payment/pg/product integrationTest 블록)
+    - D7 커버리지 게이트 실측 상향: payment 0.89→0.90, pg 0.91→0.93, product 0.40→0.43 / **user는 `UserQueryUseCase` 단위 테스트 신규 작성 후 상향**(현재 3라인 0%) / gateway·eureka 0.0 유지(측정 대상 클래스 0)
+    - D8 user `FlywayDockerProfileTest` 신규(product 동형, docker profile `locations: classpath:db/schema`가 `V2__seed_user.sql` 차단 검증) → user has-integration false→true 전환
+  - **plan 확정 대상(이연)**: D4 단일코멘트 양립성 / D3 maxFailures 구체값 / D2 `-x integrationTest` 누락 방지 / lint 스크립트(`spotbugs-to-rdjsonl.py` → _service-ci.yml 이동, `lint-summary.js` → 취합 단일 코멘트) 재배치 / FlywayDockerProfileTest의 `docker-java.properties` 동반 필요 여부
+  - **코드 사실**: 현재 `.github/workflows/ci.yml`(2 job), `.github/scripts/{lint-summary.js,spotbugs-to-rdjsonl.py}`, reusable workflow 無, test-retry 플러그인 無, integrationTest task = payment/pg/product만. 설계 상세·근거: `docs/topics/CI-PIPELINE-REDESIGN.md`, ledger: `docs/rounds/ci-pipeline-redesign/discuss-interview-0.md`(RESOLVED 20)
 
 ## 직전 봉인
 
