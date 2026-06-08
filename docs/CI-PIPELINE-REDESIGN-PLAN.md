@@ -238,7 +238,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T5 — 커버리지 게이트 실측 기반 상향
+### T5 — 커버리지 게이트 실측 기반 상향 [x]
 
 - **목적**: D7 결정 이행. payment/pg/product는 실측값 기반으로 상향하고, user는 T3 작성 후 `jacocoTestReport` 재측정값 기반으로 상향한다.
 - `tdd: false`
@@ -251,6 +251,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 - **완료 기준**: `./gradlew :payment-service:jacocoTestCoverageVerification :pg-service:jacocoTestCoverageVerification :product-service:jacocoTestCoverageVerification :user-service:jacocoTestCoverageVerification`가 전부 green. gateway/eureka는 변경 없음(`0.0` 유지).
 - **실측 확정 주의**: payment 목표값(0.90)은 현행 주석(92.87%)과 PLAN 표기(92.93%) 간 수치 혼선이 있다. execute에서 `./gradlew :payment-service:jacocoTestReport` 재측정으로 실측값을 확정한 뒤 적용한다. 게이트(0.90)는 두 값 모두 충족하므로 목표 수치 자체는 변경 없음.
 - **선행 조건**: T3(user 단위 테스트) 완료 필수.
+- **완료 결과** (2026-06-08): 4개 서비스 실측 후 minimum 상향 완료. integrationTest exec 합산 구조(루트 build.gradle afterEvaluate wiring) 확인 — 4개 서비스 모두 test+integrationTest 합산 기준으로 게이트 동작. 실측: payment 92.93%(552/594) → 0.90, pg 96.21%(559/581) → 0.93, product 45.65%(21/46) → 0.43, user 100.00%(3/3, integrationTest 합산도 동일) → 0.97. `./gradlew :payment-service:jacocoTestCoverageVerification :pg-service:jacocoTestCoverageVerification :product-service:jacocoTestCoverageVerification :user-service:jacocoTestCoverageVerification` 전부 green. gateway/eureka 변경 없음.
 
 ---
 
