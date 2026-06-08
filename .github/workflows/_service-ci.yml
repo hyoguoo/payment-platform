@@ -39,6 +39,17 @@ jobs:
       - name: Build & Unit Test (통합 제외)
         run: ./gradlew :${{ inputs.service }}:build -x integrationTest
 
+      # ── 단위 테스트 JUnit Check 리포트 ─────────────────────────────────────
+      # main ci.yml 에서 보존돼야 하는 현행 동작 — 단위 테스트 실패의 인라인 Check 가시성.
+      # gateway/eureka 는 통합 job 이 없으므로 이 step 이 유일한 JUnit Check 발행 경로.
+      - name: JUnit Unit Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: ${{ inputs.service }}/build/test-results/test/**/*.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: JUnit Unit Test Report (${{ inputs.service }})
+
       # ── Checkstyle ─────────────────────────────────────────────────────────
       # --continue: 해당 서비스 main/test task 중 하나 실패가 다른 task 실행을 막지 않도록
       - name: Run Checkstyle
@@ -100,7 +111,10 @@ jobs:
           title: ''
 
       # ── 커버리지 수치 아티팩트 업로드 (취합 job 단일 코멘트용) ──────────────
-      # 서비스별 고유 이름 — upload-artifact v4+ 동명 충돌 정책에 따라 충돌 방지 필수
+      # 서비스별 고유 이름 — upload-artifact v4+ 동명 충돌 정책에 따라 충돌 방지 필수.
+      # upload-artifact v4+ 는 단일 파일 업로드 시 LCA(파일 부모)를 루트로 평탄화한다.
+      # download 후 실제 경로: artifacts/coverage-<svc>/jacocoTestReport.xml.
+      # report-comment.js 는 이 평탄 경로로 읽는다(lint 아티팩트와 동일 규약).
       - name: Upload coverage artifact
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
@@ -108,6 +122,19 @@ jobs:
           name: coverage-${{ inputs.service }}
           path: ${{ github.workspace }}/${{ inputs.service }}/build/reports/jacoco/test/jacocoTestReport.xml
           retention-days: 1
+
+      # ── JaCoCo HTML 리포트 아티팩트 업로드 (현행 ci.yml 회귀 복원) ─────────
+      # 사람이 브라우징할 수 있는 커버리지 상세 리포트를 보존한다.
+      # 테스트 실패해도 리포트를 보존하기 위해 if: always() 적용.
+      # 디렉토리 부재(빌드 오류 등) 시 경고만 — 아티팩트 부재로 전체 job 차단 방지.
+      - name: Upload JaCoCo HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-html-${{ inputs.service }}
+          path: ${{ github.workspace }}/${{ inputs.service }}/build/reports/jacoco/test/html
+          retention-days: 14
+          if-no-files-found: warn
 
       # ── lint 요약 아티팩트 생성 + 업로드 (취합 job 단일 코멘트용) ─────────
       - name: Generate lint summary artifact

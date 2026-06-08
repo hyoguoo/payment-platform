@@ -41,18 +41,24 @@ module.exports = async ({ github, context, artifactsDir }) => {
         }
     }
 
-    // ── 커버리지 XML 파싱 (전체 covered/missed 라인 합산) ────────────────────
+    // ── 커버리지 XML 파싱 (report-level 총계 LINE 카운터) ───────────────────
     /**
+     * JaCoCo XML 에서 report-level 총계 LINE 카운터를 파싱한다.
+     * JaCoCo XML 은 class/package/sourcefile 별 카운터가 앞에 오고
+     * <report> 직속 총계 카운터가 문서 끝에 위치하므로, 모든 type="LINE" 매치 중
+     * 마지막 매치가 report-level 총계다.
+     *
      * @param {string} xmlPath
      * @returns {{ covered: number, missed: number } | null}
      */
     function parseJacocoCoverage(xmlPath) {
         try {
             const xml = fs.readFileSync(xmlPath, 'utf8');
-            // LINE 카운터 추출: <counter type="LINE" missed="N" covered="N"/>
-            const match = xml.match(/type="LINE"\s+missed="(\d+)"\s+covered="(\d+)"/);
-            if (!match) return null;
-            return { missed: parseInt(match[1], 10), covered: parseInt(match[2], 10) };
+            // global 플래그로 모든 LINE 카운터를 수집한 뒤 마지막(report-level 총계)을 사용.
+            const matches = [...xml.matchAll(/type="LINE"\s+missed="(\d+)"\s+covered="(\d+)"/g)];
+            if (matches.length === 0) return null;
+            const last = matches[matches.length - 1];
+            return { missed: parseInt(last[1], 10), covered: parseInt(last[2], 10) };
         } catch {
             return null;
         }
@@ -63,10 +69,13 @@ module.exports = async ({ github, context, artifactsDir }) => {
      */
     const coverageResults = [];
     for (const svc of SERVICES) {
+        // upload-artifact v4+ 는 단일 파일 업로드 시 LCA(파일 부모)를 루트로 평탄화한다.
+        // download 후 실제 경로: artifacts/coverage-<svc>/jacocoTestReport.xml (평탄 경로).
+        // lint 아티팩트와 동일 규약으로 통일.
         const xmlPath = path.join(
             artifactsDir,
             `coverage-${svc}`,
-            `${svc}/build/reports/jacoco/test/jacocoTestReport.xml`,
+            'jacocoTestReport.xml',
         );
         const cov = parseJacocoCoverage(xmlPath);
         if (cov) {
