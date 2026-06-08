@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **plan 완료 → plan-review 대기**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **plan-review 단계부터 시작**. 명령: `workflow-plan-review` 스킬 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`(7태스크 T1~T7 + 요약 브리핑) + `docs/topics/CI-PIPELINE-REDESIGN.md`. 브랜치 `#91` 체크아웃 상태 확인 후 진행.
+> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **plan-review 완료 → execute 대기**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **execute 단계부터 시작 (Task 1 = T1 Groovy exceptionFormat 문법 정정)**. 명령: `workflow-execute` 스킬 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`(7태스크 T1~T7). 브랜치 `#91` 체크아웃 상태 확인 후 진행.
 
 ## 활성 작업
 
-- **CI-PIPELINE-REDESIGN** (stage: **plan-review**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
-  - **다음 할 일**: plan-review 단계 — `docs/CI-PIPELINE-REDESIGN-PLAN.md` 문서 정합성 경량 검증(`workflow-plan-review`). plan 라운드 Critic·Domain Expert 모두 pass(critical/major 0, minor 3건 반영 완료).
+- **CI-PIPELINE-REDESIGN** (stage: **execute**, 활성 태스크 **T1**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
+  - **다음 할 일**: execute 단계 — T1(루트+payment/pg/product build.gradle `exceptionFormat "full"` → `= 'full'` 4곳)부터 순차 구현(`workflow-execute`). plan-review pass(findings 0).
   - **plan 산출물**: 7태스크 T1~T7 (T1 Groovy 문법 / T2 test-retry / T3 user 단위테스트 / T4 user FlywayDockerProfileTest+통합환경 / T5 커버리지 게이트 상향 / T6 `_service-ci.yml`+lint재배치 / T7 ci.yml 재작성+취합 job). 전 태스크 domain_risk=false. 이연 5건(P-DEFER-1~5) plan 확정. 라운드 문서: `docs/rounds/ci-pipeline-redesign/plan-{critic,domain}-1.md`
   - **핵심 결정 D1~D8**:
     - D1 fan-out = 재사용 워크플로우 `_service-ci.yml`(입력 `service`/`has-integration`, matrix 기각)
