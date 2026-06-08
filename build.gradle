@@ -129,13 +129,8 @@ subprojects {
     // (review 피드백 반영: CI build job 이 -x integrationTest 로 실행되어 통합 exec 가 없는 상황에서
     //  게이트가 통합 exec 를 합산하면 항상 BUILD FAILED 가 되는 구조적 문제 해소)
     afterEvaluate {
-        def itTask = tasks.findByName('integrationTest')
-        if (itTask != null) {
-            // jacocoTestReport(HTML/XML 리포트 생성) 는 통합 exec 도 합산해 전체 커버리지를 시각화.
-            // 리포트와 게이트의 기준이 다르면 코멘트 수치와 게이트 판정이 어긋나므로,
-            // 리포트도 단위 exec 기준으로 통일한다.
-            // 통합 exec 합산이 필요한 경우에는 별도 태스크로 분리하는 방향을 권장.
-        }
+        // jacocoTestReport 와 jacocoTestCoverageVerification 모두 단위 test.exec 기준으로 동일하게 평가한다.
+        // 통합 exec 는 합산하지 않으며, 통합 정합성은 integration-test job 통과(pass/fail)로 보호한다.
 
         // jacocoTestCoverageVerification 에 단위 test.exec 만 연결 — 게이트가 단위 커버리지만 평가.
         jacocoTestCoverageVerification.dependsOn jacocoTestReport
