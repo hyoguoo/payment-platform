@@ -76,91 +76,21 @@ jobs:
       - name: Checkout (스크립트 접근용)
         uses: actions/checkout@v6
 
-      # ── 6서비스 커버리지 아티팩트 다운로드 ────────────────────────────────
-      - name: Download coverage — payment-service
+      # ── 6서비스 아티팩트 다운로드 (pattern 일괄) ──────────────────────────
+      # download-artifact 는 pattern 매칭 아티팩트를 각자 이름 디렉토리로 푼다
+      # (merge-multiple 기본 false): artifacts/coverage-<svc>/..., artifacts/lint-<svc>/...
+      # 일부 서비스 job 실패로 아티팩트가 없어도 존재분만 받고 에러 없음.
+      - name: Download coverage artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coverage-payment-service
-          path: artifacts/coverage-payment-service
-        continue-on-error: true
+          pattern: coverage-*
+          path: artifacts
 
-      - name: Download coverage — pg-service
+      - name: Download lint artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coverage-pg-service
-          path: artifacts/coverage-pg-service
-        continue-on-error: true
-
-      - name: Download coverage — product-service
-        uses: actions/download-artifact@v7
-        with:
-          name: coverage-product-service
-          path: artifacts/coverage-product-service
-        continue-on-error: true
-
-      - name: Download coverage — user-service
-        uses: actions/download-artifact@v7
-        with:
-          name: coverage-user-service
-          path: artifacts/coverage-user-service
-        continue-on-error: true
-
-      - name: Download coverage — gateway
-        uses: actions/download-artifact@v7
-        with:
-          name: coverage-gateway
-          path: artifacts/coverage-gateway
-        continue-on-error: true
-
-      - name: Download coverage — eureka-server
-        uses: actions/download-artifact@v7
-        with:
-          name: coverage-eureka-server
-          path: artifacts/coverage-eureka-server
-        continue-on-error: true
-
-      # ── 6서비스 lint 요약 아티팩트 다운로드 ──────────────────────────────
-      - name: Download lint — payment-service
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-payment-service
-          path: artifacts/lint-payment-service
-        continue-on-error: true
-
-      - name: Download lint — pg-service
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-pg-service
-          path: artifacts/lint-pg-service
-        continue-on-error: true
-
-      - name: Download lint — product-service
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-product-service
-          path: artifacts/lint-product-service
-        continue-on-error: true
-
-      - name: Download lint — user-service
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-user-service
-          path: artifacts/lint-user-service
-        continue-on-error: true
-
-      - name: Download lint — gateway
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-gateway
-          path: artifacts/lint-gateway
-        continue-on-error: true
-
-      - name: Download lint — eureka-server
-        uses: actions/download-artifact@v7
-        with:
-          name: lint-eureka-server
-          path: artifacts/lint-eureka-server
-        continue-on-error: true
+          pattern: lint-*
+          path: artifacts
 
       # ── PR 단일 통합 코멘트 조립/갱신 (update-or-create 패턴, O4) ─────────
       - name: PR 단일 통합 코멘트 조립
