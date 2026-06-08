@@ -10,8 +10,9 @@ ext {
     set('logstashEncoderVersion', '7.4')
     set('querydslVersion', '5.0.0')
     set('springCloudVersion', '2024.0.0')
-    // C-2: LINE 커버리지 minimum — integrationTest 합산 실측 92.93% 기준, 안전마진 3%p 적용
-    set('jacoco.lineCoverageMinimum', '0.90')
+    // 단위 커버리지 기준 게이트. 통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호.
+    // 단위 test exec 실측 89.23%(530/594 라인) 기준, 안전마진 3%p 적용.
+    set('jacoco.lineCoverageMinimum', '0.86')
 }
 
 dependencies {

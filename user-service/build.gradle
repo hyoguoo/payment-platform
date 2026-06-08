@@ -7,7 +7,9 @@ plugins {
 ext {
     set('springCloudVersion', '2024.0.0')
     set('testcontainersVersion', '1.20.4')
-    // T5: LINE 커버리지 minimum — integrationTest 합산 실측 100% (UserQueryUseCase 3/3라인) 기준, 안전마진 3%p 적용
+    // 단위 커버리지 기준 게이트. 통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호.
+    // 측정 범위: usecase(UserQueryUseCase) + domain(User) — infrastructure/dto 등은 excludePatterns 제외.
+    // 단위 test exec 실측 100%(3/3 라인) 기준, 안전마진 3%p 적용.
     set('jacoco.lineCoverageMinimum', '0.97')
 }
 
