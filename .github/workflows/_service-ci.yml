@@ -1,0 +1,190 @@
+name: Service CI (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: '서비스 모듈명 (settings.gradle 기준: payment-service, pg-service, product-service, user-service, gateway, eureka-server)'
+        type: string
+        required: true
+      has-integration:
+        description: 'integrationTest 태스크 보유 여부 — true 이면 integration-test job 실행'
+        type: boolean
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  build-test-lint:
+    name: Build / Test / Lint (${{ inputs.service }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # P-DEFER-3: 통합테스트 제외 강제 — build 태스크에 check.dependsOn integrationTest 이 wiring 되어
+      # `-x integrationTest` 없이 호출하면 통합테스트까지 끌려온다.
+      - name: Build & Unit Test (통합 제외)
+        run: ./gradlew :${{ inputs.service }}:build -x integrationTest
+
+      # ── Checkstyle ─────────────────────────────────────────────────────────
+      # --continue: 해당 서비스 main/test task 중 하나 실패가 다른 task 실행을 막지 않도록
+      - name: Run Checkstyle
+        id: checkstyle
+        run: ./gradlew :${{ inputs.service }}:checkstyleMain :${{ inputs.service }}:checkstyleTest --continue
+        continue-on-error: true
+
+      # ── SpotBugs ────────────────────────────────────────────────────────────
+      # --continue 동일 이유
+      - name: Run SpotBugs
+        id: spotbugs
+        run: ./gradlew :${{ inputs.service }}:spotbugsMain --continue
+        continue-on-error: true
+
+      # ── reviewdog setup ─────────────────────────────────────────────────────
+      - name: Setup reviewdog
+        uses: reviewdog/action-setup@v1.5
+        with:
+          reviewdog_version: latest
+
+      # ── reviewdog — Checkstyle (서비스별 인라인) ────────────────────────────
+      - name: Reviewdog — Checkstyle
+        if: always() && github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for report in main test; do
+            file="${{ inputs.service }}/build/reports/checkstyle/${report}.xml"
+            if [ -f "$file" ]; then
+              reviewdog -f=checkstyle -name="Checkstyle (${{ inputs.service }}/${report})" \
+                -reporter=github-pr-review -filter-mode=file -fail-on-error=false \
+                < "$file"
+            fi
+          done
+
+      # ── reviewdog — SpotBugs (서비스별 인라인) ─────────────────────────────
+      - name: Reviewdog — SpotBugs
+        if: always() && github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          file="${{ inputs.service }}/build/reports/spotbugs/main.xml"
+          if [ -f "$file" ]; then
+            python3 .github/scripts/spotbugs-to-rdjsonl.py "$file" "${{ inputs.service }}" \
+              | reviewdog -f=rdjsonl -name="SpotBugs (${{ inputs.service }})" \
+                -reporter=github-pr-review -filter-mode=file -fail-on-error=false
+          fi
+
+      # ── JaCoCo 커버리지 수치 산출 (코멘트 비활성, P-DEFER-1 방식 B) ─────────
+      # update-comment 미지정 → 기본 false → 코멘트 미생성. 수치(step output)만 산출.
+      # 단일 PR 코멘트 조립은 취합 job(report)의 github-script 전담.
+      - name: JaCoCo Coverage (코멘트 억제, 수치만 산출)
+        id: jacoco
+        if: github.event_name == 'pull_request'
+        uses: Madrapps/jacoco-report@v1.8
+        with:
+          paths: ${{ github.workspace }}/${{ inputs.service }}/build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: ''
+
+      # ── 커버리지 수치 아티팩트 업로드 (취합 job 단일 코멘트용) ──────────────
+      # 서비스별 고유 이름 — upload-artifact v4+ 동명 충돌 정책에 따라 충돌 방지 필수
+      - name: Upload coverage artifact
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ inputs.service }}
+          path: ${{ github.workspace }}/${{ inputs.service }}/build/reports/jacoco/test/jacocoTestReport.xml
+          retention-days: 1
+
+      # ── lint 요약 아티팩트 생성 + 업로드 (취합 job 단일 코멘트용) ─────────
+      - name: Generate lint summary artifact
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          mkdir -p /tmp/lint-artifacts
+          CS_MAIN=0
+          CS_TEST=0
+          SB=0
+
+          cs_main_file="${{ inputs.service }}/build/reports/checkstyle/main.xml"
+          cs_test_file="${{ inputs.service }}/build/reports/checkstyle/test.xml"
+          sb_file="${{ inputs.service }}/build/reports/spotbugs/main.xml"
+
+          if [ -f "$cs_main_file" ]; then
+            CS_MAIN=$(grep -c '<error ' "$cs_main_file" || true)
+          fi
+          if [ -f "$cs_test_file" ]; then
+            CS_TEST=$(grep -c '<error ' "$cs_test_file" || true)
+          fi
+          if [ -f "$sb_file" ]; then
+            SB=$(grep -c '<BugInstance ' "$sb_file" || true)
+          fi
+
+          echo "{\"service\":\"${{ inputs.service }}\",\"checkstyle_main\":${CS_MAIN},\"checkstyle_test\":${CS_TEST},\"spotbugs\":${SB}}" \
+            > /tmp/lint-artifacts/lint-${{ inputs.service }}.json
+
+      - name: Upload lint summary artifact
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-${{ inputs.service }}
+          path: /tmp/lint-artifacts/lint-${{ inputs.service }}.json
+          retention-days: 1
+
+      # ── Lint gate (현행 ci.yml 로직 보존) ─────────────────────────────────
+      # PR / push 모두 전수 게이트 — checkstyle/spotbugs task 위반 시 fail.
+      # reviewdog 는 인라인 안내(filter-mode=file)만 담당하고 차단은 이 게이트가 책임진다.
+      - name: Fail on violations (lint gate)
+        if: always()
+        run: |
+          if [ "${{ steps.checkstyle.outcome }}" != "success" ] || \
+             [ "${{ steps.spotbugs.outcome }}" != "success" ]; then
+            echo "Lint violations found."
+            exit 1
+          fi
+
+  # ── 통합테스트 job (has-integration == true 일 때만) ─────────────────────
+  # Testcontainers reuse: ephemeral runner 내 다중 클래스 간 재사용 효과.
+  # job/서비스 간 재사용은 없음(ephemeral runner 한계).
+  integration-test:
+    name: Integration Test (${{ inputs.service }})
+    runs-on: ubuntu-latest
+    if: ${{ inputs.has-integration }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Integration Tests
+        run: ./gradlew :${{ inputs.service }}:integrationTest
+        env:
+          TESTCONTAINERS_REUSE_ENABLE: 'true'
+          DOCKER_API_VERSION: '1.44'
+
+      - name: JUnit Integration Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: ${{ inputs.service }}/build/test-results/integrationTest/**/*.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: JUnit Integration Test Report (${{ inputs.service }})

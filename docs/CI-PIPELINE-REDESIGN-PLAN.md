@@ -255,7 +255,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T6 — `_service-ci.yml` 재사용 워크플로우 신규 작성 + lint 스크립트 재배치
+### T6 — `_service-ci.yml` 재사용 워크플로우 신규 작성 + lint 스크립트 재배치 [x]
 
 - **목적**: D1/D2/D3/D4/D5 결정 이행. `_service-ci.yml`을 신규 생성하고 P-DEFER-1~5 확정 사항을 반영한다. `build-test-lint` job(항상)과 `integration-test` job(`has-integration == true`일 때만)으로 구성한다. lint 스크립트 재배치도 이 태스크에서 수행한다.
 - `tdd: false`
@@ -274,6 +274,8 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
   - `grep '\\-x integrationTest' .github/workflows/_service-ci.yml` 결과가 1건 이상 — `build-test-lint` job에 `-x integrationTest` 플래그가 실제로 존재함을 grep으로 확인(D2 강제 장치 검증).
   - `lint-summary.js`의 역할이 `report-comment.js`로 이관됐고, `lint-summary.js` 파일이 삭제됨(T7에서 중복 선언 제거 — 삭제 책임은 T6 단독).
 - **주의**: CI 실제 동작(6서비스 독립 막대, 단일 코멘트 렌더)은 T7 PR Actions 실행으로 실증.
+
+- **완료 결과** (2026-06-08): `.github/workflows/_service-ci.yml` 신규 작성. `build-test-lint` job(항상) + `integration-test` job(`has-integration == true`일 때만) 구조 완성. D5 버전표 전부 적용(checkout@v6 / setup-java@v5 / setup-gradle@v6 / upload-artifact@v7 / action-junit-report@v6 / jacoco-report@v1.8 / reviewdog-setup@v1.5). `grep -n -- '-x integrationTest' _service-ci.yml` 1건(40행) 확인(D2/P-DEFER-3 강제). P-DEFER-1 방식 B: `jacoco-report@v1.8` 코멘트 비활성(title: '' + update-comment 미지정), 커버리지 XML 아티팩트 업로드. lint 요약 JSON 아티팩트 업로드(서비스별 고유 이름). lint gate 로직(checkstyle/spotbugs outcome 검사) 현행 보존. `lint-summary.js` 삭제 완료, `report-comment.js` 신규 작성(취합 job에서 6서비스 커버리지+lint 단일 PR 코멘트 조립, update-or-create 패턴). YAML 문법 검증 통과(Ruby YAML 파서). `node --check report-comment.js` 통과.
 
 (반영됨 — Architect 재사용 워크플로우 경계 검토, D2 강제 장치 확인, lint 스크립트 재배치 위치 검토: 완료 기준에 grep-검증 항목 추가, lint-summary.js 삭제 책임 T6 단독 귀속 명시)
 
