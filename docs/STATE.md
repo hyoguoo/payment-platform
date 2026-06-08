@@ -1,12 +1,14 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **execute 완료(T1~T7) → review 대기**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **review**. 명령: `workflow-review` 스킬 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`.
+> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **review 완료(재리뷰 pass) → verify 대기**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **verify**. 사용자가 "verify 시작" 명시 요청 시 `workflow-verify` 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`.
 
 ## 활성 작업
 
-- **CI-PIPELINE-REDESIGN** (stage: **review**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
-  - **다음 할 일**: review 단계 — T1~T7 전체 산출물 코드 리뷰. `workflow-review` 스킬 호출.
+- **CI-PIPELINE-REDESIGN** (stage: **verify**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
+  - **다음 할 일**: verify 단계 — 전체 테스트 → context 갱신 → 아카이브 → PR 생성. 사용자 명시 요청 시 시작.
+  - **review 결과**: 1라운드 Critic fail(critical 2/major 2/minor 1) + DE revise(major 1) → 수정 → 2라운드 재리뷰 **둘 다 pass**(critical/major 0). 주요 수정: 커버리지 게이트 단위 기준 재정의(payment 0.90→0.86, 통합 정합성은 integration-test job pass/fail로 보호), report-comment.js 아티팩트 경로·LINE 파싱 정정, JUnit Check·JaCoCo HTML 복원, 데드코드 정리. 라운드 문서: `docs/rounds/ci-pipeline-redesign/review-{critic,domain}-{1,2}.md`
+  - **verify/PR 인계 사항(DE 2라운드 F2 minor)**: 통합 정합성 보호가 GitHub branch protection의 required status checks 등록에 의존. 각 서비스 build-test-lint + integration-test job을 required checks로 등록해야 머지 차단이 실효. **PR 본문에 운영 전제로 명시할 것.**
   - **plan 산출물**: 7태스크 T1~T7 (T1 Groovy 문법 / T2 test-retry / T3 user 단위테스트 / T4 user FlywayDockerProfileTest+통합환경 / T5 커버리지 게이트 상향 / T6 `_service-ci.yml`+lint재배치 / T7 ci.yml 재작성+취합 job). 전 태스크 domain_risk=false. 이연 5건(P-DEFER-1~5) plan 확정. 라운드 문서: `docs/rounds/ci-pipeline-redesign/plan-{critic,domain}-1.md`
   - **핵심 결정 D1~D8**:
     - D1 fan-out = 재사용 워크플로우 `_service-ci.yml`(입력 `service`/`has-integration`, matrix 기각)
