@@ -167,7 +167,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T2 — test-retry 플러그인 wiring (통합 한정)
+### T2 — test-retry 플러그인 wiring (통합 한정) [x]
 
 - **목적**: D3 결정 이행. `org.gradle.test-retry` 플러그인을 루트 `build.gradle`에 추가하고, 통합테스트 task(`integrationTest`)를 보유한 서비스(현재 payment/pg/product)의 `integrationTest` 블록에만 retry 설정을 적용한다. P-DEFER-2 확정값(`maxRetries=2`, `maxFailures=3`) 적용.
 - `tdd: false`
@@ -187,6 +187,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
   - `grep -r 'retry {' user-service/build.gradle`가 0건(T4 전).
   - **버전 확정 절차**: execute 시작 시 `org.gradle.test-retry` 최신 안정 버전을 Gradle Plugin Portal에서 lookup해 확정하고, 루트 `build.gradle` 선언 옆 주석과 본 PLAN 산출물에 확정 버전을 기록한다. 임의 추정값으로 `<최신>` 플레이스홀더를 치환하지 않는다.
 - **주의**: user `integrationTest`는 T4에서 추가하며, retry wiring도 T4에서 함께 수행.
+- **완료 결과** (2026-06-08): `org.gradle.test-retry` 버전 **1.6.5** 확정 (Gradle Plugin Portal maven-metadata.xml 실측). 루트 `build.gradle` plugins 블록에 `apply false` 선언, payment/pg/product `build.gradle` plugins 블록에 apply + 각 `integrationTest` 태스크 블록에 `retry { maxRetries = 2; maxFailures = 3 }` 배치. `grep -rn 'retry {' payment-service/build.gradle pg-service/build.gradle product-service/build.gradle` → 각 1건(integrationTest 내부), 단위 test 블록 0건. `grep -rn 'retry {' user-service/build.gradle` → 0건. `./gradlew :payment-service:integrationTest --dry-run` BUILD SUCCESSFUL (Docker 미가용으로 실행 검증 생략, 설정 평가 통과 확인). `./gradlew :payment-service:test :pg-service:test :product-service:test :user-service:test :pg-service:test :gateway:test :eureka-server:test --rerun` BUILD SUCCESSFUL — 단위 회귀 0건.
 
 (반영됨 — Architect [실행 적신호] + 경계 검토: 루트 실측으로 subprojects 패턴 확인, 통합 보유 서비스별 plugins {} + integrationTest 블록 apply 방식으로 산출물 명시)
 

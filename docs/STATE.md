@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **T1 완료 → T2 대기**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **execute T2** (test-retry 플러그인 wiring, 통합 한정 재시도). 명령: `workflow-execute` 스킬 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`. 브랜치 `#91` 체크아웃 상태 확인 후 진행.
+> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **T2 완료 → T3 대기**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **execute T3** (user-service `UserQueryUseCaseTest` 단위 테스트 작성, tdd=true). 명령: `workflow-execute` 스킬 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`. 브랜치 `#91` 체크아웃 상태 확인 후 진행.
 
 ## 활성 작업
 
-- **CI-PIPELINE-REDESIGN** (stage: **execute**, 활성 태스크 **T2**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
-  - **다음 할 일**: execute 단계 — T2(test-retry 플러그인 wiring, 통합 한정 재시도 도입).
+- **CI-PIPELINE-REDESIGN** (stage: **execute**, 활성 태스크 **T3**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
+  - **다음 할 일**: execute 단계 — T3(user-service `UserQueryUseCaseTest` 단위 테스트 작성, 정상조회/미존재예외 2건, tdd=true).
   - **plan 산출물**: 7태스크 T1~T7 (T1 Groovy 문법 / T2 test-retry / T3 user 단위테스트 / T4 user FlywayDockerProfileTest+통합환경 / T5 커버리지 게이트 상향 / T6 `_service-ci.yml`+lint재배치 / T7 ci.yml 재작성+취합 job). 전 태스크 domain_risk=false. 이연 5건(P-DEFER-1~5) plan 확정. 라운드 문서: `docs/rounds/ci-pipeline-redesign/plan-{critic,domain}-1.md`
   - **핵심 결정 D1~D8**:
     - D1 fan-out = 재사용 워크플로우 `_service-ci.yml`(입력 `service`/`has-integration`, matrix 기각)

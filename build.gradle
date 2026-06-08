@@ -5,6 +5,8 @@ plugins {
     id 'jacoco'
     id 'checkstyle'
     id 'com.github.spotbugs' version '6.0.9' apply false
+    // T2: 통합테스트 자동 재시도 — 서비스별 plugins{} 에서 apply 후 integrationTest 블록에 wiring
+    id 'org.gradle.test-retry' version '1.6.5' apply false
 }
 
 allprojects {

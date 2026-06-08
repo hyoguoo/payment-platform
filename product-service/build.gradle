@@ -1,6 +1,7 @@
 plugins {
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
+    id 'org.gradle.test-retry'
 }
 
 ext {
@@ -79,6 +80,13 @@ task integrationTest(type: Test) {
                         "${result.skippedTestCount} skipped)"
             }
         }
+    }
+
+    // T2: D3 통합테스트 한정 자동 재시도 (단위 test 블록에는 적용 안 함)
+    // Testcontainers cold-start 타이밍 flaky 흡수. 3개 이상 실패 시 재시도 중단해 진짜 결함을 가리지 않음.
+    retry {
+        maxRetries = 2
+        maxFailures = 3
     }
 }
 
