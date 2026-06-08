@@ -281,7 +281,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T7 — `ci.yml` 재작성 + 취합 `report` job
+### T7 — `ci.yml` 재작성 + 취합 `report` job [x]
 
 - **목적**: D1/D2/D4/D5 결정 이행. 기존 단일 2-job `ci.yml`을 6서비스 fan-out + 취합 구조로 재작성한다. 취합 job은 6서비스 아티팩트를 수집해 단일 PR 코멘트를 조립한다. D8로 user `has-integration`이 `true`로 전환된다.
 - `tdd: false`
@@ -295,6 +295,8 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 - **완료 기준**: `.github/workflows/ci.yml` 재작성 완료. `grep -c 'workflow_call\|uses:' .github/workflows/ci.yml`로 6서비스 호출 확인. Discord 관련 step이 ci.yml에 없음.
 - **실증**: 이 태스크를 포함한 PR을 GitHub에 올리면 Actions에서 6서비스 독립 막대, `report` job 단일 PR 코멘트, 액션 메이저 bump breaking 부재를 직접 확인한다. `act` 로컬 실행 미채택.
 - **선행 조건**: T6(`_service-ci.yml` 신규) 완료 필수.
+
+- **완료 결과** (2026-06-08): `.github/workflows/ci.yml` 재작성 완료. 6서비스 fan-out 구조: payment(has-integration=true)/pg(true)/product(true)/user(true, D8)/gateway(false)/eureka(false) — 각각 `uses: ./.github/workflows/_service-ci.yml` + `secrets: inherit`. `grep -c 'uses: ./.github/workflows/_service-ci.yml'` = 6건. user `has-integration: true` 확인(D8 이행). Discord 관련 실제 step 0건(주석만). `report` job: `needs: [payment, pg, product, user, gateway, eureka]` + `if: always() && github.event_name == 'pull_request'` — `download-artifact@v7`로 12개(커버리지 6 + lint 6) 아티팩트 다운로드 → checkout@v6 → `github-script@v9`에서 `report-comment.js`를 `require()` 호출 (`artifactsDir: 'artifacts'`). report-comment.js 인터페이스(`{ github, context, artifactsDir }`)와 정합 확인. YAML 문법 검증 통과(Ruby YAML 파서). JS 문법 통과(`node --check`). CI 자체 실증(`act` 미채택) — PR Actions에서 6서비스 독립 막대, report 단일 코멘트, 액션 메이저 bump breaking 부재를 확인 예정.
 
 (반영됨 — Architect 취합 job 경계 검토: service 입력값과 settings.gradle 모듈명 대조 확인을 T7 PR Actions 실증 항목에 포함)
 
