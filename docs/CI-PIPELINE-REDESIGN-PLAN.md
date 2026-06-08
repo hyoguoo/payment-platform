@@ -252,6 +252,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 - **실측 확정 주의**: payment 목표값(0.90)은 현행 주석(92.87%)과 PLAN 표기(92.93%) 간 수치 혼선이 있다. execute에서 `./gradlew :payment-service:jacocoTestReport` 재측정으로 실측값을 확정한 뒤 적용한다. 게이트(0.90)는 두 값 모두 충족하므로 목표 수치 자체는 변경 없음.
 - **선행 조건**: T3(user 단위 테스트) 완료 필수.
 - **완료 결과** (2026-06-08): 4개 서비스 실측 후 minimum 상향 완료. integrationTest exec 합산 구조(루트 build.gradle afterEvaluate wiring) 확인 — 4개 서비스 모두 test+integrationTest 합산 기준으로 게이트 동작. 실측: payment 92.93%(552/594) → 0.90, pg 96.21%(559/581) → 0.93, product 45.65%(21/46) → 0.43, user 100.00%(3/3, integrationTest 합산도 동일) → 0.97. `./gradlew :payment-service:jacocoTestCoverageVerification :pg-service:jacocoTestCoverageVerification :product-service:jacocoTestCoverageVerification :user-service:jacocoTestCoverageVerification` 전부 green. gateway/eureka 변경 없음.
+- **review 반영** (2026-06-08): 게이트 단위 기준 전환. 루트 build.gradle afterEvaluate 에서 게이트(jacocoTestCoverageVerification)의 integrationTest.exec 합산 제거 — 단위 test.exec 기준으로 재정의. 단위 실측: payment 89.23%(530/594) → minimum 0.86, pg 96.0%(558/581) → 0.93 유지, product 45.65%(21/46) → 0.43 유지, user 100%(3/3) → 0.97 유지. `./gradlew :payment-service:build :pg-service:build :product-service:build :user-service:build -x integrationTest --rerun-tasks` 전부 BUILD SUCCESSFUL(CI build job 조건 실증). 각 서비스 build.gradle 주석 "단위 커버리지 기준 게이트" + "통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호"로 정정. user-service 주석에 측정 범위(usecase + domain) 명시.
 
 ---
 
@@ -276,6 +277,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 - **주의**: CI 실제 동작(6서비스 독립 막대, 단일 코멘트 렌더)은 T7 PR Actions 실행으로 실증.
 
 - **완료 결과** (2026-06-08): `.github/workflows/_service-ci.yml` 신규 작성. `build-test-lint` job(항상) + `integration-test` job(`has-integration == true`일 때만) 구조 완성. D5 버전표 전부 적용(checkout@v6 / setup-java@v5 / setup-gradle@v6 / upload-artifact@v7 / action-junit-report@v6 / jacoco-report@v1.8 / reviewdog-setup@v1.5). `grep -n -- '-x integrationTest' _service-ci.yml` 1건(40행) 확인(D2/P-DEFER-3 강제). P-DEFER-1 방식 B: `jacoco-report@v1.8` 코멘트 비활성(title: '' + update-comment 미지정), 커버리지 XML 아티팩트 업로드. lint 요약 JSON 아티팩트 업로드(서비스별 고유 이름). lint gate 로직(checkstyle/spotbugs outcome 검사) 현행 보존. `lint-summary.js` 삭제 완료, `report-comment.js` 신규 작성(취합 job에서 6서비스 커버리지+lint 단일 PR 코멘트 조립, update-or-create 패턴). YAML 문법 검증 통과(Ruby YAML 파서). `node --check report-comment.js` 통과.
+- **review 반영** (2026-06-08): build-test-lint job에 단위 JUnit Check step 추가(`mikepenz/action-junit-report@v6`, `if: always()`, `report_paths: <svc>/build/test-results/test/**/*.xml`). JaCoCo HTML 리포트 아티팩트 업로드 step 복원(`jacoco-html-<svc>`, retention-days:14, `if: always()`, `if-no-files-found: warn`). coverage 아티팩트 경로 코멘트에 평탄화 동작 명시. YAML 문법 검증 통과.
 
 (반영됨 — Architect 재사용 워크플로우 경계 검토, D2 강제 장치 확인, lint 스크립트 재배치 위치 검토: 완료 기준에 grep-검증 항목 추가, lint-summary.js 삭제 책임 T6 단독 귀속 명시)
 
@@ -297,6 +299,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 - **선행 조건**: T6(`_service-ci.yml` 신규) 완료 필수.
 
 - **완료 결과** (2026-06-08): `.github/workflows/ci.yml` 재작성 완료. 6서비스 fan-out 구조: payment(has-integration=true)/pg(true)/product(true)/user(true, D8)/gateway(false)/eureka(false) — 각각 `uses: ./.github/workflows/_service-ci.yml` + `secrets: inherit`. `grep -c 'uses: ./.github/workflows/_service-ci.yml'` = 6건. user `has-integration: true` 확인(D8 이행). Discord 관련 실제 step 0건(주석만). `report` job: `needs: [payment, pg, product, user, gateway, eureka]` + `if: always() && github.event_name == 'pull_request'` — `download-artifact@v7`로 12개(커버리지 6 + lint 6) 아티팩트 다운로드 → checkout@v6 → `github-script@v9`에서 `report-comment.js`를 `require()` 호출 (`artifactsDir: 'artifacts'`). report-comment.js 인터페이스(`{ github, context, artifactsDir }`)와 정합 확인. YAML 문법 검증 통과(Ruby YAML 파서). JS 문법 통과(`node --check`). CI 자체 실증(`act` 미채택) — PR Actions에서 6서비스 독립 막대, report 단일 코멘트, 액션 메이저 bump breaking 부재를 확인 예정.
+- **review 반영** (2026-06-08): report-comment.js 수정 — coverage XML 경로를 평탄 경로(`coverage-<svc>/jacocoTestReport.xml`)로 수정(Critic F1), LINE 정규식을 global matchAll 후 마지막 매치(report-level 총계)로 수정(Critic F2). product XML 실측 검증: 수정 전 0%(첫 매치 covered=0/missed=6), 수정 후 45.65%(마지막 매치 covered=21/missed=25) — evidence 일치. `node --check` 통과.
 
 (반영됨 — Architect 취합 job 경계 검토: service 입력값과 settings.gradle 모듈명 대조 확인을 T7 PR Actions 실증 항목에 포함)
 
