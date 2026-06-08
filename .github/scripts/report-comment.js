@@ -43,15 +43,44 @@ module.exports = async ({ github, context, artifactsDir }) => {
 
     // ── 커버리지 XML 파싱 (report-level 총계 LINE 카운터) ───────────────────
     /**
+     * 디렉토리를 재귀 탐색해 jacocoTestReport.xml 의 절대 경로를 찾는다.
+     * upload-artifact 가 workspace 하위 경로의 디렉토리 구조를 보존하므로
+     * (coverage-<svc>/<svc>/build/reports/jacoco/test/jacocoTestReport.xml 처럼 중첩될 수 있다)
+     * 경로 깊이를 가정하지 않고 파일명으로 탐색한다.
+     *
+     * @param {string} dir
+     * @returns {string | null}
+     */
+    function findCoverageXml(dir) {
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return null;
+        }
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                const found = findCoverageXml(full);
+                if (found) return found;
+            } else if (entry.name === 'jacocoTestReport.xml') {
+                return full;
+            }
+        }
+        return null;
+    }
+
+    /**
      * JaCoCo XML 에서 report-level 총계 LINE 카운터를 파싱한다.
      * JaCoCo XML 은 class/package/sourcefile 별 카운터가 앞에 오고
      * <report> 직속 총계 카운터가 문서 끝에 위치하므로, 모든 type="LINE" 매치 중
      * 마지막 매치가 report-level 총계다.
      *
-     * @param {string} xmlPath
+     * @param {string | null} xmlPath
      * @returns {{ covered: number, missed: number } | null}
      */
     function parseJacocoCoverage(xmlPath) {
+        if (!xmlPath) return null;
         try {
             const xml = fs.readFileSync(xmlPath, 'utf8');
             // global 플래그로 모든 LINE 카운터를 수집한 뒤 마지막(report-level 총계)을 사용.
@@ -69,14 +98,8 @@ module.exports = async ({ github, context, artifactsDir }) => {
      */
     const coverageResults = [];
     for (const svc of SERVICES) {
-        // upload-artifact v4+ 는 단일 파일 업로드 시 LCA(파일 부모)를 루트로 평탄화한다.
-        // download 후 실제 경로: artifacts/coverage-<svc>/jacocoTestReport.xml (평탄 경로).
-        // lint 아티팩트와 동일 규약으로 통일.
-        const xmlPath = path.join(
-            artifactsDir,
-            `coverage-${svc}`,
-            'jacocoTestReport.xml',
-        );
+        // coverage-<svc> 아티팩트 디렉토리 하위를 재귀 탐색해 XML 을 찾는다(경로 깊이 무관).
+        const xmlPath = findCoverageXml(path.join(artifactsDir, `coverage-${svc}`));
         const cov = parseJacocoCoverage(xmlPath);
         if (cov) {
             const total = cov.covered + cov.missed;

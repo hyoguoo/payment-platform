@@ -98,23 +98,13 @@ jobs:
                 -reporter=github-pr-review -filter-mode=file -fail-on-error=false
           fi
 
-      # ── JaCoCo 커버리지 수치 산출 (코멘트 비활성, P-DEFER-1 방식 B) ─────────
-      # update-comment 미지정 → 기본 false → 코멘트 미생성. 수치(step output)만 산출.
-      # 단일 PR 코멘트 조립은 취합 job(report)의 github-script 전담.
-      - name: JaCoCo Coverage (코멘트 억제, 수치만 산출)
-        id: jacoco
-        if: github.event_name == 'pull_request'
-        uses: Madrapps/jacoco-report@v1.8
-        with:
-          paths: ${{ github.workspace }}/${{ inputs.service }}/build/reports/jacoco/test/jacocoTestReport.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: ''
-
-      # ── 커버리지 수치 아티팩트 업로드 (취합 job 단일 코멘트용) ──────────────
+      # ── 커버리지 XML 아티팩트 업로드 (취합 job 단일 코멘트용) ──────────────
       # 서비스별 고유 이름 — upload-artifact v4+ 동명 충돌 정책에 따라 충돌 방지 필수.
-      # upload-artifact v4+ 는 단일 파일 업로드 시 LCA(파일 부모)를 루트로 평탄화한다.
-      # download 후 실제 경로: artifacts/coverage-<svc>/jacocoTestReport.xml.
-      # report-comment.js 는 이 평탄 경로로 읽는다(lint 아티팩트와 동일 규약).
+      # 주의: workspace 하위 경로는 upload-artifact 가 디렉토리 구조를 보존한다
+      # (예: coverage-<svc>/<svc>/build/reports/jacoco/test/jacocoTestReport.xml).
+      # 경로 가정을 두지 않도록 report-comment.js 가 coverage-<svc> 하위를 재귀 탐색해
+      # jacocoTestReport.xml 을 찾는다. (커버리지 수치 산출·단일 코멘트 조립은 report job 전담 —
+      # Madrapps/jacoco-report 액션은 서비스별 PR 코멘트를 난립시켜 O4 위반이라 미사용.)
       - name: Upload coverage artifact
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
@@ -183,8 +173,10 @@ jobs:
           fi
 
   # ── 통합테스트 job (has-integration == true 일 때만) ─────────────────────
-  # Testcontainers reuse: ephemeral runner 내 다중 클래스 간 재사용 효과.
-  # job/서비스 간 재사용은 없음(ephemeral runner 한계).
+  # Testcontainers reuse 는 비활성: 같은 job 내 여러 @SpringBootTest 클래스가
+  # 재사용 컨테이너의 더럽혀진 스키마에 Flyway 를 재적용하면
+  # "non-empty schema but no schema history table" 로 컨텍스트 로드가 깨진다.
+  # 정합성(클래스별 깨끗한 DB) 우선 — 컨테이너 재사용 최적화는 철회한다.
   integration-test:
     name: Integration Test (${{ inputs.service }})
     runs-on: ubuntu-latest
@@ -205,7 +197,6 @@ jobs:
       - name: Run Integration Tests
         run: ./gradlew :${{ inputs.service }}:integrationTest
         env:
-          TESTCONTAINERS_REUSE_ENABLE: 'true'
           DOCKER_API_VERSION: '1.44'
 
       - name: JUnit Integration Test Report
