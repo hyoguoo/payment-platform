@@ -91,7 +91,7 @@ task integrationTest(type: Test) {
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
     testLogging {
         events "passed", "skipped", "failed"
-        exceptionFormat "full"
+        exceptionFormat = 'full'
         afterSuite { desc, result ->
             if (!desc.parent) {
                 println "\nIntegration Test Results: ${result.resultType} " +

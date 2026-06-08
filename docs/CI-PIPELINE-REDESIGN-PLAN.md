@@ -152,7 +152,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T1 — Groovy `exceptionFormat` 문법 정정
+### T1 — Groovy `exceptionFormat` 문법 정정 [x]
 
 - **목적**: D6 결정 이행. Gradle setter space-call deprecation 대응. 루트 `build.gradle` test 블록 1곳 + payment/pg/product `build.gradle` `integrationTest` 블록 각 1곳 = 총 4곳을 `exceptionFormat "full"` → `exceptionFormat = 'full'`으로 정정한다.
 - `tdd: false`
@@ -163,6 +163,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
   - `pg-service/build.gradle` — `integrationTest` 블록 1곳
   - `product-service/build.gradle` — `integrationTest` 블록 1곳
 - **완료 기준**: `./gradlew test`가 green이고, `grep -r 'exceptionFormat "full"'` 결과가 0건.
+- **완료 결과** (2026-06-08): 4곳 정정 완료. `grep -rn 'exceptionFormat "full"'` 0건, `grep -rn "exceptionFormat = 'full'"` 4건. `./gradlew test --rerun` BUILD SUCCESSFUL.
 
 ---
 
