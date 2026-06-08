@@ -212,7 +212,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T4 — user-service `FlywayDockerProfileTest` + `integrationTest` 태스크 신규
+### T4 — user-service `FlywayDockerProfileTest` + `integrationTest` 태스크 신규 [x]
 
 - **목적**: D8 결정 이행. product `FlywayDockerProfileTest` 동형으로 user-service에 seed 차단 회귀 가드를 추가한다. `@Tag("integration")`이 user-service에 처음 생기므로 `integrationTest` Gradle task + Testcontainers 의존을 함께 추가한다. D1의 `has-integration` 분기에서 user가 `false → true`로 전환된다(ci.yml 재작성 T7에서 반영).
 - `tdd: true`
@@ -231,6 +231,8 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
   - 테스트 메서드:
     - `dockerProfile_doesNotApplySeedMigration()` — (1) `flyway_schema_history` row count = 1 (V1 only), (2) `user` 테이블 row count = 0. product 동형.
 - **완료 기준**: `./gradlew :user-service:integrationTest`가 green이고 `FlywayDockerProfileTest` 1건 PASS. `./gradlew :user-service:test`도 회귀 없음.
+
+- **완료 결과** (2026-06-08): `FlywayDockerProfileTest` 1건 PASS (`dockerProfile_doesNotApplySeedMigration`). `./gradlew :user-service:integrationTest` BUILD SUCCESSFUL (Docker 29.5.2 가용, 실제 MySQL 컨테이너 실행). `./gradlew :user-service:test` 3건 green — 회귀 없음. `grep -rn 'retry {' user-service/build.gradle` → 1건(integrationTest 블록 내). product 대비 조정: `product` 테이블명 → `user` 테이블, 쿼리에 backtick 추가(\`user\`는 MySQL 예약어), Kafka 키 동일(user도 Eureka+Kafka 의존 있음).
 
 (반영됨 — Architect 모듈 변경 국소성 검토: product 49~56행 resolutionStrategy.eachDependency 블록을 실측 확인, user build.gradle 산출물 (c)로 명시 추가 완료)
 

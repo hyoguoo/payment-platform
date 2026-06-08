@@ -1,10 +1,12 @@
 plugins {
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
+    id 'org.gradle.test-retry'
 }
 
 ext {
     set('springCloudVersion', '2024.0.0')
+    set('testcontainersVersion', '1.20.4')
 }
 
 dependencies {
@@ -34,6 +36,13 @@ dependencies {
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // Testcontainers — FlywayDockerProfileTest docker profile seed 차단 검증 (MySQL)
+    testImplementation "org.springframework.boot:spring-boot-testcontainers"
+    testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+    testImplementation "org.testcontainers:mysql"
+    testImplementation "org.testcontainers:junit-jupiter"
+    testImplementation "org.testcontainers:testcontainers"
 }
 
 dependencyManagement {
@@ -41,6 +50,52 @@ dependencyManagement {
         mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
     }
 }
+
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == 'org.testcontainers') {
+            details.useVersion testcontainersVersion
+            details.because 'Override Spring Boot BOM strict constraint to use newer Testcontainers with Docker Desktop 4.65+ support'
+        }
+    }
+}
+
+// T4: 통합 테스트 — @Tag("integration") 전용 태스크.
+// Testcontainers MySQL + @SpringBootTest + @ActiveProfiles("docker") 로 seed 차단 검증.
+// product-service integrationTest 패턴 동일 구조.
+task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    environment 'DOCKER_API_VERSION', '1.44'
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat = 'full'
+        afterSuite { desc, result ->
+            if (!desc.parent) {
+                println "\nIntegration Test Results: ${result.resultType} " +
+                        "(${result.testCount} tests, " +
+                        "${result.successfulTestCount} passed, " +
+                        "${result.failedTestCount} failed, " +
+                        "${result.skippedTestCount} skipped)"
+            }
+        }
+    }
+
+    // T2 user 확장: D3 통합테스트 한정 자동 재시도 (단위 test 블록에는 적용 안 함)
+    // Testcontainers cold-start 타이밍 flaky 흡수. 3개 이상 실패 시 재시도 중단해 진짜 결함을 가리지 않음.
+    retry {
+        maxRetries = 2
+        maxFailures = 3
+    }
+}
+
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
 
 spotbugsMain {
     excludeFilter = rootProject.file('config/spotbugs/spotbugs-exclude.xml')
