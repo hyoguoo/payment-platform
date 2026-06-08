@@ -193,7 +193,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
 
 ---
 
-### T3 — user-service `UserQueryUseCaseTest` 단위 테스트 작성
+### T3 — user-service `UserQueryUseCaseTest` 단위 테스트 작성 [x]
 
 - **목적**: D7 결정 이행 전제 조건. 현재 user-service의 유일한 측정 대상 클래스인 `UserQueryUseCase`가 0% 커버 상태다. Mockito 단위 테스트를 test-first로 작성해 커버리지를 확보한다. 이 테스트 통과 후 T5에서 게이트를 상향한다.
 - `tdd: true`
@@ -208,6 +208,7 @@ product `FlywayDockerProfileTest` Javadoc에 명시된 바와 같이 docker-java
     - `queryById_whenUserExists_returnsUserQueryResult()` — `userRepository.findById(1L)` stub이 `User` 반환 시 `UserQueryResult`의 필드(id, email, createdAt)가 일치함을 AssertJ로 검증.
     - `queryById_whenUserNotFound_throwsUserNotFoundException()` — `userRepository.findById(1L)` stub이 `Optional.empty()` 반환 시 `UserNotFoundException`이 throw됨을 검증.
 - **완료 기준**: `./gradlew :user-service:test`가 green이고 위 2개 테스트 메서드가 PASS. `jacocoTestReport` 후 `UserQueryUseCase` 라인 커버리지가 0% 초과(전체 3라인 커버 목표).
+- **완료 결과** (2026-06-08): `UserQueryUseCaseTest` 2건 작성 및 PASS (`queryById_whenUserExists_returnsUserQueryResult`, `queryById_whenUserNotFound_throwsUserNotFoundException`). `./gradlew :user-service:test` 3건 전부 green. `jacocoTestReport` 실측: `UserQueryUseCase` LINE missed=0, covered=3 → **100% (3/3 라인)**. T5 게이트 산정: 측정값 1.00 → `floor((1.00 - 0.03) * 100) / 100 = 0.97` 적용 예정.
 
 ---
 
