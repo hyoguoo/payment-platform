@@ -1,28 +1,20 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **review 완료(재리뷰 pass) → verify 대기**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: CI-PIPELINE-REDESIGN **verify**. 사용자가 "verify 시작" 명시 요청 시 `workflow-verify` 호출. 입력 = `docs/CI-PIPELINE-REDESIGN-PLAN.md`.
+> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **verify 완료 → done (PR 대기/생성)**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: 활성 작업 없음. 새 토픽은 discuss부터. 다음 토픽 후보는 아래 참조.
 
 ## 활성 작업
 
-- **CI-PIPELINE-REDESIGN** (stage: **verify**, 이슈/브랜치 #91) — CI를 서비스별 fan-out 구조로 재설계 + 빌드·게이트 위생 4건 흡수
-  - **다음 할 일**: verify 단계 — 전체 테스트 → context 갱신 → 아카이브 → PR 생성. 사용자 명시 요청 시 시작.
-  - **review 결과**: 1라운드 Critic fail(critical 2/major 2/minor 1) + DE revise(major 1) → 수정 → 2라운드 재리뷰 **둘 다 pass**(critical/major 0). 주요 수정: 커버리지 게이트 단위 기준 재정의(payment 0.90→0.86, 통합 정합성은 integration-test job pass/fail로 보호), report-comment.js 아티팩트 경로·LINE 파싱 정정, JUnit Check·JaCoCo HTML 복원, 데드코드 정리. 라운드 문서: `docs/rounds/ci-pipeline-redesign/review-{critic,domain}-{1,2}.md`
-  - **verify/PR 인계 사항(DE 2라운드 F2 minor)**: 통합 정합성 보호가 GitHub branch protection의 required status checks 등록에 의존. 각 서비스 build-test-lint + integration-test job을 required checks로 등록해야 머지 차단이 실효. **PR 본문에 운영 전제로 명시할 것.**
-  - **plan 산출물**: 7태스크 T1~T7 (T1 Groovy 문법 / T2 test-retry / T3 user 단위테스트 / T4 user FlywayDockerProfileTest+통합환경 / T5 커버리지 게이트 상향 / T6 `_service-ci.yml`+lint재배치 / T7 ci.yml 재작성+취합 job). 전 태스크 domain_risk=false. 이연 5건(P-DEFER-1~5) plan 확정. 라운드 문서: `docs/rounds/ci-pipeline-redesign/plan-{critic,domain}-1.md`
-  - **핵심 결정 D1~D8**:
-    - D1 fan-out = 재사용 워크플로우 `_service-ci.yml`(입력 `service`/`has-integration`, matrix 기각)
-    - D2 서비스당 1 job(빌드+단위+커버리지+lint) + 통합테스트만 별도 job, `build -x integrationTest` 강제, 통합 없는 서비스(user/gateway/eureka)는 통합 job 생략
-    - D3 test-retry 통합 한정(`org.gradle.test-retry`, maxFailures 값 plan 확정) + Testcontainers `reuse.enable` + setup-gradle 기본 캐싱(build cache 기각)
-    - D4 jacoco-report 내장 base 비교 + PR 단일 통합 코멘트(커버리지 델타+테스트수+lint 요약, 서비스별 난립 금지 O4) + reviewdog 인라인 유지 + Discord 제거. **양립성(액션 서비스별 코멘트 vs 단일) plan 확정 — 불가 시 단일 코멘트 우선**
-    - D5 액션 Node 24 최신: checkout v6 / setup-java v5 / upload-artifact v7 / gradle-actions v6 / junit-report v6 / jacoco-report v1.8 / github-script v9 / reviewdog-setup v1.5 (2026-06-07 GitHub API 실측). 메이저 bump breaking은 PR 실증
-    - D6 Groovy `exceptionFormat "full"` → `= 'full'` 4곳(루트 build.gradle + payment/pg/product integrationTest 블록)
-    - D7 커버리지 게이트 실측 상향: payment 0.89→0.90, pg 0.91→0.93, product 0.40→0.43 / **user는 `UserQueryUseCase` 단위 테스트 신규 작성 후 상향**(현재 3라인 0%) / gateway·eureka 0.0 유지(측정 대상 클래스 0)
-    - D8 user `FlywayDockerProfileTest` 신규(product 동형, docker profile `locations: classpath:db/schema`가 `V2__seed_user.sql` 차단 검증) → user has-integration false→true 전환
-  - **plan 확정 대상(이연)**: D4 단일코멘트 양립성 / D3 maxFailures 구체값 / D2 `-x integrationTest` 누락 방지 / lint 스크립트(`spotbugs-to-rdjsonl.py` → _service-ci.yml 이동, `lint-summary.js` → 취합 단일 코멘트) 재배치 / FlywayDockerProfileTest의 `docker-java.properties` 동반 필요 여부
-  - **코드 사실**: 현재 `.github/workflows/ci.yml`(2 job), `.github/scripts/{lint-summary.js,spotbugs-to-rdjsonl.py}`, reusable workflow 無, test-retry 플러그인 無, integrationTest task = payment/pg/product만. 설계 상세·근거: `docs/topics/CI-PIPELINE-REDESIGN.md`, ledger: `docs/rounds/ci-pipeline-redesign/discuss-interview-0.md`(RESOLVED 20)
+- 없음 (CI-PIPELINE-REDESIGN 완료 — 아래 직전 봉인 참조)
 
 ## 직전 봉인
+
+- **CI-PIPELINE-REDESIGN** (CI 서비스별 fan-out 재설계 + 빌드·게이트 위생 4건 — 이슈/브랜치 #91, 2026-06-08) — `docs/archive/ci-pipeline-redesign/COMPLETION-BRIEFING.md`
+  - 7태스크(T1~T7), 단위 341 + 통합 48 PASS, 린트 0, 커버리지 게이트 4서비스 green. 리뷰 critical 2/major 3/minor 4 전건 해소 → 재리뷰 pass.
+  - 단일 2-job `ci.yml` → 6서비스 fan-out. `_service-ci.yml`(재사용, `build-test-lint` + `integration-test` job 분리, `build -x integrationTest`로 통합 격리) + 취합 `report` job 단일 PR 코멘트(`report-comment.js`, `lint-summary.js` 폐기). test-retry 1.6.5 통합 한정(maxRetries=2/maxFailures=3) + TC reuse. 액션 8종 Node 24 상향. Groovy `exceptionFormat = 'full'` 4곳.
+  - **커버리지 게이트 단위 기준 재정의(review 핵심)**: D2(통합 분리)와 D7(통합 합산 전제) 충돌로 payment build job 영구 실패 → 게이트·리포트를 단위 `test.exec` 기준으로 통일(통합 exec 합산 제거), payment 0.90→0.86 / pg 0.93 / product 0.43 / user 0.97 / gateway·eureka 0.0. 통합 정합성은 `integration-test` job 통과(pass/fail)로 보호.
+  - user `FlywayDockerProfileTest`(seed 차단 가드) + `UserQueryUseCaseTest` 신규 → user 통합 보유 전환. 영구 문서 2개 갱신(STACK CI 파이프라인 섹션 / TESTING 게이트 단위 기준).
+  - **운영 인계**: 통합 정합성 보호가 branch protection required status checks 등록에 의존 — 각 서비스 build-test-lint + integration-test job 등록 필요(PR 본문 명시).
 
 - **TIME-MODEL-FOLLOWUP** (시간 모델 잔여 정합 3건 — 이슈/브랜치 #89, 2026-06-07) — `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`
   - 18태스크(P1~P18). payment·product 단위+통합 **857 PASS**, 리뷰 critical/major 0(minor 5 처리). TIME-MODEL-AND-EXPIRY 이연 3건 전부 해소.
