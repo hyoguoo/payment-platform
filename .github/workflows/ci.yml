@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+# PR 에 연속 push 시 진행 중인 이전 run 을 취소해 6서비스 fan-out runner 낭비를 막는다.
+# main push 는 취소하지 않는다(머지 이력별 결과 보존).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   pull-requests: write
@@ -67,6 +73,7 @@ jobs:
     needs: [payment, pg, product, user, gateway, eureka]
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       # ── report-comment.js 실행용 리포지토리 체크아웃 ─────────────────────

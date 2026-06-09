@@ -21,6 +21,7 @@ jobs:
   build-test-lint:
     name: Build / Test / Lint (${{ inputs.service }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v6
@@ -140,11 +141,13 @@ jobs:
           mkdir -p /tmp/lint-artifacts
           CS_MAIN=0
           CS_TEST=0
-          SB=0
+          SB_MAIN=0
+          SB_TEST=0
 
           cs_main_file="${{ inputs.service }}/build/reports/checkstyle/main.xml"
           cs_test_file="${{ inputs.service }}/build/reports/checkstyle/test.xml"
-          sb_file="${{ inputs.service }}/build/reports/spotbugs/main.xml"
+          sb_main_file="${{ inputs.service }}/build/reports/spotbugs/main.xml"
+          sb_test_file="${{ inputs.service }}/build/reports/spotbugs/test.xml"
 
           if [ -f "$cs_main_file" ]; then
             CS_MAIN=$(grep -c '<error ' "$cs_main_file" || true)
@@ -152,9 +155,15 @@ jobs:
           if [ -f "$cs_test_file" ]; then
             CS_TEST=$(grep -c '<error ' "$cs_test_file" || true)
           fi
-          if [ -f "$sb_file" ]; then
-            SB=$(grep -c '<BugInstance ' "$sb_file" || true)
+          # spotbugs 는 main/test 양쪽을 합산한다 — Run SpotBugs step 이 spotbugsMain/Test 를
+          # 모두 게이트로 검사하므로, 요약 코멘트도 둘을 합쳐야 게이트(빨강)와 수치가 일치한다.
+          if [ -f "$sb_main_file" ]; then
+            SB_MAIN=$(grep -c '<BugInstance ' "$sb_main_file" || true)
           fi
+          if [ -f "$sb_test_file" ]; then
+            SB_TEST=$(grep -c '<BugInstance ' "$sb_test_file" || true)
+          fi
+          SB=$((SB_MAIN + SB_TEST))
 
           echo "{\"service\":\"${{ inputs.service }}\",\"checkstyle_main\":${CS_MAIN},\"checkstyle_test\":${CS_TEST},\"spotbugs\":${SB}}" \
             > /tmp/lint-artifacts/lint-${{ inputs.service }}.json
@@ -187,6 +196,7 @@ jobs:
   integration-test:
     name: Integration Test (${{ inputs.service }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: ${{ inputs.has-integration }}
 
     steps:
