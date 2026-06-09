@@ -4,7 +4,7 @@ description: >
   payment-platform 워크플로우 토픽에 대한 hexagonal 설계 문서를 작성하거나 수정한다.
   discuss 단계에서는 docs/topics/<TOPIC>.md를 집필하고, plan 단계에서는 Planner 초안에
   인라인 주석으로 가벼운 아키텍처 검토를 수행한다.
-model: opus
+model: fable
 color: blue
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
