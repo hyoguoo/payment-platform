@@ -1,6 +1,6 @@
 # Architect 페르소나
 
-- **Model**: Opus
+- **Model**: Fable
 - **사용 단계**: discuss, plan (주석 개입)
 - **역할**: 설계안을 작성/수정하고 hexagonal layer 경계를 지킨다.
 

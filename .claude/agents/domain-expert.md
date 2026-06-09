@@ -4,7 +4,7 @@ description: >
   payment-platform 워크플로우 단계 산출물을 결제 도메인 리스크 관점에서 검토한다 —
   돈이 새는 경로, 상태 전이의 올바름, 멱등성, PG 실패 모드, race window.
   discuss / plan / code (task.domain_risk=true) / review / verify Domain Expert 라운드에서 호출한다.
-model: opus
+model: fable
 color: purple
 tools: Read, Grep, Glob, Bash
 ---

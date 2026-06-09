@@ -20,9 +20,9 @@ Agent(subagent_type="domain-expert", prompt="<topic> Round 1 판정. 산출물: 
 
 ## Participants
 - **Interviewer** (Opus) — 되묻기와 가정 검증으로 모호함 해소
-- **Architect** (Opus) — 설계안 작성 및 수정
+- **Architect** (Fable) — 설계안 작성 및 수정
 - **Critic** (Opus) — discuss-ready 체크리스트 기반 판정
-- **Domain Expert** (Opus) — 결제 도메인 리스크 관점 판정
+- **Domain Expert** (Fable) — 결제 도메인 리스크 관점 판정
 
 ## Inputs
 - 사용자 요청 (자연어)

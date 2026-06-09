@@ -8,7 +8,7 @@
 - **Subagent only** — `.claude/agents/plan-reviewer.md`.
 - **호출**: `subagent_type: "plan-reviewer"`.
 - **금지**: 메인 스레드에서 Plan Reviewer 역할을 직접 흉내 내는 것.
-- **관점**: 문서 구조와 정합성에 집중. plan 라운드에서 Critic(Opus)과 Domain Expert(Opus)가 이미 deep 분석을 완료했으므로, 여기서는 **문서 수준 정합성만** 재확인한다.
+- **관점**: 문서 구조와 정합성에 집중. plan 라운드에서 Critic(Opus)과 Domain Expert(Fable)가 이미 deep 분석을 완료했으므로, 여기서는 **문서 수준 정합성만** 재확인한다.
 
 ## 책임
 - `plan-ready.md` Gate checklist 각 항목을 **yes/no/n/a**로 판정
