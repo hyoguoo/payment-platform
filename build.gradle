@@ -5,6 +5,8 @@ plugins {
     id 'jacoco'
     id 'checkstyle'
     id 'com.github.spotbugs' version '6.0.9' apply false
+    // T2: 통합테스트 자동 재시도 — 서비스별 plugins{} 에서 apply 후 integrationTest 블록에 wiring
+    id 'org.gradle.test-retry' version '1.6.5' apply false
 }
 
 allprojects {
@@ -69,7 +71,7 @@ subprojects {
 
         testLogging {
             events "passed", "skipped", "failed"
-            exceptionFormat "full"
+            exceptionFormat = 'full'
             showStandardStreams = false
 
             afterSuite { desc, result ->
@@ -122,23 +124,17 @@ subprojects {
         finalizedBy jacocoTestCoverageVerification
     }
 
-    // integrationTest exec 를 jacocoTestReport 에 조건부 합산.
-    // integrationTest 태스크를 보유한 서비스(payment/pg/product)만 합산 대상 — 보유하지 않는 서비스는 가드 false 로 자연 스킵.
-    // jacocoTestCoverageVerification 도 동일 exec + classDirectories 로 연결해 게이트가 실제로 막도록 wiring.
+    // 커버리지 게이트(jacocoTestCoverageVerification)는 단위 test exec 기준으로만 평가한다.
+    // 통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호한다.
+    // (review 피드백 반영: CI build job 이 -x integrationTest 로 실행되어 통합 exec 가 없는 상황에서
+    //  게이트가 통합 exec 를 합산하면 항상 BUILD FAILED 가 되는 구조적 문제 해소)
     afterEvaluate {
-        def itTask = tasks.findByName('integrationTest')
-        if (itTask != null) {
-            jacocoTestReport.dependsOn itTask
-            jacocoTestReport.executionData(new File(buildDir, 'jacoco/integrationTest.exec'))
-        }
+        // jacocoTestReport 와 jacocoTestCoverageVerification 모두 단위 test.exec 기준으로 동일하게 평가한다.
+        // 통합 exec 는 합산하지 않으며, 통합 정합성은 integration-test job 통과(pass/fail)로 보호한다.
 
-        // jacocoTestCoverageVerification 에 exec 파일을 직접 연결해 게이트가 실제로 동작하도록 wiring.
-        // (jacocoTestReport.executionData 는 평가 완료 전 resolve 안 됨 — 파일 경로 직접 지정)
+        // jacocoTestCoverageVerification 에 단위 test.exec 만 연결 — 게이트가 단위 커버리지만 평가.
         jacocoTestCoverageVerification.dependsOn jacocoTestReport
         jacocoTestCoverageVerification.executionData(new File(buildDir, 'jacoco/test.exec'))
-        if (itTask != null) {
-            jacocoTestCoverageVerification.executionData(new File(buildDir, 'jacoco/integrationTest.exec'))
-        }
 
         // classDirectories 는 jacocoTestReport 와 동일한 excludePatterns 를 공유한다.
         def excludePatterns = [

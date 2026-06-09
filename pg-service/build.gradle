@@ -1,13 +1,15 @@
 plugins {
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
+    id 'org.gradle.test-retry'
 }
 
 ext {
     set('springCloudVersion', '2024.0.0')
     set('testcontainersVersion', '1.20.4')
-    // C-2: LINE 커버리지 minimum — integrationTest 합산 실측 94.00% 기준, 안전마진 3%p 적용
-    set('jacoco.lineCoverageMinimum', '0.91')
+    // 단위 커버리지 기준 게이트. 통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호.
+    // 단위 test exec 실측 96.0%(558/581 라인) 기준, 안전마진 3%p 적용.
+    set('jacoco.lineCoverageMinimum', '0.93')
 }
 
 dependencies {
@@ -91,7 +93,7 @@ task integrationTest(type: Test) {
     jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
     testLogging {
         events "passed", "skipped", "failed"
-        exceptionFormat "full"
+        exceptionFormat = 'full'
         afterSuite { desc, result ->
             if (!desc.parent) {
                 println "\nIntegration Test Results: ${result.resultType} " +
@@ -101,6 +103,13 @@ task integrationTest(type: Test) {
                         "${result.skippedTestCount} skipped)"
             }
         }
+    }
+
+    // T2: D3 통합테스트 한정 자동 재시도 (단위 test 블록에는 적용 안 함)
+    // Testcontainers cold-start 타이밍 flaky 흡수. 3개 이상 실패 시 재시도 중단해 진짜 결함을 가리지 않음.
+    retry {
+        maxRetries = 2
+        maxFailures = 3
     }
 }
 

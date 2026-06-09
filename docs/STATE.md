@@ -1,13 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-07 — TIME-MODEL-FOLLOWUP **봉인 완료(done)**. 이슈/브랜치 #89, PR 생성 단계. 활성 작업 없음.
-> **다음 세션 진입점**: 활성 작업 없음. 다음 토픽은 TODOS.md 참조.
+> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **verify 완료 → done (PR 대기/생성)**. 이슈/브랜치 #91.
+> **다음 세션 진입점**: 활성 작업 없음. 새 토픽은 discuss부터. 다음 토픽 후보는 아래 참조.
 
 ## 활성 작업
 
-(없음)
+- 없음 (CI-PIPELINE-REDESIGN 완료 — 아래 직전 봉인 참조)
 
 ## 직전 봉인
+
+- **CI-PIPELINE-REDESIGN** (CI 서비스별 fan-out 재설계 + 빌드·게이트 위생 4건 — 이슈/브랜치 #91, 2026-06-08) — `docs/archive/ci-pipeline-redesign/COMPLETION-BRIEFING.md`
+  - 7태스크(T1~T7), 단위 341 + 통합 48 PASS, 린트 0, 커버리지 게이트 4서비스 green. 리뷰 critical 2/major 3/minor 4 전건 해소 → 재리뷰 pass.
+  - 단일 2-job `ci.yml` → 6서비스 fan-out. `_service-ci.yml`(재사용, `build-test-lint` + `integration-test` job 분리, `build -x integrationTest`로 통합 격리) + 취합 `report` job 단일 PR 코멘트(`report-comment.js`, `lint-summary.js` 폐기). test-retry 1.6.5 통합 한정(maxRetries=2/maxFailures=3) + TC reuse. 액션 8종 Node 24 상향. Groovy `exceptionFormat = 'full'` 4곳.
+  - **커버리지 게이트 단위 기준 재정의(review 핵심)**: D2(통합 분리)와 D7(통합 합산 전제) 충돌로 payment build job 영구 실패 → 게이트·리포트를 단위 `test.exec` 기준으로 통일(통합 exec 합산 제거), payment 0.90→0.86 / pg 0.93 / product 0.43 / user 0.97 / gateway·eureka 0.0. 통합 정합성은 `integration-test` job 통과(pass/fail)로 보호.
+  - user `FlywayDockerProfileTest`(seed 차단 가드) + `UserQueryUseCaseTest` 신규 → user 통합 보유 전환. 영구 문서 2개 갱신(STACK CI 파이프라인 섹션 / TESTING 게이트 단위 기준).
+  - **운영 인계**: 통합 정합성 보호가 branch protection required status checks 등록에 의존 — 각 서비스 build-test-lint + integration-test job 등록 필요(PR 본문 명시).
+  - **PR #92 CI 실증 후속 수정**(2026-06-08, 커밋 8c1771f4 / fff13516): (1) Madrapps jacoco-report 제거 — token 기본값으로 서비스별 PR 코멘트 난립(O4 위반), 커버리지·단일 코멘트는 report-comment.js 전담. (2) report job `checkout`을 아티팩트 download 보다 **앞**으로 이동 — checkout 기본 clean(git clean)이 download 받은 `artifacts/`를 삭제해 커버리지 N/A·lint 0 폴백 유발하던 진짜 원인. (3) `TESTCONTAINERS_REUSE_ENABLE` 제거 — 재사용 컨테이너 스키마에 다중 `@SpringBootTest` Flyway 재적용 시 "non-empty schema but no schema history table" 로 payment 통합 fail. CI 전체 green, PR 단일 코멘트에 서비스별 커버리지 정상 표시 확인(payment 89.23/pg 96.04/product 45.65/user 100, gateway·eureka 측정대상0 N/A).
 
 - **TIME-MODEL-FOLLOWUP** (시간 모델 잔여 정합 3건 — 이슈/브랜치 #89, 2026-06-07) — `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`
   - 18태스크(P1~P18). payment·product 단위+통합 **857 PASS**, 리뷰 critical/major 0(minor 5 처리). TIME-MODEL-AND-EXPIRY 이연 3건 전부 해소.
