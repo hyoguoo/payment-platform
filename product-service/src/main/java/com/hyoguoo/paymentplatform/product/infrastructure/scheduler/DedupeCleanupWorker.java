@@ -23,7 +23,10 @@ import org.springframework.stereotype.Component;
  * 분산 락 추가 검토 필요.
  *
  * <p>Micrometer 카운터 {@code stock_commit_dedupe.cleanup_deleted_total}: 실제 삭제 행 수를
- * 누적 합산해 cleanup 처리량 관측성을 제공한다.
+ * 누적 합산해 cleanup 처리량 관측성을 제공한다. 누적 페이스가 느리면 배치 사이즈 또는 주기 조정 신호.
+ *
+ * <p>Micrometer 카운터 {@code stock_commit_dedupe.cleanup_failed_total}: deleteExpired 호출 중
+ * RuntimeException 발생 시 1 증가해 청소 실패 빈도 관측성을 제공한다.
  *
  * <p>예외 처리: {@link EventDedupeStore#deleteExpired} 호출 중 예외 발생 시 예외를 전파하지 않고
  * ERROR 로그 후 다음 fixedDelay 주기에 재시도한다(L-1 장애 대응).
@@ -39,10 +42,18 @@ public class DedupeCleanupWorker {
     static final String CLEANUP_DELETED_COUNTER_NAME =
             "stock_commit_dedupe.cleanup_deleted_total";
 
+    /**
+     * 삭제 실패(예외 발생) 횟수 카운터 이름.
+     * deleteExpired 호출 중 RuntimeException 발생 시 1 증가한다.
+     */
+    static final String CLEANUP_FAILED_COUNTER_NAME =
+            "stock_commit_dedupe.cleanup_failed_total";
+
     private final Clock clock;
     private final EventDedupeStore dedupeStore;
     private final int batchSize;
     private final Counter cleanupDeletedCounter;
+    private final Counter cleanupFailedCounter;
 
     public DedupeCleanupWorker(
             Clock clock,
@@ -54,6 +65,9 @@ public class DedupeCleanupWorker {
         this.batchSize = batchSize;
         this.cleanupDeletedCounter = Counter.builder(CLEANUP_DELETED_COUNTER_NAME)
                 .description("stock_commit_dedupe 만료 행 삭제 건수 누적 — TTL 초과 행 청소량 관측")
+                .register(meterRegistry);
+        this.cleanupFailedCounter = Counter.builder(CLEANUP_FAILED_COUNTER_NAME)
+                .description("stock_commit_dedupe 만료 행 삭제 실패 횟수 — deleteExpired 예외 발생 시 증가")
                 .register(meterRegistry);
     }
 
@@ -83,6 +97,7 @@ public class DedupeCleanupWorker {
         } catch (RuntimeException e) {
             LogFmt.error(log, LogDomain.STOCK, EventType.EXCEPTION,
                     () -> "dedupe-cleanup 실패 — 다음 주기 재시도. error=" + e.getMessage());
+            cleanupFailedCounter.increment();
             return 0;
         }
     }

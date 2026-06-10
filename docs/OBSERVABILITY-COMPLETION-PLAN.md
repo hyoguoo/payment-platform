@@ -357,6 +357,12 @@ exemplar 동작 범위: payment-service(`payment.transition.duration`, `http.ser
 
 **의존**: 없음
 
+**완료 결과** (2026-06-11):
+- `product/infrastructure/scheduler/DedupeCleanupWorker` — `CLEANUP_FAILED_COUNTER_NAME` 상수 + `cleanupFailedCounter` 필드 추가, catch 분기에 `cleanupFailedCounter.increment()` 1줄 추가.
+- `DedupeCleanupWorkerTest` — `cleanup_예외발생시_failedCounter증가`, `cleanup_정상수행시_failedCounter미증가` 2개 메서드 추가. 기존 동작(예외 전파 없음, deleted 카운터) 보존.
+- `stock_commit_dedupe.cleanup_failed_total` 예외 시 1 증가, 정상 시 0 유지 확인.
+- `./gradlew :product-service:test` — 44 tests, 44 PASS (신규 2 포함).
+
 ---
 
 ### T8 — 비즈니스 대시보드 (non-TDD)
@@ -507,7 +513,7 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
 [x] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
 [x] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
-[ ] T7  product cleanup_failed 카운터 (TDD, domain_risk)
+[x] T7  product cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T8  비즈니스 대시보드 (non-TDD)                 ← T0, T1, T4, T5, T6, T7
 [ ] T9  시스템 대시보드 (non-TDD)                   ← T4
 [ ] T10 수동 스모크 검증 (AC1~AC7)                  ← T1~T9
