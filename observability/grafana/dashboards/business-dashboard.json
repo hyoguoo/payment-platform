@@ -1,0 +1,913 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.4.2"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "description": "결제 도메인 비즈니스 대시보드 — 결제 흐름 개요·상태 전이·격리·벤더 latency·DLQ·outbox·신규 메트릭(가드 스킵/cleanup/코디네이터). 기존 payment-dashboard.json 흡수 통합(D12).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1000,
+      "title": "결제 흐름 개요",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "URI 패턴이 confirm 을 포함하는 HTTP 요청 진입률(1m). 결제 confirm 엔드포인트 호출량 추세 파악.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 101,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\".*confirm.*\"}[1m]))",
+          "legendFormat": "confirm 진입률",
+          "refId": "A"
+        }
+      ],
+      "title": "confirm 진입률 (http_server_requests, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "published_total: PaymentEvent 발행 누적 / terminal_total: confirmed+failed 합산. 두 값의 gap이 미처리 이벤트(in-flight) 수를 나타낸다.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 102,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(payment_event_published_total[1m]))",
+          "legendFormat": "published_total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(payment_event_terminal_total[1m]))",
+          "legendFormat": "terminal_total",
+          "refId": "B"
+        }
+      ],
+      "title": "발행 vs 종결 (1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "invariant 불일치 건수 = published_total - terminal_total 누적 차이. 0이어야 정상(in-flight 없음). 양수이면 미완결 이벤트 존재.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "short",
+          "mappings": [
+            { "options": { "0": { "text": "정상" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 103,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(payment_event_published_total) - sum(payment_event_terminal_total)",
+          "legendFormat": "in-flight (미완결)",
+          "refId": "A"
+        }
+      ],
+      "title": "in-flight 이벤트 수 (published - terminal)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 1001,
+      "title": "상태 전이",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "결제 상태 전이 건수(1m rate). from·to 라벨로 어떤 경로에서 전이가 발생하는지 파악.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "id": 201,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(payment_transition_total[1m])) by (from, to)",
+          "legendFormat": "{{from}} → {{to}}",
+          "refId": "A"
+        }
+      ],
+      "title": "상태 전이율 (payment_transition_total, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "결제 상태 전이 소요 시간 p50/p95/p99.\n\n**메트릭 주의(T10 라이브 스냅샷 보정 대상)**: Micrometer 등록명이 이미 `_seconds` 포함된 비표준 등록명(`payment_transition_duration_seconds`)이라 Prometheus 실제 노출명이 `payment_transition_duration_seconds_bucket` 또는 `payment_transition_duration_seconds_seconds_bucket` 두 가지 가능성 있음. T10 라이브 스냅샷 확인 후 expr 보정 필요.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "id": 202,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(payment_transition_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A",
+          "exemplar": true
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(payment_transition_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B",
+          "exemplar": true
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(payment_transition_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C",
+          "exemplar": true
+        }
+      ],
+      "title": "전이 소요 p50/p95/p99 (exemplar 링크 활성)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "현재 각 결제 상태별 count. 분포가 특정 상태에 편중되면 병목 또는 장애 신호.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "id": 203,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(payment_state_current_total) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "결제 상태 분포 (payment_state_current_total)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 1002,
+      "title": "격리",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "격리 처리된 결제 건수 누적(1m rate). 높으면 비정상 이벤트 급증 또는 Quarantine 정책 과민.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "orange", "mode": "fixed" },
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 301,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(payment_quarantined_total[1m]))",
+          "legendFormat": "quarantined_total",
+          "refId": "A"
+        }
+      ],
+      "title": "격리 건수 (payment_quarantined_total, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "종결 상태 가드 스킵 카운터(status 라벨별). confirm 결과 적용 가드가 noop 분기를 탄 횟수. 정상 환경에서도 재시도 시 발생 가능하나 급증 시 중복 처리 신호. (T5 신규 메트릭 — payment_confirm_guard_skip_total{status})",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 302,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(payment_confirm_guard_skip_total[1m])) by (status)",
+          "legendFormat": "skip {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "confirm 가드 스킵 (payment_confirm_guard_skip_total by status, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 1003,
+      "title": "벤더 latency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Toss 벤더 API 호출 응답 시간 p50/p95/p99. exemplar 점 클릭 시 Tempo 트레이스 점프 가능.\n\n**메트릭 주의(T10 라이브 스냅샷 보정 대상)**: Micrometer 등록명 `toss.api.call.duration` → Prometheus 노출명 `toss_api_call_duration_seconds_bucket`. 실제 노출명은 T10 라이브 스냅샷으로 확인.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 28 },
+      "id": 401,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(toss_api_call_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A",
+          "exemplar": true
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(toss_api_call_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B",
+          "exemplar": true
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(toss_api_call_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C",
+          "exemplar": true
+        }
+      ],
+      "title": "벤더 API 응답시간 p50/p95/p99 (exemplar 링크 활성)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Toss 벤더 API 호출량(1m rate). latency 패널과 함께 보아 병목 여부 판단.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "id": 402,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(toss_api_call_total[1m]))",
+          "legendFormat": "호출량",
+          "refId": "A"
+        }
+      ],
+      "title": "벤더 API 호출량 (toss_api_call_total, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 1004,
+      "title": "DLQ",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "DLQ 토픽 유입률(1m rate). commands.confirm.dlq + events.confirmed.dlq 둘 다 감시. 0을 유지해야 정상.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 501,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(kafka_consumer_records_consumed_total{topic=~\".*dlq\"}[1m])) by (topic)",
+          "legendFormat": "DLQ {{topic}}",
+          "refId": "A"
+        }
+      ],
+      "title": "DLQ 유입률 (commands.confirm.dlq + events.confirmed.dlq, 1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "DLQ 토픽별 누적 유입 건수 현황. 각 DLQ 토픽 분리 표시.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "short",
+          "mappings": [
+            { "options": { "0": { "text": "정상" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "id": 502,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumer_records_consumed_total{topic=\"payment.commands.confirm.dlq\"})",
+          "legendFormat": "commands.confirm.dlq",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(kafka_consumer_records_consumed_total{topic=\"payment.events.confirmed.dlq\"})",
+          "legendFormat": "events.confirmed.dlq",
+          "refId": "B"
+        }
+      ],
+      "title": "DLQ 누적 건수 (토픽별)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 1005,
+      "title": "Outbox",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox PENDING row 수(처리 가능 상태). 높으면 Kafka 발행 지연 또는 워커 병목.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "unit": "short",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 46 },
+      "id": 601,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_pending_count",
+          "legendFormat": "payment pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.pending_count",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox 미래 예약 PENDING row 수(nextRetryAt > now). 높으면 재시도 대기 급증.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "short",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 46 },
+      "id": 602,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_future_pending_count",
+          "legendFormat": "payment future_pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.future_pending_count",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "가장 오래된 payment_outbox PENDING row 체류 시간(초). 300초 초과 시 알림.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          },
+          "unit": "s",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 46 },
+      "id": 603,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "payment_outbox_oldest_pending_age_seconds",
+          "legendFormat": "payment oldest_pending_age_seconds",
+          "refId": "A"
+        }
+      ],
+      "title": "payment_outbox.oldest_pending_age_seconds",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment_outbox attempt(retryCount) 분포(p50/p95/p99). p99>1이면 재시도 다발.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 46 },
+      "id": 604,
+      "options": {
+        "bucketOffset": 0,
+        "fillOpacity": 80,
+        "gradientMode": "none",
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(payment_outbox_attempt_count_histogram_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "payment_outbox.attempt_count 분포 (p50/p95/p99)",
+      "type": "histogram"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "pg_outbox PENDING row 수. 높으면 PG 결과 발행 지연.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "short",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 54 },
+      "id": 605,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "pg_outbox_future_pending_count",
+          "legendFormat": "pg future_pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "pg_outbox.future_pending_count",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "가장 오래된 pg_outbox PENDING row 체류 시간(초). SLA 위반 감지 기준.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          },
+          "unit": "s",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 54 },
+      "id": 606,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "pg_outbox_oldest_pending_age_seconds",
+          "legendFormat": "pg oldest_pending_age_seconds",
+          "refId": "A"
+        }
+      ],
+      "title": "pg_outbox.oldest_pending_age_seconds",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "pg_outbox attempt_count 분포(p50/p95/p99). p99>1이면 재시도 다발.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 54 },
+      "id": 607,
+      "options": {
+        "bucketOffset": 0,
+        "fillOpacity": 80,
+        "gradientMode": "none",
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "pg_outbox.attempt_count 분포 (p50/p95/p99)",
+      "type": "histogram"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 62 },
+      "id": 1006,
+      "title": "Cleanup 워커",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "payment dedupe 이벤트 청소 워커 — 삭제 성공 vs 실패 쌍. cleanup_deleted_total: 만료 행 정상 삭제 누적 / cleanup_failed_total: 삭제 예외 발생 누적(T6 신규 메트릭). 실패 급증 시 DB 연결 또는 스케줄러 장애 신호.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 63 },
+      "id": 701,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(payment_event_dedupe_cleanup_deleted_total[5m]))",
+          "legendFormat": "payment deleted",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(payment_event_dedupe_cleanup_failed_total[5m]))",
+          "legendFormat": "payment failed",
+          "refId": "B"
+        }
+      ],
+      "title": "payment dedupe cleanup (deleted / failed, 5m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "product stock dedupe 청소 워커 — 삭제 성공 vs 실패 쌍. stock_commit_dedupe.cleanup_deleted_total / stock_commit_dedupe.cleanup_failed_total(T7 신규 메트릭). 실패 급증 시 DB 연결 또는 스케줄러 장애 신호.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 63 },
+      "id": 702,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(stock_commit_dedupe_cleanup_deleted_total[5m]))",
+          "legendFormat": "stock deleted",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(stock_commit_dedupe_cleanup_failed_total[5m]))",
+          "legendFormat": "stock failed",
+          "refId": "B"
+        }
+      ],
+      "title": "stock dedupe cleanup (deleted / failed, 5m rate)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 71 },
+      "id": 1007,
+      "title": "Kafka TX 코디네이터 (D15)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Kafka 브로커 연결 수(kafka_brokers). EOS 프로듀서 트랜잭션 코디네이터 활동의 fallback liveness 지표.\n\n**메트릭명 T10 확정**: kafka_producer_txn_* 계열 라이브 노출명은 T10 스모크 검증(전체 스택 기동 + Micrometer 리스너 활성화) 후 확정. 라이브 트래픽 없는 환경에서는 txn 활동이 표시되지 않음(정상). T10 확정 후 이 패널 expr을 실제 메트릭명으로 교체 권장.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "mappings": [
+            { "options": { "0": { "text": "브로커 없음" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "id": 801,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "kafka_brokers",
+          "legendFormat": "브로커 수",
+          "refId": "A"
+        }
+      ],
+      "title": "Kafka 브로커 liveness (fallback — 메트릭명 T10 확정)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Kafka EOS 프로듀서 트랜잭션 활동 — kafka_producer_txn_* 계열 또는 spring_kafka_template 발행 타이머.\n\n**메트릭명 T10 확정**: T1 wiring(MicrometerProducerListener) 적용 완료. 라이브 노출명은 T10 스모크(전체 스택 기동 + confirm 1건 흘리기) 이후 `/actuator/prometheus` 스냅샷에서 확정. 현재 expr은 가장 가능성 높은 형태로 작성 — T10 이후 보정 필요(T10 라이브 스냅샷 보정 대상).\n\nfallback(§3-7-C): kafka_producer_txn_* 미노출 시 spring_kafka_template_send_seconds 등 발행 타이머 조합으로 대체.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
+      "id": 802,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_producer_txn_commit_total[1m]))",
+          "legendFormat": "txn commit",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(kafka_producer_txn_abort_total[1m]))",
+          "legendFormat": "txn abort",
+          "refId": "B"
+        }
+      ],
+      "title": "Kafka TX commit / abort (T10 라이브 스냅샷 보정 대상)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["payment", "business", "observability-completion"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource",
+        "label": "Prometheus"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Business Dashboard",
+  "uid": "payment-business-d001",
+  "version": 1
+}
