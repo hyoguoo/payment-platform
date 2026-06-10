@@ -1,0 +1,492 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.4.2"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "description": "시스템 인프라 대시보드 — JVM·GC·CPU·HTTP·Hikari·Kafka consumer lag. $application 변수로 서비스 전환(D12). exemplar 링크 동작 범위: payment-service·pg-service 한정(T4 설정 범위).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1000,
+      "title": "JVM 메모리",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "JVM heap 사용량 vs 최대 용량. area=heap 필터로 non-heap 제외. $application 필터 적용(D5). T10 확정: jvm_memory_used_bytes 노출 여부.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 101,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (application) (jvm_memory_used_bytes{application=\"$application\", area=\"heap\"})",
+          "legendFormat": "heap used ({{application}})",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (application) (jvm_memory_max_bytes{application=\"$application\", area=\"heap\"})",
+          "legendFormat": "heap max ({{application}})",
+          "refId": "B"
+        }
+      ],
+      "title": "JVM Heap 사용량 / 최대 ($application)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "heap 사용률(used/max). 0~1 범위. $application 단일 인스턴스 가정(D5).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "red", "value": 0.9 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 102,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum by (application) (jvm_memory_used_bytes{application=\"$application\", area=\"heap\"}) / sum by (application) (jvm_memory_max_bytes{application=\"$application\", area=\"heap\"})",
+          "legendFormat": "heap 사용률 ({{application}})",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM Heap 사용률 ($application)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 1001,
+      "title": "GC",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "GC pause p99 latency(seconds). jvm_gc_pause_seconds_max 사용. T10 확정: Spring Boot 3.4 actuator 기준 실제 노출명(jvm_gc_pause_seconds_max vs jvm_gc_collection_seconds_max).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 201,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "jvm_gc_pause_seconds_max{application=\"$application\"}",
+          "legendFormat": "GC pause max ({{gc}}) — T10 확정 메트릭명",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Pause Max ($application) — T10 확정",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "GC pause 발생 횟수(1m rate). jvm_gc_pause_seconds_count 사용. T10 확정: 실제 노출명 검증 필요.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "cps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 202,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_count{application=\"$application\"}[1m])",
+          "legendFormat": "GC count rate ({{gc}}) — T10 확정 메트릭명",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Pause 발생률 ($application) — T10 확정",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 1002,
+      "title": "CPU",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "process_cpu_usage: JVM 프로세스 CPU 사용률. system_cpu_usage: 호스트 전체 CPU. 0~1 범위. $application 필터.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "id": 301,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "process_cpu_usage{application=\"$application\"}",
+          "legendFormat": "process CPU ({{application}})",
+          "refId": "A"
+        },
+        {
+          "expr": "system_cpu_usage{application=\"$application\"}",
+          "legendFormat": "system CPU ({{application}})",
+          "refId": "B"
+        }
+      ],
+      "title": "CPU 사용률 ($application)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 1003,
+      "title": "HTTP Server",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "http_server_requests_seconds_count 1m rate. $application 필터. exemplar 링크 동작 범위: payment-service·pg-service 한정(T4 percentiles-histogram 적용 서비스).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 401,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\"}[1m]))",
+          "legendFormat": "요청률 ({{application}})",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP 요청률 ($application)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "HTTP p95 latency(histogram_quantile). exemplar 링크: payment-service·pg-service 한정(T4 percentiles-histogram). 나머지 서비스는 exemplar 없이 렌더됨.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 402,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{application=\"$application\"}[1m])))",
+          "legendFormat": "p95 ({{application}})",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP p95 Latency ($application)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "HTTP 5xx 오류율(5xx / 전체). $application 필터. 0이어야 정상.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "id": 403,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\", status=~\"5..\"}[1m])) / sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\"}[1m]))",
+          "legendFormat": "5xx 오류율 ({{application}})",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP 5xx 오류율 ($application)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 1004,
+      "title": "Hikari 커넥션풀 (DB 보유 서비스: payment·pg·product·user — gateway·eureka-server 미해당)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Hikari 커넥션 active/idle/pending. DB를 보유한 서비스(payment·pg·product·user)에만 노출. gateway·eureka-server는 이 메트릭 없음. $application이 gateway/eureka-server일 경우 No data 정상.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "id": 501,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_active{application=\"$application\"}",
+          "legendFormat": "active ({{application}})",
+          "refId": "A"
+        },
+        {
+          "expr": "hikaricp_connections_idle{application=\"$application\"}",
+          "legendFormat": "idle ({{application}})",
+          "refId": "B"
+        },
+        {
+          "expr": "hikaricp_connections_pending{application=\"$application\"}",
+          "legendFormat": "pending ({{application}})",
+          "refId": "C"
+        }
+      ],
+      "title": "Hikari 커넥션 Active/Idle/Pending ($application — DB 서비스만)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Hikari 커넥션 풀 최대 크기. DB를 보유한 서비스(payment·pg·product·user)에만 노출. T10 확정: hikaricp_connections_max 노출 여부.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "id": 502,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_max{application=\"$application\"}",
+          "legendFormat": "pool max ({{application}}) — T10 확정 메트릭명",
+          "refId": "A"
+        }
+      ],
+      "title": "Hikari Pool 최대 크기 ($application — DB 서비스만) — T10 확정",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "id": 1005,
+      "title": "Kafka Consumer Lag — kafka-exporter (전역, application 라벨 없음)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "kafka-exporter의 kafka_consumergroup_lag. 전역 메트릭으로 application 라벨 없음 — $application 필터 미적용. group·topic 라벨로 식별. T10 확정: 실제 group/topic 값 + lag 임계값.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 54 },
+      "id": 601,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag)",
+          "legendFormat": "lag {{consumergroup}} / {{topic}} — T10 확정 group·topic 값",
+          "refId": "A"
+        }
+      ],
+      "title": "Kafka Consumer Lag — kafka-exporter 전역 (application 필터 없음) — T10 확정",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 62 },
+      "id": 1006,
+      "title": "Kafka Consumer Lag — 앱 클라이언트 메트릭 ($application 필터)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "kafka_consumer_fetch_manager_records_lag_max: 앱 Kafka client 메트릭(Micrometer). $application 필터 적용 가능. T10 확정: Spring Boot 3.4 + Micrometer 기준 실제 노출명 + clientId 라벨 구조. kafka-exporter(행5)와 병용 — 라이브 확정 전까지 두 패널 모두 유지.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 63 },
+      "id": 701,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "kafka_consumer_fetch_manager_records_lag_max{application=\"$application\"}",
+          "legendFormat": "records_lag_max ({{application}}, {{clientId}}) — T10 확정 메트릭명·라벨",
+          "refId": "A"
+        }
+      ],
+      "title": "Kafka Consumer records_lag_max ($application) — T10 확정",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["system", "jvm", "observability-completion"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource",
+        "label": "Prometheus"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(application)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "application",
+        "options": [],
+        "query": {
+          "query": "label_values(application)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query",
+        "label": "Application"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "System Dashboard",
+  "uid": "payment-system-d001",
+  "version": 1
+}

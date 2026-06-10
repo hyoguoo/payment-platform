@@ -436,6 +436,20 @@ HTTP exemplar 링크 동작 범위: payment + pg 2서비스 (T4 설정 범위와
 
 **의존**: T4(exemplar 링크)
 
+- [x] **T9 완료** (2026-06-11)
+
+**완료 결과**:
+- `observability/grafana/dashboards/system-dashboard.json` 신규 생성. 7행 13패널(행 포함 20 패널). uid: `payment-system-d001`.
+- 템플릿 변수: `datasource`(prometheus) + `$application`(label_values(application), multi=true, includeAll=true).
+- 행1(JVM 메모리): heap used/max 타임시리즈 + heap 사용률 stat. `jvm_memory_used_bytes{area="heap"}` / `jvm_memory_max_bytes{area="heap"}`.
+- 행2(GC): `jvm_gc_pause_seconds_max` + `rate(jvm_gc_pause_seconds_count[1m])`. 실제 노출명 T10 확정 주석 기재.
+- 행3(CPU): `process_cpu_usage` + `system_cpu_usage`. $application 필터.
+- 행4(HTTP server): 요청률(`http_server_requests_seconds_count` rate) + p95(`histogram_quantile(0.95, http_server_requests_seconds_bucket)`) + 5xx 오류율 stat. exemplar 동작 범위 payment·pg 한정 description 명시.
+- 행5(Hikari): `hikaricp_connections_active/idle/pending` + pool max. gateway·eureka-server 미해당 description 명시. T10 확정 주석.
+- 행6(kafka-exporter consumer lag): `kafka_consumergroup_lag` 전역(application 라벨 없음). group/topic by. T10 확정 주석.
+- 행7(앱 클라이언트 consumer lag): `kafka_consumer_fetch_manager_records_lag_max{application="$application"}`. T10 확정 주석.
+- JSON 유효성: `python3 -m json.tool` 통과.
+
 ---
 
 ### T10 — 수동 스모크 검증 (non-TDD)
@@ -533,6 +547,6 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
 [x] T7  product cleanup_failed 카운터 (TDD, domain_risk)
 [x] T8  비즈니스 대시보드 (non-TDD)                 ← T0, T1, T4, T5, T6, T7
-[ ] T9  시스템 대시보드 (non-TDD)                   ← T4
+[x] T9  시스템 대시보드 (non-TDD)                   ← T4
 [ ] T10 수동 스모크 검증 (AC1~AC7)                  ← T1~T9
 ```
