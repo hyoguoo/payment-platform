@@ -180,6 +180,13 @@ EOS 트랜잭션 경계·commit/abort 경로 무변경.
 
 **의존**: 없음
 
+- [x] **T2 완료** (2026-06-11)
+
+**완료 결과**:
+- 5서비스(payment/pg/product/user/gateway) `application.yml` 의 `management.tracing.sampling.probability` 기본값 `0.0` → `1.0` 변경. env override 경로(`${TRACING_SAMPLING_PROBABILITY:...}`) 유지.
+- 키 부재 서비스 없음 — 5서비스 전량 기존 키 확인 후 값만 교체.
+- 설정 변경이므로 별도 테스트 없음. yml 문법 육안 확인 완료(들여쓰기/구조 변경 없음).
+
 ---
 
 ### T3 — Tempo metrics_generator 활성 (non-TDD)
@@ -456,8 +463,8 @@ T10 (수동 스모크) ← T1~T9 전체
 
 ```
 [x] T0  런타임 상수 실측 (선행, non-TDD)
-[ ] T1  Kafka wiring 2줄 (non-TDD, domain_risk)     ← T0
-[ ] T2  샘플링 기본값 1.0 (non-TDD)
+[x] T1  Kafka wiring 2줄 (non-TDD, domain_risk)     ← T0
+[x] T2  샘플링 기본값 1.0 (non-TDD)
 [ ] T3  Tempo metrics_generator 활성 (non-TDD)
 [ ] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
 [ ] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
