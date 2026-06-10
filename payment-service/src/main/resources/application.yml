@@ -163,3 +163,12 @@ management:
   otlp:
     tracing:
       endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # D11 — exemplar 3점 연결: 상태 전이 타이머 + HTTP 요청 타이머 histogram 활성.
+        # percentiles-histogram=true 로 Prometheus _bucket 시리즈가 생성되고 tracing 연동 시 exemplar 자동 삽입.
+        # 키는 Micrometer 등록명 기준 (dot 포함 키는 yaml에서 따옴표 필요).
+        # 실제 Prometheus 노출명(이중 _seconds 여부 등)은 T10 라이브 스냅샷으로 확인 예정.
+        payment_transition_duration_seconds: true
+        "http.server.requests": true

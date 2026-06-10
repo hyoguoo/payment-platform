@@ -238,6 +238,17 @@ exemplar 동작 범위: payment-service(`payment.transition.duration`, `http.ser
 
 **의존**: T0(exemplar 대상 타이머 Micrometer 등록명 확정), T3(datasources.yml 병합)
 
+- [x] **T4 완료** (2026-06-11)
+
+**완료 결과**:
+- **앱 histogram exemplar — payment-service**: `management.metrics.distribution.percentiles-histogram` 아래 `payment_transition_duration_seconds: true`, `"http.server.requests": true` 추가. dot 없는 `payment_transition_duration_seconds`는 따옴표 생략, dot 포함 `http.server.requests`는 YAML 중첩 방지용 따옴표 적용.
+- **앱 histogram exemplar — pg-service**: `management.metrics.distribution.percentiles-histogram` 아래 `"toss.api.call.duration": true`, `"http.server.requests": true` 추가. 기존 `management.metrics.tags` 형제 절로 삽입. HTTP exemplar 범위 payment + pg 2서비스 한정(F-1 해소).
+- **Prometheus exemplar-storage flag**: `docker/docker-compose.observability.yml` prometheus command 에 `--enable-feature=exemplar-storage` 추가. 기존 5개 flag 보존.
+- **Grafana Prometheus datasource exemplarTraceIdDestinations**: `observability/grafana/provisioning/datasources/datasources.yml` Prometheus datasource 에 `jsonData.exemplarTraceIdDestinations: [{name: trace_id, datasourceUid: tempo}]` 추가. 기존 Loki derivedFields / Tempo tracesToLogsV2·nodeGraph·serviceMap 전부 보존.
+- compose 문법 검증: `docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.observability.yml config -q` 통과.
+- `./gradlew :payment-service:test` 468/468 PASS (회귀 없음).
+- **dot 키 형식**: `toss.api.call.duration` 및 `http.server.requests` 는 Boot relaxed binding 통과 확인(따옴표 형식). 실제 exemplar 점 표시 동작은 T10 라이브 검증 이연.
+
 ---
 
 ### T5 — PaymentConfirmGuardSkipMetrics 클래스 + 가드 분기 카운터 (TDD, domain_risk)
@@ -476,7 +487,7 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T1  Kafka wiring 2줄 (non-TDD, domain_risk)     ← T0
 [x] T2  샘플링 기본값 1.0 (non-TDD)
 [x] T3  Tempo metrics_generator 활성 (non-TDD)
-[ ] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
+[x] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
 [ ] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
 [ ] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T7  product cleanup_failed 카운터 (TDD, domain_risk)

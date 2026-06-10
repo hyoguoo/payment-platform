@@ -126,6 +126,14 @@ management:
   metrics:
     tags:
       application: pg-service
+    distribution:
+      percentiles-histogram:
+        # D11 — exemplar 3점 연결: 벤더 API 타이머 + HTTP 요청 타이머 histogram 활성.
+        # percentiles-histogram=true 로 Prometheus _bucket 시리즈가 생성되고 tracing 연동 시 exemplar 자동 삽입.
+        # 키는 Micrometer 등록명 기준 (dot 포함 키는 yaml에서 따옴표 필요).
+        # HTTP exemplar 범위: payment + pg 2서비스 한정 (나머지 서비스 추가는 후속, F-1 해소분).
+        "toss.api.call.duration": true
+        "http.server.requests": true
   prometheus:
     metrics:
       export:
