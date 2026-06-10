@@ -324,6 +324,14 @@ exemplar 동작 범위: payment-service(`payment.transition.duration`, `http.ser
 
 **의존**: 없음
 
+- [x] **T6 완료** (2026-06-11)
+
+**완료 결과**:
+- `DedupeCleanupWorker`에 `CLEANUP_FAILED_COUNTER_NAME = "payment_event_dedupe.cleanup_failed_total"` 상수 + `cleanupFailedCounter` 필드 추가. 기존 `CLEANUP_DELETED_COUNTER_NAME` / `cleanupDeletedCounter` 와 dot 네이밍·배치 대칭.
+- `executeDeleteExpired` catch 분기 에 `cleanupFailedCounter.increment()` 1줄 추가. 기존 `LogFmt.error` + `return 0` 동작 무변경 — 스케줄러 회복력 보존.
+- 신규 테스트 2케이스(`cleanup_예외발생시_failedCounter증가` / `cleanup_정상수행시_failedCounter미증가`) — 예외 시 failed=1.0·deleted=0.0, 정상 시 failed=0.0·deleted=5.0 단언.
+- `./gradlew :payment-service:test` 484/484 PASS (신규 2 + 기존 회귀 없음).
+
 ---
 
 ### T7 — product DedupeCleanupWorker cleanup_failed_total 카운터 (TDD, domain_risk)
@@ -498,7 +506,7 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T3  Tempo metrics_generator 활성 (non-TDD)
 [x] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
 [x] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
-[ ] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
+[x] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T7  product cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T8  비즈니스 대시보드 (non-TDD)                 ← T0, T1, T4, T5, T6, T7
 [ ] T9  시스템 대시보드 (non-TDD)                   ← T4
