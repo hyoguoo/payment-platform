@@ -1,13 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-11 — OBSERVABILITY-COMPLETION execute T0 완료 → **활성 태스크 T1**. 이슈/브랜치 #94.
-> **다음 세션 진입점**: OBSERVABILITY-COMPLETION execute 단계, **활성 태스크 T1**(Kafka wiring 2줄 — KafkaConsumerConfig observation + KafkaProducerConfig Micrometer 리스너). PLAN: `docs/OBSERVABILITY-COMPLETION-PLAN.md`(T0~T10).
+> 최종 수정: 2026-06-11 — OBSERVABILITY-COMPLETION execute T1 완료 → **활성 태스크 T2**. 이슈/브랜치 #94.
+> **다음 세션 진입점**: OBSERVABILITY-COMPLETION execute 단계, **활성 태스크 T2**(샘플링 기본값 1.0 — 5서비스 application.yml). PLAN: `docs/OBSERVABILITY-COMPLETION-PLAN.md`(T0~T10).
 
 ## 활성 작업
 
-- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94) — **stage: execute, 활성 태스크 T0**
+- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94) — **stage: execute, 활성 태스크 T2**
   - discuss 3라운드 + plan 2라운드 + plan-review(pass, findings 0). 설계: `docs/topics/OBSERVABILITY-COMPLETION.md`, PLAN: `docs/OBSERVABILITY-COMPLETION-PLAN.md`, 라운드 문서: `docs/rounds/observability-completion/`
-  - PLAN: T0~T10 11태스크(TDD 3·도메인 리스크 4). **T0 완료**(런타임 상수 코드 도출, 2026-06-11) → **T1 활성**(Kafka wiring 2줄) → 설정(T2~T4)·메트릭 코드(T5~T7) → 대시보드(T8~T9) → 수동 스모크(T10, AC1~AC7)
+  - PLAN: T0~T10 11태스크(TDD 3·도메인 리스크 4). **T0 완료**(런타임 상수 코드 도출, 2026-06-11) → **T1 완료**(Kafka wiring 2줄 — KafkaConsumerConfig observation + KafkaProducerConfig Micrometer 리스너, 2026-06-11) → **T2 활성**(샘플링 기본값 1.0) → 설정(T3~T4)·메트릭 코드(T5~T7) → 대시보드(T8~T9) → 수동 스모크(T10, AC1~AC7)
   - 범위: 비즈니스/시스템 대시보드 2분할(D12) + 로그 기반 추적 진입(D2, span 미부착) + 컨슈머 로그 traceId 연속성(D16) + exemplar(D11)/Tempo 서비스 그래프(D10)/샘플링 1.0(D3) + 신규 메트릭 3종(D13 가드 스킵 / D14 cleanup 실패 / D15 코디네이터 활동)
   - 비범위: 알람 rule(D1, 측정 후), k6/장애주입, JSON 로그 전환, 멀티 인스턴스 검증. 결제 상태 머신·돈 흐름·계약 무변경
 

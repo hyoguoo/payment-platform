@@ -105,8 +105,8 @@ flowchart TD
 | Spring Boot 버전 | **3.4.4** — 코드 도출(`build.gradle:3` 루트 플러그인 선언 / BOM `spring-boot-dependencies:3.4.4`) — 라이브 검증 T10 이연 |
 | Micrometer tracing 버전 | **1.4.4** (`io.micrometer:micrometer-tracing-bridge-otel:1.4.4`) — 코드 도출(`./gradlew dependencyInsight` Spring Boot 3.4.4 BOM 관리) — 라이브 검증 T10 이연 |
 | exemplar 노출 타이머 메트릭 목록 (percentiles-histogram 필요분) | 아래 상세 표 참조 |
-| `kafka_producer_txn_*` 계열 메트릭 노출 여부 (T1 wiring **후** 재측정 — wiring 전엔 미노출이 정상, 판정 보류) | **T1 wiring 후 재측정 보류** — T0 단계(wiring 전)에서는 항상 미노출이 정상. 확정 불가 |
-| kafka producer 메트릭 실제 이름 (T1 후 노출 시) | **T1 wiring 후 재측정 보류** |
+| `kafka_producer_txn_*` 계열 메트릭 노출 여부 (T1 wiring **후** 재측정 — wiring 전엔 미노출이 정상, 판정 보류) | **T1 wiring 적용 완료 — 라이브 노출명 확정은 T10 스모크 이연** (전체 스택 미기동, 사용자 결정) |
+| kafka producer 메트릭 실제 이름 (T1 후 노출 시) | **T1 wiring 적용 완료 — 라이브 확정 T10 이연** |
 
 **exemplar 타이머 상세 (percentiles-histogram 설정 대상)**:
 
@@ -150,6 +150,16 @@ EOS 트랜잭션 경계·commit/abort 경로 무변경.
 - **T1 적용 후 `/actuator/prometheus` 재스냅샷**으로 `kafka_producer_txn_*` 노출 여부 확정 → T0 산출 기록표의 해당 행 갱신(노출 시 실제 메트릭명 기입, 미노출 시 §3-7-C fallback 확정). 이 결과가 T8(코디네이터 패널 expr) 입력.
 
 **의존**: T0(exemplar 타이머 메트릭명 확정 후). kafka producer txn 메트릭 확정은 본 태스크가 산출(wiring 후 재측정).
+
+- [x] **T1 완료** (2026-06-11)
+
+**완료 결과**:
+- D16: `KafkaConsumerConfig.kafkaListenerContainerFactory` 에 `factory.getContainerProperties().setObservationEnabled(true)` 삽입 (`setKafkaAwareTransactionManager` 직후 직교 위치). 컨슈머 리스너 traceId 연속성 활성.
+- D15: `KafkaProducerConfig.stockCommittedProducerFactory` 에 `MeterRegistry` 파라미터 추가 후 `factory.addListener(new MicrometerProducerListener<>(meterRegistry))` 삽입. EOS 트랜잭션 경계·commit/abort 로직 무변경.
+- import 2건 추가: `io.micrometer.core.instrument.MeterRegistry`, `org.springframework.kafka.core.MicrometerProducerListener` (spring-kafka 제공, build.gradle 변경 불필요 확인).
+- `PaymentEosIntegrationTest` 5/5 GREEN (`./gradlew :payment-service:integrationTest --tests "*PaymentEosIntegrationTest" --rerun-tasks`).
+- `./gradlew :payment-service:test` 468/468 PASS (단위 회귀 없음).
+- `kafka_producer_txn_*` 라이브 노출명 확정은 T10 스모크 이연 (전체 스택 미기동 — 사용자 결정).
 
 ---
 
