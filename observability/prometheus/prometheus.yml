@@ -4,6 +4,13 @@ global:
   external_labels:
     environment: docker
 
+# Tempo metrics_generator remote_write 수신 시 out-of-order 샘플 허용 (30m 윈도우)
+# Prometheus 2.39+ 기능: span_metrics/service_graphs 집계 타임스탬프가
+# scrape 타임라인보다 약간 과거일 수 있어 이 설정 없이는 샘플 거부 가능
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
 scrape_configs:
   - job_name: prometheus
     static_configs:

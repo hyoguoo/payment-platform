@@ -203,6 +203,16 @@ EOS 트랜잭션 경계·commit/abort 경로 무변경.
 
 **의존**: 없음
 
+- [x] **T3 완료** (2026-06-11)
+
+**완료 결과**:
+- `observability/tempo/tempo.yml`: `metrics_generator` 블록 추가 — `registry.external_labels(source:tempo)`, `storage.path(/var/tempo/generator/wal)` + `remote_write(http://prometheus:9090/api/v1/write, send_exemplars:true)`, `processor.service_graphs`(http.method·status_code dimensions) + `processor.span_metrics`(http.method·status_code·route dimensions). `overrides.defaults.metrics_generator.processors: [service-graphs, span-metrics]` 활성.
+- `observability/grafana/provisioning/datasources/datasources.yml`: Prometheus datasource 에 `uid: prometheus` 추가, Tempo datasource 에 `jsonData.serviceMap.datasourceUid: prometheus` 추가. 기존 tracesToLogsV2/nodeGraph 설정 유지.
+- `observability/prometheus/prometheus.yml`: `storage.tsdb.out_of_order_time_window: 30m` 추가 — Tempo remote_write 샘플 타임스탬프가 scrape 타임라인보다 약간 과거일 경우 거부 방지(Prometheus 2.39+ 기능, docker-compose prometheus 2.51.2 적용 가능).
+- compose 문법 검증: `docker compose -f infra.yml -f observability.yml config -q` 통과(출력 없음).
+- `./gradlew test` 827/827 PASS.
+- **Tempo 2.4 키 구조 실제 동작 검증은 T10 기동 시** (`# 2.4 문법 검증 T10` 주석 tempo.yml 에 기재).
+
 ---
 
 ### T4 — exemplar 3점 연결 (non-TDD)
@@ -465,7 +475,7 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T0  런타임 상수 실측 (선행, non-TDD)
 [x] T1  Kafka wiring 2줄 (non-TDD, domain_risk)     ← T0
 [x] T2  샘플링 기본값 1.0 (non-TDD)
-[ ] T3  Tempo metrics_generator 활성 (non-TDD)
+[x] T3  Tempo metrics_generator 활성 (non-TDD)
 [ ] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
 [ ] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
 [ ] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
