@@ -1,11 +1,15 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **verify 완료 → done (PR 대기/생성)**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: 활성 작업 없음. 새 토픽은 discuss부터. 다음 토픽 후보는 아래 참조.
+> 최종 수정: 2026-06-10 — OBSERVABILITY-COMPLETION **discuss 완료 → plan 단계**. 이슈/브랜치 #94.
+> **다음 세션 진입점**: OBSERVABILITY-COMPLETION plan 단계. `docs/topics/OBSERVABILITY-COMPLETION.md` 설계 확정(요약 브리핑 + §1~§6), plan T0(런타임 상수 실측) 선행.
 
 ## 활성 작업
 
-- 없음 (CI-PIPELINE-REDESIGN 완료 — 아래 직전 봉인 참조)
+- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94) — **stage: plan**
+  - discuss 3라운드 합의(Critic pass / Domain Expert pass). 설계: `docs/topics/OBSERVABILITY-COMPLETION.md`, 라운드 문서: `docs/rounds/observability-completion/`
+  - 범위: 비즈니스/시스템 대시보드 2분할(D12) + 로그 기반 추적 진입(D2, span 미부착) + 컨슈머 로그 traceId 연속성(D16) + exemplar(D11)/Tempo 서비스 그래프(D10)/샘플링 1.0(D3) + 신규 메트릭 3종(D13 가드 스킵 / D14 cleanup 실패 / D15 코디네이터 활동)
+  - 비범위: 알람 rule(D1, 측정 후), k6/장애주입, JSON 로그 전환, 멀티 인스턴스 검증. 결제 상태 머신·돈 흐름·계약 무변경
+  - 측정 인프라 무관 완결. plan 첫 태스크 T0 = build.gradle 버전 + `/actuator/prometheus` 스냅샷 실측으로 exemplar·kafka 프로듀서 메트릭명 확정
 
 ## 직전 봉인
 
