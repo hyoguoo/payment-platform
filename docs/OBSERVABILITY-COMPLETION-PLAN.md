@@ -98,21 +98,35 @@ flowchart TD
 
 **T0 산출 기록표 (execute 시 기입)**:
 
+> **도출 방식**: docker 스택 기동 없이 build.gradle + 소스 코드에서 결정론적으로 도출. 라이브 스냅샷 검증은 T10 스모크로 이연.
+
 | 항목 | 확인 결과 |
 |---|---|
-| Spring Boot 버전 | ___ |
-| Micrometer tracing 버전 | ___ |
-| exemplar 노출 타이머 메트릭 목록 (percentiles-histogram 필요분) | ___ |
-| `kafka_producer_txn_*` 계열 메트릭 노출 여부 (T1 wiring **후** 재측정 — wiring 전엔 미노출이 정상, 판정 보류) | 노출됨 / 미노출(→ fallback) |
-| kafka producer 메트릭 실제 이름 (T1 후 노출 시) | ___ |
+| Spring Boot 버전 | **3.4.4** — 코드 도출(`build.gradle:3` 루트 플러그인 선언 / BOM `spring-boot-dependencies:3.4.4`) — 라이브 검증 T10 이연 |
+| Micrometer tracing 버전 | **1.4.4** (`io.micrometer:micrometer-tracing-bridge-otel:1.4.4`) — 코드 도출(`./gradlew dependencyInsight` Spring Boot 3.4.4 BOM 관리) — 라이브 검증 T10 이연 |
+| exemplar 노출 타이머 메트릭 목록 (percentiles-histogram 필요분) | 아래 상세 표 참조 |
+| `kafka_producer_txn_*` 계열 메트릭 노출 여부 (T1 wiring **후** 재측정 — wiring 전엔 미노출이 정상, 판정 보류) | **T1 wiring 후 재측정 보류** — T0 단계(wiring 전)에서는 항상 미노출이 정상. 확정 불가 |
+| kafka producer 메트릭 실제 이름 (T1 후 노출 시) | **T1 wiring 후 재측정 보류** |
+
+**exemplar 타이머 상세 (percentiles-histogram 설정 대상)**:
+
+| Timer | Micrometer 등록명 (코드 도출) | Prometheus 노출 base명 | 서비스 | 설정 키 (`management.metrics.distribution.percentiles-histogram.<ID>`) | 출처 |
+|---|---|---|---|---|---|
+| 결제 상태 전이 소요 | `payment_transition_duration_seconds` | `payment_transition_duration_seconds_seconds` (※ 이미 `_seconds` 포함 비표준 등록명 — Micrometer가 suffix 추가 시 이중 `_seconds_seconds` 가능. **T10 라이브 스냅샷으로 실제 노출명 확정 필요**) | payment-service | `management.metrics.distribution.percentiles-histogram.payment_transition_duration_seconds=true` | 코드 도출(`PaymentTransitionMetrics.java:47` `Timer.builder("payment_transition_duration_seconds")`) — 라이브 검증 T10 이연 |
+| 벤더 API 응답시간 | `toss.api.call.duration` | `toss_api_call_duration_seconds` (dot→underscore 변환 + Timer `_seconds` suffix 자동 부여) | pg-service | `management.metrics.distribution.percentiles-histogram.toss.api.call.duration=true` | 코드 도출(`TossApiMetrics.java:36` `Timer.builder("toss.api.call.duration")`) — 라이브 검증 T10 이연 |
+| HTTP 요청 응답시간 | `http.server.requests` | `http_server_requests_seconds` | payment-service + pg-service (T4 적용 범위 한정) | `management.metrics.distribution.percentiles-histogram.http.server.requests=true` | Spring Boot 자동 계측 — 라이브 검증 T10 이연 |
 
 > **주의 (plan-domain/critic-2 minor)**: `kafka_producer_txn_*` 은 D15 producer 리스너(T1)가 적용돼야 노출된다. T0 단계(wiring 전) 스냅샷에서는 항상 미노출 → fallback 으로 읽히므로, 이 행의 **fallback 최종 판정은 T1 완료 후 재측정**으로 확정한다. T0 에서는 exemplar 타이머 메트릭명(payment/pg)만 확정하면 후속 진행 가능.
+>
+> **T4 사용 시 주의**: `payment_transition_duration_seconds` 의 Prometheus 실제 노출명은 T10 라이브 확인 전까지 `payment_transition_duration_seconds_seconds_bucket` 또는 `payment_transition_duration_seconds_bucket` 두 가지 가능성이 있다. T4 에서 `percentiles-histogram` 설정 키는 Micrometer **등록명** 기준이므로 `payment_transition_duration_seconds` 를 그대로 쓰면 되며, 대시보드 `histogram_quantile` expr 의 메트릭명은 T10 라이브 스냅샷 후 보정한다.
 
 **완료 조건**: 위 표 중 exemplar 타이머 행이 채워지고(kafka txn 행은 T1 후 재측정 보류 표기), 이후 태스크(T1·T4)가 표를 참조할 수 있는 상태.
 
 **산출물**: 이 PLAN.md 내 T0 산출 기록표 (별도 파일 없음)
 
 **의존**: 없음
+
+**완료 결과**: Spring Boot 3.4.4, micrometer-tracing-bridge-otel 1.4.4. exemplar 타이머 3종 등록명·설정 키 확정(docker 스택 기동 없이 코드 결정론적 도출). `payment_transition_duration_seconds` 등록명의 이중 `_seconds_seconds` 가능성은 T10 라이브 스냅샷으로 보정 예정. kafka txn 계열 메트릭명은 T1 wiring 후 재측정 보류.
 
 ---
 
@@ -431,7 +445,7 @@ T10 (수동 스모크) ← T1~T9 전체
 ## 체크박스 요약
 
 ```
-[ ] T0  런타임 상수 실측 (선행, non-TDD)
+[x] T0  런타임 상수 실측 (선행, non-TDD)
 [ ] T1  Kafka wiring 2줄 (non-TDD, domain_risk)     ← T0
 [ ] T2  샘플링 기본값 1.0 (non-TDD)
 [ ] T3  Tempo metrics_generator 활성 (non-TDD)
