@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
@@ -74,6 +75,8 @@ public class PaymentConfirmResultUseCase {
      * {@code @PublishDomainEvent} / {@code @PaymentStatusChange} AOP 가 적용되지 않으므로 외부 빈을 통해 호출해야 한다.
      */
     private final PaymentCommandUseCase paymentCommandUseCase;
+    /** 종결 상태 가드 noop 분기 계측 — D13. */
+    private final PaymentConfirmGuardSkipMetrics guardSkipMetrics;
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
@@ -82,7 +85,8 @@ public class PaymentConfirmResultUseCase {
             StockCachePort stockCachePort,
             PaymentEventDedupeStore paymentEventDedupeStore,
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
-            PaymentCommandUseCase paymentCommandUseCase) {
+            PaymentCommandUseCase paymentCommandUseCase,
+            PaymentConfirmGuardSkipMetrics guardSkipMetrics) {
         this.paymentEventRepository = paymentEventRepository;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.clock = clock;
@@ -92,6 +96,7 @@ public class PaymentConfirmResultUseCase {
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule());
         this.paymentCommandUseCase = paymentCommandUseCase;
+        this.guardSkipMetrics = guardSkipMetrics;
     }
 
     /**
@@ -110,6 +115,7 @@ public class PaymentConfirmResultUseCase {
 
         // 종결 상태면 이미 처리된 메시지이므로 무시한다.
         if (!paymentEvent.getStatus().canApplyConfirmResult()) {
+            guardSkipMetrics.record(paymentEvent.getStatus());
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
                     () -> "종결 상태 skip — orderId=" + message.orderId()
                             + " status=" + paymentEvent.getStatus()

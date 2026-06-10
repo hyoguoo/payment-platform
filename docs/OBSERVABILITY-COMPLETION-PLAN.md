@@ -290,6 +290,15 @@ exemplar 동작 범위: payment-service(`payment.transition.duration`, `http.ser
 
 **의존**: 없음 (core/common 레이어, domain_risk = 가드 분기 멱등성 관련)
 
+- [x] **T5 완료** (2026-06-11)
+
+**완료 결과**:
+- `PaymentConfirmGuardSkipMetrics` 신규 생성(`core/common/metrics/`). Counter `payment_confirm_guard_skip_total{status}`, `ConcurrentHashMap` 캐시, throw-free(`null` noop), D7 불변식(라벨 == `{status}`).
+- `PaymentConfirmResultUseCase` 생성자에 `PaymentConfirmGuardSkipMetrics` 파라미터 추가, `canApplyConfirmResult()==false` 분기에 `guardSkipMetrics.record(paymentEvent.getStatus())` 1줄 삽입. 기존 가드 분기 동작(warn 로그·return) 무변경.
+- `canApplyConfirmResult()==false` 6종(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) 확인 — `PaymentEventStatus.canApplyConfirmResult()` switch 코드 직접 재확인.
+- 신규 테스트: `PaymentConfirmGuardSkipMetricsTest` 5케이스(counter 증가·독립 집계·6종 @ParameterizedTest·태그키=={status}·throw-free) + `PaymentConfirmResultUseCaseGuardSkipTest` 2케이스(DONE 가드 false→record() 1회·READY/IN_PROGRESS/RETRYING 가드 true→record() 0회 @ParameterizedTest). 기존 생성자 변경 영향 7개 테스트 파일 `SimpleMeterRegistry` noop 인스턴스 추가.
+- `./gradlew :payment-service:test` 482/482 PASS (신규 14 + 기존 회귀 없음).
+
 ---
 
 ### T6 — payment DedupeCleanupWorker cleanup_failed_total 카운터 (TDD, domain_risk)
@@ -488,7 +497,7 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T2  샘플링 기본값 1.0 (non-TDD)
 [x] T3  Tempo metrics_generator 활성 (non-TDD)
 [x] T4  exemplar 3점 연결 (non-TDD)                 ← T0, T3
-[ ] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
+[x] T5  PaymentConfirmGuardSkipMetrics (TDD, domain_risk)
 [ ] T6  payment cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T7  product cleanup_failed 카운터 (TDD, domain_risk)
 [ ] T8  비즈니스 대시보드 (non-TDD)                 ← T0, T1, T4, T5, T6, T7
