@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -25,12 +26,15 @@ import org.mockito.Mockito;
  * <ul>
  *   <li>deleteExpired 1회 호출 + Micrometer counter 증가</li>
  *   <li>deleteExpired 예외 시 예외 전파 없이 다음 주기 재시도</li>
+ *   <li>deleteExpired 예외 시 cleanup_failed_total 카운터 1 증가, cleanup_deleted_total 0 유지</li>
+ *   <li>정상 수행 시 cleanup_failed_total 카운터 미증가</li>
  * </ul>
  */
 @DisplayName("DedupeCleanupWorker 테스트")
 class DedupeCleanupWorkerTest {
 
     private static final String COUNTER_NAME = "payment_event_dedupe.cleanup_deleted_total";
+    private static final String FAILED_COUNTER_NAME = "payment_event_dedupe.cleanup_failed_total";
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
@@ -75,5 +79,44 @@ class DedupeCleanupWorkerTest {
 
         // when & then
         assertThatCode(() -> worker.cleanup()).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("cleanup - deleteExpired가 RuntimeException을 던지면 cleanup_failed_total 카운터가 1 증가하고 cleanup_deleted_total은 0이다")
+    void cleanup_예외발생시_failedCounter증가() {
+        // given
+        given(mockDedupeStore.deleteExpired(any(Instant.class), anyInt()))
+                .willThrow(new RuntimeException("DB 장애 시뮬레이션"));
+
+        // when
+        worker.cleanup();
+
+        // then
+        Counter failedCounter = meterRegistry.find(FAILED_COUNTER_NAME).counter();
+        assertThat(failedCounter).isNotNull();
+        assertThat(failedCounter.count()).isEqualTo(1.0);
+
+        Counter deletedCounter = meterRegistry.find(COUNTER_NAME).counter();
+        assertThat(deletedCounter).isNotNull();
+        assertThat(deletedCounter.count()).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("cleanup - deleteExpired가 정상 반환하면 cleanup_failed_total 카운터는 0이다")
+    void cleanup_정상수행시_failedCounter미증가() {
+        // given
+        given(mockDedupeStore.deleteExpired(any(Instant.class), anyInt())).willReturn(5);
+
+        // when
+        worker.cleanup();
+
+        // then
+        Counter failedCounter = meterRegistry.find(FAILED_COUNTER_NAME).counter();
+        assertThat(failedCounter).isNotNull();
+        assertThat(failedCounter.count()).isEqualTo(0.0);
+
+        Counter deletedCounter = meterRegistry.find(COUNTER_NAME).counter();
+        assertThat(deletedCounter).isNotNull();
+        assertThat(deletedCounter.count()).isEqualTo(5.0);
     }
 }
