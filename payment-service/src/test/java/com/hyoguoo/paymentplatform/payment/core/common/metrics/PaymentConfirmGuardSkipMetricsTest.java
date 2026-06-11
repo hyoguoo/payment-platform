@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("PaymentConfirmGuardSkipMetrics 단위 테스트")
 class PaymentConfirmGuardSkipMetricsTest {
@@ -99,5 +100,22 @@ class PaymentConfirmGuardSkipMetricsTest {
     void record_neverThrows() {
         assertThatCode(() -> sut.record(null))
                 .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest(name = "constructor_eagerRegister_{0} — 생성자 호출 직후(이벤트 0건) {0} 라벨 counter 존재(값 0)")
+    @ValueSource(strings = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+    @DisplayName("constructor_eagerRegister — 가드 false 6종 생성자 직후 counter 시리즈가 모두 값 0으로 사전 등록됨")
+    void constructor_eagerRegister_allSixLabelsPreRegisteredWithZero(String statusName) {
+        // 생성자 직후 record() 호출 없이 카운터가 등록돼 있어야 한다 (eager 등록)
+        Counter counter = meterRegistry.find("payment_confirm_guard_skip_total")
+                .tag("status", statusName)
+                .counter();
+
+        assertThat(counter)
+                .as("생성자 직후 status=%s 라벨 counter 사전 등록 확인", statusName)
+                .isNotNull();
+        assertThat(counter.count())
+                .as("이벤트 0건 상태에서 counter 값 = 0.0")
+                .isEqualTo(0.0);
     }
 }
