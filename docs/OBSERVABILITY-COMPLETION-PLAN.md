@@ -452,13 +452,15 @@ HTTP exemplar 링크 동작 범위: payment + pg 2서비스 (T4 설정 범위와
 
 ---
 
-### T10 — 수동 스모크 검증 (non-TDD)
+### T10 — 수동 스모크 검증 (non-TDD) — **verify 단계로 이연**
 
 **tdd**: false | **domain_risk**: false
 
+> **이연 결정(execute, 2026-06-11, 사용자 승인)**: T10 은 전체 스택(infra+apps+observability) 라이브 기동이 전제라, execute 의 코드/설정 산출물(T0~T9) 판정은 review 에서 먼저 받고, 라이브 스모크(AC1~AC7) + 라이브 메트릭명 보정은 **verify 단계에서 일괄 실행**한다. T0 산출표의 `payment_transition_duration_seconds` 이중 suffix 가능성 / kafka_producer_txn 노출명 / 대시보드 불확실 메트릭명(GC pause·Hikari·Kafka client lag) 보정도 이때 확정.
+
 **목적**: D6. AC1~AC7 수락 조건 전수 실행. `./gradlew test` 전체 green + `trace-continuity-check.sh` 통과 확인.
 
-**체크리스트**:
+**체크리스트** (verify 단계 실행):
 - [ ] AC1: 비즈니스 대시보드 전 패널 데이터 렌더 (No data 없음)
 - [ ] AC2: 시스템 대시보드 `$application` 변수로 6서비스 표시
 - [ ] AC3 HTTP: Loki에서 orderId 텍스트 검색 → traceId derivedField 클릭 → Tempo 워터폴 진입 (gateway~payment~pg~product span)
