@@ -92,7 +92,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "description": "invariant 불일치 건수 = published_total - terminal_total 누적 차이. 0이어야 정상(in-flight 없음). 양수이면 미완결 이벤트 존재.",
+      "description": "invariant 불일치 건수 = published_total - terminal_total 누적 차이. 0이어야 정상(in-flight 없음). 양수이면 미완결 이벤트 존재. in-flight 는 카운터 기반 근사값 — at-least-once 재배달 중복·프로세스 재시작 시 카운터 리셋으로 절대값이 왜곡될 수 있어 추세(증감)로 해석한다.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },

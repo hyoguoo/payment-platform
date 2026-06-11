@@ -4,7 +4,6 @@ import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowM
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -57,21 +56,13 @@ public class PaymentStatusMetricsAspect {
                 duration
         );
 
-        // 종결 전이 시 terminal 카운터 증가 (DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED).
-        // QUARANTINED 는 복구 대기 상태이므로 terminal 에 포함하지 않는다.
-        if (resultEvent != null && isTerminalStatus(resultEvent.getStatus())) {
+        // 종결 판별은 PaymentEventStatus.isTerminal() SSOT 위임.
+        // QUARANTINED 는 복구 대기 상태이므로 isTerminal() 이 false 를 반환 — 포함하지 않는다.
+        if (resultEvent != null && resultEvent.getStatus().isTerminal()) {
             paymentEventFlowMetrics.recordTerminal();
         }
 
         return result;
-    }
-
-    private static boolean isTerminalStatus(PaymentEventStatus status) {
-        return status == PaymentEventStatus.DONE
-                || status == PaymentEventStatus.FAILED
-                || status == PaymentEventStatus.CANCELED
-                || status == PaymentEventStatus.PARTIAL_CANCELED
-                || status == PaymentEventStatus.EXPIRED;
     }
 
     private PaymentEvent extractPaymentEvent(ProceedingJoinPoint joinPoint) {

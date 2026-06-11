@@ -555,6 +555,17 @@ T10 (수동 스모크) ← T1~T9 전체
 
 ---
 
+## review-2 피드백 반영 (2026-06-11, 사용자 승인)
+
+| Fix | 내용 |
+|---|---|
+| Fix-1 (major F1) | `PaymentStatusMetricsAspect.isTerminalStatus` private 메서드 삭제 → `resultEvent.getStatus().isTerminal()` SSOT 위임. QUARANTINED 제외 동작 보존. |
+| Fix-2 (minor F3) | `PaymentStatusMetricsAspectTerminalTest` 신규 — 종결 5종/비종결 4종 `@ParameterizedTest @EnumSource` + SimpleMeterRegistry, 9케이스 GREEN. |
+| Fix-3 (Domain minor 2) | `business-dashboard.json` in-flight stat 패널 description 에 카운터 기반 근사값 한계(재배달 중복·재시작 리셋) 1줄 추가. |
+| 이연 | Domain minor 3 (PaymentConfirmGuardSkipMetrics lazy register) — `docs/context/TODOS.md` [GUARD-SKIP-EAGER-REGISTER] 등재. |
+
+---
+
 ## review-1 피드백 반영 (2026-06-11, 사용자 승인)
 
 | Fix | 대상 태스크 보강 | 내용 |
