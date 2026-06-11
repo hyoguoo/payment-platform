@@ -384,7 +384,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "description": "DLQ 토픽 유입률(1m rate). commands.confirm.dlq + events.confirmed.dlq 둘 다 감시. 0을 유지해야 정상.",
+      "description": "DLQ 토픽 유입률(1m rate). commands.confirm.dlq + events.confirmed.dlq 둘 다 감시. 0을 유지해야 정상.\n\n**메트릭 소스**:\n- commands.confirm.dlq: pg-service PaymentConfirmDlqConsumer 가 소비 → kafka_consumer_records_consumed_total 사용.\n- events.confirmed.dlq: 컨슈머 없음(DeadLetterPublishingRecoverer 발행 전용) → kafka-exporter 토픽 메트릭 kafka_topic_partition_current_offset 사용(오프셋 증가분 = 유입률).",
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "red", "mode": "fixed" },
@@ -408,9 +408,14 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(kafka_consumer_records_consumed_total{topic=~\".*dlq\"}[1m])) by (topic)",
-          "legendFormat": "DLQ {{topic}}",
+          "expr": "sum(increase(kafka_consumer_records_consumed_total{topic=\"payment.commands.confirm.dlq\"}[1m]))",
+          "legendFormat": "commands.confirm.dlq (소비 기반)",
           "refId": "A"
+        },
+        {
+          "expr": "sum(increase(kafka_topic_partition_current_offset{topic=\"payment.events.confirmed.dlq\"}[1m])) by (topic)",
+          "legendFormat": "events.confirmed.dlq (적재 기반, kafka-exporter)",
+          "refId": "B"
         }
       ],
       "title": "DLQ 유입률 (commands.confirm.dlq + events.confirmed.dlq, 1m rate)",
@@ -418,7 +423,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "description": "DLQ 토픽별 누적 유입 건수 현황. 각 DLQ 토픽 분리 표시.",
+      "description": "DLQ 토픽별 누적 유입 건수 현황. 각 DLQ 토픽 분리 표시.\n\n**메트릭 소스**:\n- commands.confirm.dlq: pg-service 컨슈머 존재 → kafka_consumer_records_consumed_total.\n- events.confirmed.dlq: 컨슈머 없음 → kafka-exporter kafka_topic_partition_current_offset(sum by topic = 전 파티션 오프셋 합산).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -454,8 +459,8 @@
           "refId": "A"
         },
         {
-          "expr": "sum(kafka_consumer_records_consumed_total{topic=\"payment.events.confirmed.dlq\"})",
-          "legendFormat": "events.confirmed.dlq",
+          "expr": "sum(kafka_topic_partition_current_offset{topic=\"payment.events.confirmed.dlq\"})",
+          "legendFormat": "events.confirmed.dlq (kafka-exporter 오프셋 누적)",
           "refId": "B"
         }
       ],

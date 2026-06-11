@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
@@ -24,6 +25,7 @@ public class PaymentCreateUseCase {
     private final PaymentOrderRepository paymentOrderRepository;
     private final UUIDProvider uuidProvider;
     private final Clock clock;
+    private final PaymentEventFlowMetrics paymentEventFlowMetrics;
 
     @Transactional
     @PublishDomainEvent(action = "created")
@@ -46,6 +48,9 @@ public class PaymentCreateUseCase {
         );
 
         savedPaymentEvent.addPaymentOrderList(paymentOrderList);
+
+        // 결제 이벤트 최초 발행(READY 진입) 계측 — never-throw.
+        paymentEventFlowMetrics.recordPublished();
 
         return savedPaymentEvent;
     }

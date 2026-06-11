@@ -552,3 +552,13 @@ T10 (수동 스모크) ← T1~T9 전체
 [x] T9  시스템 대시보드 (non-TDD)                   ← T4
 [ ] T10 수동 스모크 검증 (AC1~AC7)                  ← T1~T9
 ```
+
+---
+
+## review-1 피드백 반영 (2026-06-11, 사용자 승인)
+
+| Fix | 대상 태스크 보강 | 내용 |
+|---|---|---|
+| Fix-A (major) | T8 보강 | `payment_event_published_total`/`payment_event_terminal_total` 신규 구현(TDD). 발행 계측 지점: `PaymentCreateUseCase.createNewPaymentEvent` (READY 생성 직후). 종결 계측 지점: `PaymentStatusMetricsAspect` (`@PaymentStatusChange` AOP 후처리, toStatus ∈ {DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED}). 신규 클래스: `PaymentEventFlowMetrics`. |
+| Fix-B (major) | T8 보강 | DLQ 패널 메트릭 교체 — `payment.events.confirmed.dlq` 컨슈머 없음 확인 → `kafka_consumer_records_consumed_total` → `kafka_topic_partition_current_offset{topic="payment.events.confirmed.dlq"}` (kafka-exporter 브로커 측). `payment.commands.confirm.dlq` 는 pg-service 컨슈머 존재 → 기존 소비 기반 유지. |
+| Fix-C (minor) | T5 보강 | `PaymentConfirmResultUseCaseGuardSkipTest` 가드 스킵 증가 단언을 DONE 1건 → 6종 `@ParameterizedTest @EnumSource` 로 확장. |
