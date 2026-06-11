@@ -10,13 +10,18 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics;
+import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics.CallOutcome;
 import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.event.Level;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -48,9 +53,30 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private static final String FAKE_PAYMENT_KEY_PREFIX = "fake-";
 
     private final Clock clock;
+    private final TossApiMetrics tossApiMetrics;
 
-    public FakePgGatewayStrategy(Clock clock) {
+    /**
+     * 데모 부하 관측용 합성 벤더 RTT + 실패율 주입 파라미터.
+     * <p>실 PG 호출이 없는 fake 모드에서 벤더 latency 패널을 실수치처럼 채우고("정상"),
+     * fail-rate 로 비동기 실패 경로를 일부 태운다("이상 혼합"). 기본값은 happy-path 유지(fail-rate 0).
+     * production 무관 — 이 빈 자체가 {@code pg.gateway.type=fake} 에서만 등록된다.
+     */
+    private final double failRate;
+    private final long latencyMinMillis;
+    private final long latencyMaxMillis;
+
+    public FakePgGatewayStrategy(
+            Clock clock,
+            TossApiMetrics tossApiMetrics,
+            @Value("${pg.gateway.fake.fail-rate:0.0}") double failRate,
+            @Value("${pg.gateway.fake.latency-min-millis:0}") long latencyMinMillis,
+            @Value("${pg.gateway.fake.latency-max-millis:0}") long latencyMaxMillis
+    ) {
         this.clock = clock;
+        this.tossApiMetrics = tossApiMetrics;
+        this.failRate = failRate;
+        this.latencyMinMillis = latencyMinMillis;
+        this.latencyMaxMillis = Math.max(latencyMaxMillis, latencyMinMillis);
     }
 
     @PostConstruct
@@ -73,6 +99,21 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
 
     @Override
     public PgConfirmResult confirm(PgConfirmRequest request) {
+        long latencyMillis = simulateVendorLatency();
+        boolean inject = failRate > 0.0 && ThreadLocalRandom.current().nextDouble() < failRate;
+
+        tossApiMetrics.recordTossApiCall(
+                "confirm", latencyMillis, inject ? CallOutcome.FAILURE : CallOutcome.SUCCESS);
+
+        if (inject) {
+            // 확정 실패는 예외 throw 로만 신호된다(PgVendorCallService 가 confirm() 정상 반환을
+            // 항상 Success 로 감싸므로). NonRetryable → handleDefinitiveFailure → payment FAILED 경로.
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NON_RETRYABLE_ERROR,
+                    () -> "fake 주입 실패(데모 부하) orderId=" + request.orderId()
+                            + " paymentKey=" + maskKey(request.paymentKey()));
+            throw PgGatewayNonRetryableException.of("FAKE_INJECTED_FAILURE (데모 부하)");
+        }
+
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_SUCCESS,
                 () -> "fake orderId=" + request.orderId()
                         + " paymentKey=" + maskKey(request.paymentKey())
@@ -89,6 +130,28 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                 null,
                 approvedAtRaw
         );
+    }
+
+    /**
+     * 합성 벤더 RTT — [min, max] 범위 랜덤 sleep 후 경과 ms 반환.
+     * 가상 스레드(VT) 워커에서 호출되므로 sleep 비용은 무해하며, 트레이스 span 과 toss latency 패널을
+     * 실수치처럼 보이게 한다. min=max=0(기본)이면 sleep 없이 0 반환 — 기존 smoke happy-path 무영향.
+     */
+    private long simulateVendorLatency() {
+        if (latencyMaxMillis <= 0) {
+            return 0L;
+        }
+        long target = latencyMinMillis == latencyMaxMillis
+                ? latencyMinMillis
+                : ThreadLocalRandom.current().nextLong(latencyMinMillis, latencyMaxMillis + 1);
+        if (target > 0) {
+            try {
+                Thread.sleep(target);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return target;
     }
 
     @Override

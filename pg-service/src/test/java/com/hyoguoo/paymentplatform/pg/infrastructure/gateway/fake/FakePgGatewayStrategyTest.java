@@ -1,25 +1,60 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake;
 
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * FakePgGatewayStrategy.getStatusByOrderId 계약 검증.
+ * FakePgGatewayStrategy 계약 검증.
  *
- * <p>Fake 전략은 smoke happy-path 전용이며 getStatusByOrderId 는
- * DuplicateApprovalHandler / PgFinalConfirmationGate(복구 사이클) 경로에서만 호출된다.
- * smoke 프로파일에서는 해당 경로가 트리거되지 않아야 하므로,
- * 호출 자체가 {@link UnsupportedOperationException} 으로 명시적 계약 위반을 알려야 한다.
+ * <p>happy-path 반환 + getStatusByOrderId 미지원 계약에 더해, 데모 부하 관측용
+ * 합성 벤더 latency 메트릭 기록과 fail-rate 주입(예외 throw) 동작을 검증한다.
  */
 class FakePgGatewayStrategyTest {
 
+    private static final PgConfirmRequest REQUEST = new PgConfirmRequest(
+            "order-1", "fake-key-1234", BigDecimal.valueOf(1000), PgVendorType.TOSS);
+
+    private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate) {
+        // latency 0/0 → 테스트에서 sleep 없음.
+        return new FakePgGatewayStrategy(Clock.systemUTC(), new TossApiMetrics(registry), failRate, 0, 0);
+    }
+
     @Test
     void getStatusByOrderId_shouldThrowUnsupported() {
-        FakePgGatewayStrategy strategy = new FakePgGatewayStrategy(Clock.systemUTC());
-
-        assertThatThrownBy(() -> strategy.getStatusByOrderId("some-order-id"))
+        assertThatThrownBy(() -> strategy(new SimpleMeterRegistry(), 0.0).getStatusByOrderId("some-order-id"))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void confirm_failRateZero_shouldReturnSuccessAndRecordSuccessMetric() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+
+        PgConfirmResult result = strategy(registry, 0.0).confirm(REQUEST);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(registry.get("toss.api.call.total").tag("status", "success").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void confirm_failRateAlways_shouldThrowNonRetryableAndRecordFailureMetric() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+        FakePgGatewayStrategy strategy = strategy(registry, 1.0);
+
+        assertThatThrownBy(() -> strategy.confirm(REQUEST))
+                .isInstanceOf(PgGatewayNonRetryableException.class);
+        assertThat(registry.get("toss.api.call.total").tag("status", "failure").counter().count())
+                .isEqualTo(1.0);
     }
 }
