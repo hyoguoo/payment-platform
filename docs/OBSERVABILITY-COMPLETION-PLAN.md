@@ -460,6 +460,12 @@ HTTP exemplar 링크 동작 범위: payment + pg 2서비스 (T4 설정 범위와
 
 **목적**: D6. AC1~AC7 수락 조건 전수 실행. `./gradlew test` 전체 green + `trace-continuity-check.sh` 통과 확인.
 
+**verify 라이브 보정 (2026-06-11, 사전 적용)**:
+- Fix-1: `business-dashboard.json` 상태 분포 패널 expr `payment_state_current_total` → `payment_state_current` (Gauge 노출명 정정)
+- Fix-2: 코디네이터 패널 placeholder expr → `rate(kafka_producer_txn_commit_time_ns_total[5m])` / `increase(kafka_producer_txn_abort_time_ns_total[5m])` 확정. description "verify 라이브 확정" 갱신.
+- Fix-3-1: `PaymentConfirmGuardSkipMetrics` eager 등록(생성자에서 6종 0 사전 등록). TODOS [GUARD-SKIP-EAGER-REGISTER] 해소. 512/512 PASS.
+- Fix-3-2: `PaymentQuarantineMetrics` reason = free-form String(한글 포함) → eager 불가. 대신 격리 행에 `payment_state_current{status="QUARANTINED"}` stat 패널(id=303) 추가 — 기동 즉시 0 노출 보장.
+
 **체크리스트** (verify 단계 실행):
 - [ ] AC1: 비즈니스 대시보드 전 패널 데이터 렌더 (No data 없음)
 - [ ] AC2: 시스템 대시보드 `$application` 변수로 6서비스 표시
