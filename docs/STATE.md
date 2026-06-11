@@ -1,11 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-11 — OBSERVABILITY-COMPLETION execute T0~T9 완료 → **review 단계**. T10(라이브 스모크) verify 이연. 이슈/브랜치 #94.
-> **다음 세션 진입점**: OBSERVABILITY-COMPLETION review 단계 (코드/설정 diff 판정). PLAN: `docs/OBSERVABILITY-COMPLETION-PLAN.md`. T10 라이브 스모크(AC1~AC7) + 메트릭명 보정은 verify 단계에서 전체 스택 기동으로 실행.
+> 최종 수정: 2026-06-11 — OBSERVABILITY-COMPLETION review 완료(3라운드, Critic/Domain pass) → **verify 단계**. 이슈/브랜치 #94.
+> **다음 세션 진입점**: OBSERVABILITY-COMPLETION verify 단계. **사용자 "verify 시작" 명시 요청 필요**(자동 시작 금지). verify = 전체 스택 기동 → T10 라이브 스모크(AC1~AC7) + 메트릭명 보정(payment_transition_duration_seconds 이중 suffix / kafka txn 노출명 / GC·Hikari·lag) → context 갱신 → 아카이브 → PR.
 
 ## 활성 작업
 
-- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94) — **stage: review (execute T0~T9 완료, T10 verify 이연)**
+- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94) — **stage: verify (execute T0~T9 완료, review 3라운드 pass, T10 라이브 스모크 verify 대기)**
+  - review: critical/major 0 처리 — funnel 발행/종결 카운터 신규 구현(`PaymentEventFlowMetrics`, published=PaymentCreateUseCase READY / terminal=PaymentStatusMetricsAspect isTerminal() SSOT 위임) + confirmed.dlq 패널 kafka-exporter 교체 + 가드 테스트 6종 + in-flight 근사값 한계 명시. 506/506 PASS. 후속: TODOS [GUARD-SKIP-EAGER-REGISTER]
   - discuss 3라운드 + plan 2라운드 + plan-review(pass, findings 0). 설계: `docs/topics/OBSERVABILITY-COMPLETION.md`, PLAN: `docs/OBSERVABILITY-COMPLETION-PLAN.md`, 라운드 문서: `docs/rounds/observability-completion/`
   - PLAN: T0~T10 11태스크(TDD 3·도메인 리스크 4). **T0 완료**(런타임 상수 코드 도출, 2026-06-11) → **T1 완료**(Kafka wiring 2줄 — KafkaConsumerConfig observation + KafkaProducerConfig Micrometer 리스너, 2026-06-11) → **T2 완료**(5서비스 샘플링 기본값 1.0, 2026-06-11) → **T3 완료**(Tempo metrics_generator 활성 + Prometheus out-of-order 윈도우 + Grafana serviceMap 연결, 2026-06-11) → **T4 완료**(exemplar 3점 연결 — payment·pg percentiles-histogram + Prometheus exemplar-storage flag + Grafana exemplarTraceIdDestinations, 2026-06-11) → **T5 완료**(PaymentConfirmGuardSkipMetrics 가드 스킵 카운터 + 6종 TDD 검증, 2026-06-11) → **T6 완료**(payment DedupeCleanupWorker cleanup_failed_total 카운터, 484/484 PASS, 2026-06-11) → **T7 완료**(product DedupeCleanupWorker cleanup_failed_total 카운터, 44/44 PASS, 2026-06-11) → **T8 완료**(비즈니스 대시보드 business-dashboard.json 신규 생성 8행 23패널 + payment-dashboard.json 폐기, 2026-06-11) → **T9 완료**(시스템 대시보드 system-dashboard.json 신규 생성 7행 13패널 uid payment-system-d001, 2026-06-11) → **T10 verify 이연**(라이브 스모크 AC1~AC7 — 전체 스택 기동 전제, verify 단계 실행)
   - 범위: 비즈니스/시스템 대시보드 2분할(D12) + 로그 기반 추적 진입(D2, span 미부착) + 컨슈머 로그 traceId 연속성(D16) + exemplar(D11)/Tempo 서비스 그래프(D10)/샘플링 1.0(D3) + 신규 메트릭 3종(D13 가드 스킵 / D14 cleanup 실패 / D15 코디네이터 활동)
