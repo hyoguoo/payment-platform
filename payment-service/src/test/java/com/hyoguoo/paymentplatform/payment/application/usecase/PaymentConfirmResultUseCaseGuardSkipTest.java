@@ -34,7 +34,8 @@ import org.springframework.kafka.core.KafkaTemplate;
  *
  * <p>커버 범위:
  * <ul>
- *   <li>canApplyConfirmResult()==false 상태(DONE)에서 guardSkipMetrics.record() 1회 호출 + counter 1.0</li>
+ *   <li>canApplyConfirmResult()==false 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) 6종에서
+ *       guardSkipMetrics.record() 1회 호출 + counter 1.0</li>
  *   <li>canApplyConfirmResult()==true 상태(READY/IN_PROGRESS/RETRYING)에서 record() 미호출 (가드 통과)</li>
  * </ul>
  */
@@ -77,10 +78,13 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
         );
     }
 
-    @Test
-    @DisplayName("handle_terminalStatus_guardSkipCounterIncremented — DONE 상태 진입 시 record() 1회 + counter 1.0")
-    void handle_terminalStatus_guardSkipCounterIncremented() {
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.DONE);
+    @ParameterizedTest(name = "handle_terminalStatus_guardSkipCounterIncremented — {0} 상태 진입 시 record() 1회 + counter 1.0")
+    @EnumSource(value = PaymentEventStatus.class, names = {
+            "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"
+    })
+    @DisplayName("handle_terminalStatus_guardSkipCounterIncremented — 가드 false 6종에서 record() 1회 호출 + counter 1.0")
+    void handle_terminalStatus_guardSkipCounterIncremented(PaymentEventStatus status) {
+        PaymentEvent event = buildPaymentEvent(status);
         paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -88,10 +92,10 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
 
         sut.handle(message);
 
-        then(guardSkipMetrics).should(times(1)).record(PaymentEventStatus.DONE);
+        then(guardSkipMetrics).should(times(1)).record(status);
 
         Counter counter = meterRegistry.find("payment_confirm_guard_skip_total")
-                .tag("status", "DONE")
+                .tag("status", status.name())
                 .counter();
         assertThat(counter).isNotNull();
         assertThat(counter.count()).isEqualTo(1.0);
