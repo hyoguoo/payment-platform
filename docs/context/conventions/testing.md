@@ -1,6 +1,6 @@
 # Coding Conventions — Validation / TDD
 
-> Bean Validation, TDD 흐름. 테스트 상세는 [`../TESTING.md`](../TESTING.md), 커밋 규칙은 `CLAUDE.md` / [`commit-round.md`](../../../.claude/skills/_shared/protocols/commit-round.md) 참고.
+> Bean Validation, TDD 흐름. 테스트 상세는 [`../TESTING.md`](../TESTING.md), 커밋 규칙은 `CLAUDE.md` / [`commit.md`](../../../.claude/skills/_shared/conventions/commit.md) 참고.
 
 ## Bean Validation
 

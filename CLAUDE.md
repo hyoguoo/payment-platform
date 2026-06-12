@@ -8,12 +8,14 @@
 
 ## Workflow
 
-작업은 **discuss → plan → plan-review → execute → review → verify** 6단계로 진행한다.
+작업은 **discuss → plan → execute → ship** 4단계로 진행한다.
 
-**활성화 조건**: `docs/<TOPIC>-PLAN.md` 파일이 존재할 때만 이 워크플로우를 따른다.
+**활성화 조건**: `docs/STATE.md`에 활성 토픽이 있거나, 사용자가 워크플로우 단계를 명시하거나 새 토픽 설계를 요청할 때.
 단순 질문이나 빠른 수정은 일반 요청으로 처리한다.
 
-워크플로우 실행 방법은 `.claude/skills/workflow/SKILL.md`를 참고한다.
+**역할 분담**: 메인 스레드가 인터뷰·설계·태스크 분해·마무리를 직접 수행한다. 서브에이전트는 독립 시각이 가치 있는 곳에만 쓴다 — 게이트 판정·코드 리뷰(`reviewer`, `domain-expert`)와 태스크 구현(`implementer`).
+
+실행 방법은 `.claude/skills/workflow/SKILL.md`를 참고한다.
 
 ---
 
@@ -51,7 +53,7 @@
 
 ## Reference Files
 
-> **작업 유형별 진입** — 전부 읽지 말고, 지금 하는 작업에 해당하는 줄의 문서만 연다. 상세 설명은 아래 목록 참고.
+> **작업 유형별 진입** — 전부 읽지 말고, 지금 하는 작업에 해당하는 줄의 문서만 연다.
 
 | 지금 하는 작업 | 먼저 볼 문서 |
 |---|---|
@@ -65,7 +67,8 @@
 | DB 마이그레이션 (Flyway) | `stack/flyway-operations` |
 | 버그 / 도메인 함정 회피 | `PITFALLS` + `CONCERNS` |
 | 인프라 헬스체크 / 트레이스 검증 | `docs/smoke/*` |
-| 워크플로우 작업 재개 | `docs/topics/<TOPIC>-BRIEFING` → 원본 |
+| 워크플로우 작업 재개 | `docs/STATE.md` (재개 메모) → 활성 산출물 |
+| 과거 작업 맥락 파악 | `docs/archive/<topic>/COMPLETION-BRIEFING.md` |
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
@@ -79,46 +82,37 @@
 - [`docs/context/CONFIRM-FLOW.md`](docs/context/CONFIRM-FLOW.md) — payment-service 측 비동기 confirm 사이클 deep dive (분석 + Mermaid 다이어그램 통합)
 - [`docs/context/PITFALLS.md`](docs/context/PITFALLS.md) — 학습된 도메인 함정 인덱스
 - [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
-- [`docs/context/TODOS.md`](docs/context/TODOS.md) — Phase 4 후속 + 향후 처리 항목
+- [`docs/context/TODOS.md`](docs/context/TODOS.md) — 후속 + 향후 처리 항목
 
 ### 영구 도구 가이드 (docs/smoke/) — 시점 무관
 
 - [`docs/smoke/infra-healthcheck.md`](docs/smoke/infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사 스크립트 가이드
 - [`docs/smoke/trace-continuity-check.md`](docs/smoke/trace-continuity-check.md) — 분산 트레이스 연속성 검사 가이드
 
-### 작업 중 설계 문서 (docs/topics/) — 작업 단위 생명주기
+### 작업 산출물 — 작업 단위 생명주기
 
-discuss 단계에서 생성, verify 완료 후 `docs/archive/`로 이동한다.
-- `docs/topics/<TOPIC>.md` — 현재 진행 중인 작업의 설계/결정 사항
-
-### 브리핑 파일 — 단계별 요약
-
-각 워크플로우 단계의 요약을 별도 브리핑 파일로 관리한다. 원본 문서와 같은 디렉토리에 `-BRIEFING` 접미사로 배치한다.
-
-- `docs/topics/<TOPIC>-BRIEFING.md` — discuss 사전/사후 브리핑
-- `docs/<TOPIC>-PLAN-BRIEFING.md` — plan 브리핑
-
-**컨텍스트 참조 순서**: 브리핑 파일을 먼저 읽어 전체 그림을 파악한 뒤, 세부 결정이나 구체적 구현 사항이 필요할 때 원본 파일을 참조한다.
+- `docs/STATE.md` — 활성 작업 포인터 + 재개 메모 (완료 이력은 쌓지 않는다)
+- `docs/topics/<TOPIC>.md` — 진행 중 설계 문서 (상단에 사전/요약 브리핑 섹션 포함)
+- `docs/<TOPIC>-PLAN.md` — 구현 플랜 (상단 요약 브리핑 + 하단 리뷰 처리 섹션)
+- `docs/archive/<topic>/` — ship 완료 시 위 문서들 이동 + `COMPLETION-BRIEFING.md` (완료 작업 이력의 SSOT)
 
 ---
 
 ## Skills
 
-워크플로우 각 단계는 얇은 오케스트레이터 + 공용 프로토콜/페르소나/체크리스트 구조로 구성된다.
-
-- `.claude/skills/workflow/SKILL.md` — 6단계 워크플로우 상위 가이드
-- `.claude/skills/workflow-{discuss,plan,plan-review,execute,review,verify}/` — 각 단계 오케스트레이터
-- `.claude/skills/review/`, `.claude/skills/plan-review/` — 단독 호출용 (1라운드)
-- `.claude/skills/_shared/checklists/` — 단계별 판정 체크리스트 (discuss/plan/code/verify-ready.md)
-- `.claude/skills/_shared/protocols/` — 라운드 프로토콜 9종 (discuss/plan/code/verify/qa/unstuck/commit/vc/doc-review-round.md)
-- `.claude/skills/_shared/personas/` — 9개 페르소나 (interviewer/architect/planner/plan-reviewer/critic/domain-expert/implementer/verifier/pr-manager)
+- `.claude/skills/workflow/SKILL.md` — 4단계 워크플로우 라우터 + 공통 원칙 (격리·브리핑·게이트·STATE 형식)
+- `.claude/skills/workflow-{discuss,plan,execute,ship}/` — 각 단계 오케스트레이터 (자기완결, 템플릿 인라인)
+- `.claude/skills/{review,issue-commit-pr,context-update,writing,doc-review,wiki-access}/` — 단독 호출 스킬
+- `.claude/agents/{reviewer,domain-expert,implementer}.md` — 서브에이전트 정의 (유일한 정의처)
+- `.claude/skills/_shared/checklists/` — 게이트 체크리스트 4종 (discuss/plan/code/ship-ready)
+- `.claude/skills/_shared/conventions/` — 커밋 / GitHub / 문서 작성 컨벤션
 
 ## Commit Style
 
-세부 규칙은 `.claude/skills/_shared/protocols/commit-round.md` 참고. 요약:
+세부 규칙은 `.claude/skills/_shared/conventions/commit.md` 참고. 요약:
 - **`<type>(<scope>): <한글 제목>`** — type 은 영문(`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`build` 등), 제목·본문은 한글
 - **scope 는 고정 어휘만**: 서비스(`payment`/`pg`/`product`/`user`/`gateway`/`eureka`) 또는 횡단(`docs`/`build`/`infra`/`deps`). 한 scope 로 못 묶으면 생략. 토픽명·태스크 ID 금지
 - **마지막 줄 `Co-Authored-By:` 트레일러 일관 포함**
 - amend 금지, 명시 staging, hook 우회 금지
 - TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
-- plan 산출물 단일 `docs:` 커밋, verify 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지
+- discuss/plan 산출물 각 단일 `docs:` 커밋, ship 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지
