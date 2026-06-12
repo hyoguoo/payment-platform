@@ -18,7 +18,7 @@
 
 ### 묶음 근거
 
-- **PR A** — 모두 작은 청소. 도메인 결정 없고 영역이 분리됨 (pg-service 도메인 / Flyway / ControllerAdvice / Lombok 패턴). plan / review 단계 부담 적음.
+- **PR A** — 모두 작은 청소. 도메인 결정 없고 영역이 분리됨 (pg-service 도메인 / Flyway / ControllerAdvice / Lombok 패턴). plan / 리뷰 부담 적음.
 - **PR B** — 둘 다 도메인 결정 동반 (EXPIRED 전이 정책 + Clock vs LocalDateTimeProvider). 시간 표준 결정이 EXPIRED 만료 시각 타입에 영향이라 같이 가는 게 자연스러움.
 - **PR C** — 가용성 결 트레이드오프 (Kafka tx coordinator 의존) 결정 동반. 변경 범위 가장 큼.
 

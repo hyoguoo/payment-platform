@@ -10,10 +10,10 @@ description: >
 
 현재 변경 사항을 분석해서 GitHub PR을 여는 전체 흐름을 처리한다.
 
-> **프로토콜 기반**: 이 스킬은 `_shared/protocols/commit-round.md`(커밋 규칙)와
-> `_shared/protocols/vc-round.md`(GitHub 이슈·브랜치·PR 규칙)를 따른다.
-> 아래 내용은 해당 프로토콜을 단독 호출 맥락에 특화시킨 가이드이며,
-> 일반 규칙(amend 금지, `git add -A` 금지, hook 우회 금지 등)은 프로토콜 파일 참조.
+> **컨벤션 기반**: 이 스킬은 `_shared/conventions/commit.md`(커밋 규칙)와
+> `_shared/conventions/github.md`(GitHub 이슈·브랜치·PR 규칙)를 따른다.
+> 아래 내용은 해당 컨벤션을 단독 호출 맥락에 특화시킨 가이드이며,
+> 일반 규칙(amend 금지, `git add -A` 금지, hook 우회 금지 등)은 컨벤션 파일 참조.
 
 > **언어 규칙**: 이슈 제목/본문, 커밋 메시지, PR 설명은 모두 한국어로 작성한다. 코드, 브랜치명, 타입 prefix는 영문을 유지한다.
 >

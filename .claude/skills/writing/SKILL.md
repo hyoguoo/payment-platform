@@ -6,13 +6,13 @@ description: 문서 콘텐츠(포스팅, 깃헙 위키, 리드미 등)를 작성
 # 문서 작성 스킬
 
 문서 콘텐츠를 작성하거나 수정할 때 이 스킬을 따른다.
-작성 컨벤션은 `.claude/skills/_shared/references/writing.md`에 정의되어 있다.
+작성 컨벤션은 `.claude/skills/_shared/conventions/writing.md`에 정의되어 있다.
 
 ---
 
 ## 컨벤션 요약
 
-작성 전 반드시 `.claude/skills/_shared/references/writing.md`를 읽고 전체 규칙을 숙지한다.
+작성 전 반드시 `.claude/skills/_shared/conventions/writing.md`를 읽고 전체 규칙을 숙지한다.
 핵심 규칙만 요약하면 아래와 같다.
 
 ### 문체

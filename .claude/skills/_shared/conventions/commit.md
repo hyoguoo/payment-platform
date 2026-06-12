@@ -1,7 +1,6 @@
-# commit-round 프로토콜
+# 커밋 컨벤션
 
-커밋 생성 시 모든 페르소나가 따라야 하는 공통 규칙. Implementer / Planner 등이
-파일 변경 후 커밋할 때 호출한다.
+커밋을 만드는 모든 주체(메인 스레드, Implementer)가 따르는 공통 규칙.
 
 ## 원칙
 1. **amend 금지** — 실패 후 수정도 새 커밋
@@ -29,13 +28,13 @@ Co-Authored-By: <에이전트 이름> <이메일>
 - **Co-Authored-By 트레일러 필수** — 마지막 줄에 에이전트 식별 트레일러를 일관되게 포함한다 (형식: `Co-Authored-By: 이름 <이메일>`, 본문과 빈 줄로 구분).
 
 ## TDD 커밋 분리
-- RED: `test: <실패 테스트 추가>`
+- RED: `test: <실패 테스트 추가>` — 테스트 파일만
 - GREEN: `feat: <구현 + PLAN.md 체크박스 + STATE.md>` — 단일 커밋
 - REFACTOR (선택): `refactor: <개선 내용>`
 
 ## 문서 커밋
-- plan 단계 산출물(PLAN.md + context 문서)은 **단일 커밋**
-- verify 단계 최종 문서 스냅샷은 **독립 커밋**
+- discuss / plan 단계 산출물(topic.md / PLAN.md + STATE.md)은 각각 **단일 `docs:` 커밋**
+- ship 단계 최종 문서 스냅샷(context 갱신 + 아카이브 + STATE.md)은 **독립 커밋**
 - **STATE.md 단독 커밋 금지** — 항상 관련 코드/문서 커밋에 포함
 
 ## 금지 조합
