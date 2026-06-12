@@ -22,6 +22,7 @@ services:
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
       - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
     volumes:
       - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus

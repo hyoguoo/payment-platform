@@ -19,6 +19,27 @@ compactor:
   compaction:
     block_retention: 24h
 
+# metrics_generator: Tempo 2.4 문법 기준 (2.4 문법 검증 T10)
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  processor:
+    service_graphs:
+      dimensions:
+        - http.method
+        - http.status_code
+    span_metrics:
+      dimensions:
+        - http.method
+        - http.status_code
+        - http.route
+
 storage:
   trace:
     backend: local
@@ -26,6 +47,13 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
 
 usage_report:
   reporting_enabled: false

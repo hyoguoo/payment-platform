@@ -13,12 +13,14 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -82,7 +84,8 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 stockCachePort,
                 dedupeStore,
                 stockCommittedKafkaTemplate,
-                paymentCommandUseCase
+                paymentCommandUseCase,
+                new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry())
         );
     }
 

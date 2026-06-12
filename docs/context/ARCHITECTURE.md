@@ -167,7 +167,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | Tracing | `core/config/AsyncConfig`, `core/config/concurrent/ContextAwareVirtualThreadExecutors`, infrastructure messaging/listener, pg `infrastructure/trace/TraceparentExtractor` | OTel — Servlet/VT/Async/Kafka producer/consumer 모든 경계에서 traceparent 전파. pg-service in-memory channel 은 `OutboxJob` 동봉으로 명시 캡처·복원. pg-service inbox 폴링 회수 경로는 `pg_inbox.stored_traceparent` RDB 보관 → `TraceparentExtractor` 로 부모 추적 복원 (좀비 회수도 원 Kafka 메시지 추적과 연결) |
 | MDC + LogFmt | `core/common/log/LogFmt` (모든 서비스) | 모든 로그가 `key=value` 직렬화 + traceparent 자동 첨부 |
 | AOP `@PublishDomainEvent` + `@PaymentStatusChange` | 어노테이션 정의: `application/aspect/annotation/` / 구현: `infrastructure/aspect/DomainEventLoggingAspect` (payment), `infrastructure/aspect/TossApiMetricsAspect` (pg) | `payment_history` audit trail 자동 기록 + Toss 호출 메트릭 |
-| Metrics | `core/common/metrics` (payment 공통), `infrastructure/metrics/*` (서비스별 Micrometer 카운터/타이머 등록) | Prometheus 노출 — `payment_quarantined_total`, `stock_kafka_publish_fail_total`, `pg_outbox.relay_fail_total` 등 |
+| Metrics | `core/common/metrics` (payment 공통: `PaymentEventFlowMetrics`/`PaymentConfirmGuardSkipMetrics`/`PaymentTransitionMetrics`/`PaymentStateMetrics`/`PaymentQuarantineMetrics`), `infrastructure/metrics/*` (서비스별 Micrometer 카운터/타이머) | Prometheus 노출 — funnel `payment_event_published_total`/`terminal_total`(발행=`PaymentCreateUseCase` READY / 종결=`PaymentStatusMetricsAspect` `isTerminal()` SSOT), `payment_confirm_guard_skip_total{status}`(가드 noop, eager 6종), `payment_quarantined_total`, `*_dedupe.cleanup_failed_total`, `kafka_producer_txn_*`(EOS producer Micrometer 리스너) 등. 관측 코드는 never-throw·결제 흐름 비참여 |
 
 ## 핵심 설계 결정 인덱스 (현재 운영 중)
 

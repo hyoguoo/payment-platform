@@ -60,6 +60,7 @@ public class KafkaConsumerConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setKafkaAwareTransactionManager(kafkaTransactionManager);
+        factory.getContainerProperties().setObservationEnabled(true);
         factory.setCommonErrorHandler(kafkaErrorHandler);
         factory.setRecordMessageConverter(recordMessageConverter);
         return factory;

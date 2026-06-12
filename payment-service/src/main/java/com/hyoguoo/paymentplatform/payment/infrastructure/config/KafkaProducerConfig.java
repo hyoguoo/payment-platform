@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.PaymentConfirmCommandMessage;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.MicrometerProducerListener;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.transaction.KafkaTransactionManager;
@@ -56,9 +58,14 @@ public class KafkaProducerConfig {
      * EOS-aware ProducerFactory — stock-committed 발행 전용.
      * transactional.id prefix + enable.idempotence=true + transaction.timeout.ms=10000.
      * transaction.timeout.ms = 10000 — RDB @Transactional(timeout=5) 의 2배 마진.
+     *
+     * <p>MicrometerProducerListener 로 kafka_producer_txn_* 계열 코디네이터 메트릭을 노출한다.
+     * EOS 트랜잭션 경계·commit/abort 로직과 직교하며, 관측용 리스너만 추가한다.
+     *
+     * @param meterRegistry Micrometer MeterRegistry (Spring Boot auto-config 제공)
      */
     @Bean
-    public ProducerFactory<String, String> stockCommittedProducerFactory() {
+    public ProducerFactory<String, String> stockCommittedProducerFactory(MeterRegistry meterRegistry) {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -67,6 +74,7 @@ public class KafkaProducerConfig {
         props.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, 10000);
         DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
         factory.setTransactionIdPrefix(transactionalIdPrefix + "-");
+        factory.addListener(new MicrometerProducerListener<>(meterRegistry));
         return factory;
     }
 

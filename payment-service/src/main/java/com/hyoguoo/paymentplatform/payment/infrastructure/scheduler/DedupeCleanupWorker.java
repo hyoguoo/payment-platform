@@ -42,10 +42,18 @@ public class DedupeCleanupWorker {
     static final String CLEANUP_DELETED_COUNTER_NAME =
             "payment_event_dedupe.cleanup_deleted_total";
 
+    /**
+     * 삭제 실패(예외 발생) 횟수 카운터 이름.
+     * deleteExpired 호출 중 RuntimeException 발생 시 1 증가한다.
+     */
+    static final String CLEANUP_FAILED_COUNTER_NAME =
+            "payment_event_dedupe.cleanup_failed_total";
+
     private final PaymentEventDedupeStore dedupeStore;
     private final Clock clock;
     private final int batchSize;
     private final Counter cleanupDeletedCounter;
+    private final Counter cleanupFailedCounter;
 
     public DedupeCleanupWorker(
             PaymentEventDedupeStore dedupeStore,
@@ -57,6 +65,9 @@ public class DedupeCleanupWorker {
         this.batchSize = batchSize;
         this.cleanupDeletedCounter = Counter.builder(CLEANUP_DELETED_COUNTER_NAME)
                 .description("payment_event_dedupe 만료 행 삭제 건수 누적 — TTL 초과 행 청소량 관측")
+                .register(meterRegistry);
+        this.cleanupFailedCounter = Counter.builder(CLEANUP_FAILED_COUNTER_NAME)
+                .description("payment_event_dedupe 만료 행 삭제 실패 횟수 — deleteExpired 예외 발생 시 증가")
                 .register(meterRegistry);
     }
 
@@ -85,6 +96,7 @@ public class DedupeCleanupWorker {
         } catch (RuntimeException e) {
             LogFmt.error(log, LogDomain.PAYMENT, EventType.EXCEPTION,
                     () -> "dedupe-cleanup 실패 — 다음 주기 재시도. error=" + e.getMessage());
+            cleanupFailedCounter.increment();
             return 0;
         }
     }

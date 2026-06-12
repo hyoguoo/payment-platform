@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 public class PaymentStatusMetricsAspect {
 
     private final PaymentTransitionMetrics paymentTransitionMetrics;
+    private final PaymentEventFlowMetrics paymentEventFlowMetrics;
     private final Clock clock;
 
     @Around("@annotation(paymentStatusChange)")
@@ -53,6 +55,12 @@ public class PaymentStatusMetricsAspect {
                 trigger,
                 duration
         );
+
+        // 종결 판별은 PaymentEventStatus.isTerminal() SSOT 위임.
+        // QUARANTINED 는 복구 대기 상태이므로 isTerminal() 이 false 를 반환 — 포함하지 않는다.
+        if (resultEvent != null && resultEvent.getStatus().isTerminal()) {
+            paymentEventFlowMetrics.recordTerminal();
+        }
 
         return result;
     }

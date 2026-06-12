@@ -1,13 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-08 — CI-PIPELINE-REDESIGN **verify 완료 → done (PR 대기/생성)**. 이슈/브랜치 #91.
-> **다음 세션 진입점**: 활성 작업 없음. 새 토픽은 discuss부터. 다음 토픽 후보는 아래 참조.
+> 최종 수정: 2026-06-11 — OBSERVABILITY-COMPLETION **verify 완료 → done**. 이슈/브랜치 #94, PR 생성 대기.
+> **다음 세션 진입점**: 활성 작업 없음. 새 토픽은 discuss부터.
 
 ## 활성 작업
 
-- 없음 (CI-PIPELINE-REDESIGN 완료 — 아래 직전 봉인 참조)
+- 없음 (OBSERVABILITY-COMPLETION 완료 — 아래 직전 봉인 참조)
 
 ## 직전 봉인
+
+- **OBSERVABILITY-COMPLETION** (관측성 완성 — 대시보드 2종 + 로그 기반 추적 진입 + 신규 메트릭, 이슈/브랜치 #94, 2026-06-11) — `docs/archive/observability-completion/COMPLETION-BRIEFING.md`
+  - T0~T10 11태스크 + review 3라운드(critical/major 0). 라이브 스택 fake 모드 스모크 AC1~AC6 PASS, payment 512/product 44 BUILD SUCCESSFUL.
+  - **대시보드 2분할(D12)**: `business-dashboard.json`(funnel·전이·상태분포·격리·벤더latency·DLQ·outbox·cleanup·코디네이터, 기존 `payment-dashboard.json` 폐기) + `system-dashboard.json`(`$application` 6서비스 JVM/GC/HTTP/Hikari/lag).
+  - **추적 진입 로그 기반(D2)**: span 속성 미부착, orderId→Loki→traceId derivedField→Tempo. 컨슈머 로그 traceId 연속성은 `KafkaConsumerConfig` observation 1줄(D16, 라이브 listener 경로 13건 실증).
+  - **신규 메트릭**: funnel `payment_event_published/terminal_total`(발행=PaymentCreateUseCase / 종결=PaymentStatusMetricsAspect `isTerminal()` SSOT) + `payment_confirm_guard_skip_total`(eager 6종) + `*_dedupe.cleanup_failed_total` + `kafka_producer_txn_*`(D15 EOS producer 리스너).
+  - **exemplar(D11) + Tempo metrics_generator 서비스 그래프(D10) + 샘플링 1.0(D3)**. review 핵심: funnel 카운터가 옛 대시보드의 죽은 참조였음을 발견해 신규 구현.
+  - 결제 상태 머신·돈 흐름·계약 무변경. 벤더 latency 는 prod 트래픽 의존(fake 모드 한계 수용). 영구 문서 2개 갱신(STACK 관측성 / ARCHITECTURE 메트릭).
 
 - **CI-PIPELINE-REDESIGN** (CI 서비스별 fan-out 재설계 + 빌드·게이트 위생 4건 — 이슈/브랜치 #91, 2026-06-08) — `docs/archive/ci-pipeline-redesign/COMPLETION-BRIEFING.md`
   - 7태스크(T1~T7), 단위 341 + 통합 48 PASS, 린트 0, 커버리지 게이트 4서비스 green. 리뷰 critical 2/major 3/minor 4 전건 해소 → 재리뷰 pass.

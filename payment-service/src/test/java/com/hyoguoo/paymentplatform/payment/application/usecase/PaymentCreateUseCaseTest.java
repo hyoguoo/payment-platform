@@ -6,6 +6,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
@@ -42,11 +43,16 @@ class PaymentCreateUseCaseTest {
         mockPaymentOrderRepository = Mockito.mock(PaymentOrderRepository.class);
         mockUUIDProvider = Mockito.mock(UUIDProvider.class);
 
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        PaymentEventFlowMetrics paymentEventFlowMetrics = new PaymentEventFlowMetrics(simpleMeterRegistry);
+
         paymentCreateUseCase = new PaymentCreateUseCase(
                 mockPaymentEventRepository,
                 mockPaymentOrderRepository,
                 mockUUIDProvider,
-                FIXED_CLOCK
+                FIXED_CLOCK,
+                paymentEventFlowMetrics
         );
     }
 

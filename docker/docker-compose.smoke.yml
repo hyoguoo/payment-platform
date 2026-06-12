@@ -27,6 +27,11 @@ services:
       NICEPAY_CLIENT_KEY: "smoke-unused"
       NICEPAY_SECRET_KEY: "smoke-unused"
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      # 합성 벤더 RTT — fake 모드에서도 toss_api_call latency 패널을 실수치처럼 채운다(실 PG 호출 0).
+      PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS: "${FAKE_LATENCY_MIN:-20}"
+      PG_GATEWAY_FAKE_LATENCY_MAX_MILLIS: "${FAKE_LATENCY_MAX:-200}"
+      # 이상 혼합 — 기본 0(smoke happy-path 안전). 데모 부하 시 FAKE_FAIL_RATE=0.15 등으로 재기동해 실패/보상 경로 노출.
+      PG_GATEWAY_FAKE_FAIL_RATE: "${FAKE_FAIL_RATE:-0}"
 
   payment-service:
     environment:
