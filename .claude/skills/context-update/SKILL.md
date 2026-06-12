@@ -4,7 +4,7 @@ description: >
   payment-platform의 docs/context/ 영구 문서를 현재 코드베이스 상태에 맞게 갱신한다.
   "컨텍스트 업데이트", "context 문서 갱신", "docs/context 최신화", "아키텍처 문서 업데이트",
   "문서 동기화", "context 맞춰줘" 등을 말할 때 반드시 이 스킬을 사용한다.
-  workflow verify 단계에서도 호출된다.
+  workflow ship 단계에서도 호출된다.
 ---
 
 # Context 문서 갱신 가이드
@@ -17,7 +17,7 @@ description: >
 
 ## 호출 맥락에 따른 시작점
 
-### workflow-verify 단계에서 호출된 경우
+### workflow-ship 단계에서 호출된 경우
 
 브랜치에서 변경된 파일 목록이 이미 파악되어 있다면 그것을 출발점으로 삼는다.
 

@@ -4,89 +4,95 @@ description: >
   payment-platform 워크플로우의 discuss 단계를 실행한다.
   사용자가 새 기능/버그/개선의 설계를 논의하거나, "discuss 시작", "설계 논의",
   "어떻게 구현할지 얘기해보자", "방법 고민" 등을 말할 때 이 스킬을 사용한다.
-  discuss 단계는 구현 전에 결정해야 할 사항을 명확히 하는 것이 목적이다.
+  구현 전에 결정해야 할 사항을 명확히 하는 것이 목적이다.
 ---
 
-# Discuss 단계 오케스트레이터
+# Discuss 단계
 
-이 스킬은 `discuss-round` 프로토콜을 실행하는 **얇은 오케스트레이터**다.
-실제 로직은 프로토콜과 페르소나 파일에 있다.
+메인 스레드가 인터뷰와 설계를 직접 수행하고, 완료 게이트만 서브에이전트로 격리한다.
+공통 원칙(브리핑·정지·게이트 규칙)은 `workflow` 스킬 참조.
 
----
+## 1. TOPIC 확정
 
-## 시작 시 — TOPIC 확정
-
-사용자 요청에서 TOPIC(UPPER-KEBAB-CASE) 확정.
-불명확하면 `AskUserQuestion`으로 제안·확인.
-
+사용자 요청에서 TOPIC(UPPER-KEBAB-CASE) 확정. 불명확하면 `AskUserQuestion`으로 제안·확인.
 예: `CHECKOUT-IDEMPOTENCY`, `PAYMENT-RETRY`
 
----
+## 2. 사전 브리핑 (필수)
 
-## 사전 브리핑 (토론 시작 전, 필수)
+`docs/topics/<TOPIC>.md`를 생성하고 상단에 `## 사전 브리핑` 섹션 작성:
 
-본격적인 라운드 실행 **전에** 메인 스레드가 사용자에게 직접 브리핑한다. 내용:
-
-1. **현재 이해한 문제** — 1~3줄 요약 (도메인 용어, 메서드명 금지)
-2. **현재 시스템 동작** — Mermaid `flowchart` (as-is). **간략화 금지, 전체 경로**(모든 분기/예외/상태 전이)를 표현한다. 하나에 담기 어려우면 여러 개로 쪼개서 그린다. **노드 라벨은 최대한 도메인 용어로** — 메서드명·클래스명·enum 식별자 대신 "결제 승인 확정", "재시도 한도 소진", "결제 없음" 같은 도메인 표현을 쓴다. 코드 식별자가 불가피하면 `()` 괄호로 부가 표기. **금지 문자**: `{`, `}`(shape 구문 충돌), `·`(중간점), `→`(유니코드 화살표) — 렌더 오류 유발. 대체는 `writing.md` 참조.
+1. **현재 이해한 문제** — 1~3줄 (도메인 용어, 메서드명 금지)
+2. **현재 시스템 동작** — Mermaid flowchart (as-is, 전체 경로, `workflow` 스킬 브리핑 원칙 준수)
 3. **이번 discuss에서 결정하려는 것** — 불릿 3~5개
-4. **열린 질문 / 가정** — 불릿 (사용자가 즉석에서 정정할 수 있도록)
+4. **열린 질문 / 가정** — 불릿
 
-**출력 방식**: `docs/topics/<TOPIC>.md` 상단에 `## 사전 브리핑` 섹션으로 직접 작성한다 (topic.md가 아직 없으면 새로 생성). Mermaid가 IDE/GitHub 프리뷰에서 렌더링됨. 채팅 메시지에는 "사전 브리핑을 `docs/topics/<TOPIC>.md` 상단에 작성했습니다. 확인 후 진행/정정 알려주세요." 한 줄만.
+채팅에는 "사전 브리핑을 `docs/topics/<TOPIC>.md` 상단에 작성했습니다. 확인 후 진행/정정 알려주세요." 한 줄만. 사용자 승인 후 다음 단계로.
 
-사용자 승인("ok"/"진행" 등) 또는 정정 반영 후 Round 0 진입.
+## 3. 인터뷰 (메인 직접)
 
-목적: 사용자가 서브에이전트 라운드에 들어가기 전에 **방향 정정 기회**를 갖게 한다.
+사용자의 첫 요청은 빙산의 일각이라고 가정하고, 설계로 넘어가기 전에 모호함을 해소한다.
 
----
+- **4트랙 ambiguity ledger**: scope(범위) / constraints(제약) / outputs(산출물) / verification(검증) — 네 트랙 모두 최소 1회 커버될 때까지 질문·조사를 계속한다.
+- 각 모호함의 해소 경로: **코드 조사**(Read/Grep으로 직접 확인) / **사용자 질문**(AskUserQuestion) / **하이브리드**(조사 결과 제시 + 사용자 판단) / **외부 조사**(WebFetch/Context7).
+- 코드·외부 조사가 3연속이면 다음은 반드시 사용자 질문 — 혼자 결론 내리고 달리는 것을 막는다.
+- 사용자 답변을 임의로 확장 해석하지 않는다. 확정된 가정은 topic.md에 기록한다.
 
-## 프로토콜 실행
+## 4. 설계 작성 (메인 직접)
 
-`.claude/skills/_shared/protocols/discuss-round.md`의 Flow를 그대로 수행한다.
+`docs/context/ARCHITECTURE.md`(layer 룰)와 관련 소스를 근거로 `docs/topics/<TOPIC>.md`를 작성한다. 설계의 가치는 **삭제·교체 비용**으로 측정된다 — 당장 편한 구조보다 나중에 떼어내기 쉬운 경계를 우선한다.
 
-1. **Round 0 — Interviewer**
-   페르소나: `_shared/personas/interviewer.md`
-   - 4트랙(scope/constraints/outputs/verification) ambiguity ledger
-   - 3-Path Routing + Dialectic Rhythm Guard
-   - 출력: `docs/rounds/<topic>/discuss-interview-0.md`
+문서 구조 (해당하는 섹션만):
 
-2. **Round 1..3 — Architect → (Critic ∥ Domain Expert)**
-   - **Architect dispatch**: `Agent(subagent_type="architect", prompt="<topic> Round N, 이전 라운드 findings: ...")` → `docs/topics/<TOPIC>.md` 작성/수정
-   - **판정 dispatch (병렬, 단일 메시지)**:
-     ```
-     Agent(subagent_type="critic",        prompt="...", output=discuss-critic-N.md)
-     Agent(subagent_type="domain-expert", prompt="...", output=discuss-domain-N.md)
-     ```
-     두 호출은 같은 응답 블록에서 내보낸다. 순차 호출 금지 (교차 오염).
-   - **격리**: 메인 스레드에서 체크리스트를 직접 판정하지 않는다. 서브에이전트의 JSON `decision` 필드만 읽는다.
-   - **Gate 판정 대상**: `discuss-ready.md`의 **Gate checklist 섹션만**. Post-phase 섹션(issue/branch/STATE)은 페르소나가 판정하지 않는다.
-   - 둘 다 `decision: pass` → 후처리로
-   - Round 2 fail 시 `unstuck-round.md` contrarian 관점 주입
-   - Round 3 소진 시 사용자 에스컬레이션
+```markdown
+# <주제> 설계
 
----
+> 최종 수정: YYYY-MM-DD
 
-## 완료 브리핑 (라운드 pass 후, 후처리 전)
+## 문제 정의
+## 영향 범위        ← 변경/신규/무관 레이어·클래스
+## 설계 옵션 비교    ← Option A/B + 장단점
+## 결정 사항        ← | 항목 | 결정 | 이유 | 테이블 (필수)
+## 장애 시나리오와 대응
+## 검증 전략
+## 제외 범위        ← non-goals + 이유 (필수)
+## 참고
+```
 
-모든 라운드가 pass하면 **후처리(이슈/브랜치/커밋) 전에** 결과 브리핑. 내용:
+원칙: port → domain → application → infrastructure → controller 의존 방향 / 포트는 application에, 어댑터는 infrastructure에 / 결제 상태 전이는 domain 엔티티에만 / 구현 세부는 plan 단계로 미룬다 / 벤더 종속 용어(특정 PG사명)를 범용 결정에 쓰지 않는다.
 
-1. **결정된 접근** — 2~4줄 요약 (도메인 용어)
-2. **변경 후 동작** — Mermaid `flowchart` (to-be). **간략화 금지, 전체 경로**를 표현한다. as-is와 대비 가능하도록 동일 레벨로 그리며, 필요 시 여러 개로 쪼갠다. 노드 라벨은 도메인 용어 우선 (사전 브리핑과 동일 원칙). 금지 문자: `{` `}` `·` `→` — `writing.md` 참조.
-3. **핵심 결정 ID 목록** — topic.md §4의 키 결정만 불릿
-4. **알려진 트레이드오프 / 후속 작업** — 불릿
+## 5. 게이트 (서브에이전트, 최대 2라운드)
 
-**출력 방식**: `docs/topics/<TOPIC>.md` 상단에 `## 요약 브리핑` 섹션으로 직접 작성한다. 사전 브리핑 섹션이 있으면 그 아래에, 없으면 맨 위에 둔다. 채팅에는 "요약 브리핑을 `docs/topics/<TOPIC>.md`에 추가했습니다. 확인 후 진행/정정 알려주세요." 한 줄만.
+**단일 메시지에서 병렬 dispatch**:
 
-사용자 확인 후에만 후처리 체크리스트 실행. 수정 요청 시 discuss 재진입 또는 해당 섹션만 재판정.
+```
+Agent(subagent_type="reviewer",      prompt="stage=discuss, topic=<TOPIC>.
+  대상: docs/topics/<TOPIC>.md
+  체크리스트: .claude/skills/_shared/checklists/discuss-ready.md 의 Gate 섹션
+  참고: docs/context/ARCHITECTURE.md")
+Agent(subagent_type="domain-expert", prompt="stage=discuss, topic=<TOPIC>.
+  대상: docs/topics/<TOPIC>.md
+  체크리스트: discuss-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체")
+```
 
----
+- 둘 다 pass → 6으로. revise/fail → findings를 메인이 topic.md에 반영(필요 시 사용자 확인) 후 재게이트.
+- 2라운드 소진 시 `workflow` 스킬의 교착 처리.
 
-## 후처리
+## 6. 완료 브리핑
 
-- [ ] `docs/topics/<TOPIC>.md` 존재 + 두 페르소나 pass
-- [ ] GitHub 이슈 생성 (`mcp__github__issue_write`)
-- [ ] 브랜치 생성: `git checkout -b "#<이슈-번호>"`
-- [ ] STATE.md stage → `plan`, 이슈 번호·브랜치 기록
-- [ ] `docs:` 단일 커밋 (topic.md(브리핑 포함) + STATE.md + 라운드 문서) — `commit-round.md` 준수
+topic.md 상단(사전 브리핑 아래)에 `## 요약 브리핑` 섹션:
 
-알림: "discuss 완료. 이슈 #<번호>, 브랜치 #<번호>. plan 단계로 넘어갑니다."
+1. **결정된 접근** — 2~4줄 (도메인 용어)
+2. **변경 후 동작** — Mermaid flowchart (to-be, as-is와 대비 가능한 동일 레벨)
+3. **핵심 결정 목록** — 결정 사항 테이블의 키 결정 불릿
+4. **트레이드오프 / 후속 작업** — 불릿
+
+채팅에는 위치 안내 한 줄만. 사용자 확인 후 후처리.
+
+## 7. 후처리 (discuss-ready.md Post-phase)
+
+- [ ] GitHub 이슈 생성 (`_shared/conventions/github.md` Step 1)
+- [ ] 브랜치 생성: `git checkout -b "#<이슈번호>"`
+- [ ] STATE.md stage → `plan`, 이슈/브랜치 기록
+- [ ] `docs:` 단일 커밋 (topic.md + STATE.md)
+
+알림: "discuss 완료. 이슈 #<번호>, 브랜치 #<번호>. 다음 단계: plan — 계속 진행할까요?"
