@@ -2,6 +2,10 @@
 
 > **⚠️ AI 에이전트는 이 디렉토리를 읽지 않는다. (`docs/context/`만 참조할 것)**
 > 완료된 작업 뭉치의 기록 보존용 아카이브입니다.
+> 예외: 과거 작업 맥락이 필요할 때 해당 폴더의 `COMPLETION-BRIEFING.md`만 읽는다.
+
+각 작업 폴더 구성: `COMPLETION-BRIEFING.md`(작업 요약 SSOT) + PLAN/CONTEXT 산출물 + `rounds/`(구 6단계 워크플로우의 라운드 판정 기록, 2026-06-12 이전 체계).
+`state-history-2026H1.md` — 2026-06-12 STATE.md 슬림화 이전의 "직전 봉인" 이력 스냅샷.
 
 ---
 
