@@ -1,18 +1,19 @@
 # plan-ready 체크리스트
 
-plan 단계 종료 조건. 두 개의 섹션으로 분리된다:
+plan 단계 종료 조건. 두 섹션으로 나뉜다:
 
-- **Gate checklist** — Critic / Domain Expert 판정.
-- **Post-phase checklist** — pass 이후 `workflow-plan` 오케스트레이터 실행. 판정 제외.
+- **Gate checklist** — Reviewer(+ 도메인 리스크 토픽이면 Domain Expert)가 판정. 모두 **yes**여야 pass.
+- **Post-phase checklist** — 게이트 pass 이후 메인 스레드가 순차 실행. 판정 대상 아님.
 
 ---
 
-# Gate checklist (Critic / Domain Expert 판정)
+# Gate checklist (Reviewer / Domain Expert 판정)
 
 ## traceability (추적성)
 
 - [ ] PLAN.md가 `docs/topics/<TOPIC>.md`의 결정 사항을 참조함
 - [ ] 모든 태스크가 설계 결정 중 하나 이상에 매핑됨 (orphan 태스크 없음)
+- [ ] 설계 결정 중 태스크 없이 증발한 것이 없음 (역방향 누락 검사)
 
 ## task quality (태스크 품질)
 
@@ -23,6 +24,7 @@ plan 단계 종료 조건. 두 개의 섹션으로 분리된다:
 ## TDD specification (TDD 명세)
 
 - [ ] `tdd=true` 태스크는 테스트 클래스 + 테스트 메서드 스펙이 명시됨
+- [ ] 명시된 테스트가 **동작(입력→관찰 가능한 결과)을 검증**하도록 설계됨 — 구현 구조를 미러링하는 테스트 금지
 - [ ] `tdd=false` 태스크는 산출물(파일/위치)이 명시됨
 - [ ] TDD 분류가 합리적 (business logic / state machine / edge case는 tdd=true)
 
@@ -42,7 +44,7 @@ plan 단계 종료 조건. 두 개의 섹션으로 분리된다:
 
 - [ ] `docs/<TOPIC>-PLAN.md` 존재
 
-## domain risk (Domain Expert 전용)
+## domain risk (Domain Expert 전용 — 도메인 리스크 토픽만)
 
 - [ ] discuss에서 식별된 domain risk가 각각 대응 태스크를 가짐 (멱등성 검증 테스트, 상태 전이 테스트 등)
 - [ ] 중복 방지 체크(예: `existsByOrderId`)가 필요한 경로에 계획됨
@@ -50,7 +52,7 @@ plan 단계 종료 조건. 두 개의 섹션으로 분리된다:
 
 ---
 
-# Post-phase checklist (오케스트레이터 실행, 판정 제외)
+# Post-phase checklist (메인 스레드 실행, 판정 제외)
 
-- [ ] STATE.md stage → `plan-review`
-- [ ] PLAN.md + STATE.md + 라운드 문서를 단일 `docs:` 커밋으로 기록
+- [ ] STATE.md stage → `execute`, 활성 태스크 → Task 1
+- [ ] PLAN.md + STATE.md를 단일 `docs:` 커밋으로 기록
