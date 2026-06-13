@@ -16,6 +16,6 @@ public record InboxJob(
         Long inboxId,
         Context otelContext,
         ContextSnapshot snapshot
-) {
+) implements ImmediateJob {
 
 }

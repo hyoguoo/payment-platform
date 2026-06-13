@@ -7,17 +7,11 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.core.config.concurrent.ContextAwareVirtualThreadExecutors;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.OutboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgOutboxChannel;
-import io.micrometer.context.ContextSnapshot;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.opentelemetry.context.Scope;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +20,8 @@ import org.springframework.stereotype.Component;
  * <p>payment-service 의 OutboxImmediateWorker 와 대칭 위치.
  * PgOutboxChannel.take() 로 outboxId 를 수신 → PgOutboxRelayService.relay(id) 위임.
  * KafkaTemplate 직접 호출 금지 — 반드시 PgOutboxRelayService(→ PgEventPublisherPort) 경유.
+ *
+ * <p>SmartLifecycle 골격 + 이중 scope 컨텍스트 복원은 {@link AbstractImmediateWorker} 가 담당한다.
  *
  * <p>SmartLifecycle:
  * <ul>
@@ -36,9 +32,8 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class PgOutboxImmediateWorker implements SmartLifecycle {
+public class PgOutboxImmediateWorker extends AbstractImmediateWorker<OutboxJob> {
 
-    private static final int STOP_AWAIT_TIMEOUT_SECONDS = 10;
     // relay 실패 전용 카운터 — ERROR 레벨 로그와 함께 관측성을 제공한다.
     static final String RELAY_FAIL_COUNTER_NAME = "pg_outbox.relay_fail_total";
 
@@ -47,8 +42,6 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
     private final int workerCount;
     private final Counter relayFailCounter;
 
-    private final List<Thread> workers = new ArrayList<>();
-    private volatile boolean running = false;
     private ExecutorService relayExecutor;
 
     public PgOutboxImmediateWorker(
@@ -65,84 +58,64 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
                 .register(meterRegistry);
     }
 
+    // ---- AbstractImmediateWorker 위임 ----
+
     @Override
-    public void start() {
-        running = true;
+    protected void initExecutor() {
         // OTel Context + MDC 이중 래핑이 payment.events.confirmed 발행 시 traceparent 를 정확히 전파한다.
         // 이중 래핑 boilerplate 는 ContextAwareVirtualThreadExecutors 헬퍼로 통일한다.
         relayExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
-        for (int i = 0; i < workerCount; i++) {
-            Thread worker = Thread.ofVirtual()
-                    .name("pg-outbox-immediate-worker-" + i)
-                    .unstarted(this::workerLoop);
-            workers.add(worker);
-            worker.start();
-        }
+    }
+
+    @Override
+    protected ExecutorService executor() {
+        return relayExecutor;
+    }
+
+    @Override
+    protected void shutdownExecutor() {
+        awaitShutdown(relayExecutor);
+    }
+
+    @Override
+    protected String workerNamePrefix() {
+        return "pg-outbox-immediate-worker-";
+    }
+
+    @Override
+    protected int workerCount() {
+        return workerCount;
+    }
+
+    @Override
+    protected OutboxJob takeJob() throws InterruptedException {
+        return channel.take();
+    }
+
+    @Override
+    protected void handle(OutboxJob job) {
+        relay(job.outboxId());
+    }
+
+    @Override
+    protected void logStarted(int count) {
         LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_STARTED,
-                () -> "workerCount=" + workerCount);
+                () -> "workerCount=" + count);
     }
 
     @Override
-    public void stop() {
-        stop(() -> {
-        });
-    }
-
-    @Override
-    public void stop(Runnable callback) {
-        running = false;
-        workers.forEach(Thread::interrupt);
-        workers.forEach(worker -> {
-            try {
-                worker.join(STOP_AWAIT_TIMEOUT_SECONDS * 1000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        workers.clear();
-        shutdownRelayExecutor();
-        callback.run();
+    protected void logStopped() {
         LogFmt.info(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_STOPPED);
     }
 
     @Override
-    public boolean isRunning() {
-        return running;
+    protected void logLoopError(RuntimeException e) {
+        // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그로 승격한다.
+        LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
+                e::getMessage);
     }
 
-    @Override
-    public int getPhase() {
-        // 채널보다 나중에 stop되어 in-flight 항목이 drain될 수 있도록 높은 phase 값 사용
-        return Integer.MAX_VALUE - 100;
-    }
-
-    private void workerLoop() {
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                OutboxJob job = channel.take();
-                // relayExecutor.submit lambda 에서 offer 시점(Kafka consumer thread)의
-                // OTel Context + MDC snapshot 을 restore — worker VT thread 의 빈 context 를 덮어쓴다.
-                // try-with-resources 이중 scope: MDC(Micrometer) → OTel Context 순으로 열고
-                // 역순으로 닫아 smoke traceparent 가 KafkaTemplate.send() 에 정확히 전파된다.
-                relayExecutor.submit(() -> relayWithContext(job));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (RuntimeException e) {
-                // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그로 승격한다.
-                LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_LOOP_ERROR,
-                        e::getMessage);
-            }
-        }
-    }
-
-    private void relayWithContext(OutboxJob job) {
-        try (
-                ContextSnapshot.Scope mdcScope = job.snapshot().setThreadLocals();
-                Scope otelScope = job.otelContext().makeCurrent()
-        ) {
-            relay(job.outboxId());
-        }
-    }
+    // ---- Outbox 전용 처리 ----
 
     private void relay(Long id) {
         try {
@@ -152,21 +125,6 @@ public class PgOutboxImmediateWorker implements SmartLifecycle {
             relayFailCounter.increment();
             LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
                     () -> "id=" + id + " message=" + e.getMessage());
-        }
-    }
-
-    private void shutdownRelayExecutor() {
-        if (relayExecutor == null) {
-            return;
-        }
-        relayExecutor.shutdown();
-        try {
-            if (!relayExecutor.awaitTermination(STOP_AWAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                relayExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            relayExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 }

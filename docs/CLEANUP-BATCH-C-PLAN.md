@@ -71,7 +71,7 @@ flowchart TD
 
 - [x] Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
 - [x] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
-- [ ] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
+- [x] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
 - [ ] Task 4: 두 이질 FakePaymentEventRepository 통합
 - [ ] Task 5: paymentplatform.mock 디렉토리 위치 정리
 
@@ -132,7 +132,16 @@ flowchart TD
 - `./gradlew :pg-service:test` GREEN
 
 **완료 결과**
-> (execute에서 채움)
+- `ImmediateJob` 인터페이스를 `pg.infrastructure.channel` 패키지에 신설 — `otelContext()`, `snapshot()` 공통 접근자 선언
+- `InboxJob` / `OutboxJob` record가 `ImmediateJob`을 implements
+- `AbstractImmediateWorker<J extends ImmediateJob>` 추상 클래스를 `pg.infrastructure.scheduler` 패키지에 신설:
+  - SmartLifecycle 골격 (`start`, `stop`, `stop(Runnable)`, `isRunning`, `getPhase = Integer.MAX_VALUE - 100`)
+  - workerLoop + `runWithContext(J job)` 이중 scope 복원 (MDC snapshot → OTel Context)
+  - `awaitShutdown(ExecutorService)` static 유틸 (graceful shutdown 공통화)
+  - 워커별 차이 10종은 추상 메서드로 위임 (initExecutor/executor/shutdownExecutor/workerNamePrefix/workerCount/takeJob/handle/logStarted/logStopped/logLoopError)
+- `PgInboxImmediateWorker` / `PgOutboxImmediateWorker` 각각 `AbstractImmediateWorker`를 extends — 보일러플레이트 제거, 워커별 차이만 유지
+- `PgInboxImmediateWorkerTest` / `PgOutboxImmediateWorkerTest`에 `getPhase()` 반환값 단언 1줄 추가 (characterization)
+- `./gradlew :pg-service:test` GREEN (310 passed, 0 failed, JaCoCo 통과)
 
 ---
 

@@ -14,6 +14,6 @@ public record OutboxJob(
         Long outboxId,
         Context otelContext,
         ContextSnapshot snapshot
-) {
+) implements ImmediateJob {
 
 }

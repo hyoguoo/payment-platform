@@ -10,18 +10,12 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.InboxJob;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgInboxChannel;
-import io.micrometer.context.ContextSnapshot;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.opentelemetry.context.Scope;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,6 +23,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>{@link PgOutboxImmediateWorker} 1:1 거울 위치 (발행 측 ↔ 수신 측).
  * {@link PgInboxChannel#take()} 로 inboxId 를 수신 → {@link PgInboxProcessUseCase#processPending(Long)} 위임.
+ *
+ * <p>SmartLifecycle 골격 + 이중 scope 컨텍스트 복원은 {@link AbstractImmediateWorker} 가 담당한다.
  *
  * <p>SmartLifecycle:
  * <ul>
@@ -42,9 +38,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class PgInboxImmediateWorker implements SmartLifecycle {
-
-    private static final int STOP_AWAIT_TIMEOUT_SECONDS = 10;
+public class PgInboxImmediateWorker extends AbstractImmediateWorker<InboxJob> {
 
     /**
      * 처리 실패 전용 카운터 이름 — ERROR 레벨 로그와 함께 관측성을 제공한다.
@@ -58,8 +52,6 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
     private final int workerCount;
     private final Counter processFailCounter;
 
-    private final List<Thread> workers = new ArrayList<>();
-    private volatile boolean running = false;
     private ExecutorService processExecutor;
 
     public PgInboxImmediateWorker(
@@ -78,85 +70,65 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
                 .register(meterRegistry);
     }
 
+    // ---- AbstractImmediateWorker 위임 ----
+
     @Override
-    public void start() {
-        running = true;
+    protected void initExecutor() {
         // OTel Context + MDC 이중 래핑 — offer 시점(Kafka consumer thread)의 traceparent 를
         // worker VT thread 에 정확히 전파한다. 이중 래핑 boilerplate 는
         // ContextAwareVirtualThreadExecutors 헬퍼로 통일한다.
         processExecutor = ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor();
-        for (int i = 0; i < workerCount; i++) {
-            Thread worker = Thread.ofVirtual()
-                    .name("pg-inbox-immediate-worker-" + i)
-                    .unstarted(this::workerLoop);
-            workers.add(worker);
-            worker.start();
-        }
+    }
+
+    @Override
+    protected ExecutorService executor() {
+        return processExecutor;
+    }
+
+    @Override
+    protected void shutdownExecutor() {
+        awaitShutdown(processExecutor);
+    }
+
+    @Override
+    protected String workerNamePrefix() {
+        return "pg-inbox-immediate-worker-";
+    }
+
+    @Override
+    protected int workerCount() {
+        return workerCount;
+    }
+
+    @Override
+    protected InboxJob takeJob() throws InterruptedException {
+        return channel.take();
+    }
+
+    @Override
+    protected void handle(InboxJob job) {
+        process(job.inboxId());
+    }
+
+    @Override
+    protected void logStarted(int count) {
         LogFmt.info(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_STARTED,
-                () -> "workerCount=" + workerCount);
+                () -> "workerCount=" + count);
     }
 
     @Override
-    public void stop() {
-        stop(() -> {
-        });
-    }
-
-    @Override
-    public void stop(Runnable callback) {
-        running = false;
-        workers.forEach(Thread::interrupt);
-        workers.forEach(worker -> {
-            try {
-                worker.join(STOP_AWAIT_TIMEOUT_SECONDS * 1000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        workers.clear();
-        shutdownProcessExecutor();
-        callback.run();
+    protected void logStopped() {
         LogFmt.info(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_STOPPED);
     }
 
     @Override
-    public boolean isRunning() {
-        return running;
+    protected void logLoopError(RuntimeException e) {
+        // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그로 승격한다.
+        LogFmt.error(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_LOOP_ERROR,
+                e::getMessage);
     }
 
-    @Override
-    public int getPhase() {
-        // 채널보다 나중에 stop되어 in-flight 항목이 drain될 수 있도록 높은 phase 값 사용
-        return Integer.MAX_VALUE - 100;
-    }
-
-    private void workerLoop() {
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                InboxJob job = channel.take();
-                // processExecutor.submit lambda 에서 offer 시점(Kafka consumer thread)의
-                // OTel Context + MDC snapshot 을 restore — worker VT thread 의 빈 context 를 덮어쓴다.
-                // try-with-resources 이중 scope: MDC(Micrometer) → OTel Context 순으로 열고
-                // 역순으로 닫아 traceparent 가 processPending 내부까지 정확히 전파된다.
-                processExecutor.submit(() -> processWithContext(job));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (RuntimeException e) {
-                // Error 는 전파하고 RuntimeException 만 포획해 ERROR 로그로 승격한다.
-                LogFmt.error(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_LOOP_ERROR,
-                        e::getMessage);
-            }
-        }
-    }
-
-    private void processWithContext(InboxJob job) {
-        try (
-                ContextSnapshot.Scope mdcScope = job.snapshot().setThreadLocals();
-                Scope otelScope = job.otelContext().makeCurrent()
-        ) {
-            process(job.inboxId());
-        }
-    }
+    // ---- Inbox 전용 처리 ----
 
     /**
      * inboxId 에 해당하는 row 상태를 조회해 분기 처리한다.
@@ -194,21 +166,6 @@ public class PgInboxImmediateWorker implements SmartLifecycle {
             processFailCounter.increment();
             LogFmt.error(log, LogDomain.PG_INBOX, EventType.PG_INBOX_WORKER_FAIL,
                     () -> "inboxId=" + inboxId + " message=" + e.getMessage());
-        }
-    }
-
-    private void shutdownProcessExecutor() {
-        if (processExecutor == null) {
-            return;
-        }
-        processExecutor.shutdown();
-        try {
-            if (!processExecutor.awaitTermination(STOP_AWAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                processExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            processExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 }
