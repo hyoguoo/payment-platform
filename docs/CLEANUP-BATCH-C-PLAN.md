@@ -70,7 +70,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
-- [ ] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
+- [x] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
 - [ ] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
 - [ ] Task 4: 두 이질 FakePaymentEventRepository 통합
 - [ ] Task 5: paymentplatform.mock 디렉토리 위치 정리
@@ -108,7 +108,11 @@ flowchart TD
 - `countTransitionsByStatusWithinWindow` / `incrementAttempt` grep 0건, `./gradlew test` GREEN
 
 **완료 결과**
-> (execute에서 채움)
+- `countTransitionsByStatusWithinWindow` grep 0건(포트 선언 + 구현 모두 제거) 확인
+- `incrementAttempt` grep 0건(PgOutbox 메서드 제거) 확인
+- `PaymentHistoryRepositoryImpl`에서 QueryDSL 관련 불필요 import(JPAQueryFactory, QPaymentHistoryEntity, Tuple, Collectors, List, Map) 전량 정리
+- `PaymentHistoryRepository` 포트에서 미사용 import(PaymentEventStatus, LocalDateTime, Map) 전량 정리
+- `./gradlew test` BUILD SUCCESSFUL (308 passed, 0 failed)
 
 ---
 

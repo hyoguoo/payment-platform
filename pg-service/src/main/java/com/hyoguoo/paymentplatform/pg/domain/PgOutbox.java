@@ -138,8 +138,4 @@ public class PgOutbox {
     public void markProcessed(Instant processedAt) {
         this.processedAt = processedAt;
     }
-
-    public void incrementAttempt() {
-        this.attempt++;
-    }
 }

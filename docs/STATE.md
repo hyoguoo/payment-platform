@@ -6,7 +6,7 @@
 
 - **주제**: CLEANUP-BATCH-C (코드 레벨 정리 — 미사용 코드 제거 + 워커 보일러플레이트 헬퍼화 + 테스트 헬퍼 위치 통일)
 - **단계**: execute
-- **활성 태스크**: Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
+- **활성 태스크**: Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
 - **이슈/브랜치**: #98
 - **파일**: docs/topics/CLEANUP-BATCH-C.md / docs/CLEANUP-BATCH-C-PLAN.md
 
