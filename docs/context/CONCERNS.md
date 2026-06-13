@@ -68,11 +68,12 @@
 - **영향**: 운영 환경에 dummy seed 가 들어갈 가능성
 - **처방**: 운영 배포 시 `spring.flyway.locations` 에서 seed 디렉토리 분리 또는 `placeholder` 활용. **현재는 데모/스모크 환경 한정으로 OK**
 
-### C-11. 통합테스트 Testcontainers 컨테이너 잔존 시 Flyway baseline flaky
+### C-11. 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky
 
-- **현황**: `clean build` 등으로 payment-service 통합테스트가 처음 돌 때, 이전 실행에서 정리되지 않은 `mysql:8.0` Testcontainers 컨테이너가 남아 있으면 Flyway 가 `Found non-empty schema(s) but no schema history table` 로 ApplicationContext 로드에 실패한다 (dedupe / StockCompensationRecovery 등 full-context 통합테스트 연쇄 실패). 재실행 시 GREEN.
-- **영향**: CI / 로컬 clean build 첫 실행 flaky. 회귀로 오인 가능.
-- **처방**: Ryuk 컨테이너 정리 보장 확인, 또는 통합테스트 프로파일에 `baseline-on-migrate: true` 검토. (CLEANUP-BATCH-C ship 검증 중 관측)
+- **현황**: 전체 빌드(`./gradlew test integrationTest` / `clean build` 등 여러 모듈 통합테스트가 동시 기동)에서 payment-service 통합테스트가 Flyway `Found non-empty schema(s) 'payment-test' but no schema history table` 로 ApplicationContext 로드에 실패한다 (`JdbcPaymentEventDedupeStore*` / `StockCompensationRecoveryIntegrationTest` 등 full-context 15건 연쇄).
+- **격리 시 GREEN**: `:payment-service:integrationTest` 단독 실행은 34건 전부 통과. 잔존 Testcontainers 컨테이너 정리로도 미해소 → 원인은 잔존 컨테이너가 아니라 **여러 모듈 통합테스트 동시 기동 시 Testcontainers MySQL / Flyway 경합**으로 추정(ddl-auto 또는 컨텍스트 캐시가 history 없는 non-empty 스키마를 만나는 race).
+- **영향**: 로컬 전체 빌드 flaky, 회귀로 오인 가능. CI 는 서비스별 fan-out(`_service-ci.yml`)이라 모듈 격리 실행 + test-retry 로 영향 적음.
+- **처방**: 통합테스트 프로파일에 `baseline-on-migrate: true` 검토, 또는 모듈 통합테스트 실행 격리/직렬화. (CLEANUP-BATCH-C ship 검증 중 관측)
 
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 

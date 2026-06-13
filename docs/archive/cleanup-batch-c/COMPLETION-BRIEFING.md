@@ -73,4 +73,4 @@ flowchart TD
 - **코드 커밋**: 5 (refactor) — `b2011acf` / `acd59cd7` / `1903d9f1` / `ec719a0f` / `096ec1f3`
 - **데드 제거**: 3종 grep 0건 (`callVendor`, `countTransitionsByStatusWithinWindow`, `incrementAttempt`)
 - **findings**: discuss 1R 5건 / plan 1R 5건 (전부 반영) / **ship 0건**
-- **관측 이슈**: 통합테스트 Testcontainers 컨테이너 잔존 시 Flyway flaky → CONCERNS.md C-11 등재
+- **관측 이슈**: 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky(`:payment-service:integrationTest` 격리 실행은 34건 GREEN, 컨테이너 정리로 미해소) → CONCERNS.md C-11 등재. 이번 작업 변경 파일과 무관(dedupe/compensation)
