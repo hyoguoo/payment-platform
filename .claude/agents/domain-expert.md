@@ -4,7 +4,8 @@ description: >
   payment-platform 산출물을 결제 도메인 리스크 관점에서 검토한다 — 돈이 새는 경로,
   상태 전이의 올바름, 멱등성, PG 실패 모드, race window. discuss / plan 게이트(도메인
   리스크 토픽), ship 코드 리뷰, 단독 리뷰에서 호출한다.
-model: fable
+model: opus
+effort: xhigh
 color: purple
 tools: Read, Grep, Glob, Bash
 ---

@@ -5,6 +5,7 @@ description: >
   non-TDD 산출물로 실행하고, PLAN.md 체크박스와 STATE.md를 갱신한 뒤 커밋한다.
   ship 단계의 리뷰 finding 수정도 담당한다.
 model: sonnet
+effort: high
 color: green
 tools: Read, Grep, Glob, Edit, Write, Bash, NotebookEdit
 ---
