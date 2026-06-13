@@ -8,7 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.hyoguoo.paymentplatform.mock.FakeIdempotencyStore;
+import com.hyoguoo.paymentplatform.payment.mock.FakeIdempotencyStore;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;

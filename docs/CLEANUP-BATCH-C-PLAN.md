@@ -73,7 +73,7 @@ flowchart TD
 - [x] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
 - [x] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
 - [x] Task 4: 두 이질 FakePaymentEventRepository 통합
-- [ ] Task 5: paymentplatform.mock 디렉토리 위치 정리
+- [x] Task 5: paymentplatform.mock 디렉토리 위치 정리
 
 ## 태스크
 
@@ -180,7 +180,12 @@ flowchart TD
 - `FakeStockCachePortAtomicTest` 정상 위치, `./gradlew test` GREEN
 
 **완료 결과**
-> (execute에서 채움)
+- `FakeIdempotencyStore`를 `paymentplatform.mock` → `payment.mock` 패키지로 이동, `PaymentCheckoutServiceImplTest` import 교체
+- `paymentplatform.mock` 디렉토리 완전 제거 (파일 0건 확인)
+- `FakeStockCachePortAtomicTest`를 `payment.mock` → `payment.application` 패키지로 이동 (mock 디렉토리엔 Fake만 규칙 준수)
+- 모든 Fake가 `<bounded>.mock` 규칙 준수 (`payment.mock` 5개: FakeIdempotencyStore / FakeMessagePublisher / FakePaymentEventDedupeStore / FakePaymentEventRepository / FakeStockCachePort)
+- `paymentplatform.mock` 참조 grep 0건 확인
+- `./gradlew test` BUILD SUCCESSFUL (512 passed, 0 failed)
 
 ## plan 게이트 처리
 
