@@ -68,6 +68,12 @@
 - **영향**: 운영 환경에 dummy seed 가 들어갈 가능성
 - **처방**: 운영 배포 시 `spring.flyway.locations` 에서 seed 디렉토리 분리 또는 `placeholder` 활용. **현재는 데모/스모크 환경 한정으로 OK**
 
+### C-11. 통합테스트 Testcontainers 컨테이너 잔존 시 Flyway baseline flaky
+
+- **현황**: `clean build` 등으로 payment-service 통합테스트가 처음 돌 때, 이전 실행에서 정리되지 않은 `mysql:8.0` Testcontainers 컨테이너가 남아 있으면 Flyway 가 `Found non-empty schema(s) but no schema history table` 로 ApplicationContext 로드에 실패한다 (dedupe / StockCompensationRecovery 등 full-context 통합테스트 연쇄 실패). 재실행 시 GREEN.
+- **영향**: CI / 로컬 clean build 첫 실행 flaky. 회귀로 오인 가능.
+- **처방**: Ryuk 컨테이너 정리 보장 확인, 또는 통합테스트 프로파일에 `baseline-on-migrate: true` 검토. (CLEANUP-BATCH-C ship 검증 중 관측)
+
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 
 ### L-1. Kafka tx coordinator 의존 — 가용성 약화 (EOS 전환 수용)
