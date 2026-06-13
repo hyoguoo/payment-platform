@@ -69,7 +69,7 @@ flowchart TD
 
 ### 결정된 접근
 
-전면 스캔으로 발굴한 후보를 **동작 불변(behavior-preserving) 단일 PR**로 정리한다. 확정 데드코드(A1·A2)는 제거, 반복 보일러플레이트(B1은 Immediate 워커 2종, B2는 순수 비종속 골격)는 골격을 유지한 채 진짜 동일한 부분만 헬퍼로 추출, 테스트 헬퍼 위치 불일치(C2)는 bounded-context 규칙으로 통일하되 두 이질 Fake 통합(C1)은 plan에서 1:1 대조 후 판단한다. 미사용 포트 메서드(A3)와 결제 정합성 로직(D)은 손대지 않는다. plan 단계에서 전수 데드 스캔을 한 번 더 돌려 누락 후보를 보강하고, 동작 불변 검증은 추출 대상이 닿는 동작을 커버하는 기존 테스트를 식별하거나(미커버 시) characterization test를 추출 전에 추가한다.
+전면 스캔으로 발굴한 후보를 **동작 불변(behavior-preserving) 단일 PR**로 정리한다. 확정 데드코드(A1·A2 + plan 발굴 incrementAttempt)는 제거, 반복 보일러플레이트(B1 Immediate 워커 2종)는 골격을 유지한 채 진짜 동일한 부분만 헬퍼로 추출, 테스트 헬퍼 위치 불일치(C2)는 bounded-context 규칙으로 통일하되 두 이질 Fake 통합(C1)은 plan에서 1:1 대조 후 판단한다. (B2 벤더 전략 헬퍼는 plan 조사 결과 진짜 비종속이 상수 4개뿐이라 제외.) 미사용 포트 메서드(A3)와 결제 정합성 로직(D)은 손대지 않는다. plan 단계에서 전수 데드 스캔을 한 번 더 돌려 누락 후보를 보강하고, 동작 불변 검증은 추출 대상이 닿는 동작을 커버하는 기존 테스트를 식별하거나(미커버 시) characterization test를 추출 전에 추가한다.
 
 ### 변경 후 처리 방향 (to-be)
 
@@ -86,7 +86,7 @@ flowchart TD
     Remove --> R2["A2. countTransitionsByStatusWithinWindow 포트 + 구현"]
 
     Extract --> E1["B1. SmartLifecycle 헬퍼 + WithContext 컨텍스트 복원<br/>Immediate 2종 한정 (Polling 2종은 별종 유지)"]
-    Extract --> E2["B2. 순수 비종속 골격만<br/>basicAuth/parseError/parseApprovedAt 벤더별이라 제외"]
+    Extract --> E2["B2 제외 (plan 확정)<br/>진짜 비종속이 상수 4개뿐 — 추출 가치 없음"]
 
     Relocate --> L1["C1. 두 이질 Fake 1:1 대조 후<br/>통합 또는 의미론 차이 유지 (plan 판단)"]
     Relocate --> L2["C2. paymentplatform.mock 2파일 → payment.mock 이동"]
@@ -101,7 +101,7 @@ flowchart TD
 - 동작 불변이 절대 기준 — 추출 대상이 닿는 동작(phase/stop 순서, fallback 파싱)을 커버하는 테스트가 없으면 추출 전 characterization test를 먼저 추가한다.
 - A1·A2 제거 후 grep 0건 확인. A3는 보존.
 - B1은 Immediate 워커 2종 한정으로 SmartLifecycle 보일러플레이트 + WithContext 컨텍스트 복원만 추출(워커 골격·phase·stop 순서 불변). Polling 2종은 별종 유지.
-- B2는 진짜 벤더 비종속 골격만 공통화 — basicAuth 시크릿 조합·parseError record 타입·parseApprovedAt 포매터는 벤더별이라 제외.
+- B2(벤더 전략 헬퍼)는 제외 — plan 조사 결과 진짜 비종속이 상수 4개뿐, 추출 가치 없음(basicAuth/parseError/parseApprovedAt은 벤더별 결합).
 - C2는 `<bounded>.mock` 규칙으로 위치 통일. C1 두 이질 Fake 통합은 plan에서 1:1 대조 후 판단(본질적 차이 크면 통합 강행 않고 의미론 유지).
 
 ### 트레이드오프 / 후속 작업
@@ -130,11 +130,11 @@ flowchart TD
 
 | 항목 | 결정 | 이유 | 기각 대안 |
 |---|---|---|---|
-| 포함 범위 | A1·A2 데드 제거 + B1 헬퍼 추출 + B2 비종속 골격 + C1·C2 일관성 | 전면 스캔 + 사용자 확정 | 위험도별 분리 PR — 단일 배치로 충분, 리뷰 1회 |
+| 포함 범위 | A1·A2(+plan 발굴 incrementAttempt) 데드 제거 + B1 헬퍼 추출 + C1·C2 일관성 (**B2는 plan에서 제외**) | 전면 스캔 + 사용자 확정 | 위험도별 분리 PR — 단일 배치로 충분, 리뷰 1회 |
 | A3 미사용 포트 메서드 | 보존 | 향후 조회/디버깅 대비, 호출 0이라 위험 없음 | 제거 — 사용자가 보존 선택(필요 시 후속 토픽) |
 | B1 추상화 수위 | 보일러플레이트 헬퍼/base만, 워커 골격 유지 | 동시성 코드 가독성을 DRY보다 우선 | 공통 base/generic 워커 통합 — 추상화로 디버깅 난이도 상승 우려 |
 | B1 대상 정밀화 | SmartLifecycle + WithContext 헬퍼는 **Immediate 2종 한정** | Polling 2종은 `@Scheduled` 별종 + DB-기반 traceparent 복원으로 메커니즘 상이 | Polling 포함 4종 공통화 — in-memory vs DB 복원 혼동, trace 연속성 회귀 위험 |
-| B2 추상화 수위 | 진짜 비종속 골격만 추출, basicAuth 시크릿 조합·에러 record·parseApprovedAt 포매터는 벤더별 유지 | 벤더 독립성(Strategy 의도) + 인증/에러분류 오염 방지 | parseApprovedAt/parseError 공통화 — 벤더별 타입/포맷 결합으로 통합 불가 |
+| B2 벤더 전략 | **이번 범위 제외** (plan 확정) | plan 조사 결과 진짜 벤더 비종속이 상수 4개(`Authorization`/`Basic`/네트워크 에러 코드·메시지)뿐 — 추출 가치 없음. basicAuth/parseError/parseApprovedAt은 시크릿·record·포매터가 벤더별이라 추출 시 결합 | 상수 4개만 공통화 — 이득 미미 + 벤더가 공통 상수에 의존 |
 | C1 두 이질 Fake | plan에서 1:1 대조 후 통합 가능성 판단, 본질적 차이 크면 의미론 유지 | 게이트 결과 두 Fake가 별개 구현(키 타입·order 재조립·검증 헬퍼 상이) | 즉시 1벌 통합 — 정합성 가드 테스트(PaymentConfirmResultUseCase* 4종) 약화 위험 |
 | D 복잡 로직 | 동작 불변, 가독성(주석/메서드 추출)만 | 정합성 회귀 위험 | 로직 단순화 — EOS atomicity·보상·멱등 가드는 본질 복잡도 |
 | 산출물 단위 | 단일 PR | 사용자 확정 | 위험도별 분리 — 배치 규모가 1 PR로 관리 가능 |
@@ -153,7 +153,7 @@ flowchart TD
 
 - 각 정리 후 `./gradlew test` 무회귀 (전 모듈 단위 + Testcontainers 통합).
 - 데드 제거 후 `callVendor` / `countTransitionsByStatusWithinWindow` grep 0건 확인.
-- **동작 불변 검증 (핵심)**: "기존 테스트 GREEN 유지"만으로는 미커버 동작(B1 phase/stop 순서, B2 fallback 파싱 같은 예외 경로)이 빠져나간다. plan에서 추출 대상이 닿는 동작을 커버하는 기존 테스트를 식별하고, **미커버 동작은 추출 전 characterization test를 먼저 추가**한 뒤 리팩토링한다.
+- **동작 불변 검증 (핵심)**: "기존 테스트 GREEN 유지"만으로는 미커버 동작(B1 워커 `getPhase`/stop 순서 같은 예외 경로)이 빠져나간다. plan에서 추출 대상이 닿는 동작을 커버하는 기존 테스트를 식별하고, **미커버 동작은 추출 전 characterization test를 먼저 추가**한 뒤 리팩토링한다. (B2는 제외돼 관련 characterization 불필요.)
 - C1 통합 시 의존 테스트 9개 전수 개별 GREEN 확인 — 특히 정합성 가드 8개(`PaymentConfirmResultUseCase*` 7종 + `ConfirmedEventConsumerTest`)는 통합 전/후 동일 단언 유지(실패 케이스에서 여전히 RED)인지 검증.
 - 최종 `./gradlew build`로 정적 분석(checkstyle/spotbugs/JaCoCo 게이트) 통과.
 

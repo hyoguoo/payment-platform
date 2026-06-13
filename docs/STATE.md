@@ -4,10 +4,11 @@
 
 ## 활성 작업
 
-- **주제**: CLEANUP-BATCH-C (코드 레벨 정리 — 미사용 코드 제거 + 워커·벤더 보일러플레이트 헬퍼화 + 테스트 헬퍼 위치 통일)
-- **단계**: plan
+- **주제**: CLEANUP-BATCH-C (코드 레벨 정리 — 미사용 코드 제거 + 워커 보일러플레이트 헬퍼화 + 테스트 헬퍼 위치 통일)
+- **단계**: execute
+- **활성 태스크**: Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
 - **이슈/브랜치**: #98
-- **파일**: docs/topics/CLEANUP-BATCH-C.md
+- **파일**: docs/topics/CLEANUP-BATCH-C.md / docs/CLEANUP-BATCH-C-PLAN.md
 
 ## 재개 메모
 
