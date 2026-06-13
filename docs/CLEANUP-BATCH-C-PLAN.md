@@ -72,7 +72,7 @@ flowchart TD
 - [x] Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
 - [x] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
 - [x] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
-- [ ] Task 4: 두 이질 FakePaymentEventRepository 통합
+- [x] Task 4: 두 이질 FakePaymentEventRepository 통합
 - [ ] Task 5: paymentplatform.mock 디렉토리 위치 정리
 
 ## 태스크
@@ -160,7 +160,11 @@ flowchart TD
 - 완료 결과에 "mock 변종의 `findById`/auto-id/PaymentOrder 재조립 의미론은 의도적 폐기(현재 사용처 0)"를 1줄 기록 — 후속자 인지용(domain-expert 2R 메모)
 
 **완료 결과**
-> (execute에서 채움)
+- `payment.mock.FakePaymentEventRepository`를 베이스로 `paymentplatform.mock.FakePaymentEventRepository` 삭제
+- `PaymentLoadUseCaseTest` import를 `paymentplatform.mock` → `payment.mock`으로 교체 — `saveOrUpdate`/`findByOrderId`/`findReadyPaymentsOlderThan` 의미론이 payment.mock에 이미 존재해 추가 보강 불필요
+- mock 변종의 `findById`/auto-id/PaymentOrder 재조립 의미론은 의도적 폐기(현재 사용처 0)
+- 9개 의존 테스트(정합성 가드 8 + PaymentLoadUseCaseTest) 통합 전/후 모두 GREEN (45 passed) 확인
+- `./gradlew :payment-service:test` 512 passed, 0 failed
 
 ---
 
