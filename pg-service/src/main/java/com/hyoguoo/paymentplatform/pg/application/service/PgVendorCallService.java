@@ -54,7 +54,6 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
  *
- * @deprecated {@link #callVendor} 는 invokeVendor + applyOutcome 두 단계 호출로 대체된다.
  */
 @Slf4j
 @Service
@@ -101,26 +100,6 @@ public class PgVendorCallService {
      */
     @Transactional
     public void applyOutcome(GatewayOutcome outcome, PgConfirmRequest request, int attempt, Instant now) {
-        dispatchOutcome(outcome, request, attempt, now);
-    }
-
-    // -----------------------------------------------------------------------
-    // 공개 API — deprecated (단일 TX 버전)
-    // -----------------------------------------------------------------------
-
-    /**
-     * 벤더 호출 + 재시도/DLQ/성공/실패 분기를 단일 TX 내에서 수행한다.
-     *
-     * @param request PG 확정 요청 DTO
-     * @param attempt 현재 attempt 번호 (1부터 시작)
-     * @param now     현재 시각
-     * @deprecated invokeVendor + applyOutcome 두 단계 호출로 대체된다.
-     *             {@link #invokeVendor} + {@link #applyOutcome} 을 직접 사용하라.
-     */
-    @Deprecated(forRemoval = true)
-    @Transactional
-    public void callVendor(PgConfirmRequest request, int attempt, Instant now) {
-        GatewayOutcome outcome = invokeConfirm(request);
         dispatchOutcome(outcome, request, attempt, now);
     }
 

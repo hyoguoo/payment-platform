@@ -80,8 +80,8 @@ class PgVendorCallServiceVendorTypeTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("callVendor — vendorType=TOSS 이면 Toss strategy 호출됨")
-    void callVendor_WhenToss_ShouldUseTossStrategy() {
+    @DisplayName("invokeVendor — vendorType=TOSS 이면 Toss strategy 호출됨")
+    void invokeVendor_WhenToss_ShouldUseTossStrategy() {
         // given
         PgConfirmResult result = new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID_TOSS, AMOUNT, null, null,
@@ -89,7 +89,7 @@ class PgVendorCallServiceVendorTypeTest {
         tossAdapter.setConfirmResult(ORDER_ID_TOSS, result);
 
         // when
-        sut.callVendor(new PgConfirmRequest(ORDER_ID_TOSS, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS), 1, NOW);
+        sut.invokeVendor(new PgConfirmRequest(ORDER_ID_TOSS, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS));
 
         // then — Toss strategy 호출됨, Nicepay 미호출
         assertThat(tossAdapter.getConfirmCallCount()).isEqualTo(1);
@@ -101,8 +101,8 @@ class PgVendorCallServiceVendorTypeTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("callVendor — vendorType=NICEPAY 이면 Nicepay strategy 호출됨")
-    void callVendor_WhenNicepay_ShouldUseNicepayStrategy() {
+    @DisplayName("invokeVendor — vendorType=NICEPAY 이면 Nicepay strategy 호출됨")
+    void invokeVendor_WhenNicepay_ShouldUseNicepayStrategy() {
         // given
         PgConfirmResult result = new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID_NICEPAY, AMOUNT, null, null,
@@ -110,7 +110,7 @@ class PgVendorCallServiceVendorTypeTest {
         nicepayAdapter.setConfirmResult(ORDER_ID_NICEPAY, result);
 
         // when
-        sut.callVendor(new PgConfirmRequest(ORDER_ID_NICEPAY, PAYMENT_KEY, AMOUNT, PgVendorType.NICEPAY), 1, NOW);
+        sut.invokeVendor(new PgConfirmRequest(ORDER_ID_NICEPAY, PAYMENT_KEY, AMOUNT, PgVendorType.NICEPAY));
 
         // then — Nicepay strategy 호출됨, Toss 미호출
         assertThat(nicepayAdapter.getConfirmCallCount()).isEqualTo(1);

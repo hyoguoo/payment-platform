@@ -69,7 +69,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
+- [x] Task 1: pg 벤더 호출 폐기 메서드(callVendor) 제거
 - [ ] Task 2: 미사용 메서드 제거 (payment 이력 집계 + pg outbox attempt)
 - [ ] Task 3: pg Immediate 워커 2종 생명주기/컨텍스트 복원 헬퍼 추출
 - [ ] Task 4: 두 이질 FakePaymentEventRepository 통합
@@ -90,7 +90,11 @@ flowchart TD
 - vendorType→strategy 선택 검증 + 5분기 결과 분기 검증이 분리 경로 테스트로 동등 보존
 
 **완료 결과**
-> (execute에서 채움)
+- `callVendor` grep 0건(main+test) 확인
+- `applyOutcome` 5분기(success/retryable잔여/retryable소진→DLQ/nonRetryable/duplicate) 기존 커버 완비 확인 → 회귀 테스트 5건 삭제
+- `PgVendorCallServiceVendorTypeTest` 2건을 `callVendor` → `invokeVendor` 경로로 이전
+- `PgConfirmServiceTest`의 `never().callVendor(...)` 단언 2건을 `never().invokeVendor(...)` 단독으로 정정
+- `./gradlew :pg-service:test` 308 passed, 0 failed
 
 ---
 

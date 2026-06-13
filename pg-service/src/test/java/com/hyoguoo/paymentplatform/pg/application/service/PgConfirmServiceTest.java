@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
@@ -118,7 +117,6 @@ class PgConfirmServiceTest {
         sut.handle(command, 1, null);
 
         // then — 벤더 호출 0회
-        verify(pgVendorCallService, never()).callVendor(any(), anyInt(), any());
         verify(pgVendorCallService, never()).invokeVendor(any());
     }
 
@@ -199,7 +197,6 @@ class PgConfirmServiceTest {
         // then — PgTerminalReemitService.reemit 1회 호출 (외부 빈 위임으로 self-invocation 해소)
         verify(pgTerminalReemitService, times(1)).reemit(any(PgInbox.class));
         // then — 벤더 호출 0
-        verify(pgVendorCallService, never()).callVendor(any(), anyInt(), any());
         verify(pgVendorCallService, never()).invokeVendor(any());
     }
 }
