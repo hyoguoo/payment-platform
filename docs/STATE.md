@@ -1,14 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-13
+> 최종 수정: 2026-06-14
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
+- **주제**: CLEANUP-BATCH-D (빌드·테스트 위생 정리 + 상품 서비스 만료행 청소 스케줄러 운영 활성화)
+- **단계**: plan (discuss 완료, 게이트 2종 pass)
+- **이슈/브랜치**: #100
+- **설계 문서**: `docs/topics/CLEANUP-BATCH-D.md`
 
 ## 재개 메모
 
-(없음)
+- discuss 완료 — 설계 문서 상단 요약 브리핑 + 결정 사항 확정. 게이트 검수에서 상품 서비스 청소 스케줄러 운영 미작동 누락 발견 → 토픽에 활성화 포함.
+- 다음: plan 단계. 설계 문서 기반 태스크 분해(C-11 DB명 분리 / build.gradle events 5곳 / STACK.md 스케줄러 문서화 / product application-docker.yml scheduler.enabled 추가 + TODOS·CONCERNS 정정).
 
 ## 최근 완료
 
