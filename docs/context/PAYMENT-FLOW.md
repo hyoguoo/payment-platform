@@ -89,7 +89,7 @@ flowchart TD
     W -->|NONE or null| W1["transitNoneToInProgress CAS<br/>amount 기록"]
     W1 --> W1a{"CAS 성공?"}
     W1a -->|No 선점됨| W1b["no-op<br/>다른 consumer 가 IN_PROGRESS 로 전이함"]
-    W1a -->|Yes| CALL["PgVendorCallService.callVendor<br/>request, attempt"]
+    W1a -->|Yes| CALL["PgVendorCallService.invokeVendor + applyOutcome<br/>request, attempt"]
 
     W -->|IN_PROGRESS| WIP["handleInProgress<br/>vendor 재호출<br/>(2026-04-27 정책 변경 — 멱등성 의존)"]
     WIP --> CALL
@@ -267,7 +267,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    CALL["PgVendorCallService.callVendor request, attempt"] --> SEL["PgConfirmStrategySelector.select vendorType"]
+    CALL["PgVendorCallService.invokeVendor 벤더 호출 + applyOutcome 5분기 request, attempt"] --> SEL["PgConfirmStrategySelector.select vendorType"]
     SEL --> HTTP["strategy.confirm 호출"]
 
     HTTP --> RES{"응답 / 예외"}
@@ -310,7 +310,7 @@ sequenceDiagram
     Note over K, OB: 1차 호출 (NONE → IN_PROGRESS)
     K->>Cons: 메시지 (attempt 헤더 없음)
     Cons->>Svc: handle(command, attempt=1)
-    Svc->>V: callVendor(request, 1)
+    Svc->>V: invokeVendor + applyOutcome(request, 1)
     V->>Vendor: confirm 호출
     Vendor-->>V: PgGatewayRetryableException
     V->>OB: insertRetryOutbox(attempt=2, availableAt=now+~2s)
@@ -321,7 +321,7 @@ sequenceDiagram
     K->>Cons: 메시지 (attempt=2)
     Cons->>Svc: handle(command, attempt=2)
     Note over Svc: pg_inbox = IN_PROGRESS<br/>handleInProgress(command, 2) 호출<br/>(2026-04-27 변경 — 이전엔 no-op)
-    Svc->>V: callVendor(request, 2)
+    Svc->>V: invokeVendor + applyOutcome(request, 2)
     V->>Vendor: confirm 호출 (멱등성 paymentKey + orderId)
     Vendor-->>V: 성공 / 멱등 응답 / 또 transient
     Note over V: 성공/멱등 → APPROVED 전이<br/>또 transient → attempt=3 self-loop (~6s)

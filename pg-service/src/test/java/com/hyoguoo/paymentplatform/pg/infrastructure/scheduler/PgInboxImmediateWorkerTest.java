@@ -61,6 +61,12 @@ class PgInboxImmediateWorkerTest {
     }
 
     @Test
+    @DisplayName("getPhase — Integer.MAX_VALUE - 100 반환 (채널보다 나중에 stop)")
+    void getPhase_returnsExpectedValue() {
+        assertThat(worker.getPhase()).isEqualTo(Integer.MAX_VALUE - 100);
+    }
+
+    @Test
     @DisplayName("start_createsWorkerThreads_andRunning — start() 후 isRunning() == true")
     void start_createsWorkerThreads_andRunning() {
         // when

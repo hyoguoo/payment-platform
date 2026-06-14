@@ -87,10 +87,10 @@ payment-platform/
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
     │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment: JdbcPaymentEventDedupeStore — payment_event_dedupe INSERT IGNORE / pg Redis+RDB / product RDB)
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
-    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (pg: PgOutboxImmediateWorker, PgInboxImmediateWorker, PgInboxPollingWorker / payment·product: DedupeCleanupWorker — dedupe 만료 행 청소)
+    │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (pg: AbstractImmediateWorker 공통 base ← PgOutboxImmediateWorker·PgInboxImmediateWorker + 별종 PgInboxPollingWorker·PgOutboxPollingWorker / payment·product: DedupeCleanupWorker — dedupe 만료 행 청소)
     │   │   │   ├── trace/        # OTel traceparent 추출·복원 어댑터 (pg-service — TraceparentExtractor, pg_inbox.stored_traceparent 기반 폴링 회수 추적 복원)
     │   │   │   ├── listener/     # @TransactionalEventListener (AFTER_COMMIT outbox 트리거 등)
-    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob, PgInboxChannel + InboxJob)
+    │   │   │   ├── channel/      # in-memory channel + 작업 객체 (pg-service — PgOutboxChannel + OutboxJob, PgInboxChannel + InboxJob; OutboxJob·InboxJob 은 ImmediateJob 인터페이스 구현)
     │   │   │   ├── aspect/       # 인프라 측 AOP 구현 (DomainEventLoggingAspect, *MetricsAspect)
     │   │   │   ├── gateway/      # PG 벤더 어댑터 (pg-service — toss/ nicepay/ fake/)
     │   │   │   ├── metrics/      # Micrometer 메트릭 정의 / 등록

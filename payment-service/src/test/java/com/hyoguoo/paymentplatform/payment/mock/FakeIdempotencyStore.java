@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.mock;
+package com.hyoguoo.paymentplatform.payment.mock;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.IdempotencyResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;

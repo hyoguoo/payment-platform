@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.hyoguoo.paymentplatform.mock.FakePaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;

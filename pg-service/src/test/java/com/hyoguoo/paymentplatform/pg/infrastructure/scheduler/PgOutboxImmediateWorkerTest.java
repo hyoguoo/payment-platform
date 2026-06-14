@@ -60,6 +60,12 @@ class PgOutboxImmediateWorkerTest {
     }
 
     @Test
+    @DisplayName("getPhase — Integer.MAX_VALUE - 100 반환 (채널보다 나중에 stop)")
+    void getPhase_returnsExpectedValue() {
+        assertThat(worker.getPhase()).isEqualTo(Integer.MAX_VALUE - 100);
+    }
+
+    @Test
     @DisplayName("stop — SmartLifecycle stop() 호출 시 in-flight row 처리 완료 후 종료된다")
     void stop_DrainsInFlightBeforeShutdown() throws InterruptedException {
         // given: row 하나 저장 + channel에 offer 준비
