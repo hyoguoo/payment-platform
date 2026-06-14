@@ -5,16 +5,18 @@
 ## 활성 작업
 
 - **주제**: K6-ASYNC-BENCHMARK (비동기 결제 경로 k6 부하 측정 시나리오 신규 작성)
-- **단계**: plan
+- **단계**: execute
 - **이슈/브랜치**: #102
-- **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계 완료) → `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan 작성 예정)
+- **활성 태스크**: Task 1 (docker-compose.benchmark.yml override 신설)
+- **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계) + `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan 완료, 7 태스크)
 
 ## 재개 메모
 
-- discuss 완료(게이트 R2 reviewer pass + domain-expert 잔여 findings 반영 완료). 다음은 plan 단계 — 설계 문서를 구현 태스크로 분해.
-- 측정 자산은 백지 상태(라이브 k6 스크립트 0건). 신규 작성: `scripts/k6/*`, `docker-compose.benchmark.yml` override, 벤치 전용 재고 시드.
-- 핵심 측정 오염 차단 전제(매 iteration 고유 멱등키 / 대용량 재고 시드 / baseline failRate=0 / 폴링 타임아웃 하한 ≥ outbox 폴백 2s / settle 대기 교차 검증)는 설계 결정 사항·검증 전략에 명시됨 — plan에서 태스크로 구체화.
-- 부하 곡선 최종값·폴링 타임아웃·reconciler 단축 override 구체값은 plan/execute에서 실측 보정.
+- plan 완료(게이트 R2 reviewer + domain-expert 모두 pass). 다음은 execute — Task 1부터 순차 구현.
+- 측정 자산 백지 상태. 신규: `docker-compose.benchmark.yml`, `scripts/bench-seed-stock.sh`, `scripts/k6/{helpers.js, async-payment.js, run-benchmark.sh, verify-settlement.sh}`, 결과 리포트.
+- 전 태스크 tdd=false(측정 자산, Java 단위 테스트 대상 없음). 검증은 smoke run 정합성 확인 + 교차식. Task 4·6 domain_risk=true.
+- 게이트 정정 반영된 코드 사실(execute 시 준수): checkout 중복=HTTP 200/201(body isDuplicate 필드 없음), 재고 부족 confirm=400, confirm은 동기 재고차감+TX 후 202, reconciler timeout(`RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS`)+scan(`RECONCILER_FIXED_DELAY_MS`) 둘 다 yml 미정의→env 단축 주입.
+- Task 7(측정 실행)은 로컬 풀스택 + k6 설치 필요(환경 의존). 부하 곡선·타임아웃·reconciler 단축 구체값은 execute 실측 보정.
 
 ## 최근 완료
 

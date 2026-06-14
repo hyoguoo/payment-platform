@@ -101,7 +101,7 @@ flowchart TD
 | **신규** | `scripts/k6/async-payment.js` | 단일 e2e 시나리오(checkout→confirm→status 폴링) |
 | **신규** | `scripts/k6/run-benchmark.sh` | 저/고지연 2환경 순차 실행 + testid 태깅 + 결과 JSON 분리 |
 | **신규** | 결과 리포트(토픽 산출물) | 측정 후 수치 기록, ship 시 archive 동행 |
-| **신규** | `docker/docker-compose.benchmark.yml` override | payment `benchmark` profile + pg `gateway.type=fake` + 컨테이너 키 `PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS/MAX_MILLIS`·`PG_GATEWAY_FAKE_FAIL_RATE`(host shim `FAKE_LATENCY_MIN/MAX`·`FAKE_FAIL_RATE`로 매핑 — smoke override `${FAKE_LATENCY_MIN:-20}` 패턴 동일) + settle 창 결정론화를 위한 `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS` 단축 override. smoke와 분리(측정 의도 명확화) |
+| **신규** | `docker/docker-compose.benchmark.yml` override | payment `benchmark` profile + pg `gateway.type=fake` + 컨테이너 키 `PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS/MAX_MILLIS`·`PG_GATEWAY_FAKE_FAIL_RATE`(host shim `FAKE_LATENCY_MIN/MAX`·`FAKE_FAIL_RATE`로 매핑 — smoke override `${FAKE_LATENCY_MIN:-20}` 패턴 동일) + settle 창 결정론화를 위한 `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS` + `RECONCILER_FIXED_DELAY_MS`(scan 주기) 단축 override. smoke와 분리(측정 의도 명확화) |
 | **신규** | 벤치 전용 재고 시드 단계(`run-benchmark.sh` 내) | 측정 상품 stock을 부하 총량보다 크게 SET(redis-stock + product RDB). 단일 상품 qty=100으로는 부하 중 고갈 |
 | **무관** | 애플리케이션 도메인/application/infra 코드 | 측정 전용. Fake latency는 이미 환경변수(`PG_GATEWAY_FAKE_LATENCY_*`)라 코드 변경 불필요 |
 
@@ -118,7 +118,7 @@ flowchart TD
 | 항목 | 결정 | 이유 |
 |---|---|---|
 | 측정 단위 | 전체 e2e 단일 시나리오, checkout/confirm/status **단계별 태깅** | 사용자 경험 반영 + 부분 경로 지표 동시 확보 |
-| 동기 응답 시간 | `http_req_duration{step:confirm}` — confirm HTTP 202 반환까지 | 비동기 진입의 즉시성(서버 스레드 비점유) 측정 |
+| 동기 응답 시간 | `http_req_duration{step:confirm}` — confirm HTTP 202 반환까지 | confirm은 재고 차감 + confirm TX까지 **동기 수행 후** 202 반환(외부 PG 호출만 비동기) — 동기 구간 latency 측정 |
 | e2e 완료 시간 | 커스텀 Trend `e2e_completion_ms` — confirm 202 시각 ~ status **DONE** 폴링 성공 시각. DONE만 성공 Trend에 집계 | 클라이언트 체감 결제 완료 시간 |
 | **checkout 멱등키** | k6 VU가 **매 iteration 고유 `Idempotency-Key`** 전송(예: `${VU}-${ITER}-${uuid}`) | 헤더 없으면 서버가 `hash(userId, productList)`로 키 생성 → 10s TTL 내 동일 키가 같은 orderId 재반환(`IdempotencyStoreRedisAdapter`)되어 winner 1건만 진짜 결제, 나머지 캐시 hit으로 측정 오염 |
 | **측정 재고** | 벤치 전용 시드로 측정 상품 stock을 **부하 총량보다 크게** SET(redis-stock + product RDB 동시) | 시드 단일 상품 qty=100은 지속 부하 중반부터 고갈→REJECTED로 측정 무효화 |
@@ -138,21 +138,21 @@ flowchart TD
 
 | 시나리오 | 측정 영향 | 대응 |
 |---|---|---|
-| **checkout 멱등키 충돌** | 동일 키 캐시 hit → winner 1건만 진짜 결제, 나머지 오염 | 매 iteration 고유 `Idempotency-Key`. smoke run에서 checkout `isDuplicate=false` 비율 100% 확인 |
-| **재고 고갈**(시드됐으나 부하 중 소진) | 중반부터 confirm REJECTED → 후반 측정 무효 | 벤치 전용 대용량 재고 시드. 측정 중 `REJECTED(409)` 카운트 ≈ 0 assertion |
+| **checkout 멱등키 충돌** | 동일 키 캐시 hit → winner 1건만 진짜 결제, 나머지 오염 | 매 iteration 고유 `Idempotency-Key`. smoke run에서 checkout 응답 **status==201**(중복은 200, body에 isDuplicate 필드 없음) 비율 100% 확인 |
+| **재고 고갈**(시드됐으나 부하 중 소진) | 중반부터 재고 부족 confirm → 후반 측정 무효 | 벤치 전용 대용량 재고 시드. 측정 중 재고 부족 confirm(**status==400**, `PaymentOrderedProductStockException`) 카운트 ≈ 0 assertion |
 | redis-stock 미시드 | confirm REJECTED 폭증 → 측정 무효 | 측정 전 `scripts/seed-stock.sh` 선행 + smoke run 성공률 확인 |
 | user/product 서비스 다운 | checkout 503 → 시나리오 진입 불가 | 측정 전 의존 서비스 헬스체크(`docs/smoke/infra-healthcheck.md`) |
 | Kafka/consumer 미기동 | status가 영영 PROCESSING | 사전 의존성 체크 + `e2e_timeout`으로 미완료 가시화 |
 | status 폴링 타임아웃 | 완료 못 잡음 | 타임아웃 하한 = outbox 폴백(2s) + backoff 여유. 초과 시 `e2e_timeout` 집계, 무한 루프 방지 |
 | QUARANTINED 증가 | status가 PROCESSING으로 흡수 → `e2e_timeout`에 섞여 종결 카운트 불일치 | baseline `FAKE_FAIL_RATE=0`. 검증 교차식에 QUARANTINED 항 분리, DB 분포 함께 기록 |
-| **지연 종결**(k6 timeout분이 Reconciler/OutboxWorker로 늦게 DONE) | 측정 직후 스냅샷 시 silent loss 오탐 | settle 대기 하한 = reconciler in-flight-timeout(기본 300s) + scan 주기(120s) + relay/pg 여유 ≈ 7~8분. 벤치 override로 `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS`를 수십초로 낮춰 settle 창을 결정론적으로 좁힘(구체값 plan) |
+| **지연 종결**(k6 timeout분이 Reconciler/OutboxWorker로 늦게 DONE) | 측정 직후 스냅샷 시 silent loss 오탐 | settle 대기 하한 = reconciler in-flight-timeout(기본 300s) + **scan 주기(기본 120s)** + relay/pg 여유 ≈ 7~8분. 벤치 override로 `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS` **와 `RECONCILER_FIXED_DELAY_MS`(scan 주기)를 함께** 낮춰야 settle 창이 결정론적으로 좁혀짐(timeout만 줄이면 scan 틱이 settle 창 좌우, 구체값 plan) |
 
 ## 검증 전략
 
 1. **소규모 smoke run**(스크립트 자체 정합성 선확인):
    - 낮은 RPS로 폴링→DONE 정확성 확인
-   - checkout `isDuplicate=false` 비율 == 100% (멱등키 충돌 없음)
-   - 측정 중 `REJECTED(409)` 카운트 ≈ 0 (재고 고갈 없음)
+   - checkout 응답 status==201 비율 == 100% (중복 200 없음 → 멱등키 충돌 없음)
+   - 측정 중 재고 부족 confirm(status==400) 카운트 ≈ 0 (재고 고갈 없음)
    - baseline `FAKE_FAIL_RATE=0`에서 성공률 100% (QUARANTINED 0)
 2. **본 측정 후 교차 검증** (settle 대기 후 DB 스냅샷 1회 확정 — 기본값 기준 ~7~8분, 벤치 override로 reconciler in-flight-timeout 단축 시 그만큼 단축):
 
