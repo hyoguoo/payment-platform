@@ -5,14 +5,17 @@
 ## 활성 작업
 
 - **주제**: CLEANUP-BATCH-D (빌드·테스트 위생 정리 + 상품 서비스 만료행 청소 스케줄러 운영 활성화)
-- **단계**: plan (discuss 완료, 게이트 2종 pass)
+- **단계**: execute (plan 완료, 게이트 pass)
 - **이슈/브랜치**: #100
 - **설계 문서**: `docs/topics/CLEANUP-BATCH-D.md`
+- **구현 플랜**: `docs/CLEANUP-BATCH-D-PLAN.md`
+- **활성 태스크**: Task 1 (통합테스트 Flyway 그룹 전용 DB명 분리)
 
 ## 재개 메모
 
-- discuss 완료 — 설계 문서 상단 요약 브리핑 + 결정 사항 확정. 게이트 검수에서 상품 서비스 청소 스케줄러 운영 미작동 누락 발견 → 토픽에 활성화 포함.
-- 다음: plan 단계. 설계 문서 기반 태스크 분해(C-11 DB명 분리 / build.gradle events 5곳 / STACK.md 스케줄러 문서화 / product application-docker.yml scheduler.enabled 추가 + TODOS·CONCERNS 정정).
+- plan 완료 — PLAN.md 4태스크 분해, reviewer 게이트 pass(findings 0). 전부 tdd=false/domain_risk=false.
+- 다음: execute 단계. Task 1(통합테스트 DB명 분리) → Task 2(build.gradle events) → Task 3(product scheduler.enabled) → Task 4(STACK.md 문서화 + TODOS/CONCERNS 정정).
+- Task 1 검증 주의: flaky라 전체 `./gradlew build --rerun-tasks`(또는 clean)로 통합테스트 실제 실행 확인 필요(캐시 UP-TO-DATE 회피).
 
 ## 최근 완료
 
