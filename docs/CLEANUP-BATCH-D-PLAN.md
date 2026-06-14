@@ -77,7 +77,7 @@ flowchart TD
 
 - [x] Task 1: 통합테스트 Flyway 그룹 전용 DB명 분리
 - [x] Task 2: 빌드 스크립트 deprecated 공백 할당 정리
-- [ ] Task 3: 상품 서비스 청소 스케줄러 운영 활성화
+- [x] Task 3: 상품 서비스 청소 스케줄러 운영 활성화
 - [ ] Task 4: 스케줄러 활성화 정책 문서화 + 문서 정정
 
 ---
@@ -148,7 +148,9 @@ flowchart TD
 - `./gradlew :product-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+- `product-service/src/main/resources/application-docker.yml` 최하단에 `scheduler.enabled: true` 추가 (payment `application-docker.yml` 패턴 정합)
+- docker 프로파일 기동 시 `SchedulerConfig` 빈 등록 → `@EnableScheduling` 활성 → `DedupeCleanupWorker` 정상 기동
+- `./gradlew :product-service:test --rerun-tasks` → 44 passed / 0 failed
 
 ---
 
