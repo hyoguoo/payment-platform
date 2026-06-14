@@ -159,20 +159,20 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 - 유효 source / 무효 source 양쪽을 `@EnumSource(names=...)` 로 명시
 - 새 상태 추가 시 빠진 case 가 컴파일러는 못 잡지만 테스트가 잡는다 (exhaustive switch + isTerminal SSOT 와 같이)
 
-## LocalDateTimeProvider 주입
+## 시각 추상화 — Clock 주입
 
-`LocalDateTime.now()` 직접 호출 금지 → `LocalDateTimeProvider` 주입 (테스트에서 fixed clock 위조 가능).
+`LocalDateTime.now()` / `Instant.now()` 직접 호출 금지 → JDK `Clock` 빈(`ClockConfig`) 주입 + 도메인은 `Instant` 를 인자로 전달받는다(now() 직접 호출 0). 테스트는 고정 `Clock` 으로 시각을 위조한다(통합 테스트는 `BaseIntegrationTest.TestClock` 의 `setFixedInstant(...)`). 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 는 TIME-MODEL-AND-EXPIRY 에서 폐기됐다(4서비스 `Clock` 통일, grep 0).
 
-## 현재 테스트 카운트 (2026-04-27 기준)
+## 현재 테스트 카운트 (2026-06-14 기준)
 
-| 모듈 | 테스트 수 |
-|---|---|
-| eureka-server | 1 |
-| gateway | 3 |
-| payment-service | 358 |
-| pg-service | 207 |
-| product-service | 19 |
-| user-service | 1 |
-| **합계** | **589 PASS** (회귀 0) |
+| 모듈 | 단위 | 통합 |
+|---|---|---|
+| eureka-server | 1 | — |
+| gateway | 3 | — |
+| payment-service | 512 | 34 |
+| pg-service | 310 | 7 |
+| product-service | 44 | 6 |
+| user-service | 3 | 1 |
+| **합계** | **873** | **48** |
 
-`./gradlew test --rerun-tasks` 로 전체 검증.
+`./gradlew test --rerun-tasks`(단위) / `./gradlew integrationTest --rerun-tasks`(통합) 로 검증. 수치는 측정 시점 스냅샷 — 회귀 가드는 카운트가 아니라 pass/fail 이 본질.

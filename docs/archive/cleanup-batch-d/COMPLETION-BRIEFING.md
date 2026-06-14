@@ -66,10 +66,11 @@ ship 코드 리뷰 (reviewer + domain-expert, 브랜치 #100 diff):
   2. pg-service 스케줄러 누락(pg 는 `PgServiceConfig` `@EnableScheduling` 만, 게이트 없이 항상 활성) → 매트릭스 pg 행 추가 + 서비스×열 재구조. 커밋 `527d0272`.
   - minor 1건: 역할 목록 metrics 클래스 누락 → payment metrics 3종 보강(게이트 종속 뉘앙스 포함). 커밋 `3406803f`.
 
-## 발견된 범위 밖 stale (미처리, 후속 후보)
+## 추가 처리 — TESTING.md stale 정정 (ship 후 흡수)
 
-- TESTING.md "LocalDateTimeProvider 주입" 절 — TIME-MODEL-AND-EXPIRY 에서 `LocalDateTimeProvider` 폐기·`Clock`/`Instant` 통일됐으나 서술이 옛 패턴. 본 토픽 범위 밖이라 미수정.
-- TESTING.md "현재 테스트 카운트"(589 PASS, 2026-04-27) — 현재와 불일치. 자주 변하는 수치.
+ship 코드 리뷰 중 발견한 TESTING.md stale 2건을 본 PR 에서 함께 정정:
+- "LocalDateTimeProvider 주입" 절 → "시각 추상화 — Clock 주입" 으로 교체. 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0, main 코드 0건 실측) + `Clock` 빈(`ClockConfig`) 주입·도메인 `Instant` 인자 전달·테스트 `TestClock` 고정 반영.
+- "현재 테스트 카운트"(589, 2026-04-27) → 2026-06-14 실측(단위 873 / 통합 48)으로 갱신 + 회귀 본질은 카운트가 아닌 pass/fail 임을 명시.
 
 ## 수치
 
