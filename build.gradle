@@ -70,7 +70,7 @@ subprojects {
         jvmArgs '-XX:+EnableDynamicAgentLoading', '-Xshare:off'
 
         testLogging {
-            events "passed", "skipped", "failed"
+            events = ['passed', 'skipped', 'failed']
             exceptionFormat = 'full'
             showStandardStreams = false
 

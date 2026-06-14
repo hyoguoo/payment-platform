@@ -76,7 +76,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 통합테스트 Flyway 그룹 전용 DB명 분리
-- [ ] Task 2: 빌드 스크립트 deprecated 공백 할당 정리
+- [x] Task 2: 빌드 스크립트 deprecated 공백 할당 정리
 - [ ] Task 3: 상품 서비스 청소 스케줄러 운영 활성화
 - [ ] Task 4: 스케줄러 활성화 정책 문서화 + 문서 정정
 
@@ -130,7 +130,9 @@ flowchart TD
 - `./gradlew test` 회귀 없음 (testLogging 동작 동일)
 
 **완료 결과**
-> (execute에서 채움)
+- `build.gradle:73`, `payment-service/build.gradle:108`, `pg-service/build.gradle:95`, `product-service/build.gradle:73`, `user-service/build.gradle:80` — 5곳 모두 `events = ['passed', 'skipped', 'failed']` 리스트 할당으로 전환
+- `./gradlew help --warning-mode=all` — `events` 관련 space-assignment deprecation 경고 소거 확인
+- `./gradlew test --rerun-tasks` → BUILD SUCCESSFUL, 회귀 없음
 
 ---
 

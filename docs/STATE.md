@@ -9,7 +9,7 @@
 - **이슈/브랜치**: #100
 - **설계 문서**: `docs/topics/CLEANUP-BATCH-D.md`
 - **구현 플랜**: `docs/CLEANUP-BATCH-D-PLAN.md`
-- **활성 태스크**: Task 2 (빌드 스크립트 deprecated 공백 할당 정리)
+- **활성 태스크**: Task 3 (상품 서비스 청소 스케줄러 운영 활성화)
 
 ## 재개 메모
 
