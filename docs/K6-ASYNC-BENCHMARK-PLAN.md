@@ -76,7 +76,7 @@ flowchart TD
 - [x] Task 2: 벤치 전용 대용량 재고 시드 스크립트
 - [x] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
 - [x] Task 4: k6 async-payment.js (e2e 시나리오)
-- [ ] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
+- [x] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
 - [ ] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
 - [ ] Task 7: 측정 실행 + 결과 리포트
 
@@ -203,7 +203,18 @@ flowchart TD
 **매핑**: 결정 "벤더 지연 2환경", "측정 재고"(환경별 재시드), "산출물"
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/k6/run-benchmark.sh` 신설, 실행 권한 부여(chmod +x).
+- `bash -n` 문법 검증 통과.
+- 저지연 환경(100~300ms): pg 재기동 → 재시드 → k6 `CASE_NAME=async-low` → `results/async-low.json`.
+- 고지연 환경(800~1500ms): pg 재기동 → 재시드 → k6 `CASE_NAME=async-high` → `results/async-high.json`.
+- `FAKE_FAIL_RATE=0` 고정(baseline).
+- `--tag testid=<case>` 로 Grafana 필터 가능.
+- 사전 확인: k6 미설치 시 설치 가이드(brew/Linux URL) 안내 후 exit 1.
+- 의존 서비스 헬스체크: `smoke-all.sh` Phase 1(infra + kafka topic) 선행.
+- pg 재기동: benchmark compose 4-파일 조합(`infra+apps+obs+benchmark`) + `--no-build --force-recreate pg-service`.
+- pg healthy 대기 후 재시드, 재시드 완료 후 k6 실행 순서 보장.
+- k6 실행 CWD: ROOT_DIR(results/ 경로 일치를 위해 `cd ${ROOT_DIR}` 후 실행).
+- `common.sh` `print_*` / `check_docker` 헬퍼 재사용.
 
 ---
 
