@@ -78,7 +78,7 @@ flowchart TD
 - [x] Task 1: 통합테스트 Flyway 그룹 전용 DB명 분리
 - [x] Task 2: 빌드 스크립트 deprecated 공백 할당 정리
 - [x] Task 3: 상품 서비스 청소 스케줄러 운영 활성화
-- [ ] Task 4: 스케줄러 활성화 정책 문서화 + 문서 정정
+- [x] Task 4: 스케줄러 활성화 정책 문서화 + 문서 정정
 
 ---
 
@@ -168,7 +168,14 @@ flowchart TD
 - TODOS/CONCERNS 의 stale·봉인 오류 정정 완료 (남은 거짓 서술 없음)
 
 **완료 결과**
-> (execute에서 채움)
+- `docs/context/STACK.md` — "스케줄러 활성화 정책" 절 신설 (Flyway 절 바로 다음). 게이트 메커니즘(`SchedulerConfig` = `@EnableScheduling + @ConditionalOnProperty scheduler.enabled`, matchIfMissing false) + 서비스별 활성 매트릭스 표(payment: docker/benchmark 활성·로컬 비활성 / product: docker 활성[CLEANUP-BATCH-D Task 3 추가]) + 스케줄러 역할별 목록 기재.
+- `docs/context/TODOS.md`:
+  - [SCHEDULER-ENABLED-GATE] → ✅ 완료 봉인 (CLEANUP-BATCH-D, 2026-06-14)
+  - [CLEANUP-BATCH-B 후속] deprecated Groovy 항목 → ✅ 해소(CLEANUP-BATCH-D Task 2) 봉인
+  - [CLEANUP-BATCH-B 후속] GitHub Actions Node20 항목 → ✅ 이미 해소 stale 정정
+  - TC-13-FOLLOW-2 봉인 → product `SchedulerConfig` 게이트 구현됐으나 `application-docker.yml` 플래그 누락으로 운영 미작동이었음 명시 (CLEANUP-BATCH-D Task 3 에서 정상화)
+  - TC-11 봉인 → 동일 맥락으로 product 청소 봉인 정정
+- `docs/context/CONCERNS.md` — C-11 → ✅ 해소 봉인 (CLEANUP-BATCH-D Task 1, DB명 분리 처방). 상세 archive 이동은 ship 단계.
 
 ---
 

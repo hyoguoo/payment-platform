@@ -68,12 +68,11 @@
 - **영향**: 운영 환경에 dummy seed 가 들어갈 가능성
 - **처방**: 운영 배포 시 `spring.flyway.locations` 에서 seed 디렉토리 분리 또는 `placeholder` 활용. **현재는 데모/스모크 환경 한정으로 OK**
 
-### C-11. 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky
+### ~~C-11. 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky~~ ✅ 해소 (CLEANUP-BATCH-D Task 1, 2026-06-14)
 
-- **현황**: 전체 빌드(`./gradlew test integrationTest` / `clean build` 등 여러 모듈 통합테스트가 동시 기동)에서 payment-service 통합테스트가 Flyway `Found non-empty schema(s) 'payment-test' but no schema history table` 로 ApplicationContext 로드에 실패한다 (`JdbcPaymentEventDedupeStore*` / `StockCompensationRecoveryIntegrationTest` 등 full-context 15건 연쇄).
-- **격리 시 GREEN**: `:payment-service:integrationTest` 단독 실행은 34건 전부 통과. 잔존 Testcontainers 컨테이너 정리로도 미해소 → 원인은 잔존 컨테이너가 아니라 **여러 모듈 통합테스트 동시 기동 시 Testcontainers MySQL / Flyway 경합**으로 추정(ddl-auto 또는 컨텍스트 캐시가 history 없는 non-empty 스키마를 만나는 race).
-- **영향**: 로컬 전체 빌드 flaky, 회귀로 오인 가능. CI 는 서비스별 fan-out(`_service-ci.yml`)이라 모듈 격리 실행 + test-retry 로 영향 적음.
-- **처방**: 통합테스트 프로파일에 `baseline-on-migrate: true` 검토, 또는 모듈 통합테스트 실행 격리/직렬화. (CLEANUP-BATCH-C ship 검증 중 관측)
+- **해소 방법**: flyway-on 통합테스트 4개(`StockCompensationRecoveryIntegrationTest` / `JdbcPaymentEventDedupeStoreTest` / `JdbcPaymentEventDedupeStoreRoundTripTest` / `JdbcPaymentEventDedupeStoreCleanupTest`)의 DB명을 create-drop 그룹(`payment-test`)과 분리된 각자 전용 DB명으로 변경. `PaymentEosIntegrationTest`(`payment-eos-test`) 선례와 동일 처방.
+- **상세**: 상세 이력 및 검증 결과는 ship 단계 context-update 에서 archive 로 이동 예정.
+- 과거 현황 (참고): 전체 빌드(`clean build --rerun-tasks`)에서 Flyway `Found non-empty schema(s) 'payment-test' but no schema history table` 로 ApplicationContext 로드 실패. 격리 실행은 GREEN, 여러 모듈 동시 기동 시 Testcontainers MySQL / Flyway 경합이 원인.
 
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 

@@ -55,7 +55,7 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 #### ~~TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리 스케줄러 (TC-11 통합)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
-`DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 상세는 ## 완료 섹션.
+`DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
 
 #### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 대시보드
 
@@ -122,13 +122,9 @@ product-service 에 `Clock.systemUTC()` 빈(`infrastructure/config/ClockConfig`)
 
 payment `BaseEntity` audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 엔티티 매핑 경계 수동 `.toInstant(UTC)` 변환 제거, `createdAt updatable=false` 보존. (pg/product/user 는 auditing superclass 부재 — "다른 서비스 일원화" 대상 없음 확인.)
 
-#### [SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화
+#### ~~[SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화~~ ✅ 완료 (CLEANUP-BATCH-D, 2026-06-14)
 
-payment / product 의 `DedupeCleanupWorker` 가 `scheduler.enabled=true` 프로파일 주입 전제 (`@ConditionalOnProperty`). 기본 프로파일에서는 미기동. 운영 환경 활성화 정책 결정 + 문서화 필요 (어느 프로파일/배포에서 켜는지).
-
-**관련 코드**:
-- `product-service/.../infrastructure/config/SchedulerConfig.java`
-- payment-service 측 스케줄러 활성 설정
+payment 는 `application-docker.yml` / `application-benchmark.yml` 에 `scheduler.enabled: true` 존재(기존), product 는 `application-docker.yml` 에 `scheduler.enabled: true` 추가(CLEANUP-BATCH-D Task 3). 활성화 정책(게이트 = `SchedulerConfig` / 서비스별 매트릭스)은 `STACK.md` "스케줄러 활성화 정책" 절에 문서화.
 
 #### [CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재
 
@@ -149,9 +145,9 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 #### [CLEANUP-BATCH-B 후속] — 커버리지 게이트 / 빌드 스크립트 잔여 (CLEANUP-BATCH-B, 2026-05-31)
 
 - **user-service 커버리지 게이트 무실효** — `jacoco.lineCoverageMinimum` 0.0. user-service 는 측정 대상(application/domain) 라인이 거의 없어 게이트가 사실상 없음. 결제 정합성 로직 부재라 도메인 위험은 아니나(user 조회 실패는 checkout 진입에만 영향), 테스트 보강 후 minimum 상향 필요. product-service 0.40 도 동일 결의 낮은 게이트.
-- **deprecated Groovy space-assignment 문법** — 루트/서비스 `build.gradle` 다수에 `propName value` 형태(예: `exceptionFormat "full"`)가 Gradle 8.14.4 에서 deprecated 경고. Gradle 10.0 에서 제거 예정 → `propName = value` 로 마이그레이션 필요.
+- ~~**deprecated Groovy space-assignment 문법**~~ ✅ 해소 (CLEANUP-BATCH-D Task 2, 2026-06-14) — 루트 + 4서비스 `build.gradle` 5곳 `events "..."` → `events = ['...']` 리스트 할당 전환 완료.
 - **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
-- **GitHub Actions Node.js 20 deprecated** — CI 경고: `actions/checkout@v4`, `actions/setup-java@v4`, `actions/upload-artifact@v4`, `gradle/actions/setup-gradle@v3`, `Madrapps/jacoco-report@v1.7.2`, `mikepenz/action-junit-report@v4` 가 Node.js 20 기반. 2026-06-16 부터 Node.js 24 강제, 09-16 제거 예정. Node.js 24 지원 버전으로 액션 업그레이드 필요.
+- ~~**GitHub Actions Node.js 20 deprecated**~~ ✅ 이미 해소 — CI 액션이 `actions/checkout@v6` 등 Node.js 24 지원 버전으로 이미 업그레이드 완료됨(CLEANUP-BATCH-D 착수 전 기준). 잔류 stale 항목.
 
 ---
 
@@ -299,12 +295,12 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 - `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
 - `pg-service/.../application/service/DuplicateApprovalHandler.java`
 
-#### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 / pg 범위 제외)
+#### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 
 장기 운영 시 만료 row 누적으로 쿼리 성능 저하 가능.
 
 **현황**:
-- product-service `stock_commit_dedupe` — ✅ `DedupeCleanupWorker` (`@Scheduled`) 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). `deleteExpired` 만료 행 일괄 DELETE + `SchedulerConfig` 활성 게이트
+- product-service `stock_commit_dedupe` — ✅ `DedupeCleanupWorker` (`@Scheduled`) 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). `deleteExpired` 만료 행 일괄 DELETE + `SchedulerConfig` 활성 게이트. 단, worker 와 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` 에 `scheduler.enabled: true` 플래그가 누락돼 운영 docker 포함 어떤 배포에서도 실제 미기동 상태였음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화.
 - pg-service `pg_inbox` — **범위 제외**. 종결 행이 confirm 재배달 멱등 SoT 라 청소 대상 아님 (terminal row 보존이 멱등성 보장의 본질)
 - payment-service `payment_event_dedupe` — ✅ `DedupeCleanupWorker` 도입 완료 (TC-13-FOLLOW-2)
 - payment-service 의 Redis dedupe (재고 차감/보상 token) 는 TTL 자동 expire — 문제 없음
