@@ -302,24 +302,19 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 - `product-service/.../infrastructure/idempotency/JdbcEventDedupeStore.java`
 - `product-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
 
-#### TC-12 — pg-service Worker.stop 채널 drain 도입
+#### TC-12 — pg-service Worker.stop 채널 drain 도입 ⏸️ 보류 (2026-06-14, 실익 대비 복잡도 부적합)
 
-`PgOutboxImmediateWorker.stop()` 의 graceful 동작이 *의도한 설계* 와 *현재 구현* 사이에 갭이 있음.
+**보류 결정 (PG-WORKER-GRACEFUL-DRAIN discuss 사전 브리핑 단계)**: 채널 잔여는 RDB SoT(`pg_outbox`/`pg_inbox`) + 폴링 회수로 **유실 0 이 이미 보장**된다. drain 의 실익은 "종료 시 인메모리 잔여 즉시 처리 → 재기동 후 폴링 지연 단축"이라는 graceful 품질 개선에 한정. 학습 프로젝트에서 이 한계 이득이 동반 복잡도(① 새 유입 차단을 위한 Kafka consumer→워커→채널 SmartLifecycle phase 순서 정합, ② outbox/inbox 공통 base 대칭 처리 — inbox 는 벤더 호출 in-flight, ③ drain-timeout + 폴백 + K8s grace period 정합)를 정당화하지 못한다고 판단. 운영 환경에서 종료 지연이 실제 문제로 측정되면 재검토.
 
-**현황**:
-- `stop()` 가 `running=false` + `Thread::interrupt` + `worker.join(10s)` + `relayExecutor.shutdown()` 까지만 수행
-- Worker 가 `channel.take()` 에서 `InterruptedException` 받으면 채널에 남아있는 `OutboxJob` 들을 drain 안 하고 즉시 종료
-- 잔여 Job 은 다음 부팅 시 `PgOutboxPollingWorker` 가 RDB SoT 에서 회수 — 메시지 유실 0 은 보장됨
-
-**도입 방향**:
-1. `stop()` 안에 best-effort drain 단계 추가 — `pg.outbox.channel.drain-timeout-ms` (default 5000) 안에서 채널이 비워질 때까지 폴링 대기
-2. drain timeout 초과 시 기존 경로 (interrupt + join) 로 폴백
-3. K8s SIGTERM grace period(보통 30s) 와 정합성 검증
+**참고 — 코드 현황 (재검토 시 출발점)**:
+- stop 로직은 CLEANUP-BATCH-C 에서 `AbstractImmediateWorker.stop(Runnable)` 로 공통화됨 (outbox/inbox 즉시 워커 공유). 현재 `running=false` → 워커 `interrupt` → `join(10s)` → executor `awaitTermination(10s)→shutdownNow`. 채널 잔여 drain 단계 없음.
+- 이미 `executor.submit` 된 in-flight 는 executor graceful shutdown 으로 완료 대기됨. 미take 채널 잔여만 종료 시 메모리 소멸 → 폴링 회수.
+- 채널(`PgOutboxChannel`/`PgInboxChannel`)은 SmartLifecycle 아님(단순 `LinkedBlockingQueue` 빈). `AbstractImmediateWorker.getPhase()` 주석의 "채널 나중 stop drain" 의도는 채널이 lifecycle 이 아니라 미실현 — 재검토 시 이 갭부터 정리.
 
 **관련 코드**:
-- `pg-service/.../infrastructure/scheduler/PgOutboxImmediateWorker.java:91-106` (stop 메서드)
-- `pg-service/.../infrastructure/channel/PgOutboxChannel.java`
-- `pg-service/.../infrastructure/scheduler/PgOutboxPollingWorker.java` (RDB 폴백)
+- `pg-service/.../infrastructure/scheduler/AbstractImmediateWorker.java` (`stop(Runnable)` 공통 base)
+- `pg-service/.../infrastructure/channel/{PgOutboxChannel,PgInboxChannel}.java`
+- `pg-service/.../infrastructure/scheduler/{PgOutboxPollingWorker,PgInboxPollingWorker}.java` (RDB 폴백)
 
 #### TC-15 — PG-CONFIRM-LISTENER-SPLIT PHASE2 정밀화
 
