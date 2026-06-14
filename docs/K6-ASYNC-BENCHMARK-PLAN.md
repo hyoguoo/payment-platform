@@ -74,7 +74,7 @@ flowchart TD
 
 - [x] Task 1: docker-compose.benchmark.yml override 신설
 - [x] Task 2: 벤치 전용 대용량 재고 시드 스크립트
-- [ ] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
+- [x] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
 - [ ] Task 4: k6 async-payment.js (e2e 시나리오)
 - [ ] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
 - [ ] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
@@ -146,7 +146,13 @@ flowchart TD
 **매핑**: 결정 "측정 지표 정의", "checkout 멱등키", "paymentKey", "status 폴링", "부하 모델"
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/k6/helpers.js` 신설.
+- 커스텀 메트릭 5종: `e2e_completion_ms`(Trend), `e2e_timeout`(Counter), `confirm_requests`(Counter), `checkout_duplicate`(Counter), `confirm_rejected`(Counter).
+- 환경 상수: `BASE_URL`, `USER_ID`, `PRODUCT_ID`, `QUANTITY`, `AMOUNT`, `GATEWAY_TYPE`, `POLL_INTERVAL_MS`, `POLL_TIMEOUT_MS`(`__ENV` 기반, 기본값 제공).
+- 부하 곡선 상수: `RAMPING_ARRIVAL_RATE_STAGES`(baseline 100→200→400 req/s, 쿨다운 포함 4단계).
+- 요청 헬퍼 3종: `uniqueIdempotencyKey()`(`${VU}-${ITER}-${uuid}`), `doCheckout()`(고유 Idempotency-Key + step:checkout 태깅 + 중복 200 카운트), `doConfirm()`(임의 paymentKey + step:confirm 태깅 + confirmRequests/confirmRejected 카운트), `pollStatus()`(간격·타임아웃 인자, DONE/FAILED 종료, 하한 2000ms 보장, 타임아웃 시 e2eTimeout inc).
+- CheckoutRequest/PaymentConfirmRequest/PaymentStatusApiResponse DTO 필드 정확 일치 확인.
+- k6 미설치 환경 — 순수 JS 로직(generateUUID, parseJSON, 상수 검증)은 Node.js v26.3.0으로 정적 검증 통과.
 
 ---
 
