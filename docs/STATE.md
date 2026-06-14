@@ -7,7 +7,7 @@
 - **주제**: K6-ASYNC-BENCHMARK (비동기 결제 경로 k6 부하 측정 시나리오 신규 작성)
 - **단계**: execute
 - **이슈/브랜치**: #102
-- **활성 태스크**: Task 1 (docker-compose.benchmark.yml override 신설)
+- **활성 태스크**: Task 2 (벤치 전용 대용량 재고 시드 스크립트)
 - **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계) + `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan 완료, 7 태스크)
 
 ## 재개 메모

@@ -72,7 +72,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: docker-compose.benchmark.yml override 신설
+- [x] Task 1: docker-compose.benchmark.yml override 신설
 - [ ] Task 2: 벤치 전용 대용량 재고 시드 스크립트
 - [ ] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
 - [ ] Task 4: k6 async-payment.js (e2e 시나리오)
@@ -98,7 +98,11 @@ flowchart TD
 **매핑**: 결정 "실행 환경"(benchmark compose override), "벤더 지연 2환경"(latency env), "QUARANTINED 처리"(failRate=0 기본), settle 창(reconciler timeout+scan 단축)
 
 **완료 결과**
-> (execute에서 채움)
+- `docker/docker-compose.benchmark.yml` 신설.
+- `docker compose config` 렌더 에러 없음.
+- payment: `SPRING_PROFILES_ACTIVE=docker,benchmark`, `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS=30`(기본), `RECONCILER_FIXED_DELAY_MS=15000`(기본) 반영 확인.
+- pg: `SPRING_PROFILES_ACTIVE=docker,smoke`, `PG_GATEWAY_TYPE=fake`, latency 100~300ms(기본), `FAKE_FAIL_RATE=0`(baseline) 반영 확인.
+- 기존 `docker-compose.smoke.yml` 무변경.
 
 ---
 
