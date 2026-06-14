@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — dedupe cleanup 스케줄러 + TM qualifier 명시 + D7 가드 메서드 분리 + traceparent 복원 완료 반영).
+> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D + ship 후 stale 대청소 — [FLYWAY-USER-SEED-GAP]·[CLEANUP-FAILURE-COUNTER]·TC-1·커버리지 게이트 해소 반영, TC-13-FOLLOW-3/4 부분해소(대시보드 O·알람 rule X) 정정).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -57,15 +57,17 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 `DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
 
-#### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 대시보드
+#### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
 
-- **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단 없음
-- **처방 후보**: Grafana 대시보드 — `kafka_producer_transaction_in_progress_total` / `kafka_consumer_fetch_manager_records_lag_max` 임계 알람
+- **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단.
+- **대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `business-dashboard.json` 에 코디네이터 / `kafka_producer_txn_*` 패널 추가로 가시화 확보.
+- **잔여**: Prometheus alerting rule 인프라 자체가 미구축(`prometheus.yml` `rule_files`/`alerting` 미설정) — 임계 알람 자동화는 후속.
 
-#### TC-13-FOLLOW-4 — D7 가드 분기 알람 SLO (DM2-3)
+#### TC-13-FOLLOW-4 — D7 가드 분기 모니터링 (메트릭·대시보드 ✅ / 알람 SLO 후속)
 
-- **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단 없음
-- **처방 후보**: `PaymentConfirmResultUseCase` 내 D7 가드 분기에 `payment_eos_guard_skip_total{status}` Micrometer 카운터 + Grafana 알람 SLO
+- **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단.
+- **메트릭·대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `payment_confirm_guard_skip_total{status}` 카운터(eager 6종 등록, [GUARD-SKIP-EAGER-REGISTER]) + `business-dashboard.json` guard_skip 패널.
+- **잔여**: alerting rule 미구축이라 SLO 자동 알람은 후속(TC-13-FOLLOW-3 과 동일 alerting 인프라 의존).
 
 #### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 ✅ 완료 / ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
 
@@ -96,13 +98,9 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 `ProductFeignConfig`/`UserFeignConfig` ErrorDecoder 에 502/504 → `*ServiceRetryableException` 승격(503 + Retry-After:5), 500 및 그 외 5xx 는 `IllegalStateException` 유지, 429/503 단일 예외 유지(예외 증식 최소화, 구분은 로그 status). cross-service 호출이 GET 단건 조회 전용이라 비멱등 재시도 위험 없음. PR #81.
 
-#### [FLYWAY-USER-SEED-GAP] — user-service Testcontainers 검증 부재
+#### ~~[FLYWAY-USER-SEED-GAP] — user-service Testcontainers 검증 부재~~ ✅ 완료 (CI-PIPELINE-REDESIGN, 2026-06-08)
 
-CBA-7 이 product-service `FlywayDockerProfileTest` 1건만 추가. user-service `application-docker.yml` 의 `spring.flyway.locations: classpath:db/schema` override 가 회귀 무방어 상태. 후속 토픽에서 user-service 동등 Testcontainers 테스트 추가 또는 infra-healthcheck 스크립트에 V2 row count=0 체크 추가 결정 필요.
-
-**관련 코드**:
-- `user-service/src/main/resources/application-docker.yml`
-- `user-service/src/main/resources/db/schema/V1__user_schema.sql`
+user-service `FlywayDockerProfileTest`(product 동형 — docker profile seed 차단 회귀 가드)가 추가돼 `spring.flyway.locations: classpath:db/schema` override 가 무방어 상태 해소. `UserQueryUseCaseTest` 와 함께 user-service 가 통합테스트 보유 서비스로 전환. (CI fan-out 재설계 D8)
 
 ### D. EOS-FOLLOWUP-CLEANUP 후속 등재
 
@@ -126,13 +124,9 @@ payment `BaseEntity` audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDate
 
 payment 는 `application-docker.yml` / `application-benchmark.yml` 에 `scheduler.enabled: true` 존재(기존), product 는 `application-docker.yml` 에 `scheduler.enabled: true` 추가(CLEANUP-BATCH-D Task 3). 활성화 정책(게이트 = `SchedulerConfig` / 서비스별 매트릭스)은 `STACK.md` "스케줄러 활성화 정책" 절에 문서화.
 
-#### [CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재
+#### ~~[CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
-`DedupeCleanupWorker` 가 삭제 건수 카운터 (`*.cleanup_deleted_total`) 와 실패 시 ERROR 로그는 갖췄으나, 실패 횟수 전용 카운터/메트릭이 없음. 실패 누적 시 알람 가능하도록 관측성 보강 검토 (`*.cleanup_failed_total` 추가 등).
-
-**관련 코드**:
-- `payment-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
-- `product-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
+payment `DedupeCleanupWorker` `payment_event_dedupe.cleanup_failed_total` + product `DedupeCleanupWorker` `stock_commit_dedupe.cleanup_failed_total` Micrometer Counter 추가 — `deleteExpired` 실패 시 ERROR 로그 + 카운터 increment 로 실패 누적 가시화. (OBSERVABILITY-COMPLETION D14)
 
 #### ~~[GUARD-SKIP-EAGER-REGISTER]~~ ✅ 완료 (OBSERVABILITY-COMPLETION verify, 2026-06-11)
 
@@ -144,7 +138,7 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 
 #### [CLEANUP-BATCH-B 후속] — 커버리지 게이트 / 빌드 스크립트 잔여 (CLEANUP-BATCH-B, 2026-05-31)
 
-- **user-service 커버리지 게이트 무실효** — `jacoco.lineCoverageMinimum` 0.0. user-service 는 측정 대상(application/domain) 라인이 거의 없어 게이트가 사실상 없음. 결제 정합성 로직 부재라 도메인 위험은 아니나(user 조회 실패는 checkout 진입에만 영향), 테스트 보강 후 minimum 상향 필요. product-service 0.40 도 동일 결의 낮은 게이트.
+- ~~**user-service / product-service 커버리지 게이트 무실효(user 0.0 / product 0.40)**~~ ✅ 해소 (CI-PIPELINE-REDESIGN 외, 실측 2026-06-14) — 현재 `jacoco.lineCoverageMinimum` user 0.97 / product 0.97 로 상향돼 실효 게이트. user 는 `UserQueryUseCaseTest` 보강으로 측정 대상 확보. gateway·eureka 만 0.0(측정 대상 클래스 0 — 라우팅/디스커버리 전용이라 불가피).
 - ~~**deprecated Groovy space-assignment 문법**~~ ✅ 해소 (CLEANUP-BATCH-D Task 2, 2026-06-14) — 루트 + 4서비스 `build.gradle` 5곳 `events "..."` → `events = ['...']` 리스트 할당 전환 완료.
 - **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
 - ~~**GitHub Actions Node.js 20 deprecated**~~ ✅ 이미 해소 — CI 액션이 `actions/checkout@v6` 등 Node.js 24 지원 버전으로 이미 업그레이드 완료됨(CLEANUP-BATCH-D 착수 전 기준). 잔류 stale 항목.
@@ -245,10 +239,9 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 
 ### 측정 의존 코드 청결도 (8개)
 
-#### TC-1 — observability 대시보드 현행화
+#### ~~TC-1 — observability 대시보드 현행화~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
-- Grafana dashboard JSON 들이 옛 메트릭 이름 일부 사용 가능
-- Phase 4 부하 테스트 시작 전 inventory + 갱신
+- 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json` / `system-dashboard.json` 2분할 신설, 메트릭 이름 현행 코드 정합. (CONCERNS C-9 동반 해소)
 
 #### TC-3 — 재고 동기화 정책 (부팅 외 시점)
 

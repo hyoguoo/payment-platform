@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 도입 수용 한계 L1/L2/L3/L5/L6 등재)
+> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D — C-11 통합테스트 Flyway 경합 해소 + C-9 observability 대시보드 현행화 해소)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -56,11 +56,10 @@
 - **영향**: AI 에이전트가 archive 를 읽지 말라는 룰을 어기면 혼동
 - **처방**: archive `README.md` 가 명시적으로 "AI 에이전트 미참조" 선언 — 이미 적용. 추가 조치 불필요
 
-### C-9. observability 대시보드 현행화
+### ~~C-9. observability 대시보드 현행화~~ ✅ 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
-- **현황**: Grafana 대시보드 정의가 옛 메트릭 이름 일부 사용 가능
-- **영향**: Phase 4 진입 시 대시보드 표시 누락
-- **처방**: Phase 4 시작 시 대시보드 inventory + 갱신
+- **해소**: 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json`(funnel·전이·상태분포·격리·벤더latency·DLQ·outbox·cleanup·코디네이터·guard_skip) / `system-dashboard.json`(6서비스 JVM/GC/HTTP/Hikari/lag) 2분할 신설. 메트릭 이름 현행 코드 기준 정합.
+- **잔여**: Prometheus alerting rule 인프라(`rule_files`/`alerting`)는 미구축 — 임계 알람 자동화는 후속(TODOS TC-13-FOLLOW-3/4).
 
 ### C-10. seed 데이터의 운영 안전성
 
@@ -71,7 +70,7 @@
 ### ~~C-11. 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky~~ ✅ 해소 (CLEANUP-BATCH-D Task 1, 2026-06-14)
 
 - **해소 방법**: flyway-on 통합테스트 4개(`StockCompensationRecoveryIntegrationTest` / `JdbcPaymentEventDedupeStoreTest` / `JdbcPaymentEventDedupeStoreRoundTripTest` / `JdbcPaymentEventDedupeStoreCleanupTest`)의 DB명을 create-drop 그룹(`payment-test`)과 분리된 각자 전용 DB명으로 변경. `PaymentEosIntegrationTest`(`payment-eos-test`) 선례와 동일 처방.
-- **상세**: 상세 이력 및 검증 결과는 ship 단계 context-update 에서 archive 로 이동 예정.
+- **상세**: `docs/archive/cleanup-batch-d/COMPLETION-BRIEFING.md`
 - 과거 현황 (참고): 전체 빌드(`clean build --rerun-tasks`)에서 Flyway `Found non-empty schema(s) 'payment-test' but no schema history table` 로 ApplicationContext 로드 실패. 격리 실행은 GREEN, 여러 모듈 동시 기동 시 Testcontainers MySQL / Flyway 경합이 원인.
 
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
