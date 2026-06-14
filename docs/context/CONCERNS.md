@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D — C-11 통합테스트 Flyway 경합 해소 + C-9 observability 대시보드 현행화 해소)
+> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D — C-11 통합테스트 Flyway 경합 + C-9 대시보드 현행화 해소 / L-2 dedupe 청소·L-10 EXPIRED 정책·C-7 ddl-auto stale 정정)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -43,7 +43,7 @@
 - **영향**: broker 장애 시 메시지 처리 중단
 - **처방**: 운영 환경 / Phase 4 부하 테스트 시 multi-broker 검토
 
-### C-7. payment-service 측 application.yml 의 ddl-auto 비명시 시기 (해소됨)
+### ~~C-7. payment-service 측 application.yml 의 ddl-auto 비명시 시기~~ ✅ 해소 (PAYMENT-EOS-TRANSITION)
 
 - ~~기존: default profile 에서 `spring.jpa.hibernate.ddl-auto` 미명시 → IDE 로컬 실행 시 빈 DB 부팅 실패 가능~~
 - **해소**: 본 봉인 작업의 Flyway 통일 커밋에서 `ddl-auto: validate` 명시. Flyway 가 baseline 자동 적용
@@ -89,11 +89,9 @@
 - 즉 EOS 는 "정상 경로 중복 발행 최소화" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
 - **후속 과제**: TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 `ChainedKafkaTransactionManager` 도입 검토 (CONFIRM-FLOW.md §5 EOS atomicity SSOT 절 참조).
 
-### L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재
+### ~~L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재~~ ✅ 해소 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
-- **현황**: `payment_event_dedupe` 테이블에 `expires_at = receivedAt + P8D` 컬럼이 있지만 자동 cleanup 스케줄러 없음. 장기 운영 시 만료 row 누적 → 인덱스 비대 → 쿼리 성능 저하 가능.
-- **비교**: product-service `stock_commit_dedupe` / pg-service `pg_inbox` 도 동일 문제 (TC-11).
-- **처방 후속**: TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리를 TC-11 cleanup 스케줄러 통합 토픽에 묶어 처리.
+- **해소**: payment `DedupeCleanupWorker`(`@Scheduled`)가 `payment_event_dedupe` 만료행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 도 동일 워커로 처리(TC-11). pg `pg_inbox` 는 종결행이 재배달 멱등 SoT 라 청소 대상 제외. 스케줄러 활성화 정책은 STACK.md "스케줄러 활성화 정책" 절(payment docker/benchmark, product docker — CLEANUP-BATCH-D).
 
 ### L-3. 다중 인스턴스 동시 운영 검증 부재
 
@@ -131,9 +129,9 @@
 
 `PgGatewayPort.cancel(...)` 인터페이스만 존재. 운영 활용 별도 토픽.
 
-### L-10. EXPIRED 상태의 만료 스케줄러 정책
+### ~~L-10. EXPIRED 상태의 만료 스케줄러 정책~~ ✅ 해소 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
 
-`PaymentEventStatus.EXPIRED` 가 정의되어 있지만 만료 스케줄러는 PRE-PHASE-4 시점에 도메인 매핑이 일부 제거됨 (`quarantine_compensation_pending` 컬럼은 호환용 유지). 명확한 만료 정책 별도 정리 필요.
+만료 정책 명문화 완료 — READY 만 직접 만료(`expire()` READY 가드), IN_PROGRESS 정체분은 정합 스캐너(`PaymentReconciler`)가 READY 복원 후 만료(2단 연쇄). 임계 외부화 `payment.expiration.ready-timeout-minutes`(기본 30) + 스케줄러 키 `scheduler.payment-expiration.*`. 상세: `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`.
 
 ### L-11. Redis cluster 환경에서 multi-key Lua 사용 불가
 
