@@ -75,7 +75,7 @@ flowchart TD
 - [x] Task 1: docker-compose.benchmark.yml override 신설
 - [x] Task 2: 벤치 전용 대용량 재고 시드 스크립트
 - [x] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
-- [ ] Task 4: k6 async-payment.js (e2e 시나리오)
+- [x] Task 4: k6 async-payment.js (e2e 시나리오)
 - [ ] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
 - [ ] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
 - [ ] Task 7: 측정 실행 + 결과 리포트
@@ -175,7 +175,14 @@ flowchart TD
 **domain_risk 근거**: 측정이 결제 정합성을 왜곡 없이 반영해야 함 — 멱등키 충돌로 인한 캐시 hit 오염, 재고 고갈로 인한 REJECTED, QUARANTINED의 e2e_timeout 오분류를 check/baseline 설정으로 차단
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/k6/async-payment.js` 신설.
+- `options.scenarios`: `ramping-arrival-rate` executor + `RAMPING_ARRIVAL_RATE_STAGES`(helpers 공유 상수) 연결.
+- `options.thresholds`: `http_req_duration{step:confirm}` p95<3s/p99<5s, `e2e_completion_ms` p95<15s/p99<30s, `checks` rate>0.99, `e2e_timeout` count<100.
+- VU 함수 오염 차단 3종: checkout status==201 check(F1 멱등키 충돌), confirm 400 미발생 check(F2 재고 고갈), 폴링은 DONE/FAILED만 종결(F3 QUARANTINED 맹점).
+- helpers export 정확 사용: `doCheckout`(멱등키 자동 생성 + 중복 200 내부 카운트), `doConfirm`(confirmRequests/confirmRejected 내부 카운트), `pollStatus`(e2eTimeout 내부 증가).
+- e2e_completion_ms: confirm 202 시각 기록 기준점부터 pollStatus 종결까지 기록.
+- `handleSummary`: `CASE_NAME` env 별 `results/{caseName}.json` 출력 + stdout 텍스트 요약.
+- Node.js v26.3.0 `--check`로 구문 검증 통과. k6 미설치 환경(Task 7에서 smoke run 검증).
 
 ---
 
