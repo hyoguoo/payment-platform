@@ -75,7 +75,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 통합테스트 Flyway 그룹 전용 DB명 분리
+- [x] Task 1: 통합테스트 Flyway 그룹 전용 DB명 분리
 - [ ] Task 2: 빌드 스크립트 deprecated 공백 할당 정리
 - [ ] Task 3: 상품 서비스 청소 스케줄러 운영 활성화
 - [ ] Task 4: 스케줄러 활성화 정책 문서화 + 문서 정정
@@ -102,7 +102,14 @@ flowchart TD
 - `./gradlew build --rerun-tasks`(또는 clean build) 전체 모듈 통합테스트 동시 기동에서 C-11 ApplicationContext 로드 실패 **재현 안 됨** — 캐시 UP-TO-DATE 시 통합테스트 미실행이므로 반드시 `--rerun-tasks`/clean 으로 실제 실행 확인 (수회 반복)
 
 **완료 결과**
-> (execute에서 채움)
+- `StockCompensationRecoveryIntegrationTest` → `payment-scr-test`
+- `JdbcPaymentEventDedupeStoreTest` → `payment-dedupe-test`
+- `JdbcPaymentEventDedupeStoreRoundTripTest` → `payment-dedupe-roundtrip-test`
+- `JdbcPaymentEventDedupeStoreCleanupTest` → `payment-dedupe-cleanup-test`
+- 각 컨테이너 정의에 `// flyway-on: create-drop 그룹(payment-test)과 분리된 전용 DB명` 주석 추가
+- `./gradlew :payment-service:test --rerun-tasks` → 512 passed / 0 failed
+- `./gradlew :payment-service:integrationTest` → 34 passed / 0 failed
+- `./gradlew build --rerun-tasks` (87 tasks) → BUILD SUCCESSFUL, C-11 ApplicationContext 로드 실패 재현 없음
 
 ---
 
