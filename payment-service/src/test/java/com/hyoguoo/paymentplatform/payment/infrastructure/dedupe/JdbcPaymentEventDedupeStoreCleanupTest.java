@@ -31,7 +31,8 @@ class JdbcPaymentEventDedupeStoreCleanupTest {
     @SuppressWarnings("resource")
     static final MySQLContainer<?> MYSQL_CONTAINER =
             new MySQLContainer<>("mysql:8.0")
-                    .withDatabaseName("payment-test")
+                    // flyway-on: create-drop 그룹(payment-test)과 분리된 전용 DB명
+                    .withDatabaseName("payment-dedupe-cleanup-test")
                     .withUsername("test")
                     .withPassword("test")
                     .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")

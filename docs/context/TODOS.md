@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — dedupe cleanup 스케줄러 + TM qualifier 명시 + D7 가드 메서드 분리 + traceparent 복원 완료 반영).
+> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D + ship 후 stale 대청소 — [FLYWAY-USER-SEED-GAP]·[CLEANUP-FAILURE-COUNTER]·TC-1·커버리지 게이트 해소 반영, TC-13-FOLLOW-3/4 부분해소(대시보드 O·알람 rule X) 정정).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -55,17 +55,19 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 #### ~~TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리 스케줄러 (TC-11 통합)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
-`DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 상세는 ## 완료 섹션.
+`DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
 
-#### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 대시보드
+#### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
 
-- **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단 없음
-- **처방 후보**: Grafana 대시보드 — `kafka_producer_transaction_in_progress_total` / `kafka_consumer_fetch_manager_records_lag_max` 임계 알람
+- **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단.
+- **대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `business-dashboard.json` 에 코디네이터 / `kafka_producer_txn_*` 패널 추가로 가시화 확보.
+- **잔여**: Prometheus alerting rule 인프라 자체가 미구축(`prometheus.yml` `rule_files`/`alerting` 미설정) — 임계 알람 자동화는 후속.
 
-#### TC-13-FOLLOW-4 — D7 가드 분기 알람 SLO (DM2-3)
+#### TC-13-FOLLOW-4 — D7 가드 분기 모니터링 (메트릭·대시보드 ✅ / 알람 SLO 후속)
 
-- **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단 없음
-- **처방 후보**: `PaymentConfirmResultUseCase` 내 D7 가드 분기에 `payment_eos_guard_skip_total{status}` Micrometer 카운터 + Grafana 알람 SLO
+- **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단.
+- **메트릭·대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `payment_confirm_guard_skip_total{status}` 카운터(eager 6종 등록, [GUARD-SKIP-EAGER-REGISTER]) + `business-dashboard.json` guard_skip 패널.
+- **잔여**: alerting rule 미구축이라 SLO 자동 알람은 후속(TC-13-FOLLOW-3 과 동일 alerting 인프라 의존).
 
 #### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 ✅ 완료 / ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
 
@@ -96,13 +98,9 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 `ProductFeignConfig`/`UserFeignConfig` ErrorDecoder 에 502/504 → `*ServiceRetryableException` 승격(503 + Retry-After:5), 500 및 그 외 5xx 는 `IllegalStateException` 유지, 429/503 단일 예외 유지(예외 증식 최소화, 구분은 로그 status). cross-service 호출이 GET 단건 조회 전용이라 비멱등 재시도 위험 없음. PR #81.
 
-#### [FLYWAY-USER-SEED-GAP] — user-service Testcontainers 검증 부재
+#### ~~[FLYWAY-USER-SEED-GAP] — user-service Testcontainers 검증 부재~~ ✅ 완료 (CI-PIPELINE-REDESIGN, 2026-06-08)
 
-CBA-7 이 product-service `FlywayDockerProfileTest` 1건만 추가. user-service `application-docker.yml` 의 `spring.flyway.locations: classpath:db/schema` override 가 회귀 무방어 상태. 후속 토픽에서 user-service 동등 Testcontainers 테스트 추가 또는 infra-healthcheck 스크립트에 V2 row count=0 체크 추가 결정 필요.
-
-**관련 코드**:
-- `user-service/src/main/resources/application-docker.yml`
-- `user-service/src/main/resources/db/schema/V1__user_schema.sql`
+user-service `FlywayDockerProfileTest`(product 동형 — docker profile seed 차단 회귀 가드)가 추가돼 `spring.flyway.locations: classpath:db/schema` override 가 무방어 상태 해소. `UserQueryUseCaseTest` 와 함께 user-service 가 통합테스트 보유 서비스로 전환. (CI fan-out 재설계 D8)
 
 ### D. EOS-FOLLOWUP-CLEANUP 후속 등재
 
@@ -122,21 +120,13 @@ product-service 에 `Clock.systemUTC()` 빈(`infrastructure/config/ClockConfig`)
 
 payment `BaseEntity` audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 엔티티 매핑 경계 수동 `.toInstant(UTC)` 변환 제거, `createdAt updatable=false` 보존. (pg/product/user 는 auditing superclass 부재 — "다른 서비스 일원화" 대상 없음 확인.)
 
-#### [SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화
+#### ~~[SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화~~ ✅ 완료 (CLEANUP-BATCH-D, 2026-06-14)
 
-payment / product 의 `DedupeCleanupWorker` 가 `scheduler.enabled=true` 프로파일 주입 전제 (`@ConditionalOnProperty`). 기본 프로파일에서는 미기동. 운영 환경 활성화 정책 결정 + 문서화 필요 (어느 프로파일/배포에서 켜는지).
+payment 는 `application-docker.yml` / `application-benchmark.yml` 에 `scheduler.enabled: true` 존재(기존), product 는 `application-docker.yml` 에 `scheduler.enabled: true` 추가(CLEANUP-BATCH-D Task 3). 활성화 정책(게이트 = `SchedulerConfig` / 서비스별 매트릭스)은 `STACK.md` "스케줄러 활성화 정책" 절에 문서화.
 
-**관련 코드**:
-- `product-service/.../infrastructure/config/SchedulerConfig.java`
-- payment-service 측 스케줄러 활성 설정
+#### ~~[CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
-#### [CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재
-
-`DedupeCleanupWorker` 가 삭제 건수 카운터 (`*.cleanup_deleted_total`) 와 실패 시 ERROR 로그는 갖췄으나, 실패 횟수 전용 카운터/메트릭이 없음. 실패 누적 시 알람 가능하도록 관측성 보강 검토 (`*.cleanup_failed_total` 추가 등).
-
-**관련 코드**:
-- `payment-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
-- `product-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
+payment `DedupeCleanupWorker` `payment_event_dedupe.cleanup_failed_total` + product `DedupeCleanupWorker` `stock_commit_dedupe.cleanup_failed_total` Micrometer Counter 추가 — `deleteExpired` 실패 시 ERROR 로그 + 카운터 increment 로 실패 누적 가시화. (OBSERVABILITY-COMPLETION D14)
 
 #### ~~[GUARD-SKIP-EAGER-REGISTER]~~ ✅ 완료 (OBSERVABILITY-COMPLETION verify, 2026-06-11)
 
@@ -148,10 +138,10 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 
 #### [CLEANUP-BATCH-B 후속] — 커버리지 게이트 / 빌드 스크립트 잔여 (CLEANUP-BATCH-B, 2026-05-31)
 
-- **user-service 커버리지 게이트 무실효** — `jacoco.lineCoverageMinimum` 0.0. user-service 는 측정 대상(application/domain) 라인이 거의 없어 게이트가 사실상 없음. 결제 정합성 로직 부재라 도메인 위험은 아니나(user 조회 실패는 checkout 진입에만 영향), 테스트 보강 후 minimum 상향 필요. product-service 0.40 도 동일 결의 낮은 게이트.
-- **deprecated Groovy space-assignment 문법** — 루트/서비스 `build.gradle` 다수에 `propName value` 형태(예: `exceptionFormat "full"`)가 Gradle 8.14.4 에서 deprecated 경고. Gradle 10.0 에서 제거 예정 → `propName = value` 로 마이그레이션 필요.
+- ~~**user-service / product-service 커버리지 게이트 무실효(user 0.0 / product 0.40)**~~ ✅ 해소 (CI-PIPELINE-REDESIGN 외, 실측 2026-06-14) — 현재 `jacoco.lineCoverageMinimum` user 0.97 / product 0.97 로 상향돼 실효 게이트. user 는 `UserQueryUseCaseTest` 보강으로 측정 대상 확보. gateway·eureka 만 0.0(측정 대상 클래스 0 — 라우팅/디스커버리 전용이라 불가피).
+- ~~**deprecated Groovy space-assignment 문법**~~ ✅ 해소 (CLEANUP-BATCH-D Task 2, 2026-06-14) — 루트 + 4서비스 `build.gradle` 5곳 `events "..."` → `events = ['...']` 리스트 할당 전환 완료.
 - **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
-- **GitHub Actions Node.js 20 deprecated** — CI 경고: `actions/checkout@v4`, `actions/setup-java@v4`, `actions/upload-artifact@v4`, `gradle/actions/setup-gradle@v3`, `Madrapps/jacoco-report@v1.7.2`, `mikepenz/action-junit-report@v4` 가 Node.js 20 기반. 2026-06-16 부터 Node.js 24 강제, 09-16 제거 예정. Node.js 24 지원 버전으로 액션 업그레이드 필요.
+- ~~**GitHub Actions Node.js 20 deprecated**~~ ✅ 이미 해소 — CI 액션이 `actions/checkout@v6` 등 Node.js 24 지원 버전으로 이미 업그레이드 완료됨(CLEANUP-BATCH-D 착수 전 기준). 잔류 stale 항목.
 
 ---
 
@@ -249,10 +239,9 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 
 ### 측정 의존 코드 청결도 (8개)
 
-#### TC-1 — observability 대시보드 현행화
+#### ~~TC-1 — observability 대시보드 현행화~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
-- Grafana dashboard JSON 들이 옛 메트릭 이름 일부 사용 가능
-- Phase 4 부하 테스트 시작 전 inventory + 갱신
+- 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json` / `system-dashboard.json` 2분할 신설, 메트릭 이름 현행 코드 정합. (CONCERNS C-9 동반 해소)
 
 #### TC-3 — 재고 동기화 정책 (부팅 외 시점)
 
@@ -299,12 +288,12 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 - `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
 - `pg-service/.../application/service/DuplicateApprovalHandler.java`
 
-#### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 / pg 범위 제외)
+#### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 
 장기 운영 시 만료 row 누적으로 쿼리 성능 저하 가능.
 
 **현황**:
-- product-service `stock_commit_dedupe` — ✅ `DedupeCleanupWorker` (`@Scheduled`) 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). `deleteExpired` 만료 행 일괄 DELETE + `SchedulerConfig` 활성 게이트
+- product-service `stock_commit_dedupe` — ✅ `DedupeCleanupWorker` (`@Scheduled`) 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). `deleteExpired` 만료 행 일괄 DELETE + `SchedulerConfig` 활성 게이트. 단, worker 와 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` 에 `scheduler.enabled: true` 플래그가 누락돼 운영 docker 포함 어떤 배포에서도 실제 미기동 상태였음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화.
 - pg-service `pg_inbox` — **범위 제외**. 종결 행이 confirm 재배달 멱등 SoT 라 청소 대상 아님 (terminal row 보존이 멱등성 보장의 본질)
 - payment-service `payment_event_dedupe` — ✅ `DedupeCleanupWorker` 도입 완료 (TC-13-FOLLOW-2)
 - payment-service 의 Redis dedupe (재고 차감/보상 token) 는 TTL 자동 expire — 문제 없음
@@ -313,24 +302,19 @@ STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `ha
 - `product-service/.../infrastructure/idempotency/JdbcEventDedupeStore.java`
 - `product-service/.../infrastructure/scheduler/DedupeCleanupWorker.java`
 
-#### TC-12 — pg-service Worker.stop 채널 drain 도입
+#### TC-12 — pg-service Worker.stop 채널 drain 도입 ⏸️ 보류 (2026-06-14, 실익 대비 복잡도 부적합)
 
-`PgOutboxImmediateWorker.stop()` 의 graceful 동작이 *의도한 설계* 와 *현재 구현* 사이에 갭이 있음.
+**보류 결정 (PG-WORKER-GRACEFUL-DRAIN discuss 사전 브리핑 단계)**: 채널 잔여는 RDB SoT(`pg_outbox`/`pg_inbox`) + 폴링 회수로 **유실 0 이 이미 보장**된다. drain 의 실익은 "종료 시 인메모리 잔여 즉시 처리 → 재기동 후 폴링 지연 단축"이라는 graceful 품질 개선에 한정. 학습 프로젝트에서 이 한계 이득이 동반 복잡도(① 새 유입 차단을 위한 Kafka consumer→워커→채널 SmartLifecycle phase 순서 정합, ② outbox/inbox 공통 base 대칭 처리 — inbox 는 벤더 호출 in-flight, ③ drain-timeout + 폴백 + K8s grace period 정합)를 정당화하지 못한다고 판단. 운영 환경에서 종료 지연이 실제 문제로 측정되면 재검토.
 
-**현황**:
-- `stop()` 가 `running=false` + `Thread::interrupt` + `worker.join(10s)` + `relayExecutor.shutdown()` 까지만 수행
-- Worker 가 `channel.take()` 에서 `InterruptedException` 받으면 채널에 남아있는 `OutboxJob` 들을 drain 안 하고 즉시 종료
-- 잔여 Job 은 다음 부팅 시 `PgOutboxPollingWorker` 가 RDB SoT 에서 회수 — 메시지 유실 0 은 보장됨
-
-**도입 방향**:
-1. `stop()` 안에 best-effort drain 단계 추가 — `pg.outbox.channel.drain-timeout-ms` (default 5000) 안에서 채널이 비워질 때까지 폴링 대기
-2. drain timeout 초과 시 기존 경로 (interrupt + join) 로 폴백
-3. K8s SIGTERM grace period(보통 30s) 와 정합성 검증
+**참고 — 코드 현황 (재검토 시 출발점)**:
+- stop 로직은 CLEANUP-BATCH-C 에서 `AbstractImmediateWorker.stop(Runnable)` 로 공통화됨 (outbox/inbox 즉시 워커 공유). 현재 `running=false` → 워커 `interrupt` → `join(10s)` → executor `awaitTermination(10s)→shutdownNow`. 채널 잔여 drain 단계 없음.
+- 이미 `executor.submit` 된 in-flight 는 executor graceful shutdown 으로 완료 대기됨. 미take 채널 잔여만 종료 시 메모리 소멸 → 폴링 회수.
+- 채널(`PgOutboxChannel`/`PgInboxChannel`)은 SmartLifecycle 아님(단순 `LinkedBlockingQueue` 빈). `AbstractImmediateWorker.getPhase()` 주석의 "채널 나중 stop drain" 의도는 채널이 lifecycle 이 아니라 미실현 — 재검토 시 이 갭부터 정리.
 
 **관련 코드**:
-- `pg-service/.../infrastructure/scheduler/PgOutboxImmediateWorker.java:91-106` (stop 메서드)
-- `pg-service/.../infrastructure/channel/PgOutboxChannel.java`
-- `pg-service/.../infrastructure/scheduler/PgOutboxPollingWorker.java` (RDB 폴백)
+- `pg-service/.../infrastructure/scheduler/AbstractImmediateWorker.java` (`stop(Runnable)` 공통 base)
+- `pg-service/.../infrastructure/channel/{PgOutboxChannel,PgInboxChannel}.java`
+- `pg-service/.../infrastructure/scheduler/{PgOutboxPollingWorker,PgInboxPollingWorker}.java` (RDB 폴백)
 
 #### TC-15 — PG-CONFIRM-LISTENER-SPLIT PHASE2 정밀화
 
