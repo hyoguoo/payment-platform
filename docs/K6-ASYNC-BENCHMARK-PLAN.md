@@ -73,7 +73,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: docker-compose.benchmark.yml override 신설
-- [ ] Task 2: 벤치 전용 대용량 재고 시드 스크립트
+- [x] Task 2: 벤치 전용 대용량 재고 시드 스크립트
 - [ ] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
 - [ ] Task 4: k6 async-payment.js (e2e 시나리오)
 - [ ] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
@@ -122,7 +122,11 @@ flowchart TD
 **매핑**: 결정 "측정 재고"(고갈 방지), 장애 "재고 고갈"
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/bench-seed-stock.sh` 신설, 실행 권한 부여(chmod +x).
+- `bash -n` 문법 검증 통과.
+- product RDB `stock.quantity` UPDATE(`BENCH_STOCK` 기본값 10,000,000) → `ROW_COUNT()` 0이면 exit 1(대상 없음 조기 차단).
+- redis-stock `stock:{productId}` SET 후 GET 으로 정합 재확인, 불일치 시 exit 1.
+- `BENCH_STOCK` / `PRODUCT_ID` 환경 변수로 덮어쓰기 가능, 반복 실행 멱등.
 
 ---
 
