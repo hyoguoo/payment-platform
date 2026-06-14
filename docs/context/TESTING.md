@@ -1,6 +1,6 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — Fake list / 통합 테스트 패턴 갱신)
+> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D — Testcontainers reuse 현실 반영 + 스키마 관리 방식별 DB명 분리 규칙)
 
 ## 테스트 프레임워크
 
@@ -40,29 +40,35 @@
 
 ## Testcontainers MySQL 패턴
 
+통합 테스트는 `withReuse(true)` + 전역 `testcontainers.reuse.enable=true`(`src/test/resources/testcontainers.properties`)로 **컨테이너를 재사용**한다. JUnit5 `@Container`/`@Testcontainers` 를 쓰지 않고 static 블록에서 수동 `start()` 한다 — `@Container` 는 클래스 종료 후 `stop()` 을 호출해 `withReuse(true)` 를 무력화하기 때문.
+
 ```java
 @SpringBootTest
-@Testcontainers
 @Tag("integration")
 class SomeIntegrationTest {
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
+    @SuppressWarnings("resource")
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0")
+            .withDatabaseName("...")   // 스키마 관리 방식별로 분리 (아래)
+            .withReuse(true);
+    static { MYSQL.start(); }
 
     @DynamicPropertySource
-    static void registerProps(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", mysql::getJdbcUrl);
+    static void props(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
         // ...
     }
 }
 ```
 
-부팅 시 자동:
-1. Testcontainers 가 새 MySQL 컨테이너 기동
-2. Flyway `migrate()` 가 V1 부터 적용
-3. JPA `ddl-auto: validate` 가 schema 검증
-4. 테스트 실행
+### 스키마 관리 방식별 DB명 분리 (필수)
 
-매 테스트 클래스마다 새 컨테이너 — schema 가 통합 V1 으로 잘 부팅되는 사실 자체가 회귀 게이트 역할.
+payment-service 통합테스트는 스키마 생성 방식이 둘로 갈린다:
+- **create-drop 그룹** — `@ActiveProfiles("test")`(`application-test.yml`: `flyway.enabled=false` + `ddl-auto: create-drop`). JPA 가 스키마 생성. DB명 `payment-test` 를 점유(SoT).
+- **flyway-on 그룹** — `@DynamicPropertySource` 로 `flyway.enabled=true` + `ddl-auto=none` override. Flyway V1→V2 가 스키마 생성.
+
+reuse 컨테이너에서 **두 방식이 같은 DB명을 공유하면**, create-drop 이 만든 history 테이블 없는 스키마에 Flyway 가 진입해 `Found non-empty schema but no schema history table` 로 ApplicationContext 로드가 깨진다(여러 모듈 통합테스트 동시 기동 시 flaky — 단일 모듈 격리 실행은 우연히 GREEN). 따라서 **flyway-on 통합테스트는 각자 전용 DB명을 갖는다**(`payment-eos-test` / `payment-scr-test` / `payment-dedupe-test` / `payment-dedupe-roundtrip-test` / `payment-dedupe-cleanup-test`). create-drop 그룹만 `payment-test` 를 쓴다. (C-11 처방, CLEANUP-BATCH-D)
+
+reuse 로 컨테이너 자체는 빌드 간 재사용되어 기동 비용이 절감되고, DB명 분리로 스키마 관리 방식 경합만 차단한다. schema 가 V1→V2 로 잘 부팅되는 사실 자체가 마이그레이션 회귀 게이트 역할도 겸한다.
 
 ## Contract test 패턴
 

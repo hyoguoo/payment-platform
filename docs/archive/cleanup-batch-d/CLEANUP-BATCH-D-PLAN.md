@@ -181,4 +181,21 @@ flowchart TD
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+> ship 단계 코드 리뷰 (reviewer + domain-expert), 브랜치 #100 diff.
+
+**domain-expert: pass** — findings 없음. product cleanup 활성화 멱등성(TTL P8D > Kafka retention 7d 불변식)·재고 정합·테스트 커버리지 무손상 확인.
+
+**reviewer: revise (critical 0 / major 2 / minor 0)** — 둘 다 STACK.md 스케줄러 절 문서 정확성:
+
+| # | sev | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| 1 | major | STACK.md 스케줄러 절 "`OutboxAsyncConfirmService` outbox 폴링"이 사실 오류 — 이 클래스엔 `@Scheduled` 없음(`PaymentConfirmService` 구현체). 실제 폴링 worker 는 `OutboxWorker`(`@Scheduled fixedDelayString=scheduler.outbox-worker.fixed-delay-ms`) | **채택** | 영구 SSOT 사실 오류. `OutboxWorker`(outbox PENDING 폴링·Kafka 발행)로 정정 |
+| 2 | major | STACK.md 스케줄러 절이 pg-service 누락 — pg 는 `PgServiceConfig` 가 `@EnableScheduling` 만, `@ConditionalOnProperty(scheduler.enabled)` 없이 **게이트 없이 항상 활성**(payment/product 와 다른 메커니즘). 매트릭스에 pg 행 없음 | **채택** | 독자가 "scheduler.enabled 가 전 서비스 공통 게이트"로 오인 우려. 매트릭스에 pg 행(게이트 없음/항상 활성) 추가 + 절 범위 명시 |
+
+수정: A3 implementer 위임 — 커밋 `527d0272` (STACK.md 스케줄러 절 사실 정정: OutboxWorker 정정 + pg-service 행 추가 + 매트릭스 서비스×열 재구조).
+
+**재리뷰 (round 2, reviewer): pass** — major 2건 코드 실측 해소 확인(OutboxWorker 시그니처 일치, pg `PgServiceConfig` 게이트 부재 일치, 매트릭스 4행 정확). 새 critical/major 없음.
+
+| # | sev | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| 3 | minor | STACK.md 역할별 목록에 payment metrics 3종(`PaymentStateMetrics`/`PaymentHealthMetrics`/`PaymentOutboxMetrics`) + pg `PgOutboxMetrics` 일부 누락. 게이트 정책 정확성엔 무영향(metrics 도 동일 게이트 종속) | **채택(보강)** — 커밋 `3406803f` | 사용자 결정. metrics 3종 망라 + 게이트 종속 뉘앙스(State/Health 는 `@EnableScheduling` 경유, OutboxMetrics 는 `@ConditionalOnProperty` 직접) 정확 기재 |
