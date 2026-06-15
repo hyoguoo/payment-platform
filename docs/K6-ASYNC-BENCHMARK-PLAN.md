@@ -77,7 +77,7 @@ flowchart TD
 - [x] Task 3: k6 helpers.js (상수·메트릭·요청 헬퍼)
 - [x] Task 4: k6 async-payment.js (e2e 시나리오)
 - [x] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
-- [ ] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
+- [x] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
 - [ ] Task 7: 측정 실행 + 결과 리포트
 
 ## 태스크
@@ -238,7 +238,15 @@ flowchart TD
 **domain_risk 근거**: silent loss(조용한 유실) 탐지 정합성 — 교차식이 QUARANTINED/지연종결을 분해하지 않으면 정상 지연을 유실로 오탐하거나 진짜 유실을 놓침
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/k6/verify-settlement.sh` 신설, 실행 권한 부여(chmod +x).
+- `bash -n` 문법 검증 통과.
+- settle 대기: RECONCILER_TIMEOUT(30s) + RECONCILER_SCAN_MS(15s) + OutboxWorker(2s) + pg 왕복 여유(5s) = 합산 52s → SETTLE_WAIT_SECONDS 기본값 60s. 5초 단위 카운트다운 표시.
+- payment DB 집계: `payment-mysql-payment` 컨테이너 / `payment-platform` DB / `payment_event` 테이블 — DONE/FAILED/QUARANTINED/READY/IN_PROGRESS/RETRYING/CANCELED/PARTIAL_CANCELED/EXPIRED 전체 상태 카운트.
+- k6 결과 JSON 파싱(jq): `confirm_requests_count` / `payment_failed_count` / `e2e_timeout_count` 추출 → k6 DONE = confirm - FAILED - timeout.
+- 교차식 [1] k6(DONE+FAILED+timeout) == DB(DONE+FAILED+QUARANTINED+미종결) / [2] k6(DONE) == DB(DONE) 출력 및 PASS/FAIL 판정.
+- 불일치 해석: 지연 종결(timeout 중 settle 후 DONE) vs 진짜 유실(settle 후 미종결) 분류 안내. 미종결 order_id 조회 SQL 제공.
+- QUARANTINED>0 트리아지: redis-stock 헬스 실시간 확인(docker inspect + redis-cli GET stock:1) + CACHE_DOWN 경로 의심 안내.
+- `common.sh` `print_*` / `check_docker` 헬퍼 재사용. env로 CASE_NAME/SETTLE_WAIT_SECONDS/DB 접속 정보 override 가능.
 
 ---
 

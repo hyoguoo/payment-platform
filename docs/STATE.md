@@ -7,7 +7,7 @@
 - **주제**: K6-ASYNC-BENCHMARK (비동기 결제 경로 k6 부하 측정 시나리오 신규 작성)
 - **단계**: execute
 - **이슈/브랜치**: #102
-- **활성 태스크**: Task 6 (verify-settlement.sh — DB 종결 카운트 ↔ k6 교차 검증)
+- **활성 태스크**: Task 7 (측정 실행 + 결과 리포트 — 환경 의존, 사용자 협조)
 - **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계) + `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan 완료, 7 태스크)
 
 ## 재개 메모
