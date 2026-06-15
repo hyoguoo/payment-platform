@@ -5,18 +5,20 @@
 ## 활성 작업
 
 - **주제**: K6-ASYNC-BENCHMARK (비동기 결제 경로 k6 부하 측정 시나리오 신규 작성)
-- **단계**: execute
+- **단계**: ship
 - **이슈/브랜치**: #102
-- **활성 태스크**: Task 7 (측정 실행 + 결과 리포트 — 환경 의존, 사용자 협조)
-- **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계) + `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan 완료, 7 태스크)
+- **활성 태스크**: 전 태스크(Task 1~7) 완료 — 다음은 ship(리뷰 + 마무리)
+- **산출물**: `docs/topics/K6-ASYNC-BENCHMARK.md` (설계) + `docs/K6-ASYNC-BENCHMARK-PLAN.md` (plan) + `docs/topics/K6-ASYNC-BENCHMARK-REPORT.md` (측정 결과)
 
 ## 재개 메모
 
-- plan 완료(게이트 R2 reviewer + domain-expert 모두 pass). 다음은 execute — Task 1부터 순차 구현.
-- 측정 자산 백지 상태. 신규: `docker-compose.benchmark.yml`, `scripts/bench-seed-stock.sh`, `scripts/k6/{helpers.js, async-payment.js, run-benchmark.sh, verify-settlement.sh}`, 결과 리포트.
-- 전 태스크 tdd=false(측정 자산, Java 단위 테스트 대상 없음). 검증은 smoke run 정합성 확인 + 교차식. Task 4·6 domain_risk=true.
-- 게이트 정정 반영된 코드 사실(execute 시 준수): checkout 중복=HTTP 200/201(body isDuplicate 필드 없음), 재고 부족 confirm=400, confirm은 동기 재고차감+TX 후 202, reconciler timeout(`RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS`)+scan(`RECONCILER_FIXED_DELAY_MS`) 둘 다 yml 미정의→env 단축 주입.
-- Task 7(측정 실행)은 로컬 풀스택 + k6 설치 필요(환경 의존). 부하 곡선·타임아웃·reconciler 단축 구체값은 execute 실측 보정.
+- execute 완료(Task 1~7). 다음은 ship — 코드 리뷰(reviewer + domain-expert) → 수정 → 검증 → 문서 동기화 → 아카이브 → PR.
+- 신규 자산: `docker-compose.benchmark.yml`(heap 상한 + payment 포트 노출), `scripts/bench-seed-stock.sh`, `scripts/k6/{helpers.js, async-payment.js, run-benchmark.sh, verify-settlement.sh}`, `docs/topics/K6-ASYNC-BENCHMARK-REPORT.md`.
+- **측정 완료**: 저/고 2환경 clean 측정(peak 25, confirm 각 1889). 양환경 checks 100%/timeout 0/유실 0. 동기 응답은 벤더 지연 무관(38ms/21ms), e2e만 벤더 지연 반영(582ms/1.62s) — 비동기 흡수 입증. 상세는 REPORT.
+- **측정 중 스크립트 버그 6건 수정**(Task 7 커밋): 컨테이너명 동적탐색 / `{data:...}` 래퍼 파싱 / JVM heap 상한·포트노출(OOM) / threshold 허용 / bench-seed 멱등 / VU·부하곡선 env화.
+- **환경 한계**(리뷰 시 인지): 로컬 7.65GB OOM 한계로 baseline 100→200→400 대신 peak 25, gateway 우회 + 관측성 미기동. 절대 TPS는 운영 재측정 필요.
+- **현재 docker 스택**: benchmark 측정 상태(pg 고지연, payment benchmark profile, gateway/관측성 down). ship 검증 후 `compose-up.sh --down`/`--clean`으로 정리 가능.
+- `results/*.json`은 gitignore(측정 raw, 리포트가 SSOT).
 
 ## 최근 완료
 

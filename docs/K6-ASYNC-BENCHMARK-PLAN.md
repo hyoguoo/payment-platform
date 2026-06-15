@@ -78,7 +78,7 @@ flowchart TD
 - [x] Task 4: k6 async-payment.js (e2e 시나리오)
 - [x] Task 5: run-benchmark.sh (저/고 2환경 오케스트레이션)
 - [x] Task 6: 교차 검증 절차 (DB 종결 카운트 ↔ k6)
-- [ ] Task 7: 측정 실행 + 결과 리포트
+- [x] Task 7: 측정 실행 + 결과 리포트
 
 ## 태스크
 
@@ -265,7 +265,14 @@ flowchart TD
 **매핑**: 결정 "산출물"(결과 리포트), "검증"
 
 **완료 결과**
-> (execute에서 채움)
+- 결과 리포트 `docs/topics/K6-ASYNC-BENCHMARK-REPORT.md` 작성.
+- 저/고 2환경 측정(clean 환경, peak 25 req/s, 각 confirm 1889건): 양환경 checks 100% / e2e_timeout 0 / 재고부족 0 / http_req_failed 0%.
+  - 저지연(100-300ms): 동기 응답 p95 38ms, e2e 완료 p95 582ms
+  - 고지연(800-1500ms): 동기 응답 p95 21ms, e2e 완료 p95 1.62s
+  - **핵심 입증**: 벤더 지연 5배 증가에도 동기 응답은 불변(비동기 흡수), e2e 완료만 벤더 지연만큼 증가, 처리량 유지.
+- 교차 검증: settle 후 DB DONE 3779(저1889+고1889+사전e2e1), 미종결 0, QUARANTINED 0 → silent loss 없음.
+- **측정 중 스크립트 버그 6건 수정**(Rule 1 자동 수정, 리포트 §측정 중 발견·수정 사항): ① run-benchmark.sh 컨테이너명 동적 탐색, ② helpers/async-payment `{data:...}` 래퍼 파싱, ③ benchmark override JVM heap 상한 + 포트 노출(OOM 방지), ④ run-benchmark threshold(exit 99) 허용, ⑤ bench-seed 멱등 버그(ROW_COUNT→실값 검증), ⑥ VU/부하곡선 env 조정 가능화.
+- **환경 한계**(리포트 §환경 제약): 로컬 7.65GB 단일 인스턴스 OOM 한계로 baseline 100→200→400 대신 peak 25, gateway 우회(payment 직접 8080) + 관측성 미기동. 절대 TPS는 운영 환경 재측정 필요, 본 측정 가치는 저↔고 지연 대비 패턴.
 
 ## plan 게이트 처리 (R1)
 

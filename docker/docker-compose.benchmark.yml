@@ -32,8 +32,17 @@ services:
   # payment-service: benchmark profile + reconciler 단축(settle 창 결정론화)
   # ──────────────────────────────────────────────────────────────────────────
   payment-service:
+    # 부하 측정 시 payment-service 를 호스트에 직접 노출(gateway 우회).
+    # 측정 경로(checkout→user/product Feign, confirm→Kafka pg, status)는 모두
+    # payment-service 가 처리하며 gateway 는 외부 라우팅 홉일 뿐이라, 메모리 한정 환경에서
+    # gateway 를 띄우지 않아도 측정 경로가 동일하게 성립한다. k6 BASE_URL=http://localhost:8080.
+    ports:
+      - "8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker,benchmark
+      # JVM heap 상한 — 호스트 메모리(약 7.6GB) 한정 환경에서 부하 시 heap 팽창으로 인한
+      # 컨테이너 OOM kill(137) 방지. 측정 부하의 주 처리 서비스라 pg 보다 크게 잡는다.
+      JAVA_TOOL_OPTIONS: "${PAYMENT_JAVA_OPTS:--Xmx700m}"
       # reconciler.in-flight-timeout-seconds — Spring relaxed binding 으로 env 주입.
       # 코드 default 300s → 30s 로 단축하여 IN_PROGRESS stuck 회수 기준을 결정론화.
       RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "${RECONCILER_TIMEOUT:-30}"
@@ -48,6 +57,8 @@ services:
   pg-service:
     environment:
       SPRING_PROFILES_ACTIVE: docker,smoke
+      # JVM heap 상한 — payment 와 동일 목적(OOM kill 방지).
+      JAVA_TOOL_OPTIONS: "${PG_JAVA_OPTS:--Xmx600m}"
       PG_GATEWAY_TYPE: fake
       # 저지연 환경: FAKE_LATENCY_MIN=100 FAKE_LATENCY_MAX=300 (기본값)
       # 고지연 환경: FAKE_LATENCY_MIN=800 FAKE_LATENCY_MAX=1500 (run-benchmark.sh 에서 주입)

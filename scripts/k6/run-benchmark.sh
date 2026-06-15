@@ -87,8 +87,14 @@ wait_pg_healthy() {
     print_warning "pg-service healthy 대기(최대 ${timeout_sec}초)..."
 
     while :; do
-        local status
-        status=$(docker inspect -f '{{.State.Health.Status}}' payment-pg-service 2>/dev/null || echo "absent")
+        # 앱 서비스는 container_name 미지정(scale-able)이라 docker-pg-service-1 형식 —
+        # 하드코딩 대신 compose ps -q 로 컨테이너 ID 를 동적으로 얻는다.
+        local cid status
+        cid=$(docker compose ${COMPOSE_ALL} ps -q pg-service 2>/dev/null | head -1)
+        status="absent"
+        if [[ -n "${cid}" ]]; then
+            status=$(docker inspect -f '{{.State.Health.Status}}' "${cid}" 2>/dev/null || echo "absent")
+        fi
 
         if [[ "${status}" == "healthy" ]]; then
             print_info "  ✅ pg-service healthy"
@@ -97,7 +103,7 @@ wait_pg_healthy() {
 
         if (( $(date +%s) > deadline )); then
             print_error "  ❌ pg-service ${timeout_sec}초 내 healthy 실패 (현재: ${status})"
-            docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' payment-pg-service 2>/dev/null | tail -5 || true
+            [[ -n "${cid}" ]] && docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "${cid}" 2>/dev/null | tail -5 || true
             return 1
         fi
 
@@ -145,6 +151,9 @@ run_k6_case() {
 
     # k6는 handleSummary의 outputPath(results/<caseName>.json)를 실행 CWD 기준으로 생성한다.
     # ROOT_DIR 에서 실행해야 results/ 위치가 일치한다.
+    # k6 threshold 위반(exit 99)은 baseline 탐색 단계에서 정상이므로 측정을 중단시키지 않는다.
+    # 진짜 실행 오류(다른 exit code)만 실패로 처리한다.
+    set +e
     (
         cd "${ROOT_DIR}"
         k6 run \
@@ -154,6 +163,16 @@ run_k6_case() {
             ${K6_EXTRA_ARGS} \
             "${SCRIPT_DIR}/async-payment.js"
     )
+    local k6_exit=$?
+    set -e
+
+    if [[ ${k6_exit} -ne 0 && ${k6_exit} -ne 99 ]]; then
+        print_error "❌ k6 실행 오류 (exit ${k6_exit})"
+        return 1
+    fi
+    if [[ ${k6_exit} -eq 99 ]]; then
+        print_warning "⚠ k6 threshold 위반(exit 99) — 측정 결과는 생성됨(baseline 탐색 단계, 계속 진행)"
+    fi
 
     if [[ -f "${result_file}" ]]; then
         print_info "✅ 결과 파일 생성: ${result_file}"

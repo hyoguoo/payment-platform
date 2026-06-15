@@ -51,8 +51,8 @@ export const options = {
             executor: 'ramping-arrival-rate',
             startRate: 0,
             timeUnit: '1s',
-            preAllocatedVUs: 200,
-            maxVUs: 600,
+            preAllocatedVUs: parseInt(__ENV.PRE_VUS || '200', 10),
+            maxVUs: parseInt(__ENV.MAX_VUS || '600', 10),
             stages: RAMPING_ARRIVAL_RATE_STAGES,
         },
     },
@@ -218,7 +218,9 @@ export function handleSummary(data) {
  */
 function parseResponseBody(body) {
     try {
-        return JSON.parse(body);
+        const parsed = JSON.parse(body);
+        // 공통 응답 래퍼 {data:...} 대응 — data 키가 있으면 벗기고, 없으면 원본 반환
+        return parsed && parsed.data !== undefined ? parsed.data : parsed;
     } catch (_) {
         return null;
     }

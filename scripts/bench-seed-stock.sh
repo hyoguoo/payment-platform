@@ -46,18 +46,30 @@ REDIS_KEY="stock:${PRODUCT_ID}"
 print_section "▶ bench-seed-stock 시작 — productId=${PRODUCT_ID}, stock=${BENCH_STOCK}"
 
 # 1. product RDB stock.quantity UPDATE (SoT)
-AFFECTED=$(docker exec -i "${MYSQL_CONTAINER}" mysql \
+docker exec -i "${MYSQL_CONTAINER}" mysql \
     -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
     -D "${MYSQL_DB}" -N -B -e \
-    "UPDATE stock SET quantity = ${BENCH_STOCK} WHERE product_id = ${PRODUCT_ID}; SELECT ROW_COUNT();" \
+    "UPDATE stock SET quantity = ${BENCH_STOCK} WHERE product_id = ${PRODUCT_ID};" \
+    2>/dev/null
+
+# UPDATE 반영 검증 — 멱등: 값이 이미 동일하면 MySQL affected rows=0 이므로
+# ROW_COUNT 대신 실제 quantity 를 조회해 (행 존재 + 목표값 도달) 으로 판정한다.
+RDB_VAL=$(docker exec -i "${MYSQL_CONTAINER}" mysql \
+    -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+    -D "${MYSQL_DB}" -N -B -e \
+    "SELECT quantity FROM stock WHERE product_id = ${PRODUCT_ID};" \
     2>/dev/null | tail -1)
 
-if [ -z "${AFFECTED}" ] || [ "${AFFECTED}" -eq 0 ]; then
-    print_error "❌ product RDB UPDATE 실패 — productId=${PRODUCT_ID} 가 stock 테이블에 없거나 접속 실패"
+if [ -z "${RDB_VAL}" ]; then
+    print_error "❌ product RDB stock 행 없음 — productId=${PRODUCT_ID} (접속 실패 또는 시드 누락)"
+    exit 1
+fi
+if [ "${RDB_VAL}" != "${BENCH_STOCK}" ]; then
+    print_error "❌ RDB UPDATE 반영 안 됨 — 현재값=${RDB_VAL}, 기대값=${BENCH_STOCK}"
     exit 1
 fi
 
-print_info "  RDB stock.quantity = ${BENCH_STOCK} (productId=${PRODUCT_ID}, affected=${AFFECTED})"
+print_info "  RDB stock.quantity = ${BENCH_STOCK} (productId=${PRODUCT_ID})"
 
 # 2. redis-stock SET (RDB→redis 정합)
 docker exec -i "${REDIS_CONTAINER}" redis-cli SET "${REDIS_KEY}" "${BENCH_STOCK}" >/dev/null

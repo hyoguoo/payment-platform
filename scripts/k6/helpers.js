@@ -62,14 +62,19 @@ export const POLL_TIMEOUT_MS = Math.max(
 
 /**
  * ramping-arrival-rate executor용 단계 배열.
- * baseline: 100 → 200 → 400 req/s (각 단계 1분).
- * 측정하며 target을 조정할 것 — PLAN.md Task 3 부하 곡선 결정 참조.
+ * baseline: 100 → 200 → 400 req/s (웜업/중간 단계 60s, 피크 120s).
+ * env 로 조정 가능(측정하며 조정 — PLAN.md Task 3 부하 곡선 결정 참조):
+ *   PEAK_RATE  — 피크 목표 req/s (기본 400). 웜업=1/4, 중간=1/2 로 자동 산출
+ *   STAGE_SEC  — 웜업/중간 단계 길이(초, 기본 60). 피크는 2×, 쿨다운은 30s 고정
+ * smoke run 예: PEAK_RATE=20 STAGE_SEC=10
  */
+export const PEAK_RATE = parseInt(__ENV.PEAK_RATE || '400', 10);
+const STAGE_SEC = parseInt(__ENV.STAGE_SEC || '60', 10);
 export const RAMPING_ARRIVAL_RATE_STAGES = [
-    { duration: '1m', target: 100 },  // 웜업
-    { duration: '1m', target: 200 },  // 중간 부하
-    { duration: '2m', target: 400 },  // 피크 부하
-    { duration: '30s', target: 0 },   // 쿨다운
+    { duration: `${STAGE_SEC}s`, target: Math.max(1, Math.round(PEAK_RATE / 4)) },  // 웜업
+    { duration: `${STAGE_SEC}s`, target: Math.max(1, Math.round(PEAK_RATE / 2)) },  // 중간 부하
+    { duration: `${STAGE_SEC * 2}s`, target: PEAK_RATE },                            // 피크 부하
+    { duration: '30s', target: 0 },                                                  // 쿨다운
 ];
 
 // ---------------------------------------------------------------------------
@@ -290,7 +295,9 @@ function generateUUID() {
  */
 function parseJSON(text) {
     try {
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+        // 공통 응답 래퍼 {data:...} 대응 — data 키가 있으면 벗기고, 없으면 원본 반환
+        return parsed && parsed.data !== undefined ? parsed.data : parsed;
     } catch (_) {
         return null;
     }
