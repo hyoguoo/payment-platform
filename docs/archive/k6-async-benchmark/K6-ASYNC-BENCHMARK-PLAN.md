@@ -294,4 +294,11 @@ R1 reviewer + domain-expert 모두 revise. 8 findings 반영(PLAN + topic 동시
 R2: **reviewer pass + domain-expert pass**. R1 findings 8건 모두 코드 사실 대조로 정확히 반영 확인. domain-expert 잔여 minor 1건(settle 대기값을 "timeout + 1 scan 틱 상한 + OutboxWorker + pg 왕복"으로 확정 + 스냅샷 직전 reconciler 복원 로그 확인)은 게이트 통과를 막지 않는 execute 보강 권고 → Task 6에 선반영.
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+ship 리뷰: reviewer **pass** / domain-expert **pass**. critical·major 0건, minor 3건(전부 측정 도구 한정, 동작 문제 없어 스킵). domain-expert는 측정 오염 차단·cascade 기록·DLT 갭 후속·도메인 부작용 없음을 코드 교차검증으로 확인.
+
+| # | 출처 | 등급 | finding | 처리 |
+|---|---|---|---|---|
+| 1 | reviewer | minor | `verify-settlement.sh`가 단일 케이스 JSON vs 누적 DB 비교 → 양환경 측정 시 교차식 [2] 형식상 불일치 | 스킵 — REPORT §정합성 교차 검증에 한계 명시 + 후속(testid 필터링) 여지 |
+| 2 | reviewer | minor | sweep/verify 스크립트는 `set -e` 없음(run-benchmark만 있음) | 스킵 — bench-seed는 명시 값 검증으로 보완, verify는 불일치 허용 설계(의도적) |
+| 3 | reviewer | minor | `sweep.sh` DURATION `s` 접미사 가정(다른 단위 주입 시 파싱 오류) | 스킵 — 사용법에 `25s` 형식 문서화, 측정 도구 한정 |
