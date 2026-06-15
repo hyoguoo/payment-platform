@@ -168,3 +168,27 @@ e2e_completion 증가의 원인은 비동기 처리량이 아니라:
 | 비동기 e2e | (파이프라인 병목 없음) consumer 블로킹은 설정/토픽 갭 | — | reconciler 완화 + DLT 토픽 | lag 33204→0 |
 
 동기 경로는 DB 풀이라는 명확한 자원 병목(처방 효과 정량), 비동기 경로는 처리량 병목 없이 흡수가 작동하되 운영 설정(reconciler)·인프라 갭(DLT 토픽)이 함정. 절대 수치는 로컬 단일 인스턴스 기준이며 운영 환경 재측정 필요.
+
+---
+
+# 후속 과제
+
+본 측정에서 도출됐으나 로컬 환경 제약으로 본 토픽 범위 밖인 것들. 다음 목표로 제대로 다룬다.
+
+## (다음 목표) payment scale-out 처리량 측정
+
+사이클2에서 "단일 인스턴스 CPU/폴링이 e2e 한계"로 추정했다. 비동기 경로의 핵심 강점인 **수평 확장 = 처리량 선형 증가**를 payment 2~3 인스턴스로 입증하는 것이 자연스러운 다음 단계.
+
+**선행/제약**(로컬에선 부적합, 운영급 환경 권장):
+- 메모리 — 인스턴스당 ~0.9GB, 현 7.65GB 로컬은 2개도 빠듯·3개 OOM. 충분한 메모리 환경 필요.
+- 로드밸런싱 — payment 직접 포트 노출(8080) 대신 gateway 경유로 복귀해 인스턴스 분산.
+- **EOS transactional.id 멀티 인스턴스 검증**(L-3/L-6, TC-13-FOLLOW-1) — 인스턴스별 hostname 고유화로 producer fencing 정상 동작 확인이 선행. 미검증 영역.
+- 측정 관점 — 인스턴스 1→2→3 에서 confirm 처리율·e2e_completion이 선형 개선되는지, Kafka 파티션(3) 분산이 consumer 병렬을 받쳐주는지.
+
+## (별도 수정) DLT 토픽 suffix 갭 — consumer 블로킹 잠재 버그
+
+`create-topics.sh`는 `.dlq` 컨벤션(`payment.events.confirmed.dlq`)으로 토픽을 만드는데, Spring `DeadLetterPublishingRecoverer` 기본 suffix는 `-dlt`(`payment.events.confirmed-dlt`). 처리 예외가 누적되면 DLT 발행 실패 → consumer 영구 블로킹(본 측정에서 실제 재현). 운영에선 예외 빈도가 낮아 안 드러나지만 실재하는 갭. 토픽 네이밍 정합(둘 중 하나로 통일) 또는 recoverer 목적지 명시로 해소.
+
+## (측정 방식 개선) status 폴링 자가 부하
+
+e2e 부하의 ~70%가 status 폴링(http_reqs 664/s). push 알림(SSE/WebSocket) 또는 롱폴링으로 자가 부하를 제거하면 비동기 e2e의 실제 한계를 더 정확히 측정 가능.
