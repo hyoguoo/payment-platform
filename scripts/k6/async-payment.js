@@ -40,21 +40,31 @@ import {
 // 시나리오 옵션
 // ---------------------------------------------------------------------------
 
+// 부하 모델 분기:
+//   CONSTANT_RATE>0 → constant-arrival-rate (고정 rate steady-state, 병목 sweep용)
+//   미지정          → ramping-arrival-rate (baseline 곡선)
+const SWEEP_RATE = parseInt(__ENV.CONSTANT_RATE || '0', 10);
+const loadScenario = SWEEP_RATE > 0
+    ? {
+        executor: 'constant-arrival-rate',
+        rate: SWEEP_RATE,
+        timeUnit: '1s',
+        duration: __ENV.DURATION || '30s',
+        preAllocatedVUs: parseInt(__ENV.PRE_VUS || '100', 10),
+        maxVUs: parseInt(__ENV.MAX_VUS || '400', 10),
+    }
+    : {
+        executor: 'ramping-arrival-rate',
+        startRate: 0,
+        timeUnit: '1s',
+        preAllocatedVUs: parseInt(__ENV.PRE_VUS || '200', 10),
+        maxVUs: parseInt(__ENV.MAX_VUS || '600', 10),
+        stages: RAMPING_ARRIVAL_RATE_STAGES,
+    };
+
 export const options = {
     scenarios: {
-        /**
-         * ramping-arrival-rate: 도착률(req/s) 기반 부하 모델.
-         * VU 수와 독립적으로 초당 요청 수를 제어해 목표 TPS를 정밀하게 측정한다.
-         * preAllocatedVUs는 피크 target(400 req/s)에서 처리 여유를 갖도록 설정한다.
-         */
-        async_payment: {
-            executor: 'ramping-arrival-rate',
-            startRate: 0,
-            timeUnit: '1s',
-            preAllocatedVUs: parseInt(__ENV.PRE_VUS || '200', 10),
-            maxVUs: parseInt(__ENV.MAX_VUS || '600', 10),
-            stages: RAMPING_ARRIVAL_RATE_STAGES,
-        },
+        async_payment: loadScenario,
     },
 
     thresholds: {
@@ -155,6 +165,12 @@ export default function () {
 
     if (!confirmOk) {
         // confirm 실패(재고 부족 또는 서버 오류) — 폴링 불필요
+        return;
+    }
+
+    // 동기 confirm 경로 병목 측정 시 폴링 생략(SKIP_POLL=true) — confirm 202 응답까지만 측정.
+    // 폴링 VU 누적이 없어 고부하에서 메모리 부담이 작고, 동기 경로(Hikari) 병목에 집중할 수 있다.
+    if (__ENV.SKIP_POLL === 'true') {
         return;
     }
 

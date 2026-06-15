@@ -43,6 +43,9 @@ services:
       # JVM heap 상한 — 호스트 메모리(약 7.6GB) 한정 환경에서 부하 시 heap 팽창으로 인한
       # 컨테이너 OOM kill(137) 방지. 측정 부하의 주 처리 서비스라 pg 보다 크게 잡는다.
       JAVA_TOOL_OPTIONS: "${PAYMENT_JAVA_OPTS:--Xmx700m}"
+      # Hikari DB 커넥션 풀 상한 — 병목 분석/튜닝용 env 조정(기본 30 = baseline).
+      # Spring relaxed binding 으로 application-benchmark.yml 의 maximum-pool-size(30) 를 override.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "${HIKARI_MAX_POOL:-30}"
       # reconciler.in-flight-timeout-seconds — Spring relaxed binding 으로 env 주입.
       # 코드 default 300s → 30s 로 단축하여 IN_PROGRESS stuck 회수 기준을 결정론화.
       RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "${RECONCILER_TIMEOUT:-30}"
