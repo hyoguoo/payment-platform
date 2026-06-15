@@ -248,3 +248,6 @@ bin
 
 # k6 benchmark results
 scripts/k6/results/
+
+# k6 부하 측정 raw 결과 (리포트가 SSOT)
+results/

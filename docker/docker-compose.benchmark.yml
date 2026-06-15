@@ -1,0 +1,76 @@
+# docker-compose.benchmark.yml — 부하 측정 전용 override (k6 benchmark 스택).
+#
+# 용도: k6 비동기 결제 경로 부하 측정(저지연/고지연 2환경).
+#       apps.yml 위에 overlay하여 payment/pg 측정 전용 설정을 주입한다.
+#
+# 사용법:
+#   docker compose \
+#     -f docker/docker-compose.infra.yml \
+#     -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.observability.yml \
+#     -f docker/docker-compose.benchmark.yml \
+#     up -d
+#
+# 환경변수 (host shell 또는 .env 에서 주입):
+#   FAKE_LATENCY_MIN  — pg fake gateway 최소 지연(ms). 기본 100 (저지연 환경)
+#   FAKE_LATENCY_MAX  — pg fake gateway 최대 지연(ms). 기본 300 (저지연 환경)
+#   FAKE_FAIL_RATE    — pg fake gateway 실패율(0.0~1.0). 기본 0 (baseline — QUARANTINED 방지)
+#   RECONCILER_TIMEOUT  — payment reconciler IN_PROGRESS 회수 기준 초(초). 기본 30
+#                         (코드 default 300s → 단축하여 settle 창을 결정론화)
+#   RECONCILER_SCAN_MS  — payment reconciler 스캔 주기(ms). 기본 15000
+#                         (코드 default 120000ms → 단축하여 scan 틱 대기를 최소화)
+#
+# 주의:
+#   - compose 파일은 smoke.yml 과 분리됨(목적/env가 다름).
+#     pg-service 는 fake gateway 활성화를 위해 smoke profile 을 재사용하되,
+#     latency/failRate 는 이 파일에서 별도 값으로 제어한다.
+#   - 이 파일을 production 환경에 적용하면 모든 결제가 FakePgGatewayStrategy 로
+#     우회되어 실제 결제가 이루어지지 않는다. 절대 prod 에 적용 금지.
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # payment-service: benchmark profile + reconciler 단축(settle 창 결정론화)
+  # ──────────────────────────────────────────────────────────────────────────
+  payment-service:
+    # 부하 측정 시 payment-service 를 호스트에 직접 노출(gateway 우회).
+    # 측정 경로(checkout→user/product Feign, confirm→Kafka pg, status)는 모두
+    # payment-service 가 처리하며 gateway 는 외부 라우팅 홉일 뿐이라, 메모리 한정 환경에서
+    # gateway 를 띄우지 않아도 측정 경로가 동일하게 성립한다. k6 BASE_URL=http://localhost:8080.
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,benchmark
+      # JVM heap 상한 — 호스트 메모리(약 7.6GB) 한정 환경에서 부하 시 heap 팽창으로 인한
+      # 컨테이너 OOM kill(137) 방지. 측정 부하의 주 처리 서비스라 pg 보다 크게 잡는다.
+      JAVA_TOOL_OPTIONS: "${PAYMENT_JAVA_OPTS:--Xmx700m}"
+      # Hikari DB 커넥션 풀 상한 — 병목 분석/튜닝용 env 조정(기본 30 = baseline).
+      # Spring relaxed binding 으로 application-benchmark.yml 의 maximum-pool-size(30) 를 override.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "${HIKARI_MAX_POOL:-30}"
+      # reconciler.in-flight-timeout-seconds — Spring relaxed binding 으로 env 주입.
+      # 코드 default 300s → 30s 로 단축하여 IN_PROGRESS stuck 회수 기준을 결정론화.
+      RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "${RECONCILER_TIMEOUT:-30}"
+      # reconciler.fixed-delay-ms — Spring relaxed binding 으로 env 주입.
+      # 코드 default 120000ms(2분) → 15000ms 로 단축하여 scan 틱 대기를 최소화.
+      RECONCILER_FIXED_DELAY_MS: "${RECONCILER_SCAN_MS:-15000}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # pg-service: smoke profile(fake gateway 활성화) + 지연/실패율 env 제어
+  # compose 파일은 smoke.yml 과 분리되나, fake gateway 활성화 목적으로 smoke profile 재사용.
+  # ──────────────────────────────────────────────────────────────────────────
+  pg-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,smoke
+      # JVM heap 상한 — payment 와 동일 목적(OOM kill 방지).
+      JAVA_TOOL_OPTIONS: "${PG_JAVA_OPTS:--Xmx600m}"
+      PG_GATEWAY_TYPE: fake
+      # 저지연 환경: FAKE_LATENCY_MIN=100 FAKE_LATENCY_MAX=300 (기본값)
+      # 고지연 환경: FAKE_LATENCY_MIN=800 FAKE_LATENCY_MAX=1500 (run-benchmark.sh 에서 주입)
+      PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS: "${FAKE_LATENCY_MIN:-100}"
+      PG_GATEWAY_FAKE_LATENCY_MAX_MILLIS: "${FAKE_LATENCY_MAX:-300}"
+      # baseline 측정 — failRate=0 고정(QUARANTINED 발생 방지).
+      # QUARANTINED > 0 발생 시 redis-stock 헬스 점검(CACHE_DOWN 트리아지).
+      PG_GATEWAY_FAKE_FAIL_RATE: "${FAKE_FAIL_RATE:-0}"
+      # benchmark 에서 Toss/NicePay 샌드박스 호출 없음 → placeholder 고정
+      TOSS_SECRET_KEY: "benchmark-unused"
+      NICEPAY_CLIENT_KEY: "benchmark-unused"
+      NICEPAY_SECRET_KEY: "benchmark-unused"
