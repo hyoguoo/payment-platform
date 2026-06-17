@@ -74,7 +74,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: DLT `.dlq` destination resolver 정합 (측정 막는 버그 선제거)
+- [x] Task 1: DLT `.dlq` destination resolver 정합 (측정 막는 버그 선제거)
 - [ ] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
 - [ ] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
 - [ ] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
@@ -104,7 +104,7 @@ flowchart TD
 - 신규 테스트 pass, 발행 목적지 `.dlq` 확인. `./gradlew test` 회귀 0. (commands.confirm.dlq 경로는 영향 없음 — 범위 외 확인)
 
 **완료 결과**
-> (execute에서 채움)
+> `DeadLetterPublishingRecoverer` 단일 인자 생성자가 기본 resolver(`topic + "-dlt"`)로 `payment.events.confirmed-dlt`에 발행하던 버그를 고정 destination resolver `(record, ex) -> new TopicPartition(EVENTS_CONFIRMED_DLQ, record.partition())` 주입으로 수정. `KafkaErrorHandlerConfigTest#dlq_destination_resolver_정합` 신규 추가 + 전체 테스트 회귀 0. (커밋: `c9f88e7a` RED / `feat:` GREEN)
 
 ---
 
