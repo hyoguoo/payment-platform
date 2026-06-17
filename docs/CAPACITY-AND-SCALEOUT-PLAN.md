@@ -78,8 +78,8 @@ flowchart TD
 - [x] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
 - [x] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
 - [x] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
-- [ ] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방
-- [ ] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험
+- [x] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방 (REPORT 사이클 3)
+- [x] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험 (REPORT 사이클 4)
 - [ ] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline
 - [ ] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정
 - [ ] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트
