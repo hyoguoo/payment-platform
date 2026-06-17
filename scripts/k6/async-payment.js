@@ -8,6 +8,17 @@
  *   F2 재고 고갈  — confirm 400(재고 부족) 미발생 check. 실행 전 bench-seed-stock.sh 필수.
  *   F3 QUARANTINED 폴링 맹점 — baseline failRate=0(compose 기본값). 폴링은 DONE/FAILED만 종결.
  *
+ * 폴링 전략 (POLL_STRATEGY env):
+ *   fixed   — 고정 간격(POLL_INTERVAL_MS). 기본값. thundering herd 가능.
+ *   backoff — 지수 백오프 + 완전 지터(Full Jitter). thundering herd 방지.
+ *             VU별 재시도가 분산되어 서버 폴링 부하가 균등화된다.
+ *
+ * 계측 이원화:
+ *   체감 latency  — confirm 202 수신(confirmAt) ~ 폴링 DONE 수신(resolvedAt). 이 스크립트 측정.
+ *   처리 latency  — payment_history 최초 DONE 전이 시각(DB). verify-settlement.sh 사후 조인.
+ *   사후 조인 키  — orderId. console.log JSON 라인으로 confirmAt·resolvedAt·pollEvents 출력.
+ *                   k6 --log-output=file=<path> 또는 stderr 리디렉션으로 추출 가능.
+ *
  * 실행 전 필수 조건:
  *   1. docker-compose.benchmark.yml 스택 기동
  *   2. bench-seed-stock.sh 실행(대용량 재고 시드)
@@ -17,7 +28,11 @@
  *   k6 run \
  *     -e BASE_URL=http://localhost:8080 \
  *     -e CASE_NAME=async-low \
+ *     -e POLL_STRATEGY=backoff \
  *     scripts/k6/async-payment.js
+ *
+ *   # 폴링 OFF (동기 confirm 경로 병목 측정):
+ *   k6 run -e SKIP_POLL=true ...
  */
 
 import { check } from 'k6';
@@ -119,8 +134,19 @@ const paymentFailed = new Counter('payment_failed');
  * 2. checkout status==201 check — 중복 200 발생 시 오염 감지
  * 3. doConfirm — 승인 접수(202), confirm_requests 카운터 내부 증가
  * 4. confirm 202 check + confirm 400 미발생 check
- * 5. confirm 202 시각 기록 → pollStatus — DONE/FAILED 종결 대기
- * 6. DONE: e2e_completion_ms 기록 / FAILED: paymentFailed 집계 / null: 타임아웃(e2eTimeout 내부 증가)
+ * 5. confirm 202 시각(confirmAt) 기록 → pollStatus — DONE/FAILED 종결 대기
+ * 6. DONE/FAILED: e2e_completion_ms 기록 + orderId·confirmAt·resolvedAt·pollEvents JSON 라인 출력
+ *    null: 타임아웃(e2eTimeout 내부 증가)
+ *
+ * 계측 JSON 라인 형식 (console.log):
+ *   {"event":"confirm","orderId":"<id>","confirmAt":<epochMs>}
+ *   {"event":"poll_done","orderId":"<id>","confirmAt":<epochMs>,"resolvedAt":<epochMs>,
+ *    "status":"DONE|FAILED","pollCount":<n>,"pollEvents":[{"at":<epochMs>,"status":"<s>"},…]}
+ *
+ * 사후 DB 조인 방법:
+ *   k6 run ... 2>&1 | grep '"event"' > timing-events.jsonl
+ *   SELECT order_id, MIN(change_status_at) FROM payment_history WHERE current_status='DONE'
+ *   GROUP BY order_id → orderId로 조인해 처리(DB) vs 체감(poll_done.resolvedAt) latency 분리.
  */
 export default function () {
     // Step 1: 주문 생성
@@ -151,13 +177,13 @@ export default function () {
         return;
     }
 
-    // Step 3: confirm 202 시각 기록 기준점 (e2e_completion_ms 시작)
-    const confirmStartMs = Date.now();
-
-    // Step 4: 승인 접수
+    // Step 3: 승인 접수
     const confirmResponse = doConfirm(orderId, amount);
 
-    // Step 5: confirm check — 202 확인 + F2 재고 부족 400 미발생 확인
+    // confirm 202 응답 시각 기록 (폴링 기준점 + 사후 조인 이벤트)
+    const confirmAt = Date.now();
+
+    // Step 4: confirm check — 202 확인 + F2 재고 부족 400 미발생 확인
     const confirmOk = check(confirmResponse, {
         'confirm status==202': (r) => r.status === 202,
         'confirm 재고부족 400 미발생 (F2 재고 고갈 차단)': (r) => r.status !== 400,
@@ -168,13 +194,20 @@ export default function () {
         return;
     }
 
+    // confirm 수락 시각 이벤트 출력 — 사후 DB 처리 시각과 조인하기 위한 기준점
+    console.log(JSON.stringify({
+        event: 'confirm',
+        orderId: orderId,
+        confirmAt: confirmAt,
+    }));
+
     // 동기 confirm 경로 병목 측정 시 폴링 생략(SKIP_POLL=true) — confirm 202 응답까지만 측정.
     // 폴링 VU 누적이 없어 고부하에서 메모리 부담이 작고, 동기 경로(Hikari) 병목에 집중할 수 있다.
     if (__ENV.SKIP_POLL === 'true') {
         return;
     }
 
-    // Step 6: 상태 폴링 — DONE/FAILED 종결 대기 (F3: baseline failRate=0, 폴링은 DONE/FAILED만 종결)
+    // Step 5: 상태 폴링 — DONE/FAILED 종결 대기 (F3: baseline failRate=0, 폴링은 DONE/FAILED만 종결)
     const result = pollStatus(orderId);
 
     if (result === null) {
@@ -183,8 +216,19 @@ export default function () {
     }
 
     // e2e 완료 시간 기록 (confirm 202 시각부터 폴링 종결까지)
-    const e2eDurationMs = Date.now() - confirmStartMs;
+    const e2eDurationMs = result.resolvedAt - confirmAt;
     e2eCompletionMs.add(e2eDurationMs);
+
+    // 폴링 종결 이벤트 출력 — orderId 기준 DB 처리 시각과 사후 조인
+    console.log(JSON.stringify({
+        event: 'poll_done',
+        orderId: orderId,
+        confirmAt: confirmAt,
+        resolvedAt: result.resolvedAt,
+        status: result.status,
+        pollCount: result.pollCount,
+        pollEvents: result.pollEvents,
+    }));
 
     if (result.status === 'FAILED') {
         // FAILED는 정상 종결(PG 거절 등), 별도 집계만 수행

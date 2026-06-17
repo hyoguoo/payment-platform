@@ -75,7 +75,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: DLT `.dlq` destination resolver 정합 (측정 막는 버그 선제거)
-- [ ] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
+- [x] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
 - [ ] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
 - [ ] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
 - [ ] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방
@@ -119,7 +119,13 @@ flowchart TD
 - 폴링 OFF/ON 동작, ON에서 fixed·backoff 전략 토글 동작, confirm·폴링 응답 시각이 orderId로 추출 가능. 정적 검증(k6 run 단발 smoke)으로 파싱 확인.
 
 **완료 결과**
-> (execute에서 채움)
+> `helpers.js`에 `POLL_STRATEGY=fixed|backoff` 상수 + `POLL_MAX_INTERVAL_MS` 상한 추가.
+> `pollStatus` 반환값에 `resolvedAt`·`pollCount`·`pollEvents` 필드 추가 — 각 폴 응답 시각이 배열로 포함되어 orderId 기준 사후 DB 조인 가능.
+> 백오프 전략: `computeBackoffJitter(attempt, base, cap)` — Full Jitter 공식(`random(0, min(cap, base × 2^attempt))`) 적용, thundering herd 방지.
+> `async-payment.js`에서 confirm 202 수신 직후 `{"event":"confirm","orderId":"...","confirmAt":<epochMs>}` JSON 라인 출력.
+> 폴링 종결(DONE/FAILED) 시 `{"event":"poll_done","orderId":"...","confirmAt":...,"resolvedAt":...,"pollEvents":[...]}` JSON 라인 출력.
+> `e2e_completion_ms` = `resolvedAt - confirmAt`(종전 `Date.now() - confirmStartMs`에서 명시 값으로 교체).
+> k6 inspect 통과(ramping·constant-arrival-rate 분기 모두). `SKIP_POLL=true` / `POLL_STRATEGY=fixed|backoff` 토글 동작 확인.
 
 ---
 

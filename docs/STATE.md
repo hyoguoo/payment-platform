@@ -6,7 +6,7 @@
 
 - **주제**: CAPACITY-AND-SCALEOUT (결제 처리량 부하 측정 2페이즈 — 단일 인스턴스 자원 병목 규명 → payment 1→2 scale-out)
 - **단계**: execute
-- **활성 태스크**: Task 2 (k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략 백오프+지터)
+- **활성 태스크**: Task 3 (verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증)
 - **이슈/브랜치**: #104
 - **산출물**: `docs/topics/CAPACITY-AND-SCALEOUT.md` (설계, discuss 완료 — 사전/요약 브리핑 + D1~D6 + acceptance + 명시 가정 + 측정 위생) + `docs/topics/CAPACITY-AND-SCALEOUT-RESEARCH.md` (서칭 지식: USL·Kafka EOS·HikariCP·가상스레드)
 

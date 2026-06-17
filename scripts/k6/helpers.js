@@ -6,6 +6,11 @@
  *
  * 부하 곡선(RAMPING_ARRIVAL_RATE_STAGES)은 baseline 값을 초기값으로 사용하며,
  * 실측 결과에 따라 단계별 target을 조정한다.
+ *
+ * 폴링 전략 (POLL_STRATEGY env):
+ *   fixed   — 고정 간격(POLL_INTERVAL_MS, 기본값). thundering herd 가능.
+ *   backoff — 지수 백오프 + 완전 지터(초기 간격부터 시작, POLL_MAX_INTERVAL_MS 상한).
+ *             VU별 재시도가 분산되어 서버 폴링 부하를 줄인다.
  */
 
 import { Trend, Counter } from 'k6/metrics';
@@ -55,6 +60,20 @@ export const POLL_TIMEOUT_MS = Math.max(
     2000,
     parseInt(__ENV.POLL_TIMEOUT_MS || '10000', 10)
 );
+
+/**
+ * 폴링 전략 선택.
+ *   fixed   — 고정 간격(POLL_INTERVAL_MS). 기본값.
+ *   backoff — 지수 백오프 + 완전 지터. thundering herd 방지.
+ */
+export const POLL_STRATEGY = (__ENV.POLL_STRATEGY || 'fixed').toLowerCase();
+
+/**
+ * 백오프 폴링 최대 간격(ms).
+ * backoff 전략에서 지수 증가의 상한으로 사용한다.
+ * 기본값 4000ms: POLL_INTERVAL_MS(500) × 8배 수준.
+ */
+export const POLL_MAX_INTERVAL_MS = parseInt(__ENV.POLL_MAX_INTERVAL_MS || '4000', 10);
 
 // ---------------------------------------------------------------------------
 // 부하 곡선 상수
@@ -218,9 +237,13 @@ export function doConfirm(orderId, amount) {
  * 결제 상태 폴링 (GET /api/v1/payments/{orderId}/status).
  *
  * - DONE 또는 FAILED 상태에서 폴링을 종료한다.
- * - 폴링 간격과 최대 대기 시간을 인자로 받아 유연하게 조정 가능.
+ * - POLL_STRATEGY env로 폴링 전략을 선택한다.
+ *   fixed   — 고정 간격(intervalMs). thundering herd 발생 가능.
+ *   backoff — 지수 백오프 + 완전 지터(Full Jitter). thundering herd 방지.
+ *             sleep = random(0, min(maxIntervalMs, intervalMs × 2^attempt))
  * - 타임아웃 시 e2eTimeout 카운터를 증가시키고 null을 반환한다.
  * - 타임아웃 하한: outbox worker 폴백 주기(2s) 이상을 보장한다.
+ * - 각 폴 응답 시각을 pollEvents 배열에 기록해 반환한다(사후 orderId 조인 용도).
  *
  * PaymentStatusApiResponse 필드:
  *   orderId     String
@@ -228,13 +251,16 @@ export function doConfirm(orderId, amount) {
  *   approvedAt  Instant (null 가능)
  *
  * @param {string} orderId           폴링할 주문 ID
- * @param {number} [intervalMs]      폴링 간격(ms), 기본값: POLL_INTERVAL_MS
+ * @param {number} [intervalMs]      폴링 기본 간격(ms), 기본값: POLL_INTERVAL_MS
  * @param {number} [timeoutMs]       최대 폴링 대기 시간(ms), 기본값: POLL_TIMEOUT_MS (하한 2000ms 보장)
- * @returns {{ status: string, approvedAt: string|null }|null} 종결 상태 객체, 타임아웃 시 null
+ * @returns {{ status: string, approvedAt: string|null, resolvedAt: number, pollCount: number, pollEvents: Array<{at: number, status: string}> }|null}
+ *   종결 상태 객체, 타임아웃 시 null
  */
 export function pollStatus(orderId, intervalMs, timeoutMs) {
-    const interval = intervalMs || POLL_INTERVAL_MS;
+    const baseInterval = intervalMs || POLL_INTERVAL_MS;
     const timeout = Math.max(2000, timeoutMs || POLL_TIMEOUT_MS);
+    const maxInterval = POLL_MAX_INTERVAL_MS;
+    const useBackoff = POLL_STRATEGY === 'backoff';
 
     const params = {
         headers: {
@@ -244,6 +270,8 @@ export function pollStatus(orderId, intervalMs, timeoutMs) {
     };
 
     const startTime = Date.now();
+    const pollEvents = [];
+    let attempt = 0;
 
     while (true) {
         const response = http.get(
@@ -251,12 +279,25 @@ export function pollStatus(orderId, intervalMs, timeoutMs) {
             params
         );
 
+        const pollAt = Date.now();
+
         if (response.status === 200) {
             const body = parseJSON(response.body);
+            const responseStatus = body !== null ? body.status : 'UNKNOWN';
+
+            pollEvents.push({ at: pollAt, status: responseStatus });
 
             if (body !== null && (body.status === 'DONE' || body.status === 'FAILED')) {
-                return { status: body.status, approvedAt: body.approvedAt || null };
+                return {
+                    status: body.status,
+                    approvedAt: body.approvedAt || null,
+                    resolvedAt: pollAt,
+                    pollCount: pollEvents.length,
+                    pollEvents: pollEvents,
+                };
             }
+        } else {
+            pollEvents.push({ at: pollAt, status: 'HTTP_' + response.status });
         }
 
         const elapsed = Date.now() - startTime;
@@ -265,8 +306,33 @@ export function pollStatus(orderId, intervalMs, timeoutMs) {
             return null;
         }
 
-        sleep(interval / 1000);
+        const sleepMs = useBackoff
+            ? computeBackoffJitter(attempt, baseInterval, maxInterval)
+            : baseInterval;
+
+        sleep(sleepMs / 1000);
+        attempt++;
     }
+}
+
+/**
+ * 지수 백오프 + 완전 지터(Full Jitter) 슬립 시간 계산.
+ *
+ * Full Jitter 공식: sleep = random(0, min(cap, base × 2^attempt))
+ * - cap: 최대 간격 상한(POLL_MAX_INTERVAL_MS)
+ * - base: 기본 폴링 간격(POLL_INTERVAL_MS)
+ * - thundering herd 방지: 동일 재시도 구간의 VU들이 균등 분산된다.
+ *
+ * 참고: "Exponential Backoff And Jitter" — AWS Architecture Blog
+ *
+ * @param {number} attempt    현재 재시도 횟수 (0-indexed)
+ * @param {number} baseMs     기본 간격(ms)
+ * @param {number} capMs      최대 간격 상한(ms)
+ * @returns {number} 슬립 시간(ms)
+ */
+function computeBackoffJitter(attempt, baseMs, capMs) {
+    const exponential = Math.min(capMs, baseMs * Math.pow(2, attempt));
+    return Math.random() * exponential;
 }
 
 // ---------------------------------------------------------------------------
