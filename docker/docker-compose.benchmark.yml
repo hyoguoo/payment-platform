@@ -40,6 +40,10 @@ services:
   # gateway 복귀(D2) — 직노출 ports 제거(apps.yml 의 gateway:8090 이 진입점)
   # ──────────────────────────────────────────────────────────────────────────
   payment-service:
+    # 페이즈 1(단일 인스턴스): actuator 수집 + 직접 부하용 8080 노출.
+    # 페이즈 2(2 인스턴스): gateway:8090 lb:// 분산 사용 — 8080 은 actuator 수집에만.
+    ports:
+      - "8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker,benchmark
       # JVM heap 상한 — 호스트 메모리(약 7.6GB) 한정 환경에서 부하 시 heap 팽창으로 인한
