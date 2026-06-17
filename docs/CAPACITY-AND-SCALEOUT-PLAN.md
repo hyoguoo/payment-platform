@@ -77,7 +77,7 @@ flowchart TD
 - [x] Task 1: DLT `.dlq` destination resolver 정합 (측정 막는 버그 선제거)
 - [x] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
 - [x] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
-- [ ] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
+- [x] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
 - [ ] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방
 - [ ] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험
 - [ ] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline
@@ -164,7 +164,10 @@ flowchart TD
 - 튜닝 env 적용 확인. payment-service actuator/env 에서 `RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS=600` 실제 반영 검증. hostname 제거 후 2 인스턴스 `transactional-id-prefix` 상이(고유) 확인. gateway 경유 2 인스턴스 분산 기동 + `BASE_URL` gateway 전환.
 
 **완료 결과**
-> (execute에서 채움)
+> - `docker/docker-compose.benchmark.yml`: ① payment-service 8080 직노출 `ports` 제거(gateway 복귀 D2). ② MySQL `MYSQL_MAX_CONN` env → `--max_connections` command 주입(기본 300; 기본값 151에서 상향). ③ Lettuce 커넥션 풀 3종(`LETTUCE_MAX_ACTIVE/MAX_IDLE/MIN_IDLE`) env 추가(기본 16/8/2). ④ 헤더 주석 환경변수 목록 갱신.
+> - `docker/docker-compose.apps.yml`: payment-service `hostname: payment-service` 라인 제거(D3). 제거 후 부수효과 — HOSTNAME은 Docker 컨테이너 자동 ID가 되어 Eureka instanceId(`payment-service:<컨테이너ID>:8080`)·transactional-id-prefix(`payment-service-<컨테이너ID>-`)가 인스턴스별 고유화됨. gateway discovery는 Eureka application name(`lb://payment-service`) 기준이라 hostname 변경에 무관, smoke/일반 단일 기동도 영향 없음.
+> - `scripts/k6/run-benchmark.sh`: ① `BASE_URL` 기본값 `http://localhost:8090`(gateway)으로 전환. ② `restart_payment_with_reconciler()` 함수 신설 — 헬스체크 직후 payment-service force-recreate, RECONCILER_TIMEOUT 실제 반영 보장. ③ 주석 사용법 갱신.
+> - 정적 검증: `docker compose config --quiet` (4-파일 benchmark + 2-파일 일반 기동 양쪽) 오류 0. `bash -n` lint 통과.
 
 ---
 

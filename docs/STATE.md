@@ -6,7 +6,7 @@
 
 - **주제**: CAPACITY-AND-SCALEOUT (결제 처리량 부하 측정 2페이즈 — 단일 인스턴스 자원 병목 규명 → payment 1→2 scale-out)
 - **단계**: execute
-- **활성 태스크**: Task 4 (측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스)
+- **활성 태스크**: Task 5 (페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방)
 - **이슈/브랜치**: #104
 - **산출물**: `docs/topics/CAPACITY-AND-SCALEOUT.md` (설계, discuss 완료 — 사전/요약 브리핑 + D1~D6 + acceptance + 명시 가정 + 측정 위생) + `docs/topics/CAPACITY-AND-SCALEOUT-RESEARCH.md` (서칭 지식: USL·Kafka EOS·HikariCP·가상스레드)
 

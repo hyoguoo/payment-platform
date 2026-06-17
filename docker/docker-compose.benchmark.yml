@@ -19,6 +19,11 @@
 #                         (코드 default 300s → 단축하여 settle 창을 결정론화)
 #   RECONCILER_SCAN_MS  — payment reconciler 스캔 주기(ms). 기본 15000
 #                         (코드 default 120000ms → 단축하여 scan 틱 대기를 최소화)
+#   HIKARI_MAX_POOL   — payment Hikari DB 커넥션 풀 상한. 기본 30 (benchmark baseline)
+#   MYSQL_MAX_CONN    — MySQL max_connections. 기본 300 (기본 151 → 병목 격리 가능)
+#   LETTUCE_MAX_ACTIVE — Lettuce 커넥션 풀 max-active. 기본 16 (Spring default 8 → 상향)
+#   PAYMENT_JAVA_OPTS — payment-service JVM 옵션. 기본 -Xmx700m
+#   PG_JAVA_OPTS      — pg-service JVM 옵션. 기본 -Xmx600m
 #
 # 주의:
 #   - compose 파일은 smoke.yml 과 분리됨(목적/env가 다름).
@@ -26,18 +31,15 @@
 #     latency/failRate 는 이 파일에서 별도 값으로 제어한다.
 #   - 이 파일을 production 환경에 적용하면 모든 결제가 FakePgGatewayStrategy 로
 #     우회되어 실제 결제가 이루어지지 않는다. 절대 prod 에 적용 금지.
+#   - gateway 복귀(D2): benchmark 스택에서 payment-service 직노출(8080) 제거 →
+#     gateway(8090) 경유로 전환. payment 2 인스턴스 scale 시 gateway 가 lb:// 로 분산.
 services:
 
   # ──────────────────────────────────────────────────────────────────────────
   # payment-service: benchmark profile + reconciler 단축(settle 창 결정론화)
+  # gateway 복귀(D2) — 직노출 ports 제거(apps.yml 의 gateway:8090 이 진입점)
   # ──────────────────────────────────────────────────────────────────────────
   payment-service:
-    # 부하 측정 시 payment-service 를 호스트에 직접 노출(gateway 우회).
-    # 측정 경로(checkout→user/product Feign, confirm→Kafka pg, status)는 모두
-    # payment-service 가 처리하며 gateway 는 외부 라우팅 홉일 뿐이라, 메모리 한정 환경에서
-    # gateway 를 띄우지 않아도 측정 경로가 동일하게 성립한다. k6 BASE_URL=http://localhost:8080.
-    ports:
-      - "8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker,benchmark
       # JVM heap 상한 — 호스트 메모리(약 7.6GB) 한정 환경에서 부하 시 heap 팽창으로 인한
@@ -46,12 +48,27 @@ services:
       # Hikari DB 커넥션 풀 상한 — 병목 분석/튜닝용 env 조정(기본 30 = baseline).
       # Spring relaxed binding 으로 application-benchmark.yml 의 maximum-pool-size(30) 를 override.
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "${HIKARI_MAX_POOL:-30}"
+      # Lettuce 커넥션 풀 — Spring Data Redis Lettuce pool max-active.
+      # Spring relaxed binding: spring.data.redis.lettuce.pool.max-active.
+      # baseline 16 (Spring 기본 8 대비 상향). 풀 부족 시 HIKARI 처럼 env 로 조정.
+      SPRING_DATA_REDIS_LETTUCE_POOL_MAX_ACTIVE: "${LETTUCE_MAX_ACTIVE:-16}"
+      SPRING_DATA_REDIS_LETTUCE_POOL_MAX_IDLE: "${LETTUCE_MAX_IDLE:-8}"
+      SPRING_DATA_REDIS_LETTUCE_POOL_MIN_IDLE: "${LETTUCE_MIN_IDLE:-2}"
       # reconciler.in-flight-timeout-seconds — Spring relaxed binding 으로 env 주입.
       # 코드 default 300s → 30s 로 단축하여 IN_PROGRESS stuck 회수 기준을 결정론화.
       RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "${RECONCILER_TIMEOUT:-30}"
       # reconciler.fixed-delay-ms — Spring relaxed binding 으로 env 주입.
       # 코드 default 120000ms(2분) → 15000ms 로 단축하여 scan 틱 대기를 최소화.
       RECONCILER_FIXED_DELAY_MS: "${RECONCILER_SCAN_MS:-15000}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # MySQL 인프라 — max_connections 상향(기본 151은 Hikari 풀 * 인스턴스 수 초과 위험)
+  # ──────────────────────────────────────────────────────────────────────────
+  mysql-payment:
+    command:
+      - "--max_connections=${MYSQL_MAX_CONN:-300}"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
 
   # ──────────────────────────────────────────────────────────────────────────
   # pg-service: smoke profile(fake gateway 활성화) + 지연/실패율 env 제어
