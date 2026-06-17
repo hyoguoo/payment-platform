@@ -5,13 +5,14 @@
 ## 활성 작업
 
 - **주제**: CAPACITY-AND-SCALEOUT (결제 처리량 부하 측정 2페이즈 — 단일 인스턴스 자원 병목 규명 → payment 1→2 scale-out)
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1 (DLT `.dlq` resolver 정합 — 측정 막는 consumer 블로킹 버그 선제거)
 - **이슈/브랜치**: #104
 - **산출물**: `docs/topics/CAPACITY-AND-SCALEOUT.md` (설계, discuss 완료 — 사전/요약 브리핑 + D1~D6 + acceptance + 명시 가정 + 측정 위생) + `docs/topics/CAPACITY-AND-SCALEOUT-RESEARCH.md` (서칭 지식: USL·Kafka EOS·HikariCP·가상스레드)
 
 ## 재개 메모
 
-- discuss 완료(게이트 2라운드: reviewer pass, domain-expert revise→구체 태스크 반영). 다음은 plan(태스크 분해).
+- plan 완료(`docs/CAPACITY-AND-SCALEOUT-PLAN.md` 10 태스크). 게이트 라운드1 reviewer·domain-expert revise→전건 반영(Task4 hostname `apps.yml` 정정·gateway 분산, Task3/8 재고 정합식 AND 결합, Task7 fencing 충돌 격리), 라운드2 재검증은 서버 과부하(529) 지속으로 메인 판단 종료(반영이 객관적·명확). 다음은 execute Task 1부터.
 - **핵심 결정**: D1 공유자원 설정 튜닝까지(갯수 확장 후속) / D2 로컬 2 인스턴스 / D3 hostname 제거 고유화(정상 2인스턴스 한정 가정) / D4 폴링 ON·OFF + 체감(폴링 응답)·처리(`payment_history` 최초 DONE) 이원 계측 + 백오프·지터 / D5 DLT `.dlq` 정합(첫 태스크) / D6 REPORT 연장 + USL 스크립트.
 - **plan 시 반드시 태스크화할 게이트 산물**: (a) reconciler 600s를 payment-service 기동에 실제 주입(run-benchmark 현재 pg만 주입) (b) verify-settlement `SETTLE_WAIT_SECONDS` 자동 추종(60 상수 제거) — 둘 다 정상 IN_PROGRESS의 silent loss 오판 차단.
 - **측정 위생**: 변수 격리(튜닝↔scale-out 분리), 워밍업, 재고·orderId·dedup token 보존(FLUSHALL 금지), 부하 분산 검증, scale-out 재고 정합 게이트(redis 잔여 vs RDB).
