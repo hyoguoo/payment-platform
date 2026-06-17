@@ -91,10 +91,10 @@ flowchart TD
 
 ### Task 1: DLT `.dlq` destination resolver 정합 [tdd=true] [domain_risk=true]
 
-**근거**: D5 — 현재 `DeadLetterPublishingRecoverer` 단일 인자 생성자가 기본 resolver로 `payment.events.confirmed.DLT`(대문자)에 발행하나 `create-topics.sh`는 `.dlq`만 생성 → 토픽 부재 → consumer 영구 블로킹(측정 오염원). 측정 시작 전 선제거.
+**근거**: D5 — 현재 `DeadLetterPublishingRecoverer` 단일 인자 생성자가 기본 resolver(`topic + "-dlt"`, spring-kafka 3.3.x)로 `payment.events.confirmed-dlt`(소문자 `-dlt` suffix)에 발행하나 `create-topics.sh`는 `.dlq`만 생성 + `auto.create.topics.enable=false` → 토픽 부재 → consumer 영구 블로킹(측정 오염원). 측정 시작 전 선제거.
 
 **테스트 (RED)**
-- `KafkaErrorHandlerConfigTest`(또는 recoverer 단위) — `events.confirmed` 처리 예외 소진 시 발행 목적지가 `payment.events.confirmed.dlq`(상수 `EVENTS_CONFIRMED_DLQ`)임을 검증. 현재 동작(`.DLT`)에서 RED.
+- `KafkaErrorHandlerConfigTest`(또는 recoverer 단위) — `events.confirmed` 처리 예외 소진 시 발행 목적지가 `payment.events.confirmed.dlq`(상수 `EVENTS_CONFIRMED_DLQ`)임을 검증. 현재 동작(기본 resolver → `payment.events.confirmed-dlt`)에서 RED.
 - 패턴: Mockito BDD — recoverer가 받는 `TopicPartition` 목적지 캡처 후 AssertJ 단언.
 
 **구현 (GREEN)**
@@ -132,7 +132,7 @@ flowchart TD
 
 **완료 기준**
 - `RECONCILER_TIMEOUT=600` 설정 시 settle 대기가 자동 추종(≥612s) 확인. payment_history 기반 e2e 산출 출력. 기존 정합 검증(DONE/미종결) 회귀 없음.
-- **재고 교차검증 정합식**: silent-loss 게이트(미종결=0 AND QUARANTINED=0)와 **AND 결합** — 정산 미완(보상 미정산 ≥1건)이면 inconclusive(단독 PASS 금지). 종결 완료 상태에서만 `redis 잔여 == RDB 잔여` 성립 확인 (redis=confirm마다 DECR·FAILED/QUARANTINED 보상 INCR, RDB=APPROVED만 차감 — 의미 차 반영).
+- **재고 교차검증 정합식**: silent-loss 게이트(미종결=0 AND QUARANTINED=0)와 **AND 결합** — 정산 미완(보상 미정산 ≥1건)이면 inconclusive(단독 PASS 금지). 종결 완료 상태에서만 `redis 잔여 == RDB 잔여` 성립 확인 (redis=confirm마다 DECR·FAILED·pg-QUARANTINED 보상 INCR, RDB=APPROVED만 차감 — 의미 차 반영). **단 이 단일 등식은 QUARANTINED=0 게이트 하에서만 성립** — QUARANTINED>0이면 AMOUNT_MISMATCH(redis −1 미보상)·CACHE_DOWN(net zero) 사유별로 redis↔RDB 관계가 달라지므로 사유 분해 후 판정(단일 등식 금지).
 
 **완료 결과**
 > (execute에서 채움)
