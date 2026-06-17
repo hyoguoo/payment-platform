@@ -76,7 +76,7 @@ flowchart TD
 
 - [x] Task 1: DLT `.dlq` destination resolver 정합 (측정 막는 버그 선제거)
 - [x] Task 2: k6 계측 — confirm·폴링 응답 시각 기록 + 폴링 전략(백오프+지터)
-- [ ] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
+- [x] Task 3: verify-settlement 확장 — settle 자동 추종 + payment_history e2e + 재고 정합 교차검증
 - [ ] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
 - [ ] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방
 - [ ] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험
@@ -141,7 +141,13 @@ flowchart TD
 - **재고 교차검증 정합식**: silent-loss 게이트(미종결=0 AND QUARANTINED=0)와 **AND 결합** — 정산 미완(보상 미정산 ≥1건)이면 inconclusive(단독 PASS 금지). 종결 완료 상태에서만 `redis 잔여 == RDB 잔여` 성립 확인 (redis=confirm마다 DECR·FAILED·pg-QUARANTINED 보상 INCR, RDB=APPROVED만 차감 — 의미 차 반영). **단 이 단일 등식은 QUARANTINED=0 게이트 하에서만 성립** — QUARANTINED>0이면 AMOUNT_MISMATCH(redis −1 미보상)·CACHE_DOWN(net zero) 사유별로 redis↔RDB 관계가 달라지므로 사유 분해 후 판정(단일 등식 금지).
 
 **완료 결과**
-> (execute에서 채움)
+> `SETTLE_WAIT_SECONDS` 60초 고정 상수 제거 — `RECONCILER_TIMEOUT + ceil(RECONCILER_SCAN_MS/1000) + 12` 자동 산출으로 교체.
+> `RECONCILER_TIMEOUT=600` 설정 시 627s(≥612s) 자동 추종 확인(dry-run). 명시 지정 시 해당값 우선.
+> `payment_history` 기반 e2e 처리 시각 섹션 신설: `MIN(change_status_at) WHERE current_status='DONE' GROUP BY order_id` — `last_status_changed_at` last-write 함정 회피.
+> 재고 정합 교차검증 [3] 신설: `미종결=0 AND QUARANTINED=0` 선결 게이트(AND 결합) 통과 시에만 `redis 잔여 == RDB 잔여` 단일 등식 적용.
+> QUARANTINED>0 이면 AMOUNT_MISMATCH/CACHE_DOWN 사유별 redis↔RDB 관계 분기 설명 + inconclusive 처리.
+> 최종 요약에 `교차식 [3]` 행 추가, 종합 판정 로직 3분기(전항목PASS / inconclusive / 불일치) 갱신.
+> bash 문법 검사(`bash -n`) + 산출식 dry-run 전케이스 통과.
 
 ---
 
