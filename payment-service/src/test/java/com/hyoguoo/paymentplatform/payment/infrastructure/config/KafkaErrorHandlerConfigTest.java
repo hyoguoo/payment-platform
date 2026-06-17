@@ -1,13 +1,20 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import java.util.function.BiFunction;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.classify.BinaryExceptionClassifier;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.ConsumerAwareRecordRecoverer;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.messaging.converter.MessageConversionException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -76,5 +83,38 @@ class KafkaErrorHandlerConfigTest {
         assertThat(exec.nextBackOff()).isEqualTo(1000L);
         assertThat(exec.nextBackOff()).isEqualTo(1000L);
         assertThat(exec.nextBackOff()).isEqualTo(BackOffExecution.STOP);
+    }
+
+    @Test
+    @DisplayName("dlq_destination_resolver_정합 — payment.events.confirmed 처리 실패 시 발행 목적지가 EVENTS_CONFIRMED_DLQ(.dlq)임을 검증")
+    @SuppressWarnings("unchecked")
+    void dlq_destination_resolver_정합() {
+        KafkaTemplate<String, String> mockTemplate = mock(KafkaTemplate.class);
+        DefaultErrorHandler handler = config.kafkaErrorHandler(mockTemplate);
+
+        // failureTracker → recoverer(DeadLetterPublishingRecoverer) → destinationResolver 추출
+        // FailedRecordTracker 는 package-private → Object 로 수령 후 reflection 경유
+        Object failureTracker = ReflectionTestUtils.getField(handler, "failureTracker");
+        assertThat(failureTracker).isNotNull();
+        ConsumerAwareRecordRecoverer rawRecoverer =
+                (ConsumerAwareRecordRecoverer) ReflectionTestUtils.invokeMethod(failureTracker, "getRecoverer");
+        assertThat(rawRecoverer).isInstanceOf(DeadLetterPublishingRecoverer.class);
+        DeadLetterPublishingRecoverer recoverer = (DeadLetterPublishingRecoverer) rawRecoverer;
+        BiFunction<ConsumerRecord<?, ?>, Exception, TopicPartition> destinationResolver =
+                (BiFunction<ConsumerRecord<?, ?>, Exception, TopicPartition>)
+                        ReflectionTestUtils.getField(recoverer, "destinationResolver");
+        assertThat(destinationResolver).isNotNull();
+
+        // payment.events.confirmed 파티션 0 에서 처리 예외 발생 시 resolver 호출 결과 캡처
+        ConsumerRecord<String, String> record = mock(ConsumerRecord.class);
+        given(record.topic()).willReturn(PaymentTopics.EVENTS_CONFIRMED);
+        given(record.partition()).willReturn(0);
+        Exception exception = new RuntimeException("처리 실패 — retry 소진");
+
+        TopicPartition destination = destinationResolver.apply(record, exception);
+
+        // 목적지 토픽은 반드시 .dlq suffix (기본 resolver -dlt 가 아님)
+        assertThat(destination.topic()).isEqualTo(PaymentTopics.EVENTS_CONFIRMED_DLQ);
+        assertThat(destination.partition()).isEqualTo(0);
     }
 }
