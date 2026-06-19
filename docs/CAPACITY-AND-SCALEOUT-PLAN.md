@@ -82,7 +82,7 @@ flowchart TD
 - [x] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험 (REPORT 사이클 4)
 - [x] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline (REPORT 사이클 5)
 - [x] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정 (REPORT 사이클 6 — 기각: confirm ~1.0×/e2e ~1.3×, 공유 DB 경합 병목)
-- [ ] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트
+- [x] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트 (REPORT 사이클 7 — N≤2 한계, 제약식만)
 - [ ] Task 10: 측정 리포트 종합 (REPORT 연장 SSOT)
 
 ---
@@ -255,8 +255,12 @@ flowchart TD
 **완료 기준**
 - α·β·γ 추정값 + Nmax + 피팅 잔차(노이즈 수준일 때만 Nmax 채택, acceptance). 스크립트 재현 가능(입력 CSV → 출력 파라미터).
 
-**완료 결과**
-> (execute에서 채움)
+**완료 결과** (상세 = REPORT 사이클 7)
+> `scripts/usl-fit.py`(순수 Python, 의존 없음) + 입력 CSV `scripts/usl-data/{confirm-sync,e2e-poll}.csv`.
+> - **N≤2 한계**: 측정점 2개 < 파라미터 3개 → underdetermined. γ=X(1)만 확정, α·β 분리 불가.
+> - **confirm 동기**: γ=450, 제약 α+2β=1(X(2)/X(1)=1.0), Nmax 1.41(α=0 경계)~∞ → scale-out 이득 사실상 0 재확인.
+> - **e2e 폴링**: γ=75, 제약 α+2β=0.5(X(2)/X(1)=1.33), Nmax 2.0~∞.
+> - 스크립트는 측정점 ≥4 시 grid search 로 α·β·γ 자동 회귀 — N 확장 시 다점 피팅 재현 자산.
 
 ---
 
