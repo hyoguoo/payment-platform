@@ -81,7 +81,7 @@ flowchart TD
 - [x] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방 (REPORT 사이클 3)
 - [x] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험 (REPORT 사이클 4)
 - [x] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline (REPORT 사이클 5)
-- [ ] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정
+- [x] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정 (REPORT 사이클 6 — 기각: confirm ~1.0×/e2e ~1.3×, 공유 DB 경합 병목)
 - [ ] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트
 - [ ] Task 10: 측정 리포트 종합 (REPORT 연장 SSOT)
 
@@ -234,8 +234,14 @@ flowchart TD
 **완료 기준**
 - 처리율비 정량(합격 ≥1.6× & 분산 편차 ≤10% & silent loss 0 & 재고 정합 — Task 3 정합식 AND 결합·종결 완료 선결). 기각 시 병목 공유 자원 귀속 기록. **consumer events.confirmed 파티션 점유(파티션 3 vs 인스턴스 2 = 2:1 편향)를 측정 메타로 기록** — 비선형 귀속 시 gateway HTTP 분산 편차와 consumer 파티션 편향을 구분. (페이즈 3+ 후속 트리거 판정)
 
-**완료 결과**
-> (execute에서 채움)
+**완료 결과** (상세 = REPORT 사이클 6)
+> 정상 2 인스턴스(고유 id, reconciler 600s), gateway lb, 재고 1천만 재시드.
+> - **측정 위생 교훈**: 재기동 직후 콜드 JVM에 rate 300 → p95 2.28s(1 인스턴스보다 나쁨) 콜드 오염. 워밍업 후 재측정으로 정상화.
+> - **6-A 폴링 OFF**: 2 인스턴스 knee ≈ 450 = 1 인스턴스와 동일 → **scale-out ~1.0×(선형성 없음)**. 양쪽 Hikari active 합 160 포화인데 처리율 정체.
+> - **6-B 병목 귀속**: CPU 합 5.5/10(여유) → CPU 아님. MySQL 147% 정체 + confirm latency 2.7배 → **MySQL lock/IO + Kafka EOS commit 직렬화** 경합.
+> - **6-C 폴링 ON(backoff)**: e2e capacity rate 100~125(1 인스턴스 75 대비 ~1.3×). 폴링 자가부하 병목.
+> - **6-D 정합 게이트 통과**: 재고 redis==RDB 차이 0 + 측정 구간 미종결 0(silent loss 0). 파티션 2:1 편향 → 고발행 시 consumer 백로그 비대칭(인스턴스A 4591/B 0).
+> - **결론**: 처리율비 confirm 1.0×/e2e 1.3× < 합격 1.6× → **기각**. 분산·정합·무결성 ✅. 병목=공유 DB 경합+폴링 자가부하. 후속: DB 스케일·파티션 수=인스턴스 배수.
 
 ---
 

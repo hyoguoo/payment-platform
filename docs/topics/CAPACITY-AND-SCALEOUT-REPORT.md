@@ -118,8 +118,66 @@
 
 ---
 
+## 사이클 6 — 페이즈 2-A/2-B: scale-out 1→2 처리율 (Task 8)
+
+> 정상 2 인스턴스(고유 transactional.id, reconciler 600s), gateway lb 분산, 재고 1천만 재시드.
+> **측정 위생 교훈**: 재기동 직후 콜드 JVM에 rate 300 갑작스런 부하 → confirm p95 2.28s·pending 215로
+> 1 인스턴스보다 나쁜 **콜드 오염** 발생. 워밍업(rate 100×30s) 후 재측정으로 정상화(rate 300 p95 72ms).
+
+### 6-A. 폴링 OFF — confirm 동기 처리율 1→2 (워밍업 후)
+
+| rate | confirm p95 | Hikari active(인스1) | pending | dropped | 비고 |
+|---|---|---|---|---|---|
+| 300 | 110ms | 75 | 0 | 0 | 안정 |
+| **450** | **206ms** | **80(상한)** | 3 | 0 | 한계 근처 |
+| 600 | 1.44s | 80 | 213 | 82/s | 포화 |
+| 750 | 1.44s | 80 | 201 | 216/s | 포화 |
+| 900 | 1.5s | 80 | 200 | 374/s | 포화 |
+
+- **2 인스턴스 knee ≈ 450~500 = 1 인스턴스(450)와 동일 → scale-out ~1.0× (선형성 없음, 기각)**.
+- 양쪽 Hikari active **합 160**(80+80, 둘 다 포화)인데 처리율은 1 인스턴스와 같음. 같은 rate 450에서 1 인스턴스는 active 62·p95 77ms(여유), 2 인스턴스는 active 합 160·p95 206ms → **active 2배·latency 2.7배로 throughput 정체**.
+- Hikari 풀을 인스턴스로 2배 늘려도 **그 뒤 공유 자원이 천장**. 페이즈 1의 "DB 천장 미도달"을 2 인스턴스 관점에서 정밀화: **1 인스턴스=Hikari 풀 병목, 2 인스턴스=공유 DB 병목**.
+
+### 6-B. 병목 자원 귀속 (rate 500 부하 중 CPU)
+
+| 컨테이너 | CPU | 
+|---|---|
+| payment-1 / payment-2 | ~190% / ~190% |
+| mysql-payment | ~147% |
+| kafka / redis-stock | ~20% / ~6% |
+
+- **CPU 합 ~553% = 코어 5.5 / 호스트 10 → CPU 여유**. scale-out 차단은 **CPU saturation이 아니라 공유 자원 경합**.
+- MySQL이 147%에 정체 + confirm latency 2.7배 → **MySQL lock/IO contention + Kafka EOS commit 직렬화**가 동시성 증가의 이득을 상쇄(USL contention·coherency 항).
+- gateway 병목은 배제(Task 7: 8080 직접과 gateway knee 동일).
+
+### 6-C. 폴링 ON(backoff) — e2e capacity 1→2
+
+| rate | e2e p95 | confirm p95 | Hikari | lag | timeout |
+|---|---|---|---|---|---|
+| 50 | 1.16s | 29ms | 4 | 0 | 0 |
+| 75 | 1.5s | 45ms | 6 | 0 | 0 |
+| **100** | **1.15s** | 22ms | 5 | 0 | 0 |
+| 150 | 5.13s | 54ms | 47 | 0 | 0(dropped 543) |
+
+- **2 인스턴스 e2e capacity = rate 100~125 흡수**(1 인스턴스 75 대비 **~1.3×**). e2e 병목은 폴링 자가부하(사이클 4와 동일)이고 confirm·Hikari·consumer 여유(저rate라 DB 병목 미도달).
+- backoff 적용 확인(rate 100 e2e p95 1.15s — 사이클 4 1 인스턴스 backoff 3.61s 대비 양호, 폴링 부하 2 인스턴스 분산 효과).
+
+### 6-D. 파티션 점유 편향 + 정합 게이트
+
+- **events.confirmed 파티션 3 vs 인스턴스 2 = 2:1 편향**: 파티션 0,1→인스턴스A, 파티션 2→인스턴스B. **고발행(6-A rate 600+)에서 consumer 백로그 비대칭**(인스턴스A lag 4591 / 인스턴스B 0). e2e 저rate(6-C)에선 lag 0으로 미발현.
+- **정합 게이트 통과**: 재고 redis(9863370) == RDB(9863370) **차이 0** + 측정 구간 payment_event **전부 DONE, 미종결 0**(silent loss 0). 정상 2 인스턴스(restart 없음)에선 정합 완벽 — 충돌/restart 시에만 미세 갭(사이클 5)이 나는 것과 일관. **scale-out해도 데이터 안전**.
+
+### 6-E. 결론
+
+- **처리율비 confirm 1.0× / e2e 1.3× — 합격 ≥1.6× 미달 → 기각**. 분산 균등성·정합·무결성은 ✅.
+- **병목 = 공유 DB 경합(MySQL lock/IO + Kafka EOS commit) + 폴링 자가부하**. 로컬 CPU·메모리·Hikari 풀은 천장 아님.
+- **후속 트리거**: ① payment DB 스케일(읽기 전용 복제 / 쓰기 샤딩) — 공유 DB가 진짜 천장 ② events.confirmed 파티션 수 = 인스턴스 배수(편향 제거) ③ Kafka EOS commit 오버헤드 프로파일링.
+
+---
+
 ## 환경 제약 및 한계
 
-- 단일 인스턴스 + 로컬 메모리 한정 → 절대 TPS 무의미, **상대 비교만 유효**.
-- 동기 경로는 8080 직접(gateway 홉 제외), 페이즈 2는 gateway 분산.
-- DB 처리력 천장은 로컬에서 미도달(풀이 먼저 병목) — 운영 환경 재측정 필요.
+- 단일/2 인스턴스 + 로컬 메모리(7.65GB) 한정 → 절대 TPS 무의미, **상대 비교만 유효**. N≤2라 USL 다점 회귀 불가(사이클 7에서 한계로 다룸).
+- 동기 경로 1 인스턴스 baseline은 8080 직접(페이즈 1)·gateway(Task 7) 양쪽 측정 — knee 동일(gateway 홉은 레이턴시만).
+- **DB 처리력 천장**: 1 인스턴스에선 미도달(Hikari 풀이 먼저 병목)이나 **2 인스턴스 합 160 동시에선 공유 MySQL이 천장**(scale-out ~1.0×). 운영 환경 + DB 스케일 재측정 필요.
+- **측정 위생**: 재기동 직후 워밍업 필수(콜드 오염), 동기 sweep 후 e2e 전 lag 0 소진, payment_event 누적 주의(silent loss 판정은 구간 격리).

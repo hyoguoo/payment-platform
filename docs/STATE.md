@@ -6,20 +6,19 @@
 
 - **주제**: CAPACITY-AND-SCALEOUT (결제 처리량 부하 측정 2페이즈 — 단일 인스턴스 자원 병목 규명 → payment 1→2 scale-out)
 - **단계**: execute
-- **활성 태스크**: Task 8 (페이즈 2-A/2-B — scale-out 1→2 처리율 선형성 + 재고 정합 게이트). 준비(T1~4)·페이즈 1(T5~6)·페이즈 2-0(T7) 완료, 결과는 `docs/topics/CAPACITY-AND-SCALEOUT-REPORT.md` 사이클 3~5
+- **활성 태스크**: Task 9 (페이즈 2-C — USL 회귀 분석 + 피팅 스크립트). 준비(T1~4)·페이즈 1(T5~6)·페이즈 2(T7~8) 완료, 결과는 `docs/topics/CAPACITY-AND-SCALEOUT-REPORT.md` 사이클 3~6
 - **이슈/브랜치**: #104
-- **산출물**: `docs/topics/CAPACITY-AND-SCALEOUT.md` (설계 D1~D6) + `-RESEARCH.md` (USL·Kafka EOS·HikariCP·가상스레드) + `-REPORT.md` (측정 SSOT, 사이클 5까지 기록)
+- **산출물**: `docs/topics/CAPACITY-AND-SCALEOUT.md` (설계 D1~D6) + `-RESEARCH.md` (USL·Kafka EOS·HikariCP·가상스레드) + `-REPORT.md` (측정 SSOT, 사이클 6까지)
 
 ## 재개 메모
 
-- **execute 진행 중 (2026-06-19 세션)**: ✅ T1~7 완료. Task 7(페이즈 2-0) = REPORT 사이클 5. 남은: **Task 8(scale-out 1→2 처리율) → 9(USL 회귀) → 10(REPORT 종합)**.
-- **⚠️ 환경 현황 — Task 8 전 정상 복귀 필수**: 현재 payment 2인스턴스가 **충돌 실증 override로 기동 중**(prefix 고정 `payment-collision-fixed` + reconciler 30s, `/tmp/cap-bench/collision-override.yml`). Task 8은 정상 고유 id + reconciler 600s 필요 → override 빼고 재기동:
-  `HIKARI_MAX_POOL=80 RECONCILER_TIMEOUT=600 RECONCILER_SCAN_MS=60000 docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml -f docker/docker-compose.benchmark.yml up -d --no-build --wait --scale payment-service=2 payment-service`
-- **Task 7 결론**: baseline 1인스턴스 처리 한계 ≈ **rate 450**(gateway 경유, 풀 80) = scale-out 1× 기준점. fencing 고유화 정상(fenced 0·분산 0.69%·중복 0), rebalance 안전(fenced 0), 의도적 충돌 재현(ProducerFenced 9·재고 차이 3=0.12%). 통찰: txn.id=`prefix+group+topic+partition`이라 정상 배타 파티션 무탈·**rebalance overlap만 fencing** → D3 가치=전환 안전성.
-- **Task 8 합격 기준**: 2인스턴스 처리율비 **≥1.6×**(~rate 720) & 부하 분산 편차 ≤10% & silent loss 0 & 재고 정합(Task 3 정합식 AND 결합). consumer events.confirmed 파티션 점유(3 vs 인스턴스 2 = 2:1 편향)를 측정 메타로 기록.
-- **측정 환경**: payment `ports: "8080"`(host 동적 할당, scale 충돌 회피) → 부하는 gateway:8090 lb 분산, actuator는 `docker compose … port --index N payment-service 8080`로 인스턴스별 동적 포트 수집. Hikari 80·MySQL max_conn 300·재고 1천만.
-- **측정 위생**: 동기 sweep 후 e2e 전 events.confirmed lag 0 소진. **payment_event 누적 주의**(재시드는 stock만) → silent loss 판정은 오늘/구간 격리 또는 run-benchmark JSON 교차. 변수 격리(튜닝↔scale-out 분리). **로컬 7.65GB에 2인스턴스 idle ~6GB(heap 700m 상한 보호) — 부하 시 heap 모니터**.
-- **부가 후속**: ① 인스턴스 restart 가용성 갭 16%(graceful shutdown + gateway retry) ② 재고 미세 갭 3건(abort 보상 INCR 경로 정밀 검증).
+- **execute 진행 중 (2026-06-19 세션)**: ✅ T1~8 완료. Task 8(scale-out) = REPORT 사이클 6. 남은: **Task 9(USL 회귀) → 10(REPORT 종합)**.
+- **Task 8 결론(기각)**: confirm 처리율비 ~1.0×(2 인스턴스 knee 450 = 1 인스턴스), e2e ~1.3×(75→100). **병목 = 공유 DB 경합**(MySQL 147% 정체+lock/IO, Kafka EOS commit 직렬화 — CPU는 5.5/10 여유). 정합 완벽(redis==RDB 차이 0, silent loss 0). 파티션 2:1 편향 → 고발행 시 consumer 백로그 비대칭.
+- **⚠️ Task 9 핵심 한계**: **N≤2(로컬 메모리)라 USL 3파라미터(α·β·γ) 다점 회귀 underdetermined**. 측정점 2개(N=1,2)뿐 → Nmax 추정 불가. Task 9는 (a) USL 피팅 스크립트 작성(입력 CSV→파라미터, 재현 가능) + (b) **N≤2 한계를 정직히 기록**하고 가용 2점으로 contention 방향성만(α 하한) 제시하는 방향으로 조정 필요. 사용자와 범위 확인 권장.
+- **Task 9 입력 측정점**: confirm 동기 — N=1 처리율 한계 rate 450(active 62), N=2 rate ~450(active 합 160, throughput 정체). e2e — N=1 흡수 75, N=2 흡수 100~125. (REPORT 사이클 5/6 표.)
+- **환경 현황**: 측정 스택 **기동 중**(payment 2 인스턴스 정상, 동적 포트). Task 9는 분석/스크립트 작성이라 부하 측정 불필요 → **스택 down 가능**: `docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml -f docker/docker-compose.benchmark.yml down`. 재기동 시 Task 8 절차(워밍업 필수).
+- **측정 자산**: `docker-compose.benchmark.yml` payment ports 동적화(커밋됨). 충돌 override·raw 측정 로그는 `/tmp/cap-bench/`(미커밋, REPORT가 SSOT).
+- **부가 후속(REPORT에 기록)**: ① 인스턴스 restart 가용성 갭 16%(graceful shutdown+gateway retry) ② 충돌 시 재고 미세 갭 3건(abort 보상 INCR) ③ DB 스케일(읽기복제/샤딩) ④ events.confirmed 파티션 수=인스턴스 배수(편향 제거).
 
 ## 최근 완료
 
