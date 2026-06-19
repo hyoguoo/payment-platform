@@ -80,7 +80,7 @@ flowchart TD
 - [x] Task 4: 측정 환경 — benchmark compose 튜닝 override + reconciler payment 주입 + hostname 제거 + 2 인스턴스
 - [x] Task 5: 페이즈 1-A — 폴링 OFF 자원별 병목 sweep + 처방 (REPORT 사이클 3)
 - [x] Task 6: 페이즈 1-B — 폴링 ON 종합 + 폴링 전략 미니 실험 (REPORT 사이클 4)
-- [ ] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline
+- [x] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline (REPORT 사이클 5)
 - [ ] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정
 - [ ] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트
 - [ ] Task 10: 측정 리포트 종합 (REPORT 연장 SSOT)
@@ -201,7 +201,7 @@ flowchart TD
 
 ---
 
-### Task 7: 페이즈 2-0 — transactional.id 고유화 적용 + fencing 실증 + 튜닝 baseline [tdd=false] [domain_risk=true]
+### Task 7: 페이즈 2-0 — transactional.id 고유화 적용 + fencing 실증 + 튜닝 baseline [tdd=false] [domain_risk=true] ✅
 
 **근거**: D3(고유화) + 명시 가정(fencing trade-off) + 변수 격리(튜닝 baseline 먼저).
 
@@ -212,8 +212,15 @@ flowchart TD
 - 2 인스턴스 transactional.id 고유 + 중복 발행 0(정상·rebalance) 실증. 1 인스턴스 튜닝 baseline 처리율 정량(scale-out 비교 기준점).
 - **의도적 id 충돌 실증은 측정 데이터셋과 분리된 run(또는 clean 재시드 상태)에서** 수행하고, 충돌·fence 후 verify-settlement(Task 3 재고 정합 게이트 포함) 재실행으로 silent loss 0 + 재고 정합 유지 확인 — abort→재배달이 데이터를 깨지 않음을 못박는다.
 
-**완료 결과**
-> (execute에서 채움)
+**완료 결과** (상세 = REPORT 사이클 5)
+> 측정 환경: payment `ports: "8080"`(host 동적) → scale=2 충돌 회피, gateway lb 분산, actuator는 동적 포트 수집. Hikari 80·reconciler 600s(충돌 run만 30s).
+> - **baseline**(1 인스턴스, gateway, 폴링 OFF): 처리 한계 ≈ rate 450(active가 풀 상한 80 도달 직전). 페이즈 1(8080 직접 knee 450)과 일치 — gateway 홉은 레이턴시만 추가, 처리 한계 동일. scale-out 1× 기준점 확보.
+> - **정상 2 인스턴스 fencing**: transactional.id 고유(HOSTNAME 상이) + ProducerFenced 0 + 분산 편차 0.69%(2460/2443) + 중복 발행 0.
+> - **rebalance**(부하 중 인스턴스 restart): rebalance 이벤트 발생 + ProducerFenced 0 + 중복 0.
+> - **의도적 id 충돌**(prefix `payment-collision-fixed` 강제 + rebalance overlap): ProducerFenced 9건 재현. 재고 정합 차이 3건(0.12%) — abort→재배달이 대량 유실 미생성(EOS read_committed 보호). silent loss는 재고 기준 사실상 0.
+> - **핵심 통찰**: txn.id = `prefix+group+topic+partition`(consumer-initiated EOS)이라 정상 배타 파티션에선 prefix 충돌해도 무탈, **rebalance overlap 순간에만 fencing** → D3의 가치는 "정상 충돌 방지"가 아니라 **rebalance 전환 안전성**.
+> - **부가 발견(후속)**: ① 인스턴스 restart 가용성 갭 16%(graceful shutdown/retry) ② 재고 미세 갭 3건(abort 보상 INCR 경로 정밀 검증).
+> - **측정 자산**: `docker-compose.benchmark.yml` payment ports 동적화(커밋), 충돌 override는 `/tmp` 임시(미커밋).
 
 ---
 

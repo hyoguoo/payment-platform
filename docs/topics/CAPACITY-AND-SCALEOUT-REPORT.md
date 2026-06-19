@@ -72,9 +72,49 @@
 
 ---
 
-## 사이클 5 — payment scale-out (페이즈 2)
+## 사이클 5 — 페이즈 2-0: scale-out baseline + transactional.id fencing 실증 (Task 7)
 
-> (페이즈 2 측정 후 작성: 1→2 인스턴스 선형성, fencing 실증, 공유 자원 병목, USL 회귀)
+> 측정 환경 변경: payment `ports: "8080"`(host 동적 할당)으로 scale=2 충돌 회피 →
+> 부하는 gateway:8090 lb 분산(Eureka 디스커버리), actuator는 인스턴스별 동적 포트 수집.
+> Hikari 80 · reconciler 600s(충돌 실증 run만 30s) · MySQL max_conn 300 · 재고 1천만.
+
+### 5-A. scale-out baseline (1 인스턴스, gateway 경유, 폴링 OFF)
+
+페이즈 2 scale-out 비교의 **1× 기준점**. 페이즈 1(사이클 3)은 8080 직접이라 gateway 홉이
+빠져 비교 부적합 → gateway 경유로 재측정(홉을 공통 변수로 상쇄).
+
+| rate | confirm p95 | Hikari active(max) | pending(max) | dropped | 비고 |
+|---|---|---|---|---|---|
+| 100 | 117ms | 34 | 0 | 0 | 워밍업 튐 |
+| 200 | 176ms | 68 | 33 | 80 | 워밍업 일시 포화 |
+| **300** | **59ms** | 55 | 0 | 0 | 안정 |
+| **400** | **77ms** | 62 | 0 | 0 | 안정 |
+| 500 | 235ms | **80(상한)** | **120** | 165 | 포화 |
+
+- **1 인스턴스 처리 한계 ≈ rate 450**(active가 풀 상한 80에 닿기 직전). 페이즈 1(8080 직접, knee 450)과 일치 → **gateway 홉은 레이턴시만 더할 뿐 처리 한계는 동일**.
+- 워밍업 노이즈: rate 100/200의 p95가 안정 구간(300/400)보다 높음(JIT·풀 워밍, 사이클 3과 동형).
+
+### 5-B. fencing 실증 — transactional.id 고유화 (hostname 제거, D3)
+
+`transactionalIdPrefix = ${payment.kafka.transactional-id-prefix:${app}-${HOSTNAME:local}}`
+(KafkaProducerConfig). hostname 라인 제거로 HOSTNAME=컨테이너ID → 인스턴스별 고유.
+
+| 시나리오 | transactional.id | ProducerFenced | 분산/중복 |
+|---|---|---|---|
+| **정상 2 인스턴스** (rate200×25s) | 고유(`dd3bed…` vs `83220e…`) | **0** | confirm 2460 vs 2443(편차 **0.69%**) · 중복 발행 0 |
+| **rebalance** (부하 중 인스턴스 restart) | 고유 | **0** | rebalance 이벤트 10/6 발생 · 중복 0 |
+| **의도적 id 충돌** (prefix `payment-collision-fixed` 강제 + rebalance) | 충돌 | **9건**(6+3) | 재고 차이 3(0.12%) · 대량 유실 없음 |
+
+- **핵심 통찰**: transactional.id가 `prefix+group+topic+partition`(consumer-initiated EOS — `kafkaTransactionManager`가 listener 컨테이너에 wire-in)이라 **정상 배타 파티션에선 prefix가 충돌해도 fencing이 안 난다**. 충돌은 **rebalance overlap 순간**(두 인스턴스가 같은 파티션을 잠깐 겹쳐 가질 때)에만 발생.
+- 따라서 D3(hostname 제거 고유화)의 진짜 가치는 "정상 운영 충돌 방지"가 아니라 **scale-out·배포·장애 시 rebalance 전환 안전성**(전환 순간 fencing으로 인한 처리 중단/지연 차단).
+- **충돌해도 데이터는 안 깨진다**: ProducerFenced로 abort된 트랜잭션은 EOS `read_committed`로 다운스트림 미노출 + commands.confirm 재배달로 재처리 → 재고 정합 차이 3건(0.12%)에 그침(abort→재배달이 대량 유실을 만들지 않음).
+
+### 5-C. 부가 발견 (후속 트리거)
+
+- **인스턴스 restart 가용성 갭 16%**: rebalance/충돌 부하에서 인스턴스 다운 ~수초간 gateway가 그 인스턴스로 라우팅한 confirm 요청이 http_fail(checkout READY만 잔존, 재고 선점 전이라 무해) → **graceful shutdown + gateway retry** 후속.
+- **재고 미세 갭 3건**: 충돌 실증 후 redis(9997531) < RDB(9997534), 차이 3(0.12%). settle 완료(IN_PROGRESS=0) 후에도 잔존 → abort 시 redis 보상 INCR 경로의 미세 누락 의심 → **abort 보상 경로 정밀 검증** 후속.
+
+> scale-out 1→2 처리율 선형성(2-A/2-B)·USL 회귀(2-C)는 사이클 6에서 측정.
 
 ---
 
