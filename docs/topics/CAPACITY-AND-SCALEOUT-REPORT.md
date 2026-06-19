@@ -207,3 +207,32 @@
 - 동기 경로 1 인스턴스 baseline은 8080 직접(페이즈 1)·gateway(Task 7) 양쪽 측정 — knee 동일(gateway 홉은 레이턴시만).
 - **DB 처리력 천장**: 1 인스턴스에선 미도달(Hikari 풀이 먼저 병목)이나 **2 인스턴스 합 160 동시에선 공유 MySQL이 천장**(scale-out ~1.0×). 운영 환경 + DB 스케일 재측정 필요.
 - **측정 위생**: 재기동 직후 워밍업 필수(콜드 오염), 동기 sweep 후 e2e 전 lag 0 소진, payment_event 누적 주의(silent loss 판정은 구간 격리).
+
+---
+
+## 종합 결론 (페이즈 1 + 2)
+
+### 병목의 이동 — 핵심 발견
+
+| | 1 인스턴스 (페이즈 1) | 2 인스턴스 (페이즈 2) |
+|---|---|---|
+| confirm 처리 병목 | **Hikari 풀** (knee 풀 30→60→80 = 300→350→450) | **공유 DB 경합** (양쪽 풀 160 포화해도 처리율 정체) |
+| DB 처리력 | 미천장 (풀이 먼저 병목) | **천장 도달** (MySQL lock/IO + Kafka EOS commit 직렬화) |
+| scale-out | — | **기각** (confirm 1.0× / e2e 1.3× < 1.6×) |
+
+**한 줄 교훈**: 1 인스턴스에서 효과적이던 튜닝 레버(Hikari 풀 확장)가 2 인스턴스에선 무의미하다 — 인스턴스를 늘리면 **병목이 인스턴스-로컬 자원(풀)에서 공유 자원(DB·Kafka 코디네이터)으로 이동**한다. scale-out의 전제는 앱 인스턴스 증설이 아니라 **공유 자원의 동반 스케일**이다.
+
+### 안전성 — scale-out해도 데이터는 안전
+
+- transactional.id 고유화(hostname 제거)로 2 인스턴스 fencing 정상(중복 0·분산 균등), rebalance 안전.
+- 의도적 id 충돌(rebalance overlap)에도 EOS read_committed + 재배달로 대량 유실 없음(재고 차이 0.12%).
+- 정상 운영(restart 없음)에선 재고 정합 완벽(redis==RDB) + silent loss 0.
+
+### 페이즈 3+ 후속 트리거
+
+1. **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장. 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 scale-out 재측정.
+2. **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향으로 고발행 시 consumer 백로그 비대칭.
+3. **인스턴스 restart 가용성 갭 16%** — graceful shutdown + gateway retry로 무중단 배포/scale 확보.
+4. **충돌 시 재고 미세 갭 3건(0.12%)** — abort 시 redis 보상 INCR 경로 정밀 검증.
+5. **Kafka EOS commit 오버헤드 프로파일링** — 2 인스턴스 confirm latency 증가의 직렬화 기여분 분해.
+6. **N≥3 USL 재측정** — 운영/DB 스케일 환경에서 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.

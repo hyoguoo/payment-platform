@@ -83,7 +83,7 @@ flowchart TD
 - [x] Task 7: 페이즈 2-0 — transactional.id 고유화 + fencing 실증 + 튜닝 baseline (REPORT 사이클 5)
 - [x] Task 8: 페이즈 2-A/2-B — scale-out 1→2 처리량 측정 (REPORT 사이클 6 — 기각: confirm ~1.0×/e2e ~1.3×, 공유 DB 경합 병목)
 - [x] Task 9: 페이즈 2-C — USL 회귀 분석 + 피팅 스크립트 (REPORT 사이클 7 — N≤2 한계, 제약식만)
-- [ ] Task 10: 측정 리포트 종합 (REPORT 연장 SSOT)
+- [x] Task 10: 측정 리포트 종합 (REPORT 연장 SSOT — 사이클 3~7 + 종합 결론·후속 트리거)
 
 ---
 
@@ -275,7 +275,7 @@ flowchart TD
 - 모든 측정(Task 5~9) 결과가 리포트에 정량 기록 + 결론 + 후속. raw `results/*.json`은 gitignore(리포트가 SSOT).
 
 **완료 결과**
-> (execute에서 채움)
+> REPORT 사이클 3~7(페이즈 1 Hikari 풀·폴링 전략 / 페이즈 2-0 baseline·fencing / scale-out / USL)가 모두 정량 기록됨. **종합 결론 섹션 추가** — 병목의 이동(1 인스턴스 Hikari 풀 → 2 인스턴스 공유 DB 경합), scale-out 안전성(fencing 고유화·정합), 페이즈 3+ 후속 트리거 6종(DB 스케일·파티션 정렬·graceful shutdown·재고 보상·EOS 프로파일링·N≥3 USL). raw 측정 로그는 미커밋(REPORT가 SSOT).
 
 ---
 
