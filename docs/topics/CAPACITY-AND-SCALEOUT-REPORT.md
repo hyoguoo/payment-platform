@@ -107,12 +107,15 @@
 
 - **핵심 통찰**: transactional.id가 `prefix+group+topic+partition`(consumer-initiated EOS — `kafkaTransactionManager`가 listener 컨테이너에 wire-in)이라 **정상 배타 파티션에선 prefix가 충돌해도 fencing이 안 난다**. 충돌은 **rebalance overlap 순간**(두 인스턴스가 같은 파티션을 잠깐 겹쳐 가질 때)에만 발생.
 - 따라서 D3(hostname 제거 고유화)의 진짜 가치는 "정상 운영 충돌 방지"가 아니라 **scale-out·배포·장애 시 rebalance 전환 안전성**(전환 순간 fencing으로 인한 처리 중단/지연 차단).
-- **충돌해도 데이터는 안 깨진다**: ProducerFenced로 abort된 트랜잭션은 EOS `read_committed`로 다운스트림 미노출 + commands.confirm 재배달로 재처리 → 재고 정합 차이 3건(0.12%)에 그침(abort→재배달이 대량 유실을 만들지 않음).
+- **충돌 시 데이터 무결성 — 양분해서 보아야 함**: ProducerFenced로 abort된 트랜잭션은 EOS `read_committed`로 다운스트림 미노출 + 재배달 재처리, 중복은 `payment_event_dedupe`로 **멱등 흡수**(ship 재검증: dedupe row = DONE 수로 일치). **정상 운영(restart 없음)에선 재고 정합 완벽**(사이클 6-D redis==RDB 차이 0). 단 **충돌·rebalance 시점엔 미세 갭**(아래 5-C)이 측정 시점에 잔존 — "규모가 작다(0.1%대)"이지 "정합이 항상 유지된다"가 아니다.
 
 ### 5-C. 부가 발견 (후속 트리거)
 
 - **인스턴스 restart 가용성 갭 16%**: rebalance/충돌 부하에서 인스턴스 다운 ~수초간 gateway가 그 인스턴스로 라우팅한 confirm 요청이 http_fail(checkout READY만 잔존, 재고 선점 전이라 무해) → **graceful shutdown + gateway retry** 후속.
-- **재고 미세 갭 3건**: 충돌 실증 후 redis(9997531) < RDB(9997534), 차이 3(0.12%). settle 완료(IN_PROGRESS=0) 후에도 잔존 → abort 시 redis 보상 INCR 경로의 미세 누락 의심 → **abort 보상 경로 정밀 검증** 후속.
+- **재고 미세 갭(충돌·restart 시점) — ship 단계 재검증으로 원인 규명**: 충돌 실증 후 redis < RDB 미세 갭(재현마다 3~6건, 0.1%대). 초기 진단("abort 보상 INCR 누락" / "reconciler L7 cascade")을 **2-run 실측으로 둘 다 반증·정정**(실험 A = reconciler 30s run, 실험 B = 600s run):
+  - ① **실험 A(30s, 갭 5)·실험 B(600s, 갭 6) 모두 `READY 복원`(reconciler reset) 로그 0건** → **reconciler cascade 아님**(L7 가설 반증: 600s에서도 갭이 안 사라지고 reset이 안 돈다).
+  - ② 갭 ≈ IN_PROGRESS 수(실험 B: 갭 6 = IN_PROGRESS 6) → 실제 원인은 **fencing이 stock-committed(RDB 차감) EOS 트랜잭션을 abort시켜, 재배달 재처리 대기 중인 IN_PROGRESS in-flight가 측정 시점에 포착된 비대칭**. redis DECR(`OutboxAsyncConfirmService`, 선점)과 RDB 차감(`PaymentConfirmResultUseCase.handleApproved`의 stock-committed 발행)이 **다른 단계**라, fencing이 후자를 abort하면 redis만 선차감된 채 IN_PROGRESS로 남아 redis<RDB. abort된 메시지는 offset 미커밋으로 재배달되고 중복은 `payment_event_dedupe`로 멱등 흡수(dedupe row = DONE 수).
+  - **후속(영구성)**: 갭은 "재배달 EOS 재성공으로 stock-committed 발행 → RDB 차감 → 자연 종결(복원)" vs "재배달 5회 소진 → `.dlq` 낙착 후 `PaymentReconciler`(IN_FLIGHT timeout → resetToReady) backstop 회수"의 2분기. 장기 관찰로 어느 쪽인지 확정. baseline failRate=0이라 PG-FAILED redis 보상 경로는 트리거되지 않으므로 보상 경로 버그가 아니다.
 
 > scale-out 1→2 처리율 선형성(2-A/2-B)·USL 회귀(2-C)는 사이클 6에서 측정.
 
@@ -140,7 +143,7 @@
 
 ### 6-B. 병목 자원 귀속 (rate 500 부하 중 CPU)
 
-| 컨테이너 | CPU | 
+| 컨테이너 | CPU |
 |---|---|
 | payment-1 / payment-2 | ~190% / ~190% |
 | mysql-payment | ~147% |
@@ -225,14 +228,15 @@
 ### 안전성 — scale-out해도 데이터는 안전
 
 - transactional.id 고유화(hostname 제거)로 2 인스턴스 fencing 정상(중복 0·분산 균등), rebalance 안전.
-- 의도적 id 충돌(rebalance overlap)에도 EOS read_committed + 재배달로 대량 유실 없음(재고 차이 0.12%).
-- 정상 운영(restart 없음)에선 재고 정합 완벽(redis==RDB) + silent loss 0.
+- 의도적 id 충돌(rebalance overlap)에도 EOS read_committed + 재배달 재처리, 중복은 `payment_event_dedupe`로 멱등 흡수(dedupe row = DONE).
+- **정상 운영(restart 없음)에선 재고 정합 완벽**(redis==RDB 차이 0) + silent loss 0 — 안전 근거는 이 정상 경로다.
+- 단 **충돌·restart 시점엔 미세 갭**(0.1%대, redis<RDB)이 측정 시점에 잔존: 원인은 reconciler cascade가 아니라(ship 재검증: READY 복원/reset 로그 0건) **fencing이 stock-committed EOS를 abort시켜 재배달 재처리 대기 중인 IN_PROGRESS in-flight 비대칭**(5-C). "안전"은 규모가 작다는 뜻이지 충돌 케이스에서 정합이 항상 유지된다는 뜻이 아니다.
 
 ### 페이즈 3+ 후속 트리거
 
 1. **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장. 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 scale-out 재측정.
 2. **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향으로 고발행 시 consumer 백로그 비대칭.
 3. **인스턴스 restart 가용성 갭 16%** — graceful shutdown + gateway retry로 무중단 배포/scale 확보.
-4. **충돌 시 재고 미세 갭 3건(0.12%)** — abort 시 redis 보상 INCR 경로 정밀 검증.
+4. **충돌·restart 시 재고 미세 갭(0.1%대)** — ship 재검증 결과 원인은 fencing이 stock-committed EOS를 abort시켜 재배달 대기 중인 IN_PROGRESS in-flight 비대칭(reconciler cascade·보상 누락 아님 — reset 로그 0건). 영구성(재배달 EOS 재성공 vs `.dlq` 낙착 후 reconciler backstop 회수) 장기 관찰.
 5. **Kafka EOS commit 오버헤드 프로파일링** — 2 인스턴스 confirm latency 증가의 직렬화 기여분 분해.
 6. **N≥3 USL 재측정** — 운영/DB 스케일 환경에서 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.

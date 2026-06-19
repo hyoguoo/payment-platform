@@ -281,4 +281,10 @@ flowchart TD
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+> 1차: reviewer **pass** / domain-expert **revise**. 사용자 결정 = 문서 수정 + dedupe 실측까지 완전 검증.
+
+- **[채택·정정] major (domain)** — 재고 갭 원인 오귀속. domain-expert는 "reconciler L7 cascade", 나는 "abort 보상 INCR 누락"으로 진단했으나 **2-run 실측으로 둘 다 반증**: reconciler 30s vs 600s 모두 `READY 복원` 로그 **0건** + 갭 동일(5/6) → cascade 아님. 갭 ≈ IN_PROGRESS 수 → 실제 원인 = **fencing abort가 stock-committed(RDB 차감) EOS 단계를 지연시킨 in-flight 비대칭**(redis DECR은 `OutboxAsyncConfirmService` 선점, RDB 차감은 `handleApproved` stock-committed — 다른 단계). REPORT 5-C/안전성/종합 트리거4 정정 완료.
+- **[채택] minor (domain)** — "데이터 안 깨짐(0.12%)" 안전성 양분: 정상 운영=정합 완벽 / 충돌·restart=측정 시점 미세 갭(in-flight, 영구성 장기 관찰 후속)으로 REPORT 정정.
+- **[채택] minor (domain)** — ProducerFenced 멱등 흡수 실측: 충돌 run 후 `payment_event_dedupe` row = DONE 수 일치 확인 → **멱등 흡수 정상**(중복 events.confirmed 흡수, 사이클 5-B 반영).
+- **[채택] minor (reviewer)** — CONCERNS C-12(DLT suffix 버그) 이번 Task 1에서 해소됐는데 미반영: C-12 해소 표시(context-update 단계).
+- **[채택] minor (reviewer)** — REPORT:143 표 헤더 trailing space 제거.
