@@ -71,11 +71,6 @@ public class FakeStockCachePort implements StockCachePort {
     }
 
     @Override
-    public synchronized void increment(Long productId, int quantity) {
-        stock.merge(productId, quantity, Integer::sum);
-    }
-
-    @Override
     public int current(Long productId) {
         return stock.getOrDefault(productId, 0);
     }

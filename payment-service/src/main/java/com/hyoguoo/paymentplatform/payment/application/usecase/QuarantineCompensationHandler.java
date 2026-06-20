@@ -14,9 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
  * QUARANTINED 상태 전이 핸들러.
  * <p>
  * 본 핸들러 자체는 product RDB 보상을 수행하지 않는다 — 새 재고 모델에서 product RDB 는
- * APPROVED 시만 차감되므로 QUARANTINED 시 RDB 복원 대상이 아니다. redis-stock 선차감 캐시 보상은
- * 호출자(PaymentConfirmResultUseCase.handleQuarantined / handleApproved AMOUNT_MISMATCH)가
- * stockCachePort.increment 로 별도 수행한다.
+ * APPROVED 시만 차감되므로 QUARANTINED 시 RDB 복원 대상이 아니다. redis-stock 선차감 캐시는
+ * 보상 폐기 정책(확정 진입 차감 보상 폐기)에 따라 본 핸들러를 포함한 QUARANTINED 경로 전체에서
+ * 복원하지 않는다 — 차감 상태 그대로 유지(미복구는 별도 가시화 메트릭으로 추적).
  * <p>
  * 진입점:
  * (a) FCG — pg-service FCG 결과 status=QUARANTINED

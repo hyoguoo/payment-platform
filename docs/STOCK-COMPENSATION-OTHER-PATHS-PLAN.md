@@ -67,7 +67,7 @@ flowchart TD
 
 - [x] Task 1: coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거
 - [x] Task 2: 경로 1 보상 폐기 + 미복구 가시화
-- [ ] Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거
+- [x] Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거
 - [ ] Task 4: 재고 정합 통합 테스트 (과매도 0 불변식)
 
 ## 태스크
@@ -137,7 +137,12 @@ Task 1·2로 두 호출처가 모두 사라진 `increment` 포트와 `STOCK_COMP
 - `./gradlew test` 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `StockCachePort.java`: `increment(Long, int)` 선언 + Javadoc 제거. `rollback()`은 본 토픽 경계 밖이라 유지.
+- `StockCacheRedisAdapter.java`: `increment()` 구현 제거. `rollback()` 구현(내부 `opsForValue().increment` 호출 포함)은 유지.
+- `mock/FakeStockCachePort.java`: `increment()` 구현 제거. `rollback()`은 유지.
+- `EventType.java`: `STOCK_COMPENSATE_SUCCESS` / `STOCK_COMPENSATE_FAIL` 제거. `STOCK_RETENTION_UNRECOVERED`(Task 2 신규)는 유지.
+- `QuarantineCompensationHandler.java`: 클래스 Javadoc의 `stockCachePort.increment` 유령 참조(호출자가 increment로 별도 수행한다는 stale 서술)를 실제 동작 기준으로 정정 — redis-stock 선차감 캐시는 보상 폐기 정책에 따라 QUARANTINED 경로 전체에서 복원하지 않고 차감 상태 그대로 유지(미복구는 별도 가시화 메트릭으로 추적)한다는 서술로 교체.
+- 완료 기준 검증: `StockCachePort.increment` 시그니처 / `STOCK_COMPENSATE_SUCCESS` / `STOCK_COMPENSATE_FAIL` / 주석 문자열 `stockCachePort.increment` 가 main·test grep 0. `./gradlew :payment-service:checkstyleMain :payment-service:checkstyleTest :payment-service:test` 490/490 통과(회귀 없음), 전체 `./gradlew test` 빌드 성공.
 
 ### Task 4: 재고 정합 통합 테스트 (과매도 0 불변식) [tdd=true] [domain_risk=true]
 
