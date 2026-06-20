@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-06-15 (K6-ASYNC-BENCHMARK 측정 중 발견 — C-12 events.confirmed DLT suffix 갭 등재)
+> 최종 갱신: 2026-06-19 (CAPACITY-AND-SCALEOUT — C-12 events.confirmed DLT suffix 갭 해소: Task 1 destinationResolver `.dlq` 명시)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -48,12 +48,10 @@
 - ~~기존: default profile 에서 `spring.jpa.hibernate.ddl-auto` 미명시 → IDE 로컬 실행 시 빈 DB 부팅 실패 가능~~
 - **해소**: 본 봉인 작업의 Flyway 통일 커밋에서 `ddl-auto: validate` 명시. Flyway 가 baseline 자동 적용
 
-### C-12. payment events.confirmed DLT 토픽 suffix 불일치 — consumer 블로킹 잠재
+### ~~C-12. payment events.confirmed DLT 토픽 suffix 불일치 — consumer 블로킹 잠재~~ ✅ 해소 (CAPACITY-AND-SCALEOUT Task 1, 2026-06-19)
 
-- **현황**: `ConfirmedEventConsumer` 의 `DefaultErrorHandler` 가 재시도 소진 후 `DeadLetterPublishingRecoverer`(`KafkaErrorHandlerConfig:51`, 목적지 미지정)로 DLT 발행한다. Spring Kafka 기본 목적지 resolver 는 `<원본>-dlt`(`payment.events.confirmed-dlt`)를 쓰는데, 토픽 생성(`PaymentTopics.EVENTS_CONFIRMED_DLQ` / `KafkaTopicConfig` / `create-topics.sh`)은 `.dlq`(`payment.events.confirmed.dlq`)만 만든다. `confirmedDlqKafkaTemplate.setDefaultTopic(.dlq)` 는 recoverer 가 무시한다.
-- **영향**: 처리 예외(예: 이미 종결된 결제에 결과 재도착 → `PaymentStatusException`)가 발생하면 DLT 발행이 `UNKNOWN_TOPIC_OR_PARTITION` 으로 실패 → 메시지가 DLT 로 빠지지 못하고 consumer 가 재시도 루프에 묶여 **events.confirmed consumer 영구 블로킹**. K6-ASYNC-BENCHMARK 부하 측정 중 실제 재현(lag 33000 정체).
-- **빈도**: 정상 경로에선 처리 예외가 드물어 평시 미발현. 단 발생 시 치명적(처리 중단).
-- **처방 후보**: (a) recoverer 의 destinationResolver 를 `.dlq` 로 명시, 또는 (b) 토픽 네이밍을 Spring 기본 `-dlt` 로 통일. 상세: `docs/archive/k6-async-benchmark/` 측정 REPORT §후속 과제.
+- ~~기존: `DeadLetterPublishingRecoverer`(목적지 미지정)가 Spring 기본 resolver `<원본>-dlt`(`payment.events.confirmed-dlt`)로 발행하나 토픽 생성은 `.dlq` 만 → 처리 예외 시 DLT 발행이 `UNKNOWN_TOPIC_OR_PARTITION` 실패 → events.confirmed consumer 영구 블로킹 (K6-ASYNC 측정 중 lag 33000 재현)~~
+- **해소**: `KafkaErrorHandlerConfig` recoverer 에 고정 destination resolver `(record, ex) -> new TopicPartition(EVENTS_CONFIRMED_DLQ, record.partition())` 주입 (처방 후보 a). `KafkaErrorHandlerConfigTest#dlq_destination_resolver_정합` 회귀 가드. 측정 시작 전 선제거 — 부하 측정의 consumer 블로킹 오염원 제거가 목적이었다.
 
 ## Low — 코드 청결도
 

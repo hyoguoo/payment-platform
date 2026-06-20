@@ -16,10 +16,10 @@
 #
 # 사용법:
 #   bash scripts/k6/run-benchmark.sh
-#   BASE_URL=http://localhost:8080 bash scripts/k6/run-benchmark.sh
+#   BASE_URL=http://localhost:8090 bash scripts/k6/run-benchmark.sh
 #
 # 환경 변수:
-#   BASE_URL          — k6 요청 기저 URL (기본: http://localhost:8080)
+#   BASE_URL          — k6 요청 기저 URL (기본: http://localhost:8090 — gateway 경유)
 #   FAKE_FAIL_RATE    — pg fake gateway 실패율 (기본: 0 — baseline 고정)
 #   RECONCILER_TIMEOUT  — payment reconciler IN_PROGRESS 회수 기준 초 (기본: 30)
 #   RECONCILER_SCAN_MS  — payment reconciler 스캔 주기 ms (기본: 15000)
@@ -57,7 +57,7 @@ source "${ROOT_DIR}/scripts/common.sh"
 # 환경 변수 기본값
 # ---------------------------------------------------------------------------
 
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+BASE_URL="${BASE_URL:-http://localhost:8090}"   # gateway 경유(2 인스턴스 lb:// 분산)
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
 RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT:-30}"
 RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS:-15000}"
@@ -107,6 +107,42 @@ wait_pg_healthy() {
             return 1
         fi
 
+        sleep 3
+        echo -n "."
+    done
+    echo
+}
+
+# payment-service force-recreate — RECONCILER_TIMEOUT 등 env 반영 보장.
+# benchmark compose 가 RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS 를 env 로 주입하지만,
+# run-benchmark.sh 가 payment-service 를 force-recreate 하지 않으면 host 에서
+# export 한 RECONCILER_TIMEOUT 값이 기존 컨테이너에 반영되지 않는다.
+restart_payment_with_reconciler() {
+    print_section "▶ payment-service 재기동 (RECONCILER_TIMEOUT=${RECONCILER_TIMEOUT}s, RECONCILER_SCAN_MS=${RECONCILER_SCAN_MS}ms)"
+
+    RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT}" \
+    RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS}" \
+    docker compose ${COMPOSE_ALL} up -d --no-build --force-recreate payment-service
+
+    # payment-service healthy 대기 — 최대 120초(healthcheck start_period 60s 포함)
+    local deadline=$(( $(date +%s) + 120 ))
+    print_warning "payment-service healthy 대기(최대 120초)..."
+    while :; do
+        local cid status
+        cid=$(docker compose ${COMPOSE_ALL} ps -q payment-service 2>/dev/null | head -1)
+        status="absent"
+        if [[ -n "${cid}" ]]; then
+            status=$(docker inspect -f '{{.State.Health.Status}}' "${cid}" 2>/dev/null || echo "absent")
+        fi
+        if [[ "${status}" == "healthy" ]]; then
+            print_info "  ✅ payment-service healthy"
+            return 0
+        fi
+        if (( $(date +%s) > deadline )); then
+            print_error "  ❌ payment-service 120초 내 healthy 실패 (현재: ${status})"
+            [[ -n "${cid}" ]] && docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "${cid}" 2>/dev/null | tail -5 || true
+            return 1
+        fi
         sleep 3
         echo -n "."
     done
@@ -224,6 +260,21 @@ if ! bash "${ROOT_DIR}/scripts/smoke-all.sh"; then
     echo "      up -d"
     exit 1
 fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# 사전 기동: payment-service force-recreate (RECONCILER_TIMEOUT 실제 반영)
+# ---------------------------------------------------------------------------
+# benchmark compose 가 RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS 를 env 로 주입하지만,
+# 스택 최초 기동 시 host 의 RECONCILER_TIMEOUT export 가 반영되지 않을 수 있다.
+# 측정 전 payment-service 를 force-recreate 해 600s(또는 지정값) 실제 주입을 보장한다.
+# (케이스 간 pg-service 만 재기동하면 payment-service 는 1회 재기동으로 양 케이스에 공유됨)
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print_section "▶ 사전 기동 — payment-service RECONCILER_TIMEOUT 반영"
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+restart_payment_with_reconciler
+
 echo ""
 
 # ---------------------------------------------------------------------------

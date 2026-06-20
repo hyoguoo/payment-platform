@@ -27,7 +27,10 @@ services:
     build:
       context: ../payment-service
       dockerfile: Dockerfile
-    hostname: payment-service
+    # D3 — hostname 고정 제거: 2 인스턴스 scale 시 transactional-id-prefix 가
+    # `${spring.application.name}-${HOSTNAME:local}` 패턴으로 컨테이너 ID 기반 고유화됨.
+    # Eureka instanceId(`${spring.application.name}:${HOSTNAME:local}:${server.port}`)도
+    # 동일하게 인스턴스별 고유화 — gateway lb:// discovery 에는 영향 없음(application name 기준).
     labels:
       com.hyoguoo.loki.enable: "true"
       com.hyoguoo.application: "payment-service"

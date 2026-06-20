@@ -1,0 +1,4 @@
+# confirm 동기 처리율 (폴링 OFF) — knee rate(흡수 한계) 기준. REPORT 사이클 3/5/6.
+N,throughput
+1,450
+2,450

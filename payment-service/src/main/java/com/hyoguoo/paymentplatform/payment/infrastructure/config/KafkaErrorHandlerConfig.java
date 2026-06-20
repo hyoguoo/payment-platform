@@ -1,5 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
+import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -48,7 +50,13 @@ public class KafkaErrorHandlerConfig {
     public DefaultErrorHandler kafkaErrorHandler(
             KafkaTemplate<String, String> confirmedDlqKafkaTemplate) {
         DeadLetterPublishingRecoverer recoverer =
-                new DeadLetterPublishingRecoverer(confirmedDlqKafkaTemplate);
+                new DeadLetterPublishingRecoverer(
+                        confirmedDlqKafkaTemplate,
+                        (record, ex) -> new TopicPartition(
+                                PaymentTopics.EVENTS_CONFIRMED_DLQ,
+                                record.partition()
+                        )
+                );
         FixedBackOff backOff = new FixedBackOff(backoffInterval, maxAttempts);
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(

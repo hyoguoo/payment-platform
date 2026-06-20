@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D + ship 후 stale 대청소 — [FLYWAY-USER-SEED-GAP]·[CLEANUP-FAILURE-COUNTER]·TC-1·커버리지 게이트 해소 반영, TC-13-FOLLOW-3/4 부분해소(대시보드 O·알람 rule X) 정정).
+> 최종 갱신: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재). 이전: 2026-06-14 (CLEANUP-BATCH-D + ship 후 stale 대청소 — [FLYWAY-USER-SEED-GAP]·[CLEANUP-FAILURE-COUNTER]·TC-1·커버리지 게이트 해소 반영, TC-13-FOLLOW-3/4 부분해소(대시보드 O·알람 rule X) 정정).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -46,12 +46,9 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 7. Testcontainers 통합 5 시나리오 GREEN (PET-12)
 8. 위키 4개 + 영구 문서 6개 갱신 (PET-13/PET-14)
 
-#### TC-13-FOLLOW-1 — multi-instance 확장 시 docker-compose hostname 처리 (DR-2 / L6)
+#### ~~TC-13-FOLLOW-1 — multi-instance 확장 시 docker-compose hostname 처리 (DR-2 / L6)~~ ✅ 해소 (CAPACITY-AND-SCALEOUT, 2026-06-19)
 
-- **트리거**: payment-service 를 2개 이상 컨테이너로 scale-out 할 때
-- **문제**: `docker-compose.apps.yml` 의 `hostname: payment-service` 라인이 동일 hostname 을 두 컨테이너에 부여 → transactional.id 충돌 → Kafka producer fencing 동작 불확실
-- **처방 후보**: (a) `hostname:` 라인 제거 (컨테이너 id 기반 자동 hostname 사용) 또는 (b) `INSTANCE_ID` 환경변수 도입 → `transactional.id = ${spring.application.name}-${INSTANCE_ID:${HOSTNAME:local}}`
-- **선행**: Phase 5 멀티 인스턴스 환경 구성 시
+`docker-compose.apps.yml` `hostname: payment-service` 라인 제거(처방 a) → HOSTNAME=컨테이너ID 로 `transactional.id`(`${app}-${HOSTNAME:local}`) 인스턴스별 고유화. 2 인스턴스 fencing 실측: 정상/rebalance 중복 0·분산 편차 0.7%, 의도적 id 충돌(prefix 강제) 시에만 ProducerFenced 발생. 통찰: consumer-initiated EOS(`kafkaTransactionManager` wire-in)라 txn.id=`prefix+group+topic+partition` → 정상 배타 파티션은 prefix 충돌해도 무탈, **rebalance overlap 순간만 fencing** → 고유화의 가치는 정상 충돌 방지가 아니라 전환 안전성. 상세: `docs/archive/capacity-and-scaleout/`.
 
 #### ~~TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리 스케줄러 (TC-11 통합)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
@@ -149,7 +146,7 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 
 > 모두 (a) k6 부하 측정 결과 또는 (b) Toxiproxy 8종 장애 주입 환경 또는 (c) 멀티 인스턴스 환경이 필요한 작업. Phase 4 환경이 준비된 뒤 진행.
 
-### Phase 4 본진 (4개)
+### Phase 4 본진 (5개)
 
 #### T4-A — Toxiproxy 8종 장애 주입 시나리오
 
@@ -184,6 +181,16 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 - **이 도입과 동시에**: 어댑터의 `try/catch (feign.RetryableException)` 매핑을 Feign **fallbackFactory** 로 마이그레이션
 - **timeout 정밀 튜닝**: `application.yml` 의 `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}` baseline 을 Phase 4 부하 측정 기반 SLO 로 조정
 - **pg-service 외부 PG timeout 정밀 튜닝**: `pg.http.{connect-timeout-millis: 3000, read-timeout-millis: 10000}` 은 현재 측정 없는 baseline. T4-B/T4-A 부하 + 장애 주입 측정 결과로 SLO 기반 값으로 교체. `max.poll.records` 기본값(500) 검증도 병행
+
+#### T4-E — CAPACITY-AND-SCALEOUT scale-out 후속 (측정 완료 → 처방)
+
+CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 경합 병목, Hikari 풀·CPU 천장 아님 — CPU 5.5/10 여유) 규명. 후속 처방:
+
+- **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장(scale-out 차단, MySQL lock/IO + Kafka EOS commit 직렬화). 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 재측정. USL N≥3 확장 시 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.
+- **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향 → 고발행 시 consumer 백로그 비대칭(한 인스턴스만 적체).
+- **payment graceful shutdown + gateway retry** — 인스턴스 restart/scale 시 가용성 갭 16%(다운 인스턴스로 라우팅된 confirm http_fail). TC-12(pg worker drain 보류)와 결 다름 — payment 는 무중단 배포 목적.
+- **fencing in-flight 재고 갭 영구성 관찰** — 충돌/restart 시 redis<RDB 미세 갭(0.1%대, fencing이 stock-committed EOS abort → IN_PROGRESS in-flight 비대칭, reconciler cascade 아님). 재배달 EOS 재성공 자연 종결 vs `.dlq` 낙착 후 reconciler backstop 회수인지 장기 관찰. TQ-7(`decrement:done` token 정합)과 연계.
+- **상세 SSOT**: `docs/archive/capacity-and-scaleout/` REPORT 사이클 6/7.
 
 ### Phase 4 후속 — 자동 운영 도구 (7개)
 

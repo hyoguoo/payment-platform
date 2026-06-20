@@ -1,0 +1,4 @@
+# e2e 폴링 ON(backoff) 흡수 한계 rate. REPORT 사이클 4/6.
+N,throughput
+1,75
+2,100

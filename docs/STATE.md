@@ -1,10 +1,11 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-15
+> 최종 수정: 2026-06-19
 
 ## 활성 작업
 
 - **주제**: 없음 (idle)
+- **단계**: —
 
 ## 재개 메모
 
@@ -12,7 +13,7 @@
 
 ## 최근 완료
 
-- **K6-ASYNC-BENCHMARK** (비동기 결제 경로 k6 부하 측정 자산 + 병목 분석 — 비동기 흡수 입증 + 동기 confirm Hikari 풀 병목 처방(knee 150→300), 비동기 파이프라인 병목 없음 확인 + DLT suffix 갭(C-12) 발견, 2026-06-15, 이슈/브랜치 #102) — `docs/archive/k6-async-benchmark/COMPLETION-BRIEFING.md`
-- **CLEANUP-BATCH-D** (빌드·테스트 위생 정리 — 통합테스트 Flyway 경합 flaky DB명 분리 + build.gradle deprecated 문법 + 상품 서비스 청소 스케줄러 운영 활성화 + 스케줄러 정책 문서화, 2026-06-14, 이슈/브랜치 #100) — `docs/archive/cleanup-batch-d/COMPLETION-BRIEFING.md`
+- **CAPACITY-AND-SCALEOUT** (결제 처리량 부하 측정 2페이즈 + scale-out 검증 — 페이즈 1 병목=Hikari 풀(knee 450), 페이즈 2 scale-out 기각(confirm 1.0×/e2e 1.3×, 병목이 풀→공유 DB 경합으로 이동), transactional.id 고유화 fencing 안전·정합 완벽, USL N≤2 한계. DLT `.dlq` C-12 해소 + `scripts/usl-fit.py` 신규, 2026-06-19, 이슈/브랜치 #104) — `docs/archive/capacity-and-scaleout/COMPLETION-BRIEFING.md`
+- **K6-ASYNC-BENCHMARK** (비동기 결제 경로 k6 부하 측정 자산 + 병목 분석 — 비동기 흡수 입증 + 동기 confirm Hikari 풀 병목 처방(knee 150→300), DLT suffix 갭(C-12) 발견, 2026-06-15, 이슈/브랜치 #102) — `docs/archive/k6-async-benchmark/COMPLETION-BRIEFING.md`
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
