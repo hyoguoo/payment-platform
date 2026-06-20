@@ -1,11 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-19
+> 최종 수정: 2026-06-20
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
-- **단계**: —
+- **주제**: STOCK-COMPENSATION-OTHER-PATHS (재고 보상 경로 정리)
+- **단계**: plan
+- **이슈/브랜치**: #106
+- **파일**: docs/topics/STOCK-COMPENSATION-OTHER-PATHS.md
 
 ## 재개 메모
 
