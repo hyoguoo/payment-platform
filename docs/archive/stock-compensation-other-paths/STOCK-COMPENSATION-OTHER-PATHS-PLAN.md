@@ -164,4 +164,9 @@ Task 1·2로 두 호출처가 모두 사라진 `increment` 포트와 `STOCK_COMP
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+### ship 코드 리뷰 (reviewer revise / domain-expert pass, critical 0)
+
+- **[major] CONFIRM-FLOW §8 + PITFALLS:230 stale 참조** — 삭제된 보상 경로(`executePaymentFailureCompensationWithOutbox`/`compensateStockCacheGuarded`/`stockCachePort.increment`/`canCompensateStock`/`PaymentEventStatusCrossInvariantTest`)를 live 동작으로 서술. → **채택**, B2 context-update에서 정정.
+- **[minor] TODOS 미갱신** — TQ-7 완료 처리 + 후속 orphan(`markPaymentAsRetrying`·`outbox.toFailed`·`rollback`·RETRYING 상태 머신) 등재. → **채택**, B5에서 처리.
+- **[minor] OutboxAsyncConfirmServiceTest tautology 단언** — `markStockCacheDownQuarantine` never() 단언이 SUCCESS+TX실패 경로에서 도달 불가라 무의미. → **채택**, implementer 수정(의미 있는 단언으로 교체 또는 제거, 예외 전파 검증으로 한정).
+- **[minor] QuarantineCompensationHandler 주석 과잉 일반화** — "QUARANTINED 경로 전체에서 복원 안 함"이 틀림(결과 소비 경로 `handleQuarantined`는 `compensateAtomic` 유지). → **채택**, implementer 수정(폐기된 것은 확정 진입 차감 보상뿐임을 명시).

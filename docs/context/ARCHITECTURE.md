@@ -188,7 +188,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
 | Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
 | RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |
-| 재고 복구 가드 (TX 내 재조회) | `executePaymentFailureCompensationWithOutbox` |
+| 재고 복구 가드 (폐기) | `executePaymentFailureCompensationWithOutbox` — ADR-04 死 코드, STOCK-COMPENSATION-OTHER-PATHS 에서 제거. 확정 진입 실패는 보상 폐기(차감 유지 + 미복구 가시화), 회신 실패/격리는 `compensateAtomic` 전담 |
 | pg-service IN_PROGRESS retry 활성화 | `PgConfirmService.handleInProgress(command, attempt)` — vendor 재호출 + 멱등성 layer 3종(vendor/pg/payment) 의존 |
 | pg-service listener TX 분리 + inbox 작업 큐 | `PgInboxPendingService` (listener TX 5s, INSERT IGNORE + publishEvent) → `InboxReadyEventHandler` (AFTER_COMMIT) → `PgInboxChannel` (cap=1024) → `PgInboxImmediateWorker` (VT 5) — listener 스레드에서 벤더 호출 0 보장 |
 | pg-service inbox 좀비 회수 | `PgInboxPollingWorker` 60s 주기 — PENDING 좀비 (received_at) + IN_PROGRESS 좀비 (updated_at) 두 경로. native query `FOR UPDATE SKIP LOCKED` 로 멀티 워커 race 차단 |

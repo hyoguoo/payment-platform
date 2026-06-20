@@ -109,14 +109,10 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: 다중 워커 동시 진입 또는 retry 후 응답 처리 직전 크래시 → 같은 결제에 재고 INCR 두 번 → 재고 발산.
 
-**처방**:
-- `executePaymentFailureCompensationWithOutbox` 진입 시 TX 내 outbox + event 재조회
-- outbox 가 IN_FLIGHT AND event 가 비종결일 때만 재고 INCR
-- 한쪽이라도 종결된 흔적 있으면 재고 복구 skip + warn 로그
-
-**STOCK-COMPENSATION-RECOVERY 흐름의 보강**:
-- `handleFailed` / `handleQuarantined` 의 보상은 `compensateAtomic(orderId, orders)` Lua 1회 호출로 통합 — `compensation:done:{orderId}` SETNX P8D dedup token 이 결제 단위 멱등 보장
+**처방** (현행 — STOCK-COMPENSATION-RECOVERY):
+- `handleFailed` / `handleQuarantined` 의 보상은 `compensateAtomic(orderId, orders)` Lua 1회 호출 — `compensation:done:{orderId}` SETNX P8D dedup token 이 결제 단위 멱등 보장
 - 동일 orderId 재진입 시 Lua 가 `ALREADY_DONE` early return → 재고 INCR 0회. 다중 워커 race 시에도 token 1회만 박힘
+- (구) `executePaymentFailureCompensationWithOutbox` 의 TX 내 재조회 + outbox isInFlight / event canCompensateStock 이중 가드는 ADR-04 + STOCK-COMPENSATION-OTHER-PATHS 로 死 코드 제거됨 (회신 실패 보상은 위 `compensateAtomic` 경로가 전담)
 
 ## 12. Virtual Thread / Async 경계 MDC 손실
 
@@ -188,13 +184,13 @@ process(result);  // result 가 null 일 수 있음
 **증상**: P8D 안에서 동일 orderId 가 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클로 재진입. `decrementAtomic` 이 ALREADY_DONE → SUCCESS 매핑되어 재고는 추가 차감 안 되지만, 벤더가 APPROVED 회신하면 product RDB 만 차감 + redis 보상 +1 잔존 → 발산.
 
 **원인**:
-- L6: `OutboxAsyncConfirmService.compensateStock` 같은 폐기 경로 또는 외부 force resetToReady 가 동일 orderId 재confirm 을 띄울 때 발생 가능
+- L6: 외부 force resetToReady 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 L6 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
 - L7: `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToReady` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
 
 **처방** (수용된 trade-off, 본 토픽 범위 외):
 - 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음
 - 본 cascade 를 차단하는 코드는 STOCK-COMPENSATION-RECOVERY 범위 밖, 알려진 한계로 인정
-- PHASE2 에서 token DEL 정책 정밀화 또는 admin QUARANTINED fallback 별 토픽 결정 (TODOS `STOCK-COMPENSATION-OTHER-PATHS` 참고)
+- STOCK-COMPENSATION-OTHER-PATHS 결정: 확정 진입 실패 시 토큰을 DEL 하지 않고 차감 유지(보상 폐기) — token DEL 이 동시 confirm 멱등을 깨므로 기각. redis<RDB 누수는 재고 reconciler(TC-3) 후속 위임
 
 ## 19. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
 
@@ -227,7 +223,7 @@ process(result);  // result 가 null 일 수 있음
 **처방** (D7 가드 — PET-3 / PET-8):
 - `handle()` 진입 직후 `paymentEvent.getStatus().canApplyConfirmResult()` 체크.
 - false (QUARANTINED 포함 종결 상태) → `LogFmt.warn` + noop return. DLQ 전혀 건드리지 않음.
-- D7 가드 변경 시 `PaymentEventStatusSplitMethodTest` (분리 메서드 검증) + `PaymentEventStatusCrossInvariantTest` (`canApplyConfirmResult` ↔ `canCompensateStock` 교차 동조 불변식) 가 회귀 탐지 (DR-3).
+- D7 가드 변경 시 `PaymentEventStatusSplitMethodTest` (분리 메서드 검증) 가 회귀 탐지 (DR-3). (구) `PaymentEventStatusCrossInvariantTest` 의 `canApplyConfirmResult` ↔ `canCompensateStock` 교차 동조 불변식은 `canCompensateStock` 死 코드 제거(STOCK-COMPENSATION-OTHER-PATHS)와 함께 폐기.
 
 ## 22. multi-product 결제의 idempotencyKey 결정성 — StockEventUuidDeriver 보존 이유
 
