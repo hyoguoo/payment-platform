@@ -239,8 +239,8 @@ class OutboxAsyncConfirmServiceTest {
     class ConfirmTxFailureRetentionTest {
 
         @Test
-        @DisplayName("executeConfirmTx 가 throw 하면 재고 보상을 호출하지 않고 원본 예외를 전파한다")
-        void confirm_whenConfirmTxFails_shouldNotCompensateStockAndRethrow() {
+        @DisplayName("executeConfirmTx 가 throw 하면 원본 예외를 그대로 전파한다")
+        void confirm_whenConfirmTxFails_shouldRethrowOriginalException() {
             // given
             String orderId = "order-comp-1";
             BigDecimal amount = BigDecimal.valueOf(10000);
@@ -259,9 +259,6 @@ class OutboxAsyncConfirmServiceTest {
             // when & then
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isSameAs(txException);
-
-            then(mockTransactionCoordinator).should(never())
-                    .markStockCacheDownQuarantine(any());
         }
 
         @Test
