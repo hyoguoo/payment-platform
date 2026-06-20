@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,11 +13,11 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.StockRetentionMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -41,20 +40,20 @@ class OutboxAsyncConfirmServiceTest {
     private PaymentTransactionCoordinator mockTransactionCoordinator;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentFailureUseCase mockPaymentFailureUseCase;
-    private StockCachePort mockStockCachePort;
+    private StockRetentionMetrics mockStockRetentionMetrics;
 
     @BeforeEach
     void setUp() {
         mockTransactionCoordinator = Mockito.mock(PaymentTransactionCoordinator.class);
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentFailureUseCase = Mockito.mock(PaymentFailureUseCase.class);
-        mockStockCachePort = Mockito.mock(StockCachePort.class);
+        mockStockRetentionMetrics = Mockito.mock(StockRetentionMetrics.class);
 
         outboxAsyncConfirmService = new OutboxAsyncConfirmService(
                 mockTransactionCoordinator,
                 mockPaymentLoadUseCase,
                 mockPaymentFailureUseCase,
-                mockStockCachePort
+                mockStockRetentionMetrics
         );
     }
 
@@ -236,12 +235,12 @@ class OutboxAsyncConfirmServiceTest {
     }
 
     @Nested
-    @DisplayName("confirm() — executeConfirmTx 실패 시 Redis 재고 보상 경로")
-    class ConfirmTxFailureCompensationTest {
+    @DisplayName("confirm() — executeConfirmTx 실패 시 보상 폐기 + 미복구 가시화")
+    class ConfirmTxFailureRetentionTest {
 
         @Test
-        @DisplayName("executeConfirmTx 가 throw 하면 stockCachePort.increment 1회 호출 후 원본 예외를 전파한다")
-        void confirm_whenConfirmTxFails_shouldCompensateStock() {
+        @DisplayName("executeConfirmTx 가 throw 하면 재고 보상을 호출하지 않고 원본 예외를 전파한다")
+        void confirm_whenConfirmTxFails_shouldNotCompensateStockAndRethrow() {
             // given
             String orderId = "order-comp-1";
             BigDecimal amount = BigDecimal.valueOf(10000);
@@ -261,12 +260,38 @@ class OutboxAsyncConfirmServiceTest {
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
                     .isSameAs(txException);
 
-            then(mockStockCachePort).should(times(1)).increment(productId, quantity);
+            then(mockTransactionCoordinator).should(never())
+                    .markStockCacheDownQuarantine(any());
         }
 
         @Test
-        @DisplayName("executeConfirmTx 가 성공하면 increment 가 호출되지 않는다")
-        void confirm_whenConfirmTxSucceeds_shouldNotCompensate() throws PaymentOrderedProductStockException {
+        @DisplayName("executeConfirmTx 가 throw 하면 미복구 메트릭을 1회 기록한다")
+        void confirm_whenConfirmTxFails_shouldRecordUnrecoveredMetricOnce() {
+            // given
+            String orderId = "order-comp-1";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            Long productId = 7L;
+            int quantity = 3;
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
+            RuntimeException txException = new RuntimeException("tx-commit-fail");
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
+                    .willThrow(txException);
+
+            // when & then
+            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
+                    .isSameAs(txException);
+
+            then(mockStockRetentionMetrics).should(times(1)).record();
+        }
+
+        @Test
+        @DisplayName("executeConfirmTx 가 성공하면 미복구 메트릭이 기록되지 않는다")
+        void confirm_whenConfirmTxSucceeds_shouldNotRecordMetric() throws PaymentOrderedProductStockException {
             // given
             String orderId = "order-comp-2";
             BigDecimal amount = BigDecimal.valueOf(10000);
@@ -283,32 +308,7 @@ class OutboxAsyncConfirmServiceTest {
             outboxAsyncConfirmService.confirm(command);
 
             // then
-            then(mockStockCachePort).should(never()).increment(any(Long.class), anyInt());
-        }
-
-        @Test
-        @DisplayName("executeConfirmTx throw + increment 도 throw 시 원본 예외를 전파한다")
-        void confirm_whenStockCompensationFails_shouldStillThrowOriginal() {
-            // given
-            String orderId = "order-comp-3";
-            BigDecimal amount = BigDecimal.valueOf(10000);
-            Long productId = 9L;
-            int quantity = 1;
-            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey3", amount);
-            PaymentEvent paymentEvent = createPaymentEventWithProduct(orderId, productId, quantity, amount);
-            RuntimeException txException = new RuntimeException("tx-fail");
-            RuntimeException compensateException = new RuntimeException("redis-increment-fail");
-
-            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
-            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
-                    .willReturn(StockDecrementResult.SUCCESS);
-            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
-                    .willThrow(txException);
-            Mockito.doThrow(compensateException).when(mockStockCachePort).increment(eq(productId), eq(quantity));
-
-            // when & then
-            assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
-                    .isSameAs(txException);
+            then(mockStockRetentionMetrics).should(never()).record();
         }
     }
 
