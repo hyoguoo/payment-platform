@@ -68,7 +68,7 @@ flowchart TD
 - [x] Task 1: coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거
 - [x] Task 2: 경로 1 보상 폐기 + 미복구 가시화
 - [x] Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거
-- [ ] Task 4: 재고 정합 통합 테스트 (과매도 0 불변식)
+- [x] Task 4: 재고 정합 통합 테스트 (과매도 0 불변식)
 
 ## 태스크
 
@@ -159,7 +159,8 @@ Task 1·2로 두 호출처가 모두 사라진 `increment` 포트와 `STOCK_COMP
 - `./gradlew test` 전체 그린, 커버리지 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- 신규 `payment-service/src/test/java/com/hyoguoo/paymentplatform/payment/integration/StockRetentionIntegrationTest.java`(@SpringBootTest + Testcontainers MySQL/Redis + EmbeddedKafka, 3 테스트): ① 재확정 이중차감 0(확정 TX 실패 후 재확정 시 ALREADY_DONE 재차감 0, redis -N 1회만 유지) ② 동시 confirm 2건 차감 1회 + 충돌건 재고 무접촉 ③ 교차 케이스(차감 박은 req TX 실패 + 다른 req ALREADY_DONE 확정 완료) 재고 -N 1회만 유지. 확정 TX 실패는 outbox UNIQUE 충돌로 유발. `verify(stockCachePort, never()).rollback(...)` + redis 재고 단언으로 과매도 0 불변식 회귀 가드.
+- 완료 기준 검증: `./gradlew :payment-service:integrationTest --tests StockRetentionIntegrationTest --rerun-tasks` → 3/3 통과(깨끗한 보상 폐기 production 상태에서 강제 재실행 확인).
 
 ## 리뷰 처리
 
