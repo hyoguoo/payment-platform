@@ -66,7 +66,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거
-- [ ] Task 2: 경로 1 보상 폐기 + 미복구 가시화
+- [x] Task 2: 경로 1 보상 폐기 + 미복구 가시화
 - [ ] Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거
 - [ ] Task 4: 재고 정합 통합 테스트 (과매도 0 불변식)
 
@@ -115,7 +115,11 @@ ADR-04(`OutboxProcessingService` 삭제)로 운영 호출처가 0이 된 `Paymen
 - `./gradlew test` 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- 신규 `core/common/metrics/StockRetentionMetrics`(라벨 없는 단일 카운터 `stock_retention_unrecovered_total`) — `PaymentConfirmGuardSkipMetrics`와 동일하게 생성자에서 eager 등록, `record()`는 throw-free.
+- 신규 `EventType.STOCK_RETENTION_UNRECOVERED` 추가(기존 `STOCK_COMPENSATE_SUCCESS`/`STOCK_COMPENSATE_FAIL`은 Task 3 정리 대상이라 본 태스크에서는 유지).
+- `OutboxAsyncConfirmService.java`: `compensateStock()` private 메서드 제거. `executeConfirmTxWithStockCompensation` → `executeConfirmTxWithStockRetention`으로 개명, 확정 TX 실패 시 `stockRetentionMetrics.record()` + `LogFmt.error(STOCK_RETENTION_UNRECOVERED)` 로그 후 원본 예외 rethrow(재고/토큰 미접촉). `StockCachePort` 필드·import·`List`/`PaymentOrder` import 제거, `StockRetentionMetrics` 주입으로 대체.
+- 테스트: `StockRetentionMetricsTest` 신규(5케이스, eager 등록·누적·throw-free 단언). `OutboxAsyncConfirmServiceTest`의 `ConfirmTxFailureCompensationTest`(3케이스, increment 호출 단언)를 `ConfirmTxFailureRetentionTest`(3케이스: 미접촉 단언/메트릭 1회/성공 시 미기록)로 재작성, `mockStockCachePort` → `mockStockRetentionMetrics`로 교체, orphan import(`anyInt`/`StockCachePort`) 제거.
+- 완료 기준 검증: `stockCachePort` 보상 호출 0회·미복구 메트릭 1회·원본 예외 전파 단언 통과, `./gradlew :payment-service:test` 490/490 통과(회귀 없음), checkstyle 통과.
 
 ### Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거 [tdd=false] [domain_risk=false]
 

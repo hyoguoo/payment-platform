@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-COMPENSATION-OTHER-PATHS (재고 보상 경로 정리)
 - **단계**: execute
-- **활성 태스크**: Task 2: 경로 1 보상 폐기 + 미복구 가시화 (Task 1 완료 — coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거)
+- **활성 태스크**: Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거 (Task 1·2 완료 — coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거, 경로 1 보상 폐기 + 미복구 가시화 메트릭/로그)
 - **이슈/브랜치**: #106
 - **파일**: docs/topics/STOCK-COMPENSATION-OTHER-PATHS.md / docs/STOCK-COMPENSATION-OTHER-PATHS-PLAN.md
 
