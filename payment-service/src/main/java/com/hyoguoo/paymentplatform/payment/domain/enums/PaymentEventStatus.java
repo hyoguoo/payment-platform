@@ -45,25 +45,4 @@ public enum PaymentEventStatus {
             case DONE, FAILED, CANCELED, PARTIAL_CANCELED, EXPIRED, QUARANTINED -> false;
         };
     }
-
-    /**
-     * 재고 보상 핸들러 진입 가드 — {@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator#executePaymentFailureCompensationWithOutbox} 전용.
-     *
-     * <p>READY, IN_PROGRESS, RETRYING 세 상태에서만 재고 차감이 발생했을 수 있으므로
-     * 보상(재고 복구)이 필요하다.
-     * QUARANTINED/terminal 은 이미 처리 완료 또는 별도 보상 경로이므로 false.
-     *
-     * <p>두 가드(canApplyConfirmResult / canCompensateStock)는 종결·QUARANTINED·EXPIRED 에서
-     * 항상 동조(둘 다 false)해야 한다. 한쪽만 드리프트하면 D7 침묵 DLQ 위험이 생긴다.
-     * {@link com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatusCrossInvariantTest} 가 회귀 방지 단언을 포함한다.
-     *
-     * @return true = 보상 가능 (READY/IN_PROGRESS/RETRYING),
-     *         false = 보상 불필요 (DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)
-     */
-    public boolean canCompensateStock() {
-        return switch (this) {
-            case READY, IN_PROGRESS, RETRYING -> true;
-            case DONE, FAILED, CANCELED, PARTIAL_CANCELED, EXPIRED, QUARANTINED -> false;
-        };
-    }
 }

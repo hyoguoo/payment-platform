@@ -65,7 +65,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거
+- [x] Task 1: coordinator outbox 死 코드 4메서드 + canCompensateStock 가드 제거
 - [ ] Task 2: 경로 1 보상 폐기 + 미복구 가시화
 - [ ] Task 3: increment 포트 + STOCK_COMPENSATE 이벤트 orphan 제거
 - [ ] Task 4: 재고 정합 통합 테스트 (과매도 0 불변식)
@@ -91,7 +91,11 @@ ADR-04(`OutboxProcessingService` 삭제)로 운영 호출처가 0이 된 `Paymen
 - `./gradlew test` 회귀 없음(살아있는 coordinator 메서드 테스트 + 결과 소비 경로 테스트 그린).
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentTransactionCoordinator.java`: `executePaymentFailureCompensationWithOutbox` + `compensateStockCacheGuarded`(경로 2), `executePaymentSuccessCompletionWithOutbox` / `executePaymentRetryWithOutbox` / `executePaymentQuarantineWithOutbox`(형제 3개) 제거. orphan화된 `paymentLoadUseCase` 필드, `RetryPolicy`/`PaymentOutbox`/`Instant` import 정리. 살아있는 `decrementStock` / `markStockCacheDownQuarantine` / `executeConfirmTx`와 그 의존(`paymentCommandUseCase`/`paymentOutboxUseCase`/`stockCachePort`/`confirmPublisher`)은 보존.
+- `PaymentEventStatus.java`: `canCompensateStock()` + Javadoc 제거. `canApplyConfirmResult()` 유지.
+- `EventType.java`: `STOCK_COMPENSATE_GUARD_SKIPPED` 제거.
+- 테스트: `PaymentTransactionCoordinatorTest`의 4 Nested 클래스(Success/Retry/Quarantine/FailureCompensation WithOutbox) 제거 + orphan import(`RetryPolicy`/`BackoffType`/`Instant`/`Optional`/`anyInt`/`anyLong`/`never`/`ParameterizedTest`/`EnumSource`) 정리, 생성자 호출 인자 5→4 보정. `PaymentEventStatusCrossInvariantTest` 파일 삭제. `PaymentEventStatusSplitMethodTest`의 `canCompensateStock` 케이스 제거.
+- 완료 기준 검증: 제거 대상 7개 심볼 main·test grep 0, `./gradlew :payment-service:checkstyleMain :payment-service:checkstyleTest` 통과(unused import 0), `./gradlew :payment-service:test` 486/486 통과(회귀 없음).
 
 ### Task 2: 경로 1 보상 폐기 + 미복구 가시화 [tdd=true] [domain_risk=true]
 
