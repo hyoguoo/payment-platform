@@ -92,6 +92,7 @@ flowchart TD
 | application (port) | `PaymentEventRepository` | `countByRetryCountGreaterThanEqual` 제거 |
 | infrastructure (repo) | `JpaPaymentEventRepository`, `PaymentEventRepositoryImpl` | `countByRetryCountGreaterThanEqual` 제거 |
 | core/common/metrics | `PaymentHealthMetrics` | `max_retry_reached` 게이지 등록(line 44) + `maxRetryCount` @Value(line 34) + `updateHealthGauges()` 게이지 갱신 블록(line 68~70) + init/update 로그 문자열의 `maxRetryCount=`(line 41)·`maxRetryReached=`(line 73) 제거 (`stuck_in_progress`는 보존) |
+| infrastructure (config) | `application.yml` | `metrics.payment.health.thresholds.max-retry-count: 5`(line 157) 死 설정 키 제거 (`maxRetryCount` @Value 제거로 orphan) |
 | core/common/log | `EventType` | `PAYMENT_RETRY_COUNT_INCREASED`(line 31) + `PAYMENT_RETRY_START`(line 30) 死 enum 상수 제거 (둘 다 사용처 0, 재시도 로깅 전용) |
 | application (dto) | `PaymentEventResult` | `retryCount` 필드 + `from()` 매핑 제거 |
 | presentation (dto) | `PaymentEventResponse` | `retryCount` 필드 + `from()` 매핑 제거 |
@@ -121,7 +122,7 @@ flowchart TD
 |------|------|------|
 | `payment_event.retry_count` 컬럼 | V5 신규 마이그레이션으로 DROP | Flyway immutable 정책, 死 값이라 손실 무의미 |
 | `payment_outbox.retry_count` | 보존 | 살아있는 Kafka 발행 재시도 관측 (별개 테이블) |
-| `max_retry_reached` 게이지 + `maxRetryCount` @Value | 제거 | 항상 0인 死 metric, Grafana 패널도 없음 |
+| `max_retry_reached` 게이지 + `maxRetryCount` @Value + `max-retry-count` 설정 키 | 제거 | 항상 0인 死 metric, Grafana 패널도 없음, @Value 제거로 설정 키도 orphan |
 | `stuck_in_progress` 게이지 | 보존 | 정상 동작 중인 health metric |
 | admin 응답/화면 retryCount | 전부 제거 (DTO 필드 + HTML 헤더/셀/colspan/통계박스) | 자체 SSR, 외부 호환 무관 |
 | `EventType.PAYMENT_RETRY_COUNT_INCREASED` + `PAYMENT_RETRY_START` | 제거 | 재시도 로깅 전용 死 enum, 사용처 0, 본 토픽 직결 (사용자 확정) |
