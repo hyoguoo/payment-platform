@@ -45,9 +45,9 @@ class PaymentControllerTest extends BaseIntegrationTest {
 
     private static final String PAYMENT_EVENT_INSERT_SQL = """
             INSERT INTO payment_event
-                (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, retry_count, created_at, updated_at)
+                (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, created_at, updated_at)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             """;
     private static final String TEST_ORDER_ID = "55996af6-e5b5-47e5-ac3c-44508ee6fd6b";
     private static final String TEST_PAYMENT_KEY = "tviva20240929050058zeWv3";
@@ -135,7 +135,7 @@ class PaymentControllerTest extends BaseIntegrationTest {
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
                 1L, 1L, 2L, "테스트 주문", TEST_ORDER_ID, TEST_PAYMENT_KEY,
                 PaymentGatewayType.TOSS.name(), PaymentEventStatus.DONE.name(),
-                "2024-01-01 12:00:00", "2024-01-01 12:00:00", 0);
+                "2024-01-01 12:00:00", "2024-01-01 12:00:00");
 
         // when
         ResultActions perform = mockMvc.perform(
@@ -164,7 +164,7 @@ class PaymentControllerTest extends BaseIntegrationTest {
         // given
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
                 1L, 1L, 2L, "테스트 주문", TEST_ORDER_ID, null,
-                PaymentGatewayType.TOSS.name(), PaymentEventStatus.READY.name(), null, null, 0);
+                PaymentGatewayType.TOSS.name(), PaymentEventStatus.READY.name(), null, null);
 
         // when
         ResultActions perform = mockMvc.perform(

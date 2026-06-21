@@ -63,7 +63,6 @@ class PaymentExpirationServiceImplTest {
                 .orderName("Test Order")
                 .orderId("order123")
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .paymentOrderList(paymentOrderList)
                 .createdAt(thirtyOneMinutesAgo)
                 .allArgsBuild();
@@ -75,7 +74,6 @@ class PaymentExpirationServiceImplTest {
                 .orderName("Test Order")
                 .orderId("order123")
                 .status(PaymentEventStatus.EXPIRED)
-                .retryCount(0)
                 .paymentOrderList(paymentOrderList)
                 .createdAt(thirtyOneMinutesAgo)
                 .allArgsBuild();
@@ -135,7 +133,6 @@ class PaymentExpirationServiceImplTest {
                     .orderName("Order " + i)
                     .orderId("order" + i)
                     .status(PaymentEventStatus.READY)
-                    .retryCount(0)
                     .paymentOrderList(orderList)
                     .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
@@ -161,7 +158,6 @@ class PaymentExpirationServiceImplTest {
                     .orderName("Order " + i)
                     .orderId("order" + i)
                     .status(PaymentEventStatus.EXPIRED)
-                    .retryCount(0)
                     .paymentOrderList(expiredOrderList)
                     .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
                     .allArgsBuild();
@@ -215,7 +211,6 @@ class PaymentExpirationServiceImplTest {
                 .orderName("Reconciler 복원 주문")
                 .orderId("order-reset-001")
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .paymentOrderList(paymentOrderList)
                 .lastStatusChangedAt(thirtyOneMinutesAgo)
                 .allArgsBuild();
@@ -227,7 +222,6 @@ class PaymentExpirationServiceImplTest {
                 .orderName("Reconciler 복원 주문")
                 .orderId("order-reset-001")
                 .status(PaymentEventStatus.EXPIRED)
-                .retryCount(0)
                 .paymentOrderList(paymentOrderList)
                 .lastStatusChangedAt(Instant.now())
                 .allArgsBuild();

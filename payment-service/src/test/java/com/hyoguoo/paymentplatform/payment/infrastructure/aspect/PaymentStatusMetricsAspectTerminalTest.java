@@ -107,7 +107,6 @@ class PaymentStatusMetricsAspectTerminalTest {
                 .status(status)
                 .executedAt(null)
                 .approvedAt(null)
-                .retryCount(0)
                 .statusReason(null)
                 .paymentOrderList(Collections.emptyList())
                 .createdAt(Instant.parse("2026-06-11T00:00:00Z"))

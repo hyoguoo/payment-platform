@@ -63,7 +63,7 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 ## 진행 상황
 
 - [x] Task 1: max_retry_reached 死 게이지 경로 제거
-- [ ] Task 2: payment_event.retry_count 데이터 경로 전면 제거
+- [x] Task 2: payment_event.retry_count 데이터 경로 전면 제거
 - [ ] Task 3: 재시도 로깅 死 enum 제거
 
 ## 태스크
@@ -121,7 +121,19 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 - `rg -n "retry_count" payment-service/src/main/resources/db/migration/V1__payment_schema.sql` 의 잔존은 `payment_outbox`(line 61)만 (payment_event 라인 18은 V5로 무력화 — V1은 immutable이라 텍스트는 남음)
 
 **완료 결과**
-> (execute에서 채움)
+- `V5__drop_payment_event_retry_count.sql` 신규 작성: 최초안은 PLAN의 `DROP COLUMN IF EXISTS retry_count`를 그대로 따랐으나, **[Rule 1]** MySQL은 `ALTER TABLE ... DROP COLUMN IF EXISTS` 구문을 지원하지 않음(컬럼 단위 IF EXISTS는 MariaDB 전용 확장, `DROP TABLE IF EXISTS`와 다름)을 flyway-on 통합 테스트 실패로 발견 → `DROP COLUMN retry_count;`로 수정하고 주석에 근거 + Flyway 체크섬 기반 멱등성 설명 추가
+- `PaymentEvent`(domain): `retryCount` 필드 + `create()`의 `.retryCount(0)` 제거
+- `PaymentEventEntity`: `retry_count` 컬럼 매핑 필드 + `from()`/`toDomain()` 매핑 제거
+- `PaymentEventResult`(application dto) / `PaymentEventResponse`(presentation dto): `retryCount` 필드 + `from()` 매핑 제거
+- `payment-events.html`: `<th>Retry</th>` + `<td>` 셀 제거, empty-state `colspan` 9→8
+- `payment-event-detail.html`: retryCount 통계 박스 삭제 (3칸 그리드, 빈칸 허용)
+- 테스트: `PaymentEvent.retryCount` 필드 제거로 발생한 컴파일 에러를 따라 PaymentEvent/PaymentEventEntity 빌더의 `.retryCount(...)` 호출 전수 제거(약 15개 파일) + INSERT SQL의 `retry_count` 컬럼/바인딩 제거(`PaymentEventRepositoryImplTest`, `PaymentSchedulerTest`, `PaymentControllerTest`) + `PaymentEventTest`의 단언·extract(`PaymentEvent::getRetryCount`)·로컬 변수 제거. `PaymentOutbox` 빌더의 `.retryCount(...)`(별개 타입, `OutboxRelayServiceTest`/`OutboxPendingAgeMetricsTest`/`OutboxWorkerMdcPropagationTest`/`OutboxWorkerTest`)는 컴파일러가 자동 구분 — 무손상 보존 확인
+- `rg -n "retry_count|getRetryCount|\.retryCount\b"` PaymentEvent 한정 경로(domain/PaymentEvent.java, entity/PaymentEventEntity.java, application/dto/admin, presentation/dto/response/admin) → 결과 0
+- V1의 `payment_outbox.retry_count`(line 61)는 그대로 보존 확인
+- **[Rule 1] 추가 발견**: 위 V5 SQL 버그로 첫 통합 테스트 실행이 일부 Testcontainers MySQL 컨테이너(`withReuse(true)`)에 `flyway_schema_history`상 실패 레코드를 남겨, SQL을 고친 뒤에도 Flyway가 "Migrations have failed validation"으로 재실패 — 로컬 컨테이너의 `flyway_schema_history`에서 해당 실패 레코드(`version=5, success=0`)만 삭제해 정리(컬럼 자체는 DROP 미실행 상태로 남아있어 데이터 손실 없음). 코드 변경 아님, 로컬 테스트 인프라 정리.
+- `./gradlew :payment-service:test --rerun` → create-drop 그룹 450 tests, 450 passed, 0 failed
+- `./gradlew :payment-service:integrationTest --rerun` → flyway-on 그룹 37 tests, 37 passed, 0 failed
+- `./gradlew :payment-service:test :payment-service:integrationTest --rerun` 동시 실행 + `jacocoTestCoverageVerification` → BUILD SUCCESSFUL
 
 ---
 

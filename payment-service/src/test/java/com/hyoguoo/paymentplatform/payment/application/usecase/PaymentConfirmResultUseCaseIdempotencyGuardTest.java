@@ -160,7 +160,6 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-guard")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

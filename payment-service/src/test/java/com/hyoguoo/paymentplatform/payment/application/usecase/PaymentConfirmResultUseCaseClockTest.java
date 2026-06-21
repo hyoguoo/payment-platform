@@ -137,7 +137,6 @@ class PaymentConfirmResultUseCaseClockTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-clock-001")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

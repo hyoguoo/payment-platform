@@ -70,7 +70,6 @@ class OutboxRelayServiceTest {
                 .paymentKey("pk-001")
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.IN_PROGRESS)
-                .retryCount(0)
                 .paymentOrderList(java.util.List.of())
                 .allArgsBuild();
 
@@ -108,7 +107,6 @@ class OutboxRelayServiceTest {
                 .paymentKey("pk-001")
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.IN_PROGRESS)
-                .retryCount(0)
                 .paymentOrderList(java.util.List.of())
                 .allArgsBuild();
 
@@ -145,7 +143,6 @@ class OutboxRelayServiceTest {
                 .paymentKey("pk-001")
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.IN_PROGRESS)
-                .retryCount(0)
                 .paymentOrderList(java.util.List.of())
                 .allArgsBuild();
 

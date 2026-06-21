@@ -31,7 +31,6 @@ public class PaymentEvent {
     private PaymentEventStatus status;
     private Instant executedAt;
     private Instant approvedAt;
-    private Integer retryCount;
     private String statusReason;
     private List<PaymentOrder> paymentOrderList;
     private Instant createdAt;
@@ -51,7 +50,6 @@ public class PaymentEvent {
                 .orderId(orderId)
                 .gatewayType(gatewayType)
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .paymentOrderList(new ArrayList<>())
                 .lastStatusChangedAt(lastStatusChangedAt)
                 .allArgsBuild();

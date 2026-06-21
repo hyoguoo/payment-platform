@@ -247,7 +247,6 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-approved")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

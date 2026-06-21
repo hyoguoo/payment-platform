@@ -49,7 +49,6 @@ class PaymentEventTest {
                 .orderId("order123")
                 .paymentKey("validPaymentKey")
                 .status(PaymentEventStatus.IN_PROGRESS)
-                .retryCount(0)
                 .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
                 .allArgsBuild();
     }
@@ -80,7 +79,6 @@ class PaymentEventTest {
                 .orderId("order123")
                 .paymentKey("validPaymentKey")
                 .status(paymentEventStatus)
-                .retryCount(0)
                 .approvedAt(Instant.parse("2021-01-01T00:00:00Z"))
                 .paymentOrderList(List.of(paymentOrder1, paymentOrder2))
                 .allArgsBuild();
@@ -99,7 +97,6 @@ class PaymentEventTest {
         PaymentEventStatus status = PaymentEventStatus.IN_PROGRESS;
         Instant approvedAt = Instant.now();
         Instant executedAt = Instant.now();
-        Integer retryCount = 1;
         List<PaymentOrder> paymentOrderList = List.of(
                 PaymentOrder.allArgsBuilder()
                         .id(1L)
@@ -127,7 +124,6 @@ class PaymentEventTest {
                 .status(status)
                 .approvedAt(approvedAt)
                 .executedAt(executedAt)
-                .retryCount(retryCount)
                 .paymentOrderList(paymentOrderList)
                 .allArgsBuild();
 
@@ -142,10 +138,9 @@ class PaymentEventTest {
                         PaymentEvent::getStatus,
                         PaymentEvent::getApprovedAt,
                         PaymentEvent::getExecutedAt,
-                        PaymentEvent::getRetryCount,
                         PaymentEvent::getPaymentOrderList)
                 .containsExactly(id, buyerId, sellerId, orderName, orderId, paymentKey,
-                        status, approvedAt, executedAt, retryCount, paymentOrderList);
+                        status, approvedAt, executedAt, paymentOrderList);
     }
 
     @Test
@@ -192,7 +187,6 @@ class PaymentEventTest {
         assertThat(paymentEvent.getPaymentOrderList()).isEmpty();
         assertThat(paymentEvent.getPaymentKey()).isNull();
         assertThat(paymentEvent.getExecutedAt()).isNull();
-        assertThat(paymentEvent.getRetryCount()).isZero();
     }
 
     @ParameterizedTest
@@ -481,7 +475,6 @@ class PaymentEventTest {
                 .orderName("테스트 주문")
                 .orderId("order123")
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .lastStatusChangedAt(initialTime)
                 .paymentOrderList(List.of())
                 .allArgsBuild();
@@ -507,7 +500,6 @@ class PaymentEventTest {
                 .orderName("테스트 주문")
                 .orderId("order123")
                 .status(PaymentEventStatus.IN_PROGRESS)
-                .retryCount(0)
                 .lastStatusChangedAt(initialTime)
                 .paymentOrderList(List.of())
                 .allArgsBuild();
@@ -553,7 +545,6 @@ class PaymentEventTest {
                 .orderName("테스트 주문")
                 .orderId("order123")
                 .status(initialStatus)
-                .retryCount(0)
                 .lastStatusChangedAt(initialTime)
                 .paymentOrderList(List.of(paymentOrder))
                 .allArgsBuild();
@@ -587,7 +578,6 @@ class PaymentEventTest {
                 .orderId("order123")
                 .paymentKey(null)
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .paymentOrderList(List.of(
                         PaymentOrder.allArgsBuilder()
                                 .quantity(1)

@@ -6,7 +6,7 @@
 
 - **주제**: payment 재시도 metric 잔재 정리 (RETRY-METRIC-CLEANUP)
 - **단계**: execute
-- **활성 태스크**: Task 2: payment_event.retry_count 데이터 경로 전면 제거 (V5 컬럼 DROP + 도메인 필드 + 엔티티 매핑 + 응답 DTO 2종 + admin HTML 2종 + 관련 테스트)
+- **활성 태스크**: Task 3: 재시도 로깅 死 enum 제거 (EventType.PAYMENT_RETRY_COUNT_INCREASED + PAYMENT_RETRY_START 제거)
 - **이슈/브랜치**: #110
 - **파일**: docs/topics/RETRY-METRIC-CLEANUP.md (discuss 완료) / docs/RETRY-METRIC-CLEANUP-PLAN.md
 
