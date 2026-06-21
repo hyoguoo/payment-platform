@@ -62,15 +62,6 @@ public class PaymentCommandUseCase {
 
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "RETRYING", trigger = "auto")
-    public PaymentEvent markPaymentAsRetrying(PaymentEvent paymentEvent) {
-        Instant now = clock.instant();
-        paymentEvent.toRetrying(now);
-        return paymentEventRepository.saveOrUpdate(paymentEvent);
-    }
-
-    @Transactional
-    @PublishDomainEvent(action = "changed")
     @PaymentStatusChange(toStatus = "QUARANTINED", trigger = "auto")
     public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
         Instant now = clock.instant();

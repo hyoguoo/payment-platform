@@ -216,7 +216,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("결제 시작 시  in progress 상태로 변경 불가한 상태에서는 에외를 던진다.")
     void execute_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
@@ -232,8 +232,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
-    @DisplayName("결제 완료 시 IN_PROGRESS/RETRYING 상태에서 성공적으로 done 상태로 변경한다 (DONE 자기전이는 no-op 별도 테스트)")
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS"})
+    @DisplayName("결제 완료 시 IN_PROGRESS 상태에서 성공적으로 done 상태로 변경한다 (DONE 자기전이는 no-op 별도 테스트)")
     void done_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -250,7 +250,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS"})
     @DisplayName("done() 호출 시 approvedAt non-null 이면 status 가 DONE 이 되고 approvedAt 이 저장된다 (DONE 자기전이는 no-op 별도 테스트)")
     void done_WithApprovedAt_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -271,11 +271,10 @@ class PaymentEventTest {
     @Test
     @DisplayName("done() 호출 시 approvedAt이 null이면 MISSING_APPROVED_AT 코드로 PaymentStatusException을 던진다.")
     void done_NullApprovedAt_ThrowsPaymentStatusException() {
-        // given — 허용 source(IN_PROGRESS/RETRYING) 에서 null approvedAt 전달
+        // given — 허용 source(IN_PROGRESS) 에서 null approvedAt 전달
         // DONE 자기전이는 no-op return 이라 null approvedAt 검증이 선행되지 않음 — 제외
         for (PaymentEventStatus source : List.of(
-                PaymentEventStatus.IN_PROGRESS,
-                PaymentEventStatus.RETRYING)) {
+                PaymentEventStatus.IN_PROGRESS)) {
             PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                     source,
                     PaymentOrderStatus.EXECUTING
@@ -293,7 +292,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"READY", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다. (RETRYING은 허용)")
+    @DisplayName("결제 완료 시 done 상태로 변경 불가한 상태에서는 예외를 던진다.")
     void done_InvalidStatus(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -309,7 +308,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
     @DisplayName("결제 실패 시 비종결 상태에서 성공적으로 FAILED 상태로 변경하고 statusReason이 저장된다.")
     void fail_ValidSource_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -328,7 +327,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
     @DisplayName("결제 실패 시 특정 상태에서 성공적으로 fail 상태로 변경한다.")
     void fail_Success(PaymentEventStatus paymentEventStatus) {
         // given
@@ -428,7 +427,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
     @DisplayName("READY 상태가 아닌 PaymentEvent는 EXPIRED 상태로 변경할 수 없다.")
     void expire_InvalidStatus_ThrowsException(PaymentEventStatus invalidStatus) {
         // given
@@ -601,77 +600,6 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
-    @DisplayName("재시도 전환 시 IN_PROGRESS/RETRYING 상태에서 RETRYING 상태로 변경된다.")
-    void toRetrying_성공(PaymentEventStatus paymentEventStatus) {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                paymentEventStatus, PaymentOrderStatus.EXECUTING);
-
-        // when
-        paymentEvent.toRetrying(Instant.now());
-
-        // then
-        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
-    @DisplayName("재시도 전환 시 허용되지 않는 상태(QUARANTINED 제외 종결 상태)에서는 예외를 던진다.")
-    void toRetrying_실패(PaymentEventStatus paymentEventStatus) {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                paymentEventStatus, PaymentOrderStatus.EXECUTING);
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.toRetrying(Instant.now()))
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @Test
-    @DisplayName("READY 상태에서 toRetrying() 호출 시 RETRYING으로 전환되고 retryCount가 1이 된다.")
-    void toRetrying_FromReady_Success() {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.READY, PaymentOrderStatus.NOT_STARTED);
-
-        // when
-        paymentEvent.toRetrying(Instant.now());
-
-        // then
-        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.RETRYING);
-        assertThat(paymentEvent.getRetryCount()).isEqualTo(1);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
-    @DisplayName("종결 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)에서 toRetrying() 호출 시 PaymentStatusException을 던진다.")
-    void toRetrying_TerminalSource_Throws(PaymentEventStatus paymentEventStatus) {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                paymentEventStatus, PaymentOrderStatus.EXECUTING);
-
-        // when & then
-        assertThatThrownBy(() -> paymentEvent.toRetrying(Instant.now()))
-                .isInstanceOf(PaymentStatusException.class);
-    }
-
-    @Test
-    @DisplayName("재시도 전환 시 retryCount가 1 증가한다.")
-    void toRetrying_호출_시_retryCount_증가() {
-        // given
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.IN_PROGRESS, PaymentOrderStatus.EXECUTING);
-        int initialRetryCount = paymentEvent.getRetryCount();
-
-        // when
-        paymentEvent.toRetrying(Instant.now());
-
-        // then
-        assertThat(paymentEvent.getRetryCount()).isEqualTo(initialRetryCount + 1);
-    }
-
-    @ParameterizedTest
     @CsvSource({
             "2,     15000, order123, validPaymentKey",  // 잘못된 userId
             "1,     99999, order123, validPaymentKey",  // 잘못된 amount
@@ -689,8 +617,8 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
-    @DisplayName("격리 전환 시 READY/IN_PROGRESS/RETRYING 상태에서 QUARANTINED 상태로 변경되고 statusReason이 설정된다.")
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
+    @DisplayName("격리 전환 시 READY/IN_PROGRESS 상태에서 QUARANTINED 상태로 변경되고 statusReason이 설정된다.")
     void quarantine_Success(PaymentEventStatus paymentEventStatus) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -759,7 +687,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING", "QUARANTINED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "QUARANTINED"})
     @DisplayName("quarantine() 호출 시 비종결 상태(QUARANTINED 포함)에서 QUARANTINED 전이 성공한다.")
     void quarantine_AlwaysSucceeds_FromAnyNonTerminal(PaymentEventStatus nonTerminalStatus) {
         // given — QUARANTINED가 non-terminal이어야 이 테스트가 GREEN
@@ -837,7 +765,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
     @DisplayName("expire(Instant) — READY 가 아닌 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다.")
     void expire_whenNotReady_shouldThrow(PaymentEventStatus status) {
         // given
@@ -956,7 +884,7 @@ class PaymentEventTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
     @DisplayName("T10 expire(Instant) — READY 가 아닌 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다. (NG2 회귀 가드 — exhaustive)")
     void expire_whenNotReadyExhaustive_shouldThrow(PaymentEventStatus status) {
         // given
@@ -1023,7 +951,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class,
-            names = {"READY", "RETRYING", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
+            names = {"READY", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
     @DisplayName("resetToReady() — IN_PROGRESS 가 아닌 모든 상태에서 PaymentStatusException 을 던진다 (INVALID_STATUS_TO_RESET)")
     void resetToReady_nonInProgress_shouldThrow(PaymentEventStatus from) {
         // given

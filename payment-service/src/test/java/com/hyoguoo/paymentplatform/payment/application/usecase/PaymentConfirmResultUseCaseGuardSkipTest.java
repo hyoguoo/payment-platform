@@ -35,7 +35,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  * <ul>
  *   <li>canApplyConfirmResult()==false 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) 6종에서
  *       guardSkipMetrics.record() 1회 호출 + counter 1.0</li>
- *   <li>canApplyConfirmResult()==true 상태(READY/IN_PROGRESS/RETRYING)에서 record() 미호출 (가드 통과)</li>
+ *   <li>canApplyConfirmResult()==true 상태(READY/IN_PROGRESS)에서 record() 미호출 (가드 통과)</li>
  * </ul>
  */
 @DisplayName("PaymentConfirmResultUseCase 가드 스킵 카운터")
@@ -101,8 +101,8 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
     }
 
     @ParameterizedTest(name = "handle_nonTerminalStatus_guardSkipCounterNotCalled — {0} 상태는 record() 미호출")
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
-    @DisplayName("handle_nonTerminalStatus_guardSkipCounterNotCalled — 가드 true 3종에서 record() 0회 호출")
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
+    @DisplayName("handle_nonTerminalStatus_guardSkipCounterNotCalled — 가드 true 2종에서 record() 0회 호출")
     void handle_nonTerminalStatus_guardSkipCounterNotCalled(PaymentEventStatus status) {
         PaymentEvent event = buildPaymentEvent(status);
         paymentEventRepository.save(event);

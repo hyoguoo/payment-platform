@@ -67,7 +67,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: RETRYING 상태 전이 死 코드 제거
+- [x] Task 1: RETRYING 상태 전이 死 코드 제거
 - [ ] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
 - [ ] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
 - [ ] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
@@ -100,7 +100,12 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 - `./gradlew :payment-service:test` 회귀 0 (RETRYING 참조 테스트 전수 정리로 컴파일/런타임 실패 없음).
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentEventStatus`: `RETRYING` enum 케이스 제거. `isTerminal()`/`canApplyConfirmResult()` switch 양쪽에서 RETRYING 절 삭제(exhaustive 유지).
+- `PaymentEvent`: `toRetrying()` 삭제. `done()` 허용 집합 IN_PROGRESS 단독, `fail()` 허용 집합 READY/IN_PROGRESS 로 축소.
+- `PaymentCommandUseCase`: `markPaymentAsRetrying()` + 부착 annotation 2종 삭제.
+- 테스트 정리: `PaymentEventTest`(toRetrying_* 4종 삭제 + EnumSource 9곳 RETRYING 제거 + null approvedAt 케이스 source 정리), `PaymentCommandUseCaseTest`(markPaymentAsRetrying_* 삭제), `PaymentEventStatusSplitMethodTest`, `PaymentConfirmResultUseCaseGuardSkipTest`, `QuarantineCompensationHandlerTest`(직접 참조 IN_PROGRESS로 교체 + EnumSource 정리), `PaymentStatusMetricsAspectTerminalTest`.
+- `INVALID_STATUS_TO_RETRY` 에러코드 + `retryCount` 필드 보존(PaymentOutbox.incrementRetryCount 사용 확인).
+- `RETRYING` 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 459 tests, 459 passed, 0 failed.
 
 ### Task 2: RETRY_ATTEMPT 이벤트 체인 제거 [tdd=false] [domain_risk=false]
 

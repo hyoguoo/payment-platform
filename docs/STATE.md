@@ -6,7 +6,7 @@
 
 - **주제**: CLEANUP-BATCH-E (비동기 confirm 死 코드 정리 + Fake PG 멱등성 시뮬)
 - **단계**: execute
-- **활성 태스크**: Task 1: RETRYING 상태 전이 死 코드 제거
+- **활성 태스크**: Task 2: RETRY_ATTEMPT 이벤트 체인 제거
 - **이슈/브랜치**: #108
 - **파일**: docs/topics/CLEANUP-BATCH-E.md / docs/CLEANUP-BATCH-E-PLAN.md
 

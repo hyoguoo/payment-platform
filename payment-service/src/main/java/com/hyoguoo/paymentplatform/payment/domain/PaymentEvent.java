@@ -81,17 +81,6 @@ public class PaymentEvent {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public void toRetrying(Instant lastStatusChangedAt) {
-        if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.RETRYING) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);
-        }
-        this.retryCount++;
-        this.status = PaymentEventStatus.RETRYING;
-        this.lastStatusChangedAt = lastStatusChangedAt;
-    }
-
     public void done(Instant approvedAt, Instant lastStatusChangedAt) {
         if (approvedAt == null) {
             throw PaymentStatusException.of(PaymentErrorCode.MISSING_APPROVED_AT);
@@ -102,8 +91,7 @@ public class PaymentEvent {
         if (this.status == PaymentEventStatus.DONE) {
             return;
         }
-        if (this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.RETRYING) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
         }
         this.approvedAt = approvedAt;
@@ -118,8 +106,7 @@ public class PaymentEvent {
             return;
         }
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS &&
-                this.status != PaymentEventStatus.RETRYING) {
+                this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentEventStatus.FAILED;

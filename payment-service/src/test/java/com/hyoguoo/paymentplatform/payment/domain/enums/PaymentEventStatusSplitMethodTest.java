@@ -11,9 +11,9 @@ class PaymentEventStatusSplitMethodTest {
 
     // --- canApplyConfirmResult ---
 
-    @DisplayName("canApplyConfirmResult — 진입 가능 상태 (READY / IN_PROGRESS / RETRYING) 는 true")
+    @DisplayName("canApplyConfirmResult — 진입 가능 상태 (READY / IN_PROGRESS) 는 true")
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+    @EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
     void canApplyConfirmResult_진입가능상태_trueを返す(PaymentEventStatus status) {
         assertThat(status.canApplyConfirmResult()).isTrue();
     }
