@@ -4,8 +4,10 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
-- **단계**: —
+- **주제**: CLEANUP-BATCH-E (비동기 confirm 死 코드 정리 + Fake PG 멱등성 시뮬)
+- **단계**: plan
+- **이슈/브랜치**: #108
+- **파일**: docs/topics/CLEANUP-BATCH-E.md / docs/CLEANUP-BATCH-E-PLAN.md
 
 ## 재개 메모
 
