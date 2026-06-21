@@ -234,7 +234,7 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 #### ~~TQ-8 — 비동기 confirm 상태 머신 死 코드 정리 (TQ-7 후속)~~ ✅ 완료 (CLEANUP-BATCH-E, 2026-06-21)
 
 - RETRYING enum 케이스 + 상태 머신 가드(`done`/`fail`/`canApplyConfirmResult`/`isTerminal`)의 RETRYING 브랜치 + `toRetrying`/`markPaymentAsRetrying` + 동반 死 RETRY_ATTEMPT 이벤트 체인 + `PaymentOutbox.toFailed` + 재고 캐시 단건 API 5종(`decrement`/`rollback`/`findCurrent`/`set`/`current`) + `INVALID_STATUS_TO_FAILED` + `stock_decrement.lua` 제거.
-- 보존: `retryCount` 필드 / `FAILED` enum / `INVALID_STATUS_TO_RETRY` 에러코드. DB 잔존 row 위험은 진입 경로 호출처 0 + Flyway 시드/제약 0 으로 갈음.
+- 보존: `FAILED` enum / `INVALID_STATUS_TO_RETRY` 에러코드 (진입 경로 호출처 0 + Flyway 시드/제약 0 으로 DB 잔존 row 위험 갈음). `retryCount` 필드는 후속 RETRY-METRIC-CLEANUP(2026-06-22, 이슈 #110)에서 payment_event 死 metric(항상 0)으로 판정 — V5 컬럼 DROP + 도메인 필드 + `max_retry_reached` 게이지 + 死 enum 2종까지 완전 제거. 상세: `docs/archive/retry-metric-cleanup/COMPLETION-BRIEFING.md`
 
 ### 측정 의존 코드 청결도 (8개)
 

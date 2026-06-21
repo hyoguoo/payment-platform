@@ -153,4 +153,7 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+ship 코드 리뷰 (reviewer + domain-expert, 1라운드): 둘 다 **pass**. critical 0 / major 0 / minor 1.
+
+- **[minor][domain-expert] 스킵** — `V5__drop_payment_event_retry_count.sql` 재실행 멱등성 부재(MySQL은 컬럼 단위 `IF EXISTS` 미지원). MySQL `ALTER TABLE`은 DDL 암묵 커밋 + 단일 컬럼 DROP이 원자적이라 partial 적용 상태가 사실상 발생하지 않고, 대상은 항상 0인 死값이라 데이터 손실도 없다. 운영 적용 시 Flyway validate 실패 모니터링(정상 운영 절차)으로 충분 → 추가 코드 변경 불요.
+- **[참고][reviewer] 문서-코드 정합 확인됨** — 구현 중 `DROP COLUMN IF EXISTS`(MySQL 컬럼 단위 미지원)를 plain `DROP COLUMN retry_count`로 정정. PLAN 구현 지시의 IF EXISTS 표기는 완료 결과의 정정 이력과 "계획→정정" 서사로 연결되고, topic.md 결정·실제 V5 코드는 plain DROP으로 일치. 실질 불일치 아님.
