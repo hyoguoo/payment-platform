@@ -21,7 +21,6 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_STATUS_TO_EXPIRE("E03017", "결제를 만료 상태로 변경할 수 없습니다."),
     INVALID_STATUS_TO_IN_FLIGHT("E03022", "IN_FLIGHT 상태로 변경할 수 없는 상태입니다."),
     INVALID_STATUS_TO_DONE("E03024", "DONE 상태로 변경할 수 없는 상태입니다."),
-    INVALID_STATUS_TO_FAILED("E03025", "FAILED 상태로 변경할 수 없는 상태입니다."),
     INVALID_STATUS_TO_QUARANTINE("E03026", "QUARANTINED 상태로 변경할 수 없는 상태입니다."),
     MISSING_APPROVED_AT("E03027", "승인 시각(approvedAt)이 누락되어 완료 처리할 수 없습니다."),
     AMOUNT_MISMATCH("E03029", "결제 금액 위변조 감지"),
