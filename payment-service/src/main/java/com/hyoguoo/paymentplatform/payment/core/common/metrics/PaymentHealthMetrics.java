@@ -31,17 +31,13 @@ public class PaymentHealthMetrics {
     private final Map<String, AtomicLong> healthGauges = new ConcurrentHashMap<>();
     @Value("${metrics.payment.health.thresholds.stuck-in-progress-minutes:5}")
     private long stuckInProgressMinutes;
-    @Value("${metrics.payment.health.thresholds.max-retry-count:5}")
-    private int maxRetryCount;
 
     @PostConstruct
     public void init() {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.METRICS_INIT,
-                () -> "component=PaymentHealthMetrics stuckInProgressMinutes=" + stuckInProgressMinutes
-                        + " maxRetryCount=" + maxRetryCount);
+                () -> "component=PaymentHealthMetrics stuckInProgressMinutes=" + stuckInProgressMinutes);
 
         registerHealthGauge("stuck_in_progress", "Count of payments stuck in IN_PROGRESS status");
-        registerHealthGauge("max_retry_reached", "Count of payments that reached max retry count");
     }
 
     private void registerHealthGauge(String type, String description) {
@@ -65,11 +61,7 @@ public class PaymentHealthMetrics {
                 .countByStatusAndExecutedAtBefore(PaymentEventStatus.IN_PROGRESS, stuckThreshold);
         healthGauges.get("stuck_in_progress").set(stuckInProgress);
 
-        long maxRetryReached = paymentEventRepository
-                .countByRetryCountGreaterThanEqual(maxRetryCount);
-        healthGauges.get("max_retry_reached").set(maxRetryReached);
-
         LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_UPDATED,
-                () -> "stuckInProgress=" + stuckInProgress + " maxRetryReached=" + maxRetryReached);
+                () -> "stuckInProgress=" + stuckInProgress);
     }
 }

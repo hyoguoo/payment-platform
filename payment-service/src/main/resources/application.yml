@@ -154,7 +154,6 @@ metrics:
       polling-interval-seconds: 10
       thresholds:
         stuck-in-progress-minutes: 5
-        max-retry-count: 5
 
 management:
   tracing:

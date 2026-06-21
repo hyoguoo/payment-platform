@@ -62,7 +62,7 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 
 ## 진행 상황
 
-- [ ] Task 1: max_retry_reached 死 게이지 경로 제거
+- [x] Task 1: max_retry_reached 死 게이지 경로 제거
 - [ ] Task 2: payment_event.retry_count 데이터 경로 전면 제거
 - [ ] Task 3: 재시도 로깅 死 enum 제거
 
@@ -88,7 +88,12 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 - 이 시점에 `payment_event.retry_count` 컬럼·필드는 아직 존재 (다음 태스크 대상)
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentHealthMetrics`: `max_retry_reached` 게이지 등록 라인 + `@Value maxRetryCount` 필드 + `updateHealthGauges()`의 `countByRetryCountGreaterThanEqual` 호출/set 블록 + init·update 로그의 `maxRetryCount=`/`maxRetryReached=` 토큰 제거. `stuck_in_progress` 게이지 등록·갱신·로그는 무손상 보존.
+- `application.yml`: `metrics.payment.health.thresholds.max-retry-count` 키 제거 (158줄 → 157줄, `stuck-in-progress-minutes`만 남음)
+- `countByRetryCountGreaterThanEqual` 제거: `PaymentEventRepository`(포트) / `JpaPaymentEventRepository` / `PaymentEventRepositoryImpl` / `FakePaymentEventRepository`(test mock) 4곳 모두
+- `rg -n "max-retry-count|maxRetryCount|max_retry_reached|countByRetryCountGreaterThanEqual" payment-service/src` → 결과 0
+- `./gradlew :payment-service:test --rerun` → 450 tests, 450 passed, 0 failed, 0 skipped
+- `payment_event.retry_count` 컬럼·필드·`PaymentEvent.retryCount`는 그대로 보존 (Task 2 대상, 미터치)
 
 ---
 
