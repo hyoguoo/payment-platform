@@ -69,7 +69,7 @@ flowchart TD
 
 - [x] Task 1: RETRYING 상태 전이 死 코드 제거
 - [x] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
-- [ ] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
+- [x] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
 - [ ] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
 - [ ] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
 
@@ -158,7 +158,13 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 - `./gradlew :payment-service:test` 회귀 0.
 
 **완료 결과**
-> (execute에서 채움)
+- 선행 확인: `decrement`/`rollback`/`findCurrent`/`set`/`current` 단건 5종 + `toFailed` 운영 호출처 grep 0건(정의/구현체 자신과 테스트 외 참조 없음) 재확인 완료.
+- `PaymentOutbox.toFailed()` 메서드 삭제. `PaymentOutboxStatus.FAILED` enum + `INVALID_STATUS_TO_FAILED` 에러코드는 보존(전자는 `isTerminal()` 참조, 후자는 PLAN 범위 외 — 다른 outbox 상태 전이 에러코드와 동일 SSOT enum 소속이라 단독 제거 보류, `docs/context/TODOS.md` 후속 후보로만 메모).
+- `StockCachePort`: `decrement`/`rollback`/`findCurrent`/`set`/`current` 5종 시그니처 + javadoc 제거. `decrementAtomic`/`compensateAtomic` 잔존, 인터페이스 클래스 javadoc도 "atomic decrement / rollback"으로 정정.
+- `StockCacheRedisAdapter`: 단건 5종 구현 + 보조 코드(`DECREMENT_SCRIPT` static 필드, `stock_decrement.lua` 로딩) 제거. 클래스 javadoc 의 옛 단건 Lua(DECRBY→INCRBY) 설명을 atomic 차감/복원 설명으로 정정. `stock_decrement.lua` 리소스 파일 자체는 Java 코드 범위 밖으로 보존(사용처 0 — 후속 정리 후보).
+- `[Rule 1]` `FakeStockCachePort`(test mock)가 `StockCachePort` 구현체로 단건 5종을 `@Override`하고 있어 인터페이스 변경과 함께 컴파일이 깨짐 — PLAN에 명시되지 않았으나 인터페이스 시그니처 변경의 직접 파생 영향이라 동반 수정. `decrement`/`rollback`/`findCurrent`는 테스트 호출처 0이라 완전 제거. `set`/`current`는 atomic 메서드 테스트(`FakeStockCachePortAtomicTest`, `PaymentTransactionCoordinatorTest`)의 fixture 셋업/단언 헬퍼로 광범위하게 쓰여 `@Override` 떼고 Fake 고유 public 헬퍼로 유지(인터페이스 비의존).
+- 테스트 정리: `PaymentOutboxTest`(`toFailed_Success`/`toFailed_InvalidState` 삭제), `StockCacheRedisAdapterTest`(단건 5종 테스트 4개 삭제, atomic 6종 테스트의 `adapter.set/current` 셋업·단언을 `redisTemplate` 직접 키 조작 헬퍼로 교체해 보존, 미사용 `PRODUCT_ID`/import 정리), `StockRetentionIntegrationTest`(3개 테스트의 `verify(stockCachePort, never()).rollback(...)` 단언 제거 — `rollback` 자체가 인터페이스에서 사라짐, `@MockitoSpyBean StockCachePort stockCachePort` 필드 + 미사용 Mockito import 동반 제거. 재고 -N 1회 유지 단언은 보존).
+- `toFailed`/`StockCachePort` 단건 5종 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 450 tests, 450 passed / `./gradlew :payment-service:integrationTest` 37 tests, 37 passed, 0 failed.
 
 ### Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가 [tdd=true] [domain_risk=true]
 

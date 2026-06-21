@@ -195,31 +195,6 @@ class PaymentOutboxTest {
                     .isInstanceOf(PaymentStatusException.class);
         }
 
-        @ParameterizedTest
-        @EnumSource(value = PaymentOutboxStatus.class, names = {"IN_FLIGHT"})
-        @DisplayName("IN_FLIGHT 상태에서 toFailed() 호출 시 status=FAILED가 된다")
-        void toFailed_Success(PaymentOutboxStatus initialStatus) {
-            // given
-            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
-
-            // when
-            outbox.toFailed();
-
-            // then
-            assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
-        @DisplayName("IN_FLIGHT이 아닌 상태에서 toFailed() 호출 시 PaymentStatusException이 발생한다")
-        void toFailed_InvalidState(PaymentOutboxStatus initialStatus) {
-            // given
-            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
-
-            // when & then
-            assertThatThrownBy(outbox::toFailed)
-                    .isInstanceOf(PaymentStatusException.class);
-        }
     }
 
     // 상태 전이 스펙 검증

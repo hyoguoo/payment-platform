@@ -6,7 +6,7 @@
 
 - **주제**: CLEANUP-BATCH-E (비동기 confirm 死 코드 정리 + Fake PG 멱등성 시뮬)
 - **단계**: execute
-- **활성 태스크**: Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
+- **활성 태스크**: Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
 - **이슈/브랜치**: #108
 - **파일**: docs/topics/CLEANUP-BATCH-E.md / docs/CLEANUP-BATCH-E-PLAN.md
 

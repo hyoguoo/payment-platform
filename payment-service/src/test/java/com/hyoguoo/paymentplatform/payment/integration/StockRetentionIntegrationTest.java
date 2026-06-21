@@ -3,14 +3,9 @@ package com.hyoguoo.paymentplatform.payment.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
@@ -46,7 +41,6 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
@@ -141,9 +135,6 @@ class StockRetentionIntegrationTest {
     @Autowired
     private JpaPaymentOutboxRepository jpaPaymentOutboxRepository;
 
-    @MockitoSpyBean
-    private StockCachePort stockCachePort;
-
     private StringRedisTemplate redisTemplate;
     private LettuceConnectionFactory connectionFactory;
 
@@ -205,9 +196,8 @@ class StockRetentionIntegrationTest {
                 .isInstanceOf(RuntimeException.class);
 
         // then — 재확정으로도 redis 재고가 추가로 깎이지 않는다(ALREADY_DONE 재차감 0).
-        // 보상(increment)이 단 한 번도 호출되지 않았다는 것이 과매도 0 불변식의 핵심 단언이다.
+        // 재고 -N 1회만 유지된다는 것이 과매도 0 불변식의 핵심 단언이다.
         assertThat(getStock()).isEqualTo(INITIAL_STOCK - ORDER_QUANTITY);
-        verify(stockCachePort, never()).rollback(any(), anyInt());
     }
 
     @Test
@@ -262,8 +252,6 @@ class StockRetentionIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(getStock()).isEqualTo(INITIAL_STOCK - ORDER_QUANTITY));
 
-        // then — 충돌로 실패한 건이라도 재고를 increment(보상)로 되돌리는 호출은 없어야 한다.
-        verify(stockCachePort, never()).rollback(any(), anyInt());
     }
 
     @Test
@@ -292,7 +280,6 @@ class StockRetentionIntegrationTest {
 
         // then — req A 의 실패 차감 + req B 의 ALREADY_DONE 재진입을 거쳤어도 재고는 -N 1회만 유지(과매도 0).
         assertThat(getStock()).isEqualTo(INITIAL_STOCK - ORDER_QUANTITY);
-        verify(stockCachePort, never()).rollback(any(), anyInt());
 
         // then — req B 는 IN_PROGRESS 로 정상 확정 완료된다.
         PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
