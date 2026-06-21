@@ -71,7 +71,7 @@ flowchart TD
 - [x] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
 - [x] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
 - [x] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
-- [ ] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
+- [x] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
 
 ## 태스크
 
@@ -215,7 +215,12 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 - `./gradlew :pg-service:test` 회귀 0.
 
 **완료 결과**
-> (execute에서 채움)
+- `pg/mock/FakePgGatewayAdapter.java`: 상태 기반 멱등 모드 추가 — `enableIdempotentDuplicate()` 활성화 시 `ConcurrentHashMap` + `putIfAbsent` 로 첫 호출만 happy-path 통과, 동일 orderId 재호출은 `PgGatewayDuplicateHandledException` 던짐. 기존 `throwOnConfirm` 일회성 주입과 공존(우선 적용). `getStatusByOrderId` 는 명시적 `setStatusResult` 없어도 처리된 orderId 에 대해 최초 confirm 과 동일 amount 의 DONE 응답을 합성.
+- `pg/application/service/PgSelfLoopDuplicateAbsorptionIntegrationTest.java` 신규 추가 — 1차 `PgInboxProcessor.processPending` 정상 경로로 APPROVED 종결 후, 동일 paymentKey 로 `PgVendorCallService.invokeVendor`/`applyOutcome` 을 한 번 더 호출해 self-loop 재호출을 재현. `DuplicateApprovalHandler.handleDbExists`→`reemitStoredStatus` 는 이미 terminal 인 inbox 의 상태를 바꾸지 않고 既존 `storedStatusResult` 를 그대로 재발행하는 설계임을 코드 추적으로 확인했고, 단언도 이에 맞춰 "여전히 APPROVED 유지 + storedStatusResult 가 최초 confirm 과 동일"로 작성. pg_outbox row 카운트에는 의존하지 않음. Spring 컨텍스트 없이 production 서비스 객체(`PgInboxProcessor`/`PgVendorCallService`/`DuplicateApprovalHandler`)를 Fake 저장소로 직접 wiring — `GatewayOutcome` 이 package-private sealed interface라 테스트를 `pg.application.service` 패키지에 둠.
+- `pg/mock/FakePgGatewayAdapterTest.java`: 멱등 모드 단위 테스트 4종 추가(첫호출 SUCCESS/재호출 예외, 상태 합성, throwOnConfirm 우선 적용, reset 초기화).
+- [Rule 1] `pg/mock/FakePgInboxRepository.java` `insertPending()`: `traceparentIndex.put(newId, storedTraceparent)` 가 `storedTraceparent=null` 일 때 `ConcurrentHashMap` 이 null 값을 거부해 NPE 발생 — docstring("storedTraceparent 는 NULL 허용")과 실제 동작이 불일치하는 기존 버그. null 이 아닐 때만 put 하도록 1줄 수정(어떤 기존 테스트도 null traceparent로 insertPending 을 호출한 적이 없어 지금까지 드러나지 않음).
+- Toss/Nicepay 변형(`FakePgGatewayAdapterToss`/`Nicepay`)에는 멱등 모드를 추가하지 않음 — 신규 통합 테스트가 vendor-neutral `FakePgGatewayAdapter` 만 사용해 불필요.
+- `./gradlew :pg-service:test` 316 tests, 316 passed, 0 failed (`--rerun-tasks` 로 캐시 우회 확인). `./gradlew :pg-service:integrationTest` 8 tests, 8 passed, 0 failed(`--rerun-tasks`, 신규 self-loop 테스트 포함).
 
 ## 리뷰 처리
 

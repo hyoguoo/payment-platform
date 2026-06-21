@@ -111,7 +111,9 @@ public class FakePgInboxRepository implements PgInboxRepository {
                     null, null, java.time.Instant.now(), java.time.Instant.now(),
                     paymentKey, vendorType);
             idIndex.put(newId, orderId);
-            traceparentIndex.put(newId, storedTraceparent);
+            if (storedTraceparent != null) {
+                traceparentIndex.put(newId, storedTraceparent);
+            }
             inserted[0].set(true);
             // 실제 저장은 compute 으로 진행
             return inbox;

@@ -5,8 +5,7 @@
 ## 활성 작업
 
 - **주제**: CLEANUP-BATCH-E (비동기 confirm 死 코드 정리 + Fake PG 멱등성 시뮬)
-- **단계**: execute
-- **활성 태스크**: Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트 추가
+- **단계**: ship
 - **이슈/브랜치**: #108
 - **파일**: docs/topics/CLEANUP-BATCH-E.md / docs/CLEANUP-BATCH-E-PLAN.md
 
