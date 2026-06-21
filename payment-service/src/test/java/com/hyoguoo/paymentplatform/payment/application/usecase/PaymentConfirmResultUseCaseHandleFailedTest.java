@@ -170,7 +170,6 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-failed")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

@@ -110,12 +110,6 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public long countByRetryCountGreaterThanEqual(int retryCount) {
-        return jpaPaymentEventRepository.countByRetryCountGreaterThanEqual(retryCount);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<PaymentEvent> findInProgressOlderThan(Instant before) {
         return jpaPaymentEventRepository
                 .findInProgressOlderThan(before)

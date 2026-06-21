@@ -509,7 +509,6 @@ class PaymentEosIntegrationTest {
                 .paymentKey("pay-key-" + orderId)
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(status)
-                .retryCount(0)
                 .lastStatusChangedAt(Instant.now())
                 .build();
     }

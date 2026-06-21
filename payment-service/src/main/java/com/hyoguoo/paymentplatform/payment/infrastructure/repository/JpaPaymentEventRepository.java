@@ -28,8 +28,6 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     long countByStatusAndExecutedAtBefore(@Param("status") PaymentEventStatus status,
             @Param("before") Instant before);
 
-    long countByRetryCountGreaterThanEqual(int retryCount);
-
     @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'IN_PROGRESS' AND pe.executedAt < :before")
     List<PaymentEventEntity> findInProgressOlderThan(@Param("before") Instant before);
 

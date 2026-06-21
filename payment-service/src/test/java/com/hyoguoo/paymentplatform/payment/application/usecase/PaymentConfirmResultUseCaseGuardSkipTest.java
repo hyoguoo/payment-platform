@@ -136,7 +136,6 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-guard-skip-001")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(List.of(order))
                 .allArgsBuild();
     }

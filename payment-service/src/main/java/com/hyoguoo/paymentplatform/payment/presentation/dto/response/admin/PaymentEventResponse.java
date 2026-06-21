@@ -22,7 +22,6 @@ public class PaymentEventResponse {
     private final String statusReason;
     private final Long buyerId;
     private final Long sellerId;
-    private final Integer retryCount;
     private final Instant createdAt;
     private final Instant executedAt;
     private final Instant approvedAt;
@@ -39,7 +38,6 @@ public class PaymentEventResponse {
                 .statusReason(result.getStatusReason())
                 .buyerId(result.getBuyerId())
                 .sellerId(result.getSellerId())
-                .retryCount(result.getRetryCount())
                 .createdAt(result.getCreatedAt())
                 .executedAt(result.getExecutedAt())
                 .approvedAt(result.getApprovedAt())

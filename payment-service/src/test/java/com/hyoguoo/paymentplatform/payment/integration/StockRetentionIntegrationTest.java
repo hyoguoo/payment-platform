@@ -326,7 +326,6 @@ class StockRetentionIntegrationTest {
                 .orderId(orderId)
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .lastStatusChangedAt(Instant.now())
                 .build();
         PaymentEventEntity savedEvent = jpaPaymentEventRepository.save(event);

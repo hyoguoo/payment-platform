@@ -75,13 +75,6 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     }
 
     @Override
-    public long countByRetryCountGreaterThanEqual(int retryCount) {
-        return store.values().stream()
-                .filter(e -> e.getRetryCount() != null && e.getRetryCount() >= retryCount)
-                .count();
-    }
-
-    @Override
     public List<PaymentEvent> findInProgressOlderThan(Instant before) {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.IN_PROGRESS)

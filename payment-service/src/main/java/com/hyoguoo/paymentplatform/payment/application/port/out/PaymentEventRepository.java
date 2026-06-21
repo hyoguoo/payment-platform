@@ -21,8 +21,6 @@ public interface PaymentEventRepository {
 
     long countByStatusAndExecutedAtBefore(PaymentEventStatus status, Instant before);
 
-    long countByRetryCountGreaterThanEqual(int retryCount);
-
     /**
      * IN_PROGRESS 상태이며 executedAt이 before 이전인 레코드 목록 반환.
      * Reconciler가 timeout된 IN_FLIGHT 레코드를 READY로 복원할 때 사용.

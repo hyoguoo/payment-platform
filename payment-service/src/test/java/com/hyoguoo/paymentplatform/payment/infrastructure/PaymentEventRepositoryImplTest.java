@@ -50,10 +50,10 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
 
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, retry_count, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                1L, 2L, "older-order", "older-order-id-1", "TOSS", "READY", 0,
+                1L, 2L, "older-order", "older-order-id-1", "TOSS", "READY",
                 olderCreatedAt, olderCreatedAt);
 
         Long olderEventId = jdbcTemplate.queryForObject(
@@ -62,10 +62,10 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
 
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, retry_count, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                1L, 2L, "newer-order", "newer-order-id-1", "TOSS", "READY", 0,
+                1L, 2L, "newer-order", "newer-order-id-1", "TOSS", "READY",
                 newerCreatedAt, newerCreatedAt);
 
         Long newerEventId = jdbcTemplate.queryForObject(
@@ -111,7 +111,6 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
                 .orderId("auditing-test-order-id-dm1")
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .build();
         jpaPaymentEventRepository.save(entity);
         jpaPaymentEventRepository.flush();
@@ -160,7 +159,6 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
                 .orderId("roundtrip-order-id-1")
                 .gatewayType(PaymentGatewayType.TOSS)
                 .status(PaymentEventStatus.READY)
-                .retryCount(0)
                 .build();
         jpaPaymentEventRepository.save(entity);
         jpaPaymentEventRepository.flush();

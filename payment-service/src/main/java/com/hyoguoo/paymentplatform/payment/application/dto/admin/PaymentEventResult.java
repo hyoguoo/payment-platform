@@ -23,7 +23,6 @@ public class PaymentEventResult {
     private final PaymentGatewayType gatewayType;
     private final Instant executedAt;
     private final Instant approvedAt;
-    private final Integer retryCount;
     private final String statusReason;
     private final List<PaymentOrderResult> paymentOrderList;
     private final Instant createdAt;
@@ -48,7 +47,6 @@ public class PaymentEventResult {
                 .gatewayType(paymentEvent.getGatewayType())
                 .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
-                .retryCount(paymentEvent.getRetryCount())
                 .statusReason(paymentEvent.getStatusReason())
                 .paymentOrderList(orderResponses)
                 .createdAt(paymentEvent.getCreatedAt())

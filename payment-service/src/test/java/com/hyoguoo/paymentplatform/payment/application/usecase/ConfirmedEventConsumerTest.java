@@ -175,7 +175,6 @@ class ConfirmedEventConsumerTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-001")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

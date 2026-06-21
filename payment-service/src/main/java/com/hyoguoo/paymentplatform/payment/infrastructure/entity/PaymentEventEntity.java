@@ -68,9 +68,6 @@ public class PaymentEventEntity extends BaseEntity {
     @Column(name = "approved_at")
     private Instant approvedAt;
 
-    @Column(name = "retry_count")
-    private Integer retryCount;
-
     @Column(name = "status_reason")
     private String statusReason;
 
@@ -91,7 +88,6 @@ public class PaymentEventEntity extends BaseEntity {
                 .status(paymentEvent.getStatus())
                 .executedAt(paymentEvent.getExecutedAt())
                 .approvedAt(paymentEvent.getApprovedAt())
-                .retryCount(paymentEvent.getRetryCount())
                 .statusReason(paymentEvent.getStatusReason())
                 .lastStatusChangedAt(paymentEvent.getLastStatusChangedAt())
                 .build();
@@ -109,7 +105,6 @@ public class PaymentEventEntity extends BaseEntity {
                 .status(status)
                 .executedAt(executedAt)
                 .approvedAt(approvedAt)
-                .retryCount(retryCount)
                 .statusReason(statusReason)
                 .paymentOrderList(
                         new ArrayList<>(Optional.ofNullable(paymentOrderList)

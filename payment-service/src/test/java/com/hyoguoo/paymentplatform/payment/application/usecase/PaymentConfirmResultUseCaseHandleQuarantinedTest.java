@@ -146,7 +146,6 @@ class PaymentConfirmResultUseCaseHandleQuarantinedTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-quarantined")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

@@ -280,7 +280,6 @@ class PaymentConfirmResultUseCaseTest {
                 .orderId(ORDER_ID)
                 .paymentKey("pk-eos-001")
                 .status(status)
-                .retryCount(0)
                 .paymentOrderList(orders)
                 .allArgsBuild();
     }

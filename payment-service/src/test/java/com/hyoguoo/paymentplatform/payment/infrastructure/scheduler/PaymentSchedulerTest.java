@@ -64,23 +64,23 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
 
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, retry_count, created_at, updated_at)
+                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, created_at, updated_at)
                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 100, 1, 1, "Old Order", "order100", null, "TOSS", PaymentEventStatus.READY.name(),
-                null, null, 0, thirtyOneMinutesAgo, nowLdt);
+                null, null, thirtyOneMinutesAgo, nowLdt);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
                 100, 100, "order100", 1, 1, PaymentOrderStatus.NOT_STARTED.name(), 50000);
 
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, retry_count, created_at, updated_at)
+                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, created_at, updated_at)
                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 200, 1, 1, "New Order", "order200", null, "TOSS", PaymentEventStatus.READY.name(),
-                null, null, 0, twentyNineMinutesAgo, nowLdt);
+                null, null, twentyNineMinutesAgo, nowLdt);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
                 200, 200, "order200", 2, 1, PaymentOrderStatus.NOT_STARTED.name(), 30000);
 
@@ -130,24 +130,24 @@ class PaymentSchedulerTest extends BaseIntegrationTest {
         // IN_PROGRESS 상태 결제 (31분 전)
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, retry_count, created_at, updated_at)
+                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, created_at, updated_at)
                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 300, 1, 1, "In Progress Order", "order300", "key300", "TOSS", PaymentEventStatus.IN_PROGRESS.name(),
-                null, thirtyOneMinutesAgo, 0, thirtyOneMinutesAgo, nowLdt);
+                null, thirtyOneMinutesAgo, thirtyOneMinutesAgo, nowLdt);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
                 300, 300, "order300", 1, 1, PaymentOrderStatus.EXECUTING.name(), 50000);
 
         // DONE 상태 결제 (31분 전)
         jdbcTemplate.update("""
                         INSERT INTO payment_event
-                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, retry_count, created_at, updated_at)
+                            (id, buyer_id, seller_id, order_name, order_id, payment_key, gateway_type, status, approved_at, executed_at, created_at, updated_at)
                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 400, 1, 1, "Done Order", "order400", "key400", "TOSS", PaymentEventStatus.DONE.name(),
-                thirtyOneMinutesAgo, null, 0, thirtyOneMinutesAgo, nowLdt);
+                thirtyOneMinutesAgo, null, thirtyOneMinutesAgo, nowLdt);
         jdbcTemplate.update(PAYMENT_ORDER_INSERT_SQL,
                 400, 400, "order400", 2, 1, PaymentOrderStatus.SUCCESS.name(), 30000);
 
