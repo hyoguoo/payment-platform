@@ -5,8 +5,7 @@
 ## 활성 작업
 
 - **주제**: payment 재시도 metric 잔재 정리 (RETRY-METRIC-CLEANUP)
-- **단계**: execute
-- **활성 태스크**: Task 3: 재시도 로깅 死 enum 제거 (EventType.PAYMENT_RETRY_COUNT_INCREASED + PAYMENT_RETRY_START 제거)
+- **단계**: ship
 - **이슈/브랜치**: #110
 - **파일**: docs/topics/RETRY-METRIC-CLEANUP.md (discuss 완료) / docs/RETRY-METRIC-CLEANUP-PLAN.md
 

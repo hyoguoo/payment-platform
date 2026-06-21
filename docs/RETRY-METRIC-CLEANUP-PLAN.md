@@ -64,7 +64,7 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 
 - [x] Task 1: max_retry_reached 死 게이지 경로 제거
 - [x] Task 2: payment_event.retry_count 데이터 경로 전면 제거
-- [ ] Task 3: 재시도 로깅 死 enum 제거
+- [x] Task 3: 재시도 로깅 死 enum 제거
 
 ## 태스크
 
@@ -147,7 +147,9 @@ payment 측 死 재시도 관측(`payment_event.retry_count` 데이터 경로 + 
 - 컴파일 + `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+- `EventType`: `PAYMENT_RETRY_START`, `PAYMENT_RETRY_COUNT_INCREASED` 상수 2개 제거. 선언 외 사용처 0임을 사전 grep으로 재확인 후 삭제, 인접 보존 상수(`PAYMENT_RECOVER_RETRYABLE_START` 등) 무손상
+- `rg -n "PAYMENT_RETRY_COUNT_INCREASED|PAYMENT_RETRY_START" payment-service` → 결과 0
+- `./gradlew :payment-service:test --rerun` → 450 tests, 450 passed, 0 failed, 0 skipped
 
 ## 리뷰 처리
 
