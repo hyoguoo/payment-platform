@@ -227,22 +227,19 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 - `PgGatewayPort.cancel(...)` 인터페이스만 존재
 - 운영 cancel 정책 + 부분 환불 + audit trail
 
-#### TQ-7 — STOCK-COMPENSATION-OTHER-PATHS (보상 패턴 일관 적용)
+#### ~~TQ-7 — STOCK-COMPENSATION-OTHER-PATHS (재고 보상 경로 정리)~~ ✅ 완료 (2026-06-21, 이슈/브랜치 #106)
 
-STOCK-COMPENSATION-RECOVERY 가 `PaymentConfirmResultUseCase.handleFailed` / `handleQuarantined` 만 Lua atomic + dedup token 으로 정리. 동일 silent loss 패턴이 남아 있는 다른 경로들을 같은 모델로 일관 적용.
+- 경로 2(실패 보상 가드 `executePaymentFailureCompensationWithOutbox` + ADR-04 형제 3개) 死 코드 제거, 경로 1(`OutboxAsyncConfirmService.compensateStock`) 보상 폐기 = 재고 차감 유지로 과매도 0 + 미복구 가시화(`StockRetentionMetrics` / `STOCK_RETENTION_UNRECOVERED`). dedup token 은 DEL 하지 않고 유지 — token DEL 이 confirm 동시성 멱등 보호막(SETNX)을 깨므로 기각. 상세: `docs/archive/stock-compensation-other-paths/COMPLETION-BRIEFING.md`
 
-**현황**:
-- `OutboxAsyncConfirmService.compensateStock` (line 99-119) — confirm TX 실패 보상. 같은 try/catch swallow 패턴, 동일 Lua atomic 모델 재사용 가능
-- `PaymentTransactionCoordinator.compensateStockCacheGuarded` (line 168-180) — D12 재고 복구 가드 보상
+#### TQ-8 — 비동기 confirm 상태 머신 死 코드 정리 (TQ-7 후속)
 
-**추가 정밀화 필요 사항**:
-- `decrement:done:{orderId}` dedup token namespace 정합 — confirm TX 실패 보상이 `decrementAtomic` 이미 박은 token 을 어떻게 처리할지 정책 결정 (DEL vs compensation token 박기)
-- L6 cascade (보상 끝 결제 재confirm) 차단 layer 추가 검토
+STOCK-COMPENSATION-OTHER-PATHS 가 `PaymentTransactionCoordinator` 의 outbox 처리 4메서드를 제거하면서 드러난 다음 층 orphan:
 
-**관련 코드**:
-- `payment-service/.../application/OutboxAsyncConfirmService.java`
-- `payment-service/.../application/usecase/PaymentTransactionCoordinator.java`
-- `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` (재사용 가능)
+- `PaymentCommandUseCase.markPaymentAsRetrying` — event RETRYING 전이의 유일 운영 경로였음(형제 `executePaymentRetryWithOutbox` 소멸로 호출처 0)
+- `PaymentOutbox.toFailed` — outbox IN_FLIGHT→FAILED 전이 호출처 0
+- `StockCachePort.rollback` + `StockCacheRedisAdapter` 구현 — 운영 호출처 0
+
+**검토 필요**: RETRYING 전이 경로 소멸이 상태 머신(enum `RETRYING` 케이스, `done`/`fail`/`canApplyConfirmResult` 의 RETRYING 브랜치)에 미치는 영향. enum 제거는 DB 잔존 row 호환·상태 머신 SSOT 분석 선행 필요. 잔존 브랜치는 unreachable 해도 진입 시 진행을 허용하는 방어적 코드라 무해하므로 제거는 신중히.
 
 ### 측정 의존 코드 청결도 (8개)
 

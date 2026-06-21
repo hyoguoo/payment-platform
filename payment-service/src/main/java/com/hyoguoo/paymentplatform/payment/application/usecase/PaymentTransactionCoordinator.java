@@ -8,9 +8,6 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
-import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
-import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +28,6 @@ public class PaymentTransactionCoordinator {
 
     private final PaymentCommandUseCase paymentCommandUseCase;
     private final PaymentOutboxUseCase paymentOutboxUseCase;
-    private final PaymentLoadUseCase paymentLoadUseCase;
     private final StockCachePort stockCachePort;
     private final PaymentConfirmPublisherPort confirmPublisher;
 
@@ -86,93 +82,6 @@ public class PaymentTransactionCoordinator {
                 paymentKey
         );
         return inProgress;
-    }
-
-    @Transactional
-    public PaymentEvent executePaymentSuccessCompletionWithOutbox(
-            PaymentEvent paymentEvent,
-            Instant approvedAt,
-            PaymentOutbox outbox
-    ) {
-        outbox.toDone();
-        paymentOutboxUseCase.save(outbox);
-        return paymentCommandUseCase.markPaymentAsDone(paymentEvent, approvedAt);
-    }
-
-    @Transactional
-    public PaymentEvent executePaymentRetryWithOutbox(
-            PaymentEvent paymentEvent,
-            PaymentOutbox outbox,
-            RetryPolicy policy,
-            Instant now
-    ) {
-        outbox.incrementRetryCount(policy, now);
-        paymentOutboxUseCase.save(outbox);
-        return paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
-    }
-
-    @Transactional
-    public PaymentEvent executePaymentQuarantineWithOutbox(
-            PaymentEvent paymentEvent,
-            PaymentOutbox outbox,
-            String reason
-    ) {
-        outbox.toFailed();
-        paymentOutboxUseCase.save(outbox);
-        // QUARANTINED 홀딩 전이 — 재고 복구 없음
-        return paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
-    }
-
-    /**
-     * 재고 복구 가드: TX 내 outbox/event 를 다시 조회한 뒤 조건이 충족된 경우에만 재고를 복구한다.
-     * 조건: outbox.status == IN_FLIGHT AND event.status ∈ {READY, IN_PROGRESS, RETRYING}.
-     */
-    @Transactional
-    public PaymentEvent executePaymentFailureCompensationWithOutbox(
-            String orderId,
-            List<PaymentOrder> paymentOrderList,
-            String failureReason
-    ) {
-        PaymentOutbox freshOutbox = paymentOutboxUseCase.findByOrderId(orderId)
-                .orElseThrow(() -> new IllegalStateException("Outbox not found for orderId: " + orderId));
-        PaymentEvent freshEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
-
-        boolean outboxInFlight = freshOutbox.getStatus().isInFlight();
-        boolean eventCompensatable = freshEvent.getStatus().canCompensateStock();
-
-        if (outboxInFlight && eventCompensatable) {
-            compensateStockCacheGuarded(orderId, paymentOrderList);
-        } else {
-            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_GUARD_SKIPPED,
-                    () -> "orderId=" + orderId
-                            + " outboxStatus=" + freshOutbox.getStatus()
-                            + " eventStatus=" + freshEvent.getStatus());
-        }
-
-        if (outboxInFlight) {
-            freshOutbox.toFailed();
-            paymentOutboxUseCase.save(freshOutbox);
-        }
-
-        return paymentCommandUseCase.markPaymentAsFail(freshEvent, failureReason);
-    }
-
-    /**
-     * 재고 캐시 보상 — 각 PaymentOrder 별 increment.
-     * 단일 INCR 실패는 원본 흐름 차단 금지 — LogFmt.error 후 다음 order 진행.
-     */
-    private void compensateStockCacheGuarded(String orderId, List<PaymentOrder> paymentOrderList) {
-        for (PaymentOrder order : paymentOrderList) {
-            try {
-                stockCachePort.increment(order.getProductId(), order.getQuantity());
-            } catch (RuntimeException e) {
-                LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
-                        () -> "stockCompensate orderId=" + orderId
-                                + " productId=" + order.getProductId()
-                                + " qty=" + order.getQuantity()
-                                + " error=" + e.getMessage());
-            }
-        }
     }
 
     public enum StockDecrementResult {

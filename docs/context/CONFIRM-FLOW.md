@@ -45,13 +45,13 @@ flowchart TD
 
     DECR -->|REJECTED| RJ[PaymentFailureUseCase.handleStockFailure<br/>event=FAILED]
     DECR -->|CACHE_DOWN| CD[PaymentTransactionCoordinator<br/>.markStockCacheDownQuarantine<br/>event=QUARANTINED]
-    DECR -->|SUCCESS| TX[executeConfirmTxWithStockCompensation]
+    DECR -->|SUCCESS| TX[executeConfirmTxWithStockRetention]
 
     RJ --> FAIL_409([409 throw])
     CD --> FAIL_409
 
     TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY → IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox PENDING INSERT<br/>confirmPublisher.publish (ApplicationEvent)"]
-    TX_INNER -->|RuntimeException| COMP[compensateStock<br/>Redis INCR 보상<br/>private 메서드]
+    TX_INNER -->|RuntimeException| COMP[보상 안 함<br/>재고와 토큰 차감 상태 유지<br/>StockRetentionMetrics 기록 + 미복구 error 로그]
     COMP --> RETHROW([txException re-throw])
     TX_INNER -->|성공| RESP([202 Accepted])
 ```
@@ -60,7 +60,7 @@ flowchart TD
 - `validateConfirmRequest` — TX 진입 전 도메인 가드. 위변조 / 상태 불일치 조기 차단.
 - `decrementStock(orderId, paymentOrders)` — TX 외부. `PaymentTransactionCoordinator.decrementStock` 에서 `stockCachePort.decrementAtomic(orderId, paymentOrders)` Lua 1회 호출 (결제 단위 N개 상품 atomic 차감 + dedup token `decrement:done:{orderId}` SETNX P8D). 결과 enum 매핑: `OK` / `ALREADY_DONE` → `SUCCESS`, `INSUFFICIENT` → `REJECTED`, RuntimeException → `CACHE_DOWN`.
 - `executeConfirmTx` — `@Transactional`. event 상태 전이 + outbox INSERT + `confirmPublisher.publish` (ApplicationEvent) 를 하나의 TX 에 원자 커밋. publish 가 TX 안에서 일어나야 AFTER_COMMIT 리스너가 TX 동기화 활성 상태에서 등록된다.
-- 보상 로직은 `compensateStock` private 메서드로 추출 — try 블록 외부 변수 재할당 금지 패턴.
+- 확정 TX 실패 시 재고를 보상하지 않는다 (재고와 토큰을 차감 상태로 유지). 미복구를 `StockRetentionMetrics` + `LogFmt.error`(`STOCK_RETENTION_UNRECOVERED`) 로 가시화한 뒤 원본 예외를 전파 — 과매도 0 정책 (STOCK-COMPENSATION-OTHER-PATHS). 토큰을 건드리지 않아 동시 confirm / 재확정이 모두 `ALREADY_DONE` 으로 정합하며, 포기 시 누수(redis < RDB 보수적 갭)는 재고 reconciler 후속(TC-3) 위임.
 - 반환값: `PaymentConfirmAsyncResult` (orderId, amount). `202 Accepted` 즉시 반환.
 
 ---
@@ -300,31 +300,13 @@ sequenceDiagram
 
 ---
 
-## 8. D12 재고 복구 가드 (`executePaymentFailureCompensationWithOutbox`)
+## 8. D12 재고 복구 가드 — 폐기 (ADR-04 + STOCK-COMPENSATION-OTHER-PATHS)
 
-```mermaid
-flowchart TD
-    START["executePaymentFailureCompensationWithOutbox<br/>orderId, paymentOrderList, failureReason"] --> RELOAD["① TX 내 DB 재조회<br/>paymentOutboxUseCase.findByOrderId<br/>paymentLoadUseCase.getPaymentEventByOrderId"]
+`executePaymentFailureCompensationWithOutbox`(내부 `compensateStockCacheGuarded` + `event.status.canCompensateStock()` 가드)는 payment-service 가 PG 를 직접 폴링하던 시절 `OutboxProcessingService` 가 호출하던 실패 보상 가드였다. ADR-04(PG 호출·재시도·실패 보상 로직 pg-service 이관)로 그 워커가 삭제되며 운영 호출처 0 의 死 코드가 됐고, STOCK-COMPENSATION-OTHER-PATHS 에서 메서드·가드·`canCompensateStock`·관련 테스트를 제거했다 (형제 outbox 처리 메서드 `executePaymentSuccessCompletionWithOutbox` / `executePaymentRetryWithOutbox` / `executePaymentQuarantineWithOutbox` 도 동반 제거).
 
-    RELOAD --> CHK_OB{outbox.status.isInFlight?}
-    CHK_OB -->|아니오 DONE/FAILED| SKIP_LOG[재고 복구 skip<br/>warn 로그]
-    CHK_OB -->|예 IN_FLIGHT| CHK_EV{event.status<br/>.canCompensateStock?}
-
-    CHK_EV -->|false: DONE/FAILED/QUARANTINED/terminal| SKIP_LOG
-    CHK_EV -->|true: READY/IN_PROGRESS/RETRYING| RESTORE["compensateStockCacheGuarded<br/>각 PaymentOrder 별 stockCachePort.increment"]
-
-    RESTORE --> FAIL_OB_CHK{outbox.status.isInFlight?}
-    SKIP_LOG --> FAIL_OB_CHK
-
-    FAIL_OB_CHK -->|예| FAIL_OB["outbox.toFailed save"]
-    FAIL_OB_CHK -->|아니오| MARK
-    FAIL_OB --> MARK["paymentCommandUseCase.markPaymentAsFail(freshEvent, failureReason)<br/>(이미 terminal 이면 no-op)"]
-    MARK --> FIN([종료])
-```
-
-**이중 가드 조건:**
-- `outbox.status.isInFlight()` — DONE/FAILED 이면 이미 처리됨 → skip
-- `event.status.canCompensateStock()` — READY/IN_PROGRESS/RETRYING 만 보상. QUARANTINED 는 `QuarantineCompensationHandler` 전담이므로 false. terminal 도 false.
+현행 재고 보상 책임 분담:
+- **확정 진입 실패** (executeConfirmTx RuntimeException): 보상하지 않고 차감 상태 유지 + 미복구 가시화 — 과매도 0 정책 (§2 참고).
+- **결과 수신 실패 / 격리** (events.confirmed FAILED / QUARANTINED): `PaymentConfirmResultUseCase.handleFailed` / `handleQuarantined` 가 `compensateAtomic` 으로 보상.
 
 ---
 
@@ -375,7 +357,7 @@ stateDiagram-v2
 >
 > **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 에서 DONE → StatusType.DONE, FAILED → StatusType.FAILED, 그 외 default → StatusType.PROCESSING. QUARANTINED 는 default 분기 → PROCESSING. 격리된 결제는 admin 이 DONE/FAILED 강제 전이해야 클라이언트 폴링이 종료된다.
 
-`canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = `canCompensateStock()` (보상 가드) = READY / IN_PROGRESS / RETRYING (재고 차감이 발생했을 수 있는 상태). 두 메서드는 EOS-FOLLOWUP-CLEANUP 에서 분리됐고, 종결 / QUARANTINED / EXPIRED 에서 답이 동조한다 (둘 다 false).
+`canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = READY / IN_PROGRESS / RETRYING (재고 차감이 발생했을 수 있는 상태). 과거 짝이던 `canCompensateStock()` 보상 가드는 STOCK-COMPENSATION-OTHER-PATHS 에서 死 코드로 제거됐다 (확정 진입 보상 폐기 + D12 가드 死 코드 정리). 교차 동조 불변식 테스트(`PaymentEventStatusCrossInvariantTest`)도 함께 제거.
 
 ### PaymentOutboxStatus
 
@@ -385,7 +367,7 @@ stateDiagram-v2
 
     PENDING --> IN_FLIGHT : claimToInFlight CAS (atomic UPDATE)
     IN_FLIGHT --> DONE : Kafka 발행 성공 (outbox.toDone)
-    IN_FLIGHT --> FAILED : executePaymentFailureCompensationWithOutbox 또는 executePaymentQuarantineWithOutbox
+    IN_FLIGHT --> FAILED : outbox.toFailed (현행 운영 호출처 없음 — 死 코드 정리 후속)
     IN_FLIGHT --> PENDING : inFlightAt 타임아웃 초과 → PENDING 복귀 (OutboxWorker Step 0)
     PENDING --> PENDING : 재시도 (nextRetryAt 갱신)
 

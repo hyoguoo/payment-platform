@@ -5,17 +5,15 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.StockRetentionMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,8 +25,9 @@ import org.springframework.stereotype.Service;
  * (REJECTED/CACHE_DOWN/SUCCESS) → SUCCESS인 경우에만 coordinator.executeConfirmTx() @Transactional
  * 내에서 event 전이 + outbox PENDING을 원자 커밋. Kafka 발행은 TX 밖에서 별도.
  *
- * <p>executeConfirmTx 실패 시 decrementStock 으로 차감한 재고를 redis-stock INCR 로 보상한다.
- * try 블록 외부 변수 재할당을 막기 위해 보상 로직은 private 메서드로 추출한다.
+ * <p>executeConfirmTx 실패 시 decrementStock 으로 차감한 재고는 보상하지 않고 차감 상태를
+ * 그대로 유지한다(토큰도 유지) — 동시 confirm·재확정 과매도를 0으로 만들기 위함이다. 대신
+ * {@link StockRetentionMetrics}로 미복구 상태를 가시화한 뒤 원본 예외를 그대로 전파한다.
  */
 @Slf4j
 @Service
@@ -38,7 +37,7 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     private final PaymentTransactionCoordinator transactionCoordinator;
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PaymentFailureUseCase paymentFailureUseCase;
-    private final StockCachePort stockCachePort;
+    private final StockRetentionMetrics stockRetentionMetrics;
 
     @Override
     public PaymentConfirmAsyncResult confirm(PaymentConfirmCommand command)
@@ -72,7 +71,7 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
                 throw PaymentOrderedProductStockException.of(
                         PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
             }
-            case SUCCESS -> executeConfirmTxWithStockCompensation(
+            case SUCCESS -> executeConfirmTxWithStockRetention(
                     paymentEvent, command.getPaymentKey(), command.getOrderId());
         }
 
@@ -83,39 +82,23 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
     }
 
     /**
-     * executeConfirmTx 를 호출하고, 실패 시 decrementStock 에서 차감한 재고를 보상한다.
+     * executeConfirmTx 를 호출하고, 실패 시 decrementStock 에서 차감한 재고를 보상하지 않는다.
      *
-     * <p>caller 측 try/catch 로 보상한다. 보상 increment 가 실패해도 원본 예외는 그대로 전파한다.
+     * <p>재고와 토큰 차감 상태를 그대로 유지해야 동일 orderId 재확정이 {@code ALREADY_DONE}으로
+     * 흡수되어 동시 confirm·재확정 과매도가 0이 된다. 미복구 상태는 메트릭+error 로그로
+     * 가시화한 뒤 원본 예외를 그대로 전파한다.
      */
-    private void executeConfirmTxWithStockCompensation(
+    private void executeConfirmTxWithStockRetention(
             PaymentEvent paymentEvent, String paymentKey, String orderId) {
         try {
             transactionCoordinator.executeConfirmTx(paymentEvent, paymentKey, orderId);
         } catch (RuntimeException txException) {
-            compensateStock(paymentEvent.getPaymentOrderList(), orderId, txException);
+            stockRetentionMetrics.record();
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_RETENTION_UNRECOVERED,
+                    () -> String.format(
+                            "orderId=%s executeConfirmTx 실패로 선차감 재고 미복구 유지(보상 안 함) error=%s",
+                            orderId, txException.getMessage()));
             throw txException;
-        }
-    }
-
-    private void compensateStock(
-            List<PaymentOrder> paymentOrderList, String orderId, RuntimeException txException) {
-        LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
-                () -> String.format("orderId=%s executeConfirmTx 실패로 재고 보상 수행 error=%s",
-                        orderId, txException.getMessage()));
-        for (PaymentOrder order : paymentOrderList) {
-            try {
-                stockCachePort.increment(order.getProductId(), order.getQuantity());
-                LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_SUCCESS,
-                        () -> String.format(
-                                "orderId=%s productId=%d quantity=%d 재고 보상 완료",
-                                orderId, order.getProductId(), order.getQuantity()));
-            } catch (RuntimeException compensateException) {
-                LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATE_FAIL,
-                        () -> String.format(
-                                "orderId=%s productId=%d quantity=%d 재고 보상 실패 수동복구필요 error=%s",
-                                orderId, order.getProductId(), order.getQuantity(),
-                                compensateException.getMessage()));
-            }
         }
     }
 }
