@@ -1,11 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-21
+> 최종 수정: 2026-06-22
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
-- **단계**: —
+- **주제**: payment 재시도 metric 잔재 정리 (RETRY-METRIC-CLEANUP)
+- **단계**: plan
+- **이슈/브랜치**: #110
+- **파일**: docs/topics/RETRY-METRIC-CLEANUP.md (discuss 완료)
 
 ## 재개 메모
 
