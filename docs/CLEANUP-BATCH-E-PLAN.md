@@ -70,7 +70,7 @@ flowchart TD
 - [x] Task 1: RETRYING 상태 전이 死 코드 제거
 - [x] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
 - [x] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
-- [ ] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
+- [x] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
 - [ ] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
 
 ## 태스크
@@ -189,7 +189,12 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 - `./gradlew :pg-service:test` 회귀 0.
 
 **완료 결과**
-> (execute에서 채움)
+- `FakePgGatewayStrategy`: `ConcurrentHashMap<String, PgConfirmResult> processedOrders`(key=orderId) 필드 추가. `confirm()`: 호출 시작 시 기존 기록 존재하면 즉시 duplicate 분기, 신규 happy-path 결과 생성 후 `putIfAbsent` 로 atomic 기록 — 레이스에서 패배(다른 스레드가 먼저 기록)해도 duplicate 분기로 수렴해 self-loop 병렬 호출에서도 단 한 번만 SUCCESS 가 성립.
+- duplicate 분기(`handleDuplicateConfirm`): `TossPaymentGatewayStrategy.handleErrorResponse`(ALREADY_PROCESSED_PAYMENT 케이스)와 동일한 이벤트+예외 이중 신호 순서 — `DuplicateApprovalDetectedEvent` 발행(`EventType.PG_VENDOR_DUPLICATE_HANDLED` 로그) 후 `PgGatewayDuplicateHandledException` throw.
+- `getStatusByOrderId()`: 처리된 orderId 는 `processedOrders` 의 최초 confirm 결과로부터 happy-path `PgStatusResult`(status=DONE) 구성 — amount/paymentKey/approvedAt 은 최초 confirm 과 동일(`DuplicateApprovalHandler.handleDbExists` 의 amount 불일치 시 QUARANTINED 분기 회피). 처리 기록 없는 orderId 는 기존 계약대로 `UnsupportedOperationException`.
+- 생성자에 `ApplicationEventPublisher applicationEventPublisher` 주입(Toss 전략과 동일 패턴, cycle 회피).
+- `FakePgGatewayStrategyTest`: RED 단계에서 `confirm_첫호출_SUCCESS_반환`/`confirm_동일paymentKey_재호출_DuplicateHandledException_및_이벤트발행`(Mockito `ApplicationEventPublisher` mock + `ArgumentCaptor` 로 이벤트 필드 검증)/`getStatusByOrderId_처리된orderId_happy응답`/`getStatusByOrderId_미처리orderId_예외` 신규 추가. 기존 `getStatusByOrderId_shouldThrowUnsupported`는 미처리 orderId 케이스로 의미를 좁혀 보존. fail-rate 주입 테스트(`confirm_failRateAlways_...`)는 그대로 보존.
+- `./gradlew :pg-service:test` 312 tests, 312 passed, 0 failed (FakePgGatewayStrategyTest 5/5 PASSED 포함).
 
 ### Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트 [tdd=true] [domain_risk=true]
 
