@@ -46,15 +46,8 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.DONE;
     }
 
-    public void toFailed() {
-        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAILED);
-        }
-        this.status = PaymentOutboxStatus.FAILED;
-    }
-
     public void incrementRetryCount(RetryPolicy policy, Instant now) {
-        // toInFlight/toDone/toFailed 와 동일하게 IN_FLIGHT 상태에서만 허용.
+        // toInFlight/toDone 와 동일하게 IN_FLIGHT 상태에서만 허용.
         // DONE/FAILED outbox 에서 호출 시 silent 하게 PENDING 재활성화되던 버그 방어.
         if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RETRY);

@@ -6,7 +6,6 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentCreatedEvent;
-import com.hyoguoo.paymentplatform.payment.domain.event.PaymentRetryAttemptedEvent;
 import com.hyoguoo.paymentplatform.payment.domain.event.PaymentStatusChangedEvent;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -54,23 +53,4 @@ public class PaymentEventPublisher {
                         + " " + previousStatus + "->" + paymentEvent.getStatus());
     }
 
-    public void publishRetryAttempt(PaymentEvent paymentEvent,
-            PaymentEventStatus previousStatus,
-            String reason,
-            LocalDateTime occurredAt) {
-        applicationEventPublisher.publishEvent(
-                PaymentRetryAttemptedEvent.of(
-                        paymentEvent.getId(),
-                        paymentEvent.getOrderId(),
-                        previousStatus,
-                        paymentEvent.getStatus(),
-                        reason,
-                        occurredAt
-                )
-        );
-        LogFmt.info(log, LogDomain.PAYMENT, EventType.DOMAIN_EVENT_RETRY_PUBLISHED,
-                () -> "orderId=" + paymentEvent.getOrderId()
-                        + " retryCount=" + paymentEvent.getRetryCount()
-                        + " " + previousStatus + "->" + paymentEvent.getStatus());
-    }
 }

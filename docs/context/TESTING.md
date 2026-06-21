@@ -148,7 +148,7 @@ Mockito 로 FeignClient 를 mock 하고 throw 시나리오별 어댑터 동작�
 
 ```java
 @ParameterizedTest
-@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS", "RETRYING"})
+@EnumSource(value = PaymentEventStatus.class, names = {"READY", "IN_PROGRESS"})
 void quarantine_whenNonTerminal_shouldTransition(PaymentEventStatus from) { ... }
 
 @ParameterizedTest

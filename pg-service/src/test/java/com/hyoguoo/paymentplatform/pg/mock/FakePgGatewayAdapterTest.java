@@ -3,8 +3,11 @@ package com.hyoguoo.paymentplatform.pg.mock;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgFailureInfo;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,5 +73,76 @@ class FakePgGatewayAdapterTest {
         assertThatThrownBy(() -> fake.confirm(
                 new PgConfirmRequest("order-3", "pk", BigDecimal.TEN, PgVendorType.TOSS)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void enableIdempotentDuplicate_첫호출은_SUCCESS_재호출은_DuplicateHandledException() {
+        fake.enableIdempotentDuplicate();
+        PgConfirmResult result = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, "pk-idem", "order-idem", BigDecimal.valueOf(15000),
+                null, null, null);
+        fake.setConfirmResult("order-idem", result);
+        PgConfirmRequest request =
+                new PgConfirmRequest("order-idem", "pk-idem", BigDecimal.valueOf(15000), PgVendorType.TOSS);
+
+        PgConfirmResult firstCall = fake.confirm(request);
+
+        assertThat(firstCall).isEqualTo(result);
+        assertThatThrownBy(() -> fake.confirm(request))
+                .isInstanceOf(PgGatewayDuplicateHandledException.class);
+        assertThat(fake.getConfirmCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void enableIdempotentDuplicate_처리된_orderId는_명시적_설정_없이도_DONE_상태를_합성한다() {
+        fake.enableIdempotentDuplicate();
+        PgConfirmResult result = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, "pk-idem2", "order-idem2", BigDecimal.valueOf(7000),
+                null, null, null);
+        fake.setConfirmResult("order-idem2", result);
+        fake.confirm(new PgConfirmRequest("order-idem2", "pk-idem2", BigDecimal.valueOf(7000), PgVendorType.TOSS));
+
+        PgStatusResult statusResult = fake.getStatusByOrderId("order-idem2");
+
+        assertThat(statusResult.status()).isEqualTo(PgPaymentStatus.DONE);
+        assertThat(statusResult.amount()).isEqualTo(BigDecimal.valueOf(7000));
+        assertThat(statusResult.orderId()).isEqualTo("order-idem2");
+    }
+
+    @Test
+    void enableIdempotentDuplicate_throwOnConfirm_일회성_주입이_우선한다() {
+        fake.enableIdempotentDuplicate();
+        PgConfirmResult result = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, "pk-idem3", "order-idem3", BigDecimal.valueOf(3000),
+                null, null, null);
+        fake.setConfirmResult("order-idem3", result);
+        fake.throwOnConfirm(PgGatewayRetryableException.of("first-call-timeout"));
+        PgConfirmRequest request =
+                new PgConfirmRequest("order-idem3", "pk-idem3", BigDecimal.valueOf(3000), PgVendorType.TOSS);
+
+        assertThatThrownBy(() -> fake.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class)
+                .hasMessage("first-call-timeout");
+
+        // throwOnConfirm 은 일회성 — 그 다음 호출부터 멱등 모드 happy-path 가 정상 적용된다.
+        PgConfirmResult secondCall = fake.confirm(request);
+        assertThat(secondCall).isEqualTo(result);
+    }
+
+    @Test
+    void reset_호출_후_멱등_모드도_초기화된다() {
+        fake.enableIdempotentDuplicate();
+        PgConfirmResult result = new PgConfirmResult(
+                PgConfirmResultStatus.SUCCESS, "pk-idem4", "order-idem4", BigDecimal.valueOf(2000),
+                null, null, null);
+        fake.setConfirmResult("order-idem4", result);
+        fake.confirm(new PgConfirmRequest("order-idem4", "pk-idem4", BigDecimal.valueOf(2000), PgVendorType.TOSS));
+
+        fake.reset();
+        fake.setConfirmResult("order-idem4", result);
+        PgConfirmResult afterReset = fake.confirm(
+                new PgConfirmRequest("order-idem4", "pk-idem4", BigDecimal.valueOf(2000), PgVendorType.TOSS));
+
+        assertThat(afterReset).isEqualTo(result);
     }
 }

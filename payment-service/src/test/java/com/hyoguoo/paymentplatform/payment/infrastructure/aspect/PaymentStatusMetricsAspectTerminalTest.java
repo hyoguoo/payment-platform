@@ -27,7 +27,7 @@ import org.mockito.Mockito;
  * <p>검증 범위:
  * <ul>
  *   <li>종결 5종(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED) → payment.event.terminal 1 증가</li>
- *   <li>비종결(READY/IN_PROGRESS/RETRYING/QUARANTINED) → 증가 안 함</li>
+ *   <li>비종결(READY/IN_PROGRESS/QUARANTINED) → 증가 안 함</li>
  * </ul>
  *
  * <p>종결 판별은 {@link PaymentEventStatus#isTerminal()} SSOT 위임 — aspect 직접 집합 정의 없음.
@@ -75,7 +75,7 @@ class PaymentStatusMetricsAspectTerminalTest {
 
     @ParameterizedTest(name = "비종결 상태 {0} → terminal 카운터 증가 안 함")
     @EnumSource(value = PaymentEventStatus.class, names = {
-            "READY", "IN_PROGRESS", "RETRYING", "QUARANTINED"
+            "READY", "IN_PROGRESS", "QUARANTINED"
     })
     @DisplayName("nonTerminalStatus_recordStatusChange_terminalCounterNotIncremented")
     void nonTerminalStatus_recordStatusChange_terminalCounterNotIncremented(

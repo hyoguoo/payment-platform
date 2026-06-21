@@ -47,7 +47,7 @@ class QuarantineCompensationHandlerTest {
     @DisplayName("handle - TX 내 QUARANTINED 전이 + 저장 완료")
     void handle_ShouldTransitionToQuarantinedAndSave() {
         // given
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.RETRYING);
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS);
         PaymentEvent quarantinedEvent = buildPaymentEvent(PaymentEventStatus.QUARANTINED);
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
@@ -120,8 +120,8 @@ class QuarantineCompensationHandlerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "RETRYING"})
-    @DisplayName("handle - 비종결 상태(IN_PROGRESS/RETRYING)이면 정상 QUARANTINED 전이")
+    @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS"})
+    @DisplayName("handle - 비종결 상태(IN_PROGRESS)이면 정상 QUARANTINED 전이")
     void handle_whenNonTerminal_shouldQuarantine(PaymentEventStatus nonTerminalStatus) {
         // given
         PaymentEvent event = buildPaymentEvent(nonTerminalStatus);

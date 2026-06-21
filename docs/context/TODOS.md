@@ -231,15 +231,10 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 
 - 경로 2(실패 보상 가드 `executePaymentFailureCompensationWithOutbox` + ADR-04 형제 3개) 死 코드 제거, 경로 1(`OutboxAsyncConfirmService.compensateStock`) 보상 폐기 = 재고 차감 유지로 과매도 0 + 미복구 가시화(`StockRetentionMetrics` / `STOCK_RETENTION_UNRECOVERED`). dedup token 은 DEL 하지 않고 유지 — token DEL 이 confirm 동시성 멱등 보호막(SETNX)을 깨므로 기각. 상세: `docs/archive/stock-compensation-other-paths/COMPLETION-BRIEFING.md`
 
-#### TQ-8 — 비동기 confirm 상태 머신 死 코드 정리 (TQ-7 후속)
+#### ~~TQ-8 — 비동기 confirm 상태 머신 死 코드 정리 (TQ-7 후속)~~ ✅ 완료 (CLEANUP-BATCH-E, 2026-06-21)
 
-STOCK-COMPENSATION-OTHER-PATHS 가 `PaymentTransactionCoordinator` 의 outbox 처리 4메서드를 제거하면서 드러난 다음 층 orphan:
-
-- `PaymentCommandUseCase.markPaymentAsRetrying` — event RETRYING 전이의 유일 운영 경로였음(형제 `executePaymentRetryWithOutbox` 소멸로 호출처 0)
-- `PaymentOutbox.toFailed` — outbox IN_FLIGHT→FAILED 전이 호출처 0
-- `StockCachePort.rollback` + `StockCacheRedisAdapter` 구현 — 운영 호출처 0
-
-**검토 필요**: RETRYING 전이 경로 소멸이 상태 머신(enum `RETRYING` 케이스, `done`/`fail`/`canApplyConfirmResult` 의 RETRYING 브랜치)에 미치는 영향. enum 제거는 DB 잔존 row 호환·상태 머신 SSOT 분석 선행 필요. 잔존 브랜치는 unreachable 해도 진입 시 진행을 허용하는 방어적 코드라 무해하므로 제거는 신중히.
+- RETRYING enum 케이스 + 상태 머신 가드(`done`/`fail`/`canApplyConfirmResult`/`isTerminal`)의 RETRYING 브랜치 + `toRetrying`/`markPaymentAsRetrying` + 동반 死 RETRY_ATTEMPT 이벤트 체인 + `PaymentOutbox.toFailed` + 재고 캐시 단건 API 5종(`decrement`/`rollback`/`findCurrent`/`set`/`current`) + `INVALID_STATUS_TO_FAILED` + `stock_decrement.lua` 제거.
+- 보존: `retryCount` 필드 / `FAILED` enum / `INVALID_STATUS_TO_RETRY` 에러코드. DB 잔존 row 위험은 진입 경로 호출처 0 + Flyway 시드/제약 0 으로 갈음.
 
 ### 측정 의존 코드 청결도 (8개)
 
@@ -276,21 +271,10 @@ STOCK-COMPENSATION-OTHER-PATHS 가 `PaymentTransactionCoordinator` 의 outbox �
 - `payment-service/.../application/config/RetryPolicyProperties.java`
 - `payment-service/.../domain/RetryPolicy.java`
 
-#### TC-9 — FakePgGatewayAdapter 의 vendor 멱등성 시뮬 추가
+#### ~~TC-9 — FakePgGatewayAdapter 의 vendor 멱등성 시뮬 추가~~ ✅ 완료 (CLEANUP-BATCH-E, 2026-06-21)
 
-`FakePgGatewayAdapter` 가 같은 paymentKey 두 번 호출 시 `PgGatewayDuplicateHandledException` 을 던지지 않아 production vendor 의 멱등성 응답을 시뮬레이션하지 못함.
-
-**현황**:
-- IN_PROGRESS self-loop retry path 에서 vendor 재호출이 가능해짐
-- production: Toss/NicePay 가 `paymentKey + orderId` 단위 멱등성 보장 → 두 번째 호출은 "이미 처리됨" 응답 → `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 가 흡수
-- Fake: 두 번째 호출 시 도메인 가드 예외만 발생 → production 동작과 다름
-
-**도입 시**: `FakePgGatewayAdapter` 에 "같은 paymentKey 가 이미 SUCCESS 로 처리됐으면 다음 호출 시 duplicate 예외 던짐" 모드 추가. T4-A 시 retry 시나리오 검증과 함께.
-
-**관련 코드**:
-- `pg-service/.../infrastructure/gateway/fake/FakePgGatewayStrategy.java`
-- `pg-service/.../exception/PgGatewayDuplicateHandledException.java`
-- `pg-service/.../application/service/DuplicateApprovalHandler.java`
+- main `FakePgGatewayStrategy` + test mock `FakePgGatewayAdapter` 양쪽에 "동일 paymentKey 재호출 시 `DuplicateApprovalDetectedEvent` 발행 + `PgGatewayDuplicateHandledException`" 멱등 모드 추가 (실 벤더의 이벤트+예외 이중 신호 재현, `ConcurrentHashMap` atomic 첫호출 판정).
+- self-loop retry -> 벤더 재호출 -> `DuplicateApprovalHandler` 흡수 -> 최종 종결(APPROVED 유지 + 재고 추가차감 0) 통합 테스트(`PgSelfLoopDuplicateAbsorptionIntegrationTest`)로 검증.
 
 #### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 

@@ -95,10 +95,6 @@ public class DomainEventLoggingAspect {
                 String createdReason = "New payment created";
                 paymentEventPublisher.publishPaymentCreated(afterEvent, createdReason, occurredAt);
             }
-            case "retry" -> {
-                String retryReason = String.format("Retry attempt #%d", afterEvent.getRetryCount());
-                paymentEventPublisher.publishRetryAttempt(afterEvent, beforeStatus, retryReason, occurredAt);
-            }
             case "changed" -> {
                 String changeReason = reason != null ? reason : "Payment is in progress successfully.";
                 paymentEventPublisher.publishStatusChange(afterEvent, beforeStatus, changeReason, occurredAt);

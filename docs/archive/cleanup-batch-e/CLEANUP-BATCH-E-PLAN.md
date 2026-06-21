@@ -1,0 +1,232 @@
+# CLEANUP-BATCH-E 구현 플랜
+
+> 작성일: 2026-06-21
+
+## 요약 브리핑
+
+### Task 목록
+
+1. **Task 1 — RETRYING 상태 전이 死 코드 제거** [domain_risk]: `RETRYING` enum 케이스 + `done`/`fail`/`canApplyConfirmResult`/`isTerminal` 의 RETRYING 절 + `toRetrying`/`markPaymentAsRetrying` + RETRYING 참조 테스트 전수 정리.
+2. **Task 2 — RETRY_ATTEMPT 이벤트 체인 제거**: `action="retry"` 미사용 체인(aspect 브랜치 + `publishRetryAttempt` + `PaymentRetryAttemptedEvent` + enum) 독립 死 제거.
+3. **Task 3 — outbox 실패 종결 + 재고 단건 API 제거**: `PaymentOutbox.toFailed` + `StockCachePort` 단건 5종 + 어댑터 구현 제거 (atomic 2종 잔존).
+4. **Task 4 — main smoke 빈 Fake PG 멱등 시뮬** [domain_risk]: `FakePgGatewayStrategy` 가 동일 paymentKey 재호출 시 중복 승인 응답 모사.
+5. **Task 5 — test mock 멱등 모드 + 흡수 통합 테스트** [domain_risk]: `FakePgGatewayAdapter` 멱등 모드 + self-loop -> duplicate 흡수 통합 테스트.
+
+### 변경 후 전체 플로우차트
+
+```mermaid
+flowchart TD
+    subgraph payment["payment-service 상태 머신 (RETRYING 제거 후)"]
+        READY["대기 (READY)"] -->|execute| IP["진행 중 (IN_PROGRESS)"]
+        IP -->|done| DONE["성공 종결 (DONE)"]
+        IP -->|fail| FAILED["실패 종결 (FAILED)"]
+        IP -->|quarantine| QUAR["격리 (QUARANTINED)"]
+        IP -.timeout resetToReady.-> READY
+    end
+
+    subgraph pg["pg-service confirm 재시도 (Fake 멱등 시뮬 후)"]
+        RT["self-loop 재호출 (같은 paymentKey)"] --> FK["Fake (멱등 모드)"]
+        FK --> CHK{"첫 호출인가"}
+        CHK -->|첫 호출| OK["SUCCESS -> APPROVED 종결"]
+        CHK -->|재호출| DUP["DuplicateApprovalDetectedEvent + PgGatewayDuplicateHandledException"]
+        DUP --> DAH["중복 승인 보정 (DuplicateApprovalHandler)"]
+        DAH --> REQ["벤더 상태 재조회 (getStatusByOrderId, 동일 amount DONE)"]
+        REQ --> REEMIT["stored_status_result 재발행"]
+    end
+
+    OK -.confirm 결과 이벤트.-> IP
+    REEMIT -.confirm 결과 이벤트 (멱등 흡수, 재고 추가차감 0).-> IP
+```
+
+### 핵심 결정 -> Task 매핑
+
+| topic.md 결정 | Task |
+|:---:|:---:|
+| RETRYING enum + 가드 브랜치 제거 | Task 1 |
+| RETRY_ATTEMPT 체인 동반 제거 | Task 2 |
+| `PaymentOutbox.toFailed` 메서드만 제거 / 재고 단건 5종 제거 | Task 3 |
+| TC-9 대상 둘 다 (main + test mock) | Task 4 (main) + Task 5 (test mock) |
+| TC-9 통합 테스트로 흡수 경로 검증 | Task 5 |
+
+### 트레이드오프 / 후속 작업
+
+- `retryCount` 필드는 증가 경로 소멸로 항상 0 고정 — 死 metric. 필드/컬럼 제거는 후속 TODO (admin/메트릭 다수 의존).
+- enum 제거는 DB RETRYING row 0 전제 — Task 1 선행 확인(호출처 0 + Flyway 시드/제약 0)으로 갈음.
+- TC-9 통합 테스트 단언은 payment DONE + 재고 1회분, pg_outbox row 카운트 비의존.
+
+## 목표
+
+비동기 confirm 死 코드(payment-service RETRYING 상태 전이 + RETRY_ATTEMPT 이벤트 체인 + outbox 실패 종결 + 재고 캐시 단건 API)를 제거하고, pg-service Fake PG 양쪽에 vendor 멱등성 시뮬을 추가해 재시도 자기루프의 중복 승인 흡수 경로를 통합 테스트로 검증 가능하게 한다. 전체 회귀 0.
+
+## 컨텍스트
+
+- 설계 문서: docs/topics/CLEANUP-BATCH-E.md
+- 주요 변경 파일:
+  - (제거) `PaymentEventStatus`, `PaymentEvent`, `PaymentCommandUseCase`, `DomainEventLoggingAspect`, `PaymentEventPublisher`, `PaymentRetryAttemptedEvent`, `PaymentHistoryEventType`, `PaymentOutbox`, `StockCachePort`, `StockCacheRedisAdapter` + 각 테스트
+  - (변경/신규) `FakePgGatewayStrategy`(main), `FakePgGatewayAdapter`(test mock), pg 통합 테스트
+
+## 진행 상황
+
+- [x] Task 1: RETRYING 상태 전이 死 코드 제거
+- [x] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
+- [x] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
+- [x] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
+- [x] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
+
+## 태스크
+
+### Task 1: RETRYING 상태 전이 死 코드 제거 [tdd=false] [domain_risk=true]
+
+RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으므로 enum 케이스·도메인 전이·상태 머신 가드 분기를 일괄 제거한다. behavior-preserving (도달 불가 코드 제거).
+
+**선행 확인**
+- enum 제거 직전 `SELECT count(*) FROM payment_event WHERE status='RETRYING'` 0건 확인. DB row 0 보증 근거 두 축: (1) 코드상 RETRYING 진입 유일 경로(`markPaymentAsRetrying`) 운영 호출처 0, (2) Flyway 마이그레이션에 RETRYING 시드/CHECK 제약 0(status 는 VARCHAR(50)). docker DB 미기동 시 이 두 축으로 갈음.
+
+**구현 (제거)**
+- `domain/enums/PaymentEventStatus.java`: `RETRYING` enum 케이스 제거. `isTerminal()` 의 `case READY, IN_PROGRESS, RETRYING, QUARANTINED` 에서 RETRYING 제거, `canApplyConfirmResult()` 의 `case READY, IN_PROGRESS, RETRYING -> true` 에서 RETRYING 제거 (exhaustive switch 정합).
+- `domain/PaymentEvent.java`: `toRetrying()` 메서드 삭제. `done()` 의 허용 집합에서 `RETRYING` 제거(IN_PROGRESS 만), `fail()` 의 허용 집합에서 `RETRYING` 제거(READY, IN_PROGRESS 만). `done()` 의 READY-거부 동작은 보존.
+- `application/usecase/PaymentCommandUseCase.java`: `markPaymentAsRetrying()` 메서드 + 그에 달린 두 annotation(`@PublishDomainEvent(action="changed")` / `@PaymentStatusChange(toStatus="RETRYING", trigger="auto")`) 일괄 삭제.
+
+**테스트 (동반 수정/삭제)** — RETRYING 참조 테스트 전수. `@EnumSource(names=...)` 의 존재하지 않는 enum 이름은 런타임 실패, 직접 상수 참조는 컴파일 실패 → 전부 손봐야 회귀 0.
+- `PaymentEventTest`: `toRetrying_*` 테스트(약 604-668) 삭제. `done`/`fail`/`quarantine` 등의 `@EnumSource(names={...,"RETRYING",...})` 에서 RETRYING 파라미터 제거(유효 source 219/235/253/312/331/431/692/762/840/959/1026 등 전수). null approvedAt 케이스(278)의 RETRYING source 정리.
+- `PaymentCommandUseCaseTest`: `markPaymentAsRetrying_*` 테스트(99-110) 삭제.
+- `domain/enums/PaymentEventStatusSplitMethodTest`: `canApplyConfirmResult` 진입 가능 source(16)에서 RETRYING 제거.
+- `application/usecase/PaymentConfirmResultUseCaseGuardSkipTest`: `@EnumSource(names={"READY","IN_PROGRESS","RETRYING"})`(104) 에서 RETRYING 제거.
+- `application/usecase/QuarantineCompensationHandlerTest`: 직접 참조 `buildPaymentEvent(PaymentEventStatus.RETRYING)`(50) 를 `IN_PROGRESS` 등 잔존 비종결 상태로 교체. `@EnumSource(names={"IN_PROGRESS","RETRYING"})`(123) 에서 RETRYING 제거.
+- `infrastructure/aspect/PaymentStatusMetricsAspectTerminalTest`: `@EnumSource(names={...,"RETRYING",...})`(78) 에서 RETRYING 제거.
+
+**완료 기준**
+- `RETRYING` 심볼이 main + test 코드에서 0건 (grep 확인). `INVALID_STATUS_TO_RETRY` 에러코드는 보존(PaymentOutbox 가 사용).
+- `./gradlew :payment-service:test` 회귀 0 (RETRYING 참조 테스트 전수 정리로 컴파일/런타임 실패 없음).
+
+**완료 결과**
+- `PaymentEventStatus`: `RETRYING` enum 케이스 제거. `isTerminal()`/`canApplyConfirmResult()` switch 양쪽에서 RETRYING 절 삭제(exhaustive 유지).
+- `PaymentEvent`: `toRetrying()` 삭제. `done()` 허용 집합 IN_PROGRESS 단독, `fail()` 허용 집합 READY/IN_PROGRESS 로 축소.
+- `PaymentCommandUseCase`: `markPaymentAsRetrying()` + 부착 annotation 2종 삭제.
+- 테스트 정리: `PaymentEventTest`(toRetrying_* 4종 삭제 + EnumSource 9곳 RETRYING 제거 + null approvedAt 케이스 source 정리), `PaymentCommandUseCaseTest`(markPaymentAsRetrying_* 삭제), `PaymentEventStatusSplitMethodTest`, `PaymentConfirmResultUseCaseGuardSkipTest`, `QuarantineCompensationHandlerTest`(직접 참조 IN_PROGRESS로 교체 + EnumSource 정리), `PaymentStatusMetricsAspectTerminalTest`.
+- `INVALID_STATUS_TO_RETRY` 에러코드 + `retryCount` 필드 보존(PaymentOutbox.incrementRetryCount 사용 확인).
+- `RETRYING` 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 459 tests, 459 passed, 0 failed.
+
+### Task 2: RETRY_ATTEMPT 이벤트 체인 제거 [tdd=false] [domain_risk=false]
+
+`@PublishDomainEvent(action="retry")` 사용처가 0 이라 retry 이벤트 발행 체인이 도달 불가. RETRYING 전이와 독립적으로 死.
+
+**구현 (제거)**
+- `infrastructure/aspect/DomainEventLoggingAspect.java`: `processResultAndPublishEvent` 의 `case "retry"` 브랜치 제거.
+- `application/publisher/PaymentEventPublisher.java`: `publishRetryAttempt()` 메서드 + 관련 import 제거.
+- `domain/event/PaymentRetryAttemptedEvent.java`: 파일 삭제.
+- `domain/event/PaymentHistoryEventType.java`: `RETRY_ATTEMPT` enum 케이스 제거 (다른 참조처 0 확인 후).
+
+**테스트 (동반 수정/삭제)**
+- `PaymentEventPublisherTest`(존재 시): `publishRetryAttempt` 테스트 삭제.
+- `DomainEventLoggingAspectTest`(존재 시): `action="retry"` 케이스 단언 삭제.
+
+**완료 기준**
+- `RETRY_ATTEMPT` / `publishRetryAttempt` / `PaymentRetryAttemptedEvent` 심볼 main 0건.
+- `PaymentHistoryEventType` 잔존 케이스가 실제 사용처와 정합.
+- `./gradlew :payment-service:test` 회귀 0.
+
+**완료 결과**
+- `DomainEventLoggingAspect.processResultAndPublishEvent`: `case "retry"` 브랜치 제거 (`changed`/`created`/`default` 잔존).
+- `PaymentEventPublisher`: `publishRetryAttempt()` 메서드 + `PaymentRetryAttemptedEvent` import 제거.
+- `PaymentRetryAttemptedEvent.java` 파일 삭제.
+- `PaymentHistoryEventType`: `RETRY_ATTEMPT` 케이스 제거 (`PAYMENT_CREATED`/`STATUS_CHANGE` 잔존, 다른 참조처 grep 0건 확인 후 제거).
+- `[Rule 1]` `EventType.DOMAIN_EVENT_RETRY_PUBLISHED` 동반 제거 — `publishRetryAttempt()` 제거로 유일 사용처가 사라져 도달 불가 enum 케이스가 됨. PLAN 명시 대상은 아니었으나 동일 체인의 직접 동반 死 코드로 판단해 같이 제거.
+- `PaymentEventPublisherTest`/`DomainEventLoggingAspectTest` 파일 자체가 부재해 동반 정리 대상 없음.
+- `RETRY_ATTEMPT`/`publishRetryAttempt`/`PaymentRetryAttemptedEvent`/`DOMAIN_EVENT_RETRY_PUBLISHED` 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 459 tests, 459 passed, 0 failed.
+
+### Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거 [tdd=false] [domain_risk=false]
+
+호출처 0 인 outbox 실패 종결 메서드와 Lua atomic 경로로 대체된 재고 캐시 단건 API 5종을 제거한다.
+
+**선행 확인**
+- `decrement`/`rollback`/`findCurrent`/`set`/`current` 단건 메서드 운영 호출처 0 을 grep 으로 최종 재확인 (`decrementAtomic`/`compensateAtomic` 와 혼동 주의).
+
+**구현 (제거)**
+- `domain/PaymentOutbox.java`: `toFailed()` 메서드 삭제. `PaymentOutboxStatus.FAILED` enum 은 보존(`isTerminal()` 참조).
+- `application/port/out/StockCachePort.java`: `decrement`/`rollback`/`findCurrent`/`set`/`current` 5종 메서드 시그니처 + javadoc 제거. `decrementAtomic`/`compensateAtomic` 잔존.
+- `infrastructure/cache/StockCacheRedisAdapter.java`: 위 5종 구현 메서드 + 보조 코드 제거.
+
+**테스트 (동반 수정/삭제)**
+- `PaymentOutboxTest`: `toFailed_*` 테스트 삭제.
+- `StockCacheRedisAdapterTest`: 단건 5종 관련 테스트 삭제. atomic 메서드 테스트 보존.
+- `StockRetentionIntegrationTest`: `verify(stockCachePort, never()).rollback(...)` 등 제거된 메서드 참조 정리.
+
+**완료 기준**
+- `StockCachePort` 에 atomic 2종 + 제거 대상 외 메서드만 잔존, 단건 5종 0건.
+- `PaymentOutbox.toFailed` 0건, `FAILED` enum 보존.
+- `./gradlew :payment-service:test` 회귀 0.
+
+**완료 결과**
+- 선행 확인: `decrement`/`rollback`/`findCurrent`/`set`/`current` 단건 5종 + `toFailed` 운영 호출처 grep 0건(정의/구현체 자신과 테스트 외 참조 없음) 재확인 완료.
+- `PaymentOutbox.toFailed()` 메서드 삭제. `PaymentOutboxStatus.FAILED` enum + `INVALID_STATUS_TO_FAILED` 에러코드는 보존(전자는 `isTerminal()` 참조, 후자는 PLAN 범위 외 — 다른 outbox 상태 전이 에러코드와 동일 SSOT enum 소속이라 단독 제거 보류, `docs/context/TODOS.md` 후속 후보로만 메모).
+- `StockCachePort`: `decrement`/`rollback`/`findCurrent`/`set`/`current` 5종 시그니처 + javadoc 제거. `decrementAtomic`/`compensateAtomic` 잔존, 인터페이스 클래스 javadoc도 "atomic decrement / rollback"으로 정정.
+- `StockCacheRedisAdapter`: 단건 5종 구현 + 보조 코드(`DECREMENT_SCRIPT` static 필드, `stock_decrement.lua` 로딩) 제거. 클래스 javadoc 의 옛 단건 Lua(DECRBY→INCRBY) 설명을 atomic 차감/복원 설명으로 정정. `stock_decrement.lua` 리소스 파일 자체는 Java 코드 범위 밖으로 보존(사용처 0 — 후속 정리 후보).
+- `[Rule 1]` `FakeStockCachePort`(test mock)가 `StockCachePort` 구현체로 단건 5종을 `@Override`하고 있어 인터페이스 변경과 함께 컴파일이 깨짐 — PLAN에 명시되지 않았으나 인터페이스 시그니처 변경의 직접 파생 영향이라 동반 수정. `decrement`/`rollback`/`findCurrent`는 테스트 호출처 0이라 완전 제거. `set`/`current`는 atomic 메서드 테스트(`FakeStockCachePortAtomicTest`, `PaymentTransactionCoordinatorTest`)의 fixture 셋업/단언 헬퍼로 광범위하게 쓰여 `@Override` 떼고 Fake 고유 public 헬퍼로 유지(인터페이스 비의존).
+- 테스트 정리: `PaymentOutboxTest`(`toFailed_Success`/`toFailed_InvalidState` 삭제), `StockCacheRedisAdapterTest`(단건 5종 테스트 4개 삭제, atomic 6종 테스트의 `adapter.set/current` 셋업·단언을 `redisTemplate` 직접 키 조작 헬퍼로 교체해 보존, 미사용 `PRODUCT_ID`/import 정리), `StockRetentionIntegrationTest`(3개 테스트의 `verify(stockCachePort, never()).rollback(...)` 단언 제거 — `rollback` 자체가 인터페이스에서 사라짐, `@MockitoSpyBean StockCachePort stockCachePort` 필드 + 미사용 Mockito import 동반 제거. 재고 -N 1회 유지 단언은 보존).
+- `toFailed`/`StockCachePort` 단건 5종 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 450 tests, 450 passed / `./gradlew :payment-service:integrationTest` 37 tests, 37 passed, 0 failed.
+
+### Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가 [tdd=true] [domain_risk=true]
+
+`FakePgGatewayStrategy`(`@ConditionalOnProperty pg.gateway.type=fake`) 가 동일 paymentKey 재호출 시 실 벤더의 중복 승인 응답을 모사하도록 한다. docker 5-service chain smoke 의 retry 시나리오 정합.
+
+**테스트 (RED)**
+- `FakePgGatewayStrategyTest`:
+  - `confirm_첫호출_SUCCESS_반환` — 신규 paymentKey 는 기존과 동일 SUCCESS.
+  - `confirm_동일paymentKey_재호출_DuplicateHandledException_및_이벤트발행` — 재호출 시 `PgGatewayDuplicateHandledException` throw + `DuplicateApprovalDetectedEvent` 발행 (Mockito `ApplicationEventPublisher` verify).
+  - `getStatusByOrderId_처리된orderId_happy응답` — 처리된 orderId 는 DONE 상태 `PgStatusResult` 반환 (기존 `UnsupportedOperationException` 대체).
+  - `getStatusByOrderId_미처리orderId_예외` — 처리 기록 없는 orderId 는 기존 계약대로 예외(선택).
+
+**구현 (GREEN)**
+- `infrastructure/gateway/fake/FakePgGatewayStrategy.java`:
+  - `ConcurrentHashMap<String, ...>` 처리 기록 필드 추가 (key=paymentKey 또는 orderId). 첫 호출 판정은 `putIfAbsent`/`computeIfAbsent` 로 atomic.
+  - `confirm()`: 첫 호출 SUCCESS + 기록, 재호출 시 `DuplicateApprovalDetectedEvent` 발행 + `PgGatewayDuplicateHandledException` throw.
+  - `getStatusByOrderId()`: 처리된 orderId 는 happy-path(DONE) `PgStatusResult` 반환. **`amount` 는 최초 confirm 의 amount 를 그대로 반환** — `DuplicateApprovalHandler.handleDbExists` 가 inbox.amount != vendor.amount 면 QUARANTINED(AMOUNT_MISMATCH) 로 분기하므로, amount 정합이 깨지면 최종 상태가 DONE 이 아닌 QUARANTINED 가 된다.
+  - 생성자에 `ApplicationEventPublisher` 주입.
+
+**완료 기준**
+- 위 테스트 pass. 첫 호출 happy-path 무변경(기존 smoke 무영향).
+- `./gradlew :pg-service:test` 회귀 0.
+
+**완료 결과**
+- `FakePgGatewayStrategy`: `ConcurrentHashMap<String, PgConfirmResult> processedOrders`(key=orderId) 필드 추가. `confirm()`: 호출 시작 시 기존 기록 존재하면 즉시 duplicate 분기, 신규 happy-path 결과 생성 후 `putIfAbsent` 로 atomic 기록 — 레이스에서 패배(다른 스레드가 먼저 기록)해도 duplicate 분기로 수렴해 self-loop 병렬 호출에서도 단 한 번만 SUCCESS 가 성립.
+- duplicate 분기(`handleDuplicateConfirm`): `TossPaymentGatewayStrategy.handleErrorResponse`(ALREADY_PROCESSED_PAYMENT 케이스)와 동일한 이벤트+예외 이중 신호 순서 — `DuplicateApprovalDetectedEvent` 발행(`EventType.PG_VENDOR_DUPLICATE_HANDLED` 로그) 후 `PgGatewayDuplicateHandledException` throw.
+- `getStatusByOrderId()`: 처리된 orderId 는 `processedOrders` 의 최초 confirm 결과로부터 happy-path `PgStatusResult`(status=DONE) 구성 — amount/paymentKey/approvedAt 은 최초 confirm 과 동일(`DuplicateApprovalHandler.handleDbExists` 의 amount 불일치 시 QUARANTINED 분기 회피). 처리 기록 없는 orderId 는 기존 계약대로 `UnsupportedOperationException`.
+- 생성자에 `ApplicationEventPublisher applicationEventPublisher` 주입(Toss 전략과 동일 패턴, cycle 회피).
+- `FakePgGatewayStrategyTest`: RED 단계에서 `confirm_첫호출_SUCCESS_반환`/`confirm_동일paymentKey_재호출_DuplicateHandledException_및_이벤트발행`(Mockito `ApplicationEventPublisher` mock + `ArgumentCaptor` 로 이벤트 필드 검증)/`getStatusByOrderId_처리된orderId_happy응답`/`getStatusByOrderId_미처리orderId_예외` 신규 추가. 기존 `getStatusByOrderId_shouldThrowUnsupported`는 미처리 orderId 케이스로 의미를 좁혀 보존. fail-rate 주입 테스트(`confirm_failRateAlways_...`)는 그대로 보존.
+- `./gradlew :pg-service:test` 312 tests, 312 passed, 0 failed (FakePgGatewayStrategyTest 5/5 PASSED 포함).
+
+### Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트 [tdd=true] [domain_risk=true]
+
+통합 테스트가 주입하는 test mock `FakePgGatewayAdapter` 에 상태 기반 멱등 모드를 추가하고, 재시도 자기루프 -> 벤더 재호출 -> 중복 승인 흡수(DuplicateApprovalHandler) -> 최종 결제 종결 경로를 통합 테스트로 검증한다.
+
+**테스트 (RED) — 통합 테스트가 RED**
+- `pg/integration/...IntegrationTest` (기존 `PgConfirmListenerSplitIntegrationTest` 패턴 재사용 또는 신규):
+  - `재시도_자기루프_중복승인_흡수_최종종결` — 첫 confirm SUCCESS 후 동일 paymentKey self-loop 재호출 시 duplicate 흡수 경로 진입, 최종 결제 상태 DONE + 재고 정합 단언.
+  - 단언 기준값: **payment 종결 상태 = DONE**, **재고 차감량 = 1회분(중복 흡수로 추가 차감 0 — payment_event_dedupe + product dedupe 가 이중 차감 흡수)**. pg_outbox row 카운트에 의존하지 않음 (흡수 핸들러 이벤트+예외 이중 경로로 2건 INSERT 가능).
+
+**구현 (GREEN)**
+- `pg/mock/FakePgGatewayAdapter.java`: 상태 기반 멱등 모드 추가 — "이미 SUCCESS 처리된 paymentKey 재호출 시 `PgGatewayDuplicateHandledException` + `DuplicateApprovalDetectedEvent`". 기존 `throwOnConfirm` 일회성 주입과 공존하도록 모드 플래그/설정 메서드(예: `enableIdempotentDuplicate()`). `getStatusByOrderId` 는 처리된 orderId 에 대해 **최초 confirm 과 동일 amount** 의 DONE 응답 (amount 정합 깨지면 흡수 핸들러가 QUARANTINED 분기).
+- 필요 시 `FakePgGatewayAdapterToss`/`Nicepay` 변형에도 동일 반영.
+
+**완료 기준**
+- 통합 테스트 pass — self-loop 재호출이 duplicate 흡수 경로를 타고 최종 DONE + 재고 1회분 차감.
+- 기존 mock 사용 테스트 회귀 0.
+- `./gradlew :pg-service:test` 회귀 0.
+
+**완료 결과**
+- `pg/mock/FakePgGatewayAdapter.java`: 상태 기반 멱등 모드 추가 — `enableIdempotentDuplicate()` 활성화 시 `ConcurrentHashMap` + `putIfAbsent` 로 첫 호출만 happy-path 통과, 동일 orderId 재호출은 `PgGatewayDuplicateHandledException` 던짐. 기존 `throwOnConfirm` 일회성 주입과 공존(우선 적용). `getStatusByOrderId` 는 명시적 `setStatusResult` 없어도 처리된 orderId 에 대해 최초 confirm 과 동일 amount 의 DONE 응답을 합성.
+- `pg/application/service/PgSelfLoopDuplicateAbsorptionIntegrationTest.java` 신규 추가 — 1차 `PgInboxProcessor.processPending` 정상 경로로 APPROVED 종결 후, 동일 paymentKey 로 `PgVendorCallService.invokeVendor`/`applyOutcome` 을 한 번 더 호출해 self-loop 재호출을 재현. `DuplicateApprovalHandler.handleDbExists`→`reemitStoredStatus` 는 이미 terminal 인 inbox 의 상태를 바꾸지 않고 既존 `storedStatusResult` 를 그대로 재발행하는 설계임을 코드 추적으로 확인했고, 단언도 이에 맞춰 "여전히 APPROVED 유지 + storedStatusResult 가 최초 confirm 과 동일"로 작성. pg_outbox row 카운트에는 의존하지 않음. Spring 컨텍스트 없이 production 서비스 객체(`PgInboxProcessor`/`PgVendorCallService`/`DuplicateApprovalHandler`)를 Fake 저장소로 직접 wiring — `GatewayOutcome` 이 package-private sealed interface라 테스트를 `pg.application.service` 패키지에 둠.
+- `pg/mock/FakePgGatewayAdapterTest.java`: 멱등 모드 단위 테스트 4종 추가(첫호출 SUCCESS/재호출 예외, 상태 합성, throwOnConfirm 우선 적용, reset 초기화).
+- [Rule 1] `pg/mock/FakePgInboxRepository.java` `insertPending()`: `traceparentIndex.put(newId, storedTraceparent)` 가 `storedTraceparent=null` 일 때 `ConcurrentHashMap` 이 null 값을 거부해 NPE 발생 — docstring("storedTraceparent 는 NULL 허용")과 실제 동작이 불일치하는 기존 버그. null 이 아닐 때만 put 하도록 1줄 수정(어떤 기존 테스트도 null traceparent로 insertPending 을 호출한 적이 없어 지금까지 드러나지 않음).
+- Toss/Nicepay 변형(`FakePgGatewayAdapterToss`/`Nicepay`)에는 멱등 모드를 추가하지 않음 — 신규 통합 테스트가 vendor-neutral `FakePgGatewayAdapter` 만 사용해 불필요.
+- `./gradlew :pg-service:test` 316 tests, 316 passed, 0 failed (`--rerun-tasks` 로 캐시 우회 확인). `./gradlew :pg-service:integrationTest` 8 tests, 8 passed, 0 failed(`--rerun-tasks`, 신규 self-loop 테스트 포함).
+
+## 리뷰 처리
+
+### Round 1 (reviewer revise / domain-expert pass)
+
+- **[major #1] Task 3 연쇄 死 코드 미정리** (`INVALID_STATUS_TO_FAILED` 에러코드 + `stock_decrement.lua` 리소스, 사용처 0) — **채택(이번에 제거)**. toFailed/decrement 제거의 직접 파생 死라 같은 작업에서 마저 정리. PaymentErrorCode enum 케이스 + lua 파일 삭제.
+- **[major #2] `RETRY_ATTEMPT` enum 제거 시 DB 잔존 row 점검 절차 비대칭** — **채택(문서 논거 명시)**. `action="retry"` 발행 경로가 처음부터 0건이라 payment_history 에 RETRY_ATTEMPT row 가 생성된 적 없음(RETRYING 과 동일 논거). 완료결과/COMPLETION-BRIEFING 에 명시. domain-expert 도 실질 위험 낮음 확인.
+- **[major #3] test mock 멱등 모드가 `DuplicateApprovalDetectedEvent` 미발행** (예외만, 명세와 불일치) — **채택(mock 에 이벤트 발행 추가)**. `FakePgGatewayAdapter` 에 이벤트 발행 추가로 실 벤더·main Fake 와 동일 이중 신호 재현. 통합 테스트가 이벤트 경로(@EventListener)도 검증.
+- critical 0 / minor 0. domain-expert: pass (돈 새는 경로·이중 종결 없음, behavior-preserving 성립).

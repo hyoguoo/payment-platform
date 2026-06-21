@@ -96,22 +96,6 @@ class PaymentCommandUseCaseTest {
     }
 
     @Test
-    @DisplayName("markPaymentAsRetrying 호출 시 PaymentEvent.toRetrying()을 호출하고 저장한다.")
-    void markPaymentAsRetrying_PaymentEvent_toRetrying_호출_및_저장() {
-        // given
-        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
-        given(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
-                .willReturn(paymentEvent);
-
-        // when
-        paymentCommandUseCase.markPaymentAsRetrying(paymentEvent);
-
-        // then
-        then(paymentEvent).should(times(1)).toRetrying(FIXED_INSTANT);
-        then(mockPaymentEventRepository).should(times(1)).saveOrUpdate(paymentEvent);
-    }
-
-    @Test
     @DisplayName("markPaymentAsQuarantined 호출 시 quarantine()을 호출하고 payment_quarantined_total 카운터를 기록한다.")
     void markPaymentAsQuarantined_RecordsQuarantineMetric() {
         // given

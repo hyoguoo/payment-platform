@@ -164,7 +164,7 @@ flowchart TD
 - ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
 
 **D7 진입 가드:**
-- `paymentEvent.getStatus().canApplyConfirmResult()` — READY / IN_PROGRESS / RETRYING 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
+- `paymentEvent.getStatus().canApplyConfirmResult()` — READY / IN_PROGRESS 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
 - QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 D7 가드가 차단 — DLQ silent 분기 방지 (DR-3 가드).
 
 **D5 멱등 마킹 (`payment_event_dedupe`):**
@@ -325,13 +325,7 @@ stateDiagram-v2
 
     IN_PROGRESS --> DONE : APPROVED 수신
     IN_PROGRESS --> FAILED : FAILED 수신
-    IN_PROGRESS --> RETRYING : 복구 사이클 (markPaymentAsRetrying)
     IN_PROGRESS --> QUARANTINED : QUARANTINED 수신 / AMOUNT_MISMATCH
-
-    RETRYING --> DONE : APPROVED 수신
-    RETRYING --> FAILED : FAILED 수신
-    RETRYING --> RETRYING : 한도 미소진
-    RETRYING --> QUARANTINED : 한도 소진 + 판단 불가
 
     DONE --> [*]
     FAILED --> [*]
@@ -345,7 +339,6 @@ stateDiagram-v2
 |---|---|---|---|---|
 | READY | 결제 초기 생성 | checkout 완료 | false | PROCESSING (default) |
 | IN_PROGRESS | confirm TX 커밋, paymentKey 기록 | `executePayment()` | false | PROCESSING (default) |
-| RETRYING | 복구 사이클 재시도 대기 | `markPaymentAsRetrying()` | false | PROCESSING (default) |
 | DONE | PG 결제 완료 (approvedAt non-null) | `markPaymentAsDone()` | true | DONE |
 | FAILED | 재고 부족 / PG 종결 실패 | `markPaymentAsFail()` | true | FAILED |
 | QUARANTINED | 판단 불가 격리 (수동 확인 필요) | `markPaymentAsQuarantined()` | **false** | PROCESSING ⚠️ |
@@ -357,7 +350,7 @@ stateDiagram-v2
 >
 > **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 에서 DONE → StatusType.DONE, FAILED → StatusType.FAILED, 그 외 default → StatusType.PROCESSING. QUARANTINED 는 default 분기 → PROCESSING. 격리된 결제는 admin 이 DONE/FAILED 강제 전이해야 클라이언트 폴링이 종료된다.
 
-`canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = READY / IN_PROGRESS / RETRYING (재고 차감이 발생했을 수 있는 상태). 과거 짝이던 `canCompensateStock()` 보상 가드는 STOCK-COMPENSATION-OTHER-PATHS 에서 死 코드로 제거됐다 (확정 진입 보상 폐기 + D12 가드 死 코드 정리). 교차 동조 불변식 테스트(`PaymentEventStatusCrossInvariantTest`)도 함께 제거.
+`canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = READY / IN_PROGRESS (재고 차감이 발생했을 수 있는 상태). 과거 RETRYING 진입 경로(`markPaymentAsRetrying`)는 운영 호출처 0 으로 CLEANUP-BATCH-E 에서 enum 케이스·전이·가드 분기와 함께 제거됐다. 과거 짝이던 `canCompensateStock()` 보상 가드는 STOCK-COMPENSATION-OTHER-PATHS 에서 死 코드로 제거됐다 (확정 진입 보상 폐기 + D12 가드 死 코드 정리). 교차 동조 불변식 테스트(`PaymentEventStatusCrossInvariantTest`)도 함께 제거.
 
 ### PaymentOutboxStatus
 
@@ -367,7 +360,6 @@ stateDiagram-v2
 
     PENDING --> IN_FLIGHT : claimToInFlight CAS (atomic UPDATE)
     IN_FLIGHT --> DONE : Kafka 발행 성공 (outbox.toDone)
-    IN_FLIGHT --> FAILED : outbox.toFailed (현행 운영 호출처 없음 — 死 코드 정리 후속)
     IN_FLIGHT --> PENDING : inFlightAt 타임아웃 초과 → PENDING 복귀 (OutboxWorker Step 0)
     PENDING --> PENDING : 재시도 (nextRetryAt 갱신)
 
