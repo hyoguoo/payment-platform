@@ -68,7 +68,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: RETRYING 상태 전이 死 코드 제거
-- [ ] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
+- [x] Task 2: RETRY_ATTEMPT 이벤트 체인 제거
 - [ ] Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거
 - [ ] Task 4: main smoke 빈 Fake PG 멱등 시뮬 추가
 - [ ] Task 5: test mock Fake PG 멱등 모드 + 중복 흡수 통합 테스트
@@ -127,7 +127,13 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 - `./gradlew :payment-service:test` 회귀 0.
 
 **완료 결과**
-> (execute에서 채움)
+- `DomainEventLoggingAspect.processResultAndPublishEvent`: `case "retry"` 브랜치 제거 (`changed`/`created`/`default` 잔존).
+- `PaymentEventPublisher`: `publishRetryAttempt()` 메서드 + `PaymentRetryAttemptedEvent` import 제거.
+- `PaymentRetryAttemptedEvent.java` 파일 삭제.
+- `PaymentHistoryEventType`: `RETRY_ATTEMPT` 케이스 제거 (`PAYMENT_CREATED`/`STATUS_CHANGE` 잔존, 다른 참조처 grep 0건 확인 후 제거).
+- `[Rule 1]` `EventType.DOMAIN_EVENT_RETRY_PUBLISHED` 동반 제거 — `publishRetryAttempt()` 제거로 유일 사용처가 사라져 도달 불가 enum 케이스가 됨. PLAN 명시 대상은 아니었으나 동일 체인의 직접 동반 死 코드로 판단해 같이 제거.
+- `PaymentEventPublisherTest`/`DomainEventLoggingAspectTest` 파일 자체가 부재해 동반 정리 대상 없음.
+- `RETRY_ATTEMPT`/`publishRetryAttempt`/`PaymentRetryAttemptedEvent`/`DOMAIN_EVENT_RETRY_PUBLISHED` 심볼 main+test 0건 grep 확인. `./gradlew :payment-service:test` 459 tests, 459 passed, 0 failed.
 
 ### Task 3: outbox 실패 종결 + 재고 캐시 단건 API 死 메서드 제거 [tdd=false] [domain_risk=false]
 
