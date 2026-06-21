@@ -224,4 +224,9 @@ RETRYING 상태로 진입하는 운영 경로가 호출처 0 으로 소멸했으
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+### Round 1 (reviewer revise / domain-expert pass)
+
+- **[major #1] Task 3 연쇄 死 코드 미정리** (`INVALID_STATUS_TO_FAILED` 에러코드 + `stock_decrement.lua` 리소스, 사용처 0) — **채택(이번에 제거)**. toFailed/decrement 제거의 직접 파생 死라 같은 작업에서 마저 정리. PaymentErrorCode enum 케이스 + lua 파일 삭제.
+- **[major #2] `RETRY_ATTEMPT` enum 제거 시 DB 잔존 row 점검 절차 비대칭** — **채택(문서 논거 명시)**. `action="retry"` 발행 경로가 처음부터 0건이라 payment_history 에 RETRY_ATTEMPT row 가 생성된 적 없음(RETRYING 과 동일 논거). 완료결과/COMPLETION-BRIEFING 에 명시. domain-expert 도 실질 위험 낮음 확인.
+- **[major #3] test mock 멱등 모드가 `DuplicateApprovalDetectedEvent` 미발행** (예외만, 명세와 불일치) — **채택(mock 에 이벤트 발행 추가)**. `FakePgGatewayAdapter` 에 이벤트 발행 추가로 실 벤더·main Fake 와 동일 이중 신호 재현. 통합 테스트가 이벤트 경로(@EventListener)도 검증.
+- critical 0 / minor 0. domain-expert: pass (돈 새는 경로·이중 종결 없음, behavior-preserving 성립).

@@ -149,7 +149,7 @@ flowchart TD
     AG1 -->|No outbox 이미 DONE| AG2{"event.status?"}
     AG2 -->|DONE| AH1["status=DONE<br/>approvedAt non-null<br/>→ 성공 페이지"]
     AG2 -->|FAILED| AH2["status=FAILED<br/>→ 실패 페이지"]
-    AG2 -->|"그 외 READY/IN_PROGRESS/RETRYING"| AH3["status=PROCESSING<br/>→ 계속 폴링"]
+    AG2 -->|"그 외 READY/IN_PROGRESS"| AH3["status=PROCESSING<br/>→ 계속 폴링"]
 ```
 
 ---

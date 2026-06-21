@@ -43,7 +43,7 @@ LogFmt.info(
 
 **`@PublishDomainEvent` + `@PaymentStatusChange`**:
 - payment 상태 전이 시 `payment_history` audit row 자동 기록
-- `markPaymentAsDone` / `markPaymentAsFail` / `markPaymentAsRetrying` / `markPaymentAsQuarantined` 같은 위임 경로에만 AOP 적용
+- `markPaymentAsDone` / `markPaymentAsFail` / `markPaymentAsQuarantined` 같은 위임 경로에만 AOP 적용
 - 직접 `paymentEvent.done() + saveOrUpdate()` 호출 시 audit trail 누락 — **반드시 위임 경로 사용**
 
 **`@TransactionalEventListener(AFTER_COMMIT)`** 패턴:
