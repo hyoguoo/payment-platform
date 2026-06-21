@@ -47,6 +47,10 @@ import org.springframework.context.ApplicationEventPublisher;
  * {@code @EventListener} 동기 디스패치를 그대로 모사하기 위해, 테스트용
  * {@link ApplicationEventPublisher} 구현이 {@link DuplicateApprovalDetectedEvent} 발행을
  * {@link DuplicateApprovalHandler#onDuplicateApprovalDetected} 호출로 즉시 전달한다.
+ * {@code FakePgGatewayAdapter} 에도 동일 publisher 를 연결해, 실 벤더(TossPaymentGatewayStrategy)와
+ * 동일하게 멱등 모드 duplicate 흡수 시 이벤트 발행 후 예외 throw 가 이뤄지도록 한다 — 그 결과
+ * {@code @EventListener} 경로와 {@link PgVendorCallService#applyOutcome} 의
+ * catch(PgGatewayDuplicateHandledException) → handleDuplicate 직접 호출 경로가 함께 실행된다.
  *
  * <p>단언 기준값: 최종 pg_inbox 상태 = APPROVED(승인 종결) 유지, storedStatusResult 의 amount 가
  * 최초 confirm 과 동일(=재흡수로 인한 amount 불일치/이중 차감 없음). pg_outbox row 카운트에는
@@ -104,6 +108,12 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
                 duplicateApprovalHandler);
 
         pgInboxProcessor = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
+
+        // 실 벤더(TossPaymentGatewayStrategy)와 동일하게 멱등 모드 duplicate 흡수 시
+        // DuplicateApprovalDetectedEvent 를 발행하도록 wiring — onDuplicateApprovalDetected
+        // (@EventListener) 경로도 함께 태운다. invokeConfirm 의 catch(PgGatewayDuplicateHandledException)
+        // → handleDuplicate 직접 호출 경로와 합쳐 이벤트+예외 이중 경로가 된다(실 벤더와 동일).
+        gatewayAdapter.setApplicationEventPublisher(dispatchingPublisher);
     }
 
     @Test
@@ -129,9 +139,9 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
 
         // when — self-loop 재호출: 동일 paymentKey 로 벤더를 한 번 더 호출한다(워커 좀비/동시 처리
         // 경합으로 같은 row 에 대해 벤더가 두 번째로 불리는 상황). FakePgGatewayAdapter 멱등 모드는
-        // 이미 SUCCESS 처리된 paymentKey 재호출에 PgGatewayDuplicateHandledException 을 던지고,
-        // PgVendorCallService 가 이를 HandledInternally outcome 으로 변환해
-        // DuplicateApprovalHandler 에 위임한다.
+        // 실 벤더와 동일하게 DuplicateApprovalDetectedEvent 발행(→ @EventListener 경로) 후
+        // PgGatewayDuplicateHandledException 을 던지고, PgVendorCallService 가 이를
+        // HandledInternally outcome 으로 변환해 DuplicateApprovalHandler 에 직접 위임한다(이중 경로).
         PgConfirmRequest selfLoopRequest =
                 new PgConfirmRequest(ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS);
         applySelfLoopReinvocation(selfLoopRequest);
