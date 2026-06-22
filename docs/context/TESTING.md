@@ -1,6 +1,6 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-06-14 (CLEANUP-BATCH-D — Testcontainers reuse 현실 반영 + 스키마 관리 방식별 DB명 분리 규칙)
+> 최종 갱신: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정). 이전: 2026-06-14 (CLEANUP-BATCH-D — Testcontainers reuse 현실 반영 + 스키마 관리 방식별 DB명 분리 규칙)
 
 ## 테스트 프레임워크
 
@@ -17,7 +17,7 @@
 | **도메인 단위** | JUnit + AssertJ | Spring 의존 0. `@ParameterizedTest @EnumSource` 로 상태 전이 유효/무효 모두 | `<service>/src/test/java/.../domain/` |
 | **Use case 단위** | Mockito + Fake | port 는 Fake, 외부 의존(Repository 등)은 Mock 가능 | `.../application/` |
 | **Adapter 단위** | Mockito | 출력 포트 어댑터의 변환·예외 분기 | `.../infrastructure/` |
-| **JPA / Repository** | Testcontainers MySQL + `@DataJpaTest` | 실제 SQL 검증 | `.../infrastructure/persistence/` |
+| **JPA / Repository** | Testcontainers MySQL + `@DataJpaTest` | 실제 SQL 검증 | `.../infrastructure/repository/` |
 | **Kafka producer/consumer** | Spring Kafka EmbeddedKafka 또는 Mock + 자체 어댑터 | 실 broker 없이도 직렬화·observation 검증 | `.../infrastructure/messaging/` |
 | **HTTP 어댑터 contract (cross-service)** | Mockito FeignClient mock | FeignClient 가 throw 한 도메인 예외 / `feign.RetryableException` 의 어댑터 propagation·변환 | `.../infrastructure/adapter/http/*ContractTest` |
 | **Feign ErrorDecoder** | Mockito + `feign.Response` mock | 404 → NotFoundException, 429/503 → RetryableException, 그 외 5xx → IllegalStateException | `.../infrastructure/adapter/http/feign/*FeignConfigTest` |

@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product DedupeCleanupWorker + product SchedulerConfig + pg trace 패키지 반영)
+> 최종 갱신: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정). 이전: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product DedupeCleanupWorker + product SchedulerConfig + pg trace 패키지 반영)
 
 ## 루트 레이아웃
 
@@ -72,8 +72,7 @@ payment-platform/
     │   │   │   ├── service/      # 보조 서비스 (TX 코디네이터 등)
     │   │   │   ├── dto/          # 애플리케이션 DTO
     │   │   │   └── messaging/    # 토픽명 상수, 메시지 DTO
-    │   │   ├── presentation/     # HTTP 진입점
-    │   │   │   ├── controller/
+    │   │   ├── presentation/     # HTTP 진입점 (Controller 는 presentation/ 직속 — controller/ 서브폴더 없음)
     │   │   │   ├── port/         # presentation 측 인터페이스 (있으면)
     │   │   │   └── dto/          # request / response DTO
     │   │   ├── infrastructure/   # 출력 포트 구현 + 외부 어댑터
@@ -181,7 +180,7 @@ flowchart TD
 
 | 항목 | 경로 |
 |---|---|
-| 결제 confirm 진입점 | `payment-service/.../presentation/controller/PaymentController.java` |
+| 결제 confirm 진입점 | `payment-service/.../presentation/PaymentController.java` |
 | 비동기 confirm 사이클 | `payment-service/.../application/OutboxAsyncConfirmService.java` |
 | Outbox 릴레이 (confirm) | `payment-service/.../application/service/OutboxRelayService.java` + `infrastructure/listener/OutboxImmediateEventHandler.java` + `infrastructure/scheduler/OutboxWorker.java` |
 | EOS 결과 처리 use case | `payment-service/.../application/usecase/PaymentConfirmResultUseCase.java` |
