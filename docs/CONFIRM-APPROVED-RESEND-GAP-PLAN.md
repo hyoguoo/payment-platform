@@ -70,7 +70,7 @@ flowchart TD
 
 - [x] Task 1: 재발행 관측 메트릭 컴포넌트
 - [x] Task 2: 종결 가드 재발행 + dead branch 제거 + 단위/통합 회귀 교체
-- [ ] Task 3: 결정적 EOS 커밋 실패 주입 실증
+- [x] Task 3: 결정적 EOS 커밋 실패 주입 실증
 
 ## 태스크
 
@@ -142,7 +142,14 @@ flowchart TD
 - 시드는 테스트 스코프 한정(운영 코드 무변경).
 
 **완료 결과**
-> (execute에서 채움)
+- 시드 `CommitFailureInjectingProducerPostProcessor`(신규, 테스트 스코프 한정) — `stockCommittedProducerFactory`가 생성하는 `Producer`를 동적 프록시로 감싸 `commitTransaction()` 최초 N회만 결정적으로 throw(이후 위임). `ProducerFactory.addPostProcessor`(운영 코드 공식 확장 포인트) 경유로 운영 코드 무변경. `PaymentEosIntegrationTest` tearDown에서 `removePostProcessor` + `reset()`으로 다음 테스트 격리.
+- 시나리오 #6(복구, `shouldRecoverStockCommittedAfterSingleEosCommitFailure`) — **설계대로 증명됨**: 1차 EOS 커밋 실패 주입 → JPA inner 커밋(DONE + dedupe row 1건)은 그대로 반영되고 Kafka outer 커밋만 실패 → 오프셋 미커밋 재배달 → 재배달이 종결 가드로 진입(`markIfAbsent`/`markPaymentAsDone` 재호출 0 — affected==0 분기 우회) → 재발행 → `terminalResendMetrics(DONE)` +1 → stock-committed 1건 복구(차감 정확히 1회). PLAN 가설 A 그대로 성립.
+- 시나리오 #7(반복실패 bound) — **PLAN 가설 B는 2가지 지점에서 반증됨**(실증 가치 있는 실패):
+  1. "FixedBackOff(200ms×5) 소진 → DLQ" 가정이 틀림. `kafkaErrorHandler`(`DefaultErrorHandler`, interval 200ms×5 + DLQ recoverer)는 리스너가 던진 도메인 `RuntimeException`에만 적용되고, `commitTransaction()` 실패는 `TransactionTemplate.execute()` 내부(컨테이너의 `invokeInTransaction`)에서 발생해 별도 경로인 `DefaultAfterRollbackProcessor`(컨테이너가 명시 설정하지 않으면 `SeekUtils.DEFAULT_BACK_OFF` = interval 0, maxAttempts 9, recoverer는 단순 로그)로 처리됨 — DLQ recoverer를 거치지 않음. 9회 소진 후 메시지는 DLQ가 아니라 단순 스킵(오프셋 전진, 로그만).
+  2. "발행 횟수가 N이어도 차감 1회(중복 0건)" 가정도 틀림. 종결 가드 재발행은 `sendStockCommittedEvents`까지 같은 EOS 프로듀서 트랜잭션 안에서 수행되므로, 그 트랜잭션의 `commitTransaction()`이 매번 실패하면 발행 자체가 매번 abort된다(read_committed 컨슈머에 노출 안 됨). N회 전부 실패를 주입하면 9회의 재배달·재발행 시도 전부가 abort돼 stock-committed가 단 1건도 가시화되지 않음 — "중복 차감 0건"이 아니라 "발행 자체가 0건(완전 유실)". payment는 DONE(재고 확정 완료로 보임)인데 재고 확정 이벤트는 영구 소실되는 심각한 불일치.
+  - 실제 동작에 맞춰 테스트를 재작성(`shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock`) — DLQ 미진입 확인(`pollConfirmedDlq` 빈 리스트) + stock-committed 0건(완전 유실) 확인 + `markPaymentAsDone`/dedupe row는 1차 배달에서만 1회(종결 가드 흡수 자체는 #6과 동일하게 성립) 단정으로 교체. 클래스 상단 Javadoc에 "범위 밖 알려진 한계" 항목으로 운영 보강 필요성(`setAfterRollbackProcessor`로 동일 DLQ recoverer + backoff 명시 연결) 기록, 후속 토픽 분리 — Task 3 범위 밖(운영 코드 무변경 제약).
+- Rule 1: (a) WIP에 정의 없이 호출만 있던 `pollConfirmedDlq` 헬퍼 신규 작성(`pollStockCommitted` 패턴 따라 DLQ 토픽을 orderId 키로 폴링) — 컴파일 오류 해소. (b) #6의 "차감 정확히 1회" 검증이 별도 consumer group으로 추가 폴링해 동일 메시지를 earliest로 재조회하는 거짓 중복 버그 — 직전 폴링이 정확히 1건 반환한 것 자체가 중복 없음의 증거이므로 추가 폴링 제거. (c) #7을 실제 Spring Kafka 동작(AfterRollbackProcessor 경로)에 맞춰 시나리오·DisplayName·클래스 Javadoc 전면 재작성.
+- 통합 39 pass(기존 37 + 신규 #6·#7 = 39). `./gradlew :payment-service:test`(457 pass) + `:payment-service:integrationTest`(39 pass) 전체 green, 회귀 없음.
 
 ## 리뷰 처리
 > (ship 단계에서 채움 — finding별 채택/스킵 + 사유)

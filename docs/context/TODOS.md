@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재). 이전: 2026-06-14 (CLEANUP-BATCH-D + ship 후 stale 대청소 — [FLYWAY-USER-SEED-GAP]·[CLEANUP-FAILURE-COUNTER]·TC-1·커버리지 게이트 해소 반영, TC-13-FOLLOW-3/4 부분해소(대시보드 O·알람 rule X) 정정).
+> 최종 갱신: 2026-06-22 (CONFIRM-APPROVED-RESEND-GAP Task 3 — 결정적 EOS 커밋 실패 주입 실증으로 TC-13-FOLLOW-7 신규 등재: AfterRollbackProcessor 디폴트 경로 DLQ 미진입 + 종결 가드 재발행도 같은 EOS 트랜잭션이라 반복 실패 시 완전 유실). 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -53,6 +53,13 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 #### ~~TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리 스케줄러 (TC-11 통합)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
 `DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
+
+#### TC-13-FOLLOW-7 — EOS commitTransaction 반복 실패 시 메시지 완전 유실 (CONFIRM-APPROVED-RESEND-GAP Task 3 실증)
+
+- **문제**: `kafkaListenerContainerFactory` 에 `setAfterRollbackProcessor` 가 명시 설정돼 있지 않아, 리스너의 EOS `commitTransaction()` 실패는 우리 `kafkaErrorHandler`(`DefaultErrorHandler`, FixedBackOff 200ms×5 + DLQ recoverer)가 아니라 컨테이너 디폴트 `DefaultAfterRollbackProcessor`(`SeekUtils.DEFAULT_BACK_OFF` = interval 0, maxAttempts 9, recoverer는 단순 로그)로 처리된다. 9회 소진 후 메시지는 DLQ 에 들어가지 않고 단순 스킵(오프셋 전진)된다.
+- **추가 발견**: 종결 가드 재발행(`sendStockCommittedEvents`)도 같은 EOS 프로듀서 트랜잭션 안에서 발행되므로, `commitTransaction()` 이 매번 실패하면 재발행 자체가 매번 abort 돼 read_committed 컨슈머에 노출되지 않는다. 9회 모두 실패 시 stock-committed 가 단 1건도 가시화되지 않는 완전 유실 — payment 는 DONE(재고 확정 완료로 보임)인데 재고 확정 이벤트는 영구 소실되는 심각한 불일치.
+- **실증**: `PaymentEosIntegrationTest#shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock`(#7) — `CommitFailureInjectingProducerPostProcessor` 로 `commitTransaction()` N 회 결정적 실패 주입, DLQ 미진입 + stock-committed 0건 직접 단정.
+- **처방 후보**: `kafkaListenerContainerFactory` 에 `setAfterRollbackProcessor`로 동일 `DeadLetterPublishingRecoverer` + 적절한 backoff 를 명시 연결 — 운영 코드 변경(컨테이너 팩토리 설정 추가) 필요, Task 3 범위 밖(테스트 스코프 한정 제약)이라 후속 토픽으로 분리.
 
 #### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
 

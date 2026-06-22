@@ -1,27 +1,27 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-22 (Task 2 완료)
+> 최종 수정: 2026-06-22 (Task 3 완료 — execute 종료, ship 전환)
 
 ## 활성 작업
 
 - **주제**: CONFIRM-APPROVED-RESEND-GAP (비동기 confirm APPROVED 재고 확정 재발행 갭 수정)
-- **단계**: execute (plan 완료)
+- **단계**: ship
 - **이슈/브랜치**: #112 / `#112`
-- **활성 태스크**: Task 3 (결정적 EOS 커밋 실패 주입 실증)
+- **활성 태스크**: 없음 — 3 태스크 전부 완료, ship 단계 진입(context-update + 최종 브리핑 대기)
 
 ## 재개 메모
 
-**plan 완료 — PLAN.md 게이트 통과(reviewer·domain-expert R1 pass, minor 5건 반영). Task 1·2 완료(execute). 다음: execute Task 3부터.**
+**execute 전체 완료(Task 1·2·3) — PLAN.md 3 태스크 체크 완료. 다음: ship(문서 정정 + COMPLETION-BRIEFING + archive).**
 
 - **Task 1 완료**: `PaymentConfirmTerminalResendMetrics` 신규(`PaymentConfirmGuardSkipMetrics` 패턴 차용) — 카운터 `payment_confirm_terminal_resend_total`, 라벨 `status` 1개, eager 등록 DONE 1종. 단위 3 pass, 전체 453 pass 회귀 없음.
 - **Task 2 완료**: `PaymentConfirmResultUseCase.handle` 종결 가드 분기에 DONE+APPROVED(재배달 신호) 재발행 추가(`sendStockCommittedEvents` + `terminalResendMetrics.record(DONE)`), affected==0 분기의 dead branch(APPROVED 발행) 제거. 단위 `PaymentConfirmResultUseCaseTest` 신규 6 + 기존 2 제거(457 pass), 통합 `PaymentEosIntegrationTest` #3 실효 교체(발행 책임 이전 단정) + #4 재배달 절 제거(37 pass). Rule 1: Task 1 생성자 변경에 따른 기존 7개 테스트 파일 시그니처 보정.
+- **Task 3 완료**: `CommitFailureInjectingProducerPostProcessor`(신규, 테스트 스코프) — `ProducerFactory.addPostProcessor` 경유 동적 프록시로 `commitTransaction()` N회 결정적 실패 주입(운영 코드 무변경). 시나리오 #6(복구) 설계대로 증명 — 1차 실패 후 재배달이 종결 가드로 재진입, 차감 정확히 1회, terminalResend(DONE) +1. 시나리오 #7(반복실패 bound)은 PLAN 가설 2가지를 반증 — (1) DLQ recoverer가 아니라 컨테이너 디폴트 `DefaultAfterRollbackProcessor`(interval 0, maxAttempts 9, 단순 로그) 경로라 DLQ 미진입(단순 스킵), (2) 종결 가드 재발행도 같은 EOS 트랜잭션이라 반복 실패 시 발행 자체가 매번 abort돼 stock-committed가 "중복 0건"이 아니라 "완전 유실 0건". 실제 동작에 맞춰 테스트 재작성(`shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock`). 후속 처방은 TC-13-FOLLOW-7로 TODOS.md 등재(`setAfterRollbackProcessor` 명시 연결 — 운영 코드 변경 필요, 범위 밖). 통합 39 pass(#1~#7), 단위 457 + 통합 39 전체 회귀 없음.
 
 - **확정된 접근**: 진입 가드의 종결(DONE) 분기에서 `status==DONE && message==APPROVED`(= 재배달 신호)면 `sendStockCommittedEvents` 재발행. RDB DONE 커밋 후 브로커 커밋 유실 시 재배달이 D7 가드에 막혀 재고 확정이 영구 유실되던 갭 복구. 수신측 product가 결정적 키(`derive(orderId,productId)`, message eventUuid 독립)로 멱등 흡수 → over-publish 무해/under-publish만 위험 비대칭 이용.
-- **3 태스크 (PLAN.md SSOT)**: ① 재발행 관측 메트릭 컴포넌트(신규 `PaymentConfirmTerminalResendMetrics`, tdd), ② handle 종결 가드 재발행 + affected==0 dead branch 제거 + 단위 6종 신규/기존 2종 제거 + 통합 #3 실효 교체·#4 정상경로만·#5 green 유지(한 커밋, tdd·domain_risk), ③ 결정적 EOS 커밋 실패 주입 실증(임베디드 Kafka에 `commitTransaction` 1회 실패 시드, 복구 차감 1회 + 반복실패 DLQ·중복차감 0, domain_risk).
-- **실증 방식 확정**: discuss "Toxiproxy 실증" → 통합 하니스가 임베디드 Kafka라 부적합 → **결정적 주입 시드**로 plan 확정(사용자 승인). topic.md도 동일 정정.
-- **문서 정정(CONFIRM-FLOW §5·§16, CONCERNS L-1)**: ship 단계 context-update (execute 태스크 아님).
-- **재개 방법**: 브랜치 `#112` 체크아웃 상태에서 execute Task 3부터. SSOT = `docs/CONFIRM-APPROVED-RESEND-GAP-PLAN.md`(태스크별 RED/GREEN/완료 기준) + `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`(설계) + 이슈 #112.
-- **참고**: `docs/CONFIRM-APPROVED-RESEND-GAP-PLAN.md`, `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`, `PaymentConfirmResultUseCase.handle`, `PaymentConfirmGuardSkipMetrics`(메트릭 패턴), `PaymentEosIntegrationTest` #3·#4·#5.
+- **3 태스크 (PLAN.md SSOT, 전부 완료)**: ① 재발행 관측 메트릭 컴포넌트, ② handle 종결 가드 재발행 + dead branch 제거, ③ 결정적 EOS 커밋 실패 주입 실증(시나리오 A 증명 / 시나리오 B 가설 반증 + 실제 동작 기준 재작성).
+- **문서 정정 대상(ship 단계)**: CONFIRM-FLOW §5·§16, CONCERNS L-1 + Task 3 실증으로 새로 드러난 EOS AfterRollbackProcessor 갭(TC-13-FOLLOW-7) 반영.
+- **재개 방법**: 브랜치 `#112` 체크아웃 상태에서 ship 단계 진입. SSOT = `docs/CONFIRM-APPROVED-RESEND-GAP-PLAN.md`(태스크별 완료 결과 기록 완료) + `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`(설계) + 이슈 #112.
+- **참고**: `docs/CONFIRM-APPROVED-RESEND-GAP-PLAN.md`, `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`, `PaymentConfirmResultUseCase.handle`, `PaymentConfirmGuardSkipMetrics`(메트릭 패턴), `PaymentEosIntegrationTest` #1~#7, `docs/context/TODOS.md` TC-13-FOLLOW-7.
 
 ## 최근 완료
 
