@@ -125,6 +125,9 @@ public class PaymentConfirmResultUseCase {
             guardSkipMetrics.record(paymentEvent.getStatus());
             if (paymentEvent.getStatus() == PaymentEventStatus.DONE
                     && ConfirmStatus.from(message.status()) == ConfirmStatus.APPROVED) {
+                // 재발행은 이미 amount 검증을 통과해 DONE 에 도달한 결제의 재고 확정 복구이므로
+                // isAmountMismatch/parseApprovedAt 재검증은 불요·금지(종결 상태에서 격리 전이 유발 차단).
+                // 멱등 키는 product 측이 결정적으로 흡수한다.
                 sendStockCommittedEvents(paymentEvent);
                 terminalResendMetrics.record(PaymentEventStatus.DONE);
                 LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,

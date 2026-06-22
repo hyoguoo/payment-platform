@@ -152,4 +152,12 @@ flowchart TD
 - 통합 39 pass(기존 37 + 신규 #6·#7 = 39). `./gradlew :payment-service:test`(457 pass) + `:payment-service:integrationTest`(39 pass) 전체 green, 회귀 없음.
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+ship Phase A 리뷰 — reviewer·domain-expert 모두 **verdict=pass** (critical·major 코드 결함 0). findings는 doc-sync + 주석 보강.
+
+| # | finding (출처) | severity | 처리 | 사유 |
+|---|---|---|---|---|
+| R1 | CONFIRM-FLOW §5(L129,162-163,173)·§16 시나리오#3 + CONCERNS L-1(L94): 제거된 dead branch("affected==0 발행 항상 진행")가 crash 내성 SSOT로 잔존 (reviewer major / domain minor, 동일 항목) | major | **채택 — B2 context-update** | 코드 결함 아님(양 리뷰 합의: Phase B2 책임). crash 내성 = 종결 가드 DONE+APPROVED 재발행 + product 결정적 키 흡수로 정정 |
+| R2 | CONFIRM-FLOW §5 mermaid 에러핸들링(L149-151): commitTransaction 실패를 DefaultErrorHandler→DLQ로 표기하나 실제는 AfterRollbackProcessor(9회, DLQ 미진입) (reviewer minor) | minor | **채택 — B2 context-update** | Task 3 실증 결과 반영. 리스너 도메인 예외 vs EOS 커밋 실패 경로 분기 명시 |
+| R3 | topic.md S2 반증 가설(5회 DLQ+중복0)이 거짓으로 잔존 (domain minor) | minor | **채택 — B3 COMPLETION-BRIEFING** | topic.md는 archive 이동분 — 브리핑에 "S2 가설 반증→실제 동작"을 SSOT로 기록해 archive가 거짓 가설 박제 방지 |
+| R4 | `PaymentConfirmResultUseCase` 종결 가드 재발행이 amount/approvedAt 재검증 우회 — 무해하나 의도 주석 부재 (domain minor) | minor | **채택 — 주석 1줄(코드) — 처리 완료** | 후속 수정자가 우회를 결함으로 오인해 종결 상태에 검증 끼워넣어 격리 전이 유발하는 것 차단. 재발행은 이미 검증 통과한 DONE의 재고 확정 복구라 재검증 불요·금지 |
