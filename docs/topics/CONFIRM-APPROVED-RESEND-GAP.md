@@ -97,7 +97,7 @@ flowchart TD
 - 종결 가드가 noop에서 조건부 재발행 책임을 일부 가짐(의미 소폭 확장) — DONE+APPROVED 재배달마다 무해한 재발행 1회 발생(product 흡수).
 - 재발행 분기는 dedupe 미경유 → 관측 메트릭/로그로 "종결 후 재발행" 빈도 가시화 필요(plan 태스크).
 - 회귀 가드 교체: `PaymentEosIntegrationTest` #3(dead branch 검증) → 실효 시나리오, 단위 2종 교체. CONFIRM-FLOW §16·§5·CONCERNS L-1 정정(ship).
-- Toxiproxy 장애 주입 실증으로 정적 추론을 승격 — 장애 주입 하니스 구축이 plan의 별도 태스크.
+- 결정적 EOS 커밋 실패 주입으로 정적 추론을 승격 — 임베디드 Kafka 하니스에 `commitTransaction` 1회 실패 시드(Toxiproxy 대체, plan 확정)가 별도 태스크.
 
 ## 문제 정의
 
@@ -168,7 +168,7 @@ D7 종결 가드 분기에서 `status==DONE && message==APPROVED`이면 `sendSto
 | 멱등 흡수 책임 | product `recordIfAbsent`, 흡수 키 = `derive(orderId,productId)` | over-publish 무해/under-publish만 위험. **흡수 키는 결정적(orderId+productId)이며 message eventUuid와 독립** — DR-1 회귀 가드(PaymentEosIntegrationTest #4)가 이 결정성 보존 책임 |
 | D7 재발행 관측 | 메트릭/로그 추가 | 재발행 분기는 dedupe 미경유 → silent 반복 발행 방지 위해 가시화 (plan 보강) |
 | 가드 종결 판정 | 변경 없음 | `canApplyConfirmResult()` 그대로, 분기만 추가 |
-| 검증 | 단위 교체 + 통합 교체 + Toxiproxy 실증 | 정적 추론을 실증으로 승격 |
+| 검증 | 단위 교체 + 통합 교체 + 결정적 주입 실증 | 정적 추론을 실증으로 승격. 실증은 임베디드 Kafka 하니스에 `commitTransaction` 1회 실패 주입(Toxiproxy 대체, plan 확정) |
 
 ## 장애 시나리오와 대응
 
@@ -184,7 +184,7 @@ D7 종결 가드 분기에서 `status==DONE && message==APPROVED`이면 `sendSto
 
 - **단위**: 도달 불가 상태(IN_PROGRESS 유지 + dedupe 인위 선마킹)에 의존하는 기존 2종 `shouldSkipBusinessWhenMarkIfAbsentReturnsZero`·`shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero` 제거/교체. 신규 — ① "DONE+APPROVED 재배달 → `sendStockCommittedEvents` 1회(상품 N개), `markPaymentAsDone` 미호출", ② "QUARANTINED/FAILED 종결 + APPROVED → 재발행 안 함" 가드, ③ multi-product 재발행 idempotencyKey 결정성, ④ affected==0 분기는 단순 skip(발행 0건).
 - **통합 (`PaymentEosIntegrationTest`)**: #3을 실효 시나리오로 교체 — DONE 결제 + 같은 eventUuid 재배달 → 종결 가드 재발행 → product `stock_commit_dedupe` 흡수 → RDB 차감 1회. #4 DR-1 결정성 보존. **#5(QUARANTINED + APPROVED → 발행 0건, DR-3) green 유지 확인** (재발행 조건이 status==DONE이라 미트리거).
-- **Toxiproxy 실증**: EOS 커밋(브로커 연결) 장애 주입 → RDB DONE 후 stock-committed 유실 → 재배달 → 재발행 → product RDB 차감 복구 → redis 선차감과 RDB 수렴 확인. **재발행 커밋 반복 실패 시 5회 후 DLQ + product 중복 차감 0건**도 명시 항목. 장애 주입 하니스 필요 — plan에서 태스크화.
+- **결정적 주입 실증**: EOS 커밋 실패 주입 → RDB DONE 후 stock-committed 유실 → 재배달 → 재발행 → product RDB 차감 복구 → redis 선차감과 RDB 수렴 확인. **재발행 커밋 반복 실패 시 5회 후 DLQ + product 중복 차감 0건**도 명시 항목. (※ 통합 하니스가 임베디드 Kafka라 Toxiproxy 부적합 → plan에서 `commitTransaction` 1회 실패 주입 시드로 확정. 실제 브로커·EOS·재배달 그대로, 커밋 실패만 결정적 주입.)
 - **관측**: 종결 가드 재발행 분기에 메트릭/로그를 둬 "종결 후 재발행" 빈도를 가시화 (dedupe 미경유 silent 반복 발행 방지).
 
 ## 제외 범위
