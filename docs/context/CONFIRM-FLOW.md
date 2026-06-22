@@ -402,7 +402,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 
 **핵심 비대칭:**
 - payment 측: "내가 Kafka broker 에 publish 못함" 회복 — outbox CAS + 워커 폴백
-- pg 측: "vendor 가 답을 안 함" 회복 — Kafka self-loop + attempt 헤더
+- pg 측: "vendor 가 답을 안 함" 회복 — Kafka self-loop + attempt 헤더. ⚠️ **단 현재 `attempt` 가 런타임에서 1 로 고정**(relay 가 헤더를 `Map.of()` 로 발행 + `pg_inbox` attempt 컬럼 부재)이라 한도(4)/DLQ 자동 진입은 미작동 — 일시 오류 지속 시 무한 self-loop. 상세: [PAYMENT-FLOW §4.6/§4.10](PAYMENT-FLOW.md) · [TODOS `[PG-SELFLOOP-ATTEMPT-GAP]`](TODOS.md)
 - Kafka client 기본 error handler 커스터마이즈 없음 (application-level retry 가 대체)
 
 ---
