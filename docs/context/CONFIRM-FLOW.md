@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조). 이전: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -110,7 +110,7 @@ flowchart TD
 **설정값 (application.yml):**
 - `scheduler.outbox-worker.fixed-delay-ms`: 5000 (기본)
 - `scheduler.outbox-worker.batch-size`: 50 (기본)
-- `scheduler.outbox-worker.parallel-enabled`: true (기본)
+- `scheduler.outbox-worker.parallel-enabled`: **false (기본)** (`OutboxWorker` 생성자 `@Value("${scheduler.outbox-worker.parallel-enabled:false}")`)
 - `scheduler.outbox-worker.in-flight-timeout-minutes`: 5 (기본)
 
 정상 환경에서 `OutboxImmediateEventHandler` 가 PENDING 을 즉시 처리하므로 `OutboxWorker` 는 대부분 no-op. 리스너 스킵 / 워커 크래시 / Kafka 발행 실패 시 IN_FLIGHT 타임아웃 회수를 통해 재발행한다.
