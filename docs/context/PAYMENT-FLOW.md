@@ -76,59 +76,64 @@ flowchart TD
 
 pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](#phase-4-pg-service-상세) 절에서 깊이 다룬다. 여기는 입출력만:
 
-> ⚠️ 아래 flowchart 는 PG-CONFIRM-LISTENER-SPLIT 이전 구조(`NONE→IN_PROGRESS` 직접 CAS, `PgConfirmService` 가 직접 vendor 호출)로 그려져 있다. **현행은 `PENDING` 경유 + 채널/워커 분리**이며, 정확한 현행 상태머신·self-loop·attempt 갭은 §4.3·§4.6·§4.10 및 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 을 본다. (flowchart 전면 재작성은 별도 정합 과제)
+> 아래 flowchart 는 PG-CONFIRM-LISTENER-SPLIT 반영 **현행**이다 — `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 갭(빨강 노드). 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
 
 ```mermaid
 flowchart TD
-    T["payment.commands.confirm<br/>Kafka Topic"] --> U["PaymentConfirmConsumer<br/>@KafkaListener groupId=pg-service<br/>+ @Header attempt 파싱 (default=1)"]
-    U --> V["PgConfirmService.handle command, attempt"]
-    V --> V1{"EventDedupeStore.markSeen<br/>Redis SET NX EX 1h<br/>eventUUID 중복?"}
-    V1 -->|Yes 중복| V1a["no-op return"]
-    V1 -->|No 신규| V2["pg_inbox 조회"]
+    T["payment.commands.confirm<br/>(최초 + self-loop 재발행)"] --> U["PaymentConfirmConsumer<br/>groupId=pg-service<br/>attempt 헤더 파싱 (부재 시 1)"]
+    U --> SVC["PgConfirmService.handle"]
+    SVC --> DEDUP{"EventDedupeStore.markSeen<br/>Redis SETNX EX 1h"}
+    DEDUP -->|중복| NOP["no-op return"]
+    DEDUP -->|신규| INB{"pg_inbox 상태"}
 
-    V2 --> W{"inbox.status?"}
+    INB -->|없음| ABS["handleAbsent →<br/>PgInboxPendingService.insertPendingAndPublish<br/>pg_inbox PENDING INSERT"]
+    INB -->|"PENDING / IN_PROGRESS"| ACT["handleActiveInbox<br/>채널 재적재 (attempt 미사용)"]
+    INB -->|terminal 재수신| REEMIT["PgTerminalReemitService.reemit<br/>stored_status_result 재발행 (벤더 호출 X)"]
 
-    W -->|NONE or null| W1["transitNoneToInProgress CAS<br/>amount 기록"]
-    W1 --> W1a{"CAS 성공?"}
-    W1a -->|No 선점됨| W1b["no-op<br/>다른 consumer 가 IN_PROGRESS 로 전이함"]
-    W1a -->|Yes| CALL["PgVendorCallService.invokeVendor + applyOutcome<br/>request, attempt"]
+    ABS --> RDY["AFTER_COMMIT<br/>InboxReadyEventHandler → PgInboxChannel.offerNow"]
+    ACT --> RDY
+    RDY --> IMW["PgInboxImmediateWorker<br/>channel.take → process(inboxId)"]
+    RDY -.->|"채널 full / 누락"| PLW["PgInboxPollingWorker @5s<br/>PENDING·IN_PROGRESS 좀비 회수"]
 
-    W -->|IN_PROGRESS| WIP["handleInProgress<br/>vendor 재호출<br/>(2026-04-27 정책 변경 — 멱등성 의존)"]
-    WIP --> CALL
+    IMW --> PROC{"inbox.status"}
+    PLW --> PROC
+    PROC -->|PENDING| PP["processPending<br/>PENDING→IN_PROGRESS CAS (SKIP LOCKED)"]
+    PROC -->|IN_PROGRESS| PZ["processInProgressZombie"]
+    PP --> VEND["PgVendorCallService.invokeVendor (TX 밖)<br/>PgConfirmStrategySelector → Toss/Nicepay/Fake"]
+    PZ --> VEND
+    VEND --> OUT{"applyOutcome 5분기 (TX_B)"}
 
-    W -->|"APPROVED/FAILED/QUARANTINED<br/>terminal 재수신"| W3["stored_status_result 로<br/>pg_outbox 재발행<br/>벤더 재호출 금지"]
+    OUT -->|"Success 2xx"| OK["pg_inbox APPROVED<br/>+ pg_outbox events.confirmed APPROVED"]
+    OUT -->|"NonRetryable 4xx"| NF["pg_inbox FAILED<br/>+ pg_outbox events.confirmed FAILED"]
+    OUT -->|"Retryable 5xx/timeout"| RT{"shouldRetry(attempt)?"}
+    OUT -->|"멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회"]
 
-    CALL --> X["PgConfirmStrategySelector<br/>vendorType → strategy 빈 선택"]
-    X --> X1["Toss/Nicepay/Fake HTTP 호출"]
-    X1 --> X2{"응답 분류"}
+    RT -->|"Yes (attempt&lt;4)"| RTO["insertRetryOutbox<br/>pg_outbox commands.confirm (attempt+1, backoff)"]
+    RT -->|"No (attempt≥4)"| DLO["insertDlqOutbox<br/>pg_outbox commands.confirm.dlq"]
+    RTO -.->|"attempt 런타임 1 고정 → DLQ 미도달·무한 self-loop"| RT
+    DUP -->|"DB·금액 일치"| OK
+    DUP -->|"불일치 / INDETERMINATE"| QU["pg_inbox QUARANTINED<br/>+ pg_outbox events.confirmed QUARANTINED"]
 
-    X2 -->|"2xx 승인"| X2a["pg_inbox APPROVED<br/>stored_status_result 저장<br/>pg_outbox events.confirmed APPROVED INSERT"]
-    X2 -->|"4xx 확정 거절"| X2b["pg_inbox FAILED<br/>pg_outbox events.confirmed FAILED INSERT"]
-    X2 -->|"5xx/timeout retryable"| RETRY["handleRetry<br/>RetryPolicy.shouldRetry attempt"]
-    X2 -->|"이미 처리됨 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 → 결과 확정"]
+    OK --> OBX["pg_outbox row → AFTER_COMMIT<br/>OutboxReadyEventHandler → PgOutboxChannel"]
+    NF --> OBX
+    QU --> OBX
+    REEMIT --> OBX
+    RTO --> OBX
+    DLO --> OBX
 
-    RETRY --> RETRY_CHK{"attempt &lt; 4?"}
-    RETRY_CHK -->|"Yes"| RETRY_LOOP["pg_outbox commands.confirm 재발행<br/>+ availableAt = now + backoff (2s × 3^n × jitter)<br/>+ 헤더 attempt+1"]
-    RETRY_CHK -->|"No 한도 초과"| DLQ_OUT["pg_outbox commands.confirm.dlq INSERT<br/>(pg_inbox 는 IN_PROGRESS 유지)"]
+    OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
+    OBW --> RELAY["PgOutboxRelayService → PgEventPublisher<br/>(헤더 Map.of() — attempt 미발행)"]
+    RELAY --> PUB{"발행 토픽"}
+    PUB -->|events.confirmed| EC["payment.events.confirmed<br/>→ payment-service (Phase 5)"]
+    PUB -->|"commands.confirm (self-loop)"| T
+    PUB -->|commands.confirm.dlq| DLQT["payment.commands.confirm.dlq"]
 
-    DUP --> DUP_OUT["pg_inbox APPROVED/FAILED<br/>pg_outbox events.confirmed INSERT"]
+    DLQT --> DLQC["PaymentConfirmDlqConsumer<br/>groupId=pg-service-dlq"]
+    DLQC --> DLQS["PgDlqService.handle<br/>pg_inbox QUARANTINED + events.confirmed QUARANTINED"]
+    DLQS --> OBX
 
-    X2a --> Y["pg_outbox row → AFTER_COMMIT"]
-    X2b --> Y
-    DUP_OUT --> Y
-    RETRY_LOOP --> Y
-    DLQ_OUT --> Y
-    W3 --> Y
-
-    Y --> Y1["OutboxReadyEventHandler<br/>PgOutboxChannel.offer outboxId"]
-    Y1 --> Y2["PgOutboxImmediateWorker<br/>VT 워커가 channel.take → relay"]
-    Y1 -.->|"채널 full or 누락"| Y3["PgOutboxPollingWorker<br/>@Scheduled 폴백<br/>processedAt IS NULL AND availableAt&lt;=NOW"]
-    Y2 --> Z["PgOutboxRelayService<br/>→ PgEventPublisher<br/>→ Kafka 발행 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq)"]
-    Y3 --> Z
-
-    Z -.->|"commands.confirm.dlq"| DLQ_CONS["PaymentConfirmDlqConsumer<br/>@KafkaListener groupId=pg-service-dlq"]
-    DLQ_CONS --> DLQ_HANDLE["PgDlqService.handle<br/>pg_inbox QUARANTINED 전이<br/>+ pg_outbox events.confirmed QUARANTINED INSERT"]
-    DLQ_HANDLE --> Y
+    classDef warn fill:#ffd6d6,stroke:#c00000;
+    class RTO,RELAY warn
 ```
 
 ### Phase 5 — payment-service 수신 + 최종 상태 + 재고 정산
