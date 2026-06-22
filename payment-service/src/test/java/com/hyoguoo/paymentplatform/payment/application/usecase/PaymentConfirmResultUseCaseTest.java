@@ -112,6 +112,24 @@ class PaymentConfirmResultUseCaseTest {
     // ---- 진입 가드 ----
 
     @Test
+    @DisplayName("shouldSkipWhenStatusIsNotProceedable — QUARANTINED(종결) 상태면 markIfAbsent 미호출 + warn noop"
+            + " (메시지가 FAILED 라 종결 가드 재발행 비대상)")
+    void shouldSkipWhenStatusIsNotProceedable() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(dedupeStore.size()).isZero();
+        then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
+        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("shouldProceedBusinessWhenStatusIsProceedable — IN_PROGRESS 상태면 markIfAbsent 호출됨")
     void shouldProceedBusinessWhenStatusIsProceedable() {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));

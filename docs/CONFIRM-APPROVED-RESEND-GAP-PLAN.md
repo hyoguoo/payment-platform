@@ -69,7 +69,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 재발행 관측 메트릭 컴포넌트
-- [ ] Task 2: 종결 가드 재발행 + dead branch 제거 + 단위/통합 회귀 교체
+- [x] Task 2: 종결 가드 재발행 + dead branch 제거 + 단위/통합 회귀 교체
 - [ ] Task 3: 결정적 EOS 커밋 실패 주입 실증
 
 ## 태스크
@@ -122,7 +122,11 @@ flowchart TD
 - 단위 신규 6 pass + 기존 2 제거. 통합 #3 실효 통과(발행 책임 이전 단정 포함) + #4 정상 경로만 통과 + #5 green. `./gradlew :payment-service:test` 회귀 없음(트리 녹색 유지).
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentConfirmResultUseCase.handle` 종결 가드 분기: `guardSkipMetrics.record(status)` 후 `status==DONE && ConfirmStatus.from(message.status())==APPROVED`면 `sendStockCommittedEvents` 재발행 + `terminalResendMetrics.record(DONE)` + 재발행 로그 후 return, 그 외 종결은 기존 noop 로그. affected==0 분기에서 APPROVED `sendStockCommittedEvents` 호출 제거(단일 컨슈민 EOS서 도달 불가, 방어적 처리 주석 명시) → 중복 skip 로그 + return만. 생성자에 `PaymentConfirmTerminalResendMetrics` 주입.
+- 단위(`PaymentConfirmResultUseCaseTest`): 도달 불가 dead branch 의존 기존 2종(`shouldSkipBusinessWhenMarkIfAbsentReturnsZero`, `shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero`) 제거, 신규 6종(`shouldResendStockCommittedWhenDoneApprovedRedelivered`, `shouldResendWhenDoneApprovedWithFreshEventUuid`, `shouldNotResendWhenQuarantinedLateApproved`, `shouldNotResendWhenFailedTerminalApproved`, `shouldSimpleSkipWhenMarkIfAbsentReturnsZero`, `shouldResendDistinctKeyPerProductWhenDoneApprovedRedelivered`) 추가.
+- 통합(`PaymentEosIntegrationTest`): #3 `shouldSkipBusinessButResendOnDuplicateInsert`(dead-state) → `shouldResendStockCommittedViaTerminalGuardOnRedelivery`로 실효 교체 — DONE 저장 + dedupe row 선존재 + 동일 eventUuid 재배달 → stock-committed 1건 가시화 + payment DONE/dedupe row 불변 + `markIfAbsent` 미재호출(spy) + guardSkip/terminalResend 카운터 증가(증가분 단정, MeterRegistry 클래스 공유 고려) 검증. #4 재배달 절(dead-state 의존) 제거 → 정상 경로 멀티상품 distinct idempotencyKey 결정성만 유지. #5 무수정 green 유지.
+- Rule 1: Task 1에서 생성자에 `PaymentConfirmTerminalResendMetrics` 인자가 추가됐을 때 갱신되지 않았던 기존 테스트 7개(`ConfirmedEventConsumerTest`, `PaymentConfirmResultUseCaseClockTest`, `PaymentConfirmResultUseCaseHandleApprovedTest`, `PaymentConfirmResultUseCaseHandleQuarantinedTest`, `PaymentConfirmResultUseCaseHandleFailedTest`, `PaymentConfirmResultUseCaseIdempotencyGuardTest`, `PaymentConfirmResultUseCaseGuardSkipTest`)의 생성자 호출에 동일 인자를 추가해 컴파일 오류 해소.
+- 단위 457 pass(기존 453 + 신규 6 - 제거 2 = 457). 통합 37 pass(기존 동일 수, #3 실효 교체 + #4 재배달 절 제거 반영). `./gradlew :payment-service:test` + `:payment-service:integrationTest` 전체 green, 회귀 없음.
 
 ---
 

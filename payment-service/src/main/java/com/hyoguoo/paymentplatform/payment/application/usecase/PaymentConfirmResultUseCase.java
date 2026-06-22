@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
@@ -17,6 +18,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.Clock;
@@ -77,6 +79,8 @@ public class PaymentConfirmResultUseCase {
     private final PaymentCommandUseCase paymentCommandUseCase;
     /** 종결 상태 가드 noop 분기 계측 — D13. */
     private final PaymentConfirmGuardSkipMetrics guardSkipMetrics;
+    /** 종결 가드 재발행(DONE+APPROVED 재배달) 분기 계측 — D7. */
+    private final PaymentConfirmTerminalResendMetrics terminalResendMetrics;
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
@@ -86,7 +90,8 @@ public class PaymentConfirmResultUseCase {
             PaymentEventDedupeStore paymentEventDedupeStore,
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase,
-            PaymentConfirmGuardSkipMetrics guardSkipMetrics) {
+            PaymentConfirmGuardSkipMetrics guardSkipMetrics,
+            PaymentConfirmTerminalResendMetrics terminalResendMetrics) {
         this.paymentEventRepository = paymentEventRepository;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.clock = clock;
@@ -97,6 +102,7 @@ public class PaymentConfirmResultUseCase {
                 .registerModule(new JavaTimeModule());
         this.paymentCommandUseCase = paymentCommandUseCase;
         this.guardSkipMetrics = guardSkipMetrics;
+        this.terminalResendMetrics = terminalResendMetrics;
     }
 
     /**
@@ -113,9 +119,20 @@ public class PaymentConfirmResultUseCase {
                 .findByOrderId(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
-        // 종결 상태면 이미 처리된 메시지이므로 무시한다.
+        // 종결 상태면 이미 처리된 메시지다. DONE+APPROVED 재배달은 재고 확정 재발행 신호로 보고
+        // 재발행하며(브로커 커밋 유실 복구), 그 외 종결(QUARANTINED/FAILED 등)은 noop 한다.
         if (!paymentEvent.getStatus().canApplyConfirmResult()) {
             guardSkipMetrics.record(paymentEvent.getStatus());
+            if (paymentEvent.getStatus() == PaymentEventStatus.DONE
+                    && ConfirmStatus.from(message.status()) == ConfirmStatus.APPROVED) {
+                sendStockCommittedEvents(paymentEvent);
+                terminalResendMetrics.record(PaymentEventStatus.DONE);
+                LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_DONE,
+                        () -> "종결 가드 재발행 — orderId=" + message.orderId()
+                                + " status=" + paymentEvent.getStatus()
+                                + " eventUuid=" + message.eventUuid());
+                return;
+            }
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_UNKNOWN_STATUS,
                     () -> "종결 상태 skip — orderId=" + message.orderId()
                             + " status=" + paymentEvent.getStatus()
@@ -139,13 +156,13 @@ public class PaymentConfirmResultUseCase {
         ConfirmStatus confirmStatus = ConfirmStatus.from(message.status());
 
         if (affected == 0) {
+            // 비종결 상태(READY/IN_PROGRESS)에서 동일 event_uuid 가 재배달돼야 도달하는 분기다.
+            // 단일 컨슈머 EOS 에서는 markIfAbsent 1행 삽입과 RDB DONE 전이가 같은 트랜잭션으로
+            // 묶여 있어, 같은 event_uuid 의 재배달은 항상 DONE 종결 가드(위 분기)로 먼저 흡수되고
+            // 이 분기에는 도달할 수 없다 — 단일 컨슈머 EOS서 도달 불가, 방어적 처리로 단순 skip만 한다.
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
                     () -> "중복 skip — orderId=" + message.orderId()
                             + " eventUuid=" + message.eventUuid());
-            // 중복이면 비즈니스 로직은 건너뛰되, 재고 확정 발행은 항상 수행한다 (product 측에서 다시 멱등 처리).
-            if (confirmStatus == ConfirmStatus.APPROVED) {
-                sendStockCommittedEvents(paymentEvent);
-            }
             return;
         }
 

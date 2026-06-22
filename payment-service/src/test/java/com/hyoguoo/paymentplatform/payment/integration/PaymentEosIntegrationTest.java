@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,9 +13,12 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedEvent;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
@@ -23,6 +27,8 @@ import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEnt
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
@@ -67,8 +73,10 @@ import org.testcontainers.containers.MySQLContainer;
  * <ol>
  *   <li>#1 정상 EOS commit — APPROVED → dedupe 1 row + payment DONE + stock-committed 1건 가시화</li>
  *   <li>#2 abort 흐름 — RuntimeException → EOS abort → dedupe 0 row + payment 불변 + stock-committed 0건 + DLQ 1건</li>
- *   <li>#3 중복 INSERT IGNORE — 동일 event_uuid 재배달 → dedupe 1 row (기존) + stock-committed 재발행 + payment 불변</li>
- *   <li>#4 multi-product — PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성</li>
+ *   <li>#3 종결 가드 재발행 — 결제 DONE + dedupe row 기존(첫 처리 완료 모사) 상태에서 동일 event_uuid 재배달
+ *       → 종결 가드가 DONE+APPROVED 를 재배달 신호로 보고 재발행 → stock-committed 1건 가시화 + payment DONE
+ *       불변 + dedupe row 불변 + markIfAbsent 미재호출(발행 책임이 affected==0 분기에서 종결 가드로 이전됐음을 단정)</li>
+ *   <li>#4 multi-product — PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성(정상 경로만)</li>
  *   <li>#5 QUARANTINED 가드 — QUARANTINED 결제 + APPROVED → noop + dedupe 0 row + stock-committed 0건</li>
  * </ol>
  *
@@ -170,6 +178,12 @@ class PaymentEosIntegrationTest {
 
     @MockitoSpyBean
     private PaymentCommandUseCase paymentCommandUseCase;
+
+    @MockitoSpyBean
+    private PaymentEventDedupeStore paymentEventDedupeStore;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule());
@@ -288,42 +302,55 @@ class PaymentEosIntegrationTest {
     // ── 시나리오 #3 ─────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("#3 중복 INSERT IGNORE: dedupe row 선행 삽입 후 동일 event_uuid 배달 → 비즈니스 skip + stock-committed 발행 + payment 불변")
-    void shouldSkipBusinessButResendOnDuplicateInsert() throws Exception {
-        // given — 결제는 IN_PROGRESS 상태 유지, dedupe row 를 미리 삽입해 중복 시뮬레이션
-        // (실서비스: 동일 메시지가 두 번 배달되면 두 번째는 INSERT IGNORE 0 row 반환)
+    @DisplayName("#3 종결 가드 재발행: 결제 DONE + dedupe row 기존(첫 처리 완료 모사) 상태에서 동일 event_uuid 재배달"
+            + " → 종결 가드 재발행 → stock-committed 1건 가시화 + payment DONE 불변 + dedupe row 불변"
+            + " + markIfAbsent 미재호출(발행 책임이 종결 가드로 이전됐음을 단정)")
+    void shouldResendStockCommittedViaTerminalGuardOnRedelivery() throws Exception {
+        // given — 결제는 이미 DONE(첫 처리 완료), dedupe row 도 이미 존재(첫 처리 시 커밋된 상태)
+        // 그 상태에서 같은 event_uuid 의 APPROVED 메시지가 재배달되는 상황을 시뮬레이션
+        // (실서비스: RDB DONE 커밋 후 Kafka 발행/오프셋 커밋이 유실되면 재배달이 일어난다)
         String orderId = "order-eos3-" + UUID.randomUUID();
         String eventUuid = UUID.randomUUID().toString();
-        savePaymentInProgress(orderId, PRODUCT_ID, UNIT_AMOUNT);
+        savePaymentDone(orderId, PRODUCT_ID, UNIT_AMOUNT);
 
-        // 동일 event_uuid 를 dedupe 테이블에 먼저 삽입 — INSERT IGNORE 0 row 상황 시뮬레이션
+        // 첫 처리 때 이미 커밋된 dedupe row — 재배달 시 markIfAbsent 가 호출된다면 0 row 를 반환할 상태
         insertDedupeRow(eventUuid, orderId, "APPROVED");
+
+        // 카운터는 클래스 전체에서 공유되는 MeterRegistry 이므로 증가분으로 단정한다 (절대값 아님).
+        double guardSkipBefore = getCounterValue("payment_confirm_guard_skip_total", "DONE");
+        double terminalResendBefore = getCounterValue("payment_confirm_terminal_resend_total", "DONE");
 
         ConfirmedEventMessage message = approvedMessage(orderId, UNIT_AMOUNT.longValue(), eventUuid);
         String payload = objectMapper.writeValueAsString(message);
 
-        // when — dedupe row 가 존재하는 상태에서 APPROVED 메시지 배달
+        // when — 종결(DONE) 상태에서 동일 event_uuid 의 APPROVED 재배달
         confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
 
-        // then — 비즈니스 skip (markPaymentAsDone 미호출) — payment 상태 IN_PROGRESS 유지
-        // 발행은 항상 진행 — stock-committed 1건 발행됨
+        // then — 종결 가드가 DONE+APPROVED 를 재배달 신호로 보고 재발행 → stock-committed 1건 가시화
         await().atMost(Duration.ofSeconds(15))
                 .untilAsserted(() -> {
-                    // stock-committed 발행 확인 — dedupe 중복이어도 발행은 진행됨
                     List<StockCommittedEvent> stockEvents = pollStockCommitted(orderId, 1, Duration.ofSeconds(5));
                     assertThat(stockEvents).hasSize(1);
                 });
 
-        // payment 상태 불변 (IN_PROGRESS 유지 — 비즈니스 skip)
+        // payment 상태 불변 (DONE 유지 — 종결 가드는 상태 전이를 하지 않는다)
         PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
-        assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+        assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // dedupe row 1개 (선행 삽입 row, markIfAbsent 는 0 row 반환으로 추가 삽입 없음)
+        // dedupe row 불변 (선행 삽입 row 1개 그대로 — 종결 가드는 dedupe 를 거치지 않는다)
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
-        // verify paymentCommandUseCase.markPaymentAsDone 미호출 (비즈니스 skip 확인)
+        // 발행 책임 이전 단정: 재발행이 종결 가드 경로로만 일어나고 affected==0 분기는 미진입했음을 확인
+        // — markIfAbsent 가 재호출되지 않았다 (종결 가드가 markIfAbsent 호출 전에 먼저 가로챔)
+        verify(paymentEventDedupeStore, times(0))
+                .markIfAbsent(eq(eventUuid), any(Long.class), any(String.class), any(Instant.class));
+        // — markPaymentAsDone 도 재호출되지 않았다 (이미 DONE 이므로 상태 전이 로직 미진입)
         verify(paymentCommandUseCase, times(0))
                 .markPaymentAsDone(any(PaymentEvent.class), any(Instant.class));
+        // — guardSkipMetrics(DONE) + terminalResendMetrics(DONE) 카운터가 함께 1만큼 증가했다
+        assertThat(getCounterValue("payment_confirm_guard_skip_total", "DONE")).isEqualTo(guardSkipBefore + 1.0);
+        assertThat(getCounterValue("payment_confirm_terminal_resend_total", "DONE"))
+                .isEqualTo(terminalResendBefore + 1.0);
     }
 
     // ── 시나리오 #4 ─────────────────────────────────────────────────────────────
@@ -369,32 +396,8 @@ class PaymentEosIntegrationTest {
 
         // dedupe 1 row
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
-
-        // 재배달 시 두 메시지 모두 dedupe skip 검증
-        // — 재배달 시에도 동일 idempotencyKey 로 발행됨 (0 row 시에도 발행 진행)
-        // — dedupe row 가 존재하는 상태에서 새로운 IN_PROGRESS 결제로 재배달 시뮬레이션
-        String redeliveryOrderId = "order-eos4-redeliver-" + UUID.randomUUID();
-        String redeliveryEventUuid = UUID.randomUUID().toString();
-        BigDecimal redeliveryTotalAmount = UNIT_AMOUNT.multiply(BigDecimal.valueOf(2));
-        savePaymentInProgressMultiProduct(redeliveryOrderId, redeliveryTotalAmount);
-
-        // dedupe row 미리 삽입 (두 PaymentOrder 의 event_uuid — 실제로는 order-level dedupe 가 일어남)
-        insertDedupeRow(redeliveryEventUuid, redeliveryOrderId, "APPROVED");
-
-        ConfirmedEventMessage redeliveryMessage = approvedMessage(
-                redeliveryOrderId, redeliveryTotalAmount.longValue(), redeliveryEventUuid);
-        String redeliveryPayload = objectMapper.writeValueAsString(redeliveryMessage);
-
-        confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, redeliveryOrderId, redeliveryPayload);
-
-        await().atMost(Duration.ofSeconds(15))
-                .untilAsserted(() -> {
-                    // 재배달 시에도 stock-committed 2건 발행 (productId 별)
-                    List<StockCommittedEvent> redeliveredEvents =
-                            pollStockCommitted(redeliveryOrderId, 2, Duration.ofSeconds(5));
-                    assertThat(redeliveredEvents).hasSize(2);
-                });
-        assertThat(countDedupeRow(redeliveryEventUuid)).isEqualTo(1);
+        // 재배달 흡수 시나리오는 #3(종결 가드 재발행)이 커버한다 — 본 시나리오는
+        // 정상 경로 멀티상품 distinct idempotencyKey 결정성만 검증한다(DR-1 가드 보존).
     }
 
     // ── 시나리오 #5 ─────────────────────────────────────────────────────────────
@@ -497,6 +500,35 @@ class PaymentEosIntegrationTest {
                 .status(PaymentOrderStatus.EXECUTING)
                 .build();
         jpaPaymentOrderRepository.save(order);
+    }
+
+    /**
+     * DONE(종결) 상태 PaymentEvent + PaymentOrder 1건 저장.
+     * 종결 가드 재발행(#3) 시나리오용 — 첫 처리가 이미 완료된 상태를 모사한다.
+     */
+    private void savePaymentDone(String orderId, Long productId, BigDecimal amount) {
+        PaymentEventEntity event = buildPaymentEventEntity(orderId, PaymentEventStatus.DONE, amount);
+        PaymentEventEntity savedEvent = jpaPaymentEventRepository.save(event);
+
+        PaymentOrderEntity order = PaymentOrderEntity.builder()
+                .paymentEventId(savedEvent.getId())
+                .orderId(orderId)
+                .productId(productId)
+                .quantity(ORDER_QUANTITY)
+                .totalAmount(amount)
+                .status(PaymentOrderStatus.EXECUTING)
+                .build();
+        jpaPaymentOrderRepository.save(order);
+    }
+
+    /**
+     * 지정 메트릭명·status 라벨의 현재 카운터 값을 조회한다. 카운터가 아직 등록되지 않았으면 0을 반환한다.
+     */
+    private double getCounterValue(String metricName, String statusLabel) {
+        Counter counter = meterRegistry.find(metricName)
+                .tag("status", statusLabel)
+                .counter();
+        return counter == null ? 0.0 : counter.count();
     }
 
     private PaymentEventEntity buildPaymentEventEntity(
