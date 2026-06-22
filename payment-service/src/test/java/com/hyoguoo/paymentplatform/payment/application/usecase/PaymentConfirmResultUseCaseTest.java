@@ -15,12 +15,14 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -40,10 +42,13 @@ import org.springframework.kafka.core.KafkaTemplate;
  *
  * <p>커버 범위:
  * <ul>
- *   <li>진입 가드 — canApplyConfirmResult false(종결 상태) → markIfAbsent 미호출 + warn noop</li>
- *   <li>멱등 마킹 0 row — 비즈니스 skip (markPaymentAsDone 미호출)</li>
- *   <li>멱등 마킹 0 row 에도 발행은 항상 진행</li>
- *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성</li>
+ *   <li>진입 가드 — IN_PROGRESS(비종결) 상태면 markIfAbsent 호출됨</li>
+ *   <li>종결 가드 재발행 — DONE + APPROVED(재배달 신호) → sendStockCommittedEvents 재발행 +
+ *       terminalResendMetrics.record(DONE), markPaymentAsDone 미호출, eventUuid 신/구 비의존</li>
+ *   <li>종결 가드 noop — QUARANTINED/FAILED 등 DONE 이외 종결 + APPROVED → 재발행 없음 +
+ *       guardSkipMetrics.record(status)(DR-3 보호 불변)</li>
+ *   <li>멱등 마킹 0 row (도달 불가, 방어적) — 비종결 + affected==0 → 단순 skip (발행도 미수행)</li>
+ *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성(정상 경로 + 재발행 경로)</li>
  *   <li>FAILED 보상 순서 보존 — compensateAtomic 먼저, markPaymentAsFail 나중</li>
  *   <li>APPROVED 정상 — markPaymentAsDone + send loop 호출</li>
  *   <li>amount 불일치 — quarantineCompensationHandler 위임 (markPaymentAsDone 미호출)</li>
@@ -56,6 +61,8 @@ class PaymentConfirmResultUseCaseTest {
     private static final String EVENT_UUID = "evt-eos-001";
     private static final String APPROVED_AT_STR = "2026-04-24T10:00:00Z";
     private static final long AMOUNT = 1000L;
+    private static final String GUARD_SKIP_METRIC_NAME = "payment_confirm_guard_skip_total";
+    private static final String TERMINAL_RESEND_METRIC_NAME = "payment_confirm_terminal_resend_total";
 
     private FakePaymentEventRepository paymentEventRepository;
     private FakePaymentEventDedupeStore dedupeStore;
@@ -64,6 +71,8 @@ class PaymentConfirmResultUseCaseTest {
     private PaymentCommandUseCase paymentCommandUseCase;
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, String> stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
+    private SimpleMeterRegistry guardSkipMeterRegistry;
+    private SimpleMeterRegistry terminalResendMeterRegistry;
     private PaymentConfirmResultUseCase sut;
 
     @BeforeEach
@@ -74,6 +83,8 @@ class PaymentConfirmResultUseCaseTest {
         stockCachePort = Mockito.mock(StockCachePort.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
+        guardSkipMeterRegistry = new SimpleMeterRegistry();
+        terminalResendMeterRegistry = new SimpleMeterRegistry();
 
         Clock fixedClock = Clock.fixed(
                 Instant.parse("2026-04-24T12:00:00Z"), ZoneOffset.UTC);
@@ -86,28 +97,19 @@ class PaymentConfirmResultUseCaseTest {
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
-                new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmGuardSkipMetrics(guardSkipMeterRegistry),
+                new PaymentConfirmTerminalResendMetrics(terminalResendMeterRegistry)
         );
     }
 
-    // ---- 진입 가드 ----
-
-    @Test
-    @DisplayName("shouldSkipWhenStatusIsNotProceedable — QUARANTINED(종결) 상태면 markIfAbsent 미호출 + warn noop")
-    void shouldSkipWhenStatusIsNotProceedable() {
-        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
-        paymentEventRepository.save(event);
-
-        ConfirmedEventMessage message = new ConfirmedEventMessage(
-                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
-
-        sut.handle(message);
-
-        assertThat(dedupeStore.size()).isZero();
-        then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
-        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
+    private static double getCounterValue(SimpleMeterRegistry registry, String metricName, String statusLabel) {
+        Counter counter = registry.find(metricName)
+                .tag("status", statusLabel)
+                .counter();
+        return counter == null ? 0.0 : counter.count();
     }
+
+    // ---- 진입 가드 ----
 
     @Test
     @DisplayName("shouldProceedBusinessWhenStatusIsProceedable — IN_PROGRESS 상태면 markIfAbsent 호출됨")
@@ -126,11 +128,88 @@ class PaymentConfirmResultUseCaseTest {
         assertThat(dedupeStore.contains(EVENT_UUID)).isTrue();
     }
 
-    // ---- 멱등 마킹 0 row ----
+    // ---- 종결 가드 재발행 (DONE+APPROVED = 재배달 신호) ----
 
     @Test
-    @DisplayName("shouldSkipBusinessWhenMarkIfAbsentReturnsZero — 0 row 시 markPaymentAsDone 미호출")
-    void shouldSkipBusinessWhenMarkIfAbsentReturnsZero() {
+    @DisplayName("shouldResendStockCommittedWhenDoneApprovedRedelivered"
+            + " — DONE 상태 + APPROVED 재배달 → send N회 + markPaymentAsDone never + terminalResendMetrics.record(DONE)")
+    void shouldResendStockCommittedWhenDoneApprovedRedelivered() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.DONE, List.of(order));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(dedupeStore.size()).isZero();
+        then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
+        then(stockCommittedKafkaTemplate).should(times(1))
+                .send(eq("payment.events.stock-committed"), eq("1"), anyString());
+        assertThat(getCounterValue(terminalResendMeterRegistry, TERMINAL_RESEND_METRIC_NAME, "DONE")).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("shouldResendWhenDoneApprovedWithFreshEventUuid"
+            + " — DONE 상태 + 처음 보는 eventUuid + APPROVED → send N회 + terminalResendMetrics.record(DONE)"
+            + " (종결 가드 재발행이 eventUuid 신/구에 비의존임을 고정)")
+    void shouldResendWhenDoneApprovedWithFreshEventUuid() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.DONE, List.of(order));
+        paymentEventRepository.save(event);
+
+        String freshEventUuid = "evt-fresh-never-seen-before";
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, freshEventUuid);
+
+        sut.handle(message);
+
+        then(stockCommittedKafkaTemplate).should(times(1))
+                .send(eq("payment.events.stock-committed"), eq("1"), anyString());
+        assertThat(getCounterValue(terminalResendMeterRegistry, TERMINAL_RESEND_METRIC_NAME, "DONE")).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("shouldNotResendWhenQuarantinedLateApproved"
+            + " — QUARANTINED 상태 + APPROVED → send never + guardSkipMetrics.record(QUARANTINED) (DR-3 보호 불변)")
+    void shouldNotResendWhenQuarantinedLateApproved() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(dedupeStore.size()).isZero();
+        then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
+        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
+        assertThat(getCounterValue(guardSkipMeterRegistry, GUARD_SKIP_METRIC_NAME, "QUARANTINED")).isEqualTo(1.0);
+        assertThat(getCounterValue(terminalResendMeterRegistry, TERMINAL_RESEND_METRIC_NAME, "DONE")).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("shouldNotResendWhenFailedTerminalApproved — FAILED 상태 + APPROVED → send never")
+    void shouldNotResendWhenFailedTerminalApproved() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
+    }
+
+    // ---- 멱등 마킹 0 row (도달 불가 — 단순 skip, 방어적 처리) ----
+
+    @Test
+    @DisplayName("shouldSimpleSkipWhenMarkIfAbsentReturnsZero — 비종결 + affected==0 → send never + markPaymentAsDone never")
+    void shouldSimpleSkipWhenMarkIfAbsentReturnsZero() {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
@@ -144,27 +223,38 @@ class PaymentConfirmResultUseCaseTest {
         sut.handle(message);
 
         then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
+        then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
     }
 
-    @Test
-    @DisplayName("shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero — 0 row 에도 발행은 항상 진행")
-    void shouldSkipBusinessButAlwaysSendWhenMarkIfAbsentReturnsZero() {
-        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
-        paymentEventRepository.save(event);
+    // ---- 멀티상품 재발행 결정성 ----
 
-        // 중복 상태 만들기
-        dedupeStore.markIfAbsent(EVENT_UUID, 1L, "APPROVED", Instant.now());
+    @Test
+    @DisplayName("shouldResendDistinctKeyPerProductWhenDoneApprovedRedelivered"
+            + " — DONE + 상품 2건 재배달 → send 2회 + productId 별 distinct idempotencyKey")
+    void shouldResendDistinctKeyPerProductWhenDoneApprovedRedelivered() {
+        PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
+        PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.DONE, List.of(order1, order2));
+        paymentEventRepository.save(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
 
         sut.handle(message);
 
-        // 비즈니스 skip 이지만 발행은 진행
-        then(paymentCommandUseCase).should(never()).markPaymentAsDone(any(), any());
-        then(stockCommittedKafkaTemplate).should(times(1))
-                .send(eq("payment.events.stock-committed"), eq("1"), anyString());
+        then(stockCommittedKafkaTemplate).should(times(2))
+                .send(eq("payment.events.stock-committed"), anyString(), anyString());
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        then(stockCommittedKafkaTemplate).should(times(2))
+                .send(anyString(), keyCaptor.capture(), anyString());
+
+        List<String> keys = keyCaptor.getAllValues();
+        assertThat(keys).containsExactlyInAnyOrder("10", "20");
+
+        String expectedKey10 = StockEventUuidDeriver.derive(ORDER_ID, 10L, "stock-commit");
+        String expectedKey20 = StockEventUuidDeriver.derive(ORDER_ID, 20L, "stock-commit");
+        assertThat(expectedKey10).isNotEqualTo(expectedKey20);
     }
 
     // ---- multi-product 결정성 ----
