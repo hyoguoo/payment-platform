@@ -68,7 +68,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 재발행 관측 메트릭 컴포넌트
+- [x] Task 1: 재발행 관측 메트릭 컴포넌트
 - [ ] Task 2: 종결 가드 재발행 + dead branch 제거 + 단위/통합 회귀 교체
 - [ ] Task 3: 결정적 EOS 커밋 실패 주입 실증
 
@@ -91,7 +91,8 @@ flowchart TD
 - 신규 테스트 3 pass. `./gradlew :payment-service:test` 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentConfirmTerminalResendMetrics` 신규 — `PaymentConfirmGuardSkipMetrics` 구조 그대로 차용. 카운터 `payment_confirm_terminal_resend_total`, 라벨 `status` 1개. eager 등록 대상은 재발행 트리거 상태 DONE 1종(가드 스킵 6종 필터링 방식 대신 단일 라벨 직접 등록).
+- 신규 테스트 3 pass(`record_DONE_호출시_카운터_1증가`, `record_null_입력_throwFree_noop`, `생성자_eager등록_DONE_0시리즈`). `./gradlew :payment-service:test` 전체 453 pass(기존 450 + 신규 3), 회귀 없음.
 
 ---
 

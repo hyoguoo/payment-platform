@@ -1,17 +1,19 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-22
+> 최종 수정: 2026-06-22 (Task 1 완료)
 
 ## 활성 작업
 
 - **주제**: CONFIRM-APPROVED-RESEND-GAP (비동기 confirm APPROVED 재고 확정 재발행 갭 수정)
 - **단계**: execute (plan 완료)
 - **이슈/브랜치**: #112 / `#112`
-- **활성 태스크**: Task 1 (재발행 관측 메트릭 컴포넌트)
+- **활성 태스크**: Task 2 (종결 가드 재발행 + dead branch 제거 + 단위/통합 회귀 교체)
 
 ## 재개 메모
 
-**plan 완료 — PLAN.md 게이트 통과(reviewer·domain-expert R1 pass, minor 5건 반영). 다음: execute Task 1부터.**
+**plan 완료 — PLAN.md 게이트 통과(reviewer·domain-expert R1 pass, minor 5건 반영). Task 1 완료(execute). 다음: execute Task 2부터.**
+
+- **Task 1 완료**: `PaymentConfirmTerminalResendMetrics` 신규(`PaymentConfirmGuardSkipMetrics` 패턴 차용) — 카운터 `payment_confirm_terminal_resend_total`, 라벨 `status` 1개, eager 등록 DONE 1종. 단위 3 pass, 전체 453 pass 회귀 없음.
 
 - **확정된 접근**: 진입 가드의 종결(DONE) 분기에서 `status==DONE && message==APPROVED`(= 재배달 신호)면 `sendStockCommittedEvents` 재발행. RDB DONE 커밋 후 브로커 커밋 유실 시 재배달이 D7 가드에 막혀 재고 확정이 영구 유실되던 갭 복구. 수신측 product가 결정적 키(`derive(orderId,productId)`, message eventUuid 독립)로 멱등 흡수 → over-publish 무해/under-publish만 위험 비대칭 이용.
 - **3 태스크 (PLAN.md SSOT)**: ① 재발행 관측 메트릭 컴포넌트(신규 `PaymentConfirmTerminalResendMetrics`, tdd), ② handle 종결 가드 재발행 + affected==0 dead branch 제거 + 단위 6종 신규/기존 2종 제거 + 통합 #3 실효 교체·#4 정상경로만·#5 green 유지(한 커밋, tdd·domain_risk), ③ 결정적 EOS 커밋 실패 주입 실증(임베디드 Kafka에 `commitTransaction` 1회 실패 시드, 복구 차감 1회 + 반복실패 DLQ·중복차감 0, domain_risk).
