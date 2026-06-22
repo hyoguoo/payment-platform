@@ -89,10 +89,11 @@
 
 **EOS atomicity 정합 SSOT (RD1-2 명시):**
 - `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
-- 이 구조에서 RDB commit 성공 + Kafka producer commit 실패(또는 그 역) 시 at-least-once 재배달이 발생한다.
-- **정합성 SSOT 는 EOS atomicity 자체가 아니라 "중복 시 발행 항상 진행 (위키 line 141)" 룰**: 0 row(중복) 시에도 stock-committed 발행을 진행하고, product-service `stock_commit_dedupe` 가 재배달을 흡수한다.
-- 즉 EOS 는 "정상 경로 중복 발행 최소화" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
-- **후속 과제**: TC-13-FOLLOW-1 — `@Transactional` qualifier 명시 또는 `ChainedKafkaTransactionManager` 도입 검토 (CONFIRM-FLOW.md §5 EOS atomicity SSOT 절 참조).
+- 이 구조에서 RDB commit(JPA inner) 성공 + Kafka EOS commit(outer) 실패 시 at-least-once 재배달이 발생한다 (best-effort 1PC).
+- **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 발행이 유실되면 재배달이 D7 종결 가드에 도달하는데 `status==DONE && message==APPROVED` 면 stock-committed 를 재발행한다(`terminalResendMetrics` 계측). product-service 가 결정적 키로 멱등 흡수 → 차감 1회.
+- **폐기**: 과거 SSOT "중복 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 도달 불가 dead branch 였고, CONFIRM-APPROVED-RESEND-GAP 에서 제거됨.
+- **잔여 한계 (Task 3 실증)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 완전 유실 + 컨테이너 디폴트 `AfterRollbackProcessor` 경로라 DLQ 미진입 — TC-13-FOLLOW-7 후속.
+- **후속 과제**: TC-13-FOLLOW-1 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 완료). TC-13-FOLLOW-7 — EOS 커밋 실패 DLQ 경로.
 
 ### ~~L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재~~ ✅ 해소 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 

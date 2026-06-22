@@ -76,7 +76,7 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 #### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 ✅ 완료 / ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
 
 - **문제**: `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 가 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택. `KafkaTransactionManager(EOS)` 와 별개 TM 으로 동작해 crash 시 at-least-once 재배달이 발생 가능.
-- **정합 SSOT**: "중복 시 발행 항상 진행 (위키 line 141)" + product-service dedupe 조합 (CONCERNS.md L-1, CONFIRM-FLOW.md §5).
+- **정합 SSOT**: crash 내성 = 종결 가드 DONE+APPROVED 재발행 + product-service 결정적 키 dedupe 흡수 (CONFIRM-APPROVED-RESEND-GAP, #112 — 과거 "중복 시 발행 항상 진행(위키 line 141)" 은 dead branch 라 제거됨. CONCERNS.md L-1, CONFIRM-FLOW.md §5).
 - **완료 부분 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)**: (a) `@Transactional(transactionManager = "transactionManager", timeout = 5)` qualifier 명시 — 다중 TM 환경에서 `@Primary JpaTransactionManager` 명시 고정. best-effort 1PC 한계 + TM 분리 원칙 Javadoc 추가. `KafkaConsumerConfig` deprecated `setTransactionManager` → `setKafkaAwareTransactionManager` 교체.
 - **미채택 (잔여)**: (b) `ChainedKafkaTransactionManager` 도입 — JPA TM 과 Kafka TM 체인으로 원자성 강화. 운영 환경에서 at-least-once 허용 불가 수준의 중복 발생 시 재검토.
 
