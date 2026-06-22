@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventM
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -85,7 +86,8 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
-                new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry()),
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
         );
     }
 

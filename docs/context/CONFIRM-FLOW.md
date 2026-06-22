@@ -123,10 +123,11 @@ flowchart TD
 flowchart TD
     KC(["@KafkaListener<br/>topics=payment.events.confirmed<br/>groupId=payment-service<br/>containerFactory=kafkaListenerContainerFactory<br/>(KafkaTransactionManager 통합)"]) --> GUARD{"D7 가드<br/>canApplyConfirmResult?"}
 
-    GUARD -->|false = 종결 상태| NOOP["noop 로그 + return<br/>(QUARANTINED 늦은 APPROVED 포함)"]
+    GUARD -->|false = DONE + APPROVED| RESEND_T["종결 가드 재발행<br/>sendStockCommittedEvents + terminalResendMetrics.record(DONE)<br/>(CONFIRM-APPROVED-RESEND-GAP — crash 내성 담당)"]
+    GUARD -->|false = 그 외 종결| NOOP["noop 로그 + return<br/>(QUARANTINED 늦은 APPROVED 포함, DR-3)"]
     GUARD -->|true = 진행 가능| DEDUPE["PaymentEventDedupeStore.markIfAbsent<br/>(INSERT IGNORE payment_event_dedupe)"]
 
-    DEDUPE -->|0 row = 중복| RESEND["비즈니스 skip<br/>발행은 항상 진행 (위키 line 141)"]
+    DEDUPE -->|0 row = 중복| RESEND["단순 skip + return<br/>(단일 컨슈머 EOS서 도달 불가 — 방어적)"]
     DEDUPE -->|1 row = 신규| LOAD[paymentEvent 조회]
     LOAD --> SW{message.status}
 
@@ -142,8 +143,9 @@ flowchart TD
     FAIL_OK --> COMMIT
     QU_AM --> COMMIT
     QU_PG --> COMMIT
-    RESEND --> COMMIT
-    NOOP --> END([완료])
+    RESEND_T --> COMMIT
+    RESEND --> END([완료])
+    NOOP --> END
     COMMIT --> END
 
     COMMIT -.->|RuntimeException| ABORT["producer abort + RDB rollback<br/>offset 미커밋 → 재배달"]
@@ -158,19 +160,21 @@ flowchart TD
 
 **EOS atomicity SSOT (RD1-2 명시):**
 - `PaymentConfirmResultUseCase.handle` 의 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 는 `@Primary JpaTransactionManager` 를 qualifier 로 **명시 고정** 한다 (EOS-FOLLOWUP-CLEANUP — 이전 qualifier 미명시 시 다중 TM 환경에서 선택 모호성 제거). `KafkaTransactionManager(EOS)` 와 별개 TM 임을 코드 레벨에서 못박는다.
-- 결과적으로 RDB commit 과 Kafka commit 사이에 crash 시 at-least-once 재배달이 발생한다 (best-effort 1PC 한계). 이 한계와 TM 분리 원칙은 `handle` Javadoc 에 명시되어 있다.
-- **정합성 SSOT 는 EOS atomicity 그 자체가 아니라 위키 line 141 룰**: 0 row(중복) 시에도 stock-committed 발행은 항상 진행 → product-service `stock_commit_dedupe` 가 재배달을 흡수 → 최종 재고 정합 보장.
-- 즉 EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이며, crash 내성은 위키 line 141 + product-service dedupe 조합이 담당한다.
-- ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
+- 결과적으로 RDB commit(JPA inner) 과 Kafka commit(EOS outer) 사이에 crash 시 at-least-once 재배달이 발생한다 (best-effort 1PC 한계). 이 한계와 TM 분리 원칙은 `handle` Javadoc 에 명시되어 있다.
+- **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 커밋이 유실되면 재배달이 D7 종결 가드에 도달하는데, `status==DONE && message==APPROVED` 이면 `sendStockCommittedEvents` 를 **재발행**한다(`terminalResendMetrics.record(DONE)` 계측). product-service 가 결정적 키 `StockEventUuidDeriver.derive(orderId, productId)`(message eventUuid 와 독립) 로 멱등 흡수 → 차감 정확히 1회. over-publish 무해 / under-publish 위험 비대칭을 이용한다.
+- **과거 SSOT(폐기)**: "0 row(중복) 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch** 였다. CONFIRM-APPROVED-RESEND-GAP 에서 제거(단순 skip)되고 crash 내성은 위 종결 가드 재발행으로 이전됐다.
+- **잔여 한계**: 종결 가드 재발행도 같은 EOS producer tx 안에서 발행되므로, EOS 커밋이 **지속** 실패하면 재발행 자체가 매번 abort 돼 stock-committed 완전 유실 + DLQ 미진입(아래 에러 핸들링 절 참조) — TC-13-FOLLOW-7 후속.
+- EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이다. ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
 
 **D7 진입 가드:**
-- `paymentEvent.getStatus().canApplyConfirmResult()` — READY / IN_PROGRESS 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → noop return.
-- QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 D7 가드가 차단 — DLQ silent 분기 방지 (DR-3 가드).
+- `paymentEvent.getStatus().canApplyConfirmResult()` — READY / IN_PROGRESS 만 true. DONE / FAILED / CANCELED / PARTIAL_CANCELED / EXPIRED / QUARANTINED 는 false → 종결 분기.
+- **종결 분기(false)**: `status==DONE && message==APPROVED` 이면 stock-committed 재발행(위 crash 내성 SSOT, CONFIRM-APPROVED-RESEND-GAP), 그 외 종결은 noop return.
+- QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 status≠DONE 이라 재발행 미트리거 + noop 차단 — DLQ silent 분기 방지 (DR-3 가드 불변).
 
 **D5 멱등 마킹 (`payment_event_dedupe`):**
 - `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, receivedAt, expiresAt) → int`.
 - `INSERT IGNORE INTO payment_event_dedupe(event_uuid, ...)` — affected rows 0 = 중복, 1 = 신규.
-- 0 row 시 비즈니스 skip 하되 발행은 항상 진행 (위키 line 141 보장 — product-service dedupe 가 재배달 흡수).
+- 0 row 시 **단순 skip + return** — 단일 컨슈머 EOS 흐름에서 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 이 분기는 도달 불가(방어적). 과거 "발행 항상 진행(위키 line 141)" 은 dead branch 라 CONFIRM-APPROVED-RESEND-GAP 에서 제거됨 (crash 내성은 종결 가드 재발행으로 이전).
 - TTL: `expires_at = receivedAt + 8일` (Kafka retention 7d + 복구 버퍼 1d).
 
 **D8 직접 발행 (EOS producer tx):**
@@ -183,6 +187,7 @@ flowchart TD
 - not-retryable 예외: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException` — 즉시 DLQ.
 - 그 외 RuntimeException — 1초 간격으로 5회 재시도 후 한도 초과 시 `payment.events.confirmed.dlq` 로 publish.
 - `PaymentConfirmResultUseCase` 는 예외를 그대로 throw — retry / DLQ 책임은 Spring Kafka 가 가져간다.
+- **두 실패 경로 구분 (CONFIRM-APPROVED-RESEND-GAP Task 3 실증)**: 위 `DefaultErrorHandler`(+DLQ recoverer) 는 **리스너가 던진 도메인 예외**에만 적용된다. EOS `commitTransaction()` 자체의 실패는 리스너 반환 *이후* 컨테이너 트랜잭션 커밋 단계라 별개 경로인 **컨테이너 디폴트 `DefaultAfterRollbackProcessor`**(미명시 시 `SeekUtils.DEFAULT_BACK_OFF` = interval 0, maxAttempts 9, recoverer 단순 로그)로 처리된다 — **DLQ 에 진입하지 않고 9회 소진 후 단순 스킵**(오프셋 전진). 종결 가드 재발행도 같은 EOS tx 라 commit 이 지속 실패하면 재발행이 매번 abort 돼 완전 유실. 처방(컨테이너 팩토리에 `setAfterRollbackProcessor` 로 동일 DLQ recoverer 연결)은 TC-13-FOLLOW-7 후속.
 
 **Lua atomic dedup token (orderId 단위):**
 - `compensateAtomic(orderId, orders)` 가 `lua/stock_compensation_atomic.lua` 1회 호출 — 결제 단위 N개 상품 atomic 보상 + dedup token `compensation:done:{orderId}` SETNX P8D. 동일 orderId 재처리 시 `ALREADY_DONE` 반환 → 보상 멱등.
@@ -414,9 +419,11 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | pg-service 측 판단 불가 / 5xx 한도 소진 | pg_inbox QUARANTINED → events.confirmed QUARANTINED → payment `handleQuarantined` |
 | Redis 재고 캐시 장애 (CACHE_DOWN) | confirm 단계 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` |
 | AMOUNT_MISMATCH 감지 | `handleApproved` 내부 격리 → `QuarantineCompensationHandler.handle(AMOUNT_MISMATCH)` |
-| 중복 메시지 (payment 측 events.confirmed) | `payment_event_dedupe` INSERT IGNORE (D5 멱등 마킹) — 0 row = 비즈니스 skip + 발행 항상 진행 (위키 line 141). Lua atomic dedup token (차감/보상 단위 orderId P8D) 은 redis 보상 멱등을 별도 보장. |
+| 중복 메시지 (payment 측 events.confirmed) | `payment_event_dedupe` INSERT IGNORE (D5 멱등 마킹) — 0 row = **단순 skip(도달 불가 dead branch)**. Lua atomic dedup token (차감/보상 단위 orderId P8D) 은 redis 보상 멱등을 별도 보장. |
+| APPROVED RDB DONE 커밋 후 EOS 발행 유실 (일시적) | 재배달이 D7 종결 가드 도달 → `status==DONE && APPROVED` 면 stock-committed **재발행**(CONFIRM-APPROVED-RESEND-GAP, #112). product 결정적 키 흡수 → 차감 1회. crash 내성 SSOT. |
 | stock-committed 재배달 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe UNIQUE INSERT IGNORE, 같은 TX) 가 흡수. idempotencyKey = `StockEventUuidDeriver.derive` 결정적 UUID (DR-1 보존). |
-| EOS abort (producer tx abort) | RDB rollback + offset 미커밋 → 동일 메시지 재배달 → DefaultErrorHandler FixedBackOff 1s×5. product-service 측 abort 메시지 invisible (read_committed). |
+| EOS abort — 리스너 도메인 예외 | RDB rollback + offset 미커밋 → 재배달 → DefaultErrorHandler FixedBackOff 1s×5 → 한도 시 DLQ. product-service 측 abort 메시지 invisible (read_committed). |
+| EOS abort — `commitTransaction` 지속 실패 | 컨테이너 디폴트 `AfterRollbackProcessor`(interval 0, 9회, DLQ 미진입) → 9회 후 단순 스킵. 종결 가드 재발행도 같은 EOS tx 라 완전 유실 — TC-13-FOLLOW-7 후속. |
 | payment event IN_PROGRESS 장기 체류 | `PaymentReconciler` (`@Scheduled fixedDelayMs=120000, 2분`) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업 |
 
 ---
@@ -495,15 +502,17 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 
 ## 16. EOS 통합 검증 시나리오 (PET-12 회귀 가드)
 
-`PaymentEosIntegrationTest` 5건 — Testcontainers Kafka + MySQL 환경에서 검증. 아래 시나리오를 건드리는 변경은 반드시 이 테스트를 통과해야 한다.
+`PaymentEosIntegrationTest` 7건 — 임베디드 Kafka(`@EmbeddedKafkaBroker`) + Testcontainers MySQL 환경에서 검증. 아래 시나리오를 건드리는 변경은 반드시 이 테스트를 통과해야 한다. #6·#7 은 테스트 시드 `CommitFailureInjectingProducerPostProcessor`(`ProducerPostProcessor` 로 `commitTransaction()` N회 결정적 실패 주입, 운영 코드 무변경) 사용.
 
 | # | 시나리오 | 검증 포인트 | 관련 결정 |
 |---|---|---|---|
 | 1 | **EOS commit 정상 흐름** | APPROVED 메시지 → `payment_event_dedupe` 1 row + payment DONE + stock-committed 1건 read_committed 가시화 | D1, D5, D6 |
 | 2 | **EOS abort invisibility** | 비즈니스 RuntimeException 주입 → dedupe 0 row + payment 상태 불변 + stock-committed 0건 + DLQ 재시도 후 1건 | D6, DR-4 |
-| 3 | **중복 INSERT IGNORE 흐름** | 동일 event_uuid 재배달 → markIfAbsent 0 row → 비즈니스 skip + stock-committed 발행 진행 + payment 불변 | D5, DR-5 |
-| 4 | **multi-product DR-1 가드** | PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성 + 재배달 dedupe skip | D8, DR-1 |
-| 5 | **QUARANTINED D7 가드** | QUARANTINED 결제 + APPROVED 메시지 → noop + dedupe 0 row + stock-committed 0건 + DLQ 0건 | D7, DR-3 |
+| 3 | **종결 가드 재발행(실효 교체)** | DONE 결제 + 동일 event_uuid 재배달 → 종결 가드 재발행 stock-committed 1건 + payment DONE 불변 + dedupe row 불변 + affected==0 분기 미진입(발행 책임 이전 실증) | DR-5, #112 |
+| 4 | **multi-product DR-1 가드** | 정상 경로 PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성 | D8, DR-1 |
+| 5 | **QUARANTINED D7 가드** | QUARANTINED 결제 + APPROVED 메시지 → noop + dedupe 0 row + stock-committed 0건 + DLQ 0건 (status≠DONE 재발행 미트리거) | D7, DR-3 |
+| 6 | **결정적 커밋 실패(복구)** | 1차 `commitTransaction` 실패 주입 → RDB DONE + dedupe row 1건 + stock-committed 유실 → 재배달이 종결 가드 재발행 → stock-committed 1건 복구 + 차감 정확히 1회 + `terminalResend(DONE)` +1 | #112 |
+| 7 | **결정적 커밋 지속실패(bound)** | N회 연속 실패 주입 → `AfterRollbackProcessor` 9회 소진 → DLQ 미진입 + stock-committed 완전 유실 0건(payment DONE인데 재고 확정 영구 소실) | TC-13-FOLLOW-7 |
 
 > **주의**: 시나리오 #2 (abort invisibility) 는 product-service `isolation.level=read_committed` 가 적용된 상태에서만 성립. deploy 순서 — product-service 먼저 배포 후 payment-service EOS 전환.
 

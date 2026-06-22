@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -73,7 +74,8 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 Mockito.mock(PaymentCommandUseCase.class),
-                guardSkipMetrics
+                guardSkipMetrics,
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
         );
     }
 

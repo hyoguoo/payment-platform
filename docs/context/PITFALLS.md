@@ -206,15 +206,17 @@ process(result);  // result 가 null 일 수 있음
 - `PaymentStatusResult.StatusType` 에 `QUARANTINED` 추가 + `mapEventStatus` 명시 매핑 → 클라이언트가 격리 상태를 인지하고 polling 종료
 - TODOS.md 의 admin 복구 도구(TQ-2 QUARANTINED-ADMIN-RECOVERY) 와 함께 진행
 
-## 20. INSERT IGNORE 0 row 시 비즈니스 skip 해도 발행은 항상 진행 (EOS 도입)
+## 20. APPROVED RDB DONE 커밋 후 stock-committed 유실 — 종결 가드 재발행으로 복구 (CONFIRM-APPROVED-RESEND-GAP)
 
-**증상**: `payment_event_dedupe` INSERT IGNORE 가 0 row 를 반환할 때 비즈니스 처리(결제 상태 전이)도 skip 하고 재고 확정 발행도 skip 하면 재배달 시 product-service 가 stock-committed 를 수신하지 못해 재고 차감이 영영 누락된다.
+**증상**: APPROVED 경로에서 `markPaymentAsDone`(RDB DONE) 커밋 성공 후 EOS 커밋(stock-committed 발행 + offset)이 유실되면, 재배달이 D7 종결 가드(`canApplyConfirmResult()==false`)에 막혀 stock-committed 가 영구 유실 → product 재고 차감 누락 → redis 선차감과 RDB 발산 → 오버셀.
 
-**원인**: 0 row = "이미 처리됐음" 이지, "발행 안 해도 됨" 이 아니다. product-service 의 `JdbcEventDedupeStore` 가 stock-committed idempotencyKey 기반으로 중복 차감을 막으므로, 발행이 여러 번 와도 재고는 1번만 차감된다.
+**원인**: 재고 확정 발행을 빠뜨리면(under-publish) 위험하지만, 같은 결제·상품의 재발행은 product `JdbcEventDedupeStore` 가 **결정적 키** `StockEventUuidDeriver.derive(orderId, productId)`(message eventUuid 와 독립) 로 흡수해 차감 1회 — over-publish 는 무해. 이 비대칭 때문에 "애매하면 재발행" 이 안전하다.
 
-**처방** (위키 line 141 보장):
-- `markIfAbsent()` 0 row 시 비즈니스 처리는 skip 하되 `PaymentOrder` 순회 + `stockCommittedKafkaTemplate.send` 는 **항상 진행**.
-- product-service `JdbcEventDedupeStore` (INSERT IGNORE, 같은 TX) 가 이중 차감 방어를 담당.
+**처방** (종결 가드 재발행):
+- D7 종결 가드 분기에서 `status==DONE && message==APPROVED`(= 정상 첫 도착엔 없는 = 재배달 신호) 면 `sendStockCommittedEvents` **재발행** + `terminalResendMetrics.record(DONE)` 계측.
+- **함정**: "0 row(중복) 시 발행 항상 진행(과거 위키 line 141)" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch**. 재배달은 항상 종결 가드로 온다.
+- **함정**: 순서 뒤집기(발행 먼저)로 해결되지 않는다 — 발행은 producer tx buffer 라 원자성 경계(JPA 커밋 ↔ Kafka 커밋)가 그대로다(FAILED·QUARANTINED 의 즉시 Redis 보상과 성격이 다름).
+- **잔여 한계**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 완전 유실 + DLQ 미진입(AfterRollbackProcessor 디폴트 경로) — TC-13-FOLLOW-7. 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패).
 
 ## 21. QUARANTINED 결제에 늦은 APPROVED 메시지 — D7 가드 없으면 DLQ silent 분기
 
