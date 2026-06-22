@@ -4,12 +4,21 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
-- **단계**: —
+- **주제**: CONFIRM-APPROVED-RESEND-GAP (비동기 confirm APPROVED 재고 확정 재발행 갭 수정)
+- **단계**: plan (discuss 완료)
+- **이슈/브랜치**: #112 / `#112`
 
 ## 재개 메모
 
-(없음)
+**discuss 완료 — 설계 문서 게이트 통과(reviewer·domain-expert R2 pass). 다음: plan.**
+
+- **확정된 접근**: 진입 가드의 종결(DONE) 분기에서 `status==DONE && message==APPROVED`(= 재배달 신호)면 `sendStockCommittedEvents` 재발행. 첫 처리 때 RDB DONE 커밋 후 브로커 커밋 유실 시 재배달이 D7 가드에 막혀 재고 확정이 영구 유실되던 갭 복구. 수신측 product가 결정적 키(`derive(orderId,productId)`)로 멱등 흡수 → over-publish 무해/under-publish만 위험 비대칭 이용.
+- **dead branch 처리**: 도달 불가한 affected==0 발행 분기(dedupe 마킹+종결 전이 원자 커밋이라 "dedupe됨+비종결" 불가) 제거 → 종결 가드로 재발행 일원화. 순서 뒤집기(발행 먼저)는 producer tx buffer라 원자성 경계 불변 → 미채택.
+- **plan 핵심 태스크 후보**: ① handle 종결 가드 재발행 분기 + 관측 메트릭/로그(dedupe 미경유 silent 반복 발행 가시화), ② affected==0 분기 단순 skip화, ③ 단위 2종(`shouldSkipBusiness...ReturnsZero`) 교체 + `PaymentEosIntegrationTest` #3 실효 시나리오 교체(#5 QUARANTINED green 유지), ④ Toxiproxy 장애 주입 실증 하니스("재발행 반복 실패 → 5회 후 DLQ + 중복 차감 0"), ⑤ 문서 정정(CONFIRM-FLOW §5·§16, CONCERNS L-1)은 ship context-update.
+- **검증 범위**: 단위 교체 + 통합 교체 + **Toxiproxy 실증 포함**(사용자 확정).
+- **치명도**: 중간 — 돈 직접 손실 아님(결제 정상 DONE), 재고 오버셀 리스크. 정적 분석 기반 추론, 실증은 Toxiproxy 필요.
+- **재개 방법**: 브랜치 `#112` 체크아웃 상태에서 plan 시작. SSOT = `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`(요약 브리핑 + 결정 테이블 + 장애 시나리오 + 검증 전략) + 이슈 #112.
+- **참고**: `docs/topics/CONFIRM-APPROVED-RESEND-GAP.md`, 이슈 #112, `PaymentConfirmResultUseCase.handle`, `PaymentEventStatus.canApplyConfirmResult()`, `PaymentEosIntegrationTest` #3·#4·#5, `docs/context/CONFIRM-FLOW.md §5·§16`, `docs/context/CONCERNS.md L-1`.
 
 ## 최근 완료
 
