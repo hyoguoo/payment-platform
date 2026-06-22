@@ -50,6 +50,7 @@ git diff main...HEAD --stat
 | `PITFALLS.md` | 학습된 도메인 함정 인덱스 | archive briefing 의 핵심 결정 |
 | `CONCERNS.md` | 알려진 우려 / 한계 | Phase 4 후속 항목 |
 | `TODOS.md` | 향후 처리 항목 | 활성 작업 외부 |
+| `PAYMENT-FLOW-GUIDE.md` | **사람 독자용** end-to-end walkthrough (도메인 언어 + 시퀀스/플로우차트) | ⚠️ **ship 단계에서만 갱신** — 독립 호출 시 제외. 결제 흐름 코드 변경 시 `PAYMENT-FLOW`/`CONFIRM-FLOW` 와 함께 사람 친화 서술로 반영 |
 
 ---
 

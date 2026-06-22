@@ -84,6 +84,10 @@
 - [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
 - [`docs/context/TODOS.md`](docs/context/TODOS.md) — 후속 + 향후 처리 항목
 
+### 사람 독자용 문서 (docs/context/) — ⚠️ 작업 시 열지 말 것
+
+- [`docs/context/PAYMENT-FLOW-GUIDE.md`](docs/context/PAYMENT-FLOW-GUIDE.md) — 결제 end-to-end 여정을 도메인 언어 + 시퀀스/플로우차트로 풀어쓴 **사람 독자용** walkthrough. **에이전트는 평소 작업·탐색 시 이 파일을 열지 않는다** (위 표의 진입점에도 넣지 않는다 — 작업 정합 기준은 `PAYMENT-FLOW` / `CONFIRM-FLOW`). 코드 변경에 따른 갱신은 **ship 단계에서만** 수행한다.
+
 ### 영구 도구 가이드 (docs/smoke/) — 시점 무관
 
 - [`docs/smoke/infra-healthcheck.md`](docs/smoke/infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사 스크립트 가이드

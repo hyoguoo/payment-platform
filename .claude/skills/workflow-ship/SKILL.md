@@ -80,6 +80,7 @@ critical N건 해소, major N건 처리, minor N건 기록.
 ### B2. Context 문서 갱신
 
 `context-update` 스킬 실행. `git diff main...HEAD --stat`을 시작점으로 범위 최소화.
+변경이 결제 흐름(컨트롤러·use case·Kafka 토픽·pg-service·재고 정산 등)에 닿으면, **사람 독자용** `docs/context/PAYMENT-FLOW-GUIDE.md`도 같은 변경에 맞춰 갱신한다 — 이 문서는 평소엔 참조하지 않고 **ship 단계에서만** 손댄다.
 
 ### B3. 완료 브리핑 작성
 
