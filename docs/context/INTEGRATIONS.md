@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — DLQ 발행자 / Redis dedupe 표현 갱신)
+> 최종 갱신: 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭). 이전: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — DLQ 발행자 / Redis dedupe 표현 갱신)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -16,10 +16,10 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 **선택 로직**: `PgConfirmStrategySelector` 가 `gatewayType` (DB 또는 메시지 payload 의 `PaymentGatewayType` enum) 으로 분기 → 해당 전략 호출.
 
-**공통 인터페이스** (`PgGatewayPort`):
-- `confirm(PgConfirmCommand)` → `PgConfirmResult` (APPROVED / FAILED / QUARANTINED 결과 + amount + approvedAtRaw)
-- `getStatus(orderId)` → 벤더 상태 조회 (복구 사이클 진입 전 선행 호출 — Final Confirmation Gate)
-- `cancel(...)` (구조 존재, 운영 활용 별도)
+**포트** (confirm / status 분리 — 단일 `PgGatewayPort` 아님):
+- `PgConfirmPort.confirm(PgConfirmRequest)` → `PgConfirmResult` (성공 + amount + approvedAtRaw / 실패·재시도·멱등은 `PgGateway*Exception` 으로 표현) — `PgConfirmStrategySelector` 가 vendorType 으로 선택
+- `PgStatusLookupPort.getStatusByOrderId(orderId)` → 벤더 상태 조회 (`DuplicateApprovalHandler` 의 멱등 응답 재확정용) — `PgStatusLookupStrategySelector` 가 선택
+- cancel / refund 은 현재 미구현 (포트에 메서드 없음 — CONCERNS L-9)
 
 ## Toss Payments
 
@@ -46,8 +46,11 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 ## 벤더 호출 회복성
 
-- retryable 분류: 타임아웃 / 5xx / 매핑 불가 — `PaymentRetryableException` 또는 `PaymentTossRetryableException`. 복구 사이클이 RETRY_LATER 로 처리
-- non-retryable: 4xx / PG_NOT_FOUND — 즉시 COMPLETE_FAILURE 분기
+PG 호출 회복은 pg-service 가 전담한다 (payment 는 결과만 수신 — ADR-04). 결과 분기는 `PgVendorCallService.applyOutcome` 5분기.
+
+- retryable: 타임아웃 / 5xx — `PgGatewayRetryableException` → `handleRetry` (commands.confirm self-loop 재발행). ⚠️ 의도는 attempt<4 한도지만 현재 `attempt` 가 런타임 1 고정이라 한도/DLQ 자동 진입 미작동 ([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md))
+- non-retryable: 4xx 확정 거절 — `PgGatewayNonRetryableException` → `pg_inbox FAILED` + events.confirmed FAILED
+- 멱등 응답("이미 처리됨"): `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 가 vendor getStatus 재조회로 APPROVED / QUARANTINED 확정
 - AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
 
 ## 외부 PG HTTP timeout 정책
@@ -101,8 +104,8 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 | payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` |
 | payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
 | payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
-| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry, attempt < 4) — `pg_outbox.available_at` 기반 지연 발행 |
-| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (attempt ≥ 4 시 격리, `PgVendorCallService.insertDlqOutbox`) |
+| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. ⚠️ attempt 런타임 1 고정([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md)) |
+| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (`PgVendorCallService.insertDlqOutbox` — 설계상 attempt ≥ 4, ⚠️ 현재 미도달) |
 | pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
 | payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` — retry 5회 한도 초과 시 자동 발행. `KafkaErrorHandlerConfig`) |
 | payment-service → product-service | Kafka | one-way | `payment.events.stock-committed` (APPROVED 시만 — RDB 누적 차감 ledger) |

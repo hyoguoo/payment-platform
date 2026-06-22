@@ -150,7 +150,7 @@ process(result);  // result 가 null 일 수 있음
 **처방** (MSA-TRANSITION):
 - payment-service 는 PG 호출 안 함
 - pg-service 만 벤더 호출. payment 와는 Kafka 양방향 메시지로만 통신
-- `PgGatewayPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
+- `PgConfirmPort` / `PgStatusLookupPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
 
 ## 16. 재고 SoT 모델 — RDB 가 SoT, redis-stock 은 선차감 캐시
 

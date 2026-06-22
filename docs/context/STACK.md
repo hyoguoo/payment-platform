@@ -83,7 +83,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 
 ## DB 마이그레이션 (Flyway)
 
-4서비스 모두 동일 패턴 — `db/schema/`(스키마 baseline) + `db/seed/`(seed) 디렉토리 분리, profile 별 `locations` 로 `docker` 프로필에서 seed 를 차단한다.
+스키마 위치가 두 패턴 — **payment/pg 는 `db/migration/`**(단일, seed 없음), **product/user 는 `db/schema/` + `db/seed/`** 분리(profile 별 `locations` 로 `docker` 프로필에서 seed 차단).
 
 운영 가이드 상세(profile 설정, 부팅 동작, named volume 재사용 시 `MissingMigrationException` 3-step 대응, Testcontainers 격리)는 [`stack/flyway-operations.md`](stack/flyway-operations.md) 참고.
 

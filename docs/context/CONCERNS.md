@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-06-19 (CAPACITY-AND-SCALEOUT — C-12 events.confirmed DLT suffix 갭 해소: Task 1 destinationResolver `.dlq` 명시)
+> 최종 갱신: 2026-06-23 (코드 대조 — L-13 pg self-loop attempt 갭 등재). 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — C-12 events.confirmed DLT suffix 갭 해소: Task 1 destinationResolver `.dlq` 명시)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -133,7 +133,7 @@
 
 ### L-9. 결제 cancel / refund 미구현
 
-`PgGatewayPort.cancel(...)` 인터페이스만 존재. 운영 활용 별도 토픽.
+cancel / refund 경로 미구현 — pg 포트(`PgConfirmPort`/`PgStatusLookupPort`)에 cancel 메서드 자체가 없다. 운영 활용 별도 토픽.
 
 ### ~~L-10. EXPIRED 상태의 만료 스케줄러 정책~~ ✅ 해소 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
 
@@ -146,6 +146,12 @@
 ### L-12. 보상 끝난 결제의 새 confirm 사이클 cascade (인지)
 
 P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
+
+### L-13. pg self-loop attempt 한도/DLQ 런타임 미작동 (PG-SELFLOOP-ATTEMPT-GAP)
+
+- **현황**: 일시 오류(5xx/timeout) 재시도 시 `attempt` 가 런타임에서 항상 1 로 고정된다 — `PgOutboxRelayService` 가 재발행 시 헤더를 `Map.of()`(빈 맵)로 보내 `pg_outbox.headers_json` 의 attempt 를 싣지 않고(코드 주석 "향후 확장 예약"), `pg_inbox` 에 attempt 컬럼도 없어 워커 `PgInboxProcessor.resolveAttempt()=1`. 결과적으로 `RetryPolicy.shouldRetry(1)` 항상 true → `insertDlqOutbox`(attempt≥4)가 도달 불가 dead branch.
+- **영향**: 벤더 장애 지속 시 `payment.commands.confirm` self-loop 무한 반복, DLQ→QUARANTINED 자동 격리 미작동, 해당 결제 영영 PROCESSING.
+- **수용/처방**: 의도된 무한 재시도인지 구현 갭인지 미확정 — `TODOS.md` 의 `[PG-SELFLOOP-ATTEMPT-GAP]` 로 추적. 테스트로 도달 불가는 실증 완료(working tree 미반영, 수정 토픽서 RED 재현).
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

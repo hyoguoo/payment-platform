@@ -1,23 +1,28 @@
 # Flyway 운영 가이드 — DB 마이그레이션
 
-> 4서비스 공통 Flyway 패턴, profile 별 locations, named volume 재사용 시 MissingMigration 대응, Testcontainers 격리.
+> 최종 갱신: 2026-06-23 (코드 대조 — db 위치 두 패턴 정정: payment/pg=`db/migration`, product/user=`db/schema`+`db/seed`).
+> profile 별 locations, named volume 재사용 시 MissingMigration 대응, Testcontainers 격리.
 
-**모델**: 4서비스 모두 동일 패턴.
+**모델**: 스키마 위치가 두 패턴으로 갈린다.
+
+- **payment-service / pg-service** — `db/migration/` (Flyway 기본 위치). 단일 locations, seed 디렉토리 없음.
+- **product-service / user-service** — `db/schema/`(baseline) + `db/seed/`(seed) 분리. profile 별 locations 로 `docker` 에서 seed 차단.
 
 ```
-<service>/src/main/resources/
-├── db/schema/
-│   └── V1__<bounded>_schema.sql   # 단일 schema baseline
-└── db/seed/
-    └── V2__seed_*.sql             # (필요 시) seed 데이터 — INSERT IGNORE 멱등
+# payment / pg
+<service>/src/main/resources/db/migration/V*.sql      # schema (seed 없음)
+
+# product / user
+<service>/src/main/resources/db/
+├── db/schema/V1__<bounded>_schema.sql                 # baseline
+└── db/seed/V2__seed_*.sql                             # INSERT IGNORE 멱등
 ```
 
-**디렉토리 분리 룰**:
-- schema SQL 은 `db/schema/` 에, seed SQL 은 `db/seed/` 에 배치한다.
-- V3 이후 신규 schema migration 은 `db/schema/` 에 추가한다.
-- `db/migration/` 은 더 이상 사용하지 않는다.
+**디렉토리 룰**:
+- product / user: schema 는 `db/schema/`, seed 는 `db/seed/`. 신규 schema 도 `db/schema/`.
+- payment / pg: 분리 없이 `db/migration/` 에 schema V 파일(신규도 동일). seed 없음.
 
-**profile 별 locations 설정**:
+**profile 별 locations 설정 (product / user — schema/seed 분리 서비스)**:
 ```yaml
 # default / test profile — application.yml
 spring:
@@ -37,6 +42,7 @@ spring:
 - `default` / `test` profile: `db/schema` + `db/seed` 모두 적용 (테스트 픽스처 포함)
 - `docker` profile (`SPRING_PROFILES_ACTIVE: docker`): `db/schema` 만 적용 → V2 seed row 차단
 - `docker-compose.apps.yml` 의 4 비즈니스 서비스가 모두 `SPRING_PROFILES_ACTIVE: docker` 로 기동하므로 이 override 가 운영에서 실제 활성화됨.
+- **payment / pg**: seed 디렉토리가 없어 profile override 불필요 — Flyway 기본 `classpath:db/migration` 단일 적용. (seed 차단 이슈 자체가 없음)
 
 **부팅 시 동작**:
 1. DataSource 준비 → Flyway `migrate()` 자동 호출

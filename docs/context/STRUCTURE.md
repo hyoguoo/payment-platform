@@ -203,5 +203,5 @@ flowchart TD
 | pg inbox 좀비 폴링 | `pg-service/.../infrastructure/scheduler/PgInboxPollingWorker.java` |
 | 벤더 어댑터 | `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` |
 | Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
-| Flyway 마이그레이션 | `<service>/src/main/resources/db/schema/V*.sql` (필수) + `db/seed/V*.sql` (product / user 만, profile 별 적용) |
+| Flyway 마이그레이션 | payment/pg: `db/migration/V*.sql` · product/user: `db/schema/V*.sql` + `db/seed/V*.sql`(profile 별 적용) |
 | 영구 smoke | `scripts/smoke/*.sh` + `docs/smoke/*.md` |
