@@ -1,15 +1,21 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-22 (CONFIRM-APPROVED-RESEND-GAP ship 완료)
+> 최종 수정: 2026-06-23 (DLQ-REACHABILITY discuss 완료 → plan 대기)
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
-- **단계**: —
+- **주제**: DLQ-REACHABILITY (장애 지속 시 DLQ 도달 보장 — pg self-loop 무한 반복 + payment EOS 커밋 실패 유실)
+- **단계**: plan 대기
+- **이슈/브랜치**: #114
 
 ## 재개 메모
 
-(없음)
+- discuss 완료(2026-06-23). 설계 SSOT: `docs/topics/DLQ-REACHABILITY.md` (상단 요약 브리핑 + 본 설계).
+- 게이트 통과: reviewer pass(minor 3 반영), domain-expert R2 pass.
+- 두 트랙: (P) pg `pg_inbox.attempt` SoT(Option B) — 워커가 TX_B에서 1씩 증가, 한도 4 소진 시 기존 DLQ 격리 체인 진입. (E) payment 컨테이너 팩토리에 AfterRollbackProcessor 명시 연결 — 비트랜잭션 `confirmedDlqKafkaTemplate` 재사용.
+- 알려진 한계: payment EOS 코디네이터 지속 장애 시 결제 DONE + 재고 확정 영구 유실 = over-sell(자동 복구는 후속 TQ-1). 문서 §미해결 위험 명시.
+- plan 시 확정 미룬 사항: metric 배치 layer, consumer attempt 헤더/파라미터 처리(로그 전용 유지 vs 제거), EOS backoff 값(Phase 5).
+- 다음: plan — `docs/DLQ-REACHABILITY-PLAN.md` 작성.
 
 ## 최근 완료
 
