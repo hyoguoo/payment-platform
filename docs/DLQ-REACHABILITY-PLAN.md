@@ -60,7 +60,7 @@ flowchart TD
 
 - [x] Task 1: pg_inbox.attempt 영속 기반 (Flyway V5 + 도메인/엔티티 + incrementAttempt 포트·구현·Fake)
 - [x] Task 2: 시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric
-- [ ] Task 3: Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단 (Testcontainers)
+- [x] Task 3: Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단 (Testcontainers)
 - [ ] Task 4: payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + 통합 테스트 전환
 
 ## 결정 노트 (plan 단계 확정)
@@ -141,7 +141,12 @@ flowchart TD
 - 통합 테스트 GREEN, 전체 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `pg-service/src/test/java/.../integration/PgSelfLoopRetryExhaustionIntegrationTest.java` 신규 작성. `PgConfirmListenerSplitIntegrationTest` 패턴(Testcontainers MySQL + `@SpringBootTest` + Kafka 비활성)을 따르되, 실제 Kafka 브로커 없이 `PgEventPublisherPort`를 테스트 더블(`SelfLoopRelayPgEventPublisher`)로 교체해 `payment.commands.confirm` → `PgConfirmCommandService.handle`, `payment.commands.confirm.dlq` → `PgDlqService.handle` 직접 라우팅으로 self-loop를 인메모리 재현(build.gradle 의존성 추가 없음, awaitility는 spring-boot-starter-test 전이적 의존성으로 이미 존재).
+- 벤더 지속 Retryable은 `FakePgGatewayStrategy`(happy-path 전용)를 `@MockitoSpyBean`으로 감싸 `doThrow(PgGatewayRetryableException)`로 주입.
+- 운영 코드 변경 없음(Task 1·2로 충족) — 계획대로 테스트 인프라만 작성.
+- **RED 1차 원인**: `RetryPolicy.computeBackoff`가 nextAttempt(=attempt+1) 기준으로 호출되는 걸 간과해 최초 await 타임아웃(60s)을 과소 산정. 실측 attempt 1→2→3→4 백오프 합산은 평균 78s, 최악 97.5s(jitter ±25% 포함) — 타임아웃을 100s로 정정해 GREEN 도달(실측 약 85s 소요).
+- **RED 2차 원인**: "QUARANTINED 종결 후 self-loop 재진입이 추가로 발생하지 않는다" 단정이 너무 엄격했다. QUARANTINED 전이 시점에 이미 in-flight였던 마지막 재시도 outbox 1개가 뒤늦게 relay되며 `PgTerminalReemitService`의 무해한 terminal 재통보를 1회 더 트리거할 수 있다(좀비 재호출 window 멱등성 영역 — 이 태스크 범위 밖, 결정 노트 그대로). 단정을 "값이 계속 증가하지 않고 안정화되는지"로 완화해 GREEN 확정.
+- 검증: 같은 테스트 단독 재실행 2회 연속 PASS, `./gradlew :pg-service:test` 324/324 PASS, `./gradlew :pg-service:integrationTest` 9/9 PASS(전체 회귀 없음).
 
 ---
 
