@@ -1,21 +1,22 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-23 (DLQ-REACHABILITY discuss 완료 → plan 대기)
+> 최종 수정: 2026-06-24 (DLQ-REACHABILITY plan 완료 → execute 대기)
 
 ## 활성 작업
 
 - **주제**: DLQ-REACHABILITY (장애 지속 시 DLQ 도달 보장 — pg self-loop 무한 반복 + payment EOS 커밋 실패 유실)
-- **단계**: plan 대기
+- **단계**: execute
+- **활성 태스크**: Task 1 (pg_inbox.attempt 영속 기반)
 - **이슈/브랜치**: #114
 
 ## 재개 메모
 
-- discuss 완료(2026-06-23). 설계 SSOT: `docs/topics/DLQ-REACHABILITY.md` (상단 요약 브리핑 + 본 설계).
-- 게이트 통과: reviewer pass(minor 3 반영), domain-expert R2 pass.
-- 두 트랙: (P) pg `pg_inbox.attempt` SoT(Option B) — 워커가 TX_B에서 1씩 증가, 한도 4 소진 시 기존 DLQ 격리 체인 진입. (E) payment 컨테이너 팩토리에 AfterRollbackProcessor 명시 연결 — 비트랜잭션 `confirmedDlqKafkaTemplate` 재사용.
-- 알려진 한계: payment EOS 코디네이터 지속 장애 시 결제 DONE + 재고 확정 영구 유실 = over-sell(자동 복구는 후속 TQ-1). 문서 §미해결 위험 명시.
-- plan 시 확정 미룬 사항: metric 배치 layer, consumer attempt 헤더/파라미터 처리(로그 전용 유지 vs 제거), EOS backoff 값(Phase 5).
-- 다음: plan — `docs/DLQ-REACHABILITY-PLAN.md` 작성.
+- plan 완료(2026-06-24). 플랜 SSOT: `docs/DLQ-REACHABILITY-PLAN.md` (상단 요약 브리핑 + 4태스크 + 결정 노트). 설계: `docs/topics/DLQ-REACHABILITY.md`.
+- plan 게이트 통과: reviewer R2 pass(minor 1 반영), domain-expert R2 pass(minor 2 반영).
+- 4태스크: T1 pg_inbox.attempt 영속(Flyway V5 + 도메인/엔티티 + incrementAttempt·Fake attempt 보존) → T2 시도횟수 누적+한도 소진 DLQ 분기+격리 metric(PgDlqService 전이 지점) → T3 Testcontainers self-loop 한도 도달 격리 종단 → T4 payment AfterRollbackProcessor 연결+EOS 커밋 실패 metric+#7 전환.
+- 결정 노트 핵심: metric은 QUARANTINED 전이 지점(멱등), attempt over-count는 안전 방향 수용(조기 격리), payment backoff는 `payment.kafka.after-rollback.backoff.*` 신규 키(기본 1000ms×5)로 #7 await 갱신.
+- execute 중 확인 항목: incrementAttempt의 updated_at 갱신 ↔ 좀비 임계 60s 상호작용(T2 1줄 확인), #7 await off-by-one 실측.
+- 다음: execute — Task 1부터 implementer dispatch.
 
 ## 최근 완료
 
