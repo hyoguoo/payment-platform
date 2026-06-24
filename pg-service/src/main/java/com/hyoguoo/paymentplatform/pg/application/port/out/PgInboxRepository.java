@@ -174,6 +174,10 @@ public interface PgInboxRepository {
      * <p>호출자({@code PgVendorCallService.handleRetry})의 외부 트랜잭션(TX_B)에 참여한다
      * (propagation REQUIRED) — 재시도 outbox INSERT 와 같은 트랜잭션으로 원자 커밋.
      *
+     * <p>현재 호출처는 retry 분기(inbox IN_PROGRESS)뿐이라 안전하나, 호출처가 확장될 경우
+     * terminal(APPROVED/FAILED/QUARANTINED) row 의 attempt 증가를 막기 위해
+     * {@code status = IN_PROGRESS} 가드를 동반해야 한다.
+     *
      * @param orderId orderId (UNIQUE)
      */
     void incrementAttempt(String orderId);
