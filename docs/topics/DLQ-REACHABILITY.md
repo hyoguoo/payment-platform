@@ -144,7 +144,7 @@ flowchart TD
 **Option B 시도횟수 불변식 (구현 함정 예방)**
 - 시도횟수는 **벤더 호출 1회당 1 증가**하며, retry 분기 / 좀비 회수(`processInProgressZombie`) / IN_PROGRESS 재진입(`handleActiveInbox` 경유) 모든 재호출 경로에서 동일 규칙을 따른다.
 - 증가는 결과 반영 TX_B의 `pg_inbox` UPDATE에 **포함**한다(별도 round-trip 금지 — 증가·재시도 명령 INSERT가 원자적으로 한 트랜잭션).
-- 검증 전략의 "1→2→3→4 증가" 통합 테스트에 좀비 회수 경로 1건을 반드시 포함한다.
+- "1→2→3→4 증가"의 결정적 단정은 **단위(Fake, 동시성 없음)** 테스트에서 수행하며 좀비 회수 경로 1건을 포함한다. Testcontainers 통합은 동시 진입 over-count(수용 한계)가 실재할 수 있으므로 정확한 값이 아니라 "한도 도달 종결(무한 반복 아님)"만 단정한다.
 
 **소진 시 inbox 전이 결정**
 - 시도횟수 소진 시 현재 `insertDlqOutbox`는 `pg_outbox`만 INSERT하고 `pg_inbox`는 IN_PROGRESS로 둔다 → DLQ 소비(`PgDlqService`가 QUARANTINED 전이) 전까지 좀비 폴링이 벤더를 재호출할 수 있는 경합 window.
@@ -200,6 +200,11 @@ flowchart TD
 
 **Track E backoff 정책 고려 (plan)**
 - AfterRollbackProcessor backoff는 일시적 코디네이터 blip이 재배달로 self-heal될 만큼 충분히 관대해야 한다(과도하게 짧으면 자동 회복 가능한 상황을 조기에 수동 복구 대상으로 전환). 동시에 파티션을 영구 블록하지 않도록 상한을 둔다. 정확한 값은 측정 의존(Phase 5).
+
+**Track P 잔여 한계 — attempt over-count (조기 격리)**
+- self-loop 즉시 워커와 in-progress 좀비 폴링이 같은 IN_PROGRESS row에 동시 진입하면(lock TX는 벤더 HTTP 전 커밋·해제 — 기존 TX-split 아키텍처), 한 논리적 재시도에 시도횟수가 2 증가할 수 있다.
+- 방향은 **조기 격리(QUARANTINED)** — DLQ를 건너뛰는 일은 없어(무한 self-loop 위험 없음) 이번 작업의 목표는 보장되며, 금전/재고 손실도 없다. 완전 제거는 벤더 HTTP를 lock 안으로 넣어야 해 기존 아키텍처와 충돌하므로 수용한다.
+- 격리 도달 metric은 시도횟수 증가가 아니라 QUARANTINED 전이 성공 지점(terminal CAS 1회)에서 카운트해 over-count를 피한다.
 
 ## 검증 전략
 
