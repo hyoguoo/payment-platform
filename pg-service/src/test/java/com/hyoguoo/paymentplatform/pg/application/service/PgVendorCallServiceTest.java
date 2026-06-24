@@ -175,7 +175,7 @@ class PgVendorCallServiceTest {
         }
 
         @Test
-        @DisplayName("Retryable outcome (잔여 시도) → pg_outbox 재시도 명령 INSERT, pg_inbox IN_PROGRESS 유지")
+        @DisplayName("Retryable outcome (잔여 시도) → pg_outbox 재시도 명령 INSERT, pg_inbox IN_PROGRESS 유지 + attempt 1증가")
         void applyOutcome_retryable_insertsRetryCommand() {
             // given — attempt=1 (잔여 시도 있음)
             GatewayOutcome outcome = new GatewayOutcome.Retryable("network timeout");
@@ -189,13 +189,14 @@ class PgVendorCallServiceTest {
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
             assertThat(rows.get(0).getAvailableAt()).isAfter(NOW);
 
-            // then — inbox IN_PROGRESS 유지
+            // then — inbox IN_PROGRESS 유지 + attempt 1→2 증가 (TX_B 안에서 incrementAttempt)
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
             assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+            assertThat(inbox.getAttempt()).isEqualTo(2);
         }
 
         @Test
-        @DisplayName("Retryable outcome (시도 소진) → pg_outbox DLQ 명령 INSERT, pg_inbox IN_PROGRESS 유지")
+        @DisplayName("Retryable outcome (시도 소진) → pg_outbox DLQ 명령 INSERT, pg_inbox IN_PROGRESS 유지 + attempt 미증가")
         void applyOutcome_retryExhausted_insertsDlqCommand_inboxStaysInProgress() {
             // given — attempt=MAX (시도 소진)
             GatewayOutcome outcome = new GatewayOutcome.Retryable("upstream timeout");
@@ -208,9 +209,10 @@ class PgVendorCallServiceTest {
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM_DLQ);
 
-            // then — inbox IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임)
+            // then — inbox IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임) + attempt 미증가(DLQ 분기는 metric/attempt 변경 없음)
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
             assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+            assertThat(inbox.getAttempt()).isEqualTo(RetryPolicy.MAX_ATTEMPTS);
         }
 
         @Test
@@ -248,6 +250,70 @@ class PgVendorCallServiceTest {
                             Mockito.eq(ORDER_ID),
                             Mockito.eq(AMOUNT),
                             Mockito.eq(PgVendorType.TOSS));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // self-loop 누적 시뮬 — PgInboxProcessor.resolveAttempt + PgVendorCallService 결합
+    // attempt 1→2→3→4 결정적 단정 (단위 Fake, 동시성 없음). 좀비 경로(processInProgressZombie) 1건 포함.
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("self-loop 누적 시뮬 (Task 2)")
+    class SelfLoopAccumulation {
+
+        private static final Long INBOX_ID = 1L;
+
+        private PgInboxProcessor processor;
+
+        @BeforeEach
+        void setUpProcessor() {
+            // PgInboxProcessor 는 invokeVendor/applyOutcome 을 호출하는 워커 — 같은 Fake/sut 재사용
+            processor = new PgInboxProcessor(inboxRepository, sut, Clock.fixed(NOW, ZoneOffset.UTC));
+        }
+
+        @Test
+        @DisplayName("동일 orderId 4회 self-loop — attempt 1→2→3 재시도(누적 증가) → 4 DLQ 도달, applyOutcome 전달값 1,2,3,4 순")
+        void selfLoop_fourAttempts_accumulatesThenReachesDlq() {
+            // attempt=1 (최초 IN_PROGRESS, setUp 에서 적재) — processPending 호출 시 transitPendingToInProgress 가
+            // PENDING 이 아니므로 false 가 되어 워커 경로를 못 타니, 좀비 회수 경로(processInProgressZombie)로 진입.
+            // throwOnConfirm 은 1회용 — self-loop 매 회마다 재주입한다.
+
+            // 1회차 — attempt=1 → Retryable → 재시도(누적 attempt=2), DLQ 0건
+            gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
+            processor.processInProgressZombie(INBOX_ID);
+            assertThat(inboxRepository.findByOrderId(ORDER_ID).orElseThrow().getAttempt()).isEqualTo(2);
+            assertThat(outboxRepository.findAll()).filteredOn(o -> o.getTopic().equals(PgTopics.COMMANDS_CONFIRM_DLQ))
+                    .isEmpty();
+
+            // 2회차 — attempt=2 → Retryable → 재시도(누적 attempt=3)
+            gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
+            processor.processInProgressZombie(INBOX_ID);
+            assertThat(inboxRepository.findByOrderId(ORDER_ID).orElseThrow().getAttempt()).isEqualTo(3);
+
+            // 3회차 — attempt=3 → Retryable → 재시도(누적 attempt=4, 아직 MAX 미도달 — shouldRetry(3)=true)
+            gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
+            processor.processInProgressZombie(INBOX_ID);
+            assertThat(inboxRepository.findByOrderId(ORDER_ID).orElseThrow().getAttempt()).isEqualTo(4);
+
+            // 4회차 — attempt=4(MAX) → Retryable → DLQ 도달, attempt 더 이상 증가하지 않음
+            gatewayAdapter.throwOnConfirm(PgGatewayRetryableException.of("upstream timeout"));
+            processor.processInProgressZombie(INBOX_ID);
+            assertThat(inboxRepository.findByOrderId(ORDER_ID).orElseThrow().getAttempt()).isEqualTo(4);
+
+            List<PgOutbox> dlqRows = outboxRepository.findAll().stream()
+                    .filter(o -> o.getTopic().equals(PgTopics.COMMANDS_CONFIRM_DLQ))
+                    .toList();
+            assertThat(dlqRows).hasSize(1);
+
+            List<PgOutbox> retryRows = outboxRepository.findAll().stream()
+                    .filter(o -> o.getTopic().equals(PgTopics.COMMANDS_CONFIRM))
+                    .toList();
+            assertThat(retryRows).hasSize(3);
+
+            // inbox 는 DLQ 분기에서도 IN_PROGRESS 유지 (QUARANTINED 전이는 PgDlqService 책임)
+            assertThat(inboxRepository.findByOrderId(ORDER_ID).orElseThrow().getStatus())
+                    .isEqualTo(PgInboxStatus.IN_PROGRESS);
         }
     }
 
