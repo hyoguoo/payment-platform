@@ -41,6 +41,7 @@ class PgDlqReachMetricsTest {
         }).doesNotThrowAnyException();
 
         Counter counter = meterRegistry.find("pg_retry_exhausted_quarantine_total").counter();
+        assertThat(counter).isNotNull();
         assertThat(counter.count()).isEqualTo(2.0);
     }
 
