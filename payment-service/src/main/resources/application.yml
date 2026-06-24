@@ -119,6 +119,13 @@ payment:
         interval: 1000
         # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행.
         max-attempts: 5
+    after-rollback:
+      backoff:
+        # EOS 트랜잭션 commitTransaction() 반복 실패 시 FixedBackOff 재시도 간격 (ms).
+        # 기본값은 error-handler 와 동일 크기 — Phase 5 에서 독립 튜닝 여지를 둔다.
+        interval: 1000
+        # 최대 재시도 횟수. 초과 시 DeadLetterPublishingRecoverer 로 DLQ 발행(격리 보관함).
+        max-attempts: 5
   expiration:
     # D4 — 만료 임계(분). READY 상태에서 이 시간이 지나면 만료 후보가 된다. 기본값 30분.
     ready-timeout-minutes: 30

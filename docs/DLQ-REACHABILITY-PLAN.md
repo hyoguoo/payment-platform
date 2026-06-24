@@ -61,7 +61,9 @@ flowchart TD
 - [x] Task 1: pg_inbox.attempt 영속 기반 (Flyway V5 + 도메인/엔티티 + incrementAttempt 포트·구현·Fake)
 - [x] Task 2: 시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric
 - [x] Task 3: Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단 (Testcontainers)
-- [ ] Task 4: payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + 통합 테스트 전환
+- [x] Task 4: payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + 통합 테스트 전환
+
+모든 태스크 완료. DLQ-REACHABILITY 구현 종료(ship 대기).
 
 ## 결정 노트 (plan 단계 확정)
 
@@ -170,7 +172,15 @@ flowchart TD
 - #7 GREEN(전환, 갱신된 await 단정 포함), `./gradlew :payment-service:test` 통합 포함 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `application.yml`에 `payment.kafka.after-rollback.backoff.{interval:1000, max-attempts:5}` 신규 키 추가(`error-handler.backoff`와 동일 크기, Phase 5 독립 튜닝 여지).
+- `KafkaErrorHandlerConfig`에서 inline 생성하던 `DeadLetterPublishingRecoverer`를 `deadLetterPublishingRecoverer` 빈으로 추출. `kafkaErrorHandler`는 이 빈을 파라미터로 받아 재사용(시그니처 변경: `KafkaTemplate` → `DeadLetterPublishingRecoverer`).
+- `KafkaConsumerConfig.kafkaListenerContainerFactory`에 `factory.setAfterRollbackProcessor(...)` 추가. `DefaultAfterRollbackProcessor`에 `(record, ex) -> { deadLetterPublishingRecoverer.accept(record, ex); paymentEosCommitFailureMetrics.record(); }` 형태로 합성한 recoverer + `FixedBackOff(afterRollbackBackoffInterval, afterRollbackMaxAttempts)`(`payment.kafka.after-rollback.backoff.*` `@Value` 바인딩)를 연결. `DeadLetterPublishingRecoverer`가 `ConsumerRecordRecoverer extends BiConsumer<ConsumerRecord<?,?>, Exception>`이므로 `DefaultAfterRollbackProcessor(BiConsumer, BackOff)` 생성자에 직접 합성 가능(API 확인됨).
+- 신규 `core/common/metrics/PaymentEosCommitFailureMetrics.java`(`payment_eos_commit_failure_dlq_total`, 라벨 없는 단일 카운터, eager 등록, throw-free `record()` — `PgDlqReachMetrics` 동형 패턴).
+- `PaymentEosIntegrationTest` #7을 `shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock`(갭-문서화)에서 `shouldReachDlqAfterExhaustingAfterRollbackBackoff`(갭-수정-검증, 메서드명 의미 반전)로 재작성. `seedCommitTransactionFailure(6)`(채택 max-attempts(5) 소진 + 1회, 1차 배달 포함 총 6회 결정적 실패)로 주입. 단정: `events.confirmed.dlq` 1건 도달(기존 "DLQ 미진입" 반전) + payment `DONE` 유지 + `payment_event_dedupe` row 1건 유지 + `terminalResendMetrics(DONE)` 증가량 `before+5`(off-by-one 실측 확정 — 아래) + `payment_eos_commit_failure_dlq_total` 1 증가 + stock-committed 0건(잔여 위험 그대로, 자동 복구는 범위 밖).
+- **off-by-one 실측 확정**: `FixedBackOff(interval, maxAttempts=5)`는 1차 시도 포함 총 6회 시도(1차 + 5회 재시도)까지 허용하고 6번째 실패에서 recoverer 발동(#2 시나리오의 `times(6)` 단정과 동일 규칙 — `DefaultErrorHandler`와 `DefaultAfterRollbackProcessor` 모두 같은 `FailedRecordProcessor` 계열). 1차 배달은 `markPaymentAsDone` 경로(가드 미해당)이고 나머지 5회 재배달은 종결 가드 재발행 경로이므로 `terminalResendMetrics(DONE)` 증가량은 maxAttempts와 동일한 **5**. RED 단계에서 실제로 실패(`pollConfirmedDlq` 0건 반환, AssertionError)를 확인한 뒤 GREEN 구현 적용 후 동일 시나리오 + 전체 회귀 재실행으로 재확정.
+- 회귀 확인: 기존 #2(리스너 RuntimeException → DLQ, `FixedBackOff` 5회, `times(6)`) 시나리오 영향 없음 — `kafkaErrorHandler`/`deadLetterPublishingRecoverer` 시그니처만 바뀌고 동작은 동일. `KafkaErrorHandlerConfigTest`는 새 시그니처(`kafkaErrorHandler(DeadLetterPublishingRecoverer)`)에 맞춰 헬퍼 메서드 `buildRecoverer()`로 보강 + `deadLetterPublishingRecoverer` 빈 자체에 대한 신규 단위 테스트 1건 추가([Rule 1] 컴파일 깨짐 자동 수정 — 범위 밖이지만 시그니처 변경에 따른 컴파일 오류).
+- RED→GREEN 검증 절차: `git diff`로 운영 코드 변경분(`KafkaConsumerConfig`/`KafkaErrorHandlerConfig`/`application.yml`/`KafkaErrorHandlerConfigTest`/`PaymentEosCommitFailureMetrics`)을 패치로 저장 후 `git checkout`으로 되돌려 #7 단독 RED 실행(`AssertionError: Expected size: 1 but was: 0` — DLQ 미도달 확인) → 패치 재적용(GREEN) → 동일 테스트 + 전체 스위트 재실행.
+- `./gradlew :payment-service:test :payment-service:integrationTest` 497/497 PASS(JaCoCo coverage verification 포함), 회귀 없음.
 
 ## 핵심 결정 → Task 매핑
 

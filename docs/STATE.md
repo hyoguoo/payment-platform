@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-24 (DLQ-REACHABILITY execute Task 3 완료 → Task 4 대기)
+> 최종 수정: 2026-06-24 (DLQ-REACHABILITY execute 전체 태스크 완료 → ship 대기)
 
 ## 활성 작업
 
 - **주제**: DLQ-REACHABILITY (장애 지속 시 DLQ 도달 보장 — pg self-loop 무한 반복 + payment EOS 커밋 실패 유실)
-- **단계**: execute
-- **활성 태스크**: Task 4 (payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + #7 전환)
+- **단계**: ship
+- **활성 태스크**: 없음 (Task 1~4 전체 완료, ship 게이트 대기)
 - **이슈/브랜치**: #114
 
 ## 재개 메모
@@ -16,10 +16,10 @@
 - Task 1 완료(2026-06-24): `pg_inbox.attempt` 컬럼(Flyway V5) + 도메인/엔티티 매핑 + `PgInboxRepository.incrementAttempt` 포트·JPA/Fake 구현. Fake의 `transitPendingToInProgress`가 attempt를 리셋하던 버그를 mutate 방식으로 수정해 attempt 보존. 316/316 PASS.
 - Task 2 완료(2026-06-24): `PgInboxProcessor.resolveAttempt`가 `inbox.getAttempt()` 반환(하드코딩 1 제거). `PgVendorCallService` 재시도 분기에서 `incrementAttempt`를 같은 TX_B에서 호출(DLQ 분기는 미호출). 신규 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`)를 `PgDlqService`의 QUARANTINED 전이 성공 지점(non-terminal CAS true)에 연결 — 멱등. 좀비 임계 60s ↔ updated_at 갱신 상호작용 확인 완료(의도된 동작, 변경 불필요 — 결론은 PLAN Task 2 완료 결과 참조). 324/324 PASS.
 - Task 3 완료(2026-06-24): `PgSelfLoopRetryExhaustionIntegrationTest` 신규(Testcontainers MySQL + Kafka 비활성 + `PgEventPublisherPort` 테스트 더블로 self-loop 인메모리 재현). 운영 코드 변경 없음(Task 1·2로 충족). `RetryPolicy.computeBackoff`가 nextAttempt 기준이라 attempt 1→2→3→4 백오프 누적 실측 최악 97.5s — await 타임아웃 100s로 확정. QUARANTINED 전이 시점 in-flight 재시도 1개의 무해한 terminal reemit(범위 밖, 결정 노트)을 흡수하도록 안정화 단정 완화. 단위 324/324 + 통합 9/9 PASS.
-- 남은 1태스크: T4 payment AfterRollbackProcessor 연결+EOS 커밋 실패 metric+#7 전환.
-- 결정 노트 핵심: metric은 QUARANTINED 전이 지점(멱등, Task 2에서 구현 완료), attempt over-count는 안전 방향 수용(조기 격리, Task 3 통합 테스트로 종단 확인 완료), payment backoff는 `payment.kafka.after-rollback.backoff.*` 신규 키(기본 1000ms×5)로 #7 await 갱신.
-- execute 중 확인 항목(남음): #7 await off-by-one 실측(Task 4).
-- 다음: execute — Task 4 implementer dispatch (마지막 태스크, GREEN 커밋 안에서 stage를 ship으로 전환).
+- Task 4 완료(2026-06-24): `payment.kafka.after-rollback.backoff.{interval:1000, max-attempts:5}` 신규 키 + `KafkaErrorHandlerConfig`의 `DeadLetterPublishingRecoverer`를 빈으로 추출해 `KafkaConsumerConfig`의 `AfterRollbackProcessor`와 공유. recoverer 발화 시 신규 `PaymentEosCommitFailureMetrics`(`payment_eos_commit_failure_dlq_total`) 증가. `PaymentEosIntegrationTest` #7을 갭-문서화→갭-수정-검증으로 전환(DLQ 1건 도달 + DONE 유지 + dedupe row 유지 + terminalResend `+5`(off-by-one 실측 확정, max-attempts와 동일) + stock-committed 0건 잔여 위험 그대로). RED(`AssertionError: DLQ 0건`) 실측 확인 후 GREEN 전환. #2 기존 시나리오 회귀 없음. 단위+통합 497/497 PASS.
+- 결정 노트 핵심: metric은 QUARANTINED 전이 지점(멱등, Task 2)과 EOS 커밋 실패 DLQ 도달 지점(멱등, Task 4)에 각각 신규 카운터, attempt over-count는 안전 방향 수용(조기 격리, Task 3 통합 테스트로 종단 확인), payment backoff는 `payment.kafka.after-rollback.backoff.*` 신규 키(기본 1000ms×5, error-handler와 동일 크기 — Phase 5 독립 튜닝 여지)로 분리.
+- 모든 태스크 완료. stock-committed 미발행(over-sell 잔여 위험)은 설계 단계에서 합의된 범위 밖 — 자동 복구는 후속 토픽.
+- 다음: ship 게이트 (reviewer + domain-expert 최종 리뷰 → 완료 브리핑 + 아카이빙).
 
 ## 최근 완료
 

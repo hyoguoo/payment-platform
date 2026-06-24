@@ -1,13 +1,18 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEosCommitFailureMetrics;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.CommonErrorHandler;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultAfterRollbackProcessor;
 import org.springframework.kafka.support.converter.RecordMessageConverter;
 import org.springframework.kafka.transaction.KafkaTransactionManager;
+import org.springframework.util.backoff.FixedBackOff;
 
 /**
  * payment-service Kafka 컨슈머 컨테이너 팩토리 명시 설정.
@@ -27,6 +32,8 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  *       auto-config 시 자동 감지되던 빈을 명시 팩토리에서 직접 주입.</li>
  *   <li>{@link RecordMessageConverter} ({@code recordMessageConverter}) — KafkaMessageConverterConfig 에서 등록.
  *       마찬가지로 명시 주입.</li>
+ *   <li>{@link DeadLetterPublishingRecoverer} ({@code deadLetterPublishingRecoverer}) —
+ *       KafkaErrorHandlerConfig 에서 등록. {@code afterRollbackProcessor} 가 재사용한다.</li>
  * </ul>
  *
  * <p>EOS 동작 원리: {@code setKafkaAwareTransactionManager} 가 설정되면 Spring Kafka 가 컨슈머 진입 시
@@ -36,10 +43,25 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  * <p>isolation.level=read_committed: payment-service 는 자기 자신이 발행한 stock-committed 메시지를
  * 컨슘하지 않으나, EOS 일관성 기준에 따라 read_committed 를 적용한다.
  * 주된 보호 대상은 abort 된 메시지가 컨슈머에 노출되지 않도록 막는 것.
+ *
+ * <p>{@code afterRollbackProcessor}: 컨테이너가 명시 설정하지 않으면 EOS commitTransaction()
+ * 반복 실패는 디폴트 {@code DefaultAfterRollbackProcessor}(interval 0, maxAttempts 9, 단순
+ * 로그 recoverer)로 처리돼 DLQ 를 거치지 않고 조용히 skip 된다(DLQ-REACHABILITY Track E 갭).
+ * 이를 막기 위해 {@code kafkaErrorHandler}(리스너 RuntimeException 경로)와 동일한
+ * {@link DeadLetterPublishingRecoverer} 빈을 재사용하되, 독립 backoff
+ * ({@code payment.kafka.after-rollback.backoff.*}) 로 분리해 Phase 5 튜닝 여지를 둔다.
+ * recoverer 발화(= DLQ 발행) 시 {@link PaymentEosCommitFailureMetrics} 를 증가시켜 격리
+ * 도달을 가시화한다.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class KafkaConsumerConfig {
+
+    @Value("${payment.kafka.after-rollback.backoff.interval:1000}")
+    private long afterRollbackBackoffInterval;
+
+    @Value("${payment.kafka.after-rollback.backoff.max-attempts:5}")
+    private long afterRollbackMaxAttempts;
 
     /**
      * EOS-aware {@code kafkaListenerContainerFactory} 빈.
@@ -49,13 +71,17 @@ public class KafkaConsumerConfig {
      * @param kafkaTransactionManager EOS-aware KafkaTransactionManager
      * @param kafkaErrorHandler     KafkaErrorHandlerConfig 에서 등록된 DefaultErrorHandler
      * @param recordMessageConverter KafkaMessageConverterConfig 에서 등록된 StringJsonMessageConverter
+     * @param deadLetterPublishingRecoverer KafkaErrorHandlerConfig 에서 등록된 DLQ recoverer
+     * @param paymentEosCommitFailureMetrics EOS 커밋 실패 DLQ 도달 카운터
      */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
             KafkaTransactionManager<String, String> kafkaTransactionManager,
             CommonErrorHandler kafkaErrorHandler,
-            RecordMessageConverter recordMessageConverter) {
+            RecordMessageConverter recordMessageConverter,
+            DeadLetterPublishingRecoverer deadLetterPublishingRecoverer,
+            PaymentEosCommitFailureMetrics paymentEosCommitFailureMetrics) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
@@ -63,6 +89,25 @@ public class KafkaConsumerConfig {
         factory.getContainerProperties().setObservationEnabled(true);
         factory.setCommonErrorHandler(kafkaErrorHandler);
         factory.setRecordMessageConverter(recordMessageConverter);
+        factory.setAfterRollbackProcessor(
+                buildAfterRollbackProcessor(deadLetterPublishingRecoverer, paymentEosCommitFailureMetrics));
         return factory;
+    }
+
+    /**
+     * EOS commitTransaction() 반복 실패 시 backoff 소진 후 {@code deadLetterPublishingRecoverer} 로
+     * DLQ 발행 + {@code paymentEosCommitFailureMetrics} 증가를 함께 수행하는 AfterRollbackProcessor.
+     */
+    private DefaultAfterRollbackProcessor<String, String> buildAfterRollbackProcessor(
+            DeadLetterPublishingRecoverer deadLetterPublishingRecoverer,
+            PaymentEosCommitFailureMetrics paymentEosCommitFailureMetrics) {
+        FixedBackOff backOff = new FixedBackOff(afterRollbackBackoffInterval, afterRollbackMaxAttempts);
+        return new DefaultAfterRollbackProcessor<>(
+                (record, ex) -> {
+                    deadLetterPublishingRecoverer.accept(record, ex);
+                    paymentEosCommitFailureMetrics.record();
+                },
+                backOff
+        );
     }
 }
