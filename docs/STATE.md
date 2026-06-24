@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-24 (DLQ-REACHABILITY execute Task 1 완료 → Task 2 대기)
+> 최종 수정: 2026-06-24 (DLQ-REACHABILITY execute Task 2 완료 → Task 3 대기)
 
 ## 활성 작업
 
 - **주제**: DLQ-REACHABILITY (장애 지속 시 DLQ 도달 보장 — pg self-loop 무한 반복 + payment EOS 커밋 실패 유실)
 - **단계**: execute
-- **활성 태스크**: Task 2 (시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric)
+- **활성 태스크**: Task 3 (Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단, Testcontainers)
 - **이슈/브랜치**: #114
 
 ## 재개 메모
@@ -14,10 +14,11 @@
 - plan 완료(2026-06-24). 플랜 SSOT: `docs/DLQ-REACHABILITY-PLAN.md` (상단 요약 브리핑 + 4태스크 + 결정 노트). 설계: `docs/topics/DLQ-REACHABILITY.md`.
 - plan 게이트 통과: reviewer R2 pass(minor 1 반영), domain-expert R2 pass(minor 2 반영).
 - Task 1 완료(2026-06-24): `pg_inbox.attempt` 컬럼(Flyway V5) + 도메인/엔티티 매핑 + `PgInboxRepository.incrementAttempt` 포트·JPA/Fake 구현. Fake의 `transitPendingToInProgress`가 attempt를 리셋하던 버그를 mutate 방식으로 수정해 attempt 보존. 316/316 PASS.
-- 남은 3태스크: T2 시도횟수 누적+한도 소진 DLQ 분기+격리 metric(PgDlqService 전이 지점) → T3 Testcontainers self-loop 한도 도달 격리 종단 → T4 payment AfterRollbackProcessor 연결+EOS 커밋 실패 metric+#7 전환.
-- 결정 노트 핵심: metric은 QUARANTINED 전이 지점(멱등), attempt over-count는 안전 방향 수용(조기 격리), payment backoff는 `payment.kafka.after-rollback.backoff.*` 신규 키(기본 1000ms×5)로 #7 await 갱신.
-- execute 중 확인 항목: incrementAttempt의 updated_at 갱신 ↔ 좀비 임계 60s 상호작용(T2 1줄 확인 — Task 1은 PLAN 계약대로 updated_at 갱신을 구현해뒀음), #7 await off-by-one 실측.
-- 다음: execute — Task 2 implementer dispatch.
+- Task 2 완료(2026-06-24): `PgInboxProcessor.resolveAttempt`가 `inbox.getAttempt()` 반환(하드코딩 1 제거). `PgVendorCallService` 재시도 분기에서 `incrementAttempt`를 같은 TX_B에서 호출(DLQ 분기는 미호출). 신규 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`)를 `PgDlqService`의 QUARANTINED 전이 성공 지점(non-terminal CAS true)에 연결 — 멱등. 좀비 임계 60s ↔ updated_at 갱신 상호작용 확인 완료(의도된 동작, 변경 불필요 — 결론은 PLAN Task 2 완료 결과 참조). 324/324 PASS.
+- 남은 2태스크: T3 Testcontainers self-loop 한도 도달 격리 종단 → T4 payment AfterRollbackProcessor 연결+EOS 커밋 실패 metric+#7 전환.
+- 결정 노트 핵심: metric은 QUARANTINED 전이 지점(멱등, Task 2에서 구현 완료), attempt over-count는 안전 방향 수용(조기 격리), payment backoff는 `payment.kafka.after-rollback.backoff.*` 신규 키(기본 1000ms×5)로 #7 await 갱신.
+- execute 중 확인 항목(남음): #7 await off-by-one 실측(Task 4).
+- 다음: execute — Task 3 implementer dispatch.
 
 ## 최근 완료
 

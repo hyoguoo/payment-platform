@@ -209,10 +209,11 @@ class PgVendorCallServiceTest {
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM_DLQ);
 
-            // then — inbox IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임) + attempt 미증가(DLQ 분기는 metric/attempt 변경 없음)
+            // then — inbox IN_PROGRESS 유지 (QUARANTINED 전이는 DLQ consumer 책임) + attempt 미증가
+            // (DLQ 분기는 incrementAttempt 미호출 — setUp 의 초기값 1 그대로 유지됨)
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
             assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
-            assertThat(inbox.getAttempt()).isEqualTo(RetryPolicy.MAX_ATTEMPTS);
+            assertThat(inbox.getAttempt()).isEqualTo(1);
         }
 
         @Test

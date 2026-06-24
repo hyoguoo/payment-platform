@@ -59,7 +59,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: pg_inbox.attempt 영속 기반 (Flyway V5 + 도메인/엔티티 + incrementAttempt 포트·구현·Fake)
-- [ ] Task 2: 시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric
+- [x] Task 2: 시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric
 - [ ] Task 3: Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단 (Testcontainers)
 - [ ] Task 4: payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + 통합 테스트 전환
 
@@ -117,7 +117,12 @@ flowchart TD
 - 신규 단위 테스트 pass, `./gradlew :pg-service:test` 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `PgInboxProcessor.resolveAttempt`를 하드코딩 `1` 반환에서 `inbox.getAttempt()` 반환으로 교체. `processPending`/`processInProgressZombie` 양쪽 경로 모두 같은 메서드를 거치므로 좀비 회수 경로도 동일하게 영속값을 읽는다.
+- `PgVendorCallService.insertRetryOutbox`(재시도 분기)에서 재시도 outbox INSERT와 같은 TX_B 안에서 `pgInboxRepository.incrementAttempt(orderId)`를 호출하도록 추가. `insertDlqOutbox`(소진 분기)는 PLAN 계약대로 outbox INSERT만 수행 — incrementAttempt/metric 모두 미호출.
+- 신규 `core/common/metrics/PgDlqReachMetrics.java`(`pg_retry_exhausted_quarantine_total`, 라벨 없음 단일 카운터, eager 등록, throw-free `record()` — `StockRetentionMetrics` 패턴) 추가. `PgDlqService`에 주입해 `transitToQuarantined`가 true(non-terminal CAS 성공) 반환 시 1회 `record()` 호출. CAS false(중복 DLQ 진입/이미 terminal)면 호출 경로 자체에 도달하지 않아 멱등 자연 성립.
+- 좀비 임계 60s ↔ incrementAttempt updated_at 갱신 상호작용 확인(결정 노트 항목): `PgInboxPollingWorker`는 `pg.scheduler.inbox-polling-worker.in-progress-timeout-ms`(기본 60000) 기준 `updated_at`을 비교해 IN_PROGRESS 좀비를 회수한다. `incrementAttempt`가 재시도 분기마다 `updated_at`을 함께 갱신하므로, self-loop가 정상 진행 중인 한 매 재시도가 좀비 타이머를 리셋하는 것이 맞다(워커가 살아서 처리 중이라는 신호 갱신) — 의도된 동작. 다만 attempt=4 backoff(40.5~67.5s 범위)가 60s 임계에 근접해, 백오프 대기 도중 좀비 폴링이 먼저 발화하면 좀비 회수가 같은 IN_PROGRESS row에 동시 진입할 수 있다(결정 노트의 over-count 수용 한계의 실제 트리거 지점). 손실 경로는 아니며 조기 격리 방향이라 안전 — 결론: updated_at 갱신은 의도대로 두고 별도 변경 불필요.
+- `./gradlew :pg-service:test` 324/324 PASS (JaCoCo coverage verification 포함), 회귀 없음.
+- 범위 밖 발견(스킵): `PaymentConfirmDlqConsumerTest`의 기존 5-arg `PgDlqService` 생성자 호출이 신규 6-arg(metric 파라미터 추가)로 컴파일이 깨져 [Rule 1]로 직접 수정(`new PgDlqReachMetrics(new SimpleMeterRegistry())` 주입) — 범위 밖 코드지만 컴파일 오류 자동 수정 규칙에 해당.
 
 ---
 
