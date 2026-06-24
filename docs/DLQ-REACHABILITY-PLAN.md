@@ -58,7 +58,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: pg_inbox.attempt 영속 기반 (Flyway V5 + 도메인/엔티티 + incrementAttempt 포트·구현·Fake)
+- [x] Task 1: pg_inbox.attempt 영속 기반 (Flyway V5 + 도메인/엔티티 + incrementAttempt 포트·구현·Fake)
 - [ ] Task 2: 시도횟수 증가 + 한도 도달 DLQ 분기 + pg 격리 도달 metric
 - [ ] Task 3: Track P 통합 — self-loop 한도 소진 → QUARANTINED 종단 (Testcontainers)
 - [ ] Task 4: payment AfterRollbackProcessor 명시 연결 + EOS 커밋 실패 격리 metric + 통합 테스트 전환
@@ -89,7 +89,11 @@ flowchart TD
 - 컴파일 + `./gradlew :pg-service:test` 기존 테스트 회귀 없음 (신규 로직 단정은 Task 2에서 소비).
 
 **완료 결과**
-> (execute에서 채움)
+- Flyway V5(`ALTER TABLE pg_inbox ADD COLUMN attempt INT NOT NULL DEFAULT 1`) 추가. `PgInbox` 도메인에 `attempt` 필드(`ofWithId` 11-arg로 DB 복원값 주입, 나머지 factory 6종은 `.attempt(1)` 명시). `PgInboxEntity` 컬럼 매핑 + `toDomain()` 전달. `PgInboxRepository.incrementAttempt(orderId)` 포트 추가 + `PgInboxRepositoryImpl`(JPQL `UPDATE e.attempt = e.attempt + 1, e.updatedAt = :now`, `@Transactional(propagation = REQUIRED)`로 외부 TX_B 참여) 구현.
+- `FakePgInboxRepository.incrementAttempt` 추가(store의 PgInbox를 attempt+1로 `ofWithId` 재구성해 교체 — relative increment, set-to-value 아님). attempt 보존 점검: `transitToApproved`/`transitToFailed`/`transitToQuarantined`/`selectInProgressForUpdateSkipLocked`는 기존에 `markXxx(...)` mutate 또는 무재생성이라 이미 attempt 보존됨. `transitPendingToInProgress`만 `PgInbox.of(...)` 재생성으로 attempt를 매번 1로 리셋하는 버그였음 — `current.markInProgress(now)` mutate 방식으로 교체해 보존되도록 수정.
+- updated_at 갱신 여부: PLAN 계약대로 `incrementAttempt`가 `updated_at`도 함께 갱신하도록 구현(JPQL/Fake 모두) — 좀비 임계 60s와의 상호작용(재시도마다 좀비 타이머 리셋되는 것이 의도인지)은 결정 노트에 따라 Task 2에서 실제 소비 시점에 1줄 재확인한다.
+- 컴파일 오류 자동 수정([Rule 1]): `PgInboxRepository` 신규 메서드 추가로 깨진 2개 테스트 보강 — `PgInboxPendingServiceTest.MockPgInboxRepository`에 no-op `incrementAttempt` 추가, `PgInboxTest.ofWithId_includesId`를 11-arg(attempt 포함) 시그니처로 갱신.
+- `./gradlew :pg-service:test` 316/316 PASS (JaCoCo coverage verification 포함), 회귀 없음.
 
 ---
 

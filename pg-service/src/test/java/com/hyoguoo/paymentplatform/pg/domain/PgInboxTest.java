@@ -115,7 +115,7 @@ class PgInboxTest {
     }
 
     @Test
-    @DisplayName("ofWithId — id 포함 전체 10-arg → getId() == id (JPA 어댑터 toDomain 경로)")
+    @DisplayName("ofWithId — id + attempt 포함 전체 11-arg → getId() == id, getAttempt() == attempt (JPA 어댑터 toDomain 경로)")
     void ofWithId_includesId() {
         // given
         Instant now = Instant.now();
@@ -131,12 +131,14 @@ class PgInboxTest {
                 now,
                 now,
                 "pay-key-ofwithid",
-                "NICE_PAY");
+                "NICE_PAY",
+                3);
 
         // then
         assertThat(inbox.getId()).isEqualTo(42L);
         assertThat(inbox.getPaymentKey()).isEqualTo("pay-key-ofwithid");
         assertThat(inbox.getVendorType()).isEqualTo("NICE_PAY");
+        assertThat(inbox.getAttempt()).isEqualTo(3);
     }
 
     // =========================================================================

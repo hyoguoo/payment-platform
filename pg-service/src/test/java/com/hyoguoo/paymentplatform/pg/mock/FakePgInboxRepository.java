@@ -139,6 +139,9 @@ public class FakePgInboxRepository implements PgInboxRepository {
     /**
      * 워커 TX_A — PENDING → IN_PROGRESS SKIP LOCKED (Fake 단순 구현).
      * 동시성 없이 PENDING row 가 존재하면 IN_PROGRESS 전이.
+     *
+     * <p>{@code markInProgress} (도메인 mutate) 사용 — attempt 보존(self-loop 시뮬 전제).
+     * 과거 {@code PgInbox.of(...)} 재생성 방식은 attempt 파라미터가 없어 매번 1로 리셋되는 버그였다.
      */
     @Override
     public boolean transitPendingToInProgress(Long inboxId) {
@@ -147,13 +150,10 @@ public class FakePgInboxRepository implements PgInboxRepository {
             return false;
         }
         AtomicBoolean transitioned = new AtomicBoolean(false);
-        store.compute(orderId, (key, current) -> {
-            if (current != null && current.getStatus() == PgInboxStatus.PENDING) {
+        store.computeIfPresent(orderId, (key, current) -> {
+            if (current.getStatus() == PgInboxStatus.PENDING) {
+                current.markInProgress(java.time.Instant.now());
                 transitioned.set(true);
-                return PgInbox.of(orderId, PgInboxStatus.IN_PROGRESS, current.getAmount(),
-                        current.getStoredStatusResult(), current.getReasonCode(),
-                        current.getCreatedAt(), java.time.Instant.now(),
-                        current.getPaymentKey(), current.getVendorType());
             }
             return current;
         });
@@ -216,6 +216,28 @@ public class FakePgInboxRepository implements PgInboxRepository {
             return Optional.empty();
         }
         return Optional.of(inbox);
+    }
+
+    /**
+     * 시도횟수 SoT(Option B) — relative increment.
+     * store 의 PgInbox 를 attempt+1 로 재구성({@code ofWithId}, 나머지 필드 보존)해 교체한다.
+     * 실 DB 의 {@code UPDATE attempt = attempt + 1} 과 동일 의미 — set-to-value 가 아니다.
+     */
+    @Override
+    public void incrementAttempt(String orderId) {
+        store.computeIfPresent(orderId, (key, current) -> PgInbox.ofWithId(
+                current.getId(),
+                current.getOrderId(),
+                current.getStatus(),
+                current.getAmount(),
+                current.getStoredStatusResult(),
+                current.getReasonCode(),
+                current.getCreatedAt(),
+                java.time.Instant.now(),
+                current.getPaymentKey(),
+                current.getVendorType(),
+                current.getAttempt() + 1
+        ));
     }
 
     // --- 검증 헬퍼 ---

@@ -163,4 +163,18 @@ public interface PgInboxRepository {
      * @return 선점 성공한 IN_PROGRESS inbox Optional, 선점 실패(다른 워커 보유) 시 empty
      */
     Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId);
+
+    /**
+     * 시도횟수 SoT(Option B) — 벤더 호출 1회당 워커 결과 반영 TX_B 안에서 1 증가.
+     *
+     * <p>계약: {@code UPDATE pg_inbox SET attempt = attempt + 1, updated_at = ? WHERE order_id = ?}.
+     * set-to-value 가 아닌 relative increment 라 lost-update 가 없다(동시 호출 시 over-count 는
+     * 가능하나 시도횟수가 줄어들지는 않는다 — 결정 노트의 조기 격리 수용 한계).
+     *
+     * <p>호출자({@code PgVendorCallService.handleRetry})의 외부 트랜잭션(TX_B)에 참여한다
+     * (propagation REQUIRED) — 재시도 outbox INSERT 와 같은 트랜잭션으로 원자 커밋.
+     *
+     * @param orderId orderId (UNIQUE)
+     */
+    void incrementAttempt(String orderId);
 }

@@ -159,4 +159,13 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
             + "FOR UPDATE SKIP LOCKED",
             nativeQuery = true)
     Optional<Long> selectForUpdateSkipLockedInProgress(@Param("inboxId") Long inboxId);
+
+    /**
+     * 시도횟수 SoT(Option B) — relative increment. set-to-value 가 아니므로 lost-update 없음.
+     * 호출자({@code PgInboxRepositoryImpl#incrementAttempt})가 외부 TX_B 에 REQUIRED 로 참여한다.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PgInboxEntity e SET e.attempt = e.attempt + 1, e.updatedAt = :now "
+            + "WHERE e.orderId = :orderId")
+    int incrementAttempt(@Param("orderId") String orderId, @Param("now") LocalDateTime now);
 }
