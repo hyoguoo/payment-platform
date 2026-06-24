@@ -48,7 +48,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 PG 호출 회복은 pg-service 가 전담한다 (payment 는 결과만 수신 — ADR-04). 결과 분기는 `PgVendorCallService.applyOutcome` 5분기.
 
-- retryable: 타임아웃 / 5xx — `PgGatewayRetryableException` → `handleRetry` (commands.confirm self-loop 재발행). ⚠️ 의도는 attempt<4 한도지만 현재 `attempt` 가 런타임 1 고정이라 한도/DLQ 자동 진입 미작동 ([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md))
+- retryable: 타임아웃 / 5xx — `PgGatewayRetryableException` → `handleRetry` (commands.confirm self-loop 재발행 + `pg_inbox.attempt` 증가). attempt 가 `pg_inbox.attempt`(Flyway V5) 에 영속돼 한도(4) 소진 시 DLQ→QUARANTINED 자동 격리 (DLQ-REACHABILITY)
 - non-retryable: 4xx 확정 거절 — `PgGatewayNonRetryableException` → `pg_inbox FAILED` + events.confirmed FAILED
 - 멱등 응답("이미 처리됨"): `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 가 vendor getStatus 재조회로 APPROVED / QUARANTINED 확정
 - AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
@@ -104,8 +104,8 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 | payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` |
 | payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
 | payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
-| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. ⚠️ attempt 런타임 1 고정([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md)) |
-| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (`PgVendorCallService.insertDlqOutbox` — 설계상 attempt ≥ 4, ⚠️ 현재 미도달) |
+| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. attempt 는 `pg_inbox.attempt` 영속·증가 (DLQ-REACHABILITY) |
+| pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (`PgVendorCallService.insertDlqOutbox` — attempt ≥ 4 소진 시 도달 → QUARANTINED 자동 격리) |
 | pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
 | payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` — retry 5회 한도 초과 시 자동 발행. `KafkaErrorHandlerConfig`) |
 | payment-service → product-service | Kafka | one-way | `payment.events.stock-committed` (APPROVED 시만 — RDB 누적 차감 ledger) |

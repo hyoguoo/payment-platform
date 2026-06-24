@@ -195,4 +195,12 @@ flowchart TD
 | 재고 확정 이벤트 유실 복구 (범위 밖) / RetryPolicy·backoff 유지 | (무변경 — 태스크 없음) |
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+> ship Phase A 리뷰 — reviewer revise / domain-expert pass. critical 0 / major 1 / minor 2.
+
+### major
+1. [reviewer] `docs/context/CONFIRM-FLOW.md` L190·426·515 + `docs/context/TODOS.md`(TC-13-FOLLOW-7, PG-SELFLOOP-ATTEMPT-GAP)가 옛 동작("DLQ 미진입"·"9회 소진 단순 스킵"·"완전 유실")을 현행으로 서술 — 이번 코드 변경과 정면 모순. → **채택, Phase B context-update(B2)에서 해소**: CONFIRM-FLOW 3곳을 현행(AfterRollbackProcessor 명시 연결 → backoff 소진 후 DLQ 발행 + metric, stock-committed 유실은 over-sell 잔여 위험으로 유지)으로 갱신 + TODOS 2항목 해소 반영.
+
+### minor
+2. [domain-expert] `JpaPgInboxRepository.incrementAttempt` 상태 가드 없는 무조건 increment — 현 호출처(retry 분기, inbox IN_PROGRESS)는 안전하나 호출처 확장 시 terminal row attempt 증가 여지. → **채택(경량)**: 포트/구현 Javadoc에 "호출처 확장 시 `status=IN_PROGRESS` 가드 동반" 한 줄 명시.
+3. [domain-expert] `KafkaConsumerConfig` AfterRollbackProcessor recoverer — 코디네이터 영구 장애 시 DLQ 중복 발행 가능(offset 미전진 구간). 돈/재고 손실 아님, RDB 재유도 복구 정합 보존(§미해결 위험과 일치). → **수용 한계(no-code)**: alerting(TC-13-FOLLOW-3/4) 도입 시 `payment_eos_commit_failure_dlq_total` 급증을 영구 장애 신호로 잡는 임계 설계 — 후속 메모.

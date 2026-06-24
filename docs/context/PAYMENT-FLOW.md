@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정 + self-loop attempt 갭 반영). 이전: 2026-05-08 (STOCK-COMPENSATION-RECOVERY 봉인 — Phase 5 보상 경로 갱신)
+> 최종 갱신: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동). 이전: 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + Phase 0~3.5 + PRE-PHASE-4-HARDENING 봉인 시점) 코드를 기준으로, 브라우저가
@@ -76,7 +76,7 @@ flowchart TD
 
 pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](#phase-4-pg-service-상세) 절에서 깊이 다룬다. 여기는 입출력만:
 
-> 아래 flowchart 는 PG-CONFIRM-LISTENER-SPLIT 반영 **현행**이다 — `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 갭(빨강 노드). 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
+> 아래 flowchart 는 PG-CONFIRM-LISTENER-SPLIT 반영 **현행**이다 — `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 를 `pg_inbox.attempt` 에 영속해 한도(4) 도달 시 DLQ→QUARANTINED 격리(DLQ-REACHABILITY). 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
 
 ```mermaid
 flowchart TD
@@ -105,12 +105,11 @@ flowchart TD
 
     OUT -->|"Success 2xx"| OK["pg_inbox APPROVED<br/>+ pg_outbox events.confirmed APPROVED"]
     OUT -->|"NonRetryable 4xx"| NF["pg_inbox FAILED<br/>+ pg_outbox events.confirmed FAILED"]
-    OUT -->|"Retryable 5xx/timeout"| RT{"shouldRetry(attempt)?"}
+    OUT -->|"Retryable 5xx/timeout"| RT{"shouldRetry(attempt)?<br/>attempt = pg_inbox.attempt"}
     OUT -->|"멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회"]
 
-    RT -->|"Yes (attempt&lt;4)"| RTO["insertRetryOutbox<br/>pg_outbox commands.confirm (attempt+1, backoff)"]
+    RT -->|"Yes (attempt&lt;4)"| RTO["insertRetryOutbox<br/>pg_outbox commands.confirm (backoff)<br/>+ incrementAttempt (pg_inbox, TX_B)"]
     RT -->|"No (attempt≥4)"| DLO["insertDlqOutbox<br/>pg_outbox commands.confirm.dlq"]
-    RTO -.->|"attempt 런타임 1 고정 → DLQ 미도달·무한 self-loop"| RT
     DUP -->|"DB·금액 일치"| OK
     DUP -->|"불일치 / INDETERMINATE"| QU["pg_inbox QUARANTINED<br/>+ pg_outbox events.confirmed QUARANTINED"]
 
@@ -122,7 +121,7 @@ flowchart TD
     DLO --> OBX
 
     OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
-    OBW --> RELAY["PgOutboxRelayService → PgEventPublisher<br/>(헤더 Map.of() — attempt 미발행)"]
+    OBW --> RELAY["PgOutboxRelayService → PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
     RELAY --> PUB{"발행 토픽"}
     PUB -->|events.confirmed| EC["payment.events.confirmed<br/>→ payment-service (Phase 5)"]
     PUB -->|"commands.confirm (self-loop)"| T
@@ -189,7 +188,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 | 6 | payment | TX 내 `confirmPublisher.publish(orderId, buyerId, totalAmount, paymentKey)` (Spring ApplicationEvent) | **즉시 HTTP 202 반환** (AFTER_COMMIT 리스너 큐잉) |
 | 7 | payment | AFTER_COMMIT + @Async outboxRelayExecutor VT | outbox IN_FLIGHT 선점 (CAS) → **Kafka `payment.commands.confirm` 발행** → outbox DONE |
 | 8 | pg | Kafka consume (`attempt` 헤더 파싱, 기본 1) | pg_inbox **PENDING INSERT**(리스너) → 워커가 **PENDING→IN_PROGRESS CAS**(SKIP LOCKED, amount 기록) |
-| 9 | pg | Toss/Nicepay/Fake HTTP 호출 | APPROVED / FAILED (4xx) / retryable (5xx→self-loop, ⚠️`attempt` 1 고정 무한반복) / DLQ (attempt≥4→QUARANTINED — 현재 미도달, §4.10) |
+| 9 | pg | Toss/Nicepay/Fake HTTP 호출 | APPROVED / FAILED (4xx) / retryable (5xx→self-loop, `attempt` 는 `pg_inbox.attempt` 영속·증가) / DLQ (attempt≥4→QUARANTINED 자동 격리, §4.10) |
 | 10 | pg | pg_outbox 저장 → PgOutboxImmediateWorker (채널 + VT) relay | **Kafka `payment.events.confirmed` 발행** |
 | 11 | payment | Kafka consume (Spring Kafka `DefaultErrorHandler` + `FixedBackOff(1s, 5회)` + DLQ recoverer + EOS `KafkaTransactionManager`) | D7 진입 가드 → `payment_event_dedupe` INSERT IGNORE 멱등 마킹 → APPROVED: event DONE + multi-product loop `producer.send(stock-committed)` Kafka tx buffer → 컨슈머 오프셋 동행 + 프로듀서 commit / FAILED·QUARANTINED: `compensateAtomic(orderId, orders)` Lua 1회 (재고 복원 + `compensation:done:{orderId}` SETNX P8D) → event 상태 전이. 메시지 멱등은 `payment_event_dedupe` UNIQUE INSERT, 재고 멱등은 Lua dedup token, retry/DLQ 는 Spring Kafka native (PAYMENT-EOS-TRANSITION 2026-05-17 봉인) |
 | 12 | 브라우저 | `GET /status` 폴링 | PENDING → PROCESSING → DONE/FAILED |
@@ -199,7 +198,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 ## 장애 복원 포인트
 
 - **리스너 스킵/크래시**: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50, IN_FLIGHT 5분 타임아웃 복귀), pg 쪽은 `PgOutboxPollingWorker` (`processedAt IS NULL AND availableAt <= NOW`) 가 PENDING/타임아웃 IN_FLIGHT 재픽업
-- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → 한도 초과 시 DLQ → pg_inbox QUARANTINED → payment `QuarantineCompensationHandler`. ⚠️ **단 현재 `attempt` 가 런타임 1 고정이라 한도/DLQ 자동 진입은 미작동**([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md)) — 일시 오류 지속 시 무한 self-loop. FCG (`PgFinalConfirmationGate`) 는 현재 호출처 0 — 미연결 (후속 Phase 예정)
+- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → pg_inbox QUARANTINED → payment `QuarantineCompensationHandler` (DLQ-REACHABILITY). 동시 진입 시 over-count(조기 격리)는 수용 한계. FCG (`PgFinalConfirmationGate`) 는 현재 호출처 0 — 미연결 (후속 Phase 예정)
 - **재고 캐시 장애**: confirm 단계에서 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` 플래그
 - **IN_FLIGHT 복원**: `PaymentReconciler` (@Scheduled fixedDelayMs=120000, 2분) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업. 재고 발산 감지/보정은 새 재고 모델에서 책임 제거됨
 - **중복 메시지 (payment 측)**: 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, 같은 Lua 안 atomic) + outbox IN_FLIGHT CAS. 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 가 native 책임 (한도 5회 초과 시 `payment.events.confirmed.dlq`)
@@ -228,7 +227,8 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 | 테이블 | 카디널리티 | 책임 |
 |---|---|---|
 | `pg_inbox` | 1 orderId = 1 row (UNIQUE) | dedupe + 결과 SoT (NONE / IN_PROGRESS / APPROVED / FAILED / QUARANTINED) + amount 저장 (AMOUNT_MISMATCH 양방향 방어용) |
-| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행 + headers_json 의 attempt 카운터(⚠️ 현재 relay 가 `Map.of()` 로 발행해 미사용 — [PG-SELFLOOP-ATTEMPT-GAP](TODOS.md)) |
+| `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ (DLQ-REACHABILITY) |
+| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. (headers_json 의 attempt 는 relay 가 `Map.of()` 로 미발행 — Option B 에서 attempt SoT 가 `pg_inbox` 라 헤더 불요) |
 
 inbox/outbox 모두 같은 `@Transactional` 안에서 atomic commit/rollback — Transactional Outbox 패턴.
 
@@ -253,7 +253,7 @@ stateDiagram-v2
       + commands.confirm self-loop 재발행
       + 재수신 시 PgConfirmService.handleActiveInbox(채널 재적재)
         → 워커 processInProgressZombie 가 vendor 재호출
-      WARNING self-loop attempt 는 런타임 1 고정 (§4.6 / §4.10)
+      self-loop attempt 는 pg_inbox.attempt 영속·증가 → 한도(4) 소진 시 DLQ (§4.6 / §4.10)
     end note
 ```
 
@@ -289,7 +289,7 @@ flowchart TD
     RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 → 진짜 결과 확정"]
 
     RETRY --> RC{"RetryPolicy.shouldRetry attempt"}
-    RC -->|"Yes attempt &lt; 4"| RETRY_OUT["insertRetryOutbox<br/>pg_outbox commands.confirm row INSERT<br/>+ availableAt = now + backoff<br/>+ 헤더 attempt+1<br/>+ 새 eventUuid (UUID.randomUUID)"]
+    RC -->|"Yes attempt &lt; 4"| RETRY_OUT["insertRetryOutbox<br/>pg_outbox commands.confirm row INSERT<br/>+ availableAt = now + backoff<br/>+ incrementAttempt (pg_inbox, TX_B)<br/>+ 새 eventUuid (UUID.randomUUID)"]
     RC -->|"No attempt ≥ 4"| DLQ_OUT["insertDlqOutbox<br/>pg_outbox commands.confirm.dlq row INSERT"]
 
     DUP --> DUP_RESULT{"getStatus 결과"}
@@ -301,13 +301,13 @@ flowchart TD
 핵심 포인트:
 - **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액 불일치·INDETERMINATE 면 QUARANTINED 로도 종결**한다 (항상 APPROVED 아님).
 - **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급 → pg-service `markSeen` 통과 (동일 eventUuid 면 dedupe 막힘).
-- ⚠️ **`attempt` 한도/DLQ 런타임 미작동** — 위 `RC` 분기의 `attempt` 는 런타임에서 항상 1 로 고정돼(relay 헤더 미발행 + `pg_inbox` attempt 컬럼 부재 + `resolveAttempt()=1`) `insertDlqOutbox`(attempt≥4)는 도달 불가 dead branch 다. 상세: [TODOS `[PG-SELFLOOP-ATTEMPT-GAP]`](TODOS.md).
+- **`attempt` 한도/DLQ 작동 (DLQ-REACHABILITY)** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
 ### 4.6 self-loop retry 메커니즘
 
 retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별도 retry 토픽 없이 같은 토픽으로 재발행한다.
 
-> ⚠️ **`attempt` 카운팅이 런타임에서 끊긴다.** 의도는 Kafka `attempt` 헤더로 시도 횟수를 누적해 4회 한도에서 DLQ 로 보내는 것이지만, ① `PgOutboxRelayService.relay` 가 재발행 시 헤더를 `Map.of()`(빈 맵)로 보내 `pg_outbox.headers_json` 의 attempt 를 싣지 않고, ② `pg_inbox` 에 attempt 컬럼이 없어 워커 `PgInboxProcessor.resolveAttempt()` 도 1 고정이다. 결과적으로 `attempt` 는 항상 1 → `shouldRetry(1)` 항상 true → DLQ(attempt≥4) **도달 불가**, 일시 오류 지속 시 무한 self-loop. 상세·처방: [TODOS `[PG-SELFLOOP-ATTEMPT-GAP]`](TODOS.md).
+> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (Option B, DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계.)
 
 ```mermaid
 sequenceDiagram
@@ -326,25 +326,25 @@ sequenceDiagram
     W->>V: processPending: PENDING→IN_PROGRESS CAS(SKIP LOCKED)<br/>→ invokeVendor + applyOutcome(attempt=1)
     V->>Vendor: confirm 호출
     Vendor-->>V: PgGatewayRetryableException
-    V->>OB: insertRetryOutbox(헤더 attempt=2, availableAt=now+~6s)
-    Note over V, OB: pg_inbox 는 IN_PROGRESS 유지
+    V->>OB: insertRetryOutbox + incrementAttempt(pg_inbox 1→2), availableAt=now+~6s
+    Note over V, OB: pg_inbox 는 IN_PROGRESS 유지, attempt=2
 
     Note over K, OB: 2차 (~6s 후 — IN_PROGRESS 재진입)
-    OB-->>K: relay → commands.confirm 발행<br/>WARNING 헤더를 Map.of() 로 보내 attempt 유실
-    K->>Cons: 메시지 (attempt 헤더 없음 → 1)
-    Cons->>Svc: handle(command, 1)
-    Svc->>Svc: handleActiveInbox: 채널 재적재 (attempt 미사용)
-    W->>V: processInProgressZombie: invokeVendor + applyOutcome(resolveAttempt=1)
+    OB-->>K: relay → commands.confirm 발행<br/>(헤더 Map.of() — attempt SoT 는 pg_inbox)
+    K->>Cons: 메시지 (재처리 신호)
+    Cons->>Svc: handle(command)
+    Svc->>Svc: handleActiveInbox: 채널 재적재
+    W->>V: processInProgressZombie: invokeVendor + applyOutcome(resolveAttempt=2)
     V->>Vendor: confirm 재호출 (멱등 paymentKey + orderId)
-    Vendor-->>V: 성공/멱등 → APPROVED 종결 / 또 transient → insertRetryOutbox(attempt=2)
-    Note over V, OB: WARNING attempt 영영 1 → 한도(4)·DLQ 도달 불가 → 무한 self-loop
+    Vendor-->>V: 성공/멱등 → APPROVED 종결 / 또 transient → insertRetryOutbox + incrementAttempt(2→3)
+    Note over V, OB: attempt 1→2→3→4 누적 → 4 소진 시 DLQ → QUARANTINED 격리
 ```
 
-backoff: 의도는 `2s × 3^(attempt-1) × jitter±25%` 지수 증가지만, ⚠️ `attempt` 가 1 고정이라 매 재시도가 `nextAttempt=2` 기준(**~6s, 4.5~7.5s**)으로 고정 반복된다. 아래 attempt별 증가·한도는 설계값일 뿐 런타임에 도달하지 않는다:
+backoff: `2s × 3^(attempt-1) × jitter±25%` 지수 증가. attempt 가 `pg_inbox` 에 누적되므로 아래 증가·한도가 런타임에 그대로 작동한다:
 - attempt=1: ~2s (1.5~2.5s)
 - attempt=2: ~6s (4.5~7.5s)
 - attempt=3: ~18s (13.5~22.5s)
-- attempt=4: ~54s (40.5~67.5s) — 마지막 시도(설계상)
+- attempt=4: ~54s (40.5~67.5s) — 마지막 시도(이후 DLQ)
 
 ### 4.7 DLQ 경로
 
@@ -390,7 +390,7 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 
 payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s). 정렬 작업은 TC-7 deferred.
 
-> ⚠️ **위 정책은 코드 상수일 뿐, 런타임에선 `attempt` 가 1 로 고정돼 `MAX_ATTEMPTS`(4)/DLQ 에 도달하지 못한다** (relay 헤더 미발행 + `pg_inbox` attempt 컬럼 부재). 일시 오류 지속 시 ~6s 간격 무한 self-loop. 상세·처방: [TODOS `[PG-SELFLOOP-ATTEMPT-GAP]`](TODOS.md).
+> **위 정책은 런타임에 작동한다 (DLQ-REACHABILITY).** `attempt` 가 `pg_inbox.attempt`(Flyway V5) 에 영속·누적(retry 분기 TX_B `incrementAttempt`)돼 `MAX_ATTEMPTS`(4) 소진 시 `insertDlqOutbox` → DLQ → QUARANTINED 자동 격리. 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
 ### 4.11 동시 race 보호
 
