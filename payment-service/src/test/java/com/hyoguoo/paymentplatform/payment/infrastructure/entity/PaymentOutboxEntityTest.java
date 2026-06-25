@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class PaymentOutboxEntityTest {
 
     /**
-     * P16 — BaseEntity getter 가 Instant 로 전환됐으므로 createdAt/updatedAt 이 toDomain 매핑 경계에서
+     * BaseEntity getter 가 Instant 로 전환됐으므로 createdAt/updatedAt 이 toDomain 매핑 경계에서
      * 수동 변환 없이 동일 Instant 로 직접 전달됨을 단정한다.
      */
     @Test
@@ -38,7 +38,7 @@ class PaymentOutboxEntityTest {
     }
 
     /**
-     * P16 — nextRetryAt 은 audit 컬럼이 아닌 비즈니스 컬럼(LocalDateTime 보관)이므로
+     * nextRetryAt 은 audit 컬럼이 아닌 비즈니스 컬럼(LocalDateTime 보관)이므로
      * toInstant 헬퍼를 경유해 UTC Instant 로 변환됨을 단정한다 (헬퍼 잔존 회귀 가드).
      */
     @Test

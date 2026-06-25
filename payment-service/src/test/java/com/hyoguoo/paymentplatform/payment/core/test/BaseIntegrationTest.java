@@ -50,7 +50,7 @@ public abstract class BaseIntegrationTest {
                 .withUsername("test")
                 .withPassword("test")
                 .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")
-                // D3/D7 — raw-JDBC(JdbcTemplate) 와 JPA 가 같은 connection 세션 TZ(UTC) 를 공유하도록
+                // raw-JDBC(JdbcTemplate) 와 JPA 가 같은 connection 세션 TZ(UTC) 를 공유하도록
                 // 강제한다. 이 파라미터가 getJdbcUrl() 에 자동 부착되어 LocalDateTime/Instant ↔ DATETIME
                 // 라운드트립이 시스템 TZ 와 무관하게 UTC 기준으로 일관된다.
                 .withUrlParam("connectionTimeZone", "UTC")
@@ -68,7 +68,7 @@ public abstract class BaseIntegrationTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        // D3/D7 — raw-JDBC 및 JPA 경로 모두 UTC 기준으로 통일.
+        // raw-JDBC 및 JPA 경로 모두 UTC 기준으로 통일.
         // connectionTimeZone=UTC 는 컨테이너 빌더의 withUrlParam 으로 getJdbcUrl 에 부착된다.
         // hibernate.jdbc.time_zone=UTC 를 명시 등록해 ORM 바인딩도 UTC 기준으로 고정한다.
         registry.add("spring.datasource.url", MYSQL_CONTAINER::getJdbcUrl);

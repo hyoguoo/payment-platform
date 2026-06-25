@@ -183,10 +183,10 @@ class PaymentExpirationServiceImplTest {
         }
     }
 
-    // ---- T11: 만료 2단 연쇄 명문화 — D6 정책 회귀 가드 ----
+    // ---- 만료 2단 연쇄 명문화 — 만료 정책 회귀 가드 ----
 
     @Test
-    @DisplayName("T11 expireOldReadyPayments — READY 복원 이후 만료 대상인 결제를 성공적으로 만료 처리한다. (2단 연쇄 2단계)")
+    @DisplayName("expireOldReadyPayments — READY 복원 이후 만료 대상인 결제를 성공적으로 만료 처리한다. (2단 연쇄 2단계)")
     void expireOldReadyPayments_afterReset_shouldSucceed() {
         // given — Reconciler 가 READY 로 복원한 결제(createdAt = Instant 기반)를 만료 서비스가 처리
         Instant thirtyOneMinutesAgo = Instant.now().minus(31, ChronoUnit.MINUTES);

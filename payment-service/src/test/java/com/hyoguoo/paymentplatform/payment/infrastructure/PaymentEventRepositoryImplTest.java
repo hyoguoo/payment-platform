@@ -85,7 +85,7 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     }
 
     /**
-     * DM1 회귀 가드 — JPA save(@CreatedDate) 경로가 Clock 기반 DateTimeProvider 를 통해
+     * auditing UTC 일원화 회귀 가드 — JPA save(@CreatedDate) 경로가 Clock 기반 DateTimeProvider 를 통해
      * Instant cutoff 와 정합하게 채워지는지 검증.
      *
      * <p>JPA save 를 통해 실제 auditing(@CreatedDate AuditingEntityListener) 경로를 밟고,
@@ -98,7 +98,7 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
      * 어긋나 만료 cutoff 비교가 깨진다.
      */
     @Test
-    @DisplayName("DM1 회귀 — JPA auditing created_at 이 Clock 기반 DateTimeProvider 를 통해 cutoff Instant 와 정합하게 채워진다.")
+    @DisplayName("auditing UTC 일원화 회귀 — JPA auditing created_at 이 Clock 기반 DateTimeProvider 를 통해 cutoff Instant 와 정합하게 채워진다.")
     void auditing_createdAt_isFilledByClockDateTimeProvider() {
         // given — JPA save 를 통해 실제 auditing(@CreatedDate) 경로를 밟는다.
         // raw SQL INSERT 를 사용하지 않으므로 AuditingEntityListener(clockDateTimeProvider) 가 created_at 을 채운다.
@@ -141,7 +141,7 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
     }
 
     /**
-     * P17 — D4(BaseEntity Instant 전환 + DATETIME(6) 승급) 후 created_at 의 Instant round-trip 완전 검증.
+     * BaseEntity Instant 전환 + DATETIME(6) 승급 후 created_at 의 Instant round-trip 완전 검증.
      *
      * <p>JPA save → flush → findById 경로에서 created_at 이 {@link Instant} 타입으로 저장·조회되고,
      * save 시점 근방으로 채워짐을 단정한다. DATETIME(6) 마이크로초 정밀도로 서브초 절삭이 없다.

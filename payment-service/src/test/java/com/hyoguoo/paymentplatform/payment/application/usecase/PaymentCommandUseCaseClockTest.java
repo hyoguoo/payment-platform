@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * T3 — PaymentCommandUseCase 에서 Clock 주입 기반 시각 소스 전환 검증.
+ * PaymentCommandUseCase 에서 Clock 주입 기반 시각 소스 전환 검증.
  *
  * <p>Clock.fixed()로 고정된 Instant 를 사용해 도메인 메서드에 동일 Instant 가 전달되는지 verify.
  */

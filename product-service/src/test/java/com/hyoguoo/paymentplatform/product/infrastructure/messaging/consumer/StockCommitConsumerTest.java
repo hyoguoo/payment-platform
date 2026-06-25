@@ -25,8 +25,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * StockCommitConsumer 단위 테스트.
  * <p>
  * Mock StockCommitUseCase — 메시지 파싱·위임 검증.
- * T13: Clock 주입으로 expiresAt=null, occurredAt=null 케이스를 결정적으로 제어한다.
- * P5: consume 진입 시 단일 now = clock.instant() 산출 — commit 인자와 resolveExpiresAt fallback base가 동일 Instant 공유.
+ * Clock 주입으로 expiresAt=null, occurredAt=null 케이스를 결정적으로 제어한다.
+ * consume 진입 시 단일 now = clock.instant() 산출 — commit 인자와 resolveExpiresAt fallback base가 동일 Instant 공유.
  */
 @ExtendWith(MockitoExtension.class)
 class StockCommitConsumerTest {
@@ -112,9 +112,9 @@ class StockCommitConsumerTest {
     }
 
     /**
-     * P5 RED 테스트: clock.instant() 가 호출마다 1ms씩 전진하는 tick Clock 을 주입했을 때,
+     * RED 테스트: clock.instant() 가 호출마다 1ms씩 전진하는 tick Clock 을 주입했을 때,
      * expiresAt=null/occurredAt=null 케이스에서 commit 의 now 인자와 resolveExpiresAt fallback base 가
-     * 동일 Instant 여야 한다 (단일 진입점 동일 시각 D1).
+     * 동일 Instant 여야 한다 (단일 진입점 동일 시각).
      * 현재 구현(resolveExpiresAt 내부에서 clock.instant() 별도 호출)은 now != fallback base 가 되어 FAIL.
      */
     @Test
@@ -176,7 +176,7 @@ class StockCommitConsumerTest {
     @Test
     @DisplayName("expiresAt=null, occurredAt=null → expiresAt = clock.instant() + 8d (고정 시각 기반)")
     void consume_whenBothNull_shouldFallbackFromClock() {
-        // given — T13: Clock.fixed 주입으로 fallback 시각을 결정적으로 제어
+        // given — Clock.fixed 주입으로 fallback 시각을 결정적으로 제어
         long productId = 10L;
         String orderId = "order-1000";
         String eventUUID = "event-uuid-bothnull-test";

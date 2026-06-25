@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * 0으로 만들기 위한 의도적 설계이며, 이 카운터는 그 침묵 손실을 가시화하는 용도다.
  *
  * <p>라벨 없음(단일 카운터) — 본 메트릭은 발생 빈도 추적이 목적이라 고카디널리티 라벨을
- * 두지 않는다(D7 불변식과 동일한 취지).
+ * 두지 않는다(고카디널리티 라벨 금지와 동일한 취지).
  *
  * <p>{@link #record} 는 throw-free 계약을 유지한다. Micrometer Counter.increment() 자체는
  * 안전하다.

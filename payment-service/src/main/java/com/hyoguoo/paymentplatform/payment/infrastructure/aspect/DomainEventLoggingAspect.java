@@ -84,7 +84,7 @@ public class DomainEventLoggingAspect {
             String reason,
             PublishDomainEvent publishEvent
     ) {
-        // clock.instant() 기반으로 audit 시각을 계산한다. TZ 누수 차단(D2/T7).
+        // clock.instant() 기반으로 audit 시각을 계산한다. TZ 누수 차단.
         LocalDateTime occurredAt = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (!(result instanceof PaymentEvent afterEvent)) {
             return;

@@ -443,7 +443,7 @@ class PaymentEosIntegrationTest {
         // dedupe 1 row
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
         // 재배달 흡수 시나리오는 #3(종결 가드 재발행)이 커버한다 — 본 시나리오는
-        // 정상 경로 멀티상품 distinct idempotencyKey 결정성만 검증한다(DR-1 가드 보존).
+        // 정상 경로 멀티상품 distinct idempotencyKey 결정성만 검증한다(회귀 가드 보존).
     }
 
     // ── 시나리오 #5 ─────────────────────────────────────────────────────────────
@@ -514,7 +514,7 @@ class PaymentEosIntegrationTest {
                 });
 
         // dedupe row 1건 — markIfAbsent 도 같은 JPA inner 트랜잭션으로 동반 커밋된 증거
-        // (추후 D7 가드 앞으로 dedupe 가 이동하는 변경의 회귀 가드).
+        // (추후 종결 가드 앞으로 dedupe 가 이동하는 변경의 회귀 가드).
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
         // 재배달이 종결 가드로 흡수되어 재발행 → stock-committed 1건이 결국 복구 가시화된다.

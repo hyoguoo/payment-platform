@@ -77,9 +77,9 @@ public class PaymentConfirmResultUseCase {
      * {@code @PublishDomainEvent} / {@code @PaymentStatusChange} AOP 가 적용되지 않으므로 외부 빈을 통해 호출해야 한다.
      */
     private final PaymentCommandUseCase paymentCommandUseCase;
-    /** 종결 상태 가드 noop 분기 계측 — D13. */
+    /** 종결 상태 가드 noop 분기 계측. */
     private final PaymentConfirmGuardSkipMetrics guardSkipMetrics;
-    /** 종결 가드 재발행(DONE+APPROVED 재배달) 분기 계측 — D7. */
+    /** 종결 가드 재발행(DONE+APPROVED 재배달) 분기 계측. */
     private final PaymentConfirmTerminalResendMetrics terminalResendMetrics;
 
     public PaymentConfirmResultUseCase(
@@ -183,7 +183,7 @@ public class PaymentConfirmResultUseCase {
      * 금액이 불일치하면 완료 전이 없이 격리하고, 통과하면 결제 완료 후 재고 확정 이벤트를 발행한다.
      */
     private void handleApproved(PaymentEvent paymentEvent, ConfirmedEventMessage message) {
-        // D8 — parseApprovedAt 은 OffsetDateTime.parse().toInstant() 로 오프셋 보존 정규화 (T14 완료)
+        // parseApprovedAt 은 OffsetDateTime.parse().toInstant() 로 오프셋 보존 정규화
         Instant receivedApprovedAt = parseApprovedAt(message.approvedAt());
 
         if (isAmountMismatch(paymentEvent, message.amount())) {
@@ -249,8 +249,8 @@ public class PaymentConfirmResultUseCase {
      * 수신 approvedAt 문자열을 Instant 로 변환.
      * approvedAt 은 ISO_OFFSET_DATE_TIME contract(non-null) 위반 시 즉시 예외.
      *
-     * <p>D8 — {@code OffsetDateTime.parse().toInstant()} 로 오프셋을 보존하여 정산 앵커 UTC 절대시점을 정규화한다.
-     * KST(+09:00) 등 비-UTC 오프셋 입력도 9시간 오차 없이 UTC 절대시점으로 변환된다(AC9).
+     * <p>{@code OffsetDateTime.parse().toInstant()} 로 오프셋을 보존하여 정산 앵커 UTC 절대시점을 정규화한다.
+     * KST(+09:00) 등 비-UTC 오프셋 입력도 9시간 오차 없이 UTC 절대시점으로 변환된다.
      * {@code toLocalDateTime()}을 사용하면 오프셋이 무시되어 최대 9시간 오차가 발생하므로 금지한다.
      *
      * <p>package-private: {@code PaymentConfirmResultUseCaseApprovedAtTest} 에서 직접 단정.

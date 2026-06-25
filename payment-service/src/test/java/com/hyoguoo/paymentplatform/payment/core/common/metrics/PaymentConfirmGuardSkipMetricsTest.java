@@ -77,7 +77,7 @@ class PaymentConfirmGuardSkipMetricsTest {
     }
 
     @Test
-    @DisplayName("record_counterTagKeysOnlyStatus — 태그 키 집합이 정확히 {status} (D7 불변식: orderId/userId 미포함)")
+    @DisplayName("record_counterTagKeysOnlyStatus — 태그 키 집합이 정확히 {status} (불변식: orderId/userId 미포함)")
     void record_counterTagKeysOnlyStatus() {
         sut.record(PaymentEventStatus.DONE);
 

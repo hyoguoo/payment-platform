@@ -15,7 +15,7 @@ import org.springframework.data.auditing.AuditingHandlerSupport;
 import org.springframework.data.auditing.DateTimeProvider;
 
 /**
- * DM1 회귀 가드 — {@code @EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")} 연결 단정.
+ * auditing UTC 일원화 회귀 가드 — {@code @EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")} 연결 단정.
  *
  * <p>JPA Auditing 이 {@code clockDateTimeProvider} 빈을 실제로 사용하는지 ApplicationContext 수준에서 검증한다.
  * 이 테스트는 {@code dateTimeProviderRef} 설정이 누락되거나 잘못된 빈 이름으로 변경되면 실패한다.
@@ -32,20 +32,20 @@ import org.springframework.data.auditing.DateTimeProvider;
  * </ul>
  *
  * <h2>설계 근거 (M3 finding 대응)</h2>
- * 2라운드 review Critic/Domain Expert 의 major M3: DM1 GREEN 커밋에서 회귀 가드가
+ * auditing UTC 일원화 커밋에서 회귀 가드가
  * UTC JVM 에서도 통과하여 {@code dateTimeProviderRef} 누락을 탐지하지 못한다.
  * 이 테스트는 ApplicationContext 의 {@code jpaAuditingHandler} 빈에서 reflection 으로
  * {@code dateTimeProvider} 필드를 꺼내 {@code clockDateTimeProvider} 빈과
  * 동일 인스턴스인지 단정함으로써 JVM TZ 와 무관하게 연결 회귀를 잡는다.
  */
-@DisplayName("DM1 회귀 가드 — JPA Auditing dateTimeProvider 빈 연결 단정")
+@DisplayName("auditing UTC 일원화 회귀 가드 — JPA Auditing dateTimeProvider 빈 연결 단정")
 class JpaAuditingProviderWiringTest extends BaseIntegrationTest {
 
     @Autowired
     private ApplicationContext applicationContext;
 
     /**
-     * DM1 핵심 회귀 가드 — {@code jpaAuditingHandler} 빈의 dateTimeProvider 필드가
+     * auditing UTC 일원화 핵심 회귀 가드 — {@code jpaAuditingHandler} 빈의 dateTimeProvider 필드가
      * {@code clockDateTimeProvider} 빈과 동일 인스턴스인지 단정한다.
      *
      * <p>{@code @EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")} 가 올바르게
@@ -80,7 +80,7 @@ class JpaAuditingProviderWiringTest extends BaseIntegrationTest {
         // dateTimeProviderRef 를 제거하면 handlerDateTimeProvider = CurrentDateTimeProvider.INSTANCE 로 바뀌어 FAIL
         assertThat(handlerDateTimeProvider)
                 .as("""
-                        DM1 회귀 가드: jpaAuditingHandler.dateTimeProvider 가 clockDateTimeProvider 빈이어야 한다.
+                        auditing UTC 일원화 회귀 가드: jpaAuditingHandler.dateTimeProvider 가 clockDateTimeProvider 빈이어야 한다.
                         이 단정이 실패하면 @EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider") 연결이 끊긴 것이다.
                         JpaConfig.@EnableJpaAuditing 의 dateTimeProviderRef 설정을 확인하라.
                         """)
@@ -88,16 +88,12 @@ class JpaAuditingProviderWiringTest extends BaseIntegrationTest {
     }
 
     /**
-     * D4 전환 가드 — {@code clockDateTimeProvider} 반환 타입이 {@code Instant} 임을 단정한다.
+     * Instant 전환 가드 — {@code clockDateTimeProvider} 반환 타입이 {@code Instant} 임을 단정한다.
      *
-     * <p>P12(clockDateTimeProvider 반환 타입 Instant 전환) 의 RED 게이트 역할.
-     * 현재(P11 시점) {@code clockDateTimeProvider} 는 {@code LocalDateTime} 을 반환하므로
-     * 이 테스트는 RED 상태이고, P12 구현 후 GREEN 이 된다.
-     *
-     * <p>P12 완료 후에도 이 테스트가 지속적으로 GREEN 이면 {@code Instant} 반환이 회귀 없이 유지됨을 보장한다.
+     * <p>{@code clockDateTimeProvider} 가 {@code Instant} 를 반환하는 계약을 회귀 없이 유지함을 보장한다.
      */
     @Test
-    @DisplayName("clockDateTimeProvider.getNow() 가 Instant 타입을 반환한다 (D4 전환 가드)")
+    @DisplayName("clockDateTimeProvider.getNow() 가 Instant 타입을 반환한다 (Instant 전환 가드)")
     void clockDateTimeProvider_반환타입이Instant_를_반환한다() {
         // given — ApplicationContext 에서 clockDateTimeProvider 빈을 꺼낸다
         DateTimeProvider provider =
@@ -106,7 +102,7 @@ class JpaAuditingProviderWiringTest extends BaseIntegrationTest {
         // when
         Optional<TemporalAccessor> nowOpt = provider.getNow();
 
-        // then — getNow() 결과가 Instant 타입이어야 한다 (D4: LocalDateTime → Instant 전환)
+        // then — getNow() 결과가 Instant 타입이어야 한다 (LocalDateTime → Instant 전환)
         assertThat(nowOpt).isPresent();
         assertThat(nowOpt.get())
                 .as("D4 전환 가드: clockDateTimeProvider 가 Instant 를 반환해야 한다. "

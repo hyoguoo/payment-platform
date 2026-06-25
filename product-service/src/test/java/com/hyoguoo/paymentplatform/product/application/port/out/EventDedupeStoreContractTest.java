@@ -19,7 +19,7 @@ class EventDedupeStoreContractTest {
     /**
      * 포트 인터페이스의 recordIfAbsent 가 boolean recordIfAbsent(String, Instant, Instant) 시그니처임을
      * 컴파일 수준으로 단언.
-     * 두 번째 인자 now 는 D1 결정 — 호출자(컨슈머)가 단일 시각을 산출해 주입한다.
+     * 두 번째 인자 now 는 호출자(컨슈머)가 단일 시각을 산출해 주입한다.
      */
     @Test
     @DisplayName("recordIfAbsent — 포트 시그니처 boolean recordIfAbsent(String, Instant, Instant) 컴파일 계약")

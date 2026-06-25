@@ -13,7 +13,7 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
 
-    // D3 — BaseEntity.createdAt 은 Instant(DATETIME(6)) 컬럼이며, Instant 파라미터를
+    // BaseEntity.createdAt 은 Instant(DATETIME(6)) 컬럼이며, Instant 파라미터를
     // Hibernate 가 hibernate.jdbc.time_zone=UTC 기준으로 UTC Calendar 바인딩하므로
     // JdbcTemplate 경로(connectionTimeZone=UTC)와 동일한 UTC 기준으로 비교된다.
     // PaymentEventRepositoryImpl 에서 변환 없이 Instant 를 직접 전달.

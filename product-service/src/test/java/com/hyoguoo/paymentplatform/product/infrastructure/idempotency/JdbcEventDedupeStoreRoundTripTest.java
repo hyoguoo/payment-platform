@@ -25,9 +25,9 @@ import org.testcontainers.containers.MySQLContainer;
  * DB 에서 조회한 expires_at 의 절대시점이 입력값과 밀리초 동치임을 단정한다.
  * connectionTimeZone=UTC 가 누락되면 이 테스트가 실패해야 한다 — 회귀 가드 역할.
  *
- * <p>D6 — recordIfAbsent DELETE 경계 검증:
+ * <p>recordIfAbsent DELETE 경계 검증:
  * expires_at &lt; now(strict) 만 삭제되고, expires_at == now 경계 행은 잔존.
- * D7 — raw-JDBC 경로(JdbcTemplate) UTC Calendar 명시 바인딩.
+ * raw-JDBC 경로(JdbcTemplate) UTC Calendar 명시 바인딩.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE
@@ -45,7 +45,7 @@ class JdbcEventDedupeStoreRoundTripTest {
                     .withUsername("test")
                     .withPassword("test")
                     .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci")
-                    // D7/AC8 — connectionTimeZone=UTC 가 없으면 비-UTC JVM TZ에서 round-trip 이 어긋난다.
+                    // connectionTimeZone=UTC 가 없으면 비-UTC JVM TZ에서 round-trip 이 어긋난다.
                     .withUrlParam("connectionTimeZone", "UTC")
                     .withUrlParam("forceConnectionTimeZoneToSession", "true")
                     .withReuse(true);
@@ -124,11 +124,11 @@ class JdbcEventDedupeStoreRoundTripTest {
     }
 
     // ────────────────────────────────────────────────────────────
-    // D6 — recordIfAbsent DELETE 경계 검증 (DM-2)
+    // recordIfAbsent DELETE 경계 검증
     // ────────────────────────────────────────────────────────────
 
     /**
-     * D6 — recordIfAbsent DELETE 경계 단정.
+     * recordIfAbsent DELETE 경계 단정.
      *
      * <p>시나리오:
      * - uuid_expired: expires_at = now - 1h (만료 — DELETE 대상, strict &lt;)
@@ -143,7 +143,7 @@ class JdbcEventDedupeStoreRoundTripTest {
      * <p>만료 행 삭제 후 count: uuid_active(1) + uuid_boundary(1) + uuid_new(1) = 3.
      */
     @Test
-    @DisplayName("D6 — 비-UTC JVM TZ에서 만료 행 DELETE 경계: 만료 행만 삭제, 경계·미만료 행 잔존")
+    @DisplayName("비-UTC JVM TZ에서 만료 행 DELETE 경계: 만료 행만 삭제, 경계·미만료 행 잔존")
     void recordIfAbsent_nonUtcJvm_expiredRow삭제경계_만료행만삭제() {
         // given — 3종 행 삽입
         Instant now = Instant.parse("2026-06-06T12:00:00Z");

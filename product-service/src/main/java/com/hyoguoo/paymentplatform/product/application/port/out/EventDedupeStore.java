@@ -14,7 +14,7 @@ public interface EventDedupeStore {
      * 이미 존재하는 경우(중복) false를 반환한다.
      * TTL 만료된 엔트리(expires_at &lt; now)는 삭제 후 재삽입하여 true를 반환한다.
      *
-     * <p>D1 — now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
+     * <p>now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
      * 포트 구현체는 내부에서 Clock.instant() 를 호출하지 않는다.
      *
      * @param eventUUID  이벤트 식별자

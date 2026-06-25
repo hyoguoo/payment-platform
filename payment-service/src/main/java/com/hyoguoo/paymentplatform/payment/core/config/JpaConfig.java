@@ -16,7 +16,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 /**
  * JPA 설정.
  *
- * <p>DM1 — auditing UTC 일원화:
+ * <p>auditing UTC 일원화:
  * Spring 기본 {@code CurrentDateTimeProvider} 는 JVM 기본 TZ 로 {@code LocalDateTime.now()} 를 반환한다.
  * 비-UTC JVM 에서는 KST wall-clock 값이 저장되어 UTC Instant cutoff 와 TZ 기준 불일치가 발생한다.
  * {@code clockDateTimeProvider} 빈이 {@code Clock} 을 통해 {@code Instant} 를 반환한다.

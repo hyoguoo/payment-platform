@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * T3 — PaymentReconciler 에서 Clock 주입 기반 시각 소스 전환 검증.
+ * PaymentReconciler 에서 Clock 주입 기반 시각 소스 전환 검증.
  *
  * <p>Clock.fixed()로 cutoff = now - timeout 이 정확히 계산되는지 verify.
  */

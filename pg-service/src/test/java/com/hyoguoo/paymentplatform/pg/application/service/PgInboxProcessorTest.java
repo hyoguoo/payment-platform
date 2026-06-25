@@ -198,11 +198,11 @@ class PgInboxProcessorTest {
     }
 
     // -----------------------------------------------------------------------
-    // T8 — Clock 주입 결정성 검증 (D2)
+    // Clock 주입 결정성 검증
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("processPending — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    @DisplayName("processPending — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify")
     void process_usesClockInstant_viaProcessPending() {
         // given
         PgInbox pendingInbox = PgInbox.of(
@@ -219,7 +219,7 @@ class PgInboxProcessorTest {
     }
 
     @Test
-    @DisplayName("processInProgressZombie — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    @DisplayName("processInProgressZombie — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify")
     void process_usesClockInstant_viaProcessInProgressZombie() {
         // given
         PgInbox inProgressInbox = PgInbox.of(

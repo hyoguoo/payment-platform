@@ -61,7 +61,7 @@ public class StockCommitConsumer {
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RECEIVED,
                 () -> "productId=" + message.productId() + " qty=" + message.qty() + " eventUUID=" + message.idempotencyKey());
 
-        // D1 — 단일 진입점 단일 시각 산출: now를 먼저 산출하고 commit 인자와 resolveExpiresAt fallback base에 동일하게 전달한다.
+        // 단일 진입점 단일 시각 산출: now를 먼저 산출하고 commit 인자와 resolveExpiresAt fallback base에 동일하게 전달한다.
         Instant now = clock.instant();
         Instant expiresAt = resolveExpiresAt(message, now);
         String orderId = message.orderId() != null ? message.orderId() : "";
@@ -79,7 +79,7 @@ public class StockCommitConsumer {
     /**
      * expiresAt null fallback 계산.
      *
-     * <p>D1: {@code now} 는 consume 진입 시 단일 산출된 Instant — 내부에서 clock.instant() 를 재호출하지 않는다.
+     * <p>{@code now} 는 consume 진입 시 단일 산출된 Instant — 내부에서 clock.instant() 를 재호출하지 않는다.
      * <ol>
      *   <li>message.expiresAt() non-null → 그대로 사용</li>
      *   <li>null + occurredAt non-null → occurredAt + DEDUPE_TTL</li>

@@ -70,7 +70,7 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
 
     @Override
     public List<PaymentEvent> findReadyPaymentsOlderThan(Instant before) {
-        // D3 — Instant 를 직접 native query 에 전달. Hibernate 가 hibernate.jdbc.time_zone=UTC
+        // Instant 를 직접 native query 에 전달. Hibernate 가 hibernate.jdbc.time_zone=UTC
         // 기준으로 UTC Calendar 바인딩하므로 JdbcTemplate(connectionTimeZone=UTC) 과 동일 UTC 기준으로 비교된다.
         return jpaPaymentEventRepository
                 .findReadyPaymentsOlderThan(before)

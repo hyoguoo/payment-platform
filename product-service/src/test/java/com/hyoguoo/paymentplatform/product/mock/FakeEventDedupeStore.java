@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * TTL 만료 시뮬레이션:
  * - recordIfAbsent 호출 시 기존 엔트리의 expiresAt 가 now(호출자 주입) 이전이면 만료로 간주,
  *   덮어쓰기 후 true 를 반환한다.
- * - D1: 내부 Clock 보유 제거 — now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
+ * - 내부 Clock 보유 제거 — now 는 호출자(컨슈머 진입점)가 단일 시각으로 산출해 주입한다.
  * <p>
  * Thread-safe: ConcurrentHashMap.compute 원자적 갱신.
  */
@@ -27,7 +27,7 @@ public class FakeEventDedupeStore implements EventDedupeStore {
      * 유효한 중복이면 false 를 반환한다.
      *
      * @param eventUUID 이벤트 식별자
-     * @param now       현재 시각 — 만료 경계 판정 기준 (호출자 주입, D1)
+     * @param now       현재 시각 — 만료 경계 판정 기준 (호출자 주입)
      * @param expiresAt 만료 시각 (TTL)
      */
     @Override

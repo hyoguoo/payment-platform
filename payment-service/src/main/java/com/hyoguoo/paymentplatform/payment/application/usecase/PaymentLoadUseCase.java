@@ -16,7 +16,7 @@ public class PaymentLoadUseCase {
 
     private final PaymentEventRepository paymentEventRepository;
     private final Clock clock;
-    /** 만료 임계(분). 기본값 30분 — D4 외부화. */
+    /** 만료 임계(분). 기본값 30분 — 외부화. */
     private final long timeoutMinutes;
 
     public PaymentLoadUseCase(
@@ -38,7 +38,7 @@ public class PaymentLoadUseCase {
     }
 
     public List<PaymentEvent> getReadyPaymentsOlder() {
-        // D4 — 만료 임계는 외부 설정에서 주입, 도메인은 임계를 모른다.
+        // 만료 임계는 외부 설정에서 주입, 도메인은 임계를 모른다.
         Instant cutoff = clock.instant().minus(Duration.ofMinutes(timeoutMinutes));
         return paymentEventRepository.findReadyPaymentsOlderThan(cutoff);
     }

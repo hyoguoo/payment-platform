@@ -27,8 +27,8 @@ import org.springframework.stereotype.Repository;
  * - deleteExpired: expires_at &lt; :now 조건 idempotent batch DELETE (LIMIT :batchSize).
  *   NamedParameterJdbcTemplate 을 사용해 LIMIT 바인딩을 안전하게 처리한다.
  * <p>
- * D7 — raw-JDBC 경로 UTC 규약: Timestamp.from(instant) 바인딩 시 명시 UTC Calendar 를 사용한다.
- * 비-UTC JVM TZ 환경에서도 DB 저장 절대시점이 정확히 보존된다(AC8).
+ * raw-JDBC 경로 UTC 규약: Timestamp.from(instant) 바인딩 시 명시 UTC Calendar 를 사용한다.
+ * 비-UTC JVM TZ 환경에서도 DB 저장 절대시점이 정확히 보존된다.
  * datasource URL 에 {@code connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true} 설정 필수.
  * <p>
  * 호출자(StockCommitUseCase)의 {@code @Transactional} 안에서 호출되므로 같은 트랜잭션에 참여한다.
@@ -37,7 +37,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JdbcEventDedupeStore implements EventDedupeStore {
 
-    /** D7 — UTC Calendar 상수: raw-JDBC Timestamp 바인딩 시 비-UTC JVM TZ 오차 방지. */
+    /** UTC Calendar 상수: raw-JDBC Timestamp 바인딩 시 비-UTC JVM TZ 오차 방지. */
     private static final Calendar UTC_CALENDAR = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 
     private static final String SQL_INSERT_IGNORE =
@@ -66,9 +66,9 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      * 이미 유효한 중복이면 false 를 반환한다.
      * 만료된 엔트리는 삭제 후 재삽입하여 true 를 반환한다.
      *
-     * <p>D1 — now 는 호출자(컨슈머 진입점)가 주입. 구현체는 내부에서 시각을 생성하지 않는다.
-     * D6 — DELETE 조건 {@code expires_at < now}: 경계 동치(expires_at == now) 는 만료로 보지 않는다.
-     * D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now/expires_at 절대시점 정확 보존.
+     * <p>now 는 호출자(컨슈머 진입점)가 주입. 구현체는 내부에서 시각을 생성하지 않는다.
+     * DELETE 조건 {@code expires_at < now}: 경계 동치(expires_at == now) 는 만료로 보지 않는다.
+     * UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now/expires_at 절대시점 정확 보존.
      *
      * @param eventUUID  이벤트 식별자
      * @param now        현재 시각 — 만료 경계 판정 기준 (호출자 주입)
@@ -77,8 +77,8 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      */
     @Override
     public boolean recordIfAbsent(String eventUUID, Instant now, Instant expiresAt) {
-        // 만료된 엔트리 삭제 — expires_at < now(strict). 경계 동치는 잔존(D6).
-        // D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now 절대시점 정확 보존.
+        // 만료된 엔트리 삭제 — expires_at < now(strict). 경계 동치는 잔존.
+        // UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 now 절대시점 정확 보존.
         Timestamp nowTs = Timestamp.from(now);
         jdbcTemplate.update(
                 SQL_DELETE_EXPIRED_BY_UUID,
@@ -89,7 +89,7 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
         );
 
         // INSERT IGNORE: 기존 유효 엔트리가 있으면 0, 없으면 1
-        // D7 — UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 expires_at 절대시점 정확 보존 (AC8)
+        // UTC Calendar 명시 바인딩: 비-UTC JVM TZ에서도 expires_at 절대시점 정확 보존
         Timestamp expiresAtTs = Timestamp.from(expiresAt);
         int inserted = jdbcTemplate.update(
                 SQL_INSERT_IGNORE,
@@ -118,7 +118,7 @@ public class JdbcEventDedupeStore implements EventDedupeStore {
      */
     @Override
     public int deleteExpired(Instant now, int batchSize) {
-        // D7 — NamedParameterJdbcTemplate 경로: connectionTimeZone=UTC datasource 파라미터로
+        // NamedParameterJdbcTemplate 경로: connectionTimeZone=UTC datasource 파라미터로
         // 1차 보정됨. payment-service 패턴과 동일(JdbcPaymentEventDedupeStore.deleteExpired 참고).
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("now", Timestamp.from(now))
