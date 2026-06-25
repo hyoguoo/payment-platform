@@ -60,7 +60,7 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 #### ~~[PG-SELFLOOP-ATTEMPT-GAP] — pg-service self-loop attempt 한도/DLQ 런타임 미작동~~ ✅ 완료 (DLQ-REACHABILITY, 2026-06-25, 이슈/브랜치 #114)
 
-시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속(Option B). 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적 → 한도(`MAX_ATTEMPTS`=4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. 격리 도달 카운터 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`) 는 QUARANTINED 전이 성공 지점(멱등). relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count 가능 — 방향이 조기 격리(무한 루프·금전 손실 없음)라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
+시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적 → 한도(`MAX_ATTEMPTS`=4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. 격리 도달 카운터 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`) 는 QUARANTINED 전이 성공 지점(멱등). relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count 가능 — 방향이 조기 격리(무한 루프·금전 손실 없음)라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
 #### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
 

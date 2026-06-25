@@ -35,7 +35,7 @@ flowchart TD
 
 ### 3. 핵심 결정 → Task 매핑
 
-- 한도 도달 격리(PG) → Task 2·3 / Option B 시도횟수 SoT → Task 1·2 / Flyway V5 → Task 1
+- 한도 도달 격리(PG) → Task 2·3 / 시도횟수 SoT(`pg_inbox.attempt`) → Task 1·2 / Flyway V5 → Task 1
 - payment AfterRollbackProcessor + 비트랜잭션 DLQ 템플릿 → Task 4 / 격리 가시화 metric → Task 2(pg)·Task 4(payment)
 - (무변경 결정: 재고 확정 자동 복구·RetryPolicy/backoff baseline)
 
@@ -68,7 +68,7 @@ flowchart TD
 ## 결정 노트 (plan 단계 확정)
 
 - **metric 배치 layer**: pg는 `pg.core.common.metrics`(application `PgDlqService` 주입 — 격리 도달 카운트가 QUARANTINED 전이 지점이므로, `pg.core.common.log` 사용 선례와 동일 layer), payment는 `payment.core.common.metrics`(기존 `PaymentConfirmTerminalResendMetrics` 동형).
-- **consumer 시도횟수 파라미터**: `PaymentConfirmConsumer` 헤더 파싱 + `PgConfirmService.handle(command, attempt, ...)` 파라미터는 **현행 유지**(제거하지 않음). Option B에서 로직 미사용이나 기존 시그니처라 minimal-change. 실제 attempt는 `pg_inbox` + 워커 로그로 가시화. 릴레이 헤더 전파는 복원하지 않는다(Option B는 헤더 불필요).
+- **consumer 시도횟수 파라미터**: `PaymentConfirmConsumer` 헤더 파싱 + `PgConfirmService.handle(command, attempt, ...)` 파라미터는 **현행 유지**(제거하지 않음). SoT 방식에서 로직 미사용이나 기존 시그니처라 minimal-change. 실제 attempt는 `pg_inbox` + 워커 로그로 가시화. 릴레이 헤더 전파는 복원하지 않는다(SoT 방식은 헤더 불필요).
 - **attempt 증가 시점/원자성**: 벤더 호출 1회당 1 증가. retry 분기(`handleRetry`→재시도 outbox INSERT 경로)에서만 `incrementAttempt`를 같은 결과 반영 TX_B의 UPDATE로 수행(별도 round-trip 금지). 증가는 `UPDATE pg_inbox SET attempt = attempt + 1`(set-to-value 아님)이라 lost-update는 없다.
 - **attempt over-count 수용 (한계)**: self-loop 즉시 워커와 in-progress 좀비 폴링이 같은 IN_PROGRESS row에 동시 진입하면(lock TX는 벤더 HTTP 전 커밋·해제 — 기존 TX-split 아키텍처), 한 논리적 재시도에 attempt가 2 증가할 수 있다. 방향은 **조기 격리(QUARANTINED)** — DLQ를 건너뛰는 일은 없고(무한 루프 위험 없음) 금전/재고 손실도 없다. 완전 제거는 벤더 HTTP를 lock 안으로 넣어야 해 기존 아키텍처와 충돌하므로, **문서화된 한계로 수용**한다(topic §미해결 위험). 따라서 Task 3은 attempt가 정확히 4임을 강제하지 않고 "한도 도달 시 격리 종결(무한 반복 아님)"을 단정한다.
 - **격리 도달 metric 위치 (멱등)**: "격리 도달" 카운터는 `PgVendorCallService.insertDlqOutbox`(소진 후 IN_PROGRESS 잔류 window에서 좀비 재진입 시 DLQ outbox 중복 INSERT 가능 → over-count)가 아니라, **`PgDlqService`의 QUARANTINED 전이 성공 지점**(non-terminal CAS true)에서 증가시킨다. terminal CAS가 1회만 통과하므로 멱등 — alert 임계 기준으로 정확. 의미상으로도 "DLQ 도달 = 격리 완료"이므로 격리 시점 카운트가 옳다.
@@ -187,7 +187,7 @@ flowchart TD
 | 설계 결정 | Task |
 |---|---|
 | PG 재시도 정책 (한도 도달 격리) | Task 2, Task 3 |
-| PG 시도횟수 전파 기전 (Option B) | Task 1, Task 2 |
+| PG 시도횟수 전파 기전 (`pg_inbox.attempt` SoT) | Task 1, Task 2 |
 | PG 시도횟수 컬럼 (Flyway V5) | Task 1 |
 | payment EOS 커밋 실패 처리 (AfterRollbackProcessor) | Task 4 |
 | payment DLQ 발행 경로 (비트랜잭션 템플릿 재사용) | Task 4 |

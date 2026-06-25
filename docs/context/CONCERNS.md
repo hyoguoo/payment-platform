@@ -149,7 +149,7 @@ P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedu
 
 ### ~~L-13. pg self-loop attempt 한도/DLQ 런타임 미작동 (PG-SELFLOOP-ATTEMPT-GAP)~~ ✅ 해소 (DLQ-REACHABILITY, 2026-06-25)
 
-시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속(Option B). 워커 `resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B `UPDATE attempt=attempt+1`) 로 누적 → 한도(4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커 + 좀비 폴링 동시 진입 시 over-count(조기 격리) — 방향이 안전(무한 루프·금전 손실 없음)이라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
+시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B `UPDATE attempt=attempt+1`) 로 누적 → 한도(4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커 + 좀비 폴링 동시 진입 시 over-count(조기 격리) — 방향이 안전(무한 루프·금전 손실 없음)이라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

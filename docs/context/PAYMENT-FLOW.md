@@ -228,7 +228,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 |---|---|---|
 | `pg_inbox` | 1 orderId = 1 row (UNIQUE) | dedupe + 결과 SoT (NONE / IN_PROGRESS / APPROVED / FAILED / QUARANTINED) + amount 저장 (AMOUNT_MISMATCH 양방향 방어용) |
 | `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ (DLQ-REACHABILITY) |
-| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. (headers_json 의 attempt 는 relay 가 `Map.of()` 로 미발행 — Option B 에서 attempt SoT 가 `pg_inbox` 라 헤더 불요) |
+| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. (headers_json 의 attempt 는 relay 가 `Map.of()` 로 미발행 — attempt SoT 가 `pg_inbox` 라 헤더 불요) |
 
 inbox/outbox 모두 같은 `@Transactional` 안에서 atomic commit/rollback — Transactional Outbox 패턴.
 
@@ -307,7 +307,7 @@ flowchart TD
 
 retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별도 retry 토픽 없이 같은 토픽으로 재발행한다.
 
-> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (Option B, DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계.)
+> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계.)
 
 ```mermaid
 sequenceDiagram

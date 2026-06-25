@@ -65,7 +65,7 @@ flowchart TD
 
 ### 1. 결정된 접근
 
-두 트랙 모두 **일시 장애가 지속되면 격리 보관함(DLQ)에 도달시키고 메트릭으로 가시화**한다. pg-service는 시도횟수를 `pg_inbox.attempt` 컬럼 하나가 소유하게 해(Option B) 워커가 결과 반영 트랜잭션에서 증가시키고, 한도(4회) 소진 시 기존 DLQ 격리 체인(→ QUARANTINED + payment 통보)으로 보낸다. payment-service는 컨테이너 팩토리에 롤백 처리기를 명시 연결해 EOS 커밋 반복 실패 메시지를 비트랜잭션 DLQ 템플릿으로 발행한다(조용한 skip 제거). 재고 확정 이벤트 자동 복구는 범위 밖이며, 그로 인한 **over-sell 잔여 위험을 §미해결 위험으로 명시**한다.
+두 트랙 모두 **일시 장애가 지속되면 격리 보관함(DLQ)에 도달시키고 메트릭으로 가시화**한다. pg-service는 시도횟수를 `pg_inbox.attempt` 컬럼 하나가 소유하게 해 워커가 결과 반영 트랜잭션에서 증가시키고, 한도(4회) 소진 시 기존 DLQ 격리 체인(→ QUARANTINED + payment 통보)으로 보낸다. payment-service는 컨테이너 팩토리에 롤백 처리기를 명시 연결해 EOS 커밋 반복 실패 메시지를 비트랜잭션 DLQ 템플릿으로 발행한다(조용한 skip 제거). 재고 확정 이벤트 자동 복구는 범위 밖이며, 그로 인한 **over-sell 잔여 위험을 §미해결 위험으로 명시**한다.
 
 ### 2. 변경 후 동작 (to-be)
 
@@ -97,7 +97,7 @@ flowchart TD
 ### 3. 핵심 결정 목록
 
 - PG 재시도 정책: 한도(4회) 도달 시 격리(DLQ→QUARANTINED) — 무한 self-loop·영구 PROCESSING 차단
-- PG 시도횟수 기전: `pg_inbox.attempt` SoT(Option B), 워커가 TX_B에서 1씩 증가 (헤더 라운드트립 복원 불필요)
+- PG 시도횟수 기전: `pg_inbox.attempt` SoT, 워커가 TX_B에서 1씩 증가 (헤더 라운드트립 복원 불필요)
 - payment EOS 커밋 실패: 컨테이너 팩토리에 AfterRollbackProcessor 명시 연결, 기존 비트랜잭션 DLQ 템플릿 재사용
 - 가시화: 두 트랙 격리 도달 카운터 metric 추가 (alerting rule은 후속)
 
@@ -119,7 +119,7 @@ flowchart TD
 **Track P (pg-service)**
 - 변경: `PgInboxProcessor.resolveAttempt` (하드코딩 1 → `inbox.getAttempt()` 읽기), `PgVendorCallService` retry 분기 (재시도 시 inbox 시도횟수 증가 영속), `PgInbox` 도메인 (attempt 필드), `PgInboxRepository`/구현·`PgInboxPendingService` (insert 시 attempt=1 + 증가 매핑)
 - 신규: Flyway V5 (`pg_inbox.attempt` 컬럼, default 1), pg 격리 도달 카운터 metric (배치 layer는 기존 `infrastructure/metrics` 또는 `core/common/metrics` 패턴 중 plan에서 확정)
-- 무관(변경 불필요): DLQ 격리 체인(`PaymentConfirmDlqConsumer`/`PgDlqService` — 이미 완성), `RetryPolicy`(MAX=4 유지), `PgOutboxRelayService`(Option B 채택 시 헤더 전파 불필요)
+- 무관(변경 불필요): DLQ 격리 체인(`PaymentConfirmDlqConsumer`/`PgDlqService` — 이미 완성), `RetryPolicy`(MAX=4 유지), `PgOutboxRelayService`(SoT 방식이라 헤더 전파 불필요)
 
 **Track E (payment-service)**
 - 변경: `KafkaConsumerConfig.kafkaListenerContainerFactory` (`setAfterRollbackProcessor` 추가)
@@ -130,18 +130,18 @@ flowchart TD
 
 ### Track P — 시도횟수 전파 기전
 
-**Option A — 헤더 라운드트립 복원 (TODOS 원안)**
+**헤더 라운드트립 복원 방식 (TODOS 원안, 기각)**
 - 릴레이가 `pg_outbox.headers_json` → Kafka `attempt` 헤더 발행 → consumer가 헤더 읽어 inbox에 영속 → 워커가 inbox 읽음.
 - 장점: 기존 `buildAttemptHeader`/consumer 헤더 파싱 코드 재사용.
 - 단점: 전파 경로가 길다(릴레이→헤더→consumer→inbox→워커). 한 곳만 끊겨도 재발. "예약 필드" `headers_json` 활성화 부담.
 
-**Option B — pg_inbox 시도횟수 SoT, 서버측 증가 (권장)**
+**pg_inbox 시도횟수 SoT 방식 — 서버측 증가 (채택)**
 - 시도횟수를 `pg_inbox.attempt` 컬럼으로만 보유. 워커의 결과 반영(TX_B)에서 재시도 분기일 때 inbox 시도횟수를 증가·영속. self-loop 명령은 "해당 주문 재처리" 신호로만 작동하고, 시도횟수는 DB가 소유.
 - 장점: 단일 SoT, 전파 경로 짧음, 릴레이/헤더 변경 불필요(끊긴 경로 복원 자체가 불필요). 멱등 자연 성립.
 - 단점: 결과 반영 로직에 시도횟수 증가 책임 추가. consumer의 헤더 파싱이 vestigial(로그 용도로 축소).
 - **권장 이유**: 끊긴 전파 경로를 복원하는 대신 시도횟수 소유를 DB 한 곳으로 모아 재발 여지를 구조적으로 없앤다. 삭제·교체 비용이 낮다.
 
-**Option B 시도횟수 불변식 (구현 함정 예방)**
+**시도횟수 불변식 (구현 함정 예방)**
 - 시도횟수는 **벤더 호출 1회당 1 증가**하며, retry 분기 / 좀비 회수(`processInProgressZombie`) / IN_PROGRESS 재진입(`handleActiveInbox` 경유) 모든 재호출 경로에서 동일 규칙을 따른다.
 - 증가는 결과 반영 TX_B의 `pg_inbox` UPDATE에 **포함**한다(별도 round-trip 금지 — 증가·재시도 명령 INSERT가 원자적으로 한 트랜잭션).
 - "1→2→3→4 증가"의 결정적 단정은 **단위(Fake, 동시성 없음)** 테스트에서 수행하며 좀비 회수 경로 1건을 포함한다. Testcontainers 통합은 동시 진입 over-count(수용 한계)가 실재할 수 있으므로 정확한 값이 아니라 "한도 도달 종결(무한 반복 아님)"만 단정한다.
@@ -151,15 +151,15 @@ flowchart TD
 - **결정**: 즉시 QUARANTINED 전이를 추가하지 않고 **현행 DLQ 격리 체인에 위임**한다. 그 사이 좀비 회수의 벤더 재호출은 PG 멱등성(ALREADY_PROCESSED → `DuplicateApprovalHandler`, TC-9에서 추가된 Fake 멱등 모드로 검증 가능)으로 무해하다. 변경 최소화 우선.
 
 **consumer 시도횟수 헤더/파라미터 처리 방침**
-- Option B에서 consumer의 `attempt` 헤더 파싱과 `handle(command, attempt, ...)` 파라미터는 실효성이 사라진다(시도횟수 SoT가 DB로 이동). plan 단계에서 minimal-change 원칙에 맞춰 **로그 전용 유지 vs 제거**를 명시한다.
+- SoT 방식에서 consumer의 `attempt` 헤더 파싱과 `handle(command, attempt, ...)` 파라미터는 실효성이 사라진다(시도횟수 SoT가 DB로 이동). plan 단계에서 minimal-change 원칙에 맞춰 **로그 전용 유지 vs 제거**를 명시한다.
 
 ### Track E — EOS 커밋 실패 처리
 
-**Option E1 — AfterRollbackProcessor 명시 연결 (채택)**
+**AfterRollbackProcessor 명시 연결 방식 (채택)**
 - 컨테이너 팩토리에 `AfterRollbackProcessor`를 명시 설정하고 동일 `DeadLetterPublishingRecoverer`(비트랜잭션 DLQ 템플릿) + backoff를 연결 → 커밋 반복 실패 메시지를 backoff 소진 후 DLQ로 발행(조용한 skip 제거).
 - DLQ 템플릿이 EOS 트랜잭션과 분리된 비트랜잭션 ProducerFactory라 커밋 실패 중에도 발행 가능.
 
-**Option E2 — 재고 확정 이벤트 EOS 결합 해소 (기각)**
+**재고 확정 이벤트 EOS 결합 해소 방식 (기각)**
 - 재발행을 EOS 트랜잭션 밖으로 빼 커밋 실패 후에도 살아남게 함. 변경 범위·복잡도 큼 — 인터뷰 결정(DLQ 가시화까지)에 따라 범위 밖.
 
 ## 결정 사항
@@ -167,7 +167,7 @@ flowchart TD
 | 항목 | 결정 | 이유 |
 |---|---|---|
 | PG 재시도 정책 | 한도(4회) 도달 시 격리(DLQ→QUARANTINED) | 벤더 장애 지속 시 무한 self-loop + 영구 PROCESSING 차단 |
-| PG 시도횟수 전파 기전 | `pg_inbox.attempt` SoT, 워커가 TX_B에서 증가 (Option B) | 끊긴 헤더 라운드트립 복원 대신 소유를 DB 한 곳으로 모아 재발 여지 제거 |
+| PG 시도횟수 전파 기전 | `pg_inbox.attempt` SoT, 워커가 TX_B에서 증가 | 끊긴 헤더 라운드트립 복원 대신 소유를 DB 한 곳으로 모아 재발 여지 제거 |
 | PG 시도횟수 컬럼 | Flyway V5 `pg_inbox.attempt` (default 1) | 워커 재처리 간 시도횟수 영속 |
 | payment EOS 커밋 실패 처리 | 컨테이너 팩토리에 AfterRollbackProcessor 명시 연결 (DLQ recoverer + backoff) | 조용한 skip 대신 DLQ 가시화 |
 | payment DLQ 발행 경로 | 기존 비트랜잭션 `confirmedDlqKafkaTemplate` 재사용 | 실패하는 EOS 트랜잭션과 분리돼 커밋 실패 중에도 발행 가능 |

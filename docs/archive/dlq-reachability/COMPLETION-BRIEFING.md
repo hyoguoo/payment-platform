@@ -6,7 +6,7 @@
 
 비동기 confirm 사이클에는 "일시 장애가 **지속**될 때 메시지가 격리 보관함(DLQ)에 도달하지 못하는" 두 갭이 양쪽 서비스에 따로 존재했다. **pg-service**는 외부 PG 벤더의 일시 오류가 계속되면 같은 확정 명령을 약 6초 간격으로 무한히 되돌려 보냈다 — 시도횟수(`attempt`)가 런타임에서 항상 1로 고정돼(재발행 릴레이가 헤더를 빈 맵으로 발행 + `pg_inbox`에 attempt 컬럼 부재) 재시도 한도(4회) 도달 분기가 dead branch가 됐기 때문이다. 결제는 영영 처리 중 상태로 남고 격리 알림도 누락됐다. **payment-service**는 EOS 커밋(`commitTransaction()`)이 반복 실패하면 메시지가 컨테이너 디폴트 롤백 처리기로 빠져 9회 소진 후 조용히 건너뛰어졌고(skip), 같은 EOS 트랜잭션에서 발행되는 재고 확정 이벤트도 함께 abort돼 결제는 완료로 보이나 재고 확정 신호는 영구 소실됐다.
 
-두 갭을 한 토픽으로 묶어, **"장애 지속 시 격리 보관함에 도달시키고 메트릭으로 가시화한다"**를 공통 목표로 잡았다. pg-service는 시도횟수를 `pg_inbox.attempt` 컬럼 하나가 소유하게 해(Option B) 워커가 결과 반영 트랜잭션에서 증가시키고, 한도 소진 시 이미 완성돼 있던 DLQ 격리 체인(→ QUARANTINED + payment 통보)으로 진입시켰다. payment-service는 컨테이너 리스너에 `AfterRollbackProcessor`를 명시 연결해, EOS 커밋 반복 실패 메시지를 실패하는 트랜잭션과 분리된 비트랜잭션 DLQ 템플릿으로 발행했다. 두 경로 모두 격리 도달을 카운터로 가시화했다.
+두 갭을 한 토픽으로 묶어, **"장애 지속 시 격리 보관함에 도달시키고 메트릭으로 가시화한다"**를 공통 목표로 잡았다. pg-service는 시도횟수를 `pg_inbox.attempt` 컬럼 하나가 소유하게 해 워커가 결과 반영 트랜잭션에서 증가시키고, 한도 소진 시 이미 완성돼 있던 DLQ 격리 체인(→ QUARANTINED + payment 통보)으로 진입시켰다. payment-service는 컨테이너 리스너에 `AfterRollbackProcessor`를 명시 연결해, EOS 커밋 반복 실패 메시지를 실패하는 트랜잭션과 분리된 비트랜잭션 DLQ 템플릿으로 발행했다. 두 경로 모두 격리 도달을 카운터로 가시화했다.
 
 결과: pg self-loop은 시도횟수 1→2→3→4 누적 후 한도 도달로 자동 격리되고, payment EOS 커밋 지속 실패는 backoff 소진 후 `events.confirmed.dlq`로 도달한다. 다만 payment 측은 **재고 확정 이벤트 유실 자체(over-sell)**는 복구하지 않는다 — 이는 설계 단계에서 "가시화까지"로 합의한 수용 한계이며, 자동 복구(DLQ 재주입)는 후속(TQ-1)으로 분리했다.
 
@@ -14,7 +14,7 @@
 
 | 결정 | 근거 | 기각된 대안 |
 |---|---|---|
-| pg 시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT로 영속, 워커가 retry 분기에서 `incrementAttempt`(TX_B `UPDATE attempt=attempt+1`) | 끊긴 헤더 라운드트립을 복원하는 대신 소유를 DB 한 곳으로 모아 재발 여지를 구조적으로 제거. 삭제·교체 비용이 낮다 | **Option A — 헤더 라운드트립 복원**(릴레이가 `headers_json`→Kafka 헤더 전파 + consumer→inbox 전파): 전파 경로가 길어 한 곳만 끊겨도 재발 |
+| pg 시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT로 영속, 워커가 retry 분기에서 `incrementAttempt`(TX_B `UPDATE attempt=attempt+1`) | 끊긴 헤더 라운드트립을 복원하는 대신 소유를 DB 한 곳으로 모아 재발 여지를 구조적으로 제거. 삭제·교체 비용이 낮다 | **헤더 라운드트립 복원 방식**(릴레이가 `headers_json`→Kafka 헤더 전파 + consumer→inbox 전파): 전파 경로가 길어 한 곳만 끊겨도 재발 |
 | 격리 도달 metric을 `PgDlqService` QUARANTINED 전이 성공(non-terminal CAS true) 지점에서 증가 | terminal CAS가 1회만 통과 → 멱등. 소진 후 IN_PROGRESS 잔류 window에서 좀비 재진입이 DLQ outbox를 중복 INSERT해도 격리 카운트는 부풀지 않음. 의미상 "DLQ 도달 = 격리 완료" | `PgVendorCallService.insertDlqOutbox`에서 증가 — 중복 INSERT 시 over-count로 alert 임계 오염 |
 | payment EOS 커밋 실패에 `AfterRollbackProcessor` 명시 연결(공유 DLQ recoverer + 신규 `payment.kafka.after-rollback.backoff.*`) | EOS 커밋 실패는 리스너 예외 경로(`DefaultErrorHandler`)와 별개라 명시 연결해야 DLQ 도달. DLQ 템플릿이 비트랜잭션이라 실패 EOS tx와 분리돼 커밋 실패 중에도 발행 가능 | **재고 확정 이벤트 EOS 결합 해소**(유실 자체 복구): 변경 범위·복잡도 큼 → 범위 밖 |
 | 재고 확정 이벤트 유실 자동 복구는 범위 밖(가시화까지) | 발생 조건(코디네이터 지속 장애)은 희귀하고 DLQ 메시지 재주입(코디네이터 회복 후 RDB에서 재유도)으로 복구 가능 | — (over-sell 잔여 위험은 명시적 수용) |
