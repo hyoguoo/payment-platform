@@ -219,7 +219,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
     }
 
     /**
-     * 시도횟수 SoT(Option B) — relative increment.
+     * 시도횟수 SoT — relative increment.
      * store 의 PgInbox 를 attempt+1 로 재구성({@code ofWithId}, 나머지 필드 보존)해 교체한다.
      * 실 DB 의 {@code UPDATE attempt = attempt + 1} 과 동일 의미 — set-to-value 가 아니다.
      */

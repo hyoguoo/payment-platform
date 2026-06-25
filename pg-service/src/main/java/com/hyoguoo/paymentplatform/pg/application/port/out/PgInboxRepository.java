@@ -165,7 +165,7 @@ public interface PgInboxRepository {
     Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId);
 
     /**
-     * 시도횟수 SoT(Option B) — 벤더 호출 1회당 워커 결과 반영 TX_B 안에서 1 증가.
+     * 시도횟수 SoT — 벤더 호출 1회당 워커 결과 반영 TX_B 안에서 1 증가.
      *
      * <p>계약: {@code UPDATE pg_inbox SET attempt = attempt + 1, updated_at = ? WHERE order_id = ?}.
      * set-to-value 가 아닌 relative increment 라 lost-update 가 없다(동시 호출 시 over-count 는

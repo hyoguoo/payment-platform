@@ -161,7 +161,7 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
     Optional<Long> selectForUpdateSkipLockedInProgress(@Param("inboxId") Long inboxId);
 
     /**
-     * 시도횟수 SoT(Option B) — relative increment. set-to-value 가 아니므로 lost-update 없음.
+     * 시도횟수 SoT — relative increment. set-to-value 가 아니므로 lost-update 없음.
      * 호출자({@code PgInboxRepositoryImpl#incrementAttempt})가 외부 TX_B 에 REQUIRED 로 참여한다.
      *
      * <p>현재 호출처는 retry 분기(inbox IN_PROGRESS)뿐이라 안전하나, 호출처가 확장될 경우

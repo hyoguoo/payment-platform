@@ -49,7 +49,7 @@ public class PgInbox {
      */
     private final String vendorType;
     /**
-     * 시도횟수 SoT(Option B) — 벤더 호출 1회당 워커 결과 반영 TX_B 에서 1 증가.
+     * 시도횟수 SoT — 벤더 호출 1회당 워커 결과 반영 TX_B 에서 1 증가.
      * DB 복원 경로({@code ofWithId})만 실제 값을 전달받고,
      * 그 외 factory(신규 행 생성)는 default 1 로 시작한다.
      */
@@ -233,7 +233,7 @@ public class PgInbox {
      * JPA 어댑터 전용 — DB row pk 포함 재구성.
      * {@link com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity#toDomain()} 에서만 사용.
      *
-     * @param attempt DB 영속 시도횟수(Option B SoT) — toDomain() 에서 entity 컬럼값을 그대로 전달.
+     * @param attempt DB 영속 시도횟수(SoT) — toDomain() 에서 entity 컬럼값을 그대로 전달.
      */
     public static PgInbox ofWithId(
             Long id,

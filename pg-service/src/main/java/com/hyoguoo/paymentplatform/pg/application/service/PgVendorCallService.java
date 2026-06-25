@@ -195,7 +195,7 @@ public class PgVendorCallService {
                 PgTopics.COMMANDS_CONFIRM, request.orderId(),
                 buildCommandPayload(request), headersJson, availableAt, now);
         PgOutbox saved = pgOutboxRepository.save(outbox);
-        // 시도횟수 SoT(Option B) — 재시도 outbox INSERT 와 같은 TX_B 안에서 영속 증가(원자 커밋)
+        // 시도횟수 SoT — 재시도 outbox INSERT 와 같은 TX_B 안에서 영속 증가(원자 커밋)
         pgInboxRepository.incrementAttempt(request.orderId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 

@@ -205,7 +205,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     }
 
     /**
-     * 시도횟수 SoT(Option B) — relative increment UPDATE.
+     * 시도횟수 SoT — relative increment UPDATE.
      *
      * <p>{@code propagation = REQUIRED}(기본값) — 호출자({@code PgVendorCallService.handleRetry})의
      * 외부 TX_B 에 참여한다. 별도 round-trip 없이 재시도 outbox INSERT 와 원자 커밋.

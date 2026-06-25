@@ -159,7 +159,7 @@ public class PgInboxProcessor implements PgInboxProcessUseCase {
     }
 
     /**
-     * attempt 번호 결정 — {@code pg_inbox.attempt} SoT(Option B)를 그대로 반환한다.
+     * attempt 번호 결정 — {@code pg_inbox.attempt} SoT를 그대로 반환한다.
      * 재시도(self-loop)마다 {@code PgVendorCallService.handleRetry} 가 결과 반영 TX_B 에서
      * 영속 증가시키므로, 워커는 inbox 에 저장된 값을 읽기만 한다.
      */

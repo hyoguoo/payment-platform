@@ -81,7 +81,7 @@ public class PgInboxEntity {
     private String storedTraceparent;
 
     /**
-     * 시도횟수 SoT(Option B) — 워커 결과 반영 TX_B 에서 1씩 증가({@code incrementAttempt}).
+     * 시도횟수 SoT — 워커 결과 반영 TX_B 에서 1씩 증가({@code incrementAttempt}).
      * 신규 행은 Flyway V5 default 1.
      */
     @Column(name = "attempt", nullable = false)
