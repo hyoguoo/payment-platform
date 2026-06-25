@@ -98,7 +98,7 @@ import org.testcontainers.containers.MySQLContainer;
  *       주입할 수 없어, markPaymentAsDone RuntimeException 주입으로 대체 (발행 전 abort 검증)</li>
  *   <li>multi-instance transactional.id fencing — 통합 테스트 범위 밖</li>
  *   <li>EOS 커밋 실패 시 재고 확정 이벤트 자동 복구(#7) — DLQ 가시화까지만 다루고, DLQ 메시지
- *       재주입을 통한 stock-committed 복구는 범위 밖(후속 TQ-1 DLQ admin tool)</li>
+ *       재주입을 통한 stock-committed 복구는 범위 밖(후속 DLQ admin tool)</li>
  * </ul>
  */
 @SpringBootTest
@@ -591,7 +591,7 @@ class PaymentEosIntegrationTest {
         PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // dedupe row 1건 유지 — 회복 후 재주입 복구 전제 보존(D4). 1차 배달에서만 동반 커밋,
+        // dedupe row 1건 유지 — 회복 후 재주입 복구 전제 보존. 1차 배달에서만 동반 커밋,
         // 이후 재시도는 모두 종결 가드로 흡수.
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
