@@ -1,11 +1,13 @@
 package com.hyoguoo.paymentplatform.pg.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
+import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
@@ -22,6 +24,7 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxReposi
 import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -193,6 +196,15 @@ class PgConfirmListenerSplitIntegrationTest {
         assertThat(inbox)
                 .as("listener 가 handle() 내에서 pg_inbox INSERT 를 완료해야 함")
                 .isPresent();
+
+        // 테스트 격리: 비동기 ImmediateWorker 가 이 메시지 처리를 완료(APPROVED)할 때까지 대기한다.
+        // 워커 스레드가 다음 테스트로 새어 공유 @MockitoSpyBean 을 동시 호출하면 그 테스트의
+        // Mockito stubbing 과 레이스가 발생하므로(예: getStatusByOrderId stub 미적용), 여기서 워커를 비운다.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(pgInboxRepository.findByOrderId(orderId))
+                        .get()
+                        .extracting(PgInbox::getStatus)
+                        .isEqualTo(PgInboxStatus.APPROVED));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -205,7 +217,8 @@ class PgConfirmListenerSplitIntegrationTest {
         // given — 벤더 confirm 호출 시 5s 지연 주입 (워커가 처리하므로 handle 에는 미영향)
         org.mockito.Mockito.doAnswer(invocation -> {
             Thread.sleep(5_000);
-            return null;
+            PgConfirmRequest request = invocation.getArgument(0);
+            return buildSuccessResult(request.orderId());
         }).when(fakePgGatewayStrategy).confirm(any());
 
         String orderId1 = "order-a2-1-" + UUID.randomUUID();
@@ -227,6 +240,16 @@ class PgConfirmListenerSplitIntegrationTest {
         // PENDING INSERT 두 건 확인 — listener 가 INSERT 까지만 완료
         assertThat(pgInboxRepository.findByOrderId(orderId1)).isPresent();
         assertThat(pgInboxRepository.findByOrderId(orderId2)).isPresent();
+
+        // 테스트 격리: 5s 지연 confirm 을 수행하는 비동기 워커가 두 건 처리를 완료(APPROVED)할 때까지
+        // 대기한다. 워커가 끝나기 전 테스트가 반환하면 그 스레드가 다음 테스트로 새어 공유 spy 와
+        // 레이스를 내므로, 여기서 워커를 비운다.
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+            assertThat(pgInboxRepository.findByOrderId(orderId1))
+                    .get().extracting(PgInbox::getStatus).isEqualTo(PgInboxStatus.APPROVED);
+            assertThat(pgInboxRepository.findByOrderId(orderId2))
+                    .get().extracting(PgInbox::getStatus).isEqualTo(PgInboxStatus.APPROVED);
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
