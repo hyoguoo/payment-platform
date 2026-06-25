@@ -80,6 +80,13 @@ public class PgInboxEntity {
     @Column(name = "stored_traceparent", length = 64)
     private String storedTraceparent;
 
+    /**
+     * 시도횟수 SoT — 워커 결과 반영 TX_B 에서 1씩 증가({@code incrementAttempt}).
+     * 신규 행은 Flyway V5 default 1.
+     */
+    @Column(name = "attempt", nullable = false)
+    private int attempt;
+
     public static PgInboxEntity from(PgInbox inbox) {
         return PgInboxEntity.builder()
                 .orderId(inbox.getOrderId())
@@ -91,6 +98,7 @@ public class PgInboxEntity {
                 .updatedAt(LocalDateTime.ofInstant(inbox.getUpdatedAt(), ZoneOffset.UTC))
                 .paymentKey(inbox.getPaymentKey())
                 .vendorType(inbox.getVendorType())
+                .attempt(inbox.getAttempt())
                 .build();
     }
 
@@ -105,7 +113,8 @@ public class PgInboxEntity {
                 createdAt.toInstant(ZoneOffset.UTC),
                 updatedAt.toInstant(ZoneOffset.UTC),
                 paymentKey,
-                vendorType
+                vendorType,
+                attempt
         );
     }
 }

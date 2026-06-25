@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-22 (CONFIRM-APPROVED-RESEND-GAP ship 완료)
+> 최종 수정: 2026-06-25 (DLQ-REACHABILITY ship 완료 → idle)
 
 ## 활성 작업
 
@@ -13,7 +13,7 @@
 
 ## 최근 완료
 
+- **DLQ-REACHABILITY** (장애 지속 시 DLQ 도달 보장 — [PG-SELFLOOP-ATTEMPT-GAP]+TC-13-FOLLOW-7 둘 다 해소. Track P: pg self-loop 시도횟수가 런타임 1 고정(relay 헤더 미발행+attempt 컬럼 부재)이라 한도 dead branch·무한 반복하던 것을 `pg_inbox.attempt`(Flyway V5) SoT로 영속(Option B), 워커 resolveAttempt 읽기+retry 분기 incrementAttempt(TX_B) 누적→4 소진 시 기존 DLQ→QUARANTINED 자동 격리. 격리 metric은 QUARANTINED 전이 성공 지점(멱등). Track E: payment EOS 커밋 반복 실패가 컨테이너 디폴트 AfterRollbackProcessor(9회·DLQ 미진입)로 빠지던 것을 `setAfterRollbackProcessor` 명시 연결(공유 recoverer 빈 추출+신규 `payment.kafka.after-rollback.backoff.*` 기본 1000ms×5)로 confirmed.dlq 도달+metric. 비트랜잭션 DLQ 템플릿이라 실패 EOS tx와 분리. #7 갭-문서화→갭-수정-검증 전환. 수용 한계: over-sell 자동 복구는 TQ-1 후속, attempt over-count(동시 진입 조기 격리)는 안전 방향 수용. 4태스크, pg 단위 324+통합 9/payment 단위 458+통합 39 PASS+린트, discuss R2·plan R2·ship pass critical0/major1 doc-sync/minor2, 2026-06-25, 이슈/브랜치 #114) — `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`
 - **CONFIRM-APPROVED-RESEND-GAP** (비동기 confirm APPROVED 재고 확정 재발행 갭 — RDB DONE 커밋 후 EOS 발행 유실 시 재배달이 D7 종결 가드에 막혀 영구 유실되던 갭을 종결 가드 DONE+APPROVED 재발행으로 복구. 설계 SSOT가 믿던 affected==0 발행 분기는 dedupe+종결전이 원자 커밋이라 도달 불가 dead branch → 제거. product 결정적 키 멱등 흡수로 차감 1회(under-publish 위험/over-publish 무해). 신규 `PaymentConfirmTerminalResendMetrics`. 결정적 주입 시드(`commitTransaction` 1회 실패)로 #6 복구 실증; #7이 설계 S2 가설 반증 — EOS 커밋 실패는 AfterRollbackProcessor(9회·DLQ 미진입) 경로 + 재발행도 같은 EOS tx라 지속 실패 시 완전 유실 → TC-13-FOLLOW-7. 3태스크, 단위 457+통합 39 PASS, discuss R2·plan R1·ship pass critical0/major1 doc-sync/minor3, 2026-06-22, 이슈/브랜치 #112) — `docs/archive/confirm-approved-resend-gap/COMPLETION-BRIEFING.md`
-- **RETRY-METRIC-CLEANUP** (payment 재시도 metric 잔재 정리 — payment_event.retry_count 死 metric 전면 제거: max_retry_reached 게이지 경로(게이지+maxRetryCount @Value+max-retry-count 설정키+countByRetryCountGreaterThanEqual) + 데이터 경로(V5 컬럼 DROP+도메인 필드+엔티티 매핑+응답 DTO 2종+admin HTML 2종+테스트) + 재시도 로깅 死 enum 2종. payment_outbox.retry_count/RetryPolicy/stuck_in_progress 보존 — PaymentEvent.retryCount 필드 제거 시 컴파일러가 PaymentOutbox 빌더와 자동 구분. V5 plain DROP COLUMN(MySQL IF EXISTS 미지원). 3태스크, 단위 450+통합 37 PASS, discuss R2·plan R2·ship 1R pass critical0/major0/minor1스킵, 2026-06-22, 이슈/브랜치 #110) — `docs/archive/retry-metric-cleanup/COMPLETION-BRIEFING.md`
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

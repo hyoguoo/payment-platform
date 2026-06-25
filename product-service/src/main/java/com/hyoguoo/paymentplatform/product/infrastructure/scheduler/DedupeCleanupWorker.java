@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
  * RuntimeException 발생 시 1 증가해 청소 실패 빈도 관측성을 제공한다.
  *
  * <p>예외 처리: {@link EventDedupeStore#deleteExpired} 호출 중 예외 발생 시 예외를 전파하지 않고
- * ERROR 로그 후 다음 fixedDelay 주기에 재시도한다(L-1 장애 대응).
+ * ERROR 로그 후 다음 fixedDelay 주기에 재시도한다(장애 대응).
  */
 @Slf4j
 @Component
@@ -79,7 +79,7 @@ public class DedupeCleanupWorker {
      */
     @Scheduled(fixedDelayString = "${scheduler.dedupe-cleanup-worker.fixed-delay-ms:3600000}")
     public void cleanup() {
-        // D1 — Instant.now() 직접 호출 대신 Clock 주입으로 시각 소스 교체 (T13)
+        // Instant.now() 직접 호출 대신 Clock 주입으로 시각 소스 교체
         Instant now = clock.instant();
         deleteExpiredBatch(now);
     }

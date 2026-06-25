@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-06-22 ([PG-SELFLOOP-ATTEMPT-GAP] 신규 등재 — pg-service self-loop attempt 가 런타임에서 1 로 고정되어 재시도 한도(MAX=4)/DLQ 도달 불가, 테스트 2건 실증). 직전 동일자: CONFIRM-APPROVED-RESEND-GAP Task 3 — 결정적 EOS 커밋 실패 주입 실증으로 TC-13-FOLLOW-7 신규 등재: AfterRollbackProcessor 디폴트 경로 DLQ 미진입 + 종결 가드 재발행도 같은 EOS 트랜잭션이라 반복 실패 시 완전 유실). 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재).
+> 최종 갱신: 2026-06-25 (DLQ-REACHABILITY 봉인 — [PG-SELFLOOP-ATTEMPT-GAP] + TC-13-FOLLOW-7 둘 다 해소: pg self-loop attempt 를 pg_inbox.attempt SoT 로 영속해 한도 도달 DLQ→QUARANTINED 격리 + payment EOS 커밋 실패에 AfterRollbackProcessor 명시 연결로 DLQ 도달·가시화. over-sell 자동 복구는 TQ-1 잔여). 이전: 2026-06-22 (두 항목 신규 등재). 그 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -54,21 +54,13 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 `DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
 
-#### TC-13-FOLLOW-7 — EOS commitTransaction 반복 실패 시 메시지 완전 유실 (CONFIRM-APPROVED-RESEND-GAP Task 3 실증)
+#### ~~TC-13-FOLLOW-7 — EOS commitTransaction 반복 실패 시 메시지 완전 유실~~ ✅ 완료 (DLQ-REACHABILITY, 2026-06-25, 이슈/브랜치 #114)
 
-- **문제**: `kafkaListenerContainerFactory` 에 `setAfterRollbackProcessor` 가 명시 설정돼 있지 않아, 리스너의 EOS `commitTransaction()` 실패는 우리 `kafkaErrorHandler`(`DefaultErrorHandler`, FixedBackOff 200ms×5 + DLQ recoverer)가 아니라 컨테이너 디폴트 `DefaultAfterRollbackProcessor`(`SeekUtils.DEFAULT_BACK_OFF` = interval 0, maxAttempts 9, recoverer는 단순 로그)로 처리된다. 9회 소진 후 메시지는 DLQ 에 들어가지 않고 단순 스킵(오프셋 전진)된다.
-- **추가 발견**: 종결 가드 재발행(`sendStockCommittedEvents`)도 같은 EOS 프로듀서 트랜잭션 안에서 발행되므로, `commitTransaction()` 이 매번 실패하면 재발행 자체가 매번 abort 돼 read_committed 컨슈머에 노출되지 않는다. 9회 모두 실패 시 stock-committed 가 단 1건도 가시화되지 않는 완전 유실 — payment 는 DONE(재고 확정 완료로 보임)인데 재고 확정 이벤트는 영구 소실되는 심각한 불일치.
-- **실증**: `PaymentEosIntegrationTest#shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock`(#7) — `CommitFailureInjectingProducerPostProcessor` 로 `commitTransaction()` N 회 결정적 실패 주입, DLQ 미진입 + stock-committed 0건 직접 단정.
-- **처방 후보**: `kafkaListenerContainerFactory` 에 `setAfterRollbackProcessor`로 동일 `DeadLetterPublishingRecoverer` + 적절한 backoff 를 명시 연결 — 운영 코드 변경(컨테이너 팩토리 설정 추가) 필요, Task 3 범위 밖(테스트 스코프 한정 제약)이라 후속 토픽으로 분리.
+`KafkaConsumerConfig.kafkaListenerContainerFactory` 에 `factory.setAfterRollbackProcessor(...)` 명시 연결 — 공유 `DeadLetterPublishingRecoverer`(비트랜잭션 `confirmedDlqKafkaTemplate`, 실패 EOS tx 와 분리) + `FixedBackOff`(신규 키 `payment.kafka.after-rollback.backoff.{interval,max-attempts}`, 기본 1000ms×5). backoff 소진 후 `events.confirmed.dlq` 발행 + `PaymentEosCommitFailureMetrics`(`payment_eos_commit_failure_dlq_total`). `PaymentEosIntegrationTest` #7 을 "DLQ 도달 + payment DONE + dedupe row 유지 + stock-committed 0건 + metric" 으로 전환. **잔여 over-sell 한계**(재고 확정 자동 복구 미수행, 회복 후 DLQ 재주입으로만 복구)는 수용 — TQ-1 후속. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
-#### [PG-SELFLOOP-ATTEMPT-GAP] — pg-service self-loop attempt 한도/DLQ 런타임 미작동
+#### ~~[PG-SELFLOOP-ATTEMPT-GAP] — pg-service self-loop attempt 한도/DLQ 런타임 미작동~~ ✅ 완료 (DLQ-REACHABILITY, 2026-06-25, 이슈/브랜치 #114)
 
-- **문제**: 일시 오류(5xx/timeout) 재시도 시 `attempt` 가 런타임에서 항상 1 로 고정돼 `RetryPolicy.shouldRetry(attempt)` 가 영구 참. `PgVendorCallService` 의 `insertDlqOutbox`(attempt ≥ `MAX_ATTEMPTS`=4) 분기가 도달 불가 dead branch 가 되어, 벤더 장애 지속 시 `payment.commands.confirm` self-loop 가 약 6초 간격으로 무한 반복된다. DLQ → `PgDlqService` → `pg_inbox QUARANTINED` 자동 격리가 트리거되지 않는다.
-- **근원 (3중)**: (1) `PgOutboxRelayService.relay` 가 재발행 시 헤더를 `Map.of()`(빈 맵)로 보내 `pg_outbox.headers_json`(저장된 `attempt`)을 발행에 싣지 않음 — 코드 주석 "향후 확장 예약, 현 시점 미사용". (2) 따라서 self-loop 메시지에 `attempt` 헤더가 없어 `PaymentConfirmConsumer` 가 항상 `attempt=1` 로 해석. (3) `pg_inbox` 에 attempt 컬럼이 없어 워커 `PgInboxProcessor.resolveAttempt()` 도 `1` 고정.
-- **실증 (검증 완료, 테스트는 원복)**: 임시 검증 테스트 2건으로 갭을 확정한 뒤 working tree 에서 원복(미반영). ① `PgInboxProcessor` 의 `processInProgressZombie` 를 self-loop 5회 반복해도 `applyOutcome` 에 넘어가는 attempt 가 `containsOnly(1)`, ② `PgVendorCallService.applyOutcome` 에 attempt=1 을 10회 반복 투입 시 DLQ outbox 0건(전부 `commands.confirm` 재시도). 대조로 기존 `applyOutcome_retryExhausted...`(attempt=MAX 직접 주입)는 DLQ 정상 — `applyOutcome` 메서드 자체는 정상이고 워커→메서드 attempt 전달이 끊긴 것이 확인됨. **수정 토픽 착수 시 이 두 케이스를 RED 기준으로 재작성**(갭 수정 후 attempt 증가/DLQ 도달로 GREEN 전환).
-- **영향**: 벤더 진짜 장애 시 결제 영영 `PROCESSING`(클라이언트 폴링 미종료) + 운영 격리 알림 누락 + 브로커/PG 무한 부하.
-- **처방 후보**: relay 시 `pg_outbox.headers_json` → Kafka `attempt` 헤더 전달 복원 + 재consume 경로(`handleActiveInbox`/워커)가 `attempt` 를 `applyOutcome` 까지 전파(`pg_inbox` attempt 컬럼 신설 또는 메시지 헤더 경유). 또는 무한 재시도가 의도면 `insertDlqOutbox`/`MAX_ATTEMPTS`/관련 문서를 그 의도에 맞게 정리.
-- **미확정**: 무한 재시도가 의도된 정책인지 먼저 확인 필요. 상세 분석: `.archive/payment-end-to-end-flow.md` §검증 메모.
+시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적 → 한도(`MAX_ATTEMPTS`=4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. 격리 도달 카운터 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`) 는 QUARANTINED 전이 성공 지점(멱등). relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count 가능 — 방향이 조기 격리(무한 루프·금전 손실 없음)라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
 #### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
 

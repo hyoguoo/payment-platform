@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
@@ -48,6 +49,7 @@ public class PgDlqService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final Clock clock;
+    private final PgDlqReachMetrics pgDlqReachMetrics;
 
     /**
      * DLQ 메시지를 처리한다.
@@ -79,11 +81,13 @@ public class PgDlqService {
         // 3단계: pg_inbox QUARANTINED 전이 (compare-and-set)
         boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_RETRY_EXHAUSTED);
         if (!transitioned) {
-            // 다른 스레드/인스턴스가 이미 terminal 전이 — no-op
+            // 다른 스레드/인스턴스가 이미 terminal 전이 — no-op (metric 미증가, 멱등)
             LogFmt.info(log, LogDomain.PG, EventType.PG_DLQ_PREEMPTED,
                     () -> "orderId=" + orderId);
             return;
         }
+        // 격리 도달 metric — terminal CAS 1회만 통과하므로 중복 DLQ 진입에도 1회만 증가
+        pgDlqReachMetrics.record();
 
         // 4단계: pg_outbox INSERT — topic=payment.events.confirmed, QUARANTINED 페이로드
         String payload = buildQuarantinedPayload(orderId, inbox.getAmount());

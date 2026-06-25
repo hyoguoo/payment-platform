@@ -46,7 +46,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  *   <li>종결 가드 재발행 — DONE + APPROVED(재배달 신호) → sendStockCommittedEvents 재발행 +
  *       terminalResendMetrics.record(DONE), markPaymentAsDone 미호출, eventUuid 신/구 비의존</li>
  *   <li>종결 가드 noop — QUARANTINED/FAILED 등 DONE 이외 종결 + APPROVED → 재발행 없음 +
- *       guardSkipMetrics.record(status)(DR-3 보호 불변)</li>
+ *       guardSkipMetrics.record(status)(보호 불변)</li>
  *   <li>멱등 마킹 0 row (도달 불가, 방어적) — 비종결 + affected==0 → 단순 skip (발행도 미수행)</li>
  *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성(정상 경로 + 재발행 경로)</li>
  *   <li>FAILED 보상 순서 보존 — compensateAtomic 먼저, markPaymentAsFail 나중</li>
@@ -190,7 +190,7 @@ class PaymentConfirmResultUseCaseTest {
 
     @Test
     @DisplayName("shouldNotResendWhenQuarantinedLateApproved"
-            + " — QUARANTINED 상태 + APPROVED → send never + guardSkipMetrics.record(QUARANTINED) (DR-3 보호 불변)")
+            + " — QUARANTINED 상태 + APPROVED → send never + guardSkipMetrics.record(QUARANTINED) (보호 불변)")
     void shouldNotResendWhenQuarantinedLateApproved() {
         PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));

@@ -163,7 +163,7 @@ flowchart TD
 - 결과적으로 RDB commit(JPA inner) 과 Kafka commit(EOS outer) 사이에 crash 시 at-least-once 재배달이 발생한다 (best-effort 1PC 한계). 이 한계와 TM 분리 원칙은 `handle` Javadoc 에 명시되어 있다.
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 커밋이 유실되면 재배달이 D7 종결 가드에 도달하는데, `status==DONE && message==APPROVED` 이면 `sendStockCommittedEvents` 를 **재발행**한다(`terminalResendMetrics.record(DONE)` 계측). product-service 가 결정적 키 `StockEventUuidDeriver.derive(orderId, productId)`(message eventUuid 와 독립) 로 멱등 흡수 → 차감 정확히 1회. over-publish 무해 / under-publish 위험 비대칭을 이용한다.
 - **과거 SSOT(폐기)**: "0 row(중복) 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch** 였다. CONFIRM-APPROVED-RESEND-GAP 에서 제거(단순 skip)되고 crash 내성은 위 종결 가드 재발행으로 이전됐다.
-- **잔여 한계**: 종결 가드 재발행도 같은 EOS producer tx 안에서 발행되므로, EOS 커밋이 **지속** 실패하면 재발행 자체가 매번 abort 돼 stock-committed 완전 유실 + DLQ 미진입(아래 에러 핸들링 절 참조) — TC-13-FOLLOW-7 후속.
+- **잔여 한계 (over-sell)**: 종결 가드 재발행도 같은 EOS producer tx 안에서 발행되므로, EOS 커밋이 **지속** 실패하면 재발행 자체가 매번 abort 돼 stock-committed 완전 유실(payment DONE 인데 재고 확정 영구 소실 → redis 선차감과 product RDB 발산 → over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor` 가 backoff 소진 후 DLQ 로 발행해 **가시화**한다(DLQ-REACHABILITY, 아래 에러 핸들링 절). 재고 확정 자동 복구(DLQ 재주입)는 후속(TQ-1).
 - EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이다. ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
 
 **D7 진입 가드:**
@@ -187,7 +187,7 @@ flowchart TD
 - not-retryable 예외: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException` — 즉시 DLQ.
 - 그 외 RuntimeException — 1초 간격으로 5회 재시도 후 한도 초과 시 `payment.events.confirmed.dlq` 로 publish.
 - `PaymentConfirmResultUseCase` 는 예외를 그대로 throw — retry / DLQ 책임은 Spring Kafka 가 가져간다.
-- **두 실패 경로 구분 (CONFIRM-APPROVED-RESEND-GAP Task 3 실증)**: 위 `DefaultErrorHandler`(+DLQ recoverer) 는 **리스너가 던진 도메인 예외**에만 적용된다. EOS `commitTransaction()` 자체의 실패는 리스너 반환 *이후* 컨테이너 트랜잭션 커밋 단계라 별개 경로인 **컨테이너 디폴트 `DefaultAfterRollbackProcessor`**(미명시 시 `SeekUtils.DEFAULT_BACK_OFF` = interval 0, maxAttempts 9, recoverer 단순 로그)로 처리된다 — **DLQ 에 진입하지 않고 9회 소진 후 단순 스킵**(오프셋 전진). 종결 가드 재발행도 같은 EOS tx 라 commit 이 지속 실패하면 재발행이 매번 abort 돼 완전 유실. 처방(컨테이너 팩토리에 `setAfterRollbackProcessor` 로 동일 DLQ recoverer 연결)은 TC-13-FOLLOW-7 후속.
+- **두 실패 경로 구분 (DLQ-REACHABILITY)**: 위 `DefaultErrorHandler`(+DLQ recoverer) 는 **리스너가 던진 도메인 예외**에만 적용된다. EOS `commitTransaction()` 자체의 실패는 리스너 반환 *이후* 컨테이너 트랜잭션 커밋 단계라 별개 경로인 **`AfterRollbackProcessor`** 로 처리된다. 과거에는 컨테이너 디폴트(interval 0, maxAttempts 9, recoverer 단순 로그)라 DLQ 미진입·단순 스킵이었으나, 이제 `KafkaConsumerConfig` 가 `factory.setAfterRollbackProcessor(...)` 로 **동일 `DeadLetterPublishingRecoverer`**(비트랜잭션 `confirmedDlqKafkaTemplate` 공유 — 실패하는 EOS tx 와 분리) + `FixedBackOff`(신규 설정키 `payment.kafka.after-rollback.backoff.{interval,max-attempts}`, 기본 1000ms×5)를 **명시 연결**한다 → backoff 소진 후 `events.confirmed.dlq` 로 발행 + `PaymentEosCommitFailureMetrics`(`payment_eos_commit_failure_dlq_total`) 계측. 단 종결 가드 재발행도 같은 EOS tx 라 commit 이 지속 실패하면 stock-committed 자체는 여전히 완전 유실(over-sell 잔여 위험) — DLQ 메시지는 코디네이터 회복 후 재주입으로 복구(자동 복구는 후속 TQ-1).
 
 **Lua atomic dedup token (orderId 단위):**
 - `compensateAtomic(orderId, orders)` 가 `lua/stock_compensation_atomic.lua` 1회 호출 — 결제 단위 N개 상품 atomic 보상 + dedup token `compensation:done:{orderId}` SETNX P8D. 동일 orderId 재처리 시 `ALREADY_DONE` 반환 → 보상 멱등.
@@ -402,7 +402,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 
 **핵심 비대칭:**
 - payment 측: "내가 Kafka broker 에 publish 못함" 회복 — outbox CAS + 워커 폴백
-- pg 측: "vendor 가 답을 안 함" 회복 — Kafka self-loop + attempt 헤더. ⚠️ **단 현재 `attempt` 가 런타임에서 1 로 고정**(relay 가 헤더를 `Map.of()` 로 발행 + `pg_inbox` attempt 컬럼 부재)이라 한도(4)/DLQ 자동 진입은 미작동 — 일시 오류 지속 시 무한 self-loop. 상세: [PAYMENT-FLOW §4.6/§4.10](PAYMENT-FLOW.md) · [TODOS `[PG-SELFLOOP-ATTEMPT-GAP]`](TODOS.md)
+- pg 측: "vendor 가 답을 안 함" 회복 — Kafka self-loop. attempt 는 `pg_inbox.attempt`(Flyway V5) 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 소진 시 DLQ→QUARANTINED 자동 격리 (DLQ-REACHABILITY). 상세: [PAYMENT-FLOW §4.6/§4.10](PAYMENT-FLOW.md)
 - Kafka client 기본 error handler 커스터마이즈 없음 (application-level retry 가 대체)
 
 ---
@@ -423,7 +423,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | APPROVED RDB DONE 커밋 후 EOS 발행 유실 (일시적) | 재배달이 D7 종결 가드 도달 → `status==DONE && APPROVED` 면 stock-committed **재발행**(CONFIRM-APPROVED-RESEND-GAP, #112). product 결정적 키 흡수 → 차감 1회. crash 내성 SSOT. |
 | stock-committed 재배달 | product-service `JdbcEventDedupeStore` (stock_commit_dedupe UNIQUE INSERT IGNORE, 같은 TX) 가 흡수. idempotencyKey = `StockEventUuidDeriver.derive` 결정적 UUID (DR-1 보존). |
 | EOS abort — 리스너 도메인 예외 | RDB rollback + offset 미커밋 → 재배달 → DefaultErrorHandler FixedBackOff 1s×5 → 한도 시 DLQ. product-service 측 abort 메시지 invisible (read_committed). |
-| EOS abort — `commitTransaction` 지속 실패 | 컨테이너 디폴트 `AfterRollbackProcessor`(interval 0, 9회, DLQ 미진입) → 9회 후 단순 스킵. 종결 가드 재발행도 같은 EOS tx 라 완전 유실 — TC-13-FOLLOW-7 후속. |
+| EOS abort — `commitTransaction` 지속 실패 | 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `FixedBackOff` 기본 1000ms×5) → backoff 소진 후 `events.confirmed.dlq` 발행 + `payment_eos_commit_failure_dlq_total` metric. 단 종결 가드 재발행도 같은 EOS tx 라 stock-committed 자체는 완전 유실(over-sell 잔여, 회복 후 재주입 복구) — DLQ-REACHABILITY. |
 | payment event IN_PROGRESS 장기 체류 | `PaymentReconciler` (`@Scheduled fixedDelayMs=120000, 2분`) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업 |
 
 ---
@@ -512,7 +512,7 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | 4 | **multi-product DR-1 가드** | 정상 경로 PaymentOrder 2건 → stock-committed 2건 + productId 별 idempotencyKey 결정성 | D8, DR-1 |
 | 5 | **QUARANTINED D7 가드** | QUARANTINED 결제 + APPROVED 메시지 → noop + dedupe 0 row + stock-committed 0건 + DLQ 0건 (status≠DONE 재발행 미트리거) | D7, DR-3 |
 | 6 | **결정적 커밋 실패(복구)** | 1차 `commitTransaction` 실패 주입 → RDB DONE + dedupe row 1건 + stock-committed 유실 → 재배달이 종결 가드 재발행 → stock-committed 1건 복구 + 차감 정확히 1회 + `terminalResend(DONE)` +1 | #112 |
-| 7 | **결정적 커밋 지속실패(bound)** | N회 연속 실패 주입 → `AfterRollbackProcessor` 9회 소진 → DLQ 미진입 + stock-committed 완전 유실 0건(payment DONE인데 재고 확정 영구 소실) | TC-13-FOLLOW-7 |
+| 7 | **결정적 커밋 지속실패(bound)** | N회 연속 실패 주입 → 명시 `AfterRollbackProcessor` backoff(max-attempts=5) 소진 → `events.confirmed.dlq` 1건 도달 + payment DONE + dedupe row 유지(재주입 복구 전제) + stock-committed 0건(over-sell 잔여) + `payment_eos_commit_failure_dlq_total` +1 | DLQ-REACHABILITY |
 
 > **주의**: 시나리오 #2 (abort invisibility) 는 product-service `isolation.level=read_committed` 가 적용된 상태에서만 성립. deploy 순서 — product-service 먼저 배포 후 payment-service EOS 전환.
 

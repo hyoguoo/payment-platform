@@ -92,8 +92,8 @@
 - 이 구조에서 RDB commit(JPA inner) 성공 + Kafka EOS commit(outer) 실패 시 at-least-once 재배달이 발생한다 (best-effort 1PC).
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 발행이 유실되면 재배달이 D7 종결 가드에 도달하는데 `status==DONE && message==APPROVED` 면 stock-committed 를 재발행한다(`terminalResendMetrics` 계측). product-service 가 결정적 키로 멱등 흡수 → 차감 1회.
 - **폐기**: 과거 SSOT "중복 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 도달 불가 dead branch 였고, CONFIRM-APPROVED-RESEND-GAP 에서 제거됨.
-- **잔여 한계 (Task 3 실증)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 완전 유실 + 컨테이너 디폴트 `AfterRollbackProcessor` 경로라 DLQ 미진입 — TC-13-FOLLOW-7 후속.
-- **후속 과제**: TC-13-FOLLOW-1 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 완료). TC-13-FOLLOW-7 — EOS 커밋 실패 DLQ 경로.
+- **잔여 한계 (over-sell, DLQ-REACHABILITY)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 stock-committed 자체는 완전 유실(payment DONE + 재고 확정 영구 소실 → over-sell). 입력 `events.confirmed` 메시지는 `KafkaConsumerConfig` 에 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `payment.kafka.after-rollback.backoff`)가 소진 후 `events.confirmed.dlq` 로 발행해 가시화한다(+`payment_eos_commit_failure_dlq_total`). 재고 확정 자동 복구(DLQ 재주입)는 미수행 — 수용된 한계.
+- **후속 과제**: TC-13-FOLLOW-1 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 완료). over-sell 자동 복구(DLQ 재주입) + 격리 metric alerting 은 TQ-1 / TC-13-FOLLOW-3·4 후속.
 
 ### ~~L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재~~ ✅ 해소 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 
@@ -147,11 +147,9 @@ cancel / refund 경로 미구현 — pg 포트(`PgConfirmPort`/`PgStatusLookupPo
 
 P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
 
-### L-13. pg self-loop attempt 한도/DLQ 런타임 미작동 (PG-SELFLOOP-ATTEMPT-GAP)
+### ~~L-13. pg self-loop attempt 한도/DLQ 런타임 미작동 (PG-SELFLOOP-ATTEMPT-GAP)~~ ✅ 해소 (DLQ-REACHABILITY, 2026-06-25)
 
-- **현황**: 일시 오류(5xx/timeout) 재시도 시 `attempt` 가 런타임에서 항상 1 로 고정된다 — `PgOutboxRelayService` 가 재발행 시 헤더를 `Map.of()`(빈 맵)로 보내 `pg_outbox.headers_json` 의 attempt 를 싣지 않고(코드 주석 "향후 확장 예약"), `pg_inbox` 에 attempt 컬럼도 없어 워커 `PgInboxProcessor.resolveAttempt()=1`. 결과적으로 `RetryPolicy.shouldRetry(1)` 항상 true → `insertDlqOutbox`(attempt≥4)가 도달 불가 dead branch.
-- **영향**: 벤더 장애 지속 시 `payment.commands.confirm` self-loop 무한 반복, DLQ→QUARANTINED 자동 격리 미작동, 해당 결제 영영 PROCESSING.
-- **수용/처방**: 의도된 무한 재시도인지 구현 갭인지 미확정 — `TODOS.md` 의 `[PG-SELFLOOP-ATTEMPT-GAP]` 로 추적. 테스트로 도달 불가는 실증 완료(working tree 미반영, 수정 토픽서 RED 재현).
+시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B `UPDATE attempt=attempt+1`) 로 누적 → 한도(4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커 + 좀비 폴링 동시 진입 시 over-count(조기 격리) — 방향이 안전(무한 루프·금전 손실 없음)이라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

@@ -9,11 +9,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
 /**
- * 종결 상태 가드 스킵 카운터 — D13.
+ * 종결 상태 가드 스킵 카운터.
  *
  * <p>{@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase#handle}
  * 의 {@code canApplyConfirmResult()==false} noop 분기에서 호출된다.
- * 라벨: {@code status} 1개만 — orderId/userId 등 고카디널리티 라벨 금지(D7 불변식).
+ * 라벨: {@code status} 1개만 — orderId/userId 등 고카디널리티 라벨 금지(불변식).
  *
  * <p>{@link #record} 는 throw-free 계약을 유지한다.
  * Micrometer Counter.increment() 자체는 안전하나, null status 입력에 대해 명시적으로 noop 처리한다.

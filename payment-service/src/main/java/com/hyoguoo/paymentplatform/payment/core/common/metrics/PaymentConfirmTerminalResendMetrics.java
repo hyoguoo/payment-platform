@@ -8,12 +8,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
 /**
- * 종결 가드 재발행 카운터 — D7.
+ * 종결 가드 재발행 카운터.
  *
  * <p>{@link com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase#handle}
  * 의 종결 가드 분기에서, {@code status==DONE && message==APPROVED}(= 재배달 신호)로
  * 재고 확정을 재발행할 때 호출된다.
- * 라벨: {@code status} 1개만 — orderId/userId 등 고카디널리티 라벨 금지(D7 불변식).
+ * 라벨: {@code status} 1개만 — orderId/userId 등 고카디널리티 라벨 금지(불변식).
  *
  * <p>재발행 분기는 dedupe(payment_event_dedupe)를 거치지 않으므로, 브로커 커밋이
  * 반복 실패하면 동일 재배달이 매번 재발행을 트리거할 수 있다. 이 카운터로 빈도를

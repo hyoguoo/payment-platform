@@ -100,7 +100,7 @@ flowchart LR
 | 토픽 | 발행 | 소비 | 책임 |
 |---|---|---|---|
 | `payment.commands.confirm` | payment-service (최초) + **pg-service self-retry** (attempt<4 시 자기 자신에게 재발행, `pg_outbox.available_at` 기반 지연) | pg-service | confirm 명령 전달 + 재시도 |
-| `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | (수동) | retry 한도 초과 격리 |
+| `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | pg-service (`PaymentConfirmDlqConsumer` → `PgDlqService` QUARANTINED 자동 격리) | retry 한도 초과 격리 |
 | `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
 | `payment.events.confirmed.dlq` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 초과 시) | (수동) | 결과 처리 영구 실패 |
 | `payment.events.stock-committed` | payment-service (EOS producer tx 안에서 직접 발행 — `stockCommittedKafkaTemplate`) | product-service | 재고 확정 (APPROVED 결제만) |
@@ -189,7 +189,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
 | RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |
 | 재고 복구 가드 (폐기) | `executePaymentFailureCompensationWithOutbox` — ADR-04 死 코드, STOCK-COMPENSATION-OTHER-PATHS 에서 제거. 확정 진입 실패는 보상 폐기(차감 유지 + 미복구 가시화), 회신 실패/격리는 `compensateAtomic` 전담 |
-| pg-service IN_PROGRESS retry 활성화 | 재수신 시 `PgConfirmService.handleActiveInbox`(채널 재적재) → 워커 `PgInboxProcessor.processInProgressZombie` 가 vendor 재호출 + 멱등성 layer 3종(vendor/pg/payment) 의존. ⚠️ self-loop `attempt` 는 런타임 1 고정으로 한도/DLQ 미작동 ([PG-SELFLOOP-ATTEMPT-GAP](TODOS.md)) |
+| pg-service IN_PROGRESS retry 활성화 | 재수신 시 `PgConfirmService.handleActiveInbox`(채널 재적재) → 워커 `PgInboxProcessor.processInProgressZombie` 가 vendor 재호출 + 멱등성 layer 3종(vendor/pg/payment) 의존. self-loop `attempt` 는 `pg_inbox.attempt` 에 영속(SoT)돼 retry 분기마다 `incrementAttempt`(TX_B) → 한도(4) 소진 시 DLQ→QUARANTINED 자동 격리 (DLQ-REACHABILITY). 동시 진입 시 over-count(조기 격리)는 수용 한계 |
 | pg-service listener TX 분리 + inbox 작업 큐 | `PgInboxPendingService` (listener TX 5s, INSERT IGNORE + publishEvent) → `InboxReadyEventHandler` (AFTER_COMMIT) → `PgInboxChannel` (cap=1024) → `PgInboxImmediateWorker` (VT 5) — listener 스레드에서 벤더 호출 0 보장 |
 | pg-service inbox 좀비 회수 | `PgInboxPollingWorker` (`@Scheduled` fixedDelay 5s, 좀비 임계 60s) — PENDING 좀비 (received_at) + IN_PROGRESS 좀비 (updated_at) 두 경로. native query `FOR UPDATE SKIP LOCKED` 로 멀티 워커 race 차단 |
 | pg-service inbox 보정 경로 PENDING 우회 | `DuplicateApprovalHandler.handleDbAbsent*` 가 `transitDirectToTerminal` / `transitDirectToInProgress` 사용 — PENDING 거치지 않음 (보정 경로는 결과를 박는 행위지 처리 시작이 아님) |

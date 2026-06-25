@@ -33,7 +33,7 @@ public enum PaymentEventStatus {
      * DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED(terminal)도 이미 처리 완료이므로 false.
      *
      * <p>특히 QUARANTINED 를 true 로 바꾸면 늦게 도착한 APPROVED 가 markPaymentAsDone 의
-     * not-retryable 예외를 일으켜 DLQ 로 조용히 빠지는 D7 침묵 DLQ 가 재현된다.
+     * not-retryable 예외를 일으켜 DLQ 로 조용히 빠지는 침묵 DLQ 가 재현된다.
      *
      * @return true = 진입 가능 (READY/IN_PROGRESS),
      *         false = 진입 불가 (DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED)

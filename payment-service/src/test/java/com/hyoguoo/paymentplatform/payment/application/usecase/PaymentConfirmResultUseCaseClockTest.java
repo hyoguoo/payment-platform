@@ -32,7 +32,7 @@ import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
- * T3 — PaymentConfirmResultUseCase 에서 Clock 주입 기반 시각 소스 전환 검증.
+ * PaymentConfirmResultUseCase 에서 Clock 주입 기반 시각 소스 전환 검증.
  *
  * <p>고정 Clock.fixed()로 expiresAt(dedupe TTL) 과 occurredAt(stock-committed) 이
  * fixedInstant 기반으로 결정되는지 verify.

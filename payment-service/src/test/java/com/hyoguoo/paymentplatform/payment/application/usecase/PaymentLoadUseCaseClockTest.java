@@ -17,7 +17,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 /**
- * T6 — PaymentLoadUseCase 만료 임계 외부화 검증.
+ * PaymentLoadUseCase 만료 임계 외부화 검증.
  *
  * <p>@Value 주입 기본값(30분) 및 커스텀 값으로 cutoff 계산이 정확한지 verify.
  */

@@ -81,14 +81,15 @@ import org.testcontainers.containers.MySQLContainer;
  *   <li>#6 결정적 EOS 커밋 실패 주입 — 복구(Task 3 시나리오 A): 1차 EOS 커밋 실패(주입) → stock-committed
  *       유실 + payment DONE + dedupe row 1건(JPA inner 동반 커밋 증거) → 재배달이 종결 가드로 재발행 →
  *       stock-committed 1건 복구(차감 정확히 1회)</li>
- *   <li>#7 결정적 EOS 커밋 실패 주입 — 반복실패 bound(Task 3 시나리오 B): N 회 연속 실패 주입 →
- *       <b>실증 결과(설계 전제 2 중 반증)</b>: (1) {@code kafkaErrorHandler}(FixedBackOff 200ms×5 +
- *       DLQ recoverer)는 리스너의 도메인 {@code RuntimeException}에만 적용되고 {@code commitTransaction()}
- *       실패는 컨테이너의 디폴트 {@code DefaultAfterRollbackProcessor}(interval 0, maxAttempts 9, 단순
- *       로그 recoverer)로 처리돼 DLQ 를 거치지 않는다 → 9 회 소진 후 DLQ 미진입(단순 스킵).
- *       (2) 종결 가드 재발행도 같은 EOS 트랜잭션 안에서 발행되므로 commitTransaction() 이 매번 실패하면
- *       발행 자체가 매번 abort 돼, "중복 차감 0건"이 아니라 stock-committed 가 단 1건도 가시화되지 않는
- *       완전 유실이 된다(payment 는 DONE인데 재고 확정 이벤트는 영구 소실)</li>
+ *   <li>#7 결정적 EOS 커밋 실패 주입 — 갭 수정 검증(DLQ-REACHABILITY Task 4): 채택
+ *       max-attempts(5) 소진 + 1회 결정적 실패 주입 → {@code KafkaConsumerConfig} 가 명시 연결한
+ *       {@code DefaultAfterRollbackProcessor}(독립 backoff {@code payment.kafka.after-rollback.backoff.*}
+ *       + {@code kafkaErrorHandler} 와 공유하는 {@code DeadLetterPublishingRecoverer})가 발화해
+ *       {@code events.confirmed.dlq} 1건 도달(기존 "DLQ 미진입" 단정의 반전) + payment DONE 유지
+ *       + dedupe row 1건 유지 + {@code PaymentEosCommitFailureMetrics} 증가. 단, 종결 가드 재발행도
+ *       같은 EOS 트랜잭션 안에서 수행되므로 commitTransaction() 이 매번 실패하면 발행 자체가 매번
+ *       abort 돼 stock-committed 는 여전히 0건(완전 유실, over-sell 잔여 위험은 설계 §미해결
+ *       위험으로 그대로 유지 — 자동 복구는 범위 밖)</li>
  * </ol>
  *
  * <p>범위 밖 알려진 한계:
@@ -96,10 +97,8 @@ import org.testcontainers.containers.MySQLContainer;
  *   <li>abort invisibility 의 "stock-committed abort" 시뮬레이션 — stock-committed send 이후 abort 를
  *       주입할 수 없어, markPaymentAsDone RuntimeException 주입으로 대체 (발행 전 abort 검증)</li>
  *   <li>multi-instance transactional.id fencing — 통합 테스트 범위 밖</li>
- *   <li>EOS 커밋 실패의 DLQ 미진입(#7) — 운영상 메시지가 9 회 소진 후 조용히 유실될 수 있다는 의미.
- *       해결에는 {@code kafkaListenerContainerFactory}에 {@code setAfterRollbackProcessor}로
- *       동일 DLQ recoverer + backoff 를 명시 연결하는 운영 코드 변경이 필요 — Task 3 범위 밖,
- *       후속 토픽으로 분리(docs/context/TODOS.md)</li>
+ *   <li>EOS 커밋 실패 시 재고 확정 이벤트 자동 복구(#7) — DLQ 가시화까지만 다루고, DLQ 메시지
+ *       재주입을 통한 stock-committed 복구는 범위 밖(후속 DLQ admin tool)</li>
  * </ul>
  */
 @SpringBootTest
@@ -174,6 +173,9 @@ class PaymentEosIntegrationTest {
         // EOS backoff 단축 — 테스트 DLQ 검증 시간 단축 (backoff 1000ms × 5회 = 5s)
         registry.add("payment.kafka.error-handler.backoff.interval", () -> "200");
         registry.add("payment.kafka.error-handler.backoff.max-attempts", () -> "5");
+        // AfterRollbackProcessor backoff 단축 — interval 만 단축(max-attempts 는 채택값 5 유지,
+        // #7 시나리오가 채택 한도 소진을 실제 값 그대로 단정해야 하므로).
+        registry.add("payment.kafka.after-rollback.backoff.interval", () -> "200");
     }
 
     @Autowired
@@ -441,7 +443,7 @@ class PaymentEosIntegrationTest {
         // dedupe 1 row
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
         // 재배달 흡수 시나리오는 #3(종결 가드 재발행)이 커버한다 — 본 시나리오는
-        // 정상 경로 멀티상품 distinct idempotencyKey 결정성만 검증한다(DR-1 가드 보존).
+        // 정상 경로 멀티상품 distinct idempotencyKey 결정성만 검증한다(회귀 가드 보존).
     }
 
     // ── 시나리오 #5 ─────────────────────────────────────────────────────────────
@@ -512,7 +514,7 @@ class PaymentEosIntegrationTest {
                 });
 
         // dedupe row 1건 — markIfAbsent 도 같은 JPA inner 트랜잭션으로 동반 커밋된 증거
-        // (추후 D7 가드 앞으로 dedupe 가 이동하는 변경의 회귀 가드).
+        // (추후 종결 가드 앞으로 dedupe 가 이동하는 변경의 회귀 가드).
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
         // 재배달이 종결 가드로 흡수되어 재발행 → stock-committed 1건이 결국 복구 가시화된다.
@@ -536,71 +538,78 @@ class PaymentEosIntegrationTest {
         // 거짓 중복으로 보이므로 사용하지 않는다).
     }
 
-    // ── 시나리오 #7 (Task 3 — 결정적 EOS 커밋 실패 주입: 반복 실패 bound) ─────────────────
+    // ── 시나리오 #7 (Task 4 — DLQ-REACHABILITY: AfterRollbackProcessor 명시 연결 검증) ──────
 
     /**
-     * 실증 결과(설계 전제 2 중 반증) — plan 의 "FixedBackOff(200ms×5) 소진 → DLQ" 가정은 EOS 커밋 실패
-     * 경로에는 적용되지 않는다. {@code kafkaErrorHandler}({@code DefaultErrorHandler}, interval 200ms
-     * ×5)는 리스너가 던진 도메인 {@code RuntimeException}에만 적용되는 반면, {@code commitTransaction()}
-     * 실패는 {@code TransactionTemplate.execute()} 내부(컨테이너의 {@code invokeInTransaction})에서
-     * 발생해 별도 경로인 {@code DefaultAfterRollbackProcessor}(컨테이너가 명시 설정하지 않으면
-     * {@code SeekUtils.DEFAULT_BACK_OFF} = interval 0, maxAttempts 9, recoverer 는 단순 로그)로
-     * 처리된다 — {@code kafkaErrorHandler}의 DLQ recoverer 를 거치지 않는다.
-     * 따라서 9 회 소진 후 메시지는 DLQ 가 아니라 단순 스킵(offset 전진, 로그만)된다.
+     * 갭-수정-검증(DLQ-REACHABILITY Task 4) — 기존 갭-문서화 단정을 반전한다.
      *
-     * <p>두 번째 반증 — "발행 횟수가 N 이어도 차감은 1회"(중복 차감 0건) 가정도 틀렸다.
-     * 종결 가드 재발행은 sendStockCommittedEvents 까지도 같은 EOS 프로듀서 트랜잭션 안에서 수행되므로,
-     * 그 트랜잭션의 commitTransaction() 이 매번 실패하면 발행 자체가 매번 abort 된다
-     * (read_committed 컨슈머에는 노출되지 않음). N 회 전부 실패를 주입하면 9 회의 재배달·재발행 시도
-     * 전부가 abort 돼 stock-committed 가 단 1건도 가시화되지 않는다 — "중복 차감 0건"이 아니라
-     * "발행 자체가 0건(완전 유실)"이다. payment 는 DONE(재고 확정 완료로 보임)인데 재고 확정 이벤트는
-     * 영구 유실되는 심각한 불일치 — 운영 코드 보강(컨테이너에 DLQ recoverer 를 명시 연결하는
-     * AfterRollbackProcessor 설정)이 필요한 후속 과제로 분리한다(Task 3 범위 밖).
+     * <p>{@code KafkaConsumerConfig} 가 {@code factory.setAfterRollbackProcessor(...)} 로
+     * {@code DefaultAfterRollbackProcessor} 를 명시 연결하면서, EOS {@code commitTransaction()}
+     * 반복 실패도 {@code kafkaErrorHandler} 와 동일한 {@link org.springframework.kafka.listener.DeadLetterPublishingRecoverer}
+     * 빈을 재사용해 DLQ 로 발행하게 됐다(독립 backoff
+     * {@code payment.kafka.after-rollback.backoff.*}, 채택 기본값 1000ms×5, 테스트는 interval 만 200ms 로 단축).
+     *
+     * <p>1차 배달(markPaymentAsDone)은 JPA inner 커밋이 EOS 커밋 실패와 무관하게 RDB 에 반영되고,
+     * 이후 재배달은 모두 종결 가드(DONE+APPROVED 재배달 신호)로 흡수돼 재고 확정을 재발행한다.
+     * 재발행도 같은 EOS 프로듀서 트랜잭션 안에서 수행되므로 commitTransaction() 이 매번 실패하면
+     * 발행 자체가 매번 abort 된다(read_committed 컨슈머에 노출되지 않음) — 따라서 stock-committed
+     * 는 여전히 0건(완전 유실, 잔여 over-sell 위험은 설계 §미해결 위험 그대로 유지)이지만,
+     * 메시지 자체는 더 이상 조용히 스킵되지 않고 {@code events.confirmed.dlq} 로 가시화된다.
+     *
+     * <p>off-by-one 실측: {@code FixedBackOff(interval, maxAttempts=5)} 는 1차 시도 포함
+     * 총 6회 시도(1차 + 5회 재시도)까지 허용하고 6번째 실패에서 recoverer 를 발동한다
+     * (#2 시나리오의 {@code times(6)} 단정과 동일 규칙). 1차 배달은 markPaymentAsDone 경로이고
+     * 나머지 5회 재배달은 종결 가드 재발행 경로이므로, terminalResendMetrics(DONE) 증가량은
+     * maxAttempts 와 동일한 5다.
      */
     @Test
-    @DisplayName("#7 결정적 EOS 커밋 실패 주입(반복실패 bound): N 회 연속 실패 → 디폴트 AfterRollbackProcessor"
-            + " backoff(maxAttempts=9) 소진 → confirmed.dlq 미진입(단순 스킵) + stock-committed 0건(완전 유실)")
-    void shouldExhaustAfterRollbackBackoffWithoutDlqAndNoDuplicateStock() throws Exception {
-        // given — READY(IN_PROGRESS) 결제 + 충분히 많은 연속 실패를 주입
-        // (디폴트 AfterRollbackProcessor backoff maxAttempts=9 소진 보장 — 1차 배달 + 9 회 재시도 = 10)
+    @DisplayName("#7 결정적 EOS 커밋 실패 주입(갭 수정 검증): 채택 max-attempts(5) 소진 → AfterRollbackProcessor"
+            + " 명시 연결로 confirmed.dlq 1건 도달 + payment DONE 유지 + dedupe row 1건 유지"
+            + " + stock-committed 0건(잔여 위험) + PaymentEosCommitFailureMetrics 증가")
+    void shouldReachDlqAfterExhaustingAfterRollbackBackoff() throws Exception {
+        // given — READY(IN_PROGRESS) 결제 + 채택 max-attempts(5) 소진 + 1회 결정적 실패 주입
+        // (1차 배달 + 5회 재시도 = 6회 commitTransaction() 호출 모두 실패시켜 recoverer 발동까지 보장).
         String orderId = "order-eos7-" + UUID.randomUUID();
         String eventUuid = UUID.randomUUID().toString();
         savePaymentInProgress(orderId, PRODUCT_ID, UNIT_AMOUNT);
-        seedCommitTransactionFailure(10);
+        seedCommitTransactionFailure(6);
 
         ConfirmedEventMessage message = approvedMessage(orderId, UNIT_AMOUNT.longValue(), eventUuid);
         String payload = objectMapper.writeValueAsString(message);
 
         double terminalResendBefore = getCounterValue("payment_confirm_terminal_resend_total", "DONE");
+        double eosCommitFailureBefore = getCounterValue("payment_eos_commit_failure_dlq_total");
 
         // when
         confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
 
-        // then — 1차 배달(markPaymentAsDone) + 9 회 재배달(종결 가드 재발행)이 모두 끝나
-        // terminalResendMetrics(DONE) 카운터가 9 만큼 증가할 때까지 대기(backoff exhaustion 신호로 사용).
-        await().atMost(Duration.ofSeconds(30))
-                .untilAsserted(() ->
-                        assertThat(getCounterValue("payment_confirm_terminal_resend_total", "DONE"))
-                                .isEqualTo(terminalResendBefore + 9.0));
+        // then — confirmed.dlq 1건 도달(기존 "DLQ 미진입" 단정의 반전).
+        List<String> dlqPayloads = pollConfirmedDlq(orderId, Duration.ofSeconds(30));
+        assertThat(dlqPayloads).hasSize(1);
 
         // payment 는 DONE 으로 전이됐다(1차 배달의 JPA inner 커밋은 EOS 커밋 실패와 무관하게 반영).
         PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.DONE);
 
-        // dedupe row 1건 — 1차 배달에서만 동반 커밋, 이후 재시도는 모두 종결 가드로 흡수.
+        // dedupe row 1건 유지 — 회복 후 재주입 복구 전제 보존. 1차 배달에서만 동반 커밋,
+        // 이후 재시도는 모두 종결 가드로 흡수.
         assertThat(countDedupeRow(eventUuid)).isEqualTo(1);
 
         // markPaymentAsDone 은 1차 배달에서만 호출 — 이후 재시도(종결 가드 재발행)에서는 재호출되지 않는다.
         verify(paymentCommandUseCase, times(1))
                 .markPaymentAsDone(any(PaymentEvent.class), any(Instant.class));
 
-        // DLQ 미진입 — 디폴트 AfterRollbackProcessor 는 kafkaErrorHandler 의 DLQ recoverer 를 거치지 않는다.
-        List<String> dlqPayloads = pollConfirmedDlq(orderId, Duration.ofSeconds(2));
-        assertThat(dlqPayloads).isEmpty();
+        // terminalResendMetrics(DONE) 증가량 = 채택 max-attempts(5) — off-by-one 실측 확정치.
+        assertThat(getCounterValue("payment_confirm_terminal_resend_total", "DONE"))
+                .isEqualTo(terminalResendBefore + 5.0);
 
-        // stock-committed 0건(완전 유실) — 종결 가드의 9 회 재발행 시도 전부가 같은 EOS 프로듀서
+        // PaymentEosCommitFailureMetrics 증가 — AfterRollbackProcessor recoverer 발화(=DLQ 도달) 1회.
+        assertThat(getCounterValue("payment_eos_commit_failure_dlq_total"))
+                .isEqualTo(eosCommitFailureBefore + 1.0);
+
+        // stock-committed 0건(잔여 위험 그대로) — 종결 가드의 재발행 시도 전부가 같은 EOS 프로듀서
         // 트랜잭션 안에서 매번 commitTransaction() 실패로 abort 돼, read_committed 컨슈머에는
-        // 단 1건도 가시화되지 않는다("중복 차감 0건"이 아니라 "발행 자체가 0건").
+        // 단 1건도 가시화되지 않는다(over-sell 잔여 위험, 설계 §미해결 위험 — 자동 복구는 범위 밖).
         List<StockCommittedEvent> stockEvents = pollStockCommitted(orderId, 0, Duration.ofSeconds(3));
         assertThat(stockEvents).isEmpty();
     }
@@ -696,6 +705,15 @@ class PaymentEosIntegrationTest {
         Counter counter = meterRegistry.find(metricName)
                 .tag("status", statusLabel)
                 .counter();
+        return counter == null ? 0.0 : counter.count();
+    }
+
+    /**
+     * 라벨 없는 단일 카운터({@code PaymentEosCommitFailureMetrics} 등)의 현재 값을 조회한다.
+     * 카운터가 아직 등록되지 않았으면 0을 반환한다.
+     */
+    private double getCounterValue(String metricName) {
+        Counter counter = meterRegistry.find(metricName).counter();
         return counter == null ? 0.0 : counter.count();
     }
 

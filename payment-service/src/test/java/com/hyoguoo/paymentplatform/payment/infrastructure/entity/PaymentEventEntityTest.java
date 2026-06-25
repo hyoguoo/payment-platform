@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class PaymentEventEntityTest {
 
     /**
-     * P15 — BaseEntity getter 가 Instant 로 전환됐으므로 toDomain 매핑 경계에서
+     * BaseEntity getter 가 Instant 로 전환됐으므로 toDomain 매핑 경계에서
      * {@code .toInstant(ZoneOffset.UTC)} 수동 변환 없이 createdAt 이 동일 Instant 로 직접 전달됨을 단정한다.
      */
     @Test

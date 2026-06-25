@@ -9,21 +9,21 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * T14 — PaymentConfirmResultUseCase.parseApprovedAt offset 정규화 검증 (AC9).
+ * PaymentConfirmResultUseCase.parseApprovedAt offset 정규화 검증.
  *
- * <p>D8 — OffsetDateTime.parse().toInstant() 정규화로 오프셋 보존.
+ * <p>OffsetDateTime.parse().toInstant() 정규화로 오프셋 보존.
  * KST(+09:00) 입력이 UTC 절대시점으로 정확히 변환되어 9시간 오차가 없음을 단정한다.
  *
- * <p>AC9 — parseApprovedAt KST offset → UTC Instant 변환 정확도 검증:
+ * <p>parseApprovedAt KST offset → UTC Instant 변환 정확도 검증:
  * .toLocalDateTime() 경로 사용 시 9시간 오차 발생 → .toInstant() 정규화로 해소.
  *
  * <p>minor — parseApprovedAt 을 package-private 으로 노출해 production 메서드를 직접 단정한다.
  */
-@DisplayName("PaymentConfirmResultUseCase parseApprovedAt offset 정규화 테스트 (AC9)")
+@DisplayName("PaymentConfirmResultUseCase parseApprovedAt offset 정규화 테스트")
 class PaymentConfirmResultUseCaseApprovedAtTest {
 
     @Test
-    @DisplayName("AC9 — KST +09:00 입력은 production parseApprovedAt 경유 시 UTC Z 기준 절대시점으로 변환 (9시간 오차 없음)")
+    @DisplayName("KST +09:00 입력은 production parseApprovedAt 경유 시 UTC Z 기준 절대시점으로 변환 (9시간 오차 없음)")
     void parseApprovedAt_kstOffset_shouldBeUTCInstant() {
         // given — KST 오전 9시 = UTC 자정
         String kstApprovedAt = "2026-01-01T09:00:00+09:00";
@@ -44,7 +44,7 @@ class PaymentConfirmResultUseCaseApprovedAtTest {
     }
 
     @Test
-    @DisplayName("AC9 — UTC +00:00 입력은 production parseApprovedAt 경유 시 동일 절대시점 변환 (UTC 입력 무오차)")
+    @DisplayName("UTC +00:00 입력은 production parseApprovedAt 경유 시 동일 절대시점 변환 (UTC 입력 무오차)")
     void parseApprovedAt_utcOffset_shouldBeIdentical() {
         // given — UTC 오프셋 직접 입력
         String utcApprovedAt = "2026-01-01T00:00:00+00:00";
@@ -57,7 +57,7 @@ class PaymentConfirmResultUseCaseApprovedAtTest {
     }
 
     @Test
-    @DisplayName("AC9 — null 입력은 production parseApprovedAt 경유 시 IllegalArgumentException 발생")
+    @DisplayName("null 입력은 production parseApprovedAt 경유 시 IllegalArgumentException 발생")
     void parseApprovedAt_null_shouldThrow() {
         // when/then — production parseApprovedAt 직접 호출 시 null 체크 예외
         assertThatThrownBy(() -> PaymentConfirmResultUseCase.parseApprovedAt(null))
@@ -66,7 +66,7 @@ class PaymentConfirmResultUseCaseApprovedAtTest {
     }
 
     @Test
-    @DisplayName("AC9 정적 검증 — .toLocalDateTime() 경로가 KST 입력에서 9시간 오차를 생성함을 명시")
+    @DisplayName("정적 검증 — .toLocalDateTime() 경로가 KST 입력에서 9시간 오차를 생성함을 명시")
     void parseApprovedAt_toLocalDateTimeRegressionGuard() {
         // production parseApprovedAt 이 .toInstant() 를 사용하므로 올바른 결과가 나온다.
         // 이 테스트는 .toLocalDateTime() 경로의 오차 크기를 역으로 증명한다.

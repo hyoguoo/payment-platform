@@ -732,7 +732,7 @@ class PaymentEventTest {
                 });
     }
 
-    // ---- T2: Instant 기반 도메인 시각 전환 테스트 (RED 단계) ----
+    // ---- Instant 기반 도메인 시각 전환 테스트 ----
 
     @Test
     @DisplayName("expire(Instant) — READY 상태에서 EXPIRED 로 전이하고 lastStatusChangedAt 이 고정 Instant 와 일치한다.")
@@ -831,10 +831,10 @@ class PaymentEventTest {
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
     }
 
-    // ---- T10: 만료 정책 명문화 — 도메인 가드 전수 테스트 (D6) ----
+    // ---- 만료 정책 명문화 — 도메인 가드 전수 테스트 ----
 
     @Test
-    @DisplayName("T10 expire(Instant) — READY 상태에서 EXPIRED 로 전이하고 lastStatusChangedAt 이 고정 시각과 일치한다.")
+    @DisplayName("expire(Instant) — READY 상태에서 EXPIRED 로 전이하고 lastStatusChangedAt 이 고정 시각과 일치한다.")
     void expire_whenReady_withFixedClock_shouldTransitionToExpired() {
         // given
         Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
@@ -848,13 +848,13 @@ class PaymentEventTest {
         // when
         paymentEvent.expire(now);
 
-        // then — NG2 회귀 가드: READY→EXPIRED 전이 + lastStatusChangedAt 결정성
+        // then — 회귀 가드: READY→EXPIRED 전이 + lastStatusChangedAt 결정성
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.EXPIRED);
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(fixedInstant);
     }
 
     @Test
-    @DisplayName("T10 expire(Instant) — PARTIAL_CANCELED 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다. (NG2 회귀 가드)")
+    @DisplayName("expire(Instant) — PARTIAL_CANCELED 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다. (회귀 가드)")
     void expire_whenPartialCanceled_shouldThrow() {
         // given — PARTIAL_CANCELED 는 EnumSource 커버 범위 밖이므로 별도 단정
         Instant now = Instant.parse("2026-06-01T00:00:00Z");
@@ -875,7 +875,7 @@ class PaymentEventTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class, names = {"IN_PROGRESS", "DONE", "FAILED", "EXPIRED", "QUARANTINED"})
-    @DisplayName("T10 expire(Instant) — READY 가 아닌 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다. (NG2 회귀 가드 — exhaustive)")
+    @DisplayName("expire(Instant) — READY 가 아닌 상태에서 INVALID_STATUS_TO_EXPIRE 예외를 던진다. (회귀 가드 — exhaustive)")
     void expire_whenNotReadyExhaustive_shouldThrow(PaymentEventStatus status) {
         // given
         Instant now = Instant.parse("2026-06-01T00:00:00Z");

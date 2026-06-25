@@ -32,6 +32,10 @@ import org.springframework.util.backoff.FixedBackOff;
  * <p>wiring: Spring Boot Kafka 오토컨피그는 {@link org.springframework.kafka.listener.CommonErrorHandler}
  * 빈을 감지해 {@code kafkaListenerContainerFactory} 에 자동 주입한다.
  * 별도 {@code setCommonErrorHandler()} 호출 없이 이 bean 선언만으로 모든 @KafkaListener 에 적용된다.
+ *
+ * <p>{@link #deadLetterPublishingRecoverer} 는 {@code kafkaErrorHandler} (리스너 도메인
+ * RuntimeException 경로) 와 {@code KafkaConsumerConfig} 의 {@code afterRollbackProcessor}
+ * (EOS commitTransaction() 반복 실패 경로) 양쪽에서 재사용하는 단일 DLQ 발행 recoverer 다.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -44,21 +48,29 @@ public class KafkaErrorHandlerConfig {
     private long maxAttempts;
 
     /**
-     * Kafka 컨슈머 에러 핸들러. confirmedDlqKafkaTemplate 빈을 재사용한다.
+     * 리스너 RuntimeException 경로와 AfterRollbackProcessor(커밋 실패) 경로가 공유하는
+     * DLQ 발행 recoverer. confirmedDlqKafkaTemplate(비트랜잭션) 기반이라 실패하는 EOS
+     * 트랜잭션과 분리돼 있다.
      */
     @Bean
-    public DefaultErrorHandler kafkaErrorHandler(
+    public DeadLetterPublishingRecoverer deadLetterPublishingRecoverer(
             KafkaTemplate<String, String> confirmedDlqKafkaTemplate) {
-        DeadLetterPublishingRecoverer recoverer =
-                new DeadLetterPublishingRecoverer(
-                        confirmedDlqKafkaTemplate,
-                        (record, ex) -> new TopicPartition(
-                                PaymentTopics.EVENTS_CONFIRMED_DLQ,
-                                record.partition()
-                        )
-                );
+        return new DeadLetterPublishingRecoverer(
+                confirmedDlqKafkaTemplate,
+                (record, ex) -> new TopicPartition(
+                        PaymentTopics.EVENTS_CONFIRMED_DLQ,
+                        record.partition()
+                )
+        );
+    }
+
+    /**
+     * Kafka 컨슈머 에러 핸들러. {@link #deadLetterPublishingRecoverer} 빈을 재사용한다.
+     */
+    @Bean
+    public DefaultErrorHandler kafkaErrorHandler(DeadLetterPublishingRecoverer deadLetterPublishingRecoverer) {
         FixedBackOff backOff = new FixedBackOff(backoffInterval, maxAttempts);
-        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
+        DefaultErrorHandler handler = new DefaultErrorHandler(deadLetterPublishingRecoverer, backOff);
         handler.addNotRetryableExceptions(
                 MessageConversionException.class,
                 IllegalArgumentException.class,

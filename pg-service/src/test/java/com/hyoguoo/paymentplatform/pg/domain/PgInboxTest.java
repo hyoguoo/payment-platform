@@ -115,7 +115,7 @@ class PgInboxTest {
     }
 
     @Test
-    @DisplayName("ofWithId — id 포함 전체 10-arg → getId() == id (JPA 어댑터 toDomain 경로)")
+    @DisplayName("ofWithId — id + attempt 포함 전체 11-arg → getId() == id, getAttempt() == attempt (JPA 어댑터 toDomain 경로)")
     void ofWithId_includesId() {
         // given
         Instant now = Instant.now();
@@ -131,12 +131,14 @@ class PgInboxTest {
                 now,
                 now,
                 "pay-key-ofwithid",
-                "NICE_PAY");
+                "NICE_PAY",
+                3);
 
         // then
         assertThat(inbox.getId()).isEqualTo(42L);
         assertThat(inbox.getPaymentKey()).isEqualTo("pay-key-ofwithid");
         assertThat(inbox.getVendorType()).isEqualTo("NICE_PAY");
+        assertThat(inbox.getAttempt()).isEqualTo(3);
     }
 
     // =========================================================================
@@ -393,11 +395,11 @@ class PgInboxTest {
     }
 
     // =========================================================================
-    // T8 — 고정 Instant 인자 주입 결정성 테스트
+    // 고정 Instant 인자 주입 결정성 테스트
     // =========================================================================
 
     @Test
-    @DisplayName("markInProgress — 고정 Instant 인자 주입 → updatedAt 결정성 단정 (T8 D2)")
+    @DisplayName("markInProgress — 고정 Instant 인자 주입 → updatedAt 결정성 단정")
     void markInProgress_withFixedInstant_setsUpdatedAt() {
         // given
         Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");
@@ -415,7 +417,7 @@ class PgInboxTest {
     }
 
     @Test
-    @DisplayName("create — 고정 Instant 인자 주입 → createdAt/updatedAt 결정성 단정 (T8 D2)")
+    @DisplayName("create — 고정 Instant 인자 주입 → createdAt/updatedAt 결정성 단정")
     void create_withFixedInstant_setsCreatedAt() {
         // given
         Instant fixedInstant = Instant.parse("2026-06-01T00:00:00Z");

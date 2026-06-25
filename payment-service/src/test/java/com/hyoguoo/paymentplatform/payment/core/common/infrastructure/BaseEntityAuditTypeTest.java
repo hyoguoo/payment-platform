@@ -9,13 +9,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * P14 회귀 가드 — BaseEntity audit 3필드 타입이 {@code Instant} 이고, {@code createdAt} 의
+ * 회귀 가드 — BaseEntity audit 3필드 타입이 {@code Instant} 이고, {@code createdAt} 의
  * {@code @Column(updatable = false)} 가 보존됨을 리플렉션으로 단정한다.
  *
- * <p>타입 전환 전(P14 RED 시점)에는 필드가 {@code LocalDateTime} 이므로 {@code audit3필드_타입이_Instant} 테스트가 FAIL.
- * P14 GREEN 후 두 테스트 모두 통과함으로써 D4 전환 회귀를 영구 차단한다.
+ * <p>타입 전환 전(RED 시점)에는 필드가 {@code LocalDateTime} 이므로 {@code audit3필드_타입이_Instant} 테스트가 FAIL.
+ * 두 테스트 모두 통과함으로써 Instant 전환 회귀를 영구 차단한다.
  */
-@DisplayName("P14 회귀 가드 — BaseEntity audit 필드 타입 및 createdAt updatable=false 단정")
+@DisplayName("회귀 가드 — BaseEntity audit 필드 타입 및 createdAt updatable=false 단정")
 class BaseEntityAuditTypeTest {
 
     /**

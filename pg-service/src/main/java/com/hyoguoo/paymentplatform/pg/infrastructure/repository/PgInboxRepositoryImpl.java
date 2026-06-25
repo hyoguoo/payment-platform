@@ -11,6 +11,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -201,6 +202,19 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
             return Optional.empty();
         }
         return jpaPgInboxRepository.findById(inboxId).map(PgInboxEntity::toDomain);
+    }
+
+    /**
+     * 시도횟수 SoT — relative increment UPDATE.
+     *
+     * <p>{@code propagation = REQUIRED}(기본값) — 호출자({@code PgVendorCallService.handleRetry})의
+     * 외부 TX_B 에 참여한다. 별도 round-trip 없이 재시도 outbox INSERT 와 원자 커밋.
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void incrementAttempt(String orderId) {
+        // 시간 결정성 위해 LocalDateTime.now(clock) 사용
+        jpaPgInboxRepository.incrementAttempt(orderId, LocalDateTime.now(clock));
     }
 
 }

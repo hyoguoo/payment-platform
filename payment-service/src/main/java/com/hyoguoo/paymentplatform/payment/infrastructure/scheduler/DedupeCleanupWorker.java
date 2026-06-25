@@ -23,13 +23,13 @@ import org.springframework.stereotype.Component;
  * TTL(8일) &gt; Kafka retention(7일) 불변식을 깨는 설정 변경은 금지한다(discuss-domain-2 검토6).
  *
  * <p><b>단일 인스턴스 가정</b>: 만료 조건 삭제는 멱등이라 다중 실행 시 무해하지만, 다중 인스턴스 전환 시
- * 분산 락 추가 검토 필요(CONCERNS L-5 / TODOS TC-13-FOLLOW-1 참고).
+ * 분산 락 추가 검토 필요 — 다중 인스턴스 환경에서 스케줄러 중복 실행 방지.
  *
  * <p>Micrometer 카운터 {@code payment_event_dedupe.cleanup_deleted_total}: 실제 삭제 행 수를
  * 누적 합산해 cleanup 처리량 관측성을 제공한다. 누적 페이스가 느리면 배치 사이즈 또는 주기 조정 신호.
  *
  * <p>예외 처리: {@link PaymentEventDedupeStore#deleteExpired} 호출 중 예외 발생 시 예외를 전파하지 않고
- * ERROR 로그 후 다음 fixedDelay 주기에 재시도한다(L-1 장애 대응).
+ * ERROR 로그 후 다음 fixedDelay 주기에 재시도한다(장애 대응).
  */
 @Slf4j
 @Component

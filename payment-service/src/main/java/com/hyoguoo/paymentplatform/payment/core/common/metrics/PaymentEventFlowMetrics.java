@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  *       결제 상태가 종결(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED)로 전이될 때마다 1 증가.</li>
  * </ul>
  *
- * <p>라벨 없음 — D7 불변식 준수(orderId/userId 등 고카디널리티 라벨 금지).
+ * <p>라벨 없음 — orderId/userId 등 고카디널리티 라벨 금지(불변식).
  * in-flight = {@code published_total - terminal_total} 식이 대시보드에서 미완결 이벤트를 추적한다.
  *
  * <p>두 카운터는 생성자에서 eager 등록 — hot path 에서 등록 예외 가능성을 제거한다.

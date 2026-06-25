@@ -198,11 +198,11 @@ class PgInboxProcessorTest {
     }
 
     // -----------------------------------------------------------------------
-    // T8 — Clock 주입 결정성 검증 (D2)
+    // Clock 주입 결정성 검증
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("processPending — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    @DisplayName("processPending — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify")
     void process_usesClockInstant_viaProcessPending() {
         // given
         PgInbox pendingInbox = PgInbox.of(
@@ -219,7 +219,7 @@ class PgInboxProcessorTest {
     }
 
     @Test
-    @DisplayName("processInProgressZombie — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify (T8 D2)")
+    @DisplayName("processInProgressZombie — Clock.fixed 주입 시 applyOutcome 에 fixedInstant 전달됨 Mockito verify")
     void process_usesClockInstant_viaProcessInProgressZombie() {
         // given
         PgInbox inProgressInbox = PgInbox.of(
@@ -232,5 +232,45 @@ class PgInboxProcessorTest {
 
         // then — FIXED_CLOCK 으로부터 얻은 FIXED_INSTANT 가 applyOutcome 네 번째 인자로 전달됨
         verify(vendorCallService, times(1)).applyOutcome(any(), any(), anyInt(), eq(FIXED_INSTANT));
+    }
+
+    // -----------------------------------------------------------------------
+    // resolveAttempt — pg_inbox.attempt 영속값 전달 (Task 2)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("processPending — inbox.attempt=2 → applyOutcome 의 attempt 인자로 2 전달 (하드코딩 1 제거)")
+    void processPending_inboxAttemptTwo_passesAttemptTwoToApplyOutcome() {
+        // given
+        PgInbox pendingInboxWithAttemptTwo = PgInbox.ofWithId(
+                INBOX_ID, ORDER_ID, PgInboxStatus.PENDING, 15000L, null, null, NOW, NOW,
+                null, null, 2);
+        when(inboxRepository.findById(INBOX_ID)).thenReturn(Optional.of(pendingInboxWithAttemptTwo));
+        when(inboxRepository.transitPendingToInProgress(INBOX_ID)).thenReturn(true);
+        when(vendorCallService.invokeVendor(any())).thenReturn(new GatewayOutcome.Success(null));
+
+        // when
+        sut.processPending(INBOX_ID);
+
+        // then — 하드코딩 1이 아니라 inbox.getAttempt()=2 가 그대로 전달됨
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), eq(2), any());
+    }
+
+    @Test
+    @DisplayName("processInProgressZombie — inbox.attempt=2 → applyOutcome 의 attempt 인자로 2 전달 (좀비 경로)")
+    void processInProgressZombie_inboxAttemptTwo_passesAttemptTwoToApplyOutcome() {
+        // given
+        PgInbox inProgressInboxWithAttemptTwo = PgInbox.ofWithId(
+                INBOX_ID, ORDER_ID, PgInboxStatus.IN_PROGRESS, 15000L, null, null, NOW, NOW,
+                null, null, 2);
+        when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID))
+                .thenReturn(Optional.of(inProgressInboxWithAttemptTwo));
+        when(vendorCallService.invokeVendor(any())).thenReturn(new GatewayOutcome.Success(null));
+
+        // when
+        sut.processInProgressZombie(INBOX_ID);
+
+        // then — 좀비 회수 경로도 동일하게 inbox.getAttempt()=2 가 전달됨
+        verify(vendorCallService, times(1)).applyOutcome(any(), any(), eq(2), any());
     }
 }

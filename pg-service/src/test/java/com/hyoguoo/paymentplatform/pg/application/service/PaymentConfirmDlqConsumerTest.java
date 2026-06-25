@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
+import com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
@@ -12,6 +13,7 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer.PaymentC
 import com.hyoguoo.paymentplatform.pg.infrastructure.messaging.consumer.PaymentConfirmDlqConsumer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -51,7 +53,8 @@ class PaymentConfirmDlqConsumerTest {
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         Clock clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC);
         pgDlqService = new PgDlqService(inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), clock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), clock,
+                new PgDlqReachMetrics(new SimpleMeterRegistry()));
     }
 
     // -----------------------------------------------------------------------

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  *   <li>recordPublished() — payment.event.published 카운터 1.0 증가</li>
  *   <li>recordTerminal() — payment.event.terminal 카운터 1.0 증가</li>
  *   <li>never-throw: null 등 비정상 호출에도 예외 미발생</li>
- *   <li>D7: 라벨 없음(무라벨 카운터)</li>
+ *   <li>라벨 없음(무라벨 카운터)</li>
  * </ul>
  */
 @DisplayName("PaymentEventFlowMetrics 단위 테스트")
