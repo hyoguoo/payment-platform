@@ -73,7 +73,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
 - [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
 - [x] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
-- [ ] Task 6: 그룹별 라이브 발화 검증 스크립트
+- [x] Task 6: 그룹별 라이브 발화 검증 스크립트
 - [ ] Task 7: smoke 가이드 연결 + 통합 러너 등록
 
 ## 태스크
@@ -233,7 +233,20 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "실증 산출물", 장애 시나리오 "주입 분리".
 
 **완료 결과**
-> (execute에서 채움)
+
+- `scripts/smoke/alert-firing-coordinator.sh` 신규 — 코디네이터 정체 알람 발화 검증 스크립트:
+  - 라이브 경로: `drill-toxiproxy.sh inject` → Prometheus `/api/v1/alerts` 폴링(코디네이터 3개 알람 `state=firing`, 타임아웃 120s) → `drill-toxiproxy.sh remove`. 발화 시 PASS exit 0.
+  - 격하 폴백: 타임아웃 또는 스택 미기동 시 단일 broker 비대칭 한계(lag 피크 150 ≪ 임계 1000, txn abort 미발화) 안내 + `promtool test rules` 코디네이터 픽스처(5케이스) 실행. promtool PASS → exit 0.
+  - `--fallback-only` 플래그로 라이브 시도 없이 격하 폴백 직행.
+  - toxic 정리 트랩(EXIT/INT/TERM) — 비정상 종료 시에도 `drill-toxiproxy.sh remove` 호출.
+- `scripts/smoke/alert-firing-dlq.sh` 신규 — DLQ 적체 알람 발화 검증 스크립트:
+  - 격하 폴백 디폴트: `promtool test rules` dlq 픽스처(6케이스) 실행 + EOS 경로/pg 경로 통합테스트 위임 안내(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`).
+  - `--live` 플래그로 Prometheus 폴링 추가 시도(실 주입 없이 현재 상태만 폴링).
+  - 격하 사유 명시: EOS 경로(latency 주입 지연 < transaction.timeout.ms → abort 미발화, 실측 확인), pg 경로(벤더 HTTP toxic 드릴 구성 미포함, 실 벤더 sandbox 미구성).
+- promtool test 검증(docker 경유):
+  - coordinator 픽스처 5케이스 SUCCESS
+  - DLQ 픽스처 6케이스 SUCCESS
+- 두 스크립트 모두 `--fallback-only`/기본 모드에서 exit 0 확인.
 
 ---
 

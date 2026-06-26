@@ -6,7 +6,7 @@
 
 - **주제**: ALERTING-RULES-AND-FAULT-DRILL (Prometheus 알람 규칙 인프라 구축 + Toxiproxy 장애 주입으로 알람 발화 실증)
 - **단계**: execute
-- **활성 태스크**: Task 6 (그룹별 라이브 발화 검증 스크립트 — 격하 기록 반영)
+- **활성 태스크**: Task 7 (smoke 가이드 연결 + 통합 러너 등록)
 - **이슈/브랜치**: #116
 
 ## 재개 메모
