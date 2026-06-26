@@ -178,7 +178,7 @@ Prometheus는 6개 서비스 + kafka-exporter를 scrape만 하고 `rule_files`/`
 | 코디네이터 정체 신호 | txn abort/producer 에러(commit timeout 유래) OR consumer lag OR broker 가용성(`up{job="kafka-exporter"}==0`/`kafka_brokers<1`) | latency 정체=txn abort, 하드 아웃티지=가용성 backstop. txn abort 결정성은 주입 지연↔txn timeout 의존이라 plan 최우선 실증. lag는 비대칭 시 |
 | 종결 가드 skip 분자 | 위험 status 필터(`status=~"QUARANTINED\|FAILED\|EXPIRED\|CANCELED\|PARTIAL_CANCELED"`, DONE 제외), 분모는 IN_PROGRESS→terminal 전이 | 정상 재발행(DONE) 오염 배제 + 1건 2배 계상 배제. 라벨이 수신 status 못 가르는 한계는 주석 |
 | 가드 skip 발화 조건 | 비율 SLO + `for` 지속절 + `and rate(분모)>floor` 하한 | 일시 skip이 아닌 지속 패턴만, 저트래픽 0-division 흡수 |
-| DLQ 적체 신호 | 앱 도달 카운터 `increase()` + `.dlq` 토픽 offset `increase()` 델타. **독립 cross-check(OR), 합산 금지** | 누적 offset은 절대값 무의미(델타화). 앱 카운터(멱등)와 토픽 offset(좀비 중복 over-count 가능)은 count가 달라 합산 시 이중계상 |
+| DLQ 적체 신호 | 앱 도달 카운터 `increase()` + `.dlq` 토픽 offset `increase()` 델타 + `commands.confirm.dlq` 컨슈머 정체 backstop(`consumergroup_lag>0`). **독립 cross-check(OR), 합산 금지** | 누적 offset은 절대값 무의미(델타화). 앱 카운터(멱등)와 토픽 offset(좀비 중복 over-count 가능)은 count가 달라 합산 시 이중계상. 정체 backstop은 도착 onset-only 신호가 놓치는 미배수 적체(미해결 결제) 포착 |
 | 임계값 | baseline(잠정), 규칙 주석에 명시 | 측정 환경 부재. 실측 정밀화는 후속(T4-B 의존) |
 | 장애 주입 수단 | Toxiproxy latency toxic + `advertised.listeners` 프록시 광고(전용 override). 비대칭 실현·EOS commit timeout·pg 벤더 toxic의 결정적 구성은 plan 확정 | 완전 차단=대칭 정지, advertised 미설정=우회, 전역 latency=대칭이라 lag 비대칭은 별도 구성 필요 |
 | 실증 산출물 | 검증 스크립트(장애 주입 → `/api/v1/alerts` FIRING 폴링 → 복구 후 resolved) | 자동 재현. 기존 `docs/smoke` 스크립트 패턴 계승 |

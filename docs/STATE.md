@@ -1,19 +1,20 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-26 (ALERTING-RULES-AND-FAULT-DRILL discuss 완료 → plan)
+> 최종 수정: 2026-06-26 (ALERTING-RULES-AND-FAULT-DRILL plan 완료 → execute)
 
 ## 활성 작업
 
 - **주제**: ALERTING-RULES-AND-FAULT-DRILL (Prometheus 알람 규칙 인프라 구축 + Toxiproxy 장애 주입으로 알람 발화 실증)
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1 (Prometheus 규칙 로드 인프라 — `rule_files` + observability compose `rules` 디렉토리 마운트)
 - **이슈/브랜치**: #116
 
 ## 재개 메모
 
-- discuss 완료 — 설계 SSOT `docs/topics/ALERTING-RULES-AND-FAULT-DRILL.md`, 게이트 reviewer/domain-expert 둘 다 R3 pass.
-- 확정 범위: 알람 3그룹(코디네이터 정체 / 종결 가드 늦은-결과 무시 / DLQ 적체) + rule 평가만(Alertmanager 미도입) + 장애 주입 전용 프로파일 + 그룹별 발화 검증 스크립트. 애플리케이션 코드 무변경(메트릭 전부 기존 존재).
-- **plan 최우선 실증 대상**: ① 코디네이터 lag 비대칭 실현(서비스별 프록시 리스너 등) ② latency 하 EOS commit timeout 결정성(주입 지연 ↔ `transaction.timeout.ms` 의존). 불가 시 `promtool test rules` + 통합테스트로 격하(규칙은 운영 유효).
-- 범위 밖 후속: 통지 채널, 나머지 장애 6종, k6 부하 곡선, 오토스케일러.
+- plan 완료 — 구현 플랜 `docs/ALERTING-RULES-AND-FAULT-DRILL-PLAN.md`(7태스크), 게이트 reviewer/domain-expert 둘 다 R2 pass. 설계 SSOT `docs/topics/ALERTING-RULES-AND-FAULT-DRILL.md`.
+- 태스크 순서: 1 규칙 로드 인프라 → 2 Toxiproxy 비대칭 프로파일+spike → 3·4·5 그룹별 규칙+promtool test → 6 라이브 발화 스크립트 → 7 smoke 가이드.
+- **plan 최우선 실증 대상**: ① 코디네이터 lag 비대칭 실현(Task 2 spike) ② latency 하 EOS commit timeout 결정성(Task 6, 주입 지연 ↔ `transaction.timeout.ms` 의존). 두 DLQ 경로 모두 라이브 불가 시 `promtool test rules` + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`)로 격하(규칙은 운영 유효).
+- 애플리케이션 코드 무변경(메트릭 전부 기존 존재). 범위 밖 후속: 통지 채널, 나머지 장애 6종, k6 부하 곡선, 오토스케일러.
 
 ## 최근 완료
 
