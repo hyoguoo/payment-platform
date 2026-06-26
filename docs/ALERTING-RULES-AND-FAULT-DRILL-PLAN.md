@@ -70,7 +70,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 - [x] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
 - [ ] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike
-- [ ] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
+- [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
 - [ ] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
 - [ ] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
 - [ ] Task 6: 그룹별 라이브 발화 검증 스크립트
@@ -131,7 +131,14 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "코디네이터 정체 신호", "임계값"(baseline).
 
 **완료 결과**
-> (execute에서 채움)
+- `observability/prometheus/rules/coordinator.yml` 신규 — 3개 알람 규칙:
+  - `KafkaCoordinatorTxnAbortRising`: `rate(kafka_producer_txn_abort_time_ns_total{job="payment-service"}[5m]) > 1000000` (잠정 임계 1ms/s, for:1m)
+  - `KafkaCoordinatorLagHigh`: `sum by (topic,consumergroup)(kafka_consumergroup_lag{topic="payment.events.confirmed",consumergroup="payment-service"}) > 1000` (잠정 임계 1000 messages, for:1m)
+  - `KafkaBrokerUnavailable`: `up{job="kafka-exporter"}==0 or kafka_brokers<1` (for:1m, severity:critical backstop)
+- `observability/prometheus/rules/tests/coordinator_test.yml` 신규 — 5케이스 모두 pass:
+  - (a) txn abort 급증 → FIRING, (b) consumer lag 급증 → FIRING, (c1) up==0 → FIRING, (c2) kafka_brokers<1 → FIRING, (d) 정상 baseline → no alert
+- `promtool check rules` SUCCESS(3 rules), `promtool test rules` SUCCESS(5 cases)
+- Task 2 비대칭 실측 후 lag 1차 승격 여부 재조정 예정 — OR 구조이므로 규칙 변경 없이 coordinator.yml 주석 조정만 필요
 
 ---
 

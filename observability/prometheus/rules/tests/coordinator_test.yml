@@ -25,6 +25,9 @@ tests:
           - exp_labels:
               severity: warning
               job: payment-service
+            exp_annotations:
+              summary: "Kafka 코디네이터 txn abort 급증 (payment-service)"
+              description: "txn abort rate 2Mns/s. 코디네이터 정체 또는 EOS commit timeout 의심. latency 주입 하 abort 결정성은 Toxiproxy 비대칭 spike 실증 결과에 의존."
 
   # (b) payment.events.confirmed consumer lag 급증 → KafkaCoordinatorLagHigh FIRING
   # lag: t=3m(1500) 부터 임계 1000 초과 → PENDING, t=4m for:1m 충족 → FIRING
@@ -40,6 +43,9 @@ tests:
               severity: warning
               topic: payment.events.confirmed
               consumergroup: payment-service
+            exp_annotations:
+              summary: "payment.events.confirmed consumer lag 급증"
+              description: "consumer group payment-service lag 2500 messages. producer 흐름 대비 소비 정체 의심."
 
   # (c1) kafka-exporter scrape 실패(up==0) → KafkaBrokerUnavailable FIRING
   # t=5m: up=0 PENDING, t=6m: for:1m 충족 → FIRING
@@ -54,6 +60,9 @@ tests:
           - exp_labels:
               severity: critical
               job: kafka-exporter
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
 
   # (c2) kafka broker 수 0 → KafkaBrokerUnavailable FIRING
   # t=5m: kafka_brokers=0 < 1 PENDING, t=6m: for:1m 충족 → FIRING
@@ -67,6 +76,9 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
 
   # (d) 정상 baseline abort rate (임계 미만, 0 아님) → no alert
   # 매 1분 30_000 ns 증가 → rate ≈ 500 ns/s < 임계 1_000_000 ns/s

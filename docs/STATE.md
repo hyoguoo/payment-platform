@@ -6,7 +6,7 @@
 
 - **주제**: ALERTING-RULES-AND-FAULT-DRILL (Prometheus 알람 규칙 인프라 구축 + Toxiproxy 장애 주입으로 알람 발화 실증)
 - **단계**: execute
-- **활성 태스크**: Task 2 (Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike)
+- **활성 태스크**: Task 4 (종결 가드 skip 알람 규칙 + 발화 유닛테스트) ※ Task 2(Toxiproxy 비대칭 라이브)는 무거운 라이브 실증으로 별도 진행
 - **이슈/브랜치**: #116
 
 ## 재개 메모
