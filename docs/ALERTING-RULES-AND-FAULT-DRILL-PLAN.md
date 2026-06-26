@@ -68,7 +68,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 ## 진행 상황
 
-- [ ] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
+- [x] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
 - [ ] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike
 - [ ] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
 - [ ] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
@@ -91,7 +91,10 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "알람 토폴로지", "규칙 로드 경로".
 
 **완료 결과**
-> (execute에서 채움)
+- `prometheus.yml`에 `rule_files: ["/etc/prometheus/rules/*.yml"]` 블록 추가.
+- `docker-compose.observability.yml` prometheus 서비스에 `../observability/prometheus/rules:/etc/prometheus/rules:ro` 마운트 추가.
+- `observability/prometheus/rules/.gitkeep` 으로 디렉토리 존재 보장(실제 규칙은 Task 3~5에서 추가).
+- [Rule 1] `promtool`이 로컬에 없어 `promtool check config` 라이브 검증 불가 — YAML 문법·경로 정합성만 확보. 컨테이너 기동 시 `/api/v1/rules` 확인은 Task 3~5 규칙 추가 후 수행 예정.
 
 ---
 

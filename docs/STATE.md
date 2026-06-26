@@ -6,7 +6,7 @@
 
 - **주제**: ALERTING-RULES-AND-FAULT-DRILL (Prometheus 알람 규칙 인프라 구축 + Toxiproxy 장애 주입으로 알람 발화 실증)
 - **단계**: execute
-- **활성 태스크**: Task 1 (Prometheus 규칙 로드 인프라 — `rule_files` + observability compose `rules` 디렉토리 마운트)
+- **활성 태스크**: Task 2 (Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike)
 - **이슈/브랜치**: #116
 
 ## 재개 메모
