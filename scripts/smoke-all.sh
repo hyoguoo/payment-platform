@@ -6,11 +6,15 @@
 #      · 13 컨테이너 health + 9 호스트 포트 + 5 Eureka 등록
 #   2) scripts/smoke/kafka-topic-config.sh
 #      · 토픽 partition / replication-factor / retry 토픽 부재 검증
+#   3) scripts/smoke/alert-rules-promtool.sh
+#      · 알람 규칙 3그룹 promtool 발화 단정 (14 케이스, Docker 경유)
+#      · 라이브 스택 불필요. 라이브 드릴(Toxiproxy drill 프로파일 전제)은
+#        docs/smoke/alert-firing-check.md 참조 후 수동 실행
 #
 # Phase 2 (트래픽 의존 — --with-trace 옵션 시):
-#   3) scripts/smoke/trace-header-check.sh
+#   4) scripts/smoke/trace-header-check.sh
 #      · payment.commands.confirm 토픽의 traceparent 헤더 주입 확인
-#   4) scripts/smoke/trace-continuity-check.sh
+#   5) scripts/smoke/trace-continuity-check.sh
 #      · gateway → payment → pg → product/user 다중 홉 traceId 연속성
 #
 # 사용법:
@@ -33,7 +37,7 @@ for arg in "$@"; do
     case "${arg}" in
         --with-trace) WITH_TRACE=true ;;
         -h|--help)
-            sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -64,6 +68,8 @@ run_step() {
 run_step "Phase 1.1 — infra healthcheck" "${ROOT_DIR}/scripts/smoke/infra-healthcheck.sh" || exit 1
 echo ""
 run_step "Phase 1.2 — kafka topic config" "${ROOT_DIR}/scripts/smoke/kafka-topic-config.sh" || exit 1
+echo ""
+run_step "Phase 1.3 — alert rules promtool test (3 그룹, 14 케이스)" "${ROOT_DIR}/scripts/smoke/alert-rules-promtool.sh" || exit 1
 
 # ─────────────────────────────────────────────
 # Phase 2 — 트래픽 의존 (--with-trace 시만)

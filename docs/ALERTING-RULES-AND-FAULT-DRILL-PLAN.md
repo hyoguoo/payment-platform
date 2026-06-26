@@ -74,7 +74,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
 - [x] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
 - [x] Task 6: 그룹별 라이브 발화 검증 스크립트
-- [ ] Task 7: smoke 가이드 연결 + 통합 러너 등록
+- [x] Task 7: smoke 가이드 연결 + 통합 러너 등록
 
 ## 태스크
 
@@ -262,7 +262,21 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "검증 전략"(회귀 가드).
 
 **완료 결과**
-> (execute에서 채움)
+- `docs/smoke/alert-firing-check.md` 신규 — 알람 발화 검증 절차 가이드:
+  - 2계층 검증 구조(1차: promtool test rules 14케이스 / 2차: 라이브 드릴) 표로 정리.
+  - 라이브 한계 명시: 단일 broker + payment가 commands.confirm producer → lag 피크 150 ≪ 임계 / latency 2000ms < transaction.timeout.ms → abort 미발화 → 코디네이터/EOS 라이브 결정적 발화 불가. promtool + 통합테스트가 1차 수단.
+  - 14 케이스 테이블(코디네이터 5 / 가드 skip 3 / DLQ 6) + 사용법(1차/2차) + 실패 케이스 해석 + 비범위 + 영구성 + 관련 문서.
+  - 기존 `infra-healthcheck.md` / `trace-continuity-check.md` 형식·톤 계승.
+- `scripts/smoke/alert-rules-promtool.sh` 신규 — 3그룹 promtool 통합 래퍼:
+  - Docker 경유 `promtool test rules` 를 coordinator / guard-skip / DLQ 순서로 실행.
+  - `run_test` 헬퍼로 그룹별 PASS/FAIL 카운트 → 전체 종합 exit code.
+  - 라이브 스택 불필요, Docker 만 전제.
+- `scripts/smoke-all.sh` 수정 — Phase 1.3 추가:
+  - `run_step "Phase 1.3 — alert rules promtool test (3 그룹, 14 케이스)"` 로 `alert-rules-promtool.sh` 호출.
+  - Phase 1 헤더 주석에 Phase 1.3 설명 + 라이브 드릴 수동 안내 링크 추가.
+  - 기존 Phase 1.1 / 1.2 / Phase 2 동작 무변경.
+  - `--help` sed 범위를 26줄로 확장(헤더 라인 증가 반영).
+  - 라이브 드릴(Toxiproxy drill 프로파일 전제)은 기본 러너 미포함, 가이드 수동 안내.
 
 ## 리뷰 처리
 
