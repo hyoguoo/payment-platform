@@ -113,7 +113,18 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "장애 주입 수단", "코디네이터 정체 신호"(비대칭 실현 = plan 최우선 실증 ①).
 
 **완료 결과**
-> (execute에서 채움)
+
+구성 산출물 완료. 비대칭 spike 판정(lag 누적 성공/실패 → 1차 신호 승격/격하)은 메인 라이브 실측 후 추가 기록 예정.
+
+- `docker/docker-compose.drill.yml` 신규 — 인프라 전용 compose override:
+  - `kafka` 서비스: PROXY 리스너(9094) 추가 광고 (`KAFKA_LISTENERS`, `KAFKA_ADVERTISED_LISTENERS`, `KAFKA_LISTENER_SECURITY_PROTOCOL_MAP` override — 기존 PLAINTEXT/CONTROLLER/PLAINTEXT_HOST 유지).
+  - `toxiproxy` 서비스: `ghcr.io/shopify/toxiproxy:2.9.0`, kafka healthy 후 기동, admin API 포트 8474 + 프록시 포트 9094 호스트 노출.
+  - `payment-service` 서비스: `SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:9094` (apps.yml의 kafka:9092 → toxiproxy:9094 override). toxiproxy healthy 조건 depends_on 추가.
+  - pg-service: override 없음 — `KAFKA_BOOTSTRAP_SERVERS: kafka:9092` 직결 유지(producer 비대칭 실현).
+- `docker/toxiproxy.json` 신규 — Toxiproxy 초기 프록시 등록 파일 (`kafka-proxy`: listen 0.0.0.0:9094 → upstream kafka:9094, enabled=true). 기동 시 자동 등록.
+- `scripts/smoke/drill-toxiproxy.sh` 신규 — admin API 경유 주입/해제/검증 스크립트 골격 (inject/remove/status/verify/reset 명령, 환경변수 오버라이드, 드릴 흐름 주석).
+- `docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml -f docker/docker-compose.drill.yml config` 정합성 검증 통과 — kafka PROXY 리스너 merge, payment-service bootstrap override, toxiproxy depends_on 체인 모두 확인.
+- **한계 명시**: payment-service는 producer이기도 하므로 `payment.commands.confirm` 발행도 PROXY 경유(지연 포함) — consumer-only 비대칭의 최선 근사, producer 완전 분리 불가.
 
 ---
 

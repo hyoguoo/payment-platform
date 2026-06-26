@@ -1,0 +1,8 @@
+[
+  {
+    "name": "kafka-proxy",
+    "listen": "0.0.0.0:9094",
+    "upstream": "kafka:9094",
+    "enabled": true
+  }
+]
