@@ -69,7 +69,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 ## 진행 상황
 
 - [x] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
-- [ ] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike
+- [x] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike (구성 + 라이브 실측 → 비대칭 한계 규명, 격하 폴백)
 - [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
 - [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
 - [x] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
@@ -114,7 +114,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 **완료 결과**
 
-구성 산출물 완료. 비대칭 spike 판정(lag 누적 성공/실패 → 1차 신호 승격/격하)은 메인 라이브 실측 후 추가 기록 예정.
+구성 산출물 + 라이브 spike 실측 완료.
 
 - `docker/docker-compose.drill.yml` 신규 — 인프라 전용 compose override:
   - `kafka` 서비스: PROXY 리스너(9094) 추가 광고 (`KAFKA_LISTENERS`, `KAFKA_ADVERTISED_LISTENERS`, `KAFKA_LISTENER_SECURITY_PROTOCOL_MAP` override — 기존 PLAINTEXT/CONTROLLER/PLAINTEXT_HOST 유지).
@@ -125,6 +125,14 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - `scripts/smoke/drill-toxiproxy.sh` 신규 — admin API 경유 주입/해제/검증 스크립트 골격 (inject/remove/status/verify/reset 명령, 환경변수 오버라이드, 드릴 흐름 주석).
 - `docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml -f docker/docker-compose.drill.yml config` 정합성 검증 통과 — kafka PROXY 리스너 merge, payment-service bootstrap override, toxiproxy depends_on 체인 모두 확인.
 - **한계 명시**: payment-service는 producer이기도 하므로 `payment.commands.confirm` 발행도 PROXY 경유(지연 포함) — consumer-only 비대칭의 최선 근사, producer 완전 분리 불가.
+
+**라이브 spike 실측 (메인 직접, 전체 스택 drill 기동):**
+
+- **헬스체크 픽스**: toxiproxy minimal 이미지에 `wget` 부재로 헬스체크 항상 unhealthy → payment-service `depends_on(service_healthy)` 차단(Created stuck) 발견. 헬스체크를 `wget` → `/toxiproxy-cli list`로 교체해 해소(라이브 기동 정상화).
+- **검증 성공**: 규칙 3그룹(coordinator/guard-skip/dlq) Prometheus 라이브 로드 확인 + 프록시 경유(`kafka-broker-api-versions via toxiproxy:9094`) 입증 + k6 confirm 트래픽(events.confirmed 발행 ~84 msg/s) 정상.
+- **비대칭 spike 판정 (실증 ①)**: latency 2000ms 주입 시 events.confirmed lag **피크 150 ≪ 임계(1000)**. 원인 = payment가 commands.confirm producer이기도 해 발행도 PROXY 지연 → 유입 동반 감소(한계 명시대로). → **lag 1차 승격 안 함, OR(txn abort / lag / broker 가용성) 유지**.
+- **txn abort 미발화 (실증 ②)**: latency 2000ms < `transaction.timeout.ms`라 EOS commit이 느려질 뿐 abort 미발생(reviewer 예견 의존성 실측 확인). EOS commit timeout도 동일 — 라이브 미발화.
+- **격하 폴백 적용**: 단일 broker 환경에서 코디네이터/EOS 라이브 결정적 발화 불가 → `promtool test rules`(14케이스 pass) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 위임으로 발화 보증. 규칙은 Prometheus 라이브 로드 + 운영 유효.
 
 ---
 

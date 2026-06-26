@@ -72,8 +72,9 @@ services:
         condition: service_healthy
     networks:
       - payment-infra-network
+    # toxiproxy 이미지는 minimal(scratch 기반)이라 wget/curl 부재 → 내장 CLI 로 헬스체크.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8474/proxies > /dev/null || exit 1"]
+      test: ["CMD", "/toxiproxy-cli", "list"]
       interval: 10s
       timeout: 5s
       retries: 5

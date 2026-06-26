@@ -1,20 +1,20 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-26 (ALERTING-RULES-AND-FAULT-DRILL plan 완료 → execute)
+> 최종 수정: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL execute — Task 1~5 + Task 2 라이브 실측 완료, 남은 Task 6·7)
 
 ## 활성 작업
 
 - **주제**: ALERTING-RULES-AND-FAULT-DRILL (Prometheus 알람 규칙 인프라 구축 + Toxiproxy 장애 주입으로 알람 발화 실증)
 - **단계**: execute
-- **활성 태스크**: Task 6 (그룹별 라이브 발화 검증 스크립트) ※ Task 2(Toxiproxy 비대칭 라이브)는 무거운 라이브 실증으로 별도 진행
+- **활성 태스크**: Task 6 (그룹별 라이브 발화 검증 스크립트 — 격하 기록 반영)
 - **이슈/브랜치**: #116
 
 ## 재개 메모
 
-- plan 완료 — 구현 플랜 `docs/ALERTING-RULES-AND-FAULT-DRILL-PLAN.md`(7태스크), 게이트 reviewer/domain-expert 둘 다 R2 pass. 설계 SSOT `docs/topics/ALERTING-RULES-AND-FAULT-DRILL.md`.
-- 태스크 순서: 1 규칙 로드 인프라 → 2 Toxiproxy 비대칭 프로파일+spike → 3·4·5 그룹별 규칙+promtool test → 6 라이브 발화 스크립트 → 7 smoke 가이드.
-- **plan 최우선 실증 대상**: ① 코디네이터 lag 비대칭 실현(Task 2 spike) ② latency 하 EOS commit timeout 결정성(Task 6, 주입 지연 ↔ `transaction.timeout.ms` 의존). 두 DLQ 경로 모두 라이브 불가 시 `promtool test rules` + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`)로 격하(규칙은 운영 유효).
-- 애플리케이션 코드 무변경(메트릭 전부 기존 존재). 범위 밖 후속: 통지 채널, 나머지 장애 6종, k6 부하 곡선, 오토스케일러.
+- **완료**: Task 1(rule_files+compose 마운트), Task 3·4·5(코디네이터/가드 skip/DLQ 규칙 + promtool test 14케이스 pass), Task 2(Toxiproxy 비대칭 구성 + 라이브 실측).
+- **Task 2 라이브 판정**: 전체 스택 drill 기동 + k6 confirm 트래픽 + latency 2000ms 주입. 비대칭 lag **피크 150 ≪ 임계** (payment가 commands.confirm producer라 유입 동반 지연 — 단일 broker consumer-only 한계). txn abort **미발화** (2000ms < `transaction.timeout.ms`, reviewer 예견 확인). → 코디네이터/EOS **라이브 결정적 발화 불가 → 격하 폴백**(promtool test + 통합테스트 위임, 규칙은 Prometheus 로드+운영 유효). lag 1차 승격 안 함, OR 유지.
+- **남은 작업**: Task 6(발화 검증 스크립트 `scripts/smoke/alert-firing-*.sh` 작성 + 격하 폴백 기록 — 라이브 결정적 발화 불가라 스크립트는 작성하되 검증은 promtool/통합테스트 위임), Task 7(smoke 가이드 + smoke-all 연결). 둘 다 코드 무변경·인프라/스크립트.
+- 라이브 스택은 `docker compose ... down`으로 정리됨(볼륨 유지). 애플리케이션 코드 무변경. 범위 밖 후속: 통지 채널, 나머지 장애 6종, k6 부하 곡선, 오토스케일러.
 
 ## 최근 완료
 
