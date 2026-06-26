@@ -71,7 +71,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - [x] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
 - [ ] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike
 - [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
-- [ ] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
+- [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
 - [ ] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
 - [ ] Task 6: 그룹별 라이브 발화 검증 스크립트
 - [ ] Task 7: smoke 가이드 연결 + 통합 러너 등록
@@ -155,7 +155,17 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "종결 가드 skip 분자", "가드 skip 발화 조건".
 
 **완료 결과**
-> (execute에서 채움)
+- `observability/prometheus/rules/guard-skip.yml` 신규 — 알람 규칙 1개:
+  - `GuardSkipDangerousStatusHigh`: 위험 status(QUARANTINED·FAILED·EXPIRED·CANCELED·PARTIAL_CANCELED) skip 비율 > 10% AND IN_PROGRESS 전이 rate > 0.01/s (floor), for:1m, severity:warning
+  - 분자: `sum(rate(payment_confirm_guard_skip_total{status=~"QUARANTINED|FAILED|EXPIRED|CANCELED|PARTIAL_CANCELED"}[5m]))`
+  - 분모: `sum(rate(payment_transition_total{from_status="IN_PROGRESS"}[5m]))` (confirm 결과 적용 성공 경로)
+  - floor 가드: 트래픽 부재 시 0-division +Inf 오탐 방지
+  - [한계 주석] status 라벨이 수신 pg 응답 status를 못 가르므로 QUARANTINED+APPROVED(위험) vs QUARANTINED+FAILED(양성) 라벨 분리 불가
+- `observability/prometheus/rules/tests/guard_skip_test.yml` 신규 — 3케이스 모두 pass:
+  - (a) 위험 status skip 급증(비율 20%) → FIRING
+  - (b) DONE-only skip(정상 재발행) → no alert
+  - (c) 저트래픽(분모 rate=0, floor 미충족) → no alert (0-division 흡수 회귀 고정)
+- `promtool check rules` SUCCESS(1 rule), `promtool test rules` SUCCESS(3 cases)
 
 ---
 
