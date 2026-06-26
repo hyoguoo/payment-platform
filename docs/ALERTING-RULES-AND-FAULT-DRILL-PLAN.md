@@ -72,7 +72,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - [ ] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike
 - [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
 - [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
-- [ ] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
+- [x] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
 - [ ] Task 6: 그룹별 라이브 발화 검증 스크립트
 - [ ] Task 7: smoke 가이드 연결 + 통합 러너 등록
 
@@ -183,7 +183,18 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - 매핑: 결정 "DLQ 적체 신호".
 
 **완료 결과**
-> (execute에서 채움)
+- `observability/prometheus/rules/dlq.yml` 신규 — 3개 알람 규칙:
+  - `DlqAppCounterRising`: `increase(payment_eos_commit_failure_dlq_total[5m]) > 0 or increase(pg_retry_exhausted_quarantine_total[5m]) > 0` (for:1m, severity:warning). 두 DLQ 경로(EOS 커밋 실패 / pg retry 소진 격리) 독립 OR cross-check — 합산 금지.
+  - `DlqTopicOffsetRising`: `increase(kafka_topic_partition_current_offset{topic=~".*\\.dlq"}[5m]) > 0` (for:1m, severity:warning). kafka-exporter 기반 .dlq 토픽 offset delta 신호 — 앱 카운터와 독립. 누적 offset 절대값 미사용.
+  - `DlqCommandsConsumerLag`: `kafka_consumergroup_lag{topic="payment.commands.confirm.dlq",consumergroup="pg-service-dlq"} > 0` (for:1m, severity:warning). 컨슈머 정체 backstop — 도착 멈춤 후 lag 잔존(offset-increase 0인 사각) 포착.
+- `observability/prometheus/rules/tests/dlq_test.yml` 신규 — 6케이스 모두 pass:
+  - (a) 앱 카운터 increase > 0 → DlqAppCounterRising FIRING
+  - (b) .dlq 토픽 offset increase > 0 → DlqTopicOffsetRising FIRING
+  - (c) 정상(델타 0) → 3개 알람 모두 미발화
+  - (d) 앱 카운터만↑(offset 없음) → DlqAppCounterRising만 FIRING (독립 회귀 고정)
+  - (e) 토픽 offset만↑(앱 카운터 없음) → DlqTopicOffsetRising만 FIRING (독립 회귀 고정)
+  - (f) commands.confirm.dlq 컨슈머 lag 잔존 → DlqCommandsConsumerLag FIRING (backstop 사각 보완 확인)
+- `promtool check rules` SUCCESS (3 rules), `promtool test rules` SUCCESS (6 cases, 특히 d/e 단일-발화 독립 검증)
 
 ---
 
