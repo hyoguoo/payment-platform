@@ -88,7 +88,7 @@ flowchart LR
 ### 핵심 결정 목록
 
 - **토폴로지**: Alertmanager 미도입, Prometheus rule 평가 + Grafana 표시. compose에 `rules` 디렉토리 마운트 추가(현재 단일 파일 바인드라 필수).
-- **코디네이터 발화**: txn abort(commit timeout 유래) 1차 안전망 OR consumer lag OR broker 가용성 backstop(`up==0`/`kafka_brokers<1`).
+- **코디네이터 발화**: txn abort(commit timeout 유래) 1차 안전망 OR consumer lag OR broker 가용성 backstop(`up==0 OR kafka_brokers<1 OR absent(kafka_brokers)`) — 3분기. 라이브 실측 결과 단일 broker 완전 정지 시 `kafka_brokers` 는 0 이 아니라 시리즈 소멸(absent)로 되므로 `absent()` 가 완전다운 backstop의 실제 주체이며, `kafka_brokers<1` 단독은 dead branch.
 - **가드 skip**: 위험 status(비-DONE terminal) 필터 분자 / 분모 IN_PROGRESS→terminal 전이 / `for` + 분모 하한.
 - **DLQ 적체**: 앱 도달 카운터 + `.dlq` 토픽 offset 둘 다 `increase()` 델타, 독립 cross-check(합산 금지).
 - **주입 분리**: 코디네이터=latency toxic / EOS DLQ=broker latency commit timeout / pg DLQ=벤더 HTTP toxic(Fake는 NonRetryable만 던져 불가).
@@ -127,7 +127,7 @@ Prometheus는 6개 서비스 + kafka-exporter를 scrape만 하고 `rule_files`/`
 - `payment_confirm_guard_skip_total`(분자 원천) / `payment_confirm_terminal_resend_total`(정상 재발행 — 분자에서 차감) / `payment_transition_total`(분모 후보) — 종결 가드 skip
 - `payment_eos_commit_failure_dlq_total` / `pg_retry_exhausted_quarantine_total` — DLQ·격리 도달 카운터(앱 발행 시점, 멱등)
 - `kafka_topic_partition_current_offset{topic=~".*dlq"}` — DLQ 토픽 누적 도착량(단조 증가 — **`increase()` 델타로만** 적체 신호화. kafka-exporter 토픽 필터 없음)
-- `up{job="kafka-exporter"}` / `kafka_brokers` — broker 가용성(하드 아웃티지 backstop — 파생 메트릭이 평탄한 완전 다운에서도 코디네이터 그룹 발화)
+- `up{job="kafka-exporter"}` / `kafka_brokers` / `absent(kafka_brokers)` — broker 가용성(하드 아웃티지 backstop — 파생 메트릭이 평탄한 완전 다운에서도 코디네이터 그룹 발화). 라이브 실측 결과 완전 정지 시 `kafka_brokers` 는 시리즈 소멸(absent)이므로 `absent()` 가 완전다운 backstop의 실제 주체. `kafka_brokers<1` 은 멀티 broker 부분 다운(exporter 생존 + broker 수 감소) 대비.
 
 ## 설계 옵션 비교
 
@@ -147,7 +147,7 @@ Prometheus는 6개 서비스 + kafka-exporter를 scrape만 하고 `rule_files`/`
 
 - **txn abort/producer 송신 에러(commit timeout 유래)** — latency 주입 하에서 증가 → **그룹 발화의 1차 안전망**. 단 증가의 결정성은 주입 지연 크기 ↔ `transaction.timeout.ms`/`delivery.timeout.ms` 설정 대비에 의존하므로 자명하지 않다 → **plan 최우선 실증 대상**.
 - **`events.confirmed` consumer lag** — 코디네이터 정체의 가장 직관적 신호이나, 누적되려면 **producer는 흐르고 consumer만 정체**하는 비대칭 주입이 필요. 대칭 지연이면 안 쌓임.
-- **broker 가용성(`up{job="kafka-exporter"}==0` / `kafka_brokers < 1`)** — 하드 아웃티지 backstop. 위 두 파생 신호가 평탄한 완전 다운(소비할 게 없어 abort·lag 모두 0)에서도 그룹 발화.
+- **broker 가용성(`up{job="kafka-exporter"}==0 OR kafka_brokers < 1 OR absent(kafka_brokers)`)** — 하드 아웃티지 backstop. 위 두 파생 신호가 평탄한 완전 다운에서도 그룹 발화. 발화식은 3분기 OR: `up==0`(exporter scrape 실패) / `kafka_brokers<1`(멀티 broker 부분 다운) / `absent(kafka_brokers)`(완전 정지 시 시리즈 소멸). 라이브 실측 결과 단일 broker 완전 정지 시 `kafka_brokers` 는 0이 아니라 시리즈 소멸(absent)이므로 완전다운 backstop 의 실제 주체는 `absent()` 임.
 
 → 발화 규칙은 **txn abort/producer error OR consumer lag OR broker 가용성**으로 두되, latency 정체는 txn abort, 하드 아웃티지는 가용성 backstop이 받는다. consumer lag를 1차로 승격하려면 비대칭 메커니즘(서비스별 프록시 리스너 등)을 plan에서 확정하고 실증 전 lag 실제 누적을 관측해 정당화한다.
 
@@ -175,7 +175,7 @@ Prometheus는 6개 서비스 + kafka-exporter를 scrape만 하고 `rule_files`/`
 | 알람 토폴로지 | Prometheus `rule_files` 평가 + Grafana/`/alerts` 표시. Alertmanager 미도입 | 학습 프로젝트라 통지 채널 운영 부담 불필요. 평가·발화 실증이 목적 |
 | 규칙 로드 경로 | `docker-compose.observability.yml`에 `rules` 디렉토리 마운트 추가 | 현재 prometheus.yml 단일 파일만 바인드 — 마운트 없이는 규칙 미로드(무동작) |
 | 알람 규칙 그룹 | 코디네이터 정체 / 종결 가드 skip / DLQ 적체 3그룹 | 운영 위험 신호 단위로 규칙 파일 분리 |
-| 코디네이터 정체 신호 | txn abort/producer 에러(commit timeout 유래) OR consumer lag OR broker 가용성(`up{job="kafka-exporter"}==0`/`kafka_brokers<1`) | latency 정체=txn abort, 하드 아웃티지=가용성 backstop. txn abort 결정성은 주입 지연↔txn timeout 의존이라 plan 최우선 실증. lag는 비대칭 시 |
+| 코디네이터 정체 신호 | txn abort/producer 에러(commit timeout 유래) OR consumer lag OR broker 가용성(`up==0 OR kafka_brokers<1 OR absent(kafka_brokers)`) — 3분기 | latency 정체=txn abort, 하드 아웃티지=가용성 backstop. 라이브 실측 결과 완전 정지 시 kafka_brokers 는 시리즈 소멸(absent) → `absent()` 가 완전다운 포착의 실제 주체; `kafka_brokers<1` 은 멀티 broker 부분 다운 대비. txn abort 결정성은 주입 지연↔txn timeout 의존이라 plan 최우선 실증. lag는 비대칭 시 |
 | 종결 가드 skip 분자 | 위험 status 필터(`status=~"QUARANTINED\|FAILED\|EXPIRED\|CANCELED\|PARTIAL_CANCELED"`, DONE 제외), 분모는 IN_PROGRESS→terminal 전이 | 정상 재발행(DONE) 오염 배제 + 1건 2배 계상 배제. 라벨이 수신 status 못 가르는 한계는 주석 |
 | 가드 skip 발화 조건 | 비율 SLO + `for` 지속절 + `and rate(분모)>floor` 하한 | 일시 skip이 아닌 지속 패턴만, 저트래픽 0-division 흡수 |
 | DLQ 적체 신호 | 앱 도달 카운터 `increase()` + `.dlq` 토픽 offset `increase()` 델타 + `commands.confirm.dlq` 컨슈머 정체 backstop(`consumergroup_lag>0`). **독립 cross-check(OR), 합산 금지** | 누적 offset은 절대값 무의미(델타화). 앱 카운터(멱등)와 토픽 offset(좀비 중복 over-count 가능)은 count가 달라 합산 시 이중계상. 정체 backstop은 도착 onset-only 신호가 놓치는 미배수 적체(미해결 결제) 포착 |

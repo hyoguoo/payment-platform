@@ -153,10 +153,10 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - `observability/prometheus/rules/coordinator.yml` 신규 — 3개 알람 규칙:
   - `KafkaCoordinatorTxnAbortRising`: `rate(kafka_producer_txn_abort_time_ns_total{job="payment-service"}[5m]) > 1000000` (잠정 임계 1ms/s, for:1m)
   - `KafkaCoordinatorLagHigh`: `sum by (topic,consumergroup)(kafka_consumergroup_lag{topic="payment.events.confirmed",consumergroup="payment-service"}) > 1000` (잠정 임계 1000 messages, for:1m)
-  - `KafkaBrokerUnavailable`: `up{job="kafka-exporter"}==0 or kafka_brokers<1` (for:1m, severity:critical backstop)
-- `observability/prometheus/rules/tests/coordinator_test.yml` 신규 — 5케이스 모두 pass:
-  - (a) txn abort 급증 → FIRING, (b) consumer lag 급증 → FIRING, (c1) up==0 → FIRING, (c2) kafka_brokers<1 → FIRING, (d) 정상 baseline → no alert
-- `promtool check rules` SUCCESS(3 rules), `promtool test rules` SUCCESS(5 cases)
+  - `KafkaBrokerUnavailable`: `up{job="kafka-exporter"}==0 or kafka_brokers<1 or absent(kafka_brokers)` (for:2m, severity:critical backstop). 3분기: exporter scrape 실패 / 멀티 broker 부분 다운 / 완전 정지 시 시리즈 소멸(absent). 라이브 실측 결과 단일 broker 완전 정지 시 kafka_brokers 는 0이 아니라 absent → `kafka_brokers<1` 단독은 dead branch; `absent()` 가 완전다운 포착 주체. for:2m = 콜드스타트 일시 absent 오발화 흡수.
+- `observability/prometheus/rules/tests/coordinator_test.yml` 신규 — 6케이스 모두 pass:
+  - (a) txn abort 급증 → FIRING, (b) consumer lag 급증 → FIRING, (c1) up==0 → FIRING, (c2) kafka_brokers<1 → FIRING, (c3) kafka_brokers 부재(absent) → FIRING, (d) 정상 baseline → no alert
+- `promtool check rules` SUCCESS(3 rules), `promtool test rules` SUCCESS(6 cases)
 - Task 2 비대칭 실측 후 lag 1차 승격 여부 재조정 예정 — OR 구조이므로 규칙 변경 없이 coordinator.yml 주석 조정만 필요
 
 ---
@@ -280,4 +280,20 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+ship Phase A 코드 리뷰 — reviewer: **revise**(major 1·minor 2), domain-expert: **pass**(minor 3). critical 0.
+
+### 채택 (A·B·C·D)
+
+| # | 등급 | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| A | major | 막판 `absent(kafka_brokers)` 분기 fix 가 설계 SSOT(topics 결정표/인벤토리)·PLAN Task 3 완료결과에 미반영(2분기로 오기재), dead-branch 함정 PITFALLS 미등록 | **채택** | 출하 코드(3분기)와 완료기록 정합 + 학습 함정 영구 보존 필수 |
+| B | minor | 케이스 수 drift — 스크립트·smoke 가이드가 14케이스/coordinator 5케이스로 표기(실제 15/6), 격하 폴백 출력에 c3(absent) 미열거 | **채택** | 영구 산출물의 카운트·열거 정합 |
+| C | minor | DLQ `pg_retry_exhausted_quarantine_total` 분기 양성 발화 promtool 픽스처 부재(비대칭 커버리지) | **채택** | OR 분기 회귀 고정 — 메트릭명 오타/분기 손상 시에도 PASS 되는 맹점 제거 |
+| D | minor | `absent(kafka_brokers)` 분기 콜드스타트(첫 scrape 전) 오발화 가능 | **채택** | `for: 1m→2m` 상향 + 주석 caveat — 부팅 윈도우 흡수 |
+
+### 후속 기록 (TODOS, 멀티 broker T4-B 정밀화)
+
+| # | 등급 | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| DE1 | minor | guard-skip `status` 라벨이 결제 현재 상태만 담아 위험(QUARANTINED+늦은 APPROVED)과 양성(결과 재배달)을 못 가름 | **TODOS 후속** | domain-expert 가 "현 warning 유지가 합당(거짓 페이징 회피)" 판정 — 수신 메시지 status 라벨화는 T4-B |
+| DE2 | minor | `KafkaCoordinatorLagHigh` 임계 1000 은 단일 broker 드릴 도달 불가(피크 ~150) — 미검증 baseline | **TODOS 후속** | 단일 broker 비대칭 구조 한계(규칙 주석에 명시), 멀티 broker T4-B 후 재교정 |
