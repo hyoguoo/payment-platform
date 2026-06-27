@@ -81,6 +81,10 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 
 **exemplar / 서비스 그래프**: Prometheus `--enable-feature=exemplar-storage` + 앱 percentiles-histogram(payment·pg) + Grafana `exemplarTraceIdDestinations` 로 latency 패널→트레이스 클릭 점프. Tempo `metrics_generator`(service-graphs + span-metrics) → Prometheus `remote_write`(out-of-order window) 로 서비스 토폴로지(`traces_service_graph_*`)·span RED(`traces_spanmetrics_*`) 생성.
 
+**알람 규칙 (rule 평가만, Alertmanager 미도입)**: `prometheus.yml` `rule_files: /etc/prometheus/rules/*.yml` 로 `observability/prometheus/rules/*.yml`(observability compose 가 `rules` 디렉토리 마운트) 로드 → `/api/v1/rules`·`/api/v1/alerts` 평가/조회까지만(통지 채널 미연결). 운영 위험 3그룹 — **coordinator**(`KafkaCoordinatorTxnAbortRising`/`...LagHigh`/`KafkaBrokerUnavailable`: EOS txn abort·`events.confirmed` consumer lag·broker 가용성 backstop), **guard-skip**(`GuardSkipDangerousStatusHigh`: 종결 가드 위험 status skip 비율), **dlq**(`DlqAppCounterRising`/`DlqTopicOffsetRising`/`DlqCommandsConsumerLag`: 앱 카운터·`.dlq` offset 델타·`commands.confirm.dlq` 정체 독립 cross-check). 규칙은 `promtool test rules` 픽스처(`rules/tests/*.yml`, 16케이스)로 회귀 고정 — `scripts/smoke/alert-rules-promtool.sh`(Docker 경유, 라이브 불요)·`smoke-all.sh` Phase 1.3. ⚠️ broker 완전 정지 시 `kafka_brokers` 는 0 이 아니라 시리즈 소멸(absent) — backstop 은 `up==0`/`absent(kafka_brokers)` (PITFALLS #24).
+
+**장애 주입 드릴 (Toxiproxy, 전용 프로파일)**: `docker/docker-compose.drill.yml`(+`toxiproxy.json`) override — 평상시 미기동, drill 기동 시에만 적용. kafka PROXY 리스너(9094) 추가 광고 + payment-service bootstrap 을 `toxiproxy:9094` 로 우회해 latency toxic 주입(admin API 8474). 단일 broker + payment 가 `commands.confirm` producer 겸 consumer 라 전역 지연이 produce/fetch 대칭 저하 → consumer-only lag 비대칭 미실현(피크 ~150 ≪ 임계)·EOS commit timeout 미발화가 구조적 한계 → 코디네이터/EOS 라이브 결정적 발화는 promtool + 통합테스트로 격하(`scripts/smoke/alert-firing-*.sh`, 가이드 `docs/smoke/alert-firing-check.md`). `KafkaBrokerUnavailable`·`DlqTopicOffsetRising` 는 라이브 발화 실측됨.
+
 ## DB 마이그레이션 (Flyway)
 
 스키마 위치가 두 패턴 — **payment/pg 는 `db/migration/`**(단일, seed 없음), **product/user 는 `db/schema/` + `db/seed/`** 분리(profile 별 `locations` 로 `docker` 프로필에서 seed 차단).
