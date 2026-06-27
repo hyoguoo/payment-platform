@@ -48,11 +48,15 @@ tests:
               description: "consumer group payment-service lag 2500 messages. producer 흐름 대비 소비 정체 의심."
 
   # (c1) kafka-exporter scrape 실패(up==0) → KafkaBrokerUnavailable FIRING
+  # up==0 분기 단독 검증: kafka_brokers 를 present(3)로 두어 absent() 분기 동시 발화를 억제.
+  # (라이브에선 exporter 다운 시 up==0 과 absent 가 함께 발화하나, 여기선 분기별 회귀 고정이 목적.)
   # t=5m: up=0 PENDING, t=6m: for:1m 충족 → FIRING
   - interval: 1m
     input_series:
       - series: 'up{job="kafka-exporter"}'
         values: '1 1 1 1 1 0 0 0'
+      - series: 'kafka_brokers'
+        values: '3 3 3 3 3 3 3 3'
     alert_rule_test:
       - eval_time: 7m
         alertname: KafkaBrokerUnavailable
@@ -72,6 +76,26 @@ tests:
         values: '3 3 3 3 3 0 0 0'
     alert_rule_test:
       - eval_time: 7m
+        alertname: KafkaBrokerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
+
+  # (c3) kafka_brokers 시리즈 부재(absent) → absent(kafka_brokers) 분기로 FIRING
+  # 라이브 실측 회귀 고정: 실제 broker 완전 정지 시 kafka_brokers 는 0 이 아니라 absent 가 되어
+  #   kafka_brokers<1 단독은 dead branch — absent() 분기가 이를 포착함을 검증.
+  # (promtool 의 '_' gap 은 5분 lookback staleness 로 absent 를 부정확하게 시뮬하므로,
+  #  시리즈 자체를 선언하지 않아 absent 를 정확히 재현한다.)
+  # up 을 정상(1)으로 두어 absent() 분기를 단독 검증. absent 는 즉시 true → t=1m PENDING, t=2m FIRING.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kafka-exporter"}'
+        values: '1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
         alertname: KafkaBrokerUnavailable
         exp_alerts:
           - exp_labels:
