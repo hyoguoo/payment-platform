@@ -132,3 +132,23 @@ tests:
       - eval_time: 5m
         alertname: DlqTopicOffsetRising
         exp_alerts: []
+
+  # (g) pg retry 소진 격리 카운터만↑(payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
+  # OR 분기 pg 경로 회귀 고정: pg_retry_exhausted_quarantine_total 단독 증가 시 발화 검증.
+  # payment_eos_commit_failure_dlq_total 평탄(increase=0) → EOS 경로 분기 미발화.
+  # t=3m: increase(pg_retry[5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'pg_retry_exhausted_quarantine_total'
+        values: '0 0 0 1 2 3'
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 앱 도달 카운터 증가"
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."

@@ -14,7 +14,7 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 
 | 계층 | 수단 | 선행 조건 | 보증 범위 |
 |---|---|---|---|
-| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 14케이스 단정 |
+| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 16케이스 단정 |
 | **2차 — 라이브 드릴** | `alert-firing-*.sh` (Toxiproxy drill 프로파일) | 전체 스택 + `docker-compose.drill.yml` 기동 | 운영 환경 유사 발화 폴링 |
 
 ### 라이브 한계 명시
@@ -23,12 +23,12 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 
 - **consumer lag 비대칭 불가**: latency toxic 주입 시 consumer 경로만이 아닌 producer 경로(유입)도 함께 지연 → lag 피크 ~150 ≪ 임계(1000 messages). 결정적 임계 초과 불가.
 - **txn abort 미발화**: 주입 지연 2000ms < `transaction.timeout.ms` 이므로 EOS commit 이 느려질 뿐 abort 미발생.
-- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (14케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
+- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (16케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
 - 규칙은 Prometheus 라이브 로드 + 운영 유효 (관측 스택 정상 기동 시 `/api/v1/rules` 에서 3그룹 확인 가능).
 
-## 검증 항목 (14 케이스)
+## 검증 항목 (16 케이스)
 
-### 코디네이터 정체 — 5 케이스 (`coordinator_test.yml`)
+### 코디네이터 정체 — 6 케이스 (`coordinator_test.yml`)
 
 | 케이스 | 입력 | 기대 |
 |---|---|---|
@@ -36,6 +36,7 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 | (b) | `events.confirmed` consumer lag 급증 | `KafkaCoordinatorLagHigh` FIRING |
 | (c1) | `up{job="kafka-exporter"}==0` | `KafkaBrokerUnavailable` FIRING |
 | (c2) | `kafka_brokers<1` | `KafkaBrokerUnavailable` FIRING |
+| (c3) | `kafka_brokers` 시리즈 부재(absent) | `KafkaBrokerUnavailable` FIRING — 라이브 실측 함정: 완전 정지 시 0이 아닌 absent |
 | (d) | 정상 baseline abort rate (임계 미만) | 알람 미발화 — 알람 피로 방지 회귀 고정 |
 
 ### 종결 가드 skip — 3 케이스 (`guard_skip_test.yml`)
@@ -46,16 +47,17 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 | (b) | DONE-only skip (정상 재발행 경로) | 알람 미발화 |
 | (c) | 저트래픽 (분모 rate=0, floor 미충족) | 알람 미발화 — 0-division 흡수 회귀 고정 |
 
-### DLQ 적체 — 6 케이스 (`dlq_test.yml`)
+### DLQ 적체 — 7 케이스 (`dlq_test.yml`)
 
 | 케이스 | 입력 | 기대 |
 |---|---|---|
-| (a) | 앱 카운터 `increase>0` | `DlqAppCounterRising` FIRING |
+| (a) | 앱 카운터 `increase>0` (EOS 경로) | `DlqAppCounterRising` FIRING |
 | (b) | `.dlq` 토픽 offset `increase>0` | `DlqTopicOffsetRising` FIRING |
 | (c) | 정상 (델타 0) | 3개 알람 모두 미발화 |
 | (d) | 앱 카운터만↑ (offset 증가 없음) | `DlqAppCounterRising` 만 FIRING — 독립 회귀 고정 |
 | (e) | offset만↑ (앱 카운터 증가 없음) | `DlqTopicOffsetRising` 만 FIRING — 독립 회귀 고정 |
 | (f) | `commands.confirm.dlq` 컨슈머 lag 잔존 | `DlqCommandsConsumerLag` FIRING — offset-increase 0 사각 보완 |
+| (g) | `pg_retry_exhausted_quarantine_total` 만↑ (payment_eos 평탄) | `DlqAppCounterRising` FIRING — pg 분기 OR 독립 회귀 고정 |
 
 ## 사용법 — 1차 규칙 유닛 검증
 
@@ -68,7 +70,7 @@ bash scripts/smoke-all.sh
 ```
 
 종료 코드:
-- 0 — 14 케이스 전체 PASS
+- 0 — 16 케이스 전체 PASS
 - 1 — 실패 또는 Docker 미기동
 
 ## 사용법 — 2차 라이브 드릴 (수동)

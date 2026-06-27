@@ -54,9 +54,11 @@ groups:
       #   시리즈가 소멸(absent)한다 — 따라서 kafka_brokers<1 단독은 dead branch.
       #   absent() 로 시리즈 소멸을 직접 포착해야 단일/완전 다운을 잡는다.
       # kafka_brokers<1: exporter 가 살아있고 broker 수만 0/부족 보고하는 경우(멀티 broker 부분 다운) 대비.
+      # Prometheus/exporter 콜드스타트(첫 scrape 전) 일시 absent 오발화 흡수를 위해 for:2m 설정.
+      # 정상 기동 후 scrape 2회 완료 시간(scrape_interval 기준) 이상의 윈도우로 오발화 억제.
       - alert: KafkaBrokerUnavailable
         expr: 'up{job="kafka-exporter"} == 0 or kafka_brokers < 1 or absent(kafka_brokers)'
-        for: 1m
+        for: 2m
         labels:
           severity: critical
         annotations:

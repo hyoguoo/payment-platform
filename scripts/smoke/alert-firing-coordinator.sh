@@ -42,7 +42,7 @@ TOXI_HOST="${TOXI_HOST:-localhost}"
 TOXI_ADMIN_PORT="${TOXI_ADMIN_PORT:-8474}"
 TOXI_ADMIN_URL="http://${TOXI_HOST}:${TOXI_ADMIN_PORT}"
 
-# 라이브 폴링 타임아웃 — latency 주입 후 알람 for:1m 충족까지 여유 포함
+# 라이브 폴링 타임아웃 — latency 주입 후 알람 for:2m 충족까지 여유 포함
 POLL_TIMEOUT_S="${POLL_TIMEOUT_S:-120}"
 POLL_INTERVAL_S="${POLL_INTERVAL_S:-5}"
 
@@ -226,17 +226,18 @@ print_section "  격하 폴백 — promtool test rules (코디네이터 픽스�
 print_section "════════════════════════════════════════════════════════════"
 print_warning "  라이브 발화 환경 한계 또는 스택 미기동으로 격하 폴백 실행"
 print_warning "  규칙은 Prometheus 라이브 로드 + 운영 유효."
-print_warning "  promtool 합성 시계열 5케이스:"
+print_warning "  promtool 합성 시계열 6케이스:"
 print_warning "    (a) txn abort 급증 → KafkaCoordinatorTxnAbortRising FIRING"
 print_warning "    (b) consumer lag 급증 → KafkaCoordinatorLagHigh FIRING"
 print_warning "    (c1) up==0 → KafkaBrokerUnavailable FIRING"
 print_warning "    (c2) kafka_brokers<1 → KafkaBrokerUnavailable FIRING"
+print_warning "    (c3) kafka_brokers 시리즈 absent → absent() 분기 KafkaBrokerUnavailable FIRING"
 print_warning "    (d) 정상 baseline abort rate → no alert (알람 피로 방지 회귀 고정)"
 echo ""
 
 if run_promtool_coordinator; then
     echo ""
-    print_info "✅ 격하 폴백 PASS — promtool test rules 5케이스 통과"
+    print_info "✅ 격하 폴백 PASS — promtool test rules 6케이스 통과"
     print_info "   규칙 발화 로직 검증 완료. 라이브 발화는 환경 한계로 제외."
     exit 0
 else
