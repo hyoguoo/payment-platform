@@ -132,7 +132,7 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 - **검증 성공**: 규칙 3그룹(coordinator/guard-skip/dlq) Prometheus 라이브 로드 확인 + 프록시 경유(`kafka-broker-api-versions via toxiproxy:9094`) 입증 + k6 confirm 트래픽(events.confirmed 발행 ~84 msg/s) 정상.
 - **비대칭 spike 판정 (실증 ①)**: latency 2000ms 주입 시 events.confirmed lag **피크 150 ≪ 임계(1000)**. 원인 = payment가 commands.confirm producer이기도 해 발행도 PROXY 지연 → 유입 동반 감소(한계 명시대로). → **lag 1차 승격 안 함, OR(txn abort / lag / broker 가용성) 유지**.
 - **txn abort 미발화 (실증 ②)**: latency 2000ms < `transaction.timeout.ms`라 EOS commit이 느려질 뿐 abort 미발생(reviewer 예견 의존성 실측 확인). EOS commit timeout도 동일 — 라이브 미발화.
-- **격하 폴백 적용**: 단일 broker 환경에서 코디네이터/EOS 라이브 결정적 발화 불가 → `promtool test rules`(14케이스 pass) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 위임으로 발화 보증. 규칙은 Prometheus 라이브 로드 + 운영 유효.
+- **격하 폴백 적용**: 단일 broker 환경에서 코디네이터/EOS 라이브 결정적 발화 불가 → `promtool test rules`(16케이스 pass) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 위임으로 발화 보증. 규칙은 Prometheus 라이브 로드 + 운영 유효.
 
 ---
 
@@ -206,14 +206,15 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
   - `DlqAppCounterRising`: `increase(payment_eos_commit_failure_dlq_total[5m]) > 0 or increase(pg_retry_exhausted_quarantine_total[5m]) > 0` (for:1m, severity:warning). 두 DLQ 경로(EOS 커밋 실패 / pg retry 소진 격리) 독립 OR cross-check — 합산 금지.
   - `DlqTopicOffsetRising`: `increase(kafka_topic_partition_current_offset{topic=~".*\\.dlq"}[5m]) > 0` (for:1m, severity:warning). kafka-exporter 기반 .dlq 토픽 offset delta 신호 — 앱 카운터와 독립. 누적 offset 절대값 미사용.
   - `DlqCommandsConsumerLag`: `kafka_consumergroup_lag{topic="payment.commands.confirm.dlq",consumergroup="pg-service-dlq"} > 0` (for:1m, severity:warning). 컨슈머 정체 backstop — 도착 멈춤 후 lag 잔존(offset-increase 0인 사각) 포착.
-- `observability/prometheus/rules/tests/dlq_test.yml` 신규 — 6케이스 모두 pass:
+- `observability/prometheus/rules/tests/dlq_test.yml` 신규 — 7케이스 모두 pass:
   - (a) 앱 카운터 increase > 0 → DlqAppCounterRising FIRING
   - (b) .dlq 토픽 offset increase > 0 → DlqTopicOffsetRising FIRING
   - (c) 정상(델타 0) → 3개 알람 모두 미발화
   - (d) 앱 카운터만↑(offset 없음) → DlqAppCounterRising만 FIRING (독립 회귀 고정)
   - (e) 토픽 offset만↑(앱 카운터 없음) → DlqTopicOffsetRising만 FIRING (독립 회귀 고정)
   - (f) commands.confirm.dlq 컨슈머 lag 잔존 → DlqCommandsConsumerLag FIRING (backstop 사각 보완 확인)
-- `promtool check rules` SUCCESS (3 rules), `promtool test rules` SUCCESS (6 cases, 특히 d/e 단일-발화 독립 검증)
+  - (g) pg retry 소진 격리 카운터만↑(EOS 카운터 없음) → DlqAppCounterRising FIRING (OR 두 번째 분기 단독 회귀 고정)
+- `promtool check rules` SUCCESS (3 rules), `promtool test rules` SUCCESS (7 cases, 특히 d/e/g 단일-발화 독립 검증)
 
 ---
 
@@ -236,16 +237,16 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 - `scripts/smoke/alert-firing-coordinator.sh` 신규 — 코디네이터 정체 알람 발화 검증 스크립트:
   - 라이브 경로: `drill-toxiproxy.sh inject` → Prometheus `/api/v1/alerts` 폴링(코디네이터 3개 알람 `state=firing`, 타임아웃 120s) → `drill-toxiproxy.sh remove`. 발화 시 PASS exit 0.
-  - 격하 폴백: 타임아웃 또는 스택 미기동 시 단일 broker 비대칭 한계(lag 피크 150 ≪ 임계 1000, txn abort 미발화) 안내 + `promtool test rules` 코디네이터 픽스처(5케이스) 실행. promtool PASS → exit 0.
+  - 격하 폴백: 타임아웃 또는 스택 미기동 시 단일 broker 비대칭 한계(lag 피크 150 ≪ 임계 1000, txn abort 미발화) 안내 + `promtool test rules` 코디네이터 픽스처(6케이스) 실행. promtool PASS → exit 0.
   - `--fallback-only` 플래그로 라이브 시도 없이 격하 폴백 직행.
   - toxic 정리 트랩(EXIT/INT/TERM) — 비정상 종료 시에도 `drill-toxiproxy.sh remove` 호출.
 - `scripts/smoke/alert-firing-dlq.sh` 신규 — DLQ 적체 알람 발화 검증 스크립트:
-  - 격하 폴백 디폴트: `promtool test rules` dlq 픽스처(6케이스) 실행 + EOS 경로/pg 경로 통합테스트 위임 안내(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`).
+  - 격하 폴백 디폴트: `promtool test rules` dlq 픽스처(7케이스) 실행 + EOS 경로/pg 경로 통합테스트 위임 안내(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`).
   - `--live` 플래그로 Prometheus 폴링 추가 시도(실 주입 없이 현재 상태만 폴링).
   - 격하 사유 명시: EOS 경로(latency 주입 지연 < transaction.timeout.ms → abort 미발화, 실측 확인), pg 경로(벤더 HTTP toxic 드릴 구성 미포함, 실 벤더 sandbox 미구성).
 - promtool test 검증(docker 경유):
-  - coordinator 픽스처 5케이스 SUCCESS
-  - DLQ 픽스처 6케이스 SUCCESS
+  - coordinator 픽스처 6케이스 SUCCESS
+  - DLQ 픽스처 7케이스 SUCCESS
 - 두 스크립트 모두 `--fallback-only`/기본 모드에서 exit 0 확인.
 
 ---
@@ -263,16 +264,16 @@ Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디�
 
 **완료 결과**
 - `docs/smoke/alert-firing-check.md` 신규 — 알람 발화 검증 절차 가이드:
-  - 2계층 검증 구조(1차: promtool test rules 14케이스 / 2차: 라이브 드릴) 표로 정리.
+  - 2계층 검증 구조(1차: promtool test rules 16케이스 / 2차: 라이브 드릴) 표로 정리.
   - 라이브 한계 명시: 단일 broker + payment가 commands.confirm producer → lag 피크 150 ≪ 임계 / latency 2000ms < transaction.timeout.ms → abort 미발화 → 코디네이터/EOS 라이브 결정적 발화 불가. promtool + 통합테스트가 1차 수단.
-  - 14 케이스 테이블(코디네이터 5 / 가드 skip 3 / DLQ 6) + 사용법(1차/2차) + 실패 케이스 해석 + 비범위 + 영구성 + 관련 문서.
+  - 16 케이스 테이블(코디네이터 6 / 가드 skip 3 / DLQ 7) + 사용법(1차/2차) + 실패 케이스 해석 + 비범위 + 영구성 + 관련 문서.
   - 기존 `infra-healthcheck.md` / `trace-continuity-check.md` 형식·톤 계승.
 - `scripts/smoke/alert-rules-promtool.sh` 신규 — 3그룹 promtool 통합 래퍼:
   - Docker 경유 `promtool test rules` 를 coordinator / guard-skip / DLQ 순서로 실행.
   - `run_test` 헬퍼로 그룹별 PASS/FAIL 카운트 → 전체 종합 exit code.
   - 라이브 스택 불필요, Docker 만 전제.
 - `scripts/smoke-all.sh` 수정 — Phase 1.3 추가:
-  - `run_step "Phase 1.3 — alert rules promtool test (3 그룹, 14 케이스)"` 로 `alert-rules-promtool.sh` 호출.
+  - `run_step "Phase 1.3 — alert rules promtool test (3 그룹, 16 케이스)"` 로 `alert-rules-promtool.sh` 호출.
   - Phase 1 헤더 주석에 Phase 1.3 설명 + 라이브 드릴 수동 안내 링크 추가.
   - 기존 Phase 1.1 / 1.2 / Phase 2 동작 무변경.
   - `--help` sed 범위를 26줄로 확장(헤더 라인 증가 반영).
