@@ -56,6 +56,9 @@ groups:
       # kafka_brokers<1: exporter 가 살아있고 broker 수만 0/부족 보고하는 경우(멀티 broker 부분 다운) 대비.
       # Prometheus/exporter 콜드스타트(첫 scrape 전) 일시 absent 오발화 흡수를 위해 for:2m 설정.
       # 정상 기동 후 scrape 2회 완료 시간(scrape_interval 기준) 이상의 윈도우로 오발화 억제.
+      # 트레이드오프: 완전 다운에서 파생 신호(abort·lag)가 평탄해 이 규칙이 유일 신호일 때
+      #   for:2m 가 critical 감지를 +1분 지연시킨다. 오발화 페이징 회피를 우선해 수용 —
+      #   동시에 up==0 분기도 같은 backstop 으로 작동하므로 단일 신호 의존을 줄인다.
       - alert: KafkaBrokerUnavailable
         expr: 'up{job="kafka-exporter"} == 0 or kafka_brokers < 1 or absent(kafka_brokers)'
         for: 2m
