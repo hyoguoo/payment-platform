@@ -1,14 +1,16 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL ship 완료 → idle)
+> 최종 수정: 2026-06-28 (FAULT-INJECTION-RESILIENCE discuss 완료 → plan)
 
 ## 활성 작업
 
-- 없음 (idle)
+- **주제**: FAULT-INJECTION-RESILIENCE (서비스·DB·Redis 가용성 알람 추가 + docker stop 완전 다운 시 정합 거동 실증)
+- **단계**: plan
+- **이슈/브랜치**: #118
 
 ## 재개 메모
 
-- (없음)
+discuss 완료. 설계 SSOT `docs/topics/FAULT-INJECTION-RESILIENCE.md`. 게이트: 1R critical(완전 다운 시 백스톱 거짓 양성) 해소, 2R reviewer pass / domain-expert는 no-divergence vacuous를 major로 지적 → "안전방향 회귀 가드"로 격하 정정(메인 종결, 2R 소진). **정정분은 plan 게이트에서 재검증 필요**. 핵심: 가용성 사각을 `up==0` + actuator health→컴포넌트별 폴링 게이지(payment redis dedupe/stock 분리)로 메우고, 완전 다운 실제 전이(DLQ 유실0·EXPIRED 2단 마스킹 차단·over-sell 0)를 통합테스트 단정으로 고정. 신규 복구 로직 없음(TQ-1/TC-3 위임). plan 진입.
 
 ## 최근 완료
 
