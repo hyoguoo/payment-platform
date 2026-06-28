@@ -1,0 +1,300 @@
+# 알람 규칙 인프라 + 장애 주입 실증 구현 플랜
+
+> 작성일: 2026-06-26
+
+## 요약 브리핑
+
+### Task 목록
+
+1. **Prometheus 규칙 로드 인프라** — `rule_files` + observability compose `rules` 디렉토리 마운트(현재 단일 파일 바인드 보완)
+2. **Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike** — 최우선 실증 ①(consumer 경유/producer 직결로 lag 누적 판정)
+3. **코디네이터 정체 규칙 + 발화 유닛테스트** — txn abort / consumer lag / broker 가용성 backstop OR, baseline-abort no-alert
+4. **종결 가드 skip 규칙 + 발화 유닛테스트** — 위험 status 분자 / IN_PROGRESS→terminal 분모, DONE 재발행 no-alert
+5. **DLQ 적체 규칙 + 발화 유닛테스트** — 앱 카운터 · `.dlq` offset 델타 · `commands.confirm.dlq` 정체 backstop(3신호 독립 cross-check)
+6. **그룹별 라이브 발화 검증 스크립트** — 코디네이터(latency) / EOS(commit timeout, 최우선 실증 ②) / pg(벤더 toxic), 두 DLQ 경로 대칭 격하 폴백
+7. **smoke 가이드 연결 + 통합 러너 등록**
+
+### 변경 후 전체 플로우차트
+
+```mermaid
+flowchart TD
+    SVC["서비스 + kafka-exporter<br/>(메트릭 무변경)"] --> PROM[(Prometheus)]
+    PROM -->|"rule_files 평가 · Task 1"| RG{"규칙 3그룹<br/>코디네이터 · 가드 skip · DLQ<br/>Task 3·4·5"}
+    RG -->|FIRING| ALERTS["alerts API · Grafana 패널"]
+
+    subgraph verify["검증 2계층"]
+        UNIT["promtool test rules<br/>합성 시계열 발화 단정<br/>Task 3·4·5"]
+        LIVE["라이브 드릴 스크립트 · Task 6<br/>코디네이터 latency · EOS commit timeout · pg 벤더 toxic"]
+    end
+    RG -.-> UNIT
+    DRILL["Toxiproxy 전용 프로파일 · Task 2"] -.->|주입| LIVE
+    LIVE -->|"FIRING 폴링 → resolved"| ALERTS
+    LIVE -.->|"라이브 불가 시 격하"| FALLBACK["promtool test + 통합테스트 위임<br/>(규칙은 운영 유효)"]
+    UNIT --> GUIDE["smoke 가이드 · 통합 러너 · Task 7"]
+```
+
+### 핵심 결정 → Task 매핑
+
+- 알람 토폴로지 · 규칙 로드 경로 → **Task 1**
+- 장애 주입 수단 · 코디네이터 비대칭 실현 → **Task 2**
+- 코디네이터 정체 신호 · 임계(baseline) → **Task 3**
+- 종결 가드 skip 분자 · 발화 조건 → **Task 4**
+- DLQ 적체 신호(앱 카운터 · offset · 정체 backstop) → **Task 5**
+- 실증 산출물 · 주입 분리 → **Task 6**
+- 검증 전략(회귀 가드) → **Task 7**
+
+### 트레이드오프 / 후속 작업
+
+- **임계값 baseline 잠정** — 부하 측정(T4-B) 후 실측 정밀화(규칙 주석 표기).
+- **라이브 실증 불가 시 격하** — 코디네이터 lag 비대칭·EOS commit timeout·pg 벤더 sandbox가 환경상 불가하면 `promtool test rules` + 통합테스트 위임으로 격하(규칙 자체는 운영 유효).
+- **범위 밖 후속** — 통지 채널(Alertmanager/Slack), 나머지 장애 6종, k6 부하 곡선, 오토스케일러.
+
+## 목표
+
+Prometheus 알람 규칙 평가 인프라 + 운영 위험 3그룹 규칙(코디네이터 정체 / 종결 가드 늦은-결과 무시 / DLQ 적체) + Toxiproxy 장애 주입 전용 프로파일 + 그룹별 발화 검증 스크립트가 모두 갖춰지고, 각 규칙이 `promtool test rules`로 발화 단정되며 라이브 드릴(또는 격하 폴백)로 실증되면 완료.
+
+## 컨텍스트
+
+- 설계 문서: `docs/topics/ALERTING-RULES-AND-FAULT-DRILL.md`
+- 주요 변경/신규 파일:
+  - `observability/prometheus/prometheus.yml` (`rule_files` 추가)
+  - `observability/prometheus/rules/*.yml` (신규 규칙 — coordinator / guard-skip / dlq)
+  - `observability/prometheus/rules/tests/*.yml` (신규 `promtool test rules` 픽스처)
+  - `docker/docker-compose.observability.yml` (prometheus `rules` 디렉토리 마운트)
+  - `docker/docker-compose.*` (신규 Toxiproxy 전용 프로파일/override + Kafka 경유 비대칭 리스너)
+  - `scripts/smoke/alert-firing-*.sh` (신규 발화 검증 스크립트), `scripts/smoke-all.sh` 연결
+  - `docs/smoke/alert-firing-check.md` (신규 가이드)
+- 애플리케이션 코드 무변경 (알람 참조 메트릭 전부 기존 존재) — 인프라/관측/스크립트 레이어 전용
+
+## 진행 상황
+
+- [x] Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트)
+- [x] Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike (구성 + 라이브 실측 → 비대칭 한계 규명, 격하 폴백)
+- [x] Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트
+- [x] Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트
+- [x] Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트
+- [x] Task 6: 그룹별 라이브 발화 검증 스크립트
+- [x] Task 7: smoke 가이드 연결 + 통합 러너 등록
+
+## 태스크
+
+### Task 1: Prometheus 규칙 로드 인프라 (rule_files + compose 마운트) [tdd=false] [domain_risk=false]
+
+**구현 (GREEN)**
+- `observability/prometheus/prometheus.yml`에 `rule_files: [ "/etc/prometheus/rules/*.yml" ]` 블록 추가.
+- `docker/docker-compose.observability.yml` prometheus 서비스에 `../observability/prometheus/rules:/etc/prometheus/rules:ro` 디렉토리 마운트 추가 (현재 `prometheus.yml` 단일 파일만 바인드 → 마운트 없이는 규칙 미로드).
+- `observability/prometheus/rules/.gitkeep` 또는 첫 규칙 파일로 디렉토리 존재 보장.
+
+**완료 기준**
+- `promtool check config observability/prometheus/prometheus.yml` 통과 (rule_files 경로 인식).
+- prometheus 컨테이너 기동 후 `/api/v1/rules`에 그룹이 로드됨(빈 디렉토리면 0, 규칙 추가 후 노출) 확인.
+- 매핑: 결정 "알람 토폴로지", "규칙 로드 경로".
+
+**완료 결과**
+- `prometheus.yml`에 `rule_files: ["/etc/prometheus/rules/*.yml"]` 블록 추가.
+- `docker-compose.observability.yml` prometheus 서비스에 `../observability/prometheus/rules:/etc/prometheus/rules:ro` 마운트 추가.
+- `observability/prometheus/rules/.gitkeep` 으로 디렉토리 존재 보장(실제 규칙은 Task 3~5에서 추가).
+- [Rule 1] `promtool`이 로컬에 없어 `promtool check config` 라이브 검증 불가 — YAML 문법·경로 정합성만 확보. 컨테이너 기동 시 `/api/v1/rules` 확인은 Task 3~5 규칙 추가 후 수행 예정.
+
+---
+
+### Task 2: Toxiproxy 전용 프로파일 + Kafka 경유 비대칭 구성 + 비대칭 실현 spike [tdd=false] [domain_risk=true]
+
+**구현 (GREEN)**
+- Toxiproxy 컨테이너를 **전용 프로파일/override**(`docker/docker-compose.drill.yml` 등)로 추가 — 평상시 미기동.
+- broker `KAFKA_ADVERTISED_LISTENERS`에 프록시 경유 리스너를 추가 광고하고, 서비스별 bootstrap을 분리해 **consumer(payment `events.confirmed`) 경로만 지연 프록시 경유 / producer(pg) 직결**하는 비대칭 구성을 시도.
+- **비대칭 실현 spike**: latency toxic 주입 상태에서 (a) produce가 실제 프록시 카운터를 통과하는지(우회 차단), (b) `events.confirmed` consumer lag가 실제로 누적되는지 관측.
+
+**완료 기준**
+- 전용 프로파일이 평상시 경로(기본 compose up)에 영향 없음 확인.
+- 프록시 경유 사전 확인 스텝이 produce 트래픽의 프록시 통과를 입증.
+- **비대칭 판정 기록**: lag 누적 성공 → 코디네이터 1차 신호를 lag로 승격(Task 3 반영). 실패 → txn abort 1차 안전망 유지 + topic.md/PLAN에 격하 근거 명시.
+- **태스크 경계**: 커밋 산출물은 Toxiproxy 프로파일·비대칭 리스너 구성. 비대칭 spike는 판정·기록 산출물(코드 비대상) — 단일 broker 서비스별 리스너 광고가 비자명하므로, 구성이 ≤2시간을 넘으면 spike 판정을 별도 후속 태스크로 split.
+- 매핑: 결정 "장애 주입 수단", "코디네이터 정체 신호"(비대칭 실현 = plan 최우선 실증 ①).
+
+**완료 결과**
+
+구성 산출물 + 라이브 spike 실측 완료.
+
+- `docker/docker-compose.drill.yml` 신규 — 인프라 전용 compose override:
+  - `kafka` 서비스: PROXY 리스너(9094) 추가 광고 (`KAFKA_LISTENERS`, `KAFKA_ADVERTISED_LISTENERS`, `KAFKA_LISTENER_SECURITY_PROTOCOL_MAP` override — 기존 PLAINTEXT/CONTROLLER/PLAINTEXT_HOST 유지).
+  - `toxiproxy` 서비스: `ghcr.io/shopify/toxiproxy:2.9.0`, kafka healthy 후 기동, admin API 포트 8474 + 프록시 포트 9094 호스트 노출.
+  - `payment-service` 서비스: `SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:9094` (apps.yml의 kafka:9092 → toxiproxy:9094 override). toxiproxy healthy 조건 depends_on 추가.
+  - pg-service: override 없음 — `KAFKA_BOOTSTRAP_SERVERS: kafka:9092` 직결 유지(producer 비대칭 실현).
+- `docker/toxiproxy.json` 신규 — Toxiproxy 초기 프록시 등록 파일 (`kafka-proxy`: listen 0.0.0.0:9094 → upstream kafka:9094, enabled=true). 기동 시 자동 등록.
+- `scripts/smoke/drill-toxiproxy.sh` 신규 — admin API 경유 주입/해제/검증 스크립트 골격 (inject/remove/status/verify/reset 명령, 환경변수 오버라이드, 드릴 흐름 주석).
+- `docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml -f docker/docker-compose.drill.yml config` 정합성 검증 통과 — kafka PROXY 리스너 merge, payment-service bootstrap override, toxiproxy depends_on 체인 모두 확인.
+- **한계 명시**: payment-service는 producer이기도 하므로 `payment.commands.confirm` 발행도 PROXY 경유(지연 포함) — consumer-only 비대칭의 최선 근사, producer 완전 분리 불가.
+
+**라이브 spike 실측 (메인 직접, 전체 스택 drill 기동):**
+
+- **헬스체크 픽스**: toxiproxy minimal 이미지에 `wget` 부재로 헬스체크 항상 unhealthy → payment-service `depends_on(service_healthy)` 차단(Created stuck) 발견. 헬스체크를 `wget` → `/toxiproxy-cli list`로 교체해 해소(라이브 기동 정상화).
+- **검증 성공**: 규칙 3그룹(coordinator/guard-skip/dlq) Prometheus 라이브 로드 확인 + 프록시 경유(`kafka-broker-api-versions via toxiproxy:9094`) 입증 + k6 confirm 트래픽(events.confirmed 발행 ~84 msg/s) 정상.
+- **비대칭 spike 판정 (실증 ①)**: latency 2000ms 주입 시 events.confirmed lag **피크 150 ≪ 임계(1000)**. 원인 = payment가 commands.confirm producer이기도 해 발행도 PROXY 지연 → 유입 동반 감소(한계 명시대로). → **lag 1차 승격 안 함, OR(txn abort / lag / broker 가용성) 유지**.
+- **txn abort 미발화 (실증 ②)**: latency 2000ms < `transaction.timeout.ms`라 EOS commit이 느려질 뿐 abort 미발생(reviewer 예견 의존성 실측 확인). EOS commit timeout도 동일 — 라이브 미발화.
+- **격하 폴백 적용**: 단일 broker 환경에서 코디네이터/EOS 라이브 결정적 발화 불가 → `promtool test rules`(16케이스 pass) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 위임으로 발화 보증. 규칙은 Prometheus 라이브 로드 + 운영 유효.
+
+---
+
+### Task 3: 코디네이터 정체 알람 규칙 + 발화 유닛테스트 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `observability/prometheus/rules/tests/coordinator_test.yml` — `promtool test rules` 픽스처. 합성 시계열로 (a) txn abort 증가 → FIRING, (b) consumer lag 증가 → FIRING, (c) `up{job="kafka-exporter"}==0` / `kafka_brokers<1` → FIRING, (d) **정상 baseline abort/retry rate(임계 미만, 0 아님) → no alert**(임계가 정상 abort 위에 있음을 회귀 고정 — 알람 피로 방지)를 단정.
+
+**구현 (GREEN)**
+- `observability/prometheus/rules/coordinator.yml` — 발화식 **txn abort/producer 에러 OR `events.confirmed` consumer lag OR broker 가용성 backstop**(`up{job="kafka-exporter"}==0` / `kafka_brokers < 1`). `for` 지속절 + baseline 임계(주석에 잠정 표기). Task 2 비대칭 판정에 따라 lag/abort 1차 우선순위 확정.
+
+**완료 기준**
+- `promtool test rules observability/prometheus/rules/tests/coordinator_test.yml` 전 케이스 pass.
+- `promtool check rules observability/prometheus/rules/coordinator.yml` 통과.
+- 매핑: 결정 "코디네이터 정체 신호", "임계값"(baseline).
+
+**완료 결과**
+- `observability/prometheus/rules/coordinator.yml` 신규 — 3개 알람 규칙:
+  - `KafkaCoordinatorTxnAbortRising`: `rate(kafka_producer_txn_abort_time_ns_total{job="payment-service"}[5m]) > 1000000` (잠정 임계 1ms/s, for:1m)
+  - `KafkaCoordinatorLagHigh`: `sum by (topic,consumergroup)(kafka_consumergroup_lag{topic="payment.events.confirmed",consumergroup="payment-service"}) > 1000` (잠정 임계 1000 messages, for:1m)
+  - `KafkaBrokerUnavailable`: `up{job="kafka-exporter"}==0 or kafka_brokers<1 or absent(kafka_brokers)` (for:2m, severity:critical backstop). 3분기: exporter scrape 실패 / 멀티 broker 부분 다운 / 완전 정지 시 시리즈 소멸(absent). 라이브 실측 결과 단일 broker 완전 정지 시 kafka_brokers 는 0이 아니라 absent → `kafka_brokers<1` 단독은 dead branch; `absent()` 가 완전다운 포착 주체. for:2m = 콜드스타트 일시 absent 오발화 흡수.
+- `observability/prometheus/rules/tests/coordinator_test.yml` 신규 — 6케이스 모두 pass:
+  - (a) txn abort 급증 → FIRING, (b) consumer lag 급증 → FIRING, (c1) up==0 → FIRING, (c2) kafka_brokers<1 → FIRING, (c3) kafka_brokers 부재(absent) → FIRING, (d) 정상 baseline → no alert
+- `promtool check rules` SUCCESS(3 rules), `promtool test rules` SUCCESS(6 cases)
+- Task 2 비대칭 실측 후 lag 1차 승격 여부 재조정 예정 — OR 구조이므로 규칙 변경 없이 coordinator.yml 주석 조정만 필요
+
+---
+
+### Task 4: 종결 가드 skip 알람 규칙 + 발화 유닛테스트 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `rules/tests/guard_skip_test.yml` — (a) 위험 status(`status=~"QUARANTINED|FAILED|EXPIRED|CANCELED|PARTIAL_CANCELED"`) 비율이 임계 초과 + 분모 트래픽 존재 → FIRING, (b) DONE-only skip(정상 재발행) → no alert, (c) 저트래픽(분모 < floor) → no alert(0-division 흡수)를 단정.
+
+**구현 (GREEN)**
+- `rules/guard-skip.yml` — 분자 = 위험 status 필터 `rate(payment_confirm_guard_skip_total{status=~"..."})`, 분모 = confirm 결과 적용 전이(IN_PROGRESS→terminal) `rate(payment_transition_total{...})`, `and rate(분모) > floor` 하한 + `for` 지속절. 라벨이 수신 메시지 status를 못 가르는 한계를 규칙 주석에 적시.
+
+**완료 기준**
+- `promtool test rules .../guard_skip_test.yml` 전 케이스 pass (특히 DONE 재발행 no-alert).
+- 매핑: 결정 "종결 가드 skip 분자", "가드 skip 발화 조건".
+
+**완료 결과**
+- `observability/prometheus/rules/guard-skip.yml` 신규 — 알람 규칙 1개:
+  - `GuardSkipDangerousStatusHigh`: 위험 status(QUARANTINED·FAILED·EXPIRED·CANCELED·PARTIAL_CANCELED) skip 비율 > 10% AND IN_PROGRESS 전이 rate > 0.01/s (floor), for:1m, severity:warning
+  - 분자: `sum(rate(payment_confirm_guard_skip_total{status=~"QUARANTINED|FAILED|EXPIRED|CANCELED|PARTIAL_CANCELED"}[5m]))`
+  - 분모: `sum(rate(payment_transition_total{from_status="IN_PROGRESS"}[5m]))` (confirm 결과 적용 성공 경로)
+  - floor 가드: 트래픽 부재 시 0-division +Inf 오탐 방지
+  - [한계 주석] status 라벨이 수신 pg 응답 status를 못 가르므로 QUARANTINED+APPROVED(위험) vs QUARANTINED+FAILED(양성) 라벨 분리 불가
+- `observability/prometheus/rules/tests/guard_skip_test.yml` 신규 — 3케이스 모두 pass:
+  - (a) 위험 status skip 급증(비율 20%) → FIRING
+  - (b) DONE-only skip(정상 재발행) → no alert
+  - (c) 저트래픽(분모 rate=0, floor 미충족) → no alert (0-division 흡수 회귀 고정)
+- `promtool check rules` SUCCESS(1 rule), `promtool test rules` SUCCESS(3 cases)
+
+---
+
+### Task 5: DLQ 적체 알람 규칙 + 발화 유닛테스트 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `rules/tests/dlq_test.yml` — (a) 앱 카운터(`payment_eos_commit_failure_dlq_total` / `pg_retry_exhausted_quarantine_total`) `increase()` > 0 → FIRING, (b) `.dlq` 토픽 offset `increase()` > 0 → FIRING, (c) 정상(델타 0) → no alert, (d) **앱 카운터만↑(offset 0) → 앱 알람만 FIRING**, (e) **토픽 offset만↑(앱 0) → 토픽 알람만 FIRING**(단일-발화로 두 규칙 독립=합산 아님을 회귀 고정), (f) **`commands.confirm.dlq` 컨슈머 정체(도착 멈춤 + 잔여 backlog) → consumergroup_lag 정체 알람 FIRING**을 단정.
+
+**구현 (GREEN)**
+- `rules/dlq.yml` — 앱 도달 카운터 `increase()` alert + `.dlq` 토픽 offset `increase()` alert를 **독립 cross-check(OR), 합산 금지** 주석과 함께 정의. 누적 offset 절대값 미사용(델타화) 명시.
+- 소비자 있는 `payment.commands.confirm.dlq`의 **컨슈머 정체 backstop** `kafka_consumergroup_lag{topic="payment.commands.confirm.dlq"} > 0` 추가 — 도착이 멈춰 offset-increase가 0이어도 미배수 적체(미해결 결제)를 포착(도착 onset-only 신호의 사각 메움).
+
+**완료 기준**
+- `promtool test rules .../dlq_test.yml` 전 케이스 pass.
+- 매핑: 결정 "DLQ 적체 신호".
+
+**완료 결과**
+- `observability/prometheus/rules/dlq.yml` 신규 — 3개 알람 규칙:
+  - `DlqAppCounterRising`: `increase(payment_eos_commit_failure_dlq_total[5m]) > 0 or increase(pg_retry_exhausted_quarantine_total[5m]) > 0` (for:1m, severity:warning). 두 DLQ 경로(EOS 커밋 실패 / pg retry 소진 격리) 독립 OR cross-check — 합산 금지.
+  - `DlqTopicOffsetRising`: `increase(kafka_topic_partition_current_offset{topic=~".*\\.dlq"}[5m]) > 0` (for:1m, severity:warning). kafka-exporter 기반 .dlq 토픽 offset delta 신호 — 앱 카운터와 독립. 누적 offset 절대값 미사용.
+  - `DlqCommandsConsumerLag`: `kafka_consumergroup_lag{topic="payment.commands.confirm.dlq",consumergroup="pg-service-dlq"} > 0` (for:1m, severity:warning). 컨슈머 정체 backstop — 도착 멈춤 후 lag 잔존(offset-increase 0인 사각) 포착.
+- `observability/prometheus/rules/tests/dlq_test.yml` 신규 — 7케이스 모두 pass:
+  - (a) 앱 카운터 increase > 0 → DlqAppCounterRising FIRING
+  - (b) .dlq 토픽 offset increase > 0 → DlqTopicOffsetRising FIRING
+  - (c) 정상(델타 0) → 3개 알람 모두 미발화
+  - (d) 앱 카운터만↑(offset 없음) → DlqAppCounterRising만 FIRING (독립 회귀 고정)
+  - (e) 토픽 offset만↑(앱 카운터 없음) → DlqTopicOffsetRising만 FIRING (독립 회귀 고정)
+  - (f) commands.confirm.dlq 컨슈머 lag 잔존 → DlqCommandsConsumerLag FIRING (backstop 사각 보완 확인)
+  - (g) pg retry 소진 격리 카운터만↑(EOS 카운터 없음) → DlqAppCounterRising FIRING (OR 두 번째 분기 단독 회귀 고정)
+- `promtool check rules` SUCCESS (3 rules), `promtool test rules` SUCCESS (7 cases, 특히 d/e/g 단일-발화 독립 검증)
+
+---
+
+### Task 6: 그룹별 라이브 발화 검증 스크립트 [tdd=false] [domain_risk=true]
+
+**구현 (GREEN)**
+- `scripts/smoke/alert-firing-coordinator.sh` — 정상 confirm 트래픽 발생(`scripts/k6/async-payment.js` 재활용/간이 루프) → Toxiproxy latency toxic 주입 → `/api/v1/alerts`에서 코디네이터 알람 `state=firing` 폴링 → 해제 후 `resolved` 확인. 종료 코드 PASS/FAIL.
+- `scripts/smoke/alert-firing-dlq.sh` — EOS 경로(broker latency 하 commit timeout→abort→backoff 소진)와 pg 경로(벤더 HTTP toxic, read-timeout→retryable→attempt≥4)로 DLQ 알람 발화 폴링.
+- **pg 경로 precondition**: 인증된 실벤더 sandbox(secret 설정)가 전제 — 기본 docker/smoke/benchmark 프로파일은 Fake(self-loop 미진입) 또는 secret 미설정이라 라이브 드릴 불가.
+- **plan 최우선 실증 ②**: latency 하 EOS commit timeout의 결정성을 검증(주입 지연 ↔ `transaction.timeout.ms` 대비). 두 경로 모두 라이브 결정적 주입 불가 시 **동일 격하 폴백** 적용 — `promtool test rules` + 해당 통합테스트 위임으로 격하하고 라이브 드릴에서 제외(규칙은 운영 유효) — PLAN/topic.md에 격하 기록.
+
+**완료 기준**
+- 코디네이터 스크립트: 주입 시 FIRING, 해제 시 resolved 확인 후 PASS 종료.
+- DLQ 스크립트 — **두 경로 대칭 격하 폴백**:
+  - EOS 경로: 라이브 commit timeout 결정적 유발 성공 시 PASS, 불가 시 `promtool test rules` + `PaymentEosIntegrationTest` #6/#7 위임 격하.
+  - pg 경로: 실벤더 sandbox 가용 시 라이브 PASS, 미충족(기본 환경) 시 `promtool test rules` + `PgSelfLoopRetryExhaustionIntegrationTest` 위임 격하 + 사유 기록.
+- 매핑: 결정 "실증 산출물", 장애 시나리오 "주입 분리".
+
+**완료 결과**
+
+- `scripts/smoke/alert-firing-coordinator.sh` 신규 — 코디네이터 정체 알람 발화 검증 스크립트:
+  - 라이브 경로: `drill-toxiproxy.sh inject` → Prometheus `/api/v1/alerts` 폴링(코디네이터 3개 알람 `state=firing`, 타임아웃 120s) → `drill-toxiproxy.sh remove`. 발화 시 PASS exit 0.
+  - 격하 폴백: 타임아웃 또는 스택 미기동 시 단일 broker 비대칭 한계(lag 피크 150 ≪ 임계 1000, txn abort 미발화) 안내 + `promtool test rules` 코디네이터 픽스처(6케이스) 실행. promtool PASS → exit 0.
+  - `--fallback-only` 플래그로 라이브 시도 없이 격하 폴백 직행.
+  - toxic 정리 트랩(EXIT/INT/TERM) — 비정상 종료 시에도 `drill-toxiproxy.sh remove` 호출.
+- `scripts/smoke/alert-firing-dlq.sh` 신규 — DLQ 적체 알람 발화 검증 스크립트:
+  - 격하 폴백 디폴트: `promtool test rules` dlq 픽스처(7케이스) 실행 + EOS 경로/pg 경로 통합테스트 위임 안내(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`).
+  - `--live` 플래그로 Prometheus 폴링 추가 시도(실 주입 없이 현재 상태만 폴링).
+  - 격하 사유 명시: EOS 경로(latency 주입 지연 < transaction.timeout.ms → abort 미발화, 실측 확인), pg 경로(벤더 HTTP toxic 드릴 구성 미포함, 실 벤더 sandbox 미구성).
+- promtool test 검증(docker 경유):
+  - coordinator 픽스처 6케이스 SUCCESS
+  - DLQ 픽스처 7케이스 SUCCESS
+- 두 스크립트 모두 `--fallback-only`/기본 모드에서 exit 0 확인.
+
+---
+
+### Task 7: smoke 가이드 연결 + 통합 러너 등록 [tdd=false] [domain_risk=false]
+
+**구현 (GREEN)**
+- `docs/smoke/alert-firing-check.md` — 알람 발화 검증 절차 가이드(기존 smoke 가이드 형식 계승).
+- `scripts/smoke-all.sh`에 알람 발화 검증 스크립트 연결(선택 실행 — Toxiproxy 프로파일 필요 시점 명시).
+
+**완료 기준**
+- 가이드대로 따라 실행 시 발화 검증 재현 가능.
+- `scripts/smoke-all.sh` 구조 깨짐 없음 확인.
+- 매핑: 결정 "검증 전략"(회귀 가드).
+
+**완료 결과**
+- `docs/smoke/alert-firing-check.md` 신규 — 알람 발화 검증 절차 가이드:
+  - 2계층 검증 구조(1차: promtool test rules 16케이스 / 2차: 라이브 드릴) 표로 정리.
+  - 라이브 한계 명시: 단일 broker + payment가 commands.confirm producer → lag 피크 150 ≪ 임계 / latency 2000ms < transaction.timeout.ms → abort 미발화 → 코디네이터/EOS 라이브 결정적 발화 불가. promtool + 통합테스트가 1차 수단.
+  - 16 케이스 테이블(코디네이터 6 / 가드 skip 3 / DLQ 7) + 사용법(1차/2차) + 실패 케이스 해석 + 비범위 + 영구성 + 관련 문서.
+  - 기존 `infra-healthcheck.md` / `trace-continuity-check.md` 형식·톤 계승.
+- `scripts/smoke/alert-rules-promtool.sh` 신규 — 3그룹 promtool 통합 래퍼:
+  - Docker 경유 `promtool test rules` 를 coordinator / guard-skip / DLQ 순서로 실행.
+  - `run_test` 헬퍼로 그룹별 PASS/FAIL 카운트 → 전체 종합 exit code.
+  - 라이브 스택 불필요, Docker 만 전제.
+- `scripts/smoke-all.sh` 수정 — Phase 1.3 추가:
+  - `run_step "Phase 1.3 — alert rules promtool test (3 그룹, 16 케이스)"` 로 `alert-rules-promtool.sh` 호출.
+  - Phase 1 헤더 주석에 Phase 1.3 설명 + 라이브 드릴 수동 안내 링크 추가.
+  - 기존 Phase 1.1 / 1.2 / Phase 2 동작 무변경.
+  - `--help` sed 범위를 26줄로 확장(헤더 라인 증가 반영).
+  - 라이브 드릴(Toxiproxy drill 프로파일 전제)은 기본 러너 미포함, 가이드 수동 안내.
+
+## 리뷰 처리
+
+ship Phase A 코드 리뷰 — reviewer: **revise**(major 1·minor 2), domain-expert: **pass**(minor 3). critical 0.
+
+### 채택 (A·B·C·D)
+
+| # | 등급 | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| A | major | 막판 `absent(kafka_brokers)` 분기 fix 가 설계 SSOT(topics 결정표/인벤토리)·PLAN Task 3 완료결과에 미반영(2분기로 오기재), dead-branch 함정 PITFALLS 미등록 | **채택** | 출하 코드(3분기)와 완료기록 정합 + 학습 함정 영구 보존 필수 |
+| B | minor | 케이스 수 drift — 스크립트·smoke 가이드가 14케이스/coordinator 5케이스로 표기(실제 15/6), 격하 폴백 출력에 c3(absent) 미열거 | **채택** | 영구 산출물의 카운트·열거 정합 |
+| C | minor | DLQ `pg_retry_exhausted_quarantine_total` 분기 양성 발화 promtool 픽스처 부재(비대칭 커버리지) | **채택** | OR 분기 회귀 고정 — 메트릭명 오타/분기 손상 시에도 PASS 되는 맹점 제거 |
+| D | minor | `absent(kafka_brokers)` 분기 콜드스타트(첫 scrape 전) 오발화 가능 | **채택** | `for: 1m→2m` 상향 + 주석 caveat — 부팅 윈도우 흡수 |
+
+### 후속 기록 (TODOS, 멀티 broker T4-B 정밀화)
+
+| # | 등급 | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| DE1 | minor | guard-skip `status` 라벨이 결제 현재 상태만 담아 위험(QUARANTINED+늦은 APPROVED)과 양성(결과 재배달)을 못 가름 | **TODOS 후속** | domain-expert 가 "현 warning 유지가 합당(거짓 페이징 회피)" 판정 — 수신 메시지 status 라벨화는 T4-B |
+| DE2 | minor | `KafkaCoordinatorLagHigh` 임계 1000 은 단일 broker 드릴 도달 불가(피크 ~150) — 미검증 baseline | **TODOS 후속** | 단일 broker 비대칭 구조 한계(규칙 주석에 명시), 멀티 broker T4-B 후 재교정 |

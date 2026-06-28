@@ -245,6 +245,15 @@ process(result);  // result 가 null 일 수 있음
 - 역순(payment EOS 먼저)이면 abort 가 가시화되는 **spurious 차감 윈도우** 발생.
 - PR 본문 또는 운영 배포 체크리스트에 deploy 순서를 명시한다.
 
+## 24. kafka_brokers < 1 단독 알람식의 dead branch — 완전 정지 시 시리즈 소멸(absent)
+
+Kafka broker 완전 정지 시 kafka-exporter 의 `kafka_brokers` 메트릭은 0 이 아니라 시리즈 자체가 소멸(absent)한다. 따라서 `kafka_brokers < 1` 단독 알람식은 단일 broker 완전 다운 상황에서 절대 발화하지 않는 dead branch다. 라이브 실측 근거: ALERTING-RULES-AND-FAULT-DRILL 드릴에서 단일 broker 완전 정지 시 kafka_brokers 시리즈 소멸 관측.
+
+**처방**:
+- 완전다운 backstop 은 `absent(kafka_brokers)`(또는 `up{job="kafka-exporter"}==0`)로 잡는다.
+- `kafka_brokers < 1` 은 exporter 가 살아있고 broker 수만 0/부족 보고하는 경우(멀티 broker 부분 다운) 대비로 남겨 3분기 OR 구성: `up==0 or kafka_brokers<1 or absent(kafka_brokers)`.
+- promtool 픽스처에서 `kafka_brokers` 시리즈를 선언하지 않으면 absent 를 정확히 재현할 수 있다(`_` gap 은 5분 lookback staleness 로 부정확하게 시뮬).
+
 ## 관련 자료
 
 - 도메인 학습 자료: archive 안 토픽별 `COMPLETION-BRIEFING.md`

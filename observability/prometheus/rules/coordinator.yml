@@ -1,0 +1,71 @@
+groups:
+  - name: coordinator
+    rules:
+      # txn abort/producer 에러 증가 신호
+      # EOS commit timeout → abort 귀결 시 kafka_producer_txn_abort_time_ns_total 상승.
+      # latency 주입 하에서 증가하므로 1차 안전망으로 채택.
+      # Toxiproxy 비대칭 실증에서 consumer lag 비대칭 확인 시 KafkaCoordinatorLagHigh를 1차로 승격
+      # (OR 구조이므로 우선순위는 주석/라벨로만 표기, 규칙 자체 변경 불필요).
+      #
+      # 잠정 임계: 1_000_000 ns/s (abort 누적 시간 1ms/s 상당)
+      # 정상 환경 baseline은 이를 하회한다는 가정 — T4-B 실측 후 조정 예정.
+      - alert: KafkaCoordinatorTxnAbortRising
+        expr: rate(kafka_producer_txn_abort_time_ns_total{job="payment-service"}[5m]) > 1000000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka 코디네이터 txn abort 급증 (payment-service)"
+          description: >-
+            txn abort rate {{ $value | humanize }}ns/s.
+            코디네이터 정체 또는 EOS commit timeout 의심.
+            latency 주입 하 abort 결정성은 Toxiproxy 비대칭 spike 실증 결과에 의존.
+
+      # payment.events.confirmed consumer lag 신호
+      # consumer group: payment-service (ConfirmedEventConsumer, GROUP_ID = "payment-service").
+      # 단일 broker 전역 latency는 produce/fetch 대칭 저하로 lag 비대칭이 안 쌓일 수 있음.
+      # Toxiproxy 비대칭 주입 실증 성공 시 1차 신호로 승격 — OR 구조이므로 현재도 발화에 기여.
+      #
+      # 잠정 임계: 1_000 messages (전 파티션 합산)
+      # 단일 broker drill 비대칭 주입(latency 2000ms) 라이브 실측 시 lag 피크 ~150 관측 —
+      #   payment 가 commands.confirm producer 라 유입도 동반 지연되어 임계까지 안 쌓임(consumer-only 비대칭 한계).
+      # 정상 운영 baseline 및 멀티 broker 임계는 T4-B 실측 후 정밀화 예정.
+      - alert: KafkaCoordinatorLagHigh
+        expr: >-
+          sum by (topic, consumergroup) (
+            kafka_consumergroup_lag{
+              topic="payment.events.confirmed",
+              consumergroup="payment-service"
+            }
+          ) > 1000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "payment.events.confirmed consumer lag 급증"
+          description: >-
+            consumer group payment-service lag {{ $value }} messages.
+            producer 흐름 대비 소비 정체 의심.
+
+      # broker 가용성 backstop
+      # 완전 다운 시 abort·lag 파생 신호가 평탄(new message 없음)해도 그룹 발화를 보장.
+      # up{job="kafka-exporter"}==0: kafka-exporter scrape 실패 (exporter 또는 broker 다운).
+      # absent(kafka_brokers): 라이브 실측 결과 broker 완전 정지 시 kafka_brokers 는 0 이 아니라
+      #   시리즈가 소멸(absent)한다 — 따라서 kafka_brokers<1 단독은 dead branch.
+      #   absent() 로 시리즈 소멸을 직접 포착해야 단일/완전 다운을 잡는다.
+      # kafka_brokers<1: exporter 가 살아있고 broker 수만 0/부족 보고하는 경우(멀티 broker 부분 다운) 대비.
+      # Prometheus/exporter 콜드스타트(첫 scrape 전) 일시 absent 오발화 흡수를 위해 for:2m 설정.
+      # 정상 기동 후 scrape 2회 완료 시간(scrape_interval 기준) 이상의 윈도우로 오발화 억제.
+      # 트레이드오프: 완전 다운에서 파생 신호(abort·lag)가 평탄해 이 규칙이 유일 신호일 때
+      #   for:2m 가 critical 감지를 +1분 지연시킨다. 오발화 페이징 회피를 우선해 수용 —
+      #   동시에 up==0 분기도 같은 backstop 으로 작동하므로 단일 신호 의존을 줄인다.
+      - alert: KafkaBrokerUnavailable
+        expr: 'up{job="kafka-exporter"} == 0 or kafka_brokers < 1 or absent(kafka_brokers)'
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka broker 가용성 이상"
+          description: >-
+            kafka-exporter scrape 실패 또는 broker 수 이상 감지.
+            코디네이터 그룹 완전 다운 가능성.

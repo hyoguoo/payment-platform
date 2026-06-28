@@ -1,0 +1,62 @@
+# promtool test rules 픽스처 — 종결 가드 skip 알람
+# 실행(로컬 promtool 미설치 시 docker 경유):
+#   docker run --rm --entrypoint /bin/promtool \
+#     -v "$(pwd)/observability/prometheus:/work" \
+#     prom/prometheus:v2.51.2 \
+#     test rules /work/rules/tests/guard_skip_test.yml
+
+rule_files:
+  - "../guard-skip.yml"
+
+evaluation_interval: 1m
+
+tests:
+  # (a) 위험 status skip 급증 + IN_PROGRESS→terminal 트래픽 존재 → FIRING
+  # 위험 skip(QUARANTINED) rate ≈ 12/60s = 0.2/s
+  # IN_PROGRESS→DONE 전이 rate ≈ 60/60s = 1.0/s
+  # 위험 skip 비율 0.2/1.0 = 20% > 임계 10%, 분모 1.0/s > floor 0.01/s
+  # t=1m: PENDING, t=2m: for:1m 충족 → FIRING. eval_time=5m
+  - interval: 1m
+    input_series:
+      - series: 'payment_confirm_guard_skip_total{status="QUARANTINED"}'
+        values: '0 12 24 36 48 60'
+      - series: 'payment_transition_total{from_status="IN_PROGRESS",to_status="DONE",trigger="confirm"}'
+        values: '0 60 120 180 240 300'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GuardSkipDangerousStatusHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "종결 가드 skip 중 위험 status 비율 급증"
+              description: "위험 status 가드 skip 비율 20% (임계 10% 초과). 위험 status(QUARANTINED·FAILED·EXPIRED·CANCELED·PARTIAL_CANCELED)에서 confirm 결과 무시 중. 한계: 현재 status 라벨만 존재 — 수신 메시지 status 구분 불가. QUARANTINED+APPROVED(위험) vs QUARANTINED+FAILED(양성) 라벨 분리 불가."
+
+  # (b) DONE-only skip (정상 재발행) → no alert
+  # DONE 은 idempotent 재발행 정상 경로 — 위험 status regex 에서 제외
+  # 위험 skip 시리즈 없음 → 분자 평가 결과 없음(no data) → 비율 미산출 → 미발화
+  - interval: 1m
+    input_series:
+      - series: 'payment_confirm_guard_skip_total{status="DONE"}'
+        values: '0 12 24 36 48 60'
+      - series: 'payment_transition_total{from_status="IN_PROGRESS",to_status="DONE",trigger="confirm"}'
+        values: '0 60 120 180 240 300'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GuardSkipDangerousStatusHigh
+        exp_alerts: []
+
+  # (c) 저트래픽 — 분모(IN_PROGRESS→terminal 전이) < floor → no alert (0-division 흡수)
+  # 위험 skip rate 0.2/s 이지만 IN_PROGRESS 전이가 없어 분모 rate = 0/s
+  # 분모 floor 조건(0 > 0.01) 미충족 → 발화 안 됨
+  # floor 가드 없으면 0.2/0 = +Inf → 가짜 FIRING 발생하는 것을 회귀 고정
+  - interval: 1m
+    input_series:
+      - series: 'payment_confirm_guard_skip_total{status="QUARANTINED"}'
+        values: '0 12 24 36 48 60'
+      - series: 'payment_transition_total{from_status="IN_PROGRESS",to_status="DONE",trigger="confirm"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GuardSkipDangerousStatusHigh
+        exp_alerts: []

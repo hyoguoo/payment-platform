@@ -1,0 +1,118 @@
+# promtool test rules 픽스처 — coordinator 정체 알람
+# 실행(로컬 promtool 미설치 시 docker 경유):
+#   docker run --rm --entrypoint /bin/promtool \
+#     -v "$(pwd)/observability/prometheus:/work" \
+#     prom/prometheus:v2.51.2 \
+#     test rules /work/rules/tests/coordinator_test.yml
+
+rule_files:
+  - "../coordinator.yml"
+
+evaluation_interval: 1m
+
+tests:
+  # (a) txn abort 급증 → KafkaCoordinatorTxnAbortRising FIRING
+  # 매 1분 120_000_000 ns 증가 → rate ≈ 2_000_000 ns/s > 임계 1_000_000 ns/s
+  # t=1m: 조건 첫 true(PENDING), t=2m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'kafka_producer_txn_abort_time_ns_total{job="payment-service"}'
+        values: '0 120000000 240000000 360000000 480000000 600000000'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KafkaCoordinatorTxnAbortRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: payment-service
+            exp_annotations:
+              summary: "Kafka 코디네이터 txn abort 급증 (payment-service)"
+              description: "txn abort rate 2Mns/s. 코디네이터 정체 또는 EOS commit timeout 의심. latency 주입 하 abort 결정성은 Toxiproxy 비대칭 spike 실증 결과에 의존."
+
+  # (b) payment.events.confirmed consumer lag 급증 → KafkaCoordinatorLagHigh FIRING
+  # lag: t=3m(1500) 부터 임계 1000 초과 → PENDING, t=4m for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'kafka_consumergroup_lag{topic="payment.events.confirmed",consumergroup="payment-service"}'
+        values: '0 500 1000 1500 2000 2500'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KafkaCoordinatorLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              topic: payment.events.confirmed
+              consumergroup: payment-service
+            exp_annotations:
+              summary: "payment.events.confirmed consumer lag 급증"
+              description: "consumer group payment-service lag 2500 messages. producer 흐름 대비 소비 정체 의심."
+
+  # (c1) kafka-exporter scrape 실패(up==0) → KafkaBrokerUnavailable FIRING
+  # up==0 분기 단독 검증: kafka_brokers 를 present(3)로 두어 absent() 분기 동시 발화를 억제.
+  # (라이브에선 exporter 다운 시 up==0 과 absent 가 함께 발화하나, 여기선 분기별 회귀 고정이 목적.)
+  # t=5m: up=0 PENDING, t=6m: 1m 경과(< for:2m) PENDING, t=7m: for:2m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kafka-exporter"}'
+        values: '1 1 1 1 1 0 0 0'
+      - series: 'kafka_brokers'
+        values: '3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: KafkaBrokerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: kafka-exporter
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
+
+  # (c2) kafka broker 수 0 → KafkaBrokerUnavailable FIRING
+  # t=5m: kafka_brokers=0 < 1 PENDING, t=6m: 1m 경과(< for:2m) PENDING, t=7m: for:2m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'kafka_brokers'
+        values: '3 3 3 3 3 0 0 0'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: KafkaBrokerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
+
+  # (c3) kafka_brokers 시리즈 부재(absent) → absent(kafka_brokers) 분기로 FIRING
+  # 라이브 실측 회귀 고정: 실제 broker 완전 정지 시 kafka_brokers 는 0 이 아니라 absent 가 되어
+  #   kafka_brokers<1 단독은 dead branch — absent() 분기가 이를 포착함을 검증.
+  # (promtool 의 '_' gap 은 5분 lookback staleness 로 absent 를 부정확하게 시뮬하므로,
+  #  시리즈 자체를 선언하지 않아 absent 를 정확히 재현한다.)
+  # up 을 정상(1)으로 두어 absent() 분기를 단독 검증.
+  # absent 는 평가 시작부터 즉시 true → t=0m 조건 첫 참(PENDING), t=1m 1m 경과, t=2m for:2m 충족 → FIRING.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kafka-exporter"}'
+        values: '1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: KafkaBrokerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Kafka broker 가용성 이상"
+              description: "kafka-exporter scrape 실패 또는 broker 수 이상 감지. 코디네이터 그룹 완전 다운 가능성."
+
+  # (d) 정상 baseline abort rate (임계 미만, 0 아님) → no alert
+  # 매 1분 30_000 ns 증가 → rate ≈ 500 ns/s < 임계 1_000_000 ns/s
+  # 알람 피로 방지 회귀 고정: 정상 abort 수준에서 미발화 보장
+  - interval: 1m
+    input_series:
+      - series: 'kafka_producer_txn_abort_time_ns_total{job="payment-service"}'
+        values: '0 30000 60000 90000 120000 150000 180000 210000'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: KafkaCoordinatorTxnAbortRising
+        exp_alerts: []

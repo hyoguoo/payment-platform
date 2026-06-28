@@ -1,0 +1,154 @@
+# promtool test rules 픽스처 — DLQ 적체 알람
+# 실행(로컬 promtool 미설치 시 docker 경유):
+#   docker run --rm --entrypoint /bin/promtool \
+#     -v "$(pwd)/observability/prometheus:/work" \
+#     prom/prometheus:v2.51.2 \
+#     test rules /work/rules/tests/dlq_test.yml
+
+rule_files:
+  - "../dlq.yml"
+
+evaluation_interval: 1m
+
+tests:
+  # (a) 앱 카운터 increase > 0 → DlqAppCounterRising FIRING
+  # EOS 커밋 실패 DLQ 도달 카운터 증가: 0→0→0→1→2→3 (매 1분)
+  # t=3m: increase([5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 앱 도달 카운터 증가"
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."
+
+  # (b) .dlq 토픽 offset increase > 0 → DlqTopicOffsetRising FIRING
+  # kafka-exporter offset 증가: t=3m부터 offset 상승
+  # t=3m: increase([5m])>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'kafka_topic_partition_current_offset{topic="payment.events.confirmed.dlq",partition="0"}'
+        values: '0 0 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              topic: payment.events.confirmed.dlq
+              partition: "0"
+            exp_annotations:
+              summary: "DLQ 토픽 offset 증가"
+              description: "payment.events.confirmed.dlq 토픽 offset 3 증가 (5분 창). .dlq 토픽에 새 메시지 발행 감지."
+
+  # (c) 정상(델타 0) → no alert
+  # 앱 카운터·offset·lag 모두 정적 — 3개 알람 모두 미발화
+  # offset=10(고정)은 이미 적재된 메시지가 있지만 신규 유입 없음을 표현
+  - interval: 1m
+    input_series:
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 0 0 0'
+      - series: 'kafka_topic_partition_current_offset{topic="payment.events.confirmed.dlq",partition="0"}'
+        values: '10 10 10 10 10 10'
+      - series: 'kafka_consumergroup_lag{topic="payment.commands.confirm.dlq",consumergroup="pg-service-dlq"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: DlqCommandsConsumerLag
+        exp_alerts: []
+
+  # (d) 앱 카운터만↑(offset 증가 없음) → DlqAppCounterRising만 FIRING
+  # 두 알람 독립 발화(합산 아님) 회귀 고정:
+  #   DlqTopicOffsetRising 시리즈 미제공 → increase=no data → 미발화
+  - interval: 1m
+    input_series:
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 앱 도달 카운터 증가"
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts: []
+
+  # (e) 토픽 offset만↑(앱 카운터 증가 없음) → DlqTopicOffsetRising만 FIRING
+  # 두 알람 독립 발화(합산 아님) 회귀 고정:
+  #   앱 카운터 시리즈 미제공 → increase=no data → 미발화
+  - interval: 1m
+    input_series:
+      - series: 'kafka_topic_partition_current_offset{topic="payment.commands.confirm.dlq",partition="0"}'
+        values: '0 0 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              topic: payment.commands.confirm.dlq
+              partition: "0"
+            exp_annotations:
+              summary: "DLQ 토픽 offset 증가"
+              description: "payment.commands.confirm.dlq 토픽 offset 3 증가 (5분 창). .dlq 토픽에 새 메시지 발행 감지."
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts: []
+
+  # (f) commands.confirm.dlq 컨슈머 정체(backlog 잔존) → DlqCommandsConsumerLag FIRING
+  # DLQ 메시지 도착 멈춤 + lag 잔존: offset 증가 없지만 lag > 0 → backstop 발화
+  # DlqTopicOffsetRising 미발화 확인 — backstop이 onset-only 신호 사각을 보완함
+  - interval: 1m
+    input_series:
+      - series: 'kafka_consumergroup_lag{topic="payment.commands.confirm.dlq",consumergroup="pg-service-dlq"}'
+        values: '5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqCommandsConsumerLag
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              topic: payment.commands.confirm.dlq
+              consumergroup: pg-service-dlq
+            exp_annotations:
+              summary: "payment.commands.confirm.dlq 컨슈머 정체"
+              description: "pg-service-dlq 컨슈머 잔여 적체 5 messages. 도착 멈춤 후 미배수 결제 존재 가능."
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts: []
+
+  # (g) pg retry 소진 격리 카운터만↑(payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
+  # OR 분기 pg 경로 회귀 고정: pg_retry_exhausted_quarantine_total 단독 증가 시 발화 검증.
+  # payment_eos_commit_failure_dlq_total 평탄(increase=0) → EOS 경로 분기 미발화.
+  # t=3m: increase(pg_retry[5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'pg_retry_exhausted_quarantine_total'
+        values: '0 0 0 1 2 3'
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 앱 도달 카운터 증가"
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."

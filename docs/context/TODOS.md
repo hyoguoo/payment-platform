@@ -175,6 +175,11 @@ NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제
 - 경로별 TPS / p95 / p99 / failure rate 메트릭
 - ramping-arrival-rate 부하 곡선
 
+**T4-B 정밀화 묶음 (멀티 broker 실측 후)**:
+
+- **[DE1]** guard-skip 알람 `status` 라벨이 결제 현재 상태만 담아 위험(QUARANTINED + 늦은 APPROVED)과 양성(FAILED/QUARANTINED 결과 재배달)을 구분하지 못한다. 멀티 broker T4-B 정밀화 시 수신 메시지 status 를 라벨로 추가해 위험/양성 분리 구현. 현 상태는 거짓 페이징 회피를 위해 warning 유지가 합당 — domain-expert 판정.
+- **[DE2]** `KafkaCoordinatorLagHigh` 임계 1000 은 단일 broker 드릴 도달 불가(라이브 실측 피크 ~150)로 미검증 baseline. 단일 broker 비대칭 구조 한계(주석 명시). 멀티 broker T4-B 실측 후 임계 재교정. 그때까지 lag 는 보조 신호, txn abort 가 1차.
+
 #### T4-C — 로컬 오토스케일러
 
 - Prometheus 큐 길이 / CPU 임계 기반 payment-service 레플리카 자동 scale

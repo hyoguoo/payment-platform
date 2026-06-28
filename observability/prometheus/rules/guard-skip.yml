@@ -1,0 +1,42 @@
+groups:
+  - name: guard-skip
+    rules:
+      # 종결 가드 skip 중 위험 status 비율 알람
+      #
+      # payment_confirm_guard_skip_total{status} 카운터:
+      #   - status 라벨 = 가드 진입 시점의 결제 현재 상태(PaymentEventStatus.name())
+      #   - 위험 status: QUARANTINED·FAILED·EXPIRED·CANCELED·PARTIAL_CANCELED → 분자 포함
+      #   - 정상 재발행: DONE → 분자 제외 (idempotent 재처리 정상 경로)
+      #
+      # 분모 = IN_PROGRESS→terminal 전이 rate
+      #   payment_transition_total{from_status="IN_PROGRESS"} 로 추적.
+      #   confirm 결과가 정상 적용된 건수(DONE/FAILED 전이 포함)를 분모로 삼아
+      #   위험 skip 비율을 산출한다.
+      #
+      # [한계] status 라벨은 결제의 현재 상태만 담는다 — 수신한 pg 응답 status 구분 불가.
+      #   예: QUARANTINED 결제에 APPROVED 수신(위험, 성공 무시)과 FAILED 수신(상대적 양성)을
+      #   현재 라벨 구조로 분리할 수 없다.
+      #   임계를 낮게 설정하면 QUARANTINED+FAILED 오탐이 증가하는 트레이드오프가 있다.
+      #   T4-B 실측 후 임계/floor 정밀화 예정.
+      #
+      # 잠정 임계: 위험 skip 비율 10% (0.1) — 정상 환경에서 위험 skip 없음 전제
+      # 분모 floor: 0.01/s — 트래픽 부재 시 0-division +Inf 오탐 방지
+      - alert: GuardSkipDangerousStatusHigh
+        expr: >-
+          (
+            sum(rate(payment_confirm_guard_skip_total{status=~"QUARANTINED|FAILED|EXPIRED|CANCELED|PARTIAL_CANCELED"}[5m]))
+            /
+            sum(rate(payment_transition_total{from_status="IN_PROGRESS"}[5m]))
+          ) > 0.1
+          and
+          sum(rate(payment_transition_total{from_status="IN_PROGRESS"}[5m])) > 0.01
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "종결 가드 skip 중 위험 status 비율 급증"
+          description: >-
+            위험 status 가드 skip 비율 {{ $value | humanizePercentage }} (임계 10% 초과).
+            위험 status(QUARANTINED·FAILED·EXPIRED·CANCELED·PARTIAL_CANCELED)에서 confirm 결과 무시 중.
+            한계: 현재 status 라벨만 존재 — 수신 메시지 status 구분 불가.
+            QUARANTINED+APPROVED(위험) vs QUARANTINED+FAILED(양성) 라벨 분리 불가.

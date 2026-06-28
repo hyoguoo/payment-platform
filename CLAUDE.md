@@ -92,6 +92,7 @@
 
 - [`docs/smoke/infra-healthcheck.md`](docs/smoke/infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사 스크립트 가이드
 - [`docs/smoke/trace-continuity-check.md`](docs/smoke/trace-continuity-check.md) — 분산 트레이스 연속성 검사 가이드
+- [`docs/smoke/alert-firing-check.md`](docs/smoke/alert-firing-check.md) — 알람 규칙 3그룹 발화 검증 가이드 (promtool 16케이스 / Toxiproxy 라이브 드릴 2계층)
 
 ### 작업 산출물 — 작업 단위 생명주기
 

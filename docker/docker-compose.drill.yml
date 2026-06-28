@@ -1,0 +1,101 @@
+# Toxiproxy 장애 주입 전용 compose override — 평상시 미적용.
+# 이 파일은 단독 사용 불가 — docker-compose.infra.yml 과 함께 사용.
+# 앱 서비스(payment-service) bootstrap override 는 docker-compose.apps.yml 도 필요.
+#
+# 사용법 (인프라 + 앱 + 드릴 전체):
+#   docker compose \
+#     -f docker/docker-compose.infra.yml \
+#     -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.drill.yml \
+#     up -d
+#
+# Toxiproxy 프록시·toxic 등록/해제: scripts/smoke/drill-toxiproxy.sh 사용
+#
+# ── 비대칭 설계 (consumer 경유 / producer 직결) ────────────────────────────
+#
+#   Kafka broker 에 PROXY 리스너(9094)를 추가 광고.
+#   Toxiproxy 가 toxiproxy:9094 → kafka:9094 를 프록시.
+#
+#   payment-service (consumer, payment.events.confirmed 소비)
+#     bootstrap → toxiproxy:9094 경유
+#     latency toxic 주입 시 consumer lag 누적 → KafkaCoordinatorLagHigh 알람 발화 실증.
+#
+#   pg-service (producer, payment.events.confirmed 발행)
+#     bootstrap → kafka:9092 직결 유지 (docker-compose.apps.yml 원값)
+#     toxic 영향 없음.
+#
+# ── 한계 ────────────────────────────────────────────────────────────────────
+#
+#   payment-service 는 producer 이기도 하므로
+#   payment.commands.confirm 발행도 PROXY 리스너 경유 → 지연 포함.
+#   단일 broker 에서 클라이언트 bootstrap 주소로만 경유 리스너를 구분하는
+#   consumer-only 비대칭의 최선 근사이며, producer 완전 분리는 불가.
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Kafka — PROXY 리스너 추가 override (기존 PLAINTEXT/CONTROLLER/PLAINTEXT_HOST 유지)
+  #
+  # docker-compose.infra.yml 의 kafka 서비스 environment 를 덮어쓴다.
+  # PROXY 리스너(0.0.0.0:9094)를 추가하고 advertised 를 toxiproxy:9094 로 광고.
+  # Toxiproxy 가 이 주소를 실제로 서빙(→ kafka:9094 upstream)한다.
+  # ──────────────────────────────────────────────────────────────────────────
+  kafka:
+    environment:
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092,PROXY://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092,PROXY://toxiproxy:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,PROXY:PLAINTEXT"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Toxiproxy — Kafka 장애 주입 전용 프록시
+  #
+  # 초기 프록시 등록: toxiproxy.json 마운트 → 기동 시 kafka-proxy(→ kafka:9094) 자동 등록.
+  # latency toxic 주입/해제: scripts/smoke/drill-toxiproxy.sh inject / remove
+  # admin API: http://localhost:8474
+  # ──────────────────────────────────────────────────────────────────────────
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    container_name: payment-toxiproxy
+    hostname: toxiproxy
+    command:
+      - "-host"
+      - "0.0.0.0"
+      - "-config"
+      - "/config/toxiproxy.json"
+    volumes:
+      - ./toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "8474:8474"
+      - "9094:9094"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - payment-infra-network
+    # toxiproxy 이미지는 minimal(scratch 기반)이라 wget/curl 부재 → 내장 CLI 로 헬스체크.
+    healthcheck:
+      test: ["CMD", "/toxiproxy-cli", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # payment-service — PROXY 리스너 경유 bootstrap override
+  #
+  # docker-compose.apps.yml 의 SPRING_KAFKA_BOOTSTRAP_SERVERS(kafka:9092) 를
+  # toxiproxy:9094 로 재지정.
+  # latency toxic 주입 시 consumer(payment.events.confirmed) lag 누적.
+  # Toxiproxy healthy 후 기동하도록 depends_on 추가.
+  # ──────────────────────────────────────────────────────────────────────────
+  payment-service:
+    depends_on:
+      toxiproxy:
+        condition: service_healthy
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:9094
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network

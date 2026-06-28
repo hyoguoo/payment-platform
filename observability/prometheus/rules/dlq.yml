@@ -1,0 +1,73 @@
+groups:
+  - name: dlq
+    rules:
+      # 앱 도달 카운터 delta 신호 (payment-service EOS 경로 + pg-service retry 소진 경로)
+      #
+      # payment_eos_commit_failure_dlq_total:
+      #   KafkaConsumerConfig.afterRollbackProcessor 가 backoff 소진 후 DLQ recoverer 를 발화할 때
+      #   (events.confirmed → events.confirmed.dlq 발행) PaymentEosCommitFailureMetrics.record() 호출.
+      #
+      # pg_retry_exhausted_quarantine_total:
+      #   PgDlqService.handle() 에서 non-terminal → QUARANTINED CAS 성공 시 PgDlqReachMetrics.record() 호출.
+      #   terminal CAS 멱등 보장으로 동일 orderId 중복 증가 없음.
+      #
+      # increase() 델타화: 누적 offset 절대값 미사용 — 새 DLQ 도달 건만 포착.
+      # 이 알람과 DlqTopicOffsetRising 은 독립 신호 — 합산(sum)하지 않는다.
+      # OR 은 두 경로를 "어느 한쪽이라도" 포착하는 cross-check 구성이다.
+      - alert: DlqAppCounterRising
+        expr: >-
+          increase(payment_eos_commit_failure_dlq_total[5m]) > 0
+          or
+          increase(pg_retry_exhausted_quarantine_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ 앱 도달 카운터 증가"
+          description: >-
+            DLQ 도달 {{ $value | humanize }}건 (5분 창).
+            EOS 커밋 실패 또는 pg retry 소진 격리 발생.
+
+      # kafka-exporter 기반 .dlq 토픽 offset delta 신호
+      #
+      # kafka_topic_partition_current_offset{topic=~".*\\.dlq"}: kafka-exporter 가 노출하는
+      # 파티션 단위 현재 offset. DLQ 토픽(events.confirmed.dlq / commands.confirm.dlq 등)에
+      # 새 메시지가 produce 될 때마다 offset 이 증가한다.
+      #
+      # increase() 델타화: 누적 offset 절대값 미사용 — 신규 유입 건만 포착.
+      # 이 알람과 DlqAppCounterRising 은 독립 신호 — 앱 카운터 없이 토픽 측에서 독립으로 발화.
+      # 합산 금지: 두 알람을 더하거나 AND 로 묶지 않는다.
+      - alert: DlqTopicOffsetRising
+        expr: >-
+          increase(kafka_topic_partition_current_offset{topic=~".*\\.dlq"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ 토픽 offset 증가"
+          description: >-
+            {{ $labels.topic }} 토픽 offset {{ $value | humanize }} 증가 (5분 창).
+            .dlq 토픽에 새 메시지 발행 감지.
+
+      # commands.confirm.dlq 컨슈머 정체 backstop
+      #
+      # payment.commands.confirm.dlq 는 pg-service PaymentConfirmDlqConsumer(groupId=pg-service-dlq)가
+      # 소비한다. DLQ 메시지 도착이 멈춰 offset-increase 가 0 이어도 미배수 적체(미해결 결제)는
+      # lag 로 남는다 — DlqTopicOffsetRising(onset-only 신호)이 놓치는 사각을 보완.
+      #
+      # 잠정 임계: lag > 0 (commands.confirm.dlq 컨슈머는 적체 0이 정상 기대치)
+      # 이 토픽은 pg-service 가 소비해 QUARANTINED 처리하므로 잔여 lag = 미처리 결제.
+      - alert: DlqCommandsConsumerLag
+        expr: >-
+          kafka_consumergroup_lag{
+            topic="payment.commands.confirm.dlq",
+            consumergroup="pg-service-dlq"
+          } > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "payment.commands.confirm.dlq 컨슈머 정체"
+          description: >-
+            pg-service-dlq 컨슈머 잔여 적체 {{ $value }} messages.
+            도착 멈춤 후 미배수 결제 존재 가능.

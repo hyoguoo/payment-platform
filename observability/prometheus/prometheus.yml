@@ -4,6 +4,12 @@ global:
   external_labels:
     environment: docker
 
+# 알람 규칙 파일 로드 — observability/prometheus/rules/*.yml
+# 컨테이너 내부 경로: /etc/prometheus/rules/ (compose 마운트에서 매핑)
+# 현재 규칙 미작성 시 빈 디렉토리도 허용 (Prometheus 기동 오류 없음)
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
 # Tempo metrics_generator remote_write 수신 시 out-of-order 샘플 허용 (30m 윈도우)
 # Prometheus 2.39+ 기능: span_metrics/service_graphs 집계 타임스탬프가
 # scrape 타임라인보다 약간 과거일 수 있어 이 설정 없이는 샘플 거부 가능
