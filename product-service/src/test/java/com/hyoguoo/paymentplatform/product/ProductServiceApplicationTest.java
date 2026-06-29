@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.product;
 import com.hyoguoo.paymentplatform.product.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.product.application.port.out.ProductRepository;
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
@@ -30,6 +31,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         "spring.kafka.listener.auto-startup=false",
 })
 class ProductServiceApplicationTest {
+
+    @MockitoBean
+    DataSource dataSource;
 
     @MockitoBean
     StockRepository stockRepository;

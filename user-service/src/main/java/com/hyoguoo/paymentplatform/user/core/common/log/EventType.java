@@ -9,4 +9,7 @@ public enum EventType {
 
     EXCEPTION,
     USER_QUERY_RECEIVED,
+
+    METRICS_INIT,
+    METRICS_GAUGE_UPDATED,
 }

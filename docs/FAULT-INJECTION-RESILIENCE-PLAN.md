@@ -97,7 +97,7 @@ flowchart TD
 
 - [x] Task 1: payment DependencyHealthMetrics (db + redis-dedupe + redis-stock) — 메커니즘 SoT
 - [x] Task 2: pg DependencyHealthMetrics (db + redis)
-- [ ] Task 3: product + user DependencyHealthMetrics (db only)
+- [x] Task 3: product + user DependencyHealthMetrics (db only)
 - [ ] Task 4: availability.yml 알람 그룹 + promtool 픽스처
 - [ ] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
 - [ ] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
@@ -168,7 +168,15 @@ flowchart TD
 - 두 서비스 단위테스트 pass, `./gradlew :product-service:test :user-service:test` 회귀 없음, 린트 통과.
 
 **완료 결과**
-> (execute에서 채움)
+- `product/infrastructure/metrics/DependencyHealthMetrics.java`, `user/infrastructure/metrics/DependencyHealthMetrics.java` 신규 생성.
+- 컴포넌트: `db`(DataSource.getConnection().isValid) 단일. redis 없음.
+- 생성자 Gauge 등록(PgOutboxMetrics 패턴), ExecutorService(VirtualThread) + `Future.get(timeoutSeconds, SECONDS)` 타임아웃 가드, `@Scheduled` 폴 완료 후 `lastPollTimestamp` 갱신.
+- `metrics.product.dependency.polling-interval-seconds=10`, `timeout-seconds=2` / `metrics.user.dependency.*` 동형 application.yml 추가.
+- user-service `ClockConfig` 신규(product 패턴 복제). [Rule 1]
+- product·user `EventType`에 `METRICS_INIT`, `METRICS_GAUGE_UPDATED` 추가. [Rule 1]
+- `ProductServiceApplicationTest`·`UserServiceApplicationTest`에 `@MockitoBean DataSource` 추가(DataSource autoconfig 제외 컨텍스트 로드 수정). [Rule 1]
+- product 단위 테스트 6건(4종, DOWN 3시나리오 @EnumSource) ALL PASS, 전체 50건 PASS. spotbugsMain/spotbugsTest PASS.
+- user 단위 테스트 6건(4종, DOWN 3시나리오 @EnumSource) ALL PASS, 전체 9건 PASS. spotbugsMain/spotbugsTest PASS.
 
 ---
 

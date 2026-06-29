@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.user;
 
 import com.hyoguoo.paymentplatform.user.application.port.out.UserRepository;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
@@ -24,6 +25,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
                 "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
 })
 class UserServiceApplicationTest {
+
+    @MockitoBean
+    DataSource dataSource;
 
     @MockitoBean
     UserRepository userRepository;

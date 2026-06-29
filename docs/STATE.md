@@ -1,13 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-29 (FAULT-INJECTION-RESILIENCE plan 완료 → execute)
+> 최종 수정: 2026-06-30 (Task 3 완료 → Task 4 진입)
 
 ## 활성 작업
 
 - **주제**: FAULT-INJECTION-RESILIENCE (서비스·DB·Redis 가용성 알람 추가 + docker stop 완전 다운 시 정합 거동 실증)
 - **단계**: execute
 - **이슈/브랜치**: #118
-- **활성 태스크**: Task 3 (product + user 의존성 가용성 게이지)
+- **활성 태스크**: Task 4 (availability.yml 알람 그룹 + promtool 픽스처)
 
 ## 재개 메모
 
@@ -15,6 +15,7 @@ plan 완료. PLAN `docs/FAULT-INJECTION-RESILIENCE-PLAN.md` 7태스크(① payme
 
 Task 1 완료: `payment/infrastructure/metrics/DependencyHealthMetrics.java` — `dependency_up{component}` + `dependency_health_last_poll_timestamp_seconds` 게이지, VirtualThread ExecutorService 타임아웃 가드(2s), redis-dedupe/redis-stock 분리. 단위 테스트 7건 PASS, 전체 465건 PASS, spotbugs PASS.
 Task 2 완료: `pg/infrastructure/metrics/DependencyHealthMetrics.java` — 컴포넌트 db+redis(단일 factory). 단위 테스트 6건 PASS, 전체 330건 PASS, spotbugs PASS.
+Task 3 완료: `product/infrastructure/metrics/DependencyHealthMetrics.java`, `user/infrastructure/metrics/DependencyHealthMetrics.java` — db 단일 컴포넌트. user ClockConfig 신규 [Rule 1]. product 50건/user 9건 PASS, spotbugs PASS.
 
 핵심 설계: `dependency_up{component}` 폴링 게이지(payment redis dedupe/stock 2분리, 타임아웃 2s 가드) + `dependency_health_last_poll_timestamp_seconds` staleness, availability.yml에 `==0 or absent` dead-branch 방지(PITFALLS §24). 통합테스트는 `@EmbeddedKafka`+전용 MySQL+`@MockitoSpyBean doThrow`(BaseIntegrationTest 미확장 — Kafka 없음), load-bearing = `events.confirmed.dlq` 유실0(시간 무관). EXPIRED는 expected, 단정은 "마스킹 가로질러 DLQ 증거 생존=silent 아님"(status!=EXPIRED 단정 아님). **no-divergence(over-sell 0)는 공허 단정이라 제외**(별 토픽 위임, SoT 번복 기록). redis-dedupe 다운=checkout fail-closed(중복 과금 없음). **신규 복구 로직 없음**(TQ-1/TC-3 위임).
 
