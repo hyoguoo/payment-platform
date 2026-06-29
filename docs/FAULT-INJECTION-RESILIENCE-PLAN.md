@@ -98,7 +98,7 @@ flowchart TD
 - [x] Task 1: payment DependencyHealthMetrics (db + redis-dedupe + redis-stock) — 메커니즘 SoT
 - [x] Task 2: pg DependencyHealthMetrics (db + redis)
 - [x] Task 3: product + user DependencyHealthMetrics (db only)
-- [ ] Task 4: availability.yml 알람 그룹 + promtool 픽스처
+- [x] Task 4: availability.yml 알람 그룹 + promtool 픽스처
 - [ ] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
 - [ ] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
 - [ ] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
@@ -203,7 +203,21 @@ flowchart TD
 - `scripts/smoke/alert-rules-promtool.sh`(또는 docker promtool) 전 케이스 pass — 발화/미발화/staleness 분기 + 정상 미발화. 기존 16케이스 회귀 없음.
 
 **완료 결과**
-> (execute에서 채움)
+- `observability/prometheus/rules/availability.yml` 신규 생성 — `availability` 그룹 3규칙.
+  - `ServiceDown`: `up{job=~".*-service"} == 0`, for:1m (콜드스타트 흡수).
+  - `DependencyDown`: `dependency_up == 0 or absent(dependency_up)` (for 없음, 즉시 알람). absent() 백스톱으로 PITFALLS §24 dead-branch 방지.
+  - `DependencyHealthStale`: `(time() - dependency_health_last_poll_timestamp_seconds > 60) or absent(...)` (임계 60s = 폴링 주기 10s×6회). absent() 백스톱 동형.
+  - 각 규칙 주석에 신호 의미·임계 근거·absent 분기 사유·for 트레이드오프 명시.
+- `observability/prometheus/rules/tests/availability_test.yml` 신규 생성 — 9케이스:
+  - (a1) ServiceDown FIRING (for:1m 충족) / (a2) 정상 미발화
+  - (b) DependencyDown db 다운 FIRING (component 라벨 보존)
+  - (c) redis-stock 단독 다운 FIRING, redis-dedupe 미발화 (컴포넌트 분리 검증)
+  - (d1) DependencyHealthStale staleness FIRING / (d2) 폴러 정상 미발화
+  - (e1) dependency_up 시리즈 부재 → absent() 백스톱 FIRING (PITFALLS §24 dead-branch 회귀)
+  - (e2) dependency_health_last_poll_timestamp_seconds 부재 → absent() FIRING
+  - (f) 정상 baseline 전체 3알람 미발화
+- `prometheus.yml` rule_files 글롭(`*.yml`) 기존 — 무변경(availability.yml 자동 포함).
+- promtool `prom/prometheus:v2.51.2`: 신규 9케이스 ALL PASS. 기존 16케이스(coordinator/dlq/guard_skip) 회귀 없음.
 
 ---
 
