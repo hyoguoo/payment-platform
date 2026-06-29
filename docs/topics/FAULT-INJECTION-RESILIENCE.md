@@ -1,6 +1,6 @@
 # 장애 주입 회복성 검증 설계 (FAULT-INJECTION-RESILIENCE)
 
-> 최종 수정: 2026-06-28
+> 최종 수정: 2026-06-29 (plan 게이트 reconcile — no-divergence 검증 포함→제외 번복, redis-dedupe 거동 정정)
 
 ## 사전 브리핑
 
@@ -64,7 +64,7 @@ flowchart TD
 
 ### 결정된 접근
 
-가용성 사각(서비스 프로세스/DB/Redis 다운)을 메운다. 서비스 다운은 `up{job}==0` 알람(rule-only), DB/Redis 다운은 actuator `HealthIndicator`를 **컴포넌트별 폴링 게이지**(payment redis는 dedupe/stock 2분리)로 브리지해 신규 `availability.yml` 그룹에서 탐지한다. 동시에 docker stop **완전 다운**에서 백스톱이 정합을 유지하지 못하는 **실제 전이**(결과수신 중 DB 다운 → ~5s 후 `events.confirmed.dlq` stranded → IN_PROGRESS→READY→EXPIRED 2단 마스킹 → 벤더 과금+미이행)를 통합테스트 단정(**DLQ 유실0**·EXPIRED 마스킹 거짓 양성 차단·over-sell 0 회귀 가드)으로 고정한다. 신규 복구 로직은 만들지 않고(TQ-1/TC-3 위임), 위험을 드러내고 가용성+DLQ 알람으로 탐지하는 데까지가 범위다.
+가용성 사각(서비스 프로세스/DB/Redis 다운)을 메운다. 서비스 다운은 `up{job}==0` 알람(rule-only), DB/Redis 다운은 actuator `HealthIndicator`를 **컴포넌트별 폴링 게이지**(payment redis는 dedupe/stock 2분리)로 브리지해 신규 `availability.yml` 그룹에서 탐지한다. 동시에 docker stop **완전 다운**에서 백스톱이 정합을 유지하지 못하는 **실제 전이**(결과수신 중 DB 다운 → ~5s 후 `events.confirmed.dlq` stranded → IN_PROGRESS→READY→EXPIRED 2단 마스킹 → 벤더 과금+미이행)를 통합테스트 단정(**DLQ 유실0**·EXPIRED 마스킹 전이를 가로질러 DLQ 증거 생존)으로 고정한다. no-divergence(over-sell 0)는 공허 단정이라 제외(별 토픽 위임). 신규 복구 로직은 만들지 않고(TQ-1/TC-3 위임), 위험을 드러내고 가용성+DLQ 알람으로 탐지하는 데까지가 범위다.
 
 ### 변경 후 동작 (to-be)
 
@@ -81,7 +81,7 @@ flowchart TD
     DLQ --> MASK["복구 후 IN_PROGRESS→READY→EXPIRED 2단 마스킹<br/>= 벤더 과금+미이행 stranded"]
 
     subgraph verify["검증 — 거짓 양성 방지"]
-        IT["통합테스트: DLQ 유실0 · EXPIRED 마스킹 차단 · redis≤RDB(over-sell 0)"]
+        IT["통합테스트: DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존<br/>(no-divergence는 공허 단정이라 제외)"]
         DR["라이브 드릴: 가용성+DLQ 알람 동반 firing → start → 가용성 resolved"]
         PT["promtool: 발화/미발화 + health staleness/absent"]
         UT["단위: health status→게이지 매핑 (test-first)"]
@@ -95,13 +95,13 @@ flowchart TD
 - 서비스 다운 = `up==0` rule-only / DB·Redis 다운 = actuator health → **컴포넌트별 폴링 게이지**(payment redis dedupe/stock 분리, 전용 prefix, staleness·absent 분기).
 - 신규 `availability.yml` 그룹, health 브리지는 4서비스 db + payment/pg redis (infrastructure/metrics 배치).
 - 장애 주입은 docker stop 완전 다운만(Toxiproxy 미확장).
-- 정합 검증은 "이상적 복원"이 아니라 **실제 전이 단정으로 거짓 양성 차단**; load-bearing은 DLQ 유실0, no-divergence는 over-sell 0 안전 회귀 가드.
+- 정합 검증은 "이상적 복원"이 아니라 **실제 전이 단정으로 거짓 양성 차단**; load-bearing은 DLQ 유실0. **no-divergence(over-sell 0)는 이 토픽 통합테스트에서 제외**(plan 게이트 reconcile 2026-06-29) — `resetToReady` 단독은 §18 발산 3전제 미충족이라 violation 불가능한 공허 단정이고, exactly-once 차감은 기존 `PaymentEosIntegrationTest`가 이미 가드. over-sell 실구동 회귀 시드는 도메인 정합 별 토픽 위임.
 - **신규 복구 로직 없음** — 자동 복구는 TQ-1(DLQ 재주입)·TC-3(재고 재동기) 위임.
 
 ### 트레이드오프 / 후속 작업
 
 - 완전 다운만 다뤄 DB/Redis **지연·부분 장애**는 사각 잔존(Toxiproxy 확장 별 토픽).
-- over-sell 발산 **실제 구동**(§18 전제 시드)은 도메인 정합 별 토픽으로 위임 — 이 토픽은 안전방향 회귀 가드까지.
+- over-sell 발산은 §18 3전제 미충족이라 redis ≤ RDB 단정이 공허 → **이 토픽 통합테스트에서 제외**. 발산 실제 구동(§18 전제 시드) 회귀는 도메인 정합 별 토픽으로 위임.
 - EXPIRED 2단 마스킹·DLQ-stranded는 **가시화까지**, 자동 회복은 TQ-1/TC-3.
 
 ---
@@ -168,8 +168,8 @@ flowchart TD
 | 서비스 프로세스 다운(payment/pg/product/user) | `up{job}==0` → firing | Eureka 제외, 재기동 시 복귀. 무상태라 정합 영향 없음 |
 | payment MySQL 다운 — confirm 결과수신 중 | db health 0 + EOS 실패 누적 시 `events.confirmed.dlq` offset↑ → 가용성+DLQ 알람 | 재배달 backoff **~5s(1s×5)는 하한** — 실 DLQ 도달은 Hikari 커넥션 획득 지연에 좌우(자동소비 없음, C-5). 복구 후 재배달 없음 → IN_PROGRESS 잔류 → `PaymentReconciler` IN_PROGRESS→READY(300s) **+ 별 스케줄러** `PaymentExpirationServiceImpl` READY→EXPIRED(30분) **2단 마스킹** → **벤더 과금+미이행 stranded**(돈 새는 경로). load-bearing 단정은 **DLQ 유실0**(시간 무관); EXPIRED 마스킹 단정은 TestClock 양 임계 advance(plan) |
 | payment MySQL 다운 — confirm 진입 부분창(DECR 후 TX 진입) | db health 0 → 알람 | redis 선차감 후 `executeConfirmTx` 실패 → event READY 잔류, 선차감 retention(보수적 stranded redis<RDB, TC-3 위임) |
-| payment IN_PROGRESS 정체 → reconciler `resetToReady` | (정체 동안) db health | reset은 READY 복원만 — 새 outbox 미생성이라 **자동 재confirm 없음**. over-sell 발산은 §18 전제(`compensation:done` 토큰 + 재confirm + 벤더 APPROVED) 동시 충족 시에만 발생 → **resetToReady 단독으로는 미구동**. 이 토픽은 redis ≤ RDB(over-sell 0) **안전방향 회귀 가드**만 고정 |
-| payment redis-dedupe(6379) 다운 | `redis-dedupe` health 0 → 알람 | EOS 멱등 마킹 경로 실패 |
+| payment IN_PROGRESS 정체 → reconciler `resetToReady` | (정체 동안) db health | reset은 READY 복원만 — 새 outbox 미생성이라 **자동 재confirm 없음**. over-sell 발산은 §18 전제(`compensation:done` 토큰 + 재confirm + 벤더 APPROVED) 동시 충족 시에만 발생 → **resetToReady 단독으로는 미구동**. 따라서 redis ≤ RDB(over-sell 0) 단정은 violation 불가능한 공허 단정 → **이 토픽 통합테스트에서 제외**(over-sell 회귀 시드는 별 토픽 위임). exactly-once 차감은 기존 `PaymentEosIntegrationTest`가 가드 |
+| payment redis-dedupe(6379) 다운 | `redis-dedupe` health 0 → 알람 | **체크아웃 멱등(`IdempotencyStore`, 6379) 호출 자체가 차단점** — `IdempotencyStoreRedisAdapter`가 redis 다운 시 예외 전파(fail-open 폴백 없음) → checkout **fail-closed(5xx)** → 결제 생성 차단 = **가용성 저하**(중복 과금 경로 없음). EOS 메시지 멱등 `payment_event_dedupe`는 MySQL이라 redis-dedupe 무관 — `db` 컴포넌트 귀속 |
 | payment redis-stock(6380) 다운 — confirm 진입 | `redis-stock` health 0 → 알람 | 선차감 실패 → CACHE_DOWN → QUARANTINED 격리(선차감 0이라 무누수) |
 | payment redis-stock 다운 — 결과수신(FAILED/QUARANTINED) | `redis-stock` health 0 + DLQ↑ | `compensateAtomic` 실패 → EOS abort → 재배달 ~5s → DLQ. **보상 미수행 → 선차감 stranded**(redis<RDB 보수적, DLQ 영구) — entry 경로와 달리 QUARANTINED로 흡수 안 됨 |
 | product MySQL 다운 | product db health 0 → 알람 | 재고 SoT 조회 실패 → 결제 진입 차단/실패 경로 |
@@ -179,9 +179,9 @@ flowchart TD
 
 - **통합테스트 (거짓 양성 방지 — 실제 전이 단정)**: DB/Redis 다운→복구 사이클에서 "이상적 복원"이 아니라 실제 전이를 단정으로 고정한다.
   - 결과수신 중 DB 다운: 재배달 ~5s 바운드 후 `events.confirmed.dlq` **메시지 보존(유실 0)** 단정.
-  - 복구 후 벤더 APPROVED in-flight 결제가 **DONE 수렴하거나, 최소 DLQ 보존 + 조용히 EXPIRED 종결되지 않음** 단정(EXPIRED 마스킹 거짓 양성 차단).
+  - 복구 후 reconciler+expiration 명시 호출로 **EXPIRED 도달은 expected**(현 코드 마스킹 거동)이되, 그 전이를 **가로질러 `events.confirmed.dlq` 메시지 유실0 보존 + 가시화 증거(DLQ 메시지 생존→기존 DLQ 알람) 존재 = silent 아님** 단정. `status != EXPIRED` 단정 아님(복구 로직 추가 = 스코프 위반 회피).
   - redis-stock 결과수신 보상 실패: DLQ 보존 + 선차감 **stranded(redis ≤ RDB 보수적 갭만 허용)** 단정.
-  - **no-divergence (안전방향 회귀 가드)**: 사이클 종료 후 **redis 재고 ≤ product RDB 재고(over-sell 0)** 단정. `resetToReady` 단독은 §18 전제(`compensation:done` 토큰+재confirm+APPROVED) 미충족이라 발산을 구동하지 못하므로, 이 단정은 "cascade 차단 증명"이 아니라 **over-sell 0 불변식 회귀 고정**이다. 발산을 실제 구동하는 §18 전제 명시 시드는 도메인 정합 별 토픽으로 위임(plan TODO).
+  - **no-divergence (over-sell 0): 이 토픽 통합테스트에서 제외**(plan 게이트 reconcile 2026-06-29). `resetToReady` 단독은 §18 전제(`compensation:done` 토큰+재confirm+APPROVED) 미충족이라 발산을 구동하지 못해 redis ≤ RDB 단정이 violation 불가능한 공허 단정이 된다 → 충실한 가드가 못 되므로 제외. exactly-once 차감 불변식은 기존 `PaymentEosIntegrationTest`(+ Lua dedup 토큰)가 이미 가드하고, 발산을 실제 구동하는 §18 전제 시드는 도메인 정합 별 토픽으로 위임.
 - **라이브 드릴**: docker stop으로 서비스/DB/Redis 다운 → 가용성 게이지 0 + (해당 시)DLQ offset↑ → **가용성 알람 + 기존 DLQ 알람 동반 firing** 폴링 → start → 가용성 resolved(DLQ-stranded는 미해소 — 가시화 한계 명시). 직전 토픽 `alert-firing-*.sh` 패턴 확장.
 - **promtool**: `availability.yml` 규칙 발화/미발화 + **health 게이지 staleness/absent 분기** 픽스처 회귀 고정.
 - **단위테스트**: health 브리지 status→게이지 매핑(UP=1 / DOWN·OUT_OF_SERVICE·UNKNOWN=0 / composite 컴포넌트 처리) test-first.
@@ -190,7 +190,8 @@ flowchart TD
 
 - **DB/Redis 지연·연결 끊김(부분 장애)** — docker stop 완전 다운만. Toxiproxy DB/Redis 프록시 확장 제외(정밀 지연 주입은 별 토픽).
 - **외부 PG timeout(FCG)·보상 중복 진입(D12)** — 도메인 정합 묶음(별 토픽).
-- **발산/EXPIRED 마스킹/DLQ-stranded를 막는 신규 복구 로직** — 이 토픽은 그 위험을 **드러내고 탐지**하는 데까지. 자동 복구(DLQ 재주입·재고 재동기)는 **TQ-1·TC-3 위임**. (단 redis ≤ RDB over-sell 0 **안전방향 회귀 가드**는 검증에 포함 — `resetToReady` 단독은 발산 미구동이라 이 가드는 불변식 회귀 고정이며, 발산을 실제 구동하는 §18 전제 시드는 도메인 정합 별 토픽으로 위임.)
+- **발산/EXPIRED 마스킹/DLQ-stranded를 막는 신규 복구 로직** — 이 토픽은 그 위험을 **드러내고 탐지**하는 데까지. 자동 복구(DLQ 재주입·재고 재동기)는 **TQ-1·TC-3 위임**.
+- **no-divergence(redis ≤ RDB over-sell 0) 단정** — `resetToReady` 단독은 §18 발산 3전제 미충족이라 violation 불가능한 공허 단정이라 통합테스트에서 제외(plan 게이트 reconcile 2026-06-29, domain-expert 동의). exactly-once 차감은 기존 `PaymentEosIntegrationTest`가 가드하고, 발산 실구동 회귀 시드는 도메인 정합 별 토픽 위임. (discuss에선 "안전방향 회귀 가드로 검증 포함"이었으나 plan에서 공허성 확인 후 번복.)
 - **MySQL/Redis exporter 도입** — health 브리지로 대체.
 - **Alertmanager 통지 채널** — rule 평가까지만.
 
