@@ -99,7 +99,7 @@ flowchart TD
 - [x] Task 2: pg DependencyHealthMetrics (db + redis)
 - [x] Task 3: product + user DependencyHealthMetrics (db only)
 - [x] Task 4: availability.yml 알람 그룹 + promtool 픽스처
-- [ ] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
+- [x] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
 - [ ] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
 - [ ] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
 
@@ -235,7 +235,14 @@ flowchart TD
 - 스크립트 shellcheck/실행 가능, 가이드 절차로 로컬 라이브 발화→해소 1회 실측 기록(드릴 컴포즈/기존 스택). 라이브 미가능 시 절차·기대치 문서화로 격하(직전 토픽 폴백 양식).
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/smoke/alert-firing-availability.sh` 신규 생성 — `alert-firing-coordinator.sh`·`-dlq.sh` 패턴 계승.
+  - 4시나리오 순차 실행: (a) 서비스 프로세스 다운 → `ServiceDown`(for:1m, 타임아웃 120s) / (b) mysql-payment 다운 → `DependencyDown{component="db"}` / (c) redis-dedupe 다운 → `DependencyDown{component="redis-dedupe"}` / (d) redis-stock 다운 → `DependencyDown{component="redis-stock"}`.
+  - 각 시나리오: `docker stop` → 발화 폴링 → `docker start` → 해소 폴링. cleanup trap으로 비정상 종료 시 컨테이너 자동 복구.
+  - 라이브 스택 미기동 시 promtool 격하 폴백(`availability_test.yml` 9케이스).
+  - 런북 거동 주석: redis-dedupe 다운 = fail-closed(이중 과금 없음), redis-stock 다운 = stranded(과예약·over-sell 아님), DLQ-stranded·EXPIRED 마스킹은 자동 회복 안 됨(가시화 한계) 명시.
+- `scripts/smoke/alert-rules-promtool.sh` — `run_test "가용성 (9 케이스)" "availability_test.yml"` 추가. 총 4그룹 25케이스.
+- `docs/smoke/alert-firing-check.md` — availability 그룹 9케이스 표·드릴 절차·거동 주석·가시화 한계·실패 해석 추가. 케이스 총계 16→25, 스크립트 목록 3종→4종.
+- `bash -n` 문법 검사 통과. 라이브 환경 미기동으로 절차·기대치 문서화 격하(직전 토픽 폴백 양식).
 
 ---
 
