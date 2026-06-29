@@ -207,4 +207,29 @@ class PaymentOrderTest {
         assertThatThrownBy(paymentOrder::expire)
                 .isInstanceOf(PaymentStatusException.class);
     }
+
+    @Test
+    @DisplayName("EXECUTING 상태에서 resetToNotStarted 호출 시 NOT_STARTED 로 전이된다.")
+    void resetToNotStarted_Success_fromExecuting() {
+        // given
+        PaymentOrder paymentOrder = getDefaultPaymentOrderWithStatus(PaymentOrderStatus.EXECUTING);
+
+        // when
+        paymentOrder.resetToNotStarted();
+
+        // then
+        assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.NOT_STARTED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentOrderStatus.class, names = {"NOT_STARTED", "SUCCESS", "FAIL", "CANCEL", "EXPIRED"})
+    @DisplayName("EXECUTING 이 아닌 상태에서 resetToNotStarted 호출 시 예외를 던진다.")
+    void resetToNotStarted_InvalidStatus_throwsException(PaymentOrderStatus initialStatus) {
+        // given
+        PaymentOrder paymentOrder = getDefaultPaymentOrderWithStatus(initialStatus);
+
+        // when & then
+        assertThatThrownBy(paymentOrder::resetToNotStarted)
+                .isInstanceOf(PaymentStatusException.class);
+    }
 }

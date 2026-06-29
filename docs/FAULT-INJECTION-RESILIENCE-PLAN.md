@@ -100,7 +100,7 @@ flowchart TD
 - [x] Task 3: product + user DependencyHealthMetrics (db only)
 - [x] Task 4: availability.yml 알람 그룹 + promtool 픽스처
 - [x] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
-- [ ] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
+- [x] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
 - [ ] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
 
 ## 태스크
@@ -261,7 +261,11 @@ flowchart TD
 - 통합테스트 2종 pass(`@Tag("integration")`), 재실행 결정적(spy `doThrow` + TestClock, 컨테이너 stop 없음 → flaky 아님). 타 통합테스트 회귀 없음. `./gradlew :payment-service:test` 통과.
 
 **완료 결과**
-> (execute에서 채움)
+> `ConfirmedDbDownIntegrationTest` — `@EmbeddedKafka` + 전용 MySQL 컨테이너 + `@MockitoSpyBean doThrow(CannotAcquireLockException)`.
+> - 시나리오1 `DB다운_결과수신중_events_confirmed_dlq_유실0` PASS: markPaymentAsDone spy → DefaultErrorHandler 200ms×5 retry 소진 → events.confirmed.dlq 1건 보존.
+> - 시나리오2 `마스킹전이를_가로질러_DLQ증거_생존` PASS: DLQ 확인 후 TestClock + reconciler.scan()(IN_PROGRESS→READY) + expireOldReadyPayments()(READY→EXPIRED) 명시 호출 → DLQ 유실 0 보존.
+> - [Rule 1] 도메인 버그 수정: `PaymentEvent.resetToReady()` 가 PaymentOrder 상태를 EXECUTING→NOT_STARTED 로 복원하지 않아 `PaymentOrder.expire()` 가 INVALID_STATUS_TO_EXPIRE 를 던지는 문제 발견·수정. `PaymentOrder.resetToNotStarted()` 신규 추가, `PaymentEventTest`/`PaymentOrderTest` 도메인 단위 테스트 갱신.
+> - 단위 471건 PASS, 통합 2건 PASS, spotbugsMain/Test PASS.
 
 ---
 

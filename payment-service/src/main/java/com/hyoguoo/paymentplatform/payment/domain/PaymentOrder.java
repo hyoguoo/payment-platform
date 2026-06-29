@@ -71,4 +71,17 @@ public class PaymentOrder {
         }
         this.status = PaymentOrderStatus.EXPIRED;
     }
+
+    /**
+     * Reconciler가 IN_PROGRESS → READY 복원 시 주문을 NOT_STARTED 로 되돌린다.
+     * READY 상태의 불변식(모든 주문이 NOT_STARTED) 을 유지해 이후 execute() 와 expire() 가
+     * 정상 경로를 밟을 수 있도록 보장한다.
+     * EXECUTING 상태에서만 유효하다.
+     */
+    public void resetToNotStarted() {
+        if (this.status != PaymentOrderStatus.EXECUTING) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RESET);
+        }
+        this.status = PaymentOrderStatus.NOT_STARTED;
+    }
 }
