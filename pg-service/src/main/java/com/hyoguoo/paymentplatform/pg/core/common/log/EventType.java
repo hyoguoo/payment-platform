@@ -93,4 +93,7 @@ public enum EventType {
     PG_OUTBOX_POLLING_RELAY_FAIL,
 
     EXCEPTION,
+
+    METRICS_INIT,
+    METRICS_GAUGE_UPDATED,
 }
