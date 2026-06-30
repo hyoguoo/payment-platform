@@ -15,3 +15,6 @@ logging:
   level:
     root: INFO
     com.hyoguoo.paymentplatform: INFO
+
+scheduler:
+  enabled: true

@@ -207,5 +207,4 @@ class PaymentOrderTest {
         assertThatThrownBy(paymentOrder::expire)
                 .isInstanceOf(PaymentStatusException.class);
     }
-
 }

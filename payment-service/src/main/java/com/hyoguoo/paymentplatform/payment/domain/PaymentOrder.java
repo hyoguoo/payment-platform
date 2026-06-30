@@ -71,5 +71,4 @@ public class PaymentOrder {
         }
         this.status = PaymentOrderStatus.EXPIRED;
     }
-
 }
