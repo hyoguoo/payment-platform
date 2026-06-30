@@ -33,4 +33,17 @@ public interface StockCachePort {
      * @throws RuntimeException 인프라 장애 시 전파
      */
     StockCompensationAtomicResult compensateAtomic(String orderId, List<PaymentOrder> paymentOrders);
+
+    /**
+     * 재고 캐시를 product RDB(SoT) 기준 수량으로 덮어쓴다 — 운영 resync 전용.
+     *
+     * <p><b>주의</b>: 단순 SET 이라 in-flight 선차감(payment 가 confirm 중 차감한 미확정분)을 덮어쓴다.
+     * 진행 중 결제가 있는 시점에 호출하면 over-sell 가능 — 운영자는 트래픽이 조용한 시점에,
+     * 발산이 확인된 특정 productId 에 한해 호출해야 한다. 평상시 차감/복원은
+     * {@link #decrementAtomic}/{@link #compensateAtomic} 가 담당하며 이 메서드를 거치지 않는다.
+     *
+     * @param productId 재고 키 {@code stock:{productId}}
+     * @param quantity  product RDB 의 현재 재고 수량
+     */
+    void set(Long productId, int quantity);
 }

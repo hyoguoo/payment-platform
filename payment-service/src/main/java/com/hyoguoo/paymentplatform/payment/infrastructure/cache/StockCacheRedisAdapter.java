@@ -78,6 +78,15 @@ public class StockCacheRedisAdapter implements StockCachePort {
         return StockCompensationAtomicResult.valueOf(luaResult);
     }
 
+    /**
+     * 운영 resync — {@code stock:{productId}} 를 product RDB 수량으로 단순 SET.
+     * in-flight 선차감 덮어쓰기 주의: {@link StockCachePort#set} 주석 참고.
+     */
+    @Override
+    public void set(Long productId, int quantity) {
+        stockCacheRedisTemplate.opsForValue().set(KEY_PREFIX + productId, String.valueOf(quantity));
+    }
+
     private List<String> buildDecrementKeys(String orderId, List<PaymentOrder> paymentOrders) {
         List<String> keys = new ArrayList<>();
         keys.add(DEDUP_DECREMENT_PREFIX + orderId);

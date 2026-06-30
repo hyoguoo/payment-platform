@@ -255,12 +255,12 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 
 - 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json` / `system-dashboard.json` 2분할 신설, 메트릭 이름 현행 코드 정합. (CONCERNS C-9 동반 해소)
 
-#### TC-3 — 재고 동기화 정책 (부팅 외 시점)
+#### ~~TC-3 — 재고 동기화 정책 (부팅 외 시점)~~ ✅ 부분 완료 (수동 단건 resync, 2026-07-01)
 
 - 새 재고 모델: redis-stock = payment 의 선차감 캐시, product RDB = SoT
-- 현재는 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 1회 시드. 이후 동기화 X
-- 발산 발생 시점: product RDB 가 외부(관리자 / 입고 / 외부 시스템)에서 변경되면 Redis 와 발산
-- 후보 방안: (a) admin endpoint `/admin/stock/resync` 로 수동 재시드, (b) product 가 RDB 변경 시 redis pub/sub 으로 cache invalidation, (c) 주기적 재시드 스케줄러
+- 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 1회 시드. 발산 시점: product RDB 가 외부(관리자 / 입고 / 외부 시스템)에서 변경될 때
+- **채택·구현**: 방안 (a) 수동 resync — payment `POST /admin/stock/resync/{productId}`(`StockAdminController` → `StockResyncUseCase`)가 `ProductPort.getProductInfoById` 로 product RDB stock 을 조회해 `StockCachePort.set` 으로 redis 를 덮어쓴다. 단건(productId) 단위로 발산 확인된 상품만 핀포인트 보정. `STOCK_CACHE_RESYNC` 로그 가시화
+- **한계 / 잔여**: 단순 SET 이라 in-flight 선차감을 덮어써 over-sell 가능 → 운영자가 트래픽 조용한 시점/특정 productId 한정 호출이 전제(`StockCachePort#set` Javadoc). 전체 일괄 resync·자동 발산 감지(방안 b 이벤트 기반 invalidation)는 미채택 — 외부 직접 RDB 변경 미탐지 한계 + cross-service 복잡도로 후속 여지. 방안 c(주기 재시드)는 in-flight 덮어쓰기 위험으로 기각
 
 #### TC-6 — 가상 스레드 명시적 throttle / bulkhead 검토
 
