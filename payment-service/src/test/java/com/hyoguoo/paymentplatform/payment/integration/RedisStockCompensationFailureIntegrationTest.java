@@ -61,7 +61,7 @@ import org.testcontainers.containers.MySQLContainer;
  * <p>검증 범위:
  * <ul>
  *   <li>FAILED 결과수신 중 {@link StockCachePort#compensateAtomic} 실패(spy doThrow) →
- *       DefaultErrorHandler retry 소진 → events.confirmed.dlq 보존(유실 0).
+ *       retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) → events.confirmed.dlq 보존(유실 0).
  *       entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 흡수되지 않고 DLQ 로 도달함을 단정.</li>
  *   <li>보상 실패 후 redis 선차감 잔존 확인: redis 재고(DECR 잔존) &lt; 초기 재고(product RDB 등가)
  *       = 과예약 보수적 방향(over-sell 아님). 자동 복구는 TC-3 위임(가시화 한계).</li>

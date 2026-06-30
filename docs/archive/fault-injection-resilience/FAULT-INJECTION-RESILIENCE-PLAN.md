@@ -294,4 +294,12 @@ flowchart TD
 > - 단위 465건 PASS, 통합 42건 PASS, spotbugsMain/Test PASS.
 
 ## 리뷰 처리
-> (ship 단계에서 채움)
+
+ship 코드 리뷰 R1 — reviewer fail(critical 1·minor 1), domain-expert pass(minor 2).
+
+- **[critical] user-service `@EnableScheduling` 누락** (reviewer) — 신규 `DependencyHealthMetrics.poll()`이 user의 유일한 `@Scheduled`인데 user에만 `@EnableScheduling` 없음(payment/pg/product는 보유) → `dependency_up{db}=0`·`last_poll=0` 영구 → 배포 즉시 DependencyDown(critical)+DependencyHealthStale 오발화. 단위테스트가 `poll()` 직접 호출이라 미검출. → **채택(수정)**: user에 `@EnableScheduling` 추가.
+- **[minor] `PaymentOrder`/`PaymentOrderTest` trailing 공백줄** (reviewer, Task 6 롤백 잔재) → **채택(정리)**.
+- **[minor] 재시도 경로 서술 — "DefaultErrorHandler 200ms×5" vs 실제 AfterRollbackProcessor 가능성** (domain-expert) — 두 경로 모두 공유 DLQ recoverer라 DLQ 유실0 불변(테스트 GREEN). 메커니즘 서술만 미검증. → **채택(문서 동기화 B2에서 경로 비단정으로 완화 + 라이브/로그 실측 시 못박기)**.
+- **[minor] L-14 poison-pill blast radius 과소** (domain-expert) — stranded 1건이 만료 batch 영구 wedge → 정상 READY 누적 → redis 선차감 미해제 누적(보수적 under-sell). → **채택(B2에서 L-14 한 줄 보강)**.
+
+ship 코드 리뷰 R2 — **reviewer pass**(critical·minor 해소, 새 결함 없음). user `SchedulerConfig`가 product/payment와 동형이고 배포 경로(docker 프로파일 → `scheduler.enabled=true` → poll 10s → 게이지 갱신 → prometheus scrape)가 닫혀 오발화 실제 해소 확인. 잔여 문서 minor 2건(재시도 경로 서술·L-14 blast radius)은 B2 문서 동기화에서 처리.

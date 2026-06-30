@@ -69,7 +69,7 @@ import org.testcontainers.containers.MySQLContainer;
  * <p>검증 범위:
  * <ul>
  *   <li>ConfirmedEventConsumer → PaymentConfirmResultUseCase → markPaymentAsDone DB write 실패(spy doThrow)
- *       → DefaultErrorHandler 1s×5 retry 소진 → events.confirmed.dlq 보존(유실 0)</li>
+ *       → retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) → events.confirmed.dlq 보존(유실 0)</li>
  *   <li>DLQ 보존 후 TestClock 제어로 reconciler(IN_PROGRESS→READY) 전이 후 expiration 시도.
  *       EXPIRED 도달 불가(order EXECUTING이 expire 차단) — 실제 거동은 READY 영구 잔류 + 만료 batch poison-pill.
  *       load-bearing 단정: DLQ 증거 생존(비-silence 증거)</li>

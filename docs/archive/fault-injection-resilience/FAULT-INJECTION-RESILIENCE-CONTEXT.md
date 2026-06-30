@@ -171,7 +171,7 @@ flowchart TD
 | payment IN_PROGRESS 정체 → reconciler `resetToReady` | (정체 동안) db health | reset은 READY 복원만 — 새 outbox 미생성이라 **자동 재confirm 없음**. over-sell 발산은 §18 전제(`compensation:done` 토큰 + 재confirm + 벤더 APPROVED) 동시 충족 시에만 발생 → **resetToReady 단독으로는 미구동**. 따라서 redis ≤ RDB(over-sell 0) 단정은 violation 불가능한 공허 단정 → **이 토픽 통합테스트에서 제외**(over-sell 회귀 시드는 별 토픽 위임). exactly-once 차감은 기존 `PaymentEosIntegrationTest`가 가드 |
 | payment redis-dedupe(6379) 다운 | `redis-dedupe` health 0 → 알람 | **체크아웃 멱등(`IdempotencyStore`, 6379) 호출 자체가 차단점** — `IdempotencyStoreRedisAdapter`가 redis 다운 시 예외 전파(fail-open 폴백 없음) → checkout **fail-closed(5xx)** → 결제 생성 차단 = **가용성 저하**(중복 과금 경로 없음). EOS 메시지 멱등 `payment_event_dedupe`는 MySQL이라 redis-dedupe 무관 — `db` 컴포넌트 귀속 |
 | payment redis-stock(6380) 다운 — confirm 진입 | `redis-stock` health 0 → 알람 | 선차감 실패 → CACHE_DOWN → QUARANTINED 격리(선차감 0이라 무누수) |
-| payment redis-stock 다운 — 결과수신(FAILED/QUARANTINED) | `redis-stock` health 0 + DLQ↑ | `compensateAtomic` 실패 → EOS abort → 재배달 ~5s → DLQ. **보상 미수행 → 선차감 stranded**(redis<RDB 보수적, DLQ 영구) — entry 경로와 달리 QUARANTINED로 흡수 안 됨 |
+| payment redis-stock 다운 — 결과수신(FAILED/QUARANTINED) | `redis-stock` health 0 + DLQ↑ | `compensateAtomic` 실패 → retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer라 DLQ 유실0 불변) → DLQ. **보상 미수행 → 선차감 stranded**(redis<RDB 보수적, DLQ 영구) — entry 경로와 달리 QUARANTINED로 흡수 안 됨 |
 | product MySQL 다운 | product db health 0 → 알람 | 재고 SoT 조회 실패 → 결제 진입 차단/실패 경로 |
 | 의존성 복구(start) | health 게이지 1 복귀 → 가용성 resolved | 정체분 일부 reconciler 회수, **DLQ-stranded·READY 영구 잔류분은 자동 회복 안 됨**(가시화까지 — TQ-1) |
 
