@@ -244,7 +244,7 @@ class PaymentExpirationServiceImplTest {
         verify(mockPaymentCommandUseCase, times(1)).expirePayment(restoredReadyPayment);
     }
 
-    // ---- poison-pill 격리 (L-14) — stranded 1건이 정상 건 만료를 막지 않는다 ----
+    // ---- poison-pill 격리 — stranded 1건이 정상 건 만료를 막지 않는다 ----
 
     @Test
     @DisplayName("expireOldReadyPayments — 한 건이 만료 불가(stranded)로 예외를 던져도 나머지 정상 건은 모두 만료한다 (poison-pill 격리)")

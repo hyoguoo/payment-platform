@@ -64,7 +64,7 @@ import org.testcontainers.containers.MySQLContainer;
  *       retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) → events.confirmed.dlq 보존(유실 0).
  *       entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 흡수되지 않고 DLQ 로 도달함을 단정.</li>
  *   <li>보상 실패 후 redis 선차감 잔존 확인: redis 재고(DECR 잔존) &lt; 초기 재고(product RDB 등가)
- *       = 과예약 보수적 방향(over-sell 아님). 자동 복구는 TC-3 위임(가시화 한계).</li>
+ *       = 과예약 보수적 방향(over-sell 아님). 자동 복구는 재고 재동기 등 별도 후속 위임(가시화 한계).</li>
  * </ul>
  *
  * <p>재현 메커니즘:
@@ -79,8 +79,8 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
- *   <li>선차감 자동 복구 — TC-3(재고 재동기) 위임</li>
- *   <li>보상 실패 후 RDB 상태 자동 전이 — TQ-1(DLQ 재주입) 위임</li>
+ *   <li>선차감 자동 복구 — 재고 재동기 등 별도 후속 위임</li>
+ *   <li>보상 실패 후 RDB 상태 자동 전이 — DLQ 재주입 등 별도 후속 위임</li>
  * </ul>
  */
 @SpringBootTest
@@ -262,7 +262,7 @@ class RedisStockCompensationFailureIntegrationTest {
 
         // RuntimeException: not-retryable 화이트리스트(MessageConversion/IllegalArgument/IllegalState) 밖
         // → DefaultErrorHandler 가 retry → DLQ 경로를 탄다.
-        // 보상 실패로 redis 선차감 잔존은 버그가 아닌 설계 명시 거동(자동 복구는 TC-3 위임).
+        // 보상 실패로 redis 선차감 잔존은 버그가 아닌 설계 명시 거동(자동 복구는 재고 재동기 등 별도 후속 위임).
         doThrow(new RuntimeException("redis-stock 연결 실패 — 보상 경로 재현"))
                 .when(stockCachePort).compensateAtomic(anyString(), anyList());
 
@@ -286,7 +286,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // 보상 실패로 redis 선차감(DECR) 이 잔존하고 product RDB 는 FAILED 경로에서
         // stock-committed 미발행이라 미차감.
         // redis 재고(INITIAL_STOCK - ORDER_QUANTITY) < 초기 재고(INITIAL_STOCK, product RDB 등가)
-        // = 과예약 보수적 방향(over-sell 아님). 자동 복구는 TC-3 위임(가시화 한계 — 설계 명시).
+        // = 과예약 보수적 방향(over-sell 아님). 자동 복구는 재고 재동기 등 별도 후속 위임(가시화 한계 — 설계 명시).
         String stockValue = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
         assertThat(stockValue)
                 .as("보상 실패 후 redis 재고 키 존재 확인")

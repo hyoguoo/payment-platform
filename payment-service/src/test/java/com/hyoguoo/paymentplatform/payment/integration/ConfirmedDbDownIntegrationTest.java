@@ -86,7 +86,7 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
- *   <li>EXPIRED 이후 자동 복구 — TQ-1(DLQ 재주입) 위임</li>
+ *   <li>EXPIRED 이후 자동 복구 — DLQ 재주입 등 별도 후속 작업 위임</li>
  *   <li>no-divergence(redis ≤ RDB) 단정 — 공허 단정(§18 발산 3전제 미충족)이라 제외</li>
  *   <li>신규 가시화 metric — 기존 DLQ 알람(events.confirmed.dlq)으로 탐지됨; test-only metric 발명 금지</li>
  * </ul>
@@ -292,8 +292,8 @@ class ConfirmedDbDownIntegrationTest {
      * <ul>
      *   <li>Reconciler 복원 후 PaymentEvent.status=READY, PaymentOrder.status=EXECUTING(불변식 흠) — 둘 다 단정.</li>
      *   <li>EXPIRED 도달 불가(order EXECUTING이 expire 차단): 이 stranded 건은 만료에 실패하지만,
-     *       배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(L-14 poison-pill 격리).</li>
-     *   <li>만료 실패 후 재조회 시 event.status 는 여전히 READY(자동 복구 미수행 — TQ-1/TC-3 위임, stranded READY 잔류).</li>
+     *       배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(poison-pill 격리).</li>
+     *   <li>만료 실패 후 재조회 시 event.status 는 여전히 READY(자동 복구 미수행 — 별도 후속 위임, stranded READY 잔류).</li>
      * </ul>
      *
      * <p>load-bearing 단정: 위 전이 시도를 가로질러 events.confirmed.dlq 1건 보존(DLQ 비-silence 증거).
@@ -353,7 +353,7 @@ class ConfirmedDbDownIntegrationTest {
         // cutoff = clock.instant() - 30min = paymentSavedAt + 310s + 1min.
         // created_at ≈ paymentSavedAt < cutoff → findReadyPaymentsOlderThan 에 해당 → expire 시도.
         // PaymentOrder.status=EXECUTING 이 PaymentOrder.expire() 가드를 막아 이 stranded 건은 만료에
-        // 실패하지만, 배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(L-14 poison-pill 격리).
+        // 실패하지만, 배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(poison-pill 격리).
         testClock.setFixedInstant(
                 paymentSavedAt.plus(Duration.ofSeconds(310)).plus(Duration.ofMinutes(31))
         );
@@ -361,7 +361,7 @@ class ConfirmedDbDownIntegrationTest {
                 .as("stranded 건 만료 실패가 격리되어 배치 예외 전파 없음 (poison-pill 격리)")
                 .doesNotThrowAnyException();
 
-        // 이 건은 만료되지 못하고 READY 잔류 — 자동 복구 미수행(TQ-1/TC-3 위임), 비종결 READY 가 안전 방향.
+        // 이 건은 만료되지 못하고 READY 잔류 — 자동 복구 미수행(별도 후속 위임), 비종결 READY 가 안전 방향.
         PaymentEventEntity entityAfterExpireAttempt =
                 jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(entityAfterExpireAttempt.getStatus())

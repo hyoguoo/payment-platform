@@ -29,7 +29,7 @@ public class PaymentExpirationServiceImpl implements PaymentExpirationService {
      * {@link PaymentCommandUseCase#expirePayment}(별도 빈의 {@code @Transactional} 메서드)가
      * 건별로 커밋/롤백한다. 따라서 한 건의 만료 실패(예: order 가 EXECUTING 으로 잔류해
      * expire 가드를 통과 못하는 stranded READY)는 그 건만 롤백되고 나머지 정상 건 만료를
-     * 막지 않는다(L-14 poison-pill 격리). 격리된 실패는 {@link PaymentExpirationSkipMetrics}
+     * 막지 않는다(poison-pill 격리). 격리된 실패는 {@link PaymentExpirationSkipMetrics}
      * 로 가시화한다.
      */
     @Override
