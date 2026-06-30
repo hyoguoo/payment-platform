@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-06-25 (DLQ-REACHABILITY 봉인 — [PG-SELFLOOP-ATTEMPT-GAP] + TC-13-FOLLOW-7 둘 다 해소: pg self-loop attempt 를 pg_inbox.attempt SoT 로 영속해 한도 도달 DLQ→QUARANTINED 격리 + payment EOS 커밋 실패에 AfterRollbackProcessor 명시 연결로 DLQ 도달·가시화. over-sell 자동 복구는 TQ-1 잔여). 이전: 2026-06-22 (두 항목 신규 등재). 그 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — TC-13-FOLLOW-1 hostname/fencing 해소 + T4-E scale-out 후속 등재).
+> 최종 갱신: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹). 이전: 2026-06-25 (DLQ-REACHABILITY 봉인 — [PG-SELFLOOP-ATTEMPT-GAP] + TC-13-FOLLOW-7 둘 다 해소: pg self-loop attempt 를 pg_inbox.attempt SoT 로 영속해 한도 도달 DLQ→QUARANTINED 격리 + payment EOS 커밋 실패에 AfterRollbackProcessor 명시 연결로 DLQ 도달·가시화. over-sell 자동 복구는 TQ-1 잔여).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -62,17 +62,17 @@ PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-tr
 
 시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적 → 한도(`MAX_ATTEMPTS`=4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. 격리 도달 카운터 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`) 는 QUARANTINED 전이 성공 지점(멱등). relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count 가능 — 방향이 조기 격리(무한 루프·금전 손실 없음)라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
-#### TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링 (대시보드 ✅ / 알람 rule 후속)
+#### ~~TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링~~ ✅ 완료 (대시보드 OBSERVABILITY-COMPLETION + 알람 ALERTING-RULES-AND-FAULT-DRILL)
 
 - **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단.
 - **대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `business-dashboard.json` 에 코디네이터 / `kafka_producer_txn_*` 패널 추가로 가시화 확보.
-- **잔여**: Prometheus alerting rule 인프라 자체가 미구축(`prometheus.yml` `rule_files`/`alerting` 미설정) — 임계 알람 자동화는 후속.
+- **알람 해소 (ALERTING-RULES-AND-FAULT-DRILL, 2026-06-27)**: coordinator 그룹 3규칙(`KafkaCoordinatorTxnAbortRising`/`KafkaCoordinatorLagHigh`/`KafkaBrokerUnavailable`) + promtool 회귀. `KafkaBrokerUnavailable` 라이브 발화 실측. **잔여**: lag 임계 1000 은 단일 broker 미검증 baseline → 멀티 broker T4-B 재교정(DE2). Alertmanager 통지 채널 미도입.
 
-#### TC-13-FOLLOW-4 — D7 가드 분기 모니터링 (메트릭·대시보드 ✅ / 알람 SLO 후속)
+#### ~~TC-13-FOLLOW-4 — D7 가드 분기 모니터링~~ ✅ 완료 (메트릭·대시보드 OBSERVABILITY-COMPLETION + 알람 ALERTING-RULES-AND-FAULT-DRILL)
 
 - **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단.
 - **메트릭·대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `payment_confirm_guard_skip_total{status}` 카운터(eager 6종 등록, [GUARD-SKIP-EAGER-REGISTER]) + `business-dashboard.json` guard_skip 패널.
-- **잔여**: alerting rule 미구축이라 SLO 자동 알람은 후속(TC-13-FOLLOW-3 과 동일 alerting 인프라 의존).
+- **알람 해소 (ALERTING-RULES-AND-FAULT-DRILL, 2026-06-27)**: guard-skip 그룹(`GuardSkipDangerousStatusHigh`) + promtool 회귀. **잔여**: status 라벨이 위험(QUARANTINED+늦은 APPROVED)/양성(FAILED 재배달)을 미구분 → 수신 메시지 status 라벨화는 T4-B(DE1). Alertmanager 통지 채널 미도입.
 
 #### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 ✅ 완료 / ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
 

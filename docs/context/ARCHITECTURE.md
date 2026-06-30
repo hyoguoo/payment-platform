@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-06-07 (TIME-MODEL-FOLLOWUP — product 멱등 만료 NOW()→Instant 통일 + BaseEntity audit Instant/DATETIME(6) 전환 + TZ backstop 3겹 반영)
+> 최종 갱신: 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-07 (TIME-MODEL-FOLLOWUP — product 멱등 만료 NOW()→Instant 통일 + BaseEntity audit Instant/DATETIME(6) 전환 + TZ backstop 3겹 반영)
 
 ## 개요
 

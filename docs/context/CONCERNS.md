@@ -1,15 +1,16 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-06-23 (코드 대조 — L-13 pg self-loop attempt 갭 등재). 이전: 2026-06-19 (CAPACITY-AND-SCALEOUT — C-12 events.confirmed DLT suffix 갭 해소: Task 1 destinationResolver `.dlq` 명시)
+> 최종 갱신: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-23 (코드 대조 — L-13 pg self-loop attempt 갭 등재)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
 
 ### C-1. Toxiproxy 장애 주입 검증 부재
 
-- **현황**: 실제 broker / DB / vendor 장애 시 회복성을 단위 테스트는 검증하지만 통합 환경에서 8가지 시나리오(Kafka 지연, DB 지연, 프로세스 kill+재시작, 보상 중복 방지, FCG PG timeout, Redis 다운, 재고 캐시 발산, DLQ 소진) 전수 미검증
-- **영향**: 운영 환경 실 장애 시 추측에 의존
-- **처방**: Phase 4 — Toxiproxy + k6 부하 + 메트릭 검증
+- **현황**: 단위 테스트는 회복성을 검증하나 통합 환경 8가지 시나리오 전수는 미검증. **부분 진척**: Toxiproxy latency 드릴 프로파일(`docker/docker-compose.drill.yml` + `toxiproxy.json`, ALERTING-RULES 6/27) 구축 + 서비스/DB/Redis 다운 라이브 firing→해소 실측(FAULT-INJECTION 6/30 — `ServiceDown`·`DependencyDown{db,redis-dedupe}`·`KafkaBrokerUnavailable`·`DlqTopicOffsetRising`).
+- **잔여 시나리오**: Kafka 지연 EOS abort, 프로세스 kill+재시작, 보상 중복 방지, FCG PG timeout, 재고 캐시 발산, DLQ 소진 + k6 부하 결합 전수
+- **영향**: 운영 환경 실 장애 시 잔여 시나리오는 추측에 의존
+- **처방**: Phase 4 — 잔여 시나리오 Toxiproxy + k6 부하 + 메트릭 검증
 
 ### C-2. CircuitBreaker 미적용 — cross-service HTTP
 
@@ -64,7 +65,7 @@
 ### ~~C-9. observability 대시보드 현행화~~ ✅ 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
 - **해소**: 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json`(funnel·전이·상태분포·격리·벤더latency·DLQ·outbox·cleanup·코디네이터·guard_skip) / `system-dashboard.json`(6서비스 JVM/GC/HTTP/Hikari/lag) 2분할 신설. 메트릭 이름 현행 코드 기준 정합.
-- **잔여**: Prometheus alerting rule 인프라(`rule_files`/`alerting`)는 미구축 — 임계 알람 자동화는 후속(TODOS TC-13-FOLLOW-3/4).
+- **후속 해소**: Prometheus alerting rule 인프라는 ALERTING-RULES-AND-FAULT-DRILL(6/27)에서 구축 — `prometheus.yml rule_files` → 4그룹(coordinator/guard-skip/dlq/availability, availability 는 FAULT-INJECTION 6/30) 평가 + `promtool test rules` 25케이스 회귀(`observability/prometheus/rules/`). **잔여**: Alertmanager 통지 채널 미도입(rule 평가/조회까지만).
 
 ### C-10. seed 데이터의 운영 안전성
 

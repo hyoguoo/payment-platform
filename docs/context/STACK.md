@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-06-23 (코드 대조 — JaCoCo product 게이트 0.43→0.97 정정). 이전: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — redis-stock AOF `appendfsync=always` 반영)
+> 최종 갱신: 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-23 (코드 대조 — JaCoCo product 게이트 0.43→0.97 정정)
 
 ## 언어 + 빌드
 
