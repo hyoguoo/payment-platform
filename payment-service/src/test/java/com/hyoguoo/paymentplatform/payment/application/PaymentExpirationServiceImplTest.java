@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -7,11 +8,14 @@ import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentExpirationSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -27,14 +31,17 @@ class PaymentExpirationServiceImplTest {
     private PaymentExpirationService paymentExpirationService;
     private PaymentLoadUseCase mockPaymentLoadUseCase;
     private PaymentCommandUseCase mockPaymentCommandUseCase;
+    private PaymentExpirationSkipMetrics mockPaymentExpirationSkipMetrics;
 
     @BeforeEach
     void setUp() {
         mockPaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
         mockPaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        mockPaymentExpirationSkipMetrics = Mockito.mock(PaymentExpirationSkipMetrics.class);
         paymentExpirationService = new PaymentExpirationServiceImpl(
                 mockPaymentLoadUseCase,
-                mockPaymentCommandUseCase
+                mockPaymentCommandUseCase,
+                mockPaymentExpirationSkipMetrics
         );
     }
 
@@ -235,5 +242,56 @@ class PaymentExpirationServiceImplTest {
         // then — 2단 연쇄의 2단계: READY 복원 이후 만료 서비스가 EXPIRED 처리
         verify(mockPaymentLoadUseCase, times(1)).getReadyPaymentsOlder();
         verify(mockPaymentCommandUseCase, times(1)).expirePayment(restoredReadyPayment);
+    }
+
+    // ---- poison-pill 격리 (L-14) — stranded 1건이 정상 건 만료를 막지 않는다 ----
+
+    @Test
+    @DisplayName("expireOldReadyPayments — 한 건이 만료 불가(stranded)로 예외를 던져도 나머지 정상 건은 모두 만료한다 (poison-pill 격리)")
+    void expireOldReadyPayments_oneStranded_doesNotBlockOthers() {
+        // given — order EXECUTING 잔류 등으로 expire 시 예외를 던지는 stranded 1건 + 정상 2건
+        PaymentEvent stranded = readyPayment(1L, "order-stranded");
+        PaymentEvent normal1 = readyPayment(2L, "order-normal-1");
+        PaymentEvent normal2 = readyPayment(3L, "order-normal-2");
+
+        when(mockPaymentLoadUseCase.getReadyPaymentsOlder())
+                .thenReturn(List.of(stranded, normal1, normal2));
+        when(mockPaymentCommandUseCase.expirePayment(stranded))
+                .thenThrow(PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_EXPIRE));
+        when(mockPaymentCommandUseCase.expirePayment(normal1)).thenReturn(normal1);
+        when(mockPaymentCommandUseCase.expirePayment(normal2)).thenReturn(normal2);
+
+        // when — stranded 예외가 배치를 중단/롤백시키지 않아야 한다
+        assertThatCode(() -> paymentExpirationService.expireOldReadyPayments())
+                .doesNotThrowAnyException();
+
+        // then — 정상 2건 모두 만료 시도됨 (한 건의 실패가 격리됨) + 격리된 실패는 metric 으로 가시화
+        verify(mockPaymentCommandUseCase, times(1)).expirePayment(normal1);
+        verify(mockPaymentCommandUseCase, times(1)).expirePayment(normal2);
+        verify(mockPaymentExpirationSkipMetrics, times(1)).recordSkip(any(String.class), any());
+    }
+
+    private PaymentEvent readyPayment(long id, String orderId) {
+        List<PaymentOrder> orderList = new ArrayList<>();
+        orderList.add(PaymentOrder.allArgsBuilder()
+                .id(id)
+                .paymentEventId(id)
+                .orderId(orderId)
+                .productId(id)
+                .quantity(1)
+                .totalAmount(BigDecimal.valueOf(10000))
+                .status(PaymentOrderStatus.NOT_STARTED)
+                .allArgsBuild());
+
+        return PaymentEvent.allArgsBuilder()
+                .id(id)
+                .buyerId(1L)
+                .sellerId(1L)
+                .orderName("Order " + orderId)
+                .orderId(orderId)
+                .status(PaymentEventStatus.READY)
+                .paymentOrderList(orderList)
+                .createdAt(Instant.now().minus(31, ChronoUnit.MINUTES))
+                .allArgsBuild();
     }
 }

@@ -1,7 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -9,7 +9,6 @@ import static org.mockito.Mockito.doThrow;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
-import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import com.hyoguoo.paymentplatform.payment.application.service.PaymentReconciler;
@@ -292,9 +291,9 @@ class ConfirmedDbDownIntegrationTest {
      * <p>실제 거동:
      * <ul>
      *   <li>Reconciler 복원 후 PaymentEvent.status=READY, PaymentOrder.status=EXECUTING(불변식 흠) — 둘 다 단정.</li>
-     *   <li>EXPIRED 도달 불가(order EXECUTING이 expire 차단): expireOldReadyPayments() 가
-     *       PaymentStatusException(INVALID_STATUS_TO_EXPIRE)을 던지고 배치 트랜잭션이 롤백된다.</li>
-     *   <li>예외 전파 후 재조회 시 event.status 는 여전히 READY(마스킹 종결 없음, stranded READY 영구 잔류).</li>
+     *   <li>EXPIRED 도달 불가(order EXECUTING이 expire 차단): 이 stranded 건은 만료에 실패하지만,
+     *       배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(L-14 poison-pill 격리).</li>
+     *   <li>만료 실패 후 재조회 시 event.status 는 여전히 READY(자동 복구 미수행 — TQ-1/TC-3 위임, stranded READY 잔류).</li>
      * </ul>
      *
      * <p>load-bearing 단정: 위 전이 시도를 가로질러 events.confirmed.dlq 1건 보존(DLQ 비-silence 증거).
@@ -304,7 +303,7 @@ class ConfirmedDbDownIntegrationTest {
      * 두 쿼리가 TestClock 기반 cutoff 를 통해 기대대로 동작하는지도 함께 검증된다.
      */
     @Test
-    @DisplayName("마스킹 전이 시도를 가로질러 DLQ 증거 생존: READY→EXPIRED 차단(order EXECUTING poison-pill) + DLQ 유실 0")
+    @DisplayName("stranded 만료 실패 격리를 가로질러 DLQ 증거 생존: order EXECUTING 건 만료 실패 격리(poison-pill 차단) + DLQ 유실 0")
     void 마스킹전이를_가로질러_DLQ증거_생존() throws Exception {
         // given — IN_PROGRESS 결제 + markPaymentAsDone DB write 결정적 실패 주입 → DLQ 보존
         String orderId = "order-dbdown2-" + UUID.randomUUID();
@@ -342,7 +341,7 @@ class ConfirmedDbDownIntegrationTest {
                 .as("Reconciler 명시 호출 후 IN_PROGRESS→READY 전이 확인")
                 .isEqualTo(PaymentEventStatus.READY);
         // 불변식 흠: PaymentEvent.resetToReady()는 PaymentOrder 상태를 복원하지 않는다.
-        // PaymentOrder 는 EXECUTING 그대로 — expireOldReadyPayments() 호출 시 poison-pill이 된다.
+        // PaymentOrder 는 EXECUTING 그대로 — 이 건은 만료에 실패하지만 배치는 격리되어 계속 진행한다.
         List<PaymentOrderEntity> ordersAfterReconcile =
                 jpaPaymentOrderRepository.findByPaymentEventId(entityAfterReconcile.getId());
         assertThat(ordersAfterReconcile)
@@ -353,20 +352,20 @@ class ConfirmedDbDownIntegrationTest {
         // when (2단계) — Expiration: TestClock 을 추가 31분 전진.
         // cutoff = clock.instant() - 30min = paymentSavedAt + 310s + 1min.
         // created_at ≈ paymentSavedAt < cutoff → findReadyPaymentsOlderThan 에 해당 → expire 시도.
-        // PaymentOrder.status=EXECUTING 이 PaymentOrder.expire() 가드를 통과 못해
-        // PaymentStatusException(INVALID_STATUS_TO_EXPIRE) 을 던지고 배치 트랜잭션 전체가 롤백된다.
+        // PaymentOrder.status=EXECUTING 이 PaymentOrder.expire() 가드를 막아 이 stranded 건은 만료에
+        // 실패하지만, 배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(L-14 poison-pill 격리).
         testClock.setFixedInstant(
                 paymentSavedAt.plus(Duration.ofSeconds(310)).plus(Duration.ofMinutes(31))
         );
-        assertThatThrownBy(() -> paymentExpirationService.expireOldReadyPayments())
-                .as("EXECUTING 주문이 expire 를 막아 INVALID_STATUS_TO_EXPIRE 전파 — 배치 롤백")
-                .isInstanceOf(PaymentStatusException.class);
+        assertThatCode(() -> paymentExpirationService.expireOldReadyPayments())
+                .as("stranded 건 만료 실패가 격리되어 배치 예외 전파 없음 (poison-pill 격리)")
+                .doesNotThrowAnyException();
 
-        // EXPIRED 도달 불가: 예외 전파 후 트랜잭션 롤백으로 event.status 는 READY 잔류.
+        // 이 건은 만료되지 못하고 READY 잔류 — 자동 복구 미수행(TQ-1/TC-3 위임), 비종결 READY 가 안전 방향.
         PaymentEventEntity entityAfterExpireAttempt =
                 jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(entityAfterExpireAttempt.getStatus())
-                .as("expireOldReadyPayments 예외 후 배치 롤백 — event 는 READY 잔류(마스킹 종결 없음)")
+                .as("stranded 건은 만료 실패로 READY 잔류 (자동 복구 미수행 — 위임)")
                 .isEqualTo(PaymentEventStatus.READY);
 
         // then — 마스킹 전이 시도를 가로질러 DLQ 메시지 유실 0 보존(비-silence 증거).
