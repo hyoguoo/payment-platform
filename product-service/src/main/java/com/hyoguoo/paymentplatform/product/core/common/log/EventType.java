@@ -17,4 +17,7 @@ public enum EventType {
     SCHEDULER_ENABLED,
 
     EXCEPTION,
+
+    METRICS_INIT,
+    METRICS_GAUGE_UPDATED,
 }

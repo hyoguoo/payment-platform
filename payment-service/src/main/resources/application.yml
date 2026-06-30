@@ -161,6 +161,11 @@ metrics:
       polling-interval-seconds: 10
       thresholds:
         stuck-in-progress-minutes: 5
+    dependency:
+      # 의존성 가용성 폴링 주기(초). Prometheus scrape 주기(30s) 이하 권장.
+      polling-interval-seconds: 10
+      # 각 컴포넌트 조회 타임아웃(초). Hikari connectionTimeout(30s) 블로킹 차단 목적.
+      timeout-seconds: 2
 
 management:
   tracing:

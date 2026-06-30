@@ -1,18 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL ship 완료 → idle)
+> 최종 수정: 2026-06-30 (FAULT-INJECTION-RESILIENCE 완료·아카이브 — idle)
 
 ## 활성 작업
 
-- 없음 (idle)
+없음 — 다음 토픽 대기.
 
 ## 재개 메모
 
-- (없음)
+(없음)
 
 ## 최근 완료
 
-- **ALERTING-RULES-AND-FAULT-DRILL** (Prometheus 알람 규칙 인프라 + Toxiproxy 장애 주입 발화 실증 — TC-13-FOLLOW-3·4 + Phase 5 진입. rule 평가만 도입(Alertmanager 미도입): `prometheus.yml` rule_files → `observability/prometheus/rules/*.yml` 로드, `/api/v1/{rules,alerts}` 평가까지. 3그룹 7규칙 — coordinator(EOS txn abort / events.confirmed lag / broker 가용성 backstop), guard-skip(위험 status skip 비율, 분모 `payment_transition_total{from_status=IN_PROGRESS}` resetToReady AOP 우회 비오염), dlq(앱 카운터 / `.dlq` offset 델타 / `commands.confirm.dlq` lag 독립 cross-check, 합산 금지). `promtool test rules` 16케이스 회귀 고정. Toxiproxy latency 전용 드릴 프로파일(`docker-compose.drill.yml`, 평상시 미기동). **라이브 실증이 promtool 사각 dead branch 발견** — broker 완전 정지 시 kafka_brokers 는 0 아닌 absent → `kafka_brokers<1` 단독 미발화 → `absent(kafka_brokers)` 3분기 보강 + PITFALLS #24. KafkaBrokerUnavailable·DlqTopicOffsetRising 라이브 발화 실측. 단일 broker 구조 한계(payment 가 commands.confirm producer 겸 consumer → lag 비대칭 미실현 피크 ~150·EOS abort 미발화)로 코디네이터/EOS 라이브 발화는 promtool+통합테스트 격하. 애플리케이션 코드 무변경. 7태스크, promtool 16케이스+셸 5종+compose 양 스택 검증, discuss R3·plan R2·ship 리뷰 R2 pass critical0/major1 doc-sync/minor6(해소4·후속2), 18커밋, 2026-06-27, 이슈/브랜치 #116) — `docs/archive/alerting-rules-and-fault-drill/COMPLETION-BRIEFING.md`
-- **DLQ-REACHABILITY** (장애 지속 시 DLQ 도달 보장 — [PG-SELFLOOP-ATTEMPT-GAP]+TC-13-FOLLOW-7 둘 다 해소. Track P: pg self-loop 시도횟수가 런타임 1 고정(relay 헤더 미발행+attempt 컬럼 부재)이라 한도 dead branch·무한 반복하던 것을 `pg_inbox.attempt`(Flyway V5) SoT로 영속(Option B), 워커 resolveAttempt 읽기+retry 분기 incrementAttempt(TX_B) 누적→4 소진 시 기존 DLQ→QUARANTINED 자동 격리. 격리 metric은 QUARANTINED 전이 성공 지점(멱등). Track E: payment EOS 커밋 반복 실패가 컨테이너 디폴트 AfterRollbackProcessor(9회·DLQ 미진입)로 빠지던 것을 `setAfterRollbackProcessor` 명시 연결(공유 recoverer 빈 추출+신규 `payment.kafka.after-rollback.backoff.*` 기본 1000ms×5)로 confirmed.dlq 도달+metric. 비트랜잭션 DLQ 템플릿이라 실패 EOS tx와 분리. #7 갭-문서화→갭-수정-검증 전환. 수용 한계: over-sell 자동 복구는 TQ-1 후속, attempt over-count(동시 진입 조기 격리)는 안전 방향 수용. 4태스크, pg 단위 324+통합 9/payment 단위 458+통합 39 PASS+린트, discuss R2·plan R2·ship pass critical0/major1 doc-sync/minor2, 2026-06-25, 이슈/브랜치 #114) — `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`
+- **FAULT-INJECTION-RESILIENCE** (서비스·DB·Redis 가용성 알람 + docker stop 완전 다운 정합 거동 실증 — 가용성 사각을 4서비스 `DependencyHealthMetrics` 직접 폴링 게이지(`dependency_up{component}`, 2s 타임아웃 가드, payment redis dedupe/stock 2분리, last-poll staleness)로 메우고 신규 `availability.yml`(ServiceDown/DependencyDown/DependencyHealthStale + `absent()` backstop)로 탐지. 완전 다운 정합은 `@EmbeddedKafka`+전용 MySQL+`@MockitoSpyBean doThrow` 통합테스트로 **DLQ 유실0**(load-bearing, 시간 무관) 고정 — 컨테이너 stop 은 Hikari 30s×5 비결정성으로 금지. **검증이 두 갭 발견**: (1) execute 중 implementer 도메인 변경(`resetToReady`→order NOT_STARTED 복원, EXPIRED 종결 활성화)을 domain-expert **critical**로 롤백 — 설계 전제 "IN_PROGRESS→READY→EXPIRED 2단 마스킹"이 실제론 order EXECUTING 잔류로 `expire()` 차단(EXPIRED 도달 불가·READY 영구 잔류 + 만료 batch poison-pill)임을 실측해 CONCERNS **L-14** 등재(L-10 정책 갭). EXPIRED 종결화는 D7 가드가 TQ-1 복구를 봉쇄해 비종결 READY보다 나쁨이 롤백 근거. (2) ship **라이브 드릴**이 stale jar 배포 갭(bootJar 선행 누락 → 게이지 빈 미생성) + user `@EnableScheduling` 누락(폴러 미실행 → 알람 영구 오발화)을 잡음 — promtool/통합테스트 사각. no-divergence(over-sell 0)는 공허 단정 제외, **신규 복구 로직 없음**(TQ-1/TC-3 위임). 7태스크, payment 단위465+통합42·pg330·product50·user9 PASS + promtool 25케이스 + 라이브 ServiceDown·DependencyDown{db,redis-dedupe} 발화/해소 실측, discuss R3·plan R2(critical 1 reconcile)·execute 도메인 critical 1(롤백)·ship 코드리뷰 R2(critical 1 user scheduler), 2026-06-30, 이슈/브랜치 #118) — `docs/archive/fault-injection-resilience/COMPLETION-BRIEFING.md`
+- **ALERTING-RULES-AND-FAULT-DRILL** (Prometheus 알람 규칙 인프라 + Toxiproxy 장애 주입 발화 실증 — rule 평가만 도입(Alertmanager 미도입): `prometheus.yml` rule_files → `observability/prometheus/rules/*.yml` 로드, `/api/v1/{rules,alerts}` 평가까지. 3그룹 7규칙(coordinator/guard-skip/dlq), `promtool test rules` 16케이스 회귀 고정. Toxiproxy latency 전용 드릴 프로파일. **라이브 실증이 promtool 사각 dead branch 발견** — broker 완전 정지 시 kafka_brokers 는 0 아닌 absent → `absent(kafka_brokers)` 3분기 보강 + PITFALLS #24. 단일 broker 구조 한계로 코디네이터/EOS 라이브 발화는 promtool+통합테스트 격하. 애플리케이션 코드 무변경. 7태스크, 18커밋, 2026-06-27, 이슈/브랜치 #116) — `docs/archive/alerting-rules-and-fault-drill/COMPLETION-BRIEFING.md`
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

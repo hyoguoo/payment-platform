@@ -1,0 +1,57 @@
+groups:
+  - name: availability
+    rules:
+      # 서비스 프로세스 다운 신호
+      # Prometheus scrape 실패(up==0) = 서비스 컨테이너 종료 또는 JVM 크래시.
+      # job=~".*-service": payment·pg·product·user 서비스만 포함(kafka·prometheus 등 인프라 제외).
+      # 잠정 for:1m — Prometheus/서비스 콜드스타트(첫 scrape 전 일시 absent) 오발화 흡수.
+      # 트레이드오프: 완전 다운에서 이 규칙이 유일 신호일 때 for:1m 이 감지를 +1분 지연시킨다.
+      #   오발화 페이징 회피를 우선해 수용 — coordinator 의 KafkaBrokerUnavailable for:2m 동형 설계.
+      - alert: ServiceDown
+        expr: 'up{job=~".*-service"} == 0'
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "서비스 프로세스 다운 ({{ $labels.job }})"
+          description: "{{ $labels.job }} scrape 실패 — 서비스 프로세스 또는 네트워크 이상."
+
+      # 의존성 가용성 이상 신호
+      # dependency_up{component}=0: health 폴러가 해당 컴포넌트를 DOWN 으로 판정.
+      #   컴포넌트별 분리: payment 의 redis-dedupe / redis-stock 을 독립 라벨로 노출해
+      #   한쪽 장애가 다른쪽을 dead branch 로 만드는 것을 방지(coordinator 의 kafka_brokers 동형 회피).
+      # absent(dependency_up) backstop — PITFALLS §24 회귀 고정:
+      #   메트릭 미등록·오타 등으로 시리즈 자체가 부재하면 dependency_up==0 단독은 dead branch.
+      #   absent() 로 시리즈 소멸을 직접 포착해 미등록·scrape 중단을 잡는다.
+      # for 없음 — 의존성 다운은 즉시 알람이 적합(폴링 주기 10s, 추가 지연 불필요).
+      #   staleness 가 2차 방어를 담당하므로 여기서의 지연 수용 불필요.
+      - alert: DependencyDown
+        expr: 'dependency_up == 0 or absent(dependency_up)'
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            의존성 가용성 이상 ({{ if $labels.component }}{{ $labels.component }}{{ else }}unknown{{ end }})
+          description: >-
+            {{ if $labels.component }}dependency_up{component="{{ $labels.component }}"} == 0. DB·Redis 등 의존성 다운 또는 health 폴러 타임아웃.{{ else }}dependency_up 시리즈 부재 — 메트릭 미등록 또는 scrape 중단.{{ end }}
+
+      # 의존성 가용성 폴러 갱신 지연(staleness) 신호
+      # dependency_health_last_poll_timestamp_seconds: 폴러 한 바퀴 완료마다 갱신(성공·실패 무관).
+      # time() - <gauge> > 60s: 폴러가 60s(폴링 주기 10s 기준 6회) 이상 갱신하지 못한 상태.
+      #   폴러 블로킹(Hikari connectionTimeout 30s 충돌 등) 또는 스레드 사망을 탐지.
+      #   이는 dependency_up==0(DOWN 판정) 과 독립된 축 — 폴러 자체 장애를 커버.
+      # absent(dependency_health_last_poll_timestamp_seconds) backstop:
+      #   시리즈 자체 부재(메트릭 미등록, 폴러 미기동) 시 time()-x>60 단독은 dead branch.
+      #   DependencyDown 의 absent 분기와 동형 설계(PITFALLS §24).
+      # for 없음 — staleness 조건 자체(60s)가 충분한 지연 역할을 하므로 추가 for 불필요.
+      - alert: DependencyHealthStale
+        expr: >-
+          (time() - dependency_health_last_poll_timestamp_seconds > 60)
+          or absent(dependency_health_last_poll_timestamp_seconds)
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            의존성 가용성 폴러 갱신 지연 ({{ if $labels.job }}{{ $labels.job }}{{ else }}unknown{{ end }})
+          description: >-
+            {{ if $labels.job }}dependency_health_last_poll_timestamp_seconds 가 60s 이상 갱신되지 않음. 폴러 블로킹 또는 스레드 사망 의심.{{ else }}dependency_health_last_poll_timestamp_seconds 시리즈 부재 — 폴러 미기동 또는 메트릭 미등록.{{ end }}

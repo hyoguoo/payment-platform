@@ -112,6 +112,12 @@ pg:
     connect-timeout-millis: ${PG_HTTP_CONNECT_TIMEOUT_MS:3000}
     read-timeout-millis: ${PG_HTTP_READ_TIMEOUT_MS:10000}
 
+metrics:
+  pg:
+    dependency:
+      polling-interval-seconds: 10
+      timeout-seconds: 2
+
 management:
   endpoints:
     web:

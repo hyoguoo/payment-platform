@@ -1,12 +1,12 @@
 # Alert Firing Check Smoke
 
-> 영구 가이드 — Prometheus 알람 규칙 3그룹(코디네이터 정체 / 종결 가드 skip / DLQ 적체) 발화 검증.
+> 영구 가이드 — Prometheus 알람 규칙 4그룹(코디네이터 정체 / 종결 가드 skip / DLQ 적체 / 가용성) 발화 검증.
 > 스크립트(1차): `scripts/smoke/alert-rules-promtool.sh`
-> 스크립트(2차 라이브 드릴): `scripts/smoke/alert-firing-coordinator.sh`, `scripts/smoke/alert-firing-dlq.sh`
+> 스크립트(2차 라이브 드릴): `scripts/smoke/alert-firing-coordinator.sh`, `scripts/smoke/alert-firing-dlq.sh`, `scripts/smoke/alert-firing-availability.sh`
 
 ## 목적
 
-Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 상태에서는 발화하지 않음을 검증한다. 본 가이드는 다음에 답한다:
+Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 상태에서는 발화하지 않음을 검증한다. 본 가이드는 다음에 답한다:
 
 > "알람 규칙이 Prometheus에 로드되어 있고, 합성 시계열에서 의도한 조건에서만 발화하는가?"
 
@@ -14,8 +14,8 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 
 | 계층 | 수단 | 선행 조건 | 보증 범위 |
 |---|---|---|---|
-| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 16케이스 단정 |
-| **2차 — 라이브 드릴** | `alert-firing-*.sh` (Toxiproxy drill 프로파일) | 전체 스택 + `docker-compose.drill.yml` 기동 | 운영 환경 유사 발화 폴링 |
+| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 25케이스 단정 |
+| **2차 — 라이브 드릴** | `alert-firing-*.sh` (Toxiproxy drill / docker stop 주입) | 전체 스택 기동 | 운영 환경 유사 발화 폴링 |
 
 ### 라이브 한계 명시
 
@@ -23,10 +23,10 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 
 - **consumer lag 비대칭 불가**: latency toxic 주입 시 consumer 경로만이 아닌 producer 경로(유입)도 함께 지연 → lag 피크 ~150 ≪ 임계(1000 messages). 결정적 임계 초과 불가.
 - **txn abort 미발화**: 주입 지연 2000ms < `transaction.timeout.ms` 이므로 EOS commit 이 느려질 뿐 abort 미발생.
-- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (16케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
-- 규칙은 Prometheus 라이브 로드 + 운영 유효 (관측 스택 정상 기동 시 `/api/v1/rules` 에서 3그룹 확인 가능).
+- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (25케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
+- 규칙은 Prometheus 라이브 로드 + 운영 유효 (관측 스택 정상 기동 시 `/api/v1/rules` 에서 4그룹 확인 가능).
 
-## 검증 항목 (16 케이스)
+## 검증 항목 (25 케이스)
 
 ### 코디네이터 정체 — 6 케이스 (`coordinator_test.yml`)
 
@@ -59,6 +59,20 @@ Prometheus 알람 규칙 3그룹이 의도한 조건에서 발화하고, 정상 
 | (f) | `commands.confirm.dlq` 컨슈머 lag 잔존 | `DlqCommandsConsumerLag` FIRING — offset-increase 0 사각 보완 |
 | (g) | `pg_retry_exhausted_quarantine_total` 만↑ (payment_eos 평탄) | `DlqAppCounterRising` FIRING — pg 분기 OR 독립 회귀 고정 |
 
+### 가용성 — 9 케이스 (`availability_test.yml`)
+
+| 케이스 | 입력 | 기대 |
+|---|---|---|
+| (a1) | `up{job=~".*-service"}==0` for:1m 충족 | `ServiceDown` FIRING |
+| (a2) | `up==1` (정상) | `ServiceDown` 미발화 |
+| (b) | `dependency_up{component="db"}==0` | `DependencyDown` FIRING (component 라벨 보존) |
+| (c) | `dependency_up{component="redis-stock"}==0`, redis-dedupe 정상 | `DependencyDown{component="redis-stock"}` FIRING, redis-dedupe 미발화 — 컴포넌트 분리 검증 |
+| (d1) | `time() - dependency_health_last_poll_timestamp_seconds > 60` | `DependencyHealthStale` FIRING |
+| (d2) | 폴러 정상 (최근 갱신) | `DependencyHealthStale` 미발화 |
+| (e1) | `dependency_up` 시리즈 부재 (absent) | `DependencyDown` FIRING — absent() 백스톱 (PITFALLS §24 dead-branch 회귀 고정) |
+| (e2) | `dependency_health_last_poll_timestamp_seconds` 시리즈 부재 | `DependencyHealthStale` FIRING — absent() 백스톱 동형 |
+| (f) | 정상 baseline 전체 | 3알람 모두 미발화 |
+
 ## 사용법 — 1차 규칙 유닛 검증
 
 ```bash
@@ -70,26 +84,25 @@ bash scripts/smoke-all.sh
 ```
 
 종료 코드:
-- 0 — 16 케이스 전체 PASS
+- 0 — 25 케이스 전체 PASS
 - 1 — 실패 또는 Docker 미기동
 
 ## 사용법 — 2차 라이브 드릴 (수동)
 
-라이브 드릴은 **drill 프로파일 기동이 선행 조건**이며, 단일 broker 환경 한계로 결정적 발화가 보장되지 않는다. 발화 불가 시 promtool 픽스처 격하 폴백으로 자동 전환된다.
+라이브 드릴은 **전체 스택 기동이 선행 조건**이다. 코디네이터 / EOS 경로는 단일 broker 환경 한계로 결정적 발화가 보장되지 않는다.
 
 ```bash
-# 1. drill 프로파일 포함 전체 스택 기동
+# 1. 전체 스택 기동
 docker compose \
   -f docker/docker-compose.infra.yml \
   -f docker/docker-compose.apps.yml \
   -f docker/docker-compose.observability.yml \
-  -f docker/docker-compose.drill.yml \
   up -d
 
 # 2. start_period 통과 대기
 sleep 90
 
-# 3. 코디네이터 알람 라이브 드릴 (toxic 주입 → 폴링 → 해제)
+# 3. 코디네이터 알람 라이브 드릴 (Toxiproxy toxic 주입 → 폴링 → 해제)
 ./scripts/smoke/alert-firing-coordinator.sh
 
 # 격하 폴백 직행 (라이브 스택 없이 promtool 만 실행)
@@ -100,23 +113,54 @@ sleep 90
 
 # Prometheus 현재 상태 라이브 폴링 추가 (실 주입 없이)
 ./scripts/smoke/alert-firing-dlq.sh --live
+
+# 5. 가용성 알람 라이브 드릴 (docker stop/start 다운 주입)
+./scripts/smoke/alert-firing-availability.sh
+
+# 격하 폴백 직행 (라이브 스택 없이 promtool 만 실행)
+./scripts/smoke/alert-firing-availability.sh --fallback-only
 ```
+
+### 가용성 드릴 다운 주입 상세
+
+`alert-firing-availability.sh` 는 4 시나리오를 순차 실행한다:
+
+| 시나리오 | 다운 주입 | 기대 알람 | 타임아웃 |
+|---|---|---|---|
+| (a) 서비스 프로세스 | `docker stop <payment-service 인스턴스>` | `ServiceDown` (for:1m → ~90s 소요) | 120s |
+| (b) DB | `docker stop payment-mysql-payment` | `DependencyDown{component="db"}` | 60s |
+| (c) redis-dedupe | `docker stop payment-redis-dedupe` | `DependencyDown{component="redis-dedupe"}` | 60s |
+| (d) redis-stock | `docker stop payment-redis-stock` | `DependencyDown{component="redis-stock"}` | 60s |
+
+각 시나리오는 발화 확인 후 `docker start` 로 복구, 해소 폴링으로 마무리된다.
+
+### 가용성 드릴 거동 주석
+
+- **redis-dedupe 다운 — fail-closed**: 체크아웃 멱등(`IdempotencyStore`, 포트 6379) 호출이 차단 → checkout 5xx → 결제 생성 차단. `IdempotencyStoreRedisAdapter` 에 fail-open 폴백 없음. EOS 메시지 멱등은 MySQL `payment_event_dedupe` 귀속(db 컴포넌트 의존). **outage 중 이중 과금 경로 없음 — 존재하지 않는 이중 과금 추적 불필요.**
+
+- **redis-stock 다운**: 선차감 및 보상 경로 실패 → 선차감 stranded(재고 ≤ RDB 보수적, 과예약. over-sell 아님). 자동 재동기: TC-3 위임.
+
+- **가시화 한계 — DLQ-stranded 및 EXPIRED 마스킹**: `docker start` 로 서비스가 복구되어도 DLQ 에 보존된 메시지 및 EXPIRED 전이한 결제 상태는 자동 회복되지 않는다. (DLQ 재주입: TQ-1, 재고 재동기: TC-3 위임)
 
 ## 실패 케이스 해석
 
 | FAIL 위치 | 원인 후보 | 조치 |
 |---|---|---|
 | Docker 미기동 | promtool 컨테이너 실행 불가 | Docker 시작 후 재실행 |
-| `promtool test rules` 실패 (특정 케이스) | 규칙 파일 발화식 오류 또는 픽스처 시계열 불일치 | `observability/prometheus/rules/{coordinator,guard-skip,dlq}.yml` 확인 |
+| `promtool test rules` 실패 (특정 케이스) | 규칙 파일 발화식 오류 또는 픽스처 시계열 불일치 | `observability/prometheus/rules/{coordinator,guard-skip,dlq,availability}.yml` 확인 |
 | `promtool test rules` 실패 (전 케이스) | 규칙 파일 YAML 문법 오류 | `promtool check rules <파일>` 로 문법 검사 선행 |
-| 라이브 폴링 타임아웃 | 단일 broker 비대칭 한계 (lag 피크 150 ≪ 임계 1000, abort 미발화) | 격하 폴백으로 전환 — 규칙 자체는 운영 유효 |
+| 코디네이터 라이브 폴링 타임아웃 | 단일 broker 비대칭 한계 (lag 피크 150 ≪ 임계 1000, abort 미발화) | 격하 폴백으로 전환 — 규칙 자체는 운영 유효 |
 | Toxiproxy admin API 응답 없음 | drill 프로파일 미기동 | `docker compose ... -f docker/docker-compose.drill.yml up -d` 후 재실행 |
+| 가용성 드릴 `ServiceDown` 미발화 | for:1m 미충족 (타임아웃 120s 내 ~90s 대기) 또는 Prometheus 미기동 | observability 스택 기동 후 재실행 |
+| 가용성 드릴 `DependencyDown` 미발화 | health 폴러 미기동 또는 payment-service 컨테이너 없음 | 앱 스택 기동 + health 폴러 설정 확인 |
+| 컨테이너 미탐지 (시나리오 SKIP) | `COMPOSE_PROJECT_NAME` 불일치 | `COMPOSE_PROJECT_NAME=<실제 프로젝트명> ./alert-firing-availability.sh` 로 재실행 |
 | `coordinator.yml` 규칙 미로드 | Prometheus `rule_files` 미설정 또는 마운트 누락 | `docker compose ... -f docker/docker-compose.observability.yml up -d` 후 `/api/v1/rules` 확인 |
 
 ## 비범위
 
 - **알람 통지 채널(Alertmanager / Slack)** — 발화 → 통지 채널 연동은 Alertmanager 설정 별도 관리
-- **나머지 장애 시나리오(6종)** — 코디네이터 / 가드 skip / DLQ 3그룹 외 추가 규칙은 후속 작업
+- **DB/Redis 지연·부분 장애** — docker stop 완전 다운만 검증. Toxiproxy 지연 주입 확장은 별 토픽
+- **DLQ-stranded 자동 회복** — DLQ 재주입(TQ-1), 선차감 재동기(TC-3) 위임; 본 가이드는 가시화까지
 - **부하 곡선 측정** — k6 벤치마크 별도; 임계값 baseline 은 실측 후 정밀화 필요 (현재 잠정)
 - **pg 경로 DLQ 라이브 드릴** — 실 벤더 sandbox 인증(secret 설정) 전제이므로 기본 환경에서 불가
 
@@ -128,6 +172,6 @@ sleep 90
 
 - [`infra-healthcheck.md`](infra-healthcheck.md) — 인프라 + 4서비스 살아있음 검사
 - [`trace-continuity-check.md`](trace-continuity-check.md) — 분산 트레이스 연속성 검사
-- 알람 규칙 파일: `observability/prometheus/rules/{coordinator,guard-skip,dlq}.yml`
-- 픽스처 파일: `observability/prometheus/rules/tests/{coordinator,guard_skip,dlq}_test.yml`
+- 알람 규칙 파일: `observability/prometheus/rules/{coordinator,guard-skip,dlq,availability}.yml`
+- 픽스처 파일: `observability/prometheus/rules/tests/{coordinator,guard_skip,dlq,availability}_test.yml`
 - 라이브 드릴 Toxiproxy 구성: `docker/docker-compose.drill.yml`, `docker/toxiproxy.json`

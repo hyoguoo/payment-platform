@@ -151,6 +151,12 @@ P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedu
 
 시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B `UPDATE attempt=attempt+1`) 로 누적 → 한도(4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커 + 좀비 폴링 동시 진입 시 over-count(조기 격리) — 방향이 안전(무한 루프·금전 손실 없음)이라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
 
+### L-14. confirm 결과수신 DB 다운 → reconciler 복원 후 order EXECUTING 잔류로 만료 차단 (READY 영구 잔류 + 만료 batch poison-pill) (인지)
+
+confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED)가 1s×5 retry 후 `events.confirmed.dlq` stranded(벤더 과금됨, 자동소비 없음 C-5). `PaymentReconciler`가 IN_PROGRESS→READY 복원하지만 `PaymentEvent.resetToReady`는 event 상태만 바꾸고 `PaymentOrder`는 EXECUTING 잔류 → `PaymentExpirationServiceImpl.expireOldReadyPayments`의 `order.expire()`(NOT_STARTED 전용)가 INVALID_STATUS_TO_EXPIRE 전파. 두 문제: (1) **READY 영구 잔류** — EXPIRED 도달 불가, 벤더 과금+미이행 stranded가 비종결로 고착. (2) 만료 batch가 단일 `@Transactional` forEach라 stranded event 1건이 **무관한 정상 READY 만료까지 롤백**(poison-pill) — stranded 1건이 존재하는 한 만료가 영구 wedge되어 정상 READY 누적 → 각 redis 선차감 미해제 누적(보수적 under-sell 방향). L-10이 명문화한 "IN_PROGRESS 정체분 reconciler READY 복원 후 만료(2단 연쇄)"가 order 상태 미복원으로 **실제 차단**됨이 이번에 실측. 자동 복구(DLQ 재주입 + order/event 정합 복원, per-event 트랜잭션 분리)는 TQ-1/TC-3 및 별 토픽 위임 — 이 토픽은 가시화(통합테스트 단정 고정)까지.
+
+> 검토 기록: `resetToReady`가 order를 NOT_STARTED로 복원하게 바꾸면 expire 통과 → EXPIRED 종결 도달하나, EXPIRED는 terminal이고 D7 가드(`canApplyConfirmResult` EXPIRED=false)가 TQ-1 재주입을 noop으로 막아 **복구 영구 봉쇄**(더 나쁨). 따라서 그 변경은 plan 게이트에서 거부·롤백 — 비종결 READY 잔류가 복구 여지 면에서 안전 방향(domain-expert critical, 2026-06-30).
+
 ## 회피된 우려 (해소 완료, 기록 보존용)
 
 | 우려 | 해소 위치 |
@@ -158,6 +164,7 @@ P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedu
 | ~~Sync/Outbox/Kafka 3전략 분리의 복잡도~~ | `outbox-only-refactor` archive — 단일 비동기 경로 |
 | ~~UNKNOWN 상태의 조용한 흡수~~ | `payment-double-fault-recovery` archive — `PaymentGatewayStatusUnmappedException` |
 | ~~payment-service Flyway 비대칭~~ | 이번 봉인 — Flyway 통일 |
+| ~~`resetToReady`의 order NOT_STARTED 복원 = EXPIRED 종결화로 D7 복구 봉쇄~~ | FAULT-INJECTION-RESILIENCE plan 게이트 2026-06-30 — 롤백, 비종결 READY 유지 (L-14) |
 | ~~AMOUNT_MISMATCH 단방향~~ | PRE-PHASE-4 — pg → payment 양방향 amount 대조 |
 | ~~stock publish 가 TX 안에서 Hikari 점유~~ | PRE-PHASE-4 — AFTER_COMMIT 분리 |
 | ~~Redis DECR 보상 부재~~ | PRE-PHASE-4 — caller 측 try/catch 보상 |

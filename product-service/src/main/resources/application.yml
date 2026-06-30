@@ -100,3 +100,9 @@ management:
   otlp:
     tracing:
       endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+
+metrics:
+  product:
+    dependency:
+      polling-interval-seconds: 10
+      timeout-seconds: 2
