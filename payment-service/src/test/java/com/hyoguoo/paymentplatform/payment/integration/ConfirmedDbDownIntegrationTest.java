@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.doThrow;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import com.hyoguoo.paymentplatform.payment.application.service.PaymentReconciler;
@@ -68,8 +70,9 @@ import org.testcontainers.containers.MySQLContainer;
  * <ul>
  *   <li>ConfirmedEventConsumer → PaymentConfirmResultUseCase → markPaymentAsDone DB write 실패(spy doThrow)
  *       → DefaultErrorHandler 1s×5 retry 소진 → events.confirmed.dlq 보존(유실 0)</li>
- *   <li>DLQ 보존 후 TestClock 제어로 reconciler(IN_PROGRESS→READY) · expiration(READY→EXPIRED)
- *       전이 시뮬레이션 → DLQ 메시지 유실 없음(비-silence 증거)</li>
+ *   <li>DLQ 보존 후 TestClock 제어로 reconciler(IN_PROGRESS→READY) 전이 후 expiration 시도.
+ *       EXPIRED 도달 불가(order EXECUTING이 expire 차단) — 실제 거동은 READY 영구 잔류 + 만료 batch poison-pill.
+ *       load-bearing 단정: DLQ 증거 생존(비-silence 증거)</li>
  * </ul>
  *
  * <p>재현 메커니즘:
@@ -281,19 +284,27 @@ class ConfirmedDbDownIntegrationTest {
     // ── 시나리오 2 ─────────────────────────────────────────────────────────────
 
     /**
-     * DLQ 보존 후 마스킹 전이(IN_PROGRESS→READY→EXPIRED)를 가로질러 DLQ 증거 생존.
+     * DLQ 보존 후 전이 시도를 가로질러 DLQ 증거 생존.
      *
-     * <p>DLQ 보존 상태에서 TestClock 제어로 reconciler(IN_PROGRESS→READY) · expiration(READY→EXPIRED)
-     * 전이를 명시 호출한다. EXPIRED 도달은 expected(현 코드 거동 = 마스킹). 복구 로직 추가는 스코프
-     * 위반이므로 {@code status != EXPIRED} 단정은 금지한다. 단정 = 그 전이를 가로질러
-     * events.confirmed.dlq 메시지 유실 0 보존(비-silence 증거).
+     * <p>DLQ 보존 상태에서 TestClock 제어로 reconciler(IN_PROGRESS→READY) 전이 후
+     * expireOldReadyPayments() 를 명시 호출한다.
+     *
+     * <p>실제 거동:
+     * <ul>
+     *   <li>Reconciler 복원 후 PaymentEvent.status=READY, PaymentOrder.status=EXECUTING(불변식 흠) — 둘 다 단정.</li>
+     *   <li>EXPIRED 도달 불가(order EXECUTING이 expire 차단): expireOldReadyPayments() 가
+     *       PaymentStatusException(INVALID_STATUS_TO_EXPIRE)을 던지고 배치 트랜잭션이 롤백된다.</li>
+     *   <li>예외 전파 후 재조회 시 event.status 는 여전히 READY(마스킹 종결 없음, stranded READY 영구 잔류).</li>
+     * </ul>
+     *
+     * <p>load-bearing 단정: 위 전이 시도를 가로질러 events.confirmed.dlq 1건 보존(DLQ 비-silence 증거).
      *
      * <p>findInProgressOlderThan 은 executedAt 기준으로 IN_PROGRESS 레코드를 찾는다.
      * findReadyPaymentsOlderThan 은 created_at 기준으로 READY 레코드를 찾는다.
      * 두 쿼리가 TestClock 기반 cutoff 를 통해 기대대로 동작하는지도 함께 검증된다.
      */
     @Test
-    @DisplayName("마스킹 전이를 가로질러 DLQ 증거 생존: DLQ 보존 후 IN_PROGRESS→READY→EXPIRED 가로질러 DLQ 메시지 유실 0")
+    @DisplayName("마스킹 전이 시도를 가로질러 DLQ 증거 생존: READY→EXPIRED 차단(order EXECUTING poison-pill) + DLQ 유실 0")
     void 마스킹전이를_가로질러_DLQ증거_생존() throws Exception {
         // given — IN_PROGRESS 결제 + markPaymentAsDone DB write 결정적 실패 주입 → DLQ 보존
         String orderId = "order-dbdown2-" + UUID.randomUUID();
@@ -330,28 +341,39 @@ class ConfirmedDbDownIntegrationTest {
         assertThat(entityAfterReconcile.getStatus())
                 .as("Reconciler 명시 호출 후 IN_PROGRESS→READY 전이 확인")
                 .isEqualTo(PaymentEventStatus.READY);
+        // 불변식 흠: PaymentEvent.resetToReady()는 PaymentOrder 상태를 복원하지 않는다.
+        // PaymentOrder 는 EXECUTING 그대로 — expireOldReadyPayments() 호출 시 poison-pill이 된다.
+        List<PaymentOrderEntity> ordersAfterReconcile =
+                jpaPaymentOrderRepository.findByPaymentEventId(entityAfterReconcile.getId());
+        assertThat(ordersAfterReconcile)
+                .as("Reconciler 후 PaymentOrder 상태는 EXECUTING 그대로(resetToNotStarted 없음)")
+                .isNotEmpty()
+                .allMatch(o -> o.getStatus() == PaymentOrderStatus.EXECUTING);
 
         // when (2단계) — Expiration: TestClock 을 추가 31분 전진.
         // cutoff = clock.instant() - 30min = paymentSavedAt + 310s + 1min.
-        // created_at ≈ paymentSavedAt < cutoff → findReadyPaymentsOlderThan 에 해당 → READY → EXPIRED 전이.
-        // EXPIRED 도달은 expected(현 코드 거동 = 2단 마스킹) — 복구 로직 추가는 스코프 위반이므로 금지.
+        // created_at ≈ paymentSavedAt < cutoff → findReadyPaymentsOlderThan 에 해당 → expire 시도.
+        // PaymentOrder.status=EXECUTING 이 PaymentOrder.expire() 가드를 통과 못해
+        // PaymentStatusException(INVALID_STATUS_TO_EXPIRE) 을 던지고 배치 트랜잭션 전체가 롤백된다.
         testClock.setFixedInstant(
                 paymentSavedAt.plus(Duration.ofSeconds(310)).plus(Duration.ofMinutes(31))
         );
-        paymentExpirationService.expireOldReadyPayments();
+        assertThatThrownBy(() -> paymentExpirationService.expireOldReadyPayments())
+                .as("EXECUTING 주문이 expire 를 막아 INVALID_STATUS_TO_EXPIRE 전파 — 배치 롤백")
+                .isInstanceOf(PaymentStatusException.class);
 
-        PaymentEventEntity entityAfterExpire = jpaPaymentEventRepository.findByOrderId(orderId)
-                .orElseThrow();
-        assertThat(entityAfterExpire.getStatus())
-                .as("Expiration 명시 호출 후 READY→EXPIRED 전이 확인 (현 코드 거동 = 마스킹, 복구 없음)")
-                .isEqualTo(PaymentEventStatus.EXPIRED);
+        // EXPIRED 도달 불가: 예외 전파 후 트랜잭션 롤백으로 event.status 는 READY 잔류.
+        PaymentEventEntity entityAfterExpireAttempt =
+                jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
+        assertThat(entityAfterExpireAttempt.getStatus())
+                .as("expireOldReadyPayments 예외 후 배치 롤백 — event 는 READY 잔류(마스킹 종결 없음)")
+                .isEqualTo(PaymentEventStatus.READY);
 
-        // then — 마스킹 전이(IN_PROGRESS→READY→EXPIRED)를 가로질러 DLQ 메시지 유실 0 보존(비-silence 증거).
-        // status != EXPIRED 단정 금지 — 복구 로직 추가는 스코프 위반.
-        // DLQ 메시지 생존 자체가 기존 DLQ 알람(events.confirmed.dlq)으로 탐지됨.
+        // then — 마스킹 전이 시도를 가로질러 DLQ 메시지 유실 0 보존(비-silence 증거).
+        // load-bearing 단정: 상태 전이 실패 여부와 무관하게 DLQ 증거가 생존한다.
         List<String> dlqAfterMasking = pollConfirmedDlq(orderId, Duration.ofSeconds(5));
         assertThat(dlqAfterMasking)
-                .as("EXPIRED 마스킹 전이 후에도 events.confirmed.dlq 메시지 유실 0 — silent하지 않음 증거")
+                .as("전이 시도 후에도 events.confirmed.dlq 메시지 유실 0 — silent하지 않음 증거")
                 .hasSize(1);
     }
 

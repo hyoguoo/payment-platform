@@ -814,7 +814,7 @@ class PaymentEventTest {
     }
 
     @Test
-    @DisplayName("resetToReady(Instant) — Instant 인자로 호출 후 status=READY, 주문 상태 NOT_STARTED 단정.")
+    @DisplayName("resetToReady(Instant) — Instant 인자로 호출 후 status=READY 단정.")
     void resetToReady_withInstant_shouldRestoreStatus() {
         // given
         Instant resetAt = Instant.parse("2026-01-01T10:00:00Z");
@@ -829,10 +829,6 @@ class PaymentEventTest {
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
-        // READY 불변식: 모든 주문이 NOT_STARTED 로 복원돼야 한다
-        paymentEvent.getPaymentOrderList().forEach(order ->
-                assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.NOT_STARTED)
-        );
     }
 
     // ---- 만료 정책 명문화 — 도메인 가드 전수 테스트 ----
@@ -928,7 +924,7 @@ class PaymentEventTest {
     // resetToReady() — Reconciler timeout 복원 경로 invariants
 
     @Test
-    @DisplayName("resetToReady() — IN_PROGRESS 상태에서 READY 로 전이, lastStatusChangedAt 갱신, 주문 NOT_STARTED 복원")
+    @DisplayName("resetToReady() — IN_PROGRESS 상태에서 READY 로 전이하고 lastStatusChangedAt 이 갱신된다")
     void resetToReady_inProgress_shouldTransitionToReadyAndUpdateTimestamp() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
@@ -941,10 +937,6 @@ class PaymentEventTest {
         // then
         assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
-        // READY 불변식: 모든 주문이 NOT_STARTED 로 복원돼야 한다
-        paymentEvent.getPaymentOrderList().forEach(order ->
-                assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.NOT_STARTED)
-        );
     }
 
     @ParameterizedTest

@@ -164,8 +164,6 @@ public class PaymentEvent {
         if (this.status != PaymentEventStatus.IN_PROGRESS) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RESET);
         }
-        // READY 불변식: 모든 주문이 NOT_STARTED. Reconciler 복원 시 EXECUTING 주문을 함께 복원한다.
-        this.paymentOrderList.forEach(PaymentOrder::resetToNotStarted);
         this.status = PaymentEventStatus.READY;
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
