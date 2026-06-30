@@ -101,7 +101,7 @@ flowchart TD
 - [x] Task 4: availability.yml 알람 그룹 + promtool 픽스처
 - [x] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
 - [x] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · expire 차단/READY 잔류 가로질러 DLQ 증거 생존)
-- [ ] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
+- [x] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
 
 ## 태스크
 
@@ -283,7 +283,15 @@ flowchart TD
 - 통합테스트 pass(`@Tag("integration")`), 재실행 결정적, 타 통합테스트 회귀 없음. `./gradlew :payment-service:test` 통과.
 
 **완료 결과**
-> (execute에서 채움)
+> `RedisStockCompensationFailureIntegrationTest` — `@EmbeddedKafka` + 전용 MySQL(payment-redis-fail-test) + `@MockitoSpyBean StockCachePort doThrow(RuntimeException)`.
+> - `redis_stock다운_결과수신보상실패_DLQ유실0` PASS:
+>   compensateAtomic spy doThrow(RuntimeException) → DefaultErrorHandler 200ms×5 retry 소진 → events.confirmed.dlq 1건 보존.
+> - 선차감 stranded 단정 PASS:
+>   보상 실패 후 redis 재고 = INITIAL_STOCK - ORDER_QUANTITY(7) 잔존 확인.
+>   redis 재고(7) < 초기 재고(INITIAL_STOCK=10, product RDB 등가) = 과예약 보수적 방향(over-sell 아님) 단정.
+> - entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 보상 실패 경로는 흡수되지 않고 DLQ 로 도달함을 명시.
+> - **도메인 변경 없음**: production 코드(main/) 미수정. 기존 거동을 통합테스트 단정으로 고정만.
+> - 단위 465건 PASS, 통합 42건 PASS, spotbugsMain/Test PASS.
 
 ## 리뷰 처리
 > (ship 단계에서 채움)

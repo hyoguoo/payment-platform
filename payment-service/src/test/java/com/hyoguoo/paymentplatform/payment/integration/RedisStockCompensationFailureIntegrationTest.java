@@ -2,6 +2,9 @@ package com.hyoguoo.paymentplatform.payment.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
@@ -256,6 +259,12 @@ class RedisStockCompensationFailureIntegrationTest {
         // given — IN_PROGRESS 결제 저장 + compensateAtomic 결정적 실패 주입
         String orderId = "order-redis-fail-" + UUID.randomUUID();
         savePaymentInProgress(orderId);
+
+        // RuntimeException: not-retryable 화이트리스트(MessageConversion/IllegalArgument/IllegalState) 밖
+        // → DefaultErrorHandler 가 retry → DLQ 경로를 탄다.
+        // 보상 실패로 redis 선차감 잔존은 버그가 아닌 설계 명시 거동(자동 복구는 TC-3 위임).
+        doThrow(new RuntimeException("redis-stock 연결 실패 — 보상 경로 재현"))
+                .when(stockCachePort).compensateAtomic(anyString(), anyList());
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 orderId, "FAILED", "TEST_FAIL", null, null, UUID.randomUUID().toString()
