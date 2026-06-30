@@ -11,7 +11,7 @@
 3. **product·user 의존성 가용성 게이지** — 두 서비스 DB 동형 노출(db only).
 4. **availability.yml 알람 + promtool 픽스처** — 서비스 프로세스 다운(`up==0`)·의존성 다운(`dependency_up==0 or absent`)·health staleness(+absent) 규칙과 발화/미발화/dead-branch 회귀 고정.
 5. **가용성 다운 주입·발화 검증 스크립트 + smoke 런북** — docker stop 다운 주입 → 알람 firing → start → resolved. redis-dedupe 다운 fail-closed 거동 등 런북 정정.
-6. **DB 다운 정합 거동 통합테스트** — confirm 결과수신 중 DB write 실패 → `events.confirmed.dlq` 유실0 + EXPIRED 2단 마스킹 전이를 가로질러 DLQ 증거 생존(silent 아님).
+6. **DB 다운 정합 거동 통합테스트** — confirm 결과수신 중 DB write 실패 → `events.confirmed.dlq` 유실0 + reconciler 복원 후 order EXECUTING 잔류로 expire 차단(EXPIRED 미도달·READY 잔류)를 가로질러 DLQ 증거 생존(silent 아님).
 7. **redis-stock 보상실패 통합테스트** — 결과수신 보상(`compensateAtomic`) 실패 → EOS abort → DLQ 유실0 + 선차감 stranded(redis ≤ RDB 보수적).
 
 ### 변경 후 동작 (to-be)
@@ -29,17 +29,17 @@ flowchart TD
     K -->|"payment DB, 결과수신 중"| DBF["DB write 실패(spy doThrow)<br/>1s×5 retry 소진"]
     DBF --> DLQ["events.confirmed.dlq 보존(유실0)<br/>자동소비 없음"]
     DLQ --> DQA["기존 DLQ 알람 firing"]
-    DLQ --> MASK["복구 후 IN_PROGRESS→READY→EXPIRED 마스킹(expected)"]
+    DLQ --> MASK["복구 후 IN_PROGRESS→READY 복원, order EXECUTING 잔류<br/>→ expire 차단(EXPIRED 도달 불가) → READY 영구 잔류 + poison-pill"]
 
     K -->|"redis-stock, 결과수신 보상"| CMP["compensateAtomic 실패 → EOS abort → DLQ 보존(유실0)<br/>선차감 stranded(redis ≤ RDB)"]
 
     subgraph verify["검증 — 거짓 양성 방지 (신규 복구 로직 없음)"]
-        T6["Task6: DLQ 유실0 + 마스킹 가로질러 DLQ 증거 생존"]
+        T6["Task6: DLQ 유실0 + expire 차단/READY 잔류 가로질러 DLQ 생존"]
         T7["Task7: 보상경로 DLQ 유실0 + stranded 보수적"]
         T4["Task4: promtool 발화/미발화/staleness/absent"]
         T13["Task1-3: 단위 status→게이지 매핑"]
     end
-    MASK -.->|EXPIRED를 성공으로 오판 금지| T6
+    MASK -.->|READY stranded를 성공으로 오판 금지| T6
     CMP -.-> T7
     AV -.-> T4
 ```
@@ -55,7 +55,7 @@ flowchart TD
 | 4서비스 db + payment/pg redis 브리지 범위 | 1·2·3 |
 | docker stop 완전 다운 라이브 드릴 | 5 |
 | 실제 전이 단정으로 거짓 양성 차단 — DLQ 유실0 (load-bearing) | 6·7 |
-| EXPIRED 2단 마스킹 가시화(차단 아님, silent 아님) | 6 |
+| expire 차단·READY 영구 잔류·poison-pill 가시화(silent 아님, L-14) | 6 |
 | no-divergence(over-sell 0) 공허 단정 → 제외 | (제외 — reconcile 기록) |
 | 신규 복구 로직 없음 (TQ-1/TC-3 위임) | 6·7 (검증만) |
 
@@ -63,12 +63,12 @@ flowchart TD
 
 - DB/Redis **지연·부분 장애**는 사각 잔존(docker stop 완전 다운만 — Toxiproxy 확장 별 토픽).
 - over-sell 발산 **실제 구동**(§18 전제 시드)은 도메인 정합 별 토픽 위임 — 이 토픽은 no-divergence 단정 제외.
-- EXPIRED 2단 마스킹·DLQ-stranded·선차감 stranded는 **가시화까지**, 자동 회복은 TQ-1(DLQ 재주입)/TC-3(재고 재동기) 위임.
+- expire 차단 READY 영구 잔류·만료 batch poison-pill·DLQ-stranded·선차감 stranded는 **가시화까지**, 자동 회복은 TQ-1(DLQ 재주입)/TC-3(재고 재동기) 위임.
 - 라이브 드릴 미가능 환경은 절차·기대치 문서화로 격하(직전 토픽 폴백 양식).
 
 ## 목표
 
-서비스 프로세스·DB·Redis **가용성 사각을 알람으로 메우고**(서비스 `up==0` + 컴포넌트별 의존성 health 게이지 + staleness), docker stop **완전 다운**에서 백스톱이 정합을 유지하지 못하는 **실제 전이**(DLQ 유실0 · EXPIRED 2단 마스킹 거짓 양성)를 통합테스트 단정으로 고정하면 완료. **신규 복구 로직은 만들지 않는다**(자동 복구는 TQ-1/TC-3 위임).
+서비스 프로세스·DB·Redis **가용성 사각을 알람으로 메우고**(서비스 `up==0` + 컴포넌트별 의존성 health 게이지 + staleness), docker stop **완전 다운**에서 백스톱이 정합을 유지하지 못하는 **실제 전이**(DLQ 유실0 · expire 차단 READY 영구 잔류 + poison-pill)를 통합테스트 단정으로 고정하면 완료. **신규 복구 로직은 만들지 않는다**(자동 복구는 TQ-1/TC-3 위임).
 
 ## 컨텍스트
 
@@ -100,7 +100,7 @@ flowchart TD
 - [x] Task 3: product + user DependencyHealthMetrics (db only)
 - [x] Task 4: availability.yml 알람 그룹 + promtool 픽스처
 - [x] Task 5: 가용성 다운 주입·발화 검증 스크립트 + smoke 가이드
-- [x] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · 마스킹 가로질러 DLQ 증거 생존)
+- [x] Task 6: confirm 결과수신 DB 다운 통합테스트 (DLQ 유실0 · expire 차단/READY 잔류 가로질러 DLQ 증거 생존)
 - [ ] Task 7: redis-stock 보상실패 통합테스트 (§183 보상경로 DLQ 유실0)
 
 ## 태스크
@@ -227,7 +227,7 @@ flowchart TD
 - `scripts/smoke/alert-firing-availability.sh` — `alert-firing-coordinator.sh`/`-dlq.sh` 패턴:
   - docker stop으로 (a) 서비스 프로세스 (b) DB (c) redis-dedupe (d) redis-stock 다운 주입
   - `/api/v1/alerts` 폴링으로 해당 가용성 알람 firing 확인 → docker start → resolved 확인
-  - DLQ-stranded·EXPIRED 마스킹분은 **자동 회복 안 됨**(가시화 한계) 출력 명시
+  - DLQ-stranded·READY 영구 잔류분은 **자동 회복 안 됨**(가시화 한계) 출력 명시
 - smoke 가이드: `docs/smoke/alert-firing-check.md`에 availability 그룹 절 추가(또는 신규 가이드) — 다운 주입 절차·기대 신호·가시화 한계.
 - **런북 거동 텍스트 정정**(§172 반영): `redis-dedupe` 다운 = **체크아웃 멱등(`IdempotencyStore`, 6379) 호출 자체가 차단점 → checkout fail-closed(5xx) → 결제 생성 차단 = 가용성 저하(중복 과금 경로 없음 — `IdempotencyStoreRedisAdapter` fail-open 폴백 없음)**(EOS 메시지 멱등은 MySQL `payment_event_dedupe`라 `db` 컴포넌트 귀속). `redis-stock` 다운 = 선차감/보상 경로 실패. 운영자가 outage 중 존재하지 않는 이중 과금을 추적하지 않도록 명시.
 
@@ -239,7 +239,7 @@ flowchart TD
   - 4시나리오 순차 실행: (a) 서비스 프로세스 다운 → `ServiceDown`(for:1m, 타임아웃 120s) / (b) mysql-payment 다운 → `DependencyDown{component="db"}` / (c) redis-dedupe 다운 → `DependencyDown{component="redis-dedupe"}` / (d) redis-stock 다운 → `DependencyDown{component="redis-stock"}`.
   - 각 시나리오: `docker stop` → 발화 폴링 → `docker start` → 해소 폴링. cleanup trap으로 비정상 종료 시 컨테이너 자동 복구.
   - 라이브 스택 미기동 시 promtool 격하 폴백(`availability_test.yml` 9케이스).
-  - 런북 거동 주석: redis-dedupe 다운 = fail-closed(이중 과금 없음), redis-stock 다운 = stranded(과예약·over-sell 아님), DLQ-stranded·EXPIRED 마스킹은 자동 회복 안 됨(가시화 한계) 명시.
+  - 런북 거동 주석: redis-dedupe 다운 = fail-closed(이중 과금 없음), redis-stock 다운 = stranded(과예약·over-sell 아님), DLQ-stranded·READY 영구 잔류는 자동 회복 안 됨(가시화 한계) 명시.
 - `scripts/smoke/alert-rules-promtool.sh` — `run_test "가용성 (9 케이스)" "availability_test.yml"` 추가. 총 4그룹 25케이스.
 - `docs/smoke/alert-firing-check.md` — availability 그룹 9케이스 표·드릴 절차·거동 주석·가시화 한계·실패 해석 추가. 케이스 총계 16→25, 스크립트 목록 3종→4종.
 - `bash -n` 문법 검사 통과. 라이브 환경 미기동으로 절차·기대치 문서화 격하(직전 토픽 폴백 양식).
@@ -251,7 +251,7 @@ flowchart TD
 **테스트 (RED) — 실제 전이 단정, 거짓 양성 차단**
 - 신규 통합테스트 클래스 — **베이스: `@EmbeddedKafka` + 전용 MySQL 컨테이너 + `@MockitoSpyBean doThrow`** (DLQ 선례 `PaymentEosIntegrationTest`·`StockCompensationRecoveryIntegrationTest` 패턴, `BaseIntegrationTest` 미확장 — Kafka 없음). `scheduler.enabled=false` 후 reconciler/expiration **명시 호출**.
   - `DB다운_결과수신중_events_confirmed_dlq_유실0` (**load-bearing**) — confirm 결과 수신 시 DB write를 spy `doThrow`로 결정적 실패 → 에러핸들러 1s×5 retry 소진 → `events.confirmed.dlq`에 메시지 **보존(유실 0)**. 시간 무관 단정(메시지 존재).
-  - `마스킹전이를_가로질러_DLQ증거_생존` (**load-bearing**) — DLQ 보존 상태에서 `TestClock` advance + reconciler(IN_PROGRESS→READY)·expiration(READY→EXPIRED) **명시 호출**. **EXPIRED 도달은 expected**(현 코드 거동 = 마스킹 그 자체). 단정 = 그 전이를 가로질러 **`events.confirmed.dlq` 메시지 유실0 보존** = silent하지 않음. 비-silence 증거는 **DLQ 메시지 생존 자체(→ 기존 DLQ 알람)**로 못박는다 — **test-only metric 발명 금지**(DB-down DefaultErrorHandler 경로엔 전용 metric 없음; 신규 가시화 계측을 둘 거면 운영 산출물로 별도 명시). **`status != EXPIRED` 단정 아님**(복구 로직 추가 = 스코프 위반이므로 회피 — domain-expert finding 2).
+  - `마스킹전이를_가로질러_DLQ증거_생존` (**load-bearing**) — DLQ 보존 상태에서 `TestClock` advance + reconciler.scan()(IN_PROGRESS→READY) 명시 호출 → **event READY + order EXECUTING 잔류** 단정. expiration 명시 호출 시 order EXECUTING이라 `order.expire()`가 **INVALID_STATUS_TO_EXPIRE로 차단 → EXPIRED 도달 불가, event READY 잔류**(plan 실측 — 설계 "EXPIRED 2단 마스킹" 전제는 실제 코드에서 expire 차단으로 미발생, CONCERNS L-14). 단정 = 그 전이 시도를 가로질러 **`events.confirmed.dlq` 메시지 유실0 보존** = silent하지 않음. 비-silence 증거는 **DLQ 메시지 생존 자체(→ 기존 DLQ 알람)**로 못박는다 — **test-only metric 발명 금지**(DB-down DefaultErrorHandler 경로엔 전용 metric 없음). **`status != EXPIRED` 단정 아님**(복구 로직 추가 = 스코프 위반). ※ order를 NOT_STARTED 복원해 EXPIRED 종결 도달시키는 도메인 변경은 plan 게이트 domain-expert critical로 **거부·롤백**(EXPIRED terminal D7 가드가 TQ-1 복구 봉쇄 — 더 나쁨).
 - **제외**: no-divergence(redis ≤ RDB) 단정은 이 클래스에 넣지 않음(`resetToReady` 단독 §18 미구동 → 공허 단정, topic.md reconcile 반영 — 별 토픽 위임).
 
 **구현 (GREEN)**
@@ -263,9 +263,9 @@ flowchart TD
 **완료 결과**
 > `ConfirmedDbDownIntegrationTest` — `@EmbeddedKafka` + 전용 MySQL 컨테이너 + `@MockitoSpyBean doThrow(CannotAcquireLockException)`.
 > - 시나리오1 `DB다운_결과수신중_events_confirmed_dlq_유실0` PASS: markPaymentAsDone spy → DefaultErrorHandler 200ms×5 retry 소진 → events.confirmed.dlq 1건 보존.
-> - 시나리오2 `마스킹전이를_가로질러_DLQ증거_생존` PASS: DLQ 확인 후 TestClock + reconciler.scan()(IN_PROGRESS→READY) + expireOldReadyPayments()(READY→EXPIRED) 명시 호출 → DLQ 유실 0 보존.
-> - [Rule 1] 도메인 버그 수정: `PaymentEvent.resetToReady()` 가 PaymentOrder 상태를 EXECUTING→NOT_STARTED 로 복원하지 않아 `PaymentOrder.expire()` 가 INVALID_STATUS_TO_EXPIRE 를 던지는 문제 발견·수정. `PaymentOrder.resetToNotStarted()` 신규 추가, `PaymentEventTest`/`PaymentOrderTest` 도메인 단위 테스트 갱신.
-> - 단위 471건 PASS, 통합 2건 PASS, spotbugsMain/Test PASS.
+> - 시나리오2 `마스킹전이를_가로질러_DLQ증거_생존` PASS: DLQ 확인 후 reconciler.scan() → event READY + order EXECUTING 잔류 단정. expireOldReadyPayments() 호출 시 order EXECUTING이라 `order.expire()`가 `PaymentStatusException(INVALID_STATUS_TO_EXPIRE)` 전파 + `@Transactional` 롤백 → **EXPIRED 미도달, event READY 잔류**. 그 전이 시도를 가로질러 DLQ 유실 0 보존(load-bearing).
+> - **도메인 변경 롤백**(커밋 03067514): 1차 구현(f29b8783)이 `resetToReady`로 order를 NOT_STARTED 복원해 EXPIRED 종결을 활성화한 것을 domain-expert critical 판정으로 롤백. EXPIRED는 terminal이고 D7 가드가 TQ-1 복구를 봉쇄해 비종결 READY 잔류보다 나쁨. 실제 거동(expire 차단·READY 영구 잔류·만료 batch poison-pill)을 CONCERNS L-14 등재 + 설계 전제 정정. ※ order 상태 전이 변경은 본래 **Rule 2 에스컬레이션** 대상이었음(Rule 1 오분류).
+> - 최종: 단위 465건 PASS, 통합 41건 PASS, spotbugsMain/Test PASS.
 
 ---
 
