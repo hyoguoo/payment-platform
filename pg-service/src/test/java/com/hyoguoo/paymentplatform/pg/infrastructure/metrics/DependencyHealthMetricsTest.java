@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 
@@ -31,6 +32,8 @@ class DependencyHealthMetricsTest {
     private SimpleMeterRegistry meterRegistry;
     private DataSource mockDataSource;
     private RedisConnectionFactory mockRedisFactory;
+    @SuppressWarnings("unchecked")
+    private ObjectProvider<RedisConnectionFactory> mockRedisProvider = mock(ObjectProvider.class);
     private DependencyHealthMetrics metrics;
 
     @BeforeEach
@@ -38,12 +41,15 @@ class DependencyHealthMetricsTest {
         meterRegistry = new SimpleMeterRegistry();
         mockDataSource = mock(DataSource.class);
         mockRedisFactory = mock(RedisConnectionFactory.class);
+        mockRedisProvider = mock(ObjectProvider.class);
 
         setupHealthyDb();
         setupHealthyRedis();
 
+        when(mockRedisProvider.getIfAvailable()).thenReturn(mockRedisFactory);
+
         metrics = new DependencyHealthMetrics(
-                meterRegistry, mockDataSource, mockRedisFactory, FIXED_CLOCK, 2L);
+                meterRegistry, mockDataSource, mockRedisProvider, FIXED_CLOCK, 2L);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -57,8 +63,8 @@ class DependencyHealthMetricsTest {
         metrics.poll();
 
         // then
-        assertThat(componentGaugeValue(DependencyHealthMetrics.COMPONENT_DB)).isEqualTo(1.0);
-        assertThat(componentGaugeValue(DependencyHealthMetrics.COMPONENT_REDIS)).isEqualTo(1.0);
+        assertThat(componentGaugeValue(meterRegistry, DependencyHealthMetrics.COMPONENT_DB)).isEqualTo(1.0);
+        assertThat(componentGaugeValue(meterRegistry, DependencyHealthMetrics.COMPONENT_REDIS)).isEqualTo(1.0);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -76,7 +82,7 @@ class DependencyHealthMetricsTest {
         metrics.poll();
 
         // then
-        assertThat(componentGaugeValue(DependencyHealthMetrics.COMPONENT_DB)).isEqualTo(0.0);
+        assertThat(componentGaugeValue(meterRegistry, DependencyHealthMetrics.COMPONENT_DB)).isEqualTo(0.0);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -85,6 +91,7 @@ class DependencyHealthMetricsTest {
 
     @Test
     @DisplayName("health 조회 타임아웃이면 게이지 0 — DB 조회가 블로킹 상태에서 타임아웃 가드 동작 시 DB 게이지 0.0")
+    @SuppressWarnings("unchecked")
     void health조회_타임아웃이면_게이지0() throws Exception {
         // given: DB 조회를 영구 블로킹시키고 타임아웃을 0s 으로 설정
         SimpleMeterRegistry timeoutRegistry = new SimpleMeterRegistry();
@@ -96,8 +103,11 @@ class DependencyHealthMetricsTest {
             return null;
         });
 
+        ObjectProvider<RedisConnectionFactory> timeoutRedisProvider = mock(ObjectProvider.class);
+        when(timeoutRedisProvider.getIfAvailable()).thenReturn(mockRedisFactory);
+
         DependencyHealthMetrics timeoutMetrics = new DependencyHealthMetrics(
-                timeoutRegistry, blockingDataSource, mockRedisFactory,
+                timeoutRegistry, blockingDataSource, timeoutRedisProvider,
                 FIXED_CLOCK, 0L);
 
         try {
@@ -134,11 +144,45 @@ class DependencyHealthMetricsTest {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Test 5: redis 빈 부재 시 컨텍스트 생성 성공 + db 게이지만 동작 + redis 게이지 미등록
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("redis 빈 부재 시 db 게이지만 동작 — redis ObjectProvider 가 null 반환할 때 redis 게이지 미등록, db 게이지·타임스탬프는 정상")
+    @SuppressWarnings("unchecked")
+    void redis_빈_부재시_db게이지만_동작() {
+        // given: redis 빈이 없는 환경 — ObjectProvider 가 null 반환
+        SimpleMeterRegistry noRedisRegistry = new SimpleMeterRegistry();
+        ObjectProvider<RedisConnectionFactory> emptyRedisProvider = mock(ObjectProvider.class);
+        when(emptyRedisProvider.getIfAvailable()).thenReturn(null);
+
+        DependencyHealthMetrics noRedisMetrics = new DependencyHealthMetrics(
+                noRedisRegistry, mockDataSource, emptyRedisProvider, FIXED_CLOCK, 2L);
+
+        // when
+        noRedisMetrics.poll();
+
+        // then: db 게이지 등록 및 UP 상태
+        assertThat(componentGaugeValue(noRedisRegistry, DependencyHealthMetrics.COMPONENT_DB)).isEqualTo(1.0);
+
+        // then: redis 게이지 미등록
+        Gauge redisGauge = noRedisRegistry.find(DependencyHealthMetrics.METRIC_DEPENDENCY_UP)
+                .tag("component", DependencyHealthMetrics.COMPONENT_REDIS)
+                .gauge();
+        assertThat(redisGauge).as("redis 빈 부재 시 redis 게이지가 등록되어서는 안 됨").isNull();
+
+        // then: last_poll_timestamp 는 갱신됨
+        Gauge timestampGauge = noRedisRegistry.find(DependencyHealthMetrics.METRIC_LAST_POLL_TIMESTAMP).gauge();
+        assertThat(timestampGauge).isNotNull();
+        assertThat(timestampGauge.value()).isEqualTo((double) FIXED_INSTANT.getEpochSecond());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 헬퍼 메서드
     // ──────────────────────────────────────────────────────────────────────────
 
-    private double componentGaugeValue(String component) {
-        Gauge gauge = meterRegistry.find(DependencyHealthMetrics.METRIC_DEPENDENCY_UP)
+    private double componentGaugeValue(SimpleMeterRegistry registry, String component) {
+        Gauge gauge = registry.find(DependencyHealthMetrics.METRIC_DEPENDENCY_UP)
                 .tag("component", component)
                 .gauge();
         assertThat(gauge).as("component=%s 게이지가 등록되어야 함", component).isNotNull();

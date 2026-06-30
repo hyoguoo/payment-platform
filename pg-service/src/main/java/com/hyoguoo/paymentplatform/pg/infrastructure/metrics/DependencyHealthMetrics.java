@@ -17,6 +17,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -37,6 +38,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>staleness 2차 방어: {@code dependency_health_last_poll_timestamp_seconds} 가 갱신되지 않으면
  * 알람 규칙 {@code time() - <gauge> > N} 으로 폴러 블로킹 / 스레드 사망을 탐지한다.
+ *
+ * <p>redis 는 optional 의존성으로 처리된다. {@link RedisConnectionFactory} 빈이 Spring 컨텍스트에
+ * 존재하면 redis 게이지 등록·폴링이 활성화되고, 빈이 없으면 redis 게이지를 등록하지 않고 redis 폴링을
+ * 건너뛴다. db 게이지와 {@code last_poll_timestamp} 는 redis 유무와 관계없이 항상 동작한다.
+ * 런타임 환경에서는 redis 빈이 항상 존재하므로 기존 거동이 그대로 유지된다.
  */
 @Slf4j
 @Component
@@ -64,11 +70,11 @@ public class DependencyHealthMetrics {
     public DependencyHealthMetrics(
             MeterRegistry meterRegistry,
             DataSource dataSource,
-            RedisConnectionFactory redisConnectionFactory,
+            ObjectProvider<RedisConnectionFactory> redisProvider,
             Clock clock,
             @Value("${metrics.pg.dependency.timeout-seconds:2}") long timeoutSeconds) {
         this.dataSource = dataSource;
-        this.redisConnectionFactory = redisConnectionFactory;
+        this.redisConnectionFactory = redisProvider.getIfAvailable();
         this.clock = clock;
         this.timeoutSeconds = timeoutSeconds;
         this.healthCheckExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -78,17 +84,20 @@ public class DependencyHealthMetrics {
                 .tag(TAG_COMPONENT, COMPONENT_DB)
                 .register(meterRegistry);
 
-        Gauge.builder(METRIC_DEPENDENCY_UP, redisGauge, AtomicLong::doubleValue)
-                .description("redis 가용성 (1=UP, 0=그 외)")
-                .tag(TAG_COMPONENT, COMPONENT_REDIS)
-                .register(meterRegistry);
+        if (redisConnectionFactory != null) {
+            Gauge.builder(METRIC_DEPENDENCY_UP, redisGauge, AtomicLong::doubleValue)
+                    .description("redis 가용성 (1=UP, 0=그 외)")
+                    .tag(TAG_COMPONENT, COMPONENT_REDIS)
+                    .register(meterRegistry);
+        }
 
         Gauge.builder(METRIC_LAST_POLL_TIMESTAMP, lastPollTimestamp, AtomicLong::doubleValue)
                 .description("의존성 가용성 폴러 마지막 완료 시각 (epoch seconds) — staleness 탐지용")
                 .register(meterRegistry);
 
         LogFmt.info(log, LogDomain.PG, EventType.METRICS_INIT,
-                () -> "component=DependencyHealthMetrics timeoutSeconds=" + timeoutSeconds);
+                () -> "component=DependencyHealthMetrics timeoutSeconds=" + timeoutSeconds
+                        + " redisAvailable=" + (redisConnectionFactory != null));
     }
 
     /**
@@ -101,11 +110,14 @@ public class DependencyHealthMetrics {
     @Scheduled(fixedDelayString = "${metrics.pg.dependency.polling-interval-seconds:10}000")
     public void poll() {
         dbGauge.set(checkWithTimeout(this::checkDbHealth));
-        redisGauge.set(checkWithTimeout(this::checkRedisHealth));
+        if (redisConnectionFactory != null) {
+            redisGauge.set(checkWithTimeout(this::checkRedisHealth));
+        }
         lastPollTimestamp.set(clock.instant().getEpochSecond());
 
         LogFmt.debug(log, LogDomain.PG, EventType.METRICS_GAUGE_UPDATED,
-                () -> "db=" + dbGauge.get() + " redis=" + redisGauge.get());
+                () -> "db=" + dbGauge.get()
+                        + (redisConnectionFactory != null ? " redis=" + redisGauge.get() : " redis=skipped"));
     }
 
     private long checkWithTimeout(Callable<Boolean> healthCheck) {
