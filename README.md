@@ -4,12 +4,10 @@
 
 [![CI](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hyoguoo/payment-platform/actions/workflows/ci.yml)
 
-> 🚧 **진행 중** · Phase 6   
-> MSA 서비스 + Eureka + Gateway · Kafka 양방향 코레오그래피 + Outbox 모델 + 분산 트레이싱 운영 · 589 PASS  
-> Phase 6 은 아직 작업 / 점검 중이며 후속 보강 작업이 누적되어 있음 (예: 보상 트랜잭션 자동 회복 layer, 컨텍스트 정합성 점검 등)  
-> ⚠️ **본 README / 위키는 설계 의도 기준이며 실제 코드와 일부 정합이 안 맞을 수 있음** — 코드 sync 작업이 진행 중  
+> ✅ **Phase 6 완료**  
+> MSA 서비스 + Eureka + Gateway · Kafka 양방향 코레오그래피 + Outbox 모델 + 분산 트레이싱 운영 · 단위 861 / 통합 59 PASS  
 > 🔜 **다음** · Phase 7  
-> 회복성 검증 (장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러 + 서킷브레이커)
+> 회복성 검증 (장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러 + 서킷브레이커) — 알람 규칙 + Toxiproxy 장애 드릴 인프라는 선행 구축 완료
 
 > 작성자: **hyoguoo** · [Wiki](https://github.com/hyoguoo/payment-platform/wiki) · [Blog](https://hyoguoo.github.io)
 
@@ -21,7 +19,7 @@
 |:------------------:|:----------------------------------------------------------------------------------------------|:-------------------------------------------------:|
 |    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 Round 9 · 모놀리스 시점) |
 |    정합성 / 멱등성 보장    | 클라이언트·서버·PG 교차 검증 + Checkout 멱등성 (TOCTOU 해결)                                                  |                  중복 주문 / 위변조 차단                   |
-|    장애 내성 복구 체계     | 복구 판정 객체 + 스케줄링 + 재고 복원 가드 + 격리 직전 vendor 재조회                                                 |       **6 분기** 복구 결정 + 격리 전 최종 확인 + 동시성 가드        |
+|    장애 내성 복구 체계     | PG self-loop 재시도(백오프) + 한도 소진 시 DLQ 자동 격리 + `PaymentReconciler` 스케줄 복원 + 재고 보상 Redis Lua 원자 연산(`compensateAtomic`)                                                 |       **DLQ 자동 격리** + 멱등 보상(중복 실행 안전)        |
 | MSA 분리 + Kafka 양방향 | 모놀리스 → 4 비즈니스 서비스 + Eureka + Gateway / payment ↔ pg Kafka 양방향 confirm                         | **5 토픽** (운영 3 + DLQ 2) + AMOUNT_MISMATCH 양방향 방어  |
 | Outbox 모델 + 멱등 소비  | payment / pg 두 outbox 정밀도 분기 + dedupe 결정 룰 (Kafka EOS + RDB / Redis + RDB inbox / RDB)        |        **at-least-once + 멱등** (3 저장소 결정 룰)        |
 |   PG 결제 확인 흐름 분리   | listener (Inbox 시그널 INSERT) → 워커 VT (벤더 호출 + 결과 반영) → 릴레이 워커 (Kafka 발행) 3단 + 단계 사이 채널 + 폴백 폴링 |   **벤더 latency 와 인바운드 처리량 독립** + 어디서 죽어도 폴링이 회수   |
@@ -139,7 +137,7 @@ sequenceDiagram
 
 |        모델        |       위치        |                          특징                          |
 |:----------------:|:---------------:|:----------------------------------------------------:|
-| `payment_outbox` | payment-service | 4상태 머신 (PENDING / IN_FLIGHT / DONE / FAILED) + 선점 방식 |
+| `payment_outbox` | payment-service | 4상태 (PENDING / IN_FLIGHT / DONE / FAILED, FAILED 는 현재 도달 불가) + 선점 방식 |
 |   `pg_outbox`    |   pg-service    |     processedAt + availableAt + self-loop retry      |
 
 재고 확정 통지(`payment.events.stock-committed`)는 outbox 가 아니라 Kafka EOS 로 발행한다 —
@@ -289,13 +287,13 @@ flowchart TD
 | **저지연** (0.1~0.3s) |   Async   |      93.5       |      6.3ms       |       305ms       |       0       |
 
 - 고지연 환경에서 Outbox 전략이 TPS 47% 상승, 요청 유실 100% 감소 기록
-- **이상적 자원 할당(Sweet Spot)**: 무작정 커넥션 풀을 늘리기보다 시스템 한계에 맞는 최적의 수치(HikariCP 30 등)를 도출하여 안정성과 성능의 균형 확보
+- **자원 할당(Sweet Spot)**: 커넥션 풀을 무작정 늘리는 대신 시스템 한계에 맞춰 수치(HikariCP 30 등)를 조정해 안정성과 성능의 균형 확보
 - 상세 보고서: [Benchmark-Report](https://github.com/hyoguoo/payment-platform/wiki/Benchmark-Report)
 
 ### [결제 상태 관리 — 도메인 상태 머신과 장애 내성 복구 체계](https://github.com/hyoguoo/payment-platform/wiki/state-management)
 
-> Phase 5 — 복구 판정 객체 + 격리 전 최종 확인 + 보상 안전 가드 자체는 유지  
-> PG 상태 조회 경계가 Phase 6 에서 같은 인스턴스 안 호출 → pg-service HTTP 호출로 이동
+> Phase 5 — 본문과 다이어그램은 복구 판정 객체 + 격리 전 최종 확인 + 이중 조건 보상 가드가 있던 시점의 스냅샷  
+> Phase 6 에서 PG 상태 조회 경계가 pg-service HTTP 호출로 이동 + 복구 판정 객체·이중 조건 보상 가드는 삭제되고 `QuarantineCompensationHandler` 의 단일 종결 체크로 대체
 
 - PG 상태 조회 후 복구 판정 객체가 종결/재시도/격리를 결정
 - 재시도 한도 소진 시 격리 전 최종 확인(PG 상태 1회 재조회)으로 성공 건의 오격리 방지, 격리 상태로 관리자 개입 유도
@@ -482,7 +480,7 @@ sequenceDiagram
 각 서비스는 동일한 hexagonal 패키지 구조(`domain` / `application` / `presentation` / `infrastructure` / `core` / `exception`) 사용한다.
 
 - 도메인의 외부 인프라로부터 격리
-- HTTP(OpenFeign + LB) 또는 Kafka 메시지를 통해 서비스 간 통신
+- HTTP(OpenFeign + LB) 또는 Kafka 메시지로 서비스 간 통신
 
 ---
 

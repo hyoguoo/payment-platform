@@ -99,7 +99,7 @@ flowchart TD
 - [x] Task 8: 정정 — 대장 문서 (TODOS·CONCERNS 3분류 + 코드 확인 항목 등재)
 - [x] Task 9: 정정 — 핵심 참조 문서 6파일
 - [x] Task 10: 정정 — conventions·smoke 11파일
-- [ ] Task 11: 정정 — README
+- [x] Task 11: 정정 — README
 - [ ] Task 12: 정정 — PAYMENT-FLOW-GUIDE
 - [ ] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
 - [ ] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
@@ -253,7 +253,7 @@ flowchart TD
 - 리포트의 README 항목 전건 종결. **README diff 중 도메인 사실(S1) 항목은 ship domain-expert 대조 입력에 포함** (게이트 1R minor)
 
 **완료 결과**
-> (execute에서 채움)
+> `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.3.1 전건(S1 critical 2건 + S1 minor 1건 + S3 2건 + S5 2건 + S2 1건) `README.md` 반영. 배너 — "🚧 진행 중 · Phase 6"→"✅ Phase 6 완료", "589 PASS"→"단위 861 / 통합 59 PASS"(Task 9 실측값), "⚠️ 정합이 안 맞을 수 있음" 경고 삭제(토픽 정합화 완료 전제), 막연한 "보상 트랜잭션 자동 회복 layer" 예시를 포함한 "아직 작업/점검 중" 줄 삭제, "다음 Phase 7" 예고에 "알람 규칙 + Toxiproxy 장애 드릴 인프라는 선행 구축 완료" 1줄 추가(FAULT-INJECTION-RESILIENCE/ALERTING-RULES-AND-FAULT-DRILL 반영, 도메인 사실 S1). "주요 해결 과제" 표 "장애 내성 복구 체계" 행 — `RecoveryDecision`/`canCompensateStock`/FCG(미연결) 3개념 서술을 삭제하고 현재 유효한 요소(PG self-loop 재시도+백오프, DLQ 자동 격리, `PaymentReconciler` 스케줄 복원, `compensateAtomic` Redis Lua 원자 연산)로 전면 재작성(도메인 사실 S1). "결제 상태 관리" 섹션 캡션 "보상 안전 가드 자체는 유지" 삭제 — 섹션 전체를 "Phase 5 시점 스냅샷"으로 명시하고 Phase 6 에서 가드가 `QuarantineCompensationHandler` 단일 종결 체크로 대체됐음을 병기, mermaid GUARD 노드는 스냅샷 전제가 명확해져 원형 보존(도메인 사실 S1). Outbox 모델 표 `payment_outbox` 행에 `FAILED` dead-terminal 각주 반영(도메인 사실 S1). 문체(S5) — "이상적 자원 할당"·"최적의 수치" 평가 형용사 제거, "Kafka 메시지를 통해" 번역투를 "Kafka 메시지로" 교정. Phase 표기(S2) — plan 결정대로 README 축(Phase 1~7) 유지, 내부 로드맵과의 번호 불일치는 README 에서 설명하지 않음(disambiguation 미반영, 이미 `TODOS.md` 분류 룰에 1줄 명시돼 있어 README 추가 불요). 위키 링크 25개·Kafka 토픽 카탈로그·스택 표는 재확인 결과 그대로 보존. README diff 의 도메인 사실(S1) 4항목(배너 Phase 상태·"장애 내성 복구 체계" 행·"결제 상태 관리" 캡션·Outbox FAILED 각주)은 `DIAGNOSIS.md` §4.3.3 에 반영 내역 병기 완료(ship domain-expert 대조 입력용). `./gradlew test` 재실행 861 PASS(문서 전용 태스크, 코드 무변경). 수정 파일: `README.md` + `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` + `DOCS-CONSISTENCY-OVERHAUL-PLAN.md`.
 
 ### Task 12: 정정 — PAYMENT-FLOW-GUIDE [tdd=false] [domain_risk=true]
 
