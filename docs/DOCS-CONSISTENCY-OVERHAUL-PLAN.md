@@ -94,7 +94,7 @@ flowchart TD
 - [x] Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일
 - [x] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
 - [x] Task 5: 진단 — 위키 도메인 코어 12페이지
-- [ ] Task 6: 진단 — 위키 잔여 13페이지
+- [x] Task 6: 진단 — 위키 잔여 13페이지
 - [ ] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
 - [ ] Task 8: 정정 — 대장 문서 (TODOS·CONCERNS 3분류 + 코드 확인 항목 등재)
 - [ ] Task 9: 정정 — 핵심 참조 문서 6파일
@@ -184,7 +184,7 @@ flowchart TD
 - 13페이지 전부 판정 존재
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.5 신규 작성(4.5.1~4.5.11). 대상 13페이지 전건 통독 + F1~F28 대조 + Task 2~5 확정 클러스터(outbox REQUIRES_NEW/IN_FLIGHT stale·`PaymentOutboxStatus.FAILED` dead-terminal·RD/RETRYING/FCG 클러스터·payment 측 `EventDedupeStore` 폐기·Elasticsearch/Logstash→Loki/Promtail(§2 표본 #9)) grep 재확인. **핵심 발견**: 이 배치 최대 오류는 `structured-logging.md`(4.5.5) — 페이지 절반 이상(로깅 파이프라인 다이어그램·민감정보 마스킹 섹션 전체·TraceId 전파 섹션 전체·Logstash 연동 섹션 전체)이 완전히 삭제된 인프라·클래스(`MaskingPatternLayout`/`TraceIdFilter`/`LogstashTcpSocketAppender`/Elasticsearch·Kibana 백엔드, 전건 grep 0, logback-spring.xml 은 Console appender 뿐)를 현재형으로 서술(S1 critical 4건) — 같은 위키의 `trace-propagation.md`(4.5.8)가 정확히 같은 주제(로그↔트레이스 교차 조회)를 Promtail/Loki 기준으로 정확히 서술해 극단적 대조군이 됨. 민감정보 마스킹 메커니즘이 대체 없이 완전히 사라진 것으로 보여(신규 발견) Task 8 TODOS "코드 확인 필요 항목" 후보로 별도 표기. **RD/RETRYING/FCG 클러스터**(Task 5 §4.4.10 도입) 가 이 13페이지에도 3곳 추가 확산 확인 — `architecture.md`(4.5.1, 핵심 설계 결정 표의 FCG 행 + domain 패키지 트리의 `RecoveryDecision.java` + `PaymentEventStatus`/`PaymentOutboxStatus` enum 주석) · `metrics.md`(4.5.4, "비동기 플로우의 관측 맹점" 다이어그램의 RETRYING 분기) · `scenario-test.md`(4.5.6, `OutboxProcessingServiceTest` 섹션 전체가 완전 삭제된 클래스 — 배너가 "클래스명만 다르다"고 고지한 범위를 넘는 신규 발견, 클래스와 테스트 자체가 없어짐). **신규 발견**: (1) `msa-transition.md` 토폴로지 다이어그램이 `redis-stock` 연결을 `Prod --> RedS` 로 서술해 같은 위키의 `architecture.md`(`Pay --> RedS`, 정확)와 정면 모순 — `application.yml:99-101`/`docker-compose.apps.yml:47,57` 재확인 결과 payment-service 만 연결(S1+S2, 4.5.2). (2) `metrics.md` 가 RETRY-METRIC-CLEANUP(F9)로 이미 삭제된 `payment_health_max_retry_reached_total` 게이지를 여전히 표에 나열하면서(코드 재확인: `PaymentHealthMetrics` 는 `stuck_in_progress` 1종만 등록) F14 `dependency_up` 게이지와 알람 규칙 4그룹(F13)은 배너·표 양쪽에서 완전 누락 — 이 페이지가 다루는 정확히 그 주제(운영 지표)의 최근 확장이 빠짐(S1+S3, 4.5.4). (3) `TossApiMetrics` 가 pg-strategy 이관(4.4.12)에 따라 실제로는 pg-service 소속임에도 payment-service `core.common.metrics` 패키지 소속처럼 서술(S1, 신규). (4) `scenario-test.md` 의 `FakeProductRepository`/`ProductRepository` 포트 자체가 배너 고지 범위 밖에서 완전 삭제(HTTP Feign 으로 대체) 확인(S1). **양호 판정**: `event-driven-choreography.md`(4.5.3, 13페이지 중 가장 정합)·`trace-propagation.md`(4.5.8, 최신·최정확, structured-logging 재작성의 기준 문서)·`ai-workflow.md`(4.5.9, 2026-06-12 개편을 정확히 반영 — 파일 자신이 그 개편의 산출물이라 F28 갱신 격차의 유일한 예외)·`cross-validation.md`(4.5.7, 배너-본문 정합 모범 사례) 는 변경 불요. `Home`/`_Sidebar`/`_Footer`(4.5.10) 링크-슬러그 25페이지 전건 대조 완료 — 깨진 링크 0건, 고아 페이지 0건. 알람 규칙+장애 드릴 대응 신규 위키 페이지 필요성은 검토했으나 비강제 판정(별도 서사 독립성 부족, `metrics.md` 확장 흡수를 Task 16 에 권고, 작성은 비범위). `Benchmark-Report.md`(4.5.11) 는 이미 정확한 자기 배너("Phase 5 시점 — 모놀리스 단일 JVM 측정, MSA 이후 재측정 미실시")로 변경 불요, 내부 링크는 전부 문서 내 앵커뿐(외부 슬러그 0건). §5 완료 기준 대조에 Task 5(누락돼 있던 체크박스)·Task 6 항목 보강 포함. 대상 13페이지 정정은 수행하지 않음(Task 16/17 범위). `./gradlew test` 대상 아님(문서만, 위키 파일 수정도 하지 않음 — 순수 진단).
 
 ### Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW) [tdd=false] [domain_risk=true]
 
