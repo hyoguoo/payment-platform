@@ -98,7 +98,7 @@ flowchart TD
 - [x] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
 - [x] Task 8: 정정 — 대장 문서 (TODOS·CONCERNS 3분류 + 코드 확인 항목 등재)
 - [x] Task 9: 정정 — 핵심 참조 문서 6파일
-- [ ] Task 10: 정정 — conventions·smoke 11파일
+- [x] Task 10: 정정 — conventions·smoke 11파일
 - [ ] Task 11: 정정 — README
 - [ ] Task 12: 정정 — PAYMENT-FLOW-GUIDE
 - [ ] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
@@ -233,7 +233,14 @@ flowchart TD
 - 리포트의 해당 문서 항목 전건 종결, 에이전트 문서 전체 stale 마커 grep 0건 (Task 7~10 완료 시점)
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.2.5·4.2.8~4.2.17 전건 반영·종결. **실질 변경 1건**: `conventions/transactions.md` — `PaymentConfirmResultUseCase.handle` 예시 코드에 `@Transactional(transactionManager = "transactionManager", timeout = 5)` qualifier 추가(기존엔 `timeout = 5` 만 표기) + "EOS 환경에서 `KafkaTransactionManager` 빈도 존재해 `@Primary` 만으로는 의도가 드러나지 않아 명시한다" 1줄 근거 보강(`PaymentConfirmResultUseCase.java:116`, F1/CONCERNS L-1 과 같은 축). 나머지 10파일(`CONVENTIONS.md` 인덱스, `conventions/{code-style,error-logging,kafka,testing}.md`, `docs/smoke/{alert-firing-check,infra-healthcheck,observability-load,observability-walkthrough,trace-continuity-check}.md`)은 재검토 결과 불일치 0건 재확인(보존) — 이 11파일은 애초에 다른 agent 문서(ARCHITECTURE/STACK 등)가 쓰는 "최종 갱신" 헤더 패턴을 쓰지 않아(관례 자체가 다름) 헤더 갱신 대상도 없음.
+>
+> **완료 기준 stale 마커 게이트** (Task 7~10 완료 시점, `docs/context/**` + `docs/smoke/**` 전체 grep) — `RETRYING`(상태로서)/`StockOutbox`/payment 측 `EventDedupeStore`/`RecoveryDecision`/"REQUIRES_NEW 선점" outbox 서술/Elasticsearch·Logstash/`MaskingPatternLayout` 7종 전건 재검사, 역사 서술(폐기 사실 설명)은 잔존 허용 원칙으로 판정. **현행 서술 위반 3건 신규 발견 + 정정**(전부 Task 7/9 정정 대상 파일이라 직접 수정):
+> 1. `ARCHITECTURE.md` §핵심 설계 결정 인덱스 — "Final Confirmation Gate (FCG)"/"RecoveryDecision 값 객체" 두 행이 "(현재 운영 중)" 헤더 아래 무표시로 서술(바로 아래 "재고 복구 가드 (폐기)" 행은 이미 정확히 표기돼 있었음에도 Task 9 재검토가 이 두 행을 놓침) — FCG 는 "(미연결)" + `PgFinalConfirmationGate` 프로덕션 호출처 0건 설명으로, RecoveryDecision 은 "(폐기)" + 클래스 완전 삭제(grep 0) + archive 링크로 정정.
+> 2. `STACK.md` §비즈니스 서비스 의존 — `spring-boot-starter-data-redis` 주석 "pg/payment-side EventDedupeStore" 가 payment-service 에는 존재하지 않는 클래스명을 현재형으로 서술(`find payment-service -iname "*EventDedupeStore*"` = 0건, `EventDedupeStore`/`EventDedupeStoreRedisAdapter` 는 pg-service 전용) — "pg-side EventDedupeStore" 로 정정(payment 측 Redis dedupe 는 같은 줄의 "StockCachePort (Lua atomic)" 가 전담).
+> 3. `CONFIRM-FLOW.md` §14 VT+MDC 전파 — "`OutboxImmediateEventHandler` 와 `StockOutboxImmediateEventHandler` 가 사용"이 EOS 전환에서 완전 삭제된 클래스(`StockOutboxImmediateEventHandler` grep 0)를 현재도 쓰는 것처럼 병기(§3/§4/§10/§11/§13 은 Task 7 이 재작성했으나 §14 는 범위 밖이라 잔존) — `OutboxImmediateEventHandler` 단독 서술 + "과거 StockOutboxImmediateEventHandler 도 같은 executor 를 썼으나 EOS 전환에서 폐기" 각주로 정정.
+>
+> 3건 모두 `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` 해당 섹션(4.1.1/4.2.1/4.2.3)에 "[Task 10 추가 발견 및 정정]" 기록 추가 + 3파일 헤더 "최종 갱신" 갱신. 게이트 재검사 나머지 매치(`RETRYING`/`StockOutbox`/`EventDedupeStore`/`REQUIRES_NEW`/`Elasticsearch`·`Logstash`/`MaskingPatternLayout` 잔여 전건)는 "이전 모델 대비"·"폐기됨"·"grep 0 확인" 같은 명시적 과거/사실 서술이라 위반 아님(잔존 허용). `./gradlew test` 861 PASS 재확인(문서 전용 태스크, 코드 무변경).
 
 ### Task 11: 정정 — README [tdd=false] [domain_risk=false]
 

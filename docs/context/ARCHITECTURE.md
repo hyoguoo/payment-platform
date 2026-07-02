@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리). 이전: 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -186,8 +186,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 시간 모델 표준 (Clock + Instant + UTC) | 4서비스 `Clock` 빈 주입 + 도메인 `Instant` 인자 주입(now() 직접 호출 0). UTC 저장 일관 — ORM `hibernate.jdbc.time_zone=UTC` + raw-JDBC `connectionTimeZone=UTC` + 명시 UTC Calendar. JPA auditing `clockDateTimeProvider`. 만료 임계 외부화(`payment.expiration.ready-timeout-minutes`). 벤더 승인 시각 `.toInstant()` 정규화 (TIME-MODEL-AND-EXPIRY, PITFALLS §6/§13) |
 | 시간 모델 잔여 수렴 (TIME-MODEL-FOLLOWUP) | (1) product 재고 멱등(`JdbcEventDedupeStore`) 만료 판정 DB `NOW()` → 호출자 주입 `Instant` 통일(DB 시계 의존 제거), `existsValid`/미사용 `Clock` 필드 제거. (2) BaseEntity audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + V4 `DATETIME` → `DATETIME(6)` 승급, `clockDateTimeProvider` `Instant` 반환. (3) 6서비스 TZ backstop 3겹(Dockerfile `ENV TZ=UTC` + JVM `-Duser.timezone=UTC` + compose `environment.TZ`) |
 | Redis DECR 보상 | TX 실패 시 stock cache INCR 로 보상 |
-| Final Confirmation Gate (FCG) | 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 |
-| RecoveryDecision 값 객체 | payment 측 복구 판정 SSOT |
+| Final Confirmation Gate (FCG) (미연결) | `PgFinalConfirmationGate`(pg-service) — 복구 사이클 한도 소진 시 벤더 getStatus 1회 재조회 트리거로 설계됐으나, 클래스·테스트는 존재해도 프로덕션 호출처 0건(dead code) |
+| RecoveryDecision 값 객체 (폐기) | payment 측 복구 판정 SSOT 로 설계됐으나 클래스 자체가 완전 삭제됨(grep 0). 상세: `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md` |
 | 재고 복구 가드 (폐기) | `executePaymentFailureCompensationWithOutbox` — ADR-04 死 코드, STOCK-COMPENSATION-OTHER-PATHS 에서 제거. 확정 진입 실패는 보상 폐기(차감 유지 + 미복구 가시화), 회신 실패/격리는 `compensateAtomic` 전담 |
 | pg-service IN_PROGRESS retry 활성화 | 재수신 시 `PgConfirmService.handleActiveInbox`(채널 재적재) → 워커 `PgInboxProcessor.processInProgressZombie` 가 vendor 재호출 + 멱등성 layer 3종(vendor/pg/payment) 의존. self-loop `attempt` 는 `pg_inbox.attempt` 에 영속(SoT)돼 retry 분기마다 `incrementAttempt`(TX_B) → 한도(4) 소진 시 DLQ→QUARANTINED 자동 격리 (DLQ-REACHABILITY). 동시 진입 시 over-count(조기 격리)는 수용 한계 |
 | pg-service listener TX 분리 + inbox 작업 큐 | `PgInboxPendingService` (listener TX 5s, INSERT IGNORE + publishEvent) → `InboxReadyEventHandler` (AFTER_COMMIT) → `PgInboxChannel` (cap=1024) → `PgInboxImmediateWorker` (VT 5) — listener 스레드에서 벤더 호출 0 보장 |

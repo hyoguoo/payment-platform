@@ -1,6 +1,6 @@
 # 문서 전수 정합 개선 — 진단 리포트
 
-> 최종 갱신: 2026-07-03 (Task 9 — 핵심 참조 문서 6파일(+ `stack/flyway-operations.md`) 정정: `docs/context/{ARCHITECTURE,STRUCTURE,STACK,INTEGRATIONS,TESTING,PITFALLS}.md` §4.2/§4.1.5 전건 종결. STRUCTURE.md §빌드 트리거 절을 STACK.md 참조로 교체("`./gradlew test`=단위+통합" 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통). STACK.md 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영. TESTING.md 테스트 카운트 재실행 갱신(단위 861/통합 59). PITFALLS.md 헤더 시점 동기화(§24 기준) + §17/§18 CONCERNS.md dangling·오기 ID 참조 정정(자연어 설명 병기). S4 중복 4건 전건 SSOT 반영(JaCoCo/빌드 명령/Contract test/CircuitBreaker). `conventions/transactions.md` S1 은 Task 10 범위로 유보 — 미착수. `./gradlew test` 861 PASS 회귀 확인(문서만 변경, 코드 무변경이라 회귀 아님, 스냅샷 갱신 겸용 재실행)). 이전: 2026-07-02 (Task 8 — 대장 문서 정정: `docs/context/TODOS.md`/`docs/context/CONCERNS.md` §4.1.3·§4.1.4 전건 종결. TODOS 구조적 문제 2건("토픽 묶음 계획"·"## 완료" 섹션, `docs/archive/README.md` 완전 중복) 삭제 + 항목별 3분류 적용(✅완료+archive 경로 24건 전체 삭제 — 예비 판정 22건 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 적용) / 혼합 3건 해소분 문장 제거·잔여 보존 / 보존 항목 중 TC-7 "한도 초과 시 종결" stale 서술만 정정) + 코드 확인 필요 항목 3건 신규 등재(`[PAYMENT-OUTBOX-INFLIGHT-UNUSED]`/`[STRUCTURED-LOGGING-MASKING-GAP]`/`[PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH]`, 코드 수정 없음) + "내부 Phase 번호는 README 개발 과정 Phase 와 별개" 1줄 명시. CONCERNS 신규 발견 4건 반영(L92 qualifier stale 정정, L97 ID 오기 FOLLOW-1→FOLLOW-6 정정 + 완료된 FOLLOW-3/4 forward-reference 를 TODOS T4-B `[DE2]` 참조로 교체, C-9 잔여 불릿 분리) + (a) 8건(C-7/C-12/C-11/L-2/L-3/L-6/L-10/L-13) 전체 삭제, 삭제로 발생한 L-5/L-14 내부 상호참조 dangling 2건을 실제 대상으로 교체(부작용 수정). PITFALLS.md §17/§18 의 L2/L6 dangling ID 참조는 지시대로 Task 9 범위로 유보 — 미착수). 이전: 2026-07-02 (Task 7 — 플로우 문서 정정: `docs/context/CONFIRM-FLOW.md`/`docs/context/PAYMENT-FLOW.md` §4.1.1·§4.1.2 전건 종결. outbox 발행 실패 복구 서술을 소스 기준(단일 `@Transactional` 안 선점+발행, 실패 시 TX 롤백 → PENDING 복귀, `OutboxWorker` 5초 주기 재픽업이 1차 경로 / IN_FLIGHT 5분 타임아웃은 보조 경로)으로 전면 재작성(§3 mermaid+prose, §10, §11, §13, PAYMENT-FLOW Phase 3 다이어그램·장애 복원 포인트) + `PaymentOutboxStatus.FAILED` dead-terminal 각주(§9/§10) + `parallel-enabled` 기본값 코드 fallback/default 프로파일 층위 병기 + dedup TTL 정리 완료 서술로 교체 + 두 문서 헤더 날짜 동기화). 이전: 2026-07-02 (Task 6 — 위키 잔여 13페이지 진단: `structured-logging.md` 가 이 배치 최대 오류로 확정 — 페이지 절반 이상(로깅 파이프라인 다이어그램·민감정보 마스킹 섹션·TraceId 전파 섹션·Logstash 연동 섹션)이 완전히 삭제된 인프라(`MaskingPatternLayout`/`TraceIdFilter`/Logstash 전송/Elasticsearch·Kibana 백엔드, 전건 grep 0)를 현재형으로 서술(S1 critical 4건) — 같은 위키의 `trace-propagation.md` 가 같은 주제를 Promtail/Loki 기준으로 정확히 서술해 대조군이 됨. 민감정보 마스킹 메커니즘이 대체 없이 사라진 것으로 보여 Task 8 TODOS "코드 확인 필요 항목" 후보로 별도 표기. RD/RETRYING/FCG 클러스터가 `architecture.md`(핵심 설계 결정 표의 FCG 행 + domain 패키지 트리의 `RecoveryDecision.java`)·`metrics.md`(관측 맹점 다이어그램의 RETRYING 분기)·`scenario-test.md`(`OutboxProcessingServiceTest` 섹션 전체가 삭제된 클래스)에 추가 확산됨을 확인. **신규 발견**: `msa-transition.md` 토폴로지 다이어그램이 `redis-stock` 연결을 `Prod --> RedS` 로 서술해 같은 위키의 `architecture.md`(`Pay --> RedS`, 정확)와 정면 모순(소스 재확인 결과 payment-service 만 연결) + `metrics.md` 가 RETRY-METRIC-CLEANUP 로 삭제된 `payment_health_max_retry_reached_total` 를 여전히 표에 나열하고 F14 `dependency_up` 게이지·알람 규칙 4그룹을 배너에서 누락 + `TossApiMetrics` 가 pg-service 로 이관됐음에도 payment-service 소속처럼 서술. `ai-workflow.md` 는 2026-06-12 개편을 정확히 반영(파일 자신이 그 개편의 산출물)해 13페이지 중 유일하게 갱신 격차 예외로 확인. `cross-validation.md`/`event-driven-choreography.md`/`trace-propagation.md` 는 배너-본문 정합 모범 사례로 보존 판정. `Home`/`_Sidebar`/`_Footer` 링크-슬러그 전건 대조 완료 — 깨진 링크 0건, 고아 페이지 0건. `Benchmark-Report.md` 는 이미 정확한 자기 배너로 변경 불요. 알람 규칙+장애 드릴 대응 신규 위키 페이지는 비강제, `metrics.md` 확장 흡수 권고). 이전: 2026-07-02 (Task 5 — 위키 도메인 코어 12페이지 진단: `state-management.md` 배너 "RecoveryDecision + FCG + 격리 사이클은 유지된다"가 12페이지 중 최대 단일 오류임을 확정 — `RecoveryDecision` grep 0(완전 삭제)·`RETRYING` enum 부재(F6)·`PaymentEventStatus.canApplyConfirmResult()` 가 READY/IN_PROGRESS 만 EOS 진입 허용함을 재확인, 상태 머신·RecoveryDecision 섹션·재고 복구 가드·복구 사이클 플로우 4곳 전면 재작성 대상(S1 critical) + `compensation-tx.md` 배너 자체가 "재고 복구는 product-service 호출(Kafka 이벤트)로 진화"라는 신규 오류(S1 critical, 실제는 payment-service 내부 Redis Lua `compensateAtomic` 로 완결·product 호출·Kafka 이벤트 없음, `StockCacheRedisAdapter`/CONFIRM-FLOW.md:250 대조로 확정) 발견 + `pg-confirm-flow.md` "결과 메시지 종류" 표와 "향후 확장" 절이 FCG(`PgFinalConfirmationGate`, pg-service 소속, `@Service`+테스트 완비하나 프로덕션 호출처 0)를 각각 살아있는 트리거·미래 계획으로 모순 서술함을 발견(S1+S2) + `async-outbox.md`/`message-delivery-and-dedupe.md`/`stock-cache-recovery.md` 에서 §0.3 층위 위반 신규 사례(batch-size 50 vs benchmark 100) 및 DLQ-REACHABILITY(AfterRollbackProcessor) 반영 누락 발견 + `pg-strategy.md` 배너가 클래스 전면 재작성 규모를 "경계 이동"으로 과소 서술함을 확인 + `outbox-pattern.md` 는 topic 문체 기준 예문 대상 위치 정확히 특정, FAILED dead-terminal 각주 필요 확인 + `tx-scope.md`/`retry-recovery.md` 는 배너·역사 프레이밍 모범 사례로 보존 판정 + 서사 후보 9건 archive 경로 채록(3건은 근거 부족으로 강제하지 않음)). 이전: 2026-07-02 (Task 4 — README + PAYMENT-FLOW-GUIDE 진단: outbox 발행 실패 stale 클러스터가 GUIDE 에도 5곳 확장 잔존 확인 + README "주요 해결 과제" 표 "장애 내성 복구 체계" 행 전체가 폐기된 3개념(`RecoveryDecision` 완전 삭제·`canCompensateStock` 가드 완전 삭제·FCG 프로덕션 호출처 0)을 현재형으로 서술 중임을 신규 발견(S1 critical) + README "결제 상태 관리" 섹션 "보상 안전 가드 자체는 유지" 서술이 코드와 정반대임을 신규 발견 + Outbox 모델 표 FAILED dead-terminal 미표기 확장 + Phase 축 3종(README 개발순서/결제단계/MSA로드맵) 전수 채록 + 위키 링크 25건 슬러그 전건 유효 확인 + README 도메인 사실(S1) 항목 별도 표기(ship 대조 입력용)). 이전: 2026-07-02 (Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 진단: 대상 17파일에는 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위) 잔존 0건 확인 + 17파일 자체 교차 대조로 신규 S1 4건 발견(STRUCTURE.md 빌드/JaCoCo 서술 2건이 STACK.md/TESTING.md 와 정면 모순, STACK.md 스케줄러 매트릭스 user-service 누락, conventions/transactions.md 예시 qualifier 누락) + S4 중복 4건 SSOT 지정). 이전: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견)
+> 최종 갱신: 2026-07-03 (Task 10 — conventions·smoke 11파일 정정: `docs/context/CONVENTIONS.md`(인덱스) + `conventions/{code-style,error-logging,kafka,testing,transactions}.md` + `docs/smoke/{alert-firing-check,infra-healthcheck,observability-load,observability-walkthrough,trace-continuity-check}.md` §4.2.5/4.2.8~4.2.17 전건 종결 — 실질 변경은 `conventions/transactions.md` 1건(예시 코드에 `transactionManager = "transactionManager"` qualifier 추가 + 명시 근거 1줄 보강), 나머지 10파일은 재검토 후 불일치 0건(보존). **완료 기준 stale 마커 게이트**(Task 7~10 완료 시점, 에이전트 문서 전체 `docs/context/**`+`docs/smoke/**` grep) — `RETRYING`/`StockOutbox`/payment 측 `EventDedupeStore`/`RecoveryDecision`/"REQUIRES_NEW 선점" outbox 서술/Elasticsearch·Logstash/`MaskingPatternLayout` 7종 전건 재검사, 역사 서술 제외 현행 서술 위반 3건 신규 발견 — `ARCHITECTURE.md`(핵심 설계 결정 인덱스의 FCG/RecoveryDecision 두 행이 무표시로 현재형 서술), `STACK.md`(`spring-boot-starter-data-redis` 주석 "pg/payment-side EventDedupeStore" — payment 측엔 그 이름의 Redis 클래스 없음), `CONFIRM-FLOW.md`(§14 VT+MDC 절이 EOS 전환에서 완전 삭제된 `StockOutboxImmediateEventHandler` 를 현재형으로 병기). 3건 모두 Task 7/9 대상 파일이라 직접 정정 + 해당 섹션(4.1.1/4.2.1/4.2.3)에 발견 기록 추가, 헤더 날짜 갱신. `./gradlew test` 재실행 861 PASS(문서 전용 태스크, 코드 무변경)). 이전: 2026-07-03 (Task 9 — 핵심 참조 문서 6파일(+ `stack/flyway-operations.md`) 정정: `docs/context/{ARCHITECTURE,STRUCTURE,STACK,INTEGRATIONS,TESTING,PITFALLS}.md` §4.2/§4.1.5 전건 종결. STRUCTURE.md §빌드 트리거 절을 STACK.md 참조로 교체("`./gradlew test`=단위+통합" 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통). STACK.md 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영. TESTING.md 테스트 카운트 재실행 갱신(단위 861/통합 59). PITFALLS.md 헤더 시점 동기화(§24 기준) + §17/§18 CONCERNS.md dangling·오기 ID 참조 정정(자연어 설명 병기). S4 중복 4건 전건 SSOT 반영(JaCoCo/빌드 명령/Contract test/CircuitBreaker). `conventions/transactions.md` S1 은 Task 10 범위로 유보 — 미착수. `./gradlew test` 861 PASS 회귀 확인(문서만 변경, 코드 무변경이라 회귀 아님, 스냅샷 갱신 겸용 재실행)). 이전: 2026-07-02 (Task 8 — 대장 문서 정정: `docs/context/TODOS.md`/`docs/context/CONCERNS.md` §4.1.3·§4.1.4 전건 종결. TODOS 구조적 문제 2건("토픽 묶음 계획"·"## 완료" 섹션, `docs/archive/README.md` 완전 중복) 삭제 + 항목별 3분류 적용(✅완료+archive 경로 24건 전체 삭제 — 예비 판정 22건 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 적용) / 혼합 3건 해소분 문장 제거·잔여 보존 / 보존 항목 중 TC-7 "한도 초과 시 종결" stale 서술만 정정) + 코드 확인 필요 항목 3건 신규 등재(`[PAYMENT-OUTBOX-INFLIGHT-UNUSED]`/`[STRUCTURED-LOGGING-MASKING-GAP]`/`[PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH]`, 코드 수정 없음) + "내부 Phase 번호는 README 개발 과정 Phase 와 별개" 1줄 명시. CONCERNS 신규 발견 4건 반영(L92 qualifier stale 정정, L97 ID 오기 FOLLOW-1→FOLLOW-6 정정 + 완료된 FOLLOW-3/4 forward-reference 를 TODOS T4-B `[DE2]` 참조로 교체, C-9 잔여 불릿 분리) + (a) 8건(C-7/C-12/C-11/L-2/L-3/L-6/L-10/L-13) 전체 삭제, 삭제로 발생한 L-5/L-14 내부 상호참조 dangling 2건을 실제 대상으로 교체(부작용 수정). PITFALLS.md §17/§18 의 L2/L6 dangling ID 참조는 지시대로 Task 9 범위로 유보 — 미착수). 이전: 2026-07-02 (Task 7 — 플로우 문서 정정: `docs/context/CONFIRM-FLOW.md`/`docs/context/PAYMENT-FLOW.md` §4.1.1·§4.1.2 전건 종결. outbox 발행 실패 복구 서술을 소스 기준(단일 `@Transactional` 안 선점+발행, 실패 시 TX 롤백 → PENDING 복귀, `OutboxWorker` 5초 주기 재픽업이 1차 경로 / IN_FLIGHT 5분 타임아웃은 보조 경로)으로 전면 재작성(§3 mermaid+prose, §10, §11, §13, PAYMENT-FLOW Phase 3 다이어그램·장애 복원 포인트) + `PaymentOutboxStatus.FAILED` dead-terminal 각주(§9/§10) + `parallel-enabled` 기본값 코드 fallback/default 프로파일 층위 병기 + dedup TTL 정리 완료 서술로 교체 + 두 문서 헤더 날짜 동기화). 이전: 2026-07-02 (Task 6 — 위키 잔여 13페이지 진단: `structured-logging.md` 가 이 배치 최대 오류로 확정 — 페이지 절반 이상(로깅 파이프라인 다이어그램·민감정보 마스킹 섹션·TraceId 전파 섹션·Logstash 연동 섹션)이 완전히 삭제된 인프라(`MaskingPatternLayout`/`TraceIdFilter`/Logstash 전송/Elasticsearch·Kibana 백엔드, 전건 grep 0)를 현재형으로 서술(S1 critical 4건) — 같은 위키의 `trace-propagation.md` 가 같은 주제를 Promtail/Loki 기준으로 정확히 서술해 대조군이 됨. 민감정보 마스킹 메커니즘이 대체 없이 사라진 것으로 보여 Task 8 TODOS "코드 확인 필요 항목" 후보로 별도 표기. RD/RETRYING/FCG 클러스터가 `architecture.md`(핵심 설계 결정 표의 FCG 행 + domain 패키지 트리의 `RecoveryDecision.java`)·`metrics.md`(관측 맹점 다이어그램의 RETRYING 분기)·`scenario-test.md`(`OutboxProcessingServiceTest` 섹션 전체가 삭제된 클래스)에 추가 확산됨을 확인. **신규 발견**: `msa-transition.md` 토폴로지 다이어그램이 `redis-stock` 연결을 `Prod --> RedS` 로 서술해 같은 위키의 `architecture.md`(`Pay --> RedS`, 정확)와 정면 모순(소스 재확인 결과 payment-service 만 연결) + `metrics.md` 가 RETRY-METRIC-CLEANUP 로 삭제된 `payment_health_max_retry_reached_total` 를 여전히 표에 나열하고 F14 `dependency_up` 게이지·알람 규칙 4그룹을 배너에서 누락 + `TossApiMetrics` 가 pg-service 로 이관됐음에도 payment-service 소속처럼 서술. `ai-workflow.md` 는 2026-06-12 개편을 정확히 반영(파일 자신이 그 개편의 산출물)해 13페이지 중 유일하게 갱신 격차 예외로 확인. `cross-validation.md`/`event-driven-choreography.md`/`trace-propagation.md` 는 배너-본문 정합 모범 사례로 보존 판정. `Home`/`_Sidebar`/`_Footer` 링크-슬러그 전건 대조 완료 — 깨진 링크 0건, 고아 페이지 0건. `Benchmark-Report.md` 는 이미 정확한 자기 배너로 변경 불요. 알람 규칙+장애 드릴 대응 신규 위키 페이지는 비강제, `metrics.md` 확장 흡수 권고). 이전: 2026-07-02 (Task 5 — 위키 도메인 코어 12페이지 진단: `state-management.md` 배너 "RecoveryDecision + FCG + 격리 사이클은 유지된다"가 12페이지 중 최대 단일 오류임을 확정 — `RecoveryDecision` grep 0(완전 삭제)·`RETRYING` enum 부재(F6)·`PaymentEventStatus.canApplyConfirmResult()` 가 READY/IN_PROGRESS 만 EOS 진입 허용함을 재확인, 상태 머신·RecoveryDecision 섹션·재고 복구 가드·복구 사이클 플로우 4곳 전면 재작성 대상(S1 critical) + `compensation-tx.md` 배너 자체가 "재고 복구는 product-service 호출(Kafka 이벤트)로 진화"라는 신규 오류(S1 critical, 실제는 payment-service 내부 Redis Lua `compensateAtomic` 로 완결·product 호출·Kafka 이벤트 없음, `StockCacheRedisAdapter`/CONFIRM-FLOW.md:250 대조로 확정) 발견 + `pg-confirm-flow.md` "결과 메시지 종류" 표와 "향후 확장" 절이 FCG(`PgFinalConfirmationGate`, pg-service 소속, `@Service`+테스트 완비하나 프로덕션 호출처 0)를 각각 살아있는 트리거·미래 계획으로 모순 서술함을 발견(S1+S2) + `async-outbox.md`/`message-delivery-and-dedupe.md`/`stock-cache-recovery.md` 에서 §0.3 층위 위반 신규 사례(batch-size 50 vs benchmark 100) 및 DLQ-REACHABILITY(AfterRollbackProcessor) 반영 누락 발견 + `pg-strategy.md` 배너가 클래스 전면 재작성 규모를 "경계 이동"으로 과소 서술함을 확인 + `outbox-pattern.md` 는 topic 문체 기준 예문 대상 위치 정확히 특정, FAILED dead-terminal 각주 필요 확인 + `tx-scope.md`/`retry-recovery.md` 는 배너·역사 프레이밍 모범 사례로 보존 판정 + 서사 후보 9건 archive 경로 채록(3건은 근거 부족으로 강제하지 않음)). 이전: 2026-07-02 (Task 4 — README + PAYMENT-FLOW-GUIDE 진단: outbox 발행 실패 stale 클러스터가 GUIDE 에도 5곳 확장 잔존 확인 + README "주요 해결 과제" 표 "장애 내성 복구 체계" 행 전체가 폐기된 3개념(`RecoveryDecision` 완전 삭제·`canCompensateStock` 가드 완전 삭제·FCG 프로덕션 호출처 0)을 현재형으로 서술 중임을 신규 발견(S1 critical) + README "결제 상태 관리" 섹션 "보상 안전 가드 자체는 유지" 서술이 코드와 정반대임을 신규 발견 + Outbox 모델 표 FAILED dead-terminal 미표기 확장 + Phase 축 3종(README 개발순서/결제단계/MSA로드맵) 전수 채록 + 위키 링크 25건 슬러그 전건 유효 확인 + README 도메인 사실(S1) 항목 별도 표기(ship 대조 입력용)). 이전: 2026-07-02 (Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 진단: 대상 17파일에는 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위) 잔존 0건 확인 + 17파일 자체 교차 대조로 신규 S1 4건 발견(STRUCTURE.md 빌드/JaCoCo 서술 2건이 STACK.md/TESTING.md 와 정면 모순, STACK.md 스케줄러 매트릭스 user-service 누락, conventions/transactions.md 예시 qualifier 누락) + S4 중복 4건 SSOT 지정). 이전: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견)
 > 이 문서는 `docs/DOCS-CONSISTENCY-OVERHAUL-PLAN.md` Task 2~19 가 채워 넣는 **근거 대장**이다. 모든 수정(Task 7~17)은 이 문서의 항목을 근거로만 수행한다.
 > ship 시 `docs/archive/docs-consistency-overhaul/`로 이동한다.
 
@@ -247,6 +247,8 @@ topic 문서 "기준 예문" 마지막 불릿:
 
 > **[Task 7 종결, 2026-07-02]** 위 8건 전건 `docs/context/CONFIRM-FLOW.md` 에 반영 완료 — §3 mermaid+prose 단일 TX 재작성, §9 FAILED dead-terminal 각주, §10 두 행(한도 초과 시/코드 진입점) 정정, §11 회복 시나리오 정정, §12 dedup TTL 완료 서술, §13 REQUIRES_NEW 삭제, §0.3 층위 병기(parallel-enabled), 헤더 날짜 갱신, §18 "(이동 예정)" 삭제.
 
+> **[Task 10 추가 발견 및 정정, 2026-07-03]** stale 마커 게이트 재검증(`StockOutbox` grep)에서 §14 L464 신규 발견 — "`@Async("outboxRelayExecutor")` 를 `OutboxImmediateEventHandler` 와 `StockOutboxImmediateEventHandler` 가 사용"이 EOS 전환에서 완전 삭제된(`grep -rln StockOutboxImmediateEventHandler --include="*.java"` = 0건) 클래스를 현재도 쓰는 것처럼 서술 — Task 7 이 §3/§4/§10/§11/§13(outbox 재시도 흐름)만 재작성하고 §14(VT+MDC 전파)는 범위 밖이라 잔존. `OutboxImmediateEventHandler` 단독 서술 + "과거 StockOutboxImmediateEventHandler 도 같은 executor 를 썼으나 EOS 전환에서 폐기" 각주로 정정. 헤더 날짜 갱신.
+
 #### 4.1.2 `docs/context/PAYMENT-FLOW.md`
 
 | 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
@@ -363,6 +365,8 @@ topic 문서 "기준 예문" 마지막 불릿:
 
 > **[Task 9 종결, 2026-07-03]** 본문 판정대로 보존(변경 없음) + 4.2.18 S4 SSOT 반영으로 "HTTP 어댑터 회복성" 행에 `INTEGRATIONS.md` 링크 1줄 추가. 헤더 날짜 갱신.
 
+> **[Task 10 추가 발견 및 정정, 2026-07-03]** stale 마커 게이트 재검증(`RecoveryDecision` grep)에서 §핵심 설계 결정 인덱스(L189-190) 신규 발견 — Task 9 재검토가 "재고 복구 가드 (폐기)" 행(L191)은 정확히 대조했으나 바로 위 "Final Confirmation Gate (FCG)"/"RecoveryDecision 값 객체" 두 행을 놓쳤다. 이 표는 "현재 운영 중" 헤더 아래인데도 (1) `RecoveryDecision` 클래스가 완전 삭제됐고(grep 0) (2) `PgFinalConfirmationGate` 는 클래스·테스트만 존재하고 프로덕션 호출처 0건(README 4.3.1 과 동일 축)임에도 두 행 모두 아무 표시 없이 현재형으로 서술돼 있었다. FCG 행에 "(미연결)" + dead code 설명, RecoveryDecision 행에 "(폐기)" + archive 링크 추가. 헤더 날짜 갱신.
+
 #### 4.2.2 `docs/context/STRUCTURE.md`
 
 `STRUCTURE.md` 자체가 아니라 **`STACK.md`/`TESTING.md` 와의 대조에서 코드-문서 불일치 2건을 신규 발견**했다 — 다른 문서 인용이 아니라 각 주장을 `build.gradle` 로 독립 재확인한 결과 `STRUCTURE.md` 쪽이 코드와 어긋난다.
@@ -382,6 +386,8 @@ topic 문서 "기준 예문" 마지막 불릿:
 
 > **[Task 9 종결, 2026-07-03]** `docs/context/STACK.md` 에 반영 완료 — 활성 매트릭스에 user-service 행 추가, payment/pg/product/user 4개 역할별 목록 불릿에 `DependencyHealthMetrics` 각각 추가(게이트 유무 명시). §정적 분석 도구 JaCoCo 행은 4.2.18 S4 SSOT 반영으로 `TESTING.md` 참조 1줄로 축약. 헤더 날짜 갱신.
 
+> **[Task 10 추가 발견 및 정정, 2026-07-03]** stale 마커 게이트 재검증(payment 측 `EventDedupeStore` grep)에서 §비즈니스 서비스 의존 신규 발견 — `spring-boot-starter-data-redis` 주석이 "pg/payment-side EventDedupeStore" 로 서술했으나, payment-service 에는 그 이름의 Redis 클래스가 없다(`EventDedupeStore`/`EventDedupeStoreRedisAdapter` 는 pg-service 전용, `find payment-service -iname "*EventDedupeStore*"` = 0건). payment-service 의 Redis 기반 dedupe 는 같은 줄에 이미 있는 "StockCachePort (Lua atomic)" dedup token 이 전담(F1 축) — "pg/payment-side" → "pg-side" 로 정정. 헤더 날짜 갱신.
+
 #### 4.2.4 `docs/context/stack/flyway-operations.md`
 
 `STACK.md` §DB 마이그레이션이 상세를 이 문서로 위임(SSOT 이미 명확)하는 패턴이 잘 지켜짐. 두 패턴(payment/pg=`db/migration` 단일 vs product/user=`db/schema`+`db/seed`) 서술을 `V*.sql` 실제 디렉토리 구조와 대조 — 일치. `MissingMigrationException` 3-step 대응 절차도 코드(`spring.flyway.ignore-migration-patterns` 기본값 `*:future` only)와 일치. S1/S2 신규 발견 없음(보존).
@@ -391,6 +397,8 @@ topic 문서 "기준 예문" 마지막 불릿:
 #### 4.2.5 `docs/context/CONVENTIONS.md` (인덱스)
 
 9줄, 5개 하위 문서 링크만 — 대상 5파일과 제목 1:1 대응 확인(파일 경로·앵커 유효). 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존). 하위 5파일 자체엔 "최종 갱신" 헤더 패턴이 없어(다른 conventions/smoke 파일과 동일 관례) 인덱스도 헤더 갱신 대상 아님.
 
 #### 4.2.6 `docs/context/TESTING.md`
 
@@ -412,17 +420,25 @@ grep 상 "Elasticsearch/Logstash" 매치가 있었으나 실제로는 `net.logst
 
 주석 금지 ID 예시 목록(`D7`/`PET-8`/`TC-3`/`L-14`/`TQ-1` 등)이 현재도 유효한 식별자 체계와 일치, Builder/Lombok/Try 블록 패턴 모두 실제 코드 패턴(`PgInbox.createPending`, `PaymentEvent.done(Instant, Instant)`)과 대조해 일치. S1/S2 신규 발견 없음(보존).
 
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
+
 #### 4.2.9 `docs/context/conventions/error-logging.md`
 
 예외 계층 트리, `LogFmt` 사용법, AOP `@PublishDomainEvent`/`@PaymentStatusChange`/`@TransactionalEventListener(AFTER_COMMIT)` 패턴 서술을 실제 코드와 대조 — 일치. S1/S2 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
 
 #### 4.2.10 `docs/context/conventions/kafka.md`
 
 groupId 네이밍(`payment-service`/`pg-service`/`pg-service-dlq`), `DefaultErrorHandler`+`FixedBackOff(1000ms, 5)`+not-retryable 3종(`MessageConversionException`/`IllegalArgumentException`/`IllegalStateException`) 서술을 `KafkaErrorHandlerConfig.java:21,72,75-77` 로 대조 — 일치. `max.poll.records` 미설정(default 500) 서술도 `application.yml` grep 으로 확인 — 일치. S1/S2 신규 발견 없음(보존).
 
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
+
 #### 4.2.11 `docs/context/conventions/testing.md`
 
 17줄, Bean Validation + TDD 흐름만 — `CLAUDE.md`/`commit.md` 룰과 대조해 일치. S1/S2 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
 
 #### 4.2.12 `docs/context/conventions/transactions.md`
 
@@ -430,25 +446,37 @@ groupId 네이밍(`payment-service`/`pg-service`/`pg-service-dlq`), `DefaultErro
 |---|---|---|---|---|
 | L20-23 (예시 코드) | `PaymentConfirmResultUseCase.handle` 예시로 `@Transactional(timeout = 5)` 만 표기 — 실제 코드는 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 qualifier 를 **명시**한다(F1). 이 qualifier 는 바로 위 §0.3/CONCERNS L-1 이 다루는 EOS 트랜잭션 매니저 혼동 방지의 핵심 디테일이라, 컨벤션 문서의 "표준 예시"에서 빠지면 qualifier 없이도 되는 것처럼 오독될 위험이 있다 | `PaymentConfirmResultUseCase.java:116` — `@Transactional(transactionManager = "transactionManager", timeout = 5)`, 같은 파일 Javadoc L112-114 "qualifier `transactionManager` 는 `JpaConfig#transactionManager` 빈을 명시 지정 — Kafka `KafkaTransactionManager` 와의 혼동 방지" | 예시 코드에 `transactionManager = "transactionManager"` qualifier 추가 + 왜 명시하는지 1줄 근거(EOS 환경에서 `@Primary` 만으로는 의도가 코드에 드러나지 않음) 보강 | **S1** (신규 발견 — 표본 #1/CONCERNS L-1 과 같은 사실 축의 컨벤션 문서 반영 누락) |
 
+> **[Task 10 종결, 2026-07-03]** 예시 코드에 `transactionManager = "transactionManager"` qualifier 추가 + qualifier 명시 근거 1줄(EOS 환경에서 `@Primary` 만으로는 의도가 코드에 드러나지 않음) 보강 완료.
+
 #### 4.2.13 `docs/smoke/alert-firing-check.md`
 
 25케이스(coordinator 6/guard-skip 3/dlq 7/availability 9) 표를 `observability/prometheus/rules/tests/*.yml` 실제 케이스 수·availability 드릴 4시나리오(a~d)를 `alert-firing-availability.sh` 로 대조 — 일치. "라이브 한계 명시"(consumer lag 비대칭 불가/txn abort 미발화) 서술도 F13/STACK.md §알람 규칙 서술과 일치. S1/S2 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
 
 #### 4.2.14 `docs/smoke/infra-healthcheck.md`
 
 "13개 서비스 컨테이너"(인프라 8 + scalable 5) 를 `scripts/smoke/infra-healthcheck.sh:76-103` `EXPECTED_INFRA_SERVICES`(8)+`SCALABLE_SERVICES`(5) 로 대조 — 정확히 일치. Eureka 5개 앱 등록 서술도 ARCHITECTURE.md 와 일치. S1/S2 신규 발견 없음(보존).
 
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
+
 #### 4.2.15 `docs/smoke/observability-load.md`
 
 부하 생성기 옵션(`--profile`/`--fail-rate`/컨트롤 파일 축) 서술, "QUARANTINED/DLQ 패널은 단순 부하로 안 켜짐 → Phase-4 Toxiproxy 몫" 서술 — TODOS T4-A(미착수, 4.2.1 재확인) 와 일치. S1/S2 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
 
 #### 4.2.16 `docs/smoke/observability-walkthrough.md`
 
 대시보드 바로가기 URL 의 UID(`payment-business-d001`/`payment-system-d001`)를 `observability/grafana/dashboards/{business,system}-dashboard.json` 실제 `"uid"` 필드로 대조 — 정확히 일치. "로그(orderId)→traceId→Tempo" 진입 경로 서술도 F19/STACK.md 와 일치. S1/S2 신규 발견 없음(보존).
 
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
+
 #### 4.2.17 `docs/smoke/trace-continuity-check.md`
 
 5개 서비스 hop(gateway→payment→pg/product→user/벤더) 서술, `ContextAwareVirtualThreadExecutors`/`PgOutboxChannel.offerNow`/`KafkaConsumerConfig` observation 참조를 ARCHITECTURE.md 횡단 관심사 표(F 대조 완료분)와 재대조 — 일치. S1/S2 신규 발견 없음(보존).
+
+> **[Task 10 종결, 2026-07-03]** 재검토 결과 불일치 0건 재확인 — 변경 불요(보존).
 
 #### 4.2.18 중복 서술(S4) — SSOT 지정안
 

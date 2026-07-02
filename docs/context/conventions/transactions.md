@@ -19,7 +19,7 @@ Spring 의 default `@Transactional` 은 **timeout 무한**. 외부 의존성 (Re
 
 **예시** (`PaymentConfirmResultUseCase.handle`):
 ```java
-@Transactional(timeout = 5)
+@Transactional(transactionManager = "transactionManager", timeout = 5)
 public void handle(ConfirmedEventMessage message) {
     PaymentEvent paymentEvent = paymentEventRepository.findByOrderId(...).orElseThrow(...);
     switch (ConfirmStatus.from(message.status())) {
@@ -31,6 +31,8 @@ public void handle(ConfirmedEventMessage message) {
     // 예외 throw 시 Spring Kafka DefaultErrorHandler 가 retry / DLQ 책임
 }
 ```
+
+`transactionManager = "transactionManager"` qualifier 는 EOS 전환 이후 같은 컨텍스트에 `KafkaTransactionManager` 빈도 존재하는 환경에서, `@Primary` 지정만으로는 어느 트랜잭션 매니저가 적용되는지 코드에서 바로 드러나지 않기 때문에 명시한다 — RDB 트랜잭션이 필요한 메서드엔 항상 이 qualifier 를 붙인다.
 
 5초의 4가지 동시 만족: false-positive 방지 (GC pause / Hikari 대기 마진) + DB row lock 한계 + 장애 격리 (5초 후 rollback → 다음 redeliver) + Kafka rebalance 회피.
 

@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)). 이전: 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -18,7 +18,7 @@
 spring-boot-starter-web              # REST 진입점 (gateway 는 webflux 기반 spring-cloud-starter-gateway)
 spring-boot-starter-data-jpa
 spring-boot-starter-actuator         # /actuator/health · prometheus 스크랩
-spring-boot-starter-data-redis       # StockCachePort (Lua atomic) + IdempotencyStore + pg/payment-side EventDedupeStore
+spring-boot-starter-data-redis       # StockCachePort (Lua atomic) + IdempotencyStore + pg-side EventDedupeStore
 spring-boot-starter-aop              # @PublishDomainEvent, @PaymentStatusChange
 spring-cloud-starter-netflix-eureka-client  # docker 프로필에서 활성화
 
