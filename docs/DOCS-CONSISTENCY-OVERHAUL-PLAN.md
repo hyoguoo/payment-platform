@@ -97,7 +97,7 @@ flowchart TD
 - [x] Task 6: 진단 — 위키 잔여 13페이지
 - [x] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
 - [x] Task 8: 정정 — 대장 문서 (TODOS·CONCERNS 3분류 + 코드 확인 항목 등재)
-- [ ] Task 9: 정정 — 핵심 참조 문서 6파일
+- [x] Task 9: 정정 — 핵심 참조 문서 6파일
 - [ ] Task 10: 정정 — conventions·smoke 11파일
 - [ ] Task 11: 정정 — README
 - [ ] Task 12: 정정 — PAYMENT-FLOW-GUIDE
@@ -222,7 +222,7 @@ flowchart TD
 - 리포트의 해당 문서 항목 전건 종결
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.2(4.2.1~4.2.4, 4.2.6~4.2.7, 4.2.18) + §4.1.5 전건 반영·종결. **STRUCTURE.md**: §빌드 트리거 절 전체를 `STACK.md` 참조 1줄로 교체 — "`./gradlew test` = 전 모듈 단위+통합"이 실제로는 단위만(`build.gradle:66-67` `excludeTags 'integration'`)이던 정면 모순을 표 자체 삭제로 해소(S4 SSOT="빌드 명령=STACK.md" 동시 반영). §정적 분석 JaCoCo 문장 "모듈별 `build.gradle`" → "루트 `build.gradle` `subprojects` 블록(4서비스 공통)의"로 정정(`TESTING.md` 와의 모순 해소) + `TESTING.md` 링크 추가. **STACK.md**: §스케줄러 활성화 정책 매트릭스에 누락됐던 user-service 행 추가("`scheduler.enabled=true` 필요" — payment/product 와 동일 패턴, `SchedulerConfig.java` 대조 확인) + payment/pg/product/user 4개 역할별 목록 불릿에 `DependencyHealthMetrics`(의존성 가용성 폴링 게이지, availability 알람 소비) 각각 추가. §정적 분석 도구 JaCoCo 행은 S4 SSOT(`TESTING.md`)대로 1줄 참조로 축소. **TESTING.md**: 테스트 카운트 표를 `./gradlew test --rerun-tasks`(단위) + `./gradlew :<svc>:integrationTest --rerun-tasks`(통합) 재실행 값으로 갱신 — 단위 861(eureka 1/gateway 3/payment 467/pg 331/product 50/user 9), 통합 59(payment 43/pg 9/product 6/user 1). "구조적으로 계속 낙후되는 스냅샷" 1줄 명시 추가. **INTEGRATIONS.md**: Contract test 문단에 `TESTING.md` 링크 추가(S4 SSOT). **ARCHITECTURE.md**: 재검토 결과 불일치 0건(보존) + S4 SSOT 반영으로 "HTTP 어댑터 회복성" 행에 `INTEGRATIONS.md` 링크 추가. **`stack/flyway-operations.md`**: 재검토 결과 불일치 0건(보존) — 헤더에 재검토 완료 각주만 추가. **PITFALLS.md**: 헤더 "최종 갱신"을 본문 최신 항목(§24, 2026-06-27 ALERTING-RULES-AND-FAULT-DRILL) 기준으로 동기화. §18 제목 + 본문의 "L6" → 최신 `CONCERNS.md`(Task 8 정리 후) 기준 실제 대상 "L-12"(보상 끝난 결제의 새 confirm 사이클 cascade)로 정정, "L7" 참조는 현행 CONCERNS.md L-7 과 일치 확인돼 자연어 설명만 병기. §17 의 dangling "(L2 알려진 한계)"는 Task 8 삭제로 CONCERNS.md 에 매칭 항목이 더 이상 없음을 재확인 — CONCERNS.md 는 이 태스크 파일 범위 밖(대상 7파일 목록에 없음)이라 신규 항목 등재 대신 "수용된 한계(CONCERNS.md 별도 미등재)" 자연어 서술로 교체. **S4 중복 4건 전건 SSOT 반영**: JaCoCo=`TESTING.md`, 빌드 명령=`STACK.md`, Contract test=`TESTING.md`, CircuitBreaker=`INTEGRATIONS.md`. `conventions/transactions.md` 의 S1(qualifier 예시 누락)은 지시대로 Task 10 범위 — 미착수. 상대 링크 전건(신규 추가분 포함) 대상 파일 존재 확인. 정정 후 `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` 해당 섹션 하단에 종결 마킹(`[Task 9 종결, 2026-07-03]`) + 리포트 헤더에 Task 9 요약 추가. `./gradlew test` 재실행 861 PASS(문서만 변경 — 회귀 없음, 카운트 재실행 겸용).
 
 ### Task 10: 정정 — conventions·smoke 11파일 [tdd=false] [domain_risk=true]
 

@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정). 이전: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — payment/product DedupeCleanupWorker + product SchedulerConfig + pg trace 패키지 반영)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
 
 ## 루트 레이아웃
 
@@ -163,18 +163,13 @@ flowchart TD
 
 ## 빌드 트리거
 
-| 명령 | 동작 |
-|---|---|
-| `./gradlew build` | 전 모듈 컴파일 + 테스트 + JaCoCo + checkstyle/spotbugs |
-| `./gradlew test` | 전 모듈 단위 + 통합 테스트 (Testcontainers MySQL/Redis 포함) |
-| `./gradlew :payment-service:test` | 단일 모듈 |
-| `./gradlew :payment-service:integrationTest` | 통합 태그(`@Tag("integration")`) 만 |
+빌드 / 검증 명령(전 모듈·단일 모듈·단위/통합 구분)은 [`STACK.md`](STACK.md) §빌드 / 검증 참고(SSOT) — `./gradlew test` 는 **단위 테스트만**(`integration` 태그 제외) 실행하고, 통합은 `:<svc>:integrationTest` 로 별도 실행한다.
 
 ## 정적 분석
 
 - Checkstyle: `config/checkstyle/checkstyle.xml`
 - SpotBugs: `config/spotbugs/spotbugs-exclude.xml` (main) / `spotbugs-exclude-test.xml` (test)
-- JaCoCo: 모듈별 `build.gradle` 의 `jacocoTestReport` + `jacocoTestCoverageVerification`. `dto`/`entity`/`enums`/`event`/`exception`/`infrastructure`/`presentation`/`publisher`/`mock`/`aspect`/`metrics`/`log`/`filter`/`util`/`config`/`response`/`PaymentPlatformApplication` 제외 — application/use case/domain 만 측정
+- JaCoCo: 루트 `build.gradle` `subprojects` 블록(4서비스 공통)의 `jacocoTestReport` + `jacocoTestCoverageVerification`. `dto`/`entity`/`enums`/`event`/`exception`/`infrastructure`/`presentation`/`publisher`/`mock`/`aspect`/`metrics`/`log`/`filter`/`util`/`config`/`response`/`PaymentPlatformApplication` 제외 — application/use case/domain 만 측정. 커버리지 게이트·정책 상세는 [`TESTING.md`](TESTING.md) §JaCoCo 커버리지 정책 참고
 
 ## 흔히 찾는 위치
 

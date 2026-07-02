@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-07 (TIME-MODEL-FOLLOWUP — product 멱등 만료 NOW()→Instant 통일 + BaseEntity audit Instant/DATETIME(6) 전환 + TZ backstop 3겹 반영)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리). 이전: 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -178,7 +178,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
 | 분산 멱등성 store | payment-service: Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 에 통합) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
 | business inbox amount | pg `pg_inbox.amount BIGINT` |
-| HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 |
+| HTTP 어댑터 회복성 | 부분 — contract test 적용. CircuitBreaker 는 Phase 4 (상세: [`INTEGRATIONS.md`](INTEGRATIONS.md) §벤더/Cross-service 회복성) |
 | DB 분리 | 4 MySQL 인스턴스 (DB per service) |
 | Kafka 토픽 + dedupe TTL 정책 | 5 토픽 (운영 3 + DLQ 2), dedupe TTL P8D |
 | `ConfirmedEvent` 계약 확장 | pg → payment 메시지에 amount / approvedAt non-null 강제 |

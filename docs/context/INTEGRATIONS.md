@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭). 이전: 2026-05-08 (STOCK-COMPENSATION-RECOVERY — DLQ 발행자 / Redis dedupe 표현 갱신)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 이전: 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -89,7 +89,7 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 
 **Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
 
-**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함).
+**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함). 2-layer 패턴 상세(표 + 시나리오)는 [`TESTING.md`](TESTING.md) §Contract test 패턴 참고.
 
 **회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
 

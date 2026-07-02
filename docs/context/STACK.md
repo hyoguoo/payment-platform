@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-23 (코드 대조 — JaCoCo product 게이트 0.43→0.97 정정)
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)). 이전: 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -101,13 +101,15 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 |---|---|---|---|
 | payment-service | `scheduler.enabled=true` 필요 | 비활성 | 활성 |
 | product-service | `scheduler.enabled=true` 필요 | 비활성 | 활성 |
+| user-service | `scheduler.enabled=true` 필요 | 비활성 | 활성 |
 | pg-service | 없음 (항상 활성) | 활성 | 활성 |
 | eureka / gateway | `@Scheduled` 없음 | 해당 없음 | 해당 없음 |
 
 **스케줄러 역할별 목록**:
-- payment-service: `DedupeCleanupWorker`(payment_event_dedupe 만료 행 청소) / `PaymentScheduler`(READY 만료) / `PaymentReconciler`(IN_PROGRESS 정체 복원) / `OutboxWorker`(outbox PENDING 폴링·Kafka 발행) / `PaymentStateMetrics`(결제 상태별 카운트 gauge 갱신, `@ConditionalOnProperty` 없이 빈 등록되나 `@EnableScheduling`이 SchedulerConfig 게이트 안에 있어 `scheduler.enabled=true` 필요) / `PaymentHealthMetrics`(stuck IN_PROGRESS·max-retry 이상 탐지 gauge 갱신, 동일 게이트) / `PaymentOutboxMetrics`(payment_outbox PENDING 지표 갱신, `@ConditionalOnProperty(scheduler.enabled=true)` 직접 부착)
-- pg-service: `PgOutboxPollingWorker`(outbox PENDING 폴링·Kafka 발행) / `PgInboxPollingWorker`(inbox PENDING·IN_PROGRESS 좀비 회수) / `PgOutboxMetrics`(outbox 지표 갱신, `@Scheduled(fixedDelay = 60_000)`)
-- product-service: `DedupeCleanupWorker`(stock_commit_dedupe 만료 행 청소)
+- payment-service: `DedupeCleanupWorker`(payment_event_dedupe 만료 행 청소) / `PaymentScheduler`(READY 만료) / `PaymentReconciler`(IN_PROGRESS 정체 복원) / `OutboxWorker`(outbox PENDING 폴링·Kafka 발행) / `PaymentStateMetrics`(결제 상태별 카운트 gauge 갱신, `@ConditionalOnProperty` 없이 빈 등록되나 `@EnableScheduling`이 SchedulerConfig 게이트 안에 있어 `scheduler.enabled=true` 필요) / `PaymentHealthMetrics`(stuck IN_PROGRESS·max-retry 이상 탐지 gauge 갱신, 동일 게이트) / `PaymentOutboxMetrics`(payment_outbox PENDING 지표 갱신, `@ConditionalOnProperty(scheduler.enabled=true)` 직접 부착) / `DependencyHealthMetrics`(의존성 가용성 폴링 게이지 `dependency_up{component}`, availability 알람 그룹 소비, 동일 게이트)
+- pg-service: `PgOutboxPollingWorker`(outbox PENDING 폴링·Kafka 발행) / `PgInboxPollingWorker`(inbox PENDING·IN_PROGRESS 좀비 회수) / `PgOutboxMetrics`(outbox 지표 갱신, `@Scheduled(fixedDelay = 60_000)`) / `DependencyHealthMetrics`(의존성 가용성 폴링 게이지, availability 알람 그룹 소비 — 게이트 없이 항상 활성)
+- product-service: `DedupeCleanupWorker`(stock_commit_dedupe 만료 행 청소) / `DependencyHealthMetrics`(의존성 가용성 폴링 게이지, availability 알람 그룹 소비, `scheduler.enabled=true` 필요)
+- user-service: `DependencyHealthMetrics`(의존성 가용성 폴링 게이지, availability 알람 그룹 소비, `scheduler.enabled=true` 필요) — user-service 는 이 컴포넌트가 유일한 `@Scheduled`
 
 ## 빌드 / 검증
 
@@ -125,7 +127,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 |---|---|---|
 | Checkstyle | 10.17.0 | `config/checkstyle/checkstyle.xml` |
 | SpotBugs | 6.0.9 | `config/spotbugs/spotbugs-exclude.xml` (main) / `spotbugs-exclude-test.xml` (test) |
-| JaCoCo | 0.8.11 | application/use case/domain 만 측정 (DTO/entity/infrastructure 제외). 설정은 루트 `build.gradle` `subprojects` 공통(4서비스). **게이트·리포트 모두 단위 `test` exec 기준**(통합 exec 미합산) — CI build job 이 `build -x integrationTest` 로 돌아 게이트가 단위만으로 평가되기 때문. `jacocoTestCoverageVerification` 에 서비스별 LINE `minimum` 게이트(ext `jacoco.lineCoverageMinimum`, element=`BUNDLE`) — payment 0.86 / pg 0.93 / product 0.97 / user 0.97 / gateway·eureka 0.0(측정 대상 클래스 0). 통합테스트 정합성은 게이트가 아닌 CI `integration-test` job 통과(pass/fail)로 보호 |
+| JaCoCo | 0.8.11 | 값·정책 상세(측정 대상/제외/게이트 산정 근거/서비스별 minimum)는 [`TESTING.md`](TESTING.md) §JaCoCo 커버리지 정책 참고(SSOT) |
 
 ## CI 파이프라인 (GitHub Actions)
 
