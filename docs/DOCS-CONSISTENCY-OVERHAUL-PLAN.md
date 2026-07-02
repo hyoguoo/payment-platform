@@ -90,7 +90,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 변경 사실 목록 + 진단 리포트 뼈대
-- [ ] Task 2: 진단 — 플로우·대장·함정 5파일
+- [x] Task 2: 진단 — 플로우·대장·함정 5파일
 - [ ] Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일
 - [ ] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
 - [ ] Task 5: 진단 — 위키 도메인 코어 12페이지
@@ -135,7 +135,7 @@ flowchart TD
 - 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.1 신규 작성. 5파일 전건 통독 + 사실 목록(F1~F28) 대조, 소스는 grep/Read 로 직접 재확인. **핵심 발견**: (1) CONFIRM-FLOW.md/PAYMENT-FLOW.md 의 outbox "REQUIRES_NEW 선점 → 발행 실패 시 IN_FLIGHT 유지" stale 서술이 표본 #12 가 지목한 곳(§3 mermaid+prose) 외에도 §10 재시도표(`incrementRetryOrFail` 진입점 표기)·§11 회복 시나리오·§13 멱등성표·PAYMENT-FLOW §장애복원포인트 4곳에 추가 잔존함을 소스 대조(`OutboxRelayService.java:49-78` 단일 `@Transactional`)로 확정 — 전부 S1 critical 클러스터로 묶음. (2) **신규 발견**: `PaymentOutboxStatus.FAILED` 로 전이하는 코드 경로가 현재 0건(`PaymentOutbox.toFailed()` 삭제됨 + `incrementRetryOrFail` 미호출) — CONFIRM-FLOW §9/§10 및 TODOS TC-7 이 이를 여전히 살아있는 종결 경로처럼 서술. (3) `parallel-enabled` 기본값이 코드 fallback(false)만 인용하고 실구동 default profile 값(true, `application.yml:149`)을 누락 — §0.3 층위 규칙 위반 실사례로 등재. (4) TODOS.md — "토픽 묶음 계획" 섹션 + "## 완료" 섹션(~20개 항목) 전체가 `docs/archive/README.md` 와 완전 중복돼 (a) 전체 삭제 대상으로 판정, 개별 항목 24건 3분류(a 20건/b 3건/c 다수) 예비 판정 완료 — TC-13-FOLLOW-5 는 지시대로 canCompensateStock/RETRYING/PaymentEventStatusCrossInvariantTest 를 현재형으로 서술하는 S1 오류로 (a) 확정. (5) CONCERNS.md — L-3·L-6 이 CAPACITY-AND-SCALEOUT 의 2-인스턴스 fencing 실측(`docker-compose.apps.yml` payment-service `hostname:` 라인 이미 제거 확인)으로 이미 해소됐음에도 미마킹 상태임을 신규 발견해 (a) 전체 삭제로 판정, L-1 내 ID 오기(TC-13-FOLLOW-1→6) 도 신규 발견. (6) PITFALLS.md — 헤더-본문 시점 불일치(표본 #3) 외에 §18 "L6" 참조가 실제로는 CONCERNS L-12 를 가리켜야 함(CONCERNS 리스트 재편 이력으로 어긋남) + §17 "(L2 알려진 한계)" 가 dangling 참조임을 신규 발견 — 둘 다 S2. 대상 5파일 정정은 수행하지 않음(Task 7/8 범위). `./gradlew test` 대상 아님(문서만).
 
 ### Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일 [tdd=false] [domain_risk=true]
 

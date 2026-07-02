@@ -1,6 +1,6 @@
 # 문서 전수 정합 개선 — 진단 리포트
 
-> 최종 갱신: 2026-07-02 (Task 1 — 사실 목록 + 리포트 뼈대)
+> 최종 갱신: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견). 이전: 2026-07-02 (Task 1 — 사실 목록 + 리포트 뼈대)
 > 이 문서는 `docs/DOCS-CONSISTENCY-OVERHAUL-PLAN.md` Task 2~19 가 채워 넣는 **근거 대장**이다. 모든 수정(Task 7~17)은 이 문서의 항목을 근거로만 수행한다.
 > ship 시 `docs/archive/docs-consistency-overhaul/`로 이동한다.
 
@@ -229,7 +229,115 @@ topic 문서 "기준 예문" 마지막 불릿:
 
 ### 4.1 Task 2 — 플로우·대장·함정 5파일 (`CONFIRM-FLOW.md` / `PAYMENT-FLOW.md` / `TODOS.md` / `CONCERNS.md` / `PITFALLS.md`)
 
-> (Task 2 에서 채움 — #2/#3/#4/#12 는 위 §2 판정을 인계받아 확장)
+전건 통독 + 사실 목록(§1) 대조 결과. #2/#3/#4/#12 는 §2 표본 판정을 인계받아 정확한 현재 줄번호로 확장했다. 소스 근거는 `grep`/`Read` 로 직접 재확인(파일:라인).
+
+#### 4.1.1 `docs/context/CONFIRM-FLOW.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L74(mermaid), L80(mermaid), L90(prose) | §3 "claimToInFlight 가 REQUIRES_NEW 로 원자 선점 → 발행 실패 시 TX rollback 이지만 outbox row 는 IN_FLIGHT 상태로 남는다" — 실제로는 `OutboxRelayService.relay` 가 claim(Step1)·발행(Step3)·toDone(Step4) 를 **단일 `@Transactional`** 안에서 수행. `PaymentOutboxRepository.claimToInFlight` 는 `@Modifying` UPDATE 로 같은 TX 소속, REQUIRES_NEW 아님. 발행 실패 시 전체 TX 롤백 → row 는 (커밋된 적 없는) PENDING 그대로 복귀 | `OutboxRelayService.java:49-78`(단일 `@Transactional`, Step1~4 순차), `PaymentOutboxRepositoryImpl.java:56-61`(`claimToInFlight` propagation 지정 없음 = REQUIRED) | 문장/다이어그램 전면 재작성: "claim+발행+완료가 한 TX, 실패 시 TX 롤백 → PENDING 즉시 복귀 → OutboxWorker 5초 주기 재픽업"으로 | **S1 critical** (표본 #12 확장) |
+| L401 (§10 재시도 정책표 "코드 진입점" 행) | `PaymentOutboxUseCase.incrementRetryOrFail` 을 payment 측 retry 진입점으로 표기 — 이 메서드는 프로덕션 호출처 0(dead) | `PaymentOutboxUseCase.java:46-55` 정의, 호출처 전체 grep 0 (F3) | 진입점을 실제 재시도 경로(`OutboxWorker` 5초 주기 재픽업, `PaymentOutboxUseCase.recoverTimedOutInFlightRecords`)로 정정 | **S1** (표본 #12/§3.2 확장) |
+| L415 (§11 회복 시나리오 인덱스) | "Kafka producer 실패 (payment → broker) \| IN_FLIGHT 유지 → `OutboxWorker` 타임아웃 후 PENDING 복귀 → relay 재시도" — 위와 동일 오류 재등장 | 상동 (`OutboxRelayService.java:49-78`) | "TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업" 으로 정정 | **S1 critical** (표본 #12 확장) |
+| L450 (§13 멱등성 layer 표 "outbox claim" 행) | "`claimToInFlight` REQUIRES_NEW atomic UPDATE" — REQUIRES_NEW 아님 (위와 동일 오류) | 상동 | "REQUIRES_NEW" 삭제, 단일 TX 내 atomic UPDATE 로 정정 | **S1 critical** (표본 #12 확장) |
+| L~372-380 (§9 PaymentOutboxStatus 상태표) + L399 (§10 "한도 초과 시 \| outbox FAILED") | `PaymentOutboxStatus.FAILED` 로 전이하는 코드 경로가 현재 0건 — `PaymentOutbox.toFailed()` 도메인 메서드 자체가 CLEANUP-BATCH-E 에서 삭제됐고, `PaymentOutboxStatus.FAILED` 를 세팅하는 지점이 main 코드에 없음(선언·`isTerminal()` 판별 외 참조 0) | `PaymentOutboxUseCase.java` 전체에 `toFailed` 없음(grep 0), `grep -rn "PaymentOutboxStatus.FAILED\|\.toFailed(" payment-service/src/main` = 0건. `incrementRetryOrFail`(exhaustion 판정 유일 지점)도 호출처 0(F3) | FAILED 를 "현재 도달 불가(dead terminal state, TC-7 재검토 대상)"로 각주. state diagram 의 `FAILED --> [*]` 를 dead-branch 표기로 조정 | **S1** (F3 확장, 신규 발견) |
+| L113 + 헤더 L3 | "`scheduler.outbox-worker.parallel-enabled`: **false (기본)**" — 코드 fallback(false) 만 인용하고 실제 적용되는 default profile yml 값(true)을 누락. 헤더는 "2026-06-23 parallel-enabled 기본값 false 정정"이라며 이 부정확한 값을 "정정 완료"로 표기 | `OutboxWorker.java:26`(`@Value("...:false}")`) vs `application.yml:149`(`parallel-enabled: true`), `application-benchmark.yml:25`(`${SCHEDULER_PARALLEL_ENABLED:true}`) | §0.3 층위 규칙대로 "코드 fallback: false / default 프로파일(로컬·docker 실구동 값): true" 두 값 병기 | **S1+S2** (§0.3 층위 규칙 위반 실사례, 신규 발견) |
+| L437 (§12 dedup TTL 표) | "TTL 정리 스케줄러는 TC-13-FOLLOW-2 후속 항목" — 이미 구현 완료(표본 #2 그대로 잔존, 현재 정확한 줄번호로 재확인) | `DedupeCleanupWorker.java` 파일 존재 (F5) | "후속 항목" → 완료 서술(스케줄 주기·`deleteExpired` 배치 삭제)로 교체 | **S1** (표본 #2 정확 위치 확정) |
+| 헤더 L3 | "최종 갱신: 2026-06-23" — 그러나 본문(§5 DLQ-REACHABILITY 절, §16 EOS 시나리오 #6·#7)은 2026-06-25(DLQ-REACHABILITY) 산출물을 이미 반영 — 헤더가 본문보다 뒤처짐 | F12(`KafkaConsumerConfig.java:92`, DLQ-REACHABILITY 2026-06-25) | 헤더 날짜를 본 태스크(Task 7) 정정 완료 시점으로 갱신 | **S3** (표본 #3 과 동일 패턴) |
+| §18 관련 문서 목록 | "pg-service listener 분리 안 설계 기록: `docs/archive/pg-confirm-listener-split/` (**verify 완료 후 이동 예정**)" — 이미 이동 완료(COMPLETION-BRIEFING.md 존재) | `docs/archive/pg-confirm-listener-split/COMPLETION-BRIEFING.md` 파일 존재 확인 | "(이동 예정)" 괄호 삭제 | **S3** (완료 잔존, 경미) |
+
+#### 4.1.2 `docs/context/PAYMENT-FLOW.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L68 (Phase 3 다이어그램) | "R5a: IN_FLIGHT 유지 → OutboxWorker가 타임아웃 복구 재발행" — CONFIRM-FLOW L80/L90 과 동일한 stale 서술 (REQUIRES_NEW 분리 커밋 전제) | `OutboxRelayService.java:49-78` (F2) | "TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업" 으로 정정 | **S1 critical** (표본 #12, 정확 줄번호 확정) |
+| L200 (장애 복원 포인트) | "리스너 스킵/크래시: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50, **IN_FLIGHT 5분 타임아웃 복귀**)" — 발행 실패 회복의 대표 서술로 IN_FLIGHT 타임아웃 경로를 앞세움. 실제 발행 실패의 1차 회복 경로는 TX 롤백 → PENDING 즉시 재픽업(5초 주기)이고, IN_FLIGHT 5분 타임아웃은 워커 크래시 등 별도(더 드문) 시나리오 | 상동 (F2/F3) | "PENDING 배치 재픽업(5초 주기)이 1차 경로, IN_FLIGHT 5분 타임아웃 복귀는 보조 경로"로 우선순위 재정렬 | **S1** (동일 클러스터 확장) |
+| L6 | "현재 `main` (MSA 4서비스 분리 + Phase 0~3.5 + PRE-PHASE-4-HARDENING 봉인 시점) 코드를 기준으로" — 봉인 시점 앵커가 2026-04-24 로 매우 오래됨. 이후 EOS 전환·DLQ-REACHABILITY 등 다수 토픽 반영되었으나 도입부 프레이밍은 갱신 안 됨 | 문서 자체 근거(용어 사용 실태) — Phase 축 혼용은 표본 #6 소스 근거 재사용 | 도입부 앵커를 최신 토픽(DLQ-REACHABILITY) 기준으로 교체하거나 앵커 문구 자체를 제거 | **S3** (표본 #6 확장) |
+
+#### 4.1.3 `docs/context/TODOS.md` — 구조 + 3분류 판정
+
+**구조적 문제 (개별 항목과 별개)**
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L9-27 "토픽 묶음 계획 (PR 단위)" 섹션 전체 | PR A/B/C 3묶음 모두 ✅ 완료 — 순수 과거 계획 정보이며 `docs/archive/README.md` 작업 뭉치 목록에 각 토픽(cleanup-batch-a, time-model-and-expiry, payment-eos-transition)이 이미 더 상세히 기록됨 | `docs/archive/README.md:35-36,39,46`(해당 토픽 행 존재) | 섹션 전체 삭제 (a) | **S4** (완료 잔존 + SSOT 중복) |
+| L344-363 "## 완료" 섹션 전체(~20개 토픽 요약) | `docs/archive/README.md` "작업 뭉치 목록" 표가 동일 토픽을 더 정확하고 상세하게 이미 기록 — TODOS.md 는 "Planned Cleanup / Future Work"(미래 지향) 문서라는 파일 자체 성격과도 어긋남 | `docs/archive/README.md:16-53` (해당 전 토픽 행 존재, 날짜·상세 내용 일치 확인) | 섹션 전체 삭제 (a) — 필요 시 "완료 이력은 `docs/archive/README.md` 참조" 1줄로 대체 | **S4** (대장 비대, SSOT 미지정) |
+
+**항목별 3분류 예비 판정**
+
+| 항목 | 위치 | 분류 | 근거 |
+|---|---|---|---|
+| TC-13 | L35-37 | (a) 전체 삭제 | ✅ 완료 + archive 경로 존재(`docs/archive/payment-eos-transition/`) |
+| TC-13-FOLLOW-1 | L49-51 | (a) 전체 삭제 | ✅ 해소 + archive 경로(`docs/archive/capacity-and-scaleout/`) |
+| TC-13-FOLLOW-2 | L53-55 | (a) 전체 삭제 | ✅ 완료, "## 완료" EOS-FOLLOWUP-CLEANUP 항목(L352-356)과 중복 (그 섹션도 자체가 (a) 대상) |
+| TC-13-FOLLOW-3 | L65-69 | (a) 전체 삭제 | ✅ 완료(대시보드+알람 모두). 잔여 "DE2"(lag 임계 재교정)는 이미 T4-B 정밀화 묶음(L181)에 동일 내용 존재 — 정보 손실 없음 |
+| TC-13-FOLLOW-4 | L71-75 | (a) 전체 삭제 | ✅ 완료. 잔여 "DE1"(status 라벨 미분리)은 이미 T4-B 정밀화 묶음(L180)에 동일 내용 존재 |
+| TC-13-FOLLOW-6 | L77-82 | (b) 혼합 | "완료 부분"(qualifier 명시, EOS-FOLLOWUP-CLEANUP) 문장 제거. "미채택 (잔여)" ChainedKafkaTransactionManager 재검토 조건은 보존 — 유일하게 이 문서에만 있는 미채택 결정 기록 |
+| TC-13-FOLLOW-5 | L84-86 | (a) 전체 삭제, **S1** | canCompensateStock·RETRYING·`PaymentEventStatusCrossInvariantTest` 를 현재형으로 서술 — 셋 다 이후 토픽(STOCK-COMPENSATION-OTHER-PATHS/CLEANUP-BATCH-E)에서 완전 제거됨(F6/F7). "완료 잔존" 을 넘어 **존재하지 않는 코드를 현재처럼 서술**하는 사실 오류. Task 지시의 "canCompensateStock 잔존 언급" 대상 |
+| [PG-SELFLOOP-ATTEMPT-GAP] | L61-63 | (a) 전체 삭제 | ✅ 완료 + archive 경로(`docs/archive/dlq-reachability/`). "수용 한계"(over-count) 는 CONCERNS.md L-13 에 이미 동일 내용 존재 |
+| TC-4 | L92-94 | (a) 전체 삭제 | ✅ 완료, "## 완료" TIME-MODEL-AND-EXPIRY 항목(L346-351)과 중복 |
+| TC-8 | L96-98 | (a) 전체 삭제 | 상동 |
+| [NET-RETRY] | L102-104 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/cleanup-batch-b/`) |
+| [FLYWAY-USER-SEED-GAP] | L106-108 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/ci-pipeline-redesign/`) |
+| [PRODUCT-TIME-ABSTRACTION] | L112-114 | (a) 전체 삭제 | ✅ 완료, TIME-MODEL-AND-EXPIRY 중복 |
+| [TIME-PRODUCT-NOW-UNIFY] | L116-118 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/time-model-followup/`) |
+| [TZ-UTC-BACKSTOP] | L120-122 | (a) 전체 삭제 | 상동 |
+| [BASEENTITY-AUDIT-SOURCE] | L124-126 | (a) 전체 삭제 | 상동 |
+| [SCHEDULER-ENABLED-GATE] | L128-130 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/cleanup-batch-d/`) |
+| [CLEANUP-FAILURE-COUNTER] | L132-134 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/observability-completion/`) |
+| [GUARD-SKIP-EAGER-REGISTER] | L136-138 | (a) 전체 삭제 | 상동 |
+| [SPOTBUGS-TEST-DEBT] | L140-142 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/cleanup-batch-b/`) |
+| [CLEANUP-BATCH-B 후속] | L144-149 | (b) 혼합 | 3개 해소 불릿(L146,147,149) 제거, 미해소 불릿(L148 "infra 커버리지 집계 제외") 보존 — 현재도 유효한 정책 결정 |
+| TQ-7 | L243-245 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/stock-compensation-other-paths/`) |
+| TQ-8 | L247-250 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/cleanup-batch-e/`, `docs/archive/retry-metric-cleanup/`) |
+| TC-1 | L254-256 | (a) 전체 삭제 | ✅ 완료 + archive(`docs/archive/observability-completion/`) |
+| TC-3 | L258-263 | (b) 혼합 | "부분 완료" — 채택·구현 완료 프로즈는 간결화, "한계/잔여"(전체 일괄 resync·자동 발산 감지 미구현) 불릿은 **보존**(F17 실제 잔여 한계) |
+| TC-6 | L265-270 | (c) 보존 | 미착수 open item, Phase 5 T4-D 연계 |
+| TC-7 | L272-284 | (c) 보존, 단 **내용 정정 필요(S1)** | "현황" 절 "한도 초과 시 종결" 서술이 `incrementRetryOrFail` 미호출(F3) 및 `PaymentOutboxStatus.FAILED` 도달 불가(위 CONFIRM-FLOW L399 항목) 를 반영 못 함 — 항목 자체는 보존하되 "현황" 문장 정정 필요 |
+| TC-11 | L292-304 | (c) 보존 | 이미 현황/보류 구분이 정확한 모범 사례. 변경 불요 |
+| TC-12 | L306-318 | (c) 보존 | 보류 결정 기록, 재검토 조건 명시 — 변경 불요 |
+| TC-15 | L320-340 | (c) 보존 | 진행 중(항목1·2 open, 항목3 만 완료 — 이미 정확히 구분됨) |
+| TQ-1~TQ-6 | L210-241 | (c) 보존 | 전건 open, Phase 4 후속 |
+| T4-A~T4-E | L159-206 | (c) 보존 | 전건 Phase 5 대기, 측정/인프라 의존 |
+
+#### 4.1.4 `docs/context/CONCERNS.md`
+
+**신규 발견 (표 형식)**
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L92 (L-1 EOS atomicity SSOT) | "`@Transactional(timeout=5)` 는 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택한다" — 코드와 반대 | `PaymentConfirmResultUseCase.java:116` qualifier 명시 확정 (F1) | "qualifier 명시 완료(EOS-FOLLOWUP-CLEANUP)"로 정정 | **S1** (표본 #1, 정확 위치 재확인) |
+| L97 (L-1 "후속 과제") | "TC-13-FOLLOW-1 — `ChainedKafkaTransactionManager` 도입 검토" — TC-13-FOLLOW-1 은 TODOS.md 상 hostname/multi-instance 항목(✅ 해소)이지 ChainedKTM 항목이 아니다. ChainedKTM 은 TODOS TC-13-FOLLOW-6 이 정확한 ID. 같은 문장의 "TC-13-FOLLOW-3·4 후속" 도 두 항목 모두 이미 ✅ 완료라 "후속" 표현이 stale | `docs/context/TODOS.md:49-51`(TC-13-FOLLOW-1 실제 내용) vs `:77-82`(TC-13-FOLLOW-6 실제 내용), `:65-75`(FOLLOW-3·4 완료 마킹) | ID 오기 정정(FOLLOW-1→FOLLOW-6) + "완료(잔여 DE1/DE2 는 T4-B 정밀화)"로 갱신 | **S2** (문서 간 ID 불일치, 신규 발견) |
+| L107 (L-3 전체) | "다중 인스턴스 동시 운영 검증 부재" — CAPACITY-AND-SCALEOUT 이 2-인스턴스 fencing 을 이미 실측 완료(정상/rebalance 중복 0, 분산 편차 0.7%) | `docs/context/TODOS.md:51`("2 인스턴스 fencing 실측..."), `docker/docker-compose.apps.yml:30`(hostname 고정 제거 주석 확인) | 항목 전체 삭제 대상(아래 3분류 표) | **S1** (신규 발견, 이하 3분류 표에서 처리) |
+| L120-125 (L-6 전체) | "EOS multi-instance 확장 시 docker-compose hostname 충돌" — CAPACITY-AND-SCALEOUT 처방(hostname 라인 제거)이 이미 적용됨 | `docker/docker-compose.apps.yml:30`(payment-service 블록에 `hostname:` 라인 부재, pg/product/user/gateway 는 존재 — 대조 확인) | 항목 전체 삭제 대상 | **S1** (신규 발견) |
+| L67-68 (C-9 "후속 해소" 불릿) | 대시보드(완료)와 alerting rule 인프라(완료) 서술 뒤에 "**잔여**: Alertmanager 통지 채널 미도입" — 완료분과 진짜 잔여 한계가 한 불릿에 혼재 | `observability/prometheus/prometheus.yml`(Alertmanager 설정 섹션 부재 — rule_files 평가만) | 완료 서술은 간결화, "Alertmanager 미도입" 잔여는 독립 불릿으로 분리 보존 | **S3** (혼합 서술, 경미) |
+
+**3분류 예비 판정**
+
+| 항목 | 위치 | 분류 | 근거 |
+|---|---|---|---|
+| C-7 | L47-50 | (a) 전체 삭제 | ✅ 해소(PAYMENT-EOS-TRANSITION), 이미 스트라이크스루 |
+| C-12 | L52-55 | (a) 전체 삭제 | ✅ 해소(CAPACITY-AND-SCALEOUT), 이미 스트라이크스루 |
+| C-11 | L76-80 | (a) 전체 삭제 | ✅ 해소(CLEANUP-BATCH-D), archive 경로 존재 |
+| C-9 | L65-68 | (b) 혼합 | 위 신규 발견 항목 참고 — 완료분 축약, Alertmanager 잔여 보존 |
+| C-1, C-2, C-3, C-4, C-5, C-6, C-8, C-10 | High/Medium/Low 각 절 | (c) 보존 | 전건 open, 스트라이크스루 없음 |
+| L-1 | L84-97 | (c) 보존, **내용 정정 필요** | Kafka tx coordinator 의존은 여전히 유효한 수용된 한계. 단 L92(qualifier)·L97(ID 오기) 두 곳 정정 필요 (위 표) |
+| L-2 | L99-101 | (a) 전체 삭제 | ✅ 해소(EOS-FOLLOWUP-CLEANUP), 이미 스트라이크스루 |
+| L-3 | L103-107 | (a) 전체 삭제, **S1** | 위 신규 발견 — CAPACITY-AND-SCALEOUT 이 검증 완료 |
+| L-4, L-5, L-7, L-8, L-9, L-11, L-12 | 각 절 | (c) 보존 | 전건 현재도 유효한 수용된 한계, 스트라이크스루 없음 |
+| L-6 | L120-125 | (a) 전체 삭제, **S1** | 위 신규 발견 — hostname 라인 이미 제거되어 처방 완료 |
+| L-10 | L139-141 | (a) 전체 삭제 | ✅ 해소(TIME-MODEL-AND-EXPIRY), archive 경로 존재 |
+| L-13 | L151-153 | (a) 전체 삭제 | ✅ 해소(DLQ-REACHABILITY), archive 경로 존재, [PG-SELFLOOP-ATTEMPT-GAP](TODOS) 과 중복 |
+| L-14 | L155-161 | (c) 보존(모범 사례) | "부분 해소" 구조로 완료분(poison-pill)과 잔여 한계(READY 잔류)를 이미 정확히 분리 서술 — 문장 단위 편집 불요, 3분류 규칙의 참고 예시로 재발방지 문서(Task 18)에 인용 가치 |
+| 회피된 우려 표 | L163-180 | (c) 보존 | topic 결정상 "기록 보존용" 명시 — 삭제 대상 아님 |
+
+#### 4.1.5 `docs/context/PITFALLS.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| 헤더 L3 | "최종 갱신: 2026-05-17" — 본문 §24(2026-06-27/06-30 산출물, absent(kafka_brokers) 분기)가 헤더보다 훨씬 최근 | F13(alerting rule 4그룹 도입 시점) | 헤더를 §24 도입 시점(또는 Task 정정 완료 시점)으로 갱신 | **S3** (표본 #3, 위치 재확인) |
+| §18 "원인" 절 L187 + 제목 L182 | "L6: 외부 force resetToReady 등이 동일 orderId 재confirm 을 띄울 때 발생 가능" — 이 시나리오는 CONCERNS.md **L-12**("보상 끝난 결제의 새 confirm 사이클 cascade")의 내용과 정확히 일치. CONCERNS.md 의 실제 L-6 은 "EOS multi-instance hostname 충돌"로 전혀 다른 주제 — ID 참조가 어긋나 있음(리스트 재편 이력 추정) | `docs/context/CONCERNS.md:120-125`(L-6 실제 내용=hostname) vs `:147-149`(L-12 실제 내용=force resetToReady cascade, PITFALLS §18 과 문장 단위 일치) | "L6" → "L12" 로 정정 (제목 + 본문 2곳) | **S2** (문서 간 ID 참조 오류, 신규 발견) |
+| §17 L180 | "(L2 알려진 한계)" — Redis AOF fsync race window 잔존 위험의 근거로 "L2" 를 인용하나, CONCERNS.md 의 현재 L-2 는 "`payment_event_dedupe` TTL 정리 스케줄러 부재"(✅ 이미 해소, 전혀 다른 주제)로 매칭되는 항목이 CONCERNS.md 에 없음 — 참조 자체가 dangling | `docs/context/CONCERNS.md:99-101`(L-2 실제 내용) — AOF/Redis crash 주제의 L-* 항목이 CONCERNS.md 전체에 부재 확인(grep) | 괄호 인용 삭제하거나, CONCERNS.md 에 신규 L-* 항목으로 등재 후 정확히 재연결 (Task 9 결정) | **S2** (dangling 참조, 신규 발견) |
+| 본문 나머지 (§1,2,4~16,19~23) | 사실 목록(F1~F28) 및 코드 재확인 결과와 전건 일치 — 함정 서술 자체는 정합 | 각 절이 인용하는 배경 토픽(TIME-MODEL, STOCK-COMPENSATION-RECOVERY 등)과 F6/F7/F21~F23 대조 결과 불일치 0건 | 변경 불요(보존) | — |
 
 ### 4.2 Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일
 
@@ -255,3 +363,4 @@ topic 문서 "기준 예문" 마지막 불릿:
 - [x] 표본 12건 리포트 수록·판정 완료 (§2)
 - [x] 항목 형식에 "기본값 층위 명시" 규칙 포함 (§0.3)
 - [x] 기준 예문 retry 카운트 불릿 재검증 완료 (§3.2)
+- [x] Task 2 — 플로우·대장·함정 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함 (§4.1)
