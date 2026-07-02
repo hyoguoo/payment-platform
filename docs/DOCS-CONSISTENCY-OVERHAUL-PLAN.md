@@ -95,7 +95,7 @@ flowchart TD
 - [x] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
 - [x] Task 5: 진단 — 위키 도메인 코어 12페이지
 - [x] Task 6: 진단 — 위키 잔여 13페이지
-- [ ] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
+- [x] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
 - [ ] Task 8: 정정 — 대장 문서 (TODOS·CONCERNS 3분류 + 코드 확인 항목 등재)
 - [ ] Task 9: 정정 — 핵심 참조 문서 6파일
 - [ ] Task 10: 정정 — conventions·smoke 11파일
@@ -196,7 +196,7 @@ flowchart TD
 - 리포트의 두 문서 항목 전건 종결, 링크 검사 통과 유지
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.1.1(8건)·§4.1.2(3건) 전건 반영. **S1 최우선 클러스터**: outbox 발행 실패 복구 서술을 소스 기준(`OutboxRelayService.relay` — 단일 `@Transactional` 안에서 claim(Step1)·조회(Step2)·Kafka 발행(Step3)·완료 마킹(Step4) 전부 수행, `claimToInFlight` 는 REQUIRES_NEW 아닌 같은 TX 소속 `@Modifying` UPDATE, 발행 실패 시 TX 전체 롤백 → Step1 갱신도 취소돼 row 는 커밋된 적 없는 PENDING 그대로 → `OutboxWorker` 5초 주기 배치 재픽업이 1차 회복 경로, IN_FLIGHT 5분 타임아웃 회수는 워커 비정상 종료 등 드문 경로의 보조 안전장치)으로 CONFIRM-FLOW.md §3(mermaid+prose 재작성)·§4(우선순위 재정렬)·§10(재시도표 "한도 초과 시"/"코드 진입점" 2행)·§11(회복 시나리오 인덱스)·§13(멱등성표 "outbox claim" 행) + PAYMENT-FLOW.md Phase 3 다이어그램(R5a)·장애 복원 포인트 전면 정정. `PaymentOutboxStatus.FAILED` dead-terminal 각주를 CONFIRM-FLOW §9 상태표 + §10 재시도표에 추가("`PaymentOutbox.toFailed()` 삭제 + `incrementRetryOrFail` 호출처 0" 소스 근거 명시). `parallel-enabled` 기본값을 §0.3 층위 규칙대로 "코드 fallback: false / default 프로파일(로컬·docker 실구동): true" 두 값 병기로 교체(§4). §12 dedup TTL 표의 "TC-13-FOLLOW-2 후속 항목" 서술을 `DedupeCleanupWorker`(`@Scheduled fixedDelayMs=3600000`, `deleteExpired` 배치 삭제) 구현 완료 서술로 교체. §18 관련 문서 목록의 "(verify 완료 후 이동 예정)" 삭제(`docs/archive/pg-confirm-listener-split/COMPLETION-BRIEFING.md` 존재 확인). PAYMENT-FLOW.md 도입부 봉인 시점 앵커를 "Phase 0~3.5 + PRE-PHASE-4-HARDENING"(2026-04-24)에서 "DLQ-REACHABILITY"(2026-06-25, 최신)로 교체. 두 문서 헤더 "최종 갱신"을 2026-07-02(Task 7)로 갱신, 이전 이력 체인 보존. 정정 후 `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.1.1·§4.1.2 테이블 하단에 종결 마킹(`[Task 7 종결, 2026-07-02]`) + 리포트 헤더 "최종 갱신"에 Task 7 요약 추가. 상대 링크(CONFIRM-FLOW ↔ PAYMENT-FLOW 상호 참조 3곳) 변경 없음 — grep 재확인 정상. TODOS/CONCERNS/PITFALLS(§4.1.3~4.1.5)는 Task 8 범위라 미착수. `./gradlew test` 대상 아님(문서만).
 
 ### Task 8: 정정 — 대장 문서 (TODOS·CONCERNS) [tdd=false] [domain_risk=true]
 
