@@ -102,7 +102,7 @@ flowchart TD
 - [x] Task 11: 정정 — README
 - [x] Task 12: 정정 — PAYMENT-FLOW-GUIDE
 - [x] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
-- [ ] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
+- [x] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
 - [ ] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
 - [ ] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
 - [ ] Task 17: 위키 5차 — 잔여·인덱스 6페이지
@@ -290,7 +290,7 @@ flowchart TD
 - 4페이지 리포트 항목 전건 종결
 
 **완료 결과**
-> (execute에서 채움)
+> `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.4.6~4.4.9 근거로 위키 로컬 저장소(`payment-platform.wiki/`) 4페이지 파일 수정 완료(커밋은 사용자 — 별도 git 저장소). `message-delivery-and-dedupe.md`: "DLQ — 격리된 메시지 처리" 표에 `payment.events.confirmed.dlq` 의 두 번째 격리 경로(EOS `commitTransaction` 반복 실패 → `AfterRollbackProcessor`, 독립 backoff 기본 1000ms×5회 소진 시 같은 recoverer 로 자동 격리) 행 추가(S1 신규 발견) + "왜 EOS 커밋 실패에 별도 경로가 필요했는가" 서사 절 신설(DLQ-REACHABILITY 토픽, 2026-06-25). 나머지는 재검증 결과 전건 정합(보존). `idempotency.md`: 소스 재확인 결과 배너·본문 전건 정합(보존, S1 없음) — "`IdempotencyProperties`를 통해 ~ 주입받는다" 번역투 1건만 "가" 조사로 문체 교정. 서사 후보 없음(근거 부족, 지시대로 미강제). `compensation-tx.md`: 배너의 "MSA 분리 후 재고 복구는 product-service 호출(cross-service Kafka 이벤트)로 진화했다"는 사실 오류(S1 critical, 신규 발견 — `StockCacheRedisAdapter`/`PaymentConfirmResultUseCase.java:280-303`/`CONFIRM-FLOW.md:250` 대조로 확정)를 "본문은 `RecoveryDecision`+FCG 연동으로 재고 복구를 판정하던 Phase 5 모델을 다룬다 — EOS 전환 이후 payment-service 내부 Redis Lua atomic 보상(`compensateAtomic`)으로 완전히 대체"로 정정. RD/RETRYING/FCG 클러스터 본문(설계 변경/보상 TX 실행 흐름/재고 복구 가드/이중 장애 시나리오/FCG 관계 5개 섹션)은 `retry-recovery.md` 모범 사례 템플릿(배너로 시대 규정 + 본문은 그 시대 서술 그대로 보존 + 말미에 "이후 변화" 매핑 절)을 따라 원문 유지하고, FCG 관계 섹션 직후에 새 "## 이 모델의 이후 변화" 절(Phase 5 요소 4가지 → 현재 대체 4행 표 + Redis `SETNX` 원자성 대 RDB 재조회 비교 서사 + Lua 멱등 토큰 전환 2단계 서사, stock-compensation-recovery 토픽 2026-05-08 / stock-compensation-other-paths 토픽 2026-06-21 인용)을 신설해 명확히 역사로 격하(S1 critical). "관련 문서"에 [재고 캐시 보상 회복](stock-cache-recovery) 링크 추가 + `state-management` 링크 설명에 "(Phase 5 모델)" 명시(Task 15 이전 정합 보존). `stock-cache-recovery.md`: "Spring Kafka 에러 핸들러 위임" 절에 `AfterRollbackProcessor` 가 같은 `DeadLetterPublishingRecoverer` 를 재사용해 같은 DLQ 로 수렴한다는 1문단 추가(S3, message-delivery-and-dedupe.md 와 동일 갭) + "설계 의의"에 "원칙의 재적용"(DLQ-REACHABILITY 회고) 항목 5 신설. 나머지는 재검증 결과 12페이지 중 가장 최신 정합 상태 유지(보존). **Task 13 이월 항목 해소**: `outbox-channel-dispatch.md` "장애/폴백 시나리오" 표의 "Kafka publish 실패 → 4회 초과 시 DLQ" 서술을 소스 재확인(`PgOutboxRelayService.relay`/`PgOutboxPollingWorker.poll` 에 attempt 카운터 없음 — outbox 발행 자체는 무한 재폴링, `RetryPolicy.MAX_ATTEMPTS=4` 는 `PgVendorCallService.handleRetry` 의 벤더 confirm self-loop 전용 카운터임을 확정)로 오류 확정(S2 확정) — "Kafka publish 실패" 행을 "무한 재폴링, DLQ 전이 없음"으로 정정 + "PG 5xx self-retry" 행에 attempt 4 도달 시 DLQ 각주 추가 + 두 행 사이 한도 소속 설명 문단 신설. `DIAGNOSIS.md` §4.4.2 해당 행("S2 후보")도 확정 판정으로 갱신 + §4.4.6~4.4.9 뒤에 종결 노트 + 헤더 최종 갱신 동기화. `./gradlew test` 대상 아님(위키·문서 전용, 코드 무변경).
 
 ### Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지 [tdd=false] [domain_risk=true]
 
