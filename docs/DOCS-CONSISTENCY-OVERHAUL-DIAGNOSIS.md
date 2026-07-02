@@ -1,6 +1,6 @@
 # 문서 전수 정합 개선 — 진단 리포트
 
-> 최종 갱신: 2026-07-02 (Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 진단: 대상 17파일에는 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위) 잔존 0건 확인 + 17파일 자체 교차 대조로 신규 S1 4건 발견(STRUCTURE.md 빌드/JaCoCo 서술 2건이 STACK.md/TESTING.md 와 정면 모순, STACK.md 스케줄러 매트릭스 user-service 누락, conventions/transactions.md 예시 qualifier 누락) + S4 중복 4건 SSOT 지정). 이전: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견)
+> 최종 갱신: 2026-07-02 (Task 4 — README + PAYMENT-FLOW-GUIDE 진단: outbox 발행 실패 stale 클러스터가 GUIDE 에도 5곳 확장 잔존 확인 + README "주요 해결 과제" 표 "장애 내성 복구 체계" 행 전체가 폐기된 3개념(`RecoveryDecision` 완전 삭제·`canCompensateStock` 가드 완전 삭제·FCG 프로덕션 호출처 0)을 현재형으로 서술 중임을 신규 발견(S1 critical) + README "결제 상태 관리" 섹션 "보상 안전 가드 자체는 유지" 서술이 코드와 정반대임을 신규 발견 + Outbox 모델 표 FAILED dead-terminal 미표기 확장 + Phase 축 3종(README 개발순서/결제단계/MSA로드맵) 전수 채록 + 위키 링크 25건 슬러그 전건 유효 확인 + README 도메인 사실(S1) 항목 별도 표기(ship 대조 입력용)). 이전: 2026-07-02 (Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 진단: 대상 17파일에는 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위) 잔존 0건 확인 + 17파일 자체 교차 대조로 신규 S1 4건 발견(STRUCTURE.md 빌드/JaCoCo 서술 2건이 STACK.md/TESTING.md 와 정면 모순, STACK.md 스케줄러 매트릭스 user-service 누락, conventions/transactions.md 예시 qualifier 누락) + S4 중복 4건 SSOT 지정). 이전: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견)
 > 이 문서는 `docs/DOCS-CONSISTENCY-OVERHAUL-PLAN.md` Task 2~19 가 채워 넣는 **근거 대장**이다. 모든 수정(Task 7~17)은 이 문서의 항목을 근거로만 수행한다.
 > ship 시 `docs/archive/docs-consistency-overhaul/`로 이동한다.
 
@@ -441,7 +441,69 @@ groupId 네이밍(`payment-service`/`pg-service`/`pg-service-dlq`), `DefaultErro
 
 ### 4.3 Task 4 — README + PAYMENT-FLOW-GUIDE
 
-> (Task 4 에서 채움 — #5/#6 은 위 §2 판정을 인계받아 확장)
+전건 통독 + §1 사실 목록(F1~F28) 대조 + Task 2 확정 S1 클러스터(outbox REQUIRES_NEW/IN_FLIGHT stale) grep 재확인. 표본 #5/#6 은 아래 4.3.1/4.3.4 에서 정확한 위치로 확장했다. 모든 소스 근거는 이번 태스크에서 독립적으로 재확인(코드 직접 grep/Read)했으며, 기존 판정(F1~F28, Task2 §4.1)을 인용하는 곳은 "동일 축" 표기만 하고 판정 자체는 재수행했다.
+
+#### 4.3.1 `README.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L18-28 "🚀 주요 해결 과제" 표, "장애 내성 복구 체계" 행(L24) | "복구 판정 객체 + 스케줄링 + 재고 복원 가드 + 격리 직전 vendor 재조회" \| "6 분기 복구 결정 + 격리 전 최종 확인 + 동시성 가드" — 이 행이 서술하는 4개 개념 중 3개가 현재 코드에 없다: (1) "복구 판정 객체"(`RecoveryDecision`) 는 코드베이스에서 **완전 삭제**(파일 자체 0건) (2) "재고 복원 가드"(`canCompensateStock` 이중 조건 가드) 는 **완전 삭제**, `handleFailed`/`handleQuarantined` 는 가드 없이 `compensateAtomic` 직접 호출(F7) (3) "격리 직전 vendor 재조회"("격리 전 최종 확인")는 `PgFinalConfirmationGate` 클래스로 존재하나 **프로덕션 호출처 0건**(미연결) — "6 분기 복구 결정"도 이제 존재하지 않는 `RecoveryDecision` 의 분기 수. "스케줄링"(`PaymentReconciler`)만 현재도 유효 | `RecoveryDecision` 전체 grep 0(파일 자체 부재), `PaymentConfirmResultUseCase.java:280-303`(`handleFailed`/`handleQuarantined` 가드 없이 `compensateAtomic` 직접 호출), `PgFinalConfirmationGate.java` 존재하나 호출부 grep 결과 `PgStatusLookupPort.java`(의존 선언)뿐 — 실제 호출자 0건(`PAYMENT-FLOW.md:377` 이미 동일 결론) | 행 전면 재작성 — 현재 유효한 장애 내성 요소(`PaymentReconciler` 스케줄 복원, pg self-loop retry+DLQ 자동 격리, 종결 가드 재발행 등)로 교체. FCG 는 "존재하나 미연결(dead code, TODOS 등재 대상)"로만 언급 가능, 마치 동작 중인 것처럼 헤드라인화 금지 | **S1 critical** (표본 #5 확장 — 폐기 기능 서술, README 도메인 사실) |
+| L295-328 "결제 상태 관리" 섹션, 특히 L297("보상 안전 가드 자체는 유지") + L325(mermaid GUARD 노드 "재고 복원 가드\n대기열 선점 중?\n결제 비종결?") | Phase 5→6 전환 캡션이 "PG 상태 조회 경계만 이동, 보상 안전 가드 자체는 유지"라고 명시하나, 실제로는 그 가드(`canCompensateStock`, 대기열 선점 중 + 결제 비종결 이중 조건)가 STOCK-COMPENSATION-OTHER-PATHS 에서 완전 삭제됐다 — "유지" 주장이 코드와 정반대(현재는 `QuarantineCompensationHandler.handle` 의 단일 종결 상태 체크만 남음, 이중 조건 가드 아님) | F7(`canCompensateStock` grep 0) + `PaymentConfirmResultUseCase.java:280-303`(가드 없는 직접 호출) + `QuarantineCompensationHandler.java:56-60`(남은 것은 `isTerminal()` 단일 체크뿐, "대기열 선점 중" 조건 없음) | 캡션에서 "보상 안전 가드 자체는 유지" 삭제 — STOCK-COMPENSATION-OTHER-PATHS 에서 가드가 제거되고 `QuarantineCompensationHandler` 의 단순 종결 체크로 대체됐음을 명시. mermaid GUARD 노드는 이 섹션이 "Phase 5 시점 스냅샷"(역사 기록)이라는 전제가 명확하면 다이어그램 자체는 보존 가능하나, 캡션의 "유지" 단정은 정정 필수 | **S1 critical** (신규 발견 — F7 축, 표본 #5 와 다른 위치) |
+| L138-143 "Outbox 모델" 표, `payment_outbox` 행 | "4상태 머신 (PENDING / IN_FLIGHT / DONE / FAILED)" — enum 값 자체는 4개 맞지만(사실), `FAILED` 는 현재 프로덕션 코드에서 전이 경로 0건인 dead-terminal 상태(Task 2 CONFIRM-FLOW.md L~372-380 항목과 동일 축) — "4상태 머신"이라는 표현이 4개 상태가 대등하게 살아있는 것처럼 오독될 소지 | `PaymentOutboxStatus.java:9-12`(enum 4값 선언), `grep -rn "PaymentOutboxStatus.FAILED\|\.toFailed(" payment-service/src/main` = 0건(Task2 재확인 결과 재사용) | "4상태(PENDING/IN_FLIGHT/DONE/FAILED, FAILED 는 현재 도달 불가)" 로 각주 또는 3+1 표기로 조정 | **S1** (Task 2 클러스터의 README 확장 위치, minor) |
+| L7-12 배너 | "🚧 진행 중 · Phase 6", "589 PASS", "⚠️ 정합이 안 맞을 수 있음" 경고 — 표본 #5 판정 그대로 잔존(F26/F27 근거 재확인: `@Test` grep 총합 이 문서 작성 시점 기준 641건(annotation 수, parameterized 확장 전) 로 589 와 이미 상이) | F26(TESTING.md 스냅샷 노후) + F27(`README.md:8` 자체가 F26 보다도 이전 값) + 본 태스크 재확인 `grep -rc "@Test" {payment,pg,product,user}-service/src/test` 합계 641(2026-07-02 시점, 이후 Task 11 수정 시점에 `./gradlew test` 재실행 값으로 최종 확정 필요 — annotation 카운트는 근사치일 뿐) | "589 PASS" 삭제하고 Task 11 실행 시점 `./gradlew test` 실측값으로 교체. "정합이 안 맞을 수 있음" 경고는 이번 토픽 완료(ship) 후 제거 여부를 Task 11에서 결정 | **S3** (표본 #5 정확 위치 재확인, 확정 수정은 Task 11 실행 시점 값 필요) |
+| L9 "Phase 6 은 아직 작업/점검 중이며 후속 보강 작업이 누적되어 있음 (예: 보상 트랜잭션 자동 회복 layer, 컨텍스트 정합성 점검 등)" | 괄호 예시가 막연 — "보상 트랜잭션 자동 회복 layer" 가 가리키는 구체 항목이 문서 어디에도 명시되지 않음. 가장 근접한 실제 잔여 항목은 F16(stranded READY 자동 미복구, CONCERNS L-14/TQ-1)이나 이름이 다름 | F16(`docs/context/CONCERNS.md:159-161`) — 자동 미복구 잔여 한계가 존재하긴 하나 "보상 트랜잭션 자동 회복 layer" 라는 명칭과 직접 대응 안 됨 | 막연한 예시 문구를 TODOS 실항목(TC-6/TQ-1 등, Task 8 정정 이후 확정되는 슬림 대장 기준)으로 구체화 | **S3** (경미 — 사실 오류라기보다 모호성) |
+| L292 "이상적 자원 할당(Sweet Spot)" | 평가성 표현("이상적", "최적의 수치") — 문체 기준 3항(평가·과시 형용사 제거) 대상 | 문체 기준 자체가 근거(코드 근거 대상 아님) | "이상적 자원 할당" → 사실 서술("커넥션 풀 상한을 시스템 한계에 맞춰 조정" 류)로 교정 | **S5** (경미) |
+| L485 "HTTP(OpenFeign + LB) 또는 Kafka 메시지를 통해 서비스 간 통신" | "~를 통해" 번역투 — 문체 기준 3항 대상 | 문체 기준 자체가 근거 | "Kafka 메시지를 통해" → "Kafka 메시지로" 등 구체 동사/조사로 교정 | **S5** (경미) |
+| L34-43 "🗺️ 개발 과정" 표 + L225-462 "이전 단계 작업" 섹션 캡션의 Phase 1~6 표기 | README 자체 축(개발 진행 순서)은 내적으로 일관되나, 같은 단어 "Phase" 가 GUIDE/PAYMENT-FLOW(결제 처리 단계)·내부 로드맵(MSA 전환/TODOS T4-* 버킷) 축과 충돌(표본 #6 축 확장) — 상세는 4.3.4 절 전수 채록 | 문서 자체 근거(용어 사용 실태 채록) | Task 11 이 실태(4.3.4) 기반으로 확정 — plan 결정상 README 축은 유지, 내부 문서와 별개임을 1줄 명시(Task 8 TODOS 분류 룰에서 수행) | **S2** (표본 #6 확장, 위치는 표 전체) |
+| 위키 링크(L36-43, L52, 63, 114, 160-161, 163, 227, 293, 295, 330, 355, 404, 415, 445, 456, 480 등 25개 앵커) | 슬러그-실재 파일 대조: `cross-validation`/`tx-scope`/`retry-recovery`/`scenario-test`/`structured-logging`/`metrics`/`compensation-tx`/`idempotency`/`async-outbox`/`state-management`/`msa-transition`/`event-driven-choreography`/`stock-cache-recovery`/`outbox-pattern`/`message-delivery-and-dedupe`/`pg-confirm-flow`/`trace-propagation`/`pg-strategy`/`ai-workflow`/`architecture`/`Benchmark-Report` 전건 대응 파일 존재 확인 — **깨진 링크 0건** | `payment-platform.wiki/` 디렉토리 `ls *.md` 25개 전건 대조(README 인용 21종 전부 매치) | 변경 불요(보존). 단 `outbox-channel-dispatch.md` 는 위키에 존재하나 README 어디서도 링크 안 됨 — 누락이 아니라 README 가 모든 위키 페이지를 링크할 의무는 없으므로 보존 판정, Task 5/6 판단 대상으로만 메모 | — (보존) |
+| Kafka 토픽 카탈로그 표(L104-112), Redis 2 인스턴스 서술(L55, L473), 스택 표(L471-476) | `application.yml`/`docker-compose.infra.yml` 대조 — 5개 토픽명(`PaymentTopics.java` 등)·redis-dedupe/redis-stock 분리·Java 21/Spring Boot 3.4.4 등 전건 일치 | `payment-service/.../PaymentTopics.java:17`, `pg-service/src/main/resources/application.yml:83-85`, `payment-service/src/main/resources/application.yml:114-115`, `docker/docker-compose.infra.yml:69` | 변경 불요(보존) | — |
+
+#### 4.3.2 `docs/context/PAYMENT-FLOW-GUIDE.md`
+
+**S1 critical 클러스터 — outbox 발행 실패 stale 서술이 GUIDE 에도 확장 잔존**(CONFIRM-FLOW.md/PAYMENT-FLOW.md 의 표본 #12 클러스터와 완전히 동일한 사실 오류가 GUIDE 에도 5곳 독립 잔존 — 짝 문서 CONFIRM-FLOW.md 를 베낀 것으로 추정되나 이번 판정은 소스로 별도 재확인):
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L105 (§A Phase 3, 단계 14) | "발행 실패 → TX rollback 이지만 `IN_FLIGHT` 유지 → 워커 폴백" — 실제로는 claim·발행·완료가 단일 `@Transactional`(`OutboxRelayService.relay`) 이라 발행 실패 시 TX 전체 롤백으로 `IN_FLIGHT` 가 커밋된 적 없이 PENDING 그대로 복귀 | `OutboxRelayService.java:49-78`(단일 `@Transactional`, F2) | "발행 실패 → 예외가 relay TX 를 롤백해 선점까지 함께 되돌림 → PENDING 복귀" 로 정정 | **S1 critical** |
+| L107 (§A Phase 3, 단계 15 각주) | "폴백: `OutboxWorker`(`@Scheduled` fixedDelay 5s) — `IN_FLIGHT` 5분 타임아웃 → PENDING 복귀 후 재픽업" 을 발행 실패의 **1차 회복 경로**처럼 서술 — 실제 1차 경로는 위 TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업이고, `recoverTimedOutInFlightRecords`(IN_FLIGHT 5분 타임아웃 회수)는 워커 크래시 등 별도(더 드문) 시나리오 | `OutboxWorker.java:26,38,41`(F3 — `recoverTimedOutInFlightRecords`/`findPendingBatch` 만 호출), `application.yml:147`(fixed-delay-ms 5000) | "1차 경로: TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업. `IN_FLIGHT` 5분 타임아웃 회수는 워커 크래시 등 보조 경로"로 우선순위 재정렬(PAYMENT-FLOW.md L200 항목과 동일 수정 방향) | **S1** |
+| L214-217 (§B-2 PUBREC 서브그래프) | "Kafka 발행 실패 → `IN_FLIGHT` 유지 → `OutboxWorker` @5s `IN_FLIGHT` 5분 타임아웃 → PENDING 복귀 → relay 재시도" — 위와 동일 오류가 mermaid 다이어그램으로 재등장 | 상동 | "발행 실패 → TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업" 흐름으로 노드·엣지 재작성 | **S1 critical** |
+| L254-255 (§C 회복 경로 색인 표) | "Kafka 발행 실패(payment→broker) \| `IN_FLIGHT` 유지 → 타임아웃 후 PENDING 복귀 → relay 재시도" — 표 형태로 재등장 | 상동 | "TX 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업" 으로 정정 | **S1 critical** |
+| L294, L307-308 (§D 통합 플로우차트) | `OW["OutboxWorker @5s<br/>IN_FLIGHT 타임아웃 회수"]`, `REL -. 발행 실패·IN_FLIGHT 유지 .-> OW` — 마스터 다이어그램에도 동일 오류 | 상동 | "발행 실패" 엣지를 "TX 롤백·PENDING 복귀"로 재라벨, `OW` 노드는 "IN_FLIGHT 5분 타임아웃 회수(보조 경로)"로 역할 명확화 | **S1** |
+
+**나머지 부분 — 전건 검증 결과 정합(보존)**: 이번 태스크에서 GUIDE 의 기술적 주장 다수를 독립 소스 대조했다.
+
+- 단계 25 "실패(FAILED) → 재고 보상 먼저(`compensateAtomic`) → 실패 확정" — `PaymentConfirmResultUseCase.java:280-287` 와 정확히 일치(가드 없는 직접 호출, F7). README 와 달리 GUIDE 는 이미 가드 삭제 사실을 정확히 반영하고 있음 — 정정 불요
+- 단계 26 EOS abort → `DefaultErrorHandler`(FixedBackOff 1s×5) → `events.confirmed.dlq` — F12(`KafkaConsumerConfig.java:92`) 와 일치
+- 단계 23 "DONE+APPROVED 재배달 → 재고확정 재발행" — F10(`PaymentConfirmResultUseCase.java:124-138`) 와 일치
+- 단계 17 `EventDedupeStore.markSeen`(pg-service) — `pg-service/.../application/port/out/EventDedupeStore.java` 존재 확인(payment 측만 제거됐고 pg-service 는 존치 — stale 마커 아님)
+- §C "PG 재시도 한도 초과(DLQ)" 행, 단계 20 `pg_inbox.attempt` 서술 — F11/F12 일치
+- `PaymentReconciler`(§B-2 STUCK/RECON, @2분 `resetToReady`) — `PaymentReconciler.java:44`(`fixed-delay-ms:120000` 기본값 2분) 일치, 최근 롤백 이력(STATE.md 재개 메모)도 이 메서드 자체의 존재·주기는 건드리지 않음
+- 인용된 클래스/메서드명 17종(`markStockCacheDownQuarantine`/`executeConfirmTx`/`StockEventUuidDeriver`/`PgTerminalReemitService`/`DuplicateApprovalHandler`/`PgInboxImmediateWorker`/`processInProgressZombie`/`invokeVendor`/`applyOutcome`/`PgOutboxRelayService`/`PgEventPublisher`/`shouldRetry`/`handleActiveInbox`/`insertPendingAndPublish`/`OutboxImmediateEventHandler`/`canApplyConfirmResult`/`terminalResendMetrics`) 전건 grep 존재 확인 — 개명·삭제 0건
+- 약어 범례의 `D7`/`SCR-6` 내부 ID — `CONFIRM-FLOW.md:22,124,138,164,169,224,423,513` 에 실사용 확인, dangling 아님
+
+**S5 문체 판정**: GUIDE 는 번호 시퀀스·표·mermaid 위주 구조화 기술 문서로 위키/README 와 장르가 다르다 — 평가·과시 형용사, 번역투, 짧은 단정문 연발 패턴이 grep 상 0건(`를 통해`/`함으로써`/`방식을 사용`/`매우`/`완벽`/`탁월`/`최적` 등 전건 매치 없음). **문체 수정 대상 없음(보존)** — Task 12 는 위 outbox 클러스터 5곳의 사실 정정에만 집중.
+
+#### 4.3.3 README 도메인 사실(S1) 항목 — ship domain-expert 대조 입력용
+
+plan 게이트 결정(완료 기준 "README diff 중 도메인 사실(S1) 항목은 ship domain-expert 대조 입력에 포함")에 따라 Task 11 수정 후 ship 단계에서 domain-expert 가 별도 대조해야 할 항목을 표시한다.
+
+1. "주요 해결 과제" 표 "장애 내성 복구 체계" 행 전면 재작성 (4.3.1 첫 행) — `RecoveryDecision` 삭제/`canCompensateStock` 삭제/FCG 미연결 3사실 동시 반영
+2. "결제 상태 관리" 섹션 "보상 안전 가드 자체는 유지" 캡션 삭제 + mermaid GUARD 노드 처리 방식 (4.3.1 둘째 행)
+3. Outbox 모델 표 `FAILED` dead-terminal 각주 반영 (4.3.1 셋째 행)
+
+#### 4.3.4 Phase 표기 실태 전수 채록 (Task 11 결정 입력)
+
+동일한 "Phase" 단어가 최소 3개 축으로 혼용된다 — 표본 #6 이 발견한 2축(README/PAYMENT-FLOW) 에 더해 이번 태스크에서 3번째 축(MSA 로드맵/TODOS 버킷)을 전수 채록해 확장했다.
+
+| 축 | 의미 | 사용 문서·위치 | 번호 체계 | 비고 |
+|---|---|---|---|---|
+| **A. 개발 진행 순서** | 위키 페이지가 커밋된 "개발 단계" 이정표 — README 고유 축 | `README.md` 배너(L7,11), 개발 과정 표(L34-43), 이전 단계 작업 섹션 캡션(L225,229,297,332,358,406,417,447,458) | Phase 1~6 (+ETC) 완료, **Phase 7 다음 예정** | 코드 개념 아님, 순수 문서 조직. 내적으로는 일관됨(README 안에서 서로 모순 없음) |
+| **B. 결제 처리 단계** | 결제 1건이 checkout→confirm→outbox→pg→결과확정→폴링까지 통과하는 처리 단계 | `PAYMENT-FLOW.md:23-138`(Phase 1~5, 폴링을 Phase5 에 포함), `CONFIRM-FLOW.md:4`("Phase 1~5 전체" 인용), `PAYMENT-FLOW-GUIDE.md:70-145`(Phase 1~6, **폴링을 Phase6 으로 별도 분리** — PAYMENT-FLOW.md 와 하위 경계가 다름) | Phase 1~5 (PAYMENT-FLOW/CONFIRM-FLOW) vs Phase 1~6 (GUIDE) | A 축과 완전 무관 + B 축 내부에서도 PAYMENT-FLOW 와 GUIDE 사이에 폴링 분리 여부가 다름(경미한 하위 불일치, 표본#6 확장 신규 발견) |
+| **C. MSA/기능 로드맵 버킷** | TODOS.md 의 미래 작업 뭉치 번호(T4-A~E 등) — 프로젝트 로드맵상 "다음 큰 덩어리"를 가리키는 축 | `PAYMENT-FLOW.md:6`("MSA 4서비스 분리 + Phase 0~3.5 + PRE-PHASE-4-HARDENING 봉인 시점"), `ARCHITECTURE.md:181,228`("CircuitBreaker 는 Phase 4", "Phase 4 후속"), `TODOS.md`(T4-A~E 항목명 자체가 이 축의 번호를 그대로 사용), `docs/smoke/*.md` 일부(Phase-4 Toxiproxy 인용) | Phase 0~3.5 완료 + PRE-PHASE-4-HARDENING 봉인 + **Phase 4 = T4-A~E 버킷(Toxiproxy 8종/k6 재설계/로컬 오토스케일러/CircuitBreaker) 미착수** | PAYMENT-FLOW.md:6 앵커 자체는 2026-04-24 수준 오래된 시점 표기(표본#6 확장, Task 7 정정 대상) |
+
+**핵심 교차 발견**: README 축(A)의 "다음 Phase 7"(L11-12, "회복성 검증 = 장애 주입 + k6 시나리오 재설계 + 로컬 오토스케일러 + 서킷브레이커")과 내부 로드맵 축(C)의 "Phase 4"(T4-A~E: Toxiproxy 8종 장애 주입/k6 시나리오 재설계/로컬 오토스케일러/CircuitBreaker)는 **내용이 완전히 동일한 작업 뭉치를 서로 다른 번호(7 vs 4)로 부르고 있다** — `docs/context/TODOS.md:159-196`(T4-A~D 항목명·내용) 대조로 확인. 세 축 모두 실제로 열려 있는(미착수) 항목이라는 점에서 완료/진행 상태 서술 자체는 정확(README "다음" 표기는 사실과 일치) — 문제는 번호 불일치뿐.
+
+**Task 11 결정 입력**: plan 이미 "README 는 독자용 Phase 1~7 체계 유지"로 확정했으므로 축 통일은 비범위. 다만 위 교차 발견(README Phase 7 = 내부 로드맵 Phase 4, 같은 작업)은 독자 혼란 소지가 있어 Task 11 에서 README "다음 Phase 7" 절 근처에 "내부 로드맵 문서의 Phase 번호와는 무관한 별도 체계"라는 1줄 disambiguation 추가를 권고(선택, plan 승인 필요 시 반영 — 강제 완료 기준 아님).
 
 ### 4.4 Task 5 — 위키 도메인 코어 12페이지
 
@@ -461,3 +523,4 @@ groupId 네이밍(`payment-service`/`pg-service`/`pg-service-dlq`), `DefaultErro
 - [x] 기준 예문 retry 카운트 불릿 재검증 완료 (§3.2)
 - [x] Task 2 — 플로우·대장·함정 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함 (§4.1)
 - [x] Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함, 중복 서술(S4) SSOT 지정안 포함 (§4.2)
+- [x] Task 4 — README + PAYMENT-FLOW-GUIDE 2파일 판정 완료 (§4.3.1~4.3.2), README 도메인 사실(S1) 항목 별도 표기(§4.3.3, ship domain-expert 대조 입력용), Phase 표기 실태 전수 채록(§4.3.4, Task 11 결정 입력)

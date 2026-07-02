@@ -92,7 +92,7 @@ flowchart TD
 - [x] Task 1: 변경 사실 목록 + 진단 리포트 뼈대
 - [x] Task 2: 진단 — 플로우·대장·함정 5파일
 - [x] Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일
-- [ ] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
+- [x] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
 - [ ] Task 5: 진단 — 위키 도메인 코어 12페이지
 - [ ] Task 6: 진단 — 위키 잔여 13페이지
 - [ ] Task 7: 정정 — 플로우 문서 (CONFIRM-FLOW·PAYMENT-FLOW)
@@ -159,7 +159,7 @@ flowchart TD
 - 2파일 판정 완료, README 도메인 사실(S1) 항목 별도 표기 (ship 대조 입력용)
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.3 신규 작성. **핵심 발견**: (1) CONFIRM-FLOW/PAYMENT-FLOW 의 outbox 발행 실패 stale 클러스터(표본 #12, 단일 TX 대신 REQUIRES_NEW+IN_FLIGHT 유지로 서술)가 짝 문서 `PAYMENT-FLOW-GUIDE.md` 에도 독립 5곳(§A 단계14/15, §B-2, §C 표, §D 통합 플로우차트) 잔존함을 소스 재확인(`OutboxRelayService.java:49-78`, `OutboxWorker.java:26,38,41`)으로 확정 — S1 critical, Task 12 최우선 대상. GUIDE 나머지는 17개 클래스/메서드명 grep 전건 존재 확인 + 보상 가드 삭제(F7)·EOS DLQ(F12)·종결 가드 재발행(F10) 등 전건 소스 일치, 문체(S5) 도 grep 0건으로 수정 대상 없음(구조화 기술 문서 장르라 AI체 패턴 자체가 없음). (2) **신규 발견(README)**: "주요 해결 과제" 표 "장애 내성 복구 체계" 행이 서술하는 4개념 중 3개가 현재 코드에 없음 — `RecoveryDecision` 클래스 완전 삭제(grep 0), `canCompensateStock` 이중 조건 가드 완전 삭제(F7, `PaymentConfirmResultUseCase.java:280-303` 가드 없는 직접 호출 확인), FCG(`PgFinalConfirmationGate`) 는 클래스만 존재하고 프로덕션 호출처 0건(`PgStatusLookupPort.java` 의존 선언뿐, 실제 호출자 grep 0 — `PAYMENT-FLOW.md:377` 기존 결론과 별도로 직접 재확인). (3) "결제 상태 관리" 섹션 캡션 "보상 안전 가드 자체는 유지"가 (2)와 같은 축에서 코드와 정반대(`QuarantineCompensationHandler.java:56-60` 는 단일 종결 체크만 남고 "대기열 선점 중" 이중 조건 없음) — S1 critical 신규. (4) Outbox 모델 표의 `FAILED` dead-terminal 미표기가 Task 2 CONFIRM-FLOW 클러스터의 README 확장 위치임을 확인(S1 minor). (5) 배너 "589 PASS"·경고문은 표본 #5 그대로(F26/F27), 이번 태스크에서 `@Test` grep 재실행 641(annotation, 근사치, Task 11 실행 시점 `./gradlew test` 재확정 필요)로 스냅샷 노후 추가 확인. (6) 위키 링크 25개 앵커 전건 파일 대조 — 깨진 링크 0건(보존). (7) Phase 표기 3축(README 개발순서/결제처리단계/MSA로드맵) 전수 채록 — 신규 교차 발견으로 README "다음 Phase 7"(장애주입+k6+오토스케일러+서킷브레이커)과 내부 로드맵 "Phase 4"(TODOS T4-A~E)가 **동일 작업 뭉치를 다른 번호로 지칭**함을 확인(`docs/context/TODOS.md:159-196` 대조) — plan 결정상 축 통일은 비범위이나 Task 11에 1줄 disambiguation 권고(선택). README 도메인 사실(S1) 3항목을 §4.3.3 에 ship domain-expert 대조 입력용으로 별도 표기 완료. 대상 2파일 정정은 수행하지 않음(Task 11/12 범위). `./gradlew test` 대상 아님(문서만).
 
 ### Task 5: 진단 — 위키 도메인 코어 12페이지 [tdd=false] [domain_risk=true]
 

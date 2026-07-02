@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 3 완료 — 진단: 잔여 에이전트 문서 12파일 + smoke 5파일)
+> 최종 수정: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 4 완료 — 진단: README + PAYMENT-FLOW-GUIDE)
 
 ## 활성 작업
 
 - **주제**: DOCS-CONSISTENCY-OVERHAUL — 문서 전수 정합 개선 (docs/context + README + 위키, 코드 대조 정정·완료 항목 정리·문체 교정)
 - **단계**: execute
-- **활성 태스크**: Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
+- **활성 태스크**: Task 5: 진단 — 위키 도메인 코어 12페이지
 - **이슈/브랜치**: #120
 - **파일**: docs/topics/DOCS-CONSISTENCY-OVERHAUL.md / docs/DOCS-CONSISTENCY-OVERHAUL-PLAN.md / docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md
 
@@ -15,7 +15,8 @@
 - plan 게이트 2R 양측 pass (2026-07-02). 19태스크 — 진단(1~6) → 정정(7~12) → 위키 5배치(13~17, Task 7~10 완료 후 착수) → 재발 방지(18) → 최종 검증(19).
 - Task 1 완료 — `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` 생성(항목 형식·심각도·기본값 층위 규칙 확정 + 사실 목록 28건(F1~F28) + 표본 12건 판정, 전건 소스 파일:라인 채록).
 - Task 2 완료 — 플로우·대장·함정 5파일(CONFIRM-FLOW/PAYMENT-FLOW/TODOS/CONCERNS/PITFALLS) §4.1 채움. outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터가 표본 #12 지목 위치 외 4곳 추가 확인, `PaymentOutboxStatus.FAILED` dead-terminal 신규 발견, TODOS "토픽 묶음 계획"+"## 완료" 섹션 전체 archive/README.md 중복으로 (a) 삭제 판정, CONCERNS L-3/L-6 이미 CAPACITY-AND-SCALEOUT 으로 해소됐으나 미마킹임을 신규 발견, PITFALLS §18/§17 의 CONCERNS L-* ID 참조 오류 2건 발견.
-- Task 3 완료 — 잔여 에이전트 문서 12파일 + smoke 5파일 §4.2 채움. Task 2 확정 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위)은 이 17파일에 잔존 0건(레벨이 달라 outbox 재시도 디테일 미서술) 확인. 대신 **17파일 상호 대조로 신규 S1 4건** 발견 — `STRUCTURE.md` 의 "빌드 트리거"(`./gradlew test` 범위)·"JaCoCo 설정 위치" 서술이 각각 `STACK.md`/`TESTING.md` 와 정면 모순(코드 확인 결과 `STRUCTURE.md` 쪽이 stale), `STACK.md` 스케줄러 활성화 매트릭스에서 user-service 전체 + 4서비스 공통 `DependencyHealthMetrics` 가 누락, `conventions/transactions.md` 예시 코드가 `PaymentConfirmResultUseCase.handle` 의 실제 qualifier(`transactionManager = "transactionManager"`, F1/CONCERNS L-1 과 같은 축)를 빠뜨림. S4 중복 4건 SSOT 지정(JaCoCo=`TESTING.md`, 빌드 명령=`STACK.md`, Contract test 상세=`TESTING.md`, CircuitBreaker 근거=`INTEGRATIONS.md`). Task 4~6 은 리포트 §4 나머지 플레이스홀더(README/GUIDE, 위키 25p)를 이어 채운다.
+- Task 3 완료 — 잔여 에이전트 문서 12파일 + smoke 5파일 §4.2 채움. Task 2 확정 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위)은 이 17파일에 잔존 0건(레벨이 달라 outbox 재시도 디테일 미서술) 확인. 대신 **17파일 상호 대조로 신규 S1 4건** 발견 — `STRUCTURE.md` 의 "빌드 트리거"(`./gradlew test` 범위)·"JaCoCo 설정 위치" 서술이 각각 `STACK.md`/`TESTING.md` 와 정면 모순(코드 확인 결과 `STRUCTURE.md` 쪽이 stale), `STACK.md` 스케줄러 활성화 매트릭스에서 user-service 전체 + 4서비스 공통 `DependencyHealthMetrics` 가 누락, `conventions/transactions.md` 예시 코드가 `PaymentConfirmResultUseCase.handle` 의 실제 qualifier(`transactionManager = "transactionManager"`, F1/CONCERNS L-1 과 같은 축)를 빠뜨림. S4 중복 4건 SSOT 지정(JaCoCo=`TESTING.md`, 빌드 명령=`STACK.md`, Contract test 상세=`TESTING.md`, CircuitBreaker 근거=`INTEGRATIONS.md`).
+- Task 4 완료 — README + PAYMENT-FLOW-GUIDE §4.3 채움. outbox 발행 실패 stale 클러스터(표본 #12)가 GUIDE 에도 독립 5곳 잔존(S1 critical, Task 12 최우선). **신규 발견**: README "주요 해결 과제" 표 "장애 내성 복구 체계" 행이 서술하는 4개념 중 3개가 삭제/미연결 — `RecoveryDecision` 클래스 완전 삭제, `canCompensateStock` 이중 조건 가드 완전 삭제(F7), FCG(`PgFinalConfirmationGate`)는 클래스만 존재하고 프로덕션 호출처 0건. "결제 상태 관리" 섹션 캡션 "보상 안전 가드 자체는 유지"도 같은 축에서 코드와 정반대(S1 critical, 신규). Outbox 모델 표 `FAILED` dead-terminal 미표기 확인(S1 minor). 배너 "589 PASS"는 표본#5 그대로, `@Test` grep 재실행 641(근사치)로 노후 재확인. 위키 링크 25개 앵커 전건 파일 대조 — 깨진 링크 0건. Phase 표기 3축(README 개발순서/결제처리단계/MSA로드맵) 전수 채록 — README "다음 Phase 7"과 내부 로드맵 "Phase 4"(TODOS T4-A~E)가 동일 작업 뭉치를 다른 번호로 지칭함을 신규 확인(Task 11 disambiguation 권고, 선택). README 도메인 사실(S1) 3항목 §4.3.3 에 ship domain-expert 대조 입력용 별도 표기. GUIDE 문체(S5)는 구조화 기술 문서 장르라 수정 대상 0건. Task 5~6 은 리포트 §4 나머지 플레이스홀더(위키 25p)를 이어 채운다.
 - 주의: 사실 판정 근거는 소스 파일:라인만 (문서 상호 인용 불인정). 위키는 파일 수정만, 커밋은 사용자.
 
 ## 최근 완료
