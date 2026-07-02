@@ -1,30 +1,8 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹). 이전: 2026-06-25 (DLQ-REACHABILITY 봉인 — [PG-SELFLOOP-ATTEMPT-GAP] + TC-13-FOLLOW-7 둘 다 해소: pg self-loop attempt 를 pg_inbox.attempt SoT 로 영속해 한도 도달 DLQ→QUARANTINED 격리 + payment EOS 커밋 실패에 AfterRollbackProcessor 명시 연결로 DLQ 도달·가시화. over-sell 자동 복구는 TQ-1 잔여).
-> 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요.
+> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
-
----
-
-## 토픽 묶음 계획 (PR 단위)
-
-현재 과업 7개를 3 PR 로 진행. 작은 청소 → 도메인 결정 → 큰 정합성 순서.
-
-| PR | 묶음명 | 토픽 | 크기 | 성격 | 상태 |
-|---|---|---|---|---|---|
-| **A** | 코드 청소 4건 | TC-16, TC-10, TC-2, TC-5 | ~2일 | 도메인 결정 없음, 영역 분리 | ✅ 완료 (브랜치 #75, PR 생성 예정) |
-| **B** | 도메인 결정 묶음 | TC-4, TC-8 | ~3~4일 | EXPIRED 정책 + 시간 추상화 표준 결정 동반 | ✅ 완료 (TIME-MODEL-AND-EXPIRY, 이슈/브랜치 #83) |
-| **C** | EOS 전환 (위키 정합) | TC-13 | ~1주+ | 가용성 결 트레이드오프 결정 동반 | ✅ 완료 (브랜치 #77, PR #77) |
-
-### 묶음 근거
-
-- **PR A** — 모두 작은 청소. 도메인 결정 없고 영역이 분리됨 (pg-service 도메인 / Flyway / ControllerAdvice / Lombok 패턴). plan / 리뷰 부담 적음.
-- **PR B** — 둘 다 도메인 결정 동반 (EXPIRED 전이 정책 + Clock vs LocalDateTimeProvider). 시간 표준 결정이 EXPIRED 만료 시각 타입에 영향이라 같이 가는 게 자연스러움.
-- **PR C** — 가용성 결 트레이드오프 (Kafka tx coordinator 의존) 결정 동반. 변경 범위 가장 큼.
-
-### 권장 순서
-
-A → B → C. 작은 청소로 직전 토픽 (PG-CONFIRM-LISTENER-SPLIT) 맥락 살아있을 때 마무리하고, 도메인 결정 묶음 거쳐 EOS 큰 토픽으로.
 
 ---
 
@@ -32,121 +10,39 @@ A → B → C. 작은 청소로 직전 토픽 (PG-CONFIRM-LISTENER-SPLIT) 맥락
 
 ### A. 위키 정합 (큰 토픽 1)
 
-#### ~~TC-13 — payment-service EOS 전환 (위키 sync 잔여 갭) `[PR C]`~~ ✅ 완료 (PR #77, 2026-05-17)
+#### TC-13-FOLLOW-6 — ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
 
-PAYMENT-EOS-TRANSITION 봉인으로 완료. 상세: `docs/archive/payment-eos-transition/` (review 완료 후 이동 예정).
-
-**완료 내용**:
-1. `ConfirmedEventConsumer` → `KafkaTransactionManager` 통합 (EOS consumer wiring, PET-7)
-2. `KafkaProducerConfig` EOS-aware `stockCommittedProducerFactory` + `KafkaTransactionManager` + `stockCommittedKafkaTemplate` 빈 (transactional.id, PET-6)
-3. `payment_event_dedupe` 테이블 신설 (Flyway V2) + `JdbcPaymentEventDedupeStore` 어댑터 (PET-4/PET-5)
-4. `PaymentConfirmResultUseCase` 재작성 — D7 가드 + D5 멱등 마킹 + D8 multi-product 직접 발행 (PET-8)
-5. `StockOutbox` 묶음 16+ 파일 삭제 + `payment_stock_outbox` 테이블 DROP (Flyway V3, PET-9/PET-10)
-6. product-service `isolation.level=read_committed` 적용 (PET-11)
-7. Testcontainers 통합 5 시나리오 GREEN (PET-12)
-8. 위키 4개 + 영구 문서 6개 갱신 (PET-13/PET-14)
-
-#### ~~TC-13-FOLLOW-1 — multi-instance 확장 시 docker-compose hostname 처리 (DR-2 / L6)~~ ✅ 해소 (CAPACITY-AND-SCALEOUT, 2026-06-19)
-
-`docker-compose.apps.yml` `hostname: payment-service` 라인 제거(처방 a) → HOSTNAME=컨테이너ID 로 `transactional.id`(`${app}-${HOSTNAME:local}`) 인스턴스별 고유화. 2 인스턴스 fencing 실측: 정상/rebalance 중복 0·분산 편차 0.7%, 의도적 id 충돌(prefix 강제) 시에만 ProducerFenced 발생. 통찰: consumer-initiated EOS(`kafkaTransactionManager` wire-in)라 txn.id=`prefix+group+topic+partition` → 정상 배타 파티션은 prefix 충돌해도 무탈, **rebalance overlap 순간만 fencing** → 고유화의 가치는 정상 충돌 방지가 아니라 전환 안전성. 상세: `docs/archive/capacity-and-scaleout/`.
-
-#### ~~TC-13-FOLLOW-2 — `payment_event_dedupe` TTL 정리 스케줄러 (TC-11 통합)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
-
-`DedupeCleanupWorker` (`@Scheduled`) 가 `payment_event_dedupe` 의 `expires_at < now` 만료 행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 청소(TC-11)도 동시 처리. 단, product 측 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` `scheduler.enabled` 플래그 누락으로 운영 미작동이었음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화. 상세는 ## 완료 섹션.
-
-#### ~~TC-13-FOLLOW-7 — EOS commitTransaction 반복 실패 시 메시지 완전 유실~~ ✅ 완료 (DLQ-REACHABILITY, 2026-06-25, 이슈/브랜치 #114)
-
-`KafkaConsumerConfig.kafkaListenerContainerFactory` 에 `factory.setAfterRollbackProcessor(...)` 명시 연결 — 공유 `DeadLetterPublishingRecoverer`(비트랜잭션 `confirmedDlqKafkaTemplate`, 실패 EOS tx 와 분리) + `FixedBackOff`(신규 키 `payment.kafka.after-rollback.backoff.{interval,max-attempts}`, 기본 1000ms×5). backoff 소진 후 `events.confirmed.dlq` 발행 + `PaymentEosCommitFailureMetrics`(`payment_eos_commit_failure_dlq_total`). `PaymentEosIntegrationTest` #7 을 "DLQ 도달 + payment DONE + dedupe row 유지 + stock-committed 0건 + metric" 으로 전환. **잔여 over-sell 한계**(재고 확정 자동 복구 미수행, 회복 후 DLQ 재주입으로만 복구)는 수용 — TQ-1 후속. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
-
-#### ~~[PG-SELFLOOP-ATTEMPT-GAP] — pg-service self-loop attempt 한도/DLQ 런타임 미작동~~ ✅ 완료 (DLQ-REACHABILITY, 2026-06-25, 이슈/브랜치 #114)
-
-시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적 → 한도(`MAX_ATTEMPTS`=4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. 격리 도달 카운터 `PgDlqReachMetrics`(`pg_retry_exhausted_quarantine_total`) 는 QUARANTINED 전이 성공 지점(멱등). relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count 가능 — 방향이 조기 격리(무한 루프·금전 손실 없음)라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
-
-#### ~~TC-13-FOLLOW-3 — Kafka tx coordinator 가용성 모니터링~~ ✅ 완료 (대시보드 OBSERVABILITY-COMPLETION + 알람 ALERTING-RULES-AND-FAULT-DRILL)
-
-- **문제**: EOS 전환 이후 Kafka tx coordinator 의존 (L1). coordinator 장애 시 처리 멈춤 조기 탐지 수단.
-- **대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `business-dashboard.json` 에 코디네이터 / `kafka_producer_txn_*` 패널 추가로 가시화 확보.
-- **알람 해소 (ALERTING-RULES-AND-FAULT-DRILL, 2026-06-27)**: coordinator 그룹 3규칙(`KafkaCoordinatorTxnAbortRising`/`KafkaCoordinatorLagHigh`/`KafkaBrokerUnavailable`) + promtool 회귀. `KafkaBrokerUnavailable` 라이브 발화 실측. **잔여**: lag 임계 1000 은 단일 broker 미검증 baseline → 멀티 broker T4-B 재교정(DE2). Alertmanager 통지 채널 미도입.
-
-#### ~~TC-13-FOLLOW-4 — D7 가드 분기 모니터링~~ ✅ 완료 (메트릭·대시보드 OBSERVABILITY-COMPLETION + 알람 ALERTING-RULES-AND-FAULT-DRILL)
-
-- **문제**: `canApplyConfirmResult()` 가 false 로 noop 한 케이스 (QUARANTINED 늦은 APPROVED 등) 가 운영 시 얼마나 발생하는지 모니터링 수단.
-- **메트릭·대시보드 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)**: `payment_confirm_guard_skip_total{status}` 카운터(eager 6종 등록, [GUARD-SKIP-EAGER-REGISTER]) + `business-dashboard.json` guard_skip 패널.
-- **알람 해소 (ALERTING-RULES-AND-FAULT-DRILL, 2026-06-27)**: guard-skip 그룹(`GuardSkipDangerousStatusHigh`) + promtool 회귀. **잔여**: status 라벨이 위험(QUARANTINED+늦은 APPROVED)/양성(FAILED 재배달)을 미구분 → 수신 메시지 status 라벨화는 T4-B(DE1). Alertmanager 통지 채널 미도입.
-
-#### TC-13-FOLLOW-6 — `@Transactional` qualifier 명시 ✅ 완료 / ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
-
-- **문제**: `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 가 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택. `KafkaTransactionManager(EOS)` 와 별개 TM 으로 동작해 crash 시 at-least-once 재배달이 발생 가능.
+- **배경**: `PaymentConfirmResultUseCase.handle` 은 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 JPA TM 을 명시 고정한다(qualifier 명시 완료, EOS-FOLLOWUP-CLEANUP). `KafkaTransactionManager(EOS)` 와는 여전히 별개 TM 이라 crash 시 at-least-once 재배달이 발생 가능.
 - **정합 SSOT**: crash 내성 = 종결 가드 DONE+APPROVED 재발행 + product-service 결정적 키 dedupe 흡수 (CONFIRM-APPROVED-RESEND-GAP, #112 — 과거 "중복 시 발행 항상 진행(위키 line 141)" 은 dead branch 라 제거됨. CONCERNS.md L-1, CONFIRM-FLOW.md §5).
-- **완료 부분 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)**: (a) `@Transactional(transactionManager = "transactionManager", timeout = 5)` qualifier 명시 — 다중 TM 환경에서 `@Primary JpaTransactionManager` 명시 고정. best-effort 1PC 한계 + TM 분리 원칙 Javadoc 추가. `KafkaConsumerConfig` deprecated `setTransactionManager` → `setKafkaAwareTransactionManager` 교체.
-- **미채택 (잔여)**: (b) `ChainedKafkaTransactionManager` 도입 — JPA TM 과 Kafka TM 체인으로 원자성 강화. 운영 환경에서 at-least-once 허용 불가 수준의 중복 발생 시 재검토.
+- **미채택 (잔여)**: `ChainedKafkaTransactionManager` 도입 — JPA TM 과 Kafka TM 체인으로 원자성 강화. 운영 환경에서 at-least-once 허용 불가 수준의 중복 발생 시 재검토.
 
-#### ~~TC-13-FOLLOW-5 — D7 `isCompensatableByFailureHandler` 시맨틱 SSOT 정리 (DM2-2 후속)~~ ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
-
-겸용 `isCompensatableByFailureHandler()` 를 `canApplyConfirmResult()` (confirm 결과 적용 진입 가드) + `canCompensateStock()` (보상 가드) 두 메서드로 분리. 두 메서드 모두 READY/IN_PROGRESS/RETRYING 만 true, 종결/QUARANTINED/EXPIRED 동조 false. 기존 메서드는 코드베이스에서 완전 제거 (grep 0건). `PaymentEventStatusSplitMethodTest` + `PaymentEventStatusCrossInvariantTest` 로 회귀 가드. 상세는 ## 완료 섹션.
-
----
-
-### B. 코드 청결도 (측정 무관)
-
-#### ~~TC-4 — EXPIRED 만료 스케줄러 정책 명확화~~ ✅ 완료 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
-
-만료 정책을 명문화. "READY 만 직접 만료(`expire()` READY 가드) + IN_PROGRESS 정체분은 정합 스캐너(PaymentReconciler)가 READY 복원 후 만료"라는 2단 연쇄를 의도된 정책으로 확정. 만료 임계 30분을 `payment.expiration.ready-timeout-minutes`(기본 30)로 외부화, 스케줄러 키를 `scheduler.payment-expiration.*`로 정정(`payment-status-sync.*` fallback 체인, 운영 무중단). 상세는 ## 완료.
-
-#### ~~TC-8 — 시간 추상화 통합 (Clock / Instant / LocalDateTime 혼용 정리)~~ ✅ 완료 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
-
-표준 (a) `Clock` 빈 + `Instant` 채택. payment 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기, 4서비스 `Clock` 통일. 도메인은 `Instant` 인자 주입(now() 직접 호출 금지). UTC 저장 일관(hibernate.jdbc.time_zone=UTC + raw-JDBC connectionTimeZone=UTC + 명시 UTC Calendar). 벤더 승인 시각 `.toInstant()` 정규화. payment 도메인(PaymentEvent/PaymentOutbox) Instant 통일. 상세는 ## 완료 + PITFALLS §6/§13.
-
-### C. CLEANUP-BATCH-A 후속 등재
-
-#### ~~[NET-RETRY] — Feign ErrorDecoder 5xx 분기~~ ✅ 완료 (CLEANUP-BATCH-B, 2026-05-31)
-
-`ProductFeignConfig`/`UserFeignConfig` ErrorDecoder 에 502/504 → `*ServiceRetryableException` 승격(503 + Retry-After:5), 500 및 그 외 5xx 는 `IllegalStateException` 유지, 429/503 단일 예외 유지(예외 증식 최소화, 구분은 로그 status). cross-service 호출이 GET 단건 조회 전용이라 비멱등 재시도 위험 없음. PR #81.
-
-#### ~~[FLYWAY-USER-SEED-GAP] — user-service Testcontainers 검증 부재~~ ✅ 완료 (CI-PIPELINE-REDESIGN, 2026-06-08)
-
-user-service `FlywayDockerProfileTest`(product 동형 — docker profile seed 차단 회귀 가드)가 추가돼 `spring.flyway.locations: classpath:db/schema` override 가 무방어 상태 해소. `UserQueryUseCaseTest` 와 함께 user-service 가 통합테스트 보유 서비스로 전환. (CI fan-out 재설계 D8)
-
-### D. EOS-FOLLOWUP-CLEANUP 후속 등재
-
-#### ~~[PRODUCT-TIME-ABSTRACTION] — product-service 시간 추상화 부재~~ ✅ 완료 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
-
-product-service 에 `Clock.systemUTC()` 빈(`infrastructure/config/ClockConfig`) 도입. `DedupeCleanupWorker`/`StockCommitConsumer` 의 `Instant.now()` → `clock.instant()` 전환(grep 0건). `JdbcEventDedupeStore` raw-JDBC UTC 규약(connectionTimeZone=UTC default/docker + 명시 UTC Calendar) 적용으로 `NOW()` vs 앱 `Instant` split-brain 해소. 상세는 ## 완료.
-
-#### ~~[TIME-PRODUCT-NOW-UNIFY] — product dedupe `NOW()` → 앱 주입 `Instant` 통일~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
-
-`JdbcEventDedupeStore.recordIfAbsent` 의 만료행 삭제 SQL `expires_at < NOW()` 를 호출자 주입 `Instant`(`expires_at < ?`)로 통일해 DB 시계 의존 제거. 포트 `recordIfAbsent` 에 `now` 인자 추가, 진입점(`StockCommitConsumer`)이 `now` 1회 산출 후 전 경로 동일 전달. 실사용 0건 `existsValid`·`SQL_EXISTS_VALID`·미사용 `Clock` 필드 전건 제거. `connectionTimeZone=UTC` 는 raw-JDBC 바인딩 backstop 으로 존치. 상세: `docs/archive/time-model-followup/COMPLETION-BRIEFING.md`.
-
-#### ~~[TZ-UTC-BACKSTOP] — 컨테이너/JVM TZ=UTC 명시~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
-
-6개 서비스 TZ backstop 3겹 적용 — Dockerfile `ENV TZ=UTC` + `ENTRYPOINT` JVM `-Duser.timezone=UTC` + compose `environment.TZ=UTC`(eureka 는 `docker-compose.infra.yml`). 동일값 멱등 defense-in-depth, auditing UTC化와 별개 안전망.
-
-#### ~~[BASEENTITY-AUDIT-SOURCE] — BaseEntity auditing 소스 일원화~~ ✅ 완료 (TIME-MODEL-FOLLOWUP, 2026-06-07)
-
-payment `BaseEntity` audit 컬럼(`created_at/updated_at/deleted_at`) `LocalDateTime` → `Instant` + Flyway V4 `DATETIME` → `DATETIME(6)` 승급 + `clockDateTimeProvider` `Instant` 반환. 엔티티 매핑 경계 수동 `.toInstant(UTC)` 변환 제거, `createdAt updatable=false` 보존. (pg/product/user 는 auditing superclass 부재 — "다른 서비스 일원화" 대상 없음 확인.)
-
-#### ~~[SCHEDULER-ENABLED-GATE] — dedupe cleanup worker 활성화 정책 문서화~~ ✅ 완료 (CLEANUP-BATCH-D, 2026-06-14)
-
-payment 는 `application-docker.yml` / `application-benchmark.yml` 에 `scheduler.enabled: true` 존재(기존), product 는 `application-docker.yml` 에 `scheduler.enabled: true` 추가(CLEANUP-BATCH-D Task 3). 활성화 정책(게이트 = `SchedulerConfig` / 서비스별 매트릭스)은 `STACK.md` "스케줄러 활성화 정책" 절에 문서화.
-
-#### ~~[CLEANUP-FAILURE-COUNTER] — dedupe cleanup 실패 메트릭 부재~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
-
-payment `DedupeCleanupWorker` `payment_event_dedupe.cleanup_failed_total` + product `DedupeCleanupWorker` `stock_commit_dedupe.cleanup_failed_total` Micrometer Counter 추가 — `deleteExpired` 실패 시 ERROR 로그 + 카운터 increment 로 실패 누적 가시화. (OBSERVABILITY-COMPLETION D14)
-
-#### ~~[GUARD-SKIP-EAGER-REGISTER]~~ ✅ 완료 (OBSERVABILITY-COMPLETION verify, 2026-06-11)
-
-`PaymentConfirmGuardSkipMetrics` 생성자에서 `canApplyConfirmResult()==false` 6종(DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED/QUARANTINED) 카운터를 eager 등록으로 전환. 기동 즉시 0 시리즈 노출 보장. verify 라이브 보정(Fix-3) 커밋에 포함.
-
-#### ~~[SPOTBUGS-TEST-DEBT] — payment-service `spotbugsTest` 사전 부채~~ ✅ 완료 (CLEANUP-BATCH-B, 2026-05-31)
-
-NP_NULL 4건 + EI_EXPOSE_REP2 1건을 **전부 코드 정정으로 해소(억제 0건)**. NP_NULL 은 명시적 `if (x == null) throw` 가드(`Objects.requireNonNull` 은 SpotBugs 6.0.9 가 null-억제자로 인식 못 함), EI_EXPOSE_REP2 는 `FakeMessagePublisher` 저장 타입을 `Throwable` → `Supplier<? extends Throwable>` 전환. build 게이트 회복. PR #81.
+### B. EOS-FOLLOWUP-CLEANUP 후속 등재
 
 #### [CLEANUP-BATCH-B 후속] — 커버리지 게이트 / 빌드 스크립트 잔여 (CLEANUP-BATCH-B, 2026-05-31)
 
-- ~~**user-service / product-service 커버리지 게이트 무실효(user 0.0 / product 0.40)**~~ ✅ 해소 (CI-PIPELINE-REDESIGN 외, 실측 2026-06-14) — 현재 `jacoco.lineCoverageMinimum` user 0.97 / product 0.97 로 상향돼 실효 게이트. user 는 `UserQueryUseCaseTest` 보강으로 측정 대상 확보. gateway·eureka 만 0.0(측정 대상 클래스 0 — 라우팅/디스커버리 전용이라 불가피).
-- ~~**deprecated Groovy space-assignment 문법**~~ ✅ 해소 (CLEANUP-BATCH-D Task 2, 2026-06-14) — 루트 + 4서비스 `build.gradle` 5곳 `events "..."` → `events = ['...']` 리스트 할당 전환 완료.
 - **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
-- ~~**GitHub Actions Node.js 20 deprecated**~~ ✅ 이미 해소 — CI 액션이 `actions/checkout@v6` 등 Node.js 24 지원 버전으로 이미 업그레이드 완료됨(CLEANUP-BATCH-D 착수 전 기준). 잔류 stale 항목.
+
+### C. 코드 확인 필요 항목 (진단 단계 발견 — 코드 수정 없음, 등재만)
+
+> 아래 3건은 `DOCS-CONSISTENCY-OVERHAUL` 진단(§4.5) 중 문서 정정 범위를 벗어난 코드측 발견이다. 데드 코드/회귀 여부 판정은 사용자 확인이 필요하며, 이 항목들은 확인 필요성만 등재한다.
+
+#### [PAYMENT-OUTBOX-INFLIGHT-UNUSED] — REQUIRES_NEW 선점 경로 프로덕션 미사용
+
+- **현황**: `PaymentOutboxUseCase.claimToInFlight`(REQUIRES_NEW 선점)·`incrementRetryOrFail` 프로덕션 호출처 0 — `OutboxWorker` 는 `recoverTimedOutInFlightRecords`/`findPendingBatch` 만 호출한다. 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX)는 롤백으로 PENDING 복귀 후 `OutboxWorker` 5초 주기 배치가 재픽업 — retryCount 증가·backoff 없이 무백오프로 재시도된다.
+- **영향**: `nextRetryAt` 기반 backoff 설계가 이 경로에서는 실효되지 않는다 — 벤더/브로커 부하 시 재시도 폭주 가능성. IN_FLIGHT 타임아웃 회수(`recoverTimedOutInFlightRecords`)는 워커 비정상 종료 등 드문 경로의 보조 안전장치로만 유효.
+- **처방**: 단일 TX 즉시 재시도가 충분하다는 의도된 단순화인지, REQUIRES_NEW 선점을 실제로 연결했어야 하는 미완성 회귀인지 코드/설계 이력 확인 필요. 데드 코드 판정(제거 여부)은 사용자 확인 필요.
+
+#### [STRUCTURED-LOGGING-MASKING-GAP] — 민감정보 마스킹 메커니즘 대체 없이 소실 추정
+
+- **현황**: `MaskingPatternLayout`(로그 라인 민감정보 마스킹) 클래스가 코드베이스 전건 grep 0 — `logback-spring.xml` 에도 커스텀 `PatternLayout` 서브클래스나 마스킹 설정이 없다. 위키 `structured-logging.md` 는 이 메커니즘을 여전히 현재형으로 서술하나(진단 §4.5.5), 실제로는 대체 구현 없이 사라진 것으로 보인다.
+- **영향**: 로그에 민감 필드가 마스킹 없이 그대로 남는 잠재 회귀 — 도메인 리스크 우선순위 높음.
+- **처방**: 의도적 제거(다른 계층에서 마스킹을 대체 수행 등)인지 회귀인지 코드 확인 필요. 대체 메커니즘 부재가 확정되면 별도 토픽으로 마스킹 재도입 검토.
+
+#### [PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH] — 콜스택 기반 trigger 자동 감지가 존재하지 않는 클래스명 참조
+
+- **현황**: `PaymentStatusMetricsAspect.detectTriggerFromCallStack()` 이 `className.contains("PaymentConfirmService")`/`"PaymentRecoverService"` 문자열 매칭으로 trigger 를 판정하나, 두 클래스명 모두 현재 payment-service 코드베이스에 존재하지 않는다(`OutboxAsyncConfirmService`/`PaymentConfirmResultUseCase` 만 존재, `PaymentRecoverService` 는 전체 삭제됨).
+- **영향**: 이 메서드가 항상 폴백(예: "auto")으로 빠질 가능성 — 메트릭 라벨의 trigger 구분이 사실상 무의미해질 수 있다.
+- **처방**: 매칭 대상 클래스명을 현재 클래스명으로 갱신할지, 이 자동 감지 로직 자체를 폐기할지 코드 확인 필요.
 
 ---
 
@@ -202,10 +98,10 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 - **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장(scale-out 차단, MySQL lock/IO + Kafka EOS commit 직렬화). 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 재측정. USL N≥3 확장 시 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.
 - **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향 → 고발행 시 consumer 백로그 비대칭(한 인스턴스만 적체).
 - **payment graceful shutdown + gateway retry** — 인스턴스 restart/scale 시 가용성 갭 16%(다운 인스턴스로 라우팅된 confirm http_fail). TC-12(pg worker drain 보류)와 결 다름 — payment 는 무중단 배포 목적.
-- **fencing in-flight 재고 갭 영구성 관찰** — 충돌/restart 시 redis<RDB 미세 갭(0.1%대, fencing이 stock-committed EOS abort → IN_PROGRESS in-flight 비대칭, reconciler cascade 아님). 재배달 EOS 재성공 자연 종결 vs `.dlq` 낙착 후 reconciler backstop 회수인지 장기 관찰. TQ-7(`decrement:done` token 정합)과 연계.
+- **fencing in-flight 재고 갭 영구성 관찰** — 충돌/restart 시 redis<RDB 미세 갭(0.1%대, fencing이 stock-committed EOS abort → IN_PROGRESS in-flight 비대칭, reconciler cascade 아님). 재배달 EOS 재성공 자연 종결 vs `.dlq` 낙착 후 reconciler backstop 회수인지 장기 관찰. `decrement:done` token 정합(STOCK-COMPENSATION-OTHER-PATHS 완료분)과 연계.
 - **상세 SSOT**: `docs/archive/capacity-and-scaleout/` REPORT 사이클 6/7.
 
-### Phase 4 후속 — 자동 운영 도구 (7개)
+### Phase 4 후속 — 자동 운영 도구 (6개)
 
 #### TQ-1 — DLQ 처리 정책 + admin tool
 
@@ -240,27 +136,12 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 - `PgGatewayPort.cancel(...)` 인터페이스만 존재
 - 운영 cancel 정책 + 부분 환불 + audit trail
 
-#### ~~TQ-7 — STOCK-COMPENSATION-OTHER-PATHS (재고 보상 경로 정리)~~ ✅ 완료 (2026-06-21, 이슈/브랜치 #106)
+### 측정 의존 코드 청결도 (6개)
 
-- 경로 2(실패 보상 가드 `executePaymentFailureCompensationWithOutbox` + ADR-04 형제 3개) 死 코드 제거, 경로 1(`OutboxAsyncConfirmService.compensateStock`) 보상 폐기 = 재고 차감 유지로 과매도 0 + 미복구 가시화(`StockRetentionMetrics` / `STOCK_RETENTION_UNRECOVERED`). dedup token 은 DEL 하지 않고 유지 — token DEL 이 confirm 동시성 멱등 보호막(SETNX)을 깨므로 기각. 상세: `docs/archive/stock-compensation-other-paths/COMPLETION-BRIEFING.md`
+#### TC-3 — 재고 동기화 정책 (부팅 외 시점) ✅ 부분 완료 (수동 단건 resync, 2026-07-01)
 
-#### ~~TQ-8 — 비동기 confirm 상태 머신 死 코드 정리 (TQ-7 후속)~~ ✅ 완료 (CLEANUP-BATCH-E, 2026-06-21)
-
-- RETRYING enum 케이스 + 상태 머신 가드(`done`/`fail`/`canApplyConfirmResult`/`isTerminal`)의 RETRYING 브랜치 + `toRetrying`/`markPaymentAsRetrying` + 동반 死 RETRY_ATTEMPT 이벤트 체인 + `PaymentOutbox.toFailed` + 재고 캐시 단건 API 5종(`decrement`/`rollback`/`findCurrent`/`set`/`current`) + `INVALID_STATUS_TO_FAILED` + `stock_decrement.lua` 제거.
-- 보존: `FAILED` enum / `INVALID_STATUS_TO_RETRY` 에러코드 (진입 경로 호출처 0 + Flyway 시드/제약 0 으로 DB 잔존 row 위험 갈음). `retryCount` 필드는 후속 RETRY-METRIC-CLEANUP(2026-06-22, 이슈 #110)에서 payment_event 死 metric(항상 0)으로 판정 — V5 컬럼 DROP + 도메인 필드 + `max_retry_reached` 게이지 + 死 enum 2종까지 완전 제거. 상세: `docs/archive/retry-metric-cleanup/COMPLETION-BRIEFING.md`
-
-### 측정 의존 코드 청결도 (8개)
-
-#### ~~TC-1 — observability 대시보드 현행화~~ ✅ 완료 (OBSERVABILITY-COMPLETION, 2026-06-11)
-
-- 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json` / `system-dashboard.json` 2분할 신설, 메트릭 이름 현행 코드 정합. (CONCERNS C-9 동반 해소)
-
-#### ~~TC-3 — 재고 동기화 정책 (부팅 외 시점)~~ ✅ 부분 완료 (수동 단건 resync, 2026-07-01)
-
-- 새 재고 모델: redis-stock = payment 의 선차감 캐시, product RDB = SoT
-- 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 1회 시드. 발산 시점: product RDB 가 외부(관리자 / 입고 / 외부 시스템)에서 변경될 때
-- **채택·구현**: 방안 (a) 수동 resync — payment `POST /admin/stock/resync/{productId}`(`StockAdminController` → `StockResyncUseCase`)가 `ProductPort.getProductInfoById` 로 product RDB stock 을 조회해 `StockCachePort.set` 으로 redis 를 덮어쓴다. 단건(productId) 단위로 발산 확인된 상품만 핀포인트 보정. `STOCK_CACHE_RESYNC` 로그 가시화
-- **한계 / 잔여**: 단순 SET 이라 in-flight 선차감을 덮어써 over-sell 가능 → 운영자가 트래픽 조용한 시점/특정 productId 한정 호출이 전제(`StockCachePort#set` Javadoc). 전체 일괄 resync·자동 발산 감지(방안 b 이벤트 기반 invalidation)는 미채택 — 외부 직접 RDB 변경 미탐지 한계 + cross-service 복잡도로 후속 여지. 방안 c(주기 재시드)는 in-flight 덮어쓰기 위험으로 기각
+- **완료**: payment `POST /admin/stock/resync/{productId}`(`StockAdminController` → `StockResyncUseCase`)가 `ProductPort.getProductInfoById` 로 product RDB stock(SoT) 을 조회해 `StockCachePort.set` 으로 redis-stock(선차감 캐시) 을 단건 덮어쓴다. `STOCK_CACHE_RESYNC` 로그 가시화.
+- **한계 / 잔여**: 단순 SET 이라 in-flight 선차감을 덮어써 over-sell 가능 → 운영자가 트래픽 조용한 시점/특정 productId 한정 호출이 전제(`StockCachePort#set` Javadoc). 전체 일괄 resync·자동 발산 감지(이벤트 기반 invalidation)는 미채택 — 외부 직접 RDB 변경 미탐지 한계 + cross-service 복잡도로 후속 여지. 주기 재시드는 in-flight 덮어쓰기 위험으로 기각.
 
 #### TC-6 — 가상 스레드 명시적 throttle / bulkhead 검토
 
@@ -274,20 +155,15 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 `stock_outbox` 는 PAYMENT-EOS-TRANSITION 봉인으로 폐기됨 (PR #77). `payment_outbox` retry 정책만 측정 검증 대상으로 남음.
 
 **현황**:
-- `payment_outbox`: `RetryPolicy` 활용 중 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. `incrementRetryCount(policy, now)` 호출 + `nextRetryAt` 시각 표현 + 한도 초과 시 종결
+- `payment_outbox`: `RetryPolicy` 존재 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. 단, 이 정책을 적용하는 `incrementRetryOrFail`(REQUIRES_NEW 선점 경로 전용)이 프로덕션 호출처 0([PAYMENT-OUTBOX-INFLIGHT-UNUSED] 참조) — 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX 롤백)는 retryCount 증가·`FAILED` 종결 없이 5초 주기 무백오프로 재시도된다. `PaymentOutboxStatus.FAILED` 도달 코드 경로도 현재 0건.
 
 **조정 필요 사항**:
-1. **payment_outbox 정책 재검토** — 현재 maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증. backoff 가 EXPONENTIAL 가 더 적합한 시나리오인지 검토 (Phase 5 자물쇠 — k6 측정 후)
+1. **payment_outbox 정책 재검토** — [PAYMENT-OUTBOX-INFLIGHT-UNUSED] 확인 결과에 따라 REQUIRES_NEW 선점 경로를 실제로 연결할지, 현재 단일 TX 무백오프 재시도를 유지하고 backoff 를 그 경로에 이식할지 결정 필요. maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증도 병행 (Phase 5 자물쇠 — k6 측정 후)
 
 **관련 코드**:
 - `payment-service/.../domain/PaymentOutbox.java` — retryCount + incrementRetryCount
 - `payment-service/.../application/config/RetryPolicyProperties.java`
 - `payment-service/.../domain/RetryPolicy.java`
-
-#### ~~TC-9 — FakePgGatewayAdapter 의 vendor 멱등성 시뮬 추가~~ ✅ 완료 (CLEANUP-BATCH-E, 2026-06-21)
-
-- main `FakePgGatewayStrategy` + test mock `FakePgGatewayAdapter` 양쪽에 "동일 paymentKey 재호출 시 `DuplicateApprovalDetectedEvent` 발행 + `PgGatewayDuplicateHandledException`" 멱등 모드 추가 (실 벤더의 이벤트+예외 이중 신호 재현, `ConcurrentHashMap` atomic 첫호출 판정).
-- self-loop retry -> 벤더 재호출 -> `DuplicateApprovalHandler` 흡수 -> 최종 종결(APPROVED 유지 + 재고 추가차감 0) 통합 테스트(`PgSelfLoopDuplicateAbsorptionIntegrationTest`)로 검증.
 
 #### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 
@@ -296,7 +172,7 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 **현황**:
 - product-service `stock_commit_dedupe` — ✅ `DedupeCleanupWorker` (`@Scheduled`) 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). `deleteExpired` 만료 행 일괄 DELETE + `SchedulerConfig` 활성 게이트. 단, worker 와 `SchedulerConfig` 게이트는 구현됐으나 `application-docker.yml` 에 `scheduler.enabled: true` 플래그가 누락돼 운영 docker 포함 어떤 배포에서도 실제 미기동 상태였음 → CLEANUP-BATCH-D Task 3 에서 플래그 추가로 정상화.
 - pg-service `pg_inbox` — **범위 제외**. 종결 행이 confirm 재배달 멱등 SoT 라 청소 대상 아님 (terminal row 보존이 멱등성 보장의 본질)
-- payment-service `payment_event_dedupe` — ✅ `DedupeCleanupWorker` 도입 완료 (TC-13-FOLLOW-2)
+- payment-service `payment_event_dedupe` — ✅ `DedupeCleanupWorker` 도입 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
 - payment-service 의 Redis dedupe (재고 차감/보상 token) 는 TTL 자동 expire — 문제 없음
 
 **관련 코드**:
@@ -331,36 +207,13 @@ PG-CONFIRM-LISTENER-SPLIT 이 의도적으로 측정 없는 baseline 으로 채�
 - 현재 구현은 단일 인스턴스 가정. `FOR UPDATE SKIP LOCKED` 가 멀티 인스턴스 환경에서도 중복 처리 0 을 보장하는지 검증
 - 검증 환경: 동일 pg-service 2~3 인스턴스 + 같은 `mysql-pg` DB + 동일 Kafka consumer group
 
-**항목 3 — 좀비 폴링 회수 traceparent 이어붙이기**: ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). 상세는 ## 완료 섹션.
+**항목 3 — 좀비 폴링 회수 traceparent 이어붙이기**: ✅ 완료 (EOS-FOLLOWUP-CLEANUP, 2026-05-29). 상세: `docs/archive/eos-followup-cleanup/COMPLETION-BRIEFING.md`.
 
 **관련 코드**:
 - `pg-service/.../infrastructure/scheduler/PgInboxImmediateWorker.java`
 - `pg-service/.../infrastructure/scheduler/PgInboxPollingWorker.java`
 - `pg-service/.../infrastructure/channel/PgInboxChannel.java`
 - `pg-service/src/main/resources/application.yml` (inbox 설정 키)
-
----
-
-## 완료
-
-- ✅ **TIME-MODEL-AND-EXPIRY** (PR B) — 시간 모델 Clock/Instant 통일 + 결제 만료 정책 명문화 (이슈/브랜치 #83, 2026-06-03). T1~T17 + DM1/DM2 + 가드. `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`
-  - **TC-8 해소**: 4서비스 시간 표준 = `Clock` 빈 + `Instant`. payment 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 폐기(grep 0). 도메인은 `Instant` 인자 주입(now() 직접 호출 0). UTC 저장 일관 — ORM `hibernate.jdbc.time_zone=UTC` + raw-JDBC `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` + 명시 UTC Calendar(payment/product dedupe). payment 도메인 `PaymentEvent`+`PaymentOutbox` 모두 Instant(T17).
-  - **TC-4 해소**: 만료 정책 명문화 — READY 만 직접 만료(`expire()` 가드), IN_PROGRESS 정체분은 정합 스캐너 복원 후 만료(2단 연쇄). 임계 외부화 `payment.expiration.ready-timeout-minutes`(기본 30), 스케줄러 키 `scheduler.payment-expiration.*` 정정(fallback 체인).
-  - **D8/PITFALLS §13**: 벤더 승인 시각 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 정규화(offset 보존, 정산 9시간 오차 차단). approvedAtRaw Kafka contract 무변경.
-  - **DM1**: `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` + Clock 기반 DateTimeProvider 로 created_at(만료 cutoff 기준) UTC 일관. **DM2**: product default/docker 양쪽 connectionTimeZone=UTC 로 dedupe split-brain 해소.
-  - `./gradlew test` 846 PASS, jacoco 게이트 통과. 후속 등재: [TIME-PRODUCT-NOW-UNIFY] / [TZ-UTC-BACKSTOP] / [BASEENTITY-AUDIT-SOURCE].
-- ✅ **EOS-FOLLOWUP-CLEANUP** — EOS 전환 후속 청소 (2026-05-29). 4묶음:
-  - (A) `PaymentEventStatus.isCompensatableByFailureHandler()` → `canApplyConfirmResult()` (confirm 결과 적용 진입 가드) + `canCompensateStock()` (보상 가드) 두 메서드 분리. 둘 다 READY/IN_PROGRESS/RETRYING 만 true, 종결/QUARANTINED/EXPIRED 동조 false. 기존 메서드 완전 제거 (grep 0건). `PaymentEventStatusEosGuardTest` 삭제 → `PaymentEventStatusSplitMethodTest` + `PaymentEventStatusCrossInvariantTest` 로 역할 이전 (TC-13-FOLLOW-5 해소).
-  - (B) `PaymentConfirmResultUseCase.handle` `@Transactional(transactionManager = "transactionManager", timeout = 5)` TM qualifier 명시 + best-effort 1PC 한계 Javadoc. `KafkaConsumerConfig` deprecated `setTransactionManager` → `setKafkaAwareTransactionManager` 교체 (TC-13-FOLLOW-6 qualifier 부분, ChainedKTM 미채택).
-  - (C/D) payment `payment_event_dedupe` + product `stock_commit_dedupe` 만료 행 청소 — `deleteExpired(Instant, int)` 포트 + `JdbcXxx` 구현 + `DedupeCleanupWorker` (`@Scheduled`) 신설. product 는 `SchedulerConfig` (`@EnableScheduling` + `@ConditionalOnProperty scheduler.enabled`) 동반 (TC-13-FOLLOW-2 + TC-11 product 해소).
-  - (E) pg `pg_inbox.stored_traceparent` 컬럼 추가 (Flyway V4) + `TraceparentExtractor` (OTel W3CTraceContextPropagator 래핑) 신설. consumer 추출 → RDB 저장 → `PgInboxPollingWorker` 폴링 회수 시 부모 추적 복원 (TC-15 항목 3 해소). traceparent 는 관측성 전용, 비즈니스 비참여.
-- ✅ **TC-13** — payment-service EOS 전환 (PR #77, 2026-05-17, 브랜치 #77). PET-1~PET-14 14개 태스크. `payment_event_dedupe` 신설 + `KafkaTransactionManager` 통합 + `StockOutbox` 묶음 16+파일 + `payment_stock_outbox` DROP + product-service `read_committed` + Testcontainers 5 시나리오 GREEN. 후속: TC-13-FOLLOW-1~5.
-- ✅ **TC-14** — pg-service vendor 호출 listener thread 분리 (PR #74, 2026-05-09). 상세: `docs/archive/pg-confirm-listener-split/COMPLETION-BRIEFING.md`
-- ✅ **TC-16** — PgInboxAmountService dead service 제거 (CLEANUP-BATCH-A CBA-1, 브랜치 #75). main 호출처 0건 확인 후 본체 + PgInboxAmountStorageTest 삭제. CONFIRM-FLOW.md / PAYMENT-FLOW.md dangling reference 정정.
-- ✅ **TC-2** — Seed 데이터 분리 (CLEANUP-BATCH-A CBA-2~5, 브랜치 #75). product/user-service `db/migration/` → `db/schema/` + `db/seed/` 물리 분리. docker profile `classpath:db/schema` 만 적용.
-- ✅ **TC-5** — Retryable 예외 ControllerAdvice 매핑 보강 (CLEANUP-BATCH-A CBA-6, 브랜치 #75). `ProductServiceRetryableException` / `UserServiceRetryableException` → 503 + `Retry-After: 5` 매핑 추가.
-- ✅ **TC-10** — pg-service 도메인 객체 생성자 패턴 통일 (CLEANUP-BATCH-A CBA-8/9, 브랜치 #75). PgInbox / PgOutbox `@Builder(allArgsBuilder/allArgsBuild) + @AllArgsConstructor(PRIVATE)` + factory only 노출. PgOutbox.create/createWithAvailableAt dead id 파라미터 제거.
-- ✅ **CLEANUP-BATCH-B** — 빌드·테스트 게이트 위생 (PR #81, 브랜치 #81, 2026-05-31). 6태스크. [SPOTBUGS-TEST-DEBT] 5건 코드 정정(억제 0, if-throw + Supplier 전환) + [NET-RETRY] 502/504 retryable 승격 + JaCoCo 게이트 실효화(루트 subprojects 공통화 + integrationTest 합산 + 서비스별 LINE minimum) + Gradle 8.14.4(Java 24 호환). 후속: `[CLEANUP-BATCH-B 후속]`(user 게이트/Groovy 문법/infra 집계).
 
 ---
 
@@ -374,4 +227,5 @@ PG-CONFIRM-LISTENER-SPLIT 이 의도적으로 측정 없는 baseline 으로 채�
 
 - 학습된 함정: `PITFALLS.md`
 - 알려진 우려: `CONCERNS.md`
+- 완료 이력: `docs/archive/README.md`
 - 직전 봉인 토픽 회고: `docs/archive/{msa-transition,pre-phase-4-hardening,stock-compensation-recovery,pg-confirm-listener-split}/COMPLETION-BRIEFING.md`
