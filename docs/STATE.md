@@ -1,10 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-06-30 (FAULT-INJECTION-RESILIENCE 완료·아카이브 — idle)
+> 최종 수정: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL discuss 완료 — plan 진입)
 
 ## 활성 작업
 
-없음 — 다음 토픽 대기.
+- **주제**: DOCS-CONSISTENCY-OVERHAUL — 문서 전수 정합 개선 (docs/context + README + 위키, 코드 대조 정정·완료 항목 정리·문체 교정)
+- **단계**: plan
+- **이슈/브랜치**: #120
+- **파일**: docs/topics/DOCS-CONSISTENCY-OVERHAUL.md
 
 ## 재개 메모
 
