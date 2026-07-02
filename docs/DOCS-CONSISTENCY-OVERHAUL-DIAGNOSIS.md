@@ -1,6 +1,6 @@
 # 문서 전수 정합 개선 — 진단 리포트
 
-> 최종 갱신: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견). 이전: 2026-07-02 (Task 1 — 사실 목록 + 리포트 뼈대)
+> 최종 갱신: 2026-07-02 (Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 진단: 대상 17파일에는 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT·FAILED dead-terminal·parallel-enabled 층위) 잔존 0건 확인 + 17파일 자체 교차 대조로 신규 S1 4건 발견(STRUCTURE.md 빌드/JaCoCo 서술 2건이 STACK.md/TESTING.md 와 정면 모순, STACK.md 스케줄러 매트릭스 user-service 누락, conventions/transactions.md 예시 qualifier 누락) + S4 중복 4건 SSOT 지정). 이전: 2026-07-02 (Task 2 — 플로우·대장·함정 5파일 진단: CONFIRM-FLOW/PAYMENT-FLOW 의 outbox REQUIRES_NEW/IN_FLIGHT stale 클러스터 확장 확정 + PaymentOutboxStatus.FAILED dead-terminal 신규 발견 + TODOS/CONCERNS 3분류 예비 판정 + PITFALLS ID 참조 오류 2건 발견)
 > 이 문서는 `docs/DOCS-CONSISTENCY-OVERHAUL-PLAN.md` Task 2~19 가 채워 넣는 **근거 대장**이다. 모든 수정(Task 7~17)은 이 문서의 항목을 근거로만 수행한다.
 > ship 시 `docs/archive/docs-consistency-overhaul/`로 이동한다.
 
@@ -341,7 +341,103 @@ topic 문서 "기준 예문" 마지막 불릿:
 
 ### 4.2 Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일
 
-> (Task 3 에서 채움 — #6/#7 은 위 §2 판정을 인계받아 확장)
+대상 17파일(`ARCHITECTURE`/`STRUCTURE`/`STACK`/`stack/flyway-operations`/`CONVENTIONS`/`TESTING`/`INTEGRATIONS` + `conventions/` 5파일 + `docs/smoke/` 5파일) 전건 통독 + §1 사실 목록(F1~F28) 대조 + S1 클러스터(outbox REQUIRES_NEW/IN_FLIGHT stale, `PaymentOutboxStatus.FAILED` dead-terminal, `parallel-enabled` 층위 위반) grep 재확인. **결론: 이 17파일에는 위 S1 클러스터 3종이 나타나지 않는다** — `REQUIRES_NEW`/`IN_FLIGHT`/`toFailed`/`parallel-enabled` 전건 grep 0건(플로우 서술은 CONFIRM-FLOW/PAYMENT-FLOW 에만 있고, 이 17파일은 아키텍처/구조/컨벤션/스모크 레벨이라 outbox 재시도 디테일을 서술하지 않음). 대신 **이 17파일 자체 내부 대조에서 신규 S1 모순 2건**을 발견했다(4.2.2) — 다른 문서를 흉내 낸 게 아니라 코드 대조로 직접 확인.
+
+#### 4.2.1 `docs/context/ARCHITECTURE.md`
+
+전건 통독 + F1~F28 대조. `재고 복구 가드 (폐기)` 행이 이미 F7 기준으로 정합(死 코드로 정확히 표기), dedupe/AOF/Redis 설정 등 세부 수치도 소스와 일치(`docker-compose.infra.yml:98` `appendfsync always`, `PaymentEventDedupeStore` 어댑터 서술 F5 일치). "다음 토픽: PHASE-4 — Toxiproxy 8종 장애 주입" 서술은 stale 로 의심했으나 재검증 결과 **여전히 정확** — `docker/toxiproxy.json` 은 kafka-proxy 1개(latency toxic 전용)만 정의돼 있고 ALERTING-RULES-AND-FAULT-DRILL/FAULT-INJECTION-RESILIENCE 가 수행한 것은 이 중 "코디네이터 lag/DLQ/가용성" 알람 검증용 latency 드릴뿐이라, TODOS.md T4-A(`Kafka 지연/DB 지연/프로세스 kill/보상 중복 방지/FCG timeout/Redis 다운/재고 발산/DLQ 소진` 8종 전체)는 여전히 미착수(Task 2 에서 이미 (c) 보존 판정). 이 파일 범위에서 S1/S2 신규 발견 없음.
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| 전체 | 재검토 결과 코드-문서 불일치·문서 내 모순 0건 — 변경 불요(보존) | ARCHITECTURE.md 전 항목을 F1~F28 + `docker/toxiproxy.json` + `docker-compose.infra.yml:98` 로 대조, 불일치 0 | 보존 | — |
+
+#### 4.2.2 `docs/context/STRUCTURE.md`
+
+`STRUCTURE.md` 자체가 아니라 **`STACK.md`/`TESTING.md` 와의 대조에서 코드-문서 불일치 2건을 신규 발견**했다 — 다른 문서 인용이 아니라 각 주장을 `build.gradle` 로 독립 재확인한 결과 `STRUCTURE.md` 쪽이 코드와 어긋난다.
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L169 (§빌드 트리거) | "`./gradlew test` \| 전 모듈 **단위 + 통합** 테스트 (Testcontainers MySQL/Redis 포함)" — 실제로는 `test` task 가 `integration` 태그를 **제외**한다(단위만). `STACK.md:117` "`./gradlew test` \| 단위 테스트만 (`integration` 태그 제외)" 가 정확 | `build.gradle:66-67` — `useJUnitPlatform { excludeTags 'integration' }` | "전 모듈 단위 + 통합 테스트" → "전 모듈 단위 테스트만(`integration` 태그 제외, 통합은 `integrationTest` 별도 task)"로 정정 | **S1** (신규 발견, `STACK.md` 와 정면 모순) |
+| L177 (§정적 분석) | "JaCoCo: **모듈별** `build.gradle` 의 `jacocoTestReport` + `jacocoTestCoverageVerification`" — 실제로는 루트 `build.gradle` 의 `subprojects` 블록 안에 태스크 정의가 전부 있고, 서비스별 `build.gradle` 에는 `ext.jacoco.lineCoverageMinimum` 값만 존재(태스크 블록 없음). `TESTING.md:131` "설정 위치: 루트 `build.gradle` `subprojects` 블록 공통(4서비스 일괄). payment-service 개별 블록은 제거됨" 이 정확 | 루트 `build.gradle:20`(`subprojects {`)~`178`(`jacocoTestCoverageVerification {`) 안에 태스크 정의, `payment-service/build.gradle:15` 는 `ext` 값만 | "모듈별 `build.gradle` 의" → "루트 `build.gradle` `subprojects` 블록(4서비스 공통)의" 로 정정 | **S1** (신규 발견, `TESTING.md` 와 정면 모순) |
+
+#### 4.2.3 `docs/context/STACK.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L98-110 (§스케줄러 활성화 정책 — 매트릭스 + 역할별 목록) | "서비스별 활성 매트릭스"가 payment/product/pg/eureka·gateway 4행만 나열하고 **user-service 가 전체 누락**됨. 그러나 user-service 도 `SchedulerConfig`(`@EnableScheduling` + `@ConditionalOnProperty(scheduler.enabled=true)`)를 보유하고 `DependencyHealthMetrics`(`@Scheduled(fixedDelayString="${metrics.user.dependency.polling-interval-seconds:10}000")`)가 실제로 그 게이트 아래 동작한다(FAULT-INJECTION-RESILIENCE 에서 신규 도입 — STATE.md 재개 메모의 "user `@EnableScheduling` 누락" 갭도 이 컴포넌트 관련). 추가로 "스케줄러 역할별 목록" 불릿도 payment/pg/product 3개뿐이고 4서비스 공통 `DependencyHealthMetrics`(availability 알람이 소비하는 폴링 게이지, ARCHITECTURE.md 는 이미 정확히 "4서비스" 로 서술)가 어느 서비스 목록에도 등재되지 않음 | `user-service/.../infrastructure/config/SchedulerConfig.java:19-24`(`@EnableScheduling` + `@ConditionalOnProperty`), `user-service/.../infrastructure/metrics/DependencyHealthMetrics.java:89`(`@Scheduled`) — payment/pg/product 동일 클래스도 각각 `@Scheduled` 확인(`payment:115`, `pg:110`, `product:89`) | 매트릭스에 user-service 행 추가("`scheduler.enabled=true` 필요, 비활성/활성" — payment/product 와 동일 패턴), 4개 역할별 목록 불릿에 각각 `DependencyHealthMetrics`(의존성 가용성 폴링 게이지, availability 알람 소비) 추가 | **S1** (신규 발견 — FAULT-INJECTION-RESILIENCE 반영 누락, 헤더는 "6/30 ship 반영됨"이라 주장하지만 이 섹션은 실제로 안 됨) |
+
+#### 4.2.4 `docs/context/stack/flyway-operations.md`
+
+`STACK.md` §DB 마이그레이션이 상세를 이 문서로 위임(SSOT 이미 명확)하는 패턴이 잘 지켜짐. 두 패턴(payment/pg=`db/migration` 단일 vs product/user=`db/schema`+`db/seed`) 서술을 `V*.sql` 실제 디렉토리 구조와 대조 — 일치. `MissingMigrationException` 3-step 대응 절차도 코드(`spring.flyway.ignore-migration-patterns` 기본값 `*:future` only)와 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.5 `docs/context/CONVENTIONS.md` (인덱스)
+
+9줄, 5개 하위 문서 링크만 — 대상 5파일과 제목 1:1 대응 확인(파일 경로·앵커 유효). 신규 발견 없음(보존).
+
+#### 4.2.6 `docs/context/TESTING.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L166-178 (§현재 테스트 카운트) | "2026-06-14 기준" 스냅샷(873/48) — §2 표본 #7 인계 확장. 정확한 최신 카운트는 여전히 미확정(수정 시점 재실행 필요) | F26(`@Test` grep 342/240/50/9, 이후 13+ 토픽에서 추가/삭제) — Task 3 재확인으로 grep 재실행하니 payment 단위 파일 기준 `@Test` 합계가 F26 시점과도 또 달라져 있음(최신 파일 목록에 `DependencyHealthMetricsTest` 4서비스·`StockResyncUseCaseTest`·`PgConfirmListenerSplitIntegrationTest` 등 F26 이후 신규 파일 다수 확인) — 스냅샷이 계속 낙후되는 구조적 문제 재확인 | Task 9 수정 시점 `./gradlew test`/`integrationTest` 재실행 값으로 갱신(§2 #7 결론과 동일) | **S3** (표본 #7 확장 재확인) |
+
+**S4 중복 발견**: `TESTING.md` §JaCoCo 커버리지 정책(L124-137, 측정대상/제외이유/게이트 산정 근거까지 상세)과 `STACK.md` §정적 분석 도구(L128, 같은 수치·같은 "단위 test exec 기준" 문장을 압축 재서술)이 사실상 동일 내용을 두 곳에서 설명 — SSOT 지정안은 4.2.7 이후 별도 절(4.2.18) 참고.
+
+#### 4.2.7 `docs/context/INTEGRATIONS.md`
+
+grep 상 "Elasticsearch/Logstash" 매치가 있었으나 실제로는 `net.logstash.logback:logstash-logback-encoder`(JSON 인코더 라이브러리명일 뿐, Elasticsearch 서버 언급 아님) — `관측성 통합` 표는 정확히 "Loki | Logback LogstashEncoder + LogFmt → Promtail/직접 push" 로 F19(Loki/Promtail 스택)와 일치. `PgConfirmPort`/`PgStatusLookupPort` 포트 분리, 502/504 retryable 승격(`ProductFeignConfig.java:54,56` `HttpStatus.BAD_GATEWAY`/`GATEWAY_TIMEOUT`), `pg_inbox.attempt` self-loop(F11) 등 전건 소스 대조 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.8 `docs/context/conventions/code-style.md`
+
+주석 금지 ID 예시 목록(`D7`/`PET-8`/`TC-3`/`L-14`/`TQ-1` 등)이 현재도 유효한 식별자 체계와 일치, Builder/Lombok/Try 블록 패턴 모두 실제 코드 패턴(`PgInbox.createPending`, `PaymentEvent.done(Instant, Instant)`)과 대조해 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.9 `docs/context/conventions/error-logging.md`
+
+예외 계층 트리, `LogFmt` 사용법, AOP `@PublishDomainEvent`/`@PaymentStatusChange`/`@TransactionalEventListener(AFTER_COMMIT)` 패턴 서술을 실제 코드와 대조 — 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.10 `docs/context/conventions/kafka.md`
+
+groupId 네이밍(`payment-service`/`pg-service`/`pg-service-dlq`), `DefaultErrorHandler`+`FixedBackOff(1000ms, 5)`+not-retryable 3종(`MessageConversionException`/`IllegalArgumentException`/`IllegalStateException`) 서술을 `KafkaErrorHandlerConfig.java:21,72,75-77` 로 대조 — 일치. `max.poll.records` 미설정(default 500) 서술도 `application.yml` grep 으로 확인 — 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.11 `docs/context/conventions/testing.md`
+
+17줄, Bean Validation + TDD 흐름만 — `CLAUDE.md`/`commit.md` 룰과 대조해 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.12 `docs/context/conventions/transactions.md`
+
+| 문서 위치 | 문제 | 소스 근거 | 수정 방향 | 심각도 |
+|---|---|---|---|---|
+| L20-23 (예시 코드) | `PaymentConfirmResultUseCase.handle` 예시로 `@Transactional(timeout = 5)` 만 표기 — 실제 코드는 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 qualifier 를 **명시**한다(F1). 이 qualifier 는 바로 위 §0.3/CONCERNS L-1 이 다루는 EOS 트랜잭션 매니저 혼동 방지의 핵심 디테일이라, 컨벤션 문서의 "표준 예시"에서 빠지면 qualifier 없이도 되는 것처럼 오독될 위험이 있다 | `PaymentConfirmResultUseCase.java:116` — `@Transactional(transactionManager = "transactionManager", timeout = 5)`, 같은 파일 Javadoc L112-114 "qualifier `transactionManager` 는 `JpaConfig#transactionManager` 빈을 명시 지정 — Kafka `KafkaTransactionManager` 와의 혼동 방지" | 예시 코드에 `transactionManager = "transactionManager"` qualifier 추가 + 왜 명시하는지 1줄 근거(EOS 환경에서 `@Primary` 만으로는 의도가 코드에 드러나지 않음) 보강 | **S1** (신규 발견 — 표본 #1/CONCERNS L-1 과 같은 사실 축의 컨벤션 문서 반영 누락) |
+
+#### 4.2.13 `docs/smoke/alert-firing-check.md`
+
+25케이스(coordinator 6/guard-skip 3/dlq 7/availability 9) 표를 `observability/prometheus/rules/tests/*.yml` 실제 케이스 수·availability 드릴 4시나리오(a~d)를 `alert-firing-availability.sh` 로 대조 — 일치. "라이브 한계 명시"(consumer lag 비대칭 불가/txn abort 미발화) 서술도 F13/STACK.md §알람 규칙 서술과 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.14 `docs/smoke/infra-healthcheck.md`
+
+"13개 서비스 컨테이너"(인프라 8 + scalable 5) 를 `scripts/smoke/infra-healthcheck.sh:76-103` `EXPECTED_INFRA_SERVICES`(8)+`SCALABLE_SERVICES`(5) 로 대조 — 정확히 일치. Eureka 5개 앱 등록 서술도 ARCHITECTURE.md 와 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.15 `docs/smoke/observability-load.md`
+
+부하 생성기 옵션(`--profile`/`--fail-rate`/컨트롤 파일 축) 서술, "QUARANTINED/DLQ 패널은 단순 부하로 안 켜짐 → Phase-4 Toxiproxy 몫" 서술 — TODOS T4-A(미착수, 4.2.1 재확인) 와 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.16 `docs/smoke/observability-walkthrough.md`
+
+대시보드 바로가기 URL 의 UID(`payment-business-d001`/`payment-system-d001`)를 `observability/grafana/dashboards/{business,system}-dashboard.json` 실제 `"uid"` 필드로 대조 — 정확히 일치. "로그(orderId)→traceId→Tempo" 진입 경로 서술도 F19/STACK.md 와 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.17 `docs/smoke/trace-continuity-check.md`
+
+5개 서비스 hop(gateway→payment→pg/product→user/벤더) 서술, `ContextAwareVirtualThreadExecutors`/`PgOutboxChannel.offerNow`/`KafkaConsumerConfig` observation 참조를 ARCHITECTURE.md 횡단 관심사 표(F 대조 완료분)와 재대조 — 일치. S1/S2 신규 발견 없음(보존).
+
+#### 4.2.18 중복 서술(S4) — SSOT 지정안
+
+| 중복 내용 | 위치 A | 위치 B | SSOT 지정 | 근거 |
+|---|---|---|---|---|
+| JaCoCo 커버리지 게이트 값·정책(측정대상/제외/게이트 산정 근거/단위 test exec 기준) | `TESTING.md` §JaCoCo 커버리지 정책 (L124-137, 상세 — 제외 이유·산정 근거 포함) | `STACK.md` §정적 분석 도구 표 JaCoCo 행 (L128, 거의 동일 문장 압축 재서술) | **`TESTING.md`** (상세 근거 보유) | 두 서술이 같은 수치(payment 0.86/pg 0.93/product 0.97/user 0.97/gateway·eureka 0.0)와 같은 "게이트는 단위 test exec 기준" 근거 문장을 반복 — `STACK.md` 행은 "값·근거는 `TESTING.md`#jacoco-커버리지-정책 참고" 1줄로 축소 (Flyway 가 이미 이 패턴 사용 중, 4.2.4) |
+| 빌드 트리거 명령 표(`./gradlew build`/`test`/`:<svc>:test`/`:<svc>:integrationTest`) | `STRUCTURE.md` §빌드 트리거 (L166-171, 4.2.2 에서 `test` 범위 오류 발견) | `STACK.md` §빌드/검증 (L114-120, 정확 + `compose-up.sh`/`infra-healthcheck.sh` 까지 포함해 더 완전) | **`STACK.md`** (정확 + 더 넓은 범위) | 4.2.2 의 S1(모순) 과 동일 원인 — 두 표가 같은 명령 집합을 서로 다르게 서술하다 하나가 stale 화됨. `STRUCTURE.md` 절은 삭제하고 "빌드/검증 명령은 `STACK.md` 참고" 링크로 대체 |
+| Contract test 2-layer 패턴(ErrorDecoder + 어댑터 propagation) | `TESTING.md` §Contract test 패턴 (L73-101, 상세 — 표+시나리오) | `INTEGRATIONS.md` §Cross-service HTTP 내 "Contract test" 문단 (L92, 요약 1줄) | **`TESTING.md`** (상세 소유), `INTEGRATIONS.md` 는 요약 유지 | 요약과 상세 관계라 중복 자체는 경미(S4 minor) — `INTEGRATIONS.md` L92 에 `TESTING.md` 명시 링크 추가만 권고, 삭제 불요 |
+| CircuitBreaker "Phase 4 예정" 서술 | `ARCHITECTURE.md` 핵심 설계 결정 인덱스 "HTTP 어댑터 회복성" 행 (L181, 근거 없이 1줄) | `INTEGRATIONS.md` §벤더/Cross-service 회복성 (L94, "Phase 4 (T4-D) 예정" + fallbackFactory 마이그레이션 근거 포함) | **`INTEGRATIONS.md`** (근거 보유) | 경미 중복(S4 minor) — `ARCHITECTURE.md` 행에 "상세: `INTEGRATIONS.md`" 링크 추가 권고 |
+
+**완료 기준 대조**: 17파일 전부 페이지별 판정 존재(4.2.1~4.2.17, "보존" 판정도 표/문장으로 명시), S1(4건: STRUCTURE.md×2 + STACK.md×1 + conventions/transactions.md×1) 전건 소스 근거(파일:라인) 포함, S4 중복 4건 SSOT 지정 완료(4.2.18).
 
 ### 4.3 Task 4 — README + PAYMENT-FLOW-GUIDE
 
@@ -364,3 +460,4 @@ topic 문서 "기준 예문" 마지막 불릿:
 - [x] 항목 형식에 "기본값 층위 명시" 규칙 포함 (§0.3)
 - [x] 기준 예문 retry 카운트 불릿 재검증 완료 (§3.2)
 - [x] Task 2 — 플로우·대장·함정 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함 (§4.1)
+- [x] Task 3 — 잔여 에이전트 문서 12파일 + smoke 5파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함, 중복 서술(S4) SSOT 지정안 포함 (§4.2)

@@ -91,7 +91,7 @@ flowchart TD
 
 - [x] Task 1: 변경 사실 목록 + 진단 리포트 뼈대
 - [x] Task 2: 진단 — 플로우·대장·함정 5파일
-- [ ] Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일
+- [x] Task 3: 진단 — 잔여 에이전트 문서 12파일 + smoke 5파일
 - [ ] Task 4: 진단 — README + PAYMENT-FLOW-GUIDE
 - [ ] Task 5: 진단 — 위키 도메인 코어 12페이지
 - [ ] Task 6: 진단 — 위키 잔여 13페이지
@@ -147,7 +147,7 @@ flowchart TD
 - 17파일 전부 페이지별 판정 존재, S1/S2 전건 소스 근거 포함
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.2 신규 작성. 대상 17파일(ARCHITECTURE/STRUCTURE/STACK/stack/flyway-operations/CONVENTIONS/TESTING/INTEGRATIONS + conventions 5파일 + smoke 5파일) 전건 통독 + F1~F28 대조 + Task 2 확정 S1 클러스터 3종(outbox REQUIRES_NEW/IN_FLIGHT stale, `PaymentOutboxStatus.FAILED` dead-terminal, `parallel-enabled` 층위 위반) grep 재확인 — **이 17파일에는 3종 모두 잔존 0건**(REQUIRES_NEW/IN_FLIGHT/toFailed/parallel-enabled 전건 grep 0, 이 레벨 문서들은 outbox 재시도 디테일을 서술하지 않음). 대신 **17파일 간 상호 대조에서 신규 S1 4건 발견**(다른 문서 인용이 아니라 각각 `build.gradle`/소스로 독립 재확인): (1) `STRUCTURE.md` §빌드 트리거의 "`./gradlew test` = 전 모듈 단위+통합"이 `STACK.md` "단위만(`integration` 태그 제외)"과 정면 모순 — `build.gradle:66-67` `excludeTags 'integration'` 확인으로 `STACK.md` 가 정확함 확정. (2) `STRUCTURE.md` §정적 분석의 "JaCoCo 는 모듈별 `build.gradle`"이 `TESTING.md` "루트 `build.gradle` `subprojects` 블록 공통"과 모순 — 루트 `build.gradle:20-178` 대조로 `TESTING.md` 가 정확함 확정. (3) `STACK.md` §스케줄러 활성화 정책의 "서비스별 활성 매트릭스"+"역할별 목록"에서 user-service 전체가 누락돼 있으나 실제로는 user-service 도 `SchedulerConfig`(동일 게이트 패턴) + `DependencyHealthMetrics`(`@Scheduled`)를 보유(FAULT-INJECTION-RESILIENCE 도입, STATE.md 재개 메모의 "user `@EnableScheduling` 누락" 갭과 연결) — payment/pg/product 3서비스 역할 목록에도 동일 컴포넌트 누락 확인. (4) `conventions/transactions.md` 예시 코드가 `@Transactional(timeout = 5)` 만 표기해 실제 코드의 `transactionManager = "transactionManager"` qualifier(F1, CONCERNS L-1 과 같은 사실 축)가 빠짐 — 컨벤션 문서가 정작 그 qualifier 의 존재 이유를 가르치는 자리에서 빠뜨린 역설적 누락. §4.2.18 에 S4 중복 4건 SSOT 지정안(JaCoCo 정책 SSOT=`TESTING.md`, 빌드 명령 SSOT=`STACK.md`, Contract test 상세 SSOT=`TESTING.md`, CircuitBreaker 근거 SSOT=`INTEGRATIONS.md`) 수록. 대상 17파일 정정은 수행하지 않음(Task 9/10 범위). `./gradlew test` 대상 아님(문서만).
 
 ### Task 4: 진단 — README + PAYMENT-FLOW-GUIDE [tdd=false] [domain_risk=true]
 
