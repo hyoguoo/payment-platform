@@ -2,7 +2,7 @@
 
 > ⚠️ **이 문서는 사람 독자용입니다.** 결제가 브라우저 요청부터 최종 상태까지 어떻게 흐르고 어떻게 수습되는지를 도메인 언어로 풀어 설명합니다.
 > **에이전트(자동화) 운영 규칙**: 평소 작업 시 이 문서를 참조하지 않으며, **ship 단계에서만** 코드 변경에 맞춰 갱신합니다. 작업 정합의 기준(SSOT)은 짝 문서([PAYMENT-FLOW.md](PAYMENT-FLOW.md) / [CONFIRM-FLOW.md](CONFIRM-FLOW.md))입니다.
-> 최초 작성 2026-06-22 · 승급 2026-06-23 · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
+> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정, DOCS-CONSISTENCY-OVERHAUL Task 12) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
 > 표기 규칙: **도메인 표현** + (`메서드명`/`토픽`) 병기. §A 시퀀스의 1~28 단계와 §B-1 플로우차트의 `[n]` 라벨이 1:1 대응한다.
 
 ---
@@ -102,9 +102,9 @@ sequenceDiagram
 12. **커밋 직후 즉시 발행** — AFTER_COMMIT 리스너가 가상 스레드로 relay 호출 (`OutboxImmediateEventHandler` → `OutboxRelayService.relay`)
 13. **중복 발행 방지 선점** — `PENDING → IN_FLIGHT` 원자 CAS, 실패 시 포기(다른 워커 처리 중) (`claimToInFlight`)
 14. **확정 명령 Kafka 발행** — `payment.commands.confirm` (key=orderId, `PaymentConfirmCommandMessage`) (`messagePublisherPort.send`)
-    - 발행 실패 → TX rollback 이지만 `IN_FLIGHT` 유지 → 워커 폴백
+    - 발행 실패 → 예외가 relay 전체를 감싸는 단일 TX 를 롤백해 선점(13단계)까지 함께 되돌림 → PENDING 그대로 복귀
 15. **발행 완료** — `IN_FLIGHT → DONE` (`outbox.toDone`)
-    - 폴백: `OutboxWorker` (`@Scheduled` fixedDelay 5s) — `IN_FLIGHT` 5분 타임아웃 → PENDING 복귀 후 재픽업 (`recoverTimedOutInFlightRecords` + `findPendingBatch`)
+    - 1차 회복 경로: TX 롤백으로 PENDING 복귀한 건은 `OutboxWorker` (`@Scheduled` fixedDelay 5s)의 5초 주기 배치 재픽업이 곧바로 다시 집어간다 (`findPendingBatch`). `IN_FLIGHT` 5분 타임아웃 회수(`recoverTimedOutInFlightRecords`)는 워커 크래시 등 드문 경로의 보조 안전장치다.
 
 ### Phase 4 — 실제 PG사 호출 (pg-service)
 
@@ -212,8 +212,8 @@ flowchart TD
     end
 
     subgraph PUBREC["발행 회복 (Phase 3)"]
-        SENDF["Kafka 발행 실패"] --> HOLD["IN_FLIGHT 유지"]
-        HOLD --> OW["OutboxWorker @5s<br/>IN_FLIGHT 5분 타임아웃 → PENDING 복귀"]
+        SENDF["Kafka 발행 실패"] --> ROLLBACK["relay TX 전체 롤백<br/>PENDING 즉시 복귀"]
+        ROLLBACK --> OW["OutboxWorker @5s<br/>PENDING 배치 재픽업(1차 경로)"]
         OW --> REREL["relay 재시도"]
         STUCK["event IN_PROGRESS 장기체류"] --> RECON["PaymentReconciler @2분<br/>resetToReady"] --> OW
     end
@@ -252,7 +252,7 @@ flowchart TD
 | 장애 | 수습 동작 | 핵심 |
 |---|---|---|
 | payment 리스너 스킵·크래시 | `OutboxWorker` 가 PENDING + IN_FLIGHT 5분 타임아웃 분 재픽업 | `OutboxRelayService.relay` 재실행 |
-| Kafka 발행 실패(payment→broker) | `IN_FLIGHT` 유지 → 타임아웃 후 PENDING 복귀 → relay 재시도 | outbox CAS + 워커 폴백 |
+| Kafka 발행 실패(payment→broker) | relay TX 전체 롤백 → PENDING 즉시 복귀 → 5초 주기 재픽업 | `OutboxRelayService.relay` 단일 TX |
 | event IN_PROGRESS 장기 체류 | `PaymentReconciler`(`@Scheduled` 2분) `resetToReady` → 재발행 | 멈춘 결제 자가 치유 |
 | PG 일시 오류(5xx/timeout) | pg self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가(attempt<4) | 같은 토픽 재발행 |
 | PG 재시도 한도 초과(DLQ) | attempt≥4 → `insertDlqOutbox` → `PgDlqService` → `pg_inbox QUARANTINED` → payment `handleQuarantined`. 자동 격리 작동(DLQ-REACHABILITY) | `PaymentConfirmDlqConsumer` |
@@ -291,7 +291,7 @@ flowchart TD
         DECR{"[9] 재고 선점<br/>decrementStock"}
         ETX[["[10] 확정 TX 원자커밋<br/>READY→IN_PROGRESS + outbox PENDING"]]
         REL["[12~15] 확정 명령 발행<br/>OutboxRelayService.relay"]
-        OW["OutboxWorker @5s<br/>IN_FLIGHT 타임아웃 회수"]:::rec
+        OW["OutboxWorker @5s<br/>PENDING 배치 재픽업(1차)<br/>IN_FLIGHT 5분 타임아웃 회수(보조)"]:::rec
         RECON["PaymentReconciler @2분<br/>resetToReady"]:::rec
         RETU["보상 안 함·차감 유지<br/>StockRetentionMetrics"]:::rec
     end
@@ -304,7 +304,7 @@ flowchart TD
     A202 -. AFTER_COMMIT VT .-> REL
     A202 --> POLL
     REL -->|발행 성공| KC[/"payment.commands.confirm"/]
-    REL -. 발행 실패·IN_FLIGHT 유지 .-> OW
+    REL -. 발행 실패, TX 롤백/PENDING 복귀 .-> OW
     OW -. 재발행 .-> REL
     ETX -. IN_PROGRESS 장기체류 .-> RECON
     RECON -.-> OW

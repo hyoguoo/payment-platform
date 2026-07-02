@@ -100,7 +100,7 @@ flowchart TD
 - [x] Task 9: 정정 — 핵심 참조 문서 6파일
 - [x] Task 10: 정정 — conventions·smoke 11파일
 - [x] Task 11: 정정 — README
-- [ ] Task 12: 정정 — PAYMENT-FLOW-GUIDE
+- [x] Task 12: 정정 — PAYMENT-FLOW-GUIDE
 - [ ] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
 - [ ] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
 - [ ] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
@@ -264,7 +264,7 @@ flowchart TD
 - 리포트의 GUIDE 항목 전건 종결
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.3.2 S1 클러스터 5건(L105/L107/L214-217/L254-255/L294·L307-308) 전건 `docs/context/PAYMENT-FLOW-GUIDE.md` 반영. 정합 기준은 소스(리포트가 CONFIRM-FLOW.md/PAYMENT-FLOW.md 의 Task 7 정정 근거로 이미 재확인해 둔 `OutboxRelayService.java:49-78` 단일 `@Transactional`, `OutboxWorker.java:26,38,41`)를 그대로 따름 — "Kafka 발행 실패 → `IN_FLIGHT` 유지 → 워커 타임아웃 폴백"이던 서술 전건을 "발행 실패 → 예외가 relay 전체를 감싸는 단일 TX 를 롤백해 선점까지 함께 되돌림 → PENDING 그대로 복귀. 1차 회복 경로는 `OutboxWorker` 5초 주기 배치 재픽업(`findPendingBatch`), `IN_FLIGHT` 5분 타임아웃 회수(`recoverTimedOutInFlightRecords`)는 워커 크래시 등 드문 경로의 보조 안전장치"로 정정. §A 시퀀스 단계14(발행 실패 각주)·단계15(회복 경로 우선순위 각주), §B-2 PUBREC mermaid(`SENDF → ROLLBACK(relay TX 전체 롤백/PENDING 즉시 복귀) → OW(PENDING 배치 재픽업, 1차 경로) → REREL` 순서로 노드·엣지 재작성), §C 회복 경로 색인 표("Kafka 발행 실패" 행), §D 마스터 플로우차트(`OW` 노드를 "PENDING 배치 재픽업(1차)"+"IN_FLIGHT 5분 타임아웃 회수(보조)"로 역할 분리, `REL -. 발행 실패, TX 롤백/PENDING 복귀 .-> OW` 로 엣지 재라벨) 전건 수정. mermaid 노드 라벨 금지 문자(중괄호·중간점·유니코드 화살표·따옴표) 신규 추가분 미사용 확인. 문체(S5)는 Task 4 진단대로 수정 대상 없음(구조화 기술 문서 장르, grep 0건 — 보존). 문서 헤더에 "정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정, DOCS-CONSISTENCY-OVERHAUL Task 12)" 1줄 추가. `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.3.2 테이블 하단에 종결 마킹(`[Task 12 종결, 2026-07-03]`) + 리포트 헤더 "최종 갱신"에 Task 12 요약 추가. 리포트에 없는 추가 수정은 하지 않음(§C "payment 리스너 스킵·크래시" 행 등 나머지 부분은 4.3.2 "전건 검증 결과 정합" 판정 그대로 보존). `./gradlew test` 대상 아님(문서만, 코드 무변경).
 
 ### Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지 [tdd=false] [domain_risk=true]
 
