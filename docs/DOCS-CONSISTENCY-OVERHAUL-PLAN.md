@@ -101,7 +101,7 @@ flowchart TD
 - [x] Task 10: 정정 — conventions·smoke 11파일
 - [x] Task 11: 정정 — README
 - [x] Task 12: 정정 — PAYMENT-FLOW-GUIDE
-- [ ] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
+- [x] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
 - [ ] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
 - [ ] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
 - [ ] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
@@ -278,7 +278,7 @@ flowchart TD
 - 5페이지 리포트 항목 전건 종결, 위키 로컬 diff 생성 (커밋은 사용자)
 
 **완료 결과**
-> (execute에서 채움)
+> `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.4.1~4.4.5 근거로 위키 로컬 저장소(`payment-platform.wiki/`) 5페이지 파일 수정 완료(커밋은 사용자 — 별도 git 저장소). `outbox-pattern.md`: 빈 헤더 "## 표기 규칙" 삭제(표본 #11) + `payment_outbox` state diagram/상태표에 `FAILED` dead-terminal 각주 반영 + topic "문체 수정 기준" 절의 기준 예문("가장 정밀한 모델이다." 도입부 + 핵심 동작 3불릿)을 계산된 "후" 텍스트로 그대로 실반영(retry 카운트 불릿은 Task 1 재검증 결론 문구 사용) + 서사 후보 없음(근거 부족, 미강제). `outbox-channel-dispatch.md`: "관련 설정 → 발행 큐" 표에 누락된 `pg.outbox.channel.worker-count`(값 1) 행 추가 + 도입 배경 서사 섹션 신설(pg-confirm-listener-split, 2026-05-09) — DLQ 임계 모호성(L139, S2 후보)은 소스 재확인 전이라 미해결 보존. `pg-confirm-flow.md`: "결과 메시지 종류" 표의 FCG 관련 3셀 제거 + "향후 확장 — 최종 확정 게이트" 절을 "구현됐으나 미연결 — 최종 확정 게이트(FCG)"로 재작성해 표-본문 모순 해소(`docs/context/PAYMENT-FLOW.md` §4.9 판정과 결론 통일) + 도입 배경 서사 문장 1개 추가. `async-outbox.md`: "채널/Worker 설정 요약" YAML 에 default(50)/benchmark(100) 프로파일 층위 구분 문단·주석 추가(`parallel-enabled` 와 동일 축) + "주요 클래스 역할 정리" 표 + "관련 문서" 링크의 `RecoveryDecision` 전방 참조 2곳을 "(모놀리스 시점, 현재는 EOS 컨슈머 모델로 대체)"로 정정 + 말미 회고형 서사 섹션 "왜 이 구조가 사라졌는가" 신설(msa-transition, 2026-04-24). `tx-scope.md`: 재검증 결과 변경 없음(보존) — 서사 후보도 근거 부족으로 미강제. 세션 시작 시점에 이미 존재하던 uncommitted 변경(`outbox-channel-dispatch.md`/`pg-confirm-flow.md`의 폴링 traceparent 서술 + `trace-propagation.md`의 `stored_traceparent` RDB 복원 절 — 이 태스크가 작성하지 않음, DIAGNOSIS §4.4 항목 밖)은 건드리지 않고 보존. DIAGNOSIS.md §4.4.1~4.4.5 뒤에 종결 노트 + 헤더 최종 갱신 동기화. `./gradlew test` 대상 아님(위키·문서 전용, 코드 무변경).
 
 ### Task 14: 위키 2차 — 멱등·보상·재고 4페이지 [tdd=false] [domain_risk=true]
 
