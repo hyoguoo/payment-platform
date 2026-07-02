@@ -103,7 +103,7 @@ flowchart TD
 - [x] Task 12: 정정 — PAYMENT-FLOW-GUIDE
 - [x] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
 - [x] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
-- [ ] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
+- [x] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
 - [ ] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
 - [ ] Task 17: 위키 5차 — 잔여·인덱스 6페이지
 - [ ] Task 18: 재발 방지 장치 (스킬 4종 + doc-review 보강)
@@ -302,7 +302,14 @@ flowchart TD
 - 5페이지 리포트 항목 전건 종결
 
 **완료 결과**
-> (execute에서 채움)
+> `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.4.10~4.4.12 + §4.5.6(scenario-test)·§4.5.7(cross-validation) 근거로 위키 로컬 저장소(`payment-platform.wiki/`) 5페이지 파일 수정 완료(커밋은 사용자 — 별도 git 저장소).
+> - `state-management.md` — 12페이지 중 최대 단일 오류였던 배너("RecoveryDecision + FCG + 격리 사이클은 유지된다")를 "EOS(Exactly-Once-Semantics) 컨슈머 모델로 전면 대체됨"으로 재작성(S1 critical). "PaymentEvent 상태 머신" 절을 소스(`PaymentEventStatus.java` 8종, `PaymentEvent.java` 도메인 가드 6종) 기준 8상태(`RETRYING` 제거)로 전면 재작성(상태 정의·전환 다이어그램·가드표). "RecoveryDecision"·"격리 전 최종 확인"·"복구 사이클 전체 플로우" 3섹션을 "Phase 5 모델(폐기)" 단일 섹션으로 병합해 역사 기록으로 명확히 격하(S1 critical, 6분기 값 테이블·플로우차트는 보존). 신규 "현재 모델 — EOS 컨슈머" 절(진입 가드 → APPROVED/FAILED/QUARANTINED 3분기 플로우차트, `PaymentReconciler`, FCG 설계 완료·미연결 명시) + "생성 시점의 동기화, 이후의 독립 진행" 절(Outbox 발행 추적과 PaymentEvent 결과 반영이 완전히 분리된 두 Kafka 흐름임을 명시, 기존 "두 상태의 연동" 표가 전제하던 동일 틱 판정을 대체) 신설. "PaymentOutbox 상태 머신"은 dead-terminal 각주 + 다이어그램에서 도달 불가한 `IN_FLIGHT → FAILED` 전이 제거(Rule 1, `PaymentOutbox.java` 에 `toFailed()` 자체가 없음을 소스로 재확인). "복구 스케줄러 구성" 표에 `PaymentReconciler`(2분 주기) 신규 행 + 존재하지 않는 `OutboxImmediateWorker` → `OutboxImmediateEventHandler` 정정(S2 후보 확정). "RetryPolicy" 절은 outbox-pattern.md 의 `RetryPolicy`(F4)와 동일 설정(`PaymentOutboxUseCase.incrementRetryCount` 배선)임을 확정(S2 후보 확정)하고 프레이밍 문장만 "Outbox 발행 재시도 정책"으로 교체, 수치·공식은 소스와 일치해 보존. "설계 결정 요약"을 현재 모델 기준으로 전면 교체.
+> - `retry-recovery.md` — 배너·본문 변경 없음(보존, 진단대로 12페이지 중 모범 사례). "이 모델의 한계" 표 아래 retry-metric-cleanup 후일담 1줄(선택 서사) + "관련 위키" state-management 링크 설명을 현재 모델 기준으로 갱신(S2 파생 해소).
+> - `scenario-test.md` — "단위 테스트 — OutboxProcessingServiceTest" 섹션 전체(10개 시나리오 표 포함)를 "(폐기)"로 격하 — `OutboxProcessingService` 클래스·테스트가 통째로 삭제됐음을 명시(S1 critical, 배너 고지 범위를 넘는 신규 발견 확정 반영). "테스트 계층별 Fake 교체 지점" 표의 `FakeProductRepository` 행에 "(MSA 분리 전 — 포트 폐기)" 각주 + `ProductRepository` 포트 자체가 삭제되고 HTTP Feign(`ProductFeignClient`)으로 대체됐음을 설명하는 문단 추가(S1). "Fake 구현체 상세" 절(`FakeTossHttpOperator` 등)은 지시대로 Task 17 범위로 보류(S3, 미착수).
+> - `pg-strategy.md` — 배너를 "본문 클래스(`PaymentGatewayFactory`/`InternalPaymentGatewayAdapter`/`PaymentGatewayPort` 등)가 payment-service 에서 완전히 사라지고 pg-service 안에 다른 이름(`PgConfirmStrategySelector`/`PgStatusLookupStrategySelector`/`infrastructure.gateway.{toss,nicepay,fake}`)으로 재구성됨"으로 구체화(S1, "경계 이동" 수준 과소 서술 정정). 본문 상세 표·시퀀스는 지시대로 Task 17 범위로 보류(S2 후보, 미착수).
+> - `cross-validation.md` — 재검증 결과 전건 정합(보존, S1 없음) — 진단대로 변경 없음.
+> - **부수 정정(Rule 1)**: `compensation-tx.md` 의 state-management 상호 링크 2건("격리 전 최종 확인"/"복구 사이클 전체 플로우" 섹션명 인용, "관련 문서" 페이지 설명)이 위 섹션 재구성으로 dangling 될 상황을 함께 정정(새 섹션명 "Phase 5 모델(폐기)" 반영, 페이지 설명을 현재 모델 기준으로 재작성).
+> - mermaid 노드 라벨 금지 문자(유니코드 화살표 `→`) 신규/이관 다이어그램에서 `->` ASCII 로 전건 교체 확인. `DIAGNOSIS.md` §4.4.10~4.4.12 뒤 종결 노트 + 헤더 최종 갱신 동기화. `./gradlew test` 대상 아님(위키·문서 전용, 코드 무변경).
 
 ### Task 16: 위키 4차 — 아키텍처·관측성 5페이지 [tdd=false] [domain_risk=true]
 
