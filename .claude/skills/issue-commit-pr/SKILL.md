@@ -66,7 +66,7 @@ git commit -m "$(cat <<'EOF'
 
 Closes #<issue-number>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: <현재 에이전트 이름> <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -75,6 +75,7 @@ EOF
 - 타입 prefix는 영문: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 - 본문은 한국어
 - 구현 코드와 테스트 코드는 같은 커밋에 포함
+- `Co-Authored-By` 트레일러에는 커밋하는 현재 에이전트의 모델명을 넣는다 (예: `Claude Fable 5`)
 
 ## Step 6 — 브랜치 푸시
 

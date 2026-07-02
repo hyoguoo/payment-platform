@@ -29,7 +29,7 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 
 | 에이전트 | 모델 | 역할 |
 |---|---|---|
-| `reviewer` | Opus | 체크리스트 + 일반 품질 검토 (discuss/plan 게이트, ship/단독 리뷰) |
+| `reviewer` | Sonnet | 체크리스트 + 일반 품질 검토 (discuss/plan 게이트, ship/단독 리뷰) |
 | `domain-expert` | Fable | 결제 도메인 리스크 — 돈 새는 경로·상태 전이·멱등성·race, 소스 교차검증 |
 | `implementer` | Sonnet | PLAN 단일 태스크 TDD 실행 + 리뷰 finding 수정 + 커밋 |
 

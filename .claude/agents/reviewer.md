@@ -4,7 +4,7 @@ description: >
   payment-platform 워크플로우 산출물(설계 문서 / PLAN.md / 코드 diff)을 단계별
   체크리스트 + 일반 품질 관점으로 검토하고 verdict와 findings를 반환한다.
   discuss / plan 게이트, ship 코드 리뷰, 단독 리뷰에서 호출한다.
-model: opus
+model: sonnet
 effort: xhigh
 color: red
 tools: Read, Grep, Glob, Bash
