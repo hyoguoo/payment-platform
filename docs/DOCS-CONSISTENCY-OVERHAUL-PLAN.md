@@ -104,7 +104,7 @@ flowchart TD
 - [x] Task 13: 위키 1차 — outbox·확인 플로우·TX 경계 5페이지
 - [x] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
 - [x] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
-- [ ] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
+- [x] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
 - [ ] Task 17: 위키 5차 — 잔여·인덱스 6페이지
 - [ ] Task 18: 재발 방지 장치 (스킬 4종 + doc-review 보강)
 - [ ] Task 19: 최종 검증 스윕
@@ -321,7 +321,13 @@ flowchart TD
 - 5페이지 리포트 항목 전건 종결
 
 **완료 결과**
-> (execute에서 채움)
+> `DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.5.1~4.5.5 근거로 위키 로컬 저장소(`payment-platform.wiki/`) 5페이지 파일 수정 완료(커밋은 사용자 — 별도 git 저장소).
+> - `architecture.md` — domain 패키지 트리에서 완전 삭제된 `RecoveryDecision.java` 행 제거 + `PaymentEventStatus` enum 주석을 8종(`RETRYING` 제거)으로 정정 + `PaymentOutboxStatus` 주석에 `FAILED` dead-terminal 각주 추가(RD/RETRYING/FCG 클러스터 확장, S1). 핵심 설계 결정 표의 "Final Confirmation Gate (FCG)" 행을 "설계 완료, 미연결(dead code) — 상세는 [상태 관리](state-management)" 로 정정(S1 critical, 프로젝트 대표 설계 결정 표 위치라 파급력 큼).
+> - `msa-transition.md` — 토폴로지 mermaid 의 `redis-stock` 연결을 `Prod --> RedS` → `Pay --> RedS` 로 정정(S1+S2, `architecture.md`(`Pay --> RedS`, 정확)와의 정면 모순 해소 — `application.yml:99-101`/`docker-compose.apps.yml:47,57` 재확인 결과 payment-service 만 연결). "후속 예정" 절을 "Toxiproxy 장애 주입 드릴 + 알람 규칙 4그룹은 이미 구축 완료([metrics](metrics) 링크) / CircuitBreaker·k6 오토스케일러는 아직 미도입"으로 완료분·미착수분 분리(S3).
+> - `event-driven-choreography.md` — 재검증 결과 전건 정합(보존, S1 없음) — 진단대로 변경 불요, 13페이지 중 가장 정합된 페이지.
+> - `metrics.md` — 배너에 알람 규칙 4그룹(coordinator/guard-skip/dlq/availability) + 4서비스 공통 `DependencyHealthMetrics` 확장 반영(S1+S3, 이 페이지 주제 직결 완전성 갭 해소). "메트릭 목록" 표를 payment-service 결제 도메인 / 의존성 가용성(4서비스 공통) / pg-service PG 벤더 호출 3분할로 재구성 — 코드에서 완전 삭제된 `payment_health_max_retry_reached_total` 게이지 제거(S1, F9 확장) + `dependency_up{component}`/`dependency_health_last_poll_timestamp_seconds` 신규 행 추가(F14) + `TossApiMetrics`를 pg-service 소속으로 명시 분리(S1, pg-strategy 이관(4.4.12)의 메트릭 파생). `PaymentHealthMetrics` 섹션에서 코드에 없는 `max_retry_reached` 항목 삭제. 신규 "DependencyHealthMetrics — 의존성 가용성 감시" 절 + "알람 규칙 — Prometheus rule 평가" 절 신설(`Home.md` 신규 페이지 검토 결과(4.5.10, "신규 페이지 비강제, metrics.md 확장 권고")를 이 태스크에서 흡수). "비동기 플로우의 관측 맹점" mermaid 의 `RETRYING` 분기를 `QUARANTINED` 로 교체(RD/RETRYING/FCG 클러스터 해소). "관련 위키" structured-logging 링크 설명의 "ELK 연동"을 "Promtail/Loki 연동"으로 정정(§2 표본 #9 확장). "콜 스택 기반 trigger 자동 감지" 서술(존재하지 않는 클래스명 매칭)은 코드 쪽 이슈로 문서 수정 범위 아님 — Task 8 TODOS `[PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH]` 로 이미 등재돼 있어 재등재 없이 보존.
+> - `structured-logging.md`(13페이지 중 최대 오류, S1 critical 4건 전건 해소) — 배너에 "ELK→Promtail/Loki 완전 대체" + "마스킹 대체 메커니즘 없음" 고지 각 1줄 추가. "로깅 파이프라인 전체 흐름" 다이어그램을 Console appender → docker 로깅 드라이버(`com.hyoguoo.loki.enable` 라벨) → Promtail → Loki 로 전면 재작성(`logback-spring.xml` Console appender 전용 확인, `docker-compose.apps.yml:35` 라벨 확인). "TraceId 전파" 섹션에서 완전 삭제된 `TraceIdFilter`/`UUIDProvider` 서술을 OTel Micrometer Tracing 자동 MDC 전파(`MdcContextPropagationConfig`)로 교체 + [trace-propagation](trace-propagation) 링크(같은 위키 정확한 대조군 문서, 4.5.8 근거 재사용) — logback 의 traceId 출력 패턴 자체는 현재도 유효해 보존. "민감 정보 마스킹" 섹션은 헤더에 "(과거 구현 — 현재 대응 메커니즘 없음)" 명시 + 본문을 과거형으로 전환해 역사 기록으로 격하(`MaskingPatternLayout`/`maskPattern` 전건 grep 0 재확인) — 대체 여부는 `docs/context/TODOS.md` `[STRUCTURED-LOGGING-MASKING-GAP]` 코드 확인 필요 항목으로 이미 등재돼 있어 문서에는 사실만 반영. "Logstash 연동" 섹션을 "로그 전송 — Promtail 라벨 기반 수집"으로 전면 교체(과거 구현 요약 1문단 보존 + 현재 구현 표 신설). "설계 결정 요약" 표의 Kibana/Elasticsearch/`TraceIdFilter`/`LogstashEncoder` 관련 행을 Grafana(Loki)/OTel MDC/docker 로깅 드라이버 기준으로 정정, `MaskingPatternLayout` 행은 "(과거 구현, 현재 대응 메커니즘 없음)" 각주 추가.
+> - mermaid 노드 라벨 금지 문자(신규 다이어그램 `->` ASCII 화살표만 사용) 준수 확인. `DIAGNOSIS.md` §4.5.1~4.5.5 뒤 종결 노트 + 헤더 최종 갱신 동기화. `./gradlew test` 대상 아님(위키·문서 전용, 코드 무변경).
 
 ### Task 17: 위키 5차 — 잔여·인덱스 6페이지 [tdd=false] [domain_risk=false]
 
