@@ -105,7 +105,7 @@ flowchart TD
 - [x] Task 14: 위키 2차 — 멱등·보상·재고 4페이지
 - [x] Task 15: 위키 3차 — 상태 머신·복구·검증·PG 전략 5페이지
 - [x] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
-- [ ] Task 17: 위키 5차 — 잔여·인덱스 6페이지
+- [x] Task 17: 위키 5차 — 잔여·인덱스 6페이지
 - [ ] Task 18: 재발 방지 장치 (스킬 4종 + doc-review 보강)
 - [ ] Task 19: 최종 검증 스윕
 
@@ -339,7 +339,15 @@ flowchart TD
 - 6페이지 리포트 항목 전건 종결, 위키 내부 링크 깨짐 0건
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §4.5.8~4.5.11 전건 종결 — **위키 정정 단계(Task 13~17) 전체 완결**. 대상 6페이지(`trace-propagation.md`/`ai-workflow.md`/`Home.md`/`_Sidebar.md`/`_Footer.md`/`Benchmark-Report.md`) 전부 진단 판정("변경 불요·보존")대로 재확인돼 콘텐츠 실질 변경 0건 — 리포트 항목 종결 마킹만 수행.
+>
+> **Task 13 이월 확인 건 해소**: 세션 시작 시점부터 위키에 미커밋 상태로 존재하던 `pg_inbox.stored_traceparent` RDB 복원 서술(`trace-propagation.md` "폴링 워커 회수 경계" 절 + `outbox-channel-dispatch.md`/`pg-confirm-flow.md` 스팟체크 대상 문장, Task 13 완료 결과에 "이 태스크가 작성하지 않았고 출처 확인은 후속"으로 인계된 항목)을 소스 전건 대조 — `TraceparentExtractor.java`(`extractFromCurrentContext`/`restoreContext`, best-effort 폴백·레이어 격리 서술 일치) + `V4__add_pg_inbox_stored_traceparent.sql`(`pg_inbox.stored_traceparent VARCHAR(64) NULL`) + `PgInboxPollingWorker.processWithRestoredContext`(회수 전 `findStoredTraceparent` 조회 → `TraceparentExtractor.restoreContext` → `Scope.makeCurrent()` 활성화, 문서 서술과 코드 순서까지 정확히 일치) + `PgInboxPendingService.insertPendingAndPublish`(`storedTraceparent` 파라미터를 PENDING INSERT 시 저장) + `PaymentConfirmConsumer.consume`(소비 시점 `TraceparentExtractor.extractFromCurrentContext()` 추출 후 전달) — **서술 정확, 3파일 모두 그대로 유지**(수정 불요). "발행 측 폴링(`PgOutboxPollingWorker`)은 outboxId 만 보유해 새 root span 으로 시작"이라는 대조 서술도 재확인 일치.
+>
+> **위키 25페이지 내부 링크 스윕**: 전 페이지 `](...)` 링크(외부 URL·문서 내부 앵커 제외) 전건 추출 후 대상 파일 존재 여부 대조 — 페이지 간 링크는 전건 정상(파손 0건). `compensation-tx.md:213` 링크만 `state-management.md`(`.md` 확장자 포함 — 나머지 24개 위키 간 링크는 전부 확장자 없이 슬러그만 사용)로 서식이 어긋난 것을 발견 — 이 파일은 Task 14/15 종결 대상이라 Task 17 목표 6페이지 밖이지만 링크 스윕 자체가 25페이지 전건 대상이라 확장자만 제거해 나머지 링크와 표기 통일(문장·내용 변경 없음, 순수 링크 서식 1줄 정정). `Benchmark-Report.md` 내부 TOC 앵커(`#0-이-보고서를-읽기-전에` 등 9개)도 실제 헤더 슬러그와 전건 대조 완료 — 파손 0건.
+>
+> **6페이지 개별 재검증**: `trace-propagation.md`(stored_traceparent 절 포함 전건 소스 일치, 위 이월 건과 동일 근거) · `ai-workflow.md`(에이전트 모델 표가 "고지능/최고지능/중간지능" 추상 등급만 사용해 2026-07-02 Claude 5 모델 티어링 조정 이후에도 갱신 격차 없이 그대로 유효, 구체 모델명 미기재 설계 재확인) · `Home.md`/`_Sidebar.md`(22개 콘텐츠 페이지 + 자기 링크 전건 슬러그 일치, Phase 1~6+ETC 표 구성 변경 불요) · `_Footer.md`(3개 링크 전건 정상) · `Benchmark-Report.md`(배너·측정 시점 프레이밍 그대로 정확, 외부 슬러그 링크 0건이라 다른 페이지 재구성 영향 없음) — 전건 "변경 불요" 재확인.
+>
+> 대상 6페이지 콘텐츠 실질 변경 0건(링크 서식 정정 1건은 범위 밖 `compensation-tx.md`, 위키 25페이지 전체 대상 링크 스윕 완료 기준 충족을 위한 최소 수정). `./gradlew test` 대상 아님(위키·문서 전용, 코드 무변경).
 
 ### Task 18: 재발 방지 장치 [tdd=false] [domain_risk=false]
 
