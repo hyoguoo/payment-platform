@@ -81,6 +81,7 @@ critical N건 해소, major N건 처리, minor N건 기록.
 
 `context-update` 스킬 실행. `git diff main...HEAD --stat`을 시작점으로 범위 최소화.
 변경이 결제 흐름(컨트롤러·use case·Kafka 토픽·pg-service·재고 정산 등)에 닿으면, **사람 독자용** `docs/context/PAYMENT-FLOW-GUIDE.md`도 같은 변경에 맞춰 갱신한다 — 이 문서는 평소엔 참조하지 않고 **ship 단계에서만** 손댄다.
+작업이 `TODOS.md`/`CONCERNS.md` 등 대장 문서에 완료 항목을 남겼다면, `context-update` 스킬의 3분류 삭제 룰을 적용해 ✅ 마킹으로 쌓아두지 않고, 갱신한 문서의 헤더 "최종 갱신"을 본문과 동기화한다 (`_shared/checklists/ship-ready.md` documentation sync 항목 확인).
 
 ### B3. 완료 브리핑 작성
 
