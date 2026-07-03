@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -43,6 +43,12 @@
 - **현황**: `PaymentStatusMetricsAspect.detectTriggerFromCallStack()` 이 `className.contains("PaymentConfirmService")`/`"PaymentRecoverService"` 문자열 매칭으로 trigger 를 판정하나, 두 클래스명 모두 현재 payment-service 코드베이스에 존재하지 않는다(`OutboxAsyncConfirmService`/`PaymentConfirmResultUseCase` 만 존재, `PaymentRecoverService` 는 전체 삭제됨).
 - **영향**: 이 메서드가 항상 폴백(예: "auto")으로 빠질 가능성 — 메트릭 라벨의 trigger 구분이 사실상 무의미해질 수 있다.
 - **처방**: 매칭 대상 클래스명을 현재 클래스명으로 갱신할지, 이 자동 감지 로직 자체를 폐기할지 코드 확인 필요.
+
+#### [PG-RETRY-BACKOFF-OFF-BY-ONE] — pg-service 재시도 백오프 off-by-one 의심
+
+- **현황**: `RetryPolicy` javadoc 의 의도한 값(attempt=1 → 기준 2s, attempt=2 → 6s, attempt=3 → 18s, attempt=4 → 54s)과 실제 호출부가 어긋난다 — `PgVendorCallService.insertRetryOutbox`(`PgVendorCallService.java:190-192`)가 `computeBackoff(attempt)` 가 아니라 `computeBackoff(nextAttempt)`(= 실패한 attempt + 1)를 호출해, 런타임 첫 재시도 대기가 의도된 ~2s 가 아니라 ~6s 부터 시작한다(이후 18s, 54s 로 한 단계씩 밀림).
+- **영향**: 재시도 정책의 실제 대기 시간이 설계 문서화된 의도보다 한 단계 길다 — 위키 `pg-confirm-flow.md` 는 이번 수정에서 런타임 실측값(6s/18s/54s) 기준으로 정정했으나, 애초 설계 의도(2s/6s/18s/54s 4단)가 맞다면 호출부(`computeBackoff(nextAttempt)` → `computeBackoff(attempt)`)를 정정해야 한다.
+- **처방**: 의도된 정책이 무엇인지(런타임 값 유지 vs javadoc 값 복원) 확인 필요 — 코드 수정은 이 항목 등재 범위 밖.
 
 ---
 
