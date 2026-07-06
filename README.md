@@ -17,13 +17,15 @@
 
 |       해결 영역        | 핵심                                                                                            |                      결과 / 검증                      |
 |:------------------:|:----------------------------------------------------------------------------------------------|:-------------------------------------------------:|
-|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 Round 9 · 모놀리스 시점) |
+|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 최종 측정 · 모놀리스 시점) |
 |    정합성 / 멱등성 보장    | 클라이언트·서버·PG 교차 검증 + Checkout 멱등성 (TOCTOU 해결)                                                  |                  중복 주문 / 위변조 차단                   |
 |    장애 내성 복구 체계     | PG self-loop 재시도(백오프) + 한도 소진 시 DLQ 자동 격리 + `PaymentReconciler` 스케줄 복원 + 재고 보상 Redis Lua 원자 연산(`compensateAtomic`)                                                 |       **DLQ 자동 격리** + 멱등 보상(중복 실행 안전)        |
 | MSA 분리 + Kafka 양방향 | 모놀리스 → 4 비즈니스 서비스 + Eureka + Gateway / payment ↔ pg Kafka 양방향 confirm                         | **5 토픽** (운영 3 + DLQ 2) + AMOUNT_MISMATCH 양방향 방어  |
 | Outbox 모델 + 멱등 소비  | payment / pg 두 outbox 정밀도 분기 + dedupe 결정 룰 (Kafka EOS + RDB / Redis + RDB inbox / RDB)        |        **at-least-once + 멱등** (3 저장소 결정 룰)        |
 |   PG 결제 확인 흐름 분리   | listener (Inbox 시그널 INSERT) → 워커 VT (벤더 호출 + 결과 반영) → 릴레이 워커 (Kafka 발행) 3단 + 단계 사이 채널 + 폴백 폴링 |   **벤더 latency 와 인바운드 처리량 독립** + 어디서 죽어도 폴링이 회수   |
 |      분산 트레이싱       | OTel Context + MDC 두 ThreadLocal 을 가상 스레드 / in-memory channel 경계에서 명시 캡처·복원                   |           5 서비스 + Kafka traceId 연속성 검증            |
+
+> TOCTOU: Time-Of-Check-Time-Of-Use 경쟁 조건 · DLQ: Dead Letter Queue · EOS: Exactly-Once Semantics · VT: Virtual Thread(가상 스레드) · OTel: OpenTelemetry · MDC: Mapped Diagnostic Context(로그 컨텍스트) · TX: Transaction
 
 ---
 
@@ -113,14 +115,14 @@ flowchart LR
 
 RDB 변경과 Kafka 발행은 한 트랜잭션으로 묶을 수 없는 dual-write 위험이 있어, 이를 다음 두 단계로 차단했다.
 
-- 도메인 변경과 같은 TX 에서 outbox row 를 INSERT 하고, 별도 발행 워커가 PENDING 행을 픽업해 Kafka 로 send — 저장과 발행 분리
+- 도메인 변경과 같은 TX 에서 outbox row 를 INSERT 하고, 별도 발행 Worker가 PENDING 행을 픽업해 Kafka 로 send — 저장과 발행 분리
 - 발행 측 retry(at-least-once) + 소비 측 dedupe(멱등) 조합으로 비즈니스 관점의 exactly-once 효과 확보
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant DB as RDB (도메인 + outbox)
-    participant W as 발행 워커
+    participant W as 발행 Worker
     participant K as Kafka
     participant Sub as Consumer
     App ->> DB: 도메인 변경 + outbox INSERT
@@ -175,8 +177,8 @@ flowchart LR
     end
 
     subgraph Th2["가상 스레드 워커"]
-        OT2["OTel Context entry<br/>비어있음 → 명시 복원"]
-        MD2["MDC entry<br/>비어있음 → 명시 복원"]
+        OT2["OTel Context entry<br/>비어있음 -> 명시 복원"]
+        MD2["MDC entry<br/>비어있음 -> 명시 복원"]
     end
 
     Th1 -->|OutboxJob 에 두 컨텍스트 동봉<br/>워커가 자기 스레드에 set 후 자동 원복| Th2
@@ -184,7 +186,7 @@ flowchart LR
 
 1. 정상적으로 수행 중이던 스레드는 ThreadLocal 안에 OTel entry / MDC entry 가 별개 키로 존재
 2. 해당 스레드에서 생성 된 새 가상 스레드는 빈 ThreadLocal 로 시작
-3. 두 traceId 를 작업 객체에 같이 실어 보내고 워커가 받아 복원하면 연속성 유지
+3. 두 traceId 를 작업 객체에 같이 실어 보내고 Worker가 받아 복원하면 연속성 유지
 
 ```mermaid
 flowchart LR
@@ -197,7 +199,7 @@ flowchart LR
         A3[OpenFeign HTTP]:::auto
     end
 
-    subgraph Manual["명시 캡처·복원 필요"]
+    subgraph Manual["명시 캡처/복원 필요"]
         M1[가상 스레드<br/>ContextAwareVirtualThreadExecutors<br/>이중 래핑]:::explicit
         M2[in-memory channel pg-service<br/>OutboxJob 두 컨텍스트 동봉]:::explicit
     end
@@ -214,7 +216,7 @@ Spring Boot에서 자동으로 챙겨주지 않는 경로(Kafka producer, 직접
 |         HTTP 어댑터          |                    OpenFeign + Spring Cloud auto-config 자동 적용                     |
 | Kafka producer / consumer |                  `observation-enabled: true` 한 줄로 헤더 자동 주입 / 추출                   |
 |          가상 스레드           |         `ContextAwareVirtualThreadExecutors` 가 OTel / MDC 둘 다 자동 캡처 · 복원          |
-|     in-memory channel     | `OutboxJob` 레코드에 OTel / MDC 둘 다 실어 보내고, 워커가 작업 시작 시 둘 다 자기 스레드에 set 하고 종료 시 자동 원복 |
+|     in-memory channel     | `OutboxJob` 레코드에 OTel / MDC 둘 다 실어 보내고, Worker가 작업 시작 시 둘 다 자기 스레드에 set 하고 종료 시 자동 원복 |
 
 ---
 
@@ -227,7 +229,7 @@ Spring Boot에서 자동으로 챙겨주지 않는 경로(Kafka producer, 직접
 > Phase 5 — 모놀리스 단일 JVM 시점 측정 (현재 시스템의 메시지 흐름은 위 "MSA + Kafka 양방향" 항목 참고)
 
 - 동기(Sync) 전략에서 Toss API 지연이 HTTP 스레드를 직접 블로킹해 고부하 시 TPS 급락·스레드 고갈 문제가 발생
-- 내부 큐 + 가상 스레드 워커 구조로 PG 요청을 비동기로 처리하여 네트워크 지연 병목 해결
+- 내부 큐 + 가상 스레드 Worker 구조로 PG 요청을 비동기로 처리하여 네트워크 지연 병목 해결
 - 포스팅: [비동기 결제 처리 플로우 구현 — Outbox 패턴부터 LinkedBlockingQueue Worker까지](https://hyoguoo.github.io/blog/async-payment-flow)
 
 ```mermaid
@@ -243,7 +245,7 @@ flowchart TD
     subgraph Sync["동기 전략"]
         S1["결제 승인 요청"]:::process
         S2["재고 차감 + 결제 기록 생성"]:::tx
-        S3["대기 → 진행 중"]:::tx
+        S3["대기 -> 진행 중"]:::tx
         S4["PG 승인 요청 (동기)\n⏳ 100ms ~ 3,500ms 블로킹"]:::process
         S5["결제 완료 처리"]:::tx
         S6(["200 OK"]):::response
@@ -297,7 +299,7 @@ flowchart TD
 
 - PG 상태 조회 후 복구 판정 객체가 종결/재시도/격리를 결정
 - 재시도 한도 소진 시 격리 전 최종 확인(PG 상태 1회 재조회)으로 성공 건의 오격리 방지, 격리 상태로 관리자 개입 유도
-- 보상 트랜잭션 실행 직전 이중 조건 가드(대기열 선점 중 + 결제 비종결)로 동시성 경합 시 재고 이중 복원 차단
+- 보상 TX 실행 직전 이중 조건 가드(대기열 선점 중 + 결제 비종결)로 동시성 경합 시 재고 이중 복구 차단
 - 포스팅: [결제 복구 상태 전이 설계](https://hyoguoo.github.io/blog/payment-recovery-state-design)
 
 ```mermaid
@@ -311,7 +313,7 @@ flowchart TD
     classDef skip fill: #F5F5F5,color: #616161,stroke: #9E9E9E
     CL["처리 선점\n(원자적)"]:::action
     CL -->|" 선점 성공 "| GS["PG 상태 조회"]:::action
-    CL -->|" 선점 실패 "| SKIP["다른 워커가 처리 중\n→ 포기"]:::skip
+    CL -->|" 선점 실패 "| SKIP["다른 워커가 처리 중\n-> 포기"]:::skip
     GS -->|" 승인 완료 "| SUCCESS["결제 성공 확정"]:::success
     GS -->|" PG 종결 실패 "| FAILURE["결제 실패 확정"]:::failure
     GS -->|" PG 기록 없음 "| CONFIRM["PG 승인 재시도"]:::action
@@ -320,9 +322,9 @@ flowchart TD
     FINAL -->|" 승인 완료 "| SUCCESS
     FINAL -->|" PG 종결 실패 "| FAILURE
     FINAL -->|" 판단 불가 "| QU["격리\n관리자 개입 대기"]:::quarantine
-    FAILURE --> GUARD{"재고 복원 가드\n대기열 선점 중?\n결제 비종결?"}:::check
-    GUARD -->|" 조건 충족 "| COMP["재고 복원 후 실패 처리"]:::failure
-    GUARD -->|" 조건 미충족 "| GSKIP["재고 복원 생략"]:::skip
+    FAILURE --> GUARD{"재고 복구 가드\n대기열 선점 중?\n결제 비종결?"}:::check
+    GUARD -->|" 조건 충족 "| COMP["재고 복구 후 실패 처리"]:::failure
+    GUARD -->|" 조건 미충족 "| GSKIP["재고 복구 생략"]:::skip
 ```
 
 ### [Checkout API 멱등성 보장 — TOCTOU 경쟁 조건 해결](https://github.com/hyoguoo/payment-platform/wiki/idempotency)
@@ -344,9 +346,9 @@ sequenceDiagram
     Cache -->> A: (락 획득, 생성 로직 실행 중)
     A ->> A: 결제 건#1 생성
     B ->> Cache: 조회 요청 ("key")
-    Cache -->> B: (동일 키 → 락 대기)
+    Cache -->> B: (동일 키 -> 락 대기)
     A ->> Cache: 결과 저장 후 락 해제
-    Cache -->> B: 캐시 적중 → 결제 건#1 반환 (생성 로직 미실행)
+    Cache -->> B: 캐시 적중 -> 결제 건#1 반환 (생성 로직 미실행)
     Note over Cache: ✅ 중복 생성 없음
 ```
 
@@ -446,7 +448,7 @@ sequenceDiagram
 > Phase 6 에서 외부 호출 경계가 payment-service ↔ pg-service Kafka 양방향으로 이동하여 트랜잭션 없음
 
 - 외부 API 호출이 포함된 단일 트랜잭션 구조로 인해 커넥션 점유와 응답 지연 문제가 발생
-- 외부 호출을 트랜잭션 외부로 분리하고 보상 트랜잭션을 적용해 안정성과 성능을 함께 확보
+- 외부 호출을 트랜잭션 외부로 분리하고 보상 TX 를 적용해 안정성과 성능을 함께 확보
 - 포스팅: [트랜잭션 범위 최소화를 통한 성능 및 안정성 향상](https://hyoguoo.github.io/blog/minimize-transaction-scope)
 
 <img width="80%" alt="image" src="https://github.com/user-attachments/assets/ff19dac9-a717-4b5d-96e9-de60d199e10a">
@@ -508,7 +510,7 @@ sequenceDiagram
 
 ```bash
 cp .env.secret.example .env.secret
-# TOSS_SECRET_KEY, NICEPAY_CLIENT_KEY, NICEPAY_SECRET_KEY 입력
+# TOSS_TEST_SECRET_KEY 입력 (예시 파일에 포함) — NICEPAY_CLIENT_KEY, NICEPAY_SECRET_KEY 는 예시 파일에 없어 직접 추가 필요
 ```
 
 ### 실행 방법
