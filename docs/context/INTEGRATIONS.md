@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 이전: 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
+> 최종 갱신: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -117,7 +117,7 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 |---|---|
 | Prometheus | 각 서비스 `/actuator/prometheus` 스크랩 (15s) |
 | Grafana | Prometheus + Loki + Tempo 데이터소스 |
-| Loki | Logback `LogstashEncoder` + LogFmt → Promtail/직접 push |
+| Loki | Logback Console appender(LogFmt) stdout → docker 로깅 드라이버(`com.hyoguoo.loki.enable` 라벨) → Promtail → Loki push |
 | Tempo | OTel exporter (`io.opentelemetry:opentelemetry-exporter-otlp`) |
 | traceparent 전파 | OTel propagation — Servlet/VT/Async/Kafka producer/consumer 경계 모두 |
 

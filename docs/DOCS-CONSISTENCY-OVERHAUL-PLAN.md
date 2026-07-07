@@ -107,7 +107,7 @@ flowchart TD
 - [x] Task 16: 위키 4차 — 아키텍처·관측성 5페이지
 - [x] Task 17: 위키 5차 — 잔여·인덱스 6페이지
 - [x] Task 18: 재발 방지 장치 (스킬 4종 + doc-review 보강)
-- [ ] Task 19: 최종 검증 스윕
+- [x] Task 19: 최종 검증 스윕
 
 ## 태스크
 
@@ -382,7 +382,28 @@ flowchart TD
 - 기계 검사 0건 + doc-review 전 관점 PASS + 리포트 미종결 0건(또는 사유 명기)
 
 **완료 결과**
-> (execute에서 채움)
+> **doc-review 는 메인 오케스트레이션(discuss/plan/execute 를 진행하는 메인 스레드)이 직접 수행했다** — 서브에이전트 위임이 아니라 워크플로우 스킬(`doc-review/SKILL.md`)의 4관점 검수 절차를 메인 세션에서 여러 라운드에 걸쳐 실행한 것으로, 세부 라운드 이력(1·2)은 `docs/DOCS-CONSISTENCY-OVERHAUL-DIAGNOSIS.md` §6에 전건 기록돼 있다.
+>
+> **doc-review 라운드 1** (§6.1~§6.4) — 4관점(규격/정확성/서사/독자) 검수에서 위키 11파일 기술 정확성·서사 정합 FAIL(수정 1차) → README/GUIDE 시크릿 안내·문체·서사 + 위키 잔여 5파일 + 전 위키 규격 sweep(수정 2차) 순으로 반영. 상세는 §6.1~§6.4.
+>
+> **doc-review 라운드 2 재검수** (§6.5, 이번 세션) — 라운드 1 수정 이후 잔존한 4관점 지적 15건(위키 11파일 규격 표기·용어 통일·하드랩·불릿 뎁스·약어 풀이 + README/GUIDE 워커→Worker·중간점·장문 불릿 2건)을 파일:라인 특정 근거로 전건 반영.
+> - **위키**(파일 수정까지만, 커밋은 사용자): `structured-logging.md`(존재하지 않는 `STOCK_INCREASE_REQUEST` → 실존 `STOCK_DECREASE_FAIL` + dead-end 경로 2곳 GitHub URL 전환) · `trace-propagation.md`(`traceid`→`traceId` 13곳 통일 + GitHub URL 전환 + `<img>`→마크다운 이미지 문법 + 하드랩 3곳 + 불릿 뎁스 분해 1곳) · `compensation-tx.md`(내부 토픽명 2곳 자연어화 + 가드 문구 커버리지 보정 + "Phase 5 모델" 표식 통일) · `pg-confirm-flow.md`(역사 문장 재배치 + FCG 한글명 통일 + 명사형 불릿 + 하드랩 + 불릿 뎁스 분해 2곳 + SoT/CAS 풀이 위치 정정) · `message-delivery-and-dedupe.md`(명사형 불릿 + 하드랩) · `stock-cache-recovery.md`(하드랩) · `msa-transition.md`(용어 통일) · `outbox-pattern.md`(용어 통일 + SoT/OTel 풀이) · `retry-recovery.md`(FCG/DLQ 풀이 위치 이동 + architecture 포인터 통일) · `architecture.md`(FCG 포인터 통일 + DLT 풀이) · `async-outbox.md`(VT 풀이).
+> - **메인 저장소**(이 커밋에 포함): `README.md`(표 셀 2곳 + mermaid 4곳 워커→Worker) · `docs/context/PAYMENT-FLOW-GUIDE.md`(mermaid 2곳 워커→Worker + 중간점 4곳 + 장문 불릿 2곳 뎁스 분해).
+> - **부수 발견(Rule 1)**: `docs/context/INTEGRATIONS.md` 관측성 통합 표의 Loki 행이 이미 코드에서 완전히 제거된 `LogstashEncoder` 를 현재형으로 서술 — Task 19 자체의 stale 마커 grep(Elasticsearch/Logstash) 대상이라 이 세션에서 직접 정정("Console appender + docker 로깅 드라이버 + Promtail" 기준), 헤더 동기화.
+>
+> **기계 검사** (§7.1) — 상대 링크 검사(`docs/context/**`+`docs/smoke/**`+`README.md`+본 리포트/PLAN 자기 자신) 0건 파손(본 리포트 자체의 상대 경로 오타 1건 발견 즉시 정정) + 위키 25페이지 내부 링크 0건 파손. `docs/archive/**` 의 과거 토픽 `topics/*.md` 링크 파손 다수는 ship 시 아카이브 이동에 따른 기존 관행이라 스코프 아웃(신규 회귀 아님). stale 마커 grep(`RETRYING`/`StockOutbox`/payment 측 `EventDedupeStore`/`RecoveryDecision`/`REQUIRES_NEW` 선점/`Elasticsearch`·`Logstash`/`MaskingPatternLayout`/`워커`/`를 통해`) — `docs/context/**`+`docs/smoke/**`+`README.md`+위키 25페이지 전체 grep, 잔존 매치 전부 역사 서술이거나 코드와 일치하는 정확한 서술으로 확인(현재형 stale 0건, INTEGRATIONS.md 1건은 발견 즉시 정정 완료). `워커`/`를 통해` 는 `docs/context/**` 전역 + `Benchmark-Report.md` 에 기존 표기가 다수 잔존하나 이번 라운드 대상(README/GUIDE/위키 11파일) 밖이라 스코프 아웃(§6.4/§7.1 명시).
+>
+> **doc-review 4관점 최종 판정** (§7.2) — 규격 준수/기술 정확성/동일 파일 서사 정합/독자 관점 **전 관점 PASS**.
+>
+> **스킵 사유** (§7.3, 9건) — 표 포맷 정규화(작성자 입력 보존 원칙) · msa-transition 알람 "3그룹" 지적 기각(소스 재확인 결과 4그룹이 정합, 문서 상호 인용 근거라 §0.3 상 기각) · README 이미지 5건(크기 지정 불가) · GUIDE 괄호 병기(코드 식별자 부가 표기로 부합) · `:---` 좌측 정렬 셀(표 포맷 보존) · "한 줄 2문장" soft 지적 약 20건(`writing.md` 권고 해석상 극단 사례만 수정) · pg-confirm-flow 시퀀스 메시지 중괄호(페이로드 구조 표기, mermaid 라벨과 다른 범주) · `docs/archive/**` 링크 파손(아카이브 고유 관행) · `docs/context/**`/`Benchmark-Report.md` 의 기존 "워커"/"~를 통해" 표기(이번 라운드 대상 밖).
+>
+> **진단 리포트 전 항목 종결 확인** (§7.4) — §4.1~4.5(Task 2~6 진단)는 Task 7~17 정정 단계에서 이미 전건 종결 마킹 완료, §5 완료 기준 대조 전항목 충족, §6(doc-review)은 본 세션(§6.5)으로 라운드 2까지 종결. **미종결 항목 0건** (스킵 9건은 "의도적 미반영"이며 미종결이 아님).
+>
+> **진행 상황 19/19 확인** — Task 1~19 전건 체크 완료.
+>
+> `./gradlew test` 재실행 — 문서 전용 변경(코드 무변경)이나 최종 스냅샷으로 실행, 단위 테스트 861 PASS(0 failed) 확인, 회귀 없음.
+>
+> **STATE.md**: stage 를 `execute` → `ship` 으로 전환(이 커밋에 포함, 별도 커밋 없음). 재개 메모에 "위키 커밋 대기(사용자)" 명시 — 위키 25페이지 로컬 diff(Task 13~19에 걸쳐 누적된 파일 수정)는 사용자 검토·커밋이 필요.
 
 ## 리뷰 처리
 

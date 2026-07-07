@@ -140,7 +140,9 @@ sequenceDiagram
     - 그 외 종결(QUARANTINED/FAILED 등) → noop (`guardSkipMetrics`)
 24. **메시지 멱등 마킹** — `payment_event_dedupe` INSERT IGNORE (`markIfAbsent`). affected=0(중복)이면 단순 skip — 단일 컨슈머 EOS 에선 DONE 종결 가드가 먼저 흡수하므로 도달 불가, 방어적 처리
 25. **상태 분기**
-    - **승인(APPROVED)** → 금액 재검증(`isAmountMismatch`) 통과 시 **`IN_PROGRESS → DONE`**(`markPaymentAsDone`) + **재고 확정 이벤트 발행**(상품별 결정적 키 `StockEventUuidDeriver.derive`, `payment.events.stock-committed`) (`sendStockCommittedEvents`). 금액 불일치/null → 격리 (`QuarantineCompensationHandler` `AMOUNT_MISMATCH`)
+    - **승인(APPROVED)**
+      - 금액 재검증(`isAmountMismatch`) 통과 시 **`IN_PROGRESS → DONE`**(`markPaymentAsDone`) + **재고 확정 이벤트 발행**(상품별 결정적 키 `StockEventUuidDeriver.derive`, `payment.events.stock-committed`) (`sendStockCommittedEvents`)
+      - 금액 불일치/null → 격리 (`QuarantineCompensationHandler` `AMOUNT_MISMATCH`)
     - **실패(FAILED)** → **재고 보상 먼저**(`compensateAtomic`) → 실패 확정(`markPaymentAsFail`) *(순서 뒤집기 = 보상 직전 crash 시 silent loss 차단, SCR-6)*
     - **격리(QUARANTINED)** → 재고 보상 → 격리 위임 (`QuarantineCompensationHandler`)
 26. **EOS 원자 커밋** — RDB commit + consumer offset commit + producer commit 한 단위. abort(RuntimeException) 시 재배달 → `DefaultErrorHandler`(FixedBackOff 1s×5) → 초과 시 `payment.events.confirmed.dlq`
@@ -176,7 +178,7 @@ flowchart TD
     CO --> CREATE --> C201(["201"]) --> SDK --> CF
 
     subgraph PAY2["payment — 확정 진입/발행 (단계 2~3)"]
-        VAL["[8] 위변조·상태 가드<br/>validateConfirmRequest"]
+        VAL["[8] 위변조/상태 가드<br/>validateConfirmRequest"]
         DECR["[9] 재고 선점 성공<br/>decrementStock / Redis"]
         ETX[["[10] 확정 TX 원자커밋<br/>READY->IN_PROGRESS + outbox PENDING<br/>executeConfirmTx"]]
         REL["[12~15] 확정 명령 발행<br/>OutboxRelayService.relay"]
@@ -189,14 +191,14 @@ flowchart TD
 
     subgraph PG["pg-service — 실제 PG사 호출 (단계 4)"]
         PGC["[16~18] 수신/dedupe/PENDING 적재<br/>PgConfirmService"]
-        PGW["[19] 워커: PENDING->IN_PROGRESS CAS<br/>+ 실제 PG사 호출 invokeVendor"]
+        PGW["[19] Worker: PENDING->IN_PROGRESS CAS<br/>+ 실제 PG사 호출 invokeVendor"]
         RA["[20~21] 승인 결과 되쏨<br/>events.confirmed APPROVED"]
     end
 
     KC --> PGC --> PGW --> RA
     RA --> KE[/"payment.events.confirmed"/]
 
-    subgraph PAY3["payment — 결과 확정·정산 (단계 5, EOS)"]
+    subgraph PAY3["payment — 결과 확정/정산 (단계 5, EOS)"]
         HANDLE["[22~24] 결과 수신/종결가드/멱등마킹<br/>PaymentConfirmResultUseCase.handle"]
         DONE["[25] IN_PROGRESS->DONE + 재고확정 발행<br/>markPaymentAsDone + sendStockCommittedEvents"]
     end
@@ -242,7 +244,7 @@ flowchart TD
         G -->|"DONE+APPROVED 재배달"| RESEND["재고확정 재발행<br/>terminalResendMetrics"]:::new
         G -->|"그 외 종결"| NOOP["noop"]
         AMM["금액 불일치/null"] --> QAM["격리<br/>QuarantineCompensationHandler"]
-        ABORT["EOS abort (RuntimeException)"] --> REDEL["RDB rollback·offset 미커밋<br/>-> 재배달 1s×5 -> dlq"]
+        ABORT["EOS abort (RuntimeException)"] --> REDEL["RDB rollback/offset 미커밋<br/>-> 재배달 1s×5 -> dlq"]
         DUPMSG["중복 메시지"] --> DEDUPE["payment_event_dedupe INSERT IGNORE<br/>+ product stock_commit_dedupe 흡수"]
     end
 
@@ -296,7 +298,7 @@ flowchart TD
     IDEM -->|신규| CREATE --> C201(["201"]) --> SDK --> CF
 
     subgraph PAY2["payment — 확정 진입/발행 (단계 2~3)"]
-        VAL["[8] 위변조·상태 가드<br/>validateConfirmRequest"]
+        VAL["[8] 위변조/상태 가드<br/>validateConfirmRequest"]
         DECR{"[9] 재고 선점<br/>decrementStock"}
         ETX[["[10] 확정 TX 원자커밋<br/>READY->IN_PROGRESS + outbox PENDING"]]
         REL["[12~15] 확정 명령 발행<br/>OutboxRelayService.relay"]
@@ -320,7 +322,7 @@ flowchart TD
 
     subgraph PG["pg-service — 실제 PG사 호출 (단계 4)"]
         PGC["[16~18] 수신/dedupe/PENDING 적재<br/>PgConfirmService"]
-        PGW["[19] 워커: PENDING->IN_PROGRESS CAS<br/>+ invokeVendor"]
+        PGW["[19] Worker: PENDING->IN_PROGRESS CAS<br/>+ invokeVendor"]
         VEND{벤더 응답}
     end
     KC --> PGC --> PGW --> VEND
@@ -374,7 +376,13 @@ flowchart TD
 
 - **단계 4 진입은 `PENDING`을 경유한다** — 컨슈머/리스너(`PgConfirmService`)는 `pg_inbox PENDING` INSERT + 채널 적재까지만 하고, Worker(`PgInboxProcessor.processPending`)가 `PENDING→IN_PROGRESS` CAS(SKIP LOCKED) 후 벤더를 호출한다. (`NONE→IN_PROGRESS` 직접 전이 아님)
 - **멱등 응답이 항상 APPROVED는 아니다** — `DuplicateApprovalHandler`는 vendor 재조회 후 금액 불일치·벤더 INDETERMINATE면 `QUARANTINED`로 종결.
-- **pg self-loop `attempt` 한도/DLQ 작동 (2026-06-25 도입된 DLQ 도달 보장 설계로 해소)** — 과거엔 `attempt`가 런타임에서 항상 1로 고정돼(relay 헤더 미발행 + `pg_inbox` attempt 컬럼 부재 + `resolveAttempt()=1`) 한도/DLQ에 도달하지 못했다. 이제 시도횟수를 `pg_inbox.attempt`(Flyway V5)에 영속(SoT)해 Worker가 읽고, retry 분기에서 결과 반영 트랜잭션 안에서 증가시킨다. 한도(4) 소진 시 `pg_inbox` 를 `QUARANTINED` 로 전이해 DLQ 로 자동 격리한다(`insertDlqOutbox` → `PgDlqService`). relay 헤더 전파는 복원하지 않았다(attempt SoT가 DB라 헤더 불요). **수용 한계**: self-loop 즉시 Worker와 좀비 폴링이 동시에 같은 행에 진입하면 시도횟수가 한 번에 2 늘어 조기 격리될 수 있으나, 방향이 안전(무한 반복·금전 손실 없음)해 수용한다. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
+- **pg self-loop `attempt` 한도/DLQ 작동 (2026-06-25 도입된 DLQ 도달 보장 설계로 해소)**
+  - 과거엔 `attempt`가 런타임에서 항상 1로 고정돼(relay 헤더 미발행 + `pg_inbox` attempt 컬럼 부재 + `resolveAttempt()=1`) 한도/DLQ에 도달하지 못했다.
+  - 이제 시도횟수를 `pg_inbox.attempt`(Flyway V5)에 영속(SoT)해 Worker가 읽고, retry 분기에서 결과 반영 트랜잭션 안에서 증가시킨다.
+  - 한도(4) 소진 시 `pg_inbox` 를 `QUARANTINED` 로 전이해 DLQ 로 자동 격리한다(`insertDlqOutbox` → `PgDlqService`).
+  - relay 헤더 전파는 복원하지 않았다(attempt SoT가 DB라 헤더 불요).
+  - **수용 한계**: self-loop 즉시 Worker와 좀비 폴링이 동시에 같은 행에 진입하면 시도횟수가 한 번에 2 늘어 조기 격리될 수 있으나, 방향이 안전(무한 반복·금전 손실 없음)해 수용한다.
+  - 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`
 
 ---
 

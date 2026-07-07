@@ -17,12 +17,12 @@
 
 |       해결 영역        | 핵심                                                                                            |                      결과 / 검증                      |
 |:------------------:|:----------------------------------------------------------------------------------------------|:-------------------------------------------------:|
-|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 워커 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 최종 측정 · 모놀리스 시점) |
+|    동기 → 비동기 전환     | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조 → Outbox + 가상 스레드 Worker 비동기 전환                                | **TPS +47% / 요청 유실 -100%** (k6 최종 측정 · 모놀리스 시점) |
 |    정합성 / 멱등성 보장    | 클라이언트·서버·PG 교차 검증 + Checkout 멱등성 (TOCTOU 해결)                                                  |                  중복 주문 / 위변조 차단                   |
 |    장애 내성 복구 체계     | PG self-loop 재시도(백오프) + 한도 소진 시 DLQ 자동 격리 + `PaymentReconciler` 스케줄 복원 + 재고 보상 Redis Lua 원자 연산(`compensateAtomic`)                                                 |       **DLQ 자동 격리** + 멱등 보상(중복 실행 안전)        |
 | MSA 분리 + Kafka 양방향 | 모놀리스 → 4 비즈니스 서비스 + Eureka + Gateway / payment ↔ pg Kafka 양방향 confirm                         | **5 토픽** (운영 3 + DLQ 2) + AMOUNT_MISMATCH 양방향 방어  |
 | Outbox 모델 + 멱등 소비  | payment / pg 두 outbox 정밀도 분기 + dedupe 결정 룰 (Kafka EOS + RDB / Redis + RDB inbox / RDB)        |        **at-least-once + 멱등** (3 저장소 결정 룰)        |
-|   PG 결제 확인 흐름 분리   | listener (Inbox 시그널 INSERT) → 워커 VT (벤더 호출 + 결과 반영) → 릴레이 워커 (Kafka 발행) 3단 + 단계 사이 채널 + 폴백 폴링 |   **벤더 latency 와 인바운드 처리량 독립** + 어디서 죽어도 폴링이 회수   |
+|   PG 결제 확인 흐름 분리   | listener (Inbox 시그널 INSERT) → Worker VT (벤더 호출 + 결과 반영) → 릴레이 Worker (Kafka 발행) 3단 + 단계 사이 채널 + 폴백 폴링 |   **벤더 latency 와 인바운드 처리량 독립** + 어디서 죽어도 폴링이 회수   |
 |      분산 트레이싱       | OTel Context + MDC 두 ThreadLocal 을 가상 스레드 / in-memory channel 경계에서 명시 캡처·복원                   |           5 서비스 + Kafka traceId 연속성 검증            |
 
 > TOCTOU: Time-Of-Check-Time-Of-Use 경쟁 조건 · DLQ: Dead Letter Queue · EOS: Exactly-Once Semantics · VT: Virtual Thread(가상 스레드) · OTel: OpenTelemetry · MDC: Mapped Diagnostic Context(로그 컨텍스트) · TX: Transaction
@@ -176,12 +176,12 @@ flowchart LR
         MD1[MDC entry<br/>traceid: abc...]
     end
 
-    subgraph Th2["가상 스레드 워커"]
+    subgraph Th2["가상 스레드 Worker"]
         OT2["OTel Context entry<br/>비어있음 -> 명시 복원"]
         MD2["MDC entry<br/>비어있음 -> 명시 복원"]
     end
 
-    Th1 -->|OutboxJob 에 두 컨텍스트 동봉<br/>워커가 자기 스레드에 set 후 자동 원복| Th2
+    Th1 -->|OutboxJob 에 두 컨텍스트 동봉<br/>Worker가 자기 스레드에 set 후 자동 원복| Th2
 ```
 
 1. 정상적으로 수행 중이던 스레드는 ThreadLocal 안에 OTel entry / MDC entry 가 별개 키로 존재
@@ -259,7 +259,7 @@ flowchart TD
         O4["커밋 후 이벤트 발행"]:::process
         O5["처리 큐에 등록\n(비블로킹)"]:::process
 
-        subgraph Workers["실시간 워커"]
+        subgraph Workers["실시간 Worker"]
             W1["큐에서 결제 건 수신\n(대기)"]:::worker
             W2["처리 선점\n(원자적)"]:::tx
             W3["PG 승인 요청\n(HTTP 스레드와 분리)"]:::worker
@@ -313,7 +313,7 @@ flowchart TD
     classDef skip fill: #F5F5F5,color: #616161,stroke: #9E9E9E
     CL["처리 선점\n(원자적)"]:::action
     CL -->|" 선점 성공 "| GS["PG 상태 조회"]:::action
-    CL -->|" 선점 실패 "| SKIP["다른 워커가 처리 중\n-> 포기"]:::skip
+    CL -->|" 선점 실패 "| SKIP["다른 Worker가 처리 중\n-> 포기"]:::skip
     GS -->|" 승인 완료 "| SUCCESS["결제 성공 확정"]:::success
     GS -->|" PG 종결 실패 "| FAILURE["결제 실패 확정"]:::failure
     GS -->|" PG 기록 없음 "| CONFIRM["PG 승인 재시도"]:::action
