@@ -27,6 +27,9 @@ ship 단계(리뷰 + 마무리) 종료 조건. 두 섹션으로 나뉜다:
 
 - [ ] `docs/context/` 중 영향받는 문서가 갱신됨 (ARCHITECTURE / CONVENTIONS / TESTING / INTEGRATIONS 등 해당되는 것)
 - [ ] `docs/context/TODOS.md`에 신규 기록이 필요한 경우 반영됨
+- [ ] `TODOS.md`/`CONCERNS.md` 등 대장 문서에 완료 항목을 3분류 삭제 룰(전체 삭제 / 해소분 문장만 제거 / 수용된 한계·회피된 우려는 보존)대로 정리해 ✅ 완료 마킹 잔존이 0건임 (보존 결정 항목 제외)
+- [ ] 갱신한 문서의 헤더 "최종 갱신" 시점이 본문 최신 내용과 동기화됨
+- [ ] 대장 문서가 완료 이력으로 비대해지지 않고 슬림 유지됨 (`docs/archive/README.md`와 중복되는 완료 섹션 없음)
 
 ---
 

@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-05-17 (PAYMENT-EOS-TRANSITION 봉인 — EOS 도입 학습 함정 4건 등재)
+> 최종 갱신: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -177,15 +177,15 @@ process(result);  // result 가 null 일 수 있음
 **처방** (수용된 trade-off):
 - redis-stock 의 AOF 를 `appendfsync=always` 로 운영 (`docker/docker-compose.infra.yml`) — 매 명령 fsync
 - throughput 감소 trade-off 인정. cluster 환경 / 더 강한 보장은 별 토픽
-- 이론적으로 디스크 latency 수준의 race window 는 잔존 (L2 알려진 한계)
+- 이론적으로 디스크 latency 수준의 race window 는 잔존 — 수용된 한계(CONCERNS.md 에 별도 항목으로 등재돼 있지 않음, 이 처방 문단 자체가 SSOT)
 
-## 18. 보상 끝난 결제의 재confirm cascade (L6 / L7)
+## 18. 보상 끝난 결제의 재confirm cascade (CONCERNS.md L-12 보상 끝난 결제의 새 confirm 사이클 cascade / L-7 markPaymentAsFail 영구실패 cascade)
 
 **증상**: P8D 안에서 동일 orderId 가 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클로 재진입. `decrementAtomic` 이 ALREADY_DONE → SUCCESS 매핑되어 재고는 추가 차감 안 되지만, 벤더가 APPROVED 회신하면 product RDB 만 차감 + redis 보상 +1 잔존 → 발산.
 
 **원인**:
-- L6: 외부 force resetToReady 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 L6 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
-- L7: `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToReady` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
+- (CONCERNS.md L-12) 외부 force resetToReady 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 이 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
+- (CONCERNS.md L-7) `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToReady` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
 
 **처방** (수용된 trade-off, 본 토픽 범위 외):
 - 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음

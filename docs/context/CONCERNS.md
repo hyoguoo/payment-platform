@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨). 이전: 2026-06-23 (코드 대조 — L-13 pg self-loop attempt 갭 등재)
+> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -44,16 +44,6 @@
 - **영향**: broker 장애 시 메시지 처리 중단
 - **처방**: 운영 환경 / Phase 4 부하 테스트 시 multi-broker 검토
 
-### ~~C-7. payment-service 측 application.yml 의 ddl-auto 비명시 시기~~ ✅ 해소 (PAYMENT-EOS-TRANSITION)
-
-- ~~기존: default profile 에서 `spring.jpa.hibernate.ddl-auto` 미명시 → IDE 로컬 실행 시 빈 DB 부팅 실패 가능~~
-- **해소**: 본 봉인 작업의 Flyway 통일 커밋에서 `ddl-auto: validate` 명시. Flyway 가 baseline 자동 적용
-
-### ~~C-12. payment events.confirmed DLT 토픽 suffix 불일치 — consumer 블로킹 잠재~~ ✅ 해소 (CAPACITY-AND-SCALEOUT Task 1, 2026-06-19)
-
-- ~~기존: `DeadLetterPublishingRecoverer`(목적지 미지정)가 Spring 기본 resolver `<원본>-dlt`(`payment.events.confirmed-dlt`)로 발행하나 토픽 생성은 `.dlq` 만 → 처리 예외 시 DLT 발행이 `UNKNOWN_TOPIC_OR_PARTITION` 실패 → events.confirmed consumer 영구 블로킹 (K6-ASYNC 측정 중 lag 33000 재현)~~
-- **해소**: `KafkaErrorHandlerConfig` recoverer 에 고정 destination resolver `(record, ex) -> new TopicPartition(EVENTS_CONFIRMED_DLQ, record.partition())` 주입 (처방 후보 a). `KafkaErrorHandlerConfigTest#dlq_destination_resolver_정합` 회귀 가드. 측정 시작 전 선제거 — 부하 측정의 consumer 블로킹 오염원 제거가 목적이었다.
-
 ## Low — 코드 청결도
 
 ### C-8. archive 안의 historical 잔재 참조
@@ -65,7 +55,8 @@
 ### ~~C-9. observability 대시보드 현행화~~ ✅ 해소 (OBSERVABILITY-COMPLETION, 2026-06-11)
 
 - **해소**: 옛 `payment-dashboard.json` 폐기 + `business-dashboard.json`(funnel·전이·상태분포·격리·벤더latency·DLQ·outbox·cleanup·코디네이터·guard_skip) / `system-dashboard.json`(6서비스 JVM/GC/HTTP/Hikari/lag) 2분할 신설. 메트릭 이름 현행 코드 기준 정합.
-- **후속 해소**: Prometheus alerting rule 인프라는 ALERTING-RULES-AND-FAULT-DRILL(6/27)에서 구축 — `prometheus.yml rule_files` → 4그룹(coordinator/guard-skip/dlq/availability, availability 는 FAULT-INJECTION 6/30) 평가 + `promtool test rules` 25케이스 회귀(`observability/prometheus/rules/`). **잔여**: Alertmanager 통지 채널 미도입(rule 평가/조회까지만).
+- **후속 해소**: Prometheus alerting rule 인프라는 ALERTING-RULES-AND-FAULT-DRILL(6/27)에서 구축 — `prometheus.yml rule_files` → 4그룹(coordinator/guard-skip/dlq/availability, availability 는 FAULT-INJECTION 6/30) 평가 + `promtool test rules` 25케이스 회귀(`observability/prometheus/rules/`).
+- **잔여**: Alertmanager 통지 채널 미도입(rule 평가/조회까지만).
 
 ### C-10. seed 데이터의 운영 안전성
 
@@ -73,38 +64,22 @@
 - **영향**: 운영 환경에 dummy seed 가 들어갈 가능성
 - **처방**: 운영 배포 시 `spring.flyway.locations` 에서 seed 디렉토리 분리 또는 `placeholder` 활용. **현재는 데모/스모크 환경 한정으로 OK**
 
-### ~~C-11. 전체 빌드 동시 실행 시 payment 통합테스트 Flyway 경합 flaky~~ ✅ 해소 (CLEANUP-BATCH-D Task 1, 2026-06-14)
-
-- **해소 방법**: flyway-on 통합테스트 4개(`StockCompensationRecoveryIntegrationTest` / `JdbcPaymentEventDedupeStoreTest` / `JdbcPaymentEventDedupeStoreRoundTripTest` / `JdbcPaymentEventDedupeStoreCleanupTest`)의 DB명을 create-drop 그룹(`payment-test`)과 분리된 각자 전용 DB명으로 변경. `PaymentEosIntegrationTest`(`payment-eos-test`) 선례와 동일 처방.
-- **상세**: `docs/archive/cleanup-batch-d/COMPLETION-BRIEFING.md`
-- 과거 현황 (참고): 전체 빌드(`clean build --rerun-tasks`)에서 Flyway `Found non-empty schema(s) 'payment-test' but no schema history table` 로 ApplicationContext 로드 실패. 격리 실행은 GREEN, 여러 모듈 동시 기동 시 Testcontainers MySQL / Flyway 경합이 원인.
-
 ## 알려진 한계 (수용 — 별도 토픽 필요 시 plan)
 
 ### L-1. Kafka tx coordinator 의존 — 가용성 약화 (EOS 전환 수용)
 
 - **현황**: EOS (Kafka 트랜잭션) 전환 이후 payment-service 결제 결과 처리가 Kafka tx coordinator 에 의존. broker 가 죽거나 tx coordinator 가 응답 못 하면 `ConfirmedEventConsumer` 처리 자체가 멈춤.
 - **이전 모델 대비**: `StockOutbox` 모델에서는 RDB 만 살아있으면 outbox 행이 쌓이고 broker 복구 후 OutboxWorker 가 자동 회수 — 더 높은 가용성.
-- **수용 근거**: 학습용 프로젝트 EOS 정합 목표 (D3). 운영 환경에서는 모니터링 대시보드로 coordinator 가용성 가시화 필요 (TC-13-FOLLOW-3).
-- **처방 후속**: TC-13-FOLLOW-3 (Kafka tx coordinator 가용성 모니터링 대시보드).
+- **수용 근거**: 학습용 프로젝트 EOS 정합 목표 (D3). coordinator 가용성은 대시보드(OBSERVABILITY-COMPLETION) + 알람 3규칙(ALERTING-RULES-AND-FAULT-DRILL)으로 가시화 완료 — 의존 자체는 구조적으로 수용된 한계.
+- **잔여**: 멀티 broker 환경에서의 lag 임계 재교정 — TODOS.md T4-B 정밀화 묶음(`[DE2]`) 참고.
 
 **EOS atomicity 정합 SSOT (RD1-2 명시):**
-- `PaymentConfirmResultUseCase.handle` 의 `@Transactional(timeout=5)` 는 qualifier 미명시로 `@Primary JpaTransactionManager` 를 선택한다 — `KafkaTransactionManager(EOS)` 와 별개 TM.
+- `PaymentConfirmResultUseCase.handle` 은 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 qualifier 를 명시해 `JpaTransactionManager` 를 고정한다 — `KafkaTransactionManager(EOS)` 와는 여전히 별개 TM.
 - 이 구조에서 RDB commit(JPA inner) 성공 + Kafka EOS commit(outer) 실패 시 at-least-once 재배달이 발생한다 (best-effort 1PC).
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 발행이 유실되면 재배달이 D7 종결 가드에 도달하는데 `status==DONE && message==APPROVED` 면 stock-committed 를 재발행한다(`terminalResendMetrics` 계측). product-service 가 결정적 키로 멱등 흡수 → 차감 1회.
 - **폐기**: 과거 SSOT "중복 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 도달 불가 dead branch 였고, CONFIRM-APPROVED-RESEND-GAP 에서 제거됨.
 - **잔여 한계 (over-sell, DLQ-REACHABILITY)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 stock-committed 자체는 완전 유실(payment DONE + 재고 확정 영구 소실 → over-sell). 입력 `events.confirmed` 메시지는 `KafkaConsumerConfig` 에 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `payment.kafka.after-rollback.backoff`)가 소진 후 `events.confirmed.dlq` 로 발행해 가시화한다(+`payment_eos_commit_failure_dlq_total`). 재고 확정 자동 복구(DLQ 재주입)는 미수행 — 수용된 한계.
-- **후속 과제**: TC-13-FOLLOW-1 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 완료). over-sell 자동 복구(DLQ 재주입) + 격리 metric alerting 은 TQ-1 / TC-13-FOLLOW-3·4 후속.
-
-### ~~L-2. `payment_event_dedupe` TTL 정리 스케줄러 부재~~ ✅ 해소 (EOS-FOLLOWUP-CLEANUP, 2026-05-29)
-
-- **해소**: payment `DedupeCleanupWorker`(`@Scheduled`)가 `payment_event_dedupe` 만료행을 `deleteExpired(Instant, int)` 로 일괄 DELETE. product `stock_commit_dedupe` 도 동일 워커로 처리(TC-11). pg `pg_inbox` 는 종결행이 재배달 멱등 SoT 라 청소 대상 제외. 스케줄러 활성화 정책은 STACK.md "스케줄러 활성화 정책" 절(payment docker/benchmark, product docker — CLEANUP-BATCH-D).
-
-### L-3. 다중 인스턴스 동시 운영 검증 부재
-
-- **현황**: EOS 전환 후 `transactional.id = ${spring.application.name}-${HOSTNAME:local}` 단일 인스턴스 가정 (D4). 다중 인스턴스 동시 운영 시 transactional.id 충돌 → Kafka producer fencing 동작 불확실.
-- **영향**: Phase 5 부하 테스트 시 멀티 인스턴스 확장 전제 시나리오에서 EOS fencing 검증 필요.
-- **처방 후속**: TC-13-FOLLOW-1 (multi-instance 확장 시 docker-compose hostname 라인 제거 또는 INSTANCE_ID 환경변수 도입).
+- **후속 과제**: TC-13-FOLLOW-6 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 이미 완료). over-sell 자동 복구(DLQ 재주입) + 격리 metric alerting 은 TQ-1 후속.
 
 ### L-4. Two-strategy PG 라우팅 — 결제 건별 `gatewayType` 결정 정책
 
@@ -115,14 +90,7 @@
 - **현황**: EOS abort 발생 시 RDB rollback + producer tx abort 는 자동 원복. 그러나 `compensateAtomic` (Redis 보상 Lua) 은 EOS tx 밖에서 실행 (Redis 는 XA 참여 불가) — abort 시 Redis 보상이 완료됐지만 RDB rollback 으로 결제 상태는 복귀 → 재배달 시 보상 dedup token `compensation:done:{orderId}` 이 이미 박혀 있어 보상 재실행이 `ALREADY_DONE` 으로 막힘.
 - **빈도**: FAILED/QUARANTINED 경로 + EOS abort 가 동시에 발생하는 case 에만 해당. 빈도 낮음.
 - **수용 근거**: SCR L7 cascade 평가 결과 수용. Redis 보상 dedup token 은 P8D TTL 로 자연 만료.
-- **참고**: 이전 L-6 (보상 끝난 결제 재confirm cascade) 과 관련.
-
-### L-6. EOS multi-instance 확장 시 docker-compose hostname 충돌
-
-- **현황**: `docker/docker-compose.apps.yml` 의 payment-service 컨테이너에 `hostname: payment-service` 라인 존재 시, 다중 인스턴스 배포에서 두 컨테이너가 동일 hostname → transactional.id 충돌 → Kafka producer epoch fencing 불확실.
-- **현재**: 단일 인스턴스 운영이라 문제 없음 (D4 단일 인스턴스 가정).
-- **트리거 조건**: payment-service 를 2개 이상 컨테이너로 scale-out 할 때.
-- **처방 후속**: TC-13-FOLLOW-1 — `hostname:` 라인 제거 또는 `INSTANCE_ID` 환경변수 도입.
+- **참고**: 보상 끝난 결제의 새 confirm 사이클 cascade(L-12) 와 관련.
 
 ### L-7. `markPaymentAsFail` 영구 실패 → Reconciler resetToReady cascade (인지)
 
@@ -136,10 +104,6 @@
 
 cancel / refund 경로 미구현 — pg 포트(`PgConfirmPort`/`PgStatusLookupPort`)에 cancel 메서드 자체가 없다. 운영 활용 별도 토픽.
 
-### ~~L-10. EXPIRED 상태의 만료 스케줄러 정책~~ ✅ 해소 (TIME-MODEL-AND-EXPIRY, 2026-06-03)
-
-만료 정책 명문화 완료 — READY 만 직접 만료(`expire()` READY 가드), IN_PROGRESS 정체분은 정합 스캐너(`PaymentReconciler`)가 READY 복원 후 만료(2단 연쇄). 임계 외부화 `payment.expiration.ready-timeout-minutes`(기본 30) + 스케줄러 키 `scheduler.payment-expiration.*`. 상세: `docs/archive/time-model-and-expiry/COMPLETION-BRIEFING.md`.
-
 ### L-11. Redis cluster 환경에서 multi-key Lua 사용 불가
 
 `stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` 가 결제 단위 N개 상품 KEYS 를 한 번에 받는다. Redis cluster 에서는 same hash slot 이어야 하는데 글로벌 상품 키(`stock:{productId}`) 는 결제 단위로 hash tag 묶을 수 없음. **단일 노드 Redis 가정 위에서 성립**, cluster 도입 시 별 토픽.
@@ -148,13 +112,9 @@ cancel / refund 경로 미구현 — pg 포트(`PgConfirmPort`/`PgStatusLookupPo
 
 P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
 
-### ~~L-13. pg self-loop attempt 한도/DLQ 런타임 미작동 (PG-SELFLOOP-ATTEMPT-GAP)~~ ✅ 해소 (DLQ-REACHABILITY, 2026-06-25)
-
-시도횟수를 `pg_inbox.attempt`(Flyway V5) SoT 로 영속한다. 워커 `resolveAttempt(inbox)` 가 읽고 retry 분기에서 `incrementAttempt`(결과 반영 TX_B `UPDATE attempt=attempt+1`) 로 누적 → 한도(4) 소진 시 `insertDlqOutbox` → `PgDlqService` QUARANTINED 자동 격리. relay 헤더 전파는 복원 안 함(attempt SoT 가 DB 라 불요). **수용 한계**: self-loop 즉시 워커 + 좀비 폴링 동시 진입 시 over-count(조기 격리) — 방향이 안전(무한 루프·금전 손실 없음)이라 수용. 상세: `docs/archive/dlq-reachability/COMPLETION-BRIEFING.md`.
-
 ### L-14. confirm 결과수신 DB 다운 → reconciler 복원 후 order EXECUTING 잔류로 만료 차단 (READY 잔류 잔여 — poison-pill 격리 해소) (부분 해소)
 
-confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED)가 1s×5 retry 후 `events.confirmed.dlq` stranded(벤더 과금됨, 자동소비 없음 C-5). `PaymentReconciler`가 IN_PROGRESS→READY 복원하지만 `PaymentEvent.resetToReady`는 event 상태만 바꾸고 `PaymentOrder`는 EXECUTING 잔류 → `PaymentExpirationServiceImpl.expireOldReadyPayments`의 `order.expire()`(NOT_STARTED 전용)가 INVALID_STATUS_TO_EXPIRE 전파. 두 문제: (1) **READY 영구 잔류** — EXPIRED 도달 불가, 벤더 과금+미이행 stranded가 비종결로 고착. (2) 만료 batch가 단일 `@Transactional` forEach라 stranded event 1건이 **무관한 정상 READY 만료까지 롤백**(poison-pill) — stranded 1건이 존재하는 한 만료가 영구 wedge되어 정상 READY 누적 → 각 redis 선차감 미해제 누적(보수적 under-sell 방향). L-10이 명문화한 "IN_PROGRESS 정체분 reconciler READY 복원 후 만료(2단 연쇄)"가 order 상태 미복원으로 **실제 차단**됨이 이번에 실측. 자동 복구(DLQ 재주입 + order/event 정합 복원)는 TQ-1/TC-3 및 별 토픽 위임.
+confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED)가 1s×5 retry 후 `events.confirmed.dlq` stranded(벤더 과금됨, 자동소비 없음 C-5). `PaymentReconciler`가 IN_PROGRESS→READY 복원하지만 `PaymentEvent.resetToReady`는 event 상태만 바꾸고 `PaymentOrder`는 EXECUTING 잔류 → `PaymentExpirationServiceImpl.expireOldReadyPayments`의 `order.expire()`(NOT_STARTED 전용)가 INVALID_STATUS_TO_EXPIRE 전파. 두 문제: (1) **READY 영구 잔류** — EXPIRED 도달 불가, 벤더 과금+미이행 stranded가 비종결로 고착. (2) 만료 batch가 단일 `@Transactional` forEach라 stranded event 1건이 **무관한 정상 READY 만료까지 롤백**(poison-pill) — stranded 1건이 존재하는 한 만료가 영구 wedge되어 정상 READY 누적 → 각 redis 선차감 미해제 누적(보수적 under-sell 방향). 만료 정책(READY 만 직접 만료, IN_PROGRESS 정체분은 정합 스캐너 복원 후 만료의 2단 연쇄 — TIME-MODEL-AND-EXPIRY 에서 명문화)이 order 상태 미복원으로 **실제 차단**됨이 이번에 실측. 자동 복구(DLQ 재주입 + order/event 정합 복원)는 TQ-1/TC-3 및 별 토픽 위임.
 
 **부분 해소 (2026-07-01)**: 문제 (2) **만료 batch poison-pill** 은 만료 배치를 건별 독립 트랜잭션 + 실패 격리로 해소했다 — `PaymentExpirationServiceImpl` 에서 `@Transactional` 을 제거해 `PaymentCommandUseCase.expirePayment`(별도 빈, 자체 `@Transactional`, self-invocation 아님)가 건별로 커밋/롤백하게 하고, 호출부 try/catch 로 단건 실패를 격리(`payment_expiration_skipped_total` 카운터 + WARN, never-silent)한다. stranded 1건이 무관한 정상 READY 만료를 더는 막지 않는다(만료 영구 wedge → 정상 READY 누적 → redis 선차감 미해제 누적 차단). 문제 (1) **READY 잔류**(stranded 자체) 는 여전 한계 — 비종결 READY 가 복구 여지상 안전 방향이라 자동 복구는 TQ-1/TC-3 위임 유지. 회귀: `PaymentExpirationServiceImplTest#expireOldReadyPayments_oneStranded_doesNotBlockOthers` + `ConfirmedDbDownIntegrationTest`(stranded 만료 실패 격리).
 

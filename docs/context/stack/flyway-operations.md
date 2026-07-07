@@ -1,6 +1,6 @@
 # Flyway 운영 가이드 — DB 마이그레이션
 
-> 최종 갱신: 2026-06-23 (코드 대조 — db 위치 두 패턴 정정: payment/pg=`db/migration`, product/user=`db/schema`+`db/seed`).
+> 최종 갱신: 2026-06-23 (코드 대조 — db 위치 두 패턴 정정: payment/pg=`db/migration`, product/user=`db/schema`+`db/seed`). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 재검토 — 불일치 0건, 변경 불요(보존).
 > profile 별 locations, named volume 재사용 시 MissingMigration 대응, Testcontainers 격리.
 
 **모델**: 스키마 위치가 두 패턴으로 갈린다.

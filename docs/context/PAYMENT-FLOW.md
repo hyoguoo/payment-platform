@@ -1,9 +1,9 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동). 이전: 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
-현재 `main` (MSA 4서비스 분리 + Phase 0~3.5 + PRE-PHASE-4-HARDENING 봉인 시점) 코드를 기준으로, 브라우저가
+현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
 결제를 시작해서 최종 DONE/FAILED까지 도달하는 전 과정을 정리한다.
 
 ---
@@ -65,7 +65,7 @@ flowchart TD
     R2 -->|Yes| R3["Step2: outbox + paymentEvent 조회"]
     R3 --> R4["Step3: KafkaMessagePublisher.send<br/>topic=payment.commands.confirm<br/>PaymentConfirmCommandMessage<br/>orderId/paymentKey/amount/vendorType/eventUuid"]
     R4 --> R5{"Kafka 발행 성공?"}
-    R5 -->|실패 예외 전파| R5a["IN_FLIGHT 유지<br/>→ OutboxWorker가 타임아웃 복구 재발행"]
+    R5 -->|실패 예외 전파| R5a["단일 TX 전체 롤백 (Step1 CAS 포함)<br/>→ PENDING 그대로 → OutboxWorker 5초 주기 재픽업"]
     R5 -->|성공| R6["Step4: outbox.toDone 저장"]
 
     S["scheduler/OutboxWorker<br/>@Scheduled 폴백"] -.->|"리스너 스킵/크래시 대비"| R
@@ -197,7 +197,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 
 ## 장애 복원 포인트
 
-- **리스너 스킵/크래시**: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50, IN_FLIGHT 5분 타임아웃 복귀), pg 쪽은 `PgOutboxPollingWorker` (`processedAt IS NULL AND availableAt <= NOW`) 가 PENDING/타임아웃 IN_FLIGHT 재픽업
+- **리스너 스킵/크래시/Kafka 발행 실패**: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50) 의 PENDING 배치 재픽업이 1차 경로 — `OutboxRelayService.relay` 는 단일 TX 라 Kafka 발행 실패 시 TX 전체가 롤백돼 PENDING 그대로 남고 이 재픽업으로 즉시 회복된다. IN_FLIGHT 5분 타임아웃 복귀는 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 경로. pg 쪽은 `PgOutboxPollingWorker` (`processedAt IS NULL AND availableAt <= NOW`) 가 동일하게 PENDING 재픽업
 - **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → pg_inbox QUARANTINED → payment `QuarantineCompensationHandler` (DLQ-REACHABILITY). 동시 진입 시 over-count(조기 격리)는 수용 한계. FCG (`PgFinalConfirmationGate`) 는 현재 호출처 0 — 미연결 (후속 Phase 예정)
 - **재고 캐시 장애**: confirm 단계에서 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` 플래그
 - **IN_FLIGHT 복원**: `PaymentReconciler` (@Scheduled fixedDelayMs=120000, 2분) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업. 재고 발산 감지/보정은 새 재고 모델에서 책임 제거됨

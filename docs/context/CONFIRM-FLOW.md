@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조). 이전: 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -69,25 +69,25 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EV(["@TransactionalEventListener(AFTER_COMMIT)<br/>fallbackExecution=true<br/>@Async(outboxRelayExecutor VT)"]) --> RELAY[OutboxRelayService.relay orderId]
+    EV(["@TransactionalEventListener(AFTER_COMMIT)<br/>fallbackExecution=true<br/>@Async(outboxRelayExecutor VT)"]) --> RELAY["OutboxRelayService.relay orderId<br/>@Transactional (단일 TX, Step1~4 전체)"]
 
-    RELAY --> CL["Step 1: claimToInFlight<br/>atomic UPDATE WHERE status='PENDING' → IN_FLIGHT<br/>REQUIRES_NEW TX"]
+    RELAY --> CL["Step 1: claimToInFlight<br/>atomic UPDATE WHERE status='PENDING' → IN_FLIGHT<br/>(같은 TX 내, REQUIRES_NEW 아님)"]
     CL -->|선점 실패 false| SKIP([no-op return])
     CL -->|선점 성공 true| LOAD[Step 2: outbox 조회<br/>paymentEvent 조회]
 
     LOAD --> SEND["Step 3: messagePublisherPort.send<br/>topic=payment.commands.confirm<br/>key=orderId<br/>PaymentConfirmCommandMessage"]
 
-    SEND -->|발행 실패 예외 전파| HOLD["IN_FLIGHT 유지<br/>(TX rollback → PENDING 복귀 X, IN_FLIGHT 유지)<br/>OutboxWorker 폴백 재시도"]
-    SEND -->|성공| DONE["Step 4: outbox.toDone save<br/>IN_FLIGHT → DONE"]
+    SEND -->|발행 실패 예외 전파| ROLLBACK["TX 전체 롤백<br/>(Step1 CAS 포함 미커밋) → PENDING 그대로<br/>OutboxWorker 5초 주기 재픽업"]
+    SEND -->|성공| DONE["Step 4: outbox.toDone save<br/>같은 TX 커밋 시 PENDING → DONE 원자 반영"]
 
     DONE --> END([완료])
-    HOLD --> END
+    ROLLBACK --> END
 ```
 
 **책임 분석:**
 - `OutboxImmediateEventHandler` — `@ConditionalOnProperty(payment.monolith.confirm.enabled, matchIfMissing=true)`. 기본 활성. 비활성 시 `OutboxWorker` 폴백만 작동.
 - `@Async("outboxRelayExecutor")` — `AsyncConfig` 에서 정의한 가상 스레드 executor. OTel Context + MDC 이중 래핑 (`ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()`) — traceparent 끊김 없음.
-- `OutboxRelayService.relay` — `@Transactional`. `claimToInFlight` 가 `REQUIRES_NEW` 로 원자 선점. **TX 안에서 Kafka send** → 실패 시 TX rollback 이지만 outbox row 는 IN_FLIGHT 상태로 남는다 (claimToInFlight 는 별도 REQUIRES_NEW TX 에서 이미 커밋됨).
+- `OutboxRelayService.relay` — **단일 `@Transactional`** 메서드 안에서 claim(Step1)·조회(Step2)·Kafka 발행(Step3)·완료 마킹(Step4) 을 전부 수행한다. `claimToInFlight` 는 같은 TX 소속 `@Modifying` UPDATE(propagation 미지정 = REQUIRED)로, REQUIRES_NEW 로 별도 커밋되지 않는다. Kafka 발행(Step3)이 실패해 예외가 전파되면 TX 전체가 롤백되어 Step1 의 IN_FLIGHT 갱신도 함께 취소되고, row 는 (커밋된 적 없는) PENDING 그대로 남는다 — `OutboxWorker` 의 5초 주기 배치 재픽업이 1차 회복 경로다.
 - `PaymentConfirmCommandMessage` 필드: `orderId`, `paymentKey`, `amount(BigDecimal)`, `vendorType(PaymentGatewayType)`, `eventUuid`. 현재 eventUuid = orderId 재사용 (confirm 은 orderId 당 1회만 발행되므로 orderId 가 고유 식별자로 기능).
 
 ---
@@ -110,10 +110,10 @@ flowchart TD
 **설정값 (application.yml):**
 - `scheduler.outbox-worker.fixed-delay-ms`: 5000 (기본)
 - `scheduler.outbox-worker.batch-size`: 50 (기본)
-- `scheduler.outbox-worker.parallel-enabled`: **false (기본)** (`OutboxWorker` 생성자 `@Value("${scheduler.outbox-worker.parallel-enabled:false}")`)
+- `scheduler.outbox-worker.parallel-enabled`: 코드 fallback **false** (`OutboxWorker` 생성자 `@Value("${scheduler.outbox-worker.parallel-enabled:false}")`) / default 프로파일(로컬·docker 실구동 값)은 **true** (`application.yml`)
 - `scheduler.outbox-worker.in-flight-timeout-minutes`: 5 (기본)
 
-정상 환경에서 `OutboxImmediateEventHandler` 가 PENDING 을 즉시 처리하므로 `OutboxWorker` 는 대부분 no-op. 리스너 스킵 / 워커 크래시 / Kafka 발행 실패 시 IN_FLIGHT 타임아웃 회수를 통해 재발행한다.
+정상 환경에서 `OutboxImmediateEventHandler` 가 PENDING 을 즉시 처리하므로 `OutboxWorker` 는 대부분 no-op. 1차 회복 경로는 `findPendingBatch` 의 5초 주기 PENDING 배치 재픽업이며, 리스너 스킵과 §3 의 TX 롤백(Kafka 발행 실패)이 모두 여기로 수렴한다. `recoverTimedOutInFlightRecords` 의 IN_FLIGHT 타임아웃 회수는 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 안전장치다.
 
 ---
 
@@ -172,7 +172,7 @@ flowchart TD
 - QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 status≠DONE 이라 재발행 미트리거 + noop 차단 — DLQ silent 분기 방지 (DR-3 가드 불변).
 
 **D5 멱등 마킹 (`payment_event_dedupe`):**
-- `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, receivedAt, expiresAt) → int`.
+- `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, expiresAt) → int`.
 - `INSERT IGNORE INTO payment_event_dedupe(event_uuid, ...)` — affected rows 0 = 중복, 1 = 신규.
 - 0 row 시 **단순 skip + return** — 단일 컨슈머 EOS 흐름에서 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 이 분기는 도달 불가(방어적). 과거 "발행 항상 진행(위키 line 141)" 은 dead branch 라 CONFIRM-APPROVED-RESEND-GAP 에서 제거됨 (crash 내성은 종결 가드 재발행으로 이전).
 - TTL: `expires_at = receivedAt + 8일` (Kafka retention 7d + 복구 버퍼 1d).
@@ -215,7 +215,8 @@ else
       for (PaymentOrder order : paymentEvent.getPaymentOrderList()):
         String idempotencyKey = StockEventUuidDeriver.derive(orderId, productId, "stock-commit")
         StockCommittedEvent payload = new StockCommittedEvent(orderId, productId, quantity, idempotencyKey)
-        stockCommittedKafkaTemplate.send(PaymentTopics.STOCK_COMMITTED, orderId, payload)
+        stockCommittedKafkaTemplate.send(PaymentTopics.EVENTS_STOCK_COMMITTED, String.valueOf(productId), payload)
+      // 메시지 키는 productId — 동일 상품 이벤트의 순서를 보장한다
       // EOS producer tx 안에서 buffer → 트랜잭션 커밋 시 원자적으로 가시화
 ```
 
@@ -257,7 +258,7 @@ flowchart TD
     APPROVED["handleApproved 진입<br/>(EOS 트랜잭션 진행 중)"] --> MARK_DONE["markPaymentAsDone(paymentEvent, approvedAt)<br/>RDB 상태 전이"]
     MARK_DONE --> LOOP["for (PaymentOrder order : paymentEvent.getPaymentOrderList())"]
     LOOP --> DERIVE["StockEventUuidDeriver.derive(orderId, productId, 'stock-commit')<br/>→ idempotencyKey (결정적 UUID, D8)"]
-    DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=orderId<br/>payload=StockCommittedEvent(idempotencyKey)"]
+    DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=productId (동일 상품 이벤트 순서 보장)<br/>payload=StockCommittedEvent(idempotencyKey)"]
     SEND --> LOOP
     LOOP -->|loop 종료| COMMIT["EOS 트랜잭션 커밋<br/>RDB + offset + producer 원자 커밋"]
     COMMIT --> VISIBLE["product-service (read_committed) 가시화"]
@@ -377,9 +378,9 @@ stateDiagram-v2
 | PENDING | 발행 대기. AFTER_COMMIT 리스너 또는 OutboxWorker 가 처리 |
 | IN_FLIGHT | 워커가 선점, 발행 진행 중 (또는 타임아웃 대기) |
 | DONE | Kafka 발행 성공 (`isTerminal()` = true) |
-| FAILED | 발행 영구 실패 (`isTerminal()` = true) |
+| FAILED | 정의된 종결 상태(`isTerminal()` = true). **현재 도달하는 코드 경로 0건** — `PaymentOutbox.toFailed()` 삭제, `PaymentOutboxUseCase.incrementRetryOrFail` 호출처 0(dead terminal state) |
 
-IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀로 워커 크래시 회복.
+IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀. 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 회복이며, Kafka 발행 실패의 1차 회복 경로는 §3 의 TX 롤백 → PENDING 즉시 복귀다.
 
 ---
 
@@ -396,9 +397,9 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | backoff 전략 | **FIXED 5s** (기본, `@DefaultValue("FIXED")` + `@DefaultValue("5000")`) | EXPONENTIAL × jitter (base=2s, ×3, ±25%) |
 | maxDelayMs | **60000ms** (기본) | — |
 | 시각 표현 | `payment_outbox.next_retry_at` (RDB row) | `pg_outbox.available_at` (RDB row) + Kafka self-loop |
-| 한도 초과 시 | outbox FAILED (DLQ 또는 수동 처리) | `payment.commands.confirm.dlq` 로 격리 |
+| 한도 초과 시 | outbox FAILED — enum 정의만 존재, 전이 코드 경로 0건(dead terminal). 현재는 PENDING 상태로 무기한 재픽업(별도 한도 없음) | `payment.commands.confirm.dlq` 로 격리 |
 | 트리거 | `OutboxImmediateEventHandler` / `@Scheduled OutboxWorker` | `PaymentConfirmConsumer` → self-loop (attempt 헤더) |
-| 코드 진입점 | `PaymentOutboxUseCase.incrementRetryOrFail` | `PgVendorCallService.handleRetry` |
+| 코드 진입점 | `OutboxWorker` 5초 주기 배치 재픽업(`OutboxRelayService.relay`) — `PaymentOutboxUseCase.incrementRetryOrFail` 는 정의만 있고 호출처 0(dead) | `PgVendorCallService.handleRetry` |
 
 **핵심 비대칭:**
 - payment 측: "내가 Kafka broker 에 publish 못함" 회복 — outbox CAS + 워커 폴백
@@ -412,7 +413,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | 장애 | 동작 |
 |---|---|
 | 리스너 스킵 / 워커 크래시 (payment 측) | `OutboxWorker` 가 PENDING + IN_FLIGHT 타임아웃 초과 분 PENDING 복귀 후 재픽업 |
-| Kafka producer 실패 (payment → broker) | IN_FLIGHT 유지 → `OutboxWorker` 타임아웃 후 PENDING 복귀 → relay 재시도 |
+| Kafka producer 실패 (payment → broker) | `OutboxRelayService.relay` 단일 TX 전체 롤백 → PENDING 즉시 복귀 → `OutboxWorker` 5초 주기 재픽업 |
 | pg-service 측 retryable (5xx/timeout) | pg-service 자체 retry — `pg_outbox.available_at = now + backoff` 로 `payment.commands.confirm` 재발행. IN_PROGRESS 분기에서도 vendor 재호출 (`handleInProgress(command, attempt)`, 2026-04-27 변경). attempt < 4 까지 |
 | pg-service 측 retry 한도 초과 (attempt ≥ 4) | `payment.commands.confirm.dlq` 로 격리 → `PaymentConfirmDlqConsumer` → `PgDlqService` → pg_inbox QUARANTINED → events.confirmed QUARANTINED → payment `handleQuarantined` |
 | pg-service 측 non-retryable (4xx) | pg_inbox FAILED → events.confirmed FAILED → payment `handleFailed` |
@@ -434,7 +435,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 |---|---|---|---|
 | `decrement:done:{orderId}` | Redis (Lua `stock_decrement_atomic.lua`) | P8D (8일) | 결제 단위 차감 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 차감 멱등 보장. |
 | `compensation:done:{orderId}` | Redis (Lua `stock_compensation_atomic.lua`) | P8D (8일) | 결제 단위 보상 완료 마커. 동일 orderId 재진입 시 `ALREADY_DONE` 반환으로 보상 멱등 보장. |
-| `payment_event_dedupe.event_uuid` | MySQL (INSERT IGNORE) | `expires_at = receivedAt + P8D` | 메시지 단위 dedupe. 0 row = 중복 skip. TTL 정리 스케줄러는 TC-13-FOLLOW-2 후속 항목. |
+| `payment_event_dedupe.event_uuid` | MySQL (INSERT IGNORE) | `expires_at = receivedAt + P8D` | 메시지 단위 dedupe. 0 row = 중복 skip. TTL 정리는 `DedupeCleanupWorker`(`@Scheduled fixedDelayMs=3600000, 1시간`)가 `deleteExpired` 로 만료 행을 배치 삭제(구현 완료). |
 
 P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCase.DEDUPE_TTL` 과 정렬.
 
@@ -447,7 +448,7 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | confirm 진입 | `validateConfirmRequest` LVAL 가드 — TX 진입 전 도메인 검증 | `PaymentEvent.validateConfirmRequest` |
 | confirm TX | `@Transactional` + `payment_outbox PENDING` 단일 TX 커밋 | `PaymentTransactionCoordinator.executeConfirmTx` |
 | checkout 중복 | `IdempotencyStoreRedisAdapter` — Redis SET NX EX. 키=`Idempotency-Key` 헤더 | `IdempotencyStoreRedisAdapter.getOrCreate` |
-| outbox claim | `claimToInFlight` REQUIRES_NEW atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
+| outbox claim | `claimToInFlight` 단일 TX 내 atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
 | Kafka 멱등 | producer key=orderId. eventUuid=orderId 재사용 (1회 발행 per orderId) | `OutboxRelayService.buildMessage` |
 | consumer 멱등 (재고) | **Lua atomic dedup token** — `decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D. 같은 orderId 재진입 시 `ALREADY_DONE` 반환으로 멱등. | `lua/stock_decrement_atomic.lua` / `lua/stock_compensation_atomic.lua` |
 | consumer 멱등 (메시지 dedupe) | `payment_event_dedupe` INSERT IGNORE — 0 row 시 비즈니스 skip. `DefaultErrorHandler` + `FixedBackOff(1000ms, 5)` + DLQ 가 retry/DLQ layer 처리 | `PaymentEventDedupeStore` / `KafkaErrorHandlerConfig` |
@@ -461,7 +462,7 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 ## 14. VT + MDC + traceparent 전파
 
 - **VT executor**: `AsyncConfig.outboxRelayExecutor` — `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()`. OTel Context + MDC (`Slf4jMdcThreadLocalAccessor`) 이중 래핑.
-- `@Async("outboxRelayExecutor")` 를 `OutboxImmediateEventHandler` 와 `StockOutboxImmediateEventHandler` 가 사용 → submit 시점 OTel Context + MDC 캡처 → VT 에서 복원.
+- `@Async("outboxRelayExecutor")` 를 `OutboxImmediateEventHandler` 가 사용(과거 `StockOutboxImmediateEventHandler` 도 같은 executor 를 썼으나 EOS 전환에서 `StockOutbox` 묶음과 함께 폐기) → submit 시점 OTel Context + MDC 캡처 → VT 에서 복원.
 - `OutboxWorker` 병렬 처리도 동일 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 사용.
 - Kafka: `spring.kafka.template.observation-enabled=true` + `spring.kafka.listener.observation-enabled=true` (application.yml) — traceparent 를 Kafka 헤더에 자동 주입/추출.
 - MDC 키: `traceid`, `spanid` — LogFmt 포맷에 자동 포함.
@@ -568,4 +569,4 @@ pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPub
   - Phase 5: 결과 수신 overview + 폴링
 - **복구 사이클 상세** (RecoveryDecision, FCG, D12): `docs/archive/payment-double-fault-recovery/COMPLETION-BRIEFING.md`
 - **AMOUNT_MISMATCH 양방향 방어 도입 배경**: `docs/archive/pre-phase-4-hardening/COMPLETION-BRIEFING.md` (D1)
-- **pg-service listener 분리 안 설계 기록**: `docs/archive/pg-confirm-listener-split/` (verify 완료 후 이동 예정)
+- **pg-service listener 분리 안 설계 기록**: `docs/archive/pg-confirm-listener-split/`
