@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -172,7 +172,7 @@ flowchart TD
 - QUARANTINED 결제에 늦은 APPROVED 메시지가 도착해도 status≠DONE 이라 재발행 미트리거 + noop 차단 — DLQ silent 분기 방지 (DR-3 가드 불변).
 
 **D5 멱등 마킹 (`payment_event_dedupe`):**
-- `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, receivedAt, expiresAt) → int`.
+- `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, expiresAt) → int`.
 - `INSERT IGNORE INTO payment_event_dedupe(event_uuid, ...)` — affected rows 0 = 중복, 1 = 신규.
 - 0 row 시 **단순 skip + return** — 단일 컨슈머 EOS 흐름에서 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 이 분기는 도달 불가(방어적). 과거 "발행 항상 진행(위키 line 141)" 은 dead branch 라 CONFIRM-APPROVED-RESEND-GAP 에서 제거됨 (crash 내성은 종결 가드 재발행으로 이전).
 - TTL: `expires_at = receivedAt + 8일` (Kafka retention 7d + 복구 버퍼 1d).
@@ -215,7 +215,8 @@ else
       for (PaymentOrder order : paymentEvent.getPaymentOrderList()):
         String idempotencyKey = StockEventUuidDeriver.derive(orderId, productId, "stock-commit")
         StockCommittedEvent payload = new StockCommittedEvent(orderId, productId, quantity, idempotencyKey)
-        stockCommittedKafkaTemplate.send(PaymentTopics.STOCK_COMMITTED, orderId, payload)
+        stockCommittedKafkaTemplate.send(PaymentTopics.EVENTS_STOCK_COMMITTED, String.valueOf(productId), payload)
+      // 메시지 키는 productId — 동일 상품 이벤트의 순서를 보장한다
       // EOS producer tx 안에서 buffer → 트랜잭션 커밋 시 원자적으로 가시화
 ```
 
@@ -257,7 +258,7 @@ flowchart TD
     APPROVED["handleApproved 진입<br/>(EOS 트랜잭션 진행 중)"] --> MARK_DONE["markPaymentAsDone(paymentEvent, approvedAt)<br/>RDB 상태 전이"]
     MARK_DONE --> LOOP["for (PaymentOrder order : paymentEvent.getPaymentOrderList())"]
     LOOP --> DERIVE["StockEventUuidDeriver.derive(orderId, productId, 'stock-commit')<br/>→ idempotencyKey (결정적 UUID, D8)"]
-    DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=orderId<br/>payload=StockCommittedEvent(idempotencyKey)"]
+    DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=productId (동일 상품 이벤트 순서 보장)<br/>payload=StockCommittedEvent(idempotencyKey)"]
     SEND --> LOOP
     LOOP -->|loop 종료| COMMIT["EOS 트랜잭션 커밋<br/>RDB + offset + producer 원자 커밋"]
     COMMIT --> VISIBLE["product-service (read_committed) 가시화"]

@@ -40,9 +40,9 @@
 
 #### [PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH] — 콜스택 기반 trigger 자동 감지가 존재하지 않는 클래스명 참조
 
-- **현황**: `PaymentStatusMetricsAspect.detectTriggerFromCallStack()` 이 `className.contains("PaymentConfirmService")`/`"PaymentRecoverService"` 문자열 매칭으로 trigger 를 판정하나, 두 클래스명 모두 현재 payment-service 코드베이스에 존재하지 않는다(`OutboxAsyncConfirmService`/`PaymentConfirmResultUseCase` 만 존재, `PaymentRecoverService` 는 전체 삭제됨).
-- **영향**: 이 메서드가 항상 폴백(예: "auto")으로 빠질 가능성 — 메트릭 라벨의 trigger 구분이 사실상 무의미해질 수 있다.
-- **처방**: 매칭 대상 클래스명을 현재 클래스명으로 갱신할지, 이 자동 감지 로직 자체를 폐기할지 코드 확인 필요.
+- **현황**: `PaymentStatusMetricsAspect.detectTriggerFromCallStack()` 이 `className.contains("PaymentConfirmService")`/`"PaymentRecoverService"`/`"PaymentExpirationService"` 3개 분기로 trigger 를 판정한다. confirm 분기는 스택의 실제 구현 클래스명이 `OutboxAsyncConfirmService`(인터페이스명 `PaymentConfirmService` 매칭과 불일치)라 매칭 불발, recovery 분기는 대상 클래스(`PaymentRecoverService`)가 전체 삭제돼 매칭 불발 — 두 분기 모두 항상 미스매치. expiration 분기만 `PaymentExpirationServiceImpl` 이 `"PaymentExpirationService"` 부분 문자열을 포함해 정상 매치된다. confirm/recovery 미매치 시 최종 폴백은 `unknown`(`PaymentStatusMetricsAspect.java:93`).
+- **영향**: confirm/recovery 트리거로 발생하는 상태 전이 메트릭은 라벨이 전부 `unknown` 으로 뭉개져 trigger 구분이 무의미해진다. expiration 전이만 라벨이 정확하다.
+- **처방**: confirm/recovery 매칭 대상 클래스명을 현재 클래스명(`OutboxAsyncConfirmService` 등)으로 갱신할지, 이 자동 감지 로직 자체를 폐기할지 코드 확인 필요.
 
 #### [PG-RETRY-BACKOFF-OFF-BY-ONE] — pg-service 재시도 백오프 off-by-one 의심
 

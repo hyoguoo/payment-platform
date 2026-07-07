@@ -407,4 +407,15 @@ flowchart TD
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+**ship 코드 리뷰 게이트 (2026-07-07)**: reviewer pass(minor 2건) · domain-expert pass(minor 4건) — 전건 채택, 스킵 0건.
+
+| # | 담당 | 파일:위치 | finding | 처리 |
+|---|---|---|---|---|
+| 1 | reviewer | 위키 `cross-validation.md` L36·39·110, `event-driven-choreography.md` L256 | mermaid 노드 라벨 내 유니코드 화살표(→)·중간점(·) 잔존(서식만, 내용 무변경) | 채택 — `->`/`/` 로 치환, 파일 전체 grep 으로 mermaid 블록 내 잔존 0건 확인 |
+| 2 | reviewer | 위키 `structured-logging.md` L23·25·26 | "~을 통한" 관형형 3곳 | 채택 — 구체 동사형으로 정정(`LogFmt` 유틸리티 클래스로 로그 포맷을 통일 등) |
+| 3 | domain-expert | 위키 `pg-confirm-flow.md` L17·L247 | "실측" 창작 서술 — `docs/archive/pg-confirm-listener-split/` 에 실제 측정 기록 없음 | 채택 — L17 "이를 실측한 뒤" → 리스크 분석 서술로, L247 "실측 벤더 read-timeout 기준" → "설정 기본값 read-timeout(10s) 기준 배수로 잡은 측정 없는 baseline(부하 측정을 통한 정밀화는 후속)" 정정 |
+| 4 | domain-expert | 위키 `architecture.md` presentation 트리 주석 | "Kafka consumer 가 호출하는 입력 포트" — 실제로는 `PaymentController`(HTTP)가 호출, Kafka 소비는 `ConfirmedEventConsumer` → application usecase 직행이라 presentation 미경유 | 채택 — "(HTTP Controller 가 호출하는 입력 포트)"로 정정 |
+| 5 | domain-expert | `docs/context/TODOS.md` `[PAYMENT-STATUS-TRIGGER-DETECT-DEAD-BRANCH]` | 현황 서술이 소스(`PaymentStatusMetricsAspect.java`) 재확인 결과와 어긋남 | 채택 — confirm 분기(인터페이스명 매칭이 구현 클래스명 `OutboxAsyncConfirmService` 와 불일치)/recovery 분기(클래스 삭제) 매칭 불발, expiration 분기(`PaymentExpirationServiceImpl` 매치)만 정상, 미매치 시 `unknown` 폴백(L93)으로 재기술 |
+| 6 | domain-expert | `docs/context/CONFIRM-FLOW.md` §5·§6 | stock-committed 발행 key 오서술(orderId, 실제는 productId) + 상수명 오기(`STOCK_COMMITTED`→`EVENTS_STOCK_COMMITTED`) + D5 `markIfAbsent` 시그니처 5-인자(실제 4-인자) | 채택 — `PaymentConfirmResultUseCase.java:232-236`/`PaymentEventDedupeStore.java:25` 재확인 후 §5 pseudocode·§6 mermaid·D5 설명 3곳 정정("동일 상품 이벤트 순서 보장" 주석 반영), 헤더 "최종 갱신" 동기화, 문서 전체 grep 으로 동일 오류 반복 위치 0건 확인 |
+
+`./gradlew test` — 이번 라운드는 문서 전용 변경(코드 무변경)이라 재실행 대상 아님(직전 Task 19 스냅샷에서 861 PASS 확인 완료, 회귀 없음).
