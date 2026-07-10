@@ -88,4 +88,22 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
                 .filter(e -> e.getStatus() == status)
                 .toList();
     }
+
+    /**
+     * 실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
+     * 저장소의 현재 상태가 QUARANTINED 일 때만 {@link PaymentEvent#failFromQuarantine} 도메인 전이를
+     * 그 자리에서 적용해(자식 order 도 함께 FAIL) true 를 반환하고, 그 외에는 아무 것도 바꾸지 않고 false 를
+     * 반환한다.
+     */
+    @Override
+    public boolean resolveQuarantineToFailed(Long paymentEventId, String reason, Instant lastStatusChangedAt) {
+        Optional<PaymentEvent> found = findById(paymentEventId);
+        if (found.isEmpty() || found.get().getStatus() != PaymentEventStatus.QUARANTINED) {
+            return false;
+        }
+        PaymentEvent event = found.get();
+        event.failFromQuarantine(reason, lastStatusChangedAt);
+        store.put(event.getOrderId(), event);
+        return true;
+    }
 }

@@ -1,17 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-07-10 (DLQ-QUARANTINE-RECOVERY execute Task 2 완료 → Task 3 대기)
+> 최종 수정: 2026-07-11 (DLQ-QUARANTINE-RECOVERY execute Task 3 완료 → Task 4 대기)
 
 ## 활성 작업
 
 - **토픽**: DLQ-QUARANTINE-RECOVERY (격리 결제 안전 종결 + 유실 메시지 재주입 수동 복구)
-- **단계**: execute — Task 3 대기 (Task 1·2 완료)
+- **단계**: execute — Task 4 대기 (Task 1·2·3 완료)
 - **이슈/브랜치**: #122
 - **산출물**: `docs/topics/DLQ-QUARANTINE-RECOVERY.md` (설계) · `docs/DLQ-QUARANTINE-RECOVERY-PLAN.md` (8 태스크)
 
 ## 재개 메모
 
-Task 1(복구 전용 조건부 보상 — `StockRecoveryCompensationResult`/`StockCachePort.compensateIfDecremented`/`stock_compensation_if_decremented.lua`/`StockCacheRedisAdapter`/`FakeStockCachePort`), Task 2(격리 복구 도메인 전이 `PaymentEvent.failFromQuarantine` — QUARANTINED 전용 가드, 정상 `fail()`과 물리적 분리, 신규 에러코드 `INVALID_STATUS_TO_FAIL_FROM_QUARANTINE`) TDD 완료, 479 전체 PASS. Task 3(CAS 조건부 저장)부터 이어서 TDD 실행. 주의: 새 포트 메서드는 Fake 갱신 동반(컴파일), Task 3 CAS 는 event+order 동조 저장(기존 `saveOrUpdate` 가 event·order 를 별도 두 단계로 save 하므로 affected=1 일 때만 같은 TX 에서 order 자식 행도 반영), Task 4 는 보상 TX 밖·전이+저장 단일 TX, Task 7 retention 은 `create-topics.sh` 실적용.
+Task 1(복구 전용 조건부 보상 — `StockRecoveryCompensationResult`/`StockCachePort.compensateIfDecremented`/`stock_compensation_if_decremented.lua`/`StockCacheRedisAdapter`/`FakeStockCachePort`), Task 2(격리 복구 도메인 전이 `PaymentEvent.failFromQuarantine` — QUARANTINED 전용 가드, 정상 `fail()`과 물리적 분리, 신규 에러코드 `INVALID_STATUS_TO_FAIL_FROM_QUARANTINE`), Task 3(CAS 조건부 저장 — `PaymentEventRepository.resolveQuarantineToFailed`: `@Modifying` UPDATE 게이트(`WHERE status='QUARANTINED'`, affected rows) + affected=1 일 때만 같은 `@Transactional` 안에서 `JpaPaymentOrderRepository.failByPaymentEventId` 로 자식 order 동조, `FakePaymentEventRepository` 구현 포함) TDD 완료, 단위 479 + 통합 46 전체 PASS. Task 4(격리 안전 종결 유스케이스)부터 이어서 TDD 실행. 주의: Task 4 는 보상(Redis) TX 밖 선행 → 도메인 `failFromQuarantine` 전이 + `resolveQuarantineToFailed` CAS 저장 + AOP history INSERT 를 단일 `@Transactional`로 묶고, CAS 결과 false(충돌)면 전이 실패 예외로 롤백해야 함 — `reason` 필수 파라미터. Task 7 retention 은 `create-topics.sh` 실적용. 테스트 인프라 메모: `:payment-service:test`(단위)와 `:payment-service:integrationTest`(통합, `create-drop` 그룹이 재사용 MySQL 컨테이너 `payment-test` 공유)를 한 커맨드로 묶어 실행하면 컨텍스트 간 스키마 생성/드롭 경합으로 간헐적 "table doesn't exist" flaky 가 날 수 있음(`docs/context/TESTING.md` 기지 이슈) — 실패 시 `integrationTest` 단독 재실행으로 재현/판정.
 
 ## 최근 완료
 

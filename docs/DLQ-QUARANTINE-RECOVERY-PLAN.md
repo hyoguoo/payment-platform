@@ -77,7 +77,7 @@ flowchart TD
 
 - [x] Task 1: 복구 전용 조건부 보상 (포트 + Lua + 어댑터)
 - [x] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
-- [ ] Task 3: CAS 조건부 저장 (event + order 행)
+- [x] Task 3: CAS 조건부 저장 (event + order 행)
 - [ ] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
 - [ ] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
 - [ ] Task 6: DLQ 읽기·재발행 어댑터
@@ -146,7 +146,7 @@ flowchart TD
 - 조건부 저장 통합 테스트 pass (event=FAILED **+ order=FAIL** + 충돌 시 0건·불변), 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEventRepository.resolveQuarantineToFailed(Long paymentEventId, String reason, Instant lastStatusChangedAt)` 신설 — `JpaPaymentEventRepository`에 `@Modifying @Query("UPDATE ... WHERE id=:id AND status='QUARANTINED'")`(affected rows int 반환) + `JpaPaymentOrderRepository`에 자식 order 동조용 `failByPaymentEventId`(`WHERE payment_event_id=:id AND status IN ('NOT_STARTED','EXECUTING')` → FAIL, `PaymentOrder.fail()` 도메인 가드와 동일 조건). `PaymentEventRepositoryImpl.resolveQuarantineToFailed`에 `@Transactional` 부여해 두 `@Modifying` 쿼리를 단일 TX로 묶음(개별 리포지토리 메서드는 기본적으로 각자 단일-오퍼레이션 TX를 열므로 명시 없이는 원자성 미보장) — affected=0 이면 즉시 false 반환(자식 order 미터치), affected=1 일 때만 order 동조 갱신 후 true. `FakePaymentEventRepository.resolveQuarantineToFailed`는 저장소 현재 상태가 QUARANTINED 일 때만 `PaymentEvent.failFromQuarantine` 도메인 전이를 그 자리에서 적용(자식 order 포함)해 true, 아니면 무변경 false. `PaymentEventRepositoryImplTest`에 Testcontainers MySQL 통합 테스트 3케이스 추가 — QUARANTINED 1건 반영+order 전부 FAIL 동조 / 이미 FAILED 0건 충돌+event·order 불변 / 동시 2회 호출 시 성공 합계 정확히 1(`ExecutorService`+`CountDownLatch` race 가드). `./gradlew :payment-service:test`(단위 479) + `:payment-service:integrationTest`(46) 전건 PASS(신규 3건 포함, 회귀 없음) — 최초 결합 실행(`test integrationTest` 한 커맨드)에서 관계없는 15건이 "Table 'payment-test.payment_event' doesn't exist"로 실패했으나, `docs/context/TESTING.md`에 문서화된 기존 known flaky(재사용 MySQL 컨테이너를 공유하는 create-drop 그룹 여러 컨텍스트 간 스키마 생성/드롭 경합)로 확인 — `integrationTest` 단독 재실행에서 즉시 46/46 재현 GREEN, 내 변경과 무관. RED `test(payment)` 8d083194 → GREEN `feat(payment)` (본 커밋).
 
 ---
 

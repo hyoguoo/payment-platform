@@ -143,4 +143,24 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 })
                 .toList();
     }
+
+    /**
+     * {@link PaymentEventRepository#resolveQuarantineToFailed(Long, String, Instant)} 구현.
+     *
+     * <p>CAS 게이트(affected 0/1)가 1건일 때만 자식 order 동조 갱신을 같은 트랜잭션에서 수행해야 하므로,
+     * 이 메서드 자체에 {@code @Transactional} 을 걸어 두 {@code @Modifying} 쿼리를 하나의 TX로 묶는다
+     * (개별 리포지토리 메서드는 기본적으로 각자 단일-오퍼레이션 TX를 여는 것이 Spring Data JPA 기본 동작이라
+     * 명시 없이는 원자성이 보장되지 않는다).
+     */
+    @Override
+    @Transactional
+    public boolean resolveQuarantineToFailed(Long paymentEventId, String reason, Instant lastStatusChangedAt) {
+        int affectedEventRows = jpaPaymentEventRepository.resolveQuarantineToFailed(
+                paymentEventId, reason, lastStatusChangedAt);
+        if (affectedEventRows == 0) {
+            return false;
+        }
+        jpaPaymentOrderRepository.failByPaymentEventId(paymentEventId);
+        return true;
+    }
 }
