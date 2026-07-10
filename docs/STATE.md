@@ -1,14 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL 완료·아카이브 — idle)
+> 최종 수정: 2026-07-10 (DLQ-QUARANTINE-RECOVERY discuss 완료 → plan 대기)
 
 ## 활성 작업
 
-없음 — 다음 토픽 대기.
+- **토픽**: DLQ-QUARANTINE-RECOVERY (격리 결제 안전 종결 + 유실 메시지 재주입 수동 복구)
+- **단계**: plan 대기 (discuss 완료)
+- **이슈/브랜치**: #122
+- **산출물**: `docs/topics/DLQ-QUARANTINE-RECOVERY.md` (사전/요약 브리핑 + 설계)
 
 ## 재개 메모
 
-(없음)
+discuss 게이트 3라운드(R1 fail → DONE 복구 제외로 스코프 축소, R2 fail → 보상을 `decrement:done` 토큰 조건화, R3 pass). 다음: plan — 설계를 구현 태스크로 분해. 영향 범위 표(복구 전용 보상 Lua/포트, `DlqReprocessPort`, `failFromQuarantine` 도메인 전이, CAS 조건부 UPDATE, 재주입 사전검사)가 태스크 입력.
 
 ## 최근 완료
 
