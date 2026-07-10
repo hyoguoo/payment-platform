@@ -81,7 +81,7 @@ flowchart TD
 - [x] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
 - [x] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
 - [x] Task 6: DLQ 읽기·재발행 어댑터
-- [ ] Task 7: `events.confirmed.dlq` retention 운영 적용
+- [x] Task 7: `events.confirmed.dlq` retention 운영 적용
 - [ ] Task 8: 관리자 복구 API + Thymeleaf 버튼
 
 ## 태스크
@@ -241,7 +241,29 @@ flowchart TD
 - 브로커 `topic describe` 로 실제 `payment.events.confirmed.dlq` retention 값 확인(선언 Bean 존재만으로는 불충분), 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `KafkaTopicConfig.paymentEventsConfirmedDlq()`(선언 SoT — 테스트/임베디드 환경용)에
+> `TopicConfig.RETENTION_MS_CONFIG=864000000`(10일) 추가. `scripts/smoke/create-topics.sh`(실제
+> 토픽 생성 SoT — 로컬/프로덕션 Compose `auto.create.topics.enable=false` 환경)의
+> `payment.events.confirmed.dlq` 생성 커맨드에만 `--config retention.ms=864000000` 조건부 부여(다른
+> 4개 운영 토픽은 브로커 기본 retention 유지, DLQ만 명시). 두 값(864000000ms=10일)은 소스 코드
+> 중복이라 스크립트 내 상수(`DLQ_RETENTION_MS`)와 Java 상수(`EVENTS_CONFIRMED_DLQ_RETENTION_MS`)를
+> 각각 문서화 주석에서 상호 참조 — 값 변경 시 양쪽 동시 갱신 필요(빌드 타임 공유 불가, 별도
+> 런타임/스크립트 경계). retention(10일) > 재주입 나이 게이트(P8D=8일, `DlqReprocessUseCase`
+> `STOCK_COMMIT_DEDUPE_TTL`) 부등식 근거를 양쪽 주석에 명시 — retention 이 게이트보다 짧으면
+> "게이트는 열려 있는데(재주입 허용 구간) 브로커가 메시지를 먼저 삭제"하는 사각이 생기므로 반드시
+> 커야 한다. 이미 존재하는 토픽(선행 배포로 retention 미설정 상태로 생성된 경우)을 위한
+> `kafka-configs --alter --add-config retention.ms=864000000` + `--describe` 확인 절차를 스크립트
+> 상단 주석으로 문서화(스크립트는 최초 생성시에만 config 적용, 기존 토픽 config 재적용은 멱등 스킵
+> 로직상 자동 수행 안 됨 — 별도 alter 필요함을 명시).
+> **실측 미수행**: 로컬에 `payment-kafka` 컨테이너가 기동돼 있지 않아(`docker ps` 확인, 실행 중
+> 컨테이너 없음) 브로커 `kafka-topics --describe` 실측을 이번 세션에서 수행하지 못했다 —
+> 인프라 전체 기동은 이 설정+스크립트 변경 검증만을 위해서는 과함(PLAN 완료 기준의 "과하면 실측
+> 방법 문서화"에 해당). 실측 방법: `docker-compose.infra.yml up -d` 로 카프카 기동 →
+> `bash scripts/smoke/create-topics.sh` 실행(신규 생성 시 `[CREATE] ... retention.ms=864000000`
+> 로그로 1차 확인) → `docker exec payment-kafka kafka-topics --bootstrap-server localhost:9092
+> --describe --topic payment.events.confirmed.dlq` 출력의 `retention.ms=864000000` 로 최종 확인.
+> `./gradlew :payment-service:test` 499 전체 PASS(테스트 수 불변 — 설정값 변경만, 신규 테스트
+> 없음, tdd=false 태스크), checkstyle/spotbugs(payment-service Main) 통과, 회귀 없음.
 
 ---
 
