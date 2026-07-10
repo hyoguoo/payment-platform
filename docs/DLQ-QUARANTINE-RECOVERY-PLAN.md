@@ -78,7 +78,7 @@ flowchart TD
 - [x] Task 1: 복구 전용 조건부 보상 (포트 + Lua + 어댑터)
 - [x] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
 - [x] Task 3: CAS 조건부 저장 (event + order 행)
-- [ ] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
+- [x] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
 - [ ] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
 - [ ] Task 6: DLQ 읽기·재발행 어댑터
 - [ ] Task 7: `events.confirmed.dlq` retention 운영 적용
@@ -170,7 +170,7 @@ flowchart TD
 - 단위 테스트 pass (순서·조건·audit), 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentCommandUseCase.markPaymentAsFailFromQuarantine(PaymentEvent, @Reason String)` 신설 — `@Transactional @PublishDomainEvent(action="changed") @PaymentStatusChange(toStatus="FAILED", trigger="manual")` 부착(기존 `markPaymentAsFail`/`markPaymentAsQuarantined` AOP audit 패턴 준용). 구현은 도메인 `failFromQuarantine(reason, now)` in-memory 전이 직후 같은 TX 안에서 `paymentEventRepository.resolveQuarantineToFailed(id, reason, now)` CAS 저장 — false(0건 충돌) 시 신규 `PaymentErrorCode.QUARANTINE_RESOLVE_CONFLICT`(E03037)로 `PaymentStatusException` 던져 TX 롤백(`@PublishDomainEvent` 가 발행한 history 이벤트도 `@TransactionalEventListener(BEFORE_COMMIT)` 도달 전에 롤백되어 audit 우회 없음). 신규 오케스트레이션 `QuarantineResolveUseCase.resolve(orderId, reason)` — reason null/blank 시 신규 `PaymentErrorCode.QUARANTINE_RESOLVE_REASON_REQUIRED`(E03036)로 `PaymentValidException` 즉시 거부(어떤 협력자도 미호출) → `paymentLoadUseCase` 로드 → `stockCachePort.compensateIfDecremented`(TX 밖, 보상 결과 OK/ALREADY_DONE/NO_DECREMENT 무관 항상 진행) → `paymentCommandUseCase.markPaymentAsFailFromQuarantine` 위임(TX 경계는 이 메서드 자체의 `@Transactional`이 형성 — 보상은 이 호출 이전이라 자연히 TX 밖). `PaymentCommandUseCaseTest`에 3케이스 추가(CAS 성공 반환, CAS 충돌 예외, 리플렉션 기반 AOP 애노테이션 부착 검증 — `OutboxImmediateEventHandlerTest` 선례 패턴 준용). 신규 `QuarantineResolveUseCaseTest`(Mockito, `QuarantineCompensationHandlerTest` 선례 패턴) 5케이스 — 보상→전이 순서(`InOrder`), 보상 결과 3종 모두 전이 진행(`@EnumSource`), CAS 충돌 예외 전파, reason 누락(null/빈문자/공백) 3종 모두 거부+무호출. `./gradlew :payment-service:test` 490 전체 PASS(신규 11건 포함, 회귀 없음) + checkstyle/spotbugs(Main·Test) 통과. DB/Redis/Kafka 변경 없어 통합테스트 불필요. RED `test(payment)` 41477278 → GREEN `feat(payment)` (본 커밋).
 
 ---
 

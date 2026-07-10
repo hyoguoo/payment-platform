@@ -1,17 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-07-11 (DLQ-QUARANTINE-RECOVERY execute Task 3 완료 → Task 4 대기)
+> 최종 수정: 2026-07-11 (DLQ-QUARANTINE-RECOVERY execute Task 4 완료 → Task 5 대기)
 
 ## 활성 작업
 
 - **토픽**: DLQ-QUARANTINE-RECOVERY (격리 결제 안전 종결 + 유실 메시지 재주입 수동 복구)
-- **단계**: execute — Task 4 대기 (Task 1·2·3 완료)
+- **단계**: execute — Task 5 대기 (Task 1·2·3·4 완료)
 - **이슈/브랜치**: #122
 - **산출물**: `docs/topics/DLQ-QUARANTINE-RECOVERY.md` (설계) · `docs/DLQ-QUARANTINE-RECOVERY-PLAN.md` (8 태스크)
 
 ## 재개 메모
 
-Task 1(복구 전용 조건부 보상 — `StockRecoveryCompensationResult`/`StockCachePort.compensateIfDecremented`/`stock_compensation_if_decremented.lua`/`StockCacheRedisAdapter`/`FakeStockCachePort`), Task 2(격리 복구 도메인 전이 `PaymentEvent.failFromQuarantine` — QUARANTINED 전용 가드, 정상 `fail()`과 물리적 분리, 신규 에러코드 `INVALID_STATUS_TO_FAIL_FROM_QUARANTINE`), Task 3(CAS 조건부 저장 — `PaymentEventRepository.resolveQuarantineToFailed`: `@Modifying` UPDATE 게이트(`WHERE status='QUARANTINED'`, affected rows) + affected=1 일 때만 같은 `@Transactional` 안에서 `JpaPaymentOrderRepository.failByPaymentEventId` 로 자식 order 동조, `FakePaymentEventRepository` 구현 포함) TDD 완료, 단위 479 + 통합 46 전체 PASS. Task 4(격리 안전 종결 유스케이스)부터 이어서 TDD 실행. 주의: Task 4 는 보상(Redis) TX 밖 선행 → 도메인 `failFromQuarantine` 전이 + `resolveQuarantineToFailed` CAS 저장 + AOP history INSERT 를 단일 `@Transactional`로 묶고, CAS 결과 false(충돌)면 전이 실패 예외로 롤백해야 함 — `reason` 필수 파라미터. Task 7 retention 은 `create-topics.sh` 실적용. 테스트 인프라 메모: `:payment-service:test`(단위)와 `:payment-service:integrationTest`(통합, `create-drop` 그룹이 재사용 MySQL 컨테이너 `payment-test` 공유)를 한 커맨드로 묶어 실행하면 컨텍스트 간 스키마 생성/드롭 경합으로 간헐적 "table doesn't exist" flaky 가 날 수 있음(`docs/context/TESTING.md` 기지 이슈) — 실패 시 `integrationTest` 단독 재실행으로 재현/판정.
+Task 1(복구 전용 조건부 보상 — `StockRecoveryCompensationResult`/`StockCachePort.compensateIfDecremented`/`stock_compensation_if_decremented.lua`/`StockCacheRedisAdapter`/`FakeStockCachePort`), Task 2(격리 복구 도메인 전이 `PaymentEvent.failFromQuarantine` — QUARANTINED 전용 가드, 정상 `fail()`과 물리적 분리, 신규 에러코드 `INVALID_STATUS_TO_FAIL_FROM_QUARANTINE`), Task 3(CAS 조건부 저장 — `PaymentEventRepository.resolveQuarantineToFailed`: `@Modifying` UPDATE 게이트(`WHERE status='QUARANTINED'`, affected rows) + affected=1 일 때만 같은 `@Transactional` 안에서 `JpaPaymentOrderRepository.failByPaymentEventId` 로 자식 order 동조, `FakePaymentEventRepository` 구현 포함), Task 4(격리 안전 종결 유스케이스 — `PaymentCommandUseCase.markPaymentAsFailFromQuarantine`: `@Transactional @PublishDomainEvent @PaymentStatusChange(toStatus=FAILED, trigger=manual)` 부착 + 도메인 전이·CAS 저장 단일 TX, CAS 충돌 시 `QUARANTINE_RESOLVE_CONFLICT` 예외로 롤백(history 함께 롤백); 신규 `QuarantineResolveUseCase.resolve(orderId, reason)` — reason 필수(null/blank 거부, `QUARANTINE_RESOLVE_REASON_REQUIRED`) → 로드 → `compensateIfDecremented`(TX 밖, 보상 결과 무관 항상 진행) → `markPaymentAsFailFromQuarantine` 위임) TDD 완료, 단위 490 전체 PASS + checkstyle/spotbugs 통과. Task 5(DLQ 재주입 포트 + 유스케이스)부터 이어서 TDD 실행. Task 7 retention 은 `create-topics.sh` 실적용. 테스트 인프라 메모: `:payment-service:test`(단위)와 `:payment-service:integrationTest`(통합, `create-drop` 그룹이 재사용 MySQL 컨테이너 `payment-test` 공유)를 한 커맨드로 묶어 실행하면 컨텍스트 간 스키마 생성/드롭 경합으로 간헐적 "table doesn't exist" flaky 가 날 수 있음(`docs/context/TESTING.md` 기지 이슈) — 실패 시 `integrationTest` 단독 재실행으로 재현/판정.
 
 ## 최근 완료
 
