@@ -50,6 +50,47 @@
           th:text="${event.status}">-</span>
   </div>
 
+  <!-- Quarantine Recovery -->
+  <div class="detail-card" th:if="${event.status.name() == 'QUARANTINED'}">
+    <div class="card-header">
+      <i class="bi bi-life-preserver"></i> Quarantine Recovery
+    </div>
+    <div class="card-body">
+      <p class="text-secondary-custom" style="font-size: 0.875rem;">
+        이 결제는 격리(QUARANTINED) 상태입니다. 벤더 상태 확인 후 안전 종결(FAILED)로 복구하거나,
+        유실된 DLQ 메시지를 원 토픽으로 재주입할 수 있습니다.
+      </p>
+      <div class="row g-3">
+        <div class="col-md-8">
+          <form method="post"
+                th:action="@{/admin/payments/events/{eventId}/resolve-quarantine(eventId=${event.id})}"
+                onsubmit="return confirm('안전 종결(FAILED)로 복구하시겠습니까? 재고 보상 후 되돌릴 수 없습니다.');">
+            <input type="hidden" name="orderId" th:value="${event.orderId}">
+            <label for="quarantineResolveReason" class="form-label">안전 종결 사유(필수)</label>
+            <div class="input-group">
+              <input type="text" class="form-control" id="quarantineResolveReason" name="reason" required
+                     placeholder="예: 벤더 미결제 확인">
+              <button type="submit" class="btn btn-danger">
+                <i class="bi bi-shield-fill-check"></i> 안전 종결 복구
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">&nbsp;</label>
+          <form method="post"
+                th:action="@{/admin/payments/events/{eventId}/reprocess-dlq(eventId=${event.id})}"
+                onsubmit="return confirm('유실 DLQ 메시지를 원 토픽으로 재주입하시겠습니까?');">
+            <input type="hidden" name="orderId" th:value="${event.orderId}">
+            <button type="submit" class="btn btn-warning w-100">
+              <i class="bi bi-arrow-repeat"></i> DLQ 재주입
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Stat cards -->
   <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">

@@ -82,7 +82,7 @@ flowchart TD
 - [x] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
 - [x] Task 6: DLQ 읽기·재발행 어댑터
 - [x] Task 7: `events.confirmed.dlq` retention 운영 적용
-- [ ] Task 8: 관리자 복구 API + Thymeleaf 버튼
+- [x] Task 8: 관리자 복구 API + Thymeleaf 버튼
 
 ## 태스크
 
@@ -281,7 +281,29 @@ flowchart TD
 - 컨트롤러 테스트 pass, 관리자 화면에서 격리 건 버튼 노출, 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> 신규 presentation 포트 `PaymentRecoveryAdminService`(`resolveQuarantine(orderId, reason)` /
+> `reprocessDlq(orderId)`) — 조회 전용 `AdminPaymentService`/`AdminPaymentServiceImpl` 패턴과
+> 동일하게 presentation 은 포트 인터페이스에만 의존하고, application 계층의 신규
+> `PaymentRecoveryAdminServiceImpl` 이 그 포트를 구현하며 각각 `QuarantineResolveUseCase.resolve`
+> / `DlqReprocessUseCase.reprocess` 로 단순 위임한다(façade 자체는 트랜잭션 애노테이션 없음 — 두
+> 유스케이스가 이미 각자 TX 경계를 스스로 관리하므로 `AdminPaymentServiceImpl` 의 class-level
+> `@Transactional(readOnly = true)` 를 write 경로에 재사용하지 않음). `PaymentAdminController` 에
+> POST 2종 추가 — `/admin/payments/events/{eventId}/resolve-quarantine`(`orderId`+`reason` 필수
+> 폼 파라미터, `reason` 누락 시 Spring 기본 `MissingServletRequestParameterException` → 400,
+> 공백 값은 `QuarantineResolveUseCase` 가 `QUARANTINE_RESOLVE_REASON_REQUIRED` 로 거부) /
+> `.../reprocess-dlq`(`orderId` 필수, 나이 게이트 초과 시 `DlqReprocessUseCase` 가
+> `DLQ_REPROCESS_AGE_GATE_EXCEEDED`(메시지에 "수동 대사가 필요합니다" 포함, 기존
+> `PaymentExceptionHandler` 가 그대로 400 JSON 으로 노출 — 별도 컨트롤러 처리 불필요)로 거부) —
+> 둘 다 성공 시 이벤트 상세 화면으로 redirect. `admin/payment-event-detail.html` 에 격리
+> (`event.status.name() == 'QUARANTINED'`) 건에 한해서만 렌더링되는 "Quarantine Recovery" 카드
+> 추가 — 안전 종결 사유 입력 폼(`reason` 필수, `orderId` 는 hidden input 으로 이미 로드된
+> `event.orderId` 재사용 — 별도 조회 호출 없음) + DLQ 재주입 버튼, 둘 다 JS `confirm()` 확인창
+> 부착(재고 보상 비가역/재주입 부작용 경고). 신규 `PaymentAdminControllerTest`(`@WebMvcTest`,
+> `PaymentControllerMvcTest` 슬라이스 패턴 준용) 5케이스 — resolve-quarantine 성공 위임+redirect,
+> reason 파라미터 자체 누락 시 400+유스케이스 미호출, reason 공백값에 대한 유스케이스 거부 예외
+> 그대로 전파, reprocess-dlq 성공 위임+redirect, 나이 게이트 초과 거부 예외 전파.
+> `./gradlew :payment-service:test` 504 전체 PASS(신규 5건 포함, 회귀 없음) +
+> checkstyle/spotbugs(Main·Test) 통과. DB/Redis/Kafka 변경 없음(tdd=false, 최소 컨트롤러 테스트).
 
 ## 리뷰 처리
 > (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
