@@ -154,6 +154,25 @@ public class PaymentEvent {
     }
 
     /**
+     * 격리(QUARANTINED) 결제를 관리자가 안전 실패 종결한다.
+     * QUARANTINED 상태에서만 허용하며, 일반 {@link #fail(String, Instant)}(READY/IN_PROGRESS 전용)와는
+     * 재사용 없이 물리적으로 분리한다 — 격리 복구 경로는 보상(재고 복원) 선행 등 별도 오케스트레이션을 전제하므로
+     * 두 전이를 하나로 합치면 향후 가드 조건이 뒤엉킬 위험이 있다.
+     *
+     * @param reason              안전 종결 사유 (audit 필수)
+     * @param lastStatusChangedAt 상태 변경 시각
+     */
+    public void failFromQuarantine(String reason, Instant lastStatusChangedAt) {
+        if (this.status != PaymentEventStatus.QUARANTINED) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE);
+        }
+        this.status = PaymentEventStatus.FAILED;
+        this.statusReason = reason;
+        this.lastStatusChangedAt = lastStatusChangedAt;
+        this.paymentOrderList.forEach(PaymentOrder::fail);
+    }
+
+    /**
      * Reconciler가 timeout된 IN_FLIGHT(IN_PROGRESS) 레코드를 READY 상태로 복원.
      * 재시도 스케줄러가 재처리할 수 있도록 대기열로 되돌린다.
      * IN_PROGRESS 상태에서만 호출 가능 (다른 상태는 그대로 유지).

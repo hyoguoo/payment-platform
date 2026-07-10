@@ -76,7 +76,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 복구 전용 조건부 보상 (포트 + Lua + 어댑터)
-- [ ] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
+- [x] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
 - [ ] Task 3: CAS 조건부 저장 (event + order 행)
 - [ ] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
 - [ ] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
@@ -125,7 +125,7 @@ flowchart TD
 - 파라미터라이즈드 테스트 pass, 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEvent.failFromQuarantine(String reason, Instant lastStatusChangedAt)` 신설 — `status != QUARANTINED` 가드(위반 시 신규 `PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE`(E03035)로 `PaymentStatusException`) → FAILED 전이 + `statusReason` 갱신 + `paymentOrderList.forEach(PaymentOrder::fail)`. 정상 `fail()`(READY/IN_PROGRESS 전용, terminal no-op)과는 재사용 없이 물리적으로 분리된 별도 메서드. `PaymentEventTest`에 `@ParameterizedTest @EnumSource(PaymentEventStatus.class)` 2벌 추가 — QUARANTINED 단일값에서 FAILED 전이+statusReason+주문 전체 FAIL 성공, 나머지 7개 전 상태(READY/IN_PROGRESS/DONE/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED)에서 `PaymentStatusException`(코드까지 단정) exhaustive 회귀 고정. `./gradlew :payment-service:test` 479 전체 PASS(신규 8건 포함, 회귀 없음). RED `test(payment)` 61ad5eb2 → GREEN `feat(payment)` (본 커밋).
 
 ---
 

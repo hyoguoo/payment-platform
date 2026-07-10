@@ -29,6 +29,7 @@ public enum PaymentErrorCode implements ErrorCode {
     USER_SERVICE_UNAVAILABLE("E03032", "user-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),
     PRODUCT_NOT_FOUND("E03033", "존재하지 않는 상품입니다."),
     USER_NOT_FOUND("E03034", "존재하지 않는 사용자입니다."),
+    INVALID_STATUS_TO_FAIL_FROM_QUARANTINE("E03035", "QUARANTINED 상태에서만 격리 복구 실패 종결할 수 있습니다."),
     ;
 
     private final String code;
