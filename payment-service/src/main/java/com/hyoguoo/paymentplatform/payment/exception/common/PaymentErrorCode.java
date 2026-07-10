@@ -32,6 +32,10 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_STATUS_TO_FAIL_FROM_QUARANTINE("E03035", "QUARANTINED 상태에서만 격리 복구 실패 종결할 수 있습니다."),
     QUARANTINE_RESOLVE_REASON_REQUIRED("E03036", "격리 복구 종결 사유(reason)는 필수입니다."),
     QUARANTINE_RESOLVE_CONFLICT("E03037", "다른 요청이 이미 격리 복구를 완료했습니다."),
+    DLQ_REPROCESS_AGE_GATE_EXCEEDED(
+            "E03038",
+            "결제 종결(DONE) 후 재발행 멱등 보장 기간(8일)이 만료되어 재주입을 차단합니다. 수동 대사가 필요합니다."
+    ),
     ;
 
     private final String code;

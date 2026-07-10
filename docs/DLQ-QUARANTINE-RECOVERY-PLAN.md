@@ -79,7 +79,7 @@ flowchart TD
 - [x] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
 - [x] Task 3: CAS 조건부 저장 (event + order 행)
 - [x] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
-- [ ] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
+- [x] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
 - [ ] Task 6: DLQ 읽기·재발행 어댑터
 - [ ] Task 7: `events.confirmed.dlq` retention 운영 적용
 - [ ] Task 8: 관리자 복구 API + Thymeleaf 버튼
@@ -191,7 +191,7 @@ flowchart TD
 - 단위 테스트 pass (사전검사 차단/통과·이력), 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> 신규 `DlqReprocessPort`(application/port/out) — `reprocess(String orderId)` 단일 메서드로 DLQ 읽기 + 원 토픽(`events.confirmed`) 재발행 경계를 캡슐화(구현은 Task 6). 신규 `PaymentDlqReprocessMetrics`(core/common/metrics, `PaymentQuarantineMetrics` 패턴 준용) — `payment_dlq_reprocess_total` 카운터를 `result` 태그(`reprocessed`/`blocked_age_gate`)로 분리 계측. `PaymentErrorCode.DLQ_REPROCESS_AGE_GATE_EXCEEDED`(E03038) + `EventType.PAYMENT_DLQ_REPROCESS_{BLOCKED,SUCCESS}` 신설. 신규 `DlqReprocessUseCase.reprocess(orderId)` — `paymentLoadUseCase` 로드 → 나이 게이트(`status==DONE && now > lastStatusChangedAt + 8일` 일 때만 차단, product `stock_commit_dedupe` TTL과 동일 P8D — `PaymentConfirmResultUseCase.STOCK_COMMITTED_TTL`과 동조) → 차단 시 메트릭(`blocked_age_gate`)+경고 로그+`PaymentValidException` 던져 중단, 통과 시 `DlqReprocessPort.reprocess` 호출 → 메트릭(`reprocessed`)+정보 로그. DONE 이 아닌 모든 상태(READY/IN_PROGRESS/QUARANTINED/FAILED/CANCELED/PARTIAL_CANCELED/EXPIRED)는 나이 무관 통과. `DlqReprocessUseCaseTest`(Mockito, `Clock.fixed` 수동 생성 — `PaymentLoadUseCaseClockTest` 선례 패턴) 3케이스 — P8D 초과 DONE 차단(포트 미호출+메트릭 `blocked_age_gate` 검증), P8D 이내 DONE 통과(포트 호출+메트릭 `reprocessed`), DONE 제외 전 상태(`@EnumSource(EXCLUDE)`) 365일 전이어도 통과. `./gradlew :payment-service:test` 499 전체 PASS(신규 9건 포함, 회귀 없음) + checkstyle/spotbugs(Main·Test) 통과. 새 포트라 기존 Fake/Mock 소비처 없음(Task 6이 어댑터 구현). RED `test(payment)` a2d51f0f → GREEN `feat(payment)` (본 커밋).
 
 ---
 
