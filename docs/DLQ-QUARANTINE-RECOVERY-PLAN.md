@@ -75,7 +75,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 복구 전용 조건부 보상 (포트 + Lua + 어댑터)
+- [x] Task 1: 복구 전용 조건부 보상 (포트 + Lua + 어댑터)
 - [ ] Task 2: 격리 복구 도메인 전이 `failFromQuarantine`
 - [ ] Task 3: CAS 조건부 저장 (event + order 행)
 - [ ] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
@@ -106,7 +106,7 @@ flowchart TD
 - 위 4 케이스 통합 테스트 pass, `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `StockRecoveryCompensationResult{OK,ALREADY_DONE,NO_DECREMENT}` 신설 + `StockCachePort.compensateIfDecremented` 선언 + `lua/stock_compensation_if_decremented.lua`(EXISTS decrement:done 우선 판정 → SETNX compensation:done → INCRBY+TTL) + `StockCacheRedisAdapter` 구현(기존 compensateAtomic 패턴 준용, KEYS=[decrement:done, compensation:done, stock...]) + `FakeStockCachePort.compensateIfDecremented`(decrementDedupTokens SoT 재사용). `StockCacheRedisAdapterTest`에 Testcontainers Redis 통합 테스트 4케이스 추가(토큰 부재 skip+compensation 미생성 / 존재+미보상 복원 / 존재+보상됨 ALREADY_DONE / decrement 부재+compensation 존재에도 NO_DECREMENT — EXISTS 우선 순서 회귀 고정). `./gradlew :payment-service:test` 471 전체 PASS(신규 4건 포함, 회귀 없음). RED `test(payment)` c3d2ab83 → GREEN `feat(payment)` (본 커밋).
 
 ---
 

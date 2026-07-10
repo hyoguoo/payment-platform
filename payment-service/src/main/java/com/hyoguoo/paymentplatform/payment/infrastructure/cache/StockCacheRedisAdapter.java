@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.cache;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,7 @@ public class StockCacheRedisAdapter implements StockCachePort {
 
     private static final DefaultRedisScript<String> DECREMENT_ATOMIC_SCRIPT;
     private static final DefaultRedisScript<String> COMPENSATION_ATOMIC_SCRIPT;
+    private static final DefaultRedisScript<String> COMPENSATION_IF_DECREMENTED_SCRIPT;
 
     static {
         DECREMENT_ATOMIC_SCRIPT = new DefaultRedisScript<>();
@@ -42,6 +44,11 @@ public class StockCacheRedisAdapter implements StockCachePort {
         COMPENSATION_ATOMIC_SCRIPT = new DefaultRedisScript<>();
         COMPENSATION_ATOMIC_SCRIPT.setLocation(new ClassPathResource("lua/stock_compensation_atomic.lua"));
         COMPENSATION_ATOMIC_SCRIPT.setResultType(String.class);
+
+        COMPENSATION_IF_DECREMENTED_SCRIPT = new DefaultRedisScript<>();
+        COMPENSATION_IF_DECREMENTED_SCRIPT.setLocation(
+                new ClassPathResource("lua/stock_compensation_if_decremented.lua"));
+        COMPENSATION_IF_DECREMENTED_SCRIPT.setResultType(String.class);
     }
 
     private final StringRedisTemplate stockCacheRedisTemplate;
@@ -79,6 +86,24 @@ public class StockCacheRedisAdapter implements StockCachePort {
     }
 
     /**
+     * 격리(QUARANTINED) 복구 전용 조건부 보상.
+     *
+     * <p>KEYS = [decrement:done:{orderId}, compensation:done:{orderId}, stock:{prod1}, stock:{prod2}, ...]
+     * ARGV  = [qty1, qty2, ..., 691200]
+     * {@code decrement:done} 토큰이 없으면 보상 없이 {@link StockRecoveryCompensationResult#NO_DECREMENT} 반환.
+     * Lua 결과 문자열 → {@link StockRecoveryCompensationResult} enum 변환.
+     * 인프라 장애 시 RuntimeException 그대로 전파.
+     */
+    @Override
+    public StockRecoveryCompensationResult compensateIfDecremented(
+            String orderId, List<PaymentOrder> paymentOrders) {
+        List<String> keys = buildRecoveryCompensationKeys(orderId, paymentOrders);
+        String[] argv = buildArgv(paymentOrders);
+        String luaResult = stockCacheRedisTemplate.execute(COMPENSATION_IF_DECREMENTED_SCRIPT, keys, argv);
+        return StockRecoveryCompensationResult.valueOf(luaResult);
+    }
+
+    /**
      * 운영 resync — {@code stock:{productId}} 를 product RDB 수량으로 단순 SET.
      * in-flight 선차감 덮어쓰기 주의: {@link StockCachePort#set} 주석 참고.
      */
@@ -98,6 +123,16 @@ public class StockCacheRedisAdapter implements StockCachePort {
 
     private List<String> buildCompensationKeys(String orderId, List<PaymentOrder> paymentOrders) {
         List<String> keys = new ArrayList<>();
+        keys.add(DEDUP_COMPENSATION_PREFIX + orderId);
+        for (PaymentOrder order : paymentOrders) {
+            keys.add(KEY_PREFIX + order.getProductId());
+        }
+        return keys;
+    }
+
+    private List<String> buildRecoveryCompensationKeys(String orderId, List<PaymentOrder> paymentOrders) {
+        List<String> keys = new ArrayList<>();
+        keys.add(DEDUP_DECREMENT_PREFIX + orderId);
         keys.add(DEDUP_COMPENSATION_PREFIX + orderId);
         for (PaymentOrder order : paymentOrders) {
             keys.add(KEY_PREFIX + order.getProductId());

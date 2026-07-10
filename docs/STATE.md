@@ -1,17 +1,17 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-07-10 (DLQ-QUARANTINE-RECOVERY plan 완료 → execute Task 1 대기)
+> 최종 수정: 2026-07-10 (DLQ-QUARANTINE-RECOVERY execute Task 1 완료 → Task 2 대기)
 
 ## 활성 작업
 
 - **토픽**: DLQ-QUARANTINE-RECOVERY (격리 결제 안전 종결 + 유실 메시지 재주입 수동 복구)
-- **단계**: execute — Task 1 대기 (plan 완료)
+- **단계**: execute — Task 2 대기 (Task 1 완료)
 - **이슈/브랜치**: #122
 - **산출물**: `docs/topics/DLQ-QUARANTINE-RECOVERY.md` (설계) · `docs/DLQ-QUARANTINE-RECOVERY-PLAN.md` (8 태스크)
 
 ## 재개 메모
 
-plan 게이트 R2 pass(reviewer·domain-expert 양쪽). 8개 태스크 확정 — Task 1(조건부 보상 Lua/포트)부터 TDD 실행. 주의: 새 포트 메서드는 Fake 갱신 동반(컴파일), Task 3 CAS 는 event+order 동조 저장, Task 4 는 보상 TX 밖·전이+저장 단일 TX, Task 7 retention 은 `create-topics.sh` 실적용.
+Task 1(복구 전용 조건부 보상 — `StockRecoveryCompensationResult`/`StockCachePort.compensateIfDecremented`/`stock_compensation_if_decremented.lua`/`StockCacheRedisAdapter`/`FakeStockCachePort`) TDD 완료, 471 전체 PASS. Task 2(격리 복구 도메인 전이 `failFromQuarantine`)부터 이어서 TDD 실행. 주의: 새 포트 메서드는 Fake 갱신 동반(컴파일), Task 3 CAS 는 event+order 동조 저장, Task 4 는 보상 TX 밖·전이+저장 단일 TX, Task 7 retention 은 `create-topics.sh` 실적용.
 
 ## 최근 완료
 
