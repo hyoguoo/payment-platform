@@ -80,7 +80,7 @@ flowchart TD
 - [x] Task 3: CAS 조건부 저장 (event + order 행)
 - [x] Task 4: 격리 안전 종결 유스케이스 (AOP audit + 보상·전이 순서)
 - [x] Task 5: DLQ 재주입 포트 + 유스케이스 (사전검사 + 이력)
-- [ ] Task 6: DLQ 읽기·재발행 어댑터
+- [x] Task 6: DLQ 읽기·재발행 어댑터
 - [ ] Task 7: `events.confirmed.dlq` retention 운영 적용
 - [ ] Task 8: 관리자 복구 API + Thymeleaf 버튼
 
@@ -210,7 +210,23 @@ flowchart TD
 - 통합 테스트 pass, 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `DlqReprocessPort` 유일 Kafka 구현체 `KafkaDlqReprocessAdapter`(infrastructure/messaging/publisher) 신설 —
+> 매 `reprocess(orderId)` 호출마다 새 `KafkaConsumer` 를 생성해 `events.confirmed.dlq` 전 파티션을
+> `assign()` + `seekToBeginning()` 으로 끝까지 스캔(오프셋 커밋 없음, 그룹 코디네이션 미참여)하고,
+> 대상 orderId 의 레코드 중 timestamp 기준 가장 최근 payload 하나만 `payment.events.confirmed`
+> 원 토픽으로 재발행한다(같은 orderId 로 DLQ 에 여러 건 쌓여 있어도 최신 1건만 재발행 — 중복 재처리
+> 방지). `KafkaProducerConfig` 에 non-tx 신규 빈 `confirmedKafkaTemplate`(String→String, EOS
+> `stockCommittedProducerFactory` 와 분리된 별도 ProducerFactory) 추가 — 재주입은 관리자 on-demand
+> 액션이라 EOS 트랜잭션 경계에 참여하지 않는다. 성공 로그(`PAYMENT_DLQ_REPROCESS_SUCCESS`)는 호출자
+> `DlqReprocessUseCase` 가 이미 담당하므로 어댑터는 저수준 발행 사실만 `KAFKA_PUBLISH_SUCCESS` 로
+> debug 기록(중복 로그 방지). 신규 `DlqReprocessIntegrationTest`(`@EmbeddedKafka`, PaymentEosIntegrationTest
+> 컨테이너·헬퍼 패턴 준용) 2케이스 — #1 IN_PROGRESS 결제의 DLQ 메시지 재주입 → 원 토픽 EOS 컨슈머
+> 재처리 → 정상 재확정(DONE) + dedupe 1 row + stock-committed 1건, #2 이미 DONE 종결 + dedupe row
+> 존재 상태에서 동일 event_uuid 메시지 DLQ 재주입 → 종결 가드 재발행 경로로 흡수돼 stock-committed
+> 결정적 idempotencyKey 로 정확히 1건만 재발행(product 멱등 전제) + payment DONE·dedupe row 불변.
+> `./gradlew :payment-service:test`(단위 499) + `:payment-service:integrationTest`(48, 신규 2건 포함)
+> 전건 PASS(회귀 없음) + checkstyle/spotbugs(Main·Test) 통과. RED `test(payment)` 2b99141a →
+> GREEN `feat(payment)` (본 커밋).
 
 ---
 
