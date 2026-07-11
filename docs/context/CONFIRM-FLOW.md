@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §9 상태 머신에 격리 복구 출구 `QUARANTINED → FAILED`(관리자 안전 종결, `resolveQuarantineToFailed` CAS) 추가 + §11 회복 시나리오에 격리 수동 종결·`events.confirmed.dlq` 수동 재주입 2행 추가 + §15 진입점 인덱스에 `QuarantineResolveUseCase`/`DlqReprocessUseCase`+`DlqReprocessPort`/`KafkaDlqReprocessAdapter`/`PaymentRecoveryAdminService`/`stock_compensation_if_decremented.lua` 등재 + §5 잔여 한계 서술을 "수동 재주입 도입, 자동 재시도 후속"으로 정정). 이전: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -163,7 +163,7 @@ flowchart TD
 - 결과적으로 RDB commit(JPA inner) 과 Kafka commit(EOS outer) 사이에 crash 시 at-least-once 재배달이 발생한다 (best-effort 1PC 한계). 이 한계와 TM 분리 원칙은 `handle` Javadoc 에 명시되어 있다.
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 커밋이 유실되면 재배달이 D7 종결 가드에 도달하는데, `status==DONE && message==APPROVED` 이면 `sendStockCommittedEvents` 를 **재발행**한다(`terminalResendMetrics.record(DONE)` 계측). product-service 가 결정적 키 `StockEventUuidDeriver.derive(orderId, productId)`(message eventUuid 와 독립) 로 멱등 흡수 → 차감 정확히 1회. over-publish 무해 / under-publish 위험 비대칭을 이용한다.
 - **과거 SSOT(폐기)**: "0 row(중복) 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch** 였다. CONFIRM-APPROVED-RESEND-GAP 에서 제거(단순 skip)되고 crash 내성은 위 종결 가드 재발행으로 이전됐다.
-- **잔여 한계 (over-sell)**: 종결 가드 재발행도 같은 EOS producer tx 안에서 발행되므로, EOS 커밋이 **지속** 실패하면 재발행 자체가 매번 abort 돼 stock-committed 완전 유실(payment DONE 인데 재고 확정 영구 소실 → redis 선차감과 product RDB 발산 → over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor` 가 backoff 소진 후 DLQ 로 발행해 **가시화**한다(DLQ-REACHABILITY, 아래 에러 핸들링 절). 재고 확정 자동 복구(DLQ 재주입)는 후속(TQ-1).
+- **잔여 한계 (over-sell)**: 종결 가드 재발행도 같은 EOS producer tx 안에서 발행되므로, EOS 커밋이 **지속** 실패하면 재발행 자체가 매번 abort 돼 stock-committed 완전 유실(payment DONE 인데 재고 확정 영구 소실 → redis 선차감과 product RDB 발산 → over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor` 가 backoff 소진 후 DLQ 로 발행해 **가시화**한다(DLQ-REACHABILITY, 아래 에러 핸들링 절). DLQ 적체분은 관리자 수동 재주입(`DlqReprocessUseCase`, §11)으로 원 토픽에 되돌려 재처리한다. 조건부 자동 재시도는 후속(TQ-1).
 - EOS 는 "정상 경로에서 at-most-once 중복 발행 방지" 최적화이다. ChainedKafkaTransactionManager 도입은 미채택 — qualifier 명시로 TM 선택만 확정 (EOS-FOLLOWUP-CLEANUP 완료).
 
 **D7 진입 가드:**
@@ -333,12 +333,13 @@ stateDiagram-v2
     IN_PROGRESS --> FAILED : FAILED 수신
     IN_PROGRESS --> QUARANTINED : QUARANTINED 수신 / AMOUNT_MISMATCH
 
+    QUARANTINED --> FAILED : 관리자 안전 종결 (resolveQuarantineToFailed / failFromQuarantine)
+
     DONE --> [*]
     FAILED --> [*]
     EXPIRED --> [*]
     CANCELED --> [*]
     PARTIAL_CANCELED --> [*]
-    QUARANTINED --> [*]
 ```
 
 | 상태 | 의미 | 진입 메서드 | `isTerminal()` | `GET /status` 폴링 응답 |
@@ -347,14 +348,14 @@ stateDiagram-v2
 | IN_PROGRESS | confirm TX 커밋, paymentKey 기록 | `executePayment()` | false | PROCESSING (default) |
 | DONE | PG 결제 완료 (approvedAt non-null) | `markPaymentAsDone()` | true | DONE |
 | FAILED | 재고 부족 / PG 종결 실패 | `markPaymentAsFail()` | true | FAILED |
-| QUARANTINED | 판단 불가 격리 (수동 확인 필요) | `markPaymentAsQuarantined()` | **false** | PROCESSING ⚠️ |
+| QUARANTINED | 판단 불가 격리 (수동 확인 필요, 관리자 FAILED 안전 종결 가능) | `markPaymentAsQuarantined()` | **false** | PROCESSING ⚠️ |
 | CANCELED | PG 취소 | 별도 경로 | true | PROCESSING (default) |
 | PARTIAL_CANCELED | 부분 취소 | 별도 경로 | true | PROCESSING (default) |
 | EXPIRED | 만료 스케줄러 | 별도 경로 | true | PROCESSING (default) |
 
 > **QUARANTINED `isTerminal()` = false 코드 사실**: `PaymentEventStatus.isTerminal()` 구현에서 QUARANTINED 는 non-terminal. Javadoc: "QUARANTINED 는 후속 복구 워커가 보정/포기 결정하는 대기 상태이므로 non-terminal."
 >
-> **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 에서 DONE → StatusType.DONE, FAILED → StatusType.FAILED, 그 외 default → StatusType.PROCESSING. QUARANTINED 는 default 분기 → PROCESSING. 격리된 결제는 admin 이 DONE/FAILED 강제 전이해야 클라이언트 폴링이 종료된다.
+> **운영 영향**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 에서 DONE → StatusType.DONE, FAILED → StatusType.FAILED, 그 외 default → StatusType.PROCESSING. QUARANTINED 는 default 분기 → PROCESSING. 격리된 결제는 admin 이 강제 전이해야 클라이언트 폴링이 종료된다 — 현재 관리자 도구는 **FAILED 안전 종결**만 지원한다(`QuarantineResolveUseCase` → `resolveQuarantineToFailed` CAS 전이 + `decrement:done` 토큰 조건부 재고 보상 + audit). 정상 결제를 DONE 으로 되살리는 복구는 후속(TQ-2).
 
 `canApplyConfirmResult()` (confirm 결과 적용 진입 가드) = READY / IN_PROGRESS (재고 차감이 발생했을 수 있는 상태). 과거 RETRYING 진입 경로(`markPaymentAsRetrying`)는 운영 호출처 0 으로 CLEANUP-BATCH-E 에서 enum 케이스·전이·가드 분기와 함께 제거됐다. 과거 짝이던 `canCompensateStock()` 보상 가드는 STOCK-COMPENSATION-OTHER-PATHS 에서 死 코드로 제거됐다 (확정 진입 보상 폐기 + D12 가드 死 코드 정리). 교차 동조 불변식 테스트(`PaymentEventStatusCrossInvariantTest`)도 함께 제거.
 
@@ -426,6 +427,8 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | EOS abort — 리스너 도메인 예외 | RDB rollback + offset 미커밋 → 재배달 → DefaultErrorHandler FixedBackOff 1s×5 → 한도 시 DLQ. product-service 측 abort 메시지 invisible (read_committed). |
 | EOS abort — `commitTransaction` 지속 실패 | 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `FixedBackOff` 기본 1000ms×5) → backoff 소진 후 `events.confirmed.dlq` 발행 + `payment_eos_commit_failure_dlq_total` metric. 단 종결 가드 재발행도 같은 EOS tx 라 stock-committed 자체는 완전 유실(over-sell 잔여, 회복 후 재주입 복구) — DLQ-REACHABILITY. |
 | payment event IN_PROGRESS 장기 체류 | `PaymentReconciler` (`@Scheduled fixedDelayMs=120000, 2분`) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업 |
+| 격리(QUARANTINED) 결제 수동 종결 | 관리자 `POST /admin/.../resolve-quarantine` → `QuarantineResolveUseCase`: `decrement:done` 토큰 존재 시에만 재고 보상(`compensateIfDecremented`, 유령 재고 방지) → `resolveQuarantineToFailed` CAS(event `WHERE status='QUARANTINED'` → order 동조 전이) → FAILED 안전 종결 + audit. |
+| `events.confirmed.dlq` 적체 메시지 복구 | 관리자 `POST /admin/.../reprocess-dlq` → `DlqReprocessUseCase` → `KafkaDlqReprocessAdapter` 가 offset 미커밋 스캔으로 대상 페이로드 조회 → 원 토픽 `events.confirmed` 재발행 → EOS 컨슈머 재처리. 나이 게이트(DONE + 종결시각+P8D 초과) 차단. `payment_dlq_reprocess_total` 계측. 자동 재시도는 후속(TQ-1). |
 
 ---
 
@@ -488,9 +491,14 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 | stock idempotencyKey 도출 | `payment-service/.../application/util/StockEventUuidDeriver.java` |
 | consumer EOS wiring | `payment-service/.../infrastructure/config/KafkaConsumerConfig.java` |
 | 격리 보상 핸들러 | `payment-service/.../application/usecase/QuarantineCompensationHandler.java` |
+| 격리 수동 종결 use case | `payment-service/.../application/usecase/QuarantineResolveUseCase.java` |
+| DLQ 재주입 use case / 포트 | `payment-service/.../application/usecase/DlqReprocessUseCase.java` / `application/port/out/DlqReprocessPort.java` |
+| DLQ 재주입 어댑터 (Kafka) | `payment-service/.../infrastructure/messaging/publisher/KafkaDlqReprocessAdapter.java` |
+| 관리자 복구 서비스 / 컨트롤러 | `payment-service/.../application/service/PaymentRecoveryAdminService.java` / `presentation/PaymentAdminController.java` |
 | 복구 사이클 스캐너 | `payment-service/.../application/service/PaymentReconciler.java` |
 | Lua atomic 차감 + dedup token | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua` |
 | Lua atomic 보상 + dedup token | `payment-service/src/main/resources/lua/stock_compensation_atomic.lua` |
+| Lua 조건부 보상 (토큰 존재 시만) | `payment-service/src/main/resources/lua/stock_compensation_if_decremented.lua` |
 | 멱등성 저장소 (Redis, checkout 측) | `payment-service/.../infrastructure/idempotency/IdempotencyStoreRedisAdapter.java` |
 | Spring Kafka 에러 핸들러 빈 | `payment-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` |
 | 재시도 정책 설정 | `payment-service/.../application/config/RetryPolicyProperties.java` |

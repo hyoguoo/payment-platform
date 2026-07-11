@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
+> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 격리 결제 관리자 수동 안전 종결 + `events.confirmed.dlq` 수동 재주입 도입 반영: C-5 부분 해소(수동 재주입 도구, 자동 소비는 여전 미도입), L-1 잔여/후속 정정(재고 확정 복구가 관리자 수동 재주입으로 가능), 신규 한계 3건 L-15/16/17 등재(P8D 만료 미복원 · 복구 후 늦은 confirm 재차감 · DLQ 전량 스캔 성능·관측성 한계 — 모두 보수적 언더셀/관측성 방향)). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -32,11 +32,11 @@
 - **영향**: 운영 도입 시 시행착오 가능
 - **처방**: STACK.md 운영 가이드 절 + `baseline-on-migrate: true + baseline-version: 0` 옵션 가이드 명시 (이미 본 문서 갱신에 포함)
 
-### C-5. DLQ 소비 자동화 부재
+### C-5. DLQ 자동 소비 부재 (수동 재주입 도구는 도입 — 부분 해소)
 
-- **현황**: `payment.commands.confirm.dlq`, `payment.events.confirmed.dlq` 가 발행되지만 자동 처리 컨슈머 없음. 수동 검증 후 처리
-- **영향**: DLQ 적재가 누적되면 트리아지 부담
-- **처방**: 별도 토픽 — DLQ 처리 정책 (수동 admin tool 또는 자동 재시도 정책)
+- **현황**: `payment.events.confirmed.dlq` 는 이제 **관리자 수동 재주입**(원 토픽 republish → EOS 컨슈머 재처리, DLQ-QUARANTINE-RECOVERY)으로 복구 가능하다(`DlqReprocessUseCase`/`KafkaDlqReprocessAdapter`, 관리자 API/버튼, 나이 게이트). `payment.commands.confirm.dlq` 는 pg-service 가 소비. **상시 자동 소비 컨슈머는 여전히 미도입** — 재주입은 관리자 트리거 on-demand.
+- **영향**: 조건부 자동 재시도(벤더 5xx 등 일시 실패)는 미구현 — 관리자 개입 전까지 적재 잔류
+- **처방**: 조건부 자동 재시도 정책은 후속 토픽 (TQ-1 잔여)
 
 ### C-6. 단일 Kafka broker
 
@@ -78,8 +78,8 @@
 - 이 구조에서 RDB commit(JPA inner) 성공 + Kafka EOS commit(outer) 실패 시 at-least-once 재배달이 발생한다 (best-effort 1PC).
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 발행이 유실되면 재배달이 D7 종결 가드에 도달하는데 `status==DONE && message==APPROVED` 면 stock-committed 를 재발행한다(`terminalResendMetrics` 계측). product-service 가 결정적 키로 멱등 흡수 → 차감 1회.
 - **폐기**: 과거 SSOT "중복 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 도달 불가 dead branch 였고, CONFIRM-APPROVED-RESEND-GAP 에서 제거됨.
-- **잔여 한계 (over-sell, DLQ-REACHABILITY)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 stock-committed 자체는 완전 유실(payment DONE + 재고 확정 영구 소실 → over-sell). 입력 `events.confirmed` 메시지는 `KafkaConsumerConfig` 에 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `payment.kafka.after-rollback.backoff`)가 소진 후 `events.confirmed.dlq` 로 발행해 가시화한다(+`payment_eos_commit_failure_dlq_total`). 재고 확정 자동 복구(DLQ 재주입)는 미수행 — 수용된 한계.
-- **후속 과제**: TC-13-FOLLOW-6 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 이미 완료). over-sell 자동 복구(DLQ 재주입) + 격리 metric alerting 은 TQ-1 후속.
+- **잔여 한계 (over-sell, DLQ-REACHABILITY)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 stock-committed 자체는 완전 유실(payment DONE + 재고 확정 영구 소실 → over-sell). 입력 `events.confirmed` 메시지는 `KafkaConsumerConfig` 에 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `payment.kafka.after-rollback.backoff`)가 소진 후 `events.confirmed.dlq` 로 발행해 가시화한다(+`payment_eos_commit_failure_dlq_total`). 재고 확정 복구는 이제 **관리자 수동 DLQ 재주입**(DLQ-QUARANTINE-RECOVERY — 원 토픽 republish → EOS 컨슈머 재처리, 결정적 키가 중복 흡수)으로 가능. **상시 자동 복구는 여전 미수행** — 수용된 한계.
+- **후속 과제**: TC-13-FOLLOW-6 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 이미 완료). over-sell 의 조건부 자동 복구(자동 재시도)는 TQ-1 잔여(수동 재주입은 DLQ-QUARANTINE-RECOVERY 에서 완료).
 
 ### L-4. Two-strategy PG 라우팅 — 결제 건별 `gatewayType` 결정 정책
 
@@ -119,6 +119,18 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 **부분 해소 (2026-07-01)**: 문제 (2) **만료 batch poison-pill** 은 만료 배치를 건별 독립 트랜잭션 + 실패 격리로 해소했다 — `PaymentExpirationServiceImpl` 에서 `@Transactional` 을 제거해 `PaymentCommandUseCase.expirePayment`(별도 빈, 자체 `@Transactional`, self-invocation 아님)가 건별로 커밋/롤백하게 하고, 호출부 try/catch 로 단건 실패를 격리(`payment_expiration_skipped_total` 카운터 + WARN, never-silent)한다. stranded 1건이 무관한 정상 READY 만료를 더는 막지 않는다(만료 영구 wedge → 정상 READY 누적 → redis 선차감 미해제 누적 차단). 문제 (1) **READY 잔류**(stranded 자체) 는 여전 한계 — 비종결 READY 가 복구 여지상 안전 방향이라 자동 복구는 TQ-1/TC-3 위임 유지. 회귀: `PaymentExpirationServiceImplTest#expireOldReadyPayments_oneStranded_doesNotBlockOthers` + `ConfirmedDbDownIntegrationTest`(stranded 만료 실패 격리).
 
 > 검토 기록: `resetToReady`가 order를 NOT_STARTED로 복원하게 바꾸면 expire 통과 → EXPIRED 종결 도달하나, EXPIRED는 terminal이고 D7 가드(`canApplyConfirmResult` EXPIRED=false)가 TQ-1 재주입을 noop으로 막아 **복구 영구 봉쇄**(더 나쁨). 따라서 그 변경은 plan 게이트에서 거부·롤백 — 비종결 READY 잔류가 복구 여지 면에서 안전 방향(domain-expert critical, 2026-06-30).
+
+### L-15. 격리 복구 보상의 `decrement:done` P8D 만료 후 미복원 (보수적 언더셀)
+
+격리 안전 종결(DLQ-QUARANTINE-RECOVERY)의 재고 보상은 `decrement:done:{orderId}` 토큰 존재에 조건화된다(`compensateIfDecremented` + `stock_compensation_if_decremented.lua` — 실제 차감이 없던 건에 보상해 재고를 부풀리는 유령 재고를 막기 위함, `EXISTS decrement:done` 을 `SETNX compensation:done` 보다 먼저 판정). 토큰 TTL(P8D=8일) 만료 후 복구하는 **실차감 건**은 토큰 소멸로 보상이 skip 돼 redis 선차감이 미복원 — 재고 과소(보수적 언더셀) 방향이라 안전 측 누수. P8D 초과 격리는 수동 대사로 우회, 자동 reconciler 는 TC-3 위임.
+
+### L-16. 복구로 종결된 결제에 늦은 confirm 재요청 시 재차감·보상 불가 (보수적 언더셀)
+
+`PaymentEvent.validateConfirmRequest` 가 종결·격리 상태를 검사하지 않아, 복구로 FAILED 종결된 결제에 늦은 confirm 재요청이 도착하면 redis 재차감(`decrementAtomic`) 후 종결 가드로 `execute` 가 차단되나 차감은 retention 유지되고, 복구가 이미 심은 `compensation:done` 토큰으로 보상이 `ALREADY_DONE` no-op → redis 선차감 잔존(보수적 언더셀). confirm 진입에 종결·격리 상태 조기 거부 가드를 두는 것은 후속.
+
+### L-17. DLQ 재주입 전량 스캔 성능·관측성 한계
+
+`KafkaDlqReprocessAdapter` 는 재주입 시 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 대량 적체 시 `read-timeout` 내 `endOffsets` 미도달 가능 — 스캔 미완료(재시도 안내 예외)와 "완주 후 없음"은 `DlqScanResult(payload, completed)` 로 구분하나, 최근 구간부터 역방향 탐색(`offsetsForTimes`)은 미구현이라 최근 메시지가 가장 나중에 스캔된다(사용 패턴과 역방향). 또 스캔 미완료 + 매치 존재 조합은 warn 로그 없이 발행(미스캔 구간에 더 최신 레코드 존재 가능 — 동일 orderId 는 동일 `eventUuid` 재발행이라 멱등 체인이 흡수). 관리 도구 사용 빈도 대비 수용, 역방향 탐색·`dlq_scan_incomplete` warn 은 후속.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

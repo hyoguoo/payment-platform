@@ -306,4 +306,18 @@ flowchart TD
 > checkstyle/spotbugs(Main·Test) 통과. DB/Redis/Kafka 변경 없음(tdd=false, 최소 컨트롤러 테스트).
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+ship 코드 리뷰 R1 — reviewer·domain-expert 양쪽 fail.
+
+**Critical (채택·수정)**
+- `QuarantineResolveUseCase.resolve` 가 상태 가드 전 비가역 redis 보상 실행 → 비격리(특히 DONE) orderId 호출 시 유령 재고 +N(R2 에서 닫은 실패 모드가 호출 순서로 재개방). → load 직후 `status != QUARANTINED` 조기 가드(보상 **전**), 비격리 전 상태 `never-compensate` 테스트.
+
+**Major**
+- A. `KafkaDlqReprocessAdapter` fire-and-forget 발행(PITFALLS §4, broker 미도달 silent failure) → **채택**: `send().get(timeout)` 동기 확인 + 실패 예외 전파.
+- B. 재발행 전체 스캔(`seekToBeginning`)이 대량 적체 시 read-timeout 내 미도달 → 존재 메시지 "없음" 오판 → **부분 채택(사용자 선택)**: 스캔 미완료(타임아웃) vs 진짜 없음 구분(별도 예외·재시도 안내) + 성능 한계 CONCERNS 등재(B2). 완전 역방향 탐색(`offsetsForTimes`)은 관리 도구 사용 빈도 대비 과잉으로 보류.
+
+**Minor**
+- 재주입 버튼 QUARANTINED 카드 전용 렌더 → **채택(사용자 선택)**: DONE/IN_PROGRESS 에도 노출(나이 게이트 서버 차단). 안전 종결 버튼은 QUARANTINED 전용 유지.
+- admin POST 검증 실패 raw JSON 400 노출 → **채택(사용자 선택)**: `redirect ?error=` + flash 로 상세 화면 복귀.
+- Task 7 retention 브로커 실측 미수행 → B1 최종 검증에서 실측 시도, 불가 시 후속 등재.
+- audit annotation 리플렉션 테스트(구조 미러링) → **스킵**: 기존 컨벤션(`OutboxImmediateEventHandlerTest`) 재사용, 이번 범위 밖.
