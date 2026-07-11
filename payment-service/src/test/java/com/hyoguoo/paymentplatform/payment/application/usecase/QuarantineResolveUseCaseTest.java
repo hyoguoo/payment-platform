@@ -128,6 +128,24 @@ class QuarantineResolveUseCaseTest {
         then(paymentCommandUseCase).shouldHaveNoInteractions();
     }
 
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = "QUARANTINED", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("resolve - 격리(QUARANTINED) 상태가 아니면 보상 호출 전에 거부한다")
+    void resolve_WhenNotQuarantined_ShouldRejectBeforeCompensation(PaymentEventStatus nonQuarantinedStatus) {
+        // given
+        PaymentEvent event = buildPaymentEvent(nonQuarantinedStatus, List.of());
+
+        given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+
+        // when & then
+        assertThatThrownBy(() -> quarantineResolveUseCase.resolve(ORDER_ID, REASON))
+                .isInstanceOf(PaymentStatusException.class)
+                .extracting("code")
+                .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE.getCode());
+        then(stockCachePort).should(Mockito.never()).compensateIfDecremented(Mockito.anyString(), Mockito.anyList());
+        then(paymentCommandUseCase).shouldHaveNoInteractions();
+    }
+
     // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, List<PaymentOrder> orders) {

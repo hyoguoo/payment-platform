@@ -7,9 +7,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
@@ -61,8 +63,8 @@ class PaymentAdminControllerTest {
     }
 
     @Test
-    @DisplayName("resolve-quarantine POST 는 reason 이 공백이면 유스케이스가 거부한 예외를 그대로 전파한다.")
-    void resolveQuarantine_BlankReason_PropagatesUseCaseRejection() throws Exception {
+    @DisplayName("resolve-quarantine POST 는 reason 이 공백이면 유스케이스 거부 사유를 flash 메시지로 담아 상세 화면으로 리다이렉트한다.")
+    void resolveQuarantine_BlankReason_RedirectsWithFlashError() throws Exception {
         // given
         willThrow(PaymentValidException.of(PaymentErrorCode.QUARANTINE_RESOLVE_REASON_REQUIRED))
                 .given(paymentRecoveryAdminService).resolveQuarantine("order-1", " ");
@@ -71,9 +73,31 @@ class PaymentAdminControllerTest {
         mockMvc.perform(post("/admin/payments/events/{eventId}/resolve-quarantine", 1L)
                         .param("orderId", "order-1")
                         .param("reason", " "))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/payments/events/1?error"))
+                .andExpect(flash().attribute("errorMessage",
+                        PaymentErrorCode.QUARANTINE_RESOLVE_REASON_REQUIRED.getMessage()));
 
         verify(paymentRecoveryAdminService, times(1)).resolveQuarantine("order-1", " ");
+    }
+
+    @Test
+    @DisplayName("resolve-quarantine POST 는 CAS 충돌(PaymentStatusException)도 flash 메시지로 담아 상세 화면으로 리다이렉트한다.")
+    void resolveQuarantine_CasConflict_RedirectsWithFlashError() throws Exception {
+        // given
+        willThrow(PaymentStatusException.of(PaymentErrorCode.QUARANTINE_RESOLVE_CONFLICT))
+                .given(paymentRecoveryAdminService).resolveQuarantine("order-1", "vendor confirmed voided");
+
+        // when / then
+        mockMvc.perform(post("/admin/payments/events/{eventId}/resolve-quarantine", 1L)
+                        .param("orderId", "order-1")
+                        .param("reason", "vendor confirmed voided"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/payments/events/1?error"))
+                .andExpect(flash().attribute("errorMessage",
+                        PaymentErrorCode.QUARANTINE_RESOLVE_CONFLICT.getMessage()));
+
+        verify(paymentRecoveryAdminService, times(1)).resolveQuarantine("order-1", "vendor confirmed voided");
     }
 
     @Test
@@ -92,8 +116,8 @@ class PaymentAdminControllerTest {
     }
 
     @Test
-    @DisplayName("reprocess-dlq POST 는 나이 게이트 초과 시 유스케이스가 던진 거부 예외를 그대로 전파한다.")
-    void reprocessDlq_AgeGateExceeded_PropagatesUseCaseRejection() throws Exception {
+    @DisplayName("reprocess-dlq POST 는 나이 게이트 초과 시 유스케이스 거부 사유를 flash 메시지로 담아 상세 화면으로 리다이렉트한다.")
+    void reprocessDlq_AgeGateExceeded_RedirectsWithFlashError() throws Exception {
         // given
         willThrow(PaymentValidException.of(PaymentErrorCode.DLQ_REPROCESS_AGE_GATE_EXCEEDED))
                 .given(paymentRecoveryAdminService).reprocessDlq("order-1");
@@ -101,7 +125,10 @@ class PaymentAdminControllerTest {
         // when / then
         mockMvc.perform(post("/admin/payments/events/{eventId}/reprocess-dlq", 1L)
                         .param("orderId", "order-1"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/admin/payments/events/1?error"))
+                .andExpect(flash().attribute("errorMessage",
+                        PaymentErrorCode.DLQ_REPROCESS_AGE_GATE_EXCEEDED.getMessage()));
 
         verify(paymentRecoveryAdminService, times(1)).reprocessDlq("order-1");
     }

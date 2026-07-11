@@ -5,6 +5,8 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,14 @@ public class QuarantineResolveUseCase {
         }
 
         PaymentEvent event = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
+
+        // 비격리 상태(QUARANTINED 아님)면 비가역 redis 보상 호출 전에 즉시 거부한다 —
+        // 최종 상태 검증은 도메인 전이(failFromQuarantine)에도 있으나, 보상은 그보다 먼저
+        // 실행되므로 여기서 선제 검증하지 않으면 이미 DONE 등으로 종결된 orderId 에 대해
+        // 유령 재고 보상이 먼저 나가버린다.
+        if (event.getStatus() != PaymentEventStatus.QUARANTINED) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE);
+        }
 
         // redis 보상은 TX 밖에서 먼저 수행 — 외부 호출이 DB 커넥션을 점유하지 않도록 한다.
         stockCachePort.compensateIfDecremented(orderId, event.getPaymentOrderList());
