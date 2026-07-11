@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -216,7 +216,7 @@ process(result);  // result 가 null 일 수 있음
 - D7 종결 가드 분기에서 `status==DONE && message==APPROVED`(= 정상 첫 도착엔 없는 = 재배달 신호) 면 `sendStockCommittedEvents` **재발행** + `terminalResendMetrics.record(DONE)` 계측.
 - **함정**: "0 row(중복) 시 발행 항상 진행(과거 위키 line 141)" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch**. 재배달은 항상 종결 가드로 온다.
 - **함정**: 순서 뒤집기(발행 먼저)로 해결되지 않는다 — 발행은 producer tx buffer 라 원자성 경계(JPA 커밋 ↔ Kafka 커밋)가 그대로다(FAILED·QUARANTINED 의 즉시 Redis 보상과 성격이 다름).
-- **잔여 한계 (over-sell)**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 stock-committed 자체는 완전 유실(over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff)가 소진 후 DLQ 로 발행해 가시화한다(DLQ-REACHABILITY). 재고 확정 자동 복구(DLQ 재주입)는 후속(TQ-1). 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패 → DLQ 도달).
+- **잔여 한계 (over-sell)**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 stock-committed 자체는 완전 유실(over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff)가 소진 후 DLQ 로 발행해 가시화한다(DLQ-REACHABILITY). DLQ 적체분은 관리자 수동 재주입(`DlqReprocessUseCase` → 원 토픽 `events.confirmed` 재발행, 나이 게이트)으로 복구하며, 조건부 자동 재시도는 후속(TQ-1). 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패 → DLQ 도달).
 
 ## 21. QUARANTINED 결제에 늦은 APPROVED 메시지 — D7 가드 없으면 DLQ silent 분기
 

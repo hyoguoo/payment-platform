@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.mock;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +52,22 @@ public class FakeStockCachePort implements StockCachePort {
         }
         compensationDedupTokens.add(orderId);
         return StockCompensationAtomicResult.OK;
+    }
+
+    @Override
+    public synchronized StockRecoveryCompensationResult compensateIfDecremented(
+            String orderId, List<PaymentOrder> paymentOrders) {
+        if (!decrementDedupTokens.contains(orderId)) {
+            return StockRecoveryCompensationResult.NO_DECREMENT;
+        }
+        if (compensationDedupTokens.contains(orderId)) {
+            return StockRecoveryCompensationResult.ALREADY_DONE;
+        }
+        for (PaymentOrder order : paymentOrders) {
+            stock.merge(order.getProductId(), order.getQuantity(), Integer::sum);
+        }
+        compensationDedupTokens.add(orderId);
+        return StockRecoveryCompensationResult.OK;
     }
 
     // --- fixture 셋업 / 단언 헬퍼 (StockCachePort 계약 외, atomic 메서드 테스트 보조용) ---

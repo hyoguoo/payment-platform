@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -102,7 +102,7 @@ flowchart LR
 | `payment.commands.confirm` | payment-service (최초) + **pg-service self-retry** (attempt<4 시 자기 자신에게 재발행, `pg_outbox.available_at` 기반 지연) | pg-service | confirm 명령 전달 + 재시도 |
 | `payment.commands.confirm.dlq` | pg-service (`PgVendorCallService.insertDlqOutbox`, attempt≥4) | pg-service (`PaymentConfirmDlqConsumer` → `PgDlqService` QUARANTINED 자동 격리) | retry 한도 초과 격리 |
 | `payment.events.confirmed` | pg-service | payment-service | PG 결과 회신 (APPROVED/FAILED/QUARANTINED) |
-| `payment.events.confirmed.dlq` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 초과 시) | (수동) | 결과 처리 영구 실패 |
+| `payment.events.confirmed.dlq` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 초과 시) | (관리자 수동 재주입 — `KafkaDlqReprocessAdapter`) | 결과 처리 영구 실패 |
 | `payment.events.stock-committed` | payment-service (EOS producer tx 안에서 직접 발행 — `stockCommittedKafkaTemplate`) | product-service | 재고 확정 (APPROVED 결제만) |
 
 ## 비동기 어댑터 위치 (왜 어디 두는가)
@@ -128,6 +128,7 @@ flowchart LR
 | `KafkaConsumerConfig` | `payment-service/.../infrastructure/config` | `kafkaListenerContainerFactory` 명시 정의 + `KafkaTransactionManager(stockCommittedProducerFactory)` wire-in (EOS consumer). `isolation.level=read_committed` 는 `application.yml` `spring.kafka.consumer.properties.isolation.level` 로 적용 |
 | `KafkaProducerConfig` (EOS) | `payment-service/.../infrastructure/config` | EOS-aware `stockCommittedProducerFactory` + `KafkaTransactionManager` + `stockCommittedKafkaTemplate` 빈 (transactional.id prefix = `${spring.application.name}-${HOSTNAME:local}-`, enable.idempotence=true, transaction.timeout.ms=10000) |
 | `KafkaErrorHandlerConfig` | `payment-service/.../infrastructure/config` | Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff(1000ms, 5)` 빈. not-retryable: `MessageConversionException` / `IllegalArgumentException` / `IllegalStateException`. retry 한도 초과 시 자동으로 `payment.events.confirmed.dlq` 로 publish |
+| `KafkaDlqReprocessAdapter` | `payment-service/.../infrastructure/messaging/publisher` | `DlqReprocessPort` 구현. `events.confirmed.dlq` 를 offset 미커밋으로 스캔(대상 페이로드 조회, 타임아웃 vs 없음 구분)해 원 토픽 `events.confirmed` 로 재발행. 실패하는 EOS tx 와 분리된 비트랜잭션 `confirmedKafkaTemplate` 사용 |
 | `ContextAwareVirtualThreadExecutors` | `payment-service` / `pg-service` `core/config/concurrent` | OTel Context + MDC 이중 래핑 VT executor 헬퍼. payment 의 `AsyncConfig.outboxRelayExecutor`, pg 의 `PgOutboxImmediateWorker.relayExecutor` 가 사용 — 호출 시점 컨텍스트를 새 VT 스레드에 자동 캡처·복원 |
 
 ## 인프라 별 책임
@@ -175,6 +176,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 |---|---|
 | 비동기 confirm 아키텍처 | payment-service `OutboxAsyncConfirmService` + Kafka 양방향 |
 | 격리 트리거 (CACHE_DOWN / 판단 불가) | `QuarantineCompensationHandler` |
+| 격리 결제 관리자 수동 종결 | `QuarantineResolveUseCase` — `decrement:done` 토큰 존재 시에만 재고 보상(`compensateIfDecremented`, 유령 재고 방지) → `resolveQuarantineToFailed` CAS(event `WHERE status='QUARANTINED'` + order 동조) FAILED 전이 + audit. 관리자 진입: `PaymentRecoveryAdminService` + `PaymentAdminController`. 정상 결제 DONE 복구는 후속(TQ-2) |
+| DLQ 관리자 수동 재주입 | `DlqReprocessUseCase` + `DlqReprocessPort`(→ `KafkaDlqReprocessAdapter`) — `events.confirmed.dlq` 를 원 토픽 재발행. 나이 게이트(DONE + 종결시각+P8D 초과 차단) + `payment_dlq_reprocess_total` 계측. 조건부 자동 재시도는 후속(TQ-1) |
 | AMOUNT_MISMATCH 양방향 방어 | pg `ConfirmedEventPayload(amount, approvedAt)` + payment `handleApproved` 대조 |
 | 분산 멱등성 store | payment-service: Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 에 통합) — pg / product 는 RDB JDBC dedupe (아래 사유 참고) |
 | business inbox amount | pg `pg_inbox.amount BIGINT` |

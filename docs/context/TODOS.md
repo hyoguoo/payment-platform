@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -109,17 +109,15 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 
 ### Phase 4 후속 — 자동 운영 도구 (6개)
 
-#### TQ-1 — DLQ 처리 정책 + admin tool
+#### TQ-1 — DLQ 조건부 자동 재시도 (수동 재주입 ✅ 완료)
 
-- `payment.commands.confirm.dlq`, `payment.events.confirmed.dlq` 가 자동 처리되지 않음
-- 별도 admin endpoint 또는 CLI 로 트리아지 + 재발행 가능하도록
-- 조건부 자동 재시도 (벤더 5xx 같은 일시적 실패)
+- **완료**: `payment.events.confirmed.dlq` 관리자 수동 재주입(원 토픽 republish → EOS 컨슈머 재처리, 종결시각+P8D 나이 게이트) — DLQ-QUARANTINE-RECOVERY(#122). `payment.commands.confirm.dlq` 는 pg-service 소비.
+- **잔여**: 조건부 자동 재시도(벤더 5xx 같은 일시적 실패의 자동 재발행) 미구현 — 상시 자동 소비 컨슈머는 별도 후속 토픽. 상세: `docs/archive/dlq-quarantine-recovery/COMPLETION-BRIEFING.md`.
 
-#### TQ-2 — QUARANTINED-ADMIN-RECOVERY
+#### TQ-2 — 격리 DONE 복구 (FAILED 안전 종결 ✅ 완료)
 
-- `PaymentEventStatus.QUARANTINED` 결제의 수동 복구 인터페이스
-- 관리자가 검토 후 DONE / FAILED 로 강제 전이 + audit
-- 격리 사유별 (AMOUNT_MISMATCH, CACHE_DOWN, 판단 불가) UI
+- **완료**: QUARANTINED 결제의 관리자 수동 **안전 실패 종결** — FAILED 강제 전이(`failFromQuarantine`) + `decrement:done` 토큰 조건부 재고 보상(유령 재고 방지) + event·order CAS 동조 + audit + 관리자 API/버튼. DLQ-QUARANTINE-RECOVERY(#122).
+- **잔여**: 격리된 **정상** 결제를 DONE 으로 되살리는 복구 — payment→pg 상태 조회 포트 + 재고 원장 write-back(stock-committed 재발행·redis 재정렬) + 동시성이 선결이라 별도 후속 토픽. 벤더 환불 실행은 TQ-6. 상세: `docs/archive/dlq-quarantine-recovery/COMPLETION-BRIEFING.md`.
 
 #### TQ-3 — REDIS-CACHE-FAILURE-POLICY
 

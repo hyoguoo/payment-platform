@@ -732,6 +732,47 @@ class PaymentEventTest {
                 });
     }
 
+    // failFromQuarantine() — 격리 복구 안전 종결 전이 (정상 fail()과 물리적으로 분리)
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class, names = {"QUARANTINED"})
+    @DisplayName("failFromQuarantine() — QUARANTINED 상태에서 FAILED로 전이하고 statusReason·주문 전체가 FAIL로 갱신된다.")
+    void failFromQuarantine_whenQuarantined_shouldTransitionToFailed(PaymentEventStatus quarantined) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                quarantined, PaymentOrderStatus.EXECUTING);
+        String reason = "관리자 안전 종결";
+
+        // when
+        paymentEvent.failFromQuarantine(reason, Instant.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
+        assertThat(paymentEvent.getPaymentOrderList())
+                .extracting(PaymentOrder::getStatus)
+                .containsOnly(PaymentOrderStatus.FAIL);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentEventStatus.class,
+            names = {"READY", "IN_PROGRESS", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED"})
+    @DisplayName("failFromQuarantine() — QUARANTINED가 아닌 모든 상태에서 PaymentStatusException을 던진다. (exhaustive)")
+    void failFromQuarantine_whenNotQuarantined_shouldThrow(PaymentEventStatus notQuarantined) {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                notQuarantined, PaymentOrderStatus.EXECUTING);
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.failFromQuarantine("reason", Instant.now()))
+                .isInstanceOf(PaymentStatusException.class)
+                .satisfies(ex -> {
+                    PaymentStatusException statusEx = (PaymentStatusException) ex;
+                    assertThat(statusEx.getCode())
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE.getCode());
+                });
+    }
+
     // ---- Instant 기반 도메인 시각 전환 테스트 ----
 
     @Test

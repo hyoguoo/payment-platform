@@ -2,7 +2,7 @@
 
 > ⚠️ **이 문서는 사람 독자용이다.** 결제가 브라우저 요청부터 최종 상태까지 어떻게 흐르고 어떻게 수습되는지를 도메인 언어로 풀어 설명한다.
 > **에이전트(자동화) 운영 규칙**: 평소 작업 시 이 문서를 참조하지 않으며, **ship 단계에서만** 코드 변경에 맞춰 갱신한다. 작업 정합의 기준(SSOT)은 짝 문서([PAYMENT-FLOW.md](PAYMENT-FLOW.md) / [CONFIRM-FLOW.md](CONFIRM-FLOW.md))다.
-> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정) · 정정 2026-07-06(단계 명칭 개칭 + 문체 정리) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
+> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정) · 정정 2026-07-06(단계 명칭 개칭 + 문체 정리) · 갱신 2026-07-11(§C 회복 색인에 격리 관리자 안전 실패 종결·DLQ 수동 재주입 2행 추가 + 단계 6 격리 폴링 서술 정정) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
 > 표기 규칙: **도메인 표현** + (`메서드명`/`토픽`) 병기. §A 시퀀스의 1~28 단계와 §B-1 플로우차트의 `[n]` 라벨이 1:1 대응한다.
 
 ---
@@ -152,7 +152,7 @@ sequenceDiagram
 
 > **목적**: 클라이언트가 최종 상태를 확인. **불변식**: 종결(`DONE`/`FAILED`) 전까지 `PROCESSING` 으로 응답한다.
 
-28. 브라우저 **최종 상태 조회** — `GET /{orderId}/status` (`PaymentStatusServiceImpl`): outbox 진행 중이면 PENDING/PROCESSING, event 종결되면 `DONE`/`FAILED` 반환 → 성공/실패 페이지. *(QUARANTINED 는 default 분기 → PROCESSING, admin 강제 전이 전까지 폴링 지속)*
+28. 브라우저 **최종 상태 조회** — `GET /{orderId}/status` (`PaymentStatusServiceImpl`): outbox 진행 중이면 PENDING/PROCESSING, event 종결되면 `DONE`/`FAILED` 반환 → 성공/실패 페이지. *(QUARANTINED 는 default 분기 → PROCESSING, admin 이 안전 실패 종결(FAILED)하기 전까지 폴링 지속 — §C)*
 
 ---
 
@@ -273,6 +273,8 @@ flowchart TD
 | 재고 캐시 장애(confirm 단계) | CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` | 보상 보류(격리 정책) |
 | EOS abort(producer tx abort) | RDB rollback + offset 미커밋 → 재배달 → 1s×5 → DLQ | product 는 abort 메시지 invisible(read_committed) |
 | EOS 커밋 지속 실패(코디네이터 장애) | 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff) → 소진 후 `confirmed.dlq` 발행 + `payment_eos_commit_failure_dlq_total`. 단 재고 확정 자체는 유실(over-sell) — 회복 후 DLQ 재주입으로만 복구 | 2026-06-25 도입된 DLQ 도달 보장 설계의 잔여 한계 (자동 복구는 후속 과제) |
+| 격리(QUARANTINED) 결제 수동 종결 | 관리자가 검토 후 **안전 실패 종결** — `decrement:done` 토큰이 있을 때만 재고 보상(유령 재고 방지) → `QUARANTINED`→`FAILED` CAS 전이 + 감사 기록. 정상 결제를 살리는 DONE 복구는 후속 과제 | `QuarantineResolveUseCase` / 관리자 화면 버튼 |
+| DLQ 적체 메시지 수동 복구 | 관리자가 `events.confirmed.dlq` 를 원 토픽으로 되돌려 재처리. 나이 게이트(이미 DONE + 종결 후 8일 초과)로 뒤늦은 재주입 차단 | `DlqReprocessUseCase` / `KafkaDlqReprocessAdapter` |
 
 ---
 

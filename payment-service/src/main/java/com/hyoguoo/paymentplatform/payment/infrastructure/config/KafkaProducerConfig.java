@@ -31,8 +31,8 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  *
  * <p>stock-committed 발행은 EOS-aware ProducerFactory (stockCommittedProducerFactory) 를 사용한다.
  * transactional.id = ${spring.application.name}-${HOSTNAME:local} (단일 인스턴스 가정).
- * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq 템플릿을 관리한다.
- * stockCommittedKafkaTemplate 이 EOS 발행 전용 빈.
+ * 이 config 는 payment.commands.confirm / stock-committed (EOS) / confirmed.dlq / confirmed(재주입 non-tx)
+ * 템플릿을 관리한다. stockCommittedKafkaTemplate 이 EOS 발행 전용 빈.
  */
 @Configuration
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
@@ -151,6 +151,28 @@ public class KafkaProducerConfig {
         ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
         KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
         template.setDefaultTopic(PaymentTopics.EVENTS_CONFIRMED_DLQ);
+        template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
+        return template;
+    }
+
+    /**
+     * payment.events.confirmed 전용 non-tx String KafkaTemplate.
+     * {@code DlqReprocessPort} Kafka 어댑터(DLQ 읽기·재발행)가 원 토픽 재발행에 사용한다.
+     * stockCommittedProducerFactory(EOS)와 분리된 별도 non-tx ProducerFactory —
+     * 재주입은 관리자 on-demand 액션이라 EOS 트랜잭션 경계에 참여할 필요가 없다.
+     */
+    @Bean
+    public KafkaTemplate<String, String> confirmedKafkaTemplate(
+            ObservationRegistry observationRegistry) {
+        Map<String, Object> props = Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
+        );
+        ProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(factory);
+        template.setDefaultTopic(PaymentTopics.EVENTS_CONFIRMED);
         template.setObservationEnabled(true);
         template.setObservationRegistry(observationRegistry);
         return template;

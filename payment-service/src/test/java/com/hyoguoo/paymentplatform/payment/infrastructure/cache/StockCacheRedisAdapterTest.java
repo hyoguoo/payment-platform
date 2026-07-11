@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import java.math.BigDecimal;
@@ -156,6 +157,76 @@ class StockCacheRedisAdapterTest {
         assertThat(getStock(productId)).isEqualTo(8); // 첫 번째 보상 결과만 반영
     }
 
+    @Test
+    @DisplayName("compensateIfDecremented — decrement:done 부재 시 NO_DECREMENT를 반환하고 재고·compensation:done 모두 불변이다")
+    void compensateIfDecremented_decrement_토큰_부재_NO_DECREMENT() {
+        // given
+        Long productId = 108L;
+        setStock(productId, 5);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+
+        // when
+        StockRecoveryCompensationResult result = adapter.compensateIfDecremented("order-scr-recovery-001", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockRecoveryCompensationResult.NO_DECREMENT);
+        assertThat(getStock(productId)).isEqualTo(5);
+        assertThat(existsCompensationDoneToken("order-scr-recovery-001")).isFalse();
+    }
+
+    @Test
+    @DisplayName("compensateIfDecremented — decrement:done 존재 + compensation:done 부재 시 OK를 반환하고 재고를 복원한다")
+    void compensateIfDecremented_decrement_존재_미보상_OK() {
+        // given
+        Long productId = 109L;
+        setStock(productId, 5);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+        setDecrementDoneToken("order-scr-recovery-002");
+
+        // when
+        StockRecoveryCompensationResult result = adapter.compensateIfDecremented("order-scr-recovery-002", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockRecoveryCompensationResult.OK);
+        assertThat(getStock(productId)).isEqualTo(8);
+        assertThat(existsCompensationDoneToken("order-scr-recovery-002")).isTrue();
+    }
+
+    @Test
+    @DisplayName("compensateIfDecremented — decrement:done, compensation:done 모두 존재 시 ALREADY_DONE을 반환하고 재고는 불변이다")
+    void compensateIfDecremented_이미_보상됨_ALREADY_DONE() {
+        // given
+        Long productId = 110L;
+        setStock(productId, 5);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+        setDecrementDoneToken("order-scr-recovery-003");
+        adapter.compensateIfDecremented("order-scr-recovery-003", orders);
+
+        // when
+        StockRecoveryCompensationResult result = adapter.compensateIfDecremented("order-scr-recovery-003", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockRecoveryCompensationResult.ALREADY_DONE);
+        assertThat(getStock(productId)).isEqualTo(8); // 첫 번째 보상 결과만 반영
+    }
+
+    @Test
+    @DisplayName("compensateIfDecremented — decrement:done 부재 + compensation:done 존재 시에도 NO_DECREMENT를 반환하고 재고는 불변이다")
+    void compensateIfDecremented_decrement_부재_compensation_존재_NO_DECREMENT() {
+        // given
+        Long productId = 111L;
+        setStock(productId, 5);
+        List<PaymentOrder> orders = List.of(buildOrder(productId, 3));
+        setCompensationDoneToken("order-scr-recovery-004"); // decrement:done 없이 compensation:done 만 남은 이례 상태
+
+        // when
+        StockRecoveryCompensationResult result = adapter.compensateIfDecremented("order-scr-recovery-004", orders);
+
+        // then
+        assertThat(result).isEqualTo(StockRecoveryCompensationResult.NO_DECREMENT);
+        assertThat(getStock(productId)).isEqualTo(5);
+    }
+
     // --- helpers ---
 
     private void setStock(Long productId, int quantity) {
@@ -165,6 +236,18 @@ class StockCacheRedisAdapterTest {
     private int getStock(Long productId) {
         String value = redisTemplate.opsForValue().get("stock:" + productId);
         return value == null ? 0 : Integer.parseInt(value);
+    }
+
+    private void setDecrementDoneToken(String orderId) {
+        redisTemplate.opsForValue().set("decrement:done:" + orderId, "1");
+    }
+
+    private void setCompensationDoneToken(String orderId) {
+        redisTemplate.opsForValue().set("compensation:done:" + orderId, "1");
+    }
+
+    private boolean existsCompensationDoneToken(String orderId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey("compensation:done:" + orderId));
     }
 
     private PaymentOrder buildOrder(Long productId, int quantity) {

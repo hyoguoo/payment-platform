@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,4 +33,15 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     List<PaymentEventEntity> findInProgressOlderThan(@Param("before") Instant before);
 
     List<PaymentEventEntity> findByStatus(PaymentEventStatus status);
+
+    // 격리 복구 CAS 게이트 — WHERE status = 'QUARANTINED' 조건이 만족될 때만 반영되며,
+    // affected rows(0 또는 1)를 반환한다. PaymentEventRepositoryImpl 이 이 값을 보고
+    // 자식 payment_order 동조 갱신 여부를 결정한다.
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentEventEntity e SET e.status = 'FAILED', e.statusReason = :reason, "
+            + "e.lastStatusChangedAt = :lastStatusChangedAt "
+            + "WHERE e.id = :id AND e.status = 'QUARANTINED'")
+    int resolveQuarantineToFailed(@Param("id") Long id,
+            @Param("reason") String reason,
+            @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
 }

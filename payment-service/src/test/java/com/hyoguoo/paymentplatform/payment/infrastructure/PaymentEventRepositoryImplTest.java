@@ -7,12 +7,20 @@ import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -174,5 +182,128 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
                 .isInstanceOf(Instant.class)
                 .isAfterOrEqualTo(beforeSave.minusSeconds(2))
                 .isBeforeOrEqualTo(afterSave.plusSeconds(2));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // resolveQuarantineToFailed — CAS 조건부 저장 (event + order 원자 동조)
+    // ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("resolveQuarantineToFailed — QUARANTINED 건은 1건 반영 + 자식 payment_order 전부 FAIL로 동조된다")
+    void resolveQuarantineToFailed_whenQuarantined_updatesEventAndOrdersAtomically() {
+        // given
+        Long eventId = insertPaymentEvent("quarantine-cas-order-1", PaymentEventStatus.QUARANTINED, "격리 사유");
+        insertPaymentOrder(eventId, "quarantine-cas-order-1", 1L, PaymentOrderStatus.EXECUTING);
+        insertPaymentOrder(eventId, "quarantine-cas-order-1", 2L, PaymentOrderStatus.NOT_STARTED);
+
+        Instant resolvedAt = Instant.now();
+
+        // when
+        boolean resolved = paymentEventRepository.resolveQuarantineToFailed(eventId, "관리자 안전 종결", resolvedAt);
+
+        // then
+        assertThat(resolved).isTrue();
+
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status, status_reason FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("FAILED");
+        assertThat(eventRow.get("status_reason")).isEqualTo("관리자 안전 종결");
+
+        List<String> orderStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
+        assertThat(orderStatuses).containsOnly("FAIL");
+    }
+
+    @Test
+    @DisplayName("resolveQuarantineToFailed — 이미 FAILED로 종결된 건은 0건 충돌이며 event·order 모두 불변이다")
+    void resolveQuarantineToFailed_whenAlreadyFailed_returnsFalseWithoutMutating() {
+        // given — QUARANTINED가 아닌 상태(이미 종결된 FAILED)에 재시도
+        Long eventId = insertPaymentEvent("quarantine-cas-order-2", PaymentEventStatus.FAILED, "기존 실패 사유");
+        insertPaymentOrder(eventId, "quarantine-cas-order-2", 1L, PaymentOrderStatus.FAIL);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveQuarantineToFailed(eventId, "새 종결 사유", Instant.now());
+
+        // then
+        assertThat(resolved).isFalse();
+
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status, status_reason FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("FAILED");
+        assertThat(eventRow.get("status_reason")).isEqualTo("기존 실패 사유");
+
+        List<String> orderStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
+        assertThat(orderStatuses).containsOnly("FAIL");
+    }
+
+    @Test
+    @DisplayName("resolveQuarantineToFailed — 동시 2회 호출 시 1건만 성공한다 (CAS race 차단)")
+    void resolveQuarantineToFailed_whenCalledConcurrently_onlyOneSucceeds() throws Exception {
+        // given
+        Long eventId = insertPaymentEvent("quarantine-cas-order-3", PaymentEventStatus.QUARANTINED, "격리 사유");
+        insertPaymentOrder(eventId, "quarantine-cas-order-3", 1L, PaymentOrderStatus.EXECUTING);
+
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+        List<Future<Boolean>> futures = new ArrayList<>();
+
+        // when
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int i = 0; i < 2; i++) {
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    boolean result = paymentEventRepository.resolveQuarantineToFailed(
+                            eventId, "동시 종결", Instant.now());
+                    doneLatch.countDown();
+                    return result;
+                }));
+            }
+
+            startLatch.countDown();
+            doneLatch.await();
+
+            int successCount = 0;
+            for (Future<Boolean> future : futures) {
+                if (future.get()) {
+                    successCount++;
+                }
+            }
+
+            // then — race 회귀 가드: 두 스레드 중 정확히 하나만 성공
+            assertThat(successCount).isEqualTo(1);
+        } finally {
+            executor.shutdown();
+        }
+
+        List<String> orderStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
+        assertThat(orderStatuses).containsOnly("FAIL");
+    }
+
+    private Long insertPaymentEvent(String orderId, PaymentEventStatus status, String statusReason) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        jdbcTemplate.update("""
+                        INSERT INTO payment_event
+                            (buyer_id, seller_id, order_name, order_id, gateway_type, status, status_reason,
+                             created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                1L, 2L, orderId + "-name", orderId, "TOSS", status.name(), statusReason, now, now);
+
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM payment_event WHERE order_id = ?", Long.class, orderId);
+    }
+
+    private void insertPaymentOrder(Long paymentEventId, String orderId, Long productId, PaymentOrderStatus status) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        jdbcTemplate.update("""
+                        INSERT INTO payment_order
+                            (payment_event_id, order_id, product_id, quantity, amount, status,
+                             created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                paymentEventId, orderId, productId, 1, BigDecimal.valueOf(10000), status.name(), now, now);
     }
 }
