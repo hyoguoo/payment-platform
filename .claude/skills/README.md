@@ -24,6 +24,7 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 | `writing` | 문서 콘텐츠 작성 (포스팅, 위키, 리드미) |
 | `doc-review` | 문서 검수 4관점 병렬 서브에이전트 루프 |
 | `wiki-access` | `<project>.wiki/` 별도 git 저장소 자동 탐색 + Read/Grep/Edit 접근 |
+| `portfolio-access` | 포트폴리오 사이트(별도 blog 저장소의 `public/payment-platform-portfolio/index.html`) 자동 탐색 + 접근 |
 
 ## 서브에이전트 (`.claude/agents/` — 유일한 정의처)
 
