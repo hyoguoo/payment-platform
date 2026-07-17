@@ -17,7 +17,7 @@
 Co-Authored-By: <에이전트 이름> <이메일>
 ```
 
-- **type (영문)**: `feat` / `fix` / `refactor` / `test` / `docs` / `chore` / `style` / `perf` / `build`
+- **type (영문)**: `feat` / `fix` / `refactor` / `test` / `docs` / `chore` / `style` / `perf` / `build` / `wip`(세션 중단 스냅샷 전용 — STATE.md 재개 메모와 함께)
 - **scope (영문, 변경의 주 위치)** — "자기 멋대로"를 막기 위해 아래 고정 어휘만 사용한다:
   - 서비스: `payment` / `pg` / `product` / `user` / `gateway` / `eureka`
   - 횡단: `docs`(영구 문서·컨벤션) / `build`(gradle·정적분석) / `infra`(docker·compose) / `deps`(의존성)

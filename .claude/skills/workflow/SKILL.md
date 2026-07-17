@@ -59,6 +59,8 @@ description: >
 
 예외: 사용자가 "연속으로 진행해", "끝까지 해줘" 등을 명시한 경우만 자동 진행.
 
+승인이 필요한 질문(AskUserQuestion 포함)이 응답 없이 타임아웃되면 **단독으로 진행하지 않는다** — 턴을 종료하고 답변을 기다린다. 무응답은 승인이 아니다. 단계 전환뿐 아니라 findings 채택, 게이트 진행 등 모든 승인 지점에 적용된다.
+
 ## 게이트 라운드 규칙
 
 - 게이트는 **최대 2라운드**: 1차 revise/fail → 메인이 findings 반영 수정 → 2차 재판정.
@@ -67,7 +69,7 @@ description: >
 
 ## STATE.md 형식
 
-단계 전환 시 항상 이 형식으로 갱신한다. 완료 이력은 STATE에 쌓지 않는다 — 아카이브의 COMPLETION-BRIEFING이 이력의 SSOT다.
+단계 전환 시 항상 이 형식으로 갱신한다. 완료 이력은 STATE에 쌓지 않는다 — 아카이브의 COMPLETION-BRIEFING이 이력의 SSOT다. "최근 완료" 항목도 **한 줄 + 브리핑 링크만** — 결정 상세·수치·후속 메모를 압축 서사로 욱여넣지 않는다 (상세는 브리핑 몫, 대기 액션은 TODOS.md 몫).
 
 ```markdown
 # 현재 작업 상태
@@ -104,7 +106,7 @@ description: >
 | TDD GREEN | 구현 + 테스트 + PLAN.md + STATE.md | `feat:` |
 | TDD REFACTOR | 정리된 코드 (변경 있을 때만) | `refactor:` |
 | tdd=false 태스크 완료 | 구현 + PLAN.md + STATE.md | `feat:` / `chore:` |
-| 리뷰 피드백 수정 | 수정 파일 + PLAN.md 리뷰 처리 | `refactor:` |
+| 리뷰 피드백 수정 | 수정 파일 + PLAN.md 리뷰 처리 | `fix:` / `refactor:` (수정 성격) |
 | 세션 중단 | WIP + STATE.md(재개 메모) | `wip:` |
 | Ship 마무리 | context 갱신 + 아카이브 + STATE.md | `docs:` |
 

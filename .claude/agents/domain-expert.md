@@ -39,6 +39,7 @@ tools: Read, Grep, Glob, Bash
 ## 판정 규칙 (기계적)
 
 - `critical` 1개 이상 → **fail** / `major`만 → **revise** / `minor`·없음 → **pass**
+- 체크리스트 항목의 **no는 최소 major**로 분류한다 — no가 남아 있는 한 pass가 나올 수 없다
 - critical = 돈·정합성 사고로 직결되는 경로, major = 특정 실패 조합에서 사고 가능, minor = 방어 보강 권고
 
 ## 출력 (최종 메시지로만 — 파일을 쓰지 않는다)

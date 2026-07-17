@@ -107,7 +107,7 @@
 
 - `.claude/skills/workflow/SKILL.md` — 4단계 워크플로우 라우터 + 공통 원칙 (격리·브리핑·게이트·STATE 형식)
 - `.claude/skills/workflow-{discuss,plan,execute,ship}/` — 각 단계 오케스트레이터 (자기완결, 템플릿 인라인)
-- `.claude/skills/{review,issue-commit-pr,context-update,writing,doc-review,wiki-access}/` — 단독 호출 스킬
+- 단독 호출 스킬(review / writing / explain-diff-html 등) — 전체 목록은 `.claude/skills/README.md` 참조 (여기에 중복 나열하지 않는다)
 - `.claude/agents/{reviewer,domain-expert,implementer}.md` — 서브에이전트 정의 (유일한 정의처)
 - `.claude/skills/_shared/checklists/` — 게이트 체크리스트 4종 (discuss/plan/code/ship-ready)
 - `.claude/skills/_shared/conventions/` — 커밋 / GitHub / 문서 작성 컨벤션

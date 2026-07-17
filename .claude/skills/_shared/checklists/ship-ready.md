@@ -13,15 +13,21 @@ ship 단계(리뷰 + 마무리) 종료 조건. 두 섹션으로 나뉜다:
 
 - [ ] 전체 `./gradlew test` pass
 - [ ] **통합테스트가 실제로 실행됨** — `build`가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다. `./gradlew integrationTest --rerun` 또는 해당 태스크 명시 실행으로 확인
-- [ ] 린트 게이트 pass — `./gradlew checkstyleMain checkstyleTest spotbugsMain --continue` (또는 `check`). test 태스크만으로는 unused import 등 린트 위반을 놓친다 — CI가 PR 전수 게이트로 막으므로 로컬에서 선제 차단
+- [ ] 린트 게이트 pass — `./gradlew checkstyleMain checkstyleTest spotbugsMain spotbugsTest --continue` (또는 `check`). test 태스크만으로는 unused import 등 린트 위반을 놓친다 — CI가 PR 전수 게이트로 막으므로 로컬에서 선제 차단. 이 태스크 집합은 CI lint step(`_service-ci.yml`)과 동일하게 유지한다 — CI 쪽 태스크가 바뀌면 이 줄도 같이 갱신
 - [ ] 실패가 있었다면 분류됨: (i) 이번 작업 관련 → 수정 완료, (ii) 사전 존재 → 기록 후 무시, (iii) 구조적 → 중단·보고
 - [ ] JaCoCo 커버리지가 임계값 이하로 떨어지지 않음 (임계값이 설정된 경우)
 - [ ] 벤치마크가 필요한 작업이었다면 k6 결과가 남음
+- [ ] 런타임 행동이 바뀐 토픽(알람 규칙·Kafka 토픽/컨슈머 설정·스케줄러·관리자 운영 경로)은 해당 `docs/smoke/` 가이드로 라이브 검증됨 — 불가 시 사유 + 미검증 항목이 COMPLETION-BRIEFING 미결/후속에 기록됨 (암묵 생략 금지)
 
 ## code review resolution (리뷰 해소)
 
 - [ ] 리뷰 critical 전부 해소됨, 재리뷰에서 새 critical 없음
 - [ ] 미해소 major/minor는 의도적으로 남긴 것이며 사유가 PLAN.md `## 리뷰 처리` 섹션에 기록됨
+
+## explanation page (설명 페이지)
+
+- [ ] 설명 페이지가 생성되어 사용자 게이트에서 경로가 안내됨 — `.archive/explanations/YYYY-MM-DD-<topic-kebab>.html` (사용자 생략 지시 또는 제외 후 코드 diff 없음이면 n/a, 사유 안내됨)
+- [ ] 게이트 추가 수정·B1 실패 수정 등 PR 전에 코드가 바뀌었다면 같은 파일로 재생성됨
 
 ## documentation sync (문서 동기화)
 

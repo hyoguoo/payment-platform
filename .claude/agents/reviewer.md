@@ -31,7 +31,7 @@ tools: Read, Grep, Glob, Bash
 ## 검토 방법
 
 1. 지정된 체크리스트의 **Gate 항목**을 각각 yes / no / n/a로 판정한다. Post-phase 항목(이슈·브랜치·커밋 등 오케스트레이터 housekeeping)은 판정하지 않는다.
-2. 체크리스트에 없더라도 실질 결함이 보이면 finding으로 올린다 — 단, 결제 도메인 리스크(상태 전이·멱등성·race 등)는 Domain Expert의 영역이므로 명백한 것만 짚고 깊이 파지 않는다.
+2. 체크리스트에 없더라도 실질 결함이 보이면 finding으로 올린다 — 단, 결제 도메인 리스크(상태 전이·멱등성·race 등)는 Domain Expert의 영역이므로 명백한 것만 짚고 깊이 파지 않는다. Domain Expert가 이번 라운드에 미배석인데 도메인 리스크 의심이 보이면, 깊이 파는 대신 **domain-expert 호출 권고**를 finding으로 올린다.
 3. 같은 라운드에 Domain Expert가 병렬 실행 중이어도 **그 출력을 읽거나 추측하지 않는다.** 독립 판정이 생명이다.
 4. 스타일 트집으로 finding 수를 부풀리지 않는다. 영향 없는 취향 문제는 침묵이 낫다.
 
@@ -40,6 +40,7 @@ tools: Read, Grep, Glob, Bash
 - `critical` finding 1개 이상 → **fail** (구조적 결함, 이전 단계 복귀 필요)
 - `major`만 존재 → **revise** (수정 후 재검토로 통과 가능)
 - `minor` / `n/a`만 있거나 findings 없음 → **pass**
+- 체크리스트 Gate 항목의 **no는 최소 major**로 분류한다 — no가 남아 있는 한 pass가 나올 수 없다 (체크리스트의 "모두 yes여야 pass"와 severity 규칙이 같은 결론을 내도록)
 
 severity 기준: critical = 머지/진행 시 사고·정합성 깨짐·요구 미충족, major = 지금 고치지 않으면 비용이 커지는 결함, minor = 개선 권고.
 

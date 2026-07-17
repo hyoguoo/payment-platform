@@ -18,6 +18,8 @@ description: >
 
 ### A1. 리뷰 dispatch (단일 메시지 병렬)
 
+**domain-expert 포함 조건** — discuss 게이트와 같은 2갈래 기준을 실제 diff에 적용한다: diff에 소스 코드·런타임 설정 변경이 있거나 산출물이 결제 도메인 동작을 서술·정정하면 포함, 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
+
 ```
 Agent(subagent_type="reviewer",      prompt="stage=ship, topic=<TOPIC>.
   대상: git diff main...HEAD (+ git log main..HEAD --oneline)
@@ -50,19 +52,35 @@ Agent(subagent_type="implementer", prompt="모드 2 — 리뷰 finding 수정.
   스킵 항목: <// REVIEW: intentionally skipped 주석 대상>")
 ```
 
-### A4. 재리뷰
+### A4. 재리뷰 (최대 1회)
 
-수정 후 A1을 재실행. **새 critical이 없으면 통과.** "추가로 수정하고 싶은 부분이 있으신가요?" 확인 후 Phase B 게이트로.
+전체 diff를 다시 읽지 않는다 — 전체 회귀는 B1 테스트가 잡고, 수정 코드의 호출·의존 주변은 에이전트 정의상 따라가 본다.
+
+- 대상: **수정 커밋 diff + 원 findings 목록** — 각 finding의 해소 여부 판정 + 수정으로 새로 생긴 결함 탐색
+- dispatch: **수정한 finding을 낸 에이전트만** 재호출. 단, 수정이 상태 전이·멱등성·보상 등 도메인 축을 건드리면 domain-expert 포함
+- **새 critical이 없으면 통과.** 새 critical이 나오면 수정 후 재리뷰를 반복하지 않고 `workflow` 스킬의 교착 처리(계속 / 방향 수정 / 중단)로 에스컬레이션
+
+"추가로 수정하고 싶은 부분이 있으신가요?" 확인 후 A5로.
+
+### A5. 설명 페이지 자동 생성
+
+리뷰 통과(1차 pass 또는 재리뷰 통과) 직후 `explain-diff-html` 스킬로 이번 작업의 설명 페이지를 생성한다. 기본 자동 — 사용자가 생략을 지시했거나, 제외 규칙 적용 후 설명할 코드 diff가 없으면(도메인 비접촉 토픽) 건너뛰고 게이트 메시지에 생략 사유를 표기한다.
+
+- 대상: `git diff main...HEAD` (스킬의 `docs/`·`.claude/` 제외 규칙 적용)
+- 저장: `.archive/explanations/YYYY-MM-DD-<topic-kebab>.html`
+- 목적: 사용자가 아래 게이트에서 페이지를 읽고 마무리 진행 여부를 판단한다.
+- 재생성: 게이트의 추가 수정이든 B1 실패 수정이든 **PR 생성(B7) 전에 코드가 바뀌면 같은 파일로 재생성**한다. 게이트에서 사용자가 요청한 수정은 리뷰 finding이 아니므로(검토 주체가 사용자 본인) 재리뷰 없이 implementer 수정 + 페이지 재생성만 한다.
 
 ### 사용자 게이트
 
 ```
 ## 리뷰 완료
 critical N건 해소, major N건 처리, minor N건 기록.
-마무리(최종 검증 → 문서 동기화 → 아카이브 → PR)를 진행할까요?
+설명 페이지: .archive/explanations/<파일명>.html (생략 시 사유 표기)
+페이지 확인 후, 마무리(최종 검증 → 문서 동기화 → 아카이브 → PR)를 진행할까요?
 ```
 
-**자동 진행 금지.** 사용자가 직접 테스트할 시간을 보장한다.
+**자동 진행 금지.** 사용자가 설명 페이지를 읽고 직접 테스트할 시간을 보장한다.
 
 ---
 
@@ -74,8 +92,9 @@ critical N건 해소, major N건 처리, minor N건 기록.
 
 - `./gradlew test` 전체 실행
 - **통합테스트 명시 실행** — build/test가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다: `./gradlew integrationTest --rerun` 또는 해당 태스크 직접 지정
-- 린트 게이트: `./gradlew checkstyleMain checkstyleTest spotbugsMain --continue`
+- 린트 게이트: `./gradlew checkstyleMain checkstyleTest spotbugsMain spotbugsTest --continue` — CI lint step(`_service-ci.yml`)과 같은 태스크 집합 유지
 - 실패 분류: 이번 작업 관련 → implementer로 수정 / 사전 존재 → 기록 후 무시 / 구조적 → 중단·보고
+- **라이브 검증 (조건부)**: 런타임 행동이 바뀐 토픽(알람 규칙·Kafka 토픽/컨슈머 설정·스케줄러·관리자 운영 경로)은 `docs/smoke/` 해당 가이드로 실환경 발화/동작을 확인한다. 스택 기동 불가 등으로 못 하면 사유 + 미검증 항목을 COMPLETION-BRIEFING 미결/후속에 기록 — 암묵 생략 금지, 의식적 스킵만
 
 ### B2. Context 문서 갱신
 
@@ -128,4 +147,5 @@ git commit -m "docs: <주제> 작업 완료 및 문서 아카이브"
 ## 작업 완료
 **주제**: <주제> / **태스크**: N개 / **테스트**: 전체 통과
 **아카이브**: docs/archive/<topic-kebab>/ / **PR**: <URL>
+**설명 페이지**: .archive/explanations/<파일명>.html
 ```

@@ -64,6 +64,13 @@ description: >
 
 ## 5. 게이트 (서브에이전트, 최대 2라운드)
 
+**domain-expert 포함 조건** — 다음 중 하나면 무조건 포함한다:
+
+- 소스 코드 **또는 런타임 설정**(알람 규칙·Kafka 설정·스케줄러 등) 변경을 계획 (한 줄이라도)
+- 산출물이 **결제 도메인 동작(상태 전이·멱등성·복구·정산)을 서술·정정** — 문서 정정, 운영 런북, CONCERNS/TODOS 정리 포함
+
+둘 다 아닌 도메인 비접촉 토픽(워크플로우·스킬 정비, 문체 교정 등)만 생략 가능하며, 생략 시 사전 브리핑에 "domain-expert 생략 (도메인 비접촉)"을 명시해 사용자가 뒤집을 수 있게 한다.
+
 **단일 메시지에서 병렬 dispatch**:
 
 ```
@@ -76,7 +83,7 @@ Agent(subagent_type="domain-expert", prompt="stage=discuss, topic=<TOPIC>.
   체크리스트: discuss-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체")
 ```
 
-- 둘 다 pass → 6으로. revise/fail → findings를 메인이 topic.md에 반영(필요 시 사용자 확인) 후 재게이트.
+- 전원 pass → 6으로. revise/fail → findings를 메인이 topic.md에 반영(필요 시 사용자 확인) 후 재게이트.
 - 2라운드 소진 시 `workflow` 스킬의 교착 처리.
 
 ## 6. 완료 브리핑

@@ -9,10 +9,10 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 | 스킬 | 단계 | 메인 직접 | 서브에이전트 |
 |---|---|---|---|
 | `workflow` | (라우터) | STATE.md 기반 분기 + 공통 원칙 | — |
-| `workflow-discuss` | discuss | 인터뷰 + 설계 문서 작성 | 게이트: reviewer ∥ domain-expert |
+| `workflow-discuss` | discuss | 인터뷰 + 설계 문서 작성 | 게이트: reviewer ∥ domain-expert (도메인 비접촉 토픽은 생략) |
 | `workflow-plan` | plan | 태스크 분해 + PLAN.md | 게이트: reviewer (+조건부 domain-expert) |
 | `workflow-execute` | execute | 오케스트레이션 | implementer (태스크당 1회) |
-| `workflow-ship` | ship | 최종 검증·문서·아카이브·PR | 리뷰: reviewer ∥ domain-expert, 수정: implementer |
+| `workflow-ship` | ship | 설명 페이지·최종 검증·문서·아카이브·PR | 리뷰: reviewer ∥ domain-expert, 수정: implementer |
 
 ## 단독 호출 스킬
 
@@ -25,6 +25,7 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 | `doc-review` | 문서 검수 4관점 병렬 서브에이전트 루프 |
 | `wiki-access` | `<project>.wiki/` 별도 git 저장소 자동 탐색 + Read/Grep/Edit 접근 |
 | `portfolio-access` | 포트폴리오 사이트(별도 blog 저장소의 `public/payment-platform-portfolio/index.html`) 자동 탐색 + 접근 |
+| `explain-diff-html` | 코드 변경(diff/브랜치/PR)을 배경–직관–코드–퀴즈 4섹션 인터랙티브 HTML 페이지로 설명 — ship 리뷰 통과 직후(A5) 자동 호출, 산출물은 `.archive/explanations/` |
 
 ## 서브에이전트 (`.claude/agents/` — 유일한 정의처)
 
