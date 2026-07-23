@@ -322,11 +322,11 @@ if [[ "${SKIP_OBS}" == "true" ]]; then
 else
   print_section "▶ 관측성 컨테이너 기동 (${OBS_COMPOSE})"
   docker compose ${COMPOSE_ARGS_ALL} up -d \
-    prometheus grafana loki tempo promtail kafka-exporter
+    prometheus alertmanager grafana loki tempo promtail kafka-exporter
 
-  # promtail / kafka-exporter는 healthcheck 없음 → healthcheck 있는 4개만 대기
+  # promtail / kafka-exporter는 healthcheck 없음 → healthcheck 있는 5개만 대기
   if ! wait_healthy "관측성" 120 \
-    payment-prometheus payment-grafana payment-loki payment-tempo; then
+    payment-prometheus payment-alertmanager payment-grafana payment-loki payment-tempo; then
     docker compose ${COMPOSE_ARGS_ALL} ps prometheus grafana loki tempo promtail kafka-exporter
     print_warning "로그 확인: docker compose ${COMPOSE_ARGS_ALL} logs -f <service>"
     exit 1
@@ -362,6 +362,7 @@ if [[ "${SKIP_OBS}" != "true" ]]; then
   print_section "=== 관측성 URL ==="
   echo "Grafana:           http://localhost:3000   (${GRAFANA_USER:-admin} / ${GRAFANA_PASSWORD:-admin123})"
   echo "Prometheus:        http://localhost:9090"
+  echo "Alertmanager:      http://localhost:9093   (알람 → Discord 통지)"
   echo "Loki API:          http://localhost:3100   (Grafana Explore → Loki 데이터소스로 조회)"
   echo "Tempo API:         http://localhost:3200   (Grafana Explore → Tempo로 trace 조회)"
   echo "kafka-exporter:    http://localhost:9308/metrics"

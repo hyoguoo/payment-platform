@@ -1,0 +1,38 @@
+# Alertmanager — Prometheus 알람을 Discord 채널로 통지 (설정 템플릿)
+#
+# 파이프라인:
+#   Prometheus 규칙 FIRING → prometheus.yml 의 alerting 블록이 이 Alertmanager 로 push
+#   → route 매칭 → discord receiver → Discord 채널 웹훅으로 POST.
+#
+# 이 파일은 __DISCORD_WEBHOOK_URL__ 플레이스홀더를 가진 "템플릿" 이다.
+#   웹훅 URL 은 시크릿이므로 여기(git 커밋)에 직접 넣지 않는다.
+#   alertmanager 컨테이너 entrypoint 가 기동 시 env(DISCORD_WEBHOOK_URL)로 치환해
+#   /tmp/alertmanager.yml 을 만들고 그걸로 alertmanager 를 띄운다.
+#   DISCORD_WEBHOOK_URL 은 compose-up.sh 가 .env.secret 에서 export → compose 로 주입.
+#   (docker/docker-compose.observability.yml 의 alertmanager 서비스 참조)
+#
+# 주의: 플레이스홀더 때문에 이 파일 자체는 amtool check-config 로 직접 검증되지 않는다
+#   (치환 후의 /tmp/alertmanager.yml 이 실제 로드 대상).
+
+route:
+  receiver: discord
+  # 같은 alertname 은 하나의 통지로 묶는다.
+  group_by: ['alertname']
+  # 첫 알람 후 묶음 대기 — 데모 반응성을 위해 짧게.
+  group_wait: 10s
+  group_interval: 1m
+  # 동일 알람 재통지 간격.
+  repeat_interval: 1h
+
+receivers:
+  - name: discord
+    discord_configs:
+      # send_resolved: 발화(firing)뿐 아니라 해소(resolved)도 통지 → 복구 확인 가능.
+      - send_resolved: true
+        webhook_url: __DISCORD_WEBHOOK_URL__
+        title: >-
+          {{ if eq .Status "firing" }}🔴 발화{{ else }}✅ 해소{{ end }} · [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }}
+        message: |-
+          {{ range .Alerts }}**{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          {{ end }}

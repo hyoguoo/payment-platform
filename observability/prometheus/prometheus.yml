@@ -10,6 +10,13 @@ global:
 rule_files:
   - "/etc/prometheus/rules/*.yml"
 
+# Alertmanager 연결 — FIRING 알람을 push 할 대상.
+# payment-infra-network 내부의 alertmanager 컨테이너(:9093)로 전송 → Discord 최종 통지.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 # Tempo metrics_generator remote_write 수신 시 out-of-order 샘플 허용 (30m 윈도우)
 # Prometheus 2.39+ 기능: span_metrics/service_graphs 집계 타임스탬프가
 # scrape 타임라인보다 약간 과거일 수 있어 이 설정 없이는 샘플 거부 가능

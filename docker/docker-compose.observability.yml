@@ -39,6 +39,36 @@ services:
       start_period: 10s
 
   # ───────────────────────────────────────────
+  # Alertmanager — Prometheus 알람 → Discord 통지
+  # ───────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: payment-alertmanager
+    # 웹훅 URL(시크릿)을 설정 템플릿의 __DISCORD_WEBHOOK_URL__ 자리에 치환해 기동.
+    #   alertmanager.yml 은 플레이스홀더만 커밋 → git 에 URL 미포함(안전).
+    #   entrypoint 가 env 값으로 sed 치환 → /tmp/alertmanager.yml 을 실제 설정으로 사용.
+    #   DISCORD_WEBHOOK_URL 은 compose-up.sh 가 .env.secret 에서 export → compose 치환.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'sed "s#__DISCORD_WEBHOOK_URL__#$$DISCORD_WEBHOOK_URL#" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml && exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager --web.listen-address=:9093'
+    environment:
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+    volumes:
+      - ../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────
   # Grafana — 대시보드 시각화
   # ───────────────────────────────────────────
   grafana:
@@ -158,6 +188,8 @@ networks:
     name: payment-infra-network
 
 volumes:
+  alertmanager-data:
+    driver: local
   prometheus-data:
     driver: local
   grafana-data:
