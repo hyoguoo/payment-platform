@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 5: pg 관리자 이력 조회 엔드포인트
+- **활성 태스크**: Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-Task 4(시도 이력 조립 서비스) 완료 — `PgAttemptHistoryService` 신규. pg_inbox 최초 수신 시각 + 최종 상태/종결 시각 + outbox 이력 행으로 회차별 타임라인 조립. 미실행 판정은 발행 시각 우선, 없으면 실행 예정 시각 폴백, 비종결 결제는 판정 스킵. 회차는 headers_json 파싱(실패 시 미지 처리). 응답에 결제키/원문 컬럼 비노출. 13태스크 중 4개 완료.
+Task 5(pg 관리자 이력 조회 엔드포인트) 완료 — pg-service 최초의 `@RestController`(`PgAttemptHistoryController`, `GET /api/v1/confirmations/{orderId}/attempts`). 인바운드 포트 `PgAttemptHistoryQueryService` 를 `PgAttemptHistoryService` 가 구현. 이력 없는 주문은 404 아니라 `found=false` 담은 200 정상 응답. 응답 DTO 는 pg 내부 enum 을 문자열로 변환하고 결제키/원문 필드 없음. 13태스크 중 5개 완료.
 
 ## 최근 완료
 

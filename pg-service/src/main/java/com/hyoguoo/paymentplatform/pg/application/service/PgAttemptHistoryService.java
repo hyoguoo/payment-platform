@@ -11,6 +11,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
+import com.hyoguoo.paymentplatform.pg.presentation.port.PgAttemptHistoryQueryService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @RequiredArgsConstructor
-public class PgAttemptHistoryService {
+public class PgAttemptHistoryService implements PgAttemptHistoryQueryService {
 
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
@@ -52,6 +53,7 @@ public class PgAttemptHistoryService {
      * @param orderId 주문 ID
      * @return 조립된 시도 이력
      */
+    @Override
     public PgAttemptHistory getAttemptHistory(String orderId) {
         return pgInboxRepository.findByOrderId(orderId)
                 .map(inbox -> assemble(orderId, inbox))

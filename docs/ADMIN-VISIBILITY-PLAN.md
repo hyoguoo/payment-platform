@@ -109,7 +109,7 @@ flowchart TD
 - [x] Task 2: `pg_outbox` 주문번호 조회 인덱스
 - [x] Task 3: outbox 주문번호별 이력 행 조회 포트
 - [x] Task 4: 시도 이력 조립 서비스
-- [ ] Task 5: pg 관리자 이력 조회 엔드포인트
+- [x] Task 5: pg 관리자 이력 조회 엔드포인트
 - [ ] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - [ ] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
 - [ ] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
@@ -283,7 +283,14 @@ pg-service 최초의 HTTP 진입점이다.
 - 이 태스크에서 추가한 로그 문장에 결제 키·원문 컬럼이 없음을 확인
 
 **완료 결과**
-> (execute에서 채움)
+
+- `pg/presentation/port/PgAttemptHistoryQueryService.java` 신규 (인바운드 포트) — `getAttemptHistory(String orderId)` 반환 타입은 Task 4 의 application DTO `PgAttemptHistory` 그대로(ProductQueryService 가 도메인 엔티티를 그대로 반환하는 것과 같은 배치). `PgAttemptHistoryService` 클래스 선언에 `implements PgAttemptHistoryQueryService` 추가 — `PgConfirmService`/`PgConfirmCommandService` 배치와 동일
+- `pg/presentation/PgAttemptHistoryController.java` 신규 — `@RestController`, `GET /api/v1/confirmations/{orderId}/attempts`. pg-service 최초의 `@RestController`
+- `pg/presentation/dto/PgAttemptHistoryResponse.java` + `PgAttemptEntryResponse.java` 신규 — application DTO 를 그대로 노출하지 않고 변환. `finalStatus` 는 `PgInboxStatus` enum 을 문자열로 변환해 응답이 pg-service 내부 타입에 결합되지 않게 함. `attemptNo` 는 `Optional<Integer>` → nullable `Integer` 로 변환(payment 측이 jackson-datatype-jdk8 없이도 역직렬화 가능하도록)
+- 이력 없는 주문은 `PgAttemptHistory.notFound()` 를 그대로 응답으로 변환해 `found=false` 로 HTTP 200 반환 — 404 아님. 조회 자체의 실패(예외)는 컨트롤러가 흡수하지 않고 그대로 전파(5xx) — pg-service 에 아직 `@RestControllerAdvice` 가 없는 채로 끝나는 것이 이 엔드포인트의 설계 의도(이력 없음이 정상 응답으로 처리되어 흡수할 도메인 예외가 없음)
+- 이 태스크에서 추가한 코드에는 로그 문장이 없다(`ProductController` 와 동일하게 단순 위임 컨트롤러라 로깅 없음) — 결제 키·원문 컬럼 비노출 요구는 응답 DTO 구성 자체(필드 미존재)로 충족
+- 신규 슬라이스 테스트 `PgAttemptHistoryControllerTest` 3건 — 정상 응답 형태 고정(회차·세 시각·정상시도 여부 전 필드 jsonPath 검증) · 이력 없음 200 정상 응답(404 아님 확인) · 응답에 결제키/원문/헤더 미포함, `@WebMvcTest` + Mockito
+- `./gradlew :pg-service:test` 350건 전체 pass (기존 347 + 신규 3) — 회귀 없음
 
 ---
 
