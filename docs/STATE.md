@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 12: 재고 화면
+- **활성 태스크**: Task 13: 라이브 검증
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-Task 11(재고 목록 조회 포트 + HTTP 어댑터) 완료 — payment-service 에 `ProductCatalogQueryPort`(`getPage(page, size)`, 승인 경로 `ProductPort` 와 분리, `ProductPort` 시그니처 불변 확인) + `ProductCatalogHttpAdapter` 신규. `ProductFeignClient` 에 `getProducts(page, size)` 메서드 추가(`GET /api/v1/products?page=&size=`, 기존 client + `ProductFeignConfig` ErrorDecoder 공유, 신규 client 없음). 응답 DTO `ProductPageResponse`(infra) 신규, `content` 항목은 기존 `ProductResponse` 재사용. 어댑터는 `ProductHttpAdapter` 패턴대로 도메인 예외 propagate + `feign.RetryableException` → `ProductServiceRetryableException` 변환, `confirmedStock` 필드로 확정 수량 누락 없이 변환. 신규 계약 테스트 3건(`ProductCatalogHttpAdapterContractTest`). `./gradlew :payment-service:test` 529건 전체 pass, checkstyle/spotbugs 통과. 13태스크 중 11개 완료. 다음은 Task 12 — payment-service 에 `StockViewController`(`@Controller`, 기존 `StockAdminController`(`/admin/stock`)와 비충돌 복수형 경로) + `templates/admin/stock.html` 신규, 확정 수량 목록 + 실시간 판매 가능 여부는 다를 수 있다는 안내 문구 필수.
+Task 12(재고 화면) 완료 — payment-service 에 `StockViewController`(`@Controller`, `/admin/stocks`, 기존 `StockAdminController`(`@RestController`, `/admin/stock` 캐시 재동기화 POST)와 경로 비충돌) 신규. `ProductCatalogQueryPort.getPage(page, size)` 조회를 `try/catch (RuntimeException)` 로 감싸 실패 시에도 200 + 조회 불가 안내(`unavailable=true`, `products` 속성 부재)로 렌더 — Task 8 부분 렌더와 동일 패턴. `templates/admin/stock.html` 신규 — 기존 카드/테이블/페이지네이션 구성 그대로, "확정 수량은 RDB 기준이며 실시간 판매 가능 여부(캐시)는 다를 수 있다"는 안내 문구 고정 노출, 캐시 재동기화 REST 는 버튼으로 노출하지 않음(조작 기능 범위 밖). 신규 슬라이스 테스트 3건(`StockViewControllerTest`). `./gradlew :payment-service:test` 532건 전체 pass, checkstyle/spotbugs 통과. 13태스크 중 12개 완료. 다음은 Task 13 — `:*:bootJar` 선행 후 도커 스택 기동, (1) 재시도 이력 카드 렌더 (2) pg-service 다운 시 부분 렌더 (3) 재고 화면 확정 수량 반영 3항목을 실제 기동 환경에서 관찰 확인.
 
 ## 최근 완료
 

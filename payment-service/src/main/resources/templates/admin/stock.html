@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock - Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">Payment Admin</a>
+    <div class="d-flex align-items-center gap-2">
+      <div id="theme-toggle-slot"></div>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item">
+          <a class="nav-link" href="/admin/payments/events">
+            <i class="bi bi-calendar-event"></i> Events
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin/payments/history">
+            <i class="bi bi-clock-history"></i> History
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link active" href="/admin/stocks">
+            <i class="bi bi-box-seam"></i> Stock
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid my-4">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h3>Stock</h3>
+      <p class="text-secondary-custom mb-0" style="font-size: 0.875rem;">
+        Total: <strong th:text="${products != null ? products.totalElements : 0}">0</strong>
+      </p>
+    </div>
+    <button class="btn btn-primary-professional btn-professional" onclick="location.reload()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+  </div>
+
+  <!-- Query failure notice -->
+  <div class="alert alert-warning" role="alert" th:if="${unavailable}">
+    상품 재고 목록을 조회하지 못했습니다(product-service 장애 또는 응답 지연). 잠시 후 다시
+    시도해주세요.
+  </div>
+
+  <!-- Freshness disclaimer -->
+  <p class="text-secondary-custom" style="font-size: 0.875rem;" th:if="${products != null}">
+    아래 수량은 product-service RDB 기준 확정 재고입니다. 실시간 판매 가능 여부(결제 시점 캐시
+    기준)는 이 값과 다를 수 있습니다.
+  </p>
+
+  <!-- Stock Table -->
+  <div class="detail-card" th:if="${products != null}">
+    <div class="card-header">
+      <i class="bi bi-box-seam"></i> Product Stock
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Confirmed Stock</th>
+            <th>Seller ID</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:if="${products.content != null and !#lists.isEmpty(products.content)}"
+              th:each="product : ${products.content}">
+            <td><code>#<span th:text="${product.id}">-</span></code></td>
+            <td th:text="${product.name}">-</td>
+            <td th:text="${'₩' + #numbers.formatDecimal(product.price, 0, 'COMMA', 0, 'POINT')}">₩0</td>
+            <td th:text="${product.confirmedStock}">-</td>
+            <td th:text="${product.sellerId}">-</td>
+          </tr>
+          <tr th:if="${products.content == null or #lists.isEmpty(products.content)}">
+            <td colspan="5" class="text-center text-secondary-custom py-4">No products found</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination-bar" th:if="${products != null and products.totalPages > 1}">
+    <a class="page-btn"
+       th:classappend="${products.page == 0} ? 'disabled'"
+       th:href="@{/admin/stocks(page=0, size=${products.size})}">
+      «
+    </a>
+    <a class="page-btn"
+       th:classappend="${products.page == 0} ? 'disabled'"
+       th:href="@{/admin/stocks(page=${products.page - 1}, size=${products.size})}">
+      ‹ Prev
+    </a>
+    <span class="page-info">
+      Page <strong th:text="${products.page + 1}">1</strong> / <strong th:text="${products.totalPages}">1</strong>
+    </span>
+    <a class="page-btn"
+       th:classappend="${products.page + 1 >= products.totalPages} ? 'disabled'"
+       th:href="@{/admin/stocks(page=${products.page + 1}, size=${products.size})}">
+      Next ›
+    </a>
+    <a class="page-btn"
+       th:classappend="${products.page + 1 >= products.totalPages} ? 'disabled'"
+       th:href="@{/admin/stocks(page=${products.totalPages - 1}, size=${products.size})}">
+      »
+    </a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

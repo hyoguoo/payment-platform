@@ -116,7 +116,7 @@ flowchart TD
 - [x] Task 9: 상품 목록 페이징 조회 포트 + 저장소
 - [x] Task 10: 상품 목록 조회 엔드포인트
 - [x] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
-- [ ] Task 12: 재고 화면
+- [x] Task 12: 재고 화면
 - [ ] Task 13: 라이브 검증
 
 ---
@@ -523,7 +523,13 @@ pg-service 최초의 HTTP 진입점이다.
 - 기존 `StockAdminController` 경로와 매핑 충돌 없이 기동
 
 **완료 결과**
-> (execute에서 채움)
+
+- `payment/presentation/StockViewController.java` 신규 — `@Controller`, `@RequestMapping("/admin/stocks")` (`GET /admin/stocks`). 기존 `StockAdminController`(`@RestController`, `/admin/stock` — 캐시 재동기화 POST)와 경로 문자열 자체가 달라 매핑 충돌 없음. 페이지 기본값 0, 크기 기본값 20 — product-service `ProductController` 목록 엔드포인트(Task 10)의 기본값과 동일하게 맞췄고, 크기 상한 클램프는 product-service 쪽(`ProductController`)에서 이미 처리하므로 이 컨트롤러에서 중복하지 않음
+- `productCatalogQueryPort.getPage(page, size)` 호출을 `try/catch (RuntimeException e)` 로 감싸 — Task 8 `PaymentAdminController.addAttemptHistory` 와 동일한 패턴. 성공 시 `model.addAttribute("products", pageInfo)` + `unavailable=false`, 실패(예외) 시 `products` 속성 자체를 추가하지 않고 `unavailable=true` 만 담아 템플릿이 `products != null` 로 조회 성공/실패를 구분한다. 예외는 `LogFmt.warn(LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_UNEXPECTED, ...)` 로 로깅 후 흡수(재throw 안 함)
+- `templates/admin/stock.html` 신규 — 기존 `payment-events.html`/`payment-event-detail.html` 과 동일한 `detail-card` + `table-responsive` + `pagination-bar` 구성. 화면 고정 문구로 "확정 수량은 product-service RDB 기준이며 실시간 판매 가능 여부(캐시 기준)와 다를 수 있다"는 안내를 조회 성공 시 항상 노출. 기존 캐시 재동기화 REST(`StockAdminController#resync`)는 버튼으로 노출하지 않음 — 조작 기능은 이번 범위 밖
+- 상품 서비스 조회 실패 시에도 컨트롤러가 예외를 흡수해 200 OK + 조회 불가 안내(`alert-warning`)로 렌더 — 500 으로 깨지지 않음
+- 신규 슬라이스 테스트 `StockViewControllerTest` 3건 — 확정 수량 목록 모델에 담김 · 조회 실패(`ProductServiceRetryableException`) 시 200 + 조회 불가 안내(+`products` 속성 부재) · 페이지/크기 파라미터가 조회 포트에 그대로 전달(Mockito verify), `@WebMvcTest` + `PaymentAdminControllerAttemptHistoryTest` 패턴
+- `./gradlew :payment-service:test` 532건 전체 pass (기존 529 + 신규 3) — 회귀 없음. `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 모두 통과
 
 ---
 
