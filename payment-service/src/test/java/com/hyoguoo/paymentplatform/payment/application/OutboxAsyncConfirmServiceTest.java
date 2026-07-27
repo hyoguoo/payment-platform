@@ -23,6 +23,8 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
+import com.hyoguoo.paymentplatform.payment.exception.StockCacheUnavailableException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
@@ -145,7 +147,7 @@ class OutboxAsyncConfirmServiceTest {
     class ConfirmCacheDownTest {
 
         @Test
-        @DisplayName("decrementStock=CACHE_DOWN → markStockCacheDownQuarantine 호출 + PaymentOrderedProductStockException throw")
+        @DisplayName("decrementStock=CACHE_DOWN → markStockCacheDownQuarantine 호출 + StockCacheUnavailableException throw")
         void cacheDownQuarantinesAndThrows() {
             // given
             String orderId = "order-123";
@@ -158,8 +160,11 @@ class OutboxAsyncConfirmServiceTest {
                     .willReturn(StockDecrementResult.CACHE_DOWN);
 
             // when & then
+            // 재고가 모자란 것과 캐시를 못 읽은 것은 다르다 — 후자는 잠시 뒤 재시도가 통할 수 있으므로
+            // 호출자가 구분할 수 있도록 별도 예외로 신호한다.
             assertThatThrownBy(() -> outboxAsyncConfirmService.confirm(command))
-                    .isInstanceOf(PaymentOrderedProductStockException.class);
+                    .isInstanceOf(StockCacheUnavailableException.class)
+                    .hasFieldOrPropertyWithValue("code", PaymentErrorCode.STOCK_CACHE_UNAVAILABLE.getCode());
 
             then(mockTransactionCoordinator).should(times(1))
                     .markStockCacheDownQuarantine(paymentEvent);

@@ -10,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.ProductServiceRetryableException;
+import com.hyoguoo.paymentplatform.payment.exception.StockCacheUnavailableException;
 import com.hyoguoo.paymentplatform.payment.exception.UserNotFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.UserServiceRetryableException;
 import lombok.extern.slf4j.Slf4j;
@@ -106,6 +107,12 @@ public class PaymentExceptionHandler {
 
     @ExceptionHandler(UserServiceRetryableException.class)
     public ResponseEntity<ErrorResponse> handleUserServiceRetryable(UserServiceRetryableException e) {
+        LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
+        return retryableServiceUnavailable(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(StockCacheUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleStockCacheUnavailable(StockCacheUnavailableException e) {
         LogFmt.warn(log, LogDomain.PAYMENT, EventType.EXCEPTION, e::getMessage);
         return retryableServiceUnavailable(e.getCode(), e.getMessage());
     }
