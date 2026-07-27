@@ -222,22 +222,31 @@ public class FakePgInboxRepository implements PgInboxRepository {
      * 시도횟수 SoT — relative increment.
      * store 의 PgInbox 를 attempt+1 로 재구성({@code ofWithId}, 나머지 필드 보존)해 교체한다.
      * 실 DB 의 {@code UPDATE attempt = attempt + 1} 과 동일 의미 — set-to-value 가 아니다.
+     *
+     * <p>진행 중 상태 가드 — 프로덕션({@code JpaPgInboxRepository.incrementAttempt})과 동일하게
+     * IN_PROGRESS 행만 증가시킨다. 종결(APPROVED/FAILED/QUARANTINED) 행은 no-op — 여기서
+     * 다르게 동작하면 상위 테스트가 거짓 GREEN 을 만든다.
      */
     @Override
     public void incrementAttempt(String orderId) {
-        store.computeIfPresent(orderId, (key, current) -> PgInbox.ofWithId(
-                current.getId(),
-                current.getOrderId(),
-                current.getStatus(),
-                current.getAmount(),
-                current.getStoredStatusResult(),
-                current.getReasonCode(),
-                current.getCreatedAt(),
-                java.time.Instant.now(),
-                current.getPaymentKey(),
-                current.getVendorType(),
-                current.getAttempt() + 1
-        ));
+        store.computeIfPresent(orderId, (key, current) -> {
+            if (current.getStatus() != PgInboxStatus.IN_PROGRESS) {
+                return current; // 종결 행 — no-op
+            }
+            return PgInbox.ofWithId(
+                    current.getId(),
+                    current.getOrderId(),
+                    current.getStatus(),
+                    current.getAmount(),
+                    current.getStoredStatusResult(),
+                    current.getReasonCode(),
+                    current.getCreatedAt(),
+                    java.time.Instant.now(),
+                    current.getPaymentKey(),
+                    current.getVendorType(),
+                    current.getAttempt() + 1
+            );
+        });
     }
 
     // --- 검증 헬퍼 ---

@@ -214,7 +214,8 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     @Transactional(propagation = Propagation.REQUIRED)
     public void incrementAttempt(String orderId) {
         // 시간 결정성 위해 LocalDateTime.now(clock) 사용
-        jpaPgInboxRepository.incrementAttempt(orderId, LocalDateTime.now(clock));
+        // 진행 중 상태 가드 — 종결(APPROVED/FAILED/QUARANTINED) 행은 attempt/updated_at 이 밀리지 않는다
+        jpaPgInboxRepository.incrementAttempt(orderId, LocalDateTime.now(clock), PgInboxStatus.IN_PROGRESS);
     }
 
 }

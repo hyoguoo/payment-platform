@@ -105,7 +105,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 시도 횟수 증가에 진행 중 상태 가드
+- [x] Task 1: 시도 횟수 증가에 진행 중 상태 가드
 - [ ] Task 2: `pg_outbox` 주문번호 조회 인덱스
 - [ ] Task 3: outbox 주문번호별 이력 행 조회 포트
 - [ ] Task 4: 시도 이력 조립 서비스
@@ -147,7 +147,11 @@ flowchart TD
 - 정상 재시도 경로 테스트(`PgVendorCallServiceTest`, `PgSelfLoopRetryExhaustionIntegrationTest`)가 그대로 통과 — 가드가 정상 경로를 막지 않음을 확인
 
 **완료 결과**
-> (execute에서 채움)
+
+- `JpaPgInboxRepository.incrementAttempt` 의 `@Query` 에 `AND e.status = :inProgress` 가드 추가. `PgInboxRepositoryImpl.incrementAttempt` 는 항상 `PgInboxStatus.IN_PROGRESS` 를 넘긴다 — 포트 인터페이스(`PgInboxRepository.incrementAttempt(String orderId)`) 시그니처는 변경하지 않았다
+- `FakePgInboxRepository.incrementAttempt` 에 동일 가드(현재 상태가 IN_PROGRESS 가 아니면 no-op) 반영
+- 신규 통합 테스트 `PgInboxAttemptGuardIntegrationTest` 7건 — IN_PROGRESS 증가 1건 + 종결 3상태(APPROVED/FAILED/QUARANTINED) 불변 3건 + 반영 행 수 0 확인 3건, Testcontainers MySQL(`pg-test` DB 공유)
+- `./gradlew :pg-service:test` 331건 전체 pass, `:pg-service:integrationTest` 16건 전체 pass — `PgVendorCallServiceTest`(재시도 attempt 1→2 누적 검증 포함) · `PgSelfLoopRetryExhaustionIntegrationTest`(4회 self-loop 소진→QUARANTINED) 정상 재시도 경로 회귀 없음 확인. 게이트에서 확인된 대로 가드는 정상 경로에서 무동작
 
 ---
 

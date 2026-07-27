@@ -25,6 +25,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * {@code JpaPgInboxRepository.incrementAttempt} 진행 중 상태 가드 통합 테스트.
@@ -42,6 +43,7 @@ import org.springframework.test.context.DynamicPropertySource;
 })
 @Tag("integration")
 @Testcontainers
+@Transactional
 @DisplayName("JpaPgInboxRepository.incrementAttempt 진행 중 상태 가드 통합 테스트")
 class PgInboxAttemptGuardIntegrationTest {
 

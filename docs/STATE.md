@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 1: 시도 횟수 증가에 진행 중 상태 가드
+- **활성 태스크**: Task 2: `pg_outbox` 주문번호 조회 인덱스
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-plan 완료 (게이트 1라운드 양쪽 pass, minor 5건 반영). 13태스크. execute 미착수.
+Task 1(시도 횟수 증가 진행 중 상태 가드) 완료 — `incrementAttempt` 가 종결 행에서 무동작하도록 가드, 정상 재시도 경로 회귀 없음 확인. 13태스크 중 1개 완료.
 
 ## 최근 완료
 
