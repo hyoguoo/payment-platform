@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 4: 시도 이력 조립 서비스
+- **활성 태스크**: Task 5: pg 관리자 이력 조회 엔드포인트
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-Task 3(outbox 주문번호별 이력 행 조회 포트) 완료 — `PgOutboxRepository.findConfirmAttemptRows` 신규, 확정 명령/소진 토픽만 created_at 오름차순 반환, 결과 발행 토픽 행 배제. `FakePgOutboxRepository` 동일 동작 재현. 13태스크 중 3개 완료.
+Task 4(시도 이력 조립 서비스) 완료 — `PgAttemptHistoryService` 신규. pg_inbox 최초 수신 시각 + 최종 상태/종결 시각 + outbox 이력 행으로 회차별 타임라인 조립. 미실행 판정은 발행 시각 우선, 없으면 실행 예정 시각 폴백, 비종결 결제는 판정 스킵. 회차는 headers_json 파싱(실패 시 미지 처리). 응답에 결제키/원문 컬럼 비노출. 13태스크 중 4개 완료.
 
 ## 최근 완료
 

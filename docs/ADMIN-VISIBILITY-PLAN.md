@@ -108,7 +108,7 @@ flowchart TD
 - [x] Task 1: 시도 횟수 증가에 진행 중 상태 가드
 - [x] Task 2: `pg_outbox` 주문번호 조회 인덱스
 - [x] Task 3: outbox 주문번호별 이력 행 조회 포트
-- [ ] Task 4: 시도 이력 조립 서비스
+- [x] Task 4: 시도 이력 조립 서비스
 - [ ] Task 5: pg 관리자 이력 조회 엔드포인트
 - [ ] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - [ ] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
@@ -245,7 +245,15 @@ flowchart TD
 - 이 태스크에서 추가한 로그 문장에 `payload` / `headers_json` / `payment_key` / 엔티티 `toString` 이 없음을 확인 — 결정 사항은 응답뿐 아니라 로그도 비노출을 요구한다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `pg/application/dto/PgAttemptHistoryEntry.java` 신규 — 회차(`Optional<Integer>`, 헤더 파싱 실패·부재 시 empty) · 예약 시각(`reservedAt`, outbox row 의 created_at) · 실행 예정 시각(`scheduledAt`, available_at) · 발행 시각(`publishedAt`, processed_at, nullable) · 소진 여부(`exhausted`) · 정상 시도 여부(`normalAttempt`). 1회차는 `initial(receivedAt)` factory 로 pg_inbox.created_at 을 그대로 담고 예약/발행 시각 없이 항상 정상 시도로 고정
+- `pg/application/dto/PgAttemptHistory.java` 신규 — 주문번호 · 이력 존재 여부(`found`) · 최종 상태 · 종결 시각 · 사유 코드 · 회차 목록. 이력 없음은 `notFound(orderId)` factory 로 `found=false` 반환 — 조회 실패(예외)와 다른 상태
+- `pg/application/service/PgAttemptHistoryService.java` 신규 — `PgInboxRepository.findByOrderId` 로 최초 수신 시각·최종 상태·종결 시각을 읽고, `PgOutboxRepository.findConfirmAttemptRows` 로 얻은 이력 행을 타임라인으로 조립
+- **미실행 판정**: 결제가 비종결이면(`finalizedAt=null`) 판정을 건너뛰고 항상 정상 시도로 취급. 종결된 경우 발행 시각이 있으면 그것을, 없으면 실행 예정 시각을 종결 시각과 비교해 늦으면 미실행으로 분류
+- 회차는 `headers_json` 을 Jackson `ObjectMapper` 로 파싱해 읽는다 — `pg_outbox.attempt` 컬럼은 사용하지 않는다. 파싱 실패(`JsonProcessingException`)·헤더 부재·`attempt` 필드가 정수가 아닌 경우 모두 `Optional.empty()` 로 흡수하고 예외를 던지지 않는다
+- 응답 DTO 어디에도 `payload` / `headers_json` / `payment_key` 필드가 없다 — record component 구성 자체에서 배제. 로그 문장도 `orderId` 외 값을 찍지 않는다
+- 신규 단위 테스트 `PgAttemptHistoryServiceTest` 12건 — 최초 수신 1회차 조립 · 재시도 진행중(미발행) 포함 · 소진 토픽 표시 · 회차 미지 처리 · 이력없음/조회실패 구분(예외 전파 확인) · 미실행 판정 4종(발행 지연 · 예정은 종결전 발행은 종결후 · 발행시각 없으면 예정시각 폴백 · 종결 이전은 정상) · 비종결 결제 판정 스킵 · 세 시각 의미 고정 · 응답에 결제키·원문 미노출(record component 리플렉션 + toString 미포함 확인). Mockito BDD + AssertJ, DB 불필요
+- `./gradlew :pg-service:test` 347건 전체 pass (기존 335 + 신규 12) — 회귀 없음
 
 ---
 
