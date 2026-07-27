@@ -107,7 +107,7 @@ flowchart TD
 
 - [x] Task 1: 시도 횟수 증가에 진행 중 상태 가드
 - [x] Task 2: `pg_outbox` 주문번호 조회 인덱스
-- [ ] Task 3: outbox 주문번호별 이력 행 조회 포트
+- [x] Task 3: outbox 주문번호별 이력 행 조회 포트
 - [ ] Task 4: 시도 이력 조립 서비스
 - [ ] Task 5: pg 관리자 이력 조회 엔드포인트
 - [ ] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
@@ -199,7 +199,13 @@ flowchart TD
 - 위 테스트 pass, `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PgOutboxRepository` 포트에 `findConfirmAttemptRows(String orderId)` 추가 — 주문번호(key) + 확정 명령/소진 토픽만, created_at 오름차순
+- `JpaPgOutboxRepository.findByKeyAndTopicInOrderByCreatedAtAsc(key, topics)` 파생 쿼리로 구현 — V6 인덱스(`key, topic`) 컬럼 순서와 조회 조건 순서를 맞췄다
+- `PgOutboxRepositoryImpl` 은 `CONFIRM_ATTEMPT_TOPICS = [COMMANDS_CONFIRM, COMMANDS_CONFIRM_DLQ]` 상수로 결과 발행 토픽(`EVENTS_CONFIRMED`)을 조회 조건에서 배제
+- `FakePgOutboxRepository` 에 동일 필터(주문번호 일치 + 확정 시도 토픽) + `createdAt` 정렬 로직 재현
+- 신규 통합 테스트 `PgOutboxRepositoryImplTest` 4건 — 주문번호 일치 필터 · 확정명령/소진 토픽만 반환(결과 발행 토픽 배제 확인) · 생성시각 오름차순 · 빈 목록, `@DataJpaTest` + Testcontainers MySQL(`PgInboxRepositoryImplTest` 패턴)
+- `./gradlew :pg-service:test` 335건 전체 pass (기존 331 + 신규 4) — 회귀 없음
 
 ---
 
