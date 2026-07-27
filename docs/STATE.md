@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 11: 재고 목록 조회 포트 + HTTP 어댑터
+- **활성 태스크**: Task 12: 재고 화면
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-Task 10(상품 목록 조회 엔드포인트) 완료 — `ProductQueryService.getPage(page, size)` 신규(application DTO `ProductPage` 그대로 반환), `ProductQueryUseCase` 는 저장소 위임. `ProductController` 에 `GET /api/v1/products` 추가 — 기본값 page=0/size=20, 크기 상한 100(`Math.clamp`, payment-service `PageSpec` 과 같은 방침이나 코드 비공유), 기존 `GET /api/v1/products/{id}` 와 경로 비충돌. 응답 DTO `ProductPageResponse`(content/page/size/totalElements/totalPages) 신규 — Task 11 payment 측 어댑터가 이 필드 시그니처에 의존. 신규 슬라이스 테스트 3건(`ProductControllerListTest`, `@WebMvcTest`). `./gradlew :product-service:test` 57건 전체 pass, checkstyle/spotbugs 통과. 13태스크 중 10개 완료. 다음은 Task 11 — payment-service 에 `ProductCatalogQueryPort`(승인 경로 `ProductPort` 와 분리) + `ProductCatalogHttpAdapter` 신규, `ProductFeignClient` 에 목록 엔드포인트 메서드 추가.
+Task 11(재고 목록 조회 포트 + HTTP 어댑터) 완료 — payment-service 에 `ProductCatalogQueryPort`(`getPage(page, size)`, 승인 경로 `ProductPort` 와 분리, `ProductPort` 시그니처 불변 확인) + `ProductCatalogHttpAdapter` 신규. `ProductFeignClient` 에 `getProducts(page, size)` 메서드 추가(`GET /api/v1/products?page=&size=`, 기존 client + `ProductFeignConfig` ErrorDecoder 공유, 신규 client 없음). 응답 DTO `ProductPageResponse`(infra) 신규, `content` 항목은 기존 `ProductResponse` 재사용. 어댑터는 `ProductHttpAdapter` 패턴대로 도메인 예외 propagate + `feign.RetryableException` → `ProductServiceRetryableException` 변환, `confirmedStock` 필드로 확정 수량 누락 없이 변환. 신규 계약 테스트 3건(`ProductCatalogHttpAdapterContractTest`). `./gradlew :payment-service:test` 529건 전체 pass, checkstyle/spotbugs 통과. 13태스크 중 11개 완료. 다음은 Task 12 — payment-service 에 `StockViewController`(`@Controller`, 기존 `StockAdminController`(`/admin/stock`)와 비충돌 복수형 경로) + `templates/admin/stock.html` 신규, 확정 수량 목록 + 실시간 판매 가능 여부는 다를 수 있다는 안내 문구 필수.
 
 ## 최근 완료
 

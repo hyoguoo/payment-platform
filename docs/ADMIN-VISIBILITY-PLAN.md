@@ -115,7 +115,7 @@ flowchart TD
 - [x] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
 - [x] Task 9: 상품 목록 페이징 조회 포트 + 저장소
 - [x] Task 10: 상품 목록 조회 엔드포인트
-- [ ] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
+- [x] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
 - [ ] Task 12: 재고 화면
 - [ ] Task 13: 라이브 검증
 
@@ -488,7 +488,15 @@ pg-service 최초의 HTTP 진입점이다.
 - `ProductPort` 인터페이스가 변경되지 않음 — 승인 경로 포트 불변 확인
 
 **완료 결과**
-> (execute에서 채움)
+
+- `payment/application/dto/admin/ProductCatalogEntryInfo.java` + `ProductCatalogPageInfo.java` 신규 — `PgAttemptEntryInfo`/`PgAttemptHistoryInfo` 와 동일한 `@Getter @Builder` 관례. `ProductCatalogEntryInfo.confirmedStock` 은 product-service 가 상품+재고 조인으로 계산한 확정 수량이다(필드명으로 "실시간 판매 가능 여부와 다를 수 있음"을 명시)
+- `payment/application/port/out/ProductCatalogQueryPort.java` 신규 — `getPage(int page, int size)`. 결제 승인 경로가 쓰는 `ProductPort` 와 별개 인터페이스로, `ProductPort` 는 이 태스크에서 시그니처 변경 없음(git diff 로 확인)
+- `payment/infrastructure/adapter/http/dto/ProductPageResponse.java` 신규 — product-service `presentation.dto.ProductPageResponse`(content/page/size/totalElements/totalPages)와 필드 시그니처 일치. `content` 항목은 기존 `ProductResponse`(id/name/price/stock/sellerId, 단건 조회와 공유) 그대로 재사용
+- `ProductFeignClient` 에 `getProducts(page, size)` 메서드 추가(`GET /api/v1/products?page=&size=`) — 새 client 를 만들지 않고 기존 client + 기존 `ProductFeignConfig` ErrorDecoder 를 그대로 공유
+- `payment/infrastructure/adapter/http/ProductCatalogHttpAdapter.java` 신규 — `ProductCatalogQueryPort` 구현체, `ProductHttpAdapter`/`PgAttemptHistoryHttpAdapter` 패턴 그대로: 도메인 예외(ErrorDecoder 가 생성)는 그대로 propagate, `feign.RetryableException`(transport-level) 만 `ProductServiceRetryableException` 으로 변환. Fake 대체 구현이 없어 조건 없이 항상 `@Component` 로 등록(Task 7 `PgAttemptHistoryHttpAdapter` 와 동일 배치)
+- 응답 → 도메인 DTO 변환에서 `ProductResponse.stock()` 을 `ProductCatalogEntryInfo.confirmedStock` 으로 매핑 — 변환 과정에서 값이 빠지지 않음을 계약 테스트로 확인
+- 신규 계약 테스트 `ProductCatalogHttpAdapterContractTest` 3건 — 도메인 예외(`ProductNotFoundException`) 그대로 전파 · transport 예외(`feign.RetryableException`) 재시도 가능 예외 변환 · 정상 응답의 확정 수량 포함 도메인 DTO 변환 확인, `ProductHttpAdapterContractTest`/`PgAttemptHistoryHttpAdapterContractTest` 패턴(Mockito 로 FeignClient mock)
+- `./gradlew :payment-service:test` 529건 전체 pass (기존 526 + 신규 3) — 회귀 없음. `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 모두 통과
 
 ---
 
