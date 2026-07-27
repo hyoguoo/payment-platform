@@ -1,8 +1,13 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryInfo;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PgAttemptHistoryPort;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageResponse;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageSpec;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.SortDirection;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventSearchQuery;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentHistoryResult;
@@ -14,10 +19,12 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentEventResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentHistoryResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentOrderResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PgAttemptHistoryViewResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+@Slf4j
 @Controller
 @RequestMapping("/admin/payments")
 @RequiredArgsConstructor
@@ -34,6 +42,7 @@ public class PaymentAdminController {
 
     private final AdminPaymentService adminPaymentService;
     private final PaymentRecoveryAdminService paymentRecoveryAdminService;
+    private final PgAttemptHistoryPort pgAttemptHistoryPort;
 
     @GetMapping("/events")
     public String listPaymentEvents(
@@ -80,7 +89,30 @@ public class PaymentAdminController {
         model.addAttribute("orders", orders);
         model.addAttribute("histories", histories);
 
+        addAttemptHistory(model, eventResult.getOrderId());
+
         return "admin/payment-event-detail";
+    }
+
+    /**
+     * pg-service 확정 시도 이력을 조회해 모델에 담는다. 조회 실패(도메인 예외·타임아웃 등
+     * pg-service 호출이 던지는 어떤 예외든)는 이 메서드가 전부 흡수한다 — 밖으로 던지면 상세
+     * 화면 전체가 500 으로 깨져 격리 종결·DLQ 재주입 버튼까지 함께 사라진다.
+     * <p>
+     * 이력 없음({@code found=false})은 예외가 아니라 정상 응답이라 이 catch 로 들어오지 않는다
+     * — {@code attemptHistoryUnavailable=false} 로 남아 이력 없음과 조회 불가가 화면에서
+     * 구분된다.
+     */
+    private void addAttemptHistory(Model model, String orderId) {
+        try {
+            PgAttemptHistoryInfo attemptHistoryInfo = pgAttemptHistoryPort.getAttemptHistory(orderId);
+            model.addAttribute("attemptHistory", PgAttemptHistoryViewResponse.from(attemptHistoryInfo));
+            model.addAttribute("attemptHistoryUnavailable", false);
+        } catch (RuntimeException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT_GATEWAY, EventType.PG_SERVICE_UNEXPECTED,
+                    () -> "orderId=" + orderId + " error=" + e.getMessage());
+            model.addAttribute("attemptHistoryUnavailable", true);
+        }
     }
 
     /**

@@ -112,7 +112,7 @@ flowchart TD
 - [x] Task 5: pg 관리자 이력 조회 엔드포인트
 - [x] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - [x] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
-- [ ] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
+- [x] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
 - [ ] Task 9: 상품 목록 페이징 조회 포트 + 저장소
 - [ ] Task 10: 상품 목록 조회 엔드포인트
 - [ ] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
@@ -386,7 +386,19 @@ pg-service 최초의 HTTP 진입점이다.
 - 기존 격리 종결 · 유실 메시지 재주입 컨트롤러 테스트가 그대로 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PaymentAdminController` 생성자에 `PgAttemptHistoryPort`(Task 7 아웃바운드 포트) 를 직접 주입 — 관측 전용 단순 조회라 별도 presentation 포트/application 서비스 계층을 추가하지 않고 플랜 명세대로 컨트롤러가 예외 흡수까지 담당한다
+- `getPaymentEventDetail` 마지막에 `addAttemptHistory(model, orderId)` 사설 메서드 호출 추가 — `pgAttemptHistoryPort.getAttemptHistory(orderId)` 를 `try/catch (RuntimeException e)` 로 감싼다. 이 catch 는 `PgAttemptHistoryNotFoundException`(기술적 404) · `PgAttemptHistoryServiceRetryableException`(429/502/503/504 및 transport RetryableException) · `IllegalStateException`(500/미매핑) 등 pg 조회가 던질 수 있는 모든 런타임 예외를 한 곳에서 흡수한다 — 개별 타입별 분기 없이 "조회 실패는 전부 조회 불가"로 취급
+  - 성공: `model.addAttribute("attemptHistory", PgAttemptHistoryViewResponse.from(info))` + `attemptHistoryUnavailable=false` — `info.found` 가 true/false 어느 쪽이든(이력 있음/이력 없음) 이 경로
+  - 실패(예외): `attemptHistoryUnavailable=true` 만 담고 `attemptHistory` 속성 자체를 추가하지 않음 — 템플릿이 `attemptHistory != null` 로 이력 없음과 조회 불가를 구분
+  - 예외는 `LogFmt.warn(LogDomain.PAYMENT_GATEWAY, EventType.PG_SERVICE_UNEXPECTED, ...)` 로 로깅 후 흡수(재throw 안 함) — 컨트롤러가 최종 흡수 지점이라 error-logging 컨벤션의 "swallow 금지"는 여기서 명시적 fallback(모델 플래그)으로 충족
+- `presentation/dto/response/admin/PgAttemptHistoryViewResponse.java` + `PgAttemptEntryViewResponse.java` 신규 — 기존 `PaymentEventResponse`/`PaymentOrderResponse` 와 동일한 `@Getter @Builder` + static `from(...)` 패턴. `PgAttemptEntryViewResponse.attemptNo` 는 `PgAttemptEntryInfo` 의 `Optional<Integer>` 를 `orElse(null)` 로 nullable `Integer` 변환 — 템플릿이 Optional 을 직접 다루지 않게 함
+- `payment-event-detail.html` 에 "PG Confirm Attempt History" 카드 신규 — 기존 "Payment Orders"/"Status History" 카드와 동일한 `detail-card` 구성. 화면 문구로 발행 시각이 벤더 호출 시각의 근사값임과, 미실행 표시 회차의 의미(예약됐으나 좀비 회수가 앞질러 실제 벤더 호출 없음)를 카드 상단에 고정 텍스트로 명시
+  - 세 상태 분기: `attemptHistoryUnavailable` → 경고 알림 / `attemptHistory != null and !attemptHistory.found` → 이력 없음 안내 / `attemptHistory != null and attemptHistory.found` → 회차별 테이블(회차·예약 시각·실행 예정 시각·발행 시각·정상 시도 여부)
+  - 발행 시각 없음(미발행)과 회차 미지는 각각 `attempt.publishedAt != null ? ... : '미발행(실행 예정)'` / `attempt.attemptNo != null ? ... : '미지'` 삼항식으로 널 가드 — 실제 `@WebMvcTest` 가 Thymeleaf 를 진짜로 렌더링하므로 이 가드가 없었다면 테스트에서 바로 드러났을 것
+- 기존 `PaymentAdminControllerTest`(resolve-quarantine/reprocess-dlq POST 테스트 6건) 는 생성자에 추가된 `PgAttemptHistoryPort` 를 위한 `@MockitoBean` 만 추가 — 로직 변경 없이 그대로 통과
+- 신규 슬라이스 테스트 `PaymentAdminControllerAttemptHistoryTest` 5건 — 정상 조회 시 모델에 이력 담김 · 조회 예외(`IllegalStateException`) 시에도 event/orders/histories 모델 유지 · 조회 예외 시 조회불가 플래그 표시 · 재시도 가능 예외(`PgAttemptHistoryServiceRetryableException`, 타임아웃 대표) 시에도 상세 렌더 유지+조회불가 표시 · 이력없음(found=false, 정상 응답)과 조회불가(예외)가 모델에서 서로 다르게 표현됨. `@WebMvcTest` 라 실제 템플릿이 렌더링되어 세 상태 모두 500 없이 렌더됨을 함께 검증
+- `./gradlew :payment-service:test` 526건 전체 pass (기존 521 + 신규 5) — 기존 격리 종결(`resolveQuarantine`)·DLQ 재주입(`reprocessDlq`) 컨트롤러 테스트 회귀 없음. `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 모두 통과
 
 ---
 
