@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 최종 갱신: 2026-07-27 (ADMIN-VISIBILITY discuss — 섹션 D 신설 후 2건 등재: `[PG-WORKER-SPAN-ORDER-ID]`(재시도 워커가 추적 문맥을 복원만 해 원격 구간에 속성이 조용히 버려짐 — 주문 단위 추적 검색 불가), `[PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP]`(좀비 타임아웃 60s < 최대 재시도 백오프 67.5s 겹침 — 벤더 호출 없는 발행 행 발생, `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 와 함께 판단 필요)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -49,6 +49,22 @@
 - **현황**: `RetryPolicy` javadoc 의 의도한 값(attempt=1 → 기준 2s, attempt=2 → 6s, attempt=3 → 18s, attempt=4 → 54s)과 실제 호출부가 어긋난다 — `PgVendorCallService.insertRetryOutbox`(`PgVendorCallService.java:190-192`)가 `computeBackoff(attempt)` 가 아니라 `computeBackoff(nextAttempt)`(= 실패한 attempt + 1)를 호출해, 런타임 첫 재시도 대기가 의도된 ~2s 가 아니라 ~6s 부터 시작한다(이후 18s, 54s 로 한 단계씩 밀림).
 - **영향**: 재시도 정책의 실제 대기 시간이 설계 문서화된 의도보다 한 단계 길다 — 위키 `pg-confirm-flow.md` 는 이번 수정에서 런타임 실측값(6s/18s/54s) 기준으로 정정했으나, 애초 설계 의도(2s/6s/18s/54s 4단)가 맞다면 호출부(`computeBackoff(nextAttempt)` → `computeBackoff(attempt)`)를 정정해야 한다.
 - **처방**: 의도된 정책이 무엇인지(런타임 값 유지 vs javadoc 값 복원) 확인 필요 — 코드 수정은 이 항목 등재 범위 밖.
+
+### D. ADMIN-VISIBILITY discuss 발견 (관리자 화면 가시성 확충, 2026-07-27)
+
+> 아래 2건은 `ADMIN-VISIBILITY` discuss 단계에서 발견됐으나 해당 토픽(관측 전용 화면 추가) 범위를 벗어난다. 등재만 하고 코드는 건드리지 않는다.
+
+#### [PG-WORKER-SPAN-ORDER-ID] — 재시도 워커에 자체 추적 구간이 없어 주문 단위 추적 검색 불가
+
+- **현황**: 추적 구간 속성에 주문 식별자가 없어 특정 주문의 재시도를 검색으로 모을 수 없다. 재시도 워커는 저장된 추적 문맥을 **복원만** 하며(`PgInboxPollingWorker.java:182` — `restoreContext(...).makeCurrent()`), 복원된 구간은 propagator 가 만든 원격 구간이라 기록 대상이 아니다(`TraceparentExtractor.restoreContext` → `PROPAGATOR.extract`). 여기에 `Span.current().setAttribute(...)` 를 호출하면 예외 없이 조용히 버려진다. 저장소 전체에 자체 추적 구간을 생성하는 코드(`spanBuilder` / `@NewSpan` / `setAttribute`)가 한 곳도 없다.
+- **영향**: 재시도 원인 추적 시 시간순으로 로그를 뒤져 수동 식별해야 한다(라이브 실측에서 실제로 그렇게 했다). 관리자 화면에 시도 이력이 노출되면 급한 필요는 해소되지만, 추적 백엔드에서 주문 단위로 모아 보는 수단은 여전히 없다.
+- **처방**: 워커가 자체 추적 구간을 만들고 주문 식별자를 속성으로 부여하는 방식으로 별 토픽에서 다룬다. 순진하게 속성만 추가하면 테스트도 통과하는데 백엔드엔 아무것도 남지 않으므로, 구간 생성이 함께 가야 한다.
+
+#### [PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP] — 좀비 회수 타임아웃이 최대 재시도 백오프보다 짧아 겹친다
+
+- **현황**: `in-progress-timeout-ms: 60000`(`pg-service/src/main/resources/application.yml:96`)인데 마지막 재시도의 백오프는 기준 54초에 지터 ±25% 로 40.5~67.5초 범위다(`RetryPolicy.java:29-33,63-68`). 백오프가 60초를 넘는 경우 좀비 폴러가 예약된 재시도보다 먼저 깨어나 벤더를 다시 호출한다. `resolveAttempt` 는 항상 `inbox.getAttempt()` 를 읽으므로(`PgInboxProcessor.java:95,135`) 같은 회차로 호출되고, 재시도 한도가 소진된 상태면 그 자리에서 격리로 전이된다. 이후 원래 예약돼 있던 재시도 행은 relay 가 inbox 상태를 보지 않고 `available_at <= now` 만으로 발행해 `processed_at` 을 채우며(`PgOutboxRelayService.java:59-79`), 소비 측은 종결 상태를 발견하고 흔적 없이 건너뛴다(`PgInboxImmediateWorker.java:159-163` TERMINAL_SKIP).
+- **영향**: 실제 벤더 호출이 없는 발행 행이 남아, outbox 를 이력으로 읽는 화면이 "종결 이후에 시도가 하나 더 있었다"는 유령 항목을 시간 역전된 순서로 보여줄 수 있다. `ADMIN-VISIBILITY` 는 이력 조립 단계에서 종결 시각 기준 라벨링으로 **표시를 교정**하지만 겹침 자체는 남는다. 관련: `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 의 off-by-one 을 정정하면 최대 백오프가 18초로 내려가 겹침이 사라진다.
+- **처방**: 좀비 타임아웃을 최대 백오프보다 여유 있게 올리는 방향과 백오프 off-by-one 정정으로 최대값을 낮추는 방향 중 어느 쪽이 의도인지 확인 필요. 두 항목을 함께 판단해야 한다.
 
 ---
 
