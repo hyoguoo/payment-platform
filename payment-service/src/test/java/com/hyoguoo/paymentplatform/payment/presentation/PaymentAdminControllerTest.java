@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.PgAttemptHistoryPort;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
@@ -34,6 +35,9 @@ class PaymentAdminControllerTest {
 
     @MockitoBean
     private PaymentRecoveryAdminService paymentRecoveryAdminService;
+
+    @MockitoBean
+    private PgAttemptHistoryPort pgAttemptHistoryPort;
 
     @Test
     @DisplayName("resolve-quarantine POST 는 orderId·reason 을 유스케이스 포트로 위임하고 상세 화면으로 리다이렉트한다.")
