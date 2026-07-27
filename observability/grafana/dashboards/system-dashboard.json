@@ -50,12 +50,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (application) (jvm_memory_used_bytes{application=\"$application\", area=\"heap\"})",
+          "expr": "sum by (application) (jvm_memory_used_bytes{application=~\"$application\", area=\"heap\"})",
           "legendFormat": "heap used ({{application}})",
           "refId": "A"
         },
         {
-          "expr": "sum by (application) (jvm_memory_max_bytes{application=\"$application\", area=\"heap\"})",
+          "expr": "sum by (application) (jvm_memory_max_bytes{application=~\"$application\", area=\"heap\"})",
           "legendFormat": "heap max ({{application}})",
           "refId": "B"
         }
@@ -95,7 +95,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (application) (jvm_memory_used_bytes{application=\"$application\", area=\"heap\"}) / sum by (application) (jvm_memory_max_bytes{application=\"$application\", area=\"heap\"})",
+          "expr": "sum by (application) (jvm_memory_used_bytes{application=~\"$application\", area=\"heap\"}) / sum by (application) (jvm_memory_max_bytes{application=~\"$application\", area=\"heap\"})",
           "legendFormat": "heap 사용률 ({{application}})",
           "refId": "A"
         }
@@ -129,7 +129,7 @@
       },
       "targets": [
         {
-          "expr": "jvm_gc_pause_seconds_max{application=\"$application\"}",
+          "expr": "jvm_gc_pause_seconds_max{application=~\"$application\"}",
           "legendFormat": "GC pause max ({{gc}}) — T10 확정 메트릭명",
           "refId": "A"
         }
@@ -156,7 +156,7 @@
       },
       "targets": [
         {
-          "expr": "rate(jvm_gc_pause_seconds_count{application=\"$application\"}[1m])",
+          "expr": "rate(jvm_gc_pause_seconds_count{application=~\"$application\"}[1m])",
           "legendFormat": "GC count rate ({{gc}}) — T10 확정 메트릭명",
           "refId": "A"
         }
@@ -192,12 +192,12 @@
       },
       "targets": [
         {
-          "expr": "process_cpu_usage{application=\"$application\"}",
+          "expr": "process_cpu_usage{application=~\"$application\"}",
           "legendFormat": "process CPU ({{application}})",
           "refId": "A"
         },
         {
-          "expr": "system_cpu_usage{application=\"$application\"}",
+          "expr": "system_cpu_usage{application=~\"$application\"}",
           "legendFormat": "system CPU ({{application}})",
           "refId": "B"
         }
@@ -231,7 +231,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\"}[1m]))",
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=~\"$application\"}[1m]))",
           "legendFormat": "요청률 ({{application}})",
           "refId": "A"
         }
@@ -258,7 +258,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{application=\"$application\"}[1m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{application=~\"$application\"}[1m])))",
           "legendFormat": "p95 ({{application}})",
           "refId": "A"
         }
@@ -298,7 +298,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\", status=~\"5..\"}[1m])) / sum by (application) (rate(http_server_requests_seconds_count{application=\"$application\"}[1m]))",
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=~\"$application\", status=~\"5..\"}[1m])) / sum by (application) (rate(http_server_requests_seconds_count{application=~\"$application\"}[1m]))",
           "legendFormat": "5xx 오류율 ({{application}})",
           "refId": "A"
         }
@@ -332,17 +332,17 @@
       },
       "targets": [
         {
-          "expr": "hikaricp_connections_active{application=\"$application\"}",
+          "expr": "hikaricp_connections_active{application=~\"$application\"}",
           "legendFormat": "active ({{application}})",
           "refId": "A"
         },
         {
-          "expr": "hikaricp_connections_idle{application=\"$application\"}",
+          "expr": "hikaricp_connections_idle{application=~\"$application\"}",
           "legendFormat": "idle ({{application}})",
           "refId": "B"
         },
         {
-          "expr": "hikaricp_connections_pending{application=\"$application\"}",
+          "expr": "hikaricp_connections_pending{application=~\"$application\"}",
           "legendFormat": "pending ({{application}})",
           "refId": "C"
         }
@@ -369,7 +369,7 @@
       },
       "targets": [
         {
-          "expr": "hikaricp_connections_max{application=\"$application\"}",
+          "expr": "hikaricp_connections_max{application=~\"$application\"}",
           "legendFormat": "pool max ({{application}}) — T10 확정 메트릭명",
           "refId": "A"
         }
@@ -437,7 +437,7 @@
       },
       "targets": [
         {
-          "expr": "kafka_consumer_fetch_manager_records_lag_max{application=\"$application\"}",
+          "expr": "kafka_consumer_fetch_manager_records_lag_max{application=~\"$application\"}",
           "legendFormat": "records_lag_max ({{application}}, {{clientId}}) — T10 확정 메트릭명·라벨",
           "refId": "A"
         }

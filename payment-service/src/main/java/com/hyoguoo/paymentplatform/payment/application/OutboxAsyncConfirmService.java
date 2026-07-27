@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.StockRetentionMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.StockCacheUnavailableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import lombok.RequiredArgsConstructor;
@@ -68,8 +69,9 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
                 LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_DECREASE_FAIL,
                         () -> String.format("orderId=%s reason=cache_down", command.getOrderId()));
                 transactionCoordinator.markStockCacheDownQuarantine(paymentEvent);
-                throw PaymentOrderedProductStockException.of(
-                        PaymentErrorCode.ORDERED_PRODUCT_STOCK_NOT_ENOUGH);
+                // 재고가 모자란 것이 아니라 재고를 확인조차 못 한 상태다. 같은 오류로 응답하면
+                // 호출자가 "다시 시도해도 소용없는 실패"로 오해하므로 일시적 장애로 신호한다.
+                throw StockCacheUnavailableException.of(PaymentErrorCode.STOCK_CACHE_UNAVAILABLE);
             }
             case SUCCESS -> executeConfirmTxWithStockRetention(
                     paymentEvent, command.getPaymentKey(), command.getOrderId());

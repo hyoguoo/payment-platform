@@ -4,6 +4,9 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
+import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.ArrayList;
 import java.util.List;
@@ -82,7 +85,9 @@ public class StockCacheRedisAdapter implements StockCachePort {
         List<String> keys = buildCompensationKeys(orderId, paymentOrders);
         String[] argv = buildArgv(paymentOrders);
         String luaResult = stockCacheRedisTemplate.execute(COMPENSATION_ATOMIC_SCRIPT, keys, argv);
-        return StockCompensationAtomicResult.valueOf(luaResult);
+        StockCompensationAtomicResult result = StockCompensationAtomicResult.valueOf(luaResult);
+        logCompensation(orderId, paymentOrders, result.name());
+        return result;
     }
 
     /**
@@ -100,7 +105,36 @@ public class StockCacheRedisAdapter implements StockCachePort {
         List<String> keys = buildRecoveryCompensationKeys(orderId, paymentOrders);
         String[] argv = buildArgv(paymentOrders);
         String luaResult = stockCacheRedisTemplate.execute(COMPENSATION_IF_DECREMENTED_SCRIPT, keys, argv);
-        return StockRecoveryCompensationResult.valueOf(luaResult);
+        StockRecoveryCompensationResult result = StockRecoveryCompensationResult.valueOf(luaResult);
+        logCompensation(orderId, paymentOrders, result.name());
+        return result;
+    }
+
+    /**
+     * 되돌린 재고를 로그로 남긴다.
+     *
+     * <p>차감 확정은 product RDB 에 기록이 남지만 되돌림은 캐시 안에서만 일어나, 나중에 무엇이 얼마나
+     * 풀렸는지 확인할 방법이 없었다. 어느 주문이 어느 상품을 얼마나 되돌렸고 그 직후 재고가 얼마인지 남긴다.
+     *
+     * <p>재고 조회는 로그를 위한 별도 읽기이므로 되돌림 자체의 원자성과 무관하다.
+     */
+    private void logCompensation(String orderId, List<PaymentOrder> paymentOrders, String result) {
+        StringBuilder detail = new StringBuilder();
+        for (PaymentOrder order : paymentOrders) {
+            if (detail.length() > 0) {
+                detail.append(", ");
+            }
+            detail.append("productId=").append(order.getProductId())
+                    .append(" qty=").append(order.getQuantity())
+                    .append(" 복원후=").append(readStockForLog(order.getProductId()));
+        }
+        String message = "orderId=" + orderId + " result=" + result + " " + detail;
+        LogFmt.info(log, LogDomain.PAYMENT, EventType.STOCK_COMPENSATION_DONE, () -> message);
+    }
+
+    private String readStockForLog(Long productId) {
+        String value = stockCacheRedisTemplate.opsForValue().get(KEY_PREFIX + productId);
+        return value == null ? "-" : value;
     }
 
     /**
