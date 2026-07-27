@@ -554,6 +554,15 @@ pg-service 최초의 HTTP 진입점이다.
 **완료 결과**
 > (execute에서 채움)
 
+**리뷰 finding 수정 — 시도 이력 카드 표시 결함 2건 (implementer)**
+
+라이브 검증 항목 1을 실제 이력으로 렌더한 결과 표시 결함 2건을 발견해 수정했다. Task 13 체크박스와 STATE.md stage 전환은 라이브 재확인이 남아 있어 보류한다.
+
+1. **최초 수신 회차가 "미발행(실행 예정)"으로 표시됨** — 1회차는 `pg_inbox.created_at` 으로 구성돼 outbox 행이 없고 `scheduledAt`/`publishedAt` 이 둘 다 null 이다. 이미 실행된 시도인데 미실행처럼 보였다. `scheduledAt == null` 을 최초 수신 판별 기준으로 삼아(재시도 행은 `pg_outbox.available_at` 이 NOT NULL 이라 이 값이 null 일 수 없음) Scheduled At / Published At 칸을 각각 "최초 수신(예약 없음)" / "최초 수신 시각에 즉시 실행됨"으로 바꿨다.
+2. **소진 행의 소진 표시가 화면에 없었음** — `exhausted` 필드가 뷰까지 전달돼 있었는데 템플릿이 쓰지 않아 Result 배지가 정상 시도/미실행 두 가지로만 갈렸다. 배지에 `exhausted` 를 최우선 조건으로 추가해 "소진(재시도 한도 초과)"를 표시하도록 했다 — 소진 행의 발행 시각이 종결 시각 직후라 미실행 판정 조건을 만족해도 소진 표시가 이긴다.
+
+변경 파일: `payment-service/src/main/resources/templates/admin/payment-event-detail.html`(안내 문구 + 테이블 셀 + Result 배지), `payment-service/src/test/java/.../PaymentAdminControllerAttemptHistoryTest.java`(최초 수신 표기 1건 + 배지 세 상태 구분 1건 + 소진 우선순위 1건, 총 3건 추가).
+
 ---
 
 ## 결정 → Task 매핑

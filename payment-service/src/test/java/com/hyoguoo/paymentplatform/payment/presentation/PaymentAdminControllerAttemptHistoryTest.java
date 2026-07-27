@@ -1,8 +1,10 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -128,6 +130,49 @@ class PaymentAdminControllerAttemptHistoryTest {
                 .andExpect(model().attribute("attemptHistoryUnavailable", false));
     }
 
+    @Test
+    @DisplayName("최초 수신 회차(scheduledAt null)는 미발행이 아니라 최초 수신 표기로 렌더된다.")
+    void 상세_최초수신_회차_미발행_아닌_최초수신_표기() throws Exception {
+        // given
+        givenEventDetail();
+        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+
+        // when / then
+        mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("최초 수신(예약 없음)")))
+                .andExpect(content().string(containsString("최초 수신 시각에 즉시 실행됨")));
+    }
+
+    @Test
+    @DisplayName("Result 배지는 정상 시도 / 미실행 / 소진 세 상태를 모두 구분해 렌더한다.")
+    void 상세_이력_회차_상태_배지_세가지_구분_렌더() throws Exception {
+        // given
+        givenEventDetail();
+        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+
+        // when / then
+        mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("정상 시도")))
+                .andExpect(content().string(containsString("미실행(예약만 됨)")))
+                .andExpect(content().string(containsString("소진(재시도 한도 초과)")));
+    }
+
+    @Test
+    @DisplayName("소진 행은 발행 시각이 종결 이후라 정상 시도 판정을 벗어나도 미실행이 아니라 소진으로 렌더된다.")
+    void 상세_소진행_미실행_판정_앞서_소진으로_렌더() throws Exception {
+        // given: foundHistory 의 4회차는 exhausted=true 이면서 normalAttempt=false(발행 시각이
+        // 종결 시각 직후) 다 — exhausted 가 normalAttempt 보다 우선해야 함을 검증한다.
+        givenEventDetail();
+        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+
+        // when / then
+        mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("소진(재시도 한도 초과)")));
+    }
+
     private void givenEventDetail() {
         PaymentEventResult eventResult = PaymentEventResult.builder()
                 .id(EVENT_ID)
@@ -150,24 +195,46 @@ class PaymentAdminControllerAttemptHistoryTest {
         return PgAttemptHistoryInfo.builder()
                 .orderId(ORDER_ID)
                 .found(true)
-                .finalStatus("DONE")
-                .finalizedAt(Instant.parse("2026-07-27T09:00:10Z"))
-                .reasonCode(null)
+                .finalStatus("QUARANTINED")
+                .finalizedAt(Instant.parse("2026-07-27T09:00:20Z"))
+                .reasonCode("RETRY_EXHAUSTED")
                 .attempts(List.of(
+                        // 1회차 — pg_inbox.created_at 으로 구성된 최초 수신 회차.
+                        // outbox 행이 없어 scheduledAt / publishedAt 이 둘 다 null 이다.
                         PgAttemptEntryInfo.builder()
                                 .attemptNo(Optional.of(1))
                                 .reservedAt(Instant.parse("2026-07-27T09:00:00Z"))
-                                .scheduledAt(Instant.parse("2026-07-27T09:00:00Z"))
-                                .publishedAt(Instant.parse("2026-07-27T09:00:01Z"))
+                                .scheduledAt(null)
+                                .publishedAt(null)
                                 .exhausted(false)
                                 .normalAttempt(true)
                                 .build(),
+                        // 2회차 — 정상 시도.
+                        PgAttemptEntryInfo.builder()
+                                .attemptNo(Optional.of(2))
+                                .reservedAt(Instant.parse("2026-07-27T09:00:01Z"))
+                                .scheduledAt(Instant.parse("2026-07-27T09:00:01Z"))
+                                .publishedAt(Instant.parse("2026-07-27T09:00:02Z"))
+                                .exhausted(false)
+                                .normalAttempt(true)
+                                .build(),
+                        // 3회차 — 종결 이후 뒤늦게 나간 유령 행(미실행).
                         PgAttemptEntryInfo.builder()
                                 .attemptNo(Optional.empty())
                                 .reservedAt(Instant.parse("2026-07-27T09:00:02Z"))
                                 .scheduledAt(Instant.parse("2026-07-27T09:00:20Z"))
                                 .publishedAt(null)
                                 .exhausted(false)
+                                .normalAttempt(false)
+                                .build(),
+                        // 4회차 — 소진 행. 발행 시각이 종결 시각 직후라 normalAttempt 는 false 지만
+                        // exhausted 가 우선이라 "미실행"이 아니라 "소진"으로 표시돼야 한다.
+                        PgAttemptEntryInfo.builder()
+                                .attemptNo(Optional.of(4))
+                                .reservedAt(Instant.parse("2026-07-27T09:00:19Z"))
+                                .scheduledAt(Instant.parse("2026-07-27T09:00:19Z"))
+                                .publishedAt(Instant.parse("2026-07-27T09:00:21Z"))
+                                .exhausted(true)
                                 .normalAttempt(false)
                                 .build()
                 ))

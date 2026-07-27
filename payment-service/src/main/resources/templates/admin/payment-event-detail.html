@@ -249,8 +249,10 @@
     <div class="card-body">
       <p class="text-secondary-custom" style="font-size: 0.875rem;">
         Published At 은 pg-service 가 확정 명령을 발행한 시각이며, 실제 벤더 호출 시각의
-        근사값입니다. 미실행(예약만 됨)으로 표시된 회차는 예약은 됐지만 좀비 회수가 앞질러
-        실제 벤더 호출은 일어나지 않은 회차입니다.
+        근사값입니다. 최초 수신(1회차) 행은 예약 없이 즉시 실행되므로 Scheduled At / Published
+        At 대신 최초 수신 표기가 뜹니다. 미실행(예약만 됨)으로 표시된 회차는 예약은 됐지만
+        좀비 회수가 앞질러 실제 벤더 호출은 일어나지 않은 회차이며, 소진(재시도 한도 초과)
+        행은 발행 시각이 종결 시각 직후라도 항상 소진으로 표시됩니다.
       </p>
 
       <div class="alert alert-warning mb-0" role="alert" th:if="${attemptHistoryUnavailable}">
@@ -273,15 +275,23 @@
             <th>Result</th>
           </tr>
           </thead>
+          <!--
+            scheduledAt 이 null 인 행은 outbox 행이 아니라 pg_inbox 최초 수신 시각으로 만든
+            1회차다. pg_outbox.available_at 은 스키마상 NOT NULL 이라 재시도 행은 이 값이
+            절대 null 일 수 없으므로 최초 수신 여부를 안전하게 가르는 기준이 된다. 최초 수신
+            회차는 예약 없이 즉시 실행된 시도라 "미발행(실행 예정)"으로 찍으면 아직 실행되지
+            않은 것처럼 보이는 거짓 표시가 된다 — 최초 수신 전용 표기로 대체한다.
+          -->
           <tbody>
           <tr th:each="attempt : ${attemptHistory.attempts}">
             <td th:text="${attempt.attemptNo != null ? attempt.attemptNo : '미지'}">-</td>
             <td th:text="${#temporals.format(attempt.reservedAt, 'yyyy-MM-dd HH:mm:ss')}">-</td>
-            <td th:text="${#temporals.format(attempt.scheduledAt, 'yyyy-MM-dd HH:mm:ss')}">-</td>
-            <td th:text="${attempt.publishedAt != null ? #temporals.format(attempt.publishedAt, 'yyyy-MM-dd HH:mm:ss') : '미발행(실행 예정)'}">-</td>
+            <td th:text="${attempt.scheduledAt != null ? #temporals.format(attempt.scheduledAt, 'yyyy-MM-dd HH:mm:ss') : '최초 수신(예약 없음)'}">-</td>
+            <td th:text="${attempt.scheduledAt == null ? '최초 수신 시각에 즉시 실행됨' : (attempt.publishedAt != null ? #temporals.format(attempt.publishedAt, 'yyyy-MM-dd HH:mm:ss') : '미발행(실행 예정)')}">-</td>
             <td>
-              <span class="badge" th:classappend="${attempt.normalAttempt} ? 'bg-success' : 'bg-secondary'"
-                    th:text="${attempt.normalAttempt} ? '정상 시도' : '미실행(예약만 됨)'">-</span>
+              <span class="badge"
+                    th:classappend="${attempt.exhausted ? 'bg-danger' : (attempt.normalAttempt ? 'bg-success' : 'bg-secondary')}"
+                    th:text="${attempt.exhausted ? '소진(재시도 한도 초과)' : (attempt.normalAttempt ? '정상 시도' : '미실행(예약만 됨)')}">-</span>
             </td>
           </tr>
           <tr th:if="${attemptHistory.attempts == null || attemptHistory.attempts.empty}">
