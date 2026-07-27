@@ -111,7 +111,7 @@ flowchart TD
 - [x] Task 4: 시도 이력 조립 서비스
 - [x] Task 5: pg 관리자 이력 조회 엔드포인트
 - [x] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
-- [ ] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
+- [x] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
 - [ ] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
 - [ ] Task 9: 상품 목록 페이징 조회 포트 + 저장소
 - [ ] Task 10: 상품 목록 조회 엔드포인트
@@ -349,7 +349,13 @@ pg-service 최초의 HTTP 진입점이다.
 - 위 테스트 pass, `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `payment/application/dto/admin/PgAttemptEntryInfo.java` + `PgAttemptHistoryInfo.java` 신규 — `PaymentEventSearchQuery` 등 기존 admin dto 패키지의 `@Getter @Builder` 관례를 따름. `PgAttemptEntryInfo` 는 회차(`Optional<Integer>`) · 예약/실행예정/발행 세 시각 · 소진 여부 · 정상 시도 여부, `PgAttemptHistoryInfo` 는 주문번호 · 이력 존재 여부 · 최종 상태 · 종결 시각 · 사유 코드 · 회차 목록 — pg-service `PgAttemptHistory`/`PgAttemptHistoryEntry` 의 값 구성을 그대로 옮겼다
+- `payment/application/port/out/PgAttemptHistoryPort.java` 신규 — `getAttemptHistory(String orderId)`. 결제 승인 경로가 쓰는 `ProductPort`/`UserPort` 와 별개 인터페이스
+- `payment/infrastructure/adapter/http/PgAttemptHistoryHttpAdapter.java` 신규 — `PgAttemptHistoryPort` 구현체, `ProductHttpAdapter` 패턴 그대로: 4xx/5xx 도메인 예외(`PgAttemptHistoryNotFoundException`/`PgAttemptHistoryServiceRetryableException`, Task 6 ErrorDecoder 가 생성)는 그대로 propagate, `feign.RetryableException`(transport-level) 만 `PgAttemptHistoryServiceRetryableException` 으로 변환. `ProductHttpAdapter`/`UserHttpAdapter` 와 달리 Fake 대체 구현이 없어(`@ConditionalOnProperty` 대상 프로파일 미존재) 조건 없이 항상 `@Component` 로 등록
+- 응답 → 도메인 DTO 변환에서 `PgAttemptEntryResponse.attemptNo()`(nullable `Integer`) 를 `Optional.ofNullable` 로 감싸 회차 미지 상태를 보존, 세 시각과 정상 시도 여부는 필드 그대로 옮김 — 원문 컬럼·결제 키는 애초 응답 DTO(Task 6)에 없어 변환 과정에 노출 경로가 없음
+- 신규 계약 테스트 `PgAttemptHistoryHttpAdapterContractTest` 3건 — 도메인 예외 그대로 전파 · transport 예외(`feign.RetryableException`) 재시도 가능 예외 변환 · 정상 응답의 회차/세 시각/정상 시도 여부 도메인 DTO 변환 확인, `ProductHttpAdapterContractTest` 패턴(Mockito 로 FeignClient mock)
+- `./gradlew :payment-service:test` 521건 전체 pass (기존 518 + 신규 3) — 회귀 없음
 
 ---
 
