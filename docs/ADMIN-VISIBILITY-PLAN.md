@@ -114,7 +114,7 @@ flowchart TD
 - [x] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
 - [x] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
 - [x] Task 9: 상품 목록 페이징 조회 포트 + 저장소
-- [ ] Task 10: 상품 목록 조회 엔드포인트
+- [x] Task 10: 상품 목록 조회 엔드포인트
 - [ ] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
 - [ ] Task 12: 재고 화면
 - [ ] Task 13: 라이브 검증
@@ -456,7 +456,13 @@ pg-service 최초의 HTTP 진입점이다.
 - 기존 단건 조회 · 재고 차감 엔드포인트 테스트 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `ProductQueryService`(presentation/port) 에 `ProductPage getPage(int page, int size)` 추가 — Task 5 의 `PgAttemptHistoryQueryService` 와 같은 배치로 application DTO(`ProductPage`)를 그대로 반환한다. javadoc 에 "크기 상한·기본값 적용은 호출측(ProductController)의 책임"임을 명시
+- `ProductQueryUseCase.getPage` — `productRepository.findPage(page, size)` 로 단순 위임(트랜잭션 readOnly)
+- `ProductController` 에 `GET /api/v1/products` 신규 — 기존 `GET /api/v1/products/{id}` 와 경로가 겹치지 않는다(경로 변수 유무로 스프링이 구분). 페이지 기본값 0, 크기 기본값 20 을 `@RequestParam(defaultValue = "" + DEFAULT_PAGE/DEFAULT_SIZE)` 로 상수와 동기화하고, 컨트롤러에서 `Math.max(page, 0)` + `Math.clamp(size, 1, 100)` 로 클램프 후 위임 — 크기 상한을 넘는 요청도 100건으로 잘린다. payment-service `PageSpec`(상한 100)과 같은 방침이지만 코드는 공유하지 않는다
+- `presentation/dto/ProductPageResponse.java` 신규 — `content`(`ProductResponse` 목록) · `page` · `size` · `totalElements` · `totalPages`(size==0 방어 포함 올림 계산). Task 11 의 payment 측 어댑터가 이 필드 시그니처에 의존한다는 점을 javadoc 에 명시
+- 신규 슬라이스 테스트 `ProductControllerListTest` 3건 — 응답 형태 고정(모든 필드 jsonPath 검증) · 파라미터 미지정 시 `getPage(0, 20)` 호출 확인 · 크기 1000 요청 시 `getPage(0, 100)` 호출 확인(Mockito verify), `@WebMvcTest` + `PgAttemptHistoryControllerTest` 패턴
+- `./gradlew :product-service:test` 57건 전체 pass(기존 54 + 신규 3) — 기존 단건 조회(`ProductQueryUseCaseTest`)·재고 차감 엔드포인트 테스트 회귀 없음. `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 모두 통과
 
 ---
 

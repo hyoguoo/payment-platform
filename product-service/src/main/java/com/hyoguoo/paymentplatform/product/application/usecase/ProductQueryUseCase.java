@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.product.application.usecase;
 
+import com.hyoguoo.paymentplatform.product.application.dto.ProductPage;
 import com.hyoguoo.paymentplatform.product.application.port.out.ProductRepository;
 import com.hyoguoo.paymentplatform.product.domain.Product;
 import com.hyoguoo.paymentplatform.product.exception.ProductNotFoundException;
@@ -24,5 +25,11 @@ public class ProductQueryUseCase implements ProductQueryService {
     public Product getById(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProductPage getPage(int page, int size) {
+        return productRepository.findPage(page, size);
     }
 }
