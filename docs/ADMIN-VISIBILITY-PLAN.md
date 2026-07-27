@@ -106,7 +106,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 시도 횟수 증가에 진행 중 상태 가드
-- [ ] Task 2: `pg_outbox` 주문번호 조회 인덱스
+- [x] Task 2: `pg_outbox` 주문번호 조회 인덱스
 - [ ] Task 3: outbox 주문번호별 이력 행 조회 포트
 - [ ] Task 4: 시도 이력 조립 서비스
 - [ ] Task 5: pg 관리자 이력 조회 엔드포인트
@@ -170,7 +170,10 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `pg-service/src/main/resources/db/migration/V6__add_pg_outbox_key_topic_index.sql` 신규 — `CREATE INDEX idx_pg_outbox_key_topic ON pg_outbox (\`key\`, topic)`. `key` 예약어 백틱 처리는 V1 DDL 방식 그대로 따름
+- 컬럼 순서는 조회 조건(주문번호 일치 → 토픽 구분) 순서에 맞췄고, 발행 큐 폴링용 `idx_pg_outbox_processed_available` 과 용도가 다르다는 점을 주석에 남김
+- `./gradlew :pg-service:test` 331건 pass, `:pg-service:integrationTest` 16건 pass — Testcontainers 가 V1~V6 로 정상 부팅 확인
 
 ---
 
