@@ -110,7 +110,7 @@ flowchart TD
 - [x] Task 3: outbox 주문번호별 이력 행 조회 포트
 - [x] Task 4: 시도 이력 조립 서비스
 - [x] Task 5: pg 관리자 이력 조회 엔드포인트
-- [ ] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
+- [x] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - [ ] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
 - [ ] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
 - [ ] Task 9: 상품 목록 페이징 조회 포트 + 저장소
@@ -317,7 +317,14 @@ pg-service 최초의 HTTP 진입점이다.
 - 기존 상품·사용자 Feign 타임아웃이 변하지 않음을 확인
 
 **완료 결과**
-> (execute에서 채움)
+
+- `payment/infrastructure/adapter/http/feign/PgFeignClient.java` 신규 — Eureka 논리 이름 `pg-service`, `GET /api/v1/confirmations/{orderId}/attempts` (Task 5 엔드포인트와 시그니처 일치). `payment-service` 가 `pg-service` 를 HTTP 로 부르는 최초의 경로
+- `payment/infrastructure/adapter/http/feign/PgFeignConfig.java` 신규 — `@FeignClient(configuration = ...)` 로만 한정 등록(`@Configuration` 미부착), ErrorDecoder 로 404 → `PgAttemptHistoryNotFoundException`(PG_ATTEMPT_HISTORY_NOT_FOUND), 429/502/503/504 → `PgAttemptHistoryServiceRetryableException`(PG_SERVICE_UNAVAILABLE), 500 및 그 외 → `IllegalStateException` 매핑. `ProductFeignConfig`/`UserFeignConfig` 와 동일한 배치
+- `payment/infrastructure/adapter/http/dto/PgAttemptHistoryResponse.java` + `PgAttemptEntryResponse.java` 신규 — pg-service 응답 수신 전용 record, 필드 시그니처를 pg-service `presentation.dto` 와 그대로 맞춤
+- `PaymentErrorCode` 에 `PG_ATTEMPT_HISTORY_NOT_FOUND`(E03040) / `PG_SERVICE_UNAVAILABLE`(E03041) 추가, `EventType` 에 `PG_SERVICE_NOT_FOUND`/`PG_SERVICE_RETRYABLE`/`PG_SERVICE_UNEXPECTED` 추가. 로그 도메인은 기존에 있었으나 미사용이던 `LogDomain.PAYMENT_GATEWAY` 재사용(신규 enum 값 추가 없음)
+- `application.yml` 에 `spring.cloud.openfeign.client.config.pg-service` 블록 신규 추가 — `connectTimeout`/`readTimeout` 을 `PG_ADMIN_QUERY_CONNECT_TIMEOUT_MS`(기본 1000ms) / `PG_ADMIN_QUERY_READ_TIMEOUT_MS`(기본 2000ms) 환경변수로 노출. 기존 `default` 블록(연결 2000ms/읽기 5000ms)은 손대지 않아 상품·사용자 Feign client 타임아웃 불변
+- 신규 단위 테스트 `PgFeignConfigTest` 6건 — 404/429/502/503/504/500 각 상태 코드 → 도메인 예외 매핑 확인, `ProductFeignConfigTest` 패턴
+- `./gradlew :payment-service:test` 518건 전체 pass (기존 512 + 신규 6) — `ProductFeignConfigTest`/`UserFeignConfigTest` 포함 회귀 없음, 기존 상품·사용자 Feign 타임아웃 설정(`default` 블록) 변경 없음 확인
 
 ---
 
