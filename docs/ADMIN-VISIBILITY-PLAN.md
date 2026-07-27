@@ -113,7 +113,7 @@ flowchart TD
 - [x] Task 6: payment 측 pg 전용 Feign client + 짧은 타임아웃 설정
 - [x] Task 7: 시도 이력 조회 포트 + HTTP 어댑터
 - [x] Task 8: 결제 상세에 시도 이력 카드 + 부분 렌더
-- [ ] Task 9: 상품 목록 페이징 조회 포트 + 저장소
+- [x] Task 9: 상품 목록 페이징 조회 포트 + 저장소
 - [ ] Task 10: 상품 목록 조회 엔드포인트
 - [ ] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
 - [ ] Task 12: 재고 화면
@@ -424,7 +424,13 @@ pg-service 최초의 HTTP 진입점이다.
 - 위 테스트 pass, `./gradlew :product-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `application/dto/ProductPage.java` 신규 — `content`(Product 목록, 확정 재고 포함) · `page`(0부터 시작) · `size` · `totalElements`. payment-service 의 페이지 응답 DTO 를 공유하지 않는다(서비스 간 공유 jar 금지 방침) — product-service 내부 전용 record
+- `ProductRepository` 포트에 `findPage(int page, int size)` 추가 — 기존 `findById` 와 함께 product+stock 조인 결과를 반환하는 조회 포트
+- `ProductRepositoryImpl.findPage` — `JpaProductRepository.findAll(PageRequest.of(page, size, Sort.by("id").asc))` 로 상품 페이지 + 전체 건수(count 쿼리)를 얻고, 페이지에 담긴 상품 id 목록을 `JpaStockRepository.findAllById`로 한 번에 배치 조회해 `Map<Long, Integer>` 로 합친 뒤 각 상품에 확정 수량을 채운다 — 기존 `findById`의 단건 조인과 같은 방식(quantity 없으면 0)을 페이지 단위로 확장했을 뿐 N+1 조회는 만들지 않는다
+- `JpaProductRepository`/`JpaStockRepository` 는 시그니처 변경 없음 — `JpaRepository` 상속이 이미 제공하는 `findAll(Pageable)`/`findAllById`를 그대로 사용
+- 신규 통합 테스트 `ProductRepositoryImplPageTest` 4건 — 요청 페이지 크기만큼 반환 · 상품+재고 조인 확정 수량 포함 · 범위 초과 페이지 빈 목록 · 페이지 크기와 무관한 전체 건수, `PgOutboxRepositoryImplTest` 의 `@DataJpaTest` + 정적 Testcontainers MySQL 패턴 그대로(flyway.locations 를 `classpath:db/schema` 로만 한정해 V2 seed 배제)
+- `./gradlew :product-service:test` 54건 전체 pass (기존 50 + 신규 4), `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 모두 통과 — 회귀 없음
 
 ---
 

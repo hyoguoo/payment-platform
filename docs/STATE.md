@@ -6,13 +6,13 @@
 
 - **주제**: 관리자 화면 가시성 확충 — 재시도 이력과 재고 (ADMIN-VISIBILITY)
 - **단계**: execute
-- **활성 태스크**: Task 9: 상품 목록 페이징 조회 포트 + 저장소
+- **활성 태스크**: Task 10: 상품 목록 조회 엔드포인트
 - **이슈/브랜치**: #126
 - **파일**: docs/topics/ADMIN-VISIBILITY.md / docs/ADMIN-VISIBILITY-PLAN.md
 
 ## 재개 메모
 
-Task 8(결제 상세에 시도 이력 카드 + 부분 렌더) 완료 — `PaymentAdminController.getPaymentEventDetail` 이 `PgAttemptHistoryPort` 를 직접 호출하고, 조회 중 발생하는 모든 런타임 예외(도메인 예외·타임아웃 포함)를 컨트롤러 안에서 흡수해 `attemptHistoryUnavailable` 플래그로만 모델에 남긴다. 이력 없음(found=false, 정상 응답)과 조회 불가(예외)를 모델에서 구분. `payment-event-detail.html` 에 시도 이력 카드 추가, 발행 시각 근사값·미실행 의미 문구 포함, 미발행/회차미지 널 가드. 기존 격리 종결·DLQ 재주입 컨트롤러 테스트 회귀 없음. 13태스크 중 8개 완료. 다음은 Task 9 — product-service 상품+확정재고 조인 페이징 조회 포트/저장소.
+Task 9(상품 목록 페이징 조회 포트 + 저장소) 완료 — `ProductRepository.findPage(page, size)` 신규, `ProductRepositoryImpl` 이 `JpaProductRepository.findAll(Pageable)` 로 페이지+전체건수를 얻고 `JpaStockRepository.findAllById` 배치 조회로 확정 재고를 조인(N+1 없음). 결과는 product-service 내부 신규 DTO `application/dto/ProductPage.java`(content/page/size/totalElements)에 담는다 — payment-service 페이지 DTO 비공유. 신규 통합 테스트 4건(`ProductRepositoryImplPageTest`, `@DataJpaTest` + Testcontainers). 13태스크 중 9개 완료. 다음은 Task 10 — `ProductQueryService`/`ProductQueryUseCase`/`ProductController` 에 목록 엔드포인트 추가(응답 DTO 신규, 크기 상한 적용).
 
 ## 최근 완료
 
