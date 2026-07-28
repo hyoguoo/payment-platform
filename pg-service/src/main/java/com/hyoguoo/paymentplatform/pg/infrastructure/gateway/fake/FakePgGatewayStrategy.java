@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics;
 import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics.CallOutcome;
 import jakarta.annotation.PostConstruct;
@@ -23,6 +24,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,8 +51,14 @@ import org.springframework.stereotype.Component;
  * throw. {@link com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy} 의
  * 이벤트+예외 이중 신호 순서를 그대로 따른다.
  *
- * <p>smoke 목적상 FAIL / QUARANTINE 경로는 지원하지 않는다 — 보상 경로 검증은 Phase 4
- * Toxiproxy 시나리오로 정돈되어 주입된다.
+ * <p>라이브 실측용으로 paymentKey 접두어에 따라 실패 경로를 고를 수 있다(임시 장치).
+ * <ul>
+ *   <li>{@code fake-fail-} — 확정 실패 → 보상 후 FAILED</li>
+ *   <li>{@code fake-retry-} — 매 호출 재시도 가능 실패 → 시도 소진 → DLQ → QUARANTINED</li>
+ *   <li>{@code fake-flaky-} — 두 번 실패한 뒤 세 번째 호출부터 승인 → 재시도 자가 회복</li>
+ * </ul>
+ * 접두어 판정은 중복 승인 판정보다 먼저 이뤄진다 — 자기루프 재호출마다 같은 실패를 내야
+ * 시도 횟수가 실제로 소진되기 때문이다.
  *
  * @see com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy 프로덕션 Toss 구현
  * @see com.hyoguoo.paymentplatform.pg.infrastructure.gateway.nicepay.NicepayPaymentGatewayStrategy 프로덕션 NicePay 구현
@@ -63,6 +71,21 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private static final String FAKE_PAYMENT_KEY_PREFIX = "fake-";
     private static final String ALREADY_PROCESSED_REASON_CODE = "ALREADY_PROCESSED_PAYMENT";
 
+    /**
+     * 라이브 실측용 시나리오 접두어 — paymentKey 앞머리로 벤더 응답을 결정적으로 고른다.
+     * 실 벤더 없이 확정 실패 / 재시도 소진 / 자가 회복을 원하는 시점에 재현하기 위한 임시 장치다.
+     */
+    private static final String DRILL_FAIL_PREFIX = "fake-fail-";
+    private static final String DRILL_RETRY_PREFIX = "fake-retry-";
+    private static final String DRILL_FLAKY_PREFIX = "fake-flaky-";
+
+    /**
+     * 자가 회복 시나리오에서 성공 전까지 실패시킬 횟수 — 이 횟수를 넘긴 호출부터 승인된다.
+     * <p>{@link com.hyoguoo.paymentplatform.pg.domain.RetryPolicy#MAX_ATTEMPTS} 보다 작아야 한다 —
+     * 그렇지 않으면 회복 전에 재시도 한도가 소진돼 "자가 회복" 장면이 "격리" 장면으로 조용히 바뀐다.
+     */
+    private static final int DRILL_FLAKY_FAILURES_BEFORE_SUCCESS = 2;
+
     private final Clock clock;
     private final TossApiMetrics tossApiMetrics;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -73,6 +96,12 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
      * {@code putIfAbsent} 를 사용한다 — self-loop 병렬 호출에서도 단 한 번만 happy-path 가 성립한다.
      */
     private final ConcurrentHashMap<String, PgConfirmResult> processedOrders = new ConcurrentHashMap<>();
+
+    /**
+     * 자가 회복 시나리오의 주문별 호출 횟수. key=orderId.
+     * <p>같은 주문이 재시도 자기루프로 다시 들어올 때마다 증가하며, 정해진 실패 횟수를 넘기면 승인으로 넘어간다.
+     */
+    private final ConcurrentHashMap<String, AtomicInteger> drillFlakyAttempts = new ConcurrentHashMap<>();
 
     /**
      * 데모 부하 관측용 합성 벤더 RTT + 실패율 주입 파라미터.
@@ -120,6 +149,10 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
 
     @Override
     public PgConfirmResult confirm(PgConfirmRequest request) {
+        // 실측 시나리오는 중복 승인 판정보다 먼저 본다 — 재시도 자기루프로 같은 주문이 돌아올 때마다
+        // 다시 실패해야 시도 횟수가 소진되고 격리까지 도달하기 때문이다.
+        applyDrillScenario(request);
+
         if (processedOrders.containsKey(request.orderId())) {
             return handleDuplicateConfirm(request);
         }
@@ -163,6 +196,54 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                         + " paymentKey=" + maskKey(request.paymentKey())
                         + " amount=" + request.amount());
         return result;
+    }
+
+    /**
+     * paymentKey 접두어로 고른 실측 시나리오를 적용한다.
+     * 해당 접두어면 그 경로의 예외를 던지고, 아니면 아무 것도 하지 않아 기존 승인 흐름으로 넘어간다.
+     */
+    private void applyDrillScenario(PgConfirmRequest request) {
+        String paymentKey = request.paymentKey();
+        if (paymentKey == null) {
+            return;
+        }
+
+        if (paymentKey.startsWith(DRILL_FAIL_PREFIX)) {
+            recordDrillFailure(request, EventType.PG_VENDOR_NON_RETRYABLE_ERROR, "확정 실패");
+            throw PgGatewayNonRetryableException.of(
+                    "DRILL_DEFINITIVE_FAILURE orderId=" + request.orderId());
+        }
+
+        if (paymentKey.startsWith(DRILL_RETRY_PREFIX)) {
+            recordDrillFailure(request, EventType.PG_VENDOR_RETRYABLE_ERROR, "재시도 가능 실패");
+            throw PgGatewayRetryableException.of(
+                    "DRILL_RETRYABLE_FAILURE orderId=" + request.orderId());
+        }
+
+        if (paymentKey.startsWith(DRILL_FLAKY_PREFIX)) {
+            int attempt = drillFlakyAttempts
+                    .computeIfAbsent(request.orderId(), key -> new AtomicInteger())
+                    .incrementAndGet();
+            if (attempt <= DRILL_FLAKY_FAILURES_BEFORE_SUCCESS) {
+                recordDrillFailure(request, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                        "자가 회복 전 " + attempt + "회차 실패");
+                throw PgGatewayRetryableException.of(
+                        "DRILL_FLAKY_FAILURE attempt=" + attempt + " orderId=" + request.orderId());
+            }
+        }
+    }
+
+    /**
+     * 시나리오 실패도 실제 벤더 호출처럼 응답 시간과 실패 횟수를 남긴다 —
+     * 그래야 벤더 호출량·응답시간 패널이 실측한 그대로 움직인다.
+     */
+    private void recordDrillFailure(PgConfirmRequest request, EventType eventType, String reason) {
+        long latencyMillis = simulateVendorLatency();
+        tossApiMetrics.recordTossApiCall("confirm", latencyMillis, CallOutcome.FAILURE);
+        LogFmt.warn(log, LogDomain.PG_VENDOR, eventType,
+                () -> "실측 시나리오 주입 — " + reason
+                        + " orderId=" + request.orderId()
+                        + " paymentKey=" + maskKey(request.paymentKey()));
     }
 
     /**

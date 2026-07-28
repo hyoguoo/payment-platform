@@ -96,7 +96,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
+- [x] Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
 - [ ] Task 2: 실측 스킬과 캡처용 관측 설정 이관
 - [ ] Task 3: 리포트와 캡처 원본 무시 규칙
 - [ ] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
@@ -137,7 +137,7 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute 에서 채움)
+> `drill/payment-e2e-live` 의 `FakePgGatewayStrategy` 변경분을 main 에 적용했다. `fake-fail-` / `fake-retry-` / `fake-flaky-` 접두어 분기를 `processedOrders` 중복 확인보다 앞에 배치해, 재시도 자기루프로 같은 주문이 돌아올 때마다 다시 실패하도록 했다. 자가 회복 실패 횟수(`DRILL_FLAKY_FAILURES_BEFORE_SUCCESS=2`)는 `RetryPolicy.MAX_ATTEMPTS`(4) 미만이어야 한다는 관계를 `자가회복_실패횟수가_재시도한도보다_작다` 테스트로 못박았다. 신규 5 + 기존 5 = `FakePgGatewayStrategyTest` 10건과 `:pg-service:test` 전체 356건이 통과한다.
 
 ---
 
