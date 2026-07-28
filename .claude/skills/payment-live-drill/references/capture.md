@@ -122,3 +122,21 @@ url = "http://localhost:3000/explore?schemaVersion=1&orgId=1&panes=" + urllib.pa
 
 찍은 파일을 그대로 믿지 말고 **열어서 본다.** 로그인 화면이 찍혔거나, 데이터가 없거나,
 시간 범위가 어긋난 경우가 실제로 자주 나온다. 특히 첫 캡처는 반드시 확인한다.
+
+## 캡처 명령 기록
+
+화면 판독은 에이전트가 직접 하지만(SKILL.md), **실행한 `capture.sh` 명령 자체는 순서대로
+남긴다** — 다음 사람이 같은 화면 세트를 그대로 재현할 수 있어야 한다(스킬 기준 4).
+
+위치: `live-drill/captures.log` (다른 실측 산출물과 같은 위치, 저장소 무시 대상).
+
+형식: 한 줄에 한 캡처, **실제로 실행한 전체 명령 그대로**(환경변수 포함) 실행 직후 추가한다.
+
+```
+CAPTURE_OUT_DIR=live-drill/originals scripts/capture.sh 01-portal-landing http://localhost:8090/
+CAPTURE_OUT_DIR=live-drill/originals CAPTURE_DELAY=25000 scripts/capture.sh 19-grafana-business "http://localhost:3000/d/payment-business-d001/business-dashboard?from=now-2m&to=now&kiosk" 2500
+```
+
+파일명 규칙(`<순번>-<내용>.png`)과 순서가 이미 일치하므로 로그의 줄 순서 = 파일 번호
+순서다. 새 실측을 이어서 할 때(`references/setup.md` 「이어서 할 때」) 이 로그를 보면
+어느 장면까지, 어떤 명령으로 찍었는지 바로 알 수 있다.

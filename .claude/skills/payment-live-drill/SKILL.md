@@ -98,6 +98,16 @@ CAPTURE_OUT_DIR=<저장폴더> scripts/capture.sh <파일이름> <URL> [창높�
 흐름을 남긴다(`18-attempt-1.png`, `-2`, `-3`). 결과 한 장으로는 재시도가 쌓이는 과정이나
 알람이 울렸다 꺼지는 과정이 보이지 않는다.
 
+실행한 명령은 `live-drill/captures.log` 에 순서대로 남긴다(`references/capture.md`
+「캡처 명령 기록」).
+
+## 결제 구동 도구
+
+`scripts/run-scenario.sh` — 시나리오 하나(성공/실패/재시도/자가 회복)의 주문 생성 →
+승인 → 상태 확인을 한 번에 구동한다. `scripts/run-concurrent.sh` — 재고 경합(200건
+동시 승인)과 중복 결제(동시 체크아웃)처럼 병렬 발사가 필요한 구동을 맡는다. 둘 다
+`references/scenarios.md` 에서 호출한다.
+
 ## 실측 중 결함을 발견했을 때
 
 실제로 돌려보면 계획과 다른 것이 나온다. 이건 실패가 아니라 **이 작업의 수확**이다.
@@ -117,6 +127,7 @@ live-drill/
 ├── report.html      결과 리포트
 ├── PLAN.md          계획 (있으면 갱신, 없으면 생략 가능)
 ├── originals/       캡처 원본
+├── captures.log     실행한 capture.sh 명령 순서 기록 (references/capture.md 「캡처 명령 기록」)
 └── RESUME.md        중단 시 재개 메모
 ```
 

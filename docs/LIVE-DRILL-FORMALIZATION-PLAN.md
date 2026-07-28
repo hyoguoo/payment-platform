@@ -105,7 +105,7 @@ flowchart TD
 - [x] Task 7: 스킬 본문을 검증 체계로 재작성
 - [x] Task 8: 기존 장면에 기대 결과와 판정 도입
 - [x] Task 9: 신규 검증 시나리오 두 종 정의
-- [ ] Task 10: 결제 구동 스크립트
+- [x] Task 10: 결제 구동 스크립트
 - [ ] Task 11: 실측 — 무대 세팅과 기본 장면
 - [ ] Task 12: 실측 — 신규 장면과 인프라 장애
 - [ ] Task 13: 리포트 작성
@@ -368,7 +368,37 @@ flowchart TD
 - 동시 구동이 인자 없이 실행돼도 경합 전용 상품을 쓴다
 
 **완료 결과**
-> (execute 에서 채움)
+> `scripts/run-scenario.sh` 는 시나리오(success/fail/retry/flaky)를 결제 키 접두어로
+> 골라 checkout → confirm → status 를 순서대로 호출하고, confirm 이후 `/status` 를
+> DONE/FAILED 종결까지(기본 최대 90초, 2초 간격) 폴링한다. retry 시나리오는 격리가
+> 고객 응대 상태(`PaymentStatusResponse`)에 노출되지 않아(QUARANTINED 없음, PROCESSING
+> 로 남음) 타임아웃으로 끝나는 것이 정상 — 그 사실을 스크립트 주석과 종료 메시지에
+> 남겼다.
+>
+> `scripts/run-concurrent.sh` 는 `--scenario stock-contention`(기본 count=200,
+> productId=2)과 `--scenario duplicate-payment` 두 갈래다. 재고 경합은 주문 200건을
+> 먼저 순차 생성한 뒤(주문 생성은 재고에 영향이 없다 — 차감은 confirm 이 동기로 하는
+> Redis DECR) 승인만 백그라운드 서브셸 200개로 동시 발사해, 각 요청의 발사 시각(ms,
+> python3 `time.time()` — macOS bash 는 `date +%N` 을 지원하지 않아 python3 로 통일)과
+> HTTP 202/409 여부를 집계한다. 중복 결제는 같은 Idempotency-Key 로 체크아웃 2건을
+> 동시 발사해 orderId 동일 여부와 HTTP 상태 코드(201/200)를 대조한다.
+>
+> **[Rule 1] scenarios.md 장면 7 기대 결과 정정** — 원래 "두 번째 응답의 `duplicate`
+> 필드가 true"로 적혀 있었는데, 코드를 보니 `PaymentPresentationMapper.
+> toCheckoutResponse` 가 `CheckoutResult.isDuplicate` 를 응답 DTO 로 넘기지 않아 그런
+> JSON 필드가 실제로 없다(`PaymentController.checkout` 이 HTTP 상태 코드 201/200 으로만
+> 구분). 스크립트가 실제로 판독할 수 있는 신호에 맞춰 기대 결과·찍을 것·판정 문구를
+> 상태 코드 기준으로 고쳤다. 매퍼가 필드를 누락한 것 자체는 이 태스크 범위 밖이라
+> `docs/context/TODOS.md` 섹션 E 에 `[CHECKOUT-DUPLICATE-FLAG-DROPPED]` 로 등재했다.
+>
+> 캡처 명령 기록 위치·형식은 `references/capture.md` 「캡처 명령 기록」절에 정의—
+> `live-drill/captures.log` 에 실행한 `capture.sh` 명령 전체를 실행 순서대로 한 줄씩
+> 남긴다(파일명 순번과 로그 줄 순서가 일치). SKILL.md 산출물 위치 트리와 캡처 도구
+> 절에도 반영했다.
+>
+> 스택이 떠 있지 않아 `bash -n` 문법 검사 + python3 집계 로직만 합성 데이터로 검증했다
+> (실제 curl 구동은 Task 11~12). 코드 비접촉 산출물(스크립트·스킬 문서)이라
+> `./gradlew test` 는 실행하지 않았다.
 
 ---
 

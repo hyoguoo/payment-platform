@@ -6,7 +6,7 @@
 
 - **주제**: 라이브 실측 체계 정식화
 - **단계**: execute
-- **활성 태스크**: Task 10: 결제 구동 스크립트(동시 요청, 발사 시각 증거) 작성
+- **활성 태스크**: Task 11: 실측 — 무대 세팅과 기본 장면 (스택 기동부터 실제로 결제를 태워 캡처·판정하는 첫 실측 태스크)
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 

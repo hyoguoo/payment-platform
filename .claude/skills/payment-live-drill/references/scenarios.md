@@ -271,10 +271,14 @@ bash scripts/run-concurrent.sh --scenario duplicate-payment --idempotency-key "$
 `docs/context/TODOS.md` 에 후속으로 등재돼 있다). 그래서 이 장면은 주문 생성 단계의
 멱등키만 검증하고, 승인 동시 재호출은 다루지 않는다.
 
-**기대 결과** — 두 요청의 응답 `orderId` 가 동일하고, 두 번째 응답의 `duplicate` 필드가
-`true`. 관리자 목록에서 그 `orderId` 를 조회하면 한 건만 나온다.
+**기대 결과** — 두 요청의 응답 `orderId` 가 동일하고, HTTP 상태 코드가 한쪽은 201(신규),
+다른 한쪽은 200(중복)이다. `CheckoutResult` 는 내부적으로 `isDuplicate` 를 들고 있지만
+`PaymentPresentationMapper.toCheckoutResponse` 가 이를 응답 DTO 로 넘기지 않아, 실제로
+바깥에 드러나는 중복 신호는 JSON 필드가 아니라 이 상태 코드뿐이다(`PaymentController.
+checkout` — `isDuplicate()` 면 200, 아니면 201). 관리자 목록에서 그 `orderId` 를
+조회하면 한 건만 나온다.
 
-찍을 것: 두 요청의 응답(`orderId`, `duplicate`), 관리자 목록의 `orderId` 검색 결과.
+찍을 것: 두 요청의 응답(`orderId`, HTTP 상태 코드), 관리자 목록의 `orderId` 검색 결과.
 
-**판정** — 주문이 하나만 생성되고 두 번째 응답이 중복으로 표시되면 통과. 서로 다른
+**판정** — 주문이 하나만 생성되고 두 응답의 상태 코드가 201/200 한 쌍이면 통과. 서로 다른
 `orderId` 가 나오거나 관리자 목록에 두 건이 잡히면 그 자체가 발견이다.
