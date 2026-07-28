@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
@@ -220,15 +220,18 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
                               └─ Kafka ←─────┘ (events.confirmed 결과 발행)
 ```
 
-북쪽 (Kafka) 과 남쪽 (Vendor HTTP) 의 **2-layer 번역기 + 회복 layer**. 모든 retry / DLQ / 격리 결정은 pg-service 안에서 일어난다 — payment-service 는 "결과만 받음".
+북쪽 (Kafka) 과 남쪽 (Vendor HTTP) 의 **2-layer 번역기 + 회복 layer**. 모든 retry / DLQ / 격리 결정은 pg-service 안에서 일어난다 — 결제 확정 경로에서 payment-service 는 "결과만 받음".
+
+**예외 — 관리자 조회 경로 (ADMIN-VISIBILITY)**: 결제 확정 흐름 밖에 payment → pg 동기 HTTP 조회가 하나 있다. 관리자 결제 상세를 렌더할 때 `GET /api/v1/confirmations/{orderId}/attempts` 로 시도 이력을 읽는다 (`PgAttemptHistoryController` — pg-service 유일한 컨트롤러). 확정 경로에는 관여하지 않으며, 조회 실패 시 이력 카드만 조회 불가로 표시하고 격리 종결·유실 메시지 재주입 버튼은 그대로 동작한다.
 
 ### 4.2 RDB 두 테이블
 
 | 테이블 | 카디널리티 | 책임 |
 |---|---|---|
 | `pg_inbox` | 1 orderId = 1 row (UNIQUE) | dedupe + 결과 SoT (NONE / IN_PROGRESS / APPROVED / FAILED / QUARANTINED) + amount 저장 (AMOUNT_MISMATCH 양방향 방어용) |
-| `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ (DLQ-REACHABILITY) |
-| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. (headers_json 의 attempt 는 relay 가 `Map.of()` 로 미발행 — attempt SoT 가 `pg_inbox` 라 헤더 불요) |
+| `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ (DLQ-REACHABILITY). **UPDATE 에 `AND status = IN_PROGRESS` 가드** — 종결 후 뒤늦게 도착하는 재시도 신호가 attempt 와 종결 시각(`updated_at`)을 밀어내는 것을 막는다. 정상 재시도 경로는 항상 IN_PROGRESS 시점 호출이라 무동작 (ADMIN-VISIBILITY) |
+| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. **`attempt` 컬럼은 Flyway V7 에서 제거** — 항상 0 인 死 컬럼이었고 그 값으로 상수 0 히스토그램을 발행하며 pending 전량을 매분 적재하던 경로까지 함께 걷어냈다 (ADMIN-VISIBILITY) |
+| `pg_outbox.headers_json` | 재시도 행에 `{"attempt":N}` | relay 는 여전히 Kafka 헤더로 `Map.of()` 를 보낸다 (소비 측 회차 판정은 `pg_inbox` SoT). **읽는 쪽은 관리자 시도 이력 조립뿐** — `PgAttemptHistoryService` 가 화면 회차 표시용으로 파싱하며, 파싱 실패·부재는 회차 미지로 처리하고 예외를 던지지 않는다 (ADMIN-VISIBILITY) |
 
 inbox/outbox 모두 같은 `@Transactional` 안에서 atomic commit/rollback — Transactional Outbox 패턴.
 
@@ -307,7 +310,9 @@ flowchart TD
 
 retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별도 retry 토픽 없이 같은 토픽으로 재발행한다.
 
-> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계.)
+> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계 — 관리자 시도 이력 화면에서는 같은 회차가 여러 행에 나타나는 형태로 드러나며 화면 문구가 이를 알린다.)
+>
+> **`insertRetryOutbox` 내부 순서 (ADMIN-VISIBILITY)**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
 
 ```mermaid
 sequenceDiagram

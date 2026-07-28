@@ -163,16 +163,16 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 
 `LocalDateTime.now()` / `Instant.now()` 직접 호출 금지 → JDK `Clock` 빈(`ClockConfig`) 주입 + 도메인은 `Instant` 를 인자로 전달받는다(now() 직접 호출 0). 테스트는 고정 `Clock` 으로 시각을 위조한다(통합 테스트는 `BaseIntegrationTest.TestClock` 의 `setFixedInstant(...)`). 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 는 TIME-MODEL-AND-EXPIRY 에서 폐기됐다(4서비스 `Clock` 통일, grep 0).
 
-## 현재 테스트 카운트 (2026-07-03 기준)
+## 현재 테스트 카운트 (2026-07-28 기준)
 
 | 모듈 | 단위 | 통합 |
 |---|---|---|
 | eureka-server | 1 | — |
 | gateway | 3 | — |
-| payment-service | 467 | 43 |
-| pg-service | 331 | 9 |
-| product-service | 50 | 6 |
+| payment-service | 539 | 48 |
+| pg-service | 351 | 16 |
+| product-service | 57 | 6 |
 | user-service | 9 | 1 |
-| **합계** | **861** | **59** |
+| **합계** | **960** | **71** |
 
 `./gradlew test --rerun-tasks`(단위) / `./gradlew :<svc>:integrationTest --rerun-tasks`(통합) 로 검증. 수치는 측정 시점 스냅샷 — 회귀 가드는 카운트가 아니라 pass/fail 이 본질. **구조적으로 계속 낙후되는 스냅샷** — 매 토픽마다 테스트 파일이 추가/삭제되므로 이 표는 참고용일 뿐, 정확한 값이 필요하면 재실행한다.

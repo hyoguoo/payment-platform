@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -68,8 +68,9 @@ flowchart LR
     K --> Prod
 
     Pg -->|HTTP| Vendor["Toss / NicePay"]
-    Pay -->|HTTP product/user 조회| Prod
+    Pay -->|HTTP product 조회 + 목록| Prod
     Pay -->|HTTP user 조회| Usr
+    Pay -.->|"HTTP 시도 이력 조회<br/>관리자 화면 전용"| Pg
 ```
 
 ## Hexagonal Layer 룰
@@ -80,14 +81,15 @@ flowchart LR
 |---|---|---|
 | `domain` | 순수 도메인 — Entity, Value Object, 도메인 서비스. Spring 의존 없음 | 의존 없음 (가장 안쪽) |
 | `application` | Use case + 입력 포트(`port.in`) + 출력 포트(`port.out`). Spring 만 의존 | `domain` 만 |
-| `presentation` | HTTP 진입(`Controller`, request/response DTO). 입력 포트 호출 | `application.port.in` 만 |
+| `presentation` | HTTP 진입(`Controller`, request/response DTO) + 입력 포트 선언(`presentation/port`). 입력 포트 호출 | 입력 포트 만 (출력 포트 직접 호출 금지) |
 | `infrastructure` | 출력 포트 어댑터 — JPA Repository, Kafka Publisher/Consumer, HTTP 클라이언트, Redis 어댑터, Scheduler | `application.port.out` 만 (구현) |
 | `core` | 횡단 관심사 — `@Configuration`, AOP, MDC/LogFmt, Filter, KafkaProducer/Consumer 설정 | 모든 layer 가능 (인프라 wiring) |
 | `exception` | 도메인·애플리케이션 예외 계층 | `domain` / `application` 에서만 throw |
 
 **핵심 규칙**:
 - 도메인 → 외부 의존 0. JPA·Spring 어노테이션 금지
-- 입력 포트(`port.in`)는 use case 인터페이스. presentation 만 호출
+- 입력 포트는 use case 인터페이스. presentation 만 호출한다. **선언 위치는 `presentation/port/`가 지배 관례** — payment 8종(`AdminPaymentService`·`PaymentCheckoutService`·`PgAttemptHistoryViewService` 등) / pg 2종 / product 2종 / user 1종이 모두 여기 있고, 구현체는 `application/` 루트 또는 `application/usecase/`에 둔다. `application/port/in/`은 pg-service `PgInboxProcessUseCase` 하나뿐인 예외다
+- **presentation 이 출력 포트(`port.out`)를 직접 호출하지 않는다.** 조회 실패 흡수·폴백 판단 같은 로직도 입력 포트 구현(application)에 두고, 컨트롤러는 결과를 모델에 담는 일만 한다 (ADMIN-VISIBILITY ship 리뷰 major)
 - 출력 포트(`port.out`)는 의존성 역전 인터페이스. application 이 정의, infrastructure 가 구현
 - AOP·이벤트 발행 같은 횡단 관심사는 `core` 또는 `infrastructure/listener` 에서만
 

@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
+> 최종 갱신: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -71,12 +71,18 @@ pg-service 는 카드망을 포함한 외부 PG 처리를 기다려야 하므로
 
 ## Cross-service HTTP
 
-payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin, CLIENT-SIDE-LB Phase B).
+payment-service 가 product-service / user-service / pg-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin, CLIENT-SIDE-LB Phase B).
 
 | 호출 | 경로 | Feign 클라이언트 | 어댑터 (port 구현) |
 |---|---|---|---|
 | product 조회 | `GET /api/v1/products/{id}` | `ProductFeignClient` (`@FeignClient(name = "product-service", configuration = ProductFeignConfig.class)`) | `ProductHttpAdapter` |
+| product 목록 조회 (관리자 재고 화면) | `GET /api/v1/products?page=&size=` | `ProductFeignClient` (동일 client 공유) | `ProductCatalogHttpAdapter` |
 | user 조회 | `GET /api/v1/users/{id}` | `UserFeignClient` (`@FeignClient(name = "user-service", configuration = UserFeignConfig.class)`) | `UserHttpAdapter` |
+| pg 시도 이력 조회 (관리자 결제 상세) | `GET /api/v1/confirmations/{orderId}/attempts` | `PgFeignClient` (`@FeignClient(name = "pg-service", configuration = PgFeignConfig.class)`) | `PgAttemptHistoryHttpAdapter` |
+
+**관리자 조회 포트는 승인 경로 포트와 분리**: `ProductCatalogQueryPort` / `PgAttemptHistoryPort` 는 결제 승인 경로가 쓰는 `ProductPort` / `UserPort` 와 별개 인터페이스다. 승인 경로 포트에 관리자 용도가 섞이면 나중에 떼어내기 어렵다. 반면 Feign client 는 공유해 중복을 만들지 않는다 (product 는 기존 client 에 메서드 추가).
+
+**payment → pg 는 관리자 조회 전용**: 결제 확정 자체는 여전히 Kafka 단방향이다 (아래 통신 매트릭스). pg-service 는 이 엔드포인트가 생기기 전까지 컨트롤러가 0개인 Kafka 전용 서비스였다 (ADMIN-VISIBILITY).
 
 **계약 매핑**: 각 `*FeignConfig` 의 `ErrorDecoder` 가 4xx / 5xx 응답을 도메인 예외로 매핑.
 - 404 → `*NotFoundException` (PRODUCT_NOT_FOUND / USER_NOT_FOUND)
@@ -87,9 +93,11 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 
 **Timeout baseline**: `application.yml:18-23` — `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. Phase 4 측정 기반 SLO 로 조정 예정 (TODOS T4-D).
 
+**pg 관리자 조회는 전용 짧은 timeout**: `spring.cloud.openfeign.client.config.pg-service.{connectTimeout: 1000, readTimeout: 2000}` (`PG_ADMIN_QUERY_CONNECT_TIMEOUT_MS` / `PG_ADMIN_QUERY_READ_TIMEOUT_MS`). 기본값(2s/5s)이면 pg 가 느릴 때 관리자 상세 진입이 그만큼 지연된다 — 관측 화면은 빨리 실패하고 부분 렌더하는 편이 낫다. `default` 블록은 변경하지 않으므로 product / user client 는 영향받지 않는다. 이 설정은 `@FeignClient(configuration = PgFeignConfig.class)` 로만 한정 등록한다 — 전역 `@Configuration` 으로 올리면 다른 client 에 새어 나간다.
+
 **Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
 
-**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함). 2-layer 패턴 상세(표 + 시나리오)는 [`TESTING.md`](TESTING.md) §Contract test 패턴 참고.
+**Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` / `PgFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` / `PgAttemptHistoryHttpAdapterContractTest` / `ProductCatalogHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함). 2-layer 패턴 상세(표 + 시나리오)는 [`TESTING.md`](TESTING.md) §Contract test 패턴 참고.
 
 **회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
 
@@ -101,8 +109,9 @@ payment-service 가 product-service / user-service 를 OpenFeign + LoadBalancer 
 | gateway | payment-service | HTTP | Eureka 라우팅 |
 | gateway | product-service | HTTP | Eureka 라우팅 |
 | gateway | user-service | HTTP | Eureka 라우팅 |
-| payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` |
+| payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` · `GET /api/v1/products?page=&size=` (관리자 재고 화면) |
 | payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
+| payment-service | pg-service | HTTP (Feign + LB) | `GET /api/v1/confirmations/{orderId}/attempts` — **관리자 조회 전용**. 결제 확정 경로는 아래 Kafka 그대로 (ADMIN-VISIBILITY) |
 | payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
 | pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. attempt 는 `pg_inbox.attempt` 영속·증가 (DLQ-REACHABILITY) |
 | pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (`PgVendorCallService.insertDlqOutbox` — attempt ≥ 4 소진 시 도달 → QUARANTINED 자동 격리) |
