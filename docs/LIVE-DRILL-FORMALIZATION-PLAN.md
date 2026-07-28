@@ -97,7 +97,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
-- [ ] Task 2: 실측 스킬과 캡처용 관측 설정 이관
+- [x] Task 2: 실측 스킬과 캡처용 관측 설정 이관
 - [ ] Task 3: 리포트와 캡처 원본 무시 규칙
 - [ ] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
 - [ ] Task 5: 발행 대기 분포 지표 등록 시점 수정
@@ -156,7 +156,7 @@ flowchart TD
 - `scripts/capture.sh` 실행 권한 유지
 
 **완료 결과**
-> (execute 에서 채움)
+> `drill/payment-e2e-live` 에서 `.claude/skills/payment-live-drill/`(`SKILL.md`, `references/` 4개, `scripts/capture.sh`)와 `docker/docker-compose.live-drill.yml`을 원본 그대로 옮겼다. `scripts/capture.sh`의 실행 권한(`rwxr-xr-x`)은 `git checkout`으로 유지됐다. `.claude/skills/README.md`는 drill 브랜치 버전과 diff 대조해 스킬 한 줄만 "단독 호출 스킬" 표에 추가했고, "실측 브랜치 전용" 문구는 이번 이관으로 사실과 어긋나 제외했다(그 외 서술은 원본 그대로).
 
 ---
 

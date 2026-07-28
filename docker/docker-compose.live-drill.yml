@@ -1,0 +1,19 @@
+# 라이브 실측 캡처 전용 override — 평상시 미적용.
+#
+# Grafana 익명 조회(Viewer)를 켠다.
+# 헤드리스 브라우저로 대시보드를 고해상도 캡처하려는데, Chrome 이 보안상
+# URL 에 넣은 계정 정보를 무시해 로그인 화면만 찍히기 때문이다.
+# 관리자 계정(GF_SECURITY_ADMIN_*)은 그대로 살아 있어 수정 권한은 로그인해야 얻는다.
+#
+# 사용법:
+#   docker compose -f docker/docker-compose.observability.yml \
+#     -f docker/docker-compose.live-drill.yml up -d --no-deps grafana
+#
+# 원복: 이 override 없이 같은 명령으로 grafana 만 재기동하면 인증 상태로 돌아온다.
+services:
+  grafana:
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      # Explore(트레이스 워터폴 조회)는 기본적으로 Viewer 에게 닫혀 있다.
+      - GF_USERS_VIEWERS_CAN_EDIT=true
