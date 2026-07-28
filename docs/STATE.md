@@ -6,7 +6,7 @@
 
 - **주제**: 라이브 실측 체계 정식화
 - **단계**: execute
-- **활성 태스크**: Task 7: 스킬 본문을 검증 체계로 재작성 — 기준 다섯을 SKILL.md에 싣고, 화면 판독을 에이전트의 일로 명시
+- **활성 태스크**: Task 8: 기존 다섯 장면(성공/실패와 보상/재시도와 격리/자가 회복/인프라 장애)에 기대 결과와 판정 도입 — 재시도 근거를 로그에서 관리자 화면으로
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 

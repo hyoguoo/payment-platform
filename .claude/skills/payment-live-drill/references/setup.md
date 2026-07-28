@@ -2,6 +2,23 @@
 
 실측을 시작할 수 있는 상태로 만들고, 시작 상태를 남긴다.
 
+## 이어서 할 때
+
+이전 세션에서 스택을 띄운 채로 끊겼을 수 있다. 처음부터 다시 세우기 전에 먼저 확인한다.
+
+```bash
+docker ps --format '{{.Names}}\t{{.Status}}' | sort
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/users/1   # 200 이면 시드가 살아있다
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/explore          # 200 이면 Grafana 캡처 권한이 살아있다
+```
+
+셋 다 정상이면 무대 세팅을 건너뛰고 바로 장면 구동으로 간다. 컨테이너가 없으면
+스택 기동부터 처음부터, 시드만 404 면 시드 절만, Grafana 만 로그인 화면으로 돌아갔으면
+캡처 권한 절만 다시 돈다.
+
+`live-drill/` 아래 이전 실측의 캡처와 리포트가 남아 있으면 진행 상황을 그 안에서
+가늠할 수 있다 — 어느 장면까지 캡처했는지는 `originals/` 의 파일 번호로 알 수 있다.
+
 ## 스택 기동
 
 ```bash
