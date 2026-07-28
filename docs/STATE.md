@@ -6,7 +6,7 @@
 
 - **주제**: 라이브 실측 체계 정식화
 - **단계**: execute
-- **활성 태스크**: Task 9: 신규 검증 시나리오 두 종(재고 경합, 중복 결제 차단) 정의
+- **활성 태스크**: Task 10: 결제 구동 스크립트(동시 요청, 발사 시각 증거) 작성
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 

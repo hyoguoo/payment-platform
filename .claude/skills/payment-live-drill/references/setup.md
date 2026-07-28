@@ -50,12 +50,17 @@ Grafana 절을 보고 다시 적용한다. `curl -s -o /dev/null -w "%{http_code
 운영 프로파일이 초기 데이터를 제외하므로 사용자·상품·재고가 없다(둘 다 404).
 직접 넣는다.
 
+productId=2 는 장면 6(재고 경합) 전용이다. 기본 장면들이 쓰는 productId=1 과 재고를
+공유하지 않도록 여기서 함께 심는다 — 경합 장면 직전에 따로 재시드하지 않는다.
+
 ```bash
 docker exec payment-mysql-user mysql -uroot -ppayment123 user \
   -e "INSERT IGNORE INTO \`user\`(id,email) VALUES(1,'smoke@test.com');"
 docker exec payment-mysql-product mysql -uroot -ppayment123 product -e "
   INSERT IGNORE INTO product(id,name,price,description,seller_id) VALUES(1,'Smoke Product',1000.00,'smoke seed',1);
-  INSERT IGNORE INTO stock(product_id,quantity) VALUES(1,100);"
+  INSERT IGNORE INTO stock(product_id,quantity) VALUES(1,100);
+  INSERT IGNORE INTO product(id,name,price,description,seller_id) VALUES(2,'Contention Product',1000.00,'stock contention drill seed',1);
+  INSERT IGNORE INTO stock(product_id,quantity) VALUES(2,100);"
 bash scripts/seed-stock.sh
 ```
 
@@ -63,8 +68,10 @@ bash scripts/seed-stock.sh
 
 ```bash
 curl -s -o /dev/null -w "user=%{http_code} " http://localhost:8090/api/v1/users/1
-curl -s -o /dev/null -w "product=%{http_code}\n" http://localhost:8090/api/v1/products/1
+curl -s -o /dev/null -w "product=%{http_code} " http://localhost:8090/api/v1/products/1
+curl -s -o /dev/null -w "contention-product=%{http_code}\n" http://localhost:8090/api/v1/products/2
 docker exec payment-redis-stock redis-cli GET "stock:1"
+docker exec payment-redis-stock redis-cli GET "stock:2"
 ```
 
 앱이 막 떠서 503 이 나오면 잠시 기다린다. **404 는 정상** — 시드 전이라는 뜻이다.
