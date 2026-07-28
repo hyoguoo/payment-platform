@@ -117,7 +117,7 @@ flowchart TD
 - [x] Task 10: 상품 목록 조회 엔드포인트
 - [x] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
 - [x] Task 12: 재고 화면
-- [ ] Task 13: 라이브 검증
+- [x] Task 13: 라이브 검증
 
 ---
 
@@ -552,11 +552,36 @@ pg-service 최초의 HTTP 진입점이다.
 - 확인 불가 항목이 있으면 사유를 완료 결과에 남긴다 (통과로 적지 않는다)
 
 **완료 결과**
-> (execute에서 채움)
+
+`bash scripts/compose-up.sh --mode fake --skip-obs` 로 기동(전 서비스 healthy, Eureka 5개 UP). 3항목 모두 관찰 확인했다.
+
+**검증 방식** — 가짜 게이트웨이로는 재시도를 만들 수 없다. `FakePgGatewayStrategy` 의 주입 실패는 재시도 불가 예외(`PgGatewayNonRetryableException`)라 확정 실패로 직행하며, Toxiproxy 드릴 설정은 Kafka 앞단만 프록시해 벤더 호출을 건드리지 못한다. 따라서 **재시도 소진으로 격리된 결제에 해당하는 행을 pg DB 에 직접 심어** 조회·조립·렌더 경로를 검증했다(사용자 승인). pg 가 그 행을 올바르게 쓰는지는 `PgSelfLoopRetryExhaustionIntegrationTest` 가 이미 덮는다.
+
+심은 이력: 최초 수신 10:00:00 → 재시도 2/3/4회차 → 격리 종결 10:01:26. 여기에 경계 케이스 3건을 섞었다 — 발행이 종결 이후로 밀린 유령 행(예정 10:01:20 / 발행 10:01:35), 헤더에 회차가 없는 옛 행, 그리고 이 주문의 결과 발행 토픽 행. `payload` 에는 평문 벤더 결제 키를 넣어 비노출을 실측 가능하게 했다.
+
+**항목 1 — 시도 이력 렌더** ✅
+
+- pg 엔드포인트 응답: 7건(최초 수신 1 + outbox 6)으로 조립. 결과 발행 토픽 행은 배제됐다
+- 유령 행이 `normalAttempt: false` 로 분류됨 — 발행 시각 기준 판정이 실제로 동작한다. 예정 시각만 비교했다면 이 행은 정상 시도로 새어 나갔다
+- 회차 미지 행은 `attemptNo: null`, 소진 행은 `exhausted: true`
+- **결제 키 비노출 실측**: 응답 본문 0건, pg-service 로그 0건 (`payload` 에 평문 키가 있는 상태)
+- 화면 표기: 최초 수신 / 정상 시도 / 미실행(예약만 됨) / 소진(재시도 한도 초과) 네 표기가 모두 렌더
+
+**항목 2 — pg 중단 시 부분 렌더** ✅
+
+`docker stop docker-pg-service-1` 후 상세 재요청 → HTTP 200. 이력 카드만 "pg-service 시도 이력을 조회하지 못했습니다" 안내로 대체되고, 상태(QUARANTINED)·사유(RETRY_EXHAUSTED)·주문 카드는 그대로 렌더됐다. `resolve-quarantine` / `reprocess-dlq` 폼이 둘 다 살아 있음을 HTML 에서 확인 — 관측 기능 장애가 대응 수단을 막지 않는다.
+
+부수 관찰: 스택 재기동 직후(기동 17초 시점) Eureka 등록 전에는 `No servers available for service: pg-service` 로 같은 부분 렌더 경로를 탔다. 콜드 스타트 구간에서도 상세 화면이 열린다는 뜻이며, 등록 완료 후 정상 조회로 돌아왔다.
+
+**항목 3 — 재고 화면** ✅
+
+확정 수량 97 이 product RDB 값과 일치. RDB 를 95 로 바꾸자 화면도 95 로, 97 로 되돌리자 97 로 즉시 따라왔다 — 되돌림이 화면에 반영되는 경로가 살아 있다. "실시간 판매 가능 여부는 이 값과 다를 수 있다" 안내 문구 노출 확인. `docker stop docker-product-service-1` 상태에서도 HTTP 200 + 조회 불가 안내이며 결제 상세에는 영향이 없었다.
+
+검증 후 심은 데이터(pg_inbox 1 / pg_outbox 7 / payment_event 1 / payment_order 1)는 전건 삭제했다.
 
 **리뷰 finding 수정 — 시도 이력 카드 표시 결함 2건 (implementer)**
 
-라이브 검증 항목 1을 실제 이력으로 렌더한 결과 표시 결함 2건을 발견해 수정했다. Task 13 체크박스와 STATE.md stage 전환은 라이브 재확인이 남아 있어 보류한다.
+라이브 검증 항목 1을 실제 이력으로 렌더한 결과 표시 결함 2건을 발견해 수정했고, 수정본을 재빌드·재기동해 위 항목 1 결과로 재확인했다.
 
 1. **최초 수신 회차가 "미발행(실행 예정)"으로 표시됨** — 1회차는 `pg_inbox.created_at` 으로 구성돼 outbox 행이 없고 `scheduledAt`/`publishedAt` 이 둘 다 null 이다. 이미 실행된 시도인데 미실행처럼 보였다. `scheduledAt == null` 을 최초 수신 판별 기준으로 삼아(재시도 행은 `pg_outbox.available_at` 이 NOT NULL 이라 이 값이 null 일 수 없음) Scheduled At / Published At 칸을 각각 "최초 수신(예약 없음)" / "최초 수신 시각에 즉시 실행됨"으로 바꿨다.
 2. **소진 행의 소진 표시가 화면에 없었음** — `exhausted` 필드가 뷰까지 전달돼 있었는데 템플릿이 쓰지 않아 Result 배지가 정상 시도/미실행 두 가지로만 갈렸다. 배지에 `exhausted` 를 최우선 조건으로 추가해 "소진(재시도 한도 초과)"를 표시하도록 했다 — 소진 행의 발행 시각이 종결 시각 직후라 미실행 판정 조건을 만족해도 소진 표시가 이긴다.
