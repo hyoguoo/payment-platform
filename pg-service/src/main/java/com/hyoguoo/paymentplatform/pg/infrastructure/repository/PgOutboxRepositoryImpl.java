@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgOutboxEntity;
@@ -21,6 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 @RequiredArgsConstructor
 public class PgOutboxRepositoryImpl implements PgOutboxRepository {
+
+    private static final List<String> CONFIRM_ATTEMPT_TOPICS =
+            List.of(PgTopics.COMMANDS_CONFIRM, PgTopics.COMMANDS_CONFIRM_DLQ);
 
     private final JpaPgOutboxRepository jpaPgOutboxRepository;
 
@@ -64,5 +68,14 @@ public class PgOutboxRepositoryImpl implements PgOutboxRepository {
     public Optional<Instant> findOldestPendingCreatedAt() {
         return jpaPgOutboxRepository.findOldestPendingCreatedAt()
                 .map(ldt -> ldt.toInstant(ZoneOffset.UTC));
+    }
+
+    @Override
+    public List<PgOutbox> findConfirmAttemptRows(String orderId) {
+        return jpaPgOutboxRepository
+                .findByKeyAndTopicInOrderByCreatedAtAsc(orderId, CONFIRM_ATTEMPT_TOPICS)
+                .stream()
+                .map(PgOutboxEntity::toDomain)
+                .toList();
     }
 }

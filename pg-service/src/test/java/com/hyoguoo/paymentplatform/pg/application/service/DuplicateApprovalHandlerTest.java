@@ -298,7 +298,7 @@ class DuplicateApprovalHandlerTest {
             when(mockOutboxRepo.save(any())).thenAnswer(inv -> {
                 PgOutbox o = inv.getArgument(0);
                 return PgOutbox.of(99L, o.getTopic(), o.getKey(), o.getPayload(), null,
-                        Instant.now(), null, 0, Instant.now());
+                        Instant.now(), null, Instant.now());
             });
         }
 

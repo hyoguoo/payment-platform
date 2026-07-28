@@ -77,7 +77,6 @@ class PgOutboxImmediateWorkerTest {
                 null,
                 FIXED_NOW.minusSeconds(1), // availableAt < NOW → 즉시 발행 가능
                 null,
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);
@@ -147,7 +146,6 @@ class PgOutboxImmediateWorkerTest {
                 null,
                 FIXED_NOW.minusSeconds(1), // availableAt < NOW
                 null,
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);
@@ -199,7 +197,6 @@ class PgOutboxImmediateWorkerTest {
                 null,
                 FIXED_NOW.minusSeconds(1),
                 null,
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);

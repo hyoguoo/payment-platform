@@ -30,6 +30,8 @@ import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -214,6 +216,28 @@ class PgVendorCallServiceTest {
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
             assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
             assertThat(inbox.getAttempt()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("가드 발동(이미 종결) 시 재시도 outbox INSERT + 발행 이벤트를 하지 않는다")
+        void applyOutcome_retryable_guardBlocked_noOutboxNoEvent() {
+            // given — 좀비 회수 경합 등으로 재시도 신호가 도착하기 전에 inbox 가 이미 종결(APPROVED)됨
+            inboxRepository.transitToApproved(ORDER_ID, "{}");
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("late retry signal");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 재시도 outbox 행이 생기지 않는다(stray 행 차단)
+            assertThat(outboxRepository.findAll()).isEmpty();
+
+            // then — attempt 는 가드에 걸려 증가하지 않고, 상태도 종결 그대로다
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getAttempt()).isEqualTo(1);
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+
+            // then — 발행 이벤트도 없다
+            verify(eventPublisher, never()).publishEvent(any());
         }
 
         @Test

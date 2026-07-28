@@ -51,9 +51,9 @@ class PgOutboxPollingWorkerTest {
     void polling_whenRelayThrows_shouldLogErrorAndContinue() {
         // given: 2건 pending
         PgOutbox outbox1 = PgOutbox.of(1L, PgTopics.EVENTS_CONFIRMED, "order-1",
-                "{\"orderId\":\"order-1\"}", null, FIXED_NOW.minusSeconds(1), null, 0, FIXED_NOW.minusSeconds(60));
+                "{\"orderId\":\"order-1\"}", null, FIXED_NOW.minusSeconds(1), null, FIXED_NOW.minusSeconds(60));
         PgOutbox outbox2 = PgOutbox.of(2L, PgTopics.EVENTS_CONFIRMED, "order-2",
-                "{\"orderId\":\"order-2\"}", null, FIXED_NOW.minusSeconds(1), null, 0, FIXED_NOW.minusSeconds(60));
+                "{\"orderId\":\"order-2\"}", null, FIXED_NOW.minusSeconds(1), null, FIXED_NOW.minusSeconds(60));
 
         when(pgOutboxRepository.findPendingBatch(anyInt(), anyInstant())).thenReturn(List.of(outbox1, outbox2));
 

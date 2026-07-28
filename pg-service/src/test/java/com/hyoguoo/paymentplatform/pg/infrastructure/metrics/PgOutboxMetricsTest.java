@@ -81,7 +81,6 @@ class PgOutboxMetricsTest {
                 null,
                 availableAt,
                 null,
-                0,
                 FIXED_NOW.minusSeconds(120));
     }
 }

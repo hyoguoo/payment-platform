@@ -187,6 +187,18 @@ public class PgVendorCallService {
 
     private void insertRetryOutbox(PgConfirmRequest request, int attempt, Instant now, String reason) {
         int nextAttempt = attempt + 1;
+        // 시도횟수 SoT 증가를 재시도 outbox INSERT 보다 먼저 수행한다 — 같은 TX_B 안이라
+        // 원자성은 유지되며, 반영 행 수(가드 발동 시 0)로 이미 종결된 주문에 stray 재시도
+        // outbox INSERT + 발행 이벤트가 나가는 것을 막는다.
+        int incremented = pgInboxRepository.incrementAttempt(request.orderId());
+        if (incremented == 0) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_GUARD_BLOCKED,
+                    () -> "orderId=" + request.orderId()
+                            + " nextAttempt=" + nextAttempt
+                            + " reason=" + reason);
+            return;
+        }
+
         Duration backoff = RetryPolicy.computeBackoff(nextAttempt, RNG);
         Instant availableAt = now.plus(backoff);
         String headersJson = buildAttemptHeader(nextAttempt);
@@ -195,8 +207,6 @@ public class PgVendorCallService {
                 PgTopics.COMMANDS_CONFIRM, request.orderId(),
                 buildCommandPayload(request), headersJson, availableAt, now);
         PgOutbox saved = pgOutboxRepository.save(outbox);
-        // 시도횟수 SoT — 재시도 outbox INSERT 와 같은 TX_B 안에서 영속 증가(원자 커밋)
-        pgInboxRepository.incrementAttempt(request.orderId());
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
 
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_SCHEDULED,

@@ -164,12 +164,14 @@ public interface JpaPgInboxRepository extends JpaRepository<PgInboxEntity, Long>
      * 시도횟수 SoT — relative increment. set-to-value 가 아니므로 lost-update 없음.
      * 호출자({@code PgInboxRepositoryImpl#incrementAttempt})가 외부 TX_B 에 REQUIRED 로 참여한다.
      *
-     * <p>현재 호출처는 retry 분기(inbox IN_PROGRESS)뿐이라 안전하나, 호출처가 확장될 경우
-     * terminal(APPROVED/FAILED/QUARANTINED) row 의 attempt 증가를 막기 위해
-     * {@code AND e.status = :inProgress} 가드를 동반해야 한다.
+     * <p>현재 호출처({@code PgVendorCallService#insertRetryOutbox})는 항상 inbox IN_PROGRESS
+     * 시점에만 호출하므로 {@code AND e.status = :inProgress} 가드는 정상 재시도 경로에서 무동작이다.
+     * 이 가드는 종결(APPROVED/FAILED/QUARANTINED) 이후 뒤늦게 도착하는 재시도 신호가 attempt 와
+     * 종결 시각(updated_at)을 밀어내는 것을 막는다.
      */
     @Modifying(clearAutomatically = true)
     @Query("UPDATE PgInboxEntity e SET e.attempt = e.attempt + 1, e.updatedAt = :now "
-            + "WHERE e.orderId = :orderId")
-    int incrementAttempt(@Param("orderId") String orderId, @Param("now") LocalDateTime now);
+            + "WHERE e.orderId = :orderId AND e.status = :inProgress")
+    int incrementAttempt(@Param("orderId") String orderId, @Param("now") LocalDateTime now,
+                        @Param("inProgress") PgInboxStatus inProgress);
 }

@@ -39,4 +39,10 @@ public interface JpaPgOutboxRepository extends JpaRepository<PgOutboxEntity, Lon
 
     @Query("SELECT MIN(e.createdAt) FROM PgOutboxEntity e WHERE e.processedAt IS NULL")
     Optional<LocalDateTime> findOldestPendingCreatedAt();
+
+    /**
+     * 관리자 이력 조회 — 주문번호(key) + 토픽 목록 기준 행을 created_at 오름차순으로 반환한다.
+     * V6 인덱스({@code idx_pg_outbox_key_topic(key, topic)})를 태우도록 조건 순서를 맞춘다.
+     */
+    List<PgOutboxEntity> findByKeyAndTopicInOrderByCreatedAtAsc(String key, List<String> topics);
 }

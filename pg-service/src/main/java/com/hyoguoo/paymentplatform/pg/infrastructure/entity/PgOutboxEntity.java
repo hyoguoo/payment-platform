@@ -17,8 +17,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * pg_outbox 테이블 JPA 엔티티.
- * V1__pg_schema.sql 의 (topic/key/payload/available_at/processed_at/attempt/created_at) 스키마와 매핑된다.
- * available_at 기반 지연 발행 + attempt 재시도 카운트.
+ * V1__pg_schema.sql 의 (topic/key/payload/available_at/processed_at/created_at) 스키마와 매핑된다
+ * (attempt 컬럼은 항상 0 으로 남는 죽은 값이라 V7 마이그레이션으로 제거됐다).
+ * available_at 기반 지연 발행.
  *
  * <p>컬럼 "key" 는 MySQL 예약어여서 백틱으로 감싼다.
  */
@@ -53,9 +54,6 @@ public class PgOutboxEntity {
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
-    @Column(name = "attempt", nullable = false)
-    private Integer attempt;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -69,7 +67,6 @@ public class PgOutboxEntity {
                 .availableAt(LocalDateTime.ofInstant(outbox.getAvailableAt(), ZoneOffset.UTC))
                 .processedAt(outbox.getProcessedAt() == null
                         ? null : LocalDateTime.ofInstant(outbox.getProcessedAt(), ZoneOffset.UTC))
-                .attempt(outbox.getAttempt())
                 .createdAt(LocalDateTime.ofInstant(outbox.getCreatedAt(), ZoneOffset.UTC))
                 .build();
     }
@@ -83,7 +80,6 @@ public class PgOutboxEntity {
                 headersJson,
                 availableAt.toInstant(ZoneOffset.UTC),
                 processedAt == null ? null : processedAt.toInstant(ZoneOffset.UTC),
-                attempt,
                 createdAt.toInstant(ZoneOffset.UTC)
         );
     }

@@ -47,7 +47,6 @@ class PgOutboxRelayServiceTest {
                 null,
                 FIXED_NOW.minusSeconds(1),  // availableAt < NOW → 즉시 발행 가능
                 null,                        // processedAt = null → pending
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);
@@ -78,7 +77,6 @@ class PgOutboxRelayServiceTest {
                 null,
                 FIXED_NOW.minusSeconds(1),
                 null,
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);
@@ -106,7 +104,6 @@ class PgOutboxRelayServiceTest {
                 null,
                 futureAvailableAt,
                 null,
-                0,
                 FIXED_NOW.minusSeconds(60)
         );
         outboxRepository.save(outbox);

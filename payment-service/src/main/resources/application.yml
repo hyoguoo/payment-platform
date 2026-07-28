@@ -22,6 +22,12 @@ spring:
             # Feign timeout baseline — Phase 4 부하 측정 기반 SLO 로 조정 예정 (TODOS.md T4-D 참고).
             connectTimeout: 2000
             readTimeout: 5000
+          pg-service:
+            # 관리자 조회(PgFeignClient) 전용 — 기본값보다 짧게. 사용자 결제 경로가 아니라
+            # 관리자 상세 화면 렌더 시 부가 조회이므로 pg-service 장애 시 빨리 실패해
+            # 부분 렌더(이력 카드만 조회 불가)로 넘어가는 편이 낫다.
+            connectTimeout: ${PG_ADMIN_QUERY_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${PG_ADMIN_QUERY_READ_TIMEOUT_MS:2000}
 
   data:
     redis:

@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryLookupResult;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageResponse;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageSpec;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.SortDirection;
@@ -14,8 +15,10 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentEventResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentHistoryResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentOrderResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PgAttemptHistoryViewResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PgAttemptHistoryViewService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -34,6 +37,7 @@ public class PaymentAdminController {
 
     private final AdminPaymentService adminPaymentService;
     private final PaymentRecoveryAdminService paymentRecoveryAdminService;
+    private final PgAttemptHistoryViewService pgAttemptHistoryViewService;
 
     @GetMapping("/events")
     public String listPaymentEvents(
@@ -80,7 +84,28 @@ public class PaymentAdminController {
         model.addAttribute("orders", orders);
         model.addAttribute("histories", histories);
 
+        addAttemptHistory(model, eventResult.getOrderId());
+
         return "admin/payment-event-detail";
+    }
+
+    /**
+     * pg-service 확정 시도 이력을 조회해 모델에 담는다. 조회 실패 흡수와 조회 불가 폴백 판단은
+     * {@link PgAttemptHistoryViewService}(입력 포트) 구현이 전담한다 — 이 메서드는 그 결과를
+     * 모델에 담는 일만 한다.
+     * <p>
+     * 이력 없음({@code found=false})은 조회 실패가 아니라 정상 응답이라
+     * {@link PgAttemptHistoryLookupResult#isUnavailable()} 이 false 로 남는다 — 이력 없음과
+     * 조회 불가가 화면에서 구분된다.
+     */
+    private void addAttemptHistory(Model model, String orderId) {
+        PgAttemptHistoryLookupResult result = pgAttemptHistoryViewService.getAttemptHistory(orderId);
+        if (result.isUnavailable()) {
+            model.addAttribute("attemptHistoryUnavailable", true);
+            return;
+        }
+        model.addAttribute("attemptHistory", PgAttemptHistoryViewResponse.from(result.getHistory()));
+        model.addAttribute("attemptHistoryUnavailable", false);
     }
 
     /**

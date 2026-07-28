@@ -207,14 +207,16 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
     /**
      * 시도횟수 SoT — relative increment UPDATE.
      *
-     * <p>{@code propagation = REQUIRED}(기본값) — 호출자({@code PgVendorCallService.handleRetry})의
-     * 외부 TX_B 에 참여한다. 별도 round-trip 없이 재시도 outbox INSERT 와 원자 커밋.
+     * <p>{@code propagation = REQUIRED}(기본값) — 호출자({@code PgVendorCallService.insertRetryOutbox})의
+     * 외부 TX_B 에 참여한다. 반영 행 수를 그대로 반환해 호출자가 가드 발동 여부(0)로 재시도 outbox
+     * INSERT + 발행 이벤트를 건너뛸 수 있게 한다.
      */
     @Override
     @Transactional(propagation = Propagation.REQUIRED)
-    public void incrementAttempt(String orderId) {
+    public int incrementAttempt(String orderId) {
         // 시간 결정성 위해 LocalDateTime.now(clock) 사용
-        jpaPgInboxRepository.incrementAttempt(orderId, LocalDateTime.now(clock));
+        // 진행 중 상태 가드 — 종결(APPROVED/FAILED/QUARANTINED) 행은 attempt/updated_at 이 밀리지 않는다
+        return jpaPgInboxRepository.incrementAttempt(orderId, LocalDateTime.now(clock), PgInboxStatus.IN_PROGRESS);
     }
 
 }
