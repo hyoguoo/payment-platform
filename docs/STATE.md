@@ -6,7 +6,7 @@
 
 - **주제**: 라이브 실측 체계 정식화
 - **단계**: execute
-- **활성 태스크**: Task 6: 모의 벤더 오배포 위험과 후속 등재 — CONCERNS.md에 위험 등재, TODOS.md에 후속 2건 등재
+- **활성 태스크**: Task 7: 스킬 본문을 검증 체계로 재작성 — 기준 다섯을 SKILL.md에 싣고, 화면 판독을 에이전트의 일로 명시
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 

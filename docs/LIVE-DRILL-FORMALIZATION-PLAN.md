@@ -101,7 +101,7 @@ flowchart TD
 - [x] Task 3: 리포트와 캡처 원본 무시 규칙
 - [x] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
 - [x] Task 5: 발행 대기 분포 지표 등록 시점 수정
-- [ ] Task 6: 모의 벤더 오배포 위험과 후속 등재
+- [x] Task 6: 모의 벤더 오배포 위험과 후속 등재
 - [ ] Task 7: 스킬 본문을 검증 체계로 재작성
 - [ ] Task 8: 기존 장면에 기대 결과와 판정 도입
 - [ ] Task 9: 신규 검증 시나리오 두 종 정의
@@ -240,7 +240,8 @@ flowchart TD
 - 두 문서에 항목이 등재되고, 각 항목이 근거 파일과 줄 번호를 가리킴
 
 **완료 결과**
-> (execute 에서 채움)
+> `CONCERNS.md` "알려진 한계" 섹션에 L-18(모의 벤더 오배포 위험)을 등재했다 — `pg.gateway.type=fake` 조건부 로드(`FakePgGatewayStrategy.java:68`)가 `application-docker.yml:21` 환경변수로 덮이는 구조, `supports()`(`FakePgGatewayStrategy.java:144-148`)가 벤더 종류를 가리지 않는 점, 탐지 수단이 `warnActivation()`(`FakePgGatewayStrategy.java:132-142`) 부팅 경고 로그뿐이라는 점을 근거 줄 번호와 함께 적었다. 이 조건부 로드·무차별 수락 구조 자체는 이번 작업이 만든 것이 아니라 이미 운영 중이었고, 이번에 더한 것은 시나리오 접두어 분기뿐이라는 점을 명시해 우선순위 판단이 흐려지지 않게 했다.
+> `TODOS.md` 에 섹션 E 를 신설해 후속 2건을 등재했다. `[FAKE-PG-BOOT-ENV-GUARD]`는 부팅 시 환경 조합 검사 가드 부재를 다루며, 어떤 환경을 정상으로 볼지 정하는 배포 환경 논의가 선행돼야 해 이번 범위 밖으로 뺐다. `[STOCK-RETENTION-DUPLICATE-CONFIRM-FALSE-SIGNAL]`는 같은 주문 confirm 동시 재호출이 `payment_outbox.order_id` 유니크 제약(`uk_payment_outbox_order_id`, `V1__payment_schema.sql:70`)에 진 쪽에서 `DataIntegrityViolationException` 을 맞고, `OutboxAsyncConfirmService` 의 `catch (RuntimeException txException)`(`OutboxAsyncConfirmService.java:97`)이 원인을 구분하지 않아 정상 중복 차단인데도 재고 미회수 신호(`stockRetentionMetrics.record()` + `STOCK_RETENTION_UNRECOVERED`, `OutboxAsyncConfirmService.java:98-102`)를 남긴다는 것을 근거 줄 번호(`PaymentTransactionCoordinator.java:42-55,74-85`, `PaymentOutboxUseCase.java:30-34`)와 함께 적었다. 문서 코드 비접촉 산출물이라 `./gradlew test` 는 실행하지 않았다.
 
 ---
 

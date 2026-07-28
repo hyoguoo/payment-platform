@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 격리 결제 관리자 수동 안전 종결 + `events.confirmed.dlq` 수동 재주입 도입 반영: C-5 부분 해소(수동 재주입 도구, 자동 소비는 여전 미도입), L-1 잔여/후속 정정(재고 확정 복구가 관리자 수동 재주입으로 가능), 신규 한계 3건 L-15/16/17 등재(P8D 만료 미복원 · 복구 후 늦은 confirm 재차감 · DLQ 전량 스캔 성능·관측성 한계 — 모두 보수적 언더셀/관측성 방향)). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
+> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 신규 한계 1건 등재: L-18(모의 벤더 `FakePgGatewayStrategy` 오배포 위험 — `pg.gateway.type=fake` 환경변수 오버라이드 구조 + `supports()` 무차별 수락으로 실제 승인 없이 결제 완료 가능, 탐지 수단은 부팅 경고 로그뿐. 조건부 로드 구조 자체는 이번 작업 신규가 아니라 기존 운영 중이던 구조이며 이번엔 시나리오 접두어 분기만 추가했음을 명시). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 격리 결제 관리자 수동 안전 종결 + `events.confirmed.dlq` 수동 재주입 도입 반영: C-5 부분 해소(수동 재주입 도구, 자동 소비는 여전 미도입), L-1 잔여/후속 정정(재고 확정 복구가 관리자 수동 재주입으로 가능), 신규 한계 3건 L-15/16/17 등재(P8D 만료 미복원 · 복구 후 늦은 confirm 재차감 · DLQ 전량 스캔 성능·관측성 한계 — 모두 보수적 언더셀/관측성 방향)). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -131,6 +131,13 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 ### L-17. DLQ 재주입 전량 스캔 성능·관측성 한계
 
 `KafkaDlqReprocessAdapter` 는 재주입 시 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 대량 적체 시 `read-timeout` 내 `endOffsets` 미도달 가능 — 스캔 미완료(재시도 안내 예외)와 "완주 후 없음"은 `DlqScanResult(payload, completed)` 로 구분하나, 최근 구간부터 역방향 탐색(`offsetsForTimes`)은 미구현이라 최근 메시지가 가장 나중에 스캔된다(사용 패턴과 역방향). 또 스캔 미완료 + 매치 존재 조합은 warn 로그 없이 발행(미스캔 구간에 더 최신 레코드 존재 가능 — 동일 orderId 는 동일 `eventUuid` 재발행이라 멱등 체인이 흡수). 관리 도구 사용 빈도 대비 수용, 역방향 탐색·`dlq_scan_incomplete` warn 은 후속.
+
+### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 위험 — 실제 승인 없이 결제 완료 가능
+
+- **현황**: 모의 벤더 전략은 `pg.gateway.type=fake` 일 때만 스프링 빈으로 로드된다(`@ConditionalOnProperty`, `FakePgGatewayStrategy.java:68`). 이 값은 `pg-service/src/main/resources/application-docker.yml:21` 에서 `${PG_GATEWAY_TYPE:toss}` 로 환경변수 오버라이드가 가능한 구조라, 스모크 구동용 값이 배포 파이프라인 환경변수에 남으면 그대로 적용된다. 로드되면 `supports()`(`FakePgGatewayStrategy.java:144-148`)가 벤더 종류를 가리지 않고 `TOSS`/`NICEPAY` 요청을 모두 받아들인다 — 사용자가 어느 벤더를 선택했든 모의 벤더가 처리한다.
+- **영향**: 실제 벤더 승인 없이 결제가 완료되고 재고가 확정 차감된다. 탐지 수단은 기동 시 `warnActivation()`(`FakePgGatewayStrategy.java:132-142`)이 남기는 경고 배너 로그 하나뿐 — 기동을 막는 코드는 없다.
+- **수용 근거**: 이 조건부 로드 구조와 무차별 `supports()` 자체는 `LIVE-DRILL-FORMALIZATION` 에서 새로 만든 것이 아니라 이미 운영 중이던 구조다. 이번 작업이 더한 것은 라이브 실측용 시나리오 접두어(`fake-fail-`/`fake-retry-`/`fake-flaky-`) 분기뿐이고, 오배포 위험 구조 자체는 이전부터 있었다 — 이 점을 빼면 우선순위 판단을 흐린다.
+- **후속**: 부팅 시 환경 조합 검사 가드 — `TODOS.md` [FAKE-PG-BOOT-ENV-GUARD] 참고.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 
