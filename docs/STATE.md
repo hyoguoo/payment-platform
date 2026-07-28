@@ -6,7 +6,7 @@
 
 - **주제**: 라이브 실측 체계 정식화
 - **단계**: execute
-- **활성 태스크**: Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
+- **활성 태스크**: Task 5: 발행 대기 분포 지표 등록 시점 수정 — payment-service PaymentOutboxMetrics 등록 시점을 생성자로 옮겨 대기 행 0건에서도 지표가 노출되게 함
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 

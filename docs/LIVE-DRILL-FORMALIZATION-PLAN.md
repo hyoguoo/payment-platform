@@ -99,7 +99,7 @@ flowchart TD
 - [x] Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
 - [x] Task 2: 실측 스킬과 캡처용 관측 설정 이관
 - [x] Task 3: 리포트와 캡처 원본 무시 규칙
-- [ ] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
+- [x] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
 - [ ] Task 5: 발행 대기 분포 지표 등록 시점 수정
 - [ ] Task 6: 모의 벤더 오배포 위험과 후속 등재
 - [ ] Task 7: 스킬 본문을 검증 체계로 재작성
@@ -198,7 +198,7 @@ flowchart TD
 - 값이 화면에 표시됨 (0 이든 아니든)
 
 **완료 결과**
-> (execute 에서 채움)
+> `pg_outbox.attempt_count 분포` 패널(id 607)을 삭제했다 — 쿼리가 찾던 `pg_outbox_attempt_count_bucket`은 처음부터 실제 지표 이름과 어긋나 있었고, 그 지표는 `d0e8e6ec`에서 제거돼 되살릴 대상이 없었다. 재고 미회수 카운터(`stock_retention_unrecovered_total`)를 노출하는 stat 패널(id 304)을 「격리」섹션의 마지막 패널(현재 QUARANTINED 건수, id 303) 바로 뒤에 추가했다 — 쿼리는 `sum(stock_retention_unrecovered_total)`로 `rate()`/`increase()` 없이 누적 원값 그대로 노출해, 시점에 무관하게 "0이냐 아니냐"만 보게 했다(참고한 원시 누적값 방식은 DLQ 누적 건수 패널, id 502). 패널 삽입으로 「벤더 latency」이하 전 섹션의 y좌표를 8만큼 밀었고, 607 삭제로 그 자리(`pg_outbox` 섹션 마지막 행)에 남는 8폭 빈 칸은 605/606 두 게이지 패널을 12폭씩으로 넓혀 채웠다. `python3 -m json.tool`로 JSON 유효성을 확인했고, 패널 id 중복 없음·행(row) 구간 간 좌표 겹침/빈 구멍 없음(각 섹션의 마지막 패널 하단 y가 다음 행 시작 y와 정확히 일치)을 스크립트로 검증했다. `pg_outbox_attempt_count` 문자열은 코드 전체에서 이 파일에만 있었고 이번 삭제로 완전히 제거됐다(설계 문서 `docs/topics/LIVE-DRILL-FORMALIZATION.md`의 결정 근거 서술은 이력이라 유지). JSON 자산만 변경해 `./gradlew test`는 실행하지 않았다.
 
 ---
 
