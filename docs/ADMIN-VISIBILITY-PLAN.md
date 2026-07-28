@@ -118,6 +118,7 @@ flowchart TD
 - [x] Task 11: 재고 목록 조회 포트 + HTTP 어댑터
 - [x] Task 12: 재고 화면
 - [x] Task 13: 라이브 검증
+- [x] Task 14: `pg_outbox.attempt` 죽은 컬럼 제거 (ship 게이트에서 사용자 요청으로 추가)
 
 ---
 
@@ -590,6 +591,45 @@ pg-service 최초의 HTTP 진입점이다.
 
 ---
 
+### Task 14: `pg_outbox.attempt` 죽은 컬럼 제거 [tdd=false] [domain_risk=true]
+
+ship 게이트에서 사용자 요청으로 추가됐다. Task 4 가 "회차의 출처로 쓸 수 없다"고 확인한 컬럼을 아예 걷어낸다.
+
+**배경 (조사 결과)**
+
+- `PgOutbox.create` / `createWithAvailableAt` 두 팩토리가 `attempt` 에 0 을 박아 넣고, 저장소 어디에도 증가시키는 UPDATE 가 없다 — 항상 0 이다
+- 그런데 `PgOutboxMetrics.recordAttemptHistogram` 이 이 값으로 `pg_outbox.attempt_count_histogram` 을 **매분 발행**한다. 설명은 "attempt 분포"인데 값은 상수 0 이다
+- 히스토그램을 채우려고 `findPendingBatch(Integer.MAX_VALUE, now)` 로 **pending outbox 행 전량을 매분 메모리에 적재**한다. 정보량 0 에 비용은 실재한다
+- 대시보드 영향 없음 — `observability/grafana/dashboards/business-dashboard.json` 이 참조하는 것은 payment 쪽 `payment_outbox_attempt_count_histogram` 이며 pg 쪽 히스토그램은 어디서도 쓰이지 않는다
+- 선례: payment-service `V5__drop_payment_event_retry_count.sql` 이 같은 사유(죽은 컬럼)로 컬럼을 걷어냈다
+
+**구현**
+
+- Flyway V7 로 `pg_outbox.attempt` 컬럼 drop. MySQL 은 컬럼 단위 `IF EXISTS` 를 지원하지 않으니 Flyway 버전 관리로 멱등성을 보장한다 (payment V5 주석 참고)
+- `PgOutboxEntity` 의 필드·컬럼 매핑·양방향 변환에서 제거
+- `PgOutbox` 도메인의 필드, 두 팩토리, `of()` 시그니처에서 제거 — `of()` 는 엔티티→도메인 복원 경로라 호출처를 함께 정리한다
+- `PgOutboxMetrics` 에서 히스토그램 상수·등록·`recordAttemptHistogram` 과 그 전량 스캔 제거
+- 관련 테스트(`PgOutboxTest`, `PgOutboxMetricsTest`, `FakePgOutboxRepository` 등) 정리
+
+**완료 기준**
+
+- 3서비스 전체 테스트 + `:pg-service:integrationTest` 통과 — Testcontainers 가 V1~V7 로 부팅되면 마이그레이션 회귀 게이트를 지난 것이다
+- 린트 4종 통과
+- 남은 `attempt` 참조가 `pg_inbox.attempt`(시도 횟수 정본)와 outbox 행 헤더뿐임을 확인 — 이 둘은 유지 대상이다
+
+**완료 결과**
+
+- Flyway `V7__drop_pg_outbox_attempt.sql` 신규 — `ALTER TABLE pg_outbox DROP COLUMN attempt`. `key` 컬럼과 달리 예약어가 아니라 백틱 불필요. payment-service `V5__drop_payment_event_retry_count.sql` 과 동일하게 MySQL 이 컬럼 단위 `DROP COLUMN IF EXISTS` 를 지원하지 않는다는 점, 멱등성은 Flyway 버전 관리(체크섬)로 보장된다는 점을 주석에 남겼다
+- `PgOutboxEntity` 에서 `attempt` 컬럼 매핑(`@Column(name = "attempt")` 필드 + `from()`/`toDomain()` 양방향 변환) 제거
+- `PgOutbox` 도메인에서 `attempt` 필드 제거. `create`/`createWithAvailableAt` 두 팩토리는 애초 항상 0을 넣던 파라미터라 시그니처 변화 없이 내부 빌더 호출에서만 제거. `of()` 는 9-arg → 8-arg 로 시그니처 변경(엔티티→도메인 복원 경로) — 호출처 전량(`PgOutboxEntity.toDomain`, `FakePgOutboxRepository.save`, 테스트 픽스처)을 함께 정리했다
+- `PgOutboxMetrics` 에서 `ATTEMPT_COUNT_HISTOGRAM`("pg_outbox.attempt_count_histogram") 상수·등록·`recordAttemptHistogram`/`buildAttemptSummary` 와 이를 위해 매분 `findPendingBatch(Integer.MAX_VALUE, now)` 로 pending 행 전량을 적재하던 호출을 제거. 남은 세 gauge(`pending_count`/`future_pending_count`/`oldest_pending_age_seconds`)는 그대로 유지. **제거된 지표: `pg_outbox.attempt_count_histogram`** — 참조 대시보드 없음을 재확인(`observability/grafana/dashboards/business-dashboard.json` 은 payment-service 의 동명 `payment_outbox_attempt_count_histogram` 만 참조하며 그 지표는 유지된다)
+- `findPendingBatch` 자체는 포트에 남겨둠 — `PgOutboxPollingWorker` 가 정상 발행 폴링에 여전히 사용하는 메서드라 이 태스크 범위 밖(제거 대상은 메트릭의 전량 스캔 호출뿐)
+- 테스트 전량 정리: `PgOutboxTest`(9-arg→8-arg `of` 시그니처 갱신, attempt 관련 assertion 제거) · `FakePgOutboxRepository`(`save` 내부 `of` 호출) · `PgOutboxRelayServiceTest`(3건) · `PgAttemptHistoryServiceTest`(9건) · `PgOutboxPollingWorkerTest`(2건) · `PgOutboxImmediateWorkerTest`(3건) · `DuplicateApprovalHandlerTest`(1건) · `PgOutboxMetricsTest`(헬퍼 `of` 호출 — 히스토그램을 직접 검증하는 테스트 케이스는 원래 없었다) · `PgOutboxRepositoryImplTest`(엔티티 빌더 `.attempt(0)` 제거)
+- 남은 `attempt` 참조는 `pg_inbox.attempt`(시도 횟수 정본, Task 1 상태 가드 대상)와 outbox 행 `headers_json` 의 회차 헤더(Task 4 조립 서비스가 읽는 값)뿐임을 grep 으로 확인 — 이 둘은 유지 대상이라 손대지 않았다
+- `./gradlew :pg-service:test` 351건 전체 pass(변경 없음 — 테스트 추가/삭제 없이 기존 케이스의 호출 시그니처만 갱신), `:pg-service:integrationTest` 16건 전체 pass — Testcontainers 가 V1~V7 로 정상 부팅돼 마이그레이션 회귀 게이트 통과. `:payment-service:test` 539건, `:product-service:test`(57건 기준, 회귀 없음) 전체 pass. 3서비스 `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 전건 통과
+
+---
+
 ## 결정 → Task 매핑
 
 | 설계 결정 | Task |
@@ -623,6 +663,14 @@ ship 리뷰 1라운드 — reviewer / domain-expert 병렬. critical 0 / major 2
 | 2 | major | 두 워커(self-loop 컨슈머 + 좀비 폴러)가 같은 주문의 진행 중 행을 동시에 재시도 분기 태우면 같은 회차 번호로 각각 outbox 행이 생겨 화면에 회차가 중복 표시될 수 있는데, 안내 문구가 이를 알리지 않음 | 채택 | 이 화면은 격리 결제 종결 판단 근거다. 발행 시각 근사값·미실행 의미는 이미 문구로 밝히고 있으니 같은 자리에 회차 중복 가능성을 더한다. 자동 판정(격리 종결·재주입 유스케이스)은 이 값을 읽지 않아 오염되지 않는다 |
 | 3 | minor | `PaymentAdminController.addAttemptHistory` 의 try 범위가 포트 호출뿐 아니라 로컬 뷰 변환까지 감싸, pg 장애와 payment 자체 매핑 버그가 로그에서 구분되지 않음. 예외 타입도 로그에 없음 | 채택 | 진단성 개선 비용이 낮다. try 를 포트 호출로 좁히고 예외 타입을 로그에 남긴다 |
 | 4 | minor | `PgVendorCallService.insertRetryOutbox` 가 outbox 행을 먼저 INSERT 한 뒤 `incrementAttempt` 를 부르고, `PgInboxRepositoryImpl.incrementAttempt` 가 `void` 라 반영 행 수를 버린다 — 가드 발동(이미 종결) 시에도 재시도 행 INSERT + 발행 이벤트가 그대로 커밋돼 종결된 주문에 stray 메시지가 생긴다 | 채택 | stray 행은 재발행 경로가 멱등하게 흡수하고 화면도 미실행으로 거르지만, 원천 차단이 낫다. 반영 행 수를 살려 0 이면 INSERT·발행을 하지 않는다. **승인 경로 재변경이므로 재시도 정상 경로 회귀 확인이 필수** |
+
+### 재리뷰 (1회)
+
+수정 커밋 `0cc8b460` 대상으로 reviewer + domain-expert 재판정 — **양쪽 pass, 새 critical·major 없음.**
+
+- reviewer: finding 1·3 해소 확인. 신규 입력 포트/구현체 배치가 기존 관례(`AdminPaymentServiceImpl` 등이 `application/` 루트에서 `presentation/port/` 인터페이스를 구현)와 일치. 세 상태 구분이 신규 조회 결과 DTO 로 유지되고 신규 서비스 테스트가 이를 덮음
+- domain-expert: finding 2·4 해소 확인. 승인 경로 재변경(증가 먼저 → 반영 행 수 0 이면 outbox INSERT·발행 생략)이 TX_B 원자성·`shouldRetry` 판정 순서·소진 경로를 깨지 않음을 소스 대조 + Testcontainers 통합 테스트 실측으로 확인. 한도 판정은 증가 **전** 값으로 이미 결정되므로 순서 충돌 없음. 반영 행 수 0 이 "이미 종결"만을 뜻하는 근거는 inbox 상태가 단조 증가라는 점
+- 재리뷰 minor 1건(`PgAttemptHistoryViewResponse` javadoc 의 예외 흡수 주체가 리팩터 이전 문구로 남음) — 수정 반영
 
 ### 수정 결과 (ship 리뷰 1라운드, implementer)
 

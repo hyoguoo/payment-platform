@@ -77,7 +77,7 @@ class PgAttemptHistoryServiceTest {
 
         PgOutbox pendingRetry = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                receivedAt.plusSeconds(10), null, 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(10), null, receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(pendingRetry));
 
         // when
@@ -104,7 +104,7 @@ class PgAttemptHistoryServiceTest {
 
         PgOutbox dlqRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM_DLQ, ORDER_ID,
                 "{}", "{\"attempt\":4}",
-                receivedAt.plusSeconds(50), receivedAt.plusSeconds(60), 0, receivedAt.plusSeconds(50));
+                receivedAt.plusSeconds(50), receivedAt.plusSeconds(60), receivedAt.plusSeconds(50));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(dlqRow));
 
         // when
@@ -127,7 +127,7 @@ class PgAttemptHistoryServiceTest {
 
         PgOutbox headerlessRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", null,
-                receivedAt.plusSeconds(10), receivedAt.plusSeconds(11), 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(10), receivedAt.plusSeconds(11), receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(headerlessRow));
 
         // when
@@ -174,7 +174,7 @@ class PgAttemptHistoryServiceTest {
         // 좀비 회수가 앞지른 경우 — 발행이 종결 이후로 밀림
         PgOutbox lateRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                receivedAt.plusSeconds(5), finalizedAt.plusSeconds(10), 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(5), finalizedAt.plusSeconds(10), receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(lateRow));
 
         // when
@@ -197,7 +197,7 @@ class PgAttemptHistoryServiceTest {
         // 실행 예정 시각(available_at)은 종결 전이었으나, 실제 발행이 밀려 종결 이후에 나간 좁은 창
         PgOutbox delayedPublishRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                finalizedAt.minusSeconds(5), finalizedAt.plusSeconds(20), 0, receivedAt.plusSeconds(1));
+                finalizedAt.minusSeconds(5), finalizedAt.plusSeconds(20), receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(delayedPublishRow));
 
         // when
@@ -220,7 +220,7 @@ class PgAttemptHistoryServiceTest {
         // 아직 미발행 — 실행 예정 시각이 종결 이후라 폴백 경로로 미실행 판정
         PgOutbox unpublishedRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                finalizedAt.plusSeconds(10), null, 0, receivedAt.plusSeconds(1));
+                finalizedAt.plusSeconds(10), null, receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(unpublishedRow));
 
         // when
@@ -242,7 +242,7 @@ class PgAttemptHistoryServiceTest {
 
         PgOutbox normalRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                receivedAt.plusSeconds(5), finalizedAt.minusSeconds(5), 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(5), finalizedAt.minusSeconds(5), receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(normalRow));
 
         // when
@@ -264,7 +264,7 @@ class PgAttemptHistoryServiceTest {
         // 기본값을 잘못 잡으면(예: finalizedAt=now) 이 정상 재시도가 미실행으로 표시된다
         PgOutbox futureRow = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":2}",
-                receivedAt.plusSeconds(999_999), null, 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(999_999), null, receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(futureRow));
 
         // when
@@ -290,7 +290,7 @@ class PgAttemptHistoryServiceTest {
         Instant publishedAt = receivedAt.plusSeconds(11);
         PgOutbox row = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 "{}", "{\"attempt\":3}",
-                scheduledAt, publishedAt, 0, reservedAt);
+                scheduledAt, publishedAt, reservedAt);
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(row));
 
         // when
@@ -317,7 +317,7 @@ class PgAttemptHistoryServiceTest {
         String secretPayload = "{\"paymentKey\":\"" + secretPaymentKey + "\"}";
         PgOutbox row = PgOutbox.of(1L, PgTopics.COMMANDS_CONFIRM, ORDER_ID,
                 secretPayload, "{\"attempt\":2}",
-                receivedAt.plusSeconds(10), receivedAt.plusSeconds(11), 0, receivedAt.plusSeconds(1));
+                receivedAt.plusSeconds(10), receivedAt.plusSeconds(11), receivedAt.plusSeconds(1));
         given(pgOutboxRepository.findConfirmAttemptRows(ORDER_ID)).willReturn(List.of(row));
 
         // when

@@ -144,7 +144,6 @@ class PgOutboxRepositoryImplTest {
                 .headersJson(null)
                 .availableAt(createdAt)
                 .processedAt(null)
-                .attempt(0)
                 .createdAt(createdAt)
                 .build();
         jpaRepository.save(entity);

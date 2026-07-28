@@ -39,7 +39,6 @@ public class FakePgOutboxRepository implements PgOutboxRepository {
                     outbox.getHeadersJson(),
                     outbox.getAvailableAt(),
                     outbox.getProcessedAt(),
-                    outbox.getAttempt(),
                     outbox.getCreatedAt());
             store.put(newId, withId);
             return withId;

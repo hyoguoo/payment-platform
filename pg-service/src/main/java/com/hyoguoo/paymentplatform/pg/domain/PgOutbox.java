@@ -10,7 +10,9 @@ import lombok.Getter;
  * pg-service outbox 도메인 POJO.
  * JPA 엔티티(PgOutboxEntity) 와 도메인 객체를 분리해 hexagonal 경계를 유지한다.
  *
- * <p>available_at 지연 발행, attempt 재시도 횟수 추적.
+ * <p>available_at 지연 발행. 재시도 회차는 이 클래스가 아니라 {@code headers_json} 에서 읽는다
+ * ({@code PgAttemptHistoryService} 참고) — {@code pg_outbox.attempt} 컬럼은 항상 0 으로 남는 죽은 값이라
+ * V7 마이그레이션으로 제거됐다.
  *
  * <p><b>factory only 노출 룰</b> — 외부에서 {@code allArgsBuilder()} 직접 호출 금지.
  * builder 는 factory 내부 캡슐화 용도이며 외부 호출자는 아래 factory method 만 사용한다:
@@ -31,7 +33,6 @@ public class PgOutbox {
     private final String headersJson;
     private final Instant availableAt;
     private Instant processedAt;
-    private int attempt;
     private final Instant createdAt;
 
     /**
@@ -56,7 +57,6 @@ public class PgOutbox {
                 .headersJson(headersJson)
                 .availableAt(now)
                 .processedAt(null)
-                .attempt(0)
                 .createdAt(now)
                 .allArgsBuild();
     }
@@ -85,13 +85,12 @@ public class PgOutbox {
                 .headersJson(headersJson)
                 .availableAt(availableAt)
                 .processedAt(null)
-                .attempt(0)
                 .createdAt(now)
                 .allArgsBuild();
     }
 
     /**
-     * DB 복원 / test 픽스처 전용 9-arg 오버로드 — id 포함.
+     * DB 복원 / test 픽스처 전용 8-arg 오버로드 — id 포함.
      * JPA 어댑터 {@code PgOutboxEntity.toDomain()} 및 테스트 픽스처에서만 사용한다.
      *
      * @param id          DB row pk (nullable — INSERT 전 픽스처 시 null)
@@ -101,7 +100,6 @@ public class PgOutbox {
      * @param headersJson 직렬화된 Kafka 헤더 JSON (nullable)
      * @param availableAt 발행 가능 시각
      * @param processedAt 처리 완료 시각 (nullable — 미처리 시 null)
-     * @param attempt     재시도 횟수
      * @param createdAt   생성 시각
      */
     public static PgOutbox of(
@@ -112,7 +110,6 @@ public class PgOutbox {
             String headersJson,
             Instant availableAt,
             Instant processedAt,
-            int attempt,
             Instant createdAt) {
         return PgOutbox.allArgsBuilder()
                 .id(id)
@@ -122,7 +119,6 @@ public class PgOutbox {
                 .headersJson(headersJson)
                 .availableAt(availableAt)
                 .processedAt(processedAt)
-                .attempt(attempt)
                 .createdAt(createdAt)
                 .allArgsBuild();
     }

@@ -25,13 +25,12 @@ class PgOutboxTest {
     // =========================================================================
 
     @Test
-    @DisplayName("create — Instant now 포함 5-arg 시그니처 → isPending=true, attempt=0, availableAt == now")
+    @DisplayName("create — Instant now 포함 5-arg 시그니처 → isPending=true, availableAt == now")
     void create_withoutId_availableAtIsNow() {
         Instant now = Instant.parse("2026-06-01T00:00:00Z");
         PgOutbox outbox = PgOutbox.create(TOPIC, KEY, PAYLOAD, HEADERS_JSON, now);
 
         assertThat(outbox.isPending()).isTrue();
-        assertThat(outbox.getAttempt()).isZero();
         assertThat(outbox.getTopic()).isEqualTo(TOPIC);
         assertThat(outbox.getKey()).isEqualTo(KEY);
         assertThat(outbox.getPayload()).isEqualTo(PAYLOAD);
@@ -53,24 +52,23 @@ class PgOutboxTest {
         PgOutbox outbox = PgOutbox.createWithAvailableAt(TOPIC, KEY, PAYLOAD, HEADERS_JSON, futureAt, now);
 
         assertThat(outbox.isPending()).isTrue();
-        assertThat(outbox.getAttempt()).isZero();
         assertThat(outbox.getAvailableAt()).isEqualTo(futureAt);
         assertThat(outbox.getId()).isNull();
     }
 
     // =========================================================================
-    // of — 9-arg 풀 생성 (id 유지)
+    // of — 8-arg 풀 생성 (id 유지)
     // =========================================================================
 
     @Test
-    @DisplayName("of — 9-arg 풀 생성 → getId() == 99L 및 모든 필드 정확 매핑")
+    @DisplayName("of — 8-arg 풀 생성 → getId() == 99L 및 모든 필드 정확 매핑")
     void of_fullArgs_constructsCorrectly() {
         Instant availableAt = Instant.parse("2026-01-01T00:00:00Z");
         Instant processedAt = Instant.parse("2026-01-01T00:01:00Z");
         Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 
         PgOutbox outbox = PgOutbox.of(99L, TOPIC, KEY, PAYLOAD, HEADERS_JSON,
-                availableAt, processedAt, 2, createdAt);
+                availableAt, processedAt, createdAt);
 
         assertThat(outbox.getId()).isEqualTo(99L);
         assertThat(outbox.getTopic()).isEqualTo(TOPIC);
@@ -79,7 +77,6 @@ class PgOutboxTest {
         assertThat(outbox.getHeadersJson()).isEqualTo(HEADERS_JSON);
         assertThat(outbox.getAvailableAt()).isEqualTo(availableAt);
         assertThat(outbox.getProcessedAt()).isEqualTo(processedAt);
-        assertThat(outbox.getAttempt()).isEqualTo(2);
         assertThat(outbox.getCreatedAt()).isEqualTo(createdAt);
     }
 }
