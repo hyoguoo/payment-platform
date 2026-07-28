@@ -42,6 +42,7 @@ public class PaymentOutboxMetrics {
     private final AtomicLong pendingCount = new AtomicLong(0L);
     private final AtomicLong futurePendingCount = new AtomicLong(0L);
     private final AtomicLong oldestPendingAgeSeconds = new AtomicLong(0L);
+    private final DistributionSummary attemptSummary;
 
     public PaymentOutboxMetrics(
             PaymentOutboxRepository paymentOutboxRepository,
@@ -62,6 +63,11 @@ public class PaymentOutboxMetrics {
         Gauge.builder(OLDEST_PENDING_AGE_SECONDS, oldestPendingAgeSeconds, AtomicLong::doubleValue)
                 .description("가장 오래된 PENDING row 체류 시간(초)")
                 .baseUnit("seconds")
+                .register(meterRegistry);
+
+        this.attemptSummary = DistributionSummary.builder(ATTEMPT_COUNT_HISTOGRAM)
+                .description("PENDING payment_outbox row 의 retryCount 분포")
+                .publishPercentileHistogram(true)
                 .register(meterRegistry);
     }
 
@@ -86,13 +92,6 @@ public class PaymentOutboxMetrics {
 
     private void recordAttemptHistogram() {
         paymentOutboxRepository.findPendingBatch(Integer.MAX_VALUE)
-                .forEach(outbox -> buildAttemptSummary().record(outbox.getRetryCount()));
-    }
-
-    private DistributionSummary buildAttemptSummary() {
-        return DistributionSummary.builder(ATTEMPT_COUNT_HISTOGRAM)
-                .description("PENDING payment_outbox row 의 retryCount 분포")
-                .publishPercentileHistogram(true)
-                .register(meterRegistry);
+                .forEach(outbox -> attemptSummary.record(outbox.getRetryCount()));
     }
 }

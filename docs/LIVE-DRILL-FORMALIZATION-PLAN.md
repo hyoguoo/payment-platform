@@ -100,7 +100,7 @@ flowchart TD
 - [x] Task 2: 실측 스킬과 캡처용 관측 설정 이관
 - [x] Task 3: 리포트와 캡처 원본 무시 규칙
 - [x] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
-- [ ] Task 5: 발행 대기 분포 지표 등록 시점 수정
+- [x] Task 5: 발행 대기 분포 지표 등록 시점 수정
 - [ ] Task 6: 모의 벤더 오배포 위험과 후속 등재
 - [ ] Task 7: 스킬 본문을 검증 체계로 재작성
 - [ ] Task 8: 기존 장면에 기대 결과와 판정 도입
@@ -222,7 +222,7 @@ flowchart TD
 - `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute 에서 채움)
+> `payment_outbox.attempt_count_histogram` `DistributionSummary` 등록을 `recordAttemptHistogram()` 순회 안에서 생성자로 옮기고 필드(`attemptSummary`)로 보관했다 — 이미 생성자에서 등록되는 gauge 3종과 같은 방식이다. 순회는 `attemptSummary.record(...)`로 기록만 한다. 대기 행 0건으로 `refresh()`를 호출해도 레지스트리에서 지표를 찾을 수 있어(`count() == 0`), 적체 없음과 계측 누락이 화면에서 구분된다. 신규 2 + 기존 2 = `PaymentOutboxMetricsTest` 4건과 `:payment-service:test` 전체 541건이 통과한다.
 
 ---
 
