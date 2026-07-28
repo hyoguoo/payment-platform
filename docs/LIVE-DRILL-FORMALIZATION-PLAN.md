@@ -98,7 +98,7 @@ flowchart TD
 
 - [x] Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
 - [x] Task 2: 실측 스킬과 캡처용 관측 설정 이관
-- [ ] Task 3: 리포트와 캡처 원본 무시 규칙
+- [x] Task 3: 리포트와 캡처 원본 무시 규칙
 - [ ] Task 4: 대시보드 패널 정리 — 죽은 패널 삭제와 재고 미회수 지표 노출
 - [ ] Task 5: 발행 대기 분포 지표 등록 시점 수정
 - [ ] Task 6: 모의 벤더 오배포 위험과 후속 등재
@@ -173,7 +173,7 @@ flowchart TD
 - 계획 문서 등 저장소에 남아야 할 것은 무시되지 않음
 
 **완료 결과**
-> (execute 에서 채움)
+> `.gitignore`에 `live-drill/` 디렉토리 통째 무시 규칙을 추가했다(`.archive` 근처). 스킬(`SKILL.md` "산출물 위치" 절)이 만드는 산출물이 `live-drill/report.html`, `live-drill/PLAN.md`, `live-drill/originals/`(캡처 원본), `live-drill/RESUME.md` 전부 이 디렉토리 아래에 모이므로 디렉토리 단위 무시로 충분했다 — 파일 유형별로 쪼갤 이유가 없었다. `live-drill/originals/`와 `live-drill/report.html`에 임시 파일을 만들어 `git status`에 잡히지 않음을 확인했고, `git check-ignore -v`로 `docs/LIVE-DRILL-FORMALIZATION-PLAN.md`와 `.claude/skills/payment-live-drill/SKILL.md`가 무시되지 않음을 확인한 뒤 임시 파일을 정리했다.
 
 ---
 

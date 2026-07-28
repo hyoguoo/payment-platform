@@ -246,6 +246,9 @@ bin
 
 .archive
 
+# 라이브 실측 산출물 (리포트, 캡처 원본) — 저장소 밖 로컬 보관
+live-drill/
+
 # k6 benchmark results
 scripts/k6/results/
 
