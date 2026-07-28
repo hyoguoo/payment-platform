@@ -5,9 +5,10 @@
 ## 활성 작업
 
 - **주제**: 라이브 실측 체계 정식화
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1: 모의 벤더 시나리오 접두어 이관과 단위 테스트
 - **이슈/브랜치**: #128
-- **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md
+- **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 
 ## 재개 메모
 
