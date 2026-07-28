@@ -1,12 +1,8 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.admin.ProductCatalogPageInfo;
-import com.hyoguoo.paymentplatform.payment.application.port.out.ProductCatalogQueryPort;
-import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
-import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
-import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.ProductCatalogLookupResult;
+import com.hyoguoo.paymentplatform.payment.presentation.port.StockCatalogViewService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestParam;
  * <p>조회 전용이다. 기존 캐시 재동기화 REST({@link StockAdminController#resync})는
  * 동시성 위험 때문에 이 화면에 버튼으로 노출하지 않는다 — 조작 기능은 이번 범위 밖.
  */
-@Slf4j
 @Controller
 @RequestMapping("/admin/stocks")
 @RequiredArgsConstructor
@@ -37,12 +32,12 @@ public class StockViewController {
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_SIZE = 20;
 
-    private final ProductCatalogQueryPort productCatalogQueryPort;
+    private final StockCatalogViewService stockCatalogViewService;
 
     /**
-     * product-service 조회가 실패(장애·타임아웃 등 어떤 런타임 예외든)해도 이 메서드가 흡수하고
-     * 조회 불가 상태만 모델에 담는다 — 결제 상세 상세 화면(Task 8)의 부분 렌더와 같은 취지로,
-     * 상품 서비스가 죽어도 이 화면 자체는 500 으로 깨지지 않는다.
+     * 조회 실패 흡수와 조회 불가 폴백 판단은 {@link StockCatalogViewService}(입력 포트) 구현이
+     * 전담한다 — 이 메서드는 그 결과를 모델에 담는 일만 한다. 결제 상세 화면(Task 8)의
+     * 부분 렌더와 같은 취지로, 상품 서비스가 죽어도 이 화면 자체는 500 으로 깨지지 않는다.
      */
     @GetMapping
     public String listStocks(
@@ -50,15 +45,13 @@ public class StockViewController {
             @RequestParam(defaultValue = "" + DEFAULT_SIZE) int size,
             Model model
     ) {
-        try {
-            ProductCatalogPageInfo pageInfo = productCatalogQueryPort.getPage(page, size);
-            model.addAttribute("products", pageInfo);
-            model.addAttribute("unavailable", false);
-        } catch (RuntimeException e) {
-            LogFmt.warn(log, LogDomain.PRODUCT, EventType.PRODUCT_SERVICE_UNEXPECTED,
-                    () -> "page=" + page + " size=" + size + " error=" + e.getMessage());
+        ProductCatalogLookupResult result = stockCatalogViewService.getPage(page, size);
+        if (result.isUnavailable()) {
             model.addAttribute("unavailable", true);
+            return "admin/stock";
         }
+        model.addAttribute("products", result.getPage());
+        model.addAttribute("unavailable", false);
 
         return "admin/stock";
     }

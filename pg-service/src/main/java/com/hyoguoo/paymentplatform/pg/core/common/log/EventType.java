@@ -19,6 +19,8 @@ public enum EventType {
 
     PG_VENDOR_SUCCESS,
     PG_VENDOR_RETRY_SCHEDULED,
+    /** incrementAttempt 가드(종결 행)에 걸려 재시도 outbox INSERT + 발행을 하지 않은 경우. */
+    PG_VENDOR_RETRY_GUARD_BLOCKED,
     PG_VENDOR_DLQ,
     PG_VENDOR_DEFINITIVE_FAILURE,
     PG_VENDOR_DUPLICATE_HANDLED,

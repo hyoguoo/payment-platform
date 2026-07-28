@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.payment.presentation;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
@@ -11,13 +10,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PaymentEventResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptEntryInfo;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryInfo;
-import com.hyoguoo.paymentplatform.payment.application.port.out.PgAttemptHistoryPort;
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryLookupResult;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
-import com.hyoguoo.paymentplatform.payment.exception.PgAttemptHistoryServiceRetryableException;
-import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PgAttemptHistoryViewService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -29,6 +27,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+/**
+ * {@code PaymentAdminController} 의 시도 이력 카드 렌더링 테스트.
+ *
+ * <p>조회 실패 흡수와 조회 불가 폴백 판단은 {@link PgAttemptHistoryViewService}(입력 포트)
+ * 구현으로 옮겨갔다 — 이 테스트는 그 결과({@link PgAttemptHistoryLookupResult})를 컨트롤러가
+ * 모델에 올바르게 담는지만 검증한다. 예외 타입별(도메인 예외 vs 타임아웃) 흡수 로직 검증은
+ * {@code PgAttemptHistoryViewServiceImplTest} 가 담당한다.
+ */
 @WebMvcTest(PaymentAdminController.class)
 class PaymentAdminControllerAttemptHistoryTest {
 
@@ -45,14 +51,15 @@ class PaymentAdminControllerAttemptHistoryTest {
     private PaymentRecoveryAdminService paymentRecoveryAdminService;
 
     @MockitoBean
-    private PgAttemptHistoryPort pgAttemptHistoryPort;
+    private PgAttemptHistoryViewService pgAttemptHistoryViewService;
 
     @Test
-    @DisplayName("상세 조회는 pg 이력 조회가 성공하면 모델에 시도 이력을 담는다.")
+    @DisplayName("상세 조회는 시도 이력 조회 결과가 조회 가능이면 모델에 시도 이력을 담는다.")
     void 상세_이력_정상_조회시_모델에_이력_담김() throws Exception {
         // given
         givenEventDetail();
-        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.available(foundHistory()));
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
@@ -62,12 +69,12 @@ class PaymentAdminControllerAttemptHistoryTest {
     }
 
     @Test
-    @DisplayName("pg 이력 조회가 예외를 던져도 상세 화면(주문·상태 변경 이력)은 그대로 렌더된다.")
-    void 상세_pg_조회_실패시_상세_렌더_유지() throws Exception {
+    @DisplayName("시도 이력 조회가 조회 불가여도 상세 화면(주문·상태 변경 이력)은 그대로 렌더된다.")
+    void 상세_조회불가시_상세_렌더_유지() throws Exception {
         // given
         givenEventDetail();
-        willThrow(new IllegalStateException("unexpected pg response"))
-                .given(pgAttemptHistoryPort).getAttemptHistory(ORDER_ID);
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.unavailable());
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
@@ -78,32 +85,16 @@ class PaymentAdminControllerAttemptHistoryTest {
     }
 
     @Test
-    @DisplayName("pg 이력 조회가 예외를 던지면 이력 조회 불가 상태가 모델에 담긴다.")
-    void 상세_pg_조회_실패시_이력_조회불가_표시() throws Exception {
+    @DisplayName("시도 이력 조회가 조회 불가면 이력 조회 불가 상태가 모델에 담긴다.")
+    void 상세_조회불가시_이력_조회불가_표시() throws Exception {
         // given
         givenEventDetail();
-        willThrow(new IllegalStateException("unexpected pg response"))
-                .given(pgAttemptHistoryPort).getAttemptHistory(ORDER_ID);
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.unavailable());
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
                 .andExpect(status().isOk())
-                .andExpect(model().attribute("attemptHistoryUnavailable", true))
-                .andExpect(model().attributeDoesNotExist("attemptHistory"));
-    }
-
-    @Test
-    @DisplayName("pg 이력 조회가 재시도 가능(타임아웃) 예외를 던져도 상세 화면은 그대로 렌더되고 조회 불가로 표시된다.")
-    void 상세_pg_타임아웃시도_상세_렌더_유지() throws Exception {
-        // given
-        givenEventDetail();
-        willThrow(PgAttemptHistoryServiceRetryableException.of(PaymentErrorCode.PG_SERVICE_UNAVAILABLE))
-                .given(pgAttemptHistoryPort).getAttemptHistory(ORDER_ID);
-
-        // when / then
-        mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
-                .andExpect(status().isOk())
-                .andExpect(model().attributeExists("event"))
                 .andExpect(model().attribute("attemptHistoryUnavailable", true))
                 .andExpect(model().attributeDoesNotExist("attemptHistory"));
     }
@@ -111,17 +102,18 @@ class PaymentAdminControllerAttemptHistoryTest {
     @Test
     @DisplayName("이력 없음(pg 가 주문을 모름)과 조회 불가(pg 장애)는 모델에서 서로 다르게 표현된다.")
     void 상세_이력없음과_조회불가_구분() throws Exception {
-        // given: 이력 없음 — 정상 응답, found=false
+        // given: 이력 없음 — 조회는 가능했으나 found=false
         givenEventDetail();
-        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID))
-                .willReturn(PgAttemptHistoryInfo.builder()
-                        .orderId(ORDER_ID)
-                        .found(false)
-                        .finalStatus(null)
-                        .finalizedAt(null)
-                        .reasonCode(null)
-                        .attempts(List.of())
-                        .build());
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.available(
+                        PgAttemptHistoryInfo.builder()
+                                .orderId(ORDER_ID)
+                                .found(false)
+                                .finalStatus(null)
+                                .finalizedAt(null)
+                                .reasonCode(null)
+                                .attempts(List.of())
+                                .build()));
 
         // when / then: 이력 없음은 조회 불가가 아니다 — attemptHistory 는 존재하고 found=false
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
@@ -135,7 +127,8 @@ class PaymentAdminControllerAttemptHistoryTest {
     void 상세_최초수신_회차_미발행_아닌_최초수신_표기() throws Exception {
         // given
         givenEventDetail();
-        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.available(foundHistory()));
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
@@ -149,7 +142,8 @@ class PaymentAdminControllerAttemptHistoryTest {
     void 상세_이력_회차_상태_배지_세가지_구분_렌더() throws Exception {
         // given
         givenEventDetail();
-        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.available(foundHistory()));
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))
@@ -165,7 +159,8 @@ class PaymentAdminControllerAttemptHistoryTest {
         // given: foundHistory 의 4회차는 exhausted=true 이면서 normalAttempt=false(발행 시각이
         // 종결 시각 직후) 다 — exhausted 가 normalAttempt 보다 우선해야 함을 검증한다.
         givenEventDetail();
-        given(pgAttemptHistoryPort.getAttemptHistory(ORDER_ID)).willReturn(foundHistory());
+        given(pgAttemptHistoryViewService.getAttemptHistory(ORDER_ID))
+                .willReturn(PgAttemptHistoryLookupResult.available(foundHistory()));
 
         // when / then
         mockMvc.perform(get("/admin/payments/events/{eventId}", EVENT_ID))

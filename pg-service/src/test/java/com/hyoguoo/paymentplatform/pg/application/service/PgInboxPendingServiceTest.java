@@ -373,7 +373,8 @@ class PgInboxPendingServiceTest {
             }
 
             @Override
-            public void incrementAttempt(String orderId) {
+            public int incrementAttempt(String orderId) {
+                return 0;
             }
         }
 

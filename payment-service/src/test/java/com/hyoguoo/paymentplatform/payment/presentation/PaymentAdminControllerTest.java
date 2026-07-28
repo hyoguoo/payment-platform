@@ -11,12 +11,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.hyoguoo.paymentplatform.payment.application.port.out.PgAttemptHistoryPort;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PgAttemptHistoryViewService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +37,7 @@ class PaymentAdminControllerTest {
     private PaymentRecoveryAdminService paymentRecoveryAdminService;
 
     @MockitoBean
-    private PgAttemptHistoryPort pgAttemptHistoryPort;
+    private PgAttemptHistoryViewService pgAttemptHistoryViewService;
 
     @Test
     @DisplayName("resolve-quarantine POST 는 orderId·reason 을 유스케이스 포트로 위임하고 상세 화면으로 리다이렉트한다.")

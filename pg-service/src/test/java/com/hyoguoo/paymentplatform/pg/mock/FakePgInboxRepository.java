@@ -225,14 +225,19 @@ public class FakePgInboxRepository implements PgInboxRepository {
      *
      * <p>진행 중 상태 가드 — 프로덕션({@code JpaPgInboxRepository.incrementAttempt})과 동일하게
      * IN_PROGRESS 행만 증가시킨다. 종결(APPROVED/FAILED/QUARANTINED) 행은 no-op — 여기서
-     * 다르게 동작하면 상위 테스트가 거짓 GREEN 을 만든다.
+     * 다르게 동작하면 상위 테스트가 거짓 GREEN 을 만든다. 반영 행 수(1 또는 0)를 그대로
+     * 반환해 프로덕션({@code JpaPgInboxRepository.incrementAttempt})과 동일한 반환 계약을 지킨다.
+     *
+     * @return 1(정상 증가) 또는 0(가드 발동, 이미 종결)
      */
     @Override
-    public void incrementAttempt(String orderId) {
+    public int incrementAttempt(String orderId) {
+        AtomicBoolean updated = new AtomicBoolean(false);
         store.computeIfPresent(orderId, (key, current) -> {
             if (current.getStatus() != PgInboxStatus.IN_PROGRESS) {
                 return current; // 종결 행 — no-op
             }
+            updated.set(true);
             return PgInbox.ofWithId(
                     current.getId(),
                     current.getOrderId(),
@@ -247,6 +252,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
                     current.getAttempt() + 1
             );
         });
+        return updated.get() ? 1 : 0;
     }
 
     // --- 검증 헬퍼 ---

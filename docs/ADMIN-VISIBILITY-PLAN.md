@@ -615,4 +615,28 @@ pg-service 최초의 HTTP 진입점이다.
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+ship 리뷰 1라운드 — reviewer / domain-expert 병렬. critical 0 / major 2 / minor 2, **전건 채택**.
+
+| # | 등급 | finding | 처리 | 사유 |
+|---|---|---|---|---|
+| 1 | major | payment-service `PaymentAdminController` · `StockViewController` 가 `application.port.out` 을 직접 호출 — `docs/context/ARCHITECTURE.md` 의 "presentation 은 입력 포트만 호출" 규칙 위반. 같은 PR 의 pg-service `PgAttemptHistoryController` 는 인바운드 포트를 거쳐 PR 내부 일관성도 깨짐 | 채택 | 명문 규칙이고 저장소 전체에서 이 두 파일만 예외였다. 얇은 입력 포트를 사이에 넣고 조회 실패 폴백 판단을 그쪽으로 옮긴다 |
+| 2 | major | 두 워커(self-loop 컨슈머 + 좀비 폴러)가 같은 주문의 진행 중 행을 동시에 재시도 분기 태우면 같은 회차 번호로 각각 outbox 행이 생겨 화면에 회차가 중복 표시될 수 있는데, 안내 문구가 이를 알리지 않음 | 채택 | 이 화면은 격리 결제 종결 판단 근거다. 발행 시각 근사값·미실행 의미는 이미 문구로 밝히고 있으니 같은 자리에 회차 중복 가능성을 더한다. 자동 판정(격리 종결·재주입 유스케이스)은 이 값을 읽지 않아 오염되지 않는다 |
+| 3 | minor | `PaymentAdminController.addAttemptHistory` 의 try 범위가 포트 호출뿐 아니라 로컬 뷰 변환까지 감싸, pg 장애와 payment 자체 매핑 버그가 로그에서 구분되지 않음. 예외 타입도 로그에 없음 | 채택 | 진단성 개선 비용이 낮다. try 를 포트 호출로 좁히고 예외 타입을 로그에 남긴다 |
+| 4 | minor | `PgVendorCallService.insertRetryOutbox` 가 outbox 행을 먼저 INSERT 한 뒤 `incrementAttempt` 를 부르고, `PgInboxRepositoryImpl.incrementAttempt` 가 `void` 라 반영 행 수를 버린다 — 가드 발동(이미 종결) 시에도 재시도 행 INSERT + 발행 이벤트가 그대로 커밋돼 종결된 주문에 stray 메시지가 생긴다 | 채택 | stray 행은 재발행 경로가 멱등하게 흡수하고 화면도 미실행으로 거르지만, 원천 차단이 낫다. 반영 행 수를 살려 0 이면 INSERT·발행을 하지 않는다. **승인 경로 재변경이므로 재시도 정상 경로 회귀 확인이 필수** |
+
+### 수정 결과 (ship 리뷰 1라운드, implementer)
+
+- **finding 1** — `PaymentAdminController`/`StockViewController` 가 outbound 포트(`PgAttemptHistoryPort`/`ProductCatalogQueryPort`)를 직접 물던 것을 걷어내고, 저장소 관례(`presentation/port/` 입력 포트 + `application/` 구현)를 따르는 얇은 입력 포트를 사이에 뒀다.
+  - `payment/presentation/port/PgAttemptHistoryViewService.java` + `StockCatalogViewService.java` 신규(입력 포트) — 각각 `getAttemptHistory(orderId)` / `getPage(page, size)`.
+  - `payment/application/PgAttemptHistoryViewServiceImpl.java` + `StockCatalogViewServiceImpl.java` 신규 — outbound 포트를 호출해 조회 실패를 흡수하고 폴백 판단을 전담한다. `AdminPaymentServiceImpl`/`PaymentRecoveryAdminServiceImpl` 과 같은 `application` 패키지 배치.
+  - `payment/application/dto/admin/PgAttemptHistoryLookupResult.java` + `ProductCatalogLookupResult.java` 신규 — 조회 가능(이력 있음/없음 포함)과 조회 불가를 구분하는 결과 DTO. `available(...)`/`unavailable()` 정적 팩토리.
+  - 두 컨트롤러는 이제 입력 포트만 주입받아 결과를 모델에 담는 일만 한다 — 조회 실패 흡수·폴백 판단 코드가 컨트롤러에서 사라졌다.
+  - 세 상태(이력 있음/이력 없음/조회 불가) + 재고 화면 두 상태(성공/조회 불가) 구분은 그대로 유지 — `PaymentAdminControllerAttemptHistoryTest`/`StockViewControllerTest` 를 새 입력 포트를 모킹하도록 갱신해 재확인했고, 별도로 놓친 `PaymentAdminControllerTest`(격리 종결/DLQ 재주입 POST 테스트)도 같은 이유로 갱신했다.
+  - 신규 단위 테스트 `PgAttemptHistoryViewServiceImplTest`(3건) + `StockCatalogViewServiceImplTest`(2건) — 조회 성공 시 결과 그대로 전달, 도메인 예외·재시도 가능 예외 모두 조회 불가로 흡수됨을 확인.
+- **finding 2** — `payment-event-detail.html` 시도 이력 카드 안내 문단에 "Attempt No. 는 참고용 표시이며, self-loop 컨슈머와 좀비 폴러 두 워커가 같은 주문을 동시에 재시도 분기에 태우면 같은 회차 번호로 각각 행이 생겨 중복 표시될 수 있습니다." 를 추가. 발행 시각 근사값·미실행 의미·소진 우선 표시와 같은 문단에 이어붙였다. 코드 로직 변경 없음.
+- **finding 3** — finding 1로 흡수 로직이 옮겨간 `PgAttemptHistoryViewServiceImpl`/`StockCatalogViewServiceImpl` 에서 try 블록을 outbound 포트 호출 자체로 좁혔다(뷰 변환은 애초에 이 계층이 하지 않는다 — presentation 의 `*ViewResponse.from` 변환은 컨트롤러가 결과를 모델에 담을 때 수행하며 try 밖이다). 로그에 `e.getClass().getSimpleName()` 으로 예외 타입을 남겨 pg-service/product-service 조회 실패와 자체 매핑 버그를 로그에서 구분할 수 있게 했다.
+- **finding 4** — `PgInboxRepository.incrementAttempt` 시그니처를 `void` → `int`(반영 행 수)로 변경. `PgInboxRepositoryImpl`/`FakePgInboxRepository` 를 같은 계약으로 맞췄고, `PgInboxPendingServiceTest` 의 익명 구현체도 시그니처를 맞춰 `0` 을 반환하도록 갱신했다.
+  - `PgVendorCallService.insertRetryOutbox` 순서를 반전 — `incrementAttempt` 를 먼저 호출해 반영 행 수를 확인하고, `0`(가드 발동, 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 하지 않고 반환한다. 같은 TX_B 안이라 원자성은 유지된다. 가드 발동 시 `PG_VENDOR_RETRY_GUARD_BLOCKED`(신규 `EventType`) 로 경고 로그를 남긴다.
+  - 신규 테스트 `PgVendorCallServiceTest.applyOutcome_retryable_guardBlocked_noOutboxNoEvent` — inbox 가 이미 APPROVED 로 종결된 상태에서 Retryable outcome 이 들어와도 outbox 행이 생기지 않고(`outboxRepository.findAll()` 이 빈 목록), attempt 도 증가하지 않으며, 발행 이벤트도 없음을 확인.
+  - 정상 경로 회귀 확인: `PgVendorCallServiceTest`(재시도 attempt 1→2 누적 검증 포함) 전건 pass, `PgSelfLoopRetryExhaustionIntegrationTest`(4회 self-loop 소진→QUARANTINED, 100초 타임아웃 라이브 시퀀스) pass, `PgInboxAttemptGuardIntegrationTest` 7건 pass — 순서 반전이 정상 재시도 경로를 막지 않음을 확인했다.
+- 공통 확인: `./gradlew :pg-service:test`(351건, finding 4 신규 1건 포함) · `:pg-service:integrationTest`(16건, 변경 없음) · `:payment-service:test`(539건, finding 1 신규 5건 포함) · `:product-service:test`(변경 없음) 전건 pass. 3서비스 `checkstyleMain`/`checkstyleTest`/`spotbugsMain`/`spotbugsTest` 전건 통과.
