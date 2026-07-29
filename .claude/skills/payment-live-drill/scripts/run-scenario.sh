@@ -62,7 +62,7 @@ checkout_response=$(curl -s -X POST "$BASE_URL/api/v1/payments/checkout" \
     -d "{\"userId\":$user_id,\"gatewayType\":\"TOSS\",\"orderedProductList\":[{\"productId\":$product_id,\"quantity\":1}]}")
 echo "$checkout_response"
 
-order_id=$(echo "$checkout_response" | python3 -c "import json,sys;print(json.load(sys.stdin)['data']['orderId'])")
+order_id=$(echo "$checkout_response" | python3 -c "import json,sys;print(json.load(sys.stdin)['data']['orderId'])" 2>/dev/null || echo "")
 if [ -z "$order_id" ]; then
     echo "checkout 응답에서 orderId 를 못 읽었다 — 위 응답을 확인한다" >&2
     exit 1

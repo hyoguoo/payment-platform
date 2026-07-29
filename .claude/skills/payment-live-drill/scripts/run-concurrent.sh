@@ -60,6 +60,24 @@ now_ms() {
     python3 -c "import time;print(int(time.time()*1000))"
 }
 
+# set -euo pipefail 은 백그라운드 서브셸 안에서도 적용된다 — 요청이 비정상
+# 종료하면 결과를 파일에 적기 전에 서브셸이 죽고, wait 는 그 실패를 부모에
+# 전파하지 않는다. 그러면 결과 파일에 줄이 빠진 채로 집계가 그대로 진행돼
+# "요청이 안 나간 것"과 "애플리케이션이 거절한 것"을 구분할 수 없다.
+# 집계 직전에 줄 수를 기대 건수와 대조해, 유실이 있으면 그 집계를 판정
+# 근거로 쓸 수 없다는 사실을 눈에 띄게 남긴다.
+check_result_completeness() {
+    results_file="$1"
+    expected="$2"
+    actual=$(wc -l < "$results_file" | tr -d ' ')
+    if [ "$actual" -ne "$expected" ]; then
+        missing=$((expected - actual))
+        echo
+        echo "!!! 경고: 결과 유실 — 기대 ${expected}건 중 ${actual}건만 기록됨 (${missing}건 유실) !!!" >&2
+        echo "!!! 백그라운드 서브셸이 응답 기록 전에 죽었을 수 있다 — 이 실행의 집계는 판정 근거로 쓸 수 없다 !!!" >&2
+    fi
+}
+
 run_stock_contention() {
     orders_file="$WORK_DIR/orders.txt"
     results_file="$WORK_DIR/results.txt"
@@ -100,6 +118,7 @@ run_stock_contention() {
     done
     wait
 
+    check_result_completeness "$results_file" "${#orders[@]}"
     summarize_stock_contention "$results_file"
 }
 
@@ -152,6 +171,7 @@ run_duplicate_payment() {
     done
     wait
 
+    check_result_completeness "$results_file" 2
     summarize_duplicate_payment "$results_file"
 }
 
