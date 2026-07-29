@@ -567,12 +567,80 @@
       "type": "stat"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "선차감 재고 미회수 누적 건수(stock_retention_unrecovered_total). 확정 TX 실패 시 선차감된 재고를 보상하지 않고 유지하는 설계의 침묵 손실 지표 — 0이 아니면 발생 신호. 초기화 없이 쌓이는 카운터이므로 rate/increase 없이 누적 원값 그대로 노출.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "orange",
+            "mode": "fixed"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short",
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "미회수 없음"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 304,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(stock_retention_unrecovered_total)",
+          "legendFormat": "stock_retention_unrecovered_total",
+          "refId": "A"
+        }
+      ],
+      "title": "재고 선차감 미회수 누적 건수 (stock_retention_unrecovered_total)",
+      "type": "stat"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "id": 1003,
       "title": "벤더 latency",
@@ -600,7 +668,7 @@
         "h": 8,
         "w": 16,
         "x": 0,
-        "y": 37
+        "y": 45
       },
       "id": 401,
       "options": {
@@ -660,7 +728,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 37
+        "y": 45
       },
       "id": 402,
       "options": {
@@ -691,7 +759,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "id": 1004,
       "title": "DLQ",
@@ -733,7 +801,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 46
+        "y": 54
       },
       "id": 501,
       "options": {
@@ -810,7 +878,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 46
+        "y": 54
       },
       "id": 502,
       "options": {
@@ -846,7 +914,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 62
       },
       "id": 1005,
       "title": "Outbox",
@@ -889,7 +957,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 55
+        "y": 63
       },
       "id": 601,
       "options": {
@@ -949,7 +1017,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 55
+        "y": 63
       },
       "id": 602,
       "options": {
@@ -1009,7 +1077,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 55
+        "y": 63
       },
       "id": 603,
       "options": {
@@ -1055,7 +1123,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 55
+        "y": 63
       },
       "id": 604,
       "options": {
@@ -1125,9 +1193,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
+        "w": 12,
         "x": 0,
-        "y": 63
+        "y": 71
       },
       "id": 605,
       "options": {
@@ -1185,9 +1253,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 8,
-        "y": 63
+        "w": 12,
+        "x": 12,
+        "y": 71
       },
       "id": 606,
       "options": {
@@ -1211,70 +1279,12 @@
       "type": "gauge"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "description": "pg_outbox attempt_count 분포(p50/p95/p99). p99>1이면 재시도 다발.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "fillOpacity": 10,
-            "lineWidth": 1
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 63
-      },
-      "id": 607,
-      "options": {
-        "bucketOffset": 0,
-        "fillOpacity": 80,
-        "gradientMode": "none",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
-          "legendFormat": "p50",
-          "refId": "A"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
-          "legendFormat": "p95",
-          "refId": "B"
-        },
-        {
-          "expr": "histogram_quantile(0.99, sum(rate(pg_outbox_attempt_count_bucket[5m])) by (le))",
-          "legendFormat": "p99",
-          "refId": "C"
-        }
-      ],
-      "title": "pg_outbox.attempt_count 분포 (p50/p95/p99)",
-      "type": "histogram"
-    },
-    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 79
       },
       "id": 1006,
       "title": "Cleanup 워커",
@@ -1302,7 +1312,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 72
+        "y": 80
       },
       "id": 701,
       "options": {
@@ -1355,7 +1365,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 72
+        "y": 80
       },
       "id": 702,
       "options": {
@@ -1392,7 +1402,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 88
       },
       "id": 1007,
       "title": "Kafka TX 코디네이터 (D15)",
@@ -1440,7 +1450,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 81
+        "y": 89
       },
       "id": 801,
       "options": {
@@ -1487,7 +1497,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 81
+        "y": 89
       },
       "id": 802,
       "options": {

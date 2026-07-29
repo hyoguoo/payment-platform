@@ -54,7 +54,9 @@ while IFS=$'\t' read -r PRODUCT_ID QUANTITY; do
     if [ -z "${PRODUCT_ID}" ]; then
         continue
     fi
-    docker exec -i "${REDIS_CONTAINER}" redis-cli SET \
+    # -i 를 쓰지 않는다 — 루프 안에서 stdin 을 열면 herestring 의 남은 줄을 먹어
+    # 첫 상품만 시드되고 나머지가 조용히 누락된다.
+    docker exec "${REDIS_CONTAINER}" redis-cli SET \
         "${REDIS_KEY_PREFIX}${PRODUCT_ID}" "${QUANTITY}" >/dev/null
     COUNT=$((COUNT + 1))
 done <<< "${ROWS}"

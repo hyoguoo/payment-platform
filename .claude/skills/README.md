@@ -26,6 +26,7 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 | `wiki-access` | `<project>.wiki/` 별도 git 저장소 자동 탐색 + Read/Grep/Edit 접근 |
 | `portfolio-access` | 포트폴리오 사이트(별도 blog 저장소의 `public/payment-platform-portfolio/index.html`) 자동 탐색 + 접근 |
 | `explain-diff-html` | 코드 변경(diff/브랜치/PR)을 배경–직관–코드–퀴즈 4섹션 인터랙티브 HTML 페이지로 설명 — ship 리뷰 통과 직후(A5) 자동 호출, 산출물은 `.archive/explanations/` |
+| `payment-live-drill` | 스택을 실제로 구동해 성공·실패·재시도·격리·인프라 장애를 재현하고 화면을 2배 해상도로 캡처, 결과 리포트(HTML)까지 작성 — 산출물은 `live-drill/` |
 
 ## 서브에이전트 (`.claude/agents/` — 유일한 정의처)
 

@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-27 (ADMIN-VISIBILITY discuss — 섹션 D 신설 후 2건 등재: `[PG-WORKER-SPAN-ORDER-ID]`(재시도 워커가 추적 문맥을 복원만 해 원격 구간에 속성이 조용히 버려짐 — 주문 단위 추적 검색 불가), `[PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP]`(좀비 타임아웃 60s < 최대 재시도 백오프 67.5s 겹침 — 벤더 호출 없는 발행 행 발생, `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 와 함께 판단 필요)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 10 — 섹션 E 에 1건 추가 등재: `[CHECKOUT-DUPLICATE-FLAG-DROPPED]`(체크아웃 응답 DTO 매퍼가 `isDuplicate` 를 누락 — 실제 중복 신호는 HTTP 상태 코드뿐, 라이브 실측 장면 7 판정 기준을 이에 맞춰 정정)). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 섹션 E 신설 후 2건 등재: `[FAKE-PG-BOOT-ENV-GUARD]`(모의 벤더 로드 시 환경 조합 검사 가드 부재 — 부팅 차단은 어떤 환경을 정상으로 볼지 정하는 배포 환경 논의가 선행돼야 해 이번 범위 밖), `[STOCK-RETENTION-DUPLICATE-CONFIRM-FALSE-SIGNAL]`(같은 주문 confirm 동시 재호출이 유니크 제약 위반으로 남기는 가짜 재고 미회수 신호 — 정상 중복 차단인데도 확정 실패와 같은 신호로 묶여 관측 정확성 저하)). 이전: 2026-07-27 (ADMIN-VISIBILITY discuss — 섹션 D 신설 후 2건 등재: `[PG-WORKER-SPAN-ORDER-ID]`(재시도 워커가 추적 문맥을 복원만 해 원격 구간에 속성이 조용히 버려짐 — 주문 단위 추적 검색 불가), `[PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP]`(좀비 타임아웃 60s < 최대 재시도 백오프 67.5s 겹침 — 벤더 호출 없는 발행 행 발생, `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 와 함께 판단 필요)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -65,6 +65,28 @@
 - **현황**: `in-progress-timeout-ms: 60000`(`pg-service/src/main/resources/application.yml:96`)인데 마지막 재시도의 백오프는 기준 54초에 지터 ±25% 로 40.5~67.5초 범위다(`RetryPolicy.java:29-33,63-68`). 백오프가 60초를 넘는 경우 좀비 폴러가 예약된 재시도보다 먼저 깨어나 벤더를 다시 호출한다. `resolveAttempt` 는 항상 `inbox.getAttempt()` 를 읽으므로(`PgInboxProcessor.java:95,135`) 같은 회차로 호출되고, 재시도 한도가 소진된 상태면 그 자리에서 격리로 전이된다. 이후 원래 예약돼 있던 재시도 행은 relay 가 inbox 상태를 보지 않고 `available_at <= now` 만으로 발행해 `processed_at` 을 채우며(`PgOutboxRelayService.java:59-79`), 소비 측은 종결 상태를 발견하고 흔적 없이 건너뛴다(`PgInboxImmediateWorker.java:159-163` TERMINAL_SKIP).
 - **영향**: 실제 벤더 호출이 없는 발행 행이 남아, outbox 를 이력으로 읽는 화면이 "종결 이후에 시도가 하나 더 있었다"는 유령 항목을 시간 역전된 순서로 보여줄 수 있다. `ADMIN-VISIBILITY` 는 이력 조립 단계에서 종결 시각 기준 라벨링으로 **표시를 교정**하지만 겹침 자체는 남는다. 관련: `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 의 off-by-one 을 정정하면 최대 백오프가 18초로 내려가 겹침이 사라진다.
 - **처방**: 좀비 타임아웃을 최대 백오프보다 여유 있게 올리는 방향과 백오프 off-by-one 정정으로 최대값을 낮추는 방향 중 어느 쪽이 의도인지 확인 필요. 두 항목을 함께 판단해야 한다.
+
+### E. LIVE-DRILL-FORMALIZATION 후속 (라이브 실측 체계 정식화, 2026-07-29)
+
+> 아래 3건은 `LIVE-DRILL-FORMALIZATION` 에서 의도적으로 범위 밖으로 뺀 후속이다. 앞 2건 근거: CONCERNS.md L-18. 마지막 1건은 Task 10 스크립트 작성 중 발견.
+
+#### [FAKE-PG-BOOT-ENV-GUARD] — 모의 벤더 로드 시 환경 조합 검사 가드 부재
+
+- **현황**: 모의 벤더가 `pg.gateway.type=fake` 로 로드될 때 그 환경이 허용된 조합인지 검사하는 코드가 없다. `warnActivation()`(`FakePgGatewayStrategy.java:132-142`)은 경고 배너 로그만 남기고 기동을 막지 않는다.
+- **영향**: 스모크 구동용 환경변수(`pg-service/src/main/resources/application-docker.yml:21` `${PG_GATEWAY_TYPE:toss}`)가 배포 파이프라인에 남으면 실 승인 없이 결제가 완료된다(CONCERNS.md L-18).
+- **처방**: 부팅 시 허용된 환경 조합(프로파일/환경변수 조합)인지 검사해 아니면 기동을 멈추는 가드 도입. 이번 작업에서 하지 않은 이유 — 어떤 환경을 정상으로 볼지 먼저 정해야 하고, 그것은 배포 환경 논의라 범위를 넘는다.
+
+#### [STOCK-RETENTION-DUPLICATE-CONFIRM-FALSE-SIGNAL] — 승인 동시 재호출이 남기는 가짜 재고 미회수 신호
+
+- **현황**: 같은 주문으로 confirm 을 **동시에** 두 번 보내면, 둘 다 `PaymentTransactionCoordinator.decrementStock`(`PaymentTransactionCoordinator.java:42-55`)의 Redis atomic DECR 에서 이미 처리됨(`ALREADY_DONE`) 판정을 통과해 SUCCESS 로 흐른다. 이후 각자 `executeConfirmTx`(`PaymentTransactionCoordinator.java:74-85`) 안에서 `PaymentOutboxUseCase.createPendingRecord`(`PaymentOutboxUseCase.java:30-34`)로 발행 행을 만들려 하고, `payment_outbox.order_id` 유니크 제약(`uk_payment_outbox_order_id`, `V1__payment_schema.sql:70`)에 진 쪽이 예외를 맞는다. 그 예외는 `RuntimeException` 이라 `OutboxAsyncConfirmService.executeConfirmTxWithStockRetention` 의 `catch (RuntimeException txException)`(`OutboxAsyncConfirmService.java:97`)이 원인을 구분하지 않고 받아, `stockRetentionMetrics.record()` + `STOCK_RETENTION_UNRECOVERED` 로그(`OutboxAsyncConfirmService.java:98-102`)로 재고 미회수 신호를 남긴다.
+- **영향**: 이긴 쪽 요청은 정상 처리돼 실제 재고 누수는 없는데도, 진 쪽의 유니크 제약 위반이 같은 신호로 묶여 재고 미회수 경보가 남는다. 그 catch 는 원래 "확정 실패 시 재고를 되돌리지 않는다"는 정책을 가시화하려는 것인데, 중복 차단으로 진 요청까지 같은 신호로 묶어 관측 정확성을 떨어뜨린다. 순차 재호출은 첫 호출에서 이미 outbox 행이 만들어져 있어 예외 없이 흡수되므로 해당하지 않는다 — 동시 요청일 때만 발생한다.
+- **처방**: 유니크 제약 위반(예: `DataIntegrityViolationException`)과 그 외 원인을 구분해, 전자는 재고 미회수 신호에서 제외하는 방향. 별도 토픽 여지.
+
+#### [CHECKOUT-DUPLICATE-FLAG-DROPPED] — 체크아웃 응답 DTO 에서 중복 여부 필드가 빠짐
+
+- **현황**: `CheckoutResult`(application 계층)는 `isDuplicate` 를 정확히 채운다(`PaymentCheckoutServiceImpl.checkout`). 하지만 `PaymentPresentationMapper.toCheckoutResponse`(`PaymentPresentationMapper.java:30-35`)가 이를 `CheckoutResponse`(presentation DTO)로 옮기지 않아, 응답 JSON에는 `orderId`/`totalAmount`만 남고 중복 여부가 사라진다. 유일하게 밖으로 드러나는 신호는 `PaymentController.checkout`(`PaymentController.java:45-49`)이 `isDuplicate()` 로 분기하는 HTTP 상태 코드(신규 201 / 중복 200)뿐이다.
+- **영향**: 클라이언트가 응답 바디만 보고 중복 여부를 판단할 방법이 없다 — 상태 코드까지 봐야 한다. 라이브 실측 장면 7(중복 결제 차단, `references/scenarios.md`)의 판정 기준도 이 상태 코드로 정정했다.
+- **처방**: `CheckoutResponse` 에 `duplicate` 필드를 추가하고 매퍼에서 채울지, 상태 코드만으로 충분하다고 볼지 결정 필요. 별도 토픽 여지.
 
 ---
 

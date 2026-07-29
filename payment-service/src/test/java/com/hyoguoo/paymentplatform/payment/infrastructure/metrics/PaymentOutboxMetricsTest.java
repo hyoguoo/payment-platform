@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -73,6 +74,37 @@ class PaymentOutboxMetricsTest {
         assertThat(pendingGauge.value()).isEqualTo(2.0);
     }
 
+    @Test
+    @DisplayName("refresh - 대기 행이 없어도 attempt_count_histogram 지표가 등록된다")
+    void refresh_대기행_없어도_분포지표가_등록됨() {
+        // when
+        metrics.refresh();
+
+        // then
+        DistributionSummary summary =
+                meterRegistry.find(PaymentOutboxMetrics.ATTEMPT_COUNT_HISTOGRAM).summary();
+        assertThat(summary).isNotNull();
+        assertThat(summary.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("refresh - 대기 행이 있으면 retryCount 회차가 histogram에 기록된다")
+    void refresh_대기행_있으면_회차가_기록됨() {
+        // given
+        fakeRepo.addOutbox(retryingOutbox("order-001", 2, FIXED_INSTANT.minus(Duration.ofSeconds(30))));
+        fakeRepo.addOutbox(retryingOutbox("order-002", 3, FIXED_INSTANT.minus(Duration.ofSeconds(60))));
+
+        // when
+        metrics.refresh();
+
+        // then
+        DistributionSummary summary =
+                meterRegistry.find(PaymentOutboxMetrics.ATTEMPT_COUNT_HISTOGRAM).summary();
+        assertThat(summary).isNotNull();
+        assertThat(summary.count()).isEqualTo(2);
+        assertThat(summary.totalAmount()).isEqualTo(5.0);
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // helpers
     // ──────────────────────────────────────────────────────────────────────────
@@ -84,6 +116,19 @@ class PaymentOutboxMetricsTest {
                 .status(PaymentOutboxStatus.PENDING)
                 .retryCount(0)
                 .nextRetryAt(nextRetryAt)
+                .inFlightAt(null)
+                .createdAt(createdAt)
+                .updatedAt(createdAt)
+                .allArgsBuild();
+    }
+
+    private PaymentOutbox retryingOutbox(String orderId, int retryCount, Instant createdAt) {
+        return PaymentOutbox.allArgsBuilder()
+                .id(null)
+                .orderId(orderId)
+                .status(PaymentOutboxStatus.PENDING)
+                .retryCount(retryCount)
+                .nextRetryAt(null)
                 .inFlightAt(null)
                 .createdAt(createdAt)
                 .updatedAt(createdAt)
