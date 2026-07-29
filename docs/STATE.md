@@ -5,8 +5,7 @@
 ## 활성 작업
 
 - **주제**: 라이브 실측 체계 정식화
-- **단계**: execute
-- **활성 태스크**: Task 14: 실측 브랜치 대조 후 폐기
+- **단계**: ship
 - **이슈/브랜치**: #128
 - **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
 
