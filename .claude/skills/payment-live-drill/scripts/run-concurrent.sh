@@ -106,8 +106,9 @@ run_stock_contention() {
 summarize_stock_contention() {
     results_file="$1"
     total=$(wc -l < "$results_file" | tr -d ' ')
+    # 재고 부족 거절은 400 이다(E03013). 409 가 아니다 — 실측에서 확인했다.
     success=$(awk '$2==202' "$results_file" | wc -l | tr -d ' ')
-    rejected=$(awk '$2==409' "$results_file" | wc -l | tr -d ' ')
+    rejected=$(awk '$2==400' "$results_file" | wc -l | tr -d ' ')
     other=$((total - success - rejected))
     first_ms=$(awk '{print $1}' "$results_file" | sort -n | head -1)
     last_ms=$(awk '{print $1}' "$results_file" | sort -n | tail -1)
@@ -120,8 +121,15 @@ summarize_stock_contention() {
     echo "=== 승인 응답 집계 ==="
     echo "총 요청: $total"
     echo "성공(202): $success"
-    echo "거절(409): $rejected"
+    echo "거절(400, 재고 부족): $rejected"
     echo "기타: $other"
+    # 기대에서 벗어난 응답이 있으면 무엇이었는지 바로 드러나야 한다 — "기타" 숫자만
+    # 보고는 원인을 좇을 수 없다.
+    if [ "$other" -gt 0 ]; then
+        echo
+        echo "--- 기타 응답 코드별 분포 ---"
+        awk '$2!=202 && $2!=400 {print $2}' "$results_file" | sort | uniq -c | sort -rn
+    fi
 }
 
 run_duplicate_payment() {
