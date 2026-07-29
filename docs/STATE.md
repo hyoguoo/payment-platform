@@ -4,16 +4,13 @@
 
 ## 활성 작업
 
-- **주제**: 라이브 실측 체계 정식화
-- **단계**: ship
-- **이슈/브랜치**: #128
-- **파일**: docs/topics/LIVE-DRILL-FORMALIZATION.md / docs/LIVE-DRILL-FORMALIZATION-PLAN.md
+- **주제**: 없음 (idle)
 
 ## 재개 메모
 
 ## 최근 완료
 
+- **LIVE-DRILL-FORMALIZATION** (2026-07-29) — docs/archive/live-drill-formalization/COMPLETION-BRIEFING.md
 - **ADMIN-VISIBILITY** (2026-07-28) — docs/archive/admin-visibility/COMPLETION-BRIEFING.md
-- **DLQ-QUARANTINE-RECOVERY** (2026-07-11) — docs/archive/dlq-quarantine-recovery/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

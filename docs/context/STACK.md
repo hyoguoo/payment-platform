@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -85,6 +85,8 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 
 **장애 주입 드릴 (Toxiproxy, 전용 프로파일)**: `docker/docker-compose.drill.yml`(+`toxiproxy.json`) override — 평상시 미기동, drill 기동 시에만 적용. kafka PROXY 리스너(9094) 추가 광고 + payment-service bootstrap 을 `toxiproxy:9094` 로 우회해 latency toxic 주입(admin API 8474). 단일 broker + payment 가 `commands.confirm` producer 겸 consumer 라 전역 지연이 produce/fetch 대칭 저하 → consumer-only lag 비대칭 미실현(피크 ~150 ≪ 임계)·EOS commit timeout 미발화가 구조적 한계 → 코디네이터/EOS 라이브 결정적 발화는 promtool + 통합테스트로 격하(`scripts/smoke/alert-firing-*.sh`, 가이드 `docs/smoke/alert-firing-check.md`). `KafkaBrokerUnavailable`·`DlqTopicOffsetRising` 는 라이브 발화 실측됨.
 
+**라이브 검증 (모의 벤더 전 구간 구동)**: 결제 성공·실패와 보상·재시도 소진과 격리·자가 회복·재고 경합·중복 결제 차단·인프라 장애를 실제 스택에서 일으켜 화면과 대조하는 절차. 진입점은 `payment-live-drill` 스킬(`.claude/skills/payment-live-drill/`)이며 장면 정의·캡처 방식·구동 스크립트가 모두 그 안에 있다. 장면마다 기대 결과를 먼저 정의하고 실행 결과와 대조해 판정한다. 캡처용 관측 도구 익명 조회 override 는 `docker/docker-compose.live-drill.yml`(평상시 미적용, 검증 시에만 grafana 재기동에 얹는다). 리포트와 캡처 원본은 저장소 밖 `live-drill/`(`.gitignore`)에 남아 코드 이력에 섞이지 않는다.
+
 ## DB 마이그레이션 (Flyway)
 
 스키마 위치가 두 패턴 — **payment/pg 는 `db/migration/`**(단일, seed 없음), **product/user 는 `db/schema/` + `db/seed/`** 분리(profile 별 `locations` 로 `docker` 프로필에서 seed 차단).
@@ -120,6 +122,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 | `./gradlew :<svc>:integrationTest` | `@Tag("integration")` 만 |
 | `./scripts/compose-up.sh` | docker compose 전체 스택 기동 |
 | `./scripts/smoke/infra-healthcheck.sh` | 인프라 + 서비스 살아있음 검사 |
+| `./scripts/seed-stock.sh` | product RDB 재고를 redis-stock 선차감 캐시에 정렬 (기동 직후 1회 가정 — 운영 중 호출은 진행 중 결제의 차감분을 되돌릴 수 있다) |
 
 ## 정적 분석 도구
 
