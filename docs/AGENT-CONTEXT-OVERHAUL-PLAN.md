@@ -88,7 +88,7 @@ flowchart LR
 - [x] Task 11: 문체 규칙 사본 제거와 검수 축소
 - [x] Task 12: 브리핑 원칙 완화
 - [x] Task 13: 워크플로우 스킬 dispatch 정리
-- [ ] Task 14: 후속 위임 항목 기록
+- [x] Task 14: 후속 위임 항목 기록
 - [ ] Task 15: 메모리 정리
 - [ ] Task 16: 검사 스크립트 — 참조·구조 판정
 - [ ] Task 17: 검사 스크립트 — 중복·다이어그램 판정과 최종 스캔
@@ -505,7 +505,18 @@ flowchart LR
 - 최종 갱신 시점이 동기화됨
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/context/TODOS.md`에 새 섹션 F(`AGENT-CONTEXT-OVERHAUL 후속`)를 신설하고 4건을 등재했다.
+>
+> - `[REVIEWER-EFFORT-DOWNGRADE-RECHECK]` — reviewer effort 하향(`xhigh`→`high`) 원복 조건 재확인. `docs/context/CONCERNS.md` C-11(근거·사각·원복 조건)로 연결하고, 적용 후 첫 도메인 인접 토픽에서 Domain Expert 사후 배석 라운드의 critical·major 도메인 finding 재발견 여부를 대조하도록 처방을 남겼다.
+> - `[AGENT-DOCS-STATIC-ANALYSIS]` — `var`·`@Data`·null 반환·`catch (Exception)`·try 블록 외부 변수 재할당을 checkstyle·ArchUnit으로 강제하는 작업. 다섯 규칙 모두 `code-style.md`에 명문화돼 있으나 자동 강제 수단이 없어 `code-ready.md` convention 섹션의 리뷰어 수동 판정이 유일한 검증 수단이라는 배경을 함께 남겼다.
+> - `[AGENT-DOCS-CHECK-SCRIPT-CI]` — Task 16·17에서 신설하는 `scripts/check-agent-docs.py`(현재 종료 코드 0 고정 정보 제공용)를 오탐이 잦아든 뒤 CI 게이트로 편입하는 방안.
+> - `[CODE-READY-HANDLEUNKNOWNFAILURE-STALE]` — Task 7 실행 중 발견된 낡은 참조. `grep -rn "handleUnknownFailure"` 로 코드베이스 전체를 확인한 결과 프로덕션 코드 0건(archive 문서에만 잔존, `outbox-only-refactor` 리팩터로 삭제됨)이라 확정 등재했다 — `code-ready.md` convention 섹션의 "`catch (Exception e)` 없음 (있다면 `handleUnknownFailure` 경유)" 항목이 존재하지 않는 메서드를 가리킨다는 사실과, `error-logging.md` 현재 규칙으로 교체가 필요하다는 처방을 남겼다.
+>
+> 각 항목은 근거 문서 경로(`CONCERNS.md` C-11, `code-style.md` 안티패턴 절, `code-ready.md` convention 섹션)를 가리킨다.
+>
+> `docs/context/TODOS.md` 헤더의 최종 갱신 시점을 2026-07-31로 갱신하고 신규 항목 요약을 이전 이력 위에 이어 붙였다.
+>
+> 코드 비접촉(문서 편집)이라 `./gradlew test`는 생략했다.
 
 ---
 

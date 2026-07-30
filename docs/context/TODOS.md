@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 10 — 섹션 E 에 1건 추가 등재: `[CHECKOUT-DUPLICATE-FLAG-DROPPED]`(체크아웃 응답 DTO 매퍼가 `isDuplicate` 를 누락 — 실제 중복 신호는 HTTP 상태 코드뿐, 라이브 실측 장면 7 판정 기준을 이에 맞춰 정정)). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 섹션 E 신설 후 2건 등재: `[FAKE-PG-BOOT-ENV-GUARD]`(모의 벤더 로드 시 환경 조합 검사 가드 부재 — 부팅 차단은 어떤 환경을 정상으로 볼지 정하는 배포 환경 논의가 선행돼야 해 이번 범위 밖), `[STOCK-RETENTION-DUPLICATE-CONFIRM-FALSE-SIGNAL]`(같은 주문 confirm 동시 재호출이 유니크 제약 위반으로 남기는 가짜 재고 미회수 신호 — 정상 중복 차단인데도 확정 실패와 같은 신호로 묶여 관측 정확성 저하)). 이전: 2026-07-27 (ADMIN-VISIBILITY discuss — 섹션 D 신설 후 2건 등재: `[PG-WORKER-SPAN-ORDER-ID]`(재시도 워커가 추적 문맥을 복원만 해 원격 구간에 속성이 조용히 버려짐 — 주문 단위 추적 검색 불가), `[PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP]`(좀비 타임아웃 60s < 최대 재시도 백오프 67.5s 겹침 — 벤더 호출 없는 발행 행 발생, `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 와 함께 판단 필요)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
+> 최종 갱신: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 14 — 섹션 F 신설 후 4건 등재: `[REVIEWER-EFFORT-DOWNGRADE-RECHECK]`(reviewer effort 하향 `xhigh`→`high` 원복 조건 재확인, `CONCERNS.md` C-11 연결), `[AGENT-DOCS-STATIC-ANALYSIS]`(`var`·`@Data`·null 반환·`catch (Exception)`·try 블록 외부 변수 재할당을 checkstyle·ArchUnit으로 강제), `[AGENT-DOCS-CHECK-SCRIPT-CI]`(지침 문서 검사 스크립트의 CI 편입), `[CODE-READY-HANDLEUNKNOWNFAILURE-STALE]`(`code-ready.md` convention 섹션이 코드베이스에 더 이상 없는 `handleUnknownFailure` 메서드를 참조)). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 10 — 섹션 E 에 1건 추가 등재: `[CHECKOUT-DUPLICATE-FLAG-DROPPED]`(체크아웃 응답 DTO 매퍼가 `isDuplicate` 를 누락 — 실제 중복 신호는 HTTP 상태 코드뿐, 라이브 실측 장면 7 판정 기준을 이에 맞춰 정정)). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 섹션 E 신설 후 2건 등재: `[FAKE-PG-BOOT-ENV-GUARD]`(모의 벤더 로드 시 환경 조합 검사 가드 부재 — 부팅 차단은 어떤 환경을 정상으로 볼지 정하는 배포 환경 논의가 선행돼야 해 이번 범위 밖), `[STOCK-RETENTION-DUPLICATE-CONFIRM-FALSE-SIGNAL]`(같은 주문 confirm 동시 재호출이 유니크 제약 위반으로 남기는 가짜 재고 미회수 신호 — 정상 중복 차단인데도 확정 실패와 같은 신호로 묶여 관측 정확성 저하)). 이전: 2026-07-27 (ADMIN-VISIBILITY discuss — 섹션 D 신설 후 2건 등재: `[PG-WORKER-SPAN-ORDER-ID]`(재시도 워커가 추적 문맥을 복원만 해 원격 구간에 속성이 조용히 버려짐 — 주문 단위 추적 검색 불가), `[PG-ZOMBIE-TIMEOUT-BACKOFF-OVERLAP]`(좀비 타임아웃 60s < 최대 재시도 백오프 67.5s 겹침 — 벤더 호출 없는 발행 행 발생, `[PG-RETRY-BACKOFF-OFF-BY-ONE]` 와 함께 판단 필요)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY ship — TQ-1 혼합 축소: `events.confirmed.dlq` 관리자 수동 재주입 완료분 제거, 조건부 자동 재시도 잔여 보존 / TQ-2 혼합 축소: QUARANTINED 관리자 안전 실패 종결(FAILED 전이·토큰 조건부 보상·CAS·audit) 완료분 제거, 격리 DONE 복구 잔여 보존). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL doc-review 라운드 1 수정 1차 — 코드 확인 필요 항목 신규 등재: `[PG-RETRY-BACKOFF-OFF-BY-ONE]`(`RetryPolicy` javadoc 의도(2s/6s/18s/54s)와 호출부 `computeBackoff(nextAttempt)`(`PgVendorCallService.java:190-192`) 어긋남 — 런타임 첫 재시도 대기 ~6s, 위키는 런타임 기준으로 정정). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 완료+archive 경로 확인된 항목 24건 전체 삭제(a) — DIAGNOSIS §4.1.3 예비 판정 22건 그대로 적용 + 판정표 누락분 2건(TC-13-FOLLOW-7/TC-9, 동일 패턴 ✅완료+archive 경로 확인으로 동일 판정 적용, 사유는 PLAN.md Task 8 완료 결과에 기록) + 혼합 항목(b) 3건(TC-13-FOLLOW-6/[CLEANUP-BATCH-B 후속]/TC-3) 해소분 문장만 제거·잔여 한계 보존 + "토픽 묶음 계획"·"## 완료" 섹션 전체 삭제(`docs/archive/README.md` 완전 중복) + TC-7 "한도 초과 시 종결" stale 서술 정정(`incrementRetryOrFail` 프로덕션 호출처 0 반영) + 코드 확인 필요 항목 3건 신규 등재(코드 수정 없음, 등재만)). 이전: 2026-07-01 (context-update — TC-13-FOLLOW-3/4 알람 rule 해소 반영: ALERTING-RULES 6/27 coordinator·guard-skip 그룹 + FAULT-INJECTION 6/30 availability 그룹).
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -87,6 +87,32 @@
 - **현황**: `CheckoutResult`(application 계층)는 `isDuplicate` 를 정확히 채운다(`PaymentCheckoutServiceImpl.checkout`). 하지만 `PaymentPresentationMapper.toCheckoutResponse`(`PaymentPresentationMapper.java:30-35`)가 이를 `CheckoutResponse`(presentation DTO)로 옮기지 않아, 응답 JSON에는 `orderId`/`totalAmount`만 남고 중복 여부가 사라진다. 유일하게 밖으로 드러나는 신호는 `PaymentController.checkout`(`PaymentController.java:45-49`)이 `isDuplicate()` 로 분기하는 HTTP 상태 코드(신규 201 / 중복 200)뿐이다.
 - **영향**: 클라이언트가 응답 바디만 보고 중복 여부를 판단할 방법이 없다 — 상태 코드까지 봐야 한다. 라이브 실측 장면 7(중복 결제 차단, `references/scenarios.md`)의 판정 기준도 이 상태 코드로 정정했다.
 - **처방**: `CheckoutResponse` 에 `duplicate` 필드를 추가하고 매퍼에서 채울지, 상태 코드만으로 충분하다고 볼지 결정 필요. 별도 토픽 여지.
+
+### F. AGENT-CONTEXT-OVERHAUL 후속 (에이전트 지침 컨텍스트 정비, 2026-07-31)
+
+> 아래 4건은 `AGENT-CONTEXT-OVERHAUL` 에서 의도적으로 범위 밖으로 뺀 후속(앞 3건)과 Task 7 실행 중 발견된 낡은 참조(마지막 1건)다.
+
+#### [REVIEWER-EFFORT-DOWNGRADE-RECHECK] — reviewer effort 하향 원복 조건 재확인
+
+- **현황**: `AGENT-CONTEXT-OVERHAUL` Task 3 에서 `.claude/agents/reviewer.md` frontmatter `effort` 를 `xhigh` 에서 `high` 로 낮췄다 — 근거와 사각·원복 조건은 `CONCERNS.md` C-11 에 등재됨.
+- **처방**: 적용 후 첫 도메인 인접 토픽(domain-expert 배차 대상 토픽)에서, Reviewer 가 놓쳤던 critical·major 도메인 finding 이 Domain Expert 사후 배석에서 새로 발견되는지 대조 확인한다. 발견되면 C-11 원복 조건에 따라 `effort: high` 를 `xhigh` 로 즉시 복귀.
+
+#### [AGENT-DOCS-STATIC-ANALYSIS] — `var`·`@Data`·null 반환·`catch (Exception)`·try 재할당 정적 강제 도입
+
+- **현황**: 다섯 규칙(`var` 키워드 금지, `@Data` 금지, 공개 유스케이스·포트의 null 반환 금지, `catch (Exception)` swallow 금지, try 블록 내 외부 변수 재할당 금지) 모두 `docs/context/conventions/code-style.md` 에 명문화돼 있으나, 이를 자동 강제하는 checkstyle 규칙이나 ArchUnit 테스트가 없다 — `code-ready.md` convention 섹션의 리뷰어 수동 판정이 현재 유일한 검증 수단이다.
+- **영향**: 리뷰 라운드에서 놓치면 위반이 그대로 병합될 수 있다.
+- **처방**: checkstyle 커스텀 규칙 또는 ArchUnit 룰로 다섯 항목을 빌드 단계에서 자동 검출하도록 도입. 별도 토픽 여지.
+
+#### [AGENT-DOCS-CHECK-SCRIPT-CI] — 지침 문서 검사 스크립트의 CI 편입
+
+- **현황**: `AGENT-CONTEXT-OVERHAUL` Task 16·17 에서 신설하는 `scripts/check-agent-docs.py`(참조 무결성·frontmatter·체크리스트 참조·중복 규칙·Mermaid 금지 문자·고아 문서 판정)는 종료 코드를 판정 결과와 무관하게 0으로 고정한 정보 제공용 스크립트다.
+- **처방**: 도입 후 몇 차례 실행에서 오탐(false positive)이 잦아든 뒤, CI 게이트로 편입해 종료 코드로 판정을 강제할지 결정한다.
+
+#### [CODE-READY-HANDLEUNKNOWNFAILURE-STALE] — convention 섹션의 낡은 메서드 참조
+
+- **현황**: `.claude/skills/_shared/checklists/code-ready.md` convention 섹션의 "`catch (Exception e)` 없음 (있다면 `handleUnknownFailure` 경유)" 항목이 가리키는 `handleUnknownFailure` 메서드는 코드베이스 전체에 존재하지 않는다 — `outbox-only-refactor` 리팩터로 `PaymentFailureUseCase.handleUnknownFailure()` 가 삭제됐고(grep 결과 프로덕션 코드 0건, archive 문서에만 잔존), `AGENT-CONTEXT-OVERHAUL` Task 7 실행 중 발견됐다.
+- **영향**: 리뷰어가 이 항목을 문자 그대로 적용하면 존재하지 않는 경유 메서드를 찾게 된다.
+- **처방**: 항목을 현재 `error-logging.md` 규칙("잡으면 LogFmt.error + 재throw 또는 명시적 fallback")으로 교체. 별도 토픽 여지 없이 다음 체크리스트 편집 시 바로 반영 가능한 소규모 정정.
 
 ---
 

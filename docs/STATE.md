@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 14: 후속 위임 항목 기록 (TODOS.md에 재확인·정적 분석 규칙 신설·검사 스크립트 CI 편입 세 항목 기록)
+- **활성 태스크**: Task 15: 메모리 정리 (프로젝트 파일과 대조해 적용 범위까지 동일한 메모리 항목 삭제 + MEMORY.md 인덱스 갱신)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 
