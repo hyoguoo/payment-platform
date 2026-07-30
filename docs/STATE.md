@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 6: 도메인 검토자 배차 조건 정본화 (discuss-ready.md에 배차 조건 열거 흡수, workflow-discuss/workflow-ship을 정본 포인터로 축약)
+- **활성 태스크**: Task 7: 체크리스트 정리 (code-ready.md execution discipline에서 미사용 import 항목을 빼고 죽은 코드 판정으로 좁힘)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 

@@ -18,7 +18,7 @@ description: >
 
 ### A1. 리뷰 dispatch (단일 메시지 병렬)
 
-**domain-expert 포함 조건** — discuss 게이트와 같은 2갈래 기준을 실제 diff에 적용한다: diff에 소스 코드·런타임 설정 변경이 있거나 산출물이 결제 도메인 동작을 서술·정정하면 포함, 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
+**domain-expert 포함 조건**: `discuss-ready.md` domain risk 섹션의 2갈래 조건을 실제 diff에 적용한다(diff에 소스 코드·런타임 설정 변경이 있는지 / diff 산출물이 결제 도메인 동작을 서술·정정하는지). 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
 
 ```
 Agent(subagent_type="reviewer",      prompt="stage=ship, topic=<TOPIC>.

@@ -80,7 +80,7 @@ flowchart LR
 - [x] Task 3: reviewer 정비와 effort 원복 조건 등재
 - [x] Task 4: domain-expert 입력 계약 신설
 - [x] Task 5: implementer 입력 계약과 컨벤션 포인터화
-- [ ] Task 6: 도메인 검토자 배차 조건 정본화
+- [x] Task 6: 도메인 검토자 배차 조건 정본화
 - [ ] Task 7: 체크리스트 정리
 - [ ] Task 8: TDD 사이클 정본 정리
 - [ ] Task 9: ship 검증 절차 존치와 학습 조건 이식
@@ -262,7 +262,18 @@ flowchart LR
 - 생략 사유 표기 규칙은 스킬에 유지됨
 
 **완료 결과**
-> (execute에서 채움)
+> `discuss-ready.md` domain risk 섹션 머리말을 `workflow-discuss` 5절의 조건 본문(2갈래 조건 + 예시절)으로 대체해 정본으로 세웠다.
+>
+> - 소스 코드 **또는 런타임 설정**(알람 규칙·Kafka 설정·스케줄러 등) 변경을 계획 (한 줄이라도)
+> - 산출물이 **결제 도메인 동작(상태 전이·멱등성·복구·정산)을 서술·정정** — 문서 정정, 운영 런북, CONCERNS/TODOS 정리 포함
+>
+> 예시절("문서 정정, 운영 런북, CONCERNS/TODOS 정리 포함")은 원문과 글자 단위로 대조해 그대로 옮겼다 — 이 절이 소스 변경 없는 메타 토픽(문서 정정 등)도 domain-expert 포함 대상으로 판정하는 근거이므로 누락하면 판정 범위가 좁아진다.
+>
+> `workflow-discuss` 5절은 조건 본문을 지우고 "`discuss-ready.md` domain risk 섹션 참조" 포인터 한 줄 + 생략 시 사전 브리핑 표기 지시(실행 시점 지시라 존치)로 축약했다.
+>
+> `workflow-ship` A1도 조건 본문을 지우고 같은 정본을 가리키는 포인터로 축약했다 — "`discuss-ready.md` domain risk 섹션의 2갈래 조건을 실제 diff에 적용한다"는 문장으로, discuss의 산출물 판정을 ship의 diff 판정으로 바꿔 적용하는 실행 디테일만 남기고 조건 자체는 재서술하지 않는다. 생략 시 리뷰 완료 보고에 표기하는 지시는 그대로 남겼다.
+>
+> 세 파일을 다시 읽어 대조한 결과 조건 본문이 `discuss-ready.md` 한 곳에만 있고, 나머지 두 스킬에는 중복 서술 없이 포인터만 남아 있음을 확인했다.
 
 ---
 
