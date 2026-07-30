@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 4: domain-expert 입력 계약 신설 (필수 입력 절 + stage별 체크리스트 매핑 + CONCERNS.md 선행 읽기 추가)
+- **활성 태스크**: Task 5: implementer 입력 계약과 컨벤션 포인터화 (필수 입력 절 신설 + `var`/`catch(Exception)`/null 반환/`@Data`/try 블록 재할당 항목을 code-style.md 포인터로 축약)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 

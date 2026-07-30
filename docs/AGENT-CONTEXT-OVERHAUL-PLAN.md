@@ -78,7 +78,7 @@ flowchart LR
 - [x] Task 1: 루트 지침 상충 해소와 산출물 길이 기준
 - [x] Task 2: 코드 규칙 정본 보강
 - [x] Task 3: reviewer 정비와 effort 원복 조건 등재
-- [ ] Task 4: domain-expert 입력 계약 신설
+- [x] Task 4: domain-expert 입력 계약 신설
 - [ ] Task 5: implementer 입력 계약과 컨벤션 포인터화
 - [ ] Task 6: 도메인 검토자 배차 조건 정본화
 - [ ] Task 7: 체크리스트 정리
@@ -199,7 +199,16 @@ flowchart LR
 - frontmatter가 `effort: xhigh`
 
 **완료 결과**
-> (execute에서 채움)
+> `.claude/agents/domain-expert.md`에 `reviewer.md`와 동등한 "필수 입력 (호출자가 제공)" 절을 신설했다 — `stage`(discuss/plan/ship/standalone) · `topic`(단독 리뷰는 생략 가능) · 검토 대상(문서 경로 또는 diff 범위) · 체크리스트 경로 · 참고 입력. 마지막 줄에 reviewer.md와 동일한 강도의 거부 규칙을 그대로 넣었다: "입력이 빠지면 추측하지 말고 거부하고 무엇이 필요한지 반환한다."
+>
+> stage별 체크리스트 매핑은 표로 흡수했다 — 세 파일을 직접 열어 실제 섹션 제목과 대조 확인:
+> - discuss → `.claude/skills/_shared/checklists/discuss-ready.md` `## domain risk (Domain Expert 전용)`
+> - plan → `.claude/skills/_shared/checklists/plan-ready.md` `## domain risk (Domain Expert 전용 — 도메인 리스크 토픽만)`
+> - ship / standalone → `.claude/skills/_shared/checklists/code-ready.md` `## domain risk (Domain Expert 전용)`
+>
+> 필수 선행 읽기 목록에 `docs/context/CONCERNS.md`를 추가했다 — Task 3에서 등재한 C-11(effort 원복 조건)이 매 도메인 판정에서 재확인되도록.
+>
+> frontmatter `effort: xhigh`는 손대지 않고 그대로 유지했다.
 
 ---
 

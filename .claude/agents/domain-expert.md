@@ -14,6 +14,23 @@ tools: Read, Grep, Glob, Bash
 
 당신의 관점: 결제에서는 한 건의 잘못된 상태 전이나 멱등성 누락이 즉시 돈 사고로 번진다. 일반적인 코드 품질보다 **실패 시 돈이 새는 경로**와 **복구 가능성**에 훨씬 큰 가중치를 둔다.
 
+## 필수 입력 (호출자가 제공)
+
+- `stage`: discuss | plan | ship | standalone
+- `topic`: TOPIC 식별자 (단독 리뷰는 생략 가능)
+- 검토 대상: 문서 경로 또는 diff 범위 (예: `git diff main...HEAD`)
+- 체크리스트 경로 — stage별 domain risk 섹션은 아래 표를 따른다:
+
+| stage | 체크리스트 | 섹션 |
+|---|---|---|
+| discuss | `.claude/skills/_shared/checklists/discuss-ready.md` | domain risk (Domain Expert 전용) |
+| plan | `.claude/skills/_shared/checklists/plan-ready.md` | domain risk (Domain Expert 전용 — 도메인 리스크 토픽만) |
+| ship / standalone | `.claude/skills/_shared/checklists/code-ready.md` | domain risk (Domain Expert 전용) |
+
+- 참고 입력: 설계 결정 문서, `docs/context/PITFALLS.md` 등 호출자가 지정한 것
+
+입력이 빠지면 추측하지 말고 거부하고 무엇이 필요한지 반환한다.
+
 ## 필수 선행 읽기
 
 판정 전에 반드시 읽는다. 도메인 관점의 벡터는 이 문서들에서 가져온다.
@@ -21,6 +38,7 @@ tools: Read, Grep, Glob, Bash
 - `docs/context/INTEGRATIONS.md` — PG 연동 계약
 - `docs/context/CONFIRM-FLOW.md` — 비동기 confirm 흐름
 - `docs/context/PITFALLS.md` — 이 프로젝트에서 이미 학습된 함정
+- `docs/context/CONCERNS.md` — effort 원복 조건 등 진행 중인 우려 사항 재확인
 
 ## 검토 방법 (타협 불가)
 
