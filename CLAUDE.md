@@ -25,9 +25,7 @@
 
 ## Coding Rules
 
-1. **Test-first**: 구현 전에 실패하는 테스트를 먼저 작성한다.
-   - Domain entities: `@ParameterizedTest @EnumSource`로 유효/무효 상태 전환 모두 커버.
-   - Use cases: Mockito 단위 테스트 먼저 작성.
+1. **Test-first**: 구현 전에 실패하는 테스트를 먼저 작성한다. 개발 흐름(RED → GREEN → REFACTOR)은 [`docs/context/conventions/testing.md`](docs/context/conventions/testing.md) TDD 흐름 절, 커밋 타입 매핑은 [`commit.md`](.claude/skills/_shared/conventions/commit.md) 참고.
 2. **Minimal change**: 현재 태스크 범위 밖 코드는 수정하지 않는다. 발견한 문제는 주석으로 메모만 한다.
 3. **Verify**: 매 태스크 완료 후 `./gradlew test`로 회귀 없음을 확인한다.
 

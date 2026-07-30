@@ -136,13 +136,9 @@ Mockito 로 FeignClient 를 mock 하고 throw 시나리오별 어댑터 동작�
 
 **커버리지 게이트**: `jacocoTestCoverageVerification` 에 LINE `minimum` 을 둔다(element=`BUNDLE` — 테스트 없는 관리 클래스가 전체를 차단하지 않도록 번들 합산). 값은 단위 실측 - 안전마진(~3%p) (ext `jacoco.lineCoverageMinimum`: payment 0.86 / pg 0.93 / product 0.97 / user 0.97 / gateway·eureka 0.0). gateway/eureka 는 측정 대상 클래스 0(라우팅/디스커버리 전용)이라 0.0 불가피. user-service 는 `UserQueryUseCase` 단위 테스트 신규(`UserQueryUseCaseTest`) 후 0.97 로 상향됐고, `FlywayDockerProfileTest`(product 동형, docker profile seed 차단 회귀 가드) 추가로 통합테스트 보유 서비스로 전환됨.
 
-## TDD 흐름 (CLAUDE.md 룰)
+## TDD 흐름
 
-1. **RED**: 실패하는 테스트 작성 → `test:` 커밋
-2. **GREEN**: 최소 구현 → `feat:` 커밋 (PLAN.md / STATE.md 함께)
-3. **REFACTOR** (선택): `refactor:` 커밋
-
-매 태스크 완료 후 `./gradlew test` 회귀 0 확인.
+개발 흐름은 [`conventions/testing.md`](conventions/testing.md) TDD 흐름 절, 커밋 타입 매핑(`test:` / `feat:` / `refactor:`)은 `commit.md` TDD 커밋 분리 절이 정본.
 
 ## 도메인 enum + 상태 전이 테스트
 

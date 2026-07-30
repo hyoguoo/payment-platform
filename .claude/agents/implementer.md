@@ -34,6 +34,8 @@ tools: Read, Grep, Glob, Edit, Write, Bash, NotebookEdit
 
 입력: `topic`, `task_id`, PLAN.md 경로(태스크 스펙은 거기서 Read), STATE.md 경로.
 
+TDD 사이클 정의(RED/GREEN/REFACTOR가 각각 무엇인지)는 `docs/context/conventions/testing.md`, 커밋 타입 매핑은 `commit.md`가 정본이다. 아래는 이 태스크 실행에 한정된 순서·시점 지시(언제 테스트를 돌리고 언제 커밋하며 PLAN/STATE를 언제 갱신하는지)로, 정본 이관 대상이 아니다.
+
 **tdd=true**:
 1. RED — 실패하는 테스트 작성 → 실행해 실패 확인 → `test:` 커밋 (테스트 파일만)
 2. GREEN — 테스트를 통과하는 최소 구현 → `./gradlew test` 전체 통과 확인 → PLAN.md 체크박스 + "완료 결과" + STATE.md active task 갱신 → 구현+문서를 단일 `feat:` 커밋

@@ -82,7 +82,7 @@ flowchart LR
 - [x] Task 5: implementer 입력 계약과 컨벤션 포인터화
 - [x] Task 6: 도메인 검토자 배차 조건 정본화
 - [x] Task 7: 체크리스트 정리
-- [ ] Task 8: TDD 사이클 정본 정리
+- [x] Task 8: TDD 사이클 정본 정리
 - [ ] Task 9: ship 검증 절차 존치와 학습 조건 이식
 - [ ] Task 10: 문서 작성 컨벤션 분할
 - [ ] Task 11: 문체 규칙 사본 제거와 검수 축소
@@ -325,7 +325,17 @@ flowchart LR
 - 실행 순서 지시는 `implementer.md`에 유지됨
 
 **완료 결과**
-> (execute에서 채움)
+> 두 정본을 확정하고 서로 상호 포인터를 걸었다.
+>
+> - `docs/context/conventions/testing.md` "TDD 흐름 (정본)" 절 — RED(실패 테스트 먼저, 도메인 entity는 `@ParameterizedTest @EnumSource` 유효/무효 커버·use case는 Mockito 단위 테스트 먼저) → GREEN(최소 구현 + PLAN.md/STATE.md 갱신) → REFACTOR(선택, 변경 없으면 생략) 흐름 본문을 온전히 싣고, 매 태스크 완료 후 `./gradlew test` 확인 원칙도 함께 뒀다. 기존에 없던 use case 서술(`CLAUDE.md`에만 있던 것)을 이 절로 이관해 개발 흐름 축이 한 곳에 완전히 모이도록 보강했다. 마지막 줄에 커밋 타입 매핑은 `commit.md`가 정본이라는 포인터를 걸었다.
+> - `.claude/skills/_shared/conventions/commit.md` "TDD 커밋 분리 (정본)" 절 — 기존 `test:`/`feat:`/`refactor:` 매핑은 이미 온전했으므로 그대로 두고, 첫 줄에 개발 흐름은 `testing.md`가 정본이라는 역방향 포인터만 추가했다.
+>
+> 나머지 세 곳을 포인터로 축약했다.
+> - `CLAUDE.md` Coding Rules 1항 — 도메인 entity/use case 커버 서술을 제거하고 "개발 흐름은 testing.md TDD 흐름 절, 커밋 타입 매핑은 commit.md 참고"로 축약. Rule 2(Minimal change)·Rule 3(Verify)는 TDD 사이클 서술이 아니라 손대지 않았다.
+> - `docs/context/TESTING.md` "TDD 흐름" 절 — RED/GREEN/REFACTOR 단계 나열과 커밋 타입을 지우고 두 정본을 가리키는 포인터 한 줄로 축약.
+> - `.claude/agents/implementer.md` 모드 1 — RED/GREEN/REFACTOR 단계별 서술(`test:`/`feat:`/`refactor:` 커밋 시점, `./gradlew test` 실행 시점, PLAN.md/STATE.md 갱신 시점)은 이 태스크 실행에 한정된 실행 순서 지시이므로 그대로 유지했다. 대신 그 앞에 "TDD 사이클 정의는 testing.md, 커밋 타입 매핑은 commit.md가 정본이고 아래는 실행 절차(정본 이관 대상 아님)" 포인터 한 줄을 신설해, 실행 절차와 정본 정의를 명확히 구분했다.
+>
+> `grep -rn "RED.*GREEN.*REFACTOR\|REFACTOR.*선택"`로 대조한 결과, 사이클 본문이 남아 있는 곳은 두 정본(`testing.md`/`commit.md`)과 `implementer.md`의 실행 절차 서술뿐이었다 — `CLAUDE.md`·`TESTING.md`에는 포인터만 남았다.
 
 ---
 
