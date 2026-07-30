@@ -76,7 +76,7 @@ flowchart LR
 ## 진행 상황
 
 - [x] Task 1: 루트 지침 상충 해소와 산출물 길이 기준
-- [ ] Task 2: 코드 규칙 정본 보강
+- [x] Task 2: 코드 규칙 정본 보강
 - [ ] Task 3: reviewer 정비와 effort 원복 조건 등재
 - [ ] Task 4: domain-expert 입력 계약 신설
 - [ ] Task 5: implementer 입력 계약과 컨벤션 포인터화
@@ -133,7 +133,20 @@ flowchart LR
 - 기존 코드의 정당한 null 사용 3종(금액 판정 가드 · 메시지·응답 DTO 필드 · private 헬퍼)이 새 문구에 걸리지 않음을 사례 대조로 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `docs/context/conventions/code-style.md` 안티패턴 회피 절에 두 룰을 추가했다.
+>
+> - `@Data` 금지 — 뭉치 애너테이션의 setter 노출·연관관계 순환 참조 위험을 이유로, 개별 애너테이션(`@Getter` + 팩토리/`@Builder`, VO 는 `@EqualsAndHashCode`/`@ToString`)으로 대체하도록 명시.
+> - null 반환 금지 — 적용 범위를 **공개 유스케이스·포트의 반환값**으로 한정하고, 세 갈래 제외 대상을 실제 코드 사례와 함께 적었다.
+>   - 도메인 상태로서의 null: `PaymentConfirmResultUseCase.isAmountMismatch`(수신 금액 null 을 "미수신 → 불일치"로 판정)
+>   - wire 계약 DTO 필드: `ConfirmedEventMessage`(payment-service)/`ConfirmedEventPayload`(pg-service) 의 `amount`/`approvedAt`/`reasonCode`, 관리자 조회 응답 `PgAttemptEntryViewResponse` 의 `attemptNo`/`publishedAt`
+>   - private 탐색 헬퍼: `DomainEventLoggingAspect.findReasonParameter`(`@Reason` 파라미터 미발견 시 null 반환, 호출부가 즉시 기본값으로 흡수)
+>
+> **사례 대조 결과** — 세 파일을 직접 열어 확인했다.
+> - `isAmountMismatch`(`payment-service/.../PaymentConfirmResultUseCase.java`)는 `private static boolean` 메서드로, null 을 반환하지 않고 nullable 파라미터를 받아 도메인 판정에 쓴다 — 새 룰이 막는 대상(공개 유스케이스·포트의 null 반환)이 아니라 애초에 룰 범위 밖이며, 명시적으로 예외 사례에도 올려 이후 혼동을 막았다.
+> - `ConfirmedEventMessage`/`ConfirmedEventPayload`는 record 필드로 `amount`/`approvedAt`/`reasonCode`가 상태별 nullable — 유스케이스·포트 반환값이 아닌 wire DTO 필드라 룰 범위 밖. `PgAttemptEntryViewResponse`도 `@Builder` 로 조립되는 응답 DTO 필드(`attemptNo`/`publishedAt`)라 동일하게 범위 밖.
+> - `DomainEventLoggingAspect.findReasonParameter`는 `private String` 헬퍼로 클래스 내부에서만 호출되고 호출부(`processResultAndPublishEvent`)가 `reason != null ? reason : 기본값`으로 즉시 처리 — private 헬퍼 제외 대상에 정확히 부합.
+>
+> 세 부류 모두 새 문구에 걸리지 않음을 확인했다.
 
 ---
 

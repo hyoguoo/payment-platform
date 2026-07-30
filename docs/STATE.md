@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 2: 코드 규칙 정본 보강 (`code-style.md`에 `@Data` 금지·null 반환 금지 이식)
+- **활성 태스크**: Task 3: reviewer 정비와 effort 원복 조건 등재 (억제 지시 제거 + effort 하향을 한 커밋으로)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 

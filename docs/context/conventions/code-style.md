@@ -148,6 +148,12 @@ private ResultType doSafely() {
 
 추가 룰:
 
+- **`@Data` 금지**: equals/hashCode/toString/getter/setter 를 한 번에 여는 뭉치 애너테이션은 의도치 않은 setter 노출과 연관관계 순환 참조(양방향 JPA 엔티티의 `toString`/`equals` 무한루프) 위험이 있다. 필요한 것만 개별 지정 — `@Getter`(+ 도메인 엔티티는 `@AllArgsConstructor(access = PRIVATE)` 또는 `@Builder`), Value Object 는 `@EqualsAndHashCode`/`@ToString` 개별 추가.
+- **공개 유스케이스·포트 반환값의 null 반환 금지**: 값이 없을 수 있는 반환은 `Optional`로 표현한다 (호출자가 분기를 강제받는다). 적용 범위는 **공개 유스케이스·포트의 반환값**에 한정하고, 아래 세 갈래는 이 룰의 대상이 아니다.
+  - **도메인 상태로서의 null**: 값이 "없다"는 것 자체가 도메인 판정 재료인 경우. 예: `PaymentConfirmResultUseCase.isAmountMismatch`는 수신 금액(`Long receivedAmount`)이 null이면 비교 불가로 보고 불일치(격리 대상)로 판정한다 — null 이 "금액 미수신"이라는 상태를 표현한다.
+  - **wire 계약 DTO 필드**: 비동기 메시지·HTTP 응답 record/DTO 필드는 상태에 따라 일부 필드가 없을 수 있다 — Optional 로 감싸면 직렬화 계약이 깨진다. 예: `ConfirmedEventMessage`/`ConfirmedEventPayload`의 `amount`/`approvedAt`/`reasonCode`(APPROVED 외 상태에서 nullable), 관리자 조회 응답 `PgAttemptEntryViewResponse`의 `attemptNo`/`publishedAt`(옛 데이터·미발행 행에서 nullable).
+  - **private 매핑/탐색 헬퍼**: 클래스 내부에서만 쓰이고 호출부가 이미 null 가능성을 알고 처리하는 헬퍼. 예: `DomainEventLoggingAspect.findReasonParameter`는 `@Reason` 파라미터를 못 찾으면 null 을 반환하고, 호출부가 `reason != null ? reason : 기본값`으로 즉시 흡수한다.
+
 - **도메인 상태값은 magic string 대신 enum**: `"APPROVED".equals(...)` / `switch ("APPROVED")` 금지.
   단 **Kafka 메시지 record 의 status 필드는 String 으로 유지**해 와이어 포맷·역직렬화 계약을 보존하고, 내부 분기에서만 enum 으로 변환한다 (`ConfirmStatus.from(raw)`). 알 수 없는 값은 `UNKNOWN` 으로 흡수해 default 분기 동작을 보존하고, 발행 측은 `enum.name()` 으로 채운다.
 - **`new ObjectMapper()` 직접 생성 지양 — DI 주입**: 단 직렬화 포맷이 cross-service wire 계약에 영향하면 신중히 판단한다. 예: `PaymentConfirmResultUseCase` 의 발행 매퍼는 `Instant` 를 epoch 숫자로 직렬화하므로(Jackson 기본 + JavaTimeModule), Spring 기본 빈(ISO 문자열)으로 바꾸면 발행 포맷이 달라져 소비 측 계약이 흔들린다 → 의도적으로 독립 매퍼 유지. self round-trip(자기가 쓰고 읽음)이거나 직렬화 대상에 시간 필드가 없으면 안전하게 주입한다. `LogFmt` 의 static `ObjectMapper` 는 정적 유틸이라 DI 대상이 아니다.
