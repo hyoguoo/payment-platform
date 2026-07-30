@@ -5,9 +5,10 @@
 ## 활성 작업
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1: 루트 지침 상충 해소와 산출물 길이 기준
 - **이슈/브랜치**: #130
-- **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md
+- **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 
 ## 재개 메모
 
