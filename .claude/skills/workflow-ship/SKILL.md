@@ -20,16 +20,12 @@ description: >
 
 **domain-expert 포함 조건**: `discuss-ready.md` domain risk 섹션의 2갈래 조건을 실제 diff에 적용한다(diff에 소스 코드·런타임 설정 변경이 있는지 / diff 산출물이 결제 도메인 동작을 서술·정정하는지). 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
 
-```
-Agent(subagent_type="reviewer",      prompt="stage=ship, topic=<TOPIC>.
-  대상: git diff main...HEAD (+ git log main..HEAD --oneline)
-  체크리스트: .claude/skills/_shared/checklists/code-ready.md
-  참고: docs/topics/<TOPIC>.md 결정 사항, docs/<TOPIC>-PLAN.md")
-Agent(subagent_type="domain-expert", prompt="stage=ship, topic=<TOPIC>.
-  대상: git diff main...HEAD
-  체크리스트: code-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체
-  참고: docs/topics/<TOPIC>.md 결정 사항, docs/context/PITFALLS.md")
-```
+Reviewer와 domain-expert(포함 조건 충족 시)를 **단일 메시지에서 병렬 dispatch**한다 — 입력 항목의 형식·거부 규칙은 각 에이전트 정의의 필수 입력 절을 따른다. 이번 단계에서 채워 넘길 값:
+
+- stage=ship, topic=<TOPIC>
+- 검토 대상: `git diff main...HEAD` (+ `git log main..HEAD --oneline`)
+- 체크리스트: reviewer는 `code-ready.md` 전체, domain-expert는 같은 파일의 domain risk 섹션 + 리스크 카탈로그 전체
+- 참고 입력: `docs/topics/<TOPIC>.md` 결정 사항, `docs/<TOPIC>-PLAN.md` (reviewer) / `docs/context/PITFALLS.md` (domain-expert)
 
 메인 스레드에서 diff를 읽고 findings를 직접 작성하지 않는다.
 
@@ -44,13 +40,7 @@ severity별로 사용자에게 확인:
 
 ### A3. 수정 dispatch
 
-수정은 메인이 직접 하지 않고 implementer에 위임 (여러 건 묶어 1회):
-
-```
-Agent(subagent_type="implementer", prompt="모드 2 — 리뷰 finding 수정.
-  findings: <선택 목록: 파일:라인 + 문제 + 제안>
-  스킵 항목: <// REVIEW: intentionally skipped 주석 대상>")
-```
+수정은 메인이 직접 하지 않고 implementer에 위임한다 (여러 건 묶어 1회) — 입력 항목(모드 2, findings 목록, 관련 태스크의 tdd 성격)은 `.claude/agents/implementer.md` 필수 입력 절을 따른다. 선택된 findings(파일:라인 + 문제 + 제안)와 의도적 스킵 대상(`// REVIEW: intentionally skipped` 주석 처리)을 함께 넘긴다.
 
 ### A4. 재리뷰 (최대 1회)
 

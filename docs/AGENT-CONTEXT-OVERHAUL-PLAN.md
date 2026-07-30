@@ -87,7 +87,7 @@ flowchart LR
 - [x] Task 10: 문서 작성 컨벤션 분할
 - [x] Task 11: 문체 규칙 사본 제거와 검수 축소
 - [x] Task 12: 브리핑 원칙 완화
-- [ ] Task 13: 워크플로우 스킬 dispatch 정리
+- [x] Task 13: 워크플로우 스킬 dispatch 정리
 - [ ] Task 14: 후속 위임 항목 기록
 - [ ] Task 15: 메모리 정리
 - [ ] Task 16: 검사 스크립트 — 참조·구조 판정
@@ -475,7 +475,18 @@ flowchart LR
 - 즉석 코드 라벨 서술이 포인터 한 줄로 축약됨
 
 **완료 결과**
-> (execute에서 채움)
+> `workflow-discuss` · `workflow-plan` · `workflow-ship` · `review` 네 스킬에서 `Agent(subagent_type=...)` 예시 블록을 모두 제거했다.
+>
+> - `workflow-discuss` 5절 — 예시 블록을 "Reviewer와 domain-expert(포함 조건 충족 시)를 단일 메시지에서 병렬 dispatch한다 — 입력 항목의 형식·거부 규칙은 각 에이전트 정의(`reviewer.md`, `domain-expert.md`)의 필수 입력 절을 따른다"는 문장 + 이번 단계에서 채워 넘길 값 목록(stage/topic/검토 대상/체크리스트/참고 입력)으로 대체했다.
+> - `workflow-plan` 3절 — reviewer dispatch와 domain_risk=true 조건부 domain-expert 병렬 dispatch를 같은 방식으로 프로즈화했다. "같은 메시지에서 domain-expert도 병렬 dispatch한다"는 실행 규칙 문장은 그대로 남겼다.
+> - `workflow-ship` A1·A3 — A1은 reviewer/domain-expert 병렬 dispatch를 값 목록으로, A3은 implementer 위임을 "입력 항목은 `implementer.md` 필수 입력 절을 따른다" + 선택된 findings·스킵 대상 서술로 대체했다.
+> - `review` 2절 — standalone 리뷰의 reviewer/domain-expert 병렬 dispatch를 동일 패턴으로 대체했다.
+>
+> 네 스킬 모두에서 병렬 dispatch 규칙("단일 메시지에서 병렬 dispatch한다")은 예시가 아니라 실행 규칙이므로 문장으로 그대로 남겼다 — `grep -rn "Agent(subagent_type" .claude/skills/{workflow-discuss,workflow-plan,workflow-ship,review}/SKILL.md` 결과 0건으로 확인했다.
+>
+> `workflow-discuss` 4절의 즉석 코드 라벨 서술(예시·이유·dangling 참조 설명 포함 4줄)을 "각 옵션을 그 내용으로 명명한다 — 이유·예외·예시는 `writing-terminology.md` '즉석 코드 라벨 금지' 절 참조" 한 줄로 축약했다. 설계 옵션을 내용으로 명명하라는 지시 자체는 문장에 그대로 남겼다.
+>
+> 코드 비접촉(문서 편집)이라 `./gradlew test`는 생략했다.
 
 ---
 
