@@ -86,9 +86,9 @@ DUPLICATE_RULES = [
         "phrases": ["try 블록 안에서 외부 변수 재할당 금지"],
     },
     {
-        "name": "`catch (Exception)` swallow 금지",
-        "canonical": "docs/context/conventions/code-style.md",
-        "phrases": ["catch (Exception) swallow 금지"],
+        "name": "`catch (Exception e)` swallow 금지",
+        "canonical": "docs/context/conventions/error-logging.md",
+        "phrases": ["catch (Exception e) swallow 금지"],
     },
     {
         "name": "TDD 사이클(RED/GREEN/REFACTOR)",

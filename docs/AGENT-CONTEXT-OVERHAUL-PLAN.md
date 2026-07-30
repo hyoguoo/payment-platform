@@ -737,4 +737,5 @@ domain-expert 사후 배석 판정: pass — 이번 라운드에서 결제 도�
 | `TESTING.md` 헤더가 "TDD 흐름" 절 포인터 축약(Task 8) 이후에도 최종 갱신 2026-07-03 그대로 미동기화 | major | 채택 | `CONCERNS.md`/`TODOS.md` 헤더 관례(신규 이력 항목 + 이전 이력 보존)를 따라 2026-07-31 항목을 추가 |
 | `CLAUDE-5-PROMPTING.md`가 루트에 있고 설계 문서 ship 이관 후 유일한 참조가 사라짐 | minor | 채택 | `git mv`로 `docs/context/`로 이동, `CLAUDE.md` Reference Files 진입 표 + 영구 문서 목록에 색인 추가, 설계 문서 내부 참조 경로 갱신 |
 | `check-agent-docs.py` `DUPLICATE_RULES`에 `catch (Exception)` swallow 금지 항목 누락 | minor | 채택 | 정본(`code-style.md`) 문구 그대로 사전에 추가, 실행 결과 중복 규칙 8건 검사·문제 0건으로 오탐 없음 확인 |
+| 위 `catch (Exception)` 항목의 canonical이 반대로 지정됨(실제 규칙 서술은 `error-logging.md`, `code-style.md`는 포인터일 뿐) — 정본이 검사 대상으로 노출되고 실제 중복 복제가 탐지되지 않음 | major | 채택 | canonical을 `error-logging.md`로 정정, phrase도 정본 실제 문구(`catch (Exception e)` — 변수명 포함)로 교체. 나머지 4개 항목(`var`·`@Data`·null 반환·try 재할당)의 canonical도 같은 기준으로 재확인 — 모두 실제 서술 위치와 일치해 추가 수정 없음. 재실행 결과 중복 규칙 8건 검사·문제 0건 |
 | 커밋 20개 중 2개만 `(docs)` scope 부여로 일관성 부재 | minor | 스킵 | amend 금지로 과거 커밋 정정 불가 — 다음 토픽부터 통일 |
