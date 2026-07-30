@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 3: reviewer 정비와 effort 원복 조건 등재 (억제 지시 제거 + effort 하향을 한 커밋으로)
+- **활성 태스크**: Task 4: domain-expert 입력 계약 신설 (필수 입력 절 + stage별 체크리스트 매핑 + CONCERNS.md 선행 읽기 추가)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 

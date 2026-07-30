@@ -77,7 +77,7 @@ flowchart LR
 
 - [x] Task 1: 루트 지침 상충 해소와 산출물 길이 기준
 - [x] Task 2: 코드 규칙 정본 보강
-- [ ] Task 3: reviewer 정비와 effort 원복 조건 등재
+- [x] Task 3: reviewer 정비와 effort 원복 조건 등재
 - [ ] Task 4: domain-expert 입력 계약 신설
 - [ ] Task 5: implementer 입력 계약과 컨벤션 포인터화
 - [ ] Task 6: 도메인 검토자 배차 조건 정본화
@@ -168,7 +168,15 @@ flowchart LR
 - `CONCERNS.md`에 원복 조건이 존재하며, effort 하향과 같은 커밋에 포함됨 — 하향만 먼저 반영되는 구간을 만들지 않는다
 
 **완료 결과**
-> (execute에서 채움)
+> `.claude/agents/reviewer.md`에서 억제 지시("스타일 트집으로 finding 수를 부풀리지 않는다. 영향 없는 취향 문제는 침묵이 낫다")를 제거하고, 검토 방법 4항을 "발견한 것은 모두 finding으로 올리되 severity로 구분한다 — 영향 없는 취향 문제는 minor로 분류한다"로 대체했다.
+>
+> **검토 방법 2항 문구 대조** — 편집 전후 동일함을 확인했다: "체크리스트에 없더라도 실질 결함이 보이면 finding으로 올린다 — 단, 결제 도메인 리스크(상태 전이·멱등성·race 등)는 Domain Expert의 영역이므로 명백한 것만 짚고 깊이 파지 않는다. Domain Expert가 이번 라운드에 미배석인데 도메인 리스크 의심이 보이면, 깊이 파는 대신 domain-expert 호출 권고를 finding으로 올린다." — 이 항목은 이번 편집에서 손대지 않았다.
+>
+> frontmatter `effort`를 `xhigh`에서 `high`로 낮췄다.
+>
+> 같은 커밋에서 `docs/context/CONCERNS.md` Medium 섹션에 `C-11. Reviewer effort 하향(xhigh → high) — 도메인 인접 diff 오분류 사각`을 신설했다 — 하향 근거(검토 방법 2항의 역할 분리: 도메인 리스크 깊은 판정은 Domain Expert 몫), 사각(Domain Expert 미배석 라운드에서 도메인 인접 diff 오분류 위험 증가), 원복 조건(사후 Domain Expert 배석 라운드에서 Reviewer가 놓쳤던 critical·major 도메인 finding이 새로 발견되면 `effort: high`를 `xhigh`로 즉시 복귀)을 명시했다. 헤더의 최종 갱신 시점을 2026-07-30으로 갱신하고 신규 항목 요약을 이전 이력 위에 이어 붙였다.
+>
+> effort 하향과 `CONCERNS.md` 원복 조건 등재는 계획대로 같은 커밋에 포함했다 — 하향만 반영된 상태로 중단되는 구간은 없다.
 
 ---
 

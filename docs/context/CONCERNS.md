@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 신규 한계 1건 등재: L-18(모의 벤더 `FakePgGatewayStrategy` 오배포 위험 — `pg.gateway.type=fake` 환경변수 오버라이드 구조 + `supports()` 무차별 수락으로 실제 승인 없이 결제 완료 가능, 탐지 수단은 부팅 경고 로그뿐. 조건부 로드 구조 자체는 이번 작업 신규가 아니라 기존 운영 중이던 구조이며 이번엔 시나리오 접두어 분기만 추가했음을 명시). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 격리 결제 관리자 수동 안전 종결 + `events.confirmed.dlq` 수동 재주입 도입 반영: C-5 부분 해소(수동 재주입 도구, 자동 소비는 여전 미도입), L-1 잔여/후속 정정(재고 확정 복구가 관리자 수동 재주입으로 가능), 신규 한계 3건 L-15/16/17 등재(P8D 만료 미복원 · 복구 후 늦은 confirm 재차감 · DLQ 전량 스캔 성능·관측성 한계 — 모두 보수적 언더셀/관측성 방향)). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
+> 최종 갱신: 2026-07-30 (AGENT-CONTEXT-OVERHAUL Task 3 — reviewer effort 하향(`xhigh`→`high`) 원복 조건 신규 등재: C-11(도메인 인접 diff 오분류 사각, 사후 Domain Expert 배석에서 critical·major 도메인 finding 재발견 시 xhigh 복귀)). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION Task 6 — 신규 한계 1건 등재: L-18(모의 벤더 `FakePgGatewayStrategy` 오배포 위험 — `pg.gateway.type=fake` 환경변수 오버라이드 구조 + `supports()` 무차별 수락으로 실제 승인 없이 결제 완료 가능, 탐지 수단은 부팅 경고 로그뿐. 조건부 로드 구조 자체는 이번 작업 신규가 아니라 기존 운영 중이던 구조이며 이번엔 시나리오 접두어 분기만 추가했음을 명시). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 격리 결제 관리자 수동 안전 종결 + `events.confirmed.dlq` 수동 재주입 도입 반영: C-5 부분 해소(수동 재주입 도구, 자동 소비는 여전 미도입), L-1 잔여/후속 정정(재고 확정 복구가 관리자 수동 재주입으로 가능), 신규 한계 3건 L-15/16/17 등재(P8D 만료 미복원 · 복구 후 늦은 confirm 재차감 · DLQ 전량 스캔 성능·관측성 한계 — 모두 보수적 언더셀/관측성 방향)). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 8 — 대장 정정: ✅ 해소+archive 경로 확인된 항목 6건(C-7/C-12/C-11/L-2/L-10/L-13) 전체 삭제 + 신규 발견 2건(L-3/L-6) 도 CAPACITY-AND-SCALEOUT 2-인스턴스 fencing 실측으로 이미 해소 확인돼 전체 삭제 + C-9 "잔여" 불릿 분리(완료분/Alertmanager 미도입 잔여) + L-1 stale 문장("qualifier 미명시로 선택한다") 을 "qualifier 명시 완료" 사실로 정정 + ID 오기 정정(TC-13-FOLLOW-1→TC-13-FOLLOW-6) + 이미 완료된 TC-13-FOLLOW-3/4 를 가리키던 "처방 후속" 서술 갱신). 이전: 2026-07-01 (context-update — alerting rule 인프라 구축 반영: C-9 잔여·C-1 부분 진척 정정. ARCHITECTURE/STACK 본문 산출물은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨).
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -43,6 +43,13 @@
 - **현황**: `kafka:9092` 1대. replication-factor=1
 - **영향**: broker 장애 시 메시지 처리 중단
 - **처방**: 운영 환경 / Phase 4 부하 테스트 시 multi-broker 검토
+
+### C-11. Reviewer effort 하향(`xhigh` → `high`) — 도메인 인접 diff 오분류 사각
+
+- **현황**: `AGENT-CONTEXT-OVERHAUL` Task 3 에서 `.claude/agents/reviewer.md` frontmatter `effort` 를 `xhigh` 에서 `high` 로 낮췄다. 근거는 검토 방법 2항이 이미 명시하는 역할 분리 — 결제 도메인 리스크(상태 전이·멱등성·race 등)의 깊은 판정은 Domain Expert 몫이고, Reviewer는 명백한 것만 짚고 미배석 시 domain-expert 호출을 권고하는 얕은 역할이라 xhigh 수준의 추론 예산이 상시 필요하지 않다는 판단.
+- **영향(사각)**: effort 하향으로 Reviewer가 도메인 인접 diff에서 "명백한 것"의 판단선이 낮아져, 실제로는 도메인 리스크인데 명백하지 않아 놓치는 diff(오분류)를 더 자주 통과시킬 위험이 있다. 이 사각은 Domain Expert가 병행 배석하지 않는 라운드(단독 리뷰, 배차 조건 미충족 토픽)에서 가장 크다.
+- **원복 조건**: effort 하향 적용 이후 Domain Expert 가 사후 배석한 라운드에서 Reviewer 가 놓쳤던 critical 또는 major 급 도메인 finding 이 새로 발견되면, `effort: high` 를 `xhigh` 로 즉시 복귀한다.
+- **처방**: 첫 도메인 인접 토픽 실행 후 이 조건을 대조 확인한다. 후속 재확인 항목은 `TODOS.md` 연결(Task 14 예정).
 
 ## Low — 코드 청결도
 
