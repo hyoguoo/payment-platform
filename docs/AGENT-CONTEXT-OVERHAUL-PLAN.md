@@ -89,7 +89,7 @@ flowchart LR
 - [x] Task 12: 브리핑 원칙 완화
 - [x] Task 13: 워크플로우 스킬 dispatch 정리
 - [x] Task 14: 후속 위임 항목 기록
-- [ ] Task 15: 메모리 정리
+- [x] Task 15: 메모리 정리
 - [ ] Task 16: 검사 스크립트 — 참조·구조 판정
 - [ ] Task 17: 검사 스크립트 — 중복·다이어그램 판정과 최종 스캔
 - [ ] Task 18: 자동 점검 대조
@@ -540,7 +540,35 @@ flowchart LR
 - 모든 메모리 파일의 frontmatter에 `name`이 있음
 
 **완료 결과**
-> (execute에서 채움)
+> 메모리 30개 항목(Feedback 25 + Project 3 + Reference 2)을 전부 열어 프로젝트 파일과 대조했다.
+>
+> **전량 삭제 (10건)** — 규칙이 같은 범위로 프로젝트 파일에 실재:
+> - `feedback_no_try_block_reassignment.md` → `docs/context/conventions/code-style.md` "Try 블록 패턴" 절
+> - `feedback_commit_style.md` → `.claude/skills/_shared/conventions/commit.md` "문서 커밋" 절 (STATE.md 단독 커밋 금지 포함, 옛 "테스트+구현 같은 커밋" 서술은 현재 RED/GREEN 분리 컨벤션과 어긋나 보존 가치 없음)
+> - `feedback_substantive_live_verification.md` → 일반 원칙은 Task 9가 이식한 `ship-ready.md`/`workflow-ship SKILL.md` B1, kafka_brokers dead branch 사고 사례는 `docs/context/PITFALLS.md` #24에 이미 등재
+> - `feedback_no_adhoc_option_labels.md` → 코드 주석 금지는 `code-style.md` "주석/문서화" 절, docs 표준 ID 허용은 `writing-terminology.md` "즉석 코드 라벨 금지" 절 — 두 갈래 모두 실재
+> - `feedback_issue_body_no_next_step.md`, `feedback_pr_convention.md`, `feedback_pr_report_single_comment.md` → `.claude/skills/_shared/conventions/github.md` Step 1/3("다음 단계" 섹션 금지, 한글 제목·명사형 헤더·내부 식별자 비노출·Labels/Assignees, 리포트 단일 코멘트)에 전부 이식
+> - `feedback_execute_speed.md`, `feedback_execute_autorun.md` → `.claude/skills/workflow-execute/SKILL.md` (implementer 1회 dispatch, 리뷰는 ship에서 일괄, 연속 dispatch 조건)
+> - `feedback_briefing_flowchart.md` → `.claude/skills/workflow/SKILL.md` "사용자 브리핑 원칙 (Non-negotiable)" 절
+>
+> **부분 삭제 (2건)** — 일반 규칙은 이식 확인 후 제거, 사고 경위·코드 레벨 기법은 프로젝트 문서 어디에도 없어 보존:
+> - `feedback_verify_integration_test_cache.md` — "UP-TO-DATE 캐시 시 통합테스트 미실행" · "다중 서비스 전부 재실행" 규칙은 `workflow-ship SKILL.md` B1과 `ship-ready.md` 양쪽에 이식 완료를 확인하고 제거. CLEANUP-BATCH-B cold-start flaky 경위, FAULT-INJECTION-RESILIENCE의 pg Redis `ObjectProvider` 수정 사례, `ContainerTestUtils.waitForAssignment` 코드 레벨 수정 기법은 보존
+> - `feedback_ship_lint_include_spotbugstest.md` — "ship B1에 spotbugsTest 포함" 규칙은 `workflow-ship SKILL.md` B1과 `ship-ready.md` 양쪽에 이미 반영됨을 확인하고 제거. DLQ-REACHABILITY #114 사고 경위와 SpotBugs가 `Objects.requireNonNull`을 억제자로 인식하지 못해 `assertThat(x).isNotNull()` 가드가 필요하다는 기법은 보존
+>
+> **보존 (18건)** — 범위가 프로젝트 파일보다 넓거나, 대응 프로젝트 파일이 아예 없음:
+> - `feedback_no_var_keyword.md` — `code-style.md`는 실제 코드만 다루고 위키/문서 코드 블럭까지는 언급 없음, 이 항목이 그 범위를 보존
+> - `feedback_no_auto_proceed_on_question_timeout.md` — `workflow/SKILL.md`의 동일 규칙은 워크플로우 승인 지점(단계 전환·findings 채택·게이트)에 한정, 이 항목은 그 밖의 질문에도 일반 적용
+> - `feedback_writing_voice_no_ai_tell.md` — `writing-style.md` "목소리" 절은 문서 작성 스킬 범위(포스팅/위키/리드미), 대화 응답까지 확장하는 것은 이 항목만의 서술이라 보존하되 Task 10 분할로 바뀐 파일 경로(`writing.md` → `writing-style.md`)만 정정
+> - `feedback_dead_code_requires_user_confirmation.md` — `docs/context/TODOS.md`엔 이 원칙을 적용한 결과(특정 항목의 사용자 확인 필요 기록)만 있고, "참조 그래프 0이어도 기능 단위는 확인 필요"라는 일반 규칙 자체는 없음
+> - 포트폴리오/문체 계열(`feedback_no_internal_source_markers`, `feedback_portfolio_verify_claims_plain_terms`, `feedback_portfolio_terminology`, `feedback_wiki_style_sentence_level`, `feedback_vendor_neutral_wording`, `feedback_no_clone_wording`, `feedback_response_brevity`) — 대응 프로젝트 파일 없음(포트폴리오는 별도 blog 저장소, 나머지는 대화 스타일 규칙으로 이 저장소 컨벤션 문서 범위 밖)
+> - `feedback_cleanup_scope_and_briefing.md`, `feedback_multi_item_processing_protocol.md` — grep 검색 결과 대응 프로젝트 파일 없음
+> - `project_*.md` 3건, `reference_*.md` 2건 — 배경 지식/환경 노트 성격이라 "이식 가능한 규칙"이 아니며, 대응 프로젝트 파일 없음
+>
+> **frontmatter name 보정**: 30개 파일 전수 확인 결과 `name`이 완전히 비어 있던 파일은 `feedback_substantive_live_verification.md`(`name: ""`) 1건뿐이었고, 이 파일 자체가 전량 삭제 대상이라 별도 보정 불필요. 나머지 29개는 모두 비어 있지 않은 `name` 값을 가짐(파일명과 표기가 다른 것은 있으나 "비어 있거나 없는" 케이스는 아니라 이번 태스크 범위 밖으로 유지).
+>
+> **부수 발견**: `MEMORY.md` 인덱스가 존재하지 않는 `feedback_archive_location.md`를 참조하고 있었다(파일 자체가 디스크에 없음) — 인덱스 갱신 과정에서 이 dangling 참조도 제거했다.
+>
+> 최종적으로 `MEMORY.md` 인덱스를 남은 20개 파일과 1:1 매칭되도록 다시 썼다.
 
 ---
 
