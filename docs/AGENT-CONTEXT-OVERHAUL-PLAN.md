@@ -79,7 +79,7 @@ flowchart LR
 - [x] Task 2: 코드 규칙 정본 보강
 - [x] Task 3: reviewer 정비와 effort 원복 조건 등재
 - [x] Task 4: domain-expert 입력 계약 신설
-- [ ] Task 5: implementer 입력 계약과 컨벤션 포인터화
+- [x] Task 5: implementer 입력 계약과 컨벤션 포인터화
 - [ ] Task 6: 도메인 검토자 배차 조건 정본화
 - [ ] Task 7: 체크리스트 정리
 - [ ] Task 8: TDD 사이클 정본 정리
@@ -232,7 +232,17 @@ flowchart LR
 - frontmatter가 `effort: high` 유지
 
 **완료 결과**
-> (execute에서 채움)
+> `.claude/agents/implementer.md`에 "필수 입력 (호출자가 제공)" 절을 신설했다 — 모드 1(PLAN 태스크 실행)은 `mode`/`topic`/`task_id`/`tdd`/PLAN.md·STATE.md 경로, 모드 2(리뷰 finding 수정)는 `mode`/findings 목록/관련 태스크의 tdd 성격을 열거하고, 마지막 줄에 reviewer.md·domain-expert.md와 동일한 강도의 거부 규칙("입력이 빠지면 추측하지 말고 거부하고 무엇이 필요한지 반환한다")을 넣었다.
+>
+> 시작 시 읽는 문장은 기존 "커밋 규칙(`.claude/skills/_shared/conventions/commit.md`)을 읽는다" 한 문장에 코드 스타일 컨벤션(`docs/context/conventions/code-style.md`)을 같은 문장 안에 병기해, 같은 위치·같은 강도(동일 동사 "읽는다")로 신설했다.
+>
+> 포인터화 전 5종이 `code-style.md`에 모두 실재하는지 먼저 확인했다 — 안티패턴 회피 절에 `var` 키워드 금지, `catch (Exception)` swallow 금지(→ error-logging.md), 공개 유스케이스·포트 반환값의 null 반환 금지, `@Data` 금지가 있고, 별도 "Try 블록 패턴" 절에 try 블록 외부 변수 재할당 금지가 있다. 5종 모두 확인 후 축약했다.
+>
+> - **코드 패턴** 절: Lombok 줄 끝의 "`@Data` 금지" 언급을 제거했다 (이제 금지 절 포인터가 커버).
+> - **금지 (타협 불가)** 절: 개별 서술 4줄(`var` · try 재할당 · `catch (Exception e)` · null 반환)을 한 줄 포인터로 합쳤다 — "코드 컨벤션 위반(`var` 키워드 · `catch (Exception e)` swallow · 공개 유스케이스·포트의 null 반환 · `@Data` · try 블록 내 외부 변수 재할당) — 기준은 `docs/context/conventions/code-style.md` 안티패턴 회피 절". 기존 `catch (Exception e)` 항목에 있던 "불가피하면 `handleUnknownFailure` 경유" 세부는 제거했다 — 코드베이스 전체에 `handleUnknownFailure` 메서드가 더 이상 존재하지 않는(과거 리팩터로 삭제된) 낡은 참조였고, `code-style.md`가 가리키는 `error-logging.md`의 현재 규칙("잡으면 LogFmt.error + 재throw 또는 명시적 fallback")으로 대체된다.
+> - 워크플로우 고유 금지(테스트 없이 구현, 범위 밖 코드 수정, `git add -A`/`--amend`/`--no-verify`, 인접 태스크 침범)는 문구 그대로 유지했다.
+>
+> frontmatter `effort: high`는 손대지 않고 그대로 유지했다.
 
 ---
 

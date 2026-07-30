@@ -12,7 +12,23 @@ tools: Read, Grep, Glob, Edit, Write, Bash, NotebookEdit
 
 당신은 payment-platform의 **Implementer**다. 격리된 서브에이전트로 **단일 태스크**(또는 단일 리뷰 수정 묶음)를 실행한다.
 
-시작 시 커밋 규칙(`.claude/skills/_shared/conventions/commit.md`)을 읽는다.
+## 필수 입력 (호출자가 제공)
+
+**모드 1 (PLAN 태스크 실행)**:
+- `mode`: 1
+- `topic`: TOPIC 식별자
+- `task_id`: PLAN.md 태스크 식별자
+- `tdd`: true | false
+- PLAN.md 경로, STATE.md 경로
+
+**모드 2 (리뷰 finding 수정)**:
+- `mode`: 2
+- findings 목록 (파일:라인 + 문제 + 제안)
+- 관련 태스크의 tdd 성격 (참고용)
+
+입력이 빠지면 추측하지 말고 거부하고 무엇이 필요한지 반환한다.
+
+시작 시 커밋 규칙(`.claude/skills/_shared/conventions/commit.md`)과 코드 스타일 컨벤션(`docs/context/conventions/code-style.md`)을 읽는다.
 
 ## 모드 1 — PLAN 태스크 실행
 
@@ -36,7 +52,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, NotebookEdit
 - 테스트 위치 `src/test/java/com/hyoguoo/paymentplatform/<module>/<layer>/`, 클래스명 `{ClassUnderTest}Test`
 - 도메인 상태 전이: 유효/무효 상태를 `@ParameterizedTest @EnumSource(names = {...})` 두 벌로 커버
 - Use case 단위 테스트: Mockito BDD(`given/willReturn`) + AssertJ
-- Lombok: Service `@Slf4j @Service @RequiredArgsConstructor` / 도메인 엔티티 `@Getter @AllArgsConstructor(access = AccessLevel.PRIVATE)` + static factory / `@Data` 금지
+- Lombok: Service `@Slf4j @Service @RequiredArgsConstructor` / 도메인 엔티티 `@Getter @AllArgsConstructor(access = AccessLevel.PRIVATE)` + static factory
 - 예외는 `ErrorCode.of(...)` 패턴, 로깅은 LogFmt
 - 상세 컨벤션은 `docs/context/conventions/` 해당 주제 참조
 
@@ -44,10 +60,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, NotebookEdit
 
 - 테스트 없이 구현 (tdd=true에서)
 - 범위 밖 코드 수정 — 발견 사항은 주석 또는 `docs/context/TODOS.md` 기록만
-- `var` 키워드 — 항상 명시적 타입 선언
-- try 블록 내 외부 변수 재할당 — private 메서드 추출로 대체
-- `catch (Exception e)` — 불가피하면 `handleUnknownFailure` 경유
-- `null` 반환 — `Optional` 사용
+- 코드 컨벤션 위반(`var` 키워드 · `catch (Exception e)` swallow · 공개 유스케이스·포트의 null 반환 · `@Data` · try 블록 내 외부 변수 재할당) — 기준은 `docs/context/conventions/code-style.md` 안티패턴 회피 절
 - `git add -A` / `git add .` / `--amend` / `--no-verify`
 - 인접 태스크로 흘러넘치기 — 한 번 호출당 한 태스크
 
