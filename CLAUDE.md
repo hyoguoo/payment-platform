@@ -107,10 +107,10 @@
 
 ## Skills
 
-- `.claude/skills/workflow/SKILL.md` — 4단계 워크플로우 라우터 + 공통 원칙 (격리·브리핑·게이트·STATE 형식)
-- `.claude/skills/workflow-{discuss,plan,execute,ship}/` — 각 단계 오케스트레이터 (자기완결, 템플릿 인라인)
-- 단독 호출 스킬(review / writing / explain-diff-html 등) — 전체 목록은 `.claude/skills/README.md` 참조 (여기에 중복 나열하지 않는다)
+스킬 목록과 설명은 세션이 자동으로 받는다. 여기에는 스킬이 아닌 자원만 적는다.
+
 - `.claude/agents/{reviewer,domain-expert,implementer}.md` — 서브에이전트 정의 (유일한 정의처)
+- [`.claude/skills/README.md`](.claude/skills/README.md) — 스킬·에이전트·공용 자원 인덱스
 - `.claude/skills/_shared/checklists/` — 게이트 체크리스트 4종 (discuss/plan/code/ship-ready)
 - `.claude/skills/_shared/conventions/` — 커밋 / GitHub / 문서 작성 컨벤션
 
@@ -120,6 +120,3 @@
 - **`<type>(<scope>): <한글 제목>`** — type 은 영문(`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`build` 등), 제목·본문은 한글
 - **scope 는 고정 어휘만**: 서비스(`payment`/`pg`/`product`/`user`/`gateway`/`eureka`) 또는 횡단(`docs`/`build`/`infra`/`deps`). 한 scope 로 못 묶으면 생략. 토픽명·태스크 ID 금지
 - **마지막 줄 `Co-Authored-By:` 트레일러 일관 포함**
-- amend 금지, 명시 staging, hook 우회 금지
-- TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
-- discuss/plan 산출물 각 단일 `docs:` 커밋, ship 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지
