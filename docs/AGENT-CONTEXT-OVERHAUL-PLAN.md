@@ -81,7 +81,7 @@ flowchart LR
 - [x] Task 4: domain-expert 입력 계약 신설
 - [x] Task 5: implementer 입력 계약과 컨벤션 포인터화
 - [x] Task 6: 도메인 검토자 배차 조건 정본화
-- [ ] Task 7: 체크리스트 정리
+- [x] Task 7: 체크리스트 정리
 - [ ] Task 8: TDD 사이클 정본 정리
 - [ ] Task 9: ship 검증 절차 존치와 학습 조건 이식
 - [ ] Task 10: 문서 작성 컨벤션 분할
@@ -292,7 +292,20 @@ flowchart LR
 - `git diff -- .claude/skills/_shared/checklists/` 결과에서 세 파일의 domain risk 섹션 라인 범위에 hunk가 0건 — 자기 판정이 아니라 diff로 확인한다
 
 **완료 결과**
-> (execute에서 채움)
+> `code-ready.md` execution discipline 절의 항목을 "죽은 코드/미사용 import가 새로 생기지 않음"에서 "죽은 코드가 새로 생기지 않음"으로 좁혔다 — 미사용 import는 린트 게이트(spotbugs 등)가 잡고, 죽은 코드는 정적 분석이 없어 수동 판정만 남긴다.
+>
+> convention 섹션(Lombok 패턴 · `@AllArgsConstructor`+`@Builder` · LogFmt · null 반환 금지 · `catch (Exception e)` · `var` 금지, 6항목)은 손대지 않았다 — `var`·`@Data`·`catch (Exception)`·null 반환 모두 checkstyle에 대응 규칙이 없어 수동 판정이 유일한 검증 수단이기 때문이다.
+>
+> domain risk 섹션 3종은 한 글자도 건드리지 않았다. `ship-ready.md`에도 신설하지 않았다.
+>
+> **diff 대조 결과** — `git diff -- .claude/skills/_shared/checklists/` 실행 결과 hunk가 정확히 1개, `code-ready.md` execution discipline 절의 해당 한 줄만 잡혔다:
+> ```
+> - [ ] 죽은 코드/미사용 import가 새로 생기지 않음
+> + [ ] 죽은 코드가 새로 생기지 않음
+> ```
+> `discuss-ready.md`·`plan-ready.md`는 diff 자체가 0건이었고, `code-ready.md`도 domain risk 섹션(37~45행) 및 convention 섹션(23~30행)에는 hunk가 잡히지 않았다.
+>
+> **Task 5 발견 사항 확인** — `code-ready.md` convention 절의 "`catch (Exception e)` 없음 (있다면 `handleUnknownFailure` 경유)" 항목은 여전히 남아 있다. 코드베이스 전체에 `handleUnknownFailure` 메서드가 존재하지 않는다(과거 리팩터로 삭제됨, Task 5 완료 결과에서도 동일하게 확인). 이번 태스크는 convention 섹션을 존치하기로 범위를 확정했으므로 손대지 않는다 — 정정이 필요하다는 판단만 남긴다. 실제 교체(현재 `error-logging.md` 규칙인 "잡으면 LogFmt.error + 재throw 또는 명시적 fallback"으로)는 이번 범위 밖이다.
 
 ---
 

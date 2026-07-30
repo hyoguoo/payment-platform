@@ -32,7 +32,7 @@
 ## execution discipline (실행 규율)
 
 - [ ] 범위 밖 코드 수정 없음 (발견한 이슈는 주석 또는 `docs/context/TODOS.md`)
-- [ ] 죽은 코드/미사용 import가 새로 생기지 않음
+- [ ] 죽은 코드가 새로 생기지 않음
 
 ## domain risk (Domain Expert 전용)
 

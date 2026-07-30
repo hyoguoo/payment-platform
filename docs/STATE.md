@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 7: 체크리스트 정리 (code-ready.md execution discipline에서 미사용 import 항목을 빼고 죽은 코드 판정으로 좁힘)
+- **활성 태스크**: Task 8: TDD 사이클 정본 정리 (개발 흐름·커밋 타입 매핑을 각 정본으로 확정하고 나머지 세 곳을 포인터로 축약)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 
