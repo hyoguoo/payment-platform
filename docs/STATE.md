@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 9: ship 검증 절차 존치와 학습 조건 이식 (workflow-ship B1의 통합테스트 재실행·라이브 검증 조건을 존치하고 다중 서비스 재실행·라이브 검증 원칙을 ship-ready.md에 이식)
+- **활성 태스크**: Task 10: 문서 작성 컨벤션 분할 (`_shared/conventions/writing.md` 352줄을 문체/용어·식별자/표·다이어그램 세 파일로 분할하고 원 파일은 인덱스로 축약)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 

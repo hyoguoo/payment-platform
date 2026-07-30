@@ -66,6 +66,8 @@ Agent(subagent_type="implementer", prompt="모드 2 — 리뷰 finding 수정.
 
 리뷰 통과(1차 pass 또는 재리뷰 통과) 직후 `explain-diff-html` 스킬로 이번 작업의 설명 페이지를 생성한다. 기본 자동 — 사용자가 생략을 지시했거나, 제외 규칙 적용 후 설명할 코드 diff가 없으면(도메인 비접촉 토픽) 건너뛰고 게이트 메시지에 생략 사유를 표기한다.
 
+역할 경계: 마크다운 브리핑(topic.md·PLAN.md·COMPLETION-BRIEFING)은 설계·플랜 판단용이고, HTML 설명 페이지는 완료 후 변경 이해용이다 — 서로 대체하지 않는다.
+
 - 대상: `git diff main...HEAD` (스킬의 `docs/`·`.claude/` 제외 규칙 적용)
 - 저장: `.archive/explanations/YYYY-MM-DD-<topic-kebab>.html`
 - 목적: 사용자가 아래 게이트에서 페이지를 읽고 마무리 진행 여부를 판단한다.
@@ -91,9 +93,10 @@ critical N건 해소, major N건 처리, minor N건 기록.
 ### B1. 최종 검증
 
 - `./gradlew test` 전체 실행
-- **통합테스트 명시 실행** — build/test가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다: `./gradlew integrationTest --rerun` 또는 해당 태스크 직접 지정
+- **통합테스트 명시 실행** — build/test가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다: `./gradlew integrationTest --rerun` 또는 해당 태스크 직접 지정. **다중 서비스 변경 시**: 한 토픽이 여러 서비스를 건드렸으면 일부만 재실행하지 않는다 — 변경이 닿은 모든 서비스의 통합테스트를 재실행한다. 일부만 돌리면 나머지는 캐시로 조용히 스킵돼, 과거 실제로 한 서비스의 통합테스트가 안 돌아 CI에서야 컨텍스트 로드 실패가 드러난 적이 있다
 - 린트 게이트: `./gradlew checkstyleMain checkstyleTest spotbugsMain spotbugsTest --continue` — CI lint step(`_service-ci.yml`)과 같은 태스크 집합 유지
 - 실패 분류: 이번 작업 관련 → implementer로 수정 / 사전 존재 → 기록 후 무시 / 구조적 → 중단·보고
+- **라이브 검증 원칙**: 합성 테스트(문법·픽스처 통과)를 검증 완료로 보지 않는다 — 가능하면 실제 장애 주입으로 신호 경로 끝까지 관측한다. 이 원칙은 알람 규칙에 한정되지 않고 검증 요구 전반에 적용된다.
 - **라이브 검증 (조건부)**: 런타임 행동이 바뀐 토픽(알람 규칙·Kafka 토픽/컨슈머 설정·스케줄러·관리자 운영 경로)은 `docs/smoke/` 해당 가이드로 실환경 발화/동작을 확인한다. 스택 기동 불가 등으로 못 하면 사유 + 미검증 항목을 COMPLETION-BRIEFING 미결/후속에 기록 — 암묵 생략 금지, 의식적 스킵만
 
 ### B2. Context 문서 갱신
