@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 1: 루트 지침 상충 해소와 산출물 길이 기준
+- **활성 태스크**: Task 2: 코드 규칙 정본 보강 (`code-style.md`에 `@Data` 금지·null 반환 금지 이식)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 
