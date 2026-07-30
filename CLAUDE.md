@@ -71,6 +71,7 @@
 | 인프라 헬스체크 / 트레이스 검증 | `docs/smoke/*` |
 | 워크플로우 작업 재개 | `docs/STATE.md` (재개 메모) → 활성 산출물 |
 | 과거 작업 맥락 파악 | `docs/archive/<topic>/COMPLETION-BRIEFING.md` |
+| 에이전트 지침·스킬 정비 | `CLAUDE-5-PROMPTING` |
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
@@ -85,6 +86,7 @@
 - [`docs/context/PITFALLS.md`](docs/context/PITFALLS.md) — 학습된 도메인 함정 인덱스
 - [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
 - [`docs/context/TODOS.md`](docs/context/TODOS.md) — 후속 + 향후 처리 항목
+- [`docs/context/CLAUDE-5-PROMPTING.md`](docs/context/CLAUDE-5-PROMPTING.md) — Claude 5 세대 프롬프팅·컨텍스트 엔지니어링 참고 정리 (Opus 5 프롬프팅 가이드 + 컨텍스트 엔지니어링 기사)
 
 ### 사람 독자용 문서 (docs/context/) — ⚠️ 작업 시 열지 말 것
 

@@ -1,6 +1,6 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
+> 최종 갱신: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
 
 ## 테스트 프레임워크
 

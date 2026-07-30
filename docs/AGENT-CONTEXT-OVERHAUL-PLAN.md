@@ -730,4 +730,11 @@ flowchart LR
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+domain-expert 사후 배석 판정: pass — 이번 라운드에서 결제 도메인 방어망(상태 전이·멱등성·정합성)을 건드리는 코드 변경이 없어 새로 발견된 critical·major 도메인 finding 없음(C-11 원복 조건 미해당).
+
+| Finding | 심각도 | 처리 | 사유 |
+|---|:---:|:---:|---|
+| `TESTING.md` 헤더가 "TDD 흐름" 절 포인터 축약(Task 8) 이후에도 최종 갱신 2026-07-03 그대로 미동기화 | major | 채택 | `CONCERNS.md`/`TODOS.md` 헤더 관례(신규 이력 항목 + 이전 이력 보존)를 따라 2026-07-31 항목을 추가 |
+| `CLAUDE-5-PROMPTING.md`가 루트에 있고 설계 문서 ship 이관 후 유일한 참조가 사라짐 | minor | 채택 | `git mv`로 `docs/context/`로 이동, `CLAUDE.md` Reference Files 진입 표 + 영구 문서 목록에 색인 추가, 설계 문서 내부 참조 경로 갱신 |
+| `check-agent-docs.py` `DUPLICATE_RULES`에 `catch (Exception)` swallow 금지 항목 누락 | minor | 채택 | 정본(`code-style.md`) 문구 그대로 사전에 추가, 실행 결과 중복 규칙 8건 검사·문제 0건으로 오탐 없음 확인 |
+| 커밋 20개 중 2개만 `(docs)` scope 부여로 일관성 부재 | minor | 스킵 | amend 금지로 과거 커밋 정정 불가 — 다음 토픽부터 통일 |
