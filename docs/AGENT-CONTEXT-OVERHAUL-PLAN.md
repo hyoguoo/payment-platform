@@ -90,7 +90,7 @@ flowchart LR
 - [x] Task 13: 워크플로우 스킬 dispatch 정리
 - [x] Task 14: 후속 위임 항목 기록
 - [x] Task 15: 메모리 정리
-- [ ] Task 16: 검사 스크립트 — 참조·구조 판정
+- [x] Task 16: 검사 스크립트 — 참조·구조 판정
 - [ ] Task 17: 검사 스크립트 — 중복·다이어그램 판정과 최종 스캔
 - [ ] Task 18: 자동 점검 대조
 
@@ -589,7 +589,16 @@ flowchart LR
 - 종료 코드가 판정 결과와 무관하게 0
 
 **완료 결과**
-> (execute에서 채움)
+> `scripts/check-agent-docs.py`를 신설하고 판정 3종을 구현했다 — 기존 `scripts/usl-fit.py`와 같은 스타일(shebang + 모듈 docstring에 실행법 명시, argparse 없이 `main()` → `sys.exit(main())`, 의존성 없음)을 따랐다.
+>
+> - **참조 무결성** — 마크다운 링크(`[text](path)`)와 백틱 단독 스팬을 펜스(```) 코드 블록을 제외하고 스캔한다. 링크는 참조 파일 기준 상대경로로 바로 검증한다(0건 문제 확인). 백틱 스팬은 공백·URL·`<...>`/`{...}`/`*`/`$`/`:` placeholder·`...` 약어·`./`·`../` 접두(셸 커맨드 예시와 구분 불가)를 제외한 뒤, 레포 루트 → 참조 파일 기준 → 그 상위 → `.claude/skills/_shared/` 앵커(두 경로 접두사 유무 혼용 축약 대응) 순으로 해석을 시도한다. 전부 실패해도 최상위 세그먼트가 레포 최상위 항목이나 공유 앵커(`conventions`/`checklists`/`_shared`)에 없으면 계층 축약 표기(`db/migration/`, `application/port/in/`, `payment-service/.../X.java` 등)로 보고 조용히 건너뛴다 — 실제 결함(임시 파일로 존재하지 않는 링크/백틱 경로 각 1건 주입)은 즉시 검출됨을 확인했다.
+> - **frontmatter 필수 필드** — `.claude/skills/*/SKILL.md`(14개) name/description, `.claude/agents/*.md`(3개) name/description/model/tools. 필드 누락 임시 스킬로 검출 동작을 확인했다.
+> - **체크리스트 참조** — `domain-expert.md`의 stage 매핑 표(`| stage | \`checklist.md\` | 섹션 |` 3열 행) + 여러 스킬의 프로즈 언급("`code-ready.md`의 domain risk 섹션" 등, "섹션"/"항목" 키워드 앞 영문 구문을 역방향 스캔) 두 형태를 인식해 체크리스트 파일 실재 + 헤딩 존재를 대조한다.
+> - 세 판정 모두 `main()`이 무조건 `return 0`(정보 제공용, 작업을 막지 않는다).
+>
+> **실행 결과** — 검사 대상 문서 51개(CLAUDE.md 1 + `.claude/**/*.md` + `docs/context/**/*.md`)에서 참조 무결성 209건 검사·문제 0건, frontmatter 17건 검사·문제 0건, 체크리스트 참조 17건 검사·문제 0건 — 총 문제 0건. Task 1~15에서 경로가 바뀐 곳(`writing.md` 분할 등)은 이미 정확히 갱신돼 있어 추가로 고칠 참조가 없었다.
+>
+> 코드가 아닌 Python 스크립트라 `./gradlew test`는 생략하고, 스크립트를 직접 실행해(`python3 scripts/check-agent-docs.py`, 종료 코드 0) 결과를 확인했다.
 
 ---
 
