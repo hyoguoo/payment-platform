@@ -6,7 +6,7 @@
 
 - **주제**: AGENT-CONTEXT-OVERHAUL (에이전트 지침 컨텍스트의 상충·중복 정비)
 - **단계**: execute
-- **활성 태스크**: Task 11: 문체 규칙 사본 제거와 검수 축소 (`writing/SKILL.md` 컨벤션 요약 40줄과 `doc-review/SKILL.md` 관점 1 표를 분할 파일 포인터로 대체, 검수 루프 상한 3 → 2)
+- **활성 태스크**: Task 12: 브리핑 원칙 완화 (`workflow/SKILL.md` 브리핑 원칙의 "간략화 금지" 문구를 완화하고 도메인 예외를 배차 조건·태스크 플래그 두 갈래로 명시)
 - **이슈/브랜치**: #130
 - **파일**: docs/topics/AGENT-CONTEXT-OVERHAUL.md / docs/AGENT-CONTEXT-OVERHAUL-PLAN.md
 
