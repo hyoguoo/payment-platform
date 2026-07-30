@@ -45,7 +45,7 @@ description: >
 
 - 브리핑은 별도 파일이 아니라 **topic.md / PLAN.md 상단 섹션**으로 작성하고, 채팅에는 위치 안내 한 줄만.
 - 플로우차트는 **간략화 금지, 전체 경로**(모든 분기/예외/상태 전이). 노드 라벨은 메서드명 대신 도메인 용어, 코드 식별자는 `()` 부가 표기.
-- Mermaid 금지 문자: `{` `}` `·` `→` — 대체 표기는 `_shared/conventions/writing.md` 참조.
+- Mermaid 금지 문자: `{` `}` `·` `→` — 대체 표기는 `_shared/conventions/writing-visuals.md` 참조.
 
 ## 단계 완료 후 정지 원칙
 

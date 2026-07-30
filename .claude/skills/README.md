@@ -55,7 +55,7 @@ payment-platform의 Claude Code 스킬 모음. 각 스킬은 `<name>/SKILL.md`�
 |---|---|
 | `commit.md` | 커밋 메시지·staging·TDD 커밋 분리 규칙 |
 | `github.md` | GitHub 이슈·브랜치·PR 표준 (한글 제목, 명사형 헤더, 히스토리 보존) |
-| `writing.md` | 문서 작성 컨벤션 (문체, 표, Mermaid 금지 문자, 팩트 검증) |
+| `writing.md` | 문서 작성 컨벤션 인덱스 (`writing-style`/`writing-terminology`/`writing-visuals` 세 파일 안내) |
 
 ## 전체 데이터 흐름
 

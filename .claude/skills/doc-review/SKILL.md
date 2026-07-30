@@ -6,11 +6,11 @@ description: 문서 콘텐츠(포스팅, 깃헙 위키, 리드미 등)의 품질
 # 문서 검수 스킬
 
 문서 콘텐츠를 4개 관점에서 검수한다. 각 관점은 독립 서브에이전트가 병렬로 수행하며, 최대 3회 루프를 돈다.
-작성 컨벤션: `.claude/skills/_shared/conventions/writing.md`
+작성 컨벤션: `.claude/skills/_shared/conventions/writing-style.md` / `writing-terminology.md` / `writing-visuals.md` (인덱스: `writing.md`)
 
 ## 검수 관점 4가지
 
-### 관점 1: 규격 준수 (근거: `conventions/writing.md`)
+### 관점 1: 규격 준수 (근거: `conventions/writing-style.md` / `writing-terminology.md` / `writing-visuals.md`)
 
 | 체크 항목 | 판정 기준 |
 |:---:|:---:|
@@ -21,7 +21,7 @@ description: 문서 콘텐츠(포스팅, 깃헙 위키, 리드미 등)의 품질
 | HTML 태그 사용 금지 | 순수 마크다운 문법만 사용 |
 | 헤더 중심 구성 | 산문형 단락 대신 헤더 + 짧은 설명 조합 |
 | 메서드 호출 narrative 없음 | prose 본문에 `X.foo()` 형태 노출 없음 (T4 룰), 도메인 행위로 치환됨 |
-| 동의어 통일 | `writing.md`의 동의어 통일 표 기준 일관 표기 |
+| 동의어 통일 | `writing-terminology.md`의 동의어 통일 표 기준 일관 표기 |
 | 약어 풀어쓰기 | 도메인 약어 첫 등장 시 1회 풀어쓰기 |
 | 평가·과시 형용사·번역투 없음 | "가장/최고의/이상적인" 류 평가 형용사, "~를 통해/~함으로써/방식을 사용한다" 번역투가 사실·수치·구체 동사로 대체됨 |
 | 문장 밀도 적절 | 짧은 단정문이 연발하지 않고 연결어미로 자연스러운 길이, 긴 불릿은 하위 뎁스로 분해됨 |
@@ -59,7 +59,7 @@ description: 문서 콘텐츠(포스팅, 깃헙 위키, 리드미 등)의 품질
 
 ### 1. 서브에이전트 4개 병렬 디스패치 (단일 메시지)
 
-각 서브에이전트에 전달: 검수 대상 문서 경로 + 해당 관점의 체크 항목 표 + (규격 준수 관점에는 `conventions/writing.md` 경로, 기술 정확성 관점에는 "참조 소스 코드를 직접 읽어 대조" 지시).
+각 서브에이전트에 전달: 검수 대상 문서 경로 + 해당 관점의 체크 항목 표 + (규격 준수 관점에는 `conventions/writing-style.md`·`writing-terminology.md`·`writing-visuals.md` 경로, 기술 정확성 관점에는 "참조 소스 코드를 직접 읽어 대조" 지시).
 
 프롬프트 템플릿:
 

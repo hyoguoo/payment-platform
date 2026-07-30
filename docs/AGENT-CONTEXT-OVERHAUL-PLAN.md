@@ -84,7 +84,7 @@ flowchart LR
 - [x] Task 7: 체크리스트 정리
 - [x] Task 8: TDD 사이클 정본 정리
 - [x] Task 9: ship 검증 절차 존치와 학습 조건 이식
-- [ ] Task 10: 문서 작성 컨벤션 분할
+- [x] Task 10: 문서 작성 컨벤션 분할
 - [ ] Task 11: 문체 규칙 사본 제거와 검수 축소
 - [ ] Task 12: 브리핑 원칙 완화
 - [ ] Task 13: 워크플로우 스킬 dispatch 정리
@@ -383,7 +383,19 @@ flowchart LR
 - 기존 참조가 모두 유효한 경로를 가리킴
 
 **완료 결과**
-> (execute에서 채움)
+> `.claude/skills/_shared/conventions/writing.md`(352줄)를 세 파일로 분할했다.
+>
+> - `writing-style.md` — 문체(종결 형식·문장 길이와 리스트·평가·번역투 금지·문장 밀도) + 목소리(AI체·번역체 제거) 전체 + 구조 + 팩트 검증
+> - `writing-terminology.md` — 용어 선택(식별자 4단계 룰·보존 가능한 메서드명 예외·메서드 호출 narrative 금지·즉석 코드 라벨 금지) + 동의어 통일 + 약어 풀어쓰기
+> - `writing-visuals.md` — 표 정렬 규칙 + 시각적 요소 활용(Mermaid & Table) + Mermaid 노드 라벨 금지 문자
+>
+> 원 파일 지침 중 세 갈래 분류에 명시되지 않았던 "구조"(헤더 중심 구성·서머리·아웃라인은 참고용)와 "팩트 검증"(검증되지 않은 내용 금지) 두 절은 유실 방지를 위해 `writing-style.md`에 실었다 — 둘 다 문체/작성 태도에 관한 규칙이라 세 파일 중 가장 가까운 자리다.
+>
+> `writing.md`는 세 파일을 가리키는 인덱스로 축약했다. 하단 "기존 문서 수정 시" 체크리스트(14항목)는 세 주제에 걸쳐 있어 항목별로 쪼개지 않고 인덱스에 통째로 남겼다 — 계획에서 허용한 두 선택지(인덱스 존치 / 항목별 배치) 중 인덱스 존치를 택했다.
+>
+> **유실 방지 대조** — 분할 전 원본에서 최상위 불릿(코드 블록 밖 `- ` 라인) 32개, 코드 예시 블록(``` 쌍) 15개를 세었다. 분할 후 네 파일(인덱스 + 세 분할 파일) 합계도 불릿 32개(인덱스 14 + style 6 + terminology 6 + visuals 6), 코드 블록 15개(style 13 + terminology 2)로 정확히 일치했다 — 스크립트로 재검증.
+>
+> **기존 참조 갱신** — `grep -rn "writing.md"`로 전체 검색해 스킬 5곳(`README.md`, `doc-review/SKILL.md` 4곳, `workflow/SKILL.md`, `explain-diff-html/SKILL.md` 2곳, `writing/SKILL.md` 2곳)의 경로를 새 구조에 맞게 갱신했다. `CLAUDE.md`는 `writing.md` 자체를 참조하지 않아(스킬 이름만 언급) 갱신 대상이 아니었다. `docs/topics/AGENT-CONTEXT-OVERHAUL.md`는 discuss 시점 설계 기록이라 참조 갱신 대상에서 제외했다(과거 상태를 서술하는 문서). `writing/SKILL.md`의 "컨벤션 요약" 40줄 본문과 `doc-review/SKILL.md`의 관점 1 표 자체는 Task 11 범위라 이번엔 경로 포인터만 고쳤다.
 
 ---
 
