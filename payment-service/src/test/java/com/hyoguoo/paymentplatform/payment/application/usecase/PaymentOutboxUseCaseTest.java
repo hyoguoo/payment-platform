@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
@@ -46,11 +47,11 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("createPendingRecord: save()를 1회 호출하고 PENDING 상태 PaymentOutbox를 반환한다")
-    void createPendingRecord_savesAndReturnsPendingOutbox() {
+    @DisplayName("createPendingRecord: 생성됨이면 createPendingIfAbsent를 1회 호출하고 PENDING 상태 PaymentOutbox를 반환한다")
+    void createPendingRecord_created_returnsPendingOutbox() {
         // given
-        PaymentOutbox pendingOutbox = PaymentOutbox.createPending(ORDER_ID);
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(pendingOutbox);
+        given(mockPaymentOutboxRepository.createPendingIfAbsent(ORDER_ID))
+                .willReturn(PaymentOutboxCreationResult.CREATED);
 
         // when
         PaymentOutbox result = paymentOutboxUseCase.createPendingRecord(ORDER_ID);
@@ -58,7 +59,8 @@ class PaymentOutboxUseCaseTest {
         // then
         assertThat(result.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         assertThat(result.getOrderId()).isEqualTo(ORDER_ID);
-        then(mockPaymentOutboxRepository).should(times(1)).save(any(PaymentOutbox.class));
+        then(mockPaymentOutboxRepository).should(times(1)).createPendingIfAbsent(ORDER_ID);
+        then(mockPaymentOutboxRepository).should(never()).save(any(PaymentOutbox.class));
     }
 
     @Test

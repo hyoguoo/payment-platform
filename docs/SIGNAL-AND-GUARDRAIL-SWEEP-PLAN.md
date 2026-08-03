@@ -94,7 +94,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 전이 주체를 전이 지점이 선언하게 전환
-- [ ] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
+- [x] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
 - [ ] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
 - [ ] Task 4: 동시 승인 경합 통합 검증
 - [ ] Task 5: 체크아웃 응답에 중복 여부 복원
@@ -187,7 +187,34 @@ flowchart TD
 - 락 계약 테스트가 존재하고, 잠금 선언을 제거하거나 건너뛰기 힌트로 바꾸면 실패함
 
 **완료 결과**
+> `JpaPaymentOutboxRepository`에 `insertIgnorePending`(네이티브 `INSERT IGNORE`, 반영 행 수 반환)과
+> `findByOrderIdForUpdate`(`@Lock(PESSIMISTIC_WRITE)` 블로킹 쓰기 잠금 읽기, 건너뛰기 힌트 없음)를
+> 추가했다. pg 수신 기록 테이블의 `insertIgnorePending` + `findIdByOrderId` 조합을 참고하되, 확인
+> 조회는 pg 워커 선점용 `SKIP LOCKED`를 베끼지 않고 블로킹 잠금으로 못박았다 — 확정 트랜잭션이
+> 결제 상태 전이로 이미 읽기 스냅샷을 잡은 뒤이므로, 잠금 없는 조회로는 자신을 막은 앞선 행을
+> 보지 못해 중복을 저장 실패로 오분류하기 때문이다.
 >
+> `PaymentOutboxRepository`(포트)에 `createPendingIfAbsent(orderId)`를 새로 추가했다(기존 `save`는
+> 그대로 유지). 결과는 `PaymentOutboxCreationResult`(CREATED/ALREADY_EXISTS/SAVE_FAILED) 세 갈래이며,
+> `PaymentOutboxRepositoryImpl`이 반영 행 수 1을 CREATED로, 0이면 확인 조회 결과로 ALREADY_EXISTS와
+> SAVE_FAILED를 가른다. `PaymentOutboxUseCase.createPendingRecord`가 `save` 대신 이 메서드를 호출하도록
+> 바꿨다 — CREATED가 아니면 예외로 막되, 어떤 예외(중복 재진입 vs 그 밖의 실패)를 던질지 구분하는
+> 것은 다음 태스크의 몫이라 지금은 하나의 예외로 막는다.
+>
+> 락 계약 테스트(`JpaPaymentOutboxRepositoryLockContractTest`)를 실제로 무력화해 검증했다 —
+> `@Lock` 애노테이션을 제거하면 "쓰기 잠금 읽기로 선언된다" 케이스가 `Expecting actual not to be null`로
+> 실패했고, 쿼리에 `FOR UPDATE SKIP LOCKED`를 붙이면 "건너뛰기 힌트가 없다" 케이스가
+> `not to contain "SKIP LOCKED"`로 실패함을 확인한 뒤 원상복구했다.
+>
+> `PaymentOutboxRepository`에 메서드가 추가되면서 `OutboxPendingAgeMetricsTest`/`PaymentOutboxMetricsTest`의
+> Fake 구현체 2곳이 컴파일 깨짐 — CREATED 고정 반환으로 보강했다(Rule 1, 인터페이스 확장에 따른
+> 기계적 보완).
+>
+> `./gradlew :payment-service:test` 556개 전부 pass, checkstyle 통과. 참고로 이 태스크가 건드리는
+> 중복 삽입 경로를 실제로 태우는 `StockRetentionIntegrationTest`(`@Tag("integration")`, 기본 test에서 제외)도
+> `integrationTest`로 별도 실행해 3개 전부 pass 확인 — 이전에 UNIQUE 위반으로 얻던 RuntimeException이
+> 지금은 `createPendingRecord`가 막는 예외로 바뀌었을 뿐 상위 계약(재확정 시 재고 이중 차감 0)은
+> 그대로 유지된다.
 
 ---
 

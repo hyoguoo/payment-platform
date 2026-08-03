@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
@@ -27,10 +28,18 @@ public class PaymentOutboxUseCase {
         paymentOutboxRepository.save(outbox);
     }
 
+    /**
+     * 이미 있으면 조용히 넘어가는 삽입으로 발행 행을 생성한다.
+     * 생성되지 않았으면(동시 재진입이든 저장 실패든) 예외로 막는다 — 구분해 부르는 것은 호출자 몫이다.
+     */
     @Transactional
     public PaymentOutbox createPendingRecord(String orderId) {
-        PaymentOutbox outbox = PaymentOutbox.createPending(orderId);
-        return paymentOutboxRepository.save(outbox);
+        PaymentOutboxCreationResult result = paymentOutboxRepository.createPendingIfAbsent(orderId);
+        if (result != PaymentOutboxCreationResult.CREATED) {
+            throw new IllegalStateException(
+                    "PaymentOutboxUseCase.createPendingRecord: orderId=" + orderId + " result=" + result);
+        }
+        return PaymentOutbox.createPending(orderId);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

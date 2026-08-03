@@ -106,6 +106,12 @@ class OutboxPendingAgeMetricsTest {
         }
 
         @Override
+        public com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult
+                createPendingIfAbsent(String orderId) {
+            return com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult.CREATED;
+        }
+
+        @Override
         public Optional<PaymentOutbox> findByOrderId(String orderId) {
             return pendingList.stream()
                     .filter(o -> o.getOrderId().equals(orderId))

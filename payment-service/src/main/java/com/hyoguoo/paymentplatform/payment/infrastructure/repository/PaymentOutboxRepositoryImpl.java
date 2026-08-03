@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 @RequiredArgsConstructor
@@ -26,6 +28,22 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     public PaymentOutbox save(PaymentOutbox paymentOutbox) {
         PaymentOutboxEntity entity = PaymentOutboxEntity.from(paymentOutbox);
         return jpaPaymentOutboxRepository.save(entity).toDomain();
+    }
+
+    /**
+     * 이미 있으면 조용히 넘어가는 삽입 + 확인 조회로 세 갈래를 판정한다.
+     * 확인 조회는 블로킹 쓰기 잠금 읽기({@link JpaPaymentOutboxRepository#findByOrderIdForUpdate})다.
+     */
+    @Override
+    @Transactional
+    public PaymentOutboxCreationResult createPendingIfAbsent(String orderId) {
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        int affected = jpaPaymentOutboxRepository.insertIgnorePending(orderId, now);
+        if (affected > 0) {
+            return PaymentOutboxCreationResult.CREATED;
+        }
+        boolean exists = jpaPaymentOutboxRepository.findByOrderIdForUpdate(orderId).isPresent();
+        return exists ? PaymentOutboxCreationResult.ALREADY_EXISTS : PaymentOutboxCreationResult.SAVE_FAILED;
     }
 
     @Override
