@@ -103,7 +103,7 @@ flowchart TD
 - [x] Task 8: 로그 마스킹 계층 도입 (payment)
 - [x] Task 9: 마스킹 계층 나머지 4서비스 확산
 - [x] Task 10: 벤더 응답 원문 로깅 길이 제한
-- [ ] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
+- [x] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
 - [ ] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
 - [ ] Task 13: 지침 문서 검사 스크립트 CI 편입
 - [ ] Task 14: 리뷰 체크리스트 낡은 참조 정정
@@ -622,7 +622,65 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - 규칙별 억제 건수가 대장에 숫자로 남음
 
 **완료 결과**
+> `config/checkstyle/checkstyle.xml`의 `TreeWalker`에 `RegexpSinglelineJava` 세 개를 `severity="warning"`으로
+> 추가했다(id 로 `VarKeywordUsage`/`DataAnnotationUsage`/`PublicUseCasePortNullReturn` 부여) — Checker 레벨
+> 기본 severity(`error`)를 개별 module 에서 override 했고, Gradle checkstyle 플러그인의 `maxWarnings` 기본값이
+> 무제한이라 warning 은 `ignoreFailures=false` 상태에서도 빌드를 막지 않는다(직접 확인).
+> - `VarKeywordUsage`: `\bvar\s+[A-Za-z_$][A-Za-z0-9_$]*\s*[=:]` — `var x =` / `for (var x : ...)` 형태만 겨냥.
+> - `DataAnnotationUsage`: `@Data\b` — `@DataJpaTest` 등은 단어 경계로 오탐하지 않음.
+> - `PublicUseCasePortNullReturn`: `return\s+null\s*;` — 리터럴 `return null;`만 겨냥, 삼항 `? x : null` 형태는
+>   문자열 판정 범위 밖(Task 12 구조 검사 영역)이라 의도적으로 잡지 않는다.
 >
+> 공개 유스케이스·포트 한정 스코프는 checkstyle 자체엔 파일 경로 필터가 없어(`RegexpSinglelineJava`엔 files
+> 속성이 없음), `checkstyle-suppressions.xml`에 `application/usecase`·`application/port` 밖 전 파일을
+> `PublicUseCasePortNullReturn` id 하나만 억제하는 음의 전방탐색(negative lookahead) 항목
+> (`^(?!.*[\\/]application[\\/](usecase|port)[\\/]).*$`)으로 좁혔다 — 이 항목은 "위반 억제"가 아니라
+> "검사 대상 범위 한정"이다.
+>
+> 실제 위반 규모 확인 결과: 전체 저장소 grep 으로 `var x =` 형태 2건(둘 다 테스트 코드,
+> `AsyncConfigContextPropagationTest.java:60`/`PaymentTransactionCoordinatorTest.java:191`), `@Data` 0건,
+> `application/usecase`·`application/port` 안의 리터럴 `return null;` 0건(기존 `return null;` 5곳은 전부
+> `infrastructure`/`aspect` 디렉토리라 이미 있던 블랑켓 억제 대상)을 확인하고 그대로 등재했다 — var 2건만
+> 파일+라인 지정 억제, 나머지 두 규칙은 억제 항목 없이 기준선 0.
+>
+> **검출 동작 확인** — suppression DTD 를 1.0(`checks` 만 지원)에서 1.2(`id` 지원)로 올려야 했다: 처음
+> `checks="VarKeywordUsage"` 로 억제를 시도했더니 무시됐는데, 원인은 checkstyle `SuppressFilterElement`가
+> `checks` 속성을 module 의 `id` 프로퍼티가 아니라 `AuditEvent.getSourceName()`(Check 구현 클래스 풀네임)
+> 에 매칭하기 때문이었다(바이트코드 역어셈블로 직접 확인) — 커스텀 id 로 세 `RegexpSinglelineJava` 인스턴스를
+> 구분하려면 suppress 요소의 `id` 속성(DTD 1.1+ 필요)을 써야 했다. DTD 를 1.2 로 올리고 `id=` 로 바꾼 뒤
+> 정상 동작을 확인했다.
+>
+> `PaymentTransactionCoordinatorTest.java:191` 억제를 임시 삭제하고 재실행한 로그(`--rerun-tasks`로 캐시 배제):
+> ```
+> > Task :payment-service:checkstyleMain
+>
+> > Task :payment-service:checkstyleTest
+> [ant:checkstyle] [WARN] .../payment/application/usecase/PaymentTransactionCoordinatorTest.java:191:
+> 타입 추론 키워드(var) 금지 — 명시적 타입을 선언한다 (code-style.md 안티패턴 회피). [VarKeywordUsage]
+> Checkstyle rule violations were found. ... Checkstyle violations by severity: [warning:1]
+> BUILD SUCCESSFUL
+> ```
+> `checkstyleMain`에는 나타나지 않았다(이 위반이 테스트 소스에만 있어서다) — 확인 후 억제 항목을 그대로 복원했다.
+> `PublicUseCasePortNullReturn`은 실제 위반이 0건이라 지울 억제가 없어, 대신 실제 `.java` 파일에
+> `return null;`을 반환하는 private 메서드를 임시로 추가해(`PaymentLoadUseCase.java`) `checkstyleMain`이
+> 잡아내는지 확인했다:
+> ```
+> > Task :payment-service:checkstyleMain
+> [ant:checkstyle] [WARN] .../payment/application/usecase/PaymentLoadUseCase.java:47: 공개 유스케이스·포트는
+> null 대신 Optional 을 반환한다 (code-style.md 안티패턴 회피). [PublicUseCasePortNullReturn]
+> BUILD SUCCESSFUL
+> ```
+> 확인 후 즉시 원복(git status 로 잔여 diff 없음 확인). `@Data` 도 같은 방식으로 스크래치 클래스에
+> `@Data`를 임시로 붙여 `checkstyleMain`이 `DataAnnotationUsage`로 잡는 것을 확인한 뒤 스크래치 파일을
+> 삭제했다.
+>
+> `./gradlew checkstyleMain checkstyleTest`(`--rerun-tasks`) 전체 6모듈 재실행 — 위반 0건(모든
+> `build/reports/checkstyle/{main,test}.xml`의 `<error>` 카운트 0). `docs/context/TODOS.md`
+> `[AGENT-DOCS-STATIC-ANALYSIS]`에 규칙별 억제 건수(var 2 / `@Data` 0 / null 반환 0)를 기록하고, 5규칙 중
+> 3규칙 완료·잔여 2규칙(광범위 예외 삼킴, try 블록 재할당)은 Task 12로 이관됨을 남겼다.
+>
+> 코드(소스)는 건드리지 않고 빌드 설정 파일 2개만 변경했다 — `./gradlew test`는 UP-TO-DATE(캐시 유효,
+> 컴파일 대상 변경 없음)로 회귀 확인 대상이 아니다.
 
 ---
 

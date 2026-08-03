@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE suppressions PUBLIC
-        "-//Checkstyle//DTD SuppressionFilter Configuration 1.0//EN"
-        "https://checkstyle.org/dtds/suppressions_1_0.dtd">
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
 <suppressions>
     <!-- Data carriers -->
     <suppress files="[\\/]dto[\\/]" checks=".*"/>
@@ -30,4 +30,14 @@
     <!-- 테스트 코드: underscore·한국어 메서드명, 긴 Mockito 체이닝 허용 -->
     <suppress files="[\\/]src[\\/]test[\\/]" checks="MethodName"/>
     <suppress files="[\\/]src[\\/]test[\\/]" checks="LineLength"/>
+
+    <!--
+        Task 11 — 공개 유스케이스·포트 null 반환 금지는 application/usecase, application/port
+        디렉토리에만 적용한다. 그 밖 파일은 이 check id 자체를 억제해 적용 범위를 좁힌다.
+    -->
+    <suppress files="^(?!.*[\\/]application[\\/](usecase|port)[\\/]).*$" id="PublicUseCasePortNullReturn"/>
+
+    <!-- Task 11 기준선 — 기존 var 사용 2건 억제 (신규 위반만 노출) -->
+    <suppress files="[\\/]AsyncConfigContextPropagationTest\.java$" id="VarKeywordUsage" lines="60"/>
+    <suppress files="[\\/]PaymentTransactionCoordinatorTest\.java$" id="VarKeywordUsage" lines="191"/>
 </suppressions>
