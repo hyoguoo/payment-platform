@@ -4,7 +4,10 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
+- **주제**: 운영 신호 정합과 규칙 자동 검출 정비 (SIGNAL-AND-GUARDRAIL-SWEEP)
+- **단계**: plan
+- **이슈/브랜치**: #132
+- **파일**: docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md
 
 ## 재개 메모
 
