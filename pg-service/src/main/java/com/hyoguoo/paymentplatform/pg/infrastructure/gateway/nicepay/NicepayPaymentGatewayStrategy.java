@@ -77,6 +77,7 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
     private static final String NETWORK_ERROR_CODE = "NETWORK_ERROR";
     private static final String NETWORK_ERROR_MESSAGE = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
     private static final String UNAUTHORIZED_MESSAGE = "인증되지 않은 NicePay 클라이언트/시크릿 키.";
+    private static final int MAX_PARSE_FAILURE_LOG_LENGTH = 500;
 
     private static final String NICEPAY_STATUS_PAID = "paid";
     private static final String NICEPAY_STATUS_READY = "ready";
@@ -318,8 +319,21 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             return objectMapper.readValue(errorResponse, NicepayPaymentApiFailResponse.class);
         } catch (JsonProcessingException e) {
             LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_PARSE_ERROR,
-                    () -> "에러 응답 파싱 실패 raw=" + errorResponse);
+                    () -> "에러 응답 파싱 실패 raw=" + truncateForLog(errorResponse));
             return new NicepayPaymentApiFailResponse("UNKNOWN", errorResponse);
         }
+    }
+
+    /**
+     * 벤더 응답 원문은 예상 못한 외부 입력이라 길이가 임의로 커질 수 있다 — 파싱 실패 로그에서만
+     * 상한으로 자르고, 잘렸음을 표시해 원래 짧은 원문과 구분한다. 반환되는 실패 응답(UNKNOWN 처리)의
+     * 원문 필드는 이 자르기와 무관하게 그대로 유지된다.
+     */
+    private static String truncateForLog(String raw) {
+        if (raw.length() <= MAX_PARSE_FAILURE_LOG_LENGTH) {
+            return raw;
+        }
+        return raw.substring(0, MAX_PARSE_FAILURE_LOG_LENGTH)
+                + "...(truncated, originalLength=" + raw.length() + ")";
     }
 }

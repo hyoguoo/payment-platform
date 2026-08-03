@@ -102,7 +102,7 @@ flowchart TD
 - [x] Task 7: 재시도 워커 자체 추적 구간 부여
 - [x] Task 8: 로그 마스킹 계층 도입 (payment)
 - [x] Task 9: 마스킹 계층 나머지 4서비스 확산
-- [ ] Task 10: 벤더 응답 원문 로깅 길이 제한
+- [x] Task 10: 벤더 응답 원문 로깅 길이 제한
 - [ ] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
 - [ ] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
 - [ ] Task 13: 지침 문서 검사 스크립트 CI 편입
@@ -578,7 +578,31 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - 위 테스트 pass, 파싱 실패 시 반환값(알 수 없음 처리)은 종전과 동일
 
 **완료 결과**
+> `TossPaymentGatewayStrategy.parseErrorResponse`의 JSON 파싱 실패 로그(`"에러 응답 파싱 실패 —
+> UNKNOWN 처리 raw=" + errorResponse`)가 원문을 통째로 남기던 자리를 상수
+> `MAX_PARSE_FAILURE_LOG_LENGTH`(500자)로 자르는 `truncateForLog` private 메서드를 추가해 적용했다.
+> 상한을 넘으면 `"...(truncated, originalLength=<원래 길이>)"`를 붙여 잘렸다는 사실과 원래 길이를
+> 로그에서 그대로 확인할 수 있게 했다 — 잘린 것과 원래 짧은 것을 구분 못 하는 문제를 없앤다.
+> 반환하는 `TossPaymentApiFailResponse("UNKNOWN", errorResponse)`의 원문 필드는 이 자르기와
+> 무관하게 그대로 유지된다 — 로그만 줄이고 판정(알 수 없음 처리) 자체는 손대지 않았다.
 >
+> 확인 결과 NicePay(`NicepayPaymentGatewayStrategy.parseErrorResponse`)에도 같은 형태(원문 통째
+> 로그)가 있어 함께 처리했다 — 같은 상수명·같은 `truncateForLog` 헬퍼를 그대로 복제했다(이
+> 프로젝트가 벤더 전략 간 공통 로직을 서비스별·전략별로 각각 복제해 온 기존 관례를 그대로 따름 —
+> 두 클래스 사이에 공유 상위 타입이 없다).
+>
+> RED 확인: 구현 전 상태(main 변경분만 stash)에서 신규 테스트 6개 중 4개가 실패함을 확인했다
+> (`MAX_PARSE_FAILURE_LOG_LENGTH` 필드 없음 / truncated 마커 없음 — `짧은_원문은_그대로_남는다`
+> 2개는 원래도 자르기가 필요 없어 자연히 통과). 구현 복원 후 6개 전부 pass.
+>
+> 테스트는 `TossPaymentGatewayStrategyParseFailureLogTest`/
+> `NicepayPaymentGatewayStrategyParseFailureLogTest` — `ListAppender`로 실제 WARN 로그 이벤트를
+> 캡처해 `getStatusByOrderId`가 파싱 불가 JSON(`RestClientResponseException`)을 받았을 때 남기는
+> 메시지를 직접 읽어 단정한다(5,000자 malformed body는 잘림+마커 확인, 8자 malformed body는
+> 원문 그대로 확인).
+>
+> `./gradlew :pg-service:test` 389개 전부 pass(Task 9 종료 시점 383개 + 이번 태스크 신규 6개 —
+> Toss 3 + Nicepay 3). `checkstyleMain`/`checkstyleTest` 통과.
 
 ---
 
