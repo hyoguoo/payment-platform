@@ -113,5 +113,21 @@
             <property name="severity" value="warning"/>
         </module>
 
+        <!--
+            ===== 코드 스타일 컨벤션 자동 검출 — 구조 판정이 필요한 2규칙 (Task 12) =====
+            문자열 패턴만으로는 재throw/명시적 fallback 여부, 변수 선언·재할당 스코프를 판정할 수 없어
+            config/checkstyle/custom-checks 의 커스텀 TreeWalker Check 로 구현했다. 위반 심각도는
+            warning 으로 두어 빌드를 막지 않는다.
+        -->
+        <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.SwallowedBroadExceptionCheck">
+            <property name="id" value="SwallowedBroadException"/>
+            <property name="severity" value="warning"/>
+        </module>
+
+        <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.TryBlockExternalReassignmentCheck">
+            <property name="id" value="TryBlockExternalReassignment"/>
+            <property name="severity" value="warning"/>
+        </module>
+
     </module>
 </module>

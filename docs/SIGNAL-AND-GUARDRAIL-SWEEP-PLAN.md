@@ -104,7 +104,7 @@ flowchart TD
 - [x] Task 9: 마스킹 계층 나머지 4서비스 확산
 - [x] Task 10: 벤더 응답 원문 로깅 길이 제한
 - [x] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
-- [ ] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
+- [x] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
 - [ ] Task 13: 지침 문서 검사 스크립트 CI 편입
 - [ ] Task 14: 리뷰 체크리스트 낡은 참조 정정
 - [ ] Task 15: 결제 흐름 문서 다이어그램 표기 정리
@@ -700,7 +700,84 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - 새 의존을 추가한 경우 그 사실과 버전이 완료 결과에 남음
 
 **완료 결과**
+> **1) 규모부터 셌다.** 두 규칙의 catch/try 후보를 전수 확인한 결과 — 광범위 예외(Exception/
+> RuntimeException/Throwable/Error) catch 는 main 19곳 + test 11곳 = 30곳이었으나, 전부 하나하나
+> 열어 실제 동작을 확인한 결과 main 19곳은 전부 이미 로그+재throw 또는 로그+명시적 fallback(early
+> return, 카운터 increment)으로 끝나 있었다 — STOCK-COMPENSATION-RECOVERY 토픽에서 이미 이 함정을
+> 걷어낸 결과다(`PITFALLS.md` §5). 진짜 "삼킴"(빈 catch)은 test 코드 3곳뿐이었다:
+> `PaymentCheckoutConcurrencyIntegrationTest.java:76,141`(`catch (Exception ignored) {}`),
+> `PgConfirmListenerSplitIntegrationTest.java:275`(`catch (RuntimeException ignored) { // 주석만 }`).
+> try 블록 외부 변수 재할당은 선언(초기화 유무 무관) 이후 같은 블록의 try 안에서 재할당되는 패턴을
+> 스크립트로 전수 스캔해 4곳을 찾았다 — `StockCatalogViewServiceImpl.java`/`PgAttemptHistoryViewServiceImpl.java`
+> (둘 다 application 계층, 실사용 코드), `DuplicateApprovalHandlerListenerTest.java`/
+> `TossPaymentGatewayStrategyDuplicateEventTest.java`(리플렉션으로 메서드/클래스 존재를 확인하는
+> 테스트 픽스처). 규모가 두 규칙 다 한 자릿수라 넓게 잡히는 검사를 새로 들이는 부담과 균형이 맞았다.
 >
+> **2) 구현 수단 — ArchUnit 대신 checkstyle 커스텀 TreeWalker Check.** ArchUnit 은 바이트코드 기반
+> 클래스/메서드 의존 그래프(호출 대상, 필드 접근, 애노테이션, 패키지 계층)를 다루도록 설계된
+> 도구다 — "이 catch 블록 안에 throw 문이 있는가", "이 변수가 try 문보다 앞서 선언되고 try 블록
+> 안에서 재할당됐는가" 같은 **메서드 본문 내부의 statement 구조·제어 흐름**은 ArchUnit 의 API
+> (`JavaMethod.getMethodCallsFromSelf()` 등)로 표현할 수 있는 범위 밖이다. 반대로 checkstyle 은
+> 이 프로젝트가 이미 쓰는 도구이고, `TreeWalker` 가 완전한 문법 AST(`DetailAST`)를 제공해 두
+> 규칙 모두 자연스럽게 구현된다. 그래서 `config/checkstyle/custom-checks/`(root project 전용
+> Gradle sourceSet, 별도 subproject 아님)에 `AbstractCheck` 를 상속한 커스텀 Check 2개를 추가했다.
+> - `SwallowedBroadExceptionCheck` — catch 타입이 Exception/RuntimeException/Throwable/Error 중
+>   하나이고 catch 블록 body 가 완전히 비어 있으면(주석만 있어도 AST 상 빈 블록) 위반. 로그만
+>   남기고 재throw 없이 이어가는 더 약한 삼킴은 "재throw/return 여부"까지 정확히 구분하려면 더
+>   깊은 분석이 필요해 이번 범위 밖으로 뒀다 — 실제로 그런 사례가 현재 0건임을 위 전수 확인으로
+>   이미 검증했다.
+> - `TryBlockExternalReassignmentCheck` — try 문과 같은 블록에서 앞서 선언된 변수 이름을 모아,
+>   try 블록 body 안에서 그 이름에 대한 대입(`IDENT = expr;`)을 찾으면 위반. 중첩 람다·익명
+>   클래스·메서드 정의는 별도 스코프라 탐색하지 않는다(섀도잉 오탐 방지). catch/finally 안
+>   재할당은 규칙 문구가 "try 블록 안"만 금지해 대상이 아니다. 검사 범위는 try 문과 **같은
+>   블록**에서 선언된 변수로 한정했다 — 중첩 if 안의 try처럼 바깥 블록의 변수까지는 추적하지
+>   않는다(실제 위반 4건 전부 같은 블록 레벨이라 이 범위로 충분, 넓히면 섀도잉 오탐 위험 증가).
+>
+> **새 의존**: `com.puppycrawl.tools:checkstyle:10.17.0` — 이미 프로젝트의 checkstyle Gradle
+> 플러그인이 쓰는 것과 **동일 버전**을 커스텀 Check 컴파일용 API 로 root project 전용
+> `checkstyleCustomChecks` sourceSet 에 추가했을 뿐, 새 외부 라이브러리 생태계를 들인 것은
+> 아니다. `build.gradle` 에 root 전용 sourceSet + 이 sourceSet 산출물을 각 서비스 `checkstyle`
+> classpath 에 추가하는 배선을 넣었고, root project 자체의 `checkstyleMain`/`checkstyleTest`
+> 및 새 sourceSet 자신의 checkstyle task 는 비활성화했다(자기 자신의 커스텀 규칙을 아직
+> classpath 에 없는 상태로 요구하는 순환을 피하기 위함). [Rule 1] 구현 중 `checkstyleCustomChecksImplementation`
+> 의존 좌표를 `com.puppycrawl.tools.checkstyle:checkstyle:10.17.0`(오타 — group/artifact 분리
+> 잘못)로 썼다가 컴파일 단계에서 `Could not find` 에러로 즉시 드러나 `com.puppycrawl.tools:checkstyle:10.17.0`
+> 로 고쳤다. 이어서 `checkstyle` Gradle 설정에 커스텀 classpath 를 직접 추가하면 Gradle 이 tool
+> 본체 기본 dependency 를 더 이상 자동으로 넣어주지 않아 `ClassNotFoundException: ...CheckstyleAntTask`
+> 로 실패했는데, 같은 버전의 tool 본체(`com.puppycrawl.tools:checkstyle:10.17.0`)를 나란히 명시해
+> 해결했다(둘 다 build.gradle 자체의 즉시 드러난 배선 오류 수정 — 범위 내 자기 수정).
+>
+> **3) 기존 위반 기준선 억제** — `checkstyle-suppressions.xml` 에 4건 등재: `StockCatalogViewServiceImpl.java:36`/
+> `PgAttemptHistoryViewServiceImpl.java:36`(`TryBlockExternalReassignment`), `DuplicateApprovalHandlerListenerTest.java:73`
+> (`TryBlockExternalReassignment`), `PgConfirmListenerSplitIntegrationTest.java:275`(`SwallowedBroadException`).
+> 나머지 2건(`PaymentCheckoutConcurrencyIntegrationTest.java:76,141` — `presentation/` 디렉토리,
+> `TossPaymentGatewayStrategyDuplicateEventTest.java` — `infrastructure/` 디렉토리)은 기존 블랑켓
+> 억제(`checks=".*"`)에 이미 포함돼 있어 새 항목이 필요 없었다(Task 11 이 `return null;` 잔여
+> 5곳에 대해 확인한 것과 같은 구조).
+>
+> **4) 검출 동작 확인** — `payment-service:checkstyleMain` 에서 `StockCatalogViewServiceImpl.java`
+> 억제 항목을 임시 삭제하고 `--rerun-tasks` 로 재실행한 로그:
+> ```
+> > Task :payment-service:checkstyleMain
+> [ant:checkstyle] [WARN] .../payment/application/StockCatalogViewServiceImpl.java:36:22:
+> try 블록 밖에서 선언한 변수 "pageInfo"를 try 블록 안에서 재할당한다 — private 메서드로 추출해
+> try 안에서 바로 반환하거나 던진다 (code-style.md try 블록 패턴). [TryBlockExternalReassignment]
+> Checkstyle rule violations were found. ... Checkstyle violations by severity: [warning:1]
+> BUILD SUCCESSFUL
+> ```
+> 확인 후 억제 항목을 원상복구하고 `git diff` 로 잔여 변경 없음을 확인했다. `SwallowedBroadExceptionCheck`
+> 도 같은 방식으로 `payment-service`/`pg-service` 각 checkstyleMain/checkstyleTest 를 개별 실행해
+> 두 신규 Check id 가 정확한 파일·라인·메시지로 잡히는 것을 확인했다(위 로그와 동일 형식, 지면상
+> 생략).
+>
+> **5) 최종 검증** — `./gradlew checkstyleMain checkstyleTest --rerun-tasks` 6개 서비스 전체 실행,
+> `SwallowedBroadException`/`TryBlockExternalReassignment` 위반 0건(`build/reports/checkstyle/{main,test}.xml`
+> grep 확인). `./gradlew test --rerun-tasks` 전체 재실행 — payment 571 / pg 389 / product 58 /
+> user 10 전부 pass, 회귀 없음(build.gradle·checkstyle 설정·신규 Java 클래스만 변경, 서비스
+> 소스는 미변경이라 UP-TO-DATE 캐시가 아닌 실제 재실행으로 확인).
+>
+> `docs/context/TODOS.md` `[AGENT-DOCS-STATIC-ANALYSIS]`를 5/5 완료로 갱신하고 규칙별 억제 건수
+> (빈 catch 1건, try 재할당 3건)와 ArchUnit 기각 사유를 기록했다.
 
 ---
 
