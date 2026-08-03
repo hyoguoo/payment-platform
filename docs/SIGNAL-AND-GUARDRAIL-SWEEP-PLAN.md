@@ -106,7 +106,7 @@ flowchart TD
 - [x] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
 - [x] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
 - [x] Task 13: 지침 문서 검사 스크립트 CI 편입
-- [ ] Task 14: 리뷰 체크리스트 낡은 참조 정정
+- [x] Task 14: 리뷰 체크리스트 낡은 참조 정정
 - [ ] Task 15: 결제 흐름 문서 다이어그램 표기 정리
 
 ---
@@ -830,7 +830,36 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - `scripts/check-agent-docs.py` 실행 시 해당 항목 관련 판정이 깨끗함
 
 **완료 결과**
+> `code-ready.md` convention 섹션의 "`catch (Exception e)` 없음 (있다면 `handleUnknownFailure` 경유)"
+> 항목을 `error-logging.md` 정본 규칙 그대로 "`catch (Exception e)` swallow 금지 — 잡으면 LogFmt로 기록 후
+> 재throw 또는 명시적 fallback (error-logging.md)"으로 교체했다. 존재하지 않는 메서드명은 사라지고,
+> 참조 대상도 정본 문서 경로로 명시했다.
 >
+> Task 12에서 광범위 예외 삼킴 중 "완전히 빈 catch 블록"만 checkstyle 커스텀 Check
+> (`SwallowedBroadException`, severity=warning)이 이미 자동 검출한다는 점을 확인했다 — 이 체크리스트
+> 항목은 손대지 않고 그대로 남겼다. 자동 검출이 빈 catch라는 좁은 부분집합만 잡고(로그만 남기고
+> 재throw·명시적 fallback 없이 흐름을 이어가는 더 약한 삼킴은 잡지 못함), severity도 warning이라
+> 빌드를 막지 않아 놓칠 수 있다 — 사람이 "잡으면 기록 후 재throw 또는 명시적 fallback"이라는 전체
+> 규칙을 리뷰에서 계속 확인할 필요가 있다고 판단했다. `var`/`@Data`/null 반환 항목(Task 11에서 같은
+> 방식으로 이미 자동 검출 대상이 됨)도 이 체크리스트에 그대로 남아 있는 것과 같은 결도 이 판단을
+> 뒷받침한다.
+>
+> `error-logging.md`의 "`catch (Exception e) swallow 금지`" 문구를 code-ready.md convention 섹션에
+> 그대로 옮겨 적었으나, `check-agent-docs.py`의 중복 규칙 판정(판정 4)은 code-ready.md convention/domain
+> risk 섹션을 Task 7 존치 결정에 따라 매칭 대상에서 이미 제외하고 있어 새 중복 경고는 뜨지 않는다.
+>
+> 함께 `docs/context/TODOS.md` 섹션 F의 `[CODE-READY-HANDLEUNKNOWNFAILURE-STALE]` 항목을 완료로
+> 갱신했다(이 문서가 등재해 둔 후속 항목을 이 태스크가 실제로 해소하므로) — 대장에 미해결로 남겨두면
+> 실제 상태와 어긋난다.
+>
+> `python3 scripts/check-agent-docs.py` 재실행 — 참조 무결성(1) 0건, frontmatter(2) 0건, 체크리스트
+> 참조(3) 0건, 중복 규칙(4) 1건(`docs/context/TODOS.md:103`의 `var` 키워드 금지 문구 — Task 11 완료
+> 결과 서술에 있던 기존 항목, 이 태스크 범위 밖), Mermaid 금지 문자(5) 40건(Task 15 대상 그 자체),
+> 고아 문서(6) 0건. 이 태스크가 다룬 항목(catch/handleUnknownFailure 관련)은 어떤 판정에도 걸리지
+> 않아 깨끗함을 확인했다.
+>
+> 코드(소스)는 건드리지 않고 문서 2개(`code-ready.md`, `TODOS.md`)만 변경했다 — `./gradlew test`는
+> 검증 대상이 아니다(코드 비접촉).
 
 ---
 

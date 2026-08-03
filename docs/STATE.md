@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-04 (Task 13 완료, Task 14 진행 준비)
+> 최종 수정: 2026-08-04 (Task 14 완료, Task 15 진행 준비)
 
 ## 활성 작업
 
 - **주제**: 운영 신호 정합과 규칙 자동 검출 정비 (SIGNAL-AND-GUARDRAIL-SWEEP)
 - **단계**: execute
-- **활성 태스크**: Task 14: 리뷰 체크리스트 낡은 참조 정정
+- **활성 태스크**: Task 15: 결제 흐름 문서 다이어그램 표기 정리
 - **이슈/브랜치**: #132
 - **파일**: docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md / docs/SIGNAL-AND-GUARDRAIL-SWEEP-PLAN.md
 

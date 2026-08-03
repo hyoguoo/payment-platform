@@ -26,7 +26,7 @@
 - [ ] `@AllArgsConstructor(access = AccessLevel.PRIVATE)` + `@Builder` 패턴 준수 (적용 대상에서)
 - [ ] 신규 로깅이 LogFmt 사용
 - [ ] `null` 반환 금지, `Optional` 사용
-- [ ] `catch (Exception e)` 없음 (있다면 `handleUnknownFailure` 경유)
+- [ ] `catch (Exception e)` swallow 금지 — 잡으면 LogFmt로 기록 후 재throw 또는 명시적 fallback (error-logging.md)
 - [ ] `var` 키워드 없음 — 명시적 타입 선언
 
 ## execution discipline (실행 규율)
