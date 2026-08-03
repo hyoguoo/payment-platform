@@ -105,7 +105,7 @@ flowchart TD
 - [x] Task 10: 벤더 응답 원문 로깅 길이 제한
 - [x] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
 - [x] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
-- [ ] Task 13: 지침 문서 검사 스크립트 CI 편입
+- [x] Task 13: 지침 문서 검사 스크립트 CI 편입
 - [ ] Task 14: 리뷰 체크리스트 낡은 참조 정정
 - [ ] Task 15: 결제 흐름 문서 다이어그램 표기 정리
 
@@ -795,7 +795,28 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - 로컬에서 스크립트가 정상 실행되고 결과가 출력됨
 
 **완료 결과**
+> `.github/workflows/ci.yml`에 `agent-docs-check` job을 6서비스 fan-out과 나란한 top-level
+> job으로 추가했다 — `needs`로 다른 job에 걸지 않고 완전히 독립 실행되며, 취합(`report`)
+> job의 `needs`에도 넣지 않았다(게이트가 아니므로 PR 코멘트 조립 대기 이유가 없음).
 >
+> 스텝 구성: `actions/checkout@v6` → `python3 scripts/check-agent-docs.py`를 파일로 받아 job
+> 로그(`cat`)와 `$GITHUB_STEP_SUMMARY`(코드 펜스로 감싼 원문) 양쪽에 남긴다. 스크립트
+> 자체가 이미 항상 exit 0이라 별도로 종료 코드를 무시하는 처리를 추가하지 않았다 — 스크립트
+> 현행 동작 그대로.
+>
+> `brew install actionlint`(+ 의존 `shellcheck`)로 로컬에 설치해 `actionlint .github/workflows/ci.yml`
+> 실행 — 문제 없이 종료(exit 0). 워크플로우 저장소 전체(`actionlint`, 인자 없이)도 함께 재검증해
+> 기존 5개 워크플로우 파일까지 회귀 없음을 확인했다.
+>
+> 로컬에서 GitHub Actions 스텝을 그대로 재현(`$GITHUB_STEP_SUMMARY`를 임시 파일로 지정해 동일
+> 커맨드 실행) — 스크립트 정상 실행 확인, 현재 판정 결과는 참조 무결성/frontmatter/체크리스트
+> 참조/고아 문서 4종 0건, 중복 규칙 1건(`docs/context/TODOS.md:103` — `var` 키워드 금지 문구가
+> Task 11 완료 결과 서술에 그대로 등장), Mermaid 금지 문자 40건(`CONFIRM-FLOW.md`/`PAYMENT-FLOW.md`
+> 다이어그램의 유니코드 화살표·가운뎃점 — Task 15가 정리할 대상 그 자체). 요약 파일에 `##` 제목 +
+> 코드 펜스로 감싼 원문이 그대로 기록됨을 확인했다.
+>
+> 코드(소스)는 건드리지 않고 워크플로우 설정 파일 1개만 변경했다 — `./gradlew test`는 검증
+> 대상이 아니다(코드 비접촉).
 
 ---
 
