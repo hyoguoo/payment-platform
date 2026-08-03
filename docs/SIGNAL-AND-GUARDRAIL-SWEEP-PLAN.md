@@ -95,7 +95,7 @@ flowchart TD
 
 - [x] Task 1: 전이 주체를 전이 지점이 선언하게 전환
 - [x] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
-- [ ] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
+- [x] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
 - [ ] Task 4: 동시 승인 경합 통합 검증
 - [ ] Task 5: 체크아웃 응답에 중복 여부 복원
 - [ ] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
@@ -244,7 +244,29 @@ flowchart TD
 - 예외 클래스가 기존 관례 위치(`payment/exception/`)에 있고, 어댑터에서 throw하지 않음
 
 **완료 결과**
+> 기존 관례 위치(`payment-service/.../payment/exception/`)에 `PaymentOutboxDuplicateException`을
+> 추가했다(`RuntimeException` 상속, `StockCacheUnavailableException`과 같은 형태 — `code` 필드 +
+> private 생성자 + `of(PaymentErrorCode)` 정적 factory). 에러코드 `PAYMENT_OUTBOX_DUPLICATE_INSERT`
+> (`E03042`)를 `PaymentErrorCode`에 추가했다. 어댑터에서는 던지지 않는다 — 여전히 응용 계층
+> (`PaymentOutboxUseCase`)만 `PaymentOutboxCreationResult`를 해석해 예외를 던진다.
 >
+> `PaymentOutboxUseCase.createPendingRecord`가 `IllegalStateException` 하나로 뭉뚱그리던 것을
+> switch 표현식으로 갈랐다 — `CREATED`는 정상 반환, `ALREADY_EXISTS`는 `PaymentOutboxDuplicateException`,
+> `SAVE_FAILED`는 그대로 `IllegalStateException`(재고 미회수 경보 대상, 이번 태스크에서 새 클래스를
+> 만들지 않음 — 기존 "두 번째 가드" 관례 유지).
+>
+> `OutboxAsyncConfirmService.executeConfirmTxWithStockRetention`의 `catch (RuntimeException)` 앞에
+> `catch (PaymentOutboxDuplicateException)`을 추가해 먼저 걸러 메트릭·로그 없이 그대로 재throw한다 —
+> 예외를 삼키지 않으므로 `@Transactional` 롤백 경계가 호출자까지 유지된다. 재고를 되돌리지 않는
+> 기존 정책은 손대지 않았다.
+>
+> 지표 검증은 `SimpleMeterRegistry`를 실제로 생성해 `stock_retention_unrecovered_total` 카운터
+> 값을 직접 읽어 단정했다(Mockito 상호작용 검증이 아니라 실제 등록된 카운터). 로그 미발생은
+> `ListAppender`를 서비스 로거에 붙여 ERROR 레벨 로그 이벤트 목록이 비어 있음을 확인했다
+> (`OutboxAsyncConfirmServiceTest.DuplicateReentryAlertExclusionTest`).
+>
+> `./gradlew :payment-service:test` 560개 전부 pass(Task 2 종료 시점 556개 + 이번 태스크 4개),
+> checkstyle 통과.
 
 ---
 

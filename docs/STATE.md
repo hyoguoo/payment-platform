@@ -6,7 +6,7 @@
 
 - **주제**: 운영 신호 정합과 규칙 자동 검출 정비 (SIGNAL-AND-GUARDRAIL-SWEEP)
 - **단계**: execute
-- **활성 태스크**: Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
+- **활성 태스크**: Task 4: 동시 승인 경합 통합 검증
 - **이슈/브랜치**: #132
 - **파일**: docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md / docs/SIGNAL-AND-GUARDRAIL-SWEEP-PLAN.md
 

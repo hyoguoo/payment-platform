@@ -39,6 +39,7 @@ public enum PaymentErrorCode implements ErrorCode {
     ),
     PG_ATTEMPT_HISTORY_NOT_FOUND("E03040", "존재하지 않는 결제 시도 이력입니다."),
     PG_SERVICE_UNAVAILABLE("E03041", "pg-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),
+    PAYMENT_OUTBOX_DUPLICATE_INSERT("E03042", "이미 발행 행이 생성된 주문입니다(동시 재진입)."),
     ;
 
     private final String code;

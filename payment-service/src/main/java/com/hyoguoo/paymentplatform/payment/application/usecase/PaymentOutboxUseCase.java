@@ -6,6 +6,8 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRep
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOutboxDuplicateException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -30,16 +32,21 @@ public class PaymentOutboxUseCase {
 
     /**
      * 이미 있으면 조용히 넘어가는 삽입으로 발행 행을 생성한다.
-     * 생성되지 않았으면(동시 재진입이든 저장 실패든) 예외로 막는다 — 구분해 부르는 것은 호출자 몫이다.
+     *
+     * <p>동시 재진입(ALREADY_EXISTS)은 {@link PaymentOutboxDuplicateException}으로, 그 밖의
+     * 저장 실패(SAVE_FAILED)는 {@link IllegalStateException}으로 갈라 던진다 — 호출자가 둘을
+     * 구분해 전자만 재고 미회수 경보에서 뺄 수 있어야 한다.
      */
     @Transactional
     public PaymentOutbox createPendingRecord(String orderId) {
         PaymentOutboxCreationResult result = paymentOutboxRepository.createPendingIfAbsent(orderId);
-        if (result != PaymentOutboxCreationResult.CREATED) {
-            throw new IllegalStateException(
+        return switch (result) {
+            case CREATED -> PaymentOutbox.createPending(orderId);
+            case ALREADY_EXISTS -> throw PaymentOutboxDuplicateException.of(
+                    PaymentErrorCode.PAYMENT_OUTBOX_DUPLICATE_INSERT);
+            case SAVE_FAILED -> throw new IllegalStateException(
                     "PaymentOutboxUseCase.createPendingRecord: orderId=" + orderId + " result=" + result);
-        }
-        return PaymentOutbox.createPending(orderId);
+        };
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactio
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.StockRetentionMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOutboxDuplicateException;
 import com.hyoguoo.paymentplatform.payment.exception.StockCacheUnavailableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
@@ -89,11 +90,17 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
      * <p>재고와 토큰 차감 상태를 그대로 유지해야 동일 orderId 재확정이 {@code ALREADY_DONE}으로
      * 흡수되어 동시 confirm·재확정 과매도가 0이 된다. 미복구 상태는 메트릭+error 로그로
      * 가시화한 뒤 원본 예외를 그대로 전파한다.
+     *
+     * <p>다만 {@link PaymentOutboxDuplicateException}(같은 주문 동시 확정의 진 쪽)은 재고 손실이
+     * 아니라 이긴 쪽이 이미 정상 확정한 결과이므로 메트릭·로그 없이 그대로 재throw한다 — 경보만
+     * 뺄 뿐 예외를 삼키지 않는다. 트랜잭션 롤백 경계는 호출자까지 그대로 유지된다.
      */
     private void executeConfirmTxWithStockRetention(
             PaymentEvent paymentEvent, String paymentKey, String orderId) {
         try {
             transactionCoordinator.executeConfirmTx(paymentEvent, paymentKey, orderId);
+        } catch (PaymentOutboxDuplicateException duplicateException) {
+            throw duplicateException;
         } catch (RuntimeException txException) {
             stockRetentionMetrics.record();
             LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_RETENTION_UNRECOVERED,
