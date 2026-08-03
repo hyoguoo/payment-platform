@@ -98,7 +98,7 @@ flowchart TD
 - [x] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
 - [x] Task 4: 동시 승인 경합 통합 검증
 - [x] Task 5: 체크아웃 응답에 중복 여부 복원
-- [ ] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
+- [x] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
 - [ ] Task 7: 재시도 워커 자체 추적 구간 부여
 - [ ] Task 8: 로그 마스킹 계층 도입 (payment)
 - [ ] Task 9: 마스킹 계층 나머지 4서비스 확산
@@ -379,7 +379,46 @@ flowchart TD
 - 최대 백오프 상한이 좀비 회수 타임아웃보다 작음이 테스트로 고정됨
 
 **완료 결과**
+> `PgVendorCallService.insertRetryOutbox`가 `RetryPolicy.computeBackoff`에 `nextAttempt`(증가 후 값)
+> 대신 실패한 `attempt`를 그대로 넘기도록 고쳤다. 이제 attempt=1 실패 후 재시도는 2s, attempt=2
+> 실패 후는 6s, attempt=3 실패 후는 18s(각각 jitter ±25%) 기준으로 예약된다 — 전에는 한 회차씩
+> 밀려 6s/18s/54s부터 시작했다.
 >
+> 지터 흔들림 없이 회차별 대기 구간을 결정적으로 검증하기 위해 `PgVendorCallService`의 재시도용
+> 난수원을 `private static final SecureRandom RNG`에서 생성자 주입 `SecureRandom secureRandom`
+> 필드로 바꿨다(Clock이 이미 이 클래스에서 쓰는 생성자 주입 패턴과 동일). `PgServiceConfig`에
+> `SecureRandom` Bean을 추가했고, 직접 인스턴스화하는 테스트 4곳(`PgVendorCallServiceTest`,
+> `PgVendorCallServiceVendorTypeTest`, `PaymentConfirmConsumerTest`,
+> `PgSelfLoopDuplicateAbsorptionIntegrationTest`)의 생성자 호출에 `SecureRandom` 인자를 추가했다
+> (Rule 1, 생성자 시그니처 변경에 따른 기계적 보완). `PgVendorCallServiceTest` 전용으로는
+> `nextDouble()`이 항상 0.5(= jitter 0, backoff가 base 값 그대로)를 반환하는
+> `FakeSecureRandom`(`pg.mock` 패키지)을 만들어 주입했다.
+>
+> `PgVendorCallServiceTest`에 `RetryBackoffScheduling` 중첩 클래스로 3개 테스트를 추가했다 —
+> 첫/두번째/마지막(attempt=MAX_ATTEMPTS-1=3) 재시도 예약이 각각 [1.5s,2.5s] / [4.5s,7.5s] /
+> [13.5s,22.5s] 구간에 들어가는지, 마지막 회차는 좀비 회수 타임아웃(60s)보다 짧은지 단정한다.
+> RED 확인 절차: `computeBackoff` 인자를 일시적으로 `nextAttempt`로 되돌려 3개 테스트가 각각
+> 6s/18s/54s로 예상 구간을 벗어나 실패하는 것을 확인한 뒤 원복했다.
+>
+> `RetryPolicyTest`에는 `computeBackoff(MAX_ATTEMPTS-1)`이 좀비 회수 타임아웃(60초)보다 항상
+> 짧음을 고정하는 `@RepeatedTest(20)`를 추가했다 — attempt=MAX_ATTEMPTS(4)는 `shouldRetry`가
+> false라 DLQ 경로로 빠져 실제로는 backoff를 계산하지 않으므로, 실제 재시도에 쓰이는 마지막
+> 회차(attempt=3)를 좀비 타임아웃과 비교 대상으로 삼았다.
+>
+> `RetryPolicy`의 attempt=4 항목 javadoc에 "shouldRetry(4)가 false라 DLQ 경로로 빠지므로 실제
+> 재시도 예약에는 쓰이지 않는다"는 설명을 보강했다. `pg-service/application.yml`의
+> `in-progress-timeout-ms: 60000` 옆에, 실제로 예약되는 마지막 재시도 백오프 상한(22.5초)보다
+> 충분히 크게 유지해야 한다는 관계를 주석으로 남겼다(숫자는 변경하지 않음).
+>
+> `PgSelfLoopRetryExhaustionIntegrationTest`의 클래스 javadoc과 본문 주석의 회차별 대기 구간·
+> 누적 소요(구 78s 평균/97.5s 최악 → 신 26s 평균/32.5s 최악)를 새 값으로 갱신하고, Awaitility
+> 타임아웃을 100s에서 60s로 낮췄다(최악 32.5s + 폴링 워커 안전망 지연 여유). 실제 재실행
+> (`--rerun-tasks`, UP-TO-DATE 캐시 배제)으로 통과를 확인했다 — 대기가 짧아진 만큼 이전보다
+> 빠르게 종결됐다.
+>
+> `./gradlew :pg-service:test` 379개 전부 pass, checkstyle 통과. `./gradlew :pg-service:integrationTest
+> --rerun-tasks`로 16개 통합 테스트 전부 재실행해 pass 확인(`PgSelfLoopRetryExhaustionIntegrationTest`
+> 포함, 캐시된 UP-TO-DATE 아님).
 
 ---
 

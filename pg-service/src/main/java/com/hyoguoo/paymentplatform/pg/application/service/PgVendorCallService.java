@@ -60,8 +60,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PgVendorCallService {
 
-    private static final SecureRandom RNG = new SecureRandom();
-
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final PgConfirmStrategySelector pgConfirmStrategySelector;
@@ -70,6 +68,7 @@ public class PgVendorCallService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final DuplicateApprovalHandler duplicateApprovalHandler;
+    private final SecureRandom secureRandom;
 
     // -----------------------------------------------------------------------
     // 공개 API — TX 분리 버전
@@ -199,7 +198,9 @@ public class PgVendorCallService {
             return;
         }
 
-        Duration backoff = RetryPolicy.computeBackoff(nextAttempt, RNG);
+        // 백오프는 실패한 attempt 기준으로 계산한다 — nextAttempt(증가 후 값)를 넘기면
+        // 대기가 한 회차씩 밀려 첫 재시도부터 설계값(2s)보다 길어진다.
+        Duration backoff = RetryPolicy.computeBackoff(attempt, secureRandom);
         Instant availableAt = now.plus(backoff);
         String headersJson = buildAttemptHeader(nextAttempt);
 

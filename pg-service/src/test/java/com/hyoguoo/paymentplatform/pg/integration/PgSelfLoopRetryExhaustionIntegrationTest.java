@@ -69,12 +69,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * {@code @MockitoSpyBean} 으로 {@code confirm()} 을 {@code doThrow(PgGatewayRetryableException)} 오버라이드한다.
  *
  * <p>백오프 대기: {@code RetryPolicy}(base=2s, multiplier=3, MAX_ATTEMPTS=4)는 하드코딩 상수라
- * 운영 코드 변경 없이 단축할 수 없다. {@code computeBackoff} 는 nextAttempt(=attempt+1) 기준으로
- * 계산되므로 attempt 1→2 전이 backoff(jitter 포함, computeBackoff(2))는 [4.5s,7.5s],
- * 2→3 전이는 [13.5s,22.5s], 3→4 전이는 [40.5s,67.5s] — 누적 평균 78s, 최악 97.5s 소요된다
- * (attempt=4 도달 후 DLQ 발행은 추가 backoff 없이 즉시). {@code pg.scheduler.polling-worker.fixed-delay-ms}
+ * 운영 코드 변경 없이 단축할 수 없다. {@code computeBackoff} 는 실패한 attempt 값 그대로 계산되므로
+ * attempt=1 실패 후 재시도 backoff(jitter 포함, computeBackoff(1))는 [1.5s,2.5s],
+ * attempt=2 실패 후는 [4.5s,7.5s], attempt=3 실패 후는 [13.5s,22.5s] — 누적 평균 26s, 최악 32.5s 소요된다
+ * (attempt=4는 shouldRetry가 false라 DLQ로 즉시 빠지며 추가 backoff 없음). {@code pg.scheduler.polling-worker.fixed-delay-ms}
  * 는 기본값(2000ms)을 유지해 availableAt 경과 후 폴링 워커가 안전망으로 relay 한다.
- * Awaitility 타임아웃은 100s로 최악 케이스(97.5s)를 커버하며 무한 대기는 아니다.
+ * Awaitility 타임아웃은 60s로 최악 케이스(32.5s)를 여유 있게 커버하며 무한 대기는 아니다.
  */
 @SpringBootTest(properties = {
         "spring.autoconfigure.exclude=" +
@@ -264,9 +264,9 @@ class PgSelfLoopRetryExhaustionIntegrationTest {
         // when — listener 진입(최초 1회) — 이후는 워커 + self-loop relay 가 자동으로 이어간다.
         pgConfirmCommandService.handle(command, 1, null);
 
-        // then — 한도 소진 후 QUARANTINED 종결까지 대기(백오프 1→2,2→3,3→4 합산 평균 78s,
-        // 최악 97.5s + 폴링 워커 fixed-delay(2s) 안전망 지연 누적분 여유 → 100s 타임아웃).
-        await().atMost(Duration.ofSeconds(100))
+        // then — 한도 소진 후 QUARANTINED 종결까지 대기(attempt 1,2,3 실패 후 backoff 합산 평균 26s,
+        // 최악 32.5s + 폴링 워커 fixed-delay(2s) 안전망 지연 누적분 여유 → 60s 타임아웃).
+        await().atMost(Duration.ofSeconds(60))
                 .pollInterval(Duration.ofMillis(500))
                 .untilAsserted(() -> {
                     Optional<PgInbox> inbox = pgInboxRepository.findByOrderId(orderId);

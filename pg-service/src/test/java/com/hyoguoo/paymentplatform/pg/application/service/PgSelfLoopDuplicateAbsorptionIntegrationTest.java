@@ -15,6 +15,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -105,7 +106,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         vendorCallService = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmStrategySelector,
                 dispatchingPublisher, payloadSerializer, objectMapper, FIXED_CLOCK,
-                duplicateApprovalHandler);
+                duplicateApprovalHandler, new SecureRandom());
 
         pgInboxProcessor = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
 
