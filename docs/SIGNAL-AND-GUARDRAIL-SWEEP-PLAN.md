@@ -96,7 +96,7 @@ flowchart TD
 - [x] Task 1: 전이 주체를 전이 지점이 선언하게 전환
 - [x] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
 - [x] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
-- [ ] Task 4: 동시 승인 경합 통합 검증
+- [x] Task 4: 동시 승인 경합 통합 검증
 - [ ] Task 5: 체크아웃 응답에 중복 여부 복원
 - [ ] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
 - [ ] Task 7: 재시도 워커 자체 추적 구간 부여
@@ -289,7 +289,31 @@ flowchart TD
 - `./gradlew :payment-service:integrationTest` 통과 (캐시된 UP-TO-DATE가 아니라 실제 실행 확인)
 
 **완료 결과**
+> `PaymentDuplicateConfirmConcurrencyIntegrationTest`(`@SpringBootTest` + Testcontainers MySQL 수동 start,
+> `@Tag("integration")`)를 추가했다. 재고 차감(Redis)은 이미 별도로 정확히-한-번을 보장하는 경로라
+> 이 테스트의 관심사가 아니므로, 실 Redis 컨테이너 대신 Task 2/3이 다루는 outbox 삽입 경합에
+> 집중하기 위해 실 Redis + Kafka(`@EmbeddedKafka`) 컨테이너 조합은 `StockRetentionIntegrationTest`와
+> 동일하게 그대로 두되(재고 차감·발행 파이프라인 자체는 여기서도 실제 인프라를 태운다),
+> `payment.monolith.confirm.enabled=false`로 AFTER_COMMIT 즉시 relay만 꺼서 outbox 행이
+> 검증 시점 이전에 비동기로 DONE 전환되는 타이밍 흔들림을 없앴다(최초 시행에서 50회 중 18회가
+> 이 타이밍 경합으로 실패해, 관련 없는 흔들림임을 확인하고 원인을 제거했다).
 >
+> 반복마다 `UUID`로 새 주문 번호를 발급해 앞선 반복의 outbox 잔여 행이 경합을 무력화하지
+> 않게 했다. 두 스레드를 `CountDownLatch`(ready 2 + start 1)로 같은 시점에 풀어 outbox
+> INSERT IGNORE 경합을 유도했다. `@RepeatedTest(50)` 안에서 네 가지를 한 번에 단정한다 —
+> 정확히 한 건만 실패(진 쪽) / 진 쪽 예외가 `PaymentOutboxDuplicateException` / 진 쪽에서
+> `stock_retention_unrecovered_total` 카운터가 증가하지 않음(반복 시작 전 값과 비교) / 이긴
+> 쪽만 outbox 행을 남기고 `payment_event.status`가 `IN_PROGRESS` 하나로만 귀결(진 쪽 트랜잭션이
+> 상태 전이까지 통째로 롤백됨).
+>
+> 경합이 실제로 재현되는지 확인 없이 통과만 보고하지 않기 위해, 커밋 전 임시로 두 스레드의
+> `confirm()` 호출 구간 시각을 나노초로 재 겹침 여부를 로그로 남겨 봤다 — 50회 반복 전부에서
+> 두 스레드의 실행 구간이 겹쳤다(`overlap=true` 50/50, 겹치지 않은 경우 0). 즉 스케줄링이 완전히
+> 갈려 순차 실행으로 경합 자체가 빠지는 반복은 없었다. 확인 후 계측 코드는 제거했다.
+>
+> `./gradlew :payment-service:integrationTest --tests "*PaymentDuplicateConfirmConcurrencyIntegrationTest*" --rerun-tasks`
+> 로 캐시 없이 재실행해 50/50 pass 확인. `./gradlew :payment-service:test` 560개 전부 pass(신규
+> 단위 테스트 없음 — 이 태스크는 통합 테스트만 추가).
 
 ---
 
