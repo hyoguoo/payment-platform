@@ -107,7 +107,7 @@ flowchart TD
 - [x] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
 - [x] Task 13: 지침 문서 검사 스크립트 CI 편입
 - [x] Task 14: 리뷰 체크리스트 낡은 참조 정정
-- [ ] Task 15: 결제 흐름 문서 다이어그램 표기 정리
+- [x] Task 15: 결제 흐름 문서 다이어그램 표기 정리
 
 ---
 
@@ -874,7 +874,27 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - 다이어그램이 정상 렌더링됨
 
 **완료 결과**
+> `scripts/check-agent-docs.py`의 Mermaid 금지 문자 판정으로 대상을 정확히 식별했다 —
+> `CONFIRM-FLOW.md` 10건, `PAYMENT-FLOW.md` 30건(대부분 유니코드 화살표, 2건은 가운뎃점)
+> 전부 flowchart/stateDiagram/sequenceDiagram 노드·엣지·전이 라벨(`[...]`/`(...)`/`|...|`) 안에서
+> 발생했다. 각 라벨 안의 `→`는 `->`로, `·`는 `/`로 교체했다 — 다이어그램 블록 밖 본문 서술의
+> 화살표(예: §1 진입점 서술, 표 안 화살표 서술)는 그대로 뒀다. sequence diagram 메시지 텍스트
+> (`Svc->>Svc: handleAbsent → ...` 처럼 괄호로 감싸이지 않은 자유 텍스트)도 손대지 않았다 —
+> 검사기 정의상 라벨(대괄호·소괄호·중괄호·파이프로 감싸인 구간)이 아니고, 렌더링에도 영향이
+> 없어 이 태스크의 "라벨 안" 범위 밖이다.
 >
+> [Rule 1] 교체 도중 `PAYMENT-FLOW.md:147` 한 줄에서 화살표 옆에 원래 있던 중괄호
+> (`compensation:done:{orderId}`)가 검사기 판정에서 함께 걸려 있었음을 발견했다 — 완료 기준이
+> "두 파일 건수 0"으로 못박혀 있어 화살표만 고치면 이 줄이 여전히 위반으로 남는다. `writing-visuals.md`
+> 금지 문자 절의 지정 대체(`stock:{id}` → `stock:id`)를 그대로 적용해 `compensation:done:orderId`로
+> 중괄호를 제거했다 — 값 표현 의미는 그대로고 렌더링 문법 충돌만 없앤다.
+>
+> `python3 scripts/check-agent-docs.py`의 "5. Mermaid 금지 문자" 판정이 40건 → 0건으로 떨어짐을
+> 확인했다. 렌더링 검증은 `npx @mermaid-js/mermaid-cli`로 두 파일의 ```mermaid 블록 18개(CONFIRM-FLOW
+> 8개 + PAYMENT-FLOW 10개)를 전부 개별 `.mmd`로 추출해 SVG로 렌더링 — 18개 전부 오류 없이 성공하고
+> 빈 산출물이 없음을 확인했다.
+>
+> 문서 2개만 변경했다 — `./gradlew test`는 검증 대상이 아니다(코드 비접촉).
 
 ---
 
