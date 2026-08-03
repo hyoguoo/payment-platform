@@ -101,7 +101,7 @@ flowchart TD
 - [x] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
 - [x] Task 7: 재시도 워커 자체 추적 구간 부여
 - [x] Task 8: 로그 마스킹 계층 도입 (payment)
-- [ ] Task 9: 마스킹 계층 나머지 4서비스 확산
+- [x] Task 9: 마스킹 계층 나머지 4서비스 확산
 - [ ] Task 10: 벤더 응답 원문 로깅 길이 제한
 - [ ] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
 - [ ] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
@@ -534,7 +534,29 @@ Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으�
 - `./gradlew test` 전체 회귀 없음
 
 **완료 결과**
+> payment-service의 `MaskingPatternLayout`(패키지·클래스 동일 구조, 서비스별 패키지 경로만
+> 교체)를 pg / product / user / gateway 네 서비스의 `core/common/log/`에 그대로 복제했다 —
+> 이 프로젝트가 `LogFmt` 등 로깅 유틸을 서비스마다 두는 방식을 그대로 따랐고, 공용 모듈은
+> 새로 만들지 않았다.
 >
+> 각 서비스 `logback-spring.xml`의 CONSOLE 어펜더를 `LayoutWrappingEncoder` +
+> `MaskingPatternLayout`으로 바꾸고, payment와 동일한 4개 `<maskPattern>`(결제 키/인증 헤더
+> 값/이메일/카드번호 형태)을 등록했다. `LOG_PATTERN`/`LOG_PATTERN_COLOR`와 프로필별(test/docker/
+> default) 로거 레벨은 그대로 두고 인코더만 교체했다 — gateway는 애초에 `org.hibernate.SQL`
+> 로거 자체가 없어 다른 3서비스와 프로필 구성이 달랐는데, 이 차이도 그대로 유지했다.
+>
+> gateway는 `TraceContextPropagationFilter`가 WebFilter에서 `traceparent` 헤더를 파싱해
+> MDC에 `traceId`/`spanId`를 직접 주입하는 구조라 다른 4서비스(Sleuth/Micrometer 자동 계측
+> 의존)와 로깅 경로가 다르지만, `MaskingPatternLayout`은 `doLayout`이 조립된 최종 로그
+> 문자열에 대해서만 동작하므로 MDC 주입 방식과 무관하게 동일하게 적용된다 — 필터 코드는
+> 손대지 않았다.
+>
+> 각 서비스에 `MaskingPatternLayoutTest`를 1개씩 추가했다 — payment의 `결제_키가_앞자리만_
+> 남고_가려진다` 테스트를 그대로 가져와 결제 키 형태 문자열이 가려짐을 확인한다(패턴별 상세
+> 동작은 payment의 전체 테스트가 정본이라는 주석을 남겼다).
+>
+> `./gradlew test` 5개 서비스 전체 재실행, 전부 pass(신규 마스킹 테스트 4개 포함) — 회귀
+> 없음. `./gradlew checkstyleMain checkstyleTest` 5개 서비스 전체 통과.
 
 ---
 

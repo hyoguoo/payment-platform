@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-04 (Task 8 완료, Task 9 진행 준비)
+> 최종 수정: 2026-08-04 (Task 9 완료, Task 10 진행 준비)
 
 ## 활성 작업
 
 - **주제**: 운영 신호 정합과 규칙 자동 검출 정비 (SIGNAL-AND-GUARDRAIL-SWEEP)
 - **단계**: execute
-- **활성 태스크**: Task 9: 마스킹 계층 나머지 4서비스 확산
+- **활성 태스크**: Task 10: 벤더 응답 원문 로깅 길이 제한
 - **이슈/브랜치**: #132
 - **파일**: docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md / docs/SIGNAL-AND-GUARDRAIL-SWEEP-PLAN.md
 
