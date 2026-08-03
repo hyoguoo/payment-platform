@@ -10,18 +10,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
+import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
+import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult.StatusType;
+import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.request.CheckoutRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.request.PaymentConfirmRequest;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentCheckoutService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentConfirmService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentStatusService;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +55,68 @@ class PaymentControllerMvcTest {
 
     @MockitoBean
     private UUIDProvider uuidProvider;
+
+    @Test
+    @DisplayName("중복 요청 응답 본문에 중복 여부 필드가 존재한다")
+    void checkout_Duplicate_ReturnsDuplicateFlagInBody() throws Exception {
+        // given
+        CheckoutRequest checkoutRequest = CheckoutRequest.builder()
+                .userId(1L)
+                .orderedProductList(List.of(
+                        OrderedProduct.builder()
+                                .productId(1L)
+                                .quantity(1)
+                                .build()
+                ))
+                .gatewayType(PaymentGatewayType.TOSS)
+                .build();
+
+        when(paymentCheckoutService.checkout(any(CheckoutCommand.class)))
+                .thenReturn(CheckoutResult.builder()
+                        .orderId("order-dup")
+                        .totalAmount(BigDecimal.valueOf(1000))
+                        .isDuplicate(true)
+                        .build());
+
+        // when / then
+        mockMvc.perform(post("/api/v1/payments/checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.duplicate").value(true));
+    }
+
+    @Test
+    @DisplayName("기존 필드 주문번호와 총액은 그대로 유지된다")
+    void checkout_ResponseBody_KeepsOrderIdAndTotalAmount() throws Exception {
+        // given
+        CheckoutRequest checkoutRequest = CheckoutRequest.builder()
+                .userId(1L)
+                .orderedProductList(List.of(
+                        OrderedProduct.builder()
+                                .productId(1L)
+                                .quantity(1)
+                                .build()
+                ))
+                .gatewayType(PaymentGatewayType.TOSS)
+                .build();
+
+        when(paymentCheckoutService.checkout(any(CheckoutCommand.class)))
+                .thenReturn(CheckoutResult.builder()
+                        .orderId("order-new")
+                        .totalAmount(BigDecimal.valueOf(2000))
+                        .isDuplicate(false)
+                        .build());
+
+        // when / then
+        mockMvc.perform(post("/api/v1/payments/checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkoutRequest)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.orderId").value("order-new"))
+                .andExpect(jsonPath("$.data.totalAmount").value(2000))
+                .andExpect(jsonPath("$.data.duplicate").value(false));
+    }
 
     @Test
     @DisplayName("confirm() 성공 시 HTTP 202 Accepted를 반환한다. (PORT-02)")
