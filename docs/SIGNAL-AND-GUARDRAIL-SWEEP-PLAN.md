@@ -97,7 +97,7 @@ flowchart TD
 - [x] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
 - [x] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
 - [x] Task 4: 동시 승인 경합 통합 검증
-- [ ] Task 5: 체크아웃 응답에 중복 여부 복원
+- [x] Task 5: 체크아웃 응답에 중복 여부 복원
 - [ ] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
 - [ ] Task 7: 재시도 워커 자체 추적 구간 부여
 - [ ] Task 8: 로그 마스킹 계층 도입 (payment)
@@ -338,7 +338,22 @@ flowchart TD
 - 위 테스트 pass, 기존 응답 필드 제거 없음
 
 **완료 결과**
+> `CheckoutResponse`에 `isDuplicate` 필드를 추가했다 — `CheckoutResult`와 같은 이유로
+> `@JsonProperty("duplicate")`를 붙여 Jackson 기본 직렬화(`isXxx()` getter의 "is" prefix 제거)와
+> key를 맞췄다. `PaymentPresentationMapper.toCheckoutResponse`가 `CheckoutResult.isDuplicate()`를
+> 옮기도록 한 줄 추가했다. 상태 코드 분기(신규 201 / 중복 200)는 손대지 않았다.
 >
+> 기존 응답 필드(orderId, totalAmount)를 검증하는 전체 통합 테스트(`PaymentControllerTest`,
+> `@Tag("integration")`)가 JSON 역직렬화에 쓰는 `CheckoutResponseMixin`이 새 필드를 모르면
+> `FAIL_ON_UNKNOWN_PROPERTIES` 기본값 때문에 깨지므로, mixin 생성자에 `duplicate` 파라미터를
+> 추가했다(Rule 1, 필드 추가에 따른 기계적 보완 — 새 테스트 자체가 아니라 기존 테스트를
+> 계속 통과시키기 위한 기존 fixture 수정).
+>
+> `./gradlew :payment-service:test` 564개 전부 pass(Task 4 종료 시점 560개 + 이번 태스크 4개:
+> `PaymentPresentationMapperTest` 2개, `PaymentControllerMvcTest`에 추가한 체크아웃 중복 응답
+> 테스트 2개). `./gradlew :payment-service:integrationTest --tests "*PaymentControllerTest*"
+> --rerun-tasks`로 캐시 없이 재실행해 기존 통합 테스트 4개(체크아웃 성공 케이스 포함)도
+> 회귀 없음을 확인했다.
 
 ---
 

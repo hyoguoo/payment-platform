@@ -31,6 +31,7 @@ public class PaymentPresentationMapper {
         return CheckoutResponse.builder()
                 .orderId(result.getOrderId())
                 .totalAmount(result.getTotalAmount())
+                .isDuplicate(result.isDuplicate())
                 .build();
     }
 
