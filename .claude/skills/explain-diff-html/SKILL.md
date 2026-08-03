@@ -70,7 +70,7 @@ description: 코드 변경(diff, 브랜치, 커밋 범위, PR)을 배경–직�
 
 ## 문체
 
-- 본문은 한국어, `.claude/skills/_shared/conventions/writing.md`의 문체·목소리 섹션을 따른다 (`~다.` 종결, AI체·번역체·메타 도입어 금지 — HTML 산출물이므로 구조 규칙은 제외)
+- 본문은 한국어. 쓰기 전에 `.claude/skills/_shared/conventions/writing-style.md`의 문체·목소리 섹션을 읽는다 (`~다.` 종결, AI체·번역체·메타 도입어 금지 — HTML 산출물이므로 구조 규칙은 제외)
 - 섹션 간 전환은 매끄럽게 — 앞 섹션이 다음 섹션의 질문을 자연스럽게 남기도록 서사를 잇는다
 - 명료하되 건조하지 않게, 독자를 끌고 가는 산문으로 쓴다
 - 코드 식별자·기술 용어는 원형 유지, 태스크 ID·즉석 라벨 대신 내용으로 명명
@@ -87,7 +87,7 @@ Mermaid와 HTML/CSS를 용도로 나눠 쓴다.
 | 사용자가 보는 UI의 극단순화 버전 | HTML/CSS |
 
 - Mermaid가 강한 흐름·전이 표현은 Mermaid로, 예시 데이터를 박아 넣거나 자유 스타일링이 필요한 그림은 HTML/CSS로 — Mermaid에 데이터를 욱여넣어 지저분해지면 잘못 고른 것
-- Mermaid 노드·엣지 라벨은 `.claude/skills/_shared/conventions/writing.md`의 금지 문자 표를 따른다 — HTML과 달리 Mermaid는 파일을 열기 전까지 렌더 실패를 알 수 없으므로 작성 시점에 차단
+- Mermaid 노드·엣지 라벨은 `.claude/skills/_shared/conventions/writing-visuals.md`의 금지 문자 표를 따른다 — HTML과 달리 Mermaid는 파일을 열기 전까지 렌더 실패를 알 수 없으므로 작성 시점에 차단
 - HTML 다이어그램은 소수의 패밀리를 정해 문서 전체에서 재사용하고, 시스템 다이어그램에는 반드시 예시 데이터를 함께 넣는다
 - ASCII 다이어그램 금지, 나열은 HTML 리스트로 구성
 - 핵심 개념·정의·엣지 케이스는 콜아웃 박스로 강조

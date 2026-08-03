@@ -8,10 +8,14 @@
 - `@Valid` 는 controller method parameter 에서만
 - 도메인 entity 의 invariant 는 도메인 메서드 내부 가드로 (`Objects.requireNonNull` 또는 `IllegalArgumentException`)
 
-## TDD 흐름
+## TDD 흐름 (정본)
 
-1. **RED**: 실패하는 테스트 작성 → `git commit -m "test: ..."`
-2. **GREEN**: 최소 구현으로 테스트 통과 → `git commit -m "feat: ..."` (PLAN.md / STATE.md 함께 갱신)
-3. **REFACTOR** (선택): `git commit -m "refactor: ..."`
+개발 흐름(무엇을 먼저 쓰고 무엇을 나중에 하는지)의 정본. 커밋 타입 매핑(`test:` / `feat:` / `refactor:`)은 [`commit.md`](../../../.claude/skills/_shared/conventions/commit.md) TDD 커밋 분리 절이 정본이다.
 
-도메인 entity 는 `@ParameterizedTest @EnumSource` 로 유효/무효 상태 전환 모두 커버.
+1. **RED**: 실패하는 테스트를 먼저 작성한다.
+   - 도메인 entity: `@ParameterizedTest @EnumSource` 로 유효/무효 상태 전환 모두 커버.
+   - Use case: Mockito 단위 테스트 먼저 작성.
+2. **GREEN**: 테스트를 통과하는 최소 구현. PLAN.md 체크박스 + STATE.md 를 함께 갱신한다.
+3. **REFACTOR** (선택): 개선. 변경이 없으면 생략한다.
+
+매 태스크 완료 후 `./gradlew test` 로 회귀 없음을 확인한다.

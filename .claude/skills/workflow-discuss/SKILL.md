@@ -60,28 +60,18 @@ description: >
 
 원칙: port → domain → application → infrastructure → controller 의존 방향 / 포트는 application에, 어댑터는 infrastructure에 / 결제 상태 전이는 domain 엔티티에만 / 구현 세부는 plan 단계로 미룬다 / 벤더 종속 용어(특정 PG사명)를 범용 결정에 쓰지 않는다.
 
-**즉석 코드 라벨 금지**: 설계 옵션·결정을 `Option A/B`, `E1`, `방안 1` 같은 즉석 식별자로 부르지 않는다. 각 옵션을 그 **내용**으로 명명한다(예: "헤더 라운드트립 복원 방식", "`pg_inbox.attempt` SoT 방식"). 이런 라벨은 비교 섹션 안에서만 통하고, 결정 테이블·요약 브리핑·plan·영구 문서로 새어 나가면 그 문서만 읽는 독자에게 의미를 잃는 dangling 참조가 된다. (프로젝트 표준 식별자 — 상태 전이 ID·TODOS 항목 코드·토픽 코드 — 는 전역 참조용이라 예외.)
+**즉석 코드 라벨 금지**: 설계 옵션·결정을 `Option A/B`, `E1`, `방안 1` 같은 즉석 식별자로 부르지 않는다. 각 옵션을 그 **내용**으로 명명한다 — 이유·예외·예시는 `.claude/skills/_shared/conventions/writing-terminology.md` "즉석 코드 라벨 금지" 절 참조.
 
 ## 5. 게이트 (서브에이전트, 최대 2라운드)
 
-**domain-expert 포함 조건** — 다음 중 하나면 무조건 포함한다:
+**domain-expert 포함 조건**: `discuss-ready.md` domain risk 섹션 참조. 생략 시 사전 브리핑에 "domain-expert 생략 (도메인 비접촉)"을 명시해 사용자가 뒤집을 수 있게 한다.
 
-- 소스 코드 **또는 런타임 설정**(알람 규칙·Kafka 설정·스케줄러 등) 변경을 계획 (한 줄이라도)
-- 산출물이 **결제 도메인 동작(상태 전이·멱등성·복구·정산)을 서술·정정** — 문서 정정, 운영 런북, CONCERNS/TODOS 정리 포함
+Reviewer와 domain-expert(포함 조건 충족 시)를 **단일 메시지에서 병렬 dispatch**한다 — 입력 항목의 형식·거부 규칙은 각 에이전트 정의(`.claude/agents/reviewer.md`, `.claude/agents/domain-expert.md`)의 필수 입력 절을 따른다. 이번 단계에서 채워 넘길 값:
 
-둘 다 아닌 도메인 비접촉 토픽(워크플로우·스킬 정비, 문체 교정 등)만 생략 가능하며, 생략 시 사전 브리핑에 "domain-expert 생략 (도메인 비접촉)"을 명시해 사용자가 뒤집을 수 있게 한다.
-
-**단일 메시지에서 병렬 dispatch**:
-
-```
-Agent(subagent_type="reviewer",      prompt="stage=discuss, topic=<TOPIC>.
-  대상: docs/topics/<TOPIC>.md
-  체크리스트: .claude/skills/_shared/checklists/discuss-ready.md 의 Gate 섹션
-  참고: docs/context/ARCHITECTURE.md")
-Agent(subagent_type="domain-expert", prompt="stage=discuss, topic=<TOPIC>.
-  대상: docs/topics/<TOPIC>.md
-  체크리스트: discuss-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체")
-```
+- stage=discuss, topic=<TOPIC>
+- 검토 대상: `docs/topics/<TOPIC>.md`
+- 체크리스트: reviewer는 `discuss-ready.md`의 Gate 섹션, domain-expert는 같은 파일의 domain risk 섹션 + 리스크 카탈로그 전체
+- 참고 입력: `docs/context/ARCHITECTURE.md` (reviewer)
 
 - 전원 pass → 6으로. revise/fail → findings를 메인이 topic.md에 반영(필요 시 사용자 확인) 후 재게이트.
 - 2라운드 소진 시 `workflow` 스킬의 교착 처리.

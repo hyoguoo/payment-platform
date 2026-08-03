@@ -69,14 +69,9 @@ description: >
 
 ## 3. 게이트 (서브에이전트, 최대 2라운드)
 
-```
-Agent(subagent_type="reviewer", prompt="stage=plan, topic=<TOPIC>.
-  대상: docs/<TOPIC>-PLAN.md
-  체크리스트: .claude/skills/_shared/checklists/plan-ready.md 의 Gate 섹션
-  참고: docs/topics/<TOPIC>.md (traceability 대조)")
-```
+Reviewer를 dispatch한다 — 입력 항목의 형식·거부 규칙은 `.claude/agents/reviewer.md` 필수 입력 절을 따른다. 이번 단계에서 채워 넘길 값: stage=plan, topic=<TOPIC> / 검토 대상 `docs/<TOPIC>-PLAN.md` / 체크리스트 `plan-ready.md`의 Gate 섹션 / 참고 `docs/topics/<TOPIC>.md`(traceability 대조).
 
-토픽에 domain_risk=true 태스크가 있으면 **같은 메시지에서 domain-expert도 병렬 dispatch** (plan-ready.md의 domain risk 섹션 + discuss 리스크 → 태스크 매핑 검증).
+토픽에 domain_risk=true 태스크가 있으면 **같은 메시지에서 domain-expert도 병렬 dispatch**한다 — 입력은 `.claude/agents/domain-expert.md` 필수 입력 절을 따르고, 체크리스트는 `plan-ready.md`의 domain risk 섹션, 참고는 discuss 리스크 → 태스크 매핑 검증용 `docs/topics/<TOPIC>.md`.
 
 - pass → 4로. revise → 메인이 findings 반영 수정 후 재게이트. fail(구조적) → discuss 재논의 안내.
 - 2라운드 소진 시 `workflow` 스킬의 교착 처리.

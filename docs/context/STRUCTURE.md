@@ -27,6 +27,7 @@ payment-platform/
 ├── scripts/                      # 운영 도구 (시점 무관 영구)
 │   ├── common.sh
 │   ├── compose-up.sh
+│   ├── check-agent-docs.py       # 지침 문서 정합성 검사 (참조·중복·frontmatter)
 │   └── smoke/                    # 모든 영구 smoke 도구
 │       ├── infra-healthcheck.sh
 │       ├── trace-continuity-check.sh
@@ -200,3 +201,4 @@ flowchart TD
 | Kafka 토픽 상수 | `payment-service/.../application/messaging/PaymentTopics.java` |
 | Flyway 마이그레이션 | payment/pg: `db/migration/V*.sql` · product/user: `db/schema/V*.sql` + `db/seed/V*.sql`(profile 별 적용) |
 | 영구 smoke | `scripts/smoke/*.sh` + `docs/smoke/*.md` |
+| 지침 문서 검사 | `scripts/check-agent-docs.py` (ship 체크리스트에서 결과 확인) |

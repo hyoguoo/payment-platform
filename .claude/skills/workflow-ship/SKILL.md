@@ -18,18 +18,14 @@ description: >
 
 ### A1. 리뷰 dispatch (단일 메시지 병렬)
 
-**domain-expert 포함 조건** — discuss 게이트와 같은 2갈래 기준을 실제 diff에 적용한다: diff에 소스 코드·런타임 설정 변경이 있거나 산출물이 결제 도메인 동작을 서술·정정하면 포함, 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
+**domain-expert 포함 조건**: `discuss-ready.md` domain risk 섹션의 2갈래 조건을 실제 diff에 적용한다(diff에 소스 코드·런타임 설정 변경이 있는지 / diff 산출물이 결제 도메인 동작을 서술·정정하는지). 도메인 비접촉 diff(워크플로우·스킬 정비 등)는 reviewer만 dispatch하고 리뷰 완료 보고에 "domain-expert 생략 (도메인 비접촉)"을 명시한다.
 
-```
-Agent(subagent_type="reviewer",      prompt="stage=ship, topic=<TOPIC>.
-  대상: git diff main...HEAD (+ git log main..HEAD --oneline)
-  체크리스트: .claude/skills/_shared/checklists/code-ready.md
-  참고: docs/topics/<TOPIC>.md 결정 사항, docs/<TOPIC>-PLAN.md")
-Agent(subagent_type="domain-expert", prompt="stage=ship, topic=<TOPIC>.
-  대상: git diff main...HEAD
-  체크리스트: code-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체
-  참고: docs/topics/<TOPIC>.md 결정 사항, docs/context/PITFALLS.md")
-```
+Reviewer와 domain-expert(포함 조건 충족 시)를 **단일 메시지에서 병렬 dispatch**한다 — 입력 항목의 형식·거부 규칙은 각 에이전트 정의의 필수 입력 절을 따른다. 이번 단계에서 채워 넘길 값:
+
+- stage=ship, topic=<TOPIC>
+- 검토 대상: `git diff main...HEAD` (+ `git log main..HEAD --oneline`)
+- 체크리스트: reviewer는 `code-ready.md` 전체, domain-expert는 같은 파일의 domain risk 섹션 + 리스크 카탈로그 전체
+- 참고 입력: `docs/topics/<TOPIC>.md` 결정 사항, `docs/<TOPIC>-PLAN.md` (reviewer) / `docs/context/PITFALLS.md` (domain-expert)
 
 메인 스레드에서 diff를 읽고 findings를 직접 작성하지 않는다.
 
@@ -44,13 +40,7 @@ severity별로 사용자에게 확인:
 
 ### A3. 수정 dispatch
 
-수정은 메인이 직접 하지 않고 implementer에 위임 (여러 건 묶어 1회):
-
-```
-Agent(subagent_type="implementer", prompt="모드 2 — 리뷰 finding 수정.
-  findings: <선택 목록: 파일:라인 + 문제 + 제안>
-  스킵 항목: <// REVIEW: intentionally skipped 주석 대상>")
-```
+수정은 메인이 직접 하지 않고 implementer에 위임한다 (여러 건 묶어 1회) — 입력 항목(모드 2, findings 목록, 관련 태스크의 tdd 성격)은 `.claude/agents/implementer.md` 필수 입력 절을 따른다. 선택된 findings(파일:라인 + 문제 + 제안)와 의도적 스킵 대상(`// REVIEW: intentionally skipped` 주석 처리)을 함께 넘긴다.
 
 ### A4. 재리뷰 (최대 1회)
 
@@ -65,6 +55,8 @@ Agent(subagent_type="implementer", prompt="모드 2 — 리뷰 finding 수정.
 ### A5. 설명 페이지 자동 생성
 
 리뷰 통과(1차 pass 또는 재리뷰 통과) 직후 `explain-diff-html` 스킬로 이번 작업의 설명 페이지를 생성한다. 기본 자동 — 사용자가 생략을 지시했거나, 제외 규칙 적용 후 설명할 코드 diff가 없으면(도메인 비접촉 토픽) 건너뛰고 게이트 메시지에 생략 사유를 표기한다.
+
+역할 경계: 마크다운 브리핑(topic.md·PLAN.md·COMPLETION-BRIEFING)은 설계·플랜 판단용이고, HTML 설명 페이지는 완료 후 변경 이해용이다 — 서로 대체하지 않는다.
 
 - 대상: `git diff main...HEAD` (스킬의 `docs/`·`.claude/` 제외 규칙 적용)
 - 저장: `.archive/explanations/YYYY-MM-DD-<topic-kebab>.html`
@@ -91,9 +83,10 @@ critical N건 해소, major N건 처리, minor N건 기록.
 ### B1. 최종 검증
 
 - `./gradlew test` 전체 실행
-- **통합테스트 명시 실행** — build/test가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다: `./gradlew integrationTest --rerun` 또는 해당 태스크 직접 지정
+- **통합테스트 명시 실행** — build/test가 UP-TO-DATE 캐시면 통합테스트가 돌지 않는다: `./gradlew integrationTest --rerun` 또는 해당 태스크 직접 지정. **다중 서비스 변경 시**: 한 토픽이 여러 서비스를 건드렸으면 일부만 재실행하지 않는다 — 변경이 닿은 모든 서비스의 통합테스트를 재실행한다. 일부만 돌리면 나머지는 캐시로 조용히 스킵돼, 과거 실제로 한 서비스의 통합테스트가 안 돌아 CI에서야 컨텍스트 로드 실패가 드러난 적이 있다
 - 린트 게이트: `./gradlew checkstyleMain checkstyleTest spotbugsMain spotbugsTest --continue` — CI lint step(`_service-ci.yml`)과 같은 태스크 집합 유지
 - 실패 분류: 이번 작업 관련 → implementer로 수정 / 사전 존재 → 기록 후 무시 / 구조적 → 중단·보고
+- **라이브 검증 원칙**: 합성 테스트(문법·픽스처 통과)를 검증 완료로 보지 않는다 — 가능하면 실제 장애 주입으로 신호 경로 끝까지 관측한다. 이 원칙은 알람 규칙에 한정되지 않고 검증 요구 전반에 적용된다.
 - **라이브 검증 (조건부)**: 런타임 행동이 바뀐 토픽(알람 규칙·Kafka 토픽/컨슈머 설정·스케줄러·관리자 운영 경로)은 `docs/smoke/` 해당 가이드로 실환경 발화/동작을 확인한다. 스택 기동 불가 등으로 못 하면 사유 + 미검증 항목을 COMPLETION-BRIEFING 미결/후속에 기록 — 암묵 생략 금지, 의식적 스킵만
 
 ### B2. Context 문서 갱신

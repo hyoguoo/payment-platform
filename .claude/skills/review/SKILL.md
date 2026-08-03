@@ -18,15 +18,12 @@ description: >
 
 ## 2. 서브에이전트 dispatch (단일 메시지 병렬)
 
-```
-Agent(subagent_type="reviewer",      prompt="stage=standalone.
-  대상: <diff 범위>
-  체크리스트: .claude/skills/_shared/checklists/code-ready.md (task execution 섹션 제외)
-  참고: docs/context/PITFALLS.md")
-Agent(subagent_type="domain-expert", prompt="stage=standalone.
-  대상: <diff 범위>
-  체크리스트: code-ready.md 의 domain risk 섹션 + 리스크 카탈로그 전체")
-```
+Reviewer와 domain-expert를 **단일 메시지에서 병렬 dispatch**한다 — 입력 항목의 형식·거부 규칙은 각 에이전트 정의의 필수 입력 절을 따른다. 이번 단계에서 채워 넘길 값:
+
+- stage=standalone
+- 검토 대상: `<diff 범위>`
+- 체크리스트: reviewer는 `code-ready.md`(task execution 섹션 제외), domain-expert는 같은 파일의 domain risk 섹션 + 리스크 카탈로그 전체
+- 참고 입력: `docs/context/PITFALLS.md` (reviewer)
 
 ## 3. 결과 보고
 

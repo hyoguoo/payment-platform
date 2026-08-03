@@ -27,7 +27,10 @@ Co-Authored-By: <에이전트 이름> <이메일>
 - **본문은 "왜"에 초점** (diff로 "무엇"은 읽을 수 있음)
 - **Co-Authored-By 트레일러 필수** — 마지막 줄에 에이전트 식별 트레일러를 일관되게 포함한다 (형식: `Co-Authored-By: 이름 <이메일>`, 본문과 빈 줄로 구분).
 
-## TDD 커밋 분리
+## TDD 커밋 분리 (정본)
+
+커밋 타입 매핑의 정본. 개발 흐름(RED → GREEN → REFACTOR 상세)은 [`testing.md`](../../../../docs/context/conventions/testing.md) TDD 흐름 절이 정본이다.
+
 - RED: `test: <실패 테스트 추가>` — 테스트 파일만
 - GREEN: `feat: <구현 + PLAN.md 체크박스 + STATE.md>` — 단일 커밋
 - REFACTOR (선택): `refactor: <개선 내용>`

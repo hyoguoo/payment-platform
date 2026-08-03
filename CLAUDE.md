@@ -15,15 +15,17 @@
 
 **역할 분담**: 메인 스레드가 인터뷰·설계·태스크 분해·마무리를 직접 수행한다. 서브에이전트는 독립 시각이 가치 있는 곳에만 쓴다 — 게이트 판정·코드 리뷰(`reviewer`, `domain-expert`)와 태스크 구현(`implementer`).
 
+**Dispatch 우선순위**: 워크플로우 스킬이 규정한 게이트 판정·구현 dispatch는 사용자가 승인한 절차이며, 서브에이전트 호출을 일반적으로 제한하는 지시보다 우선한다.
+
+**산출물 길이**: 문서 분량은 작업 내용에 맞추고, 채워넣기용 섹션을 만들지 않는다.
+
 실행 방법은 `.claude/skills/workflow/SKILL.md`를 참고한다.
 
 ---
 
 ## Coding Rules
 
-1. **Test-first**: 구현 전에 실패하는 테스트를 먼저 작성한다.
-   - Domain entities: `@ParameterizedTest @EnumSource`로 유효/무효 상태 전환 모두 커버.
-   - Use cases: Mockito 단위 테스트 먼저 작성.
+1. **Test-first**: 구현 전에 실패하는 테스트를 먼저 작성한다. 개발 흐름(RED → GREEN → REFACTOR)은 [`docs/context/conventions/testing.md`](docs/context/conventions/testing.md) TDD 흐름 절, 커밋 타입 매핑은 [`commit.md`](.claude/skills/_shared/conventions/commit.md) 참고.
 2. **Minimal change**: 현재 태스크 범위 밖 코드는 수정하지 않는다. 발견한 문제는 주석으로 메모만 한다.
 3. **Verify**: 매 태스크 완료 후 `./gradlew test`로 회귀 없음을 확인한다.
 
@@ -48,6 +50,9 @@
    - 좋음: "A5b (product-service container_name 제거 + Eureka instanceId 고유화) 후속에서 처리"
    - 또는 ID 빼고 내용으로만: "container_name 제거 작업 후속에서 처리"
    - 단, PLAN.md / commit message / implementer 디스패치 프롬프트 같은 산출물에서는 ID 그대로 OK (그게 본 식별자)
+2. **문체**: 대화 답변에도 문서 산출물에도 적용된다.
+   - AI체·번역투가 드러나지 않게, 짧고 담백한 문장으로 쓴다.
+   - 판정 기준과 안티패턴 사례는 `.claude/skills/_shared/conventions/writing-style.md` 목소리 절이 정본이다 — 문구를 그대로 옮기지 않는다.
 
 ---
 
@@ -69,6 +74,7 @@
 | 인프라 헬스체크 / 트레이스 검증 | `docs/smoke/*` |
 | 워크플로우 작업 재개 | `docs/STATE.md` (재개 메모) → 활성 산출물 |
 | 과거 작업 맥락 파악 | `docs/archive/<topic>/COMPLETION-BRIEFING.md` |
+| 에이전트 지침·스킬 정비 | `CLAUDE-5-PROMPTING` |
 
 ### 영구 문서 (docs/context/) — 프로젝트 전체 생명주기
 
@@ -83,6 +89,7 @@
 - [`docs/context/PITFALLS.md`](docs/context/PITFALLS.md) — 학습된 도메인 함정 인덱스
 - [`docs/context/CONCERNS.md`](docs/context/CONCERNS.md) — 알려진 우려 / 한계 / 회피된 우려
 - [`docs/context/TODOS.md`](docs/context/TODOS.md) — 후속 + 향후 처리 항목
+- [`docs/context/CLAUDE-5-PROMPTING.md`](docs/context/CLAUDE-5-PROMPTING.md) — Claude 5 세대 프롬프팅·컨텍스트 엔지니어링 참고 정리 (Opus 5 프롬프팅 가이드 + 컨텍스트 엔지니어링 기사)
 
 ### 사람 독자용 문서 (docs/context/) — ⚠️ 작업 시 열지 말 것
 
@@ -105,10 +112,10 @@
 
 ## Skills
 
-- `.claude/skills/workflow/SKILL.md` — 4단계 워크플로우 라우터 + 공통 원칙 (격리·브리핑·게이트·STATE 형식)
-- `.claude/skills/workflow-{discuss,plan,execute,ship}/` — 각 단계 오케스트레이터 (자기완결, 템플릿 인라인)
-- 단독 호출 스킬(review / writing / explain-diff-html 등) — 전체 목록은 `.claude/skills/README.md` 참조 (여기에 중복 나열하지 않는다)
+스킬 목록과 설명은 세션이 자동으로 받는다. 여기에는 스킬이 아닌 자원만 적는다.
+
 - `.claude/agents/{reviewer,domain-expert,implementer}.md` — 서브에이전트 정의 (유일한 정의처)
+- [`.claude/skills/README.md`](.claude/skills/README.md) — 스킬·에이전트·공용 자원 인덱스
 - `.claude/skills/_shared/checklists/` — 게이트 체크리스트 4종 (discuss/plan/code/ship-ready)
 - `.claude/skills/_shared/conventions/` — 커밋 / GitHub / 문서 작성 컨벤션
 
@@ -118,6 +125,3 @@
 - **`<type>(<scope>): <한글 제목>`** — type 은 영문(`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`build` 등), 제목·본문은 한글
 - **scope 는 고정 어휘만**: 서비스(`payment`/`pg`/`product`/`user`/`gateway`/`eureka`) 또는 횡단(`docs`/`build`/`infra`/`deps`). 한 scope 로 못 묶으면 생략. 토픽명·태스크 ID 금지
 - **마지막 줄 `Co-Authored-By:` 트레일러 일관 포함**
-- amend 금지, 명시 staging, hook 우회 금지
-- TDD: `test:`(RED) → `feat:`(GREEN+PLAN.md+STATE.md) → `refactor:`(선택)
-- discuss/plan 산출물 각 단일 `docs:` 커밋, ship 최종 스냅샷 독립 커밋, STATE.md 단독 커밋 금지
