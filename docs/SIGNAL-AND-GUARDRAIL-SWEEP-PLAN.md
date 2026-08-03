@@ -1,0 +1,475 @@
+# 운영 신호 정합과 규칙 자동 검출 정비 구현 플랜
+
+> 작성일: 2026-08-03
+
+## 요약 브리핑
+
+### Task 목록
+
+| # | 내용 | 성격 |
+|---|---|---|
+| 1 | 전이 주체를 호출 스택 짐작에서 전이 지점 선언으로 전환 | 코드, 도메인 |
+| 2 | 발행 행 삽입을 충돌 없는 방식으로 바꾸고 확인 조회에 블로킹 잠금을 건다 | 코드, 도메인 |
+| 3 | 중복 재진입 예외를 만들어 재고 미회수 경보에서 분리 | 코드, 도메인 |
+| 4 | 실제 데이터베이스로 동시 승인 경합을 50회 반복 검증 | 테스트, 도메인 |
+| 5 | 체크아웃 응답 본문에 중복 여부 복원 | 코드 |
+| 6 | 재시도 백오프 회차 정정, 좀비 회수와의 관계 설정에 명시 | 코드, 도메인 |
+| 7 | 재시도 워커에 자체 추적 구간과 주문 번호 부여 | 코드 |
+| 8 | 로그 마스킹 계층 도입 (payment 먼저) | 코드, 도메인 |
+| 9 | 마스킹 계층 나머지 네 서비스 확산 | 코드, 도메인 |
+| 10 | 벤더 응답 원문 로깅 길이 제한 | 코드, 도메인 |
+| 11 | 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제 | 빌드 |
+| 12 | 구조 판정이 필요한 스타일 2규칙 검출 | 빌드 |
+| 13 | 지침 문서 검사 스크립트 CI 편입 | CI |
+| 14 | 리뷰 체크리스트 낡은 참조 정정 | 문서 |
+| 15 | 결제 흐름 문서 다이어그램 표기 정리 | 문서 |
+
+### 변경 후 전체 플로우
+
+```mermaid
+flowchart TD
+    A[결제 승인 요청] --> B[재고 선차감]
+    B --> C[확정 트랜잭션 시작, 결제 상태 전이]
+    C --> D[발행 행 삽입, 이미 있으면 넘어감]
+    D --> E{반영된 행이 있는가}
+    E -->|있음| F[정상 확정]
+    E -->|없음| G[주문 번호로 블로킹 잠금 읽기]
+    G -->|기존 행 있음| H[중복 재진입 예외, 경보 제외]
+    G -->|기존 행 없음| I[저장 실패, 종전대로 경보]
+    H --> J[트랜잭션 롤백, 상태 전이도 되돌아감]
+    I --> J
+    F --> K[상태 전이 지표에 실제 주체 기록]
+    F --> L[승인 명령을 pg 로 전달]
+    L --> M{벤더 호출 결과}
+    M -->|성공| N[승인 결과 회신]
+    M -->|실패| O[다음 재시도 예약, 대기 2초 6초 18초]
+    O --> P{재시도 한도}
+    P -->|남음| M
+    P -->|소진| Q[격리 전이, 안전 종결 전 벤더 상태 확인 필요]
+    O -.최대 22.5초.-> R[좀비 회수 타임아웃 60초와 겹치지 않음]
+    M --> S[워커 자체 추적 구간에 주문 번호 기록]
+    N --> T[모든 로그는 출력 직전 마스킹 통과]
+```
+
+### 핵심 결정 → Task 매핑
+
+- 전이 주체 선언 전환 → Task 1
+- 중복 승인 경보 분리, 중복 판정 근거, 확인 조회 잠금 방식 → Task 2, 3, 4
+- 체크아웃 응답 → Task 5
+- 재시도 백오프, 좀비 회수 타임아웃 유지 → Task 6
+- 재시도 워커 추적 → Task 7
+- 로그 마스킹 → Task 8, 9
+- 벤더 응답 원문 로깅 → Task 10
+- 코드 스타일 강제, 기존 위반 기준선 → Task 11, 12
+- 지침 문서 검사 → Task 13
+- 체크리스트 정정 → Task 14
+- 다이어그램 표기 → Task 15
+- 리뷰 강도 대조 → 리뷰 처리 절 (ship 단계)
+- 커밋 단위 → 컨텍스트 절
+
+### 트레이드오프 / 후속 작업
+
+- 재시도 창이 78초에서 26초로 줄어, 그 사이 길이의 벤더 장애에서는 전에 회복했을 결제가 격리로 남는다. 격리 이탈 경로는 벤더 상태를 다시 묻지 않는 편도 종결뿐이고 환불 경로가 없다 — 이 토픽에서 닫지 않으며, 격리 복구와 환불은 이미 후속 항목으로 올라 있다.
+- 마스킹은 모든 로그 줄에 정규식이 도는 비용을 새로 만든다. 지금 새는 경로가 없는 상태에서 까는 안전망이다.
+- 스타일 검출의 기존 위반은 억제 목록으로 덮고 규모만 숫자로 남긴다. 실제 수정은 다음으로 미룬다.
+- Task 12는 기존 위반 규모가 미지수라, 규모 파악 결과에 따라 구현 수단(구조 검사 라이브러리 도입 여부)이 갈린다.
+
+---
+
+## 목표
+
+지표·로그·추적이 실제 동작과 어긋나던 자리를 맞추고, 재시도 대기를 설계 값으로 되돌려 좀비 회수와의 겹침을 없애며, 사람 눈으로만 지키던 규칙에 검출 장치를 깐다. 15개 태스크가 모두 끝나고 전체 회귀가 통과하면 완료다.
+
+## 컨텍스트
+
+- 설계 문서: `docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md`
+- 이슈/브랜치: #132
+- 커밋은 태스크 단위로 분리하고 PR은 하나로 낸다 (설계 "커밋 단위" 결정)
+- 주요 변경 파일
+  - payment: `PaymentStatusMetricsAspect`, `PaymentStatusChange`, `PaymentCommandUseCase`, `PaymentOutboxRepository`(포트), `JpaPaymentOutboxRepository`, `PaymentOutboxRepositoryImpl`, `PaymentOutboxUseCase`, `OutboxAsyncConfirmService`, `CheckoutResponse`, `PaymentPresentationMapper`
+  - pg: `PgVendorCallService`, `RetryPolicy`, `PgInboxPollingWorker`, `TossPaymentGatewayStrategy`, `application.yml`
+  - 공통: 5개 서비스 `core/common/log/`, `logback-spring.xml`
+  - 빌드/문서: `config/checkstyle/`, `.github/workflows/`, `.claude/skills/_shared/checklists/code-ready.md`, `docs/context/{CONFIRM,PAYMENT}-FLOW.md`
+
+## 진행 상황
+
+- [ ] Task 1: 전이 주체를 전이 지점이 선언하게 전환
+- [ ] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
+- [ ] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
+- [ ] Task 4: 동시 승인 경합 통합 검증
+- [ ] Task 5: 체크아웃 응답에 중복 여부 복원
+- [ ] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
+- [ ] Task 7: 재시도 워커 자체 추적 구간 부여
+- [ ] Task 8: 로그 마스킹 계층 도입 (payment)
+- [ ] Task 9: 마스킹 계층 나머지 4서비스 확산
+- [ ] Task 10: 벤더 응답 원문 로깅 길이 제한
+- [ ] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
+- [ ] Task 12: 구조 판정이 필요한 스타일 2규칙 검출
+- [ ] Task 13: 지침 문서 검사 스크립트 CI 편입
+- [ ] Task 14: 리뷰 체크리스트 낡은 참조 정정
+- [ ] Task 15: 결제 흐름 문서 다이어그램 표기 정리
+
+---
+
+## 태스크
+
+### Task 1: 전이 주체를 전이 지점이 선언하게 전환 [tdd=true] [domain_risk=true]
+
+호출 스택을 문자열로 뒤져 전이 주체를 짐작하던 방식을 없애고, 전이를 일으킨 쪽이 값을 넘기게 한다.
+
+**테스트 (RED)**
+- `PaymentStatusMetricsAspectTest`
+  - `승인_결과_수신_전이는_confirm_라벨로_기록된다`
+  - `만료_전이는_expiration_라벨로_기록된다`
+  - `관리자_수동_종결은_manual_라벨로_기록된다`
+  - `라벨에_unknown_이_기록되는_경로가_없다` — 전이 지점 전수에 대해 라벨이 비지 않음을 검증
+- `PaymentCommandUseCaseTest` 보강
+  - `markPaymentAsFail_승인_실패_경로와_재고_실패_경로가_서로_다른_주체로_기록된다`
+  - `markPaymentAsQuarantined_재고_캐시_장애와_금액_불일치가_서로_다른_주체로_기록된다`
+- 패턴: Mockito BDD + AssertJ. 지표는 `SimpleMeterRegistry`로 실제 라벨을 읽어 단정한다 — 호출 사실이 아니라 기록된 라벨 값을 본다.
+
+**구현 (GREEN)**
+- `PaymentStatusMetricsAspect.detectTriggerFromCallStack()` 삭제, `"auto"` 분기 제거
+- `PaymentStatusChange` 애노테이션의 주체 값을 고정 선언으로 채우되, 한 메서드가 여러 흐름에서 불리는 두 곳(`markPaymentAsFail`, `markPaymentAsQuarantined`)은 호출자가 주체를 인자로 넘기도록 시그니처를 바꾼다
+- 호출부 수정: `PaymentConfirmResultUseCase`(승인 실패), `PaymentFailureUseCase`(재고 실패), `PaymentTransactionCoordinator`(재고 캐시 장애), `QuarantineCompensationHandler`(금액 불일치)
+- 애노테이션에 넘길 주체 값은 상수로 모아 오타를 막는다
+
+**완료 기준**
+- 위 테스트 전부 pass, 코드베이스에 `detectTriggerFromCallStack` 잔존 0건
+- `./gradlew :payment-service:test` 회귀 없음
+
+**완료 결과**
+>
+
+---
+
+### Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체 [tdd=true] [domain_risk=true]
+
+주문 단위 발행 행을 만들 때 제약 충돌 예외가 아예 발생하지 않게 하고, 반영 행이 없으면 잠금 읽기로 기존 행 존재를 확인한다.
+
+**테스트 (RED)**
+- `JpaPaymentOutboxRepositoryTest` (Testcontainers MySQL + `@DataJpaTest`)
+  - `이미_있는_주문으로_삽입하면_반영_행이_0이고_예외가_없다`
+  - `새_주문_삽입은_반영_행이_1이다`
+  - `잠금_읽기_조회가_기존_행을_반환한다`
+- `PaymentOutboxRepositoryImplTest`
+  - `반영_행_0이고_기존_행_존재면_이미_있음을_반환한다`
+  - `반영_행_0이고_기존_행_없으면_저장_실패를_반환한다`
+  - `반영_행_1이면_생성됨을_반환한다`
+- `JpaPaymentOutboxRepositoryLockContractTest` — 잠금 방식이 조용히 바뀌는 회귀를 막는 구조 검증
+  - `확인_조회는_쓰기_잠금_읽기로_선언된다` — 리플렉션으로 락 선언 존재를 단정
+  - `확인_조회에_건너뛰기_힌트가_없다` — pg 워커 선점용 `SKIP LOCKED`를 베껴오는 실수를 막는다. 쿼리 문자열에 해당 힌트 부재를 단정
+- 패턴: 실제 SQL 검증이 필요하므로 저장소 계층은 Testcontainers. 어댑터 분기는 Mockito. 락 선언 검증은 기존 애노테이션 리플렉션 단정 테스트(`PaymentCommandUseCaseTest`의 audit 애노테이션 검증)와 같은 방식.
+
+**구현 (GREEN)**
+- `JpaPaymentOutboxRepository`에 이미 있으면 넘어가는 삽입 네이티브 쿼리 추가 — pg 수신 기록 테이블의 `insertIgnorePending`과 같은 형태로 작성하되, 반영 행 수를 반환받는다
+- 같은 인터페이스에 주문 번호 기준 확인 조회 추가. 잠금은 **블로킹 쓰기 잠금 읽기**로 건다 — 워커 선점용 건너뛰기 잠금도, 평범한 조회도 아니다. 앞선 요청이 커밋할 때까지 기다렸다가 최신 값을 읽어야 한다
+- `PaymentOutboxRepository`(application 포트)에 생성 전용 메서드를 **새로 추가**하고, 결과를 생성됨 / 이미 있음 / 저장 실패 세 갈래로 구분해 돌려준다. 기존 `save`는 다른 호출부가 쓰므로 시그니처를 건드리지 않는다
+- `PaymentOutboxUseCase.createPendingRecord`가 `save` 대신 새 메서드를 호출하도록 바꾼다
+- `PaymentOutboxRepositoryImpl`이 반영 행 수와 확인 조회로 세 결과를 판정
+
+**완료 기준**
+- 위 테스트 전부 pass
+- 삽입 경로에서 제약 위반 예외가 발생하지 않음을 저장소 테스트가 보임
+- 락 계약 테스트가 존재하고, 잠금 선언을 제거하거나 건너뛰기 힌트로 바꾸면 실패함
+
+**완료 결과**
+>
+
+---
+
+### Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리 [tdd=true] [domain_risk=true]
+
+응용 계층이 Task 2의 결과를 받아 중복 재진입을 뜻하는 예외를 던지고, 승인 서비스가 그 예외만 경보에서 뺀다.
+
+**테스트 (RED)**
+- `PaymentOutboxUseCaseTest`
+  - `이미_있음이면_중복_재진입_예외를_던진다`
+  - `저장_실패면_중복이_아닌_예외를_던진다`
+  - `생성됨이면_예외_없이_반환한다`
+- `OutboxAsyncConfirmServiceTest`
+  - `중복_재진입_예외는_재고_미회수_경보를_남기지_않는다` — 지표 카운터와 로그 이벤트 모두 미발생 확인
+  - `그_밖의_실패는_종전대로_재고_미회수_경보를_남긴다`
+  - `중복_재진입_예외도_호출자에게_그대로_전파된다` — 트랜잭션 롤백 경계 유지 확인
+- 패턴: Mockito BDD + AssertJ, 지표는 `SimpleMeterRegistry`로 카운터 증감을 직접 읽는다.
+
+**구현 (GREEN)**
+- 중복 재진입을 뜻하는 예외를 기존 결제 예외 10종과 같은 자리(`payment-service/.../payment/exception/`)에 추가한다 — 새 하위 경로를 만들지 않는다. 예외 계층 규칙은 `docs/context/conventions/error-logging.md` 준수
+- `PaymentOutboxUseCase.createPendingRecord`가 Task 2의 결과를 해석해 예외를 던지도록 수정
+- `OutboxAsyncConfirmService.executeConfirmTxWithStockRetention`의 `catch (RuntimeException)`이 중복 재진입 예외를 먼저 걸러 경보 없이 재throw
+- 재고를 되돌리지 않는 기존 정책은 그대로 둔다
+
+**완료 기준**
+- 위 테스트 전부 pass, `./gradlew :payment-service:test` 회귀 없음
+- 예외 클래스가 기존 관례 위치(`payment/exception/`)에 있고, 어댑터에서 throw하지 않음
+
+**완료 결과**
+>
+
+---
+
+### Task 4: 동시 승인 경합 통합 검증 [tdd=true] [domain_risk=true]
+
+실제 데이터베이스로 같은 주문의 승인 두 건을 동시에 태워, 진 쪽이 중복으로 분류되고 경보가 남지 않는지 확인한다.
+
+**테스트 (RED)**
+- `PaymentDuplicateConfirmConcurrencyIntegrationTest` (`@SpringBootTest` + Testcontainers MySQL + `@Tag("integration")`)
+  - `같은_주문_동시_승인에서_진_쪽은_중복_재진입으로_분류된다`
+  - `진_쪽에는_재고_미회수_경보가_남지_않는다`
+  - `이긴_쪽은_정상_확정된다`
+  - `진_쪽의_상태_전이는_롤백된다` — 결제가 진행 중 상태로 반쯤 남지 않음
+- 두 스레드를 `CountDownLatch`로 같은 시점에 풀어 경합을 만든다. 스케줄링 편차로 한쪽이 앞서 나가면 경합 없이 통과할 수 있으므로 `@RepeatedTest(50)`으로 반복한다 — `TESTING.md`가 동시성·정확히 한 번 보장 검증에 요구하는 최소 횟수이자, 발행 워커 경합 테스트가 이미 쓰는 값이다. Testcontainers는 `TESTING.md`의 static 수동 start + reuse 패턴을 따른다.
+- 반복마다 새 주문 번호를 만든다. 같은 번호를 재사용하면 두 번째 반복부터는 앞선 반복이 남긴 행 때문에 동시 삽입 경합 자체가 재현되지 않는다.
+- 이 통합 테스트는 Task 2의 락 계약 테스트 위에 얹는 확인이지 유일한 방어선이 아니다.
+
+**완료 기준**
+- 위 테스트 pass, 반복 50회 전부 통과
+- `./gradlew :payment-service:integrationTest` 통과 (캐시된 UP-TO-DATE가 아니라 실제 실행 확인)
+
+**완료 결과**
+>
+
+---
+
+### Task 5: 체크아웃 응답에 중복 여부 복원 [tdd=true] [domain_risk=false]
+
+응용 계층이 이미 채우고 있는 중복 여부가 응답 본문까지 전달되게 한다.
+
+**테스트 (RED)**
+- `PaymentPresentationMapperTest`
+  - `중복_결제_결과는_응답에_중복_여부가_참으로_담긴다`
+  - `신규_결제_결과는_거짓으로_담긴다`
+- `PaymentControllerTest` (`@WebMvcTest` + MockMvc)
+  - `중복_요청_응답_본문에_중복_여부_필드가_존재한다`
+  - `기존_필드_주문번호와_총액은_그대로_유지된다`
+
+**구현 (GREEN)**
+- `CheckoutResponse`에 중복 여부 필드 추가
+- `PaymentPresentationMapper.toCheckoutResponse`가 `CheckoutResult`의 값을 옮김
+- 상태 코드 분기(신규 201 / 중복 200)는 그대로 둔다
+
+**완료 기준**
+- 위 테스트 pass, 기존 응답 필드 제거 없음
+
+**완료 결과**
+>
+
+---
+
+### Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시 [tdd=true] [domain_risk=true]
+
+백오프 계산에 실패한 회차를 넘기도록 고쳐 대기를 설계 값으로 되돌리고, 좀비 회수 타임아웃과의 관계를 설정에 남긴다.
+
+**테스트 (RED)**
+- `PgVendorCallServiceTest`
+  - `첫_재시도_예약은_기준_2초_구간에_들어간다`
+  - `두번째_재시도_예약은_기준_6초_구간에_들어간다`
+  - `마지막_재시도_예약은_기준_18초_구간에_들어가_좀비_회수_타임아웃보다_짧다`
+- 지터 범위를 감안해 구간으로 단정한다. 고정 시드 난수를 주입해 흔들림을 없앤다.
+
+**구현 (GREEN)**
+- `PgVendorCallService.insertRetryOutbox`가 `computeBackoff(nextAttempt)` 대신 실패한 회차를 넘기도록 수정
+- `RetryPolicy` javadoc의 회차별 기준값 서술을 실제 동작과 맞춤
+- `pg-service/src/main/resources/application.yml`의 좀비 회수 타임아웃 설정에 최대 백오프와의 관계를 주석으로 남김
+- `PgSelfLoopRetryExhaustionIntegrationTest`의 대기 시간 주석과 단정 구간을 새 값으로 조정
+
+**완료 기준**
+- 위 테스트 pass, 재시도 소진 통합 테스트가 단축된 대기로 통과
+- 최대 백오프 상한이 좀비 회수 타임아웃보다 작음이 테스트로 고정됨
+
+**완료 결과**
+>
+
+---
+
+### Task 7: 재시도 워커 자체 추적 구간 부여 [tdd=true] [domain_risk=false]
+
+워커가 복원한 문맥을 부모로 삼아 자기 구간을 열고 주문 번호를 속성으로 단다.
+
+**테스트 (RED)**
+- `PgInboxPollingWorkerSpanTest`
+  - `좀비_회수_처리마다_자체_구간이_생성된다` — 구간 생성 자체를 단정 대상에 포함
+  - `생성된_구간에_주문_번호_속성이_붙는다`
+  - `복원된_문맥이_생성_구간의_부모가_된다`
+- OpenTelemetry 테스트용 인메모리 익스포터로 실제 기록된 구간을 읽어 검증한다. 속성만 넣고 구간을 만들지 않으면 실패해야 한다.
+
+**구현 (GREEN)**
+- `PgInboxPollingWorker.processWithRestoredContext`가 복원 문맥을 부모로 구간을 시작하고, 주문 번호를 속성으로 설정한 뒤 종료
+- 주문 번호는 처리 대상 수신 기록에서 읽는다
+
+**완료 기준**
+- 위 테스트 pass, 기존 추적 연속성 테스트 회귀 없음
+
+**완료 결과**
+>
+
+---
+
+### Task 8: 로그 마스킹 계층 도입 (payment) [tdd=true] [domain_risk=true]
+
+로그가 출력되기 직전에 민감 값을 가리는 계층을 payment 서비스에 먼저 만든다.
+
+**테스트 (RED)**
+- `MaskingPatternLayoutTest`
+  - `결제_키가_앞자리만_남고_가려진다`
+  - `인증_헤더_값이_가려진다`
+  - `이메일_주소가_가려진다`
+  - `카드번호_형태_문자열이_가려진다`
+  - `민감하지_않은_문자열은_그대로_통과한다`
+  - `패턴이_없으면_원문이_그대로_나온다`
+- 레이아웃에 패턴을 등록하고 로그 이벤트를 직접 넣어 결과 문자열을 단정한다.
+
+**구현 (GREEN)**
+- `payment-service/.../core/common/log/MaskingPatternLayout` — Logback 패턴 레이아웃을 상속해 출력 직전 정규식 치환
+- 패턴은 설정에서 등록하며, 캡처 그룹으로 지정한 부분만 가려 앞자리는 남긴다
+- `logback-spring.xml`의 콘솔 출력이 이 레이아웃을 쓰도록 연결
+
+**완료 기준**
+- 위 테스트 pass, 기존 로그 포맷(시각·스레드·추적 번호·레벨)이 유지됨
+- 패턴 목록이 코드가 아닌 설정에 있음
+
+**완료 결과**
+>
+
+---
+
+### Task 9: 마스킹 계층 나머지 4서비스 확산 [tdd=false] [domain_risk=true]
+
+Task 8에서 만든 형태를 pg / product / user / gateway에 같은 모양으로 넣는다.
+
+**산출물**
+- 각 서비스 `core/common/log/MaskingPatternLayout` (payment와 동일 구조)
+- 각 서비스 `logback-spring.xml` 연결
+- 각 서비스에 최소 1개 확인 테스트 — 결제 키 형태 문자열이 가려지는지
+
+**완료 기준**
+- 5개 서비스 모두 마스킹 적용, 각 서비스 테스트 pass
+- `./gradlew test` 전체 회귀 없음
+
+**완료 결과**
+>
+
+---
+
+### Task 10: 벤더 응답 원문 로깅 길이 제한 [tdd=true] [domain_risk=true]
+
+벤더 에러 응답 파싱이 실패했을 때 원문을 통째로 남기던 자리를 길이 제한한다.
+
+**테스트 (RED)**
+- `TossPaymentGatewayStrategyTest` 보강
+  - `파싱_실패_로그의_원문은_상한_길이를_넘지_않는다`
+  - `상한을_넘으면_잘렸음이_표시된다`
+  - `짧은_원문은_그대로_남는다`
+
+**구현 (GREEN)**
+- `TossPaymentGatewayStrategy`의 파싱 실패 경로에서 원문을 상한 길이로 자르고 잘림 표시를 붙임
+- 상한은 상수로 선언
+
+**완료 기준**
+- 위 테스트 pass, 파싱 실패 시 반환값(알 수 없음 처리)은 종전과 동일
+
+**완료 결과**
+>
+
+---
+
+### Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제 [tdd=false] [domain_risk=false]
+
+패턴 매칭으로 잡히는 세 규칙을 빌드 단계에서 검출하되 빌드를 막지는 않는다.
+
+**산출물**
+- `config/checkstyle/checkstyle.xml`에 세 규칙 검출 추가 — 타입 추론 키워드 금지, 통짜 데이터 애노테이션 금지, 공개 유스케이스·포트의 빈 값 반환 금지
+- 위반 심각도를 경고로 두어 빌드가 실패하지 않게 설정
+- 기존 위반 전량을 `config/checkstyle/checkstyle-suppressions.xml`에 등재해 기준선을 0으로 만듦
+- 억제 목록 규모를 규칙별 건수로 `docs/context/TODOS.md`에 기록
+
+**완료 기준**
+- `./gradlew checkstyleMain checkstyleTest` 실행 시 신규 위반 0으로 통과
+- 검출이 실제로 동작함을 다음 절차로 확인하고 결과를 완료 결과에 붙여넣는다: 억제 목록에서 항목 하나를 임시 삭제 → `./gradlew checkstyleMain` 재실행 → 출력된 위반 로그를 그대로 기록 → 억제 항목 복원
+- 규칙별 억제 건수가 대장에 숫자로 남음
+
+**완료 결과**
+>
+
+---
+
+### Task 12: 구조 판정이 필요한 스타일 2규칙 검출 [tdd=false] [domain_risk=false]
+
+패턴 매칭으로는 잡히지 않는 두 규칙을 구조 검사로 잡는다. 기존 위반 규모가 미지수이므로 규모 파악을 먼저 하고, 그 결과를 기준선 처리에 반영한다.
+
+**산출물**
+- 광범위 예외를 잡고 삼키는 처리 금지, 예외 처리 블록 안에서 바깥 변수 재할당 금지 — 두 규칙을 구조 검사로 구현
+- 구현 수단은 ArchUnit 도입 또는 checkstyle 트리 검사 중 규모 파악 결과를 보고 고른다. 고른 이유를 완료 결과에 기록
+- 기존 위반은 Task 11과 같은 방식으로 기준선을 0으로 만든다
+- 위반 건수를 `docs/context/TODOS.md`에 기록
+
+**완료 기준**
+- 검사가 실행되고 신규 위반 0으로 통과
+- 검출 동작 확인 절차는 Task 11과 동일 — 억제 하나를 임시 제거해 실제로 잡히는지 보고 로그를 완료 결과에 기록
+- 새 의존을 추가한 경우 그 사실과 버전이 완료 결과에 남음
+
+**완료 결과**
+>
+
+---
+
+### Task 13: 지침 문서 검사 스크립트 CI 편입 [tdd=false] [domain_risk=false]
+
+이미 있는 검사 스크립트를 CI에서 돌려 결과를 남기되 게이트로 쓰지 않는다.
+
+**산출물**
+- `.github/workflows/ci.yml`에 검사 실행 job 추가 — `scripts/check-agent-docs.py` 실행
+- 결과를 워크플로우 요약에 남김
+- 종료 코드는 판정과 무관하게 0을 유지 (스크립트 현행 동작 그대로)
+
+**완료 기준**
+- 워크플로우 문법 검증 통과 (`actionlint` 또는 GitHub 파싱 확인)
+- 로컬에서 스크립트가 정상 실행되고 결과가 출력됨
+
+**완료 결과**
+>
+
+---
+
+### Task 14: 리뷰 체크리스트 낡은 참조 정정 [tdd=false] [domain_risk=false]
+
+**산출물**
+- `.claude/skills/_shared/checklists/code-ready.md`의 사라진 메서드 경유 항목을 현행 오류 처리 규칙(`docs/context/conventions/error-logging.md`)으로 교체
+
+**완료 기준**
+- 코드베이스에 없는 메서드 이름이 체크리스트에서 사라짐
+- `scripts/check-agent-docs.py` 실행 시 해당 항목 관련 판정이 깨끗함
+
+**완료 결과**
+>
+
+---
+
+### Task 15: 결제 흐름 문서 다이어그램 표기 정리 [tdd=false] [domain_risk=false]
+
+**산출물**
+- `docs/context/CONFIRM-FLOW.md`와 `docs/context/PAYMENT-FLOW.md`의 다이어그램 라벨 안 유니코드 화살표를 아스키로 교체
+- 다이어그램 블록 밖 본문 서술의 화살표는 건드리지 않는다
+
+**완료 기준**
+- `scripts/check-agent-docs.py`의 다이어그램 금지 문자 판정에서 두 파일 건수 0
+- 다이어그램이 정상 렌더링됨
+
+**완료 결과**
+>
+
+---
+
+## 리뷰 처리
+
+> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+### 리뷰 강도 대조 (설계 "리뷰 강도 대조" 결정 이행)
+
+ship 단계 코드 리뷰가 끝나면 아래를 확인하고 결과를 기록한다.
+
+- [ ] 이 토픽의 리뷰 라운드에서 도메인 검토자가 새로 잡아낸 중대 발견이 있었는지, 그것을 일반 검토자가 놓쳤는지 대조
+- [ ] 대조 결과를 `docs/context/CONCERNS.md` C-11(리뷰 판정 강도 하향)에 기록
+- [ ] 놓친 중대 발견이 있었다면 C-11의 원복 조건에 따라 검토자 판정 강도를 즉시 되돌림
+
+> 대조 결과:
