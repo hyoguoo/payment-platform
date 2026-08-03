@@ -6,7 +6,7 @@ description: 문서 콘텐츠(포스팅, 깃헙 위키, 리드미 등)의 품질
 # 문서 검수 스킬
 
 문서 콘텐츠를 4개 관점에서 검수한다. 각 관점은 독립 서브에이전트가 병렬로 수행하며, 최대 2회 루프를 돈다.
-작성 컨벤션: `.claude/skills/_shared/conventions/writing-style.md` / `writing-terminology.md` / `writing-visuals.md` (인덱스: `writing.md`)
+검수 시작 전 작성 컨벤션 세 파일을 읽는다: `.claude/skills/_shared/conventions/writing-style.md` / `writing-terminology.md` / `writing-visuals.md` (인덱스: `writing.md`)
 
 ## 검수 관점 4가지
 

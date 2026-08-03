@@ -50,6 +50,9 @@
    - 좋음: "A5b (product-service container_name 제거 + Eureka instanceId 고유화) 후속에서 처리"
    - 또는 ID 빼고 내용으로만: "container_name 제거 작업 후속에서 처리"
    - 단, PLAN.md / commit message / implementer 디스패치 프롬프트 같은 산출물에서는 ID 그대로 OK (그게 본 식별자)
+2. **문체**: 대화 답변에도 문서 산출물에도 적용된다.
+   - AI체·번역투가 드러나지 않게, 짧고 담백한 문장으로 쓴다.
+   - 판정 기준과 안티패턴 사례는 `.claude/skills/_shared/conventions/writing-style.md` 목소리 절이 정본이다 — 문구를 그대로 옮기지 않는다.
 
 ---
 
