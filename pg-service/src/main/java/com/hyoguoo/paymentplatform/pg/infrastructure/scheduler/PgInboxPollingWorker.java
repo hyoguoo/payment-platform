@@ -6,8 +6,11 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.infrastructure.trace.TraceparentExtractor;
+import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import java.util.List;
@@ -32,8 +35,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>원본 confirm 추적과 연속(parent 복원): 폴링 워커는 회수 전 {@link PgInboxRepository#findStoredTraceparent(Long)} 로
  * 저장된 W3C traceparent 를 조회하고, {@link TraceparentExtractor#restoreContext(String)} 로 부모 컨텍스트를 복원한다.
- * 복원에 성공하면 원본 confirm 트레이스와 연속된 span 으로 처리하여 관측성을 높인다.
- * traceparent 가 없거나 형식 오류인 경우 best-effort 폴백으로 새 root span 을 사용한다.
+ * 복원된 컨텍스트를 부모로 삼아 워커 자체 span 을 열어 좀비 회수 처리 구간을 기록하고, 처리 대상 주문 번호를
+ * 속성으로 남긴다. traceparent 가 없거나 형식 오류인 경우 best-effort 폴백으로 새 root span 을 사용한다.
  *
  * <p>race window: PENDING → IN_PROGRESS / IN_PROGRESS → terminal 전이의 SELECT FOR UPDATE SKIP LOCKED 는
  * {@link PgInboxRepository} 구현체 계층 책임이다. 본 워커는 호출만 위임한다.
@@ -58,6 +61,16 @@ public class PgInboxPollingWorker {
     private static final String STATUS_TAG_PENDING = "PENDING";
     private static final String STATUS_TAG_IN_PROGRESS = "IN_PROGRESS";
 
+    /**
+     * 좀비 회수 처리마다 여는 워커 자체 span 이름.
+     */
+    static final String ZOMBIE_RECOVERY_SPAN_NAME = "pg_inbox.zombie_recovery";
+
+    /**
+     * 생성된 span 에 붙이는 주문 번호 속성 키.
+     */
+    static final String ORDER_ID_ATTRIBUTE_KEY = "order_id";
+
     private final PgInboxRepository inboxRepository;
     private final PgInboxProcessUseCase processor;
     private final Counter zombieFailCounter;
@@ -66,6 +79,7 @@ public class PgInboxPollingWorker {
     private final int batchSize;
     private final long pendingTimeoutMs;
     private final long inProgressTimeoutMs;
+    private final Tracer tracer;
 
     public PgInboxPollingWorker(
             PgInboxRepository inboxRepository,
@@ -73,13 +87,15 @@ public class PgInboxPollingWorker {
             @Value("${pg.scheduler.inbox-polling-worker.batch-size:10}") int batchSize,
             @Value("${pg.scheduler.inbox-polling-worker.pending-timeout-ms:60000}") long pendingTimeoutMs,
             @Value("${pg.scheduler.inbox-polling-worker.in-progress-timeout-ms:60000}") long inProgressTimeoutMs,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            Tracer tracer
     ) {
         this.inboxRepository = inboxRepository;
         this.processor = processor;
         this.batchSize = batchSize;
         this.pendingTimeoutMs = pendingTimeoutMs;
         this.inProgressTimeoutMs = inProgressTimeoutMs;
+        this.tracer = tracer;
         this.zombieFailCounter = Counter.builder(ZOMBIE_FAIL_COUNTER_NAME)
                 .description("PgInboxPollingWorker 좀비 처리 실패 횟수")
                 .register(meterRegistry);
@@ -149,14 +165,17 @@ public class PgInboxPollingWorker {
     }
 
     /**
-     * 저장된 traceparent 로 부모 추적을 복원한 뒤 단건 좀비를 처리한다.
+     * 저장된 traceparent 로 부모 추적을 복원하고, 그 위에 워커 자체 span 을 연 뒤 단건 좀비를 처리한다.
      *
      * <p>처리 순서:
      * <ol>
      *   <li>{@link PgInboxRepository#findStoredTraceparent(Long)} 로 traceparent 조회.</li>
      *   <li>{@link TraceparentExtractor#restoreContext(String)} 로 OTel Context 복원.
      *       traceparent 가 없거나 형식 오류이면 {@link Context#root()} 로 폴백 — best-effort.</li>
-     *   <li>복원된 Context 를 {@link Scope} 로 활성화한 뒤 {@link #processSafely} 호출.</li>
+     *   <li>복원된 Context 를 부모로 삼아 {@link #ZOMBIE_RECOVERY_SPAN_NAME} span 을 시작하고,
+     *       처리 대상 주문 번호를 속성으로 붙인다. 복원된 원격 span 자체는 기록 대상이 아니라
+     *       속성을 붙여도 조용히 버려지므로, 기록 가능한 자체 span 을 새로 여는 것이 핵심이다.</li>
+     *   <li>새 span 을 {@link Scope} 로 활성화한 뒤 {@link #processSafely} 호출, 종료 시 span 종료.</li>
      * </ol>
      *
      * <p>OTel Scope 는 try-with-resources 로 반드시 닫아 컨텍스트 누수를 방지한다.
@@ -179,8 +198,17 @@ public class PgInboxPollingWorker {
                 .map(TraceparentExtractor::restoreContext)
                 .orElse(Context.root());
 
-        try (Scope ignored = restoredContext.makeCurrent()) {
+        Span span = tracer.spanBuilder(ZOMBIE_RECOVERY_SPAN_NAME)
+                .setParent(restoredContext)
+                .startSpan();
+        inboxRepository.findById(inboxId)
+                .map(PgInbox::getOrderId)
+                .ifPresent(orderId -> span.setAttribute(ORDER_ID_ATTRIBUTE_KEY, orderId));
+
+        try (Scope ignored = span.makeCurrent()) {
             processSafely(action, inboxId, zombieStatus, recoveredCounter, recoveredEvent);
+        } finally {
+            span.end();
         }
     }
 

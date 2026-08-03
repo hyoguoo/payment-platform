@@ -99,7 +99,7 @@ flowchart TD
 - [x] Task 4: 동시 승인 경합 통합 검증
 - [x] Task 5: 체크아웃 응답에 중복 여부 복원
 - [x] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
-- [ ] Task 7: 재시도 워커 자체 추적 구간 부여
+- [x] Task 7: 재시도 워커 자체 추적 구간 부여
 - [ ] Task 8: 로그 마스킹 계층 도입 (payment)
 - [ ] Task 9: 마스킹 계층 나머지 4서비스 확산
 - [ ] Task 10: 벤더 응답 원문 로깅 길이 제한
@@ -441,7 +441,36 @@ flowchart TD
 - 위 테스트 pass, 기존 추적 연속성 테스트 회귀 없음
 
 **완료 결과**
+> `PgInboxPollingWorker`에 `io.opentelemetry.api.trace.Tracer` 생성자 주입을 추가했다 — Spring Boot
+> actuator의 `OpenTelemetryTracingAutoConfiguration`이 `management.tracing`/OTel 의존이 이미 걸린
+> 조건에서 `Tracer` 빈을 자동 등록하므로(기존 `MeterRegistry` 주입과 동일 방식), 별도 `@Bean` 설정 없이
+> 프로덕션에서 그대로 주입된다. `processWithRestoredContext`가 복원 문맥(`restoredContext`)을
+> `setParent`로 넘겨 `pg_inbox.zombie_recovery` span을 새로 열고, `inboxRepository.findById(inboxId)`로
+> 처리 대상 수신 기록을 읽어 주문 번호를 `order_id` 속성으로 붙인 뒤, 처리 구간 전체를 이 span의
+> Scope 안에서 실행하고 종료 시 `span.end()`한다. 복원된 원격 span 자체는 기록 대상이 아니라 속성을
+> 붙여도 조용히 버려지므로, 부모로만 삼고 실제 기록은 새로 연 자체 span이 맡는다.
 >
+> 검증은 공식 테스트 아티팩트(`opentelemetry-sdk-testing`) 없이 진행했다 — 프로덕션 의존
+> (`opentelemetry-exporter-otlp`)이 이미 `opentelemetry-sdk-trace`/`opentelemetry-sdk`를 전이
+> 의존으로 가져오고 있어(`implementation`은 테스트 클래스패스에도 노출), `SpanExporter` 계약을
+> 직접 구현한 `FakeSpanExporter`(`pg.mock`)를 `SimpleSpanProcessor` + `SdkTracerProvider`에
+> 꽂아 실제 export된 span을 읽었다. 새 빌드 의존 추가 없음.
+>
+> 속성만 붙고 span 자체를 열지 않는 회귀를 실제로 잡는지 확인했다 — 구현을 일시적으로
+> `Span.current().setAttribute(...)` + 기존 `restoredContext.makeCurrent()` 방식으로 되돌리자
+> 3개 테스트(생성 자체·속성·부모 관계) 전부 `IndexOutOfBoundsException`(export된 span 0개)으로
+> 실패하는 것을 확인한 뒤 원복했다.
+>
+> 기존 두 테스트(`PgInboxPollingWorkerTest`, `PgInboxPollingWorkerTraceparentTest`)는 생성자
+> 시그니처 변경에 따라 `OpenTelemetry.noop().getTracer("test")`를 추가 인자로 넘기도록
+> 기계적으로 보강했다(Rule 1) — 두 테스트 모두 추적 자체를 검증 대상으로 삼지 않으므로 no-op
+> tracer로 충분하다.
+>
+> `./gradlew :pg-service:test` 382개 전부 pass(Task 6 종료 시점 379개 + 이번 태스크 3개),
+> checkstyle/spotbugs 통과. 기존 추적 연속성 통합 테스트
+> (`PgInboxTraceparentIntegrationTest` 3개 + `PgSelfLoopRetryExhaustionIntegrationTest` 1개)를
+> `--rerun-tasks`로 캐시 없이 재실행해 회귀 없음을 확인했다 — `@SpringBootTest` 전체 컨텍스트
+> 로드로 `Tracer` 빈이 실제로 해석됨도 함께 검증됐다.
 
 ---
 
