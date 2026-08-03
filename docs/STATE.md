@@ -6,7 +6,7 @@
 
 - **주제**: 운영 신호 정합과 규칙 자동 검출 정비 (SIGNAL-AND-GUARDRAIL-SWEEP)
 - **단계**: execute
-- **활성 태스크**: Task 1: 전이 주체를 전이 지점이 선언하게 전환
+- **활성 태스크**: Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
 - **이슈/브랜치**: #132
 - **파일**: docs/topics/SIGNAL-AND-GUARDRAIL-SWEEP.md / docs/SIGNAL-AND-GUARDRAIL-SWEEP-PLAN.md
 

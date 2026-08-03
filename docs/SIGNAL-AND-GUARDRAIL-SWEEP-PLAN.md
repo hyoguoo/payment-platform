@@ -93,7 +93,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 전이 주체를 전이 지점이 선언하게 전환
+- [x] Task 1: 전이 주체를 전이 지점이 선언하게 전환
 - [ ] Task 2: 발행 행 삽입을 충돌 없는 방식 + 잠금 읽기 확인으로 교체
 - [ ] Task 3: 중복 재진입 예외 도입과 재고 미회수 경보 분리
 - [ ] Task 4: 동시 승인 경합 통합 검증
@@ -139,7 +139,20 @@ flowchart TD
 - `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
->
+> `detectTriggerFromCallStack`/`"auto"` 분기를 제거했다. `PaymentStatusChange.trigger()`에 `default ""`를 주고,
+> 새 파라미터 애노테이션 `@Trigger`(`core.common.aspect.annotation`)를 도입해 한 메서드가 여러 흐름에서 불리는
+> 두 곳(`markPaymentAsFail`, `markPaymentAsQuarantined`)은 호출자가 `@Trigger String trigger` 인자로 주체를
+> 넘기도록 시그니처를 바꿨다. 아스펙트는 `@Trigger` 파라미터 값을 우선 쓰고 없으면 애노테이션 고정값으로 fallback한다.
+> 주체 상수는 `PaymentStatusChangeTrigger`(CONFIRM/EXPIRATION/MANUAL/STOCK_FAILURE/STOCK_CACHE_DOWN)로 모았다.
+> 호출부 4곳(`PaymentConfirmResultUseCase.handleFailed`→CONFIRM, `PaymentFailureUseCase.handleStockFailure`→STOCK_FAILURE,
+> `PaymentTransactionCoordinator.markStockCacheDownQuarantine`→STOCK_CACHE_DOWN, `QuarantineCompensationHandler.handle`→CONFIRM)를
+> 갱신했다. `@Reason`을 찾는 `DomainEventLoggingAspect.findReasonParameter`가 새 `@Trigger` 파라미터와 섞이지 않는지
+> 실행 기반 테스트(`DomainEventLoggingAspectReasonParameterTest`)로 확인했다 — 안전함을 확인.
+> 지표 검증은 `SimpleMeterRegistry`에 실제 등록된 카운터 태그 값을 읽어 단정했고(`PaymentStatusMetricsAspectTest`,
+> `PaymentCommandUseCaseTest.TriggerLabelRecordingTest` — `AspectJProxyFactory`로 실제 AOP 프록시를 조립해 검증),
+> 전이 지점 전수 스캔으로 라벨이 비는 경로가 없음을 구조적으로 고정했다(`라벨에_unknown_이_기록되는_경로가_없다`).
+> 시그니처 변경에 딸린 기존 호출부 목(mock) 단정 8개 테스트 파일도 3-인자 형태로 함께 갱신했다.
+> `./gradlew :payment-service:test` 548개 전부 pass, checkstyle 통과.
 
 ---
 

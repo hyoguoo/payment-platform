@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
@@ -124,6 +125,7 @@ class ConfirmedEventConsumerTest {
                 .willReturn(StockCompensationAtomicResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(
                 any(PaymentEvent.class),
+                any(String.class),
                 any(String.class)))
                 .willReturn(event);
 
@@ -139,7 +141,8 @@ class ConfirmedEventConsumerTest {
                 .should(times(1))
                 .markPaymentAsFail(
                         any(PaymentEvent.class),
-                        eq("VENDOR_FAILED"));
+                        eq("VENDOR_FAILED"),
+                        eq(PaymentStatusChangeTrigger.CONFIRM));
     }
 
     // -----------------------------------------------------------------------

@@ -10,22 +10,32 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.PaymentStatusMetricsAspect;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 // payment-service 는 PG 를 직접 호출하지 않는다 — confirmPaymentWithGateway / getPaymentStatusByOrderId
@@ -97,7 +107,8 @@ class PaymentCommandUseCaseTest {
         // when
         when(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
                 .thenReturn(paymentEvent);
-        PaymentEvent result = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureReason);
+        PaymentEvent result = paymentCommandUseCase.markPaymentAsFail(
+                paymentEvent, failureReason, PaymentStatusChangeTrigger.CONFIRM);
 
         // then
         verify(paymentEvent, times(1)).fail(failureReason, FIXED_INSTANT);
@@ -114,7 +125,8 @@ class PaymentCommandUseCaseTest {
                 .willReturn(paymentEvent);
 
         // when
-        paymentCommandUseCase.markPaymentAsQuarantined(paymentEvent, reason);
+        paymentCommandUseCase.markPaymentAsQuarantined(
+                paymentEvent, reason, PaymentStatusChangeTrigger.STOCK_CACHE_DOWN);
 
         // then
         then(paymentEvent).should(times(1)).quarantine(reason, FIXED_INSTANT);
@@ -196,5 +208,90 @@ class PaymentCommandUseCaseTest {
         assertThat(paymentStatusChange.toStatus()).isEqualTo("FAILED");
         assertThat(parameterAnnotations[1])
                 .anyMatch(annotation -> annotation instanceof Reason);
+    }
+
+    /**
+     * markPaymentAsFail / markPaymentAsQuarantined 는 호출부가 둘씩이라 애노테이션 고정값으로
+     * trigger 를 표현할 수 없다 — 호출자가 넘긴 trigger 인자가 실제로 다른 라벨로 기록되는지,
+     * AOP 프록시를 직접 조립해 검증한다. 호출 사실이 아니라 SimpleMeterRegistry 에 실제 기록된
+     * 라벨 값을 읽어 단정한다.
+     */
+    @Nested
+    @DisplayName("전이 주체(trigger) 라벨이 실제로 다르게 기록되는지 검증 — AOP 프록시 경유")
+    class TriggerLabelRecordingTest {
+
+        private SimpleMeterRegistry meterRegistry;
+        private PaymentCommandUseCase proxiedUseCase;
+
+        @BeforeEach
+        void setUpProxy() {
+            meterRegistry = new SimpleMeterRegistry();
+            PaymentTransitionMetrics transitionMetrics = new PaymentTransitionMetrics(meterRegistry);
+            PaymentEventFlowMetrics flowMetrics = new PaymentEventFlowMetrics(meterRegistry);
+            PaymentStatusMetricsAspect aspect =
+                    new PaymentStatusMetricsAspect(transitionMetrics, flowMetrics, FIXED_CLOCK);
+
+            given(mockPaymentEventRepository.saveOrUpdate(any(PaymentEvent.class)))
+                    .willAnswer(invocation -> invocation.getArgument(0));
+
+            AspectJProxyFactory factory = new AspectJProxyFactory(paymentCommandUseCase);
+            factory.addAspect(aspect);
+            proxiedUseCase = factory.getProxy();
+        }
+
+        @Test
+        @DisplayName("markPaymentAsFail_승인_실패_경로와_재고_실패_경로가_서로_다른_주체로_기록된다")
+        void markPaymentAsFail_승인_실패_경로와_재고_실패_경로가_서로_다른_주체로_기록된다() {
+            PaymentEvent confirmFailedEvent = buildEvent(PaymentEventStatus.IN_PROGRESS);
+            PaymentEvent stockFailedEvent = buildEvent(PaymentEventStatus.IN_PROGRESS);
+
+            proxiedUseCase.markPaymentAsFail(confirmFailedEvent, "승인 실패", PaymentStatusChangeTrigger.CONFIRM);
+            proxiedUseCase.markPaymentAsFail(stockFailedEvent, "재고 부족", PaymentStatusChangeTrigger.STOCK_FAILURE);
+
+            assertThat(recordedCount("IN_PROGRESS", "FAILED", PaymentStatusChangeTrigger.CONFIRM))
+                    .isEqualTo(1.0);
+            assertThat(recordedCount("IN_PROGRESS", "FAILED", PaymentStatusChangeTrigger.STOCK_FAILURE))
+                    .isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("markPaymentAsQuarantined_재고_캐시_장애와_금액_불일치가_서로_다른_주체로_기록된다")
+        void markPaymentAsQuarantined_재고_캐시_장애와_금액_불일치가_서로_다른_주체로_기록된다() {
+            PaymentEvent cacheDownEvent = buildEvent(PaymentEventStatus.IN_PROGRESS);
+            PaymentEvent amountMismatchEvent = buildEvent(PaymentEventStatus.IN_PROGRESS);
+
+            proxiedUseCase.markPaymentAsQuarantined(
+                    cacheDownEvent, "재고 캐시 장애로 인한 격리", PaymentStatusChangeTrigger.STOCK_CACHE_DOWN);
+            proxiedUseCase.markPaymentAsQuarantined(
+                    amountMismatchEvent, "AMOUNT_MISMATCH", PaymentStatusChangeTrigger.CONFIRM);
+
+            assertThat(recordedCount("IN_PROGRESS", "QUARANTINED", PaymentStatusChangeTrigger.STOCK_CACHE_DOWN))
+                    .isEqualTo(1.0);
+            assertThat(recordedCount("IN_PROGRESS", "QUARANTINED", PaymentStatusChangeTrigger.CONFIRM))
+                    .isEqualTo(1.0);
+        }
+
+        private Double recordedCount(String fromStatus, String toStatus, String trigger) {
+            Counter counter = meterRegistry.find("payment_transition_total")
+                    .tag("from_status", fromStatus)
+                    .tag("to_status", toStatus)
+                    .tag("trigger", trigger)
+                    .counter();
+            return counter != null ? counter.count() : null;
+        }
+
+        private PaymentEvent buildEvent(PaymentEventStatus status) {
+            return PaymentEvent.allArgsBuilder()
+                    .id(1L)
+                    .buyerId(100L)
+                    .sellerId(200L)
+                    .orderName("테스트 상품")
+                    .orderId("order-trigger-001")
+                    .status(status)
+                    .paymentOrderList(Collections.emptyList())
+                    .createdAt(FIXED_INSTANT)
+                    .lastStatusChangedAt(FIXED_INSTANT)
+                    .allArgsBuild();
+        }
     }
 }

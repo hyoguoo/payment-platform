@@ -1,17 +1,22 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.aspect;
 
+import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Trigger;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentTransitionMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -38,10 +43,7 @@ public class PaymentStatusMetricsAspect {
         PaymentEvent resultEvent = (result instanceof PaymentEvent paymentEvent) ? paymentEvent : null;
         String toStatus = resultEvent != null ? resultEvent.getStatus().name() : paymentStatusChange.toStatus();
 
-        String trigger = paymentStatusChange.trigger();
-        if ("auto".equals(trigger)) {
-            trigger = detectTriggerFromCallStack();
-        }
+        String trigger = resolveTrigger(joinPoint, paymentStatusChange);
 
         Duration duration = null;
         if (lastStatusChangedAt != null) {
@@ -75,21 +77,30 @@ public class PaymentStatusMetricsAspect {
         return null;
     }
 
-    private String detectTriggerFromCallStack() {
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+    /**
+     * 전이 주체(trigger) 결정. 호출자가 {@link Trigger} 파라미터로 값을 넘겼으면 그 값을 우선 쓰고,
+     * 없으면 애노테이션 고정값을 쓴다 — 한 메서드가 여러 흐름에서 불리는 경우를 위한 분기다.
+     */
+    private String resolveTrigger(ProceedingJoinPoint joinPoint, PaymentStatusChange paymentStatusChange) {
+        return findTriggerParameter(joinPoint).orElseGet(paymentStatusChange::trigger);
+    }
 
-        for (StackTraceElement element : stackTrace) {
-            String className = element.getClassName();
+    private Optional<String> findTriggerParameter(ProceedingJoinPoint joinPoint) {
+        if (!(joinPoint.getSignature() instanceof MethodSignature signature)) {
+            return Optional.empty();
+        }
+        Method method = signature.getMethod();
+        Object[] args = joinPoint.getArgs();
+        Annotation[][] parameterAnnotations = method.getParameterAnnotations();
 
-            if (className.contains("PaymentConfirmService")) {
-                return "confirm";
-            } else if (className.contains("PaymentRecoverService")) {
-                return "recovery";
-            } else if (className.contains("PaymentExpirationService")) {
-                return "expiration";
+        for (int i = 0; i < args.length; i++) {
+            for (Annotation annotation : parameterAnnotations[i]) {
+                if (annotation instanceof Trigger && args[i] instanceof String triggerValue) {
+                    return Optional.of(triggerValue);
+                }
             }
         }
 
-        return "unknown";
+        return Optional.empty();
     }
 }

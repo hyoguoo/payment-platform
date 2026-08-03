@@ -16,5 +16,11 @@ public @interface PaymentStatusChange {
 
     String toStatus();
 
-    String trigger();
+    /**
+     * 전이 주체(trigger). 한 메서드가 단일 흐름에서만 불리면 여기에 고정값을 채운다.
+     * 여러 흐름에서 불리는 메서드는 비워두고, 대신 파라미터에
+     * {@code com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Trigger} 를 붙여
+     * 호출자가 값을 넘기게 한다 — 파라미터 값이 있으면 이 기본값보다 우선한다.
+     */
+    String trigger() default "";
 }

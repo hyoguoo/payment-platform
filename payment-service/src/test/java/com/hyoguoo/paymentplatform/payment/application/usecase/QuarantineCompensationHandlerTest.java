@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -51,14 +52,14 @@ class QuarantineCompensationHandlerTest {
         PaymentEvent quarantinedEvent = buildPaymentEvent(PaymentEventStatus.QUARANTINED);
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
-        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM)).willReturn(quarantinedEvent);
         given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
 
         // when
         handler.handle(ORDER_ID, REASON);
 
         // then: TX 내에서 markPaymentAsQuarantined 호출됨
-        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON);
+        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM);
         then(paymentEventRepository).should(times(1)).saveOrUpdate(quarantinedEvent);
     }
 
@@ -72,7 +73,7 @@ class QuarantineCompensationHandlerTest {
                 PaymentEventStatus.QUARANTINED, List.of(order));
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
-        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM)).willReturn(quarantinedEvent);
         given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
 
         // when
@@ -81,7 +82,7 @@ class QuarantineCompensationHandlerTest {
         // then: StockCachePort 전혀 호출 없음
         then(stockCachePort).shouldHaveNoInteractions();
         // then: QUARANTINED 전이는 정상 수행
-        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON);
+        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM);
         then(paymentEventRepository).should(times(1)).saveOrUpdate(quarantinedEvent);
     }
 
@@ -93,7 +94,7 @@ class QuarantineCompensationHandlerTest {
         PaymentEvent quarantinedEvent = buildPaymentEvent(PaymentEventStatus.QUARANTINED);
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
-        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM)).willReturn(quarantinedEvent);
         given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
 
         // when
@@ -128,14 +129,14 @@ class QuarantineCompensationHandlerTest {
         PaymentEvent quarantinedEvent = buildPaymentEvent(PaymentEventStatus.QUARANTINED);
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
-        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON)).willReturn(quarantinedEvent);
+        given(paymentCommandUseCase.markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM)).willReturn(quarantinedEvent);
         given(paymentEventRepository.saveOrUpdate(quarantinedEvent)).willReturn(quarantinedEvent);
 
         // when
         handler.handle(ORDER_ID, REASON);
 
         // then: markPaymentAsQuarantined 1회 호출
-        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON);
+        then(paymentCommandUseCase).should(times(1)).markPaymentAsQuarantined(event, REASON, PaymentStatusChangeTrigger.CONFIRM);
         then(paymentEventRepository).should(times(1)).saveOrUpdate(quarantinedEvent);
     }
 

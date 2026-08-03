@@ -92,7 +92,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         sut.handle(message);
 
         then(stockCachePort).shouldHaveNoInteractions();
-        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
+        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any(), any());
     }
 
     @Test
@@ -120,7 +120,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
 
         given(stockCachePort.compensateAtomic(any(), any()))
                 .willReturn(StockCompensationAtomicResult.OK);
-        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
+        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -129,7 +129,8 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         sut.handle(message);
 
         then(stockCachePort).should(times(1)).compensateAtomic(any(), any());
-        then(paymentCommandUseCase).should(times(1)).markPaymentAsFail(any(PaymentEvent.class), any(String.class));
+        then(paymentCommandUseCase).should(times(1))
+                .markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class));
     }
 
     @Test

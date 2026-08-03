@@ -339,7 +339,7 @@ class StockCompensationRecoveryIntegrationTest {
         // InOrder 검증: compensateAtomic 이 markPaymentAsFail 보다 먼저 호출
         InOrder order = inOrder(stockCachePort, paymentCommandUseCase);
         order.verify(stockCachePort).compensateAtomic(anyString(), anyList());
-        order.verify(paymentCommandUseCase).markPaymentAsFail(any(), anyString());
+        order.verify(paymentCommandUseCase).markPaymentAsFail(any(), anyString(), anyString());
     }
 
     // ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -16,7 +17,8 @@ public class PaymentFailureUseCase {
     private final PaymentCommandUseCase paymentCommandUseCase;
 
     public PaymentEvent handleStockFailure(PaymentEvent paymentEvent, String failureMessage) {
-        PaymentEvent failedPaymentEvent = paymentCommandUseCase.markPaymentAsFail(paymentEvent, failureMessage);
+        PaymentEvent failedPaymentEvent = paymentCommandUseCase.markPaymentAsFail(
+                paymentEvent, failureMessage, PaymentStatusChangeTrigger.STOCK_FAILURE);
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_STATUS_TO_FAIL,
                 () -> String.format("orderId=%s reason=%s", failedPaymentEvent.getOrderId(), failureMessage));
         return failedPaymentEvent;
