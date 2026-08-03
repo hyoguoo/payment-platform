@@ -100,7 +100,7 @@ flowchart TD
 - [x] Task 5: 체크아웃 응답에 중복 여부 복원
 - [x] Task 6: 재시도 백오프 회차 정정과 좀비 회수 관계 명시
 - [x] Task 7: 재시도 워커 자체 추적 구간 부여
-- [ ] Task 8: 로그 마스킹 계층 도입 (payment)
+- [x] Task 8: 로그 마스킹 계층 도입 (payment)
 - [ ] Task 9: 마스킹 계층 나머지 4서비스 확산
 - [ ] Task 10: 벤더 응답 원문 로깅 길이 제한
 - [ ] Task 11: 문자열로 판정 가능한 스타일 3규칙 검출과 기준선 억제
@@ -498,7 +498,25 @@ flowchart TD
 - 패턴 목록이 코드가 아닌 설정에 있음
 
 **완료 결과**
+> `payment-service/.../core/common/log/MaskingPatternLayout`을 추가했다 — `PatternLayout`을
+> 상속해 `doLayout(ILoggingEvent)`에서 `super.doLayout(event)`로 조립된 최종 문자열에 등록된
+> 정규식을 순서대로 적용한다. 각 정규식은 캡처 그룹을 정확히 하나 가져야 한다는 규약으로
+> 통일했다 — 그룹 밖 문자(접두사·접미사)는 원문 그대로 두고, `matcher.start(1)`~`end(1)`
+> 구간만 고정 마스크 문자열(`***`)로 치환한다. 그룹 경계 바깥은 손대지 않으므로 앞자리
+> 보존과 로그 포맷 유지가 구현 방식 자체로 보장된다.
 >
+> `logback-spring.xml`의 CONSOLE 어펜더가 `<encoder class="LayoutWrappingEncoder">`로
+> 이 레이아웃을 감싸도록 바꿨다(logback이 커스텀 Layout을 encoder 안에 꽂는 표준 방식).
+> 패턴 4개(결제 키/인증 헤더 값/이메일/카드번호 형태)는 `<maskPattern>` 요소로 설정에만
+> 등록했다 — 코드를 고치지 않고 추가·제거할 수 있다. 세 프로필(test/docker/default)이
+> 이 어펜더 하나를 공유하므로 별도 프로필별 중복 설정은 없다.
+>
+> 테스트는 `ListAppender`로 실제 로그 이벤트를 캡처해 레이아웃에 직접 태워 검증했다 —
+> 4가지 대상 각각 앞자리 보존 + 가려짐, 비민감 문자열 그대로 통과, 패턴 미등록 시 원문
+> 그대로 통과, 그리고 실제 `logback-spring.xml`의 전체 패턴(`%d/%thread/%X{traceId}/%level`)을
+> 그대로 사용해 시각·스레드·추적 번호·레벨이 유지됨을 확인하는 케이스까지 7개.
+>
+> `./gradlew :payment-service:test` 571개 전부 pass(Task 7 종료 시점 564개 + 이번 태스크 7개).
 
 ---
 
