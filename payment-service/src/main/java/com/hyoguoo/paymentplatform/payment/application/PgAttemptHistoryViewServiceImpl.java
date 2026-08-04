@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryInfo;
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryLookupResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PgAttemptHistoryPort;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
@@ -18,9 +17,10 @@ import org.springframework.stereotype.Service;
  * <p>{@code PaymentAdminController}는 이 서비스가 반환하는 {@link PgAttemptHistoryLookupResult}
  * 를 모델에 담는 일만 하고, 조회 실패 여부 판단은 이 서비스가 전담한다.
  *
- * <p>try 범위는 {@link PgAttemptHistoryPort#getAttemptHistory} 호출 자체로 좁힌다 — 뷰
- * 변환(presentation 계층의 {@code PgAttemptHistoryViewResponse.from})은 이 서비스가 하지
- * 않으므로, pg-service 조회 실패와 payment-service 자체 매핑 버그가 로그에서 섞이지 않는다.
+ * <p>try 범위는 {@link PgAttemptHistoryPort#getAttemptHistory} 호출과 그 결과를 담는
+ * {@link PgAttemptHistoryLookupResult#available} 조립까지다 — 뷰 변환(presentation 계층의
+ * {@code PgAttemptHistoryViewResponse.from})은 이 서비스가 하지 않으므로, pg-service
+ * 조회 실패와 payment-service 자체 매핑 버그가 로그에서 섞이지 않는다.
  */
 @Slf4j
 @Service
@@ -31,9 +31,8 @@ public class PgAttemptHistoryViewServiceImpl implements PgAttemptHistoryViewServ
 
     @Override
     public PgAttemptHistoryLookupResult getAttemptHistory(String orderId) {
-        PgAttemptHistoryInfo info;
         try {
-            info = pgAttemptHistoryPort.getAttemptHistory(orderId);
+            return PgAttemptHistoryLookupResult.available(pgAttemptHistoryPort.getAttemptHistory(orderId));
         } catch (RuntimeException e) {
             LogFmt.warn(log, LogDomain.PAYMENT_GATEWAY, EventType.PG_SERVICE_UNEXPECTED,
                     () -> "orderId=" + orderId
@@ -41,6 +40,5 @@ public class PgAttemptHistoryViewServiceImpl implements PgAttemptHistoryViewServ
                             + " error=" + e.getMessage());
             return PgAttemptHistoryLookupResult.unavailable();
         }
-        return PgAttemptHistoryLookupResult.available(info);
     }
 }

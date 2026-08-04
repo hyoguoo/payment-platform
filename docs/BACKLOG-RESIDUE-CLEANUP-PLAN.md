@@ -89,7 +89,7 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 
 - [x] Task 1: 미사용 선점 경로 제거
 - [x] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
-- [ ] Task 3: 프로덕션 스타일 위반 2건 해소
+- [x] Task 3: 프로덕션 스타일 위반 2건 해소
 - [ ] Task 4: 테스트 스타일 위반 4건 해소
 - [ ] Task 5: 대장·우려 문서 정리
 
@@ -206,7 +206,12 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - 억제 파일에 두 항목이 남아 있지 않다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `StockCatalogViewServiceImpl.getPage`, `PgAttemptHistoryViewServiceImpl.getAttemptHistory` 둘 다 try 밖 변수 선언 후 try 안에서 재할당하던 형태를 없애고, 포트 호출 성공 시 결과를 `try` 블록 안에서 바로 `available(...)` 로 감싸 반환하도록 고쳤다. `catch (RuntimeException e)` 분기(경고 로그 후 `unavailable()` 반환)는 그대로 유지 — 동작 변경 없음
+- 재할당 대상이던 지역 변수(`pageInfo`, `info`)가 사라지며 그 타입만 쓰던 import(`ProductCatalogPageInfo`, `PgAttemptHistoryInfo`)도 함께 제거
+- try 범위가 포트 호출뿐 아니라 `available(...)` 조립까지 포함하게 되어, 두 클래스 Javadoc의 "try 범위는 포트 호출 자체로 좁힌다" 서술을 "포트 호출과 그 결과를 담는 `available` 조립까지다"로 정정 — 뷰 변환(presentation 계층 책임)과 섞이지 않는다는 핵심 취지는 그대로 유지
+- `config/checkstyle/checkstyle-suppressions.xml`에서 `StockCatalogViewServiceImpl`/`PgAttemptHistoryViewServiceImpl`의 `TryBlockExternalReassignment` 억제 2줄 제거, 남은 두 항목(`DuplicateApprovalHandlerListenerTest`, `PgConfirmListenerSplitIntegrationTest` — Task 4 대상) 설명 주석에 해소 사실 반영
+- `./gradlew checkstyleMain` 전체 모듈 통과(경고 0건), `./gradlew :payment-service:test` 567 tests 전체 통과, 회귀 없음
 
 ---
 
