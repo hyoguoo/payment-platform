@@ -305,4 +305,14 @@ A~F 여섯 섹션 중 A·B·C·D·F 는 각각 항목이 하나뿐이라, 삭제
 ---
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+Reviewer revise (major 1 / minor 1), Domain Expert pass (findings 0).
+
+| # | severity | finding | 처리 | 사유 |
+|:---:|:---:|:---:|:---:|:---:|
+| 1 | major | `docs/context/STACK.md` 140·151행이 없어진 `TODOS.md` 섹션 E 를 가리킨다. 140행은 "기존 위반은 전량 억제해 기준선이 0" 이라고 하는데 이번에 실제 수정으로 해소돼 이중으로 낡았다. 151행이 가리키던 검출 게이트 승격 판단은 대장에서 지워져 추적처를 잃었다 | 채택 | 정적 검출 설정을 다루는 문서라 게이트 승격 결정이 원래 있을 자리다. 죽은 참조를 걷고 열린 결정을 STACK.md 안에 직접 남긴다 |
+| 2 | minor | Task 4 커밋(`1c388673`)이 `feat:` 인데 내용은 테스트 스타일 정리뿐이라 `refactor:` / `test:` 가 맞다 | 스킵 | 타입만 바꾸려고 커밋 4개를 재작성할 값어치가 없다. 사실만 여기 남긴다 |
+
+Domain Expert 는 "호출처 0" 전제와 부팅 가드의 허용·차단 조합, 통합 테스트 프로파일 추가의 무부작용을 모두 소스로 대조해 확인했고 리스크 카탈로그 6축 전부 해당 없음으로 판정했다.
+
+**처리 결과 (finding 1)**: `docs/context/STACK.md` 140행을 `checkstyle-suppressions.xml` 실제 상태(파일·행 지정 기준선 억제 0, 디렉토리 단위 블랑켓 억제와 `PublicUseCasePortNullReturn` 범위 한정 항목만 잔존)에 맞춰 다시 쓰고, 151행은 대장 참조를 걷어내고 "운용 관찰 후 판단"이라는 열린 결정을 코드 스타일 5규칙과 함께 STACK.md 안에 직접 서술했다. `grep -rn "TODOS.md" docs/context/ .claude/` 로 다른 죽은 참조(없어진 섹션·항목 지칭)가 더 없는지 확인했다 — PITFALLS.md·CONCERNS.md 의 나머지 참조는 대장 자체를 가리키거나 여전히 존재하는 항목(TQ-2, T4-B `[DE2]`)을 가리켜 정정 대상이 아니었다.

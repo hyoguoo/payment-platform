@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -137,7 +137,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 - 구조 판정 2종(커스텀 `TreeWalker` Check): 광범위 예외 삼킴 금지(`SwallowedBroadException`), try 블록 외부 변수 재할당 금지(`TryBlockExternalReassignment`)
 - 커스텀 Check 는 root project 전용 sourceSet(`checkstyleCustomChecks`)에서 컴파일해 각 서비스 checkstyle classpath 에 얹는다. root 자신의 `checkstyleMain`/`checkstyleTest` 는 순환을 피해 비활성(root 에 `src/main/java` 없음 — 서비스 검사 범위에는 영향 없다)
 - ArchUnit 은 기각했다 — 바이트코드 기반 의존 그래프만 다뤄 메서드 본문의 제어 흐름(catch 안에 재throw 가 있는가, 변수가 try 밖에서 선언됐는가)을 표현할 수 없다
-- 기존 위반은 `config/checkstyle/checkstyle-suppressions.xml` 에 전량 억제해 기준선이 0 이다 — 잔여 정리는 `TODOS.md` 섹션 E
+- 도입 시점 기존 위반은 코드를 고쳐 전량 해소했다(BACKLOG-RESIDUE-CLEANUP) — `config/checkstyle/checkstyle-suppressions.xml` 에는 파일·행 지정 기준선 억제가 더 없고, 디렉토리 단위 블랑켓 억제(`dto`/`entity`/`infrastructure` 등 데이터 캐리어·어댑터 계층)와 `PublicUseCasePortNullReturn` 적용 범위를 `application/usecase`·`application/port` 로 좁히는 항목만 남는다
 | JaCoCo | 0.8.11 | 값·정책 상세(측정 대상/제외/게이트 산정 근거/서비스별 minimum)는 [`TESTING.md`](TESTING.md) §JaCoCo 커버리지 정책 참고(SSOT) |
 
 ## CI 파이프라인 (GitHub Actions)
@@ -148,7 +148,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 - **`.github/workflows/_service-ci.yml`** (재사용, `workflow_call`) — 서비스 1개 파이프라인:
   - `build-test-lint` job(항상): `./gradlew :<svc>:build -x integrationTest`(컴파일+단위+JaCoCo+checkstyle+spotbugs) → reviewdog 서비스별 인라인(checkstyle/spotbugs) → JaCoCo XML·lint 요약 아티팩트 업로드 → 단위 JUnit Check 리포트 → JaCoCo HTML 아티팩트 → lint gate. **`-x integrationTest` 로 통합을 제외**(단위/통합 막대 분리, `check.dependsOn integrationTest` 끌림 차단).
   - `integration-test` job(`has-integration == true` 일 때만 = payment/pg/product/user): `./gradlew :<svc>:integrationTest`(`org.gradle.test-retry` 통합 한정 `maxRetries=2 maxFailures=3`, `DOCKER_API_VERSION=1.44`) → JUnit 리포트. gateway/eureka 는 통합 job 생략. **Testcontainers reuse 는 비활성** — 같은 job 내 여러 `@SpringBootTest` 클래스가 재사용 컨테이너의 더럽혀진 스키마에 Flyway 를 재적용하면 "non-empty schema but no schema history table" 로 컨텍스트 로드가 깨져, 정합성 우선으로 철회.
-- **`agent-docs-check` job** — 6서비스 fan-out과 무관한 독립 job. `scripts/check-agent-docs.py`(지침 문서 참조 무결성·frontmatter·체크리스트 참조·중복 규칙·Mermaid 금지 문자·고아 문서 판정)를 실행해 결과를 job 로그와 워크플로우 요약에 남긴다. 스크립트가 종료 코드를 0으로 고정하므로 **머지를 막지 않는다** — 게이트 승격 여부는 오탐이 잦아드는지 본 뒤 판단(`TODOS.md` 섹션 E).
+- **`agent-docs-check` job** — 6서비스 fan-out과 무관한 독립 job. `scripts/check-agent-docs.py`(지침 문서 참조 무결성·frontmatter·체크리스트 참조·중복 규칙·Mermaid 금지 문자·고아 문서 판정)를 실행해 결과를 job 로그와 워크플로우 요약에 남긴다. 스크립트가 종료 코드를 0으로 고정하므로 **머지를 막지 않는다** — 게이트 승격 여부는 오탐이 잦아드는지 운용 관찰 후 판단한다. 코드 스타일 5규칙(위 checkstyle `severity=warning`)도 같은 이유로 빌드를 막지 않는 상태라, 승격 판단이 두 검사에 함께 걸려 있다.
 - **취합 `report` job** — `needs` 6서비스 + `always() && pull_request`. 6서비스 커버리지/lint 아티팩트를 `actions/github-script` + `.github/scripts/report-comment.js` 로 **단일 PR 통합 코멘트**(커버리지 + 테스트수 + lint 요약, `update-comment` 로 난립 방지)로 조립.
 - `spotbugs-to-rdjsonl.py`(spotbugs→reviewdog 변환)는 `_service-ci.yml` 내 서비스별 호출. Discord 알림 없음.
 - **머지 차단**은 각 서비스 `build-test-lint` + `integration-test` job 결과로 결정(`report` 의 `always()` 는 코멘트 전용). GitHub branch protection 의 required status checks 에 각 job 등록이 전제.
