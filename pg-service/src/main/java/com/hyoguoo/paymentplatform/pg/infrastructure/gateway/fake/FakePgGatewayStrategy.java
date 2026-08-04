@@ -22,6 +22,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,6 +32,7 @@ import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,6 +41,9 @@ import org.springframework.stereotype.Component;
  * <p><b>production 환경에서 절대 활성화 금지.</b>
  * 활성화 조건: {@code pg.gateway.type=fake} (smoke 프로파일에서만 override).
  * Toss(default), NicePay 와 상호 배타이므로 정상 환경에선 빈 등록되지 않는다.
+ * 빈이 등록돼도 활성 프로파일에 {@code smoke} 나 {@code test} 가 없으면 기동 시점에
+ * {@link IllegalStateException} 을 던져 프로세스를 종료한다 — 환경변수 실수로 일반 앱 스택에
+ * fake 벤더가 주입되는 사고를 막는다.
  *
  * <p>해피 패스 전용 스트래티지:
  * <ul>
@@ -86,9 +92,16 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
      */
     private static final int DRILL_FLAKY_FAILURES_BEFORE_SUCCESS = 2;
 
+    /**
+     * fake 벤더 기동을 허용하는 활성 프로파일 목록 — 스모크/벤치마크 스택(smoke)과 pg 통합 테스트(test).
+     * 일반 앱 스택(docker 단독)이나 프로파일 미지정 기동은 여기 없으므로 차단된다.
+     */
+    private static final List<String> BOOT_ALLOWED_PROFILES = List.of("smoke", "test");
+
     private final Clock clock;
     private final TossApiMetrics tossApiMetrics;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final Environment environment;
 
     /**
      * 처음 confirm 에 성공한 orderId → 승인 결과 기록. key=orderId.
@@ -117,6 +130,7 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
             Clock clock,
             TossApiMetrics tossApiMetrics,
             ApplicationEventPublisher applicationEventPublisher,
+            Environment environment,
             @Value("${pg.gateway.fake.fail-rate:0.0}") double failRate,
             @Value("${pg.gateway.fake.latency-min-millis:0}") long latencyMinMillis,
             @Value("${pg.gateway.fake.latency-max-millis:0}") long latencyMaxMillis
@@ -124,6 +138,7 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
         this.clock = clock;
         this.tossApiMetrics = tossApiMetrics;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.environment = environment;
         this.failRate = failRate;
         this.latencyMinMillis = latencyMinMillis;
         this.latencyMaxMillis = Math.max(latencyMaxMillis, latencyMinMillis);
@@ -139,6 +154,16 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                 "║  PRODUCTION ENVIRONMENT MUST NOT ENABLE pg.gateway.type=fake ║",
                 "╚══════════════════════════════════════════════════════════════╝"
         );
+
+        List<String> activeProfiles = Arrays.asList(environment.getActiveProfiles());
+        boolean allowed = activeProfiles.stream().anyMatch(BOOT_ALLOWED_PROFILES::contains);
+        if (!allowed) {
+            throw new IllegalStateException(
+                    "FakePgGatewayStrategy 기동 차단 — 활성 프로파일 " + activeProfiles
+                            + " 에 허용 목록 " + BOOT_ALLOWED_PROFILES + " 이 없다. "
+                            + "pg.gateway.type=fake 는 smoke/benchmark 스택이나 pg 통합 테스트(test 프로파일)에서만 허용된다."
+            );
+        }
     }
 
     @Override

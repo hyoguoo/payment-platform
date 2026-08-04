@@ -88,7 +88,7 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 ## 진행 상황
 
 - [x] Task 1: 미사용 선점 경로 제거
-- [ ] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
+- [x] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
 - [ ] Task 3: 프로덕션 스타일 위반 2건 해소
 - [ ] Task 4: 테스트 스타일 위반 4건 해소
 - [ ] Task 5: 대장·우려 문서 정리
@@ -175,7 +175,15 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - `./gradlew test` 전체 통과, 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `FakePgGatewayStrategy` 생성자에 `Environment` 주입 추가, `warnActivation()` 에 활성 프로파일 판정을 붙여 `smoke`·`test` 둘 다 없으면 `IllegalStateException` 으로 기동을 막는다. 예외 메시지에 활성 프로파일과 허용 목록을 함께 담는다
+- 클래스 Javadoc 에 가드 조건 서술 추가
+- `FakePgGatewayStrategyTest` 에 `warnActivation()` 직접 호출 테스트 4건 추가(`MockEnvironment` 로 프로파일 위조) — 스모크/테스트 프로파일은 통과, `docker` 단독·미지정은 `IllegalStateException`
+- 기존 `strategy(...)` 헬퍼가 `MockEnvironment`(빈 프로파일) 를 함께 넘기도록 시그니처를 맞췄다 — 기존 케이스는 `warnActivation()` 을 호출하지 않아 동작 영향 없음
+- 구현 전 `docker-compose.{smoke,benchmark,apps}.yml` 을 직접 확인해 허용 조합표를 재검증했다: smoke·benchmark 스택 모두 pg-service 는 `SPRING_PROFILES_ACTIVE: docker,smoke` + `PG_GATEWAY_TYPE: fake` 고정, apps 스택은 `SPRING_PROFILES_ACTIVE: docker` 단독 + `PG_GATEWAY_TYPE` 기본값 `toss`(env 로 override 가능) — 표와 일치
+- pg 통합 테스트 4건(`PgConfirmListenerSplitIntegrationTest`, `PgInboxAttemptGuardIntegrationTest`, `PgSelfLoopRetryExhaustionIntegrationTest`, `PgInboxTraceparentIntegrationTest`) 에 `@ActiveProfiles("test")` 추가
+- `./gradlew :pg-service:test` 393 tests 전체 통과, `./gradlew :pg-service:integrationTest --rerun-tasks` 16 tests 전체 통과(캐시 미사용 재실행), `./gradlew test` 전체 모듈 회귀 없음
+- `grep -rn "pg.gateway.type" pg-service/src/test` 로 잡히는 4개 파일 모두 `@ActiveProfiles("test")` 보유 확인(누락 0)
 
 ---
 

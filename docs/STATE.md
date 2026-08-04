@@ -6,7 +6,7 @@
 
 - **주제**: 미해결 항목 잔여 정리 (BACKLOG-RESIDUE-CLEANUP)
 - **단계**: execute
-- **활성 태스크**: Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
+- **활성 태스크**: Task 3: 프로덕션 스타일 위반 2건 해소
 - **이슈/브랜치**: #134
 - **파일**: docs/topics/BACKLOG-RESIDUE-CLEANUP.md / docs/BACKLOG-RESIDUE-CLEANUP-PLAN.md
 
