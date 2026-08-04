@@ -4,7 +4,10 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
+- **주제**: 미해결 항목 잔여 정리 (BACKLOG-RESIDUE-CLEANUP)
+- **단계**: plan
+- **이슈/브랜치**: #134
+- **파일**: docs/topics/BACKLOG-RESIDUE-CLEANUP.md
 
 ## 재개 메모
 
