@@ -94,6 +94,16 @@ class NicepayPaymentGatewayStrategyParseFailureLogTest {
         return warnLogs.get(0).getFormattedMessage();
     }
 
+    private int readMaxParseFailureLogLength() {
+        Object rawValue = ReflectionTestUtils.getField(NicepayPaymentGatewayStrategy.class, "MAX_PARSE_FAILURE_LOG_LENGTH");
+
+        assertThat(rawValue)
+                .as("MAX_PARSE_FAILURE_LOG_LENGTH 필드를 찾을 수 없다 — 필드명이 바뀌었는지 확인한다")
+                .isNotNull();
+
+        return (int) rawValue;
+    }
+
     @Test
     @DisplayName("파싱_실패_로그의_원문은_상한_길이를_넘지_않는다")
     void 파싱_실패_로그의_원문은_상한_길이를_넘지_않는다() {
@@ -101,7 +111,7 @@ class NicepayPaymentGatewayStrategyParseFailureLogTest {
 
         triggerParseFailure(hugeMalformedBody);
 
-        int maxLength = (int) ReflectionTestUtils.getField(NicepayPaymentGatewayStrategy.class, "MAX_PARSE_FAILURE_LOG_LENGTH");
+        int maxLength = readMaxParseFailureLogLength();
         String loggedRaw = capturedParseFailureLogMessage().split("raw=", 2)[1];
 
         assertThat(loggedRaw.length())
