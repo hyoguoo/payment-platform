@@ -12,9 +12,21 @@
     converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
 
   <!-- Console Appender (All Profiles) -->
+  <!-- 출력 직전 정규식으로 민감 값을 가린다. 패턴은 이 설정에서만 관리하며 코드 변경 없이
+       추가·제거할 수 있다. 각 maskPattern은 캡처 그룹을 하나 가져야 하며 그 부분만 가려진다. -->
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder>
-      <pattern>${LOG_PATTERN_COLOR}</pattern>
+    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+      <layout class="com.hyoguoo.paymentplatform.pg.core.common.log.MaskingPatternLayout">
+        <pattern>${LOG_PATTERN_COLOR}</pattern>
+        <!-- 결제 키: 앞 4자리만 남기고 나머지를 가린다 -->
+        <maskPattern>paymentKey=[A-Za-z0-9]{4}([A-Za-z0-9_-]{4,})</maskPattern>
+        <!-- 인증 헤더 값: Bearer 뒤 4자리만 남기고 나머지를 가린다 -->
+        <maskPattern>(?i)Authorization:\s*Bearer\s+[A-Za-z0-9._-]{4}([A-Za-z0-9._-]{4,})</maskPattern>
+        <!-- 이메일: 로컬파트 앞 2자리와 도메인만 남기고 나머지를 가린다 -->
+        <maskPattern>[A-Za-z0-9._%+-]{2}([A-Za-z0-9._%+-]*)@[A-Za-z0-9.-]+\.[A-Za-z]{2,}</maskPattern>
+        <!-- 카드번호 형태: 앞 4자리만 남기고 나머지를 가린다 -->
+        <maskPattern>(?:\d{4})[- ]?(\d{4}[- ]?\d{4}[- ]?\d{4})</maskPattern>
+      </layout>
     </encoder>
   </appender>
 

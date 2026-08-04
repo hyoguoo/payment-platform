@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
@@ -150,7 +151,7 @@ class PaymentTransactionCoordinatorTest {
             PaymentEvent readyEvent = createPaymentEvent(orderId, PaymentEventStatus.READY);
             PaymentEvent quarantinedEvent = createPaymentEvent(orderId, PaymentEventStatus.QUARANTINED);
 
-            given(paymentCommandUseCase.markPaymentAsQuarantined(any(PaymentEvent.class), anyString()))
+            given(paymentCommandUseCase.markPaymentAsQuarantined(any(PaymentEvent.class), anyString(), anyString()))
                     .willReturn(quarantinedEvent);
 
             // when
@@ -159,7 +160,8 @@ class PaymentTransactionCoordinatorTest {
             // then: QUARANTINED 홀딩 상태로 전환
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
             then(paymentCommandUseCase).should(times(1))
-                    .markPaymentAsQuarantined(readyEvent, "재고 캐시 장애로 인한 격리");
+                    .markPaymentAsQuarantined(readyEvent, "재고 캐시 장애로 인한 격리",
+                            PaymentStatusChangeTrigger.STOCK_CACHE_DOWN);
         }
     }
 

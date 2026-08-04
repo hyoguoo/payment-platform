@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,8 @@ class PgInboxPollingWorkerTraceparentTest {
         inboxRepository = mock(PgInboxRepository.class);
         processor = mock(PgInboxProcessUseCase.class);
         pollingWorker = new PgInboxPollingWorker(
-                inboxRepository, processor, 10, 60_000L, 60_000L, new SimpleMeterRegistry());
+                inboxRepository, processor, 10, 60_000L, 60_000L, new SimpleMeterRegistry(),
+                OpenTelemetry.noop().getTracer("test"));
         // inProgressZombies는 항상 빈 목록 반환 (PENDING 경로 테스트 집중)
         when(inboxRepository.findInProgressZombieIds(anyInt(), anyLong()))
                 .thenReturn(List.of());

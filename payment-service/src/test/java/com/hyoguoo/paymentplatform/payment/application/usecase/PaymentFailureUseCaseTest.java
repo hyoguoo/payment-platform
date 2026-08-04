@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +45,8 @@ class PaymentFailureUseCaseTest {
                 .paymentOrderList(java.util.Collections.emptyList())
                 .allArgsBuild();
 
-        given(mockPaymentCommandUseCase.markPaymentAsFail(paymentEvent, failureMessage))
+        given(mockPaymentCommandUseCase.markPaymentAsFail(
+                paymentEvent, failureMessage, PaymentStatusChangeTrigger.STOCK_FAILURE))
                 .willReturn(failedEvent);
 
         // when
@@ -52,7 +54,7 @@ class PaymentFailureUseCaseTest {
 
         // then
         then(mockPaymentCommandUseCase).should(times(1))
-                .markPaymentAsFail(paymentEvent, failureMessage);
+                .markPaymentAsFail(paymentEvent, failureMessage, PaymentStatusChangeTrigger.STOCK_FAILURE);
         assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
     }
 }

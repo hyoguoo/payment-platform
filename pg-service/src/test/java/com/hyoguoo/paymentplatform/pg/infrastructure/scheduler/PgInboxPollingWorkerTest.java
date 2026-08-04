@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,7 +40,8 @@ class PgInboxPollingWorkerTest {
         inboxRepository = mock(PgInboxRepository.class);
         processor = mock(PgInboxProcessUseCase.class);
         meterRegistry = new SimpleMeterRegistry();
-        pollingWorker = new PgInboxPollingWorker(inboxRepository, processor, 10, 60_000L, 60_000L, meterRegistry);
+        pollingWorker = new PgInboxPollingWorker(inboxRepository, processor, 10, 60_000L, 60_000L, meterRegistry,
+                OpenTelemetry.noop().getTracer("test"));
     }
 
     @Test

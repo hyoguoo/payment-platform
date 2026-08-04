@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.pg.infrastructure.config;
 
 import io.micrometer.context.ContextRegistry;
 import jakarta.annotation.PostConstruct;
+import java.security.SecureRandom;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +13,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *
  * <ul>
  *   <li>Clock Bean: PgOutboxPollingWorker, PgOutboxMetrics 등 시간 기반 컴포넌트 공통 주입.
+ *   <li>SecureRandom Bean: PgVendorCallService 재시도 백오프 지터 계산 주입 — 테스트에서 결정적
+ *       구현으로 교체할 수 있도록 정적 필드 대신 생성자 주입으로 둔다.
  *   <li>EnableScheduling: PgOutboxPollingWorker(@Scheduled) + PgOutboxMetrics(@Scheduled) 활성화.
  *   <li>{@link PgSlf4jMdcThreadLocalAccessor} 를 {@code ContextRegistry} 에 등록
  *       — {@code ContextExecutorService.wrap()} 경유 VT 실행 시 MDC 승계를 보장한다.
@@ -24,6 +27,11 @@ public class PgServiceConfig {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    @Bean
+    public SecureRandom secureRandom() {
+        return new SecureRandom();
     }
 
     /**

@@ -10,7 +10,8 @@ public class CheckoutResponseMixin {
     @JsonCreator
     public CheckoutResponseMixin(
             @JsonProperty("orderId") String orderId,
-            @JsonProperty("totalAmount") BigDecimal totalAmount
+            @JsonProperty("totalAmount") BigDecimal totalAmount,
+            @JsonProperty("duplicate") boolean isDuplicate
     ) {
     }
 }

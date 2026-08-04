@@ -17,8 +17,10 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.mock.FakeSecureRandom;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -69,10 +71,12 @@ class PgVendorCallServiceTest {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
         PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
 
+        // jitter factor = nextDouble()*0.5-0.25 → 0.5 를 고정 반환하면 jitter 0, backoff 가 base 값 그대로
+        // 나와 회차별 대기 구간 검증이 실제 SecureRandom 흔들림 없이 결정적으로 돈다.
         sut = new PgVendorCallService(
                 inboxRepository, outboxRepository, selector,
                 eventPublisher, new ConfirmedEventPayloadSerializer(objectMapper),
-                objectMapper, fixedClock, duplicateApprovalHandler);
+                objectMapper, fixedClock, duplicateApprovalHandler, new FakeSecureRandom(0.5));
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (applyOutcome 진입 전제조건)
         inboxRepository.save(PgInbox.of(
@@ -275,6 +279,64 @@ class PgVendorCallServiceTest {
                             Mockito.eq(ORDER_ID),
                             Mockito.eq(AMOUNT),
                             Mockito.eq(PgVendorType.TOSS));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 재시도 백오프 회차 — computeBackoff 에 실패한 attempt 를 그대로 넘기는지 검증
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("재시도 백오프 회차")
+    class RetryBackoffScheduling {
+
+        @Test
+        @DisplayName("첫_재시도_예약은_기준_2초_구간에_들어간다")
+        void firstRetryScheduledWithinTwoSecondWindow() {
+            // given — 최초 실패(attempt=1)
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("network timeout");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — base 2s × 3^0, jitter ±25% → [1.5s, 2.5s]
+            assertThat(retryDelay()).isBetween(Duration.ofMillis(1_500), Duration.ofMillis(2_500));
+        }
+
+        @Test
+        @DisplayName("두번째_재시도_예약은_기준_6초_구간에_들어간다")
+        void secondRetryScheduledWithinSixSecondWindow() {
+            // given — 두번째 실패(attempt=2)
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("network timeout");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 2, NOW);
+
+            // then — base 2s × 3^1, jitter ±25% → [4.5s, 7.5s]
+            assertThat(retryDelay()).isBetween(Duration.ofMillis(4_500), Duration.ofMillis(7_500));
+        }
+
+        @Test
+        @DisplayName("마지막_재시도_예약은_기준_18초_구간에_들어가_좀비_회수_타임아웃보다_짧다")
+        void lastRetryScheduledWithinEighteenSecondWindow_shorterThanZombieRecoveryTimeout() {
+            // given — 마지막으로 재시도가 예약되는 실패(attempt=MAX_ATTEMPTS-1) — 그 다음 실패(attempt=MAX_ATTEMPTS)는 DLQ 경로로 빠진다
+            GatewayOutcome outcome = new GatewayOutcome.Retryable("network timeout");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), RetryPolicy.MAX_ATTEMPTS - 1, NOW);
+
+            // then — base 2s × 3^2, jitter ±25% → [13.5s, 22.5s]
+            Duration delay = retryDelay();
+            assertThat(delay).isBetween(Duration.ofMillis(13_500), Duration.ofMillis(22_500));
+            // pg-service application.yml 의 inbox-polling-worker.in-progress-timeout-ms(60s, 좀비 회수 타임아웃)보다 짧아야
+            // 예약된 재시도가 좀비 폴러보다 먼저 수행된다.
+            assertThat(delay).isLessThan(Duration.ofMillis(60_000));
+        }
+
+        private Duration retryDelay() {
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            return Duration.between(NOW, rows.get(0).getAvailableAt());
         }
     }
 

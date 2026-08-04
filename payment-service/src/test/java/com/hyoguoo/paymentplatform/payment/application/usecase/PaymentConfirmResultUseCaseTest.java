@@ -10,6 +10,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
@@ -325,7 +326,7 @@ class PaymentConfirmResultUseCaseTest {
 
         given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
                 .willReturn(StockCompensationAtomicResult.OK);
-        given(paymentCommandUseCase.markPaymentAsFail(any(), anyString())).willReturn(event);
+        given(paymentCommandUseCase.markPaymentAsFail(any(), anyString(), anyString())).willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "FAILED", "VENDOR_FAILED", null, null, EVENT_UUID);
@@ -334,7 +335,8 @@ class PaymentConfirmResultUseCaseTest {
 
         InOrder inOrder = inOrder(stockCachePort, paymentCommandUseCase);
         inOrder.verify(stockCachePort).compensateAtomic(eq(ORDER_ID), any());
-        inOrder.verify(paymentCommandUseCase).markPaymentAsFail(any(PaymentEvent.class), eq("VENDOR_FAILED"));
+        inOrder.verify(paymentCommandUseCase)
+                .markPaymentAsFail(any(PaymentEvent.class), eq("VENDOR_FAILED"), eq(PaymentStatusChangeTrigger.CONFIRM));
     }
 
     // ---- APPROVED 정상 (1 row) ----

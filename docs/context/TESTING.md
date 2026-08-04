@@ -120,6 +120,17 @@ Mockito 로 FeignClient 를 mock 하고 throw 시나리오별 어댑터 동작�
 룰:
 - 동시성·exactly-once·atomic 보장 검증 테스트 → `@RepeatedTest(50)` 이상
 - 단순 분기 테스트 → 일반 `@Test`
+- 반복마다 **키를 새로 만든다**. 같은 주문 번호를 재사용하면 두 번째 반복부터 앞선 반복이 남긴 행 때문에 경합 자체가 재현되지 않는다 (`PaymentDuplicateConfirmConcurrencyIntegrationTest`)
+
+## 구조 계약 테스트 — 설정 한 줄이 방어선인 경우
+
+동작이 아니라 **선언 자체가 안전성을 좌우하는 자리**는 기능 테스트로 회귀를 못 잡는다. 잠금 방식이 대표적이다 — 단일 스레드에서는 어떤 잠금을 걸어도 똑같이 통과하기 때문에, 락이 빠지거나 다른 종류로 바뀌어도 테스트가 조용히 통과한다.
+
+- `JpaPaymentOutboxRepositoryLockContractTest` — 확인 조회에 쓰기 잠금이 선언돼 있는지(리플렉션), 쿼리에 건너뛰기 힌트(`SKIP LOCKED`)가 없는지(문자열) 단정. 잠금을 제거하거나 워커 선점용 관용구로 바꾸면 실패한다
+- `PgInboxPollingWorkerSpanTest` — 추적 구간이 **실제로 생성되는지**를 인메모리 exporter 로 확인. 속성 단정만 두면 구간 없이 속성만 붙는 회귀를 놓친다(→ `PITFALLS.md` 26)
+- 전이 지점 전수 스캔 — 상태 전이 지표의 주체 라벨이 비는 경로가 없음을 구조적으로 고정(→ `PITFALLS.md` 27)
+
+작성 기준: "이 한 줄이 빠져도 기존 테스트가 통과하는가?" 가 예이면 계약 테스트를 함께 둔다.
 
 ## JaCoCo 커버리지 정책
 
@@ -159,16 +170,16 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 
 `LocalDateTime.now()` / `Instant.now()` 직접 호출 금지 → JDK `Clock` 빈(`ClockConfig`) 주입 + 도메인은 `Instant` 를 인자로 전달받는다(now() 직접 호출 0). 테스트는 고정 `Clock` 으로 시각을 위조한다(통합 테스트는 `BaseIntegrationTest.TestClock` 의 `setFixedInstant(...)`). 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 는 TIME-MODEL-AND-EXPIRY 에서 폐기됐다(4서비스 `Clock` 통일, grep 0).
 
-## 현재 테스트 카운트 (2026-07-28 기준)
+## 현재 테스트 카운트 (2026-08-04 기준)
 
 | 모듈 | 단위 | 통합 |
 |---|---|---|
 | eureka-server | 1 | — |
-| gateway | 3 | — |
-| payment-service | 539 | 48 |
-| pg-service | 351 | 16 |
-| product-service | 57 | 6 |
-| user-service | 9 | 1 |
-| **합계** | **960** | **71** |
+| gateway | 4 | — |
+| payment-service | 571 | 98 |
+| pg-service | 389 | 16 |
+| product-service | 58 | 6 |
+| user-service | 10 | 1 |
+| **합계** | **1033** | **121** |
 
 `./gradlew test --rerun-tasks`(단위) / `./gradlew :<svc>:integrationTest --rerun-tasks`(통합) 로 검증. 수치는 측정 시점 스냅샷 — 회귀 가드는 카운트가 아니라 pass/fail 이 본질. **구조적으로 계속 낙후되는 스냅샷** — 매 토픽마다 테스트 파일이 추가/삭제되므로 이 표는 참고용일 뿐, 정확한 값이 필요하면 재실행한다.

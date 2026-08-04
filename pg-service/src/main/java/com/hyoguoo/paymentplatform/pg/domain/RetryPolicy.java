@@ -29,7 +29,10 @@ import lombok.NoArgsConstructor;
  *   <li>attempt=1: 2s × 3^0 = 2s  → [1.5s, 2.5s]</li>
  *   <li>attempt=2: 2s × 3^1 = 6s  → [4.5s, 7.5s]</li>
  *   <li>attempt=3: 2s × 3^2 = 18s → [13.5s, 22.5s]</li>
- *   <li>attempt=4: 2s × 3^3 = 54s → [40.5s, 67.5s]</li>
+ *   <li>attempt=4: 2s × 3^3 = 54s → [40.5s, 67.5s] — shouldRetry(4)가 false라 DLQ 경로로 빠지므로
+ *       실제 재시도 예약에는 쓰이지 않는다. 호출부(PgVendorCallService)는 실패한 attempt 값을 그대로
+ *       넘겨야 위 표가 실제 대기 시간과 일치한다 — 다음 attempt(증가 후 값)를 넘기면 대기가 한 회차씩
+ *       밀린다.</li>
  * </ul>
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

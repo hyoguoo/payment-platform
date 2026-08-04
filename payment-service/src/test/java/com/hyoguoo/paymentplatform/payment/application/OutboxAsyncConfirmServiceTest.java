@@ -11,6 +11,10 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.PaymentConfirmCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentConfirmAsyncResult;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentFailureUseCase;
@@ -22,17 +26,21 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentOrderedProductStockException;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOutboxDuplicateException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.StockCacheUnavailableException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 
 @DisplayName("OutboxAsyncConfirmService 테스트")
 class OutboxAsyncConfirmServiceTest {
@@ -311,6 +319,96 @@ class OutboxAsyncConfirmServiceTest {
 
             // then
             then(mockStockRetentionMetrics).should(never()).record();
+        }
+    }
+
+    @Nested
+    @DisplayName("confirm() — 중복 재진입 예외는 재고 미회수 경보에서 제외된다")
+    class DuplicateReentryAlertExclusionTest {
+
+        private SimpleMeterRegistry meterRegistry;
+        private OutboxAsyncConfirmService serviceWithRealMetrics;
+        private ListAppender<ILoggingEvent> logAppender;
+        private Logger serviceLogger;
+
+        @BeforeEach
+        void setUp() {
+            meterRegistry = new SimpleMeterRegistry();
+            StockRetentionMetrics realStockRetentionMetrics = new StockRetentionMetrics(meterRegistry);
+            serviceWithRealMetrics = new OutboxAsyncConfirmService(
+                    mockTransactionCoordinator,
+                    mockPaymentLoadUseCase,
+                    mockPaymentFailureUseCase,
+                    realStockRetentionMetrics
+            );
+            serviceLogger = (Logger) LoggerFactory.getLogger(OutboxAsyncConfirmService.class);
+            logAppender = new ListAppender<>();
+            logAppender.start();
+            serviceLogger.addAppender(logAppender);
+        }
+
+        @AfterEach
+        void tearDown() {
+            serviceLogger.detachAppender(logAppender);
+        }
+
+        private double unrecoveredCounterCount() {
+            return meterRegistry.get("stock_retention_unrecovered_total").counter().count();
+        }
+
+        @Test
+        @DisplayName("중복 재진입 예외는 카운터·로그 경보를 남기지 않고 호출자에게 그대로 전파된다")
+        void duplicateException_doesNotRecordAlert_andPropagates() {
+            // given
+            String orderId = "order-dup-1";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            PaymentOutboxDuplicateException duplicateException =
+                    PaymentOutboxDuplicateException.of(PaymentErrorCode.PAYMENT_OUTBOX_DUPLICATE_INSERT);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
+                    .willThrow(duplicateException);
+
+            // when & then
+            assertThatThrownBy(() -> serviceWithRealMetrics.confirm(command))
+                    .isSameAs(duplicateException);
+
+            assertThat(unrecoveredCounterCount()).isZero();
+            List<ILoggingEvent> errorLogs = logAppender.list.stream()
+                    .filter(e -> e.getLevel() == Level.ERROR)
+                    .toList();
+            assertThat(errorLogs).isEmpty();
+        }
+
+        @Test
+        @DisplayName("그 밖의 실패는 종전대로 카운터·로그 경보를 남긴다")
+        void otherFailure_stillRecordsAlert() {
+            // given
+            String orderId = "order-other-1";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "pkey", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+            RuntimeException otherException = new IllegalStateException("save-failed");
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
+                    .willReturn(StockDecrementResult.SUCCESS);
+            given(mockTransactionCoordinator.executeConfirmTx(any(), anyString(), anyString()))
+                    .willThrow(otherException);
+
+            // when & then
+            assertThatThrownBy(() -> serviceWithRealMetrics.confirm(command))
+                    .isSameAs(otherException);
+
+            assertThat(unrecoveredCounterCount()).isEqualTo(1.0);
+            List<ILoggingEvent> errorLogs = logAppender.list.stream()
+                    .filter(e -> e.getLevel() == Level.ERROR)
+                    .toList();
+            assertThat(errorLogs).hasSize(1);
         }
     }
 

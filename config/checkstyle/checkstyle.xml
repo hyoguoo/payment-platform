@@ -76,5 +76,58 @@
         <module name="ArrayTypeStyle"/>
         <module name="UpperEll"/>
 
+        <!--
+            ===== 코드 스타일 컨벤션 자동 검출 (docs/context/conventions/code-style.md) =====
+            문자열 패턴으로 판정 가능한 3규칙. 위반 심각도는 warning 으로 두어 빌드를 막지 않는다
+            (기존 위반 규모를 드러내는 목적 — 신규 위반만 눈에 띄게 기준선은 억제 목록으로 0으로 둔다).
+        -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="VarKeywordUsage"/>
+            <property name="format" value="\bvar\s+[A-Za-z_$][A-Za-z0-9_$]*\s*[=:]"/>
+            <property name="message"
+                      value="타입 추론 키워드(var) 금지 — 명시적 타입을 선언한다 (code-style.md 안티패턴 회피)."/>
+            <property name="ignoreComments" value="true"/>
+            <property name="severity" value="warning"/>
+        </module>
+
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="DataAnnotationUsage"/>
+            <property name="format" value="@Data\b"/>
+            <property name="message"
+                      value="@Data 금지 — 필요한 애노테이션만 개별 지정한다 (code-style.md 안티패턴 회피)."/>
+            <property name="ignoreComments" value="true"/>
+            <property name="severity" value="warning"/>
+        </module>
+
+        <!--
+            공개 유스케이스·포트(application/usecase, application/port)의 null 반환 금지.
+            검사 자체는 전체 파일에 걸리지만, checkstyle-suppressions.xml 이 두 디렉토리 밖
+            파일은 이 check id 에 한해 전부 억제해 적용 범위를 좁힌다.
+        -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="PublicUseCasePortNullReturn"/>
+            <property name="format" value="return\s+null\s*;"/>
+            <property name="message"
+                      value="공개 유스케이스·포트는 null 대신 Optional 을 반환한다 (code-style.md 안티패턴 회피)."/>
+            <property name="ignoreComments" value="true"/>
+            <property name="severity" value="warning"/>
+        </module>
+
+        <!--
+            ===== 코드 스타일 컨벤션 자동 검출 — 구조 판정이 필요한 2규칙 (Task 12) =====
+            문자열 패턴만으로는 재throw/명시적 fallback 여부, 변수 선언·재할당 스코프를 판정할 수 없어
+            config/checkstyle/custom-checks 의 커스텀 TreeWalker Check 로 구현했다. 위반 심각도는
+            warning 으로 두어 빌드를 막지 않는다.
+        -->
+        <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.SwallowedBroadExceptionCheck">
+            <property name="id" value="SwallowedBroadException"/>
+            <property name="severity" value="warning"/>
+        </module>
+
+        <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.TryBlockExternalReassignmentCheck">
+            <property name="id" value="TryBlockExternalReassignment"/>
+            <property name="severity" value="warning"/>
+        </module>
+
     </module>
 </module>

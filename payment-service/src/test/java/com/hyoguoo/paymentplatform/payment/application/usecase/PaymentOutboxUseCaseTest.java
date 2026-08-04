@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -8,10 +9,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.config.RetryPolicyProperties;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxCreationResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.BackoffType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentOutboxDuplicateException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,11 +49,11 @@ class PaymentOutboxUseCaseTest {
     }
 
     @Test
-    @DisplayName("createPendingRecord: save()를 1회 호출하고 PENDING 상태 PaymentOutbox를 반환한다")
-    void createPendingRecord_savesAndReturnsPendingOutbox() {
+    @DisplayName("createPendingRecord: 생성됨이면 createPendingIfAbsent를 1회 호출하고 PENDING 상태 PaymentOutbox를 반환한다")
+    void createPendingRecord_created_returnsPendingOutbox() {
         // given
-        PaymentOutbox pendingOutbox = PaymentOutbox.createPending(ORDER_ID);
-        given(mockPaymentOutboxRepository.save(any(PaymentOutbox.class))).willReturn(pendingOutbox);
+        given(mockPaymentOutboxRepository.createPendingIfAbsent(ORDER_ID))
+                .willReturn(PaymentOutboxCreationResult.CREATED);
 
         // when
         PaymentOutbox result = paymentOutboxUseCase.createPendingRecord(ORDER_ID);
@@ -58,7 +61,32 @@ class PaymentOutboxUseCaseTest {
         // then
         assertThat(result.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         assertThat(result.getOrderId()).isEqualTo(ORDER_ID);
-        then(mockPaymentOutboxRepository).should(times(1)).save(any(PaymentOutbox.class));
+        then(mockPaymentOutboxRepository).should(times(1)).createPendingIfAbsent(ORDER_ID);
+        then(mockPaymentOutboxRepository).should(never()).save(any(PaymentOutbox.class));
+    }
+
+    @Test
+    @DisplayName("createPendingRecord: 이미_있음(ALREADY_EXISTS)이면 PaymentOutboxDuplicateException을 던진다")
+    void createPendingRecord_alreadyExists_throwsDuplicateException() {
+        // given
+        given(mockPaymentOutboxRepository.createPendingIfAbsent(ORDER_ID))
+                .willReturn(PaymentOutboxCreationResult.ALREADY_EXISTS);
+
+        // when & then
+        assertThatThrownBy(() -> paymentOutboxUseCase.createPendingRecord(ORDER_ID))
+                .isInstanceOf(PaymentOutboxDuplicateException.class);
+    }
+
+    @Test
+    @DisplayName("createPendingRecord: 저장_실패(SAVE_FAILED)면 중복 재진입 예외가 아닌 예외를 던진다")
+    void createPendingRecord_saveFailed_throwsNonDuplicateException() {
+        // given
+        given(mockPaymentOutboxRepository.createPendingIfAbsent(ORDER_ID))
+                .willReturn(PaymentOutboxCreationResult.SAVE_FAILED);
+
+        // when & then
+        assertThatThrownBy(() -> paymentOutboxUseCase.createPendingRecord(ORDER_ID))
+                .isNotInstanceOf(PaymentOutboxDuplicateException.class);
     }
 
     @Test

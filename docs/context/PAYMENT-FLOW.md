@@ -27,10 +27,10 @@ flowchart TD
     A["브라우저: checkout.html or checkout-nicepay.html"] -->|"POST /api/v1/payments/checkout<br/>Idempotency-Key"| B["PaymentCheckoutServiceImpl<br/>@Transactional"]
     B --> C{"IdempotencyStore<br/>이미 있는 키?"}
     C -->|Yes 중복| C1["isDuplicate=true<br/>기존 orderId 반환<br/>HTTP 200"]
-    C -->|No 신규| D["OrderedUserUseCase.getUserInfoById<br/>→ user-service HTTP"]
-    D --> E["OrderedProductUseCase.getProductInfoList<br/>→ product-service HTTP"]
+    C -->|No 신규| D["OrderedUserUseCase.getUserInfoById<br/>-> user-service HTTP"]
+    D --> E["OrderedProductUseCase.getProductInfoList<br/>-> product-service HTTP"]
     E --> F["PaymentCreateUseCase.createNewPaymentEvent<br/>PaymentEvent + PaymentOrder*<br/>status=READY 저장"]
-    F --> G["HTTP 201 Created<br/>orderId, totalAmount"]
+    F --> G["HTTP 201 Created (중복이면 200)<br/>orderId, totalAmount, duplicate"]
     G --> H["브라우저: PG SDK 호출<br/>Toss PaymentWidget or Nicepay AUTHNICE"]
     H --> I{"사용자 결제<br/>행위 완료?"}
     I -->|실패/취소| I1["실패 페이지 — 서버 상태 변경 없음"]
@@ -47,8 +47,8 @@ flowchart TD
     K2 --> L{"재고 차감 결과"}
     L -->|"REJECTED<br/>재고 부족"| L1["handleStockFailure<br/>event.status=FAILED<br/>throw 409"]
     L -->|"CACHE_DOWN<br/>Redis 장애"| L2["markStockCacheDownQuarantine<br/>event.status=QUARANTINED<br/>quarantine_compensation_pending=true<br/>throw 409"]
-    L -->|SUCCESS| M["executeConfirmTx @Transactional<br/>event: READY→IN_PROGRESS<br/>+ payment_outbox PENDING 삽입<br/>원자 커밋"]
-    M --> N["confirmPublisher.publish(orderId, userId, amount, paymentKey)<br/>→ Spring ApplicationEvent<br/>PaymentConfirmEvent"]
+    L -->|SUCCESS| M["executeConfirmTx @Transactional<br/>event: READY->IN_PROGRESS<br/>+ payment_outbox PENDING 삽입<br/>원자 커밋"]
+    M --> N["confirmPublisher.publish(orderId, userId, amount, paymentKey)<br/>-> Spring ApplicationEvent<br/>PaymentConfirmEvent"]
     N --> O["HTTP 202 Accepted<br/>orderId, amount 즉시 반환"]
     O --> P["브라우저: /status 폴링 시작"]
 ```
@@ -59,13 +59,13 @@ flowchart TD
 flowchart TD
     N["PaymentConfirmEvent 발행됨<br/>TX 이미 커밋됨"] --> Q["OutboxImmediateEventHandler<br/>@TransactionalEventListener AFTER_COMMIT<br/>+ @Async outboxRelayExecutor VT"]
     Q --> R["OutboxRelayService.relay orderId"]
-    R --> R1["Step1: claimToInFlight CAS<br/>PENDING→IN_FLIGHT"]
+    R --> R1["Step1: claimToInFlight CAS<br/>PENDING->IN_FLIGHT"]
     R1 --> R2{"선점 성공?"}
     R2 -->|No 다른 워커 처리중| R2a["즉시 return 멱등"]
     R2 -->|Yes| R3["Step2: outbox + paymentEvent 조회"]
     R3 --> R4["Step3: KafkaMessagePublisher.send<br/>topic=payment.commands.confirm<br/>PaymentConfirmCommandMessage<br/>orderId/paymentKey/amount/vendorType/eventUuid"]
     R4 --> R5{"Kafka 발행 성공?"}
-    R5 -->|실패 예외 전파| R5a["단일 TX 전체 롤백 (Step1 CAS 포함)<br/>→ PENDING 그대로 → OutboxWorker 5초 주기 재픽업"]
+    R5 -->|실패 예외 전파| R5a["단일 TX 전체 롤백 (Step1 CAS 포함)<br/>-> PENDING 그대로 -> OutboxWorker 5초 주기 재픽업"]
     R5 -->|성공| R6["Step4: outbox.toDone 저장"]
 
     S["scheduler/OutboxWorker<br/>@Scheduled 폴백"] -.->|"리스너 스킵/크래시 대비"| R
@@ -86,20 +86,20 @@ flowchart TD
     DEDUP -->|중복| NOP["no-op return"]
     DEDUP -->|신규| INB{"pg_inbox 상태"}
 
-    INB -->|없음| ABS["handleAbsent →<br/>PgInboxPendingService.insertPendingAndPublish<br/>pg_inbox PENDING INSERT"]
+    INB -->|없음| ABS["handleAbsent -><br/>PgInboxPendingService.insertPendingAndPublish<br/>pg_inbox PENDING INSERT"]
     INB -->|"PENDING / IN_PROGRESS"| ACT["handleActiveInbox<br/>채널 재적재 (attempt 미사용)"]
     INB -->|terminal 재수신| REEMIT["PgTerminalReemitService.reemit<br/>stored_status_result 재발행 (벤더 호출 X)"]
 
-    ABS --> RDY["AFTER_COMMIT<br/>InboxReadyEventHandler → PgInboxChannel.offerNow"]
+    ABS --> RDY["AFTER_COMMIT<br/>InboxReadyEventHandler -> PgInboxChannel.offerNow"]
     ACT --> RDY
-    RDY --> IMW["PgInboxImmediateWorker<br/>channel.take → process(inboxId)"]
-    RDY -.->|"채널 full / 누락"| PLW["PgInboxPollingWorker @5s<br/>PENDING·IN_PROGRESS 좀비 회수"]
+    RDY --> IMW["PgInboxImmediateWorker<br/>channel.take -> process(inboxId)"]
+    RDY -.->|"채널 full / 누락"| PLW["PgInboxPollingWorker @5s<br/>PENDING/IN_PROGRESS 좀비 회수"]
 
     IMW --> PROC{"inbox.status"}
     PLW --> PROC
-    PROC -->|PENDING| PP["processPending<br/>PENDING→IN_PROGRESS CAS (SKIP LOCKED)"]
+    PROC -->|PENDING| PP["processPending<br/>PENDING->IN_PROGRESS CAS (SKIP LOCKED)"]
     PROC -->|IN_PROGRESS| PZ["processInProgressZombie"]
-    PP --> VEND["PgVendorCallService.invokeVendor (TX 밖)<br/>PgConfirmStrategySelector → Toss/Nicepay/Fake"]
+    PP --> VEND["PgVendorCallService.invokeVendor (TX 밖)<br/>PgConfirmStrategySelector -> Toss/Nicepay/Fake"]
     PZ --> VEND
     VEND --> OUT{"applyOutcome 5분기 (TX_B)"}
 
@@ -110,10 +110,10 @@ flowchart TD
 
     RT -->|"Yes (attempt&lt;4)"| RTO["insertRetryOutbox<br/>pg_outbox commands.confirm (backoff)<br/>+ incrementAttempt (pg_inbox, TX_B)"]
     RT -->|"No (attempt≥4)"| DLO["insertDlqOutbox<br/>pg_outbox commands.confirm.dlq"]
-    DUP -->|"DB·금액 일치"| OK
+    DUP -->|"DB/금액 일치"| OK
     DUP -->|"불일치 / INDETERMINATE"| QU["pg_inbox QUARANTINED<br/>+ pg_outbox events.confirmed QUARANTINED"]
 
-    OK --> OBX["pg_outbox row → AFTER_COMMIT<br/>OutboxReadyEventHandler → PgOutboxChannel"]
+    OK --> OBX["pg_outbox row -> AFTER_COMMIT<br/>OutboxReadyEventHandler -> PgOutboxChannel"]
     NF --> OBX
     QU --> OBX
     REEMIT --> OBX
@@ -121,9 +121,9 @@ flowchart TD
     DLO --> OBX
 
     OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
-    OBW --> RELAY["PgOutboxRelayService → PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
+    OBW --> RELAY["PgOutboxRelayService -> PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
     RELAY --> PUB{"발행 토픽"}
-    PUB -->|events.confirmed| EC["payment.events.confirmed<br/>→ payment-service (Phase 5)"]
+    PUB -->|events.confirmed| EC["payment.events.confirmed<br/>-> payment-service (Phase 5)"]
     PUB -->|"commands.confirm (self-loop)"| T
     PUB -->|commands.confirm.dlq| DLQT["payment.commands.confirm.dlq"]
 
@@ -143,19 +143,19 @@ flowchart TD
     AB --> AC["PaymentConfirmResultUseCase.handle<br/>(1줄 — processMessage)"]
     AC --> AC2["paymentEvent 조회"]
     AC2 --> AD{"message.status"}
-    AD -->|APPROVED| AE1["event.done approvedAt<br/>payment_event_dedupe INSERT IGNORE (멱등 마킹)<br/>→ 각 PaymentOrder별 StockEventUuidDeriver.derive 로 idempotencyKey 도출<br/>→ stockCommittedKafkaTemplate.send (Kafka tx buffer)<br/>→ 컨슈머 오프셋 + 프로듀서 한 단위 commit<br/>→ product-service 재고 확정 (read_committed)"]
-    AD -->|FAILED| AE2["compensateAtomic(orderId, orders) 먼저<br/>(Lua atomic + compensation:done:{orderId} SETNX P8D)<br/>→ markPaymentAsFail reasonCode 나중<br/>(SCR-6 호출 순서 뒤집기 — silent loss 차단)"]
+    AD -->|APPROVED| AE1["event.done approvedAt<br/>payment_event_dedupe INSERT IGNORE (멱등 마킹)<br/>-> 각 PaymentOrder별 StockEventUuidDeriver.derive 로 idempotencyKey 도출<br/>-> stockCommittedKafkaTemplate.send (Kafka tx buffer)<br/>-> 컨슈머 오프셋 + 프로듀서 한 단위 commit<br/>-> product-service 재고 확정 (read_committed)"]
+    AD -->|FAILED| AE2["compensateAtomic(orderId, orders) 먼저<br/>(Lua atomic + compensation:done:orderId SETNX P8D)<br/>-> markPaymentAsFail reasonCode 나중<br/>(SCR-6 호출 순서 뒤집기 — silent loss 차단)"]
     AD -->|QUARANTINED| AE3["compensateAtomic(orderId, orders)<br/>+ QuarantineCompensationHandler.handle<br/>수동 조사 알림"]
-    AC -.예외 throw.-> AERR["DefaultErrorHandler retry × 5<br/>한도 초과 → payment.events.confirmed.dlq"]
+    AC -.예외 throw.-> AERR["DefaultErrorHandler retry × 5<br/>한도 초과 -> payment.events.confirmed.dlq"]
 
     AF["브라우저: 폴링<br/>GET /api/v1/payments/orderId/status"] --> AG["PaymentStatusServiceImpl"]
     AG --> AG1{"outbox active?<br/>PENDING/IN_FLIGHT"}
     AG1 -->|Yes PENDING| AG1a["status=PENDING<br/>approvedAt=null"]
     AG1 -->|Yes IN_FLIGHT| AG1b["status=PROCESSING"]
     AG1 -->|No outbox 이미 DONE| AG2{"event.status?"}
-    AG2 -->|DONE| AH1["status=DONE<br/>approvedAt non-null<br/>→ 성공 페이지"]
-    AG2 -->|FAILED| AH2["status=FAILED<br/>→ 실패 페이지"]
-    AG2 -->|"그 외 READY/IN_PROGRESS"| AH3["status=PROCESSING<br/>→ 계속 폴링"]
+    AG2 -->|DONE| AH1["status=DONE<br/>approvedAt non-null<br/>-> 성공 페이지"]
+    AG2 -->|FAILED| AH2["status=FAILED<br/>-> 실패 페이지"]
+    AG2 -->|"그 외 READY/IN_PROGRESS"| AH3["status=PROCESSING<br/>-> 계속 폴링"]
 ```
 
 ---
@@ -239,7 +239,7 @@ inbox/outbox 모두 같은 `@Transactional` 안에서 atomic commit/rollback —
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING : 리스너 insertPending<br/>(PgConfirmService.handleAbsent — NONE→PENDING INSERT)
+    [*] --> PENDING : 리스너 insertPending<br/>(PgConfirmService.handleAbsent — NONE->PENDING INSERT)
 
     PENDING --> IN_PROGRESS : 워커 transitPendingToInProgress CAS<br/>(SKIP LOCKED, amount 기록)
 
@@ -289,7 +289,7 @@ flowchart TD
 
     RES -->|"PgGatewayRetryableException<br/>5xx / timeout / IO"| RETRY["handleRetry"]
 
-    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 → 진짜 결과 확정"]
+    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 -> 진짜 결과 확정"]
 
     RETRY --> RC{"RetryPolicy.shouldRetry attempt"}
     RC -->|"Yes attempt &lt; 4"| RETRY_OUT["insertRetryOutbox<br/>pg_outbox commands.confirm row INSERT<br/>+ availableAt = now + backoff<br/>+ incrementAttempt (pg_inbox, TX_B)<br/>+ 새 eventUuid (UUID.randomUUID)"]
@@ -324,14 +324,14 @@ sequenceDiagram
     participant Vendor as External PG
     participant OB as pg_outbox
 
-    Note over K, OB: 1차 (inbox 없음 → PENDING → IN_PROGRESS)
-    K->>Cons: 메시지 (attempt 헤더 없음 → 1)
+    Note over K, OB: 1차 (inbox 없음 -> PENDING -> IN_PROGRESS)
+    K->>Cons: 메시지 (attempt 헤더 없음 -> 1)
     Cons->>Svc: handle(command, 1)
     Svc->>Svc: handleAbsent → pg_inbox PENDING INSERT + 채널 적재
     W->>V: processPending: PENDING→IN_PROGRESS CAS(SKIP LOCKED)<br/>→ invokeVendor + applyOutcome(attempt=1)
     V->>Vendor: confirm 호출
     Vendor-->>V: PgGatewayRetryableException
-    V->>OB: insertRetryOutbox + incrementAttempt(pg_inbox 1→2), availableAt=now+~6s
+    V->>OB: insertRetryOutbox + incrementAttempt(pg_inbox 1->2), availableAt=now+~6s
     Note over V, OB: pg_inbox 는 IN_PROGRESS 유지, attempt=2
 
     Note over K, OB: 2차 (~6s 후 — IN_PROGRESS 재진입)
@@ -341,7 +341,7 @@ sequenceDiagram
     Svc->>Svc: handleActiveInbox: 채널 재적재
     W->>V: processInProgressZombie: invokeVendor + applyOutcome(resolveAttempt=2)
     V->>Vendor: confirm 재호출 (멱등 paymentKey + orderId)
-    Vendor-->>V: 성공/멱등 → APPROVED 종결 / 또 transient → insertRetryOutbox + incrementAttempt(2→3)
+    Vendor-->>V: 성공/멱등 -> APPROVED 종결 / 또 transient -> insertRetryOutbox + incrementAttempt(2->3)
     Note over V, OB: attempt 1→2→3→4 누적 → 4 소진 시 DLQ → QUARANTINED 격리
 ```
 
@@ -355,14 +355,14 @@ backoff: `2s × 3^(attempt-1) × jitter±25%` 지수 증가. attempt 가 `pg_inb
 
 ```mermaid
 flowchart TD
-    DLQ_OUT["insertDlqOutbox attempt ≥ 4"] --> DLQ_RELAY["pg_outbox row → relay"]
+    DLQ_OUT["insertDlqOutbox attempt ≥ 4"] --> DLQ_RELAY["pg_outbox row -> relay"]
     DLQ_RELAY --> DLQ_TOPIC["payment.commands.confirm.dlq 발행"]
     DLQ_TOPIC --> DLQ_CONS["PaymentConfirmDlqConsumer<br/>@KafkaListener groupId=pg-service-dlq"]
     DLQ_CONS --> DLQ_SVC["PgDlqService.handle"]
     DLQ_SVC --> DLQ_GUARD{"pg_inbox 상태"}
     DLQ_GUARD -->|"이미 terminal"| DLQ_NOOP["no-op (중복 DLQ 진입 흡수)"]
     DLQ_GUARD -->|"비terminal"| DLQ_TRAN["transitToQuarantined REASON=RETRY_EXHAUSTED<br/>+ pg_outbox events.confirmed QUARANTINED INSERT"]
-    DLQ_TRAN --> DLQ_END["AFTER_COMMIT → events.confirmed publish"]
+    DLQ_TRAN --> DLQ_END["AFTER_COMMIT -> events.confirmed publish"]
 ```
 
 `pg-service-dlq` 별도 consumer group — `pg-service` 와 분리되어 DLQ 메시지가 정상 토픽 consumer offset 진행을 막지 않음.

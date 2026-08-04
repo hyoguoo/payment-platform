@@ -39,6 +39,16 @@ LogFmt.info(
 - `LogFmt.debug` / `info` / `warn` / `error` 4단계
 - `Supplier<String>` 받는 형태 — 로그 레벨 필터링 시 문자열 빌드 비용 회피
 
+## 민감 값 마스킹
+
+로그 한 줄이 최종 문자열로 조립된 직후 `core/common/log/MaskingPatternLayout` 이 정규식으로 민감 값을 가린다(5서비스 각자 보유 — `LogFmt` 복제 관례와 동일).
+
+- 패턴은 코드가 아니라 각 서비스 `logback-spring.xml` 의 `<maskPattern>` 에 등록한다 — 코드 변경 없이 추가·제거 가능
+- 각 패턴은 **캡처 그룹을 정확히 하나** 가져야 하고, 그 그룹으로 잡힌 구간만 `***` 로 치환된다. 그룹 밖 접두사는 남아 디버깅 단서를 유지한다
+- 대상은 결제 키·인증 헤더 값·이메일·카드번호 형태 넷. **주문 번호와 결제 상태는 대상이 아니다** — 가리면 장애 추적이 불가능해진다
+- 개별 로깅 코드에 마스킹을 넣지 않는다. 출력 직전 일괄 처리라 새 로그를 추가하며 빠뜨려도 걸린다
+- 외부 응답 원문을 로그에 실을 때는 길이를 제한하고 잘림을 표시한다(예: `TossPaymentGatewayStrategy` / `NicepayPaymentGatewayStrategy` 의 파싱 실패 경로) — 마스킹은 알려진 형태만 걸러내므로, 예상 못한 본문이 통째로 흐르는 것은 따로 막아야 한다
+
 ## AOP 컨벤션
 
 **`@PublishDomainEvent` + `@PaymentStatusChange`**:

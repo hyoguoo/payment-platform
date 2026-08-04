@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -280,7 +281,7 @@ public class PaymentConfirmResultUseCase {
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
         stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
 
-        paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode);
+        paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode, PaymentStatusChangeTrigger.CONFIRM);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_FAILED,
                 () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);

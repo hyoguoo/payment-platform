@@ -17,6 +17,30 @@ allprojects {
     }
 }
 
+// 구조 판정이 필요한 코드 스타일 검사(광범위 예외 삼킴 금지, try 블록 외부 변수 재할당 금지)를 위한
+// checkstyle 커스텀 Check 모듈. 별도 subproject 로 만들지 않고 root project 자체 전용 sourceSet 에
+// 격리한다 — root project 의 기본 main/test sourceSet 은 비워 두고, checkstyleMain/checkstyleTest 도
+// 이 목적에 쓰지 않으므로 비활성화한다. (이 sourceSet 자체를 checkstyle.xml 로 검사하려 하면 아직
+// classpath 에 올라가지 않은 자기 자신의 커스텀 규칙을 요구해 순환에 빠지므로 별도 task 도 끈다.)
+sourceSets {
+    checkstyleCustomChecks {
+        java {
+            srcDirs = ['config/checkstyle/custom-checks/src/main/java']
+        }
+        resources {
+            srcDirs = ['config/checkstyle/custom-checks/src/main/resources']
+        }
+    }
+}
+
+dependencies {
+    // subprojects 블록의 checkstyle { toolVersion } 과 반드시 같은 버전을 유지한다.
+    checkstyleCustomChecksImplementation 'com.puppycrawl.tools:checkstyle:10.17.0'
+}
+
+tasks.matching { it.name in ['checkstyleMain', 'checkstyleTest', 'checkstyleCheckstyleCustomChecks'] }
+        .configureEach { enabled = false }
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'io.spring.dependency-management'
@@ -41,6 +65,13 @@ subprojects {
         annotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        // 구조 판정 커스텀 Check(광범위 예외 삼킴, try 블록 외부 변수 재할당) — root project 전용
+        // sourceSet 산출물을 이 서비스의 checkstyle 실행 classpath 에 추가한다. checkstyle 설정에
+        // 직접 dependency 를 추가하면 Gradle 이 tool 본체 기본 dependency 를 더 이상 자동으로
+        // 넣어주지 않으므로, 같은 버전(checkstyle { toolVersion } 과 동일하게 유지)의 tool 본체도
+        // 함께 명시한다.
+        checkstyle 'com.puppycrawl.tools:checkstyle:10.17.0'
+        checkstyle rootProject.sourceSets.checkstyleCustomChecks.output
     }
 
     // Checkstyle Configuration

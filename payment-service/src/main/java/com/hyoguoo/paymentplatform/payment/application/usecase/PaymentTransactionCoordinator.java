@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -61,7 +62,7 @@ public class PaymentTransactionCoordinator {
     @Transactional
     public PaymentEvent markStockCacheDownQuarantine(PaymentEvent paymentEvent) {
         return paymentCommandUseCase.markPaymentAsQuarantined(
-                paymentEvent, "재고 캐시 장애로 인한 격리");
+                paymentEvent, "재고 캐시 장애로 인한 격리", PaymentStatusChangeTrigger.STOCK_CACHE_DOWN);
     }
 
     /**

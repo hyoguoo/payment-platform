@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -59,7 +60,8 @@ public class QuarantineCompensationHandler {
             return;
         }
 
-        PaymentEvent quarantinedEvent = paymentCommandUseCase.markPaymentAsQuarantined(event, reason);
+        PaymentEvent quarantinedEvent = paymentCommandUseCase.markPaymentAsQuarantined(
+                event, reason, PaymentStatusChangeTrigger.CONFIRM);
         paymentEventRepository.saveOrUpdate(quarantinedEvent);
 
         LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_QUARANTINE_TRANSITIONED,

@@ -15,6 +15,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -66,7 +67,7 @@ class PaymentConfirmConsumerTest {
         PgVendorCallService vendorCallService =
                 new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
                         new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
-                        duplicateApprovalHandler);
+                        duplicateApprovalHandler, new SecureRandom());
         // PgConfirmService 생성자에 PgInboxPendingService 주입
         PgInboxPendingService pendingService = Mockito.mock(PgInboxPendingService.class);
         Mockito.when(pendingService.insertPendingAndPublish(

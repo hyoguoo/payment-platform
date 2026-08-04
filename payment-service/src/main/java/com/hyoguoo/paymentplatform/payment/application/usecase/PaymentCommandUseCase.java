@@ -2,8 +2,10 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
 import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
+import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Trigger;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
@@ -28,7 +30,7 @@ public class PaymentCommandUseCase {
 
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = "confirm")
+    @PaymentStatusChange(toStatus = "IN_PROGRESS", trigger = PaymentStatusChangeTrigger.CONFIRM)
     public PaymentEvent executePayment(PaymentEvent paymentEvent, String paymentKey) {
         Instant now = clock.instant();
         paymentEvent.execute(paymentKey, now, now);
@@ -37,17 +39,26 @@ public class PaymentCommandUseCase {
 
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "DONE", trigger = "auto")
+    @PaymentStatusChange(toStatus = "DONE", trigger = PaymentStatusChangeTrigger.CONFIRM)
     public PaymentEvent markPaymentAsDone(PaymentEvent paymentEvent, Instant approvedAt) {
         Instant now = clock.instant();
         paymentEvent.done(approvedAt, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
+    /**
+     * 결제 실패 전이. 승인 실패 경로({@link PaymentConfirmResultUseCase})와 재고 실패 경로
+     * ({@link PaymentFailureUseCase})가 함께 호출하므로, 애노테이션 고정값 대신 호출자가
+     * {@code trigger} 인자로 전이 주체를 넘긴다.
+     */
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "FAILED", trigger = "auto")
-    public PaymentEvent markPaymentAsFail(PaymentEvent paymentEvent, @Reason String failureReason) {
+    @PaymentStatusChange(toStatus = "FAILED")
+    public PaymentEvent markPaymentAsFail(
+            PaymentEvent paymentEvent,
+            @Reason String failureReason,
+            @Trigger String trigger
+    ) {
         Instant now = clock.instant();
         paymentEvent.fail(failureReason, now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -55,17 +66,26 @@ public class PaymentCommandUseCase {
 
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "EXPIRED", trigger = "expiration")
+    @PaymentStatusChange(toStatus = "EXPIRED", trigger = PaymentStatusChangeTrigger.EXPIRATION)
     public PaymentEvent expirePayment(PaymentEvent paymentEvent) {
         Instant now = clock.instant();
         paymentEvent.expire(now);
         return paymentEventRepository.saveOrUpdate(paymentEvent);
     }
 
+    /**
+     * 격리 전이. 재고 캐시 장애 경로({@link PaymentTransactionCoordinator})와 금액 불일치·벤더 격리
+     * 경로({@link QuarantineCompensationHandler})가 함께 호출하므로, 애노테이션 고정값 대신
+     * 호출자가 {@code trigger} 인자로 전이 주체를 넘긴다.
+     */
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "QUARANTINED", trigger = "auto")
-    public PaymentEvent markPaymentAsQuarantined(PaymentEvent paymentEvent, @Reason String reason) {
+    @PaymentStatusChange(toStatus = "QUARANTINED")
+    public PaymentEvent markPaymentAsQuarantined(
+            PaymentEvent paymentEvent,
+            @Reason String reason,
+            @Trigger String trigger
+    ) {
         Instant now = clock.instant();
         paymentEvent.quarantine(reason, now);
         PaymentEvent saved = paymentEventRepository.saveOrUpdate(paymentEvent);
@@ -92,7 +112,7 @@ public class PaymentCommandUseCase {
      */
     @Transactional
     @PublishDomainEvent(action = "changed")
-    @PaymentStatusChange(toStatus = "FAILED", trigger = "manual")
+    @PaymentStatusChange(toStatus = "FAILED", trigger = PaymentStatusChangeTrigger.MANUAL)
     public PaymentEvent markPaymentAsFailFromQuarantine(PaymentEvent paymentEvent, @Reason String reason) {
         Instant now = clock.instant();
         paymentEvent.failFromQuarantine(reason, now);

@@ -54,4 +54,18 @@ class RetryPolicyTest {
         Duration backoff = RetryPolicy.computeBackoff(4, rng);
         assertThat(backoff).isBetween(Duration.ofMillis(40500), Duration.ofMillis(67500));
     }
+
+    // -----------------------------------------------------------------------
+    // 실제로 예약되는 마지막 재시도 회차와 좀비 회수 타임아웃의 관계 고정
+    // attempt=MAX_ATTEMPTS(4)는 shouldRetry 가 false 를 반환해 DLQ 경로로 빠지므로,
+    // 실제 재시도 예약에 computeBackoff 가 쓰이는 마지막 회차는 MAX_ATTEMPTS-1(=3)이다.
+    // -----------------------------------------------------------------------
+
+    @RepeatedTest(20)
+    @DisplayName("computeBackoff(attempt=MAX_ATTEMPTS-1) — 좀비 회수 타임아웃(60초, pg-service "
+            + "application.yml inbox-polling-worker.in-progress-timeout-ms)보다 항상 짧다")
+    void computeBackoff_LastScheduledRetryAttempt_IsAlwaysBelowZombieRecoveryTimeout() {
+        Duration backoff = RetryPolicy.computeBackoff(RetryPolicy.MAX_ATTEMPTS - 1, rng);
+        assertThat(backoff).isLessThan(Duration.ofMillis(60_000));
+    }
 }

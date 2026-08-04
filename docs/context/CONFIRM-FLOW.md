@@ -50,9 +50,11 @@ flowchart TD
     RJ --> FAIL_409([409 throw])
     CD --> FAIL_409
 
-    TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY → IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox PENDING INSERT<br/>confirmPublisher.publish (ApplicationEvent)"]
-    TX_INNER -->|RuntimeException| COMP[보상 안 함<br/>재고와 토큰 차감 상태 유지<br/>StockRetentionMetrics 기록 + 미복구 error 로그]
-    COMP --> RETHROW([txException re-throw])
+    TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY -> IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox INSERT IGNORE + 잠금 확인 조회<br/>confirmPublisher.publish (ApplicationEvent)"]
+    TX_INNER -->|PaymentOutboxDuplicateException<br/>동시 확정의 진 쪽| DUP[경보 없이 재throw<br/>이긴 쪽이 이미 정상 확정<br/>재고 손실 아님]
+    DUP --> RETHROW
+    TX_INNER -->|그 밖의 RuntimeException| COMP[보상 안 함<br/>재고와 토큰 차감 상태 유지<br/>StockRetentionMetrics 기록 + 미복구 error 로그]
+    COMP --> RETHROW([예외 re-throw, TX 롤백])
     TX_INNER -->|성공| RESP([202 Accepted])
 ```
 
@@ -71,14 +73,14 @@ flowchart TD
 flowchart TD
     EV(["@TransactionalEventListener(AFTER_COMMIT)<br/>fallbackExecution=true<br/>@Async(outboxRelayExecutor VT)"]) --> RELAY["OutboxRelayService.relay orderId<br/>@Transactional (단일 TX, Step1~4 전체)"]
 
-    RELAY --> CL["Step 1: claimToInFlight<br/>atomic UPDATE WHERE status='PENDING' → IN_FLIGHT<br/>(같은 TX 내, REQUIRES_NEW 아님)"]
+    RELAY --> CL["Step 1: claimToInFlight<br/>atomic UPDATE WHERE status='PENDING' -> IN_FLIGHT<br/>(같은 TX 내, REQUIRES_NEW 아님)"]
     CL -->|선점 실패 false| SKIP([no-op return])
     CL -->|선점 성공 true| LOAD[Step 2: outbox 조회<br/>paymentEvent 조회]
 
     LOAD --> SEND["Step 3: messagePublisherPort.send<br/>topic=payment.commands.confirm<br/>key=orderId<br/>PaymentConfirmCommandMessage"]
 
-    SEND -->|발행 실패 예외 전파| ROLLBACK["TX 전체 롤백<br/>(Step1 CAS 포함 미커밋) → PENDING 그대로<br/>OutboxWorker 5초 주기 재픽업"]
-    SEND -->|성공| DONE["Step 4: outbox.toDone save<br/>같은 TX 커밋 시 PENDING → DONE 원자 반영"]
+    SEND -->|발행 실패 예외 전파| ROLLBACK["TX 전체 롤백<br/>(Step1 CAS 포함 미커밋) -> PENDING 그대로<br/>OutboxWorker 5초 주기 재픽업"]
+    SEND -->|성공| DONE["Step 4: outbox.toDone save<br/>같은 TX 커밋 시 PENDING -> DONE 원자 반영"]
 
     DONE --> END([완료])
     ROLLBACK --> END
@@ -96,7 +98,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    S(["@Scheduled(fixedDelayString=scheduler.outbox-worker.fixed-delay-ms, 기본 5000ms)"]) --> R0["Step 0: recoverTimedOutInFlightRecords<br/>inFlightAt 기준 N분(기본 5분) 초과 → PENDING 복귀"]
+    S(["@Scheduled(fixedDelayString=scheduler.outbox-worker.fixed-delay-ms, 기본 5000ms)"]) --> R0["Step 0: recoverTimedOutInFlightRecords<br/>inFlightAt 기준 N분(기본 5분) 초과 -> PENDING 복귀"]
     R0 --> R1["Step 1: findPendingBatch(batchSize, 기본 50건)"]
     R1 -->|배치 없음| END([no-op])
     R1 --> LOOP[배치 순회]
@@ -131,11 +133,11 @@ flowchart TD
     DEDUPE -->|1 row = 신규| LOAD[paymentEvent 조회]
     LOAD --> SW{message.status}
 
-    SW -->|APPROVED| AMT["parseApprovedAt (null → IllegalArgumentException)<br/>isAmountMismatch 검사"]
+    SW -->|APPROVED| AMT["parseApprovedAt (null -> IllegalArgumentException)<br/>isAmountMismatch 검사"]
     AMT -->|불일치 또는 amount=null| QU_AM["(redis 보상 미수행 — 격리 정책)<br/>+ QuarantineCompensationHandler.handle<br/>reason=AMOUNT_MISMATCH"]
-    AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>+ for-loop (PaymentOrder × N)<br/>  StockEventUuidDeriver.derive → stockCommittedKafkaTemplate.send<br/>(EOS producer tx buffer, D8)"]
+    AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>+ for-loop (PaymentOrder × N)<br/>  StockEventUuidDeriver.derive -> stockCommittedKafkaTemplate.send<br/>(EOS producer tx buffer, D8)"]
 
-    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic 먼저<br/>→ paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기)"]
+    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic 먼저<br/>-> paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기)"]
 
     SW -->|QUARANTINED| QU_PG["stockCachePort.compensateAtomic<br/>+ QuarantineCompensationHandler.handle"]
 
@@ -148,7 +150,7 @@ flowchart TD
     NOOP --> END
     COMMIT --> END
 
-    COMMIT -.->|RuntimeException| ABORT["producer abort + RDB rollback<br/>offset 미커밋 → 재배달"]
+    COMMIT -.->|RuntimeException| ABORT["producer abort + RDB rollback<br/>offset 미커밋 -> 재배달"]
     ABORT --> RETRY["DefaultErrorHandler FixedBackOff(1s×5)"]
     RETRY -->|5회 실패| DLQ["payment.events.confirmed.dlq"]
 ```
@@ -257,7 +259,7 @@ EOS 전환 이후 `StockOutboxImmediateEventHandler` / `StockOutboxRelayService`
 flowchart TD
     APPROVED["handleApproved 진입<br/>(EOS 트랜잭션 진행 중)"] --> MARK_DONE["markPaymentAsDone(paymentEvent, approvedAt)<br/>RDB 상태 전이"]
     MARK_DONE --> LOOP["for (PaymentOrder order : paymentEvent.getPaymentOrderList())"]
-    LOOP --> DERIVE["StockEventUuidDeriver.derive(orderId, productId, 'stock-commit')<br/>→ idempotencyKey (결정적 UUID, D8)"]
+    LOOP --> DERIVE["StockEventUuidDeriver.derive(orderId, productId, 'stock-commit')<br/>-> idempotencyKey (결정적 UUID, D8)"]
     DERIVE --> SEND["stockCommittedKafkaTemplate.send<br/>topic=payment.events.stock-committed<br/>key=productId (동일 상품 이벤트 순서 보장)<br/>payload=StockCommittedEvent(idempotencyKey)"]
     SEND --> LOOP
     LOOP -->|loop 종료| COMMIT["EOS 트랜잭션 커밋<br/>RDB + offset + producer 원자 커밋"]
@@ -363,7 +365,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING : confirm TX 내 INSERT (createPendingRecord)
+    [*] --> PENDING : confirm TX 내 INSERT IGNORE (createPendingIfAbsent)
 
     PENDING --> IN_FLIGHT : claimToInFlight CAS (atomic UPDATE)
     IN_FLIGHT --> DONE : Kafka 발행 성공 (outbox.toDone)
@@ -450,6 +452,8 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 |---|---|---|
 | confirm 진입 | `validateConfirmRequest` LVAL 가드 — TX 진입 전 도메인 검증 | `PaymentEvent.validateConfirmRequest` |
 | confirm TX | `@Transactional` + `payment_outbox PENDING` 단일 TX 커밋 | `PaymentTransactionCoordinator.executeConfirmTx` |
+| 동시 확정 판정 | `payment_outbox` `INSERT IGNORE` + 반영 행 0 이면 **블로킹 쓰기 잠금 읽기**(`findByOrderIdForUpdate`)로 기존 행 확인 → 생성됨 / 이미 있음 / 저장 실패 3분기. 확정 TX 는 상태 전이를 먼저 해 읽기 스냅샷을 잡으므로 평범한 조회로는 자신을 막은 행을 못 본다 — 잠금 읽기가 필수다(`SKIP LOCKED` 아님) | `PaymentOutboxRepositoryImpl.createPendingIfAbsent` |
+| 중복 확정 경보 분리 | 진 쪽의 `PaymentOutboxDuplicateException` 만 재고 미회수 경보에서 제외하고 그대로 재throw — 예외를 삼키지 않아 TX 롤백 경계 유지. 그 밖의 실패는 종전대로 경보 | `OutboxAsyncConfirmService.executeConfirmTxWithStockRetention` |
 | checkout 중복 | `IdempotencyStoreRedisAdapter` — Redis SET NX EX. 키=`Idempotency-Key` 헤더 | `IdempotencyStoreRedisAdapter.getOrCreate` |
 | outbox claim | `claimToInFlight` 단일 TX 내 atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
 | Kafka 멱등 | producer key=orderId. eventUuid=orderId 재사용 (1회 발행 per orderId) | `OutboxRelayService.buildMessage` |

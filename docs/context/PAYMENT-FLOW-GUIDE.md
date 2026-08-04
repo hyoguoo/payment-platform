@@ -76,7 +76,7 @@ sequenceDiagram
 2. **중복 요청 흡수** — 같은 키면 기존 주문 그대로 반환(200), 신규면 생성 진행 (`IdempotencyStore.getOrCreate`)
 3. **구매자 검증** — user-service 조회 (`OrderedUserUseCase.getUserInfoById`)
 4. **주문 상품 확정** — product-service 조회로 가격·상품 확정 (`OrderedProductUseCase.getProductInfoList`)
-5. **결제 주문 생성·영속화** — `PaymentEvent`(+ `PaymentOrder` N건)를 **`READY`** 상태로 저장 (`PaymentCreateUseCase.createNewPaymentEvent`) → `201` (orderId, totalAmount)
+5. **결제 주문 생성·영속화** — `PaymentEvent`(+ `PaymentOrder` N건)를 **`READY`** 상태로 저장 (`PaymentCreateUseCase.createNewPaymentEvent`) → `201` (orderId, totalAmount, duplicate). 중복 요청이면 상태 코드가 `200` 이고 응답 본문의 `duplicate` 가 참이다 — 클라이언트는 상태 코드와 본문 어느 쪽으로도 중복 여부를 알 수 있다
 6. 브라우저가 **PG 결제창 호출**(Toss/NicePay SDK) → 사용자 결제 → PG 가 `paymentKey` 들고 returnUrl 로 리다이렉트 *(취소/실패 시 서버 상태 변화 없음)*
 
 ### 단계 2 — 결제 확정 진입 (confirm, 동기 구간 → 202)

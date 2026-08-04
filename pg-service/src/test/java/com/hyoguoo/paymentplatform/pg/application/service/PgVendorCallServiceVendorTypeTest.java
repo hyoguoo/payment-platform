@@ -13,6 +13,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapterToss;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -64,7 +65,7 @@ class PgVendorCallServiceVendorTypeTest {
         sut = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmSelector, eventPublisher,
                 new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, fixedClock,
-                duplicateApprovalHandler);
+                duplicateApprovalHandler, new SecureRandom());
 
         // inbox IN_PROGRESS 사전 준비
         inboxRepository.save(PgInbox.of(

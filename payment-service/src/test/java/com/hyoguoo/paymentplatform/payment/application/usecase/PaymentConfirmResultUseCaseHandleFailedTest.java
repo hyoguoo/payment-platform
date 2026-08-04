@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
+import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
@@ -90,7 +91,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
 
         given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
                 .willReturn(StockCompensationAtomicResult.OK);
-        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
+        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -100,7 +101,8 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
 
         InOrder inOrder = inOrder(stockCachePort, paymentCommandUseCase);
         inOrder.verify(stockCachePort).compensateAtomic(eq(ORDER_ID), any());
-        inOrder.verify(paymentCommandUseCase).markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
+        inOrder.verify(paymentCommandUseCase)
+                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE), eq(PaymentStatusChangeTrigger.CONFIRM));
     }
 
     @Test
@@ -117,7 +119,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         sut.handle(message);
 
         then(stockCachePort).shouldHaveNoInteractions();
-        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
+        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any(), any());
     }
 
     @Test
@@ -129,7 +131,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
 
         given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
                 .willReturn(StockCompensationAtomicResult.ALREADY_DONE);
-        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class)))
+        given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -138,7 +140,8 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         sut.handle(message);
 
         then(stockCachePort).should().compensateAtomic(eq(ORDER_ID), any());
-        then(paymentCommandUseCase).should().markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE));
+        then(paymentCommandUseCase).should()
+                .markPaymentAsFail(any(PaymentEvent.class), eq(REASON_CODE), eq(PaymentStatusChangeTrigger.CONFIRM));
     }
 
     @Test
@@ -158,7 +161,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Redis 연결 실패");
 
-        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any());
+        then(paymentCommandUseCase).should(never()).markPaymentAsFail(any(), any(), any());
     }
 
     // ---- factory helpers ----
