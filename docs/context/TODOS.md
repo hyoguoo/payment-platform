@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -125,13 +125,31 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 **현황**:
 - `payment_outbox`: `RetryPolicy` 존재 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. 이 정책을 적용하던 REQUIRES_NEW 선점 경로의 재시도 증가 메서드는 프로덕션 호출처가 0이라 BACKLOG-RESIDUE-CLEANUP 에서 제거됐다 — `RetryPolicy.isExhausted` 소진 판정은 값 객체 메서드로 남지만 지금은 프로덕션 호출처가 없다. 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX 롤백)는 retryCount 증가·`FAILED` 종결 없이 5초 주기 무백오프로 재시도된다. `PaymentOutboxStatus.FAILED` 도달 코드 경로도 현재 0건.
 
+**타임아웃 회수 경로도 실행되지 않는다** (BACKLOG-RESIDUE-CLEANUP ship 중 확인):
+
+제거 후 `incrementRetryCount` 를 부르는 프로덕션 지점은 `recoverTimedOutInFlightRecords` 하나만 남는데, 그 조회 조건(`status = 'IN_FLIGHT' AND inFlightAt < cutoff`)에 걸리는 행이 생기지 않는다. `relay` 가 단일 TX 안에서 PENDING → IN_FLIGHT → DONE 을 모두 처리해 커밋된 상태는 DONE(성공) 또는 PENDING(롤백) 둘뿐이고, 도메인 메서드 `toInFlight()` 는 프로덕션 호출처가 0이다. 이론적 예외는 선점 성공 직후 행이 사라져 `relay` 가 예외 없이 리턴하는 경우(`OutboxRelayService.java:63-67`) 하나뿐이라 실질 도달 불가.
+
+그 결과 스키마와 지표가 실행되지 않는 정책을 가리킨다:
+
+| 대상 | 실제 값 | 소비처 |
+|:---:|:---:|:---:|
+| `payment_outbox.retry_count` | 항상 0 | `attempt_count_histogram` 지표 |
+| `payment_outbox.next_retry_at` | 항상 null | 선점/배치 조회 게이트 2곳, `future_pending_count` 지표 |
+| `payment_outbox.in_flight_at` | DONE 행에 값 있음 | `findTimedOutInFlight`(매치 0) |
+| `payment_outbox.available_at` | 삽입 기본값만 | 코드 사용처 0 |
+
+`attempt_count_histogram` 과 `future_pending_count` 는 구조적으로 움직이지 않는 지표다.
+
 **조정 필요 사항**:
 1. **payment_outbox 정책 재검토** — REQUIRES_NEW 선점 경로를 되살려 실제로 연결할지, 현재 단일 TX 무백오프 재시도를 유지하고 backoff 를 그 경로에 이식할지 결정 필요. maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증도 병행 (Phase 5 자물쇠 — k6 측정 후)
+2. **정책을 두지 않기로 하면 스키마·지표까지 정리** — 위 컬럼 4개와 지표 2개, 그리고 도달 불가 상태(`IN_FLIGHT` 커밋, `FAILED`)를 함께 걷는다. `next_retry_at` 은 살아있는 쿼리 3곳과 인덱스에 엮여 있어 선점·배치 조회를 같이 손봐야 하고, 결제 핵심 테이블의 파괴적 마이그레이션이라 별도 토픽이 필요하다. 1번 결정이 선행돼야 한다 — 지금 걷으면 측정을 기다리던 결정을 측정 없이 확정하는 셈이다
 
 **관련 코드**:
 - `payment-service/.../domain/PaymentOutbox.java` — retryCount + incrementRetryCount
 - `payment-service/.../application/config/RetryPolicyProperties.java`
 - `payment-service/.../domain/RetryPolicy.java`
+- `payment-service/.../infrastructure/metrics/PaymentOutboxMetrics.java` — 움직이지 않는 지표 2종
+- `payment-service/src/main/resources/db/migration/V1__payment_schema.sql:57-77` — 컬럼·인덱스 정의
 
 #### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 
