@@ -87,7 +87,7 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 
 ## 진행 상황
 
-- [ ] Task 1: 미사용 선점 경로 제거
+- [x] Task 1: 미사용 선점 경로 제거
 - [ ] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
 - [ ] Task 3: 프로덕션 스타일 위반 2건 해소
 - [ ] Task 4: 테스트 스타일 위반 4건 해소
@@ -123,7 +123,12 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - `./gradlew :payment-service:compileJava :payment-service:compileTestJava` 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PaymentOutboxUseCase`에서 `claimToInFlight(String)`, `incrementRetryOrFail(String, PaymentOutbox)` 삭제, 함께 쓰던 `Propagation` import 정리
+- `PaymentOutboxUseCaseTest`에서 대응 테스트 4건(`claimToInFlight` 2건, `incrementRetryOrFail` 2건) 삭제 — 남은 케이스가 쓰던 import 는 전부 유지되어 추가 정리 없음
+- `PaymentOutboxRepository.claimToInFlight` 포트, `PaymentOutboxRepositoryImpl`/`JpaPaymentOutboxRepository` 구현, `OutboxRelayService.relay` 사용처는 확인 후 그대로 유지
+- `grep -rn "claimToInFlight\|incrementRetryOrFail" payment-service/src/main` 결과: 포트 선언·구현·`OutboxRelayService` 3파일만 남음 (유스케이스 파일 없음)
+- `./gradlew :payment-service:test :payment-service:compileJava :payment-service:compileTestJava` 전체 통과 (567 tests)
 
 ---
 
