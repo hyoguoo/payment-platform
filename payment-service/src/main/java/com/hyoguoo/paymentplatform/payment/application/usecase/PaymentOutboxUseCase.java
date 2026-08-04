@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -47,27 +46,6 @@ public class PaymentOutboxUseCase {
             case SAVE_FAILED -> throw new IllegalStateException(
                     "PaymentOutboxUseCase.createPendingRecord: orderId=" + orderId + " result=" + result);
         };
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Optional<PaymentOutbox> claimToInFlight(String orderId) {
-        Instant now = clock.instant();
-        boolean claimed = paymentOutboxRepository.claimToInFlight(orderId, now);
-        if (!claimed) {
-            return Optional.empty();
-        }
-        return paymentOutboxRepository.findByOrderId(orderId);
-    }
-
-    @Transactional
-    public boolean incrementRetryOrFail(String orderId, PaymentOutbox currentOutbox) {
-        RetryPolicy policy = retryPolicyProperties.toRetryPolicy();
-        if (!policy.isExhausted(currentOutbox.getRetryCount())) {
-            currentOutbox.incrementRetryCount(policy, clock.instant());
-            paymentOutboxRepository.save(currentOutbox);
-            return false;
-        }
-        return true;
     }
 
     @Transactional

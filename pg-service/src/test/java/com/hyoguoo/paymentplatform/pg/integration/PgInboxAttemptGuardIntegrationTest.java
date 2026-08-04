@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Primary;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Tag("integration")
 @Testcontainers
+@ActiveProfiles("test")
 @Transactional
 @DisplayName("JpaPgInboxRepository.incrementAttempt 진행 중 상태 가드 통합 테스트")
 class PgInboxAttemptGuardIntegrationTest {

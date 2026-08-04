@@ -18,8 +18,10 @@ import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -36,12 +38,52 @@ class FakePgGatewayStrategyTest {
             "order-1", "fake-key-1234", BigDecimal.valueOf(1000), PgVendorType.TOSS);
 
     private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate, ApplicationEventPublisher publisher) {
-        // latency 0/0 → 테스트에서 sleep 없음.
-        return new FakePgGatewayStrategy(Clock.systemUTC(), new TossApiMetrics(registry), publisher, failRate, 0, 0);
+        // latency 0/0 → 테스트에서 sleep 없음. 활성 프로파일은 warnActivation() 을 호출하지 않는
+        // 기존 케이스와 무관하므로 빈 MockEnvironment 로 충분하다.
+        return new FakePgGatewayStrategy(
+                Clock.systemUTC(), new TossApiMetrics(registry), publisher, new MockEnvironment(), failRate, 0, 0);
     }
 
     private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate) {
         return strategy(registry, failRate, mock(ApplicationEventPublisher.class));
+    }
+
+    private FakePgGatewayStrategy strategyWithProfiles(String... activeProfiles) {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles(activeProfiles);
+        return new FakePgGatewayStrategy(
+                Clock.systemUTC(), new TossApiMetrics(new SimpleMeterRegistry()),
+                mock(ApplicationEventPublisher.class), environment, 0.0, 0, 0);
+    }
+
+    @Test
+    void warnActivation_스모크_프로파일이면_기동을_막지_않는다() {
+        FakePgGatewayStrategy strategy = strategyWithProfiles("docker", "smoke");
+
+        assertThatCode(strategy::warnActivation).doesNotThrowAnyException();
+    }
+
+    @Test
+    void warnActivation_테스트_프로파일이면_기동을_막지_않는다() {
+        FakePgGatewayStrategy strategy = strategyWithProfiles("test");
+
+        assertThatCode(strategy::warnActivation).doesNotThrowAnyException();
+    }
+
+    @Test
+    void warnActivation_허용_프로파일이_없으면_기동을_막는다() {
+        FakePgGatewayStrategy strategy = strategyWithProfiles("docker");
+
+        assertThatThrownBy(strategy::warnActivation)
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void warnActivation_프로파일_미지정이면_기동을_막는다() {
+        FakePgGatewayStrategy strategy = strategyWithProfiles();
+
+        assertThatThrownBy(strategy::warnActivation)
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

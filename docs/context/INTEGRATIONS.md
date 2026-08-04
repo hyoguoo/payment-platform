@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-07-29 (LIVE-DRILL-FORMALIZATION — Fake 전략 행에 라이브 검증 용도·`supports()` 무차별 수락 위험 반영 + Fake 시나리오 접두어 문단 신설(중복 판정보다 앞선 순서 근거, 자가 회복 횟수와 재시도 한도 관계, 전역 실패율 병용 금지)). 이전: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
+> 최종 갱신: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — Fake 전략 행에 활성 프로파일 기준 부팅 가드 반영: 경고 배너 뒤에 `smoke`/`test` 미포함 시 기동 차단). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — Fake 전략 행에 라이브 검증 용도·`supports()` 무차별 수락 위험 반영 + Fake 시나리오 접두어 문단 신설(중복 판정보다 앞선 순서 근거, 자가 회복 횟수와 재시도 한도 관계, 전역 실패율 병용 금지)). 이전: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -12,7 +12,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 |---|---|---|
 | Toss | `toss/TossPaymentGatewayStrategy` | 항상 |
 | NicePay | `nicepay/NicepayPaymentGatewayStrategy` | 항상 |
-| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 경고 배너. `supports()` 는 벤더 종류를 가리지 않고 수락하므로 설정 오배포 시 실제 승인 없이 결제가 완료된다(`CONCERNS.md` L-18) |
+| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 가 경고 배너를 남긴 뒤 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. `supports()` 는 벤더 종류를 가리지 않고 수락하므로, 이 가드가 없으면 설정 오배포 시 실제 승인 없이 결제가 완료된다(`CONCERNS.md` L-18) |
 
 **Fake 시나리오 접두어** (라이브 검증용): `paymentKey` 앞머리로 벤더 응답을 결정적으로 고른다 — `fake-fail-`(확정 실패), `fake-retry-`(매 호출 재시도 가능 실패 → 소진 → 격리), `fake-flaky-`(정해진 횟수 실패 후 승인 → 자가 회복). 판정은 **중복 승인 판정보다 앞**에서 이뤄진다 — 뒤에 두면 재시도 자기루프가 중복으로 흡수돼 시도 횟수가 소진되지 않는다. 자가 회복 실패 횟수는 `RetryPolicy.MAX_ATTEMPTS` 보다 작아야 하며 그 관계는 단위 테스트로 고정돼 있다. 전역 합성 실패율(`pg.gateway.fake.fail-rate`)과 함께 켜면 회복 회차가 다시 실패할 수 있어 병용하지 않는다.
 

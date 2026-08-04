@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -188,7 +189,7 @@ class PaymentTransactionCoordinatorTest {
 
             // then
             assertThat(result.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
-            var inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, paymentOutboxUseCase, confirmPublisher);
+            InOrder inOrder = org.mockito.Mockito.inOrder(paymentCommandUseCase, paymentOutboxUseCase, confirmPublisher);
             inOrder.verify(paymentCommandUseCase).executePayment(readyEvent, paymentKey);
             inOrder.verify(paymentOutboxUseCase).createPendingRecord(orderId);
             inOrder.verify(confirmPublisher).publish(

@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
@@ -49,6 +50,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 })
 @Tag("integration")
 @Testcontainers
+@ActiveProfiles("test")
 @DisplayName("추적 연속성 통합 테스트 — E-5")
 class PgInboxTraceparentIntegrationTest {
 

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -64,20 +65,12 @@ class DuplicateApprovalHandlerListenerTest {
     @Test
     @DisplayName("onDuplicateApprovalDetected_메서드_존재해야_한다")
     void onDuplicateApprovalDetected_메서드_존재해야_한다() {
-        boolean methodExists;
-        try {
-            DuplicateApprovalHandler.class.getMethod(
-                    "onDuplicateApprovalDetected",
-                    DuplicateApprovalDetectedEvent.class
-            );
-            methodExists = true;
-        } catch (NoSuchMethodException e) {
-            methodExists = false;
-        }
-
-        assertThat(methodExists)
+        assertThatCode(() -> DuplicateApprovalHandler.class.getMethod(
+                "onDuplicateApprovalDetected",
+                DuplicateApprovalDetectedEvent.class
+        ))
                 .as("DuplicateApprovalHandler 에 onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent) 메서드가 있어야 함 — EventListener 진입점")
-                .isTrue();
+                .doesNotThrowAnyException();
     }
 
     /**

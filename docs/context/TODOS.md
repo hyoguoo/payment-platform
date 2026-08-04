@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-08-04 (SIGNAL-AND-GUARDRAIL-SWEEP ship — 해소 항목 8건 삭제: 마스킹 소실 / trigger 자동감지 dead branch / 백오프 off-by-one / 좀비 타임아웃 겹침 / 워커 span 부재 / 중복 confirm 가짜 재고 신호 / 체크아웃 중복 필드 누락 / 지침 문서 후속 4건. 섹션 E 신설 후 잔여 3건 등재, 섹션 F 를 겹침 해소 반영해 축소. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -8,67 +8,11 @@
 
 ## 현재 과업 (작업 가능 — 측정 / 인프라 무관)
 
-### A. 위키 정합 (큰 토픽 1)
-
-#### TC-13-FOLLOW-6 — ChainedKafkaTransactionManager 검토 (미채택) (RD1-2)
-
-- **배경**: `PaymentConfirmResultUseCase.handle` 은 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 JPA TM 을 명시 고정한다(qualifier 명시 완료, EOS-FOLLOWUP-CLEANUP). `KafkaTransactionManager(EOS)` 와는 여전히 별개 TM 이라 crash 시 at-least-once 재배달이 발생 가능.
-- **정합 SSOT**: crash 내성 = 종결 가드 DONE+APPROVED 재발행 + product-service 결정적 키 dedupe 흡수 (CONFIRM-APPROVED-RESEND-GAP, #112 — 과거 "중복 시 발행 항상 진행(위키 line 141)" 은 dead branch 라 제거됨. CONCERNS.md L-1, CONFIRM-FLOW.md §5).
-- **미채택 (잔여)**: `ChainedKafkaTransactionManager` 도입 — JPA TM 과 Kafka TM 체인으로 원자성 강화. 운영 환경에서 at-least-once 허용 불가 수준의 중복 발생 시 재검토.
-
-### B. EOS-FOLLOWUP-CLEANUP 후속 등재
-
-#### [CLEANUP-BATCH-B 후속] — 커버리지 게이트 / 빌드 스크립트 잔여 (CLEANUP-BATCH-B, 2026-05-31)
-
-- **infra 커버리지 집계 제외** — `**/infrastructure/**` 제외로 EOS `ConfirmedEventConsumer`/dedupe 어댑터가 커버리지 집계에서 빠짐(측정 대상 정책 유지, G1). `PaymentEosIntegrationTest` 가 실행되어 회귀 가드는 유효하므로 도메인 위험 아님. 측정 대상 확대는 별도 토픽 여지.
-
-### C. 코드 확인 필요 항목 (진단 단계 발견 — 코드 수정 없음, 등재만)
-
-> `DOCS-CONSISTENCY-OVERHAUL` 진단(§4.5) 중 문서 정정 범위를 벗어난 코드측 발견이다. 데드 코드/회귀 여부 판정은 사용자 확인이 필요하며, 이 항목은 확인 필요성만 등재한다.
-
-#### [PAYMENT-OUTBOX-INFLIGHT-UNUSED] — REQUIRES_NEW 선점 경로 프로덕션 미사용
-
-- **현황**: `PaymentOutboxUseCase.claimToInFlight`(REQUIRES_NEW 선점)·`incrementRetryOrFail` 프로덕션 호출처 0 — `OutboxWorker` 는 `recoverTimedOutInFlightRecords`/`findPendingBatch` 만 호출한다. 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX)는 롤백으로 PENDING 복귀 후 `OutboxWorker` 5초 주기 배치가 재픽업 — retryCount 증가·backoff 없이 무백오프로 재시도된다.
-- **영향**: `nextRetryAt` 기반 backoff 설계가 이 경로에서는 실효되지 않는다 — 벤더/브로커 부하 시 재시도 폭주 가능성. IN_FLIGHT 타임아웃 회수(`recoverTimedOutInFlightRecords`)는 워커 비정상 종료 등 드문 경로의 보조 안전장치로만 유효.
-- **처방**: 단일 TX 즉시 재시도가 충분하다는 의도된 단순화인지, REQUIRES_NEW 선점을 실제로 연결했어야 하는 미완성 회귀인지 코드/설계 이력 확인 필요. 데드 코드 판정(제거 여부)은 사용자 확인 필요.
-
-### D. LIVE-DRILL-FORMALIZATION 후속 (라이브 실측 체계 정식화, 2026-07-29)
-
-#### [FAKE-PG-BOOT-ENV-GUARD] — 모의 벤더 로드 시 환경 조합 검사 가드 부재
-
-- **현황**: 모의 벤더가 `pg.gateway.type=fake` 로 로드될 때 그 환경이 허용된 조합인지 검사하는 코드가 없다. `warnActivation()`(`FakePgGatewayStrategy.java:132-142`)은 경고 배너 로그만 남기고 기동을 막지 않는다.
-- **영향**: 스모크 구동용 환경변수(`pg-service/src/main/resources/application-docker.yml:21` `${PG_GATEWAY_TYPE:toss}`)가 배포 파이프라인에 남으면 실 승인 없이 결제가 완료된다(CONCERNS.md L-18).
-- **처방**: 부팅 시 허용된 환경 조합(프로파일/환경변수 조합)인지 검사해 아니면 기동을 멈추는 가드 도입. 어떤 환경을 정상으로 볼지 정하는 배포 환경 논의가 선행돼야 한다.
-
-### E. SIGNAL-AND-GUARDRAIL-SWEEP 후속 (신호 정합과 가드레일 정비, 2026-08-04)
-
-> 아래 3건은 `SIGNAL-AND-GUARDRAIL-SWEEP` 이 의도적으로 범위 밖으로 뺀 잔여다. 상세: `docs/archive/signal-and-guardrail-sweep/COMPLETION-BRIEFING.md`.
-
-#### [STATIC-CHECK-GATE-PROMOTION] — 정적 검출·지침 검사의 게이트 승격 판단
-
-- **현황**: 코드 스타일 5규칙(`config/checkstyle/checkstyle.xml`)과 지침 문서 검사(`.github/workflows/ci.yml` 의 `agent-docs-check` job)는 모두 결과만 보고하고 빌드를 막지 않는다 — 전자는 `severity=warning`, 후자는 종료 코드 0 고정이다.
-- **처방**: 몇 차례 운용해 오탐이 잦아드는지 본 뒤 게이트로 승격할지 결정한다. 승격 시 억제 목록에 남은 기존 위반이 먼저 정리돼야 한다(아래 항목).
-
-#### [STYLE-BASELINE-SUPPRESSION-CLEANUP] — 기준선 억제로 덮어둔 기존 스타일 위반 정리
-
-- **현황**: 정적 검출 도입 시 기준선을 0 으로 만들기 위해 기존 위반을 `config/checkstyle/checkstyle-suppressions.xml` 에 전량 등재했다 — `var` 키워드 2건(테스트), 빈 catch 블록 1건(테스트), try 블록 외부 변수 재할당 3건(프로덕션 2 / 테스트 1). `@Data` 와 공개 유스케이스·포트 null 반환은 기존 위반 0건이었다.
-- **처방**: 억제 항목을 하나씩 걷어내며 실제로 고친다. 프로덕션 코드 2건(`StockCatalogViewServiceImpl.java:36`, `PgAttemptHistoryViewServiceImpl.java:36`)이 우선순위가 높다.
-
-#### [RETRY-WINDOW-NARROWED-QUARANTINE-PRESSURE] — 재시도 창 축소로 커진 격리 복구 후속의 무게
+### [RETRY-WINDOW-NARROWED-QUARANTINE-PRESSURE] — 재시도 창 축소로 커진 격리 복구 후속의 무게
 
 - **현황**: 재시도 백오프 회차 정정으로 총 재시도 창이 78초에서 26초로 줄었다(`PgVendorCallService.insertRetryOutbox`). 벤더 장애가 그 사이 길이로 지속되면 이전에는 재시도로 자연 회복했을 결제가 격리로 남는다.
 - **영향**: 격리를 벗어나는 관리자 경로는 벤더 상태를 재조회하지 않는 편도 실패 종결(`QuarantineResolveUseCase.resolve`)뿐이고, 벤더 취소·환불 포트 자체가 없다. 응답만 유실된 승인이었다면 시스템은 실패로 정리되지만 벤더 쪽 과금은 남는다 — 이 조합을 만날 확률이 올라갔다.
 - **처방**: 격리 복구(TQ-2 잔여)와 환불(TQ-6)의 우선순위를 이 사실에 맞춰 재평가한다. 그 전까지는 격리 사유가 재시도 소진인 건을 안전 종결하기 전에 벤더 상태를 사람이 확인한다. 안전 종결 전 상태 조회를 코드로 강제하는 가드는 상태 조회 포트와 관리자 화면 흐름을 함께 손봐야 해 별도 토픽 여지.
-
-### F. ADMIN-VISIBILITY discuss 발견 (관리자 화면 가시성 확충, 2026-07-27)
-
-> `ADMIN-VISIBILITY` discuss 단계에서 발견됐으나 해당 토픽(관측 전용 화면 추가) 범위를 벗어난다.
-
-#### [PG-ZOMBIE-OUTBOX-PHANTOM-ROW-HISTORY] — 종결 이후 발행 행이 이력 화면에 남는 문제
-
-- **현황**: 좀비 회수와 재시도 예약이 겹치던 원인(백오프 off-by-one)은 `SIGNAL-AND-GUARDRAIL-SWEEP` 에서 해소됐다(최대 대기 22.5s < 좀비 타임아웃 60s). 다만 relay 가 inbox 상태를 보지 않고 `available_at <= now` 만으로 발행하는 구조(`PgOutboxRelayService.java:59-79`)와, 소비 측이 종결 상태를 발견하고 흔적 없이 건너뛰는 처리(`PgInboxImmediateWorker.java:159-163` TERMINAL_SKIP)는 그대로다.
-- **영향**: 겹침 자체가 사라져 발생 경로는 크게 줄었지만, 다른 이유로 종결 이후 발행 행이 생기면 outbox 를 이력으로 읽는 화면이 시간 역전된 항목을 보여줄 수 있다. `ADMIN-VISIBILITY` 는 이력 조립 단계에서 종결 시각 기준 라벨링으로 표시를 교정한다.
-- **처방**: relay 가 발행 직전 inbox 종결 여부를 확인하도록 할지, 표시 교정으로 충분하다고 볼지 판단 필요.
 
 ---
 
@@ -179,15 +123,33 @@ CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 
 `stock_outbox` 는 PAYMENT-EOS-TRANSITION 봉인으로 폐기됨 (PR #77). `payment_outbox` retry 정책만 측정 검증 대상으로 남음.
 
 **현황**:
-- `payment_outbox`: `RetryPolicy` 존재 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. 단, 이 정책을 적용하는 `incrementRetryOrFail`(REQUIRES_NEW 선점 경로 전용)이 프로덕션 호출처 0([PAYMENT-OUTBOX-INFLIGHT-UNUSED] 참조) — 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX 롤백)는 retryCount 증가·`FAILED` 종결 없이 5초 주기 무백오프로 재시도된다. `PaymentOutboxStatus.FAILED` 도달 코드 경로도 현재 0건.
+- `payment_outbox`: `RetryPolicy` 존재 — `RetryPolicyProperties` (env 주입) + maxAttempts=5 + FIXED 5s default. 이 정책을 적용하던 REQUIRES_NEW 선점 경로의 재시도 증가 메서드는 프로덕션 호출처가 0이라 BACKLOG-RESIDUE-CLEANUP 에서 제거됐다 — `RetryPolicy.isExhausted` 소진 판정은 값 객체 메서드로 남지만 지금은 프로덕션 호출처가 없다. 실제 발행 실패 경로(`OutboxRelayService.relay` 단일 TX 롤백)는 retryCount 증가·`FAILED` 종결 없이 5초 주기 무백오프로 재시도된다. `PaymentOutboxStatus.FAILED` 도달 코드 경로도 현재 0건.
+
+**타임아웃 회수 경로도 실행되지 않는다** (BACKLOG-RESIDUE-CLEANUP ship 중 확인):
+
+제거 후 `incrementRetryCount` 를 부르는 프로덕션 지점은 `recoverTimedOutInFlightRecords` 하나만 남는데, 그 조회 조건(`status = 'IN_FLIGHT' AND inFlightAt < cutoff`)에 걸리는 행이 생기지 않는다. `relay` 가 단일 TX 안에서 PENDING → IN_FLIGHT → DONE 을 모두 처리해 커밋된 상태는 DONE(성공) 또는 PENDING(롤백) 둘뿐이고, 도메인 메서드 `toInFlight()` 는 프로덕션 호출처가 0이다. 이론적 예외는 선점 성공 직후 행이 사라져 `relay` 가 예외 없이 리턴하는 경우(`OutboxRelayService.java:63-67`) 하나뿐이라 실질 도달 불가.
+
+그 결과 스키마와 지표가 실행되지 않는 정책을 가리킨다:
+
+| 대상 | 실제 값 | 소비처 |
+|:---:|:---:|:---:|
+| `payment_outbox.retry_count` | 항상 0 | `attempt_count_histogram` 지표 |
+| `payment_outbox.next_retry_at` | 항상 null | 선점/배치 조회 게이트 2곳, `future_pending_count` 지표 |
+| `payment_outbox.in_flight_at` | DONE 행에 값 있음 | `findTimedOutInFlight`(매치 0) |
+| `payment_outbox.available_at` | 삽입 기본값만 | 코드 사용처 0 |
+
+`attempt_count_histogram` 과 `future_pending_count` 는 구조적으로 움직이지 않는 지표다.
 
 **조정 필요 사항**:
-1. **payment_outbox 정책 재검토** — [PAYMENT-OUTBOX-INFLIGHT-UNUSED] 확인 결과에 따라 REQUIRES_NEW 선점 경로를 실제로 연결할지, 현재 단일 TX 무백오프 재시도를 유지하고 backoff 를 그 경로에 이식할지 결정 필요. maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증도 병행 (Phase 5 자물쇠 — k6 측정 후)
+1. **payment_outbox 정책 재검토** — REQUIRES_NEW 선점 경로를 되살려 실제로 연결할지, 현재 단일 TX 무백오프 재시도를 유지하고 backoff 를 그 경로에 이식할지 결정 필요. maxAttempts=5 + FIXED 5s 가 SLO 기준 적절한지 측정 검증도 병행 (Phase 5 자물쇠 — k6 측정 후)
+2. **정책을 두지 않기로 하면 스키마·지표까지 정리** — 위 컬럼 4개와 지표 2개, 그리고 도달 불가 상태(`IN_FLIGHT` 커밋, `FAILED`)를 함께 걷는다. `next_retry_at` 은 살아있는 쿼리 3곳과 인덱스에 엮여 있어 선점·배치 조회를 같이 손봐야 하고, 결제 핵심 테이블의 파괴적 마이그레이션이라 별도 토픽이 필요하다. 1번 결정이 선행돼야 한다 — 지금 걷으면 측정을 기다리던 결정을 측정 없이 확정하는 셈이다
 
 **관련 코드**:
 - `payment-service/.../domain/PaymentOutbox.java` — retryCount + incrementRetryCount
 - `payment-service/.../application/config/RetryPolicyProperties.java`
 - `payment-service/.../domain/RetryPolicy.java`
+- `payment-service/.../infrastructure/metrics/PaymentOutboxMetrics.java` — 움직이지 않는 지표 2종
+- `payment-service/src/main/resources/db/migration/V1__payment_schema.sql:57-77` — 컬럼·인덱스 정의
 
 #### TC-11 — product / pg dedupe 테이블 cleanup 스케줄러 (product ✅ 완료 + 운영 활성화 정상화 / pg 범위 제외)
 
