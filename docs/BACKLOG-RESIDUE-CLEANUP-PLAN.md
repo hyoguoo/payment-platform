@@ -91,7 +91,7 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - [x] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
 - [x] Task 3: 프로덕션 스타일 위반 2건 해소
 - [x] Task 4: 테스트 스타일 위반 4건 해소
-- [ ] Task 5: 대장·우려 문서 정리
+- [x] Task 5: 대장·우려 문서 정리
 
 ---
 
@@ -290,7 +290,17 @@ A~F 여섯 섹션 중 A·B·C·D·F 는 각각 항목이 하나뿐이라, 삭제
 - 지침 문서 검사 스크립트 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `TODOS.md` 현재 과업에서 7건 삭제(A 트랜잭션 매니저 체인 검토, B 커버리지 집계 범위 잔여, C 선점 경로 프로덕션 미사용, D 모의 벤더 부팅 가드 부재, E1 정적 검출 게이트 승격 판단, E2 기준선 억제 정리, F 종결 이후 발행 행 이력 표시) — 남는 항목은 재시도 창 축소 압력 한 건
+- 빈 껍데기 정리: 본문이 하나만 남은 섹션 라벨(A~F, E) 을 폐지하고, 남는 항목을 문자 라벨 없이 "현재 과업" 아래 바로 배치. E 도입부의 "아래 3건" 안내 blockquote 도 함께 제거
+- `TODOS.md` 최종 갱신 줄 정리
+- `TODOS.md` TC-7 — 삭제한 C 항목([PAYMENT-OUTBOX-INFLIGHT-UNUSED])을 참조하던 두 곳을 자립 서술로 재작성하고, 재시도 정책의 소진 판정(`RetryPolicy.isExhausted`)이 프로덕션 사용처를 잃었다는 사실을 기록
+- `docs/context/CONCERNS.md` L-1 — 후속 과제 줄에서 `TC-13-FOLLOW-6` 대장 항목 ID 참조를 제거하고, 삭제된 TODOS A 항목이 담고 있던 미채택 사유(체인 도입 시 원자성 강화 vs 재검토 조건)를 이 줄에 흡수
+- `docs/context/CONCERNS.md` L-18 — 제목과 본문을 가드 도입 후 상태로 다시 썼다. "기동을 막는 코드는 없다"는 서술을 걷어내고 `warnActivation()` 이 활성 프로파일 기준으로 기동을 멈추는 동작을 서술, 후속 줄은 삭제한 TODOS D 항목 참조 대신 잔여 한계(프로파일 직접 조작 시 우회 가능)로 교체
+- `docs/context/CONCERNS.md` 최종 갱신 줄 정리
+- `docs/context/CONFIRM-FLOW.md` 384행·405행 — `PaymentOutboxUseCase.incrementRetryOrFail` 을 "정의만 있고 호출처 0"으로 서술하던 문장을 "이 방어를 담당하던 메서드는 제거됐다"로 정정(메서드 자체가 없어 이름 재언급 없이). 19·76·92·370·458행의 `claimToInFlight`(저장소 포트 쪽 동명 메서드)는 그대로 유지
+- `grep -rn "PAYMENT-OUTBOX-INFLIGHT-UNUSED\|FAKE-PG-BOOT-ENV-GUARD\|STATIC-CHECK-GATE-PROMOTION\|STYLE-BASELINE-SUPPRESSION-CLEANUP\|PG-ZOMBIE-OUTBOX-PHANTOM-ROW-HISTORY\|TC-13-FOLLOW-6" docs/ .claude/` 결과 0건(archive/topics/본 플랜 제외), `grep -rn "incrementRetryOrFail" docs/context/` 결과 0건 — 둘 다 확인
+- `python3 scripts/check-agent-docs.py` 전 판정 문제 0건
 
 ---
 

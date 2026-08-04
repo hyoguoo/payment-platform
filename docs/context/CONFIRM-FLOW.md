@@ -381,7 +381,7 @@ stateDiagram-v2
 | PENDING | 발행 대기. AFTER_COMMIT 리스너 또는 OutboxWorker 가 처리 |
 | IN_FLIGHT | 워커가 선점, 발행 진행 중 (또는 타임아웃 대기) |
 | DONE | Kafka 발행 성공 (`isTerminal()` = true) |
-| FAILED | 정의된 종결 상태(`isTerminal()` = true). **현재 도달하는 코드 경로 0건** — `PaymentOutbox.toFailed()` 삭제, `PaymentOutboxUseCase.incrementRetryOrFail` 호출처 0(dead terminal state) |
+| FAILED | 정의된 종결 상태(`isTerminal()` = true). **현재 도달하는 코드 경로 0건** — `PaymentOutbox.toFailed()` 삭제, 이 방어를 담당하던 메서드도 BACKLOG-RESIDUE-CLEANUP 에서 제거됐다 |
 
 IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀. 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 회복이며, Kafka 발행 실패의 1차 회복 경로는 §3 의 TX 롤백 → PENDING 즉시 복귀다.
 
@@ -402,7 +402,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | 시각 표현 | `payment_outbox.next_retry_at` (RDB row) | `pg_outbox.available_at` (RDB row) + Kafka self-loop |
 | 한도 초과 시 | outbox FAILED — enum 정의만 존재, 전이 코드 경로 0건(dead terminal). 현재는 PENDING 상태로 무기한 재픽업(별도 한도 없음) | `payment.commands.confirm.dlq` 로 격리 |
 | 트리거 | `OutboxImmediateEventHandler` / `@Scheduled OutboxWorker` | `PaymentConfirmConsumer` → self-loop (attempt 헤더) |
-| 코드 진입점 | `OutboxWorker` 5초 주기 배치 재픽업(`OutboxRelayService.relay`) — `PaymentOutboxUseCase.incrementRetryOrFail` 는 정의만 있고 호출처 0(dead) | `PgVendorCallService.handleRetry` |
+| 코드 진입점 | `OutboxWorker` 5초 주기 배치 재픽업(`OutboxRelayService.relay`) — 이 방어를 담당하던 메서드는 제거됐다 | `PgVendorCallService.handleRetry` |
 
 **핵심 비대칭:**
 - payment 측: "내가 Kafka broker 에 publish 못함" 회복 — outbox CAS + 워커 폴백

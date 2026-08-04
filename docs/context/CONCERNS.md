@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-08-04 (SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. L-18 잔여 유지, 재시도 창 축소로 커진 격리 복구 압력은 `TODOS.md` 섹션 E 로 등재. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -89,7 +89,7 @@
 - **crash 내성 SSOT 는 종결 가드 재발행 (CONFIRM-APPROVED-RESEND-GAP, #112)**: APPROVED 경로에서 RDB DONE 커밋 후 EOS 발행이 유실되면 재배달이 D7 종결 가드에 도달하는데 `status==DONE && message==APPROVED` 면 stock-committed 를 재발행한다(`terminalResendMetrics` 계측). product-service 가 결정적 키로 멱등 흡수 → 차감 1회.
 - **폐기**: 과거 SSOT "중복 시 발행 항상 진행(위키 line 141)" 분기는 dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 도달 불가 dead branch 였고, CONFIRM-APPROVED-RESEND-GAP 에서 제거됨.
 - **잔여 한계 (over-sell, DLQ-REACHABILITY)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 지속 실패 시 stock-committed 자체는 완전 유실(payment DONE + 재고 확정 영구 소실 → over-sell). 입력 `events.confirmed` 메시지는 `KafkaConsumerConfig` 에 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + `payment.kafka.after-rollback.backoff`)가 소진 후 `events.confirmed.dlq` 로 발행해 가시화한다(+`payment_eos_commit_failure_dlq_total`). 재고 확정 복구는 이제 **관리자 수동 DLQ 재주입**(DLQ-QUARANTINE-RECOVERY — 원 토픽 republish → EOS 컨슈머 재처리, 결정적 키가 중복 흡수)으로 가능. **상시 자동 복구는 여전 미수행** — 수용된 한계.
-- **후속 과제**: TC-13-FOLLOW-6 — `ChainedKafkaTransactionManager` 도입 검토(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 이미 완료). over-sell 의 조건부 자동 복구(자동 재시도)는 TQ-1 잔여(수동 재주입은 DLQ-QUARANTINE-RECOVERY 에서 완료).
+- **후속 과제**: `ChainedKafkaTransactionManager` 도입 검토 — JPA TM 과 Kafka TM 을 체인으로 묶어 원자성을 강화하는 방안이나, 운영 환경에서 at-least-once 허용 불가 수준의 중복이 실제 발생하기 전까지는 미채택(qualifier 명시는 EOS-FOLLOWUP-CLEANUP 에서 이미 완료). over-sell 의 조건부 자동 복구(자동 재시도)는 TQ-1 잔여(수동 재주입은 DLQ-QUARANTINE-RECOVERY 에서 완료).
 
 ### L-4. Two-strategy PG 라우팅 — 결제 건별 `gatewayType` 결정 정책
 
@@ -142,12 +142,11 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 
 `KafkaDlqReprocessAdapter` 는 재주입 시 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 대량 적체 시 `read-timeout` 내 `endOffsets` 미도달 가능 — 스캔 미완료(재시도 안내 예외)와 "완주 후 없음"은 `DlqScanResult(payload, completed)` 로 구분하나, 최근 구간부터 역방향 탐색(`offsetsForTimes`)은 미구현이라 최근 메시지가 가장 나중에 스캔된다(사용 패턴과 역방향). 또 스캔 미완료 + 매치 존재 조합은 warn 로그 없이 발행(미스캔 구간에 더 최신 레코드 존재 가능 — 동일 orderId 는 동일 `eventUuid` 재발행이라 멱등 체인이 흡수). 관리 도구 사용 빈도 대비 수용, 역방향 탐색·`dlq_scan_incomplete` warn 은 후속.
 
-### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 위험 — 실제 승인 없이 결제 완료 가능
+### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 가드 — 프로파일 조작 시 우회 가능
 
 - **현황**: 모의 벤더 전략은 `pg.gateway.type=fake` 일 때만 스프링 빈으로 로드된다(`@ConditionalOnProperty`, `FakePgGatewayStrategy.java:68`). 이 값은 `pg-service/src/main/resources/application-docker.yml:21` 에서 `${PG_GATEWAY_TYPE:toss}` 로 환경변수 오버라이드가 가능한 구조라, 스모크 구동용 값이 배포 파이프라인 환경변수에 남으면 그대로 적용된다. 로드되면 `supports()`(`FakePgGatewayStrategy.java:144-148`)가 벤더 종류를 가리지 않고 `TOSS`/`NICEPAY` 요청을 모두 받아들인다 — 사용자가 어느 벤더를 선택했든 모의 벤더가 처리한다.
-- **영향**: 실제 벤더 승인 없이 결제가 완료되고 재고가 확정 차감된다. 탐지 수단은 기동 시 `warnActivation()`(`FakePgGatewayStrategy.java:132-142`)이 남기는 경고 배너 로그 하나뿐 — 기동을 막는 코드는 없다.
-- **수용 근거**: 이 조건부 로드 구조와 무차별 `supports()` 자체는 `LIVE-DRILL-FORMALIZATION` 에서 새로 만든 것이 아니라 이미 운영 중이던 구조다. 이번 작업이 더한 것은 라이브 실측용 시나리오 접두어(`fake-fail-`/`fake-retry-`/`fake-flaky-`) 분기뿐이고, 오배포 위험 구조 자체는 이전부터 있었다 — 이 점을 빼면 우선순위 판단을 흐린다.
-- **후속**: 부팅 시 환경 조합 검사 가드 — `TODOS.md` [FAKE-PG-BOOT-ENV-GUARD] 참고.
+- **가드**: `warnActivation()`(`FakePgGatewayStrategy.java`)이 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 을 던져 기동을 멈춘다(BACKLOG-RESIDUE-CLEANUP). 스모크·벤치마크 스택은 `docker,smoke`, pg 통합 테스트는 `test` 프로파일을 갖고 있어 통과하고, 일반 앱 스택에 `fake` 를 주입하면 차단된다.
+- **잔여 한계**: 가드는 활성 프로파일만 본다. 배포 환경에서 프로파일 자체를 `smoke`나 `test`로 조작하면 우회된다. 의도적 조작은 방어 대상이 아니고, 환경변수가 실수로 배포에 남는 사고를 막는 것이 가드의 목표다.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 
