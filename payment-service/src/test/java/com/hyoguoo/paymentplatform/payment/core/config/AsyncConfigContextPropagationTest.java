@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.micrometer.context.ContextRegistry;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.ContextKey;
+import io.opentelemetry.context.Scope;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -57,7 +58,7 @@ class AsyncConfigContextPropagationTest {
         AsyncTaskExecutor executor = asyncConfig.outboxRelayExecutor();
 
         // when: OTel Context 에 커스텀 키-값을 설정하고 task 제출
-        try (var ignored = Context.current().with(OTEL_CUSTOM_KEY, OTEL_CUSTOM_VALUE).makeCurrent()) {
+        try (Scope ignored = Context.current().with(OTEL_CUSTOM_KEY, OTEL_CUSTOM_VALUE).makeCurrent()) {
             Future<?> future = executor.submit(() -> {
                 // VT 내부에서 OTel Context 에 설정한 값 조회
                 capturedOtelValue.set(Context.current().get(OTEL_CUSTOM_KEY));

@@ -90,7 +90,7 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - [x] Task 1: 미사용 선점 경로 제거
 - [x] Task 2: 모의 벤더 부팅 가드 + pg 통합 테스트 프로파일 명시
 - [x] Task 3: 프로덕션 스타일 위반 2건 해소
-- [ ] Task 4: 테스트 스타일 위반 4건 해소
+- [x] Task 4: 테스트 스타일 위반 4건 해소
 - [ ] Task 5: 대장·우려 문서 정리
 
 ---
@@ -235,7 +235,14 @@ Task 1은 동작을 바꾸지 않는다 — 이미 아무도 부르지 않던 �
 - `./gradlew test` 전체 통과 + `./gradlew :pg-service:integrationTest --rerun-tasks` 통과 (`PgConfirmListenerSplitIntegrationTest` 가 통합 테스트라 캐시 없이 확인한다)
 
 **완료 결과**
-> (execute에서 채움)
+
+- 행 번호는 플랜 기준으로 낡아 있었다(Task 2 가 `PgConfirmListenerSplitIntegrationTest`에 `@ActiveProfiles("test")`를 추가하며 뒤쪽이 밀림). `./gradlew checkstyleMain checkstyleTest`로 실제 위반 지점을 다시 확인해 고쳤다 — `PgConfirmListenerSplitIntegrationTest`는 275행이 아니라 277행의 빈 catch 블록이었고, 나머지 세 건은 플랜 행 번호와 일치했다(`AsyncConfigContextPropagationTest` 60행, `PaymentTransactionCoordinatorTest` 191행, `DuplicateApprovalHandlerListenerTest` 73행)
+- `AsyncConfigContextPropagationTest.outboxRelayExecutor_shouldPropagateOtelContextToVirtualThread` — try-with-resources 변수를 `var ignored`에서 `Scope ignored`로 명시 타입 선언
+- `PaymentTransactionCoordinatorTest.executesExecutePaymentThenCreatePendingRecord` — `var inOrder`를 `InOrder inOrder`로 명시 타입 선언(`org.mockito.InOrder` import 추가)
+- `DuplicateApprovalHandlerListenerTest.onDuplicateApprovalDetected_메서드_존재해야_한다` — try 밖 `boolean methodExists` 선언 후 try/catch 로 채우던 형태를 없애고 `assertThatCode(() -> ...).doesNotThrowAnyException()`으로 교체. 검증 의도(진입점 메서드 존재)는 그대로 유지
+- `PgConfirmListenerSplitIntegrationTest.zombieRecovery_afterWorkerCrash_completesProcessing` — 크래시 시뮬레이션을 빈 `catch (RuntimeException ignored) {}`로 삼키던 형태를 없애고 `assertThatThrownBy(() -> pgInboxProcessUseCase.processPending(inboxId)).isInstanceOf(RuntimeException.class)`로 예외 발생을 명시적으로 단정. 이후 IN_PROGRESS 좀비 잔존 단정(`zombie.isPresent()`, 상태 `IN_PROGRESS`)은 그대로 유지
+- `config/checkstyle/checkstyle-suppressions.xml`에서 남은 기준선 억제 4줄(Task 11 var 억제 2건 + Task 12 나머지 2건)과 딸린 설명 주석 블록 두 개를 통째로 제거. 디렉토리 단위 블랑켓 억제와 `PublicUseCasePortNullReturn` 범위 한정 항목만 남았다
+- `./gradlew checkstyleMain checkstyleTest --rerun-tasks` 전체 모듈 통과(경고 0건), `./gradlew test` 전 모듈 1033 tests 전체 통과, `./gradlew :pg-service:integrationTest --rerun-tasks` 통과(`PgConfirmListenerSplitIntegrationTest` 4 tests 포함, 캐시 없이 재실행 확인)
 
 ---
 

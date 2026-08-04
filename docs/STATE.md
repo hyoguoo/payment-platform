@@ -6,7 +6,7 @@
 
 - **주제**: 미해결 항목 잔여 정리 (BACKLOG-RESIDUE-CLEANUP)
 - **단계**: execute
-- **활성 태스크**: Task 4: 테스트 스타일 위반 4건 해소
+- **활성 태스크**: Task 5: 대장·우려 문서 정리
 - **이슈/브랜치**: #134
 - **파일**: docs/topics/BACKLOG-RESIDUE-CLEANUP.md / docs/BACKLOG-RESIDUE-CLEANUP-PLAN.md
 

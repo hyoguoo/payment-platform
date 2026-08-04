@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.pg.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -272,11 +273,9 @@ class PgConfirmListenerSplitIntegrationTest {
                 .when(fakePgGatewayStrategy).confirm(any());
 
         // when — processPending → TX_A 커밋 후 RuntimeException → IN_PROGRESS 좀비 잔존
-        try {
-            pgInboxProcessUseCase.processPending(inboxId);
-        } catch (RuntimeException ignored) {
-            // 예상된 크래시 시뮬레이션
-        }
+        assertThatThrownBy(() -> pgInboxProcessUseCase.processPending(inboxId))
+                .as("예상된 크래시 시뮬레이션 — worker-crash-simulated 예외가 그대로 전파돼야 함")
+                .isInstanceOf(RuntimeException.class);
 
         // IN_PROGRESS 좀비 잔존 확인 (회수 시나리오 전제)
         Optional<PgInbox> zombie = pgInboxRepository.findByOrderId(orderId);

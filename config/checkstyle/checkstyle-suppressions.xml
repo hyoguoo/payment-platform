@@ -36,18 +36,4 @@
         디렉토리에만 적용한다. 그 밖 파일은 이 check id 자체를 억제해 적용 범위를 좁힌다.
     -->
     <suppress files="^(?!.*[\\/]application[\\/](usecase|port)[\\/]).*$" id="PublicUseCasePortNullReturn"/>
-
-    <!-- Task 11 기준선 — 기존 var 사용 2건 억제 (신규 위반만 노출) -->
-    <suppress files="[\\/]AsyncConfigContextPropagationTest\.java$" id="VarKeywordUsage" lines="60"/>
-    <suppress files="[\\/]PaymentTransactionCoordinatorTest\.java$" id="VarKeywordUsage" lines="191"/>
-
-    <!--
-        Task 12 기준선 — 구조 판정 2규칙(광범위 예외 삼킴, try 블록 외부 변수 재할당)의 기존 위반 4건 억제
-        (신규 위반만 노출). infrastructure/presentation 디렉토리에 있던 나머지 위반은 위 블랑켓
-        억제로 이미 가려져 있어 별도 항목이 필요 없다. StockCatalogViewServiceImpl·
-        PgAttemptHistoryViewServiceImpl 두 건은 BACKLOG-RESIDUE-CLEANUP Task 3에서 해소돼 남은
-        항목은 아래 2건뿐이다.
-    -->
-    <suppress files="[\\/]DuplicateApprovalHandlerListenerTest\.java$" id="TryBlockExternalReassignment" lines="73"/>
-    <suppress files="[\\/]PgConfirmListenerSplitIntegrationTest\.java$" id="SwallowedBroadException" lines="275"/>
 </suppressions>
