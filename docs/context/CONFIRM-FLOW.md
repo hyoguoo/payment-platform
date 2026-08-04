@@ -50,9 +50,11 @@ flowchart TD
     RJ --> FAIL_409([409 throw])
     CD --> FAIL_409
 
-    TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY -> IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox PENDING INSERT<br/>confirmPublisher.publish (ApplicationEvent)"]
-    TX_INNER -->|RuntimeException| COMP[보상 안 함<br/>재고와 토큰 차감 상태 유지<br/>StockRetentionMetrics 기록 + 미복구 error 로그]
-    COMP --> RETHROW([txException re-throw])
+    TX --> TX_INNER["@Transactional (executeConfirmTx):<br/>event READY -> IN_PROGRESS<br/>paymentKey 기록<br/>payment_outbox INSERT IGNORE + 잠금 확인 조회<br/>confirmPublisher.publish (ApplicationEvent)"]
+    TX_INNER -->|PaymentOutboxDuplicateException<br/>동시 확정의 진 쪽| DUP[경보 없이 재throw<br/>이긴 쪽이 이미 정상 확정<br/>재고 손실 아님]
+    DUP --> RETHROW
+    TX_INNER -->|그 밖의 RuntimeException| COMP[보상 안 함<br/>재고와 토큰 차감 상태 유지<br/>StockRetentionMetrics 기록 + 미복구 error 로그]
+    COMP --> RETHROW([예외 re-throw, TX 롤백])
     TX_INNER -->|성공| RESP([202 Accepted])
 ```
 
@@ -363,7 +365,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING : confirm TX 내 INSERT (createPendingRecord)
+    [*] --> PENDING : confirm TX 내 INSERT IGNORE (createPendingIfAbsent)
 
     PENDING --> IN_FLIGHT : claimToInFlight CAS (atomic UPDATE)
     IN_FLIGHT --> DONE : Kafka 발행 성공 (outbox.toDone)
@@ -450,6 +452,8 @@ P8D = Kafka retention(7d) + 복구 버퍼(1d). product-service `StockCommitUseCa
 |---|---|---|
 | confirm 진입 | `validateConfirmRequest` LVAL 가드 — TX 진입 전 도메인 검증 | `PaymentEvent.validateConfirmRequest` |
 | confirm TX | `@Transactional` + `payment_outbox PENDING` 단일 TX 커밋 | `PaymentTransactionCoordinator.executeConfirmTx` |
+| 동시 확정 판정 | `payment_outbox` `INSERT IGNORE` + 반영 행 0 이면 **블로킹 쓰기 잠금 읽기**(`findByOrderIdForUpdate`)로 기존 행 확인 → 생성됨 / 이미 있음 / 저장 실패 3분기. 확정 TX 는 상태 전이를 먼저 해 읽기 스냅샷을 잡으므로 평범한 조회로는 자신을 막은 행을 못 본다 — 잠금 읽기가 필수다(`SKIP LOCKED` 아님) | `PaymentOutboxRepositoryImpl.createPendingIfAbsent` |
+| 중복 확정 경보 분리 | 진 쪽의 `PaymentOutboxDuplicateException` 만 재고 미회수 경보에서 제외하고 그대로 재throw — 예외를 삼키지 않아 TX 롤백 경계 유지. 그 밖의 실패는 종전대로 경보 | `OutboxAsyncConfirmService.executeConfirmTxWithStockRetention` |
 | checkout 중복 | `IdempotencyStoreRedisAdapter` — Redis SET NX EX. 키=`Idempotency-Key` 헤더 | `IdempotencyStoreRedisAdapter.getOrCreate` |
 | outbox claim | `claimToInFlight` 단일 TX 내 atomic UPDATE — 다중 워커 선점 방지 | `PaymentOutboxRepository.claimToInFlight` |
 | Kafka 멱등 | producer key=orderId. eventUuid=orderId 재사용 (1회 발행 per orderId) | `OutboxRelayService.buildMessage` |

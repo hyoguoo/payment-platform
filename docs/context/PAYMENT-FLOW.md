@@ -30,7 +30,7 @@ flowchart TD
     C -->|No 신규| D["OrderedUserUseCase.getUserInfoById<br/>-> user-service HTTP"]
     D --> E["OrderedProductUseCase.getProductInfoList<br/>-> product-service HTTP"]
     E --> F["PaymentCreateUseCase.createNewPaymentEvent<br/>PaymentEvent + PaymentOrder*<br/>status=READY 저장"]
-    F --> G["HTTP 201 Created<br/>orderId, totalAmount"]
+    F --> G["HTTP 201 Created (중복이면 200)<br/>orderId, totalAmount, duplicate"]
     G --> H["브라우저: PG SDK 호출<br/>Toss PaymentWidget or Nicepay AUTHNICE"]
     H --> I{"사용자 결제<br/>행위 완료?"}
     I -->|실패/취소| I1["실패 페이지 — 서버 상태 변경 없음"]
