@@ -108,7 +108,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 ## 진행 상황
 
 - [x] Task 1: pg 벤더 상태 조회 엔드포인트
-- [ ] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
+- [x] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
 - [ ] Task 3: 격리 종결 판정 삽입
 - [ ] Task 4: 관리자 화면에 벤더 상태 표시
 - [ ] Task 5: 재시도 정책 정리
@@ -212,7 +212,35 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - 클라이언트 선언에 `url` 속성이 없고 `name` 이 `pg-service` 임을 구조 계약으로 고정한다 — 라우팅이 어긋나도 기능 테스트는 통과하므로 선언 자체를 단정한다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PgVendorStatusFeignClient` 는 `@FeignClient(name = "pg-service", contextId = "pgVendorStatus",
+  configuration = PgVendorStatusFeignConfig.class)` — 기존 `PgFeignClient` 와 `name` 을 공유해
+  같은 Eureka 서비스를 가리키되(정적 `url` 없음), `contextId` 로 설정 네임스페이스만 분리했다.
+  이 저장소 최초의 `contextId` 사용례라 클래스 주석에 이유를 남겼다
+- `application.yml` 에 `spring.cloud.openfeign.client.config.pgVendorStatus` 를 추가 —
+  `connectTimeout=2000` / `readTimeout=15000`(env override 가능). pg-service 가 벤더를 부르는
+  읽기 제한(기본 10초, `pg-service/application.yml` `http.read-timeout-millis`)보다 반드시
+  커야 한다는 관계를 주석과 `PgVendorStatusFeignTimeoutTest` 양쪽에 고정했다 — 작으면 정상
+  벤더 응답에도 먼저 끊겨 상시 확인 불가로 떨어지는데 로그로는 정상처럼 보인다
+- `PgVendorStatusHttpAdapter.lookup` 은 Feign 호출 전체를 한 `try` 로 묶어 모든
+  `RuntimeException`(통신 예외 `feign.RetryableException`, 서비스 예외
+  `PgVendorStatusQueryFailedException` 모두 포함)을 확인 불가로 접는다 — 예외를 던지지 않아
+  `QuarantineResolveUseCase`(Task 3)가 승인/실패/확인불가 세 갈래 분기 하나로 판정을 끝낼 수
+  있다
+- `PgVendorStatusFeignConfig` 의 `ErrorDecoder` 는 기존 `PgFeignConfig` 와 달리 상태 코드별로
+  예외 타입을 나누지 않는다 — 결국 어댑터가 전부 확인 불가로 접으므로 세분화할 실익이 없다.
+  404/429·502·503·504/그 외 5xx 모두 `PgVendorStatusQueryFailedException` 하나로 통일하고,
+  로그로만 원인을 구분한다
+- 신규: `PgVendorStatusJudgement`, `PgVendorStatusInfo`(application/dto/admin),
+  `PgVendorStatusPort`, `PgVendorStatusResponse`(infra wire DTO),
+  `PgVendorStatusFeignClient`, `PgVendorStatusFeignConfig`, `PgVendorStatusHttpAdapter`,
+  `PgVendorStatusQueryFailedException`, `PaymentErrorCode.PG_VENDOR_STATUS_QUERY_UNAVAILABLE`,
+  `EventType.PG_VENDOR_STATUS_QUERY_INDETERMINATE`
+- 구조 계약 테스트(`PgVendorStatusFeignTimeoutTest`)가 `@FeignClient` 선언의 `name="pg-service"`
+  / `url` 없음 / `pgVendorStatus` 읽기 제한이 pg 벤더 호출 제한보다 큼 / `pg-service`(관리자
+  조회) 설정과 분리 적용됨 네 가지를 리플렉션·`FeignClientProperties` 바인딩으로 직접 단정한다
+- 기존 `PgFeignClient` 는 변경하지 않았다 (`grep -n "vendor-status" PgFeignClient.java` 결과 없음)
+- `./gradlew :payment-service:test` 581개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 
