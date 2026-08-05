@@ -113,7 +113,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 4: 관리자 화면에 벤더 상태 표시
 - [x] Task 5: 재시도 정책 정리
 - [x] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
-- [ ] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
+- [x] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
 - [ ] Task 8: 값이 고정된 컬럼·인덱스 제거
 - [ ] Task 9: 테스트 표시명 라벨 정리
 
@@ -520,7 +520,56 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - `./gradlew test` 전체 통과, 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PaymentOutboxRepository.recordRetryDelay(orderId, expectedRetryCount, nextRetryCount, nextRetryAt)`
+  신규 포트 — `claimToInFlight` 와 같은 형태의 조건부 갱신. `JpaPaymentOutboxRepository` 의
+  `@Modifying UPDATE ... SET retryCount, nextRetryAt WHERE orderId = :orderId AND
+  status = 'PENDING' AND retryCount = :expectedRetryCount` 가 상태와 횟수를 함께 조건으로 걸어,
+  선점당했거나(상태 불일치) 다른 워커가 이미 같은 기록을 마쳤으면(횟수 불일치) 0건으로 끝난다
+- `PaymentOutboxUseCase.recordPublishFailureDelay(orderId)` 신규 —
+  `@Transactional(propagation = REQUIRES_NEW)` 로 발행 트랜잭션의 롤백과 분리한다. 행을 읽어
+  Task 6 의 `PaymentOutbox.recordRetryDelay` 로 다음 값을 계산하고, **읽은 시점의 횟수**를
+  조건으로 조건부 갱신을 호출한다. 행이 없거나 조건부 갱신이 0건(경합 패배)이면 예외 없이
+  로그만 남기고 끝낸다 — 둘 다 정상 흐름
+  - `OutboxWorker` 는 별도 빈이라 프록시를 거쳐 `REQUIRES_NEW` 가 실제로 걸린다(자기 호출
+    우회 없음) — 착수 시 호출 관계를 확인했다
+- `OutboxWorker` 의 순차·병렬 경로 모두 `relayWithFailureRecording` 으로 발행 호출을 감싼다.
+  발행 실패(RuntimeException)를 이 건에서 흡수해 `recordPublishFailureDelay` 를 부르고,
+  기록 자체가 실패해도 ERROR 로그만 남기고 다음 행 처리를 막지 않는다(빈 예외 블록 없음).
+  발행 실패 로그 자체는 `MessagePublisherPort` 구현체가 이미 남기므로 여기서 중복 로깅하지
+  않는다
+- 신규 `EventType.PAYMENT_OUTBOX_RETRY_DELAY_RECORDED` / `PAYMENT_OUTBOX_RETRY_DELAY_SKIPPED`
+- 조건부 갱신 쿼리에 상태·횟수 조건이 모두 있음을 `JpaPaymentOutboxRepositoryRetryDelayContractTest`
+  가 `@Query` 문자열 리플렉션으로 고정한다 — 조건 하나가 빠져도 단일 스레드 기능 테스트는
+  통과하므로 구조 계약으로 별도 고정했다
+- `JpaPaymentOutboxRepositoryTest` (Testcontainers MySQL)에 조건부 갱신 4케이스 추가 — 대기+
+  횟수 일치(반영 1) / 진행 중(반영 0, 상태 불변) / 완료(반영 0) / 횟수 불일치(반영 0, 앞선
+  기록 값 유지)
+- 발행 간격 통합 테스트(`OutboxPublishRetryIntervalIntegrationTest`, `@Tag("integration")`) —
+  기록 후 다음 시도 시각이 `now + 5초`(FIXED 정책 기본값)로 채워지는지, 그 이전엔
+  `findPendingBatch` 가 이 행을 돌려주지 않는지, 지나면 다시 돌려주는지 세 단정 — 기존
+  대기 배치 조회 쿼리를 바꾸지 않고 재사용한다는 설계 결정의 실증
+- 동시 선점 통합 테스트(`OutboxPublishFailureConcurrentClaimIntegrationTest`,
+  `@Tag("integration")`, `@RepeatedTest(50)`) — 기록의 조건부 갱신과 `claimToInFlight` 를
+  `CountDownLatch` 로 같은 시점에 겹쳐 실행한다. 매 반복 정확히 한쪽만 반영되고(둘 다
+  `status=PENDING` 을 조건으로 걸어 먼저 커밋된 쪽이 다른 쪽 조건을 어긋나게 만든다), 선점이
+  이기면 최종 상태가 항상 `IN_FLIGHT` 로 남아 기록이 선점을 되돌리지 않음을 50회 반복으로
+  확인했다. 반복마다 새 주문 번호를 사용해 앞선 반복의 잔여 행이 경합을 무력화하지 않게 했다
+  - 작성 중 발견: `@Modifying` 조건부 갱신은 활성 트랜잭션이 필요하다(`TransactionRequiredException`).
+    운영 경로는 `PaymentOutboxUseCase`/`OutboxRelayService` 의 `@Transactional` 이 경계를
+    열어주지만, 이 테스트는 두 서비스를 통째로 태우지 않고 조건부 갱신 자체의 경합만 분리해
+    보므로 각 스레드에서 `TransactionTemplate` 로 독립 트랜잭션을 직접 열었다
+- `PaymentOutboxUseCaseTest` 신규 3케이스 — 대기 행 기록(조건부 갱신 인자 단정) / 행 없음
+  조용히 넘어감 / 조건부 갱신 0건 조용히 넘어감(예외 없음)
+- `OutboxWorkerTest` 신규 4케이스 — 발행 실패 시 기록 호출 / 발행 성공 시 기록 미호출 /
+  기록 실패해도 다음 행 계속 처리 / 병렬 경로에서도 동일하게 기록
+- [Rule 1] `OutboxPendingAgeMetricsTest`/`PaymentOutboxMetricsTest` 의 Fake
+  `PaymentOutboxRepository` 구현체 2곳에 `recordRetryDelay` 오버라이드 추가 — 포트 인터페이스에
+  메서드가 늘어 컴파일이 깨졌다. 두 Fake 모두 `false` 반환(동작 검증 대상 아님), 기존 테스트
+  동작은 바꾸지 않았다
+- `./gradlew :payment-service:test` 605개 전부 통과(JaCoCo 게이트 포함), `./gradlew
+  :payment-service:integrationTest --rerun-tasks` 149개 전부 통과(새 통합 테스트 2종 포함),
+  `./gradlew test` 전체 통과
 
 ---
 

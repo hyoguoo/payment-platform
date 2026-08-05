@@ -183,6 +183,12 @@ class PaymentOutboxMetricsTest {
         }
 
         @Override
+        public boolean recordRetryDelay(String orderId, int expectedRetryCount, int nextRetryCount,
+                Instant nextRetryAt) {
+            return false;
+        }
+
+        @Override
         public long countPending() {
             return store.stream().filter(o -> o.getStatus() == PaymentOutboxStatus.PENDING).count();
         }

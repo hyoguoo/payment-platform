@@ -79,6 +79,12 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
     }
 
     @Override
+    public boolean recordRetryDelay(String orderId, int expectedRetryCount, int nextRetryCount, Instant nextRetryAt) {
+        return jpaPaymentOutboxRepository.recordRetryDelay(
+                orderId, expectedRetryCount, nextRetryCount, toLocalDateTime(nextRetryAt)) > 0;
+    }
+
+    @Override
     public long countPending() {
         return jpaPaymentOutboxRepository.countPending();
     }
