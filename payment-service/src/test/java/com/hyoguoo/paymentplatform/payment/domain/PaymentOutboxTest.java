@@ -240,6 +240,54 @@ class PaymentOutboxTest {
         }
     }
 
+    @Nested
+    @DisplayName("recordRetryDelay — 대기 상태 전용 간격 기록 테스트")
+    class RecordRetryDelayTest {
+
+        @Test
+        @DisplayName("PENDING 상태면 retryCount가 증가하고 nextRetryAt이 기록되며 status는 PENDING을 유지한다")
+        void recordRetryDelay_whenPending_recordsCountAndNextRetryAt() {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.PENDING);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
+
+            // when
+            outbox.recordRetryDelay(policy, FIXED_INSTANT);
+
+            // then
+            assertThat(outbox.getRetryCount()).isEqualTo(1);
+            assertThat(outbox.getNextRetryAt()).isNotNull();
+            assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+        }
+
+        @Test
+        @DisplayName("기록 후 nextRetryAt은 전달된 현재 시각에 정책 간격을 더한 값이다")
+        void recordRetryDelay_setsNextRetryAt_asNowPlusPolicyDelay() {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.PENDING);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
+
+            // when
+            outbox.recordRetryDelay(policy, FIXED_INSTANT);
+
+            // then
+            assertThat(outbox.getNextRetryAt()).isEqualTo(FIXED_INSTANT.plus(Duration.ofSeconds(5)));
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"IN_FLIGHT", "DONE", "FAILED"})
+        @DisplayName("PENDING이 아닌 상태에서 recordRetryDelay 호출 시 PaymentStatusException이 발생한다")
+        void recordRetryDelay_whenNotPending_shouldThrow(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
+
+            // when & then
+            assertThatThrownBy(() -> outbox.recordRetryDelay(policy, FIXED_INSTANT))
+                    .isInstanceOf(PaymentStatusException.class);
+        }
+    }
+
     private PaymentOutbox createOutboxWithStatus(PaymentOutboxStatus status) {
         return PaymentOutbox.allArgsBuilder()
                 .orderId("order-1")
