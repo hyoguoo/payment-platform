@@ -1,9 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.scheduler;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.service.OutboxRelayService;
@@ -83,6 +86,70 @@ class OutboxWorkerTest {
 
         // then
         then(mockPaymentOutboxUseCase).should(times(1)).recoverTimedOutInFlightRecords(5);
+    }
+
+    @Test
+    @DisplayName("process - 발행이 실패하면 간격 기록을 호출한다")
+    void process_relayFails_callsRecordPublishFailureDelay() {
+        // given
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(createPendingOutbox(ORDER_ID_1)));
+        willThrow(new IllegalStateException("발행 실패 — Kafka send 실패 시뮬레이션"))
+                .given(mockOutboxRelayService).relay(ORDER_ID_1);
+
+        // when
+        outboxWorker.process();
+
+        // then
+        then(mockPaymentOutboxUseCase).should(times(1)).recordPublishFailureDelay(ORDER_ID_1);
+    }
+
+    @Test
+    @DisplayName("process - 발행이 성공하면 간격 기록을 호출하지 않는다")
+    void process_relaySucceeds_doesNotCallRecordPublishFailureDelay() {
+        // given
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(createPendingOutbox(ORDER_ID_1)));
+
+        // when
+        outboxWorker.process();
+
+        // then
+        then(mockPaymentOutboxUseCase).should(never()).recordPublishFailureDelay(anyString());
+    }
+
+    @Test
+    @DisplayName("process - 간격 기록이 실패해도 다음 행 처리를 계속한다")
+    void process_recordPublishFailureDelayFails_continuesToNextRecord() {
+        // given
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(createPendingOutbox(ORDER_ID_1), createPendingOutbox(ORDER_ID_2)));
+        willThrow(new IllegalStateException("발행 실패 — Kafka send 실패 시뮬레이션"))
+                .given(mockOutboxRelayService).relay(ORDER_ID_1);
+        willThrow(new IllegalStateException("간격 기록 실패 — DB 오류 시뮬레이션"))
+                .given(mockPaymentOutboxUseCase).recordPublishFailureDelay(ORDER_ID_1);
+
+        // when & then — 첫 행의 기록 실패가 두 번째 행 처리를 막지 않는다
+        assertThatCode(() -> outboxWorker.process()).doesNotThrowAnyException();
+        then(mockOutboxRelayService).should(times(1)).relay(ORDER_ID_2);
+    }
+
+    @Test
+    @DisplayName("process - 병렬 처리에서도 발행 실패 시 같은 기록이 수행된다")
+    void process_parallelEnabled_relayFails_callsRecordPublishFailureDelay() {
+        // given
+        OutboxWorker parallelWorker =
+                new OutboxWorker(mockPaymentOutboxUseCase, mockOutboxRelayService, 10, true, 5);
+        given(mockPaymentOutboxUseCase.findPendingBatch(anyInt()))
+                .willReturn(List.of(createPendingOutbox(ORDER_ID_1)));
+        willThrow(new IllegalStateException("발행 실패 — Kafka send 실패 시뮬레이션"))
+                .given(mockOutboxRelayService).relay(ORDER_ID_1);
+
+        // when
+        parallelWorker.process();
+
+        // then
+        then(mockPaymentOutboxUseCase).should(times(1)).recordPublishFailureDelay(ORDER_ID_1);
     }
 
     private PaymentOutbox createPendingOutbox(String orderId) {

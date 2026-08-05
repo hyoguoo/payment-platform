@@ -1,8 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -157,5 +161,59 @@ class PaymentOutboxUseCaseTest {
 
         // then
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("recordPublishFailureDelay: 대기 행이면 읽은 시점의 횟수를 조건으로 조건부 갱신을 호출한다")
+    void recordPublishFailureDelay_pendingOutbox_callsConditionalUpdateWithExpectedRetryCount() {
+        // given
+        PaymentOutbox pendingOutbox = PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(ORDER_ID)
+                .status(PaymentOutboxStatus.PENDING)
+                .retryCount(0)
+                .allArgsBuild();
+        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(pendingOutbox));
+        given(mockPaymentOutboxRepository.recordRetryDelay(eq(ORDER_ID), eq(0), eq(1), any(Instant.class)))
+                .willReturn(true);
+
+        // when
+        paymentOutboxUseCase.recordPublishFailureDelay(ORDER_ID);
+
+        // then — FIXED 5000ms 정책이므로 다음 시도 시각은 현재 시각 + 5초
+        then(mockPaymentOutboxRepository).should(times(1))
+                .recordRetryDelay(ORDER_ID, 0, 1, FIXED_INSTANT.plus(Duration.ofSeconds(5)));
+    }
+
+    @Test
+    @DisplayName("recordPublishFailureDelay: 행이 없으면 조건부 갱신을 호출하지 않고 조용히 넘어간다")
+    void recordPublishFailureDelay_noOutbox_skipsQuietly() {
+        // given
+        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatCode(() -> paymentOutboxUseCase.recordPublishFailureDelay(ORDER_ID))
+                .doesNotThrowAnyException();
+        then(mockPaymentOutboxRepository).should(never())
+                .recordRetryDelay(anyString(), anyInt(), anyInt(), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("recordPublishFailureDelay: 조건부 갱신이 0건이면(경합 패배) 예외 없이 조용히 넘어간다")
+    void recordPublishFailureDelay_conditionalUpdateAffectsZeroRows_skipsQuietly() {
+        // given
+        PaymentOutbox pendingOutbox = PaymentOutbox.allArgsBuilder()
+                .id(1L)
+                .orderId(ORDER_ID)
+                .status(PaymentOutboxStatus.PENDING)
+                .retryCount(0)
+                .allArgsBuild();
+        given(mockPaymentOutboxRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(pendingOutbox));
+        given(mockPaymentOutboxRepository.recordRetryDelay(eq(ORDER_ID), eq(0), eq(1), any(Instant.class)))
+                .willReturn(false);
+
+        // when & then — 다른 워커가 먼저 선점했거나 기록을 마친 정상 흐름, 예외를 던지지 않는다
+        assertThatCode(() -> paymentOutboxUseCase.recordPublishFailureDelay(ORDER_ID))
+                .doesNotThrowAnyException();
     }
 }
