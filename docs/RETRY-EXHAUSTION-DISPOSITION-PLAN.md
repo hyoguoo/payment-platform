@@ -1,0 +1,418 @@
+# 재시도 소진 이후 처리 구현 플랜
+
+> 작성일: 2026-08-05
+
+## 목표
+
+격리 결제를 실패로 종결하기 전에 벤더 상태를 반드시 한 번 확인하게 하고, 발행 재시도에 대기 간격을 도입한다.
+
+## 컨텍스트
+
+- 설계 문서: `docs/topics/RETRY-EXHAUSTION-DISPOSITION.md`
+- 주요 변경 파일
+  - `pg-service/.../presentation/PgAttemptHistoryController.java` + 조회 서비스·응답 DTO 신규
+  - `payment-service/.../application/port/out/` 벤더 상태 조회 포트 신규
+  - `payment-service/.../infrastructure/adapter/http/feign/` 전용 클라이언트·설정 신규
+  - `payment-service/.../application/usecase/QuarantineResolveUseCase.java`
+  - `payment-service/.../presentation/PaymentAdminController.java` + `templates/admin/payment-event-detail.html`
+  - `payment-service/.../domain/{PaymentOutbox,RetryPolicy}.java`
+  - `payment-service/.../infrastructure/scheduler/OutboxWorker.java`
+  - `payment-service/src/main/resources/db/migration/V6__*.sql`
+
+---
+
+## 요약 브리핑
+
+### Task 목록
+
+1. **pg 벤더 상태 조회 엔드포인트** — pg 가 벤더에 1회 묻고 승인·실패·확인 불가 세 값 중 하나로 답한다. 조회가 실패해도 예외가 아니라 확인 불가 값으로 돌려준다.
+2. **결제 서비스 조회 포트와 전용 통로** — 기존 관리자 조회와 시간 제한이 달라 클라이언트를 따로 선언한다. 통신 예외는 어댑터가 확인 불가로 바꾼다.
+3. **격리 종결 판정** — 종결 직전에 조회하고 승인이면 거부, 실패·확인 불가면 진행하되 결과를 사유에 붙인다. 조회와 판정은 비가역인 재고 보상보다 앞에 둔다.
+4. **관리자 화면에 벤더 상태 표시** — 종결 전에 눌러 확인할 수 있게 하고, 거부되면 사유를 화면에 되돌려준다.
+5. **재시도 정책 정리** — 쓰지 않기로 한 소진 판정과 한도를 걷고, 지수 백오프의 자릿수 넘침을 막는다.
+6. **대기 상태 전용 간격 기록 메서드** — 롤백 직후 행에 횟수와 다음 시도 시각만 계산해 담는다. 상태 전이는 하지 않는다.
+7. **워커가 발행 실패를 별도 트랜잭션으로 기록** — 발행 경로의 단일 트랜잭션 불변을 건드리지 않고 간격만 남긴다. 기록은 상태와 횟수를 함께 조건으로 거는 조건부 갱신이라, 그사이 다른 워커가 선점했거나 발행을 끝냈으면 아무것도 하지 않는다.
+8. **값이 고정된 컬럼·인덱스 제거** — 어떤 코드도 읽지 않는 발행 예정 시각 컬럼을 걷는다.
+9. **테스트 표시명 라벨 정리** — 통합 테스트 이름에 남은 식별자를 내용으로 바꾼다.
+
+### 변경 후 전체 플로우차트
+
+```mermaid
+flowchart TD
+    subgraph Q[격리 종결 경로]
+        A[관리자가 격리 결제 상세를 연다] --> B[벤더 상태 조회 버튼]
+        B --> C[전용 통로로 pg 에 요청]
+        C --> D[pg 가 벤더에 1회 조회]
+        D --> E{조회 결과}
+        E -->|승인됨| F[화면에 승인 표시]
+        E -->|실패됨| G[화면에 실패 표시]
+        E -->|확인 불가| H[화면에 확인 불가 표시]
+        F --> I[관리자가 사유를 적고 종결 시도]
+        G --> I
+        H --> I
+        I --> J[종결 직전 한 번 더 조회]
+        J --> K{판정}
+        K -->|승인됨| L[종결 거부, 격리 유지, 사유를 화면에 표시]
+        K -->|실패됨| M[조회 결과를 사유에 붙여 진행]
+        K -->|확인 불가| M
+        M --> N[재고 조건부 보상]
+        N --> O[실패 확정]
+    end
+
+    subgraph P[발행 재시도 경로]
+        R[주기 배치가 대기 행 조회] --> S{다음 시도 시각이 지났는가}
+        S -->|아직| T[이번 회차 대상에서 제외]
+        S -->|지났거나 비어 있음| U[선점 후 발행]
+        U -->|성공| V[발행 완료 표시]
+        U -->|실패| W[트랜잭션 롤백으로 대기 상태 복귀]
+        W --> X[워커가 별도 트랜잭션으로 횟수와 다음 시도 시각 기록]
+        X --> Y[간격이 지난 뒤 재픽업]
+        Y --> R
+    end
+```
+
+### 핵심 결정 -> Task 매핑
+
+| 설계 문서의 결정 | Task |
+|:---:|:---:|
+| 벤더 상태 확인 방식 — pg 엔드포인트 + 결제 서비스 포트 | 1, 2 |
+| 조회 호출 횟수 — 요청당 1회, 재시도 없음 | 1 |
+| 조회 실패 표현 — 예외가 아니라 확인 불가 값 | 1, 2 |
+| 조회 통로 — 전용 클라이언트로 분리 | 2 |
+| 조회 시간 제한 — pg 의 벤더 호출보다 길게 | 2 |
+| 조회 시점 — 화면에서 한 번, 종결 직전 한 번 | 3, 4 |
+| 승인으로 확인된 경우 — 종결 거부 | 3 |
+| 확인 불가인 경우 — 종결 허용 + 사유 기록 | 3 |
+| 조회와 재고 보상 순서 | 3 |
+| 종결 사유 보존 — 입력 사유에 조회 결과 덧붙임 | 3 |
+| 발행 소진 종결 미도입 | 5 |
+| 소진 판정·한도 설정 제거 | 5 |
+| 지수 백오프 상한 | 5 |
+| 간격 기록 수단 — 대기 상태 전용 도메인 메서드 | 6 (값 계산), 7 (조건부 갱신으로 안전하게 반영) |
+| 발행 실패 간격 — 워커가 별도 트랜잭션으로 기록 | 7 |
+| 간격 적용 지점 — 기존 조회·선점 쿼리 조건 재사용 | 7 (검증으로 확인) |
+| 미사용 컬럼 제거 | 8 |
+
+Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 영향 범위 표에 포함된 정리 항목이다.
+
+### 트레이드오프 / 후속 작업
+
+- 승인으로 확인된 격리는 되살릴 수단이 없어 잔류한다. 재고는 격리 진입 시점에 이미 보상돼 잠기지 않는다.
+- 소진 시점에 자동으로 벤더를 확인하는 경로 배선은 범위 밖이다. 대장에 남긴다.
+- 재시도 한도·간격 값의 적정성은 부하 측정 뒤에 정한다. 이번에는 기존 기본값을 쓴다.
+- 관리자가 조회를 반복하면 벤더 호출이 늘어난다. 요청당 1회·재시도 없음이 유일한 방어다.
+- 격리 종결의 동시 이중 제출은 상태 조건만으로 판정한다. 두 요청이 거의 동시에 들어오면 먼저 통과한 쪽이 이기므로, 늦게 도착한 조회가 승인으로 뒤집혀도 소용없다. 관리자 단건 조작이 일반적 운영 형태라 이번엔 다루지 않고 잔여 한계로 우려 대장에 남긴다.
+
+---
+
+## 진행 상황
+
+- [ ] Task 1: pg 벤더 상태 조회 엔드포인트
+- [ ] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
+- [ ] Task 3: 격리 종결 판정 삽입
+- [ ] Task 4: 관리자 화면에 벤더 상태 표시
+- [ ] Task 5: 재시도 정책 정리
+- [ ] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
+- [ ] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
+- [ ] Task 8: 값이 고정된 컬럼·인덱스 제거
+- [ ] Task 9: 테스트 표시명 라벨 정리
+
+---
+
+## 태스크
+
+### Task 1: pg 벤더 상태 조회 엔드포인트 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+
+- `PgVendorStatusQueryServiceTest` — 벤더 조회 결과를 세 값으로 접는 판정
+  - `승인 상태면_승인됨을_반환한다` — `DONE` 입력
+  - `실패 상태면_실패됨을_반환한다` — `@ParameterizedTest @EnumSource(names = {"CANCELED", "PARTIAL_CANCELED", "ABORTED", "EXPIRED"})`
+  - `미확정 상태면_확인불가를_반환한다` — `@ParameterizedTest @EnumSource(names = {"READY", "IN_PROGRESS", "WAITING_FOR_DEPOSIT"})`
+  - `벤더 조회가_예외면_확인불가를_반환한다` — 재시도 가능·불가 예외 각각
+  - `모의 벤더의_미처리_주문_예외도_확인불가로_접는다` — `UnsupportedOperationException`. **이 케이스가 핵심이다** — 모의 벤더는 승인 기록이 없는 주문의 상태 조회에 이 예외를 던지는데, 그게 바로 재시도 소진으로 격리된 주문이다. 게이트웨이 예외 두 종만 잡으면 이 토픽이 풀려는 시나리오에서 그대로 5xx 가 난다
+  - `벤더_조회는_한_번만_호출된다` — `then(port).should(times(1))`
+  - `주문 기록이_없으면_확인불가를_반환한다` — pg_inbox 미존재
+- `PgVendorStatusControllerTest` (`@WebMvcTest`) — 경로 매핑과 응답 본문
+- 패턴: Mockito BDD + AssertJ, 기존 `PgFinalConfirmationGateTest` 의 상태 분류 상수를 참고하되 재사용하지 않는다(그쪽은 미연결 코드다)
+
+**구현 (GREEN)**
+
+- `pg-service/.../application/dto/PgVendorStatusView.java` — 판정 결과(`APPROVED` / `FAILED` / `UNKNOWN`) + 벤더 원 상태 문자열 + 조회 시각
+- `pg-service/.../presentation/port/PgVendorStatusQueryService.java` — presentation 이 의존할 조회 포트 (기존 `PgAttemptHistoryQueryService` 와 같은 자리)
+- `pg-service/.../application/service/PgVendorStatusQueryServiceImpl.java`
+  - `pg_inbox` 에서 벤더 종류를 읽어 `PgStatusLookupStrategySelector` 로 전략을 고른다
+  - `getStatusByOrderId` 를 **1회만** 호출한다. 재시도로 감싸지 않는다
+  - **조회에서 나오는 모든 실행 시 예외를 확인 불가로 접는다.** 게이트웨이 예외 두 종만 잡으면 모의 벤더의 미처리 주문 예외가 새어나가고, 벤더 전략이 늘어날 때마다 잡을 예외가 늘어난다. 예외 타입과 사유를 로그에 남기므로 삼킴이 아니다 — 기존 조회 흡수 서비스들과 같은 형태다
+  - 주문 기록이 없으면 확인 불가
+- `pg-service/.../presentation/dto/PgVendorStatusResponse.java`
+- `PgAttemptHistoryController` 에 `GET /{orderId}/vendor-status` 추가
+
+**완료 기준**
+
+- 새 테스트 전부 통과, `./gradlew :pg-service:test` 통과
+- 어떤 입력에서도 이 엔드포인트가 5xx 를 내지 않는다 — 벤더 조회 실패는 확인 불가를 담은 200 이다
+- `getStatusByOrderId` 호출이 요청당 1회임이 테스트로 고정된다
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로 [tdd=true] [domain_risk=true]
+
+기존 `PgFeignClient` 에 메서드를 얹지 않는다. 시간 제한이 클라이언트 이름 단위로 걸려 관리자 조회용 짧은 값(연결 1초·읽기 2초)을 물려받고, pg 가 벤더를 부르는 시간(읽기 10초)에 못 미쳐 정상 응답도 끊긴다.
+
+**테스트 (RED)**
+
+- `PgVendorStatusFeignConfigTest` — 응답 코드 → 예외 매핑
+  - 404 / 429·502·503·504 / 그 외 5xx 각 케이스
+- `PgVendorStatusHttpAdapterContractTest` — 어댑터 변환
+  - `응답의_세_값이_도메인_값으로_매핑된다`
+  - `통신_예외면_확인불가를_반환한다` — `feign.RetryableException`
+  - `서비스_예외면_확인불가를_반환한다` — pg 자체 오류
+  - `어댑터는_예외를_던지지_않는다` — 어떤 경우에도 값을 반환
+- `PgVendorStatusFeignTimeoutTest` — 설정 계약. 전용 클라이언트 이름의 시간 제한이 기존 관리자 조회용과 분리 적용되고, 읽기 제한이 pg 의 벤더 호출 제한보다 큰지 단정한다. 이 한 줄이 잘못되면 조회가 상시 확인 불가로 떨어지는데 로그로는 정상처럼 보이므로 구조 계약으로 고정한다
+
+**구현 (GREEN)**
+
+- `payment-service/.../application/port/out/PgVendorStatusPort.java` — `PgVendorStatusInfo lookup(String orderId)`. 예외를 던지지 않는다
+- `payment-service/.../application/dto/admin/PgVendorStatusInfo.java` — 판정 값(`APPROVED` / `FAILED` / `UNKNOWN`) + 벤더 원 상태 + 조회 시각
+- `payment-service/.../infrastructure/adapter/http/feign/PgVendorStatusFeignClient.java`
+  - `@FeignClient(name = "pg-service", contextId = "pgVendorStatus", configuration = PgVendorStatusFeignConfig.class)`
+  - **`name` 은 반드시 `pg-service` 로 둔다.** 그 값이 Eureka 서비스 식별자라, 다른 이름을 주면 조회가 깨진다. 그걸 막으려 정적 주소를 박으면 인스턴스 목록 해석과 부하 분산을 우회해 특정 인스턴스가 죽었을 때 조회가 통째로 실패한다 — 확인 불가는 종결 허용 분기라 이 라우팅 오류가 안전장치를 조용히 무력화한다
+  - 설정 네임스페이스만 `contextId` 로 나눈다. 이 저장소에 `contextId` 선례가 없으므로 클래스 주석에 이유를 남긴다
+- `payment-service/.../infrastructure/adapter/http/feign/PgVendorStatusFeignConfig.java` — `@Configuration` 부착 금지 (기존 `PgFeignConfig` 와 같은 이유)
+- `payment-service/.../infrastructure/adapter/http/PgVendorStatusHttpAdapter.java` — 모든 예외를 확인 불가로 접는다
+- `application.yml` — `spring.cloud.openfeign.client.config.pgVendorStatus` 로 연결·읽기 제한 추가. pg 의 벤더 호출 읽기 제한(10초)보다 크게 잡고, 두 값의 관계를 주석으로 고정한다
+
+**완료 기준**
+
+- 새 테스트 전부 통과, `./gradlew :payment-service:test` 통과
+- `grep` 으로 기존 `PgFeignClient` 에 벤더 상태 메서드가 추가되지 않았음을 확인한다
+- 새 클라이언트의 읽기 제한이 pg 벤더 호출 제한보다 크다는 것이 테스트로 고정된다
+- 클라이언트 선언에 `url` 속성이 없고 `name` 이 `pg-service` 임을 구조 계약으로 고정한다 — 라우팅이 어긋나도 기능 테스트는 통과하므로 선언 자체를 단정한다
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 3: 격리 종결 판정 삽입 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)** — `QuarantineResolveUseCaseTest` 에 추가
+
+- `조회가_승인이면_종결을_거부한다` — 예외 타입 단정
+- `조회가_승인이면_재고_보상을_호출하지_않는다` — `then(stockCachePort).should(never())`. 보상은 비가역이라 이 단정이 핵심이다
+- `조회가_실패면_종결을_진행한다`
+- `조회가_확인불가면_종결을_진행한다`
+- `종결_사유에_조회_결과가_덧붙는다` — 저장된 사유 문자열 단정
+- `조회는_격리_상태_확인_이후에_수행된다` — 비격리 건에는 조회조차 나가지 않는다
+- `기존_케이스_회귀` — 사유 누락·비격리 거부는 그대로
+
+**구현 (GREEN)**
+
+- `QuarantineResolveUseCase.resolve` 순서를 다음으로 바꾼다
+  1. 사유 공백 검증 (기존)
+  2. 결제 로드 (기존)
+  3. 격리 상태 확인 (기존)
+  4. **벤더 상태 조회** — `PgVendorStatusPort.lookup`
+  5. **판정** — 승인이면 예외로 거부
+  6. 재고 조건부 보상 (기존, 트랜잭션 밖)
+  7. 사유에 조회 결과를 덧붙여 실패 확정 (기존 CAS 경로)
+- `PaymentErrorCode` 에 승인 확인 거부 코드 추가
+- 조회는 외부 호출이라 트랜잭션 밖에 둔다 — 기존 재고 보상과 같은 이유
+
+**완료 기준**
+
+- 새 테스트 전부 통과, 기존 `QuarantineResolveUseCaseTest` 회귀 없음
+- `./gradlew :payment-service:test` 통과
+- 승인 거부 케이스에서 재고 보상 호출 0회가 단정된다
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 4: 관리자 화면에 벤더 상태 표시 [tdd=false] [domain_risk=false]
+
+화면 조립과 표시라 새로 고정할 도메인 동작이 없다. 종결 판정 자체는 Task 3 이 테스트로 덮는다.
+
+**구현**
+
+- `PaymentAdminController` 에 벤더 상태 조회 진입점 추가 — 격리 상세에서 눌러 조회하고 결과를 담아 상세로 되돌아온다. 상세 진입 시 자동 조회는 하지 않는다(외부 호출이라 매번 느려지고 보지도 않을 조회가 벤더에 나간다)
+- 조회 결과를 담을 화면 응답 타입을 `presentation/dto/response/admin/` 에 추가
+- `templates/admin/payment-event-detail.html` 격리 복구 카드
+  - 조회 버튼과 결과 표시 영역 추가
+  - 승인으로 확인된 경우 종결 버튼 옆에 경고를 띄운다
+  - 안내 문구를 실제 동작에 맞춘다 — 현재 "벤더 상태 확인 후 안전 종결로 복구할 수 있습니다"는 확인 수단이 없던 시절 문구다
+- 종결이 거부되면 기존 flash 메시지 경로로 사유를 되돌려준다 (`redirectWithError` 재사용)
+
+**완료 기준**
+
+- `./gradlew :payment-service:test` 통과, 회귀 없음
+- 격리 상세 화면에서 조회 버튼과 결과 영역이 렌더되고, pg 가 닿지 않아도 화면이 부분 렌더로 살아남는다 (기존 시도 이력 카드와 같은 방식)
+- 화면 안내 문구에 확인 수단이 없다는 전제가 남아 있지 않다
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 5: 재시도 정책 정리 [tdd=true] [domain_risk=false]
+
+소진 종결을 도입하지 않기로 확정됐으므로 소진 판정과 한도를 걷는다. 동시에 회차가 무한히 커질 수 있게 되므로 지수 백오프의 자릿수 넘침을 막는다.
+
+**테스트 (RED)** — `RetryPolicyTest`
+
+- `지수_백오프는_회차가_커져도_최대값을_넘지_않는다` — 회차 100 등 큰 값
+- `지수_백오프는_회차가_커져도_음수가_되지_않는다` — 시프트 넘침 회귀 가드. 상한 처리를 빼면 실패해야 한다
+- `고정_간격은_회차와_무관하게_같은_값이다`
+- `최대_지연이_결제_만료_시한보다_짧다` — 설정 계약. 소진 종결을 없애 재시도가 무한히 이어지므로, 최대 지연이 만료 시한(대기 30분)에 근접하면 이미 만료된 결제에 확정 명령이 뒤늦게 나갈 수 있다. 두 값의 관계를 테스트로 못박아 설정 변경으로 뒤집히는 것을 막는다
+- 기존 소진 판정 케이스는 삭제
+
+**구현 (GREEN)**
+
+- `payment-service/.../domain/RetryPolicy.java`
+  - `isExhausted` 와 `maxAttempts` 필드 제거
+  - `nextDelay` 의 지수 분기에서 시프트 전에 회차를 상한으로 자른다
+- `payment-service/.../application/config/RetryPolicyProperties.java` — `maxAttempts` 제거
+- `application*.yml` 에 해당 설정 키가 있으면 함께 제거
+
+**완료 기준**
+
+- 새 테스트 통과
+- `grep -rn "isExhausted\|maxAttempts" payment-service/src` 결과에 `RetryPolicy` / `RetryPolicyProperties` 관련 항목이 남지 않는다. 다음 둘은 이름만 같은 별개라 그대로 둔다
+  - Kafka 오류 처리 설정(`KafkaErrorHandlerConfig`, `KafkaConsumerConfig`)의 `maxAttempts`
+  - pg 시도 이력의 소진 표시(`PgAttemptEntryInfo` · `PgAttemptEntryViewResponse` · 상세 화면 템플릿 · 그 계약 테스트)의 `exhausted` / `isExhausted`
+- 최대 지연과 만료 시한 관계 테스트가 통과한다
+- `./gradlew :payment-service:test` 통과
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 6: 대기 상태 전용 간격 기록 도메인 메서드 [tdd=true] [domain_risk=true]
+
+기존 `incrementRetryCount` 는 진행 중 상태에서만 허용하는 가드가 있어 롤백 직후 행에 쓸 수 없다. 가드를 푸는 대신 메서드를 나눈다 — 상태 전이가 없는 용도라 의미가 다르다.
+
+**이 도메인 가드는 동시 선점을 막지 못한다.** 읽은 시점에 대기였어도 저장 전에 다른 워커가 선점할 수 있고, 저장이 조건절 없는 전체 덮어쓰기라 그 선점을 되돌려버린다. 낙관적 잠금도 걸려 있지 않다. 실제 방어는 Task 7 의 조건부 갱신이고, 이 가드는 그 앞단의 이중 방어다.
+
+**테스트 (RED)** — `PaymentOutboxTest`
+
+- `대기_상태면_횟수와_다음_시도_시각이_기록된다` — 상태는 대기 그대로임까지 단정
+- `기록_후_다음_시도_시각은_현재_시각에_간격을_더한_값이다` — 고정 `Clock`
+- `@ParameterizedTest @EnumSource(names = {"IN_FLIGHT", "DONE", "FAILED"})` — `대기가_아니면_거부한다`
+- 기존 `incrementRetryCount` 케이스는 그대로 둔다 — 타임아웃 회수 경로가 여전히 그 메서드를 쓴다
+
+**구현 (GREEN)**
+
+- `payment-service/.../domain/PaymentOutbox.java` 에 대기 상태 전용 메서드 추가
+  - 대기 상태가 아니면 예외
+  - 횟수를 올리고 다음 시도 시각을 `현재 + 정책 간격` 으로 설정
+  - 상태는 바꾸지 않는다
+- 필요하면 `PaymentErrorCode` 에 거부 코드 추가
+
+**완료 기준**
+
+- 새 테스트 전부 통과
+- 기존 `incrementRetryCount` 와 그 테스트가 그대로 남아 있다
+- `./gradlew :payment-service:test` 통과
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록 [tdd=true] [domain_risk=true]
+
+기록을 "읽어서 고친 뒤 저장"으로 구현하면 안 된다. 저장이 조건절 없는 전체 덮어쓰기라, 읽은 뒤 다른 워커가 선점하거나 발행을 끝낸 행을 대기 상태로 되돌려버린다. 발행이 끝난 행을 되돌리면 같은 확정 명령이 다시 나간다. 기존 선점 쿼리와 같은 형태의 **조건부 갱신**으로 만든다.
+
+**테스트 (RED)**
+
+- `JpaPaymentOutboxRepositoryTest` 또는 저장소 계약 테스트 — 조건부 갱신
+  - `대기_상태이고_횟수가_일치하면_갱신된다` — 반영 행 수 1
+  - `이미_선점돼_진행_중이면_갱신되지_않는다` — 반영 행 수 0, 행 상태 불변
+  - `이미_발행이_끝나_완료_상태면_갱신되지_않는다` — 반영 행 수 0
+  - `횟수가_그사이_바뀌었으면_갱신되지_않는다` — 다른 워커가 먼저 기록한 경우
+- `PaymentOutboxUseCaseTest` — 기록 메서드
+  - `대기_행에_간격을_기록한다`
+  - `행이_없으면_조용히_넘어간다`
+  - `조건부_갱신이_0건이면_조용히_넘어간다` — 경합 패배는 정상 흐름이다
+- `OutboxWorkerTest`
+  - `발행이_실패하면_간격_기록을_호출한다`
+  - `발행이_성공하면_간격_기록을_호출하지_않는다`
+  - `간격_기록이_실패해도_다음_행_처리를_계속한다` — 한 건의 기록 실패가 배치 전체를 멈추지 않는다
+  - `병렬_처리에서도_같은_기록이_수행된다`
+- 발행 간격 통합 테스트 (`@Tag("integration")`)
+  - 발행을 실패시킨 뒤 다음 시도 시각이 채워지는지
+  - 그 시각 이전에는 대기 행 조회가 그 행을 돌려주지 않는지
+  - 시각이 지나면 다시 돌려주는지
+  - 이 세 단정이 "기존 조회·선점 쿼리 조건을 그대로 쓴다"는 결정의 검증이다
+- 동시 선점 통합 테스트 (`@Tag("integration")`, `@RepeatedTest`)
+  - 발행 실패 직후 기록과 다른 워커의 선점을 겹쳐 실행해, 기록이 선점을 되돌리지 않는지 단정한다. 반복마다 새 주문 번호를 쓴다
+
+**구현 (GREEN)**
+
+- `payment-service/.../application/port/out/PaymentOutboxRepository.java` 에 조건부 갱신 선언 추가
+- `payment-service/.../infrastructure/repository/JpaPaymentOutboxRepository.java`
+  - `@Modifying UPDATE ... SET retryCount = :next, nextRetryAt = :nextRetryAt WHERE orderId = :orderId AND status = 'PENDING' AND retryCount = :expected`
+  - 상태와 횟수를 함께 조건으로 걸어, 선점당했거나 다른 워커가 이미 기록한 경우 0건으로 끝난다
+- `payment-service/.../application/usecase/PaymentOutboxUseCase.java` 에 기록 메서드 추가
+  - `@Transactional(propagation = Propagation.REQUIRES_NEW)` — 발행 롤백과 분리한다. 워커가 트랜잭션 밖 진입점이고 프록시를 거치는 다른 빈 호출이라 전파 설정이 실제로 걸리는지 착수 시 확인한다
+  - 행을 읽어 Task 6 의 도메인 메서드로 다음 값을 계산하고, 읽은 시점의 횟수를 조건으로 조건부 갱신을 호출한다
+  - 반영 0건은 경합 패배로 보고 로그만 남기고 끝낸다
+- `payment-service/.../infrastructure/scheduler/OutboxWorker.java`
+  - 순차 경로와 병렬 경로 모두에서 발행 호출을 감싸 실패 시 기록 메서드를 부른다
+  - 기록 실패는 로그로 남기고 다음 행으로 넘어간다. 빈 예외 블록을 두지 않는다
+
+**완료 기준**
+
+- 새 단위 테스트 전부 통과
+- 통합 테스트가 캐시 없이 통과 — `./gradlew :payment-service:integrationTest --rerun-tasks`
+- 조건부 갱신에 상태·횟수 조건이 모두 걸려 있음이 쿼리 문자열 단정으로 고정된다 — 조건이 빠져도 단일 스레드 테스트는 통과하므로 구조 계약이 필요하다
+- `./gradlew test` 전체 통과, 회귀 없음
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 8: 값이 고정된 컬럼·인덱스 제거 [tdd=false] [domain_risk=false]
+
+**구현**
+
+- `payment-service/src/main/resources/db/migration/V6__*.sql` — 발행 예정 시각 컬럼과 그 컬럼을 쓰는 인덱스를 제거한다. 같은 형태의 선례는 `V5__drop_payment_event_retry_count.sql`
+- 엔티티에는 이 컬럼이 매핑돼 있지 않으므로 코드 변경이 없어야 한다. 착수 전에 다시 확인한다
+
+**완료 기준**
+
+- `grep -rn "payment_outbox\.available_at\|availableAt" payment-service/src` 결과가 마이그레이션 파일 외에 없다. 상세 화면 템플릿의 `pg_outbox.available_at` 설명 주석은 pg 쪽 다른 테이블을 가리키므로 대상이 아니다
+- `./gradlew :payment-service:integrationTest --rerun-tasks` 통과 — 마이그레이션 적용 후 부팅이 실질 검증이다
+- 인덱스 제거 후 대기 행 조회의 `EXPLAIN` 결과에 남은 복합 인덱스가 잡히고 전체 스캔으로 떨어지지 않는다
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+### Task 9: 테스트 표시명 라벨 정리 [tdd=false] [domain_risk=false]
+
+**구현**
+
+- `pg-service/.../integration/PgInboxTraceparentIntegrationTest.java` 의 `@DisplayName` 에 남은 태스크 식별자를 내용 서술로 바꾼다
+- 같은 형태가 더 있는지 `grep` 으로 훑고 함께 정리한다
+
+**완료 기준**
+
+- `grep -rn "@DisplayName" pg-service/src/test payment-service/src/test` 결과에 태스크 식별자 라벨이 없다
+- `./gradlew test` 통과
+
+**완료 결과**
+> (execute에서 채움)
+
+---
+
+## 리뷰 처리
+> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)

@@ -5,9 +5,10 @@
 ## 활성 작업
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1: pg 벤더 상태 조회 엔드포인트
 - **이슈/브랜치**: #136
-- **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md
+- **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 
 ## 재개 메모
 
