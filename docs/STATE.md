@@ -6,7 +6,7 @@
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
 - **단계**: execute
-- **활성 태스크**: Task 4: 관리자 화면에 벤더 상태 표시
+- **활성 태스크**: Task 5: 재시도 정책 정리(소진 판정·한도 제거 + 지수 백오프 자릿수 넘침 방지)
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 

@@ -110,7 +110,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 1: pg 벤더 상태 조회 엔드포인트
 - [x] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
 - [x] Task 3: 격리 종결 판정 삽입
-- [ ] Task 4: 관리자 화면에 벤더 상태 표시
+- [x] Task 4: 관리자 화면에 벤더 상태 표시
 - [ ] Task 5: 재시도 정책 정리
 - [ ] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
 - [ ] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
@@ -323,7 +323,39 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - 화면 안내 문구에 확인 수단이 없다는 전제가 남아 있지 않다
 
 **완료 결과**
-> (execute에서 채움)
+
+- 관리자가 격리 상세 화면에서 "벤더 상태 확인" 버튼을 눌러야만 조회가 나간다 —
+  `GET /admin/payments/events/{eventId}/vendor-status` 신규 진입점을 별도로 두고,
+  기존 `GET /admin/payments/events/{eventId}` (상세 진입)에는 조회 호출을 두지 않았다
+- `PaymentAdminController` 는 `PgVendorStatusPort`(출력 포트)를 직접 호출하지 않는다
+  — presentation 입력 포트 `PgVendorStatusViewService`(신규, `PgAttemptHistoryViewService`
+  와 같은 자리)를 거친다. 구현체 `PgVendorStatusViewServiceImpl`(application)은 Task 2 의
+  포트가 이미 조회 실패를 확인불가 판정으로 흡수하므로 추가 흡수 로직 없이 그대로 위임한다
+  — 존재 이유는 예외 흡수가 아니라 presentation-출력포트 직접 호출 금지 layer 규칙 준수다
+- 상세 조회 로직을 `populateEventDetail(eventId, model)` private 메서드로 추출해 상세
+  진입 엔드포인트와 벤더 상태 조회 엔드포인트가 공유한다 — 벤더 상태 조회 요청도 상세 화면
+  전체를 그대로 재조립하고 벤더 상태만 덧붙여 같은 템플릿(`payment-event-detail`)으로 돌아간다
+- pg 가 닿지 않아도 화면은 부분 렌더로 살아남는다 — `PgVendorStatusPort` 가 이미 예외를
+  던지지 않는 계약이라(Task 2), 조회 실패는 항상 `judgement=UNKNOWN` 값으로 돌아오고
+  격리 종결·DLQ 재주입 버튼은 영향받지 않는다. 기존 시도 이력 카드와 동일한 원칙
+- `templates/admin/payment-event-detail.html` 격리 복구 카드
+  - 안내 문구를 "종결을 시도하면 서버가 종결 직전에 벤더 상태를 한 번 더 확인하며, 승인이
+    확인되면 종결이 거부됩니다"로 정정 — 확인 수단이 없던 시절 문구("벤더 상태 확인 후 안전
+    종결로 복구할 수 있습니다")를 걷어냈다
+  - 벤더 상태 확인 버튼(GET) + 결과 표시 영역(판정 뱃지 + 원 상태 + 조회 시각) 추가
+  - `judgement == 'APPROVED'` 면 종결 버튼 위에 경고("지금 종결을 시도해도 서버가
+    거부합니다")를 띄운다 — 실제로 거부되는 것은 종결 시도 시점의 재조회 결과이므로 이
+    사전 경고는 조회 시점과 종결 시점 사이에 벤더 상태가 바뀌면 어긋날 수 있는 안내일 뿐,
+    최종 판정은 서버가 한다는 점은 그대로다
+  - 종결 거부(승인 확인·CAS 충돌 등)는 기존 `redirectWithError`/flash 메시지 경로를 그대로
+    쓴다 — `resolveQuarantine` 자체는 변경하지 않았다
+- 신규: `PgVendorStatusViewService`(presentation port), `PgVendorStatusViewServiceImpl`
+  (application), `PgVendorStatusViewResponse`(presentation dto)
+- [Rule 1] `PaymentAdminControllerTest`/`PaymentAdminControllerAttemptHistoryTest`
+  (기존 `@WebMvcTest(PaymentAdminController.class)`)에 새 의존성 `@MockitoBean
+  PgVendorStatusViewService` 를 추가 — 새 생성자 인자로 컨텍스트 로드가 깨져 13개 테스트가
+  실패했다. 두 테스트 모두 동작 검증 내용은 바꾸지 않았다
+- `./gradlew :payment-service:test` 586개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 

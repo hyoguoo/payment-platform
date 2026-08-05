@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgAttemptHistoryLookupResult;
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgVendorStatusInfo;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageResponse;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.PageSpec;
 import com.hyoguoo.paymentplatform.payment.core.common.dto.SortDirection;
@@ -16,9 +17,11 @@ import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.Payme
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentHistoryResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PaymentOrderResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PgAttemptHistoryViewResponse;
+import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.PgVendorStatusViewResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PgAttemptHistoryViewService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PgVendorStatusViewService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -38,6 +41,7 @@ public class PaymentAdminController {
     private final AdminPaymentService adminPaymentService;
     private final PaymentRecoveryAdminService paymentRecoveryAdminService;
     private final PgAttemptHistoryViewService pgAttemptHistoryViewService;
+    private final PgVendorStatusViewService pgVendorStatusViewService;
 
     @GetMapping("/events")
     public String listPaymentEvents(
@@ -67,6 +71,28 @@ public class PaymentAdminController {
             @PathVariable Long eventId,
             Model model
     ) {
+        populateEventDetail(eventId, model);
+
+        return "admin/payment-event-detail";
+    }
+
+    /**
+     * 격리 상세 화면에서 벤더 상태 확인 버튼을 눌렀을 때만 호출된다 — {@link #getPaymentEventDetail}
+     * 진입 시에는 자동 조회하지 않는다(외부 호출이라 매번 느려지고 보지도 않을 조회가 벤더에 나간다).
+     * 상세 화면을 그대로 재조립하고 벤더 상태만 덧붙여 같은 템플릿으로 돌아간다.
+     */
+    @GetMapping("/events/{eventId}/vendor-status")
+    public String getVendorStatus(
+            @PathVariable Long eventId,
+            Model model
+    ) {
+        String orderId = populateEventDetail(eventId, model);
+        addVendorStatus(model, orderId);
+
+        return "admin/payment-event-detail";
+    }
+
+    private String populateEventDetail(Long eventId, Model model) {
         PaymentEventResult eventResult = adminPaymentService.getPaymentEventDetail(eventId);
         List<PaymentOrderResult> orderResults = adminPaymentService.getPaymentOrdersByEventId(eventId);
         List<PaymentHistoryResult> historyResults = adminPaymentService.getPaymentHistoriesByEventId(eventId);
@@ -86,7 +112,17 @@ public class PaymentAdminController {
 
         addAttemptHistory(model, eventResult.getOrderId());
 
-        return "admin/payment-event-detail";
+        return eventResult.getOrderId();
+    }
+
+    /**
+     * 벤더 상태를 조회해 모델에 담는다. {@link PgVendorStatusViewService} 는 조회 실패를 예외로
+     * 던지지 않고 확인 불가 판정으로 흡수하므로(Task 2), pg 가 닿지 않아도 이 호출은 항상 값을
+     * 반환하고 나머지 상세 화면은 정상 렌더된다 — 기존 시도 이력 카드와 같은 방식이다.
+     */
+    private void addVendorStatus(Model model, String orderId) {
+        PgVendorStatusInfo vendorStatusInfo = pgVendorStatusViewService.getVendorStatus(orderId);
+        model.addAttribute("vendorStatus", PgVendorStatusViewResponse.from(vendorStatusInfo));
     }
 
     /**
