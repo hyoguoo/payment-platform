@@ -4,7 +4,10 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
+- **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
+- **단계**: plan
+- **이슈/브랜치**: #136
+- **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md
 
 ## 재개 메모
 
