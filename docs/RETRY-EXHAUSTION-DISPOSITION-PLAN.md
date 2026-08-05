@@ -114,7 +114,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 5: 재시도 정책 정리
 - [x] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
 - [x] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
-- [ ] Task 8: 값이 고정된 컬럼·인덱스 제거
+- [x] Task 8: 값이 고정된 컬럼·인덱스 제거
 - [ ] Task 9: 테스트 표시명 라벨 정리
 
 ---
@@ -587,7 +587,18 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - 인덱스 제거 후 대기 행 조회의 `EXPLAIN` 결과에 남은 복합 인덱스가 잡히고 전체 스캔으로 떨어지지 않는다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `V6__drop_payment_outbox_available_at.sql` — `payment_outbox.available_at` 컬럼과 그 컬럼을 쓰던
+  `idx_payment_outbox_status_available` 인덱스를 한 `ALTER TABLE` 로 함께 제거했다. `PaymentOutboxEntity` 에
+  애초에 이 컬럼이 매핑돼 있지 않아 코드 변경은 없다
+- `idx_payment_outbox_status_retry_created (status, next_retry_at, created_at)` 는 남겼다 — Task 7 로
+  `next_retry_at` 이 실제로 채워지기 시작하면서 `findPendingBatch` 조회가 이 인덱스를 쓴다
+- Testcontainers MySQL 에 마이그레이션을 적용하고 DONE 2000건 + PENDING 20건을 넣어
+  `findPendingBatch` 쿼리를 `EXPLAIN` 한 결과 `idx_payment_outbox_status_retry_created` 를 타고
+  전체 스캔(`type=ALL`)으로 떨어지지 않음을 확인했다(검증용 임시 테스트는 확인 후 제거)
+- `grep -rn "payment_outbox\.available_at\|availableAt" payment-service/src` 결과가 마이그레이션
+  파일 자기 자신뿐이다. 상세 화면 템플릿의 `pg_outbox.available_at` 주석은 pg 쪽 다른 테이블이라 대상이 아니다
+- `./gradlew :payment-service:integrationTest --rerun-tasks` 149개 전부 통과, `./gradlew test` 전체 통과
 
 ---
 
