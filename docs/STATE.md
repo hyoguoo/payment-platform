@@ -5,8 +5,7 @@
 ## 활성 작업
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
-- **단계**: execute
-- **활성 태스크**: Task 9: 테스트 표시명 라벨 정리
+- **단계**: ship
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 

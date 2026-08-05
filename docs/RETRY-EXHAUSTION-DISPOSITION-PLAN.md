@@ -115,7 +115,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
 - [x] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
 - [x] Task 8: 값이 고정된 컬럼·인덱스 제거
-- [ ] Task 9: 테스트 표시명 라벨 정리
+- [x] Task 9: 테스트 표시명 라벨 정리
 
 ---
 
@@ -615,7 +615,26 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - `./gradlew test` 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `pg-service/src/test` + `payment-service/src/test` 전체를 `@DisplayName` grep 으로 훑어 남은 태스크
+  식별자 라벨 7건을 정리했다. Javadoc 안의 동일 라벨(`PgInboxTraceparentIntegrationTest` 클래스
+  주석의 "— E-5")도 함께 걷었다
+  - `PgInboxTraceparentIntegrationTest` — "— E-5" 제거 (예시로 지목된 건)
+  - `PgInboxProcessorTest` — "(M4)" 제거
+  - `PgVendorCallServiceTest` — "self-loop 누적 시뮬 (Task 2)" → "self-loop 누적 시뮬"
+  - `QuarantineResolveUseCaseTest` — "(SCR-6)" 제거
+  - `PaymentEventFlowMetricsTest` 2건 — "d7Invariant"(내부 결정 ID, 종결 가드 재발행 카디널리티
+    불변식을 가리킴) 라벨을 "발행/종결 카운터는 재발행에도 라벨이 붙지 않는다"는 서술로 교체.
+    이 두 건은 `@DisplayName` 텍스트가 테스트 메서드명을 그대로 복사하던 관행이라 결과적으로
+    메서드명과 달라졌지만, 코드 컨벤션상 메서드명 자체는 참조 안전을 위해 손대지 않았다
+  - `PaymentControllerMvcTest` 6건 + `PaymentControllerTest` 3건 — "(PORT-02)" /
+    "(STATUS-01, STATUS-02)" / "(STATUS-03)" / "(STATUS-01)" / "(OUTBOX-01)" 제거. 남은
+    한글 서술만으로 검증 내용이 이미 충분히 드러난다
+- "Track P self-loop"(`PgSelfLoopRetryExhaustionIntegrationTest` 등) · `P8D`(dedup TTL
+  도메인 상수) 같은 도메인 용어·시나리오 이름은 태스크 식별자가 아니라 그대로 두었다
+- `grep -rn "@DisplayName" pg-service/src/test payment-service/src/test | grep -iE
+  "\([A-Z]{1,4}-?[0-9]+|Task ?[0-9]|TC[0-9]|§"` 결과 없음
+- `./gradlew test` 전체 통과, 회귀 없음
 
 ---
 

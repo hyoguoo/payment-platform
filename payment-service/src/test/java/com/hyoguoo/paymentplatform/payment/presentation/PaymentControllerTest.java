@@ -129,7 +129,7 @@ class PaymentControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("DONE 상태의 PaymentEvent를 조회하면 200 OK와 함께 orderId, status=DONE, approvedAt이 반환된다. (STATUS-01, STATUS-02)")
+    @DisplayName("DONE 상태의 PaymentEvent를 조회하면 200 OK와 함께 orderId, status=DONE, approvedAt이 반환된다.")
     void getPaymentStatus_Done_Success() throws Exception {
         // given
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
@@ -159,7 +159,7 @@ class PaymentControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("READY 상태의 PaymentEvent를 조회하면 200 OK와 함께 status=PROCESSING, approvedAt=null이 반환된다. (STATUS-03)")
+    @DisplayName("READY 상태의 PaymentEvent를 조회하면 200 OK와 함께 status=PROCESSING, approvedAt=null이 반환된다.")
     void getPaymentStatus_Processing_Success() throws Exception {
         // given
         jdbcTemplate.update(PAYMENT_EVENT_INSERT_SQL,
@@ -188,7 +188,7 @@ class PaymentControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 orderId로 Status 조회 시 404 Not Found가 반환된다. (STATUS-01)")
+    @DisplayName("존재하지 않는 orderId로 Status 조회 시 404 Not Found가 반환된다.")
     void getPaymentStatus_NotFound() throws Exception {
         // when
         ResultActions perform = mockMvc.perform(

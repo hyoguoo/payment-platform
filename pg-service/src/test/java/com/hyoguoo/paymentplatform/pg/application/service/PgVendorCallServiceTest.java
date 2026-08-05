@@ -346,7 +346,7 @@ class PgVendorCallServiceTest {
     // -----------------------------------------------------------------------
 
     @Nested
-    @DisplayName("self-loop 누적 시뮬 (Task 2)")
+    @DisplayName("self-loop 누적 시뮬")
     class SelfLoopAccumulation {
 
         private static final Long INBOX_ID = 1L;

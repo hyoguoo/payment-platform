@@ -79,7 +79,7 @@ class PaymentEventFlowMetricsTest {
     }
 
     @Test
-    @DisplayName("recordPublished_noLabels_d7Invariant — published 카운터에 status/orderId/userId 라벨 없음")
+    @DisplayName("발행 카운터는 재발행에도 status/orderId/userId 라벨이 붙지 않는다")
     void recordPublished_noLabels_d7Invariant() {
         sut.recordPublished();
 
@@ -90,7 +90,7 @@ class PaymentEventFlowMetricsTest {
     }
 
     @Test
-    @DisplayName("recordTerminal_noLabels_d7Invariant — terminal 카운터에 status/orderId/userId 라벨 없음")
+    @DisplayName("종결 카운터는 재발행에도 status/orderId/userId 라벨이 붙지 않는다")
     void recordTerminal_noLabels_d7Invariant() {
         sut.recordTerminal();
 

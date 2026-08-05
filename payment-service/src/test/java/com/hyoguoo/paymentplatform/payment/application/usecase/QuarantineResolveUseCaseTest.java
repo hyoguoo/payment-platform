@@ -57,7 +57,7 @@ class QuarantineResolveUseCaseTest {
     private PgVendorStatusPort pgVendorStatusPort;
 
     @Test
-    @DisplayName("resolve - 벤더 조회 → 보상(compensateIfDecremented) → 도메인 전이 순서로 호출한다 (SCR-6)")
+    @DisplayName("resolve - 벤더 조회 → 보상(compensateIfDecremented) → 도메인 전이 순서로 호출한다")
     void resolve_ShouldCompensateBeforeTransition() {
         // given
         PaymentOrder order = buildPaymentOrder(40L, 7);
