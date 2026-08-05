@@ -6,7 +6,7 @@
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
 - **단계**: execute
-- **활성 태스크**: Task 5: 재시도 정책 정리(소진 판정·한도 제거 + 지수 백오프 자릿수 넘침 방지)
+- **활성 태스크**: Task 6: 대기 상태 전용 간격 기록 도메인 메서드(롤백 직후 행에 횟수·다음 시도 시각만 기록, 상태 전이 없음)
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 

@@ -111,7 +111,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
 - [x] Task 3: 격리 종결 판정 삽입
 - [x] Task 4: 관리자 화면에 벤더 상태 표시
-- [ ] Task 5: 재시도 정책 정리
+- [x] Task 5: 재시도 정책 정리
 - [ ] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
 - [ ] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
 - [ ] Task 8: 값이 고정된 컬럼·인덱스 제거
@@ -389,7 +389,37 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - `./gradlew :payment-service:test` 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `RetryPolicy` 에서 `maxAttempts` 필드와 `isExhausted` 를 제거했다(레코드 컴포넌트 3개로 축소:
+  `backoffType` / `baseDelayMs` / `maxDelayMs`) — 소진 종결을 도입하지 않기로 해 판정 자체가
+  불필요해졌다
+- `nextDelay` 의 EXPONENTIAL 분기에서 시프트 **전에** `Math.min(retryCount, 40)` 으로 회차를
+  잘라낸다(`MAX_EXPONENTIAL_SHIFT = 40`) — `baseDelayMs * (1L << retryCount)` 는 retryCount
+  가 대략 54를 넘으면 long 곱셈이 넘쳐 음수가 되고, 64 이상이면 시프트 거리 자체가 `% 64` 로
+  순환해 값이 뒤죽박죽된다. 40은 어떤 현실적 `maxDelayMs` 도달에도 넉넉한 여유값이라 클램프가
+  `Math.min(..., maxDelayMs)` 결과를 바꾸지 않는다
+- `RetryPolicyProperties` 에서 `maxAttempts` 필드와 `@DefaultValue("5")` 바인딩을 제거,
+  `toRetryPolicy()` 를 3-인자 생성자 호출로 정리. `application.yml` 의
+  `payment.retry.max-attempts: 5` 삭제(`application-docker.yml`/`application-benchmark.yml`
+  에는 원래 없었다)
+- 신규 회귀 테스트(`RetryPolicyTest`)
+  - `지수 백오프는 회차가 커져도 최대값을 넘지 않는다` / `...음수가 되지 않는다` — retryCount=54
+    (baseDelayMs=1000L 기준 넘침 임계) 를 상한 처리 전 실제로 `-432345564227567616` 를 반환하는
+    것으로 회귀를 확인한 뒤 고정했다(사전에 스크립트로 넘침 지점을 실측)
+  - `고정 간격은 회차와 무관하게 같은 값이다` — 기존 커버리지를 명시적 이름으로 보강
+  - 기존 `isExhausted` 테스트 2개는 삭제
+- 신규 `RetryPolicyExpirationTimeoutTest`(`application/config` 패키지, Task 2 의
+  `PgVendorStatusFeignTimeoutTest` 와 같은 구조 계약 패턴) — 실제 `application.yml` 을 로드해
+  `RetryPolicyProperties.maxDelayMs`(60초)와 `payment.expiration.ready-timeout-minutes`
+  (30분)의 관계를 `assertThat(maxDelay).isLessThan(expirationTimeout)` 로 고정한다. 이 관계는
+  현재도 참이라 이 테스트 자체는 RED 없이 통과로 시작하지만, 두 값 중 하나가 설정으로 뒤집히면
+  즉시 잡아내는 회귀 가드다
+- 소진 종결이 없어 재시도가 무한히 이어져도, 최대 지연이 만료 시한보다 짧게 유지되는 한 이미
+  만료된 결제에 뒤늦은 확정 명령이 나갈 위험은 이 계약이 방어한다
+- Kafka 오류 처리 설정(`KafkaErrorHandlerConfig`/`KafkaConsumerConfig`)의 `maxAttempts`, pg
+  시도 이력의 `exhausted`/`isExhausted`(`PgAttemptEntryInfo`/`PgAttemptEntryViewResponse`/
+  상세 화면 템플릿/계약 테스트)는 이름만 같은 별개라 손대지 않았다
+- `./gradlew :payment-service:test` 588개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 

@@ -40,7 +40,7 @@ class PaymentOutboxUseCaseTest {
     @BeforeEach
     void setUp() {
         mockPaymentOutboxRepository = Mockito.mock(PaymentOutboxRepository.class);
-        retryPolicyProperties = new RetryPolicyProperties(5, BackoffType.FIXED, 5000L, 60000L);
+        retryPolicyProperties = new RetryPolicyProperties(BackoffType.FIXED, 5000L, 60000L);
         paymentOutboxUseCase = new PaymentOutboxUseCase(
                 mockPaymentOutboxRepository,
                 FIXED_CLOCK,

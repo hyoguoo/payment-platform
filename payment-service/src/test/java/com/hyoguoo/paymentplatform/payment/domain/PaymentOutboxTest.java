@@ -82,7 +82,7 @@ class PaymentOutboxTest {
         void incrementRetryCount_whenNotInFlight_shouldThrow(PaymentOutboxStatus initialStatus) {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
 
             // when & then
             assertThatThrownBy(() -> outbox.incrementRetryCount(policy, FIXED_INSTANT))
@@ -100,7 +100,7 @@ class PaymentOutboxTest {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
             int initialRetryCount = outbox.getRetryCount();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);
@@ -120,7 +120,7 @@ class PaymentOutboxTest {
         void incrementRetryCount_FIXED_nextRetryAt_설정() {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);
@@ -138,7 +138,7 @@ class PaymentOutboxTest {
                     .status(PaymentOutboxStatus.IN_FLIGHT)
                     .retryCount(2)
                     .allArgsBuild();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.EXPONENTIAL, 1000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);
@@ -153,7 +153,7 @@ class PaymentOutboxTest {
         void incrementRetryCount_RetryPolicy_retryCount_증가_및_PENDING_복원() {
             // given
             PaymentOutbox outbox = createOutboxWithStatus(PaymentOutboxStatus.IN_FLIGHT);
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
             int initialRetryCount = outbox.getRetryCount();
 
             // when
@@ -229,7 +229,7 @@ class PaymentOutboxTest {
                     .status(PaymentOutboxStatus.IN_FLIGHT)
                     .retryCount(1)
                     .allArgsBuild();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.EXPONENTIAL, 1000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);

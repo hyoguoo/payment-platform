@@ -74,7 +74,7 @@ class PaymentOutboxInstantTest {
                     .status(PaymentOutboxStatus.IN_FLIGHT)
                     .retryCount(0)
                     .allArgsBuild();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);
@@ -94,7 +94,7 @@ class PaymentOutboxInstantTest {
                     .status(PaymentOutboxStatus.IN_FLIGHT)
                     .retryCount(2)
                     .allArgsBuild();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.EXPONENTIAL, 1000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.EXPONENTIAL, 1000L, 60000L);
 
             // when
             outbox.incrementRetryCount(policy, FIXED_INSTANT);
@@ -114,7 +114,7 @@ class PaymentOutboxInstantTest {
                     .status(initialStatus)
                     .retryCount(0)
                     .allArgsBuild();
-            RetryPolicy policy = new RetryPolicy(5, BackoffType.FIXED, 5000L, 60000L);
+            RetryPolicy policy = new RetryPolicy(BackoffType.FIXED, 5000L, 60000L);
 
             // when & then
             assertThatThrownBy(() -> outbox.incrementRetryCount(policy, FIXED_INSTANT))
