@@ -6,7 +6,7 @@
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
 - **단계**: execute
-- **활성 태스크**: Task 3: 격리 종결 판정 삽입
+- **활성 태스크**: Task 4: 관리자 화면에 벤더 상태 표시
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 

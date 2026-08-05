@@ -109,7 +109,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 
 - [x] Task 1: pg 벤더 상태 조회 엔드포인트
 - [x] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
-- [ ] Task 3: 격리 종결 판정 삽입
+- [x] Task 3: 격리 종결 판정 삽입
 - [ ] Task 4: 관리자 화면에 벤더 상태 표시
 - [ ] Task 5: 재시도 정책 정리
 - [ ] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
@@ -276,7 +276,29 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - 승인 거부 케이스에서 재고 보상 호출 0회가 단정된다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `QuarantineResolveUseCase.resolve` 순서를 사유 검증 → 로드 → 격리 상태 확인 → **벤더 상태 조회
+  (`PgVendorStatusPort.lookup`, TX 밖)** → **판정(승인이면 즉시 거부)** → 재고 조건부 보상(TX 밖) →
+  CAS 저장으로 재배열 — 조회·판정이 재고 보상보다 앞서, 종결이 거부될 건에 보상이 먼저 나가는
+  경우가 없다
+- 승인(APPROVED)이 확인되면 `PaymentStatusException`(`PaymentErrorCode.QUARANTINE_RESOLVE_VENDOR_APPROVED`,
+  `E03044`)을 던지고 `stockCachePort`/`paymentCommandUseCase` 어느 쪽도 호출하지 않는다 —
+  `resolve_WhenVendorApproved_ShouldNotCompensateStock` 이 보상 호출 0회를 `never()` 로 단정한다
+- 실패(FAILED)·확인불가(UNKNOWN)는 종결을 막지 않는다 — 판정 결과를 입력 사유에
+  `" / 벤더 상태 조회 결과: 실패(CANCELED)"` / `" / 벤더 상태 조회 결과: 확인불가"` 형태로 덧붙여
+  CAS 저장 사유로 그대로 넘긴다(`appendVendorStatus`). 감사 기록에 조회를 시도했다는 사실과 결과가
+  남는다
+- 비격리 건은 벤더 조회조차 나가지 않는다 — 격리 상태 확인이 조회보다 앞서, `pgVendorStatusPort`
+  가 `shouldHaveNoInteractions()` 로 단정된다
+- 판정은 격리 사유와 무관하게 모든 격리 결제에 동일 적용된다 — 저장된 격리 사유로 분기하지 않고
+  조회 시점에 새로 얻은 벤더 상태만 근거로 삼는다
+- `QuarantineResolveUseCaseTest` 에 신규 테스트 8개 추가(승인 거부/보상 미호출/실패 진행/확인불가
+  진행/사유 덧붙임/벤더 조회 없이 비격리 거부 — 기존 테스트에 흡수) + 기존 3개(순서·보상결과·CAS
+  충돌) 테스트에 `pgVendorStatusPort` 스텁 추가, `markPaymentAsFailFromQuarantine` reason 인자
+  단정을 `anyString()` 매처로 완화(순서·보상결과·충돌 시나리오는 사유 문자열 자체를 검증 대상으로
+  삼지 않는다)
+- 신규: `PaymentErrorCode.QUARANTINE_RESOLVE_VENDOR_APPROVED`("E03044")
+- `./gradlew :payment-service:test` 586개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 
