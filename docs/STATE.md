@@ -4,16 +4,13 @@
 
 ## 활성 작업
 
-- **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
-- **단계**: ship
-- **이슈/브랜치**: #136
-- **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
+- **주제**: 없음 (idle)
 
 ## 재개 메모
 
 ## 최근 완료
 
+- **RETRY-EXHAUSTION-DISPOSITION** (2026-08-06) — docs/archive/retry-exhaustion-disposition/COMPLETION-BRIEFING.md
 - **BACKLOG-RESIDUE-CLEANUP** (2026-08-05) — docs/archive/backlog-residue-cleanup/COMPLETION-BRIEFING.md
-- **SIGNAL-AND-GUARDRAIL-SWEEP** (2026-08-04) — docs/archive/signal-and-guardrail-sweep/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
