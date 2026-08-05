@@ -69,6 +69,20 @@ public class OutboxRelayService {
 
         PaymentEvent paymentEvent = paymentLoadUseCase.getPaymentEventByOrderId(orderId);
 
+        // Step 2.5: 결제가 이미 확정 결과를 적용할 수 없는 상태(종결·격리)면 발행하지 않는다.
+        // 브로커 장애로 발행이 만료 시한을 넘기면 결제는 만료·취소로 먼저 종결될 수 있는데,
+        // 그 상태에서 확정 명령이 뒤늦게 나가면 벤더가 승인해 되돌릴 수 없는 과금이 생긴다.
+        // outbox를 FAILED로 종결해 재시도 대상에서 완전히 뺀다 — IN_FLIGHT로 남기면 타임아웃
+        // 복구가 PENDING으로 되돌려 같은 판정이 무한 반복된다.
+        if (!paymentEvent.getStatus().canApplyConfirmResult()) {
+            outbox.toFailed();
+            paymentOutboxRepository.save(outbox);
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.PAYMENT_OUTBOX_RELAY_SKIPPED_TERMINAL_PAYMENT,
+                    () -> "OutboxRelayService: 결제가 확정 결과 적용 불가 상태라 발행을 건너뛰고 outbox를 종결한다, orderId="
+                            + orderId + " paymentStatus=" + paymentEvent.getStatus());
+            return;
+        }
+
         // Step 3: payload 구성 후 발행 — 실패 시 예외 전파
         PaymentConfirmCommandMessage message = buildMessage(paymentEvent);
         messagePublisherPort.send(PaymentTopics.COMMANDS_CONFIRM, orderId, message);

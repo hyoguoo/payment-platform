@@ -46,6 +46,16 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.DONE;
     }
 
+    public void toFailed() {
+        // 발행 대상 결제가 이미 확정 결과를 적용할 수 없는 상태(종결·격리)로 넘어가
+        // 더 이상 재시도할 필요가 없을 때 호출한다. FAILED는 DONE과 마찬가지로 종결 상태라
+        // findPendingBatch/findTimedOutInFlight 어느 조회에도 다시 잡히지 않는다.
+        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_ABANDON);
+        }
+        this.status = PaymentOutboxStatus.FAILED;
+    }
+
     public void incrementRetryCount(RetryPolicy policy, Instant now) {
         // toInFlight/toDone 와 동일하게 IN_FLIGHT 상태에서만 허용.
         // DONE/FAILED outbox 에서 호출 시 silent 하게 PENDING 재활성화되던 버그 방어.

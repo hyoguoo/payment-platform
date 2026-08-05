@@ -241,6 +241,37 @@ class PaymentOutboxTest {
     }
 
     @Nested
+    @DisplayName("toFailed — 발행 대상 결제가 종결돼 더 이상 재시도하지 않는 전이 테스트")
+    class ToFailedTest {
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"IN_FLIGHT"})
+        @DisplayName("IN_FLIGHT 상태에서 toFailed() 호출 시 status=FAILED가 된다")
+        void toFailed_Success(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+
+            // when
+            outbox.toFailed();
+
+            // then
+            assertThat(outbox.getStatus()).isEqualTo(PaymentOutboxStatus.FAILED);
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = PaymentOutboxStatus.class, names = {"PENDING", "DONE", "FAILED"})
+        @DisplayName("IN_FLIGHT이 아닌 상태에서 toFailed() 호출 시 PaymentStatusException이 발생한다")
+        void toFailed_InvalidState(PaymentOutboxStatus initialStatus) {
+            // given
+            PaymentOutbox outbox = createOutboxWithStatus(initialStatus);
+
+            // when & then
+            assertThatThrownBy(outbox::toFailed)
+                    .isInstanceOf(PaymentStatusException.class);
+        }
+    }
+
+    @Nested
     @DisplayName("recordRetryDelay — 대기 상태 전용 간격 기록 테스트")
     class RecordRetryDelayTest {
 
