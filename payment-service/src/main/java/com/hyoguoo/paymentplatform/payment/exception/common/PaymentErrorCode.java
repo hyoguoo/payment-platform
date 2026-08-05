@@ -42,6 +42,7 @@ public enum PaymentErrorCode implements ErrorCode {
     PAYMENT_OUTBOX_DUPLICATE_INSERT("E03042", "이미 발행 행이 생성된 주문입니다(동시 재진입)."),
     PG_VENDOR_STATUS_QUERY_UNAVAILABLE("E03043", "pg-service 벤더 상태 조회가 일시적으로 불가능합니다."),
     QUARANTINE_RESOLVE_VENDOR_APPROVED("E03044", "벤더가 승인을 확인해 격리 복구 종결을 거부합니다."),
+    INVALID_STATUS_TO_RECORD_RETRY_DELAY("E03045", "PENDING 상태에서만 재시도 간격을 기록할 수 있습니다."),
     ;
 
     private final String code;

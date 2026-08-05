@@ -112,7 +112,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - [x] Task 3: 격리 종결 판정 삽입
 - [x] Task 4: 관리자 화면에 벤더 상태 표시
 - [x] Task 5: 재시도 정책 정리
-- [ ] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
+- [x] Task 6: 대기 상태 전용 간격 기록 도메인 메서드
 - [ ] Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록
 - [ ] Task 8: 값이 고정된 컬럼·인덱스 제거
 - [ ] Task 9: 테스트 표시명 라벨 정리
@@ -451,7 +451,22 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - `./gradlew :payment-service:test` 통과
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PaymentOutbox.recordRetryDelay(RetryPolicy policy, Instant now)` 신규 — `incrementRetryCount`
+  와 달리 `PENDING` 상태에서만 허용하고 상태 자체는 바꾸지 않는다. 횟수를 올리고
+  `nextRetryAt` 을 `now + policy.nextDelay(retryCount)` 로 설정하는 것까지가 전부다
+- `incrementRetryCount` 는 그대로 둔다 — `IN_FLIGHT` 전용 가드와 `PENDING` 복귀 로직 모두 손대지
+  않았고, 타임아웃 회수 경로가 여전히 그 메서드를 쓴다. 상태 전이가 있는 용도와 없는 용도를 한
+  메서드에 섞지 않으려고 나눈 것이 이번 결정이다
+- 메서드 주석에 이 가드의 한계를 명시했다 — 읽은 시점에 `PENDING` 이었어도 저장 전에 다른 워커가
+  선점할 수 있고, 저장이 조건절 없는 전체 덮어쓰기라 그 선점을 되돌릴 수 있다. 이 가드는 그
+  선점을 막지 못하며, 실제 방어는 Task 7 의 상태·횟수 조건부 갱신이다
+- 신규: `PaymentErrorCode.INVALID_STATUS_TO_RECORD_RETRY_DELAY`("E03045")
+- `PaymentOutboxTest` 에 `RecordRetryDelayTest` 중첩 클래스 추가 — `PENDING` 성공 케이스(횟수
+  증가·다음 시도 시각 기록·상태 유지), 다음 시도 시각이 `now + FIXED 정책 간격` 인지 단정하는
+  케이스, `@EnumSource(names = {"IN_FLIGHT", "DONE", "FAILED"})` 로 `PENDING` 이 아니면 거부하는
+  케이스 3종
+- `./gradlew :payment-service:test` 593개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 

@@ -6,7 +6,7 @@
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
 - **단계**: execute
-- **활성 태스크**: Task 6: 대기 상태 전용 간격 기록 도메인 메서드(롤백 직후 행에 횟수·다음 시도 시각만 기록, 상태 전이 없음)
+- **활성 태스크**: Task 7: 워커가 발행 실패를 별도 트랜잭션으로 기록(상태·횟수 조건부 갱신으로 동시 선점 방어)
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 
