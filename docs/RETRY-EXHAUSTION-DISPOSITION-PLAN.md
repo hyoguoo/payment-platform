@@ -107,7 +107,7 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 
 ## 진행 상황
 
-- [ ] Task 1: pg 벤더 상태 조회 엔드포인트
+- [x] Task 1: pg 벤더 상태 조회 엔드포인트
 - [ ] Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
 - [ ] Task 3: 격리 종결 판정 삽입
 - [ ] Task 4: 관리자 화면에 벤더 상태 표시
@@ -155,7 +155,25 @@ Task 9(테스트 표시명 라벨)는 설계 결정이 아니라 설계 문서 �
 - `getStatusByOrderId` 호출이 요청당 1회임이 테스트로 고정된다
 
 **완료 결과**
-> (execute에서 채움)
+
+- `PgVendorStatusQueryServiceImpl.lookupOnce` 가 `PgStatusLookupStrategySelector.select` 부터
+  `getStatusByOrderId` 까지를 한 `try` 로 묶어 `RuntimeException` 전체를 확인 불가로 접는다 — 게이트웨이
+  재시도 가능/불가 예외뿐 아니라 모의 벤더의 `UnsupportedOperationException`(처리 기록 없는 주문 —
+  재시도 소진으로 격리된 주문이 이 경우)도 여기서 흡수된다. 예외 타입·사유는
+  `PG_VENDOR_STATUS_QUERY_INDETERMINATE` 로 로그에 남긴다
+- `getStatusByOrderId` 는 재시도 래핑 없이 1회만 호출 — `벤더_조회는_한_번만_호출된다` 테스트로 고정
+- `PgPaymentStatus` 8개 값을 승인(DONE) / 실패(CANCELED·PARTIAL_CANCELED·ABORTED·EXPIRED) /
+  확인불가(READY·IN_PROGRESS·WAITING_FOR_DEPOSIT) 세 갈래에 빠짐없이 분배 — 양쪽 다
+  `@EnumSource(names = {...})` 로 명시해 새 값 추가 시 테스트가 잡는다
+- `pg_inbox` 에 주문 기록이 없거나 `vendorType` 이 비어 있으면 벤더를 부르지 않고 확인 불가로 반환
+- 신규: `PgVendorStatusJudgement`, `PgVendorStatusView`, `PgVendorStatusQueryService`(presentation port),
+  `PgVendorStatusQueryServiceImpl`, `PgVendorStatusResponse`, `PgAttemptHistoryController` 에
+  `GET /{orderId}/vendor-status` 추가
+- 기존 `PgAttemptHistoryControllerTest` 는 컨트롤러 생성자에 포트가 하나 늘어 `@MockitoBean`
+  하나를 추가했다(동작 변경 없음)
+- 상태 분류 상수는 `PgFinalConfirmationGate` 의 것과 값이 같지만 별도로 선언했다 — 그쪽은 프로덕션
+  호출처가 없는 미연결 코드라 재사용하면 죽은 코드에 의존이 생긴다
+- `./gradlew :pg-service:test` 408개 전부 통과(JaCoCo 게이트 포함), `./gradlew test` 전체 통과
 
 ---
 

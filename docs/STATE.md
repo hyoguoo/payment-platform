@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-05
+> 최종 수정: 2026-08-06
 
 ## 활성 작업
 
 - **주제**: 재시도 소진 이후 처리 (RETRY-EXHAUSTION-DISPOSITION)
 - **단계**: execute
-- **활성 태스크**: Task 1: pg 벤더 상태 조회 엔드포인트
+- **활성 태스크**: Task 2: 결제 서비스 벤더 상태 조회 포트와 전용 통로
 - **이슈/브랜치**: #136
 - **파일**: docs/topics/RETRY-EXHAUSTION-DISPOSITION.md / docs/RETRY-EXHAUSTION-DISPOSITION-PLAN.md
 

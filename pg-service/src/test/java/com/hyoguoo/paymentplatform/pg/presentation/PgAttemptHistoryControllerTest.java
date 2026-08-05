@@ -9,6 +9,7 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgAttemptHistory;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgAttemptHistoryEntry;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgAttemptHistoryQueryService;
+import com.hyoguoo.paymentplatform.pg.presentation.port.PgVendorStatusQueryService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,9 @@ class PgAttemptHistoryControllerTest {
 
     @MockitoBean
     private PgAttemptHistoryQueryService pgAttemptHistoryQueryService;
+
+    @MockitoBean
+    private PgVendorStatusQueryService pgVendorStatusQueryService;
 
     @Test
     @DisplayName("이력이 있는 주문을 조회하면 회차·시각·정상시도 여부를 포함한 고정된 응답 형태를 반환한다.")
