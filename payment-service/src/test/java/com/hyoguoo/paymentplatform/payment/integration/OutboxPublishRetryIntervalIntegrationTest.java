@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -137,7 +138,9 @@ class OutboxPublishRetryIntervalIntegrationTest {
     void 발행_실패_기록_후_간격이_지날_때까지_대기_배치_조회에서_제외되고_지나면_다시_돌아온다() {
         // given — 발행 트랜잭션 롤백 직후와 같은 대기 상태(재시도 0회)
         String orderId = "order-outbox-retry-interval-" + UUID.randomUUID();
-        Instant t0 = Instant.now();
+        // MySQL DATETIME(6) 은 마이크로초까지만 저장한다. 리눅스 JDK 는 나노초 해상도를 주므로
+        // 미리 잘라 두지 않으면 저장 → 조회 왕복에서 값이 반올림돼 동등 비교가 깨진다.
+        Instant t0 = Instant.now().truncatedTo(ChronoUnit.MICROS);
         testClock.setFixedInstant(t0);
         paymentOutboxUseCase.createPendingRecord(orderId);
 
