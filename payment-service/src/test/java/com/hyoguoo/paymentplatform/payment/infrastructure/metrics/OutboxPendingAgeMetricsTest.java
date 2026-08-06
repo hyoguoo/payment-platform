@@ -136,6 +136,12 @@ class OutboxPendingAgeMetricsTest {
         }
 
         @Override
+        public boolean recordRetryDelay(String orderId, int expectedRetryCount, int nextRetryCount,
+                Instant nextRetryAt) {
+            return false;
+        }
+
+        @Override
         public long countPending() {
             return pendingList.stream()
                     .filter(o -> o.getStatus() ==

@@ -1,6 +1,6 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
+> 최종 갱신: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 567→617·통합 98→149(동시 선점 반복 50회 포함), pg 단위 393→408). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
 
 ## 테스트 프레임워크
 
@@ -170,16 +170,16 @@ void quarantine_whenTerminal_shouldThrow(PaymentEventStatus from) { ... }
 
 `LocalDateTime.now()` / `Instant.now()` 직접 호출 금지 → JDK `Clock` 빈(`ClockConfig`) 주입 + 도메인은 `Instant` 를 인자로 전달받는다(now() 직접 호출 0). 테스트는 고정 `Clock` 으로 시각을 위조한다(통합 테스트는 `BaseIntegrationTest.TestClock` 의 `setFixedInstant(...)`). 자체 포트 `LocalDateTimeProvider`/`SystemLocalDateTimeProvider` 는 TIME-MODEL-AND-EXPIRY 에서 폐기됐다(4서비스 `Clock` 통일, grep 0).
 
-## 현재 테스트 카운트 (2026-08-05 기준)
+## 현재 테스트 카운트 (2026-08-06 기준)
 
 | 모듈 | 단위 | 통합 |
 |---|---|---|
 | eureka-server | 1 | — |
 | gateway | 4 | — |
-| payment-service | 567 | 98 |
-| pg-service | 393 | 16 |
+| payment-service | 617 | 149 |
+| pg-service | 408 | 16 |
 | product-service | 58 | 6 |
 | user-service | 10 | 1 |
-| **합계** | **1033** | **121** |
+| **합계** | **1098** | **172** |
 
 `./gradlew test --rerun-tasks`(단위) / `./gradlew :<svc>:integrationTest --rerun-tasks`(통합) 로 검증. 수치는 측정 시점 스냅샷 — 회귀 가드는 카운트가 아니라 pass/fail 이 본질. **구조적으로 계속 낙후되는 스냅샷** — 매 토픽마다 테스트 파일이 추가/삭제되므로 이 표는 참고용일 뿐, 정확한 값이 필요하면 재실행한다.

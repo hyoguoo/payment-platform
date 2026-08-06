@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.presentation.port.AdminPaymentService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentRecoveryAdminService;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PgAttemptHistoryViewService;
+import com.hyoguoo.paymentplatform.payment.presentation.port.PgVendorStatusViewService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +53,9 @@ class PaymentAdminControllerAttemptHistoryTest {
 
     @MockitoBean
     private PgAttemptHistoryViewService pgAttemptHistoryViewService;
+
+    @MockitoBean
+    private PgVendorStatusViewService pgVendorStatusViewService;
 
     @Test
     @DisplayName("상세 조회는 시도 이력 조회 결과가 조회 가능이면 모델에 시도 이력을 담는다.")

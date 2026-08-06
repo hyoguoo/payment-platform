@@ -53,6 +53,18 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
                         @Param("fromStatus") PaymentOutboxStatus fromStatus,
                         @Param("now") LocalDateTime now);
 
+    /**
+     * 대기 상태 발행 재시도 간격 조건부 갱신 — 상태와 횟수를 함께 조건으로 건다.
+     * 선점(claimToInFlight)당했거나 다른 워커가 이미 같은 갱신을 마쳤으면 0건으로 끝난다.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentOutboxEntity e SET e.retryCount = :nextRetryCount, e.nextRetryAt = :nextRetryAt "
+            + "WHERE e.orderId = :orderId AND e.status = 'PENDING' AND e.retryCount = :expectedRetryCount")
+    int recordRetryDelay(@Param("orderId") String orderId,
+                        @Param("expectedRetryCount") int expectedRetryCount,
+                        @Param("nextRetryCount") int nextRetryCount,
+                        @Param("nextRetryAt") LocalDateTime nextRetryAt);
+
     // ── 관측 지표 집계 (Prometheus gauge) ───────────────────────────────────────
 
     @Query("SELECT COUNT(e) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING'")

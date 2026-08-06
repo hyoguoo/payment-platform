@@ -130,6 +130,12 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 
 > 검토 기록: `resetToReady`가 order를 NOT_STARTED로 복원하게 바꾸면 expire 통과 → EXPIRED 종결 도달하나, EXPIRED는 terminal이고 D7 가드(`canApplyConfirmResult` EXPIRED=false)가 TQ-1 재주입을 noop으로 막아 **복구 영구 봉쇄**(더 나쁨). 따라서 그 변경은 plan 게이트에서 거부·롤백 — 비종결 READY 잔류가 복구 여지 면에서 안전 방향(domain-expert critical, 2026-06-30).
 
+**추가 대가 확인 (2026-08-06, RETRY-EXHAUSTION-DISPOSITION ship 리뷰)**: READY 잔류의 대가가 "복구 여지를 남긴다" 만이 아님이 드러났다. 브로커 장애로 발행이 밀린 결제는 정확히 이 잔류 상태에 빠지는데, 그 사이 `payment_outbox` 행은 독립적으로 재시도를 계속한다(`OutboxRelayService.relay`·`claimToInFlight` 어디에도 `PaymentEvent` 상태 확인이 없었다). 브로커가 복구되면 그 행이 확정 명령을 발행하고 벤더가 승인하면 되돌릴 수 없는 과금이 남는다 — 취소·환불 포트가 없다(L-9). payment 측은 D7 가드가 종결 상태로 판정해 조용히 넘긴다.
+
+이번 토픽이 `relay`에 발행 직전 결제 상태 가드를 넣었으나(`canApplyConfirmResult` 불가면 `toFailed()` 종결) **READY 는 그 판정을 통과하므로 이 시나리오에서는 발동하지 않는다**. 가드가 실제로 막는 나머지 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/QUARANTINED)는 확정 명령이 최소 1회 발행된 뒤에야 도달하므로 "아직 한 번도 발행 못 한 행"과 동시에 성립하지 않는다.
+
+따라서 이 항목은 이제 **세 위험을 함께 저울질해야 하는 자리**다 — (1) 복구 여지(EXPIRED 종결 시 재주입 봉쇄), (2) 뒤늦은 확정 명령에 의한 벤더 과금, (3) 재고 보상 없는 만료 시 선차감분 영구 잠김(`PaymentOrder.expire()`가 NOT_STARTED 전용인 이유). 셋을 같이 설계해야 하는 규모라 별도 토픽으로 남긴다. `TODOS.md` 의 해당 항목 참고.
+
 ### L-15. 격리 복구 보상의 `decrement:done` P8D 만료 후 미복원 (보수적 언더셀)
 
 격리 안전 종결(DLQ-QUARANTINE-RECOVERY)의 재고 보상은 `decrement:done:{orderId}` 토큰 존재에 조건화된다(`compensateIfDecremented` + `stock_compensation_if_decremented.lua` — 실제 차감이 없던 건에 보상해 재고를 부풀리는 유령 재고를 막기 위함, `EXISTS decrement:done` 을 `SETNX compensation:done` 보다 먼저 판정). 토큰 TTL(P8D=8일) 만료 후 복구하는 **실차감 건**은 토큰 소멸로 보상이 skip 돼 redis 선차감이 미복원 — 재고 과소(보수적 언더셀) 방향이라 안전 측 누수. P8D 초과 격리는 수동 대사로 우회, 자동 reconciler 는 TC-3 위임.

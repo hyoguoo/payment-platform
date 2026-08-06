@@ -35,6 +35,9 @@ public enum EventType {
     PG_FCG_FAILED,
     PG_FCG_QUARANTINED,
 
+    /** 관리자 벤더 상태 조회 — 조회 과정의 예외(게이트웨이 예외·미처리 주문 예외 등)를 확인불가로 접은 경우. */
+    PG_VENDOR_STATUS_QUERY_INDETERMINATE,
+
     PG_DLQ_NO_INBOX,
     PG_DLQ_ALREADY_TERMINAL,
     PG_DLQ_PREEMPTED,

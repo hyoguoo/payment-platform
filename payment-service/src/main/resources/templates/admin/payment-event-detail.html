@@ -60,8 +60,39 @@
     </div>
     <div class="card-body">
       <p class="text-secondary-custom" style="font-size: 0.875rem;">
-        이 결제는 격리(QUARANTINED) 상태입니다. 벤더 상태 확인 후 안전 종결(FAILED)로 복구할 수 있습니다.
+        이 결제는 격리(QUARANTINED) 상태입니다. 종결을 시도하면 서버가 종결 직전에 벤더 상태를
+        한 번 더 확인하며, 승인이 확인되면 종결이 거부됩니다. 아래 버튼으로 미리 확인할 수
+        있습니다(누르기 전까지는 자동 조회하지 않습니다).
       </p>
+
+      <form method="get"
+            th:action="@{/admin/payments/events/{eventId}/vendor-status(eventId=${event.id})}"
+            class="mb-2">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-search"></i> 벤더 상태 확인
+        </button>
+      </form>
+
+      <div class="alert alert-warning mb-2" role="alert" th:if="${vendorStatus == null}">
+        아직 벤더 상태를 확인하지 않았습니다.
+      </div>
+
+      <div class="mb-2" th:if="${vendorStatus != null}">
+        <span class="badge"
+              th:classappend="${vendorStatus.judgement == 'APPROVED' ? 'bg-success' : (vendorStatus.judgement == 'FAILED' ? 'bg-danger' : 'bg-secondary')}"
+              th:text="${vendorStatus.judgement}">-</span>
+        <span class="text-secondary-custom" style="font-size: 0.875rem;"
+              th:text="${vendorStatus.vendorStatus != null ? '(' + vendorStatus.vendorStatus + ')' : ''}">-</span>
+        <span class="text-secondary-custom" style="font-size: 0.8rem;"
+              th:if="${vendorStatus.queriedAt != null}"
+              th:text="${'조회 시각: ' + #temporals.format(vendorStatus.queriedAt, 'yyyy-MM-dd HH:mm:ss')}">-</span>
+      </div>
+
+      <div class="alert alert-danger mb-2" role="alert"
+           th:if="${vendorStatus != null and vendorStatus.judgement == 'APPROVED'}">
+        벤더에서 승인이 확인됐습니다. 지금 종결을 시도해도 서버가 거부합니다.
+      </div>
+
       <form method="post"
             th:action="@{/admin/payments/events/{eventId}/resolve-quarantine(eventId=${event.id})}"
             onsubmit="return confirm('안전 종결(FAILED)로 복구하시겠습니까? 재고 보상 후 되돌릴 수 없습니다.');">

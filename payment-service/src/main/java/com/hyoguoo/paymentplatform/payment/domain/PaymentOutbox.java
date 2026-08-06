@@ -46,6 +46,16 @@ public class PaymentOutbox {
         this.status = PaymentOutboxStatus.DONE;
     }
 
+    public void toFailed() {
+        // 발행 대상 결제가 이미 확정 결과를 적용할 수 없는 상태(종결·격리)로 넘어가
+        // 더 이상 재시도할 필요가 없을 때 호출한다. FAILED는 DONE과 마찬가지로 종결 상태라
+        // findPendingBatch/findTimedOutInFlight 어느 조회에도 다시 잡히지 않는다.
+        if (this.status != PaymentOutboxStatus.IN_FLIGHT) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_ABANDON);
+        }
+        this.status = PaymentOutboxStatus.FAILED;
+    }
+
     public void incrementRetryCount(RetryPolicy policy, Instant now) {
         // toInFlight/toDone 와 동일하게 IN_FLIGHT 상태에서만 허용.
         // DONE/FAILED outbox 에서 호출 시 silent 하게 PENDING 재활성화되던 버그 방어.
@@ -54,6 +64,18 @@ public class PaymentOutbox {
         }
         this.retryCount++;
         this.status = PaymentOutboxStatus.PENDING;
+        this.nextRetryAt = now.plus(policy.nextDelay(this.retryCount));
+    }
+
+    public void recordRetryDelay(RetryPolicy policy, Instant now) {
+        // 발행 실패로 트랜잭션이 롤백되면 행은 이미 PENDING 이다 — incrementRetryCount 는
+        // IN_FLIGHT 전용이라 이 자리에 쓸 수 없어 상태 전이 없는 별도 메서드로 나눴다.
+        // 이 가드는 동시 선점을 막지 못한다: 읽은 시점에 PENDING 이었어도 저장 전에 다른
+        // 워커가 선점할 수 있다. 실제 방어는 상태·횟수를 함께 거는 조건부 갱신이 한다.
+        if (this.status != PaymentOutboxStatus.PENDING) {
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RECORD_RETRY_DELAY);
+        }
+        this.retryCount++;
         this.nextRetryAt = now.plus(policy.nextDelay(this.retryCount));
     }
 }

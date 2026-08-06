@@ -27,7 +27,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * 추적 연속성 Testcontainers 통합 테스트 — E-5.
+ * 추적 연속성 Testcontainers 통합 테스트.
  *
  * <p>검증 범위:
  * <ul>
@@ -51,7 +51,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Tag("integration")
 @Testcontainers
 @ActiveProfiles("test")
-@DisplayName("추적 연속성 통합 테스트 — E-5")
+@DisplayName("추적 연속성 통합 테스트")
 class PgInboxTraceparentIntegrationTest {
 
     // ─── Testcontainers MySQL ─────────────────────────────────────────────────

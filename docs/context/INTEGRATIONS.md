@@ -1,6 +1,6 @@
 # External Integrations
 
-> 최종 갱신: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — Fake 전략 행에 활성 프로파일 기준 부팅 가드 반영: 경고 배너 뒤에 `smoke`/`test` 미포함 시 기동 차단). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — Fake 전략 행에 라이브 검증 용도·`supports()` 무차별 수락 위험 반영 + Fake 시나리오 접두어 문단 신설(중복 판정보다 앞선 순서 근거, 자가 회복 횟수와 재시도 한도 관계, 전역 실패율 병용 금지)). 이전: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
+> 최종 갱신: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — cross-service HTTP 표에 pg 벤더 상태 조회 행 추가 + 전용 클라이언트 분리 근거(contextId, 시간 제한 관계)·조회 포트가 예외를 던지지 않는 계약 2문단 신설). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — Fake 전략 행에 활성 프로파일 기준 부팅 가드 반영: 경고 배너 뒤에 `smoke`/`test` 미포함 시 기동 차단). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — Fake 전략 행에 라이브 검증 용도·`supports()` 무차별 수락 위험 반영 + Fake 시나리오 접두어 문단 신설(중복 판정보다 앞선 순서 근거, 자가 회복 횟수와 재시도 한도 관계, 전역 실패율 병용 금지)). 이전: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
 
 ## PG 벤더 — Strategy 패턴
 
@@ -81,6 +81,7 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 | product 목록 조회 (관리자 재고 화면) | `GET /api/v1/products?page=&size=` | `ProductFeignClient` (동일 client 공유) | `ProductCatalogHttpAdapter` |
 | user 조회 | `GET /api/v1/users/{id}` | `UserFeignClient` (`@FeignClient(name = "user-service", configuration = UserFeignConfig.class)`) | `UserHttpAdapter` |
 | pg 시도 이력 조회 (관리자 결제 상세) | `GET /api/v1/confirmations/{orderId}/attempts` | `PgFeignClient` (`@FeignClient(name = "pg-service", configuration = PgFeignConfig.class)`) | `PgAttemptHistoryHttpAdapter` |
+| pg 벤더 상태 조회 (격리 종결 전 확인) | `GET /api/v1/confirmations/{orderId}/vendor-status` | `PgVendorStatusFeignClient` (`@FeignClient(name = "pg-service", contextId = "pgVendorStatus", configuration = PgVendorStatusFeignConfig.class)`) | `PgVendorStatusHttpAdapter` |
 
 **관리자 조회 포트는 승인 경로 포트와 분리**: `ProductCatalogQueryPort` / `PgAttemptHistoryPort` 는 결제 승인 경로가 쓰는 `ProductPort` / `UserPort` 와 별개 인터페이스다. 승인 경로 포트에 관리자 용도가 섞이면 나중에 떼어내기 어렵다. 반면 Feign client 는 공유해 중복을 만들지 않는다 (product 는 기존 client 에 메서드 추가).
 
@@ -96,6 +97,10 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 **Timeout baseline**: `application.yml:18-23` — `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. Phase 4 측정 기반 SLO 로 조정 예정 (TODOS T4-D).
 
 **pg 관리자 조회는 전용 짧은 timeout**: `spring.cloud.openfeign.client.config.pg-service.{connectTimeout: 1000, readTimeout: 2000}` (`PG_ADMIN_QUERY_CONNECT_TIMEOUT_MS` / `PG_ADMIN_QUERY_READ_TIMEOUT_MS`). 기본값(2s/5s)이면 pg 가 느릴 때 관리자 상세 진입이 그만큼 지연된다 — 관측 화면은 빨리 실패하고 부분 렌더하는 편이 낫다. `default` 블록은 변경하지 않으므로 product / user client 는 영향받지 않는다. 이 설정은 `@FeignClient(configuration = PgFeignConfig.class)` 로만 한정 등록한다 — 전역 `@Configuration` 으로 올리면 다른 client 에 새어 나간다.
+
+**벤더 상태 조회는 전용 클라이언트로 분리**: `PgVendorStatusFeignClient` 는 `name` 을 `pg-service` 로 그대로 두고 `contextId = "pgVendorStatus"` 로 설정 네임스페이스만 나눈다 (`spring.cloud.openfeign.client.config.pgVendorStatus.{connectTimeout: 2000, readTimeout: 15000}`). 위 관리자 조회용 짧은 값(1s/2s)을 물려받으면 안 되기 때문이다 — 이 조회는 pg 가 벤더를 부르는 시간(read-timeout 10s)을 포함하므로 정상 응답도 먼저 끊긴다. 끊기면 판정이 "확인 불가"가 되고 그건 종결 허용 분기라 **로그로는 정상처럼 보인다**. `name` 을 바꾸거나 `url` 을 박으면 Eureka 인스턴스 해석·부하 분산을 우회하므로 둘 다 금지 — 선언 자체를 `PgVendorStatusFeignTimeoutTest` 가 구조 계약으로 고정한다.
+
+**벤더 상태 조회 포트는 예외를 던지지 않는다**: `PgVendorStatusPort.lookup` 은 통신 예외든 pg 자체 오류든 확인 불가 값으로 접어 항상 세 값(`APPROVED`/`FAILED`/`UNKNOWN`) 중 하나를 반환한다. 소비자(`QuarantineResolveUseCase`)의 판정이 세 갈래 분기 하나로 끝나게 하려는 것이다. pg 측 `PgVendorStatusQueryServiceImpl` 도 같은 이유로 조회에서 나오는 모든 실행 시 예외를 흡수한다 — 모의 벤더가 미처리 주문에 던지는 `UnsupportedOperationException` 이 정확히 재시도 소진 격리 건에 해당해 좁게 잡으면 새어나간다. 양쪽 다 예외 타입·사유를 로그에 남긴다.
 
 **Traceparent 전파**: Spring Cloud OpenFeign 이 OTel observation 통합을 통해 자동 주입. `RestTemplate` 자체 builder 추가 wiring 불필요.
 

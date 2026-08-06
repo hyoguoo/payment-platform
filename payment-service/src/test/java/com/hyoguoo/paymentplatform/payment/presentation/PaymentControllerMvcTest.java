@@ -119,7 +119,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("confirm() 성공 시 HTTP 202 Accepted를 반환한다. (PORT-02)")
+    @DisplayName("confirm() 성공 시 HTTP 202 Accepted를 반환한다.")
     void confirmPayment_Returns202() throws Exception {
         // given
         PaymentConfirmRequest confirmRequest = PaymentConfirmRequest.builder()
@@ -144,7 +144,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("DONE 상태 PaymentEvent 조회 시 200 OK와 status=DONE, approvedAt non-null을 반환한다. (STATUS-01, STATUS-02)")
+    @DisplayName("DONE 상태 PaymentEvent 조회 시 200 OK와 status=DONE, approvedAt non-null을 반환한다.")
     void getPaymentStatus_Done_Returns200() throws Exception {
         // given
         Instant approvedAt = Instant.parse("2024-01-01T12:00:00Z");
@@ -164,7 +164,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("READY 상태 PaymentEvent 조회 시 200 OK와 status=PROCESSING, approvedAt=null을 반환한다. (STATUS-03)")
+    @DisplayName("READY 상태 PaymentEvent 조회 시 200 OK와 status=PROCESSING, approvedAt=null을 반환한다.")
     void getPaymentStatus_Processing_Returns200() throws Exception {
         // given
         when(paymentStatusService.getPaymentStatus("order-ready"))
@@ -183,7 +183,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 orderId로 Status 조회 시 404 Not Found를 반환한다. (STATUS-01)")
+    @DisplayName("존재하지 않는 orderId로 Status 조회 시 404 Not Found를 반환한다.")
     void getPaymentStatus_NotFound() throws Exception {
         // given
         when(paymentStatusService.getPaymentStatus(anyString()))
@@ -195,7 +195,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("Outbox에 PENDING 레코드가 있으면 status=PENDING을 반환한다. (OUTBOX-01)")
+    @DisplayName("Outbox에 PENDING 레코드가 있으면 status=PENDING을 반환한다.")
     void getPaymentStatus_OutboxPending_ReturnsPending() throws Exception {
         // given
         when(paymentStatusService.getPaymentStatus("order-pending"))
@@ -214,7 +214,7 @@ class PaymentControllerMvcTest {
     }
 
     @Test
-    @DisplayName("Outbox에 IN_FLIGHT 레코드가 있으면 status=PROCESSING을 반환한다. (OUTBOX-01)")
+    @DisplayName("Outbox에 IN_FLIGHT 레코드가 있으면 status=PROCESSING을 반환한다.")
     void getPaymentStatus_OutboxInFlight_ReturnsProcessing() throws Exception {
         // given
         when(paymentStatusService.getPaymentStatus("order-in-flight"))

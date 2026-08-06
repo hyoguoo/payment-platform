@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §9 상태 머신에 격리 복구 출구 `QUARANTINED → FAILED`(관리자 안전 종결, `resolveQuarantineToFailed` CAS) 추가 + §11 회복 시나리오에 격리 수동 종결·`events.confirmed.dlq` 수동 재주입 2행 추가 + §15 진입점 인덱스에 `QuarantineResolveUseCase`/`DlqReprocessUseCase`+`DlqReprocessPort`/`KafkaDlqReprocessAdapter`/`PaymentRecoveryAdminService`/`stock_compensation_if_decremented.lua` 등재 + §5 잔여 한계 서술을 "수동 재주입 도입, 자동 재시도 후속"으로 정정). 이전: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — outbox FAILED 를 발행 포기 도달 상태로 정정(한도 소진 종결은 미도입), 발행 실패 재시도 간격의 조건부 갱신 서술과 발행 직전 결제 상태 가드의 현재 실효 한계 추가, 재시도 정책 비교표의 한도 초과 행·코드 진입점 행 동기화). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §9 상태 머신에 격리 복구 출구 `QUARANTINED → FAILED`(관리자 안전 종결, `resolveQuarantineToFailed` CAS) 추가 + §11 회복 시나리오에 격리 수동 종결·`events.confirmed.dlq` 수동 재주입 2행 추가 + §15 진입점 인덱스에 `QuarantineResolveUseCase`/`DlqReprocessUseCase`+`DlqReprocessPort`/`KafkaDlqReprocessAdapter`/`PaymentRecoveryAdminService`/`stock_compensation_if_decremented.lua` 등재 + §5 잔여 한계 서술을 "수동 재주입 도입, 자동 재시도 후속"으로 정정). 이전: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -381,9 +381,13 @@ stateDiagram-v2
 | PENDING | 발행 대기. AFTER_COMMIT 리스너 또는 OutboxWorker 가 처리 |
 | IN_FLIGHT | 워커가 선점, 발행 진행 중 (또는 타임아웃 대기) |
 | DONE | Kafka 발행 성공 (`isTerminal()` = true) |
-| FAILED | 정의된 종결 상태(`isTerminal()` = true). **현재 도달하는 코드 경로 0건** — `PaymentOutbox.toFailed()` 삭제, 이 방어를 담당하던 메서드도 BACKLOG-RESIDUE-CLEANUP 에서 제거됐다 |
+| FAILED | 종결 상태(`isTerminal()` = true). **발행 포기 시 도달한다** — `OutboxRelayService.relay` 가 선점 후 결제 상태를 확인해 확정 결과를 적용할 수 없는 상태(종결·격리)면 발행하지 않고 `PaymentOutbox.toFailed()` 로 종결시켜 재시도 대상에서 뺀다(RETRY-EXHAUSTION-DISPOSITION). 재시도 한도 소진으로는 도달하지 않는다 — 한도 종결은 도입하지 않았다 |
 
 IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING 복귀. 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 회복이며, Kafka 발행 실패의 1차 회복 경로는 §3 의 TX 롤백 → PENDING 즉시 복귀다.
+
+**발행 실패 재시도 간격**: 롤백으로 PENDING 에 복귀한 뒤 `OutboxWorker` 가 별도 트랜잭션(`REQUIRES_NEW`)으로 `retry_count` 와 `next_retry_at` 을 조건부 갱신한다(`WHERE status='PENDING' AND retry_count=:expected`). 대기 행 조회·선점 쿼리가 이미 `next_retry_at` 을 조건으로 읽고 있어 값이 채워지는 순간부터 간격이 걸린다. 조건부 갱신인 이유는 `save` 가 조건절 없는 전체 덮어쓰기이고 엔티티에 낙관적 잠금이 없어, 읽고 저장하면 그사이 선점되거나 발행이 끝난 행을 되돌리기 때문이다.
+
+**발행 직전 결제 상태 가드의 현재 실효**: 위 FAILED 전이는 결제가 종결·격리 상태일 때만 걸리는데, 브로커 장애로 발행이 밀린 결제는 정리 작업이 READY 로 되돌린 뒤 만료에 실패해 READY 에 잔류한다(`CONCERNS.md` L-14). READY 는 확정 결과 적용 가능 상태라 가드를 통과한다 — 가드가 겨냥한 시나리오에서는 아직 발동하지 않는다.
 
 ---
 
@@ -400,9 +404,9 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 | backoff 전략 | **FIXED 5s** (기본, `@DefaultValue("FIXED")` + `@DefaultValue("5000")`) | EXPONENTIAL × jitter (base=2s, ×3, ±25%) |
 | maxDelayMs | **60000ms** (기본) | — |
 | 시각 표현 | `payment_outbox.next_retry_at` (RDB row) | `pg_outbox.available_at` (RDB row) + Kafka self-loop |
-| 한도 초과 시 | outbox FAILED — enum 정의만 존재, 전이 코드 경로 0건(dead terminal). 현재는 PENDING 상태로 무기한 재픽업(별도 한도 없음) | `payment.commands.confirm.dlq` 로 격리 |
+| 한도 초과 시 | **한도 없음** — 소진 종결을 도입하지 않았다(발행 못 한 채 끝나는 결제는 재고 선차감 되돌리기 부채를 만든다). 간격을 두고 무기한 재시도한다. outbox FAILED 는 한도가 아니라 결제가 종결·격리일 때 발행을 포기하며 도달한다 | `payment.commands.confirm.dlq` 로 격리 |
 | 트리거 | `OutboxImmediateEventHandler` / `@Scheduled OutboxWorker` | `PaymentConfirmConsumer` → self-loop (attempt 헤더) |
-| 코드 진입점 | `OutboxWorker` 5초 주기 배치 재픽업(`OutboxRelayService.relay`) — 이 방어를 담당하던 메서드는 제거됐다 | `PgVendorCallService.handleRetry` |
+| 코드 진입점 | `OutboxWorker` 5초 주기 배치 재픽업(`OutboxRelayService.relay`) + 실패 시 `PaymentOutboxUseCase.recordPublishFailureDelay` 로 간격 기록 | `PgVendorCallService.handleRetry` |
 
 **핵심 비대칭:**
 - payment 측: "내가 Kafka broker 에 publish 못함" 회복 — outbox CAS + 워커 폴백
