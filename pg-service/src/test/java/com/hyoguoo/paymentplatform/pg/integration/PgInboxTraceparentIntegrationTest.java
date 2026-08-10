@@ -129,7 +129,7 @@ class PgInboxTraceparentIntegrationTest {
 
         // when
         pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-e5-tp", traceparent);
+                orderId, AMOUNT, "TOSS", "pay-key-e5-tp", traceparent);
 
         // then — SELECT stored_traceparent FROM pg_inbox WHERE order_id=? 결과 == 저장한 traceparent
         Optional<String> stored = pgInboxRepository.findStoredTraceparent(
@@ -153,7 +153,7 @@ class PgInboxTraceparentIntegrationTest {
 
         // when
         Long inboxId = pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-e5-null", null);
+                orderId, AMOUNT, "TOSS", "pay-key-e5-null", null);
 
         // then — INSERT 성공 (id 반환)
         assertThat(inboxId)

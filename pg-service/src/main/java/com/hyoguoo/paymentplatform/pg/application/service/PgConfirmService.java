@@ -82,7 +82,6 @@ public class PgConfirmService implements PgConfirmCommandService {
         pgInboxPendingService.insertPendingAndPublish(
                 command.orderId(),
                 amountLong,
-                command.eventUuid(),
                 vendorType,
                 command.paymentKey(),
                 storedTraceparent);

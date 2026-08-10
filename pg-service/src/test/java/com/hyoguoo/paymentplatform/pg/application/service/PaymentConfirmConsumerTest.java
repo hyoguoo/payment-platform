@@ -201,7 +201,7 @@ class PaymentConfirmConsumerTest {
         // 대기 상태 라우팅이 같은 결과로 수렴해 분기 회귀를 못 잡는다
         Mockito.verify(pendingService, Mockito.times(1)).insertPendingAndPublish(
                 ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.anyString(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+                ArgumentMatchers.any(), ArgumentMatchers.any());
     }
 
     // -----------------------------------------------------------------------

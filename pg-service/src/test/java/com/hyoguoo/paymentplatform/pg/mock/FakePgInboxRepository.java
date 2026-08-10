@@ -101,7 +101,7 @@ public class FakePgInboxRepository implements PgInboxRepository {
      * storedTraceparent 는 NULL 허용 — 헤더 부재·구버전 행 호환.
      */
     @Override
-    public Long insertPending(String orderId, long amount, String eventUuid,
+    public Long insertPending(String orderId, long amount,
                               String vendorType, String paymentKey, String storedTraceparent) {
         // orderId 충돌 시 기존 row 유지, 신규 row id 발급 없음
         AtomicBoolean[] inserted = {new AtomicBoolean(false)};

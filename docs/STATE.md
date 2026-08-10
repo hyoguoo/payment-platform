@@ -6,7 +6,7 @@
 
 - **주제**: pg 리스너 메시지 dedupe 층 제거
 - **단계**: execute
-- **활성 태스크**: Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
+- **활성 태스크**: Task 4: 의존성 가용성 지표의 캐시 축 제거
 - **이슈/브랜치**: #138
 - **파일**: docs/topics/PG-MESSAGE-DEDUPE-LAYER-REMOVAL.md / docs/PG-MESSAGE-DEDUPE-LAYER-REMOVAL-PLAN.md
 

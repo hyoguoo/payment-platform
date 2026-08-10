@@ -81,7 +81,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 
 - [x] Task 1: 리스너 진입 필터와 되돌리기 보정 제거
 - [x] Task 2: dedupe 포트·어댑터·Fake 제거
-- [ ] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
+- [x] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
 - [ ] Task 4: 의존성 가용성 지표의 캐시 축 제거
 - [ ] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
 - [ ] Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
@@ -171,7 +171,12 @@ Task 1에서 유일한 소비처가 사라진 뒤 껍데기를 걷어낸다.
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+`PgInboxRepository.insertPending` 포트 시그니처에서 `eventUuid` 파라미터를 제거하고, `PgInboxRepositoryImpl.insertPending` 구현체와 Javadoc도 함께 정리했다. `PgInboxPendingService.insertPendingAndPublish`(공개 메서드 + private `doInsertPendingAndPublish`)에서도 같은 인자를 걷어냈고, `PgConfirmService.handleAbsent`의 호출부를 5인자로 조정했다.
+
+테스트는 계획대로 조정했다 — `FakePgInboxRepository`, `PgInboxPendingServiceTest`(Mockito mock 스텁·verify + Spring TX 통합 테스트의 익명 구현 포함), `PgInboxRepositoryImplTest`(신규 삽입/중복 orderId 케이스 포함 6곳), `PgConfirmListenerSplitIntegrationTest`, `PgInboxTraceparentIntegrationTest`, `PgSelfLoopDuplicateAbsorptionIntegrationTest`. `PgConfirmServiceTest`는 인자 개수가 6→5로 줄어든 mock·verify 매처(`anyString/anyLong/anyString/anyString/any`)를 조정했다(라우팅 검증 목적이라 mock 유지는 그대로). `PaymentConfirmConsumerTest`는 Task 1에서 실제 인스턴스 스파이로 바뀌어 생성자 조정은 불필요했으나, 순차 재수신 테스트의 `insertPendingAndPublish` verify 매처를 시그니처 축소에 맞춰 6개에서 5개로 줄였다(그대로 두면 컴파일 자체가 깨진다).
+
+`./gradlew :pg-service:test` 408 tests, 408 passed, 0 failed — 회귀 없음.
 
 ---
 

@@ -127,7 +127,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
                 LocalDateTime.ofInstant(NOW, ZoneOffset.UTC), null, "2026-06-21T00:00:00"));
 
         Long inboxId = inboxRepository.insertPending(
-                ORDER_ID, AMOUNT.longValue(), "evt-uuid-1", "TOSS", PAYMENT_KEY, null);
+                ORDER_ID, AMOUNT.longValue(), "TOSS", PAYMENT_KEY, null);
 
         // when — 1차 처리: PENDING -> IN_PROGRESS -> 벤더 confirm SUCCESS -> APPROVED 종결.
         pgInboxProcessor.processPending(inboxId);

@@ -77,7 +77,7 @@ class PgConfirmServiceTest {
         // given
         when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
         when(pgInboxPendingService.insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString(), any()))
+                anyString(), anyLong(), anyString(), anyString(), any()))
                 .thenReturn(1L);
 
         PgConfirmCommand command = new PgConfirmCommand(
@@ -88,7 +88,7 @@ class PgConfirmServiceTest {
 
         // then
         verify(pgInboxPendingService, times(1)).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
+                anyString(), anyLong(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -101,7 +101,7 @@ class PgConfirmServiceTest {
         // given
         when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
         when(pgInboxPendingService.insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString(), any()))
+                anyString(), anyLong(), anyString(), anyString(), any()))
                 .thenReturn(1L);
 
         PgConfirmCommand command = new PgConfirmCommand(
@@ -137,7 +137,7 @@ class PgConfirmServiceTest {
         // then
         verify(applicationEventPublisher, times(1)).publishEvent(any(PgInboxReadyEvent.class));
         verify(pgInboxPendingService, never()).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
+                anyString(), anyLong(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------
@@ -163,7 +163,7 @@ class PgConfirmServiceTest {
         // then
         verify(applicationEventPublisher, times(1)).publishEvent(any(PgInboxReadyEvent.class));
         verify(pgInboxPendingService, never()).insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), anyString(), any());
+                anyString(), anyLong(), anyString(), anyString(), any());
     }
 
     // -----------------------------------------------------------------------

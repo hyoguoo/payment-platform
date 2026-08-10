@@ -73,7 +73,6 @@ public class PgInboxPendingService {
      *
      * @param orderId           주문 식별자 (pg_inbox.order_id UNIQUE)
      * @param amount            원화 최소 단위 정수
-     * @param eventUuid         PG 콜백 이벤트 UUID (중복 방어용)
      * @param vendorType        벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
      * @param paymentKey        벤더 결제 키
      * @param storedTraceparent W3C traceparent 불투명 문자열 (null 허용)
@@ -83,25 +82,23 @@ public class PgInboxPendingService {
     public Long insertPendingAndPublish(
             String orderId,
             long amount,
-            String eventUuid,
             String vendorType,
             String paymentKey,
             String storedTraceparent
     ) {
-        return doInsertPendingAndPublish(orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
+        return doInsertPendingAndPublish(orderId, amount, vendorType, paymentKey, storedTraceparent);
     }
 
     private Long doInsertPendingAndPublish(
             String orderId,
             long amount,
-            String eventUuid,
             String vendorType,
             String paymentKey,
             String storedTraceparent
     ) {
         try {
             Long inboxId = pgInboxRepository.insertPending(
-                    orderId, amount, eventUuid, vendorType, paymentKey, storedTraceparent);
+                    orderId, amount, vendorType, paymentKey, storedTraceparent);
             applicationEventPublisher.publishEvent(new PgInboxReadyEvent(inboxId));
             return inboxId;
         } catch (TransactionTimedOutException e) {
