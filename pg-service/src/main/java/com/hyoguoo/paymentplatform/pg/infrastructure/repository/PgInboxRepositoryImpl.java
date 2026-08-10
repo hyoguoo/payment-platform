@@ -95,7 +95,7 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
      * 신규 삽입 또는 기존 row — 어느 경우도 동일한 id 를 반환하여 downstream 이 inboxId 를 보유한다.
      *
      * <p>paymentKey / vendorType / storedTraceparent 컬럼을 포함하여 INSERT 한다.
-     * eventUuid 는 DB 컬럼 없이 EventDedupeStore 에서 관리하므로 여기서는 무시한다.
+     * eventUuid 는 대응 DB 컬럼이 없어 여기서는 무시한다.
      * storedTraceparent 는 NULL 허용 — 헤더 부재·구버전 행 호환.
      */
     @Override

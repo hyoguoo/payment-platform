@@ -15,15 +15,15 @@
 
 ## 🚀 주요 해결 과제
 
-|       해결 영역        | 주요 해결 방법                                                                                                                               |                                      개선 결과                                      |
-|:----------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------:|
-|   동기 → 비동기 전환   | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조를 Outbox와 가상 스레드 Worker를 활용해 비동기로 전환                                      |               **TPS 47% 향상 / 요청 유실 없음** (k6 부하테스트 기준)                |
-|  정합성 / 멱등성 보장  | 클라이언트·서버·PG사 간 결제 데이터 교차 검증 및 Checkout API 멱등성 보장 (TOCTOU 동시성 문제 해결)                                          |                         중복 결제 및 금액 위변조 원천 차단                          |
-|    장애 복구 자동화    | 백오프(Backoff) 기반 재시도, 실패 건 DLQ 자동 격리, 스케줄러를 통한 상태 복구 및 Redis Lua 스크립트를 활용한 원자적 재고 보상                |       **DLQ 격리로 수동 개입 최소화** + 이중 복구를 방지하는 안전한 재고 보상       |
-| MSA 전환 및 Kafka 도입 | 모놀리스 아키텍처를 4개의 마이크로서비스로 분리(Eureka, Gateway 포함)하고 결제와 PG 서비스 간 통신을 Kafka를 통한 비동기 이벤트로 전환       |           **결합도 감소** 및 AMOUNT_MISMATCH 검증을 통한 상태 불일치 방어           |
-| Outbox 패턴 및 멱등성  | 시스템 특성에 맞춰 결제/PG 서비스의 Outbox 정책을 분리하고, 메시지 중복 소비를 막기 위한 서비스별 멱등성 검증 룰(Kafka EOS, Redis, RDB) 적용 |                    **At-least-once 전달 보장** 및 중복 처리 방지                    |
-|  외부 연동 흐름 격리   | 수신(Inbox 저장) → 벤더 API 호출 및 처리(Virtual Thread) → 완료 이벤트 발행(Kafka) 단계를 분리하고 각 구간에 채널과 폴백을 둬 장애 격리      | **외부 연동 지연이 내부 시스템에 미치는 영향 차단** 및 프로세스 중단 시 안전한 회수 |
-|     분산 환경 추적     | MSA 간 흐름을 추적하기 위해 OTel 컨텍스트와 MDC 로그 식별자를 가상 스레드 및 메모리 채널 경계에서 직접 캡처하고 복원하도록 구현              |                 5개 서비스와 Kafka 전반에 걸친 traceId 연속성 확보                  |
+|       해결 영역        | 주요 해결 방법                                                                                                                                                  |                                      개선 결과                                      |
+|:----------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------:|
+|   동기 → 비동기 전환   | Toss API 지연이 HTTP 스레드를 블로킹하던 동기 구조를 Outbox와 가상 스레드 Worker를 활용해 비동기로 전환                                                         |               **TPS 47% 향상 / 요청 유실 없음** (k6 부하테스트 기준)                |
+|  정합성 / 멱등성 보장  | 클라이언트·서버·PG사 간 결제 데이터 교차 검증 및 Checkout API 멱등성 보장 (TOCTOU 동시성 문제 해결)                                                             |                         중복 결제 및 금액 위변조 원천 차단                          |
+|    장애 복구 자동화    | 백오프(Backoff) 기반 재시도, 실패 건 DLQ 자동 격리, 스케줄러를 통한 상태 복구 및 Redis Lua 스크립트를 활용한 원자적 재고 보상                                   |       **DLQ 격리로 수동 개입 최소화** + 이중 복구를 방지하는 안전한 재고 보상       |
+| MSA 전환 및 Kafka 도입 | 모놀리스 아키텍처를 4개의 마이크로서비스로 분리(Eureka, Gateway 포함)하고 결제와 PG 서비스 간 통신을 Kafka를 통한 비동기 이벤트로 전환                          |           **결합도 감소** 및 AMOUNT_MISMATCH 검증을 통한 상태 불일치 방어           |
+| Outbox 패턴 및 멱등성  | 시스템 특성에 맞춰 결제/PG 서비스의 Outbox 정책을 분리하고, 메시지 중복 소비를 막기 위한 서비스별 멱등성 검증 룰(Kafka EOS, RDB 멱등 INSERT, inbox UNIQUE) 적용 |                    **At-least-once 전달 보장** 및 중복 처리 방지                    |
+|  외부 연동 흐름 격리   | 수신(Inbox 저장) → 벤더 API 호출 및 처리(Virtual Thread) → 완료 이벤트 발행(Kafka) 단계를 분리하고 각 구간에 채널과 폴백을 둬 장애 격리                         | **외부 연동 지연이 내부 시스템에 미치는 영향 차단** 및 프로세스 중단 시 안전한 회수 |
+|     분산 환경 추적     | MSA 간 흐름을 추적하기 위해 OTel 컨텍스트와 MDC 로그 식별자를 가상 스레드 및 메모리 채널 경계에서 직접 캡처하고 복원하도록 구현                                 |                 5개 서비스와 Kafka 전반에 걸친 traceId 연속성 확보                  |
 
 > TOCTOU: Time-Of-Check-Time-Of-Use 경쟁 조건 · DLQ: Dead Letter Queue · EOS: Exactly-Once Semantics  
 > · VT: Virtual Thread (가상 스레드) · OTel: OpenTelemetry · MDC: Mapped Diagnostic Context (로그 컨텍스트) · TX: Transaction
@@ -90,8 +90,6 @@ flowchart LR
     Prod --> MyPr
     Usr --> MyU
     Pay --> RedD
-    Pg --> RedD
-    Prod --> RedD
     Pay --> RedS
     Pay <-->|" payment.commands.confirm /\npayment.events.confirmed "| K
     K <--> Pg
@@ -134,7 +132,7 @@ sequenceDiagram
     W ->> K: send (실패 시 retry)
     Note over W,K: at-least-once
     K ->> Sub: deliver (중복 가능)
-    Sub ->> Sub: dedupe 검사 (Redis / RDB)
+    Sub ->> Sub: dedupe 검사 (RDB)
     Note over Sub: 멱등 소비 — 중복 차단
 ```
 
@@ -149,11 +147,11 @@ sequenceDiagram
 
 각 마이크로서비스의 도메인 특성에 맞춰 서로 다른 멱등성 보장 방식을 적용했다.
 
-| 서비스  |              저장소              |            패턴             |
-|:-------:|:--------------------------------:|:---------------------------:|
-| payment |    RDB `payment_event_dedupe`    | Kafka EOS + RDB 멱등 INSERT |
-|   pg    | Redis 1차 필터 + RDB atomic 필터 | 도메인 작업과 한 TX commit  |
-| product |    RDB `stock_commit_dedupe`     |  재고 차감과 한 TX commit   |
+| 서비스  |           저장소           |                패턴                |
+|:-------:|:--------------------------:|:----------------------------------:|
+| payment | RDB `payment_event_dedupe` |    Kafka EOS + RDB 멱등 INSERT     |
+|   pg    |       RDB `pg_inbox`       | order_id UNIQUE + 상태 조건부 선점 |
+| product | RDB `stock_commit_dedupe`  |      재고 차감과 한 TX commit      |
 
 상태 머신 흐름, 동시성 제어를 위한 데이터 선점 방식, 캐시 TTL 설정 기준 등 상세한 구현 과정은 아래 문서에 정리했다.
 

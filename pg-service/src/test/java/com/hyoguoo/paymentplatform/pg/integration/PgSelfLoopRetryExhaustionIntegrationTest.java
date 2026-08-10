@@ -8,7 +8,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgEventPublisherPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.service.PgDlqService;
@@ -19,7 +18,6 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake.FakePgGatewayStrategy;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -120,20 +118,7 @@ class PgSelfLoopRetryExhaustionIntegrationTest {
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
     }
 
-    // ─── TestConfiguration — FakeEventDedupeStore + self-loop relay 대체 ────────
-
-    @TestConfiguration
-    static class IntegrationTestConfig {
-
-        /**
-         * Redis 없는 환경에서 EventDedupeStore 빈을 FakeEventDedupeStore 로 제공한다.
-         */
-        @Bean
-        @Primary
-        public EventDedupeStore fakeEventDedupeStore() {
-            return new FakeEventDedupeStore();
-        }
-    }
+    // ─── TestConfiguration — self-loop relay 대체 ────────────────────────────
 
     /**
      * {@link PgEventPublisherPort} 를 대체해 Kafka 네트워크 없이 self-loop 를 인메모리로 재현한다.

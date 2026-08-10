@@ -80,7 +80,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 ## 진행 상황
 
 - [x] Task 1: 리스너 진입 필터와 되돌리기 보정 제거
-- [ ] Task 2: dedupe 포트·어댑터·Fake 제거
+- [x] Task 2: dedupe 포트·어댑터·Fake 제거
 - [ ] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
 - [ ] Task 4: 의존성 가용성 지표의 캐시 축 제거
 - [ ] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
@@ -145,7 +145,10 @@ Task 1에서 유일한 소비처가 사라진 뒤 껍데기를 걷어낸다.
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+`EventDedupeStore` 포트, `EventDedupeStoreRedisAdapter`, `FakeEventDedupeStore` 세 파일을 삭제했다. 통합 테스트 4종에서 `EventDedupeStore` 빈 등록 `TestConfiguration` 블록과 관련 import(`EventDedupeStore`, `FakeEventDedupeStore`)를 지웠다 — `PgSelfLoopRetryExhaustionIntegrationTest`는 같은 파일에 self-loop relay 대체용 `TestConfiguration`이 별도로 있어 그 블록만 남기고 dedupe 전용 블록만 제거했다. `PgConfirmListenerSplitIntegrationTest`/`PgInboxTraceparentIntegrationTest` 클래스 Javadoc의 "Redis 미사용 — Fake로 대체" 서술도 제거했다(`PgInboxAttemptGuardIntegrationTest`는 원래 이 서술이 없었다). `spring.autoconfigure.exclude`로 `RedisAutoConfiguration`을 끄는 `@SpringBootTest` 속성은 dedupe 전용 설정이 아니라 4종 모두 Redis 빈 자체를 배제하는 별개 관심사라 손대지 않았다. `PgInboxRepositoryImpl.insertPending` Javadoc은 "eventUuid는 DB 컬럼 없이 EventDedupeStore에서 관리하므로 여기서는 무시한다"를 "eventUuid는 대응 DB 컬럼이 없어 여기서는 무시한다"로 정정했다(파라미터 자체는 Task 3에서 제거).
+
+`pg-service` 전체에서 `EventDedupeStore` 참조는 소스·테스트·빌드 어디에도 0건이다(grep 확인). `./gradlew :pg-service:test` 408 tests, 408 passed, 0 failed — 회귀 없음.
 
 ---
 
