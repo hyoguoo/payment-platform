@@ -82,7 +82,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 - [x] Task 1: 리스너 진입 필터와 되돌리기 보정 제거
 - [x] Task 2: dedupe 포트·어댑터·Fake 제거
 - [x] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
-- [ ] Task 4: 의존성 가용성 지표의 캐시 축 제거
+- [x] Task 4: 의존성 가용성 지표의 캐시 축 제거
 - [ ] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
 - [ ] Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
 
@@ -203,7 +203,12 @@ Task 1에서 유일한 소비처가 사라진 뒤 껍데기를 걷어낸다.
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+`DependencyHealthMetrics`에서 `RedisConnectionFactory`/`RedisConnection` import, `COMPONENT_REDIS` 상수, 연결 팩토리 필드, `redisGauge`, 생성자의 `ObjectProvider<RedisConnectionFactory>` 파라미터, 게이지 등록·폴링 루프의 캐시 분기, `checkRedisHealth`를 모두 제거했다. 클래스 Javadoc의 "redis 는 optional 의존성" 문단도 걷어내고 DB 축만 남는 것으로 정정했다. `poll()` 메서드 Javadoc의 "각 컴포넌트"도 DB 단수 서술로 맞췄다.
+
+`DependencyHealthMetricsTest`는 캐시 mock(`mockRedisFactory`/`mockRedisProvider`)과 `setupHealthyRedis` 헬퍼를 제거하고 생성자 호출을 4인자(캐시 팩토리 파라미터 없이)로 조정했다. "캐시 빈 부재 시 DB 게이지만 동작" 케이스는 캐시 축 자체가 없어져 의미가 사라져 삭제했다. "정상이면 게이지 1" 케이스는 DB 축 단언만 남기고, 타임아웃 케이스는 DB 기준 그대로 유지했다.
+
+`DependencyHealthMetrics`에 캐시/redis 참조 0건(grep 확인). `./gradlew :pg-service:test` 407 tests, 407 passed, 0 failed — 회귀 없음(Task 3 완료 시점 408건에서 삭제한 캐시 부재 케이스 1건만큼 줄어든 407건, 실패 없음).
 
 ---
 
