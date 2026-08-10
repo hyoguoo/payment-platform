@@ -6,7 +6,7 @@
 
 - **주제**: pg 리스너 메시지 dedupe 층 제거
 - **단계**: execute
-- **활성 태스크**: Task 1: 리스너 진입 필터와 되돌리기 보정 제거
+- **활성 태스크**: Task 2: dedupe 포트·어댑터·Fake 제거
 - **이슈/브랜치**: #138
 - **파일**: docs/topics/PG-MESSAGE-DEDUPE-LAYER-REMOVAL.md / docs/PG-MESSAGE-DEDUPE-LAYER-REMOVAL-PLAN.md
 

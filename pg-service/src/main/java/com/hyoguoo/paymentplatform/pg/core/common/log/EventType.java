@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 public enum EventType {
 
     PG_CONFIRM_RECEIVED,
-    PG_CONFIRM_DUPLICATE_UUID,
     /** inbox 진입 상태가 PENDING 으로 시작됨을 나타낸다. */
     PG_CONFIRM_PENDING_INSERT,
     PG_CONFIRM_IN_PROGRESS_NOOP,

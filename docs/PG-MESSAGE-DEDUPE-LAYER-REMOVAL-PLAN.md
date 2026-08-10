@@ -79,7 +79,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 
 ## 진행 상황
 
-- [ ] Task 1: 리스너 진입 필터와 되돌리기 보정 제거
+- [x] Task 1: 리스너 진입 필터와 되돌리기 보정 제거
 - [ ] Task 2: dedupe 포트·어댑터·Fake 제거
 - [ ] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
 - [ ] Task 4: 의존성 가용성 지표의 캐시 축 제거
@@ -117,7 +117,12 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+`PgConfirmService`에서 `EventDedupeStore` 필드·생성자 주입·`markSeen`/`remove` 호출을 모두 걷어냈다. `handle`은 이제 inbox 상태 조회 후 바로 분기하며, 별도 `processCommand` 사설 메서드는 두지 않았다 — 필터·try/catch 제거 후 남는 본문이 `processCommand`를 그대로 옮긴 한 줄 위임이 되어 code-style 컨벤션(불필요한 한 줄 위임 금지)에 걸려 `handle` 안으로 병합했다. 클래스 Javadoc은 "2단 멱등성 키" 서술을 "중복 방어는 접수대장 orderId UNIQUE 단일 층에서 흡수" 로 정정했다. `EventType.PG_CONFIRM_DUPLICATE_UUID`는 참조 0건을 재확인 후 제거했다.
+
+`PaymentConfirmConsumerTest`는 접수 기록 삽입 서비스를 `FakePgInboxRepository`에 물린 실제 `PgInboxPendingService`를 감싼 스파이로 바꿔, 순차 재수신 테스트가 접수 기록 수(1건)와 스파이 호출 횟수(1회)를 함께 단언하도록 재작성했다. 동시 재수신 테스트는 8스레드 진입 후 접수 기록 수(1건) 단언으로 전환했다. 두 단언 모두 일부러 뒤집어(times(1)→times(2), hasSize(1)→hasSize(8)) 돌려 실제로 FAILED 되는 것을 확인한 뒤 원복했다. `PgConfirmServiceTest`는 필터 mock 선언·스텁만 제거하고 라우팅 검증 4분기는 그대로 유지했다.
+
+`./gradlew :pg-service:test` 408 tests, 408 passed, 0 failed — 회귀 없음.
 
 ---
 
