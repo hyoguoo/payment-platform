@@ -6,7 +6,6 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgInboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -48,7 +47,6 @@ class PgConfirmServiceTest {
 
     private PgInboxRepository pgInboxRepository;
     private PgVendorCallService pgVendorCallService;
-    private EventDedupeStore eventDedupeStore;
     private ApplicationEventPublisher applicationEventPublisher;
     private PgInboxPendingService pgInboxPendingService;
     private PgTerminalReemitService pgTerminalReemitService;
@@ -58,18 +56,14 @@ class PgConfirmServiceTest {
     void setUp() {
         pgInboxRepository = mock(PgInboxRepository.class);
         pgVendorCallService = mock(PgVendorCallService.class);
-        eventDedupeStore = mock(EventDedupeStore.class);
         applicationEventPublisher = mock(ApplicationEventPublisher.class);
         pgInboxPendingService = mock(PgInboxPendingService.class);
         pgTerminalReemitService = mock(PgTerminalReemitService.class);
         Clock clock = Clock.fixed(Instant.parse("2026-05-09T00:00:00Z"), ZoneOffset.UTC);
 
-        // dedupe 항상 통과 (markSeen=true, remove no-op)
-        when(eventDedupeStore.markSeen(anyString())).thenReturn(true);
-
         sut = new PgConfirmService(
                 pgInboxRepository, pgVendorCallService,
-                eventDedupeStore, applicationEventPublisher, clock,
+                applicationEventPublisher, clock,
                 pgInboxPendingService, pgTerminalReemitService);
     }
 
