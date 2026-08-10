@@ -27,6 +27,16 @@
 - **현황**: `PgFinalConfirmationGate` 는 재시도 소진 후 벤더에 1회 물어 승인·실패·미확정으로 가르는 로직을 갖고 있으나 프로덕션 호출처가 0이다(`ARCHITECTURE.md` 도 미연결로 명시). 실제 경로는 `PgDlqService.handle` 이 벤더 확인 없이 곧바로 격리 전이시킨다(사유 `RETRY_EXHAUSTED`).
 - **처방**: 배선하면 승인·실패로 확정되는 건이 격리에 들어오지 않아 관리자 부담이 줄지만, 벤더 응답 하나로 결제를 자동 승인·자동 실패시키는 결정이라 사람이 개입하는 현재 구조와 성격이 다르다. 배선 여부 자체가 별도 판단을 요구한다. RETRY-EXHAUSTION-DISPOSITION 은 사람이 누르는 경로만 만들고 이 판단은 미뤘다.
 
+#### [PG-MESSAGE-DEDUPE-LAYER-REVIEW] — pg 리스너 Redis dedupe 층의 실익과 유실 창 재검토
+
+- **현황**: `EventDedupeStoreRedisAdapter`(`evt:seen:{uuid}`, TTL 1시간)가 pg 리스너 진입 1단계에 있으나 중복 승인 방어에는 기여하지 않는다. 실제 방어는 `pg_inbox.order_id` UNIQUE(`ux_pg_inbox_order_id`) + 워커의 상태 조건부 선점(`transitPendingToInProgress`, SKIP LOCKED)이 담당하고, terminal 재수신은 `PgTerminalReemitService.reemit` 이 저장된 결과만 재발행해 벤더를 부르지 않는다.
+- **필터가 실제로 잡는 범위**: self-loop 재시도 명령은 `PgVendorCallService` 가 outbox row 마다 새 eventUuid 를 발급하므로 전부 통과한다(막히면 재시도 불가). 차단 대상은 동일 eventUuid 의 Kafka 재배달뿐이고, 그 경우도 위 두 방어가 안전하게 처리한다. 순수 절감분은 terminal 재수신 시의 `pg_outbox` INSERT + 발행 1건.
+- **비용 1 (가용성)**: `markSeen` 이 예외를 던지면 소비가 멈춘다. 최적화 목적 층이 Redis 가용성 의존을 추가한 형태다.
+- **비용 2 (유실 창, 미검증)**: `PgConfirmService.handle` 의 보정은 `catch (RuntimeException)` 이라 JVM 크래시를 못 잡는다. markSeen 성공 후 PENDING INSERT 커밋 전에 프로세스가 죽으면 재배달이 필터에 막혀 no-op 으로 빠지고, inbox row 가 없어 폴링 회수 대상도 아니다. 복구는 payment 측 타임아웃 경로 의존 — 그 경로가 어디까지 건지는지는 확인 필요.
+- **처방 후보**: (1) Redis 층 제거 후 inbox 단일 방어로 정리 — terminal 재수신 낭비를 수용 / (2) `markSeen` 을 INSERT 성공 이후로 이동해 유실 창 제거 / (3) 유지. 판단 전에 `PG_CONFIRM_DUPLICATE_UUID` 로그 발생 빈도로 이 층이 실제로 일한 횟수를 확인한다.
+- **발견 경위**: 2026-08-09 블로그 1편(MSA 전환 결정) 집필 중 코드 대조. 정적 분석만 수행했고 유실 시나리오는 실측하지 않았다.
+- **⚠️ 문서 선반영 상태 (2026-08-09)**: 사용자 결정으로 위키(`message-delivery-and-dedupe` / `architecture` / `msa-transition` / `pg-confirm-flow`) · README · 포트폴리오 · 블로그 포스팅을 **Redis 층 제거 완료 기준**으로 이미 갱신했다. 코드에는 `EventDedupeStoreRedisAdapter` 와 `PgConfirmService.handle` 의 markSeen 분기가 그대로 남아 있어 **문서와 코드가 어긋난 상태**다. 코드 제거를 완료해야 정합이 맞는다 — 제거 범위: `EventDedupeStore` 포트 + Redis 어댑터 + 테스트 Fake, `handle` 의 markSeen/remove 분기, `pg.event-dedupe.ttl` 설정, pg 의 `redis-dedupe` 의존(compose). `redis-dedupe` 인스턴스 자체는 payment checkout 멱등성 store 가 계속 사용하므로 유지한다.
+
 ---
 
 ## Phase 5 — 추후 (부하 측정 / 인프라 의존)
