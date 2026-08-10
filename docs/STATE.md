@@ -5,8 +5,8 @@
 ## 활성 작업
 
 - **주제**: pg 리스너 메시지 dedupe 층 제거
-- **단계**: execute
-- **활성 태스크**: Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
+- **단계**: ship
+- **활성 태스크**: 없음 — Task 1~6 전체 완료, ship Phase A(코드 리뷰) 진입 대기
 - **이슈/브랜치**: #138
 - **파일**: docs/topics/PG-MESSAGE-DEDUPE-LAYER-REMOVAL.md / docs/PG-MESSAGE-DEDUPE-LAYER-REMOVAL-PLAN.md
 

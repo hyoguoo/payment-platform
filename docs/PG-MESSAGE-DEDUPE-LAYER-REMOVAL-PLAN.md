@@ -84,7 +84,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 - [x] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
 - [x] Task 4: 의존성 가용성 지표의 캐시 축 제거
 - [x] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
-- [ ] Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
+- [x] Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
 
 ## 태스크
 
@@ -265,7 +265,16 @@ plan 게이트에서 발견됐다. `PgConfirmService`가 벤더 호출 서비스
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+
+`PgConfirmService`에서 `PgVendorCallService` 필드와 생성자 주입을 제거했다. 같은 패키지라 import 문 자체가 없어 별도로 지울 것은 없었고, 클래스 안에서 필드 참조가 0건임을 재확인(grep)한 뒤 진행했다.
+
+`PgConfirmServiceTest`는 mock 선언·생성자 인자를 걷어냈다. `handle_absentInbox_doesNotCallVendor` 테스트는 필드가 사라져 검증 대상 자체가 없어져(sut 에 연결되지 않은 mock 을 검사하는 형태가 되므로) 삭제했고, `handle_terminalInbox_reemitsStoredStatus`의 `verify(pgVendorCallService, never())` 단언과 DisplayName·주석의 "벤더 호출 0" 서술도 함께 정리했다. 나머지 4분기 라우팅 검증(접수 없음/대기/처리중/종결)은 그대로 유지된다.
+
+`PaymentConfirmConsumerTest`는 생성자 호출에서 `vendorCallService` 인자를 뺐다. 이 인스턴스를 만들려고만 쓰이던 `selector`/`duplicateApprovalHandler`/`objectMapper`/`ConfirmedEventPayloadSerializer` 구성과 관련 import 4건도 함께 제거했다(다른 곳에서 참조되지 않음을 grep으로 확인). `gatewayAdapter`는 다른 테스트 본문에서 `getConfirmCallCount()`/`setConfirmResult()`로 독립적으로 쓰여 그대로 남겼다. Task 1에서 재작성한 순차/동시 재수신 테스트 2건은 접수 기록 수와 스파이 호출 횟수를 단언 근거로 쓰므로 죽은 필드 제거와 무관하게 그대로 pass한다.
+
+`./gradlew :pg-service:test` 406 tests, 406 passed, 0 failed(Task 5 완료 시점 407건에서 벙어리 테스트 1건 삭제만큼 줄어든 406건). `./gradlew test` 4서비스 + eureka + gateway 전체 1096 tests, 0 failed — 회귀 없음.
+
+**범위 밖 발견**: `PaymentConfirmConsumerTest`의 나머지 4개 테스트(`consume_WhenInboxAbsent_ShouldCallInsertPendingAndPublish` 등)는 여전히 `gatewayAdapter.getConfirmCallCount()).isEqualTo(0)`으로 벤더 호출을 단언하는데, `PgConfirmService`가 애초에 벤더를 호출할 경로가 없어 이 단언도 항상 참이다(Task 1이 재작성한 재수신 2건과 같은 성격의 벙어리 단언). 이번 태스크의 완료 기준(재수신 테스트 pass + 필드 제거 + 회귀 없음)에는 포함되지 않아 손대지 않았다.
 
 ## 리뷰 처리
 

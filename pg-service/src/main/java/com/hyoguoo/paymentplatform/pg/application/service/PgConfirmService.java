@@ -39,7 +39,6 @@ import org.springframework.stereotype.Service;
 public class PgConfirmService implements PgConfirmCommandService {
 
     private final PgInboxRepository pgInboxRepository;
-    private final PgVendorCallService pgVendorCallService;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
     private final PgInboxPendingService pgInboxPendingService;

@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -9,13 +8,11 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -59,14 +56,6 @@ class PaymentConfirmConsumerTest {
         gatewayAdapter = new FakePgGatewayAdapter();
         Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
         ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
-        ObjectMapper objectMapper = new ObjectMapper();
-        // FakePgGatewayAdapter.supports(vendorType)=true 라 selector 가 항상 반환한다.
-        PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
-        DuplicateApprovalHandler duplicateApprovalHandler = Mockito.mock(DuplicateApprovalHandler.class);
-        PgVendorCallService vendorCallService =
-                new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
-                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
-                        duplicateApprovalHandler, new SecureRandom());
         // 접수 기록 삽입 서비스 — 실제 인스턴스를 스파이로 감싸 흡수 시 호출 여부까지 관측한다.
         PgInboxPendingService realPendingService =
                 new PgInboxPendingService(inboxRepository, eventPublisher, new SimpleMeterRegistry());
@@ -74,8 +63,7 @@ class PaymentConfirmConsumerTest {
         // terminal 재발행은 별도 빈(PgTerminalReemitService)에 위임한다
         PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher, clock);
         sut = new PgConfirmService(
-                inboxRepository, vendorCallService,
-                eventPublisher, clock, pendingService, terminalReemitService);
+                inboxRepository, eventPublisher, clock, pendingService, terminalReemitService);
     }
 
     // -----------------------------------------------------------------------

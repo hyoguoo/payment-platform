@@ -46,7 +46,6 @@ class PgConfirmServiceTest {
     private static final String VENDOR_TYPE_STR = "TOSS";
 
     private PgInboxRepository pgInboxRepository;
-    private PgVendorCallService pgVendorCallService;
     private ApplicationEventPublisher applicationEventPublisher;
     private PgInboxPendingService pgInboxPendingService;
     private PgTerminalReemitService pgTerminalReemitService;
@@ -55,15 +54,13 @@ class PgConfirmServiceTest {
     @BeforeEach
     void setUp() {
         pgInboxRepository = mock(PgInboxRepository.class);
-        pgVendorCallService = mock(PgVendorCallService.class);
         applicationEventPublisher = mock(ApplicationEventPublisher.class);
         pgInboxPendingService = mock(PgInboxPendingService.class);
         pgTerminalReemitService = mock(PgTerminalReemitService.class);
         Clock clock = Clock.fixed(Instant.parse("2026-05-09T00:00:00Z"), ZoneOffset.UTC);
 
         sut = new PgConfirmService(
-                pgInboxRepository, pgVendorCallService,
-                applicationEventPublisher, clock,
+                pgInboxRepository, applicationEventPublisher, clock,
                 pgInboxPendingService, pgTerminalReemitService);
     }
 
@@ -89,29 +86,6 @@ class PgConfirmServiceTest {
         // then
         verify(pgInboxPendingService, times(1)).insertPendingAndPublish(
                 anyString(), anyLong(), anyString(), anyString(), any());
-    }
-
-    // -----------------------------------------------------------------------
-    // inbox 없음 → 벤더 호출 0 (listener 내 벤더 호출 없음)
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("handle — inbox 없을 때 PgConfirmPort.confirm 미호출 (listener 내 벤더 호출 0)")
-    void handle_absentInbox_doesNotCallVendor() {
-        // given
-        when(pgInboxRepository.findByOrderId(ORDER_ID)).thenReturn(java.util.Optional.empty());
-        when(pgInboxPendingService.insertPendingAndPublish(
-                anyString(), anyLong(), anyString(), anyString(), any()))
-                .thenReturn(1L);
-
-        PgConfirmCommand command = new PgConfirmCommand(
-                ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, EVENT_UUID);
-
-        // when
-        sut.handle(command, 1, null);
-
-        // then — 벤더 호출 0회
-        verify(pgVendorCallService, never()).invokeVendor(any());
     }
 
     // -----------------------------------------------------------------------
@@ -167,11 +141,11 @@ class PgConfirmServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // terminal inbox → outbox INSERT 1회, 벤더 호출 0
+    // terminal inbox → outbox INSERT 1회
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("handle — terminal inbox 재수신 시 PgTerminalReemitService.reemit 1회 호출, 벤더 호출 0")
+    @DisplayName("handle — terminal inbox 재수신 시 PgTerminalReemitService.reemit 1회 호출")
     void handle_terminalInbox_reemitsStoredStatus() {
         // given
         String storedResult = "{\"orderId\":\"" + ORDER_ID + "\",\"status\":\"APPROVED\"}";
@@ -190,7 +164,5 @@ class PgConfirmServiceTest {
 
         // then — PgTerminalReemitService.reemit 1회 호출 (외부 빈 위임으로 self-invocation 해소)
         verify(pgTerminalReemitService, times(1)).reemit(any(PgInbox.class));
-        // then — 벤더 호출 0
-        verify(pgVendorCallService, never()).invokeVendor(any());
     }
 }
