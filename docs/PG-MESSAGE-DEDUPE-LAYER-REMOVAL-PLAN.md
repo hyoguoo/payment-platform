@@ -83,7 +83,7 @@ pg 리스너 진입부의 캐시 dedupe 필터와 그에 딸린 캐시 의존 �
 - [x] Task 2: dedupe 포트·어댑터·Fake 제거
 - [x] Task 3: 접수 기록 삽입의 미사용 식별자 파라미터 제거
 - [x] Task 4: 의존성 가용성 지표의 캐시 축 제거
-- [ ] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
+- [x] Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
 - [ ] Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
 
 ## 태스크
@@ -232,7 +232,18 @@ Task 1에서 유일한 소비처가 사라진 뒤 껍데기를 걷어낸다.
 - 라이브 검증: 스택 기동 후 pg 헬스 정상, pg 가용성 지표에서 캐시 축 소멸·DB 축 잔존, 결제 1건 관통
 
 **완료 결과**
-> (execute에서 채움)
+
+`pg-service/build.gradle`에서 `spring-boot-starter-data-redis` 의존과 그 위 주석을 제거했다. `pg-service/src/main/resources/application-docker.yml`에서 `spring.data.redis` 블록과 `pg.event-dedupe` 블록(`ttl` 프로퍼티)을 걷어냈다 — `pg.event-dedupe.ttl`을 바인딩하는 `@Value`/`@ConfigurationProperties`가 코드에 이미 없어(grep 확인) 값 자체가 이전부터 무시되고 있었다.
+
+`docker/docker-compose.apps.yml`의 pg 블록에서 `depends_on.redis-dedupe`와 `SPRING_DATA_REDIS_HOST`/`SPRING_DATA_REDIS_PORT` 환경변수 2건을 제거했다. payment 블록의 동일 이름 의존·환경변수는 그대로 남아 있다(결제 요청 멱등성 저장소가 계속 사용). `docker/docker-compose.infra.yml`의 `redis-dedupe` 서비스 정의·볼륨은 손대지 않았다.
+
+`observability/prometheus/rules/tests/availability_test.yml`의 baseline 케이스(f)에서 pg 캐시 시리즈 `dependency_up{component="redis",job="pg-service"}` 1행만 제거했다. payment의 두 캐시 시리즈(`redis-dedupe`, `redis-stock`)는 그대로 남아 있다. promtool을 로컬에 설치하지 않아 파일 헤더에 적힌 docker 경유 방식(`docker run --rm --entrypoint /bin/promtool -v .../observability/prometheus:/work prom/prometheus:v2.51.2 test rules /work/rules/tests/availability_test.yml`)으로 실행해 `SUCCESS`를 확인했다.
+
+통합 테스트 4종(`PgConfirmListenerSplitIntegrationTest`/`PgInboxTraceparentIntegrationTest`/`PgInboxAttemptGuardIntegrationTest`/`PgSelfLoopRetryExhaustionIntegrationTest`)에 남은 `spring.autoconfigure.exclude=RedisAutoConfiguration,RedisRepositoriesAutoConfiguration` 속성은 클래스명을 문자열로만 참조해 컴파일 의존이 없고, Spring Boot는 exclude 대상 클래스가 클래스패스에 아예 없으면(`ClassUtils.isPresent`가 false) invalid exclude로 보지 않고 조용히 무시한다 — `./gradlew :pg-service:integrationTest`(태그 `integration`, 기본 `test`에서는 제외되는 별도 태스크)를 직접 돌려 16 tests, 16 passed, 0 failed로 실제 컨텍스트 로딩까지 확인했다. 플랜 범위 밖이라 이 속성 자체는 남겨뒀다(이제는 no-op이지만 제거는 이 태스크 대상이 아니다).
+
+`./gradlew :pg-service:dependencies --configuration runtimeClasspath`로 redis 관련 아티팩트가 런타임 클래스패스에 0건임을 확인했다. `./gradlew test` 4서비스 전체 — payment/pg/product/user 모두 pass, pg-service는 407 tests, 407 passed, 0 failed로 Task 4 완료 시점과 동일(회귀 없음).
+
+라이브 검증(스택 기동 후 pg 헬스 정상 / 가용성 지표 캐시 축 소멸·DB 축 잔존 / 결제 1건 관통)은 ship 단계 검증으로 이관한다.
 
 ---
 

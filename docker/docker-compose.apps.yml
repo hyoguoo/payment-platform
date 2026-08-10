@@ -91,8 +91,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis-dedupe:
-        condition: service_healthy
     environment:
       TZ: UTC
       SPRING_PROFILES_ACTIVE: docker
@@ -107,8 +105,6 @@ services:
       NICEPAY_CLIENT_KEY: ${NICEPAY_CLIENT_KEY:-}
       NICEPAY_SECRET_KEY: ${NICEPAY_SECRET_KEY:-}
       NICEPAY_API_URL: ${NICEPAY_API_URL:-https://sandbox-api.nicepay.co.kr}
-      SPRING_DATA_REDIS_HOST: redis-dedupe
-      SPRING_DATA_REDIS_PORT: "6379"
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
       MANAGEMENT_OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
     networks:

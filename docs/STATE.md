@@ -6,7 +6,7 @@
 
 - **주제**: pg 리스너 메시지 dedupe 층 제거
 - **단계**: execute
-- **활성 태스크**: Task 5: pg의 캐시 의존 설정·빌드·컨테이너 정리
+- **활성 태스크**: Task 6: 리스너 서비스의 죽은 벤더 호출 의존 제거
 - **이슈/브랜치**: #138
 - **파일**: docs/topics/PG-MESSAGE-DEDUPE-LAYER-REMOVAL.md / docs/PG-MESSAGE-DEDUPE-LAYER-REMOVAL-PLAN.md
 
