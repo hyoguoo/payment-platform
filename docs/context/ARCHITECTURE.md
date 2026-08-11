@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — dedupe 저장소 표의 pg 행을 2-layer 에서 `pg_inbox.order_id` UNIQUE 단일 층으로 정정, 구현 디테일의 존재하지 않는 `PgInboxRepository.markSeen` 표기를 실제 `insertPending`(INSERT IGNORE) 으로 교체). 이전: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -15,7 +15,7 @@ payment-platform 은 결제 도메인을 6개 Spring Boot 모듈로 분해한 MS
 | `gateway` | Spring Cloud Gateway — 단일 진입점(8090). Eureka 기반 라우팅 |
 | `eureka-server` | Netflix Eureka — 서비스 디스커버리 |
 
-각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가지며, 두 Redis(`redis-dedupe`, `redis-stock`)를 용도별로 분리해 공유한다. Kafka 는 양방향 메시징 인프라.
+각 비즈니스 서비스는 독립 MySQL 인스턴스(`mysql-payment`/`mysql-pg`/`mysql-product`/`mysql-user`)를 가진다. 두 Redis(`redis-dedupe`, `redis-stock`)는 용도별로 분리돼 있으나 **payment-service 만 사용한다** — checkout 요청 멱등성(dedupe)과 재고 선차감(stock). pg-service 는 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 로 캐시 의존을 걷어냈고, product-service 는 처음부터 RDB dedupe 만 쓴다. Kafka 는 양방향 메시징 인프라.
 
 ## 토폴로지
 
@@ -58,8 +58,6 @@ flowchart LR
     Usr --> MyU
 
     Pay --> RedD
-    Pg  --> RedD
-    Prod --> RedD
     Pay --> RedS
 
     Pay <-->|"payment.commands.confirm /\npayment.events.confirmed"| K
@@ -148,7 +146,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 | Redis | 책임 | 사용처 |
 |---|---|---|
-| `redis-dedupe` (6379) | checkout 멱등성 store + pg-service 메시지 dedupe | payment-service `IdempotencyStore` (checkout `Idempotency-Key`), pg-service `EventDedupeStore` (markSeen). product-service 는 의존 0 — `JdbcEventDedupeStore` 사용. payment-service 측 events.confirmed 메시지 dedupe 는 `payment_event_dedupe` MySQL INSERT IGNORE (`JdbcPaymentEventDedupeStore`) 로 EOS 트랜잭션 안에서 처리. 재고 차감/보상 멱등은 `redis-stock` Lua atomic dedup token 으로 별도 보장 |
+| `redis-dedupe` (6379) | checkout 멱등성 store | payment-service `IdempotencyStore` (checkout `Idempotency-Key`) **전용**. pg-service 는 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 로 의존 해제(라이브러리까지), product-service 는 처음부터 의존 0 — `JdbcEventDedupeStore` 사용. payment-service 측 events.confirmed 메시지 dedupe 는 `payment_event_dedupe` MySQL INSERT IGNORE (`JdbcPaymentEventDedupeStore`) 로 EOS 트랜잭션 안에서 처리. 재고 차감/보상 멱등은 `redis-stock` Lua atomic dedup token 으로 별도 보장 |
 | `redis-stock` (6380) | 재고 선차감 캐시 + Lua atomic dedup token (`StockCachePort`) | payment-service 단독. confirm 진입 시 `decrementAtomic(orderId, orders)` Lua 1회 호출 (결제 단위 N개 atomic + `decrement:done:{orderId}` SETNX P8D), FAILED/QUARANTINED 회신 시 `compensateAtomic(orderId, orders)` Lua 1회 (결제 단위 N개 atomic + `compensation:done:{orderId}` SETNX P8D). 결과 enum: `StockDecrementAtomicResult` (OK / ALREADY_DONE / INSUFFICIENT) / `StockCompensationAtomicResult` (OK / ALREADY_DONE). product RDB 가 SoT, 본 캐시는 그것의 미러 — 부팅 직후 `scripts/seed-stock.sh` 가 mysql-product 에서 SELECT → redis SET 으로 시드. 부팅 외 발산 보정은 운영 단건 resync(`POST /admin/stock/resync/{productId}` → `StockCachePort.set`, 트래픽 조용한 시점 전제 — in-flight 선차감 덮어쓰기 주의). AOF `appendfsync=always` 운영 (L2 race window 완화 trade-off) |
 
 ### Kafka
@@ -209,7 +207,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | 서비스 | 어댑터 | 저장소 | dedupe 후 작업 | atomicity 강제 |
 |---|---|---|---|---|
 | payment | (1) Lua atomic dedup token — 재고 차감/보상 멱등 (redis-stock). (2) `JdbcPaymentEventDedupeStore` (`payment_event_dedupe` INSERT IGNORE) — **메시지 단위 dedupe** (PET-5 신설). 둘은 역할이 다름 | (1) Redis (redis-stock) / (2) MySQL (mysql-payment) | (1) Lua 안에서 재고 DECR/INCR + token 박기 atomic. (2) EOS 트랜잭션 안에서 RDB dedupe + RDB 상태 전이 + Kafka 발행이 원자 | **강함** — (1) Lua single-shot atomic, (2) EOS 트랜잭션 원자성 |
-| pg | `EventDedupeStore.markSeen` (Redis) + `PgInboxRepository.markSeen` (MySQL pg_inbox) — **2-layer** | Redis (TX 외부 빠른 거름) + MySQL (TX 내부 atomic 거름) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — RDB layer 가 같은 TX 필수, Redis layer 는 보조 |
+| pg | `PgInboxRepository.insertPending` (`pg_inbox.order_id` UNIQUE + INSERT IGNORE) — **단일 층** | MySQL (mysql-pg) | pg_inbox / pg_outbox 상태 전이 (RDB) | **강함** — 흡수와 상태 전이가 같은 RDB 위에서 일어남 |
 | product | `JdbcEventDedupeStore` | MySQL (stock_commit_dedupe) | Stock 재고 차감 (RDB) | **강함** — 같은 TX 필수 |
 
 **결정 룰 한 줄**:
@@ -222,7 +220,7 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 
 **구현 디테일**:
 - **payment**: `stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` — KEYS 에 `stock:{productId}` 들 + `decrement:done:{orderId}` (또는 `compensation:done:{orderId}`) 동봉. 한 호출 안에서 dedup token SETNX → 이미 박혀 있으면 `ALREADY_DONE` early return, 아니면 N개 상품 DECR/INCR + dedup token SETNX P8D. 메시지 dedupe 는 Spring Kafka native 에러 핸들러 (retry + DLQ) 가 별도 layer 로 처리
-- **pg**: pg_inbox 테이블 + UPSERT (markSeen). 같은 TX 안에서 inbox 상태 전이까지
+- **pg**: pg_inbox 테이블 + `insertPending` (INSERT IGNORE, `order_id` UNIQUE). 중복 삽입을 흡수하고 같은 TX 안에서 채널 적재까지. 리스너 진입부에 있던 Redis eventUuid 필터는 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 에서 제거됐다 — 중복 승인 방어에 기여하지 않으면서 Redis 가용성 의존과 유실 창(필터 기록 후 INSERT 커밋 전 크래시)을 만들었다
 - **product**: stock_commit_dedupe 테이블 + DELETE 만료 + INSERT IGNORE. 같은 TX 안에서 재고 차감까지
 
 **대안 비교** (모두 검토 후 현재 안이 채택):

@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -18,7 +18,7 @@
 spring-boot-starter-web              # REST 진입점 (gateway 는 webflux 기반 spring-cloud-starter-gateway)
 spring-boot-starter-data-jpa
 spring-boot-starter-actuator         # /actuator/health · prometheus 스크랩
-spring-boot-starter-data-redis       # StockCachePort (Lua atomic) + IdempotencyStore + pg-side EventDedupeStore
+spring-boot-starter-data-redis       # StockCachePort (Lua atomic) + IdempotencyStore — payment-service 전용 (pg-service 는 dedupe 층 제거로 의존 해제)
 spring-boot-starter-aop              # @PublishDomainEvent, @PaymentStatusChange
 spring-cloud-starter-netflix-eureka-client  # docker 프로필에서 활성화
 
@@ -52,7 +52,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 | 컴포넌트 | 이미지 / 버전 | 호스트 포트 | 책임 |
 |---|---|---|---|
 | MySQL × 4 | `mysql:8.0` (linux/arm64) | 3306 / 3308 / 3309 / 3310 | 서비스별 독립 DB |
-| Redis dedupe | `redis:7.x` (alpine) | 6379 | checkout 멱등성 + pg-service 메시지 중복 제거 |
+| Redis dedupe | `redis:7.x` (alpine) | 6379 | checkout 멱등성 (payment-service 전용) |
 | Redis stock | `redis:7.x` | 6380 | 재고 캐시 + Lua atomic dedup token (AOF `appendfsync=always` 운영 — fsync 매 명령, throughput trade-off 인정. `docker/docker-compose.infra.yml`) |
 | Kafka | `confluentinc/cp-kafka` (KRaft 모드) | 9092 / 29092 | 메시지 브로커 |
 | Eureka | (자체 모듈) | 8761 | 서비스 디스커버리 |

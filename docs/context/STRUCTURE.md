@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `dedupe/` 디렉토리 설명에서 pg 항목 제거, 실제 어댑터를 가진 payment·product 만 남김). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
 
 ## 루트 레이아웃
 
@@ -85,7 +85,7 @@ payment-platform/
     │   │   │   ├── adapter/http/ # cross-service Feign 어댑터 (payment-service — feign/ 서브폴더에 *FeignClient + *FeignConfig)
     │   │   │   ├── http/         # vendor RestClient 어댑터 (pg-service — HttpOperatorImpl)
     │   │   │   ├── cache/        # Redis 어댑터 (payment-service)
-    │   │   │   ├── dedupe/       # EventDedupeStore 어댑터 (payment: JdbcPaymentEventDedupeStore — payment_event_dedupe INSERT IGNORE / pg Redis+RDB / product RDB)
+    │   │   │   ├── dedupe/       # dedupe 어댑터 (payment: JdbcPaymentEventDedupeStore — payment_event_dedupe INSERT IGNORE / product: JdbcEventDedupeStore — RDB). pg 는 없다 — 접수대장 orderId UNIQUE 로 흡수
     │   │   │   ├── idempotency/  # IdempotencyStore 어댑터 (payment-service Redis)
     │   │   │   ├── scheduler/    # @Scheduled 워커 + SmartLifecycle 워커 (pg: AbstractImmediateWorker 공통 base ← PgOutboxImmediateWorker·PgInboxImmediateWorker + 별종 PgInboxPollingWorker·PgOutboxPollingWorker / payment·product: DedupeCleanupWorker — dedupe 만료 행 청소)
     │   │   │   ├── trace/        # OTel traceparent 추출·복원 어댑터 (pg-service — TraceparentExtractor, pg_inbox.stored_traceparent 기반 폴링 회수 추적 복원)

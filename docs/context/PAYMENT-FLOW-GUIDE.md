@@ -113,7 +113,7 @@ sequenceDiagram
 > **목적**: 명령을 받아 실제 PG사를 호출하고 결과를 `events.confirmed` 로 되쏨. **불변식**: orderId 당 결과 SoT 는 `pg_inbox` 1행(UNIQUE).
 
 16. **명령 수신** — `PaymentConfirmConsumer` (groupId=pg-service, `attempt` 헤더 파싱·부재 시 1) → `PgConfirmService.handle`
-17. **메시지 중복 차단** — Redis SETNX EX 1h (`EventDedupeStore.markSeen`). 처리 실패 시 dedupe 롤백(`remove`)으로 재컨슘 허용
+17. **메시지 중복 차단** — 접수대장(`pg_inbox`)의 주문번호 UNIQUE 가 흡수한다. 같은 주문으로 두 번 들어와도 접수 기록은 1건이고, 작업자가 대기→처리중으로 옮기는 선점이 한 트랜잭션이라 늦게 온 쪽은 그대로 물러난다. 예전에 이 앞에 두었던 캐시 필터는 중복 승인을 실제로 막지 못하면서 캐시 장애점과 유실 창만 만들어 걷어냈다
 18. **inbox 상태 분기** (`PgConfirmService`)
     - inbox 없으면 **`pg_inbox` `PENDING` INSERT + 채널 적재**(`PgInboxPendingService.insertPendingAndPublish`)
     - 이미 `PENDING`/`IN_PROGRESS`면 채널 재적재(`handleActiveInbox`)

@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -103,7 +103,7 @@ process(result);  // result 가 null 일 수 있음
 **처방 (현재)**: payment-service `EventDedupeStore` (two-phase lease) 패턴은 STOCK-COMPENSATION-RECOVERY 봉인에서 폐기.
 - 재고 멱등성은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D) 으로 같은 Lua 안에서 atomic 보장
 - 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 + `payment.events.confirmed.dlq`) 가 native 책임
-- pg-service `EventDedupeStore.markSeen` (Redis SET NX EX 1h) + pg_inbox UPSERT 2-layer 모델은 그대로 (RDB 같은 TX 안에서 atomicity 강제됨)
+- pg-service 도 같은 이유로 뒤따라 정리됐다 — 리스너 진입부의 Redis eventUuid 필터(`EventDedupeStore`)를 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 에서 제거하고 `pg_inbox.order_id` UNIQUE 단일 층으로 일원화. 이 필터도 후속 RDB 작업과 같은 TX 가 아니어서 같은 유실 창을 갖고 있었다(필터 기록 후 PENDING INSERT 커밋 전 크래시 → 재전송이 필터에 막히고 inbox row 가 없어 폴링 회수 대상도 아님). 다만 제거로 IN_PROGRESS 재전송 억제 효과를 함께 잃었다 — `PAYMENT-FLOW.md` §4.11 참조
 
 ## 11. 보상 트랜잭션 중복 진입
 

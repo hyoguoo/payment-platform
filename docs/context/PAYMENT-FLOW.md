@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
@@ -81,10 +81,8 @@ pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](
 ```mermaid
 flowchart TD
     T["payment.commands.confirm<br/>(최초 + self-loop 재발행)"] --> U["PaymentConfirmConsumer<br/>groupId=pg-service<br/>attempt 헤더 파싱 (부재 시 1)"]
-    U --> SVC["PgConfirmService.handle"]
-    SVC --> DEDUP{"EventDedupeStore.markSeen<br/>Redis SETNX EX 1h"}
-    DEDUP -->|중복| NOP["no-op return"]
-    DEDUP -->|신규| INB{"pg_inbox 상태"}
+    U --> SVC["PgConfirmService.handle<br/>(진입 필터 없음 — 곧바로 상태 분기)"]
+    SVC --> INB{"pg_inbox 상태"}
 
     INB -->|없음| ABS["handleAbsent -><br/>PgInboxPendingService.insertPendingAndPublish<br/>pg_inbox PENDING INSERT"]
     INB -->|"PENDING / IN_PROGRESS"| ACT["handleActiveInbox<br/>채널 재적재 (attempt 미사용)"]
@@ -202,7 +200,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 - **재고 캐시 장애**: confirm 단계에서 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` 플래그
 - **IN_FLIGHT 복원**: `PaymentReconciler` (@Scheduled fixedDelayMs=120000, 2분) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업. 재고 발산 감지/보정은 새 재고 모델에서 책임 제거됨
 - **중복 메시지 (payment 측)**: 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, 같은 Lua 안 atomic) + outbox IN_FLIGHT CAS. 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 가 native 책임 (한도 5회 초과 시 `payment.events.confirmed.dlq`)
-- **중복 메시지 (pg 측)**: `EventDedupeStore.markSeen` Redis SET NX EX 1h + pg_inbox 상태 CAS 2단 멱등성
+- **중복 메시지 (pg 측)**: `pg_inbox.order_id` UNIQUE (`insertPending` INSERT IGNORE) + 워커의 상태 조건부 선점 (`transitPendingToInProgress`, SKIP LOCKED) 단일 층. terminal 재수신은 `PgTerminalReemitService.reemit` 이 저장된 결과만 재발행한다 (벤더 호출 X). 리스너 진입부 Redis eventUuid 필터는 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 에서 제거 — 잔여 한계는 §4.11
 
 ---
 
@@ -303,7 +301,7 @@ flowchart TD
 
 핵심 포인트:
 - **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액 불일치·INDETERMINATE 면 QUARANTINED 로도 종결**한다 (항상 APPROVED 아님).
-- **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급 → pg-service `markSeen` 통과 (동일 eventUuid 면 dedupe 막힘).
+- **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급. 리스너 진입 필터가 있던 시절 재시도를 통과시키기 위한 규약이었고, 필터 제거 후에도 payment 측 `payment_event_dedupe` 의 메시지 단위 키로 계속 쓰인다.
 - **`attempt` 한도/DLQ 작동 (DLQ-REACHABILITY)** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
 ### 4.6 self-loop retry 메커니즘
@@ -374,7 +372,7 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 | Layer | 메커니즘 | 효과 |
 |---|---|---|
 | **Vendor (Toss/NicePay)** | `paymentKey + orderId` 단위 멱등 응답. 같은 호출 두 번 시 "이미 처리됨" 응답 | `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 흡수 |
-| **pg-service dedupe** | `EventDedupeStore.markSeen(eventUuid)` Redis SET NX EX 1h. retry 마다 새 eventUuid 발급 | 동일 eventUuid 메시지 두 번 들어와도 한 번만 처리 |
+| **pg-service inbox** | `pg_inbox.order_id` UNIQUE + `insertPending` INSERT IGNORE. 워커 선점은 `transitPendingToInProgress` (조회+전이 단일 TX) | 같은 주문 명령이 두 번 들어와도 접수 기록 1건, 벤더 호출 1회 |
 | **payment-service dedupe** | Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 안에서 같은 Lua atomic) + 도메인 가드 (이미 DONE 이면 no-op) + Spring Kafka `DefaultErrorHandler` + DLQ. product 측은 `JdbcEventDedupeStore` (stock_commit_dedupe + 재고 차감 같은 TX) | events.confirmed 두 번 받아도 재고 중복 차감/보상 없음 |
 
 ### 4.9 FCG (Final Confirmation Gate) — 미연결
@@ -406,6 +404,10 @@ payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s)
 - payment-service 측: 재고 멱등은 Lua atomic dedup token (`decrement:done` / `compensation:done` SETNX P8D) 으로 같은 Lua 안 atomic 흡수, 메시지 단위 retry/DLQ 는 Spring Kafka native
 
 비용: vendor 호출 1회 추가. 멱등성으로 흡수.
+
+**진입 트리거 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL 반영)**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 제거된 Redis eventUuid 필터가 이 갈래를 우연히 억제하고 있었다(명시 목적은 메시지 멱등성이었다).
+
+**잔여 위험**: 겹친 호출의 안전성은 벤더가 동일 멱등 키의 **동시** 요청을 직렬화한다는 전제에 의존한다. `DuplicateApprovalHandler` 는 벤더가 "이미 처리됨"을 에러로 반환할 때만 진입하므로(`PgVendorCallService` HandledInternally 분기), 두 호출이 모두 성공 응답을 받으면 `handleSuccess` 가 두 번 실행돼 결과 메시지가 2건 발행된다(inbox 상태 전이는 CAS 라 1회). 전제가 깨지면 카드망 이중 청구이며 취소·환불 포트가 없어 되돌릴 수 없다(`CONCERNS.md` L-9). 유예 부재를 닫는 작업은 후속 토픽 — 단순 시간 유예로는 재시도 명령까지 차단돼 벤더 호출 구간 표시 컬럼이 필요하다.
 
 ### 4.12 코드 진입점 인덱스
 
