@@ -2,11 +2,9 @@ package com.hyoguoo.paymentplatform.pg.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.entity.PgInboxEntity;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,9 +15,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -75,18 +70,6 @@ class PgInboxAttemptGuardIntegrationTest {
         registry.add("pg.scheduler.polling-worker.fixed-delay-ms", () -> "3600000");
         registry.add("spring.kafka.bootstrap-servers", () -> "localhost:9099");
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
-    }
-
-    // ─── TestConfiguration — FakeEventDedupeStore ────────────────────────────
-
-    @TestConfiguration
-    static class AttemptGuardIntegrationTestConfig {
-
-        @Bean
-        @Primary
-        public EventDedupeStore fakeEventDedupeStore() {
-            return new FakeEventDedupeStore();
-        }
     }
 
     // ─── 의존성 ───────────────────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -9,25 +8,23 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
-import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
-import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -35,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * PaymentConfirmConsumer(PgConfirmService) 단위 테스트.
- * 2단 멱등성 + inbox 5상태 핵심 불변 검증.
+ * inbox 5상태 분기와 접수대장(pg_inbox) UNIQUE 단일 층 흡수를 검증한다.
  * domain_risk=true — 동시성 / 재진입 / terminal 재발행 시나리오 모두 커버한다.
  */
 @DisplayName("PaymentConfirmConsumer(PgConfirmService)")
@@ -49,7 +46,7 @@ class PaymentConfirmConsumerTest {
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
-    private FakeEventDedupeStore dedupeStore;
+    private PgInboxPendingService pendingService;
     private PgConfirmService sut;
 
     @BeforeEach
@@ -57,28 +54,16 @@ class PaymentConfirmConsumerTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
-        dedupeStore = new FakeEventDedupeStore();
         Clock clock = Clock.fixed(Instant.parse("2026-04-21T00:00:00Z"), ZoneOffset.UTC);
         ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
-        ObjectMapper objectMapper = new ObjectMapper();
-        // FakePgGatewayAdapter.supports(vendorType)=true 라 selector 가 항상 반환한다.
-        PgConfirmStrategySelector selector = new PgConfirmStrategySelector(List.of(gatewayAdapter));
-        DuplicateApprovalHandler duplicateApprovalHandler = Mockito.mock(DuplicateApprovalHandler.class);
-        PgVendorCallService vendorCallService =
-                new PgVendorCallService(inboxRepository, outboxRepository, selector, eventPublisher,
-                        new ConfirmedEventPayloadSerializer(objectMapper), objectMapper, clock,
-                        duplicateApprovalHandler, new SecureRandom());
-        // PgConfirmService 생성자에 PgInboxPendingService 주입
-        PgInboxPendingService pendingService = Mockito.mock(PgInboxPendingService.class);
-        Mockito.when(pendingService.insertPendingAndPublish(
-                Mockito.anyString(), Mockito.anyLong(), Mockito.anyString(),
-                Mockito.any(), Mockito.any(), Mockito.any()))
-                .thenReturn(1L);
+        // 접수 기록 삽입 서비스 — 실제 인스턴스를 스파이로 감싸 흡수 시 호출 여부까지 관측한다.
+        PgInboxPendingService realPendingService =
+                new PgInboxPendingService(inboxRepository, eventPublisher, new SimpleMeterRegistry());
+        pendingService = Mockito.spy(realPendingService);
         // terminal 재발행은 별도 빈(PgTerminalReemitService)에 위임한다
         PgTerminalReemitService terminalReemitService = new PgTerminalReemitService(outboxRepository, eventPublisher, clock);
         sut = new PgConfirmService(
-                inboxRepository, vendorCallService, dedupeStore,
-                eventPublisher, clock, pendingService, terminalReemitService);
+                inboxRepository, eventPublisher, clock, pendingService, terminalReemitService);
     }
 
     // -----------------------------------------------------------------------
@@ -178,12 +163,12 @@ class PaymentConfirmConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // 동일 eventUUID 2회 → no-op (eventUUID dedupe)
+    // 동일 명령 순차 재수신 → 접수 기록 1건, 두 번째 수신은 삽입 서비스 미호출
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — 동일 eventUUID 2회 수신 시 PG 호출 0회 (eventUUID dedupe)")
-    void consume_DuplicateEventUUID_ShouldNoOp() {
+    @DisplayName("consume — 동일 명령 순차 재수신 시 접수 기록은 1건만 생성되고 두 번째 수신에서는 삽입 서비스가 호출되지 않는다")
+    void consume_SequentialDuplicateCommand_ShouldInsertPendingOnlyOnce() {
         // given
         PgConfirmResult successResult = new PgConfirmResult(
                 PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
@@ -193,30 +178,31 @@ class PaymentConfirmConsumerTest {
         PgConfirmCommand command = new PgConfirmCommand(
                 ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS, EVENT_UUID);
 
-        // when — 첫 번째 소비 (정상 처리)
+        // when — 동일 명령 순차 2회 수신
         sut.handle(command);
-        int firstCallCount = gatewayAdapter.getConfirmCallCount();
-
-        // when — 두 번째 소비 (동일 eventUUID → dedupe)
         sut.handle(command);
 
-        // then — 두 번째 호출에서 PG 추가 호출 없음
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(firstCallCount);
+        // then — 접수 기록은 정확히 1건 (첫 수신에서 PENDING INSERT, 두 번째는 PENDING 라우팅으로 흡수)
+        assertThat(inboxRepository.findAll()).hasSize(1);
+
+        // then — 삽입 서비스는 최초 1회만 호출된다 — 접수 기록 수만 보면 흡수된 삽입과
+        // 대기 상태 라우팅이 같은 결과로 수렴해 분기 회귀를 못 잡는다
+        Mockito.verify(pendingService, Mockito.times(1)).insertPendingAndPublish(
+                ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any(), ArgumentMatchers.any());
     }
 
     // -----------------------------------------------------------------------
-    // 동시 진입 시 dedupe 작동 + 벤더 호출 0
+    // 동일 주문번호 동시 재수신 → 접수 기록 1건 (UNIQUE 흡수)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — 동일 eventUUID 동시 진입 시 dedupe 작동, 벤더 호출 0 (listener 채널 위임)")
-    void consume_WhenInboxAbsent_ConcurrentDedupe_ShouldBeAtomicUnderConcurrency() throws InterruptedException {
+    @DisplayName("consume — 동일 주문번호 동시 재수신 시 접수 기록이 정확히 1건 생성된다")
+    void consume_ConcurrentDuplicateCommand_ShouldInsertPendingRecordOnlyOnce() throws InterruptedException {
         // given — inbox 없음 (FakePgInboxRepository 빈 상태)
-        // absent → insertPendingAndPublish → 워커가 처리 (listener 내 벤더 호출 0)
         int threadCount = 8;
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
-        AtomicInteger successCount = new AtomicInteger(0);
         List<Exception> errors = new ArrayList<>();
 
         for (int i = 0; i < threadCount; i++) {
@@ -228,7 +214,6 @@ class PaymentConfirmConsumerTest {
                 try {
                     startLatch.await();
                     sut.handle(cmd);
-                    successCount.incrementAndGet();
                 } catch (Exception e) {
                     synchronized (errors) {
                         errors.add(e);
@@ -243,8 +228,8 @@ class PaymentConfirmConsumerTest {
         startLatch.countDown();
         doneLatch.await();
 
-        // then — 벤더 호출 0 (listener는 INSERT + ack 까지만)
-        assertThat(gatewayAdapter.getConfirmCallCount()).isEqualTo(0);
+        // then — 접수 기록은 주문번호 UNIQUE 흡수로 정확히 1건
+        assertThat(inboxRepository.findAll()).hasSize(1);
         List<Exception> unexpectedErrors = errors.stream()
                 .filter(e -> !(e instanceof IllegalStateException))
                 .toList();

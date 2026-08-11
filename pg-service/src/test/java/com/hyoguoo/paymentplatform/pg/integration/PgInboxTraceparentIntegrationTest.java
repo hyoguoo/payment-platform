@@ -2,10 +2,8 @@ package com.hyoguoo.paymentplatform.pg.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import java.sql.ResultSet;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,9 +13,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -39,7 +34,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>인프라:
  * <ul>
  *   <li>Testcontainers MySQL — Flyway V1~V4 자동 적용</li>
- *   <li>Redis 미사용 — FakeEventDedupeStore 로 대체</li>
  *   <li>Kafka 미사용 — consumer auto-startup 비활성</li>
  * </ul>
  */
@@ -80,18 +74,6 @@ class PgInboxTraceparentIntegrationTest {
         registry.add("pg.scheduler.polling-worker.fixed-delay-ms", () -> "3600000");
         registry.add("spring.kafka.bootstrap-servers", () -> "localhost:9099");
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
-    }
-
-    // ─── TestConfiguration — FakeEventDedupeStore ────────────────────────────
-
-    @TestConfiguration
-    static class TraceparentIntegrationTestConfig {
-
-        @Bean
-        @Primary
-        public EventDedupeStore fakeEventDedupeStore() {
-            return new FakeEventDedupeStore();
-        }
     }
 
     // ─── 의존성 ───────────────────────────────────────────────────────────────
@@ -147,7 +129,7 @@ class PgInboxTraceparentIntegrationTest {
 
         // when
         pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-e5-tp", traceparent);
+                orderId, AMOUNT, "TOSS", "pay-key-e5-tp", traceparent);
 
         // then — SELECT stored_traceparent FROM pg_inbox WHERE order_id=? 결과 == 저장한 traceparent
         Optional<String> stored = pgInboxRepository.findStoredTraceparent(
@@ -171,7 +153,7 @@ class PgInboxTraceparentIntegrationTest {
 
         // when
         Long inboxId = pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-e5-null", null);
+                orderId, AMOUNT, "TOSS", "pay-key-e5-null", null);
 
         // then — INSERT 성공 (id 반환)
         assertThat(inboxId)

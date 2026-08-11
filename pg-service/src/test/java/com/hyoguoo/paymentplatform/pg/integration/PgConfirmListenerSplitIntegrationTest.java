@@ -12,7 +12,6 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.in.PgInboxProcessUseCase;
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
@@ -22,7 +21,6 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake.FakePgGatewayStrategy;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
-import com.hyoguoo.paymentplatform.pg.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.presentation.port.PgConfirmCommandService;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -35,9 +33,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -61,8 +56,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>인프라:
  * <ul>
  *   <li>Testcontainers MySQL — PgInboxRepositoryImpl SKIP LOCKED 테스트와 동일 패턴</li>
- *   <li>Redis 미사용 — {@code EventDedupeStoreRedisAdapter} {@code @ConditionalOnProperty} 비활성,
- *       {@link IntegrationTestConfig} 의 FakeEventDedupeStore 로 대체</li>
  *   <li>Kafka 미사용 — {@code PaymentConfirmConsumer} {@code @ConditionalOnProperty} 비활성,
  *       {@code PgConfirmCommandService.handle()} 직접 호출</li>
  *   <li>벤더 전략: {@code pg.gateway.type=fake} 로 FakePgGatewayStrategy 활성화 + MockitoSpyBean 오버라이드</li>
@@ -116,23 +109,6 @@ class PgConfirmListenerSplitIntegrationTest {
         registry.add("spring.kafka.bootstrap-servers", () -> "localhost:9099");
         // Kafka consumer auto-startup 비활성 — 컨텍스트 시작 시 Kafka 연결 시도 방지
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
-    }
-
-    // ─── TestConfiguration — FakeEventDedupeStore ────────────────────────────
-
-    @TestConfiguration
-    static class IntegrationTestConfig {
-
-        /**
-         * Redis 없는 환경에서 EventDedupeStore 빈을 FakeEventDedupeStore 로 제공한다.
-         * EventDedupeStoreRedisAdapter 는 spring.data.redis.host 미설정 시 비활성이므로
-         * 이 빈이 유일한 EventDedupeStore 후보가 된다.
-         */
-        @Bean
-        @Primary
-        public EventDedupeStore fakeEventDedupeStore() {
-            return new FakeEventDedupeStore();
-        }
     }
 
     // ─── SpyBean / 의존성 ─────────────────────────────────────────────────────
@@ -265,7 +241,7 @@ class PgConfirmListenerSplitIntegrationTest {
         // given — PENDING 행 INSERT
         String orderId = "order-a3-" + UUID.randomUUID();
         Long inboxId = pgInboxRepository.insertPending(
-                orderId, AMOUNT, UUID.randomUUID().toString(), "TOSS", "pay-key-a3", null);
+                orderId, AMOUNT, "TOSS", "pay-key-a3", null);
 
         // processPending 내 invokeVendor 단계에서 RuntimeException 강제 주입
         // TX_A(PENDING→IN_PROGRESS) 는 이미 커밋됨, TX_B 미진입 → IN_PROGRESS 잔존 (좀비)

@@ -169,8 +169,6 @@ tests:
         values: '1 1 1 1 1 1'
       - series: 'dependency_up{component="db",job="pg-service"}'
         values: '1 1 1 1 1 1'
-      - series: 'dependency_up{component="redis",job="pg-service"}'
-        values: '1 1 1 1 1 1'
       - series: 'dependency_up{component="db",job="product-service"}'
         values: '1 1 1 1 1 1'
       - series: 'dependency_up{component="db",job="user-service"}'

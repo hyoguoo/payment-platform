@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL ship — pg dedupe 층 재검토 항목 삭제(제거안 실행 완료, 이력은 아카이브 브리핑), 후속 2건 신설: 처리 중 재전송 벤더 호출 겹침 차단 / 접수대장 UNIQUE 동시 경합 검증). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -26,6 +26,21 @@
 
 - **현황**: `PgFinalConfirmationGate` 는 재시도 소진 후 벤더에 1회 물어 승인·실패·미확정으로 가르는 로직을 갖고 있으나 프로덕션 호출처가 0이다(`ARCHITECTURE.md` 도 미연결로 명시). 실제 경로는 `PgDlqService.handle` 이 벤더 확인 없이 곧바로 격리 전이시킨다(사유 `RETRY_EXHAUSTED`).
 - **처방**: 배선하면 승인·실패로 확정되는 건이 격리에 들어오지 않아 관리자 부담이 줄지만, 벤더 응답 하나로 결제를 자동 승인·자동 실패시키는 결정이라 사람이 개입하는 현재 구조와 성격이 다르다. 배선 여부 자체가 별도 판단을 요구한다. RETRY-EXHAUSTION-DISPOSITION 은 사람이 누르는 경로만 만들고 이 판단은 미뤘다.
+
+#### [PG-INPROGRESS-REDELIVERY-GRACE] — 처리 중 재전송의 벤더 호출 겹침 차단
+
+- **현황**: `handleActiveInbox` 가 IN_PROGRESS 를 발견하면 유예 없이 채널에 재적재하고 `PgInboxImmediateWorker`(기본 5 워커)가 곧바로 `processInProgressZombie` 로 넘긴다. 그 안의 `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고, 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행된다. 그 창에 도착한 재전송이 선점에 다시 성공해 두 번째 벤더 호출이 겹친다.
+- **비대칭**: 폴링 회수는 `in-progress-timeout-ms`(60s) 유예를 갖고 self-loop 재시도는 원 호출 종료 후 backoff(base 2s) 뒤 발행돼 겹치지 않는다. 리스너 재적재 경로에만 유예가 없다.
+- **왜 단순 유예로 안 되나**: 재시도 명령은 벤더 호출 실패 직후 `incrementAttempt` 로 `updated_at` 을 갱신하고 약 2초 뒤 도착한다. 벤더 타임아웃을 덮는 유예를 걸면 재시도까지 차단돼 지연이 60초로 늘어난다. attempt 헤더 비교도 첫 시도 중 재전송(헤더 1 == `pg_inbox.attempt` 1)을 가르지 못한다.
+- **처방**: 벤더 호출 구간에만 유지되는 표시(호출 직전 기록, `applyOutcome` 에서 해제)를 두면 재전송은 물러나고 재시도는 통과한다. 컬럼 추가 + Flyway 마이그레이션이 따라온다.
+- **우선순위 근거**: 겹친 호출의 안전성이 벤더의 동시 요청 직렬화라는 검증 불가 외부 가정에 의존한다. `DuplicateApprovalHandler` 는 벤더가 "이미 처리됨"을 에러로 반환할 때만 진입하므로, 두 호출이 모두 성공하면 `handleSuccess` 가 두 번 실행된다. 전제가 깨지면 카드망 이중 청구이며 취소·환불 포트가 없어 되돌릴 수 없다(`CONCERNS.md` L-9).
+- **발견 경위**: 2026-08-10 PG-MESSAGE-DEDUPE-LAYER-REMOVAL discuss 게이트. 제거된 Redis eventUuid 필터가 이 갈래를 우연히 억제하고 있었음이 드러났다(명시 목적은 메시지 멱등성). 상세: `docs/archive/pg-message-dedupe-layer-removal/`
+
+#### [PG-INBOX-CONCURRENT-INSERT-TEST] — 접수대장 UNIQUE 의 실제 동시 경합 검증
+
+- **현황**: `pg_inbox.order_id` UNIQUE 흡수는 `PgInboxRepositoryImplTest#insertPending_duplicateOrderId_returnsExistingId` 가 **순차** 2회 호출로만 검증한다. `insertIgnorePending` 은 native `INSERT IGNORE` 라 InnoDB 의 블로킹 후 무시 동작에 의존하는데, 실제 스레드 경합 시나리오는 어느 테스트도 밟지 않는다.
+- **처방**: 실제 DB(Testcontainers) 위에서 다중 스레드 동시 삽입 테스트 추가. 단위 테스트의 `FakePgInboxRepository` 는 `computeIfAbsent` 라 이 층을 대신 검증하지 못한다.
+- **우선순위**: 낮음 — 표준 MySQL 동작이라 깨질 가능성이 낮다. 다만 dedupe 층 제거로 이 UNIQUE 가 유일한 삽입 방어선이 됐다.
 
 ---
 

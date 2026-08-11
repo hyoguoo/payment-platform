@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmCommand;
-import com.hyoguoo.paymentplatform.pg.application.port.out.EventDedupeStore;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
@@ -19,21 +18,16 @@ import org.springframework.stereotype.Service;
 
 /**
  * pg-service business inbox 상태 분기 오케스트레이터.
- * inbox 5상태 + 2단 멱등성 키(eventUUID + orderId) 적용.
+ * 중복 방어는 접수대장(pg_inbox) orderId UNIQUE 단일 층에서 흡수한다.
  *
- * <p>분기 흐름:
- * <ol>
- *   <li>eventUUID dedupe — {@link EventDedupeStore#markSeen}: false면 즉시 no-op.</li>
- *   <li>inbox 상태 분기:
- *     <ul>
- *       <li>absent(inbox 없음) → {@link PgInboxPendingService#insertPendingAndPublish} (listener TX 봉인)</li>
- *       <li>PENDING → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
- *       <li>IN_PROGRESS → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
- *       <li>terminal(APPROVED/FAILED/QUARANTINED) → handleTerminal (@Transactional 봉인,
- *           stored_status_result 재발행)</li>
- *     </ul>
- *   </li>
- * </ol>
+ * <p>inbox 상태 분기:
+ * <ul>
+ *   <li>absent(inbox 없음) → {@link PgInboxPendingService#insertPendingAndPublish} (listener TX 봉인)</li>
+ *   <li>PENDING → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
+ *   <li>IN_PROGRESS → publishEvent(PgInboxReadyEvent) — 채널 재적재 (워커가 처리)</li>
+ *   <li>terminal(APPROVED/FAILED/QUARANTINED) → stored_status_result 재발행
+ *       ({@link PgTerminalReemitService}, @Transactional 봉인)</li>
+ * </ul>
  *
  * <p>terminal 재발행은 {@link PgTerminalReemitService} 별도 빈으로 분리한다.
  * Spring proxy 를 경유해야 @Transactional self-invocation 우회 없이
@@ -45,8 +39,6 @@ import org.springframework.stereotype.Service;
 public class PgConfirmService implements PgConfirmCommandService {
 
     private final PgInboxRepository pgInboxRepository;
-    private final PgVendorCallService pgVendorCallService;
-    private final EventDedupeStore eventDedupeStore;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final Clock clock;
     private final PgInboxPendingService pgInboxPendingService;
@@ -54,24 +46,6 @@ public class PgConfirmService implements PgConfirmCommandService {
 
     @Override
     public void handle(PgConfirmCommand command, int attempt, String storedTraceparent) {
-        // 1단계: eventUUID dedupe (메시지 레벨 멱등성)
-        if (!eventDedupeStore.markSeen(command.eventUuid())) {
-            LogFmt.info(log, LogDomain.PG, EventType.PG_CONFIRM_DUPLICATE_UUID,
-                    () -> "eventUuid=" + command.eventUuid() + " orderId=" + command.orderId());
-            return;
-        }
-
-        // TX 경계 불일치 방어: 처리 실패 시 dedupe 도 되돌려 재컨슘 경로에서 영구 정체를 방지한다.
-        try {
-            processCommand(command, attempt, storedTraceparent);
-        } catch (RuntimeException e) {
-            eventDedupeStore.remove(command.eventUuid());
-            throw e;
-        }
-    }
-
-    private void processCommand(PgConfirmCommand command, int attempt, String storedTraceparent) {
-        // 2단계: inbox 상태 조회
         PgInbox inbox = pgInboxRepository.findByOrderId(command.orderId()).orElse(null);
 
         if (inbox == null) {
@@ -107,7 +81,6 @@ public class PgConfirmService implements PgConfirmCommandService {
         pgInboxPendingService.insertPendingAndPublish(
                 command.orderId(),
                 amountLong,
-                command.eventUuid(),
                 vendorType,
                 command.paymentKey(),
                 storedTraceparent);

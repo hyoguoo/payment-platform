@@ -32,13 +32,12 @@ public interface PgInboxRepository {
      *
      * @param orderId            orderId (UNIQUE)
      * @param amount             원화 최소 단위 정수
-     * @param eventUuid          PG 콜백 이벤트 UUID (중복 방어용)
      * @param vendorType         벤더 타입 문자열 (e.g., "TOSS_PAYMENTS")
      * @param paymentKey         벤더 결제 키
      * @param storedTraceparent  W3C traceparent 문자열 (null 허용 — 헤더 부재·구버전 행 호환)
      * @return 삽입 또는 기존 row 의 id
      */
-    Long insertPending(String orderId, long amount, String eventUuid,
+    Long insertPending(String orderId, long amount,
                        String vendorType, String paymentKey, String storedTraceparent);
 
     /**
