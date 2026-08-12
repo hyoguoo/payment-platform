@@ -93,7 +93,7 @@ flowchart TD
 - [x] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
 - [x] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
 - [x] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
-- [ ] Task 5: 승인 미확인 시 격리 대신 물러남
+- [x] Task 5: 승인 미확인 시 격리 대신 물러남
 - [ ] Task 6: 금액 불일치 격리 전이의 반환값 가드
 - [ ] Task 7: 벤더 처리 중 거부를 전용 결과로
 - [ ] Task 8: 모의 벤더의 처리 중 거부 응답
@@ -221,7 +221,7 @@ flowchart TD
 - 종결 전 기록에 대한 `transitToQuarantined` 호출이 조회 실패 경로에서 사라짐
 
 **완료 결과**
-> (execute에서 채움)
+> `handleVendorIndeterminate` 진입 시 접수 기록을 먼저 조회해, 기록이 존재하고 종결 전(`isTerminal()`이 false)이면 상태를 바꾸지 않고 즉시 반환한다 — `transitDirectToInProgress`/`transitToQuarantined` 모두 호출하지 않고, 발행 행도 만들지 않는다. 물러날 때 신설 카운터 `pg_duplicate.vendor_indeterminate_backoff_total`(MeterRegistry 주입, `PgInboxPendingService`의 기존 카운터 패턴을 따름)을 증가시키고 `LogFmt.warn`(`PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF`)을 남긴다 — 물러남의 안전 근거가 가시성이므로 테스트에서 카운터 값을 직접 확인한다. 기록이 없는 경로(`transitDirectToInProgress` + 격리)는 그대로 뒀다. 기존 테스트 `pg_duplicate_approval_WhenVendorRetrievalFails_ShouldQuarantine`은 IN_PROGRESS(종결 전) 기록으로 격리를 기대하던 구동작 검증이라 새 동작과 충돌해, 기록 부재 시나리오로 고쳐 `조회실패_기록이_없으면_기존_보정을_유지한다`로 재작성했다(회귀 고정). `DuplicateApprovalHandler` 생성자에 `MeterRegistry`가 추가돼 이를 생성하는 테스트 3파일(`DuplicateApprovalHandlerTest`/`DuplicateApprovalHandlerListenerTest`/`PgSelfLoopDuplicateAbsorptionIntegrationTest`)의 5개 생성 지점을 `SimpleMeterRegistry`로 맞췄다 — Spring 빈으로는 자동 주입되므로 프로덕션 wiring 변경은 없다. `./gradlew :pg-service:test` 전체 427건 pass.
 
 ---
 

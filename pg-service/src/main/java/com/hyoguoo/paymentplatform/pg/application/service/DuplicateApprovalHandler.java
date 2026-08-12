@@ -19,6 +19,8 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -50,7 +52,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>vendor 호출 실패:
  * <ul>
- *   <li>timeout/5xx/네트워크 → QUARANTINED(VENDOR_INDETERMINATE) + pg_outbox INSERT + publishEvent</li>
+ *   <li>기록이 존재하고 종결 전 → 격리하지 않고 물러난다 (겹침이면 원 호출이, 좀비면 다음 폴링이 처리)</li>
+ *   <li>기록이 없거나 이미 종결 → QUARANTINED(VENDOR_INDETERMINATE) + pg_outbox INSERT + publishEvent</li>
  * </ul>
  */
 @Slf4j
@@ -65,12 +68,20 @@ public class DuplicateApprovalHandler {
      */
     private static final Set<PgPaymentStatus> APPROVED_STATUSES = Set.of(PgPaymentStatus.DONE);
 
+    /**
+     * 종결 전 기록에 대한 벤더 상태 조회 실패로 격리하지 않고 물러난 횟수.
+     * 자동 종결 대신 지표로 드러내기로 한 결정의 관측성 근거 — {@link EventType#PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF}
+     * 경고 로그와 함께 증가한다.
+     */
+    static final String VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME = "pg_duplicate.vendor_indeterminate_backoff_total";
+
     private final PgStatusLookupStrategySelector pgStatusLookupStrategySelector;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final Clock clock;
+    private final Counter vendorIndeterminateBackoffCounter;
 
     /**
      * 직접 PgStatusLookupPort 를 의존하지 않고 PgStatusLookupStrategySelector 를 거친다 —
@@ -83,7 +94,8 @@ public class DuplicateApprovalHandler {
             PgOutboxRepository pgOutboxRepository,
             ApplicationEventPublisher applicationEventPublisher,
             ConfirmedEventPayloadSerializer payloadSerializer,
-            Clock clock
+            Clock clock,
+            MeterRegistry meterRegistry
     ) {
         this.pgStatusLookupStrategySelector = pgStatusLookupStrategySelector;
         this.pgInboxRepository = pgInboxRepository;
@@ -91,6 +103,9 @@ public class DuplicateApprovalHandler {
         this.applicationEventPublisher = applicationEventPublisher;
         this.payloadSerializer = payloadSerializer;
         this.clock = clock;
+        this.vendorIndeterminateBackoffCounter = Counter.builder(VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME)
+                .description("종결 전 기록의 벤더 상태 조회 실패로 격리하지 않고 물러난 횟수")
+                .register(meterRegistry);
     }
 
     // -----------------------------------------------------------------------
@@ -300,7 +315,8 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
 
     /**
-     * vendor 조회 실패 — inbox 부재 시 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
+     * vendor 조회 실패 — 종결 전 기록은 격리하지 않고 물러난다. 겹침이면 원 호출이,
+     * 좀비면 다음 폴링이 처리한다. 기록이 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
      *
      * <p>transitDirectToInProgress + transitToQuarantined 두 호출이 반드시 같은 TX 안에 묶여야 한다.
      * 이 메서드는 {@code handleDuplicateApproval} 의 {@code @Transactional} TX 안에서 호출되므로
@@ -310,8 +326,16 @@ public class DuplicateApprovalHandler {
      * 반드시 atomicity 봉인이 필요하다.
      */
     private void handleVendorIndeterminate(String orderId, long payloadAmountLong) {
-        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (보정 경로)
         Optional<PgInbox> existing = pgInboxRepository.findByOrderId(orderId);
+
+        if (existing.isPresent() && !existing.get().getStatus().isTerminal()) {
+            vendorIndeterminateBackoffCounter.increment();
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF,
+                    () -> "orderId=" + orderId);
+            return;
+        }
+
+        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (보정 경로)
         if (existing.isEmpty()) {
             pgInboxRepository.transitDirectToInProgress(orderId, payloadAmountLong);
         }

@@ -62,6 +62,8 @@ public enum EventType {
     PG_DUPLICATE_UNSETTLED_SETTLED,
     /** transitToApproved 가드(경합으로 이미 종결)에 걸려 발행 행 저장을 하지 않은 경우. */
     PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED,
+    /** 종결 전 기록에 대한 벤더 상태 조회가 실패해 격리하지 않고 물러난 경우. */
+    PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF,
 
     /** PENDING 상태에서 다른 워커에 선점된 경우. */
     PG_INBOX_AMOUNT_PENDING_PREEMPTED,
