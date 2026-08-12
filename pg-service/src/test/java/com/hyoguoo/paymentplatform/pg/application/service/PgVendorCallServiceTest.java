@@ -223,6 +223,47 @@ class PgVendorCallServiceTest {
         }
 
         @Test
+        @DisplayName("승인_전이_1건반영이면_발행행_저장과_이벤트발행")
+        void applyOutcome_success_transitionApplied_savesOutboxAndPublishesEvent() {
+            // given
+            PgConfirmResult result = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            GatewayOutcome outcome = new GatewayOutcome.Success(result);
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 저장 + 이벤트 발행
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            verify(eventPublisher, times(1)).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("승인_전이_0건반영이면_발행행_미저장")
+        void applyOutcome_success_transitionBlocked_noOutboxRow() {
+            // given — 좀비 회수 경합 등으로 이미 종결(FAILED)된 뒤 뒤늦게 승인 응답이 도착
+            inboxRepository.transitToFailed(ORDER_ID, "{}", "ALREADY_FAILED");
+            PgConfirmResult result = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            GatewayOutcome outcome = new GatewayOutcome.Success(result);
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
+            assertThat(outboxRepository.findAll()).isEmpty();
+            verify(eventPublisher, never()).publishEvent(any());
+
+            // then — inbox 는 기존 종결 상태를 유지한다
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
+        }
+
+        @Test
         @DisplayName("가드 발동(이미 종결) 시 재시도 outbox INSERT + 발행 이벤트를 하지 않는다")
         void applyOutcome_retryable_guardBlocked_noOutboxNoEvent() {
             // given — 좀비 회수 경합 등으로 재시도 신호가 도착하기 전에 inbox 가 이미 종결(APPROVED)됨
@@ -262,6 +303,41 @@ class PgVendorCallServiceTest {
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
             assertThat(rows.get(0).getPayload()).containsIgnoringCase("FAILED");
+        }
+
+        @Test
+        @DisplayName("확정실패_전이_1건반영이면_발행행_저장")
+        void applyOutcome_definitiveFailure_transitionApplied_savesOutbox() {
+            // given
+            GatewayOutcome outcome = new GatewayOutcome.NonRetryable("card_declined");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            verify(eventPublisher, times(1)).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("확정실패_전이_0건반영이면_발행행_미저장")
+        void applyOutcome_definitiveFailure_transitionBlocked_noOutboxRow() {
+            // given — 좀비 회수 경합 등으로 이미 종결(APPROVED)된 뒤 뒤늦게 확정 실패 응답이 도착
+            inboxRepository.transitToApproved(ORDER_ID, "{}");
+            GatewayOutcome outcome = new GatewayOutcome.NonRetryable("card_declined");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
+            assertThat(outboxRepository.findAll()).isEmpty();
+            verify(eventPublisher, never()).publishEvent(any());
+
+            // then — inbox 는 기존 종결 상태를 유지한다
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
         }
 
         @Test
