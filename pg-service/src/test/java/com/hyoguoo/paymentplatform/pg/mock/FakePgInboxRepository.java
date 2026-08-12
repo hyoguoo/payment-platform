@@ -53,20 +53,40 @@ public class FakePgInboxRepository implements PgInboxRepository {
         return inbox;
     }
 
+    /**
+     * IN_PROGRESS → APPROVED compare-and-set 전이 (Fake).
+     * 이미 terminal이면 no-op — 반영 행 수 0 반환 (프로덕션 {@code casInProgressToApproved} 와 동일 계약).
+     */
     @Override
-    public void transitToApproved(String orderId, String storedStatusResult) {
+    public int transitToApproved(String orderId, String storedStatusResult) {
+        AtomicBoolean transitioned = new AtomicBoolean(false);
         store.computeIfPresent(orderId, (key, current) -> {
+            if (current.getStatus().isTerminal()) {
+                return current; // 이미 terminal → no-op
+            }
             current.markApproved(storedStatusResult, java.time.Instant.now());
+            transitioned.set(true);
             return current;
         });
+        return transitioned.get() ? 1 : 0;
     }
 
+    /**
+     * IN_PROGRESS → FAILED compare-and-set 전이 (Fake).
+     * 이미 terminal이면 no-op — 반영 행 수 0 반환 (프로덕션 {@code casInProgressToFailed} 와 동일 계약).
+     */
     @Override
-    public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+    public int transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+        AtomicBoolean transitioned = new AtomicBoolean(false);
         store.computeIfPresent(orderId, (key, current) -> {
+            if (current.getStatus().isTerminal()) {
+                return current; // 이미 terminal → no-op
+            }
             current.markFailed(storedStatusResult, reasonCode, java.time.Instant.now());
+            transitioned.set(true);
             return current;
         });
+        return transitioned.get() ? 1 : 0;
     }
 
     /**

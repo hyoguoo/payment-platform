@@ -90,7 +90,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
-- [ ] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
+- [x] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
 - [ ] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
 - [ ] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
 - [ ] Task 5: 승인 미확인 시 격리 대신 물러남
@@ -150,7 +150,7 @@ flowchart TD
 - 구현체 2곳(프로덕션 어댑터 + Fake) 과 익명 더블 1곳이 새 반환 계약을 따른다. `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PgInboxRepository.transitToApproved` / `transitToFailed` 반환 타입을 `void` → `int` 로 바꿨다. `PgInboxRepositoryImpl` 은 이미 `int` 를 반환하던 `casInProgressToApproved` / `casInProgressToFailed` 결과를 그대로 돌려주기만 하면 됐다. `FakePgInboxRepository` 는 두 메서드가 상태를 가리지 않고 무조건 전이하던 것을, 같은 파일의 `transitToQuarantined` 가 쓰는 종결 가드(`current.getStatus().isTerminal()` 체크) 형태를 맞춰 종결 행은 no-op + 0 반환하도록 고쳤다. `PgInboxPendingServiceTest` 내부 익명 더블(`MockPgInboxRepository`)도 반환 타입만 `int`(0 고정)로 보정했다. `PgFinalConfirmationGate` 의 두 호출부는 프로덕션 호출처가 0인 미배선 경로라 반환값을 그대로 두고, 같은 0건 가드가 필요하다는 메모만 주석으로 남겼다. `PgVendorCallService` 2곳은 계획대로 Task 3 에서 소비한다. `./gradlew :pg-service:test` 전체 415건 pass.
 
 ---
 

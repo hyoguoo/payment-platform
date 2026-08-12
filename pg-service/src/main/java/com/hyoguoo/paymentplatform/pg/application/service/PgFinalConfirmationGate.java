@@ -156,6 +156,8 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private void handleApproved(String orderId, String storedStatusResult, long amount) {
+        // 반환값(반영 행 수) 미확인 — 중복 승인 방어 핸들러와 같은 0건 가드가 필요하나
+        // 이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다.
         pgInboxRepository.transitToApproved(orderId, storedStatusResult);
 
         // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 fallback 으로 사용한다.
@@ -175,6 +177,8 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private void handleFailed(String orderId, String storedStatusResult) {
+        // 반환값(반영 행 수) 미확인 — 중복 승인 방어 핸들러와 같은 0건 가드가 필요하나
+        // 이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다.
         pgInboxRepository.transitToFailed(orderId, storedStatusResult, "FCG_CONFIRMED_FAILED");
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.FAILED, "FCG_CONFIRMED_FAILED");
