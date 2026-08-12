@@ -5,8 +5,7 @@
 ## 활성 작업
 
 - **주제**: 중복 승인 응답을 받은 결제의 종결
-- **단계**: execute
-- **활성 태스크**: Task 9: 겹침과 좀비 회수 통합 검증
+- **단계**: ship
 - **이슈/브랜치**: #140
 - **파일**: docs/topics/PG-DUPLICATE-APPROVAL-SETTLEMENT.md / docs/PG-DUPLICATE-APPROVAL-SETTLEMENT-PLAN.md
 

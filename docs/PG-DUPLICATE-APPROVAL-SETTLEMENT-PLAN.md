@@ -97,7 +97,7 @@ flowchart TD
 - [x] Task 6: 금액 불일치 격리 전이의 반환값 가드
 - [x] Task 7: 벤더 처리 중 거부를 전용 결과로
 - [x] Task 8: 모의 벤더의 처리 중 거부 응답
-- [ ] Task 9: 겹침과 좀비 회수 통합 검증
+- [x] Task 9: 겹침과 좀비 회수 통합 검증
 
 ## 태스크
 
@@ -304,7 +304,7 @@ flowchart TD
 - `./gradlew :pg-service:test` 전체 pass, 통합 테스트가 캐시로 건너뛰지 않았음을 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `PgDuplicateApprovalSettlementIntegrationTest`(신규, `pg-service/.../integration/`)를 `PgConfirmListenerSplitIntegrationTest`와 동일한 Testcontainers MySQL + `pg.gateway.type=fake` + 스케줄러/Kafka 비활성 인프라로 작성했다. 네 케이스 모두 프로덕션 공개 진입점(`PgInboxProcessUseCase.processPending`/`processInProgressZombie`, `DuplicateApprovalHandler.handleDuplicateApproval`)만 사용하고 `PgVendorCallService`의 package-private `GatewayOutcome`은 건드리지 않는다. 핵심은 네 번째 케이스 — 같은 IN_PROGRESS 행에 승인 종결(`processInProgressZombie`가 실제 벤더 승인을 받아 `transitToApproved`)과 격리 종결(`handleDuplicateApproval`의 금액 불일치 분기 — 종결 여부를 먼저 확인하지 않고 항상 `transitToQuarantined` CAS를 시도한다)을 `ExecutorService` + `CountDownLatch`로 실제로 동시에 걸어, 진 쪽이 0건 가드로 조용히 물러나고 발행 행이 정확히 1건, 상태가 APPROVED/QUARANTINED 중 하나로 수렴함을 확인한다 — `@RepeatedTest(10)`으로 안정성을 확인했다(2회 전체 실행 모두 22/22, 38/38 pass). 겹친 호출 케이스는 `FakePgGatewayStrategy`의 latency 필드를 `ReflectionTestUtils`로 일시 조정해 원 호출이 벤더 응답을 기다리는 구간에 재호출을 확실히 겹쳐, Task 7/8의 처리 중 거부를 재현한다. 좀비 회수 케이스는 `PgConfirmListenerSplitIntegrationTest`의 크래시 시뮬레이션(벤더 호출 시 `RuntimeException` 강제)을 그대로 따라 IN_PROGRESS 좀비를 만든 뒤, 회수 시 벤더 승인을 확인해 종결시키고 반복 회수가 발행을 늘리지 않음을 확인한다(이미 종결된 행은 SKIP LOCKED의 IN_PROGRESS 조건에 걸리지 않아 재조회되지 않는다). 0건 가드 케이스는 이미 APPROVED로 종결된 행에 금액 불일치로 고정한 벤더 조회 결과를 흘려보내 발행 행 미생성을 확인하고, `PgOutboxPollingWorker.poll()`을 직접 호출해 폴링 안전망도 발행할 것이 없음을 확인한다. Task 1~8에서 이미 구현이 끝나 있어 이 태스크는 프로덕션 코드 변경 없이 테스트만 추가했다. `./gradlew :pg-service:integrationTest`(신규 클래스 22건, 2회 반복 실행 모두 pass) + `./gradlew :pg-service:test :pg-service:integrationTest`(단위 436건 + 통합 38건, jacoco 커버리지 게이트 포함) 전체 pass.
 
 ## 리뷰 처리
 
