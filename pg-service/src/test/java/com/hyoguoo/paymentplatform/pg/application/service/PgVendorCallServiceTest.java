@@ -8,6 +8,7 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
@@ -238,7 +239,7 @@ class PgVendorCallServiceTest {
             List<PgOutbox> rows = outboxRepository.findAll();
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
-            verify(eventPublisher, times(1)).publishEvent(any());
+            verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
         }
 
         @Test
@@ -318,7 +319,7 @@ class PgVendorCallServiceTest {
             List<PgOutbox> rows = outboxRepository.findAll();
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
-            verify(eventPublisher, times(1)).publishEvent(any());
+            verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
         }
 
         @Test

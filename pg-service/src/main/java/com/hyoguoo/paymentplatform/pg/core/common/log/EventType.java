@@ -17,11 +17,15 @@ public enum EventType {
     PG_CONFIRM_VENDOR_DELEGATED,
 
     PG_VENDOR_SUCCESS,
+    /** transitToApproved 가드(이미 종결)에 걸려 승인 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_VENDOR_SUCCESS_GUARD_BLOCKED,
     PG_VENDOR_RETRY_SCHEDULED,
     /** incrementAttempt 가드(종결 행)에 걸려 재시도 outbox INSERT + 발행을 하지 않은 경우. */
     PG_VENDOR_RETRY_GUARD_BLOCKED,
     PG_VENDOR_DLQ,
     PG_VENDOR_DEFINITIVE_FAILURE,
+    /** transitToFailed 가드(이미 종결)에 걸려 실패 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_VENDOR_DEFINITIVE_FAILURE_GUARD_BLOCKED,
     PG_VENDOR_DUPLICATE_HANDLED,
     PG_VENDOR_NETWORK_ERROR,
     PG_VENDOR_RETRYABLE_ERROR,

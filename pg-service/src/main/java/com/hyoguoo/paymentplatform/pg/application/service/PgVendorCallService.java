@@ -139,9 +139,18 @@ public class PgVendorCallService {
 
     private void handleSuccess(String orderId, PgConfirmResult result) {
         String payload = buildApprovedPayload(orderId, result);
+        // 전이를 발행 행 저장보다 먼저 수행한다 — 좀비 회수 경합 등으로 이미 종결된 기록에
+        // 뒤늦게 도착한 승인 응답이 발행 행을 남기면, 폴링 안전망이 그 행을 그대로 집어
+        // 발행해 억제가 무력화된다. 반영 행 수 0이면 발행 행 자체를 만들지 않는다.
+        int transitioned = pgInboxRepository.transitToApproved(orderId, payload);
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_SUCCESS_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
+
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
-        pgInboxRepository.transitToApproved(orderId, payload);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_SUCCESS,
                 () -> "orderId=" + orderId);
@@ -153,9 +162,16 @@ public class PgVendorCallService {
 
     private void handleDefinitiveFailure(String orderId, String reasonCode) {
         String payload = buildFailedPayload(orderId, reasonCode);
+        // handleSuccess 와 동일한 이유로 전이를 발행 행 저장보다 먼저 수행한다.
+        int transitioned = pgInboxRepository.transitToFailed(orderId, payload, reasonCode);
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DEFINITIVE_FAILURE_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId + " reasonCode=" + reasonCode);
+            return;
+        }
+
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
-        pgInboxRepository.transitToFailed(orderId, payload, reasonCode);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DEFINITIVE_FAILURE,
                 () -> "orderId=" + orderId + " reasonCode=" + reasonCode);

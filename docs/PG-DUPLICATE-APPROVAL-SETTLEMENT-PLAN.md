@@ -91,7 +91,7 @@ flowchart TD
 
 - [x] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
 - [x] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
-- [ ] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
+- [x] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
 - [ ] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
 - [ ] Task 5: 승인 미확인 시 격리 대신 물러남
 - [ ] Task 6: 금액 불일치 격리 전이의 반환값 가드
@@ -170,7 +170,7 @@ flowchart TD
 - `handleSuccess` / `handleDefinitiveFailure` 안에서 `pgOutboxRepository.save` 가 전이 성공 분기 뒤에만 위치
 
 **완료 결과**
-> (execute에서 채움)
+> `handleSuccess` / `handleDefinitiveFailure` 모두 전이 호출(`transitToApproved` / `transitToFailed`)을 발행 행 저장보다 앞으로 옮겼다. 반영 행 수가 0이면(이미 종결) `LogFmt.warn` 으로 신설 `EventType`(`PG_VENDOR_SUCCESS_GUARD_BLOCKED` / `PG_VENDOR_DEFINITIVE_FAILURE_GUARD_BLOCKED`)을 남기고 즉시 반환 — `PgOutbox.create` / `pgOutboxRepository.save` / 이벤트 발행 자체가 실행되지 않는다. 테스트는 발행 대장 Fake(`outboxRepository.findAll()`)로 0건 케이스의 행 부재를 확인하고, 1건 케이스는 `verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class))` 로 발행까지 검증한다 — 이 과정에서 `publishEvent(any())`(타입 파라미터 미지정)가 `ApplicationEvent` 오버로드로 컴파일돼 실제 `Object` 오버로드 호출과 매칭되지 않는 기존 테스트 함정을 발견해, 프로젝트 관례대로 `any(PgOutboxReadyEvent.class)` 로 고정했다. `./gradlew :pg-service:test` 전체 419건 pass.
 
 ---
 
