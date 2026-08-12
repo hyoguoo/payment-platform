@@ -94,7 +94,7 @@ flowchart TD
 - [x] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
 - [x] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
 - [x] Task 5: 승인 미확인 시 격리 대신 물러남
-- [ ] Task 6: 금액 불일치 격리 전이의 반환값 가드
+- [x] Task 6: 금액 불일치 격리 전이의 반환값 가드
 - [ ] Task 7: 벤더 처리 중 거부를 전용 결과로
 - [ ] Task 8: 모의 벤더의 처리 중 거부 응답
 - [ ] Task 9: 겹침과 좀비 회수 통합 검증
@@ -240,7 +240,7 @@ flowchart TD
 - 금액 불일치 경로에서 `enqueueOutbox` 가 전이 성공 분기 뒤에만 위치
 
 **완료 결과**
-> (execute에서 채움)
+> `handleAmountMismatchDbExists` 가 `transitToQuarantined` 반환값을 확인해, false 면(경합·이미 종결로 CAS 가 막힌 경우) `LogFmt.warn`(신설 `EventType.PG_DUPLICATE_AMOUNT_MISMATCH_GUARD_BLOCKED`)만 남기고 발행 행을 만들지 않고 반환한다. 전이 호출이 이미 `enqueueOutbox` 보다 앞서 있어 재배치는 필요 없었다. `PgDlqService` 는 계획대로 손대지 않았다. 이 가드를 넣으면서 Task 4 에서 만든 기존 회귀 테스트(`기록있음_금액불일치_종결여부와_무관하게_격리`, `initialStatus=APPROVED`)가 깨졌다 — 이미 종결된 기록은 `transitToQuarantined` CAS 자체가(PENDING/IN_PROGRESS→QUARANTINED 만 허용) 막혀 0건 반영되므로, 가드 추가 전엔 무시되던 이 실패가 이제 발행 억제로 이어진다. [Rule 1] 테스트를 종결 여부로 기대값을 분기(종결 전엔 격리+발행, 이미 종결이면 발행 없음+상태 불변)하도록 고쳐 새 가드와 정합시켰다. `./gradlew :pg-service:test` 전체 429건 pass.
 
 ---
 

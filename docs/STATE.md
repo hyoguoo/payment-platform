@@ -6,7 +6,7 @@
 
 - **주제**: 중복 승인 응답을 받은 결제의 종결
 - **단계**: execute
-- **활성 태스크**: Task 6: 금액 불일치 격리 전이의 반환값 가드
+- **활성 태스크**: Task 7: 벤더 처리 중 거부를 전용 결과로
 - **이슈/브랜치**: #140
 - **파일**: docs/topics/PG-DUPLICATE-APPROVAL-SETTLEMENT.md / docs/PG-DUPLICATE-APPROVAL-SETTLEMENT-PLAN.md
 

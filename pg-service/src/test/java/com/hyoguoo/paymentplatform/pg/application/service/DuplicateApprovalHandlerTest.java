@@ -268,8 +268,8 @@ class DuplicateApprovalHandlerTest {
 
     @ParameterizedTest
     @EnumSource(value = PgInboxStatus.class, names = {"IN_PROGRESS", "APPROVED"})
-    @DisplayName("기록있음_금액불일치_종결여부와_무관하게_격리")
-    void duplicateApproval_dbExists_amountMismatch_quarantinesRegardlessOfSettlement(PgInboxStatus initialStatus) {
+    @DisplayName("기록있음_금액불일치_종결여부와_무관하게_격리전이_시도")
+    void duplicateApproval_dbExists_amountMismatch_attemptsQuarantineRegardlessOfSettlement(PgInboxStatus initialStatus) {
         // given
         PgInbox inbox = PgInbox.of(
                 ORDER_ID, initialStatus, AMOUNT_LONG,
@@ -285,11 +285,18 @@ class DuplicateApprovalHandlerTest {
         // when
         handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
-        // then — 종결 여부와 무관하게 금액 불일치 경로로 격리 발행이 나간다
         List<PgOutbox> outboxRows = outboxRepository.findAll();
-        assertThat(outboxRows).hasSize(1);
-        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("QUARANTINED");
-        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("AMOUNT_MISMATCH");
+        if (initialStatus.isTerminal()) {
+            // then — 이미 종결된 기록은 격리 CAS 자체가 막혀 전이도 발행도 일어나지 않는다(가드)
+            assertThat(outboxRows).isEmpty();
+            PgInbox unchanged = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(unchanged.getStatus()).isEqualTo(initialStatus);
+        } else {
+            // then — 종결 전 기록은 금액 불일치 경로로 격리 전이 + 발행이 나간다
+            assertThat(outboxRows).hasSize(1);
+            assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("QUARANTINED");
+            assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("AMOUNT_MISMATCH");
+        }
     }
 
     @Test

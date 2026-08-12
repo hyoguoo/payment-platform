@@ -251,7 +251,12 @@ public class DuplicateApprovalHandler {
 
     private void handleAmountMismatchDbExists(String orderId) {
         // 금액 불일치는 격리한다: inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH
-        pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
+        boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
+        if (!transitioned) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
         long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
 
