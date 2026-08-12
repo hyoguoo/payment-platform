@@ -379,6 +379,81 @@ class PgInboxRepositoryImplTest {
         jpaRepository.deleteAll();
     }
 
+    // ─── transitToApproved / transitToFailed ───────────────────────────────────
+
+    @Test
+    @DisplayName("transitToApproved — IN_PROGRESS 행 → 1건 반영, status APPROVED")
+    void transitToApproved_inProgressRow_returnsOneAndUpdatesStatus() {
+        // given
+        String orderId = "order-pcs4-approve-001";
+        sut.transitDirectToInProgress(orderId, AMOUNT);
+        String storedResult = "{\"status\":\"DONE\"}";
+
+        // when
+        int updated = sut.transitToApproved(orderId, storedResult);
+
+        // then
+        assertThat(updated).isEqualTo(1);
+        Optional<PgInboxEntity> saved = jpaRepository.findByOrderId(orderId);
+        assertThat(saved).isPresent();
+        assertThat(saved.get().getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(saved.get().getStoredStatusResult()).isEqualTo(storedResult);
+    }
+
+    @Test
+    @DisplayName("transitToApproved — 이미 종결(APPROVED) 행 → 0건 반영, 재전이 없음")
+    void transitToApproved_alreadyTerminalRow_returnsZero() {
+        // given
+        String orderId = "order-pcs4-approve-002";
+        sut.transitDirectToTerminal(orderId, AMOUNT, PgInboxStatus.APPROVED, "{\"status\":\"DONE\"}", null);
+
+        // when
+        int updated = sut.transitToApproved(orderId, "{\"status\":\"DONE2\"}");
+
+        // then — 0건 반영, 기존 저장 결과 유지
+        assertThat(updated).isEqualTo(0);
+        Optional<PgInboxEntity> saved = jpaRepository.findByOrderId(orderId);
+        assertThat(saved).isPresent();
+        assertThat(saved.get().getStoredStatusResult()).isEqualTo("{\"status\":\"DONE\"}");
+    }
+
+    @Test
+    @DisplayName("transitToFailed — IN_PROGRESS 행 → 1건 반영, status FAILED")
+    void transitToFailed_inProgressRow_returnsOneAndUpdatesStatus() {
+        // given
+        String orderId = "order-pcs4-fail-001";
+        sut.transitDirectToInProgress(orderId, AMOUNT);
+        String storedResult = "{\"status\":\"ABORTED\"}";
+
+        // when
+        int updated = sut.transitToFailed(orderId, storedResult, "FCG_CONFIRMED_FAILED");
+
+        // then
+        assertThat(updated).isEqualTo(1);
+        Optional<PgInboxEntity> saved = jpaRepository.findByOrderId(orderId);
+        assertThat(saved).isPresent();
+        assertThat(saved.get().getStatus()).isEqualTo(PgInboxStatus.FAILED);
+        assertThat(saved.get().getReasonCode()).isEqualTo("FCG_CONFIRMED_FAILED");
+    }
+
+    @Test
+    @DisplayName("transitToFailed — 이미 종결(FAILED) 행 → 0건 반영, 재전이 없음")
+    void transitToFailed_alreadyTerminalRow_returnsZero() {
+        // given
+        String orderId = "order-pcs4-fail-002";
+        sut.transitDirectToTerminal(
+                orderId, AMOUNT, PgInboxStatus.FAILED, "{\"status\":\"ABORTED\"}", "ORIGINAL_REASON");
+
+        // when
+        int updated = sut.transitToFailed(orderId, "{\"status\":\"CANCELED\"}", "NEW_REASON");
+
+        // then — 0건 반영, 기존 사유 코드 유지
+        assertThat(updated).isEqualTo(0);
+        Optional<PgInboxEntity> saved = jpaRepository.findByOrderId(orderId);
+        assertThat(saved).isPresent();
+        assertThat(saved.get().getReasonCode()).isEqualTo("ORIGINAL_REASON");
+    }
+
     // ─── 헬퍼 메서드 ────────────────────────────────────────────────────────────
 
     private PgInboxEntity buildPendingEntity(String orderId, LocalDateTime createdAt) {
