@@ -96,7 +96,7 @@ flowchart TD
 - [x] Task 5: 승인 미확인 시 격리 대신 물러남
 - [x] Task 6: 금액 불일치 격리 전이의 반환값 가드
 - [x] Task 7: 벤더 처리 중 거부를 전용 결과로
-- [ ] Task 8: 모의 벤더의 처리 중 거부 응답
+- [x] Task 8: 모의 벤더의 처리 중 거부 응답
 - [ ] Task 9: 겹침과 좀비 회수 통합 검증
 
 ## 태스크
@@ -283,7 +283,7 @@ flowchart TD
 - 기존 모의 벤더 사용 테스트 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `FakePgGatewayStrategy` 에 진행 중(응답 미확정) orderId 집합 `inProgressOrders`(`ConcurrentHashMap.newKeySet()`)를 추가했다. `confirm` 은 기존 `processedOrders` 중복 판정 뒤에 이 집합에 orderId 등록을 시도하고(`add`), 이미 등록돼 있으면(원 호출이 아직 진행 중) Task 7 의 `PgGatewayConcurrentCallException` 을 던진다 — 로그는 Toss 전략과 동일하게 `LogFmt.info` + `EventType.PG_VENDOR_CONCURRENT_CALL` 를 재사용했다. 등록에 성공하면 실제 확정 로직(`doConfirm` 으로 추출)을 `try/finally` 로 감싸 성공·실패 어느 쪽으로 끝나든 `finally` 에서 진행 중 표시를 해제한다 — 완료 후 재호출은 여전히 `processedOrders` 판정이 먼저 걸려 기존 이미 처리됨 경로를 그대로 탄다. 검증은 벤더 latency 주입 설정(`latencyMinMillis`/`latencyMaxMillis`)으로 원 호출을 300ms 붙잡아두고, 별도 스레드로 실행한 뒤 50ms 뒤에 메인 스레드가 겹쳐 호출해 처리 중 거부를 확인하는 두 스레드 테스트로 재현했다. `./gradlew :pg-service:test` 전체 436건 pass.
 
 ---
 

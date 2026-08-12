@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayConcurrentCallException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
@@ -24,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -111,6 +113,15 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private final ConcurrentHashMap<String, PgConfirmResult> processedOrders = new ConcurrentHashMap<>();
 
     /**
+     * 응답을 아직 받지 못한(진행 중인) orderId 집합.
+     * <p>실 벤더는 승인 결과를 확정하기 전에도 "처리 중" 상태를 노출해 그 구간에 겹친 호출을
+     * 거부한다. 이 모의 벤더는 결과를 낸 뒤에만 {@link #processedOrders} 를 채우므로, 호출
+     * 진입 시점에 여기 등록해 진행 중 구간을 재현한다. 등록에 실패하면(이미 진행 중) 겹침 거부
+     * 예외를 던지고, 결과가 확정되면(성공이든 실패든) 해제한다.
+     */
+    private final Set<String> inProgressOrders = ConcurrentHashMap.newKeySet();
+
+    /**
      * 자가 회복 시나리오의 주문별 호출 횟수. key=orderId.
      * <p>같은 주문이 재시도 자기루프로 다시 들어올 때마다 증가하며, 정해진 실패 횟수를 넘기면 승인으로 넘어간다.
      */
@@ -182,6 +193,26 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
             return handleDuplicateConfirm(request);
         }
 
+        if (!inProgressOrders.add(request.orderId())) {
+            // 원 호출이 아직 응답을 내지 않은 구간에 겹쳐 들어온 호출 — 실 벤더의 처리 중 거부를 재현한다.
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_CONCURRENT_CALL,
+                    () -> "fake orderId=" + request.orderId() + " — 처리 중 거부(겹친 호출)");
+            throw PgGatewayConcurrentCallException.of(
+                    "fake concurrent call rejected for orderId=" + request.orderId());
+        }
+
+        try {
+            return doConfirm(request);
+        } finally {
+            inProgressOrders.remove(request.orderId());
+        }
+    }
+
+    /**
+     * 진행 중 등록 이후의 실제 확정 로직 — 성공/실패 어느 쪽으로 끝나든 호출부의 finally 가 진행 중
+     * 표시를 해제한다.
+     */
+    private PgConfirmResult doConfirm(PgConfirmRequest request) {
         long latencyMillis = simulateVendorLatency();
         boolean inject = failRate > 0.0 && ThreadLocalRandom.current().nextDouble() < failRate;
 
