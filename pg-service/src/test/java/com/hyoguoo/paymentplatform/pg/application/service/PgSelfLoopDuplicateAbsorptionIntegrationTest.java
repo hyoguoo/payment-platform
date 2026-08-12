@@ -108,7 +108,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         vendorCallService = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmStrategySelector,
                 dispatchingPublisher, payloadSerializer, objectMapper, FIXED_CLOCK,
-                duplicateApprovalHandler, new SecureRandom());
+                duplicateApprovalHandler, new SecureRandom(), new SimpleMeterRegistry());
 
         pgInboxProcessor = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
 

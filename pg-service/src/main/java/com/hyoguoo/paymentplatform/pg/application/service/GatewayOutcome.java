@@ -12,7 +12,8 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
  */
 sealed interface GatewayOutcome
         permits GatewayOutcome.Success, GatewayOutcome.Retryable,
-                GatewayOutcome.NonRetryable, GatewayOutcome.HandledInternally {
+                GatewayOutcome.NonRetryable, GatewayOutcome.HandledInternally,
+                GatewayOutcome.ConcurrentCall {
 
     record Success(PgConfirmResult result) implements GatewayOutcome {}
 
@@ -21,4 +22,10 @@ sealed interface GatewayOutcome
     record NonRetryable(String message) implements GatewayOutcome {}
 
     record HandledInternally(String message) implements GatewayOutcome {}
+
+    /**
+     * 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우.
+     * 원 호출이 결과를 낼 예정이므로 시도횟수·재시도 명령·상태 전이를 건드리지 않는다.
+     */
+    record ConcurrentCall(String message) implements GatewayOutcome {}
 }

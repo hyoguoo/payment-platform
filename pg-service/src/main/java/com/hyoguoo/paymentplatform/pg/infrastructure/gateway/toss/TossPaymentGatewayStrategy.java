@@ -15,6 +15,7 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayConcurrentCallException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
@@ -51,6 +52,8 @@ import org.springframework.web.client.RestClientResponseException;
  * <ul>
  *   <li>ALREADY_PROCESSED_PAYMENT → {@link DuplicateApprovalDetectedEvent} 발행 후
  *       {@link PgGatewayDuplicateHandledException} 전파.</li>
+ *   <li>IDEMPOTENT_REQUEST_PROCESSING(겹친 호출 거부) → {@link PgGatewayConcurrentCallException} 전파.
+ *       원 호출이 결과를 낼 예정이라 재시도 대상(UNKNOWN)으로 흡수시키지 않는다.</li>
  *   <li>{@link TossPaymentErrorCode#isRetryableError()} → {@link PgGatewayRetryableException}.</li>
  *   <li>그 외 → {@link PgGatewayNonRetryableException}.</li>
  * </ul>
@@ -183,6 +186,13 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
                     "ALREADY_PROCESSED_PAYMENT", PgVendorType.TOSS));
             throw PgGatewayDuplicateHandledException.of(
                     "ALREADY_PROCESSED_PAYMENT handled for orderId=" + request.orderId());
+        }
+
+        if (code.isConcurrentCall()) {
+            LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_CONCURRENT_CALL,
+                    () -> "orderId=" + request.orderId() + " — IDEMPOTENT_REQUEST_PROCESSING 겹침 거부");
+            throw PgGatewayConcurrentCallException.of(
+                    "IDEMPOTENT_REQUEST_PROCESSING handled for orderId=" + request.orderId());
         }
 
         String detail = fail.code() + ": " + fail.message();

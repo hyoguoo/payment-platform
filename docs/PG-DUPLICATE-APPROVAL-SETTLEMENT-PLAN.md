@@ -95,7 +95,7 @@ flowchart TD
 - [x] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
 - [x] Task 5: 승인 미확인 시 격리 대신 물러남
 - [x] Task 6: 금액 불일치 격리 전이의 반환값 가드
-- [ ] Task 7: 벤더 처리 중 거부를 전용 결과로
+- [x] Task 7: 벤더 처리 중 거부를 전용 결과로
 - [ ] Task 8: 모의 벤더의 처리 중 거부 응답
 - [ ] Task 9: 겹침과 좀비 회수 통합 검증
 
@@ -263,7 +263,7 @@ flowchart TD
 - `GatewayOutcome` switch 가 모든 분기를 덮어 컴파일 경고 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `TossPaymentErrorCode`에 `IDEMPOTENT_REQUEST_PROCESSING(409)`을 등재하고 `isConcurrentCall()` 판정을 추가했다 — `isRetryableError()`에는 포함하지 않아 겹친 호출이 UNKNOWN으로 흡수돼 재시도 예산을 먹지 않게 막는다. 신설 `PgGatewayConcurrentCallException`(`pg-service/.../exception/`)을 `PgGatewayDuplicateHandledException`과 같은 센티넬 패턴으로 만들고, `TossPaymentGatewayStrategy.handleErrorResponse`가 이 코드를 만나면(ALREADY_PROCESSED_PAYMENT 분기 바로 다음, 재시도 판정 이전) 전용 예외를 던진다. `GatewayOutcome`에 `ConcurrentCall(String message)` 레코드를 permits 절에 추가하고, `PgVendorCallService.invokeConfirm`이 새 catch 절로 이를 outcome으로 변환한다. `dispatchOutcome`의 switch에 분기를 더해 `handleConcurrentCall`로 보내는데, 이 메서드는 시도횟수·재시도 명령·상태 전이를 아무것도 건드리지 않고 `LogFmt.warn` + 신설 카운터(`pg_vendor.concurrent_call_total`, `DuplicateApprovalHandler`의 `MeterRegistry` 주입 패턴을 따름)만 남기고 반환한다 — 원 호출이 결과를 내기 때문이다. 카운터 생성 로직 때문에 `PgVendorCallService`의 `@RequiredArgsConstructor`를 수동 생성자로 바꿨고, 이를 직접 구성하는 테스트 3곳(`PgVendorCallServiceTest`/`PgVendorCallServiceVendorTypeTest`/`PgSelfLoopDuplicateAbsorptionIntegrationTest`)의 생성 지점에 `SimpleMeterRegistry`를 추가했다 — Spring 빈으로는 자동 주입되므로 프로덕션 wiring 변경은 없다. `./gradlew :pg-service:test` 전체 434건 pass.
 
 ---
 

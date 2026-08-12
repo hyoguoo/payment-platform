@@ -31,6 +31,8 @@ public enum EventType {
     PG_VENDOR_RETRYABLE_ERROR,
     PG_VENDOR_NON_RETRYABLE_ERROR,
     PG_VENDOR_PARSE_ERROR,
+    /** 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우 — 원 호출이 결과를 낼 예정이라 물러난다. */
+    PG_VENDOR_CONCURRENT_CALL,
 
     PG_FCG_INDETERMINATE,
     PG_FCG_AMBIGUOUS_STATUS,

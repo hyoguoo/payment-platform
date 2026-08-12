@@ -20,6 +20,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakeSecureRandom;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -78,7 +79,8 @@ class PgVendorCallServiceTest {
         sut = new PgVendorCallService(
                 inboxRepository, outboxRepository, selector,
                 eventPublisher, new ConfirmedEventPayloadSerializer(objectMapper),
-                objectMapper, fixedClock, duplicateApprovalHandler, new FakeSecureRandom(0.5));
+                objectMapper, fixedClock, duplicateApprovalHandler, new FakeSecureRandom(0.5),
+                new SimpleMeterRegistry());
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (applyOutcome 진입 전제조건)
         inboxRepository.save(PgInbox.of(

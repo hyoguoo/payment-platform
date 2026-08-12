@@ -10,12 +10,17 @@ import lombok.RequiredArgsConstructor;
  *
  * <p>ALREADY_PROCESSED_PAYMENT 는 {@link TossPaymentGatewayStrategy}에서 DuplicateApprovalHandler
  * 로 분기되므로 {@link #isRetryableError()} / {@link #isFailure()} 양쪽에 포함하지 않는다.
+ *
+ * <p>IDEMPOTENT_REQUEST_PROCESSING 은 같은 멱등키로 아직 처리 중인 원 호출과 겹친 요청에
+ * 벤더가 돌려주는 코드다 — 원 호출이 결과를 낼 예정이므로 {@link #isRetryableError()} 에
+ * 포함하지 않는다.
  */
 @Getter
 @RequiredArgsConstructor
 public enum TossPaymentErrorCode {
 
     ALREADY_PROCESSED_PAYMENT(400, "이미 처리된 결제 입니다."),
+    IDEMPOTENT_REQUEST_PROCESSING(409, "이미 처리 중인 요청입니다."),
     PROVIDER_ERROR(400, "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."),
     INVALID_REQUEST(400, "잘못된 요청입니다."),
     INVALID_API_KEY(400, "잘못된 시크릿키 연동 정보 입니다."),
@@ -70,5 +75,12 @@ public enum TossPaymentErrorCode {
 
     public boolean isAlreadyProcessed() {
         return this == ALREADY_PROCESSED_PAYMENT;
+    }
+
+    /**
+     * 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우.
+     */
+    public boolean isConcurrentCall() {
+        return this == IDEMPOTENT_REQUEST_PROCESSING;
     }
 }

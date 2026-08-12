@@ -18,16 +18,18 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayConcurrentCallException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -43,13 +45,15 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>{@link #applyOutcome} — @Transactional TX_B. 벤더 응답 5분기 처리 + RDB 반영.</li>
  * </ol>
  *
- * <p>응답 5분기 (@Transactional TX_B):
+ * <p>응답 분기 (@Transactional TX_B):
  * <ol>
  *   <li>승인 성공 → APPROVED 종결 + Outbox INSERT</li>
  *   <li>확정 실패 → FAILED 종결 + Outbox INSERT</li>
  *   <li>일시 실패 잔여 시도 → 재시도 명령 INSERT (IN_PROGRESS 유지)</li>
  *   <li>일시 실패 시도 소진 → 격리 명령 INSERT (IN_PROGRESS 유지)</li>
  *   <li>ALREADY_PROCESSED → {@link DuplicateApprovalHandler} 위임 (보정 경로 진입)</li>
+ *   <li>겹친 호출 거부(IDEMPOTENT_REQUEST_PROCESSING) → 원 호출이 결과를 낼 예정이므로
+ *       시도횟수·재시도 명령·상태 전이를 건드리지 않고 로그와 지표만 남긴다</li>
  * </ol>
  *
  * <p>재시도는 pg_outbox.available_at 의 지연 시각으로 표현된다 — 별도 스케줄러 큐 없음.
@@ -57,8 +61,13 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PgVendorCallService {
+
+    /**
+     * 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 횟수.
+     * 원 호출이 결과를 낼 예정이라 상태 전이를 건드리지 않기로 한 결정의 관측성 근거.
+     */
+    static final String CONCURRENT_CALL_COUNTER_NAME = "pg_vendor.concurrent_call_total";
 
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
@@ -69,6 +78,33 @@ public class PgVendorCallService {
     private final Clock clock;
     private final DuplicateApprovalHandler duplicateApprovalHandler;
     private final SecureRandom secureRandom;
+    private final Counter concurrentCallCounter;
+
+    public PgVendorCallService(
+            PgInboxRepository pgInboxRepository,
+            PgOutboxRepository pgOutboxRepository,
+            PgConfirmStrategySelector pgConfirmStrategySelector,
+            ApplicationEventPublisher applicationEventPublisher,
+            ConfirmedEventPayloadSerializer payloadSerializer,
+            ObjectMapper objectMapper,
+            Clock clock,
+            DuplicateApprovalHandler duplicateApprovalHandler,
+            SecureRandom secureRandom,
+            MeterRegistry meterRegistry
+    ) {
+        this.pgInboxRepository = pgInboxRepository;
+        this.pgOutboxRepository = pgOutboxRepository;
+        this.pgConfirmStrategySelector = pgConfirmStrategySelector;
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.payloadSerializer = payloadSerializer;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
+        this.duplicateApprovalHandler = duplicateApprovalHandler;
+        this.secureRandom = secureRandom;
+        this.concurrentCallCounter = Counter.builder(CONCURRENT_CALL_COUNTER_NAME)
+                .description("같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 횟수")
+                .register(meterRegistry);
+    }
 
     // -----------------------------------------------------------------------
     // 공개 API — TX 분리 버전
@@ -117,6 +153,8 @@ public class PgVendorCallService {
             return new GatewayOutcome.NonRetryable(e.getMessage());
         } catch (PgGatewayDuplicateHandledException e) {
             return new GatewayOutcome.HandledInternally(e.getMessage());
+        } catch (PgGatewayConcurrentCallException e) {
+            return new GatewayOutcome.ConcurrentCall(e.getMessage());
         }
     }
 
@@ -130,6 +168,7 @@ public class PgVendorCallService {
             case GatewayOutcome.Retryable(String reason) -> handleRetry(request, attempt, now, reason);
             case GatewayOutcome.NonRetryable nr -> handleDefinitiveFailure(request.orderId(), nr.message());
             case GatewayOutcome.HandledInternally hi -> handleDuplicate(request, hi.message());
+            case GatewayOutcome.ConcurrentCall cc -> handleConcurrentCall(request.orderId(), cc.message());
         }
     }
 
@@ -186,6 +225,20 @@ public class PgVendorCallService {
                 () -> "orderId=" + request.orderId() + " detail=" + message);
         duplicateApprovalHandler.handleDuplicateApproval(
                 request.orderId(), request.amount(), request.vendorType());
+    }
+
+    // -----------------------------------------------------------------------
+    // 겹침 거부 처리 — 원 호출이 결과를 낼 예정이므로 물러난다
+    // -----------------------------------------------------------------------
+
+    /**
+     * 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우 — 시도횟수·재시도 명령·
+     * 상태 전이를 아무것도 건드리지 않고 로그와 지표만 남긴 채 반환한다. 원 호출이 결과를 낸다.
+     */
+    private void handleConcurrentCall(String orderId, String message) {
+        concurrentCallCounter.increment();
+        LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_CONCURRENT_CALL,
+                () -> "orderId=" + orderId + " detail=" + message);
     }
 
     // -----------------------------------------------------------------------
