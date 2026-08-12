@@ -366,6 +366,10 @@ class PgDuplicateApprovalSettlementIntegrationTest {
 
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
+        // 승인 종결 스레드가 커밋까지 마쳤음을 신호한다 — 고정 sleep 대신 이 latch 로 순서를
+        // 결정적으로 고정해, 부하로 승인 스레드가 늦어져도 매 회차 "이미 종결된 기록 관찰" 분기를
+        // 확실히 탄다.
+        CountDownLatch approvalSettled = new CountDownLatch(1);
         AtomicReference<Exception> approvalFailure = new AtomicReference<>();
         AtomicReference<Exception> indeterminateFailure = new AtomicReference<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -378,16 +382,20 @@ class PgDuplicateApprovalSettlementIntegrationTest {
                 pgInboxProcessUseCase.processInProgressZombie(inboxId);
             } catch (Exception e) {
                 approvalFailure.set(e);
+            } finally {
+                approvalSettled.countDown();
             }
         });
         executor.submit(() -> {
             ready.countDown();
             awaitQuietly(start);
-            // 승인 종결 스레드가 SELECT FOR UPDATE + 벤더 확인 + CAS + outbox INSERT + commit 을
-            // 끝낼 여유를 준다 — 그래야 이 스레드의 findByOrderId 가 "이미 종결" 상태를 실제로
-            // 읽어 이 finding 이 지목한 자리(종결된 기록에 대한 격리 전이 시도)를 재현한다.
-            sleepQuietly(20);
             try {
+                // 승인 종결 스레드가 SELECT FOR UPDATE + 벤더 확인 + CAS + outbox INSERT + commit 을
+                // 끝낼 때까지 기다린다 — 그래야 이 스레드의 findByOrderId 가 "이미 종결" 상태를
+                // 실제로 읽어 이 finding 이 지목한 자리(종결된 기록에 대한 격리 전이 시도)를
+                // 부하와 무관하게 결정적으로 재현한다.
+                awaitWithTimeoutOrFail(approvalSettled, 5,
+                        "승인 종결 스레드가 제한 시간 내 커밋을 완료하지 못함");
                 duplicateApprovalHandler.handleDuplicateApproval(
                         orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
             } catch (Exception e) {
@@ -427,12 +435,15 @@ class PgDuplicateApprovalSettlementIntegrationTest {
         }
     }
 
-    private void sleepQuietly(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("대기 중 인터럽트", e);
+    /**
+     * 주어진 latch 가 timeoutSeconds 안에 열리지 않으면 실패시킨다 — 신호를 보낼 스레드가
+     * 죽거나 예외로 끝나도 대기 스레드가 무한정 매달리지 않게 한다.
+     */
+    private void awaitWithTimeoutOrFail(CountDownLatch latch, long timeoutSeconds, String timeoutMessage)
+            throws InterruptedException {
+        boolean completed = latch.await(timeoutSeconds, TimeUnit.SECONDS);
+        if (!completed) {
+            throw new IllegalStateException(timeoutMessage);
         }
     }
 }
