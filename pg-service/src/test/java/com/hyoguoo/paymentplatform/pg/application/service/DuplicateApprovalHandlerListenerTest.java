@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -54,7 +55,7 @@ class DuplicateApprovalHandlerListenerTest {
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         handler = new DuplicateApprovalHandler(
                 selector, inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, new SimpleMeterRegistry());
     }
 
     /**

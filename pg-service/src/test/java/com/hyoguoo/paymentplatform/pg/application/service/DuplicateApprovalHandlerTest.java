@@ -16,6 +16,8 @@ import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloa
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -70,6 +72,7 @@ class DuplicateApprovalHandlerTest {
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private ApplicationEventPublisher eventPublisher;
+    private MeterRegistry meterRegistry;
     private DuplicateApprovalHandler handler;
 
     @BeforeEach
@@ -78,12 +81,13 @@ class DuplicateApprovalHandlerTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
+        meterRegistry = new SimpleMeterRegistry();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
         // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         handler = new DuplicateApprovalHandler(
                 selector, inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, meterRegistry);
     }
 
     // -----------------------------------------------------------------------
@@ -236,7 +240,7 @@ class DuplicateApprovalHandlerTest {
                 new PgStatusLookupStrategySelector(List.of(racedGatewayAdapter));
         DuplicateApprovalHandler racedHandler = new DuplicateApprovalHandler(
                 selector, mockInboxRepo, racedOutboxRepository, mockPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, new SimpleMeterRegistry());
 
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
@@ -375,25 +379,60 @@ class DuplicateApprovalHandlerTest {
     }
 
     // -----------------------------------------------------------------------
-    // vendor.getStatus() 실패(timeout/5xx) → QUARANTINED+VENDOR_INDETERMINATE
+    // vendor.getStatus() 실패(timeout/5xx) — 기록 종결 여부로 물러남/보정 분기
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("pg_duplicate_approval_WhenVendorRetrievalFails_ShouldQuarantine")
-    void pg_duplicate_approval_WhenVendorRetrievalFails_ShouldQuarantine() {
-        // given — inbox IN_PROGRESS 상태(조회 성공 but vendor 실패)
+    @DisplayName("조회실패_기록이_종결전이면_격리하지_않고_물러난다")
+    void duplicateApproval_vendorIndeterminate_unsettledRecord_backsOffWithoutQuarantine() {
+        // given — inbox IN_PROGRESS 상태(종결 전, 조회는 실패)
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
                 null, null, Instant.now(), Instant.now());
         inboxRepository.save(inProgressInbox);
 
-        // vendor getStatus → timeout(PgGatewayRetryableException)
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
         handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
 
-        // then — pg_inbox QUARANTINED + reason_code=VENDOR_INDETERMINATE
+        // then — 상태 변경 없음, 발행 없음(겹침이면 원 호출이, 좀비면 다음 폴링이 처리)
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("조회실패_물러날때_경고와_지표가_남는다")
+    void duplicateApproval_vendorIndeterminate_backoff_incrementsCounter() {
+        // given — inbox IN_PROGRESS 상태(종결 전, 조회는 실패)
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
+                null, null, Instant.now(), Instant.now());
+        inboxRepository.save(inProgressInbox);
+
+        gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
+
+        // when
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+
+        // then — 물러남을 안전하다고 본 근거가 가시성이므로 전용 카운터 증가를 확인한다
+        assertThat(meterRegistry.counter(DuplicateApprovalHandler.VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME).count())
+                .as("vendor_indeterminate_backoff_total 카운터가 1 증가해야 한다")
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("조회실패_기록이_없으면_기존_보정을_유지한다")
+    void duplicateApproval_vendorIndeterminate_absentRecord_keepsExistingQuarantineCorrection() {
+        // given — inbox 없음(기록 신설 후 격리 경로는 이번 범위 밖)
+        gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
+
+        // when
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+
+        // then — pg_inbox 신설 + QUARANTINED + reason_code=VENDOR_INDETERMINATE
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
         assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
         assertThat(inbox.getReasonCode()).isEqualTo("VENDOR_INDETERMINATE");
@@ -440,7 +479,7 @@ class DuplicateApprovalHandlerTest {
 
             mockHandler = new DuplicateApprovalHandler(
                     selector, mockInboxRepo, mockOutboxRepo, mockPublisher,
-                    new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                    new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, new SimpleMeterRegistry());
 
             // outbox save stub — 저장된 outbox 반환 (publishEvent 에서 id 필요)
             when(mockOutboxRepo.save(any())).thenAnswer(inv -> {
