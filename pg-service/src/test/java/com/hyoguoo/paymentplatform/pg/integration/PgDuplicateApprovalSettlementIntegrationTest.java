@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake.FakePgGatewayStrategy;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgOutboxRepository;
@@ -342,11 +343,93 @@ class PgDuplicateApprovalSettlementIntegrationTest {
                 .hasSize(1);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 실제 DB 경합 — 승인 종결과 벤더 조회 실패(물러남 가드)를 동시에, 발행 1건 + 상태 수렴
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @RepeatedTest(10)
+    @DisplayName("동일 주문에 승인 종결과 벤더 조회 실패 격리 전이를 실제 스레드로 동시에 걸어도 발행은 1건, 상태는 하나로 수렴한다")
+    void 동일주문_두스레드_승인종결과_벤더조회실패_동시경합_발행1건_상태수렴() throws Exception {
+        // given — IN_PROGRESS 접수 기록
+        String orderId = "order-race-indeterminate-" + UUID.randomUUID();
+        String paymentKey = "pay-key-" + orderId;
+        Long inboxId = pgInboxRepository.insertPending(orderId, AMOUNT, "TOSS", paymentKey, null);
+        boolean acquired = pgInboxRepository.transitPendingToInProgress(inboxId);
+        assertThat(acquired).as("given 상태 설정 확인").isTrue();
+
+        // 물러남 가드 스레드가 항상 벤더 조회 실패 분기(handleVendorIndeterminate)를 타도록
+        // getStatusByOrderId 를 실패시킨다 — 승인 종결 스레드(processInProgressZombie)가 먼저
+        // 종결시키면, 이 스레드는 "기록 있음 + 이미 종결" 상태로 handleVendorIndeterminate 에
+        // 진입해 격리 전이(transitToQuarantined)를 시도하고, 반환값 가드가 이를 막아야 한다.
+        doThrow(PgGatewayRetryableException.of("vendor lookup failed - race simulation"))
+                .when(fakePgGatewayStrategy).getStatusByOrderId(orderId);
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicReference<Exception> approvalFailure = new AtomicReference<>();
+        AtomicReference<Exception> indeterminateFailure = new AtomicReference<>();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        // when — 승인 종결(좀비 재확인)과 벤더 조회 실패 처리(중복 승인 방어)를 같은 시점에 겹친다.
+        executor.submit(() -> {
+            ready.countDown();
+            awaitQuietly(start);
+            try {
+                pgInboxProcessUseCase.processInProgressZombie(inboxId);
+            } catch (Exception e) {
+                approvalFailure.set(e);
+            }
+        });
+        executor.submit(() -> {
+            ready.countDown();
+            awaitQuietly(start);
+            // 승인 종결 스레드가 SELECT FOR UPDATE + 벤더 확인 + CAS + outbox INSERT + commit 을
+            // 끝낼 여유를 준다 — 그래야 이 스레드의 findByOrderId 가 "이미 종결" 상태를 실제로
+            // 읽어 이 finding 이 지목한 자리(종결된 기록에 대한 격리 전이 시도)를 재현한다.
+            sleepQuietly(20);
+            try {
+                duplicateApprovalHandler.handleDuplicateApproval(
+                        orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
+            } catch (Exception e) {
+                indeterminateFailure.set(e);
+            }
+        });
+
+        ready.await();
+        start.countDown();
+        executor.shutdown();
+        executor.awaitTermination(10, TimeUnit.SECONDS);
+
+        // then — 두 경로 모두 예외 없이 종료돼야 한다 — 진 쪽은 0건 가드 또는 물러남으로 조용히 넘어간다.
+        assertThat(approvalFailure.get()).as("승인 종결 경로는 예외 없이 끝나야 함").isNull();
+        assertThat(indeterminateFailure.get()).as("벤더 조회 실패 경로는 예외 없이 끝나야 함").isNull();
+
+        // then — 최종 상태는 승인 종결로 수렴하고, 발행은 정확히 1건이다 — 접수대장과 발행이
+        // 갈라지는 일이 없어야 한다(이 finding 이 막으려던 자리).
+        PgInbox settled = pgInboxRepository.findByOrderId(orderId).orElseThrow();
+        assertThat(settled.getStatus())
+                .as("벤더 조회 실패 경로는 상태를 바꾸지 않으므로 승인 종결로 수렴해야 함")
+                .isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(jpaPgOutboxRepository.findByKeyAndTopicInOrderByCreatedAtAsc(
+                orderId, List.of(PgTopics.EVENTS_CONFIRMED)))
+                .as("벤더 조회 실패 경로는 0건 가드로 발행 행을 만들지 않아 정확히 1건이어야 함")
+                .hasSize(1);
+    }
+
     // ─── 헬퍼 ────────────────────────────────────────────────────────────────
 
     private void awaitQuietly(CountDownLatch latch) {
         try {
             latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("대기 중 인터럽트", e);
+        }
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("대기 중 인터럽트", e);

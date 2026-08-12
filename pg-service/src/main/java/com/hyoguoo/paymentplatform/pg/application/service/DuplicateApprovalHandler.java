@@ -345,7 +345,12 @@ public class DuplicateApprovalHandler {
             pgInboxRepository.transitDirectToInProgress(orderId, payloadAmountLong);
         }
         // 같은 @Transactional TX 안에서 호출 — IN_PROGRESS 신설과 격리를 atomic 하게 묶는다
-        pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
+        boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
+        if (!transitioned) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_INDETERMINATE_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
         long outboxId = enqueueOutbox(
                 orderId,

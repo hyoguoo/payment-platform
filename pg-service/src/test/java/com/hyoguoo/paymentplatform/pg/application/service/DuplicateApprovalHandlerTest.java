@@ -490,6 +490,28 @@ class DuplicateApprovalHandlerTest {
     }
 
     @Test
+    @DisplayName("조회실패_기록이_이미종결이면_격리도_발행도_하지않는다")
+    void duplicateApproval_vendorIndeterminate_settledRecord_doesNotQuarantineOrPublish() {
+        // given — inbox APPROVED(이미 종결), 조회는 실패
+        String storedResult = "{\"orderId\":\"" + ORDER_ID + "\",\"status\":\"APPROVED\",\"amount\":" + AMOUNT_LONG + "}";
+        PgInbox approvedInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT_LONG,
+                storedResult, null, Instant.now(), Instant.now());
+        inboxRepository.save(approvedInbox);
+
+        gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
+
+        // when
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+
+        // then — 접수대장은 승인 그대로, 격리 전이도 발행도 일어나지 않는다
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     @DisplayName("조회실패_기록이_없으면_기존_보정을_유지한다")
     void duplicateApproval_vendorIndeterminate_absentRecord_keepsExistingQuarantineCorrection() {
         // given — inbox 없음(기록 신설 후 격리 경로는 이번 범위 밖)

@@ -25,7 +25,7 @@
 #### [FCG-WIRING-DECISION] — 소진 시점 자동 벤더 확인 경로 배선 판단
 
 - **현황**: `PgFinalConfirmationGate` 는 재시도 소진 후 벤더에 1회 물어 승인·실패·미확정으로 가르는 로직을 갖고 있으나 프로덕션 호출처가 0이다(`ARCHITECTURE.md` 도 미연결로 명시). 실제 경로는 `PgDlqService.handle` 이 벤더 확인 없이 곧바로 격리 전이시킨다(사유 `RETRY_EXHAUSTED`).
-- **처방**: 배선하면 승인·실패로 확정되는 건이 격리에 들어오지 않아 관리자 부담이 줄지만, 벤더 응답 하나로 결제를 자동 승인·자동 실패시키는 결정이라 사람이 개입하는 현재 구조와 성격이 다르다. 배선 여부 자체가 별도 판단을 요구한다. RETRY-EXHAUSTION-DISPOSITION 은 사람이 누르는 경로만 만들고 이 판단은 미뤘다.
+- **처방**: 배선하면 승인·실패로 확정되는 건이 격리에 들어오지 않아 관리자 부담이 줄지만, 벤더 응답 하나로 결제를 자동 승인·자동 실패시키는 결정이라 사람이 개입하는 현재 구조와 성격이 다르다. 배선 여부 자체가 별도 판단을 요구한다. RETRY-EXHAUSTION-DISPOSITION 은 사람이 누르는 경로만 만들고 이 판단은 미뤘다. 배선 시 조회 원문 승인 시각도 함께 반영해야 한다 — 지금은 `mapStatusResult` 가 조회 결과를 pgStatus 만 남기고 버려 `handleApproved` 가 Clock 기반 시각을 그대로 쓴다.
 
 #### [PG-INPROGRESS-REDELIVERY-GRACE] — 처리 중 재전송의 벤더 호출 겹침 차단
 

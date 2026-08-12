@@ -160,7 +160,9 @@ public class PgFinalConfirmationGate {
         // 이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다.
         pgInboxRepository.transitToApproved(orderId, storedStatusResult);
 
-        // FCG 경로는 PgStatusResult 에 raw approvedAt 문자열이 없으므로 Clock 기반 UTC 시각을 fallback 으로 사용한다.
+        // mapStatusResult 가 조회 결과를 pgStatus 만 남기고 버려(storedStatusResult) 승인 시각
+        // 원문이 이 자리까지 전달되지 않는다 — 그래서 Clock 기반 UTC 시각을 그대로 쓴다.
+        // 이 경로를 배선할 때는 조회 원문 승인 시각도 함께 흘려보내야 한다.
         Instant now = clock.instant();
         String approvedAtRaw = OffsetDateTime.now(clock).toString();
         String payload = buildApprovedPayload(orderId, amount, approvedAtRaw);
