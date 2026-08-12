@@ -235,7 +235,8 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
                 pgStatus,
                 BigDecimal.valueOf(response.totalAmount()),
                 parseApprovedAt(response.approvedAt()),
-                failure
+                failure,
+                response.approvedAt()   // raw ISO-8601 문자열 보존 — toConfirmResult 와 동일하게 그대로 사용
         );
     }
 

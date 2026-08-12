@@ -101,7 +101,7 @@ class DuplicateApprovalHandlerTest {
         // vendor getStatus → DONE + 동일 amount
         PgStatusResult vendorStatus = new PgStatusResult(
                 "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
-                BigDecimal.valueOf(AMOUNT_LONG), null, null);
+                BigDecimal.valueOf(AMOUNT_LONG), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
@@ -140,7 +140,7 @@ class DuplicateApprovalHandlerTest {
         // vendor getStatus → DONE + 다른 amount(불일치)
         PgStatusResult vendorStatus = new PgStatusResult(
                 "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
-                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null);
+                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
@@ -173,7 +173,7 @@ class DuplicateApprovalHandlerTest {
         // vendor getStatus → DONE + payload와 동일 amount
         PgStatusResult vendorStatus = new PgStatusResult(
                 "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
-                BigDecimal.valueOf(AMOUNT_LONG), null, null);
+                BigDecimal.valueOf(AMOUNT_LONG), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
@@ -204,7 +204,7 @@ class DuplicateApprovalHandlerTest {
         // vendor getStatus → DONE + 다른 amount(불일치)
         PgStatusResult vendorStatus = new PgStatusResult(
                 "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
-                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null);
+                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
@@ -316,7 +316,7 @@ class DuplicateApprovalHandlerTest {
             // vendor getStatus → DONE + amount 일치
             PgStatusResult vendorStatus = new PgStatusResult(
                     "pk-001", ORDER_ID, PgPaymentStatus.DONE,
-                    BigDecimal.valueOf(AMOUNT_LONG), null, null);
+                    BigDecimal.valueOf(AMOUNT_LONG), null, null, null);
             mockGatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
             // transitDirectToTerminal stub
@@ -346,7 +346,7 @@ class DuplicateApprovalHandlerTest {
             // vendor getStatus → DONE + amount 불일치
             PgStatusResult vendorStatus = new PgStatusResult(
                     "pk-001", ORDER_ID, PgPaymentStatus.DONE,
-                    BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null);
+                    BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null, null);
             mockGatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
             // transitDirectToTerminal stub
@@ -406,7 +406,7 @@ class DuplicateApprovalHandlerTest {
             // vendor getStatus → DONE + amount 일치
             PgStatusResult vendorStatus = new PgStatusResult(
                     "pk-001", ORDER_ID, PgPaymentStatus.DONE,
-                    BigDecimal.valueOf(AMOUNT_LONG), null, null);
+                    BigDecimal.valueOf(AMOUNT_LONG), null, null, null);
             mockGatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
             // when

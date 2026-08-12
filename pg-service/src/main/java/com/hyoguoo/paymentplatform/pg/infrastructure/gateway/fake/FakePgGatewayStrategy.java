@@ -335,7 +335,8 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                 PgPaymentStatus.DONE,
                 confirmed.amount(),
                 confirmed.approvedAt(),
-                null
+                null,
+                confirmed.approvedAtRaw()
         );
     }
 

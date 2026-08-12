@@ -6,7 +6,7 @@
 
 - **주제**: 중복 승인 응답을 받은 결제의 종결
 - **단계**: execute
-- **활성 태스크**: Task 1: 조회 결과에 벤더 승인 시각 원문 보존
+- **활성 태스크**: Task 2: 접수 기록 종결 전이의 반영 행 수 반환
 - **이슈/브랜치**: #140
 - **파일**: docs/topics/PG-DUPLICATE-APPROVAL-SETTLEMENT.md / docs/PG-DUPLICATE-APPROVAL-SETTLEMENT-PLAN.md
 

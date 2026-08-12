@@ -289,6 +289,7 @@ class PgConfirmListenerSplitIntegrationTest {
                 PgPaymentStatus.DONE,
                 BigDecimal.valueOf(AMOUNT),
                 null,
+                null,
                 null
         );
         org.mockito.Mockito.doReturn(vendorStatus)

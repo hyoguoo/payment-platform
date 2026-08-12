@@ -89,7 +89,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
+- [x] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
 - [ ] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
 - [ ] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
 - [ ] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
@@ -119,7 +119,7 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PgStatusResult` 에 `approvedAtRaw`(String) 필드를 마지막 자리에 추가했다. Toss 는 응답 `approvedAt` 원문을 그대로 싣고, NicePay 는 `parsePaidAtAsOffsetDateTime` 결과의 `toString()`으로 `+0900` → `+09:00` 정규화까지 거쳐(승인 응답 경로와 동일 근거) 실었다 — 기존 `parseApprovedAt(String)` 헬퍼는 이 정규화 경로로 흡수돼 제거했다. Fake 전략은 보관 중인 `PgConfirmResult.approvedAtRaw()`를 그대로 넘긴다. record 생성 지점 컴파일 강제로 찾은 프로덕션 3곳 + 테스트 8곳(`FakePgGatewayAdapter`, `PgVendorStatusQueryServiceTest`, `PgFinalConfirmationGateTest` 2곳, `PgConfirmListenerSplitIntegrationTest`, `DuplicateApprovalHandlerTest` 7곳)을 함께 보정했다. `./gradlew :pg-service:test` 전체 411건 pass.
 
 ---
 
