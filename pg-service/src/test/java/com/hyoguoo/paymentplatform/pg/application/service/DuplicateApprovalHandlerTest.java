@@ -292,6 +292,65 @@ class DuplicateApprovalHandlerTest {
         assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("AMOUNT_MISMATCH");
     }
 
+    @Test
+    @DisplayName("금액불일치_격리전이_1건반영이면_격리발행")
+    void duplicateApproval_dbExists_amountMismatch_transitioned_quarantinesAndPublishes() {
+        // given — inbox IN_PROGRESS(종결 전), 벤더 조회 금액 불일치 → CAS 는 정상 1건 반영
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
+                null, null, Instant.now(), Instant.now());
+        inboxRepository.save(inProgressInbox);
+
+        PgStatusResult vendorStatus = new PgStatusResult(
+                "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
+
+        // when
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+
+        // then — pg_inbox QUARANTINED 전이 + pg_outbox 1건 + 발행
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(outboxRepository.findAll()).hasSize(1);
+        verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    @Test
+    @DisplayName("금액불일치_격리전이_0건반영이면_발행행_미저장")
+    void duplicateApproval_dbExists_amountMismatch_transitionBlocked_noOutboxRow() {
+        // given — findByOrderId 시점엔 종결 전이지만, transitToQuarantined 시점엔 경합으로 이미 종결됐다고 가정
+        PgInboxRepository mockInboxRepo = mock(PgInboxRepository.class);
+        FakePgOutboxRepository racedOutboxRepository = new FakePgOutboxRepository();
+        ApplicationEventPublisher mockPublisher = mock(ApplicationEventPublisher.class);
+        FakePgGatewayAdapter racedGatewayAdapter = new FakePgGatewayAdapter();
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
+        PgStatusLookupStrategySelector selector =
+                new PgStatusLookupStrategySelector(List.of(racedGatewayAdapter));
+        DuplicateApprovalHandler racedHandler = new DuplicateApprovalHandler(
+                selector, mockInboxRepo, racedOutboxRepository, mockPublisher,
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, new SimpleMeterRegistry());
+
+        PgInbox inProgressInbox = PgInbox.of(
+                ORDER_ID, PgInboxStatus.IN_PROGRESS, AMOUNT_LONG,
+                null, null, Instant.now(), Instant.now());
+        when(mockInboxRepo.findByOrderId(ORDER_ID)).thenReturn(Optional.of(inProgressInbox));
+
+        PgStatusResult vendorStatus = new PgStatusResult(
+                "pk-dup-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(MISMATCH_AMOUNT_LONG), null, null, null);
+        racedGatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
+
+        when(mockInboxRepo.transitToQuarantined(eq(ORDER_ID), eq("AMOUNT_MISMATCH"))).thenReturn(false);
+
+        // when
+        racedHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+
+        // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
+        assertThat(racedOutboxRepository.findAll()).isEmpty();
+        verify(mockPublisher, never()).publishEvent(any());
+    }
+
     // -----------------------------------------------------------------------
     // pg DB 부재 + amount 일치 → APPROVED 기록 + 운영 알림
     // -----------------------------------------------------------------------
