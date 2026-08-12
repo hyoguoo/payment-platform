@@ -34,10 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 중복 승인 응답 방어 핸들러 — pg-service 내부에서만 보유한다 (payment-service 미노출).
  *
- * <p>경로 (1) pg DB 레코드 존재:
+ * <p>경로 (1) pg DB 레코드 존재 — 먼저 금액을 대조하고, 일치할 때만 종결 여부로 갈라진다:
  * <ul>
- *   <li>inbox.amount == vendor.amount → pg_outbox INSERT(stored_status_result 재발행) + publishEvent</li>
  *   <li>inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH + pg_outbox INSERT + publishEvent</li>
+ *   <li>amount 일치 + 이미 종결 → 보관된 stored_status_result 재발행</li>
+ *   <li>amount 일치 + 종결 전 + 벤더 상태가 승인 → 조회 결과로 승인 종결 + pg_outbox INSERT + publishEvent</li>
+ *   <li>amount 일치 + 종결 전 + 벤더 상태가 승인 아님 → 아무것도 하지 않는다 (겹침이면 원 호출이, 좀비면 다음 폴링이 처리)</li>
  * </ul>
  *
  * <p>경로 (2) pg DB 레코드 부재 (벤더만 APPROVED, inbox row 없음):
@@ -152,7 +154,7 @@ public class DuplicateApprovalHandler {
         // 2단계: pg DB 존재 여부 분기
         pgInboxRepository.findByOrderId(orderId).ifPresentOrElse(
                 inbox -> handleDbExists(orderId, inbox, vendorAmountLong, vendorStatus),
-                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong)
+                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong, vendorStatus)
         );
     }
 
@@ -187,10 +189,15 @@ public class DuplicateApprovalHandler {
             return;
         }
 
-        // amount 일치 → stored_status_result 기반 재발행
-        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT,
-                () -> "orderId=" + orderId);
-        reemitStoredStatus(orderId, inbox);
+        // amount 일치 → 종결 여부로 분기
+        if (inbox.getStatus().isTerminal()) {
+            LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT,
+                    () -> "orderId=" + orderId);
+            reemitStoredStatus(orderId, inbox);
+            return;
+        }
+
+        handleUnsettledDbExists(orderId, vendorAmountLong, vendorStatus);
     }
 
     private void reemitStoredStatus(String orderId, PgInbox inbox) {
@@ -198,6 +205,32 @@ public class DuplicateApprovalHandler {
         long outboxId = enqueueOutbox(orderId, inbox.getStoredStatusResult());
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT_DONE,
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
+    }
+
+    /**
+     * 종결 전 기록 + 금액 일치 — 벤더 조회 상태가 승인일 때만 그 결과로 종결시킨다.
+     * 승인이 아니면 상태를 바꾸지 않는다 — 겹침이면 원 호출이, 좀비면 다음 폴링이 결과를 낸다.
+     * 전이는 발행 행 저장보다 먼저 수행하고, 반영 행 수가 0이면(경합에서 다른 호출이 먼저 종결)
+     * 발행 행 자체를 만들지 않는다.
+     */
+    private void handleUnsettledDbExists(String orderId, long vendorAmountLong, PgStatusResult vendorStatus) {
+        if (!APPROVED_STATUSES.contains(vendorStatus.status())) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED,
+                    () -> "orderId=" + orderId + " vendorStatus=" + vendorStatus.status());
+            return;
+        }
+
+        String approvedPayload = buildApprovedPayload(orderId, vendorAmountLong, vendorStatus.approvedAtRaw());
+        int transitioned = pgInboxRepository.transitToApproved(orderId, approvedPayload);
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
+
+        long outboxId = enqueueOutbox(orderId, approvedPayload);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_SETTLED,
                 () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
@@ -215,22 +248,22 @@ public class DuplicateApprovalHandler {
     // 경로 (2): pg DB 레코드 부재
     // -----------------------------------------------------------------------
 
-    private void handleDbAbsent(String orderId, long payloadAmountLong, long vendorAmountLong) {
+    private void handleDbAbsent(String orderId, long payloadAmountLong, long vendorAmountLong, PgStatusResult vendorStatus) {
         if (payloadAmountLong == vendorAmountLong) {
-            handleDbAbsentAmountMatch(orderId, payloadAmountLong);
+            handleDbAbsentAmountMatch(orderId, payloadAmountLong, vendorStatus.approvedAtRaw());
         } else {
             handleDbAbsentAmountMismatch(orderId, payloadAmountLong, vendorAmountLong);
         }
     }
 
-    private void handleDbAbsentAmountMatch(String orderId, long amountLong) {
+    private void handleDbAbsentAmountMatch(String orderId, long amountLong, String approvedAtRaw) {
         // vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림
         // PENDING 우회 — transitDirectToTerminal(APPROVED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED,
                 () -> "orderId=" + orderId + " amount=" + amountLong);
 
-        // buildApprovedPayload 가 amount + approvedAt(Clock fallback) 을 포함한 payload 를 만든다.
-        String approvedPayload = buildApprovedPayload(orderId, amountLong);
+        // buildApprovedPayload 가 amount + approvedAt(조회 원문, 없으면 Clock fallback) 을 포함한 payload 를 만든다.
+        String approvedPayload = buildApprovedPayload(orderId, amountLong, approvedAtRaw);
         // PENDING 우회: PENDING + IN_PROGRESS 중간 상태 없이 직접 APPROVED 신설
         pgInboxRepository.transitDirectToTerminal(orderId, amountLong,
                 com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus.APPROVED,
@@ -312,14 +345,13 @@ public class DuplicateApprovalHandler {
 
     /**
      * APPROVED 확정 payload 빌드.
-     * amount + approvedAt(Clock fallback) 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
-     * DB absent 경로에서는 vendor status 조회 결과의 amount 를 그대로 사용하며,
-     * approvedAt raw 문자열은 PgStatusResult 에 없으므로 Clock fallback 으로 현재 UTC 시각을 주입한다.
+     * amount + approvedAt 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
+     * 벤더 조회 응답의 승인 시각 원문을 그대로 싣고, 원문이 없을 때만 현재 시각으로 대체한다.
      */
-    private String buildApprovedPayload(String orderId, long amount) {
-        String approvedAtRaw = OffsetDateTime.now(clock).toString();
+    private String buildApprovedPayload(String orderId, long amount, String approvedAtRaw) {
+        String resolvedApprovedAtRaw = approvedAtRaw != null ? approvedAtRaw : OffsetDateTime.now(clock).toString();
         return payloadSerializer.serialize(
-                ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString(), amount, approvedAtRaw)
+                ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString(), amount, resolvedApprovedAtRaw)
         );
     }
 

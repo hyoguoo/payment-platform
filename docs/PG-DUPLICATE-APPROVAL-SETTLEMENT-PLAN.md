@@ -92,7 +92,7 @@ flowchart TD
 - [x] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
 - [x] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
 - [x] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
-- [ ] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
+- [x] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
 - [ ] Task 5: 승인 미확인 시 격리 대신 물러남
 - [ ] Task 6: 금액 불일치 격리 전이의 반환값 가드
 - [ ] Task 7: 벤더 처리 중 거부를 전용 결과로
@@ -200,7 +200,7 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `DuplicateApprovalHandler.handleDbExists` 를 금액 대조 → 종결 여부 순으로 재구성했다. 금액이 일치하고 이미 종결이면 기존 `reemitStoredStatus` 그대로, 종결 전이면 새 `handleUnsettledDbExists` 로 들어간다 — 조회 응답 상태가 `APPROVED_STATUSES` 에 속할 때만 `buildApprovedPayload` 로 페이로드를 만들어 `transitToApproved` 를 먼저 호출하고, 반영 행 수가 0이면(경합으로 다른 호출이 먼저 종결) 발행 행을 만들지 않는다. 승인이 아닌 상태면 상태를 바꾸지 않고 물러난다. `handleDbAbsent` 도 `PgStatusResult` 를 그대로 받아 `handleDbAbsentAmountMatch` 까지 전달하도록 고쳐, 기록 없음 경로도 같은 `buildApprovedPayload`(조회 원문, 없으면 Clock fallback)를 쓴다. `EventType` 에 `PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED` / `PG_DUPLICATE_UNSETTLED_SETTLED` / `PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED` 3종을 추가했다. 기존 Mockito 기반 회귀 테스트 1건(`handleVendorAlreadyProcessed_inProgressInbox_amountMatch_transitsToApproved`)이 새 CAS 경로를 타면서 `transitToApproved` 스텁이 빠져 깨졌던 것을 [Rule 1] 스텁 추가로 맞췄다. `./gradlew :pg-service:test` 전체 425건 pass.
 
 ---
 

@@ -56,6 +56,12 @@ public enum EventType {
     PG_DUPLICATE_DB_ABSENT_APPROVED_DONE,
     PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
     PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
+    /** 종결 전 기록 + 금액 일치 + 벤더 상태가 승인이 아닌 경우 — 종결시키지 않고 물러난다. */
+    PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED,
+    /** 종결 전 기록을 벤더 조회 결과로 승인 종결시킨 경우. */
+    PG_DUPLICATE_UNSETTLED_SETTLED,
+    /** transitToApproved 가드(경합으로 이미 종결)에 걸려 발행 행 저장을 하지 않은 경우. */
+    PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED,
 
     /** PENDING 상태에서 다른 워커에 선점된 경우. */
     PG_INBOX_AMOUNT_PENDING_PREEMPTED,
