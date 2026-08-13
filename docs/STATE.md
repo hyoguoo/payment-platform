@@ -6,7 +6,7 @@
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
+- **활성 태스크**: Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 

@@ -6,7 +6,6 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgFailureInfo;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
@@ -35,7 +34,6 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
@@ -50,17 +48,17 @@ import org.springframework.web.client.RestClientResponseException;
  *
  * <p>에러 분기:
  * <ul>
- *   <li>ALREADY_PROCESSED_PAYMENT → {@link DuplicateApprovalDetectedEvent} 발행 후
- *       {@link PgGatewayDuplicateHandledException} 전파.</li>
+ *   <li>ALREADY_PROCESSED_PAYMENT → {@link PgGatewayDuplicateHandledException} 전파.</li>
  *   <li>IDEMPOTENT_REQUEST_PROCESSING(겹친 호출 거부) → {@link PgGatewayConcurrentCallException} 전파.
  *       원 호출이 결과를 낼 예정이라 재시도 대상(UNKNOWN)으로 흡수시키지 않는다.</li>
  *   <li>{@link TossPaymentErrorCode#isRetryableError()} → {@link PgGatewayRetryableException}.</li>
  *   <li>그 외 → {@link PgGatewayNonRetryableException}.</li>
  * </ul>
  *
- * <p>cycle 회피: 이 전략은 PgStatusLookupPort 구현이고 DuplicateApprovalHandler 는 그 포트를 의존하므로,
- * 전략이 핸들러를 직접 호출하면 cycle 이 만들어진다. 직접 호출 대신 ApplicationEventPublisher 로 이벤트를 발행해
- * 핸들러가 EventListener 로 수신하도록 한다.
+ * <p>중복 승인 응답은 이 전략이 직접 처리하지 않는다 — 예외만 던지면 벤더 호출 서비스
+ * (PgVendorCallService)가 이를 받아 DuplicateApprovalHandler.handleDuplicateApproval 을 호출한다.
+ * 그 서비스는 PgStatusLookupPort 를 의존하지 않으므로, 이 전략이 그 포트를 구현하고 있어도
+ * 순환 의존은 생기지 않는다.
  *
  * <p>활성화 조건: {@code pg.gateway.type=fake} 가 아닐 때 항상 활성된다 — NicePay 전략과 동시에 등록된다.
  * fake 모드에서는 FakePgGatewayStrategy 가 대신 동작한다.
@@ -81,25 +79,21 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
 
     private final HttpOperator httpOperator;
     private final EncodeUtils encodeUtils;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     /**
-     * DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 주입한다 — cycle 회피.
      * @Value 필드는 생성자 방식으로 주입할 수 없어(Spring SpEL 한계) 필드 방식을 유지한다.
      * clock 은 parseApprovedAt 파싱 실패 fallback 시 TZ 누수 제거를 위해 주입한다.
      */
     public TossPaymentGatewayStrategy(
             HttpOperator httpOperator,
             EncodeUtils encodeUtils,
-            ApplicationEventPublisher applicationEventPublisher,
             ObjectMapper objectMapper,
             Clock clock
     ) {
         this.httpOperator = httpOperator;
         this.encodeUtils = encodeUtils;
-        this.applicationEventPublisher = applicationEventPublisher;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -177,13 +171,7 @@ public class TossPaymentGatewayStrategy implements PgStatusLookupPort, PgConfirm
 
         if (code.isAlreadyProcessed()) {
             LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
-                    () -> "orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT DuplicateApprovalDetectedEvent 발행");
-            // DuplicateApprovalHandler 직접 호출 대신 ApplicationEvent 를 발행해 cycle 을 끊는다.
-            // DuplicateApprovalHandler.onDuplicateApprovalDetected(@EventListener) 가 수신해 처리하며,
-            // vendorType 은 PgStatusLookupStrategySelector 로 올바른 전략을 선택할 때 사용된다.
-            applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
-                    request.orderId(), request.amount(), request.paymentKey(),
-                    "ALREADY_PROCESSED_PAYMENT", PgVendorType.TOSS));
+                    () -> "orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT 예외 전파");
             throw PgGatewayDuplicateHandledException.of(
                     "ALREADY_PROCESSED_PAYMENT handled for orderId=" + request.orderId());
         }

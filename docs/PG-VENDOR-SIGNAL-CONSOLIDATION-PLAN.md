@@ -134,7 +134,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
+- [x] Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
 - [ ] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
 - [ ] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
 - [ ] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
@@ -171,7 +171,13 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음 (이벤트 수신 경로는 Task 2 에서 정리하므로 이 시점에 리스너가 살아 있어도 무방)
 
 **완료 결과**
-> (execute에서 채움)
+> Toss/NicePay/Fake 세 전략 모두 `applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(...))` 호출과 생성자의 `ApplicationEventPublisher` 의존을 제거했다. 중복 승인 응답은 예외(`PgGatewayDuplicateHandledException`)만 던지고, 그 예외를 받는 쪽은 `PgVendorCallService.handleDuplicate` — 이 서비스는 `PgStatusLookupPort` 를 의존하지 않으므로 전략과 순환은 생기지 않는다. 세 클래스의 "cycle 회피" Javadoc 문단을 이 사실대로 정정했다.
+>
+> 생성자 시그니처 변경에 딸린 8개 보조 테스트 파일(ConcurrentCall/ParseFailureLog/StatusRaw/PaidAtNormalization)의 생성자 호출부도 함께 고쳤다 — 이 변경 없이는 컴파일이 되지 않는다.
+>
+> RED 단계에서 프로덕션 변경 없이 테스트만 목표 시그니처로 먼저 맞춰 컴파일 실패를 확인했고(`./gradlew :pg-service:compileTestJava` 12건 에러), GREEN 단계에서 프로덕션 코드를 맞춰 통과시켰다.
+>
+> `./gradlew :pg-service:test` 437건 전부 통과 — 리스너(`DuplicateApprovalHandler.onDuplicateApprovalDetected`)와 이벤트 타입은 아직 살아 있다(Task 2 범위).
 
 ---
 
