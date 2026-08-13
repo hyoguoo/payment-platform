@@ -61,6 +61,9 @@ import org.springframework.stereotype.Component;
  *   <li>{@code fake-fail-} — 확정 실패 → 보상 후 FAILED</li>
  *   <li>{@code fake-retry-} — 매 호출 재시도 가능 실패 → 시도 소진 → DLQ → QUARANTINED</li>
  *   <li>{@code fake-flaky-} — 두 번 실패한 뒤 세 번째 호출부터 승인 → 재시도 자가 회복</li>
+ *   <li>{@code fake-lost-} — 확정은 매번 재시도 가능 실패로 응답하지만 조회는 승인으로 답한다 →
+ *       재시도가 소진돼도 벤더는 실제로 승인 처리를 끝낸 상태를 재현한다. 소진 후 관문이 벤더
+ *       조회로 승인을 발견해 자동 승인 종결하는 장면 전용</li>
  * </ul>
  * 접두어 판정은 중복 승인 판정보다 먼저 이뤄진다 — 자기루프 재호출마다 같은 실패를 내야
  * 시도 횟수가 실제로 소진되기 때문이다.
@@ -82,6 +85,7 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private static final String DRILL_FAIL_PREFIX = "fake-fail-";
     private static final String DRILL_RETRY_PREFIX = "fake-retry-";
     private static final String DRILL_FLAKY_PREFIX = "fake-flaky-";
+    private static final String DRILL_LOST_PREFIX = "fake-lost-";
 
     /**
      * 자가 회복 시나리오에서 성공 전까지 실패시킬 횟수 — 이 횟수를 넘긴 호출부터 승인된다.
@@ -121,6 +125,12 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
      * <p>같은 주문이 재시도 자기루프로 다시 들어올 때마다 증가하며, 정해진 실패 횟수를 넘기면 승인으로 넘어간다.
      */
     private final ConcurrentHashMap<String, AtomicInteger> drillFlakyAttempts = new ConcurrentHashMap<>();
+
+    /**
+     * 확정은 매번 재시도 가능 실패로 응답하되 벤더는 실제로 승인을 끝낸 상태를 재현하는 시나리오의
+     * 주문별 요청 기록. key=orderId. {@link #getStatusByOrderId} 가 이 기록을 승인 응답으로 되돌린다.
+     */
+    private final ConcurrentHashMap<String, PgConfirmRequest> drillLostConfirmedOrders = new ConcurrentHashMap<>();
 
     /**
      * 데모 부하 관측용 합성 벤더 RTT + 실패율 주입 파라미터.
@@ -280,6 +290,14 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                         "DRILL_FLAKY_FAILURE attempt=" + attempt + " orderId=" + request.orderId());
             }
         }
+
+        if (paymentKey.startsWith(DRILL_LOST_PREFIX)) {
+            drillLostConfirmedOrders.putIfAbsent(request.orderId(), request);
+            recordDrillFailure(request, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                    "재시도 가능 실패(벤더는 이미 승인 처리 — 조회로만 확인 가능)");
+            throw PgGatewayRetryableException.of(
+                    "DRILL_LOST_APPROVAL orderId=" + request.orderId());
+        }
     }
 
     /**
@@ -339,6 +357,13 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
             return toStatusResult(processed);
         }
 
+        // 확정은 매번 재시도 가능 실패로 응답했지만 벤더는 실제로 승인을 끝낸 시나리오 — 소진 후
+        // 관문의 벤더 조회가 이 기록을 승인 응답으로 되돌려 자동 승인 종결 장면을 재현한다.
+        PgConfirmRequest lostConfirmedRequest = drillLostConfirmedOrders.get(orderId);
+        if (lostConfirmedRequest != null) {
+            return toLostApprovalStatusResult(lostConfirmedRequest);
+        }
+
         // 처리 기록이 없는 orderId 는 시나리오 설계 오류 또는 예기치 못한 호출을 의미한다.
         // 계약은 코드로 표현돼야 한다 — null 반환 대신 명시적 예외로 즉시 실패.
         LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
@@ -358,6 +383,23 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                 confirmed.approvedAt(),
                 null,
                 confirmed.approvedAtRaw()
+        );
+    }
+
+    /**
+     * {@code fake-lost-} 시나리오 전용 — 확정 요청 기록으로 승인 조회 응답을 구성한다.
+     * 조회 금액은 요청 금액과 같아야 관문의 금액 대조 분기를 타지 않는다.
+     */
+    private PgStatusResult toLostApprovalStatusResult(PgConfirmRequest request) {
+        String approvedAtRaw = OffsetDateTime.now(clock.withZone(ZoneOffset.UTC)).toString();
+        return new PgStatusResult(
+                request.paymentKey(),
+                request.orderId(),
+                PgPaymentStatus.DONE,
+                request.amount(),
+                LocalDateTime.now(clock),
+                null,
+                approvedAtRaw
         );
     }
 

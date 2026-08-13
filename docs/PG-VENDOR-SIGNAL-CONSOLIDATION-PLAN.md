@@ -141,7 +141,7 @@ flowchart TD
 - [x] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
 - [x] Task 6: 관문 결과 분포 지표
 - [x] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
-- [ ] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
+- [x] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
 - [ ] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - [ ] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
 - [ ] Task 11: 소진 도달 알람 표현식 재정의
@@ -437,7 +437,17 @@ flowchart TD
 - 기존 접두어 3종의 동작 불변 (`./gradlew :pg-service:test` 회귀 없음)
 
 **완료 결과**
-> (execute에서 채움)
+> `FakePgGatewayStrategy` 에 네 번째 접두어 `fake-lost-` 를 추가했다 — 기존 세 접두어와 판정 자리(`applyDrillScenario`, 중복 승인 판정보다 먼저)는 같지만, 매 호출마다 재시도 가능 실패를 던지면서 동시에 요청 기록(`drillLostConfirmedOrders`, key=orderId)을 남긴다. 소진 후에도 이 주문은 `processedOrders` 에 들어가지 않으므로(confirm 이 한 번도 성공하지 않음) 기존 조회 경로는 그대로 미처리 예외로 떨어진다 — 그래서 `getStatusByOrderId` 에 `processedOrders` 조회 다음 순서로 `drillLostConfirmedOrders` 조회를 추가해, 있으면 요청 원문(paymentKey/orderId/amount)으로 DONE 상태 응답을 합성해 돌려준다.
+>
+> 조회 응답의 금액은 최초 confirm 요청 금액을 그대로 싣는다 — 별도 계산이나 변환 없이 `PgConfirmRequest.amount()` 를 그대로 옮기므로 관문의 금액 대조 분기에 걸리지 않는다.
+>
+> 클래스 Javadoc 접두어 목록에 네 번째 항목을 추가해 용도(재시도 소진 후 관문이 벤더 조회로 자동 승인 종결하는 장면 재현)를 적었다.
+>
+> RED 단계에서 신규 테스트 2건(`확정은_매번_재시도가능실패_조회는_승인을_반환한다` — 3회 연속 재시도 가능 예외 확인 뒤 조회가 DONE 반환, `조회_승인응답의_금액은_요청금액과_같다` — 조회 금액이 요청 금액과 일치)을 접두어 미구현 상태 위에 얹어 둘 다 "Expecting code to raise a throwable" 로 실패를 확인했다(신규 접두어가 없어 `confirm` 이 그냥 승인으로 끝나 예외가 나지 않음). GREEN 이후 2건 모두 통과.
+>
+> 기존 접두어 3종(`fake-fail-`/`fake-retry-`/`fake-flaky-`)은 판정 분기 자체를 건드리지 않았고, 관련 기존 테스트 전부 회귀 없이 통과했다.
+>
+> `./gradlew :pg-service:test` 453건 전부 통과(기존 451건 + 신규 2건).
 
 ---
 

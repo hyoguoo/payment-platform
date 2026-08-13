@@ -6,7 +6,7 @@
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
+- **활성 태스크**: Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 
