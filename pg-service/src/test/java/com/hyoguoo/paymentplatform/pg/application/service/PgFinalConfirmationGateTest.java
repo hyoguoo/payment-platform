@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 
@@ -329,5 +330,107 @@ class PgFinalConfirmationGateTest {
 
         // then — getStatusByOrderId 정확히 1회만 호출 (FCG 불변)
         assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
+    }
+
+    // -----------------------------------------------------------------------
+    // 전이 반영 0건 — 경합으로 이미 종결된 기록이면 발행 행 자체를 만들지 않는다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_승인전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (APPROVED)
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT,
+                "{}", null, Instant.now(), Instant.now()));
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — 발행 행이 생기지 않고 이벤트도 발행되지 않는다
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    @Test
+    @DisplayName("fcg — 실패 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_실패전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (FAILED)
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.FAILED, AMOUNT,
+                "{}", "OTHER_REASON", Instant.now(), Instant.now()));
+        PgStatusResult canceledStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, canceledStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    @Test
+    @DisplayName("fcg — 격리 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_격리전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (QUARANTINED), 조회는 실행 시 예외로 실패
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.QUARANTINED, AMOUNT,
+                null, "OTHER_REASON", Instant.now(), Instant.now()));
+        gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout"));
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    // -----------------------------------------------------------------------
+    // 승인 시각 원문 — 조회 응답 원문을 승인 페이로드까지 전달
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인 페이로드에 조회 응답의 승인 시각 원문이 그대로 실린다")
+    void 관문_승인페이로드에_조회응답_승인시각_원문이_실린다() {
+        // given — 조회 응답에 승인 시각 원문이 실려 있음
+        String approvedAtRaw = "2026-04-24T10:15:30+09:00";
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, approvedAtRaw);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — fixedClock 기반 현재 시각으로 대체되지 않고 조회 응답 원문 그대로 실린다
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).contains(approvedAtRaw);
+    }
+
+    @Test
+    @DisplayName("fcg — 조회 응답에 승인 시각 원문이 없으면 현재 시각으로 대체한다")
+    void 관문_조회응답에_승인시각이_없으면_현재시각으로_대체한다() {
+        // given — 조회 응답에 승인 시각 원문이 없음(null)
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — fixedClock("2026-04-24T01:00:00Z") 기반 현재 시각으로 대체된다
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).contains("2026-04-24T01:00Z");
     }
 }
