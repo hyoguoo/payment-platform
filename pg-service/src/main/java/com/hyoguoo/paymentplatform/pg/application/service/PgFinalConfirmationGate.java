@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.pg.core.common.log.LogDomain;
@@ -11,8 +12,6 @@ import com.hyoguoo.paymentplatform.pg.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
-import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
-import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
@@ -33,13 +32,22 @@ import org.springframework.transaction.annotation.Transactional;
  * PG 내부 재시도 루프가 소진된 뒤 벤더 getStatus 를 단 1회 호출해 최종 상태를 확정한다.
  * 재시도 래핑 금지 — getStatusByOrderId() 는 정확히 한 번만 호출되어야 한다.
  *
+ * <p>판정 순서는 금액 대조가 먼저다 — 조회 응답 금액이 접수 금액과 다르면 상태가 승인이어도
+ * AMOUNT_MISMATCH 로 격리하고, 금액이 맞을 때만 상태로 분기한다.
+ *
  * <p>결과 분기:
  * <ul>
  *   <li>APPROVED → pg_outbox(payment.events.confirmed, APPROVED) INSERT + pg_inbox APPROVED 전이.</li>
- *   <li>FAILED(확정 실패) → pg_outbox(payment.events.confirmed, FAILED) INSERT + pg_inbox FAILED 전이.</li>
- *   <li>INDETERMINATE(timeout·5xx·네트워크 에러) → 무조건 QUARANTINED(FCG_INDETERMINATE) + pg_outbox INSERT
- *       (재시도 없음, FCG 불변).</li>
+ *   <li>FAILED(취소·중단·만료) → pg_outbox(payment.events.confirmed, FAILED) INSERT + pg_inbox FAILED 전이.</li>
+ *   <li>QUARANTINED → pg_outbox INSERT + pg_inbox QUARANTINED 전이. 사유 네 갈래:
+ *     {@code FCG_INDETERMINATE}(조회 자체가 실행 시 예외로 실패), {@code AMOUNT_MISMATCH}(조회 금액이
+ *     접수 금액과 다름), {@code FCG_PARTIAL_CANCELED}(벤더가 부분 취소로 응답 — 완전 실패로 취급하지
+ *     않는다), {@code FCG_VENDOR_UNSETTLED}(벤더가 아직 결론을 내지 않음, 입금 대기 등). 재시도 없음(FCG 불변).</li>
  * </ul>
+ *
+ * <p>조회 과정에서 나는 모든 실행 시 예외를 확인 불가로 접는다 — 게이트웨이 재시도 가능/불가
+ * 예외만 잡으면 처리 기록 없는 주문에 벤더 전략이 던지는 다른 예외가 그대로 새어나간다.
+ * 관리자 화면 벤더 조회 서비스와 같은 형태다.
  *
  * <p>payment-service는 FCG 존재를 모른다 (캡슐화).
  * 호출 주체는 후속 Phase에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정.
@@ -50,6 +58,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PgFinalConfirmationGate {
 
     private static final String REASON_FCG_INDETERMINATE = "FCG_INDETERMINATE";
+    private static final String REASON_FCG_VENDOR_UNSETTLED = "FCG_VENDOR_UNSETTLED";
+    private static final String REASON_FCG_PARTIAL_CANCELED = "FCG_PARTIAL_CANCELED";
+    private static final String REASON_AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
 
     /**
      * 벤더 상태 조회 결과 중 APPROVED로 매핑되는 PgPaymentStatus 집합.
@@ -59,12 +70,13 @@ public class PgFinalConfirmationGate {
 
     /**
      * 벤더 상태 조회 결과 중 FAILED로 매핑되는 PgPaymentStatus 집합.
-     * 확정 실패 상태: ABORTED, CANCELED, PARTIAL_CANCELED, EXPIRED.
+     * 확정 실패 상태: ABORTED, CANCELED, EXPIRED.
+     * PARTIAL_CANCELED 는 이 집합에서 제외한다 — 부분 환불된 결제를 완전 실패로 접지 않고
+     * 전용 사유({@code FCG_PARTIAL_CANCELED})로 격리해 사람 판단으로 넘긴다.
      */
     private static final Set<PgPaymentStatus> FAILED_STATUSES = Set.of(
             PgPaymentStatus.ABORTED,
             PgPaymentStatus.CANCELED,
-            PgPaymentStatus.PARTIAL_CANCELED,
             PgPaymentStatus.EXPIRED
     );
 
@@ -80,11 +92,11 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private sealed interface FcgOutcome
-            permits FcgOutcome.Approved, FcgOutcome.Failed, FcgOutcome.Indeterminate {
+            permits FcgOutcome.Approved, FcgOutcome.Failed, FcgOutcome.Quarantined {
 
         record Approved(String storedStatusResult) implements FcgOutcome {}
         record Failed(String storedStatusResult) implements FcgOutcome {}
-        record Indeterminate() implements FcgOutcome {}
+        record Quarantined(String reasonCode) implements FcgOutcome {}
     }
 
     // -----------------------------------------------------------------------
@@ -102,28 +114,36 @@ public class PgFinalConfirmationGate {
      */
     @Transactional
     public void performFinalCheck(String orderId, String eventUuid, long amount, PgVendorType vendorType) {
-        FcgOutcome outcome = queryStatusOnce(orderId, vendorType);
+        FcgOutcome outcome = queryStatusOnce(orderId, amount, vendorType);
         dispatchOutcome(outcome, orderId, amount);
     }
 
     // -----------------------------------------------------------------------
-    // 벤더 상태 조회 — 1회만, 예외는 INDETERMINATE로 변환 (FCG 불변)
+    // 벤더 상태 조회 — 1회만, 조회 과정의 실행 시 예외 전체를 FCG_INDETERMINATE로 변환 (FCG 불변)
     // -----------------------------------------------------------------------
 
-    private FcgOutcome queryStatusOnce(String orderId, PgVendorType vendorType) {
+    private FcgOutcome queryStatusOnce(String orderId, long amount, PgVendorType vendorType) {
         try {
             // vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
             PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
             PgStatusResult statusResult = port.getStatusByOrderId(orderId);
-            return mapStatusResult(statusResult);
-        } catch (PgGatewayRetryableException | PgGatewayNonRetryableException e) {
+            return mapStatusResult(statusResult, amount);
+        } catch (RuntimeException e) {
             LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_INDETERMINATE,
-                    () -> "orderId=" + orderId + " vendorType=" + vendorType + " cause=" + e.getMessage());
-            return new FcgOutcome.Indeterminate();
+                    () -> "orderId=" + orderId + " vendorType=" + vendorType
+                            + " exceptionType=" + e.getClass().getSimpleName() + " cause=" + e.getMessage());
+            return new FcgOutcome.Quarantined(REASON_FCG_INDETERMINATE);
         }
     }
 
-    private FcgOutcome mapStatusResult(PgStatusResult statusResult) {
+    private FcgOutcome mapStatusResult(PgStatusResult statusResult, long amount) {
+        if (isAmountMismatch(statusResult, amount)) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_AMOUNT_MISMATCH,
+                    () -> "orderId=" + statusResult.orderId() + " expectedAmount=" + amount
+                            + " vendorAmount=" + statusResult.amount());
+            return new FcgOutcome.Quarantined(REASON_AMOUNT_MISMATCH);
+        }
+
         PgPaymentStatus pgStatus = statusResult.status();
         if (APPROVED_STATUSES.contains(pgStatus)) {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
@@ -133,10 +153,19 @@ public class PgFinalConfirmationGate {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
             return new FcgOutcome.Failed(storedResult);
         }
-        // READY, IN_PROGRESS, WAITING_FOR_DEPOSIT 등 미확정 상태 → INDETERMINATE 처리
+        if (pgStatus == PgPaymentStatus.PARTIAL_CANCELED) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_PARTIAL_CANCELED,
+                    () -> "orderId=" + statusResult.orderId());
+            return new FcgOutcome.Quarantined(REASON_FCG_PARTIAL_CANCELED);
+        }
+        // READY, IN_PROGRESS, WAITING_FOR_DEPOSIT 등 미확정 상태 → 벤더 미결론 사유로 격리
         LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_AMBIGUOUS_STATUS,
                 () -> "orderId=" + statusResult.orderId() + " pgStatus=" + pgStatus);
-        return new FcgOutcome.Indeterminate();
+        return new FcgOutcome.Quarantined(REASON_FCG_VENDOR_UNSETTLED);
+    }
+
+    private boolean isAmountMismatch(PgStatusResult statusResult, long amount) {
+        return AmountConverter.fromBigDecimalStrict(statusResult.amount()) != amount;
     }
 
     // -----------------------------------------------------------------------
@@ -147,7 +176,7 @@ public class PgFinalConfirmationGate {
         switch (outcome) {
             case FcgOutcome.Approved a -> handleApproved(orderId, a.storedStatusResult(), amount);
             case FcgOutcome.Failed f -> handleFailed(orderId, f.storedStatusResult());
-            case FcgOutcome.Indeterminate() -> handleIndeterminate(orderId, amount);
+            case FcgOutcome.Quarantined q -> handleQuarantined(orderId, q.reasonCode());
         }
     }
 
@@ -193,18 +222,18 @@ public class PgFinalConfirmationGate {
     }
 
     // -----------------------------------------------------------------------
-    // INDETERMINATE 처리 (timeout/5xx/network 에러 → 무조건 QUARANTINED)
+    // QUARANTINED 처리 (조회 실패·금액 불일치·부분 취소·벤더 미결론 네 사유 공통)
     // -----------------------------------------------------------------------
 
-    private void handleIndeterminate(String orderId, long amount) {
-        pgInboxRepository.transitToQuarantined(orderId, REASON_FCG_INDETERMINATE);
+    private void handleQuarantined(String orderId, String reasonCode) {
+        pgInboxRepository.transitToQuarantined(orderId, reasonCode);
 
-        String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, REASON_FCG_INDETERMINATE);
+        String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, reasonCode);
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_QUARANTINED,
-                () -> "orderId=" + orderId + " outboxId=" + saved.getId());
+                () -> "orderId=" + orderId + " outboxId=" + saved.getId() + " reasonCode=" + reasonCode);
         applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
     }
 

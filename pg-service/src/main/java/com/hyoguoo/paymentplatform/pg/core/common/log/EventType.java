@@ -36,6 +36,10 @@ public enum EventType {
 
     PG_FCG_INDETERMINATE,
     PG_FCG_AMBIGUOUS_STATUS,
+    /** 조회 응답 금액이 접수 금액과 달라 상태 판정 전에 격리로 확정한 경우. */
+    PG_FCG_AMOUNT_MISMATCH,
+    /** 벤더가 부분 취소로 응답해 확정 실패 대신 전용 사유로 격리한 경우. */
+    PG_FCG_PARTIAL_CANCELED,
     PG_FCG_APPROVED,
     PG_FCG_FAILED,
     PG_FCG_QUARANTINED,

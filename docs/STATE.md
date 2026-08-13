@@ -6,7 +6,7 @@
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
+- **활성 태스크**: Task 4: 관문 반영 가드와 승인 시각 원문 전달 — 전이 반영 행 수 확인, 조회 응답 승인 시각 원문 전달
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 

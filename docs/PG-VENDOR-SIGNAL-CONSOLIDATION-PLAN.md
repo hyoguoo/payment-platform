@@ -136,7 +136,7 @@ flowchart TD
 
 - [x] Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
 - [x] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
-- [ ] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
+- [x] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
 - [ ] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
 - [ ] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
 - [ ] Task 6: 관문 결과 분포 지표
@@ -249,7 +249,21 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> 판정 순서를 금액 대조 → 상태 판정으로 재배치했다. `FcgOutcome` 을 승인 / 확정 실패 / 격리(사유 문자열 보유) 3갈래 sealed interface 로 다시 짜, 격리 사유가 늘어도 분기 구조는 그대로 유지되게 했다.
+>
+> `FAILED_STATUSES` 에서 `PARTIAL_CANCELED` 를 뺐다 — 이제 취소·중단·만료 셋만 확정 실패다. 부분 취소는 `mapStatusResult` 에서 전용 분기로 갈라 `FCG_PARTIAL_CANCELED` 로 격리한다.
+>
+> 조회 결과의 금액(`PgStatusResult.amount()`)을 호출자가 넘긴 접수 금액과 `AmountConverter.fromBigDecimalStrict` 로 비교해, 상태보다 먼저 대조한다 — 승인 응답이어도 금액이 다르면 `AMOUNT_MISMATCH` 로 격리하고 승인 종결로 가지 않는다.
+>
+> `queryStatusOnce` 의 catch 절을 `PgGatewayRetryableException | PgGatewayNonRetryableException` 두 타입에서 `RuntimeException` 전체로 넓혔다 — 관리자 화면 벤더 조회 서비스(`PgVendorStatusQueryServiceImpl`)와 같은 형태로, 예외 타입과 사유를 로그에 남겨 삼킴이 아니게 했다.
+>
+> 사유 코드 상수 3종(`FCG_VENDOR_UNSETTLED` / `FCG_PARTIAL_CANCELED` / `AMOUNT_MISMATCH`)을 신설했고, `handleIndeterminate` 를 `handleQuarantined(orderId, reasonCode)` 로 일반화해 네 사유가 같은 반영·발행 경로를 공유하게 했다 — 이 과정에서 기존에 쓰이지 않던 `amount` 매개변수도 함께 정리했다(같은 메서드를 다시 쓰는 김에 정리, 범위 확장 아님).
+>
+> `EventType` 에 `PG_FCG_AMOUNT_MISMATCH` / `PG_FCG_PARTIAL_CANCELED` 두 이벤트를 신설해 격리 사유 감지 시점을 로그로 구분했다.
+>
+> RED 단계에서 신규 테스트 5건을 원래 구현(게이트웨이 예외 2종만 포착, `FAILED_STATUSES` 에 `PARTIAL_CANCELED` 포함, 금액 미대조) 위에 얹어 4건 실패를 확인했다 — 금액 불일치·부분 취소·벤더 미결론 사유 3건은 단언 실패, 게이트웨이 예외가 아닌 실행 시 예외 1건은 예외가 그대로 호출자까지 새어나갔다. GREEN 이후 5건 모두 통과.
+>
+> `./gradlew :pg-service:test` 442건 전부 통과.
 
 ---
 
