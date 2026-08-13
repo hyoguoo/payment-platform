@@ -268,7 +268,12 @@ public class DuplicateApprovalHandler {
     // 경로 (2): pg DB 레코드 부재
     // -----------------------------------------------------------------------
 
-    private void handleDbAbsent(String orderId, long payloadAmountLong, long vendorAmountLong, PgStatusResult vendorStatus) {
+    private void handleDbAbsent(
+            String orderId,
+            long payloadAmountLong,
+            long vendorAmountLong,
+            PgStatusResult vendorStatus
+    ) {
         if (payloadAmountLong == vendorAmountLong) {
             handleDbAbsentAmountMatch(orderId, payloadAmountLong, vendorStatus.approvedAtRaw());
         } else {
