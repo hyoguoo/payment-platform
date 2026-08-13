@@ -22,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -200,5 +202,132 @@ class PgFinalConfirmationGateTest {
 
         // then — ApplicationEventPublisher 호출
         verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    // -----------------------------------------------------------------------
+    // 금액 대조가 상태 판정보다 먼저 — 조회 금액이 접수 금액과 다르면 승인 응답이어도 격리
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 조회 금액이 접수 금액과 다르면 상태가 APPROVED여도 AMOUNT_MISMATCH로 격리")
+    void 관문_조회금액이_접수금액과_다르면_금액불일치로_격리() {
+        // given — 조회 응답 금액이 접수 금액(AMOUNT)과 다름, 상태는 DONE(승인)
+        PgStatusResult mismatchedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT + 1000), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, mismatchedStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — 승인 상태였어도 승인 종결로 가지 않고 QUARANTINED + AMOUNT_MISMATCH
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("AMOUNT_MISMATCH");
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("AMOUNT_MISMATCH");
+
+        // then — getStatusByOrderId 정확히 1회 호출
+        assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
+    }
+
+    // -----------------------------------------------------------------------
+    // 부분 취소 — 확정 실패로 접지 않고 전용 사유로 격리 (회귀 고정)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 벤더가 부분 취소로 응답하면 FAILED로 확정하지 않고 FCG_PARTIAL_CANCELED로 격리")
+    void 관문_부분취소응답_실패확정하지_않고_전용사유로_격리() {
+        // given
+        PgStatusResult partialCanceledStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.PARTIAL_CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, partialCanceledStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — 부분 취소는 확정 실패(FAILED)로 접지 않는다. 재고를 즉시 풀면 안 되는
+        // 시나리오라 사람 판단으로 넘기는 전용 사유로 격리한다.
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_PARTIAL_CANCELED");
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("QUARANTINED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 취소·중단·만료 — 셋 다 확정 실패 종결
+    // -----------------------------------------------------------------------
+
+    @ParameterizedTest
+    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "ABORTED", "EXPIRED"})
+    @DisplayName("fcg — 취소·중단·만료 응답은 각각 FAILED로 확정 종결")
+    void 관문_취소_중단_만료_각각_실패종결(PgPaymentStatus status) {
+        // given
+        PgStatusResult failedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, status,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, failedStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("FAILED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 입금 대기 등 미확정 상태 — 벤더가 아직 결론을 내지 않은 경우
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 벤더가 입금 대기로 응답하면 FCG_VENDOR_UNSETTLED로 격리")
+    void 관문_입금대기응답_벤더미결론_사유로_격리() {
+        // given
+        PgStatusResult waitingStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.WAITING_FOR_DEPOSIT,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, waitingStatus);
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_VENDOR_UNSETTLED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 조회 자체의 실행 시 예외 — 게이트웨이 예외가 아니어도 호출자까지 새어나가지 않는다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 조회가 게이트웨이 예외가 아닌 실행 시 예외를 던져도 FCG_INDETERMINATE로 격리")
+    void 관문_조회가_게이트웨이예외가_아닌_실행시예외를_던져도_조회실패로_격리() {
+        // given — PgGatewayRetryableException/NonRetryableException 이 아닌 임의의 실행 시 예외.
+        // 처리 기록 없는 주문에 벤더 전략이 던질 수 있는 예외를 모사한다.
+        gatewayAdapter.throwOnStatusQuery(new UnsupportedOperationException("처리 기록 없는 orderId"));
+
+        // when
+        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+        // then — 예외가 호출자까지 새어나가지 않고 QUARANTINED + FCG_INDETERMINATE 로 흡수
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_INDETERMINATE");
+
+        // then — getStatusByOrderId 정확히 1회만 호출 (FCG 불변)
+        assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
     }
 }
