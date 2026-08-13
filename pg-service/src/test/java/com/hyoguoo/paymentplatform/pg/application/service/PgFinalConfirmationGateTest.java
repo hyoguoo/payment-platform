@@ -17,6 +17,9 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -68,6 +71,7 @@ class PgFinalConfirmationGateTest {
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private ApplicationEventPublisher eventPublisher;
+    private SimpleMeterRegistry meterRegistry;
     private PgFinalConfirmationGate fcg;
 
     @BeforeEach
@@ -76,12 +80,13 @@ class PgFinalConfirmationGateTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
+        meterRegistry = new SimpleMeterRegistry();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
         // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         fcg = new PgFinalConfirmationGate(
                 selector, inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, meterRegistry);
 
         // inbox를 IN_PROGRESS 상태로 사전 설정 (재시도 소진 직후 상태)
         PgInbox inbox = PgInbox.of(
@@ -480,6 +485,110 @@ class PgFinalConfirmationGateTest {
     }
 
     // -----------------------------------------------------------------------
+    // 관문 결과 분포 카운터 — 전이가 반영된 뒤에만 outcome 태그별 카운터를 증가시킨다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인·실패·격리 4사유 결과가 각각 outcome 태그별 카운터를 증가시킨다")
+    void 관문_결과별로_카운터가_증가한다() {
+        // 승인
+        driveOutcome(ORDER_ID, new PgStatusResult(
+                "pk-fcg-approved", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 확정 실패
+        String failedOrderId = ORDER_ID + "-failed";
+        seedInProgressInbox(failedOrderId);
+        driveOutcome(failedOrderId, new PgStatusResult(
+                "pk-fcg-failed", failedOrderId, PgPaymentStatus.CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 조회 실패
+        String indeterminateOrderId = ORDER_ID + "-indeterminate";
+        seedInProgressInbox(indeterminateOrderId);
+        driveOutcome(indeterminateOrderId, null, PgGatewayRetryableException.of("timeout"));
+
+        // 격리 — 벤더 미결론
+        String vendorUnsettledOrderId = ORDER_ID + "-vendor-unsettled";
+        seedInProgressInbox(vendorUnsettledOrderId);
+        driveOutcome(vendorUnsettledOrderId, new PgStatusResult(
+                "pk-fcg-vendor-unsettled", vendorUnsettledOrderId, PgPaymentStatus.WAITING_FOR_DEPOSIT,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 부분 취소
+        String partialCanceledOrderId = ORDER_ID + "-partial-canceled";
+        seedInProgressInbox(partialCanceledOrderId);
+        driveOutcome(partialCanceledOrderId, new PgStatusResult(
+                "pk-fcg-partial-canceled", partialCanceledOrderId, PgPaymentStatus.PARTIAL_CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 금액 불일치
+        String amountMismatchOrderId = ORDER_ID + "-amount-mismatch";
+        seedInProgressInbox(amountMismatchOrderId);
+        driveOutcome(amountMismatchOrderId, new PgStatusResult(
+                "pk-fcg-amount-mismatch", amountMismatchOrderId, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT + 1000), null, null, null), null);
+
+        assertThat(outcomeCounterValue("approved")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("failed")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("indeterminate")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("fcg — 전이 반영이 0건(가드 차단)이면 outcome 카운터를 올리지 않는다")
+    void 관문_전이_반영0건이면_카운터를_올리지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (APPROVED) — handleApproved 의 반영 가드가 차단한다
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT,
+                "{}", null, Instant.now(), Instant.now()));
+
+        // when
+        driveOutcome(ORDER_ID, new PgStatusResult(
+                "pk-fcg-approved", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // then — 실제로 반영되지 않았으므로 6종 카운터 모두 0으로 남는다
+        assertThat(outcomeCounterValue("approved")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("failed")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("indeterminate")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(0.0);
+    }
+
+    /**
+     * orderId 에 대해 조회 응답(statusResult) 또는 예외(exceptionToThrow) 중 하나를 주입하고
+     * invokeVendor → applyOutcome 두 단계를 순서대로 호출한다. 둘 중 하나만 넘긴다.
+     */
+    private void driveOutcome(String orderId, PgStatusResult statusResult, RuntimeException exceptionToThrow) {
+        if (exceptionToThrow != null) {
+            gatewayAdapter.throwOnStatusQuery(exceptionToThrow);
+        } else {
+            gatewayAdapter.setStatusResult(orderId, statusResult);
+        }
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(orderId, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, orderId, AMOUNT);
+    }
+
+    private void seedInProgressInbox(String orderId) {
+        inboxRepository.save(PgInbox.of(
+                orderId, PgInboxStatus.IN_PROGRESS, AMOUNT,
+                null, null, Instant.now(), Instant.now()));
+    }
+
+    private double outcomeCounterValue(String outcomeTag) {
+        Counter counter = meterRegistry.find("pg_final_confirmation.outcome_total")
+                .tag("outcome", outcomeTag)
+                .counter();
+        assertThat(counter).as("outcome=%s 카운터가 사전 등록돼 있어야 한다", outcomeTag).isNotNull();
+        return counter.count();
+    }
+
+    // -----------------------------------------------------------------------
     // TX 경계 분리 — invokeVendor(조회)는 TX 없음, applyOutcome(반영)만 TX 안에서 실행
     // PgInboxPendingServiceTest 의 TransactionSynchronizationManager + 전용 테스트 설정 방식을 따른다.
     // -----------------------------------------------------------------------
@@ -562,6 +671,11 @@ class PgFinalConfirmationGateTest {
         @Bean
         ConfirmedEventPayloadSerializer confirmedEventPayloadSerializer() {
             return new ConfirmedEventPayloadSerializer(new ObjectMapper());
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
         }
 
         @Bean
