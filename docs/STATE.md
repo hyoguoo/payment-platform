@@ -4,7 +4,10 @@
 
 ## 활성 작업
 
-- **주제**: 없음 (idle)
+- **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
+- **단계**: plan
+- **이슈/브랜치**: #142
+- **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md
 
 ## 재개 메모
 
