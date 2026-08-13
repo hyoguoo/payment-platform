@@ -55,8 +55,9 @@ import org.springframework.context.ApplicationEventPublisher;
  * catch(PgGatewayDuplicateHandledException) → handleDuplicate 직접 호출 경로가 함께 실행된다.
  *
  * <p>단언 기준값: 최종 pg_inbox 상태 = APPROVED(승인 종결) 유지, storedStatusResult 의 amount 가
- * 최초 confirm 과 동일(=재흡수로 인한 amount 불일치/이중 차감 없음). pg_outbox row 카운트에는
- * 의존하지 않는다(흡수 핸들러가 이벤트+예외 이중 경로로 2건 INSERT 가능).
+ * 최초 confirm 과 동일(=재흡수로 인한 amount 불일치/이중 차감 없음). self-loop 재호출 뒤 새로
+ * 생기는 pg_outbox row 는 정확히 1건이어야 한다 — 흡수 핸들러 호출 경로가 예외 하나뿐이면 1건,
+ * 이벤트 갈래가 남아 중복 호출되면 2건이 되어 실패한다.
  */
 @Tag("integration")
 @DisplayName("재시도 자기루프 중복 승인 흡수 통합 테스트")
@@ -69,6 +70,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
     private static final Clock FIXED_CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     private FakePgInboxRepository inboxRepository;
+    private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
     private PgVendorCallService vendorCallService;
     private PgInboxProcessor pgInboxProcessor;
@@ -76,7 +78,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
     @BeforeEach
     void setUp() {
         inboxRepository = new FakePgInboxRepository();
-        FakePgOutboxRepository outboxRepository = new FakePgOutboxRepository();
+        outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -147,7 +149,13 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         // HandledInternally outcome 으로 변환해 DuplicateApprovalHandler 에 직접 위임한다(이중 경로).
         PgConfirmRequest selfLoopRequest =
                 new PgConfirmRequest(ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS);
+        int outboxCountBeforeSelfLoop = outboxRepository.findAll().size();
         applySelfLoopReinvocation(selfLoopRequest);
+
+        // then — self-loop 흡수로 새로 생기는 pg_outbox row 는 정확히 1건이어야 한다.
+        assertThat(outboxRepository.findAll().size() - outboxCountBeforeSelfLoop)
+                .as("self-loop 중복 흡수 처리는 발행 행을 정확히 1건만 만들어야 한다")
+                .isEqualTo(1);
 
         // then — 중복 흡수 경로는 이미 terminal 인 inbox 상태를 변경하지 않는다 — 여전히 APPROVED.
         PgInbox afterSelfLoop = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
