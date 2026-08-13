@@ -57,8 +57,4 @@ public record ConfirmedEventPayload(
     public static ConfirmedEventPayload quarantined(String orderId, String reasonCode, String eventUuid) {
         return new ConfirmedEventPayload(orderId, ConfirmStatus.QUARANTINED.name(), reasonCode, null, null, eventUuid);
     }
-
-    public static ConfirmedEventPayload quarantinedWithAmount(String orderId, String reasonCode, Long amount, String eventUuid) {
-        return new ConfirmedEventPayload(orderId, ConfirmStatus.QUARANTINED.name(), reasonCode, amount, null, eventUuid);
-    }
 }

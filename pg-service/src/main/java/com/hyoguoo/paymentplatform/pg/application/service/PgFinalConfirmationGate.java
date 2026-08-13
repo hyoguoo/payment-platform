@@ -61,8 +61,8 @@ import org.springframework.transaction.annotation.Transactional;
  *       + 이벤트 발행을 TX 안에서 수행.</li>
  * </ol>
  *
- * <p>payment-service는 FCG 존재를 모른다 (캡슐화).
- * 호출 주체는 후속 Phase에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정.
+ * <p>호출 주체는 {@link PgDlqService#handle}이다 — 재시도 소진 건을 DLQ 전이 대신 이 관문으로 넘긴다.
+ * payment-service는 FCG 존재를 모른다 (캡슐화) — payment.events.confirmed 토픽만 바라본다.
  */
 @Slf4j
 @Service
