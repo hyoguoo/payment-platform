@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -113,6 +114,7 @@ public class PgFinalConfirmationGate {
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final Clock clock;
     private final Map<String, Counter> outcomeCounters;
+    private final PgDlqReachMetrics pgDlqReachMetrics;
 
     public PgFinalConfirmationGate(
             PgStatusLookupStrategySelector pgStatusLookupStrategySelector,
@@ -121,7 +123,8 @@ public class PgFinalConfirmationGate {
             ApplicationEventPublisher applicationEventPublisher,
             ConfirmedEventPayloadSerializer payloadSerializer,
             Clock clock,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            PgDlqReachMetrics pgDlqReachMetrics
     ) {
         this.pgStatusLookupStrategySelector = pgStatusLookupStrategySelector;
         this.pgInboxRepository = pgInboxRepository;
@@ -130,6 +133,7 @@ public class PgFinalConfirmationGate {
         this.payloadSerializer = payloadSerializer;
         this.clock = clock;
         this.outcomeCounters = buildOutcomeCounters(meterRegistry);
+        this.pgDlqReachMetrics = pgDlqReachMetrics;
     }
 
     /**
@@ -329,6 +333,7 @@ public class PgFinalConfirmationGate {
             return;
         }
         outcomeCounters.get(resolveQuarantineOutcomeTag(reasonCode)).increment();
+        pgDlqReachMetrics.record();
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, reasonCode);
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());

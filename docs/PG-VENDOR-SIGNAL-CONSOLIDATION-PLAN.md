@@ -142,7 +142,7 @@ flowchart TD
 - [x] Task 6: 관문 결과 분포 지표
 - [x] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
 - [x] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
-- [ ] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
+- [x] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - [ ] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
 - [ ] Task 11: 소진 도달 알람 표현식 재정의
 - [ ] Task 12: 접수대장 유일 제약 동시 삽입 검증
@@ -483,7 +483,35 @@ flowchart TD
 - `./gradlew :pg-service:test :pg-service:integrationTest` 회귀 없음 — 단위만 돌리면 위 통합 테스트의 단언 붕괴가 잡히지 않는다
 
 **완료 결과**
-> (execute에서 채움)
+> 이전 세션이 WIP 로 남긴 `PgDlqService` 프로덕션 변경(전위 조회를 비잠금으로, `@Transactional`
+> 제거, 관문 조회·반영 위임)은 그대로 유지하고, 재개 시 테스트 소스부터 다시 RED 로 세웠다.
+>
+> `PgDlqServiceTest` 를 관문 위임 검증(호출 횟수·인자, 잠금 없는 전위 조회)으로 다시 썼다 —
+> 전이·발행 상세는 `PgFinalConfirmationGateTest` 책임으로 넘긴다. `PaymentConfirmDlqConsumerTest`
+> 는 `PgDlqService` 를 같은 방식으로 직접 생성해 검증이 겹쳤으므로, 다른 bean 임을 확인하는
+> 테스트 하나만 남기고 정리했다(통합 검토 결과 — 두 테스트가 사실상 같은 클래스를 같은 각도로
+> 커버하고 있었다).
+>
+> 격리 도달 카운터(`PgDlqReachMetrics.record`) 호출을 `PgDlqService` 가 아니라
+> `PgFinalConfirmationGate.handleQuarantined` 의 전이 반영 성공 지점으로 옮겼다 — 생성자에
+> `PgDlqReachMetrics` 를 받아 격리 네 사유(조회 실패/금액 불일치/부분 취소/벤더 미결론) 공통 경로
+> 끝에서 증가시킨다. `PgDlqReachMetrics` 의 호출처 Javadoc 도 이 지점으로 갱신했다.
+> `PgFinalConfirmationGateTest` 에 격리 4건에서만 카운터가 오르고 승인·실패·가드 차단에서는
+> 오르지 않는 단언을 추가해 RED(생성자 인자 불일치로 컴파일 실패)로 세운 뒤 GREEN 으로 통과시켰다.
+>
+> 더 이상 어디서도 쓰이지 않던 `EventType.PG_DLQ_PREEMPTED`, `PG_DLQ_QUARANTINED` 두 상수를
+> 제거했다.
+>
+> `PgSelfLoopRetryExhaustionIntegrationTest` 는 소진 후 격리 사유 단언을 `RETRY_EXHAUSTED` 에서
+> `FCG_INDETERMINATE` 로 갱신했다 — 이 시나리오는 확정 호출을 항상 실패시켜 모의 벤더에 처리
+> 기록이 남지 않으므로, 배선된 관문 조회가 실행 시 예외로 떨어져 조회 실패 사유로 확정된다.
+> 같은 테스트의 격리 도달 카운터 증가 단언(1.0)은 수정 없이 그대로 통과해, 카운터 이관이
+> 실제 DB 위에서도 동작함을 확인했다.
+>
+> `RETRY_EXHAUSTED` 문자열은 `PgDlqService` 와 그 테스트에서 사라졌다 — 다른 파일들(양쪽
+> 서비스에 걸쳐 열 개쯤)은 이번 변경과 무관한 임의 사유 픽스처라 손대지 않았다.
+>
+> `./gradlew :pg-service:test` 453건, `:pg-service:integrationTest` 48건 모두 통과.
 
 ---
 

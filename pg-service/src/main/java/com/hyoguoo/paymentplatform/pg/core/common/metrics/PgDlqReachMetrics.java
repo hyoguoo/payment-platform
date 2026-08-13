@@ -7,10 +7,12 @@ import org.springframework.stereotype.Component;
 /**
  * pg-service 격리(QUARANTINED) 도달 카운터.
  *
- * <p>{@link com.hyoguoo.paymentplatform.pg.application.service.PgDlqService#handle}
- * 에서 {@code transitToQuarantined} 가 true(non-terminal → QUARANTINED CAS 성공)를
- * 반환할 때 호출된다. terminal CAS 는 1회만 통과하므로 같은 orderId 의 중복 DLQ 진입은
- * 이 카운터를 증가시키지 않는다 — 멱등.
+ * <p>{@link com.hyoguoo.paymentplatform.pg.application.service.PgFinalConfirmationGate#applyOutcome}
+ * 이 격리 결과를 반영하는 지점({@code handleQuarantined} 내부)에서, {@code transitToQuarantined}
+ * 가 true(non-terminal → QUARANTINED CAS 성공)를 반환할 때 호출된다. 대기열 소비
+ * ({@link com.hyoguoo.paymentplatform.pg.application.service.PgDlqService#handle})는 격리 직행
+ * 대신 이 관문에 위임하므로, 멱등 보장 지점도 관문의 CAS 전이로 함께 옮겨졌다. terminal CAS 는
+ * 1회만 통과하므로 같은 orderId 의 중복 진입은 이 카운터를 증가시키지 않는다 — 멱등.
  *
  * <p>증가 시점을 시도횟수 소진({@code insertDlqOutbox}) 이 아니라 QUARANTINED 전이
  * 성공 지점으로 둔 이유: 소진 후 QUARANTINED 전이 전까지 좀비 재호출 window 에서
