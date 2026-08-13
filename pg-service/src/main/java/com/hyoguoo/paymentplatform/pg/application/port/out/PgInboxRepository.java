@@ -106,23 +106,27 @@ public interface PgInboxRepository {
     List<Long> findInProgressZombieIds(int batchSize, long thresholdMs);
 
     /**
-     * IN_PROGRESS → APPROVED 전이. storedStatusResult 저장.
+     * IN_PROGRESS → APPROVED compare-and-set 전이. storedStatusResult 저장.
      * 벤더 호출 성공 후 terminal 상태로 전이한다.
+     * 이미 terminal이면 반영 행 수 0을 반환한다 (중복 승인 방어 핸들러 등 겹친 호출 흡수).
      *
      * @param orderId           orderId (UNIQUE)
      * @param storedStatusResult 저장할 상태 결과 JSON
+     * @return 반영된 행 수 — 1(정상 전이) 또는 0(이미 종결, no-op)
      */
-    void transitToApproved(String orderId, String storedStatusResult);
+    int transitToApproved(String orderId, String storedStatusResult);
 
     /**
-     * IN_PROGRESS → FAILED 전이. storedStatusResult + reasonCode 저장.
+     * IN_PROGRESS → FAILED compare-and-set 전이. storedStatusResult + reasonCode 저장.
      * 벤더 호출 확정 실패 후 terminal 상태로 전이한다.
+     * 이미 terminal이면 반영 행 수 0을 반환한다 (중복 승인 방어 핸들러 등 겹친 호출 흡수).
      *
      * @param orderId           orderId (UNIQUE)
      * @param storedStatusResult 저장할 상태 결과 JSON
      * @param reasonCode        실패 사유 코드
+     * @return 반영된 행 수 — 1(정상 전이) 또는 0(이미 종결, no-op)
      */
-    void transitToFailed(String orderId, String storedStatusResult, String reasonCode);
+    int transitToFailed(String orderId, String storedStatusResult, String reasonCode);
 
     /**
      * non-terminal → QUARANTINED compare-and-set 전이.

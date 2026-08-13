@@ -24,7 +24,6 @@ import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
 import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
 import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
@@ -260,13 +259,17 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
 
     private PgStatusResult toStatusResult(NicepayPaymentApiResponse response) {
         PgPaymentStatus pgStatus = mapToPaymentStatus(response.status());
+        // paidAt 정규화(+0900 → +09:00)는 toConfirmResult 와 동일한 근거 — ConfirmedEventPayload
+        // approvedAt contract(ISO_OFFSET_DATE_TIME) 를 만족해야 좀비 회수 경로에서도 파싱이 거부되지 않는다.
+        OffsetDateTime parsedPaidAt = parsePaidAtAsOffsetDateTime(response.paidAt());
         return new PgStatusResult(
                 response.tid(),
                 response.orderId(),
                 pgStatus,
                 response.amount(),
-                parseApprovedAt(response.paidAt()),
-                null
+                parsedPaidAt != null ? parsedPaidAt.toLocalDateTime() : null,
+                null,
+                parsedPaidAt != null ? parsedPaidAt.toString() : null
         );
     }
 
@@ -283,11 +286,6 @@ public class NicepayPaymentGatewayStrategy implements PgStatusLookupPort, PgConf
             case NICEPAY_STATUS_EXPIRED -> PgPaymentStatus.EXPIRED;
             default -> PgPaymentStatus.ABORTED;
         };
-    }
-
-    private LocalDateTime parseApprovedAt(String paidAt) {
-        OffsetDateTime parsed = parsePaidAtAsOffsetDateTime(paidAt);
-        return parsed != null ? parsed.toLocalDateTime() : null;
     }
 
     private OffsetDateTime parsePaidAtAsOffsetDateTime(String paidAt) {

@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -93,7 +94,8 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         ApplicationEventPublisher[] publisherHolder = new ApplicationEventPublisher[1];
         DuplicateApprovalHandler duplicateApprovalHandler = new DuplicateApprovalHandler(
                 statusLookupStrategySelector, inboxRepository, outboxRepository,
-                event -> publisherHolder[0].publishEvent(event), payloadSerializer, FIXED_CLOCK);
+                event -> publisherHolder[0].publishEvent(event), payloadSerializer, FIXED_CLOCK,
+                new SimpleMeterRegistry());
 
         ApplicationEventPublisher dispatchingPublisher = event -> {
             if (event instanceof DuplicateApprovalDetectedEvent duplicateEvent) {
@@ -106,7 +108,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         vendorCallService = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmStrategySelector,
                 dispatchingPublisher, payloadSerializer, objectMapper, FIXED_CLOCK,
-                duplicateApprovalHandler, new SecureRandom());
+                duplicateApprovalHandler, new SecureRandom(), new SimpleMeterRegistry());
 
         pgInboxProcessor = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
 

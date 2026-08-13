@@ -19,6 +19,8 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import com.hyoguoo.paymentplatform.pg.application.util.AmountConverter;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -34,10 +36,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 중복 승인 응답 방어 핸들러 — pg-service 내부에서만 보유한다 (payment-service 미노출).
  *
- * <p>경로 (1) pg DB 레코드 존재:
+ * <p>경로 (1) pg DB 레코드 존재 — 먼저 금액을 대조하고, 일치할 때만 종결 여부로 갈라진다:
  * <ul>
- *   <li>inbox.amount == vendor.amount → pg_outbox INSERT(stored_status_result 재발행) + publishEvent</li>
  *   <li>inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH + pg_outbox INSERT + publishEvent</li>
+ *   <li>amount 일치 + 이미 종결 → 보관된 stored_status_result 재발행</li>
+ *   <li>amount 일치 + 종결 전 + 벤더 상태가 승인 → 조회 결과로 승인 종결 + pg_outbox INSERT + publishEvent</li>
+ *   <li>amount 일치 + 종결 전 + 벤더 상태가 승인 아님 → 아무것도 하지 않는다 (겹침이면 원 호출이, 좀비면 다음 폴링이 처리)</li>
  * </ul>
  *
  * <p>경로 (2) pg DB 레코드 부재 (벤더만 APPROVED, inbox row 없음):
@@ -48,7 +52,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>vendor 호출 실패:
  * <ul>
- *   <li>timeout/5xx/네트워크 → QUARANTINED(VENDOR_INDETERMINATE) + pg_outbox INSERT + publishEvent</li>
+ *   <li>기록이 존재하고 종결 전 → 격리하지 않고 물러난다 (겹침이면 원 호출이, 좀비면 다음 폴링이 처리)</li>
+ *   <li>기록이 없거나 이미 종결 → QUARANTINED(VENDOR_INDETERMINATE) + pg_outbox INSERT + publishEvent</li>
  * </ul>
  */
 @Slf4j
@@ -63,12 +68,20 @@ public class DuplicateApprovalHandler {
      */
     private static final Set<PgPaymentStatus> APPROVED_STATUSES = Set.of(PgPaymentStatus.DONE);
 
+    /**
+     * 종결 전 기록에 대한 벤더 상태 조회 실패로 격리하지 않고 물러난 횟수.
+     * 자동 종결 대신 지표로 드러내기로 한 결정의 관측성 근거 — {@link EventType#PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF}
+     * 경고 로그와 함께 증가한다.
+     */
+    static final String VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME = "pg_duplicate.vendor_indeterminate_backoff_total";
+
     private final PgStatusLookupStrategySelector pgStatusLookupStrategySelector;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final Clock clock;
+    private final Counter vendorIndeterminateBackoffCounter;
 
     /**
      * 직접 PgStatusLookupPort 를 의존하지 않고 PgStatusLookupStrategySelector 를 거친다 —
@@ -81,7 +94,8 @@ public class DuplicateApprovalHandler {
             PgOutboxRepository pgOutboxRepository,
             ApplicationEventPublisher applicationEventPublisher,
             ConfirmedEventPayloadSerializer payloadSerializer,
-            Clock clock
+            Clock clock,
+            MeterRegistry meterRegistry
     ) {
         this.pgStatusLookupStrategySelector = pgStatusLookupStrategySelector;
         this.pgInboxRepository = pgInboxRepository;
@@ -89,6 +103,9 @@ public class DuplicateApprovalHandler {
         this.applicationEventPublisher = applicationEventPublisher;
         this.payloadSerializer = payloadSerializer;
         this.clock = clock;
+        this.vendorIndeterminateBackoffCounter = Counter.builder(VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME)
+                .description("종결 전 기록의 벤더 상태 조회 실패로 격리하지 않고 물러난 횟수")
+                .register(meterRegistry);
     }
 
     // -----------------------------------------------------------------------
@@ -152,7 +169,7 @@ public class DuplicateApprovalHandler {
         // 2단계: pg DB 존재 여부 분기
         pgInboxRepository.findByOrderId(orderId).ifPresentOrElse(
                 inbox -> handleDbExists(orderId, inbox, vendorAmountLong, vendorStatus),
-                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong)
+                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong, vendorStatus)
         );
     }
 
@@ -187,10 +204,15 @@ public class DuplicateApprovalHandler {
             return;
         }
 
-        // amount 일치 → stored_status_result 기반 재발행
-        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT,
-                () -> "orderId=" + orderId);
-        reemitStoredStatus(orderId, inbox);
+        // amount 일치 → 종결 여부로 분기
+        if (inbox.getStatus().isTerminal()) {
+            LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_REEMIT,
+                    () -> "orderId=" + orderId);
+            reemitStoredStatus(orderId, inbox);
+            return;
+        }
+
+        handleUnsettledDbExists(orderId, vendorAmountLong, vendorStatus);
     }
 
     private void reemitStoredStatus(String orderId, PgInbox inbox) {
@@ -201,9 +223,40 @@ public class DuplicateApprovalHandler {
                 () -> "orderId=" + orderId + " outboxId=" + outboxId);
     }
 
+    /**
+     * 종결 전 기록 + 금액 일치 — 벤더 조회 상태가 승인일 때만 그 결과로 종결시킨다.
+     * 승인이 아니면 상태를 바꾸지 않는다 — 겹침이면 원 호출이, 좀비면 다음 폴링이 결과를 낸다.
+     * 전이는 발행 행 저장보다 먼저 수행하고, 반영 행 수가 0이면(경합에서 다른 호출이 먼저 종결)
+     * 발행 행 자체를 만들지 않는다.
+     */
+    private void handleUnsettledDbExists(String orderId, long vendorAmountLong, PgStatusResult vendorStatus) {
+        if (!APPROVED_STATUSES.contains(vendorStatus.status())) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED,
+                    () -> "orderId=" + orderId + " vendorStatus=" + vendorStatus.status());
+            return;
+        }
+
+        String approvedPayload = buildApprovedPayload(orderId, vendorAmountLong, vendorStatus.approvedAtRaw());
+        int transitioned = pgInboxRepository.transitToApproved(orderId, approvedPayload);
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
+
+        long outboxId = enqueueOutbox(orderId, approvedPayload);
+        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_SETTLED,
+                () -> "orderId=" + orderId + " outboxId=" + outboxId);
+    }
+
     private void handleAmountMismatchDbExists(String orderId) {
         // 금액 불일치는 격리한다: inbox.amount != vendor.amount → QUARANTINED+AMOUNT_MISMATCH
-        pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
+        boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_AMOUNT_MISMATCH);
+        if (!transitioned) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_AMOUNT_MISMATCH_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
         long outboxId = enqueueOutbox(orderId, buildConfirmedPayload(orderId, "QUARANTINED", REASON_AMOUNT_MISMATCH));
 
@@ -215,22 +268,27 @@ public class DuplicateApprovalHandler {
     // 경로 (2): pg DB 레코드 부재
     // -----------------------------------------------------------------------
 
-    private void handleDbAbsent(String orderId, long payloadAmountLong, long vendorAmountLong) {
+    private void handleDbAbsent(
+            String orderId,
+            long payloadAmountLong,
+            long vendorAmountLong,
+            PgStatusResult vendorStatus
+    ) {
         if (payloadAmountLong == vendorAmountLong) {
-            handleDbAbsentAmountMatch(orderId, payloadAmountLong);
+            handleDbAbsentAmountMatch(orderId, payloadAmountLong, vendorStatus.approvedAtRaw());
         } else {
             handleDbAbsentAmountMismatch(orderId, payloadAmountLong, vendorAmountLong);
         }
     }
 
-    private void handleDbAbsentAmountMatch(String orderId, long amountLong) {
+    private void handleDbAbsentAmountMatch(String orderId, long amountLong, String approvedAtRaw) {
         // vendor.amount == payloadAmount → inbox 신설(APPROVED) + 운영 알림
         // PENDING 우회 — transitDirectToTerminal(APPROVED) 로 직접 종결.
         LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_DB_ABSENT_APPROVED,
                 () -> "orderId=" + orderId + " amount=" + amountLong);
 
-        // buildApprovedPayload 가 amount + approvedAt(Clock fallback) 을 포함한 payload 를 만든다.
-        String approvedPayload = buildApprovedPayload(orderId, amountLong);
+        // buildApprovedPayload 가 amount + approvedAt(조회 원문, 없으면 Clock fallback) 을 포함한 payload 를 만든다.
+        String approvedPayload = buildApprovedPayload(orderId, amountLong, approvedAtRaw);
         // PENDING 우회: PENDING + IN_PROGRESS 중간 상태 없이 직접 APPROVED 신설
         pgInboxRepository.transitDirectToTerminal(orderId, amountLong,
                 com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus.APPROVED,
@@ -267,7 +325,8 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
 
     /**
-     * vendor 조회 실패 — inbox 부재 시 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
+     * vendor 조회 실패 — 종결 전 기록은 격리하지 않고 물러난다. 겹침이면 원 호출이,
+     * 좀비면 다음 폴링이 처리한다. 기록이 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 후 QUARANTINED 전이.
      *
      * <p>transitDirectToInProgress + transitToQuarantined 두 호출이 반드시 같은 TX 안에 묶여야 한다.
      * 이 메서드는 {@code handleDuplicateApproval} 의 {@code @Transactional} TX 안에서 호출되므로
@@ -277,13 +336,26 @@ public class DuplicateApprovalHandler {
      * 반드시 atomicity 봉인이 필요하다.
      */
     private void handleVendorIndeterminate(String orderId, long payloadAmountLong) {
-        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (보정 경로)
         Optional<PgInbox> existing = pgInboxRepository.findByOrderId(orderId);
+
+        if (existing.isPresent() && !existing.get().getStatus().isTerminal()) {
+            vendorIndeterminateBackoffCounter.increment();
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF,
+                    () -> "orderId=" + orderId);
+            return;
+        }
+
+        // inbox가 없을 경우 PENDING 우회하여 IN_PROGRESS 신설 (보정 경로)
         if (existing.isEmpty()) {
             pgInboxRepository.transitDirectToInProgress(orderId, payloadAmountLong);
         }
         // 같은 @Transactional TX 안에서 호출 — IN_PROGRESS 신설과 격리를 atomic 하게 묶는다
-        pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
+        boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, REASON_VENDOR_INDETERMINATE);
+        if (!transitioned) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_DUPLICATE_INDETERMINATE_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
         long outboxId = enqueueOutbox(
                 orderId,
@@ -312,14 +384,13 @@ public class DuplicateApprovalHandler {
 
     /**
      * APPROVED 확정 payload 빌드.
-     * amount + approvedAt(Clock fallback) 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
-     * DB absent 경로에서는 vendor status 조회 결과의 amount 를 그대로 사용하며,
-     * approvedAt raw 문자열은 PgStatusResult 에 없으므로 Clock fallback 으로 현재 UTC 시각을 주입한다.
+     * amount + approvedAt 을 함께 실어 payment-service 의 amount mismatch 역방향 방어선이 작동하게 한다.
+     * 벤더 조회 응답의 승인 시각 원문을 그대로 싣고, 원문이 없을 때만 현재 시각으로 대체한다.
      */
-    private String buildApprovedPayload(String orderId, long amount) {
-        String approvedAtRaw = OffsetDateTime.now(clock).toString();
+    private String buildApprovedPayload(String orderId, long amount, String approvedAtRaw) {
+        String resolvedApprovedAtRaw = approvedAtRaw != null ? approvedAtRaw : OffsetDateTime.now(clock).toString();
         return payloadSerializer.serialize(
-                ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString(), amount, approvedAtRaw)
+                ConfirmedEventPayload.approved(orderId, UUID.randomUUID().toString(), amount, resolvedApprovedAtRaw)
         );
     }
 

@@ -69,7 +69,7 @@ class PgVendorStatusQueryServiceTest {
     }
 
     private PgStatusResult statusResult(PgPaymentStatus status) {
-        return new PgStatusResult("pk-001", ORDER_ID, status, BigDecimal.valueOf(1000L), null, null);
+        return new PgStatusResult("pk-001", ORDER_ID, status, BigDecimal.valueOf(1000L), null, null, null);
     }
 
     @Test

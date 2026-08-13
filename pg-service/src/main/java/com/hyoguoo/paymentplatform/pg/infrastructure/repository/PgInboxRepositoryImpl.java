@@ -57,18 +57,18 @@ public class PgInboxRepositoryImpl implements PgInboxRepository {
 
     @Override
     @Transactional
-    public void transitToApproved(String orderId, String storedStatusResult) {
+    public int transitToApproved(String orderId, String storedStatusResult) {
         // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
-        jpaPgInboxRepository.casInProgressToApproved(
+        return jpaPgInboxRepository.casInProgressToApproved(
                 orderId, storedStatusResult, LocalDateTime.now(clock),
                 PgInboxStatus.IN_PROGRESS, PgInboxStatus.APPROVED);
     }
 
     @Override
     @Transactional
-    public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+    public int transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
         // 시간 결정성 위해 clock.instant() / LocalDateTime.now(clock) 사용
-        jpaPgInboxRepository.casInProgressToFailed(
+        return jpaPgInboxRepository.casInProgressToFailed(
                 orderId, storedStatusResult, reasonCode, LocalDateTime.now(clock),
                 PgInboxStatus.IN_PROGRESS, PgInboxStatus.FAILED);
     }

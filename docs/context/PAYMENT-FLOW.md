@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
@@ -105,11 +105,16 @@ flowchart TD
     OUT -->|"NonRetryable 4xx"| NF["pg_inbox FAILED<br/>+ pg_outbox events.confirmed FAILED"]
     OUT -->|"Retryable 5xx/timeout"| RT{"shouldRetry(attempt)?<br/>attempt = pg_inbox.attempt"}
     OUT -->|"멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회"]
+    OUT -->|"겹침 거부 (409)"| CONC["ConcurrentCall<br/>시도횟수/명령/전이 미변경<br/>로그 + 지표만"]
 
     RT -->|"Yes (attempt&lt;4)"| RTO["insertRetryOutbox<br/>pg_outbox commands.confirm (backoff)<br/>+ incrementAttempt (pg_inbox, TX_B)"]
     RT -->|"No (attempt≥4)"| DLO["insertDlqOutbox<br/>pg_outbox commands.confirm.dlq"]
-    DUP -->|"DB/금액 일치"| OK
-    DUP -->|"불일치 / INDETERMINATE"| QU["pg_inbox QUARANTINED<br/>+ pg_outbox events.confirmed QUARANTINED"]
+    DUP --> AMT{"금액 대조 (선행)"}
+    AMT -->|"불일치"| QU["pg_inbox QUARANTINED<br/>+ pg_outbox events.confirmed QUARANTINED"]
+    AMT -->|"일치"| SET{"접수 기록 종결 여부"}
+    SET -->|"종결"| OK
+    SET -->|"종결 전 + 조회상태 승인"| OK
+    SET -->|"종결 전 + 승인 미확인"| BACK["물러남<br/>상태 전이와 발행 없음, 경고 + 지표"]
 
     OK --> OBX["pg_outbox row -> AFTER_COMMIT<br/>OutboxReadyEventHandler -> PgOutboxChannel"]
     NF --> OBX
@@ -300,7 +305,7 @@ flowchart TD
 ```
 
 핵심 포인트:
-- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액 불일치·INDETERMINATE 면 QUARANTINED 로도 종결**한다 (항상 APPROVED 아님).
+- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다(PG-DUPLICATE-APPROVAL-SETTLEMENT).
 - **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급. 리스너 진입 필터가 있던 시절 재시도를 통과시키기 위한 규약이었고, 필터 제거 후에도 payment 측 `payment_event_dedupe` 의 메시지 단위 키로 계속 쓰인다.
 - **`attempt` 한도/DLQ 작동 (DLQ-REACHABILITY)** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
@@ -400,14 +405,18 @@ payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s)
 현행 IN_PROGRESS 재진입(`handleActiveInbox` 채널 재적재 → 워커 `processInProgressZombie`) race 시 동작:
 - 두 consumer 가 동시 동일 메시지 받음 → 둘 다 vendor 호출
 - vendor 가 한 호출만 새로 처리, 다른 호출엔 멱등 응답
-- 한 쪽 → pg_outbox APPROVED INSERT, 다른 쪽 → DuplicateApprovalHandler → 같은 결과 INSERT (중복 row 가능)
+- 한 쪽 → pg_outbox APPROVED INSERT, 다른 쪽 → DuplicateApprovalHandler → 상태 전이 반영 행 수가 0 이면 발행 행을 만들지 않는다(PG-DUPLICATE-APPROVAL-SETTLEMENT) — 승인·확정실패·격리 세 경로 공통
 - payment-service 측: 재고 멱등은 Lua atomic dedup token (`decrement:done` / `compensation:done` SETNX P8D) 으로 같은 Lua 안 atomic 흡수, 메시지 단위 retry/DLQ 는 Spring Kafka native
 
 비용: vendor 호출 1회 추가. 멱등성으로 흡수.
 
 **진입 트리거 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL 반영)**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 제거된 Redis eventUuid 필터가 이 갈래를 우연히 억제하고 있었다(명시 목적은 메시지 멱등성이었다).
 
-**잔여 위험**: 겹친 호출의 안전성은 벤더가 동일 멱등 키의 **동시** 요청을 직렬화한다는 전제에 의존한다. `DuplicateApprovalHandler` 는 벤더가 "이미 처리됨"을 에러로 반환할 때만 진입하므로(`PgVendorCallService` HandledInternally 분기), 두 호출이 모두 성공 응답을 받으면 `handleSuccess` 가 두 번 실행돼 결과 메시지가 2건 발행된다(inbox 상태 전이는 CAS 라 1회). 전제가 깨지면 카드망 이중 청구이며 취소·환불 포트가 없어 되돌릴 수 없다(`CONCERNS.md` L-9). 유예 부재를 닫는 작업은 후속 토픽 — 단순 시간 유예로는 재시도 명령까지 차단돼 벤더 호출 구간 표시 컬럼이 필요하다.
+**겹침 처리 (PG-DUPLICATE-APPROVAL-SETTLEMENT 반영)**: 두 벤더 모두 겹친 승인 호출을 거부한다 — Toss 는 주문번호 멱등키로 처리 중 재요청에 409(`IDEMPOTENT_REQUEST_PROCESSING`), NicePay 는 동일 거래번호 재승인에 2201. Toss 의 거부 코드는 `TossPaymentErrorCode` 에 등재돼 `GatewayOutcome.ConcurrentCall` 로 흡수되며, 시도횟수·재시도 명령·상태 전이를 건드리지 않고 물러난다(`PgVendorCallService.dispatchOutcome`). 등재 전에는 `UNKNOWN` 으로 떨어져 재시도 대상이 되면서 겹친 호출이 재시도 예산을 소모했다.
+
+두 호출이 모두 성공 응답을 받는 조합에서도 결과가 갈리지 않는다 — 결과 반영 전이가 0건이면 발행 행 자체를 만들지 않으므로 발행은 한 건으로 수렴한다. 접수대장 컬럼 추가나 리스너 유예는 채택하지 않았다(벤더가 거부하고 종결 여부 판단이 진입 경로를 가리지 않는다).
+
+**잔여 위험**: NicePay 는 멱등키가 없어 승인이 진행 중일 때도 2201 이 오는지 확정되지 않는다. 종결 여부로 처신을 가르는 설계라 이 미확정에 기대지 않으나, 핸들러에 도달하지 못하는 응답이 오면 닿지 않는다. 취소·환불 포트 부재는 그대로다(`CONCERNS.md` L-9).
 
 ### 4.12 코드 진입점 인덱스
 

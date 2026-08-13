@@ -17,16 +17,22 @@ public enum EventType {
     PG_CONFIRM_VENDOR_DELEGATED,
 
     PG_VENDOR_SUCCESS,
+    /** transitToApproved 가드(이미 종결)에 걸려 승인 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_VENDOR_SUCCESS_GUARD_BLOCKED,
     PG_VENDOR_RETRY_SCHEDULED,
     /** incrementAttempt 가드(종결 행)에 걸려 재시도 outbox INSERT + 발행을 하지 않은 경우. */
     PG_VENDOR_RETRY_GUARD_BLOCKED,
     PG_VENDOR_DLQ,
     PG_VENDOR_DEFINITIVE_FAILURE,
+    /** transitToFailed 가드(이미 종결)에 걸려 실패 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_VENDOR_DEFINITIVE_FAILURE_GUARD_BLOCKED,
     PG_VENDOR_DUPLICATE_HANDLED,
     PG_VENDOR_NETWORK_ERROR,
     PG_VENDOR_RETRYABLE_ERROR,
     PG_VENDOR_NON_RETRYABLE_ERROR,
     PG_VENDOR_PARSE_ERROR,
+    /** 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우 — 원 호출이 결과를 낼 예정이라 물러난다. */
+    PG_VENDOR_CONCURRENT_CALL,
 
     PG_FCG_INDETERMINATE,
     PG_FCG_AMBIGUOUS_STATUS,
@@ -48,10 +54,22 @@ public enum EventType {
     PG_DUPLICATE_REEMIT,
     PG_DUPLICATE_REEMIT_DONE,
     PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_EXISTS,
+    /** transitToQuarantined 가드(경합으로 이미 종결)에 걸려 격리 발행 행 저장을 하지 않은 경우. */
+    PG_DUPLICATE_AMOUNT_MISMATCH_GUARD_BLOCKED,
     PG_DUPLICATE_DB_ABSENT_APPROVED,
     PG_DUPLICATE_DB_ABSENT_APPROVED_DONE,
     PG_DUPLICATE_AMOUNT_MISMATCH_QUARANTINED_DB_ABSENT,
     PG_DUPLICATE_QUARANTINED_VENDOR_INDETERMINATE,
+    /** 종결 전 기록 + 금액 일치 + 벤더 상태가 승인이 아닌 경우 — 종결시키지 않고 물러난다. */
+    PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED,
+    /** 종결 전 기록을 벤더 조회 결과로 승인 종결시킨 경우. */
+    PG_DUPLICATE_UNSETTLED_SETTLED,
+    /** transitToApproved 가드(경합으로 이미 종결)에 걸려 발행 행 저장을 하지 않은 경우. */
+    PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED,
+    /** 종결 전 기록에 대한 벤더 상태 조회가 실패해 격리하지 않고 물러난 경우. */
+    PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF,
+    /** transitToQuarantined 가드(경합으로 이미 종결)에 걸려 벤더 조회 실패 경로의 격리 발행 행 저장을 하지 않은 경우. */
+    PG_DUPLICATE_INDETERMINATE_GUARD_BLOCKED,
 
     /** PENDING 상태에서 다른 워커에 선점된 경우. */
     PG_INBOX_AMOUNT_PENDING_PREEMPTED,

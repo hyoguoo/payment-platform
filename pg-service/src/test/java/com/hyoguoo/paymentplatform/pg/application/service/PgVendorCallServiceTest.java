@@ -8,9 +8,11 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.PgOutbox;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
+import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayConcurrentCallException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
@@ -18,6 +20,7 @@ import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakeSecureRandom;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -76,7 +79,8 @@ class PgVendorCallServiceTest {
         sut = new PgVendorCallService(
                 inboxRepository, outboxRepository, selector,
                 eventPublisher, new ConfirmedEventPayloadSerializer(objectMapper),
-                objectMapper, fixedClock, duplicateApprovalHandler, new FakeSecureRandom(0.5));
+                objectMapper, fixedClock, duplicateApprovalHandler, new FakeSecureRandom(0.5),
+                new SimpleMeterRegistry());
 
         // inbox를 IN_PROGRESS 상태로 사전 준비 (applyOutcome 진입 전제조건)
         inboxRepository.save(PgInbox.of(
@@ -146,6 +150,19 @@ class PgVendorCallServiceTest {
 
             // then
             assertThat(outcome).isInstanceOf(GatewayOutcome.HandledInternally.class);
+        }
+
+        @Test
+        @DisplayName("PgGatewayConcurrentCallException → GatewayOutcome.ConcurrentCall 반환")
+        void invokeVendor_concurrentCallException_returnsConcurrentCallOutcome() {
+            // given
+            gatewayAdapter.throwOnConfirm(PgGatewayConcurrentCallException.of("IDEMPOTENT_REQUEST_PROCESSING"));
+
+            // when
+            GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
+
+            // then
+            assertThat(outcome).isInstanceOf(GatewayOutcome.ConcurrentCall.class);
         }
     }
 
@@ -223,6 +240,47 @@ class PgVendorCallServiceTest {
         }
 
         @Test
+        @DisplayName("승인_전이_1건반영이면_발행행_저장과_이벤트발행")
+        void applyOutcome_success_transitionApplied_savesOutboxAndPublishesEvent() {
+            // given
+            PgConfirmResult result = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            GatewayOutcome outcome = new GatewayOutcome.Success(result);
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 저장 + 이벤트 발행
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+        }
+
+        @Test
+        @DisplayName("승인_전이_0건반영이면_발행행_미저장")
+        void applyOutcome_success_transitionBlocked_noOutboxRow() {
+            // given — 좀비 회수 경합 등으로 이미 종결(FAILED)된 뒤 뒤늦게 승인 응답이 도착
+            inboxRepository.transitToFailed(ORDER_ID, "{}", "ALREADY_FAILED");
+            PgConfirmResult result = new PgConfirmResult(
+                    PgConfirmResultStatus.SUCCESS, PAYMENT_KEY, ORDER_ID, AMOUNT, null, null,
+                    "2026-04-24T01:00:00Z");
+            GatewayOutcome outcome = new GatewayOutcome.Success(result);
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
+            assertThat(outboxRepository.findAll()).isEmpty();
+            verify(eventPublisher, never()).publishEvent(any());
+
+            // then — inbox 는 기존 종결 상태를 유지한다
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
+        }
+
+        @Test
         @DisplayName("가드 발동(이미 종결) 시 재시도 outbox INSERT + 발행 이벤트를 하지 않는다")
         void applyOutcome_retryable_guardBlocked_noOutboxNoEvent() {
             // given — 좀비 회수 경합 등으로 재시도 신호가 도착하기 전에 inbox 가 이미 종결(APPROVED)됨
@@ -262,6 +320,60 @@ class PgVendorCallServiceTest {
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
             assertThat(rows.get(0).getPayload()).containsIgnoringCase("FAILED");
+        }
+
+        @Test
+        @DisplayName("확정실패_전이_1건반영이면_발행행_저장")
+        void applyOutcome_definitiveFailure_transitionApplied_savesOutbox() {
+            // given
+            GatewayOutcome outcome = new GatewayOutcome.NonRetryable("card_declined");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then
+            List<PgOutbox> rows = outboxRepository.findAll();
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.EVENTS_CONFIRMED);
+            verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+        }
+
+        @Test
+        @DisplayName("확정실패_전이_0건반영이면_발행행_미저장")
+        void applyOutcome_definitiveFailure_transitionBlocked_noOutboxRow() {
+            // given — 좀비 회수 경합 등으로 이미 종결(APPROVED)된 뒤 뒤늦게 확정 실패 응답이 도착
+            inboxRepository.transitToApproved(ORDER_ID, "{}");
+            GatewayOutcome outcome = new GatewayOutcome.NonRetryable("card_declined");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
+            assertThat(outboxRepository.findAll()).isEmpty();
+            verify(eventPublisher, never()).publishEvent(any());
+
+            // then — inbox 는 기존 종결 상태를 유지한다
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.APPROVED);
+        }
+
+        @Test
+        @DisplayName("겹침거부_시도횟수_미증가_재시도명령_미예약_상태전이_없음")
+        void applyOutcome_concurrentCall_noAttemptIncrement_noRetryCommand_noTransition() {
+            // given — 원 호출이 아직 처리 중일 때 겹친 호출이 벤더로부터 처리 중 거부를 받음
+            GatewayOutcome outcome = new GatewayOutcome.ConcurrentCall("IDEMPOTENT_REQUEST_PROCESSING");
+
+            // when
+            sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
+
+            // then — 원 호출이 결과를 낼 예정이므로 아무것도 만들지 않는다
+            assertThat(outboxRepository.findAll()).isEmpty();
+            verify(eventPublisher, never()).publishEvent(any());
+
+            // then — 시도횟수 미증가, 상태 전이 없음
+            PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+            assertThat(inbox.getAttempt()).isEqualTo(1);
+            assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
         }
 
         @Test

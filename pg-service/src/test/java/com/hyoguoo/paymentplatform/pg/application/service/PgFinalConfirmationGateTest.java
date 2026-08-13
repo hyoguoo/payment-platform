@@ -80,7 +80,7 @@ class PgFinalConfirmationGateTest {
         // given — getStatusByOrderId → DONE(APPROVED 매핑)
         PgStatusResult approvedStatus = new PgStatusResult(
                 "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
-                BigDecimal.valueOf(AMOUNT), null, null);
+                BigDecimal.valueOf(AMOUNT), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
 
         // when
@@ -114,7 +114,7 @@ class PgFinalConfirmationGateTest {
         // given — getStatusByOrderId → ABORTED(FAILED 매핑)
         PgStatusResult failedStatus = new PgStatusResult(
                 "pk-fcg-001", ORDER_ID, PgPaymentStatus.ABORTED,
-                BigDecimal.valueOf(AMOUNT), null, null);
+                BigDecimal.valueOf(AMOUNT), null, null, null);
         gatewayAdapter.setStatusResult(ORDER_ID, failedStatus);
 
         // when

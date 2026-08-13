@@ -1,0 +1,322 @@
+# 중복 승인 응답을 받은 결제의 종결 구현 플랜
+
+> 작성일: 2026-08-12
+
+## 목표
+
+중복 승인 방어 핸들러가 접수 기록의 종결 여부로 처신을 갈라, 종결 전 기록도 올바르게 종결시키고 결과 반영 전이가 0건일 때 발행이 나가지 않게 한다.
+
+## 컨텍스트
+
+- 설계 문서: `docs/topics/PG-DUPLICATE-APPROVAL-SETTLEMENT.md`
+- 이슈: #140
+- 주요 변경 파일:
+  - `pg-service/.../application/dto/PgStatusResult.java`
+  - `pg-service/.../application/port/out/PgInboxRepository.java` + `infrastructure/repository/PgInboxRepositoryImpl.java`
+  - `pg-service/.../application/service/PgVendorCallService.java` + `GatewayOutcome.java`
+  - `pg-service/.../application/service/DuplicateApprovalHandler.java`
+  - `pg-service/.../infrastructure/gateway/{toss,nicepay,fake}/` 세 전략
+  - `pg-service/.../exception/PgGatewayConcurrentCallException.java` (신규)
+
+## 요약 브리핑
+
+### Task 목록
+
+1. **조회 결과에 벤더 승인 시각 원문 보존** — 조회 응답 그릇에 원문 필드를 두고 벤더 전략 셋이 채운다
+2. **접수 기록 종결 전이의 반영 행 수 반환** — 승인·실패 전이가 몇 건 반영됐는지 호출부가 알 수 있게 한다
+3. **결과 반영 순서 재배치와 0건 발행 억제** — 전이를 먼저 하고, 반영이 없으면 발행 행을 만들지 않는다
+4. **중복 승인 핸들러 분기 재구성** — 금액 대조를 먼저 하고, 일치하면 종결 여부로 갈라 종결 전 기록은 조회 결과로 종결시킨다
+5. **승인 미확인 시 격리 대신 물러남** — 조회가 실패하면 진행 중인 결제를 격리시키지 않는다
+6. **금액 불일치 격리 전이의 반환값 가드** — 이미 종결된 기록에는 격리 발행이 나가지 않게 한다
+7. **벤더 처리 중 거부를 전용 결과로** — 겹친 호출이 재시도 예산을 먹지 않게 한다
+8. **모의 벤더의 처리 중 거부 응답** — 겹침 경로가 통합 테스트와 라이브 드릴에서 재현되게 한다
+9. **겹침과 좀비 회수 통합 검증** — 실제 스레드 경합까지 포함해 종결과 발행이 하나로 수렴하는지 확인한다
+
+### 변경 후 전체 플로우
+
+```mermaid
+flowchart TD
+    ENTRY[벤더 승인 호출] --> RESP[벤더 응답]
+
+    RESP -->|승인| OK[승인 전이 먼저 - Task 2,3<br/>1건 반영일 때만 발행 행 생성]
+    RESP -->|확정 실패| NG[실패 전이 먼저 - Task 2,3<br/>1건 반영일 때만 발행 행 생성]
+    RESP -->|일시 실패| RETRY[시도횟수 증가 + 재시도 명령 예약]
+    RESP -->|처리 중 거부| CONC[겹침 거부 전용 결과 - Task 7<br/>시도횟수/명령/전이 손대지 않고 물러남]
+    RESP -->|이미 처리됨 / 기승인| DUP[중복 승인 방어 핸들러]
+
+    DUP --> Q[벤더 상태 조회 1회]
+    Q --> AMT[금액 대조 먼저 - Task 4]
+
+    AMT -->|불일치| QUAR[격리 전이 - Task 6<br/>반영 행 수 확인 후 발행]
+    AMT -->|일치| EXIST[접수 기록 존재 여부]
+
+    EXIST -->|기록 없음| NEW[조회 결과로 승인 신설 - Task 4<br/>승인 시각 원문 사용]
+    EXIST -->|기록 있음| SETTLED[종결 여부 - Task 4]
+
+    SETTLED -->|종결| REEMIT[보관된 결과 재발행]
+    SETTLED -->|종결 전| APPROVED[조회 상태가 승인인가 - Task 4]
+
+    APPROVED -->|승인 확인| NEWOK[조회 결과로 승인 페이로드 생성<br/>승인 시각 원문 - Task 1<br/>전이 먼저, 1건 반영일 때만 발행]
+    APPROVED -->|조회 실패 또는 승인 아님| BACKOFF[물러남 - Task 5<br/>경고와 지표만 남김]
+
+    BACKOFF --> POLL[좀비 폴링이 다시 집어온다]
+    POLL --> ENTRY
+```
+
+### 핵심 결정 → Task 매핑
+
+| 설계 결정 | Task |
+|:---:|:---:|
+| 분기 평가 순서 — 금액 대조 선행 | 4 |
+| 종결된 기록 → 보관 결과 재발행 | 4 (회귀 고정) |
+| 종결 전 기록 + 승인 확인 → 조회 결과로 종결 | 4 |
+| 승인 시각 원문 보존 | 1, 4 |
+| 종결 전 기록 + 승인 미확인 → 물러남 | 5 |
+| 벤더 상태값 확인 | 4 |
+| 금액 불일치 → 격리 + 반환값 가드 | 6 |
+| 결과 반영 전이 — 전이 선행, 0건이면 발행 행 미생성 | 2, 3, 4, 6 |
+| 겹침 거부 전용 결과 | 7 |
+| 호출 경로 구분을 두지 않음 | 해당 태스크 없음 (설계에서 배제) |
+| 모의 벤더 처리 중 거부 | 8 |
+| 위 전부의 실제 경합 검증 | 9 |
+
+### 트레이드오프 / 후속 작업
+
+- 소진 시점 자동 벤더 확인 경로도 같은 전이 메서드를 쓰지만 프로덕션 호출처가 0인 미배선 경로라 이번에는 주석 메모만 남긴다. 배선 판단은 별도 항목
+- 기록이 아예 없을 때의 격리 신설 경로는 물러남 대상에서 뺐다. 좀비 폴링이 존재하는 행만 훑기 때문에 물러나면 아무도 다시 오지 않는다
+- 겹침이 일어날 때 벤더 왕복 하나는 여전히 나간다. 호출 자체를 막으려면 컬럼과 만료 설계가 따라온다
+- `docs/context/TODOS.md` 항목의 제목과 처방이 옛 방향이라 ship 단계에서 맞춘다
+
+## 진행 상황
+
+- [x] Task 1: 조회 결과에 벤더 승인 시각 원문 보존
+- [x] Task 2: 접수 기록 종결 전이의 반영 행 수 반환
+- [x] Task 3: 결과 반영 순서 재배치와 0건 발행 억제
+- [x] Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기
+- [x] Task 5: 승인 미확인 시 격리 대신 물러남
+- [x] Task 6: 금액 불일치 격리 전이의 반환값 가드
+- [x] Task 7: 벤더 처리 중 거부를 전용 결과로
+- [x] Task 8: 모의 벤더의 처리 중 거부 응답
+- [x] Task 9: 겹침과 좀비 회수 통합 검증
+
+## 태스크
+
+### Task 1: 조회 결과에 벤더 승인 시각 원문 보존 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `TossPaymentGatewayStrategyStatusRawTest` — `getStatusByOrderId_승인응답_승인시각원문이_오프셋을_보존한다` / `getStatusByOrderId_승인시각_부재시_원문은_null`
+- `NicepayPaymentGatewayStrategyStatusRawTest` — 동일 2건. NicePay 는 `+09:00` 응답을 쓰는 케이스로 오프셋 보존을 확인 (`PITFALLS.md` §13 이 지목한 형식)
+- `FakePgGatewayStrategyStatusRawTest` — `getStatusByOrderId_승인기록_원문이_승인응답과_동일하다`
+- 벤더 HTTP 는 Mockito 로 `HttpOperator` mock — 응답 변환 분기만 검증
+
+**구현 (GREEN)**
+- `PgStatusResult` 에 `approvedAtRaw`(String) 필드 추가 — record 라 생성 지점 전부가 컴파일로 강제된다
+- `TossPaymentGatewayStrategy.toStatusResult` / `NicepayPaymentGatewayStrategy.toStatusResult` / `FakePgGatewayStrategy.toStatusResult` 가 원문을 채운다. 모의 전략은 보관 중인 승인 결과의 원문을 그대로 넘긴다
+- 기존 `approvedAt`(LocalDateTime) 은 유지 — 이번 범위에서 제거하지 않는다
+
+**완료 기준**
+- 위 테스트 pass, 세 전략 모두 원문 경로 확보
+- `./gradlew :pg-service:test` 회귀 없음
+
+**완료 결과**
+> `PgStatusResult` 에 `approvedAtRaw`(String) 필드를 마지막 자리에 추가했다. Toss 는 응답 `approvedAt` 원문을 그대로 싣고, NicePay 는 `parsePaidAtAsOffsetDateTime` 결과의 `toString()`으로 `+0900` → `+09:00` 정규화까지 거쳐(승인 응답 경로와 동일 근거) 실었다 — 기존 `parseApprovedAt(String)` 헬퍼는 이 정규화 경로로 흡수돼 제거했다. Fake 전략은 보관 중인 `PgConfirmResult.approvedAtRaw()`를 그대로 넘긴다. record 생성 지점 컴파일 강제로 찾은 프로덕션 3곳 + 테스트 8곳(`FakePgGatewayAdapter`, `PgVendorStatusQueryServiceTest`, `PgFinalConfirmationGateTest` 2곳, `PgConfirmListenerSplitIntegrationTest`, `DuplicateApprovalHandlerTest` 7곳)을 함께 보정했다. `./gradlew :pg-service:test` 전체 411건 pass.
+
+---
+
+### Task 2: 접수 기록 종결 전이의 반영 행 수 반환 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `PgInboxRepositoryImplTest` — `transitToApproved_진행중이면_1건반영` / `transitToApproved_이미종결이면_0건반영` / `transitToFailed_진행중이면_1건반영` / `transitToFailed_이미종결이면_0건반영`
+- Testcontainers 기반 기존 테스트 클래스에 추가 — 실제 CAS 조건(`WHERE status='IN_PROGRESS'`) 동작 확인이 목적이라 Fake 로 대체하지 않는다
+
+**구현 (GREEN)**
+- `PgInboxRepository.transitToApproved` / `transitToFailed` 반환 타입을 `void` → `int` 로 변경
+- `PgInboxRepositoryImpl` 이 JPA 레벨의 기존 반환값을 그대로 전달 (`casInProgressToApproved` / `casInProgressToFailed` 는 이미 `int` 반환)
+- `FakePgInboxRepository`(테스트 더블) 도 같은 반환 계약을 재현한다 — 전이 대상이 아니면 0. 지금 이 두 메서드는 상태를 가리지 않고 무조건 전이하므로 **종결 가드를 함께 넣어야** 한다. 같은 Fake 의 격리 전이·시도횟수 증가는 이미 그 가드를 갖고 있으니 그 형태를 따른다
+- 호출부는 이 태스크에서 값을 쓰지 않는다 — Task 3 에서 소비
+
+**시그니처 변경 영향 (조사 완료)**
+
+| 대상 | 처리 |
+|:---:|:---:|
+| `PgVendorCallService` 2곳 | Task 3 에서 소비 |
+| `PgFinalConfirmationGate` 2곳 | 반환값을 쓰지 않고 그대로 둔다 — 프로덕션 호출처가 0 인 미배선 경로이고, 배선 판단은 설계 문서 제외 범위다. 같은 가드가 필요하다는 메모만 주석으로 남긴다 |
+| `FakePgInboxRepository` | 반환 계약 재현 |
+| `PgInboxPendingServiceTest` 내부 익명 더블 | 반환 타입 보정 |
+| `DuplicateApprovalHandlerTest` / `PgVendorCallServiceTest` | 이 태스크에서는 손대지 않는다 — 반환값을 받지 않는 호출이라 컴파일이 깨지지 않고, Mockito 미스텁 `int` 는 기본값 0 을 돌려준다. 0건 케이스는 Task 3 / 4 / 6 에서 추가한다 |
+
+**완료 기준**
+- 위 테스트 4건 pass
+- 구현체 2곳(프로덕션 어댑터 + Fake) 과 익명 더블 1곳이 새 반환 계약을 따른다. `./gradlew :pg-service:test` 회귀 없음
+
+**완료 결과**
+> `PgInboxRepository.transitToApproved` / `transitToFailed` 반환 타입을 `void` → `int` 로 바꿨다. `PgInboxRepositoryImpl` 은 이미 `int` 를 반환하던 `casInProgressToApproved` / `casInProgressToFailed` 결과를 그대로 돌려주기만 하면 됐다. `FakePgInboxRepository` 는 두 메서드가 상태를 가리지 않고 무조건 전이하던 것을, 같은 파일의 `transitToQuarantined` 가 쓰는 종결 가드(`current.getStatus().isTerminal()` 체크) 형태를 맞춰 종결 행은 no-op + 0 반환하도록 고쳤다. `PgInboxPendingServiceTest` 내부 익명 더블(`MockPgInboxRepository`)도 반환 타입만 `int`(0 고정)로 보정했다. `PgFinalConfirmationGate` 의 두 호출부는 프로덕션 호출처가 0인 미배선 경로라 반환값을 그대로 두고, 같은 0건 가드가 필요하다는 메모만 주석으로 남겼다. `PgVendorCallService` 2곳은 계획대로 Task 3 에서 소비한다. `./gradlew :pg-service:test` 전체 415건 pass.
+
+---
+
+### Task 3: 결과 반영 순서 재배치와 0건 발행 억제 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `PgVendorCallServiceTest` — `승인_전이_1건반영이면_발행행_저장과_이벤트발행` / `승인_전이_0건반영이면_발행행_미저장` / `확정실패_전이_1건반영이면_발행행_저장` / `확정실패_전이_0건반영이면_발행행_미저장`
+- 0건 케이스는 `assertThat(outboxRepository.findAll()).isEmpty()` 로 **발행 행 자체가 만들어지지 않음**을 확인한다 — 이벤트 미발행만 검증하면 폴링 안전망 우회를 잡지 못한다
+- 이 테스트가 쓰는 발행 대장은 Mockito mock 이 아니라 Fake 구현체다. `verify(...)` 계열을 쓰면 실행이 깨진다. 같은 파일의 기존 재시도 가드 테스트가 쓰는 상태 기반 검증 방식을 따른다 — Task 4 / Task 6 의 0건 케이스도 동일
+
+**구현 (GREEN)**
+- `PgVendorCallService.handleSuccess` / `handleDefinitiveFailure` 에서 전이 호출을 발행 행 저장보다 **앞으로** 옮기고, 반영 행 수가 0이면 로그와 지표만 남기고 즉시 반환
+- 억제 시 `LogFmt.warn` + 전용 카운터. 기존 `insertRetryOutbox` 의 가드 로그 형식을 따른다
+
+**완료 기준**
+- 위 테스트 4건 pass
+- `handleSuccess` / `handleDefinitiveFailure` 안에서 `pgOutboxRepository.save` 가 전이 성공 분기 뒤에만 위치
+
+**완료 결과**
+> `handleSuccess` / `handleDefinitiveFailure` 모두 전이 호출(`transitToApproved` / `transitToFailed`)을 발행 행 저장보다 앞으로 옮겼다. 반영 행 수가 0이면(이미 종결) `LogFmt.warn` 으로 신설 `EventType`(`PG_VENDOR_SUCCESS_GUARD_BLOCKED` / `PG_VENDOR_DEFINITIVE_FAILURE_GUARD_BLOCKED`)을 남기고 즉시 반환 — `PgOutbox.create` / `pgOutboxRepository.save` / 이벤트 발행 자체가 실행되지 않는다. 테스트는 발행 대장 Fake(`outboxRepository.findAll()`)로 0건 케이스의 행 부재를 확인하고, 1건 케이스는 `verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class))` 로 발행까지 검증한다 — 이 과정에서 `publishEvent(any())`(타입 파라미터 미지정)가 `ApplicationEvent` 오버로드로 컴파일돼 실제 `Object` 오버로드 호출과 매칭되지 않는 기존 테스트 함정을 발견해, 프로젝트 관례대로 `any(PgOutboxReadyEvent.class)` 로 고정했다. `./gradlew :pg-service:test` 전체 419건 pass.
+
+---
+
+### Task 4: 중복 승인 핸들러 — 금액 대조 선행과 종결 여부 분기 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `DuplicateApprovalHandlerTest`
+  - `기록있음_금액일치_종결_보관결과_재발행` (기존 동작 회귀)
+  - `기록있음_금액일치_종결전_조회상태_승인_조회결과로_승인종결` — 발행 1건, 승인 시각이 조회 원문과 동일
+  - `기록있음_금액일치_종결전_조회상태_승인아님_아무것도_하지않음`
+  - `기록있음_금액불일치_종결여부와_무관하게_격리` — 종결 / 종결 전 두 케이스를 `@ParameterizedTest` 로
+  - `기록있음_종결전_승인종결_전이0건이면_발행행_미저장`
+  - `기록없음_금액일치_승인시각이_조회원문과_동일` — 기록 없음 경로도 같은 원문을 쓰는지 고정
+- 조회 포트는 Mockito mock, 접수대장은 기존 테스트가 쓰는 더블을 따른다
+
+**구현 (GREEN)**
+- `DuplicateApprovalHandler.handleDbExists` 재구성 — 금액 대조를 먼저 하고, 일치할 때만 종결 여부로 분기
+- 종결 → 기존 `reemitStoredStatus`
+- 종결 전 → 조회 응답의 상태값이 승인일 때만 승인 페이로드를 만들어 종결. `APPROVED_STATUSES` 를 실제로 사용한다
+- 승인 페이로드는 Task 1 의 승인 시각 원문을 싣고, 원문이 없을 때만 현재 시각으로 대체
+- **기록 없음 경로도 같이 고친다** — `handleDbAbsent` 가 조회 결과를 그대로 받아 `handleDbAbsentAmountMatch` 까지 전달하고, 승인 페이로드 헬퍼가 원문을 쓰도록 한다. 지금은 금액만 넘겨받아 현재 시각을 쓴다. 설계의 승인 시각 결정은 기록 유무를 가르지 않는다
+- 전이는 Task 2/3 과 같은 규칙 — 전이 선행, 0건이면 발행 행 미저장
+
+**완료 기준**
+- 위 테스트 pass, `APPROVED_STATUSES` 사용처 1곳 이상
+- 승인 페이로드를 만드는 두 경로(기록 있음 / 기록 없음) 모두 조회 원문을 쓰고, `OffsetDateTime.now(clock)` 는 원문 부재 대체 자리에만 남는다
+- `./gradlew :pg-service:test` 회귀 없음
+
+**완료 결과**
+> `DuplicateApprovalHandler.handleDbExists` 를 금액 대조 → 종결 여부 순으로 재구성했다. 금액이 일치하고 이미 종결이면 기존 `reemitStoredStatus` 그대로, 종결 전이면 새 `handleUnsettledDbExists` 로 들어간다 — 조회 응답 상태가 `APPROVED_STATUSES` 에 속할 때만 `buildApprovedPayload` 로 페이로드를 만들어 `transitToApproved` 를 먼저 호출하고, 반영 행 수가 0이면(경합으로 다른 호출이 먼저 종결) 발행 행을 만들지 않는다. 승인이 아닌 상태면 상태를 바꾸지 않고 물러난다. `handleDbAbsent` 도 `PgStatusResult` 를 그대로 받아 `handleDbAbsentAmountMatch` 까지 전달하도록 고쳐, 기록 없음 경로도 같은 `buildApprovedPayload`(조회 원문, 없으면 Clock fallback)를 쓴다. `EventType` 에 `PG_DUPLICATE_UNSETTLED_STATUS_NOT_APPROVED` / `PG_DUPLICATE_UNSETTLED_SETTLED` / `PG_DUPLICATE_UNSETTLED_SETTLE_GUARD_BLOCKED` 3종을 추가했다. 기존 Mockito 기반 회귀 테스트 1건(`handleVendorAlreadyProcessed_inProgressInbox_amountMatch_transitsToApproved`)이 새 CAS 경로를 타면서 `transitToApproved` 스텁이 빠져 깨졌던 것을 [Rule 1] 스텁 추가로 맞췄다. `./gradlew :pg-service:test` 전체 425건 pass.
+
+---
+
+### Task 5: 승인 미확인 시 격리 대신 물러남 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `DuplicateApprovalHandlerTest`
+  - `조회실패_기록이_종결전이면_격리하지_않고_물러난다` — 접수대장 전이 호출 0회, 발행 0건
+  - `조회실패_물러날때_경고와_지표가_남는다` — 카운터 증가 확인. 물러남의 안전 근거가 가시성이므로 함께 검증
+  - `조회실패_기록이_없으면_기존_보정을_유지한다` — 기록 신설 후 격리 경로는 이번 범위 밖임을 회귀로 고정
+
+**구현 (GREEN)**
+- `DuplicateApprovalHandler.handleVendorIndeterminate` 에서 기록이 존재하고 종결 전이면 상태를 바꾸지 않고 반환. `LogFmt.warn` + 전용 카운터
+- 기록이 아예 없는 경로(`transitDirectToInProgress` + 격리)는 그대로 둔다 — 진행 중인 다른 작업자가 없는 상황이라 성격이 다르다
+
+**완료 기준**
+- 위 테스트 3건 pass
+- 종결 전 기록에 대한 `transitToQuarantined` 호출이 조회 실패 경로에서 사라짐
+
+**완료 결과**
+> `handleVendorIndeterminate` 진입 시 접수 기록을 먼저 조회해, 기록이 존재하고 종결 전(`isTerminal()`이 false)이면 상태를 바꾸지 않고 즉시 반환한다 — `transitDirectToInProgress`/`transitToQuarantined` 모두 호출하지 않고, 발행 행도 만들지 않는다. 물러날 때 신설 카운터 `pg_duplicate.vendor_indeterminate_backoff_total`(MeterRegistry 주입, `PgInboxPendingService`의 기존 카운터 패턴을 따름)을 증가시키고 `LogFmt.warn`(`PG_DUPLICATE_UNSETTLED_INDETERMINATE_BACKOFF`)을 남긴다 — 물러남의 안전 근거가 가시성이므로 테스트에서 카운터 값을 직접 확인한다. 기록이 없는 경로(`transitDirectToInProgress` + 격리)는 그대로 뒀다. 기존 테스트 `pg_duplicate_approval_WhenVendorRetrievalFails_ShouldQuarantine`은 IN_PROGRESS(종결 전) 기록으로 격리를 기대하던 구동작 검증이라 새 동작과 충돌해, 기록 부재 시나리오로 고쳐 `조회실패_기록이_없으면_기존_보정을_유지한다`로 재작성했다(회귀 고정). `DuplicateApprovalHandler` 생성자에 `MeterRegistry`가 추가돼 이를 생성하는 테스트 3파일(`DuplicateApprovalHandlerTest`/`DuplicateApprovalHandlerListenerTest`/`PgSelfLoopDuplicateAbsorptionIntegrationTest`)의 5개 생성 지점을 `SimpleMeterRegistry`로 맞췄다 — Spring 빈으로는 자동 주입되므로 프로덕션 wiring 변경은 없다. `./gradlew :pg-service:test` 전체 427건 pass.
+
+---
+
+### Task 6: 금액 불일치 격리 전이의 반환값 가드 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `DuplicateApprovalHandlerTest`
+  - `금액불일치_격리전이_1건반영이면_격리발행` / `금액불일치_격리전이_0건반영이면_발행행_미저장`
+
+**구현 (GREEN)**
+- `handleAmountMismatchDbExists` 가 `transitToQuarantined` 반환값을 확인해 false 면 발행 행을 만들지 않고 로그만 남긴다 — 순서는 이미 전이 선행이라 재배치는 불필요
+- `PgDlqService` 는 순서·가드 모두 이미 준수하므로 손대지 않는다
+
+**완료 기준**
+- 위 테스트 2건 pass
+- 금액 불일치 경로에서 `enqueueOutbox` 가 전이 성공 분기 뒤에만 위치
+
+**완료 결과**
+> `handleAmountMismatchDbExists` 가 `transitToQuarantined` 반환값을 확인해, false 면(경합·이미 종결로 CAS 가 막힌 경우) `LogFmt.warn`(신설 `EventType.PG_DUPLICATE_AMOUNT_MISMATCH_GUARD_BLOCKED`)만 남기고 발행 행을 만들지 않고 반환한다. 전이 호출이 이미 `enqueueOutbox` 보다 앞서 있어 재배치는 필요 없었다. `PgDlqService` 는 계획대로 손대지 않았다. 이 가드를 넣으면서 Task 4 에서 만든 기존 회귀 테스트(`기록있음_금액불일치_종결여부와_무관하게_격리`, `initialStatus=APPROVED`)가 깨졌다 — 이미 종결된 기록은 `transitToQuarantined` CAS 자체가(PENDING/IN_PROGRESS→QUARANTINED 만 허용) 막혀 0건 반영되므로, 가드 추가 전엔 무시되던 이 실패가 이제 발행 억제로 이어진다. [Rule 1] 테스트를 종결 여부로 기대값을 분기(종결 전엔 격리+발행, 이미 종결이면 발행 없음+상태 불변)하도록 고쳐 새 가드와 정합시켰다. `./gradlew :pg-service:test` 전체 429건 pass.
+
+---
+
+### Task 7: 벤더 처리 중 거부를 전용 결과로 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `TossPaymentErrorCodeTest` — `처리중거부코드_전용분류로_판정` / `처리중거부코드는_재시도대상이_아니다`
+- `TossPaymentGatewayStrategyConcurrentCallTest` — `처리중거부_응답이면_전용예외_전파`
+- `PgVendorCallServiceTest` — `겹침거부_시도횟수_미증가_재시도명령_미예약_상태전이_없음`
+
+**구현 (GREEN)**
+- `PgGatewayConcurrentCallException` 신규 (`pg-service/.../exception/`)
+- `TossPaymentErrorCode` 에 처리 중 거부 코드 등재 + `isConcurrentCall()` 판정. `isRetryableError()` 에서는 제외
+- `TossPaymentGatewayStrategy.handleErrorResponse` 가 해당 코드에 전용 예외를 던진다
+- `GatewayOutcome` 에 `ConcurrentCall` 레코드 추가 (sealed permits 확장), `invokeConfirm` 이 전용 예외를 그 결과로 변환
+- `PgVendorCallService.dispatchOutcome` 에 분기 추가 — 로그와 지표만 남기고 반환
+
+**완료 기준**
+- 위 테스트 pass
+- `GatewayOutcome` switch 가 모든 분기를 덮어 컴파일 경고 없음
+
+**완료 결과**
+> `TossPaymentErrorCode`에 `IDEMPOTENT_REQUEST_PROCESSING(409)`을 등재하고 `isConcurrentCall()` 판정을 추가했다 — `isRetryableError()`에는 포함하지 않아 겹친 호출이 UNKNOWN으로 흡수돼 재시도 예산을 먹지 않게 막는다. 신설 `PgGatewayConcurrentCallException`(`pg-service/.../exception/`)을 `PgGatewayDuplicateHandledException`과 같은 센티넬 패턴으로 만들고, `TossPaymentGatewayStrategy.handleErrorResponse`가 이 코드를 만나면(ALREADY_PROCESSED_PAYMENT 분기 바로 다음, 재시도 판정 이전) 전용 예외를 던진다. `GatewayOutcome`에 `ConcurrentCall(String message)` 레코드를 permits 절에 추가하고, `PgVendorCallService.invokeConfirm`이 새 catch 절로 이를 outcome으로 변환한다. `dispatchOutcome`의 switch에 분기를 더해 `handleConcurrentCall`로 보내는데, 이 메서드는 시도횟수·재시도 명령·상태 전이를 아무것도 건드리지 않고 `LogFmt.warn` + 신설 카운터(`pg_vendor.concurrent_call_total`, `DuplicateApprovalHandler`의 `MeterRegistry` 주입 패턴을 따름)만 남기고 반환한다 — 원 호출이 결과를 내기 때문이다. 카운터 생성 로직 때문에 `PgVendorCallService`의 `@RequiredArgsConstructor`를 수동 생성자로 바꿨고, 이를 직접 구성하는 테스트 3곳(`PgVendorCallServiceTest`/`PgVendorCallServiceVendorTypeTest`/`PgSelfLoopDuplicateAbsorptionIntegrationTest`)의 생성 지점에 `SimpleMeterRegistry`를 추가했다 — Spring 빈으로는 자동 주입되므로 프로덕션 wiring 변경은 없다. `./gradlew :pg-service:test` 전체 434건 pass.
+
+---
+
+### Task 8: 모의 벤더의 처리 중 거부 응답 [tdd=true] [domain_risk=false]
+
+**테스트 (RED)**
+- `FakePgGatewayStrategyConcurrentCallTest`
+  - `원호출_응답대기중_두번째호출은_처리중거부` — 두 스레드로 동시 호출
+  - `원호출_완료후_두번째호출은_기존대로_이미처리됨`
+
+**구현 (GREEN)**
+- `FakePgGatewayStrategy` 에 진행 중 주문 집합을 두고, 승인 호출 진입 시 등록에 실패하면(이미 진행 중) 처리 중 거부를 던진다. 결과 확정 시 해제
+- 기존 `processedOrders.putIfAbsent` 판정은 그대로 — 완료 후 재호출은 지금처럼 이미 처리됨으로 응답
+
+**완료 기준**
+- 위 테스트 2건 pass
+- 기존 모의 벤더 사용 테스트 회귀 없음
+
+**완료 결과**
+> `FakePgGatewayStrategy` 에 진행 중(응답 미확정) orderId 집합 `inProgressOrders`(`ConcurrentHashMap.newKeySet()`)를 추가했다. `confirm` 은 기존 `processedOrders` 중복 판정 뒤에 이 집합에 orderId 등록을 시도하고(`add`), 이미 등록돼 있으면(원 호출이 아직 진행 중) Task 7 의 `PgGatewayConcurrentCallException` 을 던진다 — 로그는 Toss 전략과 동일하게 `LogFmt.info` + `EventType.PG_VENDOR_CONCURRENT_CALL` 를 재사용했다. 등록에 성공하면 실제 확정 로직(`doConfirm` 으로 추출)을 `try/finally` 로 감싸 성공·실패 어느 쪽으로 끝나든 `finally` 에서 진행 중 표시를 해제한다 — 완료 후 재호출은 여전히 `processedOrders` 판정이 먼저 걸려 기존 이미 처리됨 경로를 그대로 탄다. 검증은 벤더 latency 주입 설정(`latencyMinMillis`/`latencyMaxMillis`)으로 원 호출을 300ms 붙잡아두고, 별도 스레드로 실행한 뒤 50ms 뒤에 메인 스레드가 겹쳐 호출해 처리 중 거부를 확인하는 두 스레드 테스트로 재현했다. `./gradlew :pg-service:test` 전체 436건 pass.
+
+---
+
+### Task 9: 겹침과 좀비 회수 통합 검증 [tdd=true] [domain_risk=true]
+
+**테스트 (RED)**
+- `PgDuplicateApprovalSettlementIntegrationTest` (신규, `pg-service/.../integration/`)
+  - `좀비회수_벤더승인완료_접수기록이_승인으로_종결되고_발행_1건` — 지금은 롤백되는 자리. 반복 회수에도 발행이 늘지 않는지 확인
+  - `겹친_두호출_종결과_발행이_각_1회` — 모의 벤더의 처리 중 거부로 재현
+  - `전이_0건이면_폴링_안전망도_발행하지_않는다` — 발행 대장에 행이 없음을 확인해 뒤늦은 발행 경로까지 닫혔음을 검증
+  - `동일주문_두스레드_동시종결_발행1건_상태수렴` — **실제 DB 경합**. `ExecutorService` + `CountDownLatch` 로 같은 주문에 승인 종결과 격리 종결을 동시에 걸고, 발행 대장 행이 정확히 1건이며 접수 기록 최종 상태가 하나로 수렴하는지 확인한다
+- 기존 `PgSelfLoopDuplicateAbsorptionIntegrationTest` / `PgInboxAttemptGuardIntegrationTest` 는 순차 호출 패턴이라 구성만 참고하고, 마지막 케이스는 스레드 경합을 직접 만든다. 0건 가드가 하나로 수렴시킨다는 것이 이 설계의 핵심 안전장치인데 벤더 쪽 직렬화에 기대 우회하면 검증되지 않는다
+- 이 케이스는 Testcontainers 필수 — Fake 저장소는 실제 CAS 경합을 재현하지 못한다
+
+**완료 기준**
+- 위 테스트 4건 pass
+- 동시 경합 케이스가 반복 실행에도 안정적으로 통과 (`@RepeatedTest` 로 최소 10회)
+- `./gradlew :pg-service:test` 전체 pass, 통합 테스트가 캐시로 건너뛰지 않았음을 확인
+
+**완료 결과**
+> `PgDuplicateApprovalSettlementIntegrationTest`(신규, `pg-service/.../integration/`)를 `PgConfirmListenerSplitIntegrationTest`와 동일한 Testcontainers MySQL + `pg.gateway.type=fake` + 스케줄러/Kafka 비활성 인프라로 작성했다. 네 케이스 모두 프로덕션 공개 진입점(`PgInboxProcessUseCase.processPending`/`processInProgressZombie`, `DuplicateApprovalHandler.handleDuplicateApproval`)만 사용하고 `PgVendorCallService`의 package-private `GatewayOutcome`은 건드리지 않는다. 핵심은 네 번째 케이스 — 같은 IN_PROGRESS 행에 승인 종결(`processInProgressZombie`가 실제 벤더 승인을 받아 `transitToApproved`)과 격리 종결(`handleDuplicateApproval`의 금액 불일치 분기 — 종결 여부를 먼저 확인하지 않고 항상 `transitToQuarantined` CAS를 시도한다)을 `ExecutorService` + `CountDownLatch`로 실제로 동시에 걸어, 진 쪽이 0건 가드로 조용히 물러나고 발행 행이 정확히 1건, 상태가 APPROVED/QUARANTINED 중 하나로 수렴함을 확인한다 — `@RepeatedTest(10)`으로 안정성을 확인했다(2회 전체 실행 모두 22/22, 38/38 pass). 겹친 호출 케이스는 `FakePgGatewayStrategy`의 latency 필드를 `ReflectionTestUtils`로 일시 조정해 원 호출이 벤더 응답을 기다리는 구간에 재호출을 확실히 겹쳐, Task 7/8의 처리 중 거부를 재현한다. 좀비 회수 케이스는 `PgConfirmListenerSplitIntegrationTest`의 크래시 시뮬레이션(벤더 호출 시 `RuntimeException` 강제)을 그대로 따라 IN_PROGRESS 좀비를 만든 뒤, 회수 시 벤더 승인을 확인해 종결시키고 반복 회수가 발행을 늘리지 않음을 확인한다(이미 종결된 행은 SKIP LOCKED의 IN_PROGRESS 조건에 걸리지 않아 재조회되지 않는다). 0건 가드 케이스는 이미 APPROVED로 종결된 행에 금액 불일치로 고정한 벤더 조회 결과를 흘려보내 발행 행 미생성을 확인하고, `PgOutboxPollingWorker.poll()`을 직접 호출해 폴링 안전망도 발행할 것이 없음을 확인한다. Task 1~8에서 이미 구현이 끝나 있어 이 태스크는 프로덕션 코드 변경 없이 테스트만 추가했다. `./gradlew :pg-service:integrationTest`(신규 클래스 22건, 2회 반복 실행 모두 pass) + `./gradlew :pg-service:test :pg-service:integrationTest`(단위 436건 + 통합 38건, jacoco 커버리지 게이트 포함) 전체 pass.
+
+## 리뷰 처리
+
+reviewer **pass** (minor 1) / domain-expert **fail** (critical 1). reviewer 는 단위 436건·통합 38건을 직접 재실행해 통과를 확인했다.
+
+| finding | severity | 처리 | 사유 |
+|:---:|:---:|:---:|:---:|
+| `DuplicateApprovalHandler.handleVendorIndeterminate` 의 격리 전이가 반환값을 무시해, 기록이 이미 종결된 경우 0건 반영에도 격리 발행이 나간다 (domain-expert) | critical | 채택 | 물러남 가드가 "기록 있음 + 종결 전"만 걸러 "기록 있음 + 이미 종결"이 무방비로 통과한다. 접수대장은 승인인데 payment 는 격리를 받는, 이 토픽이 막으려던 갈림 그대로다. discuss 1라운드에서 처음 지목된 자리인데 Task 6 이 금액 불일치 쪽만 고쳐 빠졌고, 테스트도 금액 불일치 분기로만 경합을 만들어 잡히지 않았다 |
+| `PgFinalConfirmationGate` 주석이 "조회 결과에 승인 시각 원문이 없다"고 서술하나 Task 1 로 생겼다 (reviewer) | minor | 채택 | 서술이 사실과 어긋난다. 경로 자체는 미배선이라 동작 변경은 하지 않고 주석만 정정하며, 배선 판단 항목에 "배선 시 원문 승인 시각도 함께 반영" 메모를 남긴다 |
+
+**재리뷰** — 두 검토자 모두 pass, 새 findings 없음. 수정 커밋의 경합 테스트는 가드를 되돌린 상태에서 실패하는지까지 양방향으로 실측했다.
+
+**추가 수정 (리뷰 finding 아님 — 사용자 판단)** — domain-expert 가 막지 않는 개선으로 남긴 제안을 채택했다. 경합 테스트의 고정 지연(20ms)을 승인 스레드의 종결 커밋 신호 대기로 교체해, CI 부하와 무관하게 매 회차 목표 분기를 타게 했다. 교체 후 가드를 되돌리면 10회 모두 결정적으로 실패한다.
+
+**재작성된 테스트 2건 판정** — 둘 다 커버리지 손실 없음으로 확인됐다. 조회 실패 시 격리를 기대하던 테스트는 기록 없음 시나리오로 옮겨 그 경로의 기존 동작을 보존했고, 이미 종결된 기록에 격리를 덧씌우던 테스트는 두 상태를 나눠 검증하도록 정밀화됐다.

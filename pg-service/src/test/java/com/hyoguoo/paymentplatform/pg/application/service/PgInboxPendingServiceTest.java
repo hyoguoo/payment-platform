@@ -344,11 +344,13 @@ class PgInboxPendingServiceTest {
             }
 
             @Override
-            public void transitToApproved(String orderId, String storedStatusResult) {
+            public int transitToApproved(String orderId, String storedStatusResult) {
+                return 0;
             }
 
             @Override
-            public void transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+            public int transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+                return 0;
             }
 
             @Override
