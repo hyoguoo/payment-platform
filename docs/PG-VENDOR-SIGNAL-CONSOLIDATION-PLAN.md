@@ -143,7 +143,7 @@ flowchart TD
 - [x] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
 - [x] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
 - [x] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
-- [ ] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
+- [x] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
 - [ ] Task 11: 소진 도달 알람 표현식 재정의
 - [ ] Task 12: 접수대장 유일 제약 동시 삽입 검증
 
@@ -536,7 +536,13 @@ flowchart TD
 - 위 5건 pass, `./gradlew :pg-service:integrationTest --rerun` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> 신규 `PgRetryExhaustionFinalConfirmationIntegrationTest`(Testcontainers, `pg/integration` 패키지)를 `PgDuplicateApprovalSettlementIntegrationTest` 와 동일 인프라 패턴(`pg.gateway.type=fake` + 스케줄러/Kafka 비활성 + `FakePgGatewayStrategy` `@MockitoSpyBean`)으로 작성했다. 대기열 소비는 Kafka DLQ 컨슈머를 거치지 않고 `PgDlqService.handle` 을 직접 호출한다 — 검증 대상이 그 이후(관문 호출부터 종결까지)이기 때문이다. 프로덕션 변경 없음(계획대로).
+>
+> 5케이스: 승인 종결(`fake-lost-` 접두어로 확정은 재시도 가능 실패·조회는 승인을 실제로 재현), 실패 종결(조회가 취소로 응답), 격리·조회 실패 사유(조회 자체가 실행 시 예외), 격리·부분 취소 사유(조회가 부분 취소로 응답) — 네 케이스 모두 발행 정확히 1건을 확인한다.
+>
+> 경합 케이스(`소진건_처리중_다른경로가_먼저_종결시키면_발행행이_생기지_않는다`)는 고정 지연 대신 `PgDuplicateApprovalSettlementIntegrationTest` 의 latch 선례를 따랐다 — 대기열 경로의 벤더 조회 호출(`getStatusByOrderId`)을 `doAnswer` 로 붙잡아 "조회는 시작됐지만 반영 전" 구간을 신호로 연 뒤, 그 구간에 좀비 재확인 경로(`processInProgressZombie`)가 실제 confirm 호출 + 발행까지 정상 경로 그대로 먼저 승인 종결시킨다. 대기열 경로는 뒤이어 반영 0건 가드에 걸려 중복 발행을 만들지 않는다 — 총 발행 행은 좀비 경로의 1건뿐임을 확인한다. `@RepeatedTest(10)` 으로 반복 안정성도 확인했다.
+>
+> `./gradlew :pg-service:integrationTest --tests PgRetryExhaustionFinalConfirmationIntegrationTest` 14건(경합 케이스 10회 반복 포함) 통과, `./gradlew :pg-service:integrationTest --rerun` 62건 전부 통과, `./gradlew :pg-service:test` 453건 전부 통과(회귀 없음).
 
 ---
 

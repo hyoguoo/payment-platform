@@ -6,15 +6,15 @@
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
+- **활성 태스크**: Task 11: 소진 도달 알람 표현식 재정의
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 
 ## 재개 메모
 
-**완료**: Task 1~9. 중복 승인 이벤트 갈래 제거, 관문 판정·가드·트랜잭션·지표 정비, 결제 쪽 부분 취소 재고 게이트, 모의 벤더 시나리오, 실패 대기열의 관문 위임 배선까지 커밋됐다. 격리 도달 카운터는 `PgDlqService` 대신 `PgFinalConfirmationGate.handleQuarantined` 의 전이 반영 지점에서 증가한다.
+**완료**: Task 1~10. 중복 승인 이벤트 갈래 제거, 관문 판정·가드·트랜잭션·지표 정비, 결제 쪽 부분 취소 재고 게이트, 모의 벤더 시나리오, 실패 대기열의 관문 위임 배선, 대기열 소비부터 종결까지의 실제 DB 통합 검증까지 커밋됐다. 격리 도달 카운터는 `PgDlqService` 대신 `PgFinalConfirmationGate.handleQuarantined` 의 전이 반영 지점에서 증가한다.
 
-**남은 태스크**: Task 10(대기열 소비부터 종결까지 실제 DB 통합 검증), 11(소진 도달 알람 재정의), 12(접수대장 동시 삽입 검증).
+**남은 태스크**: Task 11(소진 도달 알람 재정의), 12(접수대장 동시 삽입 검증).
 
 ### 별건 — 위키에 남은 끊긴 참조 2곳
 
