@@ -137,7 +137,7 @@ flowchart TD
 - [x] Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
 - [x] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
 - [x] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
-- [ ] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
+- [x] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
 - [ ] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
 - [ ] Task 6: 관문 결과 분포 지표
 - [ ] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
@@ -291,7 +291,17 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `FcgOutcome.Approved` 레코드에 `approvedAtRaw` 필드를 추가해 조회 응답의 승인 시각 원문을 결과 타입에 실었다. `mapStatusResult` 가 `statusResult.approvedAtRaw()` 를 그대로 담아 넘기고, `handleApproved` 는 그 값이 있으면 그대로 쓰고 없을 때만 `OffsetDateTime.now(clock).toString()` 으로 대체한다 — `PgVendorCallService.buildApprovedPayload` / `DuplicateApprovalHandler.buildApprovedPayload` 와 같은 fallback 순서.
+>
+> `handleApproved` / `handleFailed` / `handleQuarantined` 세 메서드 모두 전이를 발행 행 저장보다 먼저 수행하고 반영 결과를 확인한다. 승인·실패 전이(`transitToApproved`/`transitToFailed`)는 `int`(반영 행 수)를, 격리 전이(`transitToQuarantined`)는 `boolean` 을 돌려주므로 각각의 반환 타입에 맞춰 0건/false 를 가드로 판정하고, 걸리면 발행 행 저장과 이벤트 발행을 모두 건너뛴다 — `PgVendorCallService.handleSuccess` / `DuplicateApprovalHandler.handleUnsettledDbExists` 와 동일한 패턴.
+>
+> 가드 발동을 관측할 수 있도록 `EventType` 에 `PG_FCG_APPROVED_GUARD_BLOCKED` / `PG_FCG_FAILED_GUARD_BLOCKED` / `PG_FCG_QUARANTINED_GUARD_BLOCKED` 세 값을 신설했다.
+>
+> "이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다"는 주석 2곳과, 승인 시각이 항상 Clock 대체된다는 사실을 전제로 한 주석 1곳(총 3곳)을 걷어냈다 — 실제 동작이 바뀌었으므로 더 이상 사실이 아니다.
+>
+> RED 단계에서 5개 테스트(승인/실패/격리 세 전이 각각의 반영 0건 가드, 승인 시각 원문 전달, 원문 부재 시 대체)를 기존 구현 위에 얹어 5건 모두 실패를 확인했다(반영 0건 가드 3건은 발행 행이 생겨서 실패, 승인 시각 2건은 항상 Clock 기반 값만 실려서 실패). GREEN 이후 5건 모두 통과.
+>
+> `./gradlew :pg-service:test` 447건 전부 통과.
 
 ---
 

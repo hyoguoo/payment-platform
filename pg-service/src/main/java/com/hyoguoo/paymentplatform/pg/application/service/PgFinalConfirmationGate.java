@@ -17,7 +17,6 @@ import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -94,7 +93,7 @@ public class PgFinalConfirmationGate {
     private sealed interface FcgOutcome
             permits FcgOutcome.Approved, FcgOutcome.Failed, FcgOutcome.Quarantined {
 
-        record Approved(String storedStatusResult) implements FcgOutcome {}
+        record Approved(String storedStatusResult, String approvedAtRaw) implements FcgOutcome {}
         record Failed(String storedStatusResult) implements FcgOutcome {}
         record Quarantined(String reasonCode) implements FcgOutcome {}
     }
@@ -147,7 +146,7 @@ public class PgFinalConfirmationGate {
         PgPaymentStatus pgStatus = statusResult.status();
         if (APPROVED_STATUSES.contains(pgStatus)) {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
-            return new FcgOutcome.Approved(storedResult);
+            return new FcgOutcome.Approved(storedResult, statusResult.approvedAtRaw());
         }
         if (FAILED_STATUSES.contains(pgStatus)) {
             String storedResult = buildStatusJson(statusResult.orderId(), pgStatus.name());
@@ -174,7 +173,7 @@ public class PgFinalConfirmationGate {
 
     private void dispatchOutcome(FcgOutcome outcome, String orderId, long amount) {
         switch (outcome) {
-            case FcgOutcome.Approved a -> handleApproved(orderId, a.storedStatusResult(), amount);
+            case FcgOutcome.Approved a -> handleApproved(orderId, a.storedStatusResult(), amount, a.approvedAtRaw());
             case FcgOutcome.Failed f -> handleFailed(orderId, f.storedStatusResult());
             case FcgOutcome.Quarantined q -> handleQuarantined(orderId, q.reasonCode());
         }
@@ -184,18 +183,20 @@ public class PgFinalConfirmationGate {
     // APPROVED 처리
     // -----------------------------------------------------------------------
 
-    private void handleApproved(String orderId, String storedStatusResult, long amount) {
-        // 반환값(반영 행 수) 미확인 — 중복 승인 방어 핸들러와 같은 0건 가드가 필요하나
-        // 이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다.
-        pgInboxRepository.transitToApproved(orderId, storedStatusResult);
+    private void handleApproved(String orderId, String storedStatusResult, long amount, String approvedAtRaw) {
+        // 전이를 발행 행 저장보다 먼저 수행한다 — 경합으로 이미 종결된 기록에 뒤늦게 반영이
+        // 시도되면 반영 행 수가 0이 되고, 이때 발행 행 자체를 만들지 않는다.
+        int transitioned = pgInboxRepository.transitToApproved(orderId, storedStatusResult);
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_APPROVED_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
-        // mapStatusResult 가 조회 결과를 pgStatus 만 남기고 버려(storedStatusResult) 승인 시각
-        // 원문이 이 자리까지 전달되지 않는다 — 그래서 Clock 기반 UTC 시각을 그대로 쓴다.
-        // 이 경로를 배선할 때는 조회 원문 승인 시각도 함께 흘려보내야 한다.
-        Instant now = clock.instant();
-        String approvedAtRaw = OffsetDateTime.now(clock).toString();
-        String payload = buildApprovedPayload(orderId, amount, approvedAtRaw);
-        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, now);
+        // 조회 응답의 승인 시각 원문을 그대로 싣는다. 원문이 없을 때만 Clock 기반 시각으로 대체한다.
+        String resolvedApprovedAtRaw = approvedAtRaw != null ? approvedAtRaw : OffsetDateTime.now(clock).toString();
+        String payload = buildApprovedPayload(orderId, amount, resolvedApprovedAtRaw);
+        PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
         PgOutbox saved = pgOutboxRepository.save(outbox);
 
         LogFmt.info(log, LogDomain.PG, EventType.PG_FCG_APPROVED,
@@ -208,9 +209,13 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private void handleFailed(String orderId, String storedStatusResult) {
-        // 반환값(반영 행 수) 미확인 — 중복 승인 방어 핸들러와 같은 0건 가드가 필요하나
-        // 이 경로는 현재 프로덕션 호출처가 없는 미배선 경로라 이번 범위에서는 다루지 않는다.
-        pgInboxRepository.transitToFailed(orderId, storedStatusResult, "FCG_CONFIRMED_FAILED");
+        // handleApproved 와 동일한 이유로 전이를 발행 행 저장보다 먼저 수행한다.
+        int transitioned = pgInboxRepository.transitToFailed(orderId, storedStatusResult, "FCG_CONFIRMED_FAILED");
+        if (transitioned == 0) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_FAILED_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId);
+            return;
+        }
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.FAILED, "FCG_CONFIRMED_FAILED");
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
@@ -226,7 +231,13 @@ public class PgFinalConfirmationGate {
     // -----------------------------------------------------------------------
 
     private void handleQuarantined(String orderId, String reasonCode) {
-        pgInboxRepository.transitToQuarantined(orderId, reasonCode);
+        // handleApproved 와 동일한 이유로 전이를 발행 행 저장보다 먼저 수행한다.
+        boolean transitioned = pgInboxRepository.transitToQuarantined(orderId, reasonCode);
+        if (!transitioned) {
+            LogFmt.warn(log, LogDomain.PG, EventType.PG_FCG_QUARANTINED_GUARD_BLOCKED,
+                    () -> "orderId=" + orderId + " reasonCode=" + reasonCode);
+            return;
+        }
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, reasonCode);
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());

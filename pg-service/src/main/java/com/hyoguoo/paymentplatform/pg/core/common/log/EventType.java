@@ -41,8 +41,14 @@ public enum EventType {
     /** 벤더가 부분 취소로 응답해 확정 실패 대신 전용 사유로 격리한 경우. */
     PG_FCG_PARTIAL_CANCELED,
     PG_FCG_APPROVED,
+    /** transitToApproved 가드(경합으로 이미 종결)에 걸려 승인 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_FCG_APPROVED_GUARD_BLOCKED,
     PG_FCG_FAILED,
+    /** transitToFailed 가드(경합으로 이미 종결)에 걸려 실패 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_FCG_FAILED_GUARD_BLOCKED,
     PG_FCG_QUARANTINED,
+    /** transitToQuarantined 가드(경합으로 이미 종결)에 걸려 격리 발행 행 저장 + 이벤트 발행을 하지 않은 경우. */
+    PG_FCG_QUARANTINED_GUARD_BLOCKED,
 
     /** 관리자 벤더 상태 조회 — 조회 과정의 예외(게이트웨이 예외·미처리 주문 예외 등)를 확인불가로 접은 경우. */
     PG_VENDOR_STATUS_QUERY_INDETERMINATE,
