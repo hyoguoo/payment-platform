@@ -135,7 +135,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 벤더 전략 3종의 중복 승인 이벤트 발행 제거
-- [ ] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
+- [x] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
 - [ ] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
 - [ ] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
 - [ ] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
@@ -206,7 +206,19 @@ flowchart TD
 - `./gradlew :pg-service:test :pg-service:integrationTest` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `DuplicateApprovalDetectedEvent` 타입과 `DuplicateApprovalHandler.onDuplicateApprovalDetected`(`@EventListener`) 를 삭제했다. 부수적으로 그 메서드만 쓰던 `EventType.PG_DUPLICATE_EVENT_RECEIVED` 로그 이벤트 상수도 함께 지웠다(직접 결과로 생긴 고아 코드 — 별도 범위 확장 아님).
+>
+> `pg/mock/FakePgGatewayAdapter` 는 13개 테스트가 공유하는 대역이라 먼저 컴파일 파급을 확인했다. `duplicateHandledExceptionWithEvent` / `applicationEventPublisher` 필드 / `setApplicationEventPublisher` 세 가지를 걷어내고, 멱등 모드 duplicate 흡수가 예외만 던지도록 되돌렸다. `PgSelfLoopDuplicateAbsorptionIntegrationTest` 의 `setUp` 에서 이벤트를 핸들러로 되쏘던 `dispatchingPublisher` 배선을 없애고 순수 no-op publisher 로 교체했다 — `DuplicateApprovalHandler` 는 이제 `PgVendorCallService.applyOutcome` 의 예외 catch 경로로만 호출된다.
+>
+> `DuplicateApprovalHandlerListenerTest` 는 삭제했다(수신 메서드 자체가 없어졌으므로 대상 상실).
+>
+> `DuplicateApprovalHandlerCircularDependencyTest` 는 **조정해서 유지**했다 — 5개 단언(생성자 첫 파라미터/`@Lazy` 부재/selector 필드 존재/`PgGatewayPort` 필드 부재/Toss·NicePay 전략의 핸들러 필드 부재)이 이벤트 삭제와 무관하게 지금도 성립하는 구조적 불변식이라 근거가 사라지지 않았다. Javadoc 만 "ApplicationEvent 패턴으로 cycle 단절"이라는 설명을 "전략은 예외만 던지고 `PgVendorCallService` 가 직접 호출한다"는 실제 구조로 정정했다.
+>
+> `TossPaymentGatewayStrategyDuplicateEventTest` 는 Task 1 에서 이미 이벤트 픽스처 없는 형태로 정리돼 있어 추가 변경이 없었다.
+>
+> `PgSelfLoopDuplicateAbsorptionIntegrationTest` 에 발행 건수 단언(RED)을 추가했다 — self-loop 재호출 뒤 새로 생기는 pg_outbox row 가 정확히 1건이어야 한다는 단언으로, 이벤트 갈래가 남아 있던 시점에는 이중 호출로 2건이 나와 실패했다(`expected: 1, but was: 2`). GREEN 이후 1건으로 통과.
+>
+> `./gradlew :pg-service:test` 435건, `./gradlew :pg-service:integrationTest` 48건 모두 통과.
 
 ---
 
