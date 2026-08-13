@@ -140,7 +140,7 @@ flowchart TD
 - [x] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
 - [x] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
 - [x] Task 6: 관문 결과 분포 지표
-- [ ] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
+- [x] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
 - [ ] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
 - [ ] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - [ ] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
@@ -403,7 +403,17 @@ flowchart TD
 - `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentConfirmResultUseCase` 에 사유 상수 `REASON_FCG_PARTIAL_CANCELED`("FCG_PARTIAL_CANCELED")를 신설했다 — 서비스 간 공통 모듈이 없어 값만 pg 쪽 `PgFinalConfirmationGate.REASON_FCG_PARTIAL_CANCELED` 와 일치시켰다. 기존 `AMOUNT_MISMATCH`(`PaymentErrorCode.AMOUNT_MISMATCH.name()`)가 양쪽에 각자 상수로 있는 선례를 따르되, 이 값은 payment 자신이 발생시키는 에러가 아니라 pg 가 보낸 격리 사유를 그대로 비교만 하는 용도라 `PaymentErrorCode` 열거형(HTTP 응답 메시지를 겸함)에 얹지 않고 유스케이스 클래스의 private 상수로 뒀다.
+>
+> `handleQuarantined` 가 `reasonCode` 를 판정해 `FCG_PARTIAL_CANCELED` 일 때만 `stockCachePort.compensateAtomic` 호출을 건너뛴다. 격리 전이(`quarantineCompensationHandler.handle`)는 사유와 무관하게 그대로 수행한다 — 재고 보상 여부만 갈리고 격리 상태 전이 자체는 갈리지 않는다.
+>
+> 건너뛴 경우를 관측할 수 있도록 `EventType.PAYMENT_CONFIRM_RESULT_QUARANTINE_STOCK_HELD` 로그를 남긴다.
+>
+> `handleQuarantined` Javadoc 에 재고가 왜 즉시 풀리지 않는지, 언제 풀리는지(`QuarantineResolveUseCase.compensateIfDecremented` 가 관리자 종결 시점에 `decrement:done` 흔적을 확인하고서만 복원)와 그 흔적의 8일 수명(`StockCacheRedisAdapter.DEDUP_TTL_SECONDS` = 691200초, `STOCK_COMMITTED_TTL` 과 동일 근거)을 적었다.
+>
+> RED 단계에서 `PaymentConfirmResultUseCaseHandleQuarantinedTest` 에 4개 테스트를 추가해 기존 구현(사유 무관 항상 즉시 보상) 위에 얹었다 — `격리_부분취소사유면_즉시_재고보상을_호출하지_않는다` 1건만 실패(보상 mock 에 원치 않는 상호작용 발생)를 확인했고, 나머지 3건(격리 전이는 그대로 수행/조회 실패 사유는 기존대로 즉시 보상/벤더 미결론·금액 불일치 사유도 즉시 보상)은 기존 동작과 같아 이미 통과 상태였다 — 이 태스크가 유일하게 바꾸는 분기는 부분 취소 사유 하나뿐이므로 나머지는 회귀 고정 성격이다. GREEN 이후 4건 모두 통과.
+>
+> `./gradlew :payment-service:test` 622건 전부 통과.
 
 ---
 
