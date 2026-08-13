@@ -11,6 +11,7 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
@@ -86,7 +87,8 @@ class PgFinalConfirmationGateTest {
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         fcg = new PgFinalConfirmationGate(
                 selector, inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, meterRegistry);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, meterRegistry,
+                new PgDlqReachMetrics(meterRegistry));
 
         // inbox를 IN_PROGRESS 상태로 사전 설정 (재시도 소진 직후 상태)
         PgInbox inbox = PgInbox.of(
@@ -535,6 +537,12 @@ class PgFinalConfirmationGateTest {
         assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(1.0);
         assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(1.0);
         assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(1.0);
+
+        // then — 격리 도달 카운터(PgDlqReachMetrics)는 네 격리 사유에서만 증가하고
+        // 승인·실패 종결에서는 증가하지 않는다.
+        assertThat(reachCounterValue())
+                .as("격리로 종결된 4건에서만 격리 도달 카운터가 증가해야 한다")
+                .isEqualTo(4.0);
     }
 
     @Test
@@ -557,6 +565,9 @@ class PgFinalConfirmationGateTest {
         assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(0.0);
         assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(0.0);
         assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(0.0);
+
+        // then — 격리로 반영되지 않았으므로 격리 도달 카운터도 증가하지 않는다
+        assertThat(reachCounterValue()).isEqualTo(0.0);
     }
 
     /**
@@ -585,6 +596,12 @@ class PgFinalConfirmationGateTest {
                 .tag("outcome", outcomeTag)
                 .counter();
         assertThat(counter).as("outcome=%s 카운터가 사전 등록돼 있어야 한다", outcomeTag).isNotNull();
+        return counter.count();
+    }
+
+    private double reachCounterValue() {
+        Counter counter = meterRegistry.find("pg_retry_exhausted_quarantine_total").counter();
+        assertThat(counter).as("격리 도달 카운터가 사전 등록돼 있어야 한다").isNotNull();
         return counter.count();
     }
 
@@ -676,6 +693,11 @@ class PgFinalConfirmationGateTest {
         @Bean
         MeterRegistry meterRegistry() {
             return new SimpleMeterRegistry();
+        }
+
+        @Bean
+        PgDlqReachMetrics pgDlqReachMetrics(MeterRegistry meterRegistry) {
+            return new PgDlqReachMetrics(meterRegistry);
         }
 
         @Bean
