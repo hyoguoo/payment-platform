@@ -19,6 +19,14 @@ import org.springframework.stereotype.Component;
  * DLQ outbox 가 중복 INSERT 될 수 있어(over-count), 멱등이 보장되는 전이 시점이
  * alert 임계 기준으로 정확하다(결정 노트 참조).
  *
+ * <p><b>의미 범위</b> — 관문이 배선되기 전에는 소진 = 격리였으므로 이 카운터가 "소진이
+ * 발생했다"는 신호를 대리했다. 지금은 소진 건 대부분이 벤더 재조회로 자동 승인·자동 실패로
+ * 갈리고 격리로 남는 건 네 사유(조회 실패·금액 불일치·부분 취소·벤더 미결론) 뿐이다. 그래서
+ * 이 카운터는 이제 "소진 건 전체"가 아니라 <b>"자동 확정하지 못해 사람에게 넘어간 건"</b>만
+ * 센다 — {@link com.hyoguoo.paymentplatform.pg.application.service.PgFinalConfirmationGate} 의
+ * 관문 결과 분포 카운터가 가진 격리 태그 4종 합과 같은 값이다. 좁아진 의미 그대로 사람 개입이
+ * 필요한 건수를 보는 지표로 유지한다 — 소진 발생 자체를 보려면 관문 결과 카운터 전체 합을 쓴다.
+ *
  * <p>라벨 없음(단일 카운터) — 발생 빈도 추적이 목적이라 고카디널리티 라벨을 두지 않는다.
  *
  * <p>{@link #record} 는 throw-free 계약을 유지한다. Micrometer Counter.increment() 자체는

@@ -26,7 +26,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "DLQ 앱 도달 카운터 증가"
-              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함)."
 
   # (b) .dlq 토픽 offset increase > 0 → DlqTopicOffsetRising FIRING
   # kafka-exporter offset 증가: t=3m부터 offset 상승
@@ -84,7 +84,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "DLQ 앱 도달 카운터 증가"
-              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함)."
       - eval_time: 5m
         alertname: DlqTopicOffsetRising
         exp_alerts: []
@@ -133,13 +133,14 @@ tests:
         alertname: DlqTopicOffsetRising
         exp_alerts: []
 
-  # (g) pg retry 소진 격리 카운터만↑(payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
-  # OR 분기 pg 경로 회귀 고정: pg_retry_exhausted_quarantine_total 단독 증가 시 발화 검증.
+  # (g) pg 관문 결과 카운터의 격리 태그만↑(payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
+  # OR 분기 pg 경로 회귀 고정: pg_final_confirmation_outcome_total{outcome="indeterminate"} 단독
+  # 증가 시 발화 검증(격리 사유로 종결되는 기존 경로).
   # payment_eos_commit_failure_dlq_total 평탄(increase=0) → EOS 경로 분기 미발화.
-  # t=3m: increase(pg_retry[5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  # t=3m: increase(outcome[5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
   - interval: 1m
     input_series:
-      - series: 'pg_retry_exhausted_quarantine_total'
+      - series: 'pg_final_confirmation_outcome_total{outcome="indeterminate"}'
         values: '0 0 0 1 2 3'
       - series: 'payment_eos_commit_failure_dlq_total'
         values: '0 0 0 0 0 0'
@@ -151,4 +152,24 @@ tests:
               severity: warning
             exp_annotations:
               summary: "DLQ 앱 도달 카운터 증가"
-              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg retry 소진 격리 발생."
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함)."
+
+  # (h) 소진 건이 전부 자동 승인으로 종결(격리 없음, payment_eos 평탄)해도
+  # DlqAppCounterRising FIRING — 격리 도달만 세던 이전 표현식이 놓치던 신호를 복원했는지 검증.
+  # outcome="approved" 만 증가하고 격리 계열 태그는 관측되지 않는(no data) 입력.
+  # t=3m: increase(outcome{approved}[5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'pg_final_confirmation_outcome_total{outcome="approved"}'
+        values: '0 0 0 1 2 3'
+      - series: 'payment_eos_commit_failure_dlq_total'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DlqAppCounterRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 앱 도달 카운터 증가"
+              description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함)."

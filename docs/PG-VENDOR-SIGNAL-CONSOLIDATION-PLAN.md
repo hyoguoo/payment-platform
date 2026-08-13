@@ -144,7 +144,7 @@ flowchart TD
 - [x] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
 - [x] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - [x] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
-- [ ] Task 11: 소진 도달 알람 표현식 재정의
+- [x] Task 11: 소진 도달 알람 표현식 재정의
 - [ ] Task 12: 접수대장 유일 제약 동시 삽입 검증
 
 ## 태스크
@@ -562,7 +562,30 @@ flowchart TD
 - 자동 확정만 발생한 입력에서도 알람이 발화하는 케이스가 테스트에 있음
 
 **완료 결과**
-> (execute에서 채움)
+> `dlq.yml` 의 `DlqAppCounterRising` pg 분기를 `increase(pg_retry_exhausted_quarantine_total[5m]) > 0` 에서
+> `sum(increase(pg_final_confirmation_outcome_total[5m])) > 0` 으로 바꿨다 — outcome 태그를 가리지 않고
+> 합산해, 자동 승인·자동 실패로 빠지는 소진 건까지 "소진이 발생했다"는 신호로 잡는다. 알람 주석과
+> description 문구도 "격리 발생"에서 "자동 승인·자동 실패·격리를 포함한 종결 발생"으로 갱신했다.
+>
+> `dlq_test.yml` 의 기존 pg 분기 케이스(g)는 시리즈를 `pg_retry_exhausted_quarantine_total` 에서
+> `pg_final_confirmation_outcome_total{outcome="indeterminate"}` 로 바꿔 격리 경로가 여전히 잡히는지
+> 확인한다. 신규 케이스(h)를 추가해 `outcome="approved"` 만 증가하고 격리 계열 태그는 전혀 관측되지
+> 않는 입력에서도 발화하는지 확인한다 — 이 케이스가 이번 변경의 핵심 회귀 고정이다. 기존
+> 표현식이었다면 격리 없이 자동 승인만 발생한 이 입력에서 알람이 뜨지 않았을 것이다.
+>
+> `PgDlqReachMetrics` Javadoc 에 의미 범위 절을 추가했다 — 이 카운터는 삭제하지 않고 QUARANTINED
+> 전이 지점 그대로 유지하되, 이제는 "소진 건 전체"가 아니라 "자동 확정하지 못해 사람에게 넘어간
+> 건"만 센다는 사실과, 소진 발생 자체를 보려면 관문 결과 카운터 합을 봐야 한다는 사실을 적었다.
+>
+> 로컬에 `promtool` 이 설치돼 있지 않아(`which promtool` 미발견), `docs/smoke/alert-firing-check.md`
+> 가 안내하는 Docker 경유 실행으로 대체했다 — `docker run --rm --entrypoint /bin/promtool ...
+> test rules /work/rules/tests/dlq_test.yml` 로 DLQ 픽스처 8케이스 SUCCESS, 이어서
+> `scripts/smoke/alert-rules-promtool.sh` 로 4그룹(코디네이터/가드skip/DLQ/가용성) 전체 26케이스
+> SUCCESS 를 확인했다(스크립트 로그의 "25 케이스" 표기는 케이스 하나가 늘기 전 값이라 실제
+> 실행 결과와는 별개로 갱신이 남아 있다 — 이번 태스크 범위 밖 파일이라 손대지 않았다).
+>
+> `PgDlqReachMetrics.java` 는 Javadoc 만 바꿨지만 코드 파일이라 `./gradlew test` 를 전체 실행해
+> 회귀가 없음을 확인했다(pg-service 453건 포함 전 모듈 통과).
 
 ---
 
