@@ -48,6 +48,14 @@ import org.springframework.transaction.annotation.Transactional;
  * 예외만 잡으면 처리 기록 없는 주문에 벤더 전략이 던지는 다른 예외가 그대로 새어나간다.
  * 관리자 화면 벤더 조회 서비스와 같은 형태다.
  *
+ * <p><b>TX 경계 분리</b> — {@link PgVendorCallService} 의 invokeVendor/applyOutcome 분리와 같은 이유다.
+ * 벤더 조회는 HTTP 호출이라 DB 커넥션을 쥔 채 대기하면 안 된다. 호출자는 두 메서드를 순서대로 호출한다:
+ * <ol>
+ *   <li>{@link #invokeVendor} — TX 없음. 벤더 getStatus 1회 호출 후 결과를 3-way 결과로 반환.</li>
+ *   <li>{@link #applyOutcome} — {@code @Transactional}. 반환값을 받아 pg_inbox 전이 + pg_outbox INSERT
+ *       + 이벤트 발행을 TX 안에서 수행.</li>
+ * </ol>
+ *
  * <p>payment-service는 FCG 존재를 모른다 (캡슐화).
  * 호출 주체는 후속 Phase에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정.
  */
@@ -90,7 +98,7 @@ public class PgFinalConfirmationGate {
     // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
-    private sealed interface FcgOutcome
+    sealed interface FcgOutcome
             permits FcgOutcome.Approved, FcgOutcome.Failed, FcgOutcome.Quarantined {
 
         record Approved(String storedStatusResult, String approvedAtRaw) implements FcgOutcome {}
@@ -99,21 +107,33 @@ public class PgFinalConfirmationGate {
     }
 
     // -----------------------------------------------------------------------
-    // 공개 API
+    // 공개 API — TX 분리 버전. 호출자가 두 메서드를 이 순서로 호출한다.
     // -----------------------------------------------------------------------
 
     /**
-     * 재시도 소진 후 최종 상태 확인을 단일 TX 내에서 수행한다.
-     * FCG 불변: getStatusByOrderId() 1회만 호출. 예외 → 재시도 없이 QUARANTINED.
+     * 벤더 상태 조회 전용 — TX 없음.
+     * FCG 불변: getStatusByOrderId() 1회만 호출. 예외 → 재시도 없이 QUARANTINED 결과로 흡수.
      *
      * @param orderId    주문 ID
      * @param eventUuid  이벤트 UUID (향후 멱등성 키로 활용 예정)
      * @param amount     원화 금액
      * @param vendorType PG 벤더 구분 — PgStatusLookupStrategySelector 분기에 사용
+     * @return 벤더 조회 결과를 담은 3-way 결과 ({@link #applyOutcome} 에 그대로 전달)
+     */
+    public FcgOutcome invokeVendor(String orderId, String eventUuid, long amount, PgVendorType vendorType) {
+        return queryStatusOnce(orderId, amount, vendorType);
+    }
+
+    /**
+     * 조회 결과 반영 — {@code @Transactional}.
+     * {@link #invokeVendor} 반환값을 받아 pg_inbox 전이 + pg_outbox INSERT + 이벤트 발행을 TX 안에서 수행한다.
+     *
+     * @param outcome invokeVendor 반환값
+     * @param orderId 주문 ID
+     * @param amount  원화 금액
      */
     @Transactional
-    public void performFinalCheck(String orderId, String eventUuid, long amount, PgVendorType vendorType) {
-        FcgOutcome outcome = queryStatusOnce(orderId, amount, vendorType);
+    public void applyOutcome(FcgOutcome outcome, String orderId, long amount) {
         dispatchOutcome(outcome, orderId, amount);
     }
 

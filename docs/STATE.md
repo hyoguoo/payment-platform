@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-13
+> 최종 수정: 2026-08-14
 
 ## 활성 작업
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 5: 관문 트랜잭션 분리 — 조회는 트랜잭션 밖, 반영만 트랜잭션 안
+- **활성 태스크**: Task 6: 관문 결과 분포 지표 — 승인·실패·격리 사유별 카운터 노출
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 

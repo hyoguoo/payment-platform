@@ -138,7 +138,7 @@ flowchart TD
 - [x] Task 2: 중복 승인 이벤트 타입·수신 메서드 삭제와 발행 건수 단언
 - [x] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
 - [x] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
-- [ ] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
+- [x] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
 - [ ] Task 6: 관문 결과 분포 지표
 - [ ] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
 - [ ] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
@@ -326,7 +326,17 @@ flowchart TD
 - 위 테스트 pass, `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `performFinalCheck`(단일 `@Transactional` 진입점)를 `PgVendorCallService` 와 같은 모양의 두 단계로 쪼갰다 — `invokeVendor`(TX 없음, 벤더 조회 1회 + 결과를 `FcgOutcome` 으로 반환)와 `applyOutcome`(`@Transactional`, 반환값을 받아 pg_inbox 전이 + pg_outbox INSERT + 이벤트 발행). 호출자가 두 메서드를 이 순서로 직접 호출한다 — 같은 클래스 안에서 한쪽이 다른 쪽을 호출하는 래퍼를 두지 않았다. 그런 래퍼를 두면 `this.applyOutcome(...)` 호출이 Spring AOP self-invocation 함정에 걸려 `@Transactional` 이 프록시를 거치지 않고 무시된다 — `PgVendorCallService` 가 같은 이유로 워커가 두 메서드를 직접 순서대로 부르는 것과 동일 구조다.
+>
+> `FcgOutcome` sealed interface 를 `private` 에서 package-private 으로 열었다 — 이제 `invokeVendor` 반환 타입이자 `applyOutcome` 파라미터 타입으로 공개 API 표면에 등장하기 때문이다. Task 9(같은 패키지의 `PgDlqService`)가 이 타입을 그대로 받아쓸 수 있다.
+>
+> 클래스 Javadoc 에 두 단계 호출 순서와 self-invocation 회피 이유를 적었다.
+>
+> 테스트는 `PgInboxPendingServiceTest` 의 TX 활성 여부 구조적 검증 방식을 그대로 따랐다 — `@EnableTransactionManagement` + no-op TX manager(`TransactionSynchronizationManager` 동기화만 수행) 로 최소 Spring 컨텍스트를 구성하고, 조회 시점(`PgStatusLookupPort.getStatusByOrderId`)과 반영 시점(`PgInboxRepository.transitToApproved`) 각각에서 `TransactionSynchronizationManager.isActualTransactionActive()` 를 캡처하는 전용 Fake 를 심었다. `관문_조회단계는_트랜잭션을_열지_않는다`는 조회 시점 캡처가 `false`, `관문_반영단계만_트랜잭션안에서_실행된다`는 반영 시점 캡처가 `true` 임을 확인한다.
+>
+> 기존 14개 케이스는 `fcg.performFinalCheck(...)` 단일 호출을 `fcg.invokeVendor(...)` → `fcg.applyOutcome(outcome, ...)` 두 단계 호출로 재작성했다 — 판정 로직 자체는 손대지 않았다.
+>
+> RED 단계는 컴파일 실패로 확인했다(Task 1 선례와 동일 방식) — 테스트만 새 시그니처로 먼저 고치고 프로덕션은 그대로 둔 상태에서 `./gradlew :pg-service:compileTestJava` 31건 에러(`invokeVendor`/`applyOutcome`/`FcgOutcome` 심볼 없음)를 확인했다. GREEN 이후 `./gradlew :pg-service:test` 449건 전부 통과.
 
 ---
 
