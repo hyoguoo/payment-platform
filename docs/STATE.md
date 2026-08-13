@@ -1,13 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-12
+> 최종 수정: 2026-08-13
 
 ## 활성 작업
 
-- **주제**: 중복 승인 응답을 받은 결제의 종결
-- **단계**: ship
-- **이슈/브랜치**: #140
-- **파일**: docs/topics/PG-DUPLICATE-APPROVAL-SETTLEMENT.md / docs/PG-DUPLICATE-APPROVAL-SETTLEMENT-PLAN.md
+- **주제**: 없음 (idle)
 
 ## 재개 메모
 
@@ -23,7 +20,7 @@
 
 ## 최근 완료
 
+- **PG-DUPLICATE-APPROVAL-SETTLEMENT** (2026-08-13) — docs/archive/pg-duplicate-approval-settlement/COMPLETION-BRIEFING.md
 - **PG-MESSAGE-DEDUPE-LAYER-REMOVAL** (2026-08-11) — docs/archive/pg-message-dedupe-layer-removal/COMPLETION-BRIEFING.md
-- **RETRY-EXHAUSTION-DISPOSITION** (2026-08-06) — docs/archive/retry-exhaustion-disposition/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

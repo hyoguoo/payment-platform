@@ -126,7 +126,8 @@ sequenceDiagram
     - **승인(2xx)** → `pg_inbox APPROVED` + `pg_outbox` `events.confirmed` APPROVED 적재
     - **확정 거절(4xx, `PgGatewayNonRetryableException`)** → `FAILED` + `events.confirmed` FAILED
     - **일시 오류(5xx/timeout, `PgGatewayRetryableException`)** → `handleRetry`: `shouldRetry(attempt)`면 같은 토픽 self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가, 한도(4) 소진 시 DLQ. 시도횟수는 `pg_inbox.attempt`(Flyway V5)에 영속돼 한도 도달 시 DLQ→QUARANTINED 자동 격리가 작동한다(2026-06-25 도입)
-    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **DB 존재·금액 일치면 APPROVED 재발행, 금액 불일치/벤더 INDETERMINATE면 QUARANTINED**
+    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다
+    - **겹침 거부(처리 중 재요청)** → 벤더가 아직 처리 중이라며 거부한 것이므로 시도 횟수도 재시도 명령도 건드리지 않고 물러난다. 원래 호출이 결과를 낸다
 21. **결과 되쏨** — pg outbox relay 가 **`payment.events.confirmed`** 발행 (`PgOutboxRelayService` → `PgEventPublisher`)
     - DLQ 경로 → `PaymentConfirmDlqConsumer` → `PgDlqService` 가 `pg_inbox QUARANTINED` 전이 후 `events.confirmed` QUARANTINED 발행
 
@@ -388,7 +389,7 @@ flowchart TD
 문서를 실제 코드와 대조하며 확인한 사항. 정정 반영 완료 + 미해결 의문점.
 
 - **단계 4 진입은 `PENDING`을 경유한다** — 컨슈머/리스너(`PgConfirmService`)는 `pg_inbox PENDING` INSERT + 채널 적재까지만 하고, Worker(`PgInboxProcessor.processPending`)가 `PENDING→IN_PROGRESS` CAS(SKIP LOCKED) 후 벤더를 호출한다. (`NONE→IN_PROGRESS` 직접 전이 아님)
-- **멱등 응답이 항상 APPROVED는 아니다** — `DuplicateApprovalHandler`는 vendor 재조회 후 금액 불일치·벤더 INDETERMINATE면 `QUARANTINED`로 종결.
+- **멱등 응답이 항상 APPROVED는 아니다** — `DuplicateApprovalHandler`는 vendor 재조회 후 금액이 불일치하면 `QUARANTINED`로 종결한다. 금액이 맞아도 접수 기록이 아직 안 끝났는데 승인이 확인되지 않으면 상태를 바꾸지 않고 물러난다 — 아직 처리 중일 수 있는 결제를 성급히 종결시키지 않기 위함이고, 남겨두면 청소 작업이 다시 집어간다.
 - **pg self-loop `attempt` 한도/DLQ 작동 (2026-06-25 도입된 DLQ 도달 보장 설계로 해소)**
   - 과거엔 `attempt`가 런타임에서 항상 1로 고정돼(relay 헤더 미발행 + `pg_inbox` attempt 컬럼 부재 + `resolveAttempt()=1`) 한도/DLQ에 도달하지 못했다.
   - 이제 시도횟수를 `pg_inbox.attempt`(Flyway V5)에 영속(SoT)해 Worker가 읽고, retry 분기에서 결과 반영 트랜잭션 안에서 증가시킨다.

@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -133,6 +133,8 @@ process(result);  // result 가 null 일 수 있음
 - pg-service 측에서 raw 문자열 보존 → `approvedAtRaw(String)` 으로 ConfirmedEventPayload 에 전달(offset 보존, Kafka contract 무변경)
 - payment 측에서 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 변환 — **`.toLocalDateTime()` 금지**. offset 을 버리면 KST(+09:00) 응답이 UTC 로 오인돼 정산·감사 앵커(`approvedAt`)가 최대 9시간 틀어진다. `.toInstant()` 는 offset 을 보존한 절대 시점이라 정산 시각 정합.
 - `parseApprovedAt` 경로에 `.toLocalDateTime()` 잔존 0건(AC9 grep 가드).
+
+**조회 경로 확장 (PG-DUPLICATE-APPROVAL-SETTLEMENT, 2026-08-13)**: 위 처방은 승인 응답(`PgConfirmResult`)만 덮고 있었다. 상태 조회 결과(`PgStatusResult`)에는 대응 필드가 없어 세 벤더 전략의 `toStatusResult` 가 전부 offset 을 버린 `LocalDateTime` 만 넘겼고, 조회 결과로 승인을 확정하는 `DuplicateApprovalHandler` 의 페이로드 빌더는 아예 `OffsetDateTime.now(clock)` 를 썼다. 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인이 실제 승인 시각 대신 재조정 시각으로 기록돼, 자정 경계에서 정산일이 밀린다. `PgStatusResult.approvedAtRaw` 를 추가해 세 전략이 원문을 싣고 페이로드가 그 값을 쓰도록 했다 — 현재 시각은 원문 부재 시 대체 자리에만 남는다.
 
 ## 14. ddl-auto: update 와 Flyway 혼용
 
