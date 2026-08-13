@@ -240,4 +240,34 @@ class FakePgGatewayStrategyTest {
         }
         return -1;
     }
+
+    @Test
+    void 확정은_매번_재시도가능실패_조회는_승인을_반환한다() {
+        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0);
+        PgConfirmRequest request = requestWithKey("order-drill-lost", "fake-lost-1234");
+
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+
+        PgStatusResult statusResult = strategy.getStatusByOrderId(request.orderId());
+
+        assertThat(statusResult.status()).isEqualTo(PgPaymentStatus.DONE);
+    }
+
+    @Test
+    void 조회_승인응답의_금액은_요청금액과_같다() {
+        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0);
+        PgConfirmRequest request = requestWithKey("order-drill-lost-amount", "fake-lost-amount");
+
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+
+        PgStatusResult statusResult = strategy.getStatusByOrderId(request.orderId());
+
+        assertThat(statusResult.amount()).isEqualTo(request.amount());
+    }
 }
