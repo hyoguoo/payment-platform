@@ -16,11 +16,15 @@ import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmStatus;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayload;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -61,7 +65,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PgFinalConfirmationGate {
 
     private static final String REASON_FCG_INDETERMINATE = "FCG_INDETERMINATE";
@@ -87,12 +90,77 @@ public class PgFinalConfirmationGate {
             PgPaymentStatus.EXPIRED
     );
 
+    /**
+     * 관문 결과 분포 카운터. 태그 {@code outcome} 6종 — {@link #handleApproved}/{@link #handleFailed}/
+     * {@link #handleQuarantined} 가 전이 반영을 확인한 뒤에만 증가시킨다(반영 0건 가드에 걸린 결과는
+     * 아직 종결되지 않았으므로 세지 않는다). 소진 도달 알람이 이 카운터의 합산을 "소진이 발생했다"는
+     * 신호로 삼는다 — 관문을 거친 결과는 하나도 빠짐없이 어느 태그로든 잡혀야 한다.
+     */
+    static final String OUTCOME_COUNTER_NAME = "pg_final_confirmation.outcome_total";
+
+    private static final String TAG_OUTCOME = "outcome";
+    private static final String OUTCOME_APPROVED = "approved";
+    private static final String OUTCOME_FAILED = "failed";
+    private static final String OUTCOME_INDETERMINATE = "indeterminate";
+    private static final String OUTCOME_VENDOR_UNSETTLED = "vendor_unsettled";
+    private static final String OUTCOME_PARTIAL_CANCELED = "partial_canceled";
+    private static final String OUTCOME_AMOUNT_MISMATCH = "amount_mismatch";
+
     private final PgStatusLookupStrategySelector pgStatusLookupStrategySelector;
     private final PgInboxRepository pgInboxRepository;
     private final PgOutboxRepository pgOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ConfirmedEventPayloadSerializer payloadSerializer;
     private final Clock clock;
+    private final Map<String, Counter> outcomeCounters;
+
+    public PgFinalConfirmationGate(
+            PgStatusLookupStrategySelector pgStatusLookupStrategySelector,
+            PgInboxRepository pgInboxRepository,
+            PgOutboxRepository pgOutboxRepository,
+            ApplicationEventPublisher applicationEventPublisher,
+            ConfirmedEventPayloadSerializer payloadSerializer,
+            Clock clock,
+            MeterRegistry meterRegistry
+    ) {
+        this.pgStatusLookupStrategySelector = pgStatusLookupStrategySelector;
+        this.pgInboxRepository = pgInboxRepository;
+        this.pgOutboxRepository = pgOutboxRepository;
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.payloadSerializer = payloadSerializer;
+        this.clock = clock;
+        this.outcomeCounters = buildOutcomeCounters(meterRegistry);
+    }
+
+    /**
+     * outcome 태그 6종을 0으로 사전 등록한다 — 기동 직후 Prometheus 스크레이프에 "No data" 없이
+     * 0 시리즈가 노출됨. 기존 지표 클래스({@link com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics}
+     * 등)의 eager 등록 방식을 따른다.
+     */
+    private static Map<String, Counter> buildOutcomeCounters(MeterRegistry meterRegistry) {
+        List<String> outcomes = List.of(
+                OUTCOME_APPROVED, OUTCOME_FAILED, OUTCOME_INDETERMINATE,
+                OUTCOME_VENDOR_UNSETTLED, OUTCOME_PARTIAL_CANCELED, OUTCOME_AMOUNT_MISMATCH
+        );
+        Map<String, Counter> counters = new LinkedHashMap<>();
+        for (String outcome : outcomes) {
+            counters.put(outcome, Counter.builder(OUTCOME_COUNTER_NAME)
+                    .description("Total number of PgFinalConfirmationGate outcomes by type")
+                    .tag(TAG_OUTCOME, outcome)
+                    .register(meterRegistry));
+        }
+        return Map.copyOf(counters);
+    }
+
+    private static String resolveQuarantineOutcomeTag(String reasonCode) {
+        return switch (reasonCode) {
+            case REASON_FCG_INDETERMINATE -> OUTCOME_INDETERMINATE;
+            case REASON_FCG_VENDOR_UNSETTLED -> OUTCOME_VENDOR_UNSETTLED;
+            case REASON_FCG_PARTIAL_CANCELED -> OUTCOME_PARTIAL_CANCELED;
+            case REASON_AMOUNT_MISMATCH -> OUTCOME_AMOUNT_MISMATCH;
+            default -> throw new IllegalStateException("알 수 없는 FCG 격리 사유: " + reasonCode);
+        };
+    }
 
     // -----------------------------------------------------------------------
     // FCG 3-way 결과 캡슐화 (try 블록 외부 변수 재할당 금지 대응) — sealed interface + record 패턴.
@@ -212,6 +280,7 @@ public class PgFinalConfirmationGate {
                     () -> "orderId=" + orderId);
             return;
         }
+        outcomeCounters.get(OUTCOME_APPROVED).increment();
 
         // 조회 응답의 승인 시각 원문을 그대로 싣는다. 원문이 없을 때만 Clock 기반 시각으로 대체한다.
         String resolvedApprovedAtRaw = approvedAtRaw != null ? approvedAtRaw : OffsetDateTime.now(clock).toString();
@@ -236,6 +305,7 @@ public class PgFinalConfirmationGate {
                     () -> "orderId=" + orderId);
             return;
         }
+        outcomeCounters.get(OUTCOME_FAILED).increment();
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.FAILED, "FCG_CONFIRMED_FAILED");
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());
@@ -258,6 +328,7 @@ public class PgFinalConfirmationGate {
                     () -> "orderId=" + orderId + " reasonCode=" + reasonCode);
             return;
         }
+        outcomeCounters.get(resolveQuarantineOutcomeTag(reasonCode)).increment();
 
         String payload = buildConfirmedPayload(orderId, ConfirmStatus.QUARANTINED, reasonCode);
         PgOutbox outbox = PgOutbox.create(PgTopics.EVENTS_CONFIRMED, orderId, payload, null, clock.instant());

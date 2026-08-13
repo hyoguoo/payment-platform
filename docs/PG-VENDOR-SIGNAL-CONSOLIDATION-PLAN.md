@@ -139,7 +139,7 @@ flowchart TD
 - [x] Task 3: 관문 결과 판정 재정비 — 금액 대조·부분 취소 분리·사유 4갈래·예외 포착 확대
 - [x] Task 4: 관문 반영 가드 — 전이 반영 행 수 확인과 승인 시각 원문 전달
 - [x] Task 5: 관문 트랜잭션 분리 — 조회는 밖, 반영만 안
-- [ ] Task 6: 관문 결과 분포 지표
+- [x] Task 6: 관문 결과 분포 지표
 - [ ] Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 (배선보다 먼저)
 - [ ] Task 8: 모의 벤더에 확정 실패 + 조회 승인 시나리오 추가
 - [ ] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
@@ -361,7 +361,19 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PgFinalConfirmationGate` 에 outcome 태그 6종(`approved`/`failed`/`indeterminate`/`vendor_unsettled`/`partial_canceled`/`amount_mismatch`)짜리 카운터 `pg_final_confirmation.outcome_total` 을 추가했다. `PgVendorCallService`(겹침 카운터)·`DuplicateApprovalHandler`(물러남 카운터)와 같은 방식으로 `MeterRegistry` 를 생성자 파라미터로 받아 필드에 `Counter` 를 직접 들고 있는 형태를 따랐다 — payment-service 쪽의 별도 `@Component` 지표 클래스 패턴 대신, pg-service 내 두 선례(단일 소유자·단일 호출처)를 따른 것이다. 태그가 6종으로 정적으로 고정돼 있어(동적 라벨 아님) `Map<String, Counter>` 를 생성자에서 즉시 빌드해 6개 시계열을 0으로 사전 등록한다.
+>
+> `@RequiredArgsConstructor` 를 걷어내고 수동 생성자로 바꿨다 — eager 등록 로직(`Counter.builder(...).register(meterRegistry)` 6회 호출)은 단순 필드 대입만 생성하는 Lombok 매크로로 표현할 수 없다. `PgVendorCallService`/`DuplicateApprovalHandler` 도 같은 이유로 수동 생성자다.
+>
+> 격리 결과는 사유 코드(`FCG_INDETERMINATE` 등 4종)를 outcome 태그로 변환하는 `resolveQuarantineOutcomeTag` 를 거친다 — 새 사유가 추가되는데 매핑을 빠뜨리면 `default` 분기가 `IllegalStateException` 을 던져 무태그 증가를 막는다.
+>
+> 카운터 증가 지점은 `handleApproved`/`handleFailed`/`handleQuarantined` 세 메서드 모두 **전이 반영 가드를 통과한 직후**(발행 행 저장보다 먼저)로 뒀다 — Task 4 가 만든 반영 0건 가드에 걸린 경우(경합으로 이미 종결된 기록)는 카운터를 올리지 않는다. 관문을 거친 결과가 하나도 빠짐없이 잡히되, 반영되지 않은 시도는 세지 않는다는 요구를 그대로 만족한다.
+>
+> RED 단계에서 테스트 파일만 새 생성자 시그니처(`MeterRegistry` 파라미터 추가)로 먼저 고쳐 `./gradlew :pg-service:compileTestJava` 컴파일 실패로 확인했다(Task 1·5 선례와 동일 방식) — "actual and formal argument lists differ in length" 1건. GREEN 이후 신규 테스트 2건(`관문_결과별로_카운터가_증가한다` — 6개 orderId 로 6가지 결과를 각각 유발해 태그별 카운터 1.0 확인, `관문_전이_반영0건이면_카운터를_올리지_않는다` — 이미 APPROVED 종결된 기록에 재호출해 6개 태그 모두 0.0 유지 확인) 모두 통과.
+>
+> TX 경계 분리 검증용 `TxBoundaryTestConfig`(Task 5) 는 `PgFinalConfirmationGate` 를 Spring 컨텍스트로 직접 띄우므로 `MeterRegistry` 빈을 추가했다 — 이 변경 없이는 생성자 파라미터 타입을 주입할 빈이 없어 컨텍스트 로딩이 실패한다.
+>
+> `./gradlew :pg-service:test` 451건 전부 통과(기존 449건 + 신규 2건).
 
 ---
 

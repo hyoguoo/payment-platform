@@ -6,7 +6,7 @@
 
 - **주제**: 벤더 응답 신호 경로 단일화 (PG-VENDOR-SIGNAL-CONSOLIDATION)
 - **단계**: execute
-- **활성 태스크**: Task 6: 관문 결과 분포 지표 — 승인·실패·격리 사유별 카운터 노출
+- **활성 태스크**: Task 7: 결제 쪽 부분 취소 사유 재고 보상 게이트 — 배선(Task 9)보다 먼저 가야 하는 순서 제약
 - **이슈/브랜치**: #142
 - **파일**: docs/topics/PG-VENDOR-SIGNAL-CONSOLIDATION.md / docs/PG-VENDOR-SIGNAL-CONSOLIDATION-PLAN.md
 
