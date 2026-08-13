@@ -14,12 +14,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
 /**
  * FakePgGatewayStrategy 의 겹친 호출(처리 중 거부) 재현 검증.
@@ -36,7 +34,7 @@ class FakePgGatewayStrategyConcurrentCallTest {
     private FakePgGatewayStrategy strategyWithLatency(long latencyMillis) {
         return new FakePgGatewayStrategy(
                 Clock.systemUTC(), new TossApiMetrics(new SimpleMeterRegistry()),
-                mock(ApplicationEventPublisher.class), new MockEnvironment(), 0.0, latencyMillis, latencyMillis);
+                new MockEnvironment(), 0.0, latencyMillis, latencyMillis);
     }
 
     @Test

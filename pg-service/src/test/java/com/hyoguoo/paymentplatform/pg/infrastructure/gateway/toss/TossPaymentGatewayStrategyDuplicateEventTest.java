@@ -1,81 +1,81 @@
 package com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
-import com.hyoguoo.paymentplatform.pg.application.service.DuplicateApprovalHandler;
+import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
+import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.dto.TossPaymentApiResponse;
+import com.hyoguoo.paymentplatform.pg.infrastructure.http.EncodeUtils;
+import com.hyoguoo.paymentplatform.pg.infrastructure.http.HttpOperator;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Arrays;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpHeaders;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.RestClientResponseException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
- * TossPaymentGatewayStrategy duplicate 분기 — ApplicationEvent 패턴 단위 테스트.
- *
- * <p>불변식:
- * <ul>
- *   <li>TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 함 — 직접 의존 제거</li>
- *   <li>TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 함 — 이벤트 발행 경로</li>
- *   <li>duplicate 감지 시 DuplicateApprovalDetectedEvent 가 발행되어야 함</li>
- * </ul>
+ * TossPaymentGatewayStrategy 중복 승인 응답(ALREADY_PROCESSED_PAYMENT) — 예외만 던지고
+ * 이벤트는 발행하지 않는지 검증한다.
  */
-@DisplayName("TossPaymentGatewayStrategy — ApplicationEvent 패턴 순환 의존 해소")
+@DisplayName("TossPaymentGatewayStrategy 중복 승인 응답 — 예외 단일 신호")
 class TossPaymentGatewayStrategyDuplicateEventTest {
 
-    /**
-     * TossPaymentGatewayStrategy 필드 중 DuplicateApprovalHandler 타입이 없어야 한다.
-     *
-     * <p>DuplicateApprovalHandler 직접 의존 대신 ApplicationEventPublisher 를 둬서 cycle 을 방지한다.
-     * cycle: TossPaymentGatewayStrategy → DuplicateApprovalHandler → PgStatusLookupPort(← Toss).
-     */
-    @Test
-    @DisplayName("Toss전략_DuplicateApprovalHandler_직접_필드_없어야_한다")
-    void Toss전략_DuplicateApprovalHandler_직접_필드_없어야_한다() {
-        boolean hasDuplicateApprovalHandlerField = Arrays.stream(TossPaymentGatewayStrategy.class.getDeclaredFields())
-                .anyMatch(field -> field.getType() == DuplicateApprovalHandler.class);
+    private static final String ORDER_ID = "order-duplicate-approval";
 
-        assertThat(hasDuplicateApprovalHandlerField)
-                .as("TossPaymentGatewayStrategy 에 DuplicateApprovalHandler 필드가 있으면 안 됨 — ApplicationEvent 패턴으로 cycle 단절")
-                .isFalse();
+    private HttpOperator httpOperator;
+    private TossPaymentGatewayStrategy strategy;
+
+    @BeforeEach
+    void setUp() {
+        httpOperator = mock(HttpOperator.class);
+        EncodeUtils encodeUtils = mock(EncodeUtils.class);
+        when(encodeUtils.encodeBase64(anyString())).thenReturn("dummy-basic");
+
+        Clock clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC);
+        strategy = new TossPaymentGatewayStrategy(
+                httpOperator, encodeUtils, new ObjectMapper(), clock);
+        ReflectionTestUtils.setField(strategy, "secretKey", "secret-dummy");
+        ReflectionTestUtils.setField(strategy, "tossApiUrl", "https://api.tosspayments.com");
     }
 
-    /**
-     * TossPaymentGatewayStrategy 필드 중 ApplicationEventPublisher 타입이 있어야 한다.
-     *
-     * <p>cycle 을 피하기 위해 DuplicateApprovalHandler 를 직접 호출하지 않고 ApplicationEventPublisher.publishEvent 로 이벤트를 발행한다.
-     */
     @Test
-    @DisplayName("Toss전략_ApplicationEventPublisher_필드_있어야_한다")
-    void Toss전략_ApplicationEventPublisher_필드_있어야_한다() {
+    @DisplayName("confirm_중복승인응답_이벤트를_발행하지_않고_예외만_던진다")
+    void confirm_중복승인응답_이벤트를_발행하지_않고_예외만_던진다() {
         boolean hasEventPublisherField = Arrays.stream(TossPaymentGatewayStrategy.class.getDeclaredFields())
-                .anyMatch(field -> field.getType() == ApplicationEventPublisher.class);
-
+                .map(Field::getType)
+                .anyMatch(type -> type == ApplicationEventPublisher.class);
         assertThat(hasEventPublisherField)
-                .as("TossPaymentGatewayStrategy 에 ApplicationEventPublisher 필드가 있어야 함 — 이벤트 발행 경로")
-                .isTrue();
-    }
+                .as("TossPaymentGatewayStrategy 에 ApplicationEventPublisher 필드가 남아 있으면 안 됨 — 이벤트 발행 경로 제거")
+                .isFalse();
 
-    /**
-     * PgConfirmRequest 인터페이스 — duplicate 감지 메서드 호출 시 DuplicateApprovalDetectedEvent 발행.
-     *
-     * <p>duplicate 분기 시 applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(...)) 가 호출돼야 한다.
-     */
-    @Test
-    @DisplayName("Toss전략_DuplicateApprovalDetectedEvent_클래스_존재해야_한다")
-    void Toss전략_DuplicateApprovalDetectedEvent_클래스_존재해야_한다() {
-        // DuplicateApprovalDetectedEvent 가 pg application 계층에 존재해야 함
-        boolean eventClassExists;
-        try {
-            Class.forName("com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent");
-            eventClassExists = true;
-        } catch (ClassNotFoundException e) {
-            eventClassExists = false;
-        }
+        String failBody = "{\"code\":\"ALREADY_PROCESSED_PAYMENT\",\"message\":\"이미 처리된 결제 입니다.\"}";
+        RestClientResponseException exception = new RestClientResponseException(
+                "Bad Request", 400, "Bad Request", new HttpHeaders(),
+                failBody.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        when(httpOperator.requestPost(anyString(), anyMap(), any(), eq(TossPaymentApiResponse.class)))
+                .thenThrow(exception);
 
-        assertThat(eventClassExists)
-                .as("DuplicateApprovalDetectedEvent 클래스가 pg.application.event 패키지에 존재해야 한다 (cycle 단절용 이벤트)")
-                .isTrue();
+        PgConfirmRequest request = new PgConfirmRequest(ORDER_ID, "pk-001", BigDecimal.valueOf(1000), PgVendorType.TOSS);
+
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayDuplicateHandledException.class);
     }
 }
