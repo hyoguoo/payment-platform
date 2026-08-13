@@ -145,7 +145,7 @@ flowchart TD
 - [x] Task 9: 실패 대기열 처리에서 격리 직행을 관문 호출로 교체
 - [x] Task 10: 대기열 소비부터 종결까지 실제 DB 통합 검증
 - [x] Task 11: 소진 도달 알람 표현식 재정의
-- [ ] Task 12: 접수대장 유일 제약 동시 삽입 검증
+- [x] Task 12: 접수대장 유일 제약 동시 삽입 검증
 
 ## 태스크
 
@@ -607,7 +607,11 @@ flowchart TD
 - `./gradlew :pg-service:test --rerun` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PgInboxRepositoryImplTest` 에 `insertPending — 같은 orderId 두 스레드 동시 삽입: 행은 하나만 생기고 같은 식별자를 받는다`를 추가했다. 같은 클래스의 `transitPendingToInProgress_skipLocked_concurrentWorkerSeesEmpty` 구성을 따라 `@Transactional(NOT_SUPPORTED)` 로 `@DataJpaTest` 외부 트랜잭션을 끄고, 두 스레드가 각자 독립 TX 에서 `insertPending` 을 부르게 했다. `CountDownLatch` 시작 신호로 두 스레드를 동시에 풀고, 완료 신호로 결과를 모은 뒤 두 반환 id 가 같은지와 행 수가 1건인지 확인한다.
+>
+> `insertPending` 은 `INSERT IGNORE` + `SELECT` 조합이라(별도 프로덕션 변경 없음) 이 태스크는 검증 전용이다 — 유일 제약이 실제 동시 경합에서도 행 1건과 동일 식별자 반환을 보장하는지 실제 DB 위에서 확인했다. 새 테스트를 3회 반복 실행해 안정성을 확인했다.
+>
+> `./gradlew :pg-service:test --rerun` 454건(기존 453건 + 신규 1건) 전부 통과.
 
 ## 리뷰 처리
 
