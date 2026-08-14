@@ -264,9 +264,12 @@ class PgSelfLoopRetryExhaustionIntegrationTest {
                 });
 
         PgInbox finalInbox = pgInboxRepository.findByOrderId(orderId).orElseThrow();
+        // 격리 직행 대신 관문이 벤더에 최종 상태를 조회한다. 이 시나리오는 confirm() 을 항상
+        // Retryable 실패로 고정해 모의 벤더에 처리 기록이 남지 않으므로, 관문 조회가 실행 시
+        // 예외로 떨어져 사유가 조회 실패(FCG_INDETERMINATE)로 확정된다.
         assertThat(finalInbox.getReasonCode())
-                .as("격리 사유는 RETRY_EXHAUSTED 여야 한다")
-                .isEqualTo("RETRY_EXHAUSTED");
+                .as("격리 사유는 관문 조회 실패(FCG_INDETERMINATE)여야 한다")
+                .isEqualTo("FCG_INDETERMINATE");
 
         // then — 무한 반복이 아니라 한도 도달로 종결됐는지: QUARANTINED 전이 시점에 이미 in-flight
         // 였던 마지막 재시도 outbox 1개가 뒤늦게 relay 되며 terminal reemit(PgTerminalReemitService,

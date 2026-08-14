@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestClientResponseException;
@@ -57,7 +56,6 @@ class NicepayPaymentGatewayStrategyParseFailureLogTest {
         strategy = new NicepayPaymentGatewayStrategy(
                 httpOperator,
                 encodeUtils,
-                mock(ApplicationEventPublisher.class),
                 new ObjectMapper(),
                 clock);
         ReflectionTestUtils.setField(strategy, "clientKey", "S2_dummy");

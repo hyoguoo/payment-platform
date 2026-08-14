@@ -16,8 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  <p>PgGatewayPort 를 PgStatusLookupPort + PgConfirmPort 로 분해해
  * NicepayPaymentGatewayStrategy ↔ DuplicateApprovalHandler ↔ PgGatewayPort self-loop 를 근본 해소.
  *
- * <p>TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 을 ApplicationEvent 패턴으로 근본 해소.
- * Toss/NicePay 전략 모두 DuplicateApprovalHandler 직접 의존 제거.
+ * <p>TossPaymentGatewayStrategy ↔ DuplicateApprovalHandler cycle 도 같은 포트 분해로 해소된다 —
+ * 전략은 중복 승인 응답에 예외만 던지고, 그 예외를 받는 PgVendorCallService 가
+ * DuplicateApprovalHandler 를 직접 호출한다. PgVendorCallService 는 PgStatusLookupPort 를
+ * 의존하지 않으므로 전략과 순환이 생기지 않는다 — Toss/NicePay 전략 모두 DuplicateApprovalHandler
+ * 직접 의존 없음.
  *
  * <p>DuplicateApprovalHandler 가 PgStatusLookupPort 단일 의존 대신
  * PgStatusLookupStrategySelector 를 통한 vendorType 기반 분기로 확장.

@@ -10,11 +10,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 /**
  * FakePgGatewayStrategy 조회 결과 승인 시각 원문 보존 — 보관 중인 승인 결과의 원문을 그대로 넘긴다.
@@ -30,7 +28,7 @@ class FakePgGatewayStrategyStatusRawTest {
     void getStatusByOrderId_승인기록_원문이_승인응답과_동일하다() {
         FakePgGatewayStrategy strategy = new FakePgGatewayStrategy(
                 Clock.systemUTC(), new TossApiMetrics(new SimpleMeterRegistry()),
-                mock(ApplicationEventPublisher.class), new MockEnvironment(), 0.0, 0, 0);
+                new MockEnvironment(), 0.0, 0, 0);
 
         PgConfirmResult confirmed = strategy.confirm(REQUEST);
         PgStatusResult statusResult = strategy.getStatusByOrderId(REQUEST.orderId());

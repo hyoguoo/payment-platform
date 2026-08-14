@@ -12,7 +12,6 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +46,6 @@ class NicepayPaymentGatewayStrategyStatusRawTest {
         strategy = new NicepayPaymentGatewayStrategy(
                 httpOperator,
                 encodeUtils,
-                mock(ApplicationEventPublisher.class),
                 new ObjectMapper(),
                 clock);
         ReflectionTestUtils.setField(strategy, "clientKey", "S2_dummy");

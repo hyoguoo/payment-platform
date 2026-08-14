@@ -4,7 +4,7 @@
 # 목적:
 #   Prometheus 알람 규칙 4그룹(코디네이터 정체 / 종결 가드 skip / DLQ 적체 / 가용성)의
 #   발화 로직을 합성 시계열 픽스처로 단정한다.
-#   라이브 스택 없이 Docker 만으로 실행 가능. 총 25 케이스.
+#   라이브 스택 없이 Docker 만으로 실행 가능. 총 26 케이스.
 #
 # ── 검증 픽스처 ────────────────────────────────────────────────────────────
 #   코디네이터 정체 (6 케이스): observability/prometheus/rules/tests/coordinator_test.yml
@@ -20,7 +20,7 @@
 #     (b) DONE-only skip (정상 재발행 경로) → no alert
 #     (c) 저트래픽 (floor 미충족) → no alert (0-division 흡수 회귀 고정)
 #
-#   DLQ 적체 (7 케이스): observability/prometheus/rules/tests/dlq_test.yml
+#   DLQ 적체 (8 케이스): observability/prometheus/rules/tests/dlq_test.yml
 #     (a) 앱 카운터 increase>0 → DlqAppCounterRising FIRING
 #     (b) .dlq offset increase>0 → DlqTopicOffsetRising FIRING
 #     (c) 정상 (델타 0) → 3개 알람 모두 미발화

@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.pg.application.service;
 
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
@@ -29,7 +28,6 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -122,27 +120,6 @@ public class DuplicateApprovalHandler {
     // -----------------------------------------------------------------------
     // 공개 API
     // -----------------------------------------------------------------------
-
-    /**
-     * DuplicateApprovalDetectedEvent 수신 리스너 — 벤더 전략이 발행한 이벤트를 받아 핸들러에 위임한다.
-     *
-     * <p>cycle 단절 의도: TossPaymentGatewayStrategy / NicepayPaymentGatewayStrategy 가
-     * DuplicateApprovalHandler 를 직접 호출하면 PgStatusLookupPort 와 양방향 의존이 만들어진다.
-     * 전략은 이벤트만 발행하고, 이 메서드가 {@code @EventListener} 로 수신해
-     * {@link #handleDuplicateApproval} 에 위임함으로써 cycle 을 끊는다.
-     *
-     * <p>Spring ApplicationEvent 는 동기 처리이므로 기존 트랜잭션 컨텍스트 안에서 실행됨.
-     * {@link #handleDuplicateApproval} 의 @Transactional(REQUIRED) 이 참여(join)한다.
-     *
-     * @param event DuplicateApprovalDetectedEvent (orderId, amount, paymentKey, reasonCode)
-     */
-    @EventListener
-    public void onDuplicateApprovalDetected(DuplicateApprovalDetectedEvent event) {
-        LogFmt.info(log, LogDomain.PG, EventType.PG_DUPLICATE_EVENT_RECEIVED,
-                () -> "orderId=" + event.orderId() + " reasonCode=" + event.reasonCode()
-                        + " vendorType=" + event.vendorType());
-        handleDuplicateApproval(event.orderId(), event.amount(), event.vendorType());
-    }
 
     /**
      * 중복 승인 응답 처리 — 2자 금액 대조 + pg DB 부재 경로 방어.

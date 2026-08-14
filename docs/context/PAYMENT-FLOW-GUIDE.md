@@ -2,7 +2,7 @@
 
 > ⚠️ **이 문서는 사람 독자용이다.** 결제가 브라우저 요청부터 최종 상태까지 어떻게 흐르고 어떻게 수습되는지를 도메인 언어로 풀어 설명한다.
 > **에이전트(자동화) 운영 규칙**: 평소 작업 시 이 문서를 참조하지 않으며, **ship 단계에서만** 코드 변경에 맞춰 갱신한다. 작업 정합의 기준(SSOT)은 짝 문서([PAYMENT-FLOW.md](PAYMENT-FLOW.md) / [CONFIRM-FLOW.md](CONFIRM-FLOW.md))다.
-> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정) · 정정 2026-07-06(단계 명칭 개칭 + 문체 정리) · 갱신 2026-07-11(§C 회복 색인에 격리 관리자 안전 실패 종결·DLQ 수동 재주입 2행 추가 + 단계 6 격리 폴링 서술 정정) · 갱신 2026-08-06(격리 종결 전 벤더 상태 확인 강제 + 발행 실패 재시도 간격 도입 반영) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
+> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정) · 정정 2026-07-06(단계 명칭 개칭 + 문체 정리) · 갱신 2026-07-11(§C 회복 색인에 격리 관리자 안전 실패 종결·DLQ 수동 재주입 2행 추가 + 단계 6 격리 폴링 서술 정정) · 갱신 2026-08-06(격리 종결 전 벤더 상태 확인 강제 + 발행 실패 재시도 간격 도입 반영) · 갱신 2026-08-14(재시도 소진 시 벤더 확인 관문 배선 — 자동 승인·자동 실패 종결과 격리 사유 4종, 중복 승인 신호 단일화, 부분 취소 격리의 재고 보류) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
 > 표기 규칙: **도메인 표현** + (`메서드명`/`토픽`) 병기. §A 시퀀스의 1~28 단계와 §B-1 플로우차트의 `[n]` 라벨이 1:1 대응한다.
 
 ---
@@ -126,10 +126,10 @@ sequenceDiagram
     - **승인(2xx)** → `pg_inbox APPROVED` + `pg_outbox` `events.confirmed` APPROVED 적재
     - **확정 거절(4xx, `PgGatewayNonRetryableException`)** → `FAILED` + `events.confirmed` FAILED
     - **일시 오류(5xx/timeout, `PgGatewayRetryableException`)** → `handleRetry`: `shouldRetry(attempt)`면 같은 토픽 self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가, 한도(4) 소진 시 DLQ. 시도횟수는 `pg_inbox.attempt`(Flyway V5)에 영속돼 한도 도달 시 DLQ→QUARANTINED 자동 격리가 작동한다(2026-06-25 도입)
-    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다
+    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다. 이 신호는 **예외 한 갈래**로만 온다 — 전략이 이벤트도 함께 발행해 핸들러가 한 응답에 두 번 돌던 구조는 제거됐다(그때는 같은 사건에 결과 발행이 2건 남았다)
     - **겹침 거부(처리 중 재요청)** → 벤더가 아직 처리 중이라며 거부한 것이므로 시도 횟수도 재시도 명령도 건드리지 않고 물러난다. 원래 호출이 결과를 낸다
 21. **결과 되쏨** — pg outbox relay 가 **`payment.events.confirmed`** 발행 (`PgOutboxRelayService` → `PgEventPublisher`)
-    - DLQ 경로 → `PaymentConfirmDlqConsumer` → `PgDlqService` 가 `pg_inbox QUARANTINED` 전이 후 `events.confirmed` QUARANTINED 발행
+    - DLQ 경로 → `PaymentConfirmDlqConsumer` → `PgDlqService` 가 격리로 직행하지 않고 **`PgFinalConfirmationGate` 에 위임한다**(2026-08-14 배선). 벤더에 한 번 물어 승인이면 승인 종결, 취소·중단·만료면 실패 종결, 그 밖이면 사유를 붙여 격리한다 — 격리 사유는 조회 실패 / 벤더 미결론 / 부분 취소 / 금액 불일치 넷. 사람이 볼 일이 아닌 건은 여기서 자동으로 끝난다
 
 ### 단계 5 — 결제 결과 확정 + 재고 정산 (payment, EOS)
 
@@ -145,7 +145,7 @@ sequenceDiagram
       - 금액 재검증(`isAmountMismatch`) 통과 시 **`IN_PROGRESS → DONE`**(`markPaymentAsDone`) + **재고 확정 이벤트 발행**(상품별 결정적 키 `StockEventUuidDeriver.derive`, `payment.events.stock-committed`) (`sendStockCommittedEvents`)
       - 금액 불일치/null → 격리 (`QuarantineCompensationHandler` `AMOUNT_MISMATCH`)
     - **실패(FAILED)** → **재고 보상 먼저**(`compensateAtomic`) → 실패 확정(`markPaymentAsFail`) *(순서 뒤집기 = 보상 직전 crash 시 silent loss 차단, SCR-6)*
-    - **격리(QUARANTINED)** → 재고 보상 → 격리 위임 (`QuarantineCompensationHandler`)
+    - **격리(QUARANTINED)** → 재고 보상 → 격리 위임 (`QuarantineCompensationHandler`). 단 **부분 취소 사유**(`FCG_PARTIAL_CANCELED`)만 즉시 보상을 건너뛴다 — 벤더가 대금 일부를 쥔 상태라 재고를 곧바로 전액 풀면 안 된다. 선차감 흔적을 남겨 두었다가 관리자가 격리를 종결할 때 조건부 보상이 푼다(흔적 수명 8일)
 26. **EOS 원자 커밋** — RDB commit + consumer offset commit + producer commit 한 단위. abort(RuntimeException) 시 재배달 → `DefaultErrorHandler`(FixedBackOff 1s×5) → 초과 시 `payment.events.confirmed.dlq`
 27. *(product-service 가 `isolation.level=read_committed` 로 재고 확정 이벤트 수신 → 실제 재고 차감 확정. 재배달은 `stock_commit_dedupe` 가 흡수)*
 
@@ -267,7 +267,7 @@ flowchart TD
 | Kafka 발행 실패(payment→broker) | relay TX 전체 롤백 → PENDING 즉시 복귀. 워커가 별도 TX 로 재시도 횟수·다음 시도 시각을 조건부 갱신해 **간격을 두고** 재픽업(한도 소진 종결은 없음) | `OutboxRelayService.relay` 단일 TX + `PaymentOutboxUseCase.recordPublishFailureDelay` |
 | event IN_PROGRESS 장기 체류 | `PaymentReconciler`(`@Scheduled` 2분) `resetToReady` → 재발행 | 멈춘 결제 자가 치유 |
 | PG 일시 오류(5xx/timeout) | pg self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가(attempt<4) | 같은 토픽 재발행 |
-| PG 재시도 한도 초과(DLQ) | attempt≥4 → `insertDlqOutbox` → `PgDlqService` → `pg_inbox QUARANTINED` → payment `handleQuarantined`. 자동 격리 작동(2026-06-25 도입) | `PaymentConfirmDlqConsumer` |
+| PG 재시도 한도 초과(DLQ) | attempt≥4 → `insertDlqOutbox` → `PgDlqService` → **벤더에 1회 조회**(`PgFinalConfirmationGate`) → 승인/확정실패는 자동 종결, 판단이 필요한 건만 격리 → payment `handleQuarantined` | `PaymentConfirmDlqConsumer` |
 | 브로커 커밋 유실(RDB DONE 커밋 후 crash) | 재배달이 종결 가드 `DONE+APPROVED` 분기로 흡수 → **재고 확정 재발행** | best-effort 1PC 갭 복구 |
 | 결과 메시지 중복(payment 측) | `payment_event_dedupe` INSERT IGNORE + Lua dedup token(`decrement:done`/`compensation:done` SETNX P8D) | product `stock_commit_dedupe` 가 재배달 흡수 |
 | 금액 불일치(AMOUNT_MISMATCH) | 양방향 방어(pg non-null 강제 + payment 대조) → 격리 | `AmountConverter.fromBigDecimalStrict` + `isAmountMismatch` |

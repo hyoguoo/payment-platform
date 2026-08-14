@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -110,6 +111,52 @@ class PgInboxRepositoryImplTest {
         // then — 동일 id 반환, 총 행 수 1개
         assertThat(secondId).isEqualTo(firstId);
         assertThat(jpaRepository.count()).isEqualTo(1);
+    }
+
+    /**
+     * 유일 제약 동시 삽입 테스트.
+     * @Transactional(NOT_SUPPORTED) — 두 스레드가 각자 독립 TX 로 INSERT IGNORE 를 실행해야
+     * 서로의 커밋 여부가 실제 유니크 인덱스 경합에 반영된다.
+     */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("insertPending — 같은 orderId 두 스레드 동시 삽입: 행은 하나만 생기고 같은 식별자를 받는다")
+    void 접수삽입_같은주문번호_두스레드_동시삽입_행은_하나만_생기고_같은_식별자를_받는다() throws InterruptedException {
+        // given
+        String orderId = "order-pcs4-concurrent-insert";
+        CountDownLatch startGate = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+        AtomicReference<Long> firstId = new AtomicReference<>();
+        AtomicReference<Long> secondId = new AtomicReference<>();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        executor.submit(() -> insertAfterGate(startGate, doneLatch, firstId, orderId, "pay-key-concurrent-1"));
+        executor.submit(() -> insertAfterGate(startGate, doneLatch, secondId, orderId, "pay-key-concurrent-2"));
+
+        // when — 두 스레드를 신호로 동시에 푼다
+        startGate.countDown();
+        doneLatch.await();
+        executor.shutdown();
+
+        // then — 동일 id 반환, 총 행 수 1개
+        assertThat(firstId.get()).isNotNull();
+        assertThat(secondId.get()).isEqualTo(firstId.get());
+        assertThat(jpaRepository.count()).isEqualTo(1);
+
+        // cleanup — NOT_SUPPORTED 이므로 @BeforeEach 롤백이 없어 수동 정리
+        jpaRepository.deleteAll();
+    }
+
+    private void insertAfterGate(CountDownLatch startGate, CountDownLatch doneLatch,
+                                 AtomicReference<Long> resultHolder, String orderId, String paymentKey) {
+        try {
+            startGate.await();
+            resultHolder.set(sut.insertPending(orderId, AMOUNT, "TOSS_PAYMENTS", paymentKey, null));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            doneLatch.countDown();
+        }
     }
 
     // ─── transitDirectToInProgress ─────────────────────────────────────────────

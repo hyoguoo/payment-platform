@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgConfirmResultStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
@@ -45,18 +44,15 @@ import org.springframework.context.ApplicationEventPublisher;
  * production 서비스 객체를 직접 구성하는 Fake-wiring 패턴을 따른다.
  *
  * <p>Spring 컨텍스트 없이 {@link PgInboxProcessor} + {@link PgVendorCallService} +
- * {@link DuplicateApprovalHandler} 를 Fake 저장소로 직접 wiring 한다 — production 의
- * {@code @EventListener} 동기 디스패치를 그대로 모사하기 위해, 테스트용
- * {@link ApplicationEventPublisher} 구현이 {@link DuplicateApprovalDetectedEvent} 발행을
- * {@link DuplicateApprovalHandler#onDuplicateApprovalDetected} 호출로 즉시 전달한다.
- * {@code FakePgGatewayAdapter} 에도 동일 publisher 를 연결해, 실 벤더(TossPaymentGatewayStrategy)와
- * 동일하게 멱등 모드 duplicate 흡수 시 이벤트 발행 후 예외 throw 가 이뤄지도록 한다 — 그 결과
- * {@code @EventListener} 경로와 {@link PgVendorCallService#applyOutcome} 의
- * catch(PgGatewayDuplicateHandledException) → handleDuplicate 직접 호출 경로가 함께 실행된다.
+ * {@link DuplicateApprovalHandler} 를 Fake 저장소로 직접 wiring 한다. 멱등 모드 duplicate 흡수는
+ * {@link PgVendorCallService#applyOutcome} 의 catch(PgGatewayDuplicateHandledException) →
+ * {@code handleDuplicate} 가 {@link DuplicateApprovalHandler#handleDuplicateApproval} 을 직접
+ * 호출하는 예외 경로 하나뿐이다 — production 도 동일하다.
  *
  * <p>단언 기준값: 최종 pg_inbox 상태 = APPROVED(승인 종결) 유지, storedStatusResult 의 amount 가
- * 최초 confirm 과 동일(=재흡수로 인한 amount 불일치/이중 차감 없음). pg_outbox row 카운트에는
- * 의존하지 않는다(흡수 핸들러가 이벤트+예외 이중 경로로 2건 INSERT 가능).
+ * 최초 confirm 과 동일(=재흡수로 인한 amount 불일치/이중 차감 없음). self-loop 재호출 뒤 새로
+ * 생기는 pg_outbox row 는 정확히 1건이어야 한다 — 흡수 핸들러 호출 경로가 예외 하나뿐이면 1건,
+ * 이벤트 갈래가 남아 중복 호출되면 2건이 되어 실패한다.
  */
 @Tag("integration")
 @DisplayName("재시도 자기루프 중복 승인 흡수 통합 테스트")
@@ -69,6 +65,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
     private static final Clock FIXED_CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     private FakePgInboxRepository inboxRepository;
+    private FakePgOutboxRepository outboxRepository;
     private FakePgGatewayAdapter gatewayAdapter;
     private PgVendorCallService vendorCallService;
     private PgInboxProcessor pgInboxProcessor;
@@ -76,7 +73,7 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
     @BeforeEach
     void setUp() {
         inboxRepository = new FakePgInboxRepository();
-        FakePgOutboxRepository outboxRepository = new FakePgOutboxRepository();
+        outboxRepository = new FakePgOutboxRepository();
         gatewayAdapter = new FakePgGatewayAdapter();
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -88,35 +85,19 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
         PgStatusLookupStrategySelector statusLookupStrategySelector =
                 new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
 
-        // DuplicateApprovalHandler 는 production 에서 @EventListener 로 DuplicateApprovalDetectedEvent
-        // 를 수신한다. Spring 컨텍스트 없이도 동일 동기 디스패치를 모사하기 위해, 이벤트 발행 시
-        // 핸들러를 직접 호출하는 테스트용 ApplicationEventPublisher 를 구성한다.
-        ApplicationEventPublisher[] publisherHolder = new ApplicationEventPublisher[1];
+        // PgOutboxReadyEvent 등은 이 통합 테스트 단언 범위 밖 — no-op.
+        ApplicationEventPublisher noOpPublisher = event -> { };
+
         DuplicateApprovalHandler duplicateApprovalHandler = new DuplicateApprovalHandler(
                 statusLookupStrategySelector, inboxRepository, outboxRepository,
-                event -> publisherHolder[0].publishEvent(event), payloadSerializer, FIXED_CLOCK,
-                new SimpleMeterRegistry());
-
-        ApplicationEventPublisher dispatchingPublisher = event -> {
-            if (event instanceof DuplicateApprovalDetectedEvent duplicateEvent) {
-                duplicateApprovalHandler.onDuplicateApprovalDetected(duplicateEvent);
-            }
-            // PgOutboxReadyEvent 등 다른 이벤트는 이 통합 테스트 단언 범위 밖 — no-op.
-        };
-        publisherHolder[0] = dispatchingPublisher;
+                noOpPublisher, payloadSerializer, FIXED_CLOCK, new SimpleMeterRegistry());
 
         vendorCallService = new PgVendorCallService(
                 inboxRepository, outboxRepository, confirmStrategySelector,
-                dispatchingPublisher, payloadSerializer, objectMapper, FIXED_CLOCK,
+                noOpPublisher, payloadSerializer, objectMapper, FIXED_CLOCK,
                 duplicateApprovalHandler, new SecureRandom(), new SimpleMeterRegistry());
 
         pgInboxProcessor = new PgInboxProcessor(inboxRepository, vendorCallService, FIXED_CLOCK);
-
-        // 실 벤더(TossPaymentGatewayStrategy)와 동일하게 멱등 모드 duplicate 흡수 시
-        // DuplicateApprovalDetectedEvent 를 발행하도록 wiring — onDuplicateApprovalDetected
-        // (@EventListener) 경로도 함께 태운다. invokeConfirm 의 catch(PgGatewayDuplicateHandledException)
-        // → handleDuplicate 직접 호출 경로와 합쳐 이벤트+예외 이중 경로가 된다(실 벤더와 동일).
-        gatewayAdapter.setApplicationEventPublisher(dispatchingPublisher);
     }
 
     @Test
@@ -142,12 +123,17 @@ class PgSelfLoopDuplicateAbsorptionIntegrationTest {
 
         // when — self-loop 재호출: 동일 paymentKey 로 벤더를 한 번 더 호출한다(워커 좀비/동시 처리
         // 경합으로 같은 row 에 대해 벤더가 두 번째로 불리는 상황). FakePgGatewayAdapter 멱등 모드는
-        // 실 벤더와 동일하게 DuplicateApprovalDetectedEvent 발행(→ @EventListener 경로) 후
         // PgGatewayDuplicateHandledException 을 던지고, PgVendorCallService 가 이를
-        // HandledInternally outcome 으로 변환해 DuplicateApprovalHandler 에 직접 위임한다(이중 경로).
+        // HandledInternally outcome 으로 변환해 DuplicateApprovalHandler 에 직접 위임한다.
         PgConfirmRequest selfLoopRequest =
                 new PgConfirmRequest(ORDER_ID, PAYMENT_KEY, AMOUNT, PgVendorType.TOSS);
+        int outboxCountBeforeSelfLoop = outboxRepository.findAll().size();
         applySelfLoopReinvocation(selfLoopRequest);
+
+        // then — self-loop 흡수로 새로 생기는 pg_outbox row 는 정확히 1건이어야 한다.
+        assertThat(outboxRepository.findAll().size() - outboxCountBeforeSelfLoop)
+                .as("self-loop 중복 흡수 처리는 발행 행을 정확히 1건만 만들어야 한다")
+                .isEqualTo(1);
 
         // then — 중복 흡수 경로는 이미 terminal 인 inbox 상태를 변경하지 않는다 — 여전히 APPROVED.
         PgInbox afterSelfLoop = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();

@@ -11,23 +11,47 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayNonRetryableException;
 import com.hyoguoo.paymentplatform.pg.application.messaging.PgTopics;
 import com.hyoguoo.paymentplatform.pg.application.dto.event.ConfirmedEventPayloadSerializer;
+import com.hyoguoo.paymentplatform.pg.core.common.metrics.PgDlqReachMetrics;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgGatewayAdapter;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgInboxRepository;
 import com.hyoguoo.paymentplatform.pg.mock.FakePgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgInboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgOutboxRepository;
+import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Bean;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import com.hyoguoo.paymentplatform.pg.domain.event.PgOutboxReadyEvent;
 
@@ -48,6 +72,7 @@ class PgFinalConfirmationGateTest {
     private FakePgInboxRepository inboxRepository;
     private FakePgOutboxRepository outboxRepository;
     private ApplicationEventPublisher eventPublisher;
+    private SimpleMeterRegistry meterRegistry;
     private PgFinalConfirmationGate fcg;
 
     @BeforeEach
@@ -56,12 +81,14 @@ class PgFinalConfirmationGateTest {
         inboxRepository = new FakePgInboxRepository();
         outboxRepository = new FakePgOutboxRepository();
         eventPublisher = mock(ApplicationEventPublisher.class);
+        meterRegistry = new SimpleMeterRegistry();
         Clock fixedClock = Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
         // FakePgGatewayAdapter.supports(vendorType)=true(모든 벤더)라 selector 가 항상 반환한다.
         PgStatusLookupStrategySelector selector = new PgStatusLookupStrategySelector(List.of(gatewayAdapter));
         fcg = new PgFinalConfirmationGate(
                 selector, inboxRepository, outboxRepository, eventPublisher,
-                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock);
+                new ConfirmedEventPayloadSerializer(new ObjectMapper()), fixedClock, meterRegistry,
+                new PgDlqReachMetrics(meterRegistry));
 
         // inbox를 IN_PROGRESS 상태로 사전 설정 (재시도 소진 직후 상태)
         PgInbox inbox = PgInbox.of(
@@ -84,7 +111,9 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
 
         // then — pg_inbox APPROVED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -118,7 +147,9 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.setStatusResult(ORDER_ID, failedStatus);
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
 
         // then — pg_inbox FAILED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -149,7 +180,9 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout"));
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
 
         // then — pg_inbox QUARANTINED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -181,7 +214,9 @@ class PgFinalConfirmationGateTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayNonRetryableException.of("5xx server error"));
 
         // when
-        fcg.performFinalCheck(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
 
         // then — pg_inbox QUARANTINED 전이
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -200,5 +235,675 @@ class PgFinalConfirmationGateTest {
 
         // then — ApplicationEventPublisher 호출
         verify(eventPublisher, times(1)).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    // -----------------------------------------------------------------------
+    // 금액 대조가 상태 판정보다 먼저 — 조회 금액이 접수 금액과 다르면 승인 응답이어도 격리
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 조회 금액이 접수 금액과 다르면 상태가 APPROVED여도 AMOUNT_MISMATCH로 격리")
+    void 관문_조회금액이_접수금액과_다르면_금액불일치로_격리() {
+        // given — 조회 응답 금액이 접수 금액(AMOUNT)과 다름, 상태는 DONE(승인)
+        PgStatusResult mismatchedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT + 1000), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, mismatchedStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — 승인 상태였어도 승인 종결로 가지 않고 QUARANTINED + AMOUNT_MISMATCH
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("AMOUNT_MISMATCH");
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("AMOUNT_MISMATCH");
+
+        // then — getStatusByOrderId 정확히 1회 호출
+        assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
+    }
+
+    // -----------------------------------------------------------------------
+    // 부분 취소 — 확정 실패로 접지 않고 전용 사유로 격리 (회귀 고정)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 벤더가 부분 취소로 응답하면 FAILED로 확정하지 않고 FCG_PARTIAL_CANCELED로 격리")
+    void 관문_부분취소응답_실패확정하지_않고_전용사유로_격리() {
+        // given
+        PgStatusResult partialCanceledStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.PARTIAL_CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, partialCanceledStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — 부분 취소는 확정 실패(FAILED)로 접지 않는다. 재고를 즉시 풀면 안 되는
+        // 시나리오라 사람 판단으로 넘기는 전용 사유로 격리한다.
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_PARTIAL_CANCELED");
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("QUARANTINED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 취소·중단·만료 — 셋 다 확정 실패 종결
+    // -----------------------------------------------------------------------
+
+    @ParameterizedTest
+    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "ABORTED", "EXPIRED"})
+    @DisplayName("fcg — 취소·중단·만료 응답은 각각 FAILED로 확정 종결")
+    void 관문_취소_중단_만료_각각_실패종결(PgPaymentStatus status) {
+        // given
+        PgStatusResult failedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, status,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, failedStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.FAILED);
+
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).containsIgnoringCase("FAILED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 입금 대기 등 미확정 상태 — 벤더가 아직 결론을 내지 않은 경우
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 벤더가 입금 대기로 응답하면 FCG_VENDOR_UNSETTLED로 격리")
+    void 관문_입금대기응답_벤더미결론_사유로_격리() {
+        // given
+        PgStatusResult waitingStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.WAITING_FOR_DEPOSIT,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, waitingStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_VENDOR_UNSETTLED");
+    }
+
+    // -----------------------------------------------------------------------
+    // 조회 자체의 실행 시 예외 — 게이트웨이 예외가 아니어도 호출자까지 새어나가지 않는다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 조회가 게이트웨이 예외가 아닌 실행 시 예외를 던져도 FCG_INDETERMINATE로 격리")
+    void 관문_조회가_게이트웨이예외가_아닌_실행시예외를_던져도_조회실패로_격리() {
+        // given — PgGatewayRetryableException/NonRetryableException 이 아닌 임의의 실행 시 예외.
+        // 처리 기록 없는 주문에 벤더 전략이 던질 수 있는 예외를 모사한다.
+        gatewayAdapter.throwOnStatusQuery(new UnsupportedOperationException("처리 기록 없는 orderId"));
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — 예외가 호출자까지 새어나가지 않고 QUARANTINED + FCG_INDETERMINATE 로 흡수
+        PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.QUARANTINED);
+        assertThat(inbox.getReasonCode()).isEqualTo("FCG_INDETERMINATE");
+
+        // then — getStatusByOrderId 정확히 1회만 호출 (FCG 불변)
+        assertThat(gatewayAdapter.getStatusCallCount()).isEqualTo(1);
+    }
+
+    // -----------------------------------------------------------------------
+    // 전이 반영 0건 — 경합으로 이미 종결된 기록이면 발행 행 자체를 만들지 않는다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_승인전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (APPROVED)
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT,
+                "{}", null, Instant.now(), Instant.now()));
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — 발행 행이 생기지 않고 이벤트도 발행되지 않는다
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    @Test
+    @DisplayName("fcg — 실패 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_실패전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (FAILED)
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.FAILED, AMOUNT,
+                "{}", "OTHER_REASON", Instant.now(), Instant.now()));
+        PgStatusResult canceledStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, canceledStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    @Test
+    @DisplayName("fcg — 격리 전이 반영 행 수가 0이면 발행 행을 만들지 않는다")
+    void 관문_격리전이_반영0건이면_발행행을_만들지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (QUARANTINED), 조회는 실행 시 예외로 실패
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.QUARANTINED, AMOUNT,
+                null, "OTHER_REASON", Instant.now(), Instant.now()));
+        gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout"));
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then
+        assertThat(outboxRepository.findAll()).isEmpty();
+        verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+    }
+
+    // -----------------------------------------------------------------------
+    // 승인 시각 원문 — 조회 응답 원문을 승인 페이로드까지 전달
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인 페이로드에 조회 응답의 승인 시각 원문이 그대로 실린다")
+    void 관문_승인페이로드에_조회응답_승인시각_원문이_실린다() {
+        // given — 조회 응답에 승인 시각 원문이 실려 있음
+        String approvedAtRaw = "2026-04-24T10:15:30+09:00";
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, approvedAtRaw);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — fixedClock 기반 현재 시각으로 대체되지 않고 조회 응답 원문 그대로 실린다
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).contains(approvedAtRaw);
+    }
+
+    @Test
+    @DisplayName("fcg — 조회 응답에 승인 시각 원문이 없으면 현재 시각으로 대체한다")
+    void 관문_조회응답에_승인시각이_없으면_현재시각으로_대체한다() {
+        // given — 조회 응답에 승인 시각 원문이 없음(null)
+        PgStatusResult approvedStatus = new PgStatusResult(
+                "pk-fcg-001", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null);
+        gatewayAdapter.setStatusResult(ORDER_ID, approvedStatus);
+
+        // when
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+        // then — fixedClock("2026-04-24T01:00:00Z") 기반 현재 시각으로 대체된다
+        List<PgOutbox> outboxRows = outboxRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getPayload()).contains("2026-04-24T01:00Z");
+    }
+
+    // -----------------------------------------------------------------------
+    // 관문 결과 분포 카운터 — 전이가 반영된 뒤에만 outcome 태그별 카운터를 증가시킨다
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("fcg — 승인·실패·격리 4사유 결과가 각각 outcome 태그별 카운터를 증가시킨다")
+    void 관문_결과별로_카운터가_증가한다() {
+        // 승인
+        driveOutcome(ORDER_ID, new PgStatusResult(
+                "pk-fcg-approved", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 확정 실패
+        String failedOrderId = ORDER_ID + "-failed";
+        seedInProgressInbox(failedOrderId);
+        driveOutcome(failedOrderId, new PgStatusResult(
+                "pk-fcg-failed", failedOrderId, PgPaymentStatus.CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 조회 실패
+        String indeterminateOrderId = ORDER_ID + "-indeterminate";
+        seedInProgressInbox(indeterminateOrderId);
+        driveOutcome(indeterminateOrderId, null, PgGatewayRetryableException.of("timeout"));
+
+        // 격리 — 벤더 미결론
+        String vendorUnsettledOrderId = ORDER_ID + "-vendor-unsettled";
+        seedInProgressInbox(vendorUnsettledOrderId);
+        driveOutcome(vendorUnsettledOrderId, new PgStatusResult(
+                "pk-fcg-vendor-unsettled", vendorUnsettledOrderId, PgPaymentStatus.WAITING_FOR_DEPOSIT,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 부분 취소
+        String partialCanceledOrderId = ORDER_ID + "-partial-canceled";
+        seedInProgressInbox(partialCanceledOrderId);
+        driveOutcome(partialCanceledOrderId, new PgStatusResult(
+                "pk-fcg-partial-canceled", partialCanceledOrderId, PgPaymentStatus.PARTIAL_CANCELED,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // 격리 — 금액 불일치
+        String amountMismatchOrderId = ORDER_ID + "-amount-mismatch";
+        seedInProgressInbox(amountMismatchOrderId);
+        driveOutcome(amountMismatchOrderId, new PgStatusResult(
+                "pk-fcg-amount-mismatch", amountMismatchOrderId, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT + 1000), null, null, null), null);
+
+        assertThat(outcomeCounterValue("approved")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("failed")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("indeterminate")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(1.0);
+        assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(1.0);
+
+        // then — 격리 도달 카운터(PgDlqReachMetrics)는 네 격리 사유에서만 증가하고
+        // 승인·실패 종결에서는 증가하지 않는다.
+        assertThat(reachCounterValue())
+                .as("격리로 종결된 4건에서만 격리 도달 카운터가 증가해야 한다")
+                .isEqualTo(4.0);
+    }
+
+    @Test
+    @DisplayName("fcg — 전이 반영이 0건(가드 차단)이면 outcome 카운터를 올리지 않는다")
+    void 관문_전이_반영0건이면_카운터를_올리지_않는다() {
+        // given — 경합으로 이미 종결된 inbox (APPROVED) — handleApproved 의 반영 가드가 차단한다
+        inboxRepository.save(PgInbox.of(
+                ORDER_ID, PgInboxStatus.APPROVED, AMOUNT,
+                "{}", null, Instant.now(), Instant.now()));
+
+        // when
+        driveOutcome(ORDER_ID, new PgStatusResult(
+                "pk-fcg-approved", ORDER_ID, PgPaymentStatus.DONE,
+                BigDecimal.valueOf(AMOUNT), null, null, null), null);
+
+        // then — 실제로 반영되지 않았으므로 6종 카운터 모두 0으로 남는다
+        assertThat(outcomeCounterValue("approved")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("failed")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("indeterminate")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("vendor_unsettled")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("partial_canceled")).isEqualTo(0.0);
+        assertThat(outcomeCounterValue("amount_mismatch")).isEqualTo(0.0);
+
+        // then — 격리로 반영되지 않았으므로 격리 도달 카운터도 증가하지 않는다
+        assertThat(reachCounterValue()).isEqualTo(0.0);
+    }
+
+    /**
+     * orderId 에 대해 조회 응답(statusResult) 또는 예외(exceptionToThrow) 중 하나를 주입하고
+     * invokeVendor → applyOutcome 두 단계를 순서대로 호출한다. 둘 중 하나만 넘긴다.
+     */
+    private void driveOutcome(String orderId, PgStatusResult statusResult, RuntimeException exceptionToThrow) {
+        if (exceptionToThrow != null) {
+            gatewayAdapter.throwOnStatusQuery(exceptionToThrow);
+        } else {
+            gatewayAdapter.setStatusResult(orderId, statusResult);
+        }
+        PgFinalConfirmationGate.FcgOutcome outcome =
+                fcg.invokeVendor(orderId, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+        fcg.applyOutcome(outcome, orderId, AMOUNT);
+    }
+
+    private void seedInProgressInbox(String orderId) {
+        inboxRepository.save(PgInbox.of(
+                orderId, PgInboxStatus.IN_PROGRESS, AMOUNT,
+                null, null, Instant.now(), Instant.now()));
+    }
+
+    private double outcomeCounterValue(String outcomeTag) {
+        Counter counter = meterRegistry.find("pg_final_confirmation.outcome_total")
+                .tag("outcome", outcomeTag)
+                .counter();
+        assertThat(counter).as("outcome=%s 카운터가 사전 등록돼 있어야 한다", outcomeTag).isNotNull();
+        return counter.count();
+    }
+
+    private double reachCounterValue() {
+        Counter counter = meterRegistry.find("pg_retry_exhausted_quarantine_total").counter();
+        assertThat(counter).as("격리 도달 카운터가 사전 등록돼 있어야 한다").isNotNull();
+        return counter.count();
+    }
+
+    // -----------------------------------------------------------------------
+    // TX 경계 분리 — invokeVendor(조회)는 TX 없음, applyOutcome(반영)만 TX 안에서 실행
+    // PgInboxPendingServiceTest 의 TransactionSynchronizationManager + 전용 테스트 설정 방식을 따른다.
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("TX 경계 분리 검증 (Spring TX proxy)")
+    @ExtendWith(SpringExtension.class)
+    @ContextConfiguration(classes = {
+            TxBoundaryTestConfig.class,
+            PgFinalConfirmationGate.class
+    })
+    class TxBoundaryTests {
+
+        @Autowired
+        private PgFinalConfirmationGate sut;
+
+        @BeforeEach
+        void resetCapture() {
+            TxBoundaryTestConfig.CapturingStatusLookupPort.reset();
+            TxBoundaryTestConfig.CapturingInboxRepository.reset();
+        }
+
+        @Test
+        @DisplayName("invokeVendor — 조회 단계는 TX 를 열지 않는다")
+        void 관문_조회단계는_트랜잭션을_열지_않는다() {
+            // when — @Transactional 이 없는 invokeVendor 를 Spring 프록시 경유로 호출
+            sut.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+            // then — 벤더 조회 시점에 active TX 가 없어야 한다
+            assertThat(TxBoundaryTestConfig.CapturingStatusLookupPort.TX_ACTIVE_AT_QUERY.get())
+                    .as("invokeVendor 는 TX 경계를 열지 않아야 한다")
+                    .isFalse();
+        }
+
+        @Test
+        @DisplayName("applyOutcome — 반영 단계만 TX 안에서 실행된다")
+        void 관문_반영단계만_트랜잭션안에서_실행된다() {
+            // given
+            PgFinalConfirmationGate.FcgOutcome outcome =
+                    sut.invokeVendor(ORDER_ID, EVENT_UUID, AMOUNT, PgVendorType.TOSS);
+
+            // when — @Transactional 이 붙은 applyOutcome 를 Spring 프록시 경유로 호출
+            sut.applyOutcome(outcome, ORDER_ID, AMOUNT);
+
+            // then — pg_inbox 전이 시점에 active TX 가 있어야 한다
+            assertThat(TxBoundaryTestConfig.CapturingInboxRepository.TX_ACTIVE_AT_TRANSIT.get())
+                    .as("applyOutcome 은 TX 안에서 반영을 수행해야 한다")
+                    .isTrue();
+        }
+    }
+
+    /**
+     * TX 경계 분리 검증 전용 Spring 설정 — DB 없이 TX 동기화만 수행하는 최소 구성.
+     * PgInboxPendingServiceTest.TxIntegrationTestConfig 와 동일 구조.
+     */
+    @TestConfiguration
+    @EnableTransactionManagement
+    static class TxBoundaryTestConfig {
+
+        @Bean
+        PgStatusLookupStrategySelector pgStatusLookupStrategySelector() {
+            return new PgStatusLookupStrategySelector(List.of(new CapturingStatusLookupPort()));
+        }
+
+        @Bean
+        PgInboxRepository pgInboxRepository() {
+            return new CapturingInboxRepository();
+        }
+
+        @Bean
+        PgOutboxRepository pgOutboxRepository() {
+            return new NoopOutboxRepository();
+        }
+
+        @Bean
+        ApplicationEventPublisher applicationEventPublisher() {
+            return event -> { };
+        }
+
+        @Bean
+        ConfirmedEventPayloadSerializer confirmedEventPayloadSerializer() {
+            return new ConfirmedEventPayloadSerializer(new ObjectMapper());
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
+        @Bean
+        PgDlqReachMetrics pgDlqReachMetrics(MeterRegistry meterRegistry) {
+            return new PgDlqReachMetrics(meterRegistry);
+        }
+
+        @Bean
+        Clock clock() {
+            return Clock.fixed(Instant.parse("2026-04-24T01:00:00Z"), ZoneOffset.UTC);
+        }
+
+        @Bean
+        PlatformTransactionManager transactionManager() {
+            return new SimplePlatformTransactionManager();
+        }
+
+        /**
+         * 벤더 조회 시점에 active TX 여부를 캡처하는 Fake PgStatusLookupPort.
+         * 항상 접수 금액과 일치하는 APPROVED 응답을 반환해 applyOutcome 이 transitToApproved 로 흐르게 한다.
+         */
+        static class CapturingStatusLookupPort implements PgStatusLookupPort {
+
+            static final AtomicBoolean TX_ACTIVE_AT_QUERY = new AtomicBoolean(true);
+
+            static void reset() {
+                TX_ACTIVE_AT_QUERY.set(true);
+            }
+
+            @Override
+            public boolean supports(PgVendorType vendorType) {
+                return true;
+            }
+
+            @Override
+            public PgStatusResult getStatusByOrderId(String orderId) {
+                TX_ACTIVE_AT_QUERY.set(TransactionSynchronizationManager.isActualTransactionActive());
+                return new PgStatusResult(
+                        "pk-fcg-tx-001", orderId, PgPaymentStatus.DONE,
+                        BigDecimal.valueOf(AMOUNT), null, null, null);
+            }
+        }
+
+        /**
+         * 반영 시점(transitToApproved)에 active TX 여부를 캡처하는 Fake PgInboxRepository.
+         * 나머지 메서드는 이 검증에 쓰이지 않아 no-op 으로 둔다.
+         */
+        static class CapturingInboxRepository implements PgInboxRepository {
+
+            static final AtomicBoolean TX_ACTIVE_AT_TRANSIT = new AtomicBoolean(false);
+
+            static void reset() {
+                TX_ACTIVE_AT_TRANSIT.set(false);
+            }
+
+            @Override
+            public int transitToApproved(String orderId, String storedStatusResult) {
+                TX_ACTIVE_AT_TRANSIT.set(TransactionSynchronizationManager.isActualTransactionActive());
+                return 1;
+            }
+
+            @Override
+            public Optional<PgInbox> findByOrderId(String orderId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<PgInbox> findById(Long inboxId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public PgInbox save(PgInbox inbox) {
+                return inbox;
+            }
+
+            @Override
+            public Long insertPending(String orderId, long amount,
+                    String vendorType, String paymentKey, String storedTraceparent) {
+                return null;
+            }
+
+            @Override
+            public Optional<String> findStoredTraceparent(Long inboxId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public boolean transitPendingToInProgress(Long inboxId) {
+                return false;
+            }
+
+            @Override
+            public Long transitDirectToInProgress(String orderId, long amount) {
+                return null;
+            }
+
+            @Override
+            public Long transitDirectToTerminal(String orderId, long amount,
+                    PgInboxStatus terminalStatus, String storedStatusResult, String reasonCode) {
+                return null;
+            }
+
+            @Override
+            public List<Long> findPendingZombieIds(int batchSize, long thresholdMs) {
+                return List.of();
+            }
+
+            @Override
+            public List<Long> findInProgressZombieIds(int batchSize, long thresholdMs) {
+                return List.of();
+            }
+
+            @Override
+            public int transitToFailed(String orderId, String storedStatusResult, String reasonCode) {
+                return 0;
+            }
+
+            @Override
+            public boolean transitToQuarantined(String orderId, String reasonCode) {
+                return false;
+            }
+
+            @Override
+            public Optional<PgInbox> findByOrderIdForUpdate(String orderId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<PgInbox> selectInProgressForUpdateSkipLocked(Long inboxId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public int incrementAttempt(String orderId) {
+                return 0;
+            }
+        }
+
+        /**
+         * 반영 단계 pg_outbox INSERT 를 흡수만 하는 no-op Fake PgOutboxRepository.
+         */
+        static class NoopOutboxRepository implements PgOutboxRepository {
+
+            @Override
+            public PgOutbox save(PgOutbox outbox) {
+                return outbox;
+            }
+
+            @Override
+            public Optional<PgOutbox> findById(long id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public List<PgOutbox> findPendingBatch(int batchSize, Instant now) {
+                return List.of();
+            }
+
+            @Override
+            public void markProcessed(long id, Instant processedAt) {
+                // no-op
+            }
+
+            @Override
+            public long countPending(Instant now) {
+                return 0;
+            }
+
+            @Override
+            public long countFuturePending(Instant now) {
+                return 0;
+            }
+
+            @Override
+            public Optional<Instant> findOldestPendingCreatedAt() {
+                return Optional.empty();
+            }
+
+            @Override
+            public List<PgOutbox> findConfirmAttemptRows(String orderId) {
+                return List.of();
+            }
+        }
+
+        /**
+         * DB 없이 TX 동기화만 수행하는 최소 TX Manager.
+         * TransactionSynchronizationManager.setActualTransactionActive(true) 를 통해
+         * Spring @Transactional proxy 가 올바르게 동작함을 검증한다.
+         */
+        static class SimplePlatformTransactionManager extends AbstractPlatformTransactionManager {
+
+            @Override
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            @Override
+            protected void doBegin(Object transaction, org.springframework.transaction.TransactionDefinition definition) {
+                // no-op — 실제 DB TX 없이 TX 동기화만 활성화
+            }
+
+            @Override
+            protected void doCommit(DefaultTransactionStatus status) {
+                // no-op
+            }
+
+            @Override
+            protected void doRollback(DefaultTransactionStatus status) {
+                // no-op
+            }
+        }
     }
 }

@@ -1,15 +1,17 @@
 groups:
   - name: dlq
     rules:
-      # 앱 도달 카운터 delta 신호 (payment-service EOS 경로 + pg-service retry 소진 경로)
+      # 앱 도달 카운터 delta 신호 (payment-service EOS 경로 + pg-service 소진 경로)
       #
       # payment_eos_commit_failure_dlq_total:
       #   KafkaConsumerConfig.afterRollbackProcessor 가 backoff 소진 후 DLQ recoverer 를 발화할 때
       #   (events.confirmed → events.confirmed.dlq 발행) PaymentEosCommitFailureMetrics.record() 호출.
       #
-      # pg_retry_exhausted_quarantine_total:
-      #   PgDlqService.handle() 에서 non-terminal → QUARANTINED CAS 성공 시 PgDlqReachMetrics.record() 호출.
-      #   terminal CAS 멱등 보장으로 동일 orderId 중복 증가 없음.
+      # pg_final_confirmation_outcome_total (outcome 태그 6종 합산):
+      #   재시도 소진 건은 반드시 PgFinalConfirmationGate 를 거쳐 승인·실패·격리(사유 4종) 중
+      #   하나로 종결된다. 소진 건 대부분이 벤더 재조회로 자동 승인·자동 실패로 빠지므로,
+      #   격리 도달 건만 세면 자동 확정된 소진 건이 알람에서 빠진다. 태그 무관 합산으로
+      #   "관문을 거친 소진 건 전체"를 소진 발생 신호로 삼는다.
       #
       # increase() 델타화: 누적 offset 절대값 미사용 — 새 DLQ 도달 건만 포착.
       # 이 알람과 DlqTopicOffsetRising 은 독립 신호 — 합산(sum)하지 않는다.
@@ -18,7 +20,7 @@ groups:
         expr: >-
           increase(payment_eos_commit_failure_dlq_total[5m]) > 0
           or
-          increase(pg_retry_exhausted_quarantine_total[5m]) > 0
+          sum(increase(pg_final_confirmation_outcome_total[5m])) > 0
         for: 1m
         labels:
           severity: warning
@@ -26,7 +28,7 @@ groups:
           summary: "DLQ 앱 도달 카운터 증가"
           description: >-
             DLQ 도달 {{ $value | humanize }}건 (5분 창).
-            EOS 커밋 실패 또는 pg retry 소진 격리 발생.
+            EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함).
 
       # kafka-exporter 기반 .dlq 토픽 offset delta 신호
       #

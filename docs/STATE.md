@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-13
+> 최종 수정: 2026-08-14
 
 ## 활성 작업
 
@@ -20,7 +20,7 @@
 
 ## 최근 완료
 
+- **PG-VENDOR-SIGNAL-CONSOLIDATION** (2026-08-14) — docs/archive/pg-vendor-signal-consolidation/COMPLETION-BRIEFING.md
 - **PG-DUPLICATE-APPROVAL-SETTLEMENT** (2026-08-13) — docs/archive/pg-duplicate-approval-settlement/COMPLETION-BRIEFING.md
-- **PG-MESSAGE-DEDUPE-LAYER-REMOVAL** (2026-08-11) — docs/archive/pg-message-dedupe-layer-removal/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.pg.mock;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
@@ -17,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * PgStatusLookupPort + PgConfirmPort Fake — 실제 Toss/NicePay HTTP 없이 application 계층 테스트용.
@@ -49,13 +47,6 @@ public class FakePgGatewayAdapter implements PgStatusLookupPort, PgConfirmPort {
 
     /** 상태 기반 멱등 모드 활성 여부. */
     private final AtomicBoolean idempotentDuplicateEnabled = new AtomicBoolean(false);
-
-    /**
-     * 멱등 모드 duplicate 흡수 시 {@link DuplicateApprovalDetectedEvent} 를 발행할 대상.
-     * 이벤트 발행이 필요 없는 기존 테스트(다수)를 깨지 않기 위해 nullable 로 둔다 — null 이면
-     * 이벤트 발행을 생략하고 예외만 던진다(기존 동작 유지).
-     */
-    private ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * 멱등 모드에서 첫 confirm 성공 처리된 orderId → 결과 기록.
@@ -130,30 +121,15 @@ public class FakePgGatewayAdapter implements PgStatusLookupPort, PgConfirmPort {
     private PgConfirmResult confirmWithIdempotentMode(PgConfirmRequest request) {
         PgConfirmResult existing = idempotentProcessedOrders.get(request.orderId());
         if (existing != null) {
-            throw duplicateHandledExceptionWithEvent(request);
+            throw duplicateHandledException(request.orderId());
         }
 
         PgConfirmResult result = confirmResultFor(request.orderId());
         PgConfirmResult winner = idempotentProcessedOrders.putIfAbsent(request.orderId(), result);
         if (winner != null) {
-            throw duplicateHandledExceptionWithEvent(request);
+            throw duplicateHandledException(request.orderId());
         }
         return result;
-    }
-
-    /**
-     * 실 벤더(TossPaymentGatewayStrategy) 및 main {@code FakePgGatewayStrategy} 와 동일하게
-     * {@link DuplicateApprovalDetectedEvent} 발행 후 {@link PgGatewayDuplicateHandledException}
-     * 을 throw 하는 이중 신호 순서를 따른다. publisher 가 주입되지 않은 경우(다수 기존 테스트)는
-     * 이벤트 발행을 생략하고 예외만 던진다.
-     */
-    private PgGatewayDuplicateHandledException duplicateHandledExceptionWithEvent(PgConfirmRequest request) {
-        if (applicationEventPublisher != null) {
-            applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
-                    request.orderId(), request.amount(), request.paymentKey(),
-                    "ALREADY_PROCESSED_PAYMENT", request.vendorType()));
-        }
-        return duplicateHandledException(request.orderId());
     }
 
     private PgConfirmResult confirmResultFor(String orderId) {
@@ -217,15 +193,6 @@ public class FakePgGatewayAdapter implements PgStatusLookupPort, PgConfirmPort {
      */
     public void enableIdempotentDuplicate() {
         idempotentDuplicateEnabled.set(true);
-    }
-
-    /**
-     * 멱등 모드 duplicate 흡수 시 {@link DuplicateApprovalDetectedEvent} 를 발행할 publisher 를
-     * 설정한다. 설정하지 않으면(기본 null) 이벤트 발행 없이 예외만 던진다 — 이벤트 경로가
-     * 필요 없는 기존 테스트는 호출하지 않아도 동작이 그대로 유지된다.
-     */
-    public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
-        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     // --- 검증 ---

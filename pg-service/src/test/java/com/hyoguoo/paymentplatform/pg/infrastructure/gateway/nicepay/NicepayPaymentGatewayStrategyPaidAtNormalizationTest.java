@@ -25,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -58,7 +57,6 @@ class NicepayPaymentGatewayStrategyPaidAtNormalizationTest {
         strategy = new NicepayPaymentGatewayStrategy(
                 httpOperator,
                 encodeUtils,
-                mock(ApplicationEventPublisher.class),
                 new ObjectMapper(),
                 clock);
         ReflectionTestUtils.setField(strategy, "clientKey", "S2_dummy");

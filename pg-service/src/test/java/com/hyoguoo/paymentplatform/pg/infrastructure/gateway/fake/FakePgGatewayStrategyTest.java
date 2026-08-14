@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.domain.RetryPolicy;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
@@ -13,18 +12,17 @@ import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.aspect.TossApiMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
 
 /**
  * FakePgGatewayStrategy 계약 검증.
@@ -37,15 +35,11 @@ class FakePgGatewayStrategyTest {
     private static final PgConfirmRequest REQUEST = new PgConfirmRequest(
             "order-1", "fake-key-1234", BigDecimal.valueOf(1000), PgVendorType.TOSS);
 
-    private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate, ApplicationEventPublisher publisher) {
+    private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate) {
         // latency 0/0 → 테스트에서 sleep 없음. 활성 프로파일은 warnActivation() 을 호출하지 않는
         // 기존 케이스와 무관하므로 빈 MockEnvironment 로 충분하다.
         return new FakePgGatewayStrategy(
-                Clock.systemUTC(), new TossApiMetrics(registry), publisher, new MockEnvironment(), failRate, 0, 0);
-    }
-
-    private FakePgGatewayStrategy strategy(MeterRegistry registry, double failRate) {
-        return strategy(registry, failRate, mock(ApplicationEventPublisher.class));
+                Clock.systemUTC(), new TossApiMetrics(registry), new MockEnvironment(), failRate, 0, 0);
     }
 
     private FakePgGatewayStrategy strategyWithProfiles(String... activeProfiles) {
@@ -53,7 +47,7 @@ class FakePgGatewayStrategyTest {
         environment.setActiveProfiles(activeProfiles);
         return new FakePgGatewayStrategy(
                 Clock.systemUTC(), new TossApiMetrics(new SimpleMeterRegistry()),
-                mock(ApplicationEventPublisher.class), environment, 0.0, 0, 0);
+                environment, 0.0, 0, 0);
     }
 
     @Test
@@ -98,24 +92,21 @@ class FakePgGatewayStrategyTest {
     }
 
     @Test
-    void confirm_동일paymentKey_재호출_DuplicateHandledException_및_이벤트발행() {
-        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
-        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0, publisher);
+    void confirm_동일주문_재호출_이벤트없이_예외만() {
+        boolean hasEventPublisherField = Arrays.stream(FakePgGatewayStrategy.class.getDeclaredFields())
+                .map(Field::getType)
+                .anyMatch(type -> type == ApplicationEventPublisher.class);
+        assertThat(hasEventPublisherField)
+                .as("FakePgGatewayStrategy 에 ApplicationEventPublisher 필드가 남아 있으면 안 됨 — 이벤트 발행 경로 제거")
+                .isFalse();
+
+        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0);
 
         PgConfirmResult firstResult = strategy.confirm(REQUEST);
         assertThat(firstResult.isSuccess()).isTrue();
 
         assertThatThrownBy(() -> strategy.confirm(REQUEST))
                 .isInstanceOf(PgGatewayDuplicateHandledException.class);
-
-        ArgumentCaptor<DuplicateApprovalDetectedEvent> eventCaptor =
-                ArgumentCaptor.forClass(DuplicateApprovalDetectedEvent.class);
-        then(publisher).should().publishEvent(eventCaptor.capture());
-        DuplicateApprovalDetectedEvent publishedEvent = eventCaptor.getValue();
-        assertThat(publishedEvent.orderId()).isEqualTo(REQUEST.orderId());
-        assertThat(publishedEvent.paymentKey()).isEqualTo(REQUEST.paymentKey());
-        assertThat(publishedEvent.amount()).isEqualTo(REQUEST.amount());
-        assertThat(publishedEvent.vendorType()).isEqualTo(REQUEST.vendorType());
     }
 
     @Test
@@ -248,5 +239,35 @@ class FakePgGatewayStrategyTest {
             }
         }
         return -1;
+    }
+
+    @Test
+    void 확정은_매번_재시도가능실패_조회는_승인을_반환한다() {
+        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0);
+        PgConfirmRequest request = requestWithKey("order-drill-lost", "fake-lost-1234");
+
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+
+        PgStatusResult statusResult = strategy.getStatusByOrderId(request.orderId());
+
+        assertThat(statusResult.status()).isEqualTo(PgPaymentStatus.DONE);
+    }
+
+    @Test
+    void 조회_승인응답의_금액은_요청금액과_같다() {
+        FakePgGatewayStrategy strategy = strategy(new SimpleMeterRegistry(), 0.0);
+        PgConfirmRequest request = requestWithKey("order-drill-lost-amount", "fake-lost-amount");
+
+        assertThatThrownBy(() -> strategy.confirm(request))
+                .isInstanceOf(PgGatewayRetryableException.class);
+
+        PgStatusResult statusResult = strategy.getStatusByOrderId(request.orderId());
+
+        assertThat(statusResult.amount()).isEqualTo(request.amount());
     }
 }

@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmRequest;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgConfirmResult;
 import com.hyoguoo.paymentplatform.pg.application.dto.PgStatusResult;
-import com.hyoguoo.paymentplatform.pg.application.event.DuplicateApprovalDetectedEvent;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgConfirmPort;
 import com.hyoguoo.paymentplatform.pg.application.port.out.PgStatusLookupPort;
 import com.hyoguoo.paymentplatform.pg.core.common.log.EventType;
@@ -33,7 +32,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -55,15 +53,17 @@ import org.springframework.stereotype.Component;
  * </ul>
  *
  * <p>동일 paymentKey 로 재호출되면(재시도 자기루프) 실 벤더(Toss ALREADY_PROCESSED_PAYMENT)의 중복 승인
- * 응답을 모사한다 — {@link DuplicateApprovalDetectedEvent} 발행 후 {@link PgGatewayDuplicateHandledException}
- * throw. {@link com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy} 의
- * 이벤트+예외 이중 신호 순서를 그대로 따른다.
+ * 응답을 모사한다 — {@link PgGatewayDuplicateHandledException} 만 throw 한다. 벤더 호출 서비스
+ * (PgVendorCallService)가 이를 받아 DuplicateApprovalHandler.handleDuplicateApproval 을 호출한다.
  *
  * <p>라이브 실측용으로 paymentKey 접두어에 따라 실패 경로를 고를 수 있다(임시 장치).
  * <ul>
  *   <li>{@code fake-fail-} — 확정 실패 → 보상 후 FAILED</li>
  *   <li>{@code fake-retry-} — 매 호출 재시도 가능 실패 → 시도 소진 → DLQ → QUARANTINED</li>
  *   <li>{@code fake-flaky-} — 두 번 실패한 뒤 세 번째 호출부터 승인 → 재시도 자가 회복</li>
+ *   <li>{@code fake-lost-} — 확정은 매번 재시도 가능 실패로 응답하지만 조회는 승인으로 답한다 →
+ *       재시도가 소진돼도 벤더는 실제로 승인 처리를 끝낸 상태를 재현한다. 소진 후 관문이 벤더
+ *       조회로 승인을 발견해 자동 승인 종결하는 장면 전용</li>
  * </ul>
  * 접두어 판정은 중복 승인 판정보다 먼저 이뤄진다 — 자기루프 재호출마다 같은 실패를 내야
  * 시도 횟수가 실제로 소진되기 때문이다.
@@ -77,7 +77,6 @@ import org.springframework.stereotype.Component;
 public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort {
 
     private static final String FAKE_PAYMENT_KEY_PREFIX = "fake-";
-    private static final String ALREADY_PROCESSED_REASON_CODE = "ALREADY_PROCESSED_PAYMENT";
 
     /**
      * 라이브 실측용 시나리오 접두어 — paymentKey 앞머리로 벤더 응답을 결정적으로 고른다.
@@ -86,6 +85,7 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private static final String DRILL_FAIL_PREFIX = "fake-fail-";
     private static final String DRILL_RETRY_PREFIX = "fake-retry-";
     private static final String DRILL_FLAKY_PREFIX = "fake-flaky-";
+    private static final String DRILL_LOST_PREFIX = "fake-lost-";
 
     /**
      * 자가 회복 시나리오에서 성공 전까지 실패시킬 횟수 — 이 횟수를 넘긴 호출부터 승인된다.
@@ -102,7 +102,6 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
 
     private final Clock clock;
     private final TossApiMetrics tossApiMetrics;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final Environment environment;
 
     /**
@@ -128,6 +127,12 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     private final ConcurrentHashMap<String, AtomicInteger> drillFlakyAttempts = new ConcurrentHashMap<>();
 
     /**
+     * 확정은 매번 재시도 가능 실패로 응답하되 벤더는 실제로 승인을 끝낸 상태를 재현하는 시나리오의
+     * 주문별 요청 기록. key=orderId. {@link #getStatusByOrderId} 가 이 기록을 승인 응답으로 되돌린다.
+     */
+    private final ConcurrentHashMap<String, PgConfirmRequest> drillLostConfirmedOrders = new ConcurrentHashMap<>();
+
+    /**
      * 데모 부하 관측용 합성 벤더 RTT + 실패율 주입 파라미터.
      * <p>실 PG 호출이 없는 fake 모드에서 벤더 latency 패널을 실수치처럼 채우고("정상"),
      * fail-rate 로 비동기 실패 경로를 일부 태운다("이상 혼합"). 기본값은 happy-path 유지(fail-rate 0).
@@ -140,7 +145,6 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     public FakePgGatewayStrategy(
             Clock clock,
             TossApiMetrics tossApiMetrics,
-            ApplicationEventPublisher applicationEventPublisher,
             Environment environment,
             @Value("${pg.gateway.fake.fail-rate:0.0}") double failRate,
             @Value("${pg.gateway.fake.latency-min-millis:0}") long latencyMinMillis,
@@ -148,7 +152,6 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     ) {
         this.clock = clock;
         this.tossApiMetrics = tossApiMetrics;
-        this.applicationEventPublisher = applicationEventPublisher;
         this.environment = environment;
         this.failRate = failRate;
         this.latencyMinMillis = latencyMinMillis;
@@ -287,6 +290,14 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                         "DRILL_FLAKY_FAILURE attempt=" + attempt + " orderId=" + request.orderId());
             }
         }
+
+        if (paymentKey.startsWith(DRILL_LOST_PREFIX)) {
+            drillLostConfirmedOrders.putIfAbsent(request.orderId(), request);
+            recordDrillFailure(request, EventType.PG_VENDOR_RETRYABLE_ERROR,
+                    "재시도 가능 실패(벤더는 이미 승인 처리 — 조회로만 확인 가능)");
+            throw PgGatewayRetryableException.of(
+                    "DRILL_LOST_APPROVAL orderId=" + request.orderId());
+        }
     }
 
     /**
@@ -305,14 +316,11 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
     /**
      * 동일 paymentKey(orderId) 재호출 — 실 벤더(Toss ALREADY_PROCESSED_PAYMENT)의 중복 승인 응답 모사.
      * {@link com.hyoguoo.paymentplatform.pg.infrastructure.gateway.toss.TossPaymentGatewayStrategy}
-     * 와 동일하게 이벤트 발행 후 예외를 throw하는 순서를 따른다(이중 신호).
+     * 와 동일하게 예외만 throw 한다.
      */
     private PgConfirmResult handleDuplicateConfirm(PgConfirmRequest request) {
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
-                () -> "fake orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT DuplicateApprovalDetectedEvent 발행");
-        applicationEventPublisher.publishEvent(new DuplicateApprovalDetectedEvent(
-                request.orderId(), request.amount(), request.paymentKey(),
-                ALREADY_PROCESSED_REASON_CODE, request.vendorType()));
+                () -> "fake orderId=" + request.orderId() + " — ALREADY_PROCESSED_PAYMENT 예외 전파");
         throw PgGatewayDuplicateHandledException.of(
                 "ALREADY_PROCESSED_PAYMENT handled for orderId=" + request.orderId());
     }
@@ -349,6 +357,13 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
             return toStatusResult(processed);
         }
 
+        // 확정은 매번 재시도 가능 실패로 응답했지만 벤더는 실제로 승인을 끝낸 시나리오 — 소진 후
+        // 관문의 벤더 조회가 이 기록을 승인 응답으로 되돌려 자동 승인 종결 장면을 재현한다.
+        PgConfirmRequest lostConfirmedRequest = drillLostConfirmedOrders.get(orderId);
+        if (lostConfirmedRequest != null) {
+            return toLostApprovalStatusResult(lostConfirmedRequest);
+        }
+
         // 처리 기록이 없는 orderId 는 시나리오 설계 오류 또는 예기치 못한 호출을 의미한다.
         // 계약은 코드로 표현돼야 한다 — null 반환 대신 명시적 예외로 즉시 실패.
         LogFmt.warn(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_NETWORK_ERROR,
@@ -368,6 +383,23 @@ public class FakePgGatewayStrategy implements PgStatusLookupPort, PgConfirmPort 
                 confirmed.approvedAt(),
                 null,
                 confirmed.approvedAtRaw()
+        );
+    }
+
+    /**
+     * {@code fake-lost-} 시나리오 전용 — 확정 요청 기록으로 승인 조회 응답을 구성한다.
+     * 조회 금액은 요청 금액과 같아야 관문의 금액 대조 분기를 타지 않는다.
+     */
+    private PgStatusResult toLostApprovalStatusResult(PgConfirmRequest request) {
+        String approvedAtRaw = OffsetDateTime.now(clock.withZone(ZoneOffset.UTC)).toString();
+        return new PgStatusResult(
+                request.paymentKey(),
+                request.orderId(),
+                PgPaymentStatus.DONE,
+                request.amount(),
+                LocalDateTime.now(clock),
+                null,
+                approvedAtRaw
         );
     }
 
