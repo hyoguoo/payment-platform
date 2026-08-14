@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — §4.9 를 "미연결"에서 배선 상태로 전면 교체(TX 2단계 분리·금액 대조 선행·확정실패 집합에서 부분 취소 제외·조회 예외 전체 포착·반영 0건 가드·승인 시각 원문·결과 지표 6종), DLQ 플로우차트를 관문 6분기로 갱신, 장애 복원 포인트의 소진 경로 정정, 파일 색인의 FCG 행 정정. `RETRY_EXHAUSTED` 사유는 더 이상 생성되지 않는다). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
@@ -201,7 +201,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 ## 장애 복원 포인트
 
 - **리스너 스킵/크래시/Kafka 발행 실패**: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50) 의 PENDING 배치 재픽업이 1차 경로 — `OutboxRelayService.relay` 는 단일 TX 라 Kafka 발행 실패 시 TX 전체가 롤백돼 PENDING 그대로 남고 이 재픽업으로 즉시 회복된다. IN_FLIGHT 5분 타임아웃 복귀는 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 경로. pg 쪽은 `PgOutboxPollingWorker` (`processedAt IS NULL AND availableAt <= NOW`) 가 동일하게 PENDING 재픽업
-- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → pg_inbox QUARANTINED → payment `QuarantineCompensationHandler` (DLQ-REACHABILITY). 동시 진입 시 over-count(조기 격리)는 수용 한계. FCG (`PgFinalConfirmationGate`) 는 현재 호출처 0 — 미연결 (후속 Phase 예정)
+- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → `PgDlqService` 가 FCG(`PgFinalConfirmationGate`)에 위임 → 벤더 조회 1회 결과에 따라 자동 승인 / 자동 확정실패 / 격리 4사유로 분기(§4.9). 격리분만 payment `QuarantineCompensationHandler` 로 간다. 동시 진입 시 over-count(조기 격리)는 수용 한계
 - **재고 캐시 장애**: confirm 단계에서 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` 플래그
 - **IN_FLIGHT 복원**: `PaymentReconciler` (@Scheduled fixedDelayMs=120000, 2분) — `findInProgressOlderThan(cutoff)` → `event.resetToReady` → `OutboxWorker` 재픽업. 재고 발산 감지/보정은 새 재고 모델에서 책임 제거됨
 - **중복 메시지 (payment 측)**: 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, 같은 Lua 안 atomic) + outbox IN_FLIGHT CAS. 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 가 native 책임 (한도 5회 초과 시 `payment.events.confirmed.dlq`)
@@ -361,11 +361,23 @@ flowchart TD
     DLQ_OUT["insertDlqOutbox attempt ≥ 4"] --> DLQ_RELAY["pg_outbox row -> relay"]
     DLQ_RELAY --> DLQ_TOPIC["payment.commands.confirm.dlq 발행"]
     DLQ_TOPIC --> DLQ_CONS["PaymentConfirmDlqConsumer<br/>@KafkaListener groupId=pg-service-dlq"]
-    DLQ_CONS --> DLQ_SVC["PgDlqService.handle"]
+    DLQ_CONS --> DLQ_SVC["PgDlqService.handle<br/>비잠금 조회, TX 열지 않음"]
     DLQ_SVC --> DLQ_GUARD{"pg_inbox 상태"}
     DLQ_GUARD -->|"이미 terminal"| DLQ_NOOP["no-op (중복 DLQ 진입 흡수)"]
-    DLQ_GUARD -->|"비terminal"| DLQ_TRAN["transitToQuarantined REASON=RETRY_EXHAUSTED<br/>+ pg_outbox events.confirmed QUARANTINED INSERT"]
-    DLQ_TRAN --> DLQ_END["AFTER_COMMIT -> events.confirmed publish"]
+    DLQ_GUARD -->|"비terminal"| FCG_Q["PgFinalConfirmationGate.invokeVendor<br/>TX 밖, getStatus 1회"]
+    FCG_Q --> FCG_A["applyOutcome (TX)<br/>금액 대조 -> 상태 판정"]
+    FCG_A -->|"DONE"| FCG_OK["transitToApproved + events.confirmed APPROVED"]
+    FCG_A -->|"CANCELED/ABORTED/EXPIRED"| FCG_NG["transitToFailed + events.confirmed FAILED"]
+    FCG_A -->|"PARTIAL_CANCELED"| FCG_P["transitToQuarantined FCG_PARTIAL_CANCELED"]
+    FCG_A -->|"READY/WAITING_FOR_DEPOSIT 등"| FCG_U["transitToQuarantined FCG_VENDOR_UNSETTLED"]
+    FCG_A -->|"조회 RuntimeException 전체"| FCG_I["transitToQuarantined FCG_INDETERMINATE"]
+    FCG_A -->|"금액 불일치"| FCG_M["transitToQuarantined AMOUNT_MISMATCH"]
+    FCG_OK --> DLQ_END["반영 0건이면 outbox 미생성<br/>1건이면 AFTER_COMMIT -> publish"]
+    FCG_NG --> DLQ_END
+    FCG_P --> DLQ_END
+    FCG_U --> DLQ_END
+    FCG_I --> DLQ_END
+    FCG_M --> DLQ_END
 ```
 
 `pg-service-dlq` 별도 consumer group — `pg-service` 와 분리되어 DLQ 메시지가 정상 토픽 consumer offset 진행을 막지 않음.
@@ -380,11 +392,19 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 | **pg-service inbox** | `pg_inbox.order_id` UNIQUE + `insertPending` INSERT IGNORE. 워커 선점은 `transitPendingToInProgress` (조회+전이 단일 TX) | 같은 주문 명령이 두 번 들어와도 접수 기록 1건, 벤더 호출 1회 |
 | **payment-service dedupe** | Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 안에서 같은 Lua atomic) + 도메인 가드 (이미 DONE 이면 no-op) + Spring Kafka `DefaultErrorHandler` + DLQ. product 측은 `JdbcEventDedupeStore` (stock_commit_dedupe + 재고 차감 같은 TX) | events.confirmed 두 번 받아도 재고 중복 차감/보상 없음 |
 
-### 4.9 FCG (Final Confirmation Gate) — 미연결
+### 4.9 FCG (Final Confirmation Gate) — 배선됨
 
-`PgFinalConfirmationGate` 클래스 존재. vendor `getStatus` 1회 조회로 진짜 결과 확정 (재시도 한도 소진 직전 false negative 방어). 단 **production code 에서 호출처 0건** — javadoc 에 "후속 Phase 에서 DLQ 전이 대신 FCG 선행 경로로 연결 예정" 명시.
+`PgDlqService.handle` 이 격리 직행 대신 이 관문에 위임한다 (PG-VENDOR-SIGNAL-CONSOLIDATION, 2026-08-14). retry 한도 소진 건이 벤더 `getStatus` 1회 조회 결과에 따라 **자동 승인 / 자동 확정실패 / 격리**로 갈린다 — 격리에는 사람이 판단해야 하는 건만 남는다.
 
-현재 retry 한도 소진 시 곧바로 DLQ → QUARANTINED. FCG 미연결 상태가 의도된 deferred (Phase 4 T4-D 묶음 가능).
+- **TX 경계**: `invokeVendor`(TX 없음, 벤더 HTTP) + `applyOutcome`(`@Transactional`, 전이·발행) 2단계. 호출자가 이 순서로 부른다. 외부 호출이 DB 커넥션을 쥐지 않는다
+- **판정 순서**: 금액 대조 → 상태 판정. 금액이 어긋나면 상태와 무관하게 격리
+- **확정실패 집합**: `CANCELED`/`ABORTED`/`EXPIRED` 셋만. `PARTIAL_CANCELED` 는 벤더가 대금 일부를 보유한 상태라 제외하고 전용 사유로 격리 — 실패 확정은 payment 측 재고를 전액 복원하는데 그 경로에는 금액 대조가 없다
+- **조회 예외**: `RuntimeException` 전체를 `FCG_INDETERMINATE` 로 접는다. 게이트웨이 예외 2종만 잡으면 나머지가 DLQ 소비자까지 새어나가 "1회 조회" 불변이 깨진다 (`PgVendorStatusQueryServiceImpl` 와 같은 형태)
+- **반영 가드**: 승인·실패·격리 세 전이 모두 반영 행 수를 확인하고 0건이면 pg_outbox row 자체를 만들지 않는다 (폴링 안전망이 집어가 억제가 무력화되는 것 차단)
+- **승인 시각**: 조회 응답 원문(`approvedAtRaw`)을 승인 payload 까지 전달, 없을 때만 `Clock` 대체
+- **지표**: `pg_final_confirmation_outcome_total{outcome}` 6종(approved/failed/indeterminate/vendor_unsettled/partial_canceled/amount_mismatch), 전이 반영 후에만 증가. 격리 도달 카운터(`PgDlqReachMetrics`)는 이 관문의 격리 반영 지점으로 이관
+
+배선으로 기존 `RETRY_EXHAUSTED` 격리 사유는 더 이상 생성되지 않는다 — 소진 건은 반드시 관문을 거쳐 위 4사유 중 하나가 된다.
 
 ### 4.10 retry 정책 표 (코드 hardcoded)
 
@@ -432,7 +452,7 @@ payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s)
 | Fake strategy (smoke) | `pg-service/.../infrastructure/gateway/fake/FakePgGatewayStrategy.java` |
 | amount 양방향 방어 | `AmountConverter.fromBigDecimalStrict` (`PgInboxRepositoryImpl.insertPending` + `DuplicateApprovalHandler.amountMismatch` 경로) |
 | 중복 승인 처리 | `pg-service/.../application/service/DuplicateApprovalHandler.java` |
-| FCG (미연결) | `pg-service/.../application/service/PgFinalConfirmationGate.java` |
+| FCG (DLQ 소비에서 배선) | `pg-service/.../application/service/PgFinalConfirmationGate.java` |
 | DLQ 처리 | `pg-service/.../application/service/PgDlqService.java` |
 | outbox relay | `pg-service/.../application/service/PgOutboxRelayService.java` |
 | BlockingQueue 채널 | `pg-service/.../infrastructure/channel/PgOutboxChannel.java` |

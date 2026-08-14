@@ -21,7 +21,8 @@
 #   EOS 경로: PaymentEosIntegrationTest
 #     — EOS commit 실패 → AfterRollbackProcessor → DLQ 도달 + payment_eos_commit_failure_dlq_total
 #   pg 경로:  PgSelfLoopRetryExhaustionIntegrationTest
-#     — pg retry 소진(attempt≥4) → QUARANTINED + pg_retry_exhausted_quarantine_total
+#     — pg retry 소진(attempt≥4) → FCG 위임 → 조회 실패 시 QUARANTINED(FCG_INDETERMINATE)
+#       + pg_final_confirmation_outcome_total{outcome} (알람이 보는 지표)
 #
 # ── 사용법 ─────────────────────────────────────────────────────────────────
 #   ./scripts/smoke/alert-firing-dlq.sh          # 격하 폴백 (기본)
@@ -141,8 +142,8 @@ show_integration_test_guidance() {
     print_warning "  검증 클래스: PgSelfLoopRetryExhaustionIntegrationTest"
     print_warning "  위치: pg-service/src/test/java/.../"
     print_warning "  확인 포인트:"
-    print_warning "    - pg retry attempt≥4 소진 시 QUARANTINED 상태 전이"
-    print_warning "    - pg_retry_exhausted_quarantine_total 카운터 증가"
+    print_warning "    - pg retry attempt≥4 소진 시 FCG 위임 → 조회 실패로 QUARANTINED(FCG_INDETERMINATE) 전이"
+    print_warning "    - pg_final_confirmation_outcome_total{outcome} 증가 (자동 확정 건도 이 지표에 잡힌다)"
     print_warning "    - DlqAppCounterRising 발화 조건 충족 확인"
     echo ""
 
