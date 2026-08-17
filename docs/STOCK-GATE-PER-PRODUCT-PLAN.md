@@ -112,7 +112,7 @@ flowchart TD
 - [x] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
 - [x] Task 4: 선차감 기록 스키마·엔티티·포트
 - [x] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
-- [ ] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
+- [x] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
 - [ ] Task 6b: 상품 반복 중 캐시 장애 처리
 - [ ] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
 - [ ] Task 8: 승인 반영 트랜잭션에서 확정 표시
@@ -299,6 +299,17 @@ flowchart TD
 
 - 위 테스트 pass, 다중 상품 주문 통합 테스트 통과
 - 기존 확정 진입·격리 전이 테스트 회귀 없음 — 캐시 장애 분기는 이 태스크에서 최소 형태를 유지하고 Task 6b 가 상품 단위로 세분화한다
+
+**완료 결과**
+
+- `PaymentTransactionCoordinator.decrementStock` 을 선점 획득 → `decrementEachProduct`(상품별 기록 → 차감 반복) → 결과 판정 → 선점 해제(`finally`) 로 재구성. 부족을 만나면 이번 호출이 직접 차감(`OK`)한 상품만 `rejectCompensate` 로 되돌리고, 이미 처리됨(`ALREADY_DONE`)은 대상에서 뺀다. 되돌리기 호출도 부족 판정과 같은 try 블록 안에 있어 인프라 장애 조합이 그대로 `CACHE_DOWN` catch 로 흡수된다
+- 포트는 Task 3 이 신설한 상품 단위 오버로드(`decrementAtomic(orderId, PaymentOrder)`)만 쓰고, 주문 단위 메서드는 건드리지 않았다 — 다른 호출부(확정 실패·격리 진입·관리자 종결)는 아직 옛 메서드를 쓴다
+- **선점 실패 분기를 최소 형태로 함께 도입했다 — 원래 이 태스크 지시는 Task 7 로 미루라고 했으나, 구현 중 SpotBugs(`SF_SWITCH_NO_DEFAULT`)가 `OutboxAsyncConfirmService.confirm()` 의 `switch` 를 막아 빌드가 실패했고, 신규 enum 값을 기존 `REJECTED`/`CACHE_DOWN` 어느 쪽으로 임시 매핑해도 두 경로 모두 CAS 없는 `saveOrUpdate` 로 이긴 쪽의 결제 상태를 덮어쓸 위험이 있어(설계 문서가 "선점 실패 시 응답" 결정에서 기각한 대안과 동일한 모양) 방치할 수 없었다.** `StockDecrementResult` 에 `ALREADY_PROCESSING` 을 추가해 선점 실패 시 재고·기록·결제 상태 어느 것도 건드리지 않고 즉시 반환하게 했고, `OutboxAsyncConfirmService.confirm()` 에 로그만 남기고 물러나는 case 하나를 추가했다(신규 `EventType.PAYMENT_CONFIRM_ALREADY_PROCESSING`). Task 7 은 이 위에 "확정 행이 이미 확정이면 건너뛰기"만 더하면 된다
+- `FakeStockHoldRecordRepository` 신설(`payment/mock`) — 재오픈·확정 보존·사이클 식별까지 실제 어댑터와 같은 시맨틱을 in-memory 로 재현. `PaymentTransactionCoordinatorTest` 의 `coordinatorWithFake` 조합에 사용
+- `PaymentTransactionCoordinatorTest` — 다중 상품 정상/부분 실패/이미 처리됨 제외/기록-차감 순서(InOrder)/선점 해제/선점 실패 6케이스 신규
+- `OutboxAsyncConfirmServiceTest` — `ALREADY_PROCESSING` 시 예외 없이 물러나고 상태 변경 계열 호출이 없음을 검증하는 케이스 신규
+- 기존 회귀 통합 테스트 2종을 선점 배선에 맞춰 갱신 — `PaymentDuplicateConfirmConcurrencyIntegrationTest`(동시 확정 2건: 진 쪽이 outbox UNIQUE 경합 대신 선점에서 갈리므로 `PaymentOutboxDuplicateException` 기대를 예외 없음 + 최종 DB 상태 단정으로 교체), `StockRetentionIntegrationTest`(동시 confirm 2건 케이스를 같은 방식으로 교체, 재고 무접촉 단정은 유지)
+- `./gradlew :payment-service:test` 650건, `:payment-service:integrationTest` 149건 전체 pass(신규 회귀 없음), checkstyle·spotbugs 클린
 
 ### Task 6b: 상품 반복 중 캐시 장애 처리 [tdd=true] [domain_risk=true]
 
