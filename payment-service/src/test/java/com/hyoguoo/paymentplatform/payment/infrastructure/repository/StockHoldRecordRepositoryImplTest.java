@@ -175,9 +175,10 @@ class StockHoldRecordRepositoryImplTest {
         AtomicReference<String> firstToken = new AtomicReference<>();
         AtomicReference<String> secondToken = new AtomicReference<>();
 
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        executor.submit(() -> openHoldAfterGate(startGate, doneLatch, firstToken));
-        executor.submit(() -> openHoldAfterGate(startGate, doneLatch, secondToken));
+        executor.submit(() -> openHoldAfterGate(startGate, doneLatch, firstToken, failure));
+        executor.submit(() -> openHoldAfterGate(startGate, doneLatch, secondToken, failure));
 
         // when — 두 스레드를 신호로 동시에 푼다
         startGate.countDown();
@@ -185,6 +186,7 @@ class StockHoldRecordRepositoryImplTest {
         executor.shutdown();
 
         // then — 행은 하나만 생긴다
+        assertThat(failure.get()).isNull();
         assertThat(firstToken.get()).isNotNull();
         assertThat(secondToken.get()).isNotNull();
         assertThat(jpaStockHoldRecordRepository.count()).isEqualTo(1);
@@ -194,12 +196,14 @@ class StockHoldRecordRepositoryImplTest {
     }
 
     private void openHoldAfterGate(CountDownLatch startGate, CountDownLatch doneLatch,
-                                   AtomicReference<String> resultHolder) {
+                                   AtomicReference<String> resultHolder, AtomicReference<Throwable> failure) {
         try {
             startGate.await();
             resultHolder.set(sut.openHold(ORDER_ID, product()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            failure.compareAndSet(null, e);
         } finally {
             doneLatch.countDown();
         }

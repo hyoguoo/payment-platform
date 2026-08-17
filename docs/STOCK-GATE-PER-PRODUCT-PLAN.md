@@ -111,7 +111,7 @@ flowchart TD
 - [x] Task 2: 주문 단위 선점 획득·해제
 - [x] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
 - [x] Task 4: 선차감 기록 스키마·엔티티·포트
-- [ ] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
+- [x] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
 - [ ] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
 - [ ] Task 6b: 상품 반복 중 캐시 장애 처리
 - [ ] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
@@ -269,6 +269,15 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 동시 삽입 반복 테스트에서 행이 하나만 남는다
+
+**완료 결과**
+
+- `JpaStockHoldRecordRepository` 신설 — `reopenAsNoise`(조건부 UPDATE, 확정 제외), `insertIgnoreNoise`(네이티브 INSERT IGNORE), `closeAsRevertedIfCycleMatches`(사이클 식별 값 + 확정 제외 조건부 UPDATE), `commitAllByOrderId`(주문의 잡음 행 일괄 확정) 4개 쿼리 메서드
+- `StockHoldRecordRepositoryImpl` 신설 — `openHold` 는 **삽입을 먼저 시도하고 실패하면 재오픈을 시도**하는 순서로 구현했다. 처음엔 반대 순서(재오픈 먼저)로 짰는데, 행이 없을 때 조건부 UPDATE 가 0건으로 끝나면서 MySQL InnoDB 가 REPEATABLE READ 팬텀 방지용 갭 락을 잡고 뒤이은 INSERT 가 그 갭에서 삽입 의도 락을 요청해, 같은 순서로 실행되는 동시 호출 두 개가 데드락(`CannotAcquireLockException`)에 걸리는 것을 동시 삽입 테스트로 실제로 재현했다. 삽입을 먼저 하면 행이 없는 경우 갭 락 없이 레코드 락으로 끝나 이 경합이 사라지고, 삽입이 실패한 시점엔 행이 반드시 존재하므로(유일 제약 위반) 재오픈은 항상 실제 레코드를 대상으로 하는 단순 갱신이 된다
+- `openHold` 는 매 호출마다 새 사이클 식별 값(UUID)을 발급해 확정을 제외한 나머지는 상태(잡음이든 되돌림이든)와 무관하게 잡음으로 되돌린다. 이 "이미 잡음인 행도 새 토큰으로 갱신" 이 `closeAsReverted` 의 뒤늦은 닫기 경합을 막는 장치다 — 캐시 되돌리기와 기록 닫기 사이에 새 차감이 들어와 `openHold` 가 다시 불리면 사이클 식별 값이 바뀌어, 옛 값을 쥔 뒤늦은 닫기가 반영되지 않는다
+- `closeAsReverted` 는 사이클 식별 값 일치 + 확정 제외를 함께 조건에 걸어, 값이 우연히 같더라도 확정 행은 건드리지 않는 이중 방어를 뒀다
+- `StockHoldRecordRepositoryImplTest`(Testcontainers) — 여러 번 열어도 행이 하나(재삽입 dedup), 되돌림 후 재오픈, 확정 행 보존, 사이클 식별 값 불일치 시 닫기 실패, 두 스레드 동시 `openHold` 반복 실행(유일 제약 경합) 5케이스
+- `./gradlew :payment-service:test` 644건 전체 pass(신규 5건 포함), checkstyle·spotbugs 클린. 호출부 배선은 Task 6 부터
 
 ### Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기 [tdd=true] [domain_risk=true]
 
