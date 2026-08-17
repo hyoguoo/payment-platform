@@ -110,7 +110,7 @@ flowchart TD
 - [x] Task 1: 상품 단위 스크립트 4종과 키 이름 규칙
 - [x] Task 2: 주문 단위 선점 획득·해제
 - [x] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
-- [ ] Task 4: 선차감 기록 스키마·엔티티·포트
+- [x] Task 4: 선차감 기록 스키마·엔티티·포트
 - [ ] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
 - [ ] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
 - [ ] Task 6b: 상품 반복 중 캐시 장애 처리
@@ -241,6 +241,15 @@ flowchart TD
 **완료 기준**
 
 - 마이그레이션 적용 후 통합 테스트 부팅 성공, 유일 제약이 스키마에 존재
+
+**완료 결과**
+
+- `V7__stock_hold_record.sql` — `stock_hold_record` 테이블 신설. `order_id`(VARCHAR(100)) + `product_id`(BIGINT) 유일 제약(`uk_stock_hold_record_order_product`), `quantity`, `status`(VARCHAR(20)), `cycle_token`(VARCHAR(36)), audit 3컬럼(DATETIME(6), 기존 payment_outbox 정합). 회수 주기 작업의 상태 스캔을 위해 `status` 단일 인덱스도 함께 추가
+- 상태값은 `domain/enums/StockHoldRecordStatus`(NOISE/REVERTED/COMMITTED) — 되돌림과 확정을 하나로 묶으면 되돌린 건과 실제 팔린 건이 회수 판정에서 구분되지 않는다는 이유를 Javadoc에 남겼다
+- 사이클 식별 값은 문자열 토큰(UUID 형태, 발급은 Task 5 어댑터 몫) — `openHold` 호출마다(신규 생성·재오픈 모두) 새로 발급되고, `closeAsReverted` 가 그 값을 조건으로 걸어 자기 사이클만 닫는다
+- `application/port/out/StockHoldRecordRepository` — `openHold(orderId, PaymentOrder)`(신규/재오픈, 확정은 미변경, 사이클 식별 값 반환) / `findSnapshot(orderId, PaymentOrder)`(상태 + 사이클 식별 값 조회, `StockHoldRecordSnapshot` record 신규) / `closeAsReverted(orderId, PaymentOrder, cycleToken)`(조건부 닫기, 반영 여부 boolean) / `commitAllByOrderId(orderId)`(주문의 잡음 기록 일괄 확정, 승인 반영 트랜잭션 참여 전제). 기존 `StockCachePort` 와 동일하게 `PaymentOrder` 를 그대로 받아 호출부에서 productId/quantity를 따로 뽑을 필요가 없게 했다
+- `infrastructure/entity/StockHoldRecordEntity` — `PaymentOutboxEntity`/`PaymentOrderEntity` 와 동일한 Builder+factory 패턴. 상태 전이는 엔티티 메서드가 아니라 Task 5의 JPA `@Modifying` 조건부 UPDATE 가 담당하므로(기존 `PaymentOutboxRepositoryImpl`의 `claimToInFlight`/`recordRetryDelay` 와 동일 패턴) 전이 메서드를 두지 않고, 삽입 전용 static factory `openNoise()`만 노출
+- 어댑터 구현(`StockHoldRecordRepositoryImpl` + JPA 인터페이스, 동시 삽입 시 유일 제약 처리)은 Task 5 범위 — 이번 태스크는 포트가 아직 어디서도 주입되지 않아 컴파일만 통과하면 되고, `./gradlew :payment-service:test` 639건 전체 pass(신규 테스트 없음, tdd=false)로 마이그레이션이 Testcontainers MySQL 부팅 시 정상 적용됨을 확인
 
 ### Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별 [tdd=true] [domain_risk=true]
 
