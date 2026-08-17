@@ -14,6 +14,7 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.Payment
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
@@ -69,6 +70,7 @@ class PaymentConfirmResultUseCaseTest {
     private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
+    private StockHoldRecordRepository stockHoldRecordRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, String> stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
@@ -82,6 +84,7 @@ class PaymentConfirmResultUseCaseTest {
         dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
+        stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
         guardSkipMeterRegistry = new SimpleMeterRegistry();
@@ -95,6 +98,7 @@ class PaymentConfirmResultUseCaseTest {
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
+                stockHoldRecordRepository,
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
@@ -357,6 +361,39 @@ class PaymentConfirmResultUseCaseTest {
         then(paymentCommandUseCase).should(times(1)).markPaymentAsDone(any(), any());
         then(stockCommittedKafkaTemplate).should(times(1))
                 .send(eq("payment.events.stock-committed"), eq("1"), anyString());
+    }
+
+    // ---- 승인 반영 트랜잭션에서 선차감 기록 확정 ----
+
+    @Test
+    @DisplayName("shouldCommitStockHoldRecordsWhenApproved — 승인 반영 시 그 주문의 선차감 기록을 확정으로 갱신한다")
+    void shouldCommitStockHoldRecordsWhenApproved() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsDone(any(), any())).willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        then(stockHoldRecordRepository).should(times(1)).commitAllByOrderId(eq(ORDER_ID));
+    }
+
+    @Test
+    @DisplayName("shouldNotCommitStockHoldRecordsOnAmountMismatch — amount 불일치로 격리되면 선차감 기록을 확정하지 않는다")
+    void shouldNotCommitStockHoldRecordsOnAmountMismatch() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(1000));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, 999L, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        then(stockHoldRecordRepository).should(never()).commitAllByOrderId(any());
     }
 
     // ---- amount 불일치 격리 ----

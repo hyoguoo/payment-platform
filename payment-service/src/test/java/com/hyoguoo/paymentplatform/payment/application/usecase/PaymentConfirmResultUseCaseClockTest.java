@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -64,6 +65,7 @@ class PaymentConfirmResultUseCaseClockTest {
         QuarantineCompensationHandler quarantineCompensationHandler =
                 Mockito.mock(QuarantineCompensationHandler.class);
         StockCachePort stockCachePort = Mockito.mock(StockCachePort.class);
+        StockHoldRecordRepository stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
 
         // markIfAbsent 기본 반환 1(신규 마킹)
@@ -74,6 +76,7 @@ class PaymentConfirmResultUseCaseClockTest {
                 quarantineCompensationHandler,
                 FIXED_CLOCK,
                 stockCachePort,
+                stockHoldRecordRepository,
                 mockDedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,

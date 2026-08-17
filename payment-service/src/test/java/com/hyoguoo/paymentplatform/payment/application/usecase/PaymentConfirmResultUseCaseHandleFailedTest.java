@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.Payment
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -52,6 +53,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
     private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
+    private StockHoldRecordRepository stockHoldRecordRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
@@ -63,6 +65,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
+        stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
@@ -74,6 +77,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
+                stockHoldRecordRepository,
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,

@@ -71,6 +71,7 @@ class PaymentConfirmResultUseCaseGuardSkipTest {
                 Mockito.mock(QuarantineCompensationHandler.class),
                 fixedClock,
                 Mockito.mock(com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort.class),
+                Mockito.mock(com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository.class),
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 Mockito.mock(PaymentCommandUseCase.class),
