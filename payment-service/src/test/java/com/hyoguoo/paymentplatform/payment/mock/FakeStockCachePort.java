@@ -147,6 +147,14 @@ public class FakeStockCachePort implements StockCachePort {
         return Collections.unmodifiableMap(stock);
     }
 
+    /**
+     * 선차감 dedup 표시(decrement:done)만 지운다 — 재고 값은 그대로 둔 채 TTL 만료를 흉내낸다.
+     * 이 상태에서 {@link #decrementAtomic(String, PaymentOrder)} 를 다시 부르면 OK 를 돌려준다.
+     */
+    public void expireDecrementToken(Long productId, String orderId) {
+        productDecrementDoneTokens.remove(productToken(productId, orderId));
+    }
+
     public void clear() {
         stock.clear();
         decrementDedupTokens.clear();

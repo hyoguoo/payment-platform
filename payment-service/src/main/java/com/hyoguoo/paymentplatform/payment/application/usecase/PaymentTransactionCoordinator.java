@@ -10,6 +10,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAt
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -42,7 +43,8 @@ public class PaymentTransactionCoordinator {
      *
      * @param orderId          결제 주문 ID (선점·dedup token key 에 사용)
      * @param paymentOrderList 차감 대상 상품 목록
-     * @return SUCCESS: 상품 전부 정상 차감 또는 동일 주문·상품 멱등 재진입(ALREADY_DONE),
+     * @return SUCCESS: 상품 전부 정상 차감 또는 동일 주문·상품 멱등 재진입(ALREADY_DONE) 또는
+     *         선차감 기록이 이미 확정인 상품을 건너뜀,
      *         REJECTED: 상품 중 하나라도 재고 부족(이번 호출이 직접 차감한 상품만 되돌린 뒤 거절),
      *         CACHE_DOWN: Redis 호출 예외(되돌리기 호출 포함),
      *         ALREADY_PROCESSING: 동일 주문을 다른 요청이 이미 처리 중이라 선점을 잡지 못함
@@ -66,6 +68,11 @@ public class PaymentTransactionCoordinator {
      * 호출이 차감한 것이 아니므로 대상에서 뺀다. 되돌리기 호출도 같은 예외 우산 아래 둬,
      * 부족 판정 뒤 되돌리기 자체가 인프라 장애로 실패하는 조합도 CACHE_DOWN 으로 흡수한다.
      *
+     * <p>상품별 반복 진입 전 선차감 기록이 이미 확정인지 먼저 본다 — 확정이면 그 상품은
+     * openHold 도 decrementAtomic 도 부르지 않고 건너뛴다. 캐시의 선차감 표시 수명이 다한
+     * 뒤에 재요청이 오면 캐시만으로는 이미 팔린 상품에 새 차감이 다시 일어날 수 있어, 표시
+     * 수명이 아니라 기록을 보고 판단해야 한다.
+     *
      * <p>반복 도중 캐시 예외가 나면 이번 호출이 직접 차감한 상품만 되돌리려 시도한다 —
      * 상품 단위로 쪼갠 뒤로는 예외가 나기 전에 일부만 차감된 상태일 수 있다. 되돌리기 자체가
      * 또 실패해도 그 예외는 삼키지 않고 로그로 남긴 뒤 CACHE_DOWN 을 그대로 반환한다.
@@ -74,6 +81,9 @@ public class PaymentTransactionCoordinator {
         List<PaymentOrder> decrementedThisCall = new ArrayList<>();
         try {
             for (PaymentOrder order : paymentOrderList) {
+                if (isAlreadyCommitted(orderId, order)) {
+                    continue;
+                }
                 stockHoldRecordRepository.openHold(orderId, order);
                 StockDecrementAtomicResult result = stockCachePort.decrementAtomic(orderId, order);
                 if (result == StockDecrementAtomicResult.INSUFFICIENT) {
@@ -91,6 +101,12 @@ public class PaymentTransactionCoordinator {
             attemptRevertOnCacheFailure(orderId, decrementedThisCall);
             return StockDecrementResult.CACHE_DOWN;
         }
+    }
+
+    private boolean isAlreadyCommitted(String orderId, PaymentOrder order) {
+        return stockHoldRecordRepository.findSnapshot(orderId, order)
+                .map(snapshot -> snapshot.status() == StockHoldRecordStatus.COMMITTED)
+                .orElse(false);
     }
 
     private void rejectDecrementedProducts(String orderId, List<PaymentOrder> decrementedThisCall) {

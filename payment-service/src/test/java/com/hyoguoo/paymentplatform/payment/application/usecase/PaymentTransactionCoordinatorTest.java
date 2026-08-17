@@ -347,23 +347,25 @@ class PaymentTransactionCoordinatorTest {
 
         @Test
         @DisplayName("decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음"
-                + " — 캐시가 다시 차감을 받아줄 상태를 흉내내도 기록을 보고 먼저 걸러낸다")
+                + " — 캐시의 dedup 표시가 만료돼도 기록을 먼저 보고 재차감을 막는다")
         void decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음() {
-            // given — 선차감 표시(decrement:done) 수명이 지나 다시 부르면 정상 차감(OK)이 될
-            // 상태를 스텁으로 흉내낸다. 표시 수명에 기대지 않고 기록을 먼저 보고 판단해야 한다
+            // given — 정상 차감 뒤 결제가 확정되고, 캐시의 선차감 표시(TTL)만 만료된 상태를
+            // 흉내낸다. 표시가 없으니 캐시만 보면 다시 차감(OK)이 성립하는 상태다
             String orderId = "order-016";
-            PaymentOrder order = createPaymentOrder(1L, 2);
-            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
-            given(stockHoldRecordRepository.findSnapshot(orderId, order))
-                    .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.COMMITTED, "cycle-y")));
-            given(stockCachePort.decrementAtomic(orderId, order)).willReturn(StockDecrementAtomicResult.OK);
+            fakeStockCachePort.set(1L, 10);
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 2));
+            coordinatorWithFake.decrementStock(orderId, orderList);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
 
-            // when
-            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
+            fakeStockHoldRecordRepository.commitAllByOrderId(orderId);
+            fakeStockCachePort.expireDecrementToken(1L, orderId);
 
-            // then
+            // when — 재요청, 캐시만 보면 다시 차감이 성립할 상태다
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — 기록이 확정이라 캐시 호출 자체가 없어 재고가 그대로다
             assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
-            then(stockCachePort).should(never()).decrementAtomic(anyString(), any(PaymentOrder.class));
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
         }
 
         @Test

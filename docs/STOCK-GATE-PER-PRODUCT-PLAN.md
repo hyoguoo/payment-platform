@@ -114,7 +114,7 @@ flowchart TD
 - [x] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
 - [x] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
 - [x] Task 6b: 상품 반복 중 캐시 장애 처리
-- [ ] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
+- [x] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
 - [ ] Task 8: 승인 반영 트랜잭션에서 확정 표시
 - [ ] Task 9a: 확정 실패 경로를 상품 단위로 전환
 - [ ] Task 9b: 격리 진입 경로를 상품 단위로 전환
@@ -357,6 +357,13 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 기존 확정 진입 테스트 회귀 없음
+
+**완료 결과**
+
+- **선점 실패 분기는 Task 6 에서 이미 들어갔다** — SpotBugs(`SF_SWITCH_NO_DEFAULT`)가 `OutboxAsyncConfirmService.confirm()` 의 switch 를 막아, 기존 분기(`REJECTED`/`CACHE_DOWN`)로 임시 매핑하면 진행 중인 이긴 쪽 결제 상태를 덮어쓰는 버그가 되기 때문이었다. `StockDecrementResult.ALREADY_PROCESSING` 과 `OutboxAsyncConfirmService` 의 상태 미변경 분기, `EventType.PAYMENT_CONFIRM_ALREADY_PROCESSING` 로그까지 Task 6 완료 결과에 이미 반영되어 있다. 이 태스크에 남은 것은 **확정 행 재요청 건너뛰기**뿐이었다
+- `PaymentTransactionCoordinator.decrementEachProduct` 의 상품 반복 진입 전에 `isAlreadyCommitted(orderId, order)` 로 `stockHoldRecordRepository.findSnapshot` 을 먼저 조회한다. 상태가 `COMMITTED` 면 그 상품은 `openHold` 도 `decrementAtomic` 도 부르지 않고 건너뛴다 — 캐시의 선차감 표시(`decrement:done`) 수명이 아니라 결제 DB 기록을 보고 판단하므로, 표시가 만료된 뒤 재요청이 와도 이미 팔린 상품에 새 차감이 일어나지 않는다
+- `PaymentTransactionCoordinatorTest` 에 2케이스 신규 — 기록이 확정이면 `openHold`/`decrementAtomic` 호출 자체가 없음(mock 기반), 정상 차감 후 확정되고 캐시의 dedup 표시만 만료된 상태(`FakeStockCachePort.expireDecrementToken` 신규 fixture 헬퍼로 흉내)에서 재요청해도 캐시 호출이 없어 재고가 그대로임(Fake 기반, 실제 이중 차감 여부까지 값으로 단정). 후자를 캐시 스텁(OK 반환)으로 접근했더니 호출이 일어나지 않아 Mockito strict-stub 이 `UnnecessaryStubbingException` 을 내 Fake 기반으로 재작성했다
+- `./gradlew :payment-service:test` 656건 전체 pass(신규 2건 포함), checkstyle·spotbugs 클린
 
 ### Task 8: 승인 반영 트랜잭션에서 확정 표시 [tdd=true] [domain_risk=true]
 
