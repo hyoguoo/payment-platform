@@ -20,7 +20,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@DisplayName("stock_compensation_atomic.lua 단위 테스트")
+@DisplayName("stock_compensation_atomic.lua 단위 테스트 — 상품 단위")
 class StockCompensationAtomicLuaTest {
 
     @Container
@@ -73,13 +73,12 @@ class StockCompensationAtomicLuaTest {
     void 단일_상품_정상_보상_성공() {
         // given
         String orderId = "order-comp-001";
-        String tokenKey = "compensation:done:" + orderId;
-        String stockKey = "stock:10";
+        String tokenKey = "compensation:done:{10}:" + orderId;
+        String stockKey = "stock:{10}";
 
         redisTemplate.opsForValue().set(stockKey, "0");
 
         List<String> keys = Arrays.asList(tokenKey, stockKey);
-        // ARGV[1..N] = 복원 수량, ARGV[N+1] = TTL
         String[] args = {"5", String.valueOf(P8D_TTL)};
 
         // when
@@ -91,40 +90,12 @@ class StockCompensationAtomicLuaTest {
     }
 
     @Test
-    @DisplayName("복수_상품_atomic_보상 — N개 상품 한 번에 복원 → 모두 증가")
-    void 복수_상품_atomic_보상() {
-        // given
-        String orderId = "order-comp-002";
-        String tokenKey = "compensation:done:" + orderId;
-        String stockKey1 = "stock:20";
-        String stockKey2 = "stock:30";
-        String stockKey3 = "stock:40";
-
-        redisTemplate.opsForValue().set(stockKey1, "10");
-        redisTemplate.opsForValue().set(stockKey2, "0");
-        redisTemplate.opsForValue().set(stockKey3, "5");
-
-        List<String> keys = Arrays.asList(tokenKey, stockKey1, stockKey2, stockKey3);
-        // A 3개, B 7개, C 2개 복원
-        String[] args = {"3", "7", "2", String.valueOf(P8D_TTL)};
-
-        // when
-        String result = redisTemplate.execute(COMPENSATION_ATOMIC_SCRIPT, keys, (Object[]) args);
-
-        // then
-        assertThat(result).isEqualTo("OK");
-        assertThat(redisTemplate.opsForValue().get(stockKey1)).isEqualTo("13");
-        assertThat(redisTemplate.opsForValue().get(stockKey2)).isEqualTo("7");
-        assertThat(redisTemplate.opsForValue().get(stockKey3)).isEqualTo("7");
-    }
-
-    @Test
-    @DisplayName("두번째_호출_ALREADY_DONE — 동일 orderId 재호출 → ALREADY_DONE + 재고 변화 없음")
+    @DisplayName("두번째_호출_ALREADY_DONE — 동일 상품·주문 조합 재호출 → ALREADY_DONE + 재고 변화 없음")
     void 두번째_호출_ALREADY_DONE() {
         // given
         String orderId = "order-comp-003";
-        String tokenKey = "compensation:done:" + orderId;
-        String stockKey = "stock:50";
+        String tokenKey = "compensation:done:{50}:" + orderId;
+        String stockKey = "stock:{50}";
 
         redisTemplate.opsForValue().set(stockKey, "0");
 
@@ -136,7 +107,7 @@ class StockCompensationAtomicLuaTest {
         assertThat(firstResult).isEqualTo("OK");
         assertThat(redisTemplate.opsForValue().get(stockKey)).isEqualTo("10");
 
-        // when — 동일 orderId 재호출
+        // when — 동일 상품·주문 조합 재호출
         String secondResult = redisTemplate.execute(COMPENSATION_ATOMIC_SCRIPT, keys, (Object[]) args);
 
         // then
@@ -146,14 +117,14 @@ class StockCompensationAtomicLuaTest {
     }
 
     @Test
-    @DisplayName("다른_orderId_는_독립적 — orderId1 ALREADY_DONE 이어도 orderId2 정상 보상")
-    void 다른_orderId_는_독립적() {
+    @DisplayName("다른_상품·주문_조합은_독립적 — 상품A ALREADY_DONE 이어도 상품B 는 정상 보상")
+    void 다른_상품_조합은_독립적() {
         // given
         String orderId1 = "order-comp-004";
         String orderId2 = "order-comp-005";
-        String tokenKey1 = "compensation:done:" + orderId1;
-        String tokenKey2 = "compensation:done:" + orderId2;
-        String stockKey = "stock:60";
+        String tokenKey1 = "compensation:done:{60}:" + orderId1;
+        String tokenKey2 = "compensation:done:{60}:" + orderId2;
+        String stockKey = "stock:{60}";
 
         redisTemplate.opsForValue().set(stockKey, "0");
 
@@ -183,8 +154,8 @@ class StockCompensationAtomicLuaTest {
     void dedup_token_TTL_설정_확인() {
         // given
         String orderId = "order-comp-006";
-        String tokenKey = "compensation:done:" + orderId;
-        String stockKey = "stock:70";
+        String tokenKey = "compensation:done:{70}:" + orderId;
+        String stockKey = "stock:{70}";
 
         redisTemplate.opsForValue().set(stockKey, "0");
 

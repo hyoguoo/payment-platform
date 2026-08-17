@@ -149,7 +149,7 @@ class StockRetentionIntegrationTest {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
 
-        redisTemplate.opsForValue().set("stock:" + PRODUCT_ID, String.valueOf(INITIAL_STOCK));
+        redisTemplate.opsForValue().set("stock:{" + PRODUCT_ID + "}", String.valueOf(INITIAL_STOCK));
 
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
@@ -289,7 +289,7 @@ class StockRetentionIntegrationTest {
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
     private int getStock() {
-        String value = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+        String value = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
         assertThat(value).isNotNull();
         return Integer.parseInt(value);
     }

@@ -169,7 +169,7 @@ class StockCompensationRecoveryIntegrationTest {
         redisTemplate.afterPropertiesSet();
 
         // 재고 초기값 설정
-        redisTemplate.opsForValue().set("stock:" + PRODUCT_ID, String.valueOf(INITIAL_STOCK - ORDER_QUANTITY));
+        redisTemplate.opsForValue().set("stock:{" + PRODUCT_ID + "}", String.valueOf(INITIAL_STOCK - ORDER_QUANTITY));
 
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
@@ -209,7 +209,7 @@ class StockCompensationRecoveryIntegrationTest {
         // then — 재고 복원 확인 (INITIAL_STOCK - ORDER_QUANTITY + ORDER_QUANTITY = INITIAL_STOCK)
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> {
-                    String stockValue = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+                    String stockValue = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
                     assertThat(stockValue).isNotNull();
                     assertThat(Integer.parseInt(stockValue)).isEqualTo(INITIAL_STOCK);
                 });
@@ -250,7 +250,7 @@ class StockCompensationRecoveryIntegrationTest {
         // then — 잠시 후에도 재고가 두 번 복원되지 않음 (ALREADY_DONE dedup token 방어)
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> {
-                    String stockValue = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+                    String stockValue = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
                     assertThat(stockValue).isNotNull();
                     // 재고가 INITIAL_STOCK 을 초과하지 않아야 함 (이중 복원 방어)
                     assertThat(Integer.parseInt(stockValue)).isEqualTo(INITIAL_STOCK);

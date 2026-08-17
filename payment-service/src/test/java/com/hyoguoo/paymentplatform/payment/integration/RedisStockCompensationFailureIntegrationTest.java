@@ -209,7 +209,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // 실제 흐름에서 checkout 시 decrementAtomic 이 INITIAL_STOCK → INITIAL_STOCK - ORDER_QUANTITY 로 감소.
         // 이 테스트는 checkout 완료 후 FAILED 결과수신 시점을 재현하므로 미리 감소된 값으로 설정한다.
         redisTemplate.opsForValue().set(
-                "stock:" + PRODUCT_ID,
+                "stock:{" + PRODUCT_ID + "}",
                 String.valueOf(INITIAL_STOCK - ORDER_QUANTITY)
         );
 
@@ -287,7 +287,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // stock-committed 미발행이라 미차감.
         // redis 재고(INITIAL_STOCK - ORDER_QUANTITY) < 초기 재고(INITIAL_STOCK, product RDB 등가)
         // = 과예약 보수적 방향(over-sell 아님). 자동 복구는 재고 재동기 등 별도 후속 위임(가시화 한계 — 설계 명시).
-        String stockValue = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+        String stockValue = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
         assertThat(stockValue)
                 .as("보상 실패 후 redis 재고 키 존재 확인")
                 .isNotNull();
