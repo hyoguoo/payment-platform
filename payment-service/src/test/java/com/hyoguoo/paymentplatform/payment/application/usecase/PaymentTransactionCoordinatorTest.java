@@ -14,12 +14,14 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPu
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
 import java.math.BigDecimal;
@@ -321,6 +323,47 @@ class PaymentTransactionCoordinatorTest {
             // then — 차감에 실패한 상품도 openHold 가 이미 호출돼 기록이 남았다
             then(stockHoldRecordRepository).should().openHold(orderId, order1);
             then(stockHoldRecordRepository).should().openHold(orderId, order2);
+        }
+
+        @Test
+        @DisplayName("decrementStock_확정_행은_캐시_차감_호출_없음 — 기록이 확정이면 openHold·decrementAtomic 이 불리지 않는다")
+        void decrementStock_확정_행은_캐시_차감_호출_없음() {
+            // given
+            String orderId = "order-014";
+            PaymentOrder order = createPaymentOrder(1L, 2);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.findSnapshot(orderId, order))
+                    .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.COMMITTED, "cycle-x")));
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            then(stockHoldRecordRepository).should(never()).openHold(anyString(), any(PaymentOrder.class));
+            then(stockCachePort).should(never()).decrementAtomic(anyString(), any(PaymentOrder.class));
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음"
+                + " — 캐시가 다시 차감을 받아줄 상태를 흉내내도 기록을 보고 먼저 걸러낸다")
+        void decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음() {
+            // given — 선차감 표시(decrement:done) 수명이 지나 다시 부르면 정상 차감(OK)이 될
+            // 상태를 스텁으로 흉내낸다. 표시 수명에 기대지 않고 기록을 먼저 보고 판단해야 한다
+            String orderId = "order-016";
+            PaymentOrder order = createPaymentOrder(1L, 2);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.findSnapshot(orderId, order))
+                    .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.COMMITTED, "cycle-y")));
+            given(stockCachePort.decrementAtomic(orderId, order)).willReturn(StockDecrementAtomicResult.OK);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            then(stockCachePort).should(never()).decrementAtomic(anyString(), any(PaymentOrder.class));
         }
 
         @Test
