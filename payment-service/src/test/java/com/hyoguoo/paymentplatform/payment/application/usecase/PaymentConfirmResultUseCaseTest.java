@@ -13,8 +13,9 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
@@ -22,6 +23,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import io.micrometer.core.instrument.Counter;
@@ -31,6 +33,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -322,14 +325,16 @@ class PaymentConfirmResultUseCaseTest {
     // ---- FAILED 보상 순서 보존 ----
 
     @Test
-    @DisplayName("shouldMaintainCompensationOrderForFailed — compensateAtomic 먼저, markPaymentAsFail 나중")
+    @DisplayName("shouldMaintainCompensationOrderForFailed — 상품별 되돌리기가 먼저, markPaymentAsFail 나중")
     void shouldMaintainCompensationOrderForFailed() {
         PaymentOrder order = buildPaymentOrder(100L, 3, BigDecimal.valueOf(300));
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-order-test")));
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(any(), anyString(), anyString())).willReturn(event);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -337,8 +342,9 @@ class PaymentConfirmResultUseCaseTest {
 
         sut.handle(message);
 
-        InOrder inOrder = inOrder(stockCachePort, paymentCommandUseCase);
-        inOrder.verify(stockCachePort).compensateAtomic(eq(ORDER_ID), any());
+        InOrder inOrder = inOrder(stockCachePort, stockHoldRecordRepository, paymentCommandUseCase);
+        inOrder.verify(stockCachePort).compensateIfDecremented(eq(ORDER_ID), eq(order));
+        inOrder.verify(stockHoldRecordRepository).closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-order-test"));
         inOrder.verify(paymentCommandUseCase)
                 .markPaymentAsFail(any(PaymentEvent.class), eq("VENDOR_FAILED"), eq(PaymentStatusChangeTrigger.CONFIRM));
     }

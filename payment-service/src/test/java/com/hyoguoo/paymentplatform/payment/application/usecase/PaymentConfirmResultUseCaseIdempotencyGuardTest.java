@@ -10,12 +10,15 @@ import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventM
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -24,6 +27,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -122,8 +126,10 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(any(), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(any(String.class), any(PaymentOrder.class)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-guard-test")));
+        given(stockCachePort.compensateIfDecremented(any(String.class), any(PaymentOrder.class)))
+                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
@@ -132,7 +138,9 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
 
         sut.handle(message);
 
-        then(stockCachePort).should(times(1)).compensateAtomic(any(), any());
+        then(stockCachePort).should(times(1)).compensateIfDecremented(any(String.class), any(PaymentOrder.class));
+        then(stockHoldRecordRepository).should(times(1))
+                .closeAsReverted(any(String.class), any(PaymentOrder.class), any(String.class));
         then(paymentCommandUseCase).should(times(1))
                 .markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class));
     }

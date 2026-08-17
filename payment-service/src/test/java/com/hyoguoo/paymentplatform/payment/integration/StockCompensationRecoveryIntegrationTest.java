@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.payment.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -14,11 +13,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentConfirmResultUseCase;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
@@ -153,6 +155,9 @@ class StockCompensationRecoveryIntegrationTest {
     @MockitoSpyBean
     private PaymentConfirmResultUseCase paymentConfirmResultUseCase;
 
+    @Autowired
+    private StockHoldRecordRepository stockHoldRecordRepository;
+
     private StringRedisTemplate redisTemplate;
     private LettuceConnectionFactory connectionFactory;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -192,7 +197,7 @@ class StockCompensationRecoveryIntegrationTest {
     }
 
     @Test
-    @DisplayName("정상 FAILED 보상 플로우: events.confirmed FAILED 수신 → compensateAtomic OK → markPaymentAsFail → 재고 원복")
+    @DisplayName("정상 FAILED 보상 플로우: events.confirmed FAILED 수신 → compensateIfDecremented OK → markPaymentAsFail → 재고 원복")
     void 정상_FAILED_보상_플로우_재고_복원() throws Exception {
         // given
         String orderId = "order-scr10-" + UUID.randomUUID();
@@ -220,10 +225,15 @@ class StockCompensationRecoveryIntegrationTest {
                     PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
                     assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
                 });
+
+        // 선차감 기록이 되돌림으로 닫혔는지 확인
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(stockHoldRecordRepository.findSnapshot(orderId, buildStockHoldPaymentOrder()))
+                        .hasValueSatisfying(snapshot -> assertThat(snapshot.status()).isEqualTo(StockHoldRecordStatus.REVERTED)));
     }
 
     @Test
-    @DisplayName("보상 ALREADY_DONE 재배달 멱등: 동일 orderId 두 번 수신 → 두 번째는 noop → 재고 한 번만 복원")
+    @DisplayName("보상 ALREADY_DONE 재배달 멱등: 동일 orderId 두 번 수신 → 두 번째는 노출 상태 가드에서 skip → 재고 한 번만 복원")
     void 보상_ALREADY_DONE_재배달_멱등() throws Exception {
         // given
         String orderId = "order-scr10-idem-" + UUID.randomUUID();
@@ -264,9 +274,9 @@ class StockCompensationRecoveryIntegrationTest {
         String orderId = "order-scr10-dlq-" + UUID.randomUUID();
         savePaymentInProgress(orderId);
 
-        // compensateAtomic 에서 RuntimeException 을 던지도록 stub
+        // compensateIfDecremented 에서 RuntimeException 을 던지도록 stub
         doThrow(new RuntimeException("Redis 연결 실패 stub"))
-                .when(stockCachePort).compensateAtomic(anyString(), anyList());
+                .when(stockCachePort).compensateIfDecremented(anyString(), any(PaymentOrder.class));
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 orderId, "FAILED", "TEST_FAIL", null, null, UUID.randomUUID().toString()
@@ -280,7 +290,7 @@ class StockCompensationRecoveryIntegrationTest {
         // DefaultErrorHandler maxAttempts=5 → 1초 간격 5회 = 최대 5초 + 라운드트립
         await().atMost(Duration.ofSeconds(30))
                 .untilAsserted(() ->
-                        verify(stockCachePort, times(6)).compensateAtomic(anyString(), anyList())
+                        verify(stockCachePort, times(6)).compensateIfDecremented(anyString(), any(PaymentOrder.class))
                 );
     }
 
@@ -291,9 +301,9 @@ class StockCompensationRecoveryIntegrationTest {
         String orderId = "order-scr10-notretry-" + UUID.randomUUID();
         savePaymentInProgress(orderId);
 
-        // compensateAtomic 에서 IllegalArgumentException (not-retryable)
+        // compensateIfDecremented 에서 IllegalArgumentException (not-retryable)
         doThrow(new IllegalArgumentException("데이터 형식 손상 stub"))
-                .when(stockCachePort).compensateAtomic(anyString(), anyList());
+                .when(stockCachePort).compensateIfDecremented(anyString(), any(PaymentOrder.class));
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 orderId, "FAILED", "TEST_FAIL", null, null, UUID.randomUUID().toString()
@@ -306,16 +316,16 @@ class StockCompensationRecoveryIntegrationTest {
         // then — retry 없이 즉시 1회만 호출되고 DLQ 로 빠져야 함 (최대 3초 내)
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() ->
-                        verify(stockCachePort, times(1)).compensateAtomic(anyString(), anyList())
+                        verify(stockCachePort, times(1)).compensateIfDecremented(anyString(), any(PaymentOrder.class))
                 );
 
         // 추가 호출이 없음을 확인 (retry 미발생)
         TimeUnit.SECONDS.sleep(2);
-        verify(stockCachePort, times(1)).compensateAtomic(anyString(), anyList());
+        verify(stockCachePort, times(1)).compensateIfDecremented(anyString(), any(PaymentOrder.class));
     }
 
     @Test
-    @DisplayName("호출 순서 검증: compensateAtomic 호출 시점이 markPaymentAsFail 호출 시점보다 선행")
+    @DisplayName("호출 순서 검증: compensateIfDecremented 호출 시점이 markPaymentAsFail 호출 시점보다 선행")
     void 호출_순서_검증_보상_먼저_RDB_나중() throws Exception {
         // given
         String orderId = "order-scr10-order-" + UUID.randomUUID();
@@ -336,16 +346,20 @@ class StockCompensationRecoveryIntegrationTest {
                     assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
                 });
 
-        // InOrder 검증: compensateAtomic 이 markPaymentAsFail 보다 먼저 호출
+        // InOrder 검증: compensateIfDecremented 가 markPaymentAsFail 보다 먼저 호출
         InOrder order = inOrder(stockCachePort, paymentCommandUseCase);
-        order.verify(stockCachePort).compensateAtomic(anyString(), anyList());
+        order.verify(stockCachePort).compensateIfDecremented(anyString(), any(PaymentOrder.class));
         order.verify(paymentCommandUseCase).markPaymentAsFail(any(), anyString(), anyString());
     }
 
     // ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────
 
     /**
-     * IN_PROGRESS 상태의 PaymentEvent + PaymentOrder 를 DB 에 저장한다.
+     * IN_PROGRESS 상태의 PaymentEvent + PaymentOrder 를 DB 에 저장하고, checkout 시점의 선차감을
+     * 흉내내 선차감 기록을 열고({@code stockHoldRecordRepository.openHold}) redis 에 선차감 흔적
+     * ({@code decrement:done}) 을 심는다 — 실제 흐름은 entry 경로에서 이 둘이 먼저 일어난 뒤에야
+     * FAILED 결과 수신이 온다.
+     *
      * @param orderId 주문 ID
      */
     private void savePaymentInProgress(String orderId) {
@@ -370,5 +384,15 @@ class StockCompensationRecoveryIntegrationTest {
                 .status(PaymentOrderStatus.EXECUTING)
                 .build();
         jpaPaymentOrderRepository.save(order);
+
+        stockHoldRecordRepository.openHold(orderId, buildStockHoldPaymentOrder());
+        redisTemplate.opsForValue().set("decrement:done:{" + PRODUCT_ID + "}:" + orderId, "1");
+    }
+
+    private PaymentOrder buildStockHoldPaymentOrder() {
+        return PaymentOrder.allArgsBuilder()
+                .productId(PRODUCT_ID)
+                .quantity(ORDER_QUANTITY)
+                .allArgsBuild();
     }
 }
