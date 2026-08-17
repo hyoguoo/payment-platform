@@ -10,17 +10,25 @@ import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgVendorStatusI
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgVendorStatusJudgement;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PgVendorStatusPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -51,22 +59,28 @@ class QuarantineResolveUseCaseTest {
     private StockCachePort stockCachePort;
 
     @Mock
+    private StockHoldRecordRepository stockHoldRecordRepository;
+
+    @Mock
     private PaymentCommandUseCase paymentCommandUseCase;
 
     @Mock
     private PgVendorStatusPort pgVendorStatusPort;
 
     @Test
-    @DisplayName("resolve - 벤더 조회 → 보상(compensateIfDecremented) → 도메인 전이 순서로 호출한다")
-    void resolve_ShouldCompensateBeforeTransition() {
+    @DisplayName("resolve - 벤더 조회 → 상품별 되돌리기(흔적 확인 → 보상 → 기록 닫기) → 도메인 전이 순서로 호출한다")
+    void resolve_ShouldRevertBeforeTransition() {
         // given
         PaymentOrder order = buildPaymentOrder(40L, 7);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
         PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
+        String cycleToken = "cycle-quarantine-resolve-001";
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.FAILED, "CANCELED"));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
+        given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, cycleToken)));
+        given(stockCachePort.compensateIfDecremented(ORDER_ID, order))
                 .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willReturn(resolvedEvent);
@@ -75,9 +89,11 @@ class QuarantineResolveUseCaseTest {
         PaymentEvent result = quarantineResolveUseCase.resolve(ORDER_ID, REASON);
 
         // then
-        InOrder inOrder = Mockito.inOrder(pgVendorStatusPort, stockCachePort, paymentCommandUseCase);
+        InOrder inOrder = Mockito.inOrder(pgVendorStatusPort, stockHoldRecordRepository, stockCachePort, paymentCommandUseCase);
         inOrder.verify(pgVendorStatusPort).lookup(ORDER_ID);
-        inOrder.verify(stockCachePort).compensateIfDecremented(ORDER_ID, event.getPaymentOrderList());
+        inOrder.verify(stockHoldRecordRepository).findSnapshot(ORDER_ID, order);
+        inOrder.verify(stockCachePort).compensateIfDecremented(ORDER_ID, order);
+        inOrder.verify(stockHoldRecordRepository).closeAsReverted(ORDER_ID, order, cycleToken);
         inOrder.verify(paymentCommandUseCase).markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString());
         assertThat(result).isEqualTo(resolvedEvent);
     }
@@ -87,12 +103,15 @@ class QuarantineResolveUseCaseTest {
     @DisplayName("resolve - 보상 결과(OK/ALREADY_DONE/NO_DECREMENT) 무관하게 전이를 진행한다")
     void resolve_AllCompensationResults_ShouldProceedTransition(StockRecoveryCompensationResult compensationResult) {
         // given
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of());
-        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of());
+        PaymentOrder order = buildPaymentOrder(41L, 2);
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.UNKNOWN, null));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
+        given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-x")));
+        given(stockCachePort.compensateIfDecremented(ORDER_ID, order))
                 .willReturn(compensationResult);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willReturn(resolvedEvent);
@@ -114,8 +133,6 @@ class QuarantineResolveUseCaseTest {
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.FAILED, "CANCELED"));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
-                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willThrow(PaymentStatusException.of(PaymentErrorCode.QUARANTINE_RESOLVE_CONFLICT));
 
@@ -139,6 +156,7 @@ class QuarantineResolveUseCaseTest {
         then(paymentLoadUseCase).shouldHaveNoInteractions();
         then(pgVendorStatusPort).shouldHaveNoInteractions();
         then(stockCachePort).shouldHaveNoInteractions();
+        then(stockHoldRecordRepository).shouldHaveNoInteractions();
         then(paymentCommandUseCase).shouldHaveNoInteractions();
     }
 
@@ -158,7 +176,8 @@ class QuarantineResolveUseCaseTest {
                 .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_FAIL_FROM_QUARANTINE.getCode());
         // 비격리 건은 벤더 조회조차 나가지 않는다 — 조회는 격리 상태 확인 이후에만 수행된다
         then(pgVendorStatusPort).shouldHaveNoInteractions();
-        then(stockCachePort).should(Mockito.never()).compensateIfDecremented(Mockito.anyString(), Mockito.anyList());
+        then(stockHoldRecordRepository).shouldHaveNoInteractions();
+        then(stockCachePort).should(Mockito.never()).compensateIfDecremented(Mockito.anyString(), Mockito.any(PaymentOrder.class));
         then(paymentCommandUseCase).shouldHaveNoInteractions();
     }
 
@@ -179,8 +198,8 @@ class QuarantineResolveUseCaseTest {
     }
 
     @Test
-    @DisplayName("resolve - 벤더 조회가 승인이면 재고 보상을 호출하지 않는다")
-    void resolve_WhenVendorApproved_ShouldNotCompensateStock() {
+    @DisplayName("resolve - 벤더 조회가 승인이면 재고 되돌리기를 호출하지 않는다")
+    void resolve_WhenVendorApproved_ShouldNotRevertStock() {
         // given
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of());
 
@@ -191,8 +210,9 @@ class QuarantineResolveUseCaseTest {
         assertThatThrownBy(() -> quarantineResolveUseCase.resolve(ORDER_ID, REASON))
                 .isInstanceOf(PaymentStatusException.class);
 
-        // then — 보상은 비가역이라 승인이 확인된 건에는 절대 나가면 안 된다
-        then(stockCachePort).should(Mockito.never()).compensateIfDecremented(Mockito.anyString(), Mockito.anyList());
+        // then — 되돌리기는 비가역이라 승인이 확인된 건에는 절대 나가면 안 된다
+        then(stockHoldRecordRepository).shouldHaveNoInteractions();
+        then(stockCachePort).should(Mockito.never()).compensateIfDecremented(Mockito.anyString(), Mockito.any(PaymentOrder.class));
         then(paymentCommandUseCase).shouldHaveNoInteractions();
     }
 
@@ -200,12 +220,15 @@ class QuarantineResolveUseCaseTest {
     @DisplayName("resolve - 벤더 조회가 실패(FAILED)면 종결을 진행한다")
     void resolve_WhenVendorFailed_ShouldProceedResolve() {
         // given
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of());
-        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of());
+        PaymentOrder order = buildPaymentOrder(42L, 1);
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.FAILED, "CANCELED"));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
+        given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-y")));
+        given(stockCachePort.compensateIfDecremented(ORDER_ID, order))
                 .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willReturn(resolvedEvent);
@@ -215,19 +238,22 @@ class QuarantineResolveUseCaseTest {
 
         // then
         assertThat(result).isEqualTo(resolvedEvent);
-        then(stockCachePort).should(times(1)).compensateIfDecremented(ORDER_ID, event.getPaymentOrderList());
+        then(stockCachePort).should(times(1)).compensateIfDecremented(ORDER_ID, order);
     }
 
     @Test
     @DisplayName("resolve - 벤더 조회가 확인불가(UNKNOWN)면 종결을 진행한다")
     void resolve_WhenVendorUnknown_ShouldProceedResolve() {
         // given
-        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of());
-        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of());
+        PaymentOrder order = buildPaymentOrder(43L, 1);
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+        PaymentEvent resolvedEvent = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.UNKNOWN, null));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
+        given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-z")));
+        given(stockCachePort.compensateIfDecremented(ORDER_ID, order))
                 .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willReturn(resolvedEvent);
@@ -237,7 +263,7 @@ class QuarantineResolveUseCaseTest {
 
         // then
         assertThat(result).isEqualTo(resolvedEvent);
-        then(stockCachePort).should(times(1)).compensateIfDecremented(ORDER_ID, event.getPaymentOrderList());
+        then(stockCachePort).should(times(1)).compensateIfDecremented(ORDER_ID, order);
     }
 
     @Test
@@ -249,8 +275,6 @@ class QuarantineResolveUseCaseTest {
 
         given(paymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
         given(pgVendorStatusPort.lookup(ORDER_ID)).willReturn(vendorStatus(PgVendorStatusJudgement.FAILED, "CANCELED"));
-        given(stockCachePort.compensateIfDecremented(ORDER_ID, event.getPaymentOrderList()))
-                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
                 .willReturn(resolvedEvent);
 
@@ -261,6 +285,105 @@ class QuarantineResolveUseCaseTest {
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
         then(paymentCommandUseCase).should().markPaymentAsFailFromQuarantine(Mockito.eq(event), reasonCaptor.capture());
         assertThat(reasonCaptor.getValue()).isEqualTo(REASON + " / 벤더 상태 조회 결과: 실패(CANCELED)");
+    }
+
+    @Nested
+    @DisplayName("상품별 되돌리기 — 캐시 재고 값 복원까지 단정 (FakeStockCachePort/FakeStockHoldRecordRepository 사용)")
+    class RevertPerProductTest {
+
+        private PaymentLoadUseCase fakePaymentLoadUseCase;
+        private FakeStockCachePort fakeStockCachePort;
+        private FakeStockHoldRecordRepository fakeStockHoldRecordRepository;
+        private PaymentCommandUseCase fakePaymentCommandUseCase;
+        private PgVendorStatusPort fakePgVendorStatusPort;
+        private QuarantineResolveUseCase sutWithFake;
+
+        @BeforeEach
+        void setUp() {
+            fakePaymentLoadUseCase = Mockito.mock(PaymentLoadUseCase.class);
+            fakeStockCachePort = new FakeStockCachePort();
+            fakeStockHoldRecordRepository = new FakeStockHoldRecordRepository();
+            fakePaymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+            fakePgVendorStatusPort = Mockito.mock(PgVendorStatusPort.class);
+
+            sutWithFake = new QuarantineResolveUseCase(
+                    fakePaymentLoadUseCase,
+                    fakePgVendorStatusPort,
+                    fakeStockCachePort,
+                    fakeStockHoldRecordRepository,
+                    fakePaymentCommandUseCase
+            );
+
+            given(fakePgVendorStatusPort.lookup(ORDER_ID))
+                    .willReturn(vendorStatus(PgVendorStatusJudgement.FAILED, "CANCELED"));
+        }
+
+        @Test
+        @DisplayName("선차감 흔적이 있는 상품은 되돌아가고 기록이 되돌림으로 닫힌다 — 재고 값이 원래대로 복원된다")
+        void 선차감_흔적_있으면_재고_복원되고_기록_닫힘() {
+            PaymentOrder order = buildPaymentOrder(1L, 3);
+            PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+            given(fakePaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+            given(fakePaymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
+                    .willReturn(event);
+
+            // 체크아웃 시점의 선차감을 흉내: 기록을 열고 캐시를 차감한다
+            fakeStockCachePort.set(1L, 10);
+            fakeStockHoldRecordRepository.openHold(ORDER_ID, order);
+            fakeStockCachePort.decrementAtomic(ORDER_ID, order);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(7);
+
+            sutWithFake.resolve(ORDER_ID, REASON);
+
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(10);
+            assertThat(fakeStockHoldRecordRepository.statusOf(ORDER_ID, 1L))
+                    .contains(StockHoldRecordStatus.REVERTED);
+        }
+
+        @Test
+        @DisplayName("선차감 흔적이 없는 상품은 되돌리지 않고 기록만 닫는다 — 재고 값이 변하지 않는다")
+        void 선차감_흔적_없으면_재고_불변_기록만_닫힘() {
+            PaymentOrder order = buildPaymentOrder(2L, 3);
+            PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+            given(fakePaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+            given(fakePaymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
+                    .willReturn(event);
+
+            // 기록만 열고 캐시 차감은 아직 일어나지 않은 상태
+            fakeStockCachePort.set(2L, 10);
+            fakeStockHoldRecordRepository.openHold(ORDER_ID, order);
+
+            sutWithFake.resolve(ORDER_ID, REASON);
+
+            assertThat(fakeStockCachePort.current(2L)).isEqualTo(10);
+            assertThat(fakeStockHoldRecordRepository.statusOf(ORDER_ID, 2L))
+                    .contains(StockHoldRecordStatus.REVERTED);
+        }
+
+        @Test
+        @DisplayName("캐시가 이미 처리됨을 돌려줘도 기록은 되돌림으로 닫힌다 — 다른 경로가 먼저 되돌린 경우")
+        void 캐시_이미처리됨_이어도_기록은_되돌림으로_닫힘() {
+            PaymentOrder order = buildPaymentOrder(3L, 3);
+            PaymentEvent event = buildPaymentEvent(PaymentEventStatus.QUARANTINED, List.of(order));
+            given(fakePaymentLoadUseCase.getPaymentEventByOrderId(ORDER_ID)).willReturn(event);
+            given(fakePaymentCommandUseCase.markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString()))
+                    .willReturn(event);
+
+            // 선차감 후 다른 경로가 캐시만 먼저 되돌린 상태 — 기록은 아직 NOISE 로 남아있다
+            fakeStockCachePort.set(3L, 10);
+            fakeStockHoldRecordRepository.openHold(ORDER_ID, order);
+            fakeStockCachePort.decrementAtomic(ORDER_ID, order);
+            fakeStockCachePort.compensateIfDecremented(ORDER_ID, order);
+            assertThat(fakeStockCachePort.current(3L)).isEqualTo(10);
+            assertThat(fakeStockHoldRecordRepository.statusOf(ORDER_ID, 3L)).contains(StockHoldRecordStatus.NOISE);
+
+            sutWithFake.resolve(ORDER_ID, REASON);
+
+            // 캐시는 이미 처리됨(ALREADY_DONE)이라 재고 값이 그대로지만, 기록은 되돌림으로 닫혀야 한다
+            assertThat(fakeStockCachePort.current(3L)).isEqualTo(10);
+            assertThat(fakeStockHoldRecordRepository.statusOf(ORDER_ID, 3L))
+                    .contains(StockHoldRecordStatus.REVERTED);
+        }
     }
 
     // ---- factory helpers ----
