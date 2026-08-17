@@ -239,6 +239,91 @@ class PaymentTransactionCoordinatorTest {
         }
 
         @Test
+        @DisplayName("decrementStock_캐시_예외_직전_직접_차감_성공분만_되돌리기_시도 — 셋째에서 예외가 나면 앞의 둘을 되돌리려 시도한다")
+        void decrementStock_캐시_예외_직전_직접_차감_성공분만_되돌리기_시도() {
+            // given
+            String orderId = "order-010";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            PaymentOrder order3 = createPaymentOrder(3L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            given(stockCachePort.decrementAtomic(orderId, order2)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order3);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2, order3));
+
+            // then — 직접 차감에 성공한 상품 1,2 만 되돌리기 대상이고 예외가 난 상품 3 은 대상이 아니다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().rejectCompensate(orderId, order1);
+            then(stockCachePort).should().rejectCompensate(orderId, order2);
+            then(stockCachePort).should(never()).rejectCompensate(orderId, order3);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_되돌리기까지_실패해도_CACHE_DOWN — 되돌리기 예외를 삼키지 않고 로그만 남긴 뒤 격리로 넘긴다")
+        void decrementStock_되돌리기까지_실패해도_CACHE_DOWN() {
+            // given
+            String orderId = "order-011";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order2);
+            willThrow(new RuntimeException("되돌리기도 인프라 장애로 실패"))
+                    .given(stockCachePort).rejectCompensate(orderId, order1);
+
+            // when — 되돌리기 예외가 밖으로 전파되지 않고 CACHE_DOWN 으로 흡수된다
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_직접_차감_성공분_없이_예외면_되돌리기_시도_안함 — 첫 상품에서 곧바로 캐시 예외면 되돌리기 호출이 없다")
+        void decrementStock_직접_차감_성공분_없이_예외면_되돌리기_시도_안함() {
+            // given
+            String orderId = "order-012";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order1);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should(never()).rejectCompensate(anyString(), any(PaymentOrder.class));
+        }
+
+        @Test
+        @DisplayName("decrementStock_캐시_예외에도_기록은_남는다 — 예외를 던진 상품까지 openHold 가 먼저 호출돼 회수 대상이 된다")
+        void decrementStock_캐시_예외에도_기록은_남는다() {
+            // given
+            String orderId = "order-013";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order2);
+
+            // when
+            coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 차감에 실패한 상품도 openHold 가 이미 호출돼 기록이 남았다
+            then(stockHoldRecordRepository).should().openHold(orderId, order1);
+            then(stockHoldRecordRepository).should().openHold(orderId, order2);
+        }
+
+        @Test
         @DisplayName("decrementStock_기록이_차감보다_먼저_적힌다 — 상품마다 openHold 가 decrementAtomic 보다 먼저 호출된다")
         void decrementStock_기록이_차감보다_먼저_적힌다() {
             // given
