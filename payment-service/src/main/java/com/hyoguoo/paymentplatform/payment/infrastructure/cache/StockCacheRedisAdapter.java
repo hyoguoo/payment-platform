@@ -10,8 +10,10 @@ import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -32,12 +34,15 @@ import org.springframework.stereotype.Component;
  * 것이 아니므로 되돌리기 대상에서 뺀다. 되돌리기 호출 자체가 예외를 던지면 삼키지 않고
  * 그대로 전파한다 — 상위 계층이 캐시 장애로 판단해 격리 등으로 흡수할지 정한다.
  *
+ * <p><b>주문 단위 선점</b>: {@link #acquireOrderLock}/{@link #releaseOrderLock} 은 상품 키와
+ * 별개인 {@code stock:order-lock:orderId} 키를 쓴다. 동시 중복 확정 요청이 상품별로 승자가
+ * 갈리는 것을 막기 위해 상품 반복 앞에서 한 번 잡고 반복이 끝나면 명시적으로 푼다.
+ *
  * <p>AOF(appendonly yes) 전제 하에 재시작 복원이 보장된다.
  * Redis 연결 실패 시 예외를 그대로 전파한다 — QUARANTINED 분기 결정은 상위 계층 책임.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class StockCacheRedisAdapter implements StockCachePort {
 
     private static final String KEY_PREFIX = "stock:{";
@@ -45,11 +50,14 @@ public class StockCacheRedisAdapter implements StockCachePort {
     private static final String DEDUP_DECREMENT_PREFIX = "decrement:done:{";
     private static final String DEDUP_COMPENSATION_PREFIX = "compensation:done:{";
     private static final long DEDUP_TTL_SECONDS = 691200L; // P8D
+    private static final String ORDER_LOCK_KEY_PREFIX = "stock:order-lock:";
 
     private static final DefaultRedisScript<String> DECREMENT_ATOMIC_SCRIPT;
     private static final DefaultRedisScript<String> COMPENSATION_ATOMIC_SCRIPT;
     private static final DefaultRedisScript<String> COMPENSATION_IF_DECREMENTED_SCRIPT;
     private static final DefaultRedisScript<String> REJECT_COMPENSATION_SCRIPT;
+    private static final DefaultRedisScript<String> ORDER_LOCK_ACQUIRE_SCRIPT;
+    private static final DefaultRedisScript<Long> ORDER_LOCK_RELEASE_SCRIPT;
 
     static {
         DECREMENT_ATOMIC_SCRIPT = new DefaultRedisScript<>();
@@ -68,9 +76,25 @@ public class StockCacheRedisAdapter implements StockCachePort {
         REJECT_COMPENSATION_SCRIPT = new DefaultRedisScript<>();
         REJECT_COMPENSATION_SCRIPT.setLocation(new ClassPathResource("lua/stock_reject_compensation.lua"));
         REJECT_COMPENSATION_SCRIPT.setResultType(String.class);
+
+        ORDER_LOCK_ACQUIRE_SCRIPT = new DefaultRedisScript<>();
+        ORDER_LOCK_ACQUIRE_SCRIPT.setLocation(new ClassPathResource("lua/stock_order_lock_acquire.lua"));
+        ORDER_LOCK_ACQUIRE_SCRIPT.setResultType(String.class);
+
+        ORDER_LOCK_RELEASE_SCRIPT = new DefaultRedisScript<>();
+        ORDER_LOCK_RELEASE_SCRIPT.setLocation(new ClassPathResource("lua/stock_order_lock_release.lua"));
+        ORDER_LOCK_RELEASE_SCRIPT.setResultType(Long.class);
     }
 
     private final StringRedisTemplate stockCacheRedisTemplate;
+    private final long orderLockTtlSeconds;
+
+    public StockCacheRedisAdapter(
+            StringRedisTemplate stockCacheRedisTemplate,
+            @Value("${payment.cache.order-lock.ttl-seconds:30}") long orderLockTtlSeconds) {
+        this.stockCacheRedisTemplate = stockCacheRedisTemplate;
+        this.orderLockTtlSeconds = orderLockTtlSeconds;
+    }
 
     /**
      * 결제 단위 atomic 선차감 — 상품별로 {@code stock_decrement_atomic.lua} 를 반복 호출해 조립한다.
@@ -259,8 +283,36 @@ public class StockCacheRedisAdapter implements StockCachePort {
         stockCacheRedisTemplate.opsForValue().set(stockKey(productId), String.valueOf(quantity));
     }
 
+    /**
+     * 주문 단위 확정 선점 획득 — {@code stock_order_lock_acquire.lua} 로 SETNX + EXPIRE 를 원자적으로 수행한다.
+     * 선점 토큰은 매 호출마다 새로 발급해, 이 요청의 해제 시도가 다른 요청이 재획득한 선점을
+     * 잘못 지우지 않게 한다.
+     */
+    @Override
+    public Optional<String> acquireOrderLock(String orderId) {
+        String lockToken = UUID.randomUUID().toString();
+        List<String> keys = List.of(orderLockKey(orderId));
+        String[] argv = {lockToken, String.valueOf(orderLockTtlSeconds)};
+        String luaResult = stockCacheRedisTemplate.execute(ORDER_LOCK_ACQUIRE_SCRIPT, keys, argv);
+        return "OK".equals(luaResult) ? Optional.of(lockToken) : Optional.empty();
+    }
+
+    /**
+     * 주문 단위 확정 선점 해제 — {@code stock_order_lock_release.lua} 로 토큰이 일치할 때만 지운다.
+     */
+    @Override
+    public void releaseOrderLock(String orderId, String lockToken) {
+        List<String> keys = List.of(orderLockKey(orderId));
+        String[] argv = {lockToken};
+        stockCacheRedisTemplate.execute(ORDER_LOCK_RELEASE_SCRIPT, keys, argv);
+    }
+
     private String stockKey(Long productId) {
         return KEY_PREFIX + productId + KEY_SUFFIX;
+    }
+
+    private String orderLockKey(String orderId) {
+        return ORDER_LOCK_KEY_PREFIX + orderId;
     }
 
     private String decrementDoneKey(Long productId, String orderId) {

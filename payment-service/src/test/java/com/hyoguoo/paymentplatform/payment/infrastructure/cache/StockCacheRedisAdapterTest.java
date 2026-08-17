@@ -47,7 +47,7 @@ class StockCacheRedisAdapterTest {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
 
-        adapter = new StockCacheRedisAdapter(redisTemplate);
+        adapter = new StockCacheRedisAdapter(redisTemplate, 30);
     }
 
     @AfterEach

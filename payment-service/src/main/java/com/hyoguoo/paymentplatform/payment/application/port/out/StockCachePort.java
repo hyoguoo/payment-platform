@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 재고 캐시 outbound port — atomic decrement / rollback.
@@ -49,6 +50,32 @@ public interface StockCachePort {
      * @throws RuntimeException 인프라 장애 시 전파
      */
     StockRecoveryCompensationResult compensateIfDecremented(String orderId, List<PaymentOrder> paymentOrders);
+
+    /**
+     * 확정 진입 시 상품 반복 전체를 감싸는 주문 단위 선점을 시도한다.
+     *
+     * <p>동시 중복 확정 요청이 하나로 수렴하게 하는 장치다. 명시적 해제({@link #releaseOrderLock})가
+     * 주 해제 수단이고, 운영 구현체가 함께 거는 수명은 프로세스가 죽어 해제를 못한 경우를 위한
+     * 회수용 backup 이다 — 수명만으로 풀리게 두면 처리가 그 시간을 넘길 때 두 번째 요청이
+     * 재획득해 같은 주문의 상품 반복이 동시에 두 번 돌 수 있다.
+     *
+     * @param orderId 결제 주문 ID
+     * @return 선점에 성공하면 해제 시 제시할 토큰, 이미 다른 요청이 선점 중이면 empty
+     * @throws RuntimeException 인프라 장애 시 전파
+     */
+    Optional<String> acquireOrderLock(String orderId);
+
+    /**
+     * 주문 단위 선점을 명시적으로 해제한다.
+     *
+     * <p>{@link #acquireOrderLock} 이 돌려준 토큰과 일치할 때만 해제된다. 수명이 지나 다른
+     * 요청이 재획득한 뒤에는 토큰이 달라 아무 일도 하지 않는다 — 남의 선점을 지우지 않는다.
+     *
+     * @param orderId   결제 주문 ID
+     * @param lockToken {@link #acquireOrderLock} 이 돌려준 토큰
+     * @throws RuntimeException 인프라 장애 시 전파
+     */
+    void releaseOrderLock(String orderId, String lockToken);
 
     /**
      * 재고 캐시를 product RDB(SoT) 기준 수량으로 덮어쓴다 — 운영 resync 전용.

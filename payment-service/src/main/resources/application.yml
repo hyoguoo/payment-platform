@@ -117,6 +117,15 @@ payment:
       # 로컬 실행 시 6380 으로 띄운 redis 가 필요. 테스트는 FakeStockCachePort 주입.
       host: ${REDIS_STOCK_HOST:localhost}
       port: ${REDIS_STOCK_PORT:6380}
+    order-lock:
+      # 확정 진입 시 상품 반복 전체를 감싸는 주문 단위 선점의 수명(초).
+      # 정상 해제는 상품 반복이 끝난 뒤 애플리케이션이 명시적으로 호출한다 — 이 값은 그
+      # 해제가 프로세스 종료 등으로 실행되지 못했을 때를 위한 회수용 backup 이지 주 해제
+      # 수단이 아니다. 수명만으로 풀리게 두면 처리가 이 시간을 넘길 때 두 번째 요청이
+      # 재획득해 같은 주문의 상품 반복이 동시에 두 번 돌 수 있다.
+      # 선점 구간은 벤더 호출 없이 캐시·DB 왕복만 포함해 정상 처리는 수 초 내로 끝나므로,
+      # 그 몇 배의 여유를 두어 배포 롤링 재기동 등 일시적 지연도 흡수한다.
+      ttl-seconds: ${PAYMENT_STOCK_ORDER_LOCK_TTL_SECONDS:30}
   retry:
     backoff-type: FIXED
     base-delay-ms: 5000

@@ -33,7 +33,7 @@ class StockCacheRedisAdapterRejectFailureTest {
     void 되돌리기_예외는_삼키지_않고_전파된다() {
         // given — 상품A 는 차감 성공, 상품B 는 재고 부족 → 상품A 를 되돌리는 시점에 인프라 장애
         StringRedisTemplate mockTemplate = mock(StringRedisTemplate.class);
-        StockCacheRedisAdapter adapter = new StockCacheRedisAdapter(mockTemplate);
+        StockCacheRedisAdapter adapter = new StockCacheRedisAdapter(mockTemplate, 30);
 
         given(mockTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class)))
                 .willAnswer(invocation -> {
@@ -65,7 +65,7 @@ class StockCacheRedisAdapterRejectFailureTest {
     void 첫_상품부터_부족하면_되돌리기_호출_없음() {
         // given
         StringRedisTemplate mockTemplate = mock(StringRedisTemplate.class);
-        StockCacheRedisAdapter adapter = new StockCacheRedisAdapter(mockTemplate);
+        StockCacheRedisAdapter adapter = new StockCacheRedisAdapter(mockTemplate, 30);
 
         given(mockTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class)))
                 .willAnswer(invocation -> {

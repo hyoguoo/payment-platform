@@ -108,7 +108,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 상품 단위 스크립트 4종과 키 이름 규칙
-- [ ] Task 2: 주문 단위 선점 획득·해제
+- [x] Task 2: 주문 단위 선점 획득·해제
 - [ ] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
 - [ ] Task 4: 선차감 기록 스키마·엔티티·포트
 - [ ] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
@@ -187,6 +187,18 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 수명 설정 키가 yml 에 주석과 함께 존재
+
+**완료 결과**
+
+- `lua/stock_order_lock_acquire.lua` 신규 — SETNX + EXPIRE 로 선점 토큰(UUID, 호출마다 새로 발급)을 원자적으로 심는다. `lua/stock_order_lock_release.lua` 신규 — GET 으로 토큰이 일치할 때만 DEL, 불일치면 아무 일도 하지 않는다(compare-and-delete)
+- 키는 상품 키와 분리된 `stock:order-lock:orderId` — 상품별 해시태그 슬롯 배치와 무관한 단일 키라 해시태그를 두르지 않았다
+- `StockCachePort` 에 `acquireOrderLock(orderId): Optional<String>` / `releaseOrderLock(orderId, lockToken): void` 추가. 성공 시 해제용 토큰을 돌려주고, 이미 선점 중이면 empty — null 반환 금지 컨벤션에 맞춰 Optional 로 표현
+- `StockCacheRedisAdapter` — 생성자에 `payment.cache.order-lock.ttl-seconds`(`@Value`, 기본 30) 를 추가해 `@RequiredArgsConstructor` 를 걷고 명시적 생성자로 전환. 매 선점 호출마다 새 토큰을 발급해, 이번 요청의 뒤늦은 해제 시도가 수명 경과 후 재획득한 **다른** 요청의 선점을 지우지 않게 했다 — 수명만으로 풀리게 두면 처리가 그 시간을 넘길 때 두 번째 요청이 재획득해 같은 주문의 상품 반복이 동시에 두 번 도는 레이스가, 안전하지 않은 해제(토큰 비교 없는 단순 DEL) 로 재발할 수 있어서다
+- `application.yml` — `payment.cache.order-lock.ttl-seconds` 신설. 명시적 해제가 주 해제 수단이고 이 값은 프로세스가 죽어 해제를 못한 경우의 회수용 backup이라는 것, 선점 구간이 벤더 호출 없이 캐시·DB 왕복만 포함해 정상 처리가 수 초 내로 끝난다는 근거를 주석에 남겼다
+- `FakeStockCachePort` — `orderLocks` 맵으로 획득·조건부 해제(토큰 일치시만 제거)를 구현, `clear()` 에도 반영. TTL 기반 자동 해제는 흉내내지 않는다 — 그 경로는 어댑터 레벨 Testcontainers 테스트가 담당하고 Fake 는 애플리케이션 계층 테스트용이라 시맨틱은 이미 동일(전부-아니면-전무 대신 선점 단일 키라 자명)
+- 신규 `StockCacheRedisAdapterOrderLockTest`(Testcontainers) — 선점 성공 후 재선점 실패, 명시적 해제 후 재선점 성공, 짧은 수명(1초) 경과 후 자동 해제(Awaitility), 서로 다른 orderId 비간섭, 토큰 불일치 시 해제 거부까지 5케이스
+- 기존 `StockCacheRedisAdapterTest`/`StockCacheRedisAdapterRejectFailureTest` 는 생성자 시그니처 변경에 맞춰 `new StockCacheRedisAdapter(template, 30)` 으로 갱신(계약 변화 없음)
+- `./gradlew :payment-service:test` 633건 전체 pass(신규 5건 포함), checkstyle·spotbugs 클린. 포트 시그니처 확장뿐 실사용 배선(선점 획득 → 반복 → 해제)은 Task 6 범위
 
 ### Task 3: 상품 단위 포트 메서드 신설 [tdd=true]
 

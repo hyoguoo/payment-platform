@@ -8,7 +8,9 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -21,6 +23,7 @@ public class FakeStockCachePort implements StockCachePort {
     private final ConcurrentHashMap<Long, Integer> stock = new ConcurrentHashMap<>();
     private final Set<String> decrementDedupTokens = ConcurrentHashMap.newKeySet();
     private final Set<String> compensationDedupTokens = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<String, String> orderLocks = new ConcurrentHashMap<>();
 
     @Override
     public synchronized StockDecrementAtomicResult decrementAtomic(
@@ -70,6 +73,21 @@ public class FakeStockCachePort implements StockCachePort {
         return StockRecoveryCompensationResult.OK;
     }
 
+    @Override
+    public synchronized Optional<String> acquireOrderLock(String orderId) {
+        if (orderLocks.containsKey(orderId)) {
+            return Optional.empty();
+        }
+        String lockToken = UUID.randomUUID().toString();
+        orderLocks.put(orderId, lockToken);
+        return Optional.of(lockToken);
+    }
+
+    @Override
+    public synchronized void releaseOrderLock(String orderId, String lockToken) {
+        orderLocks.computeIfPresent(orderId, (key, heldToken) -> heldToken.equals(lockToken) ? null : heldToken);
+    }
+
     // --- fixture 셋업 / 단언 헬퍼 (StockCachePort 계약 외, atomic 메서드 테스트 보조용) ---
 
     public int current(Long productId) {
@@ -88,5 +106,6 @@ public class FakeStockCachePort implements StockCachePort {
         stock.clear();
         decrementDedupTokens.clear();
         compensationDedupTokens.clear();
+        orderLocks.clear();
     }
 }
