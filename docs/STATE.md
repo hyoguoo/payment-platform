@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 6b — 상품 반복 중 캐시 장애 처리 (Task 1~5 완료 / Task 6: 확정 진입 재구성(선점·상품 반복·부분 실패 되돌리기) 완료 — 구현 중 SpotBugs 가드로 선점 실패 분기(`ALREADY_PROCESSING`)를 최소 형태로 앞당겨 함께 넣었다. Task 7 은 "확정 행이 이미 확정이면 건너뛰기"만 남는다)
+- **활성 태스크**: Task 7 — 확정 행 재요청 건너뛰기와 선점 실패 분기 (Task 1~6b 완료. Task 6b 는 상품 반복 중 캐시 예외가 나면 직접 차감 성공분만 되돌리기 시도, 되돌리기 자체가 또 실패해도 예외를 삼키지 않고 로그로 남긴 뒤 CACHE_DOWN 을 그대로 반환하도록 `PaymentTransactionCoordinator.decrementEachProduct`/`attemptRevertOnCacheFailure` 를 추가. 선점 해제는 기존 try-finally 구조로 이미 보장돼 손대지 않음. 선점 실패 분기(`ALREADY_PROCESSING`)는 Task 6 에서 앞당겨 이미 들어감. Task 7 은 "확정 행이 이미 확정이면 건너뛰기"만 남는다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

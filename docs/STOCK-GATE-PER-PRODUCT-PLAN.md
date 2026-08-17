@@ -113,7 +113,7 @@ flowchart TD
 - [x] Task 4: 선차감 기록 스키마·엔티티·포트
 - [x] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
 - [x] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
-- [ ] Task 6b: 상품 반복 중 캐시 장애 처리
+- [x] Task 6b: 상품 반복 중 캐시 장애 처리
 - [ ] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
 - [ ] Task 8: 승인 반영 트랜잭션에서 확정 표시
 - [ ] Task 9a: 확정 실패 경로를 상품 단위로 전환
@@ -330,6 +330,16 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 격리 전이 통합 테스트 회귀 없음
+
+**완료 결과**
+
+- `PaymentTransactionCoordinator.decrementEachProduct` 의 catch 블록에 `attemptRevertOnCacheFailure` 를 추가했다. 이번 호출이 직접 차감(`decrementedThisCall`)한 상품이 있으면 기존 `rejectDecrementedProducts` 를 재사용해 되돌리기를 시도하고, 하나도 없으면 시도하지 않는다
+- 되돌리기 자체가 다시 `RuntimeException` 을 던지면 내부 try-catch 로 받아 `LogFmt.error(..., STOCK_RETENTION_UNRECOVERED, ...)` 로 남기고 삼킨 뒤 `decrementEachProduct` 는 그대로 `CACHE_DOWN` 을 반환한다 — 이 예외가 밖으로 새면 `decrementStock` 의 `finally` 는 여전히 선점을 풀지만 메서드 자체가 예외로 끝나 호출자가 격리 전이(`markStockCacheDownQuarantine`)를 못 타므로, 로그만 남기고 흡수해 CACHE_DOWN 반환을 보장했다. 기존 `EventType` 중 "재고가 미복구 상태로 남음"을 이미 의미하는 `STOCK_RETENTION_UNRECOVERED` 를 재사용해 새 상수를 추가하지 않았다
+- 선점 해제는 손대지 않았다 — `decrementStock` 의 `try { decrementEachProduct(...) } finally { releaseOrderLock(...) }` 구조가 이미 CACHE_DOWN 포함 모든 반환 경로에서 해제를 보장하므로, 캐시 장애로 격리에 들어가도 선점이 수명 만료 없이 즉시 풀린다
+- `markStockCacheDownQuarantine` Javadoc 의 "캐시 차감이 일어나지 않았으므로 재고 복구도 수행하지 않는다"는 옛 전제를 정정 — 상품 단위로 쪼갠 뒤로는 일부만 성공한 채 장애가 날 수 있고, 그 되돌리기는 이 메서드 이전 단계(`decrementEachProduct`)에서 이미 시도됐다는 것으로 바꿨다
+- 선차감 기록은 이 태스크에서 닫지 않는다 — 되돌리기 성공 여부와 무관하게 잡음 상태로 남아 회수 대상이 되는 것은 기존 `openHold` 선행 호출만으로 이미 보장된다(기록 닫기는 격리 진입 경로 전환 태스크의 몫)
+- `PaymentTransactionCoordinatorTest` 에 4케이스 신규 — 직접 차감 성공분만 되돌리기 시도(예외가 난 상품은 제외) / 되돌리기 자체가 실패해도 예외 전파 없이 CACHE_DOWN / 차감 성공분 없이 예외면 되돌리기 미시도 / 예외가 난 상품까지 openHold 가 먼저 호출돼 기록이 남음
+- `./gradlew :payment-service:test` 654건 전체 pass(신규 4건 포함), checkstyle·spotbugs 클린
 
 ### Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기 [tdd=true] [domain_risk=true]
 

@@ -65,6 +65,10 @@ public class PaymentTransactionCoordinator {
      * 상품만 거절 전용 되돌리기로 되돌린다 — 이미 처리됨(ALREADY_DONE)을 받은 상품은 이번
      * 호출이 차감한 것이 아니므로 대상에서 뺀다. 되돌리기 호출도 같은 예외 우산 아래 둬,
      * 부족 판정 뒤 되돌리기 자체가 인프라 장애로 실패하는 조합도 CACHE_DOWN 으로 흡수한다.
+     *
+     * <p>반복 도중 캐시 예외가 나면 이번 호출이 직접 차감한 상품만 되돌리려 시도한다 —
+     * 상품 단위로 쪼갠 뒤로는 예외가 나기 전에 일부만 차감된 상태일 수 있다. 되돌리기 자체가
+     * 또 실패해도 그 예외는 삼키지 않고 로그로 남긴 뒤 CACHE_DOWN 을 그대로 반환한다.
      */
     private StockDecrementResult decrementEachProduct(String orderId, List<PaymentOrder> paymentOrderList) {
         List<PaymentOrder> decrementedThisCall = new ArrayList<>();
@@ -84,6 +88,7 @@ public class PaymentTransactionCoordinator {
         } catch (RuntimeException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_CACHE_DOWN_QUARANTINE,
                     () -> "orderId=" + orderId + " error=" + e.getMessage());
+            attemptRevertOnCacheFailure(orderId, decrementedThisCall);
             return StockDecrementResult.CACHE_DOWN;
         }
     }
@@ -95,8 +100,30 @@ public class PaymentTransactionCoordinator {
     }
 
     /**
+     * 캐시 예외로 반복이 끊겼을 때 이번 호출이 직접 차감한 상품만 되돌린다. 차감이 하나도
+     * 성공하지 않았으면 되돌릴 것이 없어 시도하지 않는다. 되돌리기 자체가 다시 실패해도 그
+     * 예외를 삼킨 채 조용히 넘어가지 않고 로그로 남긴다 — 어느 쪽이든 선차감 기록은 잡음
+     * 상태 그대로 남아 회수 작업의 대상이 된다.
+     */
+    private void attemptRevertOnCacheFailure(String orderId, List<PaymentOrder> decrementedThisCall) {
+        if (decrementedThisCall.isEmpty()) {
+            return;
+        }
+        try {
+            rejectDecrementedProducts(orderId, decrementedThisCall);
+        } catch (RuntimeException revertException) {
+            LogFmt.error(log, LogDomain.PAYMENT, EventType.STOCK_RETENTION_UNRECOVERED,
+                    () -> "orderId=" + orderId + " 캐시 장애 되돌리기마저 실패, 기록은 잡음 상태로 회수 대상 error="
+                            + revertException.getMessage());
+        }
+    }
+
+    /**
      * 재고 캐시 장애(CACHE_DOWN) 분기: QUARANTINED 홀딩 전이.
-     * QUARANTINED 는 벤더 상태 불명 홀딩 상태로, 캐시 차감이 일어나지 않았으므로 재고 복구도 수행하지 않는다.
+     * QUARANTINED 는 벤더 상태 불명 홀딩 상태다. 캐시 차감은 상품 단위로 쪼개져 일부만 성공한
+     * 채 장애가 날 수 있어, 직접 차감에 성공한 상품은 decrementEachProduct 에서 되돌리기를
+     * 시도한(실패해도 넘어온) 뒤 이 메서드로 온다 — 이 메서드 자체는 재고 캐시를 다시 건드리지
+     * 않고 결제 상태만 QUARANTINED 로 전이한다.
      */
     @Transactional
     public PaymentEvent markStockCacheDownQuarantine(PaymentEvent paymentEvent) {
