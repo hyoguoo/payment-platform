@@ -116,7 +116,7 @@ flowchart TD
 - [x] Task 6b: 상품 반복 중 캐시 장애 처리
 - [x] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
 - [x] Task 8: 승인 반영 트랜잭션에서 확정 표시
-- [ ] Task 9a: 확정 실패 경로를 상품 단위로 전환
+- [x] Task 9a: 확정 실패 경로를 상품 단위로 전환
 - [ ] Task 9b: 격리 진입 경로를 상품 단위로 전환
 - [ ] Task 9c: 관리자 종결 경로를 상품 단위로 전환
 - [ ] Task 9d: 주문 단위 포트 메서드 제거
@@ -421,6 +421,35 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 확정 실패 통합 테스트 통과
+
+**완료 결과**
+
+- `PaymentConfirmResultUseCase.handleFailed` 이 주문 단위 `compensateAtomic` 호출을 걷고
+  `revertEachProductHold` 로 교체했다. 상품마다 `findSnapshot` 으로 선차감 기록의 조회 시점
+  사이클 식별 값을 먼저 확인하고(행이 없으면 그 상품은 건드리지 않는다), 있으면
+  `compensateIfDecremented` 로 흔적이 있을 때만 캐시를 되돌린 뒤, 그 결과(OK/ALREADY_DONE/
+  NO_DECREMENT)와 무관하게 `closeAsReverted` 로 기록을 되돌림으로 닫는다 — 캐시가 이미
+  처리됨을 돌려줘도 기록은 닫아, 회수 작업이 같은 기록을 집었다가 못 닫는 유령이 되는 것을
+  막는다. 되돌리기 호출이 던지는 `RuntimeException` 은 그대로 전파해 `markPaymentAsFail` 이
+  불리지 않는다 — 삼키지 않는다
+- `PaymentConfirmResultUseCaseHandleFailedTest` — 상단 Mockito 기반 테스트(진입 가드 noop,
+  닫기 호출이 조회한 사이클 식별 값을 그대로 사용, 기록 없는 상품은 되돌리기·닫기 모두
+  미호출, RuntimeException 전파)와 `@Nested RevertPerProductTest`(FakeStockCachePort +
+  FakeStockHoldRecordRepository) — 흔적 있으면 캐시 재고 값이 실제로 원래 값으로 복원되고
+  기록이 REVERTED로 닫힘 / 흔적 없으면 재고 값 불변 + 기록만 닫힘 / 캐시가 ALREADY_DONE 을
+  돌려줘도 기록은 REVERTED로 닫힘 3케이스. 기록 상태만 보는 검증으로는 되돌리기 호출 누락을
+  놓칠 수 있어 재고 값 자체를 Fake 로 직접 단정했다
+- `PaymentConfirmResultUseCaseTest`/`ConfirmedEventConsumerTest`/
+  `PaymentConfirmResultUseCaseIdempotencyGuardTest` 의 FAILED 관련 케이스를 상품 단위 API
+  (`findSnapshot`/`compensateIfDecremented`/`closeAsReverted`) 호출로 갱신 — 회귀 없음
+- `StockCompensationRecoveryIntegrationTest`/`RedisStockCompensationFailureIntegrationTest`
+  (Testcontainers) — `savePaymentInProgress` 픽스처가 checkout 시점의 선차감을 흉내내
+  `stockHoldRecordRepository.openHold` 로 기록을 열고 redis 에 `decrement:done` 흔적을 함께
+  심도록 갱신. 스파이 대상을 주문 단위 `compensateAtomic` 에서 상품 단위
+  `compensateIfDecremented` 로 교체 — 정상 보상/재배달 멱등/RuntimeException retry-DLQ/
+  not-retryable 즉시 DLQ/호출 순서 5케이스와 캐시 다운 stranded 1케이스 모두 회귀 없음
+- `./gradlew :payment-service:test` 662건, `:payment-service:integrationTest` 151건 전체
+  pass, checkstyle·spotbugs 클린
 
 ### Task 9b: 격리 진입 경로를 상품 단위로 전환 [tdd=true] [domain_risk=true]
 

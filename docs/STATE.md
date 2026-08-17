@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 9a — 확정 실패 경로를 상품 단위로 전환 (Task 1~8 완료. Task 8 은 `PaymentConfirmResultUseCase.handleApproved` 에서 `markPaymentAsDone` 직후·`sendStockCommittedEvents` 직전에 `stockHoldRecordRepository.commitAllByOrderId(orderId)` 를 호출하도록 배선했다 — 같은 `@Transactional` 안이라 결제 완료 전이와 확정 표시가 함께 커밋·롤백된다. 구현 중 기존(Task 4/5) `commitAllByOrderId` JPA 쿼리가 `flushAutomatically` 없이 `clearAutomatically = true` 만 갖고 있어, 같은 트랜잭션의 `PaymentEvent` 미반영 변경을 조용히 유실시키는 회귀를 통합 테스트로 발견 — `flushAutomatically = true` 를 추가해 해결했다. Task 9a 부터는 확정 실패·격리 진입·관리자 종결 세 호출부를 상품 단위로 순서대로 전환한다)
+- **활성 태스크**: Task 9b — 격리 진입 경로를 상품 단위로 전환 (Task 1~9a 완료. Task 9a 는 `PaymentConfirmResultUseCase.handleFailed` 의 주문 단위 `compensateAtomic` 을 상품별 `findSnapshot` → `compensateIfDecremented` → `closeAsReverted` 반복으로 교체했다 — 선차감 흔적이 있을 때만 캐시를 되돌리고, 캐시가 이미 처리됨을 돌려줘도 기록은 되돌림으로 닫는다. 관련 통합 테스트 2종의 픽스처가 checkout 시점의 선차감(기록 열기 + redis 흔적)을 흉내내도록 갱신됐다. Task 9b 부터는 `handleQuarantined`(비-부분취소 사유의 즉시 보상 경로)를 같은 방식으로 옮긴다 — `QuarantineCompensationHandler` 는 재고 캐시를 부르지 않아 대상이 아니다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
