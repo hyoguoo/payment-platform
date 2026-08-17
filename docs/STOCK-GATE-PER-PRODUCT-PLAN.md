@@ -115,7 +115,7 @@ flowchart TD
 - [x] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
 - [x] Task 6b: 상품 반복 중 캐시 장애 처리
 - [x] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
-- [ ] Task 8: 승인 반영 트랜잭션에서 확정 표시
+- [x] Task 8: 승인 반영 트랜잭션에서 확정 표시
 - [ ] Task 9a: 확정 실패 경로를 상품 단위로 전환
 - [ ] Task 9b: 격리 진입 경로를 상품 단위로 전환
 - [ ] Task 9c: 관리자 종결 경로를 상품 단위로 전환
@@ -380,6 +380,30 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 롤백 동조를 통합 테스트로 확인
+
+**완료 결과**
+
+- `PaymentConfirmResultUseCase` 에 `StockHoldRecordRepository` 를 주입하고, `handleApproved` 의
+  `markPaymentAsDone` 직후·`sendStockCommittedEvents` 직전에 `commitAllByOrderId(orderId)` 를 호출한다.
+  둘 다 `handle()` 의 `@Transactional(transactionManager = "transactionManager")` 안에서 실행되므로
+  결제 완료 전이와 확정 표시가 같은 트랜잭션에 묶인다. `commitAllByOrderId` 는 그 주문의 잡음(NOISE)
+  상태 행을 한 번의 벌크 UPDATE 로 전부 확정하므로 상품 수와 무관하게 한 번만 호출한다
+- **[Rule 1] `JpaStockHoldRecordRepository.commitAllByOrderId` 에 `flushAutomatically = true` 추가** —
+  기존(Task 4/5) 쿼리는 `clearAutomatically = true` 만 있었다. 이 조합을 승인 반영 트랜잭션 안에서
+  호출하니 `markPaymentAsDone` 이 남긴 아직 flush 되지 않은 `PaymentEvent` 변경이, 뒤이은 벌크
+  UPDATE 가 영속성 컨텍스트를 비우는 순간(`flushAutomatically` 기본값 false라 비우기 전 flush를
+  하지 않음) 그대로 유실돼 결제가 조용히 IN_PROGRESS 로 남는 회귀를 통합 테스트로 직접 재현했다.
+  `flushAutomatically = true` 로 벌크 쿼리 실행 전에 먼저 flush 하도록 고쳐 해결 — Task 4/5 가 만든
+  기존 쿼리가 이번 태스크의 새 호출 맥락(같은 트랜잭션 안에 다른 엔티티의 미반영 변경이 함께 있는
+  상황)에서 처음으로 드러난 상호작용 버그라 이번 태스크 범위 안에서 수정했다
+- `PaymentConfirmResultUseCaseTest`/`PaymentConfirmResultUseCaseHandleApprovedTest` — 단정: 승인 시
+  `commitAllByOrderId(orderId)` 1회 호출(멀티상품이어도 1회), amount 불일치 격리 시 미호출
+  (그 외 6개 테스트 클래스는 신규 생성자 인자 배선만 갱신, 회귀 없음)
+- `PaymentEosIntegrationTest`(EOS 통합) — #8 다중 상품 두 기록 모두 확정 저장, #9 확정 표시 롤백
+  동조(`stockCommittedKafkaTemplate.send` 결정적 실패 주입 → DLQ 도달 후 결제 IN_PROGRESS 유지 +
+  선차감 기록 NOISE 유지 + dedupe 0 row, 3중으로 같은 트랜잭션 롤백을 단정) 2건 신규
+- `./gradlew :payment-service:test` 659건, `:payment-service:integrationTest` 151건 전체 pass
+  (신규 unit 3건 + integration 2건 포함), checkstyle·spotbugs 클린
 
 ### Task 9a: 확정 실패 경로를 상품 단위로 전환 [tdd=true] [domain_risk=true]
 

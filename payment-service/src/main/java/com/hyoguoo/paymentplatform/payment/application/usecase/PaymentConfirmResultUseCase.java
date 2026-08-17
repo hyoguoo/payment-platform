@@ -16,6 +16,7 @@ import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
@@ -76,6 +77,7 @@ public class PaymentConfirmResultUseCase {
     private final QuarantineCompensationHandler quarantineCompensationHandler;
     private final Clock clock;
     private final StockCachePort stockCachePort;
+    private final StockHoldRecordRepository stockHoldRecordRepository;
     private final PaymentEventDedupeStore paymentEventDedupeStore;
     private final KafkaTemplate<String, String> stockCommittedKafkaTemplate;
     private final ObjectMapper objectMapper;
@@ -94,6 +96,7 @@ public class PaymentConfirmResultUseCase {
             QuarantineCompensationHandler quarantineCompensationHandler,
             Clock clock,
             StockCachePort stockCachePort,
+            StockHoldRecordRepository stockHoldRecordRepository,
             PaymentEventDedupeStore paymentEventDedupeStore,
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase,
@@ -103,6 +106,7 @@ public class PaymentConfirmResultUseCase {
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.clock = clock;
         this.stockCachePort = stockCachePort;
+        this.stockHoldRecordRepository = stockHoldRecordRepository;
         this.paymentEventDedupeStore = paymentEventDedupeStore;
         this.stockCommittedKafkaTemplate = stockCommittedKafkaTemplate;
         this.objectMapper = new ObjectMapper()
@@ -208,6 +212,11 @@ public class PaymentConfirmResultUseCase {
 
         // 외부 빈 경유 필수 — self-invocation 으로 호출하면 상태 전이 AOP 가 적용되지 않는다.
         paymentCommandUseCase.markPaymentAsDone(paymentEvent, receivedApprovedAt);
+
+        // handle() 의 트랜잭션 안에서 갱신 — 별도 트랜잭션으로 갈라지면 종결과 확정 표시 사이에
+        // 회수 작업이 끼어들어 실제로 팔린 재고를 되돌릴 수 있다. 이 갱신이 롤백되면
+        // markPaymentAsDone 의 DONE 전이도 같은 트랜잭션이라 함께 롤백된다.
+        stockHoldRecordRepository.commitAllByOrderId(paymentEvent.getOrderId());
 
         sendStockCommittedEvents(paymentEvent);
 

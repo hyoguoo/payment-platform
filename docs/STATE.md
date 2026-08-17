@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 8 — 승인 반영 트랜잭션에서 확정 표시 (Task 1~7 완료. Task 7 은 `PaymentTransactionCoordinator.decrementEachProduct` 의 상품 반복 진입 전에 `findSnapshot` 으로 기록 상태를 먼저 보고, `COMMITTED` 면 `openHold`/`decrementAtomic` 을 아예 부르지 않고 건너뛰도록 했다 — 캐시의 선차감 표시 수명이 아니라 기록을 기준으로 판단해, 표시가 만료된 뒤에도 이미 팔린 상품에 새 차감이 일어나지 않는다. 선점 실패 분기(`ALREADY_PROCESSING`)는 Task 6 에서 앞당겨 이미 들어가 있었다. Task 8 은 벤더 승인 반영 트랜잭션에서 그 주문의 잡음 기록을 확정으로 바꾸는 배선이 남았다)
+- **활성 태스크**: Task 9a — 확정 실패 경로를 상품 단위로 전환 (Task 1~8 완료. Task 8 은 `PaymentConfirmResultUseCase.handleApproved` 에서 `markPaymentAsDone` 직후·`sendStockCommittedEvents` 직전에 `stockHoldRecordRepository.commitAllByOrderId(orderId)` 를 호출하도록 배선했다 — 같은 `@Transactional` 안이라 결제 완료 전이와 확정 표시가 함께 커밋·롤백된다. 구현 중 기존(Task 4/5) `commitAllByOrderId` JPA 쿼리가 `flushAutomatically` 없이 `clearAutomatically = true` 만 갖고 있어, 같은 트랜잭션의 `PaymentEvent` 미반영 변경을 조용히 유실시키는 회귀를 통합 테스트로 발견 — `flushAutomatically = true` 를 추가해 해결했다. Task 9a 부터는 확정 실패·격리 진입·관리자 종결 세 호출부를 상품 단위로 순서대로 전환한다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

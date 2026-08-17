@@ -50,9 +50,15 @@ public interface JpaStockHoldRecordRepository extends JpaRepository<StockHoldRec
 
     /**
      * 그 주문의 잡음 상태 기록을 모두 확정으로 바꾼다. 벤더 승인 반영 트랜잭션 안에서
-     * 호출된다는 것이 호출자 측 전제다.
+     * 호출된다는 것이 호출자 측 전제다 — 그 트랜잭션은 같은 영속성 컨텍스트 안에서
+     * {@code PaymentEvent} 를 DONE 으로 전이시킨 변경도 함께 들고 있다.
+     *
+     * <p>{@code flushAutomatically = true} 가 필수다. {@code clearAutomatically = true} 는 이
+     * 벌크 UPDATE 실행 직후 영속성 컨텍스트 전체를 비우는데, flush 없이 비우면 아직 flush 되지
+     * 않은 PaymentEvent 의 DONE 전이가 영속성 컨텍스트와 함께 버려져 DB 에 반영되지 않는다 —
+     * 결제가 조용히 IN_PROGRESS 로 남는 사고가 된다.
      */
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE StockHoldRecordEntity e SET e.status = 'COMMITTED' WHERE e.orderId = :orderId AND e.status = 'NOISE'")
     int commitAllByOrderId(@Param("orderId") String orderId);
 }
