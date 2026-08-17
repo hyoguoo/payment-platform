@@ -52,6 +52,47 @@ public interface StockCachePort {
     StockRecoveryCompensationResult compensateIfDecremented(String orderId, List<PaymentOrder> paymentOrders);
 
     /**
+     * 상품 하나에 대한 atomic 선차감.
+     * 운영 구현체는 {@code stock_decrement_atomic.lua} 를 그 상품의 키에 대해 직접 실행한다.
+     *
+     * @param orderId      결제 주문 ID (dedup token key 에 사용)
+     * @param paymentOrder 차감 대상 상품 ({@link PaymentOrder#getProductId()} / {@link PaymentOrder#getQuantity()})
+     * @return {@link StockDecrementAtomicResult#OK} 정상 차감,
+     *         {@link StockDecrementAtomicResult#ALREADY_DONE} 동일 주문·상품 조합 재진입,
+     *         {@link StockDecrementAtomicResult#INSUFFICIENT} 재고 부족
+     * @throws RuntimeException 인프라 장애 시 전파
+     */
+    StockDecrementAtomicResult decrementAtomic(String orderId, PaymentOrder paymentOrder);
+
+    /**
+     * 상품 하나에 대한 격리 복구 전용 조건부 보상 — {@code decrement:done} 토큰이 있을 때만 복원한다.
+     * 운영 구현체는 {@code stock_compensation_if_decremented.lua} 를 그 상품의 키에 대해 직접 실행한다.
+     *
+     * @param orderId      결제 주문 ID (dedup token key 에 사용)
+     * @param paymentOrder 복원 대상 상품
+     * @return {@link StockRecoveryCompensationResult#OK} 정상 복원,
+     *         {@link StockRecoveryCompensationResult#ALREADY_DONE} 동일 주문·상품 조합 재진입,
+     *         {@link StockRecoveryCompensationResult#NO_DECREMENT} 선차감 토큰 부재로 보상 미수행
+     * @throws RuntimeException 인프라 장애 시 전파
+     */
+    StockRecoveryCompensationResult compensateIfDecremented(String orderId, PaymentOrder paymentOrder);
+
+    /**
+     * 상품 하나에 대한 거절 전용 되돌리기 — 재고를 복원하면서 선차감 표시와 되돌리기 표시를 함께 지운다.
+     * 운영 구현체는 {@code stock_reject_compensation.lua} 를 그 상품의 키에 대해 직접 실행한다.
+     *
+     * <p>두 표시를 함께 지워 이번 차감 사이클을 완전히 무효화한다 — 선차감 표시만 남으면 재시도가
+     * 이미 처리됨으로 통과해 실제 차감 없이 승인되고, 되돌리기 표시만 남으면 재시도가 만든 새
+     * 차감을 다음 사이클의 되돌리기가 못 돌린다. 이번 요청이 직접 차감에 성공한 상품에 한해서만
+     * 호출해야 한다 — 흔적 유무만으로는 남의 차감을 되돌릴 수 있어 판정 기준이 되지 못한다.
+     *
+     * @param orderId      결제 주문 ID (표시 key 에 사용)
+     * @param paymentOrder 되돌릴 대상 상품
+     * @throws RuntimeException 인프라 장애 시 전파
+     */
+    void rejectCompensate(String orderId, PaymentOrder paymentOrder);
+
+    /**
      * 확정 진입 시 상품 반복 전체를 감싸는 주문 단위 선점을 시도한다.
      *
      * <p>동시 중복 확정 요청이 하나로 수렴하게 하는 장치다. 명시적 해제({@link #releaseOrderLock})가

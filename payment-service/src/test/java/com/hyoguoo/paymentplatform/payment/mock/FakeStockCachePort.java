@@ -24,6 +24,9 @@ public class FakeStockCachePort implements StockCachePort {
     private final Set<String> decrementDedupTokens = ConcurrentHashMap.newKeySet();
     private final Set<String> compensationDedupTokens = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, String> orderLocks = new ConcurrentHashMap<>();
+    // 상품 단위 메서드 전용 — productId:orderId 로 키를 잡아 주문 단위 dedup 과 분리한다
+    private final Set<String> productDecrementDoneTokens = ConcurrentHashMap.newKeySet();
+    private final Set<String> productCompensationDoneTokens = ConcurrentHashMap.newKeySet();
 
     @Override
     public synchronized StockDecrementAtomicResult decrementAtomic(
@@ -74,6 +77,48 @@ public class FakeStockCachePort implements StockCachePort {
     }
 
     @Override
+    public synchronized StockDecrementAtomicResult decrementAtomic(String orderId, PaymentOrder paymentOrder) {
+        String token = productToken(paymentOrder.getProductId(), orderId);
+        if (productDecrementDoneTokens.contains(token)) {
+            return StockDecrementAtomicResult.ALREADY_DONE;
+        }
+        int current = stock.getOrDefault(paymentOrder.getProductId(), 0);
+        if (current < paymentOrder.getQuantity()) {
+            return StockDecrementAtomicResult.INSUFFICIENT;
+        }
+        stock.merge(paymentOrder.getProductId(), -paymentOrder.getQuantity(), Integer::sum);
+        productDecrementDoneTokens.add(token);
+        return StockDecrementAtomicResult.OK;
+    }
+
+    @Override
+    public synchronized StockRecoveryCompensationResult compensateIfDecremented(
+            String orderId, PaymentOrder paymentOrder) {
+        String token = productToken(paymentOrder.getProductId(), orderId);
+        if (!productDecrementDoneTokens.contains(token)) {
+            return StockRecoveryCompensationResult.NO_DECREMENT;
+        }
+        if (productCompensationDoneTokens.contains(token)) {
+            return StockRecoveryCompensationResult.ALREADY_DONE;
+        }
+        stock.merge(paymentOrder.getProductId(), paymentOrder.getQuantity(), Integer::sum);
+        productCompensationDoneTokens.add(token);
+        return StockRecoveryCompensationResult.OK;
+    }
+
+    @Override
+    public synchronized void rejectCompensate(String orderId, PaymentOrder paymentOrder) {
+        stock.merge(paymentOrder.getProductId(), paymentOrder.getQuantity(), Integer::sum);
+        String token = productToken(paymentOrder.getProductId(), orderId);
+        productDecrementDoneTokens.remove(token);
+        productCompensationDoneTokens.remove(token);
+    }
+
+    private String productToken(Long productId, String orderId) {
+        return productId + ":" + orderId;
+    }
+
+    @Override
     public synchronized Optional<String> acquireOrderLock(String orderId) {
         if (orderLocks.containsKey(orderId)) {
             return Optional.empty();
@@ -107,5 +152,7 @@ public class FakeStockCachePort implements StockCachePort {
         decrementDedupTokens.clear();
         compensationDedupTokens.clear();
         orderLocks.clear();
+        productDecrementDoneTokens.clear();
+        productCompensationDoneTokens.clear();
     }
 }

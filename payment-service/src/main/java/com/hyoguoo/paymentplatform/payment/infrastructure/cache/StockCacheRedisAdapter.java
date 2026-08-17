@@ -110,7 +110,7 @@ public class StockCacheRedisAdapter implements StockCachePort {
         List<PaymentOrder> decrementedThisCall = new ArrayList<>();
         boolean anyDecrementedThisCall = false;
         for (PaymentOrder order : paymentOrders) {
-            StockDecrementAtomicResult result = decrementSingleProduct(orderId, order);
+            StockDecrementAtomicResult result = decrementAtomic(orderId, order);
             if (result == StockDecrementAtomicResult.INSUFFICIENT) {
                 rejectDecrementedProducts(orderId, decrementedThisCall);
                 return StockDecrementAtomicResult.INSUFFICIENT;
@@ -160,7 +160,7 @@ public class StockCacheRedisAdapter implements StockCachePort {
         boolean anyOk = false;
         boolean anyAlreadyDone = false;
         for (PaymentOrder order : paymentOrders) {
-            StockRecoveryCompensationResult result = compensateIfDecrementedSingleProduct(orderId, order);
+            StockRecoveryCompensationResult result = compensateIfDecremented(orderId, order);
             if (result == StockRecoveryCompensationResult.OK) {
                 anyOk = true;
             } else if (result == StockRecoveryCompensationResult.ALREADY_DONE) {
@@ -185,12 +185,13 @@ public class StockCacheRedisAdapter implements StockCachePort {
      * <p>KEYS = [decrement:done:{productId}:orderId, stock:{productId}]
      * ARGV  = [qty, 691200]
      */
-    private StockDecrementAtomicResult decrementSingleProduct(String orderId, PaymentOrder order) {
+    @Override
+    public StockDecrementAtomicResult decrementAtomic(String orderId, PaymentOrder paymentOrder) {
         List<String> keys = List.of(
-                decrementDoneKey(order.getProductId(), orderId),
-                stockKey(order.getProductId())
+                decrementDoneKey(paymentOrder.getProductId(), orderId),
+                stockKey(paymentOrder.getProductId())
         );
-        String[] argv = {String.valueOf(order.getQuantity()), String.valueOf(DEDUP_TTL_SECONDS)};
+        String[] argv = {String.valueOf(paymentOrder.getQuantity()), String.valueOf(DEDUP_TTL_SECONDS)};
         String luaResult = stockCacheRedisTemplate.execute(DECREMENT_ATOMIC_SCRIPT, keys, argv);
         return StockDecrementAtomicResult.valueOf(luaResult);
     }
@@ -217,33 +218,45 @@ public class StockCacheRedisAdapter implements StockCachePort {
      * <p>KEYS = [decrement:done:{productId}:orderId, compensation:done:{productId}:orderId, stock:{productId}]
      * ARGV  = [qty, 691200]
      */
-    private StockRecoveryCompensationResult compensateIfDecrementedSingleProduct(String orderId, PaymentOrder order) {
+    @Override
+    public StockRecoveryCompensationResult compensateIfDecremented(String orderId, PaymentOrder paymentOrder) {
         List<String> keys = List.of(
-                decrementDoneKey(order.getProductId(), orderId),
-                compensationDoneKey(order.getProductId(), orderId),
-                stockKey(order.getProductId())
+                decrementDoneKey(paymentOrder.getProductId(), orderId),
+                compensationDoneKey(paymentOrder.getProductId(), orderId),
+                stockKey(paymentOrder.getProductId())
         );
-        String[] argv = {String.valueOf(order.getQuantity()), String.valueOf(DEDUP_TTL_SECONDS)};
+        String[] argv = {String.valueOf(paymentOrder.getQuantity()), String.valueOf(DEDUP_TTL_SECONDS)};
         String luaResult = stockCacheRedisTemplate.execute(COMPENSATION_IF_DECREMENTED_SCRIPT, keys, argv);
         return StockRecoveryCompensationResult.valueOf(luaResult);
     }
 
     /**
-     * 이번 호출에서 직접 차감에 성공한 상품들을 거절 전용 되돌리기로 되돌린다.
+     * 상품 하나에 대한 거절 전용 되돌리기.
      *
      * <p>재고를 복원하면서 선차감 표시와 되돌리기 표시를 함께 지워, 같은 주문번호의 재시도가
      * 이 상품을 다시 정상적으로 차감할 수 있게 한다. 호출 자체가 예외를 던지면 삼키지 않고
      * 그대로 전파한다 — 어느 상품까지 되돌렸는지는 선차감 기록(후속 태스크)이 회수 근거가 된다.
+     *
+     * <p>KEYS = [decrement:done:{productId}:orderId, compensation:done:{productId}:orderId, stock:{productId}]
+     * ARGV  = [qty]
+     */
+    @Override
+    public void rejectCompensate(String orderId, PaymentOrder paymentOrder) {
+        List<String> keys = List.of(
+                decrementDoneKey(paymentOrder.getProductId(), orderId),
+                compensationDoneKey(paymentOrder.getProductId(), orderId),
+                stockKey(paymentOrder.getProductId())
+        );
+        String[] argv = {String.valueOf(paymentOrder.getQuantity())};
+        stockCacheRedisTemplate.execute(REJECT_COMPENSATION_SCRIPT, keys, argv);
+    }
+
+    /**
+     * 이번 호출에서 직접 차감에 성공한 상품들을 거절 전용 되돌리기로 되돌린다.
      */
     private void rejectDecrementedProducts(String orderId, List<PaymentOrder> decrementedThisCall) {
         for (PaymentOrder order : decrementedThisCall) {
-            List<String> keys = List.of(
-                    decrementDoneKey(order.getProductId(), orderId),
-                    compensationDoneKey(order.getProductId(), orderId),
-                    stockKey(order.getProductId())
-            );
-            String[] argv = {String.valueOf(order.getQuantity())};
-            stockCacheRedisTemplate.execute(REJECT_COMPENSATION_SCRIPT, keys, argv);
+            rejectCompensate(orderId, order);
         }
     }
 

@@ -109,7 +109,7 @@ flowchart TD
 
 - [x] Task 1: 상품 단위 스크립트 4종과 키 이름 규칙
 - [x] Task 2: 주문 단위 선점 획득·해제
-- [ ] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
+- [x] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
 - [ ] Task 4: 선차감 기록 스키마·엔티티·포트
 - [ ] Task 5: 선차감 기록 어댑터 — 재오픈·확정 보존·사이클 식별
 - [ ] Task 6: 확정 진입 재구성 — 선점, 상품 반복, 부분 실패 되돌리기
@@ -220,6 +220,14 @@ flowchart TD
 **완료 기준**
 
 - 전 모듈 컴파일 통과, 기존 재고 관련 테스트 회귀 없음, 신규 메서드 테스트 pass
+
+**완료 결과**
+
+- `StockCachePort` 에 상품 하나를 받는 오버로드 `decrementAtomic(orderId, PaymentOrder)` / `compensateIfDecremented(orderId, PaymentOrder)` 와, 오버로드가 아닌 신규 메서드 `rejectCompensate(orderId, PaymentOrder)` 를 추가했다. `rejectCompensate` 는 반환값이 필요 없어 `void` — 스크립트가 dedup 없이 항상 성공하고 예외만 그대로 전파한다
+- `StockCacheRedisAdapter` — Task 1 에서 만든 private 단일 상품 헬퍼(`decrementSingleProduct`/`compensateIfDecrementedSingleProduct`) 를 그대로 새 public 메서드로 승격했다. 기존 주문 단위 메서드(`decrementAtomic(orderId, List)`/`compensateIfDecremented(orderId, List)`)와 `rejectDecrementedProducts` 내부 반복은 이제 새 상품 단위 public 메서드를 호출하도록 배선을 바꿔, 같은 로직이 두 곳에 중복되지 않는다. 순수 unconditional 보상(`compensateAtomic`)의 단일 상품 헬퍼는 이번 태스크 대상이 아니라 private 그대로 남겼다 — 그 경로는 9a/9b/9c 에서 조건부 되돌리기로 옮겨갈 예정이라 지금 공개 API 로 승격할 이유가 없다
+- `FakeStockCachePort` — 상품 단위 메서드 전용 dedup 토큰 집합(`productDecrementDoneTokens`/`productCompensationDoneTokens`, `productId:orderId` 키)을 별도로 두어 기존 주문 단위 dedup(`decrementDedupTokens`/`compensationDedupTokens`)과 분리했다. `clear()` 에도 반영
+- `StockCacheRedisAdapterTest` 에 상품 단위 메서드 6케이스(정상 차감/부족/중복, 조건부 되돌리기 정상/흔적없음, 거절 전용 되돌리기의 재고 복원+표시 삭제) 추가
+- `./gradlew :payment-service:test` 639건 전체 pass(신규 6건 포함), checkstyle·spotbugs 클린. 호출부는 아직 옛 주문 단위 메서드를 그대로 쓴다 — 이관은 Task 6 부터
 
 ### Task 4: 선차감 기록 스키마·엔티티·포트 [tdd=false]
 
