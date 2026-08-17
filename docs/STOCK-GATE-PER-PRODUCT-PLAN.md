@@ -118,7 +118,7 @@ flowchart TD
 - [x] Task 8: 승인 반영 트랜잭션에서 확정 표시
 - [x] Task 9a: 확정 실패 경로를 상품 단위로 전환
 - [x] Task 9b: 격리 진입 경로를 상품 단위로 전환
-- [ ] Task 9c: 관리자 종결 경로를 상품 단위로 전환
+- [x] Task 9c: 관리자 종결 경로를 상품 단위로 전환
 - [ ] Task 9d: 주문 단위 포트 메서드 제거
 - [ ] Task 10: 미회수 선차감 회수 판정
 - [ ] Task 11: 회수 주기 작업
@@ -506,6 +506,26 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 관리자 종결 통합 테스트 통과
+
+**완료 결과**
+
+- 확정 실패(9a)·격리 진입(9b)·관리자 종결(9c) 세 호출부가 상품별 되돌리기 로직을 그대로 복붙해
+  들고 있게 되는 것을 피하려고, `PaymentConfirmResultUseCase`에 있던 `revertEachProductHold`/
+  `revertProductHold`를 신규 정적 유틸리티 `application/util/StockHoldReverter`로 추출했다 —
+  두 유스케이스가 이미 갖고 있는 `StockCachePort`/`StockHoldRecordRepository` 필드를 그대로
+  인자로 넘겨 호출하므로 어느 쪽 클래스의 생성자 시그니처도 바뀌지 않는다(기존 8개 테스트
+  파일의 `new PaymentConfirmResultUseCase(...)` 호출부가 전부 무사)
+- `QuarantineResolveUseCase` — 생성자에 `StockHoldRecordRepository` 필드를 추가하고, 주문 단위
+  `stockCachePort.compensateIfDecremented(orderId, event.getPaymentOrderList())` 호출을
+  `StockHoldReverter.revertEachProductHold(event, stockCachePort, stockHoldRecordRepository)`로
+  교체했다. 벤더 상태 조회·판정이 재고 보상보다 앞선다는 기존 순서는 그대로 — 되돌리기 자체가
+  상품 단위로 바뀔 뿐 호출 위치는 옮기지 않았다
+- `QuarantineResolveUseCaseTest` — 기존 Mockito 기반 테스트를 상품 단위 API
+  (`findSnapshot`/`compensateIfDecremented(orderId, PaymentOrder)`/`closeAsReverted`) 호출로
+  갱신하고, `@Nested RevertPerProductTest`(FakeStockCachePort + FakeStockHoldRecordRepository)를
+  신설해 캐시 재고 값 복원까지 단정하는 3케이스(흔적 있으면 복원+닫힘 / 흔적 없으면 불변+닫힘만 /
+  캐시 ALREADY_DONE 이어도 기록은 닫힘)를 9a/9b와 동일한 형태로 추가했다
+- `./gradlew :payment-service:test` 668건 전체 pass(신규 3건 포함), checkstyle·spotbugs 클린
 
 ### Task 9d: 주문 단위 포트 메서드 제거 [tdd=false]
 

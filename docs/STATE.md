@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 9c — 관리자 종결 경로를 상품 단위로 전환 (Task 1~9b 완료. Task 9b 는 `PaymentConfirmResultUseCase.handleQuarantined` 의 비-부분취소 분기에서 주문 단위 `compensateAtomic` 을 걷고, Task 9a 가 만든 `revertEachProductHold` 를 그대로 재사용했다 — 상품별 흔적 확인 → 조건부 되돌리기 → 기록 닫기 순서는 FAILED 경로와 동일하다. 부분 취소 사유는 여전히 되돌리기 자체를 건너뛰어 기록이 잡음으로, 재고가 그대로 남는다. `QuarantineCompensationHandler` 는 재고 캐시를 부르지 않아 대상이 아니었다 — 계층 분리 유지. 격리 진입을 직접 태우는 Testcontainers 통합 테스트가 없어 단위 테스트만 갱신했다. Task 9c 부터는 `QuarantineResolveUseCase`(관리자 종결)를 같은 방식으로 옮긴다)
+- **활성 태스크**: Task 9d — 주문 단위 포트 메서드 제거 (Task 1~9c 완료. Task 9c 는 `QuarantineResolveUseCase` 의 주문 단위 `compensateIfDecremented(orderId, List)` 호출을 상품 단위로 옮겼다. 세 호출부(9a 확정 실패/9b 격리 진입/9c 관리자 종결)가 같은 되돌리기 로직을 복붙하지 않도록, `PaymentConfirmResultUseCase` 에 있던 상품별 되돌리기를 신규 정적 유틸 `application/util/StockHoldReverter` 로 추출해 두 유스케이스가 각자의 `StockCachePort`/`StockHoldRecordRepository` 필드를 그대로 넘겨 호출한다 — 생성자 시그니처는 안 바뀌어 기존 테스트 8개 파일이 무사했다. `QuarantineResolveUseCase` 생성자에는 `StockHoldRecordRepository` 필드가 새로 추가됐다. 벤더 상태 조회·판정이 재고 보상보다 앞선다는 기존 순서는 유지. Task 9d 부터는 호출부 넷이 모두 상품 단위로 옮겨졌으므로 `StockCachePort` 의 주문 단위 메서드와 어댑터의 내부 반복, `FakeStockCachePort` 의 대응 메서드를 걷는다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

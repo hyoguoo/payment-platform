@@ -4,6 +4,8 @@ import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgVendorStatusI
 import com.hyoguoo.paymentplatform.payment.application.dto.admin.PgVendorStatusJudgement;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PgVendorStatusPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogDomain;
 import com.hyoguoo.paymentplatform.payment.core.common.log.LogFmt;
@@ -22,7 +24,7 @@ import org.springframework.stereotype.Service;
  * 순서(SCR-6 "보상 먼저" 원칙 + 벤더 재확인): (1) 로드 → (2) 격리 상태 확인 →
  * (3) 벤더 상태 조회({@link PgVendorStatusPort#lookup}, 외부 호출이라 {@code @Transactional} 밖) →
  * (4) 판정 — 승인(APPROVED)이 확인되면 종결을 거부한다. 과금이 살아있는 건을 실패로 정리하면 되돌릴 수
- * 없기 때문이다 → (5) redis 재고 보상({@code compensateIfDecremented}, 역시 {@code @Transactional} 밖 —
+ * 없기 때문이다 → (5) 상품별 redis 재고 되돌리기({@link StockHoldReverter}, 역시 {@code @Transactional} 밖 —
  * 외부 호출이 커넥션을 점유하지 않도록 PITFALLS §3 준수) → (6) 도메인 전이 + CAS 저장 + AOP audit
  * ({@link PaymentCommandUseCase#markPaymentAsFailFromQuarantine}, 단일 {@code @Transactional}).
  * <p>
@@ -30,8 +32,9 @@ import org.springframework.stereotype.Service;
  * 나가면 되돌릴 수 없다. 확인 불가(UNKNOWN)는 종결을 막지 않는다 — 막으면 벤더 장애가 길어질 때
  * 격리가 전혀 풀리지 않고 적체된다. 대신 조회 결과를 종결 사유에 덧붙여 감사 기록에 남긴다.
  * <p>
- * 보상 결과({@code OK}/{@code ALREADY_DONE}/{@code NO_DECREMENT}) 는 모두 정상 흐름이며
- * 결과와 무관하게 전이를 진행한다 — 재고 정리 성사 여부가 종결 자체를 막지 않는다.
+ * 보상은 상품별로 선차감 흔적이 있을 때만 캐시를 되돌리고, 그 결과와 무관하게 선차감 기록을
+ * 되돌림으로 닫는다({@link StockHoldReverter}) — 흔적이 없는 상품은 건드리지 않고 기록만 닫으며,
+ * 캐시가 이미 처리됨을 돌려줘도 기록은 닫는다.
  */
 @Slf4j
 @Service
@@ -41,6 +44,7 @@ public class QuarantineResolveUseCase {
     private final PaymentLoadUseCase paymentLoadUseCase;
     private final PgVendorStatusPort pgVendorStatusPort;
     private final StockCachePort stockCachePort;
+    private final StockHoldRecordRepository stockHoldRecordRepository;
     private final PaymentCommandUseCase paymentCommandUseCase;
 
     /**
@@ -76,7 +80,7 @@ public class QuarantineResolveUseCase {
 
         // redis 보상은 TX 밖에서 벤더 승인 배제가 끝난 뒤 수행 — 외부 호출이 DB 커넥션을 점유하지
         // 않도록 한다.
-        stockCachePort.compensateIfDecremented(orderId, event.getPaymentOrderList());
+        StockHoldReverter.revertEachProductHold(event, stockCachePort, stockHoldRecordRepository);
 
         PaymentEvent resolvedEvent = paymentCommandUseCase.markPaymentAsFailFromQuarantine(event, resolvedReason);
 
