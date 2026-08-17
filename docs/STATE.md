@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 9b — 격리 진입 경로를 상품 단위로 전환 (Task 1~9a 완료. Task 9a 는 `PaymentConfirmResultUseCase.handleFailed` 의 주문 단위 `compensateAtomic` 을 상품별 `findSnapshot` → `compensateIfDecremented` → `closeAsReverted` 반복으로 교체했다 — 선차감 흔적이 있을 때만 캐시를 되돌리고, 캐시가 이미 처리됨을 돌려줘도 기록은 되돌림으로 닫는다. 관련 통합 테스트 2종의 픽스처가 checkout 시점의 선차감(기록 열기 + redis 흔적)을 흉내내도록 갱신됐다. Task 9b 부터는 `handleQuarantined`(비-부분취소 사유의 즉시 보상 경로)를 같은 방식으로 옮긴다 — `QuarantineCompensationHandler` 는 재고 캐시를 부르지 않아 대상이 아니다)
+- **활성 태스크**: Task 9c — 관리자 종결 경로를 상품 단위로 전환 (Task 1~9b 완료. Task 9b 는 `PaymentConfirmResultUseCase.handleQuarantined` 의 비-부분취소 분기에서 주문 단위 `compensateAtomic` 을 걷고, Task 9a 가 만든 `revertEachProductHold` 를 그대로 재사용했다 — 상품별 흔적 확인 → 조건부 되돌리기 → 기록 닫기 순서는 FAILED 경로와 동일하다. 부분 취소 사유는 여전히 되돌리기 자체를 건너뛰어 기록이 잡음으로, 재고가 그대로 남는다. `QuarantineCompensationHandler` 는 재고 캐시를 부르지 않아 대상이 아니었다 — 계층 분리 유지. 격리 진입을 직접 태우는 Testcontainers 통합 테스트가 없어 단위 테스트만 갱신했다. Task 9c 부터는 `QuarantineResolveUseCase`(관리자 종결)를 같은 방식으로 옮긴다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

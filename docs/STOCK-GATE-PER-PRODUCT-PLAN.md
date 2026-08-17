@@ -117,7 +117,7 @@ flowchart TD
 - [x] Task 7: 확정 행 재요청 건너뛰기와 선점 실패 분기
 - [x] Task 8: 승인 반영 트랜잭션에서 확정 표시
 - [x] Task 9a: 확정 실패 경로를 상품 단위로 전환
-- [ ] Task 9b: 격리 진입 경로를 상품 단위로 전환
+- [x] Task 9b: 격리 진입 경로를 상품 단위로 전환
 - [ ] Task 9c: 관리자 종결 경로를 상품 단위로 전환
 - [ ] Task 9d: 주문 단위 포트 메서드 제거
 - [ ] Task 10: 미회수 선차감 회수 판정
@@ -467,6 +467,29 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 격리 진입 통합 테스트 통과
+
+**완료 결과**
+
+- `PaymentConfirmResultUseCase.handleQuarantined` 의 비-부분취소 분기가 주문 단위 `compensateAtomic`
+  대신 Task 9a 가 만든 `revertEachProductHold` 를 그대로 재사용한다 — 상품마다 `findSnapshot` 으로
+  선차감 흔적을 확인하고, 있으면 `compensateIfDecremented` 로 되돌린 뒤 그 결과와 무관하게
+  `closeAsReverted` 로 기록을 되돌림으로 닫는다. 부분 취소 사유는 여전히 이 되돌리기 자체를
+  건너뛰어 기록이 잡음으로, 재고가 그대로 남는다. `QuarantineCompensationHandler` 는 재고 캐시를
+  부르지 않아 이번 태스크 대상이 아니다 — 계층 분리를 그대로 뒀다
+- 되돌린 뒤 quarantineHandler 위임 순서는 그대로 유지 — 순서를 뒤집으면 보상 트랜잭션 중복 진입
+  race 가 생긴다는 기존 Javadoc 경고도 상품 단위 표현으로 정정
+- `PaymentConfirmResultUseCaseHandleQuarantinedTest` — Mockito 기반 상단 테스트(상품별 되돌리기가
+  quarantineHandler 보다 먼저 호출, RuntimeException 전파, 부분 취소 사유는 되돌리기 자체 미호출,
+  조회실패/벤더미결론/금액불일치 사유는 상품별 되돌리기 수행)와 `@Nested RevertPerProductTest`
+  (FakeStockCachePort + FakeStockHoldRecordRepository) — 흔적 있으면 캐시 재고 값이 실제로 원래
+  값으로 복원되고 기록이 REVERTED로 닫힘 / 부분 취소 사유는 기록 NOISE 유지 + 재고 값 불변 /
+  캐시가 ALREADY_DONE 을 돌려줘도 기록은 REVERTED로 닫힘 3케이스. 기록 상태만 보는 검증으로는
+  되돌리기 호출 누락을 놓칠 수 있어 재고 값 자체를 Fake 로 직접 단정했다
+- `PaymentConfirmResultUseCaseIdempotencyGuardTest`/`ConfirmedEventConsumerTest` 의 QUARANTINED
+  진입 케이스를 상품 단위 API(`findSnapshot`/`compensateIfDecremented`/`closeAsReverted`) 호출로
+  갱신 — 회귀 없음. 격리 진입을 직접 태우는 Testcontainers 통합 테스트는 없어(기존 통합 테스트는
+  QUARANTINED 종결 가드 noop 또는 FAILED 되돌리기만 다룸) 별도 통합 테스트 갱신은 불필요했다
+- `./gradlew :payment-service:test` 665건 전체 pass, checkstyle·spotbugs 클린
 
 ### Task 9c: 관리자 종결 경로를 상품 단위로 전환 [tdd=true] [domain_risk=true]
 

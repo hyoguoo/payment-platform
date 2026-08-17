@@ -10,7 +10,6 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
@@ -169,14 +168,22 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-consumer-test")));
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+                .willReturn(StockRecoveryCompensationResult.OK);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", null, null, EVENT_UUID);
 
         sut.handle(message);
 
+        then(stockCachePort)
+                .should(times(1))
+                .compensateIfDecremented(eq(ORDER_ID), eq(order));
+        then(stockHoldRecordRepository)
+                .should(times(1))
+                .closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-consumer-test"));
         then(quarantineCompensationHandler)
                 .should(times(1))
                 .handle(eq(ORDER_ID), eq("RETRY_EXHAUSTED"));

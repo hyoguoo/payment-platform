@@ -322,23 +322,23 @@ public class PaymentConfirmResultUseCase {
     }
 
     /**
-     * QUARANTINED 처리. 격리 사유가 부분 취소({@code FCG_PARTIAL_CANCELED})가 아니면 재고 보상을
-     * 먼저 하고 격리 핸들러에 위임한다. 보상 → 핸들러 순서는 유지해야 한다 — 뒤집으면 보상 트랜잭션
-     * 중복 진입 race 가 생긴다.
+     * QUARANTINED 처리. 격리 사유가 부분 취소({@code FCG_PARTIAL_CANCELED})가 아니면 상품별로
+     * 되돌린 뒤 격리 핸들러에 위임한다. 되돌리기 → 핸들러 순서는 유지해야 한다 — 뒤집으면 보상
+     * 트랜잭션 중복 진입 race 가 생긴다.
      *
-     * <p>부분 취소 사유는 즉시 보상을 건너뛴다 — 벤더가 이미 일부를 취소한 결제라 재고를 곧바로
-     * 전액 풀면 실제 취소분 이상으로 재고가 복원될 수 있다. 이때 선차감 흔적({@code decrement:done})은
-     * 지워지지 않고 남으며, 관리자가 이 격리를 종결할 때 {@link QuarantineResolveUseCase} 의 조건부
-     * 보상({@code compensateIfDecremented})이 그 흔적을 확인하고서만 재고를 푼다. 이 흔적은
-     * {@link #STOCK_COMMITTED_TTL} 과 같은 8 일 수명을 가지므로, 그 안에 격리를 종결하지 못하면
-     * 흔적이 만료돼 재고가 복원되지 않는다.
+     * <p>부분 취소 사유는 되돌리기 자체를 건너뛴다 — 벤더가 이미 일부를 취소한 결제라 재고를 곧바로
+     * 전액 풀면 실제 취소분 이상으로 재고가 복원될 수 있다. 이때 선차감 기록은 잡음으로 남고 캐시의
+     * 선차감 흔적({@code decrement:done})도 지워지지 않으며, 관리자가 이 격리를 종결할 때
+     * {@link QuarantineResolveUseCase} 의 조건부 되돌리기가 그 흔적을 확인하고서만 재고를 푼다.
+     * 이 흔적은 {@link #STOCK_COMMITTED_TTL} 과 같은 8 일 수명을 가지므로, 그 안에 격리를 종결하지
+     * 못하면 흔적이 만료돼 재고가 복원되지 않는다.
      */
     private void handleQuarantined(PaymentEvent paymentEvent, String reasonCode) {
         if (REASON_FCG_PARTIAL_CANCELED.equals(reasonCode)) {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINE_STOCK_HELD,
                     () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
         } else {
-            stockCachePort.compensateAtomic(paymentEvent.getOrderId(), paymentEvent.getPaymentOrderList());
+            revertEachProductHold(paymentEvent);
         }
 
         quarantineCompensationHandler.handle(

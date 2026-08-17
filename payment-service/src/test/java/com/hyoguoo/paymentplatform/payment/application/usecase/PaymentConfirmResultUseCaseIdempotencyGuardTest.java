@@ -8,7 +8,6 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
@@ -152,15 +151,19 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(any(), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(any(String.class), any(PaymentOrder.class)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-guard-test")));
+        given(stockCachePort.compensateIfDecremented(any(String.class), any(PaymentOrder.class)))
+                .willReturn(StockRecoveryCompensationResult.OK);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "QUARANTINED", REASON_CODE, null, null, EVENT_UUID);
 
         sut.handle(message);
 
-        then(stockCachePort).should(times(1)).compensateAtomic(any(), any());
+        then(stockCachePort).should(times(1)).compensateIfDecremented(any(String.class), any(PaymentOrder.class));
+        then(stockHoldRecordRepository).should(times(1))
+                .closeAsReverted(any(String.class), any(PaymentOrder.class), any(String.class));
         then(quarantineCompensationHandler).should(times(1)).handle(ORDER_ID, REASON_CODE);
     }
 
