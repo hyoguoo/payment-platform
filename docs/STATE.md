@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-17
+> 최종 수정: 2026-08-18
 
 ## 활성 작업
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 1 — 상품 단위 스크립트 4종과 키 이름 규칙
+- **활성 태스크**: Task 2 — 주문 단위 선점 획득·해제 (Task 1: 상품 단위 스크립트 4종과 키 이름 규칙 완료)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

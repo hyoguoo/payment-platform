@@ -107,7 +107,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 상품 단위 스크립트 4종과 키 이름 규칙
+- [x] Task 1: 상품 단위 스크립트 4종과 키 이름 규칙
 - [ ] Task 2: 주문 단위 선점 획득·해제
 - [ ] Task 3: 캐시 포트와 어댑터를 상품 단위 호출로 재구성
 - [ ] Task 4: 선차감 기록 스키마·엔티티·포트
@@ -158,6 +158,16 @@ flowchart TD
 
 - 위 테스트 pass, `./gradlew :payment-service:test` 회귀 없음, 호출부 변경 0
 - **다중 상품 브리지 계약 테스트** — 상품 셋 중 셋째가 부족하면 앞의 둘이 원래 값으로 돌아오고 부족을 반환한다. 되돌리기까지 실패하면 그 사실이 드러나는 형태로 끝난다
+
+**완료 결과**
+
+- `lua/stock_decrement_atomic.lua` / `stock_compensation_atomic.lua` / `stock_compensation_if_decremented.lua` 를 상품 하나만 다루도록 재작성(KEYS 2~3개, 주문 단위 N+1개 대신). 신규 `lua/stock_reject_compensation.lua` — 거절 전용 되돌리기, 재고를 복원하면서 `decrement:done`/`compensation:done` 표시를 함께 지우고 자체 dedup token 은 두지 않는다(호출자가 이번 요청이 직접 차감한 상품에 한해서만 부르므로)
+- 키 이름을 상품 기준 해시태그로 전환 — `stock:{productId}` / `decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId`
+- `StockCacheRedisAdapter` — 포트 시그니처(`decrementAtomic`/`compensateAtomic`/`compensateIfDecremented`, 주문 단위 `orderId + List<PaymentOrder>`)는 그대로 두고, 내부에서 상품별로 단일 상품 스크립트를 반복 호출해 조립. `decrementAtomic` 은 반복 중 부족을 만나면 이번 호출에서 직접 차감에 성공한 상품만(`decrementedThisCall`) 거절 전용 되돌리기로 되돌린 뒤 `INSUFFICIENT` 를 반환 — 이미 처리됨(`ALREADY_DONE`)을 받은 상품은 되돌리기 대상에서 제외. 되돌리기 호출은 try-catch 로 감싸지 않아 예외가 삼켜지지 않고 그대로 전파된다
+- 어댑터 레벨 테스트(`StockCacheRedisAdapterTest`, Testcontainers)에 다중 상품 브리지 테스트(3상품 중 셋째 부족 → 앞의 둘 재고·표시 모두 원복) 및 단일 상품 선차감 표시 검증 추가. 되돌리기 예외 전파는 Testcontainers 로 재현하기 어려워 별도 Mockito 기반 `StockCacheRedisAdapterRejectFailureTest` 신설 — `StringRedisTemplate` 을 목으로 대체해 되돌리기 호출 시점에 예외를 주입하고 삼켜지지 않는지 확인
+- 신규 raw Lua 테스트 `StockRejectCompensationLuaTest` — 재고 복원 + 두 표시 삭제 + 삭제 후 재차감 성공까지 검증. 기존 `StockDecrementAtomicLuaTest`/`StockCompensationAtomicLuaTest` 는 상품 하나만 다루는 새 KEYS 구조에 맞춰 재작성(다중 상품 전용 케이스는 이제 어댑터 브리지 테스트가 담당하므로 제거)
+- 키 형식이 바뀌어 raw redis 키 문자열을 직접 조작하던 기존 통합 테스트 5종(`StockCompensationRecoveryIntegrationTest`/`RedisStockCompensationFailureIntegrationTest`/`StockRetentionIntegrationTest`/`PaymentDuplicateConfirmConcurrencyIntegrationTest`/`StockResyncAdminIntegrationTest`)의 `"stock:" + PRODUCT_ID` 를 `"stock:{" + PRODUCT_ID + "}"` 로 갱신
+- `./gradlew :payment-service:test` 628건 전체 pass, checkstyle·spotbugs 클린. 시드 스크립트(`scripts/seed-stock.sh`)는 Task 15 범위라 이번에 건드리지 않음 — 로컬 스택은 이번 커밋 이후 새로 띄우기 전까지 옛 키 이름을 심는다
 
 ### Task 2: 주문 단위 선점 획득·해제 [tdd=true] [domain_risk=true]
 
