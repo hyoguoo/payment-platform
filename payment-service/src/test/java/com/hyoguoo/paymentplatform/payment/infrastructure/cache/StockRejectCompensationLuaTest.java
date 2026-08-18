@@ -124,9 +124,10 @@ class StockRejectCompensationLuaTest {
     }
 
     @Test
-    @DisplayName("기존에_되돌리기_표시가_남아있어도_함께_지워진다")
-    void 기존_되돌리기_표시도_삭제된다() {
-        // given — 이전 사이클에서 되돌리기 표시가 남아 있는 이례 상태를 재현
+    @DisplayName("되돌리기_표시가_이미_있으면_복원을_건너뛰고_표시_삭제만_수행한다")
+    void 되돌리기_표시가_이미_있으면_복원을_건너뛴다() {
+        // given — 이전 사이클에서 되돌리기가 이미 끝나 표시가 남아 있는 상태를 재현.
+        // dedup 이 없는 무조건 복원이면 여기서도 INCRBY 가 또 일어나 이중 복원이 된다.
         String orderId = "order-reject-003";
         String decrementDoneKey = "decrement:done:{30}:" + orderId;
         String compensationDoneKey = "compensation:done:{30}:" + orderId;
@@ -142,9 +143,11 @@ class StockRejectCompensationLuaTest {
         // when
         String result = redisTemplate.execute(REJECT_COMPENSATION_SCRIPT, keys, (Object[]) args);
 
-        // then
+        // then — 재고는 그대로고(이중 복원 없음), 표시 둘은 정리되어 재시도가 깨끗하게 시작된다
         assertThat(result).isEqualTo("OK");
-        assertThat(redisTemplate.opsForValue().get(stockKey)).isEqualTo("10");
+        assertThat(redisTemplate.opsForValue().get(stockKey))
+                .as("되돌리기 표시가 이미 있었으므로 이번 호출은 복원을 건너뛰어야 한다")
+                .isEqualTo("8");
         assertThat(redisTemplate.hasKey(decrementDoneKey)).isFalse();
         assertThat(redisTemplate.hasKey(compensationDoneKey)).isFalse();
     }
