@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 16a — 이중 되돌리기 조합 검증 (Task 1~15 완료. Task 15 는 시드 스크립트(`seed-stock.sh`/`bench-seed-stock.sh`)의 키 조립을 어댑터의 상품 기준 해시태그 규칙(`stock:{productId}`)에 맞추고, `create-topics.sh` 사전 생성 목록에 누락됐던 `payment.events.stock-committed.dlq` 를 추가했다. 같은 옛 키 형식을 쓰던 `observability-load.sh`/`verify-settlement.sh` 도 함께 정정(Rule 1). 로컬에서 mysql-product+redis-stock 만 기동해 시드 후 `stock:{1}`/`stock:{2}` 키를 직접 조회해 RDB 값과 일치 확인. 스택을 새로 띄우며 전환하는 절차(캐시·DB 볼륨 모두 제거 후 재기동)를 `seed-stock.sh` 헤더에 문서화. 전체 스택 기동 검증은 Task 17 범위)
+- **활성 태스크**: Task 16b — 동시 중복 확정과 거절 후 재시도 검증 (Task 1~16a 완료. Task 16a 는 재고 선차감을 되돌리는 다섯 주체의 모든 짝(10 조합)을 검증하는 동시성 하네스를 만들었다. 확정 실패·격리 진입·관리자 종결·회수 주기 작업 넷은 진짜 동시 경합이 가능해 `ConcurrentActionRunner`로 강제 동시 실행(6조합), 거절 전용은 상태 기계(주문 단위 선점 + READY 배타성) 때문에 나머지 넷과 실제로는 동시 경합하지 않는다는 것을 직접 Redis 실험으로 확인해 순차 핸드오프로 검증(4조합) — 총 10조합 × 50회 = 500케이스 전체 pass. 거절 전용의 캐시 되돌리기(`stock_reject_compensation.lua`)가 무조건 복원이라 "표시가 유일한 방어"라는 설계 문서 서술이 거절 전용에는 그대로 적용되지 않는다는 것을 발견해 PLAN.md 완료 결과에 기록 — 안전은 지금 상태 기계 배타성에서 나오고, 방어적으로 더 굳힐지는 범위 밖으로 남김. 재사용 하네스(`ConcurrentActionRunner`/`StockHoldRevertActions`)는 16b/16c 가 그대로 쓴다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

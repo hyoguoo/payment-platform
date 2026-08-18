@@ -126,7 +126,7 @@ flowchart TD
 - [x] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
 - [x] Task 14: 격리 적체 알람과 대응 분류
 - [x] Task 15: 시드·토픽 생성 스크립트 정비
-- [ ] Task 16a: 이중 되돌리기 조합 검증
+- [x] Task 16a: 이중 되돌리기 조합 검증
 - [ ] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
 - [ ] Task 16c: 수렴 체인과 정합 검증
 - [ ] Task 17: 라이브 검증
@@ -858,6 +858,52 @@ flowchart TD
 
 - 열 조합 전부 pass, 반복 실행에서 흔들리지 않음
 - **재고가 한 번만 복원되는 것뿐 아니라 기록이 정확히 닫히는 것까지 단정한다**
+
+**완료 결과**
+
+- `core/test/ConcurrentActionRunner`(범용) 신설 — `CountDownLatch` ready/start 두 단계로 N개 동작을
+  같은 시점에 풀어 실행하고, 하나라도 예외를 던지면 삼키지 않고 첫 예외를 원인으로 담아 던진다.
+  상품 도메인에 종속되지 않아 16b/16c 가 그대로 재사용한다
+- `integration/StockHoldRevertActions` 신설 — 다섯 되돌리기 주체(확정 실패/격리 진입/관리자 종결/
+  회수 주기 작업/거절 전용)가 운영 코드에서 실제로 부르는 메서드를 그대로 감싼 바인딩. 새 되돌리기
+  로직을 만들지 않고, 실주입 빈(`StockHoldReverter`/`StockCachePort`/`StockHoldRecordRepository`)을
+  그대로 호출한다
+- **경합 모델을 둘로 나눴다 — 조사 결과 다섯 주체가 균일하게 경합하지 않는다는 것을 확인했다.**
+  확정 실패·격리 진입·관리자 종결·회수 주기 작업 넷은 모두 `StockHoldReverter.revertProductHold`
+  (조건부 `compensateIfDecremented` + 사이클 식별 값 조건부 `closeAsReverted`)를 거쳐 실제로 동시
+  경합이 일어날 수 있다(Kafka 재전송, 관리자 중복 클릭, 주기 작업과 관리자 조작의 겹침) — 이 넷의
+  모든 짝(6 조합)은 `ConcurrentActionRunner`로 진짜 동시 실행을 강제해 검증했고 전부 pass, 방어
+  기제는 설계 문서가 서술한 그대로(`compensation:done` SETNX + 사이클 식별 값 일치 조건)였다
+- **거절 전용은 나머지 넷과 진짜로 동시에 경합하지 않는다는 것을 실제로 확인했다.** 거절 전용은
+  이번 확정 요청이 직접 차감한 상품에 대해서만, 결제가 아직 READY 로 주문 단위 선점을 쥔 채
+  실행된다 — 이 시점엔 다른 네 주체 중 무엇도 전제 조건(벤더 응답 이후 IN_PROGRESS, 격리 상태,
+  종결 상태)을 만족하지 못한다. 그리고 `stock_reject_compensation.lua`(거절 전용)는 선차감·되돌리기
+  표시를 검사하지 않는 무조건 INCRBY 다 — 실제로 Redis에 `stock_compensation_if_decremented.lua` 를
+  먼저 실행해 복원한 뒤 `stock_reject_compensation.lua` 를 그 위에 실행해보면 재고가 두 번
+  복원된다(100 → 100 → 110, 직접 재현 확인). **이 순서는 위 상태 전제 때문에 실제로는 일어나지
+  않지만, "상품별 되돌리기 표시가 유일한 방어" 라는 설계 문서 서술은 거절 전용에는 그대로 적용되지
+  않는다** — 거절 전용의 안전은 표시가 아니라 상태 기계가 강제하는 순서(주문 단위 선점 + READY
+  상태 배타성)에서 나온다. 유일하게 실제로 이어지는 순서는 거절 전용이 재고·표시를 지운 뒤 결제가
+  실패로 종결되고, 그 잡음 기록을 회수 주기 작업이 나중에 정리하는 것뿐이다
+- 그래서 거절 전용이 낀 4짝은 "거절 전용이 먼저 끝난 뒤 나머지 주체가 그 결과를 안전하게
+  넘겨받는지" 를 순차 핸드오프로 검증했다(거절 전용 실행 → 그 직후 다른 주체 실행, 진짜 동시
+  실행이 아니다) — 도달 불가능한 순서를 강제로 동시 실행하면 재현되는(운영에서는 일어나지 않는)
+  이중 복원으로 50 회 중 절반 가까이 flaky 하게 실패해 "반복 실행에서 흔들리지 않는다" 는 완료
+  기준과 상충하기 때문이다. 넘겨받은 쪽은 `decrement:done` 이 이미 없어 `NO_DECREMENT` 로
+  흡수하고, 결과와 무관하게 기록을 되돌림으로 닫는다
+- `integration/StockHoldDoubleRevertConcurrencyIntegrationTest`(`BaseIntegrationTest` 상속, 실제
+  Redis+MySQL Testcontainers) — 10 조합(진짜 경합 6 + 순차 핸드오프 4) × `@RepeatedTest(50)` =
+  500 케이스, 매 반복 고유 orderId/productId 로 선차감을 새로 심고 두 주체를 실행한 뒤 (1) 재고가
+  선차감 이전 값으로 정확히 한 번만 복원됐는지, (2) 선차감 기록이 정확히 REVERTED 로 닫혔는지
+  둘 다 단정. 전체 500/500 pass
+- **발견 (범위 밖)** — 거절 전용(`stock_reject_compensation.lua`)이 무조건 복원이라, 상태 기계
+  배타성이 깨지는 미래 변경(예: 선점 없이 거절을 재시도하는 경로 추가, 회수 작업이 READY 상태까지
+  스캔하도록 조건 완화)이 생기면 이중 복원 방어선이 사라진다. 지금은 안전하지만 "표시가 유일한
+  방어" 라는 설계 문서 서술과 실제 구현이 어긋나는 지점이라, 후속으로 `compensation:done` 존재 시
+  거절 전용도 스킵하도록 방어적으로 굳히거나, 이 불변식을 PITFALLS.md 에 명시하는 것을 검토할
+  가치가 있다
+- 코드 변경은 전부 `src/test` — `./gradlew :payment-service:test` 673건, `:payment-service:integrationTest`
+  651건(신규 500건 포함) 전체 pass, checkstyle·spotbugs 클린
 
 ### Task 16b: 동시 중복 확정과 거절 후 재시도 검증 [tdd=true] [domain_risk=true]
 
