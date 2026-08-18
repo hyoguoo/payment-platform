@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 16b — 동시 중복 확정과 거절 후 재시도 검증 (Task 1~16a 완료. Task 16a 는 재고 선차감을 되돌리는 다섯 주체의 모든 짝(10 조합)을 검증하는 동시성 하네스를 만들었다. 확정 실패·격리 진입·관리자 종결·회수 주기 작업 넷은 진짜 동시 경합이 가능해 `ConcurrentActionRunner`로 강제 동시 실행(6조합), 거절 전용은 상태 기계(주문 단위 선점 + READY 배타성) 때문에 나머지 넷과 실제로는 동시 경합하지 않는다는 것을 직접 Redis 실험으로 확인해 순차 핸드오프로 검증(4조합) — 총 10조합 × 50회 = 500케이스 전체 pass. 거절 전용의 캐시 되돌리기(`stock_reject_compensation.lua`)가 무조건 복원이라 "표시가 유일한 방어"라는 설계 문서 서술이 거절 전용에는 그대로 적용되지 않는다는 것을 발견해 PLAN.md 완료 결과에 기록 — 안전은 지금 상태 기계 배타성에서 나오고, 방어적으로 더 굳힐지는 범위 밖으로 남김. 재사용 하네스(`ConcurrentActionRunner`/`StockHoldRevertActions`)는 16b/16c 가 그대로 쓴다)
+- **활성 태스크**: Task 16c — 수렴 체인과 정합 검증 (Task 1~16b 완료. Task 16b 는 동시 중복 확정·완료된 결제 재확정 시나리오는 이미 Task 6/7 이 실제 값 단정까지 검증해 뒀음을 확인하고 재검증만 했다. 남은 둘(거절 후 재시도 정합, 닫기 경합)은 신규 `StockGateConcurrentRetryIntegrationTest`로 다뤘다 — 거절 후 재시도는 1주기(직접 차감 → 거절 전용 되돌리기) 뒤 2주기(재시도 차감 → 조건부 되돌리기)를 실제로 태워 Redis 재고 값 자체가 원래대로 복원되는지 단정(기록 상태만 보는 검증은 되돌리기 표시가 앞 사이클에 남는 구멍을 못 잡는다). 닫기 경합은 `StockHoldReverter`에 되돌리기-닫기 사이 protected 훅 `beforeClose`를 신설해(운영 기본값 no-op, 이번 태스크의 유일한 신규 프로덕션 코드) 테스트가 그 창에 새 차감을 결정적으로 끼워 넣고, 뒤늦은 닫기가 옛 사이클 식별 값 때문에 반영되지 않는 것을 확인 — Task 5 의 사이클 식별 값 조건부 닫기가 실제 흐름에서 처음 검증됨. 두 테스트 모두 같은 주문·상품 조합에 `openHold`를 두 사이클 걸쳐 부르는데, 다른 재고 게이트 테스트가 쓰는 `BaseIntegrationTest`(ddl-auto: create-drop + Flyway 비활성)는 유일 제약이 실제로 서지 않아 중복 삽입이 나는 것을 발견해 Task 5 방식(Flyway 활성 + ddl-auto: validate)으로 전환. 닫기 경합 테스트는 `@DataJpaTest` 기본 트랜잭션이 스레드 간 락 경합을 만들어 Task 5 와 같은 `@Transactional(NOT_SUPPORTED)`로 우회)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

@@ -79,7 +79,17 @@ public class StockHoldReverter {
             StockHoldRecordRepository stockHoldRecordRepository) {
         StockRecoveryCompensationResult result = stockCachePort.compensateIfDecremented(orderId, order);
         recordResult(result, orderId, order);
+        beforeClose(orderId, order);
         stockHoldRecordRepository.closeAsReverted(orderId, order, cycleToken);
+    }
+
+    /**
+     * 캐시 되돌리기와 기록 닫기 사이의 지연 주입 지점 — 운영 기본값은 즉시 통과하는 no-op이다.
+     * 이 창에 같은 조합의 새 차감이 끼어들어도 사이클 식별 값 조건부 닫기가 그 차감을 덮지
+     * 않는지, 테스트가 서브클래싱으로 지연을 걸어 결정적으로 재현할 수 있게 열어 둔다.
+     */
+    protected void beforeClose(String orderId, PaymentOrder order) {
+        // no-op — 운영 경로에서는 즉시 통과한다
     }
 
     private void recordResult(StockRecoveryCompensationResult result, String orderId, PaymentOrder order) {

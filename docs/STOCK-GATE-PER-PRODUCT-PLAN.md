@@ -127,7 +127,7 @@ flowchart TD
 - [x] Task 14: 격리 적체 알람과 대응 분류
 - [x] Task 15: 시드·토픽 생성 스크립트 정비
 - [x] Task 16a: 이중 되돌리기 조합 검증
-- [ ] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
+- [x] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
 - [ ] Task 16c: 수렴 체인과 정합 검증
 - [ ] Task 17: 라이브 검증
 
@@ -921,6 +921,51 @@ flowchart TD
 **완료 기준**
 
 - 위 시나리오 전부 pass
+
+**완료 결과**
+
+- **동시 중복 확정**과 **완료된 결제 재확정**은 이미 다른 태스크가 실제 값 단정까지 포함해
+  검증해 뒀다 — 새로 만들지 않고 재확인만 했다. 전자는 Task 6 이 만든
+  `PaymentDuplicateConfirmConcurrencyIntegrationTest`(실 Redis+MySQL, `CountDownLatch` 로 두
+  confirm 을 같은 시점에 풀어 진 쪽이 예외 없이 물러나고 결제 상태를 건드리지 않는 것과 이긴
+  쪽만 `IN_PROGRESS`로 커밋되는 것을 함께 단정)가, 후자는 Task 7 이 만든
+  `PaymentTransactionCoordinatorTest`의 `decrementStock_확정_행은_캐시_차감_호출_없음`/
+  `decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음`(캐시의 dedup 표시가
+  만료된 뒤에도 기록만 보고 차감 호출 자체가 0회임을 단정)이 담당한다
+- 신규 `StockGateConcurrentRetryIntegrationTest` — 남은 두 시나리오(거절 후 재시도 정합, 닫기
+  경합)만 다룬다
+    - **거절 후 재시도 정합** — 1주기(직접 차감 → 거절 전용 되돌리기로 두 표시 삭제) 뒤 같은
+      주문·상품 조합으로 2주기(재시도 차감 → 조건부 되돌리기)를 실제로 태워, 두 번째 차감이
+      Redis 재고 값 자체로 원래 값까지 복원되는지 단정한다. 기록 상태(REVERTED)만 보는 검증은
+      되돌리기 표시가 앞 사이클에 남아 조건부 되돌리기가 `ALREADY_DONE`으로 흡수해 재고가
+      차감된 채 봉인된 상태에서도 통과하므로, Redis 값을 직접 읽어 그 구멍을 막았다 — 실행
+      결과 실제로 원래 값까지 복원되어 기존 구현(거절 전용이 두 표시를 함께 지운다)이 이
+      조합에서도 성립함을 확인했다. 이 테스트는 새 프로덕션 코드 없이 GREEN
+    - **닫기 경합** — `StockHoldReverter`에 되돌리기(`compensateIfDecremented`)와 닫기
+      (`closeAsReverted`) 사이를 잇는 protected 훅 `beforeClose(orderId, order)`를 신설했다(운영
+      기본값은 즉시 통과하는 no-op, 호출부 넷의 동작 변화 없음). 테스트가 익명 서브클래스로
+      이 훅을 오버라이드해 `CountDownLatch` 로 붙잡아 두면, 그 창에서 메인 스레드가 같은
+      주문·상품 조합에 새 차감(`openHold`+`decrementAtomic`, 실제로 OK 반환까지 확인)을
+      끼워 넣고 재개시킨다. 뒤늦은 닫기가 옛 사이클 식별 값을 들고 있어 반영되지 않고, 기록이
+      새 사이클의 `NOISE` 그대로 남으며 새로 차감된 재고 값도 무사한 것까지 단정 — Task 5 가
+      만든 사이클 식별 값 조건부 닫기가 실제 되돌리기 흐름 한복판에서도 버티는지 처음으로
+      결정적으로 재현했다. 이 훅이 이번 태스크의 유일한 신규 프로덕션 코드다
+    - **테스트 스키마 함정** — 두 테스트 모두 같은 주문·상품 조합에 `openHold`를 두 사이클
+      이상 걸쳐 부르는데, 다른 재고 게이트 통합 테스트가 쓰는 `BaseIntegrationTest`는 테스트
+      프로파일의 `ddl-auto: create-drop` + Flyway 비활성으로 스키마를 만들어 주문번호·상품번호
+      유일 제약(Flyway 마이그레이션에만 있고 JPA 엔티티 애너테이션에는 없다)이 실제로 서지
+      않는다 — `BaseIntegrationTest`로 처음 작성했다가 두 번째 사이클의 `openHold`가 재오픈이
+      아니라 중복 삽입을 만들어 `NonUniqueResultException`으로 드러났다. Task 5 의
+      `StockHoldRecordRepositoryImplTest`와 같은 방식(Flyway 활성 + `ddl-auto: validate`, 전용
+      MySQL/Redis Testcontainers, `StockCacheRedisAdapter`/`StockHoldReverter`는 Spring 빈이
+      아니라 직접 생성)으로 바꿔 실제 스키마 위에서 검증하도록 재작성했다
+    - **닫기 경합 테스트의 트랜잭션 함정** — `@DataJpaTest` 기본 트랜잭션(테스트당 단일
+      커넥션·롤백)에서는 메인 스레드가 쥔 미커밋 행 락을 백그라운드 스레드의
+      `closeAsReverted`가 기다리며 서로 막혀 10초 타임아웃으로 실패했다 — 같은 이유로 Task 5
+      의 동시 삽입 테스트가 이미 썼던 `@Transactional(propagation = NOT_SUPPORTED)`를 그대로
+      적용해 각 스레드가 독립 트랜잭션·커넥션을 쓰게 했다. 자동 롤백이 없어지므로 테스트 끝에
+      `jpaStockHoldRecordRepository.deleteAll()`로 수동 정리한다
+- `./gradlew :payment-service:test` 675건 전체 pass(신규 2건 포함), checkstyle·spotbugs 클린
 
 ### Task 16c: 수렴 체인과 정합 검증 [tdd=true] [domain_risk=true]
 
