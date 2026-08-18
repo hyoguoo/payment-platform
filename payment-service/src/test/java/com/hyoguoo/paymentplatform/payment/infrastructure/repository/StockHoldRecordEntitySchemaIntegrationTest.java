@@ -7,6 +7,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -31,6 +32,7 @@ import org.testcontainers.containers.MySQLContainer;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({StockHoldRecordRepositoryImpl.class, ClockConfig.class})
 @ActiveProfiles("test")
+@Tag("integration")
 @DisplayName("StockHoldRecordEntity — 스키마 자동 생성 환경에서도 유일 제약이 선다")
 class StockHoldRecordEntitySchemaIntegrationTest {
 

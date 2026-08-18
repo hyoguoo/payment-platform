@@ -12,6 +12,7 @@ import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -45,6 +46,7 @@ import org.testcontainers.containers.MySQLContainer;
         StockHoldRecoveryUseCase.class,
         StockHoldRecoveryUseCaseOriginReadIntegrationTest.TestConfig.class
 })
+@Tag("integration")
 @DisplayName("StockHoldRecoveryUseCase — 결제 상태 조회 빈 고정")
 class StockHoldRecoveryUseCaseOriginReadIntegrationTest {
 

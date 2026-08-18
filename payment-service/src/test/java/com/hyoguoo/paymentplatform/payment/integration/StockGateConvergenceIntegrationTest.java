@@ -40,6 +40,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -76,6 +77,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({PaymentEventRepositoryImpl.class, StockHoldRecordRepositoryImpl.class, ClockConfig.class})
 @Testcontainers
+@Tag("integration")
 @DisplayName("재고 게이트 강제 종료 수렴 체인과 정합 통합 테스트")
 class StockGateConvergenceIntegrationTest {
 

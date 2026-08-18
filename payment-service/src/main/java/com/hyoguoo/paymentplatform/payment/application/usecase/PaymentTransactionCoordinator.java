@@ -84,7 +84,7 @@ public class PaymentTransactionCoordinator {
                 if (isAlreadyCommitted(orderId, order)) {
                     continue;
                 }
-                stockHoldRecordRepository.openHold(orderId, order);
+                openHoldOrWrapFailure(orderId, order);
                 StockDecrementAtomicResult result = stockCachePort.decrementAtomic(orderId, order);
                 if (result == StockDecrementAtomicResult.INSUFFICIENT) {
                     rejectDecrementedProducts(orderId, decrementedThisCall);
@@ -95,11 +95,36 @@ public class PaymentTransactionCoordinator {
                 }
             }
             return StockDecrementResult.SUCCESS;
+        } catch (StockHoldRecordWriteFailedException e) {
+            LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_HOLD_RECORD_DOWN_QUARANTINE,
+                    () -> "orderId=" + orderId + " error=" + e.getCause().getMessage());
+            attemptRevertOnCacheFailure(orderId, decrementedThisCall);
+            return StockDecrementResult.CACHE_DOWN;
         } catch (RuntimeException e) {
             LogFmt.warn(log, LogDomain.PAYMENT, EventType.STOCK_CACHE_DOWN_QUARANTINE,
                     () -> "orderId=" + orderId + " error=" + e.getMessage());
             attemptRevertOnCacheFailure(orderId, decrementedThisCall);
             return StockDecrementResult.CACHE_DOWN;
+        }
+    }
+
+    /**
+     * 선차감 기록 저장소 예외를 캐시 예외와 구분되는 타입으로 감싼다 — decrementEachProduct 의
+     * catch 분기가 실패 출처(기록 저장소 vs 재고 캐시)를 갈라 서로 다른 이벤트 타입으로 남기기
+     * 위함이다. 판정(격리로 전이) 자체는 출처와 무관하게 동일하다.
+     */
+    private void openHoldOrWrapFailure(String orderId, PaymentOrder order) {
+        try {
+            stockHoldRecordRepository.openHold(orderId, order);
+        } catch (RuntimeException e) {
+            throw new StockHoldRecordWriteFailedException(e);
+        }
+    }
+
+    private static final class StockHoldRecordWriteFailedException extends RuntimeException {
+
+        StockHoldRecordWriteFailedException(Throwable cause) {
+            super(cause);
         }
     }
 

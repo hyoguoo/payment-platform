@@ -24,6 +24,7 @@ import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -62,6 +63,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({StockHoldRecordRepositoryImpl.class, ClockConfig.class})
 @Testcontainers
+@Tag("integration")
 @DisplayName("재고 게이트 거절-재시도 재고 정합 및 닫기 경합 통합 테스트")
 class StockGateConcurrentRetryIntegrationTest {
 

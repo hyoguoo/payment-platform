@@ -66,23 +66,4 @@ public class StockHoldRecordEntity extends BaseEntity {
 
     @Column(name = "cycle_token", nullable = false, length = 36)
     private String cycleToken;
-
-    /**
-     * 새 사이클을 여는 잡음 상태 행을 만든다.
-     * 외부 호출자는 이 factory 를 거친다 — {@code builder()} 직접 호출 금지.
-     *
-     * @param orderId    결제 주문 ID
-     * @param productId  상품 ID
-     * @param quantity   차감 수량
-     * @param cycleToken 이번 사이클을 식별하는 값
-     */
-    public static StockHoldRecordEntity openNoise(String orderId, Long productId, Integer quantity, String cycleToken) {
-        return StockHoldRecordEntity.builder()
-                .orderId(orderId)
-                .productId(productId)
-                .quantity(quantity)
-                .status(StockHoldRecordStatus.NOISE)
-                .cycleToken(cycleToken)
-                .build();
-    }
 }
