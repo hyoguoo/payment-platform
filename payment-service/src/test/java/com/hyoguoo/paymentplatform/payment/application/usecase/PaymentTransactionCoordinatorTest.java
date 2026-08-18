@@ -9,6 +9,9 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
@@ -16,6 +19,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAt
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
@@ -27,6 +31,7 @@ import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -36,6 +41,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 @DisplayName("PaymentTransactionCoordinator 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -66,6 +72,8 @@ class PaymentTransactionCoordinatorTest {
         private FakeStockCachePort fakeStockCachePort;
         private FakeStockHoldRecordRepository fakeStockHoldRecordRepository;
         private PaymentTransactionCoordinator coordinatorWithFake;
+        private ListAppender<ILoggingEvent> logAppender;
+        private Logger coordinatorLogger;
 
         @BeforeEach
         void setUp() {
@@ -78,6 +86,16 @@ class PaymentTransactionCoordinatorTest {
                     fakeStockHoldRecordRepository,
                     confirmPublisher
             );
+
+            coordinatorLogger = (Logger) LoggerFactory.getLogger(PaymentTransactionCoordinator.class);
+            logAppender = new ListAppender<>();
+            logAppender.start();
+            coordinatorLogger.addAppender(logAppender);
+        }
+
+        @AfterEach
+        void tearDown() {
+            coordinatorLogger.detachAppender(logAppender);
         }
 
         @Test
@@ -323,6 +341,56 @@ class PaymentTransactionCoordinatorTest {
             // then — 차감에 실패한 상품도 openHold 가 이미 호출돼 기록이 남았다
             then(stockHoldRecordRepository).should().openHold(orderId, order1);
             then(stockHoldRecordRepository).should().openHold(orderId, order2);
+        }
+
+        @Test
+        @DisplayName("decrementStock_기록_저장소_예외는_구분되는_로그로_남는다"
+                + " — openHold 실패는 STOCK_HOLD_RECORD_DOWN_QUARANTINE 으로 남고 캐시 장애 이벤트와 섞이지 않는다")
+        void decrementStock_기록_저장소_예외는_구분되는_로그로_남는다() {
+            // given
+            String orderId = "order-017";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.openHold(orderId, order1)).willReturn("cycle-token-1");
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("기록 저장소 장애"))
+                    .given(stockHoldRecordRepository).openHold(orderId, order2);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 캐시 예외가 아니라 기록 저장소 예외라는 것이 로그로 구분된다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            assertThat(logAppender.list).hasSize(1);
+            assertThat(logAppender.list.get(0).getFormattedMessage())
+                    .contains(EventType.STOCK_HOLD_RECORD_DOWN_QUARANTINE.name())
+                    .doesNotContain(EventType.STOCK_CACHE_DOWN_QUARANTINE.name());
+        }
+
+        @Test
+        @DisplayName("decrementStock_기록_저장소_예외_직전_직접_차감_성공분만_되돌리기_시도"
+                + " — openHold 가 실패하면 그 상품은 캐시 차감을 시도조차 하지 않고 앞서 차감한 상품만 되돌린다")
+        void decrementStock_기록_저장소_예외_직전_직접_차감_성공분만_되돌리기_시도() {
+            // given
+            String orderId = "order-018";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.openHold(orderId, order1)).willReturn("cycle-token-1");
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("기록 저장소 장애"))
+                    .given(stockHoldRecordRepository).openHold(orderId, order2);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 상품 1(직접 차감 성공)만 되돌리기 대상, 상품 2는 캐시 차감까지 가지 못했다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().rejectCompensate(orderId, order1);
+            then(stockCachePort).should(never()).decrementAtomic(orderId, order2);
+            then(stockCachePort).should(never()).rejectCompensate(orderId, order2);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
         }
 
         @Test
