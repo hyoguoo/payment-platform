@@ -1,8 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.StockHoldRecordEntity;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +14,12 @@ import org.springframework.data.repository.query.Param;
 public interface JpaStockHoldRecordRepository extends JpaRepository<StockHoldRecordEntity, Long> {
 
     Optional<StockHoldRecordEntity> findByOrderIdAndProductId(String orderId, Long productId);
+
+    /**
+     * 회수 판정 배치 조회 — 잡음(NOISE) 상태 행만, id 오름차순으로 최대 {@code pageable}이 정한
+     * 건수만큼 돌려준다. 오름차순 정렬은 오래 쌓인 기록이 먼저 회수되도록 하기 위함이다.
+     */
+    List<StockHoldRecordEntity> findByStatusOrderByIdAsc(StockHoldRecordStatus status, Pageable pageable);
 
     /**
      * 확정 상태를 제외한 나머지는 상태와 무관하게 잡음으로 되돌리며 사이클 식별 값을 새로

@@ -120,7 +120,7 @@ flowchart TD
 - [x] Task 9b: 격리 진입 경로를 상품 단위로 전환
 - [x] Task 9c: 관리자 종결 경로를 상품 단위로 전환
 - [x] Task 9d: 주문 단위 포트 메서드 제거
-- [ ] Task 10: 미회수 선차감 회수 판정
+- [x] Task 10: 미회수 선차감 회수 판정
 - [ ] Task 11: 회수 주기 작업
 - [ ] Task 12: 상품 서비스 재고 확정 음수 가드
 - [ ] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
@@ -595,6 +595,40 @@ flowchart TD
 
 - 위 테스트 pass
 - **원본 DB 읽기 계약을 구체적으로 고정한다** — 회수 판정이 쓰기 경로(`PaymentTransactionCoordinator` / `PaymentConfirmResultUseCase`)와 같은 리포지토리·엔티티 매니저 빈을 쓴다는 것을 구조로 단정한다. 지금은 읽기 복제본이 없어 느슨하게 쓰면 항상 통과하는 테스트가 되므로, 후행 토픽이 라우팅 데이터소스를 끼웠을 때 실제로 깨지는 형태여야 한다
+
+**완료 결과**
+
+- `StockHoldRecordRepository`에 `findNoiseCandidates(limit)` 신규 — 잡음(NOISE) 상태 기록만 id 오름차순으로
+  최대 `limit`건 돌려준다(확정·되돌림 제외). 반환 타입은 신규 record `StockHoldRecordCandidate`
+  (orderId/productId/quantity/cycleToken) — 되돌리기·닫기에 필요한 값을 스캔 시점에 이미 들고 있어
+  다시 `findSnapshot`으로 사이클 식별 값을 조회할 필요가 없다. JPA 구현은 `findByStatusOrderByIdAsc`
+  (Pageable) + `PageRequest.of(0, limit)`
+- `StockHoldReverter.revertProductHold`(상품 하나 되돌리기 — 흔적 있을 때만 캐시 복원, 결과와 무관하게
+  기록 닫기)를 private에서 public으로 승격해 9a/9b/9c와 이번 태스크가 같은 되돌리기 로직을 공유한다.
+  기존 `revertEachProductHold`(PaymentEvent 기반, 상품마다 findSnapshot 재조회)는 그대로 두고 내부에서
+  이 메서드를 호출하도록 유지
+- `application/usecase/StockHoldRecoveryUseCase` 신규 — `recover(batchSize)`: `findNoiseCandidates`로
+  후보를 가져와 후보마다 `paymentEventRepository.findByOrderId(orderId)`로 원본 결제 상태를 조회하고,
+  `PaymentEventStatus.isTerminal()`이 참일 때만 `StockHoldReverter.revertProductHold`로 되돌린다.
+  결제를 찾지 못한 고아 기록은 건드리지 않는다(오판으로 진행 중 결제 재고를 되살리는 쪽보다 다음
+  주기로 미루는 쪽이 안전). 반환값은 이번 호출에서 실제로 판정해 되돌린 건수
+- **원본 DB 읽기 고정** — `recover` 전체를 비-읽기전용 `@Transactional`로 감쌌다. 결제 상태 조회에 쓰는
+  `PaymentEventRepository`는 쓰기 경로(`PaymentCommandUseCase`/`PaymentConfirmResultUseCase`)가 쓰는 것과
+  같은 포트 타입(한정자 없음)을 그대로 주입받는다 — 회수 전용 조회 포트를 새로 만들지 않았다. 이
+  선택을 구조로 고정하는 통합 테스트(`StockHoldRecoveryUseCaseOriginReadIntegrationTest`, `@DataJpaTest`)를
+  추가했다: `StockHoldRecoveryUseCase`에 주입된 `PaymentEventRepository` 필드가 컨텍스트의 기본(한정자
+  없는) 빈과 `isSameAs`인지 리플렉션으로 단정한다. 지금은 구현체가 하나뿐이라 자명하게 통과하지만,
+  후행 토픽이 회수 판정에만 `@Qualifier`로 읽기 복제본 빈을 따로 연결하면(라우팅 데이터소스를 끼우는
+  통상적인 방식) 그 시점에 이 테스트가 깨진다 — 트랜잭션 readOnly 플래그로 라우팅을 감지하려는 시도는
+  중첩 트랜잭션 참여 시맨틱(안쪽 메서드의 readOnly 어노테이션이 무시됨) 때문에 실제 판별력이 없다는
+  것을 검토 중 확인하고 기각, 빈 동일성 비교로 대체했다
+- 테스트: `StockHoldRecoveryUseCaseTest` — 배치 크기 전달, 종결 5종(DONE/FAILED/CANCELED/
+  PARTIAL_CANCELED/EXPIRED) 파라미터라이즈드 되돌림, 진행 중 3종(READY/IN_PROGRESS/QUARANTINED)
+  파라미터라이즈드 미개입, 고아 기록 미개입, `@Nested RecoverOutcomesTest`(Fake 기반)로 흔적 있음/
+  없음/이미 처리됨 3케이스의 실제 재고 값·기록 상태 확인. `StockHoldRecordRepositoryImplTest`에
+  `findNoiseCandidates`가 잡음만 돌려주는지(확정·되돌림 제외)와 limit 상한 2케이스 추가(실제 MySQL)
+- `./gradlew :payment-service:test` 669건 전체 pass(신규 16건), checkstyle·spotbugs 클린. 주기 작업
+  배선(스케줄러, 배치 크기 설정 외부화, 지표)은 Task 11 범위
 
 ### Task 11: 회수 주기 작업 [tdd=true]
 

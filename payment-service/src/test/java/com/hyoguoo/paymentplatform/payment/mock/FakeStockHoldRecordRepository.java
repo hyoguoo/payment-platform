@@ -1,9 +1,11 @@
 package com.hyoguoo.paymentplatform.payment.mock;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordCandidate;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,7 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class FakeStockHoldRecordRepository implements StockHoldRecordRepository {
 
-    private record Entry(StockHoldRecordStatus status, String cycleToken) {
+    private record Entry(String orderId, Long productId, Integer quantity, StockHoldRecordStatus status,
+                          String cycleToken) {
 
     }
 
@@ -30,7 +33,8 @@ public class FakeStockHoldRecordRepository implements StockHoldRecordRepository 
             return existing.cycleToken();
         }
         String cycleToken = UUID.randomUUID().toString();
-        records.put(key, new Entry(StockHoldRecordStatus.NOISE, cycleToken));
+        records.put(key, new Entry(orderId, paymentOrder.getProductId(), paymentOrder.getQuantity(),
+                StockHoldRecordStatus.NOISE, cycleToken));
         return cycleToken;
     }
 
@@ -51,7 +55,8 @@ public class FakeStockHoldRecordRepository implements StockHoldRecordRepository 
                 || !existing.cycleToken().equals(cycleToken)) {
             return false;
         }
-        records.put(key, new Entry(StockHoldRecordStatus.REVERTED, cycleToken));
+        records.put(key, new Entry(existing.orderId(), existing.productId(), existing.quantity(),
+                StockHoldRecordStatus.REVERTED, cycleToken));
         return true;
     }
 
@@ -59,8 +64,19 @@ public class FakeStockHoldRecordRepository implements StockHoldRecordRepository 
     public synchronized void commitAllByOrderId(String orderId) {
         String prefix = orderId + ":";
         records.replaceAll((key, entry) -> key.startsWith(prefix) && entry.status() == StockHoldRecordStatus.NOISE
-                ? new Entry(StockHoldRecordStatus.COMMITTED, entry.cycleToken())
+                ? new Entry(entry.orderId(), entry.productId(), entry.quantity(), StockHoldRecordStatus.COMMITTED,
+                        entry.cycleToken())
                 : entry);
+    }
+
+    @Override
+    public synchronized List<StockHoldRecordCandidate> findNoiseCandidates(int limit) {
+        return records.values().stream()
+                .filter(entry -> entry.status() == StockHoldRecordStatus.NOISE)
+                .limit(limit)
+                .map(entry -> new StockHoldRecordCandidate(
+                        entry.orderId(), entry.productId(), entry.quantity(), entry.cycleToken()))
+                .toList();
     }
 
     // --- fixture 단언 헬퍼 (StockHoldRecordRepository 계약 외, 테스트 보조용) ---

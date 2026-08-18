@@ -1,14 +1,18 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordCandidate;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.StockHoldRecordEntity;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -92,5 +96,15 @@ public class StockHoldRecordRepositoryImpl implements StockHoldRecordRepository 
     @Transactional
     public void commitAllByOrderId(String orderId) {
         jpaStockHoldRecordRepository.commitAllByOrderId(orderId);
+    }
+
+    @Override
+    public List<StockHoldRecordCandidate> findNoiseCandidates(int limit) {
+        return jpaStockHoldRecordRepository
+                .findByStatusOrderByIdAsc(StockHoldRecordStatus.NOISE, PageRequest.of(0, limit))
+                .stream()
+                .map(entity -> new StockHoldRecordCandidate(
+                        entity.getOrderId(), entity.getProductId(), entity.getQuantity(), entity.getCycleToken()))
+                .toList();
     }
 }

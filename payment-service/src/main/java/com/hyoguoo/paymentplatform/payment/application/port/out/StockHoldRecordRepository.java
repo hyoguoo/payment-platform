@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.application.port.out;
 
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -61,4 +62,16 @@ public interface StockHoldRecordRepository {
      * @param orderId 결제 주문 ID
      */
     void commitAllByOrderId(String orderId);
+
+    /**
+     * 잡음(NOISE) 상태로 남은 기록을 최대 {@code limit} 건 조회한다 — 회수 판정의 입력이다.
+     *
+     * <p>확정(COMMITTED)·되돌림(REVERTED) 기록은 대상에서 빠진다. 결제가 종결인지 여부는 이 조회가
+     * 판단하지 않는다 — 그 판단은 호출자가 {@link PaymentEventRepository}로 원본 결제 상태를 별도
+     * 조회해서 한다.
+     *
+     * @param limit 조회 상한
+     * @return 잡음 상태 기록 스냅샷 목록 (상한 이하)
+     */
+    List<StockHoldRecordCandidate> findNoiseCandidates(int limit);
 }
