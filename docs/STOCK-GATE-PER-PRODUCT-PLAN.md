@@ -119,7 +119,7 @@ flowchart TD
 - [x] Task 9a: 확정 실패 경로를 상품 단위로 전환
 - [x] Task 9b: 격리 진입 경로를 상품 단위로 전환
 - [x] Task 9c: 관리자 종결 경로를 상품 단위로 전환
-- [ ] Task 9d: 주문 단위 포트 메서드 제거
+- [x] Task 9d: 주문 단위 포트 메서드 제거
 - [ ] Task 10: 미회수 선차감 회수 판정
 - [ ] Task 11: 회수 주기 작업
 - [ ] Task 12: 상품 서비스 재고 확정 음수 가드
@@ -537,6 +537,43 @@ flowchart TD
 **완료 기준**
 
 - 주문 단위 메서드 참조 0 (grep 확인), 전 모듈 컴파일과 테스트 통과
+
+**완료 결과**
+
+- `StockCachePort` 에서 주문 단위 3종(`decrementAtomic(orderId, List)`/`compensateAtomic(orderId, List)`/
+  `compensateIfDecremented(orderId, List)`)을 제거 — 호출부 넷(확정 진입/확정 실패/격리 진입/관리자 종결)이
+  전부 상품 단위로 옮겨진 뒤라 grep 상 주문 단위 참조는 이미 0이었다
+- `StockCacheRedisAdapter` — Task 1의 내부 반복 브리지(3종 메서드 + `rejectDecrementedProducts`)를 걷었다.
+  `compensateAtomic`은 애초에 9a/9b/9c가 조건부 되돌리기(`compensateIfDecremented`)로 대체하기로 예정된
+  경로라 상품 단위로 승격되지 않았고 이번에 제거 전까지 호출부가 0이었다 — 그 단일 상품 헬퍼
+  (`compensateSingleProduct`)와 전용 스크립트 필드(`COMPENSATION_ATOMIC_SCRIPT`)도 함께 정리했다.
+  되돌린 재고를 남기던 `logCompensation`/`readStockForLog`도 그 두 order-level 메서드에서만 불렸던
+  호출부라 함께 걷었고, 그 결과 `@Slf4j`도 무사용이 되어 제거했다 — 되돌리기 로그 자체가 사라지는
+  트레이드오프는 범위 밖으로 남겨둔다(아래 참고)
+- `StockCompensationAtomicResult`(compensateAtomic 전용 결과 enum)는 참조가 완전히 사라져 파일째 삭제
+- `FakeStockCachePort` — 주문 단위 3종과 그 전용 dedup 토큰 집합(`decrementDedupTokens`/
+  `compensationDedupTokens`)을 제거, `clear()`도 정리
+- 어댑터 테스트 정리 — Task 1의 다중 상품 브리지 계약(`decrementAtomic_다중_상품_부족시_앞선_차감_되돌림`)은
+  같은 되돌리기 판단이 이제 `PaymentTransactionCoordinator.decrementEachProduct`에 있고
+  `PaymentTransactionCoordinatorTest`가 이미 검증하므로 정리 대상으로 판단해 제거. 나머지 주문 단위
+  테스트도 상품 단위 대응 테스트와 중복이라 제거하되, **어댑터 레벨에서만 검증되던 두 시나리오**
+  (compensateIfDecremented의 ALREADY_DONE / decrement 부재+compensation 존재 이례 상태)는 상품 단위
+  호출로 그대로 옮겨 보존 — 이 두 케이스는 raw Lua 테스트에도 없어 유일한 커버리지였다. 단일 상품
+  선차감 표시의 키 형식 리터럴 단정(`decrement:done:{productId}:orderId`)도 기존 상품 단위 테스트에
+  합쳤다. `FakeStockCachePortAtomicTest`(주문 단위 전용)는 파일째 삭제
+  — 총 653건(신규/이관 2건 포함), `StockCacheRedisAdapterRejectFailureTest`는 되돌리기 예외 전파
+  검증 대상을 어댑터의 order-level 브리지에서 `rejectCompensate` 직접 호출로 좁혀 1케이스로 축소
+  (다른 1케이스는 이미 `PaymentTransactionCoordinatorTest`가 담당)
+- `PaymentConfirmResultUseCaseIdempotencyGuardTest`의 `@DisplayName` 2곳과
+  `PaymentConfirmResultUseCaseTest`/`QuarantineCompensationHandler`에 남아있던 `compensateAtomic`
+  표기·주석을 실제 호출 경로(`compensateIfDecremented`, "재고 되돌리기")로 정정
+- `./gradlew :payment-service:test` 653건, `:payment-service:integrationTest` 151건 전체 pass,
+  checkstyle·spotbugs 클린
+- **범위 밖 관찰**: `logCompensation` 제거로 캐시 되돌리기 결과를 로그로 남기던 경로가 없어졌다.
+  상품 단위 되돌리기(`rejectCompensate`/`compensateIfDecremented`)는 로그를 남기지 않는다 — 관측성
+  후퇴 여부는 이번 태스크 범위 밖으로 남긴다. `stock_compensation_atomic.lua`와 그 raw 테스트
+  (`StockCompensationAtomicLuaTest`)는 Java 호출부가 모두 사라졌지만 스크립트 자산 자체의 폐기 여부는
+  이번 태스크 지시(포트 메서드 + 어댑터 내부 반복 + Fake) 밖이라 손대지 않았다
 
 ### Task 10: 미회수 선차감 회수 판정 [tdd=true] [domain_risk=true]
 

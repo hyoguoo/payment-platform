@@ -87,7 +87,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     }
 
     @Test
-    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal, canApplyConfirmResult=false)이면 compensateAtomic + markPaymentAsFail 미호출")
+    @DisplayName("handleFailed — paymentEvent 가 이미 FAILED(terminal, canApplyConfirmResult=false)이면 재고 되돌리기 + markPaymentAsFail 미호출")
     void handleFailed_whenAlreadyTerminal_shouldSkipCompensation() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));
@@ -103,7 +103,7 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
     }
 
     @Test
-    @DisplayName("handleQuarantined — paymentEvent 가 이미 FAILED(terminal)이면 compensateAtomic + quarantineHandler 미호출")
+    @DisplayName("handleQuarantined — paymentEvent 가 이미 FAILED(terminal)이면 재고 되돌리기 + quarantineHandler 미호출")
     void handleQuarantined_whenAlreadyTerminal_shouldSkipAll() {
         PaymentOrder order = buildPaymentOrder(100L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.FAILED, List.of(order));

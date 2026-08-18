@@ -54,7 +54,7 @@ import org.springframework.kafka.core.KafkaTemplate;
  *       guardSkipMetrics.record(status)(보호 불변)</li>
  *   <li>멱등 마킹 0 row (도달 불가, 방어적) — 비종결 + affected==0 → 단순 skip (발행도 미수행)</li>
  *   <li>multi-product 결제 — PaymentOrder 수만큼 send 호출, 각 idempotencyKey 결정성(정상 경로 + 재발행 경로)</li>
- *   <li>FAILED 보상 순서 보존 — compensateAtomic 먼저, markPaymentAsFail 나중</li>
+ *   <li>FAILED 보상 순서 보존 — 재고 되돌리기 먼저, markPaymentAsFail 나중</li>
  *   <li>APPROVED 정상 — markPaymentAsDone + send loop 호출</li>
  *   <li>amount 불일치 — quarantineCompensationHandler 위임 (markPaymentAsDone 미호출)</li>
  * </ul>

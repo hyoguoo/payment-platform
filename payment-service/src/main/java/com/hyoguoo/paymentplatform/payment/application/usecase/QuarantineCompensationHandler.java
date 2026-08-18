@@ -19,9 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
  * (markPaymentAsQuarantined)만 전담하며 redis-stock 캐시 보상은 호출하지 않는다.
  * <p>
  * redis-stock 캐시 보상은 결과 소비 경로({@link PaymentConfirmResultUseCase#handle})에서
- * {@code stockCachePort.compensateAtomic} 호출로 별도 유지된다 — 본 토픽에서 폐기된 것은
- * 확정 진입 경로({@link com.hyoguoo.paymentplatform.payment.application.OutboxAsyncConfirmService})의
- * 차감 보상뿐이며, 그 미복구는 별도 가시화 메트릭으로 추적한다.
+ * 상품별 {@code stockCachePort.compensateIfDecremented} 호출로 별도 유지된다.
  * <p>
  * 진입점:
  * (a) FCG — pg-service FCG 결과 status=QUARANTINED
