@@ -7,7 +7,7 @@
 #   2) scripts/smoke/kafka-topic-config.sh
 #      · 토픽 partition / replication-factor / retry 토픽 부재 검증
 #   3) scripts/smoke/alert-rules-promtool.sh
-#      · 알람 규칙 3그룹 promtool 발화 단정 (16 케이스, Docker 경유)
+#      · 알람 규칙 4그룹 promtool 발화 단정 (27 케이스, Docker 경유)
 #      · 라이브 스택 불필요. 라이브 드릴(Toxiproxy drill 프로파일 전제)은
 #        docs/smoke/alert-firing-check.md 참조 후 수동 실행
 #
@@ -69,7 +69,7 @@ run_step "Phase 1.1 — infra healthcheck" "${ROOT_DIR}/scripts/smoke/infra-heal
 echo ""
 run_step "Phase 1.2 — kafka topic config" "${ROOT_DIR}/scripts/smoke/kafka-topic-config.sh" || exit 1
 echo ""
-run_step "Phase 1.3 — alert rules promtool test (3 그룹, 16 케이스)" "${ROOT_DIR}/scripts/smoke/alert-rules-promtool.sh" || exit 1
+run_step "Phase 1.3 — alert rules promtool test (4 그룹, 27 케이스)" "${ROOT_DIR}/scripts/smoke/alert-rules-promtool.sh" || exit 1
 
 # ─────────────────────────────────────────────
 # Phase 2 — 트래픽 의존 (--with-trace 시만)

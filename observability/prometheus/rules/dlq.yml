@@ -73,3 +73,29 @@ groups:
           description: >-
             pg-service-dlq 컨슈머 잔여 적체 {{ $value }} messages.
             도착 멈춤 후 미배수 결제 존재 가능.
+
+      # product-service 재고 확정 격리 토픽(payment.events.stock-committed.dlq) 전용 신호
+      #
+      # 위 DlqTopicOffsetRising 의 정규식(topic=~".*\\.dlq")이 이 토픽도 이미 델타로 잡는다 —
+      # 그 신호와 별개로 이 알람을 두는 이유는 여기 쌓이는 메시지의 성격이 다르기 때문이다.
+      # 다른 DLQ 는 대개 일시 장애의 재시도 소진(자동 재주입 여지가 있음)인데, 이 토픽은
+      # StockCommitUseCase.commitToRdb 의 음수 가드(ProductStockException)가 즉시(재시도 없이)
+      # 보내는 곳이라 **이미 벤더 승인이 나 고객이 과금된 결제**의 재고 부족만 담긴다. 이 프로젝트는
+      # 이 토픽의 자동 재주입을 만들지 않기로 했다(제외 범위) — 환불이든 입고든 사람이 판단해야 하는
+      # 사고라서다. severity 를 critical 로 올려 다른 DLQ 알람과 구분한다.
+      #
+      # 관리자 재고 조정 직후 발화와 게이트 자체 결함을 가르는 기준은 런북 참고:
+      #   docs/smoke/alert-firing-check.md "격리 적체 알람 대응 분류"
+      - alert: ProductStockQuarantineBacklog
+        expr: >-
+          increase(kafka_topic_partition_current_offset{topic="payment.events.stock-committed.dlq"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "상품 서비스 재고 확정 격리 적체"
+          description: >-
+            payment.events.stock-committed.dlq 에 새 메시지 {{ $value | humanize }}건 도달 (5분 창).
+            이미 과금된 결제의 재고 확정이 음수 가드에 막혀 격리됨 — 자동 복구 대상 아님, 사람이
+            환불 또는 입고를 판단해야 한다. 대응 전 런북의 분류 기준(관리자 재고 조정 직후 발화인지)
+            부터 확인한다.

@@ -173,3 +173,38 @@ tests:
             exp_annotations:
               summary: "DLQ 앱 도달 카운터 증가"
               description: "DLQ 도달 3건 (5분 창). EOS 커밋 실패 또는 pg 재시도 소진 건 종결 발생(자동 승인·자동 실패·격리 포함)."
+
+  # (i) product-service 재고 확정 격리 토픽(stock-committed.dlq) offset increase>0
+  # → ProductStockQuarantineBacklog FIRING(critical). 같은 입력이 DlqTopicOffsetRising(정규식
+  # topic=~".*\\.dlq")도 동시에 발화시키는 것까지 함께 고정한다 — 두 알람이 같은 신호를 서로 다른
+  # severity/설명으로 중복 관측하는 것은 의도된 동작이지 충돌이 아니다.
+  # t=3m: increase([5m])=1>0 → PENDING, t=4m: for:1m 충족 → FIRING
+  - interval: 1m
+    input_series:
+      - series: 'kafka_topic_partition_current_offset{topic="payment.events.stock-committed.dlq",partition="0"}'
+        values: '0 0 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ProductStockQuarantineBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              topic: payment.events.stock-committed.dlq
+              partition: "0"
+            exp_annotations:
+              summary: "상품 서비스 재고 확정 격리 적체"
+              description: >-
+                payment.events.stock-committed.dlq 에 새 메시지 3건 도달 (5분 창).
+                이미 과금된 결제의 재고 확정이 음수 가드에 막혀 격리됨 — 자동 복구 대상 아님, 사람이
+                환불 또는 입고를 판단해야 한다. 대응 전 런북의 분류 기준(관리자 재고 조정 직후 발화인지)
+                부터 확인한다.
+      - eval_time: 5m
+        alertname: DlqTopicOffsetRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              topic: payment.events.stock-committed.dlq
+              partition: "0"
+            exp_annotations:
+              summary: "DLQ 토픽 offset 증가"
+              description: "payment.events.stock-committed.dlq 토픽 offset 3 증가 (5분 창). .dlq 토픽에 새 메시지 발행 감지."

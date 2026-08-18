@@ -124,7 +124,7 @@ flowchart TD
 - [x] Task 11: 회수 주기 작업과 되돌리기 관측성
 - [x] Task 12: 상품 서비스 재고 확정 음수 가드
 - [x] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
-- [ ] Task 14: 격리 적체 알람과 대응 분류
+- [x] Task 14: 격리 적체 알람과 대응 분류
 - [ ] Task 15: 시드 스크립트 키 이름 전환
 - [ ] Task 16a: 이중 되돌리기 조합 검증
 - [ ] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
@@ -778,6 +778,47 @@ flowchart TD
 **완료 기준**
 
 - promtool 통과, 런북에 분류 기준 존재
+
+**완료 결과**
+
+- `observability/prometheus/rules/dlq.yml` — 신규 `ProductStockQuarantineBacklog` 알람 추가. 기존
+  `DlqTopicOffsetRising` 의 정규식(`topic=~".*\\.dlq"`)이 `payment.events.stock-committed.dlq` 도
+  이미 델타로 잡지만, 그 신호와 별개로 이 알람을 둔 이유는 이 토픽에 쌓이는 메시지의 성격이
+  다르기 때문이다 — 다른 DLQ 는 대개 일시 장애의 재시도 소진인데 반해, 이 토픽은 음수 가드가
+  재시도 없이 즉시 보내는 곳이라 **이미 벤더 승인이 나 고객이 과금된 결제**의 재고 부족만 담긴다.
+  `severity: critical` 로 다른 DLQ 알람(전부 warning)과 구분했다
+- `payment_stock_commit_insufficient_total` 류의 앱 카운터는 신설하지 않았다 — Task 12/13 이
+  이미 만든 `EventType.STOCK_COMMIT_INSUFFICIENT` 로그와 신규 격리 토픽만으로
+  `kafka_topic_partition_current_offset` 익스포터 신호가 충분해, `DlqTopicOffsetRising` 과 같은
+  근거(exporter offset)로 애플리케이션 코드 변경 없이 알람을 세울 수 있었다
+- `observability/prometheus/rules/tests/dlq_test.yml` 에 케이스 (i) 신규 — `stock-committed.dlq`
+  offset increase 입력에 `ProductStockQuarantineBacklog`(critical) 와 `DlqTopicOffsetRising`
+  (warning) 이 동시에 발화하는 것까지 함께 고정했다 — 같은 신호를 두 알람이 서로 다른
+  severity·설명으로 중복 관측하는 것은 의도된 동작이지 충돌이 아니라는 것을 회귀로 남겼다
+- `scripts/smoke/alert-rules-promtool.sh` / `docs/smoke/alert-firing-check.md` / `scripts/smoke-all.sh`
+  의 케이스 수 표기를 갱신하면서 **[Rule 1]** 기존에 이미 어긋나 있던 숫자도 함께 바로잡았다 —
+  `alert-rules-promtool.sh` 는 DLQ 그룹이 이미 8케이스(a~h)인데 헤더 주석은 7개(a~g)만 나열하고
+  종료 코드 절은 25 로, 본문 실행부는 26/25 로 서로 다른 숫자를 쓰고 있었다. `smoke-all.sh` 도
+  availability 그룹이 추가된 지 오래인데 여전히 "3그룹 16케이스"로 남아 있었다. 이번 케이스 (i)
+  추가를 계기로 전부 실측값(4그룹 27케이스, DLQ 9케이스)으로 통일했다
+- `docs/smoke/alert-firing-check.md` — DLQ 표에 케이스 (i) 추가, 신규 "격리 적체 알람 대응 분류"
+  절 신설. 관리자 재고 조정 직후 발화(정상 발산)와 게이트 자체 결함(진짜 사고)을 시점·범위·
+  재현성·조치 4축으로 비교하는 표를 두고, 확인 순서 4단계를 적었다. 상품 서비스에 재고 조정
+  감사 로그가 아직 없어(조정과 정상 판매 커밋이 같은 `stock.updated_at` 컬럼을 갱신해 로그만으로
+  구분 불가) 판정을 코드가 아니라 절차(담당자 대조)로 두었다는 것과, 재동기화
+  (`POST /admin/stock/resync/{productId}`)는 그 상품 트래픽이 조용한 시점에만 쓰라는
+  `StockAdminController` 의 기존 전제를 그대로 인용했다. 격리 메시지 키가 Task 13 의
+  `orderId:productId` 조합이라 재전송으로 같은 사고가 여러 건 쌓이지 않는다는 것도 조치 순서에
+  명시했다
+- `promtool check rules` / `promtool test rules`(dlq_test.yml 단독 + `alert-rules-promtool.sh` 전체)
+  모두 그린 — 4그룹 27케이스 전체 pass. 코드(Java)는 손대지 않아 `./gradlew test` 는 생략
+  (observability yml + smoke 스크립트 + 문서만 변경)
+- **발견 (범위 밖)** — `scripts/smoke/create-topics.sh` 의 `TOPICS` 배열이
+  `payment.events.stock-committed.dlq` 를 아직 포함하지 않는다. `auto.create.topics.enable=false`
+  환경이라 이 토픽이 사전 생성되지 않으면 product-service 의 격리 발행 자체가 실패한다 — Task 13
+  이 producer 를 신설하며 놓친 것으로 보인다. Task 14 범위(관측 규칙·런북) 밖이라 코드는 건드리지
+  않았고, Task 17(라이브 검증)의 "음수 가드에 걸린 메시지가 격리 토픽까지 도달하는지" 항목이 이
+  갭에 막힐 것이므로 그 전에 반영이 필요하다
 
 ### Task 15: 시드 스크립트 키 이름 전환 [tdd=false]
 
