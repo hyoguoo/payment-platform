@@ -2,11 +2,13 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordCandidate;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.core.config.ClockConfig;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -160,6 +162,49 @@ class StockHoldRecordRepositoryImplTest {
                 .isEqualTo(StockHoldRecordStatus.REVERTED);
     }
 
+    @Test
+    @DisplayName("findNoiseCandidates — 잡음(NOISE) 상태만 돌려주고 확정·되돌림은 대상에서 빠진다")
+    void findNoiseCandidates_잡음_상태만_돌려준다() {
+        // given — 잡음 하나, 되돌림 하나, 확정 하나를 각각 다른 주문에 만든다
+        String noiseOrderId = "order-shr-noise";
+        String revertedOrderId = "order-shr-reverted";
+        String committedOrderId = "order-shr-committed";
+
+        String noiseCycleToken = sut.openHold(noiseOrderId, product(noiseOrderId));
+
+        String revertedCycleToken = sut.openHold(revertedOrderId, product(revertedOrderId));
+        sut.closeAsReverted(revertedOrderId, product(revertedOrderId), revertedCycleToken);
+
+        sut.openHold(committedOrderId, product(committedOrderId));
+        sut.commitAllByOrderId(committedOrderId);
+
+        // when
+        List<StockHoldRecordCandidate> candidates = sut.findNoiseCandidates(10);
+
+        // then — 잡음 하나만 후보로 나온다
+        assertThat(candidates).hasSize(1);
+        StockHoldRecordCandidate candidate = candidates.get(0);
+        assertThat(candidate.orderId()).isEqualTo(noiseOrderId);
+        assertThat(candidate.productId()).isEqualTo(PRODUCT_ID);
+        assertThat(candidate.quantity()).isEqualTo(QUANTITY);
+        assertThat(candidate.cycleToken()).isEqualTo(noiseCycleToken);
+    }
+
+    @Test
+    @DisplayName("findNoiseCandidates — limit 을 넘는 건수는 잘라서 돌려준다")
+    void findNoiseCandidates_limit_을_넘으면_잘린다() {
+        // given
+        sut.openHold("order-shr-limit-1", product("order-shr-limit-1"));
+        sut.openHold("order-shr-limit-2", product("order-shr-limit-2"));
+        sut.openHold("order-shr-limit-3", product("order-shr-limit-3"));
+
+        // when
+        List<StockHoldRecordCandidate> candidates = sut.findNoiseCandidates(2);
+
+        // then
+        assertThat(candidates).hasSize(2);
+    }
+
     /**
      * 유일 제약 동시 삽입 테스트.
      * @Transactional(NOT_SUPPORTED) — 두 스레드가 각자 독립 TX 로 openHold 를 실행해야
@@ -210,8 +255,12 @@ class StockHoldRecordRepositoryImplTest {
     }
 
     private PaymentOrder product() {
+        return product(ORDER_ID);
+    }
+
+    private PaymentOrder product(String orderId) {
         return PaymentOrder.allArgsBuilder()
-                .orderId(ORDER_ID)
+                .orderId(orderId)
                 .productId(PRODUCT_ID)
                 .quantity(QUANTITY)
                 .totalAmount(BigDecimal.valueOf(1_000))
