@@ -5,8 +5,8 @@
 ## 활성 작업
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
-- **단계**: execute (plan 완료)
-- **활성 태스크**: Task 17 — 라이브 검증 (Task 1~16d 완료. Task 16d 는 16a·16b 가 검증하며 찾은 두 방어 공백을 코드로 메웠다 — `stock_reject_compensation.lua`에 `compensation:done` 존재 여부 dedup 을 추가해 되돌리기 표시가 이미 있으면 재고 복원을 건너뛰고 표시 삭제만 수행하게 했고(정상 경로는 그대로 복원), `StockHoldRecordEntity`의 `@Table`에 `uniqueConstraints`(order_id, product_id)를 명시해 Flyway 마이그레이션과 자동 생성 스키마(ddl-auto: create-drop)가 같은 제약을 갖게 했다. 새 실패 테스트로 두 공백을 먼저 고정한 뒤 구현했고, 16a 의 이중 되돌리기 500건 동시성 검증을 포함해 전체 회귀 없음(`test` 682건 + `integrationTest` 651건). 다음은 Task 17 — 캐시·DB 볼륨을 비우고 스택을 새로 띄워 라이브 검증)
+- **단계**: ship (execute 완료 — Task 1~16d)
+- **남은 것**: Task 17 라이브 검증 — ship 단계에서 수행한다. 리뷰 수정이 나오면 두 번 돌게 되므로 리뷰 통과 후 한 번에 잰다
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

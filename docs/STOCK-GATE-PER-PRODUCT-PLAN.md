@@ -130,7 +130,7 @@ flowchart TD
 - [x] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
 - [x] Task 16c: 수렴 체인과 정합 검증
 - [x] Task 16d: 검증에서 드러난 방어 공백 메우기
-- [ ] Task 17: 라이브 검증
+- [ ] Task 17: 라이브 검증 (ship 단계로 위임)
 
 ## 태스크
 
@@ -1056,7 +1056,7 @@ flowchart TD
   그대로 통과. `./gradlew :payment-service:test` 682건, `:payment-service:integrationTest` 651건
   전체 pass, checkstyle·spotbugs 클린
 
-### Task 17: 라이브 검증 [tdd=false]
+### Task 17: 라이브 검증 [tdd=false] — **ship 단계에서 수행**
 
 **구현**
 
@@ -1070,6 +1070,8 @@ flowchart TD
 **완료 기준**
 
 - 위 항목 전부 확인, 결과를 완료 브리핑에 기록. 못 한 항목은 사유를 남긴다
+
+> **ship 단계로 위임한 이유** — 코드 리뷰에서 수정이 나오면 라이브를 두 번 돌게 된다. 스택 기동과 부하 실행에 시간이 걸리므로 리뷰가 끝난 코드로 한 번에 재는 편이 낫다. ship 단계는 원래 라이브 검증을 포함한다.
 
 ## 리뷰 처리
 
