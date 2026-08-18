@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 16d — 검증에서 드러난 방어 공백 메우기 (Task 1~16c 완료. Task 16c 는 다섯 시나리오(상품 반복 도중 강제 종료·되돌리는 도중 강제 종료·회수가 되돌리다 강제 종료·선점을 쥔 채 강제 종료 후 수명 경과·게이트-상품DB 정합)를 신규 `StockGateConvergenceIntegrationTest`로 검증했고, 다섯 모두 새 프로덕션 코드 없이 GREEN — 강제 종료는 죽는 지점 이후 호출을 안 하는 것만으로 재현되고, 유일하게 훅이 필요한 지점(되돌리기-닫기 사이)은 16b 가 신설한 `StockHoldReverter.beforeClose`를 그대로 재사용했다. `PaymentEvent.execute()`가 상품 반복 안에서 호출되지 않는 구조 덕에 "주문 상태가 상품별로 부분 전이되지 않는다"는 이미 구조적으로 성립함을 확인. 다음은 Task 16d — 16a·16b가 검증하며 찾은 두 방어 공백(거절 전용 되돌리기의 무조건 복원, 자동 생성 스키마에서 유일 제약 미적용)을 코드로 메운다)
+- **활성 태스크**: Task 17 — 라이브 검증 (Task 1~16d 완료. Task 16d 는 16a·16b 가 검증하며 찾은 두 방어 공백을 코드로 메웠다 — `stock_reject_compensation.lua`에 `compensation:done` 존재 여부 dedup 을 추가해 되돌리기 표시가 이미 있으면 재고 복원을 건너뛰고 표시 삭제만 수행하게 했고(정상 경로는 그대로 복원), `StockHoldRecordEntity`의 `@Table`에 `uniqueConstraints`(order_id, product_id)를 명시해 Flyway 마이그레이션과 자동 생성 스키마(ddl-auto: create-drop)가 같은 제약을 갖게 했다. 새 실패 테스트로 두 공백을 먼저 고정한 뒤 구현했고, 16a 의 이중 되돌리기 500건 동시성 검증을 포함해 전체 회귀 없음(`test` 682건 + `integrationTest` 651건). 다음은 Task 17 — 캐시·DB 볼륨을 비우고 스택을 새로 띄워 라이브 검증)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)

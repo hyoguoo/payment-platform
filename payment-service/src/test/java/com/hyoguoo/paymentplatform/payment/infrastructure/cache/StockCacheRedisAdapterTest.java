@@ -188,7 +188,7 @@ class StockCacheRedisAdapterTest {
     }
 
     @Test
-    @DisplayName("rejectCompensate(단일 상품) — 재고를 복원하면서 선차감 표시와 되돌리기 표시를 함께 지운다")
+    @DisplayName("rejectCompensate(단일 상품) — 되돌리기 표시가 없으면 재고를 복원하면서 두 표시를 함께 지운다")
     void rejectCompensate_단일_상품_메서드_재고_복원과_표시_삭제() {
         // given
         Long productId = 145L;
@@ -196,13 +196,32 @@ class StockCacheRedisAdapterTest {
         PaymentOrder order = buildOrder(productId, 3);
         String orderId = "order-scr-single-method-reject-001";
         setDecrementDoneToken(productId, orderId);
-        setCompensationDoneToken(productId, orderId);
 
         // when
         adapter.rejectCompensate(orderId, order);
 
         // then
         assertThat(getStock(productId)).isEqualTo(8);
+        assertThat(existsDecrementDoneToken(productId, orderId)).isFalse();
+        assertThat(existsCompensationDoneToken(productId, orderId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("rejectCompensate(단일 상품) — 되돌리기 표시가 이미 있으면 복원을 건너뛰고 표시 삭제만 수행한다")
+    void rejectCompensate_단일_상품_메서드_이미_되돌려진_상태면_복원_건너뜀() {
+        // given — 다른 주체가 먼저 되돌려 표시가 이미 남아 있는 이례 상태
+        Long productId = 148L;
+        setStock(productId, 5);
+        PaymentOrder order = buildOrder(productId, 3);
+        String orderId = "order-scr-single-method-reject-002";
+        setDecrementDoneToken(productId, orderId);
+        setCompensationDoneToken(productId, orderId);
+
+        // when
+        adapter.rejectCompensate(orderId, order);
+
+        // then — dedup 이 없다면 여기서도 재고가 또 복원돼 이중 복원이 된다
+        assertThat(getStock(productId)).isEqualTo(5);
         assertThat(existsDecrementDoneToken(productId, orderId)).isFalse();
         assertThat(existsCompensationDoneToken(productId, orderId)).isFalse();
     }

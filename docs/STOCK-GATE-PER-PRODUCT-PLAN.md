@@ -129,7 +129,7 @@ flowchart TD
 - [x] Task 16a: 이중 되돌리기 조합 검증
 - [x] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
 - [x] Task 16c: 수렴 체인과 정합 검증
-- [ ] Task 16d: 검증에서 드러난 방어 공백 메우기
+- [x] Task 16d: 검증에서 드러난 방어 공백 메우기
 - [ ] Task 17: 라이브 검증
 
 ## 태스크
@@ -1038,6 +1038,23 @@ flowchart TD
 
 - 위 테스트 pass, 전체 회귀 없음
 - 16a·16b 가 만든 동시성 검증이 그대로 통과한다
+
+**완료 결과**
+
+- `stock_reject_compensation.lua` 에 `compensation:done` GET 조건을 추가 — 되돌리기 표시가 이미
+  있으면 `INCRBY` 를 건너뛰고 두 표시(`decrement:done`/`compensation:done`) 삭제만 수행한다.
+  표시가 없으면 기존과 동일하게 복원한다
+- `StockHoldRecordEntity` 의 `@Table` 에 `uniqueConstraints`(`order_id`, `product_id`) 를 추가해
+  Flyway 마이그레이션(`V7__stock_hold_record.sql`)의 유일 제약을 엔티티에도 명시. 스키마를
+  자동 생성하는 통합 테스트 기반(`ddl-auto: create-drop`)에서도 같은 제약이 서게 됐다
+- 새 실패 테스트로 두 공백을 먼저 고정: `StockRejectCompensationLuaTest`(기존 케이스를 새 기대값으로
+  수정) + `StockCacheRedisAdapterTest`(신규 케이스 추가) + 신규
+  `StockHoldRecordEntitySchemaIntegrationTest`(스키마 자동 생성 환경에서 같은 조합 두 번 기록 시
+  행 하나만 남는지 검증)
+- 회귀 확인 — `StockHoldDoubleRevertConcurrencyIntegrationTest`(16a, 10 조합 × 50 회 = 500건)와
+  `StockGateConcurrentRetryIntegrationTest`/`StockGateConvergenceIntegrationTest`(16b·16c) 전부
+  그대로 통과. `./gradlew :payment-service:test` 682건, `:payment-service:integrationTest` 651건
+  전체 pass, checkstyle·spotbugs 클린
 
 ### Task 17: 라이브 검증 [tdd=false]
 
