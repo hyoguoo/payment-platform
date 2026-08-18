@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -142,7 +142,9 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 
 ### L-16. 복구로 종결된 결제에 늦은 confirm 재요청 시 재차감·보상 불가 (보수적 언더셀)
 
-`PaymentEvent.validateConfirmRequest` 가 종결·격리 상태를 검사하지 않아, 복구로 FAILED 종결된 결제에 늦은 confirm 재요청이 도착하면 redis 재차감(`decrementAtomic`) 후 종결 가드로 `execute` 가 차단되나 차감은 retention 유지되고, 복구가 이미 심은 `compensation:done` 토큰으로 보상이 `ALREADY_DONE` no-op → redis 선차감 잔존(보수적 언더셀). confirm 진입에 종결·격리 상태 조기 거부 가드를 두는 것은 후속.
+`PaymentEvent.validateConfirmRequest` 가 종결·격리 상태를 검사하지 않아, 복구로 FAILED 종결된 결제에 늦은 confirm 재요청이 도착하면 redis 재차감(`decrementAtomic`) 후 종결 가드로 `execute` 가 차단되나 차감은 retention 유지된다. confirm 진입에 종결·격리 상태 조기 거부 가드를 두는 것은 후속.
+
+**STOCK-GATE-PER-PRODUCT 이후 잔존분이 회수된다**: 그 재차감이 닫혀 있던 선차감 기록을 잡음 상태로 다시 열고, 결제가 이미 종결이므로 회수 주기 작업의 대상 조건("종결 + 잡음")에 그대로 걸린다. 라이브 검증에서 실제로 관측했다 — 재시도가 게이트를 5·5·99 만큼 줄인 뒤 상태 가드에 막혔고, 다음 회수 주기가 그만큼 정확히 복원했다(이중 복원 없음, `already_done` 카운터 0). 다만 **진입 자체를 막지 않는다는 사실은 그대로**이고, 회수가 돌기까지(기본 60초) 게이트가 그만큼 빡빡한 구간은 남는다.
 
 ### L-17. DLQ 재주입 전량 스캔 성능·관측성 한계
 

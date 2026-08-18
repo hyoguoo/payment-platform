@@ -141,7 +141,7 @@ class StockResyncAdminIntegrationTest {
     @DisplayName("POST /admin/stock/resync/{productId} — 발산한 redis 캐시를 product RDB stock 으로 덮어쓰고 그 값을 응답한다")
     void resync_overwritesStaleCacheWithRdbStock() throws Exception {
         // given — redis 캐시가 RDB(SoT)와 발산한 상태 (캐시 4 vs RDB 25)
-        redisTemplate.opsForValue().set("stock:" + PRODUCT_ID, String.valueOf(STALE_CACHE_STOCK));
+        redisTemplate.opsForValue().set("stock:{" + PRODUCT_ID + "}", String.valueOf(STALE_CACHE_STOCK));
         when(productPort.getProductInfoById(PRODUCT_ID))
                 .thenReturn(ProductInfo.builder().id(PRODUCT_ID).stock(RDB_STOCK).build());
 
@@ -152,7 +152,7 @@ class StockResyncAdminIntegrationTest {
                 .andExpect(jsonPath("$.data.quantity").value(RDB_STOCK));
 
         // then — 실제 redis 캐시가 product RDB 값으로 덮어써짐
-        String cached = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+        String cached = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
         assertThat(cached).isEqualTo(String.valueOf(RDB_STOCK));
     }
 }

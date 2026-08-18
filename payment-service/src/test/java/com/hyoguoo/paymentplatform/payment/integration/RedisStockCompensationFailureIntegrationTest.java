@@ -2,7 +2,7 @@ package com.hyoguoo.paymentplatform.payment.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 
@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
@@ -60,19 +62,22 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>검증 범위:
  * <ul>
- *   <li>FAILED 결과수신 중 {@link StockCachePort#compensateAtomic} 실패(spy doThrow) →
- *       retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) → events.confirmed.dlq 보존(유실 0).
- *       entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 흡수되지 않고 DLQ 로 도달함을 단정.</li>
+ *   <li>FAILED 결과수신 중 {@link StockCachePort#compensateIfDecremented(String, PaymentOrder)} 실패
+ *       (spy doThrow) → retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) →
+ *       events.confirmed.dlq 보존(유실 0). entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 흡수되지
+ *       않고 DLQ 로 도달함을 단정.</li>
  *   <li>보상 실패 후 redis 선차감 잔존 확인: redis 재고(DECR 잔존) &lt; 초기 재고(product RDB 등가)
  *       = 과예약 보수적 방향(over-sell 아님). 자동 복구는 재고 재동기 등 별도 후속 위임(가시화 한계).</li>
  * </ul>
  *
  * <p>재현 메커니즘:
  * <ul>
- *   <li>보상 실패는 {@link StockCachePort#compensateAtomic} 를 spy doThrow 로 결정적 유발.
- *       컨테이너 stop 은 Hikari connectionTimeout(30s×5) 으로 비결정적이라 금지.</li>
- *   <li>Redis 초기 재고는 checkout 선차감 완료 상태(INITIAL_STOCK - ORDER_QUANTITY)로 설정해
- *       checkout 이 발생한 상황을 재현한다.</li>
+ *   <li>보상 실패는 {@link StockCachePort#compensateIfDecremented(String, PaymentOrder)} 를
+ *       spy doThrow 로 결정적 유발. 컨테이너 stop 은 Hikari connectionTimeout(30s×5) 으로
+ *       비결정적이라 금지.</li>
+ *   <li>Redis 초기 재고는 checkout 선차감 완료 상태(INITIAL_STOCK - ORDER_QUANTITY)로 설정하고,
+ *       선차감 기록({@code stockHoldRecordRepository.openHold})과 선차감 흔적({@code decrement:done})도
+ *       함께 심어 checkout 이 발생한 상황을 재현한다.</li>
  *   <li>throw 예외({@link RuntimeException})는 not-retryable 화이트리스트
  *       (MessageConversion/IllegalArgument/IllegalState) 밖 — retry → DLQ 경로를 탄다.</li>
  * </ul>
@@ -164,6 +169,9 @@ class RedisStockCompensationFailureIntegrationTest {
     private StockCachePort stockCachePort;
 
     @Autowired
+    private StockHoldRecordRepository stockHoldRecordRepository;
+
+    @Autowired
     private KafkaTemplate<String, String> confirmedDlqKafkaTemplate;
 
     @Autowired
@@ -209,7 +217,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // 실제 흐름에서 checkout 시 decrementAtomic 이 INITIAL_STOCK → INITIAL_STOCK - ORDER_QUANTITY 로 감소.
         // 이 테스트는 checkout 완료 후 FAILED 결과수신 시점을 재현하므로 미리 감소된 값으로 설정한다.
         redisTemplate.opsForValue().set(
-                "stock:" + PRODUCT_ID,
+                "stock:{" + PRODUCT_ID + "}",
                 String.valueOf(INITIAL_STOCK - ORDER_QUANTITY)
         );
 
@@ -243,8 +251,8 @@ class RedisStockCompensationFailureIntegrationTest {
     /**
      * redis-stock 보상 실패 → DLQ 유실0 + 선차감 stranded 검증.
      *
-     * <p>compensateAtomic spy doThrow 로 결정적 보상 실패 주입 → DefaultErrorHandler 200ms×5 retry
-     * 소진 → events.confirmed.dlq 1건 보존(유실 0) 단정.
+     * <p>compensateIfDecremented spy doThrow 로 결정적 보상 실패 주입 → DefaultErrorHandler 200ms×5
+     * retry 소진 → events.confirmed.dlq 1건 보존(유실 0) 단정.
      *
      * <p>보상 실패로 redis 선차감(DECR) 이 잔존하고 product RDB 는 FAILED 경로에서
      * stock-committed 미발행이라 미차감. redis 재고(INITIAL_STOCK - ORDER_QUANTITY) &lt;
@@ -256,7 +264,7 @@ class RedisStockCompensationFailureIntegrationTest {
     @Test
     @DisplayName("redis-stock 보상 실패 → DLQ 유실0 + 선차감 stranded(redis 재고 < 초기 재고)")
     void redis_stock다운_결과수신보상실패_DLQ유실0() throws Exception {
-        // given — IN_PROGRESS 결제 저장 + compensateAtomic 결정적 실패 주입
+        // given — IN_PROGRESS 결제 저장 + compensateIfDecremented 결정적 실패 주입
         String orderId = "order-redis-fail-" + UUID.randomUUID();
         savePaymentInProgress(orderId);
 
@@ -264,7 +272,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // → DefaultErrorHandler 가 retry → DLQ 경로를 탄다.
         // 보상 실패로 redis 선차감 잔존은 버그가 아닌 설계 명시 거동(자동 복구는 재고 재동기 등 별도 후속 위임).
         doThrow(new RuntimeException("redis-stock 연결 실패 — 보상 경로 재현"))
-                .when(stockCachePort).compensateAtomic(anyString(), anyList());
+                .when(stockCachePort).compensateIfDecremented(anyString(), any(PaymentOrder.class));
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 orderId, "FAILED", "TEST_FAIL", null, null, UUID.randomUUID().toString()
@@ -274,7 +282,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // when — events.confirmed 에 FAILED 메시지 발행
         confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
 
-        // then (1) DLQ 유실0 (load-bearing): compensateAtomic 실패 → retry 소진 → DLQ 보존.
+        // then (1) DLQ 유실0 (load-bearing): compensateIfDecremented 실패 → retry 소진 → DLQ 보존.
         // entry 경로(선차감 실패→QUARANTINED 흡수)와 달리 흡수되지 않고 DLQ 로 도달함을 단정한다.
         List<String> dlqPayloads = pollConfirmedDlq(orderId, Duration.ofSeconds(30));
         assertThat(dlqPayloads)
@@ -287,7 +295,7 @@ class RedisStockCompensationFailureIntegrationTest {
         // stock-committed 미발행이라 미차감.
         // redis 재고(INITIAL_STOCK - ORDER_QUANTITY) < 초기 재고(INITIAL_STOCK, product RDB 등가)
         // = 과예약 보수적 방향(over-sell 아님). 자동 복구는 재고 재동기 등 별도 후속 위임(가시화 한계 — 설계 명시).
-        String stockValue = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+        String stockValue = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
         assertThat(stockValue)
                 .as("보상 실패 후 redis 재고 키 존재 확인")
                 .isNotNull();
@@ -308,8 +316,9 @@ class RedisStockCompensationFailureIntegrationTest {
     /**
      * IN_PROGRESS 상태 PaymentEvent + PaymentOrder 1건 저장.
      *
-     * <p>FAILED 결과 수신 시 {@link StockCachePort#compensateAtomic} 가 paymentOrderList 를
-     * 사용하므로 ORDER_QUANTITY 와 PRODUCT_ID 를 재고 초기화 값과 일치시킨다.
+     * <p>FAILED 결과 수신 시 {@link StockCachePort#compensateIfDecremented(String, PaymentOrder)} 가
+     * ORDER_QUANTITY 와 PRODUCT_ID 를 재고 초기화 값과 일치시켜야 하므로, checkout 시점의 선차감을
+     * 흉내내 선차감 기록을 열고 redis 에 선차감 흔적({@code decrement:done})도 함께 심는다.
      */
     private void savePaymentInProgress(String orderId) {
         Instant now = Instant.now();
@@ -335,6 +344,16 @@ class RedisStockCompensationFailureIntegrationTest {
                 .status(PaymentOrderStatus.EXECUTING)
                 .build();
         jpaPaymentOrderRepository.save(order);
+
+        stockHoldRecordRepository.openHold(orderId, buildStockHoldPaymentOrder());
+        redisTemplate.opsForValue().set("decrement:done:{" + PRODUCT_ID + "}:" + orderId, "1");
+    }
+
+    private PaymentOrder buildStockHoldPaymentOrder() {
+        return PaymentOrder.allArgsBuilder()
+                .productId(PRODUCT_ID)
+                .quantity(ORDER_QUANTITY)
+                .allArgsBuild();
     }
 
     /**

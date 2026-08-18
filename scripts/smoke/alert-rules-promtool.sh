@@ -4,7 +4,7 @@
 # 목적:
 #   Prometheus 알람 규칙 4그룹(코디네이터 정체 / 종결 가드 skip / DLQ 적체 / 가용성)의
 #   발화 로직을 합성 시계열 픽스처로 단정한다.
-#   라이브 스택 없이 Docker 만으로 실행 가능. 총 26 케이스.
+#   라이브 스택 없이 Docker 만으로 실행 가능. 총 27 케이스.
 #
 # ── 검증 픽스처 ────────────────────────────────────────────────────────────
 #   코디네이터 정체 (6 케이스): observability/prometheus/rules/tests/coordinator_test.yml
@@ -20,14 +20,16 @@
 #     (b) DONE-only skip (정상 재발행 경로) → no alert
 #     (c) 저트래픽 (floor 미충족) → no alert (0-division 흡수 회귀 고정)
 #
-#   DLQ 적체 (8 케이스): observability/prometheus/rules/tests/dlq_test.yml
+#   DLQ 적체 (9 케이스): observability/prometheus/rules/tests/dlq_test.yml
 #     (a) 앱 카운터 increase>0 → DlqAppCounterRising FIRING
 #     (b) .dlq offset increase>0 → DlqTopicOffsetRising FIRING
 #     (c) 정상 (델타 0) → 3개 알람 모두 미발화
 #     (d) 앱 카운터만↑ (offset 없음) → DlqAppCounterRising만 FIRING (독립 회귀 고정)
 #     (e) offset만↑ (앱 카운터 없음) → DlqTopicOffsetRising만 FIRING (독립 회귀 고정)
 #     (f) commands.confirm.dlq 컨슈머 lag 잔존 → DlqCommandsConsumerLag FIRING
-#     (g) pg_retry_exhausted_quarantine_total만↑ (payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
+#     (g) pg_final_confirmation_outcome_total{outcome=indeterminate}만↑ (payment_eos 평탄) → DlqAppCounterRising FIRING (pg 분기)
+#     (h) outcome=approved 단독↑(격리 없이 자동 승인만) → DlqAppCounterRising FIRING (소진 신호 보존 회귀 고정)
+#     (i) product-service stock-committed.dlq offset increase>0 → ProductStockQuarantineBacklog FIRING(critical) + DlqTopicOffsetRising 동시 발화
 #
 #   가용성 (9 케이스): observability/prometheus/rules/tests/availability_test.yml
 #     (a1) up==0 → ServiceDown FIRING (for:1m 충족)
@@ -47,7 +49,7 @@
 #   ./scripts/smoke/alert-rules-promtool.sh
 #
 # ── 종료 코드 ──────────────────────────────────────────────────────────────
-#   0 — 25 케이스 전체 PASS
+#   0 — 27 케이스 전체 PASS
 #   1 — 실패 또는 Docker 미기동
 
 set -uo pipefail
@@ -66,7 +68,7 @@ if ! docker info > /dev/null 2>&1; then
 fi
 
 print_section "════════════════════════════════════════════════════════════"
-print_section "  alert-rules-promtool — 알람 규칙 4그룹 발화 단정 (25 케이스)"
+print_section "  alert-rules-promtool — 알람 규칙 4그룹 발화 단정 (27 케이스)"
 print_section "════════════════════════════════════════════════════════════"
 print_warning "  이미지: ${PROM_IMAGE}"
 print_warning "  마운트: ${ROOT_DIR}/observability/prometheus → /work"
@@ -95,13 +97,13 @@ run_test() {
 
 run_test "코디네이터 정체 (6 케이스)" "coordinator_test.yml"
 run_test "종결 가드 skip (3 케이스)" "guard_skip_test.yml"
-run_test "DLQ 적체 (7 케이스)" "dlq_test.yml"
+run_test "DLQ 적체 (9 케이스)" "dlq_test.yml"
 run_test "가용성 (9 케이스)" "availability_test.yml"
 
 # ── 종합 결과 ───────────────────────────────────────────────────────────────
 print_section "════════════════════════════════════════════════════════════"
 if [ "${FAIL_COUNT}" -eq 0 ]; then
-    print_info "✅ 알람 규칙 promtool test 전체 PASS (4 그룹, 25 케이스)"
+    print_info "✅ 알람 규칙 promtool test 전체 PASS (4 그룹, 27 케이스)"
     exit 0
 else
     print_error "❌ 알람 규칙 promtool test FAIL (실패 그룹 ${FAIL_COUNT}개)"

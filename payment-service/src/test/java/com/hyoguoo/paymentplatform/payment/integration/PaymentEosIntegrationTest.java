@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
@@ -15,16 +16,21 @@ import com.hyoguoo.paymentplatform.payment.application.dto.event.StockCommittedE
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOrderEntity;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaPaymentOrderRepository;
+import com.hyoguoo.paymentplatform.payment.infrastructure.repository.JpaStockHoldRecordRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
@@ -190,6 +196,12 @@ class PaymentEosIntegrationTest {
     @Autowired
     private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
+    @Autowired
+    private StockHoldRecordRepository stockHoldRecordRepository;
+
+    @Autowired
+    private JpaStockHoldRecordRepository jpaStockHoldRecordRepository;
+
     @MockitoSpyBean
     private StockCachePort stockCachePort;
 
@@ -198,6 +210,10 @@ class PaymentEosIntegrationTest {
 
     @MockitoSpyBean
     private PaymentEventDedupeStore paymentEventDedupeStore;
+
+    /** #9 전용 — 확정 표시 이후 실패를 주입해 같은 트랜잭션 롤백 동조를 검증한다. */
+    @MockitoSpyBean(name = "stockCommittedKafkaTemplate")
+    private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
 
     @Autowired
     private MeterRegistry meterRegistry;
@@ -237,6 +253,7 @@ class PaymentEosIntegrationTest {
 
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
+        jpaStockHoldRecordRepository.deleteAllInBatch();
         namedParameterJdbcTemplate.update(
                 "DELETE FROM payment_event_dedupe",
                 Collections.emptyMap()
@@ -248,6 +265,7 @@ class PaymentEosIntegrationTest {
     void tearDown() {
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
+        jpaStockHoldRecordRepository.deleteAllInBatch();
         namedParameterJdbcTemplate.update(
                 "DELETE FROM payment_event_dedupe",
                 Collections.emptyMap()
@@ -614,6 +632,75 @@ class PaymentEosIntegrationTest {
         assertThat(stockEvents).isEmpty();
     }
 
+    // ── 시나리오 #8 (Task 8 — 승인 반영 트랜잭션에서 확정 표시) ──────────────────────────
+
+    @Test
+    @DisplayName("#8 승인 반영 시 선차감 기록 확정: 그 주문의 모든 상품 잡음 기록이 확정 상태로 저장된다 (다중 상품)")
+    void shouldCommitAllStockHoldRecordsOnApproval() throws Exception {
+        // given — multi-product 결제 + 상품별 잡음 선차감 기록을 미리 심는다
+        String orderId = "order-eos8-" + UUID.randomUUID();
+        String eventUuid = UUID.randomUUID().toString();
+        BigDecimal totalAmount = UNIT_AMOUNT.multiply(BigDecimal.valueOf(2));
+        savePaymentInProgressMultiProduct(orderId, totalAmount);
+        seedNoiseHold(orderId, PRODUCT_ID, ORDER_QUANTITY);
+        seedNoiseHold(orderId, PRODUCT_ID_2, ORDER_QUANTITY);
+
+        ConfirmedEventMessage message = approvedMessage(orderId, totalAmount.longValue(), eventUuid);
+        String payload = objectMapper.writeValueAsString(message);
+
+        // when
+        confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
+
+        // then — payment DONE 전이
+        await().atMost(Duration.ofSeconds(15))
+                .untilAsserted(() -> {
+                    PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId)
+                            .orElseThrow();
+                    assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+                });
+
+        // 두 상품 기록 모두 확정으로 저장된다
+        assertThat(holdStatus(orderId, PRODUCT_ID)).isEqualTo(StockHoldRecordStatus.COMMITTED);
+        assertThat(holdStatus(orderId, PRODUCT_ID_2)).isEqualTo(StockHoldRecordStatus.COMMITTED);
+    }
+
+    // ── 시나리오 #9 (Task 8 — 확정 표시 롤백 동조) ────────────────────────────────────
+
+    @Test
+    @DisplayName("#9 확정 표시 롤백 동조: 확정 표시 이후 같은 트랜잭션에서 실패하면 결제 전이와 확정 표시가 함께 롤백된다")
+    void shouldRollbackStockHoldCommitTogetherWithPaymentTransition() throws Exception {
+        // given — stockCommittedKafkaTemplate.send (확정 표시 다음 단계) 에서 결정적 실패를 주입한다.
+        // handleApproved 순서가 markPaymentAsDone → commitAllByOrderId → sendStockCommittedEvents 이므로
+        // 이 시점의 실패는 이미 반영된 확정 표시(JPA 갱신)를 가진 채로 handle() 트랜잭션을 롤백시킨다.
+        String orderId = "order-eos9-" + UUID.randomUUID();
+        String eventUuid = UUID.randomUUID().toString();
+        savePaymentInProgress(orderId, PRODUCT_ID, UNIT_AMOUNT);
+        seedNoiseHold(orderId, PRODUCT_ID, ORDER_QUANTITY);
+
+        doThrow(new RuntimeException("stock-committed 발행 실패 시뮬레이션 — 확정 표시 롤백 동조 검증"))
+                .when(stockCommittedKafkaTemplate).send(anyString(), anyString(), anyString());
+
+        ConfirmedEventMessage message = approvedMessage(orderId, UNIT_AMOUNT.longValue(), eventUuid);
+        String payload = objectMapper.writeValueAsString(message);
+
+        // when
+        confirmedDlqKafkaTemplate.send(PaymentTopics.EVENTS_CONFIRMED, orderId, payload);
+
+        // then — 5회 retry 후 DLQ (interval 200ms × 5 = 최소 1s, 여유 30s)
+        List<String> dlqPayloads = pollConfirmedDlq(orderId, Duration.ofSeconds(30));
+        assertThat(dlqPayloads).hasSize(1);
+
+        // 결제 전이가 롤백돼 IN_PROGRESS 로 남는다
+        PaymentEventEntity entity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
+        assertThat(entity.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
+
+        // 같은 트랜잭션이라 확정 표시도 함께 롤백돼 잡음 상태로 남는다
+        assertThat(holdStatus(orderId, PRODUCT_ID)).isEqualTo(StockHoldRecordStatus.NOISE);
+
+        // dedupe 0 row — RDB 롤백 확인
+        assertThat(countDedupeRow(eventUuid)).isZero();
+    }
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
     /**
@@ -696,6 +783,34 @@ class PaymentEosIntegrationTest {
                 .status(PaymentOrderStatus.EXECUTING)
                 .build();
         jpaPaymentOrderRepository.save(order);
+    }
+
+    /**
+     * 상품 하나에 대한 선차감 기록을 잡음 상태로 심는다. #8·#9 전용 — 확정 진입(Task 6/7)을
+     * 거치지 않고 확정 표시(Task 8) 배선만 독립적으로 검증하기 위한 직접 시드.
+     */
+    private void seedNoiseHold(String orderId, Long productId, int quantity) {
+        PaymentOrder order = PaymentOrder.allArgsBuilder()
+                .orderId(orderId)
+                .productId(productId)
+                .quantity(quantity)
+                .totalAmount(UNIT_AMOUNT)
+                .allArgsBuild();
+        stockHoldRecordRepository.openHold(orderId, order);
+    }
+
+    /**
+     * 주문번호·상품번호 조합의 선차감 기록 상태를 조회한다.
+     */
+    private StockHoldRecordStatus holdStatus(String orderId, Long productId) {
+        PaymentOrder order = PaymentOrder.allArgsBuilder()
+                .orderId(orderId)
+                .productId(productId)
+                .allArgsBuild();
+        return stockHoldRecordRepository.findSnapshot(orderId, order)
+                .map(StockHoldRecordSnapshot::status)
+                .orElseThrow(() -> new IllegalStateException(
+                        "선차감 기록이 없다 — orderId=" + orderId + ", productId=" + productId));
     }
 
     /**

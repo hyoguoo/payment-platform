@@ -41,7 +41,8 @@ MYSQL_USER="${MYSQL_PRODUCT_USER:-root}"
 MYSQL_PASSWORD="${MYSQL_PRODUCT_PASSWORD:-payment123}"
 
 REDIS_CONTAINER="${REDIS_STOCK_CONTAINER:-payment-redis-stock}"
-REDIS_KEY="stock:${PRODUCT_ID}"
+# 상품 번호를 Redis Cluster 해시태그({})로 감싼 키 — StockCacheRedisAdapter.KEY_PREFIX/KEY_SUFFIX 와 동일 규칙
+REDIS_KEY="stock:{${PRODUCT_ID}}"
 
 print_section "▶ bench-seed-stock 시작 — productId=${PRODUCT_ID}, stock=${BENCH_STOCK}"
 

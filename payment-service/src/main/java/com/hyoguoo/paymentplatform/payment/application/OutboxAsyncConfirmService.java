@@ -76,6 +76,13 @@ public class OutboxAsyncConfirmService implements PaymentConfirmService {
             }
             case SUCCESS -> executeConfirmTxWithStockRetention(
                     paymentEvent, command.getPaymentKey(), command.getOrderId());
+            case ALREADY_PROCESSING -> {
+                // 같은 주문을 다른 요청이 이미 선점해 처리 중이다. 결제 상태를 건드리지 않고
+                // 물러난다 — 진 쪽이 재고 부족과 같은 취급을 받으면 진행 중인 이긴 쪽의 결제를
+                // 실패로 덮어쓸 수 있다.
+                LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_ALREADY_PROCESSING,
+                        () -> String.format("orderId=%s reason=order_lock_contended", command.getOrderId()));
+            }
         }
 
         return PaymentConfirmAsyncResult.builder()

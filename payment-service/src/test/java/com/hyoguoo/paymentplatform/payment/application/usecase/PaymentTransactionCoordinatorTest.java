@@ -6,20 +6,32 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentConfirmPublisherPort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockDecrementAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentTransactionCoordinator.StockDecrementResult;
+import com.hyoguoo.paymentplatform.payment.core.common.log.EventType;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOutbox;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
+import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,6 +41,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 @DisplayName("PaymentTransactionCoordinator 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -47,28 +60,46 @@ class PaymentTransactionCoordinatorTest {
     private StockCachePort stockCachePort;
 
     @Mock
+    private StockHoldRecordRepository stockHoldRecordRepository;
+
+    @Mock
     private PaymentConfirmPublisherPort confirmPublisher;
 
     @Nested
-    @DisplayName("decrementStock — atomic 1회 호출 분기 (FakeStockCachePort 사용)")
+    @DisplayName("decrementStock — 선점·상품 반복·부분 실패 되돌리기 (FakeStockCachePort 사용)")
     class DecrementStockAtomicTest {
 
         private FakeStockCachePort fakeStockCachePort;
+        private FakeStockHoldRecordRepository fakeStockHoldRecordRepository;
         private PaymentTransactionCoordinator coordinatorWithFake;
+        private ListAppender<ILoggingEvent> logAppender;
+        private Logger coordinatorLogger;
 
         @BeforeEach
         void setUp() {
             fakeStockCachePort = new FakeStockCachePort();
+            fakeStockHoldRecordRepository = new FakeStockHoldRecordRepository();
             coordinatorWithFake = new PaymentTransactionCoordinator(
                     paymentCommandUseCase,
                     paymentOutboxUseCase,
                     fakeStockCachePort,
+                    fakeStockHoldRecordRepository,
                     confirmPublisher
             );
+
+            coordinatorLogger = (Logger) LoggerFactory.getLogger(PaymentTransactionCoordinator.class);
+            logAppender = new ListAppender<>();
+            logAppender.start();
+            coordinatorLogger.addAppender(logAppender);
+        }
+
+        @AfterEach
+        void tearDown() {
+            coordinatorLogger.detachAppender(logAppender);
         }
 
         @Test
-        @DisplayName("decrementStock_정상_차감_OK — decrementAtomic OK → SUCCESS 반환 + 재고 감소")
+        @DisplayName("decrementStock_정상_차감_OK — 상품 전부 충분하면 전부 차감되고 SUCCESS 반환")
         void decrementStock_정상_차감_OK() {
             // given
             String orderId = "order-001";
@@ -124,19 +155,308 @@ class PaymentTransactionCoordinatorTest {
         }
 
         @Test
+        @DisplayName("decrementStock_셋째_부족_앞의_둘만_되돌리고_REJECTED — 되돌린 상품만 재고가 원래 값으로 복원된다")
+        void decrementStock_셋째_부족_앞의_둘만_되돌리고_REJECTED() {
+            // given — 상품 3이 부족(재고 1 < 요청 5)
+            String orderId = "order-005";
+            fakeStockCachePort.set(1L, 10);
+            fakeStockCachePort.set(2L, 10);
+            fakeStockCachePort.set(3L, 1);
+            List<PaymentOrder> orderList = List.of(
+                    createPaymentOrder(1L, 2),
+                    createPaymentOrder(2L, 3),
+                    createPaymentOrder(3L, 5)
+            );
+
+            // when
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — 상품 1,2 는 원래 값으로 되돌아오고 상품 3(애초에 안 깎임)은 그대로다
+            assertThat(result).isEqualTo(StockDecrementResult.REJECTED);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(10);
+            assertThat(fakeStockCachePort.current(2L)).isEqualTo(10);
+            assertThat(fakeStockCachePort.current(3L)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("decrementStock_이미_처리됨_상품은_되돌리기_대상에서_제외 — 남의(이전) 차감은 건드리지 않는다")
+        void decrementStock_이미_처리됨_상품은_되돌리기_대상에서_제외() {
+            // given — 상품 1은 이번 호출 이전에 이미 차감(ALREADY_DONE 유발), 상품 3은 부족
+            String orderId = "order-006";
+            fakeStockCachePort.set(1L, 10);
+            fakeStockCachePort.set(2L, 10);
+            fakeStockCachePort.set(3L, 10);
+            coordinatorWithFake.decrementStock(orderId, List.of(createPaymentOrder(1L, 2)));
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
+
+            List<PaymentOrder> orderList = List.of(
+                    createPaymentOrder(1L, 2),
+                    createPaymentOrder(2L, 3),
+                    createPaymentOrder(3L, 100)
+            );
+
+            // when
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — 상품 2(이번 호출이 직접 차감)만 되돌아오고, 상품 1(ALREADY_DONE)은 되돌리기 대상이
+            // 아니라 이전 차감 상태(8) 그대로 유지된다. 되돌리기 대상이었다면 10으로 잘못 복원됐을 것이다
+            assertThat(result).isEqualTo(StockDecrementResult.REJECTED);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
+            assertThat(fakeStockCachePort.current(2L)).isEqualTo(10);
+            assertThat(fakeStockCachePort.current(3L)).isEqualTo(10);
+        }
+
+        @Test
+        @DisplayName("decrementStock_반복이_끝나면_선점이_풀린다 — 해제 후 재요청이 새로 선점할 수 있다")
+        void decrementStock_반복이_끝나면_선점이_풀린다() {
+            // given
+            String orderId = "order-007";
+            fakeStockCachePort.set(1L, 10);
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 2));
+
+            // when
+            coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — 선점이 풀렸으므로 같은 orderId 로 재선점이 가능하다
+            Optional<String> reacquired = fakeStockCachePort.acquireOrderLock(orderId);
+            assertThat(reacquired).isPresent();
+        }
+
+        @Test
         @DisplayName("decrementStock_Redis_예외_CACHE_DOWN — RuntimeException → CACHE_DOWN 반환")
         void decrementStock_Redis_예외_CACHE_DOWN() {
             // given
             String orderId = "order-004";
-            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 1));
+            PaymentOrder order = createPaymentOrder(1L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
             willThrow(new RuntimeException("Redis connection failure"))
-                    .given(stockCachePort).decrementAtomic(orderId, orderList);
+                    .given(stockCachePort).decrementAtomic(orderId, order);
 
             // when
-            StockDecrementResult result = coordinator.decrementStock(orderId, orderList);
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
 
             // then
             assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_선점_실패시_ALREADY_PROCESSING — 재고·기록을 건드리지 않고 물러난다")
+        void decrementStock_선점_실패시_ALREADY_PROCESSING() {
+            // given
+            String orderId = "order-008";
+            PaymentOrder order = createPaymentOrder(1L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.empty());
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.ALREADY_PROCESSING);
+            then(stockCachePort).should(never()).decrementAtomic(anyString(), any(PaymentOrder.class));
+            then(stockHoldRecordRepository).should(never()).openHold(anyString(), any(PaymentOrder.class));
+            then(stockCachePort).should(never()).releaseOrderLock(anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("decrementStock_캐시_예외_직전_직접_차감_성공분만_되돌리기_시도 — 셋째에서 예외가 나면 앞의 둘을 되돌리려 시도한다")
+        void decrementStock_캐시_예외_직전_직접_차감_성공분만_되돌리기_시도() {
+            // given
+            String orderId = "order-010";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            PaymentOrder order3 = createPaymentOrder(3L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            given(stockCachePort.decrementAtomic(orderId, order2)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order3);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2, order3));
+
+            // then — 직접 차감에 성공한 상품 1,2 만 되돌리기 대상이고 예외가 난 상품 3 은 대상이 아니다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().rejectCompensate(orderId, order1);
+            then(stockCachePort).should().rejectCompensate(orderId, order2);
+            then(stockCachePort).should(never()).rejectCompensate(orderId, order3);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_되돌리기까지_실패해도_CACHE_DOWN — 되돌리기 예외를 삼키지 않고 로그만 남긴 뒤 격리로 넘긴다")
+        void decrementStock_되돌리기까지_실패해도_CACHE_DOWN() {
+            // given
+            String orderId = "order-011";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order2);
+            willThrow(new RuntimeException("되돌리기도 인프라 장애로 실패"))
+                    .given(stockCachePort).rejectCompensate(orderId, order1);
+
+            // when — 되돌리기 예외가 밖으로 전파되지 않고 CACHE_DOWN 으로 흡수된다
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_직접_차감_성공분_없이_예외면_되돌리기_시도_안함 — 첫 상품에서 곧바로 캐시 예외면 되돌리기 호출이 없다")
+        void decrementStock_직접_차감_성공분_없이_예외면_되돌리기_시도_안함() {
+            // given
+            String orderId = "order-012";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order1);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should(never()).rejectCompensate(anyString(), any(PaymentOrder.class));
+        }
+
+        @Test
+        @DisplayName("decrementStock_캐시_예외에도_기록은_남는다 — 예외를 던진 상품까지 openHold 가 먼저 호출돼 회수 대상이 된다")
+        void decrementStock_캐시_예외에도_기록은_남는다() {
+            // given
+            String orderId = "order-013";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("Redis connection failure"))
+                    .given(stockCachePort).decrementAtomic(orderId, order2);
+
+            // when
+            coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 차감에 실패한 상품도 openHold 가 이미 호출돼 기록이 남았다
+            then(stockHoldRecordRepository).should().openHold(orderId, order1);
+            then(stockHoldRecordRepository).should().openHold(orderId, order2);
+        }
+
+        @Test
+        @DisplayName("decrementStock_기록_저장소_예외는_구분되는_로그로_남는다"
+                + " — openHold 실패는 STOCK_HOLD_RECORD_DOWN_QUARANTINE 으로 남고 캐시 장애 이벤트와 섞이지 않는다")
+        void decrementStock_기록_저장소_예외는_구분되는_로그로_남는다() {
+            // given
+            String orderId = "order-017";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.openHold(orderId, order1)).willReturn("cycle-token-1");
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("기록 저장소 장애"))
+                    .given(stockHoldRecordRepository).openHold(orderId, order2);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 캐시 예외가 아니라 기록 저장소 예외라는 것이 로그로 구분된다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            assertThat(logAppender.list).hasSize(1);
+            assertThat(logAppender.list.get(0).getFormattedMessage())
+                    .contains(EventType.STOCK_HOLD_RECORD_DOWN_QUARANTINE.name())
+                    .doesNotContain(EventType.STOCK_CACHE_DOWN_QUARANTINE.name());
+        }
+
+        @Test
+        @DisplayName("decrementStock_기록_저장소_예외_직전_직접_차감_성공분만_되돌리기_시도"
+                + " — openHold 가 실패하면 그 상품은 캐시 차감을 시도조차 하지 않고 앞서 차감한 상품만 되돌린다")
+        void decrementStock_기록_저장소_예외_직전_직접_차감_성공분만_되돌리기_시도() {
+            // given
+            String orderId = "order-018";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.openHold(orderId, order1)).willReturn("cycle-token-1");
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            willThrow(new RuntimeException("기록 저장소 장애"))
+                    .given(stockHoldRecordRepository).openHold(orderId, order2);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then — 상품 1(직접 차감 성공)만 되돌리기 대상, 상품 2는 캐시 차감까지 가지 못했다
+            assertThat(result).isEqualTo(StockDecrementResult.CACHE_DOWN);
+            then(stockCachePort).should().rejectCompensate(orderId, order1);
+            then(stockCachePort).should(never()).decrementAtomic(orderId, order2);
+            then(stockCachePort).should(never()).rejectCompensate(orderId, order2);
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_확정_행은_캐시_차감_호출_없음 — 기록이 확정이면 openHold·decrementAtomic 이 불리지 않는다")
+        void decrementStock_확정_행은_캐시_차감_호출_없음() {
+            // given
+            String orderId = "order-014";
+            PaymentOrder order = createPaymentOrder(1L, 2);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockHoldRecordRepository.findSnapshot(orderId, order))
+                    .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.COMMITTED, "cycle-x")));
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            then(stockHoldRecordRepository).should(never()).openHold(anyString(), any(PaymentOrder.class));
+            then(stockCachePort).should(never()).decrementAtomic(anyString(), any(PaymentOrder.class));
+            then(stockCachePort).should().releaseOrderLock(orderId, "lock-token");
+        }
+
+        @Test
+        @DisplayName("decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음"
+                + " — 캐시의 dedup 표시가 만료돼도 기록을 먼저 보고 재차감을 막는다")
+        void decrementStock_확정_행은_선차감_표시_수명이_지나도_캐시_차감_호출_없음() {
+            // given — 정상 차감 뒤 결제가 확정되고, 캐시의 선차감 표시(TTL)만 만료된 상태를
+            // 흉내낸다. 표시가 없으니 캐시만 보면 다시 차감(OK)이 성립하는 상태다
+            String orderId = "order-016";
+            fakeStockCachePort.set(1L, 10);
+            List<PaymentOrder> orderList = List.of(createPaymentOrder(1L, 2));
+            coordinatorWithFake.decrementStock(orderId, orderList);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
+
+            fakeStockHoldRecordRepository.commitAllByOrderId(orderId);
+            fakeStockCachePort.expireDecrementToken(1L, orderId);
+
+            // when — 재요청, 캐시만 보면 다시 차감이 성립할 상태다
+            StockDecrementResult result = coordinatorWithFake.decrementStock(orderId, orderList);
+
+            // then — 기록이 확정이라 캐시 호출 자체가 없어 재고가 그대로다
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            assertThat(fakeStockCachePort.current(1L)).isEqualTo(8);
+        }
+
+        @Test
+        @DisplayName("decrementStock_기록이_차감보다_먼저_적힌다 — 상품마다 openHold 가 decrementAtomic 보다 먼저 호출된다")
+        void decrementStock_기록이_차감보다_먼저_적힌다() {
+            // given
+            String orderId = "order-009";
+            PaymentOrder order1 = createPaymentOrder(1L, 1);
+            PaymentOrder order2 = createPaymentOrder(2L, 1);
+            given(stockCachePort.acquireOrderLock(orderId)).willReturn(Optional.of("lock-token"));
+            given(stockCachePort.decrementAtomic(orderId, order1)).willReturn(StockDecrementAtomicResult.OK);
+            given(stockCachePort.decrementAtomic(orderId, order2)).willReturn(StockDecrementAtomicResult.OK);
+
+            // when
+            StockDecrementResult result = coordinator.decrementStock(orderId, List.of(order1, order2));
+
+            // then
+            assertThat(result).isEqualTo(StockDecrementResult.SUCCESS);
+            InOrder inOrder = org.mockito.Mockito.inOrder(stockHoldRecordRepository, stockCachePort);
+            inOrder.verify(stockHoldRecordRepository).openHold(orderId, order1);
+            inOrder.verify(stockCachePort).decrementAtomic(orderId, order1);
+            inOrder.verify(stockHoldRecordRepository).openHold(orderId, order2);
+            inOrder.verify(stockCachePort).decrementAtomic(orderId, order2);
         }
     }
 

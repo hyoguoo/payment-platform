@@ -76,6 +76,13 @@ scheduler:
     fixed-delay-ms: 3600000   # 1시간
     batch-size: 1000
 
+product:
+  kafka:
+    error-handler:
+      backoff:
+        interval: 1000    # ms — 소비 실패 재시도 간격
+        max-attempts: 5   # 소진 후 payment.events.stock-committed.dlq 로 격리
+
 management:
   endpoints:
     web:

@@ -1,6 +1,6 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — §4.9 를 "미연결"에서 배선 상태로 전면 교체(TX 2단계 분리·금액 대조 선행·확정실패 집합에서 부분 취소 제외·조회 예외 전체 포착·반영 0건 가드·승인 시각 원문·결과 지표 6종), DLQ 플로우차트를 관문 6분기로 갱신, 장애 복원 포인트의 소진 경로 정정, 파일 색인의 FCG 행 정정. `RETRY_EXHAUSTED` 사유는 더 이상 생성되지 않는다). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
+> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — confirm 진입 다이어그램을 상품 단위 반복으로 정정(주문 단위 선점·상품별 기록과 차감·확정 기록 건너뛰기·거절 시 직접 차감분만 되돌리기·선점 실패 분기), 재고 dedup token 을 상품 단위 키로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — §4.9 를 "미연결"에서 배선 상태로 전면 교체(TX 2단계 분리·금액 대조 선행·확정실패 집합에서 부분 취소 제외·조회 예외 전체 포착·반영 0건 가드·승인 시각 원문·결과 지표 6종), DLQ 플로우차트를 관문 6분기로 갱신, 장애 복원 포인트의 소진 경로 정정, 파일 색인의 FCG 행 정정. `RETRY_EXHAUSTED` 사유는 더 이상 생성되지 않는다). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
 현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
@@ -43,10 +43,12 @@ flowchart TD
 flowchart TD
     J["브라우저: POST /api/v1/payments/confirm<br/>userId, orderId, amount, paymentKey"] --> K["OutboxAsyncConfirmService.confirm"]
     K --> K1["paymentEvent.validateConfirmRequest<br/>userId/amount/orderId/paymentKey 위변조 검증"]
-    K1 --> K2["PaymentTransactionCoordinator.decrementStock<br/>Redis 원자 DECR — TX 외부"]
-    K2 --> L{"재고 차감 결과"}
-    L -->|"REJECTED<br/>재고 부족"| L1["handleStockFailure<br/>event.status=FAILED<br/>throw 409"]
-    L -->|"CACHE_DOWN<br/>Redis 장애"| L2["markStockCacheDownQuarantine<br/>event.status=QUARANTINED<br/>quarantine_compensation_pending=true<br/>throw 409"]
+    K1 --> K2["PaymentTransactionCoordinator.decrementStock<br/>주문 단위 선점 후 상품마다 반복 — TX 외부"]
+    K2 --> K3["상품별: 기록을 잡음으로 적고 Redis 원자 DECR<br/>확정 기록이면 캐시 호출 건너뜀"]
+    K3 --> L{"재고 차감 결과"}
+    L -->|"ALREADY_PROCESSING<br/>선점 실패"| L0["상태 변경 없이 물러남<br/>이미 처리 중"]
+    L -->|"REJECTED<br/>재고 부족"| L1["직접 차감분만 거절 되돌리기<br/>두 표시 함께 삭제<br/>handleStockFailure event.status=FAILED"]
+    L -->|"CACHE_DOWN<br/>Redis 또는 기록 저장소 장애"| L2["직접 차감분 되돌리기 시도<br/>실패해도 격리<br/>markStockCacheDownQuarantine"]
     L -->|SUCCESS| M["executeConfirmTx @Transactional<br/>event: READY->IN_PROGRESS<br/>+ payment_outbox PENDING 삽입<br/>원자 커밋"]
     M --> N["confirmPublisher.publish(orderId, userId, amount, paymentKey)<br/>-> Spring ApplicationEvent<br/>PaymentConfirmEvent"]
     N --> O["HTTP 202 Accepted<br/>orderId, amount 즉시 반환"]
@@ -390,7 +392,7 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 |---|---|---|
 | **Vendor (Toss/NicePay)** | `paymentKey + orderId` 단위 멱등 응답. 같은 호출 두 번 시 "이미 처리됨" 응답 | `PgGatewayDuplicateHandledException` → `DuplicateApprovalHandler` 흡수 |
 | **pg-service inbox** | `pg_inbox.order_id` UNIQUE + `insertPending` INSERT IGNORE. 워커 선점은 `transitPendingToInProgress` (조회+전이 단일 TX) | 같은 주문 명령이 두 번 들어와도 접수 기록 1건, 벤더 호출 1회 |
-| **payment-service dedupe** | Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, redis-stock 안에서 같은 Lua atomic) + 도메인 가드 (이미 DONE 이면 no-op) + Spring Kafka `DefaultErrorHandler` + DLQ. product 측은 `JdbcEventDedupeStore` (stock_commit_dedupe + 재고 차감 같은 TX) | events.confirmed 두 번 받아도 재고 중복 차감/보상 없음 |
+| **payment-service dedupe** | Lua atomic dedup token (**상품 단위** `decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId` SETNX P8D, redis-stock 안에서 같은 Lua atomic) + 도메인 가드 (이미 DONE 이면 no-op) + Spring Kafka `DefaultErrorHandler` + DLQ. product 측은 `JdbcEventDedupeStore` (stock_commit_dedupe + 재고 차감 같은 TX) | events.confirmed 두 번 받아도 재고 중복 차감/보상 없음 |
 
 ### 4.9 FCG (Final Confirmation Gate) — 배선됨
 

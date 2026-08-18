@@ -14,7 +14,7 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 
 | 계층 | 수단 | 선행 조건 | 보증 범위 |
 |---|---|---|---|
-| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 26케이스 단정 |
+| **1차 — 규칙 유닛** | `promtool test rules` (Docker 경유) | Docker 기동만 필요, 라이브 스택 불요 | 발화식 정확성 27케이스 단정 |
 | **2차 — 라이브 드릴** | `alert-firing-*.sh` (Toxiproxy drill / docker stop 주입) | 전체 스택 기동 | 운영 환경 유사 발화 폴링 |
 
 ### 라이브 한계 명시
@@ -23,10 +23,10 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 
 - **consumer lag 비대칭 불가**: latency toxic 주입 시 consumer 경로만이 아닌 producer 경로(유입)도 함께 지연 → lag 피크 ~150 ≪ 임계(1000 messages). 결정적 임계 초과 불가.
 - **txn abort 미발화**: 주입 지연 2000ms < `transaction.timeout.ms` 이므로 EOS commit 이 느려질 뿐 abort 미발생.
-- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (26케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
+- **코디네이터 / EOS 라이브 결정적 발화 불가** → **promtool test rules (27케이스) + 통합테스트(`PaymentEosIntegrationTest` / `PgSelfLoopRetryExhaustionIntegrationTest`) 가 발화 보증의 1차 수단**. 라이브 드릴은 보조 검증.
 - 규칙은 Prometheus 라이브 로드 + 운영 유효 (관측 스택 정상 기동 시 `/api/v1/rules` 에서 4그룹 확인 가능).
 
-## 검증 항목 (26 케이스)
+## 검증 항목 (27 케이스)
 
 ### 코디네이터 정체 — 6 케이스 (`coordinator_test.yml`)
 
@@ -47,7 +47,7 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 | (b) | DONE-only skip (정상 재발행 경로) | 알람 미발화 |
 | (c) | 저트래픽 (분모 rate=0, floor 미충족) | 알람 미발화 — 0-division 흡수 회귀 고정 |
 
-### DLQ 적체 — 8 케이스 (`dlq_test.yml`)
+### DLQ 적체 — 9 케이스 (`dlq_test.yml`)
 
 | 케이스 | 입력 | 기대 |
 |---|---|---|
@@ -59,6 +59,7 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 | (f) | `commands.confirm.dlq` 컨슈머 lag 잔존 | `DlqCommandsConsumerLag` FIRING — offset-increase 0 사각 보완 |
 | (g) | `pg_final_confirmation_outcome_total{outcome="indeterminate"}` 만↑ (payment_eos 평탄) | `DlqAppCounterRising` FIRING — pg 분기 OR 독립 회귀 고정 |
 | (h) | 자동 승인만 발생 (`outcome="approved"` 단독↑) | `DlqAppCounterRising` FIRING — 소진 건이 격리에 남지 않아도 신호가 살아있음을 고정 |
+| (i) | `payment.events.stock-committed.dlq`(product-service 재고 확정 격리) offset `increase>0` | `ProductStockQuarantineBacklog` FIRING(critical) + `DlqTopicOffsetRising`(warning) 동시 발화 — 이미 과금된 결제의 재고 부족 전용 신호, 대응은 아래 "격리 적체 알람 대응 분류" 참고 |
 
 ### 가용성 — 9 케이스 (`availability_test.yml`)
 
@@ -74,6 +75,30 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 | (e2) | `dependency_health_last_poll_timestamp_seconds` 시리즈 부재 | `DependencyHealthStale` FIRING — absent() 백스톱 동형 |
 | (f) | 정상 baseline 전체 | 3알람 모두 미발화 |
 
+## 격리 적체 알람 대응 분류
+
+`ProductStockQuarantineBacklog` 가 발화하면 `payment.events.stock-committed.dlq` 에 메시지가 도달했다는 뜻이다. 그 메시지는 **이미 벤더 승인이 나 고객이 과금된 결제**의 재고 확정이 음수 가드(`StockCommitUseCase.commitToRdb`)에 막혀 격리된 것이다. 자동 복구 대상이 아니다 — 사람이 환불 또는 재입고를 판단해야 한다.
+
+### 두 원인을 가른다
+
+같은 알람이 서로 다른 두 원인으로 발화할 수 있다. 관리자가 상품 서비스 재고를 수동으로 조정하면 payment 쪽 선차감 게이트와 상품 DB 가 갈라지는 것은 이 프로젝트가 이미 받아들인 정상 경로다(`docs/context/CONCERNS.md` C-10 인접, 상품 DB 입고·관리자 변경 경로). 그 발산이 초과 판매로 이어지면 이 알람도 똑같이 발화한다 — 구분하지 않으면 매번 "또 입고했나 보다"로 넘기다 진짜 게이트 결함을 놓친다.
+
+| 구분 | 관리자 재고 조정 직후 발화 (정상 발산) | 게이트 자체 결함 (진짜 사고) |
+|---|---|---|
+| 시점 | 그 상품의 재고를 수동으로 늘리거나 줄인 직후 | 재고 조정 이력이 없는데 발화 |
+| 범위 | 조정한 그 상품(들)에 한정 | 조정 이력 없는 상품에서도, 또는 여러 상품·여러 주문에 걸쳐 동시다발 |
+| 재현성 | 게이트를 재동기화(`POST /admin/stock/resync/{productId}`)하면 더는 발화하지 않음 | 재동기화 후에도 같은 상품에서 반복 발화 |
+| 조치 | 정상 경로로 종결 — 조정 담당자와 시각·수량을 대조한 뒤 그 결제 건은 환불 또는 재입고 반영으로 닫는다 | 즉시 에스컬레이션 — 재고 선차감 게이트(`PaymentTransactionCoordinator`/`StockCacheRedisAdapter`) 로직 결함을 의심한다 |
+
+상품 서비스에는 아직 재고 조정 감사 로그가 없다 — 있다면 상품 확정 커밋도 같은 방식으로 `stock.updated_at` 을 갱신해 그 갱신만으로는 조정과 정상 판매를 구분하지 못한다. 그래서 판정은 코드가 아니라 절차로 한다.
+
+### 확인 순서
+
+1. 격리 메시지 키(`orderId:productId` 조합)에서 productId 를 뽑는다 — Task 13 신설 `StockCommitQuarantineRecoverer` 가 이 키로 같은 사고를 하나로 묶어 두므로, 재전송으로 여러 건이 쌓여도 조합 단위로만 조치하면 된다.
+2. 그 상품에 대해 알람 발화 시각 전후로 재고 조정(입고/수동 정정)이 있었는지 담당자 또는 운영 변경 이력으로 대조한다.
+3. **조정이 있었다면** — 그 결제 건은 환불 또는 재입고 반영으로 개별 종결한다. 그 상품에 대해 트래픽이 조용한 시점에 `/admin/stock/resync/{productId}` 로 게이트를 상품 DB 값에 맞춘다(`StockAdminController` Javadoc — 진행 중 선차감을 덮어쓰는 도구라 바쁜 시점 호출은 피한다).
+4. **조정이 없었다면** — 재고 선차감 게이트 결함을 의심해 에스컬레이션한다. 조정 이력 없는 여러 상품·여러 주문에 동시에 번지면 결함 쪽 확률이 크다.
+
 ## 사용법 — 1차 규칙 유닛 검증
 
 ```bash
@@ -85,7 +110,7 @@ bash scripts/smoke-all.sh
 ```
 
 종료 코드:
-- 0 — 25 케이스 전체 PASS
+- 0 — 27 케이스 전체 PASS
 - 1 — 실패 또는 Docker 미기동
 
 ## 사용법 — 2차 라이브 드릴 (수동)

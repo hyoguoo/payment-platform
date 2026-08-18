@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -165,11 +165,21 @@ process(result);  // result 가 null 일 수 있음
 **처방** (이번 stock 모델 정리):
 - payment 가 Redis 자기 책임으로 관리: confirm 진입 시 DECR, FAILED/QUARANTINED 회신 시 INCR 보상
 - product DB 차감은 APPROVED 시만 — 복원(restore) 메시지 자체가 폐기됨 (애초에 차감 안 됐으므로 복원 불필요)
-- 부팅 직후 1회 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 동일 수치 시드. 이후 동기화 메커니즘은 의도적 부재
+- 부팅 직후 1회 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 동일 수치 시드
 - AMOUNT_MISMATCH 격리 시에도 Redis INCR 보상 — 결제 미성립이라 일관
 
+**게이트가 상품 단위로 쪼개졌다** (STOCK-GATE-PER-PRODUCT):
+- 스크립트 하나가 주문의 모든 상품을 묶어 처리하던 구조를 상품 단위로 내렸다. 키는 상품 기준 해시태그(`stock:{productId}` / `decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId`)라 한 상품에 딸린 키가 같은 노드에 모인다 — 노드를 나눠도 스크립트가 성립한다
+- 스크립트가 공짜로 주던 "하나라도 부족하면 아무것도 안 줄어든다" 는 진입 경로가 진다. 부족을 만나면 **이번 요청이 직접 차감에 성공한 상품만** 되돌리고 거절한다(이미 처리됨을 받은 상품은 다른 요청 몫일 수 있어 제외)
+- 거절 경로는 선차감 표시와 되돌리기 표시를 **함께** 지운다. 선차감 표시만 남기면 재시도가 이미 처리됨으로 통과하고, 되돌리기 표시만 남기면 재시도가 만든 새 차감을 다음 사이클의 되돌리기가 못 돌린다
+- 쪼개면서 잃은 "동시 중복 요청이 하나로 수렴" 을 주문 단위 선점(`stock_order_lock_*`, 토큰 기반 compare-and-delete + 명시적 해제 + 수명 backup)으로 되살렸다. 선점 실패는 결제 상태를 건드리지 않는 별도 분기다
+- **되돌리다 실패한 차감은 선차감 기록(`stock_hold_record`)과 주기 작업이 회수한다.** 기록은 상품마다 한 행이고 상태는 잡음/되돌림/확정. 기록을 차감보다 **먼저** 적어 차감 직후 죽어도 회수 대상으로 남는다. 회수 대상은 결제가 종결이고 잡음으로 남은 행이며, 판정은 원본 DB 를 읽는다
+- 승인 반영 트랜잭션에서 기록을 확정으로 찍는다 — 이것이 없으면 정상 판매된 기록이 잡음으로 남아 회수가 **팔린 재고를 되돌린다**
+
+**초과 판매 방어선이 둘이 됐다**: 게이트가 뚫려도 `StockCommitUseCase.commitToRdb` 의 음수 가드가 잔고 차감을 거부한다. 그 예외는 재시도 없이 상품 서비스 격리 토픽(`payment.events.stock-committed.dlq`)으로 가고 적체 알람이 잡는다. 이미 벤더 승인이 난 결제이므로 자동 복구 대상이 아니라 사람이 환불·입고를 판단한다. 가드의 동시성 안전은 재고 확정 통지가 상품번호를 메시지 키로 써 같은 상품 커밋이 직렬화되는 데 기댄다 — **파티션 키를 바꾸면 lost update 가 되살아난다**
+
 **알려진 한계**:
-- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 추후 시점·정책 별도 정리 필요 (TODOS)
+- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 회수 작업은 payment 자신이 만든 미회수 선차감만 되돌리므로 이 발산은 해소하지 못한다 — 재동기화 정책은 여전히 별건 (TODOS)
 - 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
 
 ## 17. Redis crash + AOF fsync race window
@@ -193,6 +203,7 @@ process(result);  // result 가 null 일 수 있음
 - 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음
 - 본 cascade 를 차단하는 코드는 STOCK-COMPENSATION-RECOVERY 범위 밖, 알려진 한계로 인정
 - STOCK-COMPENSATION-OTHER-PATHS 결정: 확정 진입 실패 시 토큰을 DEL 하지 않고 차감 유지(보상 폐기) — token DEL 이 동시 confirm 멱등을 깨므로 기각. redis<RDB 누수는 재고 reconciler(TC-3) 후속 위임
+- (STOCK-GATE-PER-PRODUCT) 토큰이 상품별로 나뉘면서 이 cascade 의 판정 단위도 상품 단위가 됐다. 거절 경로는 두 토큰을 함께 지워 사이클을 완전히 무효화하므로 이 조합 자체가 만들어지지 않고, 되돌리기 실패로 남은 차감은 선차감 기록이 회수 대상으로 잡는다. 다만 **종결된 결제에 늦은 확정 요청이 오면 상태 가드에 막히기 전에 재고 차감이 먼저 일어나는 것**(CONCERNS L-16)은 그대로다 — 그 차감은 닫혔던 기록을 잡음으로 재오픈시켜 회수가 되돌린다(라이브 검증에서 실제 관측)
 
 ## 19. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
 
@@ -285,6 +296,26 @@ pg 수신 기록 테이블의 `INSERT IGNORE` 선례를 그대로 베끼면 이 
 **처방**:
 - 컨텍스트는 짐작하지 말고 **그것을 아는 쪽이 선언**한다. 애노테이션 고정값으로 충분하면 그것을, 한 메서드가 여러 흐름에서 불리면 호출자가 파라미터로 넘긴다(`@Trigger`).
 - 전이 지점 전수를 스캔해 라벨이 비는 경로가 없음을 구조적으로 고정하는 테스트를 둔다 — 새 전이 지점을 추가하며 값을 빠뜨리면 잡힌다.
+
+## 28. 조건부 UPDATE 를 INSERT 보다 먼저 두면 갭 락 데드락
+
+**증상**: 같은 키로 동시 삽입이 몰리는 경로에서 `CannotAcquireLockException`. 단건으로는 재현되지 않고 동시 반복 테스트에서만 터진다.
+
+**원인**: "행이 있으면 갱신, 없으면 삽입" 을 조건부 UPDATE → INSERT 순으로 짤 때다. 행이 없을 때 0건으로 끝나는 UPDATE 가 REPEATABLE READ 팬텀 방지용 **갭 락**을 잡고, 뒤이은 INSERT 가 그 갭에 삽입 의도 락을 요청한다. 동시 호출끼리 서로의 갭을 기다려 데드락이 된다.
+
+**처방**:
+- **INSERT 를 먼저 시도하고, 유일 제약에 걸리면 그때 갱신한다.** 삽입이 앞서면 갭 락을 잡을 일이 없다
+- 실제 발견: `StockHoldRecordRepositoryImpl.openHold` 를 재오픈 우선으로 짰다가 동시 삽입 반복 테스트에서 재현. 삽입 우선으로 뒤집어 해소하고 8회 반복으로 확인 (STOCK-GATE-PER-PRODUCT)
+
+## 29. 벌크 UPDATE 의 `clearAutomatically` 만 켜면 앞선 변경이 조용히 사라진다
+
+**증상**: 같은 트랜잭션에서 엔티티를 바꾼 뒤 벌크 UPDATE 를 실행하면, 앞서 바꾼 값이 DB 에 반영되지 않는다. 예외도 로그도 없다.
+
+**원인**: JPA 벌크 연산은 영속성 컨텍스트를 우회해 SQL 을 직접 던진다. `clearAutomatically = true` 만 있고 `flushAutomatically` 가 기본값(false)이면, **아직 flush 되지 않은 변경이 남은 채로 컨텍스트가 비워져** 그 변경이 통째로 유실된다.
+
+**처방**:
+- 같은 트랜잭션에서 엔티티 변경과 벌크 연산이 함께 일어나면 `flushAutomatically = true` 를 반드시 함께 켠다
+- 실제 발견: 선차감 기록을 확정으로 바꾸는 벌크 UPDATE 를 승인 반영 트랜잭션에 넣자, 직전 `markPaymentAsDone` 의 상태 전이가 사라져 기존 EOS 통합 테스트 4건이 "완료여야 하는데 진행 중" 으로 깨졌다 (STOCK-GATE-PER-PRODUCT)
 
 ## 관련 자료
 

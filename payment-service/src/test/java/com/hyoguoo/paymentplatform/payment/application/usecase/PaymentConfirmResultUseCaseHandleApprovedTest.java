@@ -12,7 +12,9 @@ import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.util.StockEventUuidDeriver;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -61,6 +63,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
     private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
+    private StockHoldRecordRepository stockHoldRecordRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
@@ -72,6 +75,7 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
+        stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
@@ -83,11 +87,13 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
+                stockHoldRecordRepository,
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
                 new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry()),
-                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry()),
+                new StockHoldReverter(new SimpleMeterRegistry())
         );
     }
 
@@ -216,6 +222,24 @@ class PaymentConfirmResultUseCaseHandleApprovedTest {
         List<String> payloads = payloadCaptor.getAllValues();
         assertThat(payloads).anyMatch(p -> p.contains(expectedKey10));
         assertThat(payloads).anyMatch(p -> p.contains(expectedKey20));
+    }
+
+    @Test
+    @DisplayName("multi-product 시에도 commitAllByOrderId 는 주문 단위로 한 번만 호출된다 — 그 주문의 모든 상품 기록이 확정된다")
+    void multiProduct_시에도_commitAllByOrderId_는_한_번만_호출된다() {
+        PaymentOrder order1 = buildPaymentOrder(10L, 2, BigDecimal.valueOf(500));
+        PaymentOrder order2 = buildPaymentOrder(20L, 3, BigDecimal.valueOf(500));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order1, order2));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsDone(any(PaymentEvent.class), any(Instant.class)))
+                .willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        then(stockHoldRecordRepository).should(times(1)).commitAllByOrderId(eq(ORDER_ID));
     }
 
     @Test

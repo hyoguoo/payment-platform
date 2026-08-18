@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hyoguoo.paymentplatform.product.domain.Stock;
+import com.hyoguoo.paymentplatform.product.exception.ProductStockException;
+import com.hyoguoo.paymentplatform.product.exception.common.ProductErrorCode;
 import com.hyoguoo.paymentplatform.product.mock.FakeEventDedupeStore;
 import com.hyoguoo.paymentplatform.product.mock.FakeStockRepository;
 import java.time.Instant;
@@ -150,5 +152,57 @@ class StockCommitUseCaseTest {
         assertThat(fakeEventDedupeStore.contains(eventUUID)).isTrue();
         Stock current = fakeStockRepository.findByProductId(productId).orElseThrow();
         assertThat(current.getQuantity()).isEqualTo(initialStock - qty);
+    }
+
+    // ── 재고 확정 음수 가드 ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("잔량이 부족하면 ProductStockException 을 던지고 재고를 저장하지 않는다")
+    void commit_WhenInsufficientStock_ShouldThrowAndNotSave() {
+        long productId = 6L;
+        String orderId = "order-600";
+        String eventUUID = "event-uuid-insufficient";
+        int initialStock = 3;
+        int qty = 5;
+
+        fakeStockRepository.save(Stock.allArgsBuilder()
+                .productId(productId)
+                .quantity(initialStock)
+                .allArgsBuild());
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
+
+        assertThatThrownBy(() ->
+                stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt))
+                .isInstanceOf(ProductStockException.class)
+                .satisfies(ex -> assertThat(((ProductStockException) ex).getErrorCode())
+                        .isEqualTo(ProductErrorCode.NOT_ENOUGH_STOCK));
+
+        // 저장이 일어나지 않아 재고 값이 그대로다 — 초과분 흔적을 남기지 않는다
+        Stock current = fakeStockRepository.findByProductId(productId).orElseThrow();
+        assertThat(current.getQuantity()).isEqualTo(initialStock);
+    }
+
+    @Test
+    @DisplayName("재고 부족 예외는 재고 row 미존재(IllegalStateException)와 다른 전용 타입이다 — 재시도 제외 목록에 이 타입만 등재할 수 있다")
+    void commit_WhenInsufficientStock_ExceptionTypeIsDistinctFromNotFound() {
+        long productId = 7L;
+        String orderId = "order-700";
+        String eventUUID = "event-uuid-type-check";
+        int initialStock = 1;
+        int qty = 2;
+
+        fakeStockRepository.save(Stock.allArgsBuilder()
+                .productId(productId)
+                .quantity(initialStock)
+                .allArgsBuild());
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(3600);
+
+        assertThatThrownBy(() ->
+                stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt))
+                .isNotInstanceOf(IllegalStateException.class);
     }
 }

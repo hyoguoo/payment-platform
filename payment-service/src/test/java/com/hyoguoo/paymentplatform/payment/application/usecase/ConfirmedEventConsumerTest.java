@@ -10,13 +10,17 @@ import static org.mockito.Mockito.times;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
-import com.hyoguoo.paymentplatform.payment.application.port.out.StockCompensationAtomicResult;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventDedupeStore;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -25,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,6 +52,7 @@ class ConfirmedEventConsumerTest {
     private FakePaymentEventDedupeStore dedupeStore;
     private QuarantineCompensationHandler quarantineCompensationHandler;
     private StockCachePort stockCachePort;
+    private StockHoldRecordRepository stockHoldRecordRepository;
     private PaymentCommandUseCase paymentCommandUseCase;
     @SuppressWarnings("unchecked")
     private KafkaTemplate<String, String> stockCommittedKafkaTemplate;
@@ -58,6 +64,7 @@ class ConfirmedEventConsumerTest {
         dedupeStore = new FakePaymentEventDedupeStore();
         quarantineCompensationHandler = Mockito.mock(QuarantineCompensationHandler.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
+        stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
         stockCommittedKafkaTemplate = Mockito.mock(KafkaTemplate.class);
 
@@ -69,11 +76,13 @@ class ConfirmedEventConsumerTest {
                 quarantineCompensationHandler,
                 fixedClock,
                 stockCachePort,
+                stockHoldRecordRepository,
                 dedupeStore,
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
                 new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry()),
-                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry()),
+                new StockHoldReverter(new SimpleMeterRegistry())
         );
     }
 
@@ -111,18 +120,20 @@ class ConfirmedEventConsumerTest {
     }
 
     // -----------------------------------------------------------------------
-    // FAILED → compensateAtomic 먼저 + markPaymentAsFail 나중
+    // FAILED → 상품별 되돌리기 먼저 + markPaymentAsFail 나중
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("consume — FAILED 수신 시 compensateAtomic + markPaymentAsFail 호출")
+    @DisplayName("consume — FAILED 수신 시 상품별 되돌리기 + markPaymentAsFail 호출")
     void consume_WhenFailed_ShouldCompensateAndTransitionToFailed() {
         PaymentOrder order = buildPaymentOrder(2L, 3);
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-consumer-test")));
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(
                 any(PaymentEvent.class),
                 any(String.class),
@@ -136,7 +147,10 @@ class ConfirmedEventConsumerTest {
 
         then(stockCachePort)
                 .should(times(1))
-                .compensateAtomic(eq(ORDER_ID), any());
+                .compensateIfDecremented(eq(ORDER_ID), eq(order));
+        then(stockHoldRecordRepository)
+                .should(times(1))
+                .closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-consumer-test"));
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsFail(
@@ -156,14 +170,22 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockCachePort.compensateAtomic(eq(ORDER_ID), any()))
-                .willReturn(StockCompensationAtomicResult.OK);
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+                .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-consumer-test")));
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+                .willReturn(StockRecoveryCompensationResult.OK);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
                 ORDER_ID, "QUARANTINED", "RETRY_EXHAUSTED", null, null, EVENT_UUID);
 
         sut.handle(message);
 
+        then(stockCachePort)
+                .should(times(1))
+                .compensateIfDecremented(eq(ORDER_ID), eq(order));
+        then(stockHoldRecordRepository)
+                .should(times(1))
+                .closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-consumer-test"));
         then(quarantineCompensationHandler)
                 .should(times(1))
                 .handle(eq(ORDER_ID), eq("RETRY_EXHAUSTED"));

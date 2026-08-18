@@ -149,7 +149,7 @@ class StockRetentionIntegrationTest {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
 
-        redisTemplate.opsForValue().set("stock:" + PRODUCT_ID, String.valueOf(INITIAL_STOCK));
+        redisTemplate.opsForValue().set("stock:{" + PRODUCT_ID + "}", String.valueOf(INITIAL_STOCK));
 
         jpaPaymentOrderRepository.deleteAllInBatch();
         jpaPaymentEventRepository.deleteAllInBatch();
@@ -201,10 +201,10 @@ class StockRetentionIntegrationTest {
     }
 
     @Test
-    @DisplayName("동시 confirm 2건: 토큰 SETNX 로 차감 1회만 보장되고, "
-            + "충돌로 실패한 건은 재고 무접촉(increment 보상 호출 0)")
+    @DisplayName("동시 confirm 2건: 주문 단위 선점으로 차감 1회만 보장되고, "
+            + "선점에 진 건은 재고 무접촉(예외 없이 물러남)")
     void 동시_confirm_2건_차감_1회_보장_충돌건_재고_무접촉() throws Exception {
-        // given — 동시에 confirm 되어도 outbox UNIQUE 제약으로 둘 중 하나만 executeConfirmTx 에 성공한다.
+        // given — 동시에 confirm 되어도 주문 단위 선점에서 둘 중 하나만 상품 반복까지 진행한다.
         String orderId = "order-sri-2-" + UUID.randomUUID();
         String paymentKey = "pay-key-" + orderId;
         saveReadyPayment(orderId);
@@ -242,13 +242,11 @@ class StockRetentionIntegrationTest {
         executor.shutdown();
         executor.awaitTermination(10, TimeUnit.SECONDS);
 
-        // then — 정확히 한 건만 성공(outbox UNIQUE 가 나머지를 막는다), 다른 한 건은 실패.
-        boolean exactlyOneFailed = (firstFailure.get() == null) != (secondFailure.get() == null);
-        assertThat(exactlyOneFailed)
-                .as("동시 confirm 2건 중 정확히 한 건만 성공해야 한다(outbox UNIQUE 가 나머지 차단)")
-                .isTrue();
+        // then — 주문 단위 선점이 동시 요청을 하나로 수렴시키므로 둘 다 예외 없이 끝난다.
+        assertThat(firstFailure.get()).as("첫 번째 요청은 예외 없이 끝나야 한다").isNull();
+        assertThat(secondFailure.get()).as("두 번째 요청은 예외 없이 끝나야 한다").isNull();
 
-        // then — SETNX dedup token 덕에 redis 재고는 정확히 한 번(-N)만 차감된다.
+        // then — 선점 덕에 redis 재고는 정확히 한 번(-N)만 차감된다.
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(getStock()).isEqualTo(INITIAL_STOCK - ORDER_QUANTITY));
 
@@ -289,7 +287,7 @@ class StockRetentionIntegrationTest {
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
     private int getStock() {
-        String value = redisTemplate.opsForValue().get("stock:" + PRODUCT_ID);
+        String value = redisTemplate.opsForValue().get("stock:{" + PRODUCT_ID + "}");
         assertThat(value).isNotNull();
         return Integer.parseInt(value);
     }

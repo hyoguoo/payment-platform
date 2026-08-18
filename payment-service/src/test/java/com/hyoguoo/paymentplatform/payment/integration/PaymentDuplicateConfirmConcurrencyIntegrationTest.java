@@ -45,17 +45,16 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
- * 같은 주문에 대한 confirm 두 건을 실제 시점에 맞춰 동시에 태워, outbox UNIQUE 경합에서
- * 진 쪽이 {@link PaymentOutboxDuplicateException}으로 분류되고 경보 없이 롤백되는지 확인한다.
+ * 같은 주문에 대한 confirm 두 건을 실제 시점에 맞춰 동시에 태워, 주문 단위 선점에서 진 쪽이
+ * 결제 상태를 건드리지 않고 예외 없이 물러나며 이긴 쪽만 정상 확정되는지 확인한다.
  *
- * <p>{@code executeConfirmTx}는 결제 상태 전이(READY→IN_PROGRESS)를 먼저 커밋 스냅샷에 반영한
- * 뒤 outbox INSERT IGNORE를 시도한다. 두 트랜잭션이 실제로 겹쳐야만(스케줄링이 완전히 갈려
- * 뒤쪽 트랜잭션이 앞쪽 커밋 이후에야 시작하면 잠금 없는 조회로도 우연히 같은 결과가 나온다)
- * 잠금 읽기 확인 조회가 실제로 필요한 경우를 재현한다 — {@code CountDownLatch}로 두 스레드를
- * 같은 시점에 풀고, 스케줄링 편차를 상쇄하기 위해 반복한다.
+ * <p>확정 진입은 상품 반복에 앞서 {@code stock:order-lock:orderId} 를 SETNX 로 선점한다 — 못
+ * 잡으면 재고 판정 자체를 보지 않고 즉시 물러난다. 두 스레드를 같은 시점에 풀어야 이 경합이
+ * 실제로 발생한다({@code CountDownLatch}), 스케줄링 편차를 상쇄하기 위해 반복한다.
  *
- * <p>재고 차감(Redis)은 {@code synchronized} 원자 처리로 이미 정확히-한-번을 보장하는 경로라
- * 이 테스트의 관심사가 아니다 — 여기서 보는 것은 outbox 행 삽입의 MySQL 트랜잭션 경합이다.
+ * <p>선점이 동시 중복 요청을 하나로 수렴시키므로, 예전처럼 outbox UNIQUE 제약에서 진 쪽이 갈리는
+ * 경로는 이 시나리오에서 더 이상 도달하지 않는다 — 진 쪽은 재고 캐시도, 결제 상태도 건드리지
+ * 않고 {@link PaymentOutboxDuplicateException} 없이 조용히 물러난다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -148,7 +147,7 @@ class PaymentDuplicateConfirmConcurrencyIntegrationTest {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
 
-        redisTemplate.opsForValue().set("stock:" + PRODUCT_ID, String.valueOf(INITIAL_STOCK));
+        redisTemplate.opsForValue().set("stock:{" + PRODUCT_ID + "}", String.valueOf(INITIAL_STOCK));
     }
 
     @AfterEach
@@ -169,9 +168,8 @@ class PaymentDuplicateConfirmConcurrencyIntegrationTest {
     }
 
     @RepeatedTest(50)
-    @DisplayName("같은 주문 동시 승인 2건 — 진 쪽은 중복 재진입으로 분류되고 경보 없이 롤백되며, "
-            + "이긴 쪽만 정상 확정된다")
-    void 같은_주문_동시_승인에서_진_쪽은_중복_재진입으로_분류되고_경보_없이_롤백된다() throws Exception {
+    @DisplayName("같은 주문 동시 승인 2건 — 진 쪽은 선점 실패로 예외 없이 물러나고, 이긴 쪽만 정상 확정된다")
+    void 같은_주문_동시_승인에서_진_쪽은_선점_실패로_예외_없이_물러난다() throws Exception {
         // given — 반복마다 새 주문 번호를 써야 앞선 반복이 남긴 outbox 행 때문에 경합이
         // 무력화되지 않는다.
         String orderId = "order-dup-confirm-" + UUID.randomUUID();
@@ -187,7 +185,7 @@ class PaymentDuplicateConfirmConcurrencyIntegrationTest {
         AtomicReference<Exception> secondFailure = new AtomicReference<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        // when — 두 스레드를 같은 시점에 풀어 outbox 삽입 경합을 만든다.
+        // when — 두 스레드를 같은 시점에 풀어 주문 단위 선점 경합을 만든다.
         executor.submit(() -> {
             ready.countDown();
             awaitQuietly(start);
@@ -212,26 +210,20 @@ class PaymentDuplicateConfirmConcurrencyIntegrationTest {
         executor.shutdown();
         executor.awaitTermination(10, TimeUnit.SECONDS);
 
-        Exception loserException = firstFailure.get() != null ? firstFailure.get() : secondFailure.get();
-
-        // then — 정확히 한 건만 실패(진 쪽)하고 나머지 한 건은 성공(이긴 쪽)한다.
-        boolean exactlyOneFailed = (firstFailure.get() == null) != (secondFailure.get() == null);
-        assertThat(exactlyOneFailed)
-                .as("동시 승인 2건 중 정확히 한 건만 실패해야 한다(outbox UNIQUE 가 나머지를 막는다)")
-                .isTrue();
-
-        // then — 진 쪽은 중복 재진입 예외로 분류된다.
-        assertThat(loserException).isInstanceOf(PaymentOutboxDuplicateException.class);
+        // then — 선점이 동시 요청을 하나로 수렴시키므로 둘 다 예외 없이 끝난다. 진 쪽은
+        // 재고 판정 자체를 보지 못하고 물러나 outbox UNIQUE 경합까지 갈 일이 없다.
+        assertThat(firstFailure.get()).as("첫 번째 요청은 예외 없이 끝나야 한다").isNull();
+        assertThat(secondFailure.get()).as("두 번째 요청은 예외 없이 끝나야 한다").isNull();
 
         // then — 진 쪽에는 재고 미회수 경보가 남지 않는다(카운터 증가 0).
         assertThat(unrecoveredCounterCount()).isEqualTo(unrecoveredBefore);
 
-        // then — 이긴 쪽은 정상 확정되어 outbox 행이 정확히 1개, PENDING 으로 생성된다.
+        // then — 이긴 쪽만 정상 확정되어 outbox 행이 정확히 1개, PENDING 으로 생성된다.
         PaymentOutboxEntity outboxEntity = jpaPaymentOutboxRepository.findByOrderId(orderId).orElseThrow();
         assertThat(outboxEntity.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
 
-        // then — 진 쪽의 상태 전이는 롤백된다. 최종 상태는 이긴 쪽이 커밋한 IN_PROGRESS 하나뿐이고,
-        // 결제가 READY 도 아니고 다른 잔여 상태로도 반쯤 남지 않는다.
+        // then — 최종 상태는 이긴 쪽이 커밋한 IN_PROGRESS 하나뿐이고, 진 쪽이 결제 상태를
+        // 건드리지 않았으므로 READY 로도, 다른 잔여 상태로도 반쯤 남지 않는다.
         PaymentEventEntity eventEntity = jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
         assertThat(eventEntity.getStatus()).isEqualTo(PaymentEventStatus.IN_PROGRESS);
     }

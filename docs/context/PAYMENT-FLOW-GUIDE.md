@@ -86,6 +86,9 @@ sequenceDiagram
 7. 브라우저가 **결제 확정 요청** — `POST /confirm` (userId, orderId, amount, paymentKey) → `OutboxAsyncConfirmService.confirm`
 8. **위변조·상태 가드** — 금액·소유자·상태 검증, 위반 시 `4xx` (`PaymentEvent.validateConfirmRequest`)
 9. **재고 선점(선차감)** — Redis 원자 차감, **TX 밖** (`PaymentTransactionCoordinator.decrementStock` → Lua `stock_decrement_atomic.lua`)
+    - *상품마다 따로 차감한다. 먼저 주문 단위로 자리를 잡아 같은 주문의 중복 요청이 겹치지 않게 하고, 상품별로 "무엇을 얼마나 잡았는지" 를 결제 DB 에 적은 뒤 캐시를 줄인다. 적는 것이 먼저인 이유는, 줄인 직후 서버가 죽어도 그 기록이 남아야 나중에 되돌릴 수 있기 때문이다*
+    - *뒤쪽 상품에서 재고가 모자라면 앞서 줄인 것들을 그 자리에서 되돌리고 거절한다. 이때 "이미 줄였음" 표시와 "이미 되돌렸음" 표시를 함께 지운다 — 하나라도 남으면 손님이 다시 시도할 때 실제로 줄지 않은 채 통과하거나, 되돌려야 할 때 되돌려지지 않는다*
+    - *되돌리다 실패해 캐시에 남은 차감은 주기 작업이 찾아 정리한다. 결제가 끝났는데 기록이 열린 채로 남아 있으면 그게 대상이다*
    - **재고 부족(REJECTED)** → 결제 실패 확정(`FAILED`) + `409` (`PaymentFailureUseCase.handleStockFailure`)
    - **재고 캐시 장애(CACHE_DOWN)** → 격리(`QUARANTINED`) + `409` (`markStockCacheDownQuarantine`)
    - **선점 성공(SUCCESS)** → 다음

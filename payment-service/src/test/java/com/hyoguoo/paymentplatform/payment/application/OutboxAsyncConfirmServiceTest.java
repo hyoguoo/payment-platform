@@ -184,6 +184,37 @@ class OutboxAsyncConfirmServiceTest {
     }
 
     @Nested
+    @DisplayName("confirm() — 선점 실패 ALREADY_PROCESSING 경로")
+    class ConfirmAlreadyProcessingTest {
+
+        @Test
+        @DisplayName("decrementStock=ALREADY_PROCESSING → 예외 없이 물러나고 결제 상태를 건드리지 않는다")
+        void alreadyProcessingWithdrawsWithoutTouchingPaymentState() throws PaymentOrderedProductStockException {
+            // given
+            String orderId = "order-123";
+            BigDecimal amount = BigDecimal.valueOf(10000);
+            PaymentConfirmCommand command = buildCommand(1L, orderId, "payment-key", amount);
+            PaymentEvent paymentEvent = createPaymentEventWithAmount(orderId, PaymentEventStatus.READY, amount);
+
+            given(mockPaymentLoadUseCase.getPaymentEventByOrderId(orderId)).willReturn(paymentEvent);
+            given(mockTransactionCoordinator.decrementStock(anyString(), anyList()))
+                    .willReturn(StockDecrementResult.ALREADY_PROCESSING);
+
+            // when — 다른 요청이 진행 중인 결제를 덮어쓰지 않도록, 진 쪽은 상태 변경 계열 호출 없이 물러난다
+            PaymentConfirmAsyncResult result = outboxAsyncConfirmService.confirm(command);
+
+            // then
+            assertThat(result.getOrderId()).isEqualTo(orderId);
+            then(mockTransactionCoordinator).should(never())
+                    .executeConfirmTx(any(), anyString(), anyString());
+            then(mockTransactionCoordinator).should(never())
+                    .markStockCacheDownQuarantine(any());
+            then(mockPaymentFailureUseCase).should(never())
+                    .handleStockFailure(any(), anyString());
+        }
+    }
+
+    @Nested
     @DisplayName("LVAL 로컬 검증 — 검증 실패 시 재고 차감 호출 없음")
     class LvalValidationTest {
 

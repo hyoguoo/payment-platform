@@ -70,8 +70,8 @@ bash scripts/seed-stock.sh
 curl -s -o /dev/null -w "user=%{http_code} " http://localhost:8090/api/v1/users/1
 curl -s -o /dev/null -w "product=%{http_code} " http://localhost:8090/api/v1/products/1
 curl -s -o /dev/null -w "contention-product=%{http_code}\n" http://localhost:8090/api/v1/products/2
-docker exec payment-redis-stock redis-cli GET "stock:1"
-docker exec payment-redis-stock redis-cli GET "stock:2"
+docker exec payment-redis-stock redis-cli GET "stock:{1}"
+docker exec payment-redis-stock redis-cli GET "stock:{2}"
 ```
 
 앱이 막 떠서 503 이 나오면 잠시 기다린다. **404 는 정상** — 시드 전이라는 뜻이다.
@@ -109,7 +109,7 @@ docker exec payment-mysql-pg mysql -uroot -ppayment123 -N \
   -e "SELECT order_id,status,attempt FROM pg.pg_inbox ORDER BY id DESC LIMIT 5;"
 
 # 재고 (캐시가 실시간, DB는 확정분)
-docker exec payment-redis-stock redis-cli GET "stock:1"
+docker exec payment-redis-stock redis-cli GET "stock:{1}"
 docker exec payment-mysql-product mysql -uroot -ppayment123 -N \
   -e "SELECT quantity FROM product.stock WHERE product_id=1;"
 

@@ -1,6 +1,6 @@
 # Confirm Flow — payment-service 측 비동기 confirm 사이클
 
-> 최종 갱신: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — outbox FAILED 를 발행 포기 도달 상태로 정정(한도 소진 종결은 미도입), 발행 실패 재시도 간격의 조건부 갱신 서술과 발행 직전 결제 상태 가드의 현재 실효 한계 추가, 재시도 정책 비교표의 한도 초과 행·코드 진입점 행 동기화). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §9 상태 머신에 격리 복구 출구 `QUARANTINED → FAILED`(관리자 안전 종결, `resolveQuarantineToFailed` CAS) 추가 + §11 회복 시나리오에 격리 수동 종결·`events.confirmed.dlq` 수동 재주입 2행 추가 + §15 진입점 인덱스에 `QuarantineResolveUseCase`/`DlqReprocessUseCase`+`DlqReprocessPort`/`KafkaDlqReprocessAdapter`/`PaymentRecoveryAdminService`/`stock_compensation_if_decremented.lua` 등재 + §5 잔여 한계 서술을 "수동 재주입 도입, 자동 재시도 후속"으로 정정). 이전: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
+> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — 확정 진입과 되돌리기를 상품 단위로 정정(주문 단위 선점·상품별 기록과 차감·거절 전용 되돌리기·조건부 복원), 선차감 기록과 회수 주기 작업 반영). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — outbox FAILED 를 발행 포기 도달 상태로 정정(한도 소진 종결은 미도입), 발행 실패 재시도 간격의 조건부 갱신 서술과 발행 직전 결제 상태 가드의 현재 실효 한계 추가, 재시도 정책 비교표의 한도 초과 행·코드 진입점 행 동기화). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §9 상태 머신에 격리 복구 출구 `QUARANTINED → FAILED`(관리자 안전 종결, `resolveQuarantineToFailed` CAS) 추가 + §11 회복 시나리오에 격리 수동 종결·`events.confirmed.dlq` 수동 재주입 2행 추가 + §15 진입점 인덱스에 `QuarantineResolveUseCase`/`DlqReprocessUseCase`+`DlqReprocessPort`/`KafkaDlqReprocessAdapter`/`PaymentRecoveryAdminService`/`stock_compensation_if_decremented.lua` 등재 + §5 잔여 한계 서술을 "수동 재주입 도입, 자동 재시도 후속"으로 정정). 이전: 2026-07-07 (ship 코드 리뷰 반영 — §5·§6 stock-committed 발행 key 를 orderId 에서 실제 코드 기준 productId 로 정정("동일 상품 이벤트 순서 보장" 주석 반영, `PaymentConfirmResultUseCase.java:232-236`) + 상수명 `STOCK_COMMITTED` → `EVENTS_STOCK_COMMITTED` 정정 + §5 D5 멱등 마킹의 `markIfAbsent` 시그니처를 실제 4-인자(`eventUuid, orderId, status, expiresAt`)로 동기화(`PaymentEventDedupeStore.java:25`)). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, §14 VT+MDC 전파 서술이 EOS 전환에서 이미 폐기된 `StockOutboxImmediateEventHandler` 를 `OutboxImmediateEventHandler` 와 나란히 현재형으로 서술하던 것을 정정). 이전: 2026-07-02 (Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, `PaymentOutboxStatus.FAILED` dead-terminal 각주, `parallel-enabled` 기본값 코드/프로파일 층위 병기), 2026-06-23 (`parallel-enabled` 기본값 false 정정 — 코드 대조), 2026-05-29 (EOS-FOLLOWUP-CLEANUP — D7 가드 메서드 분리, TM qualifier 명시, dedupe cleanup 스케줄러 도입)
 > end-to-end 플로우 (Phase 1~5 전체, pg-service 상세): [`PAYMENT-FLOW.md`](PAYMENT-FLOW.md)
 
 본 문서는 **payment-service 측 비동기 confirm 사이클** 을 다룬다.
@@ -60,7 +60,7 @@ flowchart TD
 
 **핵심 포인트:**
 - `validateConfirmRequest` — TX 진입 전 도메인 가드. 위변조 / 상태 불일치 조기 차단.
-- `decrementStock(orderId, paymentOrders)` — TX 외부. `PaymentTransactionCoordinator.decrementStock` 에서 `stockCachePort.decrementAtomic(orderId, paymentOrders)` Lua 1회 호출 (결제 단위 N개 상품 atomic 차감 + dedup token `decrement:done:{orderId}` SETNX P8D). 결과 enum 매핑: `OK` / `ALREADY_DONE` → `SUCCESS`, `INSUFFICIENT` → `REJECTED`, RuntimeException → `CACHE_DOWN`.
+- `decrementStock(orderId, paymentOrders)` — TX 외부. **STOCK-GATE-PER-PRODUCT 이후 상품 단위 반복**이다. 주문 단위 선점(`acquireOrderLock`)을 잡고, 상품마다 선차감 기록을 잡음으로 적은 뒤 `stockCachePort.decrementAtomic(orderId, order)` 를 호출한다(기록이 이미 확정이면 캐시 호출 자체를 건너뛴다). 부족을 만나면 이번 요청이 직접 차감한 상품만 `rejectCompensate` 로 되돌리고 거절한다. 반복이 끝나면 선점을 명시적으로 해제한다(`finally`). 결과 enum 매핑: `OK` / `ALREADY_DONE` → `SUCCESS`, `INSUFFICIENT` → `REJECTED`, 선점 실패 → `ALREADY_PROCESSING`(결제 상태 무변경), RuntimeException → `CACHE_DOWN`(직접 차감분 되돌리기 시도 후).
 - `executeConfirmTx` — `@Transactional`. event 상태 전이 + outbox INSERT + `confirmPublisher.publish` (ApplicationEvent) 를 하나의 TX 에 원자 커밋. publish 가 TX 안에서 일어나야 AFTER_COMMIT 리스너가 TX 동기화 활성 상태에서 등록된다.
 - 확정 TX 실패 시 재고를 보상하지 않는다 (재고와 토큰을 차감 상태로 유지). 미복구를 `StockRetentionMetrics` + `LogFmt.error`(`STOCK_RETENTION_UNRECOVERED`) 로 가시화한 뒤 원본 예외를 전파 — 과매도 0 정책 (STOCK-COMPENSATION-OTHER-PATHS). 토큰을 건드리지 않아 동시 confirm / 재확정이 모두 `ALREADY_DONE` 으로 정합하며, 포기 시 누수(redis < RDB 보수적 갭)는 재고 reconciler 후속(TC-3) 위임.
 - 반환값: `PaymentConfirmAsyncResult` (orderId, amount). `202 Accepted` 즉시 반환.
@@ -137,9 +137,9 @@ flowchart TD
     AMT -->|불일치 또는 amount=null| QU_AM["(redis 보상 미수행 — 격리 정책)<br/>+ QuarantineCompensationHandler.handle<br/>reason=AMOUNT_MISMATCH"]
     AMT -->|일치| DONE_OK["paymentCommandUseCase.markPaymentAsDone<br/>+ for-loop (PaymentOrder × N)<br/>  StockEventUuidDeriver.derive -> stockCommittedKafkaTemplate.send<br/>(EOS producer tx buffer, D8)"]
 
-    SW -->|FAILED| FAIL_OK["stockCachePort.compensateAtomic 먼저<br/>-> paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기)"]
+    SW -->|FAILED| FAIL_OK["StockHoldReverter 상품별 되돌리기 먼저<br/>-> paymentCommandUseCase.markPaymentAsFail 나중<br/>(SCR-6 호출 순서 뒤집기)"]
 
-    SW -->|QUARANTINED| QU_PG["stockCachePort.compensateAtomic<br/>+ QuarantineCompensationHandler.handle"]
+    SW -->|QUARANTINED| QU_PG["StockHoldReverter 상품별 되돌리기<br/>+ QuarantineCompensationHandler.handle"]
 
     DONE_OK --> COMMIT["EOS 트랜잭션 커밋<br/>RDB commit + offset commit + producer commit"]
     FAIL_OK --> COMMIT
@@ -192,8 +192,9 @@ flowchart TD
 - **두 실패 경로 구분 (DLQ-REACHABILITY)**: 위 `DefaultErrorHandler`(+DLQ recoverer) 는 **리스너가 던진 도메인 예외**에만 적용된다. EOS `commitTransaction()` 자체의 실패는 리스너 반환 *이후* 컨테이너 트랜잭션 커밋 단계라 별개 경로인 **`AfterRollbackProcessor`** 로 처리된다. 과거에는 컨테이너 디폴트(interval 0, maxAttempts 9, recoverer 단순 로그)라 DLQ 미진입·단순 스킵이었으나, 이제 `KafkaConsumerConfig` 가 `factory.setAfterRollbackProcessor(...)` 로 **동일 `DeadLetterPublishingRecoverer`**(비트랜잭션 `confirmedDlqKafkaTemplate` 공유 — 실패하는 EOS tx 와 분리) + `FixedBackOff`(신규 설정키 `payment.kafka.after-rollback.backoff.{interval,max-attempts}`, 기본 1000ms×5)를 **명시 연결**한다 → backoff 소진 후 `events.confirmed.dlq` 로 발행 + `PaymentEosCommitFailureMetrics`(`payment_eos_commit_failure_dlq_total`) 계측. 단 종결 가드 재발행도 같은 EOS tx 라 commit 이 지속 실패하면 stock-committed 자체는 여전히 완전 유실(over-sell 잔여 위험) — DLQ 메시지는 코디네이터 회복 후 재주입으로 복구(자동 복구는 후속 TQ-1).
 
 **Lua atomic dedup token (orderId 단위):**
-- `compensateAtomic(orderId, orders)` 가 `lua/stock_compensation_atomic.lua` 1회 호출 — 결제 단위 N개 상품 atomic 보상 + dedup token `compensation:done:{orderId}` SETNX P8D. 동일 orderId 재처리 시 `ALREADY_DONE` 반환 → 보상 멱등.
-- 차감 측은 `decrement:done:{orderId}` SETNX P8D 가 차감 멱등을 보장.
+- 되돌리기는 **상품 단위 조건부**다 — `compensateIfDecremented(orderId, order)` 가 선차감 흔적(`decrement:done:{productId}:orderId`)이 있을 때만 `compensation:done:{productId}:orderId` 를 선점하고 복원한다. 흔적이 없으면 복원하지 않고 기록만 닫는다. 되돌리는 주체가 다섯(확정 실패·격리 진입·관리자 종결·회수 주기 작업·거절 전용)이라 이 표시가 이중 복원을 막는 장치다.
+- 차감 측은 `decrement:done:{productId}:orderId` SETNX P8D 가 상품 단위 차감 멱등을 보장.
+- 되돌리다 실패한 차감은 `stock_hold_record` 에 잡음으로 남아 `StockHoldRecoveryWorker` 가 회수한다 — 대상은 결제가 종결이고 잡음으로 남은 행이다.
 
 ### handleApproved (양방향 amount 방어 + EOS 직접 발행)
 
@@ -227,7 +228,7 @@ else
 ### handleFailed (호출 순서 뒤집기 — SCR-6)
 
 ```
-stockCachePort.compensateAtomic(orderId, paymentOrders)
+StockHoldReverter.revertEachProductHold(...)  // 상품마다 compensateIfDecremented + 기록 닫기
 // Redis 선차감 캐시 복원. Lua atomic + dedup token compensation:done:{orderId} SETNX P8D.
 // 보상이 먼저 끝나야 markPaymentAsFail 영구 실패 시에도 재고는 이미 복원돼 silent loss 0.
 
