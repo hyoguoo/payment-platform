@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 16c — 수렴 체인과 정합 검증 (Task 1~16b 완료. Task 16b 는 동시 중복 확정·완료된 결제 재확정 시나리오는 이미 Task 6/7 이 실제 값 단정까지 검증해 뒀음을 확인하고 재검증만 했다. 남은 둘(거절 후 재시도 정합, 닫기 경합)은 신규 `StockGateConcurrentRetryIntegrationTest`로 다뤘다 — 거절 후 재시도는 1주기(직접 차감 → 거절 전용 되돌리기) 뒤 2주기(재시도 차감 → 조건부 되돌리기)를 실제로 태워 Redis 재고 값 자체가 원래대로 복원되는지 단정(기록 상태만 보는 검증은 되돌리기 표시가 앞 사이클에 남는 구멍을 못 잡는다). 닫기 경합은 `StockHoldReverter`에 되돌리기-닫기 사이 protected 훅 `beforeClose`를 신설해(운영 기본값 no-op, 이번 태스크의 유일한 신규 프로덕션 코드) 테스트가 그 창에 새 차감을 결정적으로 끼워 넣고, 뒤늦은 닫기가 옛 사이클 식별 값 때문에 반영되지 않는 것을 확인 — Task 5 의 사이클 식별 값 조건부 닫기가 실제 흐름에서 처음 검증됨. 두 테스트 모두 같은 주문·상품 조합에 `openHold`를 두 사이클 걸쳐 부르는데, 다른 재고 게이트 테스트가 쓰는 `BaseIntegrationTest`(ddl-auto: create-drop + Flyway 비활성)는 유일 제약이 실제로 서지 않아 중복 삽입이 나는 것을 발견해 Task 5 방식(Flyway 활성 + ddl-auto: validate)으로 전환. 닫기 경합 테스트는 `@DataJpaTest` 기본 트랜잭션이 스레드 간 락 경합을 만들어 Task 5 와 같은 `@Transactional(NOT_SUPPORTED)`로 우회)
+- **활성 태스크**: Task 16d — 검증에서 드러난 방어 공백 메우기 (Task 1~16c 완료. Task 16c 는 다섯 시나리오(상품 반복 도중 강제 종료·되돌리는 도중 강제 종료·회수가 되돌리다 강제 종료·선점을 쥔 채 강제 종료 후 수명 경과·게이트-상품DB 정합)를 신규 `StockGateConvergenceIntegrationTest`로 검증했고, 다섯 모두 새 프로덕션 코드 없이 GREEN — 강제 종료는 죽는 지점 이후 호출을 안 하는 것만으로 재현되고, 유일하게 훅이 필요한 지점(되돌리기-닫기 사이)은 16b 가 신설한 `StockHoldReverter.beforeClose`를 그대로 재사용했다. `PaymentEvent.execute()`가 상품 반복 안에서 호출되지 않는 구조 덕에 "주문 상태가 상품별로 부분 전이되지 않는다"는 이미 구조적으로 성립함을 확인. 다음은 Task 16d — 16a·16b가 검증하며 찾은 두 방어 공백(거절 전용 되돌리기의 무조건 복원, 자동 생성 스키마에서 유일 제약 미적용)을 코드로 메운다)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
