@@ -91,6 +91,7 @@ public class PaymentConfirmResultUseCase {
     private final PaymentConfirmGuardSkipMetrics guardSkipMetrics;
     /** 종결 가드 재발행(DONE+APPROVED 재배달) 분기 계측. */
     private final PaymentConfirmTerminalResendMetrics terminalResendMetrics;
+    private final StockHoldReverter stockHoldReverter;
 
     public PaymentConfirmResultUseCase(
             PaymentEventRepository paymentEventRepository,
@@ -102,7 +103,8 @@ public class PaymentConfirmResultUseCase {
             @Qualifier("stockCommittedKafkaTemplate") KafkaTemplate<String, String> stockCommittedKafkaTemplate,
             PaymentCommandUseCase paymentCommandUseCase,
             PaymentConfirmGuardSkipMetrics guardSkipMetrics,
-            PaymentConfirmTerminalResendMetrics terminalResendMetrics) {
+            PaymentConfirmTerminalResendMetrics terminalResendMetrics,
+            StockHoldReverter stockHoldReverter) {
         this.paymentEventRepository = paymentEventRepository;
         this.quarantineCompensationHandler = quarantineCompensationHandler;
         this.clock = clock;
@@ -115,6 +117,7 @@ public class PaymentConfirmResultUseCase {
         this.paymentCommandUseCase = paymentCommandUseCase;
         this.guardSkipMetrics = guardSkipMetrics;
         this.terminalResendMetrics = terminalResendMetrics;
+        this.stockHoldReverter = stockHoldReverter;
     }
 
     /**
@@ -296,7 +299,7 @@ public class PaymentConfirmResultUseCase {
      * 상품별로 선차감 흔적이 있을 때만 캐시를 되돌리고, 그 결과와 무관하게 기록을 되돌림으로 닫는다.
      */
     private void handleFailed(PaymentEvent paymentEvent, String reasonCode) {
-        StockHoldReverter.revertEachProductHold(paymentEvent, stockCachePort, stockHoldRecordRepository);
+        stockHoldReverter.revertEachProductHold(paymentEvent, stockCachePort, stockHoldRecordRepository);
 
         paymentCommandUseCase.markPaymentAsFail(paymentEvent, reasonCode, PaymentStatusChangeTrigger.CONFIRM);
 
@@ -321,7 +324,7 @@ public class PaymentConfirmResultUseCase {
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_QUARANTINE_STOCK_HELD,
                     () -> "orderId=" + paymentEvent.getOrderId() + " reasonCode=" + reasonCode);
         } else {
-            StockHoldReverter.revertEachProductHold(paymentEvent, stockCachePort, stockHoldRecordRepository);
+            stockHoldReverter.revertEachProductHold(paymentEvent, stockCachePort, stockHoldRecordRepository);
         }
 
         quarantineCompensationHandler.handle(

@@ -74,4 +74,11 @@ public interface StockHoldRecordRepository {
      * @return 잡음 상태 기록 스냅샷 목록 (상한 이하)
      */
     List<StockHoldRecordCandidate> findNoiseCandidates(int limit);
+
+    /**
+     * 잡음(NOISE) 상태로 남은 기록 전체 건수 — 회수 주기 작업이 미회수 잔량 지표로 노출한다.
+     *
+     * @return 잡음 상태 기록 수
+     */
+    long countNoise();
 }

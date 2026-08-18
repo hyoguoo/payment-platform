@@ -177,6 +177,11 @@ scheduler:
     # 보존 정책: TTL(8d) > Kafka retention(7d) 불변식 준수 — 단축 금지.
     fixed-delay-ms: 3600000
     batch-size: 1000
+  stock-hold-recovery-worker:
+    # 미회수 선차감 기록(잡음 상태) 회수 판정 주기 (ms). 기본값 1분 — outbox-worker 만큼 긴박하지
+    # 않다(재고가 이미 게이트에서 눌려 있어 즉시 풀 필요가 없는 잔여 청소).
+    fixed-delay-ms: 60000
+    batch-size: 100
 metrics:
   payment:
     state:

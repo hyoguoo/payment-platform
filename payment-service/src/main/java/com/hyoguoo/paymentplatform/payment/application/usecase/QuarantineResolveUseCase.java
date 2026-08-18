@@ -46,6 +46,7 @@ public class QuarantineResolveUseCase {
     private final StockCachePort stockCachePort;
     private final StockHoldRecordRepository stockHoldRecordRepository;
     private final PaymentCommandUseCase paymentCommandUseCase;
+    private final StockHoldReverter stockHoldReverter;
 
     /**
      * 격리 결제를 안전 종결(FAILED)로 복구한다.
@@ -80,7 +81,7 @@ public class QuarantineResolveUseCase {
 
         // redis 보상은 TX 밖에서 벤더 승인 배제가 끝난 뒤 수행 — 외부 호출이 DB 커넥션을 점유하지
         // 않도록 한다.
-        StockHoldReverter.revertEachProductHold(event, stockCachePort, stockHoldRecordRepository);
+        stockHoldReverter.revertEachProductHold(event, stockCachePort, stockHoldRecordRepository);
 
         PaymentEvent resolvedEvent = paymentCommandUseCase.markPaymentAsFailFromQuarantine(event, resolvedReason);
 

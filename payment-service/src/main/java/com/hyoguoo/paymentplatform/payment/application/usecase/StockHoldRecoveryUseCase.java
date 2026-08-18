@@ -38,6 +38,7 @@ public class StockHoldRecoveryUseCase {
     private final StockHoldRecordRepository stockHoldRecordRepository;
     private final PaymentEventRepository paymentEventRepository;
     private final StockCachePort stockCachePort;
+    private final StockHoldReverter stockHoldReverter;
 
     /**
      * 잡음 상태 선차감 기록을 최대 {@code batchSize}건 훑어, 결제가 종결인 것만 되돌린다.
@@ -75,7 +76,7 @@ public class StockHoldRecoveryUseCase {
                 .productId(candidate.productId())
                 .quantity(candidate.quantity())
                 .allArgsBuild();
-        StockHoldReverter.revertProductHold(
+        stockHoldReverter.revertProductHold(
                 candidate.orderId(), order, candidate.cycleToken(), stockCachePort, stockHoldRecordRepository);
     }
 }

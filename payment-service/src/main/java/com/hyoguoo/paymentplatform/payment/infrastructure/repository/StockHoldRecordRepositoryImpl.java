@@ -107,4 +107,9 @@ public class StockHoldRecordRepositoryImpl implements StockHoldRecordRepository 
                         entity.getOrderId(), entity.getProductId(), entity.getQuantity(), entity.getCycleToken()))
                 .toList();
     }
+
+    @Override
+    public long countNoise() {
+        return jpaStockHoldRecordRepository.countByStatus(StockHoldRecordStatus.NOISE);
+    }
 }

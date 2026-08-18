@@ -13,6 +13,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -22,6 +23,7 @@ import com.hyoguoo.paymentplatform.payment.exception.PaymentValidException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +42,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @DisplayName("QuarantineResolveUseCase 테스트")
@@ -66,6 +69,9 @@ class QuarantineResolveUseCaseTest {
 
     @Mock
     private PgVendorStatusPort pgVendorStatusPort;
+
+    @Spy
+    private StockHoldReverter stockHoldReverter = new StockHoldReverter(new SimpleMeterRegistry());
 
     @Test
     @DisplayName("resolve - 벤더 조회 → 상품별 되돌리기(흔적 확인 → 보상 → 기록 닫기) → 도메인 전이 순서로 호출한다")
@@ -96,6 +102,7 @@ class QuarantineResolveUseCaseTest {
         inOrder.verify(stockHoldRecordRepository).closeAsReverted(ORDER_ID, order, cycleToken);
         inOrder.verify(paymentCommandUseCase).markPaymentAsFailFromQuarantine(Mockito.eq(event), Mockito.anyString());
         assertThat(result).isEqualTo(resolvedEvent);
+        then(stockHoldReverter).should().revertEachProductHold(event, stockCachePort, stockHoldRecordRepository);
     }
 
     @ParameterizedTest
@@ -311,7 +318,8 @@ class QuarantineResolveUseCaseTest {
                     fakePgVendorStatusPort,
                     fakeStockCachePort,
                     fakeStockHoldRecordRepository,
-                    fakePaymentCommandUseCase
+                    fakePaymentCommandUseCase,
+                    new StockHoldReverter(new SimpleMeterRegistry())
             );
 
             given(fakePgVendorStatusPort.lookup(ORDER_ID))

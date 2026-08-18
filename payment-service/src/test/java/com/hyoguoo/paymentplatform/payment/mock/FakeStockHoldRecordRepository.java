@@ -79,6 +79,13 @@ public class FakeStockHoldRecordRepository implements StockHoldRecordRepository 
                 .toList();
     }
 
+    @Override
+    public synchronized long countNoise() {
+        return records.values().stream()
+                .filter(entry -> entry.status() == StockHoldRecordStatus.NOISE)
+                .count();
+    }
+
     // --- fixture 단언 헬퍼 (StockHoldRecordRepository 계약 외, 테스트 보조용) ---
 
     public Optional<StockHoldRecordStatus> statusOf(String orderId, Long productId) {

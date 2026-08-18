@@ -29,7 +29,7 @@
 | 선차감 기록 | 4 스키마·엔티티·포트 / 5 어댑터(재오픈·확정 보존·사이클 식별) |
 | 확정 진입 | 6 선점과 상품 반복과 부분 실패 되돌리기 / 6b 캐시 장애 처리 / 7 확정 행 건너뛰기와 선점 실패 분기 |
 | 표시 전환 | 8 승인 시 확정 표시 / 9a 확정 실패 / 9b 격리 진입 / 9c 관리자 종결 / 9d 옛 포트 메서드 제거 |
-| 회수 | 10 회수 판정 / 11 주기 작업 |
+| 회수 | 10 회수 판정 / 11 주기 작업과 되돌리기 관측성 |
 | 두 번째 방어선 | 12 재고 확정 음수 가드 / 13 격리 토픽과 에러 핸들러 / 14 적체 알람과 대응 분류 |
 | 운영과 검증 | 15 시드 키 이름 / 16a 이중 되돌리기 조합 / 16b 동시 중복 확정과 재시도 / 16c 수렴 체인과 정합 / 17 라이브 검증 |
 
@@ -121,7 +121,7 @@ flowchart TD
 - [x] Task 9c: 관리자 종결 경로를 상품 단위로 전환
 - [x] Task 9d: 주문 단위 포트 메서드 제거
 - [x] Task 10: 미회수 선차감 회수 판정
-- [ ] Task 11: 회수 주기 작업
+- [x] Task 11: 회수 주기 작업과 되돌리기 관측성
 - [ ] Task 12: 상품 서비스 재고 확정 음수 가드
 - [ ] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
 - [ ] Task 14: 격리 적체 알람과 대응 분류
@@ -630,22 +630,68 @@ flowchart TD
 - `./gradlew :payment-service:test` 669건 전체 pass(신규 16건), checkstyle·spotbugs 클린. 주기 작업
   배선(스케줄러, 배치 크기 설정 외부화, 지표)은 Task 11 범위
 
-### Task 11: 회수 주기 작업 [tdd=true]
+### Task 11: 회수 주기 작업과 되돌리기 관측성 [tdd=true]
+
+> Task 9d 에서 옛 어댑터의 내부 반복을 걷으면서 되돌리기 결과 로그가 함께 사라졌다. 되돌리기는 재고가 실제로 움직이는 경로라 흔적이 없으면 사고 조사가 안 된다. 다만 상품 단위로 쪼개져 호출이 상품 수만큼 늘었으므로 매번 로그를 남기면 시끄럽다 — 결과별 카운터를 내고 이상한 결과에만 로그를 남긴다.
+>
+> 같은 이유로 쓰이지 않게 된 무조건 복원 스크립트도 여기서 걷는다. 되돌리기를 흔적 확인 후 조건부로 통일한 것이 이번 작업의 결정이고, **무조건 복원은 설계가 명시적으로 기각한 대안**이라(차감하지 않은 것을 되돌리면 유령 재고가 생겨 초과 판매 방향) 자산으로 남기면 나중에 집어 쓸 여지만 남는다.
 
 **테스트 (RED)**
 
 - 주기 작업이 회수 판정을 호출한다
 - 미회수 건수를 지표로 내보낸다
+- **되돌리기 결과별 카운터가 올라간다** — 복원됨 / 흔적 없음 / 이미 처리됨
+- **이상한 결과(흔적 없음·이미 처리됨)에만 로그가 남는다.** 정상 복원은 지표로만 센다
 
 **구현 (GREEN)**
 
 - `infrastructure/scheduler/StockHoldRecoveryWorker.java`
 - 주기와 배치 크기를 설정으로 외부화
 - 실행 여부와 미회수 건수 지표
+- `StockHoldReverter` 에 결과별 카운터와 이상 결과 로그 — 되돌리기 네 경로가 모두 이 유틸을 지나므로 한 곳에서 관측된다
+- 쓰이지 않게 된 `lua/stock_compensation_atomic.lua` 와 그 raw 테스트 삭제
 
 **완료 기준**
 
 - 위 테스트 pass, 스케줄러가 실제로 기동하는지 부팅 테스트로 확인
+- 삭제한 스크립트 참조 0 (grep 확인)
+
+**완료 결과**
+
+- `StockHoldReverter` — 정적 유틸리티에서 `MeterRegistry`를 주입받는 `@Component`로 전환하고
+  `revertEachProductHold`/`revertProductHold`를 인스턴스 메서드로 바꿨다. 결과별 카운터 3종
+  (`stock_hold_revert.result_total`, 태그 `result=reverted/no_trace/already_done`)을 생성자에서
+  즉시 등록하고, `compensateIfDecremented` 결과가 `NO_DECREMENT`/`ALREADY_DONE`일 때만 WARN 로그를
+  남긴다(`EventType.STOCK_HOLD_REVERT_ANOMALY` 신규) — 정상 복원(`OK`)은 카운터만 오른다. 호출부
+  넷(`PaymentConfirmResultUseCase`의 확정 실패·격리 진입, `QuarantineResolveUseCase`의 관리자 종결,
+  `StockHoldRecoveryUseCase`의 회수 판정)이 모두 정적 호출에서 주입 필드 호출로 바뀌어 이 한 곳에서
+  결과가 관측된다
+- `StockHoldRecordRepository`에 `countNoise()` 신규 — 잡음(NOISE) 상태 전체 건수. JPA 구현은
+  `countByStatus` 파생 쿼리, Fake·어댑터 양쪽에 반영
+- `infrastructure/scheduler/StockHoldRecoveryWorker` 신규 — `StockHoldRecoveryUseCase.recover(batchSize)`를
+  주기 호출하고, 실행마다 `stock_hold_recovery.run_total` 카운터를 올려 스케줄러 생존을 확인하며,
+  호출 직후 `countNoise()` 값을 `stock_hold_recovery.outstanding_count` 게이지로 노출한다. 주기(기본
+  60초)와 배치 크기(기본 100)는 `scheduler.stock-hold-recovery-worker.*`로 외부화 — outbox-worker보다
+  느슨한 기본값을 쓴 이유(재고가 이미 게이트에 눌려 있어 즉시 풀 필요가 없는 잔여 청소)를 yml 주석에
+  남겼다. `payment-service`는 기존에 `application-docker.yml`의 `scheduler.enabled: true`가 이미
+  설정돼 있어 이 worker 도 별도 플래그 추가 없이 그 게이트를 그대로 탄다
+- **스케줄러 실기동 부팅 테스트** — `StockHoldRecoveryWorkerBootTest`는 DB/Kafka/Redis 없이
+  `SchedulerConfig`(`@EnableScheduling` 게이트) + `StockHoldRecoveryWorker` + mock 협력자만 등록한
+  최소 `@SpringBootTest(webEnvironment = NONE)` 컨텍스트를 띄우고, `fixed-delay-ms`를 100ms로 짧게
+  오버라이드해 Awaitility로 `recover(10)`이 실제로 반복 호출되는지 확인한다 — 클래스나 `@Scheduled`
+  존재만으로는 활성화 플래그 누락(과거 dedupe 청소 스케줄러가 겪은 사고)을 못 잡는다는 이유
+- `lua/stock_compensation_atomic.lua`와 그 raw 테스트(`StockCompensationAtomicLuaTest`) 삭제 — grep
+  확인 결과 코드 참조 0(문서 아카이브에만 이력으로 남음)
+- 정적 호출 제거에 따라 기존 호출부 3개 클래스(`PaymentConfirmResultUseCase`/`QuarantineResolveUseCase`/
+  `StockHoldRecoveryUseCase`)의 생성자에 `StockHoldReverter` 파라미터를 추가하고, 이를 직접
+  `new`로 구성하던 테스트 10개(단위 테스트 8개 + `QuarantineResolveUseCaseTest`의 `@Spy` 필드 +
+  `StockHoldRecoveryUseCaseTest`)와 `@DataJpaTest` 슬라이스(`StockHoldRecoveryUseCaseOriginReadIntegrationTest`,
+  `MeterRegistry` 빈 추가)를 함께 갱신했다. 이 과정에서 이전부터 `compensateIfDecremented` mock
+  반환값을 stub하지 않던 기존 테스트 2건(`StockHoldRecoveryUseCaseTest`/`PaymentConfirmResultUseCaseHandleFailedTest`)이
+  결과값을 실제로 쓰기 시작한 이번 변경으로 NPE가 드러나 함께 고쳤다 [Rule 1]
+- `./gradlew :payment-service:test` 673건 전체 pass(신규 12건 — StockHoldReverterTest 4 +
+  StockHoldRecoveryWorkerTest 3 + StockHoldRecoveryWorkerBootTest 1 + 기존 스위트 보강 등),
+  checkstyle·spotbugs 클린
 
 ### Task 12: 상품 서비스 재고 확정 음수 가드 [tdd=true] [domain_risk=true]
 

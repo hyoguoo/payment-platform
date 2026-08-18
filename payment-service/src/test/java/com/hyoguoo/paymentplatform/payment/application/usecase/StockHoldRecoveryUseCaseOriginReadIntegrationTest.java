@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.config.ClockConfig;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.PaymentEventRepositoryImpl;
 import com.hyoguoo.paymentplatform.payment.infrastructure.repository.StockHoldRecordRepositoryImpl;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +41,7 @@ import org.testcontainers.containers.MySQLContainer;
         PaymentEventRepositoryImpl.class,
         StockHoldRecordRepositoryImpl.class,
         ClockConfig.class,
+        StockHoldReverter.class,
         StockHoldRecoveryUseCase.class,
         StockHoldRecoveryUseCaseOriginReadIntegrationTest.TestConfig.class
 })
@@ -95,6 +99,11 @@ class StockHoldRecoveryUseCaseOriginReadIntegrationTest {
         @Bean
         StockCachePort stockCachePort() {
             return new FakeStockCachePort();
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
         }
     }
 }

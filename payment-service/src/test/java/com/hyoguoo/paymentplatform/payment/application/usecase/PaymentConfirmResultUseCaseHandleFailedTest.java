@@ -13,6 +13,8 @@ import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventM
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -104,6 +106,8 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         String cycleToken = "cycle-abc-001";
         given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order))
                 .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, cycleToken)));
+        given(stockCachePort.compensateIfDecremented(ORDER_ID, order))
+                .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
@@ -282,7 +286,8 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
                 new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry()),
-                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry()),
+                new StockHoldReverter(new SimpleMeterRegistry())
         );
     }
 

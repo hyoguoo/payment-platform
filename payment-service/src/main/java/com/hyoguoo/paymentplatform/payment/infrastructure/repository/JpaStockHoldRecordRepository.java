@@ -22,6 +22,11 @@ public interface JpaStockHoldRecordRepository extends JpaRepository<StockHoldRec
     List<StockHoldRecordEntity> findByStatusOrderByIdAsc(StockHoldRecordStatus status, Pageable pageable);
 
     /**
+     * 잡음(NOISE) 상태로 남은 기록 전체 건수 — 회수 주기 작업의 미회수 잔량 지표.
+     */
+    long countByStatus(StockHoldRecordStatus status);
+
+    /**
      * 확정 상태를 제외한 나머지는 상태와 무관하게 잡음으로 되돌리며 사이클 식별 값을 새로
      * 발급한다 — 이미 잡음인 행에 다시 호출돼도 값을 갱신해, 뒤늦은 닫기가 옛 값을 쥔 채
      * 반영되는 것을 막는다. 행이 아직 없으면 반영 행 수 0.

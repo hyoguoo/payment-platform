@@ -11,6 +11,8 @@ import static org.mockito.Mockito.never;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordCandidate;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
+import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
@@ -18,6 +20,7 @@ import com.hyoguoo.paymentplatform.payment.domain.enums.StockHoldRecordStatus;
 import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockCachePort;
 import com.hyoguoo.paymentplatform.payment.mock.FakeStockHoldRecordRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,7 +55,9 @@ class StockHoldRecoveryUseCaseTest {
         paymentEventRepository = new FakePaymentEventRepository();
         stockHoldRecordRepository = Mockito.mock(StockHoldRecordRepository.class);
         stockCachePort = Mockito.mock(StockCachePort.class);
-        sut = new StockHoldRecoveryUseCase(stockHoldRecordRepository, paymentEventRepository, stockCachePort);
+        sut = new StockHoldRecoveryUseCase(
+                stockHoldRecordRepository, paymentEventRepository, stockCachePort,
+                new StockHoldReverter(new SimpleMeterRegistry()));
     }
 
     @Test
@@ -72,6 +77,8 @@ class StockHoldRecoveryUseCaseTest {
     void 종결_결제의_잡음_기록은_되돌아간다(PaymentEventStatus terminalStatus) {
         givenCandidate();
         paymentEventRepository.save(buildPaymentEvent(terminalStatus));
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), any(PaymentOrder.class)))
+                .willReturn(StockRecoveryCompensationResult.OK);
 
         int recovered = sut.recover(10);
 
@@ -139,7 +146,8 @@ class StockHoldRecoveryUseCaseTest {
             fakeStockCachePort = new FakeStockCachePort();
             fakeStockHoldRecordRepository = new FakeStockHoldRecordRepository();
             sutWithFake = new StockHoldRecoveryUseCase(
-                    fakeStockHoldRecordRepository, fakePaymentEventRepository, fakeStockCachePort);
+                    fakeStockHoldRecordRepository, fakePaymentEventRepository, fakeStockCachePort,
+                    new StockHoldReverter(new SimpleMeterRegistry()));
             order = PaymentOrder.allArgsBuilder()
                     .orderId(ORDER_ID)
                     .productId(PRODUCT_ID)

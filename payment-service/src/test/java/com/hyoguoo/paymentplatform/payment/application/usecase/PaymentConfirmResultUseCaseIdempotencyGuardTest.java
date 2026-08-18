@@ -11,6 +11,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.StockCachePort;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockHoldRecordSnapshot;
 import com.hyoguoo.paymentplatform.payment.application.port.out.StockRecoveryCompensationResult;
+import com.hyoguoo.paymentplatform.payment.application.util.StockHoldReverter;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmGuardSkipMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentConfirmTerminalResendMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
@@ -82,7 +83,8 @@ class PaymentConfirmResultUseCaseIdempotencyGuardTest {
                 stockCommittedKafkaTemplate,
                 paymentCommandUseCase,
                 new PaymentConfirmGuardSkipMetrics(new SimpleMeterRegistry()),
-                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry())
+                new PaymentConfirmTerminalResendMetrics(new SimpleMeterRegistry()),
+                new StockHoldReverter(new SimpleMeterRegistry())
         );
     }
 
