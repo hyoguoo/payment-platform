@@ -122,7 +122,7 @@ flowchart TD
 - [x] Task 9d: 주문 단위 포트 메서드 제거
 - [x] Task 10: 미회수 선차감 회수 판정
 - [x] Task 11: 회수 주기 작업과 되돌리기 관측성
-- [ ] Task 12: 상품 서비스 재고 확정 음수 가드
+- [x] Task 12: 상품 서비스 재고 확정 음수 가드
 - [ ] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
 - [ ] Task 14: 격리 적체 알람과 대응 분류
 - [ ] Task 15: 시드 스크립트 키 이름 전환
@@ -709,6 +709,33 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, `./gradlew :product-service:test` 회귀 없음
+
+**완료 결과**
+
+- `StockCommitUseCase.commitToRdb` 에 잔량 검사를 추가 — `current.getQuantity() - qty < 0` 이면
+  저장하지 않고(0으로 자르지도, 로그만 남기고 진행하지도 않는다) `ProductStockException.of(NOT_ENOUGH_STOCK)`
+  을 던진다. 새 코드를 만들지 않고 `StockCommandUseCase.decreaseForOrders`(동기 HTTP 경로)가 이미
+  쓰던 같은 가드·같은 예외 타입을 비동기 확정 경로에도 그대로 맞췄다
+- 예외 타입은 재고 row 미존재에 쓰는 `IllegalStateException`을 재사용하지 않고 `ProductStockException`
+  (RuntimeException 직속, `ProductErrorCode.NOT_ENOUGH_STOCK`)을 그대로 썼다 — 두 조건을 같은 타입으로
+  묶으면 Task 13 에서 "재고 부족만" 재시도 제외 목록에 등재하기가 안 된다. 테스트로 이 분리를 직접
+  단정했다(`commit_WhenInsufficientStock_ExceptionTypeIsDistinctFromNotFound`)
+- `commitToRdb` Javadoc 에 동시성 안전 근거를 명시 — 이 메서드는 조회 후 감산해 저장하는
+  read-then-write 이고 그 자체에는 잠금이 없다. 안전한 이유는 재고 확정 통지
+  (`payment.events.stock-committed`)가 상품번호를 Kafka 메시지 키로 써서 같은 상품의 확정 커밋이
+  항상 같은 파티션의 단일 컨슈머 스레드에서 순서대로 처리되기 때문이다. 이 나눔 기준(상품번호
+  파티션 키)을 바꾸면(처리량을 위한 재해싱, 상품 단위 이상 병렬화 등) 같은 상품에 대한 두 확정이
+  동시에 옛 잔량을 감산해 저장하는 lost update 가 재발하고, 이 가드가 막으려던 초과 판매 경로가
+  그대로 되살아난다는 경고를 함께 남겼다
+- `EventType.STOCK_COMMIT_INSUFFICIENT` 신규 — 가드가 막을 때 WARN 로그로 productId/orderId/
+  eventUUID/현재값/요청 qty 를 남긴다
+- **인지 사항 — 이 태스크만으로는 예외가 던져져도 사라진다.** product-service 는 아직 Kafka 에러
+  핸들러 커스터마이즈가 0건이라 기본 설정대로 재시도 후(고정 backoff 없이 스프링 기본 재시도 정책)
+  로그만 남기고 메시지가 소실된다. 격리 토픽과 not-retryable 등재는 Task 13 범위 — 그전까지는 이
+  가드가 던지는 예외가 실제로는 "막되 아무도 못 보는" 상태다
+- `StockCommitUseCaseTest` 에 2케이스 신규 — 부족 시 예외+미저장, 예외 타입이 IllegalStateException
+  과 분리됨
+- `./gradlew :product-service:test` 60건 전체 pass(신규 2건 포함), checkstyle·spotbugs 클린
 
 ### Task 13: 상품 서비스 격리 토픽과 에러 핸들러 [tdd=true] [domain_risk=true]
 

@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 12 — 상품 서비스 재고 확정 음수 가드 (Task 1~11 완료. Task 11 은 `StockHoldReverter` 를 정적 유틸에서 `MeterRegistry` 를 주입받는 `@Component` 로 전환하고, 되돌리기 네 경로(확정 실패·격리 진입·관리자 종결·회수 판정)가 공유하는 `revertProductHold` 에 결과별 카운터 3종(`stock_hold_revert.result_total`, 태그 reverted/no_trace/already_done)과 이상 결과(흔적 없음·이미 처리됨)에만 WARN 로그를 추가했다. `StockHoldRecordRepository.countNoise()` 신규 + `infrastructure/scheduler/StockHoldRecoveryWorker` 신설 — 주기(기본 60초)·배치 크기(기본 100) 외부화, 실행마다 `stock_hold_recovery.run_total` 카운터, 호출 직후 `stock_hold_recovery.outstanding_count` 게이지. `StockHoldRecoveryWorkerBootTest` 가 DB/Kafka/Redis 없이 `SchedulerConfig` + worker 만 등록한 최소 컨텍스트로 `fixed-delay-ms` 를 짧게 오버라이드해 스케줄러가 실제로 반복 기동하는지 Awaitility 로 확인(활성화 플래그 누락 선례에 대한 회귀 방지). 쓰이지 않게 된 `lua/stock_compensation_atomic.lua` + raw 테스트 삭제(참조 0). `./gradlew :payment-service:test` 673건 전체 pass(신규 12건), checkstyle·spotbugs 클린)
+- **활성 태스크**: Task 13 — 상품 서비스 격리 토픽과 에러 핸들러 (Task 1~12 완료. Task 12 는 `StockCommitUseCase.commitToRdb` 에 잔량 음수 가드를 추가했다 — `StockCommandUseCase` 가 쓰던 것과 같은 `ProductStockException.of(NOT_ENOUGH_STOCK)` 을 재고 row 미존재용 `IllegalStateException` 과 분리해 재사용했고(Task 13 이 재고 부족만 재시도 제외 목록에 등재해야 하므로), Javadoc 에 동시성 안전 근거(재고 확정 통지가 상품번호를 Kafka 파티션 키로 써서 같은 상품 커밋이 단일 컨슈머 스레드로 직렬화됨 — 이 나눔 기준을 바꾸면 lost update 재발)를 명시했다. **아직 이 예외를 받을 곳이 없다** — product-service 는 Kafka 에러 핸들러 커스터마이즈가 0건이라 지금은 기본 설정대로 재시도 후 로그만 남기고 메시지가 사라진다. `./gradlew :product-service:test` 60건 전체 pass(신규 2건), checkstyle·spotbugs 클린)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
