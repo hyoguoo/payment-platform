@@ -1,17 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-18
+> 최종 수정: 2026-08-19
 
 ## 활성 작업
 
-- **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
-- **단계**: ship (execute 완료 — Task 1~16d)
-- **남은 것**: Task 17 라이브 검증 — ship 단계에서 수행한다. 리뷰 수정이 나오면 두 번 돌게 되므로 리뷰 통과 후 한 번에 잰다
-- **이슈·브랜치**: #144
-- **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
-- **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
-- **discuss 경과**: 게이트 9라운드. 키 전환 접근이 네 라운드 연속 critical 을 내다가, 스택을 새로 띄우며 전환하는 전제로 바꾸면서 통째로 단순해졌다. 이후 상태 모델(확정 예외·되돌리기 후보 판정·사이클 식별)과 동시성 경계(주문 단위 선점·해제 전략)를 다듬어 마무리
-- **plan 경과**: 게이트 3라운드 양쪽 pass. 포트를 한 번에 바꾸면 호출부 넷이 동시에 깨지고 무계획한 임시 코드가 들어간다는 지적으로 **점진 전환**(상품 단위 메서드 추가 → 호출부 하나씩 이관 → 옛 메서드 제거)으로 재구성했다
+없음 (idle)
 
 ## 재개 메모
 
@@ -19,12 +12,12 @@
 
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` (하단 "보류 결정" 절에 정정·게이트 findings·재개 조건 정리)
 - discuss 1라운드 게이트까지 진행 — reviewer revise / domain-expert fail. findings 미반영 상태
-- **보류 사유**: 재고 캐시를 노드로 나누려면 주문당 상품 1개를 전제해야 하는데, 그건 측정 편의로 결제 도메인 보장을 깎는 순서다. 재고 선차감 게이트의 상품 단위 분해가 선행이어야 한다
-- 재개 조건: 선행 토픽 완료 후 재고·멱등 저장소 분산을 다시 넣고 findings 반영해 재게이트
+- **보류 사유였던 선행 조건은 해소됐다** — 재고 선차감 게이트가 상품 단위로 분해돼 키가 상품 기준 해시태그로 묶였고, 한 상품의 키가 같은 슬롯에 모여 노드를 나눠도 스크립트가 원자적으로 돈다
+- 재개 시: 재고·멱등 저장소 분산을 다시 범위에 넣고 findings 반영해 재게이트. 캐시 왕복이 주문당 1회에서 선점 1 + 상품 N + 해제 1로 늘어난 것(왕복당 약 5ms)이 측정 설계에 반영돼야 하고, 병목으로 드러나면 노드별 묶음 처리(`TODOS.md`)가 후보
 
-### 별건 — 활성 토픽 조사에서 나온 사실
+### 별건 — 확정 요청에 멱등키가 없다
 
-- **확정 요청에 멱등키가 없다.** 주문 접수에는 `Idempotency-Key` 헤더가 있으나 확정에는 없다. 이번에는 주문 단위 선점으로 대응하고 헤더 도입은 범위 밖
+- 주문 접수에는 `Idempotency-Key` 헤더가 있으나 확정에는 없다. 재고 게이트 작업에서 주문 단위 선점으로 대응했고 헤더 도입은 여전히 범위 밖
 
 ### 별건 — 위키에 남은 끊긴 참조 2곳
 
@@ -38,7 +31,7 @@
 
 ## 최근 완료
 
+- **STOCK-GATE-PER-PRODUCT** (2026-08-18) — docs/archive/stock-gate-per-product/COMPLETION-BRIEFING.md
 - **PG-VENDOR-SIGNAL-CONSOLIDATION** (2026-08-14) — docs/archive/pg-vendor-signal-consolidation/COMPLETION-BRIEFING.md
-- **PG-DUPLICATE-APPROVAL-SETTLEMENT** (2026-08-13) — docs/archive/pg-duplicate-approval-settlement/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
