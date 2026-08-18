@@ -141,7 +141,7 @@ pick() { local IFS=','; local arr=($1); echo "${arr[$((RANDOM % ${#arr[@]}))]}";
 
 topup_stock() {
   for pid in $(echo "${PRODUCTS}" | tr ',' ' '); do
-    docker exec "${REDIS_STOCK_CONTAINER}" redis-cli SET "stock:${pid}" "${STOCK_TOPUP_VALUE}" >/dev/null 2>&1 || true
+    docker exec "${REDIS_STOCK_CONTAINER}" redis-cli SET "stock:{${pid}}" "${STOCK_TOPUP_VALUE}" >/dev/null 2>&1 || true
     docker exec -i "${MYSQL_PRODUCT_CONTAINER}" mysql -uroot -p"${MYSQL_PRODUCT_PASSWORD}" -D product \
       -e "UPDATE stock SET quantity=${STOCK_TOPUP_VALUE} WHERE product_id=${pid};" >/dev/null 2>&1 || true
   done

@@ -412,7 +412,7 @@ if [[ "${DB_QUARANTINED}" -gt 0 ]]; then
     echo "    1. redis-stock 헬스 확인"
     echo "       컨테이너: ${REDIS_STOCK_CONTAINER} / 현재 상태: ${REDIS_STOCK_HEALTH}"
     echo "       명령: docker exec ${REDIS_STOCK_CONTAINER} redis-cli ping"
-    echo "       stock:1 값: $(docker exec -i "${REDIS_STOCK_CONTAINER}" redis-cli GET "stock:1" 2>/dev/null || echo 'ERROR')"
+    echo "       stock:{1} 값: $(docker exec -i "${REDIS_STOCK_CONTAINER}" redis-cli GET "stock:{1}" 2>/dev/null || echo 'ERROR')"
     echo ""
     echo "    2. redis-stock 이 비정상이면 QUARANTINED 는 재고 차감 실패로 인한"
     echo "       CACHE_DOWN 경로 진입 가능성이 높다."
@@ -473,7 +473,7 @@ else
     echo ""
 
     # redis 잔여재고 조회
-    REDIS_STOCK_VAL=$(docker exec -i "${REDIS_STOCK_CONTAINER}" redis-cli GET "stock:${PRODUCT_ID}" 2>/dev/null || echo "ERROR")
+    REDIS_STOCK_VAL=$(docker exec -i "${REDIS_STOCK_CONTAINER}" redis-cli GET "stock:{${PRODUCT_ID}}" 2>/dev/null || echo "ERROR")
 
     # product RDB 잔여재고 조회
     RDB_STOCK_VAL=$(docker exec -i "${MYSQL_PRODUCT_CONTAINER}" mysql \
@@ -482,7 +482,7 @@ else
         "SELECT quantity FROM stock WHERE product_id = ${PRODUCT_ID};" \
         2>/dev/null | tail -1) || RDB_STOCK_VAL="ERROR"
 
-    echo "  redis stock:${PRODUCT_ID}  = ${REDIS_STOCK_VAL}"
+    echo "  redis stock:{${PRODUCT_ID}}  = ${REDIS_STOCK_VAL}"
     echo "  RDB stock.quantity        = ${RDB_STOCK_VAL}"
     echo ""
 

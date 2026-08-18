@@ -31,7 +31,7 @@
 | 표시 전환 | 8 승인 시 확정 표시 / 9a 확정 실패 / 9b 격리 진입 / 9c 관리자 종결 / 9d 옛 포트 메서드 제거 |
 | 회수 | 10 회수 판정 / 11 주기 작업과 되돌리기 관측성 |
 | 두 번째 방어선 | 12 재고 확정 음수 가드 / 13 격리 토픽과 에러 핸들러 / 14 적체 알람과 대응 분류 |
-| 운영과 검증 | 15 시드 키 이름 / 16a 이중 되돌리기 조합 / 16b 동시 중복 확정과 재시도 / 16c 수렴 체인과 정합 / 17 라이브 검증 |
+| 운영과 검증 | 15 시드·토픽 스크립트 / 16a 이중 되돌리기 조합 / 16b 동시 중복 확정과 재시도 / 16c 수렴 체인과 정합 / 17 라이브 검증 |
 
 ### 포트 전환 순서
 
@@ -125,7 +125,7 @@ flowchart TD
 - [x] Task 12: 상품 서비스 재고 확정 음수 가드
 - [x] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
 - [x] Task 14: 격리 적체 알람과 대응 분류
-- [ ] Task 15: 시드 스크립트 키 이름 전환
+- [x] Task 15: 시드·토픽 생성 스크립트 정비
 - [ ] Task 16a: 이중 되돌리기 조합 검증
 - [ ] Task 16b: 동시 중복 확정과 거절 후 재시도 검증
 - [ ] Task 16c: 수렴 체인과 정합 검증
@@ -820,18 +820,28 @@ flowchart TD
   않았고, Task 17(라이브 검증)의 "음수 가드에 걸린 메시지가 격리 토픽까지 도달하는지" 항목이 이
   갭에 막힐 것이므로 그 전에 반영이 필요하다
 
-### Task 15: 시드 스크립트 키 이름 전환 [tdd=false]
+### Task 15: 시드·토픽 생성 스크립트 정비 [tdd=false]
 
 **구현**
 
 - `scripts/seed-stock.sh` , `scripts/bench-seed-stock.sh` 를 새 키 이름으로 변경
 - 전환 절차를 문서화 — 캐시와 DB 볼륨을 모두 비우고 새로 띄운다
+- **`scripts/smoke/create-topics.sh` 에 재고 확정 격리 토픽 추가** — Task 14 에서 발견된 누락이다. 자동 생성이 꺼진 환경이라 사전 생성 목록에 없으면 상품 서비스의 격리 발행이 실패하고, Task 17 의 "격리 토픽 도달" 확인이 그 자리에서 막힌다
 
 **완료 기준**
 
 - 스크립트가 심는 키 이름이 어댑터의 키 조립 규칙과 일치하는지 대조 (문자열 비교)
 - 로컬에서 시드를 돌려 심긴 키를 직접 조회해 확인
 - 실제 스택에서의 통과 여부는 Task 17 에서 본다
+
+**완료 결과**
+
+- `scripts/seed-stock.sh`/`scripts/bench-seed-stock.sh` 의 키 조립을 `StockCacheRedisAdapter.KEY_PREFIX`("stock:{") + productId + `KEY_SUFFIX`("}") 규칙과 문자열로 맞췄다 — 옛 `"stock:" + productId` 는 해시태그 중괄호가 없어 어댑터가 읽는 키와 다른 자리를 썼다
+- `scripts/smoke/create-topics.sh` 사전 생성 목록에 `payment.events.stock-committed.dlq` 추가, 헤더 주석의 토픽 개수(5개→6개, DLQ 2→3)도 갱신
+- **[Rule 1] 같은 옛 키 형식을 쓰던 나머지 운영·벤치 스크립트 3곳도 함께 정정** — `scripts/smoke/observability-load.sh`(부하 중 재고 top-up), `scripts/k6/verify-settlement.sh`(정산 검증 트리아지 조회 2곳 + 로그 레이블 1곳, 이 파일은 주석에 이미 `stock:{PRODUCT_ID}` 신형식을 적어두고 실제 조회 코드만 옛 형식을 쓰고 있어 주석-코드 불일치로 드러난 동일 부류 버그였다). 방치하면 부하 측정 top-up 이 게이트가 안 읽는 키를 채우고, 정산 검증 스크립트가 잘못된 키를 조회해 조용히 오판정을 낸다
+- `scripts/seed-stock.sh` 헤더에 전환 절차를 문서화 — 이 스크립트 자체는 매 호출마다 새 형식으로 SET 하므로 그것만으로 새 키는 심기지만, 옛 스택을 그대로 두면 redis-stock 볼륨에 옛 형식 키가 죽은 채로 남고 진행 중이던 결제·격리 건의 in-flight 여부를 사람이 확인해야 한다. `bash scripts/compose-up.sh --clean`(전체 종료 + 볼륨 전부 제거) 후 `bash scripts/compose-up.sh` 재기동으로 캐시·DB 볼륨을 모두 비우고 진행 중 결제 0 상태에서 시작하는 절차를 남겼다
+- 로컬 검증 — `docker compose -f docker/docker-compose.infra.yml up -d mysql-product redis-stock` 로 두 컨테이너만 기동(healthy 대기) 후 `bash scripts/seed-stock.sh` 실행. `redis-cli GET "stock:{1}"` → 91, `GET "stock:{2}"` → 0, product RDB `stock` 테이블 값(1→91, 2→0)과 일치 확인. 같은 볼륨에 남아 있던 이전 스택의 옛 형식 키(`stock:1`, `stock:2` 등)가 죽은 채로 공존하는 것도 실제로 확인해, 위 전환 절차 문서화의 근거를 눈으로 봤다. 검증 후 두 컨테이너는 정지(볼륨 유지, 원상태로 되돌림) — payment/pg/product/user 애플리케이션과 Kafka 를 포함한 전체 스택 기동 및 격리 토픽 도달 확인은 Task 17 범위
+- 코드(Java/Gradle) 미접촉 — `./gradlew test` 생략
 
 ### Task 16a: 이중 되돌리기 조합 검증 [tdd=true] [domain_risk=true]
 

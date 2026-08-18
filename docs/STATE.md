@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 15 — 시드 스크립트 키 이름 전환 (Task 1~14 완료. Task 14 는 관측 규칙에 신규 `ProductStockQuarantineBacklog`(critical) 알람을 추가해 `payment.events.stock-committed.dlq` 적체를 잡고, `docs/smoke/alert-firing-check.md` 에 "격리 적체 알람 대응 분류" 절을 신설해 관리자 재고 조정 직후 발화(정상 발산)와 게이트 자체 결함(진짜 사고)을 시점·범위·재현성·조치 4축으로 갈랐다. promtool 4그룹 27케이스 전체 pass. **발견(범위 밖)**: `scripts/smoke/create-topics.sh` 가 `payment.events.stock-committed.dlq` 를 사전 생성 목록에서 빠뜨렸다 — `auto.create.topics.enable=false` 환경이라 이대로면 product-service 격리 발행이 실패한다. Task 17(라이브 검증) 전에 반영 필요)
+- **활성 태스크**: Task 16a — 이중 되돌리기 조합 검증 (Task 1~15 완료. Task 15 는 시드 스크립트(`seed-stock.sh`/`bench-seed-stock.sh`)의 키 조립을 어댑터의 상품 기준 해시태그 규칙(`stock:{productId}`)에 맞추고, `create-topics.sh` 사전 생성 목록에 누락됐던 `payment.events.stock-committed.dlq` 를 추가했다. 같은 옛 키 형식을 쓰던 `observability-load.sh`/`verify-settlement.sh` 도 함께 정정(Rule 1). 로컬에서 mysql-product+redis-stock 만 기동해 시드 후 `stock:{1}`/`stock:{2}` 키를 직접 조회해 RDB 값과 일치 확인. 스택을 새로 띄우며 전환하는 절차(캐시·DB 볼륨 모두 제거 후 재기동)를 `seed-stock.sh` 헤더에 문서화. 전체 스택 기동 검증은 Task 17 범위)
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
