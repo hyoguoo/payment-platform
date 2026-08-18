@@ -6,7 +6,7 @@
 
 - **주제**: STOCK-GATE-PER-PRODUCT (재고 선차감 게이트 상품 단위 분해)
 - **단계**: execute (plan 완료)
-- **활성 태스크**: Task 13 — 상품 서비스 격리 토픽과 에러 핸들러 (Task 1~12 완료. Task 12 는 `StockCommitUseCase.commitToRdb` 에 잔량 음수 가드를 추가했다 — `StockCommandUseCase` 가 쓰던 것과 같은 `ProductStockException.of(NOT_ENOUGH_STOCK)` 을 재고 row 미존재용 `IllegalStateException` 과 분리해 재사용했고(Task 13 이 재고 부족만 재시도 제외 목록에 등재해야 하므로), Javadoc 에 동시성 안전 근거(재고 확정 통지가 상품번호를 Kafka 파티션 키로 써서 같은 상품 커밋이 단일 컨슈머 스레드로 직렬화됨 — 이 나눔 기준을 바꾸면 lost update 재발)를 명시했다. **아직 이 예외를 받을 곳이 없다** — product-service 는 Kafka 에러 핸들러 커스터마이즈가 0건이라 지금은 기본 설정대로 재시도 후 로그만 남기고 메시지가 사라진다. `./gradlew :product-service:test` 60건 전체 pass(신규 2건), checkstyle·spotbugs 클린)
+- **활성 태스크**: Task 14 — 격리 적체 알람과 대응 분류 (Task 1~13 완료. Task 13 은 product-service 최초로 Kafka producer 를 두고 `KafkaErrorHandlerConfig`(payment-service 패턴 이식) + `StockCommitQuarantineRecoverer`(격리 메시지 키를 원본의 productId 단독 대신 `orderId:productId` 조합으로 재구성)를 신설해 `payment.events.stock-committed.dlq` 격리 토픽을 세웠다. not-retryable 목록엔 `ProductStockException`(재고 부족)만 등재하고 `IllegalStateException`(재고 row 미존재)은 뺐다 — Task 12 가 둘을 분리한 이유가 이 구분을 위해서였다. **product-service 에 Kafka 통합 테스트 인프라가 전혀 없어(`spring-kafka-test` 부재) 완료 기준(격리 도달 + 반복 실패 뒤 정상 메시지 처리)을 못 채우는 Rule 2 이탈이 있었고, 사용자 승인 하에 `build.gradle` 에 `spring-kafka-test` 를 추가했다.** `@EmbeddedKafka` 통합 테스트로 재고 부족(재시도 0회, 즉시 격리)과 재고 row 미존재(재시도 후 격리, 후속 정상 메시지는 계속 처리됨)를 실제 토픽 도달까지 확인. `./gradlew :product-service:test` 67건, `:product-service:integrationTest` 8건(신규 2건) 전체 pass, checkstyle·spotbugs 클린
 - **이슈·브랜치**: #144
 - **설계 문서**: `docs/topics/STOCK-GATE-PER-PRODUCT.md`
 - **구현 플랜**: `docs/STOCK-GATE-PER-PRODUCT-PLAN.md` (22 태스크)
@@ -24,8 +24,6 @@
 
 ### 별건 — 활성 토픽 조사에서 나온 사실
 
-- **초과 판매를 막는 장치가 게이트 하나뿐이다.** 재고 확정 차감(`StockCommitUseCase.commitToRdb`)에 음수 가드가 없고, 검증이 있는 `Product.decrementStock` 은 프로덕션 호출처가 0 이다 — 활성 토픽 범위에 포함
-- **상품 서비스에 소비 실패를 받을 곳이 없다.** 에러 핸들러 커스터마이즈가 0 건이라 기본 설정대로 재시도 후 로그만 남기고 메시지가 사라진다 — 활성 토픽에서 격리 토픽과 함께 신설
 - **확정 요청에 멱등키가 없다.** 주문 접수에는 `Idempotency-Key` 헤더가 있으나 확정에는 없다. 이번에는 주문 단위 선점으로 대응하고 헤더 도입은 범위 밖
 
 ### 별건 — 위키에 남은 끊긴 참조 2곳

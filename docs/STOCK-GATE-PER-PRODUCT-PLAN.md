@@ -123,7 +123,7 @@ flowchart TD
 - [x] Task 10: 미회수 선차감 회수 판정
 - [x] Task 11: 회수 주기 작업과 되돌리기 관측성
 - [x] Task 12: 상품 서비스 재고 확정 음수 가드
-- [ ] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
+- [x] Task 13: 상품 서비스 격리 토픽과 에러 핸들러
 - [ ] Task 14: 격리 적체 알람과 대응 분류
 - [ ] Task 15: 시드 스크립트 키 이름 전환
 - [ ] Task 16a: 이중 되돌리기 조합 검증
@@ -754,6 +754,18 @@ flowchart TD
 **완료 기준**
 
 - 위 테스트 pass, 격리 토픽 도달을 통합 테스트로 확인
+
+**완료 결과**
+
+- **`product-service/build.gradle` 에 `testImplementation "org.springframework.kafka:spring-kafka-test"` 추가 — 사용자 승인 하에 진행.** product-service 는 지금까지 Kafka 통합 테스트 인프라(`@EmbeddedKafka`/testcontainers kafka)가 전혀 없었다(`spring-kafka-test`가 payment-service 에는 있고 product-service 에는 없었음, `./gradlew :product-service:dependencies`로 직접 확인). 이 태스크의 완료 기준(격리 토픽 도달 + 반복 실패 뒤 정상 메시지 처리)은 실제 컨슈머 재시도·복구 사이클을 봐야 하는 검증이라 mock 만으로는 충족할 수 없어, 계획 대비 이탈(Rule 2: build.gradle 의존성 변경)로 멈추고 보고했고 사용자가 A안(의존성 추가)을 승인했다
+- `product-service/.../infrastructure/config/KafkaErrorHandlerConfig.java` 신설 — payment-service 패턴을 옮겨왔다. `DefaultErrorHandler` + `FixedBackOff(product.kafka.error-handler.backoff.interval/max-attempts, 기본 1000ms/5회)`. not-retryable 목록은 `MessageConversionException`/`IllegalArgumentException`/`ProductStockException`(재고 확정 음수 가드) 셋 — **`IllegalStateException`(재고 row 미존재)은 의도적으로 뺐다.** Task 12 가 이 둘을 서로 다른 예외 타입으로 분리해 둔 이유가 이 목록에서 재고 부족만 골라 등재하기 위해서였다는 완료 결과를 그대로 반영했다
+- `product-service/.../infrastructure/config/KafkaProducerConfig.java` 신설(product-service 최초 producer 빈) — `payment.events.stock-committed.dlq` 전용 `KafkaTemplate<String,String>`. payment-service `KafkaProducerConfig` 와 동일하게 토픽 전용 StringSerializer `ProducerFactory` 를 명시 정의
+- `ProductTopics.PAYMENT_EVENTS_STOCK_COMMITTED_DLQ = "payment.events.stock-committed.dlq"` 신규 — 기존 `.dlq` suffix 네이밍 규약을 그대로 따랐다
+- `StockCommitQuarantineRecoverer`(`DeadLetterPublishingRecoverer` 서브클래스) 신설 — `createProducerRecord` 를 오버라이드해 격리 메시지 키를 `orderId:productId` 조합으로 다시 만든다. 원본 토픽 키는 productId 단독이라(상품 단위 순서 보장 목적), 음수 가드 예외가 dedupe 기록과 같은 트랜잭션으로 롤백돼 재전송마다 새 이벤트가 되는 상황에서 같은 사고를 주문 단위로 묶어 볼 수 없다는 문제를 이 키가 해결한다. **오버라이드 시 부모 클래스의 `key` 파라미터가 raw `byte[]`(역직렬화 실패 전용 계약)라는 것을 놓치고 문자열을 UTF-8 byte[] 로 바꿔 그대로 넘겼다가, StringSerializer 가 `SerializationException`을 던지며 격리 발행 자체가 무한 재시도에 빠지는 회귀를 통합 테스트로 직접 재현했다** — 부모 메서드를 그대로 호출해 원본 키/값을 얻은 뒤, 조합 키가 있을 때만 새 `ProducerRecord`로 키 필드만 String 그대로 교체하는 방식으로 수정. 페이로드 파싱 실패·orderId/productId 누락 시에는 원본 키로 fallback(격리 자체는 막지 않음)
+- `application.yml` — `product.kafka.error-handler.backoff.interval`(기본 1000ms) / `max-attempts`(기본 5) 신설, 주석에 격리 토픽 이름 명시
+- `KafkaErrorHandlerConfigTest` 신규(7케이스) — bean 생성, not-retryable 분류(ProductStockException=false, IllegalStateException=true, 일반 RuntimeException=true), backoff 값, destinationResolver 목적지, 격리 키 조합(orderId:productId), 파싱 실패 fallback
+- `StockCommitQuarantineIntegrationTest` 신규(`@EmbeddedKafka` + Testcontainers MySQL, `@Tag("integration")`) — #1 재고 부족: not-retryable 목록 등재로 재시도 없이(`commit()` 호출 1회) 즉시 격리 도달 + 키가 `orderId:productId` 조합임을 실제 토픽에서 확인. #2 재고 row 미존재: retryable 이라 반복 실패(`commit()` 호출 2회 이상) 후 격리되고, 그 뒤 발행한 정상 메시지가 컨슈머를 죽이지 않고 그대로 처리됨(재고 실제 차감)까지 확인 — 가드와 격리 도달을 한 검증으로 묶으라는 지시대로, 가드 판정과 실제 토픽 도달을 분리하지 않았다
+- `./gradlew :product-service:test` 67건, `:product-service:integrationTest` 8건(신규 2건 포함) 전체 pass, checkstyle·spotbugs 클린
 
 ### Task 14: 격리 적체 알람과 대응 분류 [tdd=false]
 
