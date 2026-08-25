@@ -22,6 +22,11 @@
 - Task 11 이 `scripts/k6/verify-settlement.sh`를 상품별 재고 대조(100종, 어긋난 상품만 개별 출력) + 건별 대조(DONE↔COMMITTED·FAILED↔REVERTED 부합 여부, 총건수 교차식이 못 잡는 개별 유실용) + 기계 판독 종료 코드(0 통과/2 판단 보류/3 불일치, 접속·전제 실패는 그대로 1)로 확장했다. `results/<CASE_NAME>-verdict.json`에 판정을 남기고 부하 도구가 쓰는 `<CASE_NAME>.json`은 건드리지 않는다. 미종결/미회수 선차감 기록/소비 적체는 대기하면 풀릴 수 있어 판단 보류(2), QUARANTINED는 대기로 안 풀려 다른 게이트 상태와 무관하게 즉시 불일치(3)로 우선 판정한다. mysql-pg/pg-service/user-service를 일시 기동해 실제 k6 부하(81건 DONE)로 정상 통과(exit 0)·상품 1종만 어긋낸 불일치(exit 3, 나머지 99종 무관)·QUARANTINED 1건 잔류 불일치(exit 3)·READY 1건 잔류 판단 보류(exit 2)를 각각 실측 확인 — 상세는 PLAN Task 11 완료 결과. 검증 중 `product-service-stock-commit` 컨슈머 그룹 LAG가 트랜잭션 커밋 마커로 파티션당 1씩 영구 잔류하는 현상을 발견(대기로 자연 해소 안 됨, 재기동+`reset-offsets`로만 해소) — Task 13 사이클 러너의 소비 적체 게이트 임계값 설계에 영향을 줄 수 있어 후속 확인 필요. 검증에 새로 띄운 mysql-pg/pg-service/user-service는 정지하고 payment-service/product-service는 유지, payment 여섯 테이블은 다시 빈 상태로 복원
 - Task 12 가 `scripts/bench-cluster-check.sh`를 만들어 재고 캐시 클러스터 라이브 점검을 자동화했다. payment-service를 클러스터에 연결해 재기동한 뒤 실제 `checkout`+`confirm`으로 정상 경로(단일 상품)와 거절 경로(다중 상품 중 하나 품절)를 흘려 선차감·주문 선점 획득·해제·거절 전용 되돌리기 네 경로를 확인하고, 정상 흐름에서 안 타는 격리 복구 조건부 보상은 EVAL로 직접 태운다(qty=0, 실 재고 불변). 상품 100종 전부의 해시태그 슬롯 일치와 노드별 분포 편차(임계 초과 시 exit 4)도 확인한다. `docker/docker-compose.scaleout.yml`에 `REDIS_STOCK_CLUSTER_NODES` 패스스루를 추가해 Task 6/8이 준비한 클러스터 전환을 실행 시점에 켤 수 있게 완성했다. 마스터 2대·4대 두 구성 모두 다섯 경로 정상 + 슬롯 일치 + 분포 편차 0%로 exit 0 실측 확인 — 상세는 PLAN Task 12 완료 결과. 검증 중 payment-service를 user-service보다 먼저 재기동하면 Eureka 클라이언트의 시작 시점 레지스트리 스냅샷 누락으로 checkout이 일시 503을 내는 것을 발견해 순서를 바꾸고 Eureka 등록 확인을 추가했다. 검증 후 테스트 흔적(orderId 2건의 payment 여섯 테이블 행, 프로브 상품 캐시값)을 정리하고 payment-service를 단독 연결로, redis-stock-cluster를 2대로, user-service는 정지 상태로 되돌려 Task 8 인계 상태와 동일하게 복원했다. Task 13 이 이어서 사이클 러너와 복제 지연 계측을 만든다
 
+### 중단 지점 — Task 14 앞에서 멈춘다 (사용자 지시)
+
+- Task 13(사이클 러너)까지 마치면 **측정에 들어가지 않고 멈춘다.** 사용자가 측정 전에 머신 자원을 안정화할 시간이 필요하다
+- 재개 시 알릴 것: 그 시점에 떠 있는 컨테이너 목록과 메모리 점유 / 첫 사이클 전 기동·트레이스 점검을 정리 전에 할지 후에 할지
+
 ## 재개 메모
 
 ### 별건 — 확정 요청에 멱등키가 없다
