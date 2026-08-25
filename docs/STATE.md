@@ -7,7 +7,7 @@
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
 - 단계: **execute**
-- 활성 태스크: Task 2 (폴링이 전용 포트를 쓰도록 교체)
+- 활성 태스크: Task 3 (복제본 데이터소스 설정)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
 - 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4

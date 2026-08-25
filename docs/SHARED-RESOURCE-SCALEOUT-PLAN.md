@@ -127,7 +127,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 ## 진행 상황
 
 - [x] Task 1: 폴링 상태 조회 포트와 Fake
-- [ ] Task 2: 폴링이 전용 포트를 쓰도록 교체
+- [x] Task 2: 폴링이 전용 포트를 쓰도록 교체
 - [ ] Task 3: 복제본 데이터소스 설정
 - [ ] Task 4: 폴링 조회 어댑터 (질의 전용)
 - [ ] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
@@ -194,7 +194,11 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 교체 후 `PaymentOutboxUseCase.findActiveOutboxStatus` 의 호출처가 없어진다. 제거 여부는 임의로 판단하지 않고 ship 리뷰에서 사용자 확인 후 정한다
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentStatusServiceImpl` 이 `PaymentStatusQueryPort` 하나만 의존하도록 교체. `PaymentLoadUseCase` / `PaymentOutboxUseCase` 의존 제거
+- 스냅샷이 비면 기존과 같은 `PaymentFoundException.of(PAYMENT_EVENT_NOT_FOUND)` 를 던진다
+- `PaymentStatusServiceImplTest` 를 `FakePaymentStatusQueryPort` 기반으로 재작성 (7케이스, PROCESSING 분기는 `@ParameterizedTest @EnumSource` 로 DONE/FAILED 제외 전체 커버). 스냅샷 미조회 검증은 Fake 를 `Mockito.spy` 로 감싸 확인
+- `./gradlew :payment-service:test` 682건 전체 통과 — `PaymentOutboxUseCase.findActiveOutboxStatus` 호출처는 아직 남아 있어(Task 5 이후 정리 대상) 회귀 없음
+- `PaymentStatusServiceImpl` 을 sliced 컨텍스트가 아닌 방식으로 부팅하는 테스트는 없어 프로덕션 `PaymentStatusQueryPort` 빈이 아직 없어도 unit test 범위에서 영향 없음 (구현체는 Task 4)
 
 ---
 
