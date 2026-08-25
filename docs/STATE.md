@@ -1,19 +1,18 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-08-19
+> 최종 수정: 2026-08-25
 
 ## 활성 작업
 
-없음 (idle)
+### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
+
+- 단계: **plan**
+- 이슈 / 브랜치: #146
+- 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` (상단 요약 브리핑에 결정 요약)
+- discuss 게이트 4라운드 종료 — findings 가 전부 문서 수정으로 닫히고 설계 변경이 없어 plan 으로 넘김
+- 측정 시작 전 선행: Docker 메모리 20GB 상향 (현재 8.2GB), 장애 전환 검증을 별도 토픽으로 `docs/context/TODOS.md` 에 등재
 
 ## 재개 메모
-
-### 보류 — SHARED-RESOURCE-SCALEOUT (공유 자원 동반 스케일아웃 측정)
-
-- 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` (하단 "보류 결정" 절에 정정·게이트 findings·재개 조건 정리)
-- discuss 1라운드 게이트까지 진행 — reviewer revise / domain-expert fail. findings 미반영 상태
-- **보류 사유였던 선행 조건은 해소됐다** — 재고 선차감 게이트가 상품 단위로 분해돼 키가 상품 기준 해시태그로 묶였고, 한 상품의 키가 같은 슬롯에 모여 노드를 나눠도 스크립트가 원자적으로 돈다
-- 재개 시: 재고·멱등 저장소 분산을 다시 범위에 넣고 findings 반영해 재게이트. 캐시 왕복이 주문당 1회에서 선점 1 + 상품 N + 해제 1로 늘어난 것(왕복당 약 5ms)이 측정 설계에 반영돼야 하고, 병목으로 드러나면 노드별 묶음 처리(`TODOS.md`)가 후보
 
 ### 별건 — 확정 요청에 멱등키가 없다
 
