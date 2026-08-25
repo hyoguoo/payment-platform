@@ -6,11 +6,12 @@
 
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
-- 단계: **plan**
+- 단계: **execute**
+- 활성 태스크: Task 1 (폴링 상태 조회 포트와 Fake)
 - 이슈 / 브랜치: #146
-- 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` (상단 요약 브리핑에 결정 요약)
-- discuss 게이트 4라운드 종료 — findings 가 전부 문서 수정으로 닫히고 설계 변경이 없어 plan 으로 넘김
-- 측정 시작 전 선행: Docker 메모리 20GB 상향 (현재 8.2GB), 장애 전환 검증을 별도 토픽으로 `docs/context/TODOS.md` 에 등재
+- 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
+- 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4
+- 측정 시작 전 선행: Docker 메모리 20GB 상향 (현재 8.2GB). 장애 전환 검증은 ship 에서 `docs/context/TODOS.md` 에 별도 토픽으로 등재
 
 ## 재개 메모
 
