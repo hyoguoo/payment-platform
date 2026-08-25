@@ -423,6 +423,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
   - 세 시나리오 모두 종료 후 테스트로 심은 행을 지우고 payment-service 를 재기동, `bench-seed-stock.sh` 로 재시드해 다음 태스크가 이어 쓸 기동 상태를 정상으로 복원했다
 - Java 코드 변경 없음(bash 스크립트 1개 신설) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
 - 인프라 기동 상태 갱신 — 검증 중 mysql-payment 의 낡은 bench 잔류(payment_event/payment_order/payment_outbox/payment_history/payment_event_dedupe/stock_hold_record)를 정리했다. 이후 태스크는 이 여섯 테이블이 빈 상태에서 시작한다
+- **(3) 게이트 보정(2026-08-26)** — 소비 적체 0 은 실측에서 도달 불가로 드러나(재고 확정 발행이 트랜잭션으로 묶여 커밋 표시가 파티션마다 오프셋을 하나씩 차지하는데 컨슈머는 이를 레코드로 처리하지 않는다), 판정을 "조회한 파티션 수 이하 + 연속 확인에서 더 줄지 않음(소비자 생존 확인은 그대로 유지)"으로 바꿨다. 실거래 후 파티션당 1 남은 상태에서 통과(exit 0), 소비자를 살려 둔 채(`docker pause`로 그룹 멤버십은 유지하고 폴링만 정지) 실제 미소비 메시지를 파티션 수 이상 쌓은 상태에서는 통과하지 않음(폴링 상한까지 "파티션수 초과, 대기" 반복 후 exit 2), 컨슈머 자체가 없는 상태에서는 폴링 없이 즉시 실패(exit 2, 8초)함을 각각 실측 확인했다 — 상세 경위는 Task 13 완료 결과 뒤에 정리
 
 ---
 
@@ -461,6 +462,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - **부수 발견(범위 밖, TODOS 등재 대상)** — `product-service-stock-commit` 컨슈머 그룹의 LAG가 트랜잭션 커밋 마커 때문에 파티션당 1씩 영구적으로 잔류하는 현상을 실측으로 확인했다(`kafka-console-consumer`로 해당 오프셋을 직접 읽으면 실제 레코드가 없다 — 컨트롤 마커). 수십 초 대기해도 자연 해소되지 않고, `product-service` 재기동 + `kafka-consumer-groups --reset-offsets --to-latest`로만 해소됐다. `bench-cycle-reset.sh`(Task 10)와 이번 Task 11의 소비 적체 게이트가 동일한 LAG 합산 방식을 쓰므로, Task 13의 사이클 러너가 이 게이트에서 유한 재시도 후 실패하도록 설계되면 실거래가 있었던 모든 사이클이 이 잔류 때문에 판단 보류를 반복하다 실패할 위험이 있다 — Task 13에서 임계값을 "0"이 아니라 "파티션 수 이하" 또는 "N초간 미증가"로 조정하는 검토가 필요하다
 - 검증에 쓴 orderId·격리/미종결 테스트 행은 모두 삭제하고, `bench-cycle-reset.sh`로 다섯 단계를 다시 통과시켜 캐시를 재시드했다(정상/잔류 시나리오 재확인 겸용). 이후 payment 여섯 테이블을 재차 비우고 `bench-seed-stock.sh`로 100종을 상수 재시드해 Task 10과 같은 빈 상태로 되돌렸다. 검증에 새로 띄운 mysql-pg/pg-service/user-service는 정지, payment-service/product-service는 계속 기동 유지
 - Java 코드 변경 없음(bash 스크립트 1개 확장) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
+- **소비 적체 게이트 보정(2026-08-26)** — Task 10 과 같은 이유로 적체 0 선결 조건을 "파티션 수 이하 + 더 줄지 않음"으로 바꿨다. 단발 스크립트라 폴링 루프 대신 짧은 간격(`STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS`, 기본 3초)을 두고 한 번 더 읽어 추세를 본다 — 적체가 있으면 재확인하고, 두 번째 읽음이 첫 번째보다 줄었으면(파티션 수 이하라도) 아직 소비 중으로 보아 판단 보류로 넘긴다. `results/<CASE_NAME>-verdict.json`에 `stock_commit_partitions`/`stock_commit_lag_pending` 필드를 추가했다. 실거래 후 파티션당 1 남은 상태에서 PASS(exit 0), 소비자를 살려 둔 채 파티션 수를 넘는 진짜 미소비 백로그(165건)를 쌓은 상태에서는 INCONCLUSIVE(exit 2), 컨슈머가 없는 상태에서는 즉시 실패(exit 1, 1초)함을 각각 라이브로 확인했다 — 상세 경위는 Task 13 완료 결과 뒤에 정리
 
 ---
 
@@ -523,6 +525,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - **시행착오 — 복제 지연 표본화 백그라운드 잡이 무기한 걸리는 결함을 실측 중 발견해 고쳤다** — 최초 구현은 `kill` 로 표본화 subshell 을 정지시킨 뒤 `wait` 로 종료를 확인했는데, 실제 라이브 사이클 실행 중 이 정지-확인 자체가 걸려버려 스크립트가 멈춘 채 몇 분씩 진행되지 않는 것을 두 번 겪었다(호스트 자원이 눌린 상태로 추정 — 이 세션에서 원인을 완전히 못 좁혔다). `kill` 로 강제 종료(SIGKILL)만 쏘고 종료를 기다리지 않도록 바꿔 해결했다 — `kill` 자체는 블로킹 콜이 아니라 이 호출은 걸리지 않는다. 같은 표본화 루프 안에서 함수가 아닌 subshell에 `local`을 쓰던 자잘한 오류(bash가 "local: can only be used in a function"를 매 반복 내뱉지만 진행은 계속되는 무해한 결함)도 같이 제거했다
 - **실측에 쓴 흔적 정리** — 검증에 새로 띄운 gateway/pg-service/user-service/mysql-pg와 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail)을 정지, 재고 캐시 클러스터를 인계 상태(2대)로 복원, payment-service를 단독 Redis 연결로 원복해 Task 12 인계 상태와 동일하게 되돌렸다. 부하로 쌓인 payment 여섯 테이블 행을 비우고 상품 100종을 상수(1000만)로 재시드, 소비 적체 마커도 `product-service` 재기동으로 0까지 비운 뒤 `bench-cycle-reset.sh`를 한 번 더 돌려 다섯 단계 전부 통과(exit 0)하는 것으로 최종 확인했다
 - Java 코드 변경 없음(bash 스크립트 3개 신설·수정 + k6 JS 1개 확장) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
+- **부수 발견 해소(2026-08-26)** — 위 "부수 발견" 이 지적한 위험(적체 0 이 도달 불가라 Task 14의 매 사이클이 판단 보류 소진으로 실패할 위험)을 사용자 승인을 받아 처리했다. `bench-cycle-reset.sh`/`verify-settlement.sh` 둘 다 소비 적체 게이트를 "0"에서 "조회한 파티션 수 이하 + 연속 확인에서 더 줄지 않음"으로 바꿨다(소비자 생존 확인은 그대로 유지). 정합 판정의 실제 권한자는 이 적체 게이트가 아니라 `verify-settlement.sh`의 상품별 캐시-원본 대조라는 점을 두 스크립트 주석에 명시했다 — 소비가 안 끝났으면 원본이 아직 안 깎여 그 대조에서 불일치로 잡히므로, 적체 게이트는 정황 증거일 뿐이다. 실측(실거래 후 파티션당 1 잔류 → 통과, 소비자를 살려 둔 채 파티션 수를 넘는 진짜 백로그 → 통과하지 않음, 컨슈머 부재 → 즉시 실패)은 Task 10/11 완료 결과에 각각 기록했다. 이로써 사람이 `product-service` 재기동을 사이클마다 끼워 넣을 필요가 없어져 Task 14 착수를 막던 요인이 해소됐다
 
 ---
 

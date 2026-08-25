@@ -14,7 +14,7 @@
 #     [1] k6(DONE + FAILED + timeout) == DB(DONE + FAILED + QUARANTINED + 미종결)
 #     [2] k6(DONE)                    == DB(DONE)
 #     [3] 재고 정합(상품별): 미종결=0 AND QUARANTINED=0 AND 미회수 선차감 기록=0
-#         AND 소비 적체=0 선결 후, 상품마다 redis 잔여 == RDB 잔여
+#         AND 소비 적체 게이트 통과 선결 후, 상품마다 redis 잔여 == RDB 잔여
 #     [4] 건별 대조: DONE 결제의 선차감 기록은 전부 COMMITTED, FAILED 결제의
 #         선차감 기록은 전부 REVERTED — 어긋나면 총건수가 맞아도 개별 유실/오류를 잡는다
 #
@@ -24,10 +24,16 @@
 #       대기하면 풀릴 수 있어 판단 보류로 다룬다
 #     - 미회수 선차감 기록(stock_hold_record.status=NOISE) → 주기 회수(StockHoldRecoveryWorker)로
 #       풀릴 수 있어 판단 보류로 다룬다
-#     - 재고 확정 메시지 소비 적체(consumer group) → 소비가 밀린 것뿐이라 판단 보류로 다룬다.
-#       남은 채로 재면 실제로는 정상인데 재고 정합이 불일치로 찍힌다. 단, 그룹에 배정된
-#       살아있는 컨슈머가 하나도 없는 채로 적체가 남아 있으면(product-service 다운) 대기해도
-#       절대 안 풀리므로 판단 보류로 묶지 않고 접속·전제 실패(exit 1)로 즉시 실패시킨다
+#     - 재고 확정 메시지 소비 적체(consumer group) → 재고 확정 발행이 트랜잭션으로 묶여 있어
+#       커밋 표시가 파티션마다 오프셋을 하나씩 차지하는데 컨슈머는 그것을 레코드로 처리하지
+#       않는다. 그래서 적체 0 은 실측에서 도달 불가로 드러났고, 게이트를 "파티션 수 이하 +
+#       재확인에서 더 줄지 않음"으로 바꿨다. 파티션 수를 넘거나 아직 줄고 있는 중이면 진짜
+#       소비가 도는 중이라 판단 보류로 다룬다 — 남은 채로 재면 실제로는 정상인데 재고
+#       정합이 불일치로 찍힌다. 이 게이트는 소비가 끝났다는 정황일 뿐, 정합 판정의 실제
+#       권한자는 아래 [3] 상품별 캐시-원본 대조다 — 소비가 안 끝났으면 원본이 아직 안
+#       깎여 그 대조에서 불일치로 잡힌다. 단, 그룹에 배정된 살아있는 컨슈머가 하나도 없는
+#       채로 적체가 남아 있으면(product-service 다운) 대기해도 절대 안 풀리므로 판단 보류로
+#       묶지 않고 접속·전제 실패(exit 1)로 즉시 실패시킨다
 #     - QUARANTINED > 0 → 격리는 사람 판단(관리자 종결)이 있어야 풀린다. 대기로 안 풀리므로
 #       판단 보류가 아니라 불일치로 낸다
 #
@@ -67,6 +73,8 @@
 #                             클러스터 구성이면 마스터 노드 하나만 지정해도 -c가 리다이렉트를 따라간다
 #   KAFKA_CONTAINER         — kafka 컨테이너명 (기본: payment-kafka)
 #   STOCK_COMMIT_GROUP      — 재고 확정 소비자 그룹 (기본: product-service-stock-commit)
+#   STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS — 소비 적체 게이트 재확인 간격 초(기본: 3) —
+#                             파티션 수 이하라도 직전 읽음보다 줄었으면 아직 소비 중으로 본다
 #   PRODUCT_COUNT           — 재고 정합 대조 대상 상품 종류 수 (기본: 100 — bench-seed-stock.sh와 동일)
 #   PRODUCT_ID_BASE         — 대조 대상 상품 id 시작값 (기본: 1000 — bench-seed-stock.sh와 동일)
 #
@@ -336,7 +344,11 @@ echo ""
 # ---------------------------------------------------------------------------
 # 둘 다 대기하면 풀릴 수 있는 판단 보류 재료다 — 미회수 기록은 주기 회수
 # (StockHoldRecoveryWorker), 소비 적체는 컨슈머가 밀린 메시지를 따라잡으면 풀린다.
-# 남은 채로 재고 정합을 재면 실제로는 정상인데 불일치로 찍힌다.
+# 남은 채로 재고 정합을 재면 실제로는 정상인데 불일치로 찍힌다. 소비 적체 게이트는
+# "파티션 수 이하 + 더 줄지 않음"이다 — 재고 확정 발행이 트랜잭션으로 묶여 있어 커밋
+# 표시가 파티션마다 오프셋을 하나씩 차지하는데 컨슈머는 그것을 레코드로 처리하지 않으므로
+# 적체 0 은 도달 불가하다. 이 게이트는 정황 증거일 뿐 정합 판정의 실제 권한자는 아래
+# [3] 상품별 캐시-원본 대조다 — 소비가 안 끝났으면 원본이 아직 안 깎여 그 대조가 잡아낸다.
 # ---------------------------------------------------------------------------
 
 print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -356,33 +368,36 @@ DB_NOISE="${DB_NOISE_RAW:-0}"
 # CONSUMER-ID 가 "-"면 그 파티션에 배정된 살아있는 컨슈머가 없다는 뜻이다(오프셋 자체는
 # 여전히 조회된다) — 이 상태에서 적체가 남아 있으면 소비자가 돌아오기 전까지 절대 안 줄어든다.
 #
-# 반환값: 정상 — 적체 합계(정수, 0 포함) / "ERROR" — 그룹 조회 실패 또는 그룹 행 없음(과거
-# 버전은 이 경우도 seen=0 → 0 을 출력해 판정 게이트를 조용히 통과시켰다) / "NO_CONSUMER" —
-# 적체가 남아 있는데 배정된 컨슈머가 하나도 없음(대기해도 안 풀린다)
+# 반환값(공백 구분 두 값 "합계 파티션수"): 정상 — "<합계> <파티션수>" / "ERROR 0" — 그룹
+# 조회 실패 또는 그룹 행 없음(과거 버전은 이 경우도 seen=0 → 0 을 출력해 판정 게이트를
+# 조용히 통과시켰다) / "NO_CONSUMER <파티션수>" — 적체가 남아 있는데 배정된 컨슈머가
+# 하나도 없음(대기해도 안 풀린다)
 kafka_stock_commit_lag() {
     local out
     out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
         --bootstrap-server localhost:9092 --describe --group "${STOCK_COMMIT_GROUP}" 2>/dev/null)
     if [[ -z "${out}" ]]; then
-        echo "ERROR"
+        echo "ERROR 0"
         return
     fi
     echo "${out}" | awk '
         $1 == "GROUP" { next }
         NF >= 7 && $6 ~ /^[0-9]+$/ {
             sum += $6
-            seen = 1
+            partitions++
             if ($7 != "-") { live = 1 }
         }
         END {
-            if (!seen) { print "ERROR"; exit }
-            if (sum > 0 && !live) { print "NO_CONSUMER"; exit }
-            print sum
+            if (!partitions) { print "ERROR 0"; exit }
+            if (sum > 0 && !live) { print "NO_CONSUMER", partitions; exit }
+            print sum, partitions
         }
     '
 }
 
-STOCK_COMMIT_LAG=$(kafka_stock_commit_lag)
+STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS="${STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS:-3}"
+
+read -r STOCK_COMMIT_LAG STOCK_COMMIT_PARTITIONS <<< "$(kafka_stock_commit_lag)"
 if [[ "${STOCK_COMMIT_LAG}" == "ERROR" ]]; then
     print_error "❌ 소비 적체 조회 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
     exit 1
@@ -393,9 +408,35 @@ if [[ "${STOCK_COMMIT_LAG}" == "NO_CONSUMER" ]]; then
     exit 1
 fi
 
+# 게이트: 파티션 수 이하 + 더 줄지 않음. 단발 스크립트라 폴링 루프 대신 짧은 간격을 두고
+# 한 번 더 읽어 추세를 본다 — 두 번째 읽음이 첫 번째보다 줄었다면 아직 진짜 소비가 도는
+# 중이라는 뜻이라(파티션 수 이하라도) 통과로 보지 않고 STOCK_COMMIT_LAG_PENDING 을 세운다.
+STOCK_COMMIT_LAG_PENDING=false
+if [[ "${STOCK_COMMIT_LAG}" -gt 0 ]]; then
+    sleep "${STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS}"
+    read -r STOCK_COMMIT_LAG_RECHECK STOCK_COMMIT_PARTITIONS_RECHECK <<< "$(kafka_stock_commit_lag)"
+    if [[ "${STOCK_COMMIT_LAG_RECHECK}" == "ERROR" ]]; then
+        print_error "❌ 소비 적체 재확인 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
+        exit 1
+    fi
+    if [[ "${STOCK_COMMIT_LAG_RECHECK}" == "NO_CONSUMER" ]]; then
+        print_error "❌ 소비 적체 재확인 중 컨슈머 소실 — 그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없다"
+        exit 1
+    fi
+    if [[ "${STOCK_COMMIT_LAG_RECHECK}" -lt "${STOCK_COMMIT_LAG}" ]]; then
+        print_warning "  ⚠️  소비 적체가 ${STOCK_COMMIT_LAG} → ${STOCK_COMMIT_LAG_RECHECK} 로 줄어드는 중 — 진짜 소비 중이라 판단 보류로 다룬다"
+        STOCK_COMMIT_LAG_PENDING=true
+    fi
+    STOCK_COMMIT_LAG="${STOCK_COMMIT_LAG_RECHECK}"
+    STOCK_COMMIT_PARTITIONS="${STOCK_COMMIT_PARTITIONS_RECHECK}"
+fi
+if [[ "${STOCK_COMMIT_LAG}" -gt "${STOCK_COMMIT_PARTITIONS}" ]]; then
+    STOCK_COMMIT_LAG_PENDING=true
+fi
+
 echo ""
 echo "  미회수 선차감 기록(NOISE):     ${DB_NOISE}"
-echo "  재고 확정 소비 적체(${STOCK_COMMIT_GROUP}): ${STOCK_COMMIT_LAG}"
+echo "  재고 확정 소비 적체(${STOCK_COMMIT_GROUP}): ${STOCK_COMMIT_LAG} (파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -548,9 +589,9 @@ SETTLE_MISMATCH_COUNT=0
 if [[ "${DB_QUARANTINED}" -gt 0 ]]; then
     print_warning "  ⚠️  격리 결제 잔류(QUARANTINED=${DB_QUARANTINED}) — 재고/건별 대조를 건너뛴다"
     STOCK_VERDICT="SKIPPED"
-elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG}" -gt 0 ]]; then
+elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG_PENDING}" == "true" ]]; then
     print_warning "  ⚠️  종결 대기 중 — 재고/건별 대조를 건너뛴다"
-    echo "     미종결=${DB_UNSETTLED} / 미회수 선차감 기록=${DB_NOISE} / 소비 적체=${STOCK_COMMIT_LAG}"
+    echo "     미종결=${DB_UNSETTLED} / 미회수 선차감 기록=${DB_NOISE} / 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
     echo "     SETTLE_WAIT_SECONDS 를 늘려 재검증 필요:"
     echo "       SETTLE_WAIT_SECONDS=$(( SETTLE_WAIT_SECONDS * 2 )) CASE_NAME=${CASE_NAME} bash scripts/k6/verify-settlement.sh"
     STOCK_VERDICT="SKIPPED"
@@ -704,7 +745,7 @@ echo "  CASE_NAME:    ${CASE_NAME}"
 echo "  settle 대기:  ${SETTLE_WAIT_SECONDS}s$( [[ "${SETTLE_WAIT_AUTO}" == "true" ]] && echo " (자동 산출)" || echo " (명시 지정)" )"
 echo "  k6 결과:      confirm=${K6_CONFIRM} / DONE=${K6_DONE} / FAILED=${K6_FAILED} / timeout=${K6_TIMEOUT}"
 echo "  DB 결과:      DONE=${DB_DONE} / FAILED=${DB_FAILED} / QUARANTINED=${DB_QUARANTINED} / 미종결=${DB_UNSETTLED}"
-echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}"
+echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
 echo "  교차식 [1] k6총합==DB총합: $( [[ "${CROSS_1_OK}" == "true" ]] && echo PASS || echo FAIL )  (k6=${K6_TOTAL} / DB=${DB_TOTAL})"
 echo "  교차식 [2] k6DONE==DB DONE: $( [[ "${CROSS_2_OK}" == "true" ]] && echo PASS || echo FAIL )   (k6=${K6_DONE} / DB=${DB_DONE})"
 echo "  교차식 [3] 상품별 재고 정합: ${STOCK_VERDICT}  (불일치 ${STOCK_MISMATCH_COUNT}종 / 대상 ${PRODUCT_COUNT}종)"
@@ -728,10 +769,10 @@ if [[ "${DB_QUARANTINED}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
     VERDICT_REASON="격리 결제 잔류(QUARANTINED=${DB_QUARANTINED}) — 대기로 풀리지 않아 불일치로 낸다"
-elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG}" -gt 0 ]]; then
+elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG_PENDING}" == "true" ]]; then
     VERDICT="INCONCLUSIVE"
     EXIT_CODE=2
-    VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}"
+    VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
 elif [[ "${CROSS_1_OK}" != "true" ]] || [[ "${CROSS_2_OK}" != "true" ]] || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
@@ -739,7 +780,7 @@ elif [[ "${CROSS_1_OK}" != "true" ]] || [[ "${CROSS_2_OK}" != "true" ]] || [[ "$
 else
     VERDICT="PASS"
     EXIT_CODE=0
-    VERDICT_REASON="전항목 통과 — 상품 ${PRODUCT_COUNT}종 재고 정합 / 건별 대조 일치 / 격리·미종결·미회수 선차감 기록·소비 적체 전부 0"
+    VERDICT_REASON="전항목 통과 — 상품 ${PRODUCT_COUNT}종 재고 정합 / 건별 대조 일치 / 격리·미종결·미회수 선차감 기록 0, 소비 적체 게이트(파티션 수 이하+더 줄지 않음) 통과"
 fi
 
 case "${VERDICT}" in
@@ -775,6 +816,8 @@ jq -n \
     --argjson db_unsettled "${DB_UNSETTLED}" \
     --argjson db_noise "${DB_NOISE}" \
     --argjson stock_commit_lag "${STOCK_COMMIT_LAG}" \
+    --argjson stock_commit_partitions "${STOCK_COMMIT_PARTITIONS}" \
+    --argjson stock_commit_lag_pending "$( [[ "${STOCK_COMMIT_LAG_PENDING}" == "true" ]] && echo true || echo false )" \
     --arg stock_verdict "${STOCK_VERDICT}" \
     --argjson stock_mismatch_count "${STOCK_MISMATCH_COUNT}" \
     --argjson settle_mismatch_count "${SETTLE_MISMATCH_COUNT}" \
@@ -795,6 +838,8 @@ jq -n \
             db_unsettled: $db_unsettled,
             db_noise: $db_noise,
             stock_commit_lag: $stock_commit_lag,
+            stock_commit_partitions: $stock_commit_partitions,
+            stock_commit_lag_pending: $stock_commit_lag_pending,
             stock_verdict: $stock_verdict,
             stock_mismatch_count: $stock_mismatch_count,
             settle_mismatch_count: $settle_mismatch_count,

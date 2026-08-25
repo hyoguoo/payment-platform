@@ -14,7 +14,13 @@
 #       캐시를 비우게 된다. 격리 잔류는 관리자 종결(POST .../resolve-quarantine)로 자동
 #       시도한 뒤 재확인한다 — 벤더 승인이 확인된 건은 종결이 거부되고, 그 경우도 포함해
 #       반복해도 안 비면 무기한 대기하지 않고 사이클을 실패 처리한다.
-#   (3) 재고 확정 메시지의 소비 적체(consumer group product-service-stock-commit) 0 안정 확인.
+#   (3) 재고 확정 메시지의 소비 적체(consumer group product-service-stock-commit) 안정 확인.
+#       재고 확정 발행이 트랜잭션으로 묶여 있어 커밋 표시가 파티션마다 오프셋을 하나씩
+#       차지하는데 컨슈머는 그것을 레코드로 처리하지 않는다 — 그래서 적체 0 은 실측에서
+#       도달 불가로 드러났고, 판정을 "파티션 수 이하 + 연속 확인에서 더 줄지 않음"으로
+#       바꿨다. 적체가 파티션 수를 넘거나 아직 줄고 있는 중이면 진짜 소비 중이라는 뜻이라
+#       지금처럼 기다린다. 이 게이트는 소비가 끝났다는 정황 증거일 뿐 정합 판정의 권한자는
+#       아니다 — 권한자는 scripts/k6/verify-settlement.sh 의 상품별 캐시-원본 대조다.
 #       그룹에 배정된 살아있는 컨슈머가 없는 채로 적체가 남아 있으면(product-service 다운)
 #       대기해도 절대 안 풀리므로 폴링 예산을 남겨 뒀어도 즉시 실패로 끝낸다
 #   (4) 회수 주기 작업 정지 — payment-service 를 서비스 단위로 멈춘다(docker compose stop).
@@ -235,63 +241,80 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# (3) 재고 확정 메시지의 소비 적체 0 안정 확인 — consumer group product-service-stock-commit
+# (3) 재고 확정 메시지의 소비 적체 안정 확인 — consumer group product-service-stock-commit
+# 게이트: 파티션 수 이하 + 연속 확인에서 더 줄지 않음 + 소비자 생존. 이 게이트가 정합을
+# 보증하지는 않는다 — 정합 판정의 실제 권한자는 scripts/k6/verify-settlement.sh 의
+# 상품별 캐시-원본 대조다.
 # ---------------------------------------------------------------------------
 
-# 소비 적체 합계를 구하되, 그룹 행이 아예 없을 때(그룹 조회 실패·존재하지 않는 그룹)와
-# 배정된 살아있는 컨슈머가 없을 때(product-service 다운)를 구분해 알린다.
+# 소비 적체 합계와 파티션 수를 함께 구하되, 그룹 행이 아예 없을 때(그룹 조회 실패·존재하지
+# 않는 그룹)와 배정된 살아있는 컨슈머가 없을 때(product-service 다운)를 구분해 알린다.
 # --describe 출력 컬럼: GROUP TOPIC PARTITION CURRENT-OFFSET LOG-END-OFFSET LAG CONSUMER-ID HOST CLIENT-ID
 # CONSUMER-ID 가 "-"면 그 파티션에 배정된 살아있는 컨슈머가 없다는 뜻이다(오프셋 자체는
 # 여전히 조회된다) — 이 상태에서 적체가 남아 있으면 소비자가 돌아오기 전까지 절대 안 줄어든다.
 #
-# 반환값: 정상 — 적체 합계(정수, 0 포함) / "ERROR" — 그룹 조회 실패 또는 그룹 행 없음(과거
-# 버전은 이 경우도 seen=0 → 0 을 출력해 게이트를 조용히 통과시켰다) / "NO_CONSUMER" — 적체가
-# 남아 있는데 배정된 컨슈머가 하나도 없음(대기해도 안 풀린다)
+# 반환값(공백 구분 두 값 "합계 파티션수"): 정상 — "<합계> <파티션수>" / "ERROR 0" — 그룹
+# 조회 실패 또는 그룹 행 없음(과거 버전은 이 경우도 seen=0 → 0 을 출력해 게이트를 조용히
+# 통과시켰다) / "NO_CONSUMER <파티션수>" — 적체가 남아 있는데 배정된 컨슈머가 하나도 없음
+# (대기해도 안 풀린다)
 kafka_lag_sum() {
     local out
     out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
         --bootstrap-server localhost:9092 --describe --group "${STOCK_COMMIT_GROUP}" 2>/dev/null)
     if [[ -z "${out}" ]]; then
-        echo "ERROR"
+        echo "ERROR 0"
         return
     fi
     echo "${out}" | awk '
         $1 == "GROUP" { next }
         NF >= 7 && $6 ~ /^[0-9]+$/ {
             sum += $6
-            seen = 1
+            partitions++
             if ($7 != "-") { live = 1 }
         }
         END {
-            if (!seen) { print "ERROR"; exit }
-            if (sum > 0 && !live) { print "NO_CONSUMER"; exit }
-            print sum
+            if (!partitions) { print "ERROR 0"; exit }
+            if (sum > 0 && !live) { print "NO_CONSUMER", partitions; exit }
+            print sum, partitions
         }
     '
 }
 
+# 직전 확인의 적체를 기억해 "더 줄지 않음"을 판정한다 — 값이 안 바뀐 채로 파티션 수
+# 이하면 커밋 표시만 남은 정상 잔류, 값이 계속 바뀌면(대개 감소) 진짜 소비가 도는 중이라
+# 안정으로 보지 않는다. 조회 실패·소비자 없음이 한 번이라도 끼면 추세를 신뢰할 수 없어
+# 리셋한다.
+PREV_STOCK_LAG=""
+
 # check_fn 반환 코드 규약(wait_stable 이 해석): 0=성공 / 1=아직 안정 안 됨(재시도) /
 # 2=대기해도 안 풀리는 상태 — wait_stable 이 즉시 중단한다
 check_step3() {
-    local lag
-    lag=$(kafka_lag_sum)
+    local lag partitions
+    read -r lag partitions <<< "$(kafka_lag_sum)"
     if [[ "${lag}" == "ERROR" ]]; then
         echo "    소비 적체 조회 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
+        PREV_STOCK_LAG=""
         return 1
     fi
     if [[ "${lag}" == "NO_CONSUMER" ]]; then
         echo "    소비자 없음 — 그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없는데 적체가 남아 있다"
         echo "    (product-service 가 내려가 있으면 대기해도 절대 줄지 않는다 — 즉시 중단)"
+        PREV_STOCK_LAG=""
         return 2
     fi
-    if [[ "${lag}" -eq 0 ]]; then
+    if [[ "${lag}" -le "${partitions}" && "${PREV_STOCK_LAG}" == "${lag}" ]]; then
         return 0
     fi
-    echo "    잔류 — 소비 적체=${lag}"
+    if [[ "${lag}" -gt "${partitions}" ]]; then
+        echo "    잔류 — 소비 적체=${lag} (파티션수=${partitions} 초과, 진짜 소비 중일 수 있어 대기)"
+    else
+        echo "    적체=${lag} (파티션수=${partitions} 이하) — 직전 확인과 비교해 안정 여부 재확인"
+    fi
+    PREV_STOCK_LAG="${lag}"
     return 1
 }
 
-print_section "▶ (3) 재고 확정 메시지 소비 적체 0 — 안정 확인 (group=${STOCK_COMMIT_GROUP})"
+print_section "▶ (3) 재고 확정 메시지 소비 적체 — 안정 확인 (파티션 수 이하 + 더 줄지 않음, group=${STOCK_COMMIT_GROUP})"
 wait_stable "(3) 소비 적체" check_step3
 STEP3_RC=$?
 if [[ "${STEP3_RC}" -ne 0 ]]; then
@@ -336,7 +359,7 @@ print_section "▶ (5) (2)/(3) 즉시 재확인 — 통과 직후에만 비운�
 RECHECK_UNSETTLED=$(count_unsettled)
 RECHECK_QUARANTINED=$(count_quarantined)
 RECHECK_NOISE=$(count_noise)
-RECHECK_LAG=$(kafka_lag_sum)
+read -r RECHECK_LAG RECHECK_PARTITIONS <<< "$(kafka_lag_sum)"
 
 RECHECK_UNSETTLED="${RECHECK_UNSETTLED:-0}"
 RECHECK_QUARANTINED="${RECHECK_QUARANTINED:-0}"
@@ -348,13 +371,16 @@ if [[ "${RECHECK_LAG}" == "ERROR" || "${RECHECK_LAG}" == "NO_CONSUMER" ]]; then
     exit 4
 fi
 
-if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHECK_NOISE}" -ne 0 || "${RECHECK_LAG}" -ne 0 ]]; then
-    print_error "❌ (5) 재확인 실패 — 미종결=${RECHECK_UNSETTLED} 격리=${RECHECK_QUARANTINED} 미회수 선차감 기록=${RECHECK_NOISE} 소비 적체=${RECHECK_LAG}"
+# 소비 적체는 파티션 수 이하면 통과로 본다 — (3) 이 이미 안정(더 줄지 않음)까지 확인했고
+# payment-service 가 (4) 로 멈춰 새 재고 확정 메시지가 나갈 출처가 없으므로, 여기서는
+# 단발 조회로 문턱만 다시 본다.
+if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHECK_NOISE}" -ne 0 || "${RECHECK_LAG}" -gt "${RECHECK_PARTITIONS}" ]]; then
+    print_error "❌ (5) 재확인 실패 — 미종결=${RECHECK_UNSETTLED} 격리=${RECHECK_QUARANTINED} 미회수 선차감 기록=${RECHECK_NOISE} 소비 적체=${RECHECK_LAG}(파티션수=${RECHECK_PARTITIONS})"
     print_error "   payment-service 는 이미 정지된 상태다 — 캐시를 비우지 않는다. 원인을 확인한 뒤 재실행하세요"
     exit 4
 fi
 
-print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=0"
+print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=${RECHECK_LAG}(파티션수=${RECHECK_PARTITIONS} 이하)"
 
 print_section "  캐시 비우기 + 상품별 상수 재시드 위임 → scripts/bench-seed-stock.sh"
 if ! bash "${ROOT_DIR}/scripts/bench-seed-stock.sh"; then
