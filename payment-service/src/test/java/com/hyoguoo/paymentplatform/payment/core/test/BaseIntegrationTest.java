@@ -33,7 +33,7 @@ import org.testcontainers.containers.MySQLContainer;
 @Import(BaseIntegrationTest.BaseTestConfig.class)
 public abstract class BaseIntegrationTest {
 
-    static final MySQLContainer<?> MYSQL_CONTAINER;
+    protected static final MySQLContainer<?> MYSQL_CONTAINER;
 
     /**
      * 기본 Redis(redis-dedupe) 컨테이너 — IdempotencyStoreRedisAdapter 가 사용하는 인스턴스.
