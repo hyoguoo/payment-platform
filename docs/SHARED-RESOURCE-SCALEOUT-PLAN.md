@@ -130,7 +130,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 2: 폴링이 전용 포트를 쓰도록 교체
 - [x] Task 3: 복제본 데이터소스 설정
 - [x] Task 4: 폴링 조회 어댑터 (질의 전용)
-- [ ] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
+- [x] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
 - [ ] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
 - [ ] Task 7: payment DB 복제본 인프라
 - [ ] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
@@ -279,7 +279,14 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 다른 빈에 복제본 데이터소스를 주입해 보면 테스트가 깨지고, 되돌리면 다시 통과한다 (한 번 확인 후 원복)
 
 **완료 결과**
-> (execute에서 채움)
+- **실제 결함을 테스트로 잡았다** — `paymentReplicaJdbcTemplate` 빈(Task 4)이 생기면서 Spring Boot `JdbcTemplateAutoConfiguration` 이 `@ConditionalOnMissingBean(JdbcOperations.class)` 에 걸려 기본 `JdbcTemplate` 자동 등록을 건너뛰고, 뒤이어 `NamedParameterJdbcTemplate` 자동 설정(`@ConditionalOnSingleCandidate(JdbcTemplate.class)`)이 유일하게 남은 복제본 템플릿을 단일 후보로 골라버렸다. `JdbcPaymentEventDedupeStore`(확정 경로 멱등 판정)가 `NamedParameterJdbcTemplate` 을 `@Qualifier` 없이 타입으로만 주입받아, 돈 경로 멱등 판정이 조용히 복제본을 읽고 쓰게 되는 경로였다. 복제본을 끈 상태(`enabled=false`)에서는 복제본 데이터소스가 기본과 같은 객체라 이 결함이 드러나지 않아 지금까지 통합 테스트가 전부 통과했었다
+- `ReplicaDataSourceConfig` 에 기본 데이터소스용 `jdbcTemplate` 빈을 `@Primary` 로 명시 등록해 단일 후보 판정이 항상 기본 쪽으로 수렴하게 고쳤다. `paymentReplicaJdbcTemplate` Javadoc 도 "Spring Boot 가 자동 등록하는 기본 JdbcTemplate" 전제를 걷어내고 새 `jdbcTemplate` 빈을 가리키도록 정정
+- `ReplicaDataSourceIsolationTest` — `payment.datasource.replica.enabled=true` 로 복제본을 기본과 별개 빈으로 띄운 구성에서 3케이스 검증
+  - `paymentReplicaDataSource` → `paymentReplicaJdbcTemplate` → `paymentStatusQueryJdbcAdapter` 딱 두 단계 의존 사슬만 검사 (전체 전이 폐쇄를 쓰면 폴링 호출 경로의 서비스·컨트롤러까지 끌려 들어와 계약이 성립하지 않는다는 것을 실제로 겪고 depth 2 로 제한)
+  - 결제 이벤트 저장소 어댑터가 복제본 의존 사슬에 없다
+  - `namedParameterJdbcTemplate`/`jdbcPaymentEventDedupeStore` 가 복제본이 아닌 기본 데이터소스 의존 사슬에 있다 — 이번에 실제로 샜던 경로라 명시 포함
+- **원복 확인** — `jdbcTemplate` 빈의 `@Primary` 를 임시로 제거해 돌려보니 3케이스 전부 실패(컨텍스트 로딩 단계에서 단일 후보 판정이 갈려 애플리케이션 부팅 자체가 흔들림), 되돌리자 다시 3케이스 전부 통과. 커밋에는 원복된 상태만 남음
+- `./gradlew :payment-service:test` 682건, `:payment-service:integrationTest --rerun-tasks` 670건(기존 667 + 신규 3) 전체 통과 — 회귀 없음
 
 ---
 

@@ -35,6 +35,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 그대로 반환해, 복제본 인프라 없이도 같은 이름의 빈이 항상 존재한다. 폴링 조회 어댑터
  * ({@code PaymentStatusQueryJdbcAdapter})만 이 빈을 주입받는다 — 돈 경로 판정은 여전히
  * 기본 데이터소스를 읽는다.
+ *
+ * <p>기본 데이터소스용 {@code jdbcTemplate} 빈을 이 클래스에서 직접 등록하고 {@code @Primary}
+ * 를 붙이는 이유 — Spring Boot {@code JdbcTemplateAutoConfiguration} 은
+ * {@code @ConditionalOnMissingBean(JdbcOperations.class)} 로 자체 기본 {@code JdbcTemplate}
+ * 생성을 건너뛴다. 복제본 전용 {@code paymentReplicaJdbcTemplate} 도 {@link JdbcOperations}
+ * 타입이라 이 조건에 걸려 자동 등록이 사라지고, 뒤이어 {@code NamedParameterJdbcTemplate}
+ * 자동 설정({@code @ConditionalOnSingleCandidate(JdbcTemplate.class)})이 유일하게 남은
+ * 복제본 템플릿을 단일 후보로 골라버린다 — {@code @Qualifier} 없이 타입으로만 주입받는
+ * {@code JdbcPaymentEventDedupeStore}(돈 경로 확정 멱등 판정)가 조용히 복제본을 읽게
+ * 되는 것을 통합 테스트로 확인했다. 기본 데이터소스용 템플릿을 명시 등록하고 {@code @Primary}
+ * 로 지목해 단일 후보 조건이 항상 기본 데이터소스 쪽으로 수렴하게 만든다.
  */
 @Slf4j
 @Configuration
@@ -47,6 +58,17 @@ public class ReplicaDataSourceConfig {
         return dataSourceProperties.initializeDataSourceBuilder()
                 .type(HikariDataSource.class)
                 .build();
+    }
+
+    /**
+     * 기본 데이터소스({@code dataSource}) 전용 {@link JdbcTemplate}. {@code @Primary} 로 지목해
+     * {@code NamedParameterJdbcTemplate} 자동 설정의 단일 후보 판정이 항상 이 빈으로 수렴하게
+     * 만든다 — 클래스 Javadoc "복제본 전용 JdbcTemplate 이 자동 설정을 밀어내는 문제" 참고.
+     */
+    @Bean(name = "jdbcTemplate")
+    @Primary
+    public JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
     }
 
     @Bean(name = "paymentReplicaDataSource")
@@ -74,10 +96,9 @@ public class ReplicaDataSourceConfig {
     /**
      * 폴링 조회 어댑터({@code PaymentStatusQueryJdbcAdapter}) 전용 {@link JdbcTemplate}.
      *
-     * <p>Spring Boot 가 자동 등록하는 기본 {@code JdbcTemplate} 은 {@code @Primary} 데이터소스
-     * ({@code dataSource})에 묶인다. 복제본을 읽으려면 {@code paymentReplicaDataSource} 로
-     * 감싼 별도 빈이 필요해 이 자리에서 명시 이름으로 등록한다 — 복제본으로 가는 조회가
-     * 폴링 어댑터 하나뿐임을 빈 이름으로도 드러낸다.
+     * <p>기본 데이터소스는 위 {@code jdbcTemplate} 빈이 맡는다. 복제본을 읽으려면
+     * {@code paymentReplicaDataSource} 로 감싼 별도 빈이 필요해 이 자리에서 명시 이름으로
+     * 등록한다 — 복제본으로 가는 조회가 폴링 어댑터 하나뿐임을 빈 이름으로도 드러낸다.
      */
     @Bean(name = "paymentReplicaJdbcTemplate")
     public JdbcTemplate paymentReplicaJdbcTemplate(
