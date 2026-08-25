@@ -134,7 +134,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
 - [x] Task 7: payment DB 복제본 인프라
 - [x] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
-- [ ] Task 9: 부하 프로필 상품 다중화
+- [x] Task 9: 부하 프로필 상품 다중화
 - [ ] Task 10: 사이클 재구성 절차 스크립트
 - [ ] Task 11: 정합 검증 상품별 확장
 - [ ] Task 12: 클러스터 라이브 점검 스크립트
@@ -378,7 +378,13 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - `ITEMS_PER_ORDER=3` 으로 돌리면 한 주문에 서로 다른 상품 3개가 담긴다
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/bench-seed-stock.sh` 전면 재작성 — 상품 id 범위를 `PRODUCT_ID_BASE`(기본 1000) ~ `PRODUCT_ID_BASE+PRODUCT_COUNT-1`(기본 100종 → 1000..1099)로 잡아 스모크/통합 테스트가 쓰는 product id=1 대역과 겹치지 않게 했다. product/stock 행은 `INSERT IGNORE`로 보장하고 quantity는 매번 `BENCH_STOCK`(기본 1000만)으로 UPDATE — 단일 트랜잭션 한 번의 `docker exec`로 100종 전부 처리. redis-stock SET/GET은 컨테이너 안에서 `redis-cli -c`(클러스터 모드)로 상품마다 호출해 MOVED 리다이렉트를 자동으로 따라가게 했다 — 파이프 모드는 응답을 안 읽어 리다이렉트를 못 따라가서 쓰지 않음
+- `scripts/k6/helpers.js` — `PRODUCT_COUNT`(기본 1, 하위호환)/`PRODUCT_ID_BASE`(기본 1000)/`ITEMS_PER_ORDER`(기본 1) 세 상수를 추가하고, `doCheckout()` 내부에 `selectOrderProductIds()`를 신설했다. `PRODUCT_COUNT<=1`이면 기존과 동일하게 `PRODUCT_ID` 단일 상품만 쓴다. 그 이상이면 `k6/execution`의 `exec.scenario.iterationInTest`(VU 전역 반복 카운터)를 `PRODUCT_COUNT`로 나눈 나머지를 시작 인덱스로 삼아 상품을 순환시키고, `ITEMS_PER_ORDER`개를 인덱스 연속 슬롯에서 뽑아 한 주문 안에서 상품이 중복되지 않게 했다(전제: `ITEMS_PER_ORDER<=PRODUCT_COUNT`)
+- `scripts/k6/async-payment.js`는 변경하지 않음 — `doCheckout()`을 인자 없이 그대로 호출하므로 헬퍼 쪽 상수만으로 동작이 바뀐다
+- **알고리즘 검증** — `k6/execution`은 k6 런타임 밖에서 import할 수 없어, `selectOrderProductIds()`와 동일한 산식을 node로 재현해 별도 검증: PRODUCT_COUNT=1일 때 기존과 동일한 단일 상품 반환, 100종 대상 300회 반복에서 상품별 등장 횟수가 정확히 3회씩(완전 균등), ITEMS_PER_ORDER=3에서 100회 반복 전부 중복 없음(경계 랩어라운드 케이스 `[1099,1000,1001]` 포함) 확인
+- **실측 확인(라이브)** — mysql-product/product-service/user-service를 기동하고 `bench-seed-stock.sh`로 100종 시드 후, `grafana/k6` 컨테이너로 payment-service에 직접(gateway 우회) 부하를 흘렸다. (1) `ITEMS_PER_ORDER=1`: 76건 checkout 전부 201, `stock_hold_record`에서 상품 1000~1075 각 1건씩 — 완전 균등 분산 확인. (2) `ITEMS_PER_ORDER=3`: 51건 전부 성공, `stock_hold_record`의 `UNIQUE(order_id, product_id)` 제약이 살아있는 상태에서도 전건 성공해 상품 중복이 실제로 발생하지 않았음을 확정 — 표본 조회로 각 주문이 연속된 서로 다른 상품 3개(`1037,1038,1039` 등)를 담은 것도 직접 확인. 검증 후 `stock_hold_record`를 비우고 `bench-seed-stock.sh`를 재실행해 재고를 상수(1000만)로 복원
+- **인프라 기동 상태 갱신** — 이번 태스크로 mysql-product/product-service가 새로 필요해져 기동해 뒀다(다음 상품 시드·측정 태스크가 계속 쓸 것으로 판단해 유지). 라이브 검증에만 쓴 user-service는 검증 후 정지. `docs/STATE.md`에 반영
+- Java 코드 변경 없음(bash·k6 스크립트만) — `./gradlew :payment-service:test` UP-TO-DATE로 기존 결과 유지, 회귀 없음
 
 ---
 
