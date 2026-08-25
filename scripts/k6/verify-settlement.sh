@@ -25,7 +25,9 @@
 #     - 미회수 선차감 기록(stock_hold_record.status=NOISE) → 주기 회수(StockHoldRecoveryWorker)로
 #       풀릴 수 있어 판단 보류로 다룬다
 #     - 재고 확정 메시지 소비 적체(consumer group) → 소비가 밀린 것뿐이라 판단 보류로 다룬다.
-#       남은 채로 재면 실제로는 정상인데 재고 정합이 불일치로 찍힌다
+#       남은 채로 재면 실제로는 정상인데 재고 정합이 불일치로 찍힌다. 단, 그룹에 배정된
+#       살아있는 컨슈머가 하나도 없는 채로 적체가 남아 있으면(product-service 다운) 대기해도
+#       절대 안 풀리므로 판단 보류로 묶지 않고 접속·전제 실패(exit 1)로 즉시 실패시킨다
 #     - QUARANTINED > 0 → 격리는 사람 판단(관리자 종결)이 있어야 풀린다. 대기로 안 풀리므로
 #       판단 보류가 아니라 불일치로 낸다
 #
@@ -348,6 +350,15 @@ DB_NOISE_RAW=$(mysql_payment_query \
 }
 DB_NOISE="${DB_NOISE_RAW:-0}"
 
+# 소비 적체 합계를 구하되, 그룹 행이 아예 없을 때(그룹 조회 실패·존재하지 않는 그룹)와
+# 배정된 살아있는 컨슈머가 없을 때(product-service 다운)를 구분해 알린다.
+# --describe 출력 컬럼: GROUP TOPIC PARTITION CURRENT-OFFSET LOG-END-OFFSET LAG CONSUMER-ID HOST CLIENT-ID
+# CONSUMER-ID 가 "-"면 그 파티션에 배정된 살아있는 컨슈머가 없다는 뜻이다(오프셋 자체는
+# 여전히 조회된다) — 이 상태에서 적체가 남아 있으면 소비자가 돌아오기 전까지 절대 안 줄어든다.
+#
+# 반환값: 정상 — 적체 합계(정수, 0 포함) / "ERROR" — 그룹 조회 실패 또는 그룹 행 없음(과거
+# 버전은 이 경우도 seen=0 → 0 을 출력해 판정 게이트를 조용히 통과시켰다) / "NO_CONSUMER" —
+# 적체가 남아 있는데 배정된 컨슈머가 하나도 없음(대기해도 안 풀린다)
 kafka_stock_commit_lag() {
     local out
     out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
@@ -358,14 +369,27 @@ kafka_stock_commit_lag() {
     fi
     echo "${out}" | awk '
         $1 == "GROUP" { next }
-        NF >= 6 && $6 ~ /^[0-9]+$/ { sum += $6; seen = 1 }
-        END { if (seen) { print sum } else { print 0 } }
+        NF >= 7 && $6 ~ /^[0-9]+$/ {
+            sum += $6
+            seen = 1
+            if ($7 != "-") { live = 1 }
+        }
+        END {
+            if (!seen) { print "ERROR"; exit }
+            if (sum > 0 && !live) { print "NO_CONSUMER"; exit }
+            print sum
+        }
     '
 }
 
 STOCK_COMMIT_LAG=$(kafka_stock_commit_lag)
 if [[ "${STOCK_COMMIT_LAG}" == "ERROR" ]]; then
     print_error "❌ 소비 적체 조회 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
+    exit 1
+fi
+if [[ "${STOCK_COMMIT_LAG}" == "NO_CONSUMER" ]]; then
+    print_error "❌ 소비 적체 있음 + 그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없다"
+    print_error "   product-service 가 내려가 있으면 대기해도 절대 줄지 않는다 — 판단 보류가 아니라 즉시 실패로 다룬다"
     exit 1
 fi
 

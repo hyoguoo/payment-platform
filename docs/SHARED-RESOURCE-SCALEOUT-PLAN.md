@@ -138,7 +138,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 10: 사이클 재구성 절차 스크립트
 - [x] Task 11: 정합 검증 상품별 확장
 - [x] Task 12: 클러스터 라이브 점검 스크립트
-- [ ] Task 13: 사이클 러너와 복제 지연 계측
+- [x] Task 13: 사이클 러너와 복제 지연 계측
 - [ ] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
 - [ ] Task 15: 인스턴스 수 축 측정 (1 / 2 / 3 / 4)
 - [ ] Task 16: 읽기 복제·다중 상품·벤더 지연 축 측정
@@ -512,7 +512,17 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 검증이 접속·전제 실패로 끝나거나 러너가 모르는 코드로 끝나도 정합 검증 실패와 똑같이 다룬다 — 판정을 못 받은 것을 통과로 읽지 않는다
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/bench-scaleout-cycle.sh` 신설 — 조건 값(인스턴스 수 / 재고 마스터 수 / 폴링 라우팅 on·off / 주문당 상품 수 / 벤더 지연 low·high)을 환경 변수로 받아 스택 기동(관측 포함) → 클러스터 구성(`bench-redis-cluster.sh`로 재고·멱등 저장소 둘 다) → payment-service·pg-service 조건 값 재기동 → 시드(`bench-seed-stock.sh`) → 부하(k6) → 종결 대기 + 정합 검증(`verify-settlement.sh`) → (통과 시에만) 재구성(`bench-cycle-reset.sh`)을 순서대로 밟는다. 복제 지연은 부하 시작부터 정합 판정이 끝날 때까지 백그라운드로 5초 주기 표본화해 로그에 남기고, 결과를 `results/<CASE_NAME>-cycle.json`에 조건 값·처리율(확정/전체 완료)·지연 백분위(폴링 응답/전체 완료 p50·p95·p99)·복제 지연·정합 판정으로 남긴다. 정합 판정은 `verify-settlement.sh` 종료 코드로 받아 INCONCLUSIVE(2)는 `INCONCLUSIVE_RETRY_WAIT_SECONDS` 만큼 기다렸다 `INCONCLUSIVE_MAX_RETRIES`회까지 재검증하고, MISMATCH(3)·접속전제실패(1)·그 외 코드는 재시도 없이 즉시 사이클을 실패로 끝낸다 — 어느 경우든 실패로 끝나면 재구성을 부르지 않는다.
+- **함께 고친 결함** — `bench-cycle-reset.sh`(Task 10)와 `verify-settlement.sh`(Task 11)의 소비 적체 조회 둘 다 컨슈머 그룹에 살아있는 컨슈머가 있는지 보지 않고 LAG 합계만 봤다. product-service가 내려간 채로 적체가 남으면 대기해도 영원히 안 줄어드는데, 기존 로직은 이를 "아직 소비 중"인 판단 보류로 묶어 폴링 예산을 다 쓰고서야 실패했다. `kafka-consumer-groups --describe`의 CONSUMER-ID 컬럼(배정된 컨슈머가 없으면 `-`)을 같이 읽어, 적체가 남았는데 배정된 컨슈머가 하나도 없으면 `NO_CONSUMER`를 즉시 반환하도록 두 스크립트의 조회 함수를 고쳤다 — `bench-cycle-reset.sh`는 폴링 루프에 들어가지 않고 즉시 exit 2, `verify-settlement.sh`는 판단 보류가 아니라 exit 1(접속·전제 실패)로 즉시 실패한다. 같은 김에 그룹 행이 아예 없을 때(그룹 조회 실패) awk가 합계 0을 내보내 게이트를 조용히 통과시키던 기존 버그도 막았다 — 행이 하나도 안 잡히면 `ERROR`를 낸다.
+- **실측 확인(라이브)**
+  1. **소비자 부재 감지** — 실제 컨슈머 그룹에 `kafka-consumer-groups --reset-offsets`로 오프셋을 뒤로 돌려 "적체는 있는데 배정된 컨슈머 없음" 상태를 만들고 두 스크립트를 각각 실행 → `bench-cycle-reset.sh`는 폴링 없이 즉시 exit 2(잔류를 안 비움), `verify-settlement.sh`는 exit 1로 즉시 실패 — 둘 다 대기 없이 즉시 반응하는 것을 확인했다
+  2. **러너의 INCONCLUSIVE 재시도 후 실패** — 짧은 부하(PEAK_RATE=10/STAGE_SEC=5, 인스턴스 1/재고 마스터 1)로 실제 사이클을 끝까지 돌렸다. 정상 종결(k6 confirm 252건, DB DONE 252건, 미종결·격리·미회수 선차감 기록 전부 0)까지는 갔지만, 재고 확정 소비 적체가 파티션당 1씩(합계 3) 남아 판단 보류로 떨어졌다 — 러너가 `INCONCLUSIVE_RETRY_WAIT_SECONDS` 대기 후 재검증을 `INCONCLUSIVE_MAX_RETRIES`회 반복하다 소진되어 exit 2로 사이클을 실패 처리하고 재구성을 부르지 않는 것을 실제 코드 경로로 확인했다(재현을 위해 동일 call_verify 로직을 독립 실행 — 재시도 2회 모두 소비 적체=3으로 반복, 최종 실패)
+  3. **러너의 MISMATCH 즉시 중단** — 같은 상태에서 `QUARANTINED` 결제 1건을 인위로 심고 동일 dispatch 로직을 실행 → 첫 조회에서 곧바로 exit 3(재시도 카운트 0)로 끝나 재시도도 재구성도 타지 않는 것을 확인했다. INCONCLUSIVE는 유한 재시도 후 실패, MISMATCH는 재시도 없이 즉시 실패 — 완료 기준이 요구한 "각각 다르게 반응한다"를 실측으로 갈랐다
+  4. **결과 파일 스키마** — phase 7의 jq 조합을 PASS/FAILED 두 분기 모두 합성 값으로 직접 실행해 다섯 지표(확정 처리율/전체 완료 처리율/폴링 응답 p50·p95·p99/전체 완료 p50·p95·p99/복제 지연)가 스키마대로 나오는 것과, 폴링 응답이 없을 때(latency null) 및 복제 지연 표본이 0개일 때도 jq가 깨지지 않는 것을 확인했다
+- **부수 발견 — 지시받은 재진단과 실측이 어긋난다** — 이 태스크에 앞서 "소비자가 살아 있으면 적체는 정상적으로 0으로 빠진다"는 재진단을 전제로 받았으나, 위 2번 실측에서 살아있는 컨슈머(CONSUMER-ID 정상 배정) 상태로 2분 넘게 기다려도 파티션당 1씩(합계 3) 전혀 줄지 않는 것을 다시 확인했다. 해당 오프셋을 `kafka-console-consumer --isolation-level read_committed`로 직접 읽으면 레코드가 없다 — Task 11이 처음 보고한 트랜잭션 커밋 마커와 동일 현상이다. `product-service` 재기동 + `kafka-consumer-groups --reset-offsets --to-latest`로만 풀렸다. 이번 태스크는 "판정 기준(적체 0)은 그대로 둔다"는 지시에 따라 임계값을 건드리지 않았지만, 이 현상이 실거래 부하마다 재현되는 한 Task 14의 매 사이클이 이 게이트에서 판단 보류 소진으로 실패할 위험이 크다 — 사이클 사이 자동 재구성이 아니라 사람이 `product-service` 재기동을 끼워 넣어야 다음 사이클이 통과한다는 뜻이다. 대수 조정이든 다른 접근이든 Task 14 착수 전에 판단이 필요하다
+- **시행착오 — 복제 지연 표본화 백그라운드 잡이 무기한 걸리는 결함을 실측 중 발견해 고쳤다** — 최초 구현은 `kill` 로 표본화 subshell 을 정지시킨 뒤 `wait` 로 종료를 확인했는데, 실제 라이브 사이클 실행 중 이 정지-확인 자체가 걸려버려 스크립트가 멈춘 채 몇 분씩 진행되지 않는 것을 두 번 겪었다(호스트 자원이 눌린 상태로 추정 — 이 세션에서 원인을 완전히 못 좁혔다). `kill` 로 강제 종료(SIGKILL)만 쏘고 종료를 기다리지 않도록 바꿔 해결했다 — `kill` 자체는 블로킹 콜이 아니라 이 호출은 걸리지 않는다. 같은 표본화 루프 안에서 함수가 아닌 subshell에 `local`을 쓰던 자잘한 오류(bash가 "local: can only be used in a function"를 매 반복 내뱉지만 진행은 계속되는 무해한 결함)도 같이 제거했다
+- **실측에 쓴 흔적 정리** — 검증에 새로 띄운 gateway/pg-service/user-service/mysql-pg와 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail)을 정지, 재고 캐시 클러스터를 인계 상태(2대)로 복원, payment-service를 단독 Redis 연결로 원복해 Task 12 인계 상태와 동일하게 되돌렸다. 부하로 쌓인 payment 여섯 테이블 행을 비우고 상품 100종을 상수(1000만)로 재시드, 소비 적체 마커도 `product-service` 재기동으로 0까지 비운 뒤 `bench-cycle-reset.sh`를 한 번 더 돌려 다섯 단계 전부 통과(exit 0)하는 것으로 최종 확인했다
+- Java 코드 변경 없음(bash 스크립트 3개 신설·수정 + k6 JS 1개 확장) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
 
 ---
 

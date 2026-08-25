@@ -14,7 +14,9 @@
 #       캐시를 비우게 된다. 격리 잔류는 관리자 종결(POST .../resolve-quarantine)로 자동
 #       시도한 뒤 재확인한다 — 벤더 승인이 확인된 건은 종결이 거부되고, 그 경우도 포함해
 #       반복해도 안 비면 무기한 대기하지 않고 사이클을 실패 처리한다.
-#   (3) 재고 확정 메시지의 소비 적체(consumer group product-service-stock-commit) 0 안정 확인
+#   (3) 재고 확정 메시지의 소비 적체(consumer group product-service-stock-commit) 0 안정 확인.
+#       그룹에 배정된 살아있는 컨슈머가 없는 채로 적체가 남아 있으면(product-service 다운)
+#       대기해도 절대 안 풀리므로 폴링 예산을 남겨 뒀어도 즉시 실패로 끝낸다
 #   (4) 회수 주기 작업 정지 — payment-service 를 서비스 단위로 멈춘다(docker compose stop).
 #       회수 워커(StockHoldRecoveryWorker)는 인스턴스마다 독립으로 돌고 끄는 설정값이 없어,
 #       컨테이너 하나만 겨냥하면 인스턴스 여러 대 구간에서 남은 인스턴스의 회수가 재확인과
@@ -165,18 +167,27 @@ resolve_quarantined_events() {
     done <<< "${rows}"
 }
 
-# 공용 안정 확인 루프 — check_fn 이 연속 STABLE_REQUIRED_READS 회 0(성공, echo 0)을 돌려줄 때까지
-# MAX_POLL_ATTEMPTS 회까지 폴링한다. 실패 시 1을 반환하고 호출부가 exit 코드를 정한다.
+# 공용 안정 확인 루프 — check_fn 이 연속 STABLE_REQUIRED_READS 회 성공(exit 0)을 돌려줄 때까지
+# MAX_POLL_ATTEMPTS 회까지 폴링한다. check_fn 이 2를 반환하면 "대기해도 안 풀리는 상태"로
+# 보고 폴링 예산을 남겨 뒀어도 즉시 중단한다(기다리는 것 자체가 무의미하다). 그 외 실패(1)는
+# 재시도 대상으로 남기고 stable 카운트만 리셋한다.
 wait_stable() {
     local label="$1"
     local check_fn="$2"
     local stable=0
     local attempt=0
+    local rc
 
     while true; do
         attempt=$((attempt + 1))
-        if "${check_fn}"; then
+        "${check_fn}"
+        rc=$?
+
+        if [[ "${rc}" -eq 0 ]]; then
             stable=$((stable + 1))
+        elif [[ "${rc}" -eq 2 ]]; then
+            print_error "❌ ${label} — 대기해도 풀리지 않는 상태 감지, 폴링 없이 즉시 중단"
+            return 2
         else
             stable=0
         fi
@@ -227,6 +238,15 @@ echo ""
 # (3) 재고 확정 메시지의 소비 적체 0 안정 확인 — consumer group product-service-stock-commit
 # ---------------------------------------------------------------------------
 
+# 소비 적체 합계를 구하되, 그룹 행이 아예 없을 때(그룹 조회 실패·존재하지 않는 그룹)와
+# 배정된 살아있는 컨슈머가 없을 때(product-service 다운)를 구분해 알린다.
+# --describe 출력 컬럼: GROUP TOPIC PARTITION CURRENT-OFFSET LOG-END-OFFSET LAG CONSUMER-ID HOST CLIENT-ID
+# CONSUMER-ID 가 "-"면 그 파티션에 배정된 살아있는 컨슈머가 없다는 뜻이다(오프셋 자체는
+# 여전히 조회된다) — 이 상태에서 적체가 남아 있으면 소비자가 돌아오기 전까지 절대 안 줄어든다.
+#
+# 반환값: 정상 — 적체 합계(정수, 0 포함) / "ERROR" — 그룹 조회 실패 또는 그룹 행 없음(과거
+# 버전은 이 경우도 seen=0 → 0 을 출력해 게이트를 조용히 통과시켰다) / "NO_CONSUMER" — 적체가
+# 남아 있는데 배정된 컨슈머가 하나도 없음(대기해도 안 풀린다)
 kafka_lag_sum() {
     local out
     out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
@@ -237,17 +257,32 @@ kafka_lag_sum() {
     fi
     echo "${out}" | awk '
         $1 == "GROUP" { next }
-        NF >= 6 && $6 ~ /^[0-9]+$/ { sum += $6; seen = 1 }
-        END { if (seen) { print sum } else { print 0 } }
+        NF >= 7 && $6 ~ /^[0-9]+$/ {
+            sum += $6
+            seen = 1
+            if ($7 != "-") { live = 1 }
+        }
+        END {
+            if (!seen) { print "ERROR"; exit }
+            if (sum > 0 && !live) { print "NO_CONSUMER"; exit }
+            print sum
+        }
     '
 }
 
+# check_fn 반환 코드 규약(wait_stable 이 해석): 0=성공 / 1=아직 안정 안 됨(재시도) /
+# 2=대기해도 안 풀리는 상태 — wait_stable 이 즉시 중단한다
 check_step3() {
     local lag
     lag=$(kafka_lag_sum)
     if [[ "${lag}" == "ERROR" ]]; then
         echo "    소비 적체 조회 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
         return 1
+    fi
+    if [[ "${lag}" == "NO_CONSUMER" ]]; then
+        echo "    소비자 없음 — 그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없는데 적체가 남아 있다"
+        echo "    (product-service 가 내려가 있으면 대기해도 절대 줄지 않는다 — 즉시 중단)"
+        return 2
     fi
     if [[ "${lag}" -eq 0 ]]; then
         return 0
@@ -257,7 +292,9 @@ check_step3() {
 }
 
 print_section "▶ (3) 재고 확정 메시지 소비 적체 0 — 안정 확인 (group=${STOCK_COMMIT_GROUP})"
-if ! wait_stable "(3) 소비 적체" check_step3; then
+wait_stable "(3) 소비 적체" check_step3
+STEP3_RC=$?
+if [[ "${STEP3_RC}" -ne 0 ]]; then
     print_error "❌ (3) 재구성 중단 — 캐시를 비우지 않는다"
     exit 2
 fi
@@ -305,8 +342,9 @@ RECHECK_UNSETTLED="${RECHECK_UNSETTLED:-0}"
 RECHECK_QUARANTINED="${RECHECK_QUARANTINED:-0}"
 RECHECK_NOISE="${RECHECK_NOISE:-0}"
 
-if [[ "${RECHECK_LAG}" == "ERROR" ]]; then
-    print_error "❌ (5) 재확인 실패 — 소비 적체 조회 불가. payment-service 는 이미 정지된 상태다"
+if [[ "${RECHECK_LAG}" == "ERROR" || "${RECHECK_LAG}" == "NO_CONSUMER" ]]; then
+    print_error "❌ (5) 재확인 실패 — 소비 적체 조회 불가(${RECHECK_LAG}). payment-service 는 이미 정지된 상태다"
+    [[ "${RECHECK_LAG}" == "NO_CONSUMER" ]] && print_error "   그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없는데 적체가 남아 있다 — product-service 상태 확인 필요"
     exit 4
 fi
 

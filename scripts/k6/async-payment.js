@@ -82,6 +82,13 @@ export const options = {
         async_payment: loadScenario,
     },
 
+    /**
+     * p50(med)/p90/p95/p99 를 전 Trend 지표에 공통 적용한다. threshold 가 없는
+     * http_req_duration{step:poll}(폴링 응답 지연)도 이 설정이 있어야 요약에 백분위가 잡힌다
+     * — threshold 로만 걸린 지표는 그 percentile 만 요약에 실리고 나머지는 비어 나온다.
+     */
+    summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
+
     thresholds: {
         /**
          * confirm 응답 시간: 동기 재고 차감 + TX 후 202 반환이므로
@@ -316,6 +323,7 @@ function extractMetrics(data) {
 
     return {
         http_req_duration_confirm: extractTrendStats(metrics['http_req_duration{step:confirm}']),
+        http_req_duration_poll: extractTrendStats(metrics['http_req_duration{step:poll}']),
         e2e_completion_ms: extractTrendStats(metrics['e2e_completion_ms']),
         checks_rate: extractRateValue(metrics['checks']),
         e2e_timeout_count: extractCounterValue(metrics['e2e_timeout']),
@@ -327,7 +335,9 @@ function extractMetrics(data) {
 }
 
 /**
- * Trend 메트릭에서 p95/p99/avg/min/max를 추출한다.
+ * Trend 메트릭에서 p50/p95/p99/avg/min/max를 추출한다. p50 은 k6 가 median(med)으로
+ * 제공하는 값을 그대로 쓴다 — summaryTrendStats 에 'p(50)'을 직접 넣는 대신 median 을
+ * 쓰는 것이 k6 표준 방식이다.
  *
  * @param {object|undefined} metric k6 Trend 메트릭 객체
  * @returns {object|null} 통계 값 맵 또는 null
@@ -338,6 +348,7 @@ function extractTrendStats(metric) {
     }
     const v = metric.values;
     return {
+        p50: v['med'],
         p95: v['p(95)'],
         p99: v['p(99)'],
         avg: v['avg'],
