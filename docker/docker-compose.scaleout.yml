@@ -1,0 +1,80 @@
+# 공유 자원 동반 스케일아웃 측정 전용 override — 다른 compose 파일 위에 얹어서만 쓴다.
+#
+# 기동 예시:
+#   docker compose \
+#     -f docker/docker-compose.infra.yml \
+#     -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.scaleout.yml \
+#     up -d
+#
+# 포함 내용 (Task 7):
+#   - mysql-payment 에 binlog 옵션을 얹어 복제 소스로 만든다 (server-id=1)
+#   - mysql-payment-replica 컨테이너 신설 — 비동기 복제 1대 (server-id=2, read-only)
+#   - payment-service 에 복제본 접속 정보와 payment.datasource.replica.enabled=true 주입
+#
+# 복제 계정 생성 · 시작 · 상태 확인은 scripts/bench-replica-setup.sh 가 담당한다.
+# 재고 캐시 · 멱등 저장소 클러스터(Task 8)는 이 파일에 이어서 추가된다.
+
+services:
+
+  # ───────────────────────────────────────────
+  # mysql-payment — binlog 활성화로 복제 소스 역할 추가
+  # ───────────────────────────────────────────
+  mysql-payment:
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+
+  # ───────────────────────────────────────────
+  # mysql-payment-replica — payment DB 비동기 읽기 복제본 1대
+  # 폴링 조회(PaymentStatusQueryJdbcAdapter)만 이 컨테이너를 읽는다 — 돈 경로 판정은
+  # 여전히 mysql-payment(소스)를 읽는다 (ReplicaDataSourceIsolationTest 로 고정).
+  # ───────────────────────────────────────────
+  mysql-payment-replica:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-payment-replica
+    command:
+      - --server-id=2
+      - --log-bin=mysql-bin
+      - --relay-log=mysql-relay-bin
+      - --read-only=ON
+      - --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment-platform
+      MYSQL_USER: ${MYSQL_PAYMENT_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PAYMENT_PASSWORD:-payment123}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-payment-replica-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
+  # payment-service — 복제본 접속 정보 주입 (docker-compose.apps.yml 위에 덧씌운다)
+  # ───────────────────────────────────────────
+  payment-service:
+    depends_on:
+      mysql-payment-replica:
+        condition: service_healthy
+    environment:
+      PAYMENT_DATASOURCE_REPLICA_ENABLED: "true"
+      PAYMENT_DB_REPLICA_HOST: mysql-payment-replica
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network
+
+volumes:
+  mysql-payment-replica-data:
+    driver: local

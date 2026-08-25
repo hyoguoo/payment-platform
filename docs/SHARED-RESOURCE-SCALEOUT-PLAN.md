@@ -132,7 +132,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 4: 폴링 조회 어댑터 (질의 전용)
 - [x] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
 - [x] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
-- [ ] Task 7: payment DB 복제본 인프라
+- [x] Task 7: payment DB 복제본 인프라
 - [ ] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
 - [ ] Task 9: 부하 프로필 상품 다중화
 - [ ] Task 10: 사이클 재구성 절차 스크립트
@@ -225,6 +225,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - `payment.datasource.replica.enabled=false` 로 `./gradlew :payment-service:test` 682건 전체 통과
 - `./gradlew :payment-service:integrationTest` 는 이번 변경 적용 전/후 모두 660건 중 651건 실패로 **동일** — 원인은 Task 2 가 `PaymentStatusServiceImpl` 을 `PaymentStatusQueryPort` 전용으로 바꾼 뒤 프로덕션 구현체가 아직 없어서(어댑터는 Task 4) 전체 컨텍스트 부팅 테스트가 전부 깨지는 기존 회귀다 — HEAD(Task 3 착수 전)에서 stash 후 재현해 사전 확인. 이번 태스크가 새로 만든 실패는 0건
 - "참으로 켠 상태에서 앱이 뜨고 paymentReplicaDataSource 가 복제본을 가리킨다" 확인은 복제본 컨테이너가 없어 이번 태스크에서는 검증 불가 — Task 7(복제본 인프라 기동) 이후로 이월
+- **이월 항목 해소** — Task 7 에서 복제본을 띄운 뒤 실제로 확인 완료. 상세는 Task 7 완료 결과 참고
 
 ---
 
@@ -327,7 +328,12 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 스크립트를 두 번 돌려도 같은 결과 (멱등)
 
 **완료 결과**
-> (execute에서 채움)
+- `docker/docker-compose.scaleout.yml` 신설(다른 compose 파일 위에 얹는 override) — `mysql-payment` 에 `--server-id=1 --log-bin=mysql-bin --binlog-format=ROW` 를 얹어 복제 소스로 만들고, `mysql-payment-replica`(server-id=2, `--read-only=ON`, 별도 볼륨·3307 포트) 컨테이너를 신설. `payment-service` 에 `PAYMENT_DATASOURCE_REPLICA_ENABLED=true` / `PAYMENT_DB_REPLICA_HOST=mysql-payment-replica` 를 주입하고 `mysql-payment-replica` healthy 를 `depends_on` 에 추가 — compose 의 키 기반 병합으로 기존 `environment`/`depends_on` 을 그대로 두고 항목만 더한다
+- `scripts/bench-replica-setup.sh` 신설 — 복제 전용 계정(`repl`, `mysql_native_password`) 생성 → `mysqldump --single-transaction --source-data=2` 로 소스 스냅샷과 binlog 좌표를 함께 뜬 뒤 복제본에 복원 → `CHANGE REPLICATION SOURCE TO` + `START REPLICA` → `SHOW REPLICA STATUS` 로 IO/SQL 스레드 Yes 확인 → 소스에 마커 테이블(`bench_replica_probe`) 행을 쓰고 복제본에서 같은 값이 읽히는지 왕복 확인. 이미 정상 복제 중이면 스냅샷 재동기화를 건너뛰고 왕복 확인만 재실행 (멱등)
+- **실측 확인** — `mysql-payment` + `mysql-payment-replica` 를 기동하고 스크립트를 두 번 연속 실행, 둘 다 `SHOW REPLICA STATUS` IO/SQL 스레드 Yes + 왕복 확인 성공으로 종료(exit 0). 두 번째 실행은 초기 동기화를 건너뛰고 왕복 확인만 재실행해 멱등성 확인
+- **Task 3 이월 항목 해소** — `:payment-service:bootJar` 빌드 후 `payment.datasource.replica.enabled=true` 로 `payment-service` 를 컨테이너로 기동. 로그에서 `ReplicaDataSourceConfig` 가 "복제본 데이터소스를 사용합니다" 분기를 탔음을 확인, `mysql-payment-replica` 의 `Threads_connected` 가 0 이 아님을 확인. 결정적 검증으로 소스에 `payment_event` 행 하나를 직접 심고(status=DONE) `/api/v1/payments/{orderId}/status` 폴링이 정상 응답하는 것을 확인한 뒤, **복제본의 IO 스레드를 멈추고 소스만 다른 값(status=FAILED)으로 바꿔** 같은 API 를 다시 호출 — 응답이 여전히 DONE(복제본에 남은 옛 값)으로 나와 폴링이 실제로 복제본을 읽고 있음을 확정. 검증에 쓴 임시 행은 소스에서 삭제해 복제본까지 정리, 복제는 재개해 IO/SQL 스레드 Yes 로 원복
+- `./gradlew :payment-service:test` 682건 전체 통과 (이 태스크는 Java 코드를 건드리지 않음 — 회귀 없음 재확인 목적)
+- 검증에 쓴 payment-service 앱 컨테이너와 인프라(mysql-payment/replica, eureka, kafka, redis-dedupe/stock)는 Task 8 이후 인프라 태스크가 이어서 쓸 수 있도록 내리지 않고 그대로 둔다
 
 ---
 
