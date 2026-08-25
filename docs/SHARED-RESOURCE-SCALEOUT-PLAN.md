@@ -133,7 +133,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
 - [x] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
 - [x] Task 7: payment DB 복제본 인프라
-- [ ] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
+- [x] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
 - [ ] Task 9: 부하 프로필 상품 다중화
 - [ ] Task 10: 사이클 재구성 절차 스크립트
 - [ ] Task 11: 정합 검증 상품별 확장
@@ -310,6 +310,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - `application.yml` 에 `spring.data.redis.cluster.nodes`(env `SPRING_DATA_REDIS_CLUSTER_NODES`)와 `payment.cache.stock-redis.cluster-nodes`(env `REDIS_STOCK_CLUSTER_NODES`) 기본값(빈 문자열)을 추가해 Task 8 인프라가 컨테이너 목록을 env var 로 주입할 자리를 마련했다
 - `./gradlew :payment-service:test` 682건, `:payment-service:integrationTest --rerun-tasks` 670건 전체 통과 — 노드 목록 미설정(현재 기본값) 구성에서 회귀 없음
 - "노드 목록을 넣으면 클러스터 연결로 뜬다"는 실제 클러스터 컨테이너가 없어 이번 태스크에서는 검증 불가 — Task 8(캐시 클러스터 인프라 기동) 이후 Task 12(클러스터 라이브 점검)에서 실측하는 것으로 이월
+- **이월 항목 해소** — Task 8 이 캐시 클러스터 컨테이너를 띄운 뒤, `REDIS_STOCK_CLUSTER_NODES`/`SPRING_DATA_REDIS_CLUSTER_NODES` 를 채운 상태로 payment-service 를 재기동해 두 커넥션 모두 실제 클러스터 노드에 `CLUSTER MYID`(토폴로지 조회)를 던지는 것을 `redis-cli client list` 로 확인 완료. 상세는 Task 8 완료 결과 참고 — 스크립트 다섯 경로가 클러스터에서 도는지의 심층 점검은 여전히 Task 12 의 몫
 
 ---
 
@@ -352,7 +353,13 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 스크립트를 다시 돌리면 기존 클러스터를 지우고 같은 상태로 다시 만든다
 
 **완료 결과**
-> (execute에서 채움)
+- `docker/docker-compose.scaleout.yml` 에 `redis-stock-cluster`(재고 캐시, 최대 4)와 `redis-idempotency-cluster`(멱등 저장소, 고정 3) 두 서비스 신설 — 둘 다 `container_name` 미부착·named volume 없음(에페메럴)이라 `--scale` 실행 옵션만으로 대수를 바꾸고 매번 빈 상태로 새로 시작한다. 재고 캐시는 지금의 단독 `redis-stock`과 같은 `--appendfsync always`를 유지, 멱등 저장소는 `redis-dedupe`와 같은 `--appendonly no`. 두 서비스 모두 `--cluster-enabled yes --cluster-require-full-coverage no`
+- `scripts/bench-redis-cluster.sh --store {stock|dedupe} --masters N` 신설 — 기존 컨테이너 제거 → `--scale` 로 N대 재기동 → ping 확인 → `CLUSTER SET-CONFIG-EPOCH`(MEET 이전에 확정) → `CLUSTER MEET` 풀 메시 → `CLUSTER ADDSLOTSRANGE` 로 슬롯 16384개를 N등분 배정 → `cluster_state:ok` + `cluster_slots_assigned:16384` 수렴 대기 → `CONFIG GET cluster-require-full-coverage` 로 no 확인. `redis-cli --cluster create` 헬퍼는 마스터 3대 미만을 자체 가드로 거부해(이 축은 마스터 1대 클러스터도 성립해야 함) 쓰지 않고, MEET+ADDSLOTSRANGE 를 수동으로 밟는 방식을 택했다
+- **실측 확인** — `--store stock`을 대수 1 / 2 / 4 각각으로 실행해 매번 `cluster_state:ok` + 슬롯 16384 전부 배정 + `cluster-require-full-coverage:no` 확인. `--store dedupe --masters 3`도 동일 확인. 대수 4 → 2 로 재실행해 이전 컨테이너가 완전히 제거되고(잔여 없이 딱 2개) 새 클러스터가 처음부터 다시 만들어지는 것으로 재실행 멱등성 확인
+- **Task 6 이월 항목 해소** — 위 클러스터(재고 2대, 멱등 3대)가 뜬 상태에서 `payment-service` 환경에 `REDIS_STOCK_CLUSTER_NODES`/`SPRING_DATA_REDIS_CLUSTER_NODES`(클러스터 노드 컨테이너명:6379 콤마 목록)를 일시적으로 주입해 `--force-recreate` 재기동, `Started PaymentPlatformApplication` 정상 부팅을 확인한 뒤 `redis-cli client list` 로 재고·멱등 클러스터 노드 양쪽에서 payment-service 컨테이너 IP 가 `cmd=cluster|myid`(Lettuce 의 토폴로지 조회)로 접속해 있음을 확인 — 단독 연결이 아니라 실제 클러스터 연결로 뜬 것을 결정적으로 확인했다. 확인 후 환경 변수를 원복하고 재기동해 이후 태스크가 쓰는 기본 상태(단독 노드 연결)로 되돌렸다
+- 클러스터 노드 목록을 compose 파일에 영구 고정하지 않은 이유 — 재고 캐시 대수 자체가 Task 14 의 측정 변수(1/2/4)라 특정 대수를 정적으로 박아 두면 대수가 바뀔 때마다 파일을 고쳐야 한다. 실제 노드 목록 주입은 대수를 정하는 시점(사이클 스크립트, Task 13)에서 계산해 넘기는 것이 맞다고 판단
+- 인프라 기동 상태 — 검증 후 재고 캐시 클러스터 2대·멱등 저장소 클러스터 3대를 켠 채로 둔다(다음 태스크가 이어 쓸 수 있게). payment-service 는 단독 Redis 연결(cluster-nodes 미설정)로 원복된 상태
+- Java 코드 변경 없음(docker-compose·bash 스크립트만) — `./gradlew :payment-service:test` UP-TO-DATE 로 기존 682건 결과 유지, 회귀 없음
 
 ---
 
