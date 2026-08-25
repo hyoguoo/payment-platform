@@ -7,7 +7,7 @@
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
 - 단계: **execute**
-- 활성 태스크: Task 11 (정합 검증 상품별 확장)
+- 활성 태스크: Task 12 (클러스터 라이브 점검 스크립트)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
 - 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4
@@ -18,7 +18,8 @@
 - Task 8 이 같은 override 파일에 `redis-stock-cluster`(재고 캐시, 최대 4)/`redis-idempotency-cluster`(멱등 저장소, 고정 3)를 추가하고 `scripts/bench-redis-cluster.sh --store {stock|dedupe} --masters N`으로 대수 1/2/4·3 각각 `cluster_state:ok`+슬롯 16384 전부 배정+`cluster-require-full-coverage:no`를 실측 확인, 재실행 멱등성도 확인했다. Task 6 이월 항목(노드 목록을 넣으면 클러스터로 뜨는지)도 payment-service 를 클러스터 노드로 임시 재기동해 `client list`로 `cluster|myid` 접속을 확인한 뒤 원복
 - **인프라 기동 상태** — 검증에 쓴 스택(mysql-payment/replica, eureka, kafka, redis-dedupe/stock, redis-stock-cluster 2대, redis-idempotency-cluster 3대, payment-service 앱 컨테이너 1개)이 내려가지 않고 떠 있다. payment-service 는 단독 Redis 연결(cluster-nodes 미설정)로 원복된 상태
 - Task 9 가 `scripts/bench-seed-stock.sh`를 상품 100종(id 1000..1099, 기존 스모크 시드 id=1과 안 겹침) 시드로 재작성하고, `scripts/k6/helpers.js`에 `PRODUCT_COUNT`/`ITEMS_PER_ORDER`를 추가해 주문마다 상품을 고르게 순환시키면서 중복 없이 담게 했다. mysql-product/product-service를 새로 기동해 라이브 k6 부하로 실측(단일 상품 76건 균등 분산, `ITEMS_PER_ORDER=3` 51건 전부 무중복) 확인 완료 — 상세는 PLAN Task 9 완료 결과. 검증에만 쓴 user-service는 정지, mysql-product/product-service는 이후 태스크가 이어 쓸 수 있게 기동 유지. 재고는 검증 후 상수(1000만)로 재시드해 복원
-- Task 10 이 `scripts/bench-cycle-reset.sh`로 사이클 재구성 다섯 단계(부하 정지 확인 → 미종결·격리·미회수 안정 확인(격리를 미종결과 별개로 카운트, 잔류 시 관리자 종결 자동 시도) → 소비 적체 안정 확인 → payment-service 서비스 단위 정지 → 즉시 재확인 후에만 비우고 재시드)를 구현했다. 정상/잔류 인위 조성/격리 인위 조성 세 시나리오를 실제로 돌려 각각 exit 0·2·0(자동 종결 후 통과)을 확인 — 상세는 PLAN Task 10 완료 결과. 검증 중 mysql-payment 의 낡은 bench 잔류(Task 9가 pg-service 없이 checkout만 흘려 영구 미종결로 남은 READY 128건 등)를 정리해 이후 태스크는 payment_event 등 여섯 테이블이 빈 상태에서 시작한다. Task 11 이 이어서 정합 검증을 상품별로 확장한다
+- Task 10 이 `scripts/bench-cycle-reset.sh`로 사이클 재구성 다섯 단계(부하 정지 확인 → 미종결·격리·미회수 안정 확인(격리를 미종결과 별개로 카운트, 잔류 시 관리자 종결 자동 시도) → 소비 적체 안정 확인 → payment-service 서비스 단위 정지 → 즉시 재확인 후에만 비우고 재시드)를 구현했다. 정상/잔류 인위 조성/격리 인위 조성 세 시나리오를 실제로 돌려 각각 exit 0·2·0(자동 종결 후 통과)을 확인 — 상세는 PLAN Task 10 완료 결과. 검증 중 mysql-payment 의 낡은 bench 잔류(Task 9가 pg-service 없이 checkout만 흘려 영구 미종결로 남은 READY 128건 등)를 정리해 이후 태스크는 payment_event 등 여섯 테이블이 빈 상태에서 시작한다
+- Task 11 이 `scripts/k6/verify-settlement.sh`를 상품별 재고 대조(100종, 어긋난 상품만 개별 출력) + 건별 대조(DONE↔COMMITTED·FAILED↔REVERTED 부합 여부, 총건수 교차식이 못 잡는 개별 유실용) + 기계 판독 종료 코드(0 통과/2 판단 보류/3 불일치, 접속·전제 실패는 그대로 1)로 확장했다. `results/<CASE_NAME>-verdict.json`에 판정을 남기고 부하 도구가 쓰는 `<CASE_NAME>.json`은 건드리지 않는다. 미종결/미회수 선차감 기록/소비 적체는 대기하면 풀릴 수 있어 판단 보류(2), QUARANTINED는 대기로 안 풀려 다른 게이트 상태와 무관하게 즉시 불일치(3)로 우선 판정한다. mysql-pg/pg-service/user-service를 일시 기동해 실제 k6 부하(81건 DONE)로 정상 통과(exit 0)·상품 1종만 어긋낸 불일치(exit 3, 나머지 99종 무관)·QUARANTINED 1건 잔류 불일치(exit 3)·READY 1건 잔류 판단 보류(exit 2)를 각각 실측 확인 — 상세는 PLAN Task 11 완료 결과. 검증 중 `product-service-stock-commit` 컨슈머 그룹 LAG가 트랜잭션 커밋 마커로 파티션당 1씩 영구 잔류하는 현상을 발견(대기로 자연 해소 안 됨, 재기동+`reset-offsets`로만 해소) — Task 13 사이클 러너의 소비 적체 게이트 임계값 설계에 영향을 줄 수 있어 후속 확인 필요. 검증에 새로 띄운 mysql-pg/pg-service/user-service는 정지하고 payment-service/product-service는 유지, payment 여섯 테이블은 다시 빈 상태로 복원. Task 12 가 이어서 클러스터 라이브 점검 스크립트를 만든다
 
 ## 재개 메모
 

@@ -136,7 +136,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
 - [x] Task 9: 부하 프로필 상품 다중화
 - [x] Task 10: 사이클 재구성 절차 스크립트
-- [ ] Task 11: 정합 검증 상품별 확장
+- [x] Task 11: 정합 검증 상품별 확장
 - [ ] Task 12: 클러스터 라이브 점검 스크립트
 - [ ] Task 13: 사이클 러너와 복제 지연 계측
 - [ ] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
@@ -448,7 +448,19 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 정상 종료 상태에서 상품 100개 전부 통과
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/k6/verify-settlement.sh` 전면 확장
+  - 재고 대조를 `PRODUCT_COUNT`(기본 100)/`PRODUCT_ID_BASE`(기본 1000, `bench-seed-stock.sh`와 동일 기본값)로 시드된 상품 전부에 대해 수행 — RDB는 `BETWEEN` 한 번의 질의, redis는 컨테이너 안에서 `redis-cli -c`(클러스터 리다이렉트 대응) 루프로 상품별 값을 뽑아 awk로 대조하고 어긋난 상품만 productId/RDB/redis 값으로 개별 출력
+  - 미회수 선차감 기록(`stock_hold_record.status=NOISE`) 0과 재고 확정 소비 적체(consumer group `product-service-stock-commit` LAG 합계) 0을 재고/건별 대조의 선결 게이트에 추가 — `bench-cycle-reset.sh`(Task 10)와 동일한 카운트 정의를 재사용
+  - 건별 대조 `[4]`를 신설 — `payment_event.status`가 DONE인데 `stock_hold_record.status<>COMMITTED`이거나 FAILED인데 `<>REVERTED`인 행을 직접 JOIN으로 찾는다. 총건수 교차식([1][2])은 유실만 잡고 상쇄되는 개별 오류는 못 잡는데, 이 검사는 주문 단위로 잡는다
+  - 판정을 통과(0)/판단 보류(2)/불일치(3)로 가르고 접속·전제 실패는 기존처럼 1을 유지. 게이트 우선순위: QUARANTINED>0이면 다른 게이트 상태와 무관하게 즉시 불일치(대기로 안 풀림) → 그 다음 미종결/미회수 선차감 기록/소비 적체 중 하나라도 남으면 판단 보류(대기로 풀릴 수 있음) → 둘 다 아니면 교차식·재고 정합·건별 대조 실 값을 비교해 통과/불일치를 가른다. 같은 판정을 `results/<CASE_NAME>-verdict.json`에 `verdict`/`exit_code`/`reason`/세부 카운트로 남기고, 부하 도구가 쓰는 `results/<CASE_NAME>.json`은 건드리지 않았다(파일 경로가 다르다)
+- **실측 확인(라이브)** — mysql-pg/pg-service(스모크 프로필, fake gateway)와 user-service를 이 태스크 검증을 위해 일시 기동하고, `grafana/k6` 컨테이너로 payment-service에 직접(게이트웨이 우회, Task 9와 동일 방식) 부하를 흘려 실제 DONE 결제를 만들어 검증했다
+  1. **정상 통과** — 상품 100종 시드 후 `ITEMS_PER_ORDER=3`으로 81건 전부 DONE까지 흘리고(k6 confirm=81, DB DONE=81), 소비 적체 0을 확인한 뒤 실행 → 교차식 [1][2]/재고 정합 [3](100종 전부)/건별 대조 [4] 전부 PASS, 종료 코드 0, verdict.json에 `"verdict":"PASS"` 기록
+  2. **상품 하나만 어긋난 경우** — 위 정상 상태에서 상품 1042의 redis 값만 `SET`으로 직접 어긋내고 재실행 → `[3] 재고 정합 FAIL — 1종 어긋남`으로 `productId=1042 RDB=9999997 redis=9999990`만 개별 출력, 나머지 99종은 영향 없음, 종료 코드 3
+  3. **격리 결제가 남은 경우** — 미종결/미회수/소비적체가 전부 0인 상태에서 `QUARANTINED` 결제 1건만 직접 심고 실행 → 판단 보류가 아니라 즉시 불일치(종료 코드 3), verdict.json reason에 "대기로 풀리지 않아 불일치로 낸다" 기록. 같은 조건에서 QUARANTINED 대신 `READY`(미종결) 1건을 심으면 종료 코드 2(판단 보류)로 갈려, 두 보류가 서로 다른 코드로 나오는 것을 대조 확인
+  4. **세 판정 종료 코드 분리** — 위 1/2/3에서 각각 0/3/(3 그리고 2) 확인 — 통과·판단 보류·불일치가 매번 다른 코드로 나오고 verdict.json 값과도 일치
+- **부수 발견(범위 밖, TODOS 등재 대상)** — `product-service-stock-commit` 컨슈머 그룹의 LAG가 트랜잭션 커밋 마커 때문에 파티션당 1씩 영구적으로 잔류하는 현상을 실측으로 확인했다(`kafka-console-consumer`로 해당 오프셋을 직접 읽으면 실제 레코드가 없다 — 컨트롤 마커). 수십 초 대기해도 자연 해소되지 않고, `product-service` 재기동 + `kafka-consumer-groups --reset-offsets --to-latest`로만 해소됐다. `bench-cycle-reset.sh`(Task 10)와 이번 Task 11의 소비 적체 게이트가 동일한 LAG 합산 방식을 쓰므로, Task 13의 사이클 러너가 이 게이트에서 유한 재시도 후 실패하도록 설계되면 실거래가 있었던 모든 사이클이 이 잔류 때문에 판단 보류를 반복하다 실패할 위험이 있다 — Task 13에서 임계값을 "0"이 아니라 "파티션 수 이하" 또는 "N초간 미증가"로 조정하는 검토가 필요하다
+- 검증에 쓴 orderId·격리/미종결 테스트 행은 모두 삭제하고, `bench-cycle-reset.sh`로 다섯 단계를 다시 통과시켜 캐시를 재시드했다(정상/잔류 시나리오 재확인 겸용). 이후 payment 여섯 테이블을 재차 비우고 `bench-seed-stock.sh`로 100종을 상수 재시드해 Task 10과 같은 빈 상태로 되돌렸다. 검증에 새로 띄운 mysql-pg/pg-service/user-service는 정지, payment-service/product-service는 계속 기동 유지
+- Java 코드 변경 없음(bash 스크립트 1개 확장) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
 
 ---
 
