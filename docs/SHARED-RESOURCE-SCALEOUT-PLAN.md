@@ -129,7 +129,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 1: 폴링 상태 조회 포트와 Fake
 - [x] Task 2: 폴링이 전용 포트를 쓰도록 교체
 - [x] Task 3: 복제본 데이터소스 설정
-- [ ] Task 4: 폴링 조회 어댑터 (질의 전용)
+- [x] Task 4: 폴링 조회 어댑터 (질의 전용)
 - [ ] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
 - [ ] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
 - [ ] Task 7: payment DB 복제본 인프라
@@ -255,7 +255,10 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - `./gradlew :payment-service:integrationTest --rerun-tasks` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+- `payment/infrastructure/repository/PaymentStatusQueryJdbcAdapter.java` 신설 — `payment_outbox`/`payment_event` 를 각각 단건 SELECT 로 읽고, 발행 상태 필터(발행 대기 또는 발행 중)는 SQL 이 아니라 `PaymentOutboxStatus.isClaimable()/isInFlight()` 로 자바 코드에서 판정. `EntityManager`·JPA 리포지토리 미참조, `@Transactional` 미부착
+- `payment/infrastructure/config/ReplicaDataSourceConfig.java` 에 `paymentReplicaJdbcTemplate` 빈 추가 — `paymentReplicaDataSource` 를 감싼 `JdbcTemplate` 을 명시 이름으로 등록해 폴링 어댑터만 이 빈을 주입받도록 사슬을 관측 가능하게 만든다 (Task 5 격리 계약 테스트의 전제)
+- `PaymentStatusQueryJdbcAdapterTest` (RED 커밋 `629326ad`) — Spring 컨텍스트 없이 Testcontainers MySQL 을 Flyway 로 마이그레이션한 뒤 수동 `JdbcTemplate` 로 어댑터를 직접 생성해 6케이스(발행대기/발행중/종결 2종 파라미터라이즈/미존재 2종/스냅샷 UTC 왕복) 검증, 통합 테스트 태그로 7건 전부 통과
+- `./gradlew :payment-service:test` 682건 전체 통과, `./gradlew :payment-service:integrationTest --rerun-tasks` **667건 전체 통과(0 실패)** — Task 2 이후 660건 중 651건이 실패하던 회귀가 이 태스크의 프로덕션 `PaymentStatusQueryPort` 구현체 등록으로 완전히 해소됐다. 이번 태스크가 추가한 신규 테스트 7건을 빼면 기존 660건도 그대로 전부 통과
 
 ---
 

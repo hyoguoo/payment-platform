@@ -11,6 +11,7 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * payment DB 데이터소스 설정. 기본 데이터소스({@code dataSource})에 더해 폴링 조회 전용
@@ -68,5 +69,19 @@ public class ReplicaDataSourceConfig {
                 .username(replicaUsername)
                 .password(replicaPassword)
                 .build();
+    }
+
+    /**
+     * 폴링 조회 어댑터({@code PaymentStatusQueryJdbcAdapter}) 전용 {@link JdbcTemplate}.
+     *
+     * <p>Spring Boot 가 자동 등록하는 기본 {@code JdbcTemplate} 은 {@code @Primary} 데이터소스
+     * ({@code dataSource})에 묶인다. 복제본을 읽으려면 {@code paymentReplicaDataSource} 로
+     * 감싼 별도 빈이 필요해 이 자리에서 명시 이름으로 등록한다 — 복제본으로 가는 조회가
+     * 폴링 어댑터 하나뿐임을 빈 이름으로도 드러낸다.
+     */
+    @Bean(name = "paymentReplicaJdbcTemplate")
+    public JdbcTemplate paymentReplicaJdbcTemplate(
+            @Qualifier("paymentReplicaDataSource") DataSource paymentReplicaDataSource) {
+        return new JdbcTemplate(paymentReplicaDataSource);
     }
 }
