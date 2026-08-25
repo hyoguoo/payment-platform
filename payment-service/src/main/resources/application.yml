@@ -126,6 +126,10 @@ payment:
       # 선점 구간은 벤더 호출 없이 캐시·DB 왕복만 포함해 정상 처리는 수 초 내로 끝나므로,
       # 그 몇 배의 여유를 두어 배포 롤링 재기동 등 일시적 지연도 흡수한다.
       ttl-seconds: ${PAYMENT_STOCK_ORDER_LOCK_TTL_SECONDS:30}
+  datasource:
+    replica:
+      # 폴링 조회 전용 읽기 복제본. 꺼져 있으면 기본 데이터소스를 그대로 쓴다(ReplicaDataSourceConfig).
+      enabled: ${PAYMENT_DATASOURCE_REPLICA_ENABLED:false}
   retry:
     backoff-type: FIXED
     base-delay-ms: 5000
