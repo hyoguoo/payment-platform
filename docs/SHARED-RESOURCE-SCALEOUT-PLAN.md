@@ -126,7 +126,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 
 ## 진행 상황
 
-- [ ] Task 1: 폴링 상태 조회 포트와 Fake
+- [x] Task 1: 폴링 상태 조회 포트와 Fake
 - [ ] Task 2: 폴링이 전용 포트를 쓰도록 교체
 - [ ] Task 3: 복제본 데이터소스 설정
 - [ ] Task 4: 폴링 조회 어댑터 (질의 전용)
@@ -162,7 +162,8 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 포트가 도메인 타입(`PaymentOutboxStatus` / `PaymentEventStatus`)만 노출하고 JPA·JDBC 타입을 드러내지 않는다
 
 **완료 결과**
-> (execute에서 채움)
+- `PaymentStatusQueryPort` / `PaymentStatusSnapshot` / `FakePaymentStatusQueryPort` 3 파일 신설. `compileTestJava` 통과
+- 아직 어떤 코드도 이 포트를 참조하지 않는다 — 교체는 Task 2
 
 ---
 
