@@ -137,7 +137,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 9: 부하 프로필 상품 다중화
 - [x] Task 10: 사이클 재구성 절차 스크립트
 - [x] Task 11: 정합 검증 상품별 확장
-- [ ] Task 12: 클러스터 라이브 점검 스크립트
+- [x] Task 12: 클러스터 라이브 점검 스크립트
 - [ ] Task 13: 사이클 러너와 복제 지연 계측
 - [ ] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
 - [ ] Task 15: 인스턴스 수 축 측정 (1 / 2 / 3 / 4)
@@ -480,7 +480,13 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 노드별 키 분포가 출력되고 편차 임계를 넘으면 0 이 아닌 코드로 끝난다
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/bench-cluster-check.sh` 신설 — payment-service를 재고 캐시 클러스터(redis-stock-cluster)에 연결해 재기동한 뒤, 실제 `checkout`+`confirm` API로 정상 경로(단일 상품)와 거절 경로(다중 상품 중 하나 품절)를 흘려 선차감·주문 선점 획득·주문 선점 해제·거절 전용 되돌리기 네 경로를 확인한다. 격리 복구 조건부 보상은 정상 흐름에서 타지 않는 경로(FCG 실패·격리 종결 전용)라 그 경로만 EVAL로 직접 태운다 — qty=0으로 호출해 실 재고 수량은 건드리지 않으면서 선차감 흔적 있음(OK)·없음(NO_DECREMENT) 두 분기를 확인
+- 해시태그 슬롯 일치는 시드된 상품 전부(기본 100종)에 대해 `stock:{id}`/`decrement:done:{id}:x`/`compensation:done:{id}:x` 세 키의 `CLUSTER KEYSLOT`을 대조 — 하나라도 어긋나면 그 자체로 EVAL이 CROSSSLOT 오류로 실패해 다섯 경로 점검과 교차 확인된다. 노드별 분포는 `CLUSTER NODES`의 슬롯 구간표로 상품id→소유노드를 매핑해 집계하고, 이상적 평균 대비 편차(%)가 `SKEW_THRESHOLD_PCT`(기본 50)를 넘으면 exit 4
+- `docker/docker-compose.scaleout.yml`에 `REDIS_STOCK_CLUSTER_NODES` 환경변수 패스스루 추가(기본 빈 문자열, 평소엔 단독 노드로 뜬다) — Task 6/8이 코드·인프라로 준비해 둔 클러스터 전환을 이 스크립트가 실행 시점에 계산한 노드 목록으로 실제로 켤 수 있게 완성
+- **실측 확인(라이브)** — 마스터 2대·4대 두 구성 모두에서 다섯 경로 전부 정상, 상품 100종 전부 슬롯 일치, 노드별 분포 편차 0%(2대: 50/50, 4대: 25/25/25/25 — 완전 균등 배정)로 exit 0 확인. 대수 전환은 Task 8이 만든 `scripts/bench-redis-cluster.sh --store stock --masters N`을 그대로 사용
+- **시행착오** — 최초 실행에서 payment-service를 user-service보다 먼저 재기동해, payment-service의 Eureka 클라이언트가 시작 시점 레지스트리 스냅샷에 user-service를 못 담아 checkout이 일시적으로 503(user-service 사용불가)을 내는 것을 실제로 겪었다. user-service 확인(healthy + Eureka `/eureka/apps` UP)을 payment-service 재기동보다 먼저 하도록 순서를 바꾸고 `wait_eureka_registered`로 재발을 막았다
+- 검증 후 정리: 테스트로 만든 orderId 2건(정상/거절)의 payment 여섯 테이블 행 삭제, 프로브 상품 3종 캐시 값을 상수로 복원, payment-service를 단독 Redis 연결로 원복, 이 스크립트가 새로 띄운 user-service 정지, redis-stock-cluster를 2대로 복원(Task 8 인계 상태와 동일)까지 확인. 마무리 상태로 product RDB stock 100종 전부 정상 상수(1000만)·클러스터 dbsize 0(에페메럴이라 재구성 시 항상 빈 상태)·payment 여섯 테이블 전부 0건을 확인
+- Java 코드 변경 없음(bash 스크립트 1개 신설 + docker-compose 환경변수 패스스루 1줄) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
 
 ---
 

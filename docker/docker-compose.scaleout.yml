@@ -69,6 +69,10 @@ services:
 
   # ───────────────────────────────────────────
   # payment-service — 복제본 접속 정보 주입 (docker-compose.apps.yml 위에 덧씌운다)
+  #
+  # REDIS_STOCK_CLUSTER_NODES 는 기본값이 빈 문자열이라 평소엔 단독 노드(redis-stock)로 뜬다.
+  # scripts/bench-cluster-check.sh 가 이 값을 채워 --force-recreate 로 재기동해 재고 캐시
+  # 클러스터(redis-stock-cluster)에 붙인다 — 대수는 scripts/bench-redis-cluster.sh 가 정한다.
   # ───────────────────────────────────────────
   payment-service:
     depends_on:
@@ -77,6 +81,7 @@ services:
     environment:
       PAYMENT_DATASOURCE_REPLICA_ENABLED: "true"
       PAYMENT_DB_REPLICA_HOST: mysql-payment-replica
+      REDIS_STOCK_CLUSTER_NODES: ${REDIS_STOCK_CLUSTER_NODES:-}
 
   # ───────────────────────────────────────────
   # redis-stock-cluster — 재고 캐시 클러스터 마스터 노드 (복제 노드 없음)
