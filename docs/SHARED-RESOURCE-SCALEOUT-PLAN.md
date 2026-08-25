@@ -135,7 +135,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 7: payment DB 복제본 인프라
 - [x] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
 - [x] Task 9: 부하 프로필 상품 다중화
-- [ ] Task 10: 사이클 재구성 절차 스크립트
+- [x] Task 10: 사이클 재구성 절차 스크립트
 - [ ] Task 11: 정합 검증 상품별 확장
 - [ ] Task 12: 클러스터 라이브 점검 스크립트
 - [ ] Task 13: 사이클 러너와 복제 지연 계측
@@ -409,7 +409,20 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 정상 상태에서 돌리면 상품 100개 전부가 상수로 재시드된 채 끝난다
 
 **완료 결과**
-> (execute에서 채움)
+- `scripts/bench-cycle-reset.sh` 신설 — 다섯 단계를 순서대로 밟고, 잔류가 안 비면 재시드 없이 종료한다
+  - (1) `pgrep -f "k6 run"` + `docker ps` 로 k6 프로세스/컨테이너 부재를 확인 — 실패 시 즉시 exit 1(폴링 없이 선결 조건으로 다룬다, "이 환경에서 확정 요청의 유일한 출처"라 멈추지 않았으면 재구성 자체가 무의미하다)
+  - (2) 미종결(`payment_event.status IN (READY,IN_PROGRESS,RETRYING)`) 0, **격리(`QUARANTINED`) 0**, 미회수 선차감 기록(`stock_hold_record.status=NOISE`) 0 을 셋 다 같은 폴링 루프에서 연속 3회(기본) 0 으로 안정 확인 — 미종결과 격리를 별개 카운트로 분리해 미종결만 보고 격리 잔류를 통과시키는 실수를 구조로 막았다. 격리가 남으면 매 폴링마다 살아있는 payment-service 컨테이너에 `docker exec curl`로 관리자 종결(`POST /admin/payments/events/{id}/resolve-quarantine`)을 자동 시도한 뒤 재확인 — gateway 는 `/admin/**` 를 라우팅하지 않아 payment-service 컨테이너 내부에서 로컬 호출한다
+  - (3) 재고 확정 소비자 그룹(`product-service-stock-commit`) 을 `kafka-consumer-groups --describe` 로 조회해 LAG 합계 0 을 같은 방식으로 안정 확인
+  - (4) `docker compose stop payment-service` 로 **서비스 단위** 정지 — `StockHoldRecoveryWorker`(회수 워커)에 인스턴스별 비활성화 설정이 없어(`@Scheduled` 고정 주기) 컨테이너 하나만 멈추면 남은 인스턴스의 회수가 재확인과 비우기 사이에 끼어드는 것을 코드로 확인하고, 정지 방식을 컨테이너 단위가 아닌 서비스 단위로 못박았다. 정지 직후 `dc ps -q --status running payment-service` 로 실행 중 컨테이너 0 을 확인하고, 하나라도 남으면 exit 3
+  - (5) (2)/(3) 을 **단발 재확인**(안정 폴링 재적용 없이 즉시 1회 조회)한 직후에만 `scripts/bench-seed-stock.sh` 를 호출해 비우고 재시드 — payment-service 가 이미 (4)에서 멈춰 새 확정 요청·재고 확정 메시지가 나갈 출처가 없으므로, 다시 3연속 폴링을 요구하면 그 대기 시간만큼 확인-비우기 창을 불필요하게 늘리는 셈이라 즉시 판정으로 좁혔다. 재확인이 걸리면 exit 4 — payment-service 가 이미 멈춘 상태라 관리자 종결 자동 재시도 없이 사람 개입을 요구한다
+- 격리 자동 종결 호출은 벤더 상태 조회가 "확인불가(UNKNOWN)"로 나와도 막지 않는다(`PgVendorStatusHttpAdapter` 가 pg-service 불통을 예외로 던지지 않고 UNKNOWN 으로 흡수) — 벤더 승인이 실제로 확인된 건만 유스케이스가 거부한다
+- **실측 확인** — 이 topic 검증 과정에서 mysql-payment 에 쌓인 낡은 bench 잔류(READY 128건 · NOISE 153건, Task 9 라이브 검증이 pg-service 없이 checkout 만 흘려 영구 미종결로 남은 건)를 정리해 0 상태로 만든 뒤 세 시나리오를 실제로 돌렸다
+  1. **정상 상태** — 미종결/격리/미회수/소비적체 전부 0 인 상태에서 실행 → 다섯 단계 전부 통과, `docker-payment-service-1` 정지 확인, `bench-seed-stock.sh` 로 상품 100종 전부 재시드, exit 0
+  2. **잔류를 인위로 만든 경우** — READY 상태 `payment_event` 행 하나를 직접 심고 실행 → (2) 단계가 "잔류 — 미종결=1"을 반복 출력하며 폴링 상한(3회)까지 안정화하지 못하고 exit 2 로 종료. payment-service 컨테이너는 계속 살아 있었고(`docker-payment-service-1 Up`), `stock:{1000}` redis 값도 시드값 그대로(10000000)라 캐시가 전혀 비워지지 않았음을 확인
+  3. **격리 결제를 인위로 하나 남긴 경우** — `QUARANTINED` 상태 `payment_event` 행 하나를 직접 심고 실행 → (2) 단계가 격리 1건을 감지해 관리자 종결을 자동 호출, 같은 폴링 루프 안에서 상태가 `FAILED`(사유: `bench-cycle-reset 자동 회수 / 벤더 상태 조회 결과: 확인불가`)로 바뀐 것을 재확인해 안정 통과 → (3)/(4)/(5) 순서대로 이어져 재시드까지 완료, exit 0. `payment_event.status_reason` 을 직접 조회해 관리자 종결이 실제로 반영됐음을 확인
+  - 세 시나리오 모두 종료 후 테스트로 심은 행을 지우고 payment-service 를 재기동, `bench-seed-stock.sh` 로 재시드해 다음 태스크가 이어 쓸 기동 상태를 정상으로 복원했다
+- Java 코드 변경 없음(bash 스크립트 1개 신설) — `./gradlew :payment-service:test` UP-TO-DATE, 회귀 없음
+- 인프라 기동 상태 갱신 — 검증 중 mysql-payment 의 낡은 bench 잔류(payment_event/payment_order/payment_outbox/payment_history/payment_event_dedupe/stock_hold_record)를 정리했다. 이후 태스크는 이 여섯 테이블이 빈 상태에서 시작한다
 
 ---
 
