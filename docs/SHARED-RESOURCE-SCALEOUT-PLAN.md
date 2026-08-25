@@ -131,7 +131,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 3: 복제본 데이터소스 설정
 - [x] Task 4: 폴링 조회 어댑터 (질의 전용)
 - [x] Task 5: 복제본을 주입받는 빈이 폴링 어댑터 하나임을 고정
-- [ ] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
+- [x] Task 6: 재고 캐시·멱등 저장소 연결의 클러스터 모드 전환
 - [ ] Task 7: payment DB 복제본 인프라
 - [ ] Task 8: 재고 캐시·멱등 저장소 클러스터 인프라
 - [ ] Task 9: 부하 프로필 상품 다중화
@@ -304,7 +304,11 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 노드 목록을 넣으면 클러스터 연결로 뜬다 (Task 8 기동 후 Task 12 가 실측으로 확인)
 
 **완료 결과**
-> (execute에서 채움)
+- `RedisConfig`(redis-dedupe, `spring.data.redis.cluster.nodes`)와 `StockRedisConfig`(redis-stock, `payment.cache.stock-redis.cluster-nodes`) 양쪽에 같은 분기 구조를 넣었다 — 프로퍼티가 비어 있으면 지금과 같은 `RedisStandaloneConfiguration` + 표준 `ClientOptions`, 채워지면 `RedisClusterConfiguration`(콤마 구분 `host:port` 목록 파싱) + `ClusterClientOptions`로 전환한다. 클러스터 쪽은 `ClusterTopologyRefreshOptions`(어댑티브 트리거 전체 + 30초 주기 갱신)를 얹어 대수 변경 뒤 첫 명령이 리다이렉트로 새 배치를 따라가게 했다
+- 두 설정 모두 명령 타임아웃(3초)·연결 타임아웃(5초)은 기존 값 그대로 유지. `@Primary`는 `RedisConfig` 쪽 커넥션 팩토리에만 그대로 남아 있고 `StockRedisConfig` 는 미부착 — 직전 태스크(Task 5)에서 잡힌 "단일 후보 판정이 조용히 뒤바뀌는" 함정을 이번에도 점검했다: 두 빈 모두 이름이 명시돼 있고(`stockCacheRedisConnectionFactory` 등) `@ConditionalOnMissingBean`류 자동 설정 간섭 지점이 없어 노드 목록 유무와 무관하게 `@Primary` 쏠림이 재발하지 않는 구조
+- `application.yml` 에 `spring.data.redis.cluster.nodes`(env `SPRING_DATA_REDIS_CLUSTER_NODES`)와 `payment.cache.stock-redis.cluster-nodes`(env `REDIS_STOCK_CLUSTER_NODES`) 기본값(빈 문자열)을 추가해 Task 8 인프라가 컨테이너 목록을 env var 로 주입할 자리를 마련했다
+- `./gradlew :payment-service:test` 682건, `:payment-service:integrationTest --rerun-tasks` 670건 전체 통과 — 노드 목록 미설정(현재 기본값) 구성에서 회귀 없음
+- "노드 목록을 넣으면 클러스터 연결로 뜬다"는 실제 클러스터 컨테이너가 없어 이번 태스크에서는 검증 불가 — Task 8(캐시 클러스터 인프라 기동) 이후 Task 12(클러스터 라이브 점검)에서 실측하는 것으로 이월
 
 ---
 

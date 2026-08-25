@@ -43,6 +43,10 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+      cluster:
+        # 비어 있으면 위 host/port 단독 노드 연결. 채우면(콤마 구분 host:port 목록)
+        # 클러스터 연결로 전환된다(RedisConfig).
+        nodes: ${SPRING_DATA_REDIS_CLUSTER_NODES:}
 
   jpa:
     open-in-view: false
@@ -117,6 +121,9 @@ payment:
       # 로컬 실행 시 6380 으로 띄운 redis 가 필요. 테스트는 FakeStockCachePort 주입.
       host: ${REDIS_STOCK_HOST:localhost}
       port: ${REDIS_STOCK_PORT:6380}
+      # 비어 있으면 위 host/port 단독 노드 연결. 채우면(콤마 구분 host:port 목록)
+      # 클러스터 연결로 전환된다(StockRedisConfig).
+      cluster-nodes: ${REDIS_STOCK_CLUSTER_NODES:}
     order-lock:
       # 확정 진입 시 상품 반복 전체를 감싸는 주문 단위 선점의 수명(초).
       # 정상 해제는 상품 반복이 끝난 뒤 애플리케이션이 명시적으로 호출한다 — 이 값은 그

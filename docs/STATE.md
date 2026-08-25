@@ -7,12 +7,13 @@
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
 - 단계: **execute**
-- 활성 태스크: Task 6 (재고 캐시·멱등 저장소 연결의 클러스터 모드 전환)
+- 활성 태스크: Task 7 (payment DB 복제본 인프라)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
 - 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4
 - 측정 시작 전 선행: Docker 메모리 20GB 상향 (현재 8.2GB). 장애 전환 검증은 ship 에서 `docs/context/TODOS.md` 에 별도 토픽으로 등재
 - Task 4 가 `PaymentStatusQueryJdbcAdapter` 를 만들어 프로덕션 `PaymentStatusQueryPort` 빈 부재로 인한 payment-service `integrationTest` 651건 실패 회귀를 해소했다 — `--rerun-tasks` 로 667건 전체 통과 확인 완료
+- Task 6 이 `RedisConfig`/`StockRedisConfig` 를 노드 목록 프로퍼티로 단독/클러스터 분기하도록 바꿨다 — 노드 목록 미설정(현재 기본값) 상태로 `test` 682건·`integrationTest --rerun-tasks` 670건 전체 통과 확인 완료. "노드 목록을 넣으면 클러스터로 뜬다"는 Task 8 인프라 기동 후 Task 12 에서 실측 예정
 
 ## 재개 메모
 
