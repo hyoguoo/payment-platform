@@ -407,7 +407,15 @@ fi
 if ! wait_healthy pg-service 120; then exit 1; fi
 print_info "✅ pg-service healthy"
 
-if ! dc up -d gateway >/dev/null 2>&1; then
+# --no-deps 필수 — gateway 는 payment-service 를 depends_on 으로 갖는데, docker compose 는
+# --scale 값을 이 호출 하나에만 두고 영구화하지 않는다. --no-deps 없이 이 호출을 실행하면
+# compose 가 payment-service 를 기본 대수(1)로 되돌리면서 방금 위에서 스케일한 2번째 이상
+# 인스턴스를 즉시 삭제한다(정지가 아니라 삭제라 docker ps -a 에도 남지 않는다) — 이 사이클
+# 러너를 실제로 돌려 "인스턴스 2대 사이클인데 payment-service 가 1대로 줄어 있다"는 증상을
+# 실측으로 확인해 원인을 좁혔다. gateway 의 의존 서비스(eureka/payment-service/pg-service/
+# product-service/user-service)는 이 지점에 전부 이미 healthy 로 떠 있으므로 의존 해석 없이
+# gateway 하나만 올리면 된다.
+if ! dc up -d --no-deps gateway >/dev/null 2>&1; then
     print_error "❌ (2) gateway 기동 실패"
     exit 1
 fi

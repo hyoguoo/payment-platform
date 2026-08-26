@@ -27,8 +27,12 @@
 #       회수 워커(StockHoldRecoveryWorker)는 인스턴스마다 독립으로 돌고 끄는 설정값이 없어,
 #       컨테이너 하나만 겨냥하면 인스턴스 여러 대 구간에서 남은 인스턴스의 회수가 재확인과
 #       비우기 사이에 끼어든다
-#   (5) (2)와 (3)을 한 번 더 즉시 재확인한 직후에만 캐시를 비우고 상품별 상수로 재시드
-#       (scripts/bench-seed-stock.sh 위임 — 원본과 캐시를 같은 값으로 함께 덮는다)
+#   (5) (2)와 (3)을 한 번 더 즉시 재확인한 직후에만 payment 원장 여섯 테이블(payment_event/
+#       payment_event_dedupe/payment_history/payment_order/payment_outbox/stock_hold_record)을
+#       비우고, 캐시를 비운 뒤 상품별 상수로 재시드한다(scripts/bench-seed-stock.sh 위임 —
+#       원본과 캐시를 같은 값으로 함께 덮는다). 원장을 비우는 이유 — verify-settlement.sh 의
+#       DB 집계가 이 여섯 테이블을 사이클 구간으로 스코핑하지 않고 전체 스캔하므로, 비우지
+#       않으면 다음 사이클의 카운트에 이전 사이클 건수가 누적돼 교차식이 항상 어긋난다
 #
 # 사용법:
 #   ./scripts/bench-cycle-reset.sh
@@ -50,11 +54,11 @@
 #     -f docker/docker-compose.scaleout.yml up -d 로 스택이 떠 있다
 #
 # 종료 코드:
-#   0 — 다섯 단계 전부 통과, 캐시 비우기 + 재시드 완료
+#   0 — 다섯 단계 전부 통과, payment 원장 비우기 + 캐시 비우기 + 재시드 완료
 #   1 — 선결 조건 미충족(부하 도구 실행 중, 컨테이너 접속 실패 등)
 #   2 — (2)/(3) 안정 확인 실패(잔류가 안 비거나 관리자 종결로도 안 풀림) — 캐시를 비우지 않고 종료
 #   3 — (4) payment-service 정지 실패 — 캐시를 비우지 않고 종료
-#   4 — (5) 재확인 실패 또는 재시드 실패 — 이 경우 캐시가 이미 열린 창일 수 있어 즉시 사람 개입 필요
+#   4 — (5) 재확인 실패, payment 원장 비우기 실패, 또는 재시드 실패 — 이 경우 캐시가 이미 열린 창일 수 있어 즉시 사람 개입 필요
 
 set -uo pipefail
 
@@ -381,6 +385,31 @@ if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHE
 fi
 
 print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=${RECHECK_LAG}(파티션수=${RECHECK_PARTITIONS} 이하)"
+
+# payment 원장 여섯 테이블(payment_event/payment_event_dedupe/payment_history/payment_order/
+# payment_outbox/stock_hold_record)을 비운다. verify-settlement.sh 의 DB 집계는 이 테이블을
+# WHERE 절 없이 전체 스캔하므로(사이클 구간으로 스코핑하지 않는다), 여기서 비우지 않으면
+# 다음 사이클의 DB 카운트에 이전 사이클 건수가 누적돼 교차식이 실제 유실과 무관하게 항상
+# 어긋난다 — 이전까지는 사이클을 한 번만 돌리고 다음 태스크 착수 전에 사람이 직접 비웠기
+# 때문에 드러나지 않았다(SHARED-RESOURCE-SCALEOUT Task 14, 같은 축의 사이클 세 개를 연속
+# 자동 실행하면서 실측으로 확인). payment-service 는 이미 (4) 에서 멈춰 있어 쓰기 주체가
+# 없으므로 안전하게 비울 수 있다. FK 는 없지만(app 레벨 조인) 순서를 신경 쓰지 않도록
+# FOREIGN_KEY_CHECKS 를 꺼둔다.
+print_section "  payment 원장 여섯 테이블 비우기 (다음 사이클의 정합 검증이 이번 사이클과 섞이지 않도록)"
+if ! mysql_query "
+SET FOREIGN_KEY_CHECKS=0;
+TRUNCATE TABLE payment_event;
+TRUNCATE TABLE payment_event_dedupe;
+TRUNCATE TABLE payment_history;
+TRUNCATE TABLE payment_order;
+TRUNCATE TABLE payment_outbox;
+TRUNCATE TABLE stock_hold_record;
+SET FOREIGN_KEY_CHECKS=1;
+" >/dev/null; then
+    print_error "❌ (5) payment 원장 테이블 비우기 실패 — 캐시는 아직 안 비웠다. 즉시 확인 필요"
+    exit 4
+fi
+print_info "✅ payment 원장 여섯 테이블 비움"
 
 print_section "  캐시 비우기 + 상품별 상수 재시드 위임 → scripts/bench-seed-stock.sh"
 if ! bash "${ROOT_DIR}/scripts/bench-seed-stock.sh"; then

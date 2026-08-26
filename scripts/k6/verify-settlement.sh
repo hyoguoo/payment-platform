@@ -36,6 +36,12 @@
 #       묶지 않고 접속·전제 실패(exit 1)로 즉시 실패시킨다
 #     - QUARANTINED > 0 → 격리는 사람 판단(관리자 종결)이 있어야 풀린다. 대기로 안 풀리므로
 #       판단 보류가 아니라 불일치로 낸다
+#     - 교차식 [2](k6 관측 DONE == DB DONE)가 어긋나도, 그 차이가 k6 포기 건수(e2e_timeout)
+#       이내이고 교차식 [1]과 [3]/[4]가 전부 통과하면 불일치로 내지 않는다. 포화 구간에서는
+#       k6 가 폴링을 포기(POLL_TIMEOUT_MS)한 뒤에도 DB 에서는 뒤늦게 DONE 으로 종결되는 건이
+#       늘 생긴다 — 관측이 잘린 것이지 유실이 아니다. 유실 여부는 총건수 교차식([1])과
+#       상품별·건별 대조([3][4])가 맡는다. 차이가 포기 건수보다 크면(k6 가 관측했는데 DB 에
+#       없거나, 포기 건수를 넘어서는 차이) 그건 설명되지 않는 차이이므로 그대로 불일치다
 #
 # settle 대기 계산 (SETTLE_WAIT_SECONDS 미지정 시 자동 산출):
 #   RECONCILER_TIMEOUT + ceil(RECONCILER_SCAN_MS / 1000) + 여유(12s)
@@ -525,17 +531,23 @@ fi
 
 echo ""
 
-# [2] k6 DONE == DB DONE
+# [2] k6 DONE == DB DONE — 어긋나도 그 차이가 k6 포기 건수(K6_TIMEOUT) 이내면 관측이
+# 잘린 것으로 보고 설명된 차이로 다룬다(유실 여부는 [1]/[3]/[4]가 맡는다). 자세한 근거는
+# 파일 상단 "불일치 해석" 참고
 print_section "  [2] k6(DONE) == DB(DONE)"
-echo "      k6 DONE: ${K6_DONE}  /  DB DONE: ${DB_DONE}"
+echo "      k6 DONE: ${K6_DONE}  /  DB DONE: ${DB_DONE}  /  k6 포기(timeout): ${K6_TIMEOUT}"
 
 CROSS_2_OK=false
+CROSS_2_EXPLAINED=false
+DIFF_2=$(( DB_DONE - K6_DONE ))
 if [[ "${K6_DONE}" -eq "${DB_DONE}" ]]; then
     CROSS_2_OK=true
     print_info "      ✅ 일치 — DONE 정합"
+elif [[ "${DIFF_2}" -ge 0 ]] && [[ "${DIFF_2}" -le "${K6_TIMEOUT}" ]]; then
+    CROSS_2_EXPLAINED=true
+    print_warning "      ℹ️  차이 있으나 관측 포기 건수로 설명됨 (DB - k6 = ${DIFF_2} <= timeout ${K6_TIMEOUT})"
 else
-    DIFF_2=$(( K6_DONE - DB_DONE ))
-    print_warning "      ⚠️  불일치 (k6 - DB = ${DIFF_2})"
+    print_warning "      ⚠️  불일치 — 포기 건수로 설명 안 됨 (DB - k6 = ${DIFF_2}, timeout=${K6_TIMEOUT})"
 fi
 
 echo ""
@@ -728,6 +740,9 @@ fi
 if [[ "${K6_TIMEOUT}" -gt 0 ]] && [[ "${CROSS_2_OK}" == "true" ]]; then
     print_warning "  ℹ️  e2e_timeout=${K6_TIMEOUT} 이지만 DB DONE 정합 — 지연 종결로 확인됨"
     echo "       (k6 폴링 타임아웃 이후 reconciler 가 정상 회수)"
+elif [[ "${K6_TIMEOUT}" -gt 0 ]] && [[ "${CROSS_2_EXPLAINED}" == "true" ]]; then
+    print_warning "  ℹ️  e2e_timeout=${K6_TIMEOUT} 이고 DB DONE 이 k6 관측보다 ${DIFF_2}건 많음 — 포기 건수 이내라 지연 종결로 설명됨"
+    echo "       (관측이 잘린 것이지 유실이 아니다 — 총건수 교차식[1]과 상품별·건별 대조[3][4]가 유실을 잡는다)"
 fi
 
 echo ""
@@ -747,7 +762,14 @@ echo "  k6 결과:      confirm=${K6_CONFIRM} / DONE=${K6_DONE} / FAILED=${K6_FA
 echo "  DB 결과:      DONE=${DB_DONE} / FAILED=${DB_FAILED} / QUARANTINED=${DB_QUARANTINED} / 미종결=${DB_UNSETTLED}"
 echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
 echo "  교차식 [1] k6총합==DB총합: $( [[ "${CROSS_1_OK}" == "true" ]] && echo PASS || echo FAIL )  (k6=${K6_TOTAL} / DB=${DB_TOTAL})"
-echo "  교차식 [2] k6DONE==DB DONE: $( [[ "${CROSS_2_OK}" == "true" ]] && echo PASS || echo FAIL )   (k6=${K6_DONE} / DB=${DB_DONE})"
+
+CROSS_2_LABEL="FAIL"
+if [[ "${CROSS_2_OK}" == "true" ]]; then
+    CROSS_2_LABEL="PASS"
+elif [[ "${CROSS_2_EXPLAINED}" == "true" ]]; then
+    CROSS_2_LABEL="EXPLAINED(포기건수 이내)"
+fi
+echo "  교차식 [2] k6DONE==DB DONE: ${CROSS_2_LABEL}  (k6=${K6_DONE} / DB=${DB_DONE} / 차이=${DIFF_2} / timeout=${K6_TIMEOUT})"
 echo "  교차식 [3] 상품별 재고 정합: ${STOCK_VERDICT}  (불일치 ${STOCK_MISMATCH_COUNT}종 / 대상 ${PRODUCT_COUNT}종)"
 
 CROSS_4_LABEL="SKIPPED"
@@ -773,10 +795,14 @@ elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_C
     VERDICT="INCONCLUSIVE"
     EXIT_CODE=2
     VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
-elif [[ "${CROSS_1_OK}" != "true" ]] || [[ "${CROSS_2_OK}" != "true" ]] || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
+elif [[ "${CROSS_1_OK}" != "true" ]] || ( [[ "${CROSS_2_OK}" != "true" ]] && [[ "${CROSS_2_EXPLAINED}" != "true" ]] ) || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
-    VERDICT_REASON="정합 불일치 — 교차식1=${CROSS_1_OK} 교차식2=${CROSS_2_OK} 재고불일치=${STOCK_MISMATCH_COUNT}종 건별대조불일치=${SETTLE_MISMATCH_COUNT}건"
+    VERDICT_REASON="정합 불일치 — 교차식1=${CROSS_1_OK} 교차식2=${CROSS_2_OK}(설명됨=${CROSS_2_EXPLAINED}, 차이=${DIFF_2}, timeout=${K6_TIMEOUT}) 재고불일치=${STOCK_MISMATCH_COUNT}종 건별대조불일치=${SETTLE_MISMATCH_COUNT}건"
+elif [[ "${CROSS_2_OK}" != "true" ]]; then
+    VERDICT="PASS"
+    EXIT_CODE=0
+    VERDICT_REASON="전항목 통과 — 교차식2는 k6 관측 포기 건수(${K6_TIMEOUT}) 이내 차이(${DIFF_2})로 설명됨(지연 종결). 상품 ${PRODUCT_COUNT}종 재고 정합 / 건별 대조 일치 / 격리·미종결·미회수 선차감 기록 0, 소비 적체 게이트(파티션 수 이하+더 줄지 않음) 통과"
 else
     VERDICT="PASS"
     EXIT_CODE=0
@@ -810,8 +836,12 @@ jq -n \
     --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson k6_total "${K6_TOTAL}" \
     --argjson k6_done "${K6_DONE}" \
+    --argjson k6_timeout "${K6_TIMEOUT}" \
     --argjson db_total "${DB_TOTAL}" \
     --argjson db_done "${DB_DONE}" \
+    --argjson cross_2_ok "$( [[ "${CROSS_2_OK}" == "true" ]] && echo true || echo false )" \
+    --argjson cross_2_explained "$( [[ "${CROSS_2_EXPLAINED}" == "true" ]] && echo true || echo false )" \
+    --argjson cross_2_diff "${DIFF_2}" \
     --argjson db_quarantined "${DB_QUARANTINED}" \
     --argjson db_unsettled "${DB_UNSETTLED}" \
     --argjson db_noise "${DB_NOISE}" \
@@ -832,8 +862,12 @@ jq -n \
         counts: {
             k6_total: $k6_total,
             k6_done: $k6_done,
+            k6_timeout: $k6_timeout,
             db_total: $db_total,
             db_done: $db_done,
+            cross_2_ok: $cross_2_ok,
+            cross_2_explained: $cross_2_explained,
+            cross_2_diff: $cross_2_diff,
             db_quarantined: $db_quarantined,
             db_unsettled: $db_unsettled,
             db_noise: $db_noise,

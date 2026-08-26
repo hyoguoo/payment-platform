@@ -70,12 +70,19 @@ export const POLL_INTERVAL_MS = parseInt(__ENV.POLL_INTERVAL_MS || '500', 10);
 /**
  * 상태 폴링 최대 대기 시간(ms).
  * outbox worker 폴백 주기(2s)보다 반드시 커야 한다(하한 2000ms).
- * reconciler in-flight-timeout 단축값(Task1 RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS)보다도
- * 충분히 작게 잡아야 타임아웃 카운트가 settle 이전 미완료를 정확히 반영한다.
+ *
+ * 기본값 60000ms(60초) — reconciler in-flight-timeout 현재 기준값(300초, bench-scaleout-cycle.sh
+ * RECONCILER_TIMEOUT 기본값)을 전제로, 포화 구간에서 관측된 완료 지연 꼬리(실측 max 10.3초,
+ * SHARED-RESOURCE-SCALEOUT Task 14 cycle-i1-m1-pollon-items1-low)보다 충분히 위로 잡았다.
+ * 옛 기준(reconciler 단축값 30초)을 전제로 짧게 잡았던 이전 기본값(10초)은 포기 시각이
+ * 지연 꼬리보다 짧아 e2e_completion_ms 분포 자체를 잘랐다 — 폴링이 포기한 요청은
+ * e2e_timeout으로만 잡히고 지연 표본에서 빠지므로, 이 값이 지연 꼬리보다 낮으면
+ * p95/p99가 실제 체감 지연이 아니라 "이 값 미만인 건들만의" 백분위가 된다. 체감 지연이
+ * 이 측정의 축이므로 이 값을 지연 분포보다 항상 위에 둔다.
  */
 export const POLL_TIMEOUT_MS = Math.max(
     2000,
-    parseInt(__ENV.POLL_TIMEOUT_MS || '10000', 10)
+    parseInt(__ENV.POLL_TIMEOUT_MS || '60000', 10)
 );
 
 /**
