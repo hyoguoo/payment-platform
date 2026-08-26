@@ -6,7 +6,8 @@
 
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
-- 단계: **execute** (재개 — 처리율 축 재측정)
+- 단계: **execute** (Task 22 리포트만 남음)
+- **월 사용 한도로 중단됨** — 재개 시 잔류 정리 필요(결제 READY 11,306건 등)
 - 활성 태스크: 없음 (Task 21 완료 — 다음은 Task 22 리포트 갱신)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
