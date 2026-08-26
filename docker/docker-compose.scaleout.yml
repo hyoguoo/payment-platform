@@ -29,10 +29,19 @@ services:
   # mysql-payment — binlog 활성화로 복제 소스 역할 추가
   # ───────────────────────────────────────────
   mysql-payment:
+    # command 는 compose 파일 사이에 병합되지 않고 마지막에 스택된 파일이 통째로 덮어쓴다 —
+    # bench-scaleout-cycle.sh 는 이 파일을 docker-compose.benchmark.yml 뒤에 스택하는데, 그
+    # 파일의 command(max_connections/문자셋)가 여기 있는 복제 플래그에 통째로 가려져 있었다
+    # (Task 21 2인스턴스 측정에서 max_connections 가 MySQL 기본값 151 로 조용히 되돌아간 것을
+    # 라이브로 발견 — 인스턴스 2대의 Hikari 풀 합이 151 을 넘겨 "Too many connections" 로 실패했다).
+    # 두 파일의 플래그를 여기 하나로 합쳐 어느 조합으로 스택해도 max_connections 가 살아있게 한다.
     command:
       - --server-id=1
       - --log-bin=mysql-bin
       - --binlog-format=ROW
+      - "--max_connections=${MYSQL_MAX_CONN:-300}"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
 
   # ───────────────────────────────────────────
   # mysql-payment-replica — payment DB 비동기 읽기 복제본 1대

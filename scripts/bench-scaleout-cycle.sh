@@ -68,6 +68,12 @@
 #   RESOURCE_SAMPLE_INTERVAL_SECONDS — MySQL·Redis·컨테이너 자원 표본 주기 초 (기본 15) — Redis
 #                               노드마다 PING 왕복 지연을 순차로 재기 때문에(노드 수 × 약 1.2초)
 #                               너무 짧게 잡으면 한 틱이 다음 틱을 밀어낸다
+#   BACKLOG_SAMPLE_INTERVAL_SECONDS — 부하 구간 동안 미종결(payment_event READY/IN_PROGRESS/
+#                               RETRYING) 건수를 재는 주기 초 (기본 10). 능력 판정의 핵심 근거 —
+#                               부하 중 이 값이 단조 증가하면 그 도착률이 능력을 넘었다는 뜻이고,
+#                               일정 범위에서 오르내리기만 하면 능력 안이라는 뜻이다. 부하가 끝나는
+#                               시점(settle 대기 진입 직전)에 표본화도 함께 멈춘다 — 판정 대상은
+#                               "부하 중" 추이지 settle 대기의 회수 추이가 아니다
 #
 # 부하 시나리오는 확정 접수까지만 확인하고 VU 를 놓아준다(async-payment.js 에 SKIP_POLL=true 로
 # 고정 전달) — 종결 폴링으로 VU 를 붙잡던 옛 구조는 도착률이 VU 상한 ÷ 종결 시간에 갇혀 목표
@@ -176,6 +182,7 @@ LATENCY_SAMPLE_RATE_PER_SEC="${LATENCY_SAMPLE_RATE_PER_SEC:-2}"
 INCONCLUSIVE_MAX_RETRIES="${INCONCLUSIVE_MAX_RETRIES:-3}"
 INCONCLUSIVE_RETRY_WAIT_SECONDS="${INCONCLUSIVE_RETRY_WAIT_SECONDS:-20}"
 RESOURCE_SAMPLE_INTERVAL_SECONDS="${RESOURCE_SAMPLE_INTERVAL_SECONDS:-15}"
+BACKLOG_SAMPLE_INTERVAL_SECONDS="${BACKLOG_SAMPLE_INTERVAL_SECONDS:-10}"
 
 if [[ "${VENDOR_LATENCY}" == "low" ]]; then
     FAKE_LATENCY_MIN=100
@@ -694,6 +701,64 @@ kafka_stat_stats_json() {
     ' "${KAFKA_STAT_LOG}"
 }
 
+BACKLOG_STAT_LOG=""
+BACKLOG_STAT_SAMPLER_PID=""
+
+# 미종결(payment_event.status IN READY/IN_PROGRESS/RETRYING) 건수를 부하 구간 동안만 주기로
+# 잰다 — 능력 판정의 근거. 경사로가 아니라 고정 도착률로 충분히(예: 3분) 유지한 채, 이 값이
+# 부하 내내 단조 증가하면 그 도착률이 서비스 능력을 넘었다는 뜻이고, 일정 범위에서 오르내리기만
+# 하면 능력 안이라는 뜻이다 — 지연 백분위보다 판정이 명확하다(부하 종료 시점 평균/최종값만
+# 보면 피크 구간에서만 밀린 것도 "능력 부족"으로 잘못 읽을 수 있다).
+start_backlog_stat_sampler() {
+    BACKLOG_STAT_LOG="$(mktemp "${ROOT_DIR}/results/.backlog-stat.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            count=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
+                SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');
+            " 2>/dev/null)
+            echo "$(date +%s) ${count:-NULL}" >> "${BACKLOG_STAT_LOG}"
+            sleep "${BACKLOG_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    BACKLOG_STAT_SAMPLER_PID=$!
+}
+
+# 부하가 끝나는 즉시 멈춘다(다른 표본화처럼 settle 대기까지 끌고 가지 않는다) — settle 대기는
+# 회수·재시도가 의도적으로 적체를 줄이는 구간이라 "부하 중 증가하는가" 판정과는 다른 질문이다.
+stop_backlog_stat_sampler() {
+    if [[ -n "${BACKLOG_STAT_SAMPLER_PID}" ]]; then
+        kill -9 "${BACKLOG_STAT_SAMPLER_PID}" 2>/dev/null || true
+        BACKLOG_STAT_SAMPLER_PID=""
+    fi
+}
+
+# 로그(epoch unsettled_count, NULL 가능)를 시간순 표본 배열 + 최초/최종/최댓값으로 낸다.
+# 자동으로 "능력 초과" 여부를 판정하지 않는다 — 완만한 톱니와 진짜 단조 증가를 가르는 것은
+# 사람이 표본을 눈으로 보고 판단하는 편이 안전하다(다른 정합 게이트도 같은 철학).
+backlog_trend_json() {
+    if [[ -z "${BACKLOG_STAT_LOG}" || ! -s "${BACKLOG_STAT_LOG}" ]]; then
+        echo '{"samples":0,"series":[],"first":null,"last":null,"max":null}'
+        return
+    fi
+    awk '
+        {
+            if ($2 !~ /^[0-9]+$/) { next }
+            n++
+            if (n == 1) { first = $2 + 0 }
+            last = $2 + 0
+            if (n == 1 || $2 + 0 > hi) { hi = $2 + 0 }
+            series = series (n == 1 ? "" : ",") "{\"epoch\":" $1 ",\"unsettled\":" $2 "}"
+        }
+        END {
+            if (n + 0 == 0) {
+                print "{\"samples\":0,\"series\":[],\"first\":null,\"last\":null,\"max\":null}"
+                exit
+            }
+            printf "{\"samples\":%d,\"series\":[%s],\"first\":%d,\"last\":%d,\"max\":%d}\n", n, series, first, last, hi
+        }
+    ' "${BACKLOG_STAT_LOG}"
+}
+
 CONTAINER_STAT_LOG=""
 CONTAINER_STAT_SAMPLER_PID=""
 
@@ -1015,6 +1080,7 @@ start_mysql_stat_sampler
 start_redis_stat_sampler
 start_container_stat_sampler
 start_kafka_stat_sampler
+start_backlog_stat_sampler
 
 LOAD_START_EPOCH=$(date +%s)
 set +e
@@ -1044,6 +1110,7 @@ stop_k6_cpu_sampler
 set -e
 LOAD_END_EPOCH=$(date +%s)
 LOAD_DURATION_SEC=$((LOAD_END_EPOCH - LOAD_START_EPOCH))
+stop_backlog_stat_sampler
 
 if [[ "${K6_EXIT}" -ne 0 && "${K6_EXIT}" -ne 99 ]]; then
     print_error "❌ (4) k6 실행 오류 (exit ${K6_EXIT})"
@@ -1227,6 +1294,7 @@ MYSQL_STAT_JSON=$(mysql_stat_stats_json)
 REDIS_STAT_JSON=$(redis_stat_stats_json)
 CONTAINER_STAT_JSON=$(container_stat_stats_json)
 KAFKA_STAT_JSON=$(kafka_stat_stats_json)
+BACKLOG_TREND_JSON=$(backlog_trend_json)
 
 jq -n \
     --arg case_name "${CASE_NAME}" \
@@ -1264,6 +1332,9 @@ jq -n \
     --argjson redis_stats "${REDIS_STAT_JSON}" \
     --argjson container_stats "${CONTAINER_STAT_JSON}" \
     --argjson kafka_stats "${KAFKA_STAT_JSON}" \
+    --argjson backlog_trend "${BACKLOG_TREND_JSON}" \
+    --argjson load_start_epoch "${LOAD_START_EPOCH}" \
+    --argjson load_end_epoch "${LOAD_END_EPOCH}" \
     --arg verdict "${VERDICT}" \
     --argjson verify_exit_code "${VERIFY_EXIT}" \
     --arg verdict_reason "${VERDICT_REASON}" \
@@ -1323,6 +1394,7 @@ jq -n \
             containers: $container_stats,
             kafka: $kafka_stats
         },
+        backlog_trend: ($backlog_trend + {load_start_epoch: $load_start_epoch, load_end_epoch: $load_end_epoch}),
         settlement: {
             verdict: $verdict,
             verify_exit_code: $verify_exit_code,
@@ -1352,6 +1424,9 @@ if [[ -n "${CONTAINER_STAT_LOG}" ]]; then
 fi
 if [[ -n "${KAFKA_STAT_LOG}" ]]; then
     rm -f "${KAFKA_STAT_LOG}"
+fi
+if [[ -n "${BACKLOG_STAT_LOG}" ]]; then
+    rm -f "${BACKLOG_STAT_LOG}"
 fi
 
 echo ""
