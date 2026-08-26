@@ -6,8 +6,10 @@
 
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
-- 단계: **execute** (Task 22 리포트만 남음)
-- **월 사용 한도로 중단됨** — 재개 시 잔류 정리 필요(결제 READY 11,306건 등)
+- 단계: **ship 대기** (execute 완료, 월 사용 한도로 ship 보류)
+- 리포트: `docs/SHARED-RESOURCE-SCALEOUT-REPORT.md` — 판정선 0.67배 미달, 병목 지목 실패(후보 8개 배제)
+- 잔류 정리 완료, 재고 재시드 완료. payment/pg 정지 상태
+- **재개 시 할 일**: ship (코드 리뷰 → 문서 동기화 → 제품 견고성 발견 2건 `TODOS.md` 등재 → 아카이브 → PR)
 - 활성 태스크: 없음 (Task 21 완료 — 다음은 Task 22 리포트 갱신)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
