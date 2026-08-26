@@ -32,8 +32,14 @@
 #
 # 측정 튜닝 (환경 변수, 대개 기본값 그대로 둔다):
 #   BASE_URL                  — k6 요청 기저 URL (기본 http://localhost:8090 — gateway 경유)
-#   RECONCILER_TIMEOUT        — payment reconciler IN_PROGRESS 회수 기준 초 (기본 30)
+#   RECONCILER_TIMEOUT        — payment reconciler IN_PROGRESS 회수 기준 초 (기본 300 — 코드
+#                               default 와 동일. 커넥션 풀 80/피크 400 조합이 포화에 닿을 때
+#                               확정 지연 꼬리가 벌어질 수 있어, 회수가 아직 진행 중인 확정
+#                               결과를 앞지르지 않도록 짧게 단축하지 않는다)
 #   RECONCILER_SCAN_MS        — payment reconciler 스캔 주기 ms (기본 15000)
+#   HIKARI_MAX_POOL           — payment Hikari DB 커넥션 풀 상한 (기본 80 — 부하 곡선 피크
+#                               400 req/s 에 맞춘 값. docker-compose.benchmark.yml 이 이 값을
+#                               SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE 로 그대로 받는다)
 #   FAKE_FAIL_RATE            — pg fake gateway 실패율 (기본 0 — baseline 고정)
 #   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK — scripts/bench-seed-stock.sh 와 동일
 #   K6_EXTRA_ARGS              — k6 run 에 추가 전달할 -e KEY=VALUE 인자(공백 구분)
@@ -103,8 +109,9 @@ CASE_NAME="${CASE_NAME:-cycle-i${INSTANCES}-m${STOCK_MASTERS}-poll${POLLING_ROUT
 # ---------------------------------------------------------------------------
 
 BASE_URL="${BASE_URL:-http://localhost:8090}"
-RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT:-30}"
+RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT:-300}"
 RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS:-15000}"
+HIKARI_MAX_POOL="${HIKARI_MAX_POOL:-80}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
 PRODUCT_COUNT="${PRODUCT_COUNT:-100}"
 PRODUCT_ID_BASE="${PRODUCT_ID_BASE:-1000}"
@@ -380,6 +387,7 @@ export SPRING_DATA_REDIS_CLUSTER_NODES="${DEDUPE_NODES_CSV}"
 export PAYMENT_DATASOURCE_REPLICA_ENABLED="${REPLICA_ENABLED}"
 export RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT}"
 export RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS}"
+export HIKARI_MAX_POOL="${HIKARI_MAX_POOL}"
 if ! dc up -d --scale payment-service="${INSTANCES}" --force-recreate payment-service >/dev/null 2>&1; then
     print_error "❌ (2) payment-service 재기동 실패"
     exit 1
@@ -496,17 +504,21 @@ call_verify() {
     return $?
 }
 
-VERIFY_EXIT=99
+# call_verify 의 종료 코드(2/3/그 외)는 이 러너의 정상 제어 흐름이라, 전역 set -e(라인
+# ~456) 아래서 그대로 실행하면 errexit 가 즉시 스크립트를 죽여 재시도 루프·복제 지연
+# 표본화 정지·결과 기록·재구성이 전부 스킵된다(실측 중 발견 — INCONCLUSIVE 첫 판정에서
+# 스크립트가 그 자리에서 죽는 것을 확인). `cmd || VERIFY_EXIT=$?` 형태로 좌변에 둬야
+# errexit 예외 대상이 된다.
+VERIFY_EXIT=0
 RETRY_COUNT=0
-call_verify ""
-VERIFY_EXIT=$?
+call_verify "" || VERIFY_EXIT=$?
 
 while [[ "${VERIFY_EXIT}" -eq 2 && "${RETRY_COUNT}" -lt "${INCONCLUSIVE_MAX_RETRIES}" ]]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     print_warning "⚠️  판단 보류(INCONCLUSIVE) — ${INCONCLUSIVE_RETRY_WAIT_SECONDS}초 대기 후 재검증 (${RETRY_COUNT}/${INCONCLUSIVE_MAX_RETRIES})"
     sleep "${INCONCLUSIVE_RETRY_WAIT_SECONDS}"
-    call_verify 0
-    VERIFY_EXIT=$?
+    VERIFY_EXIT=0
+    call_verify 0 || VERIFY_EXIT=$?
 done
 
 stop_replica_lag_sampler
@@ -613,6 +625,7 @@ jq -n \
     --argjson product_count "${PRODUCT_COUNT}" \
     --argjson reconciler_timeout_s "${RECONCILER_TIMEOUT}" \
     --argjson reconciler_scan_ms "${RECONCILER_SCAN_MS}" \
+    --argjson hikari_max_pool "${HIKARI_MAX_POOL}" \
     --argjson confirm_count "${CONFIRM_COUNT}" \
     --argjson db_done_count "${DB_DONE_COUNT}" \
     --argjson load_duration_sec "${LOAD_DURATION_SEC}" \
@@ -642,7 +655,8 @@ jq -n \
             fake_latency_max_ms: $fake_latency_max,
             product_count: $product_count,
             reconciler_timeout_s: $reconciler_timeout_s,
-            reconciler_scan_ms: $reconciler_scan_ms
+            reconciler_scan_ms: $reconciler_scan_ms,
+            hikari_max_pool: $hikari_max_pool
         },
         throughput: {
             confirm_count: $confirm_count,
