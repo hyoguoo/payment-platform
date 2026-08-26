@@ -141,7 +141,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 13: 사이클 러너와 복제 지연 계측
 - [x] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
 - [x] Task 15: 인스턴스 수 축 측정 (1 / 2 / 3 / 4)
-- [ ] Task 16: 읽기 복제·다중 상품·벤더 지연 축 측정
+- [x] Task 16: 읽기 복제·다중 상품·벤더 지연 축 측정
 - [ ] Task 17: 측정 리포트
 
 ## 태스크
@@ -612,7 +612,21 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 고지연 사이클의 미종결 적체 추이가 기록된다
 
 **완료 결과**
-> (execute에서 채움)
+- **에스컬레이션 원인 정정** — 이 세션은 처음에 다중 상품 사이클 잔류 337건의 상태값(READY)만 보고 execute() 미호출로 짚었으나, 메인 스레드가 재규명한 결과 337건 전부 `executed_at`/`payment_key` 가 채워져 있어 execute() 는 정상 수행됐던 것으로 확정됐다. 실제 원인은 `executed_at`→`last_status_changed_at` 간격이 정확히 300/301/302…초로 줄지어 있던 것 — 이 축은 주문당 상품이 3개라 재고 캐시 왕복이 세 배로 늘어 종결 꼬리가 reconciler 회수 기준(`RECONCILER_TIMEOUT=300s`)을 넘겼고, 진행 중이던 결제가 READY 로 되돌려진 뒤 뒤늦게 온 승인이 `done()` 의 IN_PROGRESS 단독 가드에 막혔다. 인스턴스 축(Task 15, 30초 구간)에서 겪은 것과 같은 실패 모드가 300초에서 재현된 것뿐이었다 — 상태값 하나만으로 판단하지 않고 `executed_at`/`payment_key` 컬럼까지 같이 봤어야 했다
+- **잔류 정리** — 정상 5단계 게이트(`bench-cycle-reset.sh`)는 미종결=0·미회수 선차감 기록=0 안정 확인을 요구하는데, 이 337건(READY)/1011건(NOISE)은 위 원인상 대기해도 자연히 0 이 되지 않는 영구 잔류라 게이트를 통과할 수 없다. payment-service 를 서비스 단위로 먼저 정지(회수 워커 정지)한 뒤, 같은 스크립트 (5)단계와 동일한 TRUNCATE 문으로 payment 원장 여섯 테이블(`payment_event`/`payment_event_dedupe`/`payment_history`/`payment_order`/`payment_outbox`/`stock_hold_record`)을 직접 비웠다 — 게이트를 우회했을 뿐 지우는 대상과 방식은 정상 재구성 절차와 동일하다. 재고 캐시는 이어지는 사이클의 (3)시드 단계가 상수로 재시드하며 함께 정리됐다
+- **재측정** — `RECONCILER_TIMEOUT=1800`(이 축의 종결 꼬리보다 충분히 크게, 나머지는 스크립트 기본값), `INSTANCES=2 STOCK_MASTERS=4 POLLING_ROUTE=on ITEMS_PER_ORDER=3 VENDOR_LATENCY=low` 로 `scaleout-multi-item` 사이클을 재실행했다. 확정 4605건 전부 DB DONE 4605건(미종결·QUARANTINED·미회수 선차감 기록 전부 0), 상품 100종 재고 정합 PASS, 건별 대조 PASS, 소비 적체 게이트(적체 3, 파티션수=3 이하) 통과로 `verify-settlement.sh` exit 0(PASS). 확정 처리율 15.350 req/s, e2e 완료 처리율 2.151 req/s, e2e p50/p95/p99 2021/22210/31271ms(회수 기준을 크게 올린 만큼 꼬리 확정 지연도 그대로 관측치에 실렸다 — 이 축의 목적은 처리율 비교가 아니라 정합 유지 확인이라 수치 해석은 하지 않는다, Task 17 몫). 복제 지연 최대 1초(422표본)
+- **조건 확인** — 부하 구간(300초) 동안 15초 간격 병행 폴링으로 payment-service 인스턴스 2대·재고 캐시 클러스터 마스터 4대를 매 표본 100% 유지 확인했다. 같은 폴링에서 `payment_order` 를 주문별로 집계해 상품 수≠3 또는 distinct product≠3 인 주문이 매 표본 0건임을 확인 — 4605건 전 주문이 실제로 서로 다른 상품 3개씩으로 구성됐다. 이 축의 핵심 산출인 "상품 키가 여러 노드에 걸쳐도 정합이 유지되는지"는 상품 100종 전부 redis 잔여==RDB 잔여로 PASS
+- **세 축 결과**
+
+  | case | 조건(변수) | 확정/s | e2e/s | e2e p50/p95/p99(ms) | 정합 |
+  |---|---|---:|---:|---|---|
+  | scaleout-replica-off | 폴링 라우팅 off | 68.824 | 32.470 | 5080 / 10567 / 11967 | PASS |
+  | scaleout-multi-item | 재고 마스터4·주문당 상품3·회수기준1800s | 15.350 | 2.151 | 2021 / 22210 / 31271 | PASS |
+  | scaleout-vendor-high | 벤더 지연 800~1500ms | 65.495 | 30.900 | 4593 / 10201 / 11241 | PASS |
+
+  (참고 — 라우팅 켬·나머지 동일 기준선은 Task 14 `scaleout-stock-m2`: 확정 78.734 / e2e 35.094 req/s, p50/p95/p99 5672/13275/14345ms. 수치 해석은 하지 않는다, Task 17 몫)
+- **별도 발견(고치지 않음, ship 미해결 항목 대장 후보)** — 회수(`PaymentReconciler`)가 IN_PROGRESS→READY 로 되돌린 결제에 뒤늦게 벤더 승인이 도착하면, `PaymentEvent.done()` 이 IN_PROGRESS 상태만 허용하는 가드라 그 승인은 영구히 반영되지 않는다. 재고 선점(`stock_hold_record`)도 함께 풀리지 않는다 — 회수 판정 자체가 "종결 상태가 아니면 되돌리지 않는다"는 전제로 설계돼 있어, 한 번 READY 로 되돌아간 결제는 자동 경로로는 다시 종결되지 못하고 오히려 영구화된다. 앞서 나온 "적용 불가능한 확정 결과가 소비자를 막는다"와 같은 계열의 제품 견고성 우려 — ship 에서 `docs/context/TODOS.md` 미해결 항목 대장 등재 대상
+- 검증 후 인프라 — 재구성 (6)단계가 payment-service 정지 + 원장 truncate + 재시드까지 정상 완료(`reset_status=DONE`). payment-service 는 다음 태스크의 스택 기동 단계가 재기동, 재고 캐시 클러스터는 이 사이클이 남긴 마스터 4대로 남아 있다
 
 ---
 
