@@ -50,6 +50,9 @@
 #                               시나리오를 켜지 않는다(체감 지연 결과가 비게 된다)
 #   INCONCLUSIVE_MAX_RETRIES        — 판단 보류 재검증 최대 횟수 (기본 3)
 #   INCONCLUSIVE_RETRY_WAIT_SECONDS — 재검증 사이 대기 초 (기본 20)
+#   RESOURCE_SAMPLE_INTERVAL_SECONDS — MySQL·Redis·컨테이너 자원 표본 주기 초 (기본 15) — Redis
+#                               노드마다 PING 왕복 지연을 순차로 재기 때문에(노드 수 × 약 1.2초)
+#                               너무 짧게 잡으면 한 틱이 다음 틱을 밀어낸다
 #
 # 부하 시나리오는 확정 접수까지만 확인하고 VU 를 놓아준다(async-payment.js 에 SKIP_POLL=true 로
 # 고정 전달) — 종결 폴링으로 VU 를 붙잡던 옛 구조는 도착률이 VU 상한 ÷ 종결 시간에 갇혀 목표
@@ -57,10 +60,24 @@
 # 시나리오(latency_sample)로 재고, 처리율은 부하 도구 관측 여부와 무관하게 DB 종결 건수를
 # 부하 구간으로 나눠 낸다(throughput.db_done_per_load_sec).
 #
+# 자원 표본화 — 부하 구간 동안 세 계열을 주기로 표본화해 결과 파일에 최대·평균으로 남긴다.
+# 전용 exporter/사이드카를 새로 띄우지 않고 기존 컨테이너에 docker exec/docker stats 로
+# 직접 묻는다(이미 있는 복제 지연·k6 CPU 표본화와 같은 결) — 관측 스택에 상시 스크랩 대상을
+# 늘리지 않아 측정 대상과 자원을 다투지 않는다.
+#   - MySQL(원본·복제본): 실행 중 스레드(Threads_running) · 행 잠금 대기(Innodb_row_lock_
+#     current_waits) · 커밋/IO fsync 대기(Innodb_os_log_pending_fsyncs + Innodb_data_
+#     pending_fsyncs) 를 performance_schema.global_status 단일 SELECT 로 표본화
+#   - Redis(재고 캐시·멱등 저장소 클러스터): 클러스터를 구성하는 실행 중 노드 전부를 매 틱
+#     순회해 초당 명령(instantaneous_ops_per_sec 합) · 블록된 클라이언트(blocked_clients 합) ·
+#     PING 왕복 지연(redis-cli --latency 1초 표본의 노드 간 최댓값)을 표본화
+#   - 컨테이너별 CPU·메모리·네트워크·디스크 IO: docker stats 로 CPU%·메모리 사용량을 틱마다,
+#     네트워크·디스크 누적 바이트는 표본 구간의 처음·끝 값 차이로 평균 처리율(byte/s)을 낸다
+#
 # 결과 파일:
 #   results/<CASE_NAME>-cycle.json — 조건 값, 처리율, 부하 무결성(dropped_iterations), k6 자체
-#   CPU 점유, 백분위 지연(표본), 복제 지연, 정합 판정. 부하 도구가 쓰는 results/<CASE_NAME>.json 과
-#   verify-settlement.sh 의 results/<CASE_NAME>-verdict.json 어느 쪽도 건드리지 않는다.
+#   CPU 점유, 백분위 지연(표본), 복제 지연, MySQL·Redis·컨테이너 자원 표본(최대·평균), 정합 판정.
+#   부하 도구가 쓰는 results/<CASE_NAME>.json 과 verify-settlement.sh 의
+#   results/<CASE_NAME>-verdict.json 어느 쪽도 건드리지 않는다.
 #
 # 선행 조건:
 #   - docker / k6 / jq 설치
@@ -132,6 +149,7 @@ K6_CPU_SAMPLE_INTERVAL_SECONDS="${K6_CPU_SAMPLE_INTERVAL_SECONDS:-2}"
 LATENCY_SAMPLE_RATE_PER_SEC="${LATENCY_SAMPLE_RATE_PER_SEC:-2}"
 INCONCLUSIVE_MAX_RETRIES="${INCONCLUSIVE_MAX_RETRIES:-3}"
 INCONCLUSIVE_RETRY_WAIT_SECONDS="${INCONCLUSIVE_RETRY_WAIT_SECONDS:-20}"
+RESOURCE_SAMPLE_INTERVAL_SECONDS="${RESOURCE_SAMPLE_INTERVAL_SECONDS:-15}"
 
 if [[ "${VENDOR_LATENCY}" == "low" ]]; then
     FAKE_LATENCY_MIN=100
@@ -356,6 +374,336 @@ k6_cpu_stats_json() {
     ' "${K6_CPU_LOG}"
 }
 
+# ---------------------------------------------------------------------------
+# 자원 표본화 — MySQL(원본·복제본) / Redis(재고 캐시·멱등 저장소 클러스터) / 컨테이너별
+# CPU·메모리·네트워크·디스크 IO. 셋 다 복제 지연 표본화와 같은 결(백그라운드 루프 → 로그 파일 →
+# 사후 awk 집계)로 만든다. 전용 exporter 를 새로 띄우지 않고 이미 떠 있는 컨테이너에
+# docker exec/docker stats 로 직접 묻는다 — 관측 스택에 상시 스크랩 대상을 늘리지 않는다.
+# ---------------------------------------------------------------------------
+
+MYSQL_STAT_LOG=""
+MYSQL_STAT_SAMPLER_PID=""
+
+# 컨테이너 하나의 실행 중 스레드 · 행 잠금 대기 · 커밋/IO fsync 대기를 한 행으로 낸다.
+# SHOW GLOBAL STATUS 대신 performance_schema.global_status 를 세 개의 상관 서브쿼리로 묶어
+# 컬럼 순서를 고정한다 — SHOW 결과의 행 순서는 서버 버전마다 보장되지 않는다.
+mysql_stat_row() {
+    local container="$1"
+    docker exec "${container}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
+        SELECT
+          (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='THREADS_RUNNING'),
+          (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_ROW_LOCK_CURRENT_WAITS'),
+          (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_OS_LOG_PENDING_FSYNCS')
+          + (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_DATA_PENDING_FSYNCS');
+    " 2>/dev/null
+}
+
+start_mysql_stat_sampler() {
+    MYSQL_STAT_LOG="$(mktemp "${ROOT_DIR}/results/.mysql-stat.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            source_row=$(mysql_stat_row "${MYSQL_PAYMENT_CONTAINER}")
+            replica_row=$(mysql_stat_row "${MYSQL_PAYMENT_REPLICA_CONTAINER}")
+            echo "$(date +%s) source ${source_row:-NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
+            echo "$(date +%s) replica ${replica_row:-NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    MYSQL_STAT_SAMPLER_PID=$!
+}
+
+stop_mysql_stat_sampler() {
+    if [[ -n "${MYSQL_STAT_SAMPLER_PID}" ]]; then
+        kill -9 "${MYSQL_STAT_SAMPLER_PID}" 2>/dev/null || true
+        MYSQL_STAT_SAMPLER_PID=""
+    fi
+}
+
+# 로그(epoch role threads_running row_lock_current_waits pending_fsyncs)에서 role(source/
+# replica)별 개수/최소/평균/최대를 뽑는다. 값이 NULL 인 행(접속 실패)은 건너뛴다.
+mysql_stat_stats_json() {
+    if [[ -z "${MYSQL_STAT_LOG}" || ! -s "${MYSQL_STAT_LOG}" ]]; then
+        echo '{"source":{"samples":0},"replica":{"samples":0}}'
+        return
+    fi
+    awk '
+        {
+            role = $2; tr = $3; lw = $4; pf = $5
+            if (tr !~ /^[0-9.]+$/ || lw !~ /^[0-9.]+$/ || pf !~ /^[0-9.]+$/) { next }
+            n[role]++
+            sum_tr[role] += tr; sum_lw[role] += lw; sum_pf[role] += pf
+            if (n[role] == 1 || tr + 0 < min_tr[role]) { min_tr[role] = tr + 0 }
+            if (n[role] == 1 || tr + 0 > max_tr[role]) { max_tr[role] = tr + 0 }
+            if (n[role] == 1 || lw + 0 < min_lw[role]) { min_lw[role] = lw + 0 }
+            if (n[role] == 1 || lw + 0 > max_lw[role]) { max_lw[role] = lw + 0 }
+            if (n[role] == 1 || pf + 0 < min_pf[role]) { min_pf[role] = pf + 0 }
+            if (n[role] == 1 || pf + 0 > max_pf[role]) { max_pf[role] = pf + 0 }
+        }
+        END {
+            roles["source"] = 1; roles["replica"] = 1
+            printf "{"
+            first = 1
+            for (r in roles) {
+                if (!first) { printf "," }
+                first = 0
+                if (n[r] + 0 == 0) {
+                    printf "\"%s\":{\"samples\":0}", r
+                } else {
+                    printf "\"%s\":{\"samples\":%d,\"threads_running\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"row_lock_current_waits\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"pending_fsyncs\":{\"min\":%d,\"avg\":%.2f,\"max\":%d}}",
+                        r, n[r],
+                        min_tr[r], sum_tr[r] / n[r], max_tr[r],
+                        min_lw[r], sum_lw[r] / n[r], max_lw[r],
+                        min_pf[r], sum_pf[r] / n[r], max_pf[r]
+                }
+            }
+            printf "}"
+        }
+    ' "${MYSQL_STAT_LOG}"
+}
+
+REDIS_STAT_LOG=""
+REDIS_STAT_SAMPLER_PID=""
+
+# 컨테이너 하나의 초당 명령 · 블록된 클라이언트 · PING 왕복 지연(1초 표본)을 한 행으로 낸다.
+# 지연은 redis-cli 내장 --latency 모드(가능한 한 빠르게 PING 을 보내 min/max/avg/count 를 낸다)의
+# avg 값을 쓴다 — 애플리케이션 명령 자체의 지연은 아니지만 큐잉 지연을 드러내는 대표값이다.
+redis_node_probe() {
+    local cid="$1" info ops blocked latency
+    info=$(docker exec "${cid}" redis-cli info 2>/dev/null)
+    ops=$(echo "${info}" | awk -F: '/^instantaneous_ops_per_sec:/ { print $2 }' | tr -d '\r')
+    blocked=$(echo "${info}" | awk -F: '/^blocked_clients:/ { print $2 }' | tr -d '\r')
+    latency=$(docker exec "${cid}" timeout 1.2 redis-cli --latency -i 1 2>/dev/null | tail -1 | awk '{ print $3 }')
+    echo "${ops:-NULL} ${blocked:-NULL} ${latency:-NULL}"
+}
+
+# 클러스터(재고 캐시/멱등 저장소)를 구성하는 실행 중 노드 전부를 순회해 초당 명령·블록된
+# 클라이언트는 합으로, PING 지연은 노드 간 최댓값으로 묶는다. 노드가 하나도 없으면(사이클이
+# 아직 클러스터를 구성하기 전) NULL 행을 남긴다.
+start_redis_stat_sampler() {
+    REDIS_STAT_LOG="$(mktemp "${ROOT_DIR}/results/.redis-stat.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            for pair in "redis-stock-cluster stock" "redis-idempotency-cluster idempotency"; do
+                service="${pair%% *}"
+                label="${pair##* }"
+                cids=($(dc ps -q "${service}" 2>/dev/null))
+                ops_sum=0
+                blocked_sum=0
+                latency_max=0
+                node_count=0
+                for cid in "${cids[@]}"; do
+                    probe=$(redis_node_probe "${cid}")
+                    p_ops=$(echo "${probe}" | awk '{print $1}')
+                    p_blocked=$(echo "${probe}" | awk '{print $2}')
+                    p_latency=$(echo "${probe}" | awk '{print $3}')
+                    if [[ "${p_ops}" != "NULL" ]]; then
+                        ops_sum=$(awk -v a="${ops_sum}" -v b="${p_ops}" 'BEGIN { printf "%.2f", a + b }')
+                        node_count=$((node_count + 1))
+                    fi
+                    if [[ "${p_blocked}" != "NULL" ]]; then
+                        blocked_sum=$((blocked_sum + p_blocked))
+                    fi
+                    if [[ "${p_latency}" != "NULL" ]]; then
+                        greater=$(awk -v a="${p_latency}" -v b="${latency_max}" 'BEGIN { print (a > b) ? 1 : 0 }')
+                        [[ "${greater}" == "1" ]] && latency_max="${p_latency}"
+                    fi
+                done
+                if [[ "${node_count}" -eq 0 ]]; then
+                    echo "$(date +%s) ${label} NULL NULL NULL" >> "${REDIS_STAT_LOG}"
+                else
+                    echo "$(date +%s) ${label} ${ops_sum} ${blocked_sum} ${latency_max}" >> "${REDIS_STAT_LOG}"
+                fi
+            done
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    REDIS_STAT_SAMPLER_PID=$!
+}
+
+stop_redis_stat_sampler() {
+    if [[ -n "${REDIS_STAT_SAMPLER_PID}" ]]; then
+        kill -9 "${REDIS_STAT_SAMPLER_PID}" 2>/dev/null || true
+        REDIS_STAT_SAMPLER_PID=""
+    fi
+}
+
+# 로그(epoch label ops_per_sec blocked_clients latency_ms)에서 label(stock/idempotency)별
+# 개수/최소/평균/최대를 뽑는다.
+redis_stat_stats_json() {
+    if [[ -z "${REDIS_STAT_LOG}" || ! -s "${REDIS_STAT_LOG}" ]]; then
+        echo '{"stock":{"samples":0},"idempotency":{"samples":0}}'
+        return
+    fi
+    awk '
+        {
+            label = $2; ops = $3; blocked = $4; lat = $5
+            if (ops !~ /^[0-9.]+$/ || blocked !~ /^[0-9.]+$/ || lat !~ /^[0-9.]+$/) { next }
+            n[label]++
+            sum_ops[label] += ops; sum_blocked[label] += blocked; sum_lat[label] += lat
+            if (n[label] == 1 || ops + 0 < min_ops[label]) { min_ops[label] = ops + 0 }
+            if (n[label] == 1 || ops + 0 > max_ops[label]) { max_ops[label] = ops + 0 }
+            if (n[label] == 1 || blocked + 0 < min_blocked[label]) { min_blocked[label] = blocked + 0 }
+            if (n[label] == 1 || blocked + 0 > max_blocked[label]) { max_blocked[label] = blocked + 0 }
+            if (n[label] == 1 || lat + 0 < min_lat[label]) { min_lat[label] = lat + 0 }
+            if (n[label] == 1 || lat + 0 > max_lat[label]) { max_lat[label] = lat + 0 }
+        }
+        END {
+            labels["stock"] = 1; labels["idempotency"] = 1
+            printf "{"
+            first = 1
+            for (l in labels) {
+                if (!first) { printf "," }
+                first = 0
+                if (n[l] + 0 == 0) {
+                    printf "\"%s\":{\"samples\":0}", l
+                } else {
+                    printf "\"%s\":{\"samples\":%d,\"ops_per_sec\":{\"min\":%.1f,\"avg\":%.2f,\"max\":%.1f},\"blocked_clients\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"ping_latency_ms\":{\"min\":%.2f,\"avg\":%.3f,\"max\":%.2f}}",
+                        l, n[l],
+                        min_ops[l], sum_ops[l] / n[l], max_ops[l],
+                        min_blocked[l], sum_blocked[l] / n[l], max_blocked[l],
+                        min_lat[l], sum_lat[l] / n[l], max_lat[l]
+                }
+            }
+            printf "}"
+        }
+    ' "${REDIS_STAT_LOG}"
+}
+
+CONTAINER_STAT_LOG=""
+CONTAINER_STAT_SAMPLER_PID=""
+
+# docker stats 가 내는 사람이 읽는 단위(예: "794.5MiB", "3.42GB")를 바이트 정수로 바꾼다.
+# Docker CLI 표기 그대로 메모리는 이진 단위(KiB/MiB/GiB), 네트워크·디스크 IO 는 십진 단위
+# (kB/MB/GB)를 쓴다.
+bytes_from_human() {
+    # 숫자부는 지수 표기(예: "1e+03MB")까지 포함해 떼어낸다 — Docker CLI 가 값이 999.5~1000
+    # 근처일 때 다음 단위로 안 올리고 "1e+03MB" 처럼 지수로 낼 때가 있다(실측으로 발견). 이걸
+    # 놓치면 단위 판별이 "e+03MB" 로 어긋나 배수를 못 찾고 1000배 축소된 값이 남는다.
+    echo "$1" | awk '
+        {
+            v = $0
+            match(v, /^[0-9.]+([eE][+-]?[0-9]+)?/)
+            num = (RLENGTH > 0) ? substr(v, RSTART, RLENGTH) + 0 : 0
+            u = substr(v, RSTART + RLENGTH)
+            mult = 1
+            if (u == "kB") { mult = 1000 }
+            else if (u == "KiB") { mult = 1024 }
+            else if (u == "MB") { mult = 1000 * 1000 }
+            else if (u == "MiB") { mult = 1024 * 1024 }
+            else if (u == "GB") { mult = 1000 * 1000 * 1000 }
+            else if (u == "GiB") { mult = 1024 * 1024 * 1024 }
+            else if (u == "TB") { mult = 1000 * 1000 * 1000 * 1000 }
+            else if (u == "TiB") { mult = 1024 * 1024 * 1024 * 1024 }
+            printf "%.0f", num * mult
+        }'
+}
+
+# 이 사이클에 관여하는 서비스의 실행 중 컨테이너 이름 전부 — 대수가 조건 값에 따라 바뀌는
+# payment-service/redis-*-cluster 도 dc ps 로 그때그때 다시 구한다.
+container_stat_targets() {
+    local svc names=() cids cid name
+    for svc in payment-service pg-service product-service user-service gateway \
+        mysql-payment mysql-payment-replica redis-stock-cluster redis-idempotency-cluster; do
+        cids=($(dc ps -q "${svc}" 2>/dev/null))
+        for cid in "${cids[@]}"; do
+            name=$(docker inspect --format '{{.Name}}' "${cid}" 2>/dev/null | sed 's#^/##')
+            [[ -n "${name}" ]] && names+=("${name}")
+        done
+    done
+    echo "${names[@]}"
+}
+
+start_container_stat_sampler() {
+    CONTAINER_STAT_LOG="$(mktemp "${ROOT_DIR}/results/.container-stat.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            targets=($(container_stat_targets))
+            if [[ "${#targets[@]}" -gt 0 ]]; then
+                epoch=$(date +%s)
+                docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}|{{.BlockIO}}' \
+                    "${targets[@]}" 2>/dev/null | while IFS='|' read -r name cpu mem net block; do
+                    cpu_num="${cpu%\%}"
+                    mem_used="${mem%% / *}"
+                    net_rx="${net%% / *}"
+                    net_tx="${net##* / }"
+                    block_read="${block%% / *}"
+                    block_write="${block##* / }"
+                    mem_bytes=$(bytes_from_human "${mem_used}")
+                    net_rx_bytes=$(bytes_from_human "${net_rx}")
+                    net_tx_bytes=$(bytes_from_human "${net_tx}")
+                    block_read_bytes=$(bytes_from_human "${block_read}")
+                    block_write_bytes=$(bytes_from_human "${block_write}")
+                    echo "${epoch} ${name} ${cpu_num} ${mem_bytes} ${net_rx_bytes} ${net_tx_bytes} ${block_read_bytes} ${block_write_bytes}" >> "${CONTAINER_STAT_LOG}"
+                done
+            fi
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    CONTAINER_STAT_SAMPLER_PID=$!
+}
+
+stop_container_stat_sampler() {
+    if [[ -n "${CONTAINER_STAT_SAMPLER_PID}" ]]; then
+        kill -9 "${CONTAINER_STAT_SAMPLER_PID}" 2>/dev/null || true
+        CONTAINER_STAT_SAMPLER_PID=""
+    fi
+}
+
+# 로그(epoch name cpu_percent mem_bytes net_rx net_tx block_read block_write)에서 컨테이너별
+# CPU%·메모리는 최소/평균/최대로, 네트워크·디스크 IO는 표본 구간 처음·끝 누적치의 차이를
+# 구간 길이로 나눈 평균 처리율(byte/s)로 낸다 — docker stats 의 NetIO/BlockIO는 컨테이너 시작
+# 이후 누적값이라 순간값이 아니라 두 지점 차이로만 처리율을 알 수 있다.
+container_stat_stats_json() {
+    if [[ -z "${CONTAINER_STAT_LOG}" || ! -s "${CONTAINER_STAT_LOG}" ]]; then
+        echo '{}'
+        return
+    fi
+    awk '
+        {
+            name = $2; cpu = $3 + 0; mem = $4 + 0
+            net_rx = $5 + 0; net_tx = $6 + 0; blk_r = $7 + 0; blk_w = $8 + 0
+            epoch = $1 + 0
+            if (!(name in n)) {
+                first_epoch[name] = epoch
+                first_net_rx[name] = net_rx; first_net_tx[name] = net_tx
+                first_blk_r[name] = blk_r; first_blk_w[name] = blk_w
+            }
+            n[name]++
+            sum_cpu[name] += cpu; sum_mem[name] += mem
+            if (n[name] == 1 || cpu < min_cpu[name]) { min_cpu[name] = cpu }
+            if (n[name] == 1 || cpu > max_cpu[name]) { max_cpu[name] = cpu }
+            if (n[name] == 1 || mem < min_mem[name]) { min_mem[name] = mem }
+            if (n[name] == 1 || mem > max_mem[name]) { max_mem[name] = mem }
+            last_epoch[name] = epoch
+            last_net_rx[name] = net_rx; last_net_tx[name] = net_tx
+            last_blk_r[name] = blk_r; last_blk_w[name] = blk_w
+        }
+        END {
+            printf "{"
+            first = 1
+            for (name in n) {
+                if (!first) { printf "," }
+                first = 0
+                span = last_epoch[name] - first_epoch[name]
+                if (span > 0) {
+                    net_rx_rate = (last_net_rx[name] - first_net_rx[name]) / span
+                    net_tx_rate = (last_net_tx[name] - first_net_tx[name]) / span
+                    blk_r_rate = (last_blk_r[name] - first_blk_r[name]) / span
+                    blk_w_rate = (last_blk_w[name] - first_blk_w[name]) / span
+                } else {
+                    net_rx_rate = 0; net_tx_rate = 0; blk_r_rate = 0; blk_w_rate = 0
+                }
+                printf "\"%s\":{\"samples\":%d,\"cpu_percent\":{\"min\":%.2f,\"avg\":%.2f,\"max\":%.2f},\"mem_bytes\":{\"min\":%d,\"avg\":%.0f,\"max\":%d},\"net_bytes_per_sec\":{\"rx\":%.1f,\"tx\":%.1f},\"block_bytes_per_sec\":{\"read\":%.1f,\"write\":%.1f}}",
+                    name, n[name],
+                    min_cpu[name], sum_cpu[name] / n[name], max_cpu[name],
+                    min_mem[name], sum_mem[name] / n[name], max_mem[name],
+                    net_rx_rate, net_tx_rate, blk_r_rate, blk_w_rate
+            }
+            printf "}"
+        }
+    ' "${CONTAINER_STAT_LOG}"
+}
+
 check_docker
 
 # ---------------------------------------------------------------------------
@@ -515,6 +863,9 @@ echo ""
 print_section "▶ (4) 부하 실행 — CASE_NAME=${CASE_NAME}"
 
 start_replica_lag_sampler
+start_mysql_stat_sampler
+start_redis_stat_sampler
+start_container_stat_sampler
 
 LOAD_START_EPOCH=$(date +%s)
 set +e
@@ -548,6 +899,9 @@ LOAD_DURATION_SEC=$((LOAD_END_EPOCH - LOAD_START_EPOCH))
 if [[ "${K6_EXIT}" -ne 0 && "${K6_EXIT}" -ne 99 ]]; then
     print_error "❌ (4) k6 실행 오류 (exit ${K6_EXIT})"
     stop_replica_lag_sampler
+    stop_mysql_stat_sampler
+    stop_redis_stat_sampler
+    stop_container_stat_sampler
     exit 1
 fi
 if [[ "${K6_EXIT}" -eq 99 ]]; then
@@ -558,6 +912,9 @@ K6_RESULT_JSON="${RESULTS_DIR}/${CASE_NAME}.json"
 if [[ ! -f "${K6_RESULT_JSON}" ]]; then
     print_error "❌ (4) 결과 파일 없음: ${K6_RESULT_JSON}"
     stop_replica_lag_sampler
+    stop_mysql_stat_sampler
+    stop_redis_stat_sampler
+    stop_container_stat_sampler
     exit 1
 fi
 print_info "✅ (4) 부하 완료 (${LOAD_DURATION_SEC}초) — ${K6_RESULT_JSON}"
@@ -602,6 +959,9 @@ while [[ "${VERIFY_EXIT}" -eq 2 && "${RETRY_COUNT}" -lt "${INCONCLUSIVE_MAX_RETR
 done
 
 stop_replica_lag_sampler
+stop_mysql_stat_sampler
+stop_redis_stat_sampler
+stop_container_stat_sampler
 SETTLE_END_EPOCH=$(date +%s)
 
 VERDICT_JSON="${RESULTS_DIR}/${CASE_NAME}-verdict.json"
@@ -706,6 +1066,9 @@ POLL_LATENCY_JSON=$(jq -c '.metrics.http_req_duration_poll // null' "${K6_RESULT
 E2E_LATENCY_JSON=$(jq -c '.metrics.e2e_completion_ms // null' "${K6_RESULT_JSON}" 2>/dev/null || echo null)
 REPLICA_LAG_JSON=$(replica_lag_stats_json)
 K6_CPU_JSON=$(k6_cpu_stats_json)
+MYSQL_STAT_JSON=$(mysql_stat_stats_json)
+REDIS_STAT_JSON=$(redis_stat_stats_json)
+CONTAINER_STAT_JSON=$(container_stat_stats_json)
 
 jq -n \
     --arg case_name "${CASE_NAME}" \
@@ -736,6 +1099,9 @@ jq -n \
     --argjson e2e_latency_ms "${E2E_LATENCY_JSON}" \
     --argjson replica_lag_seconds "${REPLICA_LAG_JSON}" \
     --argjson k6_cpu_percent "${K6_CPU_JSON}" \
+    --argjson mysql_stats "${MYSQL_STAT_JSON}" \
+    --argjson redis_stats "${REDIS_STAT_JSON}" \
+    --argjson container_stats "${CONTAINER_STAT_JSON}" \
     --arg verdict "${VERDICT}" \
     --argjson verify_exit_code "${VERIFY_EXIT}" \
     --arg verdict_reason "${VERDICT_REASON}" \
@@ -779,6 +1145,11 @@ jq -n \
         },
         replica_lag_seconds: $replica_lag_seconds,
         k6_cpu_percent: $k6_cpu_percent,
+        resource_usage: {
+            mysql: $mysql_stats,
+            redis: $redis_stats,
+            containers: $container_stats
+        },
         settlement: {
             verdict: $verdict,
             verify_exit_code: $verify_exit_code,
@@ -796,6 +1167,15 @@ if [[ -n "${REPLICA_LAG_LOG}" ]]; then
 fi
 if [[ -n "${K6_CPU_LOG}" ]]; then
     rm -f "${K6_CPU_LOG}"
+fi
+if [[ -n "${MYSQL_STAT_LOG}" ]]; then
+    rm -f "${MYSQL_STAT_LOG}"
+fi
+if [[ -n "${REDIS_STAT_LOG}" ]]; then
+    rm -f "${REDIS_STAT_LOG}"
+fi
+if [[ -n "${CONTAINER_STAT_LOG}" ]]; then
+    rm -f "${CONTAINER_STAT_LOG}"
 fi
 
 echo ""

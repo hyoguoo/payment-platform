@@ -144,7 +144,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 16: 읽기 복제·다중 상품·벤더 지연 축 측정
 - [x] Task 17: 측정 리포트
 - [x] Task 18: 부하 도구를 실제 한계까지 밀 수 있게 고친다
-- [ ] Task 19: 자원 계측 보강
+- [x] Task 19: 자원 계측 보강
 - [ ] Task 20: 단일 구성을 한계까지 밀고 병목을 지목한다
 - [ ] Task 21: 지목된 자원만 늘려 재측정 (반복)
 - [ ] Task 22: 리포트 갱신
@@ -708,7 +708,15 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 관측 스택 추가분이 측정 대상과 자원을 다투지 않는 수준인지 확인한다
 
 **완료 결과**
-> (execute에서 채움)
+- **exporter/사이드카를 새로 띄우지 않는 쪽을 택했다.** mysqld-exporter·redis_exporter·cAdvisor 를 관측 스택(Prometheus)에 얹는 방법도 검토했지만, 그 컨테이너들은 사이클이 없을 때도 상시로 대상을 스크랩·워킹해 "관측 스택 추가분이 측정 대상과 자원을 다투면 그 자체가 오염" 이라는 완료 기준과 정면으로 부딪힌다. 대신 `scripts/bench-scaleout-cycle.sh`에 이미 있던 복제 지연·k6 CPU 표본화(백그라운드 루프 → 로그 파일 → 사후 awk 집계)와 같은 결로, 이미 떠 있는 컨테이너에 `docker exec`/`docker stats` 로 직접 묻는 표본화 3종을 추가했다 — 부하 구간에만 돌고 사이클이 끝나면 멈춘다. `docker-compose.*.yml`/`observability/prometheus/prometheus.yml` 은 건드리지 않았다(diff 는 `scripts/bench-scaleout-cycle.sh` 단일 파일).
+- **MySQL(원본·복제본)** — `performance_schema.global_status` 를 상관 서브쿼리 세 개로 묶어 한 SELECT 로 실행 중 스레드(Threads_running)·행 잠금 대기(Innodb_row_lock_current_waits)·커밋/IO fsync 대기(Innodb_os_log_pending_fsyncs + Innodb_data_pending_fsyncs) 를 표본화한다(`mysql_stat_row`/`start_mysql_stat_sampler`/`mysql_stat_stats_json`).
+- **Redis(재고 캐시·멱등 저장소 클러스터)** — 클러스터를 구성하는 실행 중 노드 전부를 매 틱 순회해(`dc ps -q` 로 그때그때 다시 구해 대수 변화에 자동 대응) 초당 명령(instantaneous_ops_per_sec 합)·블록된 클라이언트(blocked_clients 합)·PING 왕복 지연(redis-cli --latency 1초 표본의 노드 간 최댓값) 을 낸다(`redis_node_probe`/`start_redis_stat_sampler`/`redis_stat_stats_json`).
+- **컨테이너별 CPU·메모리·네트워크·디스크 IO** — `docker stats --no-stream` 로 CPU%·메모리는 틱마다 min/avg/max, 네트워크·디스크 누적 바이트는 표본 구간 처음·끝 값 차이를 구간 길이로 나눈 평균 처리율(byte/s)로 낸다(`container_stat_targets`/`start_container_stat_sampler`/`container_stat_stats_json`). 대상은 payment-service/pg-service/product-service/user-service/gateway/mysql-payment/mysql-payment-replica/redis-stock-cluster*/redis-idempotency-cluster* — 스케일 대수도 매 틱 다시 구해 인스턴스·재고 마스터 대수가 사이클마다 바뀌어도 그대로 따라간다.
+- 결과 파일(`results/<CASE_NAME>-cycle.json`)에 `resource_usage.{mysql,redis,containers}` 로 남는다. 새 튜닝 변수 `RESOURCE_SAMPLE_INTERVAL_SECONDS`(기본 15초).
+- **라이브 검증** — `INSTANCES=1 STOCK_MASTERS=4 DEDUPE_MASTERS=3`(인계 상태와 동일 대수) + 짧은 부하(`PEAK_RATE=15 STAGE_SEC=10`)로 `bench-scaleout-cycle.sh` 를 무인 실행해 스택 기동→클러스터 구성→시드→부하→정합 검증→재구성 전 구간을 두 번 통과시켰다(둘 다 outcome=SUCCESS, 정합 PASS). 첫 실행에서 `resource_usage.containers.docker-product-service-1.net_bytes_per_sec.rx` 가 `-2473942.9`(음수)로 나오는 결함을 실측으로 발견했다(Rule 1, 이 태스크 안에서 직접 수정) — 원인은 Docker CLI 가 NetIO/BlockIO 누적치가 999.5~1000 근처일 때 다음 단위로 안 올리고 `"1e+03MB"` 처럼 지수 표기를 낼 때가 있는데, 사람이 읽는 단위→바이트 변환기가 숫자부를 `[0-9.]+` 로만 잘라 지수(`e+03`)를 단위 문자열 쪽에 남기고 배수를 못 찾아 1000배 축소된 값이 남은 것이다. 숫자부를 지수 표기까지 포함해 떼어내도록 정규식을 고치고(`match(v, /^[0-9.]+([eE][+-]?[0-9]+)?/)`), 독립 awk 스크립트로 `"1e+03MB"→1,000,000,000` 등 8개 케이스를 먼저 확인한 뒤 사이클을 재실행해 음수·이상치 없이 통과를 재확인했다(예: redis-stock-cluster 4노드 net ~7KB/s, mysql 원본/복제본 ~25~50KB/s, payment-service ~35~53KB/s — 전부 이 가벼운 부하 규모에 맞는 값).
+- **세 계열 전부 값이 쌓이는 것을 확인했다** — mysql(원본 samples=67, threads_running min3/avg3.0/max4, row_lock_current_waits 전 구간 0, pending_fsyncs 대부분 0·최대 1 — 이 가벼운 부하에서는 잠금·fsync 대기가 관측되지 않았다) · redis(재고 캐시 ops_per_sec avg 19.1/max 166, PING 지연 avg 0.19ms/max 0.30ms — 멱등 저장소는 ops_per_sec 이 표본 시점마다 0으로 나왔는데, `instantaneous_ops_per_sec` 이 redis 내부 1초 창 값이라 이 정도로 가벼운 dedupe 쓰기 빈도에서는 표본 시점과 트래픽이 어긋나기 쉽다는 한계로 적어둔다 — 처리율을 더 올리는 후속 사이클에서 재확인 대상) · 컨테이너(14개 컨테이너 전부 CPU 0.05~79%·메모리·net/disk 처리율 값 확보, payment-service 가 CPU max 79.29%로 가장 높았다).
+- **오염 여부 확인** — `docker stats --no-stream` 로 13개 컨테이너를 한 번에 묻는 호출은 약 2초(CPU 1%)로 가벼웠다. Redis PING 지연 표본은 노드당 약 1.2초가 걸려(순차 실행) redis 표본화 루프의 실제 주기가 설정값(`RESOURCE_SAMPLE_INTERVAL_SECONDS`)보다 노드 수 × 약 1.2초만큼 늘어난다 — 스크립트 헤더 주석에 명시했고, 기본값을 15초로 잡아 여유를 뒀다. 표본 대상 redis 컨테이너들의 CPU 는 이 표본화를 포함한 전 구간에서 평균 0.4~0.7%/최대 4% 를 넘지 않아, 표본화 자체가 측정 대상과 자원을 다투는 신호는 없었다.
+- 결과 파일은 `results/task19-resource-smoke-cycle.json`/`-verdict.json`/`.json` 로 보존. 두 사이클 모두 재구성까지 정상 완료해, 검증이 끝난 뒤 인프라는 인계 상태(payment-service 정지, 원장 여섯 테이블 빈 상태, 재고 상수 재시드, 재고 캐시 클러스터 4대/멱등 저장소 클러스터 3대 유지)와 동일하게 남았다.
 
 ---
 
