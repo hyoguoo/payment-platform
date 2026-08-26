@@ -6,8 +6,8 @@
 
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
-- 단계: **execute**
-- 활성 태스크: Task 17 (측정 리포트)
+- 단계: **ship**
+- 활성 태스크: 없음 (execute 완료 — Task 1~17)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
 - 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4
@@ -27,7 +27,8 @@
 - **Task 14 완료** — 재고 캐시 마스터 1/2/4 세 사이클(인스턴스 2·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더 고정) 전부 정합 PASS, 인스턴스 2대 유지를 사이클마다 병행 폴링으로 확인. 확정 처리율이 세 값 모두 ±5% 밴드 안(75.2/78.7/72.0 req/s)이라 대수와 단조 관계가 없어 "효과 없음"으로 판단, 설계 문서 지시대로 fsync 정책(`appendfsync always`→`everysec`, 마스터 4대 한정 라이브 재설정)을 낮춘 확인 사이클을 추가했으나 그 결과(74.8 req/s)도 같은 밴드 안이었다. 수치 해석은 하지 않고 상대비만 기록 — 해석은 Task 17의 몫. 상세는 PLAN Task 14 완료 결과
 - **Task 15 완료** — 재고 마스터를 Task 14의 명목 최댓값(마스터 2, 노이즈 안의 명목값)으로 고정하고 인스턴스 1/3/4대 세 사이클(재고 마스터 2·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더 고정) 실행, 인스턴스 2대 지점은 조건이 완전히 같은 Task 14의 `scaleout-stock-m2` 결과를 재사용했다. 넷 다 정합 PASS, 지정한 인스턴스 대수 유지를 사이클마다 병행 폴링으로 확인. 확정 처리율 1→2 실측 배수 1.118x — **판정선(1.6배)을 넘지 못했다.** 3대(0.882x)·4대(0.817x)는 1대 기준선보다 오히려 낮고 판정선이 없어 곡선만 기록, 수치 해석은 하지 않는다(Task 17 몫). 4대 구간 CPU/메모리 표본화 결과 앱 컨테이너 합산 CPU 최대 45%/평균 29%(VM 10 vCPU 환산)로 포화 없음, 스왑 유입 없음(SwapFree 전 구간 SwapTotal과 동일) — 폐기할 구간 없음. 상세는 PLAN Task 15 완료 결과
 - **Task 16 완료** — 세 축(읽기 복제 라우팅 끔, 다중 상품 3개·재고 마스터4, 고지연 벤더) 전부 정합 PASS. 다중 상품 축은 착수 직후 잔류 337건(READY)/1011건(미회수 선차감 기록)으로 에스컬레이션했으나, 원인이 `execute()` 누락이 아니라 이 축의 종결 꼬리(상품 3개로 캐시 왕복 3배)가 reconciler 회수 기준(300초)을 넘겨 진행 중이던 결제가 READY로 되돌려지고 뒤늦은 승인이 `done()`의 IN_PROGRESS 가드에 막힌 것으로 확정됐다(인스턴스 축 30초 구간과 같은 실패 모드가 300초에서 재현). 이 잔류는 대기해도 자연 해소되지 않아 정상 5단계 게이트를 못 타므로, payment-service를 정지한 뒤 재구성 절차와 같은 TRUNCATE로 payment 원장 여섯 테이블을 직접 비워 정리했다. 회수 기준을 1800초로 올려 재측정한 결과 확정 4605건 전부 DB DONE 4605건, 상품 100종 재고 정합 PASS, 건별 대조 PASS로 통과 — 부하 구간 내내 인스턴스 2대·재고 마스터 4대 유지, 주문마다 서로 다른 상품 3개 구성도 병행 폴링으로 확인했다. **별도 발견(고치지 않고 기록만)** — 회수가 되돌린 결제에 뒤늦게 승인이 오면 `done()` IN_PROGRESS 가드에 막혀 그 결제와 재고 선점 모두 자동 경로로는 영원히 안 풀린다(회수가 종결 상태만 되돌리게 설계돼 있어 오히려 영구화됨) — ship에서 TODOS.md 등재 대상. 상세는 PLAN Task 16 완료 결과
-- **인프라 기동 상태** — gateway/pg-service/product-service/user-service, mysql-payment/replica/pg/product/user, eureka, kafka, redis-dedupe/stock, redis-idempotency-cluster 3대, 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail) 전부 기동 유지. redis-stock-cluster는 Task 16 다중 상품 축이 마지막으로 구성한 마스터 4대 상태로 남아 있다(다음 태스크의 축 조건에 따라 `bench-redis-cluster.sh`가 재구성). payment-service는 마지막 사이클의 재구성 (4)단계에서 정지된 채 남아 있다(다음 태스크의 스택 기동 단계가 재기동). payment 원장 여섯 테이블은 빈 상태, 재고는 상수로 재시드된 상태. Docker 메모리는 20GB(20480MiB)로 이미 상향 확인됨
+- **Task 17 완료 — execute 종료** — `docs/SHARED-RESOURCE-SCALEOUT-REPORT.md`에 열 사이클(재고 캐시 대수 3 + 확인 1, 인스턴스 3, 읽기 복제·다중 상품·벤더 지연 각 1) 전부를 담아 측정 리포트를 냈다. 합격선(인스턴스 1→2 확정 처리율 1.6배) 실측 1.118x로 **미달** — 직전 측정 1.0배에서 거의 안 움직였다. 인스턴스를 늘릴수록 처리율이 떨어지는데(3대 0.882x·4대 0.817x) 그 구간 앱 CPU는 최대 45%/평균 29%로 여유라, 앱 자원·재고 캐시(대수 무관 ±5%밴드 + fsync 완화로 디스크 공유 가설도 배제)·읽기 부하(복제 지연 0.1초 안팎)·CPU·메모리 순으로 배제하고 병목 후보를 원본 DB 쓰기 경합과 메시지 커밋 직렬화 둘로 좁혔다 — 후자가 천장으로 관측됐다는 직접 계측은 이번 측정에 없어 배제법으로 좁힌 후보라는 점만 적었다. 정합은 열 사이클 전부 PASS, 재고 마스터 4대·주문당 상품 3개로 상품 키가 가장 많이 흩어진 다중 상품 축에서도 유실 없이 성립해 선행 토픽(재고 게이트 상품 단위 분해)의 전제가 버틴다는 점을 확인했다. 측정 도구 결함 4건(게이트웨이 기동의 인스턴스 삭제, 회수 기준과 확정 지연 꼬리 겹침 두 번, 정합 검증 불일치 시 exit 0, 소비 적체 0 도달 불가)을 리포트에 정리했고, 제품 견고성 발견 2건(적용 불가능한 확정 결과가 소비자를 막는 것, 회수가 되돌린 결제에 뒤늦은 승인이 오면 자동 경로로 안 풀리는 것)은 범위 밖으로 명시해 ship에서 TODOS.md 등재 대상으로 넘긴다. **execute 종료 — 다음은 ship**
+- **인프라 기동 상태** — gateway/pg-service/product-service/user-service, mysql-payment/replica/pg/product/user, eureka, kafka, redis-dedupe/stock, redis-idempotency-cluster 3대, 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail) 전부 기동 유지. redis-stock-cluster는 Task 16 다중 상품 축이 마지막으로 구성한 마스터 4대 상태로 남아 있다. payment-service는 마지막 사이클의 재구성 (4)단계에서 정지된 채 남아 있다. payment 원장 여섯 테이블은 빈 상태, 재고는 상수로 재시드된 상태. Docker 메모리는 20GB(20480MiB)로 이미 상향 확인됨 — ship 단계 라이브 검증 시 이 상태에서 이어 쓴다
 
 ## 재개 메모
 
