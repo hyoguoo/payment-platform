@@ -145,7 +145,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 17: 측정 리포트
 - [x] Task 18: 부하 도구를 실제 한계까지 밀 수 있게 고친다
 - [x] Task 19: 자원 계측 보강
-- [ ] Task 20: 단일 구성을 한계까지 밀고 병목을 지목한다
+- [x] Task 20: 단일 구성을 한계까지 밀고 병목을 지목한다
 - [ ] Task 21: 지목된 자원만 늘려 재측정 (반복)
 - [ ] Task 22: 리포트 갱신
 
@@ -736,7 +736,52 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 다음에 무엇을 늘릴지가 그 근거에서 자연히 정해진다
 
 **완료 결과**
-> (execute에서 채움)
+
+**절차** — 기준 구성(인스턴스 1·재고 캐시 마스터 1·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더)에서 `bench-scaleout-cycle.sh`를 `CONSTANT_RATE` 모드로 여러 도착률에 반복 실행해 점을 찍었다. 착수 직후 게이트웨이가 payment-service force-recreate 직후 자신의 로컬 LoadBalancer 캐시가 아직 새 인스턴스를 못 봐 "No servers available" 로 checkout 을 즉시 거절하는 결함을 실측 발견(50 req/s 점에서 checkout 실패 680건, 전부 부하 시작 첫 13초에 집중) — `bench-scaleout-cycle.sh`에 게이트웨이 경유 실제 상태 조회로 라우팅 성립을 확인하는 `wait_gateway_routes_payment_service`를 추가해 해소했다(Rule 1). 이후 모든 점에서 checks_rate=1.0.
+
+**도착률별 점**
+
+| 목표 도착률 | 접수(confirm/s) | 버려진 요청 | 종결(db_done/s) | 미종결(잔류) | 지연 표본 p50/p95/p99 (ms) | k6 CPU avg/max | 정합 판정 |
+|---|---|---|---|---|---|---|---|
+| 50 | 38.6 | 0(0%) | 38.6 | 0 | 507 / 2,557 / 3,125 | 6.3% / 13.7% | PASS |
+| 75 (1차 시도) | — | — | 0 (오염, 무효) | 6,775 | 관측 0건 | — | 무효 — 아래 사고 경위 |
+| 75 (2차, 유효) | 57.0 | 3건(0.04%) | 55.0 | 239 | 510 / 10,128 / 11,166 | 9.9% / 23.1% | INCONCLUSIVE |
+| 100 | 86.2 | 27건(0.3%) | 84.4 | 189 | 19,256 / 27,501 / 29,424 | 14.7% / 31.2% | INCONCLUSIVE |
+
+50 은 완전히 여유롭다(미종결 0, p50 이 벤더 왕복 두 홉 수준). 75/100 은 둘 다 정합 판단보류로 끝났다 — 종결 대기(327초)+재시도(60초)를 다 채워도 각각 239건/189건이 영구 미종결(READY)로 남았다. 300초 회수 기준을 넘긴 결제가 reconciler 에 READY 로 되돌려진 뒤 뒤늦은 승인이 `done()` 의 IN_PROGRESS 가드에 막혀 자동 경로로 못 풀리는, Task 16 이 이미 문서화한 것과 같은 패턴이다(TODOS.md 등재 대상, 범위 밖).
+
+**측정 사고 — 75 req/s 1차 시도가 무효였던 경위 (Rule 1 로 스크립트 보강)**
+
+100 req/s 사이클이 INCONCLUSIVE 로 끝나 재구성이 설계대로 건너뛰어졌고, 잔류(READY 189건)를 사람이 직접 정리했다. 이때 payment 원장 테이블만 TRUNCATE 하고 Kafka consumer lag 을 확인하지 않은 채 다음 점(75)을 곧바로 돌렸다. payment-service 의 `ConfirmedEventConsumer`(`payment.events.confirmed` 소비)가 재기동 후 이미 지워진 orderId 를 참조하는 밀린 메시지(파티션당 최대 약 2,300건, 총 6,852건)를 재생하다 매 메시지 `PaymentFoundException` 로 실패해 재시도 루프에 갇혔고, 뒤에 쌓인 75 req/s 의 신규 메시지까지 전부 막았다. 그 결과 db_done=0/6,775, 지연 표본 관측 0건으로 나왔다 — 용량 신호가 아니라 절차 사고였다.
+
+조치: 대상 컨슈머를 멈추고 `kafka-consumer-groups --reset-offsets --to-latest`로 밀린 오프셋을 건너뛴 뒤 원장을 비우고 재시드, 75 req/s 를 깨끗한 상태에서 재실행해(위 표 "2차") 유효한 점을 얻었다. 재발 방지 두 가지를 `bench-scaleout-cycle.sh`에 반영했다(Rule 1):
+1. 사이클 시작 시점에 미종결/미회수 선차감 기록 수를 조회해 결과 JSON `pre_cycle_state`(unsettled/noise/clean)에 남긴다 — 0 이 아니면 이전 점 잔여 위에서 돈 것이므로 그 점을 사후에 기계적으로 무효 처리할 수 있다.
+2. 사람이 직접 원장을 비울 때는 그 전에 Kafka consumer lag(payment-service on payment.events.confirmed, pg-service on payment.commands.confirm)이 0/안정인지 먼저 확인하고, 남아 있으면 대상 컨슈머를 멈추고 `--reset-offsets --to-latest`로 건너뛴 뒤 비우라는 경고 주석을 스크립트 상단에 추가했다.
+
+**버그 수정 — `throughput.db_done_per_load_sec` 가 정합 판정 비-PASS 일 때 0 으로 찍히던 결함(Rule 1)** — `OUTCOME == SUCCESS` 조건에 걸려 있어, 정합이 INCONCLUSIVE/MISMATCH 로 끝나면 실제 `db_done_count` 가 있어도 처리율이 0 으로 지워졌다 — 이 태스크가 보려는 "꺾이는 지점" 수치가 정작 실패한 사이클에서 안 남는 문제였다. `OUTCOME` 과 무관하게 `LOAD_DURATION_SEC>0` 이면 계산하도록 고쳤다. 이미 기록된 `task20-r100-cycle.json` 도 값을 재계산해 패치했다(0 → 84.41).
+
+**꺾이는 지점** — 접수 기준 약 75~100 req/s 사이. 50 req/s 는 완전히 여유롭고(미종결 0), 75 req/s 는 이미 미종결이 발생한다(239건, 접수의 3.5%). 정체된 상태에서 실측한 배출(종결) 속도는 84~88 req/s 부근(db_done_per_load_sec 84.41)이지만, 이 수치는 "이미 쌓인 잔류를 얼마나 빨리 비우는가"에 가깝다 — 75 req/s(이 배출 속도보다 낮은 도착률)에서도 이미 영구 미종결이 나온 것을 보면, 잔류가 전혀 안 쌓이는 진짜 지속 가능 도착률은 이보다 낮게(50과 75 사이, 75 쪽에 더 가깝게) 잡는 편이 정확하다 — 애매한 지점이라 그대로 남긴다.
+
+**포화 자원 지목 — 하나로 깔끔히 못 좁혀 순위와 근거로 남긴다**
+
+*후보 1(1순위, 근거가 더 직접적이다) — payment-service ↔ pg-service 비동기 확정 파이프라인의 고정 동시성 상한*
+- Kafka consumer group lag(Prometheus `kafka_consumergroup_lag`, r100 부하 구간 실측): `pg-service` 그룹의 `payment.commands.confirm` 파티션별 최대 755~801, `payment-service` 그룹의 `payment.events.confirmed` 파티션별 최대 428~595. 둘 다 50 req/s 구간에서는 0 — 꺾이는 지점에서만 쌓인다.
+- 코드로 확인한 고정 상한: `payment-service` 의 `ConfirmedEventConsumer`(`@KafkaListener`, `payment.events.confirmed` 소비)는 `concurrency` 미지정 — Spring Kafka 기본값 1, 파티션 3개를 스레드 하나가 순차 처리하며 메시지마다 EOS 트랜잭션 커밋 왕복을 문다. `pg-service` 는 `pg.inbox.channel.worker-count=5`(벤더 확정 호출 동시성 상한)/`pg.outbox.channel.worker-count=1`(확정 결과를 Kafka 로 되돌리는 릴레이 스레드 1개)로 고정돼 있다(`pg-service/src/main/resources/application.yml`). 이 상한은 CPU 와 무관하게 작동한다 — 벤더 지연은 가상 스레드 sleep(캐리어 스레드를 점유하지 않는다)이고 EOS 커밋은 브로커 왕복이 지배적이라, 코어를 더 줘도 스레드 수가 안 늘면 처리량이 안 는다.
+- 이 가설은 Task 17 이 "메시지 커밋 직렬화"를 미확인 후보로 남겨 둔 것과 정확히 들어맞고, Task 15 의 미해결 관측("인스턴스를 2→3→4로 늘릴수록 처리율이 오히려 떨어졌다")도 설명한다 — `payment.events.confirmed` 파티션이 3개뿐이라 컨슈머 그룹 병렬성은 인스턴스 3대에서 이미 포화하고, 4대째부터는 파티션을 못 받는 인스턴스가 HTTP 처리 부하만 더하고 소비에는 기여하지 못해 오히려 나빠지는 그림과 맞는다.
+
+*후보 2(2순위) — payment-service 앱 CPU*
+- `docker stats` 기준 payment-service 컨테이너 CPU 최댓값이 r100 에서 457.6%(≈4.6 코어), r75 에서 443.3%. 여러 컨테이너 최댓값을 단순 합하면 host 10코어에 가깝다(≈8.5코어) — 다만 이 합은 서로 다른 시각의 독립 최댓값을 더한 상한 추정이라 동시에 그 값을 다 썼다는 증거는 아니다.
+- 반증에 가까운 관측 — **50 req/s(완전히 깨끗하게 통과한 점)에서도 payment-service CPU 최댓값이 이미 373.2%** 였다. 병목 자원이라면 정상 구간과 포화 구간을 가르는 신호여야 하는데, 이 지표는 세 점 모두 비슷하게 튄다(평균은 34%→39%→49%로 완만히만 오른다). JVM 자기보고(Prometheus `process_cpu_usage`, payment-service, r100 부하 구간)는 평균 9.3%/최대 30%(가용 코어 대비 비율)로 코어 1개도 지속적으로 못 썼다 — 지속적 CPU 포화라기보다 순간 버스트(GC/Tomcat 동시 처리량 튐)에 가깝다. `docker stats` 순간 스냅샷과 Micrometer 스크레이프 평균이 이렇게 갈리는 걸 보면 이 지표만으로 병목을 단정하기엔 근거가 약하다.
+
+*배제된 후보(공통 근거)*
+- MySQL 원본/복제본 — 행 잠금 대기 전 구간 0, 실행 중 스레드 최대 13. Hikari pending 커넥션 0(Prometheus `hikaricp_connections_pending`, active 최대 12/80). 잠금·커넥션 경합 아니다.
+- Redis 재고 캐시/멱등 저장소 — 블록된 클라이언트 0, PING 왕복 지연 평균 0.2~0.4ms. 캐시 아니다.
+- 복제 지연 — 평균 0.06초/최대 1초. 지연 19~29초는 복제 탓이 아니라 진짜 처리 대기다.
+- k6 자체 CPU — 평균 6~15%/최대 13~31%. 도구 한계 아니다.
+
+**다음에 늘릴 것** — 후보 1(메시지 파이프라인 동시성)이 맞다면, 인스턴스를 늘리는 효과는 `payment.events.confirmed` 파티션 수(현재 3)까지만 유효하다 — 인스턴스마다 파티션이 분산 배정돼야 소비 스레드가 늘기 때문이다. 지금 1대에서 3대까지는 이 경로로 병렬성이 늘 수 있지만 4대째부터는 파티션을 못 받는 인스턴스가 생겨 오히려 손해다(Task 15 실측과 부합). 더 직접적인 손잡이는 `ConfirmedEventConsumer`의 `concurrency`와 pg-service `pg.inbox.channel.worker-count`/`pg.outbox.channel.worker-count`를 올리는 것 — 인스턴스를 통째로 늘리는 것보다 싸다. 후보 2(CPU)가 맞다면 호스트 10코어가 고정이라 인스턴스는 대략 2대분 여유(다른 컨테이너 상시 점유를 빼면)뿐이다. 어느 쪽이든 Task 21 은 인스턴스만 늘리는 대신, 먼저 컨슈머 concurrency·워커 대수를 올린 구성으로 한 번 재측정해 병목이 어느 쪽인지 가르는 것을 권한다 — 늘려서 천장이 밀리면 후보 1, 안 밀리면 CPU/그 밖의 자원으로 넘어간다.
+
+**인프라 정리** — 마지막 유효 사이클(75 req/s 2차)이 INCONCLUSIVE 로 끝나 정합 검증 정의상 캐시를 비우지 않는다. Kafka consumer lag 이 0(안정)임을 확인한 뒤 payment-service/pg-service 를 멈추고 payment 원장 여섯 테이블을 TRUNCATE, 상품 100종 재고를 상수로 재시드해 Task 21 이 깨끗한 상태에서 시작하도록 복원했다. payment-service/pg-service 는 정지 상태로 남아 있다(다음 사이클이 재기동한다).
 
 ---
 

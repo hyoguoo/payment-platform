@@ -15,6 +15,16 @@
 # 실패로 멈춘 사이클의 잔류는 이 스크립트가 치우지 않는다 — 사람이 scripts/bench-cycle-reset.sh
 # 를 따로 돌린다. 격리 종결처럼 사람 판단이 필요한 자리가 있어 러너가 알아서 밀고 가면 안 된다.
 #
+# ⚠️ bench-cycle-reset.sh 도 거부하는 잔류(예: 영구 미종결)를 사람이 직접 payment 원장 여섯
+# 테이블을 TRUNCATE 해 치울 때는, 그 전에 반드시 Kafka consumer group lag(payment-service on
+# payment.events.confirmed, pg-service on payment.commands.confirm)이 0(또는 안정)인지 먼저
+# 확인한다. lag 가 남은 채로 원장만 비우면, 컨슈머가 재기동 후 그 lag 를 재생하면서 이미
+# 지워진 orderId 를 찾다가 PaymentFoundException 재시도 루프에 갇혀 뒤에 쌓인 새 메시지까지
+# 전부 막는다(Task 20 실측 — task20-r75 사이클이 이 경로로 오염돼 db_done=0 으로 나왔다).
+# 이미 걸렸다면: 대상 컨슈머(payment-service/pg-service)를 멈추고
+# `kafka-consumer-groups --bootstrap-server localhost:9092 --group <group> --reset-offsets
+# --to-latest --execute --topic <topic>` 로 밀린 offset 을 건너뛴 뒤 원장을 비운다.
+#
 # 사용법:
 #   INSTANCES=2 STOCK_MASTERS=4 bash scripts/bench-scaleout-cycle.sh
 #   # 짧은 흐름 확인(smoke) — PEAK_RATE/STAGE_SEC 로 부하를 짧게 줄인다:
@@ -237,6 +247,30 @@ wait_eureka_registered() {
         attempt=$((attempt + 1))
         if [[ "${attempt}" -ge "${timeout}" ]]; then
             print_error "❌ ${app_name} 가 시간 내 Eureka 에 UP 으로 등록되지 않음"
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+# 게이트웨이가 payment-service 로 실제 라우팅할 수 있는지 확인한다 — wait_eureka_registered 는
+# Eureka 서버 레지스트리만 보고, 게이트웨이 자신의 로컬 LoadBalancer 캐시는 별개 폴링 주기로
+# 갱신된다(Task 20 실측: force-recreate 직후 Eureka 서버는 UP 인데 게이트웨이 로그에
+# "No servers available for service: payment-service" WARN 이 10여 초 이어지며 그 구간의
+# checkout 이 전부 503 으로 실패했다 — 부하 시작 직후 몰린 체크 실패가 시스템 포화가 아니라
+# 이 레이스였다). 실제 상태 조회 요청을 게이트웨이 경유로 보내 200 대/400 대(503 이 아닌) 응답이
+# 오는지로 확인한다 — 존재하지 않는 orderId 라 404 류가 정상이고, 그 자체가 라우팅 성공의 증거다.
+wait_gateway_routes_payment_service() {
+    local timeout="${1:-30}" attempt=0 code
+    while true; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "${BASE_URL}/api/v1/payments/00000000-0000-0000-0000-000000000000/status" 2>/dev/null || echo "000")
+        if [[ "${code}" != "000" && "${code}" != "503" && "${code}" != "502" && "${code}" != "504" ]]; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        if [[ "${attempt}" -ge "${timeout}" ]]; then
+            print_error "❌ 게이트웨이가 시간 내 payment-service 로 라우팅하지 못함 (마지막 응답 코드: ${code})"
             return 1
         fi
         sleep 1
@@ -762,6 +796,23 @@ if ! wait_healthy product-service 90; then exit 1; fi
 print_info "✅ (1) 인프라/관측/user-service/product-service 기동 완료"
 echo ""
 
+# 사이클 시작 시점 오염 점검 — 이전 사이클이 PASS 로 끝나지 않으면(INCONCLUSIVE/MISMATCH 로
+# 재구성 없이 멈추면) 미종결 payment_event 와 미회수 stock_hold_record 가 남는다. 그 위에
+# 새 부하를 얹으면 이번 사이클의 처리율·지연이 이전 사이클 잔여와 섞여 무효가 된다(Task 20
+# 실측 — task20-r75 첫 실행이 task20-r100 의 INCONCLUSIVE 잔여 위에서 돌아 db_done=0 으로
+# 나온 사고). 값을 결과 JSON 에 그대로 남겨 사후에 오염 여부를 기계적으로 가릴 수 있게 한다 —
+# 이 스크립트가 자동으로 멈추지는 않는다(잔류 처리는 여전히 사람 판단 영역, bench-cycle-reset.sh
+# 와 동일한 철학).
+PRE_CYCLE_UNSETTLED=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
+    SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');
+" 2>/dev/null || echo "-1")
+PRE_CYCLE_NOISE=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
+    SELECT COUNT(*) FROM \`payment-platform\`.stock_hold_record WHERE status = 'NOISE';
+" 2>/dev/null || echo "-1")
+if [[ "${PRE_CYCLE_UNSETTLED}" != "0" || "${PRE_CYCLE_NOISE}" != "0" ]]; then
+    print_warning "⚠️  사이클 시작 시점에 잔류가 있다 — 미종결=${PRE_CYCLE_UNSETTLED} 미회수 선차감 기록=${PRE_CYCLE_NOISE}. 이전 사이클이 PASS 로 끝나지 않았을 수 있다. 이번 사이클 결과는 오염됐을 수 있으니 결과 JSON 의 pre_cycle_state 를 확인하라"
+fi
+
 # ---------------------------------------------------------------------------
 # (2) 클러스터 구성 — 재고 캐시(대수는 조건 값) + 멱등 저장소(고정 3), 이어서
 #     payment-service/pg-service 를 조건 값 env 로 재기동한다.
@@ -832,7 +883,8 @@ if ! dc up -d --no-deps gateway >/dev/null 2>&1; then
     exit 1
 fi
 if ! wait_healthy gateway 90; then exit 1; fi
-print_info "✅ gateway healthy"
+if ! wait_gateway_routes_payment_service 30; then exit 1; fi
+print_info "✅ gateway healthy — payment-service 라우팅 확인"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -1052,7 +1104,12 @@ fi
 # 처리율 = DB 종결 건수 ÷ 부하 구간(k6 가 실제로 관측했는지와 무관한 값). 정산 대기(settle
 # wait)는 부하가 아니라 뒤늦은 종결을 기다리는 시간이라 분모에 넣지 않는다 — 넣으면 사이클마다
 # 다른 회수 기준(RECONCILER_TIMEOUT)이 그대로 처리율에 섞여 들어간다.
-if [[ "${OUTCOME}" == "SUCCESS" && "${LOAD_DURATION_SEC}" -gt 0 ]]; then
+# OUTCOME 과 무관하게 계산한다 — DB_DONE_COUNT 는 VERDICT_JSON 이 있으면(정합 검증이 한 번이라도
+# 돌았으면) INCONCLUSIVE/MISMATCH 여도 그 시점까지의 실제 종결 건수를 담고 있다(Task 20 실측:
+# db_done_count=8863 인데 OUTCOME=FAILED 라 이 값이 0 으로 찍혀, 처리율이 도착률을 못 따라가기
+# 시작하는 지점을 표로 못 남길 뻔했다). 정합 판정 자체는 verdict/outcome 필드로 별도로 남으므로
+# 처리율 수치를 0 으로 지우지 않아도 판정과 섞이지 않는다.
+if [[ "${LOAD_DURATION_SEC}" -gt 0 ]]; then
     DB_DONE_PER_LOAD_SEC=$(awk -v c="${DB_DONE_COUNT}" -v d="${LOAD_DURATION_SEC}" 'BEGIN { printf "%.3f", c / d }')
 fi
 
@@ -1108,9 +1165,16 @@ jq -n \
     --argjson inconclusive_retries "${RETRY_COUNT}" \
     --arg outcome "${OUTCOME}" \
     --arg reset_status "${RESET_STATUS}" \
+    --argjson pre_cycle_unsettled "${PRE_CYCLE_UNSETTLED}" \
+    --argjson pre_cycle_noise "${PRE_CYCLE_NOISE}" \
     '{
         case_name: $case_name,
         created_at: $created_at,
+        pre_cycle_state: {
+            unsettled: $pre_cycle_unsettled,
+            noise: $pre_cycle_noise,
+            clean: (($pre_cycle_unsettled == 0) and ($pre_cycle_noise == 0))
+        },
         conditions: {
             instances: $instances,
             stock_masters: $stock_masters,
