@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공유 자원 스케일아웃 측정 — 전체 여정</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#F4F6F7; --surface:#FFFFFF; --sunk:#EDF0F2;
+    --ink:#131820; --soft:#5A6472; --faint:#838D9A;
+    --rule:#DBE0E5; --rule2:#C3CBD2;
+    --accent:#0E5A63; --accent-soft:#E2EEEF;
+    --pass:#2C6E49; --pass-soft:#E4EFE8;
+    --fail:#9E2B25; --fail-soft:#F6E4E3;
+    --warn:#8A5A12; --warn-soft:#F5EBDA;
+    --chip:#6E7681; --chip-soft:#E7EAED;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1216; --surface:#161B21; --sunk:#1C222A;
+      --ink:#E4E8EC; --soft:#9CA6B2; --faint:#77828F;
+      --rule:#28303A; --rule2:#3A444F;
+      --accent:#56B6C1; --accent-soft:#143135;
+      --pass:#6BBF8E; --pass-soft:#162C21;
+      --fail:#DE8681; --fail-soft:#33191A;
+      --warn:#D2A65A; --warn-soft:#2E2413;
+      --chip:#8A94A0; --chip-soft:#232A33;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1216; --surface:#161B21; --sunk:#1C222A;
+    --ink:#E4E8EC; --soft:#9CA6B2; --faint:#77828F;
+    --rule:#28303A; --rule2:#3A444F;
+    --accent:#56B6C1; --accent-soft:#143135;
+    --pass:#6BBF8E; --pass-soft:#162C21;
+    --fail:#DE8681; --fail-soft:#33191A;
+    --warn:#D2A65A; --warn-soft:#2E2413;
+    --chip:#8A94A0; --chip-soft:#232A33;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:16px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  .layout{max-width:78rem;margin:0 auto;padding:clamp(1.8rem,4vw,3.5rem) clamp(1rem,3vw,2rem) 6rem;display:grid;grid-template-columns:1fr;gap:2rem}
+  @media (min-width:64rem){.layout{grid-template-columns:14rem 1fr;gap:3.5rem;align-items:start}}
+  nav{display:none}
+  @media (min-width:64rem){
+    nav{display:block;position:sticky;top:2rem;font-size:.83rem;line-height:1.5}
+    nav ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.45rem}
+    nav a{color:var(--soft);text-decoration:none;border-left:2px solid var(--rule);padding-left:.7rem;display:block}
+    nav a:hover,nav a:focus-visible{color:var(--accent);border-left-color:var(--accent)}
+    nav .nt{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 .8rem;padding-left:.7rem}
+  }
+  main{min-width:0}
+  .prose{max-width:46rem}
+  .kicker{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 .8rem}
+  h1{font-family:"Newsreader",Georgia,serif;font-weight:600;font-size:clamp(2rem,4.6vw,2.9rem);line-height:1.14;letter-spacing:-.015em;text-wrap:balance;margin:0 0 .7rem}
+  .stand{font-family:"Newsreader",Georgia,serif;font-size:clamp(1.02rem,2vw,1.2rem);line-height:1.55;color:var(--soft);margin:0;max-width:42rem}
+  .meta{display:flex;flex-wrap:wrap;gap:.35rem 1.5rem;margin-top:1.3rem;padding-bottom:1.4rem;border-bottom:2px solid var(--ink);font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--faint)}
+  .meta b{color:var(--soft);font-weight:500}
+  section{margin-top:3.4rem;scroll-margin-top:1.5rem}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border-top:1px solid var(--rule2);padding-top:.6rem;margin:0 0 1rem}
+  h2{font-family:"Newsreader",Georgia,serif;font-weight:600;font-size:clamp(1.35rem,2.8vw,1.8rem);line-height:1.26;letter-spacing:-.01em;text-wrap:balance;margin:0 0 .9rem}
+  h3{font-size:1rem;font-weight:600;margin:2rem 0 .5rem}
+  h4{font-size:.9rem;font-weight:600;margin:1.4rem 0 .35rem;color:var(--soft)}
+  p{margin:0 0 .95rem}
+  strong{font-weight:600}
+  em{font-style:italic;color:var(--soft)}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.85em;background:var(--sunk);padding:.08rem .3rem;border-radius:2px}
+  .scroller{overflow-x:auto;margin:1.1rem 0;border:1px solid var(--rule);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:.86rem}
+  th,td{padding:.58rem .85rem;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{font-family:"IBM Plex Mono",monospace;font-size:.67rem;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:500;white-space:nowrap;background:var(--sunk)}
+  tbody tr:last-child td{border-bottom:none}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.nw{white-space:nowrap}
+  td.name{font-weight:500}
+  tr.hi td{background:var(--accent-soft)}
+  .chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.67rem;letter-spacing:.04em;padding:.1rem .42rem;border-radius:2px;white-space:nowrap}
+  .c-pass{background:var(--pass-soft);color:var(--pass)}
+  .c-fail{background:var(--fail-soft);color:var(--fail)}
+  .c-warn{background:var(--warn-soft);color:var(--warn)}
+  .c-out{background:var(--chip-soft);color:var(--chip)}
+  ul.plain{margin:.5rem 0 1rem;padding-left:1.15rem}
+  ul.plain li{margin-bottom:.5rem}
+  ul.plain ul{margin-top:.4rem}
+  .callout{border-left:3px solid var(--accent);background:var(--surface);padding:.9rem 1.1rem;margin:1.2rem 0;font-size:.93rem}
+  .callout.bad{border-left-color:var(--fail)}
+  .callout.good{border-left-color:var(--pass)}
+  .callout p{margin:0 0 .5rem}
+  .callout p:last-child{margin:0}
+  .callout .lab{font-family:"IBM Plex Mono",monospace;font-size:.67rem;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:.35rem}
+  .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.5rem,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:1.4rem 0}
+  .stat div{background:var(--surface);padding:.85rem .95rem}
+  .stat dt{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 .25rem}
+  .stat dd{margin:0;font-size:1.1rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25}
+  .stat dd small{display:block;font-size:.74rem;font-weight:400;color:var(--soft)}
+  .seq{list-style:none;margin:1.1rem 0 0;padding:0;display:flex;flex-direction:column;gap:1rem}
+  .seq li{display:grid;grid-template-columns:2rem 1fr;gap:.85rem;align-items:start}
+  .seq .n{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--accent);border-top:2px solid var(--accent);padding-top:.32rem}
+  .seq p{margin:0 0 .4rem}
+  .seq p:last-child{margin:0}
+  .seq .lead{font-weight:600}
+  footer{margin-top:4rem;border-top:1px solid var(--rule2);padding-top:1.1rem;font-family:"IBM Plex Mono",monospace;font-size:.73rem;color:var(--faint)}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav aria-label="목차">
+  <p class="nt">목차</p>
+  <ol>
+    <li><a href="#q">무엇을 물었나</a></li>
+    <li><a href="#bg">배경</a></li>
+    <li><a href="#discuss">1. 설계</a></li>
+    <li><a href="#plan">2. 계획</a></li>
+    <li><a href="#code">3. 코드</a></li>
+    <li><a href="#infra">4. 인프라와 도구</a></li>
+    <li><a href="#m1">5. 1차 측정</a></li>
+    <li><a href="#pivot">6. 방향 전환</a></li>
+    <li><a href="#m2">7. 2차 측정</a></li>
+    <li><a href="#result">8. 최종 결과</a></li>
+    <li><a href="#misread">세 번의 오독</a></li>
+    <li><a href="#defects">발견한 결함</a></li>
+    <li><a href="#log">커밋 연대기</a></li>
+    <li><a href="#rest">남은 일</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header>
+  <p class="kicker">payment-platform · 이슈 #146 · SHARED-RESOURCE-SCALEOUT</p>
+  <h1>공유 자원을 늘려도 스케일아웃 천장은 밀리지 않았다</h1>
+  <p class="stand">설계 게이트 4라운드, 계획 게이트 4라운드, 태스크 22개, 커밋 36개, 측정 사이클 스무 번 남짓. 답은 “안 밀린다”였고, 그 답에 이르기까지 세 번 잘못된 것을 재고 있었다.</p>
+  <div class="meta">
+    <span><b>기간</b> 2026-08-25 ~ 08-27</span>
+    <span><b>브랜치</b> #146 (원격 미푸시)</span>
+    <span><b>상태</b> execute 완료 · ship 미착수</span>
+  </div>
+</header>
+
+<dl class="stat">
+  <div><dt>태스크</dt><dd>22 / 22<small>전부 완료</small></dd></div>
+  <div><dt>커밋</dt><dd>36<small>31파일 · +5,767</small></dd></div>
+  <div><dt>게이트 라운드</dt><dd>8<small>설계 4 · 계획 4</small></dd></div>
+  <div><dt>판정선</dt><dd style="color:var(--fail)">0.67배<small>목표 1.6배</small></dd></div>
+  <div><dt>정합성</dt><dd style="color:var(--pass)">전 사이클<small>통과</small></dd></div>
+  <div><dt>배제한 후보</dt><dd>8<small>지목 실패</small></dd></div>
+</dl>
+
+<!-- ================= -->
+<section id="q">
+  <p class="eyebrow">질문</p>
+  <h2>무엇을 물었나</h2>
+  <div class="prose">
+    <p>직전 작업에서 payment 인스턴스를 1대에서 2대로 늘렸을 때 확정 처리율이 <strong>1.0배</strong>에 머물렀다. 앱 자원(커넥션 풀·CPU)은 여유였고, 그때 지목된 범인은 “모두가 공유하는 저장소와 메시지 커밋 직렬화”였다. 그런데 <em>그 공유 자원을 실제로 늘리면 결론이 뒤집히는지는 측정하지 않았다.</em></p>
+    <p>이 작업의 질문은 하나다 — <strong>공유 자원을 실제로 늘리면 스케일아웃 천장이 밀리는가.</strong></p>
+    <p>판정선도 하나만 뒀다. 인스턴스 1 → 2 구간에서 확정 처리율 1.6배. 직전 측정이 막힌 지점과 같은 잣대라야 개선 여부가 갈린다. 3·4대 구간은 CPU가 10코어로 고정이라 목표를 걸면 환경 한계 때문에 의미 없는 미달이 나므로 탐색만 하기로 했다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="bg">
+  <p class="eyebrow">배경</p>
+  <h2>한 번 보류됐던 작업이다</h2>
+  <div class="prose">
+    <p>이 설계는 2026-08-15에 한 번 멈췄다. 재고 캐시를 여러 노드로 나누려면 한 주문의 재고 처리가 스크립트 한 번에 묶여 있어 <strong>주문당 상품 하나</strong>를 전제해야 했다. 프로덕션 도메인은 주문당 상품 여럿을 지원하므로, 측정 편의로 결제 도메인의 보장을 깎는 순서가 된다. 그래서 보류하고 재고 게이트의 상품 단위 분해를 선행으로 세웠다.</p>
+    <p>선행 작업이 원자성 경계를 상품 단위로 내리고 키를 상품 기준 해시태그로 묶으면서 그 전제가 사라졌다. 한 상품에 딸린 키가 같은 슬롯에 모이므로, 주문당 상품이 여럿이어도 각 상품 처리가 독립적으로 제 노드를 찾아간다. 2026-08-25에 재개했다.</p>
+    <div class="callout">
+      <span class="lab">덧붙여</span>
+      <p>선행 작업의 코드 주석이 이 작업을 미리 예고하고 있었다. 선차감 회수 유스케이스에 “후행 토픽이 읽기전용 여부로 라우팅하는 데이터소스를 끼우는 순간 이 경계가 갈림길이 된다”고 적혀 있었고, 그래서 회수 메서드를 일부러 읽기전용이 아닌 트랜잭션으로 감싸 뒀다. 이번 설계가 표시 기반 분기를 버린 판단과 같은 결론이다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="discuss">
+  <p class="eyebrow">1단계</p>
+  <h2>설계 — 게이트 4라운드</h2>
+  <div class="prose">
+    <p>설계 문서를 쓰고 두 검토 에이전트(일반 리뷰어 + 결제 도메인 전문가)에게 병렬로 넘겼다. critical은 한 번도 안 나왔지만 라운드마다 실질이 나왔다.</p>
+  </div>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>라운드</th><th>리뷰어</th><th>도메인</th><th>무엇이 잡혔나</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">1</td><td class="nw"><span class="chip c-warn">revise 3/2</span></td><td class="nw"><span class="chip c-warn">revise 2/1</span></td><td>조사 자체가 틀렸다 — 호출처 오산, 폐기된 수치 인용, 슬롯 커버리지 기본값 누락</td></tr>
+        <tr><td class="nw">2</td><td class="nw"><span class="chip c-warn">revise 1/2</span></td><td class="nw"><span class="chip c-warn">revise 1/1</span></td><td>소비 적체 게이트 누락</td></tr>
+        <tr><td class="nw">3</td><td class="nw"><span class="chip c-warn">revise 3/1</span></td><td class="nw"><span class="chip c-warn">revise 2/0</span></td><td>재시드 스크립트 오지칭, 확인과 비우기 사이의 창</td></tr>
+        <tr><td class="nw">4</td><td class="nw"><span class="chip c-warn">revise 1/1</span></td><td class="nw"><span class="chip c-warn">revise 1/0</span></td><td>전부 문서 수정으로 닫힘 → 계획 단계로</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>게이트가 실제로 막은 것</h3>
+  <ul class="plain">
+    <li><strong>조회 공유처를 6곳으로 셌는데 실제 8곳이었다.</strong> 빠진 둘이 벤더 확정 결과 반영과 재고 회수 판정 — 유스케이스를 안 거치고 저장소를 직접 부르는 자리라 검색에서 새어나갔다. 이 숫자가 틀렸으면 “읽기 전용 표시로 분기해도 안전하다”는 잘못된 결론으로 갔다.</li>
+    <li><strong>클러스터 슬롯 커버리지 기본값이 “하나라도 비면 전체 정지”다.</strong> 복제 노드를 안 두는 구성에서 그대로 뒀으면 노드 하나 죽을 때 전 상품의 캐시 호출이 예외가 되고, 그게 격리 결제 다발로 번지고, 격리는 저절로 안 풀려 다음 사이클 재구성까지 막혔다.</li>
+    <li><strong>결제가 종결돼도 상품 서비스가 재고 확정을 아직 소비 중일 수 있다.</strong> 그 상태로 재시드하면 뒤늦은 소비가 원본만 깎아 캐시가 원본보다 커진다. 다음 사이클이 그 차이만큼 더 통과시킨다.</li>
+    <li><strong>확인과 비우기 사이의 창.</strong> 낙오 확정이 끼어들면 그 차감분이 재시드로 지워져 같은 재고 단위가 다음 사이클에서 또 팔린다. 원본은 양수라 음수 가드에도 안 걸리는 조용한 초과 판매다.</li>
+    <li><strong>내가 폐기된 수치를 인용했다.</strong> “커넥션 풀 30 기준 약 150 req/s”를 썼는데 이 작업이 정본으로 삼기로 한 리포트는 풀 80 기준 450이라고 적고 있었다.</li>
+  </ul>
+
+  <h3>핵심 설계 결정</h3>
+  <ul class="plain">
+    <li><strong>복제본으로 가는 조회는 폴링 전용 포트 하나뿐.</strong> 읽기 전용 표시로 분기하면 감싸는 트랜잭션이 없는 넷(폴링 / 확정 요청 진입 가드 / 소진 메시지 재처리 / 격리 종결)이 통째로 복제본으로 간다. 복제 지연 중 격리 종결이 낡은 상태를 읽으면 이미 승인된 결제에 비가역 재고 복원이 나간다. 안전을 “호출처를 빠짐없이 세는 것”에 의존하지 않고 “새 포트만 복제본에 묶는 구조”로 얻는다.</li>
+    <li><strong>복제본은 영속성 컨텍스트를 안 태운다.</strong> 폴링에 필요한 값이 셋뿐이라 질의로만 읽는다.</li>
+    <li><strong>재고 캐시는 클러스터에 맡긴다.</strong> 마스터 1 / 2 / 4, 복제 노드 없음, 슬롯 커버리지 요구 끔.</li>
+    <li><strong>대수 변수는 재고 캐시 하나.</strong> 멱등 저장소는 나눌 준비만 하고 대수는 고정.</li>
+    <li><strong>사이클 사이 재구성은 다섯 단계.</strong> 이 절차가 게이트에서 세 번 다듬어졌다.</li>
+  </ul>
+</section>
+
+<!-- ================= -->
+<section id="plan">
+  <p class="eyebrow">2단계</p>
+  <h2>계획 — 태스크 17개와 게이트 4라운드</h2>
+  <div class="prose">
+    <p>설계 결정을 태스크로 분해했다. 코드 6, 인프라 3, 사이클 스크립트 4, 측정 4. 규정은 최대 2라운드였지만 findings가 계속 실질이 있어 4라운드까지 갔다.</p>
+  </div>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>라운드</th><th>리뷰어</th><th>도메인</th><th>무엇이 잡혔나</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">1</td><td class="nw"><span class="chip c-pass">pass 17/0</span></td><td class="nw"><span class="chip c-warn">revise 1/1</span></td><td>회수 워커 정지가 컨테이너 하나만 겨냥하면 다중 인스턴스에서 창이 다시 열린다</td></tr>
+        <tr><td class="nw">2</td><td class="nw">—</td><td class="nw"><span class="chip c-warn">revise 1/0</span></td><td>정합 판정이 무인 게이트로 전달되지 않는다 (종료 코드가 항상 0)</td></tr>
+        <tr><td class="nw">3</td><td class="nw"><span class="chip c-warn">revise 2/3</span></td><td class="nw"><span class="chip c-pass">pass</span></td><td>판정 파일 목적지 미지정, 러너의 도메인 리스크 오분류, 격리 잔류가 보류 버킷에 들어감</td></tr>
+        <tr><td class="nw">4</td><td class="nw"><span class="chip c-warn">revise 2/2</span></td><td class="nw">—</td><td>“미종결”이 격리를 안 센다, 결과 파일명 충돌</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="lab">이 라운드에서 제일 중요했던 것</span>
+    <p>이 프로젝트의 검증 용어에서 <strong>“미종결”과 “격리”는 별개로 세는 값</strong>이다. 재구성 절차의 “미종결 0” 확인을 기존 용례대로 구현하면 격리 잔류가 그대로 통과하는데, 바로 다음 줄이 격리 처리를 그 확인에 의존하고 있었다. 격리가 남은 채로 캐시를 비우는 길이 열려 있었고, 그건 이 절차가 막으려던 사고와 정확히 같은 모양이다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="code">
+  <p class="eyebrow">3단계 · Task 1–6</p>
+  <h2>코드 — 조회 라우팅을 돈 경로에서 떼어내기</h2>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>태스크</th><th>내용</th><th>커밋</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">1</td><td>폴링 전용 조회 포트와 테스트용 대역</td><td class="nw"><code>10a2ec0b</code></td></tr>
+        <tr><td class="nw">2</td><td>상태 조회 서비스가 전용 포트만 쓰도록 교체</td><td class="nw"><code>476858e7</code> <code>9c831e96</code></td></tr>
+        <tr><td class="nw">3</td><td>복제본 데이터소스 (설정값으로 켜고 끔)</td><td class="nw"><code>0db40d11</code></td></tr>
+        <tr><td class="nw">4</td><td>복제본 질의 어댑터 (영속성 컨텍스트 미개입)</td><td class="nw"><code>629326ad</code> <code>c62e307a</code></td></tr>
+        <tr><td class="nw">5</td><td>복제본 격리 계약 테스트</td><td class="nw"><code>e1e51fb6</code> <code>969eecef</code></td></tr>
+        <tr><td class="nw">6</td><td>재고 캐시·멱등 저장소 클러스터 연결</td><td class="nw"><code>3e0af71c</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Task 5가 진짜를 잡았다</h3>
+  <div class="prose">
+    <p>Task 5는 “복제본을 주입받는 빈이 폴링 어댑터 하나뿐”임을 못박는 계약 테스트다. 만들자마자 <strong>실제 배선에서 새는 자리</strong>를 찾아냈다.</p>
+    <p>복제본 전용 템플릿 빈이 생기면서 스프링 부트의 기본 템플릿 자동 등록이 사라진다(조건부 등록에 복제본 템플릿이 걸린다). 그러면 이름 있는 파라미터 템플릿 자동 설정이 “유일하게 남은 후보”인 복제본 템플릿을 골라 감싼다. 그런데 <strong>확정 경로의 메시지 중복 판정</strong>이 그 템플릿을 한정자 없이 타입으로만 주입받는다. 결과적으로 돈 경로의 멱등 판정이 복제본을 읽고 쓰게 된다.</p>
+    <div class="callout bad">
+      <span class="lab">왜 안 보였나</span>
+      <p>복제본을 끈 상태에서는 복제본 데이터소스가 기본 데이터소스와 <em>같은 객체</em>다. 그래서 통합 테스트 667건이 전부 통과했다. 측정하려고 복제본을 켜는 순간에만 터진다. 계약 테스트를 복제본 켠 구성으로 돌려야 보이는 종류의 결함이었다.</p>
+    </div>
+    <p>기본 템플릿을 명시 등록하고 우선 지정해 단일 후보 판정이 항상 기본으로 수렴하게 고쳤다. 우선 지정을 임시로 떼서 세 케이스가 전부 깨지는 걸 확인하고 되돌렸다 — 안 깨지는 계약 테스트는 껍데기다.</p>
+  </div>
+
+  <h3>그 밖에</h3>
+  <ul class="plain">
+    <li><strong>Task 2가 통합 테스트를 660건 중 651건 깨진 채로 남겼다.</strong> 새 포트의 프로덕션 구현체가 Task 4에 있어서 그 사이 커밋들이 빨간 상태였다. Task 3이 발견했고 Task 4가 해소했다(캐시 없이 재실행해 667건 통과 확인).</li>
+    <li><strong>설계 문구 하나가 실제로는 안 돌아갔다.</strong> “복제본 빈에 우선 지정을 안 붙이고 기본은 자동 설정에 맡긴다”고 썼는데, 그러면 자동 설정이 데이터소스 빈이 이미 있다고 보고 기본을 아예 안 만든다. 기본도 명시 등록하는 쪽으로 조정했다.</li>
+    <li><strong>계약 테스트의 첫 판이 잘못돼 있었다.</strong> 의존 사슬을 끝까지 훑어서 폴링 위쪽 서비스·컨트롤러까지 딸려 들어왔고, 그러면 구현을 어떻게 고쳐도 항상 실패한다. 두 단계로 범위를 좁혔다.</li>
+  </ul>
+</section>
+
+<!-- ================= -->
+<section id="infra">
+  <p class="eyebrow">4단계 · Task 7–13</p>
+  <h2>인프라와 측정 도구</h2>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>태스크</th><th>내용</th><th>실측으로 확인한 것</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">7</td><td class="name">DB 복제본</td><td>복제본 IO 스레드를 멈추고 원본만 바꿔 폴링이 옛 값을 돌려주는 것을 확인 — 설정만 보고 “가리키는 것 같다”가 아니라 실제로 복제본을 읽는다는 확정</td></tr>
+        <tr><td class="nw">8</td><td class="name">캐시 클러스터</td><td>대수 1/2/4에서 슬롯 16384 전부 배정, 커버리지 요구 꺼짐, 재실행 멱등</td></tr>
+        <tr><td class="nw">9</td><td class="name">상품 100종 부하</td><td>단일 상품 76건 균등 분산, 주문당 3개 51건 전부 무중복(DB 제약과 함께 확정)</td></tr>
+        <tr><td class="nw">10</td><td class="name">재구성 5단계</td><td>정상 / 미종결 인위 잔류 / 격리 인위 잔류 세 시나리오를 실제로 돌려 각각 다른 반응 확인</td></tr>
+        <tr><td class="nw">11</td><td class="name">정합 검증 확장</td><td>정상 통과 / 상품 1종만 어긋냄 / 격리 잔류 / 미종결 잔류 네 시나리오 실측</td></tr>
+        <tr><td class="nw">12</td><td class="name">클러스터 라이브 점검</td><td>마스터 2·4대에서 재고 스크립트 다섯 경로 정상, 상품 100종 전부 슬롯 일치, 분포 편차 0%</td></tr>
+        <tr><td class="nw">13</td><td class="name">사이클 러너</td><td>판단 보류 재시도 후 실패 / 불일치 즉시 중단 두 반응이 다르게 나오는 것 확인</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>도달할 수 없는 게이트 기준을 발견하고 고쳤다</h3>
+  <div class="prose">
+    <p>설계가 “재시드 전에 소비 적체 0을 확인한다”고 못박았는데, 실측에서 <strong>0이 나올 수 없는 기준</strong>임이 드러났다. 재고 확정 발행이 트랜잭션으로 묶여 있어 커밋 표시가 파티션마다 오프셋을 하나씩 차지하는데, 소비자는 그것을 레코드로 처리하지 않는다. 실거래 뒤에는 소비자가 정상으로 붙어 있어도 파티션당 1이 남고 기다려도 안 준다.</p>
+    <p>여기서 나도 한 번 틀렸다. 오프셋이 강제로 리셋된 직후를 재고 “소비자가 살아 있으면 0으로 빠진다”고 정정했는데, 다시 확인해 보니 원래 보고가 맞았다.</p>
+    <p>기준을 <strong>파티션 수 이하 + 더 줄지 않음 + 소비자 생존</strong>으로 바꾸고, 정합 판정의 실제 권한자는 상품별 캐시-원본 대조라는 점을 스크립트 주석에 남겼다. 소비가 안 끝났으면 원본이 아직 안 깎여 그 대조에서 불일치로 잡히므로 안전 성질은 유지된다. 실거래 후 파티션당 1 잔류는 통과, 진짜 미소비 165건은 통과 안 함, 소비자 부재는 즉시 실패를 실측으로 확인했다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="m1">
+  <p class="eyebrow">5단계 · Task 14–17</p>
+  <h2>1차 측정 — 격자로 아홉 사이클</h2>
+  <div class="prose">
+    <p>축을 미리 정해두고 축마다 나머지를 고정해 도는 방식이었다. 사이클마다 정합 검증을 통과해야 다음으로 갔다.</p>
+  </div>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>축</th><th>구성</th><th class="num">확정/s</th><th class="num">상대비</th></tr></thead>
+      <tbody>
+        <tr><td class="name" rowspan="4">재고 캐시 대수</td><td>마스터 1</td><td class="num">75.2</td><td class="num">1.00</td></tr>
+        <tr><td>마스터 2</td><td class="num">78.7</td><td class="num">1.05</td></tr>
+        <tr><td>마스터 4</td><td class="num">72.0</td><td class="num">0.96</td></tr>
+        <tr><td>마스터 4 + fsync 낮춤</td><td class="num">74.8</td><td class="num">0.99</td></tr>
+        <tr><td class="name" rowspan="4">인스턴스 수</td><td>1대</td><td class="num">70.4</td><td class="num">1.00</td></tr>
+        <tr><td>2대</td><td class="num">78.7</td><td class="num">1.12</td></tr>
+        <tr><td>3대</td><td class="num">62.1</td><td class="num">0.88</td></tr>
+        <tr><td>4대</td><td class="num">57.6</td><td class="num">0.82</td></tr>
+        <tr><td class="name">읽기 복제</td><td>라우팅 끔</td><td class="num">68.8</td><td class="num">0.87</td></tr>
+        <tr><td class="name">다중 상품</td><td>마스터 4 · 주문당 3개</td><td class="num">15.3</td><td class="num">—</td></tr>
+        <tr><td class="name">벤더 지연</td><td>고지연</td><td class="num">65.5</td><td class="num">0.83</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="prose">
+    <p>이때 낸 결론은 이랬다 — 판정선 1.12배 미달, 인스턴스를 늘릴수록 나빠지는데 그 구간 CPU는 최대 45%로 여유가 있으니 병목은 원본 DB 쓰기 경합이나 메시지 커밋 직렬화다. <strong>이 결론은 나중에 전부 폐기됐다.</strong></p>
+  </div>
+
+  <h3>이 구간에서 터진 사고들</h3>
+  <ul class="plain">
+    <li><strong>회수가 확정을 앞질렀다 (30초).</strong> 부하가 처리 능력을 넘겨 확정 지연 p99가 30초까지 늘었는데 진행 중 결제 회수 기준이 정확히 30초였다. 회수가 결제를 READY로 되돌리고 뒤늦은 승인이 도착하니 도메인이 거부하고, 소비자가 그 레코드를 못 건너뛰어 파티션이 통째로 막혔다. 요청 14,857건 중 4,085건만 종결되고 나머지가 3시간째 같은 자리에 멈춰 있었다.</li>
+    <li><strong>게이트웨이 기동이 인스턴스를 삭제했다.</strong> 게이트웨이가 payment-service에 의존하는데 스케일 인자 없이 띄우면 compose가 방금 스케일한 2번째 인스턴스를 기본 대수로 되돌리며 <em>삭제</em>한다. 정지가 아니라 삭제라 목록에도 안 남는다. 이 결함은 인스턴스 축 전체를 무효로 만들 수 있었다.</li>
+    <li><strong>회수가 확정을 앞질렀다 (300초).</strong> 다중 상품 축에서 캐시 왕복이 세 배가 되며 꼬리가 300초를 넘겼고 같은 실패가 재현됐다. 검토 에이전트는 이걸 “상태 전이 누락”으로 진단했는데, 잔류 337건 전부 실행 시각과 결제키가 채워져 있었고 <strong>실행 시각에서 상태 변경까지 간격이 정확히 300·301·302초</strong>로 줄지어 있었다 — 회수 기준이 300초다.</li>
+    <li><strong>부하 도구가 지연 분포를 잘랐다.</strong> 폴링 포기 시각이 10초 고정인데 실제 완료 지연 p99가 10.1초라, 결과가 도착하기 직전에 관찰을 그만뒀다. 결제는 20,178건 전부 종결됐는데 부하 도구는 1,645건을 못 봤다.</li>
+  </ul>
+</section>
+
+<!-- ================= -->
+<section id="pivot">
+  <p class="eyebrow">6단계</p>
+  <h2>방향 전환 — 잘못된 것을 재고 있었다</h2>
+  <div class="prose">
+    <p>1차 리포트를 내고 나서 사용자가 물었다. <em>“처리량 자체가 낮아서 저렇게 된 거 아닌가?”</em> 확정 처리율 75~78/s는 직전 측정이 말한 꺾이는 지점 450 req/s와 6배 차이였다.</p>
+    <p>확인해 보니 숫자가 말해줬다. 다섯 구성에서 <strong>확정/s × 종결시간이 440~447로 거의 상수</strong>였다. 서로 다른 구성인데 이 곱이 고정이라는 건 처리율을 시스템이 정한 게 아니라는 뜻이다. 그리고 부하 도구 로그에 결정적 증거가 있었다.</p>
+
+    <div class="callout bad">
+      <span class="lab">발사되지 못한 요청</span>
+      <p><code>dropped_iterations = 32,651</code> — 의도한 요청 약 54,000건 중 21,337건만 실제로 나갔고 <strong>60%가 아예 발사되지 못했다.</strong> 주문 하나가 종결까지 6초 걸리는데 부하 도구가 그 시간 내내 가상 사용자를 붙잡고 있었다. 상한 600으로는 초당 100건이 이론 한계고, 실제로 79건이었다. <strong>목표 400건은 시스템에 닿은 적이 없다.</strong></p>
+    </div>
+
+    <p>그래서 처리율이 <em>동시 사용자 ÷ 종결 시간</em>으로 정해졌다. 종결이 조금 느려진 구성이 처리율이 낮게 찍혔고, 인스턴스를 늘릴수록 나빠 보인 것이 그 산물이다. 1차 측정의 처리율 결론은 전부 무효가 됐다.</p>
+
+    <h3>측정 방식도 바꿨다</h3>
+    <p>사용자가 제안한 방식으로 갈아탔다 — 축을 미리 정해 격자로 도는 대신, <strong>가장 단순한 구성을 한계까지 밀어 무엇이 포화했는지 지목하고 그것만 늘려 천장이 밀리는지 보는</strong> 사슬. 앞 방식이 병목 아닌 자원(재고 캐시)에 사이클을 넷이나 쓴 반성에서 나왔다.</p>
+    <p>그 방식이 성립하려면 “무엇이 포화했는가”를 수치로 말할 수 있어야 하는데, 관측 스택이 앱 지표와 컨슈머 적체만 모으고 있었다. MySQL 내부, Redis, 컨테이너별 CPU·디스크 IO가 수집 대상이 아니었다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="m2">
+  <p class="eyebrow">7단계 · Task 18–22</p>
+  <h2>2차 측정 — 병목을 지목하고 늘려보기</h2>
+
+  <h3>Task 18 — 부하 도구에서 폴링을 뗐다</h3>
+  <div class="prose">
+    <p>부하 시나리오는 확정 접수까지만 하고 가상 사용자를 놓아준다. 반복이 수십 밀리초로 끝나니 수십 명으로 초당 수백 건이 나간다. 지연은 낮은 도착률의 별도 표본 시나리오가 끝까지 지켜보고, 처리율은 DB 종결 건수로 센다. 결과에 <strong>버려진 요청 수</strong>를 남겨 0이 아니면 그 사이클은 처리율 비교에 못 쓰게 했다.</p>
+  </div>
+
+  <h3>Task 19 — 자원 계측을 채웠다</h3>
+  <div class="prose">
+    <p>MySQL 원본·복제본(행 잠금 대기, 실행 중 스레드, 커밋·IO 대기), Redis 두 클러스터(초당 명령, 블록된 클라이언트, 응답 지연), 컨테이너별 CPU·메모리·디스크 IO. 별도 exporter 컨테이너를 띄우는 대신 사이클 중 직접 표본화하는 쪽을 택했다 — 상시 자원을 다투지 않기 위해서다.</p>
+  </div>
+
+  <h3>Task 20 — 한계까지 밀고 지목</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>점</th><th class="num">접수/s</th><th class="num">종결/s</th><th class="num">버려짐</th><th class="num">지연 p50</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">r50</td><td class="num">38.6</td><td class="num">38.6</td><td class="num">0%</td><td class="num">507ms</td></tr>
+        <tr><td class="nw">r75</td><td class="num">57.0</td><td class="num">55.0</td><td class="num">0%</td><td class="num">510ms</td></tr>
+        <tr class="hi"><td class="nw">r100</td><td class="num">86.2</td><td class="num">84.4</td><td class="num">0.3%</td><td class="num">19,256ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>여기서 내가 <strong>앱 CPU를 병목으로 지목했다가 반박당했다.</strong> 컨테이너 CPU 최대값이 457%(코어 4.6개)인 걸 근거로 삼았는데, 검토 에이전트가 정상 통과한 r50에서도 이미 373%였다고 지적했다. 최대값은 순간 스파이크지 포화 신호가 아니다. 평균은 49%(코어 반 개)였고 JVM 자기보고는 9%였다.</p>
+    <p>에이전트가 내세운 후보가 훨씬 근거가 좋았다 — 컨슈머 적체가 <strong>정확히 꺾이는 지점에서만</strong> 쌓이고(50/s에서는 0), 확정 결과 소비자가 파티션 3개를 스레드 하나로 처리한다. 세 서비스 어디에도 동시성 설정이 없었다. 인스턴스 3→4대가 나빠진 것이 파티션 수 3과 맞아떨어지는 것도 설명됐다.</p>
+  </div>
+
+  <h3>Task 21 — 늘려봤고, 아니었다</h3>
+  <div class="prose">
+    <p>확정 결과 소비자 동시성을 3으로(파티션 수와 일치), pg 워커를 20/5로 올리고 같은 두 점을 다시 쟀다.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>점</th><th class="num">Task 20 종결/s</th><th class="num">Task 21 종결/s</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">r75</td><td class="num">55.0</td><td class="num">59.0</td><td><span class="chip c-out">차이 없음</span></td></tr>
+        <tr><td class="nw">r100</td><td class="num">84.4</td><td class="num">84.5</td><td><span class="chip c-out">차이 없음</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>천장이 안 밀렸다. 동시성 가설은 배제됐다.</p>
+    <p>그다음 <strong>Kafka가 자원 표본화에서 통째로 빠져 있는 것</strong>을 발견했다. 모든 확정이 브로커를 두 번 지나가고(명령 나가고 결과 돌아오고) 단일 브로커에 트랜잭션이라, 설계가 처음부터 후보로 지목했던 자리다. 계측을 넣고 다시 쟀다 — 브로커 CPU는 최대 1.3코어로 낮았고, 발행 지연이 부하 따라 137ms → 202ms로 완만하게 늘 뿐이었다.</p>
+    <p>판별 실험도 했다. 트랜잭션 보장을 끈 진단용 플래그로 한 점을 다시 재서 미종결 비율 3.35% vs 3.32% — 구분되지 않았다. <strong>커밋 직렬화도 배제됐다.</strong> 진단 코드는 되돌려 커밋에 남기지 않았다.</p>
+  </div>
+
+  <h3>마지막 정정 — 능력을 잘못 읽고 있었다</h3>
+  <div class="prose">
+    <p>에이전트가 “단일 인스턴스 능력 60~70/s”라고 판정했는데, 종결 속도를 보면 전 구간에서 접수를 따라가고 있었다. 적체를 종결 속도로 나누면 그대로 지연이 나온다 — 쌓인 건 <strong>처리 중인 물량</strong>이지 못 받아낸 대기열이 아니었다. r80과 인스턴스 1대 점은 부하 끝에 적체가 오히려 줄었다.</p>
+    <p>그리고 판정선 비교 자체가 오염돼 있었다. 1대는 커넥션 상한 151 시절에, 2대는 300으로 고친 뒤 <strong>MySQL 재기동 52초 만에</strong> 쟀다. 버퍼 풀이 빈 상태였다.</p>
+    <p>같은 설정·같은 예열 상태에서, 1대가 확실히 못 따라가는 도착률로 다시 쟀다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="result">
+  <p class="eyebrow">8단계</p>
+  <h2>최종 결과</h2>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th>구성</th><th class="num">접수</th><th class="num">종결</th><th class="num">적체 최대</th><th class="num">MySQL 실행 스레드</th><th class="num">행 잠금 대기</th></tr></thead>
+      <tbody>
+        <tr><td class="name">인스턴스 1</td><td class="num">153.0/s</td><td class="num">149.2/s</td><td class="num">21,886</td><td class="num">13</td><td class="num">0</td></tr>
+        <tr><td class="name">인스턴스 2</td><td class="num">156.0/s</td><td class="num">100.3/s</td><td class="num">27,485</td><td class="num">35</td><td class="num">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout bad">
+    <span class="lab">판정선</span>
+    <p><strong>1 → 2 종결 처리율 0.67배. 목표 1.6배 미달이며, 인스턴스를 늘리면 오히려 나빠진다.</strong></p>
+    <p>직전 작업이 1.0배로 막힌 뒤 이번에 공유 자원을 실제로 늘렸다 — 읽기 복제본, 재고 캐시 클러스터, 멱등 저장소 클러스터. 그래도 결론은 바뀌지 않는다.</p>
+  </div>
+
+  <h3>배제한 후보 여덟 개</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>후보</th><th>판정</th><th>근거</th></tr></thead>
+      <tbody>
+        <tr><td class="name">앱 자원 (커넥션 풀·CPU)</td><td><span class="chip c-out">배제</span></td><td>전 컨테이너 CPU 합계 평균 1.2~1.5 / 10 코어. 커넥션 대기 없음</td></tr>
+        <tr><td class="name">재고 캐시 대수</td><td><span class="chip c-out">배제</span></td><td>마스터 1/2/4 차이 없음. fsync 낮춘 확인 사이클도 같은 밴드 — 디스크 공유 가설까지 배제</td></tr>
+        <tr><td class="name">재고 캐시 자체</td><td><span class="chip c-out">배제</span></td><td>블록된 클라이언트 0, 응답 지연 평균 0.38ms</td></tr>
+        <tr><td class="name">읽기 부하</td><td><span class="chip c-out">배제</span></td><td>복제 라우팅 켬/끔 차이 없음. 복제 지연 평균 0.10초</td></tr>
+        <tr><td class="name">DB 잠금 경합</td><td><span class="chip c-out">배제</span></td><td>행 잠금 대기가 전 구간 0</td></tr>
+        <tr><td class="name">파이프라인 고정 동시성</td><td><span class="chip c-out">배제</span></td><td>소비자 동시성 1→3, pg 워커 상향 후에도 천장 그대로</td></tr>
+        <tr><td class="name">메시지 커밋 직렬화</td><td><span class="chip c-out">배제</span></td><td>트랜잭션 끈 확인 사이클에서 3.35% vs 3.32% — 구분 안 됨</td></tr>
+        <tr><td class="name">브로커 자원</td><td><span class="chip c-out">배제</span></td><td>Kafka 컨테이너 CPU 최대 1.3코어. 발행 지연 137→202ms 완만</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>설계가 천장으로 지목했던 두 후보 — 원본 DB 쓰기 경합, 메시지 커밋 직렬화 — 가 모두 근거로 배제됐다. 설정으로 밀 수 있는 범위를 벗어났고 다음은 프로파일링이 필요하다. <strong>원인 미상으로 남긴다.</strong></p>
+    <p>인스턴스 2대에서 나빠지는 이유도 미상이다. MySQL 실행 스레드가 13에서 35로 늘지만 행 잠금 대기는 0이다. 확정 결과 토픽 파티션이 3개라 2대에 2:1로 갈리는 편향이 후보지만 확인하지 않았다.</p>
+  </div>
+
+  <div class="callout good">
+    <span class="lab">정합성 — 부하량과 무관하게 유효</span>
+    <p>판정이 내려진 모든 사이클에서 상품 100종 재고 정합, 건별 대조, 미회수 선차감 기록 0, 격리 0을 통과했다. <strong>가장 의미 있는 지점은 재고 캐시 마스터 4대에 주문당 상품 3개</strong> — 한 주문의 상품이 서로 다른 노드에 흩어지는 구성에서 정합이 유지됐다. 선행 작업이 재고 게이트를 상품 단위로 쪼개며 열어준 것이 실제로 성립함을 확인한 자리다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="misread">
+  <p class="eyebrow">회고</p>
+  <h2>무엇을 재고 있는지 세 번 착각했다</h2>
+  <div class="prose">
+    <p>이 작업에서 반복된 실패는 수치가 아니라 해석 쪽이다. 매번 숫자는 맞았고, 그 값이 무엇을 세는지가 틀렸다.</p>
+  </div>
+  <ol class="seq">
+    <li><span class="n">1</span><div>
+      <p class="lead">부하 도구 한계를 시스템 한계로</p>
+      <p>의도한 요청의 60%가 발사되지 못한 상태에서 처리율을 쟀다. 아홉 사이클의 처리율 결론이 전부 무효가 됐다. 기동 점검과 트레이스 점검은 다 통과했지만 <em>부하 도구가 목표 도착률을 실제로 내는지</em>는 보지 않았다.</p>
+    </div></li>
+    <li><span class="n">2</span><div>
+      <p class="lead">경사로 부하의 창 평균을 능력으로</p>
+      <p>목표치까지 올렸다 내리는 곡선이라 창 평균은 능력이 아니다. 고정 도착률로 유지해야 능력이 잡힌다. “천장 85/s”라고 부르던 값이 이것이었다.</p>
+    </div></li>
+    <li><span class="n">3</span><div>
+      <p class="lead">처리 중인 물량을 못 받아낸 대기열로</p>
+      <p>적체가 느는 걸 능력 초과로 읽었다. 적체를 종결 속도로 나누면 그대로 지연이 나온다. 이 오독으로 “능력 60~70/s”라고 적었다가 정정했다 — 실제로는 1대가 <strong>149/s</strong>를 종결시킨다.</p>
+    </div></li>
+  </ol>
+  <div class="callout">
+    <span class="lab">그리고 지목도 두 번 틀렸다</span>
+    <p>내가 컨테이너 CPU 최대값을 근거로 앱 CPU를 지목했다가 검토 에이전트에게 반박당했고(정상 점에서도 같은 최대값이었다), 그 에이전트가 내세운 고정 동시성 가설은 늘려보니 아니었다. 지목이 틀린 것 자체는 이 방식에서 정상이다 — 틀렸다는 걸 <em>측정으로</em> 확인할 수 있으면 된다.</p>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="defects">
+  <p class="eyebrow">부산물</p>
+  <h2>발견한 결함</h2>
+  <div class="prose"><p>실제로 돌려봤기 때문에 드러난 것들이다. 이 작업의 실질 산출 중 하나다.</p></div>
+
+  <h3>측정 도구·인프라 (전부 고침)</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>결함</th><th>영향</th></tr></thead>
+      <tbody>
+        <tr><td class="name">게이트웨이 기동이 인스턴스를 삭제</td><td>인스턴스 축을 통째로 무효화할 뻔했다. compose가 의존 서비스를 기본 스케일로 되돌린다</td></tr>
+        <tr><td class="name">정합 검증이 불일치에도 성공으로 종료</td><td>무인 사이클이 불일치를 통과로 읽고 캐시를 비워 증거를 지운다</td></tr>
+        <tr><td class="name">도달 불가능한 소비 적체 기준</td><td>트랜잭션 커밋 표시가 파티션마다 오프셋을 차지해 실거래 뒤에는 0이 안 된다</td></tr>
+        <tr><td class="name">회수 기준이 확정 지연 꼬리와 겹침</td><td>진행 중 결제를 되돌려 뒤늦은 승인이 갈 곳을 잃는다. 30초·300초에서 두 번</td></tr>
+        <tr><td class="name">재구성이 결제 원장을 안 비움</td><td>앞 사이클 잔류가 뒤 사이클 교차식을 무조건 어긋나게 한다</td></tr>
+        <tr><td class="name">커넥션 상한 설정이 덮어써짐</td><td>compose가 <code>command</code> 배열을 병합하지 않아 모든 실측이 기본값 151로 돌았다</td></tr>
+        <tr><td class="name">부하 도구가 관측 시각에서 지연을 자름</td><td>10초에서 잘린 값은 백분위가 아니다</td></tr>
+        <tr><td class="name">판정 종료 코드가 errexit에 걸림</td><td>첫 판단 보류에서 러너가 그 자리에서 죽어 재시도·결과 기록·재구성이 전부 스킵됐다</td></tr>
+        <tr><td class="name">사이클 사이 오염</td><td>한 점이 통과가 아니면 재구성을 건너뛰므로 다음 점이 앞 점의 잔여 위에서 돈다</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>제품 쪽 (범위 밖 — 안 고침, ship에서 등재)</h3>
+  <ul class="plain">
+    <li><strong>적용할 수 없는 확정 결과가 소비자를 막는다.</strong> 회수가 되돌린 결제에 뒤늦은 승인이 도착하면 도메인이 전이를 거부하고, 소비자가 그 레코드를 건너뛰지 못해 파티션 전체가 멈춘다.</li>
+    <li><strong>그 결제와 재고 선점이 자동으로는 영원히 안 풀린다.</strong> 회수 판정이 종결 상태가 아니면 되돌리지 않게 설계돼 있어, 안전장치가 오히려 잔류를 영구화한다.</li>
+  </ul>
+</section>
+
+<!-- ================= -->
+<section id="log">
+  <p class="eyebrow">기록</p>
+  <h2>커밋 연대기</h2>
+  <div class="scroller">
+    <table>
+      <thead><tr><th class="num">#</th><th>시각</th><th>커밋</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td class="nw">08-25 21:22</td><td class="nw"><code>9ab6caf4</code></td><td>설계 확정 (게이트 4라운드 종료)</td></tr>
+        <tr><td class="num">2</td><td class="nw">08-25 22:16</td><td class="nw"><code>6fbfe3f9</code></td><td>구현 플랜 작성 (게이트 4라운드 종료)</td></tr>
+        <tr><td class="num">3</td><td class="nw">08-25 22:28</td><td class="nw"><code>10a2ec0b</code></td><td>폴링 전용 상태 조회 포트와 Fake</td></tr>
+        <tr><td class="num">4</td><td class="nw">08-25 22:30</td><td class="nw"><code>476858e7</code></td><td>폴링 상태 조회 실패 테스트</td></tr>
+        <tr><td class="num">5</td><td class="nw">08-25 22:32</td><td class="nw"><code>9c831e96</code></td><td>폴링이 전용 포트만 쓰도록 교체</td></tr>
+        <tr><td class="num">6</td><td class="nw">08-25 22:50</td><td class="nw"><code>0db40d11</code></td><td>읽기 복제본 데이터소스 설정</td></tr>
+        <tr><td class="num">7</td><td class="nw">08-25 22:54</td><td class="nw"><code>629326ad</code></td><td>폴링 조회 어댑터 실패 테스트</td></tr>
+        <tr><td class="num">8</td><td class="nw">08-25 23:01</td><td class="nw"><code>c62e307a</code></td><td>복제본 질의 전용 경로 구현</td></tr>
+        <tr class="hi"><td class="num">9</td><td class="nw">08-26 02:36</td><td class="nw"><code>e1e51fb6</code></td><td>복제본 격리 계약 실패 테스트</td></tr>
+        <tr class="hi"><td class="num">10</td><td class="nw">08-26 02:37</td><td class="nw"><code>969eecef</code></td><td><strong>확정 멱등 판정이 복제본을 물지 않도록 고정</strong></td></tr>
+        <tr><td class="num">11</td><td class="nw">08-26 02:46</td><td class="nw"><code>3e0af71c</code></td><td>캐시 연결 클러스터 모드 전환</td></tr>
+        <tr><td class="num">12</td><td class="nw">08-26 02:56</td><td class="nw"><code>207e52ec</code></td><td>DB 비동기 읽기 복제본 인프라</td></tr>
+        <tr><td class="num">13</td><td class="nw">08-26 03:06</td><td class="nw"><code>e50db983</code></td><td>Redis 클러스터 인프라</td></tr>
+        <tr><td class="num">14</td><td class="nw">08-26 03:18</td><td class="nw"><code>c5c5ad0d</code></td><td>부하 프로필 상품 100종 다중화</td></tr>
+        <tr><td class="num">15</td><td class="nw">08-26 03:33</td><td class="nw"><code>66908950</code></td><td>사이클 재구성 절차 스크립트</td></tr>
+        <tr><td class="num">16</td><td class="nw">08-26 04:02</td><td class="nw"><code>4a19e54e</code></td><td>정합 검증 상품별 확장 + 기계 판독 판정</td></tr>
+        <tr><td class="num">17</td><td class="nw">08-26 07:17</td><td class="nw"><code>140e3757</code></td><td>클러스터 라이브 점검 스크립트</td></tr>
+        <tr><td class="num">18</td><td class="nw">08-26 07:18</td><td class="nw"><code>a7486870</code></td><td>측정 진입 전 중단 지점 기록</td></tr>
+        <tr><td class="num">19</td><td class="nw">08-26 08:19</td><td class="nw"><code>80b71250</code></td><td>사이클 러너와 복제 지연 계측</td></tr>
+        <tr><td class="num">20</td><td class="nw">08-26 08:55</td><td class="nw"><code>a0a8761a</code></td><td>소비 적체 게이트 기준 변경</td></tr>
+        <tr><td class="num">21</td><td class="nw">08-26 12:30</td><td class="nw"><code>0e9170c5</code></td><td>판정 조기 종료 + 회수 기준 포화 수정</td></tr>
+        <tr class="hi"><td class="num">22</td><td class="nw">08-26 13:32</td><td class="nw"><code>5d56f951</code></td><td><strong>인스턴스 스케일 붕괴 수정</strong></td></tr>
+        <tr><td class="num">23</td><td class="nw">08-26 14:25</td><td class="nw"><code>45889df4</code></td><td>Task 14 재고 캐시 대수 축 결과</td></tr>
+        <tr><td class="num">24</td><td class="nw">08-26 15:07</td><td class="nw"><code>3c2a15a8</code></td><td>Task 15 인스턴스 수 축 결과</td></tr>
+        <tr><td class="num">25</td><td class="nw">08-26 16:39</td><td class="nw"><code>f370a4f1</code></td><td>Task 16 나머지 세 축 결과</td></tr>
+        <tr><td class="num">26</td><td class="nw">08-26 16:47</td><td class="nw"><code>6b458947</code></td><td>1차 측정 리포트 (나중에 폐기)</td></tr>
+        <tr class="hi"><td class="num">27</td><td class="nw">08-26 20:20</td><td class="nw"><code>1b849a76</code></td><td><strong>처리율 축 재측정 태스크 추가 — 방향 전환</strong></td></tr>
+        <tr><td class="num">28</td><td class="nw">08-26 21:18</td><td class="nw"><code>46818676</code></td><td>부하 도구에서 폴링 분리</td></tr>
+        <tr><td class="num">29</td><td class="nw">08-26 21:52</td><td class="nw"><code>162d19eb</code></td><td>MySQL·Redis·컨테이너 자원 표본화</td></tr>
+        <tr><td class="num">30</td><td class="nw">08-26 23:08</td><td class="nw"><code>aeddd01f</code></td><td>단일 구성 한계 탐색 · 병목 후보 좁힘</td></tr>
+        <tr><td class="num">31</td><td class="nw">08-27 00:26</td><td class="nw"><code>3453a527</code></td><td>파이프라인 동시성 손잡이 + 재측정</td></tr>
+        <tr><td class="num">32</td><td class="nw">08-27 02:21</td><td class="nw"><code>d3b0597b</code></td><td>Kafka 표본화 + 커밋 직렬화 가설 배제</td></tr>
+        <tr><td class="num">33</td><td class="nw">08-27 04:20</td><td class="nw"><code>b34bab46</code></td><td>고정 도착률로 능력 측정 · 커넥션 상한 결함 수정</td></tr>
+        <tr class="hi"><td class="num">34</td><td class="nw">08-27 06:34</td><td class="nw"><code>9805a25d</code></td><td><strong>예열·동일 설정에서 잰 판정선 — 0.67배</strong></td></tr>
+        <tr><td class="num">35</td><td class="nw">08-27 06:52</td><td class="nw"><code>6013549f</code></td><td>리포트를 유효한 부하 기준으로 재작성</td></tr>
+        <tr><td class="num">36</td><td class="nw">08-27 07:12</td><td class="nw"><code>ad1d0051</code></td><td>중도 중단 정리</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= -->
+<section id="rest">
+  <p class="eyebrow">이후</p>
+  <h2>남은 일과 해석 범위</h2>
+
+  <h3>ship에서 할 일</h3>
+  <ul class="plain">
+    <li>코드 리뷰 — <strong>스케일 붕괴 결함을 반드시 짚는다.</strong> 인스턴스 축을 통째로 무효화할 뻔했다</li>
+    <li><code>docs/context/</code> 문서 동기화</li>
+    <li>미해결 항목 등재 3건 — 제품 견고성 2건 + 장애 전환 검증 별도 토픽</li>
+    <li>아카이브 + PR</li>
+  </ul>
+
+  <h3>재개 전에 알아야 할 것</h3>
+  <ul class="plain">
+    <li>스택은 내려 뒀고 볼륨은 전부 보존했다. 다시 띄우면 이어진다</li>
+    <li><code>results/*.json</code>(사이클 원본)은 git 비추적이라 이 머신에만 있다. 리포트가 필요한 수치는 다 옮겨 담았다</li>
+    <li>1차 아홉 사이클의 처리율 수치는 무효다. 정합성 결과와 결함 발견은 유효</li>
+    <li>측정 중 <code>payment-alertmanager</code>가 Exited 상태로 발견됐다 (이 작업과 무관, 웹훅 URL 미설정 추정)</li>
+  </ul>
+
+  <h3>이 수치로 말할 수 없는 것</h3>
+  <ul class="plain">
+    <li>단일 머신 컨테이너 환경이다. 절대 수치에 의미를 두지 않고 상대비만 낸다</li>
+    <li>부하 프로필이 상품 100종으로 바뀌어 직전 측정과 직접 비교하지 않는다</li>
+    <li>핫 상품 쏠림에는 답하지 못한다. 한 상품에 부하가 몰리면 노드를 늘려도 키가 한 슬롯에 있어 흩어지지 않는다</li>
+    <li>읽기 복제의 지연 교환 관계는 이 부하에서 관측되지 않았다. 복제 지연이 평균 0.1초로 거의 0이었다</li>
+    <li>장애 전환(노드 전환, 복제본 승격)은 범위 밖이다</li>
+  </ul>
+
+  <div class="callout">
+    <span class="lab">이 작업이 남긴 것</span>
+    <p>기대했던 “천장이 밀렸다”는 못 얻었다. 대신 <strong>후보 여덟 개를 근거로 지웠고, 어디가 아닌지는 확실히 안다.</strong> 그리고 측정 자체를 믿을 수 있게 만든 도구가 남았다 — 지금 도구는 부하가 실제로 닿았는지, 판정이 기계로 전달되는지, 사이클 사이가 오염됐는지를 스스로 잡는다. 처음엔 그중 아무것도 없었다.</p>
+  </div>
+</section>
+
+<footer>
+  설계 <code>docs/topics/SHARED-RESOURCE-SCALEOUT.md</code> · 플랜 <code>docs/SHARED-RESOURCE-SCALEOUT-PLAN.md</code> · 리포트 <code>docs/SHARED-RESOURCE-SCALEOUT-REPORT.md</code> · 상태 <code>docs/STATE.md</code>
+</footer>
+
+</main>
+</div>
+</body>
+</html>
