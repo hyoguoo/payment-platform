@@ -7,7 +7,7 @@
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
 - 단계: **execute**
-- 활성 태스크: Task 15 (인스턴스 수 축 측정, 1/2/3/4대)
+- 활성 태스크: Task 16 (읽기 복제·다중 상품·벤더 지연 축 측정)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
 - 태스크 17개 — 코드 6 (폴링 전용 조회 포트 · 복제본 데이터소스 · 질의 어댑터 · 격리 계약 테스트 · 캐시 클러스터 연결), 인프라 3, 사이클 스크립트 4, 측정 4
@@ -25,7 +25,8 @@
 - **게이트 보정(2026-08-26, 사용자 승인)** — Task 13 부수 발견을 원인 규명한 결과 소비 적체 0은 실측에서 도달 불가로 확정됐다(재고 확정 발행이 트랜잭션으로 묶여 커밋 표시가 파티션마다 오프셋을 하나씩 차지하는데 컨슈머는 이를 레코드로 처리하지 않는다). `bench-cycle-reset.sh`/`verify-settlement.sh` 둘 다 소비 적체 게이트를 "파티션 수 이하 + 연속 확인에서 더 줄지 않음 + 소비자 생존"으로 바꿨다 — 파티션 수는 조회 결과에서 얻고 하드코딩하지 않는다. 정합 판정의 실제 권한자는 이 게이트가 아니라 상품별 캐시-원본 대조라는 점을 두 스크립트 주석에 남겼다. 실거래 후 파티션당 1 잔류 시 두 스크립트 모두 통과, `docker pause`로 컨슈머 그룹 멤버십은 유지한 채 진짜 미소비 백로그(165건)를 쌓은 상태에서는 통과하지 않음(bench-cycle-reset exit 2, verify-settlement INCONCLUSIVE exit 2), 컨슈머가 아예 없는 상태에서는 폴링 없이 즉시 실패(각각 exit 2/8초, exit 1/1초)함을 실측 확인 — 상세는 PLAN Task 10/11 완료 결과 보정 항목. 검증에 쓴 mysql-pg/pg-service/user-service는 정지, payment 여섯 테이블은 빈 상태·재고는 상수 재시드로 Task 13 인계 상태와 동일하게 복원했다. Task 14 착수를 막던 요인이 해소됐다
 - **스케일 붕괴 결함 발견 및 수정(2026-08-26)** — Task 14 착수 직후 인스턴스 2대 사이클인데 payment-service가 조용히 1대로 줄어드는 증상을 겪어 에스컬레이션했고, 원인 규명 결과 gateway가 payment-service를 depends_on으로 갖는 상태에서 `bench-scaleout-cycle.sh`가 스케일 인자 없이 `dc up -d gateway`를 부르면 docker compose가 방금 스케일한 2번째 이상 인스턴스를 기본 대수로 되돌리며 **삭제**하는 것으로 확정됐다(정지가 아니라 삭제라 `docker ps -a`에도 안 남는다). gateway 호출에 `--no-deps`를 추가해 고쳤고, 함께 미커밋 상태였던 폴링 포기 시각 상향+교차식 보정, 재구성 절차의 payment 원장 truncate 추가도 묶어 커밋(`5d56f951`, fix(infra)). 이 결함은 **Task 15(인스턴스 축 측정) 전체를 무효로 만들 수 있었다** — ship 리뷰에서 반드시 짚어야 한다. 스케일 붕괴로 굳은 READY 836건과 대응 원장 데이터는 벤치 데이터라 정리했다. 상세는 PLAN Task 14 완료 결과 첫 항목
 - **Task 14 완료** — 재고 캐시 마스터 1/2/4 세 사이클(인스턴스 2·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더 고정) 전부 정합 PASS, 인스턴스 2대 유지를 사이클마다 병행 폴링으로 확인. 확정 처리율이 세 값 모두 ±5% 밴드 안(75.2/78.7/72.0 req/s)이라 대수와 단조 관계가 없어 "효과 없음"으로 판단, 설계 문서 지시대로 fsync 정책(`appendfsync always`→`everysec`, 마스터 4대 한정 라이브 재설정)을 낮춘 확인 사이클을 추가했으나 그 결과(74.8 req/s)도 같은 밴드 안이었다. 수치 해석은 하지 않고 상대비만 기록 — 해석은 Task 17의 몫. 상세는 PLAN Task 14 완료 결과
-- **인프라 기동 상태** — gateway/pg-service/product-service/user-service, mysql-payment/replica/pg/product/user, eureka, kafka, redis-dedupe/stock, redis-idempotency-cluster 3대, 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail) 전부 기동 유지. redis-stock-cluster는 마지막 확인 사이클의 마스터 4대 상태로 남아 있다(대수 자체가 측정 변수라 특정 값으로 고정하지 않음, 다음 사이클이 `bench-redis-cluster.sh`로 재구성). payment-service는 마지막 사이클의 재구성 (4)단계에서 정지된 채 남아 있다(다음 태스크의 스택 기동 단계가 재기동). Docker 메모리는 20GB(20480MiB)로 이미 상향 확인됨
+- **Task 15 완료** — 재고 마스터를 Task 14의 명목 최댓값(마스터 2, 노이즈 안의 명목값)으로 고정하고 인스턴스 1/3/4대 세 사이클(재고 마스터 2·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더 고정) 실행, 인스턴스 2대 지점은 조건이 완전히 같은 Task 14의 `scaleout-stock-m2` 결과를 재사용했다. 넷 다 정합 PASS, 지정한 인스턴스 대수 유지를 사이클마다 병행 폴링으로 확인. 확정 처리율 1→2 실측 배수 1.118x — **판정선(1.6배)을 넘지 못했다.** 3대(0.882x)·4대(0.817x)는 1대 기준선보다 오히려 낮고 판정선이 없어 곡선만 기록, 수치 해석은 하지 않는다(Task 17 몫). 4대 구간 CPU/메모리 표본화 결과 앱 컨테이너 합산 CPU 최대 45%/평균 29%(VM 10 vCPU 환산)로 포화 없음, 스왑 유입 없음(SwapFree 전 구간 SwapTotal과 동일) — 폐기할 구간 없음. 상세는 PLAN Task 15 완료 결과
+- **인프라 기동 상태** — gateway/pg-service/product-service/user-service, mysql-payment/replica/pg/product/user, eureka, kafka, redis-dedupe/stock, redis-idempotency-cluster 3대, 관측 스택(prometheus/alertmanager/grafana/kafka-exporter/tempo/loki/promtail) 전부 기동 유지. redis-stock-cluster는 Task 15가 이 축 전체에 고정한 마스터 2대 상태로 남아 있다(다음 태스크의 축 조건에 따라 `bench-redis-cluster.sh`가 재구성). payment-service는 마지막 사이클의 재구성 (4)단계에서 정지된 채 남아 있다(다음 태스크의 스택 기동 단계가 재기동). Docker 메모리는 20GB(20480MiB)로 이미 상향 확인됨
 
 ## 재개 메모
 
