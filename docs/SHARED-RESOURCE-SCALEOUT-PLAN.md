@@ -139,7 +139,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 11: 정합 검증 상품별 확장
 - [x] Task 12: 클러스터 라이브 점검 스크립트
 - [x] Task 13: 사이클 러너와 복제 지연 계측
-- [ ] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
+- [x] Task 14: 재고 캐시 대수 축 측정 (마스터 1 / 2 / 4)
 - [ ] Task 15: 인스턴스 수 축 측정 (1 / 2 / 3 / 4)
 - [ ] Task 16: 읽기 복제·다중 상품·벤더 지연 축 측정
 - [ ] Task 17: 측정 리포트
@@ -544,7 +544,22 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 대수별 처리율 비교표가 나오고, 효과가 없으면 확인 사이클 결과까지 함께 남는다
 
 **완료 결과**
-> (execute에서 채움)
+- **착수 전 — Task 15 전체를 무효로 만들 수 있었던 스케일 붕괴 결함을 고쳤다.** `docker-compose.apps.yml`에서 gateway가 payment-service를 depends_on으로 갖는데, `scripts/bench-scaleout-cycle.sh`가 `--scale payment-service=N`으로 인스턴스를 올린 뒤 스케일 인자 없이 `dc up -d gateway`를 부르면 docker compose가 방금 올린 2번째 이상 인스턴스를 기본 대수(1)로 되돌리며 삭제했다 — 정지가 아니라 삭제라 `docker ps -a`에도 안 남는다. 게이트웨이가 사라진 인스턴스의 등록 정보로 확정 요청을 보내 확정 시도조차 못 한 결제가 READY로 굳는 형태로만 겉으로 드러났다(잔류 836건 확인). gateway 호출에 `--no-deps`를 추가해 이 지점에 이미 healthy로 떠 있는 의존 서비스의 재해석 자체를 건너뛰게 고쳤다. pg-service/product-service/user-service를 올리는 다른 호출은 전부 payment-service를 depends_on으로 갖지 않아 같은 위험이 없음을 compose 의존 그래프로 확인했다. INSTANCES=2 스모크 사이클(짧은 부하)을 끝까지 돌려 게이트웨이 기동 이후에도 2대가 유지되고 정합 검증까지 통과하는 것을 실측 확인했다
+- 함께 남아 있던 미커밋 수정 두 건도 이번 착수 전에 묶어 커밋했다 — (a) 폴링 포기 시각(`POLL_TIMEOUT_MS`)을 10초→60초로 상향하고 `verify-settlement.sh` 교차식 [2]를 "관측 포기 건수 이내 차이는 설명된 것"으로 보정(포화 구간에서 k6가 포기한 뒤 뒤늦게 DONE 되는 건은 유실이 아니라 관측이 잘린 것), (b) `bench-cycle-reset.sh`의 (5)단계에 payment 원장 여섯 테이블 truncate를 추가 — `verify-settlement.sh`의 DB 집계가 사이클 구간으로 스코핑되지 않아, 비우지 않으면 다음 사이클 카운트에 이전 사이클 건수가 누적돼 교차식이 항상 어긋난다(사이클을 연달아 돌리는 이번 태스크에서 처음 드러나는 결함이었다). 커밋 `5d56f951`
+- **잔류 정리** — 스케일 붕괴로 굳은 READY 836건과 대응 원장 데이터(벤치성, payment_event/payment_order/payment_outbox/payment_history/payment_event_dedupe/stock_hold_record)를 payment-service 정지 후 원장 여섯 테이블 truncate + `bench-seed-stock.sh` 재시드로 치웠다. 이 836건은 확정 요청 자체가 죽은 인스턴스로 가 payment-service가 한 번도 못 받은 상태라 원장의 자동 회수 대상이 아니었다(정상 종결 경로가 없는 벤치 오염) — `bench-cycle-reset.sh`의 정상 폴링 게이트로는 영구히 안 빠지는 값이라 게이트를 우회해 직접 정리했다
+- **착수 전 점검** — Docker 메모리 20480MiB(20GB, 이미 상향된 상태 확인) / 호스트 스왑 694.5M/1024M(여유 있음, macOS 동적 스왑) / `scripts/smoke/infra-healthcheck.sh` 27/27 PASS / `scripts/smoke/trace-continuity-check.sh` 5개 서비스 + Kafka listener 2경로 전부 traceId 연속성 PASS(최초 1회는 payment-service를 직접 재기동한 직후라 Eureka 클라이언트 캐시 갱신 전 503을 겪음 — Task 12가 이미 문서화한 알려진 레이스, 재실행으로 PASS 확인). 노드별 키 분포는 Task 12가 같은 인프라 구성(마스터 2대/4대, ADDSLOTSRANGE 균등 분배)에서 이미 실측 완료(편차 0%)했고 이번 태스크는 그 구성을 그대로 재사용해 재확인하지 않았다 — 마스터 1대는 분포 문제가 성립하지 않는다(슬롯 16384개 전부 한 노드)
+- **사이클 3개** — `INSTANCES=2 STOCK_MASTERS={1,2,4} POLLING_ROUTE=on ITEMS_PER_ORDER=1 VENDOR_LATENCY=low`, 기본 부하 곡선(PEAK_RATE=400, STAGE_SEC=60, 총 271초) 그대로. 각 사이클 시작 후 10초 간격으로 `docker ps`를 병행 폴링해 인스턴스 수를 별도 로그에 남겼다 — 세 사이클 모두 스택 기동 완료 시점부터 재구성 직전까지 payment-service 컨테이너 2대 유지를 확인(전환 구간을 뺀 표본의 100%가 2). 셋 다 `verify-settlement.sh` PASS(교차식 [1]~[4] 전부 PASS, 상품 100종 재고 정합, 격리·미종결·미회수 선차감 기록 0)
+
+  | case | stock_masters | confirm/s | (m1 대비) | e2e_done/s | (m1 대비) | e2e p50/p95/p99 (ms) | 정합 |
+  |---|---:|---:|---:|---:|---:|---|---|
+  | scaleout-stock-m1 | 1 | 75.247 | 1.000x | 33.430 | 1.000x | 6549.5 / 13357.4 / 14568.2 | PASS |
+  | scaleout-stock-m2 | 2 | 78.734 | 1.046x | 35.094 | 1.050x | 5672.0 / 13275.0 / 14344.6 | PASS |
+  | scaleout-stock-m4 | 4 | 72.004 | 0.957x | 32.159 | 0.962x | 7678.0 / 13192.8 / 14685.2 | PASS |
+
+- **대수 효과 판단** — 세 값이 ±5% 밴드 안에 있고 마스터 수와 단조 관계가 없다(2에서 소폭 상승, 4에서 오히려 1보다 낮음). 설계 문서 기준으로 "효과가 관측되지 않음"에 해당해 fsync 정책을 낮춘 확인 사이클을 추가했다
+- **확인 사이클** — `scaleout-stock-m4-fsync-everysec`(`STOCK_MASTERS=4`, 나머지 동일 조건). 부하 시작 약 8초 후 4개 마스터 노드 전부에 `redis-cli CONFIG SET appendfsync everysec`를 실행해 컨테이너 정의값(`always`)을 그 사이클 한정으로 낮췄다(compose 파일은 건드리지 않음 — 라이브 재설정은 재시작 없이 즉시 반영되고, 사이클이 끝나면 `bench-redis-cluster.sh`가 다음 사이클에서 컨테이너를 지우고 새로 만들어 `always`로 원복된다). 결과: confirm/s=74.782(m1 대비 0.994x, m4-always 대비 1.039x), e2e_done/s=33.332(m1 대비 0.997x). 인스턴스 2대 유지·정합 PASS 동일 확인
+- 넷 다 복제 지연 최댓값 1초 이하(120표본, 평균 0.09~0.12초)로 폴링 경로에 뚜렷한 지연 유입 없음(수치 자체의 해석은 Task 17로 넘긴다)
+- 정리: 사이클마다 `bench-cycle-reset.sh`가 정상 종료(payment 여섯 테이블 truncate + 캐시 재시드)해 다음 사이클로 넘어갔다. 마지막 확인 사이클 종료 후 payment-service는 재구성 (4)단계에서 정지된 채로 남아 있다(다음 태스크의 스택 기동 단계가 재기동)
 
 ---
 
