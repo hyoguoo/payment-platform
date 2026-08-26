@@ -75,7 +75,7 @@
 # 시나리오(latency_sample)로 재고, 처리율은 부하 도구 관측 여부와 무관하게 DB 종결 건수를
 # 부하 구간으로 나눠 낸다(throughput.db_done_per_load_sec).
 #
-# 자원 표본화 — 부하 구간 동안 세 계열을 주기로 표본화해 결과 파일에 최대·평균으로 남긴다.
+# 자원 표본화 — 부하 구간 동안 네 계열을 주기로 표본화해 결과 파일에 최대·평균으로 남긴다.
 # 전용 exporter/사이드카를 새로 띄우지 않고 기존 컨테이너에 docker exec/docker stats 로
 # 직접 묻는다(이미 있는 복제 지연·k6 CPU 표본화와 같은 결) — 관측 스택에 상시 스크랩 대상을
 # 늘리지 않아 측정 대상과 자원을 다투지 않는다.
@@ -85,8 +85,16 @@
 #   - Redis(재고 캐시·멱등 저장소 클러스터): 클러스터를 구성하는 실행 중 노드 전부를 매 틱
 #     순회해 초당 명령(instantaneous_ops_per_sec 합) · 블록된 클라이언트(blocked_clients 합) ·
 #     PING 왕복 지연(redis-cli --latency 1초 표본의 노드 간 최댓값)을 표본화
-#   - 컨테이너별 CPU·메모리·네트워크·디스크 IO: docker stats 로 CPU%·메모리 사용량을 틱마다,
-#     네트워크·디스크 누적 바이트는 표본 구간의 처음·끝 값 차이로 평균 처리율(byte/s)을 낸다
+#   - 컨테이너별 CPU·메모리·네트워크·디스크 IO(kafka 포함): docker stats 로 CPU%·메모리
+#     사용량을 틱마다, 네트워크·디스크 누적 바이트는 표본 구간의 처음·끝 값 차이로 평균
+#     처리율(byte/s)을 낸다. kafka 는 확정 명령/결과 발행이 전부 거쳐 가는 단일 브로커라
+#     Task 21 재측정에서 추가했다(그 전까지 표본 대상에서 빠져 있었다)
+#   - Kafka 발행 지연: 전용 비운영 토픽(payment.bench.probe)에 acks=all 로 레코드 1건을
+#     보내 왕복 지연을 잰다(kafka-producer-perf-test). 매 호출 새 JVM 을 띄워 절대값에
+#     기동 오버헤드가 섞이므로(idle 137~143ms) 절대값보다 부하 구간에서 이 기저선 대비
+#     얼마나 튀는지가 신호다 — 애플리케이션 토픽에 합성 메시지를 섞으면 소비자가
+#     역직렬화/도메인 검증에 실패해 재시도 루프에 빠지므로(Task 21 r100 재측정 실측) 별도
+#     토픽에만 쏜다
 #
 # 결과 파일:
 #   results/<CASE_NAME>-cycle.json — 조건 값, 처리율, 부하 무결성(dropped_iterations), k6 자체
@@ -183,6 +191,8 @@ CYCLE_JSON="${RESULTS_DIR}/${CASE_NAME}-cycle.json"
 MYSQL_PAYMENT_CONTAINER="${MYSQL_PAYMENT_CONTAINER:-payment-mysql-payment}"
 MYSQL_PAYMENT_REPLICA_CONTAINER="${MYSQL_PAYMENT_REPLICA_CONTAINER:-payment-mysql-payment-replica}"
 MYSQL_PAYMENT_ROOT_PASSWORD="${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
+KAFKA_PROBE_TOPIC="${KAFKA_PROBE_TOPIC:-payment.bench.probe}"
 
 COMPOSE_ARGS=(
     -f "${ROOT_DIR}/docker/docker-compose.infra.yml"
@@ -611,6 +621,79 @@ redis_stat_stats_json() {
     ' "${REDIS_STAT_LOG}"
 }
 
+KAFKA_STAT_LOG=""
+KAFKA_STAT_SAMPLER_PID=""
+
+# 확정 명령(payment.commands.confirm)·확정 결과(payment.events.confirmed) 발행이 전부 거쳐
+# 가는 단일 브로커라 Task 21 재측정에서 표본 대상에 추가했다(이전까지 컨테이너 통계에도 브로커
+# 지표에도 빠져 있었다). 애플리케이션 토픽에 합성 메시지를 섞으면 소비자가 역직렬화/도메인
+# 검증에 실패해 재시도 루프에 빠지므로(Task 21 r100 재측정에서 실제로 관측한 패턴), 전용
+# 비운영 토픽(KAFKA_PROBE_TOPIC, 파티션 1·짧은 retention)에만 쏜다 — ensure_kafka_probe_topic
+# 이 사이클 시작 시 1회 멱등 생성한다.
+ensure_kafka_probe_topic() {
+    docker exec "${KAFKA_CONTAINER}" kafka-topics --bootstrap-server localhost:9092 \
+        --create --if-not-exists --topic "${KAFKA_PROBE_TOPIC}" \
+        --partitions 1 --replication-factor 1 \
+        --config retention.ms=600000 --config segment.bytes=1048576 >/dev/null 2>&1
+}
+
+# kafka-producer-perf-test 로 레코드 1건을 acks=all 로 보내 왕복 지연을 잰다. 이 도구는 매
+# 호출마다 새 JVM 을 띄우므로 절대값에 수십~백여 ms 의 JVM 기동 오버헤드가 섞인다(idle 상태에서
+# 실측 137~143ms) — 절대값보다 "부하 구간에서 이 기저선 대비 얼마나 튀는지"가 신호다. redis
+# PING 지연 표본과 같은 성격의 대표값이지 실제 애플리케이션 EOS 트랜잭션 커밋 지연 그 자체는 아니다.
+kafka_produce_latency_probe() {
+    local out latency
+    out=$(docker exec "${KAFKA_CONTAINER}" timeout 5 kafka-producer-perf-test \
+        --topic "${KAFKA_PROBE_TOPIC}" --num-records 1 --record-size 64 --throughput 1 \
+        --producer-props "bootstrap.servers=localhost:9092" acks=all 2>/dev/null)
+    latency=$(echo "${out}" | grep -oE '[0-9.]+ ms avg latency' | awk '{print $1}')
+    echo "${latency:-NULL}"
+}
+
+start_kafka_stat_sampler() {
+    ensure_kafka_probe_topic
+    KAFKA_STAT_LOG="$(mktemp "${ROOT_DIR}/results/.kafka-stat.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            latency=$(kafka_produce_latency_probe)
+            echo "$(date +%s) ${latency}" >> "${KAFKA_STAT_LOG}"
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    KAFKA_STAT_SAMPLER_PID=$!
+}
+
+stop_kafka_stat_sampler() {
+    if [[ -n "${KAFKA_STAT_SAMPLER_PID}" ]]; then
+        kill -9 "${KAFKA_STAT_SAMPLER_PID}" 2>/dev/null || true
+        KAFKA_STAT_SAMPLER_PID=""
+    fi
+}
+
+# 로그(epoch latency_ms, latency_ms 는 NULL 가능)에서 개수/최소/평균/최대를 낸다.
+kafka_stat_stats_json() {
+    if [[ -z "${KAFKA_STAT_LOG}" || ! -s "${KAFKA_STAT_LOG}" ]]; then
+        echo '{"samples":0,"produce_latency_ms":null}'
+        return
+    fi
+    awk '
+        {
+            if ($2 !~ /^[0-9.]+$/) { next }
+            n++
+            sum += $2
+            if (n == 1 || $2 + 0 < lo) { lo = $2 + 0 }
+            if (n == 1 || $2 + 0 > hi) { hi = $2 + 0 }
+        }
+        END {
+            if (n + 0 == 0) {
+                print "{\"samples\":0,\"produce_latency_ms\":null}"
+                exit
+            }
+            printf "{\"samples\":%d,\"produce_latency_ms\":{\"min\":%.2f,\"avg\":%.2f,\"max\":%.2f}}\n", n, lo, sum / n, hi
+        }
+    ' "${KAFKA_STAT_LOG}"
+}
+
 CONTAINER_STAT_LOG=""
 CONTAINER_STAT_SAMPLER_PID=""
 
@@ -641,11 +724,12 @@ bytes_from_human() {
 }
 
 # 이 사이클에 관여하는 서비스의 실행 중 컨테이너 이름 전부 — 대수가 조건 값에 따라 바뀌는
-# payment-service/redis-*-cluster 도 dc ps 로 그때그때 다시 구한다.
+# payment-service/redis-*-cluster 도 dc ps 로 그때그때 다시 구한다. kafka 는 확정 명령/결과
+# 발행·소비가 전부 거쳐 가는 단일 브로커라 Task 21 재측정에서 표본 대상에 추가했다(이전까지 누락).
 container_stat_targets() {
     local svc names=() cids cid name
     for svc in payment-service pg-service product-service user-service gateway \
-        mysql-payment mysql-payment-replica redis-stock-cluster redis-idempotency-cluster; do
+        mysql-payment mysql-payment-replica redis-stock-cluster redis-idempotency-cluster kafka; do
         cids=($(dc ps -q "${svc}" 2>/dev/null))
         for cid in "${cids[@]}"; do
             name=$(docker inspect --format '{{.Name}}' "${cid}" 2>/dev/null | sed 's#^/##')
@@ -930,6 +1014,7 @@ start_replica_lag_sampler
 start_mysql_stat_sampler
 start_redis_stat_sampler
 start_container_stat_sampler
+start_kafka_stat_sampler
 
 LOAD_START_EPOCH=$(date +%s)
 set +e
@@ -966,6 +1051,7 @@ if [[ "${K6_EXIT}" -ne 0 && "${K6_EXIT}" -ne 99 ]]; then
     stop_mysql_stat_sampler
     stop_redis_stat_sampler
     stop_container_stat_sampler
+    stop_kafka_stat_sampler
     exit 1
 fi
 if [[ "${K6_EXIT}" -eq 99 ]]; then
@@ -979,6 +1065,7 @@ if [[ ! -f "${K6_RESULT_JSON}" ]]; then
     stop_mysql_stat_sampler
     stop_redis_stat_sampler
     stop_container_stat_sampler
+    stop_kafka_stat_sampler
     exit 1
 fi
 print_info "✅ (4) 부하 완료 (${LOAD_DURATION_SEC}초) — ${K6_RESULT_JSON}"
@@ -1026,6 +1113,7 @@ stop_replica_lag_sampler
 stop_mysql_stat_sampler
 stop_redis_stat_sampler
 stop_container_stat_sampler
+stop_kafka_stat_sampler
 SETTLE_END_EPOCH=$(date +%s)
 
 VERDICT_JSON="${RESULTS_DIR}/${CASE_NAME}-verdict.json"
@@ -1138,6 +1226,7 @@ K6_CPU_JSON=$(k6_cpu_stats_json)
 MYSQL_STAT_JSON=$(mysql_stat_stats_json)
 REDIS_STAT_JSON=$(redis_stat_stats_json)
 CONTAINER_STAT_JSON=$(container_stat_stats_json)
+KAFKA_STAT_JSON=$(kafka_stat_stats_json)
 
 jq -n \
     --arg case_name "${CASE_NAME}" \
@@ -1174,6 +1263,7 @@ jq -n \
     --argjson mysql_stats "${MYSQL_STAT_JSON}" \
     --argjson redis_stats "${REDIS_STAT_JSON}" \
     --argjson container_stats "${CONTAINER_STAT_JSON}" \
+    --argjson kafka_stats "${KAFKA_STAT_JSON}" \
     --arg verdict "${VERDICT}" \
     --argjson verify_exit_code "${VERIFY_EXIT}" \
     --arg verdict_reason "${VERDICT_REASON}" \
@@ -1230,7 +1320,8 @@ jq -n \
         resource_usage: {
             mysql: $mysql_stats,
             redis: $redis_stats,
-            containers: $container_stats
+            containers: $container_stats,
+            kafka: $kafka_stats
         },
         settlement: {
             verdict: $verdict,
@@ -1258,6 +1349,9 @@ if [[ -n "${REDIS_STAT_LOG}" ]]; then
 fi
 if [[ -n "${CONTAINER_STAT_LOG}" ]]; then
     rm -f "${CONTAINER_STAT_LOG}"
+fi
+if [[ -n "${KAFKA_STAT_LOG}" ]]; then
+    rm -f "${KAFKA_STAT_LOG}"
 fi
 
 echo ""
