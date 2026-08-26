@@ -50,6 +50,11 @@
 #   HIKARI_MAX_POOL           — payment Hikari DB 커넥션 풀 상한 (기본 80 — 부하 곡선 피크
 #                               400 req/s 에 맞춘 값. docker-compose.benchmark.yml 이 이 값을
 #                               SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE 로 그대로 받는다)
+#   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성 (기본
+#                               1 — 코드 default 와 동일한 현재 운영 동작). payment.events.confirmed
+#                               파티션 수(3)까지만 늘리는 의미가 있다(Task 20 이 지목한 1순위 후보)
+#   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 (기본 5 — 코드 default)
+#   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 1 — 코드 default)
 #   FAKE_FAIL_RATE            — pg fake gateway 실패율 (기본 0 — baseline 고정)
 #   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK — scripts/bench-seed-stock.sh 와 동일
 #   K6_EXTRA_ARGS              — k6 run 에 추가 전달할 -e KEY=VALUE 인자(공백 구분)
@@ -149,6 +154,9 @@ BASE_URL="${BASE_URL:-http://localhost:8090}"
 RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT:-300}"
 RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS:-15000}"
 HIKARI_MAX_POOL="${HIKARI_MAX_POOL:-80}"
+CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
+PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-5}"
+PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-1}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
 PRODUCT_COUNT="${PRODUCT_COUNT:-100}"
 PRODUCT_ID_BASE="${PRODUCT_ID_BASE:-1000}"
@@ -757,6 +765,7 @@ print_section "━━━━━━━━━━━━━━━━━━━━━�
 print_section "▶ bench-scaleout-cycle — ${CASE_NAME}"
 print_section "  instances=${INSTANCES} stock_masters=${STOCK_MASTERS} dedupe_masters=${DEDUPE_MASTERS}"
 print_section "  polling_route=${POLLING_ROUTE} items_per_order=${ITEMS_PER_ORDER} vendor_latency=${VENDOR_LATENCY}(${FAKE_LATENCY_MIN}~${FAKE_LATENCY_MAX}ms)"
+print_section "  confirmed_consumer_concurrency=${CONFIRMED_CONSUMER_CONCURRENCY} pg_inbox_workers=${PG_INBOX_WORKERS} pg_outbox_workers=${PG_OUTBOX_WORKERS}"
 print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -851,6 +860,7 @@ export PAYMENT_DATASOURCE_REPLICA_ENABLED="${REPLICA_ENABLED}"
 export RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT}"
 export RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS}"
 export HIKARI_MAX_POOL="${HIKARI_MAX_POOL}"
+export CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY}"
 if ! dc up -d --scale payment-service="${INSTANCES}" --force-recreate payment-service >/dev/null 2>&1; then
     print_error "❌ (2) payment-service 재기동 실패"
     exit 1
@@ -863,6 +873,8 @@ print_section "  pg-service 재기동 — 벤더 지연=${VENDOR_LATENCY}(${FAKE
 export FAKE_LATENCY_MIN="${FAKE_LATENCY_MIN}"
 export FAKE_LATENCY_MAX="${FAKE_LATENCY_MAX}"
 export FAKE_FAIL_RATE="${FAKE_FAIL_RATE}"
+export PG_INBOX_WORKERS="${PG_INBOX_WORKERS}"
+export PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS}"
 if ! dc up -d --force-recreate pg-service >/dev/null 2>&1; then
     print_error "❌ (2) pg-service 재기동 실패"
     exit 1
@@ -1142,6 +1154,9 @@ jq -n \
     --argjson reconciler_timeout_s "${RECONCILER_TIMEOUT}" \
     --argjson reconciler_scan_ms "${RECONCILER_SCAN_MS}" \
     --argjson hikari_max_pool "${HIKARI_MAX_POOL}" \
+    --argjson confirmed_consumer_concurrency "${CONFIRMED_CONSUMER_CONCURRENCY}" \
+    --argjson pg_inbox_workers "${PG_INBOX_WORKERS}" \
+    --argjson pg_outbox_workers "${PG_OUTBOX_WORKERS}" \
     --argjson confirm_count "${CONFIRM_COUNT}" \
     --argjson db_done_count "${DB_DONE_COUNT}" \
     --argjson load_duration_sec "${LOAD_DURATION_SEC}" \
@@ -1187,7 +1202,10 @@ jq -n \
             product_count: $product_count,
             reconciler_timeout_s: $reconciler_timeout_s,
             reconciler_scan_ms: $reconciler_scan_ms,
-            hikari_max_pool: $hikari_max_pool
+            hikari_max_pool: $hikari_max_pool,
+            confirmed_consumer_concurrency: $confirmed_consumer_concurrency,
+            pg_inbox_workers: $pg_inbox_workers,
+            pg_outbox_workers: $pg_outbox_workers
         },
         throughput: {
             confirm_count: $confirm_count,

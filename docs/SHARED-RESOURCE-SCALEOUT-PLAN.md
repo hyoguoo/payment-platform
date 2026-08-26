@@ -146,7 +146,7 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - [x] Task 18: 부하 도구를 실제 한계까지 밀 수 있게 고친다
 - [x] Task 19: 자원 계측 보강
 - [x] Task 20: 단일 구성을 한계까지 밀고 병목을 지목한다
-- [ ] Task 21: 지목된 자원만 늘려 재측정 (반복)
+- [x] Task 21: 지목된 자원만 늘려 재측정 (반복)
 - [ ] Task 22: 리포트 갱신
 
 ## 태스크
@@ -802,7 +802,33 @@ payment DB 읽기 복제본과 재고 캐시·멱등 저장소 클러스터를 �
 - 더 늘려도 안 밀리거나 늘릴 자원이 없어 멈춘 지점이 명시된다
 
 **완료 결과**
-> (execute에서 채움)
+
+**늘린 것 — 측정 전용 손잡이, 기본값은 현재 운영 동작 그대로 유지** — Task 20 이 1순위로 지목한 "비동기 확정 파이프라인의 고정 동시성 상한" 세 곳을 설정으로 노출했다.
+- `payment-service` `KafkaConsumerConfig.kafkaListenerContainerFactory` — `ConfirmedEventConsumer`(`payment.events.confirmed` 소비) 컨테이너에 `factory.setConcurrency(...)` 를 추가하고 `payment.kafka.events-confirmed.consumer.concurrency` 프로퍼티(기본값 1 — 미지정 시 Spring Kafka 기본값과 동일해 운영 동작 불변)로 받는다. env `PAYMENT_KAFKA_EVENTS_CONFIRMED_CONSUMER_CONCURRENCY`(Spring relaxed binding)로 override.
+- `pg-service` `application.yml` 의 `pg.outbox.channel.worker-count`(기본 1)/`pg.inbox.channel.worker-count`(기본 5) 를 리터럴에서 `${PG_OUTBOX_CHANNEL_WORKER_COUNT:1}`/`${PG_INBOX_CHANNEL_WORKER_COUNT:5}` 로 바꿔 env 로 override 가능하게 했다(코드의 `@Value` 기본값과 동일해 미설정 시 동작 불변 — 이미 `@Value("${pg.outbox.channel.worker-count:1}")` 로 프로퍼티화돼 있었으나 yml 리터럴이 그 기본값을 항상 덮어써 외부에서 바꿀 길이 없었다).
+- `docker-compose.benchmark.yml` 에 위 세 프로퍼티를 컨테이너 env 로 주입하는 통로(`CONFIRMED_CONSUMER_CONCURRENCY`/`PG_INBOX_WORKERS`/`PG_OUTBOX_WORKERS`, 기본값 각각 1/5/1 — 코드 default 와 동일)를 추가하고, `bench-scaleout-cycle.sh` 에 같은 이름의 조건 값을 추가해 사이클 실행 시 payment-service/pg-service 재기동 시점에 export 하고 결과 JSON `conditions` 에 남기도록 했다.
+- 이 세 파일(코드 1 + yml 1 + compose/스크립트 2) 모두 코드/설정 변경이라 `./gradlew test`(payment-service 682건, pg-service 454건, 전체 프로젝트 통과) 로 회귀 없음을 확인했다.
+
+**측정 절차** — Task 20 과 동일 기준 구성(인스턴스 1·재고 캐시 마스터 1·폴링 라우팅 켬·주문당 상품 1개·저지연 벤더)에서, `CONFIRMED_CONSUMER_CONCURRENCY=3`(파티션 수와 일치) · `PG_INBOX_WORKERS=20` · `PG_OUTBOX_WORKERS=5` 로 올린 채 Task 20 이 이미 무너짐을 확인한 두 지점(75/100 req/s)을 다시 찍었다. 이미지 재빌드(`bootJar` + `docker compose build`) 후 payment-service/pg-service 재기동 로그와 Kafka consumer group describe 로 세 값이 실제로 적용됐음을 확인했다(`PG_INBOX_WORKER_STARTED workerCount=20`/`PG_OUTBOX_WORKER_STARTED workerCount=5`, `payment-service` 그룹에 `consumer-payment-service-1/2/3` 세 개의 별도 스레드가 파티션 0/1/2 를 하나씩 나눠 가짐).
+
+| 지점 | 시작 시점 미종결·미회수 | confirm 접수 | db_done | 미종결(잔류) | 잔류 비율 | 정합 판정 |
+|---|---|---|---|---|---|---|
+| r75 (신규, 위 세 값 적용) | 0 / 0 (clean) | 9220건(120s 목표 9000건 대비 사실상 100% 접수) | 8910 | 310 | 3.36% | INCONCLUSIVE |
+| r100 (신규, 위 세 값 적용) | 0 / 0 (clean) | 12096건(120s 목표 12000건 대비 사실상 100% 접수) | 11749 | 347 | 2.87% | INCONCLUSIVE |
+| r75 (Task 20, 구성 동일·동시성 기본값) | — | 6898건 | 6659 | 239 | 3.47% | INCONCLUSIVE |
+| r100 (Task 20, 구성 동일·동시성 기본값) | — | 9052건 | 8863 | 189 | 2.09% | INCONCLUSIVE |
+
+두 지점 모두 부하 도구가 목표 도착률을 사실상 그대로 접수했다(드롭 없음/미미) — 즉 접수 단계는 처음부터 병목이 아니었다. 잔류 비율은 r75 에서 3.36%(구성 3.47%와 사실상 동일), r100 에서 2.87%(구성 2.09%보다 오히려 소폭 높음)로, 동시성을 3배(컨슈머)~4배(pg inbox)로 올렸는데도 잔류가 줄지 않았다 — 늘기까지 했다. 잔류의 성격도 동일하다(reconciler 300초+60초 창을 넘겨 READY 로 되돌아간 뒤 뒤늦은 승인이 `done()` 의 IN_PROGRESS 가드에 막히는 Task 16/20 과 같은 패턴 — `docker logs`에서 `PaymentStatusException: 결제 성공할 수 없는 상태입니다` 재시도 로그로 실측 확인).
+
+**천장 판정 — 밀리지 않았다.** 접수/종결 처리율(`confirm_per_sec`/`db_done_per_load_sec`)도, 영구 미종결 발생 비율도 동시성을 늘리기 전과 통계적으로 구분되지 않는다(r100 은 오히려 소폭 악화). **Task 20 이 1순위로 지목한 "고정 동시성 상한" 가설은 틀렸다** — 이 자원을 늘려도 시스템이 실제로 더 처리하지 못했다.
+
+**포화 자원 재확인 — CPU 가 다시 유력해졌다** — `docker stats` 기준 payment-service 컨테이너 CPU 가 두 지점 모두 소폭 상승했다(r75 avg 39.25%→43.31%/max 443%→456%, r100 avg 49.35%→53.52%/max 458%→501%) — 스레드를 늘렸는데 처리량은 그대로고 CPU 사용만 늘었다는 것은, 병목이 스레드 수 부족이 아니라 요청당 처리 비용(직렬화/EOS 트랜잭션 커밋/DB·Redis 왕복) 쪽에 있다는 신호다. Task 15 의 인스턴스 축 측정(인스턴스 3대 = 파티션 3개를 인스턴스마다 하나씩 나눠 받아 사실상 이번 측정과 같은 총 병렬성 3을 이미 인스턴스 단위로 실현했었다)도 처리율이 오히려 떨어졌다(0.882x) — 서로 다른 방식으로 같은 병렬성을 올린 두 측정이 같은 결론(안 밀림, 소폭 악화)에 도달했다. 두 측정을 합쳐 보면, 이 환경의 실제 제약이 특정 스레드 풀이 아니라 **호스트 총 CPU(10 vCPU, 컨테이너 다수가 공유)** 자체일 가능성이 커진다 — 병렬성 손잡이(컨슈머 동시성이든 인스턴스 대수든)를 늘려도 새 코어를 얻는 게 아니라 같은 고정 코어를 더 잘게 나눠 쓰며 오버헤드만 늘어난다는 가설과 부합한다.
+
+**다음 후보** — 호스트 CPU 총량 자체가 제약이라면, 이 토픽이 손댈 수 있는 설정 손잡이(동시성/워커 수/인스턴스 대수)로는 더 밀 수 없다 — 다음 실험은 코드 설정이 아니라 호스트/컨테이너에 배정된 CPU 를 실제로 늘리거나(불가하면 배제), 요청당 처리 비용을 프로파일링해 어느 구간(EOS 커밋 왕복/Redis 왕복/직렬화)이 CPU 를 먹는지 좁히는 방향이다. 둘 다 이 토픽의 "설정값 손잡이로 재측정" 범위를 벗어난다.
+
+**반복 여부** — 늘려도 천장이 안 밀렸고, 이 사슬에서 다음으로 늘릴 만한 설정 손잡이(동시성 계열)가 더 없다. Task 21 의 반복은 여기서 멈춘다 — 완료 기준의 "더 늘려도 안 밀리거나 늘릴 자원이 없어 멈춘 지점"이 이 지점이다. 인스턴스 수는 지시대로 늘리지 않았다 — "앱 자원이 병목으로 지목될 때" 늘리는 것인데, 이번 측정은 정확히 반대(병렬성을 늘려도 응답이 없다)를 보여 인스턴스 확장이 유효할 근거가 없다.
+
+**정리** — 두 지점 모두 판정 보류(INCONCLUSIVE)로 끝나 정합 검증 정의상 캐시를 비우지 않는다. 각 지점 종료 후 Kafka consumer lag(payment-service/pg-service 둘 다)이 0 으로 안정될 때까지 기다린 뒤(느린 재시도 소진 — `payment.kafka.error-handler.backoff`(1초×5회)로 지연된 메시지가 파티션마다 흩어져 소진에 수 분 걸림, 실측으로 확인) `bench-cycle-reset.sh` 로 자동 재확인을 먼저 시도했으나(둘 다 미종결이 예상대로 안 풀려 exit 2) 설계대로 사람이 직접 payment 원장 여섯 테이블을 TRUNCATE, 상품 100종 재고를 상수로 재시드해 Task 22 가 깨끗한 상태에서 시작하도록 복원했다. payment-service/pg-service 는 정지 상태로 남아 있다(다음 사이클이 재기동한다). 결과 파일은 `results/task21-r75-cycle.json`/`results/task21-r100-cycle.json`(+ 각 `-verdict.json`/`.json`)로 보존.
 
 ---
 
