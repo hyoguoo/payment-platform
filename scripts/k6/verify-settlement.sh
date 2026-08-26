@@ -10,16 +10,21 @@
 #   차감 합 교차검증을 수행하고, 종결된 결제마다 선차감 기록 상태가 결제 상태와
 #   부합하는지 건별로 대조한다.
 #
+#   부하 시나리오(async-payment.js async_payment)는 확정 접수까지만 확인하고 종결까지
+#   폴링하지 않는다 — 폴링으로 VU 를 붙잡으면 도착률이 VU 상한에 갇힌다. 그래서 k6 쪽에서
+#   전수로 신뢰할 수 있는 값은 "확정 접수까지 성공한 건수"뿐이다. DONE/FAILED 구성비는 낮은
+#   도착률의 지연 표본 시나리오(latency_sample)가 일부만 관측하므로 참고용일 뿐 판정에 쓰지
+#   않는다 — 정합 판정의 실제 권한자는 DB 자체([1] 총건수, [3] 상품별 재고, [4] 건별 대조)다.
+#
 #   교차식:
-#     [1] k6(DONE + FAILED + timeout) == DB(DONE + FAILED + QUARANTINED + 미종결)
-#     [2] k6(DONE)                    == DB(DONE)
+#     [1] k6 제출(confirm - 거절) == DB(DONE + FAILED + QUARANTINED + 미종결)
+#     [2] (판정 아님, 참고) 지연 표본 시나리오가 관측한 종결/FAILED/timeout 건수
 #     [3] 재고 정합(상품별): 미종결=0 AND QUARANTINED=0 AND 미회수 선차감 기록=0
 #         AND 소비 적체 게이트 통과 선결 후, 상품마다 redis 잔여 == RDB 잔여
 #     [4] 건별 대조: DONE 결제의 선차감 기록은 전부 COMMITTED, FAILED 결제의
 #         선차감 기록은 전부 REVERTED — 어긋나면 총건수가 맞아도 개별 유실/오류를 잡는다
 #
 #   불일치 해석:
-#     - e2e_timeout 중 settle 후 DONE → 지연 종결(k6 타임아웃 내 미도달했으나 후속 settle)
 #     - settle 후 미종결(READY/IN_PROGRESS/RETRYING) → 아직 종결이 덜 끝난 상태.
 #       대기하면 풀릴 수 있어 판단 보류로 다룬다
 #     - 미회수 선차감 기록(stock_hold_record.status=NOISE) → 주기 회수(StockHoldRecoveryWorker)로
@@ -36,12 +41,9 @@
 #       묶지 않고 접속·전제 실패(exit 1)로 즉시 실패시킨다
 #     - QUARANTINED > 0 → 격리는 사람 판단(관리자 종결)이 있어야 풀린다. 대기로 안 풀리므로
 #       판단 보류가 아니라 불일치로 낸다
-#     - 교차식 [2](k6 관측 DONE == DB DONE)가 어긋나도, 그 차이가 k6 포기 건수(e2e_timeout)
-#       이내이고 교차식 [1]과 [3]/[4]가 전부 통과하면 불일치로 내지 않는다. 포화 구간에서는
-#       k6 가 폴링을 포기(POLL_TIMEOUT_MS)한 뒤에도 DB 에서는 뒤늦게 DONE 으로 종결되는 건이
-#       늘 생긴다 — 관측이 잘린 것이지 유실이 아니다. 유실 여부는 총건수 교차식([1])과
-#       상품별·건별 대조([3][4])가 맡는다. 차이가 포기 건수보다 크면(k6 가 관측했는데 DB 에
-#       없거나, 포기 건수를 넘어서는 차이) 그건 설명되지 않는 차이이므로 그대로 불일치다
+#     - 지연 표본 타임아웃(e2e_timeout) → 표본(latency_sample)이 POLL_TIMEOUT_MS 안에 종결을
+#       못 봤다는 뜻이지 유실은 아니다. 부하 시나리오는 애초에 폴링하지 않으므로 이 값은
+#       교차식 [1]과 [3]/[4]가 전부 통과하면 무시한다
 #
 # settle 대기 계산 (SETTLE_WAIT_SECONDS 미지정 시 자동 산출):
 #   RECONCILER_TIMEOUT + ceil(RECONCILER_SCAN_MS / 1000) + 여유(12s)
@@ -250,24 +252,32 @@ print_section "▶ k6 카운트 추출"
 print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # handleSummary 가 출력한 metrics 구조:
-#   metrics.confirm_requests_count  — confirm 요청 총 건수
-#   metrics.payment_failed_count    — FAILED 종결 건수
-#   metrics.e2e_timeout_count       — 폴링 타임아웃(POLL_TIMEOUT_MS 초과) 건수
-#   k6 DONE = confirm_requests - payment_failed - e2e_timeout
-#   (checkout 실패/중복/amount 오류로 confirm 미진입한 iteration 은 confirm_requests 에 미포함)
+#   metrics.confirm_requests_count — confirm 요청 총 건수(부하 시나리오 + 지연 표본 시나리오 합)
+#   metrics.confirm_rejected_count — confirm 이 400(재고 부족)으로 즉시 거절된 건수 — 비동기
+#                                     파이프라인에 진입하지 않아 DB 종결 대상에서 빠진다
+#
+# 부하 시나리오(async_payment)는 확정 접수까지만 확인하고 종결까지 폴링하지 않는다
+# (scripts/k6/async-payment.js Task 18) — VU 를 종결까지 붙잡으면 도착률이 VU 상한에 갇힌다.
+# 그래서 k6 쪽에서 전수로 신뢰할 수 있는 값은 "확정 접수까지 성공한 건수"뿐이고, 그 이후
+# DONE/FAILED 구성비는 k6 가 더 이상 관측하지 않는다 — 아래 metrics.payment_failed_count /
+# e2e_timeout_count / e2e_resolved_count 는 낮은 도착률의 지연 표본 시나리오(latency_sample)가
+# 관측한 값이라 정황 참고용일 뿐 전수가 아니다. DONE/FAILED 구성비와 개별 유실 여부의 실제
+# 권한자는 DB 자체다 — 아래 교차식 [1]과 상품별·건별 대조 [3][4].
 
 K6_CONFIRM=$(jq '.metrics.confirm_requests_count // 0' "${RESULT_JSON}")
-K6_FAILED=$(jq '.metrics.payment_failed_count // 0' "${RESULT_JSON}")
-K6_TIMEOUT=$(jq '.metrics.e2e_timeout_count // 0' "${RESULT_JSON}")
-K6_DONE=$(( K6_CONFIRM - K6_FAILED - K6_TIMEOUT ))
-K6_TOTAL=$(( K6_DONE + K6_FAILED + K6_TIMEOUT ))
+K6_REJECTED=$(jq '.metrics.confirm_rejected_count // 0' "${RESULT_JSON}")
+K6_SUBMITTED=$(( K6_CONFIRM - K6_REJECTED ))
 
-echo "  k6 confirm 총 요청수:  ${K6_CONFIRM}"
-echo "  k6 DONE:               ${K6_DONE}  (confirm - FAILED - timeout)"
-echo "  k6 FAILED:             ${K6_FAILED}"
-echo "  k6 e2e_timeout:        ${K6_TIMEOUT}"
+# 표본(latency_sample) 관측 — 정황 참고용
+K6_SAMPLE_FAILED=$(jq '.metrics.payment_failed_count // 0' "${RESULT_JSON}")
+K6_SAMPLE_TIMEOUT=$(jq '.metrics.e2e_timeout_count // 0' "${RESULT_JSON}")
+K6_SAMPLE_RESOLVED=$(jq '.metrics.e2e_resolved_count // 0' "${RESULT_JSON}")
+
+echo "  k6 confirm 총 요청수:        ${K6_CONFIRM}"
+echo "  k6 confirm 거절(400):        ${K6_REJECTED}"
+echo "  k6 제출(비동기 진입 기대):   ${K6_SUBMITTED}  (confirm - 거절)"
 echo "  ─────────────────────────────────────"
-echo "  k6 총합(DONE+FAILED+timeout): ${K6_TOTAL}"
+echo "  [표본, 전수 아님] 지연 시나리오 종결 관측: ${K6_SAMPLE_RESOLVED}건 (FAILED ${K6_SAMPLE_FAILED} / 타임아웃 ${K6_SAMPLE_TIMEOUT})"
 
 echo ""
 
@@ -516,39 +526,30 @@ print_section "━━━━━━━━━━━━━━━━━━━━━�
 
 echo ""
 
-# [1] k6 총합 == DB 총합
-print_section "  [1] k6(DONE+FAILED+timeout) == DB(DONE+FAILED+QUARANTINED+미종결)"
-echo "      k6 총합: ${K6_TOTAL}  /  DB 총합: ${DB_TOTAL}"
+# [1] k6 제출(비동기 진입 기대) == DB 총합 — 부하 시나리오가 확정 접수까지만 확인하고
+# 종결까지 관측하지 않으므로(Task 18), 총건수 유실 여부를 가르는 이 식이 k6 쪽에서 낼 수
+# 있는 유일한 전수 교차식이다. DONE/FAILED 구성비는 DB 가 낸다(불일치면 [3][4]가 잡는다)
+print_section "  [1] k6 제출(confirm - 거절) == DB(DONE+FAILED+QUARANTINED+미종결)"
+echo "      k6 제출: ${K6_SUBMITTED}  /  DB 총합: ${DB_TOTAL}"
 
 CROSS_1_OK=false
-if [[ "${K6_TOTAL}" -eq "${DB_TOTAL}" ]]; then
+if [[ "${K6_SUBMITTED}" -eq "${DB_TOTAL}" ]]; then
     CROSS_1_OK=true
     print_info "      ✅ 일치 — 총 건수 정합"
 else
-    DIFF_1=$(( K6_TOTAL - DB_TOTAL ))
-    print_warning "      ⚠️  불일치 (k6 - DB = ${DIFF_1})"
+    DIFF_1=$(( K6_SUBMITTED - DB_TOTAL ))
+    print_warning "      ⚠️  불일치 (k6 제출 - DB = ${DIFF_1})"
 fi
 
 echo ""
 
-# [2] k6 DONE == DB DONE — 어긋나도 그 차이가 k6 포기 건수(K6_TIMEOUT) 이내면 관측이
-# 잘린 것으로 보고 설명된 차이로 다룬다(유실 여부는 [1]/[3]/[4]가 맡는다). 자세한 근거는
-# 파일 상단 "불일치 해석" 참고
-print_section "  [2] k6(DONE) == DB(DONE)"
-echo "      k6 DONE: ${K6_DONE}  /  DB DONE: ${DB_DONE}  /  k6 포기(timeout): ${K6_TIMEOUT}"
-
-CROSS_2_OK=false
-CROSS_2_EXPLAINED=false
-DIFF_2=$(( DB_DONE - K6_DONE ))
-if [[ "${K6_DONE}" -eq "${DB_DONE}" ]]; then
-    CROSS_2_OK=true
-    print_info "      ✅ 일치 — DONE 정합"
-elif [[ "${DIFF_2}" -ge 0 ]] && [[ "${DIFF_2}" -le "${K6_TIMEOUT}" ]]; then
-    CROSS_2_EXPLAINED=true
-    print_warning "      ℹ️  차이 있으나 관측 포기 건수로 설명됨 (DB - k6 = ${DIFF_2} <= timeout ${K6_TIMEOUT})"
-else
-    print_warning "      ⚠️  불일치 — 포기 건수로 설명 안 됨 (DB - k6 = ${DIFF_2}, timeout=${K6_TIMEOUT})"
-fi
+# [2] 지연 표본 시나리오 관측 — 정보 제공용이지 정합 판정 게이트가 아니다. 부하 시나리오가
+# 폴링하지 않으므로 DONE/FAILED 구성비를 k6 로 되짚을 전수 값이 없다 — DB FAILED(전수)를
+# 그대로 보여주고, 표본이 관측한 값과 나란히 둔다
+print_section "  [2] 참고 — 지연 표본 시나리오 관측(전수 아님, 판정에 쓰지 않는다)"
+echo "      표본 종결 관측: ${K6_SAMPLE_RESOLVED}건 (FAILED ${K6_SAMPLE_FAILED} / 타임아웃 ${K6_SAMPLE_TIMEOUT})"
+echo "      DB FAILED(전수): ${DB_FAILED}"
+print_info "      ℹ️  DONE/FAILED 구성비와 개별 유실 여부의 실제 권한자는 교차식 [1]과 상품별·건별 대조 [3][4]다"
 
 echo ""
 
@@ -737,12 +738,10 @@ else
     print_info "  ✅ 미종결 잔여 없음 (READY=0 / IN_PROGRESS=0 / RETRYING=0)"
 fi
 
-if [[ "${K6_TIMEOUT}" -gt 0 ]] && [[ "${CROSS_2_OK}" == "true" ]]; then
-    print_warning "  ℹ️  e2e_timeout=${K6_TIMEOUT} 이지만 DB DONE 정합 — 지연 종결로 확인됨"
-    echo "       (k6 폴링 타임아웃 이후 reconciler 가 정상 회수)"
-elif [[ "${K6_TIMEOUT}" -gt 0 ]] && [[ "${CROSS_2_EXPLAINED}" == "true" ]]; then
-    print_warning "  ℹ️  e2e_timeout=${K6_TIMEOUT} 이고 DB DONE 이 k6 관측보다 ${DIFF_2}건 많음 — 포기 건수 이내라 지연 종결로 설명됨"
-    echo "       (관측이 잘린 것이지 유실이 아니다 — 총건수 교차식[1]과 상품별·건별 대조[3][4]가 유실을 잡는다)"
+if [[ "${K6_SAMPLE_TIMEOUT}" -gt 0 ]]; then
+    print_warning "  ℹ️  지연 표본 타임아웃=${K6_SAMPLE_TIMEOUT}건 — 표본(latency_sample)이 POLL_TIMEOUT_MS 안에"
+    echo "       종결을 못 봤다는 뜻이지 유실은 아니다. 부하 시나리오는 애초에 폴링하지 않으므로"
+    echo "       이 값이 크더라도 총건수 교차식[1]과 상품별·건별 대조[3][4]가 통과하면 무시한다"
 fi
 
 echo ""
@@ -758,18 +757,11 @@ print_section "━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "  CASE_NAME:    ${CASE_NAME}"
 echo "  settle 대기:  ${SETTLE_WAIT_SECONDS}s$( [[ "${SETTLE_WAIT_AUTO}" == "true" ]] && echo " (자동 산출)" || echo " (명시 지정)" )"
-echo "  k6 결과:      confirm=${K6_CONFIRM} / DONE=${K6_DONE} / FAILED=${K6_FAILED} / timeout=${K6_TIMEOUT}"
+echo "  k6 결과:      confirm=${K6_CONFIRM} / 거절=${K6_REJECTED} / 제출=${K6_SUBMITTED} / [표본]FAILED=${K6_SAMPLE_FAILED} / [표본]timeout=${K6_SAMPLE_TIMEOUT}"
 echo "  DB 결과:      DONE=${DB_DONE} / FAILED=${DB_FAILED} / QUARANTINED=${DB_QUARANTINED} / 미종결=${DB_UNSETTLED}"
 echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
-echo "  교차식 [1] k6총합==DB총합: $( [[ "${CROSS_1_OK}" == "true" ]] && echo PASS || echo FAIL )  (k6=${K6_TOTAL} / DB=${DB_TOTAL})"
-
-CROSS_2_LABEL="FAIL"
-if [[ "${CROSS_2_OK}" == "true" ]]; then
-    CROSS_2_LABEL="PASS"
-elif [[ "${CROSS_2_EXPLAINED}" == "true" ]]; then
-    CROSS_2_LABEL="EXPLAINED(포기건수 이내)"
-fi
-echo "  교차식 [2] k6DONE==DB DONE: ${CROSS_2_LABEL}  (k6=${K6_DONE} / DB=${DB_DONE} / 차이=${DIFF_2} / timeout=${K6_TIMEOUT})"
+echo "  교차식 [1] k6제출==DB총합: $( [[ "${CROSS_1_OK}" == "true" ]] && echo PASS || echo FAIL )  (k6=${K6_SUBMITTED} / DB=${DB_TOTAL})"
+echo "  참고 [2] 지연 표본 관측(판정 미반영): 종결 ${K6_SAMPLE_RESOLVED}건 / FAILED ${K6_SAMPLE_FAILED} / timeout ${K6_SAMPLE_TIMEOUT}"
 echo "  교차식 [3] 상품별 재고 정합: ${STOCK_VERDICT}  (불일치 ${STOCK_MISMATCH_COUNT}종 / 대상 ${PRODUCT_COUNT}종)"
 
 CROSS_4_LABEL="SKIPPED"
@@ -795,14 +787,10 @@ elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_C
     VERDICT="INCONCLUSIVE"
     EXIT_CODE=2
     VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
-elif [[ "${CROSS_1_OK}" != "true" ]] || ( [[ "${CROSS_2_OK}" != "true" ]] && [[ "${CROSS_2_EXPLAINED}" != "true" ]] ) || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
+elif [[ "${CROSS_1_OK}" != "true" ]] || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
-    VERDICT_REASON="정합 불일치 — 교차식1=${CROSS_1_OK} 교차식2=${CROSS_2_OK}(설명됨=${CROSS_2_EXPLAINED}, 차이=${DIFF_2}, timeout=${K6_TIMEOUT}) 재고불일치=${STOCK_MISMATCH_COUNT}종 건별대조불일치=${SETTLE_MISMATCH_COUNT}건"
-elif [[ "${CROSS_2_OK}" != "true" ]]; then
-    VERDICT="PASS"
-    EXIT_CODE=0
-    VERDICT_REASON="전항목 통과 — 교차식2는 k6 관측 포기 건수(${K6_TIMEOUT}) 이내 차이(${DIFF_2})로 설명됨(지연 종결). 상품 ${PRODUCT_COUNT}종 재고 정합 / 건별 대조 일치 / 격리·미종결·미회수 선차감 기록 0, 소비 적체 게이트(파티션 수 이하+더 줄지 않음) 통과"
+    VERDICT_REASON="정합 불일치 — 교차식1(k6제출==DB총합)=${CROSS_1_OK} 재고불일치=${STOCK_MISMATCH_COUNT}종 건별대조불일치=${SETTLE_MISMATCH_COUNT}건"
 else
     VERDICT="PASS"
     EXIT_CODE=0
@@ -834,14 +822,16 @@ jq -n \
     --argjson exit_code "${EXIT_CODE}" \
     --arg reason "${VERDICT_REASON}" \
     --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --argjson k6_total "${K6_TOTAL}" \
-    --argjson k6_done "${K6_DONE}" \
-    --argjson k6_timeout "${K6_TIMEOUT}" \
+    --argjson k6_confirm "${K6_CONFIRM}" \
+    --argjson k6_rejected "${K6_REJECTED}" \
+    --argjson k6_submitted "${K6_SUBMITTED}" \
+    --argjson k6_sample_resolved "${K6_SAMPLE_RESOLVED}" \
+    --argjson k6_sample_failed "${K6_SAMPLE_FAILED}" \
+    --argjson k6_sample_timeout "${K6_SAMPLE_TIMEOUT}" \
     --argjson db_total "${DB_TOTAL}" \
     --argjson db_done "${DB_DONE}" \
-    --argjson cross_2_ok "$( [[ "${CROSS_2_OK}" == "true" ]] && echo true || echo false )" \
-    --argjson cross_2_explained "$( [[ "${CROSS_2_EXPLAINED}" == "true" ]] && echo true || echo false )" \
-    --argjson cross_2_diff "${DIFF_2}" \
+    --argjson db_failed "${DB_FAILED}" \
+    --argjson cross_1_ok "$( [[ "${CROSS_1_OK}" == "true" ]] && echo true || echo false )" \
     --argjson db_quarantined "${DB_QUARANTINED}" \
     --argjson db_unsettled "${DB_UNSETTLED}" \
     --argjson db_noise "${DB_NOISE}" \
@@ -860,14 +850,16 @@ jq -n \
         reason: $reason,
         checked_at: $checked_at,
         counts: {
-            k6_total: $k6_total,
-            k6_done: $k6_done,
-            k6_timeout: $k6_timeout,
+            k6_confirm: $k6_confirm,
+            k6_rejected: $k6_rejected,
+            k6_submitted: $k6_submitted,
+            k6_sample_resolved: $k6_sample_resolved,
+            k6_sample_failed: $k6_sample_failed,
+            k6_sample_timeout: $k6_sample_timeout,
             db_total: $db_total,
             db_done: $db_done,
-            cross_2_ok: $cross_2_ok,
-            cross_2_explained: $cross_2_explained,
-            cross_2_diff: $cross_2_diff,
+            db_failed: $db_failed,
+            cross_1_ok: $cross_1_ok,
             db_quarantined: $db_quarantined,
             db_unsettled: $db_unsettled,
             db_noise: $db_noise,

@@ -44,13 +44,23 @@
 #   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK — scripts/bench-seed-stock.sh 와 동일
 #   K6_EXTRA_ARGS              — k6 run 에 추가 전달할 -e KEY=VALUE 인자(공백 구분)
 #   REPLICA_SAMPLE_INTERVAL_SECONDS — 복제 지연 표본 주기 초 (기본 5)
+#   K6_CPU_SAMPLE_INTERVAL_SECONDS  — k6 프로세스 CPU 표본 주기 초 (기본 2) — 측정 대상(payment
+#                               앱)과 CPU 를 다투는지 확인하기 위해 부하 도구 자신의 점유도 남긴다
+#   LATENCY_SAMPLE_RATE_PER_SEC     — 지연 표본 시나리오 도착률 req/s (기본 2). 0 이면 표본
+#                               시나리오를 켜지 않는다(체감 지연 결과가 비게 된다)
 #   INCONCLUSIVE_MAX_RETRIES        — 판단 보류 재검증 최대 횟수 (기본 3)
 #   INCONCLUSIVE_RETRY_WAIT_SECONDS — 재검증 사이 대기 초 (기본 20)
 #
+# 부하 시나리오는 확정 접수까지만 확인하고 VU 를 놓아준다(async-payment.js 에 SKIP_POLL=true 로
+# 고정 전달) — 종결 폴링으로 VU 를 붙잡던 옛 구조는 도착률이 VU 상한 ÷ 종결 시간에 갇혀 목표
+# 도착률에 못 닿고 dropped_iterations 만 쌓았다. 체감 지연은 별도의 낮은 도착률 표본
+# 시나리오(latency_sample)로 재고, 처리율은 부하 도구 관측 여부와 무관하게 DB 종결 건수를
+# 부하 구간으로 나눠 낸다(throughput.db_done_per_load_sec).
+#
 # 결과 파일:
-#   results/<CASE_NAME>-cycle.json — 조건 값, 처리율, 백분위 지연, 복제 지연, 정합 판정.
-#   부하 도구가 쓰는 results/<CASE_NAME>.json 과 verify-settlement.sh 의
-#   results/<CASE_NAME>-verdict.json 어느 쪽도 건드리지 않는다.
+#   results/<CASE_NAME>-cycle.json — 조건 값, 처리율, 부하 무결성(dropped_iterations), k6 자체
+#   CPU 점유, 백분위 지연(표본), 복제 지연, 정합 판정. 부하 도구가 쓰는 results/<CASE_NAME>.json 과
+#   verify-settlement.sh 의 results/<CASE_NAME>-verdict.json 어느 쪽도 건드리지 않는다.
 #
 # 선행 조건:
 #   - docker / k6 / jq 설치
@@ -118,6 +128,8 @@ PRODUCT_ID_BASE="${PRODUCT_ID_BASE:-1000}"
 BENCH_STOCK="${BENCH_STOCK:-10000000}"
 K6_EXTRA_ARGS="${K6_EXTRA_ARGS:-}"
 REPLICA_SAMPLE_INTERVAL_SECONDS="${REPLICA_SAMPLE_INTERVAL_SECONDS:-5}"
+K6_CPU_SAMPLE_INTERVAL_SECONDS="${K6_CPU_SAMPLE_INTERVAL_SECONDS:-2}"
+LATENCY_SAMPLE_RATE_PER_SEC="${LATENCY_SAMPLE_RATE_PER_SEC:-2}"
 INCONCLUSIVE_MAX_RETRIES="${INCONCLUSIVE_MAX_RETRIES:-3}"
 INCONCLUSIVE_RETRY_WAIT_SECONDS="${INCONCLUSIVE_RETRY_WAIT_SECONDS:-20}"
 
@@ -292,6 +304,58 @@ replica_lag_stats_json() {
     ' "${REPLICA_LAG_LOG}"
 }
 
+K6_CPU_LOG=""
+K6_CPU_SAMPLER_PID=""
+
+# k6 프로세스 자신의 CPU 점유를 표본화한다 — 측정 대상(payment 앱)과 CPU 를 다투면 그것도
+# 부하 도구발 오염이라 별도로 남긴다. k6 가 종료하면 kill -0 이 실패해 루프가 스스로 끝난다.
+start_k6_cpu_sampler() {
+    local k6_pid="$1"
+    K6_CPU_LOG="$(mktemp "${ROOT_DIR}/results/.k6-cpu.${CASE_NAME}.XXXXXX")"
+    (
+        while kill -0 "${k6_pid}" 2>/dev/null; do
+            cpu=$(ps -o %cpu= -p "${k6_pid}" 2>/dev/null | tr -d ' ')
+            echo "$(date +%s) ${cpu:-NULL}" >> "${K6_CPU_LOG}"
+            sleep "${K6_CPU_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    K6_CPU_SAMPLER_PID=$!
+}
+
+# 루프가 k6 종료로 스스로 끝나므로 보통 필요 없지만, k6 가 비정상 종료해 표본화 서브셸이
+# 아직 자고 있는 경우를 대비해 정리한다(REPLICA 표본화와 같은 이유로 확인 없이 SIGKILL 만 쏜다).
+stop_k6_cpu_sampler() {
+    if [[ -n "${K6_CPU_SAMPLER_PID}" ]]; then
+        kill -9 "${K6_CPU_SAMPLER_PID}" 2>/dev/null || true
+        K6_CPU_SAMPLER_PID=""
+    fi
+}
+
+# 표본 로그(초 단위 정수 epoch, %cpu 값)에서 개수/최소/평균/최대를 뽑는다. %cpu 는 코어 하나
+# 기준 퍼센트라 멀티스레드 프로세스는 100 을 넘을 수 있다 — 그대로 낸다.
+k6_cpu_stats_json() {
+    if [[ -z "${K6_CPU_LOG}" || ! -s "${K6_CPU_LOG}" ]]; then
+        echo '{"samples":0,"min":null,"avg":null,"max":null}'
+        return
+    fi
+    awk '
+        {
+            if ($2 !~ /^[0-9.]+$/) { next }
+            n++
+            sum += $2
+            if (n == 1 || $2 + 0 < lo) { lo = $2 + 0 }
+            if (n == 1 || $2 + 0 > hi) { hi = $2 + 0 }
+        }
+        END {
+            if (n == 0) {
+                print "{\"samples\":0,\"min\":null,\"avg\":null,\"max\":null}"
+                exit
+            }
+            printf "{\"samples\":%d,\"min\":%.1f,\"avg\":%.2f,\"max\":%.1f}\n", n, lo, sum / n, hi
+        }
+    ' "${K6_CPU_LOG}"
+}
+
 check_docker
 
 # ---------------------------------------------------------------------------
@@ -458,17 +522,25 @@ set +e
     cd "${ROOT_DIR}"
     # shellcheck disable=SC2086 — K6_EXTRA_ARGS 는 "-e KEY=VALUE" 형태를 공백으로 여러 개
     # 이어붙이는 용도라 단어 분리가 의도된 동작이다.
-    k6 run \
+    # exec 로 이 서브셸을 k6 프로세스로 완전히 치환한다 — 뒤에서 $! 로 잡는 PID 가 감싸는
+    # 셸이 아니라 k6 자신이어야 CPU 표본화가 정확한 프로세스를 겨냥한다.
+    exec k6 run \
         --tag "testid=${CASE_NAME}" \
         -e "BASE_URL=${BASE_URL}" \
         -e "CASE_NAME=${CASE_NAME}" \
         -e "ITEMS_PER_ORDER=${ITEMS_PER_ORDER}" \
         -e "PRODUCT_COUNT=${PRODUCT_COUNT}" \
         -e "PRODUCT_ID_BASE=${PRODUCT_ID_BASE}" \
+        -e "SKIP_POLL=true" \
+        -e "SAMPLE_RATE=${LATENCY_SAMPLE_RATE_PER_SEC}" \
         ${K6_EXTRA_ARGS} \
         "${SCRIPT_DIR}/k6/async-payment.js"
-)
+) &
+K6_PID=$!
+start_k6_cpu_sampler "${K6_PID}"
+wait "${K6_PID}"
 K6_EXIT=$?
+stop_k6_cpu_sampler
 set -e
 LOAD_END_EPOCH=$(date +%s)
 LOAD_DURATION_SEC=$((LOAD_END_EPOCH - LOAD_START_EPOCH))
@@ -598,8 +670,14 @@ print_section "▶ (7) 결과 기록 — ${CYCLE_JSON}"
 K6_RESULT_JSON="${RESULTS_DIR}/${CASE_NAME}.json"
 CONFIRM_COUNT=0
 DB_DONE_COUNT=0
+DROPPED_ITERATIONS=0
+ITERATIONS_COMPLETED=0
+SAMPLE_RESOLVED_COUNT=0
 if [[ -f "${K6_RESULT_JSON}" ]]; then
     CONFIRM_COUNT=$(jq -r '.metrics.confirm_requests_count // 0' "${K6_RESULT_JSON}")
+    DROPPED_ITERATIONS=$(jq -r '.metrics.dropped_iterations_count // 0' "${K6_RESULT_JSON}")
+    ITERATIONS_COMPLETED=$(jq -r '.metrics.iterations_count // 0' "${K6_RESULT_JSON}")
+    SAMPLE_RESOLVED_COUNT=$(jq -r '.metrics.e2e_resolved_count // 0' "${K6_RESULT_JSON}")
 fi
 if [[ -f "${VERDICT_JSON}" ]]; then
     DB_DONE_COUNT=$(jq -r '.counts.db_done // 0' "${VERDICT_JSON}")
@@ -607,17 +685,27 @@ fi
 
 TOTAL_WALL_SEC=$((SETTLE_END_EPOCH - LOAD_START_EPOCH))
 CONFIRM_PER_SEC="0"
-E2E_PER_SEC="0"
+DB_DONE_PER_LOAD_SEC="0"
 if [[ "${LOAD_DURATION_SEC}" -gt 0 ]]; then
     CONFIRM_PER_SEC=$(awk -v c="${CONFIRM_COUNT}" -v d="${LOAD_DURATION_SEC}" 'BEGIN { printf "%.3f", c / d }')
 fi
-if [[ "${OUTCOME}" == "SUCCESS" && "${TOTAL_WALL_SEC}" -gt 0 ]]; then
-    E2E_PER_SEC=$(awk -v c="${DB_DONE_COUNT}" -v d="${TOTAL_WALL_SEC}" 'BEGIN { printf "%.3f", c / d }')
+# 처리율 = DB 종결 건수 ÷ 부하 구간(k6 가 실제로 관측했는지와 무관한 값). 정산 대기(settle
+# wait)는 부하가 아니라 뒤늦은 종결을 기다리는 시간이라 분모에 넣지 않는다 — 넣으면 사이클마다
+# 다른 회수 기준(RECONCILER_TIMEOUT)이 그대로 처리율에 섞여 들어간다.
+if [[ "${OUTCOME}" == "SUCCESS" && "${LOAD_DURATION_SEC}" -gt 0 ]]; then
+    DB_DONE_PER_LOAD_SEC=$(awk -v c="${DB_DONE_COUNT}" -v d="${LOAD_DURATION_SEC}" 'BEGIN { printf "%.3f", c / d }')
+fi
+
+DROPPED_RATE="0"
+TOTAL_PLANNED_ITERATIONS=$((DROPPED_ITERATIONS + ITERATIONS_COMPLETED))
+if [[ "${TOTAL_PLANNED_ITERATIONS}" -gt 0 ]]; then
+    DROPPED_RATE=$(awk -v d="${DROPPED_ITERATIONS}" -v t="${TOTAL_PLANNED_ITERATIONS}" 'BEGIN { printf "%.4f", d / t }')
 fi
 
 POLL_LATENCY_JSON=$(jq -c '.metrics.http_req_duration_poll // null' "${K6_RESULT_JSON}" 2>/dev/null || echo null)
 E2E_LATENCY_JSON=$(jq -c '.metrics.e2e_completion_ms // null' "${K6_RESULT_JSON}" 2>/dev/null || echo null)
 REPLICA_LAG_JSON=$(replica_lag_stats_json)
+K6_CPU_JSON=$(k6_cpu_stats_json)
 
 jq -n \
     --arg case_name "${CASE_NAME}" \
@@ -639,10 +727,15 @@ jq -n \
     --argjson load_duration_sec "${LOAD_DURATION_SEC}" \
     --argjson total_wall_sec "${TOTAL_WALL_SEC}" \
     --arg confirm_per_sec "${CONFIRM_PER_SEC}" \
-    --arg e2e_per_sec "${E2E_PER_SEC}" \
+    --arg db_done_per_load_sec "${DB_DONE_PER_LOAD_SEC}" \
+    --argjson dropped_iterations "${DROPPED_ITERATIONS}" \
+    --argjson iterations_completed "${ITERATIONS_COMPLETED}" \
+    --arg dropped_rate "${DROPPED_RATE}" \
+    --argjson sample_resolved_count "${SAMPLE_RESOLVED_COUNT}" \
     --argjson poll_latency_ms "${POLL_LATENCY_JSON}" \
     --argjson e2e_latency_ms "${E2E_LATENCY_JSON}" \
     --argjson replica_lag_seconds "${REPLICA_LAG_JSON}" \
+    --argjson k6_cpu_percent "${K6_CPU_JSON}" \
     --arg verdict "${VERDICT}" \
     --argjson verify_exit_code "${VERIFY_EXIT}" \
     --arg verdict_reason "${VERDICT_REASON}" \
@@ -672,13 +765,20 @@ jq -n \
             load_duration_sec: $load_duration_sec,
             total_wall_sec: $total_wall_sec,
             confirm_per_sec: ($confirm_per_sec | tonumber),
-            e2e_done_per_sec: ($e2e_per_sec | tonumber)
+            db_done_per_load_sec: ($db_done_per_load_sec | tonumber)
         },
-        latency_ms: {
-            poll_response: $poll_latency_ms,
-            e2e_completion: $e2e_latency_ms
+        load_integrity: {
+            dropped_iterations: $dropped_iterations,
+            iterations_completed: $iterations_completed,
+            dropped_rate: ($dropped_rate | tonumber)
+        },
+        latency_sample: {
+            resolved_count: $sample_resolved_count,
+            poll_response_ms: $poll_latency_ms,
+            e2e_completion_ms: $e2e_latency_ms
         },
         replica_lag_seconds: $replica_lag_seconds,
+        k6_cpu_percent: $k6_cpu_percent,
         settlement: {
             verdict: $verdict,
             verify_exit_code: $verify_exit_code,
@@ -693,6 +793,9 @@ print_info "✅ (7) 결과 기록 완료 — ${CYCLE_JSON}"
 
 if [[ -n "${REPLICA_LAG_LOG}" ]]; then
     rm -f "${REPLICA_LAG_LOG}"
+fi
+if [[ -n "${K6_CPU_LOG}" ]]; then
+    rm -f "${K6_CPU_LOG}"
 fi
 
 echo ""

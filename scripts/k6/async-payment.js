@@ -1,21 +1,37 @@
 /**
  * 비동기 결제 경로 e2e 부하 시나리오
  *
- * 측정 플로우: 주문 생성(checkout) → 승인 접수(confirm 202) → 상태 폴링(DONE/FAILED)
+ * 시나리오 둘을 함께 돌린다:
+ *   async_payment   — 부하 본체. checkout → confirm 접수까지만 확인하고 VU 를 곧바로 놓아준다
+ *                      (SKIP_POLL=true). iteration 이 수십 밀리초로 끝나 VU 수십 개로도 초당
+ *                      수백 건을 낼 수 있다 — 폴링으로 VU 를 붙잡던 옛 구조는 도착률이
+ *                      VU 상한 ÷ 종결 시간에 갇혀 목표 도착률에 못 닿고 dropped_iterations 만
+ *                      쌓았다. bench-scaleout-cycle.sh 는 이 플래그를 true 로 고정해서 부른다.
+ *                      SKIP_POLL 미지정(false) 이면 옛 방식대로 confirm 이후 폴링까지 마친 뒤
+ *                      VU 를 놓아준다 — sweep.sh 의 SKIP_POLL=false(비동기 e2e 경로) 사용은
+ *                      이 자리를 그대로 쓴다.
+ *   latency_sample  — SAMPLE_RATE>0 일 때만 추가되는 낮은 고정 도착률 시나리오. checkout →
+ *                      confirm → 종결(DONE/FAILED) 까지 전 과정을 끝까지 지켜본다. 체감 지연은
+ *                      이 시나리오의 표본만으로 잰다 — 전수 관측이 아니다. async_payment 가
+ *                      폴링을 놓은 자리를 이 시나리오가 대신한다.
  *
  * 오염 차단 (domain_risk 핵심):
  *   F1 멱등키 충돌 — 매 iteration 고유 Idempotency-Key 사용. checkout status==201 check로 가드.
  *   F2 재고 고갈  — confirm 400(재고 부족) 미발생 check. 실행 전 bench-seed-stock.sh 필수.
  *   F3 QUARANTINED 폴링 맹점 — baseline failRate=0(compose 기본값). 폴링은 DONE/FAILED만 종결.
  *
- * 폴링 전략 (POLL_STRATEGY env):
+ * 폴링 전략 (POLL_STRATEGY env, latency_sample 및 SKIP_POLL=false 인 async_payment 에 적용):
  *   fixed   — 고정 간격(POLL_INTERVAL_MS). 기본값. thundering herd 가능.
  *   backoff — 지수 백오프 + 완전 지터(Full Jitter). thundering herd 방지.
  *             VU별 재시도가 분산되어 서버 폴링 부하가 균등화된다.
  *
  * 계측 이원화:
- *   체감 latency  — confirm 202 수신(confirmAt) ~ 폴링 DONE 수신(resolvedAt). 이 스크립트 측정.
- *   처리 latency  — payment_history 최초 DONE 전이 시각(DB). verify-settlement.sh 사후 조인.
+ *   체감 latency  — confirm 202 수신(confirmAt) ~ 폴링 DONE 수신(resolvedAt). latency_sample 표본만.
+ *   처리 latency  — payment_history 최초 DONE 전이 시각(DB). verify-settlement.sh 사후 조인 —
+ *                   부하 도구가 관측했는지와 무관하게 시스템이 실제로 처리한 전수를 담는다.
+ *   부하 무결성   — dropped_iterations(발사조차 못 한 반복)/iterations(실제로 발사된 반복).
+ *                   0이 아니면 그 사이클은 부하 미달이라 처리율 비교에 못 쓴다(bench-scaleout-cycle.sh
+ *                   가 결과에 남긴다).
  *   사후 조인 키  — orderId. console.log JSON 라인으로 confirmAt·resolvedAt·pollEvents 출력.
  *                   k6 --log-output=file=<path> 또는 stderr 리디렉션으로 추출 가능.
  *
@@ -28,10 +44,11 @@
  *   k6 run \
  *     -e BASE_URL=http://localhost:8080 \
  *     -e CASE_NAME=async-low \
- *     -e POLL_STRATEGY=backoff \
+ *     -e SKIP_POLL=true \
+ *     -e SAMPLE_RATE=2 \
  *     scripts/k6/async-payment.js
  *
- *   # 폴링 OFF (동기 confirm 경로 병목 측정):
+ *   # 폴링 OFF (동기 confirm 경로 병목 측정, 표본도 없이):
  *   k6 run -e SKIP_POLL=true ...
  */
 
@@ -77,10 +94,49 @@ const loadScenario = SWEEP_RATE > 0
         stages: RAMPING_ARRIVAL_RATE_STAGES,
     };
 
+/**
+ * "Ns" 형식 duration 문자열에서 초 단위 정수를 뽑는다. 단위가 없으면(순수 숫자 문자열) 그대로 쓴다.
+ *
+ * @param {string} durationStr k6 duration 문자열(예: "60s")
+ * @returns {number} 초
+ */
+function parseDurationSeconds(durationStr) {
+    return parseInt(String(durationStr).replace(/s$/, ''), 10);
+}
+
+/**
+ * ramping-arrival-rate stages 배열의 총 소요 시간(초)을 더한다.
+ *
+ * @param {Array<{duration: string, target: number}>} stages
+ * @returns {number} 총 초
+ */
+function sumStageDurationSeconds(stages) {
+    return stages.reduce((total, stage) => total + parseDurationSeconds(stage.duration), 0);
+}
+
+// 지연 표본 시나리오 — 낮은 고정 도착률로 확정부터 종결까지 전 과정을 지켜본다. SAMPLE_RATE<=0
+// (기본값)이면 시나리오 자체를 만들지 않는다 — 이 표본이 필요 없는 도구(sweep.sh 등)의 기존
+// 실행 결과에 영향을 주지 않기 위해서다.
+const SAMPLE_RATE = parseInt(__ENV.SAMPLE_RATE || '0', 10);
+
+const scenarios = { async_payment: loadScenario };
+if (SAMPLE_RATE > 0) {
+    const sampleDurationSec = SWEEP_RATE > 0
+        ? parseDurationSeconds(__ENV.DURATION || '30s')
+        : sumStageDurationSeconds(RAMPING_ARRIVAL_RATE_STAGES);
+    scenarios.latency_sample = {
+        executor: 'constant-arrival-rate',
+        rate: SAMPLE_RATE,
+        timeUnit: '1s',
+        duration: `${sampleDurationSec}s`,
+        preAllocatedVUs: parseInt(__ENV.SAMPLE_PRE_VUS || '5', 10),
+        maxVUs: parseInt(__ENV.SAMPLE_MAX_VUS || '20', 10),
+        exec: 'latencySampleIteration',
+    };
+}
+
 export const options = {
-    scenarios: {
-        async_payment: loadScenario,
-    },
+    scenarios,
 
     /**
      * p50(med)/p90/p95/p99 를 전 Trend 지표에 공통 적용한다. threshold 가 없는
@@ -100,7 +156,7 @@ export const options = {
         ],
 
         /**
-         * e2e 완료 시간: checkout 요청 ~ pollStatus DONE/FAILED 수신까지.
+         * e2e 완료 시간: confirm 202 ~ pollStatus DONE/FAILED 수신까지(latency_sample 표본).
          * 비동기 처리 특성상 outbox worker 폴백 주기(2s) 이상이 소요될 수 있다.
          */
         'e2e_completion_ms': [
@@ -115,11 +171,21 @@ export const options = {
         'checks': ['rate>0.99'],
 
         /**
-         * e2e 타임아웃 상한: POLL_TIMEOUT_MS 초과로 종결되지 않은 요청 수.
+         * e2e 타임아웃 상한: POLL_TIMEOUT_MS 초과로 종결되지 않은 표본 수(latency_sample).
          * baseline(failRate=0)에서는 타임아웃이 거의 발생하지 않아야 한다.
-         * 전체 iteration 대비 1% 이하를 허용 상한으로 설정한다.
          */
         'e2e_timeout': ['count<100'],
+
+        /**
+         * 부하 시나리오(async_payment) 전용 dropped_iterations/iterations — 제약이 아니라
+         * (count>=0 은 항상 참) k6 요약 JSON 에 이 태그 조합을 강제로 실어 내려는 용도다.
+         * latency_sample 은 완전 종결까지 폴링하느라 자체적으로 VU 가 부족해질 수 있는데,
+         * 그 드롭까지 전역 dropped_iterations 에 섞이면 "부하 도구가 목표 도착률을 실제로
+         * 냈는지"를 가리키는 신호(bench-scaleout-cycle.sh 의 load_integrity)가 표본 시나리오의
+         * 사정으로 오염된다 — 부하 시나리오 것만 따로 뽑는다.
+         */
+        'dropped_iterations{scenario:async_payment}': ['count>=0'],
+        'iterations{scenario:async_payment}': ['count>=0'],
     },
 };
 
@@ -127,35 +193,24 @@ export const options = {
 // 내부 카운터 (handleSummary JSON 출력용)
 // ---------------------------------------------------------------------------
 
-/** FAILED 상태로 종결된 건수 (PG 거절 등 정상 실패 포함) */
+/** FAILED 상태로 종결된 건수 (PG 거절 등 정상 실패 포함) — 폴링으로 끝까지 지켜본 건만 센다 */
 const paymentFailed = new Counter('payment_failed');
 
+/** 폴링으로 DONE/FAILED 종결까지 실제로 관측한 건수. latency_sample 표본 크기를 그대로 드러낸다 */
+const resolvedCompletions = new Counter('e2e_resolved_count');
+
 // ---------------------------------------------------------------------------
-// VU 함수 (기본 시나리오 엔트리포인트)
+// 공유 로직 — checkout + confirm
 // ---------------------------------------------------------------------------
 
 /**
- * 단일 e2e 결제 플로우를 수행한다.
+ * 주문 생성 + 승인 접수를 수행한다. async_payment(부하)와 latency_sample(표본) 두 시나리오가
+ * 공유하는 앞부분이다.
  *
- * 1. doCheckout — 고유 멱등키로 주문 생성(201 신규)
- * 2. checkout status==201 check — 중복 200 발생 시 오염 감지
- * 3. doConfirm — 승인 접수(202), confirm_requests 카운터 내부 증가
- * 4. confirm 202 check + confirm 400 미발생 check
- * 5. confirm 202 시각(confirmAt) 기록 → pollStatus — DONE/FAILED 종결 대기
- * 6. DONE/FAILED: e2e_completion_ms 기록 + orderId·confirmAt·resolvedAt·pollEvents JSON 라인 출력
- *    null: 타임아웃(e2eTimeout 내부 증가)
- *
- * 계측 JSON 라인 형식 (console.log):
- *   {"event":"confirm","orderId":"<id>","confirmAt":<epochMs>}
- *   {"event":"poll_done","orderId":"<id>","confirmAt":<epochMs>,"resolvedAt":<epochMs>,
- *    "status":"DONE|FAILED","pollCount":<n>,"pollEvents":[{"at":<epochMs>,"status":"<s>"},…]}
- *
- * 사후 DB 조인 방법:
- *   k6 run ... 2>&1 | grep '"event"' > timing-events.jsonl
- *   SELECT order_id, MIN(change_status_at) FROM payment_history WHERE current_status='DONE'
- *   GROUP BY order_id → orderId로 조인해 처리(DB) vs 체감(poll_done.resolvedAt) latency 분리.
+ * @returns {{orderId: string, amount: string, confirmAt: number}|null} 성공 시 확정 접수 정보,
+ *   checkout/confirm 실패(F1/F2 오염 차단 포함)면 null — 호출부는 그대로 iteration 을 끝낸다
  */
-export default function () {
+function performCheckoutAndConfirm() {
     // Step 1: 주문 생성
     const checkoutResponse = doCheckout();
 
@@ -163,15 +218,14 @@ export default function () {
     const checkoutOk = check(checkoutResponse, {
         'checkout status==201 (중복 200 아님)': (r) => r.status === 201,
     });
-
     if (!checkoutOk) {
         // 중복 200이거나 서버 오류 — 이 iteration은 측정 제외
-        return;
+        return null;
     }
 
     const checkoutBody = parseResponseBody(checkoutResponse.body);
     if (checkoutBody === null) {
-        return;
+        return null;
     }
 
     const orderId = checkoutBody.orderId;
@@ -181,7 +235,7 @@ export default function () {
         : null;
 
     if (!orderId || !amount) {
-        return;
+        return null;
     }
 
     // Step 3: 승인 접수
@@ -195,10 +249,9 @@ export default function () {
         'confirm status==202': (r) => r.status === 202,
         'confirm 재고부족 400 미발생 (F2 재고 고갈 차단)': (r) => r.status !== 400,
     });
-
     if (!confirmOk) {
         // confirm 실패(재고 부족 또는 서버 오류) — 폴링 불필요
-        return;
+        return null;
     }
 
     // confirm 수락 시각 이벤트 출력 — 사후 DB 처리 시각과 조인하기 위한 기준점
@@ -208,19 +261,25 @@ export default function () {
         confirmAt: confirmAt,
     }));
 
-    // 동기 confirm 경로 병목 측정 시 폴링 생략(SKIP_POLL=true) — confirm 202 응답까지만 측정.
-    // 폴링 VU 누적이 없어 고부하에서 메모리 부담이 작고, 동기 경로(Hikari) 병목에 집중할 수 있다.
-    if (__ENV.SKIP_POLL === 'true') {
-        return;
-    }
+    return { orderId, amount, confirmAt };
+}
 
-    // Step 5: 상태 폴링 — DONE/FAILED 종결 대기 (F3: baseline failRate=0, 폴링은 DONE/FAILED만 종결)
+/**
+ * 종결(DONE/FAILED)까지 폴링하고 e2e 지연·FAILED·타임아웃을 기록한다.
+ * async_payment(SKIP_POLL 미지정 시)와 latency_sample 이 공유한다.
+ *
+ * @param {string} orderId
+ * @param {number} confirmAt confirm 202 수신 시각(epochMs)
+ */
+function resolveByPolling(orderId, confirmAt) {
     const result = pollStatus(orderId);
 
     if (result === null) {
         // pollStatus 내부에서 e2eTimeout.add(1) 처리됨
         return;
     }
+
+    resolvedCompletions.add(1);
 
     // e2e 완료 시간 기록 (confirm 202 시각부터 폴링 종결까지)
     const e2eDurationMs = result.resolvedAt - confirmAt;
@@ -241,6 +300,43 @@ export default function () {
         // FAILED는 정상 종결(PG 거절 등), 별도 집계만 수행
         paymentFailed.add(1);
     }
+}
+
+// ---------------------------------------------------------------------------
+// VU 함수 — 부하 시나리오(async_payment) 엔트리포인트
+// ---------------------------------------------------------------------------
+
+/**
+ * 부하 본체 iteration. checkout → confirm 접수까지 확인하고, SKIP_POLL=true(bench-scaleout-cycle.sh
+ * 고정값)면 곧바로 반환해 VU 를 놓아준다 — 종결 폴링으로 VU 를 붙잡지 않아 목표 도착률을
+ * dropped_iterations 없이 실제로 낼 수 있다. SKIP_POLL 미지정이면 옛 방식대로 confirm 이후
+ * 폴링까지 마친 뒤 반환한다(sweep.sh 의 비동기 e2e 경로 측정용).
+ */
+export default function () {
+    const accepted = performCheckoutAndConfirm();
+    if (accepted === null) {
+        return;
+    }
+
+    if (__ENV.SKIP_POLL === 'true') {
+        return;
+    }
+
+    resolveByPolling(accepted.orderId, accepted.confirmAt);
+}
+
+/**
+ * 지연 표본 시나리오(latency_sample) iteration. 낮은 고정 도착률로 checkout → confirm →
+ * 종결(DONE/FAILED)까지 전 과정을 지켜본다. 체감 지연은 이 표본으로만 잰다 — 부하 본체는
+ * 더 이상 폴링하지 않으므로 전수 관측이 아니다.
+ */
+export function latencySampleIteration() {
+    const accepted = performCheckoutAndConfirm();
+    if (accepted === null) {
+        return;
+    }
+
+    resolveByPolling(accepted.orderId, accepted.confirmAt);
 }
 
 // ---------------------------------------------------------------------------
@@ -325,12 +421,20 @@ function extractMetrics(data) {
         http_req_duration_confirm: extractTrendStats(metrics['http_req_duration{step:confirm}']),
         http_req_duration_poll: extractTrendStats(metrics['http_req_duration{step:poll}']),
         e2e_completion_ms: extractTrendStats(metrics['e2e_completion_ms']),
+        e2e_resolved_count: extractCounterValue(metrics['e2e_resolved_count']),
         checks_rate: extractRateValue(metrics['checks']),
         e2e_timeout_count: extractCounterValue(metrics['e2e_timeout']),
         confirm_requests_count: extractCounterValue(metrics['confirm_requests']),
         checkout_duplicate_count: extractCounterValue(metrics['checkout_duplicate']),
         confirm_rejected_count: extractCounterValue(metrics['confirm_rejected']),
         payment_failed_count: extractCounterValue(metrics['payment_failed']),
+        // 부하 무결성 — 부하 시나리오(async_payment)에서 발사조차 못 한 반복(dropped)과
+        // 실제로 발사된 반복(iterations). latency_sample 의 드롭은 섞지 않는다 — 그
+        // 시나리오는 완전 종결까지 폴링하느라 스스로 VU 가 부족해질 수 있고, 그건 부하 도구가
+        // 목표 도착률을 냈는지와 무관하다. dropped 가 0이 아니면 이 사이클은 부하 미달이라
+        // 처리율 비교에 못 쓴다.
+        dropped_iterations_count: extractCounterValue(metrics['dropped_iterations{scenario:async_payment}']),
+        iterations_count: extractCounterValue(metrics['iterations{scenario:async_payment}']),
     };
 }
 
