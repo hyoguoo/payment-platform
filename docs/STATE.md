@@ -6,7 +6,7 @@
 
 ### SHARED-RESOURCE-SCALEOUT — 공유 자원 동반 스케일아웃 측정
 
-- 단계: **ship**
+- 단계: **execute** (재개 — 처리율 축 재측정)
 - 활성 태스크: 없음 (execute 완료 — Task 1~17)
 - 이슈 / 브랜치: #146
 - 설계 문서: `docs/topics/SHARED-RESOURCE-SCALEOUT.md` / 구현 플랜: `docs/SHARED-RESOURCE-SCALEOUT-PLAN.md` (둘 다 상단에 요약 브리핑)
