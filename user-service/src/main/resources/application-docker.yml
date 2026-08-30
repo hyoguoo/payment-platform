@@ -9,7 +9,12 @@ spring:
     password: ${USER_DATASOURCE_PASSWORD:payment123}
 
   flyway:
-    locations: classpath:db/schema
+    # db/seed 를 반드시 포함한다 — 이 값을 db/schema 로만 덮어쓰면 V2__seed_user.sql 이 실행되지
+    # 않아 사용자 행이 하나도 없는 스택이 뜬다. 볼륨이 남아 있는 동안은 예전에 들어간 행이
+    # 가려주다가, 새 볼륨에서 부하 도구의 checkout 이 전량 실패하는 형태로 드러난다
+    # (실측: 부하 32,401 iteration 이 confirm 0 건으로 끝나 사이클 하나가 통째로 무효가 됐다).
+    # 시드는 INSERT IGNORE 라 멱등이고 실환경 배포에서는 값이 이미 있으면 no-op 이다.
+    locations: classpath:db/schema,classpath:db/seed
 
 logging:
   level:
