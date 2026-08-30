@@ -10,7 +10,11 @@
 #                     회까지 재검증. 그래도 보류면 사이클 실패 — 재구성을 부르지 않는다
 #   3(MISMATCH)     — 즉시 사이클 실패. 재시도도 재구성도 하지 않는다(캐시를 비우면 어긋난
 #                     값과 선차감 기록이 지워져 원인을 되짚을 수 없다)
-#   1 또는 그 외     — 접속·전제 실패나 이 러너가 모르는 코드. 통과로 읽지 않고 실패로 다룬다
+#   1(전제 실패)     — 접속 실패, 또는 부하가 시스템에 닿지 않아(k6 제출 0 / DB 총합 0) 정합
+#                     판정 자체가 성립하지 않는 경우. 재시도도 재구성도 하지 않는다 —
+#                     교차식은 값이 0 이면 전부 자동으로 맞아, 통과로 읽으면 부하가 통째로
+#                     무효인 사고를 그냥 지나친다(실측으로 한 번 겪었다)
+#   그 외            — 이 러너가 모르는 코드. 통과로 읽지 않고 실패로 다룬다
 #
 # 실패로 멈춘 사이클의 잔류는 이 스크립트가 치우지 않는다 — 사람이 scripts/bench-cycle-reset.sh
 # 를 따로 돌린다. 격리 종결처럼 사람 판단이 필요한 자리가 있어 러너가 알아서 밀고 가면 안 된다.
@@ -33,6 +37,10 @@
 #
 # 조건 값 (환경 변수):
 #   INSTANCES        — payment-service 인스턴스 수, 1/2/3/4 (기본 1)
+#   PG_INSTANCES     — pg-service 인스턴스 수 (기본 1). 확정 명령을 소비해 벤더를 호출하는
+#                      돈 경로의 공유 자원 — Task 21 까지의 측정은 이 축을 한 번도 늘리지
+#                      않았다(payment 만 늘렸다). 소비 병렬도는 payment.commands.confirm
+#                      파티션 수(3)까지만 의미가 있다
 #   STOCK_MASTERS     — 재고 캐시 클러스터 마스터 수, 1/2/4 (기본 2)
 #   DEDUPE_MASTERS    — 멱등 저장소 클러스터 마스터 수 — 설계상 변수 아님, 고정 3 (기본 3)
 #   POLLING_ROUTE     — 폴링 조회를 복제본으로 보낼지, on/off (기본 on)
@@ -58,9 +66,16 @@
 #   FAKE_FAIL_RATE            — pg fake gateway 실패율 (기본 0 — baseline 고정)
 #   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK — scripts/bench-seed-stock.sh 와 동일
 #   K6_EXTRA_ARGS              — k6 run 에 추가 전달할 -e KEY=VALUE 인자(공백 구분)
+#   PRE_LOAD_HOOK              — 부하 직전(인스턴스가 전부 뜬 뒤, 표본화 시작 전)에 실행할 명령.
+#                               실패하면 사이클을 중단한다. 예: scripts/bench-pin-cpus.sh
+#   EXTRA_COMPOSE_FILES        — compose 스택 뒤에 얹을 override 파일들(공백 구분)
 #   REPLICA_SAMPLE_INTERVAL_SECONDS — 복제 지연 표본 주기 초 (기본 5)
 #   K6_CPU_SAMPLE_INTERVAL_SECONDS  — k6 프로세스 CPU 표본 주기 초 (기본 2) — 측정 대상(payment
 #                               앱)과 CPU 를 다투는지 확인하기 위해 부하 도구 자신의 점유도 남긴다
+#   LATENCY_SAMPLE_MAX_VUS          — 지연 표본 VU 상한 (기본 300). 필요한 VU = 도착률 × 종결시간
+#   LATENCY_SAMPLE_PRE_VUS          — 지연 표본 사전 할당 VU (기본 50)
+#   LATENCY_POLL_TIMEOUT_MS         — 지연 표본 폴링 타임아웃 ms (기본 180000). 이 값에서 잘리면
+#                               백분위가 성립하지 않으므로 종결 꼬리보다 크게 잡는다
 #   LATENCY_SAMPLE_RATE_PER_SEC     — 지연 표본 시나리오 도착률 req/s (기본 2). 0 이면 표본
 #                               시나리오를 켜지 않는다(체감 지연 결과가 비게 된다)
 #   INCONCLUSIVE_MAX_RETRIES        — 판단 보류 재검증 최대 횟수 (기본 3)
@@ -169,6 +184,7 @@ RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT:-300}"
 RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS:-15000}"
 HIKARI_MAX_POOL="${HIKARI_MAX_POOL:-80}"
 CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
+PG_INSTANCES="${PG_INSTANCES:-1}"
 PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-5}"
 PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-1}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
@@ -179,6 +195,24 @@ K6_EXTRA_ARGS="${K6_EXTRA_ARGS:-}"
 REPLICA_SAMPLE_INTERVAL_SECONDS="${REPLICA_SAMPLE_INTERVAL_SECONDS:-5}"
 K6_CPU_SAMPLE_INTERVAL_SECONDS="${K6_CPU_SAMPLE_INTERVAL_SECONDS:-2}"
 LATENCY_SAMPLE_RATE_PER_SEC="${LATENCY_SAMPLE_RATE_PER_SEC:-2}"
+# 지연 표본은 종결까지 폴링하며 VU 를 붙잡는다 — 필요한 VU 는 (도착률 × 종결시간)이다.
+#
+# 이 값은 부하 구간에 따라 정반대로 위험해진다. 양쪽 다 실측으로 겪었다:
+#   - 너무 작으면(20) 포화 구간에서 표본이 VU 부족으로 드롭되고 남은 것마저 타임아웃에 걸려
+#     지연 지표가 통째로 빈다(32,000건 부하에서 종결 관측 4~31건, 타임아웃 50~59건).
+#   - 너무 크면(300) 포화 구간에서 VU 170개가 살아남아 0.5초마다 조회를 쏜다 — 초당 76건으로
+#     본 부하(96/s)의 80% 에 달하는 추가 요청이다. 게다가 느린 구성일수록 VU 가 더 오래
+#     붙잡혀 세금을 더 내므로 1대가 2대보다 불리해져 배수가 실제보다 좋게 나온다.
+#
+# 그래서 한 값으로 전 구간을 덮을 수 없다. 능력 이하 구간(종결 1초 안팎)은 넉넉히, 포화 구간
+# (종결 수십 초)은 표본 도착률을 낮추거나 표본을 끄고(LATENCY_SAMPLE_RATE_PER_SEC=0) 처리량만
+# 재는 것이 맞다 — 포화 구간의 지연은 어차피 전부 큐 대기라 서비스 품질을 뜻하지 않는다.
+# 아래 예상 부하 경고가 그 판단을 돕는다.
+LATENCY_SAMPLE_MAX_VUS="${LATENCY_SAMPLE_MAX_VUS:-300}"
+LATENCY_SAMPLE_PRE_VUS="${LATENCY_SAMPLE_PRE_VUS:-50}"
+# 폴링 타임아웃 — 이 값에서 잘린 표본은 백분위에 넣을 수 없다(잘린 분포의 백분위는 백분위가
+# 아니다). 종결 지연 꼬리보다 크게 잡아야 관측이 성립한다.
+LATENCY_POLL_TIMEOUT_MS="${LATENCY_POLL_TIMEOUT_MS:-180000}"
 INCONCLUSIVE_MAX_RETRIES="${INCONCLUSIVE_MAX_RETRIES:-3}"
 INCONCLUSIVE_RETRY_WAIT_SECONDS="${INCONCLUSIVE_RETRY_WAIT_SECONDS:-20}"
 RESOURCE_SAMPLE_INTERVAL_SECONDS="${RESOURCE_SAMPLE_INTERVAL_SECONDS:-15}"
@@ -208,6 +242,23 @@ COMPOSE_ARGS=(
     -f "${ROOT_DIR}/docker/docker-compose.benchmark.yml"
     -f "${ROOT_DIR}/docker/docker-compose.scaleout.yml"
 )
+
+# EXTRA_COMPOSE_FILES — 위 스택 뒤에 얹을 override 파일들(공백 구분, ROOT_DIR 기준 상대경로 가능).
+# CPU 상한(docker-compose.cpulimit.yml)처럼 측정 회차마다 켜고 끄는 구성을 스택에 끼우는 통로다.
+# 뒤에 얹히므로 같은 키를 다시 선언하면 이긴다 — command 같은 배열 키는 병합되지 않고 통째로
+# 덮어쓰니, 덧붙이는 파일에서는 이미 선언된 배열 키를 다시 쓰지 않는다.
+if [[ -n "${EXTRA_COMPOSE_FILES:-}" ]]; then
+    for _extra in ${EXTRA_COMPOSE_FILES}; do
+        if [[ "${_extra}" != /* ]]; then
+            _extra="${ROOT_DIR}/${_extra}"
+        fi
+        if [[ ! -f "${_extra}" ]]; then
+            echo "EXTRA_COMPOSE_FILES 에 지정한 파일이 없다: ${_extra}" >&2
+            exit 1
+        fi
+        COMPOSE_ARGS+=(-f "${_extra}")
+    done
+fi
 
 dc() {
     docker compose "${COMPOSE_ARGS[@]}" "$@"
@@ -895,6 +946,221 @@ container_stat_stats_json() {
     ' "${CONTAINER_STAT_LOG}"
 }
 
+# ---------------------------------------------------------------------------
+# CPU 스로틀 표본화 — cgroup v2 cpu.stat / cpu.max 를 컨테이너 안에서 직접 읽는다.
+#
+# docker stats 의 CPU% 는 "얼마나 썼나"만 알려주고 "상한에 막혔나"는 알려주지 않는다.
+# 상한을 걸고 재는 측정에서는 이 구분이 판정을 가른다:
+#   - payment 가 스로틀되고 공유 자원은 아니면 → 앱이 병목. 인스턴스를 늘리면 이득이 난다
+#   - 아무것도 스로틀되지 않는데 처리량이 평평하면 → 진짜 공유 자원/직렬화 천장
+#   - 공유 자원이 스로틀되면 → 그 자원이 천장(예산을 올려 재측정해야 한다)
+#
+# nr_throttled / throttled_usec 는 누적값이라 구간 처음·끝의 차이로만 뜻이 생긴다.
+# throttled_ratio = 구간 스로틀 시간 / 구간 벽시계 시간 — 1 에 가까울수록 계속 막혀 있었다는 뜻.
+# cpu.max 가 "max" 면 상한이 없는 것이므로 quota_cpus 를 0 으로 남긴다.
+# ---------------------------------------------------------------------------
+
+CPU_THROTTLE_LOG=""
+CPU_THROTTLE_SAMPLER_PID=""
+
+start_cpu_throttle_sampler() {
+    CPU_THROTTLE_LOG="$(mktemp "${ROOT_DIR}/results/.cpu-throttle.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            targets=($(container_stat_targets))
+            epoch=$(date +%s)
+            for name in "${targets[@]}"; do
+                stat=$(docker exec "${name}" cat /sys/fs/cgroup/cpu.stat 2>/dev/null) || continue
+                max=$(docker exec "${name}" cat /sys/fs/cgroup/cpu.max 2>/dev/null) || continue
+                nr=$(echo "${stat}" | awk '$1=="nr_throttled"{print $2}')
+                tu=$(echo "${stat}" | awk '$1=="throttled_usec"{print $2}')
+                uu=$(echo "${stat}" | awk '$1=="usage_usec"{print $2}')
+                quota=$(echo "${max}" | awk '{print $1}')
+                period=$(echo "${max}" | awk '{print $2}')
+                if [[ "${quota}" == "max" || -z "${period}" || "${period}" == "0" ]]; then
+                    quota_cpus=0
+                else
+                    quota_cpus=$(awk -v q="${quota}" -v p="${period}" 'BEGIN{printf "%.3f", q/p}')
+                fi
+                [[ -z "${nr}" || -z "${tu}" || -z "${uu}" ]] && continue
+                echo "${epoch} ${name} ${nr} ${tu} ${uu} ${quota_cpus}" >> "${CPU_THROTTLE_LOG}"
+            done
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    CPU_THROTTLE_SAMPLER_PID=$!
+}
+
+stop_cpu_throttle_sampler() {
+    if [[ -n "${CPU_THROTTLE_SAMPLER_PID}" ]]; then
+        kill -9 "${CPU_THROTTLE_SAMPLER_PID}" 2>/dev/null || true
+        CPU_THROTTLE_SAMPLER_PID=""
+    fi
+}
+
+cpu_throttle_stats_json() {
+    if [[ -z "${CPU_THROTTLE_LOG}" || ! -s "${CPU_THROTTLE_LOG}" ]]; then
+        echo '{}'
+        return
+    fi
+    awk '
+        {
+            name = $2; nr = $3 + 0; tu = $4 + 0; uu = $5 + 0; q = $6 + 0
+            epoch = $1 + 0
+            if (!(name in n)) {
+                first_epoch[name] = epoch; first_nr[name] = nr
+                first_tu[name] = tu; first_uu[name] = uu
+            }
+            n[name]++
+            quota[name] = q
+            last_epoch[name] = epoch; last_nr[name] = nr
+            last_tu[name] = tu; last_uu[name] = uu
+        }
+        END {
+            printf "{"
+            first = 1
+            for (name in n) {
+                if (!first) { printf "," }
+                first = 0
+                span = last_epoch[name] - first_epoch[name]
+                d_nr = last_nr[name] - first_nr[name]
+                d_tu = last_tu[name] - first_tu[name]
+                d_uu = last_uu[name] - first_uu[name]
+                if (span > 0) {
+                    ratio = d_tu / (span * 1000000.0)
+                    used_cpus = d_uu / (span * 1000000.0)
+                } else {
+                    ratio = 0; used_cpus = 0
+                }
+                if (quota[name] > 0) { headroom = used_cpus / quota[name] } else { headroom = 0 }
+                printf "\"%s\":{\"samples\":%d,\"quota_cpus\":%.3f,\"used_cpus\":%.3f,\"quota_utilization\":%.3f,\"throttled_periods\":%d,\"throttled_ratio\":%.4f}",
+                    name, n[name], quota[name], used_cpus, headroom, d_nr, ratio
+            }
+            printf "}"
+        }
+    ' "${CPU_THROTTLE_LOG}"
+}
+
+# ---------------------------------------------------------------------------
+# 돈 경로 소비 적체 표본화 — 결제가 어느 단계에서 기다리는지 가른다.
+#
+# 지금까지 표본화한 적체는 재고 확정(product-service-stock-commit) 하나뿐이라, 정작 돈이
+# 흐르는 두 경로의 적체를 한 번도 재지 않았다. 부하 중 미종결이 수천~수만 건 쌓이는데 그것이
+# 어느 단계에 있는지 모르면 무엇을 늘려야 처리량이 오르는지 고를 수 없다.
+#
+#   pg-service       — payment.commands.confirm 소비(확정 명령 → 벤더 호출)
+#   payment-service  — payment.events.confirmed 소비(확정 결과 → 원장 종결)
+#
+# 읽는 법:
+#   pg 적체가 크다        → 벤더 호출 단계가 병목. pg-service 를 늘리면 처리량이 는다
+#   payment 적체가 크다   → 확정 결과 소비가 병목. 파티션·컨슈머 동시성 영역
+#   둘 다 작은데 미종결이 크다 → 큐에 쌓인 게 아니라 전부 처리 중(in-flight). 자원이 아니라
+#                          왕복 지연 × 동시성이 천장이라는 뜻이다
+#
+# 트랜잭션 커밋 표시가 파티션마다 오프셋을 차지해 적체는 0 까지 내려가지 않는다 — 절대값이 아니라
+# 구성 간 크기 비교로 읽는다.
+# ---------------------------------------------------------------------------
+
+MONEYPATH_LAG_LOG=""
+MONEYPATH_LAG_SAMPLER_PID=""
+MONEYPATH_GROUPS="${MONEYPATH_GROUPS:-pg-service payment-service}"
+
+# 그룹의 파티션별 lag 합과 파티션 수를 낸다. 조회 실패나 그룹 없음이면 "NULL 0".
+kafka_group_lag() {
+    local group="$1" out
+    out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
+        --bootstrap-server localhost:9092 --describe --group "${group}" 2>/dev/null)
+    if [[ -z "${out}" ]]; then
+        echo "NULL 0"
+        return
+    fi
+    echo "${out}" | awk '
+        $1 == "GROUP" { next }
+        NF >= 6 && $6 ~ /^[0-9]+$/ { sum += $6; partitions++ }
+        END {
+            if (!partitions) { print "NULL 0"; exit }
+            print sum, partitions
+        }
+    '
+}
+
+start_moneypath_lag_sampler() {
+    MONEYPATH_LAG_LOG="$(mktemp "${ROOT_DIR}/results/.moneypath-lag.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            epoch=$(date +%s)
+            for g in ${MONEYPATH_GROUPS}; do
+                read -r lag parts <<< "$(kafka_group_lag "${g}")"
+                [[ "${lag}" == "NULL" ]] && continue
+                echo "${epoch} ${g} ${lag} ${parts}" >> "${MONEYPATH_LAG_LOG}"
+            done
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    MONEYPATH_LAG_SAMPLER_PID=$!
+}
+
+stop_moneypath_lag_sampler() {
+    if [[ -n "${MONEYPATH_LAG_SAMPLER_PID}" ]]; then
+        kill -9 "${MONEYPATH_LAG_SAMPLER_PID}" 2>/dev/null || true
+        MONEYPATH_LAG_SAMPLER_PID=""
+    fi
+}
+
+moneypath_lag_stats_json() {
+    if [[ -z "${MONEYPATH_LAG_LOG}" || ! -s "${MONEYPATH_LAG_LOG}" ]]; then
+        echo '{}'
+        return
+    fi
+    awk '
+        {
+            g = $2; lag = $3 + 0; parts = $4 + 0
+            n[g]++
+            sum[g] += lag
+            partitions[g] = parts
+            if (n[g] == 1 || lag < lo[g]) { lo[g] = lag }
+            if (n[g] == 1 || lag > hi[g]) { hi[g] = lag }
+            last[g] = lag
+        }
+        END {
+            printf "{"
+            first = 1
+            for (g in n) {
+                if (!first) { printf "," }
+                first = 0
+                printf "\"%s\":{\"samples\":%d,\"partitions\":%d,\"lag\":{\"min\":%d,\"avg\":%.1f,\"max\":%d,\"last\":%d}}",
+                    g, n[g], partitions[g], lo[g], sum[g] / n[g], hi[g], last[g]
+            }
+            printf "}"
+        }
+    ' "${MONEYPATH_LAG_LOG}"
+}
+
+# ---------------------------------------------------------------------------
+# 종료 신호에도 표본화를 정리한다.
+#
+# 표본화는 전부 `while true` 서브셸이라 이 스크립트가 죽어도 부모만 사라지고 자식은 PPID=1 로
+# 살아남는다. 그 상태로 15초마다 docker exec · docker stats · kafka-consumer-groups(JVM 기동)를
+# 계속 쏘면 이후 측정이 조용히 오염된다 — 실측으로 겪었다: 중단한 시리즈의 샘플러 6개가
+# 1시간 35분 동안 살아 있었고, 그 위에서 잰 1대 처리량이 51.8 → 28.2/s 로 떨어졌으며
+# Kafka 브로커가 로그 디렉토리 장애로 죽었다.
+#
+# 정상 종료 경로의 stop_*_sampler 호출은 그대로 두고(중복 호출은 무해하다), 여기에 EXIT/INT/TERM
+# 안전망을 얹는다.
+# ---------------------------------------------------------------------------
+cleanup_all_samplers() {
+    stop_replica_lag_sampler 2>/dev/null || true
+    stop_k6_cpu_sampler 2>/dev/null || true
+    stop_mysql_stat_sampler 2>/dev/null || true
+    stop_redis_stat_sampler 2>/dev/null || true
+    stop_kafka_stat_sampler 2>/dev/null || true
+    stop_backlog_stat_sampler 2>/dev/null || true
+    stop_container_stat_sampler 2>/dev/null || true
+    stop_cpu_throttle_sampler 2>/dev/null || true
+    stop_moneypath_lag_sampler 2>/dev/null || true
+}
+trap cleanup_all_samplers EXIT INT TERM
+
 check_docker
 
 # ---------------------------------------------------------------------------
@@ -967,7 +1233,12 @@ PRE_CYCLE_UNSETTLED=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"
 PRE_CYCLE_NOISE=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
     SELECT COUNT(*) FROM \`payment-platform\`.stock_hold_record WHERE status = 'NOISE';
 " 2>/dev/null || echo "-1")
-if [[ "${PRE_CYCLE_UNSETTLED}" != "0" || "${PRE_CYCLE_NOISE}" != "0" ]]; then
+# 조회 실패(-1)와 실제 잔류를 구분한다 — 둘 다 "잔류 있음"으로 뭉쳐 경고하면, DB 가 아직 안 뜬
+# 상태의 조회 실패를 이전 사이클 잔류로 오독한다(실측: MySQL 재생성 직후 -1 이 잔류 경고로 나왔다).
+# 조회 실패는 잔류 여부를 모른다는 뜻이지 잔류가 있다는 뜻이 아니다.
+if [[ "${PRE_CYCLE_UNSETTLED}" == "-1" || "${PRE_CYCLE_NOISE}" == "-1" ]]; then
+    print_warning "⚠️  사이클 시작 시점 잔류를 확인하지 못했다 — DB 조회 실패(컨테이너 ${MYSQL_PAYMENT_CONTAINER} 기동 중이거나 인증 실패). 잔류가 있다는 뜻이 아니라 알 수 없다는 뜻이다"
+elif [[ "${PRE_CYCLE_UNSETTLED}" != "0" || "${PRE_CYCLE_NOISE}" != "0" ]]; then
     print_warning "⚠️  사이클 시작 시점에 잔류가 있다 — 미종결=${PRE_CYCLE_UNSETTLED} 미회수 선차감 기록=${PRE_CYCLE_NOISE}. 이전 사이클이 PASS 로 끝나지 않았을 수 있다. 이번 사이클 결과는 오염됐을 수 있으니 결과 JSON 의 pre_cycle_state 를 확인하라"
 fi
 
@@ -1018,17 +1289,17 @@ if ! wait_all_healthy payment-service "${INSTANCES}" 150; then exit 1; fi
 if ! wait_eureka_registered "PAYMENT-SERVICE" 60; then exit 1; fi
 print_info "✅ payment-service ${INSTANCES}대 healthy + Eureka 등록 확인"
 
-print_section "  pg-service 재기동 — 벤더 지연=${VENDOR_LATENCY}(${FAKE_LATENCY_MIN}~${FAKE_LATENCY_MAX}ms)"
+print_section "  pg-service 재기동 — ${PG_INSTANCES}대, 벤더 지연=${VENDOR_LATENCY}(${FAKE_LATENCY_MIN}~${FAKE_LATENCY_MAX}ms)"
 export FAKE_LATENCY_MIN="${FAKE_LATENCY_MIN}"
 export FAKE_LATENCY_MAX="${FAKE_LATENCY_MAX}"
 export FAKE_FAIL_RATE="${FAKE_FAIL_RATE}"
 export PG_INBOX_WORKERS="${PG_INBOX_WORKERS}"
 export PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS}"
-if ! dc up -d --force-recreate pg-service >/dev/null 2>&1; then
+if ! dc up -d --scale pg-service="${PG_INSTANCES}" --force-recreate pg-service >/dev/null 2>&1; then
     print_error "❌ (2) pg-service 재기동 실패"
     exit 1
 fi
-if ! wait_healthy pg-service 120; then exit 1; fi
+if ! wait_all_healthy pg-service "${PG_INSTANCES}" 150; then exit 1; fi
 print_info "✅ pg-service healthy"
 
 # --no-deps 필수 — gateway 는 payment-service 를 depends_on 으로 갖는데, docker compose 는
@@ -1075,10 +1346,33 @@ echo ""
 
 print_section "▶ (4) 부하 실행 — CASE_NAME=${CASE_NAME}"
 
+# 지연 표본이 만드는 추가 부하를 미리 알린다. 표본 VU 는 종결까지 폴링을 유지하므로, 최악의
+# 경우 (VU 상한 ÷ 폴링 간격)만큼의 조회가 본 부하 위에 얹힌다. 이 값이 본 부하에 비해 크면
+# 관측이 측정 대상을 느리게 만들고, 그 세금은 느린 구성에 더 무겁게 걸려 배수까지 왜곡한다.
+if [[ "${LATENCY_SAMPLE_RATE_PER_SEC}" -gt 0 ]]; then
+    _poll_interval_s=$(awk 'BEGIN{printf "%.3f", 0.5}')
+    _worst_poll_rate=$(awk -v v="${LATENCY_SAMPLE_MAX_VUS}" -v i="${_poll_interval_s}" 'BEGIN{printf "%.0f", v/i}')
+    print_info "  지연 표본: 도착률 ${LATENCY_SAMPLE_RATE_PER_SEC}/s · VU 상한 ${LATENCY_SAMPLE_MAX_VUS} · 타임아웃 $((LATENCY_POLL_TIMEOUT_MS/1000))s"
+    print_warning "  ⚠️  표본 폴링이 최대 약 ${_worst_poll_rate}/s 의 추가 조회를 만든다(VU 가 전부 붙잡힐 때). 본 부하 대비 크면 LATENCY_SAMPLE_RATE_PER_SEC 를 낮추거나 0 으로 끄고 처리량만 재라"
+fi
+
+# PRE_LOAD_HOOK — 부하 직전, 표본화 시작 전에 실행할 명령. 인스턴스가 --scale 로 전부 뜬 뒤에만
+# 할 수 있는 준비(예: scripts/bench-pin-cpus.sh 로 컨테이너를 물리 코어에 고정)를 끼우는 자리다.
+# 실패하면 사이클을 진행하지 않는다 — 준비가 안 된 채로 잰 값은 조건이 다른 값이기 때문이다.
+if [[ -n "${PRE_LOAD_HOOK:-}" ]]; then
+    print_section "  PRE_LOAD_HOOK 실행 — ${PRE_LOAD_HOOK}"
+    if ! bash -c "${PRE_LOAD_HOOK}"; then
+        print_error "❌ (4) PRE_LOAD_HOOK 실패 — 부하를 시작하지 않는다"
+        exit 1
+    fi
+fi
+
 start_replica_lag_sampler
 start_mysql_stat_sampler
 start_redis_stat_sampler
 start_container_stat_sampler
+start_cpu_throttle_sampler
+start_moneypath_lag_sampler
 start_kafka_stat_sampler
 start_backlog_stat_sampler
 
@@ -1099,6 +1393,9 @@ set +e
         -e "PRODUCT_ID_BASE=${PRODUCT_ID_BASE}" \
         -e "SKIP_POLL=true" \
         -e "SAMPLE_RATE=${LATENCY_SAMPLE_RATE_PER_SEC}" \
+        -e "SAMPLE_MAX_VUS=${LATENCY_SAMPLE_MAX_VUS}" \
+        -e "SAMPLE_PRE_VUS=${LATENCY_SAMPLE_PRE_VUS}" \
+        -e "POLL_TIMEOUT_MS=${LATENCY_POLL_TIMEOUT_MS}" \
         ${K6_EXTRA_ARGS} \
         "${SCRIPT_DIR}/k6/async-payment.js"
 ) &
@@ -1118,6 +1415,8 @@ if [[ "${K6_EXIT}" -ne 0 && "${K6_EXIT}" -ne 99 ]]; then
     stop_mysql_stat_sampler
     stop_redis_stat_sampler
     stop_container_stat_sampler
+    stop_cpu_throttle_sampler
+    stop_moneypath_lag_sampler
     stop_kafka_stat_sampler
     exit 1
 fi
@@ -1132,6 +1431,8 @@ if [[ ! -f "${K6_RESULT_JSON}" ]]; then
     stop_mysql_stat_sampler
     stop_redis_stat_sampler
     stop_container_stat_sampler
+    stop_cpu_throttle_sampler
+    stop_moneypath_lag_sampler
     stop_kafka_stat_sampler
     exit 1
 fi
@@ -1155,6 +1456,7 @@ call_verify() {
     PRODUCT_COUNT="${PRODUCT_COUNT}" \
     PRODUCT_ID_BASE="${PRODUCT_ID_BASE}" \
     REDIS_STOCK_CONTAINER="${STOCK_CONTAINER_NAME}" \
+    STOCK_COMMIT_PRODUCERS="${INSTANCES}" \
     bash "${ROOT_DIR}/scripts/k6/verify-settlement.sh"
     return $?
 }
@@ -1180,6 +1482,8 @@ stop_replica_lag_sampler
 stop_mysql_stat_sampler
 stop_redis_stat_sampler
 stop_container_stat_sampler
+stop_cpu_throttle_sampler
+stop_moneypath_lag_sampler
 stop_kafka_stat_sampler
 SETTLE_END_EPOCH=$(date +%s)
 
@@ -1209,8 +1513,17 @@ case "${VERIFY_EXIT}" in
         print_error "❌ (5) 정합 불일치(MISMATCH) — 즉시 중단, 캐시를 비우지 않는다"
         CYCLE_EXIT=3
         ;;
+    1)
+        if [[ "${VERDICT}" == "NO_TRAFFIC" ]]; then
+            print_error "❌ (5) 부하가 시스템에 닿지 않아 정합 판정이 성립하지 않는다 — ${VERDICT_REASON}"
+            print_error "   이 사이클의 처리율·지연·정합 결과는 전부 무효다. 통과로 읽지 않는다"
+        else
+            print_error "❌ (5) 정합 검증이 접속·전제 실패(exit 1)로 끝남 — 통과로 읽지 않는다"
+        fi
+        CYCLE_EXIT=4
+        ;;
     *)
-        print_error "❌ (5) 정합 검증이 접속·전제 실패(exit ${VERIFY_EXIT}) 또는 알 수 없는 코드로 끝남 — 통과로 읽지 않는다"
+        print_error "❌ (5) 정합 검증이 알 수 없는 코드(exit ${VERIFY_EXIT})로 끝남 — 통과로 읽지 않는다"
         CYCLE_EXIT=4
         ;;
 esac
@@ -1226,7 +1539,7 @@ if [[ "${OUTCOME}" == "SUCCESS" ]]; then
     if RECONCILER_TIMEOUT="${RECONCILER_TIMEOUT}" RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS}" \
         PRODUCT_COUNT="${PRODUCT_COUNT}" PRODUCT_ID_BASE="${PRODUCT_ID_BASE}" BENCH_STOCK="${BENCH_STOCK}" \
         REDIS_STOCK_CONTAINER="${STOCK_CONTAINER_NAME}" \
-        bash "${ROOT_DIR}/scripts/bench-cycle-reset.sh"; then
+        STOCK_COMMIT_PRODUCERS="${INSTANCES}" bash "${ROOT_DIR}/scripts/bench-cycle-reset.sh"; then
         RESET_STATUS="DONE"
         print_info "✅ (6) 재구성 완료"
     else
@@ -1293,6 +1606,8 @@ K6_CPU_JSON=$(k6_cpu_stats_json)
 MYSQL_STAT_JSON=$(mysql_stat_stats_json)
 REDIS_STAT_JSON=$(redis_stat_stats_json)
 CONTAINER_STAT_JSON=$(container_stat_stats_json)
+CPU_THROTTLE_JSON=$(cpu_throttle_stats_json)
+MONEYPATH_LAG_JSON=$(moneypath_lag_stats_json)
 KAFKA_STAT_JSON=$(kafka_stat_stats_json)
 BACKLOG_TREND_JSON=$(backlog_trend_json)
 
@@ -1300,6 +1615,7 @@ jq -n \
     --arg case_name "${CASE_NAME}" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson instances "${INSTANCES}" \
+    --argjson pg_instances "${PG_INSTANCES}" \
     --argjson stock_masters "${STOCK_MASTERS}" \
     --argjson dedupe_masters "${DEDUPE_MASTERS}" \
     --arg polling_route "${POLLING_ROUTE}" \
@@ -1332,6 +1648,8 @@ jq -n \
     --argjson redis_stats "${REDIS_STAT_JSON}" \
     --argjson container_stats "${CONTAINER_STAT_JSON}" \
     --argjson kafka_stats "${KAFKA_STAT_JSON}" \
+    --argjson cpu_throttle "${CPU_THROTTLE_JSON}" \
+    --argjson moneypath_lag "${MONEYPATH_LAG_JSON}" \
     --argjson backlog_trend "${BACKLOG_TREND_JSON}" \
     --argjson load_start_epoch "${LOAD_START_EPOCH}" \
     --argjson load_end_epoch "${LOAD_END_EPOCH}" \
@@ -1353,6 +1671,7 @@ jq -n \
         },
         conditions: {
             instances: $instances,
+            pg_instances: $pg_instances,
             stock_masters: $stock_masters,
             dedupe_masters: $dedupe_masters,
             polling_route: $polling_route,
@@ -1392,9 +1711,24 @@ jq -n \
             mysql: $mysql_stats,
             redis: $redis_stats,
             containers: $container_stats,
-            kafka: $kafka_stats
+            kafka: $kafka_stats,
+            cpu_throttle: $cpu_throttle,
+            moneypath_lag: $moneypath_lag
         },
         backlog_trend: ($backlog_trend + {load_start_epoch: $load_start_epoch, load_end_epoch: $load_end_epoch}),
+        # 부하 구간 동안 실제로 밀어낸 속도 — 능력 판정의 기준값.
+        # db_done_per_load_sec 는 검증 시점의 누적 종결 수를 쓰기 때문에, 부하가 끝난 뒤 밀린
+        # 물량이 전부 빠지면 도착률로 수렴해 능력을 못 잰다(실측: 전부 종결된 사이클 셋이
+        # 구성이 다른데도 똑같이 152/s 로 찍혔다). 부하 끝 시점에 아직 남아 있던 적체를 빼면
+        # 그 구간에서 실제로 종결시킨 양이 남는다.
+        settled_during_load: (
+            ($confirm_count - ($backlog_trend.last // 0)) as $done
+            | {
+                count: $done,
+                per_sec: (if ($load_end_epoch - $load_start_epoch) > 0
+                          then ($done / ($load_end_epoch - $load_start_epoch)) else null end)
+              }
+        ),
         settlement: {
             verdict: $verdict,
             verify_exit_code: $verify_exit_code,

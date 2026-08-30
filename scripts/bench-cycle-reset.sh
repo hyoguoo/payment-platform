@@ -67,6 +67,10 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=common.sh
 source "${ROOT_DIR}/scripts/common.sh"
 
+# 재고 확정 소비 적체 허용치 = 파티션 수 × 생산자 수. 트랜잭션 커밋 표시는 소비되지 않고
+# 생산자(transactional.id)마다 쌓이므로, payment 인스턴스가 N 대면 파티션당 최대 N 개가 남는다.
+STOCK_COMMIT_PRODUCERS="${STOCK_COMMIT_PRODUCERS:-1}"
+
 STABLE_POLL_INTERVAL_SECONDS="${STABLE_POLL_INTERVAL_SECONDS:-3}"
 STABLE_REQUIRED_READS="${STABLE_REQUIRED_READS:-3}"
 MAX_POLL_ATTEMPTS="${MAX_POLL_ATTEMPTS:-40}"
@@ -306,13 +310,14 @@ check_step3() {
         PREV_STOCK_LAG=""
         return 2
     fi
-    if [[ "${lag}" -le "${partitions}" && "${PREV_STOCK_LAG}" == "${lag}" ]]; then
+    allowed=$(( partitions * STOCK_COMMIT_PRODUCERS ))
+    if [[ "${lag}" -le "${allowed}" && "${PREV_STOCK_LAG}" == "${lag}" ]]; then
         return 0
     fi
-    if [[ "${lag}" -gt "${partitions}" ]]; then
-        echo "    잔류 — 소비 적체=${lag} (파티션수=${partitions} 초과, 진짜 소비 중일 수 있어 대기)"
+    if [[ "${lag}" -gt "${allowed}" ]]; then
+        echo "    잔류 — 소비 적체=${lag} (허용 ${allowed} 초과, 진짜 소비 중일 수 있어 대기)"
     else
-        echo "    적체=${lag} (파티션수=${partitions} 이하) — 직전 확인과 비교해 안정 여부 재확인"
+        echo "    적체=${lag} (허용 ${allowed} 이하) — 직전 확인과 비교해 안정 여부 재확인"
     fi
     PREV_STOCK_LAG="${lag}"
     return 1
@@ -378,13 +383,13 @@ fi
 # 소비 적체는 파티션 수 이하면 통과로 본다 — (3) 이 이미 안정(더 줄지 않음)까지 확인했고
 # payment-service 가 (4) 로 멈춰 새 재고 확정 메시지가 나갈 출처가 없으므로, 여기서는
 # 단발 조회로 문턱만 다시 본다.
-if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHECK_NOISE}" -ne 0 || "${RECHECK_LAG}" -gt "${RECHECK_PARTITIONS}" ]]; then
-    print_error "❌ (5) 재확인 실패 — 미종결=${RECHECK_UNSETTLED} 격리=${RECHECK_QUARANTINED} 미회수 선차감 기록=${RECHECK_NOISE} 소비 적체=${RECHECK_LAG}(파티션수=${RECHECK_PARTITIONS})"
+if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHECK_NOISE}" -ne 0 || "${RECHECK_LAG}" -gt $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )) ]]; then
+    print_error "❌ (5) 재확인 실패 — 미종결=${RECHECK_UNSETTLED} 격리=${RECHECK_QUARANTINED} 미회수 선차감 기록=${RECHECK_NOISE} 소비 적체=${RECHECK_LAG}(허용 $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )))"
     print_error "   payment-service 는 이미 정지된 상태다 — 캐시를 비우지 않는다. 원인을 확인한 뒤 재실행하세요"
     exit 4
 fi
 
-print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=${RECHECK_LAG}(파티션수=${RECHECK_PARTITIONS} 이하)"
+print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=${RECHECK_LAG}(허용 $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )) 이하)"
 
 # payment 원장 여섯 테이블(payment_event/payment_event_dedupe/payment_history/payment_order/
 # payment_outbox/stock_hold_record)을 비운다. verify-settlement.sh 의 DB 집계는 이 테이블을

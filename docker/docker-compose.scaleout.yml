@@ -42,6 +42,13 @@ services:
       - "--max_connections=${MYSQL_MAX_CONN:-300}"
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
+      # 커밋 내구성 손잡이 — 기본값은 MySQL 기본(1/1)이라 평소 동작은 그대로다.
+      # 측정 전용으로만 낮춘다: MYSQL_FLUSH_LOG_AT_TRX_COMMIT=2 MYSQL_SYNC_BINLOG=0 을
+      # 주면 커밋당 fsync(redo + binlog)가 사라져, 처리율 천장이 디스크 동기화 때문인지
+      # 아닌지를 가른다. 낮춘 채로는 프로세스/호스트 급사 시 최근 커밋과 복제본 위치가
+      # 유실될 수 있어 운영값으로 쓰지 않는다.
+      - "--innodb_flush_log_at_trx_commit=${MYSQL_FLUSH_LOG_AT_TRX_COMMIT:-1}"
+      - "--sync_binlog=${MYSQL_SYNC_BINLOG:-1}"
 
   # ───────────────────────────────────────────
   # mysql-payment-replica — payment DB 비동기 읽기 복제본 1대

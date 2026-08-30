@@ -79,7 +79,11 @@ services:
     build:
       context: ../pg-service
       dockerfile: Dockerfile
-    hostname: pg-service
+    # hostname 고정 제거 — payment-service 와 같은 이유로, 2대 이상 스케일 시 컨테이너마다
+    # 고유한 HOSTNAME(컨테이너 ID)이 필요하다. Eureka instanceId 는 이미 ${random.uuid} 라
+    # 충돌하지 않고 pg-service 는 트랜잭션 프로듀서를 쓰지 않아 transactional.id 충돌도 없다 —
+    # 이 줄만 남아 있어서 대수를 늘릴 수 없었다. pg-service 는 확정 명령을 소비해 벤더를
+    # 호출하는 돈 경로의 공유 자원인데, 지금까지 측정에서 계속 1대로 고정돼 있었다.
     labels:
       com.hyoguoo.loki.enable: "true"
       com.hyoguoo.application: "pg-service"

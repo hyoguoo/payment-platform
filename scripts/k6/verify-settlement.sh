@@ -424,9 +424,17 @@ if [[ "${STOCK_COMMIT_LAG}" == "NO_CONSUMER" ]]; then
     exit 1
 fi
 
-# 게이트: 파티션 수 이하 + 더 줄지 않음. 단발 스크립트라 폴링 루프 대신 짧은 간격을 두고
+# 게이트: 허용치 이하 + 더 줄지 않음. 단발 스크립트라 폴링 루프 대신 짧은 간격을 두고
 # 한 번 더 읽어 추세를 본다 — 두 번째 읽음이 첫 번째보다 줄었다면 아직 진짜 소비가 도는
-# 중이라는 뜻이라(파티션 수 이하라도) 통과로 보지 않고 STOCK_COMMIT_LAG_PENDING 을 세운다.
+# 중이라는 뜻이라(허용치 이하라도) 통과로 보지 않고 STOCK_COMMIT_LAG_PENDING 을 세운다.
+#
+# 허용치 = 파티션 수 × 생산자 수. 트랜잭션 커밋 표시가 파티션마다 오프셋을 하나씩 차지하는데
+# 컨슈머는 그것을 레코드로 처리하지 않아 영영 줄지 않는다. 이 표시는 생산자(transactional.id)
+# 마다 쌓이므로, payment 인스턴스가 N 대면 한 파티션에 최대 N 개가 남을 수 있다 — 생산자 수를
+# 곱하지 않으면 인스턴스 2대 이상 사이클이 실제 잔류가 0 인데도 영구 판단 보류로 떨어진다
+# (실측: 2대 r120 사이클이 미종결 0·교차식 통과인데 적체 4 > 파티션 3 으로 재시도 3회를
+#  소진하고 실패했다. 파티션별로는 1/1/2 였고 넷 다 커밋 표시였다).
+STOCK_COMMIT_PRODUCERS="${STOCK_COMMIT_PRODUCERS:-1}"
 STOCK_COMMIT_LAG_PENDING=false
 if [[ "${STOCK_COMMIT_LAG}" -gt 0 ]]; then
     sleep "${STOCK_COMMIT_LAG_RECHECK_INTERVAL_SECONDS}"
@@ -446,13 +454,14 @@ if [[ "${STOCK_COMMIT_LAG}" -gt 0 ]]; then
     STOCK_COMMIT_LAG="${STOCK_COMMIT_LAG_RECHECK}"
     STOCK_COMMIT_PARTITIONS="${STOCK_COMMIT_PARTITIONS_RECHECK}"
 fi
-if [[ "${STOCK_COMMIT_LAG}" -gt "${STOCK_COMMIT_PARTITIONS}" ]]; then
+STOCK_COMMIT_LAG_ALLOWED=$(( STOCK_COMMIT_PARTITIONS * STOCK_COMMIT_PRODUCERS ))
+if [[ "${STOCK_COMMIT_LAG}" -gt "${STOCK_COMMIT_LAG_ALLOWED}" ]]; then
     STOCK_COMMIT_LAG_PENDING=true
 fi
 
 echo ""
 echo "  미회수 선차감 기록(NOISE):     ${DB_NOISE}"
-echo "  재고 확정 소비 적체(${STOCK_COMMIT_GROUP}): ${STOCK_COMMIT_LAG} (파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
+echo "  재고 확정 소비 적체(${STOCK_COMMIT_GROUP}): ${STOCK_COMMIT_LAG} (허용 ${STOCK_COMMIT_LAG_ALLOWED} = 파티션 ${STOCK_COMMIT_PARTITIONS} × 생산자 ${STOCK_COMMIT_PRODUCERS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -604,7 +613,7 @@ if [[ "${DB_QUARANTINED}" -gt 0 ]]; then
     STOCK_VERDICT="SKIPPED"
 elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG_PENDING}" == "true" ]]; then
     print_warning "  ⚠️  종결 대기 중 — 재고/건별 대조를 건너뛴다"
-    echo "     미종결=${DB_UNSETTLED} / 미회수 선차감 기록=${DB_NOISE} / 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
+    echo "     미종결=${DB_UNSETTLED} / 미회수 선차감 기록=${DB_NOISE} / 소비 적체=${STOCK_COMMIT_LAG}(허용 ${STOCK_COMMIT_LAG_ALLOWED})"
     echo "     SETTLE_WAIT_SECONDS 를 늘려 재검증 필요:"
     echo "       SETTLE_WAIT_SECONDS=$(( SETTLE_WAIT_SECONDS * 2 )) CASE_NAME=${CASE_NAME} bash scripts/k6/verify-settlement.sh"
     STOCK_VERDICT="SKIPPED"
@@ -759,7 +768,7 @@ echo "  CASE_NAME:    ${CASE_NAME}"
 echo "  settle 대기:  ${SETTLE_WAIT_SECONDS}s$( [[ "${SETTLE_WAIT_AUTO}" == "true" ]] && echo " (자동 산출)" || echo " (명시 지정)" )"
 echo "  k6 결과:      confirm=${K6_CONFIRM} / 거절=${K6_REJECTED} / 제출=${K6_SUBMITTED} / [표본]FAILED=${K6_SAMPLE_FAILED} / [표본]timeout=${K6_SAMPLE_TIMEOUT}"
 echo "  DB 결과:      DONE=${DB_DONE} / FAILED=${DB_FAILED} / QUARANTINED=${DB_QUARANTINED} / 미종결=${DB_UNSETTLED}"
-echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
+echo "  미회수 선차감 기록: ${DB_NOISE} / 소비 적체: ${STOCK_COMMIT_LAG}(허용 ${STOCK_COMMIT_LAG_ALLOWED} = 파티션 ${STOCK_COMMIT_PARTITIONS} × 생산자 ${STOCK_COMMIT_PRODUCERS}, 게이트 대기=${STOCK_COMMIT_LAG_PENDING})"
 echo "  교차식 [1] k6제출==DB총합: $( [[ "${CROSS_1_OK}" == "true" ]] && echo PASS || echo FAIL )  (k6=${K6_SUBMITTED} / DB=${DB_TOTAL})"
 echo "  참고 [2] 지연 표본 관측(판정 미반영): 종결 ${K6_SAMPLE_RESOLVED}건 / FAILED ${K6_SAMPLE_FAILED} / timeout ${K6_SAMPLE_TIMEOUT}"
 echo "  교차식 [3] 상품별 재고 정합: ${STOCK_VERDICT}  (불일치 ${STOCK_MISMATCH_COUNT}종 / 대상 ${PRODUCT_COUNT}종)"
@@ -779,14 +788,31 @@ VERDICT="MISMATCH"
 EXIT_CODE=3
 VERDICT_REASON=""
 
-if [[ "${DB_QUARANTINED}" -gt 0 ]]; then
+# 관측 하한 게이트 — 부하가 시스템에 닿지 않았으면 통과로 읽지 않는다.
+#
+# 모든 교차식은 "센 값끼리 맞는가"를 보므로 아무 일도 일어나지 않으면 전부 자동으로 맞는다.
+# 실제로 사용자 시드 누락으로 checkout 이 전량 실패한 사이클이 k6=0 / DB=0 으로 전항목 PASS 를
+# 받았다 — 부하가 통째로 무효인 사고를 정합 통과로 오독한 것이다. 설계가 경계한 "구성 오류를
+# 처리율 저하로 오독하는 실패"의 가장 나쁜 형태다(저하로도 안 보이고 통과로 보인다).
+#
+# 정합 불일치(3)나 종결 대기(2)가 아니라 전제 실패이므로 exit 1 로 낸다 — 사이클 러너가
+# 재시도도 재구성도 하지 않고 실패로 다룬다(캐시를 비우지 않아 증거가 남는다).
+MIN_OBSERVED_SETTLEMENTS="${MIN_OBSERVED_SETTLEMENTS:-1}"
+if [[ "${K6_SUBMITTED}" -lt "${MIN_OBSERVED_SETTLEMENTS}" || "${DB_TOTAL}" -lt "${MIN_OBSERVED_SETTLEMENTS}" ]]; then
+    print_error "❌ 부하가 시스템에 닿지 않았다 — k6 제출=${K6_SUBMITTED} / DB 총합=${DB_TOTAL} (최소 ${MIN_OBSERVED_SETTLEMENTS})"
+    print_error "   교차식은 값이 0 이면 전부 자동으로 맞으므로 이 사이클은 정합 판정 대상이 아니다."
+    print_error "   부하 도구 로그와 checkout/confirm 실패 원인(사용자·상품 시드, 게이트웨이 라우팅)을 먼저 확인하라."
+    VERDICT="NO_TRAFFIC"
+    EXIT_CODE=1
+    VERDICT_REASON="부하 미도달 — k6 제출=${K6_SUBMITTED} DB 총합=${DB_TOTAL}"
+elif [[ "${DB_QUARANTINED}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
     VERDICT_REASON="격리 결제 잔류(QUARANTINED=${DB_QUARANTINED}) — 대기로 풀리지 않아 불일치로 낸다"
 elif [[ "${DB_UNSETTLED}" -gt 0 ]] || [[ "${DB_NOISE}" -gt 0 ]] || [[ "${STOCK_COMMIT_LAG_PENDING}" == "true" ]]; then
     VERDICT="INCONCLUSIVE"
     EXIT_CODE=2
-    VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}(파티션수=${STOCK_COMMIT_PARTITIONS})"
+    VERDICT_REASON="종결 대기 중 — 미종결=${DB_UNSETTLED} 미회수 선차감 기록=${DB_NOISE} 소비 적체=${STOCK_COMMIT_LAG}(허용 ${STOCK_COMMIT_LAG_ALLOWED})"
 elif [[ "${CROSS_1_OK}" != "true" ]] || [[ "${STOCK_MISMATCH_COUNT}" -gt 0 ]] || [[ "${SETTLE_MISMATCH_COUNT}" -gt 0 ]]; then
     VERDICT="MISMATCH"
     EXIT_CODE=3
