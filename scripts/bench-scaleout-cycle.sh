@@ -231,6 +231,10 @@ CYCLE_JSON="${RESULTS_DIR}/${CASE_NAME}-cycle.json"
 
 MYSQL_PAYMENT_CONTAINER="${MYSQL_PAYMENT_CONTAINER:-payment-mysql-payment}"
 MYSQL_PAYMENT_REPLICA_CONTAINER="${MYSQL_PAYMENT_REPLICA_CONTAINER:-payment-mysql-payment-replica}"
+# 돈 경로의 두 번째 DB — 확정 명령/결과가 pg_inbox·pg_outbox 를 거친다. 여기를 표본화하지 않아
+# 실제 잠금 경합(pg_inbox UPDATE 데드락)을 오래 못 봤다. payment 원본만 보고 "행 잠금 대기 0"
+# 이라 잠금을 배제한 것이 그 사각지대다.
+MYSQL_PG_CONTAINER="${MYSQL_PG_CONTAINER:-payment-mysql-pg}"
 MYSQL_PAYMENT_ROOT_PASSWORD="${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}"
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
 KAFKA_PROBE_TOPIC="${KAFKA_PROBE_TOPIC:-payment.bench.probe}"
@@ -497,6 +501,10 @@ MYSQL_STAT_SAMPLER_PID=""
 # 컨테이너 하나의 실행 중 스레드 · 행 잠금 대기 · 커밋/IO fsync 대기를 한 행으로 낸다.
 # SHOW GLOBAL STATUS 대신 performance_schema.global_status 를 세 개의 상관 서브쿼리로 묶어
 # 컬럼 순서를 고정한다 — SHOW 결과의 행 순서는 서버 버전마다 보장되지 않는다.
+# 실행 스레드 / 현재 잠금 대기 / fsync 대기에 더해 누적 잠금 대기 횟수와 평균 대기 시간을 낸다.
+# "현재 대기 중"(CURRENT_WAITS)만 보면 짧게 스치는 경합이 표본 시점 사이로 빠져나간다 —
+# 실제로 pg_inbox 에서 데드락이 초당 수 건씩 나는 동안에도 payment 원본의 CURRENT_WAITS 는
+# 계속 0 이었다. 누적 카운터(ROW_LOCK_WAITS)는 그 사이 발생분을 놓치지 않는다.
 mysql_stat_row() {
     local container="$1"
     docker exec "${container}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
@@ -504,7 +512,9 @@ mysql_stat_row() {
           (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='THREADS_RUNNING'),
           (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_ROW_LOCK_CURRENT_WAITS'),
           (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_OS_LOG_PENDING_FSYNCS')
-          + (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_DATA_PENDING_FSYNCS');
+          + (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_DATA_PENDING_FSYNCS'),
+          (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_ROW_LOCK_WAITS'),
+          (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='INNODB_ROW_LOCK_TIME_AVG');
     " 2>/dev/null
 }
 
@@ -514,8 +524,11 @@ start_mysql_stat_sampler() {
         while true; do
             source_row=$(mysql_stat_row "${MYSQL_PAYMENT_CONTAINER}")
             replica_row=$(mysql_stat_row "${MYSQL_PAYMENT_REPLICA_CONTAINER}")
-            echo "$(date +%s) source ${source_row:-NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
-            echo "$(date +%s) replica ${replica_row:-NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
+            pg_row=$(mysql_stat_row "${MYSQL_PG_CONTAINER}")
+            epoch=$(date +%s)
+            echo "${epoch} source ${source_row:-NULL	NULL	NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
+            echo "${epoch} replica ${replica_row:-NULL	NULL	NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
+            echo "${epoch} pg ${pg_row:-NULL	NULL	NULL	NULL	NULL}" >> "${MYSQL_STAT_LOG}"
             sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
         done
     ) &
@@ -533,12 +546,12 @@ stop_mysql_stat_sampler() {
 # replica)별 개수/최소/평균/최대를 뽑는다. 값이 NULL 인 행(접속 실패)은 건너뛴다.
 mysql_stat_stats_json() {
     if [[ -z "${MYSQL_STAT_LOG}" || ! -s "${MYSQL_STAT_LOG}" ]]; then
-        echo '{"source":{"samples":0},"replica":{"samples":0}}'
+        echo '{"source":{"samples":0},"replica":{"samples":0},"pg":{"samples":0}}'
         return
     fi
     awk '
         {
-            role = $2; tr = $3; lw = $4; pf = $5
+            role = $2; tr = $3; lw = $4; pf = $5; rlw = $6; rlt = $7
             if (tr !~ /^[0-9.]+$/ || lw !~ /^[0-9.]+$/ || pf !~ /^[0-9.]+$/) { next }
             n[role]++
             sum_tr[role] += tr; sum_lw[role] += lw; sum_pf[role] += pf
@@ -548,9 +561,17 @@ mysql_stat_stats_json() {
             if (n[role] == 1 || lw + 0 > max_lw[role]) { max_lw[role] = lw + 0 }
             if (n[role] == 1 || pf + 0 < min_pf[role]) { min_pf[role] = pf + 0 }
             if (n[role] == 1 || pf + 0 > max_pf[role]) { max_pf[role] = pf + 0 }
+            # 누적 카운터 — 구간 처음·끝 차이로 이 사이클에서 실제로 발생한 잠금 대기 수를 낸다.
+            if (rlw ~ /^[0-9.]+$/) {
+                if (!(role in seen_rlw)) { first_rlw[role] = rlw + 0; seen_rlw[role] = 1 }
+                last_rlw[role] = rlw + 0
+            }
+            if (rlt ~ /^[0-9.]+$/) {
+                if (rlt + 0 > max_rlt[role]) { max_rlt[role] = rlt + 0 }
+            }
         }
         END {
-            roles["source"] = 1; roles["replica"] = 1
+            roles["source"] = 1; roles["replica"] = 1; roles["pg"] = 1
             printf "{"
             first = 1
             for (r in roles) {
@@ -559,11 +580,12 @@ mysql_stat_stats_json() {
                 if (n[r] + 0 == 0) {
                     printf "\"%s\":{\"samples\":0}", r
                 } else {
-                    printf "\"%s\":{\"samples\":%d,\"threads_running\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"row_lock_current_waits\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"pending_fsyncs\":{\"min\":%d,\"avg\":%.2f,\"max\":%d}}",
+                    printf "\"%s\":{\"samples\":%d,\"threads_running\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"row_lock_current_waits\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"pending_fsyncs\":{\"min\":%d,\"avg\":%.2f,\"max\":%d},\"row_lock_waits_delta\":%d,\"row_lock_time_avg_max_ms\":%d}",
                         r, n[r],
                         min_tr[r], sum_tr[r] / n[r], max_tr[r],
                         min_lw[r], sum_lw[r] / n[r], max_lw[r],
-                        min_pf[r], sum_pf[r] / n[r], max_pf[r]
+                        min_pf[r], sum_pf[r] / n[r], max_pf[r],
+                        last_rlw[r] - first_rlw[r], max_rlt[r]
                 }
             }
             printf "}"
@@ -1148,6 +1170,63 @@ moneypath_lag_stats_json() {
 # 정상 종료 경로의 stop_*_sampler 호출은 그대로 두고(중복 호출은 무해하다), 여기에 EXIT/INT/TERM
 # 안전망을 얹는다.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# pg 큐 깊이 표본화 — 확정 명령이 pg 안에서 어느 단계에 머무는지 센다.
+#
+# Kafka 소비 적체는 "아직 안 꺼낸 메시지"만 보여준다. 꺼낸 뒤 pg_inbox 에서 벤더 응답을
+# 기다리는 물량(IN_PROGRESS)이나 아직 착수 못 한 물량(PENDING)은 거기 안 잡힌다.
+# 벤더 호출 단계에 압력이 몰리는지 보려면 이 값이 필요하다.
+# pg_outbox 의 미발행분(processed_at IS NULL)은 확정 결과를 되돌리는 릴레이의 적체다.
+# ---------------------------------------------------------------------------
+PG_QUEUE_LOG=""
+PG_QUEUE_SAMPLER_PID=""
+
+start_pg_queue_sampler() {
+    PG_QUEUE_LOG="$(mktemp "${ROOT_DIR}/results/.pg-queue.${CASE_NAME}.XXXXXX")"
+    (
+        while true; do
+            row=$(docker exec "${MYSQL_PG_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
+                SELECT
+                  (SELECT COUNT(*) FROM pg.pg_inbox WHERE status='PENDING'),
+                  (SELECT COUNT(*) FROM pg.pg_inbox WHERE status='IN_PROGRESS'),
+                  (SELECT COUNT(*) FROM pg.pg_outbox WHERE processed_at IS NULL);
+            " 2>/dev/null)
+            [[ -n "${row}" ]] && echo "$(date +%s) ${row}" >> "${PG_QUEUE_LOG}"
+            sleep "${RESOURCE_SAMPLE_INTERVAL_SECONDS}"
+        done
+    ) &
+    PG_QUEUE_SAMPLER_PID=$!
+}
+
+stop_pg_queue_sampler() {
+    if [[ -n "${PG_QUEUE_SAMPLER_PID}" ]]; then
+        kill -9 "${PG_QUEUE_SAMPLER_PID}" 2>/dev/null || true
+        PG_QUEUE_SAMPLER_PID=""
+    fi
+}
+
+pg_queue_stats_json() {
+    if [[ -z "${PG_QUEUE_LOG}" || ! -s "${PG_QUEUE_LOG}" ]]; then
+        echo '{}'
+        return
+    fi
+    awk '
+        {
+            n++
+            p = $2 + 0; i = $3 + 0; o = $4 + 0
+            sp += p; si += i; so += o
+            if (n == 1 || p > mp) { mp = p }
+            if (n == 1 || i > mi) { mi = i }
+            if (n == 1 || o > mo) { mo = o }
+        }
+        END {
+            if (n == 0) { print "{}"; exit }
+            printf "{\"samples\":%d,\"inbox_pending\":{\"avg\":%.1f,\"max\":%d},\"inbox_in_progress\":{\"avg\":%.1f,\"max\":%d},\"outbox_unsent\":{\"avg\":%.1f,\"max\":%d}}",
+                n, sp/n, mp, si/n, mi, so/n, mo
+        }
+    ' "${PG_QUEUE_LOG}"
+}
+
 cleanup_all_samplers() {
     stop_replica_lag_sampler 2>/dev/null || true
     stop_k6_cpu_sampler 2>/dev/null || true
@@ -1158,6 +1237,7 @@ cleanup_all_samplers() {
     stop_container_stat_sampler 2>/dev/null || true
     stop_cpu_throttle_sampler 2>/dev/null || true
     stop_moneypath_lag_sampler 2>/dev/null || true
+    stop_pg_queue_sampler 2>/dev/null || true
 }
 trap cleanup_all_samplers EXIT INT TERM
 
@@ -1373,6 +1453,7 @@ start_redis_stat_sampler
 start_container_stat_sampler
 start_cpu_throttle_sampler
 start_moneypath_lag_sampler
+start_pg_queue_sampler
 start_kafka_stat_sampler
 start_backlog_stat_sampler
 
@@ -1417,6 +1498,7 @@ if [[ "${K6_EXIT}" -ne 0 && "${K6_EXIT}" -ne 99 ]]; then
     stop_container_stat_sampler
     stop_cpu_throttle_sampler
     stop_moneypath_lag_sampler
+    stop_pg_queue_sampler
     stop_kafka_stat_sampler
     exit 1
 fi
@@ -1433,6 +1515,7 @@ if [[ ! -f "${K6_RESULT_JSON}" ]]; then
     stop_container_stat_sampler
     stop_cpu_throttle_sampler
     stop_moneypath_lag_sampler
+    stop_pg_queue_sampler
     stop_kafka_stat_sampler
     exit 1
 fi
@@ -1484,6 +1567,7 @@ stop_redis_stat_sampler
 stop_container_stat_sampler
 stop_cpu_throttle_sampler
 stop_moneypath_lag_sampler
+stop_pg_queue_sampler
 stop_kafka_stat_sampler
 SETTLE_END_EPOCH=$(date +%s)
 
@@ -1608,6 +1692,7 @@ REDIS_STAT_JSON=$(redis_stat_stats_json)
 CONTAINER_STAT_JSON=$(container_stat_stats_json)
 CPU_THROTTLE_JSON=$(cpu_throttle_stats_json)
 MONEYPATH_LAG_JSON=$(moneypath_lag_stats_json)
+PG_QUEUE_JSON=$(pg_queue_stats_json)
 KAFKA_STAT_JSON=$(kafka_stat_stats_json)
 BACKLOG_TREND_JSON=$(backlog_trend_json)
 
@@ -1650,6 +1735,7 @@ jq -n \
     --argjson kafka_stats "${KAFKA_STAT_JSON}" \
     --argjson cpu_throttle "${CPU_THROTTLE_JSON}" \
     --argjson moneypath_lag "${MONEYPATH_LAG_JSON}" \
+    --argjson pg_queue "${PG_QUEUE_JSON}" \
     --argjson backlog_trend "${BACKLOG_TREND_JSON}" \
     --argjson load_start_epoch "${LOAD_START_EPOCH}" \
     --argjson load_end_epoch "${LOAD_END_EPOCH}" \
@@ -1713,7 +1799,8 @@ jq -n \
             containers: $container_stats,
             kafka: $kafka_stats,
             cpu_throttle: $cpu_throttle,
-            moneypath_lag: $moneypath_lag
+            moneypath_lag: $moneypath_lag,
+            pg_queue: $pg_queue
         },
         backlog_trend: ($backlog_trend + {load_start_epoch: $load_start_epoch, load_end_epoch: $load_end_epoch}),
         # 부하 구간 동안 실제로 밀어낸 속도 — 능력 판정의 기준값.
