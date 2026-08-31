@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-09-01 (L-19 신설 — 과부하 지속 시 리컨실러 되돌림이 컨슈머를 정지시키는 자기 강화 경로(실측)). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -149,6 +149,50 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 ### L-17. DLQ 재주입 전량 스캔 성능·관측성 한계
 
 `KafkaDlqReprocessAdapter` 는 재주입 시 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 대량 적체 시 `read-timeout` 내 `endOffsets` 미도달 가능 — 스캔 미완료(재시도 안내 예외)와 "완주 후 없음"은 `DlqScanResult(payload, completed)` 로 구분하나, 최근 구간부터 역방향 탐색(`offsetsForTimes`)은 미구현이라 최근 메시지가 가장 나중에 스캔된다(사용 패턴과 역방향). 또 스캔 미완료 + 매치 존재 조합은 warn 로그 없이 발행(미스캔 구간에 더 최신 레코드 존재 가능 — 동일 orderId 는 동일 `eventUuid` 재발행이라 멱등 체인이 흡수). 관리 도구 사용 빈도 대비 수용, 역방향 탐색·`dlq_scan_incomplete` warn 은 후속.
+
+### L-19. 과부하 지속 → Reconciler 가 "느림"을 "멈춤"으로 오판 → 컨슈머 정지 (자기 강화)
+
+**실패가 방아쇠가 아니다.** L-7(`markPaymentAsFail` 영구 실패) · L-14(결과수신 DB 다운) 와 달리 이 경로는
+아무것도 실패하지 않은 상태에서 일어난다 — 부하가 지속돼 확정 결과 회신이 리컨실러 임계를 넘기기만 하면 된다.
+
+**연쇄**
+
+1. 부하가 지속돼 확정 결과 회신이 `reconciler.in-flight-timeout-seconds`(**운영 기본 300초**)를 넘긴다
+2. `PaymentReconciler.resetStaleInFlightRecords` 가 IN_PROGRESS 를 멈춘 것으로 보고 `resetToReady` 한다
+3. 뒤늦게 도착한 `events.confirmed`(APPROVED)를 `handleApproved` → `markPaymentAsDone` 이 거부한다
+   (READY 는 DONE 으로 갈 수 없다) → `PaymentStatusException`
+4. `PaymentStatusException` 은 `KafkaErrorHandlerConfig` 의 비재시도 목록
+   (`MessageConversionException`/`IllegalArgumentException`/`IllegalStateException`)에 **없다**.
+   `FixedBackOff(1000ms, 5)` 로 **레코드당 약 5초**를 쓰고 DLQ 로 간다
+5. 그동안 같은 파티션의 뒤 메시지가 전부 막힌다 → 회신이 더 늦어진다 → **1로 돌아간다**
+
+되돌리는 양이 스스로 커지는 것이 실측된다.
+
+```
+21:55:14  stale IN_FLIGHT 발견   965건 → READY 복원
+21:55:39  stale IN_FLIGHT 발견 1,879건 → READY 복원      (25초 만에 두 배)
+```
+
+**실측 (2026-09-01, `post-2-v8` 사이클 · 운영 기본 설정 그대로)**
+
+| | |
+|:---|:---|
+| 조건 | 1대 · 파티션 3 · 컨슈머 동시성 1 · 부하 271초 · 제출 42,281 |
+| pg 측 | `pg_inbox` 42,281 **전부 APPROVED** — pg 는 완주하고 결과를 전량 발행했다 |
+| payment 측 | DONE 25,539 / **READY 16,742** (= `READY 복원 완료` 로그 건수와 일치) |
+| 파티션 | 3 개 중 **2 개 정지**(0·2), 파티션 1 만 lag 0 |
+| DLQ | 정지한 파티션에만 쌓인다 — p0 42건 / p1 **0건** / p2 41건 |
+| 예외 | `PaymentStatusException` 838 · `RecordInRetryException` 420 |
+| 소진 속도 | DLQ 분당 약 3건. 16,742 건을 이 속도로 빼면 수십 시간 |
+
+**성격** — 돈이 새지는 않는다(FAILED·QUARANTINED 0). 벤더 승인분이 READY 로 잔류할 뿐이라 방향은 안전하다.
+다만 **복구가 안 된다** — 되돌아온 READY 를 재처리해도 pg 는 이미 APPROVED 라 같은 결과를 다시 보내고 또 거부된다.
+그리고 정지가 결제 파이프라인 전체를 세운다는 점이 L-14 의 "READY 잔류" 서술에는 없던 부분이다.
+
+**가장 싼 완화**는 4번이다. `PaymentStatusException` 은 **재시도해도 절대 성공하지 않는다** —
+결제 상태가 READY 로 바뀐 사실은 시간이 지난다고 되돌아가지 않는다. 비재시도로 분류하면 레코드당 5초가 0초가 되고,
+파티션이 막히지 않으므로 1↔5 되먹임 고리 자체가 끊긴다. 근본 해결(리컨실러가 느림과 멈춤을 구분하는 것)은
+별도 설계가 필요하다. `TODOS.md` 해당 항목 참고.
 
 ### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 가드 — 프로파일 조작 시 우회 가능
 

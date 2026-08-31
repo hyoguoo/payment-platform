@@ -79,6 +79,11 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
       - GF_INSTALL_PLUGINS=grafana-clock-panel
+      # 익명 열람 — 측정 중 대시보드 캡처용 손잡이. 기본 false 라 평소 동작은 그대로다.
+      # 켜면 로그인 없이 Viewer 권한으로 열람만 가능하다(편집·설정 변경 불가).
+      # 로컬 관측 스택 전용 — 외부에 노출되는 환경에서는 켜지 않는다.
+      - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS:-false}
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
