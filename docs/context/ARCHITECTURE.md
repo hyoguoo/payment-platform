@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — redis-stock 서술을 상품 단위 게이트로 정정(해시태그 키·주문 단위 선점·거절 전용 되돌리기), 워커 표에 `StockHoldRecoveryWorker` 추가, 멱등 표의 재고 토큰을 상품 단위로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — 핵심 설계 결정 인덱스의 FCG 행을 "(미연결)"에서 실제 배선 상태로 정정: 실패 대기열 소비가 관문에 위임, 조회/반영 TX 2단계 분리, 금액 대조 선행, 부분 취소 전용 사유 격리, 격리 사유 4종). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — dedupe 저장소 표의 pg 행을 2-layer 에서 `pg_inbox.order_id` UNIQUE 단일 층으로 정정, 구현 디테일의 존재하지 않는 `PgInboxRepository.markSeen` 표기를 실제 `insertPending`(INSERT IGNORE) 으로 교체). 이전: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — MySQL 절에 payment 읽기 복제본(폴링 조회 전용·판정 격리) 추가, Kafka 절에 파티션이 컨슈머 병렬도의 상한이라는 실측 사실과 상수 산재 위치 추가, 설계 결정 인덱스에 상태 조회 경로 분리·pg_inbox V8 인덱스 2행 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — redis-stock 서술을 상품 단위 게이트로 정정(해시태그 키·주문 단위 선점·거절 전용 되돌리기), 워커 표에 `StockHoldRecoveryWorker` 추가, 멱등 표의 재고 토큰을 상품 단위로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — 핵심 설계 결정 인덱스의 FCG 행을 "(미연결)"에서 실제 배선 상태로 정정: 실패 대기열 소비가 관문에 위임, 조회/반영 TX 2단계 분리, 금액 대조 선행, 부분 취소 전용 사유 격리, 격리 사유 4종). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — dedupe 저장소 표의 pg 행을 2-layer 에서 `pg_inbox.order_id` UNIQUE 단일 층으로 정정, 구현 디테일의 존재하지 않는 `PgInboxRepository.markSeen` 표기를 실제 `insertPending`(INSERT IGNORE) 으로 교체). 이전: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -143,6 +143,10 @@ flowchart LR
 
 Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sql` (스키마) + 필요 시 `V2__seed_*.sql` (시드). 자세한 운영 가이드는 [`STACK.md`](STACK.md).
 
+**payment 읽기 복제본 (선택)** — `payment.datasource.replica.enabled` (기본 `false`, `application.yml`). 켜면 `ReplicaDataSourceConfig` 가 `paymentReplicaDataSource` / `paymentReplicaJdbcTemplate` 을 추가로 등록한다. **쓰는 곳은 `GET /status` 폴링 조회 하나뿐**이고(`PaymentStatusQueryJdbcAdapter`), 확정·멱등·종결 판정은 전부 기본 데이터소스를 쓴다 — 복제는 비동기라 stale read 가 판정에 섞이면 돈 사고가 된다.
+
+그 격리는 두 겹으로 고정돼 있다. 기본 데이터소스와 그 `jdbcTemplate` 에 `@Primary` 를 명시했고(무자격 `NamedParameterJdbcTemplate` 주입이 복제본 템플릿을 단일 후보로 골라 확정 결과 멱등 판정이 조용히 복제본을 읽는 경로가 실제로 있었다), `ReplicaDataSourceIsolationTest` 가 빈 의존 그래프로 회귀를 막는다. 복제본이 끊겨도 원본 폴백은 두지 않는다 — 폴링 조회만 실패한다.
+
 ### Redis — 2 인스턴스
 
 | Redis | 책임 | 사용처 |
@@ -156,6 +160,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 - 토픽 사전 생성: `scripts/smoke/create-topics.sh`
 - 파티션 / replication-factor / min.insync.replicas 검증: `scripts/smoke/kafka-topic-config.sh`
 - Spring Kafka `@KafkaListener` + `KafkaTemplate`. Producer 측 traceparent 전파 위해 자체 생성 ProducerFactory 들에도 `ObservationRegistry` 를 명시적으로 wiring 한다.
+- **파티션 수가 컨슈머 병렬도의 상한이다.** 리스너 동시성을 올리든 인스턴스를 늘리든 그룹당 활성 컨슈머는 파티션 수를 못 넘고, 남는 스레드는 파티션을 배정받지 못해 논다. 운영 파티션은 3 이고 `pg-service` 는 리스너 동시성을 지정하지 않아 Spring 기본값 1 — 즉 **컨슈머 하나가 파티션 셋을 다 든다**. payment 측 손잡이는 `payment.kafka.events-confirmed.consumer.concurrency` (기본 1). 실측에서 이 상한이 처리량 천장이었다 (`SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7절 — 파티션·동시성 9 로 2.19배, 인스턴스만 2배는 1.03배). 승격 판단은 `TODOS.md` `[KAFKA-PARTITION-DEFAULT-PROMOTION]`
+- 파티션 상수는 네 곳에 흩어져 있다 — `scripts/smoke/create-topics.sh:39`, 양 서비스 `KafkaTopicConfig.PARTITIONS`, `docker/docker-compose.infra.yml` `KAFKA_NUM_PARTITIONS`
 
 ### Eureka + Gateway
 
@@ -198,6 +204,8 @@ Flyway baseline 은 4서비스 모두 동일 모델 — `V1__<bounded>_schema.sq
 | pg-service inbox 좀비 회수 | `PgInboxPollingWorker` (`@Scheduled` fixedDelay 5s, 좀비 임계 60s) — PENDING 좀비 (received_at) + IN_PROGRESS 좀비 (updated_at) 두 경로. native query `FOR UPDATE SKIP LOCKED` 로 멀티 워커 race 차단 |
 | pg-service inbox 보정 경로 PENDING 우회 | `DuplicateApprovalHandler.handleDbAbsent*` 가 `transitDirectToTerminal` / `transitDirectToInProgress` 사용 — PENDING 거치지 않음 (보정 경로는 결과를 박는 행위지 처리 시작이 아님) |
 | payment-service EOS 전환 (PAYMENT-EOS-TRANSITION) | `ConfirmedEventConsumer` + `KafkaTransactionManager` 통합. `PaymentConfirmResultUseCase` 안에서 D7 진입 가드 + D5 멱등 마킹 (`payment_event_dedupe` INSERT IGNORE) + D8 multi-product 직접 발행 (`stockCommittedKafkaTemplate.send`). `StockOutbox` 묶음 16+ 파일 + `payment_stock_outbox` 테이블 폐기. product-service `isolation.level=read_committed` 동시 적용 |
+| 결제 상태 조회 경로 분리 | `PaymentStatusQueryPort` / `PaymentStatusSnapshot` (application/port/out) + `PaymentStatusQueryJdbcAdapter` (infrastructure/repository). `GET /status` 폴링 전용 읽기 경로로, 켜져 있으면 복제본을 읽는다. 호출자는 `PaymentController` 하나 — 돈 경로 판정은 진입하지 않는다 |
+| pg_inbox 인덱스 복합 교체 (V8) | `idx_pg_inbox_status` → `idx_pg_inbox_status_updated_at (status, updated_at)`. `status` 는 값 다섯 개짜리 enum 이라 선택도가 없어, 옵티마이저가 유니크 인덱스와 `index_merge intersect` 를 골라 두 인덱스를 함께 잠갔다 — 서로 다른 주문의 UPDATE 끼리 반대 순서로 물려 데드락. 좌측 프리픽스가 `status` 라 기존 조회는 그대로 쓰고, 좀비 회수(`updated_at` 필터)는 새 복합 인덱스가 직접 커버한다. 실측 데드락 163건(부하의 3.3%) → 0, 종결 지연 p99 73초 → 9.3초 |
 
 상세 history 는 archive 안 토픽별 `COMPLETION-BRIEFING.md` / `*-CONTEXT.md`.
 
