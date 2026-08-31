@@ -36,6 +36,14 @@
 - **처방**: 격리 나이를 재는 지표와 만료 임박 알람. `CONCERNS.md` L-15 의 연장선이며, 이번에 그 경계가 부분 취소 격리에도 적용됐다.
 - **STOCK-GATE-PER-PRODUCT 이후**: 선차감 기록이 상품별로 남아 미회수 건수를 지표(`stock_hold_recovery.outstanding_count`)로 볼 수 있게 됐다. 다만 복원 자체는 여전히 캐시 흔적이 있어야 하므로(조건부 되돌리기), 흔적이 만료된 뒤에는 기록만 닫히고 재고는 안 돌아온다 — 만료 임박 알람의 필요는 그대로다.
 
+#### [KAFKA-PARTITION-DEFAULT-PROMOTION] — 파티션·컨슈머 동시성을 기본값으로 올릴지 결정
+
+- **현황**: 토픽 파티션이 3(`KafkaTopicConfig.PARTITIONS`, 양 서비스 하드코딩 + 브로커 `KAFKA_NUM_PARTITIONS`), `pg-service` 리스너 동시성은 미지정이라 Spring 기본 1, payment 의 `events-confirmed.consumer.concurrency` 도 기본 1. 컨슈머 1 개가 파티션 3 개를 다 든다.
+- **측정**: 파티션·동시성을 9 로 올리면 부하 중 종결 **33.9 → 74.3/s (2.19 배)**, 컨슈머 적체 7,866 → 1,140. 9 → 18 은 1.12 배로 꺾인다(수확 체감). 상세: `SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7 절.
+- **걸리는 것 — 파티션 증설은 되돌릴 수 없다**: 줄일 수 없고, 기존 토픽에서 늘리면 키→파티션 해시가 재배치돼 **같은 orderId 의 진행 중 메시지가 다른 파티션으로 갈라진다**. 순서 보장이 깨지는 창이 생긴다. Spring 의 `KafkaAdmin` 은 선언값이 실제보다 크면 기동 시 **자동으로 늘린다** — 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
+- **처방**: (1) 이 시스템이 파티션 내 순서에 실제로 의존하는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 의존하면 빈 토픽 재생성 또는 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 움직여야 한다 — 따로 올리면 파티션 수에서 잘린다.
+- **측정 손잡이는 이미 있다**(제품 코드 변경 없음): `KAFKA_TOPIC_PARTITIONS`(앱 기동 전 토픽 생성 + 되읽기 검증) · `PG_CONSUMER_CONCURRENCY` · `CONFIRMED_CONSUMER_CONCURRENCY`.
+
 #### [STOCK-GATE-NODE-BATCHING] — 캐시 왕복을 노드 단위로 묶기
 
 - **현황**: 게이트가 상품 단위로 쪼개지면서 캐시 왕복이 주문당 1회에서 **선점 1 + 상품 N + 해제 1** 로 늘었다. 라이브 실측(2026-08-18)에서 확정 요청 중앙값이 상품 1개 25.6ms / 2개 32.3ms / 3개 36.3ms — **왕복 하나당 약 5ms**, 상품 수에 선형이다.
@@ -99,7 +107,9 @@
 CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 경합 병목, Hikari 풀·CPU 천장 아님 — CPU 5.5/10 여유) 규명. 후속 처방:
 
 - **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장(scale-out 차단, MySQL lock/IO + Kafka EOS commit 직렬화). 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 재측정. USL N≥3 확장 시 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.
+  - **2026-09-01 SHARED-RESOURCE-SCALEOUT 이 이 처방을 뒤집었다** — 같은 컨테이너·같은 내구성 설정(1/1)에서 서버 커밋 능력을 직접 재니 동시성 16 에 초당 **5,987 커밋**이 나온다. 앱은 초당 492 회(용량의 8%)를 쓰고 있었다. **쓰기 샤딩으로 커밋 경로를 늘려도 얻을 것이 없다.** 디스크도 아니다(장치 2,400~4,032 fsync/s, 부하는 절반 이하). 상세: `SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7-3d.
 - **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향 → 고발행 시 consumer 백로그 비대칭(한 인스턴스만 적체).
+  - **2026-09-01 검증됨 — 비대칭이 아니라 처리량 천장이었다.** 파티션 수는 컨슈머 병렬도의 상한이라 스레드도 인스턴스도 그 위로 못 간다. `pg-service` 는 리스너 동시성을 지정한 적이 없어 **컨슈머 1 개가 파티션 3 개를 다 들고** 있었다(적체가 가장 심한 그룹). 파티션·동시성을 9 로 풀자 부하 중 종결이 **33.9 → 74.3/s (2.19 배)**. 대조군으로 인스턴스만 2 배로 늘리면 1.03 배 — **앱 인스턴스는 애초에 병목이 아니었다.** 후속 결정은 아래 항목 참고.
 - **payment graceful shutdown + gateway retry** — 인스턴스 restart/scale 시 가용성 갭 16%(다운 인스턴스로 라우팅된 confirm http_fail). TC-12(pg worker drain 보류)와 결 다름 — payment 는 무중단 배포 목적.
 - **fencing in-flight 재고 갭 영구성 관찰** — 충돌/restart 시 redis<RDB 미세 갭(0.1%대, fencing이 stock-committed EOS abort → IN_PROGRESS in-flight 비대칭, reconciler cascade 아님). 재배달 EOS 재성공 자연 종결 vs `.dlq` 낙착 후 reconciler backstop 회수인지 장기 관찰. `decrement:done` token 정합(STOCK-COMPENSATION-OTHER-PATHS 완료분)과 연계.
 - **상세 SSOT**: `docs/archive/capacity-and-scaleout/` REPORT 사이클 6/7.
