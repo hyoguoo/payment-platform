@@ -68,6 +68,57 @@ for c in payment-mysql-payment payment-mysql-payment-replica payment-kafka; do
     wait_healthy_named "${c}" 240 || exit 1
 done
 
+# ── (2-1) Kafka 토픽 사전 생성 ────────────────────────────────────────────────
+# 앱이 뜨기 전에 만들어야 하는 이유: 컨슈머는 metadata.max.age.ms(기본 5분)마다만 메타데이터를
+# 갱신한다. 앱이 뜬 뒤 --alter 로 파티션을 늘리면 컨슈머가 새 파티션을 최대 5분간 못 본다.
+# 미리 만들어 두면 앱의 KafkaAdmin 은 이미 있는 토픽을 그대로 두므로(선언값보다 많으면 안 줄인다)
+# 의도한 파티션 수가 그대로 산다.
+#
+# 컨슈머 병렬도의 상한은 파티션 수다 — 리스너 동시성이나 인스턴스를 아무리 늘려도 파티션 수를
+# 못 넘는다. 그래서 동시성 손잡이와 반드시 같이 움직여야 한다.
+KAFKA_TOPIC_PARTITIONS="${KAFKA_TOPIC_PARTITIONS:-3}"
+MONEYPATH_TOPICS=(
+    payment.commands.confirm
+    payment.events.confirmed
+    payment.events.stock-committed
+)
+# DLQ 는 정상 측정에서 트래픽이 없다 — 파티션을 늘릴 이유가 없어 3 으로 고정한다.
+DLQ_TOPICS=(
+    payment.commands.confirm.dlq
+    payment.events.confirmed.dlq
+)
+
+create_topic() {
+    local topic="$1" parts="$2"
+    docker exec payment-kafka kafka-topics --bootstrap-server localhost:9092 \
+        --create --if-not-exists --topic "${topic}" \
+        --partitions "${parts}" --replication-factor 1 >/dev/null 2>&1
+}
+
+say "(2-1) Kafka 토픽 사전 생성 — 돈 경로 파티션 ${KAFKA_TOPIC_PARTITIONS}"
+for t in "${MONEYPATH_TOPICS[@]}"; do
+    if ! create_topic "${t}" "${KAFKA_TOPIC_PARTITIONS}"; then
+        say "❌ 토픽 생성 실패: ${t}"; exit 1
+    fi
+done
+for t in "${DLQ_TOPICS[@]}"; do
+    if ! create_topic "${t}" 3; then
+        say "❌ 토픽 생성 실패: ${t}"; exit 1
+    fi
+done
+
+# 실제로 몇 개로 만들어졌는지 되읽어 확인한다 — 파티션 수가 어긋난 채 측정하면 결과가 통째로
+# 무의미해지므로 여기서 멈춘다.
+for t in "${MONEYPATH_TOPICS[@]}"; do
+    actual=$(docker exec payment-kafka kafka-topics --bootstrap-server localhost:9092 \
+        --describe --topic "${t}" 2>/dev/null | grep -c $'\tPartition: ')
+    if [[ "${actual}" -ne "${KAFKA_TOPIC_PARTITIONS}" ]]; then
+        say "❌ ${t} 파티션 수 불일치 — 기대 ${KAFKA_TOPIC_PARTITIONS} 실제 ${actual}"
+        exit 1
+    fi
+done
+say "    돈 경로 토픽 ${#MONEYPATH_TOPICS[@]}개 파티션 ${KAFKA_TOPIC_PARTITIONS} 확인"
+
 say "(3) 앱 기동 + 스키마 생성 대기"
 "${DC[@]}" up -d user-service >/dev/null 2>&1 || { say "❌ user-service 기동 실패"; exit 1; }
 "${DC[@]}" up -d product-service pg-service payment-service >/dev/null 2>&1 || { say "❌ 앱 기동 실패"; exit 1; }

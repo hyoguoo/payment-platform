@@ -104,6 +104,11 @@ services:
       # 으로 env 주입. 코드 default 5/1(현재 운영 동작) — SHARED-RESOURCE-SCALEOUT Task 21 측정 전용 손잡이.
       PG_INBOX_CHANNEL_WORKER_COUNT: "${PG_INBOX_WORKERS:-5}"
       PG_OUTBOX_CHANNEL_WORKER_COUNT: "${PG_OUTBOX_WORKERS:-1}"
+      # spring.kafka.listener.concurrency — Spring relaxed binding 으로 env 주입.
+      # pg-service 는 커스텀 ContainerFactory 가 없어 자동설정 팩토리에 그대로 걸린다.
+      # 코드 default 1(현재 운영 동작). 컨슈머 병렬도의 실제 상한은 토픽 파티션 수이므로
+      # 이 값만 올리면 파티션 수에서 잘린다 — KAFKA_TOPIC_PARTITIONS 와 같이 움직여야 한다.
+      SPRING_KAFKA_LISTENER_CONCURRENCY: "${PG_CONSUMER_CONCURRENCY:-1}"
       # benchmark 에서 Toss/NicePay 샌드박스 호출 없음 → placeholder 고정
       TOSS_SECRET_KEY: "benchmark-unused"
       NICEPAY_CLIENT_KEY: "benchmark-unused"
