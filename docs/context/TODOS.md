@@ -42,7 +42,15 @@
 - **측정**: 파티션·동시성을 9 로 올리면 부하 중 종결 **33.9 → 74.3/s (2.19 배)**, 컨슈머 적체 7,866 → 1,140. 9 → 18 은 1.12 배로 꺾인다(수확 체감). 상세: `SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7 절.
 - **걸리는 것 — 파티션 증설은 되돌릴 수 없다**: 줄일 수 없고, 기존 토픽에서 늘리면 키→파티션 해시가 재배치돼 **같은 orderId 의 진행 중 메시지가 다른 파티션으로 갈라진다**. 순서 보장이 깨지는 창이 생긴다. Spring 의 `KafkaAdmin` 은 선언값이 실제보다 크면 기동 시 **자동으로 늘린다** — 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
 - **처방**: (1) 이 시스템이 파티션 내 순서에 실제로 의존하는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 의존하면 빈 토픽 재생성 또는 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 움직여야 한다 — 따로 올리면 파티션 수에서 잘린다.
+- **파티션 수가 네 곳에 하드코딩돼 있다** — `scripts/smoke/create-topics.sh:39`(`PARTITIONS=3`), `payment-service/.../KafkaTopicConfig.java:24`, `pg-service/.../KafkaTopicConfig.java:23`, `docker/docker-compose.infra.yml:45`(`KAFKA_NUM_PARTITIONS`). 하나만 바꾸면 서로 어긋난다. 승격한다면 단일 출처로 모으는 것이 선행이다.
 - **측정 손잡이는 이미 있다**(제품 코드 변경 없음): `KAFKA_TOPIC_PARTITIONS`(앱 기동 전 토픽 생성 + 되읽기 검증) · `PG_CONSUMER_CONCURRENCY` · `CONFIRMED_CONSUMER_CONCURRENCY`.
+
+#### [REPLICA-ROUTING-PROMOTION-GUARD] — 읽기 복제본을 상시 운영으로 올릴 때 확인할 것
+
+- **현황**: `payment.datasource.replica.enabled` 기본값이 `false`라 평소에는 기본 데이터소스를 쓴다. 벤치마크(`docker-compose.scaleout.yml`)에서만 `true`로 켠다.
+- **켜면 생기는 창** (2026-09-01 ship 리뷰 minor): 복제는 비동기라, checkout 커밋 직후 클라이언트가 바로 `GET /status`를 폴링하면 `payment_event` 행이 복제본에 도달하기 전 순간에 빈 값이 나와 404(`PAYMENT_EVENT_NOT_FOUND`)가 던져질 수 있다. 원본 폴백을 두지 않는 것은 설계 문서에 적힌 의도된 트레이드오프다.
+- **돈 경로 영향 없음**: 복제본은 `GET /status` 표시 전용이고 호출자는 `PaymentController` 하나뿐이다. 확정·멱등·종결 판정은 전부 기본 데이터소스를 쓰며, `ReplicaDataSourceIsolationTest`가 빈 의존 그래프로 이를 고정한다.
+- **처방**: 상시 운영으로 승격할 때 클라이언트 폴링에 짧은 재시도가 있어 이 창을 자연 흡수하는지 확인한다. 없으면 최초 조회만 원본으로 보내는 폴백이 필요하다.
 
 #### [STOCK-GATE-NODE-BATCHING] — 캐시 왕복을 노드 단위로 묶기
 
