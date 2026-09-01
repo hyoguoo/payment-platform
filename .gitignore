@@ -254,3 +254,6 @@ scripts/k6/results/
 
 # k6 부하 측정 raw 결과 (리포트가 SSOT)
 results/
+
+# 포스팅 초안 — 저장소에 남기지 않는다
+POSTING-DRAFT-*.md
