@@ -96,8 +96,7 @@ public class PaymentOutboxRepositoryImpl implements PaymentOutboxRepository {
 
     @Override
     public Optional<Instant> findOldestPendingCreatedAt() {
-        return jpaPaymentOutboxRepository.findOldestPendingCreatedAt()
-                .map(ldt -> ldt.toInstant(ZoneOffset.UTC));
+        return jpaPaymentOutboxRepository.findOldestPendingCreatedAt();
     }
 
     private static LocalDateTime toLocalDateTime(Instant instant) {

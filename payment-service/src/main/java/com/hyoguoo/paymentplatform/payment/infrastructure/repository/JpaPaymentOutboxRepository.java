@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOutboxEntity;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +74,7 @@ public interface JpaPaymentOutboxRepository extends JpaRepository<PaymentOutboxE
     @Query("SELECT COUNT(e) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING' AND e.nextRetryAt IS NOT NULL AND e.nextRetryAt > :now")
     long countFuturePending(@Param("now") LocalDateTime now);
 
+    // createdAt 은 BaseEntity 에서 Instant 로 매핑돼 있다 — LocalDateTime 으로 받으면 조회 시점에 ClassCastException.
     @Query("SELECT MIN(e.createdAt) FROM PaymentOutboxEntity e WHERE e.status = 'PENDING'")
-    Optional<LocalDateTime> findOldestPendingCreatedAt();
+    Optional<Instant> findOldestPendingCreatedAt();
 }
