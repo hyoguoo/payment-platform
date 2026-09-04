@@ -1,6 +1,6 @@
 # Planned Cleanup / Future Work
 
-> 최종 갱신: 2026-09-01 (SHARED-RESOURCE-SCALEOUT 캡처 재측정 중 발견 3건 등재 — 확정 결과 재시도 분류 / 리컨실러 느림·멈춤 미구분 / 아웃박스 나이 지표 캐스팅 버그). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — 재동기화 가드·흔적 만료 알람 두 항목에 선차감 기록이 준 변화 반영, 노드별 묶음 처리 항목 신설). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION ship — 현재 과업 3건 삭제(중복 승인 신호 이중 / 접수대장 동시 경합 검증 / 소진 시점 벤더 확인 배선 판단 — 모두 이번 토픽에서 해소, 이력은 아카이브 브리핑). 후속 3건 신설: 재고 재동기화의 진행 중 선차감 가드 / 선차감 흔적 만료 임박 알람 / 관리자 조회 서비스의 부분 취소 분류. 재시도 창 축소 항목에 관문 배선에 따른 부분 해소 추가). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT ship — 처리 중 재전송 겹침 차단 항목 삭제(중복 승인 응답 종결로 해소, 이력은 아카이브 브리핑), 후속 1건 신설: 중복 승인 신호 이중으로 인한 발행 2건. 소진 시점 자동 벤더 확인 배선 항목에 원문 승인 시각 반영 메모 추가). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL ship — pg dedupe 층 재검토 항목 삭제(제거안 실행 완료, 이력은 아카이브 브리핑), 후속 2건 신설: 처리 중 재전송 벤더 호출 겹침 차단 / 접수대장 UNIQUE 동시 경합 검증). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-09-04 (SHARED-RESOURCE-SCALEOUT ship — 측정 손잡이 미기록 1건 신설, 파티션 승격 항목의 처리량 수치를 폐기된 게이트 사이클 값에서 재측정값(1.86배 / 1.09배)으로 정정, 아카이브 이동에 따른 조사 문서 참조를 완료 브리핑으로 교체). 이전: 2026-09-01 (SHARED-RESOURCE-SCALEOUT 캡처 재측정 중 발견 3건 등재 — 확정 결과 재시도 분류 / 리컨실러 느림·멈춤 미구분 / 아웃박스 나이 지표 캐스팅 버그). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — 재동기화 가드·흔적 만료 알람 두 항목에 선차감 기록이 준 변화 반영, 노드별 묶음 처리 항목 신설). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION ship — 현재 과업 3건 삭제(중복 승인 신호 이중 / 접수대장 동시 경합 검증 / 소진 시점 벤더 확인 배선 판단 — 모두 이번 토픽에서 해소, 이력은 아카이브 브리핑). 후속 3건 신설: 재고 재동기화의 진행 중 선차감 가드 / 선차감 흔적 만료 임박 알람 / 관리자 조회 서비스의 부분 취소 분류. 재시도 창 축소 항목에 관문 배선에 따른 부분 해소 추가). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT ship — 처리 중 재전송 겹침 차단 항목 삭제(중복 승인 응답 종결로 해소, 이력은 아카이브 브리핑), 후속 1건 신설: 중복 승인 신호 이중으로 인한 발행 2건. 소진 시점 자동 벤더 확인 배선 항목에 원문 승인 시각 반영 메모 추가). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL ship — pg dedupe 층 재검토 항목 삭제(제거안 실행 완료, 이력은 아카이브 브리핑), 후속 2건 신설: 처리 중 재전송 벤더 호출 겹침 차단 / 접수대장 UNIQUE 동시 경합 검증). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 판단만으로 닫히는 현재 과업 7건 삭제: 트랜잭션 매니저 체인 검토(우려 대장 L-1 중복) / 커버리지 집계 범위 잔여 / 선점 경로 프로덕션 미사용(코드 제거) / 모의 벤더 부팅 가드 부재(코드로 해소) / 정적 검출 게이트 승격 판단 / 기준선 억제 정리(코드로 해소) / 종결 이후 발행 행 이력 표시. 섹션 라벨(A~F) 폐지, 남는 재시도 창 축소 항목은 현재 과업 아래 라벨 없이 배치. TC-7 에 타임아웃 회수 경로 미도달 확인 결과와 그로 인해 값이 고정된 컬럼 4개·지표 2개 등재, 스키마 정리를 별도 토픽 조건부 후속으로 추가. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 분류 룰: **현재 과업** = 측정 / Toxiproxy / 멀티 인스턴스 환경 의존 없는 작업. **Phase 5** = 부하 측정 결과 또는 인프라 환경 필요. 내부 "Phase 5" 번호는 README 의 독자용 개발 과정 Phase 1~7 체계와 별개다(서로 다른 축 — 혼용 금지).
 > discuss 단계 시작 시 다음 작업을 고를 때 이 파일을 참고한다.
 
@@ -54,6 +54,13 @@
 - **처방 후보**: (1) 되돌리기 전에 해당 주문의 확정 결과가 큐에 대기 중인지 확인 — 소비 적체가 임계 이상이면 되돌리지 않는다. (2) 임계를 적체 깊이에 연동한다. (3) 되돌리는 대신 별도 상태를 두어 뒤늦은 결과도 적용 가능하게 한다. 셋 다 돈 경로 상태 전이라 설계가 필요하다.
 - **관련**: `CONCERNS.md` L-19 / L-7 / L-14 — 셋이 같은 `resetToReady` 를 공유하나 방아쇠가 다르다(과부하 / 쓰기 영구 실패 / DB 다운).
 
+#### [BENCH-CONDITIONS-NOT-RECORDED] — 측정 손잡이가 결과 파일에 남지 않는다
+
+- **현황**: `bench-scaleout-cycle.sh` 의 `conditions` 블록은 `confirmed_consumer_concurrency`(payment 쪽)만 기록한다. `KAFKA_TOPIC_PARTITIONS` 와 `PG_CONSUMER_CONCURRENCY` 는 스크립트가 참조조차 하지 않는다.
+- **왜 문제인가**: 파티션 수는 이번 조사에서 처리량 상한을 정하는 인자로 밝혀진 값이다. 그게 결과에 없으면 사이클 간 비교를 결과 파일만으로 재현·검증할 수 없다 — `m3-p9c9` 가 실제로 파티션 9 였다는 근거가 사이클 이름과 조사 문서 서술뿐이다.
+- **처방**: 두 env 를 conditions 에 넣는다. 파티션은 설정값이 아니라 **토픽 생성 후 되읽은 실제 값**을 기록하면 설정과 실제가 어긋난 경우까지 잡힌다(앱 기동 후 `--alter` 로 늘리면 `metadata.max.age.ms` 만큼 반영이 늦는다).
+- **관련**: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md` (측정 환경 절).
+
 #### [OUTBOX-METRICS-CAST-BUG] — 아웃박스 적체 나이 지표가 매분 예외로 죽는다
 
 - **현황**: `PaymentOutboxRepositoryImpl.findOldestPendingCreatedAt`(:100) 에서 `ClassCastException: java.time.Instant cannot be cast to java.time.LocalDateTime` 이 던져진다. `PaymentOutboxMetrics.refresh`(:85, `@Scheduled` 60초)가 매 주기 실패한다.
@@ -64,7 +71,7 @@
 #### [KAFKA-PARTITION-DEFAULT-PROMOTION] — 파티션·컨슈머 동시성을 기본값으로 올릴지 결정
 
 - **현황**: 토픽 파티션이 3(`KafkaTopicConfig.PARTITIONS`, 양 서비스 하드코딩 + 브로커 `KAFKA_NUM_PARTITIONS`), `pg-service` 리스너 동시성은 미지정이라 Spring 기본 1, payment 의 `events-confirmed.consumer.concurrency` 도 기본 1. 컨슈머 1 개가 파티션 3 개를 다 든다.
-- **측정**: 파티션·동시성을 9 로 올리면 부하 중 종결 **33.9 → 74.3/s (2.19 배)**, 컨슈머 적체 7,866 → 1,140. 9 → 18 은 1.12 배로 꺾인다(수확 체감). 상세: `SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7 절.
+- **측정**: 파티션·동시성을 9 로 올리면 부하 중 종결 **10.2 → 18.9/s (1.86 배)**, 앞 단계 컨슈머 적체 평균 2,868 → 463 건. 거기서 파티션 18 에 인스턴스를 2 대씩 붙여도 1.09 배로 꺾인다(수확 체감). 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`.
 - **걸리는 것 — 파티션 증설은 되돌릴 수 없다**: 줄일 수 없고, 기존 토픽에서 늘리면 키→파티션 해시가 재배치돼 **같은 orderId 의 진행 중 메시지가 다른 파티션으로 갈라진다**. 순서 보장이 깨지는 창이 생긴다. Spring 의 `KafkaAdmin` 은 선언값이 실제보다 크면 기동 시 **자동으로 늘린다** — 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
 - **처방**: (1) 이 시스템이 파티션 내 순서에 실제로 의존하는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 의존하면 빈 토픽 재생성 또는 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 움직여야 한다 — 따로 올리면 파티션 수에서 잘린다.
 - **파티션 수가 네 곳에 하드코딩돼 있다** — `scripts/smoke/create-topics.sh:39`(`PARTITIONS=3`), `payment-service/.../KafkaTopicConfig.java:24`, `pg-service/.../KafkaTopicConfig.java:23`, `docker/docker-compose.infra.yml:45`(`KAFKA_NUM_PARTITIONS`). 하나만 바꾸면 서로 어긋난다. 승격한다면 단일 출처로 모으는 것이 선행이다.
@@ -140,7 +147,7 @@
 CAPACITY-AND-SCALEOUT 측정으로 payment 1→2 scale-out **~1.0×**(공유 DB 경합 병목, Hikari 풀·CPU 천장 아님 — CPU 5.5/10 여유) 규명. 후속 처방:
 
 - **payment DB 스케일** — 공유 MySQL이 2 인스턴스의 진짜 천장(scale-out 차단, MySQL lock/IO + Kafka EOS commit 직렬화). 읽기 전용 복제(조회 분리) / 쓰기 샤딩 후 재측정. USL N≥3 확장 시 `scripts/usl-fit.py` 다점 회귀로 α·β·Nmax 점추정.
-  - **2026-09-01 SHARED-RESOURCE-SCALEOUT 이 이 처방을 뒤집었다** — 같은 컨테이너·같은 내구성 설정(1/1)에서 서버 커밋 능력을 직접 재니 동시성 16 에 초당 **5,987 커밋**이 나온다. 앱은 초당 492 회(용량의 8%)를 쓰고 있었다. **쓰기 샤딩으로 커밋 경로를 늘려도 얻을 것이 없다.** 디스크도 아니다(장치 2,400~4,032 fsync/s, 부하는 절반 이하). 상세: `SHARED-RESOURCE-SCALEOUT-INVESTIGATION.md` 7-3d.
+  - **2026-09-01 SHARED-RESOURCE-SCALEOUT 이 이 처방을 뒤집었다** — 같은 컨테이너·같은 내구성 설정(1/1)에서 서버 커밋 능력을 직접 재니 동시성 16 에 초당 **5,987 커밋**이 나온다. 앱은 초당 492 회(용량의 8%)를 쓰고 있었다. **쓰기 샤딩으로 커밋 경로를 늘려도 얻을 것이 없다.** 디스크도 아니다(장치 2,400~4,032 fsync/s, 부하는 절반 이하). 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`.
 - **events.confirmed 파티션 수 = 인스턴스 배수** — 현재 파티션 3 vs 인스턴스 2 = 2:1 편향 → 고발행 시 consumer 백로그 비대칭(한 인스턴스만 적체).
   - **2026-09-01 검증됨 — 비대칭이 아니라 처리량 천장이었다.** 파티션 수는 컨슈머 병렬도의 상한이라 스레드도 인스턴스도 그 위로 못 간다. `pg-service` 는 리스너 동시성을 지정한 적이 없어 **컨슈머 1 개가 파티션 3 개를 다 들고** 있었다(적체가 가장 심한 그룹). 파티션·동시성을 9 로 풀자 부하 중 종결이 **33.9 → 74.3/s (2.19 배)**. 대조군으로 인스턴스만 2 배로 늘리면 1.03 배 — **앱 인스턴스는 애초에 병목이 아니었다.** 후속 결정은 아래 항목 참고.
 - **payment graceful shutdown + gateway retry** — 인스턴스 restart/scale 시 가용성 갭 16%(다운 인스턴스로 라우팅된 confirm http_fail). TC-12(pg worker drain 보류)와 결 다름 — payment 는 무중단 배포 목적.
