@@ -6,6 +6,7 @@ import com.hyoguoo.paymentplatform.payment.core.config.ClockConfig;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentOutboxEntity;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -207,5 +208,24 @@ class JpaPaymentOutboxRepositoryTest {
         PaymentOutboxEntity unchanged = jpaPaymentOutboxRepository.findByOrderId(orderId).orElseThrow();
         assertThat(unchanged.getRetryCount()).isEqualTo(1);
         assertThat(unchanged.getNextRetryAt()).isEqualTo(now.plusSeconds(5));
+    }
+
+    @Test
+    @DisplayName("가장_오래된_대기_행의_생성_시각을_지표_조회가_돌려준다")
+    void 가장_오래된_대기_행의_생성_시각을_지표_조회가_돌려준다() {
+        // given — 생성 시각이 다른 대기 행 둘. 감사 컬럼은 Instant 로 매핑돼 있다
+        PaymentOutboxRepositoryImpl sut = new PaymentOutboxRepositoryImpl(jpaPaymentOutboxRepository, clock);
+        LocalDateTime now = nowTruncatedToMicros();
+        jpaPaymentOutboxRepository.insertIgnorePending("order-outbox-oldest-001", now.minusMinutes(10));
+        jpaPaymentOutboxRepository.insertIgnorePending("order-outbox-oldest-002", now);
+        Instant oldestCreatedAt = jpaPaymentOutboxRepository.findByOrderId("order-outbox-oldest-001")
+                .orElseThrow()
+                .getCreatedAt();
+
+        // when
+        Optional<Instant> found = sut.findOldestPendingCreatedAt();
+
+        // then
+        assertThat(found).contains(oldestCreatedAt);
     }
 }
