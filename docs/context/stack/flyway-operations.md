@@ -1,12 +1,12 @@
 # Flyway 운영 가이드 — DB 마이그레이션
 
-> 최종 갱신: 2026-06-23 (코드 대조 — db 위치 두 패턴 정정: payment/pg=`db/migration`, product/user=`db/schema`+`db/seed`). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 재검토 — 불일치 0건, 변경 불요(보존).
+> 최종 갱신: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — `docker` 프로필 seed 차단이 더 이상 product/user 일괄이 아니다: user-service 는 seed 를 포함한다). 이전: 2026-06-23 (코드 대조 — db 위치 두 패턴 정정: payment/pg=`db/migration`, product/user=`db/schema`+`db/seed`). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 재검토 — 불일치 0건, 변경 불요(보존).
 > profile 별 locations, named volume 재사용 시 MissingMigration 대응, Testcontainers 격리.
 
 **모델**: 스키마 위치가 두 패턴으로 갈린다.
 
 - **payment-service / pg-service** — `db/migration/` (Flyway 기본 위치). 단일 locations, seed 디렉토리 없음.
-- **product-service / user-service** — `db/schema/`(baseline) + `db/seed/`(seed) 분리. profile 별 locations 로 `docker` 에서 seed 차단.
+- **product-service / user-service** — `db/schema/`(baseline) + `db/seed/`(seed) 분리. `docker` 프로필의 seed 취급은 **서비스마다 다르다** — product 는 차단, user 는 포함(아래).
 
 ```
 # payment / pg
@@ -40,7 +40,9 @@ spring:
 ```
 
 - `default` / `test` profile: `db/schema` + `db/seed` 모두 적용 (테스트 픽스처 포함)
-- `docker` profile (`SPRING_PROFILES_ACTIVE: docker`): `db/schema` 만 적용 → V2 seed row 차단
+- `docker` profile (`SPRING_PROFILES_ACTIVE: docker`):
+  - **product-service**: `db/schema` 만 적용 → V2 seed row 차단 (재고는 `scripts/seed-stock.sh` 가 따로 넣는다)
+  - **user-service**: `db/schema,db/seed` 둘 다 적용 — **차단하면 안 된다.** 여기서 seed 를 빼면 `V2__seed_user.sql` 이 안 돌아 사용자 행이 하나도 없는 스택이 뜨고, 로그인·checkout 이 전량 실패한다. 볼륨이 남아 있는 동안은 예전에 들어간 행이 증상을 가리다가 새 볼륨에서만 드러나 진단이 늦는다 (2026-09-01 실측으로 잡음)
 - `docker-compose.apps.yml` 의 4 비즈니스 서비스가 모두 `SPRING_PROFILES_ACTIVE: docker` 로 기동하므로 이 override 가 운영에서 실제 활성화됨.
 - **payment / pg**: seed 디렉토리가 없어 profile override 불필요 — Flyway 기본 `classpath:db/migration` 단일 적용. (seed 차단 이슈 자체가 없음)
 

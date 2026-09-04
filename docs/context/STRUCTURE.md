@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `dedupe/` 디렉토리 설명에서 pg 항목 제거, 실제 어댑터를 가진 payment·product 만 남김). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
+> 최종 갱신: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — 결제 상태 조회 포트/어댑터, 읽기 복제본 데이터소스 설정 3행 추가). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `dedupe/` 디렉토리 설명에서 pg 항목 제거, 실제 어댑터를 가진 payment·product 만 남김). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
 
 ## 루트 레이아웃
 
@@ -183,6 +183,9 @@ flowchart TD
 | EOS 멱등 마킹 포트 | `payment-service/.../application/port/out/PaymentEventDedupeStore.java` |
 | EOS 멱등 마킹 어댑터 | `payment-service/.../infrastructure/dedupe/JdbcPaymentEventDedupeStore.java` |
 | EOS consumer wiring | `payment-service/.../infrastructure/config/KafkaConsumerConfig.java` |
+| 결제 상태 조회 포트 | `payment-service/.../application/port/out/PaymentStatusQueryPort.java`, `PaymentStatusSnapshot.java` |
+| 결제 상태 조회 어댑터 | `payment-service/.../infrastructure/repository/PaymentStatusQueryJdbcAdapter.java` (`GET /status` 폴링 전용 — 복제본 활성 시 복제본 읽기) |
+| 읽기 복제본 데이터소스 | `payment-service/.../infrastructure/config/ReplicaDataSourceConfig.java` (기본 `dataSource`/`jdbcTemplate` 에 `@Primary`, 복제본은 명시 이름 전용) |
 | EOS producer wiring | `payment-service/.../infrastructure/config/KafkaProducerConfig.java` (stockCommittedProducerFactory + KafkaTransactionManager) |
 | stock idempotencyKey 도출 (보존) | `payment-service/.../application/util/StockEventUuidDeriver.java` |
 | 재고 Lua 스크립트 | `payment-service/src/main/resources/lua/stock_decrement_atomic.lua`, `stock_compensation_atomic.lua` |

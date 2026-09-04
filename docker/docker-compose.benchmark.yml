@@ -24,6 +24,10 @@
 #   LETTUCE_MAX_ACTIVE — Lettuce 커넥션 풀 max-active. 기본 16 (Spring default 8 → 상향)
 #   PAYMENT_JAVA_OPTS — payment-service JVM 옵션. 기본 -Xmx700m
 #   PG_JAVA_OPTS      — pg-service JVM 옵션. 기본 -Xmx600m
+#   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성.
+#                         기본 1(코드 default 와 동일 — 현재 운영 동작). 파티션 수(3)까지만 의미 있다.
+#   PG_INBOX_WORKERS  — pg-service inbox 채널(벤더 confirm 호출) 워커 수. 기본 5(코드 default).
+#   PG_OUTBOX_WORKERS — pg-service outbox 채널(확정 결과 Kafka 릴레이) 워커 수. 기본 1(코드 default).
 #
 # 주의:
 #   - compose 파일은 smoke.yml 과 분리됨(목적/env가 다름).
@@ -66,6 +70,9 @@ services:
       # reconciler.fixed-delay-ms — Spring relaxed binding 으로 env 주입.
       # 코드 default 120000ms(2분) → 15000ms 로 단축하여 scan 틱 대기를 최소화.
       RECONCILER_FIXED_DELAY_MS: "${RECONCILER_SCAN_MS:-15000}"
+      # payment.kafka.events-confirmed.consumer.concurrency — Spring relaxed binding 으로 env 주입.
+      # 코드 default 1(현재 운영 동작) — SHARED-RESOURCE-SCALEOUT Task 21 측정 전용 손잡이.
+      PAYMENT_KAFKA_EVENTS_CONFIRMED_CONSUMER_CONCURRENCY: "${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
 
   # ──────────────────────────────────────────────────────────────────────────
   # MySQL 인프라 — max_connections 상향(기본 151은 Hikari 풀 * 인스턴스 수 초과 위험)
@@ -93,6 +100,15 @@ services:
       # baseline 측정 — failRate=0 고정(QUARANTINED 발생 방지).
       # QUARANTINED > 0 발생 시 redis-stock 헬스 점검(CACHE_DOWN 트리아지).
       PG_GATEWAY_FAKE_FAIL_RATE: "${FAKE_FAIL_RATE:-0}"
+      # pg.inbox.channel.worker-count / pg.outbox.channel.worker-count — Spring relaxed binding
+      # 으로 env 주입. 코드 default 5/1(현재 운영 동작) — SHARED-RESOURCE-SCALEOUT Task 21 측정 전용 손잡이.
+      PG_INBOX_CHANNEL_WORKER_COUNT: "${PG_INBOX_WORKERS:-5}"
+      PG_OUTBOX_CHANNEL_WORKER_COUNT: "${PG_OUTBOX_WORKERS:-1}"
+      # spring.kafka.listener.concurrency — Spring relaxed binding 으로 env 주입.
+      # pg-service 는 커스텀 ContainerFactory 가 없어 자동설정 팩토리에 그대로 걸린다.
+      # 코드 default 1(현재 운영 동작). 컨슈머 병렬도의 실제 상한은 토픽 파티션 수이므로
+      # 이 값만 올리면 파티션 수에서 잘린다 — KAFKA_TOPIC_PARTITIONS 와 같이 움직여야 한다.
+      SPRING_KAFKA_LISTENER_CONCURRENCY: "${PG_CONSUMER_CONCURRENCY:-1}"
       # benchmark 에서 Toss/NicePay 샌드박스 호출 없음 → placeholder 고정
       TOSS_SECRET_KEY: "benchmark-unused"
       NICEPAY_CLIENT_KEY: "benchmark-unused"

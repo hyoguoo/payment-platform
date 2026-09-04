@@ -16,6 +16,7 @@
 import { Trend, Counter } from 'k6/metrics';
 import http from 'k6/http';
 import { sleep } from 'k6';
+import exec from 'k6/execution';
 
 // ---------------------------------------------------------------------------
 // 환경 기반 상수 (__ENV 주입, 미설정 시 기본값 사용)
@@ -30,7 +31,23 @@ export const USER_ID = parseInt(__ENV.USER_ID || '1', 10);
 /** 측정에 사용할 상품 ID (bench-seed-stock.sh로 재고 확보한 product id=1) */
 export const PRODUCT_ID = parseInt(__ENV.PRODUCT_ID || '1', 10);
 
-/** 1회 주문 수량 */
+/**
+ * 시드된 상품 종류 수. 1(기본)이면 기존과 동일하게 PRODUCT_ID 단일 상품만 쓴다.
+ * 2 이상이면 상품 id를 [PRODUCT_ID_BASE, PRODUCT_ID_BASE+PRODUCT_COUNT) 범위로
+ * 보고, bench-seed-stock.sh가 심어 둔 다품종 재고를 대상으로 주문을 고르게 분산한다.
+ */
+export const PRODUCT_COUNT = parseInt(__ENV.PRODUCT_COUNT || '1', 10);
+
+/** 다품종 상품 id 시작값. bench-seed-stock.sh의 PRODUCT_ID_BASE와 같은 값이어야 한다. */
+export const PRODUCT_ID_BASE = parseInt(__ENV.PRODUCT_ID_BASE || '1000', 10);
+
+/**
+ * 주문 하나에 담을 서로 다른 상품 종류 수. 기본 1(기존과 동일).
+ * PRODUCT_COUNT 이하여야 한 주문 안에서 상품이 중복되지 않는다.
+ */
+export const ITEMS_PER_ORDER = parseInt(__ENV.ITEMS_PER_ORDER || '1', 10);
+
+/** 1회 주문 수량(상품 하나당) */
 export const QUANTITY = parseInt(__ENV.QUANTITY || '1', 10);
 
 /**
@@ -53,12 +70,19 @@ export const POLL_INTERVAL_MS = parseInt(__ENV.POLL_INTERVAL_MS || '500', 10);
 /**
  * 상태 폴링 최대 대기 시간(ms).
  * outbox worker 폴백 주기(2s)보다 반드시 커야 한다(하한 2000ms).
- * reconciler in-flight-timeout 단축값(Task1 RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS)보다도
- * 충분히 작게 잡아야 타임아웃 카운트가 settle 이전 미완료를 정확히 반영한다.
+ *
+ * 기본값 60000ms(60초) — reconciler in-flight-timeout 현재 기준값(300초, bench-scaleout-cycle.sh
+ * RECONCILER_TIMEOUT 기본값)을 전제로, 포화 구간에서 관측된 완료 지연 꼬리(실측 max 10.3초,
+ * SHARED-RESOURCE-SCALEOUT Task 14 cycle-i1-m1-pollon-items1-low)보다 충분히 위로 잡았다.
+ * 옛 기준(reconciler 단축값 30초)을 전제로 짧게 잡았던 이전 기본값(10초)은 포기 시각이
+ * 지연 꼬리보다 짧아 e2e_completion_ms 분포 자체를 잘랐다 — 폴링이 포기한 요청은
+ * e2e_timeout으로만 잡히고 지연 표본에서 빠지므로, 이 값이 지연 꼬리보다 낮으면
+ * p95/p99가 실제 체감 지연이 아니라 "이 값 미만인 건들만의" 백분위가 된다. 체감 지연이
+ * 이 측정의 축이므로 이 값을 지연 분포보다 항상 위에 둔다.
  */
 export const POLL_TIMEOUT_MS = Math.max(
     2000,
-    parseInt(__ENV.POLL_TIMEOUT_MS || '10000', 10)
+    parseInt(__ENV.POLL_TIMEOUT_MS || '60000', 10)
 );
 
 /**
@@ -139,11 +163,38 @@ export function uniqueIdempotencyKey() {
 }
 
 /**
+ * 이번 iteration이 주문에 담을 상품 id 목록을 고른다.
+ *
+ * - PRODUCT_COUNT<=1이면 기존과 동일하게 PRODUCT_ID 단일 상품만 반환한다.
+ * - PRODUCT_COUNT>1이면 k6 전역 iteration 카운터(exec.scenario.iterationInTest)를
+ *   PRODUCT_COUNT로 나눈 나머지를 시작 인덱스로 써서, VU 수·반복 횟수와 무관하게
+ *   상품을 고르게 순환시킨다. ITEMS_PER_ORDER개를 인덱스 연속 슬롯에서 뽑아
+ *   한 주문 안에서 같은 상품이 중복되지 않게 한다(ITEMS_PER_ORDER <= PRODUCT_COUNT 전제).
+ *
+ * @returns {number[]} 주문에 담을 상품 id 배열
+ */
+function selectOrderProductIds() {
+    if (PRODUCT_COUNT <= 1) {
+        return [PRODUCT_ID];
+    }
+
+    const itemCount = Math.min(ITEMS_PER_ORDER, PRODUCT_COUNT);
+    const startIndex = exec.scenario.iterationInTest % PRODUCT_COUNT;
+    const productIds = [];
+    for (let offset = 0; offset < itemCount; offset++) {
+        const index = (startIndex + offset) % PRODUCT_COUNT;
+        productIds.push(PRODUCT_ID_BASE + index);
+    }
+    return productIds;
+}
+
+/**
  * 주문 생성 요청 (POST /api/v1/payments/checkout).
  *
  * - 고유 Idempotency-Key 헤더를 반드시 포함한다.
  * - 응답 HTTP 201: 신규 주문 생성 / 200: 멱등키 중복(재요청).
  * - 태그 step:checkout으로 k6 메트릭 단계 구분.
+ * - PRODUCT_COUNT>1이면 selectOrderProductIds()로 상품을 고르게 분산한다(ITEMS_PER_ORDER개).
  *
  * CheckoutRequest 필드:
  *   userId     Long
@@ -156,14 +207,14 @@ export function uniqueIdempotencyKey() {
 export function doCheckout(idempotencyKey) {
     const key = idempotencyKey || uniqueIdempotencyKey();
 
+    const orderedProductList = selectOrderProductIds().map((productId) => ({
+        productId: productId,
+        quantity: QUANTITY,
+    }));
+
     const payload = JSON.stringify({
         userId: USER_ID,
-        orderedProductList: [
-            {
-                productId: PRODUCT_ID,
-                quantity: QUANTITY,
-            },
-        ],
+        orderedProductList: orderedProductList,
         gatewayType: GATEWAY_TYPE,
     });
 

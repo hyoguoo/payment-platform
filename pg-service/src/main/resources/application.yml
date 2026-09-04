@@ -100,11 +100,14 @@ pg:
   outbox:
     channel:
       capacity: 1024
-      worker-count: 1
+      # 확정 결과를 Kafka(payment.events.confirmed)로 되돌리는 릴레이 스레드 수. 기본값은
+      # 현재 운영 동작(1)을 유지 — SHARED-RESOURCE-SCALEOUT Task 21 측정에서만 env 로 올린다.
+      worker-count: ${PG_OUTBOX_CHANNEL_WORKER_COUNT:1}
   inbox:
     channel:
       capacity: 1024
-      worker-count: 5
+      # 벤더 confirm 호출 동시성. 기본값은 현재 운영 동작(5)을 유지 — 측정 시에만 env 로 올린다.
+      worker-count: ${PG_INBOX_CHANNEL_WORKER_COUNT:5}
   http:
     # connect-timeout: TCP 연결 수립 timeout. Toss/NicePay 벤더 측 LB 가 빠른 응답을 반환한다고 가정 — 3s 로 충분.
     # read-timeout: 벤더 confirm/getStatus 응답 대기. payment-service Feign cross-service(5s)보다 길게 잡는 이유 —

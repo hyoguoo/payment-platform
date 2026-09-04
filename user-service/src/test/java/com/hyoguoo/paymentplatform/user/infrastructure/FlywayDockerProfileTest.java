@@ -19,10 +19,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * docker profile 에서 Flyway seed(V2) 가 적용되지 않음을 검증하는 통합 테스트.
+ * docker profile 에서 Flyway seed(V2) 가 적용됨을 검증하는 통합 테스트.
  *
- * <p>application-docker.yml 의 {@code spring.flyway.locations: classpath:db/schema} override 로
- * V2__seed_user.sql 이 실행되지 않아야 한다.
+ * <p>application-docker.yml 은 {@code spring.flyway.locations: classpath:db/schema,classpath:db/seed}
+ * 로 V2__seed_user.sql 을 반드시 포함한다. 새 볼륨으로 스택을 띄우면 user 테이블이 비어 있어
+ * 결제 부하 도구의 checkout 이 전량 실패하기 때문이다. 시드는 {@code INSERT IGNORE} 라 멱등이고
+ * 실환경 배포에서는 값이 이미 있으면 no-op 이다.
  *
  * <p>docker-java 기본 API 버전(1.32)이 Docker 29.4.2 최소 지원 버전(1.40)보다 낮아
  * src/test/resources/docker-java.properties 에서 api.version=1.44 로 고정한다.
@@ -60,28 +62,28 @@ class FlywayDockerProfileTest {
     private DataSource dataSource;
 
     /**
-     * docker profile 에서 V2 seed 가 차단됨을 검증한다.
+     * docker profile 에서 V2 seed 가 적용됨을 검증한다.
      *
      * <ol>
-     *   <li>flyway_schema_history 에 V1 record 만 존재 (V2 없음)</li>
-     *   <li>user 테이블 row count = 0 (seed 미적용)</li>
+     *   <li>flyway_schema_history 에 V1 + V2 record 모두 존재</li>
+     *   <li>user 테이블 row count = V2__seed_user.sql 삽입 행 수(1)</li>
      * </ol>
      */
     @Test
-    @DisplayName("docker profile — V2 seed 차단: flyway_schema_history V1 only + user row count 0")
-    void dockerProfile_doesNotApplySeedMigration() throws Exception {
+    @DisplayName("docker profile — V2 seed 적용: flyway_schema_history V1+V2 + user row count 1")
+    void dockerProfile_appliesSeedMigration() throws Exception {
         try (Connection conn = dataSource.getConnection()) {
-            // 케이스 1: flyway_schema_history 에 V1 record 만 존재
+            // 케이스 1: flyway_schema_history 에 V1 + V2 record 모두 존재
             int historyCount = queryCount(conn, "SELECT COUNT(*) FROM flyway_schema_history");
             assertThat(historyCount)
-                    .as("flyway_schema_history row count — V1 만 존재해야 한다")
-                    .isEqualTo(1);
+                    .as("flyway_schema_history row count — V1 + V2 모두 적용되어야 한다")
+                    .isEqualTo(2);
 
-            // 케이스 2: user 테이블 row count = 0 (seed 미적용)
+            // 케이스 2: user 테이블 row count = V2__seed_user.sql 삽입 행 수
             int userCount = queryCount(conn, "SELECT COUNT(*) FROM `user`");
             assertThat(userCount)
-                    .as("user 테이블 row count — docker profile 에서 seed 가 적용되지 않아야 한다")
-                    .isZero();
+                    .as("user 테이블 row count — docker profile 에서 seed 가 적용되어야 한다")
+                    .isEqualTo(1);
         }
     }
 

@@ -32,6 +32,13 @@ payment:
     stock-redis:
       host: ${REDIS_STOCK_HOST:redis-stock}
       port: ${REDIS_STOCK_PORT:6379}
+  datasource:
+    replica:
+      # D7 과 같은 타임존 파라미터 — 복제본만 빠지면 폴링이 읽는 승인시각이 세션 타임존만큼 어긋난다.
+      enabled: ${PAYMENT_DATASOURCE_REPLICA_ENABLED:false}
+      url: jdbc:mysql://${PAYMENT_DB_REPLICA_HOST:mysql-payment-replica}:3306/payment-platform?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      username: ${DB_USERNAME:root}
+      password: ${DB_PASSWORD:payment123}
 
 logging:
   level:

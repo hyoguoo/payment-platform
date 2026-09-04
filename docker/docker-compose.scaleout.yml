@@ -1,0 +1,174 @@
+# 공유 자원 동반 스케일아웃 측정 전용 override — 다른 compose 파일 위에 얹어서만 쓴다.
+#
+# 기동 예시:
+#   docker compose \
+#     -f docker/docker-compose.infra.yml \
+#     -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.scaleout.yml \
+#     up -d
+#
+# 포함 내용 (Task 7):
+#   - mysql-payment 에 binlog 옵션을 얹어 복제 소스로 만든다 (server-id=1)
+#   - mysql-payment-replica 컨테이너 신설 — 비동기 복제 1대 (server-id=2, read-only)
+#   - payment-service 에 복제본 접속 정보와 payment.datasource.replica.enabled=true 주입
+#
+# 복제 계정 생성 · 시작 · 상태 확인은 scripts/bench-replica-setup.sh 가 담당한다.
+#
+# 포함 내용 (Task 8):
+#   - redis-stock-cluster — 재고 캐시 클러스터 마스터 노드(최대 4, 복제 노드 없음)
+#   - redis-idempotency-cluster — 멱등 저장소 클러스터 마스터 노드(고정 3)
+#   두 서비스 모두 container_name 을 고정하지 않는다 — 대수는
+#   `docker compose ... up -d --scale <service>=N <service>` 실행 옵션으로 정하고,
+#   슬롯 배정과 상태 확인은 scripts/bench-redis-cluster.sh 가 담당한다.
+#   기존 단독 노드 redis-dedupe(6379) / redis-stock(6380)은 그대로 남아 있다 —
+#   payment-service 의 cluster-nodes 프로퍼티를 채우기 전까지는 계속 그 쪽을 쓴다.
+
+services:
+
+  # ───────────────────────────────────────────
+  # mysql-payment — binlog 활성화로 복제 소스 역할 추가
+  # ───────────────────────────────────────────
+  mysql-payment:
+    # command 는 compose 파일 사이에 병합되지 않고 마지막에 스택된 파일이 통째로 덮어쓴다 —
+    # bench-scaleout-cycle.sh 는 이 파일을 docker-compose.benchmark.yml 뒤에 스택하는데, 그
+    # 파일의 command(max_connections/문자셋)가 여기 있는 복제 플래그에 통째로 가려져 있었다
+    # (Task 21 2인스턴스 측정에서 max_connections 가 MySQL 기본값 151 로 조용히 되돌아간 것을
+    # 라이브로 발견 — 인스턴스 2대의 Hikari 풀 합이 151 을 넘겨 "Too many connections" 로 실패했다).
+    # 두 파일의 플래그를 여기 하나로 합쳐 어느 조합으로 스택해도 max_connections 가 살아있게 한다.
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - "--max_connections=${MYSQL_MAX_CONN:-300}"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+      # 커밋 내구성 손잡이 — 기본값은 MySQL 기본(1/1)이라 평소 동작은 그대로다.
+      # 측정 전용으로만 낮춘다: MYSQL_FLUSH_LOG_AT_TRX_COMMIT=2 MYSQL_SYNC_BINLOG=0 을
+      # 주면 커밋당 fsync(redo + binlog)가 사라져, 처리율 천장이 디스크 동기화 때문인지
+      # 아닌지를 가른다. 낮춘 채로는 프로세스/호스트 급사 시 최근 커밋과 복제본 위치가
+      # 유실될 수 있어 운영값으로 쓰지 않는다.
+      - "--innodb_flush_log_at_trx_commit=${MYSQL_FLUSH_LOG_AT_TRX_COMMIT:-1}"
+      - "--sync_binlog=${MYSQL_SYNC_BINLOG:-1}"
+
+  # ───────────────────────────────────────────
+  # mysql-payment-replica — payment DB 비동기 읽기 복제본 1대
+  # 폴링 조회(PaymentStatusQueryJdbcAdapter)만 이 컨테이너를 읽는다 — 돈 경로 판정은
+  # 여전히 mysql-payment(소스)를 읽는다 (ReplicaDataSourceIsolationTest 로 고정).
+  # ───────────────────────────────────────────
+  mysql-payment-replica:
+    image: mysql:8.0
+    platform: linux/arm64
+    container_name: payment-mysql-payment-replica
+    command:
+      - --server-id=2
+      - --log-bin=mysql-bin
+      - --relay-log=mysql-relay-bin
+      - --read-only=ON
+      - --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}
+      MYSQL_DATABASE: payment-platform
+      MYSQL_USER: ${MYSQL_PAYMENT_USER:-payment}
+      MYSQL_PASSWORD: ${MYSQL_PAYMENT_PASSWORD:-payment123}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-payment-replica-data:/var/lib/mysql
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ───────────────────────────────────────────
+  # payment-service — 복제본 접속 정보 주입 (docker-compose.apps.yml 위에 덧씌운다)
+  #
+  # REDIS_STOCK_CLUSTER_NODES 는 기본값이 빈 문자열이라 평소엔 단독 노드(redis-stock)로 뜬다.
+  # scripts/bench-cluster-check.sh 가 이 값을 채워 --force-recreate 로 재기동해 재고 캐시
+  # 클러스터(redis-stock-cluster)에 붙인다 — 대수는 scripts/bench-redis-cluster.sh 가 정한다.
+  # ───────────────────────────────────────────
+  payment-service:
+    depends_on:
+      mysql-payment-replica:
+        condition: service_healthy
+    environment:
+      PAYMENT_DATASOURCE_REPLICA_ENABLED: "true"
+      PAYMENT_DB_REPLICA_HOST: mysql-payment-replica
+      REDIS_STOCK_CLUSTER_NODES: ${REDIS_STOCK_CLUSTER_NODES:-}
+
+  # ───────────────────────────────────────────
+  # redis-stock-cluster — 재고 캐시 클러스터 마스터 노드 (복제 노드 없음)
+  # 대수는 1 / 2 / 4 로 바꿔 가며 잰다(Task 14). appendfsync always 는 지금의
+  # redis-stock(단독)과 같은 값을 그대로 재되, 프로덕션 구성 그대로 재는 것이 결정이다.
+  # cluster-require-full-coverage no — 노드 하나가 죽어도 그 슬롯이 맡은 상품만
+  # 실패하고 전 상품 캐시 호출이 예외가 되지 않는다(복제 노드가 없는 구성이라 필수).
+  # 데이터는 컨테이너 자체 파일시스템에만 있다(named volume 없음) — 사이클마다
+  # scripts/bench-redis-cluster.sh 가 컨테이너를 지우고 다시 만들어 클러스터를 재구성한다.
+  # ───────────────────────────────────────────
+  redis-stock-cluster:
+    image: redis:7.2-alpine
+    command:
+      - redis-server
+      - "--cluster-enabled"
+      - "yes"
+      - "--cluster-config-file"
+      - "nodes.conf"
+      - "--cluster-node-timeout"
+      - "5000"
+      - "--cluster-require-full-coverage"
+      - "no"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "always"
+      - "--save"
+      - "60 1"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────
+  # redis-idempotency-cluster — 멱등 저장소(dedupe) 클러스터 마스터 노드
+  # 대수는 고정(3) — 재고 캐시와 달리 이 축은 측정 변수로 삼지 않는다(설계 결정).
+  # 내구성 설정은 지금의 redis-dedupe(단독)와 동일하게 appendonly off — dedupe 는
+  # 재처리 가능해 내구성이 필요 없다.
+  # ───────────────────────────────────────────
+  redis-idempotency-cluster:
+    image: redis:7.2-alpine
+    command:
+      - redis-server
+      - "--cluster-enabled"
+      - "yes"
+      - "--cluster-config-file"
+      - "nodes.conf"
+      - "--cluster-node-timeout"
+      - "5000"
+      - "--cluster-require-full-coverage"
+      - "no"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+    networks:
+      - payment-infra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  payment-infra-network:
+    external: true
+    name: payment-infra-network
+
+volumes:
+  mysql-payment-replica-data:
+    driver: local

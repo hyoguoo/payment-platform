@@ -2,11 +2,12 @@ package com.hyoguoo.paymentplatform.payment.application;
 
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.PaymentStatusResult.StatusType;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentLoadUseCase;
-import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentOutboxUseCase;
-import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentStatusQueryPort;
+import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentStatusSnapshot;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOutboxStatus;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentFoundException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import com.hyoguoo.paymentplatform.payment.presentation.port.PaymentStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,14 +16,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class PaymentStatusServiceImpl implements PaymentStatusService {
 
-    private final PaymentLoadUseCase paymentLoadUseCase;
-    private final PaymentOutboxUseCase paymentOutboxUseCase;
+    private final PaymentStatusQueryPort paymentStatusQueryPort;
 
     @Override
     public PaymentStatusResult getPaymentStatus(String orderId) {
-        return paymentOutboxUseCase.findActiveOutboxStatus(orderId)
+        return paymentStatusQueryPort.findActiveOutboxStatus(orderId)
                 .map(status -> buildFromOutbox(orderId, status))
-                .orElseGet(() -> buildFromEvent(paymentLoadUseCase.getPaymentEventByOrderId(orderId)));
+                .orElseGet(() -> buildFromSnapshot(orderId));
     }
 
     private PaymentStatusResult buildFromOutbox(String orderId, PaymentOutboxStatus outboxStatus) {
@@ -36,12 +36,14 @@ public class PaymentStatusServiceImpl implements PaymentStatusService {
                 .build();
     }
 
-    private PaymentStatusResult buildFromEvent(PaymentEvent paymentEvent) {
-        StatusType statusType = mapEventStatus(paymentEvent.getStatus());
+    private PaymentStatusResult buildFromSnapshot(String orderId) {
+        PaymentStatusSnapshot snapshot = paymentStatusQueryPort.findStatusSnapshot(orderId)
+                .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
+        StatusType statusType = mapEventStatus(snapshot.status());
         return PaymentStatusResult.builder()
-                .orderId(paymentEvent.getOrderId())
+                .orderId(snapshot.orderId())
                 .status(statusType)
-                .approvedAt(paymentEvent.getApprovedAt())
+                .approvedAt(snapshot.approvedAt())
                 .build();
     }
 

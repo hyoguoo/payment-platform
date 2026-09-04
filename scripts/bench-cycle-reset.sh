@@ -1,0 +1,429 @@
+#!/usr/bin/env bash
+# bench-cycle-reset.sh — 사이클 사이 재구성 절차. 다섯 단계를 순서대로 밟아야만 캐시를 비운다.
+#
+# 확인과 비우기 사이가 열려 있으면 낙오 확정의 캐시 차감분이 지워져 같은 재고 단위가
+# 다음 사이클에서 또 팔린다 — 원본은 양수라 음수 가드에도 안 걸리는 조용한 초과 판매다.
+# 이 스크립트의 존재 이유는 그 창을 최대한 좁히고, 좁혀지지 않으면 비우지 않고 실패하는 것이다.
+#
+# 다섯 단계:
+#   (1) 부하 도구가 멈춘 것을 확인한다 — 이 환경에서 확정 요청의 유일한 출처
+#   (2) 미종결 결제(READY/IN_PROGRESS/RETRYING) 0, 격리 결제(QUARANTINED) 0,
+#       미회수 선차감 기록(stock_hold_record.status=NOISE) 0 을 짧은 폴링 창으로 안정 확인.
+#       미종결과 격리는 이 프로젝트의 기존 검증 용어(scripts/k6/verify-settlement.sh)에서
+#       별개로 세는 값이다 — 미종결만 보면 격리 잔류가 그대로 통과해 격리가 남은 채로
+#       캐시를 비우게 된다. 격리 잔류는 관리자 종결(POST .../resolve-quarantine)로 자동
+#       시도한 뒤 재확인한다 — 벤더 승인이 확인된 건은 종결이 거부되고, 그 경우도 포함해
+#       반복해도 안 비면 무기한 대기하지 않고 사이클을 실패 처리한다.
+#   (3) 재고 확정 메시지의 소비 적체(consumer group product-service-stock-commit) 안정 확인.
+#       재고 확정 발행이 트랜잭션으로 묶여 있어 커밋 표시가 파티션마다 오프셋을 하나씩
+#       차지하는데 컨슈머는 그것을 레코드로 처리하지 않는다 — 그래서 적체 0 은 실측에서
+#       도달 불가로 드러났고, 판정을 "파티션 수 이하 + 연속 확인에서 더 줄지 않음"으로
+#       바꿨다. 적체가 파티션 수를 넘거나 아직 줄고 있는 중이면 진짜 소비 중이라는 뜻이라
+#       지금처럼 기다린다. 이 게이트는 소비가 끝났다는 정황 증거일 뿐 정합 판정의 권한자는
+#       아니다 — 권한자는 scripts/k6/verify-settlement.sh 의 상품별 캐시-원본 대조다.
+#       그룹에 배정된 살아있는 컨슈머가 없는 채로 적체가 남아 있으면(product-service 다운)
+#       대기해도 절대 안 풀리므로 폴링 예산을 남겨 뒀어도 즉시 실패로 끝낸다
+#   (4) 회수 주기 작업 정지 — payment-service 를 서비스 단위로 멈춘다(docker compose stop).
+#       회수 워커(StockHoldRecoveryWorker)는 인스턴스마다 독립으로 돌고 끄는 설정값이 없어,
+#       컨테이너 하나만 겨냥하면 인스턴스 여러 대 구간에서 남은 인스턴스의 회수가 재확인과
+#       비우기 사이에 끼어든다
+#   (5) (2)와 (3)을 한 번 더 즉시 재확인한 직후에만 payment 원장 여섯 테이블(payment_event/
+#       payment_event_dedupe/payment_history/payment_order/payment_outbox/stock_hold_record)을
+#       비우고, 캐시를 비운 뒤 상품별 상수로 재시드한다(scripts/bench-seed-stock.sh 위임 —
+#       원본과 캐시를 같은 값으로 함께 덮는다). 원장을 비우는 이유 — verify-settlement.sh 의
+#       DB 집계가 이 여섯 테이블을 사이클 구간으로 스코핑하지 않고 전체 스캔하므로, 비우지
+#       않으면 다음 사이클의 카운트에 이전 사이클 건수가 누적돼 교차식이 항상 어긋난다
+#
+# 사용법:
+#   ./scripts/bench-cycle-reset.sh
+#   MAX_POLL_ATTEMPTS=60 ./scripts/bench-cycle-reset.sh   # 인스턴스 대수가 많아 배출이 느릴 때
+#
+# 환경 변수:
+#   STABLE_POLL_INTERVAL_SECONDS — (2)/(3) 안정 확인 폴링 간격 초 (기본 3)
+#   STABLE_REQUIRED_READS        — (2)/(3) 을 안정으로 판정할 연속 0 회수 (기본 3)
+#   MAX_POLL_ATTEMPTS            — (2)/(3) 각 단계 최대 폴링 시도 (기본 40 — 최대 약 120초)
+#   QUARANTINE_RESOLVE_REASON    — 격리 자동 종결 시 감사 사유 (기본 "bench-cycle-reset 자동 회수")
+#   MYSQL_PAYMENT_CONTAINER / DB / USER / PASSWORD — mysql-payment 접속 정보
+#   KAFKA_CONTAINER               — kafka 컨테이너명 (기본 payment-kafka)
+#   STOCK_COMMIT_GROUP            — 재고 확정 소비자 그룹 (기본 product-service-stock-commit)
+#   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK / MYSQL_PRODUCT_* / REDIS_STOCK_CONTAINER
+#     — (5) 재시드에 그대로 전달(scripts/bench-seed-stock.sh 환경 변수와 동일, 미지정 시 그 기본값)
+#
+# 선행 조건:
+#   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.apps.yml \
+#     -f docker/docker-compose.scaleout.yml up -d 로 스택이 떠 있다
+#
+# 종료 코드:
+#   0 — 다섯 단계 전부 통과, payment 원장 비우기 + 캐시 비우기 + 재시드 완료
+#   1 — 선결 조건 미충족(부하 도구 실행 중, 컨테이너 접속 실패 등)
+#   2 — (2)/(3) 안정 확인 실패(잔류가 안 비거나 관리자 종결로도 안 풀림) — 캐시를 비우지 않고 종료
+#   3 — (4) payment-service 정지 실패 — 캐시를 비우지 않고 종료
+#   4 — (5) 재확인 실패, payment 원장 비우기 실패, 또는 재시드 실패 — 이 경우 캐시가 이미 열린 창일 수 있어 즉시 사람 개입 필요
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=common.sh
+source "${ROOT_DIR}/scripts/common.sh"
+
+# 재고 확정 소비 적체 허용치 = 파티션 수 × 생산자 수. 트랜잭션 커밋 표시는 소비되지 않고
+# 생산자(transactional.id)마다 쌓이므로, payment 인스턴스가 N 대면 파티션당 최대 N 개가 남는다.
+STOCK_COMMIT_PRODUCERS="${STOCK_COMMIT_PRODUCERS:-1}"
+
+STABLE_POLL_INTERVAL_SECONDS="${STABLE_POLL_INTERVAL_SECONDS:-3}"
+STABLE_REQUIRED_READS="${STABLE_REQUIRED_READS:-3}"
+MAX_POLL_ATTEMPTS="${MAX_POLL_ATTEMPTS:-40}"
+QUARANTINE_RESOLVE_REASON="${QUARANTINE_RESOLVE_REASON:-bench-cycle-reset 자동 회수}"
+
+MYSQL_CONTAINER="${MYSQL_PAYMENT_CONTAINER:-payment-mysql-payment}"
+MYSQL_DB="${MYSQL_PAYMENT_DB:-payment-platform}"
+MYSQL_USER="${MYSQL_PAYMENT_USER:-root}"
+MYSQL_PASSWORD="${MYSQL_PAYMENT_PASSWORD:-payment123}"
+
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
+STOCK_COMMIT_GROUP="${STOCK_COMMIT_GROUP:-product-service-stock-commit}"
+
+COMPOSE_ARGS=(
+    -f "${ROOT_DIR}/docker/docker-compose.infra.yml"
+    -f "${ROOT_DIR}/docker/docker-compose.apps.yml"
+    -f "${ROOT_DIR}/docker/docker-compose.scaleout.yml"
+)
+
+dc() {
+    docker compose "${COMPOSE_ARGS[@]}" "$@"
+}
+
+mysql_query() {
+    docker exec -i "${MYSQL_CONTAINER}" mysql \
+        -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+        -D "${MYSQL_DB}" -N -B -e "$1" 2>/dev/null
+}
+
+check_docker
+
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print_section "▶ bench-cycle-reset — 사이클 재구성 다섯 단계"
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# ---------------------------------------------------------------------------
+# (1) 부하 도구가 멈춘 것을 확인한다 — 이 환경에서 확정 요청의 유일한 출처
+# ---------------------------------------------------------------------------
+
+print_section "▶ (1) 부하 도구 정지 확인"
+
+if pgrep -f "k6 run" > /dev/null 2>&1; then
+    print_error "❌ (1) k6 프로세스가 아직 실행 중이다 — 먼저 부하 도구를 멈춘 뒤 재실행하세요"
+    exit 1
+fi
+
+RUNNING_K6=$(docker ps --format '{{.Names}}\t{{.Image}}' 2> /dev/null | grep -i 'k6' || true)
+if [[ -n "${RUNNING_K6}" ]]; then
+    print_error "❌ (1) k6 컨테이너가 아직 실행 중이다:"
+    echo "${RUNNING_K6}"
+    exit 1
+fi
+
+print_info "✅ (1) 부하 도구 정지 확인 — k6 프로세스/컨테이너 없음"
+echo ""
+
+# ---------------------------------------------------------------------------
+# (2) 미종결 0, 격리 0, 미회수 선차감 기록 0 — 짧은 폴링 창으로 안정 확인
+# ---------------------------------------------------------------------------
+
+count_unsettled() {
+    # READY(접수) / IN_PROGRESS(진행 중) / RETRYING(재시도 대기, 현재 스키마에는 값이 없어
+    # 항상 0 기여 — verify-settlement.sh 의 미종결 정의와 동일하게 맞춰 둔다)
+    mysql_query "SELECT COUNT(*) FROM payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');" | tail -1
+}
+
+count_quarantined() {
+    mysql_query "SELECT COUNT(*) FROM payment_event WHERE status = 'QUARANTINED';" | tail -1
+}
+
+count_noise() {
+    mysql_query "SELECT COUNT(*) FROM stock_hold_record WHERE status = 'NOISE';" | tail -1
+}
+
+# 격리 결제를 관리자 종결(안전 종결/FAILED)로 자동 시도한다. payment-service 살아있는
+# 인스턴스 하나에 exec 로 들어가 admin 컨트롤러(POST /admin/payments/events/{id}/resolve-quarantine)
+# 를 로컬로 호출한다 — 이 컨트롤러는 gateway 라우팅 대상이 아니라 컨테이너 내부에서만 닿는다.
+# 벤더 승인이 확인된 건은 유스케이스가 거부한다(과금이 살아있는 건이라 되돌릴 수 없다) —
+# 그 경우 이 함수는 진행 상황만 출력하고, 남은 잔류는 상위 안정 확인 루프가 재시도 횟수로 가른다.
+resolve_quarantined_events() {
+    local cid
+    cid=$(dc ps -q payment-service 2> /dev/null | head -n1)
+    if [[ -z "${cid}" ]]; then
+        print_warning "  ⚠️  격리 자동 종결 스킵 — 살아있는 payment-service 컨테이너 없음"
+        return
+    fi
+
+    local rows
+    rows=$(mysql_query "SELECT id, order_id FROM payment_event WHERE status = 'QUARANTINED';")
+    if [[ -z "${rows}" ]]; then
+        return
+    fi
+
+    while IFS=$'\t' read -r event_id order_id; do
+        [[ -z "${event_id}" ]] && continue
+        local location
+        location=$(docker exec "${cid}" curl -s -o /dev/null -D - -X POST \
+            "http://localhost:8080/admin/payments/events/${event_id}/resolve-quarantine" \
+            --data-urlencode "orderId=${order_id}" \
+            --data-urlencode "reason=${QUARANTINE_RESOLVE_REASON}" 2> /dev/null \
+            | grep -i '^location:' | tr -d '\r')
+        if echo "${location}" | grep -q "error"; then
+            print_warning "  ⚠️  격리 종결 거부됨 — orderId=${order_id} (벤더 승인 확인 등 사유는 상세 화면 flash 메시지 참고)"
+        else
+            print_info "  ↻ 격리 종결 시도 — orderId=${order_id} (eventId=${event_id})"
+        fi
+    done <<< "${rows}"
+}
+
+# 공용 안정 확인 루프 — check_fn 이 연속 STABLE_REQUIRED_READS 회 성공(exit 0)을 돌려줄 때까지
+# MAX_POLL_ATTEMPTS 회까지 폴링한다. check_fn 이 2를 반환하면 "대기해도 안 풀리는 상태"로
+# 보고 폴링 예산을 남겨 뒀어도 즉시 중단한다(기다리는 것 자체가 무의미하다). 그 외 실패(1)는
+# 재시도 대상으로 남기고 stable 카운트만 리셋한다.
+wait_stable() {
+    local label="$1"
+    local check_fn="$2"
+    local stable=0
+    local attempt=0
+    local rc
+
+    while true; do
+        attempt=$((attempt + 1))
+        "${check_fn}"
+        rc=$?
+
+        if [[ "${rc}" -eq 0 ]]; then
+            stable=$((stable + 1))
+        elif [[ "${rc}" -eq 2 ]]; then
+            print_error "❌ ${label} — 대기해도 풀리지 않는 상태 감지, 폴링 없이 즉시 중단"
+            return 2
+        else
+            stable=0
+        fi
+
+        if [[ "${stable}" -ge "${STABLE_REQUIRED_READS}" ]]; then
+            print_info "✅ ${label} — 연속 ${STABLE_REQUIRED_READS}회 0 확인"
+            return 0
+        fi
+
+        if [[ "${attempt}" -ge "${MAX_POLL_ATTEMPTS}" ]]; then
+            print_error "❌ ${label} — ${MAX_POLL_ATTEMPTS}회 폴링에도 안정화되지 않음"
+            return 1
+        fi
+
+        sleep "${STABLE_POLL_INTERVAL_SECONDS}"
+    done
+}
+
+check_step2() {
+    local unsettled quarantined noise
+    unsettled=$(count_unsettled)
+    quarantined=$(count_quarantined)
+    noise=$(count_noise)
+    unsettled="${unsettled:-0}"
+    quarantined="${quarantined:-0}"
+    noise="${noise:-0}"
+
+    if [[ "${unsettled}" -eq 0 && "${quarantined}" -eq 0 && "${noise}" -eq 0 ]]; then
+        return 0
+    fi
+
+    echo "    잔류 — 미종결=${unsettled} 격리=${quarantined} 미회수 선차감 기록=${noise}"
+    if [[ "${quarantined}" -gt 0 ]]; then
+        resolve_quarantined_events
+    fi
+    return 1
+}
+
+print_section "▶ (2) 미종결 0 / 격리 0 / 미회수 선차감 기록 0 — 안정 확인"
+if ! wait_stable "(2) 미종결·격리·미회수" check_step2; then
+    print_error "❌ (2) 재구성 중단 — 캐시를 비우지 않는다"
+    echo "    최종 상태 — 미종결=$(count_unsettled) 격리=$(count_quarantined) 미회수 선차감 기록=$(count_noise)"
+    exit 2
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# (3) 재고 확정 메시지의 소비 적체 안정 확인 — consumer group product-service-stock-commit
+# 게이트: 파티션 수 이하 + 연속 확인에서 더 줄지 않음 + 소비자 생존. 이 게이트가 정합을
+# 보증하지는 않는다 — 정합 판정의 실제 권한자는 scripts/k6/verify-settlement.sh 의
+# 상품별 캐시-원본 대조다.
+# ---------------------------------------------------------------------------
+
+# 소비 적체 합계와 파티션 수를 함께 구하되, 그룹 행이 아예 없을 때(그룹 조회 실패·존재하지
+# 않는 그룹)와 배정된 살아있는 컨슈머가 없을 때(product-service 다운)를 구분해 알린다.
+# --describe 출력 컬럼: GROUP TOPIC PARTITION CURRENT-OFFSET LOG-END-OFFSET LAG CONSUMER-ID HOST CLIENT-ID
+# CONSUMER-ID 가 "-"면 그 파티션에 배정된 살아있는 컨슈머가 없다는 뜻이다(오프셋 자체는
+# 여전히 조회된다) — 이 상태에서 적체가 남아 있으면 소비자가 돌아오기 전까지 절대 안 줄어든다.
+#
+# 반환값(공백 구분 두 값 "합계 파티션수"): 정상 — "<합계> <파티션수>" / "ERROR 0" — 그룹
+# 조회 실패 또는 그룹 행 없음(과거 버전은 이 경우도 seen=0 → 0 을 출력해 게이트를 조용히
+# 통과시켰다) / "NO_CONSUMER <파티션수>" — 적체가 남아 있는데 배정된 컨슈머가 하나도 없음
+# (대기해도 안 풀린다)
+kafka_lag_sum() {
+    local out
+    out=$(docker exec "${KAFKA_CONTAINER}" kafka-consumer-groups \
+        --bootstrap-server localhost:9092 --describe --group "${STOCK_COMMIT_GROUP}" 2>/dev/null)
+    if [[ -z "${out}" ]]; then
+        echo "ERROR 0"
+        return
+    fi
+    echo "${out}" | awk '
+        $1 == "GROUP" { next }
+        NF >= 7 && $6 ~ /^[0-9]+$/ {
+            sum += $6
+            partitions++
+            if ($7 != "-") { live = 1 }
+        }
+        END {
+            if (!partitions) { print "ERROR 0"; exit }
+            if (sum > 0 && !live) { print "NO_CONSUMER", partitions; exit }
+            print sum, partitions
+        }
+    '
+}
+
+# 직전 확인의 적체를 기억해 "더 줄지 않음"을 판정한다 — 값이 안 바뀐 채로 파티션 수
+# 이하면 커밋 표시만 남은 정상 잔류, 값이 계속 바뀌면(대개 감소) 진짜 소비가 도는 중이라
+# 안정으로 보지 않는다. 조회 실패·소비자 없음이 한 번이라도 끼면 추세를 신뢰할 수 없어
+# 리셋한다.
+PREV_STOCK_LAG=""
+
+# check_fn 반환 코드 규약(wait_stable 이 해석): 0=성공 / 1=아직 안정 안 됨(재시도) /
+# 2=대기해도 안 풀리는 상태 — wait_stable 이 즉시 중단한다
+check_step3() {
+    local lag partitions
+    read -r lag partitions <<< "$(kafka_lag_sum)"
+    if [[ "${lag}" == "ERROR" ]]; then
+        echo "    소비 적체 조회 실패 — 컨테이너(${KAFKA_CONTAINER}) 또는 그룹(${STOCK_COMMIT_GROUP}) 확인 필요"
+        PREV_STOCK_LAG=""
+        return 1
+    fi
+    if [[ "${lag}" == "NO_CONSUMER" ]]; then
+        echo "    소비자 없음 — 그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없는데 적체가 남아 있다"
+        echo "    (product-service 가 내려가 있으면 대기해도 절대 줄지 않는다 — 즉시 중단)"
+        PREV_STOCK_LAG=""
+        return 2
+    fi
+    allowed=$(( partitions * STOCK_COMMIT_PRODUCERS ))
+    if [[ "${lag}" -le "${allowed}" && "${PREV_STOCK_LAG}" == "${lag}" ]]; then
+        return 0
+    fi
+    if [[ "${lag}" -gt "${allowed}" ]]; then
+        echo "    잔류 — 소비 적체=${lag} (허용 ${allowed} 초과, 진짜 소비 중일 수 있어 대기)"
+    else
+        echo "    적체=${lag} (허용 ${allowed} 이하) — 직전 확인과 비교해 안정 여부 재확인"
+    fi
+    PREV_STOCK_LAG="${lag}"
+    return 1
+}
+
+print_section "▶ (3) 재고 확정 메시지 소비 적체 — 안정 확인 (파티션 수 이하 + 더 줄지 않음, group=${STOCK_COMMIT_GROUP})"
+wait_stable "(3) 소비 적체" check_step3
+STEP3_RC=$?
+if [[ "${STEP3_RC}" -ne 0 ]]; then
+    print_error "❌ (3) 재구성 중단 — 캐시를 비우지 않는다"
+    exit 2
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# (4) 회수 주기 작업 정지 — payment 를 서비스 단위로 멈춘다
+# ---------------------------------------------------------------------------
+
+print_section "▶ (4) 회수 주기 작업 정지 — payment-service 서비스 단위 정지"
+print_section "  (StockHoldRecoveryWorker 는 인스턴스마다 독립으로 돌고 끄는 설정값이 없다 —"
+print_section "   컨테이너 하나만 겨냥하면 남은 인스턴스의 회수가 재확인과 비우기 사이에 끼어든다)"
+
+if ! dc stop payment-service > /dev/null 2>&1; then
+    print_error "❌ (4) payment-service 정지 실패"
+    exit 3
+fi
+
+RUNNING_AFTER_STOP=$(dc ps -q --status running payment-service 2> /dev/null | wc -l | tr -d ' ')
+if [[ "${RUNNING_AFTER_STOP}" != "0" ]]; then
+    print_error "❌ (4) payment-service 컨테이너가 여전히 ${RUNNING_AFTER_STOP}개 실행 중"
+    exit 3
+fi
+
+print_info "✅ (4) payment-service 전체 정지 확인 — 실행 중 컨테이너 0"
+echo ""
+
+# ---------------------------------------------------------------------------
+# (5) (2)와 (3) 을 한 번 더 즉시 재확인한 직후에만 비우고 재시드
+# ---------------------------------------------------------------------------
+# 여기서는 안정 확인(연속 N 회)을 다시 요구하지 않는다 — (2)/(3) 이 이미 안정을 확인했고
+# payment-service 가 (4) 로 멈춰 새 결제·새 재고 확정 메시지가 나갈 출처가 없다. 재확인은
+# 단발 조회로 좁혀 확인과 비우기 사이의 창을 최소로 유지한다. 격리는 payment-service 가
+# 멈춘 뒤라 관리자 종결 자동 시도를 다시 하지 않는다(호출할 살아있는 인스턴스가 없다) —
+# 여기서 격리가 남아 있다면 (2) 이후 새로 발생한 것으로 원인 불문 실패 처리한다.
+
+print_section "▶ (5) (2)/(3) 즉시 재확인 — 통과 직후에만 비운다"
+
+RECHECK_UNSETTLED=$(count_unsettled)
+RECHECK_QUARANTINED=$(count_quarantined)
+RECHECK_NOISE=$(count_noise)
+read -r RECHECK_LAG RECHECK_PARTITIONS <<< "$(kafka_lag_sum)"
+
+RECHECK_UNSETTLED="${RECHECK_UNSETTLED:-0}"
+RECHECK_QUARANTINED="${RECHECK_QUARANTINED:-0}"
+RECHECK_NOISE="${RECHECK_NOISE:-0}"
+
+if [[ "${RECHECK_LAG}" == "ERROR" || "${RECHECK_LAG}" == "NO_CONSUMER" ]]; then
+    print_error "❌ (5) 재확인 실패 — 소비 적체 조회 불가(${RECHECK_LAG}). payment-service 는 이미 정지된 상태다"
+    [[ "${RECHECK_LAG}" == "NO_CONSUMER" ]] && print_error "   그룹(${STOCK_COMMIT_GROUP})에 배정된 살아있는 컨슈머가 없는데 적체가 남아 있다 — product-service 상태 확인 필요"
+    exit 4
+fi
+
+# 소비 적체는 파티션 수 이하면 통과로 본다 — (3) 이 이미 안정(더 줄지 않음)까지 확인했고
+# payment-service 가 (4) 로 멈춰 새 재고 확정 메시지가 나갈 출처가 없으므로, 여기서는
+# 단발 조회로 문턱만 다시 본다.
+if [[ "${RECHECK_UNSETTLED}" -ne 0 || "${RECHECK_QUARANTINED}" -ne 0 || "${RECHECK_NOISE}" -ne 0 || "${RECHECK_LAG}" -gt $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )) ]]; then
+    print_error "❌ (5) 재확인 실패 — 미종결=${RECHECK_UNSETTLED} 격리=${RECHECK_QUARANTINED} 미회수 선차감 기록=${RECHECK_NOISE} 소비 적체=${RECHECK_LAG}(허용 $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )))"
+    print_error "   payment-service 는 이미 정지된 상태다 — 캐시를 비우지 않는다. 원인을 확인한 뒤 재실행하세요"
+    exit 4
+fi
+
+print_info "✅ (5) 재확인 통과 — 미종결=0 격리=0 미회수 선차감 기록=0 소비 적체=${RECHECK_LAG}(허용 $(( RECHECK_PARTITIONS * STOCK_COMMIT_PRODUCERS )) 이하)"
+
+# payment 원장 여섯 테이블(payment_event/payment_event_dedupe/payment_history/payment_order/
+# payment_outbox/stock_hold_record)을 비운다. verify-settlement.sh 의 DB 집계는 이 테이블을
+# WHERE 절 없이 전체 스캔하므로(사이클 구간으로 스코핑하지 않는다), 여기서 비우지 않으면
+# 다음 사이클의 DB 카운트에 이전 사이클 건수가 누적돼 교차식이 실제 유실과 무관하게 항상
+# 어긋난다 — 이전까지는 사이클을 한 번만 돌리고 다음 태스크 착수 전에 사람이 직접 비웠기
+# 때문에 드러나지 않았다(SHARED-RESOURCE-SCALEOUT Task 14, 같은 축의 사이클 세 개를 연속
+# 자동 실행하면서 실측으로 확인). payment-service 는 이미 (4) 에서 멈춰 있어 쓰기 주체가
+# 없으므로 안전하게 비울 수 있다. FK 는 없지만(app 레벨 조인) 순서를 신경 쓰지 않도록
+# FOREIGN_KEY_CHECKS 를 꺼둔다.
+print_section "  payment 원장 여섯 테이블 비우기 (다음 사이클의 정합 검증이 이번 사이클과 섞이지 않도록)"
+if ! mysql_query "
+SET FOREIGN_KEY_CHECKS=0;
+TRUNCATE TABLE payment_event;
+TRUNCATE TABLE payment_event_dedupe;
+TRUNCATE TABLE payment_history;
+TRUNCATE TABLE payment_order;
+TRUNCATE TABLE payment_outbox;
+TRUNCATE TABLE stock_hold_record;
+SET FOREIGN_KEY_CHECKS=1;
+" >/dev/null; then
+    print_error "❌ (5) payment 원장 테이블 비우기 실패 — 캐시는 아직 안 비웠다. 즉시 확인 필요"
+    exit 4
+fi
+print_info "✅ payment 원장 여섯 테이블 비움"
+
+print_section "  캐시 비우기 + 상품별 상수 재시드 위임 → scripts/bench-seed-stock.sh"
+if ! bash "${ROOT_DIR}/scripts/bench-seed-stock.sh"; then
+    print_error "❌ (5) 재시드 실패 — 캐시와 원본이 어긋난 상태일 수 있다. 즉시 확인 필요"
+    exit 4
+fi
+
+echo ""
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print_info "✅ bench-cycle-reset 완료 — 다섯 단계 전부 통과, 캐시 비우기 + 재시드 완료"
+print_section "  payment-service 는 (4) 에서 정지된 채로 남는다 — 다음 사이클의 스택 기동 단계가 재기동한다"
+print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

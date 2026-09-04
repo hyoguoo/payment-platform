@@ -64,6 +64,15 @@ public class KafkaConsumerConfig {
     private long afterRollbackMaxAttempts;
 
     /**
+     * {@link ConfirmedEventConsumer} 리스너 컨테이너 동시성. 파티션 수(3)까지만 스레드를 늘리는 의미가
+     * 있다 — 파티션보다 많은 스레드는 배정받을 파티션이 없어 놀게 된다. 미지정 시 Spring Kafka 기본값과
+     * 동일한 1(현재 운영 동작)을 유지하고, 측정 시에만 프로퍼티로 올려 이 값이 처리율 천장에 실제로
+     * 영향을 주는지 확인한다.
+     */
+    @Value("${payment.kafka.events-confirmed.consumer.concurrency:1}")
+    private int confirmedEventConsumerConcurrency;
+
+    /**
      * EOS-aware {@code kafkaListenerContainerFactory} 빈.
      * {@link ConfirmedEventConsumer} 의 {@code containerFactory = "kafkaListenerContainerFactory"} 가 이 빈을 참조한다.
      *
@@ -91,6 +100,7 @@ public class KafkaConsumerConfig {
         factory.setRecordMessageConverter(recordMessageConverter);
         factory.setAfterRollbackProcessor(
                 buildAfterRollbackProcessor(deadLetterPublishingRecoverer, paymentEosCommitFailureMetrics));
+        factory.setConcurrency(confirmedEventConsumerConcurrency);
         return factory;
     }
 
