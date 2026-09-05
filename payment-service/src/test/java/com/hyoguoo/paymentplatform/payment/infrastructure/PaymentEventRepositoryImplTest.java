@@ -19,6 +19,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -574,6 +575,25 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
         // then
         List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
         assertThat(resultIds).doesNotContain(eventId);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // findByOrderIdForUpdate — 확정 결과 소비 경로용 잠금 읽기 (payment_outbox 의 findByOrderIdForUpdate 와 같은 형태)
+    // ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("findByOrderIdForUpdate — 잠금 읽기가 기존 행을 반환한다")
+    void findByOrderIdForUpdate_잠금_읽기가_기존_행을_반환한다() {
+        // given
+        Long eventId = insertPaymentEvent("lock-read-order-1", PaymentEventStatus.IN_PROGRESS, null);
+
+        // when
+        Optional<PaymentEvent> found = paymentEventRepository.findByOrderIdForUpdate("lock-read-order-1");
+
+        // then
+        assertThat(found).isPresent();
+        assertThat(found.get().getId()).isEqualTo(eventId);
+        assertThat(found.get().getOrderId()).isEqualTo("lock-read-order-1");
     }
 
     private Long insertPaymentEvent(String orderId, PaymentEventStatus status, String statusReason) {

@@ -455,6 +455,26 @@ class PaymentConfirmResultUseCaseTest {
         then(paymentCommandUseCase).should(never()).markPaymentAsFailFromQuarantine(any(), anyString());
     }
 
+    // ---- 소비 경로 잠금 읽기 (Task 10) ----
+
+    @Test
+    @DisplayName("소비_경로는_잠금_읽기로_결제를_읽는다"
+            + " — 잠금 없는 조회(findByOrderId)로 되돌아가면 실패하도록 고정한다")
+    void 소비_경로는_잠금_읽기로_결제를_읽는다() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsDone(any(), any())).willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(paymentEventRepository.findByOrderIdForUpdateCallCount()).isEqualTo(1);
+        assertThat(paymentEventRepository.findByOrderIdCallCount()).isZero();
+    }
+
     // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, List<PaymentOrder> orders) {
