@@ -89,7 +89,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 결과 대기 상태를 상태 열거와 판별 메서드에 추가
-- [ ] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
+- [x] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
 - [ ] Task 3: 결제 상태 조건부 전이 포트와 구현
 - [ ] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
 - [ ] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
@@ -145,7 +145,8 @@ flowchart TD
 - `./gradlew :payment-service:test` 가 **컴파일 포함** 통과 — 개명 누락으로 깨지는 참조가 없는지 여기서 확인한다
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEvent.done`/`fail` 의 허용 상태에 `AWAITING_RESULT` 를 추가하고, `resetToReady` 를 `resetToAwaitingResult` 로 개명해 도착 상태를 `AWAITING_RESULT` 로 바꿨다. `quarantine` 은 비종결 통과 규칙이 이미 커버해 코드 변경 없이 테스트만 추가했다. 개명 참조는 `PaymentReconciler`(호출부 + Javadoc + 로그 문구) 와 `PaymentReconcilerTest` 까지 같은 커밋에서 치환했다. 에러 코드 `INVALID_STATUS_TO_RESET` 도 도착 상태에 맞춰 `INVALID_STATUS_TO_AWAITING_RESULT` 로 개명(코드값 `E03030` 유지). `PaymentReconcilerTest` 의 상태 전이 목적을 잃은 중복 테스트 2건(옛 "만료 2단 연쇄" 서사)은 정리했다. `./gradlew :payment-service:test` 691개 전체 통과.
+> 범위 밖 발견 — `ConfirmedDbDownIntegrationTest.마스킹전이를_가로질러_DLQ증거_생존` (통합, `integration` 태그라 기본 `test` 태스크에는 포함 안 됨)이 reconciler 되돌리기 후 상태를 `READY` 로 직접 단정하고 있어 이 변경 이후에는 실패한다. 이 시나리오는 리컨실러+만료 상호작용 전체를 다시 그려야 해 Task 6/7/11 범위와 겹친다 — 그때 함께 손본다.
 
 ### Task 3: 결제 상태 조건부 전이 포트와 구현 [tdd=true] [domain_risk=true]
 

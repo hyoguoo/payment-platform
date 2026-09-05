@@ -21,12 +21,10 @@ import org.mockito.Mockito;
 /**
  * PaymentReconciler 단위 테스트.
  *
- * <p>새 모델: stock 발산 감지/보정 책임이 제거되어 IN_FLIGHT timeout 복원만 담당한다.
- *
- * <p>만료 2단 연쇄 명문화:
- * "IN_PROGRESS 정체 → Reconciler READY 복원 → 만료 스케줄러 EXPIRED" 연쇄가 의도된 정책임을
- * 단위 테스트로 고정한다. IN_PROGRESS 를 직접 expire() 시도 시 예외가 발생하고,
- * Reconciler 가 READY 로 복원한 뒤에야 만료 대상이 됨을 verify 로 문서화한다.
+ * <p>새 모델: stock 발산 감지/보정 책임이 제거되어 IN_FLIGHT timeout 되돌리기만 담당한다.
+ * 되돌린 결제는 READY 가 아닌 결과 대기(AWAITING_RESULT) 로 옮겨져, 뒤늦게 도착하는 확정
+ * 결과(완료/실패/격리)를 여전히 받아들일 수 있다. 주문이 EXECUTING 에 남아 있어 만료 대상은
+ * 아니다.
  */
 @DisplayName("PaymentReconciler")
 class PaymentReconcilerTest {
@@ -50,7 +48,7 @@ class PaymentReconcilerTest {
     }
 
     @Test
-    @DisplayName("stale IN_FLIGHT 가 있으면 READY 로 복원한다.")
+    @DisplayName("stale IN_FLIGHT 가 있으면 결과 대기로 되돌린다.")
     void scan_resetsStaleInFlightRecords() {
         Instant now = FIXED_INSTANT;
 
@@ -59,7 +57,7 @@ class PaymentReconcilerTest {
 
         reconciler.scan();
 
-        verify(stale, times(1)).resetToReady(now);
+        verify(stale, times(1)).resetToAwaitingResult(now);
         verify(paymentEventRepository, times(1)).saveOrUpdate(stale);
     }
 
@@ -83,36 +81,5 @@ class PaymentReconcilerTest {
         Instant expectedCutoff = FIXED_INSTANT.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
         verify(paymentEventRepository, times(1)).findInProgressOlderThan(expectedCutoff);
         assertThat(expectedCutoff).isBefore(FIXED_INSTANT);
-    }
-
-    // ---- 만료 2단 연쇄 명문화 — 만료 정책 회귀 가드 ----
-
-    @Test
-    @DisplayName("scan — stale IN_PROGRESS 가 있으면 resetToReady(Instant) 가 호출된다. (2단 연쇄 1단계)")
-    void scan_staleInProgress_shouldResetToReady() {
-        // given — Clock.fixed() 주입, cutoff 초과 IN_PROGRESS 1건 반환
-        PaymentEvent staleEvent = Mockito.mock(PaymentEvent.class);
-        Instant expectedCutoff = FIXED_INSTANT.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
-        given(paymentEventRepository.findInProgressOlderThan(expectedCutoff)).willReturn(List.of(staleEvent));
-
-        // when
-        reconciler.scan();
-
-        // then — resetToReady(FIXED_INSTANT) 호출 verify: IN_PROGRESS → READY 복원이 이 시각으로 기록됨
-        verify(staleEvent, times(1)).resetToReady(FIXED_INSTANT);
-        verify(paymentEventRepository, times(1)).saveOrUpdate(staleEvent);
-    }
-
-    @Test
-    @DisplayName("scan — stale IN_PROGRESS 가 없으면 saveOrUpdate 가 0회 호출된다. (2단 연쇄 noop)")
-    void scan_noStaleRecords_shouldDoNothing() {
-        // given — 빈 리스트 반환
-        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
-
-        // when
-        reconciler.scan();
-
-        // then — saveOrUpdate 0회
-        verify(paymentEventRepository, never()).saveOrUpdate(any());
     }
 }

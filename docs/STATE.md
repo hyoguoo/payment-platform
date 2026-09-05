@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 1 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 2 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
+- **활성 태스크**: Task 3: 결제 상태 조건부 전이 포트와 구현
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

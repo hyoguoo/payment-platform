@@ -89,7 +89,8 @@ public class PaymentEvent {
         if (this.status == PaymentEventStatus.DONE) {
             return;
         }
-        if (this.status != PaymentEventStatus.IN_PROGRESS) {
+        if (this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.AWAITING_RESULT) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS);
         }
         this.approvedAt = approvedAt;
@@ -104,7 +105,8 @@ public class PaymentEvent {
             return;
         }
         if (this.status != PaymentEventStatus.READY &&
-                this.status != PaymentEventStatus.IN_PROGRESS) {
+                this.status != PaymentEventStatus.IN_PROGRESS &&
+                this.status != PaymentEventStatus.AWAITING_RESULT) {
             throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_FAIL);
         }
         this.status = PaymentEventStatus.FAILED;
@@ -173,17 +175,17 @@ public class PaymentEvent {
     }
 
     /**
-     * Reconciler가 timeout된 IN_FLIGHT(IN_PROGRESS) 레코드를 READY 상태로 복원.
-     * 재시도 스케줄러가 재처리할 수 있도록 대기열로 되돌린다.
+     * Reconciler가 timeout된 IN_FLIGHT(IN_PROGRESS) 레코드를 결과 대기(AWAITING_RESULT) 상태로 옮긴다.
+     * 재처리를 유발하지 않으며, 뒤늦게 도착하는 확정 결과를 여전히 받아들일 수 있게 하는 것이 목적이다.
      * IN_PROGRESS 상태에서만 호출 가능 (다른 상태는 그대로 유지).
      *
      * @param lastStatusChangedAt 상태 변경 시각
      */
-    public void resetToReady(Instant lastStatusChangedAt) {
+    public void resetToAwaitingResult(Instant lastStatusChangedAt) {
         if (this.status != PaymentEventStatus.IN_PROGRESS) {
-            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_RESET);
+            throw PaymentStatusException.of(PaymentErrorCode.INVALID_STATUS_TO_AWAITING_RESULT);
         }
-        this.status = PaymentEventStatus.READY;
+        this.status = PaymentEventStatus.AWAITING_RESULT;
         this.lastStatusChangedAt = lastStatusChangedAt;
     }
 
