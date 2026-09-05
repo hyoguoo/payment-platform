@@ -53,6 +53,28 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 });
     }
 
+    /**
+     * {@link PaymentEventRepository#findByOrderIdForUpdate(String)} 구현.
+     *
+     * <p>{@code SELECT ... FOR UPDATE} 이므로 read-only 트랜잭션으로 두지 않는다. 잠그는 대상은
+     * {@code payment_event} 그 한 행뿐이며, 자식 {@code payment_order} 조회는 별도 잠금 없이 그대로 이어간다.
+     */
+    @Override
+    @Transactional
+    public Optional<PaymentEvent> findByOrderIdForUpdate(String orderId) {
+        return jpaPaymentEventRepository
+                .findByOrderIdForUpdate(orderId)
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                });
+    }
+
     @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
         List<PaymentOrderEntity> savedOrderEntities = paymentEvent.getPaymentOrderList().stream()

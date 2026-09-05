@@ -98,7 +98,7 @@ flowchart TD
 - [x] Task 7: 리컨실러 2차 임계 스캔 신설
 - [x] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
 - [x] Task 9: 결과 대기 적체 게이지
-- [ ] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
+- [x] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
 - [ ] Task 11: 경합과 배치 격리 통합 검증
 
 ## 태스크
@@ -320,7 +320,7 @@ flowchart TD
 - 위 테스트 pass. Task 11 의 반대 방향 경합 테스트가 이 태스크 적용 후 통과하는지 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEventRepository` 에 `findByOrderIdForUpdate(String orderId)` 잠금 읽기 포트를 추가했다. `JpaPaymentEventRepository` 에 `payment_outbox` 의 `findByOrderIdForUpdate` 와 같은 형태(`@Lock(LockModeType.PESSIMISTIC_WRITE)` + `WHERE orderId = :orderId` JPQL)로 구현했다. `PaymentEventRepositoryImpl.findByOrderIdForUpdate` 는 `SELECT ... FOR UPDATE` 라 read-only 트랜잭션으로 두지 않고(`@Transactional`), 잠금은 조회한 `payment_event` 그 한 행에만 걸리며 자식 `payment_order` 조회는 기존과 같이 잠금 없이 이어간다. `PaymentConfirmResultUseCase.handle` 의 첫 조회를 `findByOrderId` 에서 `findByOrderIdForUpdate` 로 바꿨다 — 종결 상태 가드 판정이 이 잠금 아래에서 이뤄지므로, 리컨실러의 조건부 전이(CAS)와 어느 순서로 겹쳐도 결과가 맞다. `FakePaymentEventRepository` 에 같은 시그니처를 추가하되 동시성 자체는 흉내 내지 않고(단일 스레드 테스트 목적) `findByOrderId`/`findByOrderIdForUpdate` 각각의 호출 횟수만 추적하는 카운터를 뒀다 — 유스케이스 테스트가 소비 경로의 실제 호출 대상(잠금 읽기)을 직접 단정할 수 있게 하기 위함이다. `PaymentEventRepositoryImplTest`(Testcontainers 실제 DB)에 잠금 읽기가 기존 행을 반환하는 테스트 1개, `PaymentConfirmResultUseCaseTest` 에 소비 경로가 `findByOrderIdForUpdate` 를 1회 호출하고 `findByOrderId` 는 호출하지 않음을 단정하는 테스트 1개를 추가했다. `./gradlew :payment-service:test` 712개, `:payment-service:integrationTest`(해당 클래스 20개 포함) 전체 통과.
 
 ### Task 11: 경합과 배치 격리 통합 검증 [tdd=true] [domain_risk=true]
 

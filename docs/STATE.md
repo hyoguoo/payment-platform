@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 9 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 10 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환 (컨슈머가 잠금 없이 읽고 통째로 덮어쓰는 경로를 잠금 읽기로 바꿔, 격리 직후 도착한 확정 결과가 그 격리를 지우지 못하게 막는다)
+- **활성 태스크**: Task 11: 경합과 배치 격리 통합 검증 (앞선 태스크가 각자 단위로 고정한 것을 실제 DB + 컨슈머 경로로 함께 확인 — 구현 변경 없이 통과하는 게 정상)
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

@@ -2,10 +2,12 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,14 @@ import org.springframework.data.repository.query.Param;
 public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEntity, Long> {
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
+
+    /**
+     * 확정 결과 소비 경로용 잠금 읽기(FOR UPDATE) — {@code JpaPaymentOutboxRepository#findByOrderIdForUpdate}
+     * 와 같은 형태다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM PaymentEventEntity e WHERE e.orderId = :orderId")
+    Optional<PaymentEventEntity> findByOrderIdForUpdate(@Param("orderId") String orderId);
 
     // BaseEntity.createdAt 은 Instant(DATETIME(6)) 컬럼이며, Instant 파라미터를
     // Hibernate 가 hibernate.jdbc.time_zone=UTC 기준으로 UTC Calendar 바인딩하므로

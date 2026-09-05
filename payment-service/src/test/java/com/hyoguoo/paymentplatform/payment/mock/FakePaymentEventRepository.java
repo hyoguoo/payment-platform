@@ -20,10 +20,22 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     private final Map<String, PaymentEvent> store = new ConcurrentHashMap<>();
     private final AtomicInteger saveOrUpdateCount = new AtomicInteger(0);
+    private final AtomicInteger findByOrderIdCount = new AtomicInteger(0);
+    private final AtomicInteger findByOrderIdForUpdateCount = new AtomicInteger(0);
 
     /** saveOrUpdate 직접 호출 횟수 — PaymentCommandUseCase 위임 검증용. */
     public int saveOrUpdateCallCount() {
         return saveOrUpdateCount.get();
+    }
+
+    /** 잠금 없는 findByOrderId 호출 횟수 — 소비 경로가 잠금 읽기를 쓰는지 검증용. */
+    public int findByOrderIdCallCount() {
+        return findByOrderIdCount.get();
+    }
+
+    /** 잠금 읽기 findByOrderIdForUpdate 호출 횟수 — 소비 경로가 잠금 읽기를 쓰는지 검증용. */
+    public int findByOrderIdForUpdateCallCount() {
+        return findByOrderIdForUpdateCount.get();
     }
 
     public void save(PaymentEvent event) {
@@ -39,6 +51,17 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     @Override
     public Optional<PaymentEvent> findByOrderId(String orderId) {
+        findByOrderIdCount.incrementAndGet();
+        return Optional.ofNullable(store.get(orderId));
+    }
+
+    /**
+     * 실제 구현({@code PaymentEventRepositoryImpl})의 잠금 읽기(FOR UPDATE)를 in-memory 로 재현한다.
+     * 동시성 자체는 흉내 내지 않고(단일 스레드 테스트 목적), 호출 여부·횟수만 구분한다.
+     */
+    @Override
+    public Optional<PaymentEvent> findByOrderIdForUpdate(String orderId) {
+        findByOrderIdForUpdateCount.incrementAndGet();
         return Optional.ofNullable(store.get(orderId));
     }
 

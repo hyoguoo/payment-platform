@@ -13,6 +13,21 @@ public interface PaymentEventRepository {
 
     Optional<PaymentEvent> findByOrderId(String orderId);
 
+    /**
+     * 주문 번호로 결제 이벤트를 잠금 읽기(PESSIMISTIC_WRITE)로 조회한다.
+     *
+     * <p>확정 결과 소비 경로({@code PaymentConfirmResultUseCase#handle})가 종결 상태 가드 판정 전에
+     * 사용한다. 판정을 이 잠금 아래에서 하면 리컨실러의 조건부 전이(CAS)와 어느 순서로 겹쳐도 결과가
+     * 맞다 — 컨슈머가 먼저 잠그면 리컨실러의 CAS 가 그 사이 0건으로 끝나고, 리컨실러가 먼저 잠갔다
+     * 커밋하면 컨슈머가 바뀐 상태(예: 격리)를 보고 가드에서 물러난다. 잠금은 조회한 그 주문 한 행에만
+     * 걸리며, {@link com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOutboxRepository}
+     * 의 잠금 읽기 확인 조회와 같은 형태다.
+     *
+     * @param orderId 주문 ID
+     * @return 잠근 상태의 결제 이벤트, 없으면 empty
+     */
+    Optional<PaymentEvent> findByOrderIdForUpdate(String orderId);
+
     PaymentEvent saveOrUpdate(PaymentEvent paymentEvent);
 
     List<PaymentEvent> findReadyPaymentsOlderThan(Instant before);
