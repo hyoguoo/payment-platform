@@ -131,6 +131,13 @@ public class PaymentCommandUseCase {
      * 영속화한다. 배치 루프는 한 건의 경합으로 멈추면 안 되므로, {@code markPaymentAsFailFromQuarantine}
      * 과 달리 CAS 0건(그 사이 확정된 건)을 예외로 취급하지 않고 null 을 반환한다 — 감사 이벤트 발행
      * AOP 와 전이 지표 AOP 가 이 반환값으로 발행·기록 여부를 가른다.
+     * <p>
+     * <b>반환 타입을 {@code Optional<PaymentEvent>} 로 바꾸지 말 것.</b>
+     * {@link com.hyoguoo.paymentplatform.payment.infrastructure.aspect.PaymentStatusMetricsAspect}
+     * 와 {@code DomainEventLoggingAspect} 두 아스펙트 모두 이 메서드의 반환값을
+     * {@code instanceof PaymentEvent} 로 판별해 발행·기록 여부를 가른다. {@code Optional} 로 감싸면
+     * 성공한 전이까지 이 판별에 걸려 감사 이력과 전이 지표가 통째로 사라진다 — 이 계약은
+     * {@code ReconcilerDelegateAopTest} 로 잠겨 있다.
      *
      * @param paymentEvent IN_PROGRESS 상태의 결제 이벤트
      * @return 전이·저장된 결제 이벤트, CAS 충돌(0건) 시 null
@@ -149,6 +156,10 @@ public class PaymentCommandUseCase {
      * 리컨실러 2차 스캔이 결과 대기(AWAITING_RESULT) 2차 임계 초과 건을 격리로 옮길 때 경유한다.
      * 반환 계약은 {@link #resetPaymentToAwaitingResult} 와 같다 — CAS 0건(그 사이 확정된 건)은
      * null 을 반환해 배치 루프를 막지 않는다.
+     * <p>
+     * <b>반환 타입을 {@code Optional<PaymentEvent>} 로 바꾸지 말 것</b> — 근거는
+     * {@link #resetPaymentToAwaitingResult} 의 Javadoc 참고 (두 아스펙트의 {@code instanceof PaymentEvent}
+     * 판별 계약).
      *
      * @param paymentEvent AWAITING_RESULT 상태의 결제 이벤트
      * @param reason       격리 사유(필수)

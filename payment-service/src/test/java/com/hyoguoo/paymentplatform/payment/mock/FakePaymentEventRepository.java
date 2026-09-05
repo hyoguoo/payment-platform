@@ -38,8 +38,37 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         return findByOrderIdForUpdateCount.get();
     }
 
+    /**
+     * 저장 시 인자 객체를 그대로 참조하지 않고 방어적으로 복사해 저장한다.
+     *
+     * <p>{@link PaymentEvent#resetToAwaitingResult} / {@link PaymentEvent#quarantine} 등 도메인 전이
+     * 메서드는 대상 객체를 in-place 로 뮤테이트한다. 위임 메서드({@code PaymentCommandUseCase}
+     * 의 CAS 계열)는 이 뮤테이트를 먼저 적용한 뒤 조건부 갱신을 호출하는 순서라, 저장 시 같은
+     * 참조를 그대로 들고 있으면 CAS 선행조건 검사({@link #resolveInProgressToAwaitingResult} 등)가
+     * 이미 뮤테이트된 값을 보게 되어 정상 케이스도 항상 충돌로 오판한다. 복사로 저장소의 상태를
+     * 호출자가 들고 있는 참조와 분리해, CAS 검사가 저장 시점의 상태를 기준으로 판정하게 한다.
+     */
     public void save(PaymentEvent event) {
-        store.put(event.getOrderId(), event);
+        store.put(event.getOrderId(), copyOf(event));
+    }
+
+    private static PaymentEvent copyOf(PaymentEvent source) {
+        return PaymentEvent.allArgsBuilder()
+                .id(source.getId())
+                .buyerId(source.getBuyerId())
+                .sellerId(source.getSellerId())
+                .orderName(source.getOrderName())
+                .orderId(source.getOrderId())
+                .paymentKey(source.getPaymentKey())
+                .gatewayType(source.getGatewayType())
+                .status(source.getStatus())
+                .executedAt(source.getExecutedAt())
+                .approvedAt(source.getApprovedAt())
+                .statusReason(source.getStatusReason())
+                .paymentOrderList(source.getPaymentOrderList())
+                .createdAt(source.getCreatedAt())
+                .lastStatusChangedAt(source.getLastStatusChangedAt())
+                .allArgsBuild();
     }
 
     @Override

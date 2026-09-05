@@ -355,4 +355,21 @@ flowchart TD
 > `./gradlew :payment-service:test` 712개, `:payment-service:integrationTest`(신설 5개 + 34회 실행 포함) 718개 전체 통과. 루트 `./gradlew test` 도 전 서비스 회귀 없음(payment-service 최신 결과 포함 모두 UP-TO-DATE).
 
 ## 리뷰 처리
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+
+ship 코드 리뷰 — reviewer **pass**, domain-expert **pass**. critical 0 / major 0 / minor 4.
+
+domain-expert 는 discuss·plan 에서 자신이 낸 다섯 갈래(리컨실러 조건부 전이와 주문 미터치 / 감사 경로 nullable 가드 / 배치 항목별 격리 / 상태 변경 시각 앵커 / 소비 경로 잠금 읽기)가 전부 코드로 닫혔음을 소스와 대조해 확인했다.
+
+|  # | 출처 | finding | 처리 | 사유 |
+|:---:|:---:|:---|:---:|:---|
+| 1 | reviewer | 확정 결과 가드 통과 상태가 3종이 됐는데 테스트 열거가 2종에 멈춰 있고 표시 이름도 사실과 다름 | 채택 | 실제 커버리지 누락. 새 상태에서 스킵 지표가 오르지 않는 것을 직접 단정하는 테스트가 없다 |
+| 2 | domain-expert | Fake 저장소가 같은 참조를 돌려줘, 위임 메서드와 직접 조립하는 테스트가 정상 케이스에도 항상 충돌로 오판 | 채택 | 프로덕션 결함은 아니고 기존 선례를 복제한 것이나, 미래 테스트가 조용히 항상 실패하는 덫이라 지금 없앤다 |
+| 3 | reviewer | 위임 메서드의 nullable 반환이 관례에서 벗어남 | 채택 (주석만) | 의도된 트레이드오프이고 전용 테스트로 잠겨 있다. 나중 리뷰어가 Optional 로 바꿔 감사를 날리지 않도록 근거를 클래스 주석에 남긴다 |
+| 4 | reviewer | 리컨실러 로그 라벨 정정이 태스크 범위 밖이었음 | 스킵 | 같은 메서드를 이미 재작성하는 김에 한 수정이고, 두 이벤트 타입이 알람·대시보드에서 참조되지 않음을 확인했다 |
+
+### 리뷰 반영 결과
+
+- finding 1: `PaymentConfirmResultUseCaseGuardSkipTest`의 가드 통과 열거에 `AWAITING_RESULT`를 추가하고(READY/IN_PROGRESS/AWAITING_RESULT 3종), `@DisplayName`과 클래스 Javadoc의 커버 범위 설명을 3종 기준으로 맞췄다.
+- finding 2: `FakePaymentEventRepository.save()`가 인자를 그대로 참조하지 않고 방어적으로 복사해 저장하도록 고쳤다. `resolveInProgressToAwaitingResult`/`resolveAwaitingResultToQuarantine`(및 `resolveQuarantineToFailed`)의 CAS 선행조건 검사가 호출자가 들고 있는(위임 메서드가 먼저 뮤테이트하는) 참조가 아니라 저장 시점의 상태를 기준으로 판정하게 됐다. `resolveQuarantineToFailed`는 별도 코드 변경 없이 같은 저장 지점 수정으로 함께 닫혔다.
+- finding 3: `PaymentCommandUseCase.resetPaymentToAwaitingResult`/`quarantinePaymentAutomatically`의 Javadoc에 반환 타입을 `Optional`로 바꾸면 안 되는 이유(두 아스펙트의 `instanceof PaymentEvent` 판별 계약, `ReconcilerDelegateAopTest`로 잠김)를 명시했다.
+- `./gradlew :payment-service:test` 713개, `:payment-service:integrationTest` 718개 전체 통과(회귀 없음).
