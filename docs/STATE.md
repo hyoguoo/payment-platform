@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 7 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 8 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 8: 상태 예외 비재시도 분류와 도달 범위 고정 (확정 결과 경로에서 발생하는 상태 예외를 재시도 없이 DLQ로 보내고, 관리자 격리 종결 메서드가 그 경로에서 호출되지 않음을 고정)
+- **활성 태스크**: Task 9: 결과 대기 적체 게이지 (2차 임계를 넘긴 결과 대기 건수를 게이지로 노출, 앵커는 상태 변경 시각)
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

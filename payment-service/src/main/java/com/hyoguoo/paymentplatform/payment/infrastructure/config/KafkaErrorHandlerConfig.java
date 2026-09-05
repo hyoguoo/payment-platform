@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure.config;
 
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,6 +27,9 @@ import org.springframework.util.backoff.FixedBackOff;
  *   <li>{@link MessageConversionException} — 역직렬화 실패, 재시도 무의미</li>
  *   <li>{@link IllegalArgumentException} — 데이터 형식 손상, 재시도 무의미</li>
  *   <li>{@link IllegalStateException} — 불변식 위반, 재시도 무의미</li>
+ *   <li>{@link PaymentStatusException} — 상태 조건부 갱신 충돌 등 재시도해도 결과가 바뀌지 않는
+ *       상태 예외. 재시도 목록에 없으면 레코드 한 건이 5회 재시도(기본 1초 간격, 총 5초)를
+ *       모두 소진할 때까지 컨슈머가 다음 메시지로 넘어가지 못해 확정 파이프라인이 지연된다</li>
  * </ul>
  * 위 예외는 retry 없이 즉시 DLQ 로 발행된다.
  *
@@ -74,7 +78,8 @@ public class KafkaErrorHandlerConfig {
         handler.addNotRetryableExceptions(
                 MessageConversionException.class,
                 IllegalArgumentException.class,
-                IllegalStateException.class
+                IllegalStateException.class,
+                PaymentStatusException.class
         );
         return handler;
     }

@@ -96,7 +96,7 @@ flowchart TD
 - [x] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
 - [x] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - [x] Task 7: 리컨실러 2차 임계 스캔 신설
-- [ ] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
+- [x] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
 - [ ] Task 9: 결과 대기 적체 게이지
 - [ ] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
 - [ ] Task 11: 경합과 배치 격리 통합 검증
@@ -280,7 +280,7 @@ flowchart TD
 - 위 테스트 pass
 
 **완료 결과**
-> (execute에서 채움)
+> `KafkaErrorHandlerConfig.kafkaErrorHandler` 의 `addNotRetryableExceptions` 에 `PaymentStatusException` 을 추가해 상태 조건부 갱신 충돌 등 상태 예외를 재시도 없이 즉시 DLQ 로 보내게 했다. 클래스 Javadoc 의 not-retryable 화이트리스트 설명에도 이 예외가 없으면 레코드 한 건이 5회 재시도(1초 간격, 총 5초)를 소진할 때까지 컨슈머가 막힌다는 이유를 추가했다. `KafkaErrorHandlerConfigTest` 에 `상태_예외는_재시도하지_않는다`(classifier.classify 가 false 인지) 테스트를 추가했다. 도달 범위 고정은 별도로 `PaymentConfirmResultUseCaseTest` 에 `확정_결과_경로는_관리자_격리_종결을_호출하지_않는다` 를 추가했다 — `PaymentCommandUseCase` 를 mock 으로 두고 승인/실패/격리 세 갈래를 각각 다른 orderId 로 모두 태운 뒤 `markPaymentAsFailFromQuarantine` 이 한 번도 호출되지 않았음을 단정한다. 이 테스트는 프로덕션 변경 없이도 이미 참이라 GREEN 커밋 시점에 곧바로 통과했다 — 확정 결과 경로가 그 메서드를 호출할 길이 원래 없었다는 것을 고정하는 회귀 가드다. `./gradlew :payment-service:test` 710개 전체 통과(기존 708 + 2).
 
 ### Task 9: 결과 대기 적체 게이지 [tdd=true]
 
