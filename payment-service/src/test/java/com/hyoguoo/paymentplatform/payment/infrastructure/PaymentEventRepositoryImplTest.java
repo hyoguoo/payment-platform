@@ -510,15 +510,87 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
                 .isCloseTo(lastStatusChangedAt, within(1, ChronoUnit.SECONDS));
     }
 
+    // ────────────────────────────────────────────────────────────
+    // findAwaitingResultOlderThan — 2차 임계 초과 조회 (앵커: last_status_changed_at)
+    // ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("findAwaitingResultOlderThan — AWAITING_RESULT 이고 last_status_changed_at 이 기준시각보다 오래된 건만 반환한다")
+    void findAwaitingResultOlderThan_결과_대기이고_기준시각보다_오래된_건만_반환한다() {
+        // given
+        Instant oldChangedAt = Instant.now().minusSeconds(600);
+        Long olderEventId = insertPaymentEvent(
+                "awaiting-older-1", PaymentEventStatus.AWAITING_RESULT, null, null, oldChangedAt);
+
+        Instant recentChangedAt = Instant.now().plusSeconds(300);
+        Long newerEventId = insertPaymentEvent(
+                "awaiting-newer-1", PaymentEventStatus.AWAITING_RESULT, null, null, recentChangedAt);
+
+        Instant cutoff = Instant.now();
+
+        // when
+        List<PaymentEvent> result = paymentEventRepository.findAwaitingResultOlderThan(cutoff);
+
+        // then
+        List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
+        assertThat(resultIds).contains(olderEventId);
+        assertThat(resultIds).doesNotContain(newerEventId);
+    }
+
+    @Test
+    @DisplayName("findAwaitingResultOlderThan — AWAITING_RESULT 가 아닌 다른 상태는 반환하지 않는다")
+    void findAwaitingResultOlderThan_다른_상태는_반환하지_않는다() {
+        // given
+        Instant oldChangedAt = Instant.now().minusSeconds(600);
+        Long inProgressEventId = insertPaymentEvent(
+                "awaiting-other-status-1", PaymentEventStatus.IN_PROGRESS, null, null, oldChangedAt);
+
+        Instant cutoff = Instant.now();
+
+        // when
+        List<PaymentEvent> result = paymentEventRepository.findAwaitingResultOlderThan(cutoff);
+
+        // then
+        List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
+        assertThat(resultIds).doesNotContain(inProgressEventId);
+    }
+
+    @Test
+    @DisplayName("findAwaitingResultOlderThan — 확정 시작(executed_at)이 오래됐어도 결과 대기 진입(last_status_changed_at)이 최근이면 반환하지 않는다")
+    void findAwaitingResultOlderThan_확정_시작은_오래됐어도_결과_대기_진입이_최근이면_반환하지_않는다() {
+        // given — executed_at 은 2차 임계를 훌쩍 넘겼지만, last_status_changed_at(결과 대기 진입)은 방금이다.
+        // 앵커를 executed_at 으로 잘못 잡으면 이 건이 조회되어 이 테스트가 실패한다.
+        Instant longAgoExecutedAt = Instant.now().minusSeconds(3600);
+        Instant justChangedAt = Instant.now().minusSeconds(1);
+        Long eventId = insertPaymentEvent(
+                "awaiting-anchor-guard-1", PaymentEventStatus.AWAITING_RESULT, null,
+                longAgoExecutedAt, justChangedAt);
+
+        Instant cutoff = Instant.now().minusSeconds(60);
+
+        // when
+        List<PaymentEvent> result = paymentEventRepository.findAwaitingResultOlderThan(cutoff);
+
+        // then
+        List<Long> resultIds = result.stream().map(PaymentEvent::getId).toList();
+        assertThat(resultIds).doesNotContain(eventId);
+    }
+
     private Long insertPaymentEvent(String orderId, PaymentEventStatus status, String statusReason) {
+        return insertPaymentEvent(orderId, status, statusReason, null, null);
+    }
+
+    private Long insertPaymentEvent(String orderId, PaymentEventStatus status, String statusReason,
+            Instant executedAt, Instant lastStatusChangedAt) {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         jdbcTemplate.update("""
                         INSERT INTO payment_event
                             (buyer_id, seller_id, order_name, order_id, gateway_type, status, status_reason,
-                             created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             executed_at, last_status_changed_at, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                1L, 2L, orderId + "-name", orderId, "TOSS", status.name(), statusReason, now, now);
+                1L, 2L, orderId + "-name", orderId, "TOSS", status.name(), statusReason,
+                executedAt, lastStatusChangedAt, now, now);
 
         return jdbcTemplate.queryForObject(
                 "SELECT id FROM payment_event WHERE order_id = ?", Long.class, orderId);
