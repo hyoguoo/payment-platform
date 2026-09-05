@@ -95,7 +95,7 @@ flowchart TD
 - [x] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
 - [x] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
 - [x] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
-- [ ] Task 7: 리컨실러 2차 임계 스캔 신설
+- [x] Task 7: 리컨실러 2차 임계 스캔 신설
 - [ ] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
 - [ ] Task 9: 결과 대기 적체 게이지
 - [ ] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
@@ -262,9 +262,7 @@ flowchart TD
 - 위 테스트 pass, `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
-
-### Task 8: 상태 예외 비재시도 분류와 도달 범위 고정 [tdd=true]
+> `PaymentReconciler.scan()` 에 2차 스캔(`quarantineStaleAwaitingResultRecords`)을 1차(`resetStaleInFlightRecords`) 다음 순서로 추가했다. 전이는 Task 5 의 `PaymentCommandUseCase.quarantinePaymentAutomatically` 위임 메서드를 경유하고, 항목별 격리·경합/실패 분리 집계는 1차와 같은 형태(`try/catch (RuntimeException)` + `PaymentReconcilerBatchMetrics.recordRaceSkip`/`recordFailure`)를 그대로 재사용한다 — 새 지표 컴포넌트를 만들지 않았다. 생성자에 `reconciler.awaiting-result-timeout-seconds` 설정 키(기본값 900초, 1차 `reconciler.in-flight-timeout-seconds` 기본값 300초보다 큼)를 6번째 인자로 추가했다. 격리 사유는 `AWAITING_RESULT_TIMEOUT` 상수로 고정. `PaymentReconcilerTest` 에 6개 테스트를 추가했다 — 2차 임계 초과 전이, 1차 다음 2차 순서(Mockito `InOrder`), 방금 결과 대기로 옮긴 건의 격리 제외(이 건은 `FakePaymentEventRepository` 로 실제 `lastStatusChangedAt` 앵커 필터를 태워 고정 — `executedAt` 은 오래됐지만 `lastStatusChangedAt` 은 방금인 fixture), 그 사이 확정된 건 격리 제외, 항목별 실패 격리, 경합/실패 분리 집계. `PaymentReconcilerClockTest` 는 6인자 생성자로 갱신하고 `findAwaitingResultOlderThan` 기본 스텁을 추가했다. `./gradlew :payment-service:test` 708개 전체 통과(기존 702 + 6).
 
 설계 결정 매핑: "비재시도 분류 단위", "분류의 안전장치"
 
