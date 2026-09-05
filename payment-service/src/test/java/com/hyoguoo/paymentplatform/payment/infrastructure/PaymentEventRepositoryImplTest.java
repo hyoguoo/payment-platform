@@ -1,6 +1,7 @@
 package com.hyoguoo.paymentplatform.payment.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
@@ -14,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -280,6 +282,232 @@ class PaymentEventRepositoryImplTest extends BaseIntegrationTest {
         List<String> orderStatuses = jdbcTemplate.queryForList(
                 "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
         assertThat(orderStatuses).containsOnly("FAIL");
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // resolveInProgressToAwaitingResult — 1차 리컨실러 전이 CAS (payment_order 미터치)
+    // ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("resolveInProgressToAwaitingResult — IN_PROGRESS 건은 1건 갱신되어 AWAITING_RESULT 로 옮겨진다")
+    void resolveInProgressToAwaitingResult_기대_상태와_같으면_1건을_갱신한다() {
+        // given
+        Long eventId = insertPaymentEvent("in-progress-to-awaiting-1", PaymentEventStatus.IN_PROGRESS, null);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveInProgressToAwaitingResult(eventId, Instant.now());
+
+        // then
+        assertThat(resolved).isTrue();
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("AWAITING_RESULT");
+    }
+
+    @Test
+    @DisplayName("resolveInProgressToAwaitingResult — 이미 확정된(DONE) 건은 0건 충돌이며 상태가 그대로다")
+    void resolveInProgressToAwaitingResult_기대_상태와_다르면_0건으로_끝난다() {
+        // given — 조회 이후 다른 경로로 이미 확정(DONE)된 상황을 재현
+        Long eventId = insertPaymentEvent("in-progress-to-awaiting-2", PaymentEventStatus.DONE, null);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveInProgressToAwaitingResult(eventId, Instant.now());
+
+        // then
+        assertThat(resolved).isFalse();
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("DONE");
+    }
+
+    @Test
+    @DisplayName("resolveInProgressToAwaitingResult — 동시 2회 호출 시 1건만 성공한다 (CAS race 차단)")
+    void resolveInProgressToAwaitingResult_동시에_두_번_호출하면_하나만_성공한다() throws Exception {
+        // given
+        Long eventId = insertPaymentEvent("in-progress-to-awaiting-3", PaymentEventStatus.IN_PROGRESS, null);
+
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+        List<Future<Boolean>> futures = new ArrayList<>();
+
+        // when
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int i = 0; i < 2; i++) {
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    boolean result = paymentEventRepository.resolveInProgressToAwaitingResult(
+                            eventId, Instant.now());
+                    doneLatch.countDown();
+                    return result;
+                }));
+            }
+
+            startLatch.countDown();
+            doneLatch.await();
+
+            int successCount = 0;
+            for (Future<Boolean> future : futures) {
+                if (future.get()) {
+                    successCount++;
+                }
+            }
+
+            // then
+            assertThat(successCount).isEqualTo(1);
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("resolveInProgressToAwaitingResult — 성공해도 payment_order 행은 건드리지 않는다")
+    void resolveInProgressToAwaitingResult_주문_행은_건드리지_않는다() {
+        // given
+        Long eventId = insertPaymentEvent("in-progress-to-awaiting-4", PaymentEventStatus.IN_PROGRESS, null);
+        insertPaymentOrder(eventId, "in-progress-to-awaiting-4", 1L, PaymentOrderStatus.EXECUTING);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveInProgressToAwaitingResult(eventId, Instant.now());
+
+        // then
+        assertThat(resolved).isTrue();
+        List<String> orderStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
+        assertThat(orderStatuses).containsOnly("EXECUTING");
+    }
+
+    @Test
+    @DisplayName("resolveInProgressToAwaitingResult — 성공하면 last_status_changed_at 이 전달한 시각으로 갱신된다")
+    void resolveInProgressToAwaitingResult_성공하면_상태_변경_시각을_갱신한다() {
+        // given
+        Long eventId = insertPaymentEvent("in-progress-to-awaiting-5", PaymentEventStatus.IN_PROGRESS, null);
+        Instant lastStatusChangedAt = Instant.now().plusSeconds(60);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveInProgressToAwaitingResult(eventId, lastStatusChangedAt);
+
+        // then — 2차 임계 조회가 재는 앵커이므로 SET 절 누락을 여기서 잡는다
+        assertThat(resolved).isTrue();
+        PaymentEvent saved = paymentEventRepository.findById(eventId).orElseThrow();
+        assertThat(saved.getLastStatusChangedAt())
+                .isCloseTo(lastStatusChangedAt, within(1, ChronoUnit.SECONDS));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // resolveAwaitingResultToQuarantine — 2차 리컨실러 전이 CAS (payment_order 미터치, 되돌릴 길 없음)
+    // ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("resolveAwaitingResultToQuarantine — AWAITING_RESULT 건은 1건 갱신되어 QUARANTINED 로 옮겨진다")
+    void resolveAwaitingResultToQuarantine_기대_상태와_같으면_1건을_갱신한다() {
+        // given
+        Long eventId = insertPaymentEvent("awaiting-to-quarantine-1", PaymentEventStatus.AWAITING_RESULT, null);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                eventId, "2차 임계 초과", Instant.now());
+
+        // then
+        assertThat(resolved).isTrue();
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status, status_reason FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("QUARANTINED");
+        assertThat(eventRow.get("status_reason")).isEqualTo("2차 임계 초과");
+    }
+
+    @Test
+    @DisplayName("resolveAwaitingResultToQuarantine — 그 사이 확정된(DONE) 건은 0건 충돌이며 상태가 그대로다")
+    void resolveAwaitingResultToQuarantine_기대_상태와_다르면_0건으로_끝난다() {
+        // given — 조회 이후 확정 결과가 먼저 도착해 DONE 이 된 상황을 재현. 잘못 격리되면 되돌릴 길이 없다.
+        Long eventId = insertPaymentEvent("awaiting-to-quarantine-2", PaymentEventStatus.DONE, null);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                eventId, "2차 임계 초과", Instant.now());
+
+        // then
+        assertThat(resolved).isFalse();
+        Map<String, Object> eventRow = jdbcTemplate.queryForMap(
+                "SELECT status, status_reason FROM payment_event WHERE id = ?", eventId);
+        assertThat(eventRow.get("status")).isEqualTo("DONE");
+        assertThat(eventRow.get("status_reason")).isNull();
+    }
+
+    @Test
+    @DisplayName("resolveAwaitingResultToQuarantine — 동시 2회 호출 시 1건만 성공한다 (CAS race 차단)")
+    void resolveAwaitingResultToQuarantine_동시에_두_번_호출하면_하나만_성공한다() throws Exception {
+        // given
+        Long eventId = insertPaymentEvent("awaiting-to-quarantine-3", PaymentEventStatus.AWAITING_RESULT, null);
+
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+        List<Future<Boolean>> futures = new ArrayList<>();
+
+        // when
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int i = 0; i < 2; i++) {
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    boolean result = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                            eventId, "동시 격리", Instant.now());
+                    doneLatch.countDown();
+                    return result;
+                }));
+            }
+
+            startLatch.countDown();
+            doneLatch.await();
+
+            int successCount = 0;
+            for (Future<Boolean> future : futures) {
+                if (future.get()) {
+                    successCount++;
+                }
+            }
+
+            // then
+            assertThat(successCount).isEqualTo(1);
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("resolveAwaitingResultToQuarantine — 성공해도 payment_order 행은 건드리지 않는다")
+    void resolveAwaitingResultToQuarantine_주문_행은_건드리지_않는다() {
+        // given
+        Long eventId = insertPaymentEvent("awaiting-to-quarantine-4", PaymentEventStatus.AWAITING_RESULT, null);
+        insertPaymentOrder(eventId, "awaiting-to-quarantine-4", 1L, PaymentOrderStatus.EXECUTING);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                eventId, "2차 임계 초과", Instant.now());
+
+        // then
+        assertThat(resolved).isTrue();
+        List<String> orderStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM payment_order WHERE payment_event_id = ?", String.class, eventId);
+        assertThat(orderStatuses).containsOnly("EXECUTING");
+    }
+
+    @Test
+    @DisplayName("resolveAwaitingResultToQuarantine — 성공하면 last_status_changed_at 이 전달한 시각으로 갱신된다")
+    void resolveAwaitingResultToQuarantine_성공하면_상태_변경_시각을_갱신한다() {
+        // given
+        Long eventId = insertPaymentEvent("awaiting-to-quarantine-5", PaymentEventStatus.AWAITING_RESULT, null);
+        Instant lastStatusChangedAt = Instant.now().plusSeconds(60);
+
+        // when
+        boolean resolved = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                eventId, "2차 임계 초과", lastStatusChangedAt);
+
+        // then
+        assertThat(resolved).isTrue();
+        PaymentEvent saved = paymentEventRepository.findById(eventId).orElseThrow();
+        assertThat(saved.getLastStatusChangedAt())
+                .isCloseTo(lastStatusChangedAt, within(1, ChronoUnit.SECONDS));
     }
 
     private Long insertPaymentEvent(String orderId, PaymentEventStatus status, String statusReason) {
