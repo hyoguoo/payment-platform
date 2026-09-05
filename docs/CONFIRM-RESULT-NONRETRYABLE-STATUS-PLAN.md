@@ -93,7 +93,7 @@ flowchart TD
 - [x] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
 - [x] Task 3: 결제 상태 조건부 전이 포트와 구현
 - [x] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
-- [ ] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
+- [x] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
 - [ ] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - [ ] Task 7: 리컨실러 2차 임계 스캔 신설
 - [ ] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
@@ -219,7 +219,7 @@ flowchart TD
 - 기존 전이 메서드의 지표 기록 동작에 회귀가 없는지 확인 (가드가 정상 경로를 막지 않는지)
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentCommandUseCase` 에 `resetPaymentToAwaitingResult(PaymentEvent)` / `quarantinePaymentAutomatically(PaymentEvent, String)` 두 위임 메서드를 추가했다. 각각 도메인 전이(`resetToAwaitingResult` / `quarantine`)를 먼저 적용한 뒤 Task 3 의 조건부 UPDATE 포트를 호출하고, CAS 가 0건이면 `markPaymentAsFailFromQuarantine` 과 달리 예외를 던지지 않고 null 을 반환한다 — 배치 루프가 예외로 끊기지 않게 하기 위한 설계 결정이다. 반환 타입은 `Optional<PaymentEvent>` 가 아니라 nullable `PaymentEvent` 로 두 아스펙트(감사 발행/전이 지표)의 `instanceof PaymentEvent` 판별과 계약을 맞췄다. `PaymentStatusChangeTrigger` 에 `RECONCILER` 상수를 추가해 두 메서드의 애노테이션 고정 trigger 로 썼다. `PaymentStatusMetricsAspect.recordStatusChange` 에 가드를 넣어 반환값이 `PaymentEvent` 가 아니면(CAS 0건) 전이 지표 기록 자체를 건너뛰게 했다 — 기존에는 `toStatus` 를 애노테이션 고정값으로 대체해 0건도 무조건 전이로 집계했다. 이 변경으로 죽은 코드였던 `paymentStatusChange.toStatus()` 폴백도 함께 제거했다(기존 5개 전이 메서드는 항상 `PaymentEvent` 를 반환해 그 분기가 실제로는 한 번도 타지 않았다). `DomainEventLoggingAspect` 는 이미 같은 형태의 `instanceof` 가드를 갖고 있어 변경하지 않았다. `PaymentCommandUseCaseTest` 에 위임 메서드 단위 테스트 5개(성공/충돌 각 2, 예외 미발생 1)와, `AspectJProxyFactory` 로 `PaymentStatusMetricsAspect` + `DomainEventLoggingAspect` 를 함께 씌운 `ReconcilerDelegateAopTest` 3개(성공 시 감사 이벤트 1회 발행, 0건 시 감사 이벤트 미발행, 0건 시 전이 지표 미기록)를 추가했다. 기존 `TriggerLabelRecordingTest` 는 그대로 통과해 정상 경로의 지표 기록에 회귀가 없음을 확인했다. `./gradlew :payment-service:test` 699개 전체 통과(기존 691 + 8).
 
 ### Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환 [tdd=true] [domain_risk=true]
 

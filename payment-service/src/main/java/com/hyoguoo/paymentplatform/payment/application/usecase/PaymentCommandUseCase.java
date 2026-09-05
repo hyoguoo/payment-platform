@@ -123,4 +123,46 @@ public class PaymentCommandUseCase {
         return paymentEvent;
     }
 
+    /**
+     * 리컨실러 1차 스캔이 IN_PROGRESS timeout 건을 결과 대기(AWAITING_RESULT)로 되돌릴 때 경유한다.
+     * <p>
+     * 도메인 {@link PaymentEvent#resetToAwaitingResult} 전이(in-memory) 직후, 같은 TX 안에서
+     * {@link PaymentEventRepository#resolveInProgressToAwaitingResult} CAS 조건부 UPDATE 로
+     * 영속화한다. 배치 루프는 한 건의 경합으로 멈추면 안 되므로, {@code markPaymentAsFailFromQuarantine}
+     * 과 달리 CAS 0건(그 사이 확정된 건)을 예외로 취급하지 않고 null 을 반환한다 — 감사 이벤트 발행
+     * AOP 와 전이 지표 AOP 가 이 반환값으로 발행·기록 여부를 가른다.
+     *
+     * @param paymentEvent IN_PROGRESS 상태의 결제 이벤트
+     * @return 전이·저장된 결제 이벤트, CAS 충돌(0건) 시 null
+     */
+    @Transactional
+    @PublishDomainEvent(action = "changed")
+    @PaymentStatusChange(toStatus = "AWAITING_RESULT", trigger = PaymentStatusChangeTrigger.RECONCILER)
+    public PaymentEvent resetPaymentToAwaitingResult(PaymentEvent paymentEvent) {
+        Instant now = clock.instant();
+        paymentEvent.resetToAwaitingResult(now);
+        boolean resolved = paymentEventRepository.resolveInProgressToAwaitingResult(paymentEvent.getId(), now);
+        return resolved ? paymentEvent : null;
+    }
+
+    /**
+     * 리컨실러 2차 스캔이 결과 대기(AWAITING_RESULT) 2차 임계 초과 건을 격리로 옮길 때 경유한다.
+     * 반환 계약은 {@link #resetPaymentToAwaitingResult} 와 같다 — CAS 0건(그 사이 확정된 건)은
+     * null 을 반환해 배치 루프를 막지 않는다.
+     *
+     * @param paymentEvent AWAITING_RESULT 상태의 결제 이벤트
+     * @param reason       격리 사유(필수)
+     * @return 전이·저장된 결제 이벤트, CAS 충돌(0건) 시 null
+     */
+    @Transactional
+    @PublishDomainEvent(action = "changed")
+    @PaymentStatusChange(toStatus = "QUARANTINED", trigger = PaymentStatusChangeTrigger.RECONCILER)
+    public PaymentEvent quarantinePaymentAutomatically(PaymentEvent paymentEvent, @Reason String reason) {
+        Instant now = clock.instant();
+        paymentEvent.quarantine(reason, now);
+        boolean resolved = paymentEventRepository.resolveAwaitingResultToQuarantine(
+                paymentEvent.getId(), reason, now);
+        return resolved ? paymentEvent : null;
+    }
+
 }

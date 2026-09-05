@@ -40,9 +40,13 @@ public class PaymentStatusMetricsAspect {
 
         Object result = joinPoint.proceed();
 
-        PaymentEvent resultEvent = (result instanceof PaymentEvent paymentEvent) ? paymentEvent : null;
-        String toStatus = resultEvent != null ? resultEvent.getStatus().name() : paymentStatusChange.toStatus();
+        // 리컨실러 위임 메서드는 조건부 갱신이 0건이면 PaymentEvent 대신 null 을 반환한다 —
+        // 실제로 옮기지 못한 건까지 애노테이션 고정값으로 전이를 기록하면 경합 스킵이 전이로 잡힌다.
+        if (!(result instanceof PaymentEvent resultEvent)) {
+            return result;
+        }
 
+        String toStatus = resultEvent.getStatus().name();
         String trigger = resolveTrigger(joinPoint, paymentStatusChange);
 
         Duration duration = null;
@@ -50,7 +54,6 @@ public class PaymentStatusMetricsAspect {
             duration = Duration.between(lastStatusChangedAt, clock.instant());
         }
 
-        // Record transition metric with duration
         paymentTransitionMetrics.recordTransition(
                 fromStatus,
                 toStatus,
@@ -60,7 +63,7 @@ public class PaymentStatusMetricsAspect {
 
         // 종결 판별은 PaymentEventStatus.isTerminal() SSOT 위임.
         // QUARANTINED 는 복구 대기 상태이므로 isTerminal() 이 false 를 반환 — 포함하지 않는다.
-        if (resultEvent != null && resultEvent.getStatus().isTerminal()) {
+        if (resultEvent.getStatus().isTerminal()) {
             paymentEventFlowMetrics.recordTerminal();
         }
 

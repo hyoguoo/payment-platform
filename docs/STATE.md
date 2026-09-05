@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 4 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 5 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
+- **활성 태스크**: Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 
