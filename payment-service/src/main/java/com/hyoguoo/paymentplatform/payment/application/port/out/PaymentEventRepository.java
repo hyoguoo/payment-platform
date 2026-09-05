@@ -82,4 +82,17 @@ public interface PaymentEventRepository {
      * @return true = 조건부 갱신 성공(1건 반영), false = 충돌(대상이 이미 AWAITING_RESULT 가 아님, 0건, 불변)
      */
     boolean resolveAwaitingResultToQuarantine(Long paymentEventId, String reason, Instant lastStatusChangedAt);
+
+    /**
+     * AWAITING_RESULT 상태이며 lastStatusChangedAt 이 before 이전인 레코드 목록 반환.
+     * Reconciler 2차 스캔이 결과 대기에 머문 시간을 판정할 때 사용한다.
+     *
+     * <p>앵커는 {@code executedAt} 이 아니라 {@code lastStatusChangedAt} 이다. {@code executedAt} 은
+     * 확정 진입 시각으로 최초 한 번만 세팅되고 이후 갱신되지 않아, 되돌리기로 방금 결과 대기에 들어온
+     * 건까지 오래 머문 것으로 오판하게 된다.
+     *
+     * @param before 기준 시각 (이 시각 이전에 상태가 변경된 레코드)
+     * @return 2차 임계를 초과한 AWAITING_RESULT 이벤트 목록
+     */
+    List<PaymentEvent> findAwaitingResultOlderThan(Instant before);
 }

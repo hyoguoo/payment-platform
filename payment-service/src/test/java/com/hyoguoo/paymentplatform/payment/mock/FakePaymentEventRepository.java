@@ -140,4 +140,12 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         store.put(event.getOrderId(), event);
         return true;
     }
+
+    @Override
+    public List<PaymentEvent> findAwaitingResultOlderThan(Instant before) {
+        return store.values().stream()
+                .filter(e -> e.getStatus() == PaymentEventStatus.AWAITING_RESULT)
+                .filter(e -> e.getLastStatusChangedAt() != null && e.getLastStatusChangedAt().isBefore(before))
+                .toList();
+    }
 }

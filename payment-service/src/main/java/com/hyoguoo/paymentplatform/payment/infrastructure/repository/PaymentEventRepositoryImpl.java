@@ -191,4 +191,22 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 paymentEventId, reason, lastStatusChangedAt);
         return affectedEventRows > 0;
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentEvent> findAwaitingResultOlderThan(Instant before) {
+        return jpaPaymentEventRepository
+                .findAwaitingResultOlderThan(before)
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
+    }
 }

@@ -32,6 +32,12 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'IN_PROGRESS' AND pe.executedAt < :before")
     List<PaymentEventEntity> findInProgressOlderThan(@Param("before") Instant before);
 
+    // 2차 임계 스캔 대상 조회 — 앵커는 executedAt 이 아닌 lastStatusChangedAt.
+    // executedAt 은 확정 진입 시각으로 고정돼 이후 갱신되지 않는다.
+    @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'AWAITING_RESULT' "
+            + "AND pe.lastStatusChangedAt < :before")
+    List<PaymentEventEntity> findAwaitingResultOlderThan(@Param("before") Instant before);
+
     List<PaymentEventEntity> findByStatus(PaymentEventStatus status);
 
     // 격리 복구 CAS 게이트 — WHERE status = 'QUARANTINED' 조건이 만족될 때만 반영되며,

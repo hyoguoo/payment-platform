@@ -92,7 +92,7 @@ flowchart TD
 - [x] Task 1: 결과 대기 상태를 상태 열거와 판별 메서드에 추가
 - [x] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
 - [x] Task 3: 결제 상태 조건부 전이 포트와 구현
-- [ ] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
+- [x] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
 - [ ] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
 - [ ] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - [ ] Task 7: 리컨실러 2차 임계 스캔 신설
@@ -190,7 +190,7 @@ flowchart TD
 - 위 테스트 pass. 특히 세 번째 케이스가 앵커를 바꾸면 실패하는지 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEventRepository` 에 `findAwaitingResultOlderThan(Instant before)` 조회 포트를 추가했다. `JpaPaymentEventRepository` 의 JPQL 조건은 `status = 'AWAITING_RESULT' AND lastStatusChangedAt < :before` — 기존 `findInProgressOlderThan` 이 쓰는 `executedAt` 대신 `lastStatusChangedAt` 을 앵커로 잡았다. `PaymentEventRepositoryImplTest`(Testcontainers 실제 DB)에 세 케이스(기준시각보다 오래된 건만 반환 / 다른 상태는 제외 / 확정 시작은 오래됐어도 결과 대기 진입이 최근이면 제외)를 추가했다. 세 번째 케이스는 raw SQL 로 `executed_at` 은 1시간 전, `last_status_changed_at` 은 1초 전으로 만든 뒤 60초 cutoff 로 조회해, 앵커를 `executedAt` 으로 잘못 잡으면 이 건이 걸려 실패하도록 고정했다. 기존 `insertPaymentEvent` 테스트 헬퍼는 `executedAt`/`lastStatusChangedAt` 을 지정할 수 있는 5인자 오버로드를 추가하고 기존 3인자 호출은 그 위임으로 유지했다. `FakePaymentEventRepository` 에도 같은 필터로 in-memory 조회를 추가했다. `./gradlew :payment-service:test` 691개, `:payment-service:integrationTest`(해당 클래스 19개 포함) 전체 통과.
 
 ### Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약 [tdd=true] [domain_risk=true]
 
