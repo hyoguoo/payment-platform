@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 10 완료)
+> 최종 수정: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 11 완료 — 전 태스크 종료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
-- **단계**: execute
-- **활성 태스크**: Task 11: 경합과 배치 격리 통합 검증 (앞선 태스크가 각자 단위로 고정한 것을 실제 DB + 컨슈머 경로로 함께 확인 — 구현 변경 없이 통과하는 게 정상)
+- **단계**: ship
+- **활성 태스크**: 없음 — Task 1~11 전부 완료, ship 게이트 진행 대기
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

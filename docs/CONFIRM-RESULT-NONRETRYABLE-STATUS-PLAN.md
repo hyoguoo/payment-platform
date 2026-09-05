@@ -99,7 +99,7 @@ flowchart TD
 - [x] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
 - [x] Task 9: 결과 대기 적체 게이지
 - [x] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
-- [ ] Task 11: 경합과 배치 격리 통합 검증
+- [x] Task 11: 경합과 배치 격리 통합 검증
 
 ## 태스크
 
@@ -350,7 +350,9 @@ flowchart TD
 - `./gradlew test` 와 `./gradlew :payment-service:integrationTest` 둘 다 회귀 없음. 후자는 기본 `test` 에 포함되지 않으므로 따로 돌려야 한다
 
 **완료 결과**
-> (execute에서 채움)
+> `AwaitingResultReconcileRaceIntegrationTest` 를 신설해 5개 통합 테스트로 앞선 태스크들이 각자 단위로 고정한 것을 실제 DB + 실제 컴포넌트 조합으로 함께 확인했다. 구현 변경은 필요 없었다(설계대로). 처음 세 케이스(`리컨실러가_읽은_뒤_확정되면_되돌리지_않는다`, `리컨실러가_격리하려는_사이_확정되면_격리하지_않는다`, `결과_대기_결제에_승인_결과가_도착하면_완료된다`)는 순차 기법 — 스냅샷을 먼저 읽고, 별도로 읽은 최신 인스턴스로 확정을 먼저 반영한 뒤, 스냅샷으로 뒤늦게 전이를 시도해 CAS 0건과 감사 이벤트 미발행(`PaymentEventPublisher` spy 로 발행 횟수가 늘지 않음을 확인)을 함께 고정했다. 반대 방향(`격리_이후_도착한_확정_결과가_그_격리를_덮어쓰지_않는다`)만 설계 문서가 지시한 대로 다른 기법을 썼다 — `ConcurrentActionRunner.race` 로 확정 컨슈머(`PaymentConfirmResultUseCase.handle`)와 리컨실러의 자동 격리(`quarantinePaymentAutomatically`)를 실제로 겹쳐 실행하고, `@RepeatedTest(30)` 으로 반복해 어느 쪽이 이기든 최종 상태와 CAS 반환값이 서로 어긋나지 않음(격리가 이기면 order EXECUTING 유지, 확정이 이기면 order SUCCESS + 격리 CAS 는 null)을 확인했다. 마지막 케이스(`배치_중_한_건이_경합해도_나머지가_처리된다`)도 `paymentReconciler::scan` 과 한 건을 그 사이 확정시키는 원시 SQL 갱신을 실제로 겹쳐 실행해, 경합한 건의 결과(결과 대기 또는 확정 둘 중 하나)와 무관하게 나머지 stale 건이 항상 결과 대기로 옮겨짐을 확인했다.
+> "함께 고칠 것"(Task 2 에서 발견) — `ConfirmedDbDownIntegrationTest.마스킹전이를_가로질러_DLQ증거_생존` 이 리컨실러 되돌리기 뒤 상태를 `READY` 로 단정하던 것을 전면 재작성했다. 새 서사는 1차 스캔(IN_PROGRESS → 결과 대기, `payment_order` 미터치)과 2차 스캔(결과 대기 → 격리, 2차 임계 900초 + 여유를 TestClock 으로 전진)을 차례로 명시 호출해, 벤더 응답이 끝내 오지 않는 stranded 건이 격리로 종결되는 것을 고정했다. 두 전이를 가로질러 DLQ 증거가 생존하는 load-bearing 단정은 그대로 유지했다. 더 이상 쓰지 않는 `PaymentExpirationService` 의존(만료 배치 호출)과 관련 import 는 제거했다.
+> `./gradlew :payment-service:test` 712개, `:payment-service:integrationTest`(신설 5개 + 34회 실행 포함) 718개 전체 통과. 루트 `./gradlew test` 도 전 서비스 회귀 없음(payment-service 최신 결과 포함 모두 UP-TO-DATE).
 
 ## 리뷰 처리
 > (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
