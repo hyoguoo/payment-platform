@@ -1,10 +1,12 @@
 package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChange;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PaymentStatusChangeTrigger;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
+import com.hyoguoo.paymentplatform.payment.application.publisher.PaymentEventPublisher;
 import com.hyoguoo.paymentplatform.payment.core.common.aspect.annotation.Reason;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
@@ -21,6 +24,7 @@ import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
 import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
+import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.DomainEventLoggingAspect;
 import com.hyoguoo.paymentplatform.payment.infrastructure.aspect.PaymentStatusMetricsAspect;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -210,6 +214,101 @@ class PaymentCommandUseCaseTest {
                 .anyMatch(annotation -> annotation instanceof Reason);
     }
 
+    @Test
+    @DisplayName("resetPaymentToAwaitingResult - 조건부 갱신 성공 시 결제를 반환한다.")
+    void resetPaymentToAwaitingResult_되돌리기_성공하면_결제를_반환한다() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        given(paymentEvent.getId()).willReturn(1L);
+        given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                .willReturn(true);
+
+        // when
+        PaymentEvent result = paymentCommandUseCase.resetPaymentToAwaitingResult(paymentEvent);
+
+        // then
+        then(paymentEvent).should(times(1)).resetToAwaitingResult(FIXED_INSTANT);
+        then(mockPaymentEventRepository).should(times(1))
+                .resolveInProgressToAwaitingResult(1L, FIXED_INSTANT);
+        assertThat(result).isEqualTo(paymentEvent);
+    }
+
+    @Test
+    @DisplayName("resetPaymentToAwaitingResult - 조건부 갱신이 0건이면 null 을 반환한다.")
+    void resetPaymentToAwaitingResult_되돌리기_조건부_갱신이_0건이면_null_을_반환한다() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        given(paymentEvent.getId()).willReturn(1L);
+        given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                .willReturn(false);
+
+        // when
+        PaymentEvent result = paymentCommandUseCase.resetPaymentToAwaitingResult(paymentEvent);
+
+        // then
+        then(paymentEvent).should(times(1)).resetToAwaitingResult(FIXED_INSTANT);
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("quarantinePaymentAutomatically - 조건부 갱신 성공 시 결제를 반환한다.")
+    void quarantinePaymentAutomatically_자동_격리_성공하면_결제를_반환한다() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String reason = "결과 대기 2차 임계 초과";
+        given(paymentEvent.getId()).willReturn(1L);
+        given(mockPaymentEventRepository.resolveAwaitingResultToQuarantine(1L, reason, FIXED_INSTANT))
+                .willReturn(true);
+
+        // when
+        PaymentEvent result = paymentCommandUseCase.quarantinePaymentAutomatically(paymentEvent, reason);
+
+        // then
+        then(paymentEvent).should(times(1)).quarantine(reason, FIXED_INSTANT);
+        then(mockPaymentEventRepository).should(times(1))
+                .resolveAwaitingResultToQuarantine(1L, reason, FIXED_INSTANT);
+        assertThat(result).isEqualTo(paymentEvent);
+    }
+
+    @Test
+    @DisplayName("quarantinePaymentAutomatically - 조건부 갱신이 0건이면 null 을 반환한다.")
+    void quarantinePaymentAutomatically_자동_격리_조건부_갱신이_0건이면_null_을_반환한다() {
+        // given
+        PaymentEvent paymentEvent = Mockito.mock(PaymentEvent.class);
+        String reason = "결과 대기 2차 임계 초과";
+        given(paymentEvent.getId()).willReturn(1L);
+        given(mockPaymentEventRepository.resolveAwaitingResultToQuarantine(1L, reason, FIXED_INSTANT))
+                .willReturn(false);
+
+        // when
+        PaymentEvent result = paymentCommandUseCase.quarantinePaymentAutomatically(paymentEvent, reason);
+
+        // then
+        then(paymentEvent).should(times(1)).quarantine(reason, FIXED_INSTANT);
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("리컨실러 위임 메서드 - 조건부 갱신이 0건이어도 예외를 던지지 않는다 (배치 루프 계속 진행).")
+    void 조건부_갱신_0건에도_예외를_던지지_않는다() {
+        // given
+        PaymentEvent resetTarget = Mockito.mock(PaymentEvent.class);
+        given(resetTarget.getId()).willReturn(1L);
+        given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                .willReturn(false);
+
+        PaymentEvent quarantineTarget = Mockito.mock(PaymentEvent.class);
+        given(quarantineTarget.getId()).willReturn(2L);
+        given(mockPaymentEventRepository.resolveAwaitingResultToQuarantine(2L, "사유", FIXED_INSTANT))
+                .willReturn(false);
+
+        // when & then
+        assertThatCode(() -> paymentCommandUseCase.resetPaymentToAwaitingResult(resetTarget))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> paymentCommandUseCase.quarantinePaymentAutomatically(quarantineTarget, "사유"))
+                .doesNotThrowAnyException();
+    }
+
     /**
      * markPaymentAsFail / markPaymentAsQuarantined 는 호출부가 둘씩이라 애노테이션 고정값으로
      * trigger 를 표현할 수 없다 — 호출자가 넘긴 trigger 인자가 실제로 다른 라벨로 기록되는지,
@@ -287,6 +386,91 @@ class PaymentCommandUseCaseTest {
                     .sellerId(200L)
                     .orderName("테스트 상품")
                     .orderId("order-trigger-001")
+                    .status(status)
+                    .paymentOrderList(Collections.emptyList())
+                    .createdAt(FIXED_INSTANT)
+                    .lastStatusChangedAt(FIXED_INSTANT)
+                    .allArgsBuild();
+        }
+    }
+
+    /**
+     * 리컨실러 위임 메서드의 반환 계약(성공 = PaymentEvent, 0건 충돌 = null)이 감사 이벤트 발행
+     * AOP 와 전이 지표 AOP 양쪽에 실제로 반영되는지, 프록시를 직접 조립해 검증한다. 두 아스펙트
+     * 모두 반환값을 {@code instanceof PaymentEvent} 로 판별하므로, 반환 타입을 Optional 로 바꾸면
+     * 이 테스트들이 깨진다.
+     */
+    @Nested
+    @DisplayName("리컨실러 위임 메서드 — 감사 이벤트/전이 지표 AOP 경로 검증")
+    class ReconcilerDelegateAopTest {
+
+        private SimpleMeterRegistry meterRegistry;
+        private PaymentEventPublisher mockPaymentEventPublisher;
+        private PaymentCommandUseCase proxiedUseCase;
+
+        @BeforeEach
+        void setUpProxy() {
+            meterRegistry = new SimpleMeterRegistry();
+            PaymentTransitionMetrics transitionMetrics = new PaymentTransitionMetrics(meterRegistry);
+            PaymentEventFlowMetrics flowMetrics = new PaymentEventFlowMetrics(meterRegistry);
+            PaymentStatusMetricsAspect metricsAspect =
+                    new PaymentStatusMetricsAspect(transitionMetrics, flowMetrics, FIXED_CLOCK);
+
+            mockPaymentEventPublisher = Mockito.mock(PaymentEventPublisher.class);
+            DomainEventLoggingAspect loggingAspect =
+                    new DomainEventLoggingAspect(mockPaymentEventPublisher, FIXED_CLOCK);
+
+            AspectJProxyFactory factory = new AspectJProxyFactory(paymentCommandUseCase);
+            factory.addAspect(metricsAspect);
+            factory.addAspect(loggingAspect);
+            proxiedUseCase = factory.getProxy();
+        }
+
+        @Test
+        @DisplayName("성공하면_감사_이벤트가_한_번_발행된다")
+        void 성공하면_감사_이벤트가_한_번_발행된다() {
+            PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+            given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                    .willReturn(true);
+
+            proxiedUseCase.resetPaymentToAwaitingResult(event);
+
+            then(mockPaymentEventPublisher).should(times(1))
+                    .publishStatusChange(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("0건이면_감사_이벤트가_발행되지_않는다")
+        void 영건이면_감사_이벤트가_발행되지_않는다() {
+            PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+            given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                    .willReturn(false);
+
+            proxiedUseCase.resetPaymentToAwaitingResult(event);
+
+            then(mockPaymentEventPublisher).should(never())
+                    .publishStatusChange(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("0건이면_전이_지표도_기록되지_않는다")
+        void 영건이면_전이_지표도_기록되지_않는다() {
+            PaymentEvent event = buildEvent(PaymentEventStatus.IN_PROGRESS);
+            given(mockPaymentEventRepository.resolveInProgressToAwaitingResult(1L, FIXED_INSTANT))
+                    .willReturn(false);
+
+            proxiedUseCase.resetPaymentToAwaitingResult(event);
+
+            assertThat(meterRegistry.find("payment_transition_total").counters()).isEmpty();
+        }
+
+        private PaymentEvent buildEvent(PaymentEventStatus status) {
+            return PaymentEvent.allArgsBuilder()
+                    .id(1L)
+                    .buyerId(100L)
+                    .sellerId(200L)
+                    .orderName("테스트 상품")
+                    .orderId("order-reconciler-delegate-001")
                     .status(status)
                     .paymentOrderList(Collections.emptyList())
                     .createdAt(FIXED_INSTANT)
