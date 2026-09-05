@@ -1,10 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-04 (SHARED-RESOURCE-SCALEOUT ship 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS discuss 완료)
 
 ## 활성 작업
 
-없음.
+- **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
+- **단계**: plan
+- **이슈/브랜치**: #150
+- **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md
 
 ## 재개 메모
 
@@ -21,12 +24,6 @@
 
 - 1편 **모놀리식 → 4서비스 분리** 완료 (`notes/blog`, `msa-transition-decisions.md`)
 - 2편 **재시도 소진 이후 처리** 예정 — 1편 결말이 "payment→pg HTTP 조회 통로를 두지 않은 결정이 넉 달 뒤 문제가 됐다"로 넘어가게 써 뒀다. 소재는 `docs/archive/retry-exhaustion-disposition/`
-
-### 다음 후보 — L-19 수정
-
-- `TODOS.md` 의 `CONFIRM-RESULT-NONRETRYABLE-STATUS` 부터. 확정 결과 거부 예외가 비재시도로 분류돼 있지 않아 건당 5초를 쓰고 파티션을 막는다
-- 예외 타입을 통째로 비재시도로 묶으면 안 된다 — 에러코드 15종이고 CAS 충돌은 재시도가 유효하다
-- 근본 해결은 `RECONCILER-SLOW-VS-STUCK` (리컨실러가 "느림"과 "멈춤"을 구분하지 못한다)이며 돈 경로 상태 전이 설계가 필요하다
 
 ## 최근 완료
 
