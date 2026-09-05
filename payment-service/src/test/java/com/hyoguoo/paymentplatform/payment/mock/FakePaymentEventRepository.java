@@ -106,4 +106,38 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         store.put(event.getOrderId(), event);
         return true;
     }
+
+    /**
+     * 실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
+     * 저장소의 현재 상태가 IN_PROGRESS 일 때만 {@link PaymentEvent#resetToAwaitingResult} 도메인 전이를
+     * 적용해 true 를 반환하고, 그 외에는 아무 것도 바꾸지 않고 false 를 반환한다.
+     */
+    @Override
+    public boolean resolveInProgressToAwaitingResult(Long paymentEventId, Instant lastStatusChangedAt) {
+        Optional<PaymentEvent> found = findById(paymentEventId);
+        if (found.isEmpty() || found.get().getStatus() != PaymentEventStatus.IN_PROGRESS) {
+            return false;
+        }
+        PaymentEvent event = found.get();
+        event.resetToAwaitingResult(lastStatusChangedAt);
+        store.put(event.getOrderId(), event);
+        return true;
+    }
+
+    /**
+     * 실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
+     * 저장소의 현재 상태가 AWAITING_RESULT 일 때만 {@link PaymentEvent#quarantine} 도메인 전이를
+     * 적용해 true 를 반환하고, 그 외에는 아무 것도 바꾸지 않고 false 를 반환한다.
+     */
+    @Override
+    public boolean resolveAwaitingResultToQuarantine(Long paymentEventId, String reason, Instant lastStatusChangedAt) {
+        Optional<PaymentEvent> found = findById(paymentEventId);
+        if (found.isEmpty() || found.get().getStatus() != PaymentEventStatus.AWAITING_RESULT) {
+            return false;
+        }
+        PaymentEvent event = found.get();
+        event.quarantine(reason, lastStatusChangedAt);
+        store.put(event.getOrderId(), event);
+        return true;
+    }
 }

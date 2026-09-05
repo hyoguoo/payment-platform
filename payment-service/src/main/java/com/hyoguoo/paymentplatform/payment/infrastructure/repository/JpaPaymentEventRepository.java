@@ -44,4 +44,23 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     int resolveQuarantineToFailed(@Param("id") Long id,
             @Param("reason") String reason,
             @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
+
+    // 리컨실러 1차 전이 CAS 게이트 — WHERE status = 'IN_PROGRESS' 조건이 만족될 때만 반영되며,
+    // payment_order 는 건드리지 않는다(도메인상 주문 상태를 바꾸지 않는 전이).
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentEventEntity e SET e.status = 'AWAITING_RESULT', "
+            + "e.lastStatusChangedAt = :lastStatusChangedAt "
+            + "WHERE e.id = :id AND e.status = 'IN_PROGRESS'")
+    int resolveInProgressToAwaitingResult(@Param("id") Long id,
+            @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
+
+    // 리컨실러 2차 전이 CAS 게이트 — WHERE status = 'AWAITING_RESULT' 조건이 만족될 때만 반영되며,
+    // payment_order 는 건드리지 않는다. 잘못 반영되면 되돌릴 경로가 없다.
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentEventEntity e SET e.status = 'QUARANTINED', e.statusReason = :reason, "
+            + "e.lastStatusChangedAt = :lastStatusChangedAt "
+            + "WHERE e.id = :id AND e.status = 'AWAITING_RESULT'")
+    int resolveAwaitingResultToQuarantine(@Param("id") Long id,
+            @Param("reason") String reason,
+            @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
 }

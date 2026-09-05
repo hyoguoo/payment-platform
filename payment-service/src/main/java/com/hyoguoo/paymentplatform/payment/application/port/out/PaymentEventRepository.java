@@ -54,4 +54,32 @@ public interface PaymentEventRepository {
      *         false = 충돌(대상이 이미 QUARANTINED 가 아님, 0건, event·order 모두 불변)
      */
     boolean resolveQuarantineToFailed(Long paymentEventId, String reason, Instant lastStatusChangedAt);
+
+    /**
+     * IN_PROGRESS 결제 이벤트를 조건부(CAS)로 AWAITING_RESULT 로 옮긴다.
+     *
+     * <p>DB 레벨 {@code WHERE status = 'IN_PROGRESS'} 게이트로, 그 사이 확정된 건을 덮어쓰지 않는다.
+     * {@code payment_event} 테이블만 갱신하며 {@code payment_order} 는 어떤 경우에도 건드리지 않는다 —
+     * 이 전이는 도메인상 주문 상태를 바꾸지 않는다.
+     *
+     * @param paymentEventId      대상 결제 이벤트 id
+     * @param lastStatusChangedAt 상태 변경 시각 (2차 임계 조회의 앵커)
+     * @return true = 조건부 갱신 성공(1건 반영), false = 충돌(대상이 이미 IN_PROGRESS 가 아님, 0건, 불변)
+     */
+    boolean resolveInProgressToAwaitingResult(Long paymentEventId, Instant lastStatusChangedAt);
+
+    /**
+     * AWAITING_RESULT 결제 이벤트를 조건부(CAS)로 QUARANTINED 로 옮긴다.
+     *
+     * <p>DB 레벨 {@code WHERE status = 'AWAITING_RESULT'} 게이트로, 그 사이 확정된 건을 덮어쓰지 않는다.
+     * {@code payment_event} 테이블만 갱신하며 {@code payment_order} 는 어떤 경우에도 건드리지 않는다 —
+     * 이 전이는 도메인상 주문 상태를 바꾸지 않는다. 잘못 반영되면 되돌릴 경로가 없으므로 호출부가
+     * 이 반환값을 반드시 확인해야 한다.
+     *
+     * @param paymentEventId      대상 결제 이벤트 id
+     * @param reason              격리 사유 (payment_event.status_reason)
+     * @param lastStatusChangedAt 상태 변경 시각
+     * @return true = 조건부 갱신 성공(1건 반영), false = 충돌(대상이 이미 AWAITING_RESULT 가 아님, 0건, 불변)
+     */
+    boolean resolveAwaitingResultToQuarantine(Long paymentEventId, String reason, Instant lastStatusChangedAt);
 }

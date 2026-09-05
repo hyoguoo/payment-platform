@@ -163,4 +163,32 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
         jpaPaymentOrderRepository.failByPaymentEventId(paymentEventId);
         return true;
     }
+
+    /**
+     * {@link PaymentEventRepository#resolveInProgressToAwaitingResult(Long, Instant)} 구현.
+     *
+     * <p>{@code payment_event} 만 갱신한다 — 이 전이는 도메인상 주문 상태를 바꾸지 않으므로
+     * {@link #resolveQuarantineToFailed} 와 달리 {@code payment_order} 동조 갱신 스텝을 두지 않는다.
+     */
+    @Override
+    @Transactional
+    public boolean resolveInProgressToAwaitingResult(Long paymentEventId, Instant lastStatusChangedAt) {
+        int affectedEventRows = jpaPaymentEventRepository.resolveInProgressToAwaitingResult(
+                paymentEventId, lastStatusChangedAt);
+        return affectedEventRows > 0;
+    }
+
+    /**
+     * {@link PaymentEventRepository#resolveAwaitingResultToQuarantine(Long, String, Instant)} 구현.
+     *
+     * <p>{@code payment_event} 만 갱신한다 — 이 전이는 도메인상 주문 상태를 바꾸지 않으므로
+     * {@link #resolveQuarantineToFailed} 와 달리 {@code payment_order} 동조 갱신 스텝을 두지 않는다.
+     */
+    @Override
+    @Transactional
+    public boolean resolveAwaitingResultToQuarantine(Long paymentEventId, String reason, Instant lastStatusChangedAt) {
+        int affectedEventRows = jpaPaymentEventRepository.resolveAwaitingResultToQuarantine(
+                paymentEventId, reason, lastStatusChangedAt);
+        return affectedEventRows > 0;
+    }
 }

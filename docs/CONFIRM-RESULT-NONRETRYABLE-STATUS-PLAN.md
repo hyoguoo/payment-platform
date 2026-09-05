@@ -91,7 +91,7 @@ flowchart TD
 
 - [x] Task 1: 결과 대기 상태를 상태 열거와 판별 메서드에 추가
 - [x] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
-- [ ] Task 3: 결제 상태 조건부 전이 포트와 구현
+- [x] Task 3: 결제 상태 조건부 전이 포트와 구현
 - [ ] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
 - [ ] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
 - [ ] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
@@ -170,7 +170,7 @@ flowchart TD
 - 위 테스트 pass. 주문 미터치 테스트가 실제로 실패에서 통과로 바뀌는 것을 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEventRepository` 에 `resolveInProgressToAwaitingResult(Long, Instant)` / `resolveAwaitingResultToQuarantine(Long, String, Instant)` 두 조건부 전이 메서드를 추가했다. `JpaPaymentEventRepository` 에 각각 `WHERE id = ? AND status = 'IN_PROGRESS'` / `WHERE id = ? AND status = 'AWAITING_RESULT'` 게이트의 `@Modifying` UPDATE 를 두고, SET 절에 `lastStatusChangedAt` 을 포함해 2차 임계 조회 앵커가 갱신되게 했다. `resolveQuarantineToFailed` 와 달리 두 메서드 모두 `payment_order` 를 건드리지 않는다 — 이 두 전이가 도메인상 주문 상태를 바꾸지 않는다는 설계 결정을 그대로 구현에 옮긴 것. `PaymentEventRepositoryImplTest`(Testcontainers 실제 DB)에 두 전이 각각 5종(기대 상태 일치 시 1건 갱신 / 불일치 시 0건 충돌 / 동시 호출 시 1건만 성공 / 주문 미터치 / 상태 변경 시각 갱신) 총 10개 테스트를 추가했다. 상태 변경 시각 검증은 raw SQL 대신 `paymentEventRepository.findById` 왕복으로 확인해 드라이버의 Instant 매핑 문제를 피했다. `FakePaymentEventRepository` 에도 같은 두 메서드를 추가해 in-memory 게이트를 재현했다(도메인 `resetToAwaitingResult` / `quarantine` 위임). `./gradlew :payment-service:test` 691개, `:payment-service:integrationTest` (해당 클래스 16개 포함) 전체 통과.
 
 ### Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현 [tdd=true] [domain_risk=true]
 
