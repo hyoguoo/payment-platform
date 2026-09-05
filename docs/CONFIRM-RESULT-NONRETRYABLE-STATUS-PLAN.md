@@ -97,7 +97,7 @@ flowchart TD
 - [x] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - [x] Task 7: 리컨실러 2차 임계 스캔 신설
 - [x] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
-- [ ] Task 9: 결과 대기 적체 게이지
+- [x] Task 9: 결과 대기 적체 게이지
 - [ ] Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환
 - [ ] Task 11: 경합과 배치 격리 통합 검증
 
@@ -298,7 +298,7 @@ flowchart TD
 - 위 테스트 pass, 게이지가 등록되는 것을 확인
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentHealthMetrics` 에 `stuck_awaiting_result` 게이지를 신설했다(기존 `stuck_in_progress` 는 변경 없이 그대로 둠). 임계 설정 키는 `metrics.payment.health.thresholds.awaiting-result-minutes`(기본값 15분 — 리컨실러 2차 임계 기본값 900초와 동일선상)이고, 앵커는 `lastStatusChangedAt` 이다. `executedAt` 기준 조회 포트를 새로 만들지 않고 Task 4 가 추가한 `findAwaitingResultOlderThan(before)` 조회 포트를 그대로 재사용해 카운트(`.size()`)만 취했다 — 포트에 메서드를 추가하지 않아 `FakePaymentEventRepository` 갱신도 필요 없었다. `PaymentHealthMetricsTest` 를 신설해 임계를 넘긴 결과 대기 1건만 게이지에 반영되고, 확정 시작은 오래됐어도 결과 대기 진입이 방금인 건과 다른 상태(`IN_PROGRESS`)는 제외됨을 한 테스트에서 함께 고정했다. `./gradlew :payment-service:test` 711개 전체 통과(기존 710 + 1).
 
 ### Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환 [tdd=true] [domain_risk=true]
 

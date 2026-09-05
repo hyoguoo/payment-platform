@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 8 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 9 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 9: 결과 대기 적체 게이지 (2차 임계를 넘긴 결과 대기 건수를 게이지로 노출, 앵커는 상태 변경 시각)
+- **활성 태스크**: Task 10: 확정 결과 소비 경로의 조회를 잠금 읽기로 전환 (컨슈머가 잠금 없이 읽고 통째로 덮어쓰는 경로를 잠금 읽기로 바꿔, 격리 직후 도착한 확정 결과가 그 격리를 지우지 못하게 막는다)
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

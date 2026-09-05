@@ -31,13 +31,17 @@ public class PaymentHealthMetrics {
     private final Map<String, AtomicLong> healthGauges = new ConcurrentHashMap<>();
     @Value("${metrics.payment.health.thresholds.stuck-in-progress-minutes:5}")
     private long stuckInProgressMinutes;
+    @Value("${metrics.payment.health.thresholds.awaiting-result-minutes:15}")
+    private long awaitingResultMinutes;
 
     @PostConstruct
     public void init() {
         LogFmt.info(log, LogDomain.PAYMENT, EventType.METRICS_INIT,
-                () -> "component=PaymentHealthMetrics stuckInProgressMinutes=" + stuckInProgressMinutes);
+                () -> "component=PaymentHealthMetrics stuckInProgressMinutes=" + stuckInProgressMinutes
+                        + " awaitingResultMinutes=" + awaitingResultMinutes);
 
         registerHealthGauge("stuck_in_progress", "Count of payments stuck in IN_PROGRESS status");
+        registerHealthGauge("stuck_awaiting_result", "Count of payments stuck in AWAITING_RESULT status");
     }
 
     private void registerHealthGauge(String type, String description) {
@@ -61,7 +65,15 @@ public class PaymentHealthMetrics {
                 .countByStatusAndExecutedAtBefore(PaymentEventStatus.IN_PROGRESS, stuckThreshold);
         healthGauges.get("stuck_in_progress").set(stuckInProgress);
 
+        // 앵커는 상태 변경 시각(lastStatusChangedAt) — executedAt 은 확정 진입 때 한 번만 세팅돼
+        // 갱신되지 않으므로, 그걸 쓰면 방금 결과 대기로 되돌아간 건이 즉시 적체로 잡힌다.
+        Instant awaitingResultThreshold = now.minus(Duration.ofMinutes(awaitingResultMinutes));
+        long stuckAwaitingResult = paymentEventRepository
+                .findAwaitingResultOlderThan(awaitingResultThreshold)
+                .size();
+        healthGauges.get("stuck_awaiting_result").set(stuckAwaitingResult);
+
         LogFmt.debug(log, LogDomain.PAYMENT, EventType.METRICS_GAUGE_UPDATED,
-                () -> "stuckInProgress=" + stuckInProgress);
+                () -> "stuckInProgress=" + stuckInProgress + " stuckAwaitingResult=" + stuckAwaitingResult);
     }
 }
