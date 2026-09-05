@@ -28,6 +28,7 @@ class PaymentReconcilerClockTest {
     private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
     private static final long TIMEOUT_SECONDS = 300L;
+    private static final long AWAITING_RESULT_TIMEOUT_SECONDS = 900L;
 
     private PaymentEventRepository mockRepository;
     private PaymentReconciler reconciler;
@@ -40,9 +41,11 @@ class PaymentReconcilerClockTest {
                 Mockito.mock(PaymentCommandUseCase.class),
                 Mockito.mock(PaymentReconcilerBatchMetrics.class),
                 FIXED_CLOCK,
-                TIMEOUT_SECONDS
+                TIMEOUT_SECONDS,
+                AWAITING_RESULT_TIMEOUT_SECONDS
         );
         given(mockRepository.findInProgressOlderThan(Mockito.any())).willReturn(List.of());
+        given(mockRepository.findAwaitingResultOlderThan(Mockito.any())).willReturn(List.of());
     }
 
     @Test
