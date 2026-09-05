@@ -1,12 +1,12 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 5 완료)
+> 최종 수정: 2026-09-05 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 6 완료)
 
 ## 활성 작업
 
 - **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
 - **단계**: execute
-- **활성 태스크**: Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
+- **활성 태스크**: Task 7: 리컨실러 2차 임계 스캔 신설 (Task 6과 함께 배포해야 하는 짝 — 6만 나가면 결과 대기에 들어간 결제를 꺼낼 경로가 없다)
 - **이슈/브랜치**: #150
 - **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
 

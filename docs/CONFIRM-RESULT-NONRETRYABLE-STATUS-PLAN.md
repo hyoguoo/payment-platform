@@ -94,7 +94,7 @@ flowchart TD
 - [x] Task 3: 결제 상태 조건부 전이 포트와 구현
 - [x] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
 - [x] Task 5: 리컨실러 전이용 위임 메서드와 감사 발행 계약
-- [ ] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
+- [x] Task 6: 리컨실러 1차 스캔을 조건부 전이와 항목별 격리로 전환
 - [ ] Task 7: 리컨실러 2차 임계 스캔 신설
 - [ ] Task 8: 상태 예외 비재시도 분류와 도달 범위 고정
 - [ ] Task 9: 결과 대기 적체 게이지
@@ -239,7 +239,7 @@ flowchart TD
 - 위 테스트 pass, `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentReconciler` 의 1차 스캔 전이를 `PaymentCommandUseCase.resetPaymentToAwaitingResult` 위임 메서드 경유로 바꿨다. 생성자에 `PaymentCommandUseCase` 와 신설 `PaymentReconcilerBatchMetrics` 를 추가로 주입한다. 항목별로 `try/catch (RuntimeException)` 로 감싸(`PaymentExpirationServiceImpl` 의 건별 격리 형태를 그대로 따름) 한 건의 실패가 나머지 stale 건 처리를 막지 않게 했다. 위임 메서드가 null 을 반환하는 경우(조건부 UPDATE 가 0건 — 그 사이 확정된 건과의 정상 경합)와 예외를 던지는 경우(격리 대상 실패)를 갈라, 전자는 `PaymentReconcilerBatchMetrics.recordRaceSkip`(카운터만, 경고 로그 없음 — debug), 후자는 `recordFailure`(카운터 + 경고 로그, 만료 배치와 같은 형태)로 따로 집계한다. `PaymentReconcilerBatchMetrics` 는 `PaymentExpirationSkipMetrics` 와 같은 eager 등록 패턴의 신설 컴포넌트(`payment_reconciler_race_skipped_total` / `payment_reconciler_item_failed_total`). `EventType` 에 `PAYMENT_RECOVERY_ITEM_FAILED` 를 추가했다. `[Rule 1]` "stale 발견" 로그가 기존에 `PAYMENT_RECOVERY_SKIPPED`(이름이 "건너뜀"인데 "발견"에 오용됨)를 쓰고 있어, 마침 미사용 상태이던 `PAYMENT_RECOVERY_JOBS_FOUND` 로 바로잡고 `PAYMENT_RECOVERY_SKIPPED` 는 이번에 신설한 실제 경합 스킵 로그(`OutboxRelayService` 의 기존 용법과도 같은 의미)로 되돌렸다 — 같은 메서드를 이미 재작성하는 김에 라벨 오용을 고쳤다. `PaymentReconcilerTest` 를 6개로 재작성(1차 임계 초과 건 전이 / 경합 스킵 / 항목 실패 격리 / 경합·실패 분리 집계 / 대상 없음 시 위임 미호출 / cutoff 계산)하고, `PaymentReconcilerClockTest` 는 5인자 생성자로 갱신했다(3인자 생성자 직접 호출 참조 해소). `./gradlew :payment-service:test` 702개 전체 통과(기존 699 + 신규 3, 기존 3개는 위임 메서드 호출 검증으로 대체).
 
 ### Task 7: 리컨실러 2차 임계 스캔 신설 [tdd=true] [domain_risk=true]
 

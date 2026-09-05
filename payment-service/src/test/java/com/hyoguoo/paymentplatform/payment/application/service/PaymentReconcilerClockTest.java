@@ -5,6 +5,8 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentReconcilerBatchMetrics;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +35,13 @@ class PaymentReconcilerClockTest {
     @BeforeEach
     void setUp() {
         mockRepository = Mockito.mock(PaymentEventRepository.class);
-        reconciler = new PaymentReconciler(mockRepository, FIXED_CLOCK, TIMEOUT_SECONDS);
+        reconciler = new PaymentReconciler(
+                mockRepository,
+                Mockito.mock(PaymentCommandUseCase.class),
+                Mockito.mock(PaymentReconcilerBatchMetrics.class),
+                FIXED_CLOCK,
+                TIMEOUT_SECONDS
+        );
         given(mockRepository.findInProgressOlderThan(Mockito.any())).willReturn(List.of());
     }
 
