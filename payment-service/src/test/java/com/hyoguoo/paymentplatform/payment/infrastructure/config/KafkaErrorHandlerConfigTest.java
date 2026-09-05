@@ -5,6 +5,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
+import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;
+import com.hyoguoo.paymentplatform.payment.exception.common.PaymentErrorCode;
 import java.util.function.BiFunction;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
@@ -59,6 +61,19 @@ class KafkaErrorHandlerConfigTest {
         assertThat(classifier.classify(new IllegalStateException("test"))).isFalse();
         // 일반 RuntimeException 은 retryable (true)
         assertThat(classifier.classify(new RuntimeException("transient"))).isTrue();
+    }
+
+    @Test
+    @DisplayName("상태_예외는_재시도하지_않는다 — PaymentStatusException 은 false(즉시 DLQ)")
+    void 상태_예외는_재시도하지_않는다() {
+        DefaultErrorHandler handler = config.kafkaErrorHandler(buildRecoverer());
+
+        BinaryExceptionClassifier classifier =
+                (BinaryExceptionClassifier) ReflectionTestUtils.invokeMethod(handler, "getClassifier");
+
+        assertThat(classifier).isNotNull();
+        assertThat(classifier.classify(PaymentStatusException.of(PaymentErrorCode.QUARANTINE_RESOLVE_CONFLICT)))
+                .isFalse();
     }
 
     @Test
