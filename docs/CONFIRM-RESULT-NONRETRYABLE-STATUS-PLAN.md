@@ -88,7 +88,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 결과 대기 상태를 상태 열거와 판별 메서드에 추가
+- [x] Task 1: 결과 대기 상태를 상태 열거와 판별 메서드에 추가
 - [ ] Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경
 - [ ] Task 3: 결제 상태 조건부 전이 포트와 구현
 - [ ] Task 4: 결과 대기 2차 임계 초과 조회 포트와 구현
@@ -121,7 +121,7 @@ flowchart TD
 - 스키마 변경 없음을 확인 (VARCHAR + EnumType.STRING)
 
 **완료 결과**
-> (execute에서 채움)
+> `PaymentEventStatus` 에 `AWAITING_RESULT` 추가, `isTerminal()` false 분기 / `canApplyConfirmResult()` true 분기에 배치. `PaymentEventStatusSplitMethodTest` 의 기존 두 `@EnumSource`(`canApplyConfirmResult` 진입 가능/불가) 중 진입 가능 목록에 새 값을 추가하고, 단일 값 전용 테스트(`canApplyConfirmResult_결과_대기는_true`, `isTerminal_결과_대기는_false`)를 신설했다. `PaymentEventEntity.status` 가 `@Enumerated(EnumType.STRING)` 이라 스키마 변경 없음을 확인. `./gradlew :payment-service:test` 689개 전체 통과.
 
 ### Task 2: 결과 대기에서의 도메인 전이 허용과 되돌리기 도착 상태 변경 [tdd=true] [domain_risk=true]
 
