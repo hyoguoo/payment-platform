@@ -25,7 +25,7 @@
 #         선차감 기록은 전부 REVERTED — 어긋나면 총건수가 맞아도 개별 유실/오류를 잡는다
 #
 #   불일치 해석:
-#     - settle 후 미종결(READY/IN_PROGRESS/RETRYING) → 아직 종결이 덜 끝난 상태.
+#     - settle 후 미종결(READY/IN_PROGRESS/RETRYING/AWAITING_RESULT) → 아직 종결이 덜 끝난 상태.
 #       대기하면 풀릴 수 있어 판단 보류로 다룬다
 #     - 미회수 선차감 기록(stock_hold_record.status=NOISE) → 주기 회수(StockHoldRecoveryWorker)로
 #       풀릴 수 있어 판단 보류로 다룬다
@@ -311,6 +311,7 @@ DB_QUARANTINED_RAW=$(extract_count "QUARANTINED")
 DB_READY_RAW=$(extract_count "READY")
 DB_IN_PROGRESS_RAW=$(extract_count "IN_PROGRESS")
 DB_RETRYING_RAW=$(extract_count "RETRYING")
+DB_AWAITING_RESULT_RAW=$(extract_count "AWAITING_RESULT")
 DB_CANCELED_RAW=$(extract_count "CANCELED")
 DB_PARTIAL_CANCELED_RAW=$(extract_count "PARTIAL_CANCELED")
 DB_EXPIRED_RAW=$(extract_count "EXPIRED")
@@ -322,12 +323,15 @@ DB_QUARANTINED="${DB_QUARANTINED_RAW:-0}"
 DB_READY="${DB_READY_RAW:-0}"
 DB_IN_PROGRESS="${DB_IN_PROGRESS_RAW:-0}"
 DB_RETRYING="${DB_RETRYING_RAW:-0}"
+DB_AWAITING_RESULT="${DB_AWAITING_RESULT_RAW:-0}"
 DB_CANCELED="${DB_CANCELED_RAW:-0}"
 DB_PARTIAL_CANCELED="${DB_PARTIAL_CANCELED_RAW:-0}"
 DB_EXPIRED="${DB_EXPIRED_RAW:-0}"
 
-# 미종결(READY/IN_PROGRESS/RETRYING) — settle 후에도 남아있으면 대기하면 풀릴 수 있는 판단 보류
-DB_UNSETTLED=$(( DB_READY + DB_IN_PROGRESS + DB_RETRYING ))
+# 미종결(READY/IN_PROGRESS/RETRYING/AWAITING_RESULT) — settle 후에도 남아있으면 대기하면 풀릴 수 있는 판단 보류
+# AWAITING_RESULT: 리컨실러가 1차 임계 초과 IN_PROGRESS 를 되돌린 자리. 확정 결과를 아직 받을 수 있어
+# 비종결이며, 빼고 세면 결과 대기에 남은 건이 종결된 것처럼 보인다.
+DB_UNSETTLED=$(( DB_READY + DB_IN_PROGRESS + DB_RETRYING + DB_AWAITING_RESULT ))
 
 # k6 교차 대상 총합: 부하 측정으로 생성된 DONE + FAILED + QUARANTINED + 미종결
 # (CANCELED/PARTIAL_CANCELED/EXPIRED 는 결제 플로우 외 경로 — 부하 측정 대상에서 분리)
@@ -727,7 +731,7 @@ print_section "━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 if [[ "${DB_UNSETTLED}" -gt 0 ]]; then
-    print_error "  ❌ 미종결 잔여: READY=${DB_READY} / IN_PROGRESS=${DB_IN_PROGRESS} / RETRYING=${DB_RETRYING}"
+    print_error "  ❌ 미종결 잔여: READY=${DB_READY} / IN_PROGRESS=${DB_IN_PROGRESS} / RETRYING=${DB_RETRYING} / AWAITING_RESULT=${DB_AWAITING_RESULT}"
     echo ""
     echo "  분류:"
     echo "    - e2e_timeout 건 중 settle 후 DONE 으로 전환된 경우"
@@ -740,11 +744,11 @@ if [[ "${DB_UNSETTLED}" -gt 0 ]]; then
     echo "           -u ${MYSQL_USER} -p${MYSQL_PASSWORD} \\"
     echo "           -D ${MYSQL_DB} -e \\"
     echo "           \"SELECT order_id, status, last_status_changed_at FROM payment_event"
-    echo "             WHERE status IN ('READY','IN_PROGRESS','RETRYING')"
+    echo "             WHERE status IN ('READY','IN_PROGRESS','RETRYING','AWAITING_RESULT')"
     echo "             ORDER BY last_status_changed_at DESC LIMIT 20;\""
     echo ""
 else
-    print_info "  ✅ 미종결 잔여 없음 (READY=0 / IN_PROGRESS=0 / RETRYING=0)"
+    print_info "  ✅ 미종결 잔여 없음 (READY=0 / IN_PROGRESS=0 / RETRYING=0 / AWAITING_RESULT=0)"
 fi
 
 if [[ "${K6_SAMPLE_TIMEOUT}" -gt 0 ]]; then

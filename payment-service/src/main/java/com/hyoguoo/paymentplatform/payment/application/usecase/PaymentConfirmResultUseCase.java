@@ -130,8 +130,11 @@ public class PaymentConfirmResultUseCase {
      */
     @Transactional(transactionManager = "transactionManager", timeout = 5)
     public void handle(ConfirmedEventMessage message) {
+        // 잠금 읽기(FOR UPDATE) — 리컨실러의 조건부 전이(CAS)와 경합할 때 아래 종결 상태 가드
+        // 판정을 이 잠금 아래에서 하기 위함이다. 잠금 없는 조회로 되돌리면 격리 직후 도착한
+        // 확정 결과가 옛 스냅샷으로 이 가드를 통과해 격리 판정을 덮어쓸 수 있다.
         PaymentEvent paymentEvent = paymentEventRepository
-                .findByOrderId(message.orderId())
+                .findByOrderIdForUpdate(message.orderId())
                 .orElseThrow(() -> PaymentFoundException.of(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
         // 종결 상태면 이미 처리된 메시지다. DONE+APPROVED 재배달은 재고 확정 재발행 신호로 보고

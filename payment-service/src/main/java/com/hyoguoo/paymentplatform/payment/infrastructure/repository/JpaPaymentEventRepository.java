@@ -2,10 +2,12 @@ package com.hyoguoo.paymentplatform.payment.infrastructure.repository;
 
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.infrastructure.entity.PaymentEventEntity;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,14 @@ import org.springframework.data.repository.query.Param;
 public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEntity, Long> {
 
     Optional<PaymentEventEntity> findByOrderId(String orderId);
+
+    /**
+     * 확정 결과 소비 경로용 잠금 읽기(FOR UPDATE) — {@code JpaPaymentOutboxRepository#findByOrderIdForUpdate}
+     * 와 같은 형태다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM PaymentEventEntity e WHERE e.orderId = :orderId")
+    Optional<PaymentEventEntity> findByOrderIdForUpdate(@Param("orderId") String orderId);
 
     // BaseEntity.createdAt 은 Instant(DATETIME(6)) 컬럼이며, Instant 파라미터를
     // Hibernate 가 hibernate.jdbc.time_zone=UTC 기준으로 UTC Calendar 바인딩하므로
@@ -32,6 +42,12 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
     @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'IN_PROGRESS' AND pe.executedAt < :before")
     List<PaymentEventEntity> findInProgressOlderThan(@Param("before") Instant before);
 
+    // 2차 임계 스캔 대상 조회 — 앵커는 executedAt 이 아닌 lastStatusChangedAt.
+    // executedAt 은 확정 진입 시각으로 고정돼 이후 갱신되지 않는다.
+    @Query("SELECT pe FROM PaymentEventEntity pe WHERE pe.status = 'AWAITING_RESULT' "
+            + "AND pe.lastStatusChangedAt < :before")
+    List<PaymentEventEntity> findAwaitingResultOlderThan(@Param("before") Instant before);
+
     List<PaymentEventEntity> findByStatus(PaymentEventStatus status);
 
     // 격리 복구 CAS 게이트 — WHERE status = 'QUARANTINED' 조건이 만족될 때만 반영되며,
@@ -42,6 +58,25 @@ public interface JpaPaymentEventRepository extends JpaRepository<PaymentEventEnt
             + "e.lastStatusChangedAt = :lastStatusChangedAt "
             + "WHERE e.id = :id AND e.status = 'QUARANTINED'")
     int resolveQuarantineToFailed(@Param("id") Long id,
+            @Param("reason") String reason,
+            @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
+
+    // 리컨실러 1차 전이 CAS 게이트 — WHERE status = 'IN_PROGRESS' 조건이 만족될 때만 반영되며,
+    // payment_order 는 건드리지 않는다(도메인상 주문 상태를 바꾸지 않는 전이).
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentEventEntity e SET e.status = 'AWAITING_RESULT', "
+            + "e.lastStatusChangedAt = :lastStatusChangedAt "
+            + "WHERE e.id = :id AND e.status = 'IN_PROGRESS'")
+    int resolveInProgressToAwaitingResult(@Param("id") Long id,
+            @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
+
+    // 리컨실러 2차 전이 CAS 게이트 — WHERE status = 'AWAITING_RESULT' 조건이 만족될 때만 반영되며,
+    // payment_order 는 건드리지 않는다. 잘못 반영되면 되돌릴 경로가 없다.
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PaymentEventEntity e SET e.status = 'QUARANTINED', e.statusReason = :reason, "
+            + "e.lastStatusChangedAt = :lastStatusChangedAt "
+            + "WHERE e.id = :id AND e.status = 'AWAITING_RESULT'")
+    int resolveAwaitingResultToQuarantine(@Param("id") Long id,
             @Param("reason") String reason,
             @Param("lastStatusChangedAt") Instant lastStatusChangedAt);
 }

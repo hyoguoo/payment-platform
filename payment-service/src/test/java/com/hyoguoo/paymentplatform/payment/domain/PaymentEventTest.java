@@ -854,23 +854,6 @@ class PaymentEventTest {
         assertThat(paymentEvent.getExecutedAt()).isEqualTo(executedAt);
     }
 
-    @Test
-    @DisplayName("resetToReady(Instant) — Instant 인자로 호출 후 status=READY 단정.")
-    void resetToReady_withInstant_shouldRestoreStatus() {
-        // given
-        Instant resetAt = Instant.parse("2026-01-01T10:00:00Z");
-        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
-                PaymentEventStatus.IN_PROGRESS,
-                PaymentOrderStatus.EXECUTING
-        );
-
-        // when
-        paymentEvent.resetToReady(resetAt);
-
-        // then
-        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
-        assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
-    }
 
     // ---- 만료 정책 명문화 — 도메인 가드 전수 테스트 ----
 
@@ -962,40 +945,118 @@ class PaymentEventTest {
         assertThat(paymentEvent.getGatewayType()).isEqualTo(gatewayType);
     }
 
-    // resetToReady() — Reconciler timeout 복원 경로 invariants
+    // resetToAwaitingResult() — Reconciler timeout 되돌리기 경로 invariants
 
     @Test
-    @DisplayName("resetToReady() — IN_PROGRESS 상태에서 READY 로 전이하고 lastStatusChangedAt 이 갱신된다")
-    void resetToReady_inProgress_shouldTransitionToReadyAndUpdateTimestamp() {
+    @DisplayName("되돌리기_IN_PROGRESS_를_결과_대기로_옮긴다 — 주문 상태는 그대로다")
+    void 되돌리기_IN_PROGRESS_를_결과_대기로_옮긴다() {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 PaymentEventStatus.IN_PROGRESS, PaymentOrderStatus.EXECUTING);
         Instant resetAt = Instant.now().plus(Duration.ofMinutes(10));
 
         // when
-        paymentEvent.resetToReady(resetAt);
+        paymentEvent.resetToAwaitingResult(resetAt);
 
         // then
-        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.READY);
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.AWAITING_RESULT);
         assertThat(paymentEvent.getLastStatusChangedAt()).isEqualTo(resetAt);
+        assertThat(paymentEvent.getPaymentOrderList())
+                .extracting(PaymentOrder::getStatus)
+                .containsOnly(PaymentOrderStatus.EXECUTING);
     }
 
     @ParameterizedTest
     @EnumSource(value = PaymentEventStatus.class,
-            names = {"READY", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED", "QUARANTINED"})
-    @DisplayName("resetToReady() — IN_PROGRESS 가 아닌 모든 상태에서 PaymentStatusException 을 던진다 (INVALID_STATUS_TO_RESET)")
-    void resetToReady_nonInProgress_shouldThrow(PaymentEventStatus from) {
+            names = {"READY", "AWAITING_RESULT", "DONE", "FAILED", "CANCELED", "PARTIAL_CANCELED", "EXPIRED",
+                    "QUARANTINED"})
+    @DisplayName("되돌리기_IN_PROGRESS_가_아니면_거부한다")
+    void 되돌리기_IN_PROGRESS_가_아니면_거부한다(PaymentEventStatus from) {
         // given
         PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
                 from, PaymentOrderStatus.NOT_STARTED);
 
         // when & then
-        assertThatThrownBy(() -> paymentEvent.resetToReady(Instant.now()))
+        assertThatThrownBy(() -> paymentEvent.resetToAwaitingResult(Instant.now()))
                 .isInstanceOf(PaymentStatusException.class)
                 .satisfies(ex -> {
                     PaymentStatusException statusEx = (PaymentStatusException) ex;
                     assertThat(statusEx.getCode())
-                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_RESET.getCode());
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_AWAITING_RESULT.getCode());
                 });
+    }
+
+    // 결과 대기(AWAITING_RESULT)에서의 완료/실패/격리 전이 — 되돌아간 결제가 늦게 온 결과를 받아들인다
+
+    @Test
+    @DisplayName("done_결과_대기에서_완료로_전이한다 — 주문도 함께 성공 처리된다")
+    void done_결과_대기에서_완료로_전이한다() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.AWAITING_RESULT, PaymentOrderStatus.EXECUTING);
+        Instant approvedAt = Instant.parse("2026-01-01T00:00:00Z");
+
+        // when
+        paymentEvent.done(approvedAt, Instant.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.DONE);
+        assertThat(paymentEvent.getApprovedAt()).isEqualTo(approvedAt);
+        assertThat(paymentEvent.getPaymentOrderList())
+                .extracting(PaymentOrder::getStatus)
+                .containsOnly(PaymentOrderStatus.SUCCESS);
+    }
+
+    @Test
+    @DisplayName("done_READY_에서는_여전히_거부한다 — 확정에 진입한 적 없는 결제는 완료될 수 없다")
+    void done_READY_에서는_여전히_거부한다() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.READY, PaymentOrderStatus.NOT_STARTED);
+        Instant approvedAt = Instant.parse("2026-01-01T00:00:00Z");
+
+        // when & then
+        assertThatThrownBy(() -> paymentEvent.done(approvedAt, Instant.now()))
+                .isInstanceOf(PaymentStatusException.class)
+                .satisfies(ex -> {
+                    PaymentStatusException statusEx = (PaymentStatusException) ex;
+                    assertThat(statusEx.getCode())
+                            .isEqualTo(PaymentErrorCode.INVALID_STATUS_TO_SUCCESS.getCode());
+                });
+    }
+
+    @Test
+    @DisplayName("fail_결과_대기에서_실패로_전이한다")
+    void fail_결과_대기에서_실패로_전이한다() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.AWAITING_RESULT, PaymentOrderStatus.EXECUTING);
+        String reason = "벤더 실패 응답 지연 도착";
+
+        // when
+        paymentEvent.fail(reason, Instant.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
+        assertThat(paymentEvent.getPaymentOrderList())
+                .extracting(PaymentOrder::getStatus)
+                .containsOnly(PaymentOrderStatus.FAIL);
+    }
+
+    @Test
+    @DisplayName("quarantine_결과_대기에서_격리로_전이한다 — 비종결 통과 규칙이 이미 커버한다 (코드 변경 없음)")
+    void quarantine_결과_대기에서_격리로_전이한다() {
+        // given
+        PaymentEvent paymentEvent = defaultExecutedPaymentEventWithStatus(
+                PaymentEventStatus.AWAITING_RESULT, PaymentOrderStatus.EXECUTING);
+        String reason = "지연 도착 격리 결과";
+
+        // when
+        paymentEvent.quarantine(reason, Instant.now());
+
+        // then
+        assertThat(paymentEvent.getStatus()).isEqualTo(PaymentEventStatus.QUARANTINED);
+        assertThat(paymentEvent.getStatusReason()).isEqualTo(reason);
     }
 }

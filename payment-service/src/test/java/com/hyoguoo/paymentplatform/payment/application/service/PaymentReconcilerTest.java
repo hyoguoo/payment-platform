@@ -1,13 +1,20 @@
 package com.hyoguoo.paymentplatform.payment.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentReconcilerBatchMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
+import com.hyoguoo.paymentplatform.payment.mock.FakePaymentEventRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,61 +23,126 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 /**
  * PaymentReconciler 단위 테스트.
  *
- * <p>새 모델: stock 발산 감지/보정 책임이 제거되어 IN_FLIGHT timeout 복원만 담당한다.
- *
- * <p>만료 2단 연쇄 명문화:
- * "IN_PROGRESS 정체 → Reconciler READY 복원 → 만료 스케줄러 EXPIRED" 연쇄가 의도된 정책임을
- * 단위 테스트로 고정한다. IN_PROGRESS 를 직접 expire() 시도 시 예외가 발생하고,
- * Reconciler 가 READY 로 복원한 뒤에야 만료 대상이 됨을 verify 로 문서화한다.
+ * <p>1차 스캔은 IN_FLIGHT timeout 건을 {@link PaymentCommandUseCase#resetPaymentToAwaitingResult}
+ * 조건부 전이 위임 메서드로 결과 대기(AWAITING_RESULT) 상태로 옮긴다. 2차 스캔은 그 뒤를 이어,
+ * 결과 대기에 2차 임계 이상 머문 건을 {@link PaymentCommandUseCase#quarantinePaymentAutomatically}
+ * 로 격리한다. 두 스캔 모두 위임 메서드가 null 을 반환하는 것(그 사이 확정된 건과의 경합)과 예외를
+ * 던지는 것(격리 대상 실패)을 구분해 처리하며, 한 건의 실패가 나머지 건 처리를 막지 않는다.
  */
 @DisplayName("PaymentReconciler")
 class PaymentReconcilerTest {
 
     private static final long TIMEOUT_SECONDS = 300;
+    private static final long AWAITING_RESULT_TIMEOUT_SECONDS = 900;
     private static final Instant FIXED_INSTANT = Instant.parse("2026-04-27T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
 
     private PaymentEventRepository paymentEventRepository;
+    private PaymentCommandUseCase paymentCommandUseCase;
+    private PaymentReconcilerBatchMetrics paymentReconcilerBatchMetrics;
     private PaymentReconciler reconciler;
 
     @BeforeEach
     void setUp() {
         paymentEventRepository = Mockito.mock(PaymentEventRepository.class);
+        paymentCommandUseCase = Mockito.mock(PaymentCommandUseCase.class);
+        paymentReconcilerBatchMetrics = Mockito.mock(PaymentReconcilerBatchMetrics.class);
 
         reconciler = new PaymentReconciler(
                 paymentEventRepository,
+                paymentCommandUseCase,
+                paymentReconcilerBatchMetrics,
                 FIXED_CLOCK,
-                TIMEOUT_SECONDS
+                TIMEOUT_SECONDS,
+                AWAITING_RESULT_TIMEOUT_SECONDS
         );
     }
 
     @Test
-    @DisplayName("stale IN_FLIGHT 가 있으면 READY 로 복원한다.")
-    void scan_resetsStaleInFlightRecords() {
-        Instant now = FIXED_INSTANT;
-
+    @DisplayName("1차 임계를 넘긴 진행 중 결제를 결과 대기로 옮긴다.")
+    void scan_movesStaleInProgressPaymentToAwaitingResult() {
         PaymentEvent stale = Mockito.mock(PaymentEvent.class);
+        given(stale.getOrderId()).willReturn("order-1");
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of(stale));
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(stale)).willReturn(stale);
 
         reconciler.scan();
 
-        verify(stale, times(1)).resetToReady(now);
-        verify(paymentEventRepository, times(1)).saveOrUpdate(stale);
+        verify(paymentCommandUseCase, times(1)).resetPaymentToAwaitingResult(stale);
+        verify(paymentReconcilerBatchMetrics, never()).recordRaceSkip(any());
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(any(), any());
     }
 
     @Test
-    @DisplayName("stale IN_FLIGHT 가 없으면 saveOrUpdate 가 호출되지 않는다.")
-    void scan_whenNoStale_skipsSave() {
+    @DisplayName("그 사이 확정된 건은 건너뛴다.")
+    void scan_skipsWhenAlreadyConfirmed() {
+        PaymentEvent raced = Mockito.mock(PaymentEvent.class);
+        given(raced.getOrderId()).willReturn("order-raced");
+        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of(raced));
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(raced)).willReturn(null);
+
+        assertThatCode(() -> reconciler.scan()).doesNotThrowAnyException();
+
+        verify(paymentReconcilerBatchMetrics, times(1)).recordRaceSkip("order-raced");
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(any(), any());
+    }
+
+    @Test
+    @DisplayName("한 건이 실패해도 나머지를 계속 처리한다.")
+    void scan_oneItemFails_doesNotBlockOthers() {
+        PaymentEvent failing = Mockito.mock(PaymentEvent.class);
+        given(failing.getOrderId()).willReturn("order-failing");
+        PaymentEvent normal = Mockito.mock(PaymentEvent.class);
+        given(normal.getOrderId()).willReturn("order-normal");
+
+        given(paymentEventRepository.findInProgressOlderThan(any()))
+                .willReturn(List.of(failing, normal));
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(failing))
+                .willThrow(new IllegalStateException("boom"));
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(normal)).willReturn(normal);
+
+        assertThatCode(() -> reconciler.scan()).doesNotThrowAnyException();
+
+        verify(paymentCommandUseCase, times(1)).resetPaymentToAwaitingResult(failing);
+        verify(paymentCommandUseCase, times(1)).resetPaymentToAwaitingResult(normal);
+    }
+
+    @Test
+    @DisplayName("정상 경합 스킵과 예외 실패를 따로 센다.")
+    void scan_countsRaceSkipAndFailureSeparately() {
+        PaymentEvent raced = Mockito.mock(PaymentEvent.class);
+        given(raced.getOrderId()).willReturn("order-raced");
+        PaymentEvent failing = Mockito.mock(PaymentEvent.class);
+        given(failing.getOrderId()).willReturn("order-failing");
+
+        given(paymentEventRepository.findInProgressOlderThan(any()))
+                .willReturn(List.of(raced, failing));
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(raced)).willReturn(null);
+        given(paymentCommandUseCase.resetPaymentToAwaitingResult(failing))
+                .willThrow(new IllegalStateException("boom"));
+
+        reconciler.scan();
+
+        verify(paymentReconcilerBatchMetrics, times(1)).recordRaceSkip("order-raced");
+        verify(paymentReconcilerBatchMetrics, times(1)).recordFailure(eq("order-failing"), any());
+        verify(paymentReconcilerBatchMetrics, never()).recordRaceSkip("order-failing");
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(eq("order-raced"), any());
+    }
+
+    @Test
+    @DisplayName("stale IN_FLIGHT 가 없으면 위임 메서드가 호출되지 않는다.")
+    void scan_whenNoStale_skipsDelegate() {
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
 
         reconciler.scan();
 
-        verify(paymentEventRepository, never()).saveOrUpdate(any());
+        verify(paymentCommandUseCase, never()).resetPaymentToAwaitingResult(any());
     }
 
     @Test
@@ -85,34 +157,121 @@ class PaymentReconcilerTest {
         assertThat(expectedCutoff).isBefore(FIXED_INSTANT);
     }
 
-    // ---- 만료 2단 연쇄 명문화 — 만료 정책 회귀 가드 ----
-
     @Test
-    @DisplayName("scan — stale IN_PROGRESS 가 있으면 resetToReady(Instant) 가 호출된다. (2단 연쇄 1단계)")
-    void scan_staleInProgress_shouldResetToReady() {
-        // given — Clock.fixed() 주입, cutoff 초과 IN_PROGRESS 1건 반환
-        PaymentEvent staleEvent = Mockito.mock(PaymentEvent.class);
-        Instant expectedCutoff = FIXED_INSTANT.minus(Duration.ofSeconds(TIMEOUT_SECONDS));
-        given(paymentEventRepository.findInProgressOlderThan(expectedCutoff)).willReturn(List.of(staleEvent));
+    @DisplayName("2차 임계를 넘긴 결과 대기 결제를 격리로 옮긴다.")
+    void scan_movesStaleAwaitingResultPaymentToQuarantine() {
+        PaymentEvent stale = Mockito.mock(PaymentEvent.class);
+        given(stale.getOrderId()).willReturn("order-2");
+        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
+        given(paymentEventRepository.findAwaitingResultOlderThan(any())).willReturn(List.of(stale));
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(stale), any())).willReturn(stale);
 
-        // when
         reconciler.scan();
 
-        // then — resetToReady(FIXED_INSTANT) 호출 verify: IN_PROGRESS → READY 복원이 이 시각으로 기록됨
-        verify(staleEvent, times(1)).resetToReady(FIXED_INSTANT);
-        verify(paymentEventRepository, times(1)).saveOrUpdate(staleEvent);
+        verify(paymentCommandUseCase, times(1)).quarantinePaymentAutomatically(eq(stale), any());
+        verify(paymentReconcilerBatchMetrics, never()).recordRaceSkip(any());
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(any(), any());
+        Instant expectedCutoff = FIXED_INSTANT.minus(Duration.ofSeconds(AWAITING_RESULT_TIMEOUT_SECONDS));
+        verify(paymentEventRepository, times(1)).findAwaitingResultOlderThan(expectedCutoff);
     }
 
     @Test
-    @DisplayName("scan — stale IN_PROGRESS 가 없으면 saveOrUpdate 가 0회 호출된다. (2단 연쇄 noop)")
-    void scan_noStaleRecords_shouldDoNothing() {
-        // given — 빈 리스트 반환
+    @DisplayName("두 스캔이 한 주기에서 1차 다음 2차 순서로 돈다.")
+    void scan_runsFirstScanBeforeSecondScanInSameCycle() {
         given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
+        given(paymentEventRepository.findAwaitingResultOlderThan(any())).willReturn(List.of());
 
-        // when
         reconciler.scan();
 
-        // then — saveOrUpdate 0회
-        verify(paymentEventRepository, never()).saveOrUpdate(any());
+        InOrder inOrder = Mockito.inOrder(paymentEventRepository);
+        inOrder.verify(paymentEventRepository).findInProgressOlderThan(any());
+        inOrder.verify(paymentEventRepository).findAwaitingResultOlderThan(any());
+    }
+
+    @Test
+    @DisplayName("방금 결과 대기로 옮긴 건은 같은 주기에 격리되지 않는다.")
+    void scan_doesNotQuarantineJustMovedToAwaitingResult() {
+        FakePaymentEventRepository fakeRepository = new FakePaymentEventRepository();
+        PaymentEvent recentlyMoved = PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .orderId("order-recently-moved")
+                .status(PaymentEventStatus.AWAITING_RESULT)
+                .executedAt(FIXED_INSTANT.minus(Duration.ofSeconds(AWAITING_RESULT_TIMEOUT_SECONDS * 2)))
+                .lastStatusChangedAt(FIXED_INSTANT.minus(Duration.ofSeconds(1)))
+                .paymentOrderList(List.of())
+                .allArgsBuild();
+        fakeRepository.save(recentlyMoved);
+
+        PaymentReconciler fakeBackedReconciler = new PaymentReconciler(
+                fakeRepository,
+                paymentCommandUseCase,
+                paymentReconcilerBatchMetrics,
+                FIXED_CLOCK,
+                TIMEOUT_SECONDS,
+                AWAITING_RESULT_TIMEOUT_SECONDS
+        );
+
+        fakeBackedReconciler.scan();
+
+        verify(paymentCommandUseCase, never()).quarantinePaymentAutomatically(any(), any());
+    }
+
+    @Test
+    @DisplayName("그 사이 확정된 건은 격리하지 않는다.")
+    void scan_doesNotQuarantineWhenAlreadyConfirmed() {
+        PaymentEvent raced = Mockito.mock(PaymentEvent.class);
+        given(raced.getOrderId()).willReturn("order-raced-2");
+        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
+        given(paymentEventRepository.findAwaitingResultOlderThan(any())).willReturn(List.of(raced));
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(raced), any())).willReturn(null);
+
+        assertThatCode(() -> reconciler.scan()).doesNotThrowAnyException();
+
+        verify(paymentReconcilerBatchMetrics, times(1)).recordRaceSkip("order-raced-2");
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(any(), any());
+    }
+
+    @Test
+    @DisplayName("2차 스캔도 항목별로 실패를 격리한다.")
+    void scan_secondScanIsolatesFailurePerItem() {
+        PaymentEvent failing = Mockito.mock(PaymentEvent.class);
+        given(failing.getOrderId()).willReturn("order-failing-2");
+        PaymentEvent normal = Mockito.mock(PaymentEvent.class);
+        given(normal.getOrderId()).willReturn("order-normal-2");
+
+        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
+        given(paymentEventRepository.findAwaitingResultOlderThan(any()))
+                .willReturn(List.of(failing, normal));
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(failing), any()))
+                .willThrow(new IllegalStateException("boom"));
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(normal), any())).willReturn(normal);
+
+        assertThatCode(() -> reconciler.scan()).doesNotThrowAnyException();
+
+        verify(paymentCommandUseCase, times(1)).quarantinePaymentAutomatically(eq(failing), any());
+        verify(paymentCommandUseCase, times(1)).quarantinePaymentAutomatically(eq(normal), any());
+    }
+
+    @Test
+    @DisplayName("2차 스캔도 정상 경합 스킵과 예외 실패를 따로 센다.")
+    void scan_secondScanCountsRaceSkipAndFailureSeparately() {
+        PaymentEvent raced = Mockito.mock(PaymentEvent.class);
+        given(raced.getOrderId()).willReturn("order-raced-3");
+        PaymentEvent failing = Mockito.mock(PaymentEvent.class);
+        given(failing.getOrderId()).willReturn("order-failing-3");
+
+        given(paymentEventRepository.findInProgressOlderThan(any())).willReturn(List.of());
+        given(paymentEventRepository.findAwaitingResultOlderThan(any()))
+                .willReturn(List.of(raced, failing));
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(raced), any())).willReturn(null);
+        given(paymentCommandUseCase.quarantinePaymentAutomatically(eq(failing), any()))
+                .willThrow(new IllegalStateException("boom"));
+
+        reconciler.scan();
+
+        verify(paymentReconcilerBatchMetrics, times(1)).recordRaceSkip("order-raced-3");
+        verify(paymentReconcilerBatchMetrics, times(1)).recordFailure(eq("order-failing-3"), any());
+        verify(paymentReconcilerBatchMetrics, never()).recordRaceSkip("order-failing-3");
+        verify(paymentReconcilerBatchMetrics, never()).recordFailure(eq("order-raced-3"), any());
     }
 }

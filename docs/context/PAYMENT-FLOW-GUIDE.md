@@ -229,7 +229,7 @@ flowchart TD
         SENDF["Kafka 발행 실패"] --> ROLLBACK["relay TX 전체 롤백<br/>PENDING 즉시 복귀"]
         ROLLBACK --> OW["OutboxWorker @5s<br/>PENDING 배치 재픽업(1차 경로)"]
         OW --> REREL["relay 재시도"]
-        STUCK["event IN_PROGRESS 장기체류"] --> RECON["PaymentReconciler @2분<br/>resetToReady"] --> OW
+        STUCK["event IN_PROGRESS 장기체류"] --> RECON["PaymentReconciler @2분<br/>결과 대기로 되돌림"] --> AWAIT["결과 대기<br/>늦은 확정 결과를 받는다"]
     end
 
     subgraph PGREC["pg-service 회복 (단계 4)"]
@@ -268,7 +268,7 @@ flowchart TD
 |---|---|---|
 | payment 리스너 스킵·크래시 | `OutboxWorker` 가 PENDING + IN_FLIGHT 5분 타임아웃 분 재픽업 | `OutboxRelayService.relay` 재실행 |
 | Kafka 발행 실패(payment→broker) | relay TX 전체 롤백 → PENDING 즉시 복귀. 워커가 별도 TX 로 재시도 횟수·다음 시도 시각을 조건부 갱신해 **간격을 두고** 재픽업(한도 소진 종결은 없음) | `OutboxRelayService.relay` 단일 TX + `PaymentOutboxUseCase.recordPublishFailureDelay` |
-| event IN_PROGRESS 장기 체류 | `PaymentReconciler`(`@Scheduled` 2분) `resetToReady` → 재발행 | 멈춘 결제 자가 치유 |
+| event IN_PROGRESS 장기 체류 | `PaymentReconciler`(`@Scheduled` 2분) 1차 결과 대기로 되돌림, 2차 임계(15분) 초과 시 격리 | 늦게 온 승인도 받아들이고, 끝내 안 오면 사람에게 올린다 |
 | PG 일시 오류(5xx/timeout) | pg self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가(attempt<4) | 같은 토픽 재발행 |
 | PG 재시도 한도 초과(DLQ) | attempt≥4 → `insertDlqOutbox` → `PgDlqService` → **벤더에 1회 조회**(`PgFinalConfirmationGate`) → 승인/확정실패는 자동 종결, 판단이 필요한 건만 격리 → payment `handleQuarantined` | `PaymentConfirmDlqConsumer` |
 | 브로커 커밋 유실(RDB DONE 커밋 후 crash) | 재배달이 종결 가드 `DONE+APPROVED` 분기로 흡수 → **재고 확정 재발행** | best-effort 1PC 갭 복구 |
@@ -320,7 +320,7 @@ flowchart TD
         ETX[["[10] 확정 TX 원자커밋<br/>READY->IN_PROGRESS + outbox PENDING"]]
         REL["[12~15] 확정 명령 발행<br/>OutboxRelayService.relay"]
         OW["OutboxWorker @5s<br/>PENDING 배치 재픽업(1차)<br/>IN_FLIGHT 5분 타임아웃 회수(보조)"]:::rec
-        RECON["PaymentReconciler @2분<br/>resetToReady"]:::rec
+        RECON["PaymentReconciler @2분<br/>결과 대기 -> 2차 임계 시 격리"]:::rec
         RETU["보상 안 함/차감 유지<br/>StockRetentionMetrics"]:::rec
     end
     CF --> VAL -->|위반| X4(["4xx"])

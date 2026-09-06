@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-7/L-12 인용의 되돌리기 메서드명을 새 이름으로 정정). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -196,8 +196,8 @@ process(result);  // result 가 null 일 수 있음
 **증상**: P8D 안에서 동일 orderId 가 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클로 재진입. `decrementAtomic` 이 ALREADY_DONE → SUCCESS 매핑되어 재고는 추가 차감 안 되지만, 벤더가 APPROVED 회신하면 product RDB 만 차감 + redis 보상 +1 잔존 → 발산.
 
 **원인**:
-- (CONCERNS.md L-12) 외부 force resetToReady 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 이 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
-- (CONCERNS.md L-7) `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToReady` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
+- (CONCERNS.md L-12) 외부 force 되돌리기 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 이 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
+- (CONCERNS.md L-7) `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToAwaitingResult` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
 
 **처방** (수용된 trade-off, 본 토픽 범위 외):
 - 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음

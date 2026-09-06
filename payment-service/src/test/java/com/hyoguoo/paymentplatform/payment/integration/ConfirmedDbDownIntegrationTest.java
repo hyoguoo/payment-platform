@@ -1,7 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -10,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.hyoguoo.paymentplatform.payment.application.dto.event.ConfirmedEventMessage;
 import com.hyoguoo.paymentplatform.payment.application.messaging.PaymentTopics;
-import com.hyoguoo.paymentplatform.payment.application.port.in.PaymentExpirationService;
 import com.hyoguoo.paymentplatform.payment.application.service.PaymentReconciler;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
 import com.hyoguoo.paymentplatform.payment.core.test.BaseIntegrationTest;
@@ -69,25 +67,26 @@ import org.testcontainers.containers.MySQLContainer;
  * <ul>
  *   <li>ConfirmedEventConsumer → PaymentConfirmResultUseCase → markPaymentAsDone DB write 실패(spy doThrow)
  *       → retry 소진(error-handler/after-rollback 경로 — 둘 다 공유 DLQ recoverer) → events.confirmed.dlq 보존(유실 0)</li>
- *   <li>DLQ 보존 후 TestClock 제어로 reconciler(IN_PROGRESS→READY) 전이 후 expiration 시도.
- *       EXPIRED 도달 불가(order EXECUTING이 expire 차단) — 실제 거동은 READY 영구 잔류 + 만료 batch poison-pill.
- *       load-bearing 단정: DLQ 증거 생존(비-silence 증거)</li>
+ *   <li>DLQ 보존 후 TestClock 제어로 reconciler 1차·2차 스캔을 차례로 명시 호출한다.
+ *       IN_PROGRESS 는 1차에서 결과 대기(AWAITING_RESULT)로, 결과 대기는 2차 임계 초과 시 격리
+ *       (QUARANTINED)로 종결된다 — 벤더 응답이 끝내 오지 않는 stranded 건을 사람이 대조하도록
+ *       넘기는 것이 이 설계의 종착점이다. load-bearing 단정: DLQ 증거 생존(비-silence 증거)</li>
  * </ul>
  *
  * <p>재현 메커니즘:
  * <ul>
  *   <li>DB write 실패는 {@link PaymentCommandUseCase#markPaymentAsDone} 를 spy doThrow 로 결정적 유발.
  *       컨테이너 stop / DataSource 단절은 Hikari connectionTimeout(30s×5) 으로 비결정적이라 금지.</li>
- *   <li>시간 제어는 TestClock(@Primary Clock)으로 수행. reconciler/expiration 은 scheduler.enabled=false
- *       후 명시 호출.</li>
+ *   <li>시간 제어는 TestClock(@Primary Clock)으로 수행. reconciler 는 scheduler.enabled=false 후
+ *       명시 호출.</li>
  *   <li>throw 예외({@link CannotAcquireLockException})는 not-retryable 화이트리스트
  *       (MessageConversion/IllegalArgument/IllegalState) 밖 — retry → DLQ 경로를 탄다.</li>
  * </ul>
  *
  * <p>범위 밖 알려진 한계:
  * <ul>
- *   <li>EXPIRED 이후 자동 복구 — DLQ 재주입 등 별도 후속 작업 위임</li>
- *   <li>no-divergence(redis ≤ RDB) 단정 — 공허 단정(§18 발산 3전제 미충족)이라 제외</li>
+ *   <li>격리(QUARANTINED) 이후 자동 복구 — 관리자 종결 등 별도 후속 작업 위임</li>
+ *   <li>no-divergence(redis ≤ RDB) 단정 — 재고 캐시 발산 3전제 미충족이라 제외</li>
  *   <li>신규 가시화 metric — 기존 DLQ 알람(events.confirmed.dlq)으로 탐지됨; test-only metric 발명 금지</li>
  * </ul>
  */
@@ -201,9 +200,6 @@ class ConfirmedDbDownIntegrationTest {
     @Autowired
     private PaymentReconciler paymentReconciler;
 
-    @Autowired
-    private PaymentExpirationService paymentExpirationService;
-
     /**
      * TestClockConfig 에서 등록한 TestClock 빈을 직접 주입해 시각 제어에 사용한다.
      * Clock 상위 타입이 아닌 TestClock 타입으로 주입해 타입 안전한 setFixedInstant / reset 호출을 보장한다.
@@ -285,25 +281,25 @@ class ConfirmedDbDownIntegrationTest {
     /**
      * DLQ 보존 후 전이 시도를 가로질러 DLQ 증거 생존.
      *
-     * <p>DLQ 보존 상태에서 TestClock 제어로 reconciler(IN_PROGRESS→READY) 전이 후
-     * expireOldReadyPayments() 를 명시 호출한다.
+     * <p>DLQ 보존 상태에서 TestClock 제어로 reconciler 의 1차·2차 스캔을 차례로 명시 호출한다.
      *
      * <p>실제 거동:
      * <ul>
-     *   <li>Reconciler 복원 후 PaymentEvent.status=READY, PaymentOrder.status=EXECUTING(불변식 흠) — 둘 다 단정.</li>
-     *   <li>EXPIRED 도달 불가(order EXECUTING이 expire 차단): 이 stranded 건은 만료에 실패하지만,
-     *       배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(poison-pill 격리).</li>
-     *   <li>만료 실패 후 재조회 시 event.status 는 여전히 READY(자동 복구 미수행 — 별도 후속 위임, stranded READY 잔류).</li>
+     *   <li>1차 스캔 — IN_PROGRESS + 1차 임계 초과 → 결과 대기(AWAITING_RESULT)로 전이.
+     *       PaymentOrder 는 이 전이가 건드리지 않는 테이블이라 EXECUTING 그대로다.</li>
+     *   <li>2차 스캔 — 결과 대기 + 2차 임계 초과 → 격리(QUARANTINED)로 전이. 벤더 응답이 끝내 오지
+     *       않는 stranded 건을 사람이 대조하도록 넘기는 것이 이 설계의 종착점이다. PaymentOrder 는
+     *       이 전이도 건드리지 않아 여전히 EXECUTING 이다.</li>
      * </ul>
      *
-     * <p>load-bearing 단정: 위 전이 시도를 가로질러 events.confirmed.dlq 1건 보존(DLQ 비-silence 증거).
+     * <p>load-bearing 단정: 위 두 전이를 가로질러 events.confirmed.dlq 1건 보존(DLQ 비-silence 증거).
      *
-     * <p>findInProgressOlderThan 은 executedAt 기준으로 IN_PROGRESS 레코드를 찾는다.
-     * findReadyPaymentsOlderThan 은 created_at 기준으로 READY 레코드를 찾는다.
-     * 두 쿼리가 TestClock 기반 cutoff 를 통해 기대대로 동작하는지도 함께 검증된다.
+     * <p>findInProgressOlderThan 은 executedAt 기준, findAwaitingResultOlderThan 은
+     * lastStatusChangedAt 기준으로 대상을 찾는다. 두 쿼리가 TestClock 기반 cutoff 를 통해
+     * 기대대로 동작하는지도 함께 검증된다.
      */
     @Test
-    @DisplayName("stranded 만료 실패 격리를 가로질러 DLQ 증거 생존: order EXECUTING 건 만료 실패 격리(poison-pill 차단) + DLQ 유실 0")
+    @DisplayName("리컨실러 1차·2차 전이를 가로질러 DLQ 증거 생존: IN_PROGRESS 건이 결과 대기를 거쳐 격리로 종결 + DLQ 유실 0")
     void 마스킹전이를_가로질러_DLQ증거_생존() throws Exception {
         // given — IN_PROGRESS 결제 + markPaymentAsDone DB write 결정적 실패 주입 → DLQ 보존
         String orderId = "order-dbdown2-" + UUID.randomUUID();
@@ -329,50 +325,51 @@ class ConfirmedDbDownIntegrationTest {
                 .as("DB write 실패 후 상태 불변(IN_PROGRESS)")
                 .isEqualTo(PaymentEventStatus.IN_PROGRESS);
 
-        // when (1단계) — Reconciler: TestClock 을 paymentSavedAt + 310s 로 전진.
+        // when (1단계) — Reconciler 1차 스캔: TestClock 을 paymentSavedAt + 310s 로 전진.
         // cutoff = clock.instant() - 300s = paymentSavedAt + 10s.
-        // executedAt ≈ paymentSavedAt < cutoff → findInProgressOlderThan 에 해당 → IN_PROGRESS → READY 전이.
-        testClock.setFixedInstant(paymentSavedAt.plus(Duration.ofSeconds(310)));
+        // executedAt ≈ paymentSavedAt < cutoff → findInProgressOlderThan 에 해당 →
+        // IN_PROGRESS → 결과 대기(AWAITING_RESULT) 전이.
+        Instant afterFirstScan = paymentSavedAt.plus(Duration.ofSeconds(310));
+        testClock.setFixedInstant(afterFirstScan);
         paymentReconciler.scan();
 
-        PaymentEventEntity entityAfterReconcile = jpaPaymentEventRepository.findByOrderId(orderId)
+        PaymentEventEntity entityAfterFirstScan = jpaPaymentEventRepository.findByOrderId(orderId)
                 .orElseThrow();
-        assertThat(entityAfterReconcile.getStatus())
-                .as("Reconciler 명시 호출 후 IN_PROGRESS→READY 전이 확인")
-                .isEqualTo(PaymentEventStatus.READY);
-        // 불변식 흠: PaymentEvent.resetToReady()는 PaymentOrder 상태를 복원하지 않는다.
-        // PaymentOrder 는 EXECUTING 그대로 — 이 건은 만료에 실패하지만 배치는 격리되어 계속 진행한다.
-        List<PaymentOrderEntity> ordersAfterReconcile =
-                jpaPaymentOrderRepository.findByPaymentEventId(entityAfterReconcile.getId());
-        assertThat(ordersAfterReconcile)
-                .as("Reconciler 후 PaymentOrder 상태는 EXECUTING 그대로(resetToNotStarted 없음)")
+        assertThat(entityAfterFirstScan.getStatus())
+                .as("1차 스캔 후 IN_PROGRESS → 결과 대기(AWAITING_RESULT) 전이 확인")
+                .isEqualTo(PaymentEventStatus.AWAITING_RESULT);
+        // 이 전이는 payment_order 를 건드리지 않는다(Task 3 설계 결정) — EXECUTING 그대로다.
+        List<PaymentOrderEntity> ordersAfterFirstScan =
+                jpaPaymentOrderRepository.findByPaymentEventId(entityAfterFirstScan.getId());
+        assertThat(ordersAfterFirstScan)
+                .as("1차 스캔 후 PaymentOrder 상태는 EXECUTING 그대로(주문 테이블 미터치)")
                 .isNotEmpty()
                 .allMatch(o -> o.getStatus() == PaymentOrderStatus.EXECUTING);
 
-        // when (2단계) — Expiration: TestClock 을 추가 31분 전진.
-        // cutoff = clock.instant() - 30min = paymentSavedAt + 310s + 1min.
-        // created_at ≈ paymentSavedAt < cutoff → findReadyPaymentsOlderThan 에 해당 → expire 시도.
-        // PaymentOrder.status=EXECUTING 이 PaymentOrder.expire() 가드를 막아 이 stranded 건은 만료에
-        // 실패하지만, 배치가 건별 독립 트랜잭션 + 실패 격리라 예외를 전파하지 않는다(poison-pill 격리).
-        testClock.setFixedInstant(
-                paymentSavedAt.plus(Duration.ofSeconds(310)).plus(Duration.ofMinutes(31))
-        );
-        assertThatCode(() -> paymentExpirationService.expireOldReadyPayments())
-                .as("stranded 건 만료 실패가 격리되어 배치 예외 전파 없음 (poison-pill 격리)")
-                .doesNotThrowAnyException();
+        // when (2단계) — Reconciler 2차 스캔: TestClock 을 추가로 2차 임계(기본 900s) + 여유만큼 전진.
+        // cutoff = clock.instant() - 900s. 1차 스캔이 갱신한 lastStatusChangedAt(=afterFirstScan) < cutoff
+        // → findAwaitingResultOlderThan 에 해당 → 결과 대기 → 격리(QUARANTINED) 전이.
+        // 벤더 응답이 끝내 오지 않는 stranded 건을 사람이 대조하도록 넘기는 것이 이 설계의 종착점이다.
+        testClock.setFixedInstant(afterFirstScan.plus(Duration.ofSeconds(960)));
+        paymentReconciler.scan();
 
-        // 이 건은 만료되지 못하고 READY 잔류 — 자동 복구 미수행(별도 후속 위임), 비종결 READY 가 안전 방향.
-        PaymentEventEntity entityAfterExpireAttempt =
+        PaymentEventEntity entityAfterSecondScan =
                 jpaPaymentEventRepository.findByOrderId(orderId).orElseThrow();
-        assertThat(entityAfterExpireAttempt.getStatus())
-                .as("stranded 건은 만료 실패로 READY 잔류 (자동 복구 미수행 — 위임)")
-                .isEqualTo(PaymentEventStatus.READY);
+        assertThat(entityAfterSecondScan.getStatus())
+                .as("2차 스캔 후 결과 대기 → 격리(QUARANTINED) 전이 확인")
+                .isEqualTo(PaymentEventStatus.QUARANTINED);
+        List<PaymentOrderEntity> ordersAfterSecondScan =
+                jpaPaymentOrderRepository.findByPaymentEventId(entityAfterSecondScan.getId());
+        assertThat(ordersAfterSecondScan)
+                .as("2차 스캔 후에도 PaymentOrder 상태는 EXECUTING 그대로(주문 테이블 미터치)")
+                .isNotEmpty()
+                .allMatch(o -> o.getStatus() == PaymentOrderStatus.EXECUTING);
 
-        // then — 마스킹 전이 시도를 가로질러 DLQ 메시지 유실 0 보존(비-silence 증거).
-        // load-bearing 단정: 상태 전이 실패 여부와 무관하게 DLQ 증거가 생존한다.
+        // then — 두 전이 시도를 가로질러 DLQ 메시지 유실 0 보존(비-silence 증거).
+        // load-bearing 단정: 상태 전이와 무관하게 DLQ 증거가 생존한다.
         List<String> dlqAfterMasking = pollConfirmedDlq(orderId, Duration.ofSeconds(5));
         assertThat(dlqAfterMasking)
-                .as("전이 시도 후에도 events.confirmed.dlq 메시지 유실 0 — silent하지 않음 증거")
+                .as("전이 후에도 events.confirmed.dlq 메시지 유실 0 — silent하지 않음 증거")
                 .hasSize(1);
     }
 

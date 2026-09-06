@@ -24,7 +24,7 @@ public enum PaymentErrorCode implements ErrorCode {
     INVALID_STATUS_TO_QUARANTINE("E03026", "QUARANTINED 상태로 변경할 수 없는 상태입니다."),
     MISSING_APPROVED_AT("E03027", "승인 시각(approvedAt)이 누락되어 완료 처리할 수 없습니다."),
     AMOUNT_MISMATCH("E03029", "결제 금액 위변조 감지"),
-    INVALID_STATUS_TO_RESET("E03030", "READY 상태로 복원할 수 없는 상태입니다."),
+    INVALID_STATUS_TO_AWAITING_RESULT("E03030", "결과 대기 상태로 변경할 수 없는 상태입니다."),
     STOCK_CACHE_UNAVAILABLE("E03039", "재고 확인이 일시적으로 불가능합니다. 잠시 후 다시 시도해주세요."),
     PRODUCT_SERVICE_UNAVAILABLE("E03031", "product-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),
     USER_SERVICE_UNAVAILABLE("E03032", "user-service가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요."),

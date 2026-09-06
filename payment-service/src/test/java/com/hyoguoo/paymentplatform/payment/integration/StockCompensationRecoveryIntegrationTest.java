@@ -43,6 +43,8 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.ActiveProfiles;
@@ -158,12 +160,24 @@ class StockCompensationRecoveryIntegrationTest {
     @Autowired
     private StockHoldRecordRepository stockHoldRecordRepository;
 
+    @Autowired
+    private KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
+
     private StringRedisTemplate redisTemplate;
     private LettuceConnectionFactory connectionFactory;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
+        // cold-start 방어: 메시지를 발행하기 전에 consumer group join + partition assignment 가 끝나 있어야 한다.
+        // 이 대기가 없으면 CI 콜드 스타트에서 리밸런스가 아래 시나리오의 await(10초)보다 오래 걸려
+        // 소비가 시작되기도 전에 단언이 만료된다(PaymentEosIntegrationTest 와 같은 방어).
+        for (MessageListenerContainer container : kafkaListenerEndpointRegistry.getListenerContainers()) {
+            await().atMost(Duration.ofSeconds(30))
+                    .until(() -> container.getAssignedPartitions() != null
+                            && !container.getAssignedPartitions().isEmpty());
+        }
+
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration(
                 REDIS_CONTAINER.getHost(),
                 REDIS_CONTAINER.getMappedPort(6379)

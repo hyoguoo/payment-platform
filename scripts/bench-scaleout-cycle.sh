@@ -84,7 +84,7 @@
 #                               노드마다 PING 왕복 지연을 순차로 재기 때문에(노드 수 × 약 1.2초)
 #                               너무 짧게 잡으면 한 틱이 다음 틱을 밀어낸다
 #   BACKLOG_SAMPLE_INTERVAL_SECONDS — 부하 구간 동안 미종결(payment_event READY/IN_PROGRESS/
-#                               RETRYING) 건수를 재는 주기 초 (기본 10). 능력 판정의 핵심 근거 —
+#                               RETRYING/AWAITING_RESULT) 건수를 재는 주기 초 (기본 10). 능력 판정의 핵심 근거 —
 #                               부하 중 이 값이 단조 증가하면 그 도착률이 능력을 넘었다는 뜻이고,
 #                               일정 범위에서 오르내리기만 하면 능력 안이라는 뜻이다. 부하가 끝나는
 #                               시점(settle 대기 진입 직전)에 표본화도 함께 멈춘다 — 판정 대상은
@@ -787,7 +787,7 @@ start_backlog_stat_sampler() {
     (
         while true; do
             count=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
-                SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');
+                SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING','AWAITING_RESULT');
             " 2>/dev/null)
             echo "$(date +%s) ${count:-NULL}" >> "${BACKLOG_STAT_LOG}"
             sleep "${BACKLOG_SAMPLE_INTERVAL_SECONDS}"
@@ -1308,7 +1308,7 @@ echo ""
 # 이 스크립트가 자동으로 멈추지는 않는다(잔류 처리는 여전히 사람 판단 영역, bench-cycle-reset.sh
 # 와 동일한 철학).
 PRE_CYCLE_UNSETTLED=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
-    SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');
+    SELECT COUNT(*) FROM \`payment-platform\`.payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING','AWAITING_RESULT');
 " 2>/dev/null || echo "-1")
 PRE_CYCLE_NOISE=$(docker exec "${MYSQL_PAYMENT_CONTAINER}" mysql -u root -p"${MYSQL_PAYMENT_ROOT_PASSWORD}" -N -B -e "
     SELECT COUNT(*) FROM \`payment-platform\`.stock_hold_record WHERE status = 'NOISE';

@@ -5,6 +5,8 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentReconcilerBatchMetrics;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +28,7 @@ class PaymentReconcilerClockTest {
     private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
     private static final long TIMEOUT_SECONDS = 300L;
+    private static final long AWAITING_RESULT_TIMEOUT_SECONDS = 900L;
 
     private PaymentEventRepository mockRepository;
     private PaymentReconciler reconciler;
@@ -33,8 +36,16 @@ class PaymentReconcilerClockTest {
     @BeforeEach
     void setUp() {
         mockRepository = Mockito.mock(PaymentEventRepository.class);
-        reconciler = new PaymentReconciler(mockRepository, FIXED_CLOCK, TIMEOUT_SECONDS);
+        reconciler = new PaymentReconciler(
+                mockRepository,
+                Mockito.mock(PaymentCommandUseCase.class),
+                Mockito.mock(PaymentReconcilerBatchMetrics.class),
+                FIXED_CLOCK,
+                TIMEOUT_SECONDS,
+                AWAITING_RESULT_TIMEOUT_SECONDS
+        );
         given(mockRepository.findInProgressOlderThan(Mockito.any())).willReturn(List.of());
+        given(mockRepository.findAwaitingResultOlderThan(Mockito.any())).willReturn(List.of());
     }
 
     @Test

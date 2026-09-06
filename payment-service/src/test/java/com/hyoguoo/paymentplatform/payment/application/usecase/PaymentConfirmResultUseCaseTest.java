@@ -424,6 +424,57 @@ class PaymentConfirmResultUseCaseTest {
         then(stockCommittedKafkaTemplate).should(never()).send(any(), any(), any());
     }
 
+    // ---- 도달 범위 고정 — 관리자 격리 종결 미호출 ----
+
+    @Test
+    @DisplayName("확정_결과_경로는_관리자_격리_종결을_호출하지_않는다"
+            + " — 승인/실패/격리 세 갈래를 모두 태워도 markPaymentAsFailFromQuarantine 는 한 번도 호출되지 않는다")
+    void 확정_결과_경로는_관리자_격리_종결을_호출하지_않는다() {
+        String approvedOrderId = "order-reach-approved";
+        String failedOrderId = "order-reach-failed";
+        String quarantinedOrderId = "order-reach-quarantined";
+
+        PaymentEvent approvedEvent = buildPaymentEventWithOrderId(approvedOrderId, PaymentEventStatus.IN_PROGRESS);
+        PaymentEvent failedEvent = buildPaymentEventWithOrderId(failedOrderId, PaymentEventStatus.IN_PROGRESS);
+        PaymentEvent quarantinedEvent =
+                buildPaymentEventWithOrderId(quarantinedOrderId, PaymentEventStatus.IN_PROGRESS);
+        paymentEventRepository.save(approvedEvent);
+        paymentEventRepository.save(failedEvent);
+        paymentEventRepository.save(quarantinedEvent);
+
+        given(paymentCommandUseCase.markPaymentAsDone(any(), any())).willReturn(approvedEvent);
+        given(paymentCommandUseCase.markPaymentAsFail(any(), anyString(), anyString())).willReturn(failedEvent);
+
+        sut.handle(new ConfirmedEventMessage(
+                approvedOrderId, "APPROVED", null, AMOUNT, APPROVED_AT_STR, "evt-reach-approved"));
+        sut.handle(new ConfirmedEventMessage(
+                failedOrderId, "FAILED", "VENDOR_FAILED", null, null, "evt-reach-failed"));
+        sut.handle(new ConfirmedEventMessage(
+                quarantinedOrderId, "QUARANTINED", "RETRY_EXHAUSTED", null, null, "evt-reach-quarantined"));
+
+        then(paymentCommandUseCase).should(never()).markPaymentAsFailFromQuarantine(any(), anyString());
+    }
+
+    // ---- 소비 경로 잠금 읽기 (Task 10) ----
+
+    @Test
+    @DisplayName("소비_경로는_잠금_읽기로_결제를_읽는다"
+            + " — 잠금 없는 조회(findByOrderId)로 되돌아가면 실패하도록 고정한다")
+    void 소비_경로는_잠금_읽기로_결제를_읽는다() {
+        PaymentOrder order = buildPaymentOrder(1L, 1, BigDecimal.valueOf(AMOUNT));
+        PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
+        paymentEventRepository.save(event);
+        given(paymentCommandUseCase.markPaymentAsDone(any(), any())).willReturn(event);
+
+        ConfirmedEventMessage message = new ConfirmedEventMessage(
+                ORDER_ID, "APPROVED", null, AMOUNT, APPROVED_AT_STR, EVENT_UUID);
+
+        sut.handle(message);
+
+        assertThat(paymentEventRepository.findByOrderIdForUpdateCallCount()).isEqualTo(1);
+        assertThat(paymentEventRepository.findByOrderIdCallCount()).isZero();
+    }
+
     // ---- factory helpers ----
 
     private PaymentEvent buildPaymentEvent(PaymentEventStatus status, List<PaymentOrder> orders) {
@@ -436,6 +487,28 @@ class PaymentConfirmResultUseCaseTest {
                 .paymentKey("pk-eos-001")
                 .status(status)
                 .paymentOrderList(orders)
+                .allArgsBuild();
+    }
+
+    private PaymentEvent buildPaymentEventWithOrderId(String orderId, PaymentEventStatus status) {
+        PaymentOrder order = PaymentOrder.allArgsBuilder()
+                .id(1L)
+                .paymentEventId(1L)
+                .orderId(orderId)
+                .productId(1L)
+                .quantity(1)
+                .totalAmount(BigDecimal.valueOf(AMOUNT))
+                .status(PaymentOrderStatus.EXECUTING)
+                .allArgsBuild();
+        return PaymentEvent.allArgsBuilder()
+                .id(1L)
+                .buyerId(100L)
+                .sellerId(200L)
+                .orderName("테스트 상품")
+                .orderId(orderId)
+                .paymentKey("pk-" + orderId)
+                .status(status)
+                .paymentOrderList(List.of(order))
                 .allArgsBuild();
     }
 

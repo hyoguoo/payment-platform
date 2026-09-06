@@ -18,4 +18,6 @@ public final class PaymentStatusChangeTrigger {
     public static final String STOCK_FAILURE = "stock_failure";
     /** 재고 캐시(Redis) 장애로 벤더 상태를 확인할 수 없어 거는 격리 전이. */
     public static final String STOCK_CACHE_DOWN = "stock_cache_down";
+    /** 리컨실러 배치가 스스로 판단해 거는 전이 — 결과 대기로 되돌리기, 2차 임계 초과 격리. */
+    public static final String RECONCILER = "reconciler";
 }

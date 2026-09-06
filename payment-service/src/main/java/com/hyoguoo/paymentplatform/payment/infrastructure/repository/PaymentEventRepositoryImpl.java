@@ -53,6 +53,28 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
                 });
     }
 
+    /**
+     * {@link PaymentEventRepository#findByOrderIdForUpdate(String)} 구현.
+     *
+     * <p>{@code SELECT ... FOR UPDATE} 이므로 read-only 트랜잭션으로 두지 않는다. 잠그는 대상은
+     * {@code payment_event} 그 한 행뿐이며, 자식 {@code payment_order} 조회는 별도 잠금 없이 그대로 이어간다.
+     */
+    @Override
+    @Transactional
+    public Optional<PaymentEvent> findByOrderIdForUpdate(String orderId) {
+        return jpaPaymentEventRepository
+                .findByOrderIdForUpdate(orderId)
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                });
+    }
+
     @Override
     public PaymentEvent saveOrUpdate(PaymentEvent paymentEvent) {
         List<PaymentOrderEntity> savedOrderEntities = paymentEvent.getPaymentOrderList().stream()
@@ -162,5 +184,51 @@ public class PaymentEventRepositoryImpl implements PaymentEventRepository {
         }
         jpaPaymentOrderRepository.failByPaymentEventId(paymentEventId);
         return true;
+    }
+
+    /**
+     * {@link PaymentEventRepository#resolveInProgressToAwaitingResult(Long, Instant)} 구현.
+     *
+     * <p>{@code payment_event} 만 갱신한다 — 이 전이는 도메인상 주문 상태를 바꾸지 않으므로
+     * {@link #resolveQuarantineToFailed} 와 달리 {@code payment_order} 동조 갱신 스텝을 두지 않는다.
+     */
+    @Override
+    @Transactional
+    public boolean resolveInProgressToAwaitingResult(Long paymentEventId, Instant lastStatusChangedAt) {
+        int affectedEventRows = jpaPaymentEventRepository.resolveInProgressToAwaitingResult(
+                paymentEventId, lastStatusChangedAt);
+        return affectedEventRows > 0;
+    }
+
+    /**
+     * {@link PaymentEventRepository#resolveAwaitingResultToQuarantine(Long, String, Instant)} 구현.
+     *
+     * <p>{@code payment_event} 만 갱신한다 — 이 전이는 도메인상 주문 상태를 바꾸지 않으므로
+     * {@link #resolveQuarantineToFailed} 와 달리 {@code payment_order} 동조 갱신 스텝을 두지 않는다.
+     */
+    @Override
+    @Transactional
+    public boolean resolveAwaitingResultToQuarantine(Long paymentEventId, String reason, Instant lastStatusChangedAt) {
+        int affectedEventRows = jpaPaymentEventRepository.resolveAwaitingResultToQuarantine(
+                paymentEventId, reason, lastStatusChangedAt);
+        return affectedEventRows > 0;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentEvent> findAwaitingResultOlderThan(Instant before) {
+        return jpaPaymentEventRepository
+                .findAwaitingResultOlderThan(before)
+                .stream()
+                .map(paymentEventEntity -> {
+                    List<PaymentOrder> paymentOrderList = jpaPaymentOrderRepository.findByPaymentEventId(
+                                    paymentEventEntity.getId()
+                            )
+                            .stream()
+                            .map(PaymentOrderEntity::toDomain)
+                            .toList();
+                    return paymentEventEntity.toDomain(paymentOrderList);
+                })
+                .toList();
     }
 }
