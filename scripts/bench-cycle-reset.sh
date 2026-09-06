@@ -7,7 +7,7 @@
 #
 # 다섯 단계:
 #   (1) 부하 도구가 멈춘 것을 확인한다 — 이 환경에서 확정 요청의 유일한 출처
-#   (2) 미종결 결제(READY/IN_PROGRESS/RETRYING) 0, 격리 결제(QUARANTINED) 0,
+#   (2) 미종결 결제(READY/IN_PROGRESS/RETRYING/AWAITING_RESULT) 0, 격리 결제(QUARANTINED) 0,
 #       미회수 선차감 기록(stock_hold_record.status=NOISE) 0 을 짧은 폴링 창으로 안정 확인.
 #       미종결과 격리는 이 프로젝트의 기존 검증 용어(scripts/k6/verify-settlement.sh)에서
 #       별개로 세는 값이다 — 미종결만 보면 격리 잔류가 그대로 통과해 격리가 남은 채로
@@ -135,7 +135,7 @@ echo ""
 count_unsettled() {
     # READY(접수) / IN_PROGRESS(진행 중) / RETRYING(재시도 대기, 현재 스키마에는 값이 없어
     # 항상 0 기여 — verify-settlement.sh 의 미종결 정의와 동일하게 맞춰 둔다)
-    mysql_query "SELECT COUNT(*) FROM payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING');" | tail -1
+    mysql_query "SELECT COUNT(*) FROM payment_event WHERE status IN ('READY','IN_PROGRESS','RETRYING','AWAITING_RESULT');" | tail -1
 }
 
 count_quarantined() {
