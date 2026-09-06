@@ -373,3 +373,12 @@ domain-expert 는 discuss·plan 에서 자신이 낸 다섯 갈래(리컨실러 
 - finding 2: `FakePaymentEventRepository.save()`가 인자를 그대로 참조하지 않고 방어적으로 복사해 저장하도록 고쳤다. `resolveInProgressToAwaitingResult`/`resolveAwaitingResultToQuarantine`(및 `resolveQuarantineToFailed`)의 CAS 선행조건 검사가 호출자가 들고 있는(위임 메서드가 먼저 뮤테이트하는) 참조가 아니라 저장 시점의 상태를 기준으로 판정하게 됐다. `resolveQuarantineToFailed`는 별도 코드 변경 없이 같은 저장 지점 수정으로 함께 닫혔다.
 - finding 3: `PaymentCommandUseCase.resetPaymentToAwaitingResult`/`quarantinePaymentAutomatically`의 Javadoc에 반환 타입을 `Optional`로 바꾸면 안 되는 이유(두 아스펙트의 `instanceof PaymentEvent` 판별 계약, `ReconcilerDelegateAopTest`로 잠김)를 명시했다.
 - `./gradlew :payment-service:test` 713개, `:payment-service:integrationTest` 718개 전체 통과(회귀 없음).
+
+### 재리뷰 결과
+
+수정 커밋 `f65b4fd3` 에 대해 reviewer·domain-expert 모두 **pass**. 새 critical 없음.
+
+- reviewer — 가드 통과 상태 열거가 3종으로 정확히 분할되고 중복·누락이 없음을, nullable 근거 주석이 실제 존재하는 테스트를 정확히 가리킴을 확인
+- domain-expert — 원 finding(저장 경로 별칭)은 방어적 복사로 실질 해소. 복사가 결제 필드 14개를 빠짐없이 옮기고 참조 동일성에 기대는 기존 테스트가 없어 회귀도 없음
+
+**후속으로 남기는 것** — Fake 저장소의 조회 계열은 여전히 내부 참조를 그대로 돌려준다. 프로덕션은 SQL 조건절로만 판정하므로 영향이 없으나, 실제 리컨실러와 실제 위임 메서드를 이 Fake 와 조립하는 첫 테스트가 정상 케이스에도 항상 충돌로 오판할 수 있다. 그때 자식 주문 리스트의 깊은 복사까지 함께 봐야 한다는 단서도 나왔다.

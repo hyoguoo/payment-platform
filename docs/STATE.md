@@ -1,14 +1,10 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS Task 11 완료 — 전 태스크 종료)
+> 최종 수정: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship 완료)
 
 ## 활성 작업
 
-- **주제**: 적용 불가 상태의 확정 결과 처리 (CONFIRM-RESULT-NONRETRYABLE-STATUS)
-- **단계**: ship
-- **활성 태스크**: 없음 — Task 1~11 전부 완료, ship 게이트 진행 대기
-- **이슈/브랜치**: #150
-- **파일**: docs/topics/CONFIRM-RESULT-NONRETRYABLE-STATUS.md / docs/CONFIRM-RESULT-NONRETRYABLE-STATUS-PLAN.md
+없음.
 
 ## 재개 메모
 
@@ -28,7 +24,7 @@
 
 ## 최근 완료
 
+- **CONFIRM-RESULT-NONRETRYABLE-STATUS** (2026-09-06) — docs/archive/confirm-result-nonretryable-status/COMPLETION-BRIEFING.md
 - **SHARED-RESOURCE-SCALEOUT** (2026-09-04) — docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md
-- **STOCK-GATE-PER-PRODUCT** (2026-08-18) — docs/archive/stock-gate-per-product/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

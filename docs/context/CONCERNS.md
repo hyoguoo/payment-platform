@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-09-01 (L-19 신설 — 과부하 지속 시 리컨실러 되돌림이 컨슈머를 정지시키는 자기 강화 경로(실측)). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-19 삭제(해소: 결과 대기 신설로 자기 강화 경로 차단, 이력은 아카이브 브리핑), L-14 의 READY 영구 잔류 해소 반영 + 만료 정상화 부수 효과 기록, L-7/L-12 의 되돌리기 서술을 새 도착 상태 기준으로 정정). 이전: 2026-09-01 (L-19 신설 — 과부하 지속 시 리컨실러 되돌림이 컨슈머를 정지시키는 자기 강화 경로(실측)). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -102,9 +102,9 @@
 - **수용 근거**: SCR L7 cascade 평가 결과 수용. Redis 보상 dedup token 은 P8D TTL 로 자연 만료.
 - **참고**: 보상 끝난 결제의 새 confirm 사이클 cascade(L-12) 와 관련.
 
-### L-7. `markPaymentAsFail` 영구 실패 → Reconciler resetToReady cascade (인지)
+### L-7. `markPaymentAsFail` 영구 실패 → Reconciler 되돌리기 cascade (인지)
 
-`handleFailed` 호출 순서 (보상 → `markPaymentAsFail`) 에서 보상 OK + `markPaymentAsFail` 영구 실패 → DefaultErrorHandler retry 5회 후 DLQ → Reconciler 가 IN_PROGRESS 결제를 resetToReady → 새 confirm 사이클 → 벤더가 재confirm 시 APPROVED 회신 가능 → product RDB 차감 + redis 보상 +1 잔존 → 발산. PG 멱등성 (idempotency-key=orderId) 으로 일반적으로 차단. PHASE2 admin 도구 또는 자동 QUARANTINED fallback 별 토픽 결정.
+`handleFailed` 호출 순서 (보상 → `markPaymentAsFail`) 에서 보상 OK + `markPaymentAsFail` 영구 실패 → DefaultErrorHandler retry 5회 후 DLQ → Reconciler 가 IN_PROGRESS 결제를 `resetToAwaitingResult` 로 되돌림 → 새 confirm 사이클 → 벤더가 재confirm 시 APPROVED 회신 가능 → product RDB 차감 + redis 보상 +1 잔존 → 발산. PG 멱등성 (idempotency-key=orderId) 으로 일반적으로 차단. PHASE2 admin 도구 또는 자동 QUARANTINED fallback 별 토픽 결정.
 
 ### L-8. 단일 리전 / 단일 AZ
 
@@ -120,19 +120,27 @@ cancel / refund 경로 미구현 — pg 포트(`PgConfirmPort`/`PgStatusLookupPo
 
 ### L-12. 보상 끝난 결제의 새 confirm 사이클 cascade (인지)
 
-P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force resetToReady 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
+P8D 안에서 동일 orderId 의 `decrement:done` + `compensation:done` 두 dedup token 이 살아있는 상태에서 force 되돌리기 등으로 새 confirm 사이클이 진입하면, `decrementAtomic` 이 `ALREADY_DONE → SUCCESS` 매핑되어 redis 재고는 +1 잔존 + 벤더가 APPROVED 회신 시 product RDB 차감 → 발산 가능. 정상 흐름에서는 결제 1건 = orderId 1건이라 발생 가능성 매우 낮음. PHASE2 token DEL 정책 정밀화 또는 admin 도구 (TODOS `STOCK-COMPENSATION-OTHER-PATHS`).
 
-### L-14. confirm 결과수신 DB 다운 → reconciler 복원 후 order EXECUTING 잔류로 만료 차단 (READY 잔류 잔여 — poison-pill 격리 해소) (부분 해소)
+### L-14. confirm 결과수신 DB 다운 → 결과 대기 잔류 (poison-pill 격리 + READY 영구 잔류 해소, 잔여 축소)
 
-confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED)가 1s×5 retry 후 `events.confirmed.dlq` stranded(벤더 과금됨, 자동소비 없음 C-5). `PaymentReconciler`가 IN_PROGRESS→READY 복원하지만 `PaymentEvent.resetToReady`는 event 상태만 바꾸고 `PaymentOrder`는 EXECUTING 잔류 → `PaymentExpirationServiceImpl.expireOldReadyPayments`의 `order.expire()`(NOT_STARTED 전용)가 INVALID_STATUS_TO_EXPIRE 전파. 두 문제: (1) **READY 영구 잔류** — EXPIRED 도달 불가, 벤더 과금+미이행 stranded가 비종결로 고착. (2) 만료 batch가 단일 `@Transactional` forEach라 stranded event 1건이 **무관한 정상 READY 만료까지 롤백**(poison-pill) — stranded 1건이 존재하는 한 만료가 영구 wedge되어 정상 READY 누적 → 각 redis 선차감 미해제 누적(보수적 under-sell 방향). 만료 정책(READY 만 직접 만료, IN_PROGRESS 정체분은 정합 스캐너 복원 후 만료의 2단 연쇄 — TIME-MODEL-AND-EXPIRY 에서 명문화)이 order 상태 미복원으로 **실제 차단**됨이 이번에 실측. 자동 복구(DLQ 재주입 + order/event 정합 복원)는 TQ-1/TC-3 및 별 토픽 위임.
+confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED)가 1s×5 retry 후 `events.confirmed.dlq` stranded(벤더 과금됨, 자동소비 없음 C-5). `PaymentReconciler`가 IN_PROGRESS→READY 복원하지만(당시 메서드 이름 `resetToReady` — 지금은 `resetToAwaitingResult` 로 도착 상태가 바뀌었다, 아래 해소 참고) 그 전이는 event 상태만 바꾸고 `PaymentOrder`는 EXECUTING 잔류 → `PaymentExpirationServiceImpl.expireOldReadyPayments`의 `order.expire()`(NOT_STARTED 전용)가 INVALID_STATUS_TO_EXPIRE 전파. 두 문제: (1) **READY 영구 잔류** — EXPIRED 도달 불가, 벤더 과금+미이행 stranded가 비종결로 고착. (2) 만료 batch가 단일 `@Transactional` forEach라 stranded event 1건이 **무관한 정상 READY 만료까지 롤백**(poison-pill) — stranded 1건이 존재하는 한 만료가 영구 wedge되어 정상 READY 누적 → 각 redis 선차감 미해제 누적(보수적 under-sell 방향). 만료 정책(READY 만 직접 만료, IN_PROGRESS 정체분은 정합 스캐너 복원 후 만료의 2단 연쇄 — TIME-MODEL-AND-EXPIRY 에서 명문화)이 order 상태 미복원으로 **실제 차단**됨이 이번에 실측. 자동 복구(DLQ 재주입 + order/event 정합 복원)는 TQ-1/TC-3 및 별 토픽 위임.
 
 **부분 해소 (2026-07-01)**: 문제 (2) **만료 batch poison-pill** 은 만료 배치를 건별 독립 트랜잭션 + 실패 격리로 해소했다 — `PaymentExpirationServiceImpl` 에서 `@Transactional` 을 제거해 `PaymentCommandUseCase.expirePayment`(별도 빈, 자체 `@Transactional`, self-invocation 아님)가 건별로 커밋/롤백하게 하고, 호출부 try/catch 로 단건 실패를 격리(`payment_expiration_skipped_total` 카운터 + WARN, never-silent)한다. stranded 1건이 무관한 정상 READY 만료를 더는 막지 않는다(만료 영구 wedge → 정상 READY 누적 → redis 선차감 미해제 누적 차단). 문제 (1) **READY 잔류**(stranded 자체) 는 여전 한계 — 비종결 READY 가 복구 여지상 안전 방향이라 자동 복구는 TQ-1/TC-3 위임 유지. 회귀: `PaymentExpirationServiceImplTest#expireOldReadyPayments_oneStranded_doesNotBlockOthers` + `ConfirmedDbDownIntegrationTest`(stranded 만료 실패 격리).
+
+**해소 (2026-09-06, CONFIRM-RESULT-NONRETRYABLE-STATUS)**: 문제 (1) **READY 영구 잔류** 가 닫혔다. 리컨실러의 되돌리기 도착지가 `READY` 에서 결과 대기(`AWAITING_RESULT`)로 바뀌어(`PaymentEvent.resetToAwaitingResult`), 뒤늦게 도착한 확정 결과를 그 상태에서 그대로 적용한다 — 거부가 사라졌다. 결과가 끝내 오지 않아도 2차 임계(`reconciler.awaiting-result-timeout-seconds`, 기본 900초)를 넘기면 격리로 올라가 관리자에게 보인다. 종결도 만료도 못 하고 아무도 못 보던 상태가 없어졌다.
+
+부수 효과로 만료 경로도 정상화됐다. `PaymentEventStatus.READY` 를 세팅하는 곳이 이제 `PaymentEvent.createNewPaymentEvent` 하나뿐이라, READY 인 결제는 전부 주문이 NOT_STARTED 다 — `order.expire()` 가드를 항상 통과한다. 영영 만료 못 할 건을 만료 배치가 매 주기 집어 스킵만 쌓던 원인이 사라졌다.
+
+라이브 실측(2026-09-06, 1차 임계를 30초로 낮춰 되돌리기를 강제): 제출 51,704 건이 전부 DONE 으로 종결, 되돌리기 44,999 건에 상태 예외 0 · DLQ 유입 0 · 미회수 선차감 0.
+
+**잔여**: 발행이 밀린 행이 뒤늦게 확정 명령을 내보내는 경로(아래 "추가 대가")는 상태 이름만 결과 대기로 바뀌었을 뿐 그대로다. 다만 2차 임계로 격리에 도달한 뒤에는 `relay` 가드가 실제로 발동한다 — 무기한 열려 있던 창에 상한이 생겼다.
 
 > 검토 기록: `resetToReady`가 order를 NOT_STARTED로 복원하게 바꾸면 expire 통과 → EXPIRED 종결 도달하나, EXPIRED는 terminal이고 D7 가드(`canApplyConfirmResult` EXPIRED=false)가 TQ-1 재주입을 noop으로 막아 **복구 영구 봉쇄**(더 나쁨). 따라서 그 변경은 plan 게이트에서 거부·롤백 — 비종결 READY 잔류가 복구 여지 면에서 안전 방향(domain-expert critical, 2026-06-30).
 
 **추가 대가 확인 (2026-08-06, RETRY-EXHAUSTION-DISPOSITION ship 리뷰)**: READY 잔류의 대가가 "복구 여지를 남긴다" 만이 아님이 드러났다. 브로커 장애로 발행이 밀린 결제는 정확히 이 잔류 상태에 빠지는데, 그 사이 `payment_outbox` 행은 독립적으로 재시도를 계속한다(`OutboxRelayService.relay`·`claimToInFlight` 어디에도 `PaymentEvent` 상태 확인이 없었다). 브로커가 복구되면 그 행이 확정 명령을 발행하고 벤더가 승인하면 되돌릴 수 없는 과금이 남는다 — 취소·환불 포트가 없다(L-9). payment 측은 D7 가드가 종결 상태로 판정해 조용히 넘긴다.
 
-이번 토픽이 `relay`에 발행 직전 결제 상태 가드를 넣었으나(`canApplyConfirmResult` 불가면 `toFailed()` 종결) **READY 는 그 판정을 통과하므로 이 시나리오에서는 발동하지 않는다**. 가드가 실제로 막는 나머지 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/QUARANTINED)는 확정 명령이 최소 1회 발행된 뒤에야 도달하므로 "아직 한 번도 발행 못 한 행"과 동시에 성립하지 않는다.
+이번 토픽이 `relay`에 발행 직전 결제 상태 가드를 넣었으나(`canApplyConfirmResult` 불가면 `toFailed()` 종결) **READY 와 결과 대기는 그 판정을 통과하므로 이 시나리오에서는 발동하지 않는다**(2차 임계로 격리에 도달한 뒤에는 발동한다). 가드가 실제로 막는 나머지 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/QUARANTINED)는 확정 명령이 최소 1회 발행된 뒤에야 도달하므로 "아직 한 번도 발행 못 한 행"과 동시에 성립하지 않는다.
 
 따라서 이 항목은 이제 **세 위험을 함께 저울질해야 하는 자리**다 — (1) 복구 여지(EXPIRED 종결 시 재주입 봉쇄), (2) 뒤늦은 확정 명령에 의한 벤더 과금, (3) 재고 보상 없는 만료 시 선차감분 영구 잠김(`PaymentOrder.expire()`가 NOT_STARTED 전용인 이유). 셋을 같이 설계해야 하는 규모라 별도 토픽으로 남긴다. `TODOS.md` 의 해당 항목 참고.
 
@@ -150,50 +158,6 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 
 `KafkaDlqReprocessAdapter` 는 재주입 시 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 대량 적체 시 `read-timeout` 내 `endOffsets` 미도달 가능 — 스캔 미완료(재시도 안내 예외)와 "완주 후 없음"은 `DlqScanResult(payload, completed)` 로 구분하나, 최근 구간부터 역방향 탐색(`offsetsForTimes`)은 미구현이라 최근 메시지가 가장 나중에 스캔된다(사용 패턴과 역방향). 또 스캔 미완료 + 매치 존재 조합은 warn 로그 없이 발행(미스캔 구간에 더 최신 레코드 존재 가능 — 동일 orderId 는 동일 `eventUuid` 재발행이라 멱등 체인이 흡수). 관리 도구 사용 빈도 대비 수용, 역방향 탐색·`dlq_scan_incomplete` warn 은 후속.
 
-### L-19. 과부하 지속 → Reconciler 가 "느림"을 "멈춤"으로 오판 → 컨슈머 정지 (자기 강화)
-
-**실패가 방아쇠가 아니다.** L-7(`markPaymentAsFail` 영구 실패) · L-14(결과수신 DB 다운) 와 달리 이 경로는
-아무것도 실패하지 않은 상태에서 일어난다 — 부하가 지속돼 확정 결과 회신이 리컨실러 임계를 넘기기만 하면 된다.
-
-**연쇄**
-
-1. 부하가 지속돼 확정 결과 회신이 `reconciler.in-flight-timeout-seconds`(**운영 기본 300초**)를 넘긴다
-2. `PaymentReconciler.resetStaleInFlightRecords` 가 IN_PROGRESS 를 멈춘 것으로 보고 `resetToReady` 한다
-3. 뒤늦게 도착한 `events.confirmed`(APPROVED)를 `handleApproved` → `markPaymentAsDone` 이 거부한다
-   (READY 는 DONE 으로 갈 수 없다) → `PaymentStatusException`
-4. `PaymentStatusException` 은 `KafkaErrorHandlerConfig` 의 비재시도 목록
-   (`MessageConversionException`/`IllegalArgumentException`/`IllegalStateException`)에 **없다**.
-   `FixedBackOff(1000ms, 5)` 로 **레코드당 약 5초**를 쓰고 DLQ 로 간다
-5. 그동안 같은 파티션의 뒤 메시지가 전부 막힌다 → 회신이 더 늦어진다 → **1로 돌아간다**
-
-되돌리는 양이 스스로 커지는 것이 실측된다.
-
-```
-21:55:14  stale IN_FLIGHT 발견   965건 → READY 복원
-21:55:39  stale IN_FLIGHT 발견 1,879건 → READY 복원      (25초 만에 두 배)
-```
-
-**실측 (2026-09-01, `post-2-v8` 사이클 · 운영 기본 설정 그대로)**
-
-| | |
-|:---|:---|
-| 조건 | 1대 · 파티션 3 · 컨슈머 동시성 1 · 부하 271초 · 제출 42,281 |
-| pg 측 | `pg_inbox` 42,281 **전부 APPROVED** — pg 는 완주하고 결과를 전량 발행했다 |
-| payment 측 | DONE 25,539 / **READY 16,742** (= `READY 복원 완료` 로그 건수와 일치) |
-| 파티션 | 3 개 중 **2 개 정지**(0·2), 파티션 1 만 lag 0 |
-| DLQ | 정지한 파티션에만 쌓인다 — p0 42건 / p1 **0건** / p2 41건 |
-| 예외 | `PaymentStatusException` 838 · `RecordInRetryException` 420 |
-| 소진 속도 | DLQ 분당 약 3건. 16,742 건을 이 속도로 빼면 수십 시간 |
-
-**성격** — 돈이 새지는 않는다(FAILED·QUARANTINED 0). 벤더 승인분이 READY 로 잔류할 뿐이라 방향은 안전하다.
-다만 **복구가 안 된다** — 되돌아온 READY 를 재처리해도 pg 는 이미 APPROVED 라 같은 결과를 다시 보내고 또 거부된다.
-그리고 정지가 결제 파이프라인 전체를 세운다는 점이 L-14 의 "READY 잔류" 서술에는 없던 부분이다.
-
-**가장 싼 완화**는 4번이다. `PaymentStatusException` 은 **재시도해도 절대 성공하지 않는다** —
-결제 상태가 READY 로 바뀐 사실은 시간이 지난다고 되돌아가지 않는다. 비재시도로 분류하면 레코드당 5초가 0초가 되고,
-파티션이 막히지 않으므로 1↔5 되먹임 고리 자체가 끊긴다. 근본 해결(리컨실러가 느림과 멈춤을 구분하는 것)은
-별도 설계가 필요하다. `TODOS.md` 해당 항목 참고.
-
 ### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 가드 — 프로파일 조작 시 우회 가능
 
 - **현황**: 모의 벤더 전략은 `pg.gateway.type=fake` 일 때만 스프링 빈으로 로드된다(`@ConditionalOnProperty`, `FakePgGatewayStrategy.java:68`). 이 값은 `pg-service/src/main/resources/application-docker.yml:21` 에서 `${PG_GATEWAY_TYPE:toss}` 로 환경변수 오버라이드가 가능한 구조라, 스모크 구동용 값이 배포 파이프라인 환경변수에 남으면 그대로 적용된다. 로드되면 `supports()`(`FakePgGatewayStrategy.java:144-148`)가 벤더 종류를 가리지 않고 `TOSS`/`NICEPAY` 요청을 모두 받아들인다 — 사용자가 어느 벤더를 선택했든 모의 벤더가 처리한다.
@@ -207,7 +171,8 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 | ~~Sync/Outbox/Kafka 3전략 분리의 복잡도~~ | `outbox-only-refactor` archive — 단일 비동기 경로 |
 | ~~UNKNOWN 상태의 조용한 흡수~~ | `payment-double-fault-recovery` archive — `PaymentGatewayStatusUnmappedException` |
 | ~~payment-service Flyway 비대칭~~ | 이번 봉인 — Flyway 통일 |
-| ~~`resetToReady`의 order NOT_STARTED 복원 = EXPIRED 종결화로 D7 복구 봉쇄~~ | FAULT-INJECTION-RESILIENCE plan 게이트 2026-06-30 — 롤백, 비종결 READY 유지 (L-14) |
+| ~~되돌리기의 order NOT_STARTED 복원 = EXPIRED 종결화로 D7 복구 봉쇄~~ | FAULT-INJECTION-RESILIENCE plan 게이트 2026-06-30 — 롤백, 비종결 유지 (L-14) |
+| ~~과부하 지속 시 되돌린 결제가 확정 결과를 못 받아 컨슈머가 정지하는 자기 강화 경로~~ | CONFIRM-RESULT-NONRETRYABLE-STATUS — 결과 대기 신설 + 비재시도 분류 (구 L-19) |
 | ~~AMOUNT_MISMATCH 단방향~~ | PRE-PHASE-4 — pg → payment 양방향 amount 대조 |
 | ~~stock publish 가 TX 안에서 Hikari 점유~~ | PRE-PHASE-4 — AFTER_COMMIT 분리 |
 | ~~Redis DECR 보상 부재~~ | PRE-PHASE-4 — caller 측 try/catch 보상 |
