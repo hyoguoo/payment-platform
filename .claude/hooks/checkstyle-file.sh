@@ -15,7 +15,11 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}
 FILE_PATH=$(jq -r '.tool_input.file_path // empty')
 [ -n "$FILE_PATH" ] || exit 0
 [[ "$FILE_PATH" == *.java ]] || exit 0
+# 상대 경로로 올 수 있으므로 절대 경로로 맞춘다.
+[[ "$FILE_PATH" == /* ]] || FILE_PATH="$PROJECT_DIR/$FILE_PATH"
 [ -f "$FILE_PATH" ] || exit 0
+# 이 저장소의 규칙이므로 저장소 밖 파일에는 적용하지 않는다.
+[[ "$FILE_PATH" == "$PROJECT_DIR"/* ]] || exit 0
 
 CONFIG="$PROJECT_DIR/config/checkstyle/checkstyle.xml"
 [ -f "$CONFIG" ] || exit 0
@@ -24,6 +28,10 @@ CONFIG="$PROJECT_DIR/config/checkstyle/checkstyle.xml"
 # 조립하면 버전이 바뀔 때마다 깨진다. Gradle 이 해석해 둔 classpath 를 그대로 읽는다.
 CLASSPATH_FILE="$PROJECT_DIR/build/checkstyle-cli-classpath.txt"
 PROPERTIES_FILE="$PROJECT_DIR/build/checkstyle-cli.properties"
+# build.gradle 이 더 최신이면 checkstyle 버전이 바뀌었을 수 있다 — 캐시를 버리고 다시 만든다.
+if [ "$PROJECT_DIR/build.gradle" -nt "$CLASSPATH_FILE" ]; then
+    rm -f "$CLASSPATH_FILE" "$PROPERTIES_FILE"
+fi
 if [ ! -s "$CLASSPATH_FILE" ] || [ ! -s "$PROPERTIES_FILE" ]; then
     # 최초 1회만 생성한다. 실패하면 검사를 건너뛴다 — 훅이 작업을 막는 원인이 되면 안 된다.
     (cd "$PROJECT_DIR" && ./gradlew -q writeCheckstyleCliClasspath >/dev/null 2>&1) || exit 0

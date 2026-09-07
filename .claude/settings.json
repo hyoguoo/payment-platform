@@ -26,6 +26,19 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-before-stop.sh",
+            "args": [],
+            "timeout": 900,
+            "statusMessage": "변경 모듈 테스트 검증"
+          }
+        ]
+      }
     ]
   }
 }
