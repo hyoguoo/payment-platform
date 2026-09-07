@@ -1,6 +1,6 @@
 # Architecture
 
-> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 설계 결정 인덱스에 결과 대기 상태·리컨실러 두 단계 스캔·확정 결과 소비의 잠금 읽기·상태 예외 비재시도 분류 4행 추가). 이전: 2026-09-04 (SHARED-RESOURCE-SCALEOUT ship — Kafka 절 파티션 상한의 처리량 수치를 재측정값(1.86배 / 1.09배)으로 정정, 조사 문서 참조를 완료 브리핑으로 교체). 이전: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — MySQL 절에 payment 읽기 복제본(폴링 조회 전용·판정 격리) 추가, Kafka 절에 파티션이 컨슈머 병렬도의 상한이라는 실측 사실과 상수 산재 위치 추가, 설계 결정 인덱스에 상태 조회 경로 분리·pg_inbox V8 인덱스 2행 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — redis-stock 서술을 상품 단위 게이트로 정정(해시태그 키·주문 단위 선점·거절 전용 되돌리기), 워커 표에 `StockHoldRecoveryWorker` 추가, 멱등 표의 재고 토큰을 상품 단위로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — 핵심 설계 결정 인덱스의 FCG 행을 "(미연결)"에서 실제 배선 상태로 정정: 실패 대기열 소비가 관문에 위임, 조회/반영 TX 2단계 분리, 금액 대조 선행, 부분 취소 전용 사유 격리, 격리 사유 4종). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — dedupe 저장소 표의 pg 행을 2-layer 에서 `pg_inbox.order_id` UNIQUE 단일 층으로 정정, 구현 디테일의 존재하지 않는 `PgInboxRepository.markSeen` 표기를 실제 `insertPending`(INSERT IGNORE) 으로 교체). 이전: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-09-07 (AI 코드 변경 가드레일 — Hexagonal Layer 룰 절에 ArchUnit 으로 강제되는 규칙 6종 표 추가). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 설계 결정 인덱스에 결과 대기 상태·리컨실러 두 단계 스캔·확정 결과 소비의 잠금 읽기·상태 예외 비재시도 분류 4행 추가). 이전: 2026-09-04 (SHARED-RESOURCE-SCALEOUT ship — Kafka 절 파티션 상한의 처리량 수치를 재측정값(1.86배 / 1.09배)으로 정정, 조사 문서 참조를 완료 브리핑으로 교체). 이전: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — MySQL 절에 payment 읽기 복제본(폴링 조회 전용·판정 격리) 추가, Kafka 절에 파티션이 컨슈머 병렬도의 상한이라는 실측 사실과 상수 산재 위치 추가, 설계 결정 인덱스에 상태 조회 경로 분리·pg_inbox V8 인덱스 2행 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — redis-stock 서술을 상품 단위 게이트로 정정(해시태그 키·주문 단위 선점·거절 전용 되돌리기), 워커 표에 `StockHoldRecoveryWorker` 추가, 멱등 표의 재고 토큰을 상품 단위로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — 핵심 설계 결정 인덱스의 FCG 행을 "(미연결)"에서 실제 배선 상태로 정정: 실패 대기열 소비가 관문에 위임, 조회/반영 TX 2단계 분리, 금액 대조 선행, 부분 취소 전용 사유 격리, 격리 사유 4종). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — dedupe 저장소 표의 pg 행을 2-layer 에서 `pg_inbox.order_id` UNIQUE 단일 층으로 정정, 구현 디테일의 존재하지 않는 `PgInboxRepository.markSeen` 표기를 실제 `insertPending`(INSERT IGNORE) 으로 교체). 이전: 2026-07-28 (ADMIN-VISIBILITY — layer 표의 `presentation` 의존 방향을 실제 관례(입력 포트 선언 위치가 `presentation/port/`, `application/port/in/` 은 pg `PgInboxProcessUseCase` 단독 예외)로 정정 + 핵심 규칙에 "presentation 은 출력 포트를 직접 호출하지 않는다" 명문화(ship 리뷰 major)). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — 어댑터 위치 표에 `KafkaDlqReprocessAdapter`(`DlqReprocessPort` 구현, offset 미커밋 스캔 → 원 토픽 재발행) 추가 + 핵심 설계 결정 인덱스에 격리 관리자 수동 종결(`QuarantineResolveUseCase`, 토큰 조건부 보상·CAS 전이)·DLQ 관리자 수동 재주입(`DlqReprocessUseCase`, 나이 게이트) 2행 추가 + `events.confirmed.dlq` 소비자 서술을 "(관리자 수동 재주입)"으로 정정). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — 핵심 설계 결정 인덱스의 FCG/RecoveryDecision 행이 stale 마커 게이트 재검증에서 신규 발견, `PgFinalConfirmationGate`(프로덕션 호출처 0)·`RecoveryDecision`(클래스 완전 삭제) 을 현재형처럼 서술하던 것을 각각 "(미연결)"/"(폐기)" 명시로 정정). 이전: 2026-07-03 (Task 9 — CircuitBreaker 행에 상세 근거 문서(`INTEGRATIONS.md`) 링크 추가, S4 중복 SSOT 정리), 2026-07-01 (context-update 헤더 동기화 — metrics 섹션 `DependencyHealthMetrics`/availability 알람 소비 본문은 FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 개요
 
@@ -90,6 +90,21 @@ flowchart LR
 - **presentation 이 출력 포트(`port.out`)를 직접 호출하지 않는다.** 조회 실패 흡수·폴백 판단 같은 로직도 입력 포트 구현(application)에 두고, 컨트롤러는 결과를 모델에 담는 일만 한다 (ADMIN-VISIBILITY ship 리뷰 major)
 - 출력 포트(`port.out`)는 의존성 역전 인터페이스. application 이 정의, infrastructure 가 구현
 - AOP·이벤트 발행 같은 횡단 관심사는 `core` 또는 `infrastructure/listener` 에서만
+
+**이 규칙 중 일부는 빌드가 강제한다.** 아래 항목은 문서상의 약속이 아니라 실패하는 테스트다 —
+규칙 정의는 `config/archunit/`, 서비스별 실행은 각 서비스의 `ArchitectureTest`.
+
+| 강제되는 규칙 | 대응하는 위 항목 |
+|---|---|
+| 도메인은 Spring·JPA 를 참조하지 않는다 | 도메인 → 외부 의존 0 |
+| 도메인은 `application`·`infrastructure`·`presentation` 을 참조하지 않는다 | 도메인이 가장 안쪽 |
+| `presentation` 은 `infrastructure` 를 참조하지 않는다 | presentation 은 입력 포트만 |
+| `@Transactional` 은 `presentation`·`domain` 에 붙지 않는다 | 트랜잭션 경계 위치 |
+| `@FeignClient` 는 `infrastructure` 아래에만 있다 | 어댑터는 infrastructure |
+| 이름이 `*Port` 인 타입은 interface 다 | 포트는 의존성 역전 인터페이스 |
+
+`@Transactional` 을 `application` 으로 한정하지 않는 이유는 outbox 상태 전이나 `SKIP LOCKED`
+조회처럼 저장소 구현이 스스로 트랜잭션 경계를 여는 자리가 정당하게 존재하기 때문이다.
 
 ## 비동기 confirm 흐름
 
