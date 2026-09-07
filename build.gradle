@@ -9,6 +9,11 @@ plugins {
     id 'org.gradle.test-retry' version '1.6.5' apply false
 }
 
+// Checkstyle 버전 단일 소스. Gradle 플러그인 toolVersion, 커스텀 Check 컴파일 의존, 편집 훅이 쓰는
+// CLI 의존이 모두 이 값을 참조한다 — 한 곳만 올리면 훅이 옛 버전으로 검사해 CLI 와 빌드 게이트의
+// 판정이 갈린다.
+ext.checkstyleVersion = '10.17.0'
+
 allprojects {
     group = 'com.hyoguoo'
     version = '3.0.0'
@@ -43,7 +48,7 @@ sourceSets {
 
 dependencies {
     // subprojects 블록의 checkstyle { toolVersion } 과 반드시 같은 버전을 유지한다.
-    checkstyleCustomChecksImplementation 'com.puppycrawl.tools:checkstyle:10.17.0'
+    checkstyleCustomChecksImplementation "com.puppycrawl.tools:checkstyle:${checkstyleVersion}"
     // subprojects 의 testImplementation archunit 과 반드시 같은 버전을 유지한다.
     archRulesImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
 }
@@ -62,8 +67,7 @@ configurations {
 }
 
 dependencies {
-    // subprojects 의 checkstyle { toolVersion } 과 반드시 같은 버전을 유지한다.
-    checkstyleCli 'com.puppycrawl.tools:checkstyle:10.17.0'
+    checkstyleCli "com.puppycrawl.tools:checkstyle:${checkstyleVersion}"
     checkstyleCli 'commons-logging:commons-logging:1.3.4'
 }
 
@@ -118,13 +122,13 @@ subprojects {
         // 직접 dependency 를 추가하면 Gradle 이 tool 본체 기본 dependency 를 더 이상 자동으로
         // 넣어주지 않으므로, 같은 버전(checkstyle { toolVersion } 과 동일하게 유지)의 tool 본체도
         // 함께 명시한다.
-        checkstyle 'com.puppycrawl.tools:checkstyle:10.17.0'
+        checkstyle "com.puppycrawl.tools:checkstyle:${rootProject.checkstyleVersion}"
         checkstyle rootProject.sourceSets.checkstyleCustomChecks.output
     }
 
     // Checkstyle Configuration
     checkstyle {
-        toolVersion = '10.17.0'
+        toolVersion = rootProject.checkstyleVersion
         configFile = rootProject.file('config/checkstyle/checkstyle.xml')
         ignoreFailures = false
         // 경고 계층을 두지 않는다 — 경고는 아무도 고치지 않아 규칙이 있다는 착각만 남긴다.

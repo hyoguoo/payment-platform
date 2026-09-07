@@ -179,13 +179,17 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 |---|---|---|
 | discuss / plan | 메인 (문서만) | 없음 — `.java` 변경이 없어 즉시 통과 |
 | execute | `implementer` 서브에이전트 | `PostToolUse`(편집마다) + `SubagentStop`(태스크 종료) |
-| ship 리뷰 | `reviewer` · `domain-expert` (읽기 전용) | 없음 |
+| ship 리뷰 | `reviewer` · `domain-expert` (읽기 전용) | `SubagentStop` 이 뜨지만 스크립트가 건너뛴다 |
 | ship 수정 | `implementer` 서브에이전트 | execute 와 동일 |
 | 대화 중 직접 수정 | 메인 | `PostToolUse` + `Stop` |
 
 `PostToolUse` 는 서브에이전트 안에서도 뜨지만 `Stop` 은 뜨지 않는다 — 서브에이전트 종료는 별도
 `SubagentStop` 이벤트다. 그래서 두 이벤트에 같은 스크립트를 건다. `Stop` 에만 걸면 정작 코드가 가장
 많이 생산되는 execute 단계가 비어 버린다.
+
+`SubagentStop` 은 종류를 가리지 않고 모든 서브에이전트에서 뜨므로, 스크립트가 `agent_type` 을 읽어
+읽기 전용 에이전트(`reviewer`·`domain-expert`·탐색 전용)를 걸러낸다. 이들은 Edit·Write 권한이 없어
+검증 실패로 막아 세워도 요구받은 수정을 이행할 수 없고, 차단 한도를 소진할 때까지 막히기만 한다.
 
 ### 덮지 못하는 것
 

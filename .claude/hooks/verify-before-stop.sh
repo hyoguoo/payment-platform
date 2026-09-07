@@ -28,6 +28,14 @@ cd "$PROJECT_DIR" || exit 0
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"' | tr -d '\n' | tr -c 'A-Za-z0-9_.-' '_')
 
+# 파일을 고칠 수 없는 서브에이전트에는 걸지 않는다. reviewer / domain-expert 는 Edit·Write 권한이
+# 없어서, 검증 실패로 막아 세워도 요구받은 수정을 구조적으로 이행할 수 없다 — 차단 한도를 소진할
+# 때까지 반복해서 막히기만 한다. 탐색 전용 에이전트도 같다.
+AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // empty')
+case " reviewer domain-expert Explore Plan " in
+    *" $AGENT_TYPE "*) [ -n "$AGENT_TYPE" ] && exit 0 ;;
+esac
+
 # 기준선 — main 과의 분기점. main 이 없으면(분리된 체크아웃 등) HEAD 로 물러서서
 # 워킹 트리 변경만 본다.
 BASE=$(git merge-base HEAD main 2>/dev/null || git rev-parse HEAD 2>/dev/null)
@@ -43,10 +51,13 @@ CHANGED=$( { git diff --name-only "$BASE" 2>/dev/null; \
 # 모듈 안의 변경은 그 모듈만, 루트 빌드 설정·정적분석 설정 변경은 전 모듈을 검증 대상으로 본다.
 MODULES=$(echo "$CHANGED" | cut -d/ -f1 | sort -u \
           | grep -E -- '-service$|^gateway$|^eureka-server$')
-if echo "$CHANGED" | grep -qE '^(build\.gradle|settings\.gradle|gradle\.properties|config/)'; then
-    MODULES="$ALL_MODULES"
+ROOT_CHANGED=$(echo "$CHANGED" | grep -E '^(build\.gradle|settings\.gradle|gradle\.properties|config/)' || true)
+ROOT_HASH=""
+if [ -n "$ROOT_CHANGED" ]; then
+    ROOT_HASH=$(echo "$ROOT_CHANGED" | while read -r f; do shasum -a 256 "$f" 2>/dev/null; done \
+                | shasum -a 256 | cut -c1-16)
 fi
-[ -n "$MODULES" ] || exit 0
+[ -n "$MODULES" ] || [ -n "$ROOT_HASH" ] || exit 0
 
 # 상태는 .git 아래 둔다 — 커밋 대상이 되지 않고 저장소를 떠나지 않는다.
 STATE_DIR=".git/claude-stop-verify"
@@ -70,6 +81,14 @@ FINGERPRINT=$( {
 grep -q "^PASS $FINGERPRINT$" "$STATE_FILE" && exit 0
 grep -q "^BLOCK $FINGERPRINT$" "$STATE_FILE" && exit 0
 
+# 루트 빌드·정적분석 설정이 바뀌면 그 영향이 전 모듈에 걸리므로 한 번은 전부 검증한다. 다만 같은
+# 설정 상태로 이미 통과했다면 이후 턴까지 매번 6모듈을 돌릴 이유는 없다 — 브랜치가 길어질수록
+# 그 비용만 쌓인다.
+if [ -n "$ROOT_HASH" ] && ! grep -q "^ROOTPASS $ROOT_HASH$" "$STATE_FILE"; then
+    MODULES="$ALL_MODULES"
+fi
+[ -n "$MODULES" ] || exit 0
+
 BLOCK_COUNT=$(grep -c '^BLOCK ' "$STATE_FILE")
 if [ "$BLOCK_COUNT" -ge "$MAX_BLOCKS_PER_SESSION" ]; then
     echo "검증이 계속 실패하지만 세션 차단 한도에 도달해 더 막지 않는다." >&2
@@ -84,6 +103,7 @@ done
 BUILD_OUTPUT=$(./gradlew $TASKS 2>&1)
 if [ $? -eq 0 ]; then
     echo "PASS $FINGERPRINT" >> "$STATE_FILE"
+    [ -n "$ROOT_HASH" ] && echo "ROOTPASS $ROOT_HASH" >> "$STATE_FILE"
     exit 0
 fi
 
