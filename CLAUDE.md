@@ -29,6 +29,10 @@
 2. **Minimal change**: 현재 태스크 범위 밖 코드는 수정하지 않는다. 발견한 문제는 주석으로 메모만 한다.
 3. **Verify**: 매 태스크 완료 후 `./gradlew test`로 회귀 없음을 확인한다.
 
+위 규칙 중 기계가 판정할 수 있는 것은 훅과 빌드가 강제한다 — `.java` 편집 직후 Checkstyle 이 걸리고,
+턴·서브에이전트 종료 시 변경 모듈의 테스트가 통과해야 끝난다. 레이어 의존 방향은 ArchUnit 테스트가
+막는다. 무엇이 어디서 강제되는지와 규칙 추가 기준은 [`STACK.md`](docs/context/STACK.md) 가드레일 절 참고.
+
 상세 코딩 컨벤션(주석/문서화 규칙, 안티패턴 회피 등)은 [`docs/context/CONVENTIONS.md`](docs/context/CONVENTIONS.md) 참고.
 
 ---

@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-09-07 (AI 코드 변경 가드레일 — 가드레일 절 신설(훅 4겹·워크플로우 맞물림·미포함 범위·규칙 추가 기준), 코드 스타일 5규칙을 error 승격 + maxWarnings=0 으로 정정, ArchUnit 기각 서술을 담당 영역 분리로 정정). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -131,14 +131,77 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 | Checkstyle | 10.17.0 | `config/checkstyle/checkstyle.xml` + 커스텀 Check `config/checkstyle/custom-checks/` |
 | SpotBugs | 6.0.9 | `config/spotbugs/spotbugs-exclude.xml` (main) / `spotbugs-exclude-test.xml` (test) |
 
-**코드 스타일 5규칙 자동 검출** — `docs/context/conventions/code-style.md` 의 다섯 규칙을 checkstyle 로 검출한다. 모두 `severity=warning` 이라 빌드를 막지 않는다.
+**코드 스타일 5규칙 자동 검출** — `docs/context/conventions/code-style.md` 의 다섯 규칙을 checkstyle 로 검출한다. 다섯 규칙 모두 `severity=error` 이고, 여기에 더해 `maxWarnings = 0` 이라 경고 계층 자체가 없다 — 규칙은 빌드를 깨뜨리거나 아예 없거나 둘 중 하나다. 승격 시점에 전 서비스 main·test 위반이 0건임을 확인했다.
 
 - 문자열 판정 3종(`RegexpSinglelineJava`): 타입 추론 키워드(`var`) 금지, `@Data` 금지, 공개 유스케이스·포트의 null 반환 금지
 - 구조 판정 2종(커스텀 `TreeWalker` Check): 광범위 예외 삼킴 금지(`SwallowedBroadException`), try 블록 외부 변수 재할당 금지(`TryBlockExternalReassignment`)
 - 커스텀 Check 는 root project 전용 sourceSet(`checkstyleCustomChecks`)에서 컴파일해 각 서비스 checkstyle classpath 에 얹는다. root 자신의 `checkstyleMain`/`checkstyleTest` 는 순환을 피해 비활성(root 에 `src/main/java` 없음 — 서비스 검사 범위에는 영향 없다)
-- ArchUnit 은 기각했다 — 바이트코드 기반 의존 그래프만 다뤄 메서드 본문의 제어 흐름(catch 안에 재throw 가 있는가, 변수가 try 밖에서 선언됐는가)을 표현할 수 없다
+- 이 다섯 규칙에 한해서는 ArchUnit 을 쓰지 않는다 — 바이트코드 기반 의존 그래프만 다뤄 메서드 본문의 제어 흐름(catch 안에 재throw 가 있는가, 변수가 try 밖에서 선언됐는가)을 표현할 수 없다. 반대로 레이어 의존 방향은 checkstyle 이 판정할 수 없어 ArchUnit 이 맡는다(아래 가드레일 절) — 둘은 경쟁이 아니라 담당 영역이 다르다
 - 도입 시점 기존 위반은 코드를 고쳐 전량 해소했다(BACKLOG-RESIDUE-CLEANUP) — `config/checkstyle/checkstyle-suppressions.xml` 에는 파일·행 지정 기준선 억제가 더 없고, 디렉토리 단위 블랑켓 억제(`dto`/`entity`/`infrastructure` 등 데이터 캐리어·어댑터 계층)와 `PublicUseCasePortNullReturn` 적용 범위를 `application/usecase`·`application/port` 로 좁히는 항목만 남는다
 | JaCoCo | 0.8.11 | 값·정책 상세(측정 대상/제외/게이트 산정 근거/서비스별 minimum)는 [`TESTING.md`](TESTING.md) §JaCoCo 커버리지 정책 참고(SSOT) |
+
+## AI 코드 변경 가드레일
+
+이 저장소의 코드 상당 부분이 에이전트를 통해 작성된다. 규칙이 `CLAUDE.md` 나 이 문서의 **문장으로만**
+있으면 읽는 쪽이 지켜야 성립하므로 확률적이고, 어긋나도 빌드는 통과한다. 아래 네 겹은 그 규칙들을
+실행 가능한 검사로 내린 것이다.
+
+| 지점 | 시점 | 검사 | 실패 시 |
+|---|---|---|---|
+| `PostToolUse` 훅 | `.java` 파일 편집 직후 | 그 파일만 Checkstyle CLI (400ms 내외) | 위반을 에이전트에 되먹임 |
+| `Stop` / `SubagentStop` 훅 | 턴·서브에이전트 종료 직전 | 변경된 모듈의 `test` | 종료를 막고 실패한 테스트 이름 전달 |
+| 로컬 빌드 | `./gradlew test` / 린트 게이트 | ArchUnit · Checkstyle · SpotBugs · JaCoCo | 빌드 실패 |
+| CI | 푸시 · PR | 서비스별 fan-out (`_service-ci.yml`) | 머지 차단 |
+
+### 훅
+
+`.claude/settings.json` 에 등록하고 스크립트는 `.claude/hooks/` 에 둔다.
+
+- **`checkstyle-file.sh`** — 편집한 파일 하나만 검사한다. Gradle 태스크는 모듈 전체를 돌아 이 용도로
+  느리므로, Gradle 이 해석해 둔 CLI classpath 와 `config_loc` 을 `writeCheckstyleCliClasspath` 로
+  `build/` 에 떨궈 CLI 에 직접 물린다. 저장소 밖 파일과 도구 미준비 상태에서는 조용히 넘어간다 —
+  훅이 작업을 막는 원인이 되면 안 된다.
+- **`verify-before-stop.sh`** — 변경된 모듈의 단위 테스트가 통과해야 종료를 허용한다.
+  검증 기준선은 워킹 트리가 아니라 **main 과의 분기점**이다. 커밋 기준으로 삼으면 커밋한 순간
+  트리가 깨끗해져 검증이 통째로 건너뛰어진다. 루트 `build.gradle` 이나 `config/` 가 바뀌면 전 모듈을
+  검증 대상으로 본다.
+
+`Stop` 훅에는 재진입 플래그가 제공되지 않아 루프 방지를 직접 넣었다 — 변경 상태 지문이 같으면 다시
+막지 않고, 세션당 차단 횟수도 제한한다. 세션별 판정 상태는 `.git` 디렉토리 안에 두어 커밋되지 않는다.
+
+### 워크플로우와의 맞물림
+
+`workflow-execute` 단계에서는 **메인 스레드가 코드를 쓰지 않는다.** 태스크마다 `implementer`
+서브에이전트가 붙어 TDD 사이클·테스트 실행·커밋까지 그 안에서 끝낸다. 따라서 훅이 어느 이벤트에
+걸리느냐가 곧 "코드가 생산되는 자리를 덮느냐"가 된다.
+
+| 단계 | 코드를 쓰는 주체 | 걸리는 훅 |
+|---|---|---|
+| discuss / plan | 메인 (문서만) | 없음 — `.java` 변경이 없어 즉시 통과 |
+| execute | `implementer` 서브에이전트 | `PostToolUse`(편집마다) + `SubagentStop`(태스크 종료) |
+| ship 리뷰 | `reviewer` · `domain-expert` (읽기 전용) | 없음 |
+| ship 수정 | `implementer` 서브에이전트 | execute 와 동일 |
+| 대화 중 직접 수정 | 메인 | `PostToolUse` + `Stop` |
+
+`PostToolUse` 는 서브에이전트 안에서도 뜨지만 `Stop` 은 뜨지 않는다 — 서브에이전트 종료는 별도
+`SubagentStop` 이벤트다. 그래서 두 이벤트에 같은 스크립트를 건다. `Stop` 에만 걸면 정작 코드가 가장
+많이 생산되는 execute 단계가 비어 버린다.
+
+### 덮지 못하는 것
+
+- **통합테스트** — 훅은 `test`(단위)만 돌린다. Testcontainers 기동 비용이 커서 턴마다 돌릴 수 없다.
+  통합테스트는 ship 게이트(`ship-ready.md`)와 CI 가 맡는다. 훅 통과를 결제 정합 검증으로 읽으면 안 된다.
+- **SpotBugs · JaCoCo** — 훅에 없다. 린트 게이트와 CI 가 맡는다.
+- **설계 판단** — 이름이 도메인을 표현하는가, 추상화 수준이 맞는가 같은 것은 기계가 판정하지 못한다.
+  ship 단계의 `reviewer` · `domain-expert` 리뷰가 그 자리다.
+
+### 규칙을 추가할 때
+
+1. **먼저 전체 코드베이스의 위반 수를 센다.** 정당한 코드를 지적하는 규칙이 하나라도 섞이면 규칙
+   세트 전체가 무시되기 시작한다. 위반이 0이거나, 위반을 전부 정리한 뒤에만 켠다.
+2. **경고로 추가하지 않는다.** `maxWarnings = 0` 이 이를 강제한다.
+3. **에러 메시지에 대안을 적는다.** 에이전트에게 린트 메시지는 곧 프롬프트다. 무엇이 금지인지만
+   알리면 무엇으로 바꿔야 할지 몰라 헤매고, 대안을 같이 주면 한 번에 고친다.
 
 ## CI 파이프라인 (GitHub Actions)
 
