@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application.dto.request;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentGatewayType;
 import java.util.List;
 import lombok.Builder;
