@@ -169,6 +169,10 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 `Stop` 훅에는 재진입 플래그가 제공되지 않아 루프 방지를 직접 넣었다 — 변경 상태 지문이 같으면 다시
 막지 않고, 세션당 차단 횟수도 제한한다. 세션별 판정 상태는 `.git` 디렉토리 안에 두어 커밋되지 않는다.
 
+같은 자리에 판정 로그(`trace.log`)를 남긴다. 어느 이벤트가 어떤 에이전트에서 훅을 돌렸고 무엇으로
+판정했는지 한 줄씩 쌓인다. 이게 없으면 **"훅이 안 떴다"와 "떴는데 통과했다"를 구분할 수 없어**,
+검증 장치가 꺼져도 아무도 모른다. 훅이 실제로 물려 있는지 의심스러우면 이 파일을 먼저 본다.
+
 ### 워크플로우와의 맞물림
 
 `workflow-execute` 단계에서는 **메인 스레드가 코드를 쓰지 않는다.** 태스크마다 `implementer`
@@ -177,7 +181,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 
 | 단계 | 코드를 쓰는 주체 | 걸리는 훅 |
 |---|---|---|
-| discuss / plan | 메인 (문서만) | 없음 — `.java` 변경이 없어 즉시 통과 |
+| discuss / plan | 메인 (문서만) | `Stop` — 브랜치에 코드 커밋이 없으면 즉시 통과 |
 | execute | `implementer` 서브에이전트 | `PostToolUse`(편집마다) + `SubagentStop`(태스크 종료) |
 | ship 리뷰 | `reviewer` · `domain-expert` (읽기 전용) | `SubagentStop` 이 뜨지만 스크립트가 건너뛴다 |
 | ship 수정 | `implementer` 서브에이전트 | execute 와 동일 |
@@ -190,6 +194,9 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 `SubagentStop` 은 종류를 가리지 않고 모든 서브에이전트에서 뜨므로, 스크립트가 `agent_type` 을 읽어
 읽기 전용 에이전트(`reviewer`·`domain-expert`·탐색 전용)를 걸러낸다. 이들은 Edit·Write 권한이 없어
 검증 실패로 막아 세워도 요구받은 수정을 이행할 수 없고, 차단 한도를 소진할 때까지 막히기만 한다.
+
+검증 기준선이 main 과의 분기점이므로, 코드가 이미 커밋된 브랜치에서는 문서만 고친 턴에도 그 브랜치의
+코드 변경을 기준으로 한 번 검증이 돈다. 같은 상태로 두 번째부터는 지문 캐시가 걸러 즉시 통과한다.
 
 ### 덮지 못하는 것
 

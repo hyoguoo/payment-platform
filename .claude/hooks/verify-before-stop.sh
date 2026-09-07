@@ -32,8 +32,29 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"' | tr -d '\n' | tr 
 # 없어서, 검증 실패로 막아 세워도 요구받은 수정을 구조적으로 이행할 수 없다 — 차단 한도를 소진할
 # 때까지 반복해서 막히기만 한다. 탐색 전용 에이전트도 같다.
 AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // empty')
+EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // "?"')
+
+# 훅이 언제 무엇 때문에 돌았고 어떻게 판정했는지 남긴다. 남기지 않으면 "훅이 안 떴다" 와
+# "떴는데 통과했다" 를 구분할 방법이 없어, 검증 장치가 꺼져도 아무도 모른다.
+LOG_DIR=".git/claude-stop-verify"
+mkdir -p "$LOG_DIR"
+trace() {
+    printf '%s %s agent=%s %s\n' "$(date +%H:%M:%S)" "$EVENT" "${AGENT_TYPE:-main}" "$1" \
+        >> "$LOG_DIR/trace.log"
+    # 무한히 자라지 않게 최근 것만 남긴다.
+    if [ "$(wc -l < "$LOG_DIR/trace.log")" -gt 400 ]; then
+        tail -200 "$LOG_DIR/trace.log" > "$LOG_DIR/trace.log.tmp" \
+            && mv "$LOG_DIR/trace.log.tmp" "$LOG_DIR/trace.log"
+    fi
+}
+
 case " reviewer domain-expert Explore Plan " in
-    *" $AGENT_TYPE "*) [ -n "$AGENT_TYPE" ] && exit 0 ;;
+    *" $AGENT_TYPE "*)
+        if [ -n "$AGENT_TYPE" ]; then
+            trace "skip(read-only)"
+            exit 0
+        fi
+        ;;
 esac
 
 # 기준선 — main 과의 분기점. main 이 없으면(분리된 체크아웃 등) HEAD 로 물러서서
@@ -46,7 +67,7 @@ RELEVANT='\.(java|sql|gradle|ya?ml|properties)$'
 CHANGED=$( { git diff --name-only "$BASE" 2>/dev/null; \
              git ls-files --others --exclude-standard 2>/dev/null; } \
            | grep -E "$RELEVANT" | sort -u)
-[ -n "$CHANGED" ] || exit 0
+[ -n "$CHANGED" ] || { trace "skip(변경 없음)"; exit 0; }
 
 # 모듈 안의 변경은 그 모듈만, 루트 빌드 설정·정적분석 설정 변경은 전 모듈을 검증 대상으로 본다.
 MODULES=$(echo "$CHANGED" | cut -d/ -f1 | sort -u \
@@ -78,8 +99,8 @@ FINGERPRINT=$( {
 } | shasum -a 256 | cut -c1-16)
 
 # 이 변경 상태는 이미 판정이 끝났다.
-grep -q "^PASS $FINGERPRINT$" "$STATE_FILE" && exit 0
-grep -q "^BLOCK $FINGERPRINT$" "$STATE_FILE" && exit 0
+grep -q "^PASS $FINGERPRINT$" "$STATE_FILE" && { trace "skip(이미 통과 $FINGERPRINT)"; exit 0; }
+grep -q "^BLOCK $FINGERPRINT$" "$STATE_FILE" && { trace "skip(이미 차단 $FINGERPRINT)"; exit 0; }
 
 # 루트 빌드·정적분석 설정이 바뀌면 그 영향이 전 모듈에 걸리므로 한 번은 전부 검증한다. 다만 같은
 # 설정 상태로 이미 통과했다면 이후 턴까지 매번 6모듈을 돌릴 이유는 없다 — 브랜치가 길어질수록
@@ -104,6 +125,7 @@ BUILD_OUTPUT=$(./gradlew $TASKS 2>&1)
 if [ $? -eq 0 ]; then
     echo "PASS $FINGERPRINT" >> "$STATE_FILE"
     [ -n "$ROOT_HASH" ] && echo "ROOTPASS $ROOT_HASH" >> "$STATE_FILE"
+    trace "PASS $FINGERPRINT ($TASKS)"
     exit 0
 fi
 
@@ -124,6 +146,7 @@ PYEOF
 done | head -20)
 
 echo "BLOCK $FINGERPRINT" >> "$STATE_FILE"
+trace "BLOCK $FINGERPRINT ($TASKS)"
 {
     echo "변경된 모듈의 검증이 실패해 턴을 끝낼 수 없다:$TASKS"
     echo
