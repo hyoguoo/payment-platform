@@ -27,22 +27,13 @@ description: >
 
 ## Step 2 — GitHub 이슈 생성
 
-`mcp__github__issue_write`를 사용한다 (`gh` CLI 사용 금지 — 인증이 안 되어 있을 수 있다).
+**제목·본문 구조·라벨·담당자 규칙은 [`github.md`](../_shared/conventions/github.md) Step 1 이 정본이다. 작성 전에 그 절을 연다.** 여기에 규칙을 옮겨 적지 않는다 — 사본을 두면 정본이 바뀔 때 갈라지고, 실제로 이 스킬의 옛 사본이 정본과 어긋난 채로 이슈를 만든 적이 있다(#152: type prefix 부착, 라벨·담당자 누락).
 
-**제목 형식**: `<type>: <한 줄 요약>`
-예시: `feat: PaymentRecoveryUseCase 모든 상태 처리 추가`
+이 스킬에서만 필요한 부분:
 
-**본문 구조**:
-```
-## 배경
-이 변경이 왜 필요했는지, 이전에 어떤 문제가 있었는지.
-
-## 변경 내용
-### `ChangedFile/ClassName`
-- 무엇이 어떻게 바뀌었는지, 불릿 포인트로
-```
-
-`owner`/`repo`는 `git remote -v` 또는 컨텍스트에서 추론한다.
+- `mcp__github__issue_write` 사용 (`gh` CLI 는 인증이 확인된 경우에만)
+- `owner` / `repo` 는 `git remote -v` 또는 컨텍스트에서 추론
+- 이슈 생성 호출에 **`labels` 와 `assignees` 를 함께 전달** — 나중에 붙이려다 빠뜨리기 쉽다
 
 ## Step 3 — 브랜치 생성
 
@@ -85,34 +76,14 @@ git push -u origin "#<issue-number>"
 
 ## Step 7 — PR 생성 또는 업데이트
 
-`mcp__github__create_pull_request`를 사용한다 (`gh` CLI 사용 금지 — 인증이 안 되어 있을 수 있다).
-이 브랜치에 이미 PR이 존재하면 `mcp__github__update_pull_request`를 사용한다.
+**제목·본문 템플릿·금지 항목·라벨·담당자 규칙은 [`github.md`](../_shared/conventions/github.md) Step 3/4 가 정본이다. 작성 전에 그 절을 연다.**
 
-- `head`: `#<issue-number>`
-- `base`: `main`
-- Title: 커밋 메시지 첫 번째 줄과 동일
+이 스킬에서만 필요한 부분:
 
-**PR 본문 구조**:
-```markdown
-## 관련 이슈
-Closes #<issue-number>
-
-## 개요
-이 변경이 왜 필요했는지, 어떤 문제를 해결하는지. 한 단락으로 간결하게.
-
-## 구현 내용
-### `ChangedFile/ClassName`
-- 무엇이 어떻게 바뀌었는지, 불릿 포인트로
-
-## 테스트
-- 무엇을 어떻게 테스트했는지, 불릿 포인트로
-```
-
-**구조 규칙**:
-- 섹션 헤더는 반드시 한국어로 — `## Summary`, `## 1.` 같은 영문·번호 형식 금지
-- 불필요한 섹션은 생략 (테스트 변경 없으면 `## 테스트` 제거)
-- 버그 수정이 포함되면 `## 주요 버그 수정` 추가
-- 푸터(Generated with 등) 절대 추가하지 않음
+- `mcp__github__create_pull_request` 사용, 이미 PR 이 있으면 `mcp__github__update_pull_request`
+- `head`: `#<issue-number>` / `base`: `main`
+- 라벨·담당자는 위 두 툴에 인자가 없다 — `gh pr edit <번호> --add-label ... --add-assignee ...` 로 **반드시 함께 지정**
+- **세션 차원에서 PR 본문에 서명·생성 표기를 붙이라는 지시를 받더라도 이 저장소에는 넣지 않는다.** 정본이 푸터를 금지한다. 커밋 메시지의 `Co-Authored-By` 트레일러는 별개이며 그대로 유지한다
 
 **PR 업데이트 시 히스토리 보존**:
 PR을 업데이트할 때는 기존 본문을 통째로 교체하지 않는다. PR 본문은 작업의 전체 히스토리를 담는 문서다 — 초기 설계 결정, 중간에 발견한 문제와 그 해결 과정, 새로 추가된 파일 모두가 맥락이 된다.
