@@ -474,7 +474,8 @@ sequenceDiagram
 - **Messaging / Cache**: Kafka (KRaft, broker 1대), Redis × 2 (dedupe + redis-stock 분리)
 - **Service Discovery / Routing**: Eureka, Spring Cloud Gateway, OpenFeign + Spring Cloud LoadBalancer
 - **Observability**: Micrometer + Prometheus + Grafana + Tempo + Loki, OpenTelemetry traceparent
-- **Test**: JUnit 5, AssertJ, Mockito, Testcontainers (MySQL / Redis), MockWebServer
+- **Test**: JUnit 5, AssertJ, Mockito, Testcontainers (MySQL / Redis), MockWebServer, ArchUnit (레이어 규칙)
+- **Static Analysis**: Checkstyle (커스텀 Check 포함), SpotBugs, JaCoCo
 
 ---
 
@@ -484,6 +485,7 @@ sequenceDiagram
 
 - 도메인의 외부 인프라로부터 격리
 - HTTP (OpenFeign + LB) 또는 Kafka 메시지로 서비스 간 통신
+- 레이어 의존 방향은 문서상의 약속이 아니라 ArchUnit 테스트로 강제 — 도메인이 Spring·JPA나 바깥 레이어를 참조하면 빌드 실패
 
 ---
 

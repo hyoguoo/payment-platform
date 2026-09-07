@@ -87,7 +87,7 @@
             <property name="message"
                       value="타입 추론 키워드(var) 금지 — 명시적 타입을 선언한다 (code-style.md 안티패턴 회피)."/>
             <property name="ignoreComments" value="true"/>
-            <property name="severity" value="warning"/>
+            <property name="severity" value="error"/>
         </module>
 
         <module name="RegexpSinglelineJava">
@@ -96,7 +96,7 @@
             <property name="message"
                       value="@Data 금지 — 필요한 애노테이션만 개별 지정한다 (code-style.md 안티패턴 회피)."/>
             <property name="ignoreComments" value="true"/>
-            <property name="severity" value="warning"/>
+            <property name="severity" value="error"/>
         </module>
 
         <!--
@@ -110,7 +110,7 @@
             <property name="message"
                       value="공개 유스케이스·포트는 null 대신 Optional 을 반환한다 (code-style.md 안티패턴 회피)."/>
             <property name="ignoreComments" value="true"/>
-            <property name="severity" value="warning"/>
+            <property name="severity" value="error"/>
         </module>
 
         <!--
@@ -121,12 +121,12 @@
         -->
         <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.SwallowedBroadExceptionCheck">
             <property name="id" value="SwallowedBroadException"/>
-            <property name="severity" value="warning"/>
+            <property name="severity" value="error"/>
         </module>
 
         <module name="com.hyoguoo.paymentplatform.buildtools.checkstyle.TryBlockExternalReassignmentCheck">
             <property name="id" value="TryBlockExternalReassignment"/>
-            <property name="severity" value="warning"/>
+            <property name="severity" value="error"/>
         </module>
 
     </module>

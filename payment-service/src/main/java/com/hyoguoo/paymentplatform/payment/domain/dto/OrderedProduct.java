@@ -1,4 +1,4 @@
-package com.hyoguoo.paymentplatform.payment.application.dto.vo;
+package com.hyoguoo.paymentplatform.payment.domain.dto;
 
 import lombok.Builder;
 import lombok.Getter;

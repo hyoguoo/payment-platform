@@ -3,7 +3,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentEventFlowMetrics;
 import com.hyoguoo.paymentplatform.payment.core.common.service.port.UUIDProvider;
 import com.hyoguoo.paymentplatform.payment.application.aspect.annotation.PublishDomainEvent;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentOrderRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;

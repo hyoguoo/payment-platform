@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 import com.hyoguoo.paymentplatform.payment.mock.FakeIdempotencyStore;
 import com.hyoguoo.paymentplatform.payment.application.dto.request.CheckoutCommand;
 import com.hyoguoo.paymentplatform.payment.application.dto.response.CheckoutResult;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedProductUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.OrderedUserUseCase;
 import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCreateUseCase;

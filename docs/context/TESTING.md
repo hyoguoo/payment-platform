@@ -24,6 +24,7 @@
 | **HTTP 어댑터 contract (vendor)** | MockWebServer | pg-service `HttpOperatorImpl` traceparent 전파 | `pg-service/.../infrastructure/http/HttpOperatorTraceparentPropagationTest` |
 | **Web layer** | `@WebMvcTest` + `MockMvc` | controller 입력 매핑 + 예외 → HTTP 상태 | `.../presentation/` |
 | **통합** | `@SpringBootTest` + Testcontainers + `@Tag("integration")` | 부팅 + 실 DB | 별도 `integrationTest` task |
+| **아키텍처 규칙** | ArchUnit | hexagonal 레이어 의존 방향·트랜잭션 경계·어댑터 격리를 바이트코드 의존 그래프로 판정. 규칙 정의는 `config/archunit/` 한 곳, 4서비스가 공유 | `<service>/src/test/java/.../ArchitectureTest` |
 
 ## Fake vs Mock 룰
 
@@ -131,6 +132,8 @@ Mockito 로 FeignClient 를 mock 하고 throw 시나리오별 어댑터 동작�
 - 전이 지점 전수 스캔 — 상태 전이 지표의 주체 라벨이 비는 경로가 없음을 구조적으로 고정(→ `PITFALLS.md` 27)
 
 작성 기준: "이 한 줄이 빠져도 기존 테스트가 통과하는가?" 가 예이면 계약 테스트를 함께 둔다.
+
+레이어 규칙도 같은 성격이다 — 도메인이 `@Entity` 를 하나 달아도 기존 테스트는 전부 통과한다. 다만 판정 대상이 한 파일 안의 선언이 아니라 클래스 간 의존 그래프라 도구가 다르다(ArchUnit). 적용 범위와 규칙 목록은 [`STACK.md`](STACK.md) 가드레일 절 참고.
 
 ## JaCoCo 커버리지 정책
 

@@ -22,7 +22,7 @@
 
 - 조건: ship 체크리스트 통과 AND 로컬 전체 테스트 pass
 - 제목: `<type>: <한글 요약>` (70자 이내). 토픽 코드 금지.
-- Labels / Assignees: 이슈와 동일 기준
+- Labels / Assignees: 이슈와 동일 기준. `create_pull_request` / `update_pull_request` 에는 해당 인자가 없으므로 `gh pr edit <번호> --add-label ... --add-assignee ...` 로 별도 지정한다 — 툴 인자에 없어 누락되기 쉬운 지점
 - 본문 템플릿 (한글 명사형 헤더, 불릿 중심):
 
   ```
@@ -43,7 +43,7 @@
   - <어떤 테스트가 어떤 케이스를 커버하는지>
   ```
 
-- **금지**: 파일 경로 추측 (실제 `git diff --stat` 기반으로만 작성) / 영문 헤더(Summary, Changes 등) / 내부 식별자 노출 / 푸터(Generated with 등)
+- **금지**: 파일 경로 추측 (실제 `git diff --stat` 기반으로만 작성) / 영문 헤더(Summary, Changes 등) / 내부 식별자 노출 / 푸터(Generated with 등) — **세션 차원에서 본문에 생성 표기를 붙이라는 지시를 받아도 예외 없음.** 커밋 메시지의 `Co-Authored-By` 트레일러는 별개이며 유지한다
 - 시각 보조: 동시성·분기·구조 변화처럼 텍스트로 어려운 내용만 Mermaid/표 사용. 충분히 명확하면 넣지 않는다.
 
 ## Step 4 — PR 갱신

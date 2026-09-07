@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.domain;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.dto.ProductInfo;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
 import com.hyoguoo.paymentplatform.payment.exception.PaymentStatusException;

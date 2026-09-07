@@ -15,7 +15,7 @@ import com.hyoguoo.paymentplatform.mixin.BasicResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.CheckoutResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentConfirmResponseMixin;
 import com.hyoguoo.paymentplatform.mixin.PaymentStatusApiResponseMixin;
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;

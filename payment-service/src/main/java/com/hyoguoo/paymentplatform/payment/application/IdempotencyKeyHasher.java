@@ -1,6 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.application;
 
-import com.hyoguoo.paymentplatform.payment.application.dto.vo.OrderedProduct;
+import com.hyoguoo.paymentplatform.payment.domain.dto.OrderedProduct;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
