@@ -41,7 +41,8 @@ mkdir -p "$LOG_DIR"
 trace() {
     printf '%s %s agent=%s %s\n' "$(date +%H:%M:%S)" "$EVENT" "${AGENT_TYPE:-main}" "$1" \
         >> "$LOG_DIR/trace.log"
-    # 무한히 자라지 않게 최근 것만 남긴다.
+    # 무한히 자라지 않게 최근 것만 남긴다. 회전 순간에 다른 프로세스가 쓰던 기록이 유실될 수
+    # 있으나 판정과 종료 코드에는 영향이 없다 — 손실 범위가 로그뿐이라 잠금은 두지 않는다.
     if [ "$(wc -l < "$LOG_DIR/trace.log")" -gt 400 ]; then
         tail -200 "$LOG_DIR/trace.log" > "$LOG_DIR/trace.log.tmp" \
             && mv "$LOG_DIR/trace.log.tmp" "$LOG_DIR/trace.log"
@@ -56,6 +57,15 @@ case " reviewer domain-expert Explore Plan " in
         fi
         ;;
 esac
+
+# 서브에이전트 호출 1회에 SubagentStop 이 두 번 온다 — 하나는 그 에이전트의 종류를 실어 오고,
+# 하나는 종류가 비어 있다. 종류가 빈 쪽은 누가 끝났는지 알 수 없어 위 읽기 전용 필터를 그대로
+# 통과하므로, 파일을 고칠 수 없는 에이전트가 검증에 걸려 차단 한도까지 반복해서 막힐 수 있다.
+# 실제로 코드를 쓴 서브에이전트는 종류를 싣고 오고, 메인 스레드는 Stop 이 따로 덮는다.
+if [ "$EVENT" = "SubagentStop" ] && [ -z "$AGENT_TYPE" ]; then
+    trace "skip(종류 미상 중복 이벤트)"
+    exit 0
+fi
 
 # 기준선 — main 과의 분기점. main 이 없으면(분리된 체크아웃 등) HEAD 로 물러서서
 # 워킹 트리 변경만 본다.
@@ -75,8 +85,11 @@ MODULES=$(echo "$CHANGED" | cut -d/ -f1 | sort -u \
 ROOT_CHANGED=$(echo "$CHANGED" | grep -E '^(build\.gradle|settings\.gradle|gradle\.properties|config/)' || true)
 ROOT_HASH=""
 if [ -n "$ROOT_CHANGED" ]; then
-    ROOT_HASH=$(echo "$ROOT_CHANGED" | while read -r f; do shasum -a 256 "$f" 2>/dev/null; done \
-                | shasum -a 256 | cut -c1-16)
+    # 삭제된 파일은 해시가 나오지 않으므로 경로를 대신 넣는다. 빼면 서로 다른 삭제 상태가
+    # 같은 지문(빈 입력 해시)으로 수렴해 필요한 재검증을 건너뛴다.
+    ROOT_HASH=$(echo "$ROOT_CHANGED" | while read -r f; do
+                    if [ -f "$f" ]; then shasum -a 256 "$f"; else echo "DELETED $f"; fi
+                done | shasum -a 256 | cut -c1-16)
 fi
 [ -n "$MODULES" ] || [ -n "$ROOT_HASH" ] || exit 0
 
