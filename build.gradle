@@ -31,14 +31,24 @@ sourceSets {
             srcDirs = ['config/checkstyle/custom-checks/src/main/resources']
         }
     }
+
+    // 4서비스가 공유하는 ArchUnit hexagonal 규칙. 서비스별 test sourceSet 에서 참조하며,
+    // 규칙 정의를 서비스마다 복제하지 않기 위해 root project 전용 sourceSet 으로 둔다.
+    archRules {
+        java {
+            srcDirs = ['config/archunit/src/main/java']
+        }
+    }
 }
 
 dependencies {
     // subprojects 블록의 checkstyle { toolVersion } 과 반드시 같은 버전을 유지한다.
     checkstyleCustomChecksImplementation 'com.puppycrawl.tools:checkstyle:10.17.0'
+    // subprojects 의 testImplementation archunit 과 반드시 같은 버전을 유지한다.
+    archRulesImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
 }
 
-tasks.matching { it.name in ['checkstyleMain', 'checkstyleTest', 'checkstyleCheckstyleCustomChecks'] }
+tasks.matching { it.name in ['checkstyleMain', 'checkstyleTest', 'checkstyleCheckstyleCustomChecks', 'checkstyleArchRules'] }
         .configureEach { enabled = false }
 
 subprojects {
@@ -65,6 +75,10 @@ subprojects {
         annotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        // hexagonal 레이어 규칙 — 정의는 rootProject 의 archRules sourceSet 한 곳에만 둔다.
+        // (root dependencies 의 archRulesImplementation 과 같은 버전을 유지한다.)
+        testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
+        testImplementation rootProject.sourceSets.archRules.output
         // 구조 판정 커스텀 Check(광범위 예외 삼킴, try 블록 외부 변수 재할당) — root project 전용
         // sourceSet 산출물을 이 서비스의 checkstyle 실행 classpath 에 추가한다. checkstyle 설정에
         // 직접 dependency 를 추가하면 Gradle 이 tool 본체 기본 dependency 를 더 이상 자동으로
