@@ -51,6 +51,40 @@ dependencies {
 tasks.matching { it.name in ['checkstyleMain', 'checkstyleTest', 'checkstyleCheckstyleCustomChecks', 'checkstyleArchRules'] }
         .configureEach { enabled = false }
 
+// 편집 직후 훅(.claude/hooks/checkstyle-file.sh)이 쓰는 Checkstyle CLI classpath 를 파일로 떨군다.
+// Gradle 태스크는 모듈 전체를 돌아 편집 직후 피드백으로 쓰기엔 느리므로 훅은 CLI 를 파일 하나에만
+// 직접 물린다. 그런데 checkstyle 본체 jar 만으로는 실행되지 않고(picocli 등 전이 의존 필요) 그
+// 목록을 훅이 직접 조립하면 깨지기 쉬우므로, Gradle 이 이미 해석해 둔 것을 그대로 넘긴다.
+// Gradle checkstyle 플러그인의 tool configuration 은 워커 안에서만 완결되어 CLI 로 그대로
+// 실행되지 않는다(commons-logging 등이 빠져 있다). CLI 전용 configuration 을 따로 둔다.
+configurations {
+    checkstyleCli
+}
+
+dependencies {
+    // subprojects 의 checkstyle { toolVersion } 과 반드시 같은 버전을 유지한다.
+    checkstyleCli 'com.puppycrawl.tools:checkstyle:10.17.0'
+    checkstyleCli 'commons-logging:commons-logging:1.3.4'
+}
+
+tasks.register('writeCheckstyleCliClasspath') {
+    description = '편집 직후 훅이 쓰는 Checkstyle CLI classpath 와 설정 프로퍼티를 기록한다.'
+    def classpathFile = layout.buildDirectory.file('checkstyle-cli-classpath.txt')
+    def propertiesFile = layout.buildDirectory.file('checkstyle-cli.properties')
+    def cliClasspath = configurations.checkstyleCli
+    def customChecks = sourceSets.checkstyleCustomChecks.output
+    def configDir = rootProject.file('config/checkstyle').absolutePath
+    outputs.files(classpathFile, propertiesFile)
+    doLast {
+        File target = classpathFile.get().asFile
+        target.parentFile.mkdirs()
+        target.text = cliClasspath.asPath + File.pathSeparator + customChecks.asPath
+        // config_loc 은 Gradle 플러그인이 주입하는 값이라 CLI 에는 없다. suppressions 파일 경로
+        // 해석에 쓰이므로 직접 넘겨준다.
+        propertiesFile.get().asFile.text = "config_loc=" + configDir.replace('\\', '/') + "\n"
+    }
+}
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'io.spring.dependency-management'
@@ -93,6 +127,10 @@ subprojects {
         toolVersion = '10.17.0'
         configFile = rootProject.file('config/checkstyle/checkstyle.xml')
         ignoreFailures = false
+        // 경고 계층을 두지 않는다 — 경고는 아무도 고치지 않아 규칙이 있다는 착각만 남긴다.
+        // 규칙은 빌드를 깨뜨리거나 아예 없거나 둘 중 하나다. 새 규칙을 warning 으로
+        // 추가하는 것도 이 설정이 막는다.
+        maxWarnings = 0
     }
 
     // SpotBugs Configuration
