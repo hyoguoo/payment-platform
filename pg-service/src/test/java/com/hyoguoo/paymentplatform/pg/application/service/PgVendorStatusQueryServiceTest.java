@@ -87,7 +87,7 @@ class PgVendorStatusQueryServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "PARTIAL_CANCELED", "ABORTED", "EXPIRED"})
+    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "ABORTED", "EXPIRED"})
     @DisplayName("벤더 조회 결과가 확정 실패 상태면 실패됨을 반환한다.")
     void 실패_상태면_실패됨을_반환한다(PgPaymentStatus status) {
         // given

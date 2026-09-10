@@ -91,7 +91,7 @@ flowchart TD
 
 - [x] Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
 - [x] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
-- [ ] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
+- [x] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
 - [ ] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
 - [ ] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
 - [ ] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
@@ -160,7 +160,7 @@ flowchart TD
 - `./gradlew :pg-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `PgVendorStatusQueryServiceTest`에 `getVendorStatus_부분취소는_확인불가로_판정한다`(1건)와 `getVendorStatus_나머지_실패상태는_실패로_유지된다`(CANCELED/ABORTED/EXPIRED 3건) 추가. `PgVendorStatusQueryServiceImpl.FAILED_STATUSES`에서 `PgPaymentStatus.PARTIAL_CANCELED`를 빼고, 부분 취소를 제외한 이유(자동 확정 관문이 전용 사유로 격리시키는 것과 방향을 맞추고 운영자의 안전 종결 오판을 막기 위함)를 Javadoc에 남겼다. 기존 `실패_상태면_실패됨을_반환한다`의 `@EnumSource`에서도 `PARTIAL_CANCELED`를 빼 GREEN 직후 레드가 되지 않게 했다. `./gradlew :pg-service:test` 464 tests 전부 통과.
 
 ---
 
