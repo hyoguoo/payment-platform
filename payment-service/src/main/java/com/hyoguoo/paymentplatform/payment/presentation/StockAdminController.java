@@ -1,5 +1,6 @@
 package com.hyoguoo.paymentplatform.payment.presentation;
 
+import com.hyoguoo.paymentplatform.payment.application.dto.admin.StockResyncResult;
 import com.hyoguoo.paymentplatform.payment.presentation.dto.response.admin.StockResyncResponse;
 import com.hyoguoo.paymentplatform.payment.presentation.port.StockAdminService;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -24,8 +26,10 @@ public class StockAdminController {
     private final StockAdminService stockAdminService;
 
     @PostMapping("/resync/{productId}")
-    public ResponseEntity<StockResyncResponse> resync(@PathVariable Long productId) {
-        int quantity = stockAdminService.resyncStockCache(productId);
-        return ResponseEntity.ok(new StockResyncResponse(productId, quantity));
+    public ResponseEntity<StockResyncResponse> resync(
+            @PathVariable Long productId,
+            @RequestParam(defaultValue = "false") boolean force) {
+        StockResyncResult result = stockAdminService.resyncStockCache(productId, force);
+        return ResponseEntity.ok(StockResyncResponse.from(productId, result));
     }
 }

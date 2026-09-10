@@ -44,6 +44,7 @@ public enum PaymentErrorCode implements ErrorCode {
     QUARANTINE_RESOLVE_VENDOR_APPROVED("E03044", "벤더가 승인을 확인해 격리 복구 종결을 거부합니다."),
     INVALID_STATUS_TO_RECORD_RETRY_DELAY("E03045", "PENDING 상태에서만 재시도 간격을 기록할 수 있습니다."),
     INVALID_STATUS_TO_ABANDON("E03046", "IN_FLIGHT 상태에서만 발행을 중단(FAILED)할 수 있습니다."),
+    STOCK_RESYNC_NOISE_IN_PROGRESS("E03047", "진행 중인 선차감이 있어 재고 캐시 재동기화를 거부합니다. 강제 실행이 필요합니다."),
     ;
 
     private final String code;

@@ -93,7 +93,7 @@ flowchart TD
 - [x] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
 - [x] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
 - [x] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
-- [ ] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
+- [x] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
 - [ ] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
 - [ ] Task 7: 가드레일 훅 자체를 검증하는 셸 테스트와 CI 관문을 붙인다
 
@@ -224,7 +224,7 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 - 관리자 REST 가 손잡이 없이 호출되면 기존과 같은 동작을 유지한다 (응답에 겹침 필드만 추가)
 
 **완료 결과**
-> (execute에서 채움)
+> `StockResyncUseCaseTest`에 케이스 7건 추가(사전 조회 실패 케이스는 `@ParameterizedTest`로 force 참/거짓 둘 다 확인), 기존 `resyncStockCache_setsRedisToRdbStock`는 새 시그니처(`productId, force`)와 새 반환 타입(`StockResyncResult`)에 맞춰 고쳤다 — RED 확인(신설 타입 부재로 컴파일 실패) 후 `test:` 커밋. `PaymentErrorCode`에 `STOCK_RESYNC_NOISE_IN_PROGRESS`(E03047) 추가. `StockResyncUseCase.resyncStockCache(Long productId, boolean force)`로 시그니처를 바꿔, 사전 조회(`countNoiseByProductId`)를 강제 실행 여부와 무관하게 항상 먼저 실행하고 — 실패하면 그대로 전파해 강제 실행이어도 거부한다. 사전 건수가 0이 아니고 강제 실행이 아니면 `PaymentStatusException`으로 거부, 강제 실행으로 통과하면 걸린 건수와 함께 경고를 남긴다. 덮어쓴 뒤 같은 조회를 한 번 더 해 **사후 건수 > 사전 건수**로 겹침을 판정한다(강제 실행 경로처럼 사전 건수가 이미 1 이상이어도 성립하도록 "사전 0건" 기준을 쓰지 않았다) — 겹치면 두 건수와 함께 경고를 남기고 결과에 싣는다. 재확인 자체가 실패하면(`RuntimeException` catch) 예외를 밖으로 내지 않고 경고만 남기며 겹침은 `StockResyncOverlapStatus.UNKNOWN`으로 둔다. 신설 `StockResyncOverlapStatus`(`OVERLAPPED`/`CLEAR`/`UNKNOWN`)와 `StockResyncResult`(quantity + overlapStatus) 값 객체를 `application/dto/admin/`에 추가해 use-case 반환 타입을 바꿨다. `StockAdminService`/`StockAdminController`(`@RequestParam(defaultValue = "false") boolean force`)/`StockResyncResponse`(overlap 필드 추가)도 함께 고쳐, 손잡이 없이 호출되면 기존과 같은 동작(force=false 기본값)을 유지한다. `./gradlew :payment-service:test` 736 tests 전부 통과, `./gradlew test`(다른 모듈)는 UP-TO-DATE로 회귀 없음.
 
 ---
 
