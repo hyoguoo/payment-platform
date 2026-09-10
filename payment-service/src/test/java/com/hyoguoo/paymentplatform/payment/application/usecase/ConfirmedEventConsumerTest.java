@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.application.usecase;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -29,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -130,9 +132,9 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), sameOrder(order)))
                 .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-consumer-test")));
-        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), sameOrder(order)))
                 .willReturn(StockRecoveryCompensationResult.OK);
         given(paymentCommandUseCase.markPaymentAsFail(
                 any(PaymentEvent.class),
@@ -147,10 +149,10 @@ class ConfirmedEventConsumerTest {
 
         then(stockCachePort)
                 .should(times(1))
-                .compensateIfDecremented(eq(ORDER_ID), eq(order));
+                .compensateIfDecremented(eq(ORDER_ID), sameOrder(order));
         then(stockHoldRecordRepository)
                 .should(times(1))
-                .closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-consumer-test"));
+                .closeAsReverted(eq(ORDER_ID), sameOrder(order), eq("cycle-consumer-test"));
         then(paymentCommandUseCase)
                 .should(times(1))
                 .markPaymentAsFail(
@@ -170,9 +172,9 @@ class ConfirmedEventConsumerTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), eq(order)))
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), sameOrder(order)))
                 .willReturn(Optional.of(new StockHoldRecordSnapshot(StockHoldRecordStatus.NOISE, "cycle-consumer-test")));
-        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), eq(order)))
+        given(stockCachePort.compensateIfDecremented(eq(ORDER_ID), sameOrder(order)))
                 .willReturn(StockRecoveryCompensationResult.OK);
 
         ConfirmedEventMessage message = new ConfirmedEventMessage(
@@ -182,10 +184,10 @@ class ConfirmedEventConsumerTest {
 
         then(stockCachePort)
                 .should(times(1))
-                .compensateIfDecremented(eq(ORDER_ID), eq(order));
+                .compensateIfDecremented(eq(ORDER_ID), sameOrder(order));
         then(stockHoldRecordRepository)
                 .should(times(1))
-                .closeAsReverted(eq(ORDER_ID), eq(order), eq("cycle-consumer-test"));
+                .closeAsReverted(eq(ORDER_ID), sameOrder(order), eq("cycle-consumer-test"));
         then(quarantineCompensationHandler)
                 .should(times(1))
                 .handle(eq(ORDER_ID), eq("RETRY_EXHAUSTED"));
@@ -216,5 +218,20 @@ class ConfirmedEventConsumerTest {
                 .totalAmount(BigDecimal.valueOf(1000L * quantity))
                 .status(PaymentOrderStatus.EXECUTING)
                 .allArgsBuild();
+    }
+
+    /**
+     * FakePaymentEventRepository 조회는 이제 자식 {@link PaymentOrder} 원소까지 복제한 사본을 돌려준다 —
+     * 테스트가 만든 고정 fixture 와 use case 가 실제로 받는 인자는 값은 같아도 객체가 다르므로,
+     * 참조 동일성 기반 {@code eq(order)} 대신 값 비교로 매칭한다. 도메인 값 객체에 테스트 편의용
+     * equals/hashCode 를 추가하지 않기 위한 선택이다.
+     */
+    private static PaymentOrder sameOrder(PaymentOrder expected) {
+        return argThat(actual -> actual != null
+                && Objects.equals(actual.getProductId(), expected.getProductId())
+                && Objects.equals(actual.getQuantity(), expected.getQuantity())
+                && Objects.equals(actual.getOrderId(), expected.getOrderId())
+                && Objects.equals(actual.getTotalAmount(), expected.getTotalAmount())
+                && actual.getStatus() == expected.getStatus());
     }
 }

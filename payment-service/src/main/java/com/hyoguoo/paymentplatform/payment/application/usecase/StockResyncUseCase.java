@@ -41,7 +41,7 @@ public class StockResyncUseCase implements StockAdminService {
     public StockResyncResult resyncStockCache(Long productId, boolean force) {
         // 사전 조회는 강제 실행 여부와 무관하게 항상 먼저 실행한다. 강제 실행이 우회하는 것은
         // 건수 판정뿐이고 조회 자체가 아니다 — 조회 실패는 강제 실행이어도 그대로 전파해 거부한다.
-        long beforeNoiseCount = stockHoldRecordRepository.countNoiseByProductId(productId);
+        long beforeNoiseCount = countNoiseWithLogging(productId);
 
         if (beforeNoiseCount > 0) {
             if (!force) {
@@ -62,6 +62,21 @@ public class StockResyncUseCase implements StockAdminService {
         StockResyncOverlapStatus overlapStatus = checkOverlap(productId, beforeNoiseCount);
 
         return new StockResyncResult(rdbStock, overlapStatus);
+    }
+
+    /**
+     * 사전 건수 조회 실패를 경고 로그로 남기고 그대로 다시 던진다 — 거부(전파) 자체는 올바른
+     * 동작이라 바꾸지 않되, 로그가 없으면 운영자가 500 을 받아도 원인을 추적할 수 없다.
+     */
+    private long countNoiseWithLogging(Long productId) {
+        try {
+            return stockHoldRecordRepository.countNoiseByProductId(productId);
+        } catch (RuntimeException e) {
+            LogFmt.warn(log, LogDomain.PRODUCT, EventType.STOCK_CACHE_RESYNC_PRECHECK_FAILED, () ->
+                    String.format("Stock cache resync precheck (noise count) failed, request rejected - "
+                            + "productId=%d: %s", productId, e.getMessage()));
+            throw e;
+        }
     }
 
     /**

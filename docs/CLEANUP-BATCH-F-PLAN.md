@@ -281,4 +281,21 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 
 ## 리뷰 처리
 
-> (ship 단계에서 채움 — finding별 채택/스킵 + 사유)
+### 1라운드 (2026-09-11)
+
+| # | 출처 | severity | finding | 처리 |
+|:---:|:---:|:---:|:---:|:---:|
+| 1 | reviewer | major | `FakePaymentEventRepository.resolveQuarantineToFailed` — 자식 주문을 공유한 탓에 격리 안전 종결 경로에서 도메인 전이가 두 번 걸려 예외가 난다. 지금은 그 조합을 조립하는 테스트가 없어 드러나지 않을 뿐이다 | 채택 |
+| 2 | domain-expert | major | 같은 원인 — 설계 문서의 "자식 주문 리스트 깊은 복사" 결정과 구현(컨테이너만 분리)이 어긋나고, 결제 상태 전이가 자식 주문까지 바꾸므로 자식 상태가 저장소로 샌다 | 채택 (1과 함께 해소) |
+| 3 | reviewer | minor | `StockResyncUseCase` 사전 조회 실패가 로그 없이 전파돼, 운영자가 500 을 받아도 원인 추적이 안 된다 | 채택 |
+
+**1·2 처리 방향**: 문서를 구현에 맞춰 내리는 대신 구현을 결정에 맞춰 올린다. 자식 주문까지 실제로 복사하고, 그 전환으로 깨지는 참조 동일성 기반 검증은 값 비교로 바꾼다. `markPaymentAsFailFromQuarantine` + 비어 있지 않은 자식 주문 + 실제 Fake 조립 테스트로 고정한다 — 이 경로가 없어서 버그가 숨어 있었다.
+
+**기각 없음.**
+
+**처리 결과**
+> `FakePaymentEventRepository.copyOf(PaymentEvent)`가 자식 `PaymentOrder` 원소까지 새 인스턴스로 복제하도록 고쳤다(`copyOrderList` + `copyOf(PaymentOrder)` 신설). `resolveQuarantineToFailed` 등 `resolve*` 3종의 Javadoc도 바뀐 복사 시맨틱(자식 주문까지 분리되어 같은 전이가 두 번 걸리지 않는다)에 맞춰 갱신했다. 이 전환으로 깨진 참조 동일성 기반 Mockito 스텁·검증(`ConfirmedEventConsumerTest`, `PaymentConfirmResultUseCaseTest`, `PaymentConfirmResultUseCaseHandleFailedTest`, `PaymentConfirmResultUseCaseHandleQuarantinedTest` 4개 파일)은 `PaymentOrder`에 equals/hashCode를 추가하는 대신 값 비교 `argThat` 매처(`sameOrder`)로 바꿨다. `FakePaymentEventRepositoryTest`에 회귀 고정 테스트(`markPaymentAsFailFromQuarantine_자식주문이_있어도_예외없이_실패로_종결된다`)를 추가해 — 저장소에서 로드한 격리 결제(비어 있지 않은 자식 주문 포함)를 재조회 없이 `PaymentCommandUseCase.markPaymentAsFailFromQuarantine`에 넘겨도 예외 없이 실패로 종결되고 자식 주문도 FAIL로 전이되는지 확인한다.
+>
+> `StockResyncUseCase`는 사전 건수 조회(`countNoiseByProductId`)를 `countNoiseWithLogging` private 메서드로 감싸, 실패 시 경고 로그(`EventType.STOCK_CACHE_RESYNC_PRECHECK_FAILED` 신설)를 남기고 같은 예외를 그대로 다시 던지도록 했다 — 거부(전파) 동작 자체는 바꾸지 않았다.
+>
+> `./gradlew :payment-service:test` 캐시 없이 재실행, 737 tests 전부 통과.

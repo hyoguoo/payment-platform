@@ -2,6 +2,7 @@ package com.hyoguoo.paymentplatform.payment.mock;
 
 import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepository;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
+import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -66,9 +67,32 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
                 .executedAt(source.getExecutedAt())
                 .approvedAt(source.getApprovedAt())
                 .statusReason(source.getStatusReason())
-                .paymentOrderList(new ArrayList<>(source.getPaymentOrderList()))
+                // 컨테이너뿐 아니라 원소(PaymentOrder)도 복제한다 — 결제 상태 전이(failFromQuarantine 등)는
+                // 자식 주문까지 in-place 로 뮤테이트하므로, 원소를 공유하면 호출자가 들고 있는 복사본을
+                // 건드릴 때 저장소 안의 자식 주문도 함께 바뀌어 CAS 선행조건 검사가 오염된다.
+                .paymentOrderList(copyOrderList(source.getPaymentOrderList()))
                 .createdAt(source.getCreatedAt())
                 .lastStatusChangedAt(source.getLastStatusChangedAt())
+                .allArgsBuild();
+    }
+
+    private static List<PaymentOrder> copyOrderList(List<PaymentOrder> source) {
+        List<PaymentOrder> copied = new ArrayList<>(source.size());
+        for (PaymentOrder order : source) {
+            copied.add(copyOf(order));
+        }
+        return copied;
+    }
+
+    private static PaymentOrder copyOf(PaymentOrder source) {
+        return PaymentOrder.allArgsBuilder()
+                .id(source.getId())
+                .paymentEventId(source.getPaymentEventId())
+                .orderId(source.getOrderId())
+                .productId(source.getProductId())
+                .quantity(source.getQuantity())
+                .totalAmount(source.getTotalAmount())
+                .status(source.getStatus())
                 .allArgsBuild();
     }
 
@@ -148,11 +172,15 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
 
     /**
      * 아래 {@code resolve*} 3종은 내부에서 {@link #findById} 를 거쳐 대상을 조회한다 — 그 조회는
-     * 이제 저장소와 분리된 복사본을 돌려주므로, 호출자가 {@code findInProgressOlderThan} 등으로 먼저
-     * 받아 둔 객체를 뮤테이트해도 이 조회 결과에는 반영되지 않는다(그래서 선행조건 검사가 저장 시점의
-     * 실제 상태를 기준으로 판정한다). 찾은 복사본은 여기서 다시 복사하지 않고 그 자리에서 직접
-     * 뮤테이트한 뒤 {@code store.put} 으로 되쓴다 — 이미 저장소와 분리된 사본이라 한 번 더 복사할
-     * 이유가 없고, 이 메서드들 자체가 쓰기 경로의 종착점이다.
+     * 이제 저장소와 분리된 복사본을 돌려주고, 자식 {@link PaymentOrder} 원소까지 복제된 상태라 호출자가
+     * {@code findInProgressOlderThan} 등으로 먼저 받아 둔 객체(자식 주문 포함)를 뮤테이트해도 이 조회
+     * 결과에는 반영되지 않는다(그래서 선행조건 검사가 저장 시점의 실제 상태를 기준으로 판정한다). 찾은
+     * 복사본은 여기서 다시 복사하지 않고 그 자리에서 직접 뮤테이트한 뒤 {@code store.put} 으로 되쓴다 —
+     * 이미 저장소와 분리된 사본이라 한 번 더 복사할 이유가 없고, 이 메서드들 자체가 쓰기 경로의
+     * 종착점이다. 이 사본을 다시 복사하지 않는다는 점이 중요하다 — 예를 들어 {@link #resolveQuarantineToFailed}
+     * 가 {@code failFromQuarantine} 으로 자식 주문까지 FAIL 전이시킨 뒤 {@code store.put} 으로 되쓰므로,
+     * 저장소에는 항상 최신 상태의 자식 주문이 남는다(이미 FAIL 로 전이된 자식 주문에 같은 전이를
+     * 두 번 걸어 {@code PaymentOrder.fail()} 가드에 걸리는 일이 없다).
      *
      * <p>실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
      * 저장소의 현재 상태가 QUARANTINED 일 때만 {@link PaymentEvent#failFromQuarantine} 도메인 전이를

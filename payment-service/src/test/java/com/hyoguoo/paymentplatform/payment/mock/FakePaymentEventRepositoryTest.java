@@ -2,12 +2,17 @@ package com.hyoguoo.paymentplatform.payment.mock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.hyoguoo.paymentplatform.payment.application.usecase.PaymentCommandUseCase;
+import com.hyoguoo.paymentplatform.payment.core.common.metrics.PaymentQuarantineMetrics;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.PaymentOrder;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentOrderStatus;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,6 +55,34 @@ class FakePaymentEventRepositoryTest {
 
         PaymentEvent reFetched = repository.findById(2L).orElseThrow();
         assertThat(reFetched.getPaymentOrderList()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("markPaymentAsFailFromQuarantine — 자식 주문이 있는 격리 결제가 예외 없이 실패로 종결된다")
+    void markPaymentAsFailFromQuarantine_자식주문이_있어도_예외없이_실패로_종결된다() {
+        FakePaymentEventRepository repository = new FakePaymentEventRepository();
+        PaymentOrder order = buildPaymentOrder();
+        PaymentEvent event = buildPaymentEvent(3L, PaymentEventStatus.QUARANTINED, List.of(order));
+        repository.save(event);
+
+        // QuarantineResolveUseCase.resolve 와 같은 순서: 저장소에서 로드한 결제를 그대로
+        // markPaymentAsFailFromQuarantine 에 넘긴다 — 재조회 없이 전달되는 이 경로가
+        // resolveQuarantineToFailed 내부의 재조회와 자식 주문을 공유하면, 자식 주문 전이가
+        // 두 번 걸려 PaymentOrder.fail() 가드에서 예외가 난다.
+        PaymentEvent loaded = repository.findByOrderId(ORDER_ID).orElseThrow();
+        PaymentCommandUseCase paymentCommandUseCase = new PaymentCommandUseCase(
+                repository,
+                Clock.fixed(Instant.parse("2026-04-27T12:00:00Z"), ZoneOffset.UTC),
+                new PaymentQuarantineMetrics(new SimpleMeterRegistry()));
+
+        PaymentEvent resolved = paymentCommandUseCase.markPaymentAsFailFromQuarantine(loaded, "관리자 안전 종결");
+
+        assertThat(resolved.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        PaymentEvent persisted = repository.findByOrderId(ORDER_ID).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(PaymentEventStatus.FAILED);
+        assertThat(persisted.getPaymentOrderList())
+                .extracting(PaymentOrder::getStatus)
+                .containsExactly(PaymentOrderStatus.FAIL);
     }
 
     private PaymentEvent buildPaymentEvent(Long id, PaymentEventStatus status, List<PaymentOrder> orders) {
