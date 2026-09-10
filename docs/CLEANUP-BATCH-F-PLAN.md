@@ -299,3 +299,9 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 > `StockResyncUseCase`는 사전 건수 조회(`countNoiseByProductId`)를 `countNoiseWithLogging` private 메서드로 감싸, 실패 시 경고 로그(`EventType.STOCK_CACHE_RESYNC_PRECHECK_FAILED` 신설)를 남기고 같은 예외를 그대로 다시 던지도록 했다 — 거부(전파) 동작 자체는 바꾸지 않았다.
 >
 > `./gradlew :payment-service:test` 캐시 없이 재실행, 737 tests 전부 통과.
+
+### 재리뷰 (ship, 2026-09-11)
+
+| severity | finding | 처리 |
+|:---:|:---:|:---:|
+| minor | `PaymentConfirmResultUseCaseHandleFailedTest:131` — 깊은 복사 도입 후 `findSnapshot(ORDER_ID, order)` 스텁이 참조 동일성 기준이라 실제 호출과 안 맞는데, Mockito 기본 응답 `Optional.empty()`가 기대값과 우연히 같아 통과했다 | 채택 — 같은 파일의 다른 스텁처럼 `sameOrder(order)` 값 매처로 통일 |

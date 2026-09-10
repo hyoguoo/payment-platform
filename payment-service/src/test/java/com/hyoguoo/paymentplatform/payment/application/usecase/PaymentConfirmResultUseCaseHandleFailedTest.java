@@ -128,7 +128,7 @@ class PaymentConfirmResultUseCaseHandleFailedTest {
         PaymentEvent event = buildPaymentEvent(PaymentEventStatus.IN_PROGRESS, List.of(order));
         paymentEventRepository.save(event);
 
-        given(stockHoldRecordRepository.findSnapshot(ORDER_ID, order)).willReturn(Optional.empty());
+        given(stockHoldRecordRepository.findSnapshot(eq(ORDER_ID), sameOrder(order))).willReturn(Optional.empty());
         given(paymentCommandUseCase.markPaymentAsFail(any(PaymentEvent.class), any(String.class), any(String.class)))
                 .willReturn(event);
 
