@@ -1,10 +1,13 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-08 (AI-CHANGE-GUARDRAILS 머지 완료)
+> 최종 수정: 2026-09-10
 
 ## 활성 작업
 
-없음.
+- **주제**: 가벼운 후속 정리 6건 일괄 처리 (CLEANUP-BATCH-F)
+- **단계**: plan
+- **이슈/브랜치**: #155
+- **파일**: docs/topics/CLEANUP-BATCH-F.md
 
 ## 재개 메모
 
@@ -16,6 +19,7 @@
 
 - `architecture.md` 의 FCG 상세 링크가 `pg-confirm-flow` 를 가리키는데 그 문서에 FCG 설명이 없다
 - `message-delivery-and-dedupe.md` 서두가 "DLQ 처리를 다루며"라고 하는데 본문에 DLQ 절이 없다
+- 이번 정리 배치가 끝나면 이어서 처리하기로 했다 (별도 저장소라 같은 PR 에 못 넣는다)
 
 ### 별건 — 블로그 포스팅 진행 상황
 
