@@ -4,6 +4,7 @@ import com.hyoguoo.paymentplatform.payment.application.port.out.PaymentEventRepo
 import com.hyoguoo.paymentplatform.payment.domain.PaymentEvent;
 import com.hyoguoo.paymentplatform.payment.domain.enums.PaymentEventStatus;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,7 +66,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
                 .executedAt(source.getExecutedAt())
                 .approvedAt(source.getApprovedAt())
                 .statusReason(source.getStatusReason())
-                .paymentOrderList(source.getPaymentOrderList())
+                .paymentOrderList(new ArrayList<>(source.getPaymentOrderList()))
                 .createdAt(source.getCreatedAt())
                 .lastStatusChangedAt(source.getLastStatusChangedAt())
                 .allArgsBuild();
@@ -75,13 +76,14 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     public Optional<PaymentEvent> findById(Long id) {
         return store.values().stream()
                 .filter(e -> e.getId() != null && e.getId().equals(id))
-                .findFirst();
+                .findFirst()
+                .map(FakePaymentEventRepository::copyOf);
     }
 
     @Override
     public Optional<PaymentEvent> findByOrderId(String orderId) {
         findByOrderIdCount.incrementAndGet();
-        return Optional.ofNullable(store.get(orderId));
+        return Optional.ofNullable(store.get(orderId)).map(FakePaymentEventRepository::copyOf);
     }
 
     /**
@@ -91,7 +93,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     @Override
     public Optional<PaymentEvent> findByOrderIdForUpdate(String orderId) {
         findByOrderIdForUpdateCount.incrementAndGet();
-        return Optional.ofNullable(store.get(orderId));
+        return Optional.ofNullable(store.get(orderId)).map(FakePaymentEventRepository::copyOf);
     }
 
     @Override
@@ -106,6 +108,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.READY)
                 .filter(e -> e.getCreatedAt() != null && e.getCreatedAt().isBefore(before))
+                .map(FakePaymentEventRepository::copyOf)
                 .toList();
     }
 
@@ -131,6 +134,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.IN_PROGRESS)
                 .filter(e -> e.getExecutedAt() != null && e.getExecutedAt().isBefore(before))
+                .map(FakePaymentEventRepository::copyOf)
                 .toList();
     }
 
@@ -138,11 +142,19 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
     public List<PaymentEvent> findAllByStatus(PaymentEventStatus status) {
         return store.values().stream()
                 .filter(e -> e.getStatus() == status)
+                .map(FakePaymentEventRepository::copyOf)
                 .toList();
     }
 
     /**
-     * 실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
+     * 아래 {@code resolve*} 3종은 내부에서 {@link #findById} 를 거쳐 대상을 조회한다 — 그 조회는
+     * 이제 저장소와 분리된 복사본을 돌려주므로, 호출자가 {@code findInProgressOlderThan} 등으로 먼저
+     * 받아 둔 객체를 뮤테이트해도 이 조회 결과에는 반영되지 않는다(그래서 선행조건 검사가 저장 시점의
+     * 실제 상태를 기준으로 판정한다). 찾은 복사본은 여기서 다시 복사하지 않고 그 자리에서 직접
+     * 뮤테이트한 뒤 {@code store.put} 으로 되쓴다 — 이미 저장소와 분리된 사본이라 한 번 더 복사할
+     * 이유가 없고, 이 메서드들 자체가 쓰기 경로의 종착점이다.
+     *
+     * <p>실제 구현({@code PaymentEventRepositoryImpl})의 DB CAS 게이트를 in-memory 로 재현한다.
      * 저장소의 현재 상태가 QUARANTINED 일 때만 {@link PaymentEvent#failFromQuarantine} 도메인 전이를
      * 그 자리에서 적용해(자식 order 도 함께 FAIL) true 를 반환하고, 그 외에는 아무 것도 바꾸지 않고 false 를
      * 반환한다.
@@ -198,6 +210,7 @@ public class FakePaymentEventRepository implements PaymentEventRepository {
         return store.values().stream()
                 .filter(e -> e.getStatus() == PaymentEventStatus.AWAITING_RESULT)
                 .filter(e -> e.getLastStatusChangedAt() != null && e.getLastStatusChangedAt().isBefore(before))
+                .map(FakePaymentEventRepository::copyOf)
                 .toList();
     }
 }

@@ -90,7 +90,7 @@ flowchart TD
 ## 진행 상황
 
 - [x] Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
-- [ ] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
+- [x] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
 - [ ] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
 - [ ] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
 - [ ] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
@@ -139,7 +139,7 @@ flowchart TD
 - `./gradlew :payment-service:test` 회귀 없음 — 조회 객체를 고쳐 저장소 반영을 기대하던 기존 테스트가 있으면 저장을 명시하도록 고친다
 
 **완료 결과**
-> (execute에서 채움)
+> `FakePaymentEventRepositoryTest`(신설, 2건)와 `PaymentReconcilerFakeRepositoryTest`(신설, 1건) 모두 pass. `findById`/`findByOrderId`/`findByOrderIdForUpdate`/`findReadyPaymentsOlderThan`/`findInProgressOlderThan`/`findAllByStatus`/`findAwaitingResultOlderThan`이 전부 `copyOf`를 거치도록 통일했다. `copyOf`는 `paymentOrderList`를 `new ArrayList<>(...)`로 감싸 리스트 컨테이너를 저장소와 분리한다 — 원소인 `PaymentOrder` 자체는 복제하지 않는다(계획의 "깊은 복사" 표현보다 좁힌 결정). 개별 주문 객체까지 복제하면 참조 동일성에 기대는 기존 Mockito `eq(order)` 스텁·검증(`ConfirmedEventConsumerTest` 등 3개 파일 13곳)이 전부 깨지는데, 이번 Task의 RED 테스트가 요구하는 건 리스트 수준 분리(`.clear()`가 저장소에 반영되지 않는 것)뿐이라 원소 복제는 필요 이상이었다. `resolve*` 3종(`resolveQuarantineToFailed`/`resolveInProgressToAwaitingResult`/`resolveAwaitingResultToQuarantine`)은 내부 `findById` 호출이 이제 복사본을 돌려주므로 CAS 선행조건 검사가 호출자의 뮤테이트에 더 이상 오염되지 않는다 — 되쓰기(`store.put`) 경로는 그대로 살아있음을 확인했다(주석으로 이유를 남겼다). `./gradlew :payment-service:test` 724 tests 전부 통과, `./gradlew test`(다른 모듈)는 UP-TO-DATE로 회귀 없음.
 
 ---
 
