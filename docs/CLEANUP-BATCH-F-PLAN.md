@@ -89,7 +89,7 @@ flowchart TD
 
 ## 진행 상황
 
-- [ ] Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
+- [x] Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
 - [ ] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
 - [ ] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
 - [ ] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
@@ -114,7 +114,7 @@ flowchart TD
 - `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `IdempotencyKeyHasherTest`에 `hash_고정입력_기대해시와_일치한다` 케이스 1건 추가. 입력은 userId=1L + 상품 (productId=30, quantity=3), (productId=10, quantity=1) — 정렬 전 순서로 구성. 기대 해시는 현재 구현을 그대로 실행해 얻은 실제 값(`b844126412671cc2f065e1870e15d4b0cc9cb6d94a3e1e019ee3a9035fbab64a`)을 박았고, 산출 방법을 테스트 주석에 남겼다. 구분자(`x` → `-`)를 일부러 바꿔 이 테스트만 실패하고 나머지는 통과하는 것을 수동 확인 후 원복했다. `./gradlew :payment-service:test` 721 tests 전부 통과 (Docker 미기동으로 최초 실행 시 Testcontainers 19건이 initializationError로 떨어졌으나, Docker 기동 후 재실행해 회귀 아님을 확인).
 
 ---
 
