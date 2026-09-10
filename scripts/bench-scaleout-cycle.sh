@@ -63,6 +63,10 @@
 #                               파티션 수(3)까지만 늘리는 의미가 있다(Task 20 이 지목한 1순위 후보)
 #   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 (기본 5 — 코드 default)
 #   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 1 — 코드 default)
+#   PG_CONSUMER_CONCURRENCY   — pg-service 의 payment.commands.confirm 리스너 동시성 (기본 1 —
+#                               docker-compose.benchmark.yml 의 SPRING_KAFKA_LISTENER_CONCURRENCY
+#                               기본값과 동일). payment.commands.confirm 파티션 수까지만 늘리는
+#                               의미가 있다
 #   FAKE_FAIL_RATE            — pg fake gateway 실패율 (기본 0 — baseline 고정)
 #   PRODUCT_COUNT / PRODUCT_ID_BASE / BENCH_STOCK — scripts/bench-seed-stock.sh 와 동일
 #   K6_EXTRA_ARGS              — k6 run 에 추가 전달할 -e KEY=VALUE 인자(공백 구분)
@@ -187,6 +191,7 @@ CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
 PG_INSTANCES="${PG_INSTANCES:-1}"
 PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-5}"
 PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-1}"
+PG_CONSUMER_CONCURRENCY="${PG_CONSUMER_CONCURRENCY:-1}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
 PRODUCT_COUNT="${PRODUCT_COUNT:-100}"
 PRODUCT_ID_BASE="${PRODUCT_ID_BASE:-1000}"
@@ -238,6 +243,11 @@ MYSQL_PG_CONTAINER="${MYSQL_PG_CONTAINER:-payment-mysql-pg}"
 MYSQL_PAYMENT_ROOT_PASSWORD="${MYSQL_PAYMENT_ROOT_PASSWORD:-payment123}"
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-payment-kafka}"
 KAFKA_PROBE_TOPIC="${KAFKA_PROBE_TOPIC:-payment.bench.probe}"
+# pg-service 가 소비하는 확정 명령 토픽 — PG_CONSUMER_CONCURRENCY 의 상한이 이 토픽의 파티션
+# 수다. 조건 값으로 못박지 않고 결과를 쓰는 시점에 브로커에서 되읽는다(아래 kafka_topic_
+# partition_count) — 파티션 수를 바꿀 스크립트 손잡이가 없어 지금은 사실상 고정값이지만,
+# 브로커가 실제로 들고 있는 값을 신뢰하는 편이 토픽 재생성 등으로 어긋날 여지를 없앤다.
+KAFKA_CONFIRM_COMMAND_TOPIC="${KAFKA_CONFIRM_COMMAND_TOPIC:-payment.commands.confirm}"
 
 COMPOSE_ARGS=(
     -f "${ROOT_DIR}/docker/docker-compose.infra.yml"
@@ -728,6 +738,18 @@ kafka_produce_latency_probe() {
         --producer-props "bootstrap.servers=localhost:9092" acks=all 2>/dev/null)
     latency=$(echo "${out}" | grep -oE '[0-9.]+ ms avg latency' | awk '{print $1}')
     echo "${latency:-NULL}"
+}
+
+# 토픽의 실제 파티션 수를 브로커에서 되읽는다 — 조건 값(conditions.kafka_topic_partitions)은
+# 이 스크립트가 짐작해서 채우지 않고 결과를 쓰는 시점에 직접 묻는다. describe 조회 자체가
+# 실패하거나(브로커 접속 불가) 응답에서 PartitionCount 를 못 찾으면 값을 지어내지 않고
+# "NULL"을 낸다 — 호출부가 jq null 로 남긴다.
+kafka_topic_partition_count() {
+    local topic="$1" out count
+    out=$(docker exec "${KAFKA_CONTAINER}" kafka-topics --bootstrap-server localhost:9092 \
+        --describe --topic "${topic}" 2>/dev/null)
+    count=$(echo "${out}" | grep -oE 'PartitionCount: *[0-9]+' | head -n1 | awk '{print $2}')
+    echo "${count:-NULL}"
 }
 
 start_kafka_stat_sampler() {
@@ -1260,7 +1282,7 @@ print_section "━━━━━━━━━━━━━━━━━━━━━�
 print_section "▶ bench-scaleout-cycle — ${CASE_NAME}"
 print_section "  instances=${INSTANCES} stock_masters=${STOCK_MASTERS} dedupe_masters=${DEDUPE_MASTERS}"
 print_section "  polling_route=${POLLING_ROUTE} items_per_order=${ITEMS_PER_ORDER} vendor_latency=${VENDOR_LATENCY}(${FAKE_LATENCY_MIN}~${FAKE_LATENCY_MAX}ms)"
-print_section "  confirmed_consumer_concurrency=${CONFIRMED_CONSUMER_CONCURRENCY} pg_inbox_workers=${PG_INBOX_WORKERS} pg_outbox_workers=${PG_OUTBOX_WORKERS}"
+print_section "  confirmed_consumer_concurrency=${CONFIRMED_CONSUMER_CONCURRENCY} pg_inbox_workers=${PG_INBOX_WORKERS} pg_outbox_workers=${PG_OUTBOX_WORKERS} pg_consumer_concurrency=${PG_CONSUMER_CONCURRENCY}"
 print_section "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -1375,6 +1397,7 @@ export FAKE_LATENCY_MAX="${FAKE_LATENCY_MAX}"
 export FAKE_FAIL_RATE="${FAKE_FAIL_RATE}"
 export PG_INBOX_WORKERS="${PG_INBOX_WORKERS}"
 export PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS}"
+export PG_CONSUMER_CONCURRENCY="${PG_CONSUMER_CONCURRENCY}"
 if ! dc up -d --scale pg-service="${PG_INSTANCES}" --force-recreate pg-service >/dev/null 2>&1; then
     print_error "❌ (2) pg-service 재기동 실패"
     exit 1
@@ -1696,6 +1719,15 @@ PG_QUEUE_JSON=$(pg_queue_stats_json)
 KAFKA_STAT_JSON=$(kafka_stat_stats_json)
 BACKLOG_TREND_JSON=$(backlog_trend_json)
 
+# 파티션 수는 환경 변수로 넘겨 짐작하지 않고 지금 브로커가 들고 있는 값을 그대로 쓴다 —
+# 되읽기가 실패하면(브로커 접속 불가 등) 값을 지어내지 않고 null 로 남긴다.
+CONFIRM_TOPIC_PARTITIONS_RAW="$(kafka_topic_partition_count "${KAFKA_CONFIRM_COMMAND_TOPIC}")"
+if [[ "${CONFIRM_TOPIC_PARTITIONS_RAW}" =~ ^[0-9]+$ ]]; then
+    CONFIRM_TOPIC_PARTITIONS_JSON="${CONFIRM_TOPIC_PARTITIONS_RAW}"
+else
+    CONFIRM_TOPIC_PARTITIONS_JSON="null"
+fi
+
 jq -n \
     --arg case_name "${CASE_NAME}" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -1715,6 +1747,8 @@ jq -n \
     --argjson confirmed_consumer_concurrency "${CONFIRMED_CONSUMER_CONCURRENCY}" \
     --argjson pg_inbox_workers "${PG_INBOX_WORKERS}" \
     --argjson pg_outbox_workers "${PG_OUTBOX_WORKERS}" \
+    --argjson pg_consumer_concurrency "${PG_CONSUMER_CONCURRENCY}" \
+    --argjson kafka_topic_partitions "${CONFIRM_TOPIC_PARTITIONS_JSON}" \
     --argjson confirm_count "${CONFIRM_COUNT}" \
     --argjson db_done_count "${DB_DONE_COUNT}" \
     --argjson load_duration_sec "${LOAD_DURATION_SEC}" \
@@ -1771,7 +1805,9 @@ jq -n \
             hikari_max_pool: $hikari_max_pool,
             confirmed_consumer_concurrency: $confirmed_consumer_concurrency,
             pg_inbox_workers: $pg_inbox_workers,
-            pg_outbox_workers: $pg_outbox_workers
+            pg_outbox_workers: $pg_outbox_workers,
+            pg_consumer_concurrency: $pg_consumer_concurrency,
+            kafka_topic_partitions: $kafka_topic_partitions
         },
         throughput: {
             confirm_count: $confirm_count,

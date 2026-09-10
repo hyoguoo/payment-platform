@@ -94,7 +94,7 @@ flowchart TD
 - [x] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
 - [x] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
 - [x] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
-- [ ] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
+- [x] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
 - [ ] Task 7: 가드레일 훅 자체를 검증하는 셸 테스트와 CI 관문을 붙인다
 
 ## 태스크
@@ -242,7 +242,7 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 - `bash -n scripts/bench-scaleout-cycle.sh` 통과, shellcheck 경고 없음(기존 수준 유지)
 
 **완료 결과**
-> (execute에서 채움)
+> `scripts/bench-scaleout-cycle.sh` 결과 JSON 조립부(`conditions` 블록)에 `pg_consumer_concurrency`와 `kafka_topic_partitions` 두 필드를 추가했다. `PG_CONSUMER_CONCURRENCY`는 이 스크립트가 참조한 적이 없던 손잡이라 `docker-compose.benchmark.yml`의 `SPRING_KAFKA_LISTENER_CONCURRENCY` 기본값과 같은 1로 기본값을 맞추고, pg-service 재기동 직전 `export`해 실제로 컨테이너에 전달되게 했다. `kafka_topic_partitions`는 환경 변수로 넘기지 않고 결과를 쓰는 시점에 신설 `kafka_topic_partition_count()`가 `kafka-topics --describe --topic payment.commands.confirm`을 브로커에 직접 물어 `PartitionCount`를 파싱한다 — 조회 자체가 실패하거나 파싱할 수 없으면 값을 지어내지 않고 jq `null`(미상)로 남긴다. 스크립트 상단 환경변수 주석에 `PG_CONSUMER_CONCURRENCY` 항목을 추가했다. 결과 조립 구간을 실제 사이클 없이 돌려(docker exec를 스텁으로 대체) 파티션 되읽기 성공(3)·실패(null) 두 경우 모두 `conditions.kafka_topic_partitions`와 `conditions.pg_consumer_concurrency` 두 키가 JSON에 들어가는 것을 확인했다. `bash -n scripts/bench-scaleout-cycle.sh` 통과, `shellcheck scripts/bench-scaleout-cycle.sh` 경고 수는 변경 전후 54건으로 동일(줄 번호만 이동, 기존 수준 유지).
 
 ---
 
