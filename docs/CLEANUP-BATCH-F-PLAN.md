@@ -95,7 +95,7 @@ flowchart TD
 - [x] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
 - [x] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
 - [x] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
-- [ ] Task 7: 가드레일 훅 자체를 검증하는 셸 테스트와 CI 관문을 붙인다
+- [x] Task 7: 가드레일 훅 자체를 검증하는 셸 테스트와 CI 관문을 붙인다
 
 ## 태스크
 
@@ -271,7 +271,13 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 - 저장소 작업 트리가 스크립트 실행 전후로 동일하다
 
 **완료 결과**
-> (execute에서 채움)
+> `scripts/test-hooks.sh`(신설) — 픽스처 12건으로 두 훅을 직접 호출해 종료 코드를 확인한다. 턴 종료 훅(`verify-before-stop.sh`)은 임시 git 저장소 + 가짜 `gradlew`(호출 여부·횟수를 파일로 기록하고 마커 파일로 통과/실패를 지시받는다)를 매 케이스마다(또는 한 세션 흐름으로 이어) 만들어, 읽기 전용 에이전트 skip / 종류 미상 SubagentStop skip / 변경 없음 skip / 문서만 변경 skip / 코드 변경+빌드 실패 차단(종료 2) / 같은 변경 상태 재판정 안 함 / 세션 차단 한도(3회) 도달 후 더 막지 않음 — 총 9개 판정 분기를 exit code와 가짜 gradlew 호출 횟수 두 축으로 확인한다. 편집 시점 훅(`checkstyle-file.sh`)은 실제 저장소의 checkstyle 설정을 써야 해서 임시 저장소가 아니라 실제 `PROJECT_DIR` 위에서 비-java 파일 skip / 저장소 밖 java 파일 skip / 위반 있는 `.java` 픽스처(`var` 키워드 사용 — `VarKeywordUsage` 규칙) 종료 2 3케이스를 확인한다. 위반 케이스를 돌리기 전 `ensure_checkstyle_ready()`가 `build/checkstyle-cli-classpath.txt`/`checkstyle-cli.properties` 준비 상태를 먼저 확인해, 준비가 안 되면(재생성 시도 후에도 부재) 그 케이스를 건너뛰지 않고 `fail_hard`로 스크립트 전체를 실패 종료한다 — 훅 자체가 준비 실패 시 조용히 넘어가는 동작은 그대로 두되, 검사기가 꺼진 채로 이 테스트가 초록불을 내는 것만 막는다. 필요한 도구(`jq`/`python3`/`git`) 부재도 같은 방식으로 조기 실패 처리한다. 픽스처(실제 저장소 안 임시 `.java`/`.txt` 파일, 임시 git 저장소)는 각 케이스 직후 및 `trap cleanup EXIT`에서 정리하고, cleanup 마지막에 `git status --porcelain`을 실행 전 스냅샷과 비교해 작업 트리가 달라졌으면 실패로 끝낸다. 로컬 실행 결과: 12케이스 전부 OK, 스크립트 종료 0, `git status --porcelain`이 스크립트 실행 전후로 신규 파일 자체(`scripts/test-hooks.sh`) 외에 아무 차이도 없음을 확인했다. `bash -n scripts/test-hooks.sh` 통과, `shellcheck` 경고 없음.
+>
+> 완료 기준의 무력화 확인은 훅 파일 자체를 건드리지 않고(`.claude/hooks/*.sh` 편집은 가드레일로 차단되어 있고, 이번 태스크 지시에도 실제 훅은 고치지 않기로 되어 있다) 사본으로 수행했다: `verify-before-stop.sh` 사본에서 읽기 전용 에이전트 매치 `case` 문을 무력화하자 읽기 전용 skip 케이스가 종료 0 → 종료 2(가짜 빌드 실패로 차단)로 바뀌는 것을 확인했다. `checkstyle-file.sh` 사본에서 `if [ $STATUS -ne 0 ] && [ -n "$VIOLATIONS" ]; then`를 `if false; then`로 무력화하자 위반 픽스처 판정이 종료 2 → 종료 0으로 바뀌는 것을 확인했다. 두 사본은 임시 디렉터리에서만 존재했고, 실제 훅 파일은 `git status`/`git diff .claude/hooks/`로 무변경을 확인했다.
+>
+> `.github/workflows/ci.yml`에 `hook-guardrail-check` job 신설 — 지침 문서 검사 job과 같은 자리(6서비스 fan-out과 독립)에 두되, 그 job과 달리 실패시킨다(`continue-on-error` 없음). Java 21 + Gradle 준비 후 `./gradlew -q writeCheckstyleCliClasspath`로 편집 시점 훅 검증에 필요한 classpath를 만들고 `bash scripts/test-hooks.sh`를 실행한다. `actionlint`로 워크플로 문법 확인, YAML 파싱 확인 완료.
+>
+> 코드(.java/.gradle) 비접촉이라 `./gradlew test`는 생략했다 — 실제로 이 태스크가 건드린 `.github/workflows/ci.yml`(yaml 확장자)이 턴 종료 훅의 검증 대상 확장자에 걸리지만, 변경 최상위 경로가 `.github`라 서비스 모듈 목록에도 루트 빌드 설정 패턴에도 매치되지 않아 훅 스스로도 빌드를 돌리지 않고 통과했다(SubagentStop 로그로 확인).
 
 ## 리뷰 처리
 
