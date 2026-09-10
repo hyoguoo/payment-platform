@@ -5,9 +5,10 @@
 ## 활성 작업
 
 - **주제**: 가벼운 후속 정리 6건 일괄 처리 (CLEANUP-BATCH-F)
-- **단계**: plan
+- **단계**: execute
+- **활성 태스크**: Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
 - **이슈/브랜치**: #155
-- **파일**: docs/topics/CLEANUP-BATCH-F.md
+- **파일**: docs/topics/CLEANUP-BATCH-F.md / docs/CLEANUP-BATCH-F-PLAN.md
 
 ## 재개 메모
 
