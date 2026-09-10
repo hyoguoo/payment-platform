@@ -112,4 +112,9 @@ public class StockHoldRecordRepositoryImpl implements StockHoldRecordRepository 
     public long countNoise() {
         return jpaStockHoldRecordRepository.countByStatus(StockHoldRecordStatus.NOISE);
     }
+
+    @Override
+    public long countNoiseByProductId(Long productId) {
+        return jpaStockHoldRecordRepository.countByProductIdAndStatus(productId, StockHoldRecordStatus.NOISE);
+    }
 }

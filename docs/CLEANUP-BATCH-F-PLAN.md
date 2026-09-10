@@ -92,7 +92,7 @@ flowchart TD
 - [x] Task 1: 멱등키 산출 규칙을 고정 기대값으로 잠근다
 - [x] Task 2: 테스트용 결제 저장소의 조회를 방어적 복사로 통일한다
 - [x] Task 3: 관리자 벤더 조회가 부분 취소를 실패로 묶던 것을 푼다
-- [ ] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
+- [x] Task 4: 선차감 기록의 상품별 미종결 건수 조회를 추가한다
 - [ ] Task 5: 재동기화에 진행 중 선차감 가드와 강제 실행 손잡이를 넣는다
 - [ ] Task 6: 벤치 결과에 파티션과 PG 컨슈머 동시성을 기록한다
 - [ ] Task 7: 가드레일 훅 자체를 검증하는 셸 테스트와 CI 관문을 붙인다
@@ -187,7 +187,7 @@ Task 5 의 가드가 쓰는 조회다. 포트와 두 구현(JPA / Fake)을 소�
 - `./gradlew :payment-service:test` 회귀 없음
 
 **완료 결과**
-> (execute에서 채움)
+> `StockHoldRecordRepositoryImplTest`에 `countNoiseByProductId_그_상품의_잡음_기록만_센다`(대상 상품 잡음 2건 + 확정 1건 + 되돌림 1건 + 다른 상품 잡음 1건 구성)와 `countNoiseByProductId_기록이_없으면_0을_반환한다` 2건 추가, 신설 `FakeStockHoldRecordRepositoryTest`에 같은 시맨틱 2건 추가 — RED 확인(포트 메서드 부재로 컴파일 실패) 후 `test:` 커밋. `StockHoldRecordRepository` 포트에 `countNoiseByProductId(Long productId)` 추가(기존 `countNoise()` 바로 아래) — Javadoc에 상품+상태 조합 인덱스가 없어 상품 수가 늘면 스캔 범위가 넓어진다는 점과, 운영자 단발 조회라 지금은 인덱스를 두지 않는다는 결정을 남겼다. `JpaStockHoldRecordRepository`에 파생 쿼리 `countByProductIdAndStatus` 추가, `StockHoldRecordRepositoryImpl`은 `NOISE` 상태로 위임, `FakeStockHoldRecordRepository`는 같은 필터 스트림으로 구현. `./gradlew :payment-service:test` 728 tests 전부 통과(MySQL Testcontainers 포함, Docker 기동 상태에서 캐시 없이 재실행 확인), `./gradlew test`(다른 모듈)는 UP-TO-DATE로 회귀 없음.
 
 ---
 

@@ -27,6 +27,11 @@ public interface JpaStockHoldRecordRepository extends JpaRepository<StockHoldRec
     long countByStatus(StockHoldRecordStatus status);
 
     /**
+     * 그 상품의 잡음(NOISE) 상태 기록 건수 — 상품별 재동기화 가드가 쓴다.
+     */
+    long countByProductIdAndStatus(Long productId, StockHoldRecordStatus status);
+
+    /**
      * 확정 상태를 제외한 나머지는 상태와 무관하게 잡음으로 되돌리며 사이클 식별 값을 새로
      * 발급한다 — 이미 잡음인 행에 다시 호출돼도 값을 갱신해, 뒤늦은 닫기가 옛 값을 쥔 채
      * 반영되는 것을 막는다. 행이 아직 없으면 반영 행 수 0.
