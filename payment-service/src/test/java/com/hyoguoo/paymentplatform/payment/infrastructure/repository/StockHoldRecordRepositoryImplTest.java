@@ -205,6 +205,47 @@ class StockHoldRecordRepositoryImplTest {
         assertThat(candidates).hasSize(2);
     }
 
+    @Test
+    @DisplayName("countNoiseByProductId — 그 상품의 잡음 기록만 센다")
+    void countNoiseByProductId_그_상품의_잡음_기록만_센다() {
+        // given — 대상 상품의 잡음 2건 + 확정 1건 + 되돌림 1건, 그리고 다른 상품의 잡음 1건
+        Long otherProductId = 502L;
+        sut.openHold("order-shr-cnp-noise-1", product("order-shr-cnp-noise-1"));
+        sut.openHold("order-shr-cnp-noise-2", product("order-shr-cnp-noise-2"));
+
+        String committedOrderId = "order-shr-cnp-committed";
+        sut.openHold(committedOrderId, product(committedOrderId));
+        sut.commitAllByOrderId(committedOrderId);
+
+        String revertedOrderId = "order-shr-cnp-reverted";
+        String revertedCycleToken = sut.openHold(revertedOrderId, product(revertedOrderId));
+        sut.closeAsReverted(revertedOrderId, product(revertedOrderId), revertedCycleToken);
+
+        String otherProductOrderId = "order-shr-cnp-other-product";
+        sut.openHold(otherProductOrderId, PaymentOrder.allArgsBuilder()
+                .orderId(otherProductOrderId)
+                .productId(otherProductId)
+                .quantity(QUANTITY)
+                .totalAmount(BigDecimal.valueOf(1_000))
+                .allArgsBuild());
+
+        // when
+        long count = sut.countNoiseByProductId(PRODUCT_ID);
+
+        // then
+        assertThat(count).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("countNoiseByProductId — 기록이 없으면 0을 반환한다")
+    void countNoiseByProductId_기록이_없으면_0을_반환한다() {
+        // when
+        long count = sut.countNoiseByProductId(PRODUCT_ID);
+
+        // then
+        assertThat(count).isZero();
+    }
+
     /**
      * 유일 제약 동시 삽입 테스트.
      * @Transactional(NOT_SUPPORTED) — 두 스레드가 각자 독립 TX 로 openHold 를 실행해야
