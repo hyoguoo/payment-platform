@@ -1,6 +1,6 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-08-18 (STOCK-GATE-PER-PRODUCT — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 617→675·통합 149→660(되돌리기 다섯 주체 전 짝 동시성 500건 포함), pg 단위 408→454, product 단위 58→67·통합 6→8. product-service 에 `spring-kafka-test` 도입으로 `@EmbeddedKafka` 통합 테스트가 처음 생겼다). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 567→617·통합 98→149(동시 선점 반복 50회 포함), pg 단위 393→408). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
+> 최종 갱신: 2026-09-11 (CLEANUP-BATCH-F — Fake 저장소의 저장·조회 양방향 방어적 복사 규칙 신설(자식 컬렉션 원소까지), 참조 동일성 검증이 깨질 때 도메인 값 객체 대신 테스트 매처를 고치는 원칙 포함). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 617→675·통합 149→660(되돌리기 다섯 주체 전 짝 동시성 500건 포함), pg 단위 408→454, product 단위 58→67·통합 6→8. product-service 에 `spring-kafka-test` 도입으로 `@EmbeddedKafka` 통합 테스트가 처음 생겼다). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 567→617·통합 98→149(동시 선점 반복 50회 포함), pg 단위 393→408). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
 
 ## 테스트 프레임워크
 
@@ -38,6 +38,14 @@
 - `Mockito.when(repo.findById(...)).thenReturn(Optional.of(...))` — 단일 테스트 시나리오
 
 원칙: **외부 의존은 가능한 Fake. 내부 협력자는 Mock**.
+
+**Fake 저장소는 저장과 조회 양쪽에서 방어적 복사한다** — 자식 컬렉션의 원소까지 복사한다.
+도메인 전이 메서드는 대상 객체를 in-place 로 바꾸고, 조건부 갱신(CAS) 계열 위임 메서드는 그
+전이를 먼저 적용한 뒤 저장소를 부른다. 조회가 저장소 참조를 그대로 돌려주면 CAS 선행조건 검사가
+이미 바뀐 값을 보고 정상 케이스를 충돌로 오판한다. 컨테이너만 새로 만들고 원소를 공유하면 더
+나쁘다 — 자식 주문에 전이가 두 번 걸려 상태 가드에 막힌 예외가 난다(`FakePaymentEventRepository`,
+CLEANUP-BATCH-F ship 리뷰). 참조 동일성에 기대던 Mockito 검증이 깨지면 도메인 값 객체에
+`equals` 를 넣지 말고 테스트 쪽 매처를 값 비교로 바꾼다.
 
 ## Testcontainers MySQL 패턴
 

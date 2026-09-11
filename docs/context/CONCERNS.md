@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-19 삭제(해소: 결과 대기 신설로 자기 강화 경로 차단, 이력은 아카이브 브리핑), L-14 의 READY 영구 잔류 해소 반영 + 만료 정상화 부수 효과 기록, L-7/L-12 의 되돌리기 서술을 새 도착 상태 기준으로 정정). 이전: 2026-09-01 (L-19 신설 — 과부하 지속 시 리컨실러 되돌림이 컨슈머를 정지시키는 자기 강화 경로(실측)). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
+> 최종 갱신: 2026-09-11 (CLEANUP-BATCH-F ship — L-20 신설: 재고 재동기화의 확인~덮어쓰기 창을 원자화 대신 덮어쓰기 후 재확인 관측으로 수용). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-19 삭제(해소: 결과 대기 신설로 자기 강화 경로 차단, 이력은 아카이브 브리핑), L-14 의 READY 영구 잔류 해소 반영 + 만료 정상화 부수 효과 기록, L-7/L-12 의 되돌리기 서술을 새 도착 상태 기준으로 정정). 이전: 2026-09-01 (L-19 신설 — 과부하 지속 시 리컨실러 되돌림이 컨슈머를 정지시키는 자기 강화 경로(실측)). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT ship — L-16 에 종결 후 재차감분이 선차감 기록 재오픈으로 회수된다는 사실과 라이브 관측 결과 추가). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — L-18 모의 벤더 부팅 가드 도입 반영, L-1 후속 과제를 대장 항목 ID 참조 없이 자립 서술로 정정. 이전 갱신: SIGNAL-AND-GUARDRAIL-SWEEP ship — C-11 1차 대조 결과 등재: 코드 리뷰에서는 원복 조건 미해당(Domain Expert findings 0건)이나 설계 게이트에서는 Reviewer 가 놓친 중대 지적이 3라운드 연속 나옴 — 하향 유지하되 판단 기준에 설계 게이트 포함. 이전 갱신 이력은 `docs/archive/README.md` 와 각 토픽 COMPLETION-BRIEFING 참고)
 > 운영 / 아키텍처 / 신뢰성 우려 인덱스. 새 항목은 우선순위와 함께 추가, 해소된 항목은 `TODOS.md` 또는 archive briefing 으로 이동.
 
 ## High — Phase 4 진입 차단 가능성
@@ -163,6 +163,14 @@ confirm 결과수신 중 payment DB write 실패 → `events.confirmed`(APPROVED
 - **현황**: 모의 벤더 전략은 `pg.gateway.type=fake` 일 때만 스프링 빈으로 로드된다(`@ConditionalOnProperty`, `FakePgGatewayStrategy.java:68`). 이 값은 `pg-service/src/main/resources/application-docker.yml:21` 에서 `${PG_GATEWAY_TYPE:toss}` 로 환경변수 오버라이드가 가능한 구조라, 스모크 구동용 값이 배포 파이프라인 환경변수에 남으면 그대로 적용된다. 로드되면 `supports()`(`FakePgGatewayStrategy.java:144-148`)가 벤더 종류를 가리지 않고 `TOSS`/`NICEPAY` 요청을 모두 받아들인다 — 사용자가 어느 벤더를 선택했든 모의 벤더가 처리한다.
 - **가드**: `warnActivation()`(`FakePgGatewayStrategy.java`)이 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 을 던져 기동을 멈춘다(BACKLOG-RESIDUE-CLEANUP). 스모크·벤치마크 스택은 `docker,smoke`, pg 통합 테스트는 `test` 프로파일을 갖고 있어 통과하고, 일반 앱 스택에 `fake` 를 주입하면 차단된다.
 - **잔여 한계**: 가드는 활성 프로파일만 본다. 배포 환경에서 프로파일 자체를 `smoke`나 `test`로 조작하면 우회된다. 의도적 조작은 방어 대상이 아니고, 환경변수가 실수로 배포에 남는 사고를 막는 것이 가드의 목표다.
+
+### L-20. 재고 재동기화의 확인~덮어쓰기 창 (수용, 관측으로 대체)
+
+- **현황**: 관리자 단건 resync 는 그 상품의 미종결 선차감 건수를 먼저 세고(`StockHoldRecordRepository.countNoiseByProductId`) 0 이 아니면 거부한다. 확인이 끝난 **뒤** 새로 진입하는 선차감은 구조상 막지 못한다 — 확인과 `StockCachePort.set` 이 원자적이지 않다.
+- **이미 매달린 선차감은 잡힌다**: confirm 진입이 선차감 기록을 먼저 열고 캐시를 나중에 깎으므로(`PaymentTransactionCoordinator`), 확인 시점에 진행 중이던 건은 기록이 먼저 보인다. 격리 종결의 되돌리기와 겹치는 경우도 캐시 복원 후에 기록을 닫아 그 구간 내내 기록이 남는다.
+- **원자화하지 않은 이유**: 락으로 묶으려면 confirm 경로가 같은 락을 잡아야 실효가 있다. 관리자 도구 하나 때문에 돈 경로에 락이 하나 늘어난다.
+- **대체 장치**: 덮어쓴 뒤 같은 조회를 한 번 더 해 사후 건수가 사전보다 크면 겹침을 경고와 응답에 싣는다. **잡히는 것은 재확인 시점까지 열려 있는 겹침뿐**이다 — 그 사이 확정·되돌림으로 닫힌 기록은 두 조회 모두에 안 보인다. 경고가 없다고 겹침이 없었다고 단정하면 안 된다.
+- **최악의 경우**: 게이트가 초과 차감을 통과시켜도 상품 RDB 확정 시점의 음수 가드가 거부해 격리로 간다(PITFALLS #16) — 조용한 과매도로는 가지 않는다.
 
 ## 회피된 우려 (해소 완료, 기록 보존용)
 

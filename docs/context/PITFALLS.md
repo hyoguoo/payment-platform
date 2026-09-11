@@ -1,6 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-7/L-12 인용의 되돌리기 메서드명을 새 이름으로 정정). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
+> 최종 갱신: 2026-09-11 (CLEANUP-BATCH-F — #16 알려진 한계의 재동기화 별건 서술을 도입된 가드 기준으로 정정, 남은 확인~덮어쓰기 창은 CONCERNS L-20 참조로 이관). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-7/L-12 인용의 되돌리기 메서드명을 새 이름으로 정정). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
 > 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
 
 ## 1. AOP 우회 → audit trail 누락
@@ -179,7 +179,7 @@ process(result);  // result 가 null 일 수 있음
 **초과 판매 방어선이 둘이 됐다**: 게이트가 뚫려도 `StockCommitUseCase.commitToRdb` 의 음수 가드가 잔고 차감을 거부한다. 그 예외는 재시도 없이 상품 서비스 격리 토픽(`payment.events.stock-committed.dlq`)으로 가고 적체 알람이 잡는다. 이미 벤더 승인이 난 결제이므로 자동 복구 대상이 아니라 사람이 환불·입고를 판단한다. 가드의 동시성 안전은 재고 확정 통지가 상품번호를 메시지 키로 써 같은 상품 커밋이 직렬화되는 데 기댄다 — **파티션 키를 바꾸면 lost update 가 되살아난다**
 
 **알려진 한계**:
-- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 회수 작업은 payment 자신이 만든 미회수 선차감만 되돌리므로 이 발산은 해소하지 못한다 — 재동기화 정책은 여전히 별건 (TODOS)
+- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 회수 작업은 payment 자신이 만든 미회수 선차감만 되돌리므로 이 발산은 해소하지 못한다 — 보정은 관리자 단건 resync 뿐이다. 그 도구는 미종결 선차감이 있으면 거부하고 `?force=true` 로만 넘긴다. 확인~덮어쓰기 사이 창은 남아 있고(수용, CONCERNS L-20), 덮어쓰기 후 재확인으로 겹침만 드러낸다
 - 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
 
 ## 17. Redis crash + AOF fsync race window
