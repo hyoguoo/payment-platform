@@ -81,4 +81,16 @@ public interface StockHoldRecordRepository {
      * @return 잡음 상태 기록 수
      */
     long countNoise();
+
+    /**
+     * 그 상품의 잡음(NOISE) 상태 기록 건수 — 상품별 재동기화 가드가 진행 중 선차감 여부를
+     * 판정하는 입력이다.
+     *
+     * <p>상품 + 상태 조합 인덱스는 없다. 운영자가 직접 부르는 단발 조회라 상품 수가 늘어나
+     * 스캔 범위가 넓어져도 지금은 감내한다.
+     *
+     * @param productId 상품 번호
+     * @return 그 상품의 잡음 상태 기록 수
+     */
+    long countNoiseByProductId(Long productId);
 }

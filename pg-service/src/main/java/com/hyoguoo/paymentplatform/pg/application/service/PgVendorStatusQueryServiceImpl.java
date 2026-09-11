@@ -43,11 +43,14 @@ public class PgVendorStatusQueryServiceImpl implements PgVendorStatusQueryServic
 
     /**
      * 벤더 상태 조회 결과 중 FAILED 로 매핑되는 PgPaymentStatus 집합.
+     *
+     * <p>부분 취소는 여기서 뺀다 — 자동 확정 관문이 이 상태를 전용 사유로 격리시키는 것과 방향을
+     * 맞추고, 실패로 표시해 운영자가 안전 종결을 누르는 것을 막기 위함이다. 부분 취소는 확인불가로
+     * 접혀 별도 확인을 유도한다.
      */
     private static final Set<PgPaymentStatus> FAILED_STATUSES = Set.of(
             PgPaymentStatus.ABORTED,
             PgPaymentStatus.CANCELED,
-            PgPaymentStatus.PARTIAL_CANCELED,
             PgPaymentStatus.EXPIRED
     );
 

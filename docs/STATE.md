@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-08 (AI-CHANGE-GUARDRAILS 머지 완료)
+> 최종 수정: 2026-09-11
 
 ## 활성 작업
 
@@ -16,6 +16,7 @@
 
 - `architecture.md` 의 FCG 상세 링크가 `pg-confirm-flow` 를 가리키는데 그 문서에 FCG 설명이 없다
 - `message-delivery-and-dedupe.md` 서두가 "DLQ 처리를 다루며"라고 하는데 본문에 DLQ 절이 없다
+- 정리 배치가 끝나면 이어서 처리하기로 했다 (별도 저장소라 같은 PR 에 못 넣는다)
 
 ### 별건 — 블로그 포스팅 진행 상황
 
@@ -24,7 +25,7 @@
 
 ## 최근 완료
 
+- **CLEANUP-BATCH-F** (2026-09-11) — docs/archive/cleanup-batch-f/COMPLETION-BRIEFING.md
 - **AI-CHANGE-GUARDRAILS** (2026-09-08) — docs/archive/ai-change-guardrails/COMPLETION-BRIEFING.md
-- **CONFIRM-RESULT-NONRETRYABLE-STATUS** (2026-09-06) — docs/archive/confirm-result-nonretryable-status/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

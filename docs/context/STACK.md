@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-09-07 (AI 코드 변경 가드레일 — 가드레일 절 신설(훅 4겹·워크플로우 맞물림·미포함 범위·규칙 추가 기준), 코드 스타일 5규칙을 error 승격 + maxWarnings=0 으로 정정, ArchUnit 기각 서술을 담당 영역 분리로 정정). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-09-11 (CLEANUP-BATCH-F — 가드레일 절에 훅 자체 검증 신설(픽스처 12케이스·가짜 gradlew·검사기 준비 확인), CI job 목록에 게이트로 동작하는 hook-guardrail-check 추가, 스크립트 표에 test-hooks.sh 행 추가). 이전: 2026-09-07 (AI 코드 변경 가드레일 — 가드레일 절 신설(훅 4겹·워크플로우 맞물림·미포함 범위·규칙 추가 기준), 코드 스타일 5규칙을 error 승격 + maxWarnings=0 으로 정정, ArchUnit 기각 서술을 담당 영역 분리로 정정). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -122,6 +122,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 | `./gradlew :<svc>:integrationTest` | `@Tag("integration")` 만 |
 | `./scripts/compose-up.sh` | docker compose 전체 스택 기동 |
 | `./scripts/smoke/infra-healthcheck.sh` | 인프라 + 서비스 살아있음 검사 |
+| `./scripts/test-hooks.sh` | `.claude/hooks/` 두 훅의 판정을 픽스처로 검증 (CI `hook-guardrail-check` 게이트가 실행) |
 | `./scripts/seed-stock.sh` | product RDB 재고를 redis-stock 선차감 캐시에 정렬 (기동 직후 1회 가정 — 운영 중 호출은 진행 중 결제의 차감분을 되돌릴 수 있다) |
 
 ## 정적 분석 도구
@@ -172,6 +173,26 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 같은 자리에 판정 로그(`trace.log`)를 남긴다. 어느 이벤트가 어떤 에이전트에서 훅을 돌렸고 무엇으로
 판정했는지 한 줄씩 쌓인다. 이게 없으면 **"훅이 안 떴다"와 "떴는데 통과했다"를 구분할 수 없어**,
 검증 장치가 꺼져도 아무도 모른다. 훅이 실제로 물려 있는지 의심스러우면 이 파일을 먼저 본다.
+
+### 훅 자체 검증
+
+훅은 다른 모든 변경을 검사하는 자리에 있으면서 자신은 어떤 자동 검사도 받지 않았다. 판정 한 줄이
+조용히 무력화돼도 드러나지 않는 구조다. `scripts/test-hooks.sh` 가 픽스처로 두 훅을 직접 호출해
+종료 코드를 확인한다 — 턴 종료 훅 9케이스 + 편집 시점 훅 3케이스.
+
+턴 종료 훅은 변경 모듈의 `test` 를 실제로 돌리므로, 픽스처 저장소에 **가짜 `gradlew`** 를 심어
+통과·실패를 지시하는 방식으로 그 구간을 대체한다. 실제 빌드 없이 판정 로직(읽기 전용 에이전트
+건너뛰기, 종류 미상 종료 이벤트, 변경 없음, 문서만 변경, 지문 재판정, 세션 차단 한도)을 전부
+종료 코드로 확인한다.
+
+편집 시점 훅이 검사기 준비 실패 시 조용히 넘어가는 것(종료 0)은 의도된 동작이라 **바꾸지 않고
+기대 동작으로 함께 고정**한다. 다만 위반 케이스를 돌리기 전에 테스트 쪽이 준비 상태를 확인하고,
+준비되지 않았으면 그 케이스를 건너뛰는 대신 **테스트를 실패로 끝낸다** — 테스트까지 같이 넘어가면
+검사기가 꺼진 채로도 초록불이 뜬다. 스크립트는 픽스처를 스스로 지우고, 실행 전후 작업 트리가
+같은지 확인한다.
+
+CI 에는 `hook-guardrail-check` job 이 이 스크립트를 돌린다. 아래 `agent-docs-check` 와 달리
+**실패시킨다** — 조용한 통과를 막는 것이 목적인데 검사 자체가 조용히 통과하면 의미가 없다.
 
 ### 워크플로우와의 맞물림
 
@@ -227,6 +248,7 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
   - `build-test-lint` job(항상): `./gradlew :<svc>:build -x integrationTest`(컴파일+단위+JaCoCo+checkstyle+spotbugs) → reviewdog 서비스별 인라인(checkstyle/spotbugs) → JaCoCo XML·lint 요약 아티팩트 업로드 → 단위 JUnit Check 리포트 → JaCoCo HTML 아티팩트 → lint gate. **`-x integrationTest` 로 통합을 제외**(단위/통합 막대 분리, `check.dependsOn integrationTest` 끌림 차단).
   - `integration-test` job(`has-integration == true` 일 때만 = payment/pg/product/user): `./gradlew :<svc>:integrationTest`(`org.gradle.test-retry` 통합 한정 `maxRetries=2 maxFailures=3`, `DOCKER_API_VERSION=1.44`) → JUnit 리포트. gateway/eureka 는 통합 job 생략. **Testcontainers reuse 는 비활성** — 같은 job 내 여러 `@SpringBootTest` 클래스가 재사용 컨테이너의 더럽혀진 스키마에 Flyway 를 재적용하면 "non-empty schema but no schema history table" 로 컨텍스트 로드가 깨져, 정합성 우선으로 철회.
 - **`agent-docs-check` job** — 6서비스 fan-out과 무관한 독립 job. `scripts/check-agent-docs.py`(지침 문서 참조 무결성·frontmatter·체크리스트 참조·중복 규칙·Mermaid 금지 문자·고아 문서 판정)를 실행해 결과를 job 로그와 워크플로우 요약에 남긴다. 스크립트가 종료 코드를 0으로 고정하므로 **머지를 막지 않는다** — 게이트 승격 여부는 오탐이 잦아드는지 운용 관찰 후 판단한다. 코드 스타일 5규칙(위 checkstyle `severity=warning`)도 같은 이유로 빌드를 막지 않는 상태라, 승격 판단이 두 검사에 함께 걸려 있다.
+- **`hook-guardrail-check` job** — 6서비스 fan-out과 무관한 독립 job. `scripts/test-hooks.sh` 를 실행해 `.claude/hooks/` 두 훅의 판정을 픽스처로 검증한다. `agent-docs-check` 와 달리 **게이트다** — 실패하면 머지를 막는다. 편집 시점 훅 검증에 Checkstyle CLI classpath 가 필요해 Java 21 · Gradle 준비와 `writeCheckstyleCliClasspath` 단계를 포함한다.
 - **취합 `report` job** — `needs` 6서비스 + `always() && pull_request`. 6서비스 커버리지/lint 아티팩트를 `actions/github-script` + `.github/scripts/report-comment.js` 로 **단일 PR 통합 코멘트**(커버리지 + 테스트수 + lint 요약, `update-comment` 로 난립 방지)로 조립.
 - `spotbugs-to-rdjsonl.py`(spotbugs→reviewdog 변환)는 `_service-ci.yml` 내 서비스별 호출. Discord 알림 없음.
 - **머지 차단**은 각 서비스 `build-test-lint` + `integration-test` job 결과로 결정(`report` 의 `always()` 는 코멘트 전용). GitHub branch protection 의 required status checks 에 각 job 등록이 전제.

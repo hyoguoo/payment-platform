@@ -72,6 +72,7 @@ dependencies {
 }
 
 tasks.register('writeCheckstyleCliClasspath') {
+    dependsOn sourceSets.checkstyleCustomChecks.classesTaskName
     description = '편집 직후 훅이 쓰는 Checkstyle CLI classpath 와 설정 프로퍼티를 기록한다.'
     def classpathFile = layout.buildDirectory.file('checkstyle-cli-classpath.txt')
     def propertiesFile = layout.buildDirectory.file('checkstyle-cli.properties')

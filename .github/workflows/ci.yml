@@ -88,6 +88,34 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ── 가드레일 훅 자체 검증 (게이트) ────────────────────────────────────────
+  # 서비스별로 돌 일이 아니라 6서비스 fan-out 과 독립된 단일 job 으로 둔다.
+  # 위 지침 문서 검사와 달리 이 job 은 실패시킨다 — 훅 판정 로직이 조용히 깨지면
+  # 그 자체를 잡을 장치가 이 job 뿐이다. 편집 시점 checkstyle 훅 검증에 실제
+  # 체크스타일 CLI classpath 가 필요해 Java·Gradle 준비 단계를 포함한다.
+  hook-guardrail-check:
+    name: 가드레일 훅 자체 검증
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Checkstyle CLI classpath 준비
+        run: ./gradlew -q writeCheckstyleCliClasspath
+
+      - name: scripts/test-hooks.sh 실행
+        run: bash scripts/test-hooks.sh
+
   # ── 취합 job (D4 결정 이행) ────────────────────────────────────────────────
   # 6서비스 아티팩트를 수집해 PR 단일 통합 코멘트를 조립한다.
   # always(): 일부 서비스 실패에도 리포트를 남긴다 (O4 — 코멘트 난립 금지).

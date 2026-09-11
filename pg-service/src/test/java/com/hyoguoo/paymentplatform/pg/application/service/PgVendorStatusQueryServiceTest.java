@@ -87,9 +87,39 @@ class PgVendorStatusQueryServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "PARTIAL_CANCELED", "ABORTED", "EXPIRED"})
+    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "ABORTED", "EXPIRED"})
     @DisplayName("벤더 조회 결과가 확정 실패 상태면 실패됨을 반환한다.")
     void 실패_상태면_실패됨을_반환한다(PgPaymentStatus status) {
+        // given
+        given(pgStatusLookupPort.getStatusByOrderId(ORDER_ID)).willReturn(statusResult(status));
+
+        // when
+        PgVendorStatusView result = service.getVendorStatus(ORDER_ID);
+
+        // then
+        assertThat(result.judgement()).isEqualTo(PgVendorStatusJudgement.FAILED);
+        assertThat(result.vendorStatus()).isEqualTo(status.name());
+    }
+
+    @Test
+    @DisplayName("벤더 조회 결과가 부분 취소면 확인불가를 반환한다.")
+    void getVendorStatus_부분취소는_확인불가로_판정한다() {
+        // given
+        given(pgStatusLookupPort.getStatusByOrderId(ORDER_ID))
+                .willReturn(statusResult(PgPaymentStatus.PARTIAL_CANCELED));
+
+        // when
+        PgVendorStatusView result = service.getVendorStatus(ORDER_ID);
+
+        // then
+        assertThat(result.judgement()).isEqualTo(PgVendorStatusJudgement.UNKNOWN);
+        assertThat(result.vendorStatus()).isEqualTo("PARTIAL_CANCELED");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PgPaymentStatus.class, names = {"CANCELED", "ABORTED", "EXPIRED"})
+    @DisplayName("부분 취소를 제외한 나머지 실패 상태는 실패됨을 유지한다.")
+    void getVendorStatus_나머지_실패상태는_실패로_유지된다(PgPaymentStatus status) {
         // given
         given(pgStatusLookupPort.getStatusByOrderId(ORDER_ID)).willReturn(statusResult(status));
 
