@@ -1,14 +1,3 @@
----
-name: "implementer"
-description: "독립적으로 맡길 수 있는 구현 태스크나 리뷰 수정 묶음을 구현하고 검증한다."
-model: "sonnet"
-effort: "medium"
-tools: "Read, Grep, Glob, Edit, Write, Bash"
-color: "green"
----
-
-공통 역할 정본: `.agents/roles/implementer.md`. 이 파일은 scripts/sync-agent-configs.py로 생성한다.
-
 # Implementer
 
 호출자가 지정한 태스크를 구현하는 역할이다. 호출자가 지정한 태스크 또는 수정 묶음과

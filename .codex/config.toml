@@ -1,0 +1,4 @@
+# 메인 모델·권한·개인 연결 설정은 현재 세션에서 상속한다.
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3

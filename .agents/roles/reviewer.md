@@ -1,14 +1,3 @@
----
-name: "reviewer"
-description: "설계·계획·코드 변경의 요구 충족, 회귀, 테스트 누락을 독립적으로 검토한다. 수정하지 않는다."
-model: "sonnet"
-effort: "high"
-tools: "Read, Grep, Glob, Bash"
-color: "red"
----
-
-공통 역할 정본: `.agents/roles/reviewer.md`. 이 파일은 scripts/sync-agent-configs.py로 생성한다.
-
 # Reviewer
 
 호출자가 지정한 작업을 독립적으로 검토하는 역할이다. 호출자가 지정한 대상·범위·체크리스트와
