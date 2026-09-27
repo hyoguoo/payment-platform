@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""check-agent-docs.py — 에이전트 지침 문서(CLAUDE.md / .claude / docs/context) 정합성 점검.
+"""check-agent-docs.py — AGENTS.md / 스킬 / Claude 호환 설정 / context 정합성 점검.
 
-판정 6종:
+판정 7종:
   1. 참조 무결성 — 마크다운 링크 `[text](path)` 와 파일 경로 형태의 백틱 스팬(`a/b.md`)이
      실제 파일/디렉터리로 해석되는지 확인한다. 펜스(```) 코드 블록 내부, 공백 포함 문자열,
      URL, placeholder(`<...>`/`{...}`/`*`/`$`)는 검사 대상에서 제외한다.
-  2. frontmatter 필수 필드 — `.claude/skills/*/SKILL.md` 는 name/description,
+  2. frontmatter 필수 필드 — `.agents/skills/*/SKILL.md` 는 name/description,
      `.claude/agents/*.md` 는 name/description/model/tools 가 있는지 확인한다.
   3. 체크리스트 참조 — 문서가 지정한 체크리스트 파일이 실재하고, 함께 언급한 섹션 제목이
      그 파일의 헤딩에 존재하는지 확인한다(도메인 검토자 stage 매핑 표의 3열 형식과
@@ -17,22 +17,26 @@
   5. Mermaid 금지 문자 — ```mermaid 펜스 안 노드 라벨(`[...]`/`(...)`/`{...}`)과
      엣지 라벨(`|...|`) 안에 중괄호 · 가운뎃점(U+00B7) · 유니코드 화살표(U+2192)가
      있는지 확인한다.
-  6. 고아 문서 — `.claude/` 하위 마크다운 중 어디서도 참조되지 않는 파일을 찾는다.
+  6. 고아 문서 — `.agents/`와 `.claude/` 하위에서 참조되지 않는 파일을 찾는다.
      `SKILL.md`/`.claude/agents/*.md`는 frontmatter 로 자동 탐색되는 진입점이라 제외한다.
+  7. 역할 설정 동기화 — 공통 역할·모델 정본과 Claude/Codex 생성 파일의 일치를 확인한다.
 
-판정 4(중복 규칙)·1(참조 무결성)은 작업 완료 조건(0건)이고, 판정 5·6 은 정보 제공용이다.
-이 스크립트는 어느 판정이든 종료 코드로 작업을 막지 않는다 — 항상 0으로 끝난다.
+기본 실행은 정보 제공용으로 항상 0을 반환한다. --strict는 판정 1~4·7 오류에 1을 반환한다.
+판정 5·6은 정보 제공용이다. 호환 심볼릭 링크는 실제 경로로 중복 제거한다.
 
 실행:  python3 scripts/check-agent-docs.py
 """
+import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SCAN_ROOTS = [
-    REPO_ROOT / "CLAUDE.md",
+    REPO_ROOT / "AGENTS.md",
+    REPO_ROOT / ".agents",
     REPO_ROOT / ".claude",
     REPO_ROOT / "docs" / "context",
 ]
@@ -45,14 +49,14 @@ BACKTICK_PATH_EXTENSIONS = {
     ".gradle", ".toml", ".conf", ".sql", ".txt",
 }
 
-CHECKLIST_DIR = REPO_ROOT / ".claude" / "skills" / "_shared" / "checklists"
+CHECKLIST_DIR = REPO_ROOT / ".agents" / "skills" / "_shared" / "checklists"
 CHECKLIST_NAMES = ("discuss-ready.md", "plan-ready.md", "code-ready.md", "ship-ready.md")
 SECTION_KEYWORDS = ("섹션", "항목")
 
-# 여러 스킬 문서가 `.claude/skills/_shared/` 하위를 "_shared/..." 또는 접두사 없이
+# 여러 스킬 문서가 `.agents/skills/_shared/` 하위를 "_shared/..." 또는 접두사 없이
 # "conventions/..."/"checklists/..." 로 줄여 쓴다 — 참조 파일 기준 상대경로로는 안 풀리는
 # 통용 축약이라 별도 앵커로 추가 시도한다.
-SHARED_DIR = REPO_ROOT / ".claude" / "skills" / "_shared"
+SHARED_DIR = REPO_ROOT / ".agents" / "skills" / "_shared"
 SPECIAL_ANCHOR_SEGMENTS = {"conventions", "checklists", "_shared"}
 TOP_LEVEL_ENTRIES = {p.name for p in REPO_ROOT.iterdir()}
 
@@ -97,7 +101,7 @@ DUPLICATE_RULES = [
     },
     {
         "name": "도메인 검토자 배차 2갈래 조건",
-        "canonical": ".claude/skills/_shared/checklists/discuss-ready.md",
+        "canonical": ".agents/skills/_shared/checklists/discuss-ready.md",
         "phrases": [
             "소스 코드 또는 런타임 설정(알람 규칙·Kafka 설정·스케줄러 등) 변경을 계획",
             "결제 도메인 동작(상태 전이·멱등성·복구·정산)을 서술·정정",
@@ -105,7 +109,7 @@ DUPLICATE_RULES = [
     },
     {
         "name": "문체 종결 규칙",
-        "canonical": ".claude/skills/_shared/conventions/writing-style.md",
+        "canonical": ".agents/skills/_shared/conventions/writing-style.md",
         "phrases": ["로 끝내거나 명사형으로 끝낸다"],
     },
 ]
@@ -130,7 +134,7 @@ MERMAID_LABEL_RES = [
 ]
 
 # 판정 6: 고아 문서 — SKILL.md/agents/*.md 는 frontmatter 로 자동 탐색되는 진입점이라 제외.
-ORPHAN_SCAN_ROOT = REPO_ROOT / ".claude"
+ORPHAN_SCAN_ROOTS = [REPO_ROOT / ".agents", REPO_ROOT / ".claude"]
 
 
 def rel(path):
@@ -144,7 +148,12 @@ def iter_markdown_files():
             files.append(root)
         elif root.is_dir():
             files.extend(sorted(root.rglob("*.md")))
-    return files
+    return unique_paths(files)
+
+
+def unique_paths(paths):
+    """같은 실제 파일을 가리키는 호환 링크를 한 번만 검사한다."""
+    return list(dict.fromkeys(path.resolve() for path in paths))
 
 
 def strip_fenced_code(lines):
@@ -187,7 +196,7 @@ def is_path_shaped(candidate):
 
 def path_candidates(path_part, base_dir):
     """경로 후보를 우선순위대로 나열한다: 레포 루트 → 참조 파일 기준 → 그 상위 →
-    `.claude/skills/_shared/` 앵커(두 경로가 그 하위를 접두사 유무 섞어 축약 참조한다)."""
+    `.agents/skills/_shared/` 앵커(두 경로가 그 하위를 접두사 유무 섞어 축약 참조한다)."""
     if path_part.startswith("/"):
         path_part = path_part.lstrip("/")
     return [
@@ -286,7 +295,10 @@ def check_frontmatter():
     checked = 0
     issues = []
 
-    skill_files = sorted((REPO_ROOT / ".claude" / "skills").glob("*/SKILL.md"))
+    skill_files = unique_paths([
+        *sorted((REPO_ROOT / ".agents" / "skills").glob("*/SKILL.md")),
+        *sorted((REPO_ROOT / ".claude" / "skills").glob("*/SKILL.md")),
+    ])
     for path in skill_files:
         checked += 1
         keys = parse_frontmatter_keys(path)
@@ -524,7 +536,9 @@ def check_orphan_docs(files):
     referenced = collect_referenced_paths(files)
 
     candidates = [
-        p for p in sorted(ORPHAN_SCAN_ROOT.rglob("*.md"))
+        p for p in unique_paths(
+            p for root in ORPHAN_SCAN_ROOTS for p in sorted(root.rglob("*.md"))
+        )
         if p.name != "SKILL.md" and p.parent.name != "agents"
     ]
     checked = len(candidates)
@@ -539,9 +553,22 @@ def report(title, checked, issues):
     print()
 
 
-def main():
+def check_role_configs():
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts/sync-agent-configs.py"), "--check"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        return 1, [(result.stdout + result.stderr).strip() or "역할 설정 검사 실패"]
+    return 1, []
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--strict", action="store_true", help="판정 1~4·7 오류가 있으면 종료 코드 1")
+    args = parser.parse_args(argv)
     files = iter_markdown_files()
-    print(f"검사 대상 문서 {len(files)}개 (CLAUDE.md, .claude/**/*.md, docs/context/**/*.md)\n")
+    print(f"검사 대상 문서 {len(files)}개 (AGENTS.md, .agents, .claude, docs/context)\n")
 
     ref_checked, ref_broken = check_references(files)
     report("1. 참조 무결성", ref_checked, ref_broken)
@@ -561,14 +588,17 @@ def main():
     orphan_checked, orphan_issues = check_orphan_docs(files)
     report("6. 고아 문서", orphan_checked, orphan_issues)
 
+    role_checked, role_issues = check_role_configs()
+    report("7. 역할 설정 동기화", role_checked, role_issues)
+
     total_issues = (
         len(ref_broken) + len(fm_broken) + len(checklist_broken)
-        + len(dup_issues) + len(mermaid_issues) + len(orphan_issues)
+        + len(dup_issues) + len(mermaid_issues) + len(orphan_issues) + len(role_issues)
     )
     print(f"총 문제 {total_issues}건")
 
-    # 정보 제공용 도구 — 판정 결과와 무관하게 항상 0으로 종료해 작업을 막지 않는다.
-    return 0
+    blocking_issues = ref_broken + fm_broken + checklist_broken + dup_issues + role_issues
+    return 1 if args.strict and blocking_issues else 0
 
 
 if __name__ == "__main__":

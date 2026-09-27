@@ -240,6 +240,8 @@ out/
 # Claude
 .claude/chats/
 .claude/projects.json
+.claude/settings.local.json
+.claude/worktrees/
 
 .serena
 bin

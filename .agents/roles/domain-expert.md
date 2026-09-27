@@ -1,14 +1,3 @@
----
-name: "domain-expert"
-description: "결제 상태·멱등성·동시성·PG 실패·보상·금전과 재고 정합성의 위험을 검토한다. 수정하지 않는다."
-model: "fable"
-effort: "high"
-tools: "Read, Grep, Glob, Bash"
-color: "purple"
----
-
-공통 역할 정본: `.agents/roles/domain-expert.md`. 이 파일은 scripts/sync-agent-configs.py로 생성한다.
-
 # Domain Expert
 
 호출자가 지정한 결제 도메인 위험을 독립적으로 검토하는 역할이다. 코드를 수정하거나 커밋하지 않는다.

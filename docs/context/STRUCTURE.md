@@ -1,6 +1,6 @@
 # Codebase Structure
 
-> 최종 갱신: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — 결제 상태 조회 포트/어댑터, 읽기 복제본 데이터소스 설정 3행 추가). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `dedupe/` 디렉토리 설명에서 pg 항목 제거, 실제 어댑터를 가진 payment·product 만 남김). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
+> 최종 갱신: 2026-09-27 (공통 AGENTS 지침과 스킬 경로 반영). 이전: 2026-09-01 (SHARED-RESOURCE-SCALEOUT ship — 결제 상태 조회 포트/어댑터, 읽기 복제본 데이터소스 설정 3행 추가). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `dedupe/` 디렉토리 설명에서 pg 항목 제거, 실제 어댑터를 가진 payment·product 만 남김). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 빌드 트리거 절을 `STACK.md` 참조로 교체(`./gradlew test` 범위를 "단위+통합"으로 잘못 서술하던 정면 모순 정정) + JaCoCo 설정 위치 정정("모듈별" → 루트 `build.gradle` `subprojects` 공통)). 이전: 2026-06-23 (코드 대조 — presentation/ 직속 controller 표기 정정)
 
 ## 루트 레이아웃
 
@@ -9,7 +9,10 @@ payment-platform/
 ├── settings.gradle               # 6개 Gradle 모듈 등록
 ├── build.gradle                  # 루트 빌드 설정 (공통 plugin · BOM · 컴파일 옵션)
 ├── lombok.config                 # Lombok 글로벌 설정
-├── CLAUDE.md                     # AI 에이전트 가이드 (영구 문서 인덱스)
+├── AGENTS.md                     # 공통 에이전트 지침·검증·문서 진입점
+├── .agents/                      # skills/·roles/·roles.toml 공통 원본
+├── .codex/                       # Codex 실행 설정·생성된 역할 파일
+├── .claude/                      # Claude 실행 설정·생성된 역할·공통 skills 링크
 ├── README.md                     # 프로젝트 README
 │
 ├── config/                       # 정적 분석 룰
