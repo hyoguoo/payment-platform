@@ -4,7 +4,11 @@
 
 ## 활성 작업
 
-없음.
+- **CI-INTEGRATION-TEST-SHARDING — payment 통합 테스트 shard 균형 재조정**
+  - 단계: execute (T6 — 3개 runner 안에서 느린 테스트 클래스 분산, PR CI 실측)
+  - 이슈: [#158](https://github.com/hyoguoo/payment-platform/issues/158), PR: [#159](https://github.com/hyoguoo/payment-platform/pull/159), 브랜치: `#158`
+  - 계획: [docs/archive/ci-integration-test-sharding/CI-INTEGRATION-TEST-SHARDING-PLAN.md](archive/ci-integration-test-sharding/CI-INTEGRATION-TEST-SHARDING-PLAN.md)
+  - 재개 지점: 첫 개선은 모든 게이트 통과(전체 7분 59초·8분 34초). T6 후보 seed의 전수 배정과 PR CI 완료 시간·테스트 수를 확인한다.
 
 ## 재개 메모
 
@@ -25,7 +29,7 @@
 
 ## 최근 완료
 
-- **CI-INTEGRATION-TEST-SHARDING** (2026-09-28) — docs/archive/ci-integration-test-sharding/COMPLETION-BRIEFING.md
 - **CLEANUP-BATCH-F** (2026-09-11) — docs/archive/cleanup-batch-f/COMPLETION-BRIEFING.md
+- **AI-CHANGE-GUARDRAILS** (2026-09-08) — docs/archive/ai-change-guardrails/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
