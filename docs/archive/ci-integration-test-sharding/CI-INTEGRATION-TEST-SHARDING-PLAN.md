@@ -1,6 +1,6 @@
 # CI 통합 테스트 분할 계획
 
-관련 설계: [CI-INTEGRATION-TEST-SHARDING.md](topics/CI-INTEGRATION-TEST-SHARDING.md)
+관련 설계: [CI-INTEGRATION-TEST-SHARDING.md](CI-INTEGRATION-TEST-SHARDING.md)
 
 이슈: [#158](https://github.com/hyoguoo/payment-platform/issues/158)
 
@@ -25,15 +25,20 @@
   결과: actionlint 통과, payment 153개·pg 77개 클래스 전수 배정. dry-run XML은
   payment 86건(85개 고유 이름), pg 16건이며 shard 합계와 각 이름의 횟수가 전체 실행과 같다.
   dry-run은 반복·매개변수 테스트 호출을 모두 펼치지 않아 실제 전체 건수는 T4에서 검증한다.
-- [ ] **T4 — GitHub PR 실측** (`tdd=false`, `domain_risk=false`):
+- [x] **T4 — GitHub PR 실측** (`tdd=false`, `domain_risk=false`):
   브랜치를 게시하고 PR CI에서 모든 shard·기존 게이트·JUnit Check를 확인한다.
   payment 718건·pg 62건의 최근 기준 실행과 실제 테스트 건수를 비교한다.
   기준 PR #157과 전체 경과 시간을 비교해 실제 개선 폭을 기록한다.
-- [ ] **T5 — 문서 동기화와 마무리** (`tdd=false`, `domain_risk=false`):
+  결과: PR #159 실행 [36353575253](https://github.com/hyoguoo/payment-platform/actions/runs/36353575253)에서
+  모든 job·shard·JUnit Check 통과. payment 126+556+36=718건, pg 34+28=62건.
+  전체 7분 59초로 기준 PR #157의 11분 42초보다 3분 43초(약 32%) 단축됐다.
+- [x] **T5 — 문서 동기화와 마무리** (`tdd=false`, `domain_risk=false`):
   `docs/context/STACK.md`의 CI 토폴로지를 코드와 맞추고 문서 검사를 실행한다.
   리뷰·검증 결과를 완료 브리핑에 기록하고 설계·계획을 아카이브한다.
+  결과: `STACK.md`·`TESTING.md` 동기화, 엄격 문서 검사 문제 0건, 설계·계획·브리핑 아카이브.
 
 ## 리뷰 처리
 
 - T2/T3의 독립 리뷰: dry-run이 반복·매개변수 테스트를 펼치지 않아 전체 실제 건수의
   증거로 부족하다는 지적을 반영해 T3 완료 기준과 T4 검증을 분리했다.
+- 실제 PR 실행에서 두 서비스의 전체 테스트 건수와 모든 JUnit Check 통과를 확인했다.
