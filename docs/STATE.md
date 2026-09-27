@@ -1,10 +1,15 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-11
+> 최종 수정: 2026-09-28
 
 ## 활성 작업
 
-없음.
+- **CI-INTEGRATION-TEST-SHARDING — CI 통합 테스트 실행 시간 단축**
+  - 단계: execute (T4 — GitHub PR에서 통합 테스트 shard와 전체 경과 시간 실측)
+  - 이슈: [#158](https://github.com/hyoguoo/payment-platform/issues/158), 브랜치: `#158`
+  - 설계: [docs/topics/CI-INTEGRATION-TEST-SHARDING.md](topics/CI-INTEGRATION-TEST-SHARDING.md)
+  - 계획: [docs/CI-INTEGRATION-TEST-SHARDING-PLAN.md](CI-INTEGRATION-TEST-SHARDING-PLAN.md)
+  - 재개 지점: T1~T3 완료. T4에서 PR 실행 결과와 JUnit Check를 확인한 뒤 T5 문서·아카이브를 진행한다.
 
 ## 재개 메모
 
