@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 최종 수정: 2026-09-11
+> 최종 수정: 2026-09-28
 
 ## 활성 작업
 
@@ -25,7 +25,7 @@
 
 ## 최근 완료
 
+- **CI-INTEGRATION-TEST-SHARDING** (2026-09-28) — docs/archive/ci-integration-test-sharding/COMPLETION-BRIEFING.md
 - **CLEANUP-BATCH-F** (2026-09-11) — docs/archive/cleanup-batch-f/COMPLETION-BRIEFING.md
-- **AI-CHANGE-GUARDRAILS** (2026-09-08) — docs/archive/ai-change-guardrails/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

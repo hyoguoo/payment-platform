@@ -27,6 +27,8 @@ jobs:
     with:
       service: payment-service
       has-integration: true
+      integration-shards: '[1, 2, 3]'
+      integration-shard-count: 3
     secrets: inherit
 
   pg:
@@ -34,6 +36,8 @@ jobs:
     with:
       service: pg-service
       has-integration: true
+      integration-shards: '[1, 2]'
+      integration-shard-count: 2
     secrets: inherit
 
   product:

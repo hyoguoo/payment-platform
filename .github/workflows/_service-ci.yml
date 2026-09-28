@@ -11,6 +11,14 @@ on:
         description: 'integrationTest 태스크 보유 여부 — true 이면 integration-test job 실행'
         type: boolean
         required: true
+      integration-shards:
+        description: '통합 테스트 shard 번호의 JSON 배열'
+        type: string
+        default: '[1]'
+      integration-shard-count:
+        description: '통합 테스트 shard 총 개수'
+        type: number
+        default: 1
 
 permissions:
   contents: read
@@ -194,10 +202,14 @@ jobs:
   # "non-empty schema but no schema history table" 로 컨텍스트 로드가 깨진다.
   # 정합성(클래스별 깨끗한 DB) 우선 — 컨테이너 재사용 최적화는 철회한다.
   integration-test:
-    name: Integration Test (${{ inputs.service }})
+    name: Integration Test (${{ inputs.service }}, ${{ matrix.shard }}/${{ inputs.integration-shard-count }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: ${{ inputs.has-integration }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.integration-shards) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -211,8 +223,24 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Compile test classes for sharding
+        if: ${{ inputs.integration-shard-count > 1 }}
+        run: ./gradlew :${{ inputs.service }}:testClasses
+
       - name: Run Integration Tests
+        if: ${{ inputs.integration-shard-count == 1 }}
         run: ./gradlew :${{ inputs.service }}:integrationTest
+        env:
+          DOCKER_API_VERSION: '1.44'
+
+      - name: Run Integration Tests (shard ${{ matrix.shard }}/${{ inputs.integration-shard-count }})
+        if: ${{ inputs.integration-shard-count > 1 }}
+        run: |
+          python3 scripts/ci-integration-shard.py \
+            '${{ inputs.service }}' '${{ matrix.shard }}' '${{ inputs.integration-shard-count }}' \
+            > /tmp/integration-test-selectors
+          mapfile -t selectors < /tmp/integration-test-selectors
+          ./gradlew :${{ inputs.service }}:integrationTest "${selectors[@]}"
         env:
           DOCKER_API_VERSION: '1.44'
 
@@ -222,4 +250,4 @@ jobs:
         with:
           report_paths: ${{ inputs.service }}/build/test-results/integrationTest/**/*.xml
           token: ${{ secrets.GITHUB_TOKEN }}
-          check_name: JUnit Integration Test Report (${{ inputs.service }})
+          check_name: JUnit Integration Test Report (${{ inputs.service }}, ${{ matrix.shard }}/${{ inputs.integration-shard-count }})
