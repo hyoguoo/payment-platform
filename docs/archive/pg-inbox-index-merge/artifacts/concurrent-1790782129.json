@@ -1,0 +1,191 @@
+{
+  "run": "1790782129",
+  "workers": 10,
+  "iterations_per_worker": 500,
+  "counts": {
+    "attempts": 5000,
+    "approved": 4972,
+    "deadlocks": 28,
+    "other_errors": 0,
+    "setup_deadlocks": 0,
+    "retry_deadlocks": 0,
+    "worker_failures": 0
+  },
+  "elapsed_seconds": 107.98021666600835,
+  "errors": [
+    {
+      "worker": 2,
+      "iteration": 40,
+      "order": "run-1790782129-2-40",
+      "error": "ERROR 1213 (40001) at line 575: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 5,
+      "iteration": 48,
+      "order": "run-1790782129-5-48",
+      "error": "ERROR 1213 (40001) at line 687: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 7,
+      "iteration": 52,
+      "order": "run-1790782129-7-52",
+      "error": "ERROR 1213 (40001) at line 743: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 4,
+      "iteration": 68,
+      "order": "run-1790782129-4-68",
+      "error": "ERROR 1213 (40001) at line 967: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 5,
+      "iteration": 74,
+      "order": "run-1790782129-5-74",
+      "error": "ERROR 1213 (40001) at line 1057: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 5,
+      "iteration": 81,
+      "order": "run-1790782129-5-81",
+      "error": "ERROR 1213 (40001) at line 1159: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 5,
+      "iteration": 89,
+      "order": "run-1790782129-5-89",
+      "error": "ERROR 1213 (40001) at line 1275: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 3,
+      "iteration": 87,
+      "order": "run-1790782129-3-87",
+      "error": "ERROR 1213 (40001) at line 1233: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 6,
+      "iteration": 96,
+      "order": "run-1790782129-6-96",
+      "error": "ERROR 1213 (40001) at line 1359: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 1,
+      "iteration": 100,
+      "order": "run-1790782129-1-100",
+      "error": "ERROR 1213 (40001) at line 1415: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 4,
+      "iteration": 127,
+      "order": "run-1790782129-4-127",
+      "error": "ERROR 1213 (40001) at line 1797: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 0,
+      "iteration": 147,
+      "order": "run-1790782129-0-147",
+      "error": "ERROR 1213 (40001) at line 2093: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 3,
+      "iteration": 154,
+      "order": "run-1790782129-3-154",
+      "error": "ERROR 1213 (40001) at line 2175: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 6,
+      "iteration": 207,
+      "order": "run-1790782129-6-207",
+      "error": "ERROR 1213 (40001) at line 2917: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 3,
+      "iteration": 207,
+      "order": "run-1790782129-3-207",
+      "error": "ERROR 1213 (40001) at line 2921: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 9,
+      "iteration": 224,
+      "order": "run-1790782129-9-224",
+      "error": "ERROR 1213 (40001) at line 3151: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 8,
+      "iteration": 319,
+      "order": "run-1790782129-8-319",
+      "error": "ERROR 1213 (40001) at line 4481: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 3,
+      "iteration": 358,
+      "order": "run-1790782129-3-358",
+      "error": "ERROR 1213 (40001) at line 5039: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 6,
+      "iteration": 383,
+      "order": "run-1790782129-6-383",
+      "error": "ERROR 1213 (40001) at line 5385: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 8,
+      "iteration": 387,
+      "order": "run-1790782129-8-387",
+      "error": "ERROR 1213 (40001) at line 5437: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 0,
+      "iteration": 386,
+      "order": "run-1790782129-0-386",
+      "error": "ERROR 1213 (40001) at line 5453: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 2,
+      "iteration": 398,
+      "order": "run-1790782129-2-398",
+      "error": "ERROR 1213 (40001) at line 5593: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 6,
+      "iteration": 390,
+      "order": "run-1790782129-6-390",
+      "error": "ERROR 1213 (40001) at line 5487: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 8,
+      "iteration": 412,
+      "order": "run-1790782129-8-412",
+      "error": "ERROR 1213 (40001) at line 5791: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 5,
+      "iteration": 458,
+      "order": "run-1790782129-5-458",
+      "error": "ERROR 1213 (40001) at line 6445: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 0,
+      "iteration": 460,
+      "order": "run-1790782129-0-460",
+      "error": "ERROR 1213 (40001) at line 6493: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 1,
+      "iteration": 467,
+      "order": "run-1790782129-1-467",
+      "error": "ERROR 1213 (40001) at line 6557: Deadlock found when trying to get lock; try restarting transaction"
+    },
+    {
+      "worker": 7,
+      "iteration": 495,
+      "order": "run-1790782129-7-495",
+      "error": "ERROR 1213 (40001) at line 6951: Deadlock found when trying to get lock; try restarting transaction"
+    }
+  ],
+  "external_delay_ms": [
+    100,
+    300
+  ],
+  "schema": "pg_inbox\tCREATE TABLE `pg_inbox` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `order_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `status` enum('PENDING','IN_PROGRESS','APPROVED','FAILED','QUARANTINED') COLLATE utf8mb4_unicode_ci NOT NULL,\n  `amount` bigint NOT NULL,\n  `stored_status_result` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `reason_code` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` datetime(6) NOT NULL,\n  `updated_at` datetime(6) NOT NULL,\n  `payment_key` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '벤더 결제 키 (PENDING INSERT 시 기록)',\n  `vendor_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '벤더 타입 (e.g., TOSS_PAYMENTS)',\n  `stored_traceparent` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `attempt` int NOT NULL DEFAULT '1',\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `ux_pg_inbox_order_id` (`order_id`),\n  KEY `idx_pg_inbox_status` (`status`)\n) ENGINE=InnoDB AUTO_INCREMENT=507132 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  "distribution": "PENDING\t6\nAPPROVED\t507125"
+}

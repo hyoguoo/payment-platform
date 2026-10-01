@@ -1,0 +1,466 @@
+[
+  {
+    "label": "ip-1-case-0-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-1-case-0-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-2-case-2-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-2-case-2-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10-case-4-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10-case-4-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-100-case-6-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-100-case-6-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "index_merge",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "intersect(ux_pg_inbox_order_id,idx_pg_inbox_status)",
+          "key_length": "402,1",
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "using_temporary_table": "for update",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-1000-case-8-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-1000-case-8-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10000-case-10-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10000-case-10-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-100000-case-12-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-100000-case-12-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-500000-case-14-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-500000-case-14-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10-case-16-before-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  },
+  {
+    "label": "ip-10-case-16-after-analyze",
+    "plan": {
+      "query_block": {
+        "select_id": 1,
+        "table": {
+          "update": true,
+          "table_name": "pg_inbox",
+          "access_type": "range",
+          "possible_keys": [
+            "ux_pg_inbox_order_id",
+            "idx_pg_inbox_status"
+          ],
+          "key": "ux_pg_inbox_order_id",
+          "used_key_parts": [
+            "order_id"
+          ],
+          "key_length": "402",
+          "ref": [
+            "const"
+          ],
+          "rows_examined_per_scan": 1,
+          "filtered": "100.00",
+          "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+        }
+      }
+    }
+  }
+]

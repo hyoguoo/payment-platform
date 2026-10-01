@@ -1,0 +1,58 @@
+{
+  "label": "ip-10000-case-10-before-analyze",
+  "sql": "UPDATE pg_inbox SET status='APPROVED',stored_status_result='{}',updated_at=NOW(6) WHERE order_id='order-0500000' AND status='IN_PROGRESS'",
+  "plan": {
+    "query_block": {
+      "select_id": 1,
+      "table": {
+        "update": true,
+        "table_name": "pg_inbox",
+        "access_type": "range",
+        "possible_keys": [
+          "ux_pg_inbox_order_id",
+          "idx_pg_inbox_status"
+        ],
+        "key": "ux_pg_inbox_order_id",
+        "used_key_parts": [
+          "order_id"
+        ],
+        "key_length": "402",
+        "ref": [
+          "const"
+        ],
+        "rows_examined_per_scan": 1,
+        "filtered": "100.00",
+        "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'order-0500000') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+      }
+    }
+  },
+  "trace": {
+    "steps": [
+      {
+        "join_preparation": {
+          "select#": 1,
+          "steps": [
+            {
+              "expanded_query": "/* select#1 */ select '__CODEX_END_70__' AS `__CODEX_END_70__`"
+            }
+          ]
+        }
+      },
+      {
+        "join_optimization": {
+          "select#": 1,
+          "steps": []
+        }
+      },
+      {
+        "join_execution": {
+          "select#": 1,
+          "steps": []
+        }
+      }
+    ]
+  },
+  "missing_bytes": "0",
+  "trace_capture_valid": false,
+  "trace_capture_note": "Initial harness SELECT delimiter overwrote optimizer trace. EXPLAIN plan is valid; this trace cannot explain its selection. See trace-probe-current.json and subsequent concurrent traces."
+}

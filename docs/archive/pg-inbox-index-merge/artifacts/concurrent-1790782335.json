@@ -1,0 +1,22 @@
+{
+  "run": "1790782335",
+  "workers": 10,
+  "iterations_per_worker": 500,
+  "counts": {
+    "attempts": 5000,
+    "approved": 5000,
+    "deadlocks": 0,
+    "other_errors": 0,
+    "setup_deadlocks": 0,
+    "retry_deadlocks": 0,
+    "worker_failures": 0
+  },
+  "elapsed_seconds": 107.96383408400288,
+  "errors": [],
+  "external_delay_ms": [
+    100,
+    300
+  ],
+  "schema": "pg_inbox\tCREATE TABLE `pg_inbox` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `order_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `status` enum('PENDING','IN_PROGRESS','APPROVED','FAILED','QUARANTINED') COLLATE utf8mb4_unicode_ci NOT NULL,\n  `amount` bigint NOT NULL,\n  `stored_status_result` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `reason_code` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` datetime(6) NOT NULL,\n  `updated_at` datetime(6) NOT NULL,\n  `payment_key` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '벤더 결제 키 (PENDING INSERT 시 기록)',\n  `vendor_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '벤더 타입 (e.g., TOSS_PAYMENTS)',\n  `stored_traceparent` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `attempt` int NOT NULL DEFAULT '1',\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `ux_pg_inbox_order_id` (`order_id`),\n  KEY `idx_pg_inbox_status_updated_at` (`status`,`updated_at`)\n) ENGINE=InnoDB AUTO_INCREMENT=512132 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  "distribution": "PENDING\t6\nAPPROVED\t512125"
+}

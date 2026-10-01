@@ -1,0 +1,158 @@
+{
+  "label": "concurrent-1790782335-250",
+  "sql": "UPDATE pg_inbox SET status='APPROVED',stored_status_result='{}',updated_at=NOW(6) WHERE order_id='run-1790782335-0-250' AND status='IN_PROGRESS'",
+  "plan": {
+    "query_block": {
+      "select_id": 1,
+      "table": {
+        "update": true,
+        "table_name": "pg_inbox",
+        "access_type": "range",
+        "possible_keys": [
+          "ux_pg_inbox_order_id",
+          "idx_pg_inbox_status_updated_at"
+        ],
+        "key": "ux_pg_inbox_order_id",
+        "used_key_parts": [
+          "order_id"
+        ],
+        "key_length": "402",
+        "ref": [
+          "const"
+        ],
+        "rows_examined_per_scan": 1,
+        "filtered": "100.00",
+        "attached_condition": "((`codex_pg_index_merge_20261001`.`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`codex_pg_index_merge_20261001`.`pg_inbox`.`status` = 'IN_PROGRESS'))"
+      }
+    }
+  },
+  "trace": {
+    "steps": [
+      {
+        "update_preparation": {
+          "select#": 1,
+          "steps": [
+            "update `pg_inbox` set `pg_inbox`.`status` = 'APPROVED',`pg_inbox`.`stored_status_result` = '{}',`pg_inbox`.`updated_at` = now(6) where ((`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`pg_inbox`.`status` = 'IN_PROGRESS'))"
+          ]
+        }
+      },
+      {
+        "substitute_generated_columns": {}
+      },
+      {
+        "condition_processing": {
+          "condition": "WHERE",
+          "original_condition": "((`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`pg_inbox`.`status` = 'IN_PROGRESS'))",
+          "steps": [
+            {
+              "transformation": "equality_propagation",
+              "resulting_condition": "((`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`pg_inbox`.`status` = 'IN_PROGRESS'))"
+            },
+            {
+              "transformation": "constant_propagation",
+              "resulting_condition": "((`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`pg_inbox`.`status` = 'IN_PROGRESS'))"
+            },
+            {
+              "transformation": "trivial_condition_removal",
+              "resulting_condition": "((`pg_inbox`.`order_id` = 'run-1790782335-0-250') and (`pg_inbox`.`status` = 'IN_PROGRESS'))"
+            }
+          ]
+        }
+      },
+      {
+        "table": "`pg_inbox`",
+        "range_analysis": {
+          "table_scan": {
+            "rows": 473478,
+            "cost": 61299.5
+          },
+          "potential_range_indexes": [
+            {
+              "index": "PRIMARY",
+              "usable": true,
+              "key_parts": [
+                "id"
+              ]
+            },
+            {
+              "index": "ux_pg_inbox_order_id",
+              "usable": true,
+              "key_parts": [
+                "order_id"
+              ]
+            },
+            {
+              "index": "idx_pg_inbox_status_updated_at",
+              "usable": true,
+              "key_parts": [
+                "status",
+                "updated_at",
+                "id"
+              ]
+            }
+          ],
+          "setup_range_conditions": [],
+          "group_index_range": {
+            "chosen": false,
+            "cause": "no_join"
+          },
+          "skip_scan_range": {
+            "chosen": false,
+            "cause": "no_join"
+          },
+          "analyzing_range_alternatives": {
+            "range_scan_alternatives": [
+              {
+                "index": "ux_pg_inbox_order_id",
+                "ranges": [
+                  "order_id = 'run-1790782335-0-250'"
+                ],
+                "index_dives_for_eq_ranges": true,
+                "rowid_ordered": true,
+                "using_mrr": false,
+                "index_only": false,
+                "in_memory": 0.0836197,
+                "rows": 1,
+                "cost": 1.71359,
+                "chosen": true
+              },
+              {
+                "index": "idx_pg_inbox_status_updated_at",
+                "ranges": [
+                  "status = 'IN_PROGRESS'"
+                ],
+                "index_dives_for_eq_ranges": true,
+                "rowid_ordered": false,
+                "using_mrr": false,
+                "index_only": false,
+                "in_memory": 0,
+                "rows": 11,
+                "cost": 10.7315,
+                "chosen": false,
+                "cause": "cost"
+              }
+            ],
+            "analyzing_roworder_intersect": {
+              "usable": false,
+              "cause": "too_few_roworder_scans"
+            }
+          },
+          "chosen_range_access_summary": {
+            "range_access_plan": {
+              "type": "range_scan",
+              "index": "ux_pg_inbox_order_id",
+              "rows": 1,
+              "ranges": [
+                "order_id = 'run-1790782335-0-250'"
+              ]
+            },
+            "rows_for_plan": 1,
+            "cost_for_plan": 1.71359,
+            "chosen": true
+          }
+        }
+      }
+    ]
+  },
+  "missing_bytes": "0"
+}
