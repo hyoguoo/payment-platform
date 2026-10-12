@@ -19,6 +19,7 @@
 # 사용법:
 #   bash scripts/compose-up.sh                # 완전 재빌드 후 기동 (production 모드 — Toss/NicePay 둘 다 활성)
 #   bash scripts/compose-up.sh --mode fake    # FakePgGatewayStrategy 활성 (실 PG 키 불필요, smoke 시나리오 완주)
+#   bash scripts/compose-up.sh --mode quality # 품질 기준: Fake 고정·복구 기본값·로컬 알림
 #   bash scripts/compose-up.sh --mode prod    # production 모드 명시 (default 와 동일)
 #   bash scripts/compose-up.sh --skip-build   # bootJar 재빌드만 생략 (Docker image는 여전히 재빌드)
 #   bash scripts/compose-up.sh --skip-obs     # 관측성 스택 생략
@@ -49,23 +50,11 @@ cd "${PROJECT_ROOT}"
 # shellcheck disable=SC1091
 source "${PROJECT_ROOT}/scripts/common.sh"
 
-# .env.secret 자동 로드
-# docker compose 는 .env 만 자동 로드하고 .env.secret 은 읽지 않으므로,
-# compose 변수 치환(${TOSS_TEST_SECRET_KEY} 등) 전에 셸에 export 해둔다.
-# 파일 미존재 시 경고만 출력하고 계속 진행 (placeholder 값으로 기동).
-if [[ -f "${PROJECT_ROOT}/.env.secret" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${PROJECT_ROOT}/.env.secret"
-  set +a
-else
-  echo "[compose-up] 주의: .env.secret 없음 — PG 샌드박스 키가 placeholder 로 주입됨"
-fi
-
 INFRA_COMPOSE="docker/docker-compose.infra.yml"
 APPS_COMPOSE="docker/docker-compose.apps.yml"
 OBS_COMPOSE="docker/docker-compose.observability.yml"
 SMOKE_COMPOSE="docker/docker-compose.smoke.yml"
+QUALITY_COMPOSE="docker/docker-compose.quality.yml"
 
 # 모드 — prod (default, Toss/NicePay 동시 활성) / fake (FakePgGatewayStrategy)
 MODE="prod"
@@ -77,7 +66,7 @@ COMPOSE_ARGS_ALL=""
 # docker compose 프로젝트명 (volume 접두어) — 상위 디렉토리 이름 기반
 # docker compose 의 기본 project name 은 compose 파일이 있는 디렉토리명("docker") 이다.
 # --reset-db 의 볼륨 prefix 는 그에 맞춰야 한다 — project root basename 사용 시 mismatch.
-COMPOSE_PROJECT_NAME="docker"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker}"
 
 MYSQL_CONTAINERS=(payment-mysql-payment payment-mysql-pg payment-mysql-product payment-mysql-user)
 MYSQL_VOLUMES=(
@@ -104,10 +93,10 @@ while [[ $# -gt 0 ]]; do
     --with-smoke) WITH_SMOKE=true; shift ;;
     --mode)
       shift
-      [[ $# -gt 0 ]] || { print_error "--mode 옵션에 값이 필요합니다 (prod | fake)"; exit 1; }
+      [[ $# -gt 0 ]] || { print_error "--mode 옵션에 값이 필요합니다 (prod | fake | quality)"; exit 1; }
       case "$1" in
-        prod|fake) MODE="$1" ;;
-        *) print_error "알 수 없는 모드: $1 (prod | fake 만 지원)"; exit 1 ;;
+        prod|fake|quality) MODE="$1" ;;
+        *) print_error "알 수 없는 모드: $1 (prod | fake | quality 만 지원)"; exit 1 ;;
       esac
       shift
       ;;
@@ -122,8 +111,34 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${MODE}" == "quality" && "${SKIP_OBS}" == "true" ]]; then
+  print_error "quality 모드는 로컬 알림 설정 적용을 위해 --skip-obs를 지원하지 않습니다."
+  exit 1
+fi
+
+# quality는 실 PG·알림 시크릿이 필요하지 않다.
+if [[ "${MODE}" != "quality" ]]; then
+# .env.secret 자동 로드
+# docker compose 는 .env 만 자동 로드하고 .env.secret 은 읽지 않으므로,
+# compose 변수 치환(${TOSS_TEST_SECRET_KEY} 등) 전에 셸에 export 해둔다.
+# 파일 미존재 시 경고만 출력하고 계속 진행 (placeholder 값으로 기동).
+if [[ -f "${PROJECT_ROOT}/.env.secret" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${PROJECT_ROOT}/.env.secret"
+  set +a
+else
+  echo "[compose-up] 주의: .env.secret 없음 — PG 샌드박스 키가 placeholder 로 주입됨"
+fi
+
+fi
+
 # 모드 적용 — fake 모드는 smoke override 추가
-if [[ "${MODE}" == "fake" ]]; then
+if [[ "${MODE}" == "quality" ]]; then
+  COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE} -f ${SMOKE_COMPOSE} -f ${QUALITY_COMPOSE}"
+  COMPOSE_ARGS_ALL="${COMPOSE_ARGS_APPS}"
+  print_info "모드: quality — Fake 100~300ms, 복구 기본값, 외부 알림 없음"
+elif [[ "${MODE}" == "fake" ]]; then
   COMPOSE_ARGS_APPS="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${SMOKE_COMPOSE}"
   COMPOSE_ARGS_ALL="-f ${INFRA_COMPOSE} -f ${APPS_COMPOSE} -f ${OBS_COMPOSE} -f ${SMOKE_COMPOSE}"
   print_info "모드: fake — FakePgGatewayStrategy 활성 (PG 호출 우회)"
@@ -273,7 +288,7 @@ wait_healthy_by_service() {
 #    payment-infra-network 는 infra.yml / apps.yml 양쪽에서 external 로 참조하는
 #    공유 자원. 어느 compose project 에도 ownership 이 묶이지 않도록 사전 생성.
 # ───────────────────────────────────────────
-if ! docker network inspect payment-infra-network >/dev/null 2>&1; then
+if [[ "${MODE}" != "quality" ]] && ! docker network inspect payment-infra-network >/dev/null 2>&1; then
   print_section "▶ 공유 네트워크 생성 (payment-infra-network)"
   docker network create payment-infra-network >/dev/null
   print_info "✅ payment-infra-network 생성"
@@ -283,7 +298,11 @@ fi
 # 5. 인프라 기동
 # ───────────────────────────────────────────
 print_section "▶ 인프라 컨테이너 기동 (${INFRA_COMPOSE})"
-docker compose -f "${INFRA_COMPOSE}" up -d
+if [[ "${MODE}" == "quality" ]]; then
+  docker compose ${COMPOSE_ARGS_ALL} up -d kafka redis-dedupe redis-stock eureka mysql-payment mysql-pg mysql-product mysql-user
+else
+  docker compose -f "${INFRA_COMPOSE}" up -d
+fi
 
 if ! wait_healthy "인프라" 120 \
   payment-kafka payment-redis-dedupe payment-redis-stock payment-eureka \
@@ -360,9 +379,13 @@ echo "user-service:      컨테이너 내부 only (Gateway /api/v1/users 경유)
 if [[ "${SKIP_OBS}" != "true" ]]; then
   echo
   print_section "=== 관측성 URL ==="
-  echo "Grafana:           http://localhost:3000   (${GRAFANA_USER:-admin} / ${GRAFANA_PASSWORD:-admin123})"
+  echo "Grafana:           http://localhost:3000"
   echo "Prometheus:        http://localhost:9090"
-  echo "Alertmanager:      http://localhost:9093   (알람 → Discord 통지)"
+  if [[ "${MODE}" == "quality" ]]; then
+    echo "Alertmanager:      http://localhost:9093   (로컬 확인, 외부 발송 없음)"
+  else
+    echo "Alertmanager:      http://localhost:9093   (알람 → Discord 통지)"
+  fi
   echo "Loki API:          http://localhost:3100   (Grafana Explore → Loki 데이터소스로 조회)"
   echo "Tempo API:         http://localhost:3200   (Grafana Explore → Tempo로 trace 조회)"
   echo "kafka-exporter:    http://localhost:9308/metrics"
@@ -370,13 +393,17 @@ fi
 
 echo
 print_section "=== stock 시드 (mysql-product → redis-stock) ==="
-bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/seed-stock.sh" || print_warning "시드 실패 — payment-service 의 confirm 진입 시 redis 키 부재로 동작 이상 가능"
+if [[ "${MODE}" == "quality" ]]; then
+  print_info "quality는 재기동 중 재고 캐시를 덮어쓰지 않습니다. 최초 전용 시드는 운영 안내의 명령을 사용하세요."
+else
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/seed-stock.sh" || print_warning "시드 실패 — payment-service 의 confirm 진입 시 redis 키 부재로 동작 이상 가능"
+fi
 
 echo
 print_warning "헬스 체크:       bash scripts/smoke-all.sh   (Phase 1 — infra + kafka topic config)"
 print_warning "트레이스 검증:   bash scripts/smoke-all.sh --with-trace   (결제 1건 발생 후)"
 print_warning "로그 팔로우:     docker compose ${COMPOSE_ARGS_ALL} logs -f <service>"
-print_warning "종료:            bash scripts/compose-up.sh --down  (또는 --clean 으로 볼륨 포함 제거)"
+print_warning "종료(볼륨 유지): bash scripts/compose-up.sh --mode ${MODE} --down"
 
 # --with-smoke 옵션 — stack up 직후 smoke-all Phase 1 자동 실행
 if [[ "${WITH_SMOKE}" == "true" ]]; then

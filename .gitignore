@@ -259,3 +259,6 @@ results/
 
 # 포스팅 초안 — 저장소에 남기지 않는다
 POSTING-DRAFT-*.md
+
+# Local quality tooling bytecode
+scripts/quality/__pycache__/

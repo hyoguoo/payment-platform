@@ -1,6 +1,6 @@
 # Technology Stack
 
-> 최종 갱신: 2026-09-28 (CI payment/pg 통합 테스트 shard 분할). 이전: 2026-09-27 (Codex 진입점·검증 범위·Claude 전용 훅 구분). 이전: 2026-09-11 (CLEANUP-BATCH-F — 가드레일 절에 훅 자체 검증 신설(픽스처 12케이스·가짜 gradlew·검사기 준비 확인), CI job 목록에 게이트로 동작하는 hook-guardrail-check 추가, 스크립트 표에 test-hooks.sh 행 추가). 이전: 2026-09-07 (AI 코드 변경 가드레일 — 가드레일 절 신설(훅 4겹·워크플로우 맞물림·미포함 범위·규칙 추가 기준), 코드 스타일 5규칙을 error 승격 + maxWarnings=0 으로 정정, ArchUnit 기각 서술을 담당 영역 분리로 정정). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
+> 최종 갱신: 2026-10-12 (quality 측정 환경과 실행 도구 준비). 이전: 2026-09-28 (CI payment/pg 통합 테스트 shard 분할). 이전: 2026-09-27 (Codex 진입점·검증 범위·Claude 전용 훅 구분). 이전: 2026-09-11 (CLEANUP-BATCH-F — 가드레일 절에 훅 자체 검증 신설(픽스처 12케이스·가짜 gradlew·검사기 준비 확인), CI job 목록에 게이트로 동작하는 hook-guardrail-check 추가, 스크립트 표에 test-hooks.sh 행 추가). 이전: 2026-09-07 (AI 코드 변경 가드레일 — 가드레일 절 신설(훅 4겹·워크플로우 맞물림·미포함 범위·규칙 추가 기준), 코드 스타일 5규칙을 error 승격 + maxWarnings=0 으로 정정, ArchUnit 기각 서술을 담당 영역 분리로 정정). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 워커 설명에 두 단계와 설정 키 둘 추가, 건강 지표에 결과 대기 적체 추가). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — dlq 알람 그룹에 `ProductStockQuarantineBacklog` 추가, promtool 픽스처 26→27케이스, product-service 에 Kafka producer·에러 핸들러·격리 토픽 신설과 `spring-kafka-test` 테스트 의존 추가). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — dlq 알람 그룹 서술에 앱 카운터 pg 분기가 FCG 결과 합산으로 바뀐 사실 반영, promtool 픽스처 25→26케이스). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — `spring-boot-starter-data-redis` 의존 사유 주석에서 pg-side dedupe 제거, payment-service 전용으로 정정). 이전: 2026-08-04 (BACKLOG-RESIDUE-CLEANUP ship — 정적 검출 기준선 억제 잔여 서술을 실제 상태(전량 해소)로 정정 + 검출 게이트 승격 판단을 대장 참조 대신 이 문서 안에 직접 서술). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — 라이브 검증 절차 문단 신설(진입점 스킬·캡처용 compose override·산출물 저장소 제외) + 스크립트 표에 `seed-stock.sh` 행 추가). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 10 — stale 마커 게이트 재검증에서 신규 발견, redis-starter-data-redis 의존 사유 주석의 "payment-side EventDedupeStore" 표기 정정 — payment-service 는 해당 이름의 Redis 클래스가 없고 EventDedupeStore 는 pg-service 전용). 이전: 2026-07-03 (Task 9 — 스케줄러 활성화 매트릭스에 누락됐던 user-service 행 + 4서비스 공통 `DependencyHealthMetrics` 역할 반영, JaCoCo 정적 분석 행을 `TESTING.md` 참조로 축약(S4 중복 정리)), 2026-07-01 (context-update 헤더 동기화 — 알람 4그룹/Toxiproxy 드릴 본문은 ALERTING-RULES 6/27 + FAULT-INJECTION 6/30 ship 에서 이미 반영됨)
 
 ## 언어 + 빌드
 
@@ -121,10 +121,17 @@ com.squareup.okhttp3:mockwebserver  # pg-service 의 외부 PG vendor HTTP 어�
 | `./gradlew test` | 단위 테스트만 (`integration` 태그 제외) |
 | `./gradlew :<svc>:integrationTest` | `@Tag("integration")` 만 |
 | `./scripts/compose-up.sh` | docker compose 전체 스택 기동 |
+| `bash scripts/compose-up.sh --mode quality` | Fake 100~300ms·복구 기본값·고정 heap·로컬 알림의 품질 검증 구성. skip-obs 거부, 재고 자동 재시드 생략 |
+| `python3 scripts/quality/run.py --run-id <id>` | 실행별 시도·환경·자원·주문/재고 snapshot·판정 보존. `--fault`는 payment 강제 종료 포함, 전용 시험 환경에서만 실행 |
 | `./scripts/smoke/infra-healthcheck.sh` | 인프라 + 서비스 살아있음 검사 |
 | `./scripts/test-hooks.sh` | `.claude/hooks/` 두 훅의 판정을 픽스처로 검증 (CI `hook-guardrail-check` 게이트가 실행) |
 | `python3 scripts/ci-integration-shard.py <service> <shard> <count>` | 컴파일된 최상위 테스트 클래스를 CI 통합 테스트 shard별 Gradle `--tests` 인자로 분할 |
 | `./scripts/seed-stock.sh` | product RDB 재고를 redis-stock 선차감 캐시에 정렬 (기동 직후 1회 가정 — 운영 중 호출은 진행 중 결제의 차감분을 되돌릴 수 있다) |
+
+품질 기준과 재현 절차는 [로컬 운영 기준](../quality/RUNBOOK.md)을 따른다.
+기존 벤치마크의 단축 리컨실러 설정과 quality 구성을 섞지 않는다.
+quality는 `COMPOSE_PROJECT_NAME`별 전용 네트워크와 named volume을 사용하며 기동 시 재고를 덮어쓰지 않는다.
+컨테이너 이름과 호스트 포트는 기존 설정을 공유하므로 다른 프로젝트를 동시에 기동하지 않는다.
 
 ## 정적 분석 도구
 
