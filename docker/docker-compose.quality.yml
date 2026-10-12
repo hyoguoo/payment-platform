@@ -1,0 +1,101 @@
+# 로컬 품질 검증 기준. infra + apps + observability + smoke 다음에 적용한다.
+# 실제 PG·외부 알림을 사용하지 않으며 benchmark의 단축 복구 설정을 적용하지 않는다.
+services:
+  payment-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx700m"
+      RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "300"
+      RECONCILER_AWAITING_RESULT_TIMEOUT_SECONDS: "900"
+      RECONCILER_FIXED_DELAY_MS: "120000"
+      TOSS_SECRET_KEY: "quality-unused"
+    ports: !override
+      - "127.0.0.1:8080:8080"
+  pg-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx600m"
+      PG_GATEWAY_TYPE: fake
+      PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS: "100"
+      PG_GATEWAY_FAKE_LATENCY_MAX_MILLIS: "300"
+      PG_GATEWAY_FAKE_FAIL_RATE: "0"
+      TOSS_SECRET_KEY: "quality-unused"
+      NICEPAY_CLIENT_KEY: "quality-unused"
+      NICEPAY_SECRET_KEY: "quality-unused"
+    ports: !override
+      - "127.0.0.1:8082:8082"
+  product-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx384m"
+    ports: !override
+      - "127.0.0.1:8083:8083"
+  user-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx384m"
+    ports: !override
+      - "127.0.0.1:8084:8084"
+  gateway:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx384m"
+    ports: !override
+      - "127.0.0.1:8090:8080"
+  eureka:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m"
+    ports: !override
+      - "127.0.0.1:8761:8761"
+  kafka:
+    ports: !override
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:29092:29092"
+  redis-dedupe:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+  redis-stock:
+    ports: !override
+      - "127.0.0.1:6380:6379"
+  mysql-payment:
+    ports: !override
+      - "127.0.0.1:3306:3306"
+  mysql-pg:
+    ports: !override
+      - "127.0.0.1:3308:3306"
+  mysql-product:
+    ports: !override
+      - "127.0.0.1:3309:3306"
+  mysql-user:
+    ports: !override
+      - "127.0.0.1:3310:3306"
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+  kafka-exporter:
+    ports: !override
+      - "127.0.0.1:9308:9308"
+  alertmanager:
+    entrypoint: ["/bin/alertmanager"]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager", "--web.listen-address=:9093"]
+    environment:
+      DISCORD_WEBHOOK_URL: ""
+    volumes:
+      - ../observability/alertmanager/quality.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports: !override
+      - "127.0.0.1:9093:9093"
+  grafana:
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports: !override
+      - "127.0.0.1:3000:3000"
+  tempo:
+    ports: !override
+      - "127.0.0.1:3200:3200"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+  loki:
+    ports: !override
+      - "127.0.0.1:3100:3100"
+
+# 프로젝트별 새 네트워크와 기본 named volume을 사용한다. 기존 공유 네트워크와 격리한다.
+networks:
+  payment-infra-network:
+    external: false
+    name: "${COMPOSE_PROJECT_NAME:-docker}-quality-network"

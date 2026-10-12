@@ -1,6 +1,15 @@
 # Testing Patterns
 
-> 최종 갱신: 2026-09-28 (CI 통합 테스트 shard 분할). 이전: 2026-09-11 (CLEANUP-BATCH-F — Fake 저장소의 저장·조회 양방향 방어적 복사 규칙 신설(자식 컬렉션 원소까지), 참조 동일성 검증이 깨질 때 도메인 값 객체 대신 테스트 매처를 고치는 원칙 포함). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 617→675·통합 149→660(되돌리기 다섯 주체 전 짝 동시성 500건 포함), pg 단위 408→454, product 단위 58→67·통합 6→8. product-service 에 `spring-kafka-test` 도입으로 `@EmbeddedKafka` 통합 테스트가 처음 생겼다). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 567→617·통합 98→149(동시 선점 반복 50회 포함), pg 단위 393→408). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
+> 최종 갱신: 2026-10-12 (품질 측정 도구 준비·공식 실측 미실행). 이전: 2026-09-28 (CI 통합 테스트 shard 분할). 이전: 2026-09-11 (CLEANUP-BATCH-F — Fake 저장소의 저장·조회 양방향 방어적 복사 규칙 신설(자식 컬렉션 원소까지), 참조 동일성 검증이 깨질 때 도메인 값 객체 대신 테스트 매처를 고치는 원칙 포함). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 617→675·통합 149→660(되돌리기 다섯 주체 전 짝 동시성 500건 포함), pg 단위 408→454, product 단위 58→67·통합 6→8. product-service 에 `spring-kafka-test` 도입으로 `@EmbeddedKafka` 통합 테스트가 처음 생겼다). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — 테스트 카운트 스냅샷 재실행 갱신: payment 단위 567→617·통합 98→149(동시 선점 반복 50회 포함), pg 단위 393→408). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — 테스트 카운트 스냅샷 재실행 갱신: payment 571→567(미사용 선점 경로 테스트 4건 삭제), pg 389→393(부팅 가드 테스트 4건 추가), 합계 1033 유지). 이전: 2026-07-31 (AGENT-CONTEXT-OVERHAUL Task 8 — "TDD 흐름" 절을 RED/GREEN/REFACTOR 단계 나열 + 커밋 타입 서술에서 정본(`conventions/testing.md`/`commit.md`) 포인터 1줄로 축약). 이전: 2026-07-03 (DOCS-CONSISTENCY-OVERHAUL Task 9 — 테스트 카운트 스냅샷 재실행 갱신(`./gradlew test`/`integrationTest --rerun-tasks`)). 이전: 2026-06-23 (코드 대조 — JPA 테스트 위치 repository/ 정정)
+
+## 로컬 서비스 품질 검증
+
+`scripts/k6/quality-payment.js`와 `scripts/quality/`는 정상 부하·payment 프로세스 중단을 검증한다.
+Java 단위/통합 테스트와 별개이며 [운영 기준](../quality/RUNBOOK.md)에 실행 조건을 둔다.
+판정기와 장애 제어의 회귀는 `python3 -m unittest discover -s scripts/quality -p 'test_*.py'`로 확인한다.
+실제 부하는 별도로 실행하며 `--output-root`로 지정한 디렉토리에 실행별 원자료와 판정을 보존한다.
+공식 실측은 미실행이며, 접수 여부 추적 개선과 실제 측정은 도구 준비 이후의 별도 작업이다.
+실측에서는 실패·시간 초과·접수 불명을 분모에서 빼지 않으며 오래된 벤치마크 수치와 합산하지 않는다.
 
 ## 테스트 프레임워크
 

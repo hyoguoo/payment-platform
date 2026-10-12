@@ -1,0 +1,6 @@
+# 로컬 실측 전용. firing 상태를 보존하되 외부 메시지를 보내지 않는다.
+route:
+  receiver: local-only
+  group_by: [alertname, job]
+receivers:
+  - name: local-only
