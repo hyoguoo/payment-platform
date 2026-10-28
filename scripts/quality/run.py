@@ -124,6 +124,13 @@ def load_covers_recovery(report, recovery, killed_at):
                 and max(row['observedAtMs'] for row in recovery.values()) <= last)
 
 
+def settlement_needs_observation(report, verdict):
+    """Arrival validity cannot recover after load; business work still can."""
+    # verify() adds one pending reason for immutable attempt-report validity.
+    validity_pending = 1 if report.get('validityIssues') else 0
+    return bool(verdict['failures'] or len(verdict['pending']) > validity_pending)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-id', required=True)
@@ -287,7 +294,8 @@ def main():
         verdict = settlement.verify(report, before, after)
         evidence.write_json(directory/'after.json', after)
         evidence.write_json(directory/'settlement.json', verdict)
-        if verdict['verdict']=='PASS' or verdict['unknownAcceptance'] or now_ms() >= settle_deadline:
+        if (verdict['verdict']=='PASS' or verdict['unknownAcceptance']
+                or not settlement_needs_observation(report, verdict) or now_ms() >= settle_deadline):
             break
         # Expose every observation; never replace a failure with an unexplained success.
         mark('settlement_pending', verdict=verdict['verdict'], counts=verdict['counts'])

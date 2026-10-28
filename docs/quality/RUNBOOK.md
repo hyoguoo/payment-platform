@@ -2,7 +2,9 @@
 
 이 문서는 로컬 환경에서 같은 시험을 다시 실행하거나, 이상이 생겼을 때 확인할 순서를 안내한다.
 도구의 현재 상태와 측정 범위는 [품질 측정 도구 안내](README.md)에서 확인한다.
-새 공식 실측은 아직 수행하지 않았다.
+아래 실행 명령은 현재 구현된 500ms 조회 품질 도구를 대상으로 한다.
+기존 조건의 탐색은 [실측 보고서](../reports/tps-clean-measurements.html)에 보존한다.
+주입·관측 분리 및 1초 조회의 새 시험 모드는 [PLAN](../PAYMENT-THROUGHPUT-PLAN.md)에 있으며 아직 구현하지 않았다.
 여기의 명령은 저장소 루트에서 실행한다.
 
 ## 실행 조건
@@ -20,11 +22,18 @@ Java 21, Docker Desktop, `!override`를 지원하는 Docker Compose, k6, Python 
 | JVM heap | payment 700MiB, PG 600MiB, product·user·Gateway 각각 384MiB, Eureka 256MiB |
 | 복구 검사 설정 | IN_FLIGHT 300초, AWAITING_RESULT 900초, 검사 간격 120초 |
 | 트레이스 수집 | 비즈니스 서비스와 Gateway 요청 100% |
+| 결제 결과 소비 동시성 | 기본 1, 비교 실험에서만 `QUALITY_CONFIRMED_CONCURRENCY`로 지정 |
 | 외부 연동 | 실제 PG 시크릿 미사용, 외부 알림 수신처 없음 |
 
 heap은 JVM에 배정한 공간이며 컨테이너 전체 메모리 제한은 아니다.
 설정 원본은 [quality Compose](../../docker/docker-compose.quality.yml)와 [로컬 알림 설정](../../observability/alertmanager/quality.yml)이다.
 관측 도구를 함께 사용하므로 `--skip-obs` 옵션은 허용하지 않는다.
+
+결과 소비 동시성 비교 시 기동 전 `QUALITY_CONFIRMED_CONCURRENCY=3`을 지정할 수 있다.
+현재 결과 토픽은 3파티션이므로 1과 3을 비교하며, 기본값은 1을 유지한다.
+각 조건은 새 컨테이너·새 볼륨에서 실행하고, 실제 consumer group의 멤버·파티션 배정을 확인한다.
+적용값은 실행 증빙 `environment.json`의 payment `JAVA_TOOL_OPTIONS`에 남는다.
+이 설정은 quality 실험용이며 운영 기본값의 변경이나 장애·중복 경로 검증 완료를 뜻하지 않는다.
 
 ## 1. 새 데이터 환경 만들기
 
@@ -169,7 +178,13 @@ python3 scripts/quality/run.py --run-id normal-02 --rate 10 --duration-seconds 6
 
 종료 경계에서 계획보다 1건 더 시작되더라도 전체 시도에 포함한다.
 기한을 넘겨 나중에 완료된 주문은 사용자 성공률에 다시 더하지 않는다.
+유입 누락이나 시도 기록의 유효성 문제만 남은 경우 추가 관찰로 해결되지 않으므로 미확정 상태로 종료한다.
+실제 미처리 작업·수량 불일치가 있으면 계속 관찰하며, 미확인 주문은 성공으로 바꾸지 않는다.
 정상 시험은 마지막 시도 이후 최대 10분 동안 남은 자동 처리를 관찰한다.
+
+유입을 높일 때는 `--preallocated-vus`로 실행 전 가상 사용자를 확보할 수 있다(현재 상한 650).
+가상 사용자 부족은 긴 서버 응답이나 발생기 설정·자원 문제 양쪽에서 생길 수 있다.
+사전 할당을 늘려도 유입 누락이 사라진다고 보장하지 않으며, 누락이 남은 실행으로 최대 TPS를 확정하지 않는다.
 
 기존 실행 ID의 폴더가 있으면 도구가 중단한다.
 재시험은 새 ID를 사용해 실패 결과를 보존한다.

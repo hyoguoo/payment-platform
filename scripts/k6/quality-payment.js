@@ -142,7 +142,9 @@ export default function () {
         while (Date.now() < deadlineMs) {
             const statusResponse = http.get(
                 `${BASE_URL}/api/v1/payments/${encodeURIComponent(result.orderId)}/status`,
-                { tags: { step: 'status' }, timeout: requestTimeout(deadlineMs) }
+                // Keep order IDs in attempt evidence, not in metric series names.
+                { tags: { step: 'status', name: 'GET /api/v1/payments/:orderId/status' },
+                    timeout: requestTimeout(deadlineMs) }
             );
             result.pollCount += 1;
             const observedAt = Date.now();
