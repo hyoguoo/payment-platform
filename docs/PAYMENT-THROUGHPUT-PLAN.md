@@ -1,6 +1,6 @@
 # 결제 처리량 측정과 개선 — PLAN
 
-> 토픽: PAYMENT-THROUGHPUT · 갱신 2026-10-29 · discuss·plan 갱신 완료, execute T2.1 준비
+> 토픽: PAYMENT-THROUGHPUT · 갱신 2026-10-29 · execute T2.1/T2.2 완료, T2.3 완료, T2.4 수정 전 경계 탐색·100 TPS 실행 전 중단
 
 추적: [#162 — 결제 처리량 한계 측정과 병목 개선](https://github.com/hyoguoo/payment-platform/issues/162). 브랜치: `#162`.
 
@@ -27,9 +27,9 @@
 
 - [x] T1 — 전용 환경과 계측 기준 확보 (`tdd=false`, `domain_risk=false`)
 - [ ] T2 — 기준 처리량과 첫 병목 판정 (`tdd=false`, `domain_risk=false`)
-- [ ] T2.1 — 주입·관측 분리와 시험 모드 구현 (`tdd=true`, `domain_risk=false`)
-- [ ] T2.2 — 처리량·지연·잔량 판정과 증빙 구현 (`tdd=true`, `domain_risk=false`)
-- [ ] T2.3 — 측정 도구 검토와 낮은 부하 실구동 검증 (`tdd=false`, `domain_risk=false`)
+- [x] T2.1 — 주입·관측 분리와 시험 모드 구현 (`tdd=true`, `domain_risk=false`)
+- [x] T2.2 — 처리량·지연·잔량 판정과 증빙 구현 (`tdd=true`, `domain_risk=false`)
+- [x] T2.3 — 측정 도구 검토와 낮은 부하 실구동 검증 (`tdd=false`, `domain_risk=false`)
 - [ ] T2.4 — 수정 전 두 시험의 경계 탐색·10분 지속 확인 (`tdd=false`, `domain_risk=false`)
 - [ ] T3 — 실측 병목의 재현·개선·회귀 검증 (`tdd=true`, `domain_risk=true`)
 - [ ] T4 — 개선 후 동일 조건 한계 측정과 다음 병목 반복 (`tdd=false`, `domain_risk=true`)
@@ -109,6 +109,19 @@ reviewer가 도구 변경·판정·계획을 독립 검토하고, domain-expert�
 Java 변경: `./gradlew :<module>:test :<module>:checkstyleMain :<module>:checkstyleTest :<module>:spotbugsMain :<module>:spotbugsTest`.
 DB·Kafka·Spring 배선 변경: `:<module>:integrationTest`. 단순 설정 변경에는 적합한 설정·실구동·실패 경로 검증을 적용한다.
 
+### T3 사전 검증 준비 — 결과 소비 동시성 후보
+
+160/s에서 명령·결과 양쪽 적체와 PG 승인 후 지연을 확인했으므로 결과 소비1→3을 첫 비교 후보로 둔다.
+단독 원인·효과는 미확정이며 T2.4의 후보10분 확인 전 서버 기본값을 바꾸지 않는다.
+독립 domain-expert는 기존 주문 잠금·결정적 상품별 키·DB/Kafka TX 배선 유지 시 후보 설계를 통과시켰으며, 다음 검증을 요구했다.
+
+- 신규 테스트 전용3파티션/concurrency3: 각child 실제 배정, 독립주문·동일상품·중복결과의 DONE/dedupe/hold/재고 이벤트 키 불변식
+- 대상 주문/파티션에 한정한 EOS commit 실패1회와 반복 실패: 다른 두 파티션 진행·재배달 복구·DLQ와 재고 미복구 구분
+- 미커밋 입력을 둔 listener 재시작·재배정 후 offset 수렴. JVM 강제 종료·재시작과 실제 상품 재고차감1회는 별도 소량 실구동
+- 기존 실패 보상·격리·금액 불일치 회귀 유지. 기본값 채택 전 reviewer/domain-expert 독립 검토와 모듈 검사
+
+현재는 additive test 파일만 준비한다. 성능 실측과 Gradle/통합 테스트를 동시에 실행하지 않으며 실행 중 JAR·서버·측정 도구는 유지한다.
+
 ## T4 — 개선 후 한계 재탐색
 
 의존: T3. 변경 요소 외 조건을 고정하고 T2.4의 두 시험을 각각 다시 수행한다.
@@ -128,7 +141,7 @@ STATE와 추적 이슈의 완료 상태를 실제 결과에 맞춰 정리한다.
 - 도구: `python3 -m unittest discover -s scripts/quality -p 'test_*.py'`
 - 문서: `python3 scripts/check-agent-docs.py --strict`, 상대 링크·표시·`git diff --check`
 - Compose: 현재 다섯 quality 파일의 병합과 실제 런타임 env/파티션 배정 대조
-- 실제 재개: T2.1 — 주입·관측 분리와 시험 모드 구현. 새 기준 실측·병목 수정·최종 한계는 아직 남음
+- 실제 재개: T2.4 — 새 환경 capacity100/s180초. 60/s 품질 시험 완료·볼륨 보존 종료, 100/s 기동/워밍업/본측정 미실행. 이후 경계 좁힘·후보10분·T3/T4 개선. 명령은 [인계](reports/tps-handoff.md) 참고
 
 ## 실행 기록
 
@@ -263,3 +276,60 @@ Java수정없으므로Java단위/정적/통합검사미실행. 현r80-d스택·�
 사용자 요청으로 워크플로우 지침과 성능 도구/분석/합의를 별도 로컬 커밋한다. 별도 요청 추적 문서·STATE 사용자 구간·live-drill 원자료는 이번 커밋에서 제외한다.
 Python68·문서strict57개문제0·Compose기본1·상대링크·diff·최신HTML Chrome 시각확인 통과. Java 변경/새 실측/푸시/PR 없음.
 컴팩트 후 T2.1의 RED부터 시작한다. 새 모드 구현·기준 한계 확정·T3 개선·최종 T5 완료는 아직 남음.
+
+2026-10-29 T2.1 완료: 기존 legacy(기본)·capacity·user-quality 모드를 분리했다.
+새 두 모드의 k6 VU는 checkout·confirm 뒤 즉시 반환하며 같은 주문을 별도 Python 관측기가 조회한다.
+관측은 1초·최대 30회·31초 기한, 요청은 남은 기한으로 제한한다. 포화·늦은 스케줄·HTTP/파싱 오류·202 미확인·기한 이후 응답을 원자료로 보존한다.
+HTTP/1.1 연결 재사용과 실패 연결 해제, 기한 직전 응답의 callback 경합을 보완했다.
+RED→GREEN: 실제 k6+모의 HTTP 계약 4개·모드/피드 5개·관측 10개 포함 전체 Python 87개 PASS.
+축소 주기 테스트의 인접 간격 가정을 절대 예정 시각 이전 발사 금지로 정정했으며 독립 reviewer 검토 PASS.
+독립 검토 지적의 deadline 경합·실패 연결 누적은 수정과 회귀 검증으로 해소했다.
+새 모드는 T2.2 판정기 전까지 schema2·INCONCLUSIVE로 제한한다. 실제 스택 기동·재시드·새 실측·Java 변경·커밋/게시 없음.
+별도 요청 추적 문서 4개 해시·STATE 사용자 구간 보존 확인. 증거 `live-drill/throughput-tools-t21-20261029/`.
+다음은 T2.2이며 observer errors/feedErrors/incomplete와 사용자 원자료를 판정 입력에 포함한다.
+
+2026-10-29 T2.2 완료: schema2 새 모드의 품질 목표와 처리 구간 분류·원자료·HTML을 연결했다.
+전체 시작 건수를 백분위 분모로 유지하고 미관측은 무한 지연으로 다룬다. 관측 FAILED와 DB DONE 충돌, 확인된 업무 실패는 백분위와 독립된 FAIL이다.
+미확인 접수만으로 알려진 주문의 완료/재고 관찰을 종료하지 않는다.
+10초+수집비용 간격의 현재 DB 상태·product 재고 확정·결제/전체 파이프라인 잔량·5앱 heap/20컨테이너 메모리/host swap을 수집한다.
+고정 평가 시각의 PromQL timestamp()로 원본 표본 신선도를 확인하고 30초 초과는 근거 부족 처리한다.
+유입 후반 60초 이상·4개 이상·간격15초 이내의 결제/재고 잔량과 메모리 관측 범위를 비교한다. GC·잔량의 유한 변동과 지속 증가를 구분하며 프로젝트 자체 판정 정책을 결과와 RUNBOOK에 노출했다.
+DB DONE 기록 시각의 처리율/백분위/드레인과 재고 포함 전수 대조 완료 관측 상한을 구분한다. 워밍업은 phase로 명시하고 목록·본문 모두 한계 산정 제외 표시를 붙였다.
+독립 reviewer·domain-expert의 major 지적은 회귀 테스트로 RED→GREEN 후 재검토 PASS. Python122개·py_compile·문서strict57개문제0·diff 통과.
+기존 보존 스택에서 구매 없이 수집기 읽기 계약만 확인: 기존11,262건 DONE/재고확정11,262·잔량0, 메모리26지표. 새 TPS 실측이나 새 기준 결과가 아니다.
+모의 HTML을 EXCLUDED로 표시하고 Chrome 렌더·상대 근거 링크 확인. 단위 테스트·기존 원자료·별도 요청 추적 변경 보존.
+근거 `live-drill/throughput-tools-t22-20261029/`. Java/서버로직·운영 동시성 변경·신규 부하·커밋/게시 없음.
+다음 T2.3: 새 환경에서 모드별 낮은 부하 계약·정합성 검증. 이후 T2.4의 새 기준 경계 탐색으로 진행한다.
+
+2026-10-29 T2.3 완료: capacity/user-quality/legacy 각 새 프로젝트에서20컨테이너·14개새볼륨·빈DB/Redis/Kafka·동일시드·10/s120초워밍업 후1/s180초를 검증했다.
+본측정은180/181/180건 시작·모두전수대조PASS·누락/오류0·소스불변. 사용자품질181건 모두관측·조회오류/포화0, 완료p951032ms·p991037ms.
+새두모드의 지연목표는 충족했으나 메모리범위확장으로 전체지속분류INCONCLUSIVE를 원형보존했다. legacy는원기준PASS. 이 저부하검증을서버최대TPS로해석하지않는다.
+JAR해시동일·새볼륨42개상호분리·이전볼륨보존·각회차서버로그6개보관. [도구 검증 요약](reports/tps-tool-validation.md), `live-drill/throughput-split-validation-20261029/validation-summary.json`.
+각환경을 볼륨보존down후 다음환경을기동했다. 현재T2.4 capacity-r80-a 새환경에서80/s180초 수정전시험진행, 소비동시성1·정상VU650/관측최대256명시.
+T2.4의 품질목표 충족과 전체 지속처리/자원미확정을 각각 보고하며, 최초포화증거전 서버로직을수정하지않는다.
+
+2026-10-29 T2.4 첫80/s capacity-r80-a:14,401건시작/완료·dropped0·API오류0·불일치0·sourceChanged=false이나,기존경계룰의boundaryStarts2로원판정INCONCLUSIVE.
+마지막두시작은nominal끝+1/+13ms, 전체예정대비최대lag23ms였다. 원자료/원판정/구드라이버와보조메타데이터를보존하고공식한계근거에서EXCLUDED.
+새모드만연속iteration·총량·dropped·실제예정대비-1..100ms시각정밀도를검사해legacy의경계건수룰을대체했다. 모든실제시작은분모/대조에유지하며legacy results.py불변.
+100ms는프로젝트계측허용치로명시했고초과/번호누락/접수불명은계속미확정. RED→GREEN 및전체Python124개PASS. 기존reviewer는사용량한도로호출불가, 독립domain-expert가이변경만재검토PASS.
+첫회차루트experiment의구기본VU100기록은원형보존하고normal실제명령650·runtime vus_max650을supplement에명시했다. 다음v2드라이버는정상650/워밍업100/관측256을명시하며드라이버원본도보존한다.
+소스증빙은품질문서의현재바이트와diff도보관하도록보완. 다음capacity-r80-b는새컨테이너/볼륨에서수정판정으로재시험한다. 서버Java/운영기본값변경없음.
+
+2026-10-29 capacity-r80-b 재시험완료:80/s180초14,400건전량DONE/전수대조PASS·누락오류0·sourceChanged=false·arrivalVALID(maxlag18ms).
+접수p95checkout37/confirm50ms, DONE기록지연p953954/p994666ms. 전체지속분류는메모리범위확장으로INCONCLUSIVE,유입/정합성/지연지표는각각보존.
+독립reviewer구간분해:첫30초DONE기록p954722ms→후150초722ms, 미완료306→22로부하중회복. 80/s지속실패증거는없고초기transient가주요현상. PG승인후결과반영경로가후보지만내부DB/ACK/TX원인은미확정.
+동시성1·Hikaripending표본0, 결과토픽rawlag표본271(업무건수와동일하지않음). 새user-quality-r80-a 환경에서동일80/s사용자품질시험진행.
+
+2026-10-29 user-quality80-a 완료:14,401건최종DONE·전수대조PASS·누락/API오류0·소스불변·arrivalVALID. 관측388,027회/포화skip12,779로전체사용자p95/p99미확정,기한내DONE1687건. DB완료기록p95122.8초·잔량지속증가·payment풀대기표본195로실제서버지연도확인. 정확한품질상한으로쓰지않고낮은부하에서유효관측구간탐색.
+2026-10-29 capacity160-a 완료:28,801건전수DONE/PG/재고대조PASS, dropped/API오류0·arrivalVALID·sourceChanged=false. 접수checkout/confirm p95141/397ms이나 DONE기록p95109,981/p99117,668ms. 후반잔량9528→14906·최장대기61.8→103.4초, 입력종료후DONE기록88.4초/재고포함전수관측상한94.5초. 원분류BURST_ABSORBED, 160/s지속가능과구분. 모든로그/20컨테이너이미지근거보존후볼륨보존down. 다음은새환경user-quality40/s180초와capacity중간경계탐색.
+
+2026-10-29 user-quality40-a 완료:40/s180초7,201건전수DONE·승인/재고대조PASS·dropped/API/관측오류/포화/미관측0·arrivalVALID(max12ms)·sourceChanged=false. checkout/confirm p9520/23ms, 사용자완료p951028/p991046ms, DONE기록p95322ms. 후반pending11→8/pipeline5→7로쌓임없음. 품질목표통과·전체지속은메모리범위UNRESOLVED로원INCONCLUSIVE유지. 다음capacity120/s/사용자60/s새환경경계탐색.
+
+2026-10-29 capacity120-a 완료:120/s180초21,601건전수DONE·대조PASS·누락/API오류0·유입VALID·소스불변. checkout/confirm p9565/90ms, DONE기록p9562032/p9967620ms. 입력중DONE14,529/후7,072, 기록drain37.7초. 원분류BURST_ABSORBED. capacity경계80~120/s, 다음quality60/s와capacity100/s새환경탐색후후보10분. T3신규통합test4개작성·reviewer/domain수정재검토PASS, 빌드/실행검증은실측과분리해후속진행.
+
+2026-10-29 컴팩트 전 중단: user-quality60-a60/s180초10,801건 전량기한내DONE·승인/재고대조PASS, 누락/API/관측오류/포화/미관측0·유입VALID(maxlag10ms)·sourceChanged=false. checkout/confirm p9530/38ms, 사용자완료p951045/p991079ms, DONE기록p95372/p99621ms. 후반pending15→18/pipeline10→12로품질목표통과, 전체지속은메모리범위UNRESOLVED로원INCONCLUSIVE보존.
+사용자가100TPS시험직전에문서만정리해중단요청. 60회차로그/이미지증거보관·볼륨보존down, 부하/컨테이너종료확인. 100/s환경기동·시드·워밍업·본측정미실행, 다음v2명령과제약은인계/STATE/로컬RESUME에동기화.
+T3신규Java통합test4개작성·qualifier/DLQoffset대기보정·독립reviewer/domain재검토PASS, DONE이력1회추가단정domain확인PASS. 컴파일/Java단위/정적/통합검사미실행. 실제프로세스복구로컬driver작성만완료, 모델사용량한도로독립리뷰미완료·실행미완료. 서버메인Java/JAR/기본동시성1미변경, 커밋/게시없음.
+
+2026-10-29 후속 커밋 요청: 검증된 T2 도구·문서·실측 체크포인트를 로컬 커밋하고 미실행 T3 신규 Java 테스트는 작업 트리에 보존해 제외한다. 별도 요청 추적4문서·STATE 사용자 구간은 기존 변경으로 제외한다. 사용자가 다음에 “중단됐던 작업 진행”이라고 하면 STATE→인계→PLAN/로컬RESUME로 PAYMENT-THROUGHPUT를 선택해 새100/s180초부터 재개하도록 기록. 현재는 프로세스/컨테이너 기동·새 실측 없이 커밋·인계 정리만 진행.
+커밋 직전 현재 도구 스냅샷의 Python124개(20.6초)·문서strict57개문제0·diff검사PASS. 서비스/실측 기동없음, 로컬보고서HTTP8872도종료. 신규Java테스트는커밋제외하므로Java검증미실행상태유지.

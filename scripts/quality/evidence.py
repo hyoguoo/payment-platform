@@ -45,12 +45,12 @@ def source_manifest(directory):
             hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     write_json(directory / 'source-hashes.json', hashes)
     diff = command(['git', 'diff', '--', 'scripts/compose-up.sh', 'scripts/quality', 'scripts/k6',
-                    'docker', 'observability'])
+                    'docker', 'observability', 'docs/quality/README.md', 'docs/quality/RUNBOOK.md'])
     (directory / 'source.patch').write_text(diff + '\n')
     # Untracked implementation also needs to be reproducible after subsequent edits.
     for name in hashes:
         if name.startswith(('scripts/quality/', 'scripts/k6/quality-', 'docker/docker-compose.quality',
-                            'observability/alertmanager/quality')) or name == 'scripts/compose-up.sh':
+                            'observability/alertmanager/quality')) or name in ('scripts/compose-up.sh', 'docs/quality/README.md', 'docs/quality/RUNBOOK.md'):
             target = directory / 'source' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((ROOT / name).read_bytes())
