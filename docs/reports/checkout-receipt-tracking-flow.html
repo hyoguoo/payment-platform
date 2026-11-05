@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="서버 중단 후 요청 도달과 주문 저장을 확인하고, 같은 구매를 안전하게 재요청하는 방향을 설명하는 논의용 보고서.">
+  <title>서버 중단 후 요청 확인과 안전한 재요청</title>
+  <style>
+    :root { --ink:#192c3c; --muted:#536578; --line:#d9e2e9; --paper:#f4f7fa; --blue:#225d91; --blue-bg:#edf4fb; --green:#21654c; --green-bg:#edf7f1; --amber:#845216; --amber-bg:#fff6e7; --red:#914940; --red-bg:#fff1ef; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; scroll-padding-top:24px; }
+    body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; word-break:keep-all; overflow-wrap:anywhere; }
+    main { max-width:1120px; margin:auto; padding:32px 24px 64px; }
+    h1,h2,h3,p { margin-top:0; }
+    h1 { font-size:clamp(1.85rem,3.7vw,3rem); line-height:1.25; letter-spacing:-.045em; margin:15px 0 18px; }
+    h2 { font-size:clamp(1.35rem,2.3vw,1.85rem); line-height:1.35; letter-spacing:-.035em; margin:9px 0 10px; }
+    h3 { font-size:1.08rem; line-height:1.45; margin:0 0 8px; }
+    p { margin-bottom:12px; }
+    a { color:var(--blue); text-underline-offset:3px; }
+    a:focus-visible { outline:3px solid #d88a21; outline-offset:4px; border-radius:3px; }
+    code { font:inherit; font-weight:750; }
+    .hero { padding:32px 36px; border-radius:20px; background:#19384f; color:white; }
+    .eyebrow { font-size:.78rem; font-weight:800; letter-spacing:.08em; color:#b7d4ea; }
+    .hero .lead { color:#d6e4ee; font-size:1.04rem; max-width:850px; margin-bottom:18px; }
+    .hero .status { color:#ffe0a3; font-size:.86rem; margin:0; }
+    .jump { display:flex; flex-wrap:wrap; gap:8px 22px; margin:20px 2px 24px; font-size:.92rem; }
+    .panel { background:white; border:1px solid var(--line); border-radius:17px; padding:28px; margin:18px 0; }
+    .label { display:inline-block; font-size:.78rem; font-weight:850; border-radius:6px; padding:3px 9px; line-height:1.55; }
+    .label.agreed { color:var(--green); background:var(--green-bg); }
+    .label.current { color:var(--blue); background:var(--blue-bg); }
+    .label.proposed { color:var(--amber); background:var(--amber-bg); }
+    .sub { color:var(--muted); font-size:.94rem; max-width:900px; margin-bottom:20px; }
+    .cards { display:grid; gap:14px; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .cards.two { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .card { padding:20px; border:1px solid var(--line); border-radius:12px; min-width:0; }
+    .card p:last-child { margin:0; }
+    .card p { color:var(--muted); font-size:.93rem; }
+    .card .num { font-size:.8rem; font-weight:850; color:var(--green); margin-bottom:8px; display:block; }
+    .card.good { background:var(--green-bg); border-color:#c4dfd0; }
+    .card.warn { background:var(--amber-bg); border-color:#ead6b2; }
+    .card.danger { background:var(--red-bg); border-color:#e8cbc6; }
+    .inline-key { display:inline-block; padding:0 6px; border-radius:4px; background:#e4ecf2; color:#244c6b; font-size:.9em; }
+    .flow { display:flex; flex-direction:column; max-width:930px; margin:20px auto; }
+    .node { padding:13px 18px; border:1px solid var(--line); border-radius:11px; text-align:center; background:#f7f9fb; }
+    .node strong { display:block; line-height:1.5; }
+    .node small { display:block; margin-top:4px; color:var(--muted); font-size:.83rem; line-height:1.55; }
+    .node.blue { background:var(--blue-bg); border-color:#bad1e5; }
+    .node.green { background:var(--green-bg); border-color:#b9d8c8; }
+    .node.amber { background:var(--amber-bg); border-color:#e5cd9f; }
+    .node.red { background:var(--red-bg); border-color:#e8cbc6; }
+    .arrow { text-align:center; font-size:1.3rem; color:#6d8397; line-height:1.3; padding:3px 0; }
+    .arrow.words { font-size:.85rem; padding:8px 0; }
+    .pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .route { border:1px solid var(--line); border-radius:13px; padding:18px; min-width:0; }
+    .route h3 { font-size:1rem; }
+    .route .flow { margin:12px 0 0; }
+    .db { border:2px solid #7bb396; border-radius:12px; background:var(--green-bg); padding:17px; text-align:center; }
+    .db > strong { display:block; font-size:1rem; }
+    .db .record { margin:11px auto 5px; max-width:360px; padding:9px; background:white; border:1px solid #bfdaca; border-radius:8px; font-size:.98rem; font-weight:850; color:var(--green); }
+    .db small { display:block; font-size:.82rem; color:var(--muted); }
+    .note { border-left:4px solid #94aec1; padding:12px 15px; background:#f5f8fb; font-size:.9rem; margin-top:18px; border-radius:0 8px 8px 0; }
+    .note p { margin:0; }
+    .note p + p { margin-top:7px; }
+    .note.warm { border-color:#dbb56e; background:var(--amber-bg); }
+    .results { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .case { padding:19px; border:1px solid var(--line); border-radius:12px; }
+    .case .event { color:var(--muted); font-size:.9rem; margin-bottom:14px; }
+    .case .answer { color:var(--green); background:var(--green-bg); border-radius:8px; padding:11px 13px; margin:0; font-size:.94rem; }
+    .case .answer.pending { color:var(--amber); background:var(--amber-bg); }
+    .case small { display:block; margin-top:10px; color:var(--muted); font-size:.83rem; }
+    .evidence { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:20px; }
+    .evidence article { background:var(--blue-bg); border:1px solid #c8daea; border-radius:12px; padding:18px; }
+    .evidence .question { font-size:.84rem; color:var(--blue); font-weight:800; margin:0 0 8px; }
+    .evidence h3 { font-size:1rem; }
+    .evidence p:last-child { color:var(--muted); font-size:.87rem; margin:0; }
+    .sample { border:1px solid #c7d8e7; border-radius:10px; padding:15px 18px; margin-top:16px; font-size:.94rem; background:#f5f9fd; }
+    .sample p { margin:0; }
+    .sample .result { font-weight:850; color:var(--blue); margin-top:5px; }
+    .work { padding:0; margin:18px 0 0; list-style:none; counter-reset:work; }
+    .work li { counter-increment:work; display:grid; grid-template-columns:34px 1fr; gap:12px; padding:15px 0; border-top:1px solid var(--line); }
+    .work li::before { content:counter(work); width:30px; height:30px; display:grid; place-items:center; border-radius:50%; background:var(--blue-bg); color:var(--blue); font-size:.9rem; font-weight:850; }
+    .work strong { display:block; }
+    .work p { color:var(--muted); font-size:.9rem; margin:3px 0 0; }
+    .checks { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
+    .checks span { border:1px solid var(--line); border-radius:6px; padding:5px 9px; font-size:.83rem; background:#fafcfd; }
+    footer { padding:16px 3px 0; color:var(--muted); font-size:.84rem; }
+    footer p { margin-bottom:9px; }
+    .sources { display:flex; flex-wrap:wrap; gap:7px 20px; margin-top:14px; }
+    @media(max-width:720px) {
+      main { padding:18px 14px 40px; }
+      .hero { padding:25px 22px; border-radius:15px; }
+      .panel { padding:22px 18px; }
+      .cards,.cards.two,.pair,.results,.evidence { grid-template-columns:1fr; }
+      .jump { gap:8px 17px; font-size:.87rem; }
+      .card { padding:17px; }
+      .node { padding:12px; }
+      .route { padding:15px; }
+      .hero .lead { font-size:.96rem; }
+    }
+    @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
+    @media print {
+      body { background:white; font-size:11pt; }
+      main { padding:0; max-width:none; }
+      .hero { color:var(--ink); background:white; border:2px solid var(--line); }
+      .hero .lead,.hero .status,.eyebrow { color:var(--muted); }
+      .jump { display:none; }
+      .panel { break-inside:auto; box-shadow:none; }
+      .card,.route,.case,.evidence article,.sample { break-inside:avoid; }
+      a { color:inherit; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">PAYMENT PLATFORM · 논의용 보고서</div>
+    <h1>서버가 꺼진 뒤,<br>주문을 확인하고 안전하게 다시 요청하기</h1>
+    <p class="lead">응답을 못 받았어도 주문은 저장됐을 수 있다. 남은 기록으로 처리 위치를 확인하고, 같은 구매를 다시 요청해도 주문이 중복 생성되지 않도록 보완한다.</p>
+    <p class="status">2026-10-15 · 목표와 보장 수준 합의 · 상세 설계 논의 중 · 제안 흐름은 아직 미구현</p>
+  </header>
+
+  <nav class="jump" aria-label="보고서 목차">
+    <a href="#agreed">합의한 목표</a><a href="#current">현재의 빈틈</a><a href="#proposal">제안 흐름</a><a href="#cases">상황별 결과</a><a href="#investigation">도달 확인</a><a href="#next">다음 작업</a>
+  </nav>
+
+  <section class="panel" id="agreed" aria-labelledby="agreed-title">
+    <span class="label agreed">사용자와 합의</span>
+    <h2 id="agreed-title">요청 확인과 안전한 재요청을 함께 다룬다</h2>
+    <p class="sub">두 목표를 한 토픽에서 진행한다. 어느 쪽을 먼저 할지는 고정하지 않았다.</p>
+    <div class="cards">
+      <article class="card good"><span class="num">01 · 요청 확인</span><h3>어디까지 처리됐는지 확인</h3><p>Gateway 도달, payment 업무 진입, 주문 DB 저장을 각각 확인한다.</p></article>
+      <article class="card good"><span class="num">02 · 안전한 재요청</span><h3>같은 구매의 주문 중복 방지</h3><p>이미 저장됐으면 기존 주문을 돌려주고, 저장되지 않았다면 주문을 생성한다.</p></article>
+      <article class="card warn"><span class="num">03 · 증거 유실</span><h3>도달 여부는 미확인 허용</h3><p>서버가 꺼지고 로그까지 사라지면 도달을 단정하지 않는다. 그래도 같은 구매를 안전하게 재요청할 수 있어야 한다.</p></article>
+    </div>
+    <div class="note"><p><strong>이 보고서에서 checkout은 주문 생성 요청이다.</strong> 주문 저장은 결제 승인 완료를 뜻하지 않는다. 결제 확정은 주문 ID로 보내는 별도 confirm 요청에서 진행한다.</p></div>
+  </section>
+
+  <section class="panel" id="current" aria-labelledby="current-title">
+    <span class="label current">현재 코드</span>
+    <h2 id="current-title">추적과 중복 억제는 있지만, 장애 후 보장이 부족하다</h2>
+    <div class="cards two">
+      <article class="card"><h3>요청을 확인하는 쪽</h3><p>Gateway·payment의 trace와 로그, Promtail→Loki 로그 수집 설정은 이미 있다.</p><p>하지만 측정 도구는 실행별 서버 로그를 보존하지 않고, 특정 k6 실패 요청과 서버 trace를 정확히 연결하는 정보도 없다.</p></article>
+      <article class="card danger"><h3>같은 구매를 다시 요청하는 쪽</h3><p>구매 키와 주문의 연결은 Redis에 잠시 남는다. 결과와 처리 잠금의 기본 만료 시간은 10초다.</p><p>연결이 만료되거나 사라지면 DB에서 같은 구매를 찾지 못하고 새 주문을 만들 수 있다.</p></article>
+    </div>
+    <div class="flow" role="img" aria-label="현재 신규 checkout 경로. 요청 후 payment가 주문 생성 처리를 하고 주문 ID를 로그에 남긴다. Redis 결과를 먼저 기록하며, 그 다음 DB 트랜잭션이 커밋된다. 그 후 주문 ID를 응답한다. Redis 결과와 DB 저장 완료 사이에 실패가 발생할 수 있다.">
+      <div class="node blue"><strong>checkout 요청 → Gateway → payment</strong><small>trace·로그로 요청을 따라가는 장치가 있음</small></div>
+      <div class="arrow" aria-hidden="true">↓</div>
+      <div class="node blue"><strong>주문 생성 처리 · 주문 ID 로그 출력</strong><small>DB 커밋(저장 확정) 전이므로 저장 완료 증거가 아님</small></div>
+      <div class="arrow" aria-hidden="true">↓</div>
+      <div class="node red"><strong>Redis에 주문 결과를 먼저 기록</strong><small>DB 커밋 전 · 기본 10초 뒤 결과 만료</small></div>
+      <div class="arrow words" aria-hidden="true">↓ 이 사이에 종료·커밋 실패가 발생할 수 있음</div>
+      <div class="node green"><strong>주문 DB 저장 완료 → 주문 ID 응답</strong><small>DB 커밋이 성공한 신규 주문 경로</small></div>
+    </div>
+    <div class="note warm"><p><strong>두 가지 실패가 가능하다.</strong> DB에는 없는 주문을 Redis 결과만 보고 반환하거나, 실제 주문은 저장됐는데 Redis 연결이 사라져 재요청 때 다른 주문을 만들 수 있다.</p><p>기존 Redis 결과를 바로 반환하는 중복 경로에서는 신규 주문 생성 로그를 다시 찍지 않는다. 일반 요청의 서버 생성 trace가 모든 필요한 지점에 이어지는지도 아직 실행 검증하지 않았다.</p></div>
+  </section>
+
+  <section class="panel" id="proposal" aria-labelledby="proposal-title">
+    <span class="label proposed">구현 방향 제안 · 미구현</span>
+    <h2 id="proposal-title">같은 구매 키로, DB에 저장된 주문을 다시 찾는다</h2>
+    <p class="sub"><strong>구매 키</strong>는 같은 구매를 다시 요청할 때 유지하는 값이다. 아래 <span class="inline-key">K-1</span>과 <span class="inline-key">O-1</span>은 구매 키와 주문 ID의 설명용 예시다.</p>
+    <div class="pair">
+      <article class="route">
+        <h3>처음 요청했을 때</h3>
+        <div class="flow" role="img" aria-label="제안 흐름. 구매 키 K-1로 처음 요청하면 DB에 구매 키 K-1과 주문 O-1을 함께 확정한다. 응답이 유실되어도 저장된 연결은 유지된다.">
+          <div class="node blue"><strong>구매 키 K-1로 checkout</strong><small>구매 내용과 함께 전송</small></div>
+          <div class="arrow" aria-hidden="true">↓</div>
+          <div class="db"><strong>DB에 함께 저장</strong><div class="record">구매 키 K-1 ↔ 주문 O-1</div><small>키 연결과 주문을 함께 저장하거나 함께 취소</small></div>
+          <div class="arrow" aria-hidden="true">↓</div>
+          <div class="node amber"><strong>응답을 받지 못함</strong><small>클라이언트는 주문 ID를 모를 수 있음</small></div>
+        </div>
+      </article>
+      <article class="route">
+        <h3>같은 구매를 다시 요청했을 때</h3>
+        <div class="flow" role="img" aria-label="제안 흐름. 같은 구매 내용과 키 K-1로 재요청하면 커밋된 기존 주문 O-1을 찾고 저장된 구매 내용과 비교한다. 일치하면 새 주문 없이 기존 주문 ID와 확정 금액을 반환한다.">
+          <div class="node blue"><strong>같은 K-1과 같은 내용으로 checkout</strong><small>다른 구매 키를 만들지 않음</small></div>
+          <div class="arrow" aria-hidden="true">↓</div>
+          <div class="db"><strong>커밋된 기존 주문 조회 · 내용 대조</strong><div class="record">K-1의 주문은 O-1</div><small>저장된 구매 내용과 일치하는지 확인</small></div>
+          <div class="arrow" aria-hidden="true">↓</div>
+          <div class="node green"><strong>기존 O-1과 확정 금액 반환</strong><small>새 주문을 만들지 않음</small></div>
+        </div>
+      </article>
+    </div>
+    <div class="note"><p><strong>DB가 마지막 중복 방지 기준이 된다.</strong> DB에서 같은 구매 키를 한 건만 허용하고, 키 연결과 주문을 함께 저장하거나 함께 취소하도록 설계한다. Redis는 DB 저장 완료의 증거를 대신하지 않는다.</p><p>기존 checkout은 이미 중복 요청에 기존 주문을 반환한다. 이 동작을 장애·만료 후에도 이어가는 방향이며, 테이블 배치와 동시 요청 처리 방식은 아직 정하지 않았다.</p></div>
+  </section>
+
+  <section class="panel" id="cases" aria-labelledby="cases-title">
+    <span class="label proposed">제안이 구현됐을 때의 결과</span>
+    <h2 id="cases-title">서버가 어느 시점에 꺼졌는지에 따라 결과가 달라진다</h2>
+    <p class="sub">아래는 같은 구매 키와 같은 내용으로 재요청하는 경우다. 현재 서비스가 이미 이 보장을 제공한다는 뜻은 아니다.</p>
+    <div class="results">
+      <article class="case"><h3>주문 저장 전에 서버가 꺼짐</h3><p class="event">앞선 요청이 더 이상 진행 중이지 않고, DB에 같은 키의 확정 주문이 없는 경우</p><p class="answer"><strong>재요청으로 주문 생성</strong><br>저장 확정된 기존 주문이 없으므로 구매를 이어간다.</p><small>원래 요청의 도달 여부는 로그가 없으면 미확인으로 남는다.</small></article>
+      <article class="case"><h3>주문 저장 후 응답만 잃음</h3><p class="event">DB에는 K-1과 O-1이 저장됐지만 클라이언트는 응답을 받지 못한 경우</p><p class="answer"><strong>기존 O-1 반환</strong><br>새 주문 없이 이미 저장된 결과를 회수한다.</p><small>Redis가 만료됐거나 서버가 재기동돼도 영속 연결로 확인한다.</small></article>
+      <article class="case"><h3>같은 구매가 동시에 재요청됨</h3><p class="event">앞선 요청이 아직 처리 중이거나 같은 키의 여러 요청이 겹친 경우</p><p class="answer"><strong>중복 주문 확정 방지</strong><br>DB에서 한 건만 확정하고 기존 결과 회수 또는 재시도 가능한 상태로 처리한다.</p><small>대기 시간과 응답 방식은 상세 설계에서 정한다.</small></article>
+      <article class="case"><h3>DB 상태를 확인할 수 없음</h3><p class="event">DB 조회 실패나 커밋 결과 불명으로 기존 주문 유무를 모르는 경우</p><p class="answer pending"><strong>새 주문 생성을 확정하지 않음</strong><br>같은 구매 키를 유지하고 확인·재요청 가능 상태로 둔다.</p><small>“조회 실패”를 “주문 없음”으로 바꾸지 않는다.</small></article>
+    </div>
+    <div class="note warm"><p><strong>이미 주문과 함께 확정된 키로 구매 내용을 바꾸면 충돌로 처리한다.</strong> 과거에 선택한 사용자·상품·수량·결제수단 변경 거절을 설계 입력으로 유지하며, 내용 비교와 오류 응답의 상세를 정한다.</p><p>재요청으로 새 주문이 생성됐다고 해서 원래 실패 요청이 저장됐다고 판정하지 않는다. 기존 주문이 결제 실패·만료 상태인 경우의 재구매 계약도 상세 설계에서 다룬다.</p></div>
+  </section>
+
+  <section class="panel" id="investigation" aria-labelledby="investigation-title">
+    <span class="label agreed">증거로 확인 · 유실되면 미확인 허용</span>
+    <h2 id="investigation-title">요청 도달과 주문 저장은 각각 확인한다</h2>
+    <p class="sub">구매 키는 <strong>같은 구매</strong>를 찾는 값이다. trace는 <strong>서버 처리 경로</strong>를 따라가는 값이며, 하나의 trace에 여러 요청이 포함될 수도 있다. 구매 키만으로 개별 요청의 도달 지점을 알 수는 없다.</p>
+    <div class="node amber"><strong>먼저, 이 실패 요청의 서버 기록을 정확히 식별해야 한다</strong><small>현재 k6 시도와 trace의 연결 방식은 미결 · 식별하지 못하면 해당 요청의 도달은 미확인</small></div>
+    <p class="sub" style="margin:12px 0 0">해당 요청의 기록을 식별한 경우에만 아래 로그로 도달을 판단한다. 주문 저장 여부는 주문 ID나 제안의 영속 구매 키 연결로 따로 확인한다.</p>
+    <div class="evidence">
+      <article><p class="question">Gateway까지 왔나?</p><h3>해당 요청의 Gateway 수신 로그</h3><p>발견하면 그 기록 지점의 도달을 확인한다. 로그가 없다는 이유로 미도달을 확정하지 않는다.</p></article>
+      <article><p class="question">payment 업무까지 들어갔나?</p><h3>checkout 시작 로그</h3><p>발견하면 주문 생성 업무 진입을 확인한다. HTTP 수신 전체를 증명하는 로그는 아니다.</p></article>
+      <article><p class="question">주문이 실제 저장됐나?</p><h3>커밋된 주문 DB 기록</h3><p>현재는 주문 ID로 대조한다. 제안 구현 후에는 영속 구매 키 연결로도 저장된 주문을 찾는다.</p></article>
+    </div>
+    <div class="sample"><p>예시: payment 시작 로그는 있지만 주문 ID를 찾지 못함</p><p class="result">payment 업무 진입 확인 / DB 저장 여부 미확인</p></div>
+    <div class="note"><p><strong>확인한 증거는 남긴다.</strong> 주문 저장 여부를 몰라도 이미 확인한 도달 지점은 지우지 않는다. Gateway 로그가 없어도 payment·DB 조사는 계속한다.</p><p>비슷한 시각·경로만으로 요청을 짝짓지 않는다. DB는 원본 DB(primary)에서 조회 시점과 함께 확인하며, 진행 중인 요청이 나중에 저장될 가능성도 고려한다.</p></div>
+  </section>
+
+  <section class="panel" id="next" aria-labelledby="next-title">
+    <span class="label proposed">다음 설계·검증 제안</span>
+    <h2 id="next-title">서버·클라이언트·조사 도구를 함께 맞춘다</h2>
+    <p class="sub">아래는 작업 묶음이다. 실행 순서나 구현 계획의 확정 목록은 아니다.</p>
+    <ol class="work">
+      <li><div><strong>서버: 구매 키와 주문을 함께 확정</strong><p>같은 키의 중복 저장 방지, 구매 내용 비교, 동시 요청·저장 실패 처리를 설계한다. 기존 주문을 회수할 때 현재 상품 가격이나 조회 장애에 막히지 않도록 한다.</p></div></li>
+      <li><div><strong>클라이언트: 같은 구매 키를 계속 보관</strong><p>같은 구매의 재요청에는 같은 키를 보내고, 새 구매에는 새 키를 사용한다. 현재 결제 화면은 키를 보내지 않으므로 이 경로도 보완 대상이다. 재시도는 제한하고 키·구매 내용은 유지한다.</p></div></li>
+      <li><div><strong>조사 도구: 기존 관측을 검증하고 원자료 보존</strong><p>클라이언트가 traceparent를 보내지 않은 일반 요청의 trace 연결을 확인한다. 실행 구간·인스턴스별 서버 로그를 보존하고 실패 요청과 서버 기록의 정확한 연결 방식을 선택한다.</p></div></li>
+    </ol>
+    <div class="checks" aria-label="주요 검증 상황"><span>Redis 만료·유실</span><span>동일 키 동시 요청</span><span>같은 키의 내용 충돌</span><span>커밋 전 서버 중단</span><span>커밋 후 응답 유실</span><span>DB 확인 실패</span><span>구매 키 비노출</span></div>
+    <div class="note warm"><p><strong>추가 장치는 필요에 따라 선택한다.</strong> 별도 공개 조회 API, trace ID의 DB 저장, k6의 trace 생성은 확정된 필수 변경이 아니다. 별도 영속 도달 이력 없이도 미확인 허용과 안전한 재요청이라는 목표를 설계할 수 있다.</p><p>구매 키 계약·보관 기간·접근 범위는 과거 사용자 선택을 설계 입력으로 존중하고, 최신 범위와 충돌하거나 구현상 변경이 필요한 부분만 다시 논의한다.</p></div>
+  </section>
+
+  <footer>
+    <p><strong>검증 경계:</strong> 현재 동작은 코드 정적 점검과 독립 코드·도메인 검토에 근거한다. 제안은 미구현이며 일반 요청의 trace 연속성·Loki 실수집·장애 시 재요청 보장은 아직 실행 검증하지 않았다. 실제 부하 측정·성능 탐색은 별도 작업이다.</p>
+    <div class="sources"><a href="../topics/CHECKOUT-RECEIPT-TRACKING.md">최신 합의와 논의</a><a href="./checkout-receipt-tracking-review.md">코드 점검 근거</a><a href="./checkout-receipt-tracking-corrections.md">이전 판단 정정 기록</a><a href="../STATE.md">작업 상태</a></div>
+    <div class="sources"><a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java">checkout 처리</a><a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java">Redis 결과·잠금</a><a href="../../scripts/quality/settlement.py">현재 품질 판정</a><a href="../../observability/promtail/config.yml">로그 수집 설정</a></div>
+  </footer>
+</main>
+</body>
+</html>
