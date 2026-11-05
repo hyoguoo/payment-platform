@@ -2,7 +2,7 @@
 # 메인 모델은 사용자가 선택한다. 역할별 effort는 서로 다른 엔진에서 같은 성능을 뜻하지 않는다.
 
 [roles.implementer]
-description = "독립적으로 맡길 수 있는 구현 태스크나 리뷰 수정 묶음을 구현하고 검증한다."
+description = "독립적으로 맡길 수 있는 구현 태스크나 리뷰 수정 묶음을 구현하고 검증한다. 메인이 태스크, 허용 쓰기 범위, 검증 명령을 지정해 호출한다."
 instructions = ".agents/roles/implementer.md"
 claude_model = "sonnet"
 claude_effort = "medium"
@@ -12,7 +12,7 @@ codex_model = "gpt-6-sol"
 codex_effort = "medium"
 
 [roles.reviewer]
-description = "설계·계획·코드 변경의 요구 충족, 회귀, 테스트 누락을 독립적으로 검토한다. 수정하지 않는다."
+description = "설계·계획·코드 변경이 요구와 설계를 충족하는지, 회귀와 테스트 누락이 없는지 독립적으로 검토한다. 파일을 수정하지 않는다."
 instructions = ".agents/roles/reviewer.md"
 claude_model = "sonnet"
 claude_effort = "high"
@@ -22,10 +22,10 @@ codex_model = "gpt-6-sol"
 codex_effort = "high"
 codex_sandbox_mode = "read-only"
 
-[roles.domain-expert]
-description = "결제 상태·멱등성·동시성·PG 실패·보상·금전과 재고 정합성의 위험을 검토한다. 수정하지 않는다."
-instructions = ".agents/roles/domain-expert.md"
-claude_model = "fable"
+[roles.risk-reviewer]
+description = "핵심 경로를 건드리는 설계나 코드 변경이 프로젝트의 불변식을 깨는지, 재시도·동시성·부분 실패 같은 장애 경로를 처리하는지 검토한다. 설계 사전 점검과 마무리 리뷰에 쓴다. 파일을 수정하지 않는다."
+instructions = ".agents/roles/risk-reviewer.md"
+claude_model = "opus"
 claude_effort = "high"
 claude_tools = "Read, Grep, Glob, Bash"
 claude_color = "purple"

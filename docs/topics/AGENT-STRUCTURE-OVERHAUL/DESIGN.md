@@ -107,12 +107,109 @@
 
 ## 태스크
 
-합의 브리핑 확정 뒤 plan 단계에서 채운다. 아래는 순서 초안이다.
+순서는 실제 참조 관계로 정했다. 지침 문서(T4~T7)는 T1의 프로필과 T3의 역할 이름을 참조하고, 문서 검사(T8)는 T1~T7의 새 경로를 기준으로 하며,
+2단계 문서 정리(T11~T14)는 T8의 식별자 대조로 확인한다. implementer 후보는 쓰기 범위가 겹치지 않는 T12·T13·T14다.
+1단계 중간(T2 이후)에는 옛 지침 파일과 새 파일이 잠시 함께 있다. 옛 파일 삭제는 각 태스크에서 대체가 끝난 직후 한다.
 
-0단계 (테스트 분류): T0 컨테이너 테스트 9개 태그 이동
-1단계 (지침 구조): T1 프로필 → T2 hook·hook 테스트 → T3 역할 → T4 conventions·templates → T5 workflow·review·explain 스킬 → T6 전용 스킬 → T7 AGENTS·CLAUDE·README·운영 문서 이동 → T8 문서 검사 스크립트 → T9 STATE·TODOS·archive README → T10 진행 중 두 토픽 재작성
-2단계 (문서): T11 context 통합(ARCHITECTURE·PITFALLS·TESTING·STACK·guides) → T12 나머지 context 대조(PAYMENT-FLOW·CONFIRM-FLOW·INTEGRATIONS·conventions) → T13 smoke → T14 quality(RUNBOOK 포함, D20)
-판정: T15
+- [ ] **T0 — 컨테이너를 띄우는 테스트 9개를 통합 테스트로 옮긴다**
+  - 변경 위치: D25의 9개 테스트 클래스(클래스 선언에 `@Tag("integration")`)
+  - 의존: 없음
+  - 완료 기준: 컨테이너 사용 + 태그 없음 0건. Docker를 끈 상태에서 `test`가 컨테이너 없이 통과(R11). 태그를 붙인 클래스가 `integrationTest`에서 실행된다(FS-15)
+  - 검증: `grep` 대조, `./gradlew :payment-service:test :pg-service:test :product-service:test`(Docker 끈 상태), 정적 분석 3개 모듈. Docker가 켜지면 `:payment-service:integrationTest :pg-service:integrationTest :product-service:integrationTest --rerun-tasks`
+  - tdd: false (테스트 분류만 바꾼다) | risk: false | 담당: 메인
+- [x] **T1 — `stack.md`와 `risk.md` 프로필을 만든다**
+  - 변경 위치: `.agents/profiles/stack.md`, `.agents/profiles/risk.md`
+  - 의존: T0 (stack.md 코드 규칙에 D26 테스트 분류 규칙을 넣는다)
+  - 완료 기준: 버전 표가 `build.gradle`·wrapper와 같다(Java 21, Spring Boot 3.4.4, Gradle 8.14.4 등). 모듈 표 6개와 커밋 scope. `verify-config`는 D4. risk.md 불변식 INV-1~7, 핵심 경로 glob은 실제 패키지로 확인한 값(R2, D10)
+  - 검증: 버전·경로 대조(`ls`, `grep`)
+  - tdd: false | risk: false | 담당: 메인
+  - 결과: `.agents/profiles/stack.md`, `risk.md` 작성. 버전은 `build.gradle`(Spring Boot 3.4.4, Checkstyle 10.17.0, ArchUnit 1.3.0, Java 21)·wrapper(8.14.4)·서비스 `springCloudVersion`(2024.0.0)과 대조. 핵심 경로 glob이 가리키는 디렉토리 존재 확인. 위험 범주 메모는 근거가 확인된 것만 점검 질문 형태로 적음
+- [x] **T2 — hook을 `.agents/hooks/`로 바꾸고 hook 테스트를 다시 쓴다**
+  - 변경 위치: `.agents/hooks/{lib/common.sh,verify-on-stop.sh,lint-file.sh,verify-pause.sh}`(kit), `config/checkstyle/check-file.sh`(D5), `.claude/settings.json`(D6), `scripts/test-hooks.sh`, `build.gradle:59` 주석, `.github/workflows/ci.yml` 경로(D24). 삭제 `.claude/hooks/`
+  - 의존: T1
+  - 완료 기준: FS-1~FS-10을 test-hooks 케이스로 확인. 테스트 케이스를 먼저 쓰고 옛 hook 경로로 실패하는 것을 본 뒤 새 hook을 넣는다(R5)
+  - 검증: `bash scripts/test-hooks.sh`, `bash -n` 각 스크립트
+  - tdd: true | risk: false | 담당: 메인
+  - 결과: kit hook 4개·`check-file.sh`(+`-p` 속성 파일)·`settings.json` 복사, `.claude/hooks/` 삭제, `build.gradle` 주석 경로 수정. `scripts/test-hooks.sh`를 새로 써서 옛 구조에서 실패(새 hook 없음) 확인 후 34케이스 통과(FS-1~FS-10). 가짜 gradlew는 결과 XML을 1초 뒤에 쓴다(hook이 실행 시작 표식과 초 단위로 비교). CI 단계는 경로가 같아 변경 없음. `docs/context/STACK.md`의 옛 hook 설명은 T11에서 고친다
+- [x] **T3 — 역할을 implementer·reviewer·risk-reviewer로 바꾼다**
+  - 변경 위치: `.agents/roles.toml`, `.agents/roles/{implementer,reviewer,risk-reviewer}.md`(kit 본문), 삭제 `.agents/roles/domain-expert.md`·생성 파일 2개, 생성 `.claude/agents/*`, `.codex/agents/*`. `.agents/roles/README.md`는 T7에서 `.agents/README.md`로 합친다
+  - 의존: T1 (risk.md 경로)
+  - 완료 기준: 생성 파일 3+3개, risk-reviewer `opus`·Codex 모델 유지(R4, D8, D9, FS-11)
+  - 검증: `python3 scripts/sync-agent-configs.py` 후 `--check`
+  - tdd: false | risk: false | 담당: 메인
+  - 결과: `roles.toml` 3역할, `.agents/roles/*.md`는 kit 본문. 첫 sync에서 옛 domain-expert 생성 파일 2개를 "정본에 없는 생성 파일"로 보고(FS-11) → 삭제 후 `--check` 통과(6개). risk-reviewer Claude `opus`, Codex `gpt-6-astra`. `sync-agent-configs.py`는 변경 불필요
+- [ ] **T4 — conventions와 templates를 kit에서 가져온다**
+  - 변경 위치: `.agents/conventions/{git,testing,writing}.md`, `.agents/templates/{BRIEF,DESIGN,EXPERIMENTS}.md`. 삭제 `.agents/skills/_shared/`(writing 계열은 T6에서 옮긴 뒤 삭제)
+  - 의존: T1
+  - 완료 기준: git.md에 이 프로젝트 scope·Codex 작성자 표기(D11), writing.md 문장 절에 상세판 링크(D12). kit과 diff하면 프로젝트 고유 줄만 다르다
+  - 검증: `diff -r` kit 대조
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T5 — workflow·review·explain-change-html 스킬을 kit 버전으로 바꾼다**
+  - 변경 위치: `.agents/skills/{workflow,workflow-discuss,workflow-plan,workflow-execute,workflow-ship,review,explain-change-html}/`. 삭제 `issue-commit-pr/`, `explain-diff-html/`
+  - 의존: T3, T4
+  - 완료 기준: kit과 diff하면 프로젝트 고유 줄(Codex·멀티모듈·context-update 연결)만 다르다(R3, D14)
+  - 검증: `diff -r` kit 대조
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T6 — 전용 스킬 6개를 새 구조에 맞춘다**
+  - 변경 위치: `.agents/skills/{payment-live-drill,wiki-access,portfolio-access,writing,doc-review,context-update}/`, 신규 `writing/references/style-guide.md`(D12, D13), 삭제 `_shared/conventions/writing*.md`
+  - 의존: T4, T5
+  - 완료 기준: 옛 경로(`_shared`, `domain-expert`, `issue-commit-pr`, `PLAN`) 참조 0건. style-guide에 원문 1~7절과 D13 항목. doc-review가 7절 표를 검수 목록으로 쓴다. context-update는 ship 문서 동기화 절차(D15)
+  - 검증: `grep -rn` 옛 경로
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T7 — `AGENTS.md`를 다시 쓰고 운영 문서를 옮긴다**
+  - 변경 위치: `AGENTS.md`, 신규 `CLAUDE.md`, `.agents/README.md`(옛 `.agents/skills/README.md`, `.agents/roles/README.md`, `docs/context/CODEX.md` 통합), `.agents/references/claude-5-prompting.md`(이동)
+  - 의존: T1~T6
+  - 완료 기준: AGENTS.md 절 구성이 kit과 같고 "참고 문서" 표가 새 경로를 가리킨다. Code Review Rules는 risk.md로 옮겨졌다(R1, D21)
+  - 검증: kit과 diff, 링크 확인(T8 이후 strict로 재확인)
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T8 — 문서 검사 스크립트를 새 구조로 바꾸고 식별자 대조를 더한다**
+  - 변경 위치: `scripts/check-agent-docs.py`, 신규 테스트 `scripts/test_check_agent_docs.py`
+  - 의존: T7
+  - 완료 기준: 체크리스트·중복 규칙 검사 삭제, 식별자 대조(D17) 추가. 경로·클래스·설정 키 각각 존재/부재 픽스처 테스트. 새 구조에서 `--strict` 통과(R6)
+  - 검증: `python3 -m unittest scripts/test_check_agent_docs.py`, `python3 scripts/check-agent-docs.py --strict`
+  - tdd: true | risk: false | 담당: 메인
+- [ ] **T9 — STATE·TODOS·archive README를 새 형식으로 바꾼다**
+  - 변경 위치: `docs/STATE.md`, 신규 `docs/TODOS.md`, 삭제 `docs/context/TODOS.md`, `docs/archive/README.md`
+  - 의존: T7
+  - 완료 기준: STATE 토픽 항목은 제목+5줄, 별건 메모는 TODOS로. TODOS 항목은 코드로 해결을 확인한 것만 지우고 근거를 진행 기록에. archive README 목차 = 실제 폴더, 옛 형식 안내(R7, R10, D18)
+  - 검증: 폴더 대조 스크립트, `git diff --stat main -- docs/archive`
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T10 — 진행 중인 두 토픽 문서를 새 형식으로 다시 쓴다**
+  - 변경 위치: `docs/topics/PAYMENT-THROUGHPUT/{BRIEF,DESIGN,EXPERIMENTS}.md`(옛 `topics/PAYMENT-THROUGHPUT.md`, `PAYMENT-THROUGHPUT-PLAN.md`, `reports/tps-*`), `docs/topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md`(옛 `topics/CHECKOUT-RECEIPT-TRACKING.md`, `reports/checkout-receipt-*`)
+  - 의존: T9
+  - 완료 기준: 측정 결과·결정·남은 일이 빠짐없이 옮겨졌다(옛 문서의 수치·결정 목록과 대조). 재개 지점(T2.4 — 100/s 시험)이 새 문서와 STATE에서 같다(D19)
+  - 검증: 옛·새 문서 수치 대조, 링크 확인
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T11 — 겹치는 context 문서를 합친다**
+  - 변경 위치: `docs/context/{ARCHITECTURE,STRUCTURE,PITFALLS,CONCERNS,TESTING,STACK,CONVENTIONS}.md`, `conventions/testing.md`, `stack/flyway-operations.md`, 신규 `docs/context/README.md`, `docs/guides/payment-flow.md`(이동)
+  - 의존: T8 (식별자 대조), T9 (CONCERNS 미해결 항목 → TODOS)
+  - 완료 기준: BRIEF 질문 1의 A안 표대로 구성. 이력 줄 0건. 식별자 대조 0건. 합친 문서의 사실은 코드로 확인(R8, D21, D22, D26)
+  - 검증: `check-agent-docs.py --strict`, `grep "최종 갱신"`
+  - tdd: false | risk: false | 담당: 메인
+- [ ] **T12 — 나머지 context 문서를 코드와 대조해 고친다**
+  - 변경 위치: `docs/context/{PAYMENT-FLOW,CONFIRM-FLOW,INTEGRATIONS}.md`, `docs/context/conventions/{code-style,error-logging,kafka,transactions}.md`
+  - 의존: T11
+  - 완료 기준: 이력 줄 0건, 식별자 대조 0건, 코드와 다른 서술은 고치고 목록을 결과에 남긴다(R8)
+  - 검증: `check-agent-docs.py --strict`
+  - tdd: false | risk: false | 담당: implementer
+- [ ] **T13 — smoke 가이드 5개를 대조해 고친다**
+  - 변경 위치: `docs/smoke/*.md`
+  - 의존: T8
+  - 완료 기준: 명령·경로·지표 이름이 `scripts/smoke/`, `observability/` 설정과 같다. 식별자 대조 0건(R9)
+  - 검증: `check-agent-docs.py --strict`, 명령의 스크립트 존재·인자 대조
+  - tdd: false | risk: false | 담당: implementer
+- [ ] **T14 — quality 문서(RUNBOOK 포함)를 대조해 고친다**
+  - 변경 위치: `docs/quality/{README,RUNBOOK}.md`
+  - 의존: T8, T10 (처리량 토픽 EXPERIMENTS의 고정 조건 위치)
+  - 완료 기준: 명령·옵션이 `scripts/quality/`, `scripts/k6/`와 같다. 바뀐 명령·조건은 D20 형식으로 처리량 EXPERIMENTS와 결과에 남긴다(R9)
+  - 검증: `check-agent-docs.py --strict`, 명령 `--help` 대조
+  - tdd: false | risk: false | 담당: implementer
+- [ ] **T15 — 판정 시나리오를 실행한다**
+  - 변경 위치: 없음(결과는 BRIEF 완료 요약)
+  - 의존: T0~T14
+  - 완료 기준: 판정 1~4와 R11 확인. 실제 세션 trace.log, 새 세션 행동 확인(작은 수정·토픽 요청), Codex 가능 여부
+  - 검증: BRIEF 판정 목록
+  - tdd: false | risk: false | 담당: 메인
 
 ## 리뷰 처리
 
