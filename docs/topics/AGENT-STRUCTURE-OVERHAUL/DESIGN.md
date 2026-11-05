@@ -111,12 +111,13 @@
 2단계 문서 정리(T11~T14)는 T8의 식별자 대조로 확인한다. implementer 후보는 쓰기 범위가 겹치지 않는 T12·T13·T14다.
 1단계 중간(T2 이후)에는 옛 지침 파일과 새 파일이 잠시 함께 있다. 옛 파일 삭제는 각 태스크에서 대체가 끝난 직후 한다.
 
-- [ ] **T0 — 컨테이너를 띄우는 테스트 9개를 통합 테스트로 옮긴다**
+- [x] **T0 — 컨테이너를 띄우는 테스트 9개를 통합 테스트로 옮긴다**
   - 변경 위치: D25의 9개 테스트 클래스(클래스 선언에 `@Tag("integration")`)
   - 의존: 없음
   - 완료 기준: 컨테이너 사용 + 태그 없음 0건. Docker를 끈 상태에서 `test`가 컨테이너 없이 통과(R11). 태그를 붙인 클래스가 `integrationTest`에서 실행된다(FS-15)
   - 검증: `grep` 대조, `./gradlew :payment-service:test :pg-service:test :product-service:test`(Docker 끈 상태), 정적 분석 3개 모듈. Docker가 켜지면 `:payment-service:integrationTest :pg-service:integrationTest :product-service:integrationTest --rerun-tasks`
   - tdd: false (테스트 분류만 바꾼다) | risk: false | 담당: 메인
+  - 결과: 9개 클래스에 `@Tag("integration")`와 import 추가(스크립트로 넣어 편집 hook 대신 정적 분석을 직접 실행). 컨테이너 사용 + 태그 없음 0건. Docker를 못 찾게 한 상태(`DOCKER_HOST`를 없는 소켓으로)에서 `:payment-service:test :pg-service:test :product-service:test --rerun-tasks` 통과(698·442·70개, 옮긴 클래스 0개 포함). `checkstyleTest`·`spotbugsTest` 3개 모듈 통과. Docker를 켠 상태에서 `integrationTest --rerun-tasks` 통과(761·84·12개, 옮긴 클래스 결과 파일 6·2·1개). 세 서비스 모두 CI `has-integration: true`
 - [x] **T1 — `stack.md`와 `risk.md` 프로필을 만든다**
   - 변경 위치: `.agents/profiles/stack.md`, `.agents/profiles/risk.md`
   - 의존: T0 (stack.md 코드 규칙에 D26 테스트 분류 규칙을 넣는다)

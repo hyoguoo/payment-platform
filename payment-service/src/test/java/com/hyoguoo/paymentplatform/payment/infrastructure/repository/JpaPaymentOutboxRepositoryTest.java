@@ -12,6 +12,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -29,6 +30,7 @@ import org.testcontainers.containers.MySQLContainer;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(ClockConfig.class)
 @DisplayName("JpaPaymentOutboxRepository — 이미 있으면 넘어가는 삽입 + 확인 조회")
+@Tag("integration")
 class JpaPaymentOutboxRepositoryTest {
 
     @SuppressWarnings("resource")

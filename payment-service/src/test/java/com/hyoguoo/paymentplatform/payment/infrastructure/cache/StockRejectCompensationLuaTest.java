@@ -7,6 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.RedisConnection;
@@ -21,6 +22,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 @DisplayName("stock_reject_compensation.lua 단위 테스트 — 거절 전용 되돌리기")
+@Tag("integration")
 class StockRejectCompensationLuaTest {
 
     @Container
