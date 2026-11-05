@@ -118,16 +118,15 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 
 - `RetryPolicy`(최대 5회, 고정 5초)와 `RetryPolicyProperties`가 있지만 프로덕션에서 소진 판정을 부르는 곳이 없다. 실제 발행 실패는 `OutboxRelayService`의 단일 트랜잭션 롤백으로 처리돼 재시도 횟수 증가나 `FAILED` 종결 없이 5초마다 백오프 없이 재시도된다.
 - 타임아웃 회수 경로도 실행되지 않는다. 발행이 한 트랜잭션 안에서 PENDING → IN_FLIGHT → DONE을 모두 처리해, 커밋된 상태는 DONE이나 PENDING뿐이다. 그래서 IN_FLIGHT 행을 찾는 회수 조회에 걸리는 행이 없다.
-- 그 결과 실행되지 않는 정책을 가리키는 스키마와 지표가 남았다.
+- 그 결과 실행되지 않는 정책을 가리키는 스키마와 지표가 남았다. 쓰이지 않던 `available_at`은 payment V6 마이그레이션에서 이미 지웠다.
 
   | 대상 | 실제 값 | 쓰는 곳 |
   |---|---|---|
   | `payment_outbox.retry_count` | 항상 0 | `attempt_count_histogram` 지표 |
   | `payment_outbox.next_retry_at` | 항상 null | 선점·배치 조회 조건 2곳, `future_pending_count` 지표 |
   | `payment_outbox.in_flight_at` | DONE 행에 값이 있음 | 타임아웃 회수 조회(걸리는 행 없음) |
-  | `payment_outbox.available_at` | 삽입 기본값만 | 없음 |
 
-- 결정할 것: (1) 별도 트랜잭션 선점 경로를 되살려 정책을 실제로 연결할지, 지금의 단일 트랜잭션 재시도에 백오프를 옮길지. 5회·5초가 적절한지 측정으로 확인한다. (2) 정책을 두지 않기로 하면 위 컬럼 4개, 지표 2개, 도달하지 않는 상태(`IN_FLIGHT` 커밋, `FAILED`)를 함께 걷는다. `next_retry_at`은 조회 3곳과 인덱스에 엮여 있어 결제 핵심 테이블의 파괴적 마이그레이션이 되므로 별도 토픽이 필요하다. (1)이 먼저다.
+- 결정할 것: (1) 별도 트랜잭션 선점 경로를 되살려 정책을 실제로 연결할지, 지금의 단일 트랜잭션 재시도에 백오프를 옮길지. 5회·5초가 적절한지 측정으로 확인한다. (2) 정책을 두지 않기로 하면 위 컬럼 3개, 지표 2개, 도달하지 않는 상태(`IN_FLIGHT` 커밋, `FAILED`)를 함께 걷는다. `next_retry_at`은 조회 3곳과 인덱스에 엮여 있어 결제 핵심 테이블의 파괴적 마이그레이션이 되므로 별도 토픽이 필요하다. (1)이 먼저다.
 - 관련 코드: `PaymentOutbox`, `RetryPolicy`, `RetryPolicyProperties`, `PaymentOutboxMetrics`, `payment-service/src/main/resources/db/migration/V1__payment_schema.sql`
 
 ### TC-12 — pg-service 워커 종료 시 채널 drain (보류)
