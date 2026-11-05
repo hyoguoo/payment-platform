@@ -166,12 +166,13 @@
   - 검증: kit과 diff, 링크 확인(T8 이후 strict로 재확인)
   - tdd: false | risk: false | 담당: 메인
   - 결과: kit AGENTS.md에 프로젝트 소개, 역할 정본 위치(`.agents/roles/`)와 생성 규칙, 지침 검사 명령, Codex는 hook 없음, "코드 리뷰" 절(옛 Code Review Rules 요지 + risk.md), 참고 문서 5행을 더함(kit 대비 28줄 차이). `CLAUDE.md`는 kit과 동일. `.agents/README.md`가 옛 skills README·roles README·`docs/context/CODEX.md`를 대체. 프롬프팅 조사 기록은 `.agents/references/`로 이동. `docs/context/STACK.md:208`의 옛 roles README 참조는 T11에서 고친다
-- [ ] **T8 — 문서 검사 스크립트를 새 구조로 바꾸고 식별자 대조를 더한다**
+- [x] **T8 — 문서 검사 스크립트를 새 구조로 바꾸고 식별자 대조를 더한다**
   - 변경 위치: `scripts/check-agent-docs.py`, 신규 테스트 `scripts/test_check_agent_docs.py`
   - 의존: T7
   - 완료 기준: 체크리스트·중복 규칙 검사 삭제, 식별자 대조(D17) 추가. 경로·클래스·설정 키 각각 존재/부재 픽스처 테스트. 새 구조에서 `--strict` 통과(R6)
   - 검증: `python3 -m unittest scripts/test_check_agent_docs.py`, `python3 scripts/check-agent-docs.py --strict`
   - tdd: true | risk: false | 담당: 메인
+  - 결과: 판정을 6종으로 재구성(체크리스트·중복 규칙 삭제, 식별자 대조 신설). 검사 범위에 guides·smoke·quality·STATE·TODOS·archive README 추가, `.agents/templates/`는 참조 검사 제외(토픽 폴더 기준 링크). 식별자 대조는 클래스(Java·Gradle·YAML·XML·JSON에 나오는 단어)와 설정 키(펼친 YAML 키, 상위 키, 하이픈 형태 포함). 우리 코드가 안 쓰는 외부 타입 8개·설정 키 1개는 명시 목록으로 허용. `scripts/test_check_agent_docs.py` 15개(오탐 세 종류는 테스트로 실패 확인 후 수정). 첫 테스트 실행은 새 함수가 없어 단언이 아닌 속성 오류로 실패했다. CI 지침 검사 job에 테스트 단계 추가(D24 확장). 현재 `--strict` 결과: 참조 18건·식별자 37건 남음(T9·T11~T14 대상, 대부분 삭제된 `StockOutbox*` 계열)
 - [ ] **T9 — STATE·TODOS·archive README를 새 형식으로 바꾼다**
   - 변경 위치: `docs/STATE.md`, 신규 `docs/TODOS.md`, 삭제 `docs/context/TODOS.md`, `docs/archive/README.md`
   - 의존: T7

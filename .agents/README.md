@@ -15,7 +15,7 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 | `.agents/skills/` | 스킬 정본. 아래 표 | 예 |
 | `.agents/roles/`, `.agents/roles.toml` | 역할 본문과 모델·도구 설정의 정본 | 예 |
 | `.agents/hooks/` | 검증 hook 스크립트. 프로젝트 값은 stack.md에서 읽는다 | 스택이 바뀌어도 고치지 않는다 |
-| `.agents/references/` | 조사 기록. 현재 규칙의 근거로 쓰지 않는다 | |
+| `.agents/references/` | 조사 기록([Claude 5 프롬프팅](references/claude-5-prompting.md)). 현재 규칙의 근거로 쓰지 않는다 | |
 | `.claude/settings.json` | Claude Code hook 등록 | 예 |
 | `.claude/agents/`, `.codex/agents/` | 역할 정본에서 생성한 도구별 설정 | 아니오. 생성 스크립트로 만든다 |
 | `.claude/skills` | `../.agents/skills`를 가리키는 상대 링크 | 아니오 |
