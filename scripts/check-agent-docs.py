@@ -71,7 +71,7 @@ FILE_SUFFIXES = {
     "md", "sh", "py", "java", "yml", "yaml", "properties", "json", "sql", "txt", "html", "log",
     "gradle", "toml", "xml", "lua", "conf", "csv", "png", "jar", "env", "js", "ts",
 }
-# 어느 깊이에서든 건너뛰는 디렉터리. IDE 출력 `out`은 저장소 루트에서만 건너뛴다(`application/port/out`과 겹치지 않게).
+# 어느 깊이에서든 건너뛰는 디렉터리. IDE 출력 `out`은 저장소 루트와 모듈 루트(깊이 1)에서만 건너뛴다(`application/port/out`과 겹치지 않게).
 CODE_SKIP_DIRS = {".git", "build", ".gradle", "node_modules", "docs", "live-drill", ".archive", ".idea"}
 ROOT_ONLY_SKIP_DIRS = {"out"}
 # 대문자 시작 단어를 모으는 파일. 알람 규칙 이름(YAML), Checkstyle 모듈 이름(XML), hook 이벤트 이름(JSON)도 여기서 온다.
@@ -279,10 +279,10 @@ def check_frontmatter():
 def iter_code_files(root, suffixes):
     root = Path(root)
     for dirpath, dirnames, filenames in os.walk(root):
-        at_root = Path(dirpath) == root
+        shallow = len(Path(dirpath).relative_to(root).parts) <= 1
         dirnames[:] = [
             d for d in dirnames
-            if d not in CODE_SKIP_DIRS and not (at_root and d in ROOT_ONLY_SKIP_DIRS)
+            if d not in CODE_SKIP_DIRS and not (shallow and d in ROOT_ONLY_SKIP_DIRS)
         ]
         for name in filenames:
             if Path(name).suffix in suffixes:

@@ -93,6 +93,13 @@ class IdentifierCheckTest(unittest.TestCase):
         doc = write(self.root, "docs/context/PORT.md", "`OnlyHerePort`\\n")
         self.assertEqual([], check_agent_docs.check_identifiers([doc], index, self.root)[1])
 
+    def test_모듈_루트의_IDE_출력_out은_색인하지_않는다(self):
+        write(self.root, "pg-service/out/production/resources/application.yml", "ghostroot:\n  gone:\n    key: 1\n")
+        write(self.root, "pg-service/out/production/x/StaleCopyName.java", "class StaleCopyName { }\n")
+        index = check_agent_docs.build_code_index(self.root)
+        doc = write(self.root, "docs/context/OUT.md", "`StaleCopyName`, `ghostroot.gone.key`\\n")
+        self.assertEqual(2, len(check_agent_docs.check_identifiers([doc], index, self.root)[1]))
+
     def test_메서드가_붙은_클래스는_클래스_이름으로_대조한다(self):
         self.assertEqual([], self.issues_for("`PaymentEvent.fail()`이 예외를 던진다.\n"))
         self.assertEqual(1, len(self.issues_for("`GhostService.run()`이 돈다.\n")))

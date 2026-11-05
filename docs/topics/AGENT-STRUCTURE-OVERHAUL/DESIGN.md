@@ -226,7 +226,7 @@
 
 ## 리뷰 처리
 
-reviewer 1회(2026-11-06). critical 0, major 2, minor 5. 개발자 결정: 전부 수정.
+reviewer 1회 + 수정분 재검토 1회(2026-11-06). 첫 리뷰 critical 0, major 2, minor 5. 개발자 결정: 전부 수정. 재검토가 수정분에서 medium 1, low 2를 더 찾아 같은 결정 범위에서 보완했다.
 
 | 항목 | 등급 | 결정 | 근거·처리 |
 |---|---|---|---|
@@ -237,6 +237,9 @@ reviewer 1회(2026-11-06). critical 0, major 2, minor 5. 개발자 결정: 전�
 | live-drill 시나리오가 없는 TODO를 가리킴 | minor | 수정 | 경보 분리가 구현됐다(`OutboxAsyncConfirmService`)는 사실로 문장 교체, 동시 재호출은 통합 테스트로 확인한다고 명시 |
 | 진행 중 토픽 이전에서 빠진 수치·사용자 요구·PLAN 표기·판정 문구 | minor | 수정 | capacity160-a 최장 대기, 요청 추적의 문서 표현 요구와 작업 이력, 인계 문서 표기, 이 토픽 BRIEF 판정 2 문구. 로컬 RESUME.md의 옛 경로 대응을 처리량 DESIGN에 기록 |
 | PAYMENT-FLOW 끊긴 앵커 | minor | 수정 | `#phase-4--pg-service-상세` |
+| (재검토) risk.md 새 glob이 Kafka 메시지 계약·pg 금액 변환·엔티티·product 중복 판정 포트·청소 워커·payment 재시도 설정을 빠뜨림 | major(수정분) | 수정 | 이벤트 DTO·토픽 상수·publisher, pg `application/util`, payment·pg `infrastructure/entity`, product `EventDedupeStore`·`scheduler`, payment `application/config` 추가. 재검토 1회 한도라 메인이 디렉토리 대조로 확인 |
+| (재검토) "로그 변경은 핵심 경로 아님" 문구와 glob 충돌 | minor | 수정 | 호출 조건 표에 "핵심 경로 파일이어도 로그·주석만 바꾸는 diff는 제외" 행 추가 |
+| (재검토) 모듈 루트의 IDE `out` 아래 복사본이 색인돼 거짓 통과 가능 | minor | 수정 | `out`은 저장소 루트와 모듈 루트에서 건너뜀. 테스트 1개 추가(실패 확인 후 구현, 18개 통과) |
 | 옛 TODOS T4-B의 "k6 시나리오 재설계" 소항목이 새 표에서 사라짐 | 참고 | 유지 | 처리량 토픽이 새 측정 모드와 `scripts/k6/quality-payment.js`로 그 일을 하고 있다. 남은 알람 정밀화만 T4-B에 둠 |
 
 ## 진행 기록
