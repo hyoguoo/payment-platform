@@ -19,7 +19,7 @@
 # 1) 스택 (이미 떠 있으면 생략)
 bash scripts/compose-up.sh --mode fake
 
-# 2) 부하 — 물결 곡선으로 15분, 두 벤더 섞어서
+# 2) 부하 — 물결 곡선, 두 벤더 섞어서 (Ctrl-C 로 멈출 때까지 계속)
 bash scripts/smoke/observability-load.sh --profile wave --rps-min 2 --rps-max 20 --period 90 --gateways TOSS,NICEPAY
 
 # (터미널 닫아도 살리려면)
@@ -113,7 +113,7 @@ Tempo **서비스 그래프**(payment ↔ pg ↔ kafka)는 트래픽이 흐를 �
 | 증상 | 이유 / 대응 |
 |---|---|
 | 막 부하 걸었는데 다 비어 있음 | scrape(15s)+rate(1m) 지연. 1~2분 기다린다. |
-| **QUARANTINED / DLQ** 가 안 켜짐 | 단순 부하론 안 난다. 격리=금액 불일치/캐시 다운, DLQ=재시도 소진. Phase-4 Toxiproxy 장애 주입의 몫. |
+| **QUARANTINED / DLQ** 가 안 켜짐 | 단순 부하론 안 난다. 격리=금액 불일치/캐시 다운, DLQ=재시도 소진이라는 조건을 따로 만들어야 한다. |
 | 벤더 latency 가 비현실적으로 고름 | fake 합성값이라 그렇다. 범위는 `FAKE_LATENCY_MIN/MAX` 로 조정(0으로 두면 합성 지연 제거). |
 | FAILED/보상 경로를 보고 싶음 | `--fail-rate 0.15` 로 부하 재시작(pg-service 를 `FAKE_FAIL_RATE` 로 recreate). |
 | exemplar 점이 안 보임 | 트래픽이 있어야 샘플이 붙는다. 부하 켜고 잠시 후. |

@@ -94,7 +94,7 @@ Prometheus 알람 규칙 4그룹이 의도한 조건에서 발화하고, 정상 
 
 ### 확인 순서
 
-1. 격리 메시지 키(`orderId:productId` 조합)에서 productId 를 뽑는다 — Task 13 신설 `StockCommitQuarantineRecoverer` 가 이 키로 같은 사고를 하나로 묶어 두므로, 재전송으로 여러 건이 쌓여도 조합 단위로만 조치하면 된다.
+1. 격리 메시지 키(`orderId:productId` 조합)에서 productId 를 뽑는다 — `StockCommitQuarantineRecoverer` 가 이 키로 같은 사고를 하나로 묶어 두므로, 재전송으로 여러 건이 쌓여도 조합 단위로만 조치하면 된다.
 2. 그 상품에 대해 알람 발화 시각 전후로 재고 조정(입고/수동 정정)이 있었는지 담당자 또는 운영 변경 이력으로 대조한다.
 3. **조정이 있었다면** — 그 결제 건은 환불 또는 재입고 반영으로 개별 종결한다. 그 상품에 대해 트래픽이 조용한 시점에 `/admin/stock/resync/{productId}` 로 게이트를 상품 DB 값에 맞춘다(`StockAdminController` Javadoc — 진행 중 선차감을 덮어쓰는 도구라 바쁜 시점 호출은 피한다).
 4. **조정이 없었다면** — 재고 선차감 게이트 결함을 의심해 에스컬레이션한다. 조정 이력 없는 여러 상품·여러 주문에 동시에 번지면 결함 쪽 확률이 크다.
@@ -119,11 +119,15 @@ bash scripts/smoke-all.sh
 
 ```bash
 # 1. 전체 스택 기동
+#    코디네이터 드릴은 Toxiproxy 가 필요하므로 drill.yml 을 함께 올리고,
+#    세 드릴 모두 토픽이 있어야 하므로 create-topics.sh 를 실행한다.
 docker compose \
   -f docker/docker-compose.infra.yml \
   -f docker/docker-compose.apps.yml \
   -f docker/docker-compose.observability.yml \
+  -f docker/docker-compose.drill.yml \
   up -d
+./scripts/smoke/create-topics.sh
 
 # 2. start_period 통과 대기
 sleep 90
@@ -176,7 +180,7 @@ sleep 90
 | `promtool test rules` 실패 (특정 케이스) | 규칙 파일 발화식 오류 또는 픽스처 시계열 불일치 | `observability/prometheus/rules/{coordinator,guard-skip,dlq,availability}.yml` 확인 |
 | `promtool test rules` 실패 (전 케이스) | 규칙 파일 YAML 문법 오류 | `promtool check rules <파일>` 로 문법 검사 선행 |
 | 코디네이터 라이브 폴링 타임아웃 | 단일 broker 비대칭 한계 (lag 피크 150 ≪ 임계 1000, abort 미발화) | 격하 폴백으로 전환 — 규칙 자체는 운영 유효 |
-| Toxiproxy admin API 응답 없음 | drill 프로파일 미기동 | `docker compose ... -f docker/docker-compose.drill.yml up -d` 후 재실행 |
+| Toxiproxy admin API 응답 없음 | `docker-compose.drill.yml` 을 함께 올리지 않음 | `docker compose ... -f docker/docker-compose.drill.yml up -d` 후 재실행 |
 | 가용성 드릴 `ServiceDown` 미발화 | for:1m 미충족 (타임아웃 120s 내 ~90s 대기) 또는 Prometheus 미기동 | observability 스택 기동 후 재실행 |
 | 가용성 드릴 `DependencyDown` 미발화 | health 폴러 미기동 또는 payment-service 컨테이너 없음 | 앱 스택 기동 + health 폴러 설정 확인 |
 | 컨테이너 미탐지 (시나리오 SKIP) | `COMPOSE_PROJECT_NAME` 불일치 | `COMPOSE_PROJECT_NAME=<실제 프로젝트명> ./alert-firing-availability.sh` 로 재실행 |
@@ -190,9 +194,9 @@ sleep 90
 - **부하 곡선 측정** — k6 벤치마크 별도; 임계값 baseline 은 실측 후 정밀화 필요 (현재 잠정)
 - **pg 경로 DLQ 라이브 드릴** — 실 벤더 sandbox 인증(secret 설정) 전제이므로 기본 환경에서 불가
 
-## 영구성
+## 알람 규칙 추가 시
 
-본 가이드는 **시점에 의존하지 않는** 알람 규칙 발화 검증 절차다. promtool 픽스처가 있는 한 동일 명령으로 재현 가능하다. 새 알람 규칙 추가 시 해당 `*_test.yml` 픽스처를 작성하고 `alert-rules-promtool.sh` 의 `run_test` 호출에 추가한다.
+새 알람 규칙을 추가하면 해당 `*_test.yml` 픽스처를 작성하고 `alert-rules-promtool.sh` 의 `run_test` 호출에 추가한다.
 
 ## 관련 문서
 
