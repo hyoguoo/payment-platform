@@ -2,14 +2,13 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/checkstyle-file.sh",
-            "args": [],
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agents/hooks/lint-file.sh",
             "timeout": 60,
-            "statusMessage": "Checkstyle 검사"
+            "statusMessage": "편집 파일 린트"
           }
         ]
       }
@@ -19,23 +18,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-before-stop.sh",
-            "args": [],
-            "timeout": 900,
-            "statusMessage": "변경 모듈 테스트 검증"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agents/hooks/verify-on-stop.sh",
+            "timeout": 1200,
+            "statusMessage": "변경 모듈 단위 테스트 검증"
           }
         ]
       }
     ],
     "SubagentStop": [
       {
+        "matcher": "implementer",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-before-stop.sh",
-            "args": [],
-            "timeout": 900,
-            "statusMessage": "변경 모듈 테스트 검증"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agents/hooks/verify-on-stop.sh",
+            "timeout": 1200,
+            "statusMessage": "변경 모듈 단위 테스트 검증"
           }
         ]
       }

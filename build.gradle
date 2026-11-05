@@ -56,7 +56,7 @@ dependencies {
 tasks.matching { it.name in ['checkstyleMain', 'checkstyleTest', 'checkstyleCheckstyleCustomChecks', 'checkstyleArchRules'] }
         .configureEach { enabled = false }
 
-// 편집 직후 훅(.claude/hooks/checkstyle-file.sh)이 쓰는 Checkstyle CLI classpath 를 파일로 떨군다.
+// 편집 직후 훅(.agents/hooks/lint-file.sh → config/checkstyle/check-file.sh)이 쓰는 Checkstyle CLI classpath 를 파일로 떨군다.
 // Gradle 태스크는 모듈 전체를 돌아 편집 직후 피드백으로 쓰기엔 느리므로 훅은 CLI 를 파일 하나에만
 // 직접 물린다. 그런데 checkstyle 본체 jar 만으로는 실행되지 않고(picocli 등 전이 의존 필요) 그
 // 목록을 훅이 직접 조립하면 깨지기 쉬우므로, Gradle 이 이미 해석해 둔 것을 그대로 넘긴다.
