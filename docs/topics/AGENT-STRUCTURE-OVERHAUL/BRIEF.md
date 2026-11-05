@@ -17,7 +17,7 @@
 
 1. 새 구조에 맞춘 문서 검사(`check-agent-docs.py --strict`)와 역할 동기화 검사(`sync-agent-configs.py --check`)가 통과한다.
 2. hook 테스트 스크립트가 통과한다. 실제 세션에서 `payment-service`의 Java 파일 하나를 고치면 편집 린트가 돌고,
-   턴이 끝날 때 `:payment-service:test`만 실행되는 것을 `.git/agent-verify/trace.log`로 확인한다.
+   턴이 끝날 때 기준 브랜치 이후 바뀐 모듈의 단위 테스트만 실행되는 것을 `.git/agent-verify/trace.log`로 확인한다(이 브랜치에서는 payment·pg·product. 2026-11-06 리뷰 뒤 정정).
 3. 새 세션에서 작은 수정 요청은 workflow 문서 없이 처리되고, 토픽 요청은 discuss의 요구사항 질의부터 시작한다.
    Claude Code에서 확인하고, Codex는 실행할 수 있으면 같은 요청으로 한 번 확인한다.
 4. context·smoke·quality 문서에 나오는 파일 경로, 클래스, 설정 키가 실제로 존재한다(자동 대조, 불일치 0건).

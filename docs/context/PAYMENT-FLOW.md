@@ -75,7 +75,7 @@ flowchart TD
 
 ### Phase 4 — pg-service 소비 + 실제 PG 호출 + outbox relay
 
-pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](#phase-4-pg-service-상세) 절에서 깊이 다룬다. 여기는 입출력만:
+pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](#phase-4--pg-service-상세) 절에서 깊이 다룬다. 여기는 입출력만:
 
 > 아래 flowchart 는 `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 를 `pg_inbox.attempt` 에 영속해 한도(4) 도달 시 DLQ→QUARANTINED 격리하는 현재 흐름이다. 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
 

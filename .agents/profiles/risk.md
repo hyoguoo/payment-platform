@@ -32,15 +32,18 @@ risk-reviewer가 지키는 대상이고, risk-reviewer를 언제 부르는지 �
 
 ## 핵심 경로
 
-glob 패턴으로 적는다.
+glob 패턴으로 적는다. 불변식을 실제로 지키는 코드(상태 전이, 중복 판정, 재고 증감, 메시지 발행·소비, 저장소 조건부 갱신, 벤더 호출)만 넣는다.
+로그 문구, DTO, 지표, 화면, AOP 감사 기록만 바꾸는 변경은 핵심 경로가 아니다. 그런 변경의 민감정보 노출(INV-7)은 reviewer가 아래 위험 범주로 본다.
 
 | 경로 | 관련 불변식 |
 |---|---|
-| `payment-service/src/main/java/**` | INV-1 ~ INV-7 |
+| `payment-service/src/main/java/**/payment/domain/**` | INV-1, INV-2, INV-4, INV-5, INV-6 |
+| `payment-service/src/main/java/**/payment/application/*.java`, `**/payment/application/{usecase,service,util}/**`, `**/payment/application/port/out/**` | INV-1 ~ INV-6 |
+| `payment-service/src/main/java/**/payment/infrastructure/{messaging,cache,dedupe,idempotency,repository,scheduler,listener,config,adapter}/**` | INV-1 ~ INV-6 |
 | `payment-service/src/main/resources/lua/**` | INV-5 |
-| `pg-service/src/main/java/**` | INV-1, INV-3, INV-4, INV-6, INV-7 |
-| `product-service/src/main/java/**/*Stock*` | INV-5 |
-| `product-service/src/main/java/**/messaging/**` | INV-5 |
+| `pg-service/src/main/java/**/pg/domain/**`, `**/pg/application/{service,port}/**` | INV-1, INV-3, INV-4, INV-6 |
+| `pg-service/src/main/java/**/pg/infrastructure/{gateway,http,messaging,repository,scheduler,channel,listener,config}/**` | INV-1, INV-3, INV-4, INV-6 |
+| `product-service/src/main/java/**/*Stock*`, `**/product/infrastructure/{messaging,idempotency}/**`, `**/product/infrastructure/config/Kafka*` | INV-5 |
 | `*/src/main/resources/db/migration/**`, `*/src/main/resources/db/schema/**` | 데이터 전체 |
 | `*/src/main/resources/application*.yml` 중 Kafka·트랜잭션·재시도·타임아웃 설정 | INV-1, INV-5, INV-6 |
 

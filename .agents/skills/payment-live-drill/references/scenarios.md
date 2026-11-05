@@ -274,13 +274,11 @@ IDEMPOTENCY_KEY="drill-dup-$(date +%s)"
 bash scripts/run-concurrent.sh --scenario duplicate-payment --idempotency-key "$IDEMPOTENCY_KEY"
 ```
 
-**승인 재호출 경로는 쓰지 않는다.** 같은 주문으로 confirm 을 동시에 두 번 보내면 진
-쪽이 주문번호 유니크 제약(`uk_payment_outbox_order_id`)에 걸려 예외를 맞는데, 그
-예외를 받는 코드(`OutboxAsyncConfirmService`)가 원인을 구분하지 않고 재고 선차감
-미회수 신호를 남긴다. 이긴 쪽은 정상 처리돼 실제 재고 누수가 없는데도 미회수 지표가
-올라가, 나중에 이 지표로 실제 장애를 판단할 때 드릴 잔재와 뒤섞인다(이 오탐은
-`docs/TODOS.md` 에 후속으로 등재돼 있다). 그래서 이 장면은 주문 생성 단계의
-멱등키만 검증하고, 승인 동시 재호출은 다루지 않는다.
+**이 장면은 주문 생성 단계의 멱등키만 검증한다.** 같은 주문으로 confirm 을 동시에 두 번
+보내면 진 쪽이 주문번호 유니크 제약(`uk_payment_outbox_order_id`)에 걸린다. 그 예외
+(`PaymentOutboxDuplicateException`)는 `OutboxAsyncConfirmService` 가 재고 선차감 미회수
+경보에서 빼므로 미회수 지표 오탐은 생기지 않는다. 승인 동시 재호출은
+`PaymentDuplicateConfirmConcurrencyIntegrationTest` 가 통합 테스트로 확인한다.
 
 **기대 결과** — 두 요청의 응답 `orderId` 가 동일하고, HTTP 상태 코드가 한쪽은 201(신규),
 다른 한쪽은 200(중복)이다. `CheckoutResult` 는 내부적으로 `isDuplicate` 를 들고 있지만

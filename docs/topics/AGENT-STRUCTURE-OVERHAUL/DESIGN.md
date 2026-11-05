@@ -10,7 +10,7 @@
 | D1 | kit 파일을 복사해 시작하고, 프로젝트 고유 부분만 덧붙인다. kit 문장을 다시 쓰지 않는다 | 이후 kit 개선분을 diff로 가져오려면 문장이 같아야 한다 | 현재 지침을 kit 방향으로 고쳐 쓰기: 두 저장소의 문장이 갈라진다 | 승인된 브리핑 (제안 방향) |
 | D2 | 작업 순서: 1단계 지침 구조(T1~T10) → 2단계 문서 정리(T11~T14) → 판정(T15) | 2단계가 1단계 규칙(context README, 작성 기준, 문서 검사)을 실제로 써 본다 | 문서부터 정리: 옛 규칙으로 쓴 문서를 새 규칙으로 다시 고쳐야 한다 | 승인된 브리핑 |
 | D3 | 프로젝트 값은 `.agents/profiles/stack.md`, `risk.md`에만 둔다. hook 스크립트는 kit 그대로 두고 stack.md의 `verify-config`만 채운다 | 스택이 바뀌어도 hook을 고치지 않는다 | 현재 hook(`.claude/hooks/`)에 모듈 목록 하드코딩 유지 | 요구사항 R2·R5 |
-| D4 | `verify-config`: `MODULES=payment-service pg-service product-service user-service gateway eureka-server`, `ROOT_FILES=build.gradle settings.gradle gradle.properties gradle/ config/`, `UNIT_TEST=./gradlew --console=plain {tasks}`, `UNIT_TEST_TASK=:{m}:test`, `TEST_REPORTS={m}/build/test-results/test/*.xml`, `VERIFY_PATTERN`은 현재 hook과 같은 `\.(java|sql|gradle|ya?ml|properties)$` | 현재 hook의 판정 범위를 그대로 옮긴다 | kit 기본 패턴(`kts`, `xml` 포함): `xml`이 들어가면 Checkstyle·SpotBugs 설정 변경도 테스트를 일으키는데, 그건 `ROOT_FILES`의 `config/`가 이미 잡는다 | 제안 |
+| D4 | `verify-config`: `MODULES=payment-service pg-service product-service user-service gateway eureka-server`, `ROOT_FILES=build.gradle settings.gradle gradle.properties gradle/ config/`, `UNIT_TEST=./gradlew --console=plain {tasks}`, `UNIT_TEST_TASK=:{m}:test`, `TEST_REPORTS={m}/build/test-results/test/*.xml`, `VERIFY_PATTERN`은 현재 hook과 같은 `\.(java|sql|gradle|ya?ml|properties)$` | 현재 hook의 판정 범위를 그대로 옮긴다 | kit 기본 패턴(`kts`, `xml` 포함). 정정(리뷰): `ROOT_FILES`는 `VERIFY_PATTERN`으로 거른 뒤에 적용되므로 `config/` 아래 `.xml`·`.sh` 변경은 전 모듈 검증을 일으키지 않는다. 단위 테스트가 그 설정에 의존하지 않아 그대로 두고 stack.md 표에 밝혔다 | 제안 |
 | D5 | `config/checkstyle/check-file.sh`는 kit 파일에 `-p build/checkstyle-cli.properties`만 더한다 | 이 프로젝트의 `checkstyle.xml`이 속성 파일(`writeCheckstyleCliClasspath`가 만듦)을 읽는다 | 속성 없이 실행: 설정 로드에 실패해 린트가 늘 "도구 실패"로 통과한다 | 제안 (현재 `checkstyle-file.sh`·`build.gradle:74` 확인) |
 | D6 | `SubagentStop`은 `matcher: implementer`로만 건다. 현재 hook의 읽기 전용 에이전트 제외 목록과 "종류 미상 중복 이벤트" 제외는 kit 방식으로 대체된다 | kit은 등록 단계에서 대상을 거른다 | 현재 제외 목록 유지: 역할 이름이 바뀔 때마다 hook을 고쳐야 한다 | 제안 |
 | D7 | 판정 상태 디렉토리가 `.git/claude-stop-verify/` → `.git/agent-verify/`로 바뀐다. 옛 디렉토리는 지우지 않는다 | 로컬 상태라 남아도 무해하고, 지우는 것은 되돌릴 수 없다 | 옛 디렉토리 삭제 | 제안 |
@@ -225,6 +225,19 @@
   - 결과: 판정 1 `check-agent-docs.py --strict` 종료 0(막는 판정 4종 0건, Mermaid 16건은 kit 다이어그램의 따옴표 라벨이라 정보로 남김), `sync-agent-configs.py --check` 통과. 판정 2 실제 세션: implementer가 domain 파일에 `var`를 넣자 편집 린트가 막음(`trace.log`: `lint implementer BLOCK .../domain/RetryPolicy.java`), 종료 시 `:payment-service:test :pg-service:test :product-service:test` 실행·통과. 이 브랜치가 pg·product 테스트도 바꿨으므로 세 모듈이 대상이며 설계대로다(판정 문구의 "payment만"은 부정확). 첫 시도는 `util/` 파일이라 Checkstyle 억제 목록 때문에 잡히지 않았다(TODOS CHECKSTYLE-SUPPRESSION-SCOPE, stack.md 문구 정정). 실제 세션에서 잠금 대기 후 건너뜀, 루트 설정 변경 시 6개 모듈 실행도 관측. 임시 주석은 되돌림. 판정 3: `claude -p --permission-mode plan`은 작은 수정 → "작음, workflow 없음", 토픽 요청 → "큼, discuss 0단계 조사 후 사전 브리핑". `codex exec --sandbox read-only`는 작은 수정 → "작음", 토픽 요청 → "중간, workflow-discuss로 조사·구체화". 규모 판단만 갈리고 둘 다 discuss부터 시작. 판정 4: 식별자 불일치 0건, 이력 줄 0건. R11: Docker를 못 찾게 한 상태에서 단위 테스트 통과(T0)
 
 ## 리뷰 처리
+
+reviewer 1회(2026-11-06). critical 0, major 2, minor 5. 개발자 결정: 전부 수정.
+
+| 항목 | 등급 | 결정 | 근거·처리 |
+|---|---|---|---|
+| risk.md 핵심 경로가 payment·pg 전체라 넓고 product 중복 판정·Kafka 설정이 빠짐 | major | 수정 | 불변식을 쥐는 하위 경로로 좁히고 product `idempotency`, `config/Kafka*` 추가. 로그·DTO·지표·화면만 바꾸는 변경은 핵심 경로가 아니라고 명시(INV-7은 reviewer가 위험 범주로 본다) |
+| 식별자 대조가 주석에만 남은 이름도 통과시키고, `out`을 모든 깊이에서 건너뜀 | major | 수정 | 색인에서 주석·문자열 리터럴 제외, `out`은 루트만 건너뜀. 테스트 2개를 먼저 써 실패 확인 후 구현(17개 통과). 그 결과 `PgGatewayPort`(없는 이름을 부정문으로 언급) 정정, `AfterRollbackProcessor`는 Spring Kafka 타입이라 외부 목록에 추가 |
+| D4 근거와 stack.md `ROOT_FILES` 설명이 실제와 다름, Lua·저장소 변경의 통합 테스트 조건 누락 | minor | 수정 | stack.md 표와 검증 순서 문구, D4 정정 |
+| Git 규칙 통합에서 옛 규칙 일부 손실 | minor | 수정 | 부분 실패 시 원격 조회, 인증 실패 시 본문 보존·보고, 없는 도구 호출 금지, 댓글은 요청 시만을 git.md에 추가. `wip` type은 "실패 상태는 커밋하지 않는다"와 맞지 않아 되살리지 않음 |
+| live-drill 시나리오가 없는 TODO를 가리킴 | minor | 수정 | 경보 분리가 구현됐다(`OutboxAsyncConfirmService`)는 사실로 문장 교체, 동시 재호출은 통합 테스트로 확인한다고 명시 |
+| 진행 중 토픽 이전에서 빠진 수치·사용자 요구·PLAN 표기·판정 문구 | minor | 수정 | capacity160-a 최장 대기, 요청 추적의 문서 표현 요구와 작업 이력, 인계 문서 표기, 이 토픽 BRIEF 판정 2 문구. 로컬 RESUME.md의 옛 경로 대응을 처리량 DESIGN에 기록 |
+| PAYMENT-FLOW 끊긴 앵커 | minor | 수정 | `#phase-4--pg-service-상세` |
+| 옛 TODOS T4-B의 "k6 시나리오 재설계" 소항목이 새 표에서 사라짐 | 참고 | 유지 | 처리량 토픽이 새 측정 모드와 `scripts/k6/quality-payment.js`로 그 일을 하고 있다. 남은 알람 정밀화만 T4-B에 둠 |
 
 ## 진행 기록
 

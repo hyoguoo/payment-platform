@@ -37,7 +37,7 @@
 |---|---|---|---|
 | 단위 테스트 | `./gradlew :<module>:test` | 코드 변경이 있으면 항상. ArchUnit 레이어 규칙도 여기서 돈다. Docker 없이 돈다 | 종료 hook이 강제. 에이전트도 태스크마다 실행 |
 | 정적 분석 | `./gradlew :<module>:checkstyleMain :<module>:checkstyleTest :<module>:spotbugsMain :<module>:spotbugsTest` | Java 변경이 있으면. CI 기준은 `.github/workflows/_service-ci.yml` | 에이전트. 파일 단위 Checkstyle은 편집 hook이 바로 잡는다 |
-| 통합 테스트 | `./gradlew :<module>:integrationTest` | DB, Redis, Kafka, Spring 설정·배선을 바꿨으면. `@Tag("integration")` 테스트만 돈다. Docker(Testcontainers)가 필요하다 | 에이전트 |
+| 통합 테스트 | `./gradlew :<module>:integrationTest` | DB, Redis, Kafka, Spring 설정·배선, Redis Lua 스크립트, 저장소 쿼리·구현을 바꿨으면. 종료 hook은 `.lua`를 보지 않고 Lua·저장소 테스트는 통합 테스트에만 있다. `@Tag("integration")` 테스트만 돈다. Docker(Testcontainers)가 필요하다 | 에이전트 |
 | 스모크 | `bash scripts/smoke-all.sh` (트레이스까지 보려면 `--with-trace`) | Compose, Kafka 토픽, 관측·알람 규칙 같은 런타임 설정을 바꿨으면. 띄운 로컬 스택이 필요하다. 개별 가이드는 [docs/smoke/](../../docs/smoke/) | 에이전트. 스택을 띄울 수 없으면 사유를 보고한다 |
 | 재실행 | 위 명령에 `--rerun-tasks` | 외부 상태 때문에 캐시된 결과를 믿을 수 없을 때. 통합 테스트가 `UP-TO-DATE`로 건너뛰어졌을 때 | 에이전트 |
 
@@ -65,7 +65,7 @@ LINT_FILE=config/checkstyle/check-file.sh {file}
 |---|---|
 | `BASE_BRANCH` | 검증 기준선. 이 브랜치와의 분기점 이후 바뀐 파일을 본다. 없으면 `main` |
 | `MODULES` | 비우면 단일 모듈이다. 검증 대상 변경이 있으면 `UNIT_TEST`를 그대로 실행한다. 멀티모듈이면 모듈 경로를 공백으로 구분해 적는다 |
-| `ROOT_FILES` | 멀티모듈 전용. 이 접두사로 시작하는 파일이 바뀌면 전 모듈을 검증한다 (예: `build.gradle settings.gradle gradle/ config/`) |
+| `ROOT_FILES` | 멀티모듈 전용. 이 접두사로 시작하고 `VERIFY_PATTERN`에도 맞는 파일이 바뀌면 전 모듈을 검증한다 (예: `build.gradle settings.gradle gradle/ config/`). `config/` 아래 `.xml`·`.sh`는 패턴에 없어 전 모듈 검증을 일으키지 않는다 |
 | `VERIFY_PATTERN` | 종료 검증을 일으키는 파일(정규식). 문서만 바뀐 턴은 검증하지 않는다 |
 | `UNIT_TEST` | 단위 테스트 명령. 멀티모듈이면 `{tasks}` 자리에 모듈별 태스크가 들어간다 (예: `./gradlew --console=plain {tasks}`) |
 | `UNIT_TEST_TASK` | 멀티모듈 전용. 모듈마다 `{m}`을 모듈 경로로 채운다 (예: `:{m}:test`) |

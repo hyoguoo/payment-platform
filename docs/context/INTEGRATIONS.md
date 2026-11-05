@@ -16,7 +16,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 **선택 로직**: `PgConfirmStrategySelector` 가 메시지 payload 의 `vendorType`(payment 측 `PaymentGatewayType` → pg 측 `PgVendorType`)으로 분기 → 해당 전략 호출.
 
-**포트** (confirm / status 분리 — 단일 `PgGatewayPort` 아님):
+**포트** (confirm과 status를 서로 다른 포트로 나눈다):
 - `PgConfirmPort.confirm(PgConfirmRequest)` → `PgConfirmResult` (성공 + amount + approvedAtRaw / 실패·재시도·멱등은 `PgGateway*Exception` 으로 표현) — `PgConfirmStrategySelector` 가 vendorType 으로 선택
 - `PgStatusLookupPort.getStatusByOrderId(orderId)` → 벤더 상태 조회 (`DuplicateApprovalHandler` 의 멱등 응답 재확정용) — `PgStatusLookupStrategySelector` 가 선택
 - cancel / refund 은 현재 미구현 (포트에 메서드 없음 — [TODOS](../TODOS.md) TQ-6)
