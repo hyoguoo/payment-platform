@@ -1,17 +1,15 @@
 ---
 name: writing
-description: payment-platform의 README, 위키, 기술 포스팅 등 사람용 문서를 작성하거나 실질적으로 개정할 때 사용한다. 오탈자 수정과 에이전트 지침 편집에는 적용하지 않는다.
+description: payment-platform의 README, 위키, 기술 포스팅, 포트폴리오처럼 밖에 공개하는 사람용 문서를 작성하거나 실질적으로 개정할 때 사용한다. 오탈자 수정, 에이전트 지침 편집, 브리핑·PR 본문에는 쓰지 않는다.
 ---
 
 # 문서 작성
 
-독자·목적·요청 범위를 기준으로 작성한다. 사용자가 제공한 아웃라인이나 형식을 존중하고,
-내용에 영향을 주는 정보가 부족할 때만 질문한다.
+독자, 목적, 요청 범위를 먼저 정한다. 개발자가 준 아웃라인이나 형식을 따르고, 내용을 바꾸는 정보가 부족할 때만 묻는다.
 
-[writing-style](../_shared/conventions/writing-style.md)에서 필요한 문체 규칙을 읽는다.
-기술 용어·식별자는 [writing-terminology](../_shared/conventions/writing-terminology.md),
-표·다이어그램을 작성할 때는 [writing-visuals](../_shared/conventions/writing-visuals.md)를 참고한다.
+1. [위키·포스팅 작성 기준](references/style-guide.md)을 읽는다. 1~7절은 모든 글에, 8절은 해당하는 규칙만 적용한다.
+2. 고칠 문서가 있으면 그 문서의 톤, 종결 형식, 구조부터 읽고 맞춘다.
+3. 사실은 현재 코드와 실제 관측으로 확인하고 쓴다. 부분 수정은 주변 문맥과 이어지는지 확인하되 문서 전체 개편으로 넓히지 않는다.
+4. 다 쓰면 기준 7절의 표와 8절로 사실, 링크, 용어, 구조를 직접 검수한다. 따로 정밀 검수가 필요하면 [doc-review](../doc-review/SKILL.md)를 쓴다.
 
-사실은 현재 소스와 실제 관측에 근거해 쓴다. 부분 수정은 주변 문맥과의 연결을 확인하되
-문서 전체의 개편으로 확장하지 않는다. 작성 후 사실·링크·용어·구조를 직접 검수한다.
-별도 정밀 검수가 요청되거나 필요한 경우 [doc-review](../doc-review/SKILL.md)를 사용한다.
+위키와 포트폴리오 저장소의 위치는 [wiki-access](../wiki-access/SKILL.md), [portfolio-access](../portfolio-access/SKILL.md)에 있다.

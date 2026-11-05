@@ -152,12 +152,13 @@
   - 검증: `diff -r` kit 대조
   - tdd: false | risk: false | 담당: 메인
   - 결과: kit 스킬 7개 복사, `issue-commit-pr`·`explain-diff-html` 삭제. kit과 다른 줄은 ship 문서 동기화의 context-update 연결 한 줄뿐(`diff -r`). explain은 kit 방식(퀴즈 없음, 결과물을 토픽 폴더나 `docs/explanations/`에 둠)을 따른다
-- [ ] **T6 — 전용 스킬 6개를 새 구조에 맞춘다**
+- [x] **T6 — 전용 스킬 6개를 새 구조에 맞춘다**
   - 변경 위치: `.agents/skills/{payment-live-drill,wiki-access,portfolio-access,writing,doc-review,context-update}/`, 신규 `writing/references/style-guide.md`(D12, D13), 삭제 `_shared/conventions/writing*.md`
   - 의존: T4, T5
   - 완료 기준: 옛 경로(`_shared`, `domain-expert`, `issue-commit-pr`, `PLAN`) 참조 0건. style-guide에 원문 1~7절과 D13 항목. doc-review가 7절 표를 검수 목록으로 쓴다. context-update는 ship 문서 동기화 절차(D15)
   - 검증: `grep -rn` 옛 경로
   - tdd: false | risk: false | 담당: 메인
+  - 결과: `writing/references/style-guide.md` = 원문 1~7절 + 8절(D13 항목, 동의어 표에 메모리의 "재전송" 규칙 추가). 원문과 충돌하는 옛 규칙("단문 위주", "명사형 종결")은 넣지 않고 "기존 문서의 종결 형식을 따른다"로 대체. writing·doc-review·context-update 재작성(context-update는 문서 목록을 context README에 위임). payment-live-drill의 PLAN·옛 TODOS 경로 수정. `_shared/` 디렉토리 삭제. 옛 경로 참조 0건(`grep`)
 - [ ] **T7 — `AGENTS.md`를 다시 쓰고 운영 문서를 옮긴다**
   - 변경 위치: `AGENTS.md`, 신규 `CLAUDE.md`, `.agents/README.md`(옛 `.agents/skills/README.md`, `.agents/roles/README.md`, `docs/context/CODEX.md` 통합), `.agents/references/claude-5-prompting.md`(이동)
   - 의존: T1~T6

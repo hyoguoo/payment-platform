@@ -279,7 +279,7 @@ bash scripts/run-concurrent.sh --scenario duplicate-payment --idempotency-key "$
 예외를 받는 코드(`OutboxAsyncConfirmService`)가 원인을 구분하지 않고 재고 선차감
 미회수 신호를 남긴다. 이긴 쪽은 정상 처리돼 실제 재고 누수가 없는데도 미회수 지표가
 올라가, 나중에 이 지표로 실제 장애를 판단할 때 드릴 잔재와 뒤섞인다(이 오탐은
-`docs/context/TODOS.md` 에 후속으로 등재돼 있다). 그래서 이 장면은 주문 생성 단계의
+`docs/TODOS.md` 에 후속으로 등재돼 있다). 그래서 이 장면은 주문 생성 단계의
 멱등키만 검증하고, 승인 동시 재호출은 다루지 않는다.
 
 **기대 결과** — 두 요청의 응답 `orderId` 가 동일하고, HTTP 상태 코드가 한쪽은 201(신규),
