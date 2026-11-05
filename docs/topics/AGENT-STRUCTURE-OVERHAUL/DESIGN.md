@@ -174,12 +174,13 @@
   - 검증: `python3 -m unittest scripts/test_check_agent_docs.py`, `python3 scripts/check-agent-docs.py --strict`
   - tdd: true | risk: false | 담당: 메인
   - 결과: 판정을 6종으로 재구성(체크리스트·중복 규칙 삭제, 식별자 대조 신설). 검사 범위에 guides·smoke·quality·STATE·TODOS·archive README 추가, `.agents/templates/`는 참조 검사 제외(토픽 폴더 기준 링크). 식별자 대조는 클래스(Java·Gradle·YAML·XML·JSON에 나오는 단어)와 설정 키(펼친 YAML 키, 상위 키, 하이픈 형태 포함). 우리 코드가 안 쓰는 외부 타입 8개·설정 키 1개는 명시 목록으로 허용. `scripts/test_check_agent_docs.py` 15개(오탐 세 종류는 테스트로 실패 확인 후 수정). 첫 테스트 실행은 새 함수가 없어 단언이 아닌 속성 오류로 실패했다. CI 지침 검사 job에 테스트 단계 추가(D24 확장). 현재 `--strict` 결과: 참조 18건·식별자 37건 남음(T9·T11~T14 대상, 대부분 삭제된 `StockOutbox*` 계열)
-- [ ] **T9 — STATE·TODOS·archive README를 새 형식으로 바꾼다**
+- [x] **T9 — STATE·TODOS·archive README를 새 형식으로 바꾼다**
   - 변경 위치: `docs/STATE.md`, 신규 `docs/TODOS.md`, 삭제 `docs/context/TODOS.md`, `docs/archive/README.md`
   - 의존: T7
   - 완료 기준: STATE 토픽 항목은 제목+5줄, 별건 메모는 TODOS로. TODOS 항목은 코드로 해결을 확인한 것만 지우고 근거를 진행 기록에. archive README 목차 = 실제 폴더, 옛 형식 안내(R7, R10, D18)
   - 검증: 폴더 대조 스크립트, `git diff --stat main -- docs/archive`
   - tdd: false | risk: false | 담당: 메인
+  - 결과: `docs/TODOS.md` 신설(목록 표 25건 + 상세). 옛 `docs/context/TODOS.md`에서 끝난 부분(✅)과 갱신 이력을 지우고, "Phase 4/5" 분류를 "필요한 환경" 열로 바꿨다. 코드 대조로 TQ-6의 "`PgGatewayPort.cancel` 인터페이스만 존재"가 틀린 것을 확인해 "취소·환불 포트가 없다"로 고침(그 인터페이스가 코드에 없음). 전부 끝난 TC-11은 삭제. STATE의 별건 3개(확정 멱등키, 위키 끊긴 참조, 블로그 2편)를 TODOS로 옮기고 STATE 머리말을 새 형식으로. 진행 중 두 토픽의 긴 메모는 T10에서 옮긴 뒤 줄인다. archive README를 "폴더 | 내용 | 결과 | 기간 | 이슈" 표로 재생성(55개 폴더 = 목차, 옛 벤치마크 4행은 실제 폴더 `k6-benchmark/` 1행으로, `client-side-lb/`·`stock-compensation-recovery-alternatives/` 추가). 세 가지 문서 형식(현재·이전·초기) 안내. archive 안 다른 파일 변경 없음(`git diff --stat main -- docs/archive`). TODOS를 식별자 대조 대상에 추가, 문제 0건
 - [ ] **T10 — 진행 중인 두 토픽 문서를 새 형식으로 다시 쓴다**
   - 변경 위치: `docs/topics/PAYMENT-THROUGHPUT/{BRIEF,DESIGN,EXPERIMENTS}.md`(옛 `topics/PAYMENT-THROUGHPUT.md`, `PAYMENT-THROUGHPUT-PLAN.md`, `reports/tps-*`), `docs/topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md`(옛 `topics/CHECKOUT-RECEIPT-TRACKING.md`, `reports/checkout-receipt-*`)
   - 의존: T9

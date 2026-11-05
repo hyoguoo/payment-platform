@@ -7,7 +7,7 @@
      `.agents/templates/`는 복사될 토픽 폴더 기준으로 링크를 쓰므로 제외한다.
   2. frontmatter 필수 필드 — `.agents/skills/*/SKILL.md`는 name·description, `.claude/agents/*.md`는
      name·description·model·tools가 있는지 본다.
-  3. 문서 식별자 대조 — `docs/context`, `docs/guides`, `docs/smoke`, `docs/quality`의 백틱 스팬 중
+  3. 문서 식별자 대조 — `docs/context`, `docs/guides`, `docs/smoke`, `docs/quality`, `docs/TODOS.md`의 백틱 스팬 중
      클래스 이름(UpperCamelCase)이 저장소 Java·Gradle 코드에 나오는지, 점으로 이은 설정 키·토픽 이름이 설정·코드·
      스크립트에 나오는지 본다. 설정 키는 그 키나 바로 위 키가 있으면 통과한다(기본값으로 쓰는 하위 키 허용).
      경로 모양 스팬은 판정 1이 맡는다.
@@ -45,7 +45,7 @@ SCAN_ROOTS = [
 ]
 
 # 판정 3의 대상. 에이전트가 작업 근거로 읽거나 사람이 따라 하는 문서다.
-IDENTIFIER_ROOTS = ["docs/context", "docs/guides", "docs/smoke", "docs/quality"]
+IDENTIFIER_ROOTS = ["docs/context", "docs/guides", "docs/smoke", "docs/quality", "docs/TODOS.md"]
 
 # 백틱 단독 스팬에서 경로로 인정하는 확장자. 웹 자산(.html/.css/.js/.ts)은 별도 blog 저장소·브라우저 URL
 # 예시에서 반복되는 오탐 원인이라 제외한다. 그런 경로는 마크다운 링크로 쓰지 않는다.
