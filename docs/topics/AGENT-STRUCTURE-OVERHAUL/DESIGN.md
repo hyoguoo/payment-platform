@@ -145,12 +145,13 @@
   - 검증: `diff -r` kit 대조
   - tdd: false | risk: false | 담당: 메인
   - 결과: kit `conventions/` 3개·`templates/` 3개 복사. kit과 다른 줄은 git.md scope 목록·Codex 작성자 표기, writing.md 문장 절의 상세판 링크(D12) 3곳뿐(`diff` 확인). 템플릿은 kit과 동일. `_shared/checklists/` 4개와 `commit.md`·`github.md` 삭제. writing 계열 4개는 T6에서 옮긴 뒤 삭제
-- [ ] **T5 — workflow·review·explain-change-html 스킬을 kit 버전으로 바꾼다**
+- [x] **T5 — workflow·review·explain-change-html 스킬을 kit 버전으로 바꾼다**
   - 변경 위치: `.agents/skills/{workflow,workflow-discuss,workflow-plan,workflow-execute,workflow-ship,review,explain-change-html}/`. 삭제 `issue-commit-pr/`, `explain-diff-html/`
   - 의존: T3, T4
   - 완료 기준: kit과 diff하면 프로젝트 고유 줄(Codex·멀티모듈·context-update 연결)만 다르다(R3, D14)
   - 검증: `diff -r` kit 대조
   - tdd: false | risk: false | 담당: 메인
+  - 결과: kit 스킬 7개 복사, `issue-commit-pr`·`explain-diff-html` 삭제. kit과 다른 줄은 ship 문서 동기화의 context-update 연결 한 줄뿐(`diff -r`). explain은 kit 방식(퀴즈 없음, 결과물을 토픽 폴더나 `docs/explanations/`에 둠)을 따른다
 - [ ] **T6 — 전용 스킬 6개를 새 구조에 맞춘다**
   - 변경 위치: `.agents/skills/{payment-live-drill,wiki-access,portfolio-access,writing,doc-review,context-update}/`, 신규 `writing/references/style-guide.md`(D12, D13), 삭제 `_shared/conventions/writing*.md`
   - 의존: T4, T5
