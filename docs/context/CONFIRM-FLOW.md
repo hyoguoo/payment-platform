@@ -388,7 +388,7 @@ IN_FLIGHT 타임아웃(`inFlightTimeoutMinutes`, 기본 5분) 초과 → PENDING
 
 **발행 실패 재시도 간격**: 롤백으로 PENDING 에 복귀한 뒤 `OutboxWorker` 가 별도 트랜잭션(`REQUIRES_NEW`)으로 `retry_count` 와 `next_retry_at` 을 조건부 갱신한다(`WHERE status='PENDING' AND retry_count=:expected`). 대기 행 조회·선점 쿼리가 이미 `next_retry_at` 을 조건으로 읽고 있어 값이 채워지는 순간부터 간격이 걸린다. 조건부 갱신인 이유는 `save` 가 조건절 없는 전체 덮어쓰기이고 엔티티에 낙관적 잠금이 없어, 읽고 저장하면 그사이 선점되거나 발행이 끝난 행을 되돌리기 때문이다.
 
-**발행 직전 결제 상태 가드의 현재 실효**: 위 FAILED 전이는 결제가 종결·격리 상태일 때만 걸리는데, 브로커 장애로 발행이 밀린 결제는 정리 작업이 READY 로 되돌린 뒤 만료에 실패해 READY 에 잔류한다(`CONCERNS.md` L-14). READY 는 확정 결과 적용 가능 상태라 가드를 통과한다 — 가드가 겨냥한 시나리오에서는 아직 발동하지 않는다.
+**발행 직전 결제 상태 가드의 현재 실효**: 위 FAILED 전이는 결제가 확정 결과를 받을 수 없는 상태(종결·격리)일 때만 걸린다. 브로커 장애로 발행이 밀린 결제는 리컨실러가 1차 임계(기본 300초) 뒤 결과 대기(`AWAITING_RESULT`)로 옮기는데, 결과 대기는 확정 결과 적용 가능 상태라 가드를 통과한다. 2차 임계(기본 900초)를 넘겨 격리로 올라간 뒤에야 가드가 걸린다. 남은 위험은 [TODOS](../TODOS.md) OUTBOX-STALE-PUBLISH.
 
 ---
 

@@ -23,6 +23,7 @@
 | T4-C | 로컬 오토스케일러 | 부하 측정 | Prometheus 큐 길이·CPU 임계로 payment-service 레플리카를 자동으로 늘리고 줄인다. 결정 로그와 Grafana 대시보드 |
 | T4-D | CircuitBreaker와 타임아웃 튜닝 | 부하 측정 | [아래](#t4-d--circuitbreaker와-타임아웃-튜닝) |
 | T4-E | scale-out 후속: payment 무중단 재시작, 재고 갭 관찰 | 멀티 인스턴스 | [아래](#t4-e--scale-out-후속) |
+| CONFIRM-TERMINAL-REJECT | 종결·격리된 결제에 늦은 confirm 재요청이 오면 재고 차감이 먼저 일어난다 | 없음 | `PaymentEvent.validateConfirmRequest`는 사용자·금액·주문번호·paymentKey만 검사하고 상태를 보지 않는다. 진입에 종결·격리 상태 조기 거부 가드를 둔다. 지금은 차감이 선차감 기록 회수 작업(기본 60초 주기)으로 되돌려지지만 그 사이 게이트가 빡빡하다 |
 | TQ-1 | DLQ 조건부 자동 재시도 | 없음 | 관리자 수동 재주입은 있다(`payment.events.confirmed.dlq`). 벤더 5xx 같은 일시 실패를 자동으로 재발행하는 상시 컨슈머는 없다. 상세: `docs/archive/dlq-quarantine-recovery/COMPLETION-BRIEFING.md` |
 | TQ-2 | 승인으로 확인된 격리 결제를 `DONE`으로 되살리는 경로 | 없음 | 격리 결제는 관리자 안전 실패 종결만 있다. 되살리려면 payment→pg 상태 조회, 재고 원장 재기록(stock-committed 재발행, Redis 재정렬), 동시성 처리가 먼저 필요하다 |
 | TQ-3 | Redis 재고 캐시 장애 정책 | 장애 주입 | [아래](#tq-3--redis-재고-캐시-장애-정책) |
@@ -48,6 +49,7 @@
 - **현황**: broker 장애로 발행이 밀리면 리컨실러가 결제를 결과 대기(`AWAITING_RESULT`)로 되돌린다. 그 사이 `payment_outbox` 행은 따로 재시도를 이어가고, broker가 돌아오면 확정 명령을 발행한다. 벤더가 승인하면 되돌릴 수 없는 과금이 남고 payment는 이미 종결된 상태로 보고 넘어간다.
 - **가드**: `OutboxRelayService`에 발행 직전 결제 상태 가드가 있지만, 결과 대기는 확정 결과를 받을 수 있는 상태라 이 창에서는 걸리지 않는다. 2차 임계(기본 900초)를 넘으면 격리로 올라가고, 그 뒤에는 가드가 걸린다. 창에 상한은 있다.
 - **처방**: 세 위험을 함께 따져야 한다. 종결시키면 재주입이 막히고, 늦은 확정 명령은 벤더 과금을 남기고, 재고 보상 없이 만료하면 선차감분이 잠긴다. 정리 작업이 주문까지 되돌리는 단순한 방법은 첫 번째 위험 때문에 이미 기각됐다. 재고 보상 설계를 포함한 별도 토픽이 필요하다.
+- **되돌릴 수 없는 이유**: 벤더 취소·환불 포트가 없어(TQ-6) 늦게 나간 확정 명령이 승인되면 되돌릴 방법이 없다. 가드가 실제로 막는 상태(DONE/FAILED/CANCELED/PARTIAL_CANCELED/QUARANTINED)는 확정 명령이 최소 한 번 발행된 뒤에야 도달하므로, "아직 한 번도 발행 못 한 행"과는 동시에 성립하지 않는다(`OutboxRelayService.relay`).
 
 ### QUARANTINE-TRACE-EXPIRY — 선차감 흔적 만료 임박 알람
 
@@ -77,6 +79,7 @@
 ### T4-A — Toxiproxy 장애 주입 시나리오
 
 Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세스 종료 후 재시작, 보상 TX 중복 진입 방지, FCG(격리 전 최종 확인)의 PG 타임아웃, Redis 중복 판정·재고 캐시 다운, 재고 캐시 발산, DLQ 소진.
+이미 있는 것: 지연 주입 드릴 프로파일(`docker/docker-compose.drill.yml`, `docker/toxiproxy.json`)과 이를 확인하는 알람 규칙(`ServiceDown`, `DependencyDown`, `KafkaBrokerUnavailable`, `DlqTopicOffsetRising`). 남은 것은 아래 시나리오 전수와 k6 부하 결합이다.
 시나리오마다 `payment_outbox_pending_age_seconds` p95 10초 이상 같은 관측 기준과 결제·재고 정합성 교차 검증을 둔다.
 지금 Toxiproxy 드릴은 broker 1대라 지연이 발행·소비에 대칭으로 걸려 consumer만의 지연을 만들 수 없다.
 

@@ -10,7 +10,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 |---|---|---|
 | Toss | `toss/TossPaymentGatewayStrategy` | `pg.gateway.type` 이 `fake` 가 아닐 때(기본) |
 | NicePay | `nicepay/NicepayPaymentGatewayStrategy` | `pg.gateway.type` 이 `fake` 가 아닐 때(기본) |
-| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 가 경고 배너를 남긴 뒤 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. `supports()` 는 벤더 종류를 가리지 않고 수락하므로, 이 가드가 없으면 설정 오배포 시 실제 승인 없이 결제가 완료된다(`CONCERNS.md` L-18) |
+| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 가 경고 배너를 남긴 뒤 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. `supports()` 는 벤더 종류를 가리지 않고 수락하므로, 이 가드가 없으면 설정 오배포 시 실제 승인 없이 결제가 완료된다([PITFALLS](PITFALLS.md) L-18) |
 
 **Fake 시나리오 접두어** (라이브 검증용): `paymentKey` 앞머리로 벤더 응답을 결정적으로 고른다 — `fake-fail-`(확정 실패), `fake-retry-`(매 호출 재시도 가능 실패 → 소진 → 격리), `fake-flaky-`(정해진 횟수 실패 후 승인 → 자가 회복), `fake-lost-`(확정은 매 호출 재시도 가능 실패지만 조회에는 요청 금액 그대로 승인 응답 → 소진 후 FCG 자동 승인 종결 재현). `fake-lost-` 는 응답만 유실되고 승인은 성사된 상황을 만드는 유일한 수단이다 — 다른 접두어는 확정에 실패한 주문의 조회에 예외를 던져 이 장면이 재현되지 않는다. 판정은 **중복 승인 판정보다 앞**에서 이뤄진다 — 뒤에 두면 재시도 자기루프가 중복으로 흡수돼 시도 횟수가 소진되지 않는다. 자가 회복 실패 횟수는 `RetryPolicy.MAX_ATTEMPTS` 보다 작아야 하며 그 관계는 단위 테스트로 고정돼 있다. 전역 합성 실패율(`pg.gateway.fake.fail-rate`)과 함께 켜면 회복 회차가 다시 실패할 수 있어 병용하지 않는다.
 
@@ -19,7 +19,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 **포트** (confirm / status 분리 — 단일 `PgGatewayPort` 아님):
 - `PgConfirmPort.confirm(PgConfirmRequest)` → `PgConfirmResult` (성공 + amount + approvedAtRaw / 실패·재시도·멱등은 `PgGateway*Exception` 으로 표현) — `PgConfirmStrategySelector` 가 vendorType 으로 선택
 - `PgStatusLookupPort.getStatusByOrderId(orderId)` → 벤더 상태 조회 (`DuplicateApprovalHandler` 의 멱등 응답 재확정용) — `PgStatusLookupStrategySelector` 가 선택
-- cancel / refund 은 현재 미구현 (포트에 메서드 없음 — CONCERNS L-9)
+- cancel / refund 은 현재 미구현 (포트에 메서드 없음 — [TODOS](../TODOS.md) TQ-6)
 
 ## Toss Payments
 

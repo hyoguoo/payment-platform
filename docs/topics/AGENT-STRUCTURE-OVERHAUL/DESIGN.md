@@ -188,12 +188,13 @@
   - 검증: 옛·새 문서 수치 대조, 링크 확인
   - tdd: false | risk: false | 담당: 메인
   - 결과: PAYMENT-THROUGHPUT은 실험 모드로 BRIEF(목표·판정·고정 조건·첫 가설·결정)·EXPERIMENTS(회차 15개 요약·준비와 도구 검증·판단)·DESIGN(측정 도구 결정 D1~D6, 태스크 T1~T5, 재개 지점·원자료 위치)로 나눴다. CHECKOUT-RECEIPT-TRACKING은 BRIEF(확정 보장 R1~R5, as-is, 제안, 질문 6개 중 2개 답변, 지난 논의 기록)로 옮겼다. `docs/reports/` 보고서 8개를 각 토픽 폴더로 `git mv`하고 상대 링크 깊이를 고쳤다. 옛 합의 문서 2개와 PLAN 삭제, STATE의 두 항목을 다섯 줄로 줄이고 STATE 별건 2개(지침 정비, 측정 도구 준비)는 이력이라 지웠다(원자료 위치는 처리량 DESIGN으로). 재개 지점(capacity 100/s)이 STATE·DESIGN·EXPERIMENTS에서 같다. quality 문서의 옮긴 문서 링크도 고쳤다(T14 결과와 함께 EXPERIMENTS에 기록)
-- [ ] **T11 — 겹치는 context 문서를 합친다**
+- [x] **T11 — 겹치는 context 문서를 합친다**
   - 변경 위치: `docs/context/{ARCHITECTURE,STRUCTURE,PITFALLS,CONCERNS,TESTING,STACK,CONVENTIONS}.md`, `conventions/testing.md`, `stack/flyway-operations.md`, 신규 `docs/context/README.md`, `docs/guides/payment-flow.md`(이동)
   - 의존: T8 (식별자 대조), T9 (CONCERNS 미해결 항목 → TODOS)
   - 완료 기준: BRIEF 질문 1의 A안 표대로 구성. 이력 줄 0건. 식별자 대조 0건. 합친 문서의 사실은 코드로 확인(R8, D21, D22, D26)
   - 검증: `check-agent-docs.py --strict`, `grep "최종 갱신"`
   - tdd: false | risk: false | 담당: 메인
+  - 결과: context 20개 → 12개(README 포함). 메인: ARCHITECTURE+STRUCTURE(입력 포트 위치·수, 토픽 6개, Lua 파일명 정정, 폐기 결정 행 삭제), README 신설, CONVENTIONS 삭제, 사람용 안내를 `docs/guides/payment-flow.md`로 이동. implementer 셋에 나눠 맡김(분량 때문): PITFALLS+CONCERNS(우려 26건을 해소 삭제·PITFALLS 이동·TODOS 이동으로 분류, 새 TODOS 행 CONFIRM-TERMINAL-REJECT, §5·10·11·18·19·21·22의 사라진 메서드·클래스 정정), TESTING+conventions/testing(새 분류 기준, 없는 reuse 설정 파일·Lua 파일명·테스트 이름 정정, 날짜 지난 개수 표 삭제), STACK+flyway(Alertmanager·Discord 통지가 있는데 "미도입"으로 적힘, 서비스별 의존성, Flyway 볼륨 이름 `docker_` 접두사, 옛 hook 설명 삭제). 다른 문서의 CONCERNS 참조 5곳을 PITFALLS·TODOS로 바꾸고, CONFIRM-FLOW의 "READY 잔류" 서술을 결과 대기 기준으로 고쳤다. `--strict` 막는 판정 4종 0건. 확인 필요(리뷰): PITFALLS L-5를 "재전송 시 이중 복원 없음, 보상은 EOS 트랜잭션 밖"으로 다시 쓴 해석
 - [x] **T12 — 나머지 context 문서를 코드와 대조해 고친다**
   - 변경 위치: `docs/context/{PAYMENT-FLOW,CONFIRM-FLOW,INTEGRATIONS}.md`, `docs/context/conventions/{code-style,error-logging,kafka,transactions}.md`
   - 의존: T11
