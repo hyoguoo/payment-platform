@@ -38,6 +38,7 @@
 | 단위 테스트 | `./gradlew :<module>:test` | 코드 변경이 있으면 항상. ArchUnit 레이어 규칙도 여기서 돈다. Docker 없이 돈다 | 종료 hook이 강제. 에이전트도 태스크마다 실행 |
 | 정적 분석 | `./gradlew :<module>:checkstyleMain :<module>:checkstyleTest :<module>:spotbugsMain :<module>:spotbugsTest` | Java 변경이 있으면. CI 기준은 `.github/workflows/_service-ci.yml` | 에이전트. 파일 단위 Checkstyle은 편집 hook이 바로 잡는다 |
 | 통합 테스트 | `./gradlew :<module>:integrationTest` | DB, Redis, Kafka, Spring 설정·배선을 바꿨으면. `@Tag("integration")` 테스트만 돈다. Docker(Testcontainers)가 필요하다 | 에이전트 |
+| 스모크 | `bash scripts/smoke-all.sh` (트레이스까지 보려면 `--with-trace`) | Compose, Kafka 토픽, 관측·알람 규칙 같은 런타임 설정을 바꿨으면. 띄운 로컬 스택이 필요하다. 개별 가이드는 [docs/smoke/](../../docs/smoke/) | 에이전트. 스택을 띄울 수 없으면 사유를 보고한다 |
 | 재실행 | 위 명령에 `--rerun-tasks` | 외부 상태 때문에 캐시된 결과를 믿을 수 없을 때. 통합 테스트가 `UP-TO-DATE`로 건너뛰어졌을 때 | 에이전트 |
 
 공유 빌드 설정(`build.gradle`, `config/`)이나 서비스 경계를 바꾸면 영향받는 모듈로 범위를 넓힌다.
