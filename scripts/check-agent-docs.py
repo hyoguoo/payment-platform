@@ -8,7 +8,7 @@
   2. frontmatter 필수 필드 — `.agents/skills/*/SKILL.md`는 name·description, `.claude/agents/*.md`는
      name·description·model·tools가 있는지 본다.
   3. 문서 식별자 대조 — `docs/context`, `docs/guides`, `docs/smoke`, `docs/quality`, `docs/TODOS.md`의 백틱 스팬 중
-     클래스 이름(UpperCamelCase)이 저장소 Java·Gradle 코드에 나오는지, 점으로 이은 설정 키·토픽 이름이 설정·코드·
+     클래스 이름(UpperCamelCase)이 저장소 코드(주석·문자열 리터럴 제외)에 나오는지, 점으로 이은 설정 키·토픽 이름이 설정·코드·
      스크립트에 나오는지 본다. 설정 키는 그 키나 바로 위 키가 있으면 통과한다(기본값으로 쓰는 하위 키 허용).
      경로 모양 스팬은 판정 1이 맡는다.
   4. Mermaid 금지 문자 — ```mermaid 펜스 안 노드 라벨과 엣지 라벨에 중괄호, 가운뎃점(U+00B7),
@@ -71,7 +71,9 @@ FILE_SUFFIXES = {
     "md", "sh", "py", "java", "yml", "yaml", "properties", "json", "sql", "txt", "html", "log",
     "gradle", "toml", "xml", "lua", "conf", "csv", "png", "jar", "env", "js", "ts",
 }
-CODE_SKIP_DIRS = {".git", "build", ".gradle", "node_modules", "docs", "live-drill", ".archive", ".idea", "out"}
+# 어느 깊이에서든 건너뛰는 디렉터리. IDE 출력 `out`은 저장소 루트에서만 건너뛴다(`application/port/out`과 겹치지 않게).
+CODE_SKIP_DIRS = {".git", "build", ".gradle", "node_modules", "docs", "live-drill", ".archive", ".idea"}
+ROOT_ONLY_SKIP_DIRS = {"out"}
 # 대문자 시작 단어를 모으는 파일. 알람 규칙 이름(YAML), Checkstyle 모듈 이름(XML), hook 이벤트 이름(JSON)도 여기서 온다.
 CODE_TOKEN_SUFFIXES = {".java", ".gradle", ".kts", ".yml", ".yaml", ".xml", ".json", ".properties"}
 # 우리 코드는 쓰지 않지만 문서가 동작을 설명하는 외부 라이브러리 타입. 삭제된 우리 클래스를 가리지 않도록
@@ -81,6 +83,7 @@ EXTERNAL_TYPE_NAMES = {
     "DefaultLifecycleProcessor",  # Spring Framework
     "RestTemplate",  # Spring Framework
     "ChainedKafkaTransactionManager",  # Spring Kafka
+    "AfterRollbackProcessor",  # Spring Kafka (우리 코드는 구현체 DefaultAfterRollbackProcessor를 연결)
     "KafkaAdmin",  # Spring Kafka
     "LogstashEncoder",  # logstash-logback-encoder
     "RateLimiter",  # Resilience4j
@@ -274,8 +277,13 @@ def check_frontmatter():
 # ── 판정 3: 문서 식별자 대조 ─────────────────────────────────────────────────
 
 def iter_code_files(root, suffixes):
+    root = Path(root)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in CODE_SKIP_DIRS]
+        at_root = Path(dirpath) == root
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in CODE_SKIP_DIRS and not (at_root and d in ROOT_ONLY_SKIP_DIRS)
+        ]
         for name in filenames:
             if Path(name).suffix in suffixes:
                 yield Path(dirpath) / name
@@ -309,11 +317,32 @@ def flatten_yaml_keys(text):
     return keys
 
 
+JAVA_STRING_RE = re.compile(r'"(?:\\.|[^"\\\n])*"')
+JAVA_BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.S)
+JAVA_LINE_COMMENT_RE = re.compile(r'//[^\n]*')
+HASH_COMMENT_RE = re.compile(r'(^|\s)#[^\n]*')
+XML_COMMENT_RE = re.compile(r'<!--.*?-->', re.S)
+
+
+def strip_non_code(path, text):
+    """주석과 문자열 리터럴을 걷어 낸다. 주석에만 남은 옛 이름이 "코드에 있음"으로 통과하지 않게 한다."""
+    if path.suffix in {".java", ".gradle", ".kts"}:
+        text = JAVA_STRING_RE.sub('""', text)
+        text = JAVA_BLOCK_COMMENT_RE.sub(" ", text)
+        return JAVA_LINE_COMMENT_RE.sub(" ", text)
+    if path.suffix in {".yml", ".yaml", ".properties"}:
+        return HASH_COMMENT_RE.sub(r"\1", text)
+    if path.suffix == ".xml":
+        return XML_COMMENT_RE.sub(" ", text)
+    return text
+
+
 def build_code_index(root):
-    """식별자 대조에 쓰는 색인: 코드에 나오는 대문자 시작 단어, 펼친 YAML 키, 설정·코드·스크립트 원문."""
+    """식별자 대조에 쓰는 색인: 코드(주석·문자열 제외)에 나오는 대문자 시작 단어, 펼친 YAML 키, 설정·코드·스크립트 원문."""
     tokens = set()
     for path in iter_code_files(root, CODE_TOKEN_SUFFIXES):
-        tokens.update(JAVA_TOKEN_RE.findall(path.read_text(encoding="utf-8", errors="ignore")))
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        tokens.update(JAVA_TOKEN_RE.findall(strip_non_code(path, text)))
     yaml_keys = set()
     corpus_parts = []
     for path in iter_code_files(root, CONFIG_CORPUS_SUFFIXES):

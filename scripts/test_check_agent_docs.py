@@ -70,6 +70,29 @@ class IdentifierCheckTest(unittest.TestCase):
         self.assertIn("RemovedOutboxWorker", issues[0])
         self.assertIn("docs/context/SAMPLE.md:1", issues[0])
 
+    def test_주석이나_문자열에만_남은_이름은_코드에_있는_것으로_보지_않는다(self):
+        write(self.root, "pg-service/src/test/java/b/LegacyNoteTest.java", """
+            package b;
+            // RemovedGatewayPort 는 예전 구조다. "http://example.com/GhostLiteralName"
+            /* BlockCommentOnlyName 도 마찬가지 */
+            class LegacyNoteTest { String s = "StringOnlyName"; }
+        """)
+        index = check_agent_docs.build_code_index(self.root)
+        doc = write(self.root, "docs/context/LEGACY.md",
+                    "`RemovedGatewayPort`, `BlockCommentOnlyName`, `StringOnlyName`, `LegacyNoteTest`\\n")
+        issues = check_agent_docs.check_identifiers([doc], index, self.root)[1]
+        self.assertEqual(3, len(issues))
+        self.assertFalse(any("LegacyNoteTest" in i for i in issues))
+
+    def test_port_out_아래_선언도_색인한다(self):
+        write(self.root, "payment-service/src/main/java/a/application/port/out/OnlyHerePort.java", """
+            package a.application.port.out;
+            public interface OnlyHerePort { }
+        """)
+        index = check_agent_docs.build_code_index(self.root)
+        doc = write(self.root, "docs/context/PORT.md", "`OnlyHerePort`\\n")
+        self.assertEqual([], check_agent_docs.check_identifiers([doc], index, self.root)[1])
+
     def test_메서드가_붙은_클래스는_클래스_이름으로_대조한다(self):
         self.assertEqual([], self.issues_for("`PaymentEvent.fail()`이 예외를 던진다.\n"))
         self.assertEqual(1, len(self.issues_for("`GhostService.run()`이 돈다.\n")))
