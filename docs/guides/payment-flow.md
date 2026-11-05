@@ -1,8 +1,8 @@
 # 결제 흐름 가이드 — 사람을 위한 전체 여정
 
 > ⚠️ **이 문서는 사람 독자용이다.** 결제가 브라우저 요청부터 최종 상태까지 어떻게 흐르고 어떻게 수습되는지를 도메인 언어로 풀어 설명한다.
-> **에이전트(자동화) 운영 규칙**: 평소 작업 시 이 문서를 참조하지 않으며, **ship 단계에서만** 코드 변경에 맞춰 갱신한다. 작업 정합의 기준(SSOT)은 짝 문서([PAYMENT-FLOW.md](PAYMENT-FLOW.md) / [CONFIRM-FLOW.md](CONFIRM-FLOW.md))다.
-> 최초 작성 2026-06-22 · 승급 2026-06-23 · 정정 2026-07-03(outbox 발행 실패 회복 경로 사실 정정) · 정정 2026-07-06(단계 명칭 개칭 + 문체 정리) · 갱신 2026-07-11(§C 회복 색인에 격리 관리자 안전 실패 종결·DLQ 수동 재주입 2행 추가 + 단계 6 격리 폴링 서술 정정) · 갱신 2026-08-06(격리 종결 전 벤더 상태 확인 강제 + 발행 실패 재시도 간격 도입 반영) · 갱신 2026-08-14(재시도 소진 시 벤더 확인 관문 배선 — 자동 승인·자동 실패 종결과 격리 사유 4종, 중복 승인 신호 단일화, 부분 취소 격리의 재고 보류) · 갱신 2026-09-11(관리자 격리 종결의 벤더 조회에서 부분 취소를 실패가 아닌 확인 불가로 분류) · 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
+> **에이전트(자동화) 운영 규칙**: 평소 작업 시 이 문서를 참조하지 않으며, **ship 단계에서만** 코드 변경에 맞춰 갱신한다. 작업 정합의 기준(SSOT)은 짝 문서([PAYMENT-FLOW.md](../context/PAYMENT-FLOW.md) / [CONFIRM-FLOW.md](../context/CONFIRM-FLOW.md))다.
+> 범위: 브라우저 checkout → confirm → outbox 발행 → pg-service 실제 PG사 호출 → 결과 수신·재고 정산 → 상태 폴링.
 > 표기 규칙: **도메인 표현** + (`메서드명`/`토픽`) 병기. §A 시퀀스의 1~28 단계와 §B-1 플로우차트의 `[n]` 라벨이 1:1 대응한다.
 
 ---
@@ -19,7 +19,7 @@
 | SETNX | Redis `SET if Not eXists` — 멱등 토큰 1회 기록 |
 | P8D | 8일 TTL (Kafka retention 7d + 복구 버퍼 1d) |
 | DLQ | Dead Letter Queue — 재시도 한도 초과 메시지 격리 토픽 |
-| D7 / SCR-6 | 내부 설계 결정·룰 ID (상세: [CONFIRM-FLOW.md](CONFIRM-FLOW.md)) |
+| D7 / SCR-6 | 내부 설계 결정·룰 ID (상세: [CONFIRM-FLOW.md](../context/CONFIRM-FLOW.md)) |
 
 ---
 
@@ -405,8 +405,8 @@ flowchart TD
 
 ## 관련 문서
 
-- end-to-end 상세(단계 1~5 + pg-service 내부 deep-dive): [PAYMENT-FLOW.md](PAYMENT-FLOW.md)
-- payment 측 비동기 confirm 사이클 deep-dive(상태 머신, 멱등성 layer, EOS): [CONFIRM-FLOW.md](CONFIRM-FLOW.md)
+- end-to-end 상세(단계 1~5 + pg-service 내부 deep-dive): [PAYMENT-FLOW.md](../context/PAYMENT-FLOW.md)
+- payment 측 비동기 confirm 사이클 deep-dive(상태 머신, 멱등성 layer, EOS): [CONFIRM-FLOW.md](../context/CONFIRM-FLOW.md)
 - 종결 가드 재발행 / 재고 확정 누락 갭 복구 설계·완료: [docs/archive/confirm-approved-resend-gap/COMPLETION-BRIEFING.md](../archive/confirm-approved-resend-gap/COMPLETION-BRIEFING.md)
 - DLQ 도달 보장(pg self-loop 한도 격리 + payment EOS 커밋 실패 DLQ) 설계·완료: [docs/archive/dlq-reachability/COMPLETION-BRIEFING.md](../archive/dlq-reachability/COMPLETION-BRIEFING.md)
 </content>
