@@ -49,7 +49,7 @@ public class PgInbox {
      * 외부 호출자는 factory method(create*, of, ofWithId)만 사용.
      * allArgsBuilder() 직접 호출 금지 — factory 내부 캡슐화 전용.
      */
-    public static PgInbox createPending(String orderId, BigDecimal amount) {
+    public static PgInbox create(String orderId, Long amount, Instant now) {
         return allArgsBuilder()
                 .orderId(orderId)
                 .status(PgInboxStatus.PENDING)
@@ -61,7 +61,7 @@ public class PgInbox {
 ```
 
 **factory only 노출 룰**:
-- 외부 호출자는 정적 factory 메서드만 호출 (예: `PgInbox.createPending(...)` / `PgInbox.createDirectInProgress(...)` / `PaymentOutbox.createFromCommand(...)`)
+- 외부 호출자는 정적 factory 메서드만 호출 (예: `PgInbox.create(...)` / `PgInbox.createDirectInProgress(...)` / `PaymentOutbox.createPending(...)`)
 - `allArgsBuilder()` 는 factory 내부 캡슐화 전용 — 외부 직접 호출 금지
 - 컴파일러 강제 불가 (Lombok 제약) — JavaDoc + code review 로 강제
 
@@ -70,11 +70,11 @@ public class PgInbox {
 - builder 외부 노출 시 시나리오 우회 가능 — 금지 이유
 
 **적용 위치**:
-- payment-service: `PaymentOutbox`, `Payment`, ... (`StockOutbox` 는 폐기됨)
+- payment-service: `PaymentOutbox` 등
 - pg-service: `PgInbox`, `PgOutbox`
 
 **mutable 필드 변경 룰**:
-- 상태 전이 대상 필드는 도메인 메서드로만 변경 (예: `PgInbox.markInProgress()`, `PgOutbox.markDone()`)
+- 상태 전이 대상 필드는 도메인 메서드로만 변경 (예: `PgInbox.markInProgress()`, `PgOutbox.markProcessed(...)`)
 - builder 는 build 시점만 — setter 노출 없음
 
 **Record DTO**:
@@ -99,7 +99,7 @@ public record ConfirmedEventMessage(
 | 출력 포트 | `<Subject>Port` | `StockCachePort`, `PaymentConfirmPublisherPort` |
 | 출력 포트 어댑터 | `<Subject><Tech>Adapter` | `StockCacheRedisAdapter` |
 | Kafka 메시지 record | `<Subject>EventMessage` (수신) / `<Subject>EventPayload` (발행) | `ConfirmedEventMessage`, `ConfirmedEventPayload` |
-| 이벤트 (Spring ApplicationEvent) | `<Subject>RequestedEvent` | `StockCommitRequestedEvent` |
+| 이벤트 (Spring ApplicationEvent) | `<Subject>Event` | `PaymentConfirmEvent` |
 | Listener | `<Subject>Listener` 또는 `<Subject>EventHandler` | `OutboxImmediateEventHandler`, `InboxReadyEventHandler` |
 | Scheduler | `<Subject>Worker` | `OutboxWorker`, `PgOutboxImmediateWorker` |
 | Fake (테스트 전용) | `Fake<Subject><Type>` | `FakeStockCachePort` |

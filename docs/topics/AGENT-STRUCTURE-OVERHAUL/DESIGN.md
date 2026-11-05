@@ -194,12 +194,13 @@
   - 완료 기준: BRIEF 질문 1의 A안 표대로 구성. 이력 줄 0건. 식별자 대조 0건. 합친 문서의 사실은 코드로 확인(R8, D21, D22, D26)
   - 검증: `check-agent-docs.py --strict`, `grep "최종 갱신"`
   - tdd: false | risk: false | 담당: 메인
-- [ ] **T12 — 나머지 context 문서를 코드와 대조해 고친다**
+- [x] **T12 — 나머지 context 문서를 코드와 대조해 고친다**
   - 변경 위치: `docs/context/{PAYMENT-FLOW,CONFIRM-FLOW,INTEGRATIONS}.md`, `docs/context/conventions/{code-style,error-logging,kafka,transactions}.md`
   - 의존: T11
   - 완료 기준: 이력 줄 0건, 식별자 대조 0건, 코드와 다른 서술은 고치고 목록을 결과에 남긴다(R8)
   - 검증: `check-agent-docs.py --strict`
   - tdd: false | risk: false | 담당: implementer
+  - 결과: implementer(사용량 한도로 한 번 멈춘 뒤 재개). 7개 파일의 이력 줄·토픽 꼬리표 삭제. 주요 정정: 재고 보상 경로(`compensateAtomic` → `StockHoldReverter`가 상품별 `stock_compensation_if_decremented.lua`, 부분 취소 격리는 건너뜀), 결과 소비 순서(잠금 조회 → 종결 가드 → 중복 표시 → 분기), 상태 머신에 `AWAITING_RESULT`, relay의 발행 전 상태 가드, `pg_inbox` 상태 `NONE` → `PENDING`, 비재시도 예외에 `PaymentStatusException`, 벤더 활성 조건·라우팅 키·endpoint·설정 키, 없는 예외 계층(`PaymentBaseException`)을 실제 구조로, `max.poll.interval.ms`는 consumer 설정. 식별자·참조·Mermaid 문제 0건. 흐름 단계 이름(Phase 1~5)과 본문 설계 라벨(D5/D7/D8)은 일정이 아니라 남김. 범위 밖: `OutboxRelayService.buildMessage` 주석의 낡은 "pg-service Redis dedupe 키" 문구
 - [x] **T13 — smoke 가이드 5개를 대조해 고친다**
   - 변경 위치: `docs/smoke/*.md`
   - 의존: T8

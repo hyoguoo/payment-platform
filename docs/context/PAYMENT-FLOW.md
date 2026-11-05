@@ -1,9 +1,8 @@
 # Payment Flow — 웹에서 결제 요청 시 end-to-end 처리
 
-> 최종 갱신: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — 리컨실러 절을 두 단계 스캔(결과 대기 → 격리)으로 정정하고, 되돌리기가 재처리를 유발한다는 사실과 다른 서술을 걷어냄). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — confirm 진입 다이어그램을 상품 단위 반복으로 정정(주문 단위 선점·상품별 기록과 차감·확정 기록 건너뛰기·거절 시 직접 차감분만 되돌리기·선점 실패 분기), 재고 dedup token 을 상품 단위 키로 정정). 이전: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — §4.9 를 "미연결"에서 배선 상태로 전면 교체(TX 2단계 분리·금액 대조 선행·확정실패 집합에서 부분 취소 제외·조회 예외 전체 포착·반영 0건 가드·승인 시각 원문·결과 지표 6종), DLQ 플로우차트를 관문 6분기로 갱신, 장애 복원 포인트의 소진 경로 정정, 파일 색인의 FCG 행 정정. `RETRY_EXHAUSTED` 사유는 더 이상 생성되지 않는다). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §4.11 잔여 위험을 겹침 처리 절로 교체(벤더 거부 흡수·0건 가드 수렴·NicePay 미확정만 잔여), 중복 승인 핸들러 서술에 금액 대조 선행과 종결 여부 분기 반영). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — Phase 4 플로우차트에서 리스너 진입 dedupe 노드 제거, 중복 메시지·멱등성 표의 pg 행을 접수대장 단일 층으로 정정, §4.11 에 리스너 재적재 유예 부재로 열리는 벤더 호출 겹침과 잔여 위험 추가). 이전: 2026-07-28 (ADMIN-VISIBILITY — `pg_inbox.attempt` 행에 진행 중 상태 가드 / `pg_outbox` 행에 `attempt` 컬럼 V7 제거 / `headers_json` 행 신설(읽는 쪽은 관리자 시도 이력 조립뿐) + `insertRetryOutbox` 순서 반전(증가 먼저, 반영 행 수 0 이면 INSERT·발행 생략) callout + §4.1 에 관리자 조회 HTTP 경로 예외 명시). 이전: 2026-07-02 (DOCS-CONSISTENCY-OVERHAUL Task 7 — outbox 발행 실패 복구 서술을 단일 TX 롤백 기준으로 정정, 장애 복원 포인트 우선순위 재정렬). 이전: 2026-06-25 (DLQ-REACHABILITY — self-loop attempt 를 pg_inbox.attempt 에 영속해 한도 도달 DLQ 격리 작동), 2026-06-23 (코드 대조 — Phase 4 inbox PENDING 경유 정정)
 > 짝 문서 — payment-service 측 비동기 confirm 사이클 deep dive: [`CONFIRM-FLOW.md`](CONFIRM-FLOW.md)
 
-현재 `main` (MSA 4서비스 분리 + DLQ-REACHABILITY 봉인 시점) 코드를 기준으로, 브라우저가
+현재 `main` 코드를 기준으로, 브라우저가
 결제를 시작해서 최종 DONE/FAILED까지 도달하는 전 과정을 정리한다.
 
 ---
@@ -78,7 +77,7 @@ flowchart TD
 
 pg-service 의 정책 / 흐름은 본 문서의 [Phase 4 — pg-service 상세](#phase-4-pg-service-상세) 절에서 깊이 다룬다. 여기는 입출력만:
 
-> 아래 flowchart 는 PG-CONFIRM-LISTENER-SPLIT 반영 **현행**이다 — `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 를 `pg_inbox.attempt` 에 영속해 한도(4) 도달 시 DLQ→QUARANTINED 격리(DLQ-REACHABILITY). 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
+> 아래 flowchart 는 `PENDING` 경유 + inbox 채널/워커 분리 + self-loop `attempt` 를 `pg_inbox.attempt` 에 영속해 한도(4) 도달 시 DLQ→QUARANTINED 격리하는 현재 흐름이다. 정책 세부(상태머신·5분기·retry)는 §4.3~§4.10, payment 측 비동기 사이클은 [CONFIRM-FLOW §17](CONFIRM-FLOW.md) 참조.
 
 ```mermaid
 flowchart TD
@@ -128,7 +127,7 @@ flowchart TD
     OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
     OBW --> RELAY["PgOutboxRelayService -> PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
     RELAY --> PUB{"발행 토픽"}
-    PUB -->|events.confirmed| EC["payment.events.confirmed<br/>-> payment-service (Phase 5)"]
+    PUB -->|events.confirmed| EC["payment.events.confirmed<br/>-> payment-service"]
     PUB -->|"commands.confirm (self-loop)"| T
     PUB -->|commands.confirm.dlq| DLQT["payment.commands.confirm.dlq"]
 
@@ -145,12 +144,12 @@ flowchart TD
 ```mermaid
 flowchart TD
     AA["payment.events.confirmed<br/>Kafka Topic"] --> AB["ConfirmedEventConsumer<br/>@KafkaListener groupId=payment-service<br/>+ DefaultErrorHandler<br/>+ FixedBackOff(1000ms, 5)<br/>+ DeadLetterPublishingRecoverer"]
-    AB --> AC["PaymentConfirmResultUseCase.handle<br/>(1줄 — processMessage)"]
-    AC --> AC2["paymentEvent 조회"]
+    AB --> AC["PaymentConfirmResultUseCase.handle<br/>@Transactional timeout=5"]
+    AC --> AC2["paymentEvent 잠금 조회 (FOR UPDATE)<br/>-> 종결 상태 가드 (DONE+APPROVED 재배달만 stock-committed 재발행)<br/>-> payment_event_dedupe INSERT IGNORE (멱등 마킹)"]
     AC2 --> AD{"message.status"}
-    AD -->|APPROVED| AE1["event.done approvedAt<br/>payment_event_dedupe INSERT IGNORE (멱등 마킹)<br/>-> 각 PaymentOrder별 StockEventUuidDeriver.derive 로 idempotencyKey 도출<br/>-> stockCommittedKafkaTemplate.send (Kafka tx buffer)<br/>-> 컨슈머 오프셋 + 프로듀서 한 단위 commit<br/>-> product-service 재고 확정 (read_committed)"]
-    AD -->|FAILED| AE2["compensateAtomic(orderId, orders) 먼저<br/>(Lua atomic + compensation:done:orderId SETNX P8D)<br/>-> markPaymentAsFail reasonCode 나중<br/>(SCR-6 호출 순서 뒤집기 — silent loss 차단)"]
-    AD -->|QUARANTINED| AE3["compensateAtomic(orderId, orders)<br/>+ QuarantineCompensationHandler.handle<br/>수동 조사 알림"]
+    AD -->|APPROVED| AE1["금액 대조 (불일치면 격리)<br/>-> markPaymentAsDone approvedAt<br/>-> 선차감 기록 확정 (commitAllByOrderId)<br/>-> 각 PaymentOrder별 StockEventUuidDeriver.derive 로 idempotencyKey 도출<br/>-> stockCommittedKafkaTemplate.send (Kafka tx buffer, key=productId)<br/>-> 컨슈머 오프셋 + 프로듀서 한 단위 commit<br/>-> product-service 재고 확정 (read_committed)"]
+    AD -->|FAILED| AE2["StockHoldReverter.revertEachProductHold 먼저<br/>(상품별 stock_compensation_if_decremented.lua, compensation:done:productId:orderId SETNX P8D)<br/>-> markPaymentAsFail reasonCode 나중<br/>(되돌리기를 먼저 해 크래시 후 재배달에서 보상이 유실되지 않게 함)"]
+    AD -->|QUARANTINED| AE3["revertEachProductHold<br/>(FCG_PARTIAL_CANCELED 사유는 건너뜀)<br/>+ QuarantineCompensationHandler.handle<br/>수동 조사 알림"]
     AC -.예외 throw.-> AERR["DefaultErrorHandler retry × 5<br/>한도 초과 -> payment.events.confirmed.dlq"]
 
     AF["브라우저: 폴링<br/>GET /api/v1/payments/orderId/status"] --> AG["PaymentStatusServiceImpl"]
@@ -165,11 +164,11 @@ flowchart TD
 
 ---
 
-## Outbox Relay 워커 대응 관계 (Phase 3 vs Phase 4 말미)
+## Outbox Relay 워커 대응 관계 (payment-service vs pg-service)
 
 두 서비스 모두 Transactional Outbox 패턴을 쓰지만 **다른 인스턴스 / 다른 빈 / 다른 스레드**다 — 좌우 대칭 설계.
 
-| 역할 | payment-service (Phase 3) | pg-service (Phase 4 말미) |
+| 역할 | payment-service | pg-service |
 |---|---|---|
 | AFTER_COMMIT 리스너 | `OutboxImmediateEventHandler` | `OutboxReadyEventHandler` |
 | 즉시 릴레이 엔진 | `@Async("outboxRelayExecutor")` — Spring 관리 VT 풀 | `PgOutboxChannel` (in-memory BlockingQueue) + `PgOutboxImmediateWorker` (SmartLifecycle VT 워커 N개) |
@@ -195,7 +194,7 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 | 8 | pg | Kafka consume (`attempt` 헤더 파싱, 기본 1) | pg_inbox **PENDING INSERT**(리스너) → 워커가 **PENDING→IN_PROGRESS CAS**(SKIP LOCKED, amount 기록) |
 | 9 | pg | Toss/Nicepay/Fake HTTP 호출 | APPROVED / FAILED (4xx) / retryable (5xx→self-loop, `attempt` 는 `pg_inbox.attempt` 영속·증가) / DLQ (attempt≥4→QUARANTINED 자동 격리, §4.10) |
 | 10 | pg | pg_outbox 저장 → PgOutboxImmediateWorker (채널 + VT) relay | **Kafka `payment.events.confirmed` 발행** |
-| 11 | payment | Kafka consume (Spring Kafka `DefaultErrorHandler` + `FixedBackOff(1s, 5회)` + DLQ recoverer + EOS `KafkaTransactionManager`) | D7 진입 가드 → `payment_event_dedupe` INSERT IGNORE 멱등 마킹 → APPROVED: event DONE + multi-product loop `producer.send(stock-committed)` Kafka tx buffer → 컨슈머 오프셋 동행 + 프로듀서 commit / FAILED·QUARANTINED: `compensateAtomic(orderId, orders)` Lua 1회 (재고 복원 + `compensation:done:{orderId}` SETNX P8D) → event 상태 전이. 메시지 멱등은 `payment_event_dedupe` UNIQUE INSERT, 재고 멱등은 Lua dedup token, retry/DLQ 는 Spring Kafka native (PAYMENT-EOS-TRANSITION 2026-05-17 봉인) |
+| 11 | payment | Kafka consume (Spring Kafka `DefaultErrorHandler` + `FixedBackOff(1s, 5회)` + DLQ recoverer + EOS `KafkaTransactionManager`) | 종결 상태 가드 → `payment_event_dedupe` INSERT IGNORE 멱등 마킹 → APPROVED: event DONE + multi-product loop `producer.send(stock-committed)` Kafka tx buffer → 컨슈머 오프셋 동행 + 프로듀서 commit / FAILED·QUARANTINED: 상품별 `revertEachProductHold` (선차감 흔적이 있을 때만 재고 복원 + `compensation:done:{productId}:{orderId}` SETNX P8D) → event 상태 전이. 메시지 멱등은 `payment_event_dedupe` UNIQUE INSERT, 재고 멱등은 Lua dedup token, retry/DLQ 는 Spring Kafka native |
 | 12 | 브라우저 | `GET /status` 폴링 | PENDING → PROCESSING → DONE/FAILED |
 
 ---
@@ -203,11 +202,11 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 ## 장애 복원 포인트
 
 - **리스너 스킵/크래시/Kafka 발행 실패**: payment 쪽은 `OutboxWorker` (fixedDelay 5초, batchSize 50) 의 PENDING 배치 재픽업이 1차 경로 — `OutboxRelayService.relay` 는 단일 TX 라 Kafka 발행 실패 시 TX 전체가 롤백돼 PENDING 그대로 남고 이 재픽업으로 즉시 회복된다. IN_FLIGHT 5분 타임아웃 복귀는 워커 프로세스 비정상 종료 등 드문 경로에 대한 보조 경로. pg 쪽은 `PgOutboxPollingWorker` (`processedAt IS NULL AND availableAt <= NOW`) 가 동일하게 PENDING 재픽업
-- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → `PgDlqService` 가 FCG(`PgFinalConfirmationGate`)에 위임 → 벤더 조회 1회 결과에 따라 자동 승인 / 자동 확정실패 / 격리 4사유로 분기(§4.9). 격리분만 payment `QuarantineCompensationHandler` 로 간다. 동시 진입 시 over-count(조기 격리)는 수용 한계
+- **PG 5xx/timeout**: pg-service 자체 retry (self-loop) → `attempt` 가 `pg_inbox.attempt` 에 영속·증가(retry 분기 TX_B `incrementAttempt`)해 한도(4) 초과 시 DLQ → `PgDlqService` 가 FCG(`PgFinalConfirmationGate`)에 위임 → 벤더 조회 1회 결과에 따라 자동 승인 / 자동 확정실패 / 격리(사유 4종)로 분기(§4.9). 격리분만 payment `QuarantineCompensationHandler` 로 간다. 동시 진입 시 over-count(조기 격리)는 수용 한계
 - **재고 캐시 장애**: confirm 단계에서 CACHE_DOWN → event QUARANTINED + `quarantine_compensation_pending=true` 플래그
 - **IN_FLIGHT 복원**: `PaymentReconciler` (@Scheduled fixedDelayMs=120000, 2분) — 1차: `findInProgressOlderThan(cutoff)` → `resetPaymentToAwaitingResult` 로 결과 대기(`AWAITING_RESULT`) 전이. 2차: `findAwaitingResultOlderThan(cutoff)` → 2차 임계(기본 900초) 초과분을 `quarantinePaymentAutomatically` 로 격리. 두 전이 모두 조건부 UPDATE(0건이면 건너뜀) + 감사 경로 경유이며 항목별로 실패를 격리한다. 되돌리기는 재처리를 유발하지 않는다 — `OutboxWorker` 는 `payment_outbox` PENDING 행을 집으므로 결제 상태와 무관하다. 결과 대기의 의미는 늦게 도착한 확정 결과를 그대로 적용할 수 있다는 것이다. 재고 발산 감지/보정은 새 재고 모델에서 책임 제거됨
-- **중복 메시지 (payment 측)**: 재고 멱등은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D, 같은 Lua 안 atomic) + outbox IN_FLIGHT CAS. 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 가 native 책임 (한도 5회 초과 시 `payment.events.confirmed.dlq`)
-- **중복 메시지 (pg 측)**: `pg_inbox.order_id` UNIQUE (`insertPending` INSERT IGNORE) + 워커의 상태 조건부 선점 (`transitPendingToInProgress`, SKIP LOCKED) 단일 층. terminal 재수신은 `PgTerminalReemitService.reemit` 이 저장된 결과만 재발행한다 (벤더 호출 X). 리스너 진입부 Redis eventUuid 필터는 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 에서 제거 — 잔여 한계는 §4.11
+- **중복 메시지 (payment 측)**: 재고 멱등은 Lua atomic dedup token (상품 단위 `decrement:done:{productId}:{orderId}` / `compensation:done:{productId}:{orderId}` SETNX P8D, 같은 Lua 안 atomic) + outbox IN_FLIGHT CAS. 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` 가 native 책임 (한도 5회 초과 시 `payment.events.confirmed.dlq`)
+- **중복 메시지 (pg 측)**: `pg_inbox.order_id` UNIQUE (`insertPending` INSERT IGNORE) + 워커의 상태 조건부 선점 (`transitPendingToInProgress`, SKIP LOCKED) 단일 층. terminal 재수신은 `PgTerminalReemitService.reemit` 이 저장된 결과만 재발행한다 (벤더 호출 X). 리스너 진입부에는 별도 중복 필터가 없다 — 잔여 한계는 §4.11
 
 ---
 
@@ -227,16 +226,16 @@ pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** �
 
 북쪽 (Kafka) 과 남쪽 (Vendor HTTP) 의 **2-layer 번역기 + 회복 layer**. 모든 retry / DLQ / 격리 결정은 pg-service 안에서 일어난다 — 결제 확정 경로에서 payment-service 는 "결과만 받음".
 
-**예외 — 관리자 조회 경로 (ADMIN-VISIBILITY)**: 결제 확정 흐름 밖에 payment → pg 동기 HTTP 조회가 하나 있다. 관리자 결제 상세를 렌더할 때 `GET /api/v1/confirmations/{orderId}/attempts` 로 시도 이력을 읽는다 (`PgAttemptHistoryController` — pg-service 유일한 컨트롤러). 확정 경로에는 관여하지 않으며, 조회 실패 시 이력 카드만 조회 불가로 표시하고 격리 종결·유실 메시지 재주입 버튼은 그대로 동작한다.
+**예외 — 관리자 조회 경로**: 결제 확정 흐름 밖에 payment → pg 동기 HTTP 조회가 하나 있다. 관리자 결제 상세를 렌더할 때 `GET /api/v1/confirmations/{orderId}/attempts` 로 시도 이력을 읽는다 (`PgAttemptHistoryController` — pg-service 유일한 컨트롤러). 확정 경로에는 관여하지 않으며, 조회 실패 시 이력 카드만 조회 불가로 표시하고 격리 종결·유실 메시지 재주입 버튼은 그대로 동작한다.
 
 ### 4.2 RDB 두 테이블
 
 | 테이블 | 카디널리티 | 책임 |
 |---|---|---|
-| `pg_inbox` | 1 orderId = 1 row (UNIQUE) | dedupe + 결과 SoT (NONE / IN_PROGRESS / APPROVED / FAILED / QUARANTINED) + amount 저장 (AMOUNT_MISMATCH 양방향 방어용) |
-| `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ (DLQ-REACHABILITY). **UPDATE 에 `AND status = IN_PROGRESS` 가드** — 종결 후 뒤늦게 도착하는 재시도 신호가 attempt 와 종결 시각(`updated_at`)을 밀어내는 것을 막는다. 정상 재시도 경로는 항상 IN_PROGRESS 시점 호출이라 무동작 (ADMIN-VISIBILITY) |
-| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. **`attempt` 컬럼은 Flyway V7 에서 제거** — 항상 0 인 死 컬럼이었고 그 값으로 상수 0 히스토그램을 발행하며 pending 전량을 매분 적재하던 경로까지 함께 걷어냈다 (ADMIN-VISIBILITY) |
-| `pg_outbox.headers_json` | 재시도 행에 `{"attempt":N}` | relay 는 여전히 Kafka 헤더로 `Map.of()` 를 보낸다 (소비 측 회차 판정은 `pg_inbox` SoT). **읽는 쪽은 관리자 시도 이력 조립뿐** — `PgAttemptHistoryService` 가 화면 회차 표시용으로 파싱하며, 파싱 실패·부재는 회차 미지로 처리하고 예외를 던지지 않는다 (ADMIN-VISIBILITY) |
+| `pg_inbox` | 1 orderId = 1 row (UNIQUE) | dedupe + 결과 SoT (PENDING / IN_PROGRESS / APPROVED / FAILED / QUARANTINED) + amount 저장 (AMOUNT_MISMATCH 양방향 방어용) |
+| `pg_inbox.attempt` | INT DEFAULT 1 (Flyway V5) | self-loop 시도횟수 SoT. 워커 `resolveAttempt` 가 읽고 retry 분기에서 `incrementAttempt`(TX_B) 로 증가 → 한도(4) 소진 시 DLQ. **UPDATE 에 `AND status = IN_PROGRESS` 가드** — 종결 후 뒤늦게 도착하는 재시도 신호가 attempt 와 종결 시각(`updated_at`)을 밀어내는 것을 막는다. 정상 재시도 경로는 항상 IN_PROGRESS 시점 호출이라 무동작 |
+| `pg_outbox` | 1 orderId = N rows | 발행 대기 큐. topic 다양 (events.confirmed / commands.confirm self-loop / commands.confirm.dlq) + availableAt 지연 발행. **`attempt` 컬럼은 Flyway V7 에서 제거** — 항상 0 인 死 컬럼이었고 그 값으로 상수 0 히스토그램을 발행하며 pending 전량을 매분 적재하던 경로까지 함께 걷어냈다 |
+| `pg_outbox.headers_json` | 재시도 행에 `{"attempt":N}` | relay 는 여전히 Kafka 헤더로 `Map.of()` 를 보낸다 (소비 측 회차 판정은 `pg_inbox` SoT). **읽는 쪽은 관리자 시도 이력 조립뿐** — `PgAttemptHistoryService` 가 화면 회차 표시용으로 파싱하며, 파싱 실패·부재는 회차 미지로 처리하고 예외를 던지지 않는다 |
 
 inbox/outbox 모두 같은 `@Transactional` 안에서 atomic commit/rollback — Transactional Outbox 패턴.
 
@@ -307,17 +306,17 @@ flowchart TD
 ```
 
 핵심 포인트:
-- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다(PG-DUPLICATE-APPROVAL-SETTLEMENT).
+- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다.
 - **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급. 리스너 진입 필터가 있던 시절 재시도를 통과시키기 위한 규약이었고, 필터 제거 후에도 payment 측 `payment_event_dedupe` 의 메시지 단위 키로 계속 쓰인다.
-- **`attempt` 한도/DLQ 작동 (DLQ-REACHABILITY)** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
+- **`attempt` 한도/DLQ 작동** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
 ### 4.6 self-loop retry 메커니즘
 
 retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별도 retry 토픽 없이 같은 토픽으로 재발행한다.
 
-> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT (DLQ-REACHABILITY).** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계 — 관리자 시도 이력 화면에서는 같은 회차가 여러 행에 나타나는 형태로 드러나며 화면 문구가 이를 알린다.)
+> **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT 다.** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계 — 관리자 시도 이력 화면에서는 같은 회차가 여러 행에 나타나는 형태로 드러나며 화면 문구가 이를 알린다.)
 >
-> **`insertRetryOutbox` 내부 순서 (ADMIN-VISIBILITY)**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
+> **`insertRetryOutbox` 내부 순서**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
 
 ```mermaid
 sequenceDiagram
@@ -394,9 +393,9 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 | **pg-service inbox** | `pg_inbox.order_id` UNIQUE + `insertPending` INSERT IGNORE. 워커 선점은 `transitPendingToInProgress` (조회+전이 단일 TX) | 같은 주문 명령이 두 번 들어와도 접수 기록 1건, 벤더 호출 1회 |
 | **payment-service dedupe** | Lua atomic dedup token (**상품 단위** `decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId` SETNX P8D, redis-stock 안에서 같은 Lua atomic) + 도메인 가드 (이미 DONE 이면 no-op) + Spring Kafka `DefaultErrorHandler` + DLQ. product 측은 `JdbcEventDedupeStore` (stock_commit_dedupe + 재고 차감 같은 TX) | events.confirmed 두 번 받아도 재고 중복 차감/보상 없음 |
 
-### 4.9 FCG (Final Confirmation Gate) — 배선됨
+### 4.9 FCG (Final Confirmation Gate)
 
-`PgDlqService.handle` 이 격리 직행 대신 이 관문에 위임한다 (PG-VENDOR-SIGNAL-CONSOLIDATION, 2026-08-14). retry 한도 소진 건이 벤더 `getStatus` 1회 조회 결과에 따라 **자동 승인 / 자동 확정실패 / 격리**로 갈린다 — 격리에는 사람이 판단해야 하는 건만 남는다.
+`PgDlqService.handle` 이 격리 직행 대신 이 관문에 위임한다. retry 한도 소진 건이 벤더 `getStatus` 1회 조회 결과에 따라 **자동 승인 / 자동 확정실패 / 격리**로 갈린다 — 격리에는 사람이 판단해야 하는 건만 남는다.
 
 - **TX 경계**: `invokeVendor`(TX 없음, 벤더 HTTP) + `applyOutcome`(`@Transactional`, 전이·발행) 2단계. 호출자가 이 순서로 부른다. 외부 호출이 DB 커넥션을 쥐지 않는다
 - **판정 순서**: 금액 대조 → 상태 판정. 금액이 어긋나면 상태와 무관하게 격리
@@ -406,37 +405,37 @@ IN_PROGRESS 에서 vendor 재호출이 안전한 이유 — 3-layer 멱등성:
 - **승인 시각**: 조회 응답 원문(`approvedAtRaw`)을 승인 payload 까지 전달, 없을 때만 `Clock` 대체
 - **지표**: `pg_final_confirmation_outcome_total{outcome}` 6종(approved/failed/indeterminate/vendor_unsettled/partial_canceled/amount_mismatch), 전이 반영 후에만 증가. 격리 도달 카운터(`PgDlqReachMetrics`)는 이 관문의 격리 반영 지점으로 이관
 
-배선으로 기존 `RETRY_EXHAUSTED` 격리 사유는 더 이상 생성되지 않는다 — 소진 건은 반드시 관문을 거쳐 위 4사유 중 하나가 된다.
+재시도 소진 건은 반드시 관문을 거쳐 `AMOUNT_MISMATCH`, `FCG_PARTIAL_CANCELED`, `FCG_VENDOR_UNSETTLED`, `FCG_INDETERMINATE` 중 하나로 격리된다.
 
 ### 4.10 retry 정책 표 (코드 hardcoded)
 
 | 항목 | 값 | 위치 |
 |---|---|---|
-| MAX_ATTEMPTS | 4 | `pg-service/.../domain/RetryPolicy.java:43` |
-| base | 2 sec | `:38` |
-| multiplier | 3 | `:39` |
-| jitter | ±25% (equal jitter) | `:40` |
+| MAX_ATTEMPTS | 4 | `pg-service/.../domain/RetryPolicy.java` (`MAX_ATTEMPTS`) |
+| base | 2 sec | `BASE_MS` |
+| multiplier | 3 | `MULTIPLIER` |
+| jitter | ±25% (equal jitter) | `JITTER_RATIO` |
 | 알고리즘 | exponential × jitter | `computeBackoff()` |
 
-payment-service 의 RetryPolicy 와 비대칭 (payment 는 env 주입, FIXED 5s). 정렬 작업은 TC-7 deferred.
+payment-service 의 `RetryPolicy`(고정 5초, 최대 5회)는 소진 판정을 부르는 곳이 없어 발행 재시도에 쓰이지 않는다(`docs/TODOS.md` TC-7).
 
-> **위 정책은 런타임에 작동한다 (DLQ-REACHABILITY).** `attempt` 가 `pg_inbox.attempt`(Flyway V5) 에 영속·누적(retry 분기 TX_B `incrementAttempt`)돼 `MAX_ATTEMPTS`(4) 소진 시 `insertDlqOutbox` → DLQ → QUARANTINED 자동 격리. 동시 진입 시 over-count(조기 격리)는 수용 한계.
+> **위 정책은 런타임에 작동한다.** `attempt` 가 `pg_inbox.attempt`(Flyway V5) 에 영속·누적(retry 분기 TX_B `incrementAttempt`)돼 `MAX_ATTEMPTS`(4) 소진 시 `insertDlqOutbox` → DLQ → QUARANTINED 자동 격리. 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
 ### 4.11 동시 race 보호
 
 현행 IN_PROGRESS 재진입(`handleActiveInbox` 채널 재적재 → 워커 `processInProgressZombie`) race 시 동작:
 - 두 consumer 가 동시 동일 메시지 받음 → 둘 다 vendor 호출
 - vendor 가 한 호출만 새로 처리, 다른 호출엔 멱등 응답
-- 한 쪽 → pg_outbox APPROVED INSERT, 다른 쪽 → DuplicateApprovalHandler → 상태 전이 반영 행 수가 0 이면 발행 행을 만들지 않는다(PG-DUPLICATE-APPROVAL-SETTLEMENT) — 승인·확정실패·격리 세 경로 공통
+- 한 쪽 → pg_outbox APPROVED INSERT, 다른 쪽 → DuplicateApprovalHandler → 상태 전이 반영 행 수가 0 이면 발행 행을 만들지 않는다 — 승인·확정실패·격리 세 경로 공통
 - payment-service 측: 재고 멱등은 Lua atomic dedup token (`decrement:done` / `compensation:done` SETNX P8D) 으로 같은 Lua 안 atomic 흡수, 메시지 단위 retry/DLQ 는 Spring Kafka native
 
 비용: vendor 호출 1회 추가. 멱등성으로 흡수.
 
-**진입 트리거 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL 반영)**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 제거된 Redis eventUuid 필터가 이 갈래를 우연히 억제하고 있었다(명시 목적은 메시지 멱등성이었다).
+**진입 트리거**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 이 갈래를 막는 별도 필터는 없다.
 
-**겹침 처리 (PG-DUPLICATE-APPROVAL-SETTLEMENT 반영)**: 두 벤더 모두 겹친 승인 호출을 거부한다 — Toss 는 주문번호 멱등키로 처리 중 재요청에 409(`IDEMPOTENT_REQUEST_PROCESSING`), NicePay 는 동일 거래번호 재승인에 2201. Toss 의 거부 코드는 `TossPaymentErrorCode` 에 등재돼 `GatewayOutcome.ConcurrentCall` 로 흡수되며, 시도횟수·재시도 명령·상태 전이를 건드리지 않고 물러난다(`PgVendorCallService.dispatchOutcome`). 등재 전에는 `UNKNOWN` 으로 떨어져 재시도 대상이 되면서 겹친 호출이 재시도 예산을 소모했다.
+**겹침 처리**: 두 벤더 모두 겹친 승인 호출을 거부한다 — Toss 는 주문번호 멱등키로 처리 중 재요청에 409(`IDEMPOTENT_REQUEST_PROCESSING`), NicePay 는 동일 거래번호 재승인에 2201. Toss 의 거부 코드는 `TossPaymentErrorCode` 에 등재돼 `GatewayOutcome.ConcurrentCall` 로 흡수되며, 시도횟수·재시도 명령·상태 전이를 건드리지 않고 물러난다(`PgVendorCallService.dispatchOutcome`). 
 
-두 호출이 모두 성공 응답을 받는 조합에서도 결과가 갈리지 않는다 — 결과 반영 전이가 0건이면 발행 행 자체를 만들지 않으므로 발행은 한 건으로 수렴한다. 접수대장 컬럼 추가나 리스너 유예는 채택하지 않았다(벤더가 거부하고 종결 여부 판단이 진입 경로를 가리지 않는다).
+두 호출이 모두 성공 응답을 받는 조합에서도 결과가 갈리지 않는다 — 결과 반영 전이가 0건이면 발행 행 자체를 만들지 않으므로 발행은 한 건으로 수렴한다. 접수대장 컬럼이나 리스너 유예 같은 별도 장치는 없다(벤더가 거부하고 종결 여부 판단이 진입 경로를 가리지 않는다).
 
 **잔여 위험**: NicePay 는 멱등키가 없어 승인이 진행 중일 때도 2201 이 오는지 확정되지 않는다. 종결 여부로 처신을 가르는 설계라 이 미확정에 기대지 않으나, 핸들러에 도달하지 못하는 응답이 오면 닿지 않는다. 취소·환불 포트 부재는 그대로다(`CONCERNS.md` L-9).
 

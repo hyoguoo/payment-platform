@@ -5,22 +5,24 @@
 ## 예외 계층
 
 ```
-RuntimeException
-├── PaymentBaseException                  # 도메인 공통
-│   ├── PaymentValidException             # 사용자 입력 위변조
-│   ├── PaymentStatusException            # 상태 전이 위반
-│   ├── PaymentOrderedProductStockException  # 재고 부족
-│   ├── PaymentTossRetryableException     # PG 재시도 가능
-│   ├── PaymentTossNonRetryableException  # PG 종결 거절
-│   └── PaymentGatewayStatusUnmappedException
-└── IllegalStateException                 # 도메인 불변식 위반 — 두 번째 가드
+RuntimeException                          # payment-service 예외는 공통 부모 없이 직접 상속
+├── PaymentValidException                 # 사용자 입력 위변조
+├── PaymentStatusException                # 상태 전이 위반 (Kafka consumer 에서는 not-retryable)
+├── PaymentOrderedProductStockException   # 재고 부족
+├── PaymentFoundException                 # 결제 조회 실패
+├── PgVendorStatusQueryFailedException    # PG 벤더 상태 조회 실패
+├── *ServiceRetryableException            # product/user/pg 이력 조회의 일시 장애
+└── StockCacheUnavailableException        # 재고 캐시 사용 불가
+IllegalStateException                     # 도메인 불변식 위반 — 두 번째 가드
 ```
 
+pg-service 는 `PgGatewayRetryableException` / `PgGatewayNonRetryableException` 등 `pg/exception/` 의 자체 예외를 가진다.
+
 **룰**:
-- 도메인 예외는 `PaymentBaseException` 계열로 분류 (코드 + 메시지)
+- 도메인 예외는 서비스의 `exception/` 패키지에 두고, 에러 코드와 메시지를 함께 가진다
 - 단순 가드(이미 다른 예외로 막혔어야 할 case)는 `IllegalStateException` 으로 두 번째 가드 (예: `quarantine()` 메서드의 isTerminal 가드)
 - **`catch (Exception e)` swallow 금지** — 잡으면 LogFmt.error + 재throw 또는 명시적 fallback. 워커 등 절대 죽으면 안 되는 경로만 예외적으로 catch + ERROR 승격
-- presentation 측에서 도메인 예외 → HTTP 상태 매핑은 `@RestControllerAdvice` 가 단일 진실 원천
+- presentation 측에서 도메인 예외 → HTTP 상태 매핑은 `@RestControllerAdvice`(payment-service 는 `PaymentExceptionHandler`)가 단일 진실 원천
 
 ## LogFmt + 트레이스 컨텍스트
 
