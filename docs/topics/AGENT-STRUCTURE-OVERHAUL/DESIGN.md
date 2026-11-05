@@ -138,12 +138,13 @@
   - 검증: `python3 scripts/sync-agent-configs.py` 후 `--check`
   - tdd: false | risk: false | 담당: 메인
   - 결과: `roles.toml` 3역할, `.agents/roles/*.md`는 kit 본문. 첫 sync에서 옛 domain-expert 생성 파일 2개를 "정본에 없는 생성 파일"로 보고(FS-11) → 삭제 후 `--check` 통과(6개). risk-reviewer Claude `opus`, Codex `gpt-6-astra`. `sync-agent-configs.py`는 변경 불필요
-- [ ] **T4 — conventions와 templates를 kit에서 가져온다**
+- [x] **T4 — conventions와 templates를 kit에서 가져온다**
   - 변경 위치: `.agents/conventions/{git,testing,writing}.md`, `.agents/templates/{BRIEF,DESIGN,EXPERIMENTS}.md`. 삭제 `.agents/skills/_shared/`(writing 계열은 T6에서 옮긴 뒤 삭제)
   - 의존: T1
   - 완료 기준: git.md에 이 프로젝트 scope·Codex 작성자 표기(D11), writing.md 문장 절에 상세판 링크(D12). kit과 diff하면 프로젝트 고유 줄만 다르다
   - 검증: `diff -r` kit 대조
   - tdd: false | risk: false | 담당: 메인
+  - 결과: kit `conventions/` 3개·`templates/` 3개 복사. kit과 다른 줄은 git.md scope 목록·Codex 작성자 표기, writing.md 문장 절의 상세판 링크(D12) 3곳뿐(`diff` 확인). 템플릿은 kit과 동일. `_shared/checklists/` 4개와 `commit.md`·`github.md` 삭제. writing 계열 4개는 T6에서 옮긴 뒤 삭제
 - [ ] **T5 — workflow·review·explain-change-html 스킬을 kit 버전으로 바꾼다**
   - 변경 위치: `.agents/skills/{workflow,workflow-discuss,workflow-plan,workflow-execute,workflow-ship,review,explain-change-html}/`. 삭제 `issue-commit-pr/`, `explain-diff-html/`
   - 의존: T3, T4
@@ -215,5 +216,6 @@
 
 ## 진행 기록
 
+- 2026-11-06: T1 커밋(`7a2053fa`)에 미리 `git rm`으로 스테이징해 둔 삭제 5건(옛 hook 2개, domain-expert 파일 3개)이 함께 들어갔다. 커밋 전에 staged diff를 확인하지 않은 실수다. 내용은 T2·T3 결과와 같고, 커밋 이력만 섞였다. 이후 커밋은 `git diff --cached --stat`을 먼저 확인한다.
 - 2026-11-06: 합의 브리핑 확정(질문 7 = 테스트 9개 태그 이동을 범위에 추가, 불변식 초안·에이전트 제안 그대로). 이슈 #163 생성.
 - 2026-11-06: 브랜치를 `#162`(`483fd9e2`) 위에서 시작. 사전 브리핑 승인. 질문 1~6 답변. kit 기준 커밋 `7273cfd`.
