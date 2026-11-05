@@ -216,12 +216,13 @@
   - 검증: `check-agent-docs.py --strict`, 명령 `--help` 대조
   - tdd: false | risk: false | 담당: implementer
   - 결과: implementer. 명령·옵션·Compose 값·판정 기준이 코드와 같아 명령 변경 없음. RUNBOOK 한 줄(완료된 T2.3을 남은 일로 적음) 수정, 옮긴 토픽 문서 링크는 메인이 수정. 예시 명령과 지난 회차 실제 명령(로컬 드라이버의 VU 650·관측 256·`--skip-build`)의 차이, 두 문서가 측정 소스 해시 대상이라는 점을 처리량 EXPERIMENTS에 기록(D20)
-- [ ] **T15 — 판정 시나리오를 실행한다**
+- [x] **T15 — 판정 시나리오를 실행한다**
   - 변경 위치: 없음(결과는 BRIEF 완료 요약)
   - 의존: T0~T14
   - 완료 기준: 판정 1~4와 R11 확인. 실제 세션 trace.log, 새 세션 행동 확인(작은 수정·토픽 요청), Codex 가능 여부
   - 검증: BRIEF 판정 목록
   - tdd: false | risk: false | 담당: 메인
+  - 결과: 판정 1 `check-agent-docs.py --strict` 종료 0(막는 판정 4종 0건, Mermaid 16건은 kit 다이어그램의 따옴표 라벨이라 정보로 남김), `sync-agent-configs.py --check` 통과. 판정 2 실제 세션: implementer가 domain 파일에 `var`를 넣자 편집 린트가 막음(`trace.log`: `lint implementer BLOCK .../domain/RetryPolicy.java`), 종료 시 `:payment-service:test :pg-service:test :product-service:test` 실행·통과. 이 브랜치가 pg·product 테스트도 바꿨으므로 세 모듈이 대상이며 설계대로다(판정 문구의 "payment만"은 부정확). 첫 시도는 `util/` 파일이라 Checkstyle 억제 목록 때문에 잡히지 않았다(TODOS CHECKSTYLE-SUPPRESSION-SCOPE, stack.md 문구 정정). 실제 세션에서 잠금 대기 후 건너뜀, 루트 설정 변경 시 6개 모듈 실행도 관측. 임시 주석은 되돌림. 판정 3: `claude -p --permission-mode plan`은 작은 수정 → "작음, workflow 없음", 토픽 요청 → "큼, discuss 0단계 조사 후 사전 브리핑". `codex exec --sandbox read-only`는 작은 수정 → "작음", 토픽 요청 → "중간, workflow-discuss로 조사·구체화". 규모 판단만 갈리고 둘 다 discuss부터 시작. 판정 4: 식별자 불일치 0건, 이력 줄 0건. R11: Docker를 못 찾게 한 상태에서 단위 테스트 통과(T0)
 
 ## 리뷰 처리
 

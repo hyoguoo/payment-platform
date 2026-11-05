@@ -18,6 +18,8 @@
 | CONFIRM-IDEMPOTENCY-KEY | 확정 요청에 `Idempotency-Key` 헤더가 없다 | 없음 | 주문 접수에는 헤더가 있으나 확정에는 없다. 재고 게이트 작업에서 주문 단위 선점으로 대응했고 헤더 도입은 범위 밖으로 남겼다 |
 | WIKI-BROKEN-REFS | 위키의 끊긴 참조 2곳 | 위키 저장소 | `architecture.md`의 FCG 상세 링크가 `pg-confirm-flow`를 가리키는데 그 문서에 FCG 설명이 없다. `message-delivery-and-dedupe.md` 서두가 DLQ 처리를 다룬다고 하는데 본문에 DLQ 절이 없다 |
 | BLOG-POST-2 | 블로그 2편 "재시도 소진 이후 처리" | blog 저장소 | 1편(모놀리식 → 4서비스 분리, `msa-transition-decisions.md`)은 끝났다. 1편 결말이 "payment→pg HTTP 조회 통로를 두지 않은 결정이 넉 달 뒤 문제가 됐다"로 이어지게 써 뒀다. 소재는 `docs/archive/retry-exhaustion-disposition/` |
+| CHECKSTYLE-SUPPRESSION-SCOPE | Checkstyle 억제 목록이 디렉토리 단위로 모든 검사를 끈다 | 없음 | `config/checkstyle/checkstyle-suppressions.xml`이 `dto`, `entity`, `infrastructure`, `presentation`, `util`, `config` 등에서 `checks=".*"`로 전부 억제해, `var`·`@Data` 금지 같은 코드 규칙이 그 아래 파일에 적용되지 않는다(2026-11-06 hook 판정 중 확인). 규칙별로 억제 범위를 좁힐지 정한다. 좁히면 기존 위반이 드러난다 |
+| STALE-COMMENTS | 코드·스크립트 주석의 낡은 서술 | 없음 | `scripts/smoke/create-topics.sh` 머리 주석에 남은 옛 디렉토리 이름(phase-gate), `OutboxRelayService`의 메시지 생성 주석에 남은 "pg-service Redis dedupe 키", `docker/docker-compose.infra.yml`의 redis-dedupe 주석(pg는 Redis를 쓰지 않는다), `payment-service/src/main/resources/application.yml` 주석의 "CONCERNS.md L6"(문서는 PITFALLS로 합쳐짐) |
 | T4-A | Toxiproxy 장애 주입 시나리오 8종 | 장애 주입 | [아래](#t4-a--toxiproxy-장애-주입-시나리오) |
 | T4-B | 알람 정밀화(guard-skip 라벨, coordinator lag 임계) | 멀티 broker | [아래](#t4-b--알람-정밀화) |
 | T4-C | 로컬 오토스케일러 | 부하 측정 | Prometheus 큐 길이·CPU 임계로 payment-service 레플리카를 자동으로 늘리고 줄인다. 결정 로그와 Grafana 대시보드 |

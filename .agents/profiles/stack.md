@@ -76,7 +76,8 @@ hook의 동작과 일시정지 규칙은 [AGENTS.md의 검증 hook](../../AGENTS
 
 ## 코드 규칙
 
-- 명시적 타입 선언을 쓴다. `var`를 쓰지 않는다(Checkstyle `RegexpSinglelineJava`로 강제).
+- 명시적 타입 선언을 쓴다. `var`를 쓰지 않는다. Checkstyle `VarKeywordUsage`가 검사하지만, `config/checkstyle/checkstyle-suppressions.xml`이
+  `dto`, `entity`, `infrastructure`, `presentation`, `util`, `config` 등 디렉토리의 검사를 모두 끄므로 그 아래에서는 리뷰로 지킨다.
 - 의존성은 생성자로 주입한다(`@RequiredArgsConstructor` + `private final`). `@Autowired`를 쓰지 않는다.
 - 레이어는 `domain`, `application`(유스케이스와 포트), `infrastructure`(어댑터), `presentation`(컨트롤러)이다.
   배치와 의존 방향은 [docs/context/ARCHITECTURE.md](../../docs/context/ARCHITECTURE.md)를 따른다.
