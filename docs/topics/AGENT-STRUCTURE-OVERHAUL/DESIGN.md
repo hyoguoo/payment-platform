@@ -159,12 +159,13 @@
   - 검증: `grep -rn` 옛 경로
   - tdd: false | risk: false | 담당: 메인
   - 결과: `writing/references/style-guide.md` = 원문 1~7절 + 8절(D13 항목, 동의어 표에 메모리의 "재전송" 규칙 추가). 원문과 충돌하는 옛 규칙("단문 위주", "명사형 종결")은 넣지 않고 "기존 문서의 종결 형식을 따른다"로 대체. writing·doc-review·context-update 재작성(context-update는 문서 목록을 context README에 위임). payment-live-drill의 PLAN·옛 TODOS 경로 수정. `_shared/` 디렉토리 삭제. 옛 경로 참조 0건(`grep`)
-- [ ] **T7 — `AGENTS.md`를 다시 쓰고 운영 문서를 옮긴다**
+- [x] **T7 — `AGENTS.md`를 다시 쓰고 운영 문서를 옮긴다**
   - 변경 위치: `AGENTS.md`, 신규 `CLAUDE.md`, `.agents/README.md`(옛 `.agents/skills/README.md`, `.agents/roles/README.md`, `docs/context/CODEX.md` 통합), `.agents/references/claude-5-prompting.md`(이동)
   - 의존: T1~T6
   - 완료 기준: AGENTS.md 절 구성이 kit과 같고 "참고 문서" 표가 새 경로를 가리킨다. Code Review Rules는 risk.md로 옮겨졌다(R1, D21)
   - 검증: kit과 diff, 링크 확인(T8 이후 strict로 재확인)
   - tdd: false | risk: false | 담당: 메인
+  - 결과: kit AGENTS.md에 프로젝트 소개, 역할 정본 위치(`.agents/roles/`)와 생성 규칙, 지침 검사 명령, Codex는 hook 없음, "코드 리뷰" 절(옛 Code Review Rules 요지 + risk.md), 참고 문서 5행을 더함(kit 대비 28줄 차이). `CLAUDE.md`는 kit과 동일. `.agents/README.md`가 옛 skills README·roles README·`docs/context/CODEX.md`를 대체. 프롬프팅 조사 기록은 `.agents/references/`로 이동. `docs/context/STACK.md:208`의 옛 roles README 참조는 T11에서 고친다
 - [ ] **T8 — 문서 검사 스크립트를 새 구조로 바꾸고 식별자 대조를 더한다**
   - 변경 위치: `scripts/check-agent-docs.py`, 신규 테스트 `scripts/test_check_agent_docs.py`
   - 의존: T7
