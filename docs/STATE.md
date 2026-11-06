@@ -7,10 +7,10 @@
 ## 진행 중
 
 ### PAYMENT-THROUGHPUT — 결제 처리량 한계 측정과 병목 개선
-- 규모·단계: 실험 · execute — T2.4 수정 전 경계 탐색. 100/s 시험 직전에 사용자 요청으로 중단(2026-10-29)
+- 규모·단계: 실험 · execute — T2.4 수정 전 경계 탐색. 10분 확인 완료(2026-11-06): 사용자 품질 60/s, 처리 용량 120/s. 10/29 회차와 결과가 달라 원인 미확인
 - 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162) · 브랜치 `#162`
-- 다음: 새 환경에서 capacity 100/s·180초. "중단됐던 작업 진행" 같은 재개 요청이면 이 토픽을 먼저 재개한다. 재개 순서와 조건은 DESIGN의 진행 기록
-- 막힘: 없음. 실행 명령은 로컬 드라이버 조건(VU 650, 관측 256)을 따라야 이전 회차와 비교된다(EXPERIMENTS 고정 조건)
+- 다음: T2.4 남은 두 가지(오늘 환경의 사용자 품질 첫 미달 부하, 첫 병목 근거) 처리 방법을 개발자와 정한 뒤 T3. 근거는 EXPERIMENTS의 2026-11-06 판단. "중단됐던 작업 진행" 같은 재개 요청이면 이 토픽을 먼저 재개한다. 재개 순서와 조건은 DESIGN의 진행 기록
+- 막힘: 없음. 회차는 `live-drill/throughput-split-measurements-20261106/`의 v3 드라이버와 `finish-round.py`로 돌린다(EXPERIMENTS 고정 조건, RUNBOOK "회차마다 지킬 것")
 - 문서: [BRIEF](topics/PAYMENT-THROUGHPUT/BRIEF.md) · [DESIGN](topics/PAYMENT-THROUGHPUT/DESIGN.md) · [EXPERIMENTS](topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md)
 
 ### CHECKOUT-RECEIPT-TRACKING — 서버 중단 후 요청 추적과 안전한 재요청

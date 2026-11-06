@@ -31,7 +31,9 @@
   - 결과: 모드별 새 환경 1건/초·180초 검증 PASS(EXPERIMENTS의 "준비와 도구 검증"). JAR 해시 동일, 새 볼륨 42개 상호 분리. 요약 [도구 검증](tps-tool-validation.md), `live-drill/throughput-split-validation-20261029/validation-summary.json`
 - [ ] **T2.4 — 수정 전 두 시험의 경계 탐색과 10분 지속 확인**
   - 완료 기준: 각 시험의 최고 품질 통과·지연 허용 지속 처리 구간, 첫 미달 부하, 탐색 간격, 완료 지연, 잔량, 해소 시간, 첫 병목 근거. 발생기·호스트 한계로 더 잴 수 없으면 그 제약과 확인 가능한 하한을 보고하고 서버 상한을 만들어 내지 않는다
-  - 진행: capacity 80·120·160/s, user-quality 40·60·80/s 3분 탐색 완료. D6 판정 보완(Python 124개 PASS). **다음은 capacity 100/s·180초**
+  - 진행: capacity 80·120·160/s, user-quality 40·60·80/s 3분 탐색 완료. D6 판정 보완(Python 124개 PASS)
+  - 진행(2026-11-06, Docker 초기화 뒤 새 환경): capacity 100·120(2회)·140·160/s 3분 탐색, capacity 120/s·user-quality 60/s 10분 확인. 처리 용량은 120/s 회복·140/s 증가, 사용자 품질 60/s 10분 통과. 10/29 회차보다 처리 용량이 높게 나온 원인은 미확인
+  - 남은 완료 기준: 오늘 환경의 사용자 품질 첫 미달 부하(80/s 이하 미측정), 첫 병목 근거(증상만 확인). 상세는 EXPERIMENTS
 - [ ] **T3 — 실측 병목의 재현·개선·회귀 검증** (tdd, 결제 위험 경로)
   - 의존: T2.4. 실제 병목 모듈, 선택한 변경과 대안, 지킬 불변식을 근거와 함께 이 문서에 추가한 뒤 구현한다
   - 첫 후보: 결과 소비 동시성 1 → 3. 160/s에서 명령·결과 양쪽 적체와 PG 승인 뒤 지연을 확인했다. T2.4의 후보 10분 확인 전에는 서버 기본값을 바꾸지 않는다
@@ -51,6 +53,11 @@
 
 ## 진행 기록
 
+- 2026-11-06 재개: 회차 종료 방식을 바꿨다(개발자 결정). 원자료와 DB 덤프를 저장한 뒤 볼륨까지 지운다. 기동 전 자원 상태, 부하 전 안정 여부 확인을 [실행 안내](../../quality/RUNBOOK.md#회차마다-지킬-것)에 명시했다. 아래 2026-10-29 항목의 "기존 자료 보존, `down -v` 금지"는 원자료에만 적용한다.
+  - capacity 100/s·180초 완료. 18,001건 대조 PASS, 초기 약 30초 적체 뒤 부하 중 회복, 메모리 범위 미확정으로 INCONCLUSIVE. 상세는 EXPERIMENTS. 종료 절차로 DB 덤프 저장 후 볼륨까지 지웠다.
+  - 재개 방법: `QUALITY_CONFIRMED_CONCURRENCY=1 python3 live-drill/throughput-split-measurements-20261106/run-round-v3.py <새 프로젝트명> <rate> <초> capacity` 뒤 `python3 live-drill/throughput-split-measurements-20261106/finish-round.py <회차 폴더>`. 시작 전 `docker ps -q`·`docker volume ls`가 비어 있는지, 이미지가 이 회차 `image-proof.json`과 같은지 확인한다. Docker를 다시 초기화했다면 JRE 태그 지정(`docker tag eclipse-temurin:21.0.12.1_1-jre eclipse-temurin:21-jre`)부터 다시 한다.
+  - 재개 시점에 Docker의 이미지·컨테이너·볼륨이 모두 비어 있었다. 지난 회차 볼륨은 남아 있지 않고, 원자료는 `live-drill/`에 그대로 있다.
+  - 이미지를 다시 받아 지난 회차 `image-proof.json`과 대조했다. 앱 6개의 JRE 기반은 고정되지 않은 태그가 21.0.13으로 바뀌어 지난 회차와 같은 `eclipse-temurin:21.0.12.1_1-jre`를 로컬에서 `21-jre`로 지정했다. Redis는 지난 회차 이미지를 다시 구할 수 없어 7.2.17로 진행한다(개발자 승인, 조건 변경으로 기록). 나머지 이미지 ID와 JAR 해시는 같다.
 - 2026-11-06: 지침 개편(#163)으로 이 토픽 문서를 새 형식으로 옮겼다. 옛 합의 문서는 BRIEF, PLAN 실행 기록은 EXPERIMENTS와 이 문서로 나눴고, `docs/reports/tps-*` 보고서는 이 폴더로 옮겼다. 측정 조건·결과·판정은 바꾸지 않았다. 같은 날 `#162`를 지침 개편 브랜치(PR #164) 위로 리베이스했다. `#162`의 지침 정비 커밋(`549a8083`, 정식 workflow의 이슈·브랜치 추적)은 바꾼 파일이 모두 개편에서 새로 쓰이거나 삭제됐고 내용도 새 지침에 들어 있어 다시 적용하지 않았다. 리베이스 전 상태는 로컬 브랜치 `#162-before-rebase`에 있다. PR #164가 squash로 병합되면 `git rebase --onto main agent-structure-overhaul '#162'`로 한 번 더 옮긴다.
 - 2026-11-06: 로컬 `live-drill/throughput-split-measurements-20261029/RESUME.md`(Git 제외, 수정하지 않음)는 옛 경로를 가리킨다. `docs/reports/tps-handoff.md` → 이 폴더의 `tps-handoff.md`, PLAN → 이 문서, 옛 합의 문서 → `BRIEF.md`로 읽는다.
 - 2026-10-29 중단 (재개 지점): 사용자 요청으로 100/s 시험 직전에 중단했다.
