@@ -200,18 +200,20 @@
   - 완료 기준: 이력 줄 0건, 식별자 대조 0건, 코드와 다른 서술은 고치고 목록을 결과에 남긴다(R8)
   - 검증: `check-agent-docs.py --strict`
   - tdd: false | risk: false | 담당: implementer
-- [ ] **T13 — smoke 가이드 5개를 대조해 고친다**
+- [x] **T13 — smoke 가이드 5개를 대조해 고친다**
   - 변경 위치: `docs/smoke/*.md`
   - 의존: T8
   - 완료 기준: 명령·경로·지표 이름이 `scripts/smoke/`, `observability/` 설정과 같다. 식별자 대조 0건(R9)
   - 검증: `check-agent-docs.py --strict`, 명령의 스크립트 존재·인자 대조
   - tdd: false | risk: false | 담당: implementer
-- [ ] **T14 — quality 문서(RUNBOOK 포함)를 대조해 고친다**
+  - 결과: implementer. 5개 파일 수정: Kafka start_period 90→30초(`docker/docker-compose.infra.yml`), 검사 항목 약 25→기본 27개, 코드에 없는 변수 `EXPECTED_SERVICES`·`EXPECTED_HOPS`와 메서드 `PgOutboxImmediateWorker.relayWithContext`를 실제 구조로, drill을 Compose profile이 아닌 override 파일로, trace 검사의 선행 조건(`PG_GATEWAY_TYPE=fake`, `--auto-compose-up`), 일정 이름(Phase 4, Task 13) 제거. 식별자·참조 문제 0건. 실행해야 알 수 있는 Loki `service_name` 라벨, `ServiceDown` 소요 시간은 미확인. 범위 밖: `scripts/smoke/create-topics.sh` 머리 주석의 옛 경로
+- [x] **T14 — quality 문서(RUNBOOK 포함)를 대조해 고친다**
   - 변경 위치: `docs/quality/{README,RUNBOOK}.md`
   - 의존: T8, T10 (처리량 토픽 EXPERIMENTS의 고정 조건 위치)
   - 완료 기준: 명령·옵션이 `scripts/quality/`, `scripts/k6/`와 같다. 바뀐 명령·조건은 D20 형식으로 처리량 EXPERIMENTS와 결과에 남긴다(R9)
   - 검증: `check-agent-docs.py --strict`, 명령 `--help` 대조
   - tdd: false | risk: false | 담당: implementer
+  - 결과: implementer. 명령·옵션·Compose 값·판정 기준이 코드와 같아 명령 변경 없음. RUNBOOK 한 줄(완료된 T2.3을 남은 일로 적음) 수정, 옮긴 토픽 문서 링크는 메인이 수정. 예시 명령과 지난 회차 실제 명령(로컬 드라이버의 VU 650·관측 256·`--skip-build`)의 차이, 두 문서가 측정 소스 해시 대상이라는 점을 처리량 EXPERIMENTS에 기록(D20)
 - [ ] **T15 — 판정 시나리오를 실행한다**
   - 변경 위치: 없음(결과는 BRIEF 완료 요약)
   - 의존: T0~T14
