@@ -5,7 +5,7 @@
 
 ## 목적
 
-분산 트랜잭션의 사고 재구성은 traceId 로부터 시작한다. 서비스 경계(HTTP → Kafka producer → Kafka consumer → 다음 서비스 HTTP) 를 넘을 때 traceparent 헤더가 끊기면 사후 분석이 불가능하다. 본 스크립트는 결제 confirm 한 건을 흘려보내고, 다섯 개 서비스(gateway, payment, pg, product, user) 로그에서 같은 traceId 가 연속 등장하는지 자동 grep 한다.
+분산 트랜잭션의 사고 재구성은 traceId 로부터 시작한다. 서비스 경계(HTTP → Kafka producer → Kafka consumer → 다음 서비스 HTTP) 를 넘을 때 traceparent 헤더가 끊기면 사후 분석이 불가능하다. 본 스크립트는 고정 traceparent 를 붙여 user 조회, checkout, confirm 을 각각 한 번씩 보내고 status 가 DONE 이 될 때까지 폴링한 뒤, 다섯 개 서비스(gateway, payment, pg, product, user) 컨테이너의 최근 5분 로그에서 같은 traceId 가 나오는지 grep 한다. 결제를 미리 만들어 둘 필요는 없다.
 
 ## 검사 항목 (개념)
 
@@ -22,13 +22,27 @@
 
 ## 사용법
 
+pg-service 가 `PG_GATEWAY_TYPE=fake` 로 떠 있어야 confirm 이 DONE 까지 간다. `--mode fake` 로 기동하면 smoke override 가 적용된다.
+
+```bash
+bash scripts/compose-up.sh --mode fake
+./scripts/smoke/trace-continuity-check.sh
+```
+
+`--mode fake` 가 아니라 기본 모드로 띄웠다면 pg-service 에만 smoke override 를 얹는다.
+
 ```bash
 docker compose -f docker/docker-compose.infra.yml \
                -f docker/docker-compose.apps.yml \
-               up -d
-sleep 60   # start_period 통과 대기
+               -f docker/docker-compose.smoke.yml \
+               up -d --force-recreate --no-deps pg-service
+sleep 15
 ./scripts/smoke/trace-continuity-check.sh
 ```
+
+옵션:
+- `--auto-compose-up` — gateway 가 응답하지 않으면 `scripts/compose-up.sh` 와 pg-service smoke override 재기동을 먼저 실행한다.
+- `--verbose` — 서비스별로 매칭된 로그 라인을 일부 출력한다.
 
 종료 코드:
 - 0 — 모든 hop 에서 traceId 연속성 확인
@@ -42,11 +56,11 @@ sleep 60   # start_period 통과 대기
 | Consumer → 다음 hop | `spring.kafka.listener.observation-enabled=true` 누락 또는 `MdcContextPropagationConfig` 의 `Slf4jMdcThreadLocalAccessor` 등록 누락 | 두 설정 모두 활성 + `ContextRegistry` 에 MDC accessor 등록 확인 |
 | HTTP 어댑터 hop | Feign / WebClient / RestClient 가 `traceparent` 헤더 자동 주입 안 함 | 클라이언트 빌더가 Spring Boot auto-config 의 ObservationRegistry 를 상속받는지 확인 |
 | Virtual Thread 경계 | VT executor 가 OTel + MDC 두 컨텍스트를 캡처·복원 안 함 | `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 사용 확인 |
-| in-memory channel 경계 (pg-service) | offer 시점 컨텍스트 캡처 누락 또는 take 시점 set 누락 | `PgOutboxChannel.offerNow` 가 `Context.current()` + `captureAll()` / `PgOutboxImmediateWorker.relayWithContext` 가 두 Scope set 하는지 확인 |
+| in-memory channel 경계 (pg-service) | offer 시점 컨텍스트 캡처 누락 또는 take 시점 set 누락 | `PgOutboxChannel.offerNow` 가 `Context.current()` + `captureAll()` 로 컨텍스트를 담는지, `AbstractImmediateWorker` 의 worker 루프가 take 한 job 의 두 컨텍스트(MDC snapshot, OTel Context)를 relay 전에 복원하는지 확인 |
 
-## 영구성
+## 검사 대상 바꾸기
 
-본 검사는 **현행 토폴로지와 무관하게 분산 트레이스가 끊기지 않는지를 확인하는 일반 도구**다. Phase 4 에서 Toxiproxy 로 장애를 주입할 때도, 새 서비스 추가 시에도 동일 관점으로 사용한다. 검사 대상 서비스가 늘어나면 `EXPECTED_HOPS` 같은 변수만 갱신.
+검사 대상 서비스가 늘어나면 스크립트의 `SCALABLE_SERVICES` 배열에 추가한다.
 
 ## 비범위
 
@@ -55,4 +69,4 @@ sleep 60   # start_period 통과 대기
 
 ## 관련 자료
 
-- 직전 봉인 시점의 작업 기록: `docs/archive/pre-phase-4-hardening/phase-gate/trace-continuity-smoke.md` (T-E3 산출물 — 시점 의존 트리아지 가이드)
+- 과거 트리아지 기록: `docs/archive/pre-phase-4-hardening/phase-gate/trace-continuity-smoke.md`

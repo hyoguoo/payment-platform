@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -35,6 +36,7 @@ import org.testcontainers.containers.MySQLContainer;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({StockHoldRecordRepositoryImpl.class, ClockConfig.class})
 @DisplayName("StockHoldRecordRepositoryImpl — 재오픈·확정 보존·사이클 식별")
+@Tag("integration")
 class StockHoldRecordRepositoryImplTest {
 
     @SuppressWarnings("resource")

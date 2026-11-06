@@ -24,9 +24,9 @@ public void handle(ConfirmedEventMessage message) {
     PaymentEvent paymentEvent = paymentEventRepository.findByOrderId(...).orElseThrow(...);
     switch (ConfirmStatus.from(message.status())) {
         case APPROVED -> handleApproved(...);
-        case FAILED -> handleFailed(...);     // compensateAtomic 먼저 → markPaymentAsFail 나중
+        case FAILED -> handleFailed(...);     // 재고 되돌리기 먼저 → markPaymentAsFail 나중
         case QUARANTINED -> handleQuarantined(...);
-        case UNKNOWN -> // warn noop
+        case UNKNOWN -> LogFmt.warn(...); // noop
     }
     // 예외 throw 시 Spring Kafka DefaultErrorHandler 가 retry / DLQ 책임
 }

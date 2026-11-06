@@ -1,39 +1,37 @@
 # External Integrations
 
-> 최종 갱신: 2026-08-14 (PG-VENDOR-SIGNAL-CONSOLIDATION — Fake 시나리오 접두어에 `fake-lost-`(확정 실패 + 조회 승인) 추가, 중복 승인 응답의 이벤트 발행 갈래 제거 반영). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — 결과 분기 목록의 멱등 응답 행에 금액 대조 선행·종결 여부 분기·승인 시각 원문 사용 반영, 겹침 거부 행 신설). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — 인프라 장애 표의 Redis dedupe 행에서 pg-service 를 제거, pg 는 캐시 의존 자체가 없어졌음을 명시). 이전: 2026-08-06 (RETRY-EXHAUSTION-DISPOSITION — cross-service HTTP 표에 pg 벤더 상태 조회 행 추가 + 전용 클라이언트 분리 근거(contextId, 시간 제한 관계)·조회 포트가 예외를 던지지 않는 계약 2문단 신설). 이전: 2026-08-05 (BACKLOG-RESIDUE-CLEANUP — Fake 전략 행에 활성 프로파일 기준 부팅 가드 반영: 경고 배너 뒤에 `smoke`/`test` 미포함 시 기동 차단). 이전: 2026-07-29 (LIVE-DRILL-FORMALIZATION — Fake 전략 행에 라이브 검증 용도·`supports()` 무차별 수락 위험 반영 + Fake 시나리오 접두어 문단 신설(중복 판정보다 앞선 순서 근거, 자가 회복 횟수와 재시도 한도 관계, 전역 실패율 병용 금지)). 이전: 2026-07-28 (ADMIN-VISIBILITY — cross-service HTTP 표에 payment→pg 시도 이력 조회(`PgFeignClient`/`PgAttemptHistoryHttpAdapter`, pg-service 최초 컨트롤러)·payment→product 목록 조회(`ProductCatalogHttpAdapter`) 2행 추가 + 관리자 조회 포트를 승인 경로 포트와 분리하는 방침 + pg 전용 짧은 timeout(1s/2s) 문단 + 통신 매트릭스 payment→pg HTTP 행 추가). 이전: 2026-07-07 (DOCS-CONSISTENCY-OVERHAUL Task 19 — 최종 검증 스윕의 stale 마커 grep 에서 신규 발견, 관측성 통합 표의 Loki 행이 `LogstashEncoder` 를 현재형으로 서술하던 것을 Console appender + docker 로깅 드라이버 + Promtail 기준으로 정정). 이전: 2026-07-03 (Task 9 — Contract test 문단에 상세 근거 문서(`TESTING.md`) 링크 추가, S4 중복 SSOT 정리). 2026-06-23 (코드 대조 — PG 포트 분리(`PgConfirmPort`/`PgStatusLookupPort`)·예외명 현행화 + self-loop attempt 갭)
-
 ## PG 벤더 — Strategy 패턴
 
-pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다(`gatewayType` 필드, Toss / NicePay).
+pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다(`vendorType` 필드, Toss / NicePay).
 
 **전략 위치**: `pg-service/.../infrastructure/gateway/`
 
 | 전략 | 클래스 | 활성화 조건 |
 |---|---|---|
-| Toss | `toss/TossPaymentGatewayStrategy` | 항상 |
-| NicePay | `nicepay/NicepayPaymentGatewayStrategy` | 항상 |
-| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 가 경고 배너를 남긴 뒤 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. `supports()` 는 벤더 종류를 가리지 않고 수락하므로, 이 가드가 없으면 설정 오배포 시 실제 승인 없이 결제가 완료된다(`CONCERNS.md` L-18) |
+| Toss | `toss/TossPaymentGatewayStrategy` | `pg.gateway.type` 이 `fake` 가 아닐 때(기본) |
+| NicePay | `nicepay/NicepayPaymentGatewayStrategy` | `pg.gateway.type` 이 `fake` 가 아닐 때(기본) |
+| Fake | `fake/FakePgGatewayStrategy` | `@ConditionalOnProperty(pg.gateway.type=fake)` — 스모크/벤치/라이브 검증 전용. PostConstruct 가 경고 배너를 남긴 뒤 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. `supports()` 는 벤더 종류를 가리지 않고 수락하므로, 이 가드가 없으면 설정 오배포 시 실제 승인 없이 결제가 완료된다([PITFALLS](PITFALLS.md) L-18) |
 
 **Fake 시나리오 접두어** (라이브 검증용): `paymentKey` 앞머리로 벤더 응답을 결정적으로 고른다 — `fake-fail-`(확정 실패), `fake-retry-`(매 호출 재시도 가능 실패 → 소진 → 격리), `fake-flaky-`(정해진 횟수 실패 후 승인 → 자가 회복), `fake-lost-`(확정은 매 호출 재시도 가능 실패지만 조회에는 요청 금액 그대로 승인 응답 → 소진 후 FCG 자동 승인 종결 재현). `fake-lost-` 는 응답만 유실되고 승인은 성사된 상황을 만드는 유일한 수단이다 — 다른 접두어는 확정에 실패한 주문의 조회에 예외를 던져 이 장면이 재현되지 않는다. 판정은 **중복 승인 판정보다 앞**에서 이뤄진다 — 뒤에 두면 재시도 자기루프가 중복으로 흡수돼 시도 횟수가 소진되지 않는다. 자가 회복 실패 횟수는 `RetryPolicy.MAX_ATTEMPTS` 보다 작아야 하며 그 관계는 단위 테스트로 고정돼 있다. 전역 합성 실패율(`pg.gateway.fake.fail-rate`)과 함께 켜면 회복 회차가 다시 실패할 수 있어 병용하지 않는다.
 
-**선택 로직**: `PgConfirmStrategySelector` 가 `gatewayType` (DB 또는 메시지 payload 의 `PaymentGatewayType` enum) 으로 분기 → 해당 전략 호출.
+**선택 로직**: `PgConfirmStrategySelector` 가 메시지 payload 의 `vendorType`(payment 측 `PaymentGatewayType` → pg 측 `PgVendorType`)으로 분기 → 해당 전략 호출.
 
-**포트** (confirm / status 분리 — 단일 `PgGatewayPort` 아님):
+**포트** (confirm과 status를 서로 다른 포트로 나눈다):
 - `PgConfirmPort.confirm(PgConfirmRequest)` → `PgConfirmResult` (성공 + amount + approvedAtRaw / 실패·재시도·멱등은 `PgGateway*Exception` 으로 표현) — `PgConfirmStrategySelector` 가 vendorType 으로 선택
 - `PgStatusLookupPort.getStatusByOrderId(orderId)` → 벤더 상태 조회 (`DuplicateApprovalHandler` 의 멱등 응답 재확정용) — `PgStatusLookupStrategySelector` 가 선택
-- cancel / refund 은 현재 미구현 (포트에 메서드 없음 — CONCERNS L-9)
+- cancel / refund 은 현재 미구현 (포트에 메서드 없음 — [TODOS](../TODOS.md) TQ-6)
 
 ## Toss Payments
 
 | 항목 | 값 |
 |---|---|
-| Base URL | 환경별 (`payment.gateway.toss.base-url` 등 — 벤더 키 환경변수에서 주입) |
+| Base URL | `spring.myapp.toss-payments.api-url` (`TOSS_API_URL`, 기본 `https://api.tosspayments.com/v1/payments`) |
 | 인증 | Basic Auth (Secret Key, base64) |
-| confirm endpoint | `POST /v1/payments/confirm` |
-| getStatus endpoint | `GET /v1/payments/orders/{orderId}` |
-| 상태 매핑 | `TossPaymentStatus` enum + `PaymentStatus` 도메인 매핑 (UNMAPPED 시 `PaymentGatewayStatusUnmappedException`) |
+| confirm endpoint | `POST {api-url}/confirm` |
+| getStatus endpoint | `GET {api-url}/orders/{orderId}` |
+| 상태 매핑 | `TossPaymentStatus` enum → `PgPaymentStatus` 매핑 (알 수 없는 상태 문자열은 `ABORTED` 로 처리) |
 | 에러 코드 | `TossPaymentErrorCode` — retryable / non-retryable 분류 |
-| 시각 처리 | `approvedAt` 원문(ISO-8601 offset) 보존 → `ConfirmedEventPayload.approvedAt`(`approvedAtRaw` String) 전달. payment 측 `parseApprovedAt` 에서 `.toInstant()` 정규화 (offset 보존, TIME-MODEL-AND-EXPIRY) |
+| 시각 처리 | `approvedAt` 원문(ISO-8601 offset) 보존 → `ConfirmedEventPayload.approvedAt`(`approvedAtRaw` String) 전달. payment 측 `parseApprovedAt` 에서 `.toInstant()` 정규화 (offset 보존) |
 
 ## NicePay
 
@@ -42,7 +40,7 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 | Base URL | `${NICEPAY_API_URL:https://sandbox-api.nicepay.co.kr}` |
 | 인증 | Client Key / Secret Key (`NICEPAY_CLIENT_KEY` / `NICEPAY_SECRET_KEY`) |
 | confirm endpoint | `POST /v1/payments/{tid}` |
-| getStatus endpoint | `GET /v1/payments/{tid}` |
+| getStatus endpoint | `GET /v1/payments/find/{orderId}` |
 | 시각 처리 | `paidAt` 원문(offset) 보존 → `approvedAtRaw` 전달. payment 측 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 정규화 — `.toLocalDateTime()` 금지(정산 9시간 오차 차단, PITFALLS §13). NicePay 내부 fallback `OffsetDateTime.now(clock)` (예외 경로) |
 | 응답 매핑 | `NicepayPaymentApiResponse` / `NicepayPaymentApiFailResponse` |
 
@@ -50,9 +48,9 @@ pg-service 가 두 PG 벤더를 추상화하고 결제 건별로 라우팅한다
 
 PG 호출 회복은 pg-service 가 전담한다 (payment 는 결과만 수신 — ADR-04). 결과 분기는 `PgVendorCallService.applyOutcome` 5분기.
 
-- retryable: 타임아웃 / 5xx — `PgGatewayRetryableException` → `handleRetry` (commands.confirm self-loop 재발행 + `pg_inbox.attempt` 증가). attempt 가 `pg_inbox.attempt`(Flyway V5) 에 영속돼 한도(4) 소진 시 DLQ→QUARANTINED 자동 격리 (DLQ-REACHABILITY)
+- retryable: 타임아웃 / 5xx — `PgGatewayRetryableException` → `handleRetry` (commands.confirm self-loop 재발행 + `pg_inbox.attempt` 증가). attempt 가 `pg_inbox.attempt` 에 영속돼 한도(`RetryPolicy.MAX_ATTEMPTS` = 4) 소진 시 DLQ→QUARANTINED 자동 격리
 - non-retryable: 4xx 확정 거절 — `PgGatewayNonRetryableException` → `pg_inbox FAILED` + events.confirmed FAILED
-- 멱등 응답("이미 처리됨"): `PgGatewayDuplicateHandledException` **한 갈래로만** 신호된다 — 전략은 예외만 던지고, 그 예외를 받은 `PgVendorCallService.handleDuplicate` 가 `DuplicateApprovalHandler` 를 부른다. 과거에는 전략이 `DuplicateApprovalDetectedEvent` 도 함께 발행해 리스너 경로와 예외 경로가 한 응답에 핸들러를 두 번 돌렸고, 그 결과 같은 사건에 발행 행이 2건 남았다(PG-VENDOR-SIGNAL-CONSOLIDATION 에서 이벤트 타입·리스너 삭제). 순환 의존은 생기지 않는다 — 핸들러를 부르는 것은 전략이 아니라 벤더 호출 서비스이고 그 서비스는 `PgStatusLookupPort` 를 의존하지 않는다. 핸들러는 vendor getStatus 재조회로 확정한다. 금액 대조가 먼저이고, 일치하면 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 APPROVED 종결(승인 시각은 `PgStatusResult.approvedAtRaw` 원문 사용), 승인 미확인이면 상태를 바꾸지 않고 물러난다
+- 멱등 응답("이미 처리됨"): `PgGatewayDuplicateHandledException` **한 갈래로만** 신호된다 — 전략은 예외만 던지고, 그 예외를 받은 `PgVendorCallService.handleDuplicate` 가 `DuplicateApprovalHandler` 를 부른다. 전략이 이벤트를 따로 발행하지 않으므로 한 응답에 핸들러가 두 번 도는 일은 없다. 순환 의존은 생기지 않는다 — 핸들러를 부르는 것은 전략이 아니라 벤더 호출 서비스이고 그 서비스는 `PgStatusLookupPort` 를 의존하지 않는다. 핸들러는 vendor getStatus 재조회로 확정한다. 금액 대조가 먼저이고, 일치하면 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 APPROVED 종결(승인 시각은 `PgStatusResult.approvedAtRaw` 원문 사용), 승인 미확인이면 상태를 바꾸지 않고 물러난다
 - 겹침 거부(처리 중 재요청): Toss `IDEMPOTENT_REQUEST_PROCESSING`(409) → `PgGatewayConcurrentCallException` → `GatewayOutcome.ConcurrentCall`. 시도횟수·재시도 명령·상태 전이를 건드리지 않고 로그와 `pg_vendor.concurrent_call_total` 만 남기고 물러난다 — 원 호출이 결과를 낸다
 - AMOUNT_MISMATCH: 벤더 응답 amount 와 로컬 `paymentEvent.totalAmount` 불일치 → QUARANTINED (양방향 방어)
 
@@ -70,11 +68,11 @@ payment-service 의 Feign `readTimeout: 5000` 은 같은 플랫폼 내부 서비
 pg-service 는 카드망을 포함한 외부 PG 처리를 기다려야 하므로 내부 call timeout 보다 외부 PG timeout 이 반드시 길어야 한다.
 내부 5s 보다 짧으면 pg-service 가 벤더 응답을 기다리는 중에 payment-service 가 먼저 타임아웃 나는 것을 방지하지 못한다.
 
-**Phase 4 튜닝 deferred**: 현재 값은 운영 측정 없는 baseline. T4-D (부하 측정) 결과를 기반으로 실제 SLO 에 맞춰 정밀 튜닝할 예정.
+**튜닝 보류**: 현재 값은 측정 없이 정한 baseline 이다. 부하·장애 주입 측정이 필요하다(`docs/TODOS.md` T4-D).
 
 ## Cross-service HTTP
 
-payment-service 가 product-service / user-service / pg-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin, CLIENT-SIDE-LB Phase B).
+payment-service 가 product-service / user-service / pg-service 를 OpenFeign + LoadBalancer 로 호출 (Eureka discovery + 클라이언트 사이드 round-robin).
 
 | 호출 | 경로 | Feign 클라이언트 | 어댑터 (port 구현) |
 |---|---|---|---|
@@ -86,7 +84,7 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 
 **관리자 조회 포트는 승인 경로 포트와 분리**: `ProductCatalogQueryPort` / `PgAttemptHistoryPort` 는 결제 승인 경로가 쓰는 `ProductPort` / `UserPort` 와 별개 인터페이스다. 승인 경로 포트에 관리자 용도가 섞이면 나중에 떼어내기 어렵다. 반면 Feign client 는 공유해 중복을 만들지 않는다 (product 는 기존 client 에 메서드 추가).
 
-**payment → pg 는 관리자 조회 전용**: 결제 확정 자체는 여전히 Kafka 단방향이다 (아래 통신 매트릭스). pg-service 는 이 엔드포인트가 생기기 전까지 컨트롤러가 0개인 Kafka 전용 서비스였다 (ADMIN-VISIBILITY).
+**payment → pg 는 관리자 조회 전용**: 결제 확정 자체는 여전히 Kafka 단방향이다 (아래 통신 매트릭스). pg-service 의 컨트롤러는 이 조회 엔드포인트(`PgAttemptHistoryController`)뿐이고, 나머지는 Kafka 로만 통신한다.
 
 **계약 매핑**: 각 `*FeignConfig` 의 `ErrorDecoder` 가 4xx / 5xx 응답을 도메인 예외로 매핑.
 - 404 → `*NotFoundException` (PRODUCT_NOT_FOUND / USER_NOT_FOUND)
@@ -95,7 +93,7 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 
 **Transport 예외**: 어댑터 (`ProductHttpAdapter` / `UserHttpAdapter`) 가 `feign.RetryableException` 만 catch 해 `*ServiceRetryableException` 으로 변환. 4xx / 5xx 매핑은 `ErrorDecoder` 단계에서 끝났으므로 어댑터에는 try/catch 가 transport 한 분기만 남는다.
 
-**Timeout baseline**: `application.yml:18-23` — `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. Phase 4 측정 기반 SLO 로 조정 예정 (TODOS T4-D).
+**Timeout baseline**: payment-service `application.yml` 의 `spring.cloud.openfeign.client.config.default.{connectTimeout: 2000, readTimeout: 5000}`. 측정 없이 정한 값이라 부하 측정이 필요하다(`docs/TODOS.md` T4-D).
 
 **pg 관리자 조회는 전용 짧은 timeout**: `spring.cloud.openfeign.client.config.pg-service.{connectTimeout: 1000, readTimeout: 2000}` (`PG_ADMIN_QUERY_CONNECT_TIMEOUT_MS` / `PG_ADMIN_QUERY_READ_TIMEOUT_MS`). 기본값(2s/5s)이면 pg 가 느릴 때 관리자 상세 진입이 그만큼 지연된다 — 관측 화면은 빨리 실패하고 부분 렌더하는 편이 낫다. `default` 블록은 변경하지 않으므로 product / user client 는 영향받지 않는다. 이 설정은 `@FeignClient(configuration = PgFeignConfig.class)` 로만 한정 등록한다 — 전역 `@Configuration` 으로 올리면 다른 client 에 새어 나간다.
 
@@ -107,7 +105,7 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 
 **Contract test**: `ProductFeignConfigTest` / `UserFeignConfigTest` / `PgFeignConfigTest` 가 ErrorDecoder 분기 (404 / 429 / 503 / 502 / 504 retryable / 500 등 그 외 5xx) 를 검증. `ProductHttpAdapterContractTest` / `UserHttpAdapterContractTest` / `PgAttemptHistoryHttpAdapterContractTest` / `ProductCatalogHttpAdapterContractTest` 는 Mockito 로 FeignClient mock 후 어댑터의 예외 propagation + transport 변환만 검증 (MockWebServer 사용 안 함). 2-layer 패턴 상세(표 + 시나리오)는 [`TESTING.md`](TESTING.md) §Contract test 패턴 참고.
 
-**회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 Phase 4 (T4-D) 예정** — 도입 시점에 fallbackFactory 로 마이그레이션하면서 어댑터 try/catch 제거.
+**회복성**: 현재 어댑터의 transport try/catch 만. **CircuitBreaker 는 미도입** — 도입 시 fallbackFactory 로 옮기면서 어댑터 try/catch 를 제거한다(`docs/TODOS.md` T4-D).
 
 ## 외부 시스템 통신 매트릭스
 
@@ -119,9 +117,9 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 | gateway | user-service | HTTP | Eureka 라우팅 |
 | payment-service | product-service | HTTP (Feign + LB) | `GET /api/v1/products/{id}` · `GET /api/v1/products?page=&size=` (관리자 재고 화면) |
 | payment-service | user-service | HTTP (Feign + LB) | `GET /api/v1/users/{id}` |
-| payment-service | pg-service | HTTP (Feign + LB) | `GET /api/v1/confirmations/{orderId}/attempts` — **관리자 조회 전용**. 결제 확정 경로는 아래 Kafka 그대로 (ADMIN-VISIBILITY) |
+| payment-service | pg-service | HTTP (Feign + LB) | `GET /api/v1/confirmations/{orderId}/attempts` — **관리자 조회 전용**. 결제 확정 경로는 아래 Kafka 그대로 |
 | payment-service → pg-service | Kafka | one-way | `payment.commands.confirm` (최초 confirm 명령) |
-| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. attempt 는 `pg_inbox.attempt` 영속·증가 (DLQ-REACHABILITY) |
+| pg-service → pg-service | Kafka | self-loop | `payment.commands.confirm` 재발행 (자체 retry) — `pg_outbox.available_at` 기반 지연 발행. attempt 는 `pg_inbox.attempt` 영속·증가 |
 | pg-service → DLQ | Kafka | one-way | `payment.commands.confirm.dlq` (`PgVendorCallService.insertDlqOutbox` — attempt ≥ 4 소진 시 도달 → QUARANTINED 자동 격리) |
 | pg-service → payment-service | Kafka | one-way | `payment.events.confirmed` (PG 결과 회신 — APPROVED/FAILED/QUARANTINED) |
 | payment-service → DLQ | Kafka | one-way | `payment.events.confirmed.dlq` (Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` — retry 5회 한도 초과 시 자동 발행. `KafkaErrorHandlerConfig`) |
@@ -144,7 +142,7 @@ payment-service 가 product-service / user-service / pg-service 를 OpenFeign + 
 |---|---|
 | 다른 비즈니스 서비스 | checkout/confirm 시 503 (`USER_SERVICE_UNAVAILABLE` / `PRODUCT_SERVICE_UNAVAILABLE`) |
 | Kafka | confirm 은 HTTP 202 까지 가지만 outbox→Kafka 발행 실패 → relay 재시도 또는 DLQ. payment.events.confirmed consumer 도 미동작 → status 영구 PROCESSING |
-| Redis dedupe | payment-service checkout `IdempotencyStore` 호출 실패 → 해당 layer 가드. events.confirmed dedupe 는 redis-stock Lua atomic dedup token 으로 일원화. **pg-service 는 Redis 의존 없음** — 리스너 진입 필터 제거로 캐시 라이브러리까지 걷어냈다(PG-MESSAGE-DEDUPE-LAYER-REMOVAL), 중복 방어는 `pg_inbox.order_id` UNIQUE 단일 층 |
+| Redis dedupe | payment-service checkout `IdempotencyStore` 호출 실패 → 해당 layer 가드. events.confirmed dedupe 는 redis-stock Lua atomic dedup token 으로 일원화. **pg-service 는 Redis 의존 없음** — 리스너 진입 필터가 없고 캐시 라이브러리도 쓰지 않으며, 중복 방어는 `pg_inbox.order_id` UNIQUE 단일 층 |
 | Redis stock | confirm 시 재고 DECR 실패 → 동일 |
 | MySQL | 부팅 자체 실패 (Flyway 가 DB 연결 못 함) |
 | Eureka | discovery 미동작 → cross-service HTTP 가 IP 직접 못 찾음 |

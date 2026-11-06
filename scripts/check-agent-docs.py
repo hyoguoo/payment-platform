@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
-"""check-agent-docs.py — AGENTS.md / 스킬 / Claude 호환 설정 / context 정합성 점검.
+"""check-agent-docs.py — 지침·스킬·프로젝트 문서의 정합성 점검.
 
-판정 7종:
-  1. 참조 무결성 — 마크다운 링크 `[text](path)` 와 파일 경로 형태의 백틱 스팬(`a/b.md`)이
-     실제 파일/디렉터리로 해석되는지 확인한다. 펜스(```) 코드 블록 내부, 공백 포함 문자열,
-     URL, placeholder(`<...>`/`{...}`/`*`/`$`)는 검사 대상에서 제외한다.
-  2. frontmatter 필수 필드 — `.agents/skills/*/SKILL.md` 는 name/description,
-     `.claude/agents/*.md` 는 name/description/model/tools 가 있는지 확인한다.
-  3. 체크리스트 참조 — 문서가 지정한 체크리스트 파일이 실재하고, 함께 언급한 섹션 제목이
-     그 파일의 헤딩에 존재하는지 확인한다(도메인 검토자 stage 매핑 표의 3열 형식과
-     "<구문> 섹션/항목" 프로즈 언급 두 가지 형태를 인식한다).
-  4. 중복 규칙 — 정본으로 확정한 규칙 문구가 정본 파일 밖에 본문으로 그대로 등장하는지
-     문구 사전 기반 정확 매칭으로 확인한다. 정본 경로를 포함한 포인터 문장, 코드
-     펜스(커맨드 예시), 존치 결정된 `code-ready.md` convention/domain risk 섹션은
-     매칭에서 제외한다.
-  5. Mermaid 금지 문자 — ```mermaid 펜스 안 노드 라벨(`[...]`/`(...)`/`{...}`)과
-     엣지 라벨(`|...|`) 안에 중괄호 · 가운뎃점(U+00B7) · 유니코드 화살표(U+2192)가
-     있는지 확인한다.
-  6. 고아 문서 — `.agents/`와 `.claude/` 하위에서 참조되지 않는 파일을 찾는다.
-     `SKILL.md`/`.claude/agents/*.md`는 frontmatter 로 자동 탐색되는 진입점이라 제외한다.
-  7. 역할 설정 동기화 — 공통 역할·모델 정본과 Claude/Codex 생성 파일의 일치를 확인한다.
+판정 6종:
+  1. 참조 무결성 — 마크다운 링크 `[text](path)`와 파일 경로 모양의 백틱 스팬(`a/b.md`)이 실제 파일·디렉터리로
+     해석되는지 본다. 코드 펜스(```) 안, 공백이 든 문자열, URL, placeholder(`<...>`, `{...}`, `*`, `$`)는 제외한다.
+     `.agents/templates/`는 복사될 토픽 폴더 기준으로 링크를 쓰므로 제외한다.
+  2. frontmatter 필수 필드 — `.agents/skills/*/SKILL.md`는 name·description, `.claude/agents/*.md`는
+     name·description·model·tools가 있는지 본다.
+  3. 문서 식별자 대조 — `docs/context`, `docs/guides`, `docs/smoke`, `docs/quality`, `docs/TODOS.md`의 백틱 스팬 중
+     클래스 이름(UpperCamelCase)이 저장소 코드(주석·문자열 리터럴 제외)에 나오는지, 점으로 이은 설정 키·토픽 이름이 설정·코드·
+     스크립트에 나오는지 본다. 설정 키는 그 키나 바로 위 키가 있으면 통과한다(기본값으로 쓰는 하위 키 허용).
+     경로 모양 스팬은 판정 1이 맡는다.
+  4. Mermaid 금지 문자 — ```mermaid 펜스 안 노드 라벨과 엣지 라벨에 중괄호, 가운뎃점(U+00B7),
+     유니코드 화살표(U+2192)가 있는지 본다.
+  5. 고아 문서 — `.agents/`, `.claude/` 아래에서 어디서도 참조되지 않는 문서를 찾는다.
+     `SKILL.md`와 역할 파일은 도구가 자동으로 찾는 진입점이라 제외한다.
+  6. 역할 설정 동기화 — 역할 정본과 Claude·Codex 생성 파일의 일치를 확인한다.
 
-기본 실행은 정보 제공용으로 항상 0을 반환한다. --strict는 판정 1~4·7 오류에 1을 반환한다.
-판정 5·6은 정보 제공용이다. 호환 심볼릭 링크는 실제 경로로 중복 제거한다.
+기본 실행은 보고만 하고 항상 0을 반환한다. --strict는 판정 1·2·3·6에 문제가 있으면 1을 반환한다.
+판정 4·5는 정보 제공용이다.
 
-실행:  python3 scripts/check-agent-docs.py
+실행:  python3 scripts/check-agent-docs.py [--strict]
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -39,87 +36,69 @@ SCAN_ROOTS = [
     REPO_ROOT / ".agents",
     REPO_ROOT / ".claude",
     REPO_ROOT / "docs" / "context",
+    REPO_ROOT / "docs" / "guides",
+    REPO_ROOT / "docs" / "smoke",
+    REPO_ROOT / "docs" / "quality",
+    REPO_ROOT / "docs" / "STATE.md",
+    REPO_ROOT / "docs" / "TODOS.md",
+    REPO_ROOT / "docs" / "archive" / "README.md",
 ]
 
-# 백틱 단독 스팬(마크다운 링크가 아닌 `path` 형태)에서 경로로 인정하는 확장자.
-# 웹 자산(.html/.css/.js/.ts)은 별도 blog 저장소·브라우저 URL 예시에서 반복 노출되는
-# 오탐 원인이라 제외한다 — 그 경로들은 마크다운 링크([text](path)) 형태로 쓰이지 않는다.
+# 판정 3의 대상. 에이전트가 작업 근거로 읽거나 사람이 따라 하는 문서다.
+IDENTIFIER_ROOTS = ["docs/context", "docs/guides", "docs/smoke", "docs/quality", "docs/TODOS.md"]
+
+# 백틱 단독 스팬에서 경로로 인정하는 확장자. 웹 자산(.html/.css/.js/.ts)은 별도 blog 저장소·브라우저 URL
+# 예시에서 반복되는 오탐 원인이라 제외한다. 그런 경로는 마크다운 링크로 쓰지 않는다.
 BACKTICK_PATH_EXTENSIONS = {
     ".md", ".sh", ".py", ".java", ".yml", ".yaml", ".json", ".properties",
-    ".gradle", ".toml", ".conf", ".sql", ".txt",
+    ".gradle", ".toml", ".conf", ".sql", ".txt", ".lua",
 }
 
-CHECKLIST_DIR = REPO_ROOT / ".agents" / "skills" / "_shared" / "checklists"
-CHECKLIST_NAMES = ("discuss-ready.md", "plan-ready.md", "code-ready.md", "ship-ready.md")
-SECTION_KEYWORDS = ("섹션", "항목")
-
-# 여러 스킬 문서가 `.agents/skills/_shared/` 하위를 "_shared/..." 또는 접두사 없이
-# "conventions/..."/"checklists/..." 로 줄여 쓴다 — 참조 파일 기준 상대경로로는 안 풀리는
-# 통용 축약이라 별도 앵커로 추가 시도한다.
-SHARED_DIR = REPO_ROOT / ".agents" / "skills" / "_shared"
-SPECIAL_ANCHOR_SEGMENTS = {"conventions", "checklists", "_shared"}
 TOP_LEVEL_ENTRIES = {p.name for p in REPO_ROOT.iterdir()}
 
 LINK_RE = re.compile(r'\[([^\]]*)\]\(([^)]+)\)')
 BACKTICK_RE = re.compile(r'`([^`\n]+)`')
-TABLE_ROW_RE = re.compile(r'\|[^|]*\|\s*`([^`]+-ready\.md)`\s*\|\s*([^|]+?)\s*\|')
 PLACEHOLDER_CHARS = set("<>{}*$:")
-PHRASE_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ")
 
-# 판정 4: 중복 규칙 — 정본 파일에서 뽑은 문구 사전. 각 문구가 canonical 파일 밖에 본문으로
-# 등장하면 중복 의심으로 본다. 문구는 마크다운 강조(백틱/별표)를 벗겨낸 평문 기준이다.
-DUPLICATE_RULES = [
-    {
-        "name": "`var` 키워드 금지",
-        "canonical": "docs/context/conventions/code-style.md",
-        "phrases": ["var 키워드 금지"],
-    },
-    {
-        "name": "`@Data` 금지",
-        "canonical": "docs/context/conventions/code-style.md",
-        "phrases": ["equals/hashCode/toString/getter/setter 를 한 번에 여는 뭉치 애너테이션"],
-    },
-    {
-        "name": "공개 유스케이스·포트 null 반환 금지",
-        "canonical": "docs/context/conventions/code-style.md",
-        "phrases": ["공개 유스케이스·포트 반환값의 null 반환 금지"],
-    },
-    {
-        "name": "try 블록 외부 변수 재할당 금지",
-        "canonical": "docs/context/conventions/code-style.md",
-        "phrases": ["try 블록 안에서 외부 변수 재할당 금지"],
-    },
-    {
-        "name": "`catch (Exception e)` swallow 금지",
-        "canonical": "docs/context/conventions/error-logging.md",
-        "phrases": ["catch (Exception e) swallow 금지"],
-    },
-    {
-        "name": "TDD 사이클(RED/GREEN/REFACTOR)",
-        "canonical": "docs/context/conventions/testing.md",
-        "phrases": ["실패하는 테스트를 먼저 작성한다"],
-    },
-    {
-        "name": "도메인 검토자 배차 2갈래 조건",
-        "canonical": ".agents/skills/_shared/checklists/discuss-ready.md",
-        "phrases": [
-            "소스 코드 또는 런타임 설정(알람 규칙·Kafka 설정·스케줄러 등) 변경을 계획",
-            "결제 도메인 동작(상태 전이·멱등성·복구·정산)을 서술·정정",
-        ],
-    },
-    {
-        "name": "문체 종결 규칙",
-        "canonical": ".agents/skills/_shared/conventions/writing-style.md",
-        "phrases": ["로 끝내거나 명사형으로 끝낸다"],
-    },
-]
+# 판정 3: 클래스 이름은 대문자로 시작하고 대소문자 경계가 두 번 이상인 단어(PaymentEvent)만 본다.
+# 한 단어(Kafka), 상태값(IN_FLIGHT), 약어로 시작하는 이름(HTTPClient)은 오탐이 많아 대조하지 않는다.
+CLASS_SPAN_RE = re.compile(r'^([A-Z][A-Za-z0-9]+)(?:[.#][A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?)*$')
+CAMEL_RE = re.compile(r'^[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+$')
+JAVA_TOKEN_RE = re.compile(r'\b[A-Z][A-Za-z0-9]+\b')
+# 설정 키·토픽 이름: 소문자로 시작하고 점으로 이은 마디가 셋 이상. 마지막 마디가 확장자면 파일 이름으로 본다.
+DOTTED_KEY_RE = re.compile(r'^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+){2,}$')
+FILE_SUFFIXES = {
+    "md", "sh", "py", "java", "yml", "yaml", "properties", "json", "sql", "txt", "html", "log",
+    "gradle", "toml", "xml", "lua", "conf", "csv", "png", "jar", "env", "js", "ts",
+}
+# 어느 깊이에서든 건너뛰는 디렉터리. IDE 출력 `out`은 저장소 루트와 모듈 루트(깊이 1)에서만 건너뛴다(`application/port/out`과 겹치지 않게).
+CODE_SKIP_DIRS = {".git", "build", ".gradle", "node_modules", "docs", "live-drill", ".archive", ".idea"}
+ROOT_ONLY_SKIP_DIRS = {"out"}
+# 대문자 시작 단어를 모으는 파일. 알람 규칙 이름(YAML), Checkstyle 모듈 이름(XML), hook 이벤트 이름(JSON)도 여기서 온다.
+CODE_TOKEN_SUFFIXES = {".java", ".gradle", ".kts", ".yml", ".yaml", ".xml", ".json", ".properties"}
+# 우리 코드는 쓰지 않지만 문서가 동작을 설명하는 외부 라이브러리 타입. 삭제된 우리 클래스를 가리지 않도록
+# 실제 라이브러리 타입만 넣는다.
+EXTERNAL_TYPE_NAMES = {
+    "MissingMigrationException",  # Flyway
+    "DefaultLifecycleProcessor",  # Spring Framework
+    "RestTemplate",  # Spring Framework
+    "ChainedKafkaTransactionManager",  # Spring Kafka
+    "AfterRollbackProcessor",  # Spring Kafka (우리 코드는 구현체 DefaultAfterRollbackProcessor를 연결)
+    "KafkaAdmin",  # Spring Kafka
+    "LogstashEncoder",  # logstash-logback-encoder
+    "RateLimiter",  # Resilience4j
+    "TreeWalker",  # Checkstyle
+}
+# 우리 설정에 없고 문서가 라이브러리 기본값을 설명하는 설정 키.
+EXTERNAL_CONFIG_KEYS = {
+    "max.poll.interval.ms",  # Kafka consumer
+}
+CONFIG_CORPUS_SUFFIXES = {
+    ".yml", ".yaml", ".properties", ".java", ".sh", ".py", ".js", ".json", ".conf", ".toml",
+    ".gradle", ".lua", ".sql", ".xml", ".env",
+}
 
-# code-ready.md 는 정적 분석이 없는 규칙의 유일한 수동 판정 수단이라 convention · domain risk
-# 두 섹션을 그대로 존치하기로 확정했다(Task 7) — 이 섹션 라인은 중복 매칭에서 제외한다.
-CODE_READY_EXCLUDED_HEADING_PREFIXES = ("## convention", "## domain risk")
-
-# 판정 5: Mermaid 노드/엣지 라벨 금지 문자 (writing-visuals.md "Mermaid 노드 라벨 금지 문자" 절 중
-# 이 스크립트가 판정하는 부분집합).
+# 판정 4: Mermaid 노드·엣지 라벨 금지 문자 (writing 스킬 style-guide 8.5절 중 이 스크립트가 판정하는 부분집합)
 MERMAID_FORBIDDEN_CHARS = {
     "{": "중괄호",
     "}": "중괄호",
@@ -133,17 +112,16 @@ MERMAID_LABEL_RES = [
     re.compile(r'\|([^|]+)\|'),
 ]
 
-# 판정 6: 고아 문서 — SKILL.md/agents/*.md 는 frontmatter 로 자동 탐색되는 진입점이라 제외.
 ORPHAN_SCAN_ROOTS = [REPO_ROOT / ".agents", REPO_ROOT / ".claude"]
 
 
-def rel(path):
-    return path.relative_to(REPO_ROOT).as_posix()
+def rel(path, root=REPO_ROOT):
+    return path.resolve().relative_to(root.resolve()).as_posix()
 
 
-def iter_markdown_files():
+def iter_markdown_files(roots):
     files = []
-    for root in SCAN_ROOTS:
+    for root in roots:
         if root.is_file() and root.suffix == ".md":
             files.append(root)
         elif root.is_dir():
@@ -152,12 +130,12 @@ def iter_markdown_files():
 
 
 def unique_paths(paths):
-    """같은 실제 파일을 가리키는 호환 링크를 한 번만 검사한다."""
+    """같은 실제 파일을 가리키는 호환 링크(.claude/skills)를 한 번만 검사한다."""
     return list(dict.fromkeys(path.resolve() for path in paths))
 
 
 def strip_fenced_code(lines):
-    """펜스(```) 코드 블록 안 라인은 빈 문자열로 치환한다 — 코드 예시·커맨드는 검사 제외."""
+    """코드 펜스(```) 안 줄은 빈 문자열로 바꾼다. 코드 예시와 명령은 검사하지 않는다."""
     out = []
     in_fence = False
     for line in lines:
@@ -169,12 +147,19 @@ def strip_fenced_code(lines):
     return out
 
 
-def is_path_shaped(candidate):
-    """백틱 스팬이 '파일 경로 형태'인지 판정한다 — 코드 인자/커맨드/URL/약어(...)/placeholder 는 제외.
+def backtick_spans(line):
+    """링크로 처리한 부분을 뺀 줄의 백틱 스팬."""
+    line_without_links = LINK_RE.sub(lambda m: " " * len(m.group(0)), line)
+    return [span.strip() for span in BACKTICK_RE.findall(line_without_links)]
 
-    `./`, `../` 로 시작하는 스팬은 셸 커맨드 예시(`./gradlew test`, `./scripts/x.sh`)와 구분이
-    안 돼 제외한다 — 이 저장소의 실제 문서 간 상대경로 참조는 전부 마크다운 링크 문법
-    ([text](path))을 쓰고, 그쪽은 별도로 검사한다.
+
+# ── 판정 1: 참조 무결성 ──────────────────────────────────────────────────────
+
+def is_path_shaped(candidate):
+    """백틱 스팬이 파일 경로 모양인지 판정한다. 명령, URL, 줄임(...), placeholder는 제외한다.
+
+    `./`, `../`로 시작하는 스팬은 셸 명령 예시(`./gradlew test`)와 구분되지 않아 제외한다. 문서 사이의
+    상대 경로 참조는 마크다운 링크로 쓰고, 그쪽은 따로 검사한다.
     """
     if not candidate or any(ch.isspace() for ch in candidate):
         return False
@@ -195,50 +180,32 @@ def is_path_shaped(candidate):
 
 
 def path_candidates(path_part, base_dir):
-    """경로 후보를 우선순위대로 나열한다: 레포 루트 → 참조 파일 기준 → 그 상위 →
-    `.agents/skills/_shared/` 앵커(두 경로가 그 하위를 접두사 유무 섞어 축약 참조한다)."""
-    if path_part.startswith("/"):
-        path_part = path_part.lstrip("/")
-    return [
-        REPO_ROOT / path_part,
-        base_dir / path_part,
-        base_dir.parent / path_part,
-        SHARED_DIR / path_part,
-        SHARED_DIR.parent / path_part,
-    ]
+    """경로 후보: 저장소 루트 기준, 참조한 문서 기준, 그 상위 기준."""
+    path_part = path_part.lstrip("/")
+    return [REPO_ROOT / path_part, base_dir / path_part, base_dir.parent / path_part]
 
 
-def resolve(path_part, base_dir):
-    """마크다운 링크 대상이 실제로 존재하는지: 상대경로(./, ../)는 참조 파일 기준으로만,
-    그 외는 path_candidates() 순서로 시도한다."""
+def first_existing(path_part, base_dir):
     if path_part.startswith(("./", "../")):
-        return (base_dir / path_part).resolve().exists()
-    return any(candidate.resolve().exists() for candidate in path_candidates(path_part, base_dir))
+        candidate = (base_dir / path_part).resolve()
+        return candidate if candidate.exists() else None
+    for candidate in path_candidates(path_part, base_dir):
+        resolved = candidate.resolve()
+        if resolved.exists():
+            return resolved
+    return None
 
 
-def top_level_segment(path_part):
-    stripped = path_part.lstrip("/")
-    return stripped.split("/", 1)[0]
-
-
-def resolve_backtick_path(path_part, base_dir):
-    """백틱 전용 경로 판정: 후보 경로 중 하나라도 존재하면 통과.
-    전부 실패하면 최상위 세그먼트가 실제 레포 최상위 항목/공유 앵커일 때만 '깨짐'으로
-    보고한다 — 그 외(db/migration, application/port/in 같은 계층 축약 표기)는 검사
-    신뢰 범위 밖이라 조용히 건너뛴다."""
-    if any(candidate.resolve().exists() for candidate in path_candidates(path_part, base_dir)):
-        return True, False  # (resolved, should_report_if_not_resolved)
-    top = top_level_segment(path_part)
-    plausible = top in TOP_LEVEL_ENTRIES or top in SPECIAL_ANCHOR_SEGMENTS
-    return False, plausible
+TEMPLATE_DIR = (REPO_ROOT / ".agents" / "templates").resolve()
 
 
 def check_references(files):
     checked = 0
     broken = []
     for path in files:
-        raw_lines = path.read_text(encoding="utf-8").splitlines()
-        scan_lines = strip_fenced_code(raw_lines)
+        if path.is_relative_to(TEMPLATE_DIR):
+            continue
+        scan_lines = strip_fenced_code(path.read_text(encoding="utf-8").splitlines())
         for lineno, line in enumerate(scan_lines, start=1):
             if not line:
                 continue
@@ -250,38 +217,32 @@ def check_references(files):
                 if not path_part:
                     continue
                 checked += 1
-                if not resolve(path_part, path.parent):
+                if not first_existing(path_part, path.parent):
                     broken.append(f"{rel(path)}:{lineno}: 링크 대상 없음 — {target}")
-
-            # 링크로 이미 처리한 부분(대괄호+백틱 텍스트 포함)은 백틱 재검사에서 제외한다.
-            line_without_links = LINK_RE.sub(lambda m: " " * len(m.group(0)), line)
-            for span in BACKTICK_RE.findall(line_without_links):
-                span = span.strip()
+            for span in backtick_spans(line):
                 if not is_path_shaped(span):
                     continue
                 path_part = span.split("#", 1)[0]
-                resolved, plausible = resolve_backtick_path(path_part, path.parent)
-                if resolved:
+                if first_existing(path_part, path.parent):
                     checked += 1
-                elif plausible:
+                elif path_part.lstrip("/").split("/", 1)[0] in TOP_LEVEL_ENTRIES:
+                    # 최상위 마디가 저장소에 실제로 있을 때만 깨진 경로로 본다. 그 밖(db/migration,
+                    # application/port 같은 계층 줄임 표기)은 검사 신뢰 범위 밖이라 건너뛴다.
                     checked += 1
                     broken.append(f"{rel(path)}:{lineno}: 경로 미해석 — `{span}`")
-                # else: 최상위 세그먼트가 레포/공유 앵커 어디에도 없음 — 계층 축약 표기로
-                # 보고 검사 대상에서 조용히 제외한다(카운트하지 않음).
     return checked, broken
 
 
+# ── 판정 2: frontmatter ──────────────────────────────────────────────────────
+
 def parse_frontmatter_keys(path):
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---"):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
         return None
-    lines = text.splitlines()
-    end = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end = i
+    for end in range(1, len(lines)):
+        if lines[end].strip() == "---":
             break
-    if end is None:
+    else:
         return None
     keys = set()
     for line in lines[1:end]:
@@ -294,175 +255,145 @@ def parse_frontmatter_keys(path):
 def check_frontmatter():
     checked = 0
     issues = []
-
-    skill_files = unique_paths([
-        *sorted((REPO_ROOT / ".agents" / "skills").glob("*/SKILL.md")),
-        *sorted((REPO_ROOT / ".claude" / "skills").glob("*/SKILL.md")),
-    ])
-    for path in skill_files:
+    targets = [
+        (path, ("name", "description"))
+        for path in unique_paths(sorted((REPO_ROOT / ".agents" / "skills").glob("*/SKILL.md")))
+    ] + [
+        (path, ("name", "description", "model", "tools"))
+        for path in sorted((REPO_ROOT / ".claude" / "agents").glob("*.md"))
+    ]
+    for path, required in targets:
         checked += 1
         keys = parse_frontmatter_keys(path)
         if keys is None:
             issues.append(f"{rel(path)}: frontmatter 없음")
             continue
-        missing = [k for k in ("name", "description") if k not in keys]
+        missing = [k for k in required if k not in keys]
         if missing:
             issues.append(f"{rel(path)}: frontmatter 필드 누락 — {', '.join(missing)}")
-
-    agent_files = sorted((REPO_ROOT / ".claude" / "agents").glob("*.md"))
-    for path in agent_files:
-        checked += 1
-        keys = parse_frontmatter_keys(path)
-        if keys is None:
-            issues.append(f"{rel(path)}: frontmatter 없음")
-            continue
-        missing = [k for k in ("name", "description", "model", "tools") if k not in keys]
-        if missing:
-            issues.append(f"{rel(path)}: frontmatter 필드 누락 — {', '.join(missing)}")
-
     return checked, issues
 
 
-def extract_headings(path):
-    headings = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r'^(#{1,3})\s+(.*)$', line.strip())
-        if m:
-            headings.append(m.group(2).strip())
-    return headings
+# ── 판정 3: 문서 식별자 대조 ─────────────────────────────────────────────────
+
+def iter_code_files(root, suffixes):
+    root = Path(root)
+    for dirpath, dirnames, filenames in os.walk(root):
+        shallow = len(Path(dirpath).relative_to(root).parts) <= 1
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in CODE_SKIP_DIRS and not (shallow and d in ROOT_ONLY_SKIP_DIRS)
+        ]
+        for name in filenames:
+            if Path(name).suffix in suffixes:
+                yield Path(dirpath) / name
 
 
-def extract_phrase_before(line, idx):
-    """idx(키워드 시작 위치) 바로 앞에서 허용 문자(영문/숫자/하이픈/공백)로만 이어진 구문을 뒤로 훑어 추출한다."""
-    j = idx
-    while j > 0 and line[j - 1] == " ":
-        j -= 1
-    k = j
-    while k > 0 and line[k - 1] in PHRASE_CHARS:
-        k -= 1
-    return line[k:j].strip()
+def normalize_key(key):
+    """Spring의 느슨한 바인딩처럼 하이픈·밑줄·대소문자 차이를 무시한다."""
+    return key.lower().replace("-", "").replace("_", "")
 
 
-def verify_checklist_section(checklist_ref, section_text, heading_cache):
-    basename = Path(checklist_ref).name
-    checklist_path = CHECKLIST_DIR / basename
-    if not checklist_path.exists():
-        return False, f"체크리스트 파일 없음 — {basename}"
-    if basename not in heading_cache:
-        heading_cache[basename] = extract_headings(checklist_path)
-    headings = heading_cache[basename]
-    target = section_text.lower()
-    if not any(target in heading.lower() for heading in headings):
-        return False, f"'{section_text}' 섹션이 {basename}에 없음"
-    return True, ""
+def flatten_yaml_keys(text):
+    """YAML의 중첩 키를 점으로 이은 경로로 펼친다. 목록 항목과 값은 보지 않는 단순 파서다."""
+    keys = set()
+    stack = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "---":
+            stack = []
+            continue
+        if not stripped or stripped.startswith(("#", "-")):
+            continue
+        m = re.match(r'^(\s*)([^\s:#][^:#]*?):(\s|$)', line)
+        if not m:
+            continue
+        indent = len(m.group(1))
+        key = m.group(2).strip().strip("\"'")
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        stack.append((indent, key))
+        keys.add(normalize_key(".".join(k for _, k in stack)))
+    return keys
 
 
-def check_checklist_refs(files):
-    checked = 0
-    broken = []
-    heading_cache = {}
-
-    for path in files:
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            # 형태 A: "| ... | `<name>-ready.md` | <섹션 제목> |" 표 행 (도메인 검토자 stage 매핑 표 등)
-            for m in TABLE_ROW_RE.finditer(line):
-                checklist_ref, section_text = m.group(1), m.group(2).strip()
-                checked += 1
-                ok, msg = verify_checklist_section(checklist_ref, section_text, heading_cache)
-                if not ok:
-                    broken.append(f"{rel(path)}:{lineno}: {msg}")
-
-            # 형태 B: 프로즈 "<체크리스트 언급> ... <구문> 섹션/항목"
-            name_positions = [
-                (m.start(), name)
-                for name in CHECKLIST_NAMES
-                for m in re.finditer(re.escape(name), line)
-            ]
-            if not name_positions:
-                continue
-            for keyword in SECTION_KEYWORDS:
-                for km in re.finditer(re.escape(keyword), line):
-                    preceding = [p for p in name_positions if p[0] < km.start()]
-                    if not preceding:
-                        continue
-                    checklist_ref = max(preceding, key=lambda p: p[0])[1]
-                    phrase = extract_phrase_before(line, km.start())
-                    if len(phrase) < 3:
-                        continue
-                    checked += 1
-                    ok, msg = verify_checklist_section(checklist_ref, phrase, heading_cache)
-                    if not ok:
-                        broken.append(f"{rel(path)}:{lineno}: {msg}")
-
-    return checked, broken
+JAVA_STRING_RE = re.compile(r'"(?:\\.|[^"\\\n])*"')
+JAVA_BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.S)
+JAVA_LINE_COMMENT_RE = re.compile(r'//[^\n]*')
+HASH_COMMENT_RE = re.compile(r'(^|\s)#[^\n]*')
+XML_COMMENT_RE = re.compile(r'<!--.*?-->', re.S)
 
 
-def code_ready_excluded_lines():
-    """code-ready.md convention · domain risk 섹션의 라인 번호(1-indexed) 집합.
-
-    두 섹션은 정적 분석 대체 수단이 없어 존치하기로 확정했다(Task 7) — 중복 매칭 제외 대상."""
-    path = CHECKLIST_DIR / "code-ready.md"
-    if not path.exists():
-        return set()
-    excluded = set()
-    in_excluded = False
-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip().lower()
-        if stripped.startswith("## "):
-            in_excluded = stripped.startswith(CODE_READY_EXCLUDED_HEADING_PREFIXES)
-        if in_excluded:
-            excluded.add(lineno)
-    return excluded
+def strip_non_code(path, text):
+    """주석과 문자열 리터럴을 걷어 낸다. 주석에만 남은 옛 이름이 "코드에 있음"으로 통과하지 않게 한다."""
+    if path.suffix in {".java", ".gradle", ".kts"}:
+        text = JAVA_STRING_RE.sub('""', text)
+        text = JAVA_BLOCK_COMMENT_RE.sub(" ", text)
+        return JAVA_LINE_COMMENT_RE.sub(" ", text)
+    if path.suffix in {".yml", ".yaml", ".properties"}:
+        return HASH_COMMENT_RE.sub(r"\1", text)
+    if path.suffix == ".xml":
+        return XML_COMMENT_RE.sub(" ", text)
+    return text
 
 
-def check_duplicate_rules(files):
-    """정본 문구 사전이 정본 밖 파일에 본문으로 그대로 등장하는지 정확 매칭으로 확인한다.
+def build_code_index(root):
+    """식별자 대조에 쓰는 색인: 코드(주석·문자열 제외)에 나오는 대문자 시작 단어, 펼친 YAML 키, 설정·코드·스크립트 원문."""
+    tokens = set()
+    for path in iter_code_files(root, CODE_TOKEN_SUFFIXES):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        tokens.update(JAVA_TOKEN_RE.findall(strip_non_code(path, text)))
+    yaml_keys = set()
+    corpus_parts = []
+    for path in iter_code_files(root, CONFIG_CORPUS_SUFFIXES):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        corpus_parts.append(normalize_key(text))
+        if path.suffix in {".yml", ".yaml"}:
+            yaml_keys.update(flatten_yaml_keys(text))
+    return {"tokens": tokens, "yaml_keys": yaml_keys, "corpus": "\n".join(corpus_parts)}
 
-    제외 대상: 펜스 코드 블록(커맨드 예시), 정본 파일 자신, 정본 경로를 포함한 포인터 문장,
-    code-ready.md convention/domain risk 섹션(존치 결정)."""
+
+def config_key_known(key, index):
+    if key in EXTERNAL_CONFIG_KEYS:
+        return True
+    for candidate in (key, key.rsplit(".", 1)[0]):
+        normalized = normalize_key(candidate)
+        if normalized.count(".") < 1:
+            continue
+        if normalized in index["yaml_keys"] or normalized in index["corpus"]:
+            return True
+    # Kafka 클라이언트 속성(max.poll.records)은 Spring 설정에 하이픈 형태(max-poll-records)로 들어간다.
+    return normalize_key(key).replace(".", "") in index["corpus"]
+
+
+def check_identifiers(files, index, root=REPO_ROOT):
     checked = 0
     issues = []
-    code_ready_path = (CHECKLIST_DIR / "code-ready.md").resolve()
-    code_ready_excluded = code_ready_excluded_lines()
-
-    for entry in DUPLICATE_RULES:
-        checked += 1
-        canonical_path = (REPO_ROOT / entry["canonical"]).resolve()
-        canonical_name = Path(entry["canonical"]).name
-
-        for path in files:
-            resolved_path = path.resolve()
-            if resolved_path == canonical_path:
+    for path in files:
+        scan_lines = strip_fenced_code(path.read_text(encoding="utf-8").splitlines())
+        for lineno, line in enumerate(scan_lines, start=1):
+            if not line:
                 continue
-            is_code_ready = resolved_path == code_ready_path
-            scan_lines = strip_fenced_code(path.read_text(encoding="utf-8").splitlines())
-
-            for lineno, line in enumerate(scan_lines, start=1):
-                if not line:
+            for span in backtick_spans(line):
+                class_match = CLASS_SPAN_RE.match(span)
+                if class_match and CAMEL_RE.match(class_match.group(1)):
+                    checked += 1
+                    name = class_match.group(1)
+                    if name not in index["tokens"] and name not in EXTERNAL_TYPE_NAMES:
+                        issues.append(f"{rel(path, root)}:{lineno}: 코드에 없는 클래스 — `{span}`")
                     continue
-                if is_code_ready and lineno in code_ready_excluded:
-                    continue
-                if canonical_name in line:
-                    continue  # 정본 경로를 포함한 포인터 문장 — 매칭 제외
-                normalized = line.replace("`", "").replace("*", "")
-                for phrase in entry["phrases"]:
-                    if phrase in normalized:
-                        issues.append(
-                            f"{rel(path)}:{lineno}: '{entry['name']}' 규칙 중복 의심"
-                            f" (정본: {entry['canonical']}) — {line.strip()}"
-                        )
-                        break
-
+                if DOTTED_KEY_RE.match(span) and span.rsplit(".", 1)[1] not in FILE_SUFFIXES:
+                    checked += 1
+                    if not config_key_known(span, index):
+                        issues.append(f"{rel(path, root)}:{lineno}: 설정·코드·스크립트에 없는 키 — `{span}`")
     return checked, issues
 
+
+# ── 판정 4: Mermaid ──────────────────────────────────────────────────────────
 
 def check_mermaid_labels(files):
-    """```mermaid 펜스 안 노드/엣지 라벨에 금지 문자(중괄호·가운뎃점·유니코드 화살표)가 있는지 확인한다.
-
-    정보 제공용 — 기존 아카이브 다이어그램까지 0건을 강제하지 않는다."""
     checked = 0
     issues = []
-
     for path in files:
         in_mermaid = False
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -480,78 +411,44 @@ def check_mermaid_labels(files):
                         if ch in label:
                             found.add(name)
             if found:
-                issues.append(f"{rel(path)}:{lineno}: 금지 문자({', '.join(sorted(found))}) — {line.strip()}")
-
+                issues.append(f"{rel(path)}:{lineno}: 금지 문자({', '.join(sorted(found))}) — {stripped}")
     return checked, issues
 
 
-def first_existing(path_part, base_dir):
-    """참조 무결성 판정의 후보 경로 순회 로직을 재사용해, 처음 존재하는 실제 경로를 반환한다."""
-    if path_part.startswith(("./", "../")):
-        candidate = (base_dir / path_part).resolve()
-        return candidate if candidate.exists() else None
-    for candidate in path_candidates(path_part, base_dir):
-        resolved = candidate.resolve()
-        if resolved.exists():
-            return resolved
-    return None
-
+# ── 판정 5: 고아 문서 ────────────────────────────────────────────────────────
 
 def collect_referenced_paths(files):
-    """스캔 대상 문서 전체에서 실제로 해석되는 링크/백틱 경로 대상 집합을 모은다."""
     referenced = set()
     for path in files:
-        scan_lines = strip_fenced_code(path.read_text(encoding="utf-8").splitlines())
-        for line in scan_lines:
+        for line in strip_fenced_code(path.read_text(encoding="utf-8").splitlines()):
             if not line:
                 continue
             for _text, target in LINK_RE.findall(line):
                 target = target.strip()
                 if target.startswith(("#", "http://", "https://", "mailto:")):
                     continue
-                path_part = target.split("#", 1)[0].strip()
-                if not path_part:
-                    continue
-                resolved = first_existing(path_part, path.parent)
+                resolved = first_existing(target.split("#", 1)[0].strip(), path.parent)
                 if resolved:
                     referenced.add(resolved)
-
-            line_without_links = LINK_RE.sub(lambda m: " " * len(m.group(0)), line)
-            for span in BACKTICK_RE.findall(line_without_links):
-                span = span.strip()
-                if not is_path_shaped(span):
-                    continue
-                path_part = span.split("#", 1)[0]
-                resolved = first_existing(path_part, path.parent)
-                if resolved:
-                    referenced.add(resolved)
+            for span in backtick_spans(line):
+                if is_path_shaped(span):
+                    resolved = first_existing(span.split("#", 1)[0], path.parent)
+                    if resolved:
+                        referenced.add(resolved)
     return referenced
 
 
 def check_orphan_docs(files):
-    """`.claude/` 마크다운 중 어디서도 참조되지 않는 파일을 찾는다.
-
-    `SKILL.md`/`.claude/agents/*.md`는 frontmatter 로 자동 탐색되는 진입점이라 제외한다.
-    정보 제공용 — 판정 결과가 카테고리 배제가 아니라 실제 참조 그래프인지 샘플로 검증한다."""
     referenced = collect_referenced_paths(files)
-
     candidates = [
-        p for p in unique_paths(
-            p for root in ORPHAN_SCAN_ROOTS for p in sorted(root.rglob("*.md"))
-        )
+        p for p in unique_paths(p for root in ORPHAN_SCAN_ROOTS for p in sorted(root.rglob("*.md")))
         if p.name != "SKILL.md" and p.parent.name != "agents"
     ]
-    checked = len(candidates)
-    orphans = [f"{rel(p)}: 어디서도 참조되지 않음" for p in candidates if p.resolve() not in referenced]
-    return checked, orphans
+    orphans = [f"{rel(p)}: 어디서도 참조되지 않음" for p in candidates if p not in referenced]
+    return len(candidates), orphans
 
 
-def report(title, checked, issues):
-    print(f"[{title}] 검사 {checked}건, 문제 {len(issues)}건")
-    for issue in issues:
-        print(f"  - {issue}")
-    print()
-
+# ── 판정 6: 역할 설정 동기화 ─────────────────────────────────────────────────
 
 def check_role_configs():
     result = subprocess.run(
@@ -563,42 +460,36 @@ def check_role_configs():
     return 1, []
 
 
+def report(title, checked, issues):
+    print(f"[{title}] 검사 {checked}건, 문제 {len(issues)}건")
+    for issue in issues:
+        print(f"  - {issue}")
+    print()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--strict", action="store_true", help="판정 1~4·7 오류가 있으면 종료 코드 1")
+    parser.add_argument("--strict", action="store_true", help="판정 1·2·3·6에 문제가 있으면 종료 코드 1")
     args = parser.parse_args(argv)
-    files = iter_markdown_files()
-    print(f"검사 대상 문서 {len(files)}개 (AGENTS.md, .agents, .claude, docs/context)\n")
 
-    ref_checked, ref_broken = check_references(files)
-    report("1. 참조 무결성", ref_checked, ref_broken)
+    files = iter_markdown_files(SCAN_ROOTS)
+    identifier_files = iter_markdown_files([REPO_ROOT / r for r in IDENTIFIER_ROOTS])
+    print(f"검사 대상 문서 {len(files)}개, 식별자 대조 문서 {len(identifier_files)}개\n")
 
-    fm_checked, fm_broken = check_frontmatter()
-    report("2. frontmatter 필수 필드", fm_checked, fm_broken)
+    results = [
+        ("1. 참조 무결성", *check_references(files), True),
+        ("2. frontmatter 필수 필드", *check_frontmatter(), True),
+        ("3. 문서 식별자 대조", *check_identifiers(identifier_files, build_code_index(REPO_ROOT)), True),
+        ("4. Mermaid 금지 문자", *check_mermaid_labels(files), False),
+        ("5. 고아 문서", *check_orphan_docs(files), False),
+        ("6. 역할 설정 동기화", *check_role_configs(), True),
+    ]
+    for title, checked, issues, _blocking in results:
+        report(title, checked, issues)
 
-    checklist_checked, checklist_broken = check_checklist_refs(files)
-    report("3. 체크리스트 참조", checklist_checked, checklist_broken)
-
-    dup_checked, dup_issues = check_duplicate_rules(files)
-    report("4. 중복 규칙", dup_checked, dup_issues)
-
-    mermaid_checked, mermaid_issues = check_mermaid_labels(files)
-    report("5. Mermaid 금지 문자", mermaid_checked, mermaid_issues)
-
-    orphan_checked, orphan_issues = check_orphan_docs(files)
-    report("6. 고아 문서", orphan_checked, orphan_issues)
-
-    role_checked, role_issues = check_role_configs()
-    report("7. 역할 설정 동기화", role_checked, role_issues)
-
-    total_issues = (
-        len(ref_broken) + len(fm_broken) + len(checklist_broken)
-        + len(dup_issues) + len(mermaid_issues) + len(orphan_issues) + len(role_issues)
-    )
-    print(f"총 문제 {total_issues}건")
-
-    blocking_issues = ref_broken + fm_broken + checklist_broken + dup_issues + role_issues
-    return 1 if args.strict and blocking_issues else 0
+    print(f"총 문제 {sum(len(issues) for _, _, issues, _ in results)}건")
+    blocking = any(issues for _, _, issues, is_blocking in results if is_blocking)
+    return 1 if args.strict and blocking else 0
 
 
 if __name__ == "__main__":

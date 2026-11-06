@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>에이전트 지침 개편 보고서</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1f23; --muted: #5d636c; --line: #dfe2e6; --card: #f6f7f9;
+    --accent: #2f5fd0; --ok: #1f7a46; --warn: #a15c00; --bad: #b3261e; --code: #f1f3f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171a; --fg: #e6e8eb; --muted: #a0a6ae; --line: #2c3036; --card: #1c1f23;
+      --accent: #7aa2ff; --ok: #5fc48b; --warn: #e3a64a; --bad: #ff7b72; --code: #22262b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171a; --fg: #e6e8eb; --muted: #a0a6ae; --line: #2c3036; --card: #1c1f23;
+    --accent: #7aa2ff; --ok: #5fc48b; --warn: #e3a64a; --bad: #ff7b72; --code: #22262b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.25rem; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+  p, li { margin: 6px 0; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  nav { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; margin: 16px 0 24px; }
+  nav ol { margin: 4px 0; padding-left: 20px; }
+  a { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 12px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card .k { color: var(--muted); font-size: .85rem; }
+  .card .v { font-size: 1.35rem; font-weight: 600; }
+  .callout { border-left: 4px solid var(--warn); background: var(--card); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .callout.ok { border-color: var(--ok); }
+  .table-wrap { overflow-x: auto; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--card); white-space: nowrap; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .8rem; font-weight: 600; border: 1px solid currentColor; }
+  .b-ok { color: var(--ok); } .b-warn { color: var(--warn); } .b-bad { color: var(--bad); }
+  .mermaid { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; overflow-x: auto; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; margin: 10px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<h1>에이전트 지침을 공통 구조로 바꾸고 문서를 코드 기준으로 정리했다</h1>
+<p class="sub">토픽 AGENT-STRUCTURE-OVERHAUL · 이슈 <a href="https://github.com/hyoguoo/payment-platform/issues/163">#163</a> · 2026-11-06 · 브랜치 <code>agent-structure-overhaul</code>(main 기준)</p>
+
+<nav>
+  <strong>읽는 순서</strong>
+  <ol>
+    <li><a href="#summary">요약</a>: 문제, 결과, 남은 일</li>
+    <li><a href="#before-after">전후 비교</a>: 구조 그림, 영역별 변화, 주요 결정</li>
+    <li><a href="#evidence">결과와 근거</a>: 검증 명령, 판정, 코드와 다르던 서술, 리뷰 처리</li>
+    <li><a href="#next">남은 위험과 다음 단계</a>: <code>#162</code> 리베이스, 할 일</li>
+  </ol>
+</nav>
+
+<h2 id="summary">요약 — 규칙은 한 곳에, 문서는 코드와 같게</h2>
+
+<div class="grid">
+  <div class="card"><div class="k">context 문서</div><div class="v">20 → 12개</div></div>
+  <div class="card"><div class="k">문서 머리의 갱신 이력 줄</div><div class="v">11 → 0개</div></div>
+  <div class="card"><div class="k">지침 정본</div><div class="v">AGENTS.md 1개</div></div>
+  <div class="card"><div class="k">Docker 없이 도는 단위 테스트</div><div class="v">6개 모듈 전부</div></div>
+</div>
+
+<div class="table-wrap"><table>
+  <tr><th>문제</th><td>규칙이 AGENTS.md, 역할 공통 문서, 공용 규칙 6개, 체크리스트 4개, <code>docs/context/CODEX.md</code>에 흩어져 있어 어느 문서가 맞는지 매번 따져야 했다. context 문서는 토픽이 끝날 때마다 머리에 이력을 덧붙여 지금 사실과 과거 결정이 섞였다. 컨테이너를 띄우는 테스트 9개가 단위 테스트에 있어 Docker가 꺼지면 종료 검증 hook이 막혔다.</td></tr>
+  <tr><th>결과</th><td>agent-backend-kit 구조로 바꿨다. 지침은 <code>AGENTS.md</code> 하나, 프로젝트 값은 <code>stack.md</code>·<code>risk.md</code> 두 프로필, workflow는 토픽 폴더(BRIEF·DESIGN·EXPERIMENTS)다. context·smoke·quality 문서를 코드와 대조해 낡은 서술을 고쳤고, 이를 자동으로 잡는 문서 검사를 붙였다.</td></tr>
+  <tr><th>검증</th><td>hook 테스트 34개, 문서 검사 테스트 18개, 문서 strict 검사, 역할 동기화, 6개 모듈 단위 테스트(Docker 없음), 세 서비스 통합 테스트가 통과했다. 실제 세션에서 hook 동작과, 새 Claude·Codex 세션의 지침 해석도 확인했다.</td></tr>
+  <tr><th>남은 일</th><td>이 PR이 병합되면 <code>#162</code>를 main 위로 리베이스하고, 빼 둔 <code>#162</code> 몫(진행 중 두 토픽의 새 형식 문서 등)을 넣는다.</td></tr>
+</table></div>
+
+<h2 id="before-after">전후 비교 — 흩어진 규칙이 프로필 두 개와 정본 하나로 모였다</h2>
+
+<h3>전</h3>
+<pre class="mermaid">
+flowchart TB
+    AG["AGENTS.md"] --> SK["skills 14개"]
+    AG --> RO["roles + roles.toml"]
+    SK --> SH["공용 규칙 6개 + 체크리스트 4개"]
+    SK --> PL["토픽 문서 + 별도 PLAN"]
+    HK[".claude/hooks 2개, 모듈 목록 하드코딩"]
+    AG --> CX["docs/context/CODEX.md"]
+    AG --> CTX["context 20개, 머리마다 이력"]
+</pre>
+<h3>후</h3>
+<pre class="mermaid">
+flowchart TB
+    CL["CLAUDE.md"] -->|가져오기| AG["AGENTS.md 정본"]
+    AG --> PF["profiles: stack.md, risk.md"]
+    AG --> CV["conventions: git, testing, writing"]
+    AG --> SK["skills: workflow 5, review, explain, 전용 6"]
+    SK --> TF["docs/topics/TOPIC 폴더"]
+    PF -->|verify-config| HK[".agents/hooks 3개"]
+    AG --> OP[".agents/README.md 운영"]
+    AG --> CTX["context 12개 + README"]
+</pre>
+
+<h3>영역별로 무엇이 바뀌었나</h3>
+<div class="table-wrap"><table>
+  <tr><th>영역</th><th>전</th><th>후</th></tr>
+  <tr><td>프로젝트 값</td><td>hook 스크립트와 여러 문서에 흩어짐</td><td><code>stack.md</code>(버전, 검증 명령, hook 설정, 코드 규칙), <code>risk.md</code>(결제 불변식 7개, 핵심 경로)</td></tr>
+  <tr><td>workflow</td><td>토픽 문서 + PLAN 파일 + 단계별 체크리스트</td><td>토픽 폴더, 개발자 확인 지점 3곳(사전 브리핑, 합의 브리핑, 리뷰 수정 여부), 합의 뒤 변경은 L1~L4로 처리</td></tr>
+  <tr><td>역할</td><td>implementer, reviewer, domain-expert(fable)</td><td>implementer, reviewer, risk-reviewer(opus). Claude·Codex 설정은 <code>roles.toml</code>에서 생성</td></tr>
+  <tr><td>hook</td><td>종료 검증·편집 린트 2개</td><td>같은 코드 상태는 다시 막지 않음, 동시 실행 잠금, 일시정지, 판정 기록(<code>.git/agent-verify/trace.log</code>). 값은 <code>stack.md</code>에서 읽음</td></tr>
+  <tr><td>테스트 분류</td><td>"앱 전체를 띄우는가"로 나눔</td><td>"컨테이너를 띄우면 통합 테스트". 9개를 <code>integrationTest</code>로 옮김</td></tr>
+  <tr><td>작성 기준</td><td><code>writing*.md</code> 4개</td><td>브리핑·PR용 공통 기준 + 위키·포스팅용 상세 기준(개발자가 준 문체 교정 지침 원문 + 프로젝트 규칙)</td></tr>
+  <tr><td>할 일</td><td>context TODOS, CONCERNS, STATE 별건 메모</td><td><code>docs/TODOS.md</code> 한 곳(목록 표 + 상세)</td></tr>
+  <tr><td>문서 검사</td><td>체크리스트 참조, 중복 문구 검사</td><td>문서 속 경로, 클래스 이름, 설정 키가 실제 코드에 있는지 대조(주석·문자열 제외)</td></tr>
+</table></div>
+
+<h3>주요 결정</h3>
+<div class="table-wrap"><table>
+  <tr><th>결정</th><th>이유</th><th>버린 대안</th></tr>
+  <tr><td>kit 파일을 복사하고 kit 문장은 다시 쓰지 않는다</td><td>이후 kit 개선분을 diff로 가져오기 위해</td><td>현재 지침을 kit 방향으로 고쳐 쓰기</td></tr>
+  <tr><td>Claude Code와 Codex를 둘 다 지원한다</td><td>두 도구를 계속 쓴다</td><td>kit처럼 Claude만</td></tr>
+  <tr><td>결제 위험 검토 역할을 risk-reviewer로 바꾸고 opus를 쓴다</td><td>비용(개발자 요청), kit과 이름을 맞춤</td><td>이름과 fable 유지</td></tr>
+  <tr><td>핵심 경로는 불변식을 실제로 쥐는 하위 경로만, 로그·주석만 바꾼 변경은 제외</td><td>서비스 코드 전체로 두면 로그 한 줄에도 risk-reviewer가 불린다(리뷰 지적)</td><td>서비스 <code>src/main</code> 전체</td></tr>
+  <tr><td>컨테이너를 쓰는 테스트를 통합 테스트로 옮긴다</td><td>Docker 유무로 단위 테스트와 hook 결과가 갈리지 않게(개발자 선택)</td><td>hook이 Docker 부재를 경고로 넘기기</td></tr>
+  <tr><td>context 문서는 겹치는 것만 합친다</td><td>결제 흐름처럼 나눠 읽는 문서는 남긴다(개발자 선택)</td><td>내용만 정정, 5~6개로 최소화</td></tr>
+  <tr><td>개편은 main 기준 PR, <code>#162</code>는 병합 뒤 리베이스</td><td>개발자 의도. 처음에는 <code>#162</code> 위에서 진행했다가 바로잡았다</td><td><code>#162</code> 위에 쌓기</td></tr>
+</table></div>
+
+<h2 id="evidence">결과와 근거 — 검사는 모두 통과했고, 대조하며 낡은 서술 다수를 고쳤다</h2>
+
+<h3>검증 명령</h3>
+<div class="table-wrap"><table>
+  <tr><th>명령</th><th>결과</th></tr>
+  <tr><td><code>bash scripts/test-hooks.sh</code></td><td><span class="badge b-ok">34/34</span> 종료 검증·편집 린트·일시정지·잠금·설정 판정</td></tr>
+  <tr><td><code>python3 -m unittest scripts/test_check_agent_docs.py</code></td><td><span class="badge b-ok">18/18</span> 문서 식별자 대조 규칙</td></tr>
+  <tr><td><code>python3 scripts/check-agent-docs.py --strict</code></td><td><span class="badge b-ok">종료 0</span> 참조·frontmatter·식별자·역할 동기화 문제 0건. Mermaid 경고 16건은 kit 다이어그램의 따옴표 라벨이라 정보로 남김</td></tr>
+  <tr><td><code>python3 scripts/sync-agent-configs.py --check</code></td><td><span class="badge b-ok">6개 일치</span></td></tr>
+  <tr><td>6개 모듈 <code>test --rerun-tasks</code>, Docker를 못 찾게 한 상태(main 기준)</td><td><span class="badge b-ok">통과</span> payment 698, pg 442, product 70, user 17, gateway 4, eureka 1</td></tr>
+  <tr><td>세 서비스 <code>integrationTest --rerun-tasks</code></td><td><span class="badge b-ok">통과</span> 761, 84, 12 (<code>#162</code> 기준 실행). main 기준 재실행 결과는 PR 본문에 적는다</td></tr>
+  <tr><td><code>checkstyleTest</code>, <code>spotbugsTest</code> (payment, pg, product)</td><td><span class="badge b-ok">통과</span></td></tr>
+</table></div>
+
+<h3>판정 시나리오</h3>
+<div class="table-wrap"><table>
+  <tr><th>판정</th><th>확인한 것</th></tr>
+  <tr><td>hook이 실제 세션에서 도는가</td><td>implementer가 domain 파일에 <code>var</code>를 넣자 편집 린트가 바로 막았다. 끝날 때 종료 검증이 이 브랜치에서 바뀐 모듈의 테스트만 돌려 통과했다. 동시에 끝난 검증은 잠금을 기다렸다가 건너뛰었다</td></tr>
+  <tr><td>새 세션이 지침대로 판단하는가</td><td>Claude Code: 작은 수정은 "작음, workflow 없음", 토픽 요청은 "큼, discuss 조사 뒤 사전 브리핑". Codex: 작은 수정은 "작음", 토픽 요청은 "중간, discuss로 구체화". 규모 판단만 갈렸다</td></tr>
+  <tr><td>문서가 코드와 같은가</td><td>식별자 불일치 0건, 이력 줄 0건</td></tr>
+</table></div>
+
+<div class="callout">
+  <strong>판정 중 알게 된 것</strong>: 첫 시도로 고른 <code>util/</code> 파일에서는 <code>var</code>가 잡히지 않았다. hook 문제가 아니라 Checkstyle 억제 목록이 <code>util</code>, <code>infrastructure</code>, <code>config</code> 같은 디렉토리의 검사를 모두 끄기 때문이다. 지침은 "<code>var</code> 금지를 Checkstyle로 강제한다"고 했지만 실제로는 일부 패키지에만 걸린다. stack.md 문구를 고치고 할 일로 남겼다.
+</div>
+
+<h3>코드와 대조하다 고친 낡은 서술 (주요한 것)</h3>
+<div class="table-wrap"><table>
+  <tr><th>문서</th><th>전</th><th>코드 기준</th></tr>
+  <tr><td>결제 흐름·확정 사이클</td><td>재고 보상은 <code>compensateAtomic</code></td><td><code>StockHoldReverter</code>가 상품마다 흔적이 있을 때만 되돌린다. 부분 취소 격리는 건너뛴다</td></tr>
+  <tr><td>확정 사이클</td><td>정리 작업이 결제를 READY로 되돌린다</td><td>결과 대기(<code>AWAITING_RESULT</code>)로 옮기고 900초 뒤 격리한다</td></tr>
+  <tr><td>아키텍처</td><td>Kafka 토픽 5개, 입력 포트 위치 예외는 pg 하나</td><td>토픽 6개, payment에도 <code>application/port/in</code>이 있다</td></tr>
+  <tr><td>스택</td><td>Alertmanager 미도입, 통지 채널 없음</td><td>Alertmanager가 있고 Discord로 통지한다</td></tr>
+  <tr><td>할 일</td><td>취소 포트는 인터페이스만 있다</td><td>취소·환불 포트 자체가 없다</td></tr>
+  <tr><td>할 일</td><td><code>payment_outbox.available_at</code>은 쓰이지 않는다</td><td>이미 V6 마이그레이션에서 지웠다</td></tr>
+  <tr><td>테스트</td><td>Testcontainers 재사용 설정 파일이 있다</td><td>저장소에 없다. 로컬 설정을 켰을 때만 재사용한다</td></tr>
+</table></div>
+
+<details>
+  <summary>리뷰 처리 (첫 리뷰 major 2·minor 5, 재검토 medium 1·low 2, 전부 수정)</summary>
+  <div class="table-wrap"><table>
+    <tr><th>지적</th><th>처리</th></tr>
+    <tr><td>핵심 경로가 서비스 전체라 넓고, product 중복 판정·Kafka 설정은 빠짐. 재검토에서 메시지 계약·엔티티·금액 변환도 빠졌다고 지적</td><td>불변식을 쥐는 하위 경로로 좁히고 빠진 경로를 더함. 로그·주석만 바꾼 변경은 제외한다고 명시</td></tr>
+    <tr><td>문서 검사가 주석에만 남은 이름도 통과시키고, <code>port/out</code>까지 건너뜀</td><td>주석·문자열을 뺀 코드로 색인, IDE 출력 <code>out</code>은 저장소·모듈 루트에서만 건너뜀. 테스트 3개 추가. 그 결과 없는 포트 이름을 언급하던 문장 1곳을 더 찾아 고침</td></tr>
+    <tr><td>hook 설정 설명이 실제와 다름, Lua·저장소 변경의 통합 테스트 조건 누락</td><td>stack.md 문구와 검증 순서 보완</td></tr>
+    <tr><td>Git 규칙을 합치며 일부 손실</td><td>부분 실패 시 원격 조회, 인증 실패 시 본문 보존 등 되살림</td></tr>
+    <tr><td>진행 중 토픽 이전에서 빠진 수치·사용자 요구, 라이브 드릴의 낡은 서술, 끊긴 앵커</td><td>모두 보완</td></tr>
+  </table></div>
+</details>
+
+<h2 id="next">남은 위험과 다음 단계 — <code>#162</code> 리베이스가 먼저다</h2>
+
+<pre class="mermaid">
+flowchart LR
+    A["개편 PR을 main에 병합"] --> B["162 브랜치를 main 위로 리베이스"]
+    B --> C["162 브랜치의 AGENTS.md, workflow, CODEX.md 변경은 개편본으로 정리"]
+    B --> D["빼 둔 162 브랜치 몫 적용: 두 토픽의 새 형식 문서, reports 이동, quality 수정, STATE 항목"]
+    D --> E["처리량 측정 재개: capacity 100/s"]
+</pre>
+
+<ul>
+  <li><strong>빼 둔 <code>#162</code> 몫</strong>: 옛 브랜치 <code>agent-structure-overhaul-on-162</code>에 최종본이 있다. 진행 중 두 토픽(처리량, 요청 추적)을 새 형식으로 옮긴 문서와 <code>docs/quality</code> 수정이다.</li>
+  <li><strong>처리량 측정 재개</strong>: 실행 안내의 예시 명령은 지난 회차와 조건이 다르다. 이전 회차와 비교하려면 로컬 드라이버 조건(VU 650, 관측 worker 256)을 써야 한다. 실행 안내 문서는 측정 소스 해시 대상이라 이번 수정으로 해시가 바뀐다.</li>
+  <li><strong>할 일로 남긴 것</strong>: Checkstyle 억제 목록의 범위, 코드·스크립트 주석의 낡은 서술 4곳, 종결된 결제에 늦게 온 confirm 재요청 처리.</li>
+  <li><strong>커밋 이력</strong>: main 기준으로 다시 쌓으면서 처음에 섞였던 커밋 경계는 그대로 옮겨졌다. 내용은 맞다.</li>
+</ul>
+
+<p class="sub">상세 근거: <a href="BRIEF.md">BRIEF</a>(사전·합의 브리핑, 완료 요약), <a href="DESIGN.md">DESIGN</a>(결정 D1~D26, 장애 시나리오, 태스크 결과, 리뷰 처리)</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'default', securityLevel: 'strict' });
+</script>
+</body>
+</html>

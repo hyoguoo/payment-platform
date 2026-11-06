@@ -71,7 +71,7 @@ jobs:
   # ── 에이전트 지침 문서 검사 (정보 제공용, 게이트 아님) ────────────────────
   # 서비스별로 돌 일이 아니라 6서비스 fan-out 과 독립된 단일 job 으로 둔다.
   # scripts/check-agent-docs.py 는 오탐이 잦아드는지 지켜보는 단계라 종료
-  # 코드를 항상 0으로 유지한다. 역할 설정 동기화만 별도 단계에서 실패시킨다.
+  # 코드를 항상 0으로 유지한다. 역할 설정 동기화와 검사 스크립트 자체의 테스트는 별도 단계에서 실패시킨다.
   agent-docs-check:
     name: 지침 문서·역할 설정 검사
     runs-on: ubuntu-latest
@@ -94,6 +94,9 @@ jobs:
 
       - name: 역할 설정 동기화 확인
         run: python3 scripts/sync-agent-configs.py --check
+
+      - name: 문서 검사 스크립트 테스트
+        run: python3 -m unittest scripts/test_check_agent_docs.py
 
   # ── 가드레일 훅 자체 검증 (게이트) ────────────────────────────────────────
   # 서비스별로 돌 일이 아니라 6서비스 fan-out 과 독립된 단일 job 으로 둔다.

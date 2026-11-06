@@ -63,7 +63,7 @@ kill -INT <pid>     # 또는 포그라운드면 Ctrl-C → 요약 출력
 ## 채워지는 지표 / 한계
 
 - **채워짐**: funnel(발행/종결)·상태 분포·전이율·벤더 latency(success/failure)·outbox·HTTP·시스템(JVM/GC/CPU/Hikari/lag)·서비스 그래프·exemplar. `--fail-rate` 적용 시 FAILED 상태·전이도.
-- **한계**: `QUARANTINED`·`DLQ` 패널은 단순 부하로 안 켜진다 — 격리는 금액 불일치/캐시 다운, DLQ 는 재시도 소진이라는 특정 조건이 필요하다. 해당 시나리오는 Phase-4 Toxiproxy 장애 주입의 몫.
+- **한계**: `QUARANTINED`·`DLQ` 패널은 단순 부하로 안 켜진다 — 격리는 금액 불일치/캐시 다운, DLQ 는 재시도 소진이라는 특정 조건이 필요하다. 이 상태를 보려면 해당 조건을 따로 만들어야 한다.
 
 ## 동작 형태 (참고)
 

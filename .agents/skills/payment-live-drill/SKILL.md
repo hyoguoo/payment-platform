@@ -38,7 +38,8 @@ description: 로컬 payment-platform의 결제·재시도·장애 시나리오�
 ## 산출물
 
 `live-drill/`는 저장소 내부의 Git 무시 디렉토리다. 결과는 `report.html`, 캡처는 `originals/`,
-명령 이력은 `captures.log`, 중단 시 메모는 `RESUME.md`에 둔다. 기존 PLAN이 있으면 함께 갱신한다.
+명령 이력은 `captures.log`, 중단 시 메모는 `RESUME.md`에 둔다. 진행 중인 토픽의 실측이면 결과와 원자료 위치를
+그 토픽의 EXPERIMENTS(실험 모드)나 DESIGN의 "진행 기록"에도 남긴다.
 캡처 이름은 `<순번>-<내용>.png`로 한다. 시간에 따른 변화는 같은 접두사에 순번을 이어 붙인다.
 
 캡처는 기본 1440 폭·2배 해상도다. `CAPTURE_OUT_DIR`, `CAPTURE_WIDTH`, `CAPTURE_DELAY`로 조절하고

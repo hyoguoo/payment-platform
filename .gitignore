@@ -262,3 +262,4 @@ POSTING-DRAFT-*.md
 
 # Local quality tooling bytecode
 scripts/quality/__pycache__/
+scripts/__pycache__/

@@ -1,7 +1,6 @@
 # Domain Pitfalls
 
-> 최종 갱신: 2026-09-11 (CLEANUP-BATCH-F — #16 알려진 한계의 재동기화 별건 서술을 도입된 가드 기준으로 정정, 남은 확인~덮어쓰기 창은 CONCERNS L-20 참조로 이관). 이전: 2026-09-06 (CONFIRM-RESULT-NONRETRYABLE-STATUS ship — L-7/L-12 인용의 되돌리기 메서드명을 새 이름으로 정정). 이전: 2026-08-18 (STOCK-GATE-PER-PRODUCT — §16 에 게이트의 상품 단위 분해·선차감 기록과 회수·초과 판매 두 번째 방어선 기록, §18 에 상품 단위 판정과 종결 후 재차감의 회수 경로 추가, §28(갭 락 데드락)·§29(벌크 UPDATE flush 순서) 신설). 이전: 2026-08-13 (PG-DUPLICATE-APPROVAL-SETTLEMENT — §13 에 조회 경로 확장 기록: `PgStatusResult.approvedAtRaw` 신설 전까지 상태 조회 결과가 offset 을 버려 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인의 정산 시각이 밀렸음). 이전: 2026-08-11 (PG-MESSAGE-DEDUPE-LAYER-REMOVAL — §10 에 pg-service 도 같은 사유로 리스너 진입 Redis 필터를 제거했음과 그로 잃은 IN_PROGRESS 재전송 억제 효과 기록). 이전: 2026-07-11 (DLQ-QUARANTINE-RECOVERY — §20 잔여 한계 서술을 "DLQ 적체분 관리자 수동 재주입(`DlqReprocessUseCase`) 복구, 자동 재시도는 후속"으로 정정). 이전: 2026-06-27 (ALERTING-RULES-AND-FAULT-DRILL — §24 `kafka_brokers` dead branch 함정 등재). DOCS-CONSISTENCY-OVERHAUL Task 9(2026-07-03)에서 §17/§18 CONCERNS.md 참조 오류(ID dangling/오기) 정정
-> 비동기 confirm + 다중 서비스 분산 트랜잭션 환경에서 학습된 함정 목록.
+> 이 프로젝트에서 실제로 겪었거나 코드에 남아 있는 함정과, 고치지 않고 받아들인 한계(맨 아래 "수용한 한계")를 모은다. 비동기 confirm과 다중 서비스 분산 트랜잭션이 배경이다. 번호(§)와 L-/C- 코드는 다른 문서가 가리키므로 바꾸지 않는다.
 
 ## 1. AOP 우회 → audit trail 누락
 
@@ -53,26 +52,26 @@ process(result);  // result 가 null 일 수 있음
 - 워커 등 절대 죽으면 안 되는 경로만 catch + ERROR 승격 + 메트릭(`*_fail_total` 카운터)
 - 단순 swallow + INFO/WARN 로그는 사고 가시화 실패
 
-**적용 사례 (STOCK-COMPENSATION-RECOVERY 봉인)**:
-- `PaymentConfirmResultUseCase.compensateStockCache` 의 try/catch swallow + WARN 한 줄 + 진행 패턴이 본 함정의 전형 — 보상 호출이 RuntimeException 으로 끝나도 후속 `markPaymentAsFail` 이 진행되어 재고 silent loss 발생
-- 처방: catch 제거 + Spring Kafka `DefaultErrorHandler` (`KafkaErrorHandlerConfig`) 가 retry / DLQ 책임. `handleFailed` 호출 순서를 보상 → `markPaymentAsFail` 로 뒤집어 보상 먼저 끝내도록 강제. 보상 자체는 Lua atomic + dedup token 으로 멱등 보장
+**현재 코드의 적용**:
+- 재고 보상 호출을 try/catch로 삼키고 WARN 한 줄 뒤에 `markPaymentAsFail`을 진행하면, 보상이 RuntimeException으로 끝나도 결제만 실패 처리돼 재고가 조용히 사라진다. `PaymentConfirmResultUseCase.handleFailed`는 catch 없이 `StockHoldReverter.revertEachProductHold`(보상)를 먼저 하고 그다음 `markPaymentAsFail`을 호출한다
+- 예외는 `KafkaErrorHandlerConfig`의 `DefaultErrorHandler`가 재시도·DLQ로 처리한다. 보상 자체는 Lua dedup token으로 멱등이다
 
 ## 6. 시각 직접 호출(`now()`) 과 시간대 모호성
 
 **증상**: ① 테스트에서 시간 위조 불가 → 시간 의존 분기 단정 어려움. ② `LocalDateTime`(시간대 없음)을 쓰면 컨테이너 TZ 에 따라 의미가 달라져, raw-JDBC 저장값과 ORM 조회 기준이 어긋난다(예: 만료 cutoff vs created_at 9시간 어긋남, dedupe TTL 윈도우 오염).
 
-**처방** (TIME-MODEL-AND-EXPIRY 표준 + TIME-MODEL-FOLLOWUP 잔여 수렴):
+**처방**:
 - **시간 소스 = JDK `Clock` 빈 주입**(4서비스 공통, `Clock.systemUTC()`). 도메인은 `Clock` 을 주입받지 않고 호출자가 `clock.instant()` 로 얻은 `Instant` 를 **인자로 주입**한다(도메인 순수성). 어댑터도 self `clock.instant()` 호출 금지 — 진입점(consumer/스케줄러)이 `now` 를 1회 산출해 전 경로에 같은 `Instant` 를 전달(시계 split 방지). 예: product `StockCommitConsumer` 가 `now` 를 commit 인자와 `resolveExpiresAt` 양쪽에 동일 전달.
-- **시각 타입 = `Instant`**(절대 시점). `LocalDateTime` 은 표현/비즈니스 경계 컬럼(예: `payment_outbox.next_retry_at/in_flight_at`)에서만 제한적으로 — 이 경우 `toInstant/toLocalDateTime(UTC)` 헬퍼로 명시 변환. **BaseEntity audit 컬럼(`created_at/updated_at/deleted_at`)은 `Instant`** (TIME-MODEL-FOLLOWUP 에서 `LocalDateTime` → `Instant` 전환, 매핑 경계 수동 `.toInstant(UTC)` 변환 제거).
+- **시각 타입 = `Instant`**(절대 시점). `LocalDateTime` 은 표현/비즈니스 경계 컬럼(예: `payment_outbox.next_retry_at/in_flight_at`)에서만 제한적으로 — 이 경우 `toInstant/toLocalDateTime(UTC)` 헬퍼로 명시 변환. **BaseEntity audit 컬럼(`created_at/updated_at/deleted_at`)은 `Instant`**.
 - **UTC 저장 일관**: ORM 경로 `hibernate.jdbc.time_zone=UTC`, raw-JDBC 경로 datasource URL `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` + 바인딩에 명시 UTC `Calendar`. 도메인·audit 시각 컬럼은 `DATETIME(6)`(마이크로초). payment audit 컬럼은 V4(`V4__audit_datetime6_upgrade.sql`)로 `DATETIME` → `DATETIME(6)` 승급.
 - **JPA auditing**: `@EnableJpaAuditing(dateTimeProviderRef="clockDateTimeProvider")` + `Clock` 기반 `DateTimeProvider` 가 `Instant` 를 반환해 `createdAt/updatedAt`(BaseEntity `Instant`)을 UTC 기준으로 채운다. created_at 기반 만료 cutoff 비교가 비-UTC JVM 에서 어긋나지 않게 하는 핵심. 회귀 가드: `JpaAuditingProviderWiringTest`(provider 반환 타입 + `dateTimeProviderRef` 빈 연결).
-- **raw-JDBC 만료 판정도 앱 `Instant` 기준**: product 재고 멱등(`JdbcEventDedupeStore`)의 만료행 삭제·정리가 DB `NOW()` 가 아닌 호출자 주입 `now` 로 비교(TIME-MODEL-FOLLOWUP, DB 시계 의존 제거). `connectionTimeZone=UTC` 는 raw-JDBC `Timestamp` 바인딩 backstop 으로 존치.
+- **raw-JDBC 만료 판정도 앱 `Instant` 기준**: product 재고 멱등(`JdbcEventDedupeStore`)의 만료행 삭제·정리가 DB `NOW()` 가 아닌 호출자 주입 `now` 로 비교(DB 시계에 기대지 않는다). `connectionTimeZone=UTC` 는 raw-JDBC `Timestamp` 바인딩 backstop 으로 존치.
 - 테스트는 `Clock.fixed(...)` / 가변 `TestClock` 빈 또는 명시 `Instant` 리터럴로 시각 고정.
-- **비-UTC JVM 1차 방어 (F6 backstop, 적용 완료)**: 6개 서비스 컨테이너/JVM `TZ=UTC` 를 **3겹**으로 명시 — Dockerfile `ENV TZ=UTC` + `ENTRYPOINT` JVM `-Duser.timezone=UTC` + compose `environment.TZ=UTC`(eureka 는 `docker-compose.infra.yml`). 동일값 멱등이라 충돌 없음. auditing UTC化와 별개로 깔아두는 안전망(TIME-MODEL-FOLLOWUP).
+- **비-UTC JVM 1차 방어**: 6개 서비스 컨테이너/JVM `TZ=UTC` 를 **3겹**으로 명시 — Dockerfile `ENV TZ=UTC` + `ENTRYPOINT` JVM `-Duser.timezone=UTC` + compose `environment.TZ=UTC`(eureka 는 `docker-compose.infra.yml`). 동일값이라 충돌 없다. auditing 의 UTC 처리와 별개로 깔아두는 안전망이다.
 
 ## 7. 종결 상태 재진입
 
-**증상**: 다중 워커 / 메시지 재배달 환경에서 이미 DONE 인 결제에 또 done() 또는 quarantine() 호출 → 도메인 불변식 위반.
+**증상**: 다중 워커 / 메시지 재전송 환경에서 이미 DONE 인 결제에 또 done() 또는 quarantine() 호출 → 도메인 불변식 위반.
 
 **처방**:
 - `PaymentEventStatus.isTerminal()` 단일 진실 원천(SSOT) 사용 — exhaustive switch
@@ -89,37 +88,39 @@ process(result);  // result 가 null 일 수 있음
 
 ## 9. dedupe TTL ≠ Kafka retention
 
-**증상**: Kafka retention(7d) 안에 메시지가 재배달되는데 dedupe TTL 이 1h 면 중복 처리 발생.
+**증상**: Kafka retention(7d) 안에 메시지가 재전송되는데 dedupe TTL 이 1h 면 중복 처리 발생.
 
 **처방**:
 - dedupe TTL 기본 P8D (Kafka retention 7d + 복구 버퍼 1d)
-- 모든 모듈의 dedupe TTL 정렬 (`StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)`)
-- 만료 행 청소는 `DedupeCleanupWorker` (`@Scheduled`, payment/product) 가 `expires_at < now` 기준으로 DELETE — TTL P8D > Kafka retention 7d 관계상 삭제 대상은 이미 재배달 가능 윈도우를 벗어난 행뿐이라 멱등에 무해 (EOS-FOLLOWUP-CLEANUP)
+- 모든 모듈의 dedupe TTL 정렬 (`StockCommitUseCase.DEDUPE_TTL = Duration.ofDays(8)`, `PaymentConfirmResultUseCase.STOCK_COMMITTED_TTL = Duration.ofDays(8)`)
+- 만료 행 청소는 `DedupeCleanupWorker` (`@Scheduled`, payment/product) 가 `expires_at < now` 기준으로 DELETE — TTL P8D > Kafka retention 7d 관계상 삭제 대상은 이미 재전송 가능 윈도우를 벗어난 행뿐이라 멱등에 무해
 
-## 10. Single-phase mark with long TTL — payment-service 측 폐기
+## 10. 메시지 단위 dedupe 는 후속 RDB 작업과 같은 TX 여야 한다
 
-**증상 (이전)**: 메시지 단위 dedupe lease 가 처리 후속 RDB 작업과 같은 TX 가 아니어서 부분 실패 시 silent loss 위험.
+**증상**: 메시지 단위 dedupe 기록(Redis lease 등)이 처리 후속 RDB 작업과 같은 TX 가 아니면 부분 실패에서 silent loss 가 생긴다. 기록은 남았는데 후속 작업이 롤백되면 재전송이 dedupe 에 막힌다.
 
-**처방 (현재)**: payment-service `EventDedupeStore` (two-phase lease) 패턴은 STOCK-COMPENSATION-RECOVERY 봉인에서 폐기.
-- 재고 멱등성은 Lua atomic dedup token (`decrement:done:{orderId}` / `compensation:done:{orderId}` SETNX P8D) 으로 같은 Lua 안에서 atomic 보장
-- 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` (retry 5회 한도 + `payment.events.confirmed.dlq`) 가 native 책임
-- pg-service 도 같은 이유로 뒤따라 정리됐다 — 리스너 진입부의 Redis eventUuid 필터(`EventDedupeStore`)를 PG-MESSAGE-DEDUPE-LAYER-REMOVAL 에서 제거하고 `pg_inbox.order_id` UNIQUE 단일 층으로 일원화. 이 필터도 후속 RDB 작업과 같은 TX 가 아니어서 같은 유실 창을 갖고 있었다(필터 기록 후 PENDING INSERT 커밋 전 크래시 → 재전송이 필터에 막히고 inbox row 가 없어 폴링 회수 대상도 아님). 다만 제거로 IN_PROGRESS 재전송 억제 효과를 함께 잃었다 — `PAYMENT-FLOW.md` §4.11 참조
+**처방 (현재)**:
+- payment-service 는 Redis 두 단계 lease 방식을 쓰지 않는다. `PaymentConfirmResultUseCase.handle` 이 `PaymentEventDedupeStore.markIfAbsent`(`payment_event_dedupe` 에 `INSERT IGNORE`)를 결제 상태 전이와 **같은 JPA TX** 안에서 호출한다. TX 가 롤백되면 dedupe 행도 함께 롤백된다
+- 재고 멱등성은 Lua atomic dedup token (`decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId` SETNX P8D) 으로 같은 Lua 안에서 atomic 보장한다
+- 메시지 retry / DLQ 는 Spring Kafka `DefaultErrorHandler` (`FixedBackOff` 1초 5회) + `DeadLetterPublishingRecoverer` (`payment.events.confirmed.dlq`) 가 맡는다
+- pg-service 는 리스너 진입부에 Redis eventUuid 필터를 두지 않고 `pg_inbox.order_id` UNIQUE 단일 층으로 중복을 막는다. 진입 필터는 필터 기록 후 PENDING INSERT 커밋 전에 크래시하면 재전송이 필터에 막히고 inbox row 도 없어 폴링 회수 대상이 못 되는 같은 유실 창이 있어 제거했다. 대신 IN_PROGRESS 재전송을 억제하던 효과는 없다 — `PAYMENT-FLOW.md` §4.11 참조
 
 ## 11. 보상 트랜잭션 중복 진입
 
 **증상**: 다중 워커 동시 진입 또는 retry 후 응답 처리 직전 크래시 → 같은 결제에 재고 INCR 두 번 → 재고 발산.
 
-**처방** (현행 — STOCK-COMPENSATION-RECOVERY):
-- `handleFailed` / `handleQuarantined` 의 보상은 `compensateAtomic(orderId, orders)` Lua 1회 호출 — `compensation:done:{orderId}` SETNX P8D dedup token 이 결제 단위 멱등 보장
-- 동일 orderId 재진입 시 Lua 가 `ALREADY_DONE` early return → 재고 INCR 0회. 다중 워커 race 시에도 token 1회만 박힘
-- (구) `executePaymentFailureCompensationWithOutbox` 의 TX 내 재조회 + outbox isInFlight / event canCompensateStock 이중 가드는 ADR-04 + STOCK-COMPENSATION-OTHER-PATHS 로 死 코드 제거됨 (회신 실패 보상은 위 `compensateAtomic` 경로가 전담)
+**처방**:
+- `handleFailed` / `handleQuarantined` / 관리자 종결의 보상은 `StockHoldReverter.revertEachProductHold` 가 상품마다 `StockCachePort.compensateIfDecremented` Lua 를 1회 호출한다. `compensation:done:{productId}:orderId` SETNX P8D dedup token 이 상품·주문 단위 멱등을 보장한다
+- 같은 조합이 재진입하면 Lua 가 `ALREADY_DONE` 으로 early return 해 재고 INCR 은 0회다. 다중 워커 race 에서도 token 은 1회만 박힌다
+- `decrement:done` 토큰이 없으면 `NO_DECREMENT` 로 아무것도 하지 않는다(실제 차감이 없던 건에 보상해 재고를 부풀리지 않는다)
+- 결과와 무관하게 선차감 기록은 되돌림으로 닫는다
 
 ## 12. Virtual Thread / Async 경계 MDC 손실
 
 **증상**: HTTP → @Async → Kafka 경계에서 traceparent 가 끊김 → 사고 시 trace 추적 불가.
 
 **처방**:
-- 가상 스레드 executor 는 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 로 생성 — OTel Context + MDC 둘 다 호출자 스레드에서 자동 캡처해 새 VT 에 set
+- 가상 스레드 executor 는 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 로 생성 — OTel Context + MDC 둘 다 호출자 스레드에서 자동 캡처해 새 VT 에 set (payment·pg 각각 같은 이름의 클래스가 있다)
 - Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 를 명시적으로 wiring (자동 wiring 이 닿지 않는 비표준 경로)
 - `@Async` 메서드는 위 executor 를 사용하는 빈(`outboxRelayExecutor` 등) 을 `@Async("...")` 로 지정
 - pg-service 의 in-memory channel 처럼 호출자/소비자 사이 시간차가 있어 Executor 자동 캡처가 안 통하는 경계는 `OutboxJob` 같은 작업 객체에 두 컨텍스트를 동봉해 워커가 직접 set/원복
@@ -129,18 +130,17 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: NicePay 응답의 `paidAt` 이 `+09:00` offset 으로 오는데 ConfirmedEventPayload 직렬화 시 제대로 안 들어가면 payment 측 역직렬화에서 `OffsetDateTime.parse` 실패.
 
-**처방** (TIME-MODEL-AND-EXPIRY 갱신):
+**처방**:
 - pg-service 측에서 raw 문자열 보존 → `approvedAtRaw(String)` 으로 ConfirmedEventPayload 에 전달(offset 보존, Kafka contract 무변경)
-- payment 측에서 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 변환 — **`.toLocalDateTime()` 금지**. offset 을 버리면 KST(+09:00) 응답이 UTC 로 오인돼 정산·감사 앵커(`approvedAt`)가 최대 9시간 틀어진다. `.toInstant()` 는 offset 을 보존한 절대 시점이라 정산 시각 정합.
-- `parseApprovedAt` 경로에 `.toLocalDateTime()` 잔존 0건(AC9 grep 가드).
+- payment 측에서 `PaymentConfirmResultUseCase.parseApprovedAt` 이 `OffsetDateTime.parse(approvedAtRaw).toInstant()` 로 변환한다 — **`.toLocalDateTime()` 금지**. offset 을 버리면 KST(+09:00) 응답이 UTC 로 오인돼 정산·감사 앵커(`approvedAt`)가 최대 9시간 틀어진다. `.toInstant()` 는 offset 을 보존한 절대 시점이라 정산 시각이 맞는다
 
-**조회 경로 확장 (PG-DUPLICATE-APPROVAL-SETTLEMENT, 2026-08-13)**: 위 처방은 승인 응답(`PgConfirmResult`)만 덮고 있었다. 상태 조회 결과(`PgStatusResult`)에는 대응 필드가 없어 세 벤더 전략의 `toStatusResult` 가 전부 offset 을 버린 `LocalDateTime` 만 넘겼고, 조회 결과로 승인을 확정하는 `DuplicateApprovalHandler` 의 페이로드 빌더는 아예 `OffsetDateTime.now(clock)` 를 썼다. 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인이 실제 승인 시각 대신 재조정 시각으로 기록돼, 자정 경계에서 정산일이 밀린다. `PgStatusResult.approvedAtRaw` 를 추가해 세 전략이 원문을 싣고 페이로드가 그 값을 쓰도록 했다 — 현재 시각은 원문 부재 시 대체 자리에만 남는다.
+**조회 경로도 같은 원문을 실어야 한다**: 승인 응답(`PgConfirmResult`)뿐 아니라 상태 조회 결과(`PgStatusResult`)도 `approvedAtRaw` 를 갖는다. 조회 결과로 승인을 확정하는 `DuplicateApprovalHandler.buildApprovedPayload` 가 이 값을 쓰고, 값이 없을 때만 `OffsetDateTime.now(clock)` 으로 대체한다. 이 필드가 없으면 좀비 회수·자체 재시도로 뒤늦게 종결되는 승인이 실제 승인 시각 대신 재조정 시각으로 기록돼 자정 경계에서 정산일이 밀린다.
 
 ## 14. ddl-auto: update 와 Flyway 혼용
 
 **증상**: 한 서비스에 Flyway 도입하면서 다른 서비스만 `ddl-auto: update` 로 두면, 운영 환경에 컬럼 추가 같은 변경을 ad-hoc SQL 메모로 따로 관리해야 함.
 
-**처방** (이번 봉인 작업):
+**처방**:
 - 4서비스 모두 Flyway + `ddl-auto: validate` 통일
 - schema 변경은 V 파일로만, JPA Entity 변경 시 V N+1 추가
 - `flyway_schema_history` 테이블이 단일 진실 원천
@@ -149,10 +149,10 @@ process(result);  // result 가 null 일 수 있음
 
 **증상**: payment-service 안에서 직접 Toss/NicePay HTTP 호출하면 PG 벤더 회복성/멱등성/dedupe 가 도메인 코드와 섞여 망가지기 쉬움.
 
-**처방** (MSA-TRANSITION):
+**처방**:
 - payment-service 는 PG 호출 안 함
 - pg-service 만 벤더 호출. payment 와는 Kafka 양방향 메시지로만 통신
-- `PgConfirmPort` / `PgStatusLookupPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
+- pg-service 의 `PgConfirmPort` / `PgStatusLookupPort` 추상화 + Strategy 패턴 (Toss / NicePay / Fake)
 
 ## 16. 재고 SoT 모델 — RDB 가 SoT, redis-stock 은 선차감 캐시
 
@@ -162,13 +162,13 @@ process(result);  // result 가 null 일 수 있음
 - product-service mysql `stock` 테이블 = **진짜 잔고 (SoT)**. APPROVED 결제만 누적 차감 (`payment.events.stock-committed`)
 - redis-stock = payment-service 의 **선차감 게이트 캐시**. confirm 진입 시 Lua 원자 DECR 로 빠른 reject
 
-**처방** (이번 stock 모델 정리):
+**처방**:
 - payment 가 Redis 자기 책임으로 관리: confirm 진입 시 DECR, FAILED/QUARANTINED 회신 시 INCR 보상
 - product DB 차감은 APPROVED 시만 — 복원(restore) 메시지 자체가 폐기됨 (애초에 차감 안 됐으므로 복원 불필요)
 - 부팅 직후 1회 `scripts/seed-stock.sh` 가 mysql-product → redis-stock 으로 동일 수치 시드
 - AMOUNT_MISMATCH 격리 시에도 Redis INCR 보상 — 결제 미성립이라 일관
 
-**게이트가 상품 단위로 쪼개졌다** (STOCK-GATE-PER-PRODUCT):
+**게이트가 상품 단위로 쪼개졌다**:
 - 스크립트 하나가 주문의 모든 상품을 묶어 처리하던 구조를 상품 단위로 내렸다. 키는 상품 기준 해시태그(`stock:{productId}` / `decrement:done:{productId}:orderId` / `compensation:done:{productId}:orderId`)라 한 상품에 딸린 키가 같은 노드에 모인다 — 노드를 나눠도 스크립트가 성립한다
 - 스크립트가 공짜로 주던 "하나라도 부족하면 아무것도 안 줄어든다" 는 진입 경로가 진다. 부족을 만나면 **이번 요청이 직접 차감에 성공한 상품만** 되돌리고 거절한다(이미 처리됨을 받은 상품은 다른 요청 몫일 수 있어 제외)
 - 거절 경로는 선차감 표시와 되돌리기 표시를 **함께** 지운다. 선차감 표시만 남기면 재시도가 이미 처리됨으로 통과하고, 되돌리기 표시만 남기면 재시도가 만든 새 차감을 다음 사이클의 되돌리기가 못 돌린다
@@ -179,31 +179,31 @@ process(result);  // result 가 null 일 수 있음
 **초과 판매 방어선이 둘이 됐다**: 게이트가 뚫려도 `StockCommitUseCase.commitToRdb` 의 음수 가드가 잔고 차감을 거부한다. 그 예외는 재시도 없이 상품 서비스 격리 토픽(`payment.events.stock-committed.dlq`)으로 가고 적체 알람이 잡는다. 이미 벤더 승인이 난 결제이므로 자동 복구 대상이 아니라 사람이 환불·입고를 판단한다. 가드의 동시성 안전은 재고 확정 통지가 상품번호를 메시지 키로 써 같은 상품 커밋이 직렬화되는 데 기댄다 — **파티션 키를 바꾸면 lost update 가 되살아난다**
 
 **알려진 한계**:
-- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 회수 작업은 payment 자신이 만든 미회수 선차감만 되돌리므로 이 발산은 해소하지 못한다 — 보정은 관리자 단건 resync 뿐이다. 그 도구는 미종결 선차감이 있으면 거부하고 `?force=true` 로만 넘긴다. 확인~덮어쓰기 사이 창은 남아 있고(수용, CONCERNS L-20), 덮어쓰기 후 재확인으로 겹침만 드러낸다
+- 부팅 외 시점에서 product RDB 가 외부(관리자/입고) 변경되면 Redis 와 발산. 회수 작업은 payment 자신이 만든 미회수 선차감만 되돌리므로 이 발산은 해소하지 못한다 — 보정은 관리자 단건 resync 뿐이다. 그 도구(`StockResyncUseCase`)는 미종결 선차감이 있으면 거부하고 `force=true` 로만 넘긴다. 확인~덮어쓰기 사이 창은 남아 있고(수용, 아래 L-20), 덮어쓰기 후 재확인으로 겹침만 드러낸다
 - 운영 환경에서 redis-stock 데이터 lost 시 정합성 회복 메커니즘은 부팅 재시드뿐 — payment 가 진행 중이면 redis 키 부재로 confirm DECR 결과가 음수일 수 있음
 
 ## 17. Redis crash + AOF fsync race window
 
-**증상**: Redis 가 `decrementAtomic` Lua 응답을 클라이언트에 돌려준 직후 crash. AOF 가 `appendfsync=everysec` 면 최대 1초치 명령이 디스크에 안 박혀 있을 수 있음 → 재기동 시 token / 재고 상태가 “명령 직전”으로 복원 → 같은 orderId 재진입이 ALREADY_DONE 이 아닌 OK 로 잡혀 재고 발산.
+**증상**: Redis 가 `decrementAtomic` Lua 응답을 클라이언트에 돌려준 직후 crash. AOF 가 `appendfsync=everysec` 면 최대 1초치 명령이 디스크에 안 박혀 있을 수 있음 → 재기동 시 token / 재고 상태가 “명령 직전”으로 복원 → 같은 주문·상품 재진입이 ALREADY_DONE 이 아닌 OK 로 잡혀 재고 발산.
 
 **처방** (수용된 trade-off):
 - redis-stock 의 AOF 를 `appendfsync=always` 로 운영 (`docker/docker-compose.infra.yml`) — 매 명령 fsync
-- throughput 감소 trade-off 인정. cluster 환경 / 더 강한 보장은 별 토픽
-- 이론적으로 디스크 latency 수준의 race window 는 잔존 — 수용된 한계(CONCERNS.md 에 별도 항목으로 등재돼 있지 않음, 이 처방 문단 자체가 SSOT)
+- throughput 감소 trade-off 인정. cluster 환경이나 더 강한 보장은 다루지 않는다
+- 이론적으로 디스크 latency 수준의 race window 는 잔존 — 수용된 한계
 
-## 18. 보상 끝난 결제의 재confirm cascade (CONCERNS.md L-12 보상 끝난 결제의 새 confirm 사이클 cascade / L-7 markPaymentAsFail 영구실패 cascade)
+## 18. 보상 끝난 결제의 재confirm cascade (L-12 보상 끝난 결제의 새 confirm 사이클 / L-7 markPaymentAsFail 영구실패)
 
-**증상**: P8D 안에서 동일 orderId 가 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클로 재진입. `decrementAtomic` 이 ALREADY_DONE → SUCCESS 매핑되어 재고는 추가 차감 안 되지만, 벤더가 APPROVED 회신하면 product RDB 만 차감 + redis 보상 +1 잔존 → 발산.
+**증상**: P8D 안에서 같은 주문·상품이 `decrement:done` + `compensation:done` 둘 다 박힌 상태로 새 confirm 사이클에 재진입한다. `decrementAtomic` 이 `ALREADY_DONE` 을 돌려주면 재고는 추가 차감되지 않는데, 벤더가 APPROVED 를 회신하면 product RDB 만 차감되고 redis 보상 +1 이 남아 발산한다.
 
 **원인**:
-- (CONCERNS.md L-12) 외부 force 되돌리기 등이 동일 orderId 재confirm 을 띄울 때 발생 가능. STOCK-COMPENSATION-OTHER-PATHS 가 `OutboxAsyncConfirmService.compensateStock`(확정 진입 보상)을 폐기하면서 이 트리거 한 경로가 소멸했고, 보상을 안 해 `compensation:done` 토큰을 박지 않으므로 재confirm 도 `decrement:done` ALREADY_DONE 으로 흡수된다 (정합 강화 방향)
-- (CONCERNS.md L-7) `markPaymentAsFail` 영구 실패 → DLQ → Reconciler `resetToAwaitingResult` → 새 confirm. PG 멱등성으로 보통 차단되나 이론적 가능성은 인정
+- (L-12) 외부 force 되돌리기 등이 같은 orderId 재confirm 을 띄울 때 생길 수 있다. `OutboxAsyncConfirmService` 에는 확정 진입 실패 시 재고를 보상하는 코드가 없어 `compensation:done` 토큰이 박히지 않고, 재confirm 은 `decrement:done` 의 `ALREADY_DONE` 으로 흡수된다 (정합이 강해지는 방향)
+- (L-7) `handleFailed` 가 보상을 먼저 하고 `markPaymentAsFail` 을 나중에 호출하므로, 보상은 성공하고 `markPaymentAsFail` 이 영구 실패하면 `DefaultErrorHandler` retry 5회 후 DLQ 로 간다. 리컨실러가 이 결제를 `resetToAwaitingResult` 로 되돌리면 새 confirm 이 가능해진다. PG 멱등성(idempotency-key=orderId)으로 보통 차단되지만 이론상 가능성은 남는다
 
-**처방** (수용된 trade-off, 본 토픽 범위 외):
-- 정상 흐름에서는 결제 1건 = orderId 1건 = `decrementAtomic` 1회라 발생 가능성 매우 낮음
-- 본 cascade 를 차단하는 코드는 STOCK-COMPENSATION-RECOVERY 범위 밖, 알려진 한계로 인정
-- STOCK-COMPENSATION-OTHER-PATHS 결정: 확정 진입 실패 시 토큰을 DEL 하지 않고 차감 유지(보상 폐기) — token DEL 이 동시 confirm 멱등을 깨므로 기각. redis<RDB 누수는 재고 reconciler(TC-3) 후속 위임
-- (STOCK-GATE-PER-PRODUCT) 토큰이 상품별로 나뉘면서 이 cascade 의 판정 단위도 상품 단위가 됐다. 거절 경로는 두 토큰을 함께 지워 사이클을 완전히 무효화하므로 이 조합 자체가 만들어지지 않고, 되돌리기 실패로 남은 차감은 선차감 기록이 회수 대상으로 잡는다. 다만 **종결된 결제에 늦은 확정 요청이 오면 상태 가드에 막히기 전에 재고 차감이 먼저 일어나는 것**(CONCERNS L-16)은 그대로다 — 그 차감은 닫혔던 기록을 잡음으로 재오픈시켜 회수가 되돌린다(라이브 검증에서 실제 관측)
+**처방** (수용된 trade-off):
+- 정상 흐름에서는 결제 1건 = orderId 1건 = 상품당 `decrementAtomic` 1회라 발생 가능성이 매우 낮다
+- 이 cascade 를 막는 코드는 없다
+- 확정 진입 실패 시 토큰을 DEL 하지 않고 차감을 유지한다. 토큰 DEL 은 동시 confirm 멱등을 깨므로 쓰지 않는다. redis < RDB 로 새는 분은 선차감 기록 회수 작업이 되돌린다
+- 토큰이 상품별로 나뉘어 이 cascade 의 판정 단위도 상품 단위다. 거절 경로(`rejectCompensate`)는 두 토큰을 함께 지워 사이클을 완전히 무효화하므로 이 조합 자체가 만들어지지 않고, 되돌리기 실패로 남은 차감은 선차감 기록이 회수 대상으로 잡는다. 다만 **종결된 결제에 늦은 확정 요청이 오면 상태 가드에 막히기 전에 재고 차감이 먼저 일어난다**(아래 L-16). 그 차감은 닫혔던 기록을 잡음으로 재오픈시켜 회수가 되돌린다
 
 ## 19. QUARANTINED 결제는 status 폴링이 영원히 PROCESSING
 
@@ -212,55 +212,53 @@ process(result);  // result 가 null 일 수 있음
 **원인**: `PaymentStatusServiceImpl.mapEventStatus` 의 switch 가 DONE / FAILED 만 명시적 매핑하고 나머지는 default = `PROCESSING`. QUARANTINED 는 도메인상 `isTerminal()` = false (후속 복구 워커가 보정/포기 결정하는 대기 상태) 라서 default 분기로 PROCESSING 응답이 되지만, 실제로는 자동 진행 메커니즘이 없어 admin 강제 전이 없으면 영영 PROCESSING 만 응답한다.
 
 **처방** (단기):
-- 클라이언트가 무한 폴링하지 않도록 timeout 정책을 client 측에 둠
-- admin 도구로 격리 결제를 검토 후 DONE / FAILED 강제 전이 → 폴링 자연 종료
+- 클라이언트가 무한 폴링하지 않도록 timeout 정책을 client 측에 둔다
+- 관리자가 `QuarantineResolveUseCase` 로 격리 결제를 검토 후 안전 실패(FAILED) 종결하면 폴링이 끝난다. 승인으로 확인된 건은 종결이 거부되고, `DONE` 으로 되살리는 경로는 아직 없다(`../TODOS.md` TQ-2)
 
 **처방** (장기):
-- `PaymentStatusResult.StatusType` 에 `QUARANTINED` 추가 + `mapEventStatus` 명시 매핑 → 클라이언트가 격리 상태를 인지하고 polling 종료
-- TODOS.md 의 admin 복구 도구(TQ-2 QUARANTINED-ADMIN-RECOVERY) 와 함께 진행
+- `PaymentStatusResult.StatusType` 에 `QUARANTINED` 를 추가하고 `mapEventStatus` 에 명시 매핑해 클라이언트가 격리 상태를 인지하고 폴링을 끝내게 한다
 
-## 20. APPROVED RDB DONE 커밋 후 stock-committed 유실 — 종결 가드 재발행으로 복구 (CONFIRM-APPROVED-RESEND-GAP)
+## 20. APPROVED RDB DONE 커밋 후 stock-committed 유실 — 종결 가드 재발행으로 복구
 
-**증상**: APPROVED 경로에서 `markPaymentAsDone`(RDB DONE) 커밋 성공 후 EOS 커밋(stock-committed 발행 + offset)이 유실되면, 재배달이 D7 종결 가드(`canApplyConfirmResult()==false`)에 막혀 stock-committed 가 영구 유실 → product 재고 차감 누락 → redis 선차감과 RDB 발산 → 오버셀.
+**증상**: APPROVED 경로에서 `markPaymentAsDone`(RDB DONE) 커밋 성공 후 EOS 커밋(stock-committed 발행 + offset)이 유실되면, 재전송이 종결 가드(`canApplyConfirmResult()==false`)에 막혀 stock-committed 가 영구 유실 → product 재고 차감 누락 → redis 선차감과 RDB 발산 → 오버셀.
 
 **원인**: 재고 확정 발행을 빠뜨리면(under-publish) 위험하지만, 같은 결제·상품의 재발행은 product `JdbcEventDedupeStore` 가 **결정적 키** `StockEventUuidDeriver.derive(orderId, productId)`(message eventUuid 와 독립) 로 흡수해 차감 1회 — over-publish 는 무해. 이 비대칭 때문에 "애매하면 재발행" 이 안전하다.
 
 **처방** (종결 가드 재발행):
-- D7 종결 가드 분기에서 `status==DONE && message==APPROVED`(= 정상 첫 도착엔 없는 = 재배달 신호) 면 `sendStockCommittedEvents` **재발행** + `terminalResendMetrics.record(DONE)` 계측.
-- **함정**: "0 row(중복) 시 발행 항상 진행(과거 위키 line 141)" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch**. 재배달은 항상 종결 가드로 온다.
+- 종결 가드 분기에서 `status==DONE && message==APPROVED`(= 정상 첫 도착엔 없는 = 재전송 신호) 면 `sendStockCommittedEvents` **재발행** + `terminalResendMetrics.record(DONE)` 계측.
+- **함정**: "dedupe 마킹이 0 row(중복)면 발행을 항상 진행" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch**. `PaymentConfirmResultUseCase.handle` 의 `affected == 0` 분기가 이 경우다. 재전송은 항상 종결 가드로 온다.
 - **함정**: 순서 뒤집기(발행 먼저)로 해결되지 않는다 — 발행은 producer tx buffer 라 원자성 경계(JPA 커밋 ↔ Kafka 커밋)가 그대로다(FAILED·QUARANTINED 의 즉시 Redis 보상과 성격이 다름).
-- **잔여 한계 (over-sell)**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 stock-committed 자체는 완전 유실(over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff)가 소진 후 DLQ 로 발행해 가시화한다(DLQ-REACHABILITY). DLQ 적체분은 관리자 수동 재주입(`DlqReprocessUseCase` → 원 토픽 `events.confirmed` 재발행, 나이 게이트)으로 복구하며, 조건부 자동 재시도는 후속(TQ-1). 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패 → DLQ 도달).
+- **잔여 한계 (over-sell)**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 stock-committed 자체는 완전 유실(over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff)가 소진 후 DLQ 로 발행해 가시화한다. DLQ 적체분은 관리자 수동 재주입(`DlqReprocessUseCase` → 원 토픽 `events.confirmed` 재발행, 나이 게이트)으로 복구하며, 조건부 자동 재시도는 아직 없다(`../TODOS.md` TQ-1). 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패 → DLQ 도달).
 
-## 21. QUARANTINED 결제에 늦은 APPROVED 메시지 — D7 가드 없으면 DLQ silent 분기
+## 21. QUARANTINED 결제에 늦은 APPROVED 메시지 — 종결 가드가 없으면 DLQ silent 분기
 
 **증상**: 결제가 QUARANTINED 된 이후 뒤늦게 APPROVED 결제 결과 메시지가 도착 (pg-service retry 지연 등). 가드 없으면 `handleApproved` 가 실행 → `markPaymentAsDone` 에서 `IllegalStateException` (QUARANTINED → DONE 비허용 전이) → not-retryable 즉시 DLQ → 재고 발행 0 + 상태 불일치 로그 없음.
 
-**처방** (D7 가드 — PET-3 / PET-8):
+**처방** (종결 가드):
 - `handle()` 진입 직후 `paymentEvent.getStatus().canApplyConfirmResult()` 체크.
 - false (QUARANTINED 포함 종결 상태) → `LogFmt.warn` + noop return. DLQ 전혀 건드리지 않음.
-- D7 가드 변경 시 `PaymentEventStatusSplitMethodTest` (분리 메서드 검증) 가 회귀 탐지 (DR-3). (구) `PaymentEventStatusCrossInvariantTest` 의 `canApplyConfirmResult` ↔ `canCompensateStock` 교차 동조 불변식은 `canCompensateStock` 死 코드 제거(STOCK-COMPENSATION-OTHER-PATHS)와 함께 폐기.
+- 가드 변경은 `PaymentEventStatusSplitMethodTest` (분리 메서드 검증) 가 회귀로 잡는다.
 
 ## 22. multi-product 결제의 idempotencyKey 결정성 — StockEventUuidDeriver 보존 이유
 
-**증상**: EOS 전환 시 `StockOutbox` 묶음 삭제하면서 `StockEventUuidDeriver` 까지 함께 삭제하면, 재고 확정 발행의 idempotencyKey 가 결정적 UUID 가 아닌 임의 UUID 로 바뀐다 → 재배달 시 product-service dedupe 가 "처음 보는 key" 로 인식 → 재고 N건 중복 차감.
+**증상**: 재고 확정 발행의 idempotencyKey 를 결정적 UUID 가 아닌 임의 UUID 로 바꾸면, 재전송 시 product-service dedupe 가 "처음 보는 key" 로 인식해 재고를 N건 중복 차감한다.
 
-**처방** (DR-1 / D8):
-- `StockEventUuidDeriver.derive(orderId, productId, "stock-commit")` 는 StockOutbox 묶음 삭제와 무관하게 **반드시 보존**.
-- PET-9 삭제 대상 명세에 "유지 대상 (삭제 금지)" 블록으로 명시.
-- `PaymentEosIntegrationTest` 시나리오 #4 (multi-product + 재배달 dedupe) 가 회귀 가드.
+**처방**:
+- `PaymentConfirmResultUseCase.sendStockCommittedEvents` 는 `StockEventUuidDeriver.derive(orderId, productId, "stock-commit")` 로 키를 만든다. 이 결정성을 유지한다
+- `PaymentEosIntegrationTest` 시나리오 #4 (multi-product + productId 별 idempotencyKey 결정성) 가 회귀 가드다
 
 ## 23. rolling deploy 순서 역전 — EOS abort invisible 보장 무력화
 
-**증상**: payment-service EOS 전환(producer tx 발행)이 먼저 배포되고 product-service `isolation.level=read_committed` 적용이 나중에 오면, abort 된 stock-committed 메시지가 product-service 에 read_uncommitted 로 보인다. abort 직후 재배달 전에 product-service 가 abort 메시지를 처리하면 dedupe 키가 박혀 재배달 메시지를 중복으로 판정 → stock-committed 0건 처리 + 재고 차감 0 → 정합 발산.
+**증상**: payment-service EOS 전환(producer tx 발행)이 먼저 배포되고 product-service `isolation.level=read_committed` 적용이 나중에 오면, abort 된 stock-committed 메시지가 product-service 에 read_uncommitted 로 보인다. abort 직후 재전송 전에 product-service 가 abort 메시지를 처리하면 dedupe 키가 박혀 재전송 메시지를 중복으로 판정 → stock-committed 0건 처리 + 재고 차감 0 → 정합 발산.
 
-**처방** (D6 deploy 순서 — DR-4):
+**처방** (배포 순서):
 - product-service `read_committed` 먼저 배포 → payment-service EOS 발행 나중 배포.
 - 역순(payment EOS 먼저)이면 abort 가 가시화되는 **spurious 차감 윈도우** 발생.
 - PR 본문 또는 운영 배포 체크리스트에 deploy 순서를 명시한다.
 
 ## 24. kafka_brokers < 1 단독 알람식의 dead branch — 완전 정지 시 시리즈 소멸(absent)
 
-Kafka broker 완전 정지 시 kafka-exporter 의 `kafka_brokers` 메트릭은 0 이 아니라 시리즈 자체가 소멸(absent)한다. 따라서 `kafka_brokers < 1` 단독 알람식은 단일 broker 완전 다운 상황에서 절대 발화하지 않는 dead branch다. 라이브 실측 근거: ALERTING-RULES-AND-FAULT-DRILL 드릴에서 단일 broker 완전 정지 시 kafka_brokers 시리즈 소멸 관측.
+Kafka broker 완전 정지 시 kafka-exporter 의 `kafka_brokers` 메트릭은 0 이 아니라 시리즈 자체가 소멸(absent)한다. 따라서 `kafka_brokers < 1` 단독 알람식은 단일 broker 완전 다운 상황에서 절대 발화하지 않는 dead branch다. 근거: `observability/prometheus/rules/coordinator.yml` 의 주석(단일 broker 완전 정지 실측).
 
 **처방**:
 - 완전다운 backstop 은 `absent(kafka_brokers)`(또는 `up{job="kafka-exporter"}==0`)로 잡는다.
@@ -305,7 +303,7 @@ pg 수신 기록 테이블의 `INSERT IGNORE` 선례를 그대로 베끼면 이 
 
 **처방**:
 - **INSERT 를 먼저 시도하고, 유일 제약에 걸리면 그때 갱신한다.** 삽입이 앞서면 갭 락을 잡을 일이 없다
-- 실제 발견: `StockHoldRecordRepositoryImpl.openHold` 를 재오픈 우선으로 짰다가 동시 삽입 반복 테스트에서 재현. 삽입 우선으로 뒤집어 해소하고 8회 반복으로 확인 (STOCK-GATE-PER-PRODUCT)
+- 실제 발견: `StockHoldRecordRepositoryImpl.openHold` 를 재오픈 우선으로 짰다가 동시 삽입 반복 테스트에서 재현. 삽입 우선으로 뒤집어 해소했다
 
 ## 29. 벌크 UPDATE 의 `clearAutomatically` 만 켜면 앞선 변경이 조용히 사라진다
 
@@ -315,10 +313,64 @@ pg 수신 기록 테이블의 `INSERT IGNORE` 선례를 그대로 베끼면 이 
 
 **처방**:
 - 같은 트랜잭션에서 엔티티 변경과 벌크 연산이 함께 일어나면 `flushAutomatically = true` 를 반드시 함께 켠다
-- 실제 발견: 선차감 기록을 확정으로 바꾸는 벌크 UPDATE 를 승인 반영 트랜잭션에 넣자, 직전 `markPaymentAsDone` 의 상태 전이가 사라져 기존 EOS 통합 테스트 4건이 "완료여야 하는데 진행 중" 으로 깨졌다 (STOCK-GATE-PER-PRODUCT)
+- 실제 발견: 선차감 기록을 확정으로 바꾸는 벌크 UPDATE 를 승인 반영 트랜잭션에 넣자, 직전 `markPaymentAsDone` 의 상태 전이가 사라져 기존 EOS 통합 테스트 4건이 "완료여야 하는데 진행 중" 으로 깨졌다. `JpaStockHoldRecordRepository` 의 해당 쿼리는 `flushAutomatically = true` 를 켠다
+
+## 수용한 한계
+
+고치지 않기로 하고 이유가 있는 것들이다. 항목 코드는 다른 문서와 코드 주석이 가리킨다.
+
+### L-1. Kafka tx coordinator 의존 — 가용성 약화 (EOS 수용)
+
+- **현황**: payment-service 결제 결과 처리(`ConfirmedEventConsumer`)가 Kafka 트랜잭션(`KafkaTransactionManager`, `KafkaConsumerConfig`)에 의존한다. broker 나 tx coordinator 가 응답하지 못하면 이 처리가 멈춘다. RDB 만 살아 있으면 쌓이던 예전 outbox 방식보다 가용성이 약하다
+- **수용 근거**: 학습용 프로젝트로 EOS 정합을 목표로 했다. coordinator 상태는 대시보드와 알람(`observability/prometheus/rules/coordinator.yml`)으로 보인다
+- **EOS 원자성의 한계**: `PaymentConfirmResultUseCase.handle` 은 `@Transactional(transactionManager = "transactionManager", timeout = 5)` 로 JPA TM 을 고정하고, 이는 `KafkaTransactionManager` 와 별개다. RDB commit 성공 + Kafka EOS commit 실패면 at-least-once 재전송이 일어난다(best-effort 1PC). 크래시 내성은 §20 의 종결 가드 재발행이 맡는다
+- **잔여 한계 (over-sell)**: 종결 가드 재발행도 같은 EOS tx 라 `commitTransaction` 이 지속 실패하면 stock-committed 가 완전 유실된다(payment DONE + 재고 확정 소실). 입력 메시지는 `KafkaConsumerConfig` 에 연결된 `AfterRollbackProcessor` 가 소진 후 `events.confirmed.dlq` 로 발행해 보이게 하고(`payment_eos_commit_failure_dlq_total`), 복구는 관리자 수동 DLQ 재주입(`DlqReprocessUseCase`)이다. 상시 자동 복구는 없다(`../TODOS.md` TQ-1)
+- JPA TM 과 Kafka TM 을 `ChainedKafkaTransactionManager` 로 묶는 안은 채택하지 않았다. at-least-once 로 허용할 수 없는 중복이 실제로 생기기 전까지는 두지 않는다
+- 멀티 broker 환경에서의 lag 임계 재교정은 `../TODOS.md` T4-B 에 있다
+
+### L-5. EOS abort 와 Redis 보상 — 보상은 트랜잭션 밖
+
+- Redis 보상(`compensateIfDecremented`)은 EOS·RDB 트랜잭션에 참여하지 못한다(Redis 는 XA 불가). FAILED/QUARANTINED 경로에서 EOS abort 가 나면 RDB 와 producer tx 는 롤백되지만 이미 실행된 Redis 보상은 되돌려지지 않는다
+- 재전송에서는 같은 조합이 `ALREADY_DONE` 으로 흡수돼 재고가 두 번 복원되지 않고, 선차감 기록은 결과와 무관하게 되돌림으로 닫는다(`StockHoldReverter.revertProductHold`). 보상 표시는 P8D 로 자연 만료된다
+- FAILED/QUARANTINED 경로와 EOS abort 가 동시에 일어나는 경우에만 해당해 빈도가 낮다
+
+### L-8. 단일 리전 / 단일 AZ
+
+학습용이라 multi-region, geo-redundancy 는 없다. Kafka 도 broker 1대다(`../TODOS.md` TQ-5).
+
+### L-15. 격리 복구 보상의 `decrement:done` P8D 만료 후 미복원 (보수적 언더셀)
+
+격리 안전 종결의 재고 보상은 `decrement:done:{productId}:orderId` 토큰이 있어야 실행된다(`StockCachePort.compensateIfDecremented` + `stock_compensation_if_decremented.lua` — 실제 차감이 없던 건에 보상해 재고를 부풀리지 않기 위함이며, 토큰 존재를 `compensation:done` SETNX 보다 먼저 본다). 토큰 TTL(P8D=8일)이 지난 뒤 복구하는 실차감 건은 토큰이 없어 보상이 건너뛰어지고 redis 선차감이 복원되지 않는다. 재고가 덜 풀리는 쪽이라 안전한 방향의 누수다. P8D 를 넘긴 격리는 수동 대사로 처리하고, 만료 임박 알람은 `../TODOS.md` QUARANTINE-TRACE-EXPIRY 에 있다.
+
+### L-16. 종결된 결제에 늦은 confirm 재요청 — 재차감 후 가드 차단 (보수적 언더셀)
+
+`PaymentEvent.validateConfirmRequest` 는 사용자·금액·주문번호·paymentKey 만 검사하고 종결·격리 상태를 보지 않는다. 복구로 FAILED 종결된 결제에 늦은 confirm 재요청이 오면 redis 재차감(`decrementAtomic`)이 먼저 일어나고, 그 뒤 종결 가드가 `execute` 를 막지만 차감은 남는다.
+
+그 재차감은 닫혀 있던 선차감 기록을 잡음 상태로 다시 열고, 결제가 이미 종결이므로 회수 주기 작업(`StockHoldRecoveryUseCase`, 기본 60초)의 대상에 그대로 걸려 되돌려진다. 진입 자체를 막지는 않으므로 회수가 돌기까지 게이트가 그만큼 빡빡한 구간은 남는다. 진입에서의 조기 거부 가드는 `../TODOS.md` CONFIRM-TERMINAL-REJECT 에 있다.
+
+### L-17. DLQ 재주입 전량 스캔의 성능·관측성 한계
+
+`KafkaDlqReprocessAdapter` 는 재주입 때마다 `events.confirmed.dlq` 전 파티션을 `seekToBeginning` 으로 스캔한다. 적체가 크면 `read-timeout` 안에 `endOffsets` 에 닿지 못할 수 있다. 스캔 미완료는 재시도 안내 예외로, "완주 후 없음"은 별도 예외로 구분한다(`DlqScanResult(payload, completed)`). 다만 최근 구간부터 거꾸로 찾지 않아(`offsetsForTimes` 미사용) 최근 메시지가 가장 늦게 스캔된다. 또 스캔이 끝나지 않았어도 매치가 있으면 경고 로그 없이 발행한다(`resolveScanResult`). 미스캔 구간에 더 최신 레코드가 있을 수 있으나 같은 orderId 는 같은 `eventUuid` 재발행이라 멱등 체인이 흡수한다. 관리 도구 사용 빈도에 비해 수용하고, 역방향 탐색과 미완료 경고는 하지 않았다.
+
+### L-18. 모의 벤더(`FakePgGatewayStrategy`) 오배포 가드 — 프로파일 조작 시 우회 가능
+
+- 모의 벤더는 `pg.gateway.type=fake` 일 때만 빈으로 로드된다(`FakePgGatewayStrategy` 의 `@ConditionalOnProperty`). 이 값은 `pg-service/src/main/resources/application-docker.yml` 에서 `${PG_GATEWAY_TYPE:toss}` 환경변수로 덮어쓸 수 있어, 스모크용 값이 배포 환경변수에 남으면 그대로 적용된다. 로드되면 `supports()` 가 벤더 종류와 무관하게 `TOSS`/`NICEPAY` 요청을 모두 받는다
+- 가드: `warnActivation()` 이 활성 프로파일에 `smoke` 도 `test` 도 없으면 `IllegalStateException` 으로 기동을 멈춘다. 일반 앱 스택에 `fake` 를 주입하면 차단된다
+- 한계: 가드는 활성 프로파일만 본다. 프로파일 자체를 `smoke` 나 `test` 로 조작하면 우회된다. 의도적 조작은 방어 대상이 아니고, 환경변수가 실수로 배포에 남는 사고를 막는 것이 목표다
+
+### L-20. 재고 재동기화의 확인~덮어쓰기 창 (수용, 사후 관측으로 대체)
+
+- 관리자 단건 resync(`StockResyncUseCase`)는 그 상품의 미종결 선차감 건수를 먼저 세고(`StockHoldRecordRepository.countNoiseByProductId`) 0 이 아니면 거부한다. 확인이 끝난 뒤 새로 들어오는 선차감은 막지 못한다 — 확인과 `StockCachePort.set` 이 원자적이지 않다
+- 이미 진행 중이던 선차감은 잡힌다. confirm 진입이 선차감 기록을 먼저 열고 캐시를 나중에 깎기 때문이다(`PaymentTransactionCoordinator`). 격리 종결의 되돌리기와 겹쳐도 캐시를 복원한 뒤에 기록을 닫아 그 구간 내내 기록이 남는다
+- 원자화하지 않은 이유: 락으로 묶으려면 confirm 경로가 같은 락을 잡아야 실효가 있다. 관리자 도구 하나 때문에 돈 경로에 락을 늘리지 않는다
+- 대체 장치: 덮어쓴 뒤 같은 조회를 한 번 더 해 건수가 사전보다 크면 겹침을 경고와 응답에 싣는다. **잡히는 것은 재확인 시점까지 열려 있는 겹침뿐**이다. 그 사이 확정·되돌림으로 닫힌 기록은 두 조회 모두에 안 보인다. 경고가 없다고 겹침이 없었다고 단정하지 않는다
+- 최악의 경우에도 게이트가 초과 차감을 통과시키면 상품 RDB 확정 시점의 음수 가드가 거부해 격리로 간다(§16). 조용한 과매도로는 가지 않는다
+
+### C-10. seed 데이터의 운영 안전성
+
+`product-service`·`user-service` 의 기본 설정(`application.yml`)은 `spring.flyway.locations` 에 `classpath:db/seed` 를 포함해 `V2__seed_*.sql`(`INSERT IGNORE`)이 스키마와 함께 적용된다. `docker` 프로파일은 product 에서만 seed 를 뺀다(`application-docker.yml`). user 의 `docker` 프로파일은 seed 를 일부러 포함한다(`application-docker.yml` 주석). 따라서 데모·스모크 환경이 아닌 곳에 기본 프로파일로 배포하면 dummy seed 가 들어간다. 운영 배포에서는 `locations` 에서 seed 를 빼야 한다. 현재는 데모·스모크 한정이라 수용한다.
 
 ## 관련 자료
 
-- 도메인 학습 자료: archive 안 토픽별 `COMPLETION-BRIEFING.md`
-- 자주 겹치는 우려: `CONCERNS.md`
-- 향후 처리 항목: `TODOS.md`
+- 향후 처리 항목: `../TODOS.md`
+- 도메인 학습 자료: `docs/archive/` 안 토픽별 `COMPLETION-BRIEFING.md`
