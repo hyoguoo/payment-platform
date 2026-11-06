@@ -224,8 +224,86 @@ flowchart LR
 - 이 브랜치는 `#162` 위에 있다. `#162`에서 처리량 측정을 재개해 커밋이 생기면 이 브랜치를 다시 rebase해야 하고, 두 토픽 문서는 양쪽에서 바뀌어 충돌한다. 개편 PR은 `#162`가 main에 병합된 뒤 올린다.
 - RUNBOOK 명령을 코드에 맞춰 고치면 지난 측정 회차와 조건이 달라질 수 있다. 바뀐 항목은 처리량 토픽의 EXPERIMENTS와 완료 보고에 적는다.
 - 메모리 파일 몇 개가 옛 경로(`writing-style.md`, `ship-ready.md` 등)를 가리킨다. ship에서 새 경로로 고친다.
-- 판정 3의 Codex 확인은 이 환경에서 Codex를 실행할 수 있는지 아직 확인하지 않았다.
+- 판정 3의 Codex 확인은 이 환경에서 Codex를 실행할 수 있는지 아직 확인하지 않았다. (완료 시점: 실행 가능해 확인함)
 
 ### 미결 사항
 
 없음
+
+## 변경 요청
+
+없음
+
+## 완료 요약
+
+**결과**: 완료 — 에이전트 지침·스킬·역할·hook을 agent-backend-kit 구조로 바꾸고, context·smoke·quality 문서를 코드와 대조해 정리했다.
+
+### 무엇이 바뀌었나
+
+| 영역 | 전 | 후 |
+|---|---|---|
+| 지침 정본 | AGENTS.md + 역할 README + 공용 규칙 6개 + 체크리스트 4개 + `docs/context/CODEX.md` | AGENTS.md 하나(`CLAUDE.md`는 가져오기만). 운영은 `.agents/README.md` |
+| 프로젝트 값 | hook 스크립트와 여러 문서에 흩어짐 | `.agents/profiles/stack.md`(버전, 검증 명령, hook 설정, 코드 규칙), `risk.md`(결제 불변식 7개, 핵심 경로) |
+| workflow | 토픽 문서 + 별도 PLAN 파일 + 체크리스트 | 토픽 폴더(BRIEF·DESIGN·EXPERIMENTS), 확인 지점 3곳, 합의 뒤 변경 L1~L4 |
+| 역할 | implementer, reviewer, domain-expert(fable) | implementer, reviewer, risk-reviewer(opus). Claude·Codex 설정은 계속 생성 스크립트로 |
+| hook | `.claude/hooks/` 2개, 모듈 목록 하드코딩 | `.agents/hooks/` 3개 + 판정 기록. stack.md 설정만 읽는다. 같은 상태 재차단 없음, 잠금, 일시정지 |
+| 테스트 분류 | 컨테이너를 띄우는 테스트 9개가 `test`에 있어 Docker 없으면 실패 | `integrationTest`로 옮김. `test`는 Docker 없이 돈다 |
+| 작성 기준 | `writing*.md` 4개 | 브리핑·PR용 `conventions/writing.md` + 위키·포스팅용 `writing/references/style-guide.md`(개발자 원문 + 프로젝트 규칙) |
+| 문서 | context 20개, 머리마다 갱신 이력, TODOS·CONCERNS 분산 | context 12개(README 포함), 이력 줄 0, 할 일은 `docs/TODOS.md` 한 곳, 사람용 안내는 `docs/guides/` |
+| 문서 검사 | 체크리스트·중복 규칙 검사 | 경로·클래스·설정 키를 코드와 대조(주석·문자열 제외), 단위 테스트 18개, CI 단계 추가 |
+| 진행 중 토픽 | 처리량·요청 추적이 옛 형식 | 각 토픽 폴더로 옮김. 처리량은 실험 모드(EXPERIMENTS에 회차 15개) |
+
+코드와 대조하다 고친 낡은 서술 중 큰 것: 재고 보상 경로(`StockHoldReverter`), 결과 소비 순서와 `AWAITING_RESULT`, 토픽 6개, 입력 포트 위치, Alertmanager·Discord 통지가 있는데 "미도입"으로 적힌 것, 취소·환불 포트("인터페이스만 있다" → 없다), 이미 지운 `payment_outbox.available_at`.
+
+### 주요 결정
+
+| 결정 | 이유 | 버린 대안 |
+|---|---|---|
+| kit 파일을 복사하고 kit 문장은 다시 쓰지 않는다 | 이후 kit 개선분을 diff로 가져오기 위해 | 현재 지침을 kit 방향으로 고쳐 쓰기 |
+| Claude·Codex 둘 다 지원, 역할은 `roles.toml`에서 생성 | 두 도구를 계속 쓴다 | kit처럼 Claude만 |
+| domain-expert → risk-reviewer, fable → opus | 비용(개발자 요청), kit과 이름 맞춤 | 이름 유지 |
+| 핵심 경로는 불변식을 쥐는 하위 경로로 한정하고 로그·주석만 바꾼 diff는 제외 | 서비스 전체로 두면 작은 수정에도 risk-reviewer가 불린다(리뷰 지적) | 서비스 `src/main` 전체 |
+| 컨테이너 테스트를 통합 테스트로 옮김 | Docker 유무로 단위 테스트와 hook 결과가 갈리지 않게(개발자 선택) | hook이 Docker 부재를 경고로 넘기기 |
+| 작성 기준 두 단계 | 위키·포스팅은 브리핑보다 강하게(개발자 요청) | 한 파일, 두 벌 |
+| RUNBOOK 명령까지 코드와 대조 | 개발자 선택. 결과적으로 명령 변경은 없었다 | 문체·링크만 |
+
+### 검증
+
+| 명령 | 실행 | 통과 | 실패 |
+|---|---|---|---|
+| `bash scripts/test-hooks.sh` | 34 | 34 | 0 |
+| `python3 -m unittest scripts/test_check_agent_docs.py` | 18 | 18 | 0 |
+| `python3 scripts/check-agent-docs.py --strict` | 1 | 종료 0 (Mermaid 16건은 정보용, kit 다이어그램) | 0 |
+| `python3 scripts/sync-agent-configs.py --check` | 1 | 6개 일치 | 0 |
+| `:payment-service:test :pg-service:test :product-service:test --rerun-tasks` (Docker를 못 찾게 한 상태) | 698·442·70 | 전부 | 0 |
+| `:payment-service:integrationTest :pg-service:integrationTest :product-service:integrationTest --rerun-tasks` | 761·84·12 | 전부 | 0 |
+| `checkstyleTest spotbugsTest` (payment·pg·product) | 3모듈 | 통과 | 0 |
+
+| 판정 | 확인한 것 | 근거 |
+|---|---|---|
+| 1. 문서·역할 검사 | strict 종료 0, 역할 동기화 일치 | 위 표 |
+| 2. hook 실제 동작 | implementer가 domain 파일에 `var`를 넣자 편집 린트가 막음, 종료 시 이 브랜치에서 바뀐 모듈(payment·pg·product) 테스트 실행·통과, 동시 종료 시 잠금 대기 뒤 건너뜀, 루트 설정 변경 시 6개 모듈 실행 | `.git/agent-verify/trace.log` |
+| 3. 지침대로 동작 | 새 Claude 세션: 작은 수정 → "작음, workflow 없음", 토픽 요청 → "큼, discuss 조사 후 사전 브리핑". 새 Codex 세션: 작은 수정 → "작음", 토픽 요청 → "중간, discuss로 구체화". 규모 판단만 갈림 | `claude -p --permission-mode plan`, `codex exec --sandbox read-only` 출력 |
+| 4. 문서 대조 | 식별자 불일치 0건, 이력 줄 0건 | strict, `grep` |
+| 테스트 분류(R11) | Docker 없이 `test` 통과, 옮긴 9개가 통합 실행에 포함(6·2·1) | 위 표 |
+
+실행하지 못한 검사와 사유: 스모크·라이브 드릴은 실행하지 않았다(런타임 설정 변경 없음, 가이드는 스크립트와 대조만). 판정 2의 첫 시도는 `util/` 파일이라 Checkstyle 억제 목록 때문에 잡히지 않았다(TODOS CHECKSTYLE-SUPPRESSION-SCOPE).
+
+### 리뷰 처리
+
+첫 리뷰 critical 0 · major 2 · minor 5, 재검토(수정분) medium 1 · low 2. 전부 수정. 상세는 [DESIGN](DESIGN.md)의 "리뷰 처리".
+
+| 지적 | 등급 | 처리 |
+|---|---|---|
+| 핵심 경로가 넓은 곳과 빈 곳이 함께 있음(재검토에서 메시지 계약·엔티티 등 추가 누락) | major | 하위 경로로 좁히고 누락분 추가, 로그·주석 diff 제외 명시 |
+| 식별자 대조가 주석에만 남은 이름을 통과시킴, `out` 디렉토리 처리 | major | 주석·문자열 제외 색인, `out`은 저장소·모듈 루트만 건너뜀, 테스트 3개 추가 |
+| hook `ROOT_FILES` 설명·Lua 변경 검증 조건, Git 규칙 손실, live-drill 낡은 서술, 토픽 이전 누락, 끊긴 앵커 | minor | 모두 수정 |
+
+### 남은 일
+
+- 이 브랜치는 `#162` 위에 있다. PR은 `#162`가 main에 병합된 뒤 올린다. `#162`에 커밋이 더 생기면 다시 rebase한다.
+- 처리량 측정 재개 때는 로컬 드라이버 조건(VU 650, 관측 256)을 쓴다. 실행 안내의 예시 명령과 다르다([처리량 EXPERIMENTS](../../topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md#실행-안내-변경-2026-11-06-163)).
+- TODOS에 남긴 것: CHECKSTYLE-SUPPRESSION-SCOPE(억제 목록이 디렉토리 단위로 검사를 모두 끔), STALE-COMMENTS(코드·스크립트 주석의 낡은 서술 4곳), CONFIRM-TERMINAL-REJECT(PITFALLS 합칠 때 옮긴 우려).
+- T1 커밋(`7a2053fa`)에 옛 hook·domain-expert 삭제가 함께 들어갔다. 커밋 경계만 섞였고 내용은 맞다.
+
+**추적**: 이슈 [#163](https://github.com/hyoguoo/payment-platform/issues/163) · 브랜치 `agent-structure-overhaul` · PR 없음

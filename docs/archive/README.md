@@ -68,3 +68,4 @@
 | [cleanup-batch-f](cleanup-batch-f/COMPLETION-BRIEFING.md) | 가벼운 후속 정리 6건 | 완료 | 2026-09-10 ~ 2026-09-11 | #155 |
 | [ci-integration-test-sharding](ci-integration-test-sharding/COMPLETION-BRIEFING.md) | CI 통합 테스트 시간 단축 | 완료 | 2026-09-28 | #158, #159 |
 | [pg-inbox-index-merge](pg-inbox-index-merge/COMPLETION-BRIEFING.md) | 힌트 없는 index_merge·데드락 재현 | 완료 | 실험 2026-10-01 · 이관 2026-10-02 |  |
+| [agent-structure-overhaul](agent-structure-overhaul/BRIEF.md) | 에이전트 지침을 agent-backend-kit 구조로 바꾸고 프로젝트 문서를 현재 코드 기준으로 정리 | 완료 | 2026-11-06 | #163 |
