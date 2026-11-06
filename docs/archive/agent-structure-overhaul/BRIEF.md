@@ -103,6 +103,7 @@ kit의 파일을 기준으로 옮기고, 이 프로젝트에만 필요한 것(Co
    - **답**: `#162` 위에서 개편 브랜치를 시작한다 (2026-11-06). 두 토픽은 이 브랜치에서 새 형식(토픽 폴더, 다섯 줄 STATE)으로 옮긴다.
      `#162`가 `AGENTS.md`, workflow 스킬, `CODEX.md`를 이미 고쳐 두어서, main 기준으로 개편하면 나중에 이 파일들에서 충돌이 크게 난다.
      대신 `#162`를 먼저 main에 병합해야 이 브랜치의 PR에 처리량 커밋이 섞이지 않는다.
+   - **정정 (C1, 2026-11-06)**: 개발자의 뜻은 "개편 PR을 main에 넣고 `#162`를 main 위로 리베이스"였다. 에이전트가 해석을 확인하지 않고 진행했다. 개편 브랜치를 main 기준으로 다시 쌓았다(아래 "변경 요청" C1).
 
 4. 사람이 읽는 글의 작성 기준을 어떻게 합칠까 — 무엇이 달라지는가: BRIEF·PR·이슈 본문과 README·위키·포스팅이 같은 기준을 쓰는지
    - 지금: `_shared/conventions/writing*.md` 4개(약 410줄). 문체, AI체·번역체 제거, 용어·식별자, 표·Mermaid 규칙을 예시와 함께 자세히 다룬다. writing·doc-review 스킬이 이것을 쓴다
@@ -221,7 +222,7 @@ flowchart LR
 
 ### 남은 위험
 
-- 이 브랜치는 `#162` 위에 있다. `#162`에서 처리량 측정을 재개해 커밋이 생기면 이 브랜치를 다시 rebase해야 하고, 두 토픽 문서는 양쪽에서 바뀌어 충돌한다. 개편 PR은 `#162`가 main에 병합된 뒤 올린다.
+- (C1로 바뀜) 개편은 main 기준 PR로 들어가고, `#162`가 병합 뒤 main 위로 리베이스한다. `#162`의 `AGENTS.md`·workflow·`CODEX.md` 변경은 개편본으로 정리한다.
 - RUNBOOK 명령을 코드에 맞춰 고치면 지난 측정 회차와 조건이 달라질 수 있다. 바뀐 항목은 처리량 토픽의 EXPERIMENTS와 완료 보고에 적는다.
 - 메모리 파일 몇 개가 옛 경로(`writing-style.md`, `ship-ready.md` 등)를 가리킨다. ship에서 새 경로로 고친다.
 - 판정 3의 Codex 확인은 이 환경에서 Codex를 실행할 수 있는지 아직 확인하지 않았다. (완료 시점: 실행 가능해 확인함)
@@ -232,7 +233,12 @@ flowchart LR
 
 ## 변경 요청
 
-없음
+### C1 — 개편을 main 기준 PR로, `#162`는 병합 뒤 리베이스 (2026-11-06)
+
+- 수준: L1 태스크 추가 — 범위·결정·요구사항은 그대로이고 브랜치 기준과 작업 배치만 바뀐다. 질문 3의 해석을 바로잡은 것이다
+- 처리: 개편 커밋 27개를 main 위로 다시 쌓았다(옛 브랜치는 `agent-structure-overhaul-on-162`로 보관). `#162`에만 있는 문서를 다룬 부분(진행 중 두 토픽의 새 형식 이전, `docs/reports/` 이동, `docs/quality/` 수정, STATE의 두 토픽 항목)은 main PR에서 빼고, `#162` 리베이스 때 넣는다. 그 부분만 담은 두 커밋(T10, T14)은 메시지를 실제 내용(설계 기록)에 맞게 바꿨다. main STATE는 두 토픽이 `#162`에 있다고 적었다
+- 승인: 알림만 (개발자 지시)
+- 이슈: 기존 이슈 #163
 
 ## 완료 요약
 
@@ -301,9 +307,9 @@ flowchart LR
 
 ### 남은 일
 
-- 이 브랜치는 `#162` 위에 있다. PR은 `#162`가 main에 병합된 뒤 올린다. `#162`에 커밋이 더 생기면 다시 rebase한다.
-- 처리량 측정 재개 때는 로컬 드라이버 조건(VU 650, 관측 256)을 쓴다. 실행 안내의 예시 명령과 다르다([처리량 EXPERIMENTS](../../topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md#실행-안내-변경-2026-11-06-163)).
+- 이 PR이 main에 병합되면 `#162`를 main 위로 리베이스하고, 빼 둔 `#162` 몫(진행 중 두 토픽의 새 형식 문서, `docs/reports/` 이동, `docs/quality/` 수정, STATE 두 토픽 항목)을 넣는다(C1). 옛 브랜치 `agent-structure-overhaul-on-162`에 그 최종본이 있다.
+- 처리량 측정 재개 때는 로컬 드라이버 조건(VU 650, 관측 256)을 쓴다. 실행 안내의 예시 명령과 다르다(`#162`의 처리량 EXPERIMENTS에 기록).
 - TODOS에 남긴 것: CHECKSTYLE-SUPPRESSION-SCOPE(억제 목록이 디렉토리 단위로 검사를 모두 끔), STALE-COMMENTS(코드·스크립트 주석의 낡은 서술 4곳), CONFIRM-TERMINAL-REJECT(PITFALLS 합칠 때 옮긴 우려).
 - T1 커밋(`7a2053fa`)에 옛 hook·domain-expert 삭제가 함께 들어갔다. 커밋 경계만 섞였고 내용은 맞다.
 
-**추적**: 이슈 [#163](https://github.com/hyoguoo/payment-platform/issues/163) · 브랜치 `agent-structure-overhaul` · PR 없음
+**추적**: 이슈 [#163](https://github.com/hyoguoo/payment-platform/issues/163) · 브랜치 `agent-structure-overhaul`(main 기준) · PR (생성 후 기록)

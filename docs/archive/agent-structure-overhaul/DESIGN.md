@@ -244,6 +244,7 @@ reviewer 1회 + 수정분 재검토 1회(2026-11-06). 첫 리뷰 critical 0, maj
 
 ## 진행 기록
 
+- 2026-11-06 (C1): 개편 브랜치를 main 기준으로 다시 쌓았다. 옛 브랜치 `agent-structure-overhaul-on-162`(커밋 `ff3a99a3`)를 보관하고, 커밋 27개를 main 위에 순서대로 적용하며 `#162`에만 있는 경로(`docs/topics/PAYMENT-THROUGHPUT*`, `docs/topics/CHECKOUT-RECEIPT-TRACKING*`, `docs/PAYMENT-THROUGHPUT-PLAN.md`, `docs/reports/`, `docs/quality/`, `docs/STATE.md`)는 main 상태로 두었다. 그 밖의 107개 파일은 옛 브랜치 최종본과 같다(`git diff`로 확인). T10·T14 결과 중 그 경로의 변경은 `#162` 리베이스 때 넣는다.
 - 2026-11-06: T12·T13·T14를 implementer 세 개에 동시에 맡겼다(계획은 T12가 T11 뒤였으나, T11이 합치는 문서를 가리키는 링크만 손대지 않게 해 병렬로 바꿈, L1). T12는 사용량 한도로 중간에 멈춰 이어서 진행한다.
 - 2026-11-06: T1 커밋(`7a2053fa`)에 미리 `git rm`으로 스테이징해 둔 삭제 5건(옛 hook 2개, domain-expert 파일 3개)이 함께 들어갔다. 커밋 전에 staged diff를 확인하지 않은 실수다. 내용은 T2·T3 결과와 같고, 커밋 이력만 섞였다. 이후 커밋은 `git diff --cached --stat`을 먼저 확인한다.
 - 2026-11-06: 합의 브리핑 확정(질문 7 = 테스트 9개 태그 이동을 범위에 추가, 불변식 초안·에이전트 제안 그대로). 이슈 #163 생성.
