@@ -181,12 +181,13 @@
   - 검증: 폴더 대조 스크립트, `git diff --stat main -- docs/archive`
   - tdd: false | risk: false | 담당: 메인
   - 결과: `docs/TODOS.md` 신설(목록 표 25건 + 상세). 옛 `docs/context/TODOS.md`에서 끝난 부분(✅)과 갱신 이력을 지우고, "Phase 4/5" 분류를 "필요한 환경" 열로 바꿨다. 코드 대조로 TQ-6의 "`PgGatewayPort.cancel` 인터페이스만 존재"가 틀린 것을 확인해 "취소·환불 포트가 없다"로 고침(그 인터페이스가 코드에 없음). 전부 끝난 TC-11은 삭제. STATE의 별건 3개(확정 멱등키, 위키 끊긴 참조, 블로그 2편)를 TODOS로 옮기고 STATE 머리말을 새 형식으로. 진행 중 두 토픽의 긴 메모는 T10에서 옮긴 뒤 줄인다. archive README를 "폴더 | 내용 | 결과 | 기간 | 이슈" 표로 재생성(55개 폴더 = 목차, 옛 벤치마크 4행은 실제 폴더 `k6-benchmark/` 1행으로, `client-side-lb/`·`stock-compensation-recovery-alternatives/` 추가). 세 가지 문서 형식(현재·이전·초기) 안내. archive 안 다른 파일 변경 없음(`git diff --stat main -- docs/archive`). TODOS를 식별자 대조 대상에 추가, 문제 0건
-- [ ] **T10 — 진행 중인 두 토픽 문서를 새 형식으로 다시 쓴다**
+- [x] **T10 — 진행 중인 두 토픽 문서를 새 형식으로 다시 쓴다**
   - 변경 위치: `docs/topics/PAYMENT-THROUGHPUT/{BRIEF,DESIGN,EXPERIMENTS}.md`(옛 `topics/PAYMENT-THROUGHPUT.md`, `PAYMENT-THROUGHPUT-PLAN.md`, `reports/tps-*`), `docs/topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md`(옛 `topics/CHECKOUT-RECEIPT-TRACKING.md`, `reports/checkout-receipt-*`)
   - 의존: T9
   - 완료 기준: 측정 결과·결정·남은 일이 빠짐없이 옮겨졌다(옛 문서의 수치·결정 목록과 대조). 재개 지점(T2.4 — 100/s 시험)이 새 문서와 STATE에서 같다(D19)
   - 검증: 옛·새 문서 수치 대조, 링크 확인
   - tdd: false | risk: false | 담당: 메인
+  - 결과: PAYMENT-THROUGHPUT은 실험 모드로 BRIEF(목표·판정·고정 조건·첫 가설·결정)·EXPERIMENTS(회차 15개 요약·준비와 도구 검증·판단)·DESIGN(측정 도구 결정 D1~D6, 태스크 T1~T5, 재개 지점·원자료 위치)로 나눴다. CHECKOUT-RECEIPT-TRACKING은 BRIEF(확정 보장 R1~R5, as-is, 제안, 질문 6개 중 2개 답변, 지난 논의 기록)로 옮겼다. `docs/reports/` 보고서 8개를 각 토픽 폴더로 `git mv`하고 상대 링크 깊이를 고쳤다. 옛 합의 문서 2개와 PLAN 삭제, STATE의 두 항목을 다섯 줄로 줄이고 STATE 별건 2개(지침 정비, 측정 도구 준비)는 이력이라 지웠다(원자료 위치는 처리량 DESIGN으로). 재개 지점(capacity 100/s)이 STATE·DESIGN·EXPERIMENTS에서 같다. quality 문서의 옮긴 문서 링크도 고쳤다(T14 결과와 함께 EXPERIMENTS에 기록)
 - [ ] **T11 — 겹치는 context 문서를 합친다**
   - 변경 위치: `docs/context/{ARCHITECTURE,STRUCTURE,PITFALLS,CONCERNS,TESTING,STACK,CONVENTIONS}.md`, `conventions/testing.md`, `stack/flyway-operations.md`, 신규 `docs/context/README.md`, `docs/guides/payment-flow.md`(이동)
   - 의존: T8 (식별자 대조), T9 (CONCERNS 미해결 항목 → TODOS)
@@ -222,6 +223,7 @@
 
 ## 진행 기록
 
+- 2026-11-06: T12·T13·T14를 implementer 세 개에 동시에 맡겼다(계획은 T12가 T11 뒤였으나, T11이 합치는 문서를 가리키는 링크만 손대지 않게 해 병렬로 바꿈, L1). T12는 사용량 한도로 중간에 멈춰 이어서 진행한다.
 - 2026-11-06: T1 커밋(`7a2053fa`)에 미리 `git rm`으로 스테이징해 둔 삭제 5건(옛 hook 2개, domain-expert 파일 3개)이 함께 들어갔다. 커밋 전에 staged diff를 확인하지 않은 실수다. 내용은 T2·T3 결과와 같고, 커밋 이력만 섞였다. 이후 커밋은 `git diff --cached --stat`을 먼저 확인한다.
 - 2026-11-06: 합의 브리핑 확정(질문 7 = 테스트 9개 태그 이동을 범위에 추가, 불변식 초안·에이전트 제안 그대로). 이슈 #163 생성.
 - 2026-11-06: 브랜치를 `#162`(`483fd9e2`) 위에서 시작. 사전 브리핑 승인. 질문 1~6 답변. kit 기준 커밋 `7273cfd`.
