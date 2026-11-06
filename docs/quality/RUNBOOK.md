@@ -3,9 +3,9 @@
 이 문서는 로컬 환경에서 같은 시험을 다시 실행하거나, 이상이 생겼을 때 확인할 순서를 안내한다.
 도구의 현재 상태와 측정 범위는 [품질 측정 도구 안내](README.md)에서 확인한다.
 아래 실행 명령은 현재 구현된 500ms 조회 품질 도구를 대상으로 한다.
-기존 조건의 탐색은 [실측 보고서](../reports/tps-clean-measurements.html)에 보존한다.
+기존 조건의 탐색은 [실측 보고서](../topics/PAYMENT-THROUGHPUT/tps-clean-measurements.html)에 보존한다.
 주입·관측 분리 모드와 새 지연·지속 처리 판정은 구현·모드별 저부하 검증을 마쳤다.
-새 모드로 측정 한계를 주장하기 전 [PLAN](../PAYMENT-THROUGHPUT-PLAN.md)의 T2.3 실구동 검증과 T2.4 기준 탐색이 필요하다.
+새 모드로 측정 한계를 주장하기 전 [DESIGN](../topics/PAYMENT-THROUGHPUT/DESIGN.md)의 T2.4 기준 탐색이 필요하다.
 여기의 명령은 저장소 루트에서 실행한다.
 
 ## 실행 조건

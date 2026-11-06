@@ -31,5 +31,5 @@ T2.3에서는 실제 HTTP·DB·Kafka·product 재고까지 대조했다.
 원자료는 `live-drill/throughput-split-validation-20261029/validation-summary.json`과
 각 프로젝트의 `warmup-01/`, `normal-01/`, `server-logs/`, `report.html`에 있다.
 Git 제외 자료이며 현재 작업 공간에서 확인할 수 있다.
-다음 작업과 한계 판정 기준은 [PLAN](../PAYMENT-THROUGHPUT-PLAN.md)과
-[STATE](../STATE.md), [실행 안내](../quality/RUNBOOK.md)를 따른다.
+다음 작업과 한계 판정 기준은 [PLAN](DESIGN.md)과
+[STATE](../../STATE.md), [실행 안내](../../quality/RUNBOOK.md)를 따른다.

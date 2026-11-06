@@ -4,7 +4,7 @@
 
 > workflow 재개 후 범위: 사용자는 요청 추적과 안전한 재요청을 한 토픽에서 모두 진행한다고 확정했다.
 > 아래는 보고서 정정 당시의 코드 점검 결과다. 영속 구매 키 연결은 안전한 재요청 목표의 설계 후보로 함께 검토한다.
-> 최신 사용자 결정·통합 범위·검토 보완은 [discuss 문서](../topics/CHECKOUT-RECEIPT-TRACKING.md)에 기록한다.
+> 최신 사용자 결정·통합 범위·검토 보완은 [discuss 문서](BRIEF.md)에 기록한다.
 
 ## 결론과 검토 범위
 
@@ -17,7 +17,7 @@
 요청 도달, 주문 저장, 결제 승인은 서로 다른 사실이며 각각의 증거를 확인해야 한다.
 처리 위치를 조사하는 기능이 주문 중복을 막거나 결제를 복구하는 기능은 아니다.
 
-사람용 흐름은 [플로우 보고서](checkout-receipt-tracking-flow.html), 논의 상태와 과거 선택은 [discuss 문서](../topics/CHECKOUT-RECEIPT-TRACKING.md)에서 확인한다.
+사람용 흐름은 [플로우 보고서](checkout-receipt-tracking-flow.html), 논의 상태와 과거 선택은 [discuss 문서](BRIEF.md)에서 확인한다.
 
 ## 현재 코드에서 확인한 사실
 
@@ -31,7 +31,7 @@ Gateway의 수신 필터는 유효한 입력 traceparent가 있으면 trace ID�
 특히 헤더 없는 일반 요청의 Gateway 수신 로그, payment 로그, Tempo trace를 함께 확인한 실행 근거는 이번 검토에 없다.
 필터 우선순위만 보고 자동 계측보다 먼저 실행돼 ID가 반드시 누락된다고 단정하는 것도 잘못이다.
 
-근거: [Gateway 의존성](../../gateway/build.gradle), [수신 필터](../../gateway/src/main/java/com/hyoguoo/paymentplatform/gateway/filter/TraceContextPropagationFilter.java#L53), [Gateway 로그 설정](../../gateway/src/main/resources/logback-spring.xml), [payment 로그 설정](../../payment-service/src/main/resources/logback-spring.xml).
+근거: [Gateway 의존성](../../../gateway/build.gradle), [수신 필터](../../../gateway/src/main/java/com/hyoguoo/paymentplatform/gateway/filter/TraceContextPropagationFilter.java#L53), [Gateway 로그 설정](../../../gateway/src/main/resources/logback-spring.xml), [payment 로그 설정](../../../payment-service/src/main/resources/logback-spring.xml).
 
 ### 2. 기존 스모크는 클라이언트가 traceparent를 제공한 경우만 검사한다
 
@@ -44,7 +44,7 @@ Gateway의 수신 필터는 유효한 입력 traceparent가 있으면 trace ID�
 [W3C Trace Context](https://www.w3.org/TR/trace-context/#no-traceparent-received)는 입력 traceparent가 없으면 새 trace를 시작하는 처리를 설명한다.
 현재 서버 생성 방식을 변경해야 한다는 결론은 나오지 않는다.
 
-근거: [스모크의 ID 생성과 요청 헤더](../../scripts/smoke/trace-continuity-check.sh#L120).
+근거: [스모크의 ID 생성과 요청 헤더](../../../scripts/smoke/trace-continuity-check.sh#L120).
 
 ### 3. 품질 판정 도구는 서버 로그를 사용하지 않는다
 
@@ -71,7 +71,7 @@ flowchart TD
 이 누락을 확인했다고 해서 과거 미확인 요청을 모두 복원할 수 있다는 뜻은 아니다.
 공식 결과에서 제외한 과거 자료는 파일 구조와 판정 사유만 확인했으며 측정 결과로 재사용하지 않았다.
 
-근거: [k6 요청과 기록](../../scripts/k6/quality-payment.js#L81), [주문 ID 없는 요청 판정](../../scripts/quality/settlement.py#L225), [증거 수집](../../scripts/quality/evidence.py), [실행 도구](../../scripts/quality/run.py).
+근거: [k6 요청과 기록](../../../scripts/k6/quality-payment.js#L81), [주문 ID 없는 요청 판정](../../../scripts/quality/settlement.py#L225), [증거 수집](../../../scripts/quality/evidence.py), [실행 도구](../../../scripts/quality/run.py).
 
 ### 4. 주문 생성 로그는 DB 저장 완료 증거가 아니다
 
@@ -83,7 +83,7 @@ checkout 시작 로그는 HTTP 수신 필터가 아니라 주문 생성 서비�
 로그에서 찾은 주문 ID는 DB 조회의 단서이며 저장 완료는 커밋된 DB 레코드로 확인해야 한다.
 기존 주문 결과를 Redis에서 반환한 요청에는 신규 주문 생성 로그가 다시 남지 않는다.
 
-근거: [checkout 트랜잭션과 로그](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java#L35), [Redis 결과 저장](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java#L61).
+근거: [checkout 트랜잭션과 로그](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java#L35), [Redis 결과 저장](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java#L61).
 
 ## 장애 조사에서 가능한 판단
 
@@ -117,7 +117,7 @@ outbox는 이후 승인 작업을 전달하기 위한 기록이며, 존재 자�
 따라서 모든 202가 그 순간의 영속 접수 완료를 보장한다고 설명하면 안 된다.
 현재 상태 API도 모든 내부 상태를 그대로 반환하지 않으므로 조사에서 DB 상태·이력을 함께 볼 필요가 있다.
 
-근거: [confirm의 동시 요청 분기](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/OutboxAsyncConfirmService.java#L79), [상태와 outbox 저장 경계](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java#L182), [기존 상태 조회](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java).
+근거: [confirm의 동시 요청 분기](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/OutboxAsyncConfirmService.java#L79), [상태와 outbox 저장 경계](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentTransactionCoordinator.java#L182), [기존 상태 조회](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java).
 
 ## 현재 권고와 남은 선택
 
@@ -145,7 +145,7 @@ outbox는 이후 승인 작업을 전달하기 위한 기록이며, 존재 자�
 다만 현재 구현이 장애와 TTL 만료를 넘어 안전한 재요청을 보장한다는 설명과는 구분한다.
 앞서 사용자가 선택한 사용자용 복구 요구는 이력으로 보존하고, 별도 범위로 계속 추진할지는 논의에서 결정한다.
 
-근거: [기본 TTL](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyProperties.java), [Redis 중복 억제 처리](../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java).
+근거: [기본 TTL](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyProperties.java), [Redis 중복 억제 처리](../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/idempotency/IdempotencyStoreRedisAdapter.java).
 
 ## 검증 범위
 

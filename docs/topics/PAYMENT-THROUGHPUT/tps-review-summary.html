@@ -80,7 +80,7 @@
     <p class="eyebrow">PAYMENT PLATFORM / 분석 검토 요약</p>
     <h1>결제 TPS, 왜 낮을 수 있나?</h1>
     <p class="meta">2026-10-28 초기 정적 검토 · 기준 코드 07f5196c · TPS = 초당 처리 건수</p>
-    <p class="note">이 페이지는 초기 분석 요약이다. 이후 <a href="tps-clean-measurements.html">실측 결과</a>, <a href="tps-handoff.md">현재 조치·인계</a>, <a href="../topics/PAYMENT-THROUGHPUT.md">합의한 시험 기준</a>을 구분해 확인한다.</p>
+    <p class="note">이 페이지는 초기 분석 요약이다. 이후 <a href="tps-clean-measurements.html">실측 결과</a>, <a href="tps-handoff.md">현재 조치·인계</a>, <a href="BRIEF.md">합의한 시험 기준</a>을 구분해 확인한다.</p>
     <div class="verdict">
       <strong>개선 여지는 있다. 현재 낮은 수치의 원인은 아직 확정되지 않았다.</strong>
       <p>결과를 한 줄로 처리하는 구조와 DB 연결을 잡고 기다리는 구조가 있다.<br>다만 측정 지표·부하 조건을 확인해야 실제 서버 한계인지 판단할 수 있다.</p>
@@ -161,11 +161,11 @@
     <p class="note">로컬 링크는 저장소 안의 원본을 가리킨다. 초기 조사와 이후의 검토·정정·실측은 시점을 구분해 읽는다.</p>
     <ul>
       <li><a href="tps-server-analysis.md">기존 상세 분석</a> — 다상품 순차 조회, PG 무제한 작업 제출·중복 발행, product 소비, 복구·로그·장기 누적 비용 포함</li>
-      <li><a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/config/KafkaConsumerConfig.java">결과 소비 동시성</a> · <a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/service/OutboxRelayService.java">DB 트랜잭션 안의 발행</a> · <a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java">주문 생성 트랜잭션</a></li>
-      <li><a href="../../docker/docker-compose.infra.yml">재고 Redis 내구성 설정</a> · <a href="../../scripts/k6/quality-payment.js">품질 시험 유입·폴링·60초 기한</a></li>
-      <li><a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/aspect/PaymentStatusMetricsAspect.java">커밋 전 상태 전이 계측</a> · <a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentConfirmResultUseCase.java">DONE 이후 같은 트랜잭션의 후속 작업</a></li>
-      <li><a href="../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgVendorCallService.java">재시도 예약</a> · <a href="../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgOutboxRelayService.java">예약 시각 전 발행 건너뜀</a> · <a href="../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/scheduler/PgOutboxPollingWorker.java">PG 발행 폴러</a></li>
-      <li><a href="../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java">격리 상태의 API 응답</a> · <a href="../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/config/KafkaProducerConfig.java">PG producer 팩토리 주입</a></li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/config/KafkaConsumerConfig.java">결과 소비 동시성</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/service/OutboxRelayService.java">DB 트랜잭션 안의 발행</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java">주문 생성 트랜잭션</a></li>
+      <li><a href="../../../docker/docker-compose.infra.yml">재고 Redis 내구성 설정</a> · <a href="../../../scripts/k6/quality-payment.js">품질 시험 유입·폴링·60초 기한</a></li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/aspect/PaymentStatusMetricsAspect.java">커밋 전 상태 전이 계측</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentConfirmResultUseCase.java">DONE 이후 같은 트랜잭션의 후속 작업</a></li>
+      <li><a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgVendorCallService.java">재시도 예약</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgOutboxRelayService.java">예약 시각 전 발행 건너뜀</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/scheduler/PgOutboxPollingWorker.java">PG 발행 폴러</a></li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java">격리 상태의 API 응답</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/config/KafkaProducerConfig.java">PG producer 팩토리 주입</a></li>
     </ul>
   </details>
 

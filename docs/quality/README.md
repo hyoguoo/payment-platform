@@ -1,14 +1,14 @@
 # 로컬 결제 품질 측정 도구
 
 현재 구현된 도구는 500ms 간격·최대 60초 상태 조회를 포함한 기존 품질 시나리오다.
-이 조건의 로컬 탐색은 수행했으며 [실측 보고서](../reports/tps-clean-measurements.html)에 원래 판정으로 보존한다.
+이 조건의 로컬 탐색은 수행했으며 [실측 보고서](../topics/PAYMENT-THROUGHPUT/tps-clean-measurements.html)에 원래 판정으로 보존한다.
 주입·관측 분리 용량 모드와 1초 조회 사용자 품질 모드를 추가했다.
 새 두 모드의 지연·잔량·메모리·재고 반영 판정과 HTML은 T2.2에서 구현·모의 검증을 마쳤다.
 모드별 새 환경 저부하 검증을 마쳤으며, 현재 새 기준 한계를 탐색 중이다.
-[저부하 검증 요약](../reports/tps-tool-validation.md)에서 목표 충족과 전체 지속 처리 미확정을 구분했다.
+[저부하 검증 요약](../topics/PAYMENT-THROUGHPUT/tps-tool-validation.md)에서 목표 충족과 전체 지속 처리 미확정을 구분했다.
 기존 500ms 판정은 schema1로 보존하며 새 조건은 schema2로 구분한다.
-새 기준과 재개 위치는 [합의](../topics/PAYMENT-THROUGHPUT.md), [PLAN](../PAYMENT-THROUGHPUT-PLAN.md),
-[인계·미해결 항목](../reports/tps-handoff.md)을 따른다.
+새 기준과 재개 위치는 [BRIEF](../topics/PAYMENT-THROUGHPUT/BRIEF.md), [DESIGN](../topics/PAYMENT-THROUGHPUT/DESIGN.md),
+[인계·미해결 항목](../topics/PAYMENT-THROUGHPUT/tps-handoff.md)을 따른다.
 
 ## 준비한 기능
 
@@ -49,5 +49,5 @@ Redis 기록은 만료되며 주문 DB와 함께 확정되지 않으므로, 기�
 ## 결과 보존
 
 실행별 전체 원자료와 생성 HTML은 Git에서 제외되는 `live-drill/` 아래 보존한다.
-`docs/reports/`에 기록한 분석·실측 요약과 구분한다. 요약의 `live-drill/` 링크는 이 로컬 작업 공간에서만 열리며 저장소 복제본에 원자료가 포함되지는 않는다.
+`docs/topics/PAYMENT-THROUGHPUT/`에 기록한 분석·실측 요약과 구분한다. 요약의 `live-drill/` 링크는 이 로컬 작업 공간에서만 열리며 저장소 복제본에 원자료가 포함되지는 않는다.
 공개 결과에는 새 측정의 실행 환경, 소스 버전, 판정과 한계를 함께 기록한다.
