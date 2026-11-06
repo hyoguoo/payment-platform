@@ -29,14 +29,21 @@
   - 결과: D3~D5 구현. 10초 + 수집 비용 간격으로 DB 상태, product 재고 확정, 결제·전체 파이프라인 잔량, 앱 5개 heap·컨테이너 20개 메모리·host swap 수집. 독립 reviewer·domain-expert major 지적을 회귀 테스트로 고친 뒤 재검토 PASS. Python 122개 PASS. 증거 `live-drill/throughput-tools-t22-20261029/`
 - [x] **T2.3 — 도구 검토와 낮은 부하 실구동**
   - 결과: 모드별 새 환경 1건/초·180초 검증 PASS(EXPERIMENTS의 "준비와 도구 검증"). JAR 해시 동일, 새 볼륨 42개 상호 분리. 요약 [도구 검증](tps-tool-validation.md), `live-drill/throughput-split-validation-20261029/validation-summary.json`
-- [ ] **T2.4 — 수정 전 두 시험의 경계 탐색과 10분 지속 확인**
+- [ ] **T2.4 — 수정 전 두 시험의 경계 탐색과 10분 지속 확인** (2026-11-06 완료 표시 후 되돌림. 아래 재분류 참고)
   - 완료 기준: 각 시험의 최고 품질 통과·지연 허용 지속 처리 구간, 첫 미달 부하, 탐색 간격, 완료 지연, 잔량, 해소 시간, 첫 병목 근거. 발생기·호스트 한계로 더 잴 수 없으면 그 제약과 확인 가능한 하한을 보고하고 서버 상한을 만들어 내지 않는다
   - 진행: capacity 80·120·160/s, user-quality 40·60·80/s 3분 탐색 완료. D6 판정 보완(Python 124개 PASS)
   - 진행(2026-11-06, Docker 초기화 뒤 새 환경): capacity 100·120(2회)·140·160/s 3분 탐색, capacity 120/s·user-quality 60/s 10분 확인. 처리 용량은 120/s 회복·140/s 증가, 사용자 품질 60/s 10분 통과. 10/29 회차보다 처리 용량이 높게 나온 원인은 미확인
-  - 사용자 품질 첫 미달 부하: 100/s(80/s 통과). 첫 병목 후보 근거: 사용자 품질 100/s에서만 payment DB 연결 풀 포화(사용 30/30, 대기 최대 122)와 부하 중 처리 41/s. 원인 확정은 T3. 상세는 EXPERIMENTS
+  - 사용자 품질 첫 미달 부하: 100/s(80/s 통과). 2026-11-06 재분류: user-quality 100/s는 직전 회차 종료 2.5분 뒤 시작해 열 영향을 배제하지 못하므로 미달을 확정하지 않는다. 냉각 10분 이상 조건으로 다시 재면 T2.4를 완료한다(EXPERIMENTS "남은 측정" 1번). 첫 병목 후보 근거: 사용자 품질 100/s에서만 payment DB 연결 풀 포화(사용 30/30, 대기 최대 122)와 부하 중 처리 41/s. 원인 확정은 T3. 상세는 EXPERIMENTS
 - [ ] **T3 — 실측 병목의 재현·개선·회귀 검증** (tdd, 결제 위험 경로)
   - 의존: T2.4. 실제 병목 모듈, 선택한 변경과 대안, 지킬 불변식을 근거와 함께 이 문서에 추가한 뒤 구현한다
   - 첫 후보: 결과 소비 동시성 1 → 3. 160/s에서 명령·결과 양쪽 적체와 PG 승인 뒤 지연을 확인했다. T2.4의 후보 10분 확인 전에는 서버 기본값을 바꾸지 않는다
+  - 원인 후보(2026-11-06 코드 확인, 계측 전): ① 결과 소비가 동시성 1에서 메시지마다 DB 트랜잭션과 Kafka EOS 트랜잭션을 차례로 커밋한다. 입력이 멈추면 약 240/s, 부하 중에는 100~120/s로 브로커·DB 지연에 민감하다 ② `OutboxRelayService.relay`가 DB 트랜잭션 안에서 Kafka 발행 응답을 동기로 기다리고, 가상 스레드라 동시 실행 수 제한이 없다 ③ 복제본이 꺼진 quality 환경에서 상태 조회가 같은 연결 풀(30)을 쓴다(user-quality 100/s에서만 풀 포화) ④ 개발자 의심: confirm의 Redis 재고 차감이 상품별 직렬이다. 측정 시나리오는 주문당 상품 1개라 이번 수치에는 영향이 없고, confirm 응답 p95는 140/s에서도 51ms였다. 부하 중 컨테이너 CPU는 어느 것도 포화되지 않았다(payment 중앙값 150~180%, payment MySQL 64~91%, redis-stock 20% 미만)
+  - 원인 확인(2026-11-06, capacity140-instr-a 계측): ①이 병목이다. 결과 소비 스레드 사용률이 부하 중 약 98%이고 메시지당 약 8ms(DB 약 5ms, Kafka 발행·offset·커밋 약 3ms)라 상한이 약 120/s다. ②는 연결 대기 0·발행 1ms 안팎이라 이번 병목이 아니다. ③은 사용자 품질 한계(user-quality 100/s)의 별도 원인 후보로 남긴다. 상세는 EXPERIMENTS
+  - 선택한 변경(2026-11-06 개발자 결정): `payment.events.confirmed` 결과 소비 동시성 기본값 1 → 3(`KafkaConsumerConfig`). 결과 토픽 파티션이 3개라 3까지만 의미가 있다
+    - 대안: 여러 메시지를 한 트랜잭션으로 묶기(실패 시 묶음 전체 재처리로 결제 경로 실패 처리가 바뀌어 보류), 메시지당 DB 작업 줄이기(효과가 메시지당 약 5ms 중 일부라 보류), 파티션 수 늘리기(파티션 상수 4곳 산재, 별도 작업)
+    - 지킬 불변식: 같은 주문의 결과는 key=orderId로 같은 파티션에 들어가 한 스레드가 순서대로 처리한다. 스레드마다 EOS 트랜잭션(DB 커밋 + 재고 확정 발행 + offset)이 원자적이다. 중복 수신은 `payment_event_dedupe`와 종결 가드로 흡수한다. 회귀 근거는 `ConfirmedConsumerConcurrencyIntegrationTest`(동시성 3)와 `PaymentEosIntegrationTest`
+    - 진행(2026-11-06): capacity 140/s 동시성 3에서 부하 중 106.7 → 139.7/s, 쌓임 → 회복(EXPERIMENTS "2026-11-06 결과 정리"). 회차 사이 온도를 확인하지 않은 것을 발견해 회차 유효성을 쉰 시간으로 다시 나눴다. 남은 측정은 user-quality 100/s(동시성 1·3), capacity 160/s(동시성 3)
+    - 검증 순서: 같은 JAR에 `QUALITY_CONFIRMED_CONCURRENCY=3`만 바꿔 capacity 140·160/s, user-quality 100/s를 다시 잰다(T4). 개선이 확인되면 코드 기본값을 바꾸고 통합 테스트와 검토(risk-reviewer, reviewer)를 거친다
   - 독립 domain-expert는 기존 주문 잠금, 결정적 상품별 키, DB·Kafka 트랜잭션 배선을 유지하면 후보 설계를 통과시켰고 아래 검증을 요구했다
     - 테스트 전용 3파티션·동시성 3에서 각 child 실제 배정, 독립 주문·같은 상품·중복 결과의 DONE·dedupe·hold·재고 이벤트 키 불변식
     - 대상 주문·파티션에 한정한 EOS 커밋 1회 실패와 반복 실패: 다른 두 파티션 진행, 재전송 복구, DLQ와 재고 미복구 구분
@@ -53,6 +60,14 @@
 
 ## 진행 기록
 
+- 2026-11-06 중단 (재개 지점): 개발자 요청으로 결과 소비 동시성 3 전후 비교 도중 멈췄다.
+  - 상태: 실행 중인 컨테이너·볼륨·부하 없음. 서버 코드와 운영 기본값(동시성 1)은 바꾸지 않았다. 측정은 같은 JAR에 `QUALITY_CONFIRMED_CONCURRENCY`만 바꿔 했다
+  - 끝난 것: T2.4 탐색과 10분 확인, 병목 계측(결과 소비 스레드 사용률 약 98%), 동시성 3의 140/s 비교(106.7 → 139.7/s). 현재 결론과 회차 유효성은 [EXPERIMENTS](EXPERIMENTS.md#2026-11-06-결과-정리)
+  - 남은 것(순서대로): ① 남은 측정 3회 — user-quality 100/s 동시성 1(T2.4 완료 조건), capacity 160/s 동시성 3, user-quality 100/s 동시성 3 ② 결과로 동시성 3 채택 판단 ③ 채택하면 `KafkaConsumerConfig` 기본값 1 → 3, quality Compose 기본값과 RUNBOOK의 "기본 1" 문장 수정, `ConfirmedConsumerConcurrencyIntegrationTest`·`PaymentEosIntegrationTest` 실행, risk-reviewer·reviewer 검토
+  - 재개 명령: `bash live-drill/throughput-split-measurements-20261106/run-remaining-rounds.sh`(Git 제외, 로컬). 회차마다 잔여 컨테이너·볼륨 0, 직전 회차 종료 뒤 10분, 부하 평균 2 미만, `pmset -g therm` 경고 없음을 확인한 뒤 v3 드라이버 → `finish-round.py`(DB 덤프 후 볼륨 삭제)를 돌리고 첫 실패에서 멈춘다. 약 1시간
+  - 분석: `python3 live-drill/throughput-split-measurements-20261106/summarize_round.py <회차 폴더>`(판정·잔량 추이·CPU), `analyze_bottleneck.py <회차 폴더>`(연결 대기·사용, 리스너 스레드별 처리 시간, Kafka 트랜잭션 시간)
+  - 환경 확인: Docker를 다시 초기화했다면 `docker tag eclipse-temurin:21.0.12.1_1-jre eclipse-temurin:21-jre`부터 한다(앱 JRE를 기준선과 맞춤). JAR 해시는 `live-drill/throughput-split-measurements-20261029/baseline-jar-consistency.json`과 같아야 한다
+  - 미커밋 없음. 측정 도구 변경(`scripts/quality/evidence.py` 병목 지표 수집, 테스트 3개)은 이번에 커밋했다
 - 2026-11-06 재개: 회차 종료 방식을 바꿨다(개발자 결정). 원자료와 DB 덤프를 저장한 뒤 볼륨까지 지운다. 기동 전 자원 상태, 부하 전 안정 여부 확인을 [실행 안내](../../quality/RUNBOOK.md#회차마다-지킬-것)에 명시했다. 아래 2026-10-29 항목의 "기존 자료 보존, `down -v` 금지"는 원자료에만 적용한다.
   - capacity 100/s·180초 완료. 18,001건 대조 PASS, 초기 약 30초 적체 뒤 부하 중 회복, 메모리 범위 미확정으로 INCONCLUSIVE. 상세는 EXPERIMENTS. 종료 절차로 DB 덤프 저장 후 볼륨까지 지웠다.
   - 재개 방법: `QUALITY_CONFIRMED_CONCURRENCY=1 python3 live-drill/throughput-split-measurements-20261106/run-round-v3.py <새 프로젝트명> <rate> <초> capacity` 뒤 `python3 live-drill/throughput-split-measurements-20261106/finish-round.py <회차 폴더>`. 시작 전 `docker ps -q`·`docker volume ls`가 비어 있는지, 이미지가 이 회차 `image-proof.json`과 같은지 확인한다. Docker를 다시 초기화했다면 JRE 태그 지정(`docker tag eclipse-temurin:21.0.12.1_1-jre eclipse-temurin:21-jre`)부터 다시 한다.

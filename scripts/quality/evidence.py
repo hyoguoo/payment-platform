@@ -97,7 +97,18 @@ def prometheus_range(directory, start_ms, end_ms):
         'process_cpu': 'process_cpu_usage', 'hikari_pending': 'hikaricp_connections_pending',
         'hikari_active': 'hikaricp_connections_active',
         'kafka_lag': 'kafka_consumergroup_lag',
-        'http_requests': 'sum by (job,status) (rate(http_server_requests_seconds_count[1m]))'}
+        'http_requests': 'sum by (job,status) (rate(http_server_requests_seconds_count[1m]))',
+        # Raw cumulative series for bottleneck analysis; rates are derived offline so a wrong
+        # guess about tag names does not lose data. Missing names show up in the catalog below.
+        'hikari_timers': '{__name__=~"hikaricp_connections_(acquire|usage)_seconds_(count|sum|max)"}',
+        'kafka_spring_timers': '{__name__=~"spring_kafka_(listener|template)_seconds_(count|sum|max)"}',
+        'kafka_producer_client': '{__name__=~"kafka_producer_(txn_.*|request_latency_(avg|max)'
+                                 '|record_queue_time_(avg|max))"}'}
+    try:
+        catalog = get_json('http://localhost:9090/api/v1/label/__name__/values')
+    except Exception as exc:
+        catalog = {'captureError': str(exc)}
+    write_json(directory / 'prometheus-metric-names.json', catalog)
     for name, query in queries.items():
         params = urllib.parse.urlencode({'query': query, 'start': start_ms/1000,
                                         'end': end_ms/1000, 'step': 15})
