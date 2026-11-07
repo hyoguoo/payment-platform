@@ -13,6 +13,8 @@
 | OUTBOX-STALE-PUBLISH | 결과를 기다리는 결제에 확정 명령이 뒤늦게 나가는 경로 | 없음 | [아래](#outbox-stale-publish--결과를-기다리는-결제에-확정-명령이-뒤늦게-나가는-경로) |
 | QUARANTINE-TRACE-EXPIRY | 선차감 흔적(8일)이 만료되기 전에 격리 종결을 알리는 알람 | 없음 | [아래](#quarantine-trace-expiry--선차감-흔적-만료-임박-알람) |
 | KAFKA-PARTITION-DEFAULT | 파티션·컨슈머 동시성을 기본값으로 올릴지 결정 | 없음(되돌릴 수 없는 변경) | [아래](#kafka-partition-default--파티션컨슈머-동시성-기본값-결정) |
+| KAFKA-PG-ERROR-HANDLER | pg-service 컨슈머에 실패 처리 정책이 없어 inbox 저장이 계속 실패하면 결제 명령이 사라진다 | 없음 | [아래](#kafka-pg-error-handler--pg-service-컨슈머의-실패-처리-정책-부재) |
+| KAFKA-OFFSET-RESET | 운영 컨슈머의 `auto.offset.reset`이 기본값 `latest`다 | 없음 | 운영 설정 어디에도 없어 Kafka 기본 `latest`가 적용된다. 새 환경의 첫 기동, 그룹 이름 변경, 그룹이 빈 채로 오프셋 보존 기간(브로커 기본 7일)이 지난 뒤에는 그 사이 쌓인 메시지를 건너뛴다. 통합 테스트 6곳은 `earliest`를 명시한다. 받는 쪽마다 멱등 처리가 있어 `earliest`를 명시해도 중복은 걸러진다. 2026-11-08 Kafka 소비 정책 점검에서 확인 |
 | REPLICA-ROUTING | 읽기 복제본을 상시 운영으로 올릴 때 첫 조회 공백 확인 | 없음 | [아래](#replica-routing--읽기-복제본-상시-운영-전-확인) |
 | STOCK-GATE-NODE-BATCHING | 재고 게이트의 캐시 왕복을 Redis 노드 단위로 묶기 | 없음(병목으로 드러나면) | [아래](#stock-gate-node-batching--캐시-왕복을-노드-단위로-묶기) |
 | CONFIRM-IDEMPOTENCY-KEY | 확정 요청에 `Idempotency-Key` 헤더가 없다 | 없음 | 주문 접수에는 헤더가 있으나 확정에는 없다. 재고 게이트 작업에서 주문 단위 선점으로 대응했고 헤더 도입은 범위 밖으로 남겼다 |
@@ -64,6 +66,14 @@
 - **측정**: 파티션·동시성을 9로 올리면 부하 중 종결이 10.2/s에서 18.9/s(1.86배)로 늘었다. 거기서 파티션 18에 인스턴스 2대씩 붙이면 1.09배에 그쳤다. 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`. 처리량 측정 토픽(PAYMENT-THROUGHPUT)도 결과 소비 동시성 1→3을 첫 비교 후보로 두고 있다.
 - **되돌릴 수 없다**: 파티션은 줄일 수 없고, 기존 토픽에서 늘리면 키 해시가 재배치돼 같은 주문의 진행 중 메시지가 다른 파티션으로 갈라진다. Spring `KafkaAdmin`은 선언값이 실제보다 크면 기동할 때 자동으로 늘리므로, 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
 - **처방**: (1) 파티션 안 순서에 실제로 기대는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 기대면 빈 토픽 재생성이나 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 올린다. 승격한다면 네 곳의 값을 한 곳으로 모으는 일이 먼저다. 측정용 환경 변수 `KAFKA_TOPIC_PARTITIONS`, `PG_CONSUMER_CONCURRENCY`, `CONFIRMED_CONSUMER_CONCURRENCY`는 이미 있다.
+
+### KAFKA-PG-ERROR-HANDLER — pg-service 컨슈머의 실패 처리 정책 부재
+
+- **현황**: payment·product는 `DefaultErrorHandler`를 1초 간격 5회 재시도와 DLQ 복구기로 빈 등록했다(`KafkaErrorHandlerConfig`). pg-service에는 `CommonErrorHandler` 빈이 없다. 그러면 spring-kafka 3.3.4 리스너 컨테이너가 `new DefaultErrorHandler()`를 쓴다(라이브러리 소스의 determineCommonErrorHandler 메서드로 확인). 이 기본값은 `FixedBackOff(0, 9)`에 복구기가 없어, 대기 없이 10번 시도한 뒤 ERROR 로그만 남기고 그 메시지를 건너뛰며 오프셋을 커밋한다. `PaymentConfirmConsumer`, `PaymentConfirmDlqConsumer` 둘 다 해당한다.
+- **영향**: pg DB 장애나 커넥션 풀(30) 고갈로 inbox 저장(`PgInboxPendingService`, 예외를 다시 던짐)이 계속 실패하면 결제 명령이 pg에 기록되지 않은 채 사라진다. 시도마다 커넥션 대기가 최대 30초(hikari `connection-timeout`)라 DB가 수 분 이상 돌아오지 않을 때 해당한다. PG를 부르지 않아 과금은 없다. 대신 payment Reconciler가 결제를 결과 대기 → 격리로 넘겨 사람이 처리해야 한다. 코드로 확인했고 재현은 하지 않았다.
+- **기존 DLQ로는 안 된다**: `payment.commands.confirm.dlq` 컨슈머(`PgDlqService`)는 inbox 행이 없으면 `PG_DLQ_NO_INBOX` 경고만 남기고 끝낸다. 기본 핸들러를 DLQ 복구기로 바꾸는 것만으로는 명령이 살아나지 않는다.
+- **정할 것**: 일시 오류를 회복까지 지수 백오프로 재시도할지(그동안 해당 파티션 정지), 유한 재시도 뒤 별도 보관 토픽으로 보낼지, DLQ 컨슈머가 inbox 없는 건을 처리하게 할지. `docs/context/conventions/kafka.md`의 에러 핸들링 절은 payment만 다루므로 함께 고친다.
+- **관련**: pg 워커에 동시 처리 상한이 없는 문제(PAYMENT-THROUGHPUT 진행 기록 2026-11-08)가 커넥션 풀을 고갈시키면 리스너의 inbox 저장이 이 경로로 빠질 수 있다(추정, 미재현).
 
 ### REPLICA-ROUTING — 읽기 복제본 상시 운영 전 확인
 
@@ -118,6 +128,7 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 - 지금 백프레셔는 다운스트림 자원(Hikari 30, Kafka in-flight 5, Redis 단일 연결, 스케줄러 배치 50)에서 자연히 생긴다. `Semaphore`나 Resilience4j `Bulkhead` 같은 명시적 제한은 없다.
 - 외부 PG의 요청 한도를 넘거나, 다운스트림이 죽었을 때 타임아웃까지 가상 스레드가 쌓여 메모리를 누를 수 있다.
 - T4-D와 함께 Bulkhead를 넣거나 외부 PG 어댑터에 Semaphore를 둔다. 측정값으로 정한다.
+- pg inbox·outbox 워커의 worker-count도 동시 실행 제한이 아니다. 워커가 꺼낸 작업마다 새 가상 스레드를 만든다(`AbstractImmediateWorker` 102~105행). 워커가 직접 처리하는 원래 설계로 되돌리는 변경은 PAYMENT-THROUGHPUT에서 다룬다(진행 기록 2026-11-08).
 
 ### TC-7 — `payment_outbox` 재시도 정책
 
@@ -141,6 +152,6 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 
 ### TC-15 — pg 리스너 분리의 기준값 정밀화
 
-- 워커 5개, 채널 용량 1024, PENDING·IN_PROGRESS 정체 판정 60초는 모두 측정 없이 정한 값이다. 부하 측정으로 벤더 지연 p95를 확인해 정체 판정을 정하고(실제 벤더 타임아웃의 2배 안팎), 최고 TPS에서 채널이 넘치는 빈도를 잰다.
+- 워커 5개, 채널 용량 1024, PENDING·IN_PROGRESS 정체 판정 60초는 모두 측정 없이 정한 값이다. 워커 5개는 지금 동시 처리 상한으로 동작하지 않는다(TC-6). 부하 측정으로 벤더 지연 p95를 확인해 정체 판정을 정하고(실제 벤더 타임아웃의 2배 안팎), 최고 TPS에서 채널이 넘치는 빈도를 잰다.
   설정 키(`pg.inbox.channel.capacity`, `pg.inbox.channel.worker-count`, `pg.scheduler.inbox-polling-worker`)로 코드 변경 없이 바꿀 수 있다.
 - 지금 구현은 인스턴스 1대를 가정한다. 같은 DB와 consumer group을 쓰는 pg-service 2~3대에서 `FOR UPDATE SKIP LOCKED`가 중복 처리 없이 동작하는지 검증한다.
