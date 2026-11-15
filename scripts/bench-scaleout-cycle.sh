@@ -59,7 +59,7 @@
 #                               400 req/s 에 맞춘 값. docker-compose.benchmark.yml 이 이 값을
 #                               SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE 로 그대로 받는다)
 #   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성 (기본
-#                               1 — 코드 default 와 동일한 현재 운영 동작). payment.events.confirmed
+#                               1 — 코드 default 는 3이지만 기존 기준선과 비교하려고 1을 명시). payment.events.confirmed
 #                               파티션 수(3)까지만 늘리는 의미가 있다(Task 20 이 지목한 1순위 후보)
 #   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 (기본 5 — 코드 default)
 #   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 1 — 코드 default)

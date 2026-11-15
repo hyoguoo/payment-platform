@@ -226,7 +226,7 @@ process(result);  // result 가 null 일 수 있음
 
 **처방** (종결 가드 재발행):
 - 종결 가드 분기에서 `status==DONE && message==APPROVED`(= 정상 첫 도착엔 없는 = 재전송 신호) 면 `sendStockCommittedEvents` **재발행** + `terminalResendMetrics.record(DONE)` 계측.
-- **함정**: "dedupe 마킹이 0 row(중복)면 발행을 항상 진행" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 같은 JPA tx 원자 커밋이라 "dedupe됨+비종결" 조합이 단일 컨슈머 EOS 흐름에서 발생 불가 → **도달 불가 dead branch**. `PaymentConfirmResultUseCase.handle` 의 `affected == 0` 분기가 이 경우다. 재전송은 항상 종결 가드로 온다.
+- **함정**: "dedupe 마킹이 0 row(중복)면 발행을 항상 진행" 분기로 해결하려 하면 안 된다 — dedupe 마킹과 종결 전이가 주문 행 잠금 아래 같은 JPA tx 원자 커밋이라, 종결 전이를 일으킨 결과에서는 "dedupe됨+비종결" 조합이 컨슈머 동시성과 관계없이 생기지 않는다. `PaymentConfirmResultUseCase.handle` 의 `affected == 0` 분기에는 상태를 바꾸지 않는 UNKNOWN status 결과의 재배달만 도달하고, 그때는 발행할 것이 없다. 종결된 결제의 재전송은 항상 종결 가드로 온다.
 - **함정**: 순서 뒤집기(발행 먼저)로 해결되지 않는다 — 발행은 producer tx buffer 라 원자성 경계(JPA 커밋 ↔ Kafka 커밋)가 그대로다(FAILED·QUARANTINED 의 즉시 Redis 보상과 성격이 다름).
 - **잔여 한계 (over-sell)**: 재발행도 같은 EOS tx 라 `commitTransaction` **지속** 실패 시 stock-committed 자체는 완전 유실(over-sell). 단 입력 `events.confirmed` 메시지는 명시 연결된 `AfterRollbackProcessor`(공유 DLQ recoverer + backoff)가 소진 후 DLQ 로 발행해 가시화한다. DLQ 적체분은 관리자 수동 재주입(`DlqReprocessUseCase` → 원 토픽 `events.confirmed` 재발행, 나이 게이트)으로 복구하며, 조건부 자동 재시도는 아직 없다(`../TODOS.md` TQ-1). 검증: `PaymentEosIntegrationTest` #6(복구)·#7(지속실패 → DLQ 도달).
 

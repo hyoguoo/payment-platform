@@ -62,8 +62,8 @@
 
 ### KAFKA-PARTITION-DEFAULT — 파티션·컨슈머 동시성 기본값 결정
 
-- **현황**: 토픽 파티션은 3이다. 같은 값이 네 곳에 따로 적혀 있다: `scripts/smoke/create-topics.sh`(`PARTITIONS=3`), payment·pg의 `KafkaTopicConfig`(`PARTITIONS = 3`), `docker/docker-compose.infra.yml`(`KAFKA_NUM_PARTITIONS`). pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이고, payment의 결과 소비 동시성도 기본 1이다.
-- **측정**: 파티션·동시성을 9로 올리면 부하 중 종결이 10.2/s에서 18.9/s(1.86배)로 늘었다. 거기서 파티션 18에 인스턴스 2대씩 붙이면 1.09배에 그쳤다. 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`. 처리량 측정 토픽(PAYMENT-THROUGHPUT)도 결과 소비 동시성 1→3을 첫 비교 후보로 두고 있다.
+- **현황**: 토픽 파티션은 3이다. 같은 값이 네 곳에 따로 적혀 있다: `scripts/smoke/create-topics.sh`(`PARTITIONS=3`), payment·pg의 `KafkaTopicConfig`(`PARTITIONS = 3`), `docker/docker-compose.infra.yml`(`KAFKA_NUM_PARTITIONS`). pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이고, payment의 결과 소비 동시성은 2026-11-15에 파티션 수와 같은 3으로 올렸다(#165).
+- **측정**: 파티션·동시성을 9로 올리면 부하 중 종결이 10.2/s에서 18.9/s(1.86배)로 늘었다. 거기서 파티션 18에 인스턴스 2대씩 붙이면 1.09배에 그쳤다. 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`. 처리량 측정 토픽(PAYMENT-THROUGHPUT)에서는 파티션 3을 그대로 두고 결과 소비 동시성만 1→3으로 올려 부하 중 처리가 140건/초에서 106.7→139.7/s로 늘었다.
 - **되돌릴 수 없다**: 파티션은 줄일 수 없고, 기존 토픽에서 늘리면 키 해시가 재배치돼 같은 주문의 진행 중 메시지가 다른 파티션으로 갈라진다. Spring `KafkaAdmin`은 선언값이 실제보다 크면 기동할 때 자동으로 늘리므로, 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
 - **처방**: (1) 파티션 안 순서에 실제로 기대는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 기대면 빈 토픽 재생성이나 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 올린다. 승격한다면 네 곳의 값을 한 곳으로 모으는 일이 먼저다. 측정용 환경 변수 `KAFKA_TOPIC_PARTITIONS`, `PG_CONSUMER_CONCURRENCY`, `CONFIRMED_CONSUMER_CONCURRENCY`는 이미 있다.
 

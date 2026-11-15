@@ -222,7 +222,7 @@ Flyway 운영은 [STACK.md](STACK.md#flyway)에 있다.
 - broker 1대(`kafka:9092`), KRaft, 토픽 자동 생성 끔. 토픽 생성은 `scripts/smoke/create-topics.sh`, 설정 검증은 `scripts/smoke/kafka-topic-config.sh`.
 - 직접 만든 ProducerFactory에도 traceparent 전파를 위해 `ObservationRegistry`를 명시적으로 연결한다.
 - 파티션 수가 컨슈머 병렬도의 상한이다. 리스너 동시성을 올리든 인스턴스를 늘리든 그룹당 활성 컨슈머는 파티션 수를 넘지 못한다.
-  운영 파티션은 3이고, pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이며, payment 결과 소비 동시성(`payment.kafka.events-confirmed.consumer.concurrency`)도 기본 1이다.
+  운영 파티션은 3이고, pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이며, payment 결과 소비 동시성(`payment.kafka.events-confirmed.consumer.concurrency`)은 기본 3이다.
   파티션 값은 네 곳에 따로 적혀 있다. 승격 판단은 [TODOS](../TODOS.md)의 KAFKA-PARTITION-DEFAULT.
 
 ### Eureka와 Gateway

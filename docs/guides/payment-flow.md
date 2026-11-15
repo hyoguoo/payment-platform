@@ -142,7 +142,7 @@ sequenceDiagram
 23. **종결 가드** — 진행 가능 상태(READY/IN_PROGRESS)만 통과 (`canApplyConfirmResult`)
     - **`DONE` + `APPROVED` 재배달(재발행 신호)** → 재고 확정 이벤트 **재발행**(RDB DONE 커밋 후 브로커 커밋 유실 복구) (`sendStockCommittedEvents` + `terminalResendMetrics.record(DONE)`)
     - 그 외 종결(QUARANTINED/FAILED 등) → noop (`guardSkipMetrics`)
-24. **메시지 멱등 마킹** — `payment_event_dedupe` INSERT IGNORE (`markIfAbsent`). affected=0(중복)이면 단순 skip — 단일 컨슈머 EOS 에선 DONE 종결 가드가 먼저 흡수하므로 도달 불가, 방어적 처리
+24. **메시지 멱등 마킹** — `payment_event_dedupe` INSERT IGNORE (`markIfAbsent`). affected=0(중복)이면 단순 skip — 종결된 결제의 재배달은 주문 행 잠금 아래 종결 가드가 먼저 흡수하므로, 여기에는 상태를 바꾸지 않는 UNKNOWN status 결과의 재배달만 도달한다
 25. **상태 분기**
     - **승인(APPROVED)**
       - 금액 재검증(`isAmountMismatch`) 통과 시 **`IN_PROGRESS → DONE`**(`markPaymentAsDone`) + **재고 확정 이벤트 발행**(상품별 결정적 키 `StockEventUuidDeriver.derive`, `payment.events.stock-committed`) (`sendStockCommittedEvents`)

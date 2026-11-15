@@ -25,7 +25,8 @@
 #   PAYMENT_JAVA_OPTS — payment-service JVM 옵션. 기본 -Xmx700m
 #   PG_JAVA_OPTS      — pg-service JVM 옵션. 기본 -Xmx600m
 #   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성.
-#                         기본 1(코드 default 와 동일 — 현재 운영 동작). 파티션 수(3)까지만 의미 있다.
+#                         기본 1. 코드 default 는 3이지만 benchmark 는 기존 기준선과 비교하려고 1을 명시한다.
+#                         파티션 수(3)까지만 의미 있다.
 #   PG_INBOX_WORKERS  — pg-service inbox 채널(벤더 confirm 호출) 워커 수. 기본 5(코드 default).
 #   PG_OUTBOX_WORKERS — pg-service outbox 채널(확정 결과 Kafka 릴레이) 워커 수. 기본 1(코드 default).
 #
@@ -71,7 +72,7 @@ services:
       # 코드 default 120000ms(2분) → 15000ms 로 단축하여 scan 틱 대기를 최소화.
       RECONCILER_FIXED_DELAY_MS: "${RECONCILER_SCAN_MS:-15000}"
       # payment.kafka.events-confirmed.consumer.concurrency — Spring relaxed binding 으로 env 주입.
-      # 코드 default 1(현재 운영 동작) — SHARED-RESOURCE-SCALEOUT Task 21 측정 전용 손잡이.
+      # 코드 default 는 3. benchmark 는 기존 기준선과 비교하려고 1을 명시한다 — 측정 전용 손잡이.
       PAYMENT_KAFKA_EVENTS_CONFIRMED_CONSUMER_CONCURRENCY: "${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
 
   # ──────────────────────────────────────────────────────────────────────────

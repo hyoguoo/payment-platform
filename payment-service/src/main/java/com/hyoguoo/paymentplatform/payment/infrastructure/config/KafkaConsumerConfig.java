@@ -64,12 +64,12 @@ public class KafkaConsumerConfig {
     private long afterRollbackMaxAttempts;
 
     /**
-     * {@link ConfirmedEventConsumer} 리스너 컨테이너 동시성. 파티션 수(3)까지만 스레드를 늘리는 의미가
-     * 있다 — 파티션보다 많은 스레드는 배정받을 파티션이 없어 놀게 된다. 미지정 시 Spring Kafka 기본값과
-     * 동일한 1(현재 운영 동작)을 유지하고, 측정 시에만 프로퍼티로 올려 이 값이 처리율 천장에 실제로
-     * 영향을 주는지 확인한다.
+     * {@link ConfirmedEventConsumer} 리스너 컨테이너 동시성. 기본값은 결과 토픽 파티션 수와 같은 3이다.
+     * 파티션보다 많은 스레드는 배정받을 파티션이 없어 놀게 된다. 같은 주문의 결과는 orderId 키로 같은
+     * 파티션에 들어가므로 스레드가 늘어도 주문별 처리 순서는 유지되고, EOS 트랜잭션은 스레드(파티션)마다
+     * 따로 커밋된다. 1일 때는 소비 스레드 하나가 처리 상한(약 120건/초)이 됐다.
      */
-    @Value("${payment.kafka.events-confirmed.consumer.concurrency:1}")
+    @Value("${payment.kafka.events-confirmed.consumer.concurrency:3}")
     private int confirmedEventConsumerConcurrency;
 
     /**

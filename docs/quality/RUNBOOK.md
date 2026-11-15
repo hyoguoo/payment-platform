@@ -23,18 +23,18 @@ Java 21, Docker Desktop, `!override`를 지원하는 Docker Compose, k6, Python 
 | JVM heap | payment 700MiB, PG 600MiB, product·user·Gateway 각각 384MiB, Eureka 256MiB |
 | 복구 검사 설정 | IN_FLIGHT 300초, AWAITING_RESULT 900초, 검사 간격 120초 |
 | 트레이스 수집 | 비즈니스 서비스와 Gateway 요청 100% |
-| 결제 결과 소비 동시성 | 기본 1, 비교 실험에서만 `QUALITY_CONFIRMED_CONCURRENCY`로 지정 |
+| 결제 결과 소비 동시성 | 기본 3(서버 기본값과 같음), 비교 실험에서만 `QUALITY_CONFIRMED_CONCURRENCY`로 지정 |
 | 외부 연동 | 실제 PG 시크릿 미사용, 외부 알림 수신처 없음 |
 
 heap은 JVM에 배정한 공간이며 컨테이너 전체 메모리 제한은 아니다.
 설정 원본은 [quality Compose](../../docker/docker-compose.quality.yml)와 [로컬 알림 설정](../../observability/alertmanager/quality.yml)이다.
 관측 도구를 함께 사용하므로 `--skip-obs` 옵션은 허용하지 않는다.
 
-결과 소비 동시성 비교 시 기동 전 `QUALITY_CONFIRMED_CONCURRENCY=3`을 지정할 수 있다.
-현재 결과 토픽은 3파티션이므로 1과 3을 비교하며, 기본값은 1을 유지한다.
+결과 소비 동시성 비교 시 기동 전 `QUALITY_CONFIRMED_CONCURRENCY=1`을 지정할 수 있다.
+현재 결과 토픽은 3파티션이므로 1과 3을 비교한다. 서버와 quality 환경의 기본값은 3이다(2026-11-15, 그전 회차는 기본 1).
 각 조건은 새 컨테이너·새 볼륨에서 실행하고, 실제 consumer group의 멤버·파티션 배정을 확인한다.
 적용값은 실행 증빙 `environment.json`의 payment `JAVA_TOOL_OPTIONS`에 남는다.
-이 설정은 quality 실험용이며 운영 기본값의 변경이나 장애·중복 경로 검증 완료를 뜻하지 않는다.
+`QUALITY_CONFIRMED_CONCURRENCY`는 비교 실험용 손잡이다. 서버 기본값을 3으로 올린 근거와 장애·중복 경로 검증은 #165에 있다.
 
 ### 회차마다 지킬 것
 

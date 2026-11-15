@@ -177,10 +177,11 @@ public class PaymentConfirmResultUseCase {
         ConfirmStatus confirmStatus = ConfirmStatus.from(message.status());
 
         if (affected == 0) {
-            // 비종결 상태(READY/IN_PROGRESS)에서 동일 event_uuid 가 재배달돼야 도달하는 분기다.
-            // 단일 컨슈머 EOS 에서는 markIfAbsent 1행 삽입과 RDB DONE 전이가 같은 트랜잭션으로
-            // 묶여 있어, 같은 event_uuid 의 재배달은 항상 DONE 종결 가드(위 분기)로 먼저 흡수되고
-            // 이 분기에는 도달할 수 없다 — 단일 컨슈머 EOS서 도달 불가, 방어적 처리로 단순 skip만 한다.
+            // 비종결 상태에서 동일 event_uuid 가 재배달돼야 도달하는 분기다.
+            // markIfAbsent 1행 삽입과 종결 전이가 주문 행 잠금(FOR UPDATE) 아래 같은 트랜잭션으로
+            // 커밋되므로, 종결 전이를 일으킨 결과(APPROVED/FAILED/QUARANTINED)의 재배달은 컨슈머
+            // 동시성이나 리밸런스 겹침과 관계없이 종결 가드(위 분기)로 먼저 흡수된다.
+            // 여기 도달하는 것은 상태를 바꾸지 않은 결과(UNKNOWN status)의 재배달뿐이며, 단순 skip 한다.
             LogFmt.info(log, LogDomain.PAYMENT, EventType.PAYMENT_CONFIRM_RESULT_START,
                     () -> "중복 skip — orderId=" + message.orderId()
                             + " eventUuid=" + message.eventUuid());

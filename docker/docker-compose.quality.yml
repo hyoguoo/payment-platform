@@ -3,7 +3,7 @@
 services:
   payment-service:
     environment:
-      JAVA_TOOL_OPTIONS: "-Xmx700m -Dpayment.kafka.events-confirmed.consumer.concurrency=${QUALITY_CONFIRMED_CONCURRENCY:-1}"
+      JAVA_TOOL_OPTIONS: "-Xmx700m -Dpayment.kafka.events-confirmed.consumer.concurrency=${QUALITY_CONFIRMED_CONCURRENCY:-3}"
       RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS: "300"
       RECONCILER_AWAITING_RESULT_TIMEOUT_SECONDS: "900"
       RECONCILER_FIXED_DELAY_MS: "120000"

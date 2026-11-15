@@ -7,9 +7,9 @@
 ## 진행 중
 
 ### PAYMENT-THROUGHPUT — 결제 처리량 한계 측정과 병목 개선
-- 규모·단계: 실험 · execute — T2 완료(2026-11-15). T3 결과 소비 동시성 3 채택 판단 대기. 동시성 3에서 사용자 품질 100/s 통과, 처리 용량 경계 140~160/s. 동시성 1 기준선: 처리 용량 120/s(10분), 사용자 품질 80/s 통과·100/s 미달
-- 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162) · 브랜치 `#162`
-- 다음: 동시성 3 채택 판단(개발자 확인) → 채택하면 기본값 1 → 3과 회귀 검증·검토 → pg 워커 동시 처리 상한 변경(2026-11-08 결정) → 비교 측정. 순서와 조건은 DESIGN 진행 기록의 2026-11-15 항목. "중단됐던 작업 진행" 같은 재개 요청이면 이 토픽을 먼저 재개한다
+- 규모·단계: 실험 · execute — T3 첫 병목 완료(2026-11-15, #165 결과 소비 동시성 기본값 3). 다음 반복은 pg 명령 소비 동시성과 워커 동시 처리 상한(#166)
+- 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162)(하위 [#165](https://github.com/hyoguoo/payment-platform/issues/165) · [#166](https://github.com/hyoguoo/payment-platform/issues/166)) · 브랜치 `#162`
+- 다음: #166 — pg 명령 소비 동시성 1 → 3, 워커 동시 처리 상한 복원(tdd, 결제 위험 경로) → worker-count를 측정으로 결정 → 같은 조건 비교 측정. 측정 전 Testcontainers 재사용 컨테이너 정리. 상세는 DESIGN 진행 기록 2026-11-15. "중단됐던 작업 진행" 같은 재개 요청이면 이 토픽을 먼저 재개한다
 - 막힘: 없음. 회차는 `live-drill/throughput-split-measurements-20261106/`의 v3 드라이버와 `finish-round.py`로 돌린다(EXPERIMENTS 고정 조건, RUNBOOK "회차마다 지킬 것")
 - 문서: [BRIEF](topics/PAYMENT-THROUGHPUT/BRIEF.md) · [DESIGN](topics/PAYMENT-THROUGHPUT/DESIGN.md) · [EXPERIMENTS](topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md)
 

@@ -36,7 +36,8 @@
   - 진행(2026-11-06, Docker 초기화 뒤 새 환경): capacity 100·120(2회)·140·160/s 3분 탐색, capacity 120/s·user-quality 60/s 10분 확인. 처리 용량은 120/s 회복·140/s 증가, 사용자 품질 60/s 10분 통과. 10/29 회차보다 처리 용량이 높게 나온 원인은 미확인
   - 사용자 품질 첫 미달 부하: 100/s(80/s 통과). 2026-11-06 재분류: user-quality 100/s는 직전 회차 종료 2.5분 뒤 시작해 열 영향을 배제하지 못하므로 미달을 확정하지 않는다. 냉각 10분 이상 조건으로 다시 재면 T2.4를 완료한다(EXPERIMENTS "남은 측정" 1번). 첫 병목 후보 근거: 사용자 품질 100/s에서만 payment DB 연결 풀 포화(사용 30/30, 대기 최대 122)와 부하 중 처리 41/s. 원인 확정은 T3. 상세는 EXPERIMENTS
   - 결과(2026-11-15): 냉각 조건을 지킨 user-quality 100/s 재측정(user-quality100-b)에서도 사용자 완료가 미달했다(부하 중 처리 20.4/s, DONE 기록 p95 154.6초). 사용자 품질 첫 미달 부하를 100/s로 확정한다. 두 시험의 결과: 처리 용량 120/s(10분 유지, 초기 적체 포함)·140/s 미달, 사용자 품질 60/s(10분)·80/s 통과·100/s 미달. 상세는 EXPERIMENTS "2026-11-06 결과 정리"
-- [ ] **T3 — 실측 병목의 재현·개선·회귀 검증** (tdd, 결제 위험 경로)
+- [x] **T3 — 실측 병목의 재현·개선·회귀 검증** (tdd, 결제 위험 경로. 첫 병목 완료, 다음 반복은 #166)
+  - 결과(2026-11-15, #165): 개발자 결정으로 결과 소비 동시성 기본값 1 → 3 채택. `KafkaConsumerConfig` 기본값, quality Compose 기본값, RUNBOOK·ARCHITECTURE·TODOS 서술 수정. benchmark는 기존 기준선 비교를 위해 1을 명시한 채 둔다. 기본값 테스트(`KafkaConsumerConfigTest`)를 먼저 써서 "expected 3 but was 1" 실패를 확인한 뒤 구현. payment 단위 700, 통합 761(`ConfirmedConsumerConcurrencyIntegrationTest` 4, `PaymentEosIntegrationTest` 9 포함) 통과, 정적 분석 4종 통과. risk-reviewer·reviewer critical·major 없음. minor 3건 반영: RUNBOOK 문장, benchmark 주석, "단일 컨슈머라서 affected==0 도달 불가" 서술을 실제 근거(주문 행 잠금 아래 같은 트랜잭션, UNKNOWN status 재배달만 도달)로 수정
   - 의존: T2.4. 실제 병목 모듈, 선택한 변경과 대안, 지킬 불변식을 근거와 함께 이 문서에 추가한 뒤 구현한다
   - 첫 후보: 결과 소비 동시성 1 → 3. 160/s에서 명령·결과 양쪽 적체와 PG 승인 뒤 지연을 확인했다. T2.4의 후보 10분 확인 전에는 서버 기본값을 바꾸지 않는다
   - 원인 후보(2026-11-06 코드 확인, 계측 전): ① 결과 소비가 동시성 1에서 메시지마다 DB 트랜잭션과 Kafka EOS 트랜잭션을 차례로 커밋한다. 입력이 멈추면 약 240/s, 부하 중에는 100~120/s로 브로커·DB 지연에 민감하다 ② `OutboxRelayService.relay`가 DB 트랜잭션 안에서 Kafka 발행 응답을 동기로 기다리고, 가상 스레드라 동시 실행 수 제한이 없다 ③ 복제본이 꺼진 quality 환경에서 상태 조회가 같은 연결 풀(30)을 쓴다(user-quality 100/s에서만 풀 포화) ④ 개발자 의심: confirm의 Redis 재고 차감이 상품별 직렬이다. 측정 시나리오는 주문당 상품 1개라 이번 수치에는 영향이 없고, confirm 응답 p95는 140/s에서도 51ms였다. 부하 중 컨테이너 CPU는 어느 것도 포화되지 않았다(payment 중앙값 150~180%, payment MySQL 64~91%, redis-stock 20% 미만)
@@ -55,6 +56,7 @@
   - 준비 상태: `ConfirmedConsumerConcurrencyIntegrationTest`(4개 시나리오) 작성, 독립 reviewer·domain-expert 재검토 PASS, 2026-11-06 커밋(`483fd9e2`). 테스트 컴파일만 확인했고 통합 테스트 실행은 아직이다. 로컬 프로세스 복구 드라이버 `run-consumer-recovery.py`는 작성만 했고 독립 검토·실행 전이다(Git 제외)
   - 검증: `./gradlew :payment-service:test :payment-service:checkstyleMain :payment-service:checkstyleTest :payment-service:spotbugsMain :payment-service:spotbugsTest`, DB·Kafka 배선 변경이면 `:payment-service:integrationTest`. 성능 실측과 Gradle 통합 테스트를 동시에 돌리지 않는다
 - [ ] **T4 — 개선 뒤 같은 조건으로 한계 재탐색**
+  - 1차(2026-11-15, 결과 소비 동시성 3, 같은 JAR에 프로퍼티만 변경): 처리 용량 140/s 회복·160/s 미달(부하 중 141.6/s), 사용자 품질 100/s 통과. 다음 병목은 pg 명령 소비 → T3·T4 반복(#166: 명령 소비 동시성, 워커 동시 처리 상한, worker-count 측정)
   - 바꾼 요소 외 조건을 고정하고 T2.4의 두 시험을 다시 한다. 같은 rate의 전후 비교와 최고 지속 처리량의 변화를 함께 보고한다. 효과가 없거나 회귀면 변경을 고치거나 빼거나 보류 근거를 남긴다. 다음 병목이 있으면 T3·T4를 반복한다
 - [ ] **T5 — ship**
   - 변경에 맞는 정상·중복·실패·복구 확인, reviewer·risk-reviewer 완료 검토, context 문서와 HTML 동기화, BRIEF 완료 요약, 아카이브
@@ -63,6 +65,8 @@
 
 ## 진행 기록
 
+- 2026-11-15 채택: 결과 소비 동시성 3 채택과 pg 변경 묶음 진행을 개발자가 승인했다. 이슈를 따로 만들었다: #165(결과 소비 동시성 3, 완료), #166(pg 명령 소비 동시성과 워커 동시 처리 상한, 다음). 둘 다 #162의 하위 이슈다.
+  - 로컬 Testcontainers 재사용 설정(`~/.testcontainers.properties`의 `testcontainers.reuse.enable=true`) 때문에 통합 테스트 뒤 컨테이너가 남는다. 다음 측정 전 `docker ps -aq`가 비어 있어야 `run-remaining-rounds.sh` 계열 드라이버가 시작하므로, 측정 전에 정리한다(라벨 `org.testcontainers=true`로 골라 지운다)
 - 2026-11-15 재개: 2026-11-06 중단 항목의 남은 측정 3회를 `run-remaining-rounds.sh`로 돌렸다(17:52 시작, 19:25 종료, 실패 없음). 회차 뒤 남은 컨테이너·볼륨 0. 호스트 화면은 외장 1개를 꺼 2개로 두었다. 결과와 판단은 [EXPERIMENTS](EXPERIMENTS.md)의 2026-11-15 항목. T2.4·T2를 완료했다.
   - 다음: 결과 소비 동시성 3 채택 판단(개발자 확인). 채택하면 2026-11-06 중단 항목 ③의 순서(`KafkaConsumerConfig` 기본값 1 → 3, quality Compose 기본값·RUNBOOK 문장 수정, 통합 테스트 실행, risk-reviewer·reviewer 검토)로 간다. 그 뒤 2026-11-08 항목의 pg 워커 변경
 - 2026-11-08 개발자 결정 (측정 재개 전): pg inbox·outbox 워커에 동시 처리 상한이 없다(`AbstractImmediateWorker` 102~105행이 꺼낸 작업을 작업마다 가상 스레드를 만드는 executor에 넘긴다). 원래 설계인 "워커가 직접 처리"로 되돌리는 변경을 T4 다음 반복(T3·T4) 후보로 둔다.
