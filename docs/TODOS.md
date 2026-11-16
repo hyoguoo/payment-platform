@@ -39,6 +39,7 @@
 | TC-7 | `payment_outbox` 재시도 정책과 쓰이지 않는 스키마·지표 | 부하 측정 | [아래](#tc-7--payment_outbox-재시도-정책) |
 | TC-12 | pg-service 워커 종료 시 채널 drain (보류) | 없음 | [아래](#tc-12--pg-service-워커-종료-시-채널-drain-보류) |
 | PG-STALE-ROW-GUARD | 늦게 도착한 재시도 명령이 폴링 회수와 겹쳐 벤더를 두 번 부르는 갈래 | 없음 | `PgInboxImmediateWorker`는 큐 대기 시간만 보고, IN_PROGRESS 행은 얼마나 지났는지 보지 않고 정체 회수로 들어간다. self-loop 재시도 명령이 backoff(최대 22.5초) 뒤 발행되고 `payment.commands.confirm` 소비 지연이 37.5초를 넘으면, 폴링이 `updated_at + 60초`에 회수해 벤더를 부르는 사이 늦게 받은 명령이 새로 적재돼 두 번째 호출이 나간다. 결과 반영은 벤더 멱등 응답과 반영 행 수 확인으로 지켜진다. 처방 후보: IN_PROGRESS 분기에서 이미 읽은 행의 `updated_at`이 정체 기준을 넘었으면 건너뛴다(조회 증가 없음, 폴링이 회수). 2026-11-15 #166 재검토에서 확인 |
+| PG-CHANNEL-OVERFLOW-DRAIN | pg inbox·outbox 채널이 넘친 작업은 폴링으로만 회수돼 적체가 오래 남는다 | 부하 측정 | 채널(용량 1,024)이 가득 차면 넘친 행은 즉시 처리를 놓치고 폴링으로만 빠진다. inbox는 `pending-timeout-ms` 60초 뒤 5초마다 10건, outbox는 2초마다 10건이라 분당 약 120·300건이 상한이다. capacity 160/s(2026-11-16, #166)에서 inbox 워커 32일 때 924행, outbox 워커 1일 때 4,757행이 10분 넘게 남았다. 워커 수가 유입을 따라가면 넘치지 않지만, 순간 폭주나 벤더 지연이 길어지면 다시 생긴다. 폴링 배치·주기를 바꾸면 PG-STALE-ROW-GUARD의 중복 호출 갈래와 함께 봐야 한다 |
 | TC-15 | pg 리스너 분리의 기준값 정밀화와 멀티 인스턴스 검증 | 부하 측정, 멀티 인스턴스 | [아래](#tc-15--pg-리스너-분리의-기준값-정밀화) |
 
 ---
@@ -129,7 +130,7 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 - 지금 백프레셔는 다운스트림 자원(Hikari 30, Kafka in-flight 5, Redis 단일 연결, 스케줄러 배치 50)에서 자연히 생긴다. `Semaphore`나 Resilience4j `Bulkhead` 같은 명시적 제한은 없다.
 - 외부 PG의 요청 한도를 넘거나, 다운스트림이 죽었을 때 타임아웃까지 가상 스레드가 쌓여 메모리를 누를 수 있다.
 - T4-D와 함께 Bulkhead를 넣거나 외부 PG 어댑터에 Semaphore를 둔다. 측정값으로 정한다.
-- pg inbox·outbox 워커는 2026-11-15(#166)부터 꺼낸 작업을 직접 처리해 worker-count가 동시 실행 상한이다. 그전에는 작업마다 새 가상 스레드를 만들어 상한이 없었다.
+- pg inbox·outbox 워커는 2026-11-15(#166)부터 꺼낸 작업을 직접 처리해 worker-count가 동시 실행 상한이다. 그전에는 작업마다 새 가상 스레드를 만들어 상한이 없었다. outbox 워커 기본값은 같은 변경에서 1 → 8로 올렸다(1개는 160/s에서 약 145/s로 막힘).
 
 ### TC-7 — `payment_outbox` 재시도 정책
 

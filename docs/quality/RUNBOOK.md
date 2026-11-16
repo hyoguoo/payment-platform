@@ -26,6 +26,7 @@ Java 21, Docker Desktop, `!override`를 지원하는 Docker Compose, k6, Python 
 | 결제 결과 소비 동시성 | 기본 3(서버 기본값과 같음), 비교 실험에서만 `QUALITY_CONFIRMED_CONCURRENCY`로 지정 |
 | pg 결제 명령 소비 동시성 | 기본 3(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_COMMAND_CONCURRENCY`로 지정 |
 | pg inbox 워커 수 | 기본 5(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_INBOX_WORKERS`로 지정. 워커 수가 PG 동시 호출 상한이다 |
+| pg outbox 워커 수 | 기본 8(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_OUTBOX_WORKERS`로 지정. 워커 수가 확정 결과 동시 발행 상한이다 |
 | 외부 연동 | 실제 PG 시크릿 미사용, 외부 알림 수신처 없음 |
 
 heap은 JVM에 배정한 공간이며 컨테이너 전체 메모리 제한은 아니다.
@@ -40,7 +41,7 @@ heap은 JVM에 배정한 공간이며 컨테이너 전체 메모리 제한은 �
 
 pg inbox 워커는 2026-11-15(#166)부터 작업을 직접 처리해 워커 수가 PG 동시 호출 상한이다. 그전 회차는 상한 없이 돌았다.
 기본 5는 측정 전 임시값이라, 모의 PG 지연 100~300ms에서 처리 상한이 약 17~50건/초다. 기본 설정으로 재면 그보다 높은 부하에서 미달하는 것이 정상이다.
-워커 수와 명령 소비 동시성 적용값은 실행 증빙 `environment.json`의 pg `PG_INBOX_CHANNEL_WORKER_COUNT`, `PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY`에 남는다.
+워커 수와 명령 소비 동시성 적용값은 실행 증빙 `environment.json`의 pg `PG_INBOX_CHANNEL_WORKER_COUNT`, `PG_OUTBOX_CHANNEL_WORKER_COUNT`, `PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY`에 남는다.
 
 ### 회차마다 지킬 것
 

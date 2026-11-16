@@ -63,7 +63,8 @@
 #                               파티션 수(3)까지만 늘리는 의미가 있다(Task 20 이 지목한 1순위 후보)
 #   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 상한 (기본 5 — 코드 default.
 #                               2026-11-15(#166)부터 실제 상한이라 그전 회차와 같은 값이라도 조건이 다르다)
-#   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 1 — 코드 default)
+#   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 8 — 코드 default.
+#                               #166 전에는 기본 1이어도 상한이 없었다)
 #   PG_CONSUMER_CONCURRENCY   — pg-service 의 payment.commands.confirm 리스너 동시성 (기본 1 —
 #                               docker-compose.benchmark.yml 이 SPRING_KAFKA_LISTENER_CONCURRENCY(DLQ 리스너)와
 #                               PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY(명령 리스너, 코드 default 3) 둘 다에 넣는다). payment.commands.confirm 파티션 수까지만 늘리는
@@ -191,7 +192,7 @@ HIKARI_MAX_POOL="${HIKARI_MAX_POOL:-80}"
 CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
 PG_INSTANCES="${PG_INSTANCES:-1}"
 PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-5}"
-PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-1}"
+PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-8}"
 PG_CONSUMER_CONCURRENCY="${PG_CONSUMER_CONCURRENCY:-1}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"
 PRODUCT_COUNT="${PRODUCT_COUNT:-100}"

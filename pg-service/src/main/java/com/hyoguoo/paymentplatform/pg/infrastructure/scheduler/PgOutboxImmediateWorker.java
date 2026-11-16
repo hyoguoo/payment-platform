@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>SmartLifecycle:
  * <ul>
- *   <li>start(): Virtual Thread 워커 스레드 N개(기본 1, 프로퍼티 pg.outbox.channel.worker-count) 기동.
+ *   <li>start(): Virtual Thread 워커 스레드 N개(기본 8, 프로퍼티 pg.outbox.channel.worker-count) 기동.
  *       워커가 작업을 직접 처리하므로 N 이 동시 발행 상한이다.</li>
  *   <li>stop(): running=false 후 처리 중 작업을 최대 10초 기다리고, 남은 워커만 interrupt.</li>
  *   <li>getPhase(): Integer.MAX_VALUE - 100. Kafka 리스너 레지스트리와 같은 phase 라 둘의 종료 순서는 정해져 있지 않다.</li>
@@ -45,7 +45,7 @@ public class PgOutboxImmediateWorker extends AbstractImmediateWorker<OutboxJob> 
     public PgOutboxImmediateWorker(
             PgOutboxChannel channel,
             PgOutboxRelayService pgOutboxRelayService,
-            @Value("${pg.outbox.channel.worker-count:1}") int workerCount,
+            @Value("${pg.outbox.channel.worker-count:8}") int workerCount,
             MeterRegistry meterRegistry
     ) {
         this.channel = channel;
@@ -101,7 +101,7 @@ public class PgOutboxImmediateWorker extends AbstractImmediateWorker<OutboxJob> 
         try {
             pgOutboxRelayService.relay(id);
         } catch (RuntimeException | Error e) {
-            // 워커 스레드가 작업을 직접 처리하므로 Error 를 전파하면 워커가 죽어 즉시 발행이 멈춘다(기본 1개).
+            // 워커 스레드가 작업을 직접 처리하므로 Error 를 전파하면 워커가 하나씩 죽어 즉시 발행 용량이 줄어든다.
             // Error 도 포획해 ERROR 로그 + 카운터로 남기고 다음 작업으로 넘어간다.
             relayFailCounter.increment();
             LogFmt.error(log, LogDomain.PG_OUTBOX, EventType.PG_OUTBOX_WORKER_RELAY_FAIL,
