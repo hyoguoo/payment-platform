@@ -181,13 +181,13 @@ src/main/resources/
 | `KafkaErrorHandlerConfig` | payment `infrastructure/config` | `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff`(1초 간격 5회). 재시도하지 않는 예외: `MessageConversionException`, `IllegalArgumentException`, `IllegalStateException`, `PaymentStatusException` |
 | `InboxReadyEventHandler` (AFTER_COMMIT) | pg `infrastructure/listener` | 커밋 직후 접수 작업을 inbox 채널에 넣는다 |
 | `PgInboxChannel` + `InboxJob` | pg `infrastructure/channel` | inbox 작업 큐(용량 1024). 작업에 OTel 컨텍스트를 함께 담아 Kafka 소비 스레드와 가상 스레드 워커 사이를 잇는다 |
-| `PgInboxImmediateWorker` | pg `infrastructure/scheduler` | inbox 가상 스레드 워커 5개. 채널에서 작업을 꺼내 컨텍스트를 복원하고 `PgInboxProcessUseCase`를 부른다(트랜잭션 → 벤더 호출 → 트랜잭션) |
+| `PgInboxImmediateWorker` | pg `infrastructure/scheduler` | inbox 가상 스레드 워커 N개(기본 64, 벤더 동시 호출 상한). 채널에서 작업을 꺼내 컨텍스트를 복원하고 `PgInboxProcessUseCase`를 부른다(트랜잭션 → 벤더 호출 → 트랜잭션) |
 | `PgInboxPollingWorker` (`@Scheduled`) | pg `infrastructure/scheduler` | inbox 정체 회수(5초 주기). PENDING은 접수 시각, IN_PROGRESS는 갱신 시각 기준 60초가 지난 행을 회수하고 `pg_inbox.stored_traceparent`로 부모 trace를 복원한다 |
 | `PgOutboxChannel` + `OutboxJob` | pg `infrastructure/channel` | outbox 발행 큐(용량 1024). 넣을 때 OTel 컨텍스트와 MDC를 캡처해 함께 담는다 |
-| `PgOutboxImmediateWorker` | pg `infrastructure/scheduler` | outbox 발행 워커. 생명주기 골격은 `AbstractImmediateWorker` 공통 base이고 Spring `DefaultLifecycleProcessor`가 시작·종료를 부른다 |
+| `PgOutboxImmediateWorker` | pg `infrastructure/scheduler` | outbox 발행 워커. 생명주기 골격은 `AbstractImmediateWorker` 공통 base이고 Spring `DefaultLifecycleProcessor`가 시작·종료를 부른다. 워커가 작업을 직접 처리해 워커 수가 동시 처리 상한이다 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | pg `infrastructure/scheduler` | 채널이 가득 찼거나 워커가 죽었을 때의 폴링 폴백(2초 주기) |
 | `TraceparentExtractor` | pg `infrastructure/trace` | traceparent 추출·복원. 관측 전용이며 업무 판단에 쓰지 않는다 |
-| `ContextAwareVirtualThreadExecutors` | payment·pg `core/config/concurrent` | OTel 컨텍스트와 MDC를 감싼 가상 스레드 실행기 |
+| `ContextAwareVirtualThreadExecutors` | payment `core/config/concurrent` | OTel 컨텍스트와 MDC를 감싼 가상 스레드 실행기. pg는 워커가 작업을 직접 처리해 이 실행기를 쓰지 않는다(#166에서 삭제) |
 
 ## 인프라별 책임
 
@@ -222,7 +222,7 @@ Flyway 운영은 [STACK.md](STACK.md#flyway)에 있다.
 - broker 1대(`kafka:9092`), KRaft, 토픽 자동 생성 끔. 토픽 생성은 `scripts/smoke/create-topics.sh`, 설정 검증은 `scripts/smoke/kafka-topic-config.sh`.
 - 직접 만든 ProducerFactory에도 traceparent 전파를 위해 `ObservationRegistry`를 명시적으로 연결한다.
 - 파티션 수가 컨슈머 병렬도의 상한이다. 리스너 동시성을 올리든 인스턴스를 늘리든 그룹당 활성 컨슈머는 파티션 수를 넘지 못한다.
-  운영 파티션은 3이고, pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이며, payment 결과 소비 동시성(`payment.kafka.events-confirmed.consumer.concurrency`)도 기본 1이다.
+  운영 파티션은 3이고, pg-service 결제 명령 리스너 동시성(`pg.kafka.commands-confirm.consumer.concurrency`)은 기본 3이고 DLQ 리스너는 Spring 기본 1이며, payment 결과 소비 동시성(`payment.kafka.events-confirmed.consumer.concurrency`)은 기본 3이다.
   파티션 값은 네 곳에 따로 적혀 있다. 승격 판단은 [TODOS](../TODOS.md)의 KAFKA-PARTITION-DEFAULT.
 
 ### Eureka와 Gateway

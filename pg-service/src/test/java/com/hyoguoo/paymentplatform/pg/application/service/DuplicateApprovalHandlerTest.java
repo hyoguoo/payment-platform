@@ -111,7 +111,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_outbox 1건, stored_status_result 기반 재발행(topic=events.confirmed)
         List<PgOutbox> outboxRows = outboxRepository.findAll();
@@ -150,7 +151,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_inbox QUARANTINED + reason_code=AMOUNT_MISMATCH
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -188,7 +190,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_outbox 1건, 승인 시각이 조회 원문과 동일
         List<PgOutbox> outboxRows = outboxRepository.findAll();
@@ -218,7 +221,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 상태 변경 없음, 발행 없음
         assertThat(outboxRepository.findAll()).isEmpty();
@@ -255,7 +259,8 @@ class DuplicateApprovalHandlerTest {
         when(mockInboxRepo.transitToApproved(eq(ORDER_ID), anyString())).thenReturn(0);
 
         // when
-        racedHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        racedHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                racedHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
         assertThat(racedOutboxRepository.findAll()).isEmpty();
@@ -283,7 +288,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         List<PgOutbox> outboxRows = outboxRepository.findAll();
         if (initialStatus.isTerminal()) {
@@ -314,7 +320,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_inbox QUARANTINED 전이 + pg_outbox 1건 + 발행
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -351,7 +358,8 @@ class DuplicateApprovalHandlerTest {
         when(mockInboxRepo.transitToQuarantined(eq(ORDER_ID), eq("AMOUNT_MISMATCH"))).thenReturn(false);
 
         // when
-        racedHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        racedHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                racedHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 발행 행 자체가 만들어지지 않는다(폴링 안전망 우회 차단)
         assertThat(racedOutboxRepository.findAll()).isEmpty();
@@ -373,7 +381,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_inbox 신설 + APPROVED 상태
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -400,7 +409,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_outbox 승인 시각이 조회 원문과 동일
         List<PgOutbox> outboxRows = outboxRepository.findAll();
@@ -426,7 +436,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.setStatusResult(ORDER_ID, vendorStatus);
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_inbox 신설 + QUARANTINED + reason_code=AMOUNT_MISMATCH
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -460,7 +471,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 상태 변경 없음, 발행 없음(겹침이면 원 호출이, 좀비면 다음 폴링이 처리)
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -481,7 +493,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 물러남을 안전하다고 본 근거가 가시성이므로 전용 카운터 증가를 확인한다
         assertThat(meterRegistry.counter(DuplicateApprovalHandler.VENDOR_INDETERMINATE_BACKOFF_COUNTER_NAME).count())
@@ -502,7 +515,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — 접수대장은 승인 그대로, 격리 전이도 발행도 일어나지 않는다
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -518,7 +532,8 @@ class DuplicateApprovalHandlerTest {
         gatewayAdapter.throwOnStatusQuery(PgGatewayRetryableException.of("timeout simulated"));
 
         // when
-        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+        handler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                handler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
         // then — pg_inbox 신설 + QUARANTINED + reason_code=VENDOR_INDETERMINATE
         PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -600,7 +615,8 @@ class DuplicateApprovalHandlerTest {
                     .thenReturn(1L);
 
             // when
-            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                    mockHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
             // then — transitDirectToTerminal(APPROVED) 호출
             verify(mockInboxRepo, times(1)).transitDirectToTerminal(
@@ -630,7 +646,8 @@ class DuplicateApprovalHandlerTest {
                     .thenReturn(1L);
 
             // when
-            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                    mockHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
             // then — transitDirectToTerminal(QUARANTINED) 호출
             verify(mockInboxRepo, times(1)).transitDirectToTerminal(
@@ -659,7 +676,8 @@ class DuplicateApprovalHandlerTest {
             when(mockInboxRepo.transitToQuarantined(eq(ORDER_ID), anyString())).thenReturn(true);
 
             // when
-            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                    mockHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
             // then — transitDirectToInProgress 호출 (PENDING 우회)
             verify(mockInboxRepo, times(1)).transitDirectToInProgress(eq(ORDER_ID), eq(AMOUNT_LONG));
@@ -688,7 +706,8 @@ class DuplicateApprovalHandlerTest {
             when(mockInboxRepo.transitToApproved(eq(ORDER_ID), anyString())).thenReturn(1);
 
             // when
-            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                    mockHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
             // then — outbox 저장(조회 결과 기반 승인 종결) — DB exists 경로
             verify(mockOutboxRepo, times(1)).save(any());
@@ -714,7 +733,8 @@ class DuplicateApprovalHandlerTest {
             when(mockInboxRepo.transitToQuarantined(eq(ORDER_ID), anyString())).thenReturn(true);
 
             // when
-            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT, PgVendorType.TOSS);
+            mockHandler.handleDuplicateApproval(ORDER_ID, PAYLOAD_AMOUNT,
+                    mockHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS));
 
             // then — 호출 순서: transitDirectToInProgress → transitToQuarantined
             InOrder order = inOrder(mockInboxRepo);

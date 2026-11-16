@@ -131,7 +131,7 @@ flowchart TD
     GUARD -->|false = 그 외 종결| NOOP["noop 로그 + return<br/>(QUARANTINED 늦은 APPROVED 포함)"]
     GUARD -->|true = 진행 가능| DEDUPE["PaymentEventDedupeStore.markIfAbsent<br/>(INSERT IGNORE payment_event_dedupe)"]
 
-    DEDUPE -->|0 row = 중복| RESEND["단순 skip + return<br/>(단일 컨슈머 EOS서 도달 불가 — 방어적)"]
+    DEDUPE -->|0 row = 중복| RESEND["단순 skip + return<br/>(UNKNOWN status 재배달만 도달)"]
     DEDUPE -->|1 row = 신규| SW{message.status}
 
     SW -->|APPROVED| AMT["parseApprovedAt (null -> IllegalArgumentException)<br/>isAmountMismatch 검사"]
@@ -176,7 +176,7 @@ flowchart TD
 **D5 멱등 마킹 (`payment_event_dedupe`):**
 - `PaymentEventDedupeStore.markIfAbsent(eventUuid, orderId, status, expiresAt) → int`.
 - `INSERT IGNORE INTO payment_event_dedupe(event_uuid, ...)` — affected rows 0 = 중복, 1 = 신규.
-- 0 row 시 **단순 skip + return** — 단일 컨슈머 EOS 흐름에서 dedupe 마킹과 종결 전이가 같은 JPA tx 로 원자 커밋되어 이 분기는 도달 불가(방어적). crash 내성은 종결 가드 재발행이 맡는다.
+- 0 row 시 **단순 skip + return** — dedupe 마킹과 종결 전이가 주문 행 잠금(FOR UPDATE) 아래 같은 JPA tx 로 원자 커밋되어, 종결 전이를 일으킨 결과의 재배달은 컨슈머 동시성과 관계없이 종결 가드가 먼저 흡수한다. 이 분기에는 상태를 바꾸지 않는 UNKNOWN status 결과의 재배달만 도달한다. crash 내성은 종결 가드 재발행이 맡는다.
 - TTL: `expires_at = receivedAt + 8일` (Kafka retention 7d + 복구 버퍼 1d).
 
 **D8 직접 발행 (EOS producer tx):**
@@ -557,7 +557,7 @@ pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPub
 | `processInProgressZombie(inboxId)` | `WHERE id=? AND status=IN_PROGRESS FOR UPDATE SKIP LOCKED` | `PgInboxImmediateWorker` (IN_PROGRESS 재진입) + `PgInboxPollingWorker` (IN_PROGRESS 좀비) |
 
 - **TX_A** — `PENDING → IN_PROGRESS` (또는 IN_PROGRESS `updated_at` 갱신) 후 즉시 커밋 → lock 해제.
-- **벤더 HTTP** — `PgVendorCallService.invokeVendor(request)` → `GatewayOutcome` 반환. TX 밖, DB 자유 상태. VT 가 캐리어 양보.
+- **벤더 HTTP** — `PgVendorCallService.invokeVendor(request)` → `GatewayOutcome` 반환. TX 밖, DB 자유 상태. VT 가 캐리어 양보. 멱등 응답("이미 처리됨")이면 보정용 상태 조회(`DuplicateApprovalHandler.queryVendorStatus`)도 여기서 끝내 결과를 `HandledInternally` 에 담는다(#167).
 - **TX_B** — `PgVendorCallService.applyOutcome(outcome, request, attempt, now)` 안에서 5분기 처리 → `pg_inbox` UPDATE + `pg_outbox` INSERT + AFTER_COMMIT publishEvent → TX_B commit.
 
 ### 보정 경로 PENDING 우회 룰 (`DuplicateApprovalHandler`)

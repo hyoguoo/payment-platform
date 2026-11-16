@@ -121,7 +121,7 @@ sequenceDiagram
     - inbox 없으면 **`pg_inbox` `PENDING` INSERT + 채널 적재**(`PgInboxPendingService.insertPendingAndPublish`)
     - 이미 `PENDING`/`IN_PROGRESS`면 채널 재적재(`handleActiveInbox`)
     - terminal 재수신이면 저장 결과 재발행(`PgTerminalReemitService.reemit`, 벤더 재호출 금지)
-19. **Worker가 처리** — `PgInboxImmediateWorker`가 채널에서 take
+19. **Worker가 처리** — `PgInboxImmediateWorker`가 채널에서 꺼내(poll) 워커 스레드가 직접 처리. 워커 수(기본 64)가 동시 처리 상한
     - `PENDING`이면 `processPending`(**`PENDING→IN_PROGRESS` CAS, SKIP LOCKED**)
     - `IN_PROGRESS`면 `processInProgressZombie`
     - 이후 **실제 PG사 호출**(TX 밖, `PgVendorCallService.invokeVendor` → `PgConfirmStrategySelector` → Toss/NicePay/Fake) → `applyOutcome`(TX_B)
@@ -129,7 +129,7 @@ sequenceDiagram
     - **승인(2xx)** → `pg_inbox APPROVED` + `pg_outbox` `events.confirmed` APPROVED 적재
     - **확정 거절(4xx, `PgGatewayNonRetryableException`)** → `FAILED` + `events.confirmed` FAILED
     - **일시 오류(5xx/timeout, `PgGatewayRetryableException`)** → `handleRetry`: `shouldRetry(attempt)`면 같은 토픽 self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가, 한도(4) 소진 시 DLQ. 시도횟수는 `pg_inbox.attempt`(Flyway V5)에 영속돼 한도 도달 시 DLQ→QUARANTINED 자동 격리가 작동한다(2026-06-25 도입)
-    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다. 이 신호는 **예외 한 갈래**로만 온다 — 전략이 이벤트도 함께 발행해 핸들러가 한 응답에 두 번 돌던 구조는 제거됐다(그때는 같은 사건에 결과 발행이 2건 남았다)
+    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: DB 연결을 잡기 전에 vendor `getStatus` 를 재조회하고, 반영 트랜잭션에서 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다. 이 신호는 **예외 한 갈래**로만 온다 — 전략이 이벤트도 함께 발행해 핸들러가 한 응답에 두 번 돌던 구조는 제거됐다(그때는 같은 사건에 결과 발행이 2건 남았다)
     - **겹침 거부(처리 중 재요청)** → 벤더가 아직 처리 중이라며 거부한 것이므로 시도 횟수도 재시도 명령도 건드리지 않고 물러난다. 원래 호출이 결과를 낸다
 21. **결과 되쏨** — pg outbox relay 가 **`payment.events.confirmed`** 발행 (`PgOutboxRelayService` → `PgEventPublisher`)
     - DLQ 경로 → `PaymentConfirmDlqConsumer` → `PgDlqService` 가 격리로 직행하지 않고 **`PgFinalConfirmationGate` 에 위임한다**(2026-08-14 배선). 벤더에 한 번 물어 승인이면 승인 종결, 취소·중단·만료면 실패 종결, 그 밖이면 사유를 붙여 격리한다 — 격리 사유는 조회 실패 / 벤더 미결론 / 부분 취소 / 금액 불일치 넷. 사람이 볼 일이 아닌 건은 여기서 자동으로 끝난다
@@ -142,7 +142,7 @@ sequenceDiagram
 23. **종결 가드** — 진행 가능 상태(READY/IN_PROGRESS)만 통과 (`canApplyConfirmResult`)
     - **`DONE` + `APPROVED` 재배달(재발행 신호)** → 재고 확정 이벤트 **재발행**(RDB DONE 커밋 후 브로커 커밋 유실 복구) (`sendStockCommittedEvents` + `terminalResendMetrics.record(DONE)`)
     - 그 외 종결(QUARANTINED/FAILED 등) → noop (`guardSkipMetrics`)
-24. **메시지 멱등 마킹** — `payment_event_dedupe` INSERT IGNORE (`markIfAbsent`). affected=0(중복)이면 단순 skip — 단일 컨슈머 EOS 에선 DONE 종결 가드가 먼저 흡수하므로 도달 불가, 방어적 처리
+24. **메시지 멱등 마킹** — `payment_event_dedupe` INSERT IGNORE (`markIfAbsent`). affected=0(중복)이면 단순 skip — 종결된 결제의 재배달은 주문 행 잠금 아래 종결 가드가 먼저 흡수하므로, 여기에는 상태를 바꾸지 않는 UNKNOWN status 결과의 재배달만 도달한다
 25. **상태 분기**
     - **승인(APPROVED)**
       - 금액 재검증(`isAmountMismatch`) 통과 시 **`IN_PROGRESS → DONE`**(`markPaymentAsDone`) + **재고 확정 이벤트 발행**(상품별 결정적 키 `StockEventUuidDeriver.derive`, `payment.events.stock-committed`) (`sendStockCommittedEvents`)

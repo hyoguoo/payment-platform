@@ -279,5 +279,32 @@ class SettlementTest(unittest.TestCase):
         self.assertNotEqual(verify(report, before, after)["verdict"], "PASS")
 
 
+class ObservationCompletionTests(unittest.TestCase):
+    def test_invalid_arrival_with_settled_orders_stops_without_becoming_pass(self):
+        import run
+        report, before, after = fixture()
+        report["validityIssues"] = ["dropped iterations: 39"]
+        verdict = verify(report, before, after)
+        self.assertEqual(verdict["verdict"], "INCONCLUSIVE")
+        self.assertFalse(run.settlement_needs_observation(report, verdict))
+        self.assertEqual(verdict["verdict"], "INCONCLUSIVE")
+
+    def test_invalid_arrival_still_observes_pending_business_work(self):
+        import run
+        report, before, after = fixture()
+        report["validityIssues"] = ["dropped iterations: 39"]
+        after["pgOutbox"].append({"id": 1, "processedAt": None})
+        self.assertTrue(run.settlement_needs_observation(report, verify(report, before, after)))
+
+    def test_inventory_mismatch_is_not_hidden_by_invalid_arrival(self):
+        import run
+        report, before, after = fixture()
+        report["validityIssues"] = ["dropped iterations: 39"]
+        after["products"]["1000"]["db"] = 8
+        verdict = verify(report, before, after)
+        self.assertEqual(verdict["verdict"], "FAIL")
+        self.assertTrue(run.settlement_needs_observation(report, verdict))
+
+
 if __name__ == "__main__":
     unittest.main()

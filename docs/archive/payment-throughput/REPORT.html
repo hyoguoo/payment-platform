@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>결제 처리량 개선 보고서</title>
+<link rel="stylesheet" media="(prefers-color-scheme: light)" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<link rel="stylesheet" media="(prefers-color-scheme: dark)" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+:root {
+  --bg: #fbfbfa; --fg: #1d1f23; --muted: #5f6670; --card: #ffffff; --line: #e3e5e8;
+  --accent: #2f6fdb; --good: #1f8a4c; --bad: #c2412d; --warn: #b7791f; --soft: #f1f4f9;
+  --bar-old: #c6ccd6; --bar-new: #2f6fdb; --bar-bad: #d9826f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ad; --card: #1d2026; --line: #2e333b;
+    --accent: #6ea0ff; --good: #4cc489; --bad: #ff8a73; --warn: #e9b44c; --soft: #232831;
+    --bar-old: #4a515c; --bar-new: #6ea0ff; --bar-bad: #b8604f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 1.75rem; margin: 0 0 4px; }
+h2 { font-size: 1.3rem; margin: 48px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin: 28px 0 8px; }
+p { margin: 8px 0; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+a { color: var(--accent); }
+nav.toc { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 16px 0 8px; }
+nav.toc ol { margin: 4px 0; padding-left: 20px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card .k { color: var(--muted); font-size: .85rem; }
+.card .v { font-size: 1.35rem; font-weight: 700; margin: 2px 0; }
+.card .v .from { color: var(--muted); font-weight: 500; font-size: 1rem; }
+.card .v .arrow { color: var(--muted); font-weight: 400; margin: 0 4px; }
+.card .v .to { color: var(--good); }
+.card .n { font-size: .85rem; color: var(--muted); }
+.callout { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 14px; border-radius: 6px; margin: 14px 0; }
+.callout.warn { border-color: var(--warn); }
+.callout.bad { border-color: var(--bad); }
+.callout.good { border-color: var(--good); }
+.callout strong:first-child { display: block; margin-bottom: 2px; }
+.tablewrap { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: .93rem; background: var(--card); }
+th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--soft); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.b-good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.b-bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.b-warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.b-mute { background: var(--soft); color: var(--muted); }
+.bars { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+.bar-row { display: grid; grid-template-columns: minmax(150px, 34%) 1fr 64px; align-items: center; gap: 10px; margin: 6px 0; font-size: .9rem; }
+.bar-track { background: var(--soft); border-radius: 6px; height: 22px; position: relative; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 6px; background: var(--bar-new); }
+.bar-fill.old { background: var(--bar-old); }
+.bar-fill.bad { background: var(--bar-bad); }
+.bar-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--fg); opacity: .5; }
+.bar-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.legend { color: var(--muted); font-size: .82rem; margin-top: 6px; }
+.stages { display: grid; gap: 14px; margin: 14px 0; }
+.stage { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.stage .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.stage .no { font-weight: 700; color: var(--accent); }
+.stage .title { font-weight: 700; }
+.stage dl { display: grid; grid-template-columns: 92px 1fr; gap: 4px 12px; margin: 6px 0 0; }
+.stage dt { color: var(--muted); font-size: .88rem; }
+.stage dd { margin: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.grid2 .card h4 { margin: 0 0 6px; font-size: 1rem; }
+.mermaid { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 12px 0; overflow-x: auto; text-align: center; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 10px 0; }
+details summary { cursor: pointer; font-weight: 600; }
+pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; }
+pre code { white-space: pre-wrap; font-size: .85rem; }
+.path { color: var(--muted); font-size: .82rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; }
+ul { padding-left: 20px; }
+li { margin: 3px 0; }
+@media (max-width: 560px) {
+  .bar-row { grid-template-columns: 1fr 56px; }
+  .bar-row .bar-label { grid-column: 1 / -1; }
+  .stage dl { grid-template-columns: 1fr; }
+  .stage dt { margin-top: 4px; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<h1>결제 처리 상한을 약 1.4~1.5배 올렸다</h1>
+<p class="sub">결제 처리량 한계 측정과 병목 개선 · 2026-10-28 ~ 2026-11-16 · 이슈 #162(하위 #165, #166, #167) · 브랜치 <code>#162</code><br>
+로컬 모의 PG 환경(응답 지연 100~300ms, 노트북 한 대에 컨테이너 20개)에서 잰 값이다. 운영 환경의 처리량 보장이 아니다.</p>
+
+<nav class="toc">
+<strong>목차</strong>
+<ol>
+<li><a href="#summary">요약: 처리 상한 120~140 → 180~200건/초</a></li>
+<li><a href="#before-after">전후 비교: 일꾼 수 1명이던 세 곳을 풀었다</a></li>
+<li><a href="#stages">단계별 개선: 병목 하나를 풀 때마다 계단식으로 뛰었다</a></li>
+<li><a href="#significance">유의미성: 처리율 차이는 반복 편차보다 30배 이상 크다</a></li>
+<li><a href="#measure-scope">측정이 보는 것: 200건/초 실패는 결제가 아니라 재고 확정에서 왔다</a></li>
+<li><a href="#evidence">결과와 근거: 테스트, 측정 회차, 리뷰</a></li>
+<li><a href="#next">남은 위험과 다음 단계</a></li>
+</ol>
+</nav>
+
+<h2 id="summary">1. 요약: 처리 상한 120~140 → 180~200건/초</h2>
+
+<div class="cards">
+  <div class="card"><div class="k">처리 상한 (버팀 / 밀림, 3분 측정)</div>
+    <div class="v"><span class="from">120 / 140</span><span class="arrow">→</span><span class="to">180 / 200</span></div>
+    <div class="n">건/초. 부하 중 잔량이 줄면 버팀, 계속 늘면 밀림</div></div>
+  <div class="card"><div class="k">160건/초에서 부하 중 처리량</div>
+    <div class="v"><span class="from">102.3</span><span class="arrow">→</span><span class="to">159.7</span></div>
+    <div class="n">건/초 결제 완료. 최종 코드로 두 번 같은 값</div></div>
+  <div class="card"><div class="k">160건/초 부하가 끝난 뒤 남은 일 정리</div>
+    <div class="v"><span class="from">42.9초</span><span class="arrow">→</span><span class="to">0.3초</span></div>
+    <div class="n">부하 중에 이미 따라잡아 남은 일이 거의 없음</div></div>
+  <div class="card"><div class="k">초당 100건 사용자 품질</div>
+    <div class="v"><span class="from">미달</span><span class="arrow">→</span><span class="to">통과</span></div>
+    <div class="n">품질 목표 4개(접수 응답 2개, 사용자 완료, API 오류) 두 번 통과</div></div>
+</div>
+
+<div class="callout good"><strong>돈과 재고는 한 번도 틀어지지 않았다</strong>
+모든 회차가 끝난 뒤 주문·승인·재고(DB와 Redis)를 전수 대조했고 전부 통과했다. 처리량을 올리는 동안 같은 결제를 두 번 승인하거나 재고가 어긋난 경우는 없었다.</div>
+
+<div class="tablewrap"><table>
+<tr><th>무엇이 바뀌었나</th><th>왜</th></tr>
+<tr><td>payment가 PG 결과를 받는 일꾼 1 → 3명</td><td>1명이 초당 약 120건에서 쉬지 않고 일했다(사용률 약 98%)</td></tr>
+<tr><td>pg가 결제 명령을 받는 일꾼 1 → 3명</td><td>다음으로 일이 쌓인 곳</td></tr>
+<tr><td>pg의 PG 요청 일꾼·결과 발행 일꾼에 수 제한을 되살리고 64명·8명으로 정함</td><td>원래 설계와 달리 제한이 없었다. 제한을 되살리자 결과 발행이 1명으로 묶이는 회귀가 측정에 잡혀 수를 측정으로 정했다</td></tr>
+<tr><td>"이미 처리된 결제" 확인 요청을 DB 연결을 잡기 전으로 옮김</td><td>일꾼 64명이 DB 연결 30개를 다 써 버릴 수 있는 경로를 검토에서 찾았다</td></tr>
+</table></div>
+
+<p><strong>읽는 순서</strong>: 2절의 그림으로 무엇이 바뀌었는지 보고, 3절에서 단계마다 어떤 측정이 다음 수정을 이끌었는지 본다. 결과를 믿어도 되는지는 4절, 200건/초 판정의 해석은 5절에 있다.</p>
+
+<h2 id="before-after">2. 전후 비교: 일꾼 수 1명이던 세 곳을 풀었다</h2>
+
+<p>결제 하나는 아래 순서로 지나간다. 빨간 칸이 그 시점에 측정으로 확인한 병목이다.</p>
+
+<h3>변경 전: 결과를 받는 일꾼 1명이 약 120건/초에서 막혔다</h3>
+<pre class="mermaid">
+flowchart LR
+  A["confirm 요청"] --> B["명령 토픽"]
+  B --> C["pg 명령 소비 1명"]
+  C --> D["PG 요청 일꾼 수 제한 없음"]
+  D --> E["모의 PG 100~300ms"]
+  E --> F["결과 발행 일꾼 수 제한 없음"]
+  F --> G["결과 토픽"]
+  G --> H["payment 결과 소비 1명 - 약 120건/초에서 포화"]
+  H --> I["결제 완료 DONE"]
+  I --> J["재고 확정 토픽"]
+  J --> K["product 재고 확정 1명"]
+  classDef hot fill:#f6d5cf,stroke:#c2412d,color:#5a1d12
+  classDef warn fill:#f7e7c6,stroke:#b7791f,color:#4d3409
+  class H hot
+  class C,D,F warn
+</pre>
+<p class="legend">노란 칸: 아직 병목은 아니었지만 바꾼 곳(소비 1명, 일꾼 수 제한 없음).</p>
+
+<h3>변경 후: 결제 경로는 200건/초 근처까지 버티고, 다음 병목은 재고 확정이다</h3>
+<pre class="mermaid">
+flowchart LR
+  A["confirm 요청"] --> B["명령 토픽"]
+  B --> C["pg 명령 소비 3명"]
+  C --> D["PG 요청 일꾼 64명"]
+  D --> E["모의 PG 100~300ms"]
+  E --> F["결과 발행 일꾼 8명"]
+  F --> G["결과 토픽"]
+  G --> H["payment 결과 소비 3명"]
+  H --> I["결제 완료 DONE"]
+  I --> J["재고 확정 토픽"]
+  J --> K["product 재고 확정 1명 - 약 180건/초에서 포화"]
+  classDef ok fill:#d3eedd,stroke:#1f8a4c,color:#0f3d22
+  classDef hot fill:#f6d5cf,stroke:#c2412d,color:#5a1d12
+  class C,D,F,H ok
+  class K hot
+</pre>
+
+<div class="callout"><strong>결제 완료는 재고 확정을 기다리지 않는다</strong>
+결제는 DONE이 된 뒤에 재고 확정 메시지를 따로 보낸다. 그래서 product의 재고 확정이 느려도 결제 완료 처리량은 그대로다. 이 차이가 5절의 200건/초 해석에 쓰인다.</div>
+
+<h3>바꾼 결정과 이유</h3>
+<div class="tablewrap"><table>
+<tr><th>결정</th><th>이유</th><th>고르지 않은 대안</th></tr>
+<tr><td>결과 소비 동시성 기본값 3</td><td>140건/초에서 회복, 초당 100건 사용자 품질 통과. 같은 주문은 주문 행 잠금과 같은 트랜잭션으로 한 번만 반영된다</td><td>—</td></tr>
+<tr><td>pg 명령 리스너에만 동시성 3, DLQ 리스너는 1</td><td>병목은 명령 리스너였다</td><td>리스너 전체 동시성 올리기(DLQ까지 바뀜)</td></tr>
+<tr><td>워커가 꺼낸 작업을 직접 처리해 일꾼 수를 상한으로</td><td>원래 설계. PG가 느려질 때 동시 호출과 DB 연결 대기가 끝없이 늘지 않게 한다</td><td>실행기에 세마포어만 추가(구조가 설계와 다르게 남음)</td></tr>
+<tr><td>큐에서 너무 오래 기다린 작업은 처리하지 않고 폴링에 맡김</td><td>그사이 폴링이 같은 결제를 회수해 PG를 부르고 있을 수 있다. 두 번 부르지 않게 한다</td><td>—</td></tr>
+<tr><td>일꾼 64명·8명</td><td>160건/초에서 32명은 약 147건/초로 미달, 64·8은 큐가 한 번도 차지 않음</td><td>DB 연결 풀 확대(근본 원인이 남음)</td></tr>
+<tr><td>"이미 처리된 결제" 확인을 트랜잭션 밖으로</td><td>PG가 느려도 DB 연결을 쥐지 않는다. DLQ 경로가 이미 같은 모양이다</td><td>DB 연결 풀 30 → 100(DB 부담 증가, 원인 유지)</td></tr>
+<tr><td>재고 확정 소비는 이번에 고치지 않음</td><td>결제 처리량과 무관하고 product 서비스 범위. 같은 상품을 한 줄로 처리한다는 전제를 따로 검토해야 한다</td><td>5단계로 이어가기</td></tr>
+</table></div>
+
+<h2 id="stages">3. 단계별 개선: 병목 하나를 풀 때마다 계단식으로 뛰었다</h2>
+
+<p>매 단계는 같은 순서였다. 측정 → 지표로 병목 지목 → 실패하는 테스트 → 수정 → 독립 검토 2명 → 같은 조건으로 재측정.</p>
+
+<div class="bars" role="img" aria-label="160건/초 측정 회차별 부하 중 처리량">
+  <strong>160건/초를 3분 넣었을 때 부하 중 결제 완료 처리량</strong>
+  <div class="bar-row"><span class="bar-label">변경 전 (11-06)</span><div class="bar-track"><div class="bar-fill old" style="width:63.9%"></div><div class="bar-target" style="left:100%"></div></div><span class="bar-val">102.3</span></div>
+  <div class="bar-row"><span class="bar-label">1단계: 결과 소비 3명</span><div class="bar-track"><div class="bar-fill" style="width:88.5%"></div></div><span class="bar-val">141.6</span></div>
+  <div class="bar-row"><span class="bar-label">2단계: 수 제한 복원, PG 요청 32명</span><div class="bar-track"><div class="bar-fill bad" style="width:80.9%"></div></div><span class="bar-val">129.5</span></div>
+  <div class="bar-row"><span class="bar-label">2단계: PG 요청 64명 (발행 1명)</span><div class="bar-track"><div class="bar-fill bad" style="width:81.6%"></div></div><span class="bar-val">130.6</span></div>
+  <div class="bar-row"><span class="bar-label">3단계: 결과 발행 8명</span><div class="bar-track"><div class="bar-fill" style="width:99.8%"></div></div><span class="bar-val">159.7</span></div>
+  <div class="bar-row"><span class="bar-label">4단계: 최종 코드</span><div class="bar-track"><div class="bar-fill" style="width:99.8%"></div></div><span class="bar-val">159.7</span></div>
+  <div class="legend">단위 건/초. 막대 끝이 넣은 양(160건/초). 주황 막대는 회귀한 회차다.</div>
+</div>
+
+<div class="stages">
+  <div class="stage">
+    <div class="head"><span class="no">1단계</span><span class="title">결과를 받는 일꾼 1 → 3명</span><span class="badge b-good">102 → 142건/초</span><span class="path">#165</span></div>
+    <dl>
+      <dt>측정 근거</dt><dd>140건/초에서 결과 소비 스레드 사용률 약 98%, 메시지당 약 8ms → 상한 약 120건/초. 측정한 경계(120 버팀, 140 밀림)와 맞았다</dd>
+      <dt>바꾼 것</dt><dd>결과 소비 동시성 기본값 1 → 3(토픽 파티션 3개)</dd>
+      <dt>결과</dt><dd>140건/초 부하 중 106.7 → 139.7건/초로 회복, 초당 100건 사용자 품질 미달 → 통과(사용자 완료 p95 2.1초)</dd>
+      <dt>다음 병목</dt><dd>160건/초에서 잔량이 pg 결제 명령 토픽에 쌓임(소비 지연 2,200~3,400, 결과 토픽은 100~300)</dd>
+    </dl>
+  </div>
+  <div class="stage">
+    <div class="head"><span class="no">2단계</span><span class="title">pg 명령 소비 3명, 일꾼 수 제한 복원</span><span class="badge b-bad">142 → 130건/초 (회귀)</span><span class="path">#166</span></div>
+    <dl>
+      <dt>측정 근거</dt><dd>pg 명령 리스너가 기본 설정이라 1명. 코드 분석으로 pg 일꾼이 작업마다 새 가상 스레드를 띄워 수 제한이 없다는 것도 확인</dd>
+      <dt>바꾼 것</dt><dd>명령 리스너 동시성 3. 워커가 직접 처리해 일꾼 수를 상한으로 복원. 종료 때 새 작업 중단 후 최대 10초 대기. 큐에서 오래 기다린 작업은 폴링에 맡김. 예상 못 한 오류에도 일꾼 유지</dd>
+      <dt>결과</dt><dd>명령 소비 지연 0으로 해소. 그런데 처리량은 오히려 129.5·130.6건/초로 떨어짐</dd>
+      <dt>다음 병목</dt><dd>결과 발행 일꾼 기본값이 1이라 혼자 약 145건/초에서 막힘. 넘친 작업은 느린 폴링으로만 빠져 10분 넘게 남음</dd>
+    </dl>
+  </div>
+  <div class="stage">
+    <div class="head"><span class="no">3단계</span><span class="title">일꾼 수를 측정으로 정함: PG 요청 64, 결과 발행 8</span><span class="badge b-good">130 → 160건/초</span><span class="path">#166</span></div>
+    <dl>
+      <dt>측정 근거</dt><dd>PG 요청 32명은 약 147건/초에서 큐가 가득 참. 64명은 큐가 한 번도 안 참. 결과 발행은 1명으로 분당 약 8,700건이 한계</dd>
+      <dt>바꾼 것</dt><dd>기본값 PG 요청 64, 결과 발행 8</dd>
+      <dt>결과</dt><dd>160건/초를 부하 중에 모두 처리(159.7), 부하 뒤 0.3초에 정리, 초당 100건 사용자 완료 p95 1.06초</dd>
+    </dl>
+  </div>
+  <div class="stage">
+    <div class="head"><span class="no">4단계</span><span class="title">"이미 처리된 결제" 확인을 DB 연결 밖으로</span><span class="badge b-mute">처리량 변화 없음</span><span class="path">#167</span></div>
+    <dl>
+      <dt>찾은 경로</dt><dd>측정이 아니라 검토에서 찾았다. PG가 "이미 처리됨"이라고 답하면 결과 반영 트랜잭션 안에서 PG에 상태를 다시 물었다(최대 약 13초). 일꾼 64명 &gt; DB 연결 30개라 PG가 느리면 연결이 바닥날 수 있었다</dd>
+      <dt>바꾼 것</dt><dd>상태 확인을 PG 요청 단계(트랜잭션 밖)에서 끝내고, 반영 트랜잭션은 결과만 기록</dd>
+      <dt>결과</dt><dd>모의 PG는 상태 확인에 지연이 없어 처리량은 같다. 실제 PG가 느릴 때의 장애 경로가 사라졌다</dd>
+    </dl>
+  </div>
+</div>
+
+<details>
+<summary>핵심 코드 발췌 (4곳)</summary>
+<p class="path">payment-service/.../infrastructure/config/KafkaConsumerConfig.java — 결과 소비 동시성 기본값</p>
+<pre><code class="language-java">@Value("${payment.kafka.events-confirmed.consumer.concurrency:3}")
+private int confirmedEventConsumerConcurrency;</code></pre>
+<p class="path">pg-service/.../messaging/consumer/PaymentConfirmConsumer.java — 명령 리스너에만 동시성 3</p>
+<pre><code class="language-java">@KafkaListener(
+        topics = TOPIC,
+        groupId = GROUP_ID,
+        containerFactory = "kafkaListenerContainerFactory",
+        concurrency = "${pg.kafka.commands-confirm.consumer.concurrency:3}"
+)</code></pre>
+<p class="path">pg-service/.../scheduler/AbstractImmediateWorker.java — 일꾼이 직접 처리하므로 일꾼 수가 상한</p>
+<pre><code class="language-java">private void workerLoop() {
+    while (running &amp;&amp; !Thread.currentThread().isInterrupted()) {
+        try {
+            J job = pollJob(POLL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            if (job != null) {
+                runWithContext(job);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException | Error e) {
+            // 워커가 죽으면 동시 처리 몫이 영구히 줄어든다. Error 도 기록하고 다음 작업으로 넘어간다.
+            logLoopError(e);
+        }
+    }
+}</code></pre>
+<p class="path">pg-service/.../application/service/PgVendorCallService.java — 상태 확인을 트랜잭션 밖에서 끝냄</p>
+<pre><code class="language-java">} catch (PgGatewayDuplicateHandledException e) {
+    // 보정용 벤더 상태 조회도 여기(TX 밖)서 끝낸다 — applyOutcome(TX_B)은 결과만 반영한다.
+    return new GatewayOutcome.HandledInternally(e.getMessage(),
+            duplicateApprovalHandler.queryVendorStatus(request.orderId(), request.vendorType()));
+}</code></pre>
+</details>
+
+<h3>처리 상한이 움직인 모양</h3>
+<div class="tablewrap"><table>
+<tr><th>시점</th><th class="num">120</th><th class="num">140</th><th class="num">160</th><th class="num">180</th><th class="num">200</th></tr>
+<tr><td>변경 전</td><td><span class="badge b-good">버팀</span></td><td><span class="badge b-bad">밀림</span></td><td><span class="badge b-bad">밀림</span></td><td><span class="badge b-mute">미측정</span></td><td><span class="badge b-mute">미측정</span></td></tr>
+<tr><td>1단계 후</td><td><span class="badge b-mute">미측정</span></td><td><span class="badge b-good">버팀</span></td><td><span class="badge b-bad">밀림</span></td><td><span class="badge b-mute">미측정</span></td><td><span class="badge b-mute">미측정</span></td></tr>
+<tr><td>최종</td><td><span class="badge b-mute">미측정</span></td><td><span class="badge b-mute">미측정</span></td><td><span class="badge b-good">버팀</span></td><td><span class="badge b-good">버팀</span></td><td><span class="badge b-warn">일시 폭주만 흡수</span></td></tr>
+</table></div>
+<p class="legend">단위 건/초, 3분 측정, 회차당 1회. 버팀은 부하 중 잔량이 줄어 회복한 경우, 밀림은 부하 내내 잔량이 늘어난 경우다.</p>
+
+<h2 id="significance">4. 유의미성: 처리율 차이는 반복 편차보다 30배 이상 크다</h2>
+
+<div class="grid2">
+  <div class="card"><h4>같은 조건을 반복했을 때</h4>
+    <div class="tablewrap"><table>
+      <tr><th>조건</th><th>결과 (건/초)</th></tr>
+      <tr><td>120건/초 두 번</td><td class="num">119.8 / 119.8</td></tr>
+      <tr><td>결과 발행 1명으로 막힌 두 회차</td><td class="num">129.5 / 130.6</td></tr>
+      <tr><td>3단계와 최종 코드</td><td class="num">159.7 / 159.7</td></tr>
+    </table></div>
+    <p>흔들림은 약 1% 안쪽이다.</p></div>
+  <div class="card"><h4>단계 사이 차이</h4>
+    <div class="tablewrap"><table>
+      <tr><th>구간</th><th>차이</th></tr>
+      <tr><td>변경 전 → 1단계</td><td class="num">+38%</td></tr>
+      <tr><td>1단계 → 3단계</td><td class="num">+13%</td></tr>
+      <tr><td>변경 전 → 최종</td><td class="num">약 1.56배</td></tr>
+    </table></div>
+    <p>병목 지표(스레드 사용률, 토픽 소비 지연, 큐 크기)가 고친 뒤 풀린 것도 확인했다.</p></div>
+</div>
+
+<div class="callout warn"><strong>지연 시간 개선 폭은 주장하지 않는다</strong>
+같은 코드에서 초당 100건 사용자 완료 p95가 1.06초, 2.06초로 나왔다. 상태를 1초 간격으로 조회해 값이 1초 단위로 갈리고, 부하 첫 20~100초의 일시 적체 크기가 회차마다 다르기 때문이다. 통과 여부(목표 3초)는 두 번 모두 같았다.</div>
+
+<div class="callout warn"><strong>비교에 남은 조건 차이</strong>
+변경 전 기준(102.3건/초, 11-06)은 회차 사이 10분 냉각 규칙을 쓰기 전에 잰 값이다. 차이가 커서 결론은 바뀌지 않는다고 판단했다. 회차당 한 번 잰 조건이 많아 통계 검정은 하지 않았다.</div>
+
+<h2 id="measure-scope">5. 측정이 보는 것: 200건/초 실패는 결제가 아니라 재고 확정에서 왔다</h2>
+
+<div class="tablewrap"><table>
+<tr><th>측정 항목</th><th>기준</th><th>product 재고 확정의 영향</th></tr>
+<tr><td>처리량 수치(부하 중 결제 완료/초, 잔량, 정리 시간)</td><td>payment 결제 상태가 DONE이 된 건수</td><td><span class="badge b-good">받지 않음</span></td></tr>
+<tr><td>사용자 완료 시간</td><td>사용자가 DONE을 보는 시점</td><td><span class="badge b-good">받지 않음</span></td></tr>
+<tr><td>측정 도구의 버팀·밀림 판정</td><td>결제 잔량 + 재고 확정 잔량</td><td><span class="badge b-warn">받음</span></td></tr>
+<tr><td>정산 대조</td><td>DB·Redis 재고가 기대값과 같은지</td><td><span class="badge b-warn">받음</span> (재고 확정이 끝나야 통과)</td></tr>
+</table></div>
+
+<div class="grid2">
+  <div class="card"><h4>180건/초</h4>
+    <ul>
+      <li>결제: 약 100초 적체 뒤 회복, 부하 중 179.7건/초, 부하 뒤 0.3초에 정리</li>
+      <li>재고 확정: 밀림 약 7,000~8,000에서 머묾(일꾼 사용률 약 99%, 메시지당 약 5.5ms)</li>
+      <li>DB 연결 대기 0</li>
+    </ul></div>
+  <div class="card"><h4>200건/초</h4>
+    <ul>
+      <li>결제: 잔량 최대 5,692 → 180초에 2,726으로 느리게 감소, 부하 중 184.1건/초</li>
+      <li>재고 확정: 부하 내내 밀림 증가(최대 15,700) → 도구 판정 '밀림'</li>
+      <li>payment DB 연결 대기 최대 449, confirm 접수 p95 1.28초(목표 0.5초 초과)</li>
+    </ul></div>
+</div>
+
+<div class="callout"><strong>정리</strong>
+재고 확정 일꾼을 늘리면 도구 판정은 좋아지지만 결제 완료 처리량은 오르지 않는다. 결제 처리량을 더 올리려면 200건/초에서 보인 payment 쪽 압력(DB 연결 대기, 결과 소비 적체)을 먼저 봐야 한다. 노트북 한 대가 서비스와 부하 도구를 함께 돌려 CPU가 꽤 바빴다는 점(부하 중 호스트 부하 평균 12~18)도 한계에 섞여 있다.</div>
+
+<h2 id="evidence">6. 결과와 근거: 테스트, 측정 회차, 리뷰</h2>
+
+<h3>검증 명령</h3>
+<div class="tablewrap"><table>
+<tr><th>명령</th><th>결과</th></tr>
+<tr><td><code>./gradlew :payment-service:test</code></td><td>700건 통과</td></tr>
+<tr><td><code>./gradlew :payment-service:integrationTest</code></td><td>761건 통과</td></tr>
+<tr><td><code>./gradlew :pg-service:test</code></td><td>455건 통과</td></tr>
+<tr><td><code>./gradlew :pg-service:integrationTest</code></td><td>85건 통과</td></tr>
+<tr><td>checkstyle·SpotBugs(main·test), payment·pg</td><td>통과</td></tr>
+<tr><td><code>python3 -m unittest discover -s scripts/quality -p 'test_*.py'</code></td><td>127건 통과</td></tr>
+<tr><td>실구동 측정(최종 코드, 회차마다 새 환경·10분 냉각·열 경고 확인)</td><td>160·180건/초 버팀, 200건/초 일시 폭주 흡수, 초당 100건 사용자 품질 통과, 모든 회차 전수 대조 통과</td></tr>
+</table></div>
+<p class="legend">마지막 리뷰 수정 두 건(정체 기준, 재시도 행 발행 경로)은 최종 측정 뒤에 들어갔다. 기본 설정에서 동작이 같고, 측정 중에는 재시도가 생기지 않아(모의 PG 실패율 0) 다시 재지 않았다.</p>
+
+<h3>요구사항·장애 시나리오별 확인</h3>
+<div class="tablewrap"><table>
+<tr><th>시나리오</th><th>정상</th><th>실패·재시도</th><th>중복</th><th>동시성</th></tr>
+<tr><td>결과 소비 동시성 3</td><td>기본값 3 설정 테스트</td><td>커밋 1회 실패, 지속 실패 DLQ 통합 테스트</td><td>같은 결과 중복 수신</td><td>파티션별 배정, 미커밋 입력 재배정</td></tr>
+<tr><td>pg 명령 리스너 3, DLQ 1</td><td>리스너 동시성 테스트</td><td>—</td><td>—</td><td>속성 덮어쓰기 포함</td></tr>
+<tr><td>일꾼 수 상한</td><td>inbox·outbox 상한 테스트</td><td>오류에도 일꾼 유지·실패 카운트</td><td>—</td><td>상한 2에서 동시 실행 수 확인</td></tr>
+<tr><td>종료</td><td>처리 중 작업이 인터럽트 없이 끝남</td><td>10초 초과 인터럽트 경로는 미테스트</td><td>—</td><td>종료 뒤 남은 작업 미처리</td></tr>
+<tr><td>오래 기다린 작업 건너뛰기</td><td>기준 미만이면 처리</td><td>기준 이상이면 폴링에 맡김, 두 기준이 다르면 짧은 쪽</td><td>폴링과 겹친 PG 이중 호출 방지</td><td>—</td></tr>
+<tr><td>중복 승인 보정 트랜잭션 분리</td><td>조회 순간 트랜잭션 없음, 승인 종결·발행 1건(통합)</td><td>조회 중 예외 전파, 판정 불가 경로</td><td>기존 중복 흡수 테스트</td><td>기존 승인·격리 경합 테스트</td></tr>
+<tr><td>재시도 행은 폴링만 발행</td><td>재시도 케이스에서 즉시 발행 알림 없음</td><td>—</td><td>즉시 경로·폴링 이중 발행 방지</td><td>—</td></tr>
+</table></div>
+
+<details>
+<summary>주요 측정 회차 11개</summary>
+<div class="tablewrap"><table>
+<tr><th>회차</th><th>설정</th><th class="num">부하 중 DONE/초</th><th>잔량 흐름</th><th>판정</th></tr>
+<tr><td>capacity160-b (11-06)</td><td>변경 전</td><td class="num">102.3</td><td>부하 내내 증가(180초 10,336)</td><td><span class="badge b-bad">일시 폭주 흡수</span></td></tr>
+<tr><td>capacity160-c3-a (11-15)</td><td>결과 소비 3</td><td class="num">141.6</td><td>약 2,500~3,400 유지</td><td><span class="badge b-warn">미확정</span></td></tr>
+<tr><td>user-quality100-b (11-15)</td><td>변경 전</td><td class="num">20.4</td><td>부하 내내 증가</td><td><span class="badge b-bad">사용자 완료 미달</span></td></tr>
+<tr><td>user-quality100-c3-a (11-15)</td><td>결과 소비 3</td><td class="num">99.8</td><td>17~37</td><td><span class="badge b-good">품질 목표 통과</span></td></tr>
+<tr><td>capacity-r160-w32-a</td><td>+ 상한 복원, PG 요청 32, 발행 1</td><td class="num">129.5</td><td>증가, 정산 10분 내 미완료</td><td><span class="badge b-warn">미확정</span></td></tr>
+<tr><td>capacity-r160-w64-a</td><td>PG 요청 64, 발행 1</td><td class="num">130.6</td><td>증가, 정산 10분 내 미완료</td><td><span class="badge b-warn">미확정</span></td></tr>
+<tr><td>capacity-r160-w64-o8-a</td><td>PG 요청 64, 발행 8</td><td class="num">159.7</td><td>최대 3,186 → 108초부터 약 40</td><td><span class="badge b-good">부하 중 회복</span></td></tr>
+<tr><td>capacity-r160-final-a</td><td>최종 코드</td><td class="num">159.7</td><td>최대 1,653 → 60초부터 약 45</td><td><span class="badge b-good">부하 중 회복</span></td></tr>
+<tr><td>user-quality-r100-final-a</td><td>최종 코드</td><td class="num">99.9</td><td>12초 184 → 22~30</td><td><span class="badge b-good">품질 목표 통과</span></td></tr>
+<tr><td>capacity-r180-final-a</td><td>최종 코드</td><td class="num">179.7</td><td>최대 3,260 → 108초부터 약 55</td><td><span class="badge b-good">결제 회복</span></td></tr>
+<tr><td>capacity-r200-final-a</td><td>최종 코드</td><td class="num">184.1</td><td>최대 5,692 → 180초 2,726, 재고 확정 계속 증가</td><td><span class="badge b-warn">일시 폭주 흡수</span></td></tr>
+</table></div>
+<p class="legend">'미확정'은 측정 도구의 원래 판정이다. 대부분 메모리·재고 잔량 구간 비교가 결론을 못 내서 붙었고, 위 처리량·잔량 수치와는 따로 본다. 전체 회차는 같은 폴더의 EXPERIMENTS.md에 있다.</p>
+</details>
+
+<h3>리뷰 처리</h3>
+<ul>
+<li>변경 묶음마다 reviewer와 risk-reviewer가 서로의 결론을 모른 채 따로 검토했다.</li>
+<li>커밋 시점의 major는 모두 고친 뒤 재검토했다. 문서 정합성, 측정 증빙 누락, 큐 적체로 인한 PG 이중 호출, 오류로 인한 일꾼 사망, DB 연결 풀 고갈이 여기에 해당한다.</li>
+<li>마무리 리뷰는 critical 0, major 1건(태스크 표시와 완료 기준)이었다. major는 범위를 명시해 닫았다. minor는 고치거나 할 일 목록에 남겼다.
+  <ul>
+    <li>고친 것: 오래 기다린 작업의 기준을 짧은 쪽으로 바꿈, 재시도 행은 폴링만 발행</li>
+  </ul></li>
+<li>항목별 결정은 DESIGN.md의 "리뷰 처리" 표에 있다.</li>
+</ul>
+
+<h2 id="next">7. 남은 위험과 다음 단계</h2>
+
+<div class="tablewrap"><table>
+<tr><th>항목</th><th>내용</th><th>영향</th></tr>
+<tr><td>재고 확정 일꾼 1명</td><td>약 180건/초 상한(사용률 99%). 동시성을 올릴 때 같은 상품을 한 줄로 처리한다는 전제를 재배정 중에도 지키는지 확인해야 한다</td><td>재고가 늦게 맞춰짐. 결제 처리량에는 영향 없음</td></tr>
+<tr><td>200건/초의 payment 압력</td><td>DB 연결 대기 최대 449, 결과 소비 적체, confirm 접수 1.28초. 원인 미확인</td><td>결제 처리량을 더 올리려면 먼저 볼 곳</td></tr>
+<tr><td>부하 시작 직후 일시 적체</td><td>20~100초 동안 잔량·DB 연결 대기·토픽 지연이 함께 올랐다 풀림. 크기가 회차마다 다름</td><td>지연 p95가 흔들리는 원인</td></tr>
+<tr><td>추가 측정</td><td>사용자 품질 상한(초당 100건 위), 10분 지속 시험, 반복 측정</td><td>"지속 가능한 TPS"를 확정하려면 필요</td></tr>
+<tr><td>채널 넘침 시 느린 회수</td><td>폴링이 2초·5초마다 10건씩만 회수. 일꾼이 충분하면 안 생기지만 순간 폭주나 긴 PG 지연에는 남음</td><td>지연만, 정합성 영향 없음</td></tr>
+<tr><td>늦은 재시도 명령과 폴링 회수 겹침</td><td>재시도 명령 발행이 37.5초 넘게 늦으면 PG를 한 번 더 부를 수 있음(기존 위험)</td><td>PG 재요청 증가, 결과 반영은 한 번</td></tr>
+<tr><td>실제 PG 환경</td><td>동시 요청 한도, HTTP 연결 재사용, 멀티 인스턴스, 종료 순서</td><td>모의 PG 측정으로는 확인 불가</td></tr>
+</table></div>
+<p class="legend">모두 docs/TODOS.md에 남겼다.</p>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'default', flowchart: { htmlLabels: true, curve: 'basis' } });
+  hljs.highlightAll();
+</script>
+</body>
+</html>

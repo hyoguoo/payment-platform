@@ -110,7 +110,10 @@ public class DuplicateApprovalHandler {
     // vendor 조회 결과 캡슐화 — sealed interface + record 패턴.
     // -----------------------------------------------------------------------
 
-    private sealed interface VendorQueryOutcome
+    /**
+     * 벤더 상태 조회 결과. {@link #queryVendorStatus} 가 TX 밖에서 만들고 {@link #handleDuplicateApproval} 이 TX 안에서 소비한다.
+     */
+    public sealed interface VendorQueryOutcome
             permits VendorQueryOutcome.Success, VendorQueryOutcome.Indeterminate {
 
         record Success(PgStatusResult statusResult) implements VendorQueryOutcome {}
@@ -118,43 +121,20 @@ public class DuplicateApprovalHandler {
     }
 
     // -----------------------------------------------------------------------
-    // 공개 API
+    // 공개 API — TX 경계 분리 (PgVendorCallService·PgFinalConfirmationGate 의 invokeVendor/applyOutcome 과 같은 이유)
     // -----------------------------------------------------------------------
 
     /**
-     * 중복 승인 응답 처리 — 2자 금액 대조 + pg DB 부재 경로 방어.
+     * 벤더 상태 조회 — TX 없음. 1회만 호출하고 게이트웨이 실패는 판정 불가로 접는다.
      *
-     * @param orderId       주문 ID
-     * @param payloadAmount command payload 금액 (scale=0, 양수)
-     * @param vendorType    PG 벤더 구분 — PgStatusLookupStrategySelector 분기에 사용
+     * <p>HTTP 대기(최대 연결 3초 + 읽기 10초) 동안 DB 커넥션을 쥐지 않도록 반드시 TX 밖에서 호출한다.
+     * 워커 수(기본 64)가 pg 커넥션 풀(30)보다 커서, TX 안에서 조회하면 벤더가 느릴 때 풀이 바닥난다.
+     *
+     * @param orderId    주문 ID
+     * @param vendorType PG 벤더 구분 — PgStatusLookupStrategySelector 분기에 사용
+     * @return 조회 결과 ({@link #handleDuplicateApproval} 에 그대로 전달)
      */
-    @Transactional
-    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount, PgVendorType vendorType) {
-        long payloadAmountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
-
-        // 1단계: vendor 상태 조회 — vendorType 기반 strategy 선택. 1회만 호출하고 실패 시 INDETERMINATE 처리.
-        VendorQueryOutcome queryOutcome = queryVendorStatus(orderId, vendorType);
-
-        if (queryOutcome instanceof VendorQueryOutcome.Indeterminate) {
-            handleVendorIndeterminate(orderId, payloadAmountLong);
-            return;
-        }
-
-        PgStatusResult vendorStatus = ((VendorQueryOutcome.Success) queryOutcome).statusResult();
-        long vendorAmountLong = AmountConverter.fromBigDecimalStrict(vendorStatus.amount());
-
-        // 2단계: pg DB 존재 여부 분기
-        pgInboxRepository.findByOrderId(orderId).ifPresentOrElse(
-                inbox -> handleDbExists(orderId, inbox, vendorAmountLong, vendorStatus),
-                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong, vendorStatus)
-        );
-    }
-
-    // -----------------------------------------------------------------------
-    // vendor 조회 — 1회만, 예외 시 INDETERMINATE 변환
-    // -----------------------------------------------------------------------
-
-    private VendorQueryOutcome queryVendorStatus(String orderId, PgVendorType vendorType) {
+    public VendorQueryOutcome queryVendorStatus(String orderId, PgVendorType vendorType) {
         try {
             // vendorType 기반 전략 선택 — Toss/NicePay 동시 활성 지원
             PgStatusLookupPort port = pgStatusLookupStrategySelector.select(vendorType);
@@ -165,6 +145,32 @@ public class DuplicateApprovalHandler {
                     () -> "orderId=" + orderId + " vendorType=" + vendorType + " cause=" + e.getMessage());
             return new VendorQueryOutcome.Indeterminate();
         }
+    }
+
+    /**
+     * 중복 승인 응답 처리 — 2자 금액 대조 + pg DB 부재 경로 방어. 벤더 호출은 하지 않는다.
+     *
+     * @param orderId       주문 ID
+     * @param payloadAmount command payload 금액 (scale=0, 양수)
+     * @param queryOutcome  TX 밖에서 미리 한 {@link #queryVendorStatus} 결과
+     */
+    @Transactional
+    public void handleDuplicateApproval(String orderId, BigDecimal payloadAmount, VendorQueryOutcome queryOutcome) {
+        long payloadAmountLong = AmountConverter.fromBigDecimalStrict(payloadAmount);
+
+        if (queryOutcome instanceof VendorQueryOutcome.Indeterminate) {
+            handleVendorIndeterminate(orderId, payloadAmountLong);
+            return;
+        }
+
+        PgStatusResult vendorStatus = ((VendorQueryOutcome.Success) queryOutcome).statusResult();
+        long vendorAmountLong = AmountConverter.fromBigDecimalStrict(vendorStatus.amount());
+
+        // pg DB 존재 여부 분기
+        pgInboxRepository.findByOrderId(orderId).ifPresentOrElse(
+                inbox -> handleDbExists(orderId, inbox, vendorAmountLong, vendorStatus),
+                () -> handleDbAbsent(orderId, payloadAmountLong, vendorAmountLong, vendorStatus)
+        );
     }
 
     // -----------------------------------------------------------------------

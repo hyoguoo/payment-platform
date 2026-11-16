@@ -69,3 +69,4 @@
 | [ci-integration-test-sharding](ci-integration-test-sharding/COMPLETION-BRIEFING.md) | CI 통합 테스트 시간 단축 | 완료 | 2026-09-28 | #158, #159 |
 | [pg-inbox-index-merge](pg-inbox-index-merge/COMPLETION-BRIEFING.md) | 힌트 없는 index_merge·데드락 재현 | 완료 | 실험 2026-10-01 · 이관 2026-10-02 |  |
 | [agent-structure-overhaul](agent-structure-overhaul/BRIEF.md) | 에이전트 지침을 agent-backend-kit 구조로 바꾸고 프로젝트 문서를 현재 코드 기준으로 정리 | 완료 | 2026-11-06 | #163 |
+| [payment-throughput](payment-throughput/BRIEF.md) | 결제 처리량 한계 측정과 병목 개선 (측정 도구 두 시험, 결과 소비·pg 명령 소비 동시성, pg 워커 상한 복원과 기본값, 중복 승인 보정 트랜잭션 분리. 처리 용량 경계 120~140 → 180~200/s) | 완료 | 2026-10-28 ~ 2026-11-16 | #162, #165, #166, #167 |

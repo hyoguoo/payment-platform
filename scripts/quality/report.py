@@ -24,6 +24,7 @@ RUNS = (("preparation-01", "계측 준비", "preparation"),
         ("fault-02", "payment 중단·복구 2회", "fault"))
 EVIDENCE_NAMES = ("run.json", "command.json", "environment.json", "before.json", "after.json",
                   "attempts.jsonl", "summary.json", "result.json", "settlement.json",
+                  "observations.jsonl", "observer.json", "capacity-samples.jsonl",
                   "timeline.jsonl", "resources.jsonl", "fault.json", "after-kill.json",
                   "at-health.json", "recovery-observation.json", "alert-observations.jsonl",
                   "source-hashes.json", "source.patch", "SHA256SUMS.json", "k6.log")
@@ -174,6 +175,22 @@ def safe_command(command, run_id):
     if not isinstance(rate, int) or not isinstance(duration, int):
         return "실행 명령 기록 부족"
     suffix = " --fault" if command.get("fault") is True else ""
+    mode = command.get("mode", "legacy")
+    if mode not in ("legacy", "capacity", "user-quality"):
+        return "실행 명령 기록 부족: 시험 모드가 유효하지 않다."
+    if mode != "legacy":
+        max_vus = command.get("maxVUs")
+        if type(max_vus) is not int or not 1 <= max_vus <= 650:
+            return "실행 명령 기록 부족: 최대 VU 설정이 없다."
+        phase = command.get("phase")
+        if phase not in ("warmup","measurement"):
+            return "실행 명령 기록 부족: phase 설정이 유효하지 않다."
+        suffix += f" --mode {mode} --phase {phase} --max-vus {max_vus}"
+        if mode == "user-quality":
+            workers = command.get("observerWorkers")
+            if type(workers) is not int or not 1 <= workers <= 256:
+                return "실행 명령 기록 부족: 관측 작업자 설정이 없다."
+            suffix += f" --observer-workers {workers}"
     if isinstance(command.get('preallocatedVUs'), int):
         suffix += f" --preallocated-vus {command['preallocatedVUs']}"
     project = command.get('composeProject')
@@ -588,9 +605,234 @@ def run_section(root, run_id, title, kind, excluded=False):
             + '<h3>원본 화면</h3>' + originals(directory) + '</details></section>')
 
 
+def throughput_verdict(run, result, settled, run_id, directory=None):
+    """A stored PASS is not evidence until its new-mode records agree."""
+    if not all(isinstance(item, dict) for item in (run, result, settled)):
+        return "INCONCLUSIVE"
+    if (run.get("runId") != run_id or result.get("runId") != run_id
+            or settled.get("runId") != run_id or result.get("schemaVersion") != 2
+            or settled.get("schemaVersion") != 1
+            or result.get("mode") not in ("capacity", "user-quality")
+            or run.get("mode") != result.get("mode")
+            or run.get("sourceChanged") is not False):
+        return "INCONCLUSIVE"
+    if directory is not None:
+        required = ('attempts.jsonl','summary.json','capacity-samples.jsonl','before.json','after.json','command.json')
+        if result['mode'] == 'user-quality':
+            required += ('observations.jsonl','observer.json')
+        if any(not (directory/name).is_file() for name in required):
+            return 'INCONCLUSIVE'
+        command = read_json(directory/'command.json') or {}
+        phase=result.get('phase')
+        if (phase not in ('warmup','measurement') or run.get('phase') != phase
+                or command.get('phase') != phase or command.get('mode') != result['mode']):
+            return 'INCONCLUSIVE'
+    quality_verdict, stock_verdict = result.get('verdict'), settled.get('verdict')
+    if quality_verdict not in ('PASS','FAIL','INCONCLUSIVE') or stock_verdict not in ('PASS','FAIL','INCONCLUSIVE'):
+        return 'INCONCLUSIVE'
+    expected = ('FAIL' if 'FAIL' in (quality_verdict,stock_verdict) else
+                'INCONCLUSIVE' if 'INCONCLUSIVE' in (quality_verdict,stock_verdict) else 'PASS')
+    if (run.get('quality') != quality_verdict or run.get('settlement') != stock_verdict
+            or run.get('verdict') != expected
+            or run.get('exitCode') != {'PASS':0,'FAIL':1,'INCONCLUSIVE':2}[expected]):
+        return 'INCONCLUSIVE'
+    if expected != 'PASS':
+        return expected
+    if (result.get('validityIssues') != [] or result.get('evidenceIssues') != []):
+        return 'INCONCLUSIVE'
+    counts, stock = result.get("counts") or {}, settled.get("counts") or {}
+    if (any(type(counts.get(key)) is not int for key in
+            ("expected", "started", "finished", "missingFinish", "iterations", "dropped"))
+            or counts["started"] <= 0 or counts["started"] not in (counts["expected"], counts["expected"] + 1)
+            or counts["finished"] != counts["started"] or counts["missingFinish"] != 0
+            or counts["iterations"] != counts["started"] or counts["dropped"] != 0
+            or stock.get("attempts") != counts["started"]
+            or stock.get("knownOrders") != counts["started"]
+            or any(settled.get(key) for key in ("failures", "pending", "unknownAcceptance", "unattributedNewOrders"))):
+        return "INCONCLUSIVE"
+    quality = result.get("quality") or {}
+    capacity = result.get("capacity") or {}
+    goals = quality.get("goals") or {}
+    expected_class = "QUALITY_MET" if result["mode"] == "user-quality" else "SUSTAINED"
+    if (result.get("classification") != expected_class or
+            any(quality.get(key) is None for key in ("checkoutP95Ms", "confirmP95Ms"))
+            or any(goals.get(key) != "PASS" for key in
+                   ("checkoutResponse", "confirmResponse", "apiErrors"))
+            or quality.get("apiErrorAttempts") != 0
+            or capacity.get("status") != "ALL_DONE"
+            or (capacity.get("stability") or {}).get("status") != "STABLE"
+            or capacity.get("cohortOrders") != counts["started"]
+            or capacity.get("doneHistories") != counts["started"]
+            or capacity.get("doneDuringLoad") is None or capacity.get("doneAfterLoad") is None):
+        return "INCONCLUSIVE"
+    def within(value, limit):
+        return type(value) in (int,float) and math.isfinite(value) and 0 <= value <= limit
+    if not within(quality.get('checkoutP95Ms'),500) or not within(quality.get('confirmP95Ms'),500):
+        return 'INCONCLUSIVE'
+    if result['mode'] == 'user-quality' and (not within(quality.get('completionP95Ms'),3000)
+            or not within(quality.get('completionP99Ms'),5000)
+            or quality['completionP99Ms'] < quality['completionP95Ms']):
+        return 'INCONCLUSIVE'
+    if result["mode"] == "user-quality" and (quality.get("completionP95Ms") is None
+                                             or quality.get("completionP99Ms") is None
+                                             or quality.get("completionDenominator") != counts["started"]
+                                             or goals.get("userCompletion") != "PASS"
+                                             or quality.get("observerErrors") != 0):
+        return "INCONCLUSIVE"
+    if result["mode"] == "capacity" and goals.get("userCompletion") != "NOT_MEASURED":
+        return "INCONCLUSIVE"
+    return "PASS"
+
+
+def throughput_ms(value):
+    if type(value) in (int,float) and math.isfinite(value) and value >= 0:
+        return f"{value:,.0f} ms"
+    return "—"
+
+
+def throughput_section(directory, result, run, settled, command, excluded=False):
+    name = directory.name
+    mode = result.get("mode")
+    status = "EXCLUDED" if excluded else throughput_verdict(run, result, settled, name, directory)
+    quality = result.get("quality") or {}
+    arrival=result.get('arrival') or {}
+    capacity = result.get("capacity") or {}
+    stability = capacity.get("stability") or {}
+    counts = result.get("counts") or {}
+    rows = [
+        ("계획 / 실제 시작", f'{number(counts.get("expected"))} / {number(counts.get("started"))}',
+         f'발생기 누락 {number(counts.get("dropped"))}건'),
+        ('주입 스케줄 지연 p99 / 최대',f'{throughput_ms(arrival.get("scheduleLagP99Ms"))} / {throughput_ms(arrival.get("maxScheduleLagMs"))}', '예정 시각→실제 시작; 새 모드 허용100ms'),
+        ("checkout 응답 p95", throughput_ms(quality.get("checkoutP95Ms")), "checkout 시작→응답"),
+        ("confirm 접수 응답 p95", throughput_ms(quality.get("confirmP95Ms")), "confirm 시작→응답"),
+    ]
+    if mode == "user-quality":
+        rows.append(("사용자 완료 관측 p95 / p99",
+                     f'{throughput_ms(quality.get("completionP95Ms"))} / '
+                     f'{throughput_ms(quality.get("completionP99Ms"))}',
+                     f'confirm 시작→기한 내 DONE · 분모 {number(quality.get("completionDenominator"))}건'))
+        rows.append(('사용자 완료 관측 / 미관측',
+                     f'{number(quality.get("completionObserved"))} / {number(quality.get("completionUnobserved"))}',
+                     '미관측도 분모에 포함; +∞ 지연으로 순위 계산'))
+    else:
+        rows.append(("사용자 완료 관측", "측정하지 않음", "전수 상태 GET 제외"))
+    rows.extend([
+        ("실제 시작률", f'{capacity.get("actualArrivalRatePerSecond"):.2f}시도/초'
+         if isinstance(capacity.get("actualArrivalRatePerSecond"), (int, float)) else "—",
+         "실제 시작 건수 ÷ 예정 부하 시간"),
+        ("DB DONE 이력", f'부하 중 {number(capacity.get("doneDuringLoad"))}건 / '
+         f'종료 후 {number(capacity.get("doneAfterLoad"))}건',
+         "이력 기록 시각 기준; 실제 커밋 순간 계측 아님"),
+        ("DB 이력 기준 해소", throughput_ms(capacity.get("drainTimeMs")), "DONE 기록 시각 기준; 커밋 순간 아님"),
+        ("재고 포함 전수 대조 완료", throughput_ms(capacity.get("settlementObservedDrainTimeMs")), "부하 종료 이후 관측 상한; 실제 재고 반영 순간 아님"),
+        ("DB DONE 기록 지연 p95 / p99", f'{throughput_ms(capacity.get("recordedDoneP95Ms"))} / {throughput_ms(capacity.get("recordedDoneP99Ms"))}', "confirm 시작→DONE 이력 기록 시각"),
+        ('정상 Fake 업무 실패',number(quality.get('businessFailures')),'FAILED·EXPIRED·QUARANTINED'),
+        ("주문·PG 승인·재고", esc((settled or {}).get("verdict", "근거 없음")),
+         f'확인 주문 {number((settled or {}).get("counts", {}).get("knownOrders"))}건'),
+    ])
+    issues = [*result.get("validityIssues", []), *result.get("evidenceIssues", []), *result.get('correctnessFailures',[])]
+    if (run or {}).get("sourceChanged") is True:
+        issues.append("실행 중 소스 변경")
+    if (run or {}).get("executionError"):
+        issues.append(f'실행 오류: {run["executionError"]}')
+    details = ('<ul>' + ''.join(f'<li>{esc(issue)}</li>' for issue in issues) + '</ul>'
+               if issues else '<p class="micro">판정 제한 기록 없음</p>')
+    trend_rows = [
+        ("후반 구간", f'{number(stability.get("samples"))}개 표본 · {esc(stability.get("status", "근거 없음"))}',
+         "부하 후반 최소 60초·4표본"),
+        ('재고 확정 증가',number(stability.get('stockCommittedGain')),'product stock_commit_dedupe; 워밍업 기준 차감'),
+        ('결제→재고 대기 첫 / 마지막',' / '.join(number(v) for v in stability.get('stockPendingFirstLast',[])) or '—','payment DONE 뒤 남은 재고 반영'),
+        ('전체 파이프라인 잔량 첫 / 마지막',' / '.join(number(v) for v in stability.get('pipelinePendingFirstLast',[])) or '—','주문 접수→product 재고 확정'),
+        ("유입 / DB DONE 증가", f'{number(stability.get("arrivalsGain"))} / '
+         f'{number(stability.get("doneGain"))}', "후반 표본 첫 시점→마지막 시점"),
+        ("미완료 잔량 첫 / 마지막", ' / '.join(number(value) for value in
+         stability.get("pendingFirstLast", [])) or "—", "DB 상태 표본"),
+        ("가장 오래된 미완료 작업", ' / '.join(throughput_ms(value) for value in
+         stability.get("oldestAgeFirstLastMs", [])) or "—", "DB 생성 이후 표본"),
+    ]
+    memory = stability.get("memoryMeanChangesBytes") or {}
+    bands=stability.get('memoryBandsBytes') or {}
+    if memory:
+        bounded=sum(len(value)==2 and value[1][0]<=value[0][0] and value[1][1]<=value[0][1]
+                    for value in bands.values())
+        trend_rows.append(('메모리 관측 범위',f'{bounded} / {len(bands)} 지표 범위 유지',
+                           '앱 heap 5개·컨테이너 20개·호스트 swap; 부하 후반 관측 범위 비교'))
+    policy_rows = [(esc(key),esc(value)) for key,value in (result.get('policy') or {}).items()]
+    label = "서버 처리 용량" if mode == "capacity" else "사용자 품질"
+    return (f'<section class="run" id="{esc(name)}"><h2>{esc(name)} · {label} {chip(status)}</h2>'
+            f'<p class="micro">계획 {number(result.get("rate"))}시도/초 · '
+            f'{number(result.get("durationSeconds"))}초 · '
+            f'분류 {esc(result.get("classification", "근거 없음"))} · '
+            + ('워밍업 · 한계 산정 제외' if result.get('phase') == 'warmup' else '본측정') + '</p>'
+            + table(("관측", "결과", "경계"), rows)
+            + '<h3>잔량·메모리</h3>' + table(("근거", "관측", "해석"), trend_rows)
+            + '<details><summary>판정 정책과 관측 범위</summary>' + table(('정책','기준'),policy_rows) + '</details>'
+            + '<p class="micro">지속 처리 분류는 이 실행의 관측 구간에 한정한다. 장기 운영 보장이나 최대 TPS 확정이 아니다.</p>'
+            + '<h3>판정 제한</h3>' + details
+            + '<details><summary>실행 조건과 원자료</summary><pre><code>'
+            + esc(safe_command(command, name)) + '</code></pre><p class="links">'
+            + raw_links(directory) + '</p></details></section>')
+
+
+def render_throughput(root):
+    """Show all new runs; display legacy runs under their original policy."""
+    sections, rows = [], []
+    exclusion, excluded, _ = exclusion_section(root)
+    for directory in sorted(root.iterdir()):
+        if not directory.is_dir():
+            continue
+        result = read_json(directory / "result.json")
+        if not isinstance(result, dict):
+            continue
+        run = read_json(directory / "run.json")
+        settled = read_json(directory / "settlement.json")
+        name = directory.name
+        if result.get("schemaVersion") == 2 and result.get("mode") in ("capacity", "user-quality"):
+            label = "서버 처리 용량" if result["mode"] == "capacity" else "사용자 품질"
+            if result.get("phase") == "warmup":
+                label += " · 워밍업 · 한계 산정 제외"
+            status = "EXCLUDED" if excluded else throughput_verdict(run, result, settled, name, directory)
+            sections.append(throughput_section(directory, result, run, settled,
+                                               read_json(directory / "command.json"), excluded))
+            rows.append((f'<a href="#{esc(name)}">{esc(name)}</a>', label, chip(status)))
+        elif result.get("schemaVersion") == 1:
+            kind = next((kind for original, _, kind in RUNS if original == name), "normal")
+            status = official_verdict(run, kind, read_json(directory / "fault.json"),
+                                      result=result, settlement=settled, expected_run_id=name, excluded=excluded)
+            sections.append(f'<section class="run" id="{esc(name)}">'
+                            f'<h2>{esc(name)} · 기존 조건 500ms 조회 {chip(status)}</h2>'
+                            f'<p>원래 판정과 60초 관찰 정책을 유지한다.</p>'
+                            f'<p class="links">{raw_links(directory)}</p></section>')
+            rows.append((f'<a href="#{esc(name)}">{esc(name)}</a>', "기존 조건 500ms", chip(status)))
+    body = ''.join(sections) or '<p>새 모드 실행 자료 없음</p>'
+    return ('''<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>결제 처리량 시험 결과</title>
+<style>:root{font-family:system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;color:#172b3a;background:#f5f8fa}
+*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 20px 70px}
+header{background:#152e40;color:white;border-radius:16px;padding:32px}header h1{margin:0}
+header p{max-width:760px;color:#d5e5ec;line-height:1.6}h2{font-size:22px}h3{font-size:17px}
+.run{background:white;border:1px solid #d6e3e9;border-radius:14px;padding:25px;margin:20px 0}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;margin:18px 0}
+th,td{text-align:left;vertical-align:top;border-bottom:1px solid #d8e3e9;padding:11px}
+th{background:#eaf1f5}.micro{font-size:13px;color:#4c6371}.links a{color:#075985}
+.chip{display:inline-block;border-radius:99px;background:#e8edf0;color:#4d5c69;font-size:12px;font-weight:700;padding:3px 9px}
+.chip.unknown{background:#fff0ca;color:#835500}.chip.pass{background:#daf3e5;color:#116037}
+.chip.fail{background:#fde6e2;color:#9a271c}pre{white-space:pre-wrap;overflow:auto;background:#102433;color:#edf7fa;padding:15px;border-radius:8px}
+details summary{cursor:pointer;font-weight:700}@media(max-width:700px){main{padding:13px}header,.run{padding:18px}}
+</style></head><body><main><header><h1>결제 처리량 시험</h1>
+<p>계획 유입과 실제 시작, 접수 응답, 사용자 완료 확인, DB 완료 이력과 재고 대조를 따로 확인한다.
+각 결과는 해당 실행의 원자료에 연결한다.</p></header><section class="run"><h2>실행별 판정</h2>'''
+            + exclusion + table(("실행", "시험", "근거 적격성"), rows) + '</section>' + body + '</main></body></html>')
+
+
 def render(root):
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
+    if any((data := read_json(folder / "result.json"))
+           and data.get("schemaVersion") == 2
+           and data.get("mode") in ("capacity", "user-quality")
+           for folder in root.iterdir() if folder.is_dir()):
+        return render_throughput(root)
     exclusion_html, excluded, prior_exclusion = exclusion_section(root)
     clean_html = clean_environment_section(root)
     overview_html = overview_section(root, excluded)

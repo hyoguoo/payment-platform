@@ -298,8 +298,8 @@ class PgConfirmListenerSplitIntegrationTest {
         // when — DuplicateApprovalHandler.handleDuplicateApproval 직접 호출
         // 경로: handleDbAbsent → payloadAmount == vendorAmount → handleDbAbsentAmountMatch
         //       → transitDirectToTerminal(APPROVED) — PENDING 미경유
-        duplicateApprovalHandler.handleDuplicateApproval(
-                orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
+        duplicateApprovalHandler.handleDuplicateApproval(orderId, BigDecimal.valueOf(AMOUNT),
+                duplicateApprovalHandler.queryVendorStatus(orderId, PgVendorType.TOSS));
 
         // then — APPROVED 상태로 직접 전이 (PENDING 미경유)
         Optional<PgInbox> result = pgInboxRepository.findByOrderId(orderId);

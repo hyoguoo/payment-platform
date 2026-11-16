@@ -66,6 +66,48 @@ class PgOutboxImmediateWorkerTest {
     }
 
     @Test
+    @DisplayName("동시 발행 수는 worker-count를 넘지 않는다")
+    void 동시_발행_수는_worker_count를_넘지_않는다() throws InterruptedException {
+        // given: worker-count 2, 작업 5건, relay 는 해제 신호까지 막힌다
+        int workerCount = 2;
+        int jobCount = 5;
+        PgOutboxRelayService blockingRelay = org.mockito.Mockito.mock(PgOutboxRelayService.class);
+        worker = new PgOutboxImmediateWorker(channel, blockingRelay, workerCount, meterRegistry);
+        java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger maxInFlight = new java.util.concurrent.atomic.AtomicInteger();
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch started = new CountDownLatch(workerCount);
+        CountDownLatch finished = new CountDownLatch(jobCount);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            started.countDown();
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } finally {
+                inFlight.decrementAndGet();
+                finished.countDown();
+            }
+            return null;
+        }).when(blockingRelay).relay(org.mockito.ArgumentMatchers.anyLong());
+
+        worker.start();
+
+        // when
+        for (long id = 1; id <= jobCount; id++) {
+            channel.offerNow(id);
+        }
+
+        // then
+        assertThat(started.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(300);
+        assertThat(maxInFlight.get()).isEqualTo(workerCount);
+
+        release.countDown();
+        assertThat(finished.await(3, TimeUnit.SECONDS)).isTrue();
+        assertThat(maxInFlight.get()).isEqualTo(workerCount);
+    }
+
+    @Test
     @DisplayName("stop — SmartLifecycle stop() 호출 시 in-flight row 처리 완료 후 종료된다")
     void stop_DrainsInFlightBeforeShutdown() throws InterruptedException {
         // given: row 하나 저장 + channel에 offer 준비

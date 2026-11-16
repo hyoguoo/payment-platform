@@ -1,5 +1,6 @@
 /**
- * 전체 구매 시도를 관측하는 품질 기준 시나리오.
+ * legacy: 구매와 500ms 완료 조회. capacity/user-quality: 구매 주입만 수행.
+ * user-quality의 같은 주문 조회는 scripts/quality/run.py의 별도 관측기가 담당한다.
  *
  * k6 run --log-format raw --console-output <attempts.jsonl> \
  *   -e RUN_ID=<unique-id> -e OUTPUT_SUMMARY=<summary.json> \
@@ -18,6 +19,15 @@ if (!RUN_ID || !/^[A-Za-z0-9_-]{1,48}$/.test(RUN_ID)) {
     throw new Error('RUN_ID must contain 1-48 letters, digits, underscores or hyphens');
 }
 
+const MODE = __ENV.TEST_MODE || 'legacy';
+const PHASE = __ENV.RUN_PHASE || 'measurement';
+if (!['measurement', 'warmup'].includes(PHASE)) {
+    throw new Error('RUN_PHASE must be measurement or warmup');
+}
+if (!['legacy', 'capacity', 'user-quality'].includes(MODE)) {
+    throw new Error('TEST_MODE must be legacy, capacity or user-quality');
+}
+const MAX_VUS = Number(__ENV.MAX_VUS || 650);
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8090';
 const RATE = Number(__ENV.RATE || 10);
 const DURATION_SECONDS = Number(__ENV.DURATION_SECONDS || 600);
@@ -32,8 +42,9 @@ const OUTPUT_SUMMARY = __ENV.OUTPUT_SUMMARY || `quality-${RUN_ID}-summary.json`;
 if (!Number.isSafeInteger(RATE) || RATE < 1 ||
     !Number.isSafeInteger(DURATION_SECONDS) || DURATION_SECONDS < 1 ||
     !Number.isSafeInteger(PRODUCT_ID_BASE) || PRODUCT_ID_BASE < 1 ||
-    !Number.isSafeInteger(PREALLOCATED_VUS) || PREALLOCATED_VUS < 1 || PREALLOCATED_VUS > 650) {
-    throw new Error('RATE, DURATION_SECONDS and PRODUCT_ID_BASE must be positive integers');
+    !Number.isSafeInteger(PREALLOCATED_VUS) || PREALLOCATED_VUS < 1 || PREALLOCATED_VUS > MAX_VUS ||
+    !Number.isSafeInteger(MAX_VUS) || MAX_VUS < 1 || MAX_VUS > 650) {
+    throw new Error('positive integer rate/duration/product base and 1 <= preAllocatedVUs <= maxVUs <= 650 required');
 }
 
 export const options = {
@@ -44,7 +55,7 @@ export const options = {
             timeUnit: '1s',
             duration: `${DURATION_SECONDS}s`,
             preAllocatedVUs: PREALLOCATED_VUS,
-            maxVUs: 650,
+            maxVUs: MAX_VUS,
             gracefulStop: '65s',
         },
     },
@@ -84,11 +95,11 @@ export default function () {
     const startMs = Date.now();
     const deadlineMs = startMs + OBSERVATION_MS;
     const common = {
-        runId: RUN_ID, attemptId, idempotencyKey, productId, startMs,
+        runId: RUN_ID, mode: MODE, phase: PHASE, attemptId, idempotencyKey, productId, startMs,
         scenarioStartMs: exec.scenario.startTime,
     };
     const result = {
-        ...common, kind: 'finish', orderId: null, confirmStartMs: null,
+        ...common, kind: 'finish', orderId: null, checkoutEndMs: null, confirmStartMs: null,
         confirmEndMs: null, doneMs: null, finishedMs: null,
         outcome: 'CHECKOUT_ERROR', checkoutStatus: null, confirmStatus: null,
         apiErrors: [], pollCount: 0,
@@ -106,6 +117,7 @@ export default function () {
             headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
             tags: { step: 'checkout' }, timeout: requestTimeout(deadlineMs),
         });
+        result.checkoutEndMs = Date.now();
         result.checkoutStatus = checkout.status;
         const checkoutBody = parseBody(checkout.body);
         if (checkoutBody && typeof checkoutBody.orderId === 'string') {
@@ -137,12 +149,20 @@ export default function () {
             recordError(result, 'confirm', confirm.status);
         }
 
+        if (MODE !== 'legacy') {
+            // Completion observation runs outside injection VUs for the same order.
+            result.outcome = confirm.status === 202 ? 'ACCEPTED' : 'CONFIRM_UNCONFIRMED';
+            return;
+        }
+
         // 202가 유실된 경우에도 서버에서 처리됐을 수 있으므로 orderId가 있으면 관측한다.
         result.outcome = 'TIMEOUT';
         while (Date.now() < deadlineMs) {
             const statusResponse = http.get(
                 `${BASE_URL}/api/v1/payments/${encodeURIComponent(result.orderId)}/status`,
-                { tags: { step: 'status' }, timeout: requestTimeout(deadlineMs) }
+                // Keep order IDs in attempt evidence, not in metric series names.
+                { tags: { step: 'status', name: 'GET /api/v1/payments/:orderId/status' },
+                    timeout: requestTimeout(deadlineMs) }
             );
             result.pollCount += 1;
             const observedAt = Date.now();

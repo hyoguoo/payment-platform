@@ -16,10 +16,14 @@ import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.infrastructure.channel.PgInboxChannel;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +39,7 @@ import org.junit.jupiter.api.Test;
 class PgInboxImmediateWorkerTest {
 
     private static final Instant NOW = Instant.parse("2026-05-09T00:00:00Z");
+    private static final long STALE_TIMEOUT_MS = 60_000L;
 
     private PgInboxChannel channel;
     private PgInboxProcessUseCase processor;
@@ -44,13 +49,18 @@ class PgInboxImmediateWorkerTest {
 
     @BeforeEach
     void setUp() {
-        channel = new PgInboxChannel(1024, new SimpleMeterRegistry());
+        channel = new PgInboxChannel(1024, new SimpleMeterRegistry(), Clock.systemUTC());
         channel.registerMetrics();
         processor = mock(PgInboxProcessUseCase.class);
         inboxRepository = mock(PgInboxRepository.class);
         meterRegistry = new SimpleMeterRegistry();
         // workerCount=1: 단위 테스트에서 스레드 수 최소화
-        worker = new PgInboxImmediateWorker(channel, processor, inboxRepository, 1, meterRegistry);
+        worker = newWorker(channel, 1, Clock.systemUTC());
+    }
+
+    private PgInboxImmediateWorker newWorker(PgInboxChannel targetChannel, int workerCount, Clock workerClock) {
+        return new PgInboxImmediateWorker(targetChannel, processor, inboxRepository, workerCount,
+                STALE_TIMEOUT_MS, STALE_TIMEOUT_MS, meterRegistry, workerClock);
     }
 
     @AfterEach
@@ -88,6 +98,195 @@ class PgInboxImmediateWorkerTest {
 
         // then
         assertThat(worker.isRunning()).isFalse();
+    }
+
+    @Test
+    @DisplayName("동시 처리 수는 worker-count를 넘지 않고, 처리 중 작업이 끝나야 다음 작업을 꺼낸다")
+    void 동시_처리_수는_worker_count를_넘지_않는다() throws InterruptedException {
+        // given: worker-count 2, 작업 5건, 처리는 해제 신호까지 막힌다
+        int workerCount = 2;
+        int jobCount = 5;
+        worker = newWorker(channel, workerCount, Clock.systemUTC());
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger maxInFlight = new AtomicInteger();
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch started = new CountDownLatch(workerCount);
+        CountDownLatch finished = new CountDownLatch(jobCount);
+        for (long id = 1; id <= jobCount; id++) {
+            PgInbox pendingInbox = PgInbox.of("order-" + id, PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+            when(inboxRepository.findById(id)).thenReturn(Optional.of(pendingInbox));
+        }
+        doAnswer(invocation -> {
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            started.countDown();
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } finally {
+                inFlight.decrementAndGet();
+                finished.countDown();
+            }
+            return null;
+        }).when(processor).processPending(org.mockito.ArgumentMatchers.anyLong());
+
+        worker.start();
+
+        // when
+        for (long id = 1; id <= jobCount; id++) {
+            channel.offerNow(id);
+        }
+
+        // then: 워커 수만큼만 시작하고, 시간이 지나도 더 시작하지 않는다
+        assertThat(started.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(300);
+        assertThat(maxInFlight.get()).isEqualTo(workerCount);
+
+        // 해제하면 남은 작업도 모두 처리된다
+        release.countDown();
+        assertThat(finished.await(3, TimeUnit.SECONDS)).isTrue();
+        assertThat(maxInFlight.get()).isEqualTo(workerCount);
+    }
+
+    @Test
+    @DisplayName("종료 때 처리 중인 작업은 인터럽트 없이 끝까지 처리된다")
+    void 종료_때_처리_중인_작업은_인터럽트_없이_끝난다() throws InterruptedException {
+        // given
+        PgInbox pendingInbox = PgInbox.of("order-stop", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(7L)).thenReturn(Optional.of(pendingInbox));
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicBoolean interrupted = new AtomicBoolean(false);
+        AtomicBoolean completed = new AtomicBoolean(false);
+        doAnswer(invocation -> {
+            started.countDown();
+            try {
+                Thread.sleep(300);
+                completed.set(true);
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }).when(processor).processPending(7L);
+
+        worker.start();
+        channel.offerNow(7L);
+        assertThat(started.await(3, TimeUnit.SECONDS)).isTrue();
+
+        // when: 처리 중에 종료
+        worker.stop();
+
+        // then: stop 은 처리 중 작업이 끝난 뒤 돌아오고, 작업은 인터럽트되지 않았다
+        assertThat(interrupted.get()).isFalse();
+        assertThat(completed.get()).isTrue();
+    }
+
+    @Test
+    @DisplayName("큐에서 정체 기준 이상 기다린 작업은 처리하지 않고 폴링 회수에 맡긴다 — 폴링과 겹쳐 벤더를 두 번 부르지 않는다")
+    void 정체_기준_이상_기다린_작업은_처리하지_않는다() throws InterruptedException {
+        // given: 채널은 T0 에 넣고, 워커 시계는 T0 + 정체 기준
+        Instant enqueuedAt = Instant.parse("2026-11-15T00:00:00Z");
+        PgInboxChannel staleChannel = new PgInboxChannel(1024, new SimpleMeterRegistry(),
+                Clock.fixed(enqueuedAt, ZoneOffset.UTC));
+        worker = newWorker(staleChannel, 1,
+                Clock.fixed(enqueuedAt.plusMillis(STALE_TIMEOUT_MS), ZoneOffset.UTC));
+        PgInbox inProgressInbox = PgInbox.of("order-stale", PgInboxStatus.IN_PROGRESS, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(31L)).thenReturn(Optional.of(inProgressInbox));
+        worker.start();
+
+        // when
+        staleChannel.offerNow(31L);
+
+        // then: 벤더를 부르는 두 경로 모두 호출하지 않고, 건너뛴 수를 센다
+        Counter staleCounter = meterRegistry.find(PgInboxImmediateWorker.STALE_SKIP_COUNTER_NAME).counter();
+        org.awaitility.Awaitility.await().atMost(3, TimeUnit.SECONDS)
+                .until(() -> staleCounter != null && staleCounter.count() == 1.0);
+        verify(processor, never()).processInProgressZombie(31L);
+        verify(processor, never()).processPending(31L);
+    }
+
+    @Test
+    @DisplayName("두 회수 기준이 다르면 짧은 쪽을 정체 기준으로 쓴다 — 짧은 기준이 지나면 폴링이 이미 회수했을 수 있다")
+    void 회수_기준이_다르면_짧은_쪽을_정체_기준으로_쓴다() throws InterruptedException {
+        // given: PENDING 회수 60초, IN_PROGRESS 회수 120초. 큐에서 90초 기다린 작업 —
+        // 그사이 폴링이 PENDING 을 회수해 IN_PROGRESS 로 벤더를 부르고 있을 수 있다
+        long pendingTimeoutMs = 60_000L;
+        long inProgressTimeoutMs = 120_000L;
+        Instant enqueuedAt = Instant.parse("2026-11-15T00:00:00Z");
+        PgInboxChannel staleChannel = new PgInboxChannel(1024, new SimpleMeterRegistry(),
+                Clock.fixed(enqueuedAt, ZoneOffset.UTC));
+        worker = new PgInboxImmediateWorker(staleChannel, processor, inboxRepository, 1,
+                pendingTimeoutMs, inProgressTimeoutMs, meterRegistry,
+                Clock.fixed(enqueuedAt.plusMillis(90_000L), ZoneOffset.UTC));
+        PgInbox inProgressInbox = PgInbox.of("order-stale-min", PgInboxStatus.IN_PROGRESS, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(32L)).thenReturn(Optional.of(inProgressInbox));
+        worker.start();
+
+        // when
+        staleChannel.offerNow(32L);
+
+        // then: 폴링이 부르고 있을 벤더를 한 번 더 부르지 않는다
+        Counter staleCounter = meterRegistry.find(PgInboxImmediateWorker.STALE_SKIP_COUNTER_NAME).counter();
+        org.awaitility.Awaitility.await().atMost(3, TimeUnit.SECONDS)
+                .until(() -> staleCounter != null && staleCounter.count() == 1.0);
+        verify(processor, never()).processInProgressZombie(32L);
+        verify(processor, never()).processPending(32L);
+    }
+
+    @Test
+    @DisplayName("큐 대기가 정체 기준보다 짧으면 그대로 처리한다")
+    void 정체_기준보다_짧게_기다린_작업은_처리한다() {
+        // given
+        Instant enqueuedAt = Instant.parse("2026-11-15T00:00:00Z");
+        PgInboxChannel freshChannel = new PgInboxChannel(1024, new SimpleMeterRegistry(),
+                Clock.fixed(enqueuedAt, ZoneOffset.UTC));
+        worker = newWorker(freshChannel, 1,
+                Clock.fixed(enqueuedAt.plusMillis(STALE_TIMEOUT_MS - 1), ZoneOffset.UTC));
+        PgInbox pendingInbox = PgInbox.of("order-fresh", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(32L)).thenReturn(Optional.of(pendingInbox));
+        worker.start();
+
+        // when
+        freshChannel.offerNow(32L);
+
+        // then
+        verify(processor, timeout(3_000).times(1)).processPending(32L);
+    }
+
+    @Test
+    @DisplayName("처리 중 Error 가 나도 워커는 죽지 않고 실패를 센 뒤 다음 작업을 처리한다")
+    void 처리_중_Error가_나도_워커는_다음_작업을_처리한다() {
+        // given: worker-count 1, 첫 작업은 Error
+        PgInbox first = PgInbox.of("order-err-1", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        PgInbox second = PgInbox.of("order-err-2", PgInboxStatus.PENDING, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(41L)).thenReturn(Optional.of(first));
+        when(inboxRepository.findById(42L)).thenReturn(Optional.of(second));
+        org.mockito.Mockito.doThrow(new StackOverflowError("test")).when(processor).processPending(41L);
+        worker.start();
+
+        // when
+        channel.offerNow(41L);
+        channel.offerNow(42L);
+
+        // then
+        verify(processor, timeout(3_000).times(1)).processPending(42L);
+        Counter failCounter = meterRegistry.find(PgInboxImmediateWorker.PROCESS_FAIL_COUNTER_NAME).counter();
+        assertThat(failCounter).isNotNull();
+        assertThat(failCounter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("종료 뒤에는 채널에 남은 작업을 꺼내지 않는다 — 남은 작업은 폴링 워커가 DB 상태로 회수한다")
+    void 종료_뒤에는_채널에_남은_작업을_꺼내지_않는다() throws InterruptedException {
+        // given
+        worker.start();
+        worker.stop();
+
+        // when: 종료 뒤 offer
+        channel.offerNow(11L);
+        Thread.sleep(300);
+
+        // then
+        verify(inboxRepository, never()).findById(11L);
+        assertThat(channel.size()).isEqualTo(1);
     }
 
     @Test

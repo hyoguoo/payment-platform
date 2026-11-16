@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>결제 TPS 분석 · 핵심 요약</title>
+  <style>
+    :root { color-scheme: light; --ink:#182c3d; --muted:#526575; --line:#dce4ea; --blue:#1754a2; --paper:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f3f6f8; color:var(--ink); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; line-height:1.7; word-break:keep-all; overflow-wrap:anywhere; }
+    main { max-width:1000px; margin:auto; padding:48px 28px 32px; }
+    .eyebrow { margin:0 0 10px; color:var(--blue); font-size:12px; font-weight:750; letter-spacing:.1em; }
+    h1 { margin:0; font-size:clamp(28px,4.5vw,42px); line-height:1.3; letter-spacing:-.04em; }
+    .meta { color:var(--muted); font-size:13px; margin:12px 0 24px; }
+    .verdict { background:var(--ink); color:white; padding:25px 28px; border-radius:16px; }
+    .verdict strong { display:block; font-size:21px; line-height:1.5; }
+    .verdict p { margin:10px 0 0; color:#dae6ef; }
+    section { margin-top:32px; }
+    h2 { margin:0 0 14px; font-size:21px; letter-spacing:-.025em; }
+    h3 { margin:5px 0 8px; font-size:18px; }
+    p { margin:0 0 10px; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .card { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:20px; }
+    .tag { display:inline-block; padding:2px 9px; border-radius:5px; font-size:12px; font-weight:700; }
+    .necessary { color:#116355; background:#e7f4ef; }
+    .improve { color:#1754a2; background:#e9f0fc; }
+    .measure { color:#875009; background:#fff1d9; }
+    .card p { color:var(--muted); font-size:14px; margin:0; }
+    .flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; list-style:none; padding:0; margin:0; }
+    .flow li { position:relative; background:#e8eef3; border-radius:8px; padding:14px 12px; font-size:14px; }
+    .flow strong { display:block; }
+    .flow span { display:block; font-size:12px; color:var(--muted); margin-top:3px; }
+    .flow li:not(:last-child)::after { content:"→"; position:absolute; right:-10px; top:16px; z-index:1; color:var(--blue); font-weight:bold; }
+    .flow .focus { background:#e1ebfb; border:1px solid #a8c1e5; }
+    .note { color:var(--muted); font-size:13px; margin:10px 0 0; }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:white; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { padding:14px 16px; text-align:left; vertical-align:top; }
+    th { background:#eaf0f5; font-size:12px; color:#40576a; }
+    td { border-top:1px solid var(--line); }
+    td:first-child { width:24%; font-weight:700; }
+    .review { margin:0; padding:0; list-style:none; background:white; border:1px solid var(--line); border-radius:12px; }
+    .review li { padding:16px 20px; }
+    .review li+li { border-top:1px solid var(--line); }
+    .review strong { color:var(--blue); }
+    .review p { margin:4px 0 0; font-size:14px; }
+    .next { background:#eaf1fa; padding:20px 24px; border-radius:12px; }
+    .next ol { margin:0; padding-left:22px; }
+    .next li+li { margin-top:7px; }
+    details { margin-top:20px; border:1px solid var(--line); border-radius:10px; padding:14px 18px; background:white; font-size:13px; }
+    summary { cursor:pointer; font-weight:700; }
+    details ul { padding-left:20px; margin-bottom:0; }
+    details li { margin-top:8px; }
+    a { color:var(--blue); text-underline-offset:3px; }
+    a:focus-visible,summary:focus-visible { outline:3px solid #b77510; outline-offset:4px; }
+    footer { border-top:1px solid var(--line); margin-top:28px; padding-top:16px; color:var(--muted); font-size:12px; }
+    @media(max-width:700px) {
+      main { padding:28px 16px; }
+      .grid { grid-template-columns:1fr; }
+      .flow { grid-template-columns:1fr; gap:10px; }
+      .flow li:not(:last-child)::after { content:"↓"; top:auto; bottom:-16px; right:22px; }
+      .verdict { padding:20px; }
+      th,td { padding:12px 10px; }
+      td:first-child { width:28%; }
+    }
+    @media print {
+      body { background:white; font-size:11pt; }
+      main { max-width:none; padding:0; }
+      .verdict { background:#edf2f7; color:var(--ink); }
+      .verdict p { color:var(--muted); }
+      .card,.review li,tr,.next { break-inside:avoid; }
+      h2 { break-after:avoid; }
+      details { display:none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">PAYMENT PLATFORM / 분석 검토 요약</p>
+    <h1>결제 TPS, 왜 낮을 수 있나?</h1>
+    <p class="meta">2026-10-28 초기 정적 검토 · 기준 코드 07f5196c · TPS = 초당 처리 건수</p>
+    <p class="note">이 페이지는 초기 분석 요약이다. 이후 <a href="tps-clean-measurements.html">실측 결과</a>, <a href="tps-handoff.md">현재 조치·인계</a>, <a href="BRIEF.md">합의한 시험 기준</a>을 구분해 확인한다.</p>
+    <div class="verdict">
+      <strong>개선 여지는 있다. 현재 낮은 수치의 원인은 아직 확정되지 않았다.</strong>
+      <p>결과를 한 줄로 처리하는 구조와 DB 연결을 잡고 기다리는 구조가 있다.<br>다만 측정 지표·부하 조건을 확인해야 실제 서버 한계인지 판단할 수 있다.</p>
+    </div>
+  </header>
+
+  <section aria-labelledby="categories">
+    <h2 id="categories">원인을 세 가지로 나누면 쉽다</h2>
+    <div class="grid">
+      <article class="card">
+        <span class="tag necessary">보장을 위한 비용</span>
+        <h3>안전하게 기록하고 기다림</h3>
+        <p>외부 PG 승인, 결제·재고 기록, 중복 방지에는 비용이 든다. Redis의 동기 디스크 기록도 현재 내구성 선택이다. 제거하면 장애 시 보장이 달라진다.</p>
+      </article>
+      <article class="card">
+        <span class="tag improve">개선 가능한 구조</span>
+        <h3>불필요한 직렬 처리와 점유</h3>
+        <p>서로 다른 주문도 결과 소비자 하나가 처리한다. Kafka·외부 HTTP를 기다리며 DB 연결을 점유하는 경로도 있다. 정합성을 지키면서 줄일 후보들이다.</p>
+      </article>
+      <article class="card">
+        <span class="tag measure">측정·해석 문제</span>
+        <h3>접수량과 완료량을 혼동</h3>
+        <p>기본 품질 시험은 초당 10건을 보내므로 최대 용량을 알 수 없다. HTTP 접수, DB 완료, 60초 내 사용자 관측은 서로 다른 지표다.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="path">
+    <h2 id="path">결제 한 건이 지나가는 길</h2>
+    <ol class="flow" aria-label="주문 생성부터 재고 반영까지 처리 순서">
+      <li><strong>1. 주문 생성</strong><span>사용자·상품 조회</span></li>
+      <li><strong>2. 확정 접수</strong><span>재고 선차감·의도 저장</span></li>
+      <li><strong>3. PG 승인</strong><span>메시지 전달·외부 승인</span></li>
+      <li class="focus"><strong>4. 결제 완료</strong><span>payment DB의 DONE</span></li>
+      <li><strong>5. 재고 반영</strong><span>product DB 차감</span></li>
+    </ol>
+    <p class="note">접수 응답이 빨라도 4번은 밀릴 수 있다. 4번이 완료돼도 5번은 남아 있을 수 있다.</p>
+  </section>
+
+  <section aria-labelledby="candidates">
+    <h2 id="candidates">먼저 확인할 후보</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">후보</th><th scope="col">왜 영향을 주나</th><th scope="col">확인할 증거</th></tr></thead>
+        <tbody>
+          <tr><td>결과 소비자 기본 1개</td><td>서로 다른 주문의 DB 처리와 Kafka 커밋도 차례로 진행한다.</td><td>PG 승인은 늘지만 결과 메시지가 쌓이고 DB DONE 증가가 뒤처지는지</td></tr>
+          <tr><td>기다리는 동안 DB 연결 점유</td><td>payment 발행기는 DB 트랜잭션 안에서 Kafka 응답을 기다린다. 주문 생성도 외부 조회를 감싼다.</td><td>DB 연결 대기가 Kafka·HTTP 지연과 함께 증가하는지</td></tr>
+          <tr><td>Redis 동기 디스크 기록</td><td>재고 선차감 응답에 디스크 대기가 포함된다. 상품을 분산해도 같은 Redis를 공유한다.</td><td>confirm 지연과 Redis 쓰기·디스크 지연이 함께 증가하는지</td></tr>
+          <tr><td>완료 확인을 위한 반복 조회</td><td>미완료 주문마다 약 0.5초 간격으로 주 DB를 조회한다. 처리가 밀리면 조회 부하도 늘어난다.</td><td>대기 주문 수·상태 조회량·DB 경쟁이 함께 증가하는지</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">조사 후보이며 실측 영향 순위는 아니다. checkout의 DB 연결 획득 시점도 실행 계측으로 확인해야 한다.</p>
+  </section>
+
+  <section aria-labelledby="corrections">
+    <h2 id="corrections">재검토에서 바로잡은 네 가지</h2>
+    <ul class="review">
+      <li><strong>완료 카운터가 곧 DB 커밋 수는 아니다.</strong><p>기존 상태 전이 카운터는 최종 커밋 전에 증가해 롤백 건도 남을 수 있다. 타이머도 한 건의 소비 실행 시간이 아니라 이전 상태 이후 경과 시간이다.</p></li>
+      <li><strong>PG 예약 재시도에는 폴링 대기가 추가된다.</strong><p>즉시 처리 시점이 예약 시각보다 이르면 반환하고, 이후 2초 폴러가 회수한다. 이 경로의 기본 배치 10건은 장기 평균 약 5행/초 이하의 제약을 만든다. 전체 결제 서버의 상한은 아니다.</p></li>
+      <li><strong>격리된 주문도 클라이언트에는 처리 중으로 보인다.</strong><p>현재 상태 API는 QUARANTINED를 PROCESSING으로 반환한다. 격리가 지속되면 품질 시험은 60초까지 조회한다. 정상 처리 적체와 복구 대기를 구분해야 한다.</p></li>
+      <li><strong>PG의 Kafka 설정 설명은 기존 보고서의 오류다.</strong><p>PG는 Spring Boot가 만든 producer 팩토리를 사용한다. YAML 설정이 자동 반영되지 않는다는 지적은 payment의 직접 구성 팩토리로 한정한다.</p></li>
+    </ul>
+  </section>
+
+  <section class="next" aria-labelledby="next">
+    <h2 id="next">다음 측정에서 할 일</h2>
+    <ol>
+      <li><strong>무엇을 센 수치인지 확인:</strong> 접수 건수, 커밋된 DONE, 60초 내 관측 완료를 구분</li>
+      <li><strong>어디부터 쌓이는지 확인:</strong> 유입을 높이며 단계별 미처리 수와 DB·Redis·Kafka 대기를 같은 시간축에서 관측</li>
+      <li><strong>한 요소씩 비교:</strong> 첫 병목이 확인되면 소비 동시성 또는 폴링 등을 바꾸고, 완료량·지연·중복 처리·재고 정합성을 함께 비교</li>
+    </ol>
+    <p class="note">낮은 TPS에서도 병목 위치와 실패 경로를 찾는 실험은 의미가 있다. 최대 용량을 주장하려면 별도의 단계적 부하 측정이 필요하다.</p>
+  </section>
+
+  <details>
+    <summary>코드 근거와 상세 분석 보기</summary>
+    <p class="note">로컬 링크는 저장소 안의 원본을 가리킨다. 초기 조사와 이후의 검토·정정·실측은 시점을 구분해 읽는다.</p>
+    <ul>
+      <li><a href="tps-server-analysis.md">기존 상세 분석</a> — 다상품 순차 조회, PG 무제한 작업 제출·중복 발행, product 소비, 복구·로그·장기 누적 비용 포함</li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/config/KafkaConsumerConfig.java">결과 소비 동시성</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/service/OutboxRelayService.java">DB 트랜잭션 안의 발행</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentCheckoutServiceImpl.java">주문 생성 트랜잭션</a></li>
+      <li><a href="../../../docker/docker-compose.infra.yml">재고 Redis 내구성 설정</a> · <a href="../../../scripts/k6/quality-payment.js">품질 시험 유입·폴링·60초 기한</a></li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/infrastructure/aspect/PaymentStatusMetricsAspect.java">커밋 전 상태 전이 계측</a> · <a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/usecase/PaymentConfirmResultUseCase.java">DONE 이후 같은 트랜잭션의 후속 작업</a></li>
+      <li><a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgVendorCallService.java">재시도 예약</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgOutboxRelayService.java">예약 시각 전 발행 건너뜀</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/scheduler/PgOutboxPollingWorker.java">PG 발행 폴러</a></li>
+      <li><a href="../../../payment-service/src/main/java/com/hyoguoo/paymentplatform/payment/application/PaymentStatusServiceImpl.java">격리 상태의 API 응답</a> · <a href="../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/infrastructure/config/KafkaProducerConfig.java">PG producer 팩토리 주입</a></li>
+    </ul>
+  </details>
+
+  <footer>
+    코드·설정 검토를 요약한 문서다. 서버 기동·부하 실험·개선 효과 측정은 수행하지 않았다.<br>
+    독립 에이전트 검토는 사용량 제한으로 완료하지 못했으며, 재검토는 메인이 직접 수행했다.
+  </footer>
+</main>
+</body>
+</html>

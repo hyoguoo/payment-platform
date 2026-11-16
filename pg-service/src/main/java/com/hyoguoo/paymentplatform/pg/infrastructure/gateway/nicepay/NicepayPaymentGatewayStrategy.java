@@ -49,7 +49,8 @@ import org.springframework.web.client.RestClientResponseException;
  * </ul>
  *
  * <p>중복 승인 응답은 이 전략이 직접 처리하지 않는다 — 예외만 던지면 벤더 호출 서비스
- * (PgVendorCallService)가 이를 받아 DuplicateApprovalHandler.handleDuplicateApproval 을 호출한다.
+ * (PgVendorCallService)가 이를 받아 TX 밖에서 DuplicateApprovalHandler.queryVendorStatus 로 조회하고,
+ * 결과 반영 TX 에서 handleDuplicateApproval 을 호출한다.
  * 그 서비스는 PgStatusLookupPort 를 의존하지 않으므로, 이 전략이 그 포트를 구현하고 있어도
  * 순환 의존은 생기지 않는다.
  *

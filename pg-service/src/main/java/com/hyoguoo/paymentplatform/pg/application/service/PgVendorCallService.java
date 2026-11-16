@@ -41,7 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>invokeVendor (TX 없음) + applyOutcome (TX_B) 로 TX 경계를 분리한다.
  * 워커 VT 가 이 두 메서드를 순서대로 호출한다:
  * <ol>
- *   <li>{@link #invokeVendor} — TX 외부에서 벤더 HTTP 호출. VT 가 캐리어 양보, DB 자유 상태.</li>
+ *   <li>{@link #invokeVendor} — TX 외부에서 벤더 HTTP 호출. VT 가 캐리어 양보, DB 자유 상태.
+ *       ALREADY_PROCESSED 응답이면 보정용 벤더 상태 조회({@link DuplicateApprovalHandler#queryVendorStatus})도 여기서 한다.</li>
  *   <li>{@link #applyOutcome} — @Transactional TX_B. 벤더 응답 5분기 처리 + RDB 반영.</li>
  * </ol>
  *
@@ -51,7 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>확정 실패 → FAILED 종결 + Outbox INSERT</li>
  *   <li>일시 실패 잔여 시도 → 재시도 명령 INSERT (IN_PROGRESS 유지)</li>
  *   <li>일시 실패 시도 소진 → 격리 명령 INSERT (IN_PROGRESS 유지)</li>
- *   <li>ALREADY_PROCESSED → {@link DuplicateApprovalHandler} 위임 (보정 경로 진입)</li>
+ *   <li>ALREADY_PROCESSED → invokeVendor 가 미리 조회한 결과로 {@link DuplicateApprovalHandler} 위임 (보정 경로 진입)</li>
  *   <li>겹친 호출 거부(IDEMPOTENT_REQUEST_PROCESSING) → 원 호출이 결과를 낼 예정이므로
  *       시도횟수·재시도 명령·상태 전이를 건드리지 않고 로그와 지표만 남긴다</li>
  * </ol>
@@ -114,7 +115,8 @@ public class PgVendorCallService {
      * 벤더 HTTP 호출 전용 메서드 — TX 없음.
      *
      * <p>워커 VT 가 TX_A (PENDING→IN_PROGRESS) 커밋 후 이 메서드를 TX 외부에서 호출한다.
-     * DB 커넥션을 점유하지 않은 상태로 벤더 HTTP 대기를 수행한다.
+     * DB 커넥션을 점유하지 않은 상태로 벤더 HTTP 대기를 수행한다. 벤더가 ALREADY_PROCESSED 로 답하면
+     * 보정용 상태 조회까지 이 안에서 끝내 {@link GatewayOutcome.HandledInternally} 에 담는다 — 벤더 호출이 최대 2번이다.
      *
      * @param request PG 확정 요청 DTO
      * @return 벤더 호출 결과 {@link GatewayOutcome}
@@ -152,7 +154,9 @@ public class PgVendorCallService {
         } catch (PgGatewayNonRetryableException e) {
             return new GatewayOutcome.NonRetryable(e.getMessage());
         } catch (PgGatewayDuplicateHandledException e) {
-            return new GatewayOutcome.HandledInternally(e.getMessage());
+            // 보정용 벤더 상태 조회도 여기(TX 밖)서 끝낸다 — applyOutcome(TX_B)은 결과만 반영한다.
+            return new GatewayOutcome.HandledInternally(e.getMessage(),
+                    duplicateApprovalHandler.queryVendorStatus(request.orderId(), request.vendorType()));
         } catch (PgGatewayConcurrentCallException e) {
             return new GatewayOutcome.ConcurrentCall(e.getMessage());
         }
@@ -167,7 +171,7 @@ public class PgVendorCallService {
             case GatewayOutcome.Success s -> handleSuccess(request.orderId(), s.result());
             case GatewayOutcome.Retryable(String reason) -> handleRetry(request, attempt, now, reason);
             case GatewayOutcome.NonRetryable nr -> handleDefinitiveFailure(request.orderId(), nr.message());
-            case GatewayOutcome.HandledInternally hi -> handleDuplicate(request, hi.message());
+            case GatewayOutcome.HandledInternally hi -> handleDuplicate(request, hi);
             case GatewayOutcome.ConcurrentCall cc -> handleConcurrentCall(request.orderId(), cc.message());
         }
     }
@@ -220,11 +224,11 @@ public class PgVendorCallService {
     // ALREADY_PROCESSED 처리 — DuplicateApprovalHandler 위임
     // -----------------------------------------------------------------------
 
-    private void handleDuplicate(PgConfirmRequest request, String message) {
+    private void handleDuplicate(PgConfirmRequest request, GatewayOutcome.HandledInternally outcome) {
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_DUPLICATE_HANDLED,
-                () -> "orderId=" + request.orderId() + " detail=" + message);
+                () -> "orderId=" + request.orderId() + " detail=" + outcome.message());
         duplicateApprovalHandler.handleDuplicateApproval(
-                request.orderId(), request.amount(), request.vendorType());
+                request.orderId(), request.amount(), outcome.vendorQuery());
     }
 
     // -----------------------------------------------------------------------
@@ -276,8 +280,11 @@ public class PgVendorCallService {
         PgOutbox outbox = PgOutbox.createWithAvailableAt(
                 PgTopics.COMMANDS_CONFIRM, request.orderId(),
                 buildCommandPayload(request), headersJson, availableAt, now);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+        pgOutboxRepository.save(outbox);
+        // 지연 발행 행은 즉시 발행 경로(PgOutboxReadyEvent → 채널 → 즉시 워커)로 보내지 않고 폴링만 발행한다.
+        // 즉시 워커는 동시 처리 상한이 있어 채널 대기가 backoff 보다 길어질 수 있고, 그러면 발행 가능 시각이
+        // 지난 같은 행을 폴링과 함께 집어 재시도 명령을 두 번 낸다(relay 에는 행 선점이 없다).
+        // 발행 가능 시각 전에는 즉시 경로가 어차피 건너뛰므로 폴링 주기(2초)만큼 늦어질 뿐이다.
 
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_SCHEDULED,
                 () -> "orderId=" + request.orderId()

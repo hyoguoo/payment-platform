@@ -15,7 +15,9 @@ ENV_KEYS = {'JAVA_TOOL_OPTIONS', 'SPRING_PROFILES_ACTIVE', 'PG_GATEWAY_TYPE',
             'PG_GATEWAY_FAKE_LATENCY_MIN_MILLIS', 'PG_GATEWAY_FAKE_LATENCY_MAX_MILLIS',
             'PG_GATEWAY_FAKE_FAIL_RATE', 'MANAGEMENT_TRACING_SAMPLING_PROBABILITY',
             'RECONCILER_IN_FLIGHT_TIMEOUT_SECONDS', 'RECONCILER_AWAITING_RESULT_TIMEOUT_SECONDS',
-            'RECONCILER_FIXED_DELAY_MS', 'SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE'}
+            'RECONCILER_FIXED_DELAY_MS', 'SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE',
+            'PG_INBOX_CHANNEL_WORKER_COUNT', 'PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY',
+            'PG_OUTBOX_CHANNEL_WORKER_COUNT'}
 
 
 def command(args, timeout=45):
@@ -45,12 +47,12 @@ def source_manifest(directory):
             hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     write_json(directory / 'source-hashes.json', hashes)
     diff = command(['git', 'diff', '--', 'scripts/compose-up.sh', 'scripts/quality', 'scripts/k6',
-                    'docker', 'observability'])
+                    'docker', 'observability', 'docs/quality/README.md', 'docs/quality/RUNBOOK.md'])
     (directory / 'source.patch').write_text(diff + '\n')
     # Untracked implementation also needs to be reproducible after subsequent edits.
     for name in hashes:
         if name.startswith(('scripts/quality/', 'scripts/k6/quality-', 'docker/docker-compose.quality',
-                            'observability/alertmanager/quality')) or name == 'scripts/compose-up.sh':
+                            'observability/alertmanager/quality')) or name in ('scripts/compose-up.sh', 'docs/quality/README.md', 'docs/quality/RUNBOOK.md'):
             target = directory / 'source' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((ROOT / name).read_bytes())
@@ -97,7 +99,20 @@ def prometheus_range(directory, start_ms, end_ms):
         'process_cpu': 'process_cpu_usage', 'hikari_pending': 'hikaricp_connections_pending',
         'hikari_active': 'hikaricp_connections_active',
         'kafka_lag': 'kafka_consumergroup_lag',
-        'http_requests': 'sum by (job,status) (rate(http_server_requests_seconds_count[1m]))'}
+        'http_requests': 'sum by (job,status) (rate(http_server_requests_seconds_count[1m]))',
+        # Raw cumulative series for bottleneck analysis; rates are derived offline so a wrong
+        # guess about tag names does not lose data. Missing names show up in the catalog below.
+        'hikari_timers': '{__name__=~"hikaricp_connections_(acquire|usage)_seconds_(count|sum|max)"}',
+        'kafka_spring_timers': '{__name__=~"spring_kafka_(listener|template)_seconds_(count|sum|max)"}',
+        'kafka_producer_client': '{__name__=~"kafka_producer_(txn_.*|request_latency_(avg|max)'
+                                 '|record_queue_time_(avg|max))"}',
+        # pg 즉시 처리 워커 지표(#166): 채널 적체, 정체 작업 건너뜀, 처리 실패, 겹친 벤더 호출, 리스너 tx 타임아웃.
+        'pg_worker': '{__name__=~"pg_(inbox|outbox|vendor)_.*"}'}
+    try:
+        catalog = get_json('http://localhost:9090/api/v1/label/__name__/values')
+    except Exception as exc:
+        catalog = {'captureError': str(exc)}
+    write_json(directory / 'prometheus-metric-names.json', catalog)
     for name, query in queries.items():
         params = urllib.parse.urlencode({'query': query, 'start': start_ms/1000,
                                         'end': end_ms/1000, 'step': 15})

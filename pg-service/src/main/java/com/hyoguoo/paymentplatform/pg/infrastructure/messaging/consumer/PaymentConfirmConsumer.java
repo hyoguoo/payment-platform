@@ -49,13 +49,17 @@ public class PaymentConfirmConsumer {
      * 현재 OTel Context 에서 W3C traceparent 를 추출한다.
      * INVALID span 이면 null (폴백 — absent 경로에서 NULL 저장).
      *
+     * <p>동시성: 기본 3(토픽 파티션 수). 같은 주문의 명령은 orderId 키로 같은 파티션에 들어가 한 스레드가
+     * 순서대로 받는다. DLQ 리스너는 같은 팩토리를 쓰지만 이 값의 영향을 받지 않는다(기본 1).
+     *
      * @param command       역직렬화된 PgConfirmCommand
      * @param attemptHeader attempt 헤더 값 (없으면 null)
      */
     @KafkaListener(
             topics = PgTopics.COMMANDS_CONFIRM,
             groupId = GROUP_ID,
-            containerFactory = "kafkaListenerContainerFactory"
+            containerFactory = "kafkaListenerContainerFactory",
+            concurrency = "${pg.kafka.commands-confirm.consumer.concurrency:3}"
     )
     public void consume(
             PgConfirmCommand command,

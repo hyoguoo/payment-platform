@@ -54,7 +54,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>동일 paymentKey 로 재호출되면(재시도 자기루프) 실 벤더(Toss ALREADY_PROCESSED_PAYMENT)의 중복 승인
  * 응답을 모사한다 — {@link PgGatewayDuplicateHandledException} 만 throw 한다. 벤더 호출 서비스
- * (PgVendorCallService)가 이를 받아 DuplicateApprovalHandler.handleDuplicateApproval 을 호출한다.
+ * (PgVendorCallService)가 이를 받아 TX 밖에서 DuplicateApprovalHandler.queryVendorStatus 로 조회하고,
+ * 결과 반영 TX 에서 handleDuplicateApproval 을 호출한다.
  *
  * <p>라이브 실측용으로 paymentKey 접두어에 따라 실패 경로를 고를 수 있다(임시 장치).
  * <ul>

@@ -12,6 +12,8 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,8 +26,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
@@ -72,6 +76,9 @@ class PgInboxRepositoryImplTest {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private static final long AMOUNT = 10_000L;
 
@@ -385,47 +392,55 @@ class PgInboxRepositoryImplTest {
      * SKIP LOCKED 동시성 테스트 — IN_PROGRESS 경로.
      * TX_lock 이 보유 중일 때 두 번째 호출이 빈 결과를 반환하는지 검증.
      * NOT_SUPPORTED: @DataJpaTest 외부 트랜잭션 비활성화로 독립 TX 커밋 가시성 확보.
+     *
+     * <p>두 스레드를 그냥 동시에 띄우면 첫 TX 가 커밋(잠금 해제)한 뒤 두 번째가 조회할 수 있어 둘 다 행을
+     * 얻는다(CI 에서 "expected 1 but was 2"로 간헐 실패). 첫 TX 가 잠금을 쥔 채 기다리는 동안 두 번째 조회를
+     * 하도록 순서를 고정한다.
      */
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    @DisplayName("selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty — 동시 두 TX 중 하나만 row 획득")
-    void selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty() throws InterruptedException {
+    @DisplayName("selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty — 잠금을 쥔 TX 가 있으면 두 번째 선점은 빈 결과")
+    void selectInProgressForUpdateSkipLocked_lockHeld_returnsEmpty() throws Exception {
         // given — IN_PROGRESS 행 삽입 + 자체 TX 커밋
         String orderId = "order-skip-ip-concurrent";
         Long inboxId = sut.transitDirectToInProgress(orderId, AMOUNT);
 
-        // when — 워커 2개가 동시에 동일 IN_PROGRESS row 를 SKIP LOCKED 선점 시도
-        AtomicInteger presentCount = new AtomicInteger(0);
-        AtomicInteger emptyCount = new AtomicInteger(0);
-        CountDownLatch latch = new CountDownLatch(2);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        // given — 첫 번째 TX 가 행을 선점하고, 해제 신호가 올 때까지 커밋하지 않고 잠금을 유지한다
+        TransactionTemplate holder = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox>> firstResult = new AtomicReference<>();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<?> holderTx = executor.submit(() -> holder.executeWithoutResult(status -> {
+            firstResult.set(sut.selectInProgressForUpdateSkipLocked(inboxId));
+            locked.countDown();
+            awaitQuietly(release);
+        }));
 
-        for (int i = 0; i < 2; i++) {
-            final Long targetId = inboxId;
-            executor.submit(() -> {
-                try {
-                    Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> result =
-                            sut.selectInProgressForUpdateSkipLocked(targetId);
-                    if (result.isPresent()) {
-                        presentCount.incrementAndGet();
-                    } else {
-                        emptyCount.incrementAndGet();
-                    }
-                } finally {
-                    latch.countDown();
-                }
-            });
+        try {
+            assertThat(locked.await(5, TimeUnit.SECONDS)).as("첫 TX 가 제한 시간 안에 선점해야 함").isTrue();
+
+            // when — 잠금이 유지되는 동안 다른 TX 가 같은 행을 선점 시도
+            Optional<com.hyoguoo.paymentplatform.pg.domain.PgInbox> secondResult =
+                    sut.selectInProgressForUpdateSkipLocked(inboxId);
+
+            // then — 첫 TX 만 행을 얻고 두 번째는 SKIP LOCKED 로 빈 결과
+            assertThat(firstResult.get()).isPresent();
+            assertThat(secondResult).isEmpty();
+        } finally {
+            release.countDown();
+            holderTx.get(5, TimeUnit.SECONDS);
+            executor.shutdown();
+            jpaRepository.deleteAll();
         }
+    }
 
-        latch.await();
-        executor.shutdown();
-
-        // then — 정확히 1개만 row 획득, 1개는 빈 결과 (SKIP LOCKED 원자성)
-        assertThat(presentCount.get()).isEqualTo(1);
-        assertThat(emptyCount.get()).isEqualTo(1);
-
-        // cleanup
-        jpaRepository.deleteAll();
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // ─── transitToApproved / transitToFailed ───────────────────────────────────

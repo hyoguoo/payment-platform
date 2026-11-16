@@ -21,7 +21,11 @@ sealed interface GatewayOutcome
 
     record NonRetryable(String message) implements GatewayOutcome {}
 
-    record HandledInternally(String message) implements GatewayOutcome {}
+    /**
+     * 벤더가 "이미 처리된 결제"로 답한 경우. 보정에 쓸 벤더 상태 조회는 invokeVendor(TX 밖)에서 미리 해 담는다.
+     */
+    record HandledInternally(String message, DuplicateApprovalHandler.VendorQueryOutcome vendorQuery)
+            implements GatewayOutcome {}
 
     /**
      * 같은 멱등키로 아직 처리 중인 원 호출과 겹쳐 벤더가 거부한 경우.

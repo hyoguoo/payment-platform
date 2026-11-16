@@ -6,7 +6,9 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.context.Context;
 import jakarta.annotation.PostConstruct;
+import java.time.Clock;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -37,16 +39,19 @@ public class PgInboxChannel {
     private final LinkedBlockingQueue<InboxJob> queue;
     private final MeterRegistry meterRegistry;
     private final int capacity;
+    private final Clock clock;
     private final ContextSnapshotFactory snapshotFactory;
 
     public PgInboxChannel(
             @Value("${pg.inbox.channel.capacity:1024}") int capacity,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            Clock clock
     ) {
         this.queue = new LinkedBlockingQueue<>(capacity);
         this.meterRegistry = meterRegistry;
         this.capacity = capacity;
         this.snapshotFactory = ContextSnapshotFactory.builder().build();
+        this.clock = clock;
     }
 
     @PostConstruct
@@ -71,19 +76,21 @@ public class PgInboxChannel {
     public boolean offerNow(Long inboxId) {
         Context otelContext = Context.current();
         ContextSnapshot snapshot = snapshotFactory.captureAll();
-        return queue.offer(new InboxJob(inboxId, otelContext, snapshot));
+        return queue.offer(new InboxJob(inboxId, otelContext, snapshot, clock.instant()));
     }
 
     /**
-     * 큐에서 {@link InboxJob} 을 차단 대기하여 가져온다 (PgInboxImmediateWorker 전용).
+     * 큐에서 {@link InboxJob} 을 최대 {@code timeout} 동안 기다려 가져온다. 시간 안에 없으면 {@code null}.
      *
-     * <p>반환된 job 의 otelContext + snapshot 을 처리 직전에 restore 하여 context 를 복원해야 한다.
+     * <p>즉시 처리 워커가 종료 신호({@code running=false})를 인터럽트 없이 확인하려고 쓴다.
      *
-     * @return InboxJob (inboxId + offer 시점 OTel Context + MDC snapshot)
+     * @param timeout 최대 대기 시간
+     * @param unit    {@code timeout} 단위
+     * @return InboxJob 또는 시간 초과 시 {@code null}
      * @throws InterruptedException 스레드 인터럽트 시
      */
-    public InboxJob take() throws InterruptedException {
-        return queue.take();
+    public InboxJob poll(long timeout, TimeUnit unit) throws InterruptedException {
+        return queue.poll(timeout, unit);
     }
 
     /**

@@ -35,6 +35,7 @@ import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -144,12 +145,34 @@ class PgVendorCallServiceTest {
         void invokeVendor_duplicateException_returnsHandledInternally() {
             // given
             gatewayAdapter.throwOnConfirm(PgGatewayDuplicateHandledException.of("ALREADY_PROCESSED"));
+            DuplicateApprovalHandler.VendorQueryOutcome vendorQuery =
+                    new DuplicateApprovalHandler.VendorQueryOutcome.Indeterminate();
+            Mockito.when(duplicateApprovalHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS))
+                    .thenReturn(vendorQuery);
 
             // when
             GatewayOutcome outcome = sut.invokeVendor(buildRequest(ORDER_ID));
 
-            // then
+            // then — 보정용 벤더 상태 조회를 TX 밖인 invokeVendor 에서 끝내고 결과를 담는다
             assertThat(outcome).isInstanceOf(GatewayOutcome.HandledInternally.class);
+            assertThat(((GatewayOutcome.HandledInternally) outcome).vendorQuery()).isSameAs(vendorQuery);
+            verify(duplicateApprovalHandler, times(1)).queryVendorStatus(ORDER_ID, PgVendorType.TOSS);
+        }
+
+        @Test
+        @DisplayName("중복 응답 뒤 상태 조회가 게이트웨이 예외가 아닌 실행 예외를 던지면 invokeVendor 가 그대로 전파한다 — 반영 단계에 들어가지 않아 행은 IN_PROGRESS 로 남는다")
+        void invokeVendor_duplicateThenLookupRuntimeException_propagates() {
+            // given
+            gatewayAdapter.throwOnConfirm(PgGatewayDuplicateHandledException.of("ALREADY_PROCESSED"));
+            Mockito.when(duplicateApprovalHandler.queryVendorStatus(ORDER_ID, PgVendorType.TOSS))
+                    .thenThrow(new IllegalStateException("strategy-not-found"));
+
+            // when / then
+            assertThatThrownBy(() -> sut.invokeVendor(buildRequest(ORDER_ID)))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("strategy-not-found");
+            verify(duplicateApprovalHandler, Mockito.never())
+                    .handleDuplicateApproval(Mockito.any(), Mockito.any(), Mockito.any());
         }
 
         @Test
@@ -211,6 +234,10 @@ class PgVendorCallServiceTest {
             assertThat(rows).hasSize(1);
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
             assertThat(rows.get(0).getAvailableAt()).isAfter(NOW);
+
+            // then — 지연 발행 행은 즉시 발행 경로로 보내지 않는다. 즉시 경로와 폴링이 발행 가능 시각 뒤에
+            // 같은 행을 함께 집어 재시도 명령을 두 번 내지 않도록 폴링만 발행한다
+            verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
 
             // then — inbox IN_PROGRESS 유지 + attempt 1→2 증가 (TX_B 안에서 incrementAttempt)
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
@@ -380,17 +407,20 @@ class PgVendorCallServiceTest {
         @DisplayName("HandledInternally outcome → DuplicateApprovalHandler.handleDuplicateApproval 1회 위임")
         void applyOutcome_handledInternally_delegatesToDuplicateHandler() {
             // given
-            GatewayOutcome outcome = new GatewayOutcome.HandledInternally("ALREADY_PROCESSED");
+            DuplicateApprovalHandler.VendorQueryOutcome vendorQuery =
+                    new DuplicateApprovalHandler.VendorQueryOutcome.Indeterminate();
+            GatewayOutcome outcome = new GatewayOutcome.HandledInternally("ALREADY_PROCESSED", vendorQuery);
 
             // when
             sut.applyOutcome(outcome, buildRequest(ORDER_ID), 1, NOW);
 
-            // then — DuplicateApprovalHandler.handleDuplicateApproval 1회 호출
+            // then — 미리 조회한 결과를 넘겨 1회 위임하고, TX 안에서는 벤더를 다시 조회하지 않는다
             verify(duplicateApprovalHandler, times(1))
                     .handleDuplicateApproval(
                             Mockito.eq(ORDER_ID),
                             Mockito.eq(AMOUNT),
-                            Mockito.eq(PgVendorType.TOSS));
+                            Mockito.same(vendorQuery));
+            verify(duplicateApprovalHandler, Mockito.never()).queryVendorStatus(Mockito.any(), Mockito.any());
         }
     }
 

@@ -91,7 +91,7 @@ flowchart TD
 
     ABS --> RDY["AFTER_COMMIT<br/>InboxReadyEventHandler -> PgInboxChannel.offerNow"]
     ACT --> RDY
-    RDY --> IMW["PgInboxImmediateWorker<br/>channel.take -> process(inboxId)"]
+    RDY --> IMW["PgInboxImmediateWorker<br/>channel.poll -> 워커가 직접 process(inboxId)"]
     RDY -.->|"채널 full / 누락"| PLW["PgInboxPollingWorker @5s<br/>PENDING/IN_PROGRESS 좀비 회수"]
 
     IMW --> PROC{"inbox.status"}
@@ -121,8 +121,9 @@ flowchart TD
     NF --> OBX
     QU --> OBX
     REEMIT --> OBX
-    RTO --> OBX
+    RTO -->|"지연 발행 행: 즉시 경로 없이 폴링만"| OBP["PgOutboxPollingWorker<br/>available_at <= now"]
     DLO --> OBX
+    OBP --> RELAY
 
     OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
     OBW --> RELAY["PgOutboxRelayService -> PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
@@ -176,7 +177,7 @@ flowchart TD
 | 실제 Kafka 발행 | `OutboxRelayService` → `KafkaMessagePublisher` | `PgOutboxRelayService` → `PgEventPublisher` |
 | 발행 토픽 | `payment.commands.confirm` | `payment.events.confirmed` |
 
-pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** 두고 `PgOutboxImmediateWorker`가 `channel.take()` 블로킹 수신 → VT executor 위임. payment-service는 Spring `@Async`가 큐/워커를 캡슐화. `available_at` 기반 지연 발행은 pg 쪽에만 적용한다 (재시도 시각 표현용).
+pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** 두고 `PgOutboxImmediateWorker`가 `channel.poll(200ms)`로 수신 → 워커 스레드가 직접 처리한다(워커 수 = 동시 처리 상한). payment-service는 Spring `@Async`가 큐/워커를 캡슐화. `available_at` 기반 지연 발행은 pg 쪽에만 적용한다 (재시도 시각 표현용).
 
 ---
 
@@ -293,7 +294,7 @@ flowchart TD
 
     RES -->|"PgGatewayRetryableException<br/>5xx / timeout / IO"| RETRY["handleRetry"]
 
-    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 -> 진짜 결과 확정"]
+    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>TX 밖 vendor getStatus 재조회 -> TX_B에서 진짜 결과 확정"]
 
     RETRY --> RC{"RetryPolicy.shouldRetry attempt"}
     RC -->|"Yes attempt &lt; 4"| RETRY_OUT["insertRetryOutbox<br/>pg_outbox commands.confirm row INSERT<br/>+ availableAt = now + backoff<br/>+ incrementAttempt (pg_inbox, TX_B)<br/>+ 새 eventUuid (UUID.randomUUID)"]
@@ -306,7 +307,7 @@ flowchart TD
 ```
 
 핵심 포인트:
-- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다.
+- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. 재조회는 `invokeVendor`(TX 밖)에서 `DuplicateApprovalHandler.queryVendorStatus` 로 끝내 커넥션을 쥐지 않는다(#167). `DuplicateApprovalHandler.handleDuplicateApproval` 은 TX_B 안에서 그 결과로 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다.
 - **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급. 리스너 진입 필터가 있던 시절 재시도를 통과시키기 위한 규약이었고, 필터 제거 후에도 payment 측 `payment_event_dedupe` 의 메시지 단위 키로 계속 쓰인다.
 - **`attempt` 한도/DLQ 작동** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 
@@ -316,7 +317,7 @@ retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별�
 
 > **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT 다.** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계 — 관리자 시도 이력 화면에서는 같은 회차가 여러 행에 나타나는 형태로 드러나며 화면 문구가 이를 알린다.)
 >
-> **`insertRetryOutbox` 내부 순서**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
+> **`insertRetryOutbox` 내부 순서**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 를 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 재시도 행은 `available_at` 지연 발행이라 `PgOutboxReadyEvent`(즉시 발행 경로)를 내지 않고 폴링 워커만 발행한다 — 즉시 워커 큐 대기가 backoff 보다 길면 폴링과 같은 행을 함께 발행할 수 있어서다(relay 에 행 선점이 없음). 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
 
 ```mermaid
 sequenceDiagram
@@ -431,7 +432,7 @@ payment-service 의 `RetryPolicy`(고정 5초, 최대 5회)는 소진 판정을 
 
 비용: vendor 호출 1회 추가. 멱등성으로 흡수.
 
-**진입 트리거**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 이 갈래를 막는 별도 필터는 없다.
+**진입 트리거**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 64 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 이 갈래를 막는 별도 필터는 없다. 워커 수가 동시 처리 상한이 된 뒤(#166)에는 큐 적체도 갈래가 될 수 있다 — 큐에서 60초 넘게 기다린 작업과 폴링 회수가 같은 행을 겹쳐 잡는 경우다. 큐 대기 갈래는 워커가 막는다: 큐에 넣은 시각(`InboxJob.enqueuedAt`)이 폴링 정체 기준(`pending-timeout-ms`, `in-progress-timeout-ms` 중 긴 값) 이상 지난 작업은 처리하지 않고 폴링에 맡긴다(`pg_inbox.stale_job_skipped_total`). 방금 적재된 작업이 이미 정체 기준을 넘긴 IN_PROGRESS 행을 만나는 경우(self-loop 재시도 명령이 Kafka 소비 지연으로 늦게 도착해 폴링 회수와 겹침)는 막지 않는다. TODOS의 PG-STALE-ROW-GUARD.
 
 **겹침 처리**: 두 벤더 모두 겹친 승인 호출을 거부한다 — Toss 는 주문번호 멱등키로 처리 중 재요청에 409(`IDEMPOTENT_REQUEST_PROCESSING`), NicePay 는 동일 거래번호 재승인에 2201. Toss 의 거부 코드는 `TossPaymentErrorCode` 에 등재돼 `GatewayOutcome.ConcurrentCall` 로 흡수되며, 시도횟수·재시도 명령·상태 전이를 건드리지 않고 물러난다(`PgVendorCallService.dispatchOutcome`). 
 

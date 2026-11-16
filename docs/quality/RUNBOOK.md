@@ -2,7 +2,10 @@
 
 이 문서는 로컬 환경에서 같은 시험을 다시 실행하거나, 이상이 생겼을 때 확인할 순서를 안내한다.
 도구의 현재 상태와 측정 범위는 [품질 측정 도구 안내](README.md)에서 확인한다.
-새 공식 실측은 아직 수행하지 않았다.
+아래 실행 명령은 현재 구현된 500ms 조회 품질 도구를 대상으로 한다.
+기존 조건의 탐색은 [실측 보고서](../archive/payment-throughput/tps-clean-measurements.html)에 보존한다.
+주입·관측 분리 모드와 새 지연·지속 처리 판정은 구현·모드별 저부하 검증을 마쳤다.
+새 모드의 수정 전후 한계 탐색 결과는 [PAYMENT-THROUGHPUT 완료 요약](../archive/payment-throughput/BRIEF.md#완료-요약)에 있다.
 여기의 명령은 저장소 루트에서 실행한다.
 
 ## 실행 조건
@@ -20,21 +23,62 @@ Java 21, Docker Desktop, `!override`를 지원하는 Docker Compose, k6, Python 
 | JVM heap | payment 700MiB, PG 600MiB, product·user·Gateway 각각 384MiB, Eureka 256MiB |
 | 복구 검사 설정 | IN_FLIGHT 300초, AWAITING_RESULT 900초, 검사 간격 120초 |
 | 트레이스 수집 | 비즈니스 서비스와 Gateway 요청 100% |
+| 결제 결과 소비 동시성 | 기본 3(서버 기본값과 같음), 비교 실험에서만 `QUALITY_CONFIRMED_CONCURRENCY`로 지정 |
+| pg 결제 명령 소비 동시성 | 기본 3(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_COMMAND_CONCURRENCY`로 지정 |
+| pg inbox 워커 수 | 기본 64(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_INBOX_WORKERS`로 지정. 워커 수가 PG 동시 호출 상한이다 |
+| pg outbox 워커 수 | 기본 8(서버 기본값과 같음), 비교 실험에서만 `QUALITY_PG_OUTBOX_WORKERS`로 지정. 워커 수가 확정 결과 동시 발행 상한이다 |
 | 외부 연동 | 실제 PG 시크릿 미사용, 외부 알림 수신처 없음 |
 
 heap은 JVM에 배정한 공간이며 컨테이너 전체 메모리 제한은 아니다.
 설정 원본은 [quality Compose](../../docker/docker-compose.quality.yml)와 [로컬 알림 설정](../../observability/alertmanager/quality.yml)이다.
 관측 도구를 함께 사용하므로 `--skip-obs` 옵션은 허용하지 않는다.
 
+결과 소비 동시성 비교 시 기동 전 `QUALITY_CONFIRMED_CONCURRENCY=1`을 지정할 수 있다.
+현재 결과 토픽은 3파티션이므로 1과 3을 비교한다. 서버와 quality 환경의 기본값은 3이다(2026-11-15, 그전 회차는 기본 1).
+각 조건은 새 컨테이너·새 볼륨에서 실행하고, 실제 consumer group의 멤버·파티션 배정을 확인한다.
+적용값은 실행 증빙 `environment.json`의 payment `JAVA_TOOL_OPTIONS`에 남는다.
+`QUALITY_CONFIRMED_CONCURRENCY`는 비교 실험용 손잡이다. 서버 기본값을 3으로 올린 근거와 장애·중복 경로 검증은 #165에 있다.
+
+pg inbox 워커는 2026-11-15(#166)부터 작업을 직접 처리해 워커 수가 PG 동시 호출 상한이다. 그전 회차는 상한 없이 돌았다.
+기본 64와 outbox 워커 8은 2026-11-16 측정(capacity 160/s 부하 중 회복, user-quality 100/s 통과)으로 정했다. 32는 160/s에서 약 147/s로 미달했다.
+워커 수와 명령 소비 동시성 적용값은 실행 증빙 `environment.json`의 pg `PG_INBOX_CHANNEL_WORKER_COUNT`, `PG_OUTBOX_CHANNEL_WORKER_COUNT`, `PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY`에 남는다.
+
+### 회차마다 지킬 것
+
+측정값은 실행할 때의 환경 상태에 따라 달라진다.
+이전 회차의 상태가 남아 있거나 호스트가 다른 일로 바쁠 때 잰 값은 조건 차이와 구분되지 않는다.
+그래서 회차마다 스택을 완전히 내렸다가 새로 올리고, 자원 상태와 안정 여부를 확인한 뒤 부하를 넣는다.
+
+| 시점 | 확인할 것 | 지키지 못했을 때 |
+|:---|:---|:---|
+| 기동 전 | 이전 프로젝트의 컨테이너가 모두 내려가 `docker ps -q` 결과가 비어 있다 | 기동하지 않는다 |
+| 기동 전 | 호스트 CPU·메모리, Docker에 할당한 CPU·메모리가 이전 회차와 같다 | 이전 회차와 비교하지 않는다 |
+| 기동 전 | 부하 평균이 내려와 있고, Gradle 빌드·테스트나 IDE 색인 같은 무거운 작업이 돌지 않는다 | 끝날 때까지 기다린다 |
+| 기동 전 | 직전 회차가 끝난 뒤 10분 이상 쉬었고, `pmset -g therm`에 열·성능 경고가 없다 | 기다린다. 쉬지 못하고 잰 회차는 통과만 근거로 쓰고 미달은 확정하지 않는다 |
+| 기동 전 | 실행 JAR 해시와 컨테이너 이미지 ID가 이전 회차와 같다 | 다른 항목을 회차 기록에 조건 변경으로 남긴다 |
+| 기동 | 새 프로젝트명으로 새 컨테이너·새 볼륨을 만들고, DB·Redis·Kafka가 비어 있는지 확인한다 | 이전 볼륨과 데이터를 다시 쓰지 않는다 |
+| 부하 전 | 20개 컨테이너가 모두 실행 중이고 재시작·메모리 부족 종료가 없다. 기동 직후 오른 CPU가 내려와 유지된다 | 안정될 때까지 부하를 넣지 않는다 |
+| 부하 중 | 측정 소스와 JAR을 바꾸지 않고 다른 무거운 작업을 함께 돌리지 않는다. 호스트·컨테이너 자원 표본과 `pmset -g therm` 기록을 남긴다 | 그 회차는 판정에 쓰지 않는다 |
+| 종료 | 원자료와 DB 덤프를 회차 폴더에 저장한 뒤 볼륨까지 지우며 스택을 내린다(6절). 다음 회차는 이 표의 처음부터 다시 한다 | 덤프가 끝나기 전에는 볼륨을 지우지 않는다 |
+
+부하가 이어지면 CPU 온도가 오르고, 온도가 높으면 CPU가 느려질 수 있다.
+부하 평균이 내려와도 기기는 아직 데워져 있을 수 있어, 회차 사이에는 시간으로 쉰다.
+`pmset -g therm`는 macOS가 실제로 속도를 제한했을 때만 기록을 남기므로 온도 자체를 보여 주지는 않는다.
+
+기동 직후에는 JVM 시작과 Kafka 초기화로 CPU가 오른다.
+`docker stats --no-stream`을 간격을 두고 여러 번 떠서 값이 내려와 유지되는지 본다.
+
+태그가 버전 전체를 고정하지 않는 이미지(`mysql:8.0`, `redis:7.2-alpine`, `eclipse-temurin:21-jre`)는 다시 받으면 내용이 바뀔 수 있다.
+Docker 데이터를 초기화했거나 이미지를 새로 받았다면 이전 회차 `image-proof.json`의 이미지 ID와 대조한다.
+
+조건이 흔들린 회차의 값은 결과가 그럴듯해 보여도 판정 근거로 쓰지 않는다.
+원자료는 지우지 않고, 회차 기록에 쓰지 않은 사유를 적는다.
+
 ## 1. 새 데이터 환경 만들기
 
 컨테이너 이름과 포트를 공유하므로 기존 스택과 새 스택을 동시에 실행할 수 없다.
-먼저 종료할 프로젝트명을 확인하고, 볼륨을 보존하며 스택을 내린다.
-다음 예시의 `quality-previous`를 종료할 기존 프로젝트명으로 바꾼 뒤 실행한다.
-
-```bash
-COMPOSE_PROJECT_NAME="quality-previous" bash scripts/compose-up.sh --mode quality --down
-```
+이전 회차의 스택이 남아 있으면 그 프로젝트명으로 6절의 종료 순서(원자료·DB 덤프 저장 → 볼륨 삭제)를 마친 뒤 시작한다.
+`docker ps -q`와 `docker volume ls`에 이전 프로젝트의 자원이 남지 않아야 한다.
 
 재시험에는 새 이름을 사용한다.
 아래 두 환경변수는 이후 명령에서도 사용하므로 같은 셸에서 이어서 실행한다.
@@ -169,10 +213,105 @@ python3 scripts/quality/run.py --run-id normal-02 --rate 10 --duration-seconds 6
 
 종료 경계에서 계획보다 1건 더 시작되더라도 전체 시도에 포함한다.
 기한을 넘겨 나중에 완료된 주문은 사용자 성공률에 다시 더하지 않는다.
+유입 누락이나 시도 기록의 유효성 문제만 남은 경우 추가 관찰로 해결되지 않으므로 미확정 상태로 종료한다.
+실제 미처리 작업·수량 불일치가 있으면 계속 관찰하며, 미확인 주문은 성공으로 바꾸지 않는다.
 정상 시험은 마지막 시도 이후 최대 10분 동안 남은 자동 처리를 관찰한다.
+
+유입을 높일 때는 `--preallocated-vus`로 실행 전 가상 사용자를 확보할 수 있다(현재 상한 650).
+가상 사용자 부족은 긴 서버 응답이나 발생기 설정·자원 문제 양쪽에서 생길 수 있다.
+사전 할당을 늘려도 유입 누락이 사라진다고 보장하지 않으며, 누락이 남은 실행으로 최대 TPS를 확정하지 않는다.
 
 기존 실행 ID의 폴더가 있으면 도구가 중단한다.
 재시험은 새 ID를 사용해 실패 결과를 보존한다.
+
+### 새 분리 모드의 도구 검증
+
+기본 `--mode legacy`는 위의 500ms·60초 조회와 기존 판정을 유지한다.
+`--mode capacity`는 checkout·confirm만 주입하며 전수 상태 GET을 보내지 않는다.
+`--mode user-quality`는 같은 구매의 주문 ID를 별도 Python 관측기에 넘겨 주입 VU와 조회 작업을 분리한다.
+**새 두 모드의 저부하 실구동과 개선 전후 한계 탐색(2026-11-16, 처리 용량 경계 180~200/s)을 마쳤다. 회차별 실제 판정은 원자료를 따른다.**
+
+각 실측 회차는 1절의 새 프로젝트·새 볼륨으로 준비한다.
+다음은 그 준비를 마친 환경에서 실행하는 명령 형식이며, 같은 환경에 두 모드를 연속 실행하라는 뜻이 아니다.
+워밍업과 본측정에는 같은 모드를 명시한다.
+
+```bash
+python3 scripts/quality/run.py --run-id warmup-capacity --phase warmup --mode capacity --rate 10 --duration-seconds 120 --output-root "$QUALITY_ROOT"
+python3 scripts/quality/run.py --run-id normal-capacity --mode capacity --rate 10 --duration-seconds 180 --output-root "$QUALITY_ROOT"
+```
+
+사용자 품질 시험에서는 두 명령 모두 `--mode user-quality`로 바꾸고 새 환경·실행 ID를 사용한다.
+워밍업의 `--phase warmup`은 유지한다. 실행 ID 이름만으로 워밍업을 추정하지 않는다.
+120초 워밍업은 지속 처리 판정에 필요한 후반 60초 표본이 부족해 INCONCLUSIVE로 종료할 수 있다.
+워밍업의 유입·API 오류·전수 대조를 확인하고, 그 수치를 한계 산정에 포함하지 않는다.
+조회는 confirm 응답 뒤 1초부터 1초 간격·최대 30회이며, 다음 타이머인 31초 시점에 관찰을 끝낸다.
+HTTP 요청은 남은 관찰 기한을 제한으로 사용하며 별도의 5초 제한을 추가하지 않는다.
+기한 이후의 DONE 응답은 원자료에 남기고 사용자 기한 내 완료로 바꾸지 않는다.
+202 응답을 받지 못한 주문의 조회도 진단용으로 기록하며 `confirmAccepted=false`로 구분한다.
+이 정책은 서버의 추가 완료·재고 대조 기한과 별개다.
+
+- 주입 증거: `attempts.jsonl`의 start/finish·checkout/confirm 시각·응답·주문 ID, `summary.json`의 실제 iteration/누락
+- 관측 증거: `observations.jsonl`의 poll 시작/응답/예외/생략과 observation_finish, `observer.json`의 설정·포화·누락·진행 건수
+- 자원 증거: `resources.jsonl`의 k6 및 Python runner CPU·RSS와 관측기 상태
+- 설정 증거: `command.json`의 모드·실제 k6 명령·VU 상한·관측 worker 수
+
+`--max-vus`는 1~650이며 `--preallocated-vus` 이상이어야 한다.
+`--observer-workers`는 1~256, 기본 32다.
+관측기 동시 요청이 가득 차거나 예정 조회가 한 주기 이상 늦으면 해당 조회를 생략하고 포화를 기록한다.
+누락된 조회를 뒤늦게 몰아서 실행하지 않으며 주입 누락과 별도로 판정할 자료를 남긴다.
+새 모드에서 `--fault`는 아직 지원하지 않아 부하 시작 전에 거절한다.
+HTML은 schema1 legacy와 schema2 새 모드를 구분하며 원래 조건을 새 목표로 재판정하지 않는다.
+
+### 새 모드의 판정과 증거
+
+`result.json`에는 품질 목표와 처리 구간 분류를 따로 기록한다.
+`DELAYED_SUSTAINED`의 FAIL은 지연 목표 미달이며, 관측 구간에서 지속 처리하지 못했다는 뜻이 아니다.
+capacity 모드의 `SUSTAINED`는 사용자 완료 시간을 측정했다는 뜻이 아니다.
+
+| 분류 | 의미 |
+|:---:|:---:|
+| QUALITY_MET | 사용자 품질 목표·유효 유입·관측 구간의 파이프라인 안정·전수 대조 충족 |
+| SUSTAINED | capacity 모드에서 관측 구간의 파이프라인 안정. 사용자 완료는 미측정 |
+| DELAYED_SUSTAINED | 파이프라인은 관측 구간에서 안정, 사용자 지연 목표는 미달 |
+| BURST_ABSORBED | 부하 중 잔량이 증가하고 종료 후 해소 |
+| INCONCLUSIVE | 유입 누락·미확인 접수·관측 포화·필수 근거 부족 |
+| FAIL | API·업무 실패나 관측 종결 상태와 DB 상태 충돌 등 별도 실패 |
+
+새 모드는 예정 총량(종료 경계 추가1건까지)·누락0·연속 iteration 번호와 실제 시작 시각을 함께 검사한다.
+각 시작은 예정 시각보다 -1ms~100ms 범위에 있어야 한다. -1ms는 시계 반올림, 100ms는 프로젝트의 주입 계측 허용치다.
+100ms를 넘으면 총량이 맞아도 발생기 시각 정밀도 미확정으로 남긴다. 실제 최대/p99 주입 지연과 경계 시작 건수를 공개한다.
+예정 부하 창 끝에 시작이 두 건 걸려도 미세한 스케줄 지연이고 위 조건을 충족하면 별도 누락으로 세지 않는다.
+모든 실제 시작을 분모·완료 대조에 포함하며, 기존 legacy의 경계 판정은 바꾸지 않는다.
+
+지연 백분위의 분모는 워밍업을 제외한 해당 실행의 전체 시작 건수다.
+기한 내 완료를 관측하지 못한 건은 무한 지연으로 두고 순위를 계산한다.
+백분위가 기한 내 관측 범위를 벗어나면 숫자를 만들지 않고 `null`과 미관측 건수를 남긴다.
+1건의 관측 FAILED를 지연 꼬리로 흡수해 DB DONE과의 충돌을 숨기지 않는다.
+미확인 접수 때문에 판정은 미확정이어도, 다른 알려진 주문의 자동 처리·재고 대조는 상한까지 계속 관찰한다.
+
+`capacity-samples.jsonl`은 10초 간격에 수집 비용을 더한 주기로 아래를 읽는다.
+
+- DB 현재 커밋 상태: 워밍업 뒤 새 주문·DONE·미완료·가장 오래된 미완료 나이
+- product 재고 확정: 워밍업 뒤 `stock_commit_dedupe` 증가·결제 DONE 이후 재고 대기·전체 파이프라인 잔량
+- 메모리: 앱 5개 heap·실행 프로젝트 20컨테이너의 Docker 메모리 사용량·호스트 swap
+- 신선도: `timestamp()`로 확인한 heap/up 원본 표본 시각, 수집 시작·DB 관측·수집 종료 시각
+
+단일 상품·수량 1 시나리오이므로 재고 확정 표식 1건을 구매 1건과 대조한다.
+DB 간 조회는 원자적이지 않으므로 조회 구간도 보존하며, 음수 잔량을 처리 누락으로 해석하지 않는다.
+표식 수가 기준보다 줄면 정리 작업 등의 영향을 조사하고 해당 증거로 지속 처리를 확정하지 않는다.
+heap/up 표본은 조회 기준 30초 이내만 인정한다. 응답의 평가 시각만으로 최신 수집을 가정하지 않는다.
+[Prometheus 표본 선택](https://prometheus.io/docs/prometheus/latest/querying/basics/)과
+[`timestamp()` 정의](https://prometheus.io/docs/prometheus/2.55/querying/functions/#timestamp)을 근거로 원본 수집 시각을 확인한다.
+
+안정 판정은 부하 후반의 최소 60초·4개 이상 표본, 최대 표본 간격 15초를 요구한다.
+그 구간을 다시 앞뒤로 나눠 결제·재고 잔량과 메모리의 최소/최대 관측 범위가 확장되지 않는지 비교한다.
+완료 증가가 유입을 따라잡는지도 보며, 초기 구간에서 관측한 잔량 변동 범위만 허용한다.
+GC 진동을 단순 평균 증가로 단정하지 않고, 계속 증가하는 잔량·메모리를 안정으로 승격하지 않는다.
+이 조건은 프로젝트의 보수적인 유한 구간 판정이며 업계 표준·장기 운영 보장이 아니다.
+조건이 애매하면 INCONCLUSIVE로 남기고 T2.4에서 긴 시험과 원자료로 확인한다.
+
+DB DONE 기록 시각의 드레인과 재고 포함 전수 대조를 끝낸 관측 상한은 별도 필드다.
+어느 것도 실제 DB 커밋 순간이나 정확한 재고 적용 순간으로 표현하지 않는다.
 
 ## 4. payment 프로세스 중단 시험
 
@@ -232,11 +371,29 @@ python3 -m http.server 8899 --bind 127.0.0.1 --directory live-drill
 열람을 마치면 정적 서버를 실행한 터미널에서 Ctrl+C로 종료한다.
 원자료는 실행 폴더에 보존하며, 공개 보고서에는 새 측정으로 확인한 결과만 포함한다.
 
-서비스 스택도 내릴 때는 먼저 자동 처리가 끝났는지 확인하고 다음 명령을 실행한다.
+회차를 마칠 때는 볼륨까지 지운다.
+나중에 분석할 수 있도록 지우기 전에 DB 네 개를 덤프해 회차 폴더에 남긴다.
+서비스 로그와 주요 Prometheus 지표는 측정 도구가 이미 회차 폴더에 저장한다.
+Tempo 트레이스, Loki, Prometheus 전체 데이터는 남기지 않는다.
+
+먼저 자동 처리가 끝났는지 확인하고, 실행 중인 스택에서 덤프한다.
+비밀번호는 컨테이너 안의 환경변수로 넘겨 명령 인자에 남기지 않는다.
 
 ```bash
-bash scripts/compose-up.sh --mode quality --down
+mkdir -p "$QUALITY_ROOT/db-dump"
+for role in payment pg product user; do
+  docker exec "payment-mysql-$role" sh -c \
+    'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --single-transaction "$MYSQL_DATABASE"' \
+    | gzip > "$QUALITY_ROOT/db-dump/$role.sql.gz"
+done
+ls -l "$QUALITY_ROOT/db-dump"
 ```
 
-볼륨은 보존되므로 같은 프로젝트명으로 다시 기동하면 기존 데이터가 남는다.
-새 데이터로 재시험하려면 1단계부터 다른 프로젝트명을 사용한다.
+덤프 파일 네 개가 모두 비어 있지 않은지 확인한 뒤 볼륨까지 지우며 스택을 내린다.
+
+```bash
+bash scripts/compose-up.sh --mode quality --clean
+docker volume ls --format '{{.Name}}' | grep "^${COMPOSE_PROJECT_NAME}_" || echo "볼륨 없음"
+```
+
+다음 회차는 1절부터 새 프로젝트명으로 시작한다.
