@@ -184,10 +184,10 @@ src/main/resources/
 | `PgInboxImmediateWorker` | pg `infrastructure/scheduler` | inbox 가상 스레드 워커 5개. 채널에서 작업을 꺼내 컨텍스트를 복원하고 `PgInboxProcessUseCase`를 부른다(트랜잭션 → 벤더 호출 → 트랜잭션) |
 | `PgInboxPollingWorker` (`@Scheduled`) | pg `infrastructure/scheduler` | inbox 정체 회수(5초 주기). PENDING은 접수 시각, IN_PROGRESS는 갱신 시각 기준 60초가 지난 행을 회수하고 `pg_inbox.stored_traceparent`로 부모 trace를 복원한다 |
 | `PgOutboxChannel` + `OutboxJob` | pg `infrastructure/channel` | outbox 발행 큐(용량 1024). 넣을 때 OTel 컨텍스트와 MDC를 캡처해 함께 담는다 |
-| `PgOutboxImmediateWorker` | pg `infrastructure/scheduler` | outbox 발행 워커. 생명주기 골격은 `AbstractImmediateWorker` 공통 base이고 Spring `DefaultLifecycleProcessor`가 시작·종료를 부른다 |
+| `PgOutboxImmediateWorker` | pg `infrastructure/scheduler` | outbox 발행 워커. 생명주기 골격은 `AbstractImmediateWorker` 공통 base이고 Spring `DefaultLifecycleProcessor`가 시작·종료를 부른다. 워커가 작업을 직접 처리해 워커 수가 동시 처리 상한이다 |
 | `PgOutboxPollingWorker` (`@Scheduled`) | pg `infrastructure/scheduler` | 채널이 가득 찼거나 워커가 죽었을 때의 폴링 폴백(2초 주기) |
 | `TraceparentExtractor` | pg `infrastructure/trace` | traceparent 추출·복원. 관측 전용이며 업무 판단에 쓰지 않는다 |
-| `ContextAwareVirtualThreadExecutors` | payment·pg `core/config/concurrent` | OTel 컨텍스트와 MDC를 감싼 가상 스레드 실행기 |
+| `ContextAwareVirtualThreadExecutors` | payment `core/config/concurrent` | OTel 컨텍스트와 MDC를 감싼 가상 스레드 실행기. pg는 워커가 작업을 직접 처리해 이 실행기를 쓰지 않는다(#166에서 삭제) |
 
 ## 인프라별 책임
 

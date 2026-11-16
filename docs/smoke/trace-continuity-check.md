@@ -56,7 +56,7 @@ sleep 15
 | Consumer → 다음 hop | `spring.kafka.listener.observation-enabled=true` 누락 또는 `MdcContextPropagationConfig` 의 `Slf4jMdcThreadLocalAccessor` 등록 누락 | 두 설정 모두 활성 + `ContextRegistry` 에 MDC accessor 등록 확인 |
 | HTTP 어댑터 hop | Feign / WebClient / RestClient 가 `traceparent` 헤더 자동 주입 안 함 | 클라이언트 빌더가 Spring Boot auto-config 의 ObservationRegistry 를 상속받는지 확인 |
 | Virtual Thread 경계 | VT executor 가 OTel + MDC 두 컨텍스트를 캡처·복원 안 함 | `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 사용 확인 |
-| in-memory channel 경계 (pg-service) | offer 시점 컨텍스트 캡처 누락 또는 take 시점 set 누락 | `PgOutboxChannel.offerNow` 가 `Context.current()` + `captureAll()` 로 컨텍스트를 담는지, `AbstractImmediateWorker` 의 worker 루프가 take 한 job 의 두 컨텍스트(MDC snapshot, OTel Context)를 relay 전에 복원하는지 확인 |
+| in-memory channel 경계 (pg-service) | offer 시점 컨텍스트 캡처 누락 또는 처리 직전 복원 누락 | `PgOutboxChannel.offerNow` 가 `Context.current()` + `captureAll()` 로 컨텍스트를 담는지, `AbstractImmediateWorker` 의 worker 루프가 꺼낸 job 의 두 컨텍스트(MDC snapshot, OTel Context)를 relay 전에 복원하는지 확인 |
 
 ## 검사 대상 바꾸기
 

@@ -38,6 +38,7 @@
 | TC-6 | 가상 스레드 명시적 동시 실행 제한 | 부하 측정 | [아래](#tc-6--가상-스레드-명시적-동시-실행-제한) |
 | TC-7 | `payment_outbox` 재시도 정책과 쓰이지 않는 스키마·지표 | 부하 측정 | [아래](#tc-7--payment_outbox-재시도-정책) |
 | TC-12 | pg-service 워커 종료 시 채널 drain (보류) | 없음 | [아래](#tc-12--pg-service-워커-종료-시-채널-drain-보류) |
+| PG-STALE-ROW-GUARD | 늦게 도착한 재시도 명령이 폴링 회수와 겹쳐 벤더를 두 번 부르는 갈래 | 없음 | `PgInboxImmediateWorker`는 큐 대기 시간만 보고, IN_PROGRESS 행은 얼마나 지났는지 보지 않고 정체 회수로 들어간다. self-loop 재시도 명령이 backoff(최대 22.5초) 뒤 발행되고 `payment.commands.confirm` 소비 지연이 37.5초를 넘으면, 폴링이 `updated_at + 60초`에 회수해 벤더를 부르는 사이 늦게 받은 명령이 새로 적재돼 두 번째 호출이 나간다. 결과 반영은 벤더 멱등 응답과 반영 행 수 확인으로 지켜진다. 처방 후보: IN_PROGRESS 분기에서 이미 읽은 행의 `updated_at`이 정체 기준을 넘었으면 건너뛴다(조회 증가 없음, 폴링이 회수). 2026-11-15 #166 재검토에서 확인 |
 | TC-15 | pg 리스너 분리의 기준값 정밀화와 멀티 인스턴스 검증 | 부하 측정, 멀티 인스턴스 | [아래](#tc-15--pg-리스너-분리의-기준값-정밀화) |
 
 ---
@@ -62,7 +63,7 @@
 
 ### KAFKA-PARTITION-DEFAULT — 파티션·컨슈머 동시성 기본값 결정
 
-- **현황**: 토픽 파티션은 3이다. 같은 값이 네 곳에 따로 적혀 있다: `scripts/smoke/create-topics.sh`(`PARTITIONS=3`), payment·pg의 `KafkaTopicConfig`(`PARTITIONS = 3`), `docker/docker-compose.infra.yml`(`KAFKA_NUM_PARTITIONS`). pg-service 리스너 동시성은 지정하지 않아 Spring 기본 1이고, payment의 결과 소비 동시성은 2026-11-15에 파티션 수와 같은 3으로 올렸다(#165).
+- **현황**: 토픽 파티션은 3이다. 같은 값이 네 곳에 따로 적혀 있다: `scripts/smoke/create-topics.sh`(`PARTITIONS=3`), payment·pg의 `KafkaTopicConfig`(`PARTITIONS = 3`), `docker/docker-compose.infra.yml`(`KAFKA_NUM_PARTITIONS`). pg-service는 결제 명령 리스너만 동시성 3(2026-11-15, #166)이고 DLQ 리스너는 Spring 기본 1이다. payment의 결과 소비 동시성은 2026-11-15에 파티션 수와 같은 3으로 올렸다(#165).
 - **측정**: 파티션·동시성을 9로 올리면 부하 중 종결이 10.2/s에서 18.9/s(1.86배)로 늘었다. 거기서 파티션 18에 인스턴스 2대씩 붙이면 1.09배에 그쳤다. 상세: `docs/archive/shared-resource-scaleout/COMPLETION-BRIEFING.md`. 처리량 측정 토픽(PAYMENT-THROUGHPUT)에서는 파티션 3을 그대로 두고 결과 소비 동시성만 1→3으로 올려 부하 중 처리가 140건/초에서 106.7→139.7/s로 늘었다.
 - **되돌릴 수 없다**: 파티션은 줄일 수 없고, 기존 토픽에서 늘리면 키 해시가 재배치돼 같은 주문의 진행 중 메시지가 다른 파티션으로 갈라진다. Spring `KafkaAdmin`은 선언값이 실제보다 크면 기동할 때 자동으로 늘리므로, 상수만 바꾸면 배포와 동시에 이 일이 일어난다.
 - **처방**: (1) 파티션 안 순서에 실제로 기대는지 확인한다(접수대장·멱등 계층이 흡수하는지). (2) 기대면 빈 토픽 재생성이나 무중단 전환 절차가 필요하다. (3) 동시성은 파티션과 함께 올린다. 승격한다면 네 곳의 값을 한 곳으로 모으는 일이 먼저다. 측정용 환경 변수 `KAFKA_TOPIC_PARTITIONS`, `PG_CONSUMER_CONCURRENCY`, `CONFIRMED_CONSUMER_CONCURRENCY`는 이미 있다.
@@ -73,7 +74,7 @@
 - **영향**: pg DB 장애나 커넥션 풀(30) 고갈로 inbox 저장(`PgInboxPendingService`, 예외를 다시 던짐)이 계속 실패하면 결제 명령이 pg에 기록되지 않은 채 사라진다. 시도마다 커넥션 대기가 최대 30초(hikari `connection-timeout`)라 DB가 수 분 이상 돌아오지 않을 때 해당한다. PG를 부르지 않아 과금은 없다. 대신 payment Reconciler가 결제를 결과 대기 → 격리로 넘겨 사람이 처리해야 한다. 코드로 확인했고 재현은 하지 않았다.
 - **기존 DLQ로는 안 된다**: `payment.commands.confirm.dlq` 컨슈머(`PgDlqService`)는 inbox 행이 없으면 `PG_DLQ_NO_INBOX` 경고만 남기고 끝낸다. 기본 핸들러를 DLQ 복구기로 바꾸는 것만으로는 명령이 살아나지 않는다.
 - **정할 것**: 일시 오류를 회복까지 지수 백오프로 재시도할지(그동안 해당 파티션 정지), 유한 재시도 뒤 별도 보관 토픽으로 보낼지, DLQ 컨슈머가 inbox 없는 건을 처리하게 할지. `docs/context/conventions/kafka.md`의 에러 핸들링 절은 payment만 다루므로 함께 고친다.
-- **관련**: pg 워커에 동시 처리 상한이 없는 문제(PAYMENT-THROUGHPUT 진행 기록 2026-11-08)가 커넥션 풀을 고갈시키면 리스너의 inbox 저장이 이 경로로 빠질 수 있다(추정, 미재현).
+- **관련**: pg 워커에 동시 처리 상한이 없던 동안에는 커넥션 풀 고갈로 리스너의 inbox 저장이 이 경로로 빠질 수 있었다(추정, 미재현). 2026-11-15(#166)에 워커 수가 상한이 되도록 고쳤다. 결제 명령 리스너도 동시성 3이 돼 inbox 저장 실패가 동시에 세 파티션에서 날 수 있다.
 
 ### REPLICA-ROUTING — 읽기 복제본 상시 운영 전 확인
 
@@ -128,7 +129,7 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 - 지금 백프레셔는 다운스트림 자원(Hikari 30, Kafka in-flight 5, Redis 단일 연결, 스케줄러 배치 50)에서 자연히 생긴다. `Semaphore`나 Resilience4j `Bulkhead` 같은 명시적 제한은 없다.
 - 외부 PG의 요청 한도를 넘거나, 다운스트림이 죽었을 때 타임아웃까지 가상 스레드가 쌓여 메모리를 누를 수 있다.
 - T4-D와 함께 Bulkhead를 넣거나 외부 PG 어댑터에 Semaphore를 둔다. 측정값으로 정한다.
-- pg inbox·outbox 워커의 worker-count도 동시 실행 제한이 아니다. 워커가 꺼낸 작업마다 새 가상 스레드를 만든다(`AbstractImmediateWorker` 102~105행). 워커가 직접 처리하는 원래 설계로 되돌리는 변경은 PAYMENT-THROUGHPUT에서 다룬다(진행 기록 2026-11-08).
+- pg inbox·outbox 워커는 2026-11-15(#166)부터 꺼낸 작업을 직접 처리해 worker-count가 동시 실행 상한이다. 그전에는 작업마다 새 가상 스레드를 만들어 상한이 없었다.
 
 ### TC-7 — `payment_outbox` 재시도 정책
 
@@ -148,10 +149,10 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 ### TC-12 — pg-service 워커 종료 시 채널 drain (보류)
 
 - **보류 이유 (2026-06-14)**: 채널에 남은 작업은 DB(`pg_outbox`, `pg_inbox`)와 폴링 회수로 유실 없이 처리된다. drain이 주는 이득은 재기동 뒤 폴링 지연을 줄이는 것뿐인데, 새 유입 차단을 위한 종료 순서 맞추기, outbox·inbox 대칭 처리, drain 타임아웃과 폴백 같은 복잡도를 정당화하지 못한다. 운영에서 종료 지연이 실제 문제로 측정되면 다시 본다.
-- **다시 볼 때 출발점**: 종료 로직은 `AbstractImmediateWorker`에 공통화돼 있다(실행 중지 → 워커 중단 → 10초 대기 → executor 종료). 채널(`PgOutboxChannel`, `PgInboxChannel`)은 단순 큐 빈이라 생명주기 순서에 들어 있지 않다. `AbstractImmediateWorker`의 phase 주석에 적힌 "채널을 나중에 멈춰 비운다"는 의도는 실현되지 않았다.
+- **다시 볼 때 출발점**: 종료 로직은 `AbstractImmediateWorker`에 공통화돼 있다(실행 중지 → 처리 중 작업을 최대 10초 대기 → 남은 워커만 인터럽트, #166). 채널(`PgOutboxChannel`, `PgInboxChannel`)은 단순 큐 빈이라 생명주기 순서에 들어 있지 않다. `AbstractImmediateWorker`의 phase 주석에 적힌 "채널을 나중에 멈춰 비운다"는 의도는 실현되지 않았다.
 
 ### TC-15 — pg 리스너 분리의 기준값 정밀화
 
-- 워커 5개, 채널 용량 1024, PENDING·IN_PROGRESS 정체 판정 60초는 모두 측정 없이 정한 값이다. 워커 5개는 지금 동시 처리 상한으로 동작하지 않는다(TC-6). 부하 측정으로 벤더 지연 p95를 확인해 정체 판정을 정하고(실제 벤더 타임아웃의 2배 안팎), 최고 TPS에서 채널이 넘치는 빈도를 잰다.
+- 워커 5개, 채널 용량 1024, PENDING·IN_PROGRESS 정체 판정 60초는 모두 측정 없이 정한 값이다. 워커 수는 2026-11-15(#166)부터 실제 동시 처리 상한이고, 기본값은 PAYMENT-THROUGHPUT 측정으로 다시 정한다. 부하 측정으로 벤더 지연 p95를 확인해 정체 판정을 정하고(실제 벤더 타임아웃의 2배 안팎), 최고 TPS에서 채널이 넘치는 빈도를 잰다.
   설정 키(`pg.inbox.channel.capacity`, `pg.inbox.channel.worker-count`, `pg.scheduler.inbox-polling-worker`)로 코드 변경 없이 바꿀 수 있다.
 - 지금 구현은 인스턴스 1대를 가정한다. 같은 DB와 consumer group을 쓰는 pg-service 2~3대에서 `FOR UPDATE SKIP LOCKED`가 중복 처리 없이 동작하는지 검증한다.

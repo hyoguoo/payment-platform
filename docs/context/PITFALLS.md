@@ -120,7 +120,7 @@ process(result);  // result 가 null 일 수 있음
 **증상**: HTTP → @Async → Kafka 경계에서 traceparent 가 끊김 → 사고 시 trace 추적 불가.
 
 **처방**:
-- 가상 스레드 executor 는 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 로 생성 — OTel Context + MDC 둘 다 호출자 스레드에서 자동 캡처해 새 VT 에 set (payment·pg 각각 같은 이름의 클래스가 있다)
+- 가상 스레드 executor 는 `ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()` 로 생성 — OTel Context + MDC 둘 다 호출자 스레드에서 자동 캡처해 새 VT 에 set (payment 기준. pg는 #166부터 워커가 작업을 직접 처리해 실행기가 없고, 채널이 offer 시점에 컨텍스트를 캡처하고 워커가 처리 직전에 복원한다)
 - Kafka producer ProducerFactory 자체 생성 시에도 `ObservationRegistry` 를 명시적으로 wiring (자동 wiring 이 닿지 않는 비표준 경로)
 - `@Async` 메서드는 위 executor 를 사용하는 빈(`outboxRelayExecutor` 등) 을 `@Async("...")` 로 지정
 - pg-service 의 in-memory channel 처럼 호출자/소비자 사이 시간차가 있어 Executor 자동 캡처가 안 통하는 경계는 `OutboxJob` 같은 작업 객체에 두 컨텍스트를 동봉해 워커가 직접 set/원복

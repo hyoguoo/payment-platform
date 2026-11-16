@@ -5,7 +5,6 @@ import io.micrometer.context.ContextSnapshot;
 import io.opentelemetry.context.Scope;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
@@ -14,19 +13,14 @@ import org.springframework.context.SmartLifecycle;
  * Immediate 워커 공통 SmartLifecycle 골격 + 이중 scope 컨텍스트 복원 템플릿.
  *
  * <p>{@link PgInboxImmediateWorker} / {@link PgOutboxImmediateWorker} 가 상속해
- * 워커별 차이(채널 take, 실행자, 위임 처리, 로그 도메인/이벤트, 카운터, 워커 이름 prefix)만 구현한다.
+ * 워커별 차이(채널 poll, 위임 처리, 로그 도메인/이벤트, 카운터, 워커 이름 prefix)만 구현한다.
  *
- * <p>추출 범위:
- * <ul>
- *   <li>SmartLifecycle 골격 — {@code start()}, {@code stop()}, {@code stop(Runnable)},
- *       {@code isRunning()}, {@code getPhase()} (Integer.MAX_VALUE - 100)</li>
- *   <li>공통 worker loop 뼈대 — 인터럽트 체크, 채널 take, 실행자 submit, 예외 처리</li>
- *   <li>이중 scope 컨텍스트 복원 — {@code runWithContext(J job)}: MDC snapshot → OTel Context 순 open,
- *       AutoCloseable 역순 close</li>
- * </ul>
+ * <p>워커 스레드가 꺼낸 작업을 직접 처리한다. 그래서 worker-count 가 동시 처리 상한이다.
+ * 작업마다 새 스레드에 넘기면 상한이 사라져, 벤더나 DB 가 느려질 때 동시 호출과 연결 대기가 끝없이 늘어난다.
  *
- * <p>실행자 생성({@code ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()})은
- * 이미 공통 헬퍼화돼 있으므로 각 워커 생성자에서 직접 호출한다(추출 대상 제외).
+ * <p>종료: {@code running=false} 로 새 작업을 그만 꺼내게 하고, 처리 중인 작업은 최대
+ * {@value #STOP_AWAIT_TIMEOUT_SECONDS}초 기다린다. 그래도 남은 워커만 인터럽트한다. 끊긴 작업은 폴링 워커의
+ * 정체 판정 회수 경로가 다시 처리한다.
  *
  * <p>Polling 2종({@link PgInboxPollingWorker}/{@link PgOutboxPollingWorker})은 비대상
  * — {@code @Scheduled} 별종 + DB 기반 traceparent 복원이라 헬퍼 공유 금지.
@@ -37,6 +31,8 @@ import org.springframework.context.SmartLifecycle;
 public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements SmartLifecycle {
 
     private static final int STOP_AWAIT_TIMEOUT_SECONDS = 10;
+    private static final long POLL_TIMEOUT_MILLIS = 200L;
+    private static final long INTERRUPT_JOIN_MILLIS = 1_000L;
 
     private final List<Thread> workers = new ArrayList<>();
     private volatile boolean running = false;
@@ -46,7 +42,6 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     @Override
     public void start() {
         running = true;
-        initExecutor();
         int count = workerCount();
         for (int i = 0; i < count; i++) {
             Thread worker = Thread.ofVirtual()
@@ -67,16 +62,18 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     @Override
     public void stop(Runnable callback) {
         running = false;
-        workers.forEach(Thread::interrupt);
-        workers.forEach(worker -> {
-            try {
-                worker.join(STOP_AWAIT_TIMEOUT_SECONDS * 1000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(STOP_AWAIT_TIMEOUT_SECONDS);
+        for (Thread worker : workers) {
+            joinUntil(worker, deadline);
+        }
+        // 남은 워커를 모두 인터럽트한 뒤 함께 기다린다. 하나씩 기다리면 종료 시간이 워커 수만큼 늘어난다.
+        List<Thread> remaining = workers.stream().filter(Thread::isAlive).toList();
+        remaining.forEach(Thread::interrupt);
+        long interruptDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(INTERRUPT_JOIN_MILLIS);
+        for (Thread worker : remaining) {
+            joinUntil(worker, interruptDeadline);
+        }
         workers.clear();
-        shutdownExecutor();
         callback.run();
         logStopped();
     }
@@ -87,7 +84,9 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     }
 
     /**
-     * 채널보다 나중에 stop되어 in-flight 항목이 drain될 수 있도록 높은 phase 값을 사용한다.
+     * 높은 phase 값으로 늦게 stop 한다. 채널은 Lifecycle 빈이 아니고 Kafka 리스너 레지스트리와 phase 가 같아
+     * 종료 순서는 정해져 있지 않다. stop 은 처리 중인 작업을 기다릴 뿐 채널에 남은 작업을 비우지는 않는다 —
+     * 남은 작업은 폴링 워커가 DB 상태로 다시 찾는다.
      *
      * @return {@code Integer.MAX_VALUE - 100}
      */
@@ -99,13 +98,16 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     // ---- worker loop + 이중 scope 복원 ----
 
     private void workerLoop() {
-        while (!Thread.currentThread().isInterrupted()) {
+        while (running && !Thread.currentThread().isInterrupted()) {
             try {
-                J job = takeJob();
-                executor().submit(() -> runWithContext(job));
+                J job = pollJob(POLL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                if (job != null) {
+                    runWithContext(job);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
+                // 워커가 죽으면 동시 처리 몫이 영구히 줄어든다. Error 도 기록하고 다음 작업으로 넘어간다.
                 logLoopError(e);
             }
         }
@@ -113,7 +115,8 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
 
     /**
      * offer 시점의 MDC snapshot(Micrometer) → OTel Context 순으로 scope 를 열어 처리를 위임한다.
-     * try-with-resources 이중 scope — 역순 close 로 traceparent 가 처리 내부까지 정확히 전파된다.
+     * try-with-resources 이중 scope — 역순 close 로 traceparent 가 처리 내부까지 정확히 전파되고,
+     * 처리 뒤 워커 스레드의 컨텍스트는 원래대로 돌아온다.
      */
     private void runWithContext(J job) {
         try (
@@ -124,23 +127,22 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
         }
     }
 
+    private static void joinUntil(Thread worker, long deadlineNanos) {
+        long remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
+        if (remainingMillis > 0) {
+            joinQuietly(worker, remainingMillis);
+        }
+    }
+
+    private static void joinQuietly(Thread worker, long millis) {
+        try {
+            worker.join(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // ---- 서브클래스 위임 ----
-
-    /**
-     * 실행자({@link ExecutorService})를 초기화한다.
-     * {@code start()} 에서 1회 호출 — {@code ContextAwareVirtualThreadExecutors.newWrappedVirtualThreadExecutor()} 로 생성한다.
-     */
-    protected abstract void initExecutor();
-
-    /**
-     * 현재 활성 실행자를 반환한다.
-     */
-    protected abstract ExecutorService executor();
-
-    /**
-     * 실행자를 graceful shutdown 한다. {@link #stop(Runnable)} 에서 호출.
-     */
-    protected abstract void shutdownExecutor();
 
     /**
      * 워커 VT 스레드 이름 prefix. 예: {@code "pg-inbox-immediate-worker-"}.
@@ -148,19 +150,19 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     protected abstract String workerNamePrefix();
 
     /**
-     * 기동할 워커 스레드 수.
+     * 기동할 워커 스레드 수. 동시 처리 상한이다.
      */
     protected abstract int workerCount();
 
     /**
-     * 채널에서 다음 Job 을 blocking 으로 꺼낸다.
+     * 채널에서 다음 Job 을 최대 {@code timeout} 동안 기다려 꺼낸다. 없으면 {@code null}.
      *
      * @throws InterruptedException 스레드 인터럽트 시
      */
-    protected abstract J takeJob() throws InterruptedException;
+    protected abstract J pollJob(long timeout, TimeUnit unit) throws InterruptedException;
 
     /**
-     * Job 을 실제 처리한다 (OTel/MDC context 복원 후 호출됨).
+     * Job 을 실제 처리한다 (OTel/MDC context 복원 후 워커 스레드에서 호출됨).
      */
     protected abstract void handle(J job);
 
@@ -175,28 +177,7 @@ public abstract class AbstractImmediateWorker<J extends ImmediateJob> implements
     protected abstract void logStopped();
 
     /**
-     * workerLoop 에서 {@link RuntimeException} 포획 시 ERROR 로그를 출력한다.
+     * workerLoop 에서 {@link RuntimeException} 또는 {@link Error} 포획 시 ERROR 로그를 출력한다.
      */
-    protected abstract void logLoopError(RuntimeException e);
-
-    // ---- 실행자 graceful shutdown 공통 유틸 ----
-
-    /**
-     * ExecutorService 를 graceful shutdown({@value #STOP_AWAIT_TIMEOUT_SECONDS}s awaitTermination 후 shutdownNow)한다.
-     * 각 워커의 {@link #shutdownExecutor()} 구현에서 호출한다.
-     */
-    protected static void awaitShutdown(ExecutorService executorService) {
-        if (executorService == null) {
-            return;
-        }
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(STOP_AWAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
+    protected abstract void logLoopError(Throwable e);
 }

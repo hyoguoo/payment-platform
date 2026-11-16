@@ -96,7 +96,7 @@ class InboxReadyEventHandlerTest {
     @Test
     @DisplayName("handle_FakeChannel_offerNow_검증 — FakeChannel 로 실제 offerNow 동작 검증 (채널 size 증가)")
     void handle_FakeChannel_offerNow_검증() {
-        PgInboxChannel fakeChannel = new PgInboxChannel(1024, new SimpleMeterRegistry());
+        PgInboxChannel fakeChannel = new PgInboxChannel(1024, new SimpleMeterRegistry(), java.time.Clock.systemUTC());
         fakeChannel.registerMetrics();
         InboxReadyEventHandler fakeHandler = new InboxReadyEventHandler(fakeChannel);
 

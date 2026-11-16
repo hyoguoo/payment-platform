@@ -246,6 +246,10 @@ Hibernate의 기본 resource-local 동작에서는 트랜잭션 시작 시 autoc
 
 2026-11-08 개발자 결정: 지금까지의 측정은 상한이 없는 상태의 기준선으로 그대로 쓴다. 원래 설계로 고친 뒤 같은 조건으로 다시 재서 비교한다. 순서는 [DESIGN 진행 기록](DESIGN.md#진행-기록)에 있다.
 
+#### 2026-11-15 추가: 원래 설계로 되돌림
+
+#166에서 워커가 꺼낸 작업을 직접 처리하도록 되돌렸다. 이 절 첫 단락의 코드 위치(작업을 실행기에 제출하는 부분)는 더는 없다. 이제 inbox worker-count는 PG 동시 호출 상한, outbox worker-count는 동시 발행 상한이다. 종료 때는 새 작업만 그만 꺼내고 처리 중 작업을 최대 10초 기다린 뒤 남은 워커를 인터럽트한다. 기본값 5·1은 측정 전 임시값이고, 위에 적은 처리량 상한 계산이 그대로 적용된다. 값은 PAYMENT-THROUGHPUT의 비교 측정(inbox 32·64)으로 정한다. 같은 작업에서 결제 명령 리스너 동시성도 1에서 3으로 올렸다.
+
 ### PG outbox의 조회 후 발행은 동시 중복을 막지 못함
 
 [PG relay 49~79행](../../../pg-service/src/main/java/com/hyoguoo/paymentplatform/pg/application/service/PgOutboxRelayService.java#L49)은 미처리 행 조회, Kafka 발행, processed_at 저장 순서다.

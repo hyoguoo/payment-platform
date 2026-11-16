@@ -55,6 +55,19 @@
     - 기존 실패 보상·격리·금액 불일치 회귀 유지. 기본값 채택 전 reviewer·domain-expert 독립 검토와 모듈 검사
   - 준비 상태: `ConfirmedConsumerConcurrencyIntegrationTest`(4개 시나리오) 작성, 독립 reviewer·domain-expert 재검토 PASS, 2026-11-06 커밋(`483fd9e2`). 테스트 컴파일만 확인했고 통합 테스트 실행은 아직이다. 로컬 프로세스 복구 드라이버 `run-consumer-recovery.py`는 작성만 했고 독립 검토·실행 전이다(Git 제외)
   - 검증: `./gradlew :payment-service:test :payment-service:checkstyleMain :payment-service:checkstyleTest :payment-service:spotbugsMain :payment-service:spotbugsTest`, DB·Kafka 배선 변경이면 `:payment-service:integrationTest`. 성능 실측과 Gradle 통합 테스트를 동시에 돌리지 않는다
+- [ ] **T3.2 — 두 번째 병목: pg 명령 소비와 워커 동시 처리 상한** (tdd, 결제 위험 경로, #166)
+  - 근거: 결과 소비 동시성 3의 capacity 160/s에서 잔량이 `payment.commands.confirm`(pg-service, 동시성 1) 소비 지연 2,200~3,400으로 쌓였다(EXPERIMENTS 2026-11-15). pg inbox·outbox 워커는 꺼낸 작업마다 새 가상 스레드에 넘겨 worker-count가 상한이 아니다(진행 기록 2026-11-08)
+  - 선택한 변경(2026-11-15 개발자 결정)
+    - 결제 명령 리스너(`PaymentConfirmConsumer`)에만 동시성 프로퍼티(기본 3)를 둔다. DLQ 리스너는 1 그대로다. benchmark의 `PG_CONSUMER_CONCURRENCY`가 이 프로퍼티에도 들어가게 Compose를 맞춘다
+    - `AbstractImmediateWorker`가 꺼낸 작업을 직접 처리해 worker-count를 동시 처리 상한으로 되돌린다. 작업마다 가상 스레드를 만드는 실행기는 없앤다
+    - 종료: 워커는 새 작업만 그만 꺼내고, 처리 중인 작업은 최대 10초 기다린 뒤 남으면 인터럽트한다(지금의 실행기 종료 대기와 같은 시간). 끊긴 작업은 기존 정체 판정(60초) 회수 경로가 맡는다
+    - inbox worker-count: 같은 JAR에 프로퍼티만 바꿔 capacity 160/s를 32와 64로 한 번씩 재고, 처리량을 유지하는 더 작은 값으로 user-quality 100/s를 확인한 뒤 코드 기본값을 정한다. outbox worker-count 1은 같은 회차의 발행 지표로 상한 여부를 본다
+  - 대안: worker-count를 그대로 두고 실행기에 세마포어만 두기(구조가 원래 설계와 다르게 남아 보류), pg 리스너 전체 동시성 올리기(DLQ까지 바뀌어 보류)
+  - 지킬 불변식: 같은 주문의 명령은 orderId 키로 같은 파티션에서 한 스레드가 순서대로 받는다. inbox UNIQUE와 상태 판정으로 같은 결제의 PG 승인 호출이 늘지 않는다. 채널이 가득 차면 지금처럼 offer 실패 → 폴링 워커가 처리한다
+  - 검토 뒤 추가 결정(2026-11-15 개발자): (1) 워커 상한으로 큐 대기가 정체 기준(60초)을 넘으면 폴링 회수와 겹쳐 벤더를 두 번 부를 수 있어(risk-reviewer major), 큐에 넣은 시각을 작업에 담고 정체 기준 이상 기다린 작업은 처리하지 않고 폴링에 맡긴다 (2) 워커가 직접 처리하면서 Error가 워커 스레드를 죽이게 돼(risk-reviewer major), Error도 기록·카운트하고 다음 작업으로 넘어간다 (3) 쓰이지 않게 된 pg `ContextAwareVirtualThreadExecutors`와 채널 `take()`를 지운다
+  - 남은 기존 위험(범위 밖): 같은 id가 큐에 두 번 들어오는 재전송·재시도 갈래의 겹친 호출(PAYMENT-FLOW 4.11), outbox 즉시 경로와 폴링의 겹친 발행(tps-server-analysis "PG outbox의 조회 후 발행"), 워커와 Kafka 리스너 레지스트리가 같은 SmartLifecycle phase라 종료 순서가 정해져 있지 않음. 10초 초과 인터럽트 경로는 단위 테스트로 확인하지 않았다
+  - 검증: 워커 동시 실행이 worker-count를 넘지 않음, 종료 때 처리 중 작업이 인터럽트 없이 끝남(단위). 명령 리스너 동시성 3·DLQ 1(설정). pg 단위·정적 분석·통합 테스트, risk-reviewer·reviewer, 위 측정
+  - 구현 결과(2026-11-16): 상한 테스트 2개(inbox·outbox)는 "expected 2 but was 5", 리스너 동시성 테스트는 "expected 3 but was 1", 정체 작업·Error 테스트는 동작 부재로 실패하는 것을 확인한 뒤 구현. pg 단위 451, 통합 84 통과, 정적 분석 4종 통과. reviewer major 2(문서 정합성, 측정 증빙에 새 손잡이 누락)·minor 반영. risk-reviewer major 2(큐 적체로 폴링과 겹친 벤더 호출, Error로 워커 사망)는 위 추가 결정으로 고친 뒤 수정분 재검토에서 critical·major 없음. 재검토 minor(늦게 온 재시도 명령이 정체된 IN_PROGRESS 행과 겹치는 기존 갈래)는 TODOS PG-STALE-ROW-GUARD로 남김. worker-count 기본값은 아직 5(측정 전 임시값)라 측정으로 정하기 전에는 main에 병합하지 않는다
 - [ ] **T4 — 개선 뒤 같은 조건으로 한계 재탐색**
   - 1차(2026-11-15, 결과 소비 동시성 3, 같은 JAR에 프로퍼티만 변경): 처리 용량 140/s 회복·160/s 미달(부하 중 141.6/s), 사용자 품질 100/s 통과. 다음 병목은 pg 명령 소비 → T3·T4 반복(#166: 명령 소비 동시성, 워커 동시 처리 상한, worker-count 측정)
   - 바꾼 요소 외 조건을 고정하고 T2.4의 두 시험을 다시 한다. 같은 rate의 전후 비교와 최고 지속 처리량의 변화를 함께 보고한다. 효과가 없거나 회귀면 변경을 고치거나 빼거나 보류 근거를 남긴다. 다음 병목이 있으면 T3·T4를 반복한다

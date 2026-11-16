@@ -7,6 +7,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.context.Context;
 import jakarta.annotation.PostConstruct;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -75,15 +76,17 @@ public class PgOutboxChannel {
     }
 
     /**
-     * 큐에서 {@link OutboxJob} 을 차단 대기하여 가져온다 (PgOutboxImmediateWorker 전용).
+     * 큐에서 {@link OutboxJob} 을 최대 {@code timeout} 동안 기다려 가져온다. 시간 안에 없으면 {@code null}.
      *
-     * <p>반환된 job 의 otelContext + snapshot 을 relay 직전에 restore 하여 context 를 복원해야 한다.
+     * <p>즉시 처리 워커가 종료 신호({@code running=false})를 인터럽트 없이 확인하려고 쓴다.
      *
-     * @return OutboxJob (outboxId + offer 시점 OTel Context + MDC snapshot)
+     * @param timeout 최대 대기 시간
+     * @param unit    {@code timeout} 단위
+     * @return OutboxJob 또는 시간 초과 시 {@code null}
      * @throws InterruptedException 스레드 인터럽트 시
      */
-    public OutboxJob take() throws InterruptedException {
-        return queue.take();
+    public OutboxJob poll(long timeout, TimeUnit unit) throws InterruptedException {
+        return queue.poll(timeout, unit);
     }
 
     /**

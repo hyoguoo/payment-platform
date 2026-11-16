@@ -25,7 +25,7 @@ class PgInboxChannelTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        channel = new PgInboxChannel(TEST_CAPACITY, meterRegistry);
+        channel = new PgInboxChannel(TEST_CAPACITY, meterRegistry, java.time.Clock.systemUTC());
         channel.registerMetrics();
     }
 
@@ -57,7 +57,7 @@ class PgInboxChannelTest {
     void take_afterOffer_returnsCorrectInboxId() throws InterruptedException {
         channel.offerNow(123L);
 
-        InboxJob job = channel.take();
+        InboxJob job = channel.poll(1, java.util.concurrent.TimeUnit.SECONDS);
 
         assertThat(job.inboxId()).isEqualTo(123L);
         assertThat(job.otelContext()).isNotNull();
@@ -71,9 +71,9 @@ class PgInboxChannelTest {
         channel.offerNow(20L);
         channel.offerNow(30L);
 
-        assertThat(channel.take().inboxId()).isEqualTo(10L);
-        assertThat(channel.take().inboxId()).isEqualTo(20L);
-        assertThat(channel.take().inboxId()).isEqualTo(30L);
+        assertThat(channel.poll(1, java.util.concurrent.TimeUnit.SECONDS).inboxId()).isEqualTo(10L);
+        assertThat(channel.poll(1, java.util.concurrent.TimeUnit.SECONDS).inboxId()).isEqualTo(20L);
+        assertThat(channel.poll(1, java.util.concurrent.TimeUnit.SECONDS).inboxId()).isEqualTo(30L);
     }
 
     @Test

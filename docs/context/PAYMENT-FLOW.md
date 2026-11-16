@@ -91,7 +91,7 @@ flowchart TD
 
     ABS --> RDY["AFTER_COMMIT<br/>InboxReadyEventHandler -> PgInboxChannel.offerNow"]
     ACT --> RDY
-    RDY --> IMW["PgInboxImmediateWorker<br/>channel.take -> process(inboxId)"]
+    RDY --> IMW["PgInboxImmediateWorker<br/>channel.poll -> 워커가 직접 process(inboxId)"]
     RDY -.->|"채널 full / 누락"| PLW["PgInboxPollingWorker @5s<br/>PENDING/IN_PROGRESS 좀비 회수"]
 
     IMW --> PROC{"inbox.status"}
@@ -176,7 +176,7 @@ flowchart TD
 | 실제 Kafka 발행 | `OutboxRelayService` → `KafkaMessagePublisher` | `PgOutboxRelayService` → `PgEventPublisher` |
 | 발행 토픽 | `payment.commands.confirm` | `payment.events.confirmed` |
 
-pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** 두고 `PgOutboxImmediateWorker`가 `channel.take()` 블로킹 수신 → VT executor 위임. payment-service는 Spring `@Async`가 큐/워커를 캡슐화. `available_at` 기반 지연 발행은 pg 쪽에만 적용한다 (재시도 시각 표현용).
+pg-service는 채널(`PgOutboxChannel`, BlockingQueue)을 **명시적으로** 두고 `PgOutboxImmediateWorker`가 `channel.poll(200ms)`로 수신 → 워커 스레드가 직접 처리한다(워커 수 = 동시 처리 상한). payment-service는 Spring `@Async`가 큐/워커를 캡슐화. `available_at` 기반 지연 발행은 pg 쪽에만 적용한다 (재시도 시각 표현용).
 
 ---
 
@@ -431,7 +431,7 @@ payment-service 의 `RetryPolicy`(고정 5초, 최대 5회)는 소진 판정을 
 
 비용: vendor 호출 1회 추가. 멱등성으로 흡수.
 
-**진입 트리거**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 이 갈래를 막는 별도 필터는 없다.
+**진입 트리거**: 이 race 로 들어오는 경로는 동일 eventUuid 재전송 · self-loop 재시도 · 폴링 좀비 회수 셋이다. 재시도는 원 호출 종료 후 backoff(base 2s) 를 두고 발행되고 폴링은 `in-progress-timeout-ms`(60s) 유예를 갖는 반면, **리스너 재적재 경로에는 유예가 없다** — `handleActiveInbox` 가 IN_PROGRESS 를 보면 즉시 채널에 넣고 `PgInboxImmediateWorker`(기본 5 워커)가 집는다. `selectInProgressForUpdateSkipLocked` 는 락 확보 후 커밋하며 락을 놓고 벤더 호출(최대 13s = connect 3s + read 10s)은 락 없이 진행되므로, 그 창에 도착한 재전송이 선점에 다시 성공한다. 이 갈래를 막는 별도 필터는 없다. 워커 수가 동시 처리 상한이 된 뒤(#166)에는 큐 적체도 갈래가 될 수 있다 — 큐에서 60초 넘게 기다린 작업과 폴링 회수가 같은 행을 겹쳐 잡는 경우다. 큐 대기 갈래는 워커가 막는다: 큐에 넣은 시각(`InboxJob.enqueuedAt`)이 폴링 정체 기준(`pending-timeout-ms`, `in-progress-timeout-ms` 중 긴 값) 이상 지난 작업은 처리하지 않고 폴링에 맡긴다(`pg_inbox.stale_job_skipped_total`). 방금 적재된 작업이 이미 정체 기준을 넘긴 IN_PROGRESS 행을 만나는 경우(self-loop 재시도 명령이 Kafka 소비 지연으로 늦게 도착해 폴링 회수와 겹침)는 막지 않는다. TODOS의 PG-STALE-ROW-GUARD.
 
 **겹침 처리**: 두 벤더 모두 겹친 승인 호출을 거부한다 — Toss 는 주문번호 멱등키로 처리 중 재요청에 409(`IDEMPOTENT_REQUEST_PROCESSING`), NicePay 는 동일 거래번호 재승인에 2201. Toss 의 거부 코드는 `TossPaymentErrorCode` 에 등재돼 `GatewayOutcome.ConcurrentCall` 로 흡수되며, 시도횟수·재시도 명령·상태 전이를 건드리지 않고 물러난다(`PgVendorCallService.dispatchOutcome`). 
 

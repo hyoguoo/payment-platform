@@ -7,7 +7,7 @@ package com.hyoguoo.paymentplatform.pg.application.port.in;
  *
  * <p>사용처:
  * <ul>
- *   <li>{@code PgInboxImmediateWorker} — AFTER_COMMIT channel take 후 {@link #processPending} 호출</li>
+ *   <li>{@code PgInboxImmediateWorker} — AFTER_COMMIT 적재된 작업을 채널에서 꺼낸 뒤 {@link #processPending} 호출</li>
  *   <li>{@code PgInboxPollingWorker} — IN_PROGRESS 좀비 회수 시 {@link #processInProgressZombie} 호출</li>
  * </ul>
  *
