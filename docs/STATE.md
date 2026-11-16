@@ -9,7 +9,7 @@
 ### PAYMENT-THROUGHPUT — 결제 처리량 한계 측정과 병목 개선
 - 규모·단계: 실험 · execute — #165(결과 소비 동시성 3) 완료. #166(pg 명령 소비 동시성 3, 워커 동시 처리 상한 복원) 구현·검토·커밋 완료. 2026-11-16 측정으로 outbox 워커 8·inbox 워커 64 확정(160/s 부하 중 회복, user-quality 100/s 통과). #167(중복 승인 보정의 벤더 상태 조회를 트랜잭션 밖으로 분리) 구현·검토·커밋 완료
 - 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162)(하위 [#165](https://github.com/hyoguoo/payment-platform/issues/165) · [#166](https://github.com/hyoguoo/payment-platform/issues/166) · [#167](https://github.com/hyoguoo/payment-platform/issues/167)) · 브랜치 `#162`
-- 다음: T5 ship(마무리 검토·문서 동기화·완료 요약). 푸시·PR은 개발자 요청 시. 처리 용량 경계(160/s 위)와 초기 약 50초 적체 원인은 아직 재지 않았다
+- 다음: 최종 코드 확인·경계 탐색 완료(경계 180~200/s, 다음 병목 후보 product 재고 확정 소비 동시성 1). 5단계 진행 또는 T5 ship을 개발자가 정한다. 푸시·PR은 개발자 요청 시. 초기 적체 원인은 아직 재지 않았다
 - 막힘: 없음. 회차는 `live-drill/throughput-split-measurements-20261106/`의 v4 드라이버(`run-worker-rounds.sh`)와 `finish-round.py`로 돌린다(EXPERIMENTS 고정 조건, RUNBOOK "회차마다 지킬 것")
 - 문서: [BRIEF](topics/PAYMENT-THROUGHPUT/BRIEF.md) · [DESIGN](topics/PAYMENT-THROUGHPUT/DESIGN.md) · [EXPERIMENTS](topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md)
 
