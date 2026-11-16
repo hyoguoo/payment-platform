@@ -6,13 +6,6 @@
 
 ## 진행 중
 
-### PAYMENT-THROUGHPUT — 결제 처리량 한계 측정과 병목 개선
-- 규모·단계: 실험 · execute — #165(결과 소비 동시성 3) 완료. #166(pg 명령 소비 동시성 3, 워커 동시 처리 상한 복원) 구현·검토·커밋 완료. 2026-11-16 측정으로 outbox 워커 8·inbox 워커 64 확정(160/s 부하 중 회복, user-quality 100/s 통과). #167(중복 승인 보정의 벤더 상태 조회를 트랜잭션 밖으로 분리) 구현·검토·커밋 완료
-- 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162)(하위 [#165](https://github.com/hyoguoo/payment-platform/issues/165) · [#166](https://github.com/hyoguoo/payment-platform/issues/166) · [#167](https://github.com/hyoguoo/payment-platform/issues/167)) · 브랜치 `#162`
-- 다음: 최종 코드 확인·경계 탐색 완료(경계 180~200/s, 다음 병목 후보 product 재고 확정 소비 동시성 1). 5단계 진행 또는 T5 ship을 개발자가 정한다. 푸시·PR은 개발자 요청 시. 초기 적체 원인은 아직 재지 않았다
-- 막힘: 없음. 회차는 `live-drill/throughput-split-measurements-20261106/`의 v4 드라이버(`run-worker-rounds.sh`)와 `finish-round.py`로 돌린다(EXPERIMENTS 고정 조건, RUNBOOK "회차마다 지킬 것")
-- 문서: [BRIEF](topics/PAYMENT-THROUGHPUT/BRIEF.md) · [DESIGN](topics/PAYMENT-THROUGHPUT/DESIGN.md) · [EXPERIMENTS](topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md)
-
 ### CHECKOUT-RECEIPT-TRACKING — 서버 중단 후 요청 추적과 안전한 재요청
 - 규모·단계: 큼 · discuss — 사전 브리핑 승인 대기. 범위(두 목표 함께)와 도달 증거 유실 시 미확인 허용은 확정
 - 추적: 이슈·브랜치 미생성(discuss 진행 중)
@@ -22,7 +15,7 @@
 
 ## 최근 완료
 
+- **PAYMENT-THROUGHPUT** (2026-11-16) — [완료 요약](archive/payment-throughput/BRIEF.md#완료-요약)
 - **AGENT-STRUCTURE-OVERHAUL** (2026-11-06) — [완료 요약](archive/agent-structure-overhaul/BRIEF.md#완료-요약)
-- **CI-INTEGRATION-TEST-SHARDING** (2026-09-28) — docs/archive/ci-integration-test-sharding/COMPLETION-BRIEFING.md
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
