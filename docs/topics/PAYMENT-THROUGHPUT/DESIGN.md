@@ -78,6 +78,8 @@
 
 ## 진행 기록
 
+- 2026-11-16 worker-count 비교 측정 결과 (재개 지점): capacity 160/s를 inbox worker 32·64로 쟀다. 두 회차 모두 기준선보다 나빴다(부하 중 DONE 141.6 → 129.5·130.6/s). inbox worker 64는 160/s를 따라가지만, 상한을 되살리면서 pg outbox 발행이 기본값 1개 워커로 한 건씩 처리하게 되어 약 145/s에서 막혔다(회귀). 채널이 넘친 작업은 폴링 경로(inbox 5초당 10건, outbox 2초당 10건)로만 빠져 적체가 오래 남는다. 자세한 수치는 EXPERIMENTS 2026-11-16 항목
+  - 다음: outbox 워커 수와 채널 넘침 처리 방식을 개발자와 정한 뒤 구현·재측정. 그 전에는 main에 병합하지 않는다. user-quality 100/s 회차는 그 뒤로 미룬다
 - 2026-11-16 측정 준비 완료 (재개 지점): 개발자 요청으로 측정 직전까지만 진행했다. 실행 중인 컨테이너·볼륨·부하 없음.
   - 끝난 것: 전 모듈 bootJar(payment·pg 새로 빌드, JAR 안에 `InboxJob.enqueuedAt`·결과 소비 기본 동시성 3 확인, pg 실행기 헬퍼 없음). Testcontainers 재사용 컨테이너 25개와 익명 볼륨을 라벨 `org.testcontainers=true`로 골라 지움(컨테이너·볼륨 0). quality Compose 조합에서 `QUALITY_PG_INBOX_WORKERS`·`QUALITY_PG_COMMAND_CONCURRENCY`·`QUALITY_CONFIRMED_CONCURRENCY`가 각각 `PG_INBOX_CHANNEL_WORKER_COUNT`, `PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY`, payment `JAVA_TOOL_OPTIONS`로 들어가는 것을 `docker compose config`로 확인. 앱 JRE 태그는 기준선과 같은 `21.0.12.1_1`
   - 측정 도구: `scripts/quality/evidence.py`가 pg 워커 지표(`pg_inbox_*`, `pg_outbox_*`, `pg_vendor_*`)를 `prometheus-pg_worker.json`으로 수집한다. 로컬 드라이버 `run-round-v4.py`(Git 제외)는 v3 측정 단계 그대로에 pg 손잡이 적용값 검사와 pg·pg-dlq 컨슈머 그룹 배정 기록만 더했다
