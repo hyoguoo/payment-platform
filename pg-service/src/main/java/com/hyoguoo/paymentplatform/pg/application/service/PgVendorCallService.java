@@ -280,8 +280,11 @@ public class PgVendorCallService {
         PgOutbox outbox = PgOutbox.createWithAvailableAt(
                 PgTopics.COMMANDS_CONFIRM, request.orderId(),
                 buildCommandPayload(request), headersJson, availableAt, now);
-        PgOutbox saved = pgOutboxRepository.save(outbox);
-        applicationEventPublisher.publishEvent(new PgOutboxReadyEvent(saved.getId()));
+        pgOutboxRepository.save(outbox);
+        // 지연 발행 행은 즉시 발행 경로(PgOutboxReadyEvent → 채널 → 즉시 워커)로 보내지 않고 폴링만 발행한다.
+        // 즉시 워커는 동시 처리 상한이 있어 채널 대기가 backoff 보다 길어질 수 있고, 그러면 발행 가능 시각이
+        // 지난 같은 행을 폴링과 함께 집어 재시도 명령을 두 번 낸다(relay 에는 행 선점이 없다).
+        // 발행 가능 시각 전에는 즉시 경로가 어차피 건너뛰므로 폴링 주기(2초)만큼 늦어질 뿐이다.
 
         LogFmt.info(log, LogDomain.PG_VENDOR, EventType.PG_VENDOR_RETRY_SCHEDULED,
                 () -> "orderId=" + request.orderId()

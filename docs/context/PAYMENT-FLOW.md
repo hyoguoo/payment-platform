@@ -121,8 +121,9 @@ flowchart TD
     NF --> OBX
     QU --> OBX
     REEMIT --> OBX
-    RTO --> OBX
+    RTO -->|"지연 발행 행: 즉시 경로 없이 폴링만"| OBP["PgOutboxPollingWorker<br/>available_at <= now"]
     DLO --> OBX
+    OBP --> RELAY
 
     OBX --> OBW["PgOutboxImmediateWorker<br/>(폴백 PgOutboxPollingWorker: processedAt IS NULL)"]
     OBW --> RELAY["PgOutboxRelayService -> PgEventPublisher<br/>(헤더 Map.of() — attempt 는 pg_inbox 영속, 헤더 불요)"]
@@ -316,7 +317,7 @@ retry 의 핵심: **commands.confirm 자기 자신에게 다시 publish**. 별�
 
 > **`attempt` 카운팅은 `pg_inbox.attempt`(Flyway V5) 가 SoT 다.** 워커 `PgInboxProcessor.resolveAttempt(inbox)` 가 컬럼값을 읽고, retry 분기(`PgVendorCallService.insertRetryOutbox`)에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적한다. self-loop 명령은 "해당 주문 재처리" 신호일 뿐이며 — `PgOutboxRelayService.relay` 는 여전히 헤더를 `Map.of()` 로 보내지만 attempt SoT 가 DB 라 헤더 전파는 불요. attempt 가 1→2→3→4 로 증가해 `shouldRetry(4)=false` 에서 DLQ → QUARANTINED 격리. (동시 진입 over-count = 조기 격리, 수용 한계 — 관리자 시도 이력 화면에서는 같은 회차가 여러 행에 나타나는 형태로 드러나며 화면 문구가 이를 알린다.)
 >
-> **`insertRetryOutbox` 내부 순서**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 와 `PgOutboxReadyEvent` 발행을 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
+> **`insertRetryOutbox` 내부 순서**: `incrementAttempt` 를 **먼저** 호출하고 반영 행 수가 0(가드 발동 = 이미 종결)이면 재시도 outbox INSERT 를 건너뛴다 — 종결된 주문에 stray 재시도 메시지가 나가는 것을 원천 차단한다. 재시도 행은 `available_at` 지연 발행이라 `PgOutboxReadyEvent`(즉시 발행 경로)를 내지 않고 폴링 워커만 발행한다 — 즉시 워커 큐 대기가 backoff 보다 길면 폴링과 같은 행을 함께 발행할 수 있어서다(relay 에 행 선점이 없음). 같은 TX_B 안이라 원자성은 유지되며, 한도 판정(`shouldRetry`)은 증가 **전** 값으로 이미 `handleRetry` 에서 결정되므로 순서 충돌이 없다.
 
 ```mermaid
 sequenceDiagram

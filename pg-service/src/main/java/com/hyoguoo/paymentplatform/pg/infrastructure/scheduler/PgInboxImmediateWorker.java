@@ -75,9 +75,10 @@ public class PgInboxImmediateWorker extends AbstractImmediateWorker<InboxJob> {
         this.processor = processor;
         this.inboxRepository = inboxRepository;
         this.workerCount = workerCount;
-        // 폴링 워커는 PENDING 을 created_at, IN_PROGRESS 를 updated_at 기준으로 회수한다. 큐에서 둘 중 긴
-        // 기준만큼 기다린 작업은 어느 상태든 폴링이 반드시 회수하므로 워커가 처리하지 않아도 된다.
-        this.staleAfter = Duration.ofMillis(Math.max(pendingTimeoutMs, inProgressTimeoutMs));
+        // 폴링 워커는 PENDING 을 created_at, IN_PROGRESS 를 updated_at 기준으로 회수한다. 둘 중 짧은 기준이
+        // 지나면 폴링이 이미 그 행을 회수해 벤더를 부르고 있을 수 있으므로 짧은 쪽을 정체 기준으로 쓴다.
+        // 건너뛴 작업은 상태에 맞는 기준이 지나면 폴링이 회수한다.
+        this.staleAfter = Duration.ofMillis(Math.min(pendingTimeoutMs, inProgressTimeoutMs));
         this.clock = clock;
         this.processFailCounter = Counter.builder(PROCESS_FAIL_COUNTER_NAME)
                 .description("PgInboxImmediateWorker 처리 실패 횟수")

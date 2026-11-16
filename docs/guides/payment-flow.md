@@ -121,7 +121,7 @@ sequenceDiagram
     - inbox 없으면 **`pg_inbox` `PENDING` INSERT + 채널 적재**(`PgInboxPendingService.insertPendingAndPublish`)
     - 이미 `PENDING`/`IN_PROGRESS`면 채널 재적재(`handleActiveInbox`)
     - terminal 재수신이면 저장 결과 재발행(`PgTerminalReemitService.reemit`, 벤더 재호출 금지)
-19. **Worker가 처리** — `PgInboxImmediateWorker`가 채널에서 take
+19. **Worker가 처리** — `PgInboxImmediateWorker`가 채널에서 꺼내(poll) 워커 스레드가 직접 처리. 워커 수(기본 64)가 동시 처리 상한
     - `PENDING`이면 `processPending`(**`PENDING→IN_PROGRESS` CAS, SKIP LOCKED**)
     - `IN_PROGRESS`면 `processInProgressZombie`
     - 이후 **실제 PG사 호출**(TX 밖, `PgVendorCallService.invokeVendor` → `PgConfirmStrategySelector` → Toss/NicePay/Fake) → `applyOutcome`(TX_B)

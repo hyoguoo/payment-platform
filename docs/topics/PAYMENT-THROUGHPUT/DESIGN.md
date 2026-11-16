@@ -55,7 +55,7 @@
     - 기존 실패 보상·격리·금액 불일치 회귀 유지. 기본값 채택 전 reviewer·domain-expert 독립 검토와 모듈 검사
   - 준비 상태: `ConfirmedConsumerConcurrencyIntegrationTest`(4개 시나리오) 작성, 독립 reviewer·domain-expert 재검토 PASS, 2026-11-06 커밋(`483fd9e2`). 테스트 컴파일만 확인했고 통합 테스트 실행은 아직이다. 로컬 프로세스 복구 드라이버 `run-consumer-recovery.py`는 작성만 했고 독립 검토·실행 전이다(Git 제외)
   - 검증: `./gradlew :payment-service:test :payment-service:checkstyleMain :payment-service:checkstyleTest :payment-service:spotbugsMain :payment-service:spotbugsTest`, DB·Kafka 배선 변경이면 `:payment-service:integrationTest`. 성능 실측과 Gradle 통합 테스트를 동시에 돌리지 않는다
-- [ ] **T3.2 — 두 번째 병목: pg 명령 소비와 워커 동시 처리 상한** (tdd, 결제 위험 경로, #166)
+- [x] **T3.2 — 두 번째 병목: pg 명령 소비와 워커 동시 처리 상한** (tdd, 결제 위험 경로, #166)
   - 근거: 결과 소비 동시성 3의 capacity 160/s에서 잔량이 `payment.commands.confirm`(pg-service, 동시성 1) 소비 지연 2,200~3,400으로 쌓였다(EXPERIMENTS 2026-11-15). pg inbox·outbox 워커는 꺼낸 작업마다 새 가상 스레드에 넘겨 worker-count가 상한이 아니다(진행 기록 2026-11-08)
   - 선택한 변경(2026-11-15 개발자 결정)
     - 결제 명령 리스너(`PaymentConfirmConsumer`)에만 동시성 프로퍼티(기본 3)를 둔다. DLQ 리스너는 1 그대로다. benchmark의 `PG_CONSUMER_CONCURRENCY`가 이 프로퍼티에도 들어가게 Compose를 맞춘다
@@ -67,7 +67,7 @@
   - 검토 뒤 추가 결정(2026-11-15 개발자): (1) 워커 상한으로 큐 대기가 정체 기준(60초)을 넘으면 폴링 회수와 겹쳐 벤더를 두 번 부를 수 있어(risk-reviewer major), 큐에 넣은 시각을 작업에 담고 정체 기준 이상 기다린 작업은 처리하지 않고 폴링에 맡긴다 (2) 워커가 직접 처리하면서 Error가 워커 스레드를 죽이게 돼(risk-reviewer major), Error도 기록·카운트하고 다음 작업으로 넘어간다 (3) 쓰이지 않게 된 pg `ContextAwareVirtualThreadExecutors`와 채널 `take()`를 지운다
   - 남은 기존 위험(범위 밖): 같은 id가 큐에 두 번 들어오는 재전송·재시도 갈래의 겹친 호출(PAYMENT-FLOW 4.11), outbox 즉시 경로와 폴링의 겹친 발행(tps-server-analysis "PG outbox의 조회 후 발행"), 워커와 Kafka 리스너 레지스트리가 같은 SmartLifecycle phase라 종료 순서가 정해져 있지 않음. 10초 초과 인터럽트 경로는 단위 테스트로 확인하지 않았다
   - 검증: 워커 동시 실행이 worker-count를 넘지 않음, 종료 때 처리 중 작업이 인터럽트 없이 끝남(단위). 명령 리스너 동시성 3·DLQ 1(설정). pg 단위·정적 분석·통합 테스트, risk-reviewer·reviewer, 위 측정
-  - 구현 결과(2026-11-16): 상한 테스트 2개(inbox·outbox)는 "expected 2 but was 5", 리스너 동시성 테스트는 "expected 3 but was 1", 정체 작업·Error 테스트는 동작 부재로 실패하는 것을 확인한 뒤 구현. pg 단위 451, 통합 84 통과, 정적 분석 4종 통과. reviewer major 2(문서 정합성, 측정 증빙에 새 손잡이 누락)·minor 반영. risk-reviewer major 2(큐 적체로 폴링과 겹친 벤더 호출, Error로 워커 사망)는 위 추가 결정으로 고친 뒤 수정분 재검토에서 critical·major 없음. 재검토 minor(늦게 온 재시도 명령이 정체된 IN_PROGRESS 행과 겹치는 기존 갈래)는 TODOS PG-STALE-ROW-GUARD로 남김. worker-count 기본값은 아직 5(측정 전 임시값)라 측정으로 정하기 전에는 main에 병합하지 않는다
+  - 구현 결과(2026-11-16): 상한 테스트 2개(inbox·outbox)는 "expected 2 but was 5", 리스너 동시성 테스트는 "expected 3 but was 1", 정체 작업·Error 테스트는 동작 부재로 실패하는 것을 확인한 뒤 구현. pg 단위 451, 통합 84 통과, 정적 분석 4종 통과. reviewer major 2(문서 정합성, 측정 증빙에 새 손잡이 누락)·minor 반영. risk-reviewer major 2(큐 적체로 폴링과 겹친 벤더 호출, Error로 워커 사망)는 위 추가 결정으로 고친 뒤 수정분 재검토에서 critical·major 없음. 재검토 minor(늦게 온 재시도 명령이 정체된 IN_PROGRESS 행과 겹치는 기존 갈래)는 TODOS PG-STALE-ROW-GUARD로 남김. worker-count 기본값은 아직 5(측정 전 임시값)라 측정으로 정하기 전에는 main에 병합하지 않는다(2026-11-16 inbox 64·outbox 8 확정으로 해소)
   - 측정 뒤 추가 결정(2026-11-16 개발자): worker 32·64 비교에서 상한 복원이 pg outbox 발행을 워커 1개로 묶는 회귀가 드러났다(160/s에서 약 145/s, EXPERIMENTS 2026-11-16). outbox worker-count 기본값을 1 → 8로 올린다(`application.yml`, `@Value` 기본값, quality·benchmark Compose 기본값, 손잡이 `QUALITY_PG_OUTBOX_WORKERS`). 채널이 넘친 작업을 폴링으로만 회수하는 느린 경로는 이번에 고치지 않고 TODOS PG-CHANNEL-OVERFLOW-DRAIN으로 남긴다. 다음 측정은 inbox 64 + outbox 8의 capacity 160/s 한 회차, 기준선보다 나으면 user-quality 100/s와 inbox 기본값 확정. outbox 8도 이 측정으로 확인하기 전까지는 임시값이라 main 병합 조건에 함께 건다
   - 2차 측정 뒤 결정(2026-11-16 개발자): inbox worker-count 기본값을 5(임시) → 64로 정한다(`application.yml`, `@Value` 기본값, quality·benchmark Compose 기본값). 근거는 capacity 160/s에서 32는 약 147/s로 미달, 64 + outbox 8은 부하 중 회복·채널 적체 0, user-quality 100/s 통과(EXPERIMENTS 2026-11-16 2차). 값이 측정한 조건과 같아 추가 측정은 하지 않는다. 실제 PG 동시 요청 한도는 TC-6에서 다룬다. outbox 8도 같은 2차 측정으로 확인해, 두 임시값에 걸었던 main 병합 조건은 풀렸다
 - [x] **T3.3 — 중복 승인 보정의 벤더 상태 조회를 트랜잭션 밖으로 분리** (tdd, 결제 위험 경로, #167)
@@ -76,13 +76,31 @@
   - 대안: pg 커넥션 풀 확대(DB 부담이 늘고 원인이 남아 보류), 64로 두고 TODOS로 미루기(main 대비 나빠지지 않지만 64를 안전하게 쓰려면 먼저 풀어야 해 채택하지 않음)
   - 지킬 것: 판정 불가·금액 대조·DB 기록 있음/없음·격리 분기 규칙은 그대로. DB 조회(findByOrderId)와 전이는 트랜잭션 안에 남긴다
   - 구현 결과(2026-11-16): 새 통합 테스트(조회 순간 트랜잭션 활성 여부)가 "Expecting value to be false but was true"로 실패하는 것을 확인한 뒤 구현. pg 단위 454, 통합 85, 정적 분석 4종 통과. risk-reviewer 결함 없음(조회가 앞당겨져도 0건 가드·판정 불가 원자성 유지 확인, 제안 시나리오 중 "조회 중 실행 예외 전파"를 단위 테스트로 추가). reviewer minor 4(테스트 javadoc 위치, context·guide 문서, 코드 주석) 반영. 측정은 다시 하지 않는다(모의 PG 상태 조회에 지연이 없어 처리량이 같다)
-- [ ] **T4 — 개선 뒤 같은 조건으로 한계 재탐색**
+- [x] **T4 — 개선 뒤 같은 조건으로 한계 재탐색**
+  - 결과(2026-11-16, ship 리뷰 뒤 개발자 결정으로 닫음): 최종 코드로 capacity 160/s 두 번 회복(159.7/s), 경계 180/s(결제 회복)~200/s(재고 확정 적체 증가), user-quality 100/s 두 번 통과. 처리 용량 경계 이동 120~140 → 140~160 → 180~200/s. 사용자 품질 상한(100/s 위)과 10분 지속 확인은 하지 않고 TODOS(THROUGHPUT-FOLLOWUP-MEASURE)로 남긴다
   - 1차(2026-11-15, 결과 소비 동시성 3, 같은 JAR에 프로퍼티만 변경): 처리 용량 140/s 회복·160/s 미달(부하 중 141.6/s), 사용자 품질 100/s 통과. 다음 병목은 pg 명령 소비 → T3·T4 반복(#166: 명령 소비 동시성, 워커 동시 처리 상한, worker-count 측정)
   - 바꾼 요소 외 조건을 고정하고 T2.4의 두 시험을 다시 한다. 같은 rate의 전후 비교와 최고 지속 처리량의 변화를 함께 보고한다. 효과가 없거나 회귀면 변경을 고치거나 빼거나 보류 근거를 남긴다. 다음 병목이 있으면 T3·T4를 반복한다
 - [ ] **T5 — ship**
   - 변경에 맞는 정상·중복·실패·복구 확인, reviewer·risk-reviewer 완료 검토, context 문서와 HTML 동기화, BRIEF 완료 요약, 아카이브
 
 ## 리뷰 처리
+
+커밋 시점 검토(T3·T3.2·T3.3)의 처리는 각 태스크 본문에 있다. 아래는 ship 리뷰(2026-11-16, diff `2832b7d4..0ee918cd`, reviewer·risk-reviewer)다.
+
+| 항목 | 등급 | 결정 | 근거 |
+|---|---|---|---|
+| T3.2·T4 표시와 T4 완료 기준(사용자 품질 상한·10분 지속 미측정) | major | 수정(T4를 범위 명시로 닫음, 나머지 TODOS) | 개발자 결정. 처리량 중심 토픽이고 경계는 확인함 |
+| ARCHITECTURE의 pg 리스너 동시성 서술(기본 1) | minor | 수정 | 명령 리스너 3, DLQ 1 |
+| 옛 서술(guide take, TODOS TC-15 워커 5개, yml 주석, quality README·RUNBOOK 상태) | minor | 수정 | 사실과 다름 |
+| 정체 작업 기준이 두 회수 기준 중 긴 값(max) | minor | 수정(min, 테스트 추가) | 두 값이 다르면 폴링과 겹쳐 벤더를 두 번 부름. 기본값은 같아 잠재 결함 |
+| 지연 재시도 행을 즉시 경로와 폴링이 함께 발행할 수 있음(#166 워커 상한으로 생김) | minor | 수정(재시도 행은 즉시 발행 알림을 내지 않음, 테스트 단언 추가) | #166 전의 실제 동작으로 되돌림 |
+| 리뷰 처리 섹션 비어 있음 | minor | 수정(이 표) | — |
+| 이 토픽과 무관한 파일이 브랜치 diff에 섞임(CHECKOUT-RECEIPT-TRACKING 문서, AGENTS.md 메모리 규칙) | minor | 보류(PR 본문에 구분 표기) | 코드 영향 없음 |
+| 10초 초과 인터럽트 경로 미테스트, 리스너 레지스트리와 종료 순서 | minor | 보류(이미 기록, TC-12) | 새 결함 아님 |
+| 벤더가 오래 느리면 쌓인 작업이 모두 정체 판정돼 느린 폴링으로만 빠짐 | minor | 보류(TODOS PG-CHANNEL-OVERFLOW-DRAIN 보강) | 지연만, 불변식 위반 아님 |
+| 재검토: PAYMENT-FLOW 흐름도가 재시도 행을 즉시 채널로 그림 | minor | 수정 | 폴링만으로 고침 |
+| 재검토: 재시도 명령 발행이 outbox 폴링 처리량(약 5건/초)에만 묶임 | minor | 보류(TODOS PG-STALE-ROW-GUARD 보강) | #166 전과 같은 기존 위험 |
+| 재검토: TODOS 문장 마침표 누락 | minor | 수정 | — |
 
 ## 진행 기록
 

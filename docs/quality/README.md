@@ -4,7 +4,7 @@
 이 조건의 로컬 탐색은 수행했으며 [실측 보고서](../topics/PAYMENT-THROUGHPUT/tps-clean-measurements.html)에 원래 판정으로 보존한다.
 주입·관측 분리 용량 모드와 1초 조회 사용자 품질 모드를 추가했다.
 새 두 모드의 지연·잔량·메모리·재고 반영 판정과 HTML은 T2.2에서 구현·모의 검증을 마쳤다.
-모드별 새 환경 저부하 검증을 마쳤으며, 현재 새 기준 한계를 탐색 중이다.
+모드별 새 환경 저부하 검증을 마쳤고, 2026-11-16 기준 처리 용량 경계(180~200/s)와 사용자 품질 100/s 통과를 확인했다. 결과는 [PAYMENT-THROUGHPUT 실험 기록](../archive/payment-throughput/EXPERIMENTS.md)에 있다.
 [저부하 검증 요약](../topics/PAYMENT-THROUGHPUT/tps-tool-validation.md)에서 목표 충족과 전체 지속 처리 미확정을 구분했다.
 기존 500ms 판정은 schema1로 보존하며 새 조건은 schema2로 구분한다.
 새 기준과 재개 위치는 [BRIEF](../topics/PAYMENT-THROUGHPUT/BRIEF.md), [DESIGN](../topics/PAYMENT-THROUGHPUT/DESIGN.md),

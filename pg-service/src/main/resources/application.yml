@@ -102,7 +102,7 @@ pg:
       capacity: 1024
       # 확정 결과를 Kafka(payment.events.confirmed)로 되돌리는 릴레이 스레드 수 = 동시 발행 상한.
       # 워커가 작업을 직접 처리한다(#166). 워커 1개는 capacity 160/s 에서 약 145/s 로 발행이 막혀 8로 둔다
-      # (EXPERIMENTS 2026-11-16). 기본값은 비교 측정으로 다시 확인한다.
+      # (EXPERIMENTS 2026-11-16, inbox 64 와 함께 160/s 에서 확인).
       worker-count: ${PG_OUTBOX_CHANNEL_WORKER_COUNT:8}
   inbox:
     channel:

@@ -204,6 +204,34 @@ class PgInboxImmediateWorkerTest {
     }
 
     @Test
+    @DisplayName("두 회수 기준이 다르면 짧은 쪽을 정체 기준으로 쓴다 — 짧은 기준이 지나면 폴링이 이미 회수했을 수 있다")
+    void 회수_기준이_다르면_짧은_쪽을_정체_기준으로_쓴다() throws InterruptedException {
+        // given: PENDING 회수 60초, IN_PROGRESS 회수 120초. 큐에서 90초 기다린 작업 —
+        // 그사이 폴링이 PENDING 을 회수해 IN_PROGRESS 로 벤더를 부르고 있을 수 있다
+        long pendingTimeoutMs = 60_000L;
+        long inProgressTimeoutMs = 120_000L;
+        Instant enqueuedAt = Instant.parse("2026-11-15T00:00:00Z");
+        PgInboxChannel staleChannel = new PgInboxChannel(1024, new SimpleMeterRegistry(),
+                Clock.fixed(enqueuedAt, ZoneOffset.UTC));
+        worker = new PgInboxImmediateWorker(staleChannel, processor, inboxRepository, 1,
+                pendingTimeoutMs, inProgressTimeoutMs, meterRegistry,
+                Clock.fixed(enqueuedAt.plusMillis(90_000L), ZoneOffset.UTC));
+        PgInbox inProgressInbox = PgInbox.of("order-stale-min", PgInboxStatus.IN_PROGRESS, 10000L, null, null, NOW, NOW);
+        when(inboxRepository.findById(32L)).thenReturn(Optional.of(inProgressInbox));
+        worker.start();
+
+        // when
+        staleChannel.offerNow(32L);
+
+        // then: 폴링이 부르고 있을 벤더를 한 번 더 부르지 않는다
+        Counter staleCounter = meterRegistry.find(PgInboxImmediateWorker.STALE_SKIP_COUNTER_NAME).counter();
+        org.awaitility.Awaitility.await().atMost(3, TimeUnit.SECONDS)
+                .until(() -> staleCounter != null && staleCounter.count() == 1.0);
+        verify(processor, never()).processInProgressZombie(32L);
+        verify(processor, never()).processPending(32L);
+    }
+
+    @Test
     @DisplayName("큐 대기가 정체 기준보다 짧으면 그대로 처리한다")
     void 정체_기준보다_짧게_기다린_작업은_처리한다() {
         // given

@@ -235,6 +235,10 @@ class PgVendorCallServiceTest {
             assertThat(rows.get(0).getTopic()).isEqualTo(PgTopics.COMMANDS_CONFIRM);
             assertThat(rows.get(0).getAvailableAt()).isAfter(NOW);
 
+            // then — 지연 발행 행은 즉시 발행 경로로 보내지 않는다. 즉시 경로와 폴링이 발행 가능 시각 뒤에
+            // 같은 행을 함께 집어 재시도 명령을 두 번 내지 않도록 폴링만 발행한다
+            verify(eventPublisher, never()).publishEvent(any(PgOutboxReadyEvent.class));
+
             // then — inbox IN_PROGRESS 유지 + attempt 1→2 증가 (TX_B 안에서 incrementAttempt)
             PgInbox inbox = inboxRepository.findByOrderId(ORDER_ID).orElseThrow();
             assertThat(inbox.getStatus()).isEqualTo(PgInboxStatus.IN_PROGRESS);
