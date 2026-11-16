@@ -79,6 +79,8 @@
 
 ## 진행 기록
 
+- 2026-11-16 outbox 워커 8 반영, 2차 측정 준비 완료 (재개 지점): outbox worker-count 기본값 1 → 8(`74309342`). 새 기본값 테스트는 "expected 8 but was 1" 실패를 확인한 뒤 구현. pg 단위 452, 통합 84 통과, 정적 분석 4종 통과. reviewer minor 3(문서 2건 반영, `@Value` 폴백 테스트는 yml이 늘 우선해 생략), risk-reviewer 결함 없음. 전 모듈 bootJar(pg JAR 안 yml이 `:8`), Testcontainers 컨테이너·볼륨 0. 측정은 아직 시작하지 않았다
+  - 재개 명령: `bash live-drill/throughput-split-measurements-20261106/run-worker-rounds.sh`(기본 실행은 capacity-r160-w64-o8-a 한 회차, 약 20분). 기준선 capacity160-c3-a(141.6/s)보다 나으면 `run-worker-rounds.sh user-quality-r100-w64-o8-a`, 이어 inbox를 줄여 볼지 정한다(`user-quality-r100-w32-o8-a`)
 - 2026-11-16 worker-count 비교 측정 결과 (재개 지점): capacity 160/s를 inbox worker 32·64로 쟀다. 두 회차 모두 기준선보다 나빴다(부하 중 DONE 141.6 → 129.5·130.6/s). inbox worker 64는 160/s를 따라가지만, 상한을 되살리면서 pg outbox 발행이 기본값 1개 워커로 한 건씩 처리하게 되어 약 145/s에서 막혔다(회귀). 채널이 넘친 작업은 폴링 경로(inbox 5초당 10건, outbox 2초당 10건)로만 빠져 적체가 오래 남는다. 자세한 수치는 EXPERIMENTS 2026-11-16 항목
   - 다음: outbox 워커 수와 채널 넘침 처리 방식을 개발자와 정한 뒤 구현·재측정. 그 전에는 main에 병합하지 않는다. user-quality 100/s 회차는 그 뒤로 미룬다
 - 2026-11-16 측정 준비 완료 (재개 지점): 개발자 요청으로 측정 직전까지만 진행했다. 실행 중인 컨테이너·볼륨·부하 없음.
